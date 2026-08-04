@@ -34,6 +34,13 @@ export const users = pgTable(
     /** 用户级限流，NULL=继承全局默认 */
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
+    /**
+     * 本地账号密码哈希（scrypt，格式：saltHex:hashHex:N:r:p）。
+     * NULL = OIDC 用户 / 尚未设置密码（本地账号管理员开通时设置）。
+     */
+    passwordHash: varchar('password_hash', { length: 255 }),
+    /** 最近一次登录时间（登录成功时更新） */
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

@@ -44,8 +44,15 @@ export const workerEnvSchema = baseEnvSchema.extend({
 export const adminApiEnvSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).default(8790),
   ENCRYPTION_KEY: z.string().min(32),
-  /** 管理端 API Token（fail-closed：未配置时 /api/admin/* 全部 503） */
+  /** 管理端 API Token（机器对机器；fail-closed：未配置时该路径 503） */
   ADMIN_API_TOKEN: z.string().optional(),
+  /**
+   * 控制台会话 JWT 密钥（与 gateway 共用同一密钥源）。
+   * 必填：控制台登录（/api/auth/login）签发会话 JWT 必须有密钥；缺省则登录功能不可用。
+   */
+  JWT_SECRET: z.string().min(16),
+  /** 新用户赠送额度（厘），默认 ¥1 = 1000 厘（requirements 4.1） */
+  GIFT_AMOUNT: z.coerce.number().int().min(0).default(1_000),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_ENABLED: z
     .enum(['true', 'false'])
