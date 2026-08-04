@@ -110,15 +110,10 @@ describe('/v1/models 应按 JWT scope.models 过滤（红灯 = 风险确认）',
     expect(body.data.map((m) => m.id)).toEqual(['model-a']);
   });
 
-  it('静态分析：models.ts 的 JWT 分支应实现实际过滤（当前空实现 → 红）', () => {
+  it('静态分析：models.ts 应基于 allowedModels 过滤（非空实现）', () => {
     const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), './models.ts'), 'utf8');
-    const jwtBranch = src.match(/if\s*\(\s*auth\.credentialType\s*===\s*['"]jwt['"]\s*\)\s*\{([\s\S]*?)\}/);
-    expect(jwtBranch, '应存在 JWT 分支').toBeTruthy();
-    const branchBody = jwtBranch![1];
-    // 期望分支体真正调用 filter（基于 allowedModels），而非空注释
-    expect(
-      branchBody,
-      'JWT 分支应实际按 allowedModels 过滤',
-    ).toMatch(/models\s*=\s*models\.filter|allowedModels/);
+    // 期望源码引用 auth.allowedModels 并做 filter（不论分支写法），而非空注释
+    expect(src, '应引用 auth.allowedModels').toMatch(/auth\.allowedModels/);
+    expect(src, '应调用 isModelAllowed 或 filter').toMatch(/isModelAllowed|\.filter\(/);
   });
 });

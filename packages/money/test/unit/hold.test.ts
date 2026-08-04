@@ -39,4 +39,22 @@ describe('calcHold', () => {
     expect(calcHold(100, 500, 80)).toBe(80); // HOLD_MAX 更小
     expect(calcHold(100, 500, 1000)).toBe(100); // 估算最小
   });
+
+  it('估算为非有限值（Infinity/NaN/负数）→ 防御为 0（不污染 Redis INCRBY / DB）', () => {
+    // 即使上游 estimateMaxCost 漏了防御（历史 bug），calcHold 这层也要兜住
+    expect(calcHold(Infinity, 1000, 1000)).toBe(0); // estimate 非有限 → 0
+    expect(calcHold(Number.NaN, 1000, 1000)).toBe(0);
+    expect(calcHold(-500, 1000, 1000)).toBe(0); // 负估算 → 0（绝不反向）
+  });
+
+  it('余额为非有限值 → 防御为 0（拒绝预扣，触发 402）', () => {
+    expect(calcHold(1000, Infinity, 1000)).toBe(0);
+    expect(calcHold(1000, Number.NaN, 1000)).toBe(0);
+    expect(calcHold(1000, -100, 1000)).toBe(0);
+  });
+
+  it('HOLD_MAX 为非有限值 → 防御为 0（配置错误不导致无限预扣）', () => {
+    expect(calcHold(1000, 1000, Infinity)).toBe(0);
+    expect(calcHold(1000, 1000, Number.NaN)).toBe(0);
+  });
 });

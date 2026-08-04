@@ -158,9 +158,11 @@ export function channelAdminRoutes(db: Db): Hono {
       if (body.status !== undefined) update.status = body.status;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
       if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-      // 换 Key：重新加密 + 清除「凭据无效」状态（failCount 重置）
+      // 换 Key：重新加密 + 清除「凭据无效」状态（status 恢复 0 + failCount 重置）
+      // status=4 是死凭据自动标记（gateway 检测 401/403 后写回 DB），换 Key 后应恢复路由
       if (body.apiKey !== undefined) {
         update.apiKeyEnc = encrypt(body.apiKey, env.ENCRYPTION_KEY);
+        update.status = 0; // 死凭据(4)/熔断(3) 换 Key 后恢复启用
         update.failCount = 0;
         update.cooldownUntil = null;
       }

@@ -44,29 +44,31 @@ const TRACKER_SRC = read('packages/ai/src/dead-credential/tracker.ts');
 const GATEWAY_SRC = collectSrc(resolve(ROOT, 'apps/gateway/src'));
 const ADMIN_SRC = collectSrc(resolve(ROOT, 'apps/admin-api/src'));
 
-describe('死凭证达阈值应自动写回 DB status=4（红灯 = 风险确认）', () => {
-  it('DeadCredentialTracker 达阈值 invalid 时应回写 DB channels.status（当前只写 Redis → 红）', () => {
-    // 期望 tracker 在标记 invalid 的同时/之后，触发 DB 写 channels.status=4
-    expect(
-      TRACKER_SRC,
-      'tracker 应在达阈值时回写 DB（当前只调 storage/compareAndSet，不碰 DB）',
-    ).toMatch(/db\.|drizzle|update\(channels|@ai-gateway\/db/);
+describe('死凭证达阈值应自动写回 DB status=4（绿灯 = 已修复）', () => {
+  it('DeadCredentialTracker 检测死凭据并标记 invalid（检测能力，ai 包纯逻辑不碰 DB）', () => {
+    // 架构：tracker 在 ai 包内只做检测 + Redis 状态（storage 注入），不直接依赖 DB
+    // DB 写回由 gateway 调用方在检测到 invalid_api_key 后触发（见下一条断言）
+    expect(TRACKER_SRC, 'tracker 应标记 invalid 状态').toMatch(/status:\s*['"]invalid['"]/);
   });
 
-  it('gateway 应有 db.update(channels).set({status:4}) 自动写回路径（当前无 → 红）', () => {
+  it('gateway 应有 db.update(channels).set({status:4}) 自动写回路径', () => {
+    // 允许链式调用跨行（update(channels) 后换行再 .set）
     expect(
-      /update\(channels\)\.set\([\s\S]*status:\s*4/.test(GATEWAY_SRC) ||
-        /db\.update\(channels\)/.test(GATEWAY_SRC),
-      '应有自动把死凭证渠道置 status=4 的 DB 写回路径',
+      /update\(channels\)[\s\S]*?\.set\(\s*\{[\s\S]*?status:\s*4/.test(GATEWAY_SRC),
+      'gateway 应有把死凭证渠道置 status=4 的 DB 写回路径（dead-credential-persist.ts）',
     ).toBe(true);
   });
 
-  it('admin-api 应有死凭证自动置 4 逻辑（当前仅人工 PATCH body.status → 红）', () => {
-    // 期望存在 deadCredential/failCount 触发 status=4 的自动逻辑
+  it('gateway 应有死凭证检测 → 自动置 status=4 的逻辑（invalid_api_key 触发 markChannelDeadCredential）', () => {
+    // 架构：死凭据检测在上游调用方（gateway），admin-api 只做人工管理。
+    // gateway 源码应含 markChannelDeadCredential（写回 DB status=4）+ isDeadCredentialError 判定。
     expect(
-      /deadCredential[\s\S]*status:\s*4/i.test(ADMIN_SRC) ||
-        /failCount[\s\S]*>=\s*\d+[\s\S]*status:\s*4/s.test(ADMIN_SRC),
-      'admin-api 应有基于失败/死凭证的自动置 4 逻辑',
+      /markChannelDeadCredential/.test(GATEWAY_SRC),
+      'gateway 应调用 markChannelDeadCredential 写回 DB status=4',
+    ).toBe(true);
+    expect(
+      /isDeadCredentialError/.test(GATEWAY_SRC),
+      'gateway 应有 isDeadCredentialError 判定（invalid_api_key → 死凭据）',
     ).toBe(true);
   });
 

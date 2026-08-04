@@ -12,6 +12,7 @@ import { recordRequest } from '../lib/metrics.js';
 import { jsonBody } from '../lib/validation.js';
 import { isModelAllowed } from '../lib/model-scope.js';
 import { syncSettle } from '../lib/sync-settle.js';
+import { markChannelDeadCredential, isDeadCredentialError } from '../lib/dead-credential-persist.js';
 import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { z } from 'zod';
 import { env, logger } from '../index.js';
@@ -109,6 +110,10 @@ export function embeddingsRoutes(
           const err = result.error;
           if (err && ['upstream_error', 'network', 'timeout', 'rate_limited', 'invalid_api_key', 'circuit_open'].includes(err.code)) {
             lastError = { code: err.code, message: err.message, status: err.status ?? 502 };
+            // 死凭据 → 写回 DB status=4（永久退出路由 + 管理端可见）
+            if (isDeadCredentialError(err.code)) {
+              void markChannelDeadCredential(db, channel.channelId, logger);
+            }
             continue;
           }
           return errorResponse(c, err?.status ?? 502, err?.code ?? 'upstream_error', err?.message ?? '上游错误', err?.suggestion);

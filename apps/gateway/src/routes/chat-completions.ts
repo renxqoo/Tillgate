@@ -10,6 +10,7 @@ import { BillingService } from '../lib/billing.js';
 import { RateLimiter } from '../lib/rate-limit.js';
 import { MeterProducer } from '../lib/meter.js';
 import { recordRequest, recordChannelFailure } from '../lib/metrics.js';
+import { markChannelDeadCredential, isDeadCredentialError } from '../lib/dead-credential-persist.js';
 import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { trace, SpanStatusCode, type Span } from '@opentelemetry/api';
 import { z } from 'zod';
@@ -289,6 +290,10 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
                 lastError = { code: state.failed.code, message: state.failed.message, status: 502 };
                 logger.warn({ requestId, channel: channel.key, code: state.failed.code }, 'candidate failed, switching');
                 recordChannelFailure(channel.key);
+                // 死凭据（invalid_api_key/dead_credential）→ 写回 DB status=4（永久退出路由 + 管理端可见）
+                if (isDeadCredentialError(state.failed.code)) {
+                  void markChannelDeadCredential(db, channel.channelId, logger);
+                }
                 continue; // 换下一个渠道
               }
               // 成功 或 不可换渠道的错误 → 直接透传给客户端
@@ -329,6 +334,10 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
               lastError = { code: err!.code, message: err!.message, status: err!.status ?? 502, suggestion: err!.suggestion };
               logger.warn({ requestId, channel: channel.key, code: err!.code }, 'candidate failed, switching');
               recordChannelFailure(channel.key);
+              // 死凭据 → 写回 DB status=4（永久退出路由 + 管理端可见）
+              if (isDeadCredentialError(err?.code)) {
+                void markChannelDeadCredential(db, channel.channelId, logger);
+              }
               continue; // 换渠道
             }
             // 不可换渠道的错误（4xx 客户端问题）→ 直接返回
