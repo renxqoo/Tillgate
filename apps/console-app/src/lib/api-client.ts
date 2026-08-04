@@ -66,6 +66,12 @@ export function liToYuan(li: number | bigint): string {
   return (n / 1000).toFixed(2);
 }
 
+/** 毫秒 → 友好展示：<1s 显示 ms，≥1s 显示秒（保留 2 位） */
+export function msToHuman(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
 /**
  * 元 → 厘（用户在前端输入元，提交后端需转厘）。
  * 输入支持小数（如 5.5 元 → 5500 厘），四舍五入到整数厘。

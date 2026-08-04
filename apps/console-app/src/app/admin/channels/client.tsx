@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Dialog, Field, Input, Feedback, ConfirmButton } from '@/components/dialog';
 import { updateChannelAction, deleteChannelAction, testChannelAction } from '../actions';
+import { msToHuman } from '@/lib/api-client';
 
 interface ChannelRow {
   id: number;
@@ -117,7 +118,7 @@ function TestButton({ id }: { id: number }) {
           {result?.result && (
             <div className={`rounded-md p-3 ${result.result.ok ? 'bg-primary/5 text-primary' : 'bg-destructive/5 text-destructive'}`}>
               <p className="font-medium">{result.result.ok ? '✓ 连通正常' : '✗ 连接失败'}</p>
-              {result.result.durationMs != null && <p className="text-xs">耗时 {result.result.durationMs}ms</p>}
+              {result.result.durationMs != null && <p className="text-xs">耗时 {msToHuman(result.result.durationMs)}</p>}
               {result.result.error && <p className="text-xs">错误: {result.result.error.code} — {result.result.error.message}</p>}
             </div>
           )}
