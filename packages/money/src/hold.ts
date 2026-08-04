@@ -31,11 +31,7 @@ export function estimateMaxCost(input: HoldEstimateInput): number {
   const outputPrice = safe(input.outputPrice);
   const coefficientMilli = safe(input.coefficientMilli);
   const base = estimatedInputTokens * inputPrice + maxOutputTokens * outputPrice;
-  // 最小返回 1 厘：极小请求（如 1 token）经 round 可能得 0，
-  // 但只要有有效输入就不该让 estimate=0 导致 holdAmount=0 误拒（402）。
-  // safe() 已保证所有输入 ≥0，这里 base ≥0；只要 base>0 就保证 estimate ≥1。
-  const est = Math.round((base * coefficientMilli) / (PRICE_PER_MILLION * COEFFICIENT_SCALE));
-  return base > 0 ? Math.max(1, est) : 0;
+  return Math.max(0, Math.round((base * coefficientMilli) / (PRICE_PER_MILLION * COEFFICIENT_SCALE)));
 }
 
 export function calcHold(estimate: number, availableBalance: number, holdMax: number): number {

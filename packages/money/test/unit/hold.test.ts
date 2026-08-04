@@ -32,7 +32,7 @@ describe('estimateMaxCost', () => {
     expect(fast).toBe(base * 2);
   });
 
-  it('极小输入（1 token × 1000 厘/M）→ 最小返回 1 厘（不 round 到 0 导致误拒）', () => {
+  it('极小输入（1 token × 1000 厘/M）→ round 得 0（真实估算，拦截与否由 gateway 层判定）', () => {
     const cost = estimateMaxCost({
       estimatedInputTokens: 1,
       maxOutputTokens: 0,
@@ -40,8 +40,8 @@ describe('estimateMaxCost', () => {
       outputPrice: 0,
       coefficientMilli: 1000,
     });
-    // 1 × 1000 / 1e6 = 0.001 → round=0，但 base>0 所以最小返回 1
-    expect(cost).toBe(1);
+    // 1 × 1000 / 1e6 = 0.001 → round=0（这是精确的估算值，不该人为拔高）
+    expect(cost).toBe(0);
   });
 
   it('所有输入为 0 → 返回 0（无可计费内容）', () => {
