@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { redeemAction } from './actions';
+import { liToYuan } from '@/lib/api-client';
 
 export function RedeemForm() {
   const [result, setResult] = useState<{ error?: string; ok?: boolean; balanceAfter?: number } | null>(null);
@@ -29,7 +30,7 @@ export function RedeemForm() {
       {result?.error && <p className="text-sm text-destructive">{result.error}</p>}
       {result?.ok && (
         <p className="text-sm text-primary">
-          兑换成功！当前余额 ¥{((result.balanceAfter ?? 0) / 1000).toFixed(2)}
+          兑换成功！当前余额 ¥{liToYuan(result.balanceAfter ?? 0)}
         </p>
       )}
     </form>

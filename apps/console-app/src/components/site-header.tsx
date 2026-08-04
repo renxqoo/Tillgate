@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { logoutAction } from '@/app/actions';
+import { liToYuan } from '@/lib/api-client';
 
 /**
  * 站点顶栏：Logo + 用户信息 + 注销。
@@ -19,7 +20,7 @@ export function SiteHeader({ me }: { me: { subject: string; balance: number; rol
               {me.displayName ?? me.subject}
               {me.role === 1 && <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">管理员</span>}
             </span>
-            <span className="font-mono">¥{((me.balance ?? 0) / 1000).toFixed(2)}</span>
+            <span className="font-mono">¥{liToYuan(me.balance ?? 0)}</span>
             <form action={logoutAction}>
               <button type="submit" className="text-muted-foreground hover:text-foreground">
                 注销
