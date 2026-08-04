@@ -38,6 +38,7 @@ ai-getway/
 │   └── console/        # Next.js 控制台（用户面板 + 管理后台，服务端调 admin-api）
 ├── packages/
 │   ├── ai/             # 上游 LLM 传输层（自研，详见 docs/ai-package.md）
+│   ├── money/          # 金额计算（整数厘，公式/单测锁死，详见 data-model.md §2）
 │   ├── db/             # Drizzle schema + migrations（gateway/admin-api/worker 共用）
 │   ├── config/         # 环境变量 zod 校验（共享 schema + 各应用扩展）
 │   ├── logger/         # pino 封装（JSON、脱敏 Authorization、request_id 注入）

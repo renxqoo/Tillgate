@@ -17,7 +17,37 @@
 
 ---
 
-## 2. ER 概览
+## 2. 计算规范（金额/费用，落地于 packages/money）
+
+> 结论：**不需要第三方计算库**（decimal.js/big.js）——全程整数运算无浮点误差，量级远低于 JS 安全整数上限（2^53）。实现集中在一个包 + 单测锁死（含 BigInt 精确对照），禁止在业务代码里散落计算。
+
+**单位约定**：
+- 金额：整数「厘」（1 元 = 1000 厘），禁止浮点金额入账
+- 单价：整数「厘 / 百万 token」（官方价）
+- 系数：`numeric(6,3)`，计算时 ×1000 转毫整数（`coefficientToMilli`）
+
+**计费公式（先乘后除，一次舍入）**：
+
+```
+uncached = inputTokens - cachedInputTokens      // inputTokens 为总输入（含缓存命中）
+base     = uncached×输入价 + cached×缓存价 + 输出×输出价
+amount   = round( base × 系数毫 / 1e9 )          // 1e9 = 百万 × 系数倍率
+```
+
+**防错清单**（`packages/money` 单测覆盖）：
+1. 金额一律厘整数，浮点金额禁止入账（0.1+0.2 问题）
+2. 先乘后除、只在最后一步一次舍入（Math.round 半值进一）
+3. 系数 ×1000 转毫整数参与计算
+4. inputTokens 含缓存命中 → 未缓存部分 = inputTokens - cachedInputTokens（**公式 bug 曾由单测捕获**）
+5. 量级安全：10M tokens × 1e5 厘/百万 × 1e3 < 2^53（1e15 < 9.0e15）
+6. 随机 2000 组与 BigInt 精确实现对照一致
+7. 厘→元仅用于展示（toFixed(2)），不进账本
+
+**模块**：`amount.ts`（费用公式）/ `hold.ts`（预扣估算）/ `quota.ts`（套餐额度扣减 + 预扣对账）/ `units.ts`（单位换算）——gateway 与 worker 共用。
+
+---
+
+## 3. ER 概览
 
 ```
 users (账户=用户/企业)

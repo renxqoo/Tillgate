@@ -23,6 +23,7 @@ apps/
   console/     # Next.js 控制台（用户面板 + 管理后台）
 packages/
   ai/          # 上游 LLM 传输层（自研，见 docs/ai-package.md）
+  money/       # 金额计算（整数厘，防浮点/舍入错误，见 docs/data-model.md §2）
   db/          # Drizzle schema + migrations
   config/      # 环境变量 zod 校验
   logger/      # pino 封装
