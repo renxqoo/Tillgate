@@ -53,6 +53,9 @@ importers:
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
+      jose:
+        specifier: ^6.2.8
+        version: 6.2.8
       zod:
         specifier: ^4.4.3
         version: 4.4.3
