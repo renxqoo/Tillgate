@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, apiFetch, type Paginated, liToYuan, msToHuman } from '@/lib/api-client';
+import { getMe, getCookieHeader, apiFetch, type Paginated, liToYuanPrecise, msToHuman } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -73,7 +73,7 @@ export default async function UsagePage({
                           {u.cachedInputTokens > 0 && <span className="text-muted-foreground"> ({u.cachedInputTokens} cached)</span>}
                         </td>
                         <td className="py-2 pr-4 text-right font-mono text-xs">{u.outputTokens}</td>
-                        <td className="py-2 pr-4 text-right font-mono">¥{liToYuan(u.amount)}</td>
+                        <td className="py-2 pr-4 text-right font-mono">¥{liToYuanPrecise(u.amount)}</td>
                         <td className="py-2 pr-4 text-right font-mono text-xs">{msToHuman(u.durationMs)}</td>
                       </tr>
                     ))}

@@ -60,10 +60,20 @@ export function getCookieHeader(headers: Headers): string {
   return headers.get('cookie') ?? '';
 }
 
-/** 厘 → 元展示（保留 2 位小数） */
+/** 厘 → 元展示（余额/流水用，保留 2 位小数） */
 export function liToYuan(li: number | bigint): string {
   const n = typeof li === 'bigint' ? Number(li) : li;
   return (n / 1000).toFixed(2);
+}
+
+/**
+ * 厘 → 元展示（单次费用用，保留 4 位小数）。
+ * 小额请求（缓存命中率高时）费用可能 < ¥0.01，
+ * 2 位会显示 ¥0.00 误导用户以为免费；4 位最小展示 ¥0.0001（= 0.1 厘）。
+ */
+export function liToYuanPrecise(li: number | bigint): string {
+  const n = typeof li === 'bigint' ? Number(li) : li;
+  return (n / 1000).toFixed(4);
 }
 
 /** 毫秒 → 友好展示：<1s 显示 ms，≥1s 显示秒（保留 2 位） */
