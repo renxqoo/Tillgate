@@ -12,10 +12,9 @@ import { withRetry, type RetryOptions } from './retry/with-retry.js';
 import { defaultAiConfig, type AiConfig, type AiDeps, type BreakerStorage } from './config.js';
 import type { AiEvent } from './events.js';
 import type {
+  Ai,
   ChannelDesc,
-  ChatResult,
   ChatStreamResult,
-  ProbeResult,
   RequestCtx,
   UpstreamError,
   Usage,
@@ -105,19 +104,6 @@ function estimateUsage(reqBody: unknown, resJson: unknown, charPerToken: number)
     estimated: true,
     raw: null,
   };
-}
-
-export interface Ai {
-  /** 非流式（自动 withRetry：可重试错误 + 空完成重试） */
-  chat(input: { channel: ChannelDesc; request: unknown; ctx: RequestCtx }): Promise<ChatResult>;
-  /** 流式（透传管道；重试仅限首字节前，流开始后失败发错误帧不重试） */
-  chatStream(input: {
-    channel: ChannelDesc;
-    request: unknown;
-    ctx: RequestCtx;
-  }): Promise<ChatStreamResult>;
-  /** 连通性探测（admin-api 渠道测试用） */
-  probe(channel: ChannelDesc): Promise<ProbeResult>;
 }
 
 function emitTo(listeners: Array<(e: AiEvent) => void>, e: AiEvent): void {

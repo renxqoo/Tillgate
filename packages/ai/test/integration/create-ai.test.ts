@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAi, type Ai } from '../../src/create-ai.js';
+import { createAi } from '../../src/create-ai.js';
 import type { AiConfig } from '../../src/config.js';
 import type { AiEvent } from '../../src/events.js';
-import type { ChannelDesc, ChatStreamResult, RequestCtx } from '../../src/types.js';
+import type { Ai, ChannelDesc, ChatStreamResult, RequestCtx } from '../../src/types.js';
 import { sseFrame, startServer } from './helpers.js';
 
 /**

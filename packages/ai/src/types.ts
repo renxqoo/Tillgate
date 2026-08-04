@@ -97,3 +97,17 @@ export interface ProbeResult {
   durationMs: number;
   error?: UpstreamError;
 }
+
+/** 对外 API 形状（create-ai.ts 组装实现，此处定义便于类型集中管理） */
+export interface Ai {
+  /** 非流式（自动 withRetry：可重试错误 + 空完成重试） */
+  chat(input: { channel: ChannelDesc; request: unknown; ctx: RequestCtx }): Promise<ChatResult>;
+  /** 流式（透传管道；重试仅限首字节前，流开始后失败发错误帧不重试） */
+  chatStream(input: {
+    channel: ChannelDesc;
+    request: unknown;
+    ctx: RequestCtx;
+  }): Promise<ChatStreamResult>;
+  /** 连通性探测（admin-api 渠道测试用） */
+  probe(channel: ChannelDesc): Promise<ProbeResult>;
+}
