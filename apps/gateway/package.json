@@ -6,7 +6,7 @@
   "description": "对外代理（Hono）：/v1/* + /oauth/token + 请求前预扣，无状态可多副本",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

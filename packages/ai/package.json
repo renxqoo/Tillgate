@@ -13,7 +13,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "dev": "vitest"
+    "test:watch": "vitest"
   },
   "dependencies": {
     "eventsource-parser": "^3.1.0",

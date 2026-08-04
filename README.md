@@ -38,8 +38,10 @@ pnpm install              # 安装依赖
 cp .env.example .env      # 配置环境变量
 pnpm db:generate          # 生成 drizzle 迁移（首次）
 pnpm db:migrate           # 执行迁移
-pnpm dev                  # 启动所有服务（开发模式）
+pnpm dev                  # 启动所有服务（Turborepo 编排，turbo dev）
 ```
+
+任务编排使用 **Turborepo**（turbo.json）：`pnpm build` / `typecheck` / `test` / `lint` 均走 turbo 缓存（第二次执行 FULL TURBO）；`pnpm dev` 并行启动四端（gateway/worker/admin-api/console）。
 
 本地开发（仅依赖 Redis + PostgreSQL）：
 
