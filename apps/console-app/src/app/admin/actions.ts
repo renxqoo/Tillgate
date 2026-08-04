@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
-import { apiFetch } from '@/lib/api-client';
+import { apiFetch, yuanToLi } from '@/lib/api-client';
 
 /** 取当前会话 Cookie 字符串（透传给 admin-api） */
 export async function cookieStr(): Promise<string> {
@@ -24,13 +24,14 @@ export async function refresh(path: string): Promise<void> {
   revalidatePath(path);
 }
 
-/** 充值码批次生成 */
+/** 充值码批次生成（前端输入元，提交时转厘） */
 export async function createRedeemBatchAction(formData: FormData): Promise<{ error?: string; codes?: string[] }> {
   const name = String(formData.get('name') ?? '');
-  const amount = Number(formData.get('amount') ?? 0);
+  const amountYuan = Number(formData.get('amount') ?? 0);
   const count = Number(formData.get('count') ?? 0);
   const remark = formData.get('remark') ? String(formData.get('remark')) : undefined;
-  if (!name || amount <= 0 || count <= 0) return { error: '请填写名称、面额（厘）和数量' };
+  if (!name || amountYuan <= 0 || count <= 0) return { error: '请填写名称、面额（元）和数量' };
+  const amount = yuanToLi(amountYuan); // 元 → 厘
   try {
     const res = await adminFetch<{ codes: string[] }>('/api/admin/redeem-batches', {
       method: 'POST',
@@ -112,9 +113,10 @@ export async function updateUserStatusAction(id: number, status: number, freezeR
 }
 
 export async function adjustUserBalanceAction(id: number, formData: FormData): Promise<{ error?: string }> {
-  const amount = Number(formData.get('amount') ?? 0);
+  const amountYuan = Number(formData.get('amount') ?? 0);
   const remark = formData.get('remark') ? String(formData.get('remark')) : undefined;
-  if (!amount) return { error: '调账金额不能为 0' };
+  if (!amountYuan) return { error: '调账金额不能为 0' };
+  const amount = yuanToLi(amountYuan); // 元 → 厘（支持负数）
   try {
     await adminFetch(`/api/admin/users/${id}/adjust`, { method: 'POST', body: { amount, remark } });
     await refresh('/admin/users');
@@ -229,9 +231,10 @@ export async function importChannelsAction(formData: FormData): Promise<{ error?
 export async function createModelAction(formData: FormData): Promise<{ error?: string }> {
   const externalName = String(formData.get('externalName') ?? '');
   const realModel = String(formData.get('realModel') ?? '');
-  const inputPrice = Number(formData.get('inputPrice') ?? 0);
-  const outputPrice = Number(formData.get('outputPrice') ?? 0);
-  const cacheInputPrice = Number(formData.get('cacheInputPrice') ?? 0);
+  // 前端输入元/百万token，转厘/百万token
+  const inputPrice = yuanToLi(Number(formData.get('inputPrice') ?? 0));
+  const outputPrice = yuanToLi(Number(formData.get('outputPrice') ?? 0));
+  const cacheInputPrice = yuanToLi(Number(formData.get('cacheInputPrice') ?? 0));
   if (!externalName || !realModel) return { error: '请填写对外模型名和真实模型名' };
   try {
     await adminFetch('/api/admin/models', { method: 'POST', body: { externalName, realModel, inputPrice, outputPrice, cacheInputPrice } });
@@ -247,13 +250,12 @@ export async function updateModelAction(id: number, formData: FormData): Promise
   for (const k of ['externalName', 'realModel', 'inputPrice', 'outputPrice', 'cacheInputPrice', 'status']) {
     const v = formData.get(k);
     if (v !== null) {
-      if (['inputPrice', 'outputPrice', 'cacheInputPrice', 'status'].includes(k)) {
+      if (['inputPrice', 'outputPrice', 'cacheInputPrice'].includes(k)) {
+        body[k] = yuanToLi(Number(v)); // 元/M → 厘/M
+      } else if (k === 'status') {
         body[k] = Number(v);
       } else {
-        body[{
-          externalName: 'externalName',
-          realModel: 'realModel',
-        }[k] ?? k] = String(v);
+        body[k] = String(v);
       }
     }
   }

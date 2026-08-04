@@ -78,8 +78,8 @@ function AdjustButton({ id }: { id: number }) {
           }}
           className="space-y-3"
         >
-          <Field label="金额（厘）" hint="正=增加余额，负=扣减。如 +5000 = ¥5，-1000 = -¥1">
-            <Input name="amount" type="number" required placeholder="5000" />
+          <Field label="金额（元）" hint="正=增加余额，负=扣减。如 5 = +¥5，-1 = -¥1">
+            <Input name="amount" type="number" step="0.01" required placeholder="5" />
           </Field>
           <Field label="备注（可选）">
             <Input name="remark" placeholder="调账原因" />

@@ -60,10 +60,26 @@ export function getCookieHeader(headers: Headers): string {
   return headers.get('cookie') ?? '';
 }
 
-/** 余额厘 → 元展示（保留 2 位小数） */
+/** 厘 → 元展示（保留 2 位小数） */
 export function liToYuan(li: number | bigint): string {
   const n = typeof li === 'bigint' ? Number(li) : li;
   return (n / 1000).toFixed(2);
+}
+
+/**
+ * 元 → 厘（用户在前端输入元，提交后端需转厘）。
+ * 输入支持小数（如 5.5 元 → 5500 厘），四舍五入到整数厘。
+ */
+export function yuanToLi(yuan: number): number {
+  return Math.round(yuan * 1000);
+}
+
+/**
+ * 厘/百万token → 元/百万token 展示（模型官方价，保留 4 位小数）。
+ * 如 inputPrice=1000000 厘/M → ¥1.0000/M。
+ */
+export function liPerMillionToYuan(li: number): string {
+  return (li / 1000).toFixed(4);
 }
 
 /** 标准分页响应 */

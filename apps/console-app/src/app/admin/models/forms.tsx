@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Dialog, Field, Input, Feedback, ConfirmButton } from '@/components/dialog';
 import { createModelAction, updateModelAction, deleteModelAction, bindModelChannelsAction } from '../actions';
+import { liPerMillionToYuan } from '@/lib/api-client';
 
 interface ModelRow {
   id: number;
@@ -34,14 +35,14 @@ export function CreateModelForm({ open, onClose }: { open: boolean; onClose: () 
           <Input name="realModel" required placeholder="如 deepseek-chat" />
         </Field>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="输入价（厘/M）">
-            <Input name="inputPrice" type="number" defaultValue="0" />
+          <Field label="输入价（元/百万token）" hint="官方价">
+            <Input name="inputPrice" type="number" step="0.0001" defaultValue="0" />
           </Field>
-          <Field label="输出价（厘/M）">
-            <Input name="outputPrice" type="number" defaultValue="0" />
+          <Field label="输出价（元/百万token）" hint="官方价">
+            <Input name="outputPrice" type="number" step="0.0001" defaultValue="0" />
           </Field>
-          <Field label="缓存输入价（厘/M）">
-            <Input name="cacheInputPrice" type="number" defaultValue="0" />
+          <Field label="缓存输入价（元/百万token）" hint="缓存命中价">
+            <Input name="cacheInputPrice" type="number" step="0.0001" defaultValue="0" />
           </Field>
         </div>
         <Feedback result={result} />
@@ -74,14 +75,14 @@ export function EditModelForm({ model, open, onClose }: { model: ModelRow; open:
           <Input name="realModel" defaultValue={model.realModel} required />
         </Field>
         <div className="grid grid-cols-3 gap-3">
-          <Field label="输入价（厘/M）">
-            <Input name="inputPrice" type="number" defaultValue={model.inputPrice} />
+          <Field label="输入价（元/M）">
+            <Input name="inputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.inputPrice)} />
           </Field>
-          <Field label="输出价（厘/M）">
-            <Input name="outputPrice" type="number" defaultValue={model.outputPrice} />
+          <Field label="输出价（元/M）">
+            <Input name="outputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.outputPrice)} />
           </Field>
-          <Field label="缓存输入价（厘/M）">
-            <Input name="cacheInputPrice" type="number" defaultValue={model.cacheInputPrice} />
+          <Field label="缓存输入价（元/M）">
+            <Input name="cacheInputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.cacheInputPrice)} />
           </Field>
         </div>
         <Field label="状态">

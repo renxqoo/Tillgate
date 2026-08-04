@@ -19,8 +19,8 @@ export function CreateBatchForm({ open, onClose }: { open: boolean; onClose: () 
         <Field label="批次名称">
           <Input name="name" required placeholder="如：2026春节活动" />
         </Field>
-        <Field label="面额（厘）" hint="1 元 = 1000 厘。如 ¥5 填 5000">
-          <Input name="amount" type="number" min={1} required placeholder="5000" />
+        <Field label="面额（元）" hint="每张充值码的面值。如 5 = ¥5/张">
+          <Input name="amount" type="number" step="0.01" min={0.01} required placeholder="5" />
         </Field>
         <Field label="数量" hint="本次生成的码数（1~10000）">
           <Input name="count" type="number" min={1} max={10000} required placeholder="100" />
