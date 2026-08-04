@@ -130,3 +130,55 @@ describe('assertSafeUrl（含 DNS 判定，防 rebinding）', () => {
     await expect(assertSafeUrl('https://no-such-host.invalid/v1')).resolves.toBeTruthy();
   });
 });
+
+describe('isUnsafeIpv6 — IPv4-mapped IPv6 绕过防护', () => {
+  // 审计发现：::ffff:169.254.169.254 等 IPv4-mapped IPv6 可绕过内网判定
+  it('IPv4-mapped IPv6 内网地址被拦截（::ffff:169.254.169.254）', () => {
+    expect(isUnsafeIpv6('::ffff:169.254.169.254')).toBe(true);
+    expect(isUnsafeIpv6('::ffff:127.0.0.1')).toBe(true);
+    expect(isUnsafeIpv6('::ffff:10.0.0.1')).toBe(true);
+    expect(isUnsafeIpv6('::ffff:192.168.1.1')).toBe(true);
+  });
+
+  it('IPv4-mapped 公网地址通过（::ffff:8.8.8.8）', () => {
+    expect(isUnsafeIpv6('::ffff:8.8.8.8')).toBe(false);
+  });
+});
+
+describe('resolveAndPin（防 DNS rebinding TOCTOU）', () => {
+  // fetchUpstream 的 TOCTOU：assertSafeUrl 解析校验后，fetch(url) 会再次 DNS 解析，
+  // 两次解析间攻击者可换答案（rebinding → 169.254.169.254）。
+  // 修复：resolveAndPin 返回校验后的 IP + hostname，fetchUpstream 用 IP 直连 + Host 头。
+  beforeEach(() => mockedLookup.mockReset());
+
+  it('返回校验后的 IP + 原始 hostname（供 fetch 固定 IP 用）', async () => {
+    mockedLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    const { resolveAndPin } = await import('../../src/transport/http-client.js');
+    const result = await resolveAndPin('https://api.example.com/v1');
+    expect(result.ip).toBe('93.184.216.34');
+    expect(result.hostname).toBe('api.example.com');
+    expect(result.port).toBe(443);
+  });
+
+  it('解析到内网地址 → 拒绝（与 assertSafeUrl 一致）', async () => {
+    mockedLookup.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
+    const { resolveAndPin } = await import('../../src/transport/http-client.js');
+    await expect(resolveAndPin('https://evil.example.com/v1')).rejects.toThrow('blocked address');
+  });
+
+  it('DNS 解析失败 → 返回 null IP（降级用原始 URL，fetch 自然报 network 错误）', async () => {
+    mockedLookup.mockRejectedValueOnce(new Error('ENOTFOUND'));
+    const { resolveAndPin } = await import('../../src/transport/http-client.js');
+    const result = await resolveAndPin('https://no-such-host.invalid/v1');
+    expect(result.ip).toBeNull();
+    expect(result.hostname).toBe('no-such-host.invalid');
+  });
+
+  it('allowLocal → 跳过校验直接返回 null IP', async () => {
+    const { resolveAndPin } = await import('../../src/transport/http-client.js');
+    const result = await resolveAndPin('http://127.0.0.1:3000/v1', { allowLocal: true });
+    expect(result.ip).toBeNull();
+    expect(result.hostname).toBe('127.0.0.1');
+    expect(result.port).toBe(3000);
+  });
+});

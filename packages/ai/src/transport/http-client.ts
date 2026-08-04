@@ -42,6 +42,9 @@ export function isUnsafeIpv6(ip: string): boolean {
     return true; // 链路本地 fe80::/10
   }
   if (lower.startsWith('ff')) return true; // 组播
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d)：提取 IPv4 部分用 isUnsafeIpv4 判定（防绕过）
+  const mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mapped?.[1]) return isUnsafeIpv4(mapped[1]);
   return false;
 }
 
@@ -102,6 +105,44 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
   return u;
 }
 
+/**
+ * 解析 URL 的 DNS 并校验所有地址安全，返回校验后的首个 IP（防 DNS rebinding TOCTOU）。
+ *
+ * fetchUpstream 用返回的 IP 直连（固定本次连接的目标地址），而非让 fetch 再次走系统 DNS 解析——
+ * 否则 assertSafeUrl 校验与 fetch 实际连接之间，攻击者可换 DNS 答案（rebinding → 169.254.169.254）。
+ *
+ * 域名解析失败时返回 ip=null（降级：fetchUpstream 用原始 URL，fetch 自然报 network 错误，安全）。
+ * allowLocal 时跳过校验返回 null（测试/本地调试）。
+ */
+export interface ResolvedTarget {
+  /** 校验后的安全 IP（null = 降级用原始 hostname） */
+  ip: string | null;
+  /** 原始 hostname（用于 Host 头 + TLS SNI） */
+  hostname: string;
+  /** 端口 */
+  port: number;
+}
+
+export async function resolveAndPin(url: string, opts: SafeUrlOptions = {}): Promise<ResolvedTarget> {
+  const u = assertSafeUrlSync(url, opts);
+  const hostname = u.hostname.replace(/^\[|\]$/g, '');
+  const port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80;
+  if (opts.allowLocal || opts.allowedHosts?.includes(hostname)) {
+    return { ip: null, hostname, port };
+  }
+  let addresses: string[];
+  try {
+    addresses = (await lookup(hostname, { all: true, verbatim: true })).map((a) => a.address);
+  } catch {
+    return { ip: null, hostname, port };
+  }
+  for (const addr of addresses) {
+    const unsafe = addr.includes(':') ? isUnsafeIpv6(addr) : isUnsafeIpv4(addr);
+    if (unsafe) throw new Error(`blocked address: ${hostname} resolves to ${addr}`);
+  }
+  return { ip: addresses[0] ?? null, hostname, port };
+}
+
 export interface FetchUpstreamOptions {
   /** 首字节前超时（connect + TTFB），默认见 aiConfig.timeout.connectMs */
   connectMs: number;
@@ -112,24 +153,61 @@ export interface FetchUpstreamOptions {
 }
 
 /**
- * fetch 封装：URL 校验 → connectMs 超时 → 外部信号传播 → 错误分类。
+ * fetch 封装：DNS 解析固定 IP（防 rebinding TOCTOU）→ connectMs 超时 → 外部信号传播 → 错误分类。
  * 返回原始 Response（含非 2xx，状态码分类由 adapter.mapError 负责）；body 由调用方接管。
+ *
+ * SSRF 防护（防 DNS rebinding）：
+ *   - resolveAndPin 先解析 DNS 并校验所有地址公网安全
+ *   - 用校验后的 IP 直连（undici dispatcher 固定连接目标），不再让 fetch 二次走系统 DNS
+ *   - TLS SNI / Host 头仍用原始 hostname（证书校验正常）
  */
 export async function fetchUpstream(
   url: string,
   init: RequestInit,
   opts: FetchUpstreamOptions,
 ): Promise<Response> {
-  await assertSafeUrl(url, opts);
+  const target = await resolveAndPin(url, opts);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('connect timeout')), opts.connectMs);
   const onExternalAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
   try {
+    // 用校验后的 IP 直连（防 rebinding TOCTOU）：自定义 DNS lookup 固定到已校验的 IP。
+    // 保留原始 URL（hostname 不变 → TLS 证书校验 + Host 头正确），
+    // 仅覆盖连接层的目标地址（undici connect.lookup 返回校验后的 IP）。
+    if (target.ip) {
+      const family = target.ip.includes(':') ? 6 : 4;
+      const undici = await import('undici');
+      const dispatcher = new undici.Agent({
+        connect: {
+          // 自定义 lookup：忽略系统 DNS，返回已校验的安全 IP（防 rebinding）
+          // undici net.connect lookup 签名：(hostname, optionsOrCallback, callback?)
+          lookup: (hostname: string, lookupOpts: unknown, callback?: unknown) => {
+            const cb = (typeof lookupOpts === 'function' ? lookupOpts : callback) as (
+              err: NodeJS.ErrnoException | null,
+              addresses: Array<{ address: string; family: number }>,
+            ) => void;
+            cb(null, [{ address: target.ip!, family }]);
+          },
+        },
+      });
+      // 用 undici 的 request（而非全局 fetch，全局 fetch 不支持 dispatcher 选项）
+      const res = await undici.request(url, {
+        method: (init.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') ?? 'GET',
+        headers: init.headers as Record<string, string>,
+        body: init.body as string | undefined,
+        signal: controller.signal,
+        dispatcher,
+      });
+      // 转为标准 Response 形态（供上层 readBody 消费）
+      return new Response(res.body, {
+        status: res.statusCode,
+        headers: res.headers as Record<string, string>,
+      });
+    }
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (opts.signal?.aborted) {
-      // 外部取消（deadline/客户端断）：抛原生 AbortError，不做 retryable 分类
       throw new Error('aborted', { cause: err });
     }
     if (controller.signal.aborted) {
@@ -142,7 +220,23 @@ export async function fetchUpstream(
   }
 }
 
-/** 读完整响应体（限长，防超大响应拖垮内存）；超限抛错并取消读取 */
+/**
+ * 响应体超限错误（readBody 抛出；上层按 code/instanceof 判定，不靠字符串匹配）。
+ * 语义 retryable=false：上游就是返回了超大 body，重试也是一样。
+ */
+export class BodyTooLargeError extends Error {
+  readonly code = 'body_too_large' as const;
+  constructor(maxBytes: number) {
+    super(`response body exceeds ${maxBytes} bytes`);
+    this.name = 'BodyTooLargeError';
+  }
+}
+
+/**
+ * 读完整响应体（限长，防超大响应拖垮内存）；超限抛 BodyTooLargeError 并取消读取。
+ * opts.signal 联动：abort 时 reader.cancel()，读循环以 done 退出（不抛 AbortError，
+ * 调用方拿到截断的 body——调用方应在 signal.aborted 后丢弃结果并按 aborted 分类）。
+ */
 export async function readBody(
   res: Response,
   opts: { maxBytes?: number; signal?: AbortSignal } = {},
@@ -150,17 +244,26 @@ export async function readBody(
   const maxBytes = opts.maxBytes ?? 256 * 1024;
   if (!res.body) return '';
   const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel();
-      throw new Error(`response body exceeds ${maxBytes} bytes`);
+  // signal 接入：abort → cancel reader，让正在 pending 的 read() 以 done 退出（不再 hang）
+  const onAbort = (): void => {
+    void reader.cancel().catch(() => {});
+  };
+  opts.signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new BodyTooLargeError(maxBytes);
+      }
+      chunks.push(value);
     }
-    chunks.push(value);
+    return Buffer.concat(chunks).toString('utf8');
+  } finally {
+    opts.signal?.removeEventListener('abort', onAbort);
   }
-  return Buffer.concat(chunks).toString('utf8');
 }

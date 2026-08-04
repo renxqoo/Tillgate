@@ -44,6 +44,8 @@ export const workerEnvSchema = baseEnvSchema.extend({
 export const adminApiEnvSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).default(8790),
   ENCRYPTION_KEY: z.string().min(32),
+  /** 管理端 API Token（fail-closed：未配置时 /api/admin/* 全部 503） */
+  ADMIN_API_TOKEN: z.string().optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_ENABLED: z
     .enum(['true', 'false'])

@@ -1,28 +1,49 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { loadAdminApiEnv } from '@ai-gateway/config';
-import { createLogger } from '@ai-gateway/logger';
+import { createLogger, type Logger } from '@ai-gateway/logger';
 import { initOtel } from '@ai-gateway/otel';
+import { createDb } from '@ai-gateway/db';
+import { channelAdminRoutes } from './routes/channels.js';
+import { adminAuthMiddleware } from './middleware/admin-auth.js';
+import { ValidationError } from './lib/validation.js';
 
-const env = loadAdminApiEnv();
-const logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'admin-api' });
+export const env = loadAdminApiEnv();
+export const logger: Logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'admin-api' });
 initOtel({
   serviceName: 'admin-api',
   endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
   enabled: env.OTEL_ENABLED,
 });
 
-const app = new Hono();
+export function createApp() {
+  const db = createDb(env.DATABASE_URL);
+  const app = new Hono();
 
-// TODO(admin-api): 面板会话鉴权（HttpOnly Cookie JWT，role=admin 校验）+ audit_logs 中间件
-app.get('/healthz', (c) => c.json({ status: 'ok' }));
+  // 统一错误处理
+  app.onError((err, c) => {
+    if (err instanceof ValidationError) {
+      return c.json({ error: { message: '参数校验失败', code: 'VALIDATION_ERROR', details: err.details } }, 400);
+    }
+    logger.error({ err: err.message }, 'unhandled error');
+    return c.json({ error: { message: '内部错误', code: 'INTERNAL_ERROR' } }, 500);
+  });
 
-// TODO(admin-api): 路由分组（下一阶段）：
-//   /api/me · /api/auth/* · /api/keys · /api/apps · /api/redeem · /api/usage
-//   /api/admin/users · /api/admin/channels · /api/admin/providers · /api/admin/models
-//   /api/admin/rate-cards · /api/admin/plans · /api/admin/redeem-batches
-//   /api/admin/stats/* · /api/admin/logs · /api/admin/audit-logs
+  app.get('/healthz', (c) => c.json({ status: 'ok' }));
 
-serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+  // 管理端鉴权（S4）：所有 /api/admin/* 必须带有效 ADMIN_API_TOKEN
+  // fail-closed：未配置 token 时返回 503（绝不放行）
+  app.use('/api/admin/*', adminAuthMiddleware(env.ADMIN_API_TOKEN));
+
+  // 渠道/供应商/模型管理（api-contract §4.5/§4.6）
+  app.route('/', channelAdminRoutes(db));
+
+  // TODO: audit_logs 中间件（管理操作审计）
+  // TODO: /api/me · /api/auth/* · /api/keys · /api/apps · /api/redeem · /api/usage
+
+  return app;
+}
+
+serve({ fetch: createApp().fetch, port: env.PORT }, (info) => {
   logger.info({ port: info.port }, 'admin-api listening (internal only)');
 });
