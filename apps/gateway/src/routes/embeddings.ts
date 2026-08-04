@@ -69,8 +69,9 @@ export function embeddingsRoutes(
     const estimate = estimateMaxCost({ estimatedInputTokens: estInput, maxOutputTokens: 0, inputPrice: mapping.inputPrice, outputPrice: 0, coefficientMilli: auth.coefficientMilli });
     const balance = await billing.getBalance(auth.userId);
     const holdAmount = calcHold(estimate, balance, env.HOLD_MAX);
-    if (holdAmount <= 0) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
-    const holdResult = await billing.hold(auth.userId, requestId, holdAmount);
+    // 余额耗尽才拒绝（estimate=0 但 balance>0 时不拦截：靠 worker 结算实际扣费）
+    if (holdAmount <= 0 && balance <= 0) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
+    const holdResult = holdAmount > 0 ? await billing.hold(auth.userId, requestId, holdAmount) : { ok: true as const, balance, degraded: false };
     if (!holdResult.ok) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
 
     // 渠道选择

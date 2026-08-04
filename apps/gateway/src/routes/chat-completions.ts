@@ -194,17 +194,20 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
     });
     const balance = await billing.getBalance(auth.userId);
     const holdAmount = calcHold(estimate, balance, env.HOLD_MAX);
-    if (holdAmount <= 0) {
-      // 余额不足或估算为 0（理论估算>0 但 hold≤0 说明余额耗尽）
+    if (holdAmount <= 0 && balance <= 0) {
+      // 余额耗尽才拒绝（estimate=0 但 balance>0 时不拦截：极小请求靠 worker 结算实际扣费）
       return errorResponse(
         c,
         402,
         'insufficient_balance',
-        `可用余额不足（当前余额 ${balance} 厘，预估 ${estimate} 厘）`,
+        `可用余额不足（当前余额 ${balance} 厘）`,
         '请充值后再试',
       );
     }
-    const holdResult = await billing.hold(auth.userId, requestId, holdAmount);
+    // holdAmount=0（极小请求估算为 0）时跳过预扣，直接放行（靠 worker 结算实际扣费）
+    const holdResult = holdAmount > 0
+      ? await billing.hold(auth.userId, requestId, holdAmount)
+      : { ok: true as const, balance, degraded: false };
     if (!holdResult.ok) {
       return errorResponse(
         c,

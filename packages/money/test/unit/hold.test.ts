@@ -31,6 +31,29 @@ describe('estimateMaxCost', () => {
     });
     expect(fast).toBe(base * 2);
   });
+
+  it('极小输入（1 token × 1000 厘/M）→ 最小返回 1 厘（不 round 到 0 导致误拒）', () => {
+    const cost = estimateMaxCost({
+      estimatedInputTokens: 1,
+      maxOutputTokens: 0,
+      inputPrice: 1000,
+      outputPrice: 0,
+      coefficientMilli: 1000,
+    });
+    // 1 × 1000 / 1e6 = 0.001 → round=0，但 base>0 所以最小返回 1
+    expect(cost).toBe(1);
+  });
+
+  it('所有输入为 0 → 返回 0（无可计费内容）', () => {
+    const cost = estimateMaxCost({
+      estimatedInputTokens: 0,
+      maxOutputTokens: 0,
+      inputPrice: 1000,
+      outputPrice: 2000,
+      coefficientMilli: 1000,
+    });
+    expect(cost).toBe(0);
+  });
 });
 
 describe('calcHold', () => {
@@ -56,5 +79,12 @@ describe('calcHold', () => {
   it('HOLD_MAX 为非有限值 → 防御为 0（配置错误不导致无限预扣）', () => {
     expect(calcHold(1000, 1000, Infinity)).toBe(0);
     expect(calcHold(1000, 1000, Number.NaN)).toBe(0);
+  });
+
+  it('estimate=0（极小请求）→ 返回 0，不拦截（gateway 层靠 balance 判定是否放行）', () => {
+    // estimate=0 + balance>0 → 返回 0（gateway 放行，worker 结算实际扣费）
+    expect(calcHold(0, 99962209, 50000)).toBe(0);
+    // estimate=0 + balance=0 → 返回 0（gateway 拒绝）
+    expect(calcHold(0, 0, 50000)).toBe(0);
   });
 });

@@ -31,13 +31,19 @@ export function estimateMaxCost(input: HoldEstimateInput): number {
   const outputPrice = safe(input.outputPrice);
   const coefficientMilli = safe(input.coefficientMilli);
   const base = estimatedInputTokens * inputPrice + maxOutputTokens * outputPrice;
-  return Math.max(0, Math.round((base * coefficientMilli) / (PRICE_PER_MILLION * COEFFICIENT_SCALE)));
+  // 最小返回 1 厘：极小请求（如 1 token）经 round 可能得 0，
+  // 但只要有有效输入就不该让 estimate=0 导致 holdAmount=0 误拒（402）。
+  // safe() 已保证所有输入 ≥0，这里 base ≥0；只要 base>0 就保证 estimate ≥1。
+  const est = Math.round((base * coefficientMilli) / (PRICE_PER_MILLION * COEFFICIENT_SCALE));
+  return base > 0 ? Math.max(1, est) : 0;
 }
 
 export function calcHold(estimate: number, availableBalance: number, holdMax: number): number {
-  // 估算值也防御一次（防上游 calcHold 传非有限值）
-  const est = safe(estimate);
+  // estimate 可以为 0（safe 把负数/NaN 干掉了，但合法的 0 保留）
+  const est = Number.isFinite(estimate) && estimate >= 0 ? estimate : 0;
   const bal = safe(availableBalance);
   const max = safe(holdMax);
+  // estimate=0 时不拦截（极小请求，靠 worker 结算实际扣费）
+  if (est === 0) return 0;
   return Math.min(est, bal, max);
 }
