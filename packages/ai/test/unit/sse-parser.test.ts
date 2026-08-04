@@ -29,6 +29,26 @@ describe('SseScanner', () => {
     expect(usage.prompt_tokens).toBe(2);
   });
 
+  it('usage:null 中间帧不覆盖真实 usage（MiniMax 风格：全程 usage:null）', () => {
+    // 真实场景：MiniMax-M3 流式每帧都带 "usage":null，从不发真实 usage。
+    // 即使某些供应商中间帧发 null、尾帧发真实值，null 也不应覆盖已有真实 usage。
+    const s = new SseScanner();
+    s.consume(enc('data: {"choices":[{"delta":{"content":"a"}}],"usage":null}\n\n'));
+    s.consume(enc('data: {"usage":{"prompt_tokens":5,"completion_tokens":2}}\n\n'));
+    s.consume(enc('data: {"choices":[{"finish_reason":"stop"}],"usage":null}\n\n'));
+    const usage = s.getUsage() as { prompt_tokens: number };
+    expect(usage).not.toBeNull();
+    expect(usage.prompt_tokens).toBe(5); // 不被尾帧的 null 覆盖
+  });
+
+  it('全程 usage:null → getUsage() 返回 null（供应商不发 usage）', () => {
+    const s = new SseScanner();
+    s.consume(enc('data: {"choices":[{"delta":{"content":"a"}}],"usage":null}\n\n'));
+    s.consume(enc('data: {"choices":[{"delta":{"content":"b"}}],"usage":null}\n\n'));
+    s.consume(enc('data: {"choices":[{"finish_reason":"stop"}],"usage":null}\n\n'));
+    expect(s.getUsage()).toBeNull();
+  });
+
   it('错误帧只捕获首个', () => {
     const s = new SseScanner();
     s.consume(enc('data: {"error":{"code":"rate_limited","message":"slow down"}}\n\n'));

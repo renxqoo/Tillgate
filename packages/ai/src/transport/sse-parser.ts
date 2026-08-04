@@ -38,8 +38,9 @@ export class SseScanner {
       this.callbacks?.onEvent?.(ev.data, ev.event);
       const parsed = this.tryParse(ev.data);
       if (!parsed) return;
-      if (parsed.usage !== undefined) {
-        this.usage = parsed.usage; // 最后 usage 帧胜出
+      if (parsed.usage !== undefined && parsed.usage !== null) {
+        // 最后 usage 帧胜出；忽略 usage:null（部分供应商中间/尾帧带 null，避免覆盖真实 usage）
+        this.usage = parsed.usage;
       }
       if (this.errorFrame === null && parsed.error !== undefined) {
         this.errorFrame = this.toErrorFrame(parsed.error);

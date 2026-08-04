@@ -1,4 +1,5 @@
 import { classifyHttpError } from '../errors/classify.js';
+import { asRecord } from '../internal/util.js';
 import { normalizeUsage } from '../usage/normalize.js';
 import type { ParamRules, UpstreamError, Usage } from '../types.js';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter.js';
@@ -39,10 +40,6 @@ const CHAT_KNOWN_PARAMS = new Set([
   'service_tier',
   'reasoning_effort',
 ]);
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
-}
 
 export class OpenAICompatibleAdapter implements ProtocolAdapter {
   readonly protocol = 'openai-compatible';

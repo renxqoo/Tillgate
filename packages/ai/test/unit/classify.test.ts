@@ -25,7 +25,10 @@ describe('classifyHttpError', () => {
     [403, { error: { message: 'model access forbidden' } }, 'forbidden', false, false, false],
     [400, { error: { message: 'bad request' } }, 'invalid_request', false, false, false],
     [404, { error: { message: 'model not found' } }, 'model_not_found', false, false, false],
-    [418, { message: 'teapot' }, 'upstream_error', false, false, false],
+    [408, { error: { message: 'request timeout' } }, 'timeout', true, true, false],
+    [413, { error: { message: 'too large' } }, 'payload_too_large', false, false, false],
+    [418, { message: 'teapot' }, 'http_error', false, false, false],
+    [302, { message: 'redirect' }, 'http_error', false, false, false],
   ])(
     'status %i → code=%s retryable=%s circuitTrip=%s deadCredential=%s',
     (status, body, code, retryable, circuitTrip, deadCredential) => {
@@ -57,6 +60,56 @@ describe('classifyHttpError', () => {
       },
     );
     expect(err.deadCredential).toBe(true);
+  });
+
+  it('429 限流（RPM/TPM）：retryable=true', () => {
+    const err = classifyHttpError(429, { error: { code: 'rate_limit_error', message: 'too many requests' } });
+    expect(err.code).toBe('rate_limit_error');
+    expect(err.retryable).toBe(true);
+  });
+
+  it('429 MiniMax 窗口配额（Token Plan 5h，可恢复）：retryable=true（限流而非额度耗尽）', () => {
+    // MiniMax 真实返回：code=rate_limit_error + "用量上限/套餐/积分"，但 5h 窗口后自动恢复 → 限流
+    const err = classifyHttpError(429, {
+      error: { code: 'rate_limit_error', message: '已达到 Token Plan 用量上限：请升级套餐或购买积分 (2056)' },
+    });
+    expect(err.code).toBe('rate_limit_error'); // 保持供应商 code
+    expect(err.retryable).toBe(true); // 可恢复，应重试
+  });
+
+  it('429 账户余额耗尽（body code insufficient_quota）：retryable=false', () => {
+    // OpenAI 真实 code：明确是计费耗尽，需充值才恢复
+    const err = classifyHttpError(429, { error: { code: 'insufficient_quota', message: 'over limit' } });
+    expect(err.code).toBe('quota_exhausted');
+    expect(err.retryable).toBe(false);
+    expect(err.circuitTrip).toBe(false);
+  });
+
+  it('429 账户余额耗尽（message「余额不足/请充值」）：retryable=false', () => {
+    const err = classifyHttpError(429, { error: { message: '账户余额不足，请充值后使用' } });
+    expect(err.code).toBe('quota_exhausted');
+    expect(err.retryable).toBe(false);
+  });
+
+  it('429 英文余额耗尽（insufficient balance / billing）：retryable=false', () => {
+    const err = classifyHttpError(429, { error: { message: 'insufficient balance, please top up' } });
+    expect(err.code).toBe('quota_exhausted');
+    expect(err.retryable).toBe(false);
+  });
+
+  it('429 边界：「exceeded your current quota」无明确余额词 → 限流（保守，避免误判窗口限制）', () => {
+    // 仅 exceeded + quota，无 balance/billing/insufficient → 不判额度耗尽（可能是窗口限制）
+    const err = classifyHttpError(429, { error: { message: 'You exceeded your current quota' } });
+    expect(err.retryable).toBe(true); // 保守判为限流
+  });
+
+  it('自定义额度特征生效', () => {
+    const err = classifyHttpError(
+      429,
+      { error: { message: 'custom-billing-issue' } },
+      { quotaExhaustedPatterns: [/custom-billing/i] },
+    );
+    expect(err.code).toBe('quota_exhausted');
   });
 
   it('默认特征表包含关键模式', () => {

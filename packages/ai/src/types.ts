@@ -40,6 +40,8 @@ export interface RequestCtx {
   maxRetries?: number;
   /** 总 deadline，默认 240s */
   deadlineMs?: number;
+  /** 调用端点：chat（默认）或 embeddings（决定 URL 路径） */
+  endpoint?: 'chat' | 'embeddings';
 }
 
 /** usage 归一化（缓存计费数据源） */
@@ -81,7 +83,7 @@ export interface StreamError {
 
 /** 非流式结果 */
 export type ChatResult =
-  | { status: 'success'; usage?: Usage; durationMs: number }
+  | { status: 'success'; usage?: Usage; durationMs: number; body?: unknown }
   | { status: 'empty' | 'error'; error?: UpstreamError; durationMs: number };
 
 /** 流式结果：透传管道 + 事件订阅 */
@@ -110,4 +112,10 @@ export interface Ai {
   }): Promise<ChatStreamResult>;
   /** 连通性探测（admin-api 渠道测试用） */
   probe(channel: ChannelDesc): Promise<ProbeResult>;
+  /**
+   * 全局事件订阅（chat + chatStream 都会通过这条总线发事件）。
+   * gateway 在此订阅 attempt_start / param_adjustment / usage / failed / success 等，
+   * 用于计量、排障、候选循环驱动。返回取消订阅函数。
+   */
+  onEvent(cb: (e: AiEvent) => void): () => void;
 }

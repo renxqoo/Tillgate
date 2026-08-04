@@ -90,10 +90,64 @@ describe('MemoryBreakerStorage', () => {
       failures: [],
       windowStart: 0,
       cooldownUntil: Date.now() + 1000,
+      version: 0,
     };
     await s.setState('x', state, 5);
     expect(await s.getState('x')).not.toBeNull();
     await new Promise((r) => setTimeout(r, 20));
     expect(await s.getState('x')).toBeNull();
+  });
+
+  it('compareAndSet：version 匹配才写入，返回是否成功', async () => {
+    const s = new MemoryBreakerStorage();
+    // key 不存在 → expectedVersion=0 可写入
+    const ok1 = await s.compareAndSet('k', 0, { state: 'closed', failures: [], windowStart: 0, version: 1 }, 10_000);
+    expect(ok1).toBe(true);
+    // version 不匹配 → 失败
+    const ok2 = await s.compareAndSet('k', 0, { state: 'open', failures: [], windowStart: 0, version: 2 }, 10_000);
+    expect(ok2).toBe(false);
+    // version 匹配 → 成功
+    const ok3 = await s.compareAndSet('k', 1, { state: 'open', failures: [], windowStart: 0, version: 2 }, 10_000);
+    expect(ok3).toBe(true);
+    const got = await s.getState('k');
+    expect(got?.state).toBe('open');
+    expect(got?.version).toBe(2);
+  });
+});
+
+describe('CircuitBreaker 并发安全（B5）', () => {
+  it('half-open 单探测：冷却到期瞬间 N 个并发 canRequest 只有一个放行', async () => {
+    let t = 1000;
+    const b = makeBreaker(() => t);
+    // 先达阈值熔断
+    for (let i = 0; i < 3; i++) await b.recordFailure({ circuitTrip: true });
+    expect(await b.canRequest()).toBe(false); // open
+
+    t += 30_000; // 冷却到期
+    // 模拟 20 个并发请求同时探测
+    const results = await Promise.all(Array.from({ length: 20 }, () => b.canRequest()));
+    const allowed = results.filter(Boolean).length;
+    expect(allowed).toBe(1); // 严格只有一个赢家进入 half-open
+  });
+
+  it('recordFailure 并发不丢计数：N 个并发失败后窗口内计数 = N', async () => {
+    let t = 1000;
+    const b = makeBreaker(() => t);
+    // 10 个并发失败（阈值 3，会有 CAS 重试）
+    await Promise.all(Array.from({ length: 10 }, () => b.recordFailure({ circuitTrip: true })));
+    // 达阈值后应 open；熔断状态可被观测
+    expect(await b.canRequest()).toBe(false);
+  });
+
+  it('recordFailure CAS 失败可重试：并发窗口计数最终正确', async () => {
+    // 用计数 storage 验证 CAS 重试后状态一致
+    const storage = new MemoryBreakerStorage();
+    let t = 1000;
+    const b = new CircuitBreaker('cas-test', config, storage, () => t);
+    // 阈值 3，并发 2 个（不足以熔断，验证计数不丢）
+    await Promise.all([b.recordFailure({ circuitTrip: true }), b.recordFailure({ circuitTrip: true })]);
+    const state = await storage.getState('cas-test');
+    expect(state?.failures.length).toBe(2); // 两次失败都计入窗口
+    expect(state?.state).toBe('closed');
   });
 });

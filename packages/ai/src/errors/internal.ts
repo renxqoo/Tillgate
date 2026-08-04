@@ -47,3 +47,26 @@ export function circuitOpenError(): UpstreamError {
     suggestion: '渠道熔断中，请稍后重试',
   });
 }
+
+/** 死凭据：渠道凭据已失效（连续 401/403 达阈值），停止路由（gateway 跳过该渠道，告警人工换 Key） */
+export function deadCredentialError(): UpstreamError {
+  return createUpstreamError({
+    code: 'dead_credential',
+    message: 'channel credential is invalid (consecutive auth failures)',
+    retryable: false,
+    circuitTrip: false,
+    deadCredential: true,
+    suggestion: '渠道凭据失效，请联系管理员更换上游 API Key',
+  });
+}
+
+/** 配置非法：ChannelDesc/RequestCtx 必需字段缺失或为空（调用方 bug，不应发往上游） */
+export function invalidConfigError(message: string): UpstreamError {
+  return createUpstreamError({
+    code: 'invalid_config',
+    message,
+    retryable: false,
+    circuitTrip: false,
+    suggestion: '请检查渠道/请求配置（apiKey、baseUrl、model 等必需字段）',
+  });
+}

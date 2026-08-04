@@ -12,8 +12,9 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude test/real --passWithNoTests",
+    "test:real": "vitest run test/real --passWithNoTests",
+    "test:watch": "vitest --exclude test/real",
     "lint": "oxlint"
   },
   "dependencies": {

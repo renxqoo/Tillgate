@@ -19,6 +19,12 @@ export interface RelayStreamOptions {
   heartbeatIdleMs: number;
   /** 上游静默超过该时长判定死流：断上游 + 注入超时错误帧 */
   inactivityTimeoutMs: number;
+  /**
+   * 心跳/静默检查的定时器间隔（ms）。
+   * 默认派生：min(250, max(10, heartbeatIdleMs/2))——inactivity 判定误差 ≤ 该值。
+   * 调小提升响应速度（更早发现死流），调大降 CPU 开销（长流场景）。
+   */
+  checkIntervalMs?: number;
 }
 
 export type RelayStreamEvent =
@@ -26,8 +32,19 @@ export type RelayStreamEvent =
   | { type: 'stream_error'; frame: StreamError }
   /** 异常终止原因（上游读失败也视为 disconnected） */
   | { type: 'aborted'; reason: 'client_disconnect' | 'inactivity' | 'upstream_disconnected' }
-  /** 流结束（正常 EOF / 异常），携带最终计量与错误帧，总是最后发出 */
-  | { type: 'done'; usage: unknown | null; errorFrame: StreamError | null };
+  /**
+   * 流结束（正常 EOF / 异常），携带最终计量、错误帧、已透字节量与终止语义，总是最后发出。
+   *   - terminated = undefined：正常结束（上游 EOF）
+   *   - terminated = 中断原因：异常终止（inactivity / upstream_disconnected / client_disconnect）
+   *   - bytesRelayed：累计透传给客户端的字节数（usage 缺失时 gateway 据此估算 tokens，5.11）
+   */
+  | {
+      type: 'done';
+      usage: unknown | null;
+      errorFrame: StreamError | null;
+      bytesRelayed: number;
+      terminated?: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
+    };
 
 export interface RelayStreamHandle {
   stream: ReadableStream<Uint8Array>;
@@ -39,6 +56,7 @@ export function relayStream(
   options: RelayStreamOptions,
 ): RelayStreamHandle {
   const { heartbeatIdleMs, inactivityTimeoutMs } = options;
+  const checkIntervalMs = options.checkIntervalMs ?? Math.min(250, Math.max(10, heartbeatIdleMs / 2));
   const listeners: Array<(e: RelayStreamEvent) => void> = [];
   const emit = (e: RelayStreamEvent): void => {
     // 观察者异常不破坏透传管道
@@ -63,12 +81,14 @@ export function relayStream(
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   let lastDataAt = 0; // 上游数据最后到达时间（inactivity 判定）
   let lastWriteAt = 0; // 输出流最后写入时间（心跳判定）
+  let bytesRelayed = 0; // 累计透传给客户端的字节数（5.11 估算依据）
 
   const tryEnqueue = (chunk: Uint8Array): void => {
     // 不检查 finished：failWithErrorFrame 先置 finished 再注入错误帧（与 tryClose 同理）
     if (!controller) return;
     try {
       controller.enqueue(chunk);
+      bytesRelayed += chunk.byteLength; // 已透字节量（不含心跳帧：心跳是网关生成的，非上游内容）
       lastWriteAt = Date.now();
     } catch {
       // 流已取消（cancel 竞态）
@@ -103,7 +123,13 @@ export function relayStream(
     tryEnqueue(
       enc(`data: ${JSON.stringify({ error: { code: frame.code, type: frame.type, message: frame.detail } })}\n\n`),
     );
-    emit({ type: 'done', usage: scanner.getUsage(), errorFrame: frame });
+    emit({
+      type: 'done',
+      usage: scanner.getUsage(),
+      errorFrame: frame,
+      bytesRelayed,
+      terminated: reason,
+    });
     void reader.cancel().catch(() => {});
     tryClose();
   };
@@ -112,7 +138,13 @@ export function relayStream(
     if (finished) return;
     finished = true;
     clearTimer();
-    emit({ type: 'done', usage: scanner.getUsage(), errorFrame: scanner.getErrorFrame() });
+    emit({
+      type: 'done',
+      usage: scanner.getUsage(),
+      errorFrame: scanner.getErrorFrame(),
+      bytesRelayed,
+      terminated: undefined, // 正常结束
+    });
     tryClose();
   };
 
@@ -134,7 +166,7 @@ export function relayStream(
 
   const stream = new ReadableStream<Uint8Array>({
     start() {
-      timer = setInterval(check, Math.min(250, Math.max(10, heartbeatIdleMs / 2)));
+      timer = setInterval(check, checkIntervalMs);
       nextRead = reader.read();
     },
     async pull(ctrl) {
@@ -169,7 +201,13 @@ export function relayStream(
       finished = true;
       clearTimer();
       emit({ type: 'aborted', reason: 'client_disconnect' });
-      emit({ type: 'done', usage: scanner.getUsage(), errorFrame: scanner.getErrorFrame() });
+      emit({
+        type: 'done',
+        usage: scanner.getUsage(),
+        errorFrame: scanner.getErrorFrame(),
+        bytesRelayed,
+        terminated: 'client_disconnect',
+      });
       await reader.cancel(reason);
     },
   });

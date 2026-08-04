@@ -14,11 +14,14 @@
     "lint": "oxlint"
   },
   "dependencies": {
+    "@ai-gateway/ai": "workspace:*",
     "@ai-gateway/config": "workspace:*",
     "@ai-gateway/db": "workspace:*",
     "@ai-gateway/logger": "workspace:*",
+    "@ai-gateway/money": "workspace:*",
     "@ai-gateway/otel": "workspace:*",
     "bullmq": "^6.0.7",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0"
   },
   "devDependencies": {

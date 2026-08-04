@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   abortedError,
   circuitOpenError,
+  deadCredentialError,
   emptyError,
+  invalidConfigError,
   invalidResponseError,
 } from '../../src/errors/internal.js';
 
@@ -37,6 +39,24 @@ describe('errors/internal（包内策略性错误）', () => {
     expect(err.retryable).toBe(false);
     expect(err.circuitTrip).toBe(false);
     expect(err.suggestion).toContain('熔断');
+  });
+
+  it('deadCredentialError：不重试、不计熔断、标死凭据，带用户建议', () => {
+    const err = deadCredentialError();
+    expect(err.code).toBe('dead_credential');
+    expect(err.retryable).toBe(false);
+    expect(err.circuitTrip).toBe(false);
+    expect(err.deadCredential).toBe(true);
+    expect(err.suggestion).toContain('凭据');
+  });
+
+  it('invalidConfigError：不重试、不计熔断，携带具体配置信息', () => {
+    const err = invalidConfigError('channel.apiKey 为空');
+    expect(err.code).toBe('invalid_config');
+    expect(err.message).toBe('channel.apiKey 为空');
+    expect(err.retryable).toBe(false);
+    expect(err.circuitTrip).toBe(false);
+    expect(err.suggestion).toContain('配置');
   });
 
   it('每次调用返回独立 Error 实例（堆栈各自）', () => {

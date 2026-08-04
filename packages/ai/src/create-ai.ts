@@ -3,13 +3,24 @@ import { loadProfile, mergeRules } from './adapters/profiles/index.js';
 import type { ProtocolAdapter } from './adapters/protocol-adapter.js';
 import { CircuitBreaker } from './breaker/breaker.js';
 import { MemoryBreakerStorage } from './breaker/memory-storage.js';
+import { MemoryDeadCredentialStorage } from './dead-credential/memory-storage.js';
+import { DeadCredentialTracker } from './dead-credential/tracker.js';
 import { classifyTransportError } from './errors/classify.js';
-import { abortedError, circuitOpenError, emptyError, invalidResponseError } from './errors/internal.js';
-import { fetchUpstream, readBody } from './transport/http-client.js';
+import {
+  abortedError,
+  circuitOpenError,
+  deadCredentialError,
+  emptyError,
+  invalidConfigError,
+  invalidResponseError,
+} from './errors/internal.js';
+import { asRecord, tryParseJson } from './internal/util.js';
+import { peekFirstChunk } from './internal/stream.js';
+import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-client.js';
 import { relayStream } from './transport/relay-stream.js';
-import { estimateTokens, normalizeUsage } from './usage/normalize.js';
+import { estimateUsage, normalizeUsage } from './usage/normalize.js';
 import { withRetry, type RetryOptions } from './retry/with-retry.js';
-import { defaultAiConfig, type AiConfig, type AiDeps, type BreakerStorage } from './config.js';
+import { defaultAiConfig, type AiConfig, type AiDeps, type BreakerStorage, type DeadCredentialStorage } from './config.js';
 import type { AiEvent } from './events.js';
 import type {
   Ai,
@@ -17,7 +28,6 @@ import type {
   ChatStreamResult,
   RequestCtx,
   UpstreamError,
-  Usage,
 } from './types.js';
 
 /**
@@ -42,20 +52,25 @@ function channelKey(channel: ChannelDesc): string {
   }
 }
 
-function tryParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
+/**
+ * 配置校验（fail fast）：apiKey/baseUrl/protocol/model/requestId 必需且非空。
+ * 空值返回 invalidConfigError（不发垃圾请求——空 key 会拼出无效 Authorization，错误信息不清晰）。
+ */
+function assertChannelAndCtx(channel: ChannelDesc, ctx: RequestCtx): UpstreamError | null {
+  if (!channel.apiKey) return invalidConfigError('channel.apiKey 为空');
+  if (!channel.baseUrl) return invalidConfigError('channel.baseUrl 为空');
+  if (!channel.protocol) return invalidConfigError('channel.protocol 为空');
+  if (!ctx.model) return invalidConfigError('ctx.model 为空（真实模型名缺失）');
+  if (!ctx.requestId) return invalidConfigError('ctx.requestId 为空（幂等键缺失）');
+  return null;
 }
 
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
-}
-
-function asArray(v: unknown): unknown[] | null {
-  return Array.isArray(v) ? v : null;
+/** probe 只校验 channel（无 ctx） */
+function assertChannel(channel: ChannelDesc): UpstreamError | null {
+  if (!channel.apiKey) return invalidConfigError('channel.apiKey 为空');
+  if (!channel.baseUrl) return invalidConfigError('channel.baseUrl 为空');
+  if (!channel.protocol) return invalidConfigError('channel.protocol 为空');
+  return null;
 }
 
 function isUpstreamError(e: unknown): e is UpstreamError {
@@ -64,46 +79,6 @@ function isUpstreamError(e: unknown): e is UpstreamError {
     typeof (e as UpstreamError).code === 'string' &&
     typeof (e as UpstreamError).retryable === 'boolean'
   );
-}
-
-/** 请求 messages 文本总长度（usage 缺失时估算输入 tokens） */
-function extractRequestChars(body: unknown): number {
-  const messages = asArray(asRecord(body)?.messages);
-  if (!messages) return 0;
-  let n = 0;
-  for (const m of messages) {
-    const content = asRecord(m)?.content;
-    if (typeof content === 'string') {
-      n += content.length;
-    } else if (Array.isArray(content)) {
-      for (const part of content) {
-        const p = asRecord(part);
-        if (p && typeof p.text === 'string') n += p.text.length;
-      }
-    }
-  }
-  return n;
-}
-
-/** 响应 choices 文本总长度（usage 缺失时估算输出 tokens） */
-function extractResponseChars(json: unknown): number {
-  const first = asRecord(asArray(asRecord(json)?.choices)?.[0]);
-  if (!first) return 0;
-  const message = asRecord(first.message);
-  if (message && typeof message.content === 'string') return message.content.length;
-  if (typeof first.text === 'string') return first.text.length; // 补全类响应
-  return 0;
-}
-
-/** usage 缺失兜底：请求/响应按字符估算，全部按未缓存计 */
-function estimateUsage(reqBody: unknown, resJson: unknown, charPerToken: number): Usage {
-  return {
-    inputTokens: estimateTokens(extractRequestChars(reqBody), charPerToken),
-    cachedInputTokens: 0,
-    outputTokens: estimateTokens(extractResponseChars(resJson), charPerToken),
-    estimated: true,
-    raw: null,
-  };
 }
 
 function emitTo(listeners: Array<(e: AiEvent) => void>, e: AiEvent): void {
@@ -126,7 +101,13 @@ function authHeaders(channel: ChannelDesc): Record<string, string> {
 export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
   const cfg = config ?? defaultAiConfig();
   const breakerStorage: BreakerStorage = deps?.breakerStorage ?? new MemoryBreakerStorage();
+  const deadCredentialStorage: DeadCredentialStorage =
+    deps?.deadCredentialStorage ?? new MemoryDeadCredentialStorage();
   const log = deps?.logger ?? { info: noop, warn: noop, error: noop };
+
+  // 全局事件总线（chat + chatStream 共用；gateway 订阅用于计量/排障/候选循环）
+  const listeners: Array<(e: AiEvent) => void> = [];
+  const emit = (e: AiEvent): void => emitTo(listeners, e);
 
   const adapters = new Map<string, ProtocolAdapter>([
     ['openai-compatible', new OpenAICompatibleAdapter()],
@@ -137,12 +118,25 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
   const breakerFor = (channel: ChannelDesc): CircuitBreaker =>
     new CircuitBreaker(channelKey(channel), cfg.breaker, breakerStorage, Date.now);
 
-  /** 组装 per-request 上下文：参数抹平 + 熔断准入，返回失败则返回 ChatResult 错误分支 */
+  const credentialFor = (channel: ChannelDesc): DeadCredentialTracker =>
+    new DeadCredentialTracker(channelKey(channel), cfg.deadCredential, deadCredentialStorage, Date.now);
+
+  /** 组装 per-request 上下文：参数抹平 + 熔断/凭据准入，返回失败则返回 ChatResult 错误分支 */
   function prepare(input: {
     channel: ChannelDesc;
     request: unknown;
     ctx: RequestCtx;
-  }): { ok: true; body: unknown; breaker: CircuitBreaker; adapter: ProtocolAdapter; key: string } | { ok: false; error: UpstreamError } {
+  }): {
+    ok: true;
+    body: unknown;
+    breaker: CircuitBreaker;
+    credential: DeadCredentialTracker;
+    adapter: ProtocolAdapter;
+    key: string;
+  } | { ok: false; error: UpstreamError } {
+    // 配置校验（fail fast）：必需字段为空时直接返回错误，不发垃圾请求
+    const cfgErr = assertChannelAndCtx(input.channel, input.ctx);
+    if (cfgErr) return { ok: false, error: cfgErr };
     const adapter = adapterFor(input.channel);
     const rules = mergeRules(loadProfile(input.ctx.providerName), input.ctx.paramRules);
     const { body, adjustments } = adapter.normalizeRequest(input.request, rules);
@@ -151,8 +145,24 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
         from: a.from,
         to: a.to,
       });
+      // B4：参数抹平产出 param_adjustment 事件（gateway 排障可观测）
+      emit({
+        type: 'param_adjustment',
+        requestId: input.ctx.requestId,
+        param: a.param,
+        action: a.action,
+        from: a.from,
+        to: a.to,
+      });
     }
-    return { ok: true, body, breaker: breakerFor(input.channel), adapter, key: channelKey(input.channel) };
+    return {
+      ok: true,
+      body,
+      breaker: breakerFor(input.channel),
+      credential: credentialFor(input.channel),
+      adapter,
+      key: channelKey(input.channel),
+    };
   }
 
   function retryOptions(ctx: RequestCtx): RetryOptions {
@@ -174,27 +184,41 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
         // prepare 目前恒 ok（normalizeRequest 不抛），保留分支防御
         return { status: 'error', error: prepared.error, durationMs: Date.now() - start };
       }
-      const { body, breaker, adapter, key } = prepared;
+      const { body, breaker, credential, adapter, key } = prepared;
       const { requestId } = input.ctx;
 
       if (!(await breaker.canRequest())) {
         const err = circuitOpenError();
         log.error(`[ai] ${requestId} circuit open, rejected (${key})`);
+        emit({ type: 'failed', requestId, channelKey: key, error: err });
+        return { status: 'error', error: err, durationMs: Date.now() - start };
+      }
+      // 死凭据准入：invalid 渠道停止路由（gateway 路由层跳过，等人工换 Key）
+      if (!(await credential.canRequest())) {
+        const err = deadCredentialError();
+        log.error(`[ai] ${requestId} dead credential, rejected (${key})`);
+        emit({ type: 'failed', requestId, channelKey: key, error: err });
         return { status: 'error', error: err, durationMs: Date.now() - start };
       }
 
-      const url = joinUrl(input.channel.baseUrl, '/v1/chat/completions');
-      // 每次尝试失败即计熔断数（429/4xx/死凭据 circuitTrip=false 自动不计）
+      // endpoint 选择：embeddings 走 /v1/embeddings，默认 chat
+      const endpointPath = input.ctx.endpoint === 'embeddings' ? '/v1/embeddings' : '/v1/chat/completions';
+      const url = joinUrl(input.channel.baseUrl, endpointPath);
+      // 每次尝试失败即计熔断数（429/4xx/死凭据 circuitTrip=false 自动不计）+ 死凭据计数
       const fail = async (
         error: UpstreamError,
         empty?: boolean,
       ): Promise<{ ok: false; error: UpstreamError; empty?: boolean }> => {
         await breaker.recordFailure({ circuitTrip: error.circuitTrip });
+        // 死凭据失败（401/403 + 特征）→ 计数；达阈值后续请求被 credential.canRequest 拒绝
+        if (error.deadCredential) await credential.recordFailure({ deadCredential: true });
         return { ok: false, error, empty };
       };
       const { outcome, attempts } = await withRetry(
         async (attempt, signal) => {
           log.info(`[ai] ${requestId} attempt ${attempt} (${key})`);
+          // B4：每次尝试发 attempt_start（gateway 知道第几次尝试、打到哪个渠道）
+          emit({ type: 'attempt_start', requestId, channelKey: key, attempt });
           // totalMs = 单次尝试上限；deadlineMs = 全部尝试上限（signal 由 withRetry 管理）
           const totalSignal = AbortSignal.any([signal, AbortSignal.timeout(cfg.timeout.totalMs)]);
           try {
@@ -213,11 +237,11 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             if (json === undefined) return fail(invalidResponseError());
             const usage =
               adapter.extractUsage(json) ?? estimateUsage(body, json, cfg.estimate.charPerToken);
-            return { ok: true, value: usage };
+            return { ok: true, value: { usage, body: json } };
           } catch (err) {
             if (signal.aborted) return fail(abortedError());
             if (totalSignal.aborted) return fail(classifyTransportError('timeout'));
-            if (err instanceof Error && err.message.includes('body exceeds')) {
+            if (err instanceof BodyTooLargeError) {
               return fail(invalidResponseError());
             }
             if (isUpstreamError(err)) return fail(err);
@@ -233,11 +257,18 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       const durationMs = Date.now() - start;
       if (outcome.ok) {
         await breaker.recordSuccess();
-        log.info(`[ai] ${requestId} success attempts=${attempts} usage=`, outcome.value);
-        return { status: 'success', usage: outcome.value, durationMs };
+        await credential.recordSuccess();
+        log.info(`[ai] ${requestId} success attempts=${attempts} usage=`, outcome.value.usage);
+        emit({ type: 'success', requestId, channelKey: key, usage: outcome.value.usage, durationMs });
+        return { status: 'success', usage: outcome.value.usage, body: outcome.value.body, durationMs };
       }
       const { error, empty } = outcome;
       log.error(`[ai] ${requestId} failed attempts=${attempts}`, { code: error.code, status: error.status });
+      if (empty) {
+        emit({ type: 'empty_completion', requestId, channelKey: key, attempt: attempts });
+      } else {
+        emit({ type: 'failed', requestId, channelKey: key, error });
+      }
       return { status: empty ? 'empty' : 'error', error, durationMs };
     },
 
@@ -245,6 +276,21 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       const start = Date.now();
       const prepared = prepare(input);
       const { requestId } = input.ctx;
+      const key = prepared.ok ? prepared.key : 'unknown';
+      // per-call 订阅（ChatStreamResult.onEvent）；与全局 emit 同时通知
+      const perCallListeners: Array<(e: AiEvent) => void> = [];
+      // 终态事件缓冲：onEvent 注册晚于事件发出时（failEarly/empty 在返回 handle 前同步发），
+      // 注册时重放，保证调用方不丢失终态事件
+      const lateEvents: AiEvent[] = [];
+      const emitStream = (e: AiEvent): void => {
+        emit(e); // 全局总线（gateway 计量/排障）
+        emitTo(perCallListeners, e); // 本次流专用回调
+      };
+      /** 发送终态事件（同步确定，早于 handle 返回）：推全局 + 缓冲供 onEvent 重放 */
+      const emitTerminal = (e: AiEvent): void => {
+        emit(e);
+        lateEvents.push(e);
+      };
       const failEarly = (error: UpstreamError): ChatStreamResult => {
         // 流开始前失败：返回含 OpenAI 兼容错误帧的流 + failed 事件（gateway 统一收敛）
         const stream = new ReadableStream<Uint8Array>({
@@ -260,33 +306,55 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             controller.close();
           },
         });
+        emitTerminal({ type: 'failed', requestId, channelKey: key, error });
         return {
           stream,
-          onEvent: (cb) => cb({ type: 'failed', requestId, error }),
+          onEvent: (cb) => {
+            perCallListeners.push(cb);
+            // 重放已发出的终态事件（failed / 之前的 empty_completion）
+            for (const ev of lateEvents) cb(ev);
+          },
         };
       };
 
       if (!prepared.ok) return failEarly(prepared.error);
-      const { body, breaker, adapter, key } = prepared;
+      const { body, breaker, credential, adapter } = prepared;
+
+      // 流式自动注入 stream_options.include_usage（用户未显式设置时）：
+      // MiniMax/OpenAI 流式需该字段才在尾帧发 usage，不注入则全程 usage:null
+      // → gateway 只能按 bytesRelayed 粗估（漏计费/估算偏差）。
+      // DeepSeek 默认就发 usage，注入无副作用；用户显式设置则尊重不覆盖。
+      const streamBody = (asRecord(body) ?? {}) as Record<string, unknown>;
+      if (streamBody.stream_options === undefined) {
+        streamBody.stream_options = { include_usage: true };
+      }
 
       if (!(await breaker.canRequest())) {
         const err = circuitOpenError();
         log.error(`[ai] ${requestId} circuit open, rejected (${key})`);
         return failEarly(err);
       }
+      if (!(await credential.canRequest())) {
+        const err = deadCredentialError();
+        log.error(`[ai] ${requestId} dead credential, rejected (${key})`);
+        return failEarly(err);
+      }
 
       const url = joinUrl(input.channel.baseUrl, '/v1/chat/completions');
       const fail = async (
         error: UpstreamError,
-      ): Promise<{ ok: false; error: UpstreamError }> => {
+        empty?: boolean,
+      ): Promise<{ ok: false; error: UpstreamError; empty?: boolean }> => {
         await breaker.recordFailure({ circuitTrip: error.circuitTrip });
-        return { ok: false, error };
+        if (error.deadCredential) await credential.recordFailure({ deadCredential: true });
+        return { ok: false, error, empty };
       };
       const { outcome, attempts } = await withRetry(
         async (attempt, signal) => {
           log.info(`[ai] ${requestId} attempt ${attempt} (${key})`);
+          emit({ type: 'attempt_start', requestId, channelKey: key, attempt });
           try {
-            // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；connectMs 已保证首字节
+            // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；connectMs 保证连接
             const res = await fetchUpstream(
               url,
               { method: 'POST', headers: authHeaders(input.channel), body: JSON.stringify(body) },
@@ -296,9 +364,16 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
               const raw = await readBody(res, { signal });
               return fail(adapter.mapError(res.status, tryParseJson(raw) ?? raw));
             }
-            return { ok: true, value: res };
+            // B7：body 可能为 null（HEAD/某些代理）
+            if (!res.body) return fail(invalidResponseError());
+            // D3：首帧探测——空流（200 但无任何 data 帧）→ 空完成，走 withRetry 的 empty 重试
+            const peeked = await peekFirstChunk(res.body, { signal });
+            if (peeked.done) return fail(emptyError(), true);
+            // 有首帧：包装后的 rest（含 first）交给 relayStream；body 已被 peek 消费
+            return { ok: true, value: peeked.rest! };
           } catch (err) {
             if (signal.aborted) return fail(abortedError());
+            if (err instanceof BodyTooLargeError) return fail(invalidResponseError());
             if (isUpstreamError(err)) return fail(err);
             return fail(classifyTransportError('network'));
           }
@@ -310,33 +385,45 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       );
 
       if (!outcome.ok) {
+        const { error, empty } = outcome;
         log.error(`[ai] ${requestId} failed attempts=${attempts}`, {
-          code: outcome.error.code,
-          status: outcome.error.status,
+          code: error.code,
+          status: error.status,
         });
-        return failEarly(outcome.error);
+        if (empty) {
+          // 流式空完成重试耗尽：发 empty_completion（gateway 换渠道），不计费（5.11 全程无输出）
+          // failed 由 failEarly 统一发，这里只补 empty 语义事件
+          emitTerminal({ type: 'empty_completion', requestId, channelKey: key, attempt: attempts });
+        }
+        return failEarly(error);
       }
-      const res = outcome.value;
+      const rest = outcome.value;
+      // 拿到首帧才算成功（修了「空完成也计 success」的问题）
       await breaker.recordSuccess();
+      await credential.recordSuccess();
 
       // 透传管道：relay 事件 → AiEvent 桥接（done 一定最后发，见 relay-stream）
-      const handle = relayStream(res.body!, {
+      const handle = relayStream(rest, {
         heartbeatIdleMs: cfg.stream.heartbeatIdleMs,
         inactivityTimeoutMs: cfg.stream.inactivityTimeoutMs,
       });
-      const listeners: Array<(e: AiEvent) => void> = [];
       handle.onEvent((e) => {
         switch (e.type) {
           case 'stream_error':
-            emitTo(listeners, { type: 'stream_error', requestId, frame: e.frame });
+            emitStream({ type: 'stream_error', requestId, frame: e.frame });
             break;
           case 'aborted':
-            emitTo(listeners, { type: 'aborted', requestId, reason: e.reason });
+            emitStream({ type: 'aborted', requestId, reason: e.reason });
+            // B6：非客户端断开 → 计入熔断（渠道故障：inactivity/upstream_disconnected）
+            // client_disconnect 是用户主动断开，非渠道问题，不计熔断
+            if (e.reason !== 'client_disconnect') {
+              void breaker.recordFailure({ circuitTrip: true });
+            }
             break;
           case 'done': {
             const usage = e.usage !== null ? normalizeUsage(e.usage) : null;
             if (usage) {
-              emitTo(listeners, {
+              emitStream({
                 type: 'usage',
                 requestId,
                 usage,
@@ -345,23 +432,33 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             } else if (e.errorFrame) {
               log.warn(`[ai] ${requestId} stream ended without usage`, e.errorFrame);
             }
-            emitTo(listeners, {
+            // B2：把 terminated + bytesRelayed 带到 success（gateway 据此判定 stream_aborted + 估算）
+            emitStream({
               type: 'success',
               requestId,
+              channelKey: key,
               usage: usage ?? undefined,
               durationMs: Date.now() - start,
+              terminated: e.terminated,
+              bytesRelayed: e.bytesRelayed,
             });
             break;
           }
         }
       });
-      return { stream: handle.stream, onEvent: (cb) => listeners.push(cb) };
+      return { stream: handle.stream, onEvent: (cb) => perCallListeners.push(cb) };
     },
 
     async probe(channel) {
       const start = Date.now();
+      // 配置校验（fail fast）：空 apiKey/baseUrl 不发垃圾请求
+      const cfgErr = assertChannel(channel);
+      if (cfgErr) return { ok: false, durationMs: 0, error: cfgErr };
       const adapter = adapterFor(channel);
       let firstError: UpstreamError | undefined;
+      // 死凭据优先：即使先遇到网络错误，只要任一路径返回 401/403（死凭据），
+      // 最终返回死凭据——连通性测试的核心目的是验证 Key 是否有效
+      let deadCredError: UpstreamError | undefined;
       for (const path of adapter.probePaths()) {
         try {
           const res = await fetchUpstream(
@@ -371,12 +468,27 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           );
           if (res.status < 400) return { ok: true, durationMs: Date.now() - start };
           const raw = await readBody(res);
-          firstError ??= adapter.mapError(res.status, tryParseJson(raw) ?? raw);
+          const err = adapter.mapError(res.status, tryParseJson(raw) ?? raw);
+          if (err.deadCredential) deadCredError ??= err;
+          else firstError ??= err;
         } catch (err) {
-          firstError ??= isUpstreamError(err) ? err : classifyTransportError('network');
+          const mapped = isUpstreamError(err) ? err : classifyTransportError('network');
+          firstError ??= mapped;
         }
       }
-      return { ok: false, durationMs: Date.now() - start, error: firstError };
+      return {
+        ok: false,
+        durationMs: Date.now() - start,
+        error: deadCredError ?? firstError,
+      };
+    },
+
+    onEvent(cb) {
+      listeners.push(cb);
+      return () => {
+        const i = listeners.indexOf(cb);
+        if (i >= 0) listeners.splice(i, 1);
+      };
     },
   };
 }

@@ -97,19 +97,31 @@ describe('withRetry', () => {
   });
 });
 
-describe('backoffDelayMs', () => {
-  it('无抖动时 = min(base × 2^n, max)', () => {
-    expect(backoffDelayMs(0, 100, 1000, 0)).toBe(100);
-    expect(backoffDelayMs(1, 100, 1000, 0)).toBe(200);
-    expect(backoffDelayMs(2, 100, 1000, 0)).toBe(400);
-    expect(backoffDelayMs(5, 100, 1000, 0)).toBe(1000); // 封顶
+describe('backoffDelayMs（full jitter）', () => {
+  it('无抖动时 = min(base × 2^(n-1), max)，attempt 从 1 开始', () => {
+    expect(backoffDelayMs(1, 100, 1000, 0)).toBe(100); // 2^0 × 100
+    expect(backoffDelayMs(2, 100, 1000, 0)).toBe(200); // 2^1 × 100
+    expect(backoffDelayMs(3, 100, 1000, 0)).toBe(400); // 2^2 × 100
+    expect(backoffDelayMs(6, 100, 1000, 0)).toBe(1000); // 封顶
   });
 
-  it('抖动在 [exp, exp×(1+jitter)] 范围内', () => {
-    for (let i = 0; i < 50; i++) {
-      const d = backoffDelayMs(1, 100, 10000, 0.25);
-      expect(d).toBeGreaterThanOrEqual(200);
+  it('full jitter：抖动在 [1, exp×(1+jitterRatio)] 范围内（下界 1ms）', () => {
+    for (let i = 0; i < 100; i++) {
+      const d = backoffDelayMs(2, 100, 10000, 0.25);
+      // attempt=2 → exp=200；upper=200×1.25=250
+      expect(d).toBeGreaterThanOrEqual(1);
       expect(d).toBeLessThanOrEqual(250);
     }
+  });
+
+  it('full jitter 下界包含 1（不系统性偏高，能打散重试风暴）', () => {
+    // 1000 次采样，应该能观察到接近下界的小值（证明是 full jitter 不是 exp+正向抖动）
+    let minObserved = Infinity;
+    for (let i = 0; i < 1000; i++) {
+      const d = backoffDelayMs(2, 100, 10000, 0.5);
+      minObserved = Math.min(minObserved, d);
+    }
+    // exp=200，full jitter 应能产生接近 1 的值（远小于 exp）
+    expect(minObserved).toBeLessThan(50);
   });
 });

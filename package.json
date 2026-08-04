@@ -8,6 +8,7 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "test:real": "pnpm --filter @ai-gateway/ai test:real",
     "lint": "turbo lint",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",

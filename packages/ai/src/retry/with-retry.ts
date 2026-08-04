@@ -3,6 +3,12 @@ import type { UpstreamError } from '../types.js';
 /**
  * 同渠道重试：指数退避 + jitter + deadline + maxAttempts（含空完成重试）
  * 注意：重试仅限「首字节前」；流开始后失败 → 发错误帧，不重试（由 relay-stream 保证）
+ *
+ * 退避策略（AWS "Exponential Backoff With Full Jitter"）：
+ *   exp = min(base × 2^(attempt-1), max)；延迟 = random(0, exp × (1 + jitterRatio))
+ *   - jitterRatio=0 → 固定 exp（无抖动，适合测试）
+ *   - jitterRatio=0.25 → 延迟在 [0, exp×1.25] 均匀分布，打散重试风暴
+ *   full jitter（下界为 0）避免重试请求同步扎堆，比「exp + 正向抖动」更有效打散
  */
 
 export interface RetryOptions {
@@ -10,6 +16,7 @@ export interface RetryOptions {
   maxAttempts: number;
   baseDelayMs: number;
   maxDelayMs: number;
+  /** 抖动比例 [0,1]：延迟在 [0, exp×(1+jitterRatio)] 均匀分布（full jitter） */
   jitterRatio: number;
   /** 总 deadline，超时中止（AbortSignal 传给 fn） */
   deadlineMs: number;
@@ -33,15 +40,27 @@ export interface RetryAttemptInfo {
   delayMs: number;
 }
 
+/**
+ * 计算单次重试退避延迟（full jitter）。
+ * @param attempt 已失败的尝试序号（1-based：第 1 次失败后计算第 2 次的延迟）
+ * @param base 基础延迟（attempt=1 时 exp=base）
+ * @param max 延迟上限（封顶）
+ * @param jitterRatio 抖动比例：延迟在 [0, exp×(1+jitterRatio)] 均匀分布
+ * @returns 退避毫秒数（≥1，避免 0 延迟的无效定时器）
+ */
 export function backoffDelayMs(
   attempt: number,
   base: number,
   max: number,
   jitterRatio: number,
 ): number {
-  const exp = Math.min(base * 2 ** attempt, max);
-  const jitter = exp * jitterRatio * Math.random();
-  return Math.round(exp + jitter);
+  // attempt=1 → 2^0=1 → exp=base；attempt=2 → 2^1=2 → exp=base*2
+  const exp = Math.min(base * 2 ** (attempt - 1), max);
+  // jitterRatio=0 → 固定 exp（无抖动，确定性退避，便于测试）
+  if (jitterRatio <= 0) return exp;
+  // full jitter：[1, exp×(1+jitterRatio)]，下界 1ms 避免 0 延迟无效定时器
+  const upper = exp * (1 + jitterRatio);
+  return Math.max(1, Math.round(Math.random() * upper));
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

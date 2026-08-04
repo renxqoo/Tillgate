@@ -44,6 +44,9 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.13.0)(zod@4.4.3)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       hono:
         specifier: ^4.13.0
         version: 4.13.0
@@ -130,6 +133,9 @@ importers:
       '@ai-gateway/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@ai-gateway/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@ai-gateway/otel':
         specifier: workspace:*
         version: link:../../packages/otel
@@ -139,6 +145,15 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.13.0)(zod@4.4.3)
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
+      bullmq:
+        specifier: ^6.0.7
+        version: 6.0.7(ioredis@6.0.0)(pg@8.22.0)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       hono:
         specifier: ^4.13.0
         version: 4.13.0
@@ -170,6 +185,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ai-gateway/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@ai-gateway/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -179,12 +197,18 @@ importers:
       '@ai-gateway/logger':
         specifier: workspace:*
         version: link:../../packages/logger
+      '@ai-gateway/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@ai-gateway/otel':
         specifier: workspace:*
         version: link:../../packages/otel
       bullmq:
         specifier: ^6.0.7
         version: 6.0.7(ioredis@6.0.0)(pg@8.22.0)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
@@ -316,11 +340,17 @@ importers:
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
+      '@opentelemetry/exporter-metrics-otlp-http':
+        specifier: ^0.221.0
+        version: 0.221.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/exporter-trace-otlp-http':
         specifier: ^0.221.0
         version: 0.221.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/resources':
         specifier: ^2.10.0
+        version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-metrics':
+        specifier: ^2.0.0
         version: 2.10.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/sdk-node':
         specifier: ^0.221.0

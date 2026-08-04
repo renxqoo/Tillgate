@@ -1,6 +1,18 @@
-import type { StreamError, Usage, UpstreamError } from './types.js';
+import type { StreamError, UpstreamError, Usage } from './types.js';
 
-/** 调用全生命周期事件（gateway 消费：转计量事件 / 驱动候选循环） */
+/**
+ * 调用全生命周期事件（gateway 消费：转计量事件 / 驱动候选循环 / 标 stream_aborted）。
+ *
+ * 事件顺序约定（同一次调用）：
+ *   - 非流式：attempt_start* → [param_adjustment] → (success | (empty_completion | failed))
+ *   - 流式：attempt_start* → [param_adjustment] → success
+ *     （流内中断：aborted → success(terminated) ；流内错误帧：stream_error*）
+ *   - done/success 一定最后发出（relay-stream 保证流尾事件顺序）
+ *
+ * 计费语义（requirements 5.11）：
+ *   - success.terminated !== undefined → 流式中断，gateway 标 stream_aborted=true
+ *   - success.usage 为空 + bytesRelayed > 0 → gateway 按已透字节估算 tokens（口径同非流式 estimate）
+ */
 export type AiEvent =
   | { type: 'attempt_start'; requestId: string; channelKey: string; attempt: number }
   | {
@@ -16,8 +28,25 @@ export type AiEvent =
   | {
       type: 'aborted';
       requestId: string;
-      reason: 'client_disconnect' | 'inactivity' | 'deadline' | 'upstream_disconnected';
+      reason: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
     }
-  | { type: 'failed'; requestId: string; error: UpstreamError }
-  | { type: 'empty_completion'; requestId: string; attempt: number }
-  | { type: 'success'; requestId: string; usage?: Usage; durationMs: number };
+  | { type: 'failed'; requestId: string; channelKey: string; error: UpstreamError }
+  | { type: 'empty_completion'; requestId: string; channelKey: string; attempt: number }
+  | {
+      type: 'success';
+      requestId: string;
+      /** 渠道维度（gateway 多候选循环时区分哪个渠道成功/失败） */
+      channelKey: string;
+      usage?: Usage;
+      durationMs: number;
+      /**
+       * 流式正常结束 = undefined；中断结束 = 中断原因。
+       * gateway 据此标 stream_aborted 并走中断计费路径（5.11）。
+       */
+      terminated?: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
+      /**
+       * 已透传给客户端的字节数（仅流式有意义）。
+       * usage 缺失时 gateway 按 bytesRelayed / charPerToken 估算 tokens。
+       */
+      bytesRelayed?: number;
+    };

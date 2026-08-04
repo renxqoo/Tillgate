@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { estimateTokens, normalizeUsage } from '../../src/usage/normalize.js';
+import {
+  estimateTokens,
+  extractRequestChars,
+  extractResponseChars,
+  normalizeUsage,
+} from '../../src/usage/normalize.js';
 
 describe('normalizeUsage', () => {
   it('OpenAI 风格：cached_tokens → cachedInputTokens', () => {
@@ -65,5 +70,89 @@ describe('estimateTokens', () => {
 
   it('最小为 1（空内容也计 1 token 兜底）', () => {
     expect(estimateTokens(0, 3.5)).toBe(1);
+  });
+});
+
+describe('extractRequestChars', () => {
+  it('messages.content 字符串累加', () => {
+    const n = extractRequestChars({
+      messages: [
+        { role: 'user', content: '你好' },
+        { role: 'assistant', content: 'world' },
+      ],
+    });
+    expect(n).toBe(7); // 2 + 5
+  });
+
+  it('messages.content 多模态数组（取 text 长度）', () => {
+    const n = extractRequestChars({
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'abc' }, { type: 'image_url' }] },
+      ],
+    });
+    expect(n).toBe(3);
+  });
+
+  it('tools 定义体纳入估算（企业 Agent 主要输入消耗源）', () => {
+    const tools = [{ type: 'function', function: { name: 'get_weather', parameters: { type: 'object' } } }];
+    const n = extractRequestChars({ messages: [{ role: 'user', content: 'hi' }], tools });
+    expect(n).toBeGreaterThan(2); // content(2) + tools JSON 长度
+  });
+
+  it('非对象 body 返回 0', () => {
+    expect(extractRequestChars('plain')).toBe(0);
+    expect(extractRequestChars(null)).toBe(0);
+  });
+
+  it('无 messages 返回 0（仅 tools 仍计）', () => {
+    const n = extractRequestChars({ tools: [{ function: { name: 'x' } }] });
+    expect(n).toBeGreaterThan(0);
+  });
+});
+
+describe('extractResponseChars', () => {
+  it('content 字符串', () => {
+    expect(extractResponseChars({ choices: [{ message: { content: 'hello' } }] })).toBe(5);
+  });
+
+  it('tool_calls.arguments 纳入估算（纯工具调用 content=null 不再返回 0）', () => {
+    const n = extractResponseChars({
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [
+              { id: 'call_1', function: { name: 'get_weather', arguments: '{"city":"北京"}' } },
+            ],
+          },
+        },
+      ],
+    });
+    // arguments 字符串长度 16（{"city":"北京"}，中文算 1 字符 .length）
+    expect(n).toBe('{"city":"北京"}'.length);
+  });
+
+  it('content + tool_calls 同时存在累加', () => {
+    const n = extractResponseChars({
+      choices: [
+        {
+          message: {
+            content: 'abc',
+            tool_calls: [{ function: { arguments: '{"x":1}' } }],
+          },
+        },
+      ],
+    });
+    expect(n).toBe(3 + '{"x":1}'.length);
+  });
+
+  it('补全类响应（text 字段）', () => {
+    expect(extractResponseChars({ choices: [{ text: 'hi' }] })).toBe(2);
+  });
+
+  it('空 choices / 无 message 返回 0', () => {
+    expect(extractResponseChars({})).toBe(0);
+    expect(extractResponseChars({ choices: [] })).toBe(0);
+    expect(extractResponseChars({ choices: [{ message: {} }] })).toBe(0);
   });
 });
