@@ -1,0 +1,9 @@
+# syntax=docker/dockerfile:1
+# migrate：一次性 drizzle-kit 迁移（postgres 就绪后执行并退出）
+FROM node:22-alpine
+RUN corepack enable
+WORKDIR /repo
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
+COPY packages ./packages
+RUN pnpm install --frozen-lockfile
+CMD ["pnpm", "--filter", "@ai-gateway/db", "db:migrate"]

@@ -1,0 +1,32 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# next
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+logs/
+
+# docker
+docker/data/
+
+# misc
+.DS_Store
+coverage/
+.turbo/
+
+# zcode 工具产物
+.zcode/

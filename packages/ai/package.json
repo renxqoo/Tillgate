@@ -1,0 +1,28 @@
+{
+  "name": "@ai-gateway/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "上游 LLM 传输层（自研）：可靠调用上游大模型并产出结构化事件",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "eventsource-parser": "^3.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@ai-gateway/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BullMQ 消费者：计量结算 / 对账 / 清理任务",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@ai-gateway/config": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/logger": "workspace:*",
+    "@ai-gateway/otel": "workspace:*",
+    "bullmq": "^6.0.7",
+    "ioredis": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

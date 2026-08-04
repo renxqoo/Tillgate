@@ -1,0 +1,22 @@
+{
+  "name": "ai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Gateway — 多供应商 LLM API 中转站（对外售卖）",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=11"
+  },
+  "packageManager": "pnpm@11.1.2",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:generate": "pnpm --filter @ai-gateway/db db:generate",
+    "db:migrate": "pnpm --filter @ai-gateway/db db:migrate",
+    "db:studio": "pnpm --filter @ai-gateway/db db:studio",
+    "docker:up": "docker compose -f docker/compose.yml up -d",
+    "docker:up:obs": "docker compose -f docker/compose.yml --profile obs up -d"
+  }
+}

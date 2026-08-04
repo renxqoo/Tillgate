@@ -1,0 +1,26 @@
+{
+  "name": "@ai-gateway/logger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "pino 封装（JSON、脱敏 Authorization、request_id 注入）",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 11：允许必要依赖执行构建脚本（esbuild 二进制 / sharp 原生库等）
+allowBuilds:
+  esbuild: true
+  sharp: true
+  msgpackr-extract: true
+  protobufjs: true
+  unrs-resolver: true

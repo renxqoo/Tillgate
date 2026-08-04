@@ -1,0 +1,21 @@
+# Tempo 配置（最小可用）
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 4317
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/traces
+    wal:
+      path: /tmp/tempo/wal
