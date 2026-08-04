@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/copy-button';
 import { createAppAction } from './actions';
 
 export function CreateAppForm() {
@@ -31,7 +32,10 @@ export function CreateAppForm() {
       {result?.error && <p className="text-sm text-destructive">{result.error}</p>}
       {result?.clientSecret && (
         <div className="rounded-md bg-primary/5 p-3">
-          <p className="mb-1 text-xs text-muted-foreground">client_secret（仅此一次，请立即保存）：</p>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">client_secret（仅此一次，请立即保存）：</p>
+            <CopyButton text={result.clientSecret} />
+          </div>
           <code className="break-all text-sm">{result.clientSecret}</code>
           <p className="mt-1 text-xs text-muted-foreground">
             用 client_id + client_secret 调用 POST /oauth/token 换取 JWT（2h 有效）

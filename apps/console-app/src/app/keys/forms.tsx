@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/copy-button';
 import { createKeyAction, revokeKeyAction } from './actions';
 
 /** 创建 Key 表单（明文仅此一次回显） */
@@ -32,7 +33,10 @@ export function CreateKeyForm() {
       {result?.error && <p className="text-sm text-destructive">{result.error}</p>}
       {result?.key && (
         <div className="rounded-md bg-primary/5 p-3">
-          <p className="mb-1 text-xs text-muted-foreground">Key 明文（仅此一次，请立即保存）：</p>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Key 明文（仅此一次，请立即保存）：</p>
+            <CopyButton text={result.key} />
+          </div>
           <code className="break-all text-sm">{result.key}</code>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Dialog, Field, Input, Feedback } from '@/components/dialog';
+import { CopyButton } from '@/components/copy-button';
 import { createRedeemBatchAction } from '../actions';
 
 /** 生成充值码批次表单（弹窗） */
@@ -31,9 +32,12 @@ export function CreateBatchForm({ open, onClose }: { open: boolean; onClose: () 
         <Feedback result={result} />
         {result?.codes && (
           <div className="rounded-md bg-primary/5 p-3">
-            <p className="mb-2 text-xs text-muted-foreground">
-              生成了 {result.codes.length} 张码（仅此一次显示，请立即复制保存）：
-            </p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                生成了 {result.codes.length} 张码（仅此一次显示，请立即复制保存）：
+              </p>
+              <CopyButton text={result.codes.join('\n')} label="全部复制" />
+            </div>
             <textarea
               readOnly
               rows={6}

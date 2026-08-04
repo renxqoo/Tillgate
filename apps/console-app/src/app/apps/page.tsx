@@ -3,6 +3,7 @@ import { headers } from 'next/headers';
 import { getMe, getCookieHeader, apiFetch, type Paginated } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CopyButton } from '@/components/copy-button';
 import { CreateAppForm } from './forms';
 
 export const dynamic = 'force-dynamic';
@@ -59,9 +60,10 @@ export default async function AppsPage() {
                         <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">已禁用</span>
                       )}
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      <span>client_id: </span>
+                    <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <span>client_id:</span>
                       <code className="rounded bg-muted px-1.5 py-0.5">{a.clientId}</code>
+                      <CopyButton text={a.clientId} />
                     </div>
                     {a.scope?.models && a.scope.models.length > 0 && (
                       <div className="mt-1 text-xs text-muted-foreground">
