@@ -1,21 +1,95 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
+import { getMe, getCookieHeader, liToYuan } from '@/lib/api-client';
+import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
+export const dynamic = 'force-dynamic';
+
 /**
- * 用户面板（骨架）
- * TODO(console): 登录（OIDC/本地）→ 余额与套餐剩余额度 → Key 管理 → 用量明细 → 充值
+ * 用户面板首页：余额、今日用量、模型列表、快捷入口。
  */
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const h = await headers();
+  const me = await getMe(getCookieHeader(h));
+  if (!me) redirect('/login');
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>用户面板</CardTitle>
-          <CardDescription>余额 / 套餐 / Key / 用量（实现中）</CardDescription>
+    <>
+      <SiteHeader me={me} />
+      <main className="mx-auto max-w-6xl space-y-6 p-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">仪表盘</h1>
+          <p className="text-sm text-muted-foreground">欢迎回来，{me.displayName ?? me.subject}</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>当前余额</CardDescription>
+              <CardTitle className="text-2xl">¥{liToYuan(me.balance)}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Link href="/redeem" className="text-sm text-primary hover:underline">
+                去充值 →
+              </Link>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>费率卡</CardDescription>
+              <CardTitle className="text-lg">{me.rateCardName ?? '未绑定'}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground">定价系数由费率卡决定</CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>限流</CardDescription>
+              <CardTitle className="text-lg">
+                {me.rpmLimit ? `${me.rpmLimit} RPM` : '默认 60 RPM'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-xs text-muted-foreground">
+              {me.tpmLimit ? `${me.tpmLimit} TPM` : '默认 1M TPM'}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickLink href="/keys" title="Key 管理" desc="创建 / 吊销虚拟 Key" />
+          <QuickLink href="/apps" title="应用" desc="App 凭证与 JWT 换取" />
+          <QuickLink href="/usage" title="用量明细" desc="消费记录与统计" />
+          <QuickLink href="/redeem" title="充值" desc="兑换充值码" />
+        </div>
+
+        {me.role === 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>管理后台</CardTitle>
+              <CardDescription>管理员可见</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/stats" className="text-sm text-primary hover:underline">
+                进入管理后台 →
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+      </main>
+    </>
+  );
+}
+
+function QuickLink({ href, title, desc }: { href: string; title: string; desc: string }) {
+  return (
+    <Link href={href}>
+      <Card className="transition-colors hover:border-primary">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">{title}</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          登录与数据接入为下一阶段任务（对接 admin-api /api/*）
-        </CardContent>
+        <CardContent className="text-xs text-muted-foreground">{desc}</CardContent>
       </Card>
-    </main>
+    </Link>
   );
 }

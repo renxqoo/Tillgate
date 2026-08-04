@@ -14,6 +14,7 @@ import { embeddingsRoutes } from './routes/embeddings.js';
 import { oauthTokenRoutes } from './routes/oauth-token.js';
 import { authMiddleware, type AuthEnv } from './middleware/auth.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
+import { requestLogMiddleware } from './middleware/request-log.js';
 import { otelMiddleware } from './middleware/otel.js';
 import { corsPreflight, securityHeaders, bodyParserLimit } from './middleware/security.js';
 import { BillingService } from './lib/billing.js';
@@ -114,6 +115,8 @@ export function createApp(db: Db, ai: Ai, billing: BillingService, rateLimiter: 
   app.use('/v1/chat/completions', authMiddleware(db, redis));
   app.use('/v1/models', authMiddleware(db, redis));
   app.use('/v1/embeddings', authMiddleware(db, redis));
+  // 请求日志（data-model §3.13）：/v1/* 请求完成后写 request_logs（fire-and-forget）
+  app.use('/v1/*', requestLogMiddleware(db, logger));
 
   app.route('/healthz', healthRoutes);
   app.route('/v1/models', modelsRoutes(db));
