@@ -121,4 +121,131 @@ describe('calcAmount', () => {
     expect(coefficientToMilli(0.1)).toBe(100);
     expect(coefficientToMilli(0.999)).toBe(999);
   });
+
+  // ---- 异常输入防御（资损防线：绝不允许负金额或反向收费）----
+
+  it('负数 outputTokens → 按 0 计（不允许反向收费/白嫖）', () => {
+    const amount = calcAmount({
+      inputTokens: 1000,
+      cachedInputTokens: 0,
+      outputTokens: -500,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    // 输出按 0 计，仅扣输入：1000×2000/1e6 = 2 厘
+    expect(amount).toBe(2);
+    expect(amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('负数 inputTokens → 按 0 计', () => {
+    const amount = calcAmount({
+      inputTokens: -1000,
+      cachedInputTokens: 0,
+      outputTokens: 1000,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    expect(amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('NaN tokens → 按 0 计（不允许 NaN 污染金额）', () => {
+    const amount = calcAmount({
+      inputTokens: Number.NaN,
+      cachedInputTokens: 0,
+      outputTokens: 1000,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    expect(Number.isFinite(amount)).toBe(true);
+    expect(amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('Infinity tokens → 按 0 计（不允许 Infinity 算出超大金额）', () => {
+    const amount = calcAmount({
+      inputTokens: Number.POSITIVE_INFINITY,
+      cachedInputTokens: 0,
+      outputTokens: 1000,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    expect(Number.isFinite(amount)).toBe(true);
+  });
+
+  it('负数价格 → 按 0 计（配置错误不允许产生负费用）', () => {
+    const amount = calcAmount({
+      inputTokens: 1_000_000,
+      cachedInputTokens: 0,
+      outputTokens: 1_000_000,
+      inputPrice: -2000,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    expect(amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('coefficientMilli ≤ 0 → 按 0 计（费率卡配置错误不允许免费）', () => {
+    const amount = calcAmount({
+      inputTokens: 1_000_000,
+      cachedInputTokens: 0,
+      outputTokens: 1_000_000,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 0,
+    });
+    expect(amount).toBe(0);
+    const amountNeg = calcAmount({
+      inputTokens: 1_000_000,
+      cachedInputTokens: 0,
+      outputTokens: 1_000_000,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: -100,
+    });
+    expect(amountNeg).toBe(0);
+  });
+
+  it('cachedInputTokens > inputTokens → cached 夹到 input（不允许负未缓存 + 超大缓存双计）', () => {
+    const amount = calcAmount({
+      inputTokens: 100,
+      cachedInputTokens: 200, // 异常：缓存命中超过总输入
+      outputTokens: 0,
+      inputPrice: PRICE.in,
+      cacheInputPrice: PRICE.cache,
+      outputPrice: PRICE.out,
+      coefficientMilli: 1000,
+    });
+    // cached 夹到 100：100×200/1e6 = 0.02 → round 0 厘（而不是 200×200 导致多收）
+    expect(amount).toBeGreaterThanOrEqual(0);
+    expect(amount).toBeLessThanOrEqual(1);
+  });
+
+  it('返回值永远 ≥ 0（任何异常输入组合）', () => {
+    const pathological = [
+      { inputTokens: -1, cachedInputTokens: -1, outputTokens: -1 },
+      { inputTokens: NaN, cachedInputTokens: NaN, outputTokens: NaN },
+      { inputTokens: Infinity, cachedInputTokens: -Infinity, outputTokens: 0 },
+    ];
+    for (const t of pathological) {
+      const amount = calcAmount({
+        ...t,
+        inputPrice: -1000,
+        cacheInputPrice: -100,
+        outputPrice: -5000,
+        coefficientMilli: -100,
+      });
+      expect(amount).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(amount)).toBe(true);
+    }
+  });
 });

@@ -1,9 +1,13 @@
-import { pgTable, bigserial, varchar, timestamp, bigint, index } from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, varchar, timestamp, bigint, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 
 /**
  * transactions — 资金流水（余额变化的唯一依据，data-model.md §3.11）
  * type: consume 扣费 / redeem 充值码 / gift 系统赠送 / manual 管理员调账 / refund 退款 / subscribe 购买套餐（二期）
+ *
+ * 幂等保障：consume 类型按 (ref_type, ref_id) 部分唯一索引——同一 requestId 只能产生一条扣费流水，
+ * 防 worker 重试/并发导致重复扣费（与 usage_logs.request_id 唯一约束双保险）。
  */
 export const transactions = pgTable(
   'transactions',
@@ -29,5 +33,10 @@ export const transactions = pgTable(
     index('transactions_user_created_idx').on(t.userId, t.createdAt),
     index('transactions_type_created_idx').on(t.type, t.createdAt),
     index('transactions_ref_idx').on(t.refType, t.refId),
+    // 部分唯一索引：consume 类型（扣费）按来源去重，非 consume 类型（充值/调账）不受约束
+    // worker 结算用 ON CONFLICT DO NOTHING，重复 job 只写一条流水
+    uniqueIndex('transactions_consume_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'usage_logs'`),
   ],
 );
