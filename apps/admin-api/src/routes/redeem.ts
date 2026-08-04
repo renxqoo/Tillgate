@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { eq, sql, and } from 'drizzle-orm';
-import { redeemBatches, redeemCodes } from '@ai-gateway/db/schema';
+import { redeemBatches, redeemCodes, users } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import { jsonBody, query } from '../lib/validation.js';
 import { z } from 'zod';
@@ -46,6 +46,21 @@ export function redeemAdminRoutes(db: Db): Hono<AdminEnv> {
       const adminId = c.get('adminId');
       const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
 
+      // createdBy 解析：机器令牌调用无 adminId → 兜底取第一个管理员（role=1）
+      let creatorId = adminId;
+      if (creatorId === undefined) {
+        const admin = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.role, 1))
+          .orderBy(users.id)
+          .limit(1);
+        if (admin.length === 0) {
+          return c.json({ error: '系统无管理员账号，无法记录批次创建人' }, 400);
+        }
+        creatorId = admin[0]!.id;
+      }
+
       // 单事务：建批次 + 批量插码
       const result = await db.transaction(async (tx) => {
         const [batch] = await tx
@@ -56,7 +71,7 @@ export function redeemAdminRoutes(db: Db): Hono<AdminEnv> {
             amount: body.amount,
             total: body.count,
             usedCount: 0,
-            createdBy: adminId ?? 0, // 机器令牌调用无 adminId，用 0 占位（FK 允许）
+            createdBy: creatorId,
           })
           .returning();
         // 生成码明文 + 哈希，批量插入
