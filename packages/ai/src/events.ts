@@ -16,7 +16,7 @@ export type AiEvent =
   | {
       type: 'aborted';
       requestId: string;
-      reason: 'client_disconnect' | 'inactivity' | 'deadline';
+      reason: 'client_disconnect' | 'inactivity' | 'deadline' | 'upstream_disconnected';
     }
   | { type: 'failed'; requestId: string; error: UpstreamError }
   | { type: 'empty_completion'; requestId: string; attempt: number }

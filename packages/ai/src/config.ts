@@ -12,6 +12,7 @@ export const aiConfigSchema = z.object({
       maxDelayMs: z.number().int().min(1).default(8000),
       jitterRatio: z.number().min(0).max(1).default(0.25),
       deadlineMs: z.number().int().min(1).default(240_000),
+      emptyCompletionRetries: z.number().int().min(0).default(2),
     })
     .default({
       maxAttempts: 3,
@@ -19,6 +20,7 @@ export const aiConfigSchema = z.object({
       maxDelayMs: 8000,
       jitterRatio: 0.25,
       deadlineMs: 240_000,
+      emptyCompletionRetries: 2,
     }),
   breaker: z
     .object({
@@ -51,6 +53,8 @@ export const aiConfigSchema = z.object({
       connectMs: 10_000,
       totalMs: 120_000,
     }),
+  /** 允许 http + 内网地址（仅测试/本地调试；生产必须 false，SSRF 防线在配置层+此处双重） */
+  allowLocalUrl: z.boolean().default(false),
   estimate: z
     .object({
       charPerToken: z.number().min(1).default(3.5),
