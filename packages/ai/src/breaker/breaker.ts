@@ -7,6 +7,6 @@
 //   open --冷却到期--> half-open（放 1 个请求探测）
 //   half-open --成功--> closed；--失败--> 立即回 open
 export interface BreakerDecision {
-  allow: boolean
-  reason?: 'circuit_open'
+  allow: boolean;
+  reason?: 'circuit_open';
 }

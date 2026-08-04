@@ -4,14 +4,14 @@
 
 ## 文档（设计已定稿）
 
-| 文档 | 内容 |
-|---|---|
-| [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版） |
-| [docs/data-model.md](docs/data-model.md) | 数据模型（15+2 张表） |
-| [docs/api-contract.md](docs/api-contract.md) | API 契约（对外 + 管理端） |
-| [docs/tech-stack.md](docs/tech-stack.md) | 技术选型 / 观测 / 运维 / 安全 |
-| [docs/architecture.md](docs/architecture.md) | 架构与流程图（8 张 mermaid） |
-| [docs/ai-package.md](docs/ai-package.md) | packages/ai 传输层包设计 |
+| 文档                                         | 内容                          |
+| -------------------------------------------- | ----------------------------- |
+| [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版）  |
+| [docs/data-model.md](docs/data-model.md)     | 数据模型（15+2 张表）         |
+| [docs/api-contract.md](docs/api-contract.md) | API 契约（对外 + 管理端）     |
+| [docs/tech-stack.md](docs/tech-stack.md)     | 技术选型 / 观测 / 运维 / 安全 |
+| [docs/architecture.md](docs/architecture.md) | 架构与流程图（8 张 mermaid）  |
+| [docs/ai-package.md](docs/ai-package.md)     | packages/ai 传输层包设计      |
 
 ## 仓库结构
 

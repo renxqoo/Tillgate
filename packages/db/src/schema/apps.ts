@@ -1,5 +1,15 @@
-import { pgTable, bigserial, bigint, varchar, smallint, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
+import {
+  pgTable,
+  bigserial,
+  bigint,
+  varchar,
+  smallint,
+  timestamp,
+  jsonb,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
 
 /** apps — 应用（企业 Agent 凭证，JWT 签发方，data-model.md §3.2） */
 export const apps = pgTable(
@@ -27,4 +37,4 @@ export const apps = pgTable(
     uniqueIndex('apps_client_id_uq').on(t.clientId),
     index('apps_user_id_idx').on(t.userId),
   ],
-)
+);

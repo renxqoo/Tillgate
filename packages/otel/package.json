@@ -2,8 +2,8 @@
   "name": "@ai-gateway/otel",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "OTel SDK 初始化（service.name 注入、OTLP 导出）",
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

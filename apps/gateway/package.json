@@ -2,15 +2,16 @@
   "name": "@ai-gateway/gateway",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "对外代理（Hono）：/v1/* + /oauth/token + 请求前预扣，无状态可多副本",
+  "type": "module",
   "main": "./src/index.ts",
   "scripts": {
     "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "lint": "oxlint"
   },
   "dependencies": {
     "@ai-gateway/ai": "workspace:*",

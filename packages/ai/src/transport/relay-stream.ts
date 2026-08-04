@@ -7,3 +7,9 @@
 //   - 静默超时（inactivityTimeoutMs）→ 断流 + 错误帧
 //   - 客户端 abort → 取消上游 reader（停止生成）
 //   - 输出流注入 ': keep-alive'（仅事件边界，防拆半截事件）
+
+/** 流式管道配置（待实现） */
+export interface RelayStreamOptions {
+  heartbeatIdleMs: number;
+  inactivityTimeoutMs: number;
+}

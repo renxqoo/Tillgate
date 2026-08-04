@@ -1,9 +1,21 @@
-import { pgTable, bigserial, uuid, varchar, smallint, timestamp, bigint, boolean, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { apps } from './apps.js'
-import { apiKeys } from './api-keys.js'
-import { channels } from './channels.js'
-import { userSubscriptions } from './plans.js'
+import {
+  pgTable,
+  bigserial,
+  uuid,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  boolean,
+  numeric,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
+import { apps } from './apps.js';
+import { apiKeys } from './api-keys.js';
+import { channels } from './channels.js';
+import { userSubscriptions } from './plans.js';
 
 /**
  * usage_logs — 用量明细（只追加、长期保留，data-model.md §3.10）
@@ -48,7 +60,9 @@ export const usageLogs = pgTable(
     paygAmount: bigint('payg_amount', { mode: 'number' }).notNull().default(0),
     /** plan / payg / both（同一请求套餐+余额混扣） */
     billedBy: varchar('billed_by', { length: 8 }).notNull(),
-    subscriptionId: bigint('subscription_id', { mode: 'number' }).references(() => userSubscriptions.id),
+    subscriptionId: bigint('subscription_id', { mode: 'number' }).references(
+      () => userSubscriptions.id,
+    ),
     durationMs: bigint('duration_ms', { mode: 'number' }).notNull().default(0),
     status: smallint('status').notNull().default(1),
     stream: boolean('stream').notNull().default(false),
@@ -63,4 +77,4 @@ export const usageLogs = pgTable(
     index('usage_logs_channel_created_idx').on(t.channelId, t.createdAt),
     index('usage_logs_subscription_idx').on(t.subscriptionId, t.createdAt),
   ],
-)
+);

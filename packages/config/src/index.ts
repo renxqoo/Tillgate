@@ -1,14 +1,12 @@
-import { z } from 'zod'
+import { z } from 'zod';
 
 /** 共享环境变量 */
 export const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
-  DATABASE_URL: z
-    .string()
-    .default('postgres://postgres:postgres@localhost:5432/ai_gateway'),
+  DATABASE_URL: z.string().default('postgres://postgres:postgres@localhost:5432/ai_gateway'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
-})
+});
 
 /** gateway（对外代理）环境变量 */
 export const gatewayEnvSchema = baseEnvSchema.extend({
@@ -29,7 +27,7 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-})
+});
 
 /** worker（计量结算）环境变量 */
 export const workerEnvSchema = baseEnvSchema.extend({
@@ -40,7 +38,7 @@ export const workerEnvSchema = baseEnvSchema.extend({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-})
+});
 
 /** admin-api（管理端 REST）环境变量 */
 export const adminApiEnvSchema = baseEnvSchema.extend({
@@ -51,21 +49,21 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
-})
+});
 
-export type GatewayEnv = z.infer<typeof gatewayEnvSchema>
-export type WorkerEnv = z.infer<typeof workerEnvSchema>
-export type AdminApiEnv = z.infer<typeof adminApiEnvSchema>
+export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
+export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+export type AdminApiEnv = z.infer<typeof adminApiEnvSchema>;
 
 /** 解析并校验环境变量，失败即抛错（fail fast） */
 export function loadGatewayEnv(env = process.env): GatewayEnv {
-  return gatewayEnvSchema.parse(env)
+  return gatewayEnvSchema.parse(env);
 }
 
 export function loadWorkerEnv(env = process.env): WorkerEnv {
-  return workerEnvSchema.parse(env)
+  return workerEnvSchema.parse(env);
 }
 
 export function loadAdminApiEnv(env = process.env): AdminApiEnv {
-  return adminApiEnvSchema.parse(env)
+  return adminApiEnvSchema.parse(env);
 }

@@ -2,8 +2,8 @@
   "name": "@ai-gateway/db",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "Drizzle schema + migrations（数据模型见 docs/data-model.md）",
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -16,7 +16,8 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "lint": "oxlint"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

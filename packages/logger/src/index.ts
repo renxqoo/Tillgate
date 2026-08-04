@@ -1,14 +1,18 @@
-import pino from 'pino'
+import pino from 'pino';
 
 export interface CreateLoggerOptions {
-  level?: string
-  serviceName?: string
+  level?: string;
+  serviceName?: string;
   /** 开发环境输出可读格式 */
-  pretty?: boolean
+  pretty?: boolean;
 }
 
 /** 统一日志封装：JSON 结构化 + 敏感字段脱敏 + 服务名标记 */
-export function createLogger({ level = 'info', serviceName, pretty = false }: CreateLoggerOptions = {}) {
+export function createLogger({
+  level = 'info',
+  serviceName,
+  pretty = false,
+}: CreateLoggerOptions = {}) {
   return pino({
     level,
     name: serviceName,
@@ -31,7 +35,7 @@ export function createLogger({ level = 'info', serviceName, pretty = false }: Cr
           },
         }
       : {}),
-  })
+  });
 }
 
-export type Logger = ReturnType<typeof createLogger>
+export type Logger = ReturnType<typeof createLogger>;

@@ -1,6 +1,15 @@
-import { pgTable, bigserial, uuid, varchar, timestamp, bigint, jsonb, index } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { apiKeys } from './api-keys.js'
+import {
+  pgTable,
+  bigserial,
+  uuid,
+  varchar,
+  timestamp,
+  bigint,
+  jsonb,
+  index,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
+import { apiKeys } from './api-keys.js';
 
 /**
  * request_logs — 请求日志（30 天滚动，按月分区 P1 实现；data-model.md §3.13）
@@ -26,8 +35,11 @@ export const requestLogs = pgTable(
     candidatesTried: jsonb('candidates_tried'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('request_logs_created_idx').on(t.createdAt), index('request_logs_user_created_idx').on(t.userId, t.createdAt)],
-)
+  (t) => [
+    index('request_logs_created_idx').on(t.createdAt),
+    index('request_logs_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
 
 /**
  * audit_logs — 管理操作审计（data-model.md §3.14）
@@ -48,4 +60,4 @@ export const auditLogs = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('audit_logs_created_idx').on(t.createdAt)],
-)
+);

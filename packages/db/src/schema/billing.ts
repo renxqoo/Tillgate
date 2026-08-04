@@ -1,5 +1,15 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, bigint, numeric, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { modelMappings } from './model-mappings.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  numeric,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { modelMappings } from './model-mappings.js';
 
 /**
  * rate_cards — 费率卡（定价档位，data-model.md §3.8）
@@ -17,7 +27,7 @@ export const rateCards = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('rate_cards_name_uq').on(t.name)],
-)
+);
 
 /**
  * rate_card_coefficients — 费率卡系数（data-model.md §3.9）
@@ -32,7 +42,9 @@ export const rateCardCoefficients = pgTable(
       .references(() => rateCards.id),
     /** global 全局 / model 按模型（二期）/ group 按分组（二期预留） */
     scope: varchar('scope', { length: 8 }).notNull(),
-    modelMappingId: bigint('model_mapping_id', { mode: 'number' }).references(() => modelMappings.id),
+    modelMappingId: bigint('model_mapping_id', { mode: 'number' }).references(
+      () => modelMappings.id,
+    ),
     /** 系数（1.0 = 按官方价原价） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -41,4 +53,4 @@ export const rateCardCoefficients = pgTable(
     uniqueIndex('rate_card_coefficients_uq').on(t.rateCardId, t.scope, t.modelMappingId),
     index('rate_card_coefficients_mapping_idx').on(t.modelMappingId),
   ],
-)
+);

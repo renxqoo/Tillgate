@@ -1,4 +1,4 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core'
+import { pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /** providers — 供应商（data-model.md §3.4） */
 export const providers = pgTable(
@@ -14,4 +14,4 @@ export const providers = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('providers_name_uq').on(t.name)],
-)
+);

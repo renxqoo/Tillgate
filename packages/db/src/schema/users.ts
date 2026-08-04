@@ -1,5 +1,14 @@
-import { index, pgTable, bigserial, bigint, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
-import { rateCards } from './billing.js'
+import {
+  index,
+  pgTable,
+  bigserial,
+  bigint,
+  varchar,
+  smallint,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { rateCards } from './billing.js';
 
 /**
  * users — 用户/企业账户（data-model.md §3.1）
@@ -32,4 +41,4 @@ export const users = pgTable(
     uniqueIndex('users_issuer_subject_uq').on(t.issuer, t.subject),
     index('users_rate_card_id_idx').on(t.rateCardId),
   ],
-)
+);

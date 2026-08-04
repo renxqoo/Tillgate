@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z } from 'zod';
 
 /**
  * ai 包配置（纯机制参数，无业务；zod 校验 + 默认值）
@@ -58,38 +58,38 @@ export const aiConfigSchema = z.object({
     .default({
       charPerToken: 3.5,
     }),
-})
+});
 
-export type AiConfig = z.infer<typeof aiConfigSchema>
+export type AiConfig = z.infer<typeof aiConfigSchema>;
 
 /** 依赖注入：宿主实现，包保持零业务/零 OTel 直接依赖 */
 export interface AiDeps {
   logger?: {
-    info: (msg: string, ...args: unknown[]) => void
-    warn: (msg: string, ...args: unknown[]) => void
-    error: (msg: string, ...args: unknown[]) => void
-  }
+    info: (msg: string, ...args: unknown[]) => void;
+    warn: (msg: string, ...args: unknown[]) => void;
+    error: (msg: string, ...args: unknown[]) => void;
+  };
   tracer?: {
-    startSpan: (name: string, attrs?: Record<string, unknown>) => { end: () => void }
-  }
-  breakerStorage?: BreakerStorage
+    startSpan: (name: string, attrs?: Record<string, unknown>) => { end: () => void };
+  };
+  breakerStorage?: BreakerStorage;
 }
 
 /** 熔断状态持久化（gateway 注入 Redis 实现，多实例共享） */
 export interface BreakerStorage {
-  getState(key: string): Promise<BreakerState | null>
-  setState(key: string, state: BreakerState, ttlMs: number): Promise<void>
+  getState(key: string): Promise<BreakerState | null>;
+  setState(key: string, state: BreakerState, ttlMs: number): Promise<void>;
 }
 
 export interface BreakerState {
-  state: 'closed' | 'open' | 'half-open'
+  state: 'closed' | 'open' | 'half-open';
   /** 滚动窗口内的失败时间戳（circuitTrip 计数） */
-  failures: number[]
-  windowStart: number
-  openedAt?: number
-  cooldownUntil?: number
+  failures: number[];
+  windowStart: number;
+  openedAt?: number;
+  cooldownUntil?: number;
 }
 
 export function defaultAiConfig(): AiConfig {
-  return aiConfigSchema.parse({})
+  return aiConfigSchema.parse({});
 }

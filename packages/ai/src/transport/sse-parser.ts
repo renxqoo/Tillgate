@@ -7,6 +7,6 @@
 //   - 记录首个 error 帧（code/type/detail）
 //   - 透传所有事件到输出
 export interface SseScanResult {
-  usage: unknown | null
-  errorFrame: { code: string; type?: string; detail?: string } | null
+  usage: unknown | null;
+  errorFrame: { code: string; type?: string; detail?: string } | null;
 }

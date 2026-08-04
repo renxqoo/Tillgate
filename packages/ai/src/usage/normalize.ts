@@ -6,4 +6,4 @@
 //   - DeepSeek: prompt_cache_hit_tokens / prompt_cache_miss_tokens
 //   - 无缓存字段 → cachedInputTokens = 0
 //   - usage 缺失 → 按字符估算（estimate.charPerToken），estimated=true，全部按未缓存计
-export type { Usage } from '../types.js'
+export type { Usage } from '../types.js';

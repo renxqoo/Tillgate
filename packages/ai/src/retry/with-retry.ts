@@ -6,8 +6,13 @@
 //   - baseDelayMs × 2^n + jitter（jitterRatio 比例）
 //   - 总 deadlineMs 截断
 //   - 仅 retryable=true 的错误重试；空完成重试 ≤2 次
-export function backoffDelayMs(attempt: number, base: number, max: number, jitterRatio: number): number {
-  const exp = Math.min(base * 2 ** attempt, max)
-  const jitter = exp * jitterRatio * Math.random()
-  return Math.round(exp + jitter)
+export function backoffDelayMs(
+  attempt: number,
+  base: number,
+  max: number,
+  jitterRatio: number,
+): number {
+  const exp = Math.min(base * 2 ** attempt, max);
+  const jitter = exp * jitterRatio * Math.random();
+  return Math.round(exp + jitter);
 }

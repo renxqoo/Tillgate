@@ -1,5 +1,15 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, bigint, jsonb, text, index } from 'drizzle-orm/pg-core'
-import { providers } from './providers.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  jsonb,
+  text,
+  index,
+} from 'drizzle-orm/pg-core';
+import { providers } from './providers.js';
 
 /**
  * channels — 渠道（供应商 × 上游 Key，data-model.md §3.5）
@@ -31,4 +41,4 @@ export const channels = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('channels_provider_id_idx').on(t.providerId)],
-)
+);

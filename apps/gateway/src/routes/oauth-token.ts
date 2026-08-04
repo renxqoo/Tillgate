@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono } from 'hono';
 
 /**
  * POST /oauth/token — 企业 Agent 换 Token（client_credentials）
@@ -12,4 +12,4 @@ export const oauthTokenRoutes = new Hono().post('/', (c) =>
     },
     400,
   ),
-)
+);

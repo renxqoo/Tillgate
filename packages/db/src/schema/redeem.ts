@@ -1,5 +1,14 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, bigint, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
 
 /** redeem_batches — 充值码批次（data-model.md §3.12，面额创建后不可修改） */
 export const redeemBatches = pgTable(
@@ -18,7 +27,7 @@ export const redeemBatches = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('redeem_batches_created_by_idx').on(t.createdBy)],
-)
+);
 
 /** redeem_codes — 充值码（只存哈希，明文生成时下发） */
 export const redeemCodes = pgTable(
@@ -41,4 +50,4 @@ export const redeemCodes = pgTable(
     index('redeem_codes_batch_idx').on(t.batchId),
     index('redeem_codes_used_by_idx').on(t.usedBy),
   ],
-)
+);

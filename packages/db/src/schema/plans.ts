@@ -1,5 +1,14 @@
-import { pgTable, bigserial, varchar, timestamp, bigint, boolean, smallint, index } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  timestamp,
+  bigint,
+  boolean,
+  smallint,
+  index,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
 
 /**
  * 二期表（一期建表，业务逻辑二期启用；data-model.md §3.15）
@@ -23,7 +32,7 @@ export const plans = pgTable(
     status: smallint('status').notNull().default(0),
   },
   (t) => [index('plans_name_idx').on(t.name)],
-)
+);
 
 /** user_subscriptions — 用户订阅 */
 export const userSubscriptions = pgTable(
@@ -46,5 +55,8 @@ export const userSubscriptions = pgTable(
     status: smallint('status').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('user_subscriptions_user_idx').on(t.userId), index('user_subscriptions_plan_idx').on(t.planId)],
-)
+  (t) => [
+    index('user_subscriptions_user_idx').on(t.userId),
+    index('user_subscriptions_plan_idx').on(t.planId),
+  ],
+);

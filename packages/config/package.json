@@ -2,8 +2,8 @@
   "name": "@ai-gateway/config",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "环境变量 zod 校验（共享 schema + 各应用扩展）",
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint"
   },
   "dependencies": {
     "zod": "^4.4.3"

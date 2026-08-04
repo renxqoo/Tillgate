@@ -1,5 +1,5 @@
-import { pgTable, bigserial, varchar, timestamp, bigint, index } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
+import { pgTable, bigserial, varchar, timestamp, bigint, index } from 'drizzle-orm/pg-core';
+import { users } from './users.js';
 
 /**
  * transactions — 资金流水（余额变化的唯一依据，data-model.md §3.11）
@@ -30,4 +30,4 @@ export const transactions = pgTable(
     index('transactions_type_created_idx').on(t.type, t.createdAt),
     index('transactions_ref_idx').on(t.refType, t.refId),
   ],
-)
+);

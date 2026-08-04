@@ -7,4 +7,4 @@
 //   429           → retryable ✅ circuitTrip ❌
 //   401/403（含 invalid api key 等文本特征）→ deadCredential ✅ circuitTrip ❌ retryable ❌
 //   400/404       → retryable ❌ circuitTrip ❌
-export type { UpstreamError } from '../types.js'
+export type { UpstreamError } from '../types.js';

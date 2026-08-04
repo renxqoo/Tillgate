@@ -1,6 +1,15 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, bigint, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { users } from './users.js'
-import { apps } from './apps.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { users } from './users.js';
+import { apps } from './apps.js';
 
 /**
  * api_keys — 虚拟 Key（data-model.md §3.3）
@@ -35,4 +44,4 @@ export const apiKeys = pgTable(
     index('api_keys_user_id_idx').on(t.userId),
     index('api_keys_app_id_idx').on(t.appId),
   ],
-)
+);

@@ -1,5 +1,15 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, bigint, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { channels } from './channels.js'
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  bigint,
+  jsonb,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { channels } from './channels.js';
 
 /**
  * model_mappings — 模型映射（对外模型名 → 真实模型，data-model.md §3.6）
@@ -26,10 +36,10 @@ export const modelMappings = pgTable(
      * {"ignore":[],"clamp":{},"map":{},"unknown":"passthrough"}
      */
     paramRules: jsonb('param_rules').$type<{
-      ignore?: string[]
-      clamp?: Record<string, { min?: number; max?: number }>
-      map?: Record<string, { to: string }>
-      unknown?: 'passthrough' | 'drop'
+      ignore?: string[];
+      clamp?: Record<string, { min?: number; max?: number }>;
+      map?: Record<string, { to: string }>;
+      unknown?: 'passthrough' | 'drop';
     }>(),
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
@@ -37,7 +47,7 @@ export const modelMappings = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('model_mappings_external_name_uq').on(t.externalName)],
-)
+);
 
 /**
  * model_channels — 映射 × 渠道 关联（data-model.md §3.7）
@@ -59,4 +69,4 @@ export const modelChannels = pgTable(
     { name: 'model_channels_pk', columns: [t.mappingId, t.channelId], primaryKey: true },
     index('model_channels_channel_id_idx').on(t.channelId),
   ],
-)
+);
