@@ -4,6 +4,7 @@ import { getMe, getCookieHeader, apiFetch, type Paginated, liToYuan } from '@/li
 import { SiteHeader } from '@/components/site-header';
 import { AdminNav } from '@/components/admin-nav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import UserActions from './client';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,7 @@ interface UserRow {
   email: string | null;
   displayName: string | null;
   role: number;
+  rateCardId: number | null;
   rateCardName: string | null;
   balance: number;
   status: number;
@@ -42,6 +44,9 @@ export default async function AdminUsersPage({
   const query = new URLSearchParams({ page: String(page), page_size: '50' });
   if (q) query.set('q', q);
   const users = await apiFetch<Paginated<UserRow>>(`/api/admin/users?${query}`, { cookieHeader: cookie }).catch(() => ({ list: [] as UserRow[], total: 0, page: 1, page_size: 50 }));
+  // 费率卡列表（供绑卡下拉框）
+  const rateCardsRes = await apiFetch<{ list: Array<{ id: number; name: string }> }>('/api/admin/rate-cards', { cookieHeader: cookie }).catch(() => ({ list: [] }));
+  const rateCards = rateCardsRes.list;
 
   return (
     <>
@@ -80,6 +85,7 @@ export default async function AdminUsersPage({
                     <th className="py-2 pr-4 text-right">余额</th>
                     <th className="py-2 pr-4">状态</th>
                     <th className="py-2 pr-4">创建时间</th>
+                    <th className="py-2 pr-4 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -98,6 +104,9 @@ export default async function AdminUsersPage({
                           <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                         </td>
                         <td className="py-2 pr-4 text-xs text-muted-foreground">{new Date(u.createdAt).toLocaleDateString('zh-CN')}</td>
+                        <td className="py-2 pr-4 text-right">
+                          <UserActions user={u} rateCards={rateCards} />
+                        </td>
                       </tr>
                     );
                   })}

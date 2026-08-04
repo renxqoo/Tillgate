@@ -6,6 +6,7 @@ export function AdminNav({ active }: { active: string }) {
     { href: '/admin/stats', key: 'stats', label: '仪表盘' },
     { href: '/admin/users', key: 'users', label: '用户' },
     { href: '/admin/channels', key: 'channels', label: '渠道' },
+    { href: '/admin/models', key: 'models', label: '模型' },
     { href: '/admin/rate-cards', key: 'rate-cards', label: '费率卡' },
     { href: '/admin/redeem-batches', key: 'redeem-batches', label: '充值码' },
   ];
