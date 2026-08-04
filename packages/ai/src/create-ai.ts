@@ -3,7 +3,8 @@ import { loadProfile, mergeRules } from './adapters/profiles/index.js';
 import type { ProtocolAdapter } from './adapters/protocol-adapter.js';
 import { CircuitBreaker } from './breaker/breaker.js';
 import { MemoryBreakerStorage } from './breaker/memory-storage.js';
-import { classifyTransportError, createUpstreamError } from './errors/classify.js';
+import { classifyTransportError } from './errors/classify.js';
+import { abortedError, circuitOpenError, emptyError, invalidResponseError } from './errors/internal.js';
 import { fetchUpstream, readBody } from './transport/http-client.js';
 import { relayStream } from './transport/relay-stream.js';
 import { estimateTokens, normalizeUsage } from './usage/normalize.js';
@@ -65,39 +66,6 @@ function isUpstreamError(e: unknown): e is UpstreamError {
     typeof (e as UpstreamError).retryable === 'boolean'
   );
 }
-
-const emptyError = (): UpstreamError =>
-  createUpstreamError({
-    code: 'empty_completion',
-    message: 'upstream returned empty completion (HTTP 200, no content)',
-    retryable: false, // 空完成重试由 empty 标志驱动（≤ emptyCompletionRetries），不叠加普通重试
-    circuitTrip: false,
-  });
-
-const invalidResponseError = (): UpstreamError =>
-  createUpstreamError({
-    code: 'invalid_response',
-    message: 'upstream returned non-JSON body',
-    retryable: false,
-    circuitTrip: false,
-  });
-
-const abortedError = (): UpstreamError =>
-  createUpstreamError({
-    code: 'aborted',
-    message: 'retry deadline exceeded',
-    retryable: false,
-    circuitTrip: false,
-  });
-
-const circuitOpenError = (): UpstreamError =>
-  createUpstreamError({
-    code: 'circuit_open',
-    message: 'circuit open, upstream unavailable',
-    retryable: false,
-    circuitTrip: false,
-    suggestion: '渠道熔断中，请稍后重试',
-  });
 
 /** 请求 messages 文本总长度（usage 缺失时估算输入 tokens） */
 function extractRequestChars(body: unknown): number {
