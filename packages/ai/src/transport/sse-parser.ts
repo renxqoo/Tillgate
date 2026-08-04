@@ -12,6 +12,8 @@ import type { StreamError } from '../types.js';
 export interface SseScannerCallbacks {
   /** 每个完整事件触发（data 为多行 data 拼接后的原文，event 为事件名） */
   onEvent?: (data: string, event: string | undefined) => void;
+  /** 捕获到首个错误帧时通知（relay 用它在透传的同时发 stream_error 事件） */
+  onErrorFrame?: (frame: StreamError) => void;
 }
 
 export class SseScanner {
@@ -21,6 +23,11 @@ export class SseScanner {
   private lastEventAt = 0;
   /** stream 模式：跨 chunk 的多字节 UTF-8 安全解码（feed 需 string） */
   private decoder = new TextDecoder('utf-8');
+
+  /** 事件边界状态机（心跳注入判定）：最近结束的行是否为空行 */
+  private lastLineEnded = false;
+  private lastLineWasBlank = false;
+  private lineHasContent = false;
 
   private parser = createParser({
     onEvent: (ev) => {
@@ -36,6 +43,7 @@ export class SseScanner {
       }
       if (this.errorFrame === null && parsed.error !== undefined) {
         this.errorFrame = this.toErrorFrame(parsed.error);
+        this.callbacks?.onErrorFrame?.(this.errorFrame);
       }
     },
   });
@@ -45,12 +53,38 @@ export class SseScanner {
   /** 喂入上游 chunk；返回本次完成的完整事件数（心跳边界判定用） */
   consume(chunk: Uint8Array): number {
     const before = this.eventsCompleted;
+    const text = this.decoder.decode(chunk, { stream: true });
     try {
-      this.parser.feed(this.decoder.decode(chunk, { stream: true }));
+      this.parser.feed(text);
     } catch {
       // 解析容错：异常 chunk 不中断透传（扫描是旁路）
     }
+    this.trackBoundary(text);
     return this.eventsCompleted - before;
+  }
+
+  /**
+   * 当前是否位于 SSE 事件边界（可安全注入 ': keep-alive' 心跳帧）。
+   * 边界 = 最近一个以 \n 结束的行是空行，且当前没有未完成行内容——
+   * "data: a\n"（行结束但事件未完）不算边界，防止心跳拆开半截事件。
+   */
+  atBoundary(): boolean {
+    return !this.lineHasContent && (!this.lastLineEnded || this.lastLineWasBlank);
+  }
+
+  /** 行级边界跟踪：只关心"空行是否已发生"，不缓存行内容（O(1) 内存） */
+  private trackBoundary(text: string): void {
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '\n') {
+        this.lastLineEnded = true;
+        this.lastLineWasBlank = !this.lineHasContent;
+        this.lineHasContent = false;
+      } else if (ch !== '\r') {
+        // \r 不改变状态：CRLF 的 \r 被忽略，\n 统一判定（SSE 规范只认 \n）
+        this.lineHasContent = true;
+      }
+    }
   }
 
   /** 最后 usage 帧（解析后的原始 usage 对象，null = 流中无 usage） */
@@ -73,6 +107,9 @@ export class SseScanner {
     this.errorFrame = null;
     this.eventsCompleted = 0;
     this.lastEventAt = 0;
+    this.lastLineEnded = false;
+    this.lastLineWasBlank = false;
+    this.lineHasContent = false;
     this.parser.reset();
   }
 

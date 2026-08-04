@@ -81,4 +81,78 @@ describe('SseScanner', () => {
     expect(s.getUsage()).toBeNull();
     expect(s.getErrorFrame()).toBeNull();
   });
+
+  describe('atBoundary（事件边界判定，心跳注入用）', () => {
+    it('流开头是边界', () => {
+      expect(new SseScanner().atBoundary()).toBe(true);
+    });
+
+    it('半截 data 行不是边界', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":'));
+      expect(s.atBoundary()).toBe(false);
+    });
+
+    it('行结束但事件未完不是边界（data 行 + 无空行）', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":1}\n'));
+      expect(s.atBoundary()).toBe(false);
+      s.consume(enc('\n'));
+      expect(s.atBoundary()).toBe(true);
+    });
+
+    it('完整事件后是边界', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":1}\n\n'));
+      expect(s.atBoundary()).toBe(true);
+    });
+
+    it('注释行（心跳帧）不破坏边界', () => {
+      const s = new SseScanner();
+      s.consume(enc(': keep-alive\n\n'));
+      expect(s.atBoundary()).toBe(true);
+    });
+
+    it('跨 chunk 拆分的空行仍正确判定', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":1}\n'));
+      expect(s.atBoundary()).toBe(false);
+      s.consume(enc('{'));
+      expect(s.atBoundary()).toBe(false);
+      s.consume(enc('\n'));
+      expect(s.atBoundary()).toBe(false);
+      s.consume(enc('\n'));
+      expect(s.atBoundary()).toBe(true);
+    });
+
+    it('CRLF 换行按 \n 判定', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":1}\r\n\r\n'));
+      expect(s.atBoundary()).toBe(true);
+    });
+
+    it('reset 重置边界为 true', () => {
+      const s = new SseScanner();
+      s.consume(enc('data: {"a":'));
+      expect(s.atBoundary()).toBe(false);
+      s.reset();
+      expect(s.atBoundary()).toBe(true);
+    });
+  });
+
+  it('onErrorFrame 回调在捕获首个错误帧时触发', () => {
+    const frames: { code: string }[] = [];
+    const s = new SseScanner({ onErrorFrame: (frame) => frames.push(frame) });
+    s.consume(enc('data: {"error":{"code":"rate_limited","message":"slow down"}}\n\n'));
+    s.consume(enc('data: {"error":{"code":"other"}}\n\n'));
+    expect(frames).toHaveLength(1);
+    expect(frames[0]?.code).toBe('rate_limited');
+  });
+
+  it('非错误帧不触发 onErrorFrame', () => {
+    const frames: unknown[] = [];
+    const s = new SseScanner({ onErrorFrame: (frame) => frames.push(frame) });
+    s.consume(enc('data: {"usage":{"prompt_tokens":1}}\n\n'));
+    expect(frames).toHaveLength(0);
+  });
 });
