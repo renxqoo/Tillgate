@@ -1,7 +1,7 @@
-# Tempo 配置（链路追踪存储，带保留期限）
+# Tempo v3 配置（链路追踪存储）
+# v3 默认 block-retention=336h（14 天），此处仅配置必要项
 server:
   http_listen_port: 3200
-  grpc_listen_port: 4317
 
 distributor:
   receivers:
@@ -12,21 +12,13 @@ distributor:
         http:
           endpoint: 0.0.0.0:4318
 
-ingester:
-  # trace 分块后落盘（每个 block 默认 2h 切割）
-  max_block_duration: 5m
-
-compactor:
-  # 数据保留：7 天后自动删除（compaction 周期检查）
-  # 生产可按需调整（trace 排障价值随时间递减，7 天足够）
-  retention_enabled: true
-  compaction_interval: 30m
-  retention: 168h  # 7 天
-
 storage:
   trace:
     backend: local
     local:
-      path: /var/tempo/traces   # 持久化路径（配合 compose volume）
+      path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+
+# v3 默认保留 336h（14 天），无需显式配置 compactor
+# 如需改保留期：用 CLI flag -backend-worker.compaction.block-retention=168h

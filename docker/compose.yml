@@ -136,6 +136,9 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     profiles: ['obs']
+    ports:
+      - '4318:4318'  # OTLP HTTP（宿主机 gateway/worker/admin-api 推送到此）
+      - '4317:4317'  # OTLP gRPC
     volumes:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     depends_on:
@@ -146,22 +149,26 @@ services:
   prometheus:
     image: prom/prometheus:latest
     profiles: ['obs']
+    ports:
+      - '9090:9090'  # Prometheus UI
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=15d'   # 指标保留 15 天（默认值，显式声明）
-      - '--storage.tsdb.retention.size=5GB'   # 磁盘上限保护（超 5GB 自动删旧）
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.size=5GB'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus           # 持久化（容器重启不丢）
+      - prometheus-data:/prometheus
     restart: unless-stopped
 
   tempo:
     image: grafana/tempo:latest
     profiles: ['obs']
+    ports:
+      - '3200:3200'  # Tempo UI / API（Grafana 查 trace 用）
     command: ['-config.file=/etc/tempo.yaml']
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro
-      - tempo-data:/var/tempo                 # 持久化（trace 数据容器重启不丢）
+      - tempo-data:/var/tempo
     restart: unless-stopped
 
   grafana:
