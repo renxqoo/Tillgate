@@ -146,8 +146,13 @@ services:
   prometheus:
     image: prom/prometheus:latest
     profiles: ['obs']
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=15d'   # 指标保留 15 天（默认值，显式声明）
+      - '--storage.tsdb.retention.size=5GB'   # 磁盘上限保护（超 5GB 自动删旧）
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus           # 持久化（容器重启不丢）
     restart: unless-stopped
 
   tempo:
@@ -156,6 +161,7 @@ services:
     command: ['-config.file=/etc/tempo.yaml']
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo                 # 持久化（trace 数据容器重启不丢）
     restart: unless-stopped
 
   grafana:
@@ -180,3 +186,5 @@ volumes:
   pg-data:
   certbot-etc: # TLS 证书（/etc/letsencrypt）
   certbot-web: # certbot webroot 验证（/var/www/certbot）
+  prometheus-data: # 指标持久化（15 天保留 + 5GB 上限）
+  tempo-data: # 链路追踪持久化（7 天保留）
