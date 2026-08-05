@@ -7,6 +7,7 @@ import {
   boolean,
   smallint,
   index,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
@@ -20,12 +21,12 @@ export const plans = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     name: varchar('name', { length: 32 }).notNull(),
-    /** 售价（厘） */
-    price: bigint('price', { mode: 'number' }).notNull(),
+    /** 售价（元，numeric 全精度） */
+    price: numeric('price', { precision: 38, scale: 18 }).notNull(),
     /** 周期天数（30 / 365） */
     periodDays: bigint('period_days', { mode: 'number' }).notNull(),
-    /** 金额额度（厘，按「官方价×系数」折算扣减，与按量同口径） */
-    quotaAmount: bigint('quota_amount', { mode: 'number' }).notNull(),
+    /** 金额额度（元，按「官方价×系数」折算扣减，与按量同口径） */
+    quotaAmount: numeric('quota_amount', { precision: 38, scale: 18 }).notNull(),
     /** 额度耗尽后是否允许用余额（默认 true，套餐级开关） */
     fallbackToBalance: boolean('fallback_to_balance').notNull().default(true),
     /** 0 启用 / 1 停用 */
@@ -47,10 +48,10 @@ export const userSubscriptions = pgTable(
       .references(() => plans.id),
     startAt: timestamp('start_at', { withTimezone: true }).notNull(),
     endAt: timestamp('end_at', { withTimezone: true }).notNull(),
-    /** 额度快照（厘） */
-    quotaAmount: bigint('quota_amount', { mode: 'number' }).notNull(),
-    /** 已用额度（厘，原子扣减，同余额模式） */
-    usedAmount: bigint('used_amount', { mode: 'number' }).notNull().default(0),
+    /** 额度快照（元，numeric 全精度） */
+    quotaAmount: numeric('quota_amount', { precision: 38, scale: 18 }).notNull(),
+    /** 已用额度（元，原子扣减，同余额模式） */
+    usedAmount: numeric('used_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 0 有效 / 1 到期 / 2 取消 */
     status: smallint('status').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

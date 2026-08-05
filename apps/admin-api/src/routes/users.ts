@@ -44,8 +44,8 @@ const userUpdateSchema = z.object({
 });
 
 const userAdjustSchema = z.object({
-  /** 调账金额（厘），正=增加，负=扣减 */
-  amount: z.number().int().refine((v) => v !== 0, '调账金额不能为 0'),
+  /** 调账金额（元，小数），正=增加，负=扣减 */
+  amount: z.coerce.number().refine((v) => v !== 0, '调账金额不能为 0'),
   remark: z.string().max(255).optional(),
 });
 
@@ -161,7 +161,27 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       if (body.status === 1) update.freezeReason = body.freezeReason ?? '管理员封禁';
       if (body.status === 0) update.freezeReason = null;
 
-      const [updated] = await db.update(users).set(update).where(eq(users.id, id)).returning();
+      // 显式列白名单返回（资损/安全防线）：绝不能 .returning() 无参返回整行——
+      // users 表含 password_hash（scrypt 凭据），无参 returning 会把它泄露进响应体。
+      // 与同文件 GET handler 的列集合保持一致。
+      const [updated] = await db.update(users).set(update).where(eq(users.id, id)).returning({
+        id: users.id,
+        issuer: users.issuer,
+        subject: users.subject,
+        identityProvider: users.identityProvider,
+        email: users.email,
+        displayName: users.displayName,
+        role: users.role,
+        rateCardId: users.rateCardId,
+        balance: users.balance,
+        status: users.status,
+        freezeReason: users.freezeReason,
+        rpmLimit: users.rpmLimit,
+        tpmLimit: users.tpmLimit,
+        lastLoginAt: users.lastLoginAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      });
       if (!updated) return c.json({ error: '用户不存在' }, 404);
 
       // #5 修复：封禁/解封/限流变更时清 gateway auth cache（防封禁后 60s 内 key 仍可用）
@@ -191,7 +211,8 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       const adminId = c.get('adminId');
 
       // 扣减时检查不透支；增加时不检查
-      const result = await changeBalance(db, id, body.amount, {
+      const amountStr = String(body.amount);
+      const result = await changeBalance(db, id, amountStr, {
         checkSufficient: body.amount < 0,
         redis: getAdminRedis(),
       });
@@ -204,12 +225,12 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       await recordTransaction(db, {
         userId: id,
         type: 'manual',
-        amount: body.amount,
+        amount: amountStr,
         balanceBefore: result.balanceBefore,
         balanceAfter: result.balanceAfter,
         refType: 'admin_adjust',
         refId: adminId != null ? String(adminId) : undefined,
-        remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${body.amount}`,
+        remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${amountStr}`,
         createdBy: adminId ?? null,
       });
 
@@ -266,16 +287,17 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
     })
 
     // 手动赠送（管理员给用户加赠送额度，type=gift）
-    .post('/api/admin/users/:id/gift', jsonBody(z.object({ amount: z.number().int().positive(), remark: z.string().max(255).optional() })), async (c) => {
+    .post('/api/admin/users/:id/gift', jsonBody(z.object({ amount: z.coerce.number().positive(), remark: z.string().max(255).optional() })), async (c) => {
       const id = Number(c.req.param('id'));
       const body = c.req.valid('json');
       const adminId = c.get('adminId');
-      const result = await changeBalance(db, id, body.amount, { redis: getAdminRedis() });
+      const amountStr = String(body.amount);
+      const result = await changeBalance(db, id, amountStr, { redis: getAdminRedis() });
       if (!result.ok) return c.json({ error: '用户不存在' }, 404);
       await recordTransaction(db, {
         userId: id,
         type: 'gift',
-        amount: body.amount,
+        amount: amountStr,
         balanceBefore: result.balanceBefore,
         balanceAfter: result.balanceAfter,
         refType: 'admin_gift',

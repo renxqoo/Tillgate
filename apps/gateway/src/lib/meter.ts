@@ -26,21 +26,20 @@ export interface MeterJobData {
     outputTokens: number;
     estimated: boolean;
   };
-  // ---- 价格快照（厘/百万 token，从 model_mappings 取） ----
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
-  /** 费率卡系数（数值，如 1.0） */
-  coefficient: number;
-  coefficientMilli: number;
+  // ---- 价格快照（元/百万 token，string，从 model_mappings numeric 列取） ----
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  /** 费率卡系数（小数 string，如 "1.0"） */
+  coefficient: string;
   /** 请求耗时 ms */
   durationMs: number;
   /** 是否流式 */
   stream: boolean;
   /** 流式是否中断（terminated） */
   streamAborted: boolean;
-  /** 预扣金额（厘），worker 结算时对账用（hold 期间余额被占，结算后对账补扣/退款） */
-  holdAmount: number;
+  /** 预扣金额（元 string），worker 结算时对账用 */
+  holdAmount: string;
   /** 模型映射 ID（模型级 TPM 回填用） */
   mappingId: number;
 }

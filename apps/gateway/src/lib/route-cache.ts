@@ -58,20 +58,37 @@ interface MappingCache {
   externalName: string;
   realModel: string;
   status: number;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
   fallbackModels: string[] | null;
   paramRules: unknown;
   rpmLimit: number | null;
   tpmLimit: number | null;
 }
 
+/**
+ * 进程内存中的渠道缓存项（getChannels 返回值）。
+ * apiKey 是解密后的明文——仅在内存，永不落 Redis / 日志。
+ */
 export interface ChannelCache {
   channelId: number;
   baseUrl: string;
-  /** 解密后的 apiKey（敏感：仅在进程内存，永不日志/返回） */
+  /** 解密后的 apiKey（敏感：仅在进程内存，永不日志/返回/落 Redis） */
   apiKey: string;
+  protocol: ChannelDesc['protocol'];
+  providerName: string;
+  key: string;
+}
+
+/**
+ * 落 Redis 的缓存项（C1 修复后：只存密文 apiKeyEnc，不存明文 apiKey）。
+ * Redis 落盘/共享/被攻破时泄露的是密文（需 ENCRYPTION_KEY 才能解），而非可用凭据。
+ */
+interface ChannelCacheStored {
+  channelId: number;
+  baseUrl: string;
+  apiKeyEnc: string; // 密文（落 Redis 安全）
   protocol: ChannelDesc['protocol'];
   providerName: string;
   key: string;
@@ -145,7 +162,9 @@ export async function getChannels(
     const cached = await redis.get(key);
     if (cached !== null) {
       if (cached === EMPTY_MARKER) return [];
-      return JSON.parse(cached) as ChannelCache[];
+      // Redis 存的是密文版（ChannelCacheStored），读出后在内存解密成 ChannelCache
+      const stored = JSON.parse(cached) as ChannelCacheStored[];
+      return stored.map((s) => ({ ...s, apiKey: decrypt(s.apiKeyEnc, encryptionKey) }));
     }
   } catch {
     // Redis 不可用 → 查 DB
@@ -170,7 +189,8 @@ export async function getChannels(
     .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
     .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
 
-  const result: ChannelCache[] = rows.map((row) => ({
+  // C1 修复：内存对象含解密明文 apiKey（供调用方用）；落 Redis 的只含密文 apiKeyEnc。
+  const memResult: ChannelCache[] = rows.map((row) => ({
     channelId: row.channelId,
     baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
     apiKey: decrypt(row.apiKeyEnc, encryptionKey),
@@ -178,11 +198,20 @@ export async function getChannels(
     providerName: row.providerName,
     key: `${row.providerName}/${row.channelName}`,
   }));
+  // 落 Redis 的版本：apiKeyEnc（密文），不含明文
+  const storedResult: ChannelCacheStored[] = rows.map((row) => ({
+    channelId: row.channelId,
+    baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
+    apiKeyEnc: row.apiKeyEnc,
+    protocol: row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'],
+    providerName: row.providerName,
+    key: `${row.providerName}/${row.channelName}`,
+  }));
 
   try {
-    await redis.set(key, result.length > 0 ? JSON.stringify(result) : EMPTY_MARKER, 'EX', CACHE_TTL_SEC);
+    await redis.set(key, storedResult.length > 0 ? JSON.stringify(storedResult) : EMPTY_MARKER, 'EX', CACHE_TTL_SEC);
   } catch {
     /* Redis 不可用：不回填 */
   }
-  return result;
+  return memResult;
 }

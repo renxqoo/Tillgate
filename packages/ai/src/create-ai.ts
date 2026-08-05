@@ -40,6 +40,22 @@ import type {
 
 const noop = (): void => {};
 
+/**
+ * Best-effort fire-and-forget：执行熔断/死凭据的状态写入但不阻塞数据流，
+ * 且吞掉存储错误（Redis 宕机/抖动时绝不能产生 unhandledRejection 崩进程）。
+ *
+ * 熔断是「尽力而为的保护机制」（见 breaker.ts 注释），其状态写入失败只意味着
+ * 本实例的计数/状态可能暂时不准，不应影响正在成功的请求，更不应让 gateway 进程
+ * 因 `void rejectedPromise` 触发 Node 默认的 throw-on-unhandledRejection 而崩溃。
+ *
+ * gateway 注入的 Redis 业务连接配了 enableOfflineQueue:false —— 宕机时命令立即 reject，
+ * 若这里用裸 `void breaker.recordSuccess()`，reject 被 `void` 丢弃且无 .catch()，
+ * 会冒泡成 unhandledRejection 杀掉整个 gateway 进程（含所有在途 SSE 长连接）。
+ */
+function fireAndForget(p: Promise<unknown>): void {
+  p.catch(noop);
+}
+
 function joinUrl(baseUrl: string, path: string): string {
   return baseUrl.replace(/\/+$/, '') + path;
 }
@@ -91,10 +107,17 @@ function emitTo(listeners: Array<(e: AiEvent) => void>, e: AiEvent): void {
   }
 }
 
-function authHeaders(channel: ChannelDesc): Record<string, string> {
+/**
+ * 上游请求头。
+ * C5 修复：加 Idempotency-Key（= requestId）。withRetry 在 retryable 错误时会重发 POST，
+ * 若上游已处理首请求（仅响应丢失/超时），重试会触发第二次生成 → 供应商成本翻倍。
+ * Idempotency-Key 让供应商侧按 requestId 去重（OpenAI/多数供应商支持该头）。
+ */
+function authHeaders(channel: ChannelDesc, requestId: string): Record<string, string> {
   return {
     authorization: `Bearer ${channel.apiKey}`,
     'content-type': 'application/json',
+    'idempotency-key': requestId,
   };
 }
 
@@ -224,7 +247,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           try {
             const res = await fetchUpstream(
               url,
-              { method: 'POST', headers: authHeaders(input.channel), body: JSON.stringify(body) },
+              { method: 'POST', headers: authHeaders(input.channel, requestId), body: JSON.stringify(body) },
               { connectMs: cfg.timeout.connectMs, signal: totalSignal, allowLocal: cfg.allowLocalUrl },
             );
             if (res.status >= 400) {
@@ -357,7 +380,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；connectMs 保证连接
             const res = await fetchUpstream(
               url,
-              { method: 'POST', headers: authHeaders(input.channel), body: JSON.stringify(body) },
+              { method: 'POST', headers: authHeaders(input.channel, requestId), body: JSON.stringify(body) },
               { connectMs: cfg.timeout.connectMs, signal, allowLocal: cfg.allowLocalUrl },
             );
             if (res.status >= 400) {
@@ -404,8 +427,10 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
         inactivityTimeoutMs: cfg.stream.inactivityTimeoutMs,
       });
       // 拿到首帧才算成功
-      void breaker.recordSuccess();
-      void credential.recordSuccess();
+      // 熔断/死凭据状态写入是 best-effort：不阻塞数据流，且吞掉存储错误
+      // （Redis 宕机时 fireAndForget 防 unhandledRejection 崩进程）
+      fireAndForget(breaker.recordSuccess());
+      fireAndForget(credential.recordSuccess());
       handle.onEvent((e) => {
         switch (e.type) {
           case 'stream_error':
@@ -416,7 +441,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             // B6：非客户端断开 → 计入熔断（渠道故障：inactivity/upstream_disconnected）
             // client_disconnect 是用户主动断开，非渠道问题，不计熔断
             if (e.reason !== 'client_disconnect') {
-              void breaker.recordFailure({ circuitTrip: true });
+              fireAndForget(breaker.recordFailure({ circuitTrip: true }));
             }
             break;
           case 'done': {

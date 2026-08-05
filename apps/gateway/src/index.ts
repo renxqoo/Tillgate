@@ -177,7 +177,7 @@ if (isMain) {
   // 阈值=0：仅回收 ttl===-1（无 TTL 的异常残留），不碰仍在 TTL 内的正常在途 hold。
   // （旧值 60_000 会把 TTL 剩余 <60s 的长请求 hold 误回收 → 余额错乱资损）
   const reclaimTimer = setInterval(() => {
-    billing.reclaimExpiredHolds(0).then((n) => {
+    billing.reclaimExpiredHolds().then((n) => {
       if (n > 0) logger.info({ reclaimed: n }, 'reclaimed leaked holds (balance refunded)');
     }).catch((err) => {
       logger.warn({ err: (err as Error).message }, 'hold reclaim sweep failed');

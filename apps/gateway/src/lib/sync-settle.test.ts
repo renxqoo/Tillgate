@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Decimal } from '@ai-gateway/money';
 import type { Db } from '@ai-gateway/db';
 import { syncSettle, type SyncSettleData } from './sync-settle.js';
 
@@ -9,6 +10,8 @@ import { syncSettle, type SyncSettleData } from './sync-settle.js';
  *
  * 幂等：与 worker settle 共享 usage_logs.request_id 唯一约束 + transactions 部分唯一索引。
  * → Redis 恢复后 worker 收到同一 job 也会跳过（已结算），不重复扣费。
+ *
+ * C1 修复后行为：透支=坏账（status=2），不扣余额、不写 consume 流水。
  */
 
 const MOCK_DATA: SyncSettleData = {
@@ -21,61 +24,73 @@ const MOCK_DATA: SyncSettleData = {
   realModel: 'test-real',
   channelId: null,
   usage: { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 500, estimated: false },
-  inputPrice: 1_000_000,
-  outputPrice: 2_000_000,
-  cacheInputPrice: 100_000,
-  coefficient: 1.0,
-  coefficientMilli: 1000,
+  inputPrice: '1',
+  outputPrice: '2',
+  cacheInputPrice: '0.1',
+  coefficient: '1.0',
   durationMs: 100,
   stream: false,
   streamAborted: false,
-  holdAmount: 0,
+  holdAmount: '0',
   mappingId: 1,
 };
 
-/** mock db.transaction：模拟 drizzle 链式调用（values → onConflictDoNothing → returning） */
-const mockReturning = (settled: boolean) => vi.fn().mockResolvedValue(settled ? [{ id: 1 }] : []);
-const mockConflict = (settled: boolean) => vi.fn().mockReturnValue({ returning: mockReturning(settled) });
-const mockValues = (settled: boolean) => vi.fn().mockReturnValue({ onConflictDoNothing: mockConflict(settled) });
-const mockUpdateReturning = () => vi.fn().mockResolvedValue([{ balance: 99998000 }]);
-const mockUpdateWhere = () => vi.fn().mockReturnValue({ returning: mockUpdateReturning() });
-const mockUpdateSet = () => vi.fn().mockReturnValue({ where: mockUpdateWhere() });
-const mockTxUpdate = () => vi.fn().mockReturnValue({ set: mockUpdateSet() });
-
-function makeMockDb(settled: boolean = true) {
-  const tx = {
-    insert: vi.fn().mockReturnValue({ values: mockValues(settled) }),
-    update: mockTxUpdate(),
-  };
-  return {
-    transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
-  } as unknown as Db;
-}
-
-/** mock insert 链：values → onConflictDoNothing → returning（透支测试用） */
-function makeInsertChain(returning: unknown[]): {
-  values: ReturnType<typeof vi.fn>;
-} {
-  return {
+/** mock insert 链：values → onConflictDoNothing → returning */
+function makeInsertChain(returning: unknown[]) {
+  return vi.fn().mockReturnValue({
     values: vi.fn().mockReturnValue({
       onConflictDoNothing: vi.fn().mockReturnValue({
         returning: vi.fn().mockResolvedValue(returning),
       }),
     }),
+  });
+}
+
+/** mock update 链：set → where → returning（命中返回新余额） */
+function makeUpdateChain(returning: unknown[]) {
+  return vi.fn().mockReturnValue({
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue(returning),
+      }),
+    }),
+  });
+}
+
+/**
+ * 构造 mock 事务。
+ * @param insertReturning usage_logs INSERT returning（[] = 已结算幂等跳过）
+ * @param updateReturning users UPDATE returning（扣费后余额；负数 = 透支欠款）
+ */
+function makeTx(opts: {
+  insertReturning?: unknown[];
+  updateReturning?: unknown[];
+}) {
+  return {
+    insert: makeInsertChain(opts.insertReturning ?? [{ id: 1 }]),
+    update: makeUpdateChain(opts.updateReturning ?? [{ balance: 99998000 }]),
   };
 }
 
-describe('syncSettle（meter 入队失败时的同步降级结算）', () => {
+function makeDb(tx: unknown): Db {
+  return {
+    transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
+  } as unknown as Db;
+}
+
+describe('syncSettle（meter 入队失败时的同步降级结算，元 + decimal）', () => {
   it('首次结算 → 成功扣费', async () => {
-    const db = makeMockDb(true);
-    const result = await syncSettle(db, MOCK_DATA);
+    const tx = makeTx({ insertReturning: [{ id: 1 }] });
+    const result = await syncSettle(makeDb(tx), MOCK_DATA);
     expect(result.settled).toBe(true);
-    expect(result.amount).toBeGreaterThan(0);
+    // amount = (1000×1 + 500×2)/1e6 = 0.002 元（非 0）
+    expect(new Decimal(result.amount).gt(0)).toBe(true);
+    expect(result.overdraft).toBe(false);
   });
 
   it('重复结算（已结算）→ 幂等跳过（settled=false）', async () => {
-    const db = makeMockDb(false); // returning 空 = 已存在
-    const result = await syncSettle(db, MOCK_DATA);
+    const tx = makeTx({ insertReturning: [] }); // returning 空 = 已存在
+    const result = await syncSettle(makeDb(tx), MOCK_DATA);
     expect(result.settled).toBe(false);
   });
 
@@ -89,40 +104,31 @@ describe('syncSettle（meter 入队失败时的同步降级结算）', () => {
   });
 
   it('零用量 → amount=0，仍写 usage_logs（审计记录）', async () => {
-    const db = makeMockDb(true);
-    const result = await syncSettle(db, { ...MOCK_DATA, usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, estimated: false } });
-    expect(result.amount).toBe(0);
+    const tx = makeTx({ insertReturning: [{ id: 1 }] });
+    const result = await syncSettle(makeDb(tx), {
+      ...MOCK_DATA,
+      usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+    });
+    expect(new Decimal(result.amount).isZero()).toBe(true);
     expect(result.settled).toBe(true);
   });
 
-  // ---- P0 资损修复：透支守卫（WHERE balance >= amount）----
-  // insertChain 提到模块作用域（避免 unicorn/consistent-function-scoping）
-  it('透支守卫：UPDATE 返回空（余额 < amount）→ 不扣费，overdraft=true，写 OVERDRAFT 流水', async () => {
-    // 透支分支：update.returning 返回空 []（条件 WHERE balance>=amount 未命中）
-    // 需要 mock 两条 insert 链（usage_logs 命中返回 id + transactions OVERDRAFT 流水）
-    //   + update.returning=[] + query.users.findFirst（读当前余额）
-    const overdraftTx = {
-      insert: vi.fn().mockImplementation(() => makeInsertChain([{ id: 1 }])),
-      update: vi.fn().mockReturnValue({
-        set: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([]), // 余额不足，UPDATE 0 行
-          }),
-        }),
-      }),
-      query: {
-        users: { findFirst: vi.fn().mockResolvedValue({ balance: 500 }) },
-      },
-    };
-    const db = {
-      transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(overdraftTx)),
-    } as unknown as Db;
-    const result = await syncSettle(db, MOCK_DATA);
+  // ---- 透支：允许负余额模型（如实扣全额，余额可为负 = 欠款）----
+  it('透支：余额 < amount → 如实扣全额，update 返回负数余额，overdraft=true', async () => {
+    // 余额 0.001，amount 0.002 → update 返回 -0.001（透支欠款）
+    const tx = makeTx({ insertReturning: [{ id: 1 }], updateReturning: [{ balance: '-0.001' }] });
+    const result = await syncSettle(makeDb(tx), MOCK_DATA);
     expect(result.settled).toBe(true);
-    expect(result.overdraft).toBe(true);
-    expect(result.amount).toBe(2000); // 真实费用仍记录（对账用）
-    // 写了两条 insert（usage_logs + OVERDRAFT transactions）
-    expect(overdraftTx.insert).toHaveBeenCalledTimes(2);
-    expect(overdraftTx.query.users.findFirst).toHaveBeenCalled();
+    expect(result.overdraft).toBe(true); // 余额为负 → 透支标记
+    expect(new Decimal(result.amount).equals(new Decimal('0.002'))).toBe(true); // 真实费用如实记录
+    // 写 2 条 insert（usage_logs + consume 流水）—— 透支也如实写流水
+    expect(tx.insert).toHaveBeenCalledTimes(2);
+  });
+
+  it('正常计费：update 返回非负余额 → overdraft=false', async () => {
+    const tx = makeTx({ insertReturning: [{ id: 1 }], updateReturning: [{ balance: '99.998' }] });
+    const result = await syncSettle(makeDb(tx), MOCK_DATA);
+    expect(result.settled).toBe(true);
+    expect(result.overdraft).toBe(false);
   });
 });

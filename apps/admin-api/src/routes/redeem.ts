@@ -30,8 +30,8 @@ import type { AdminEnv } from '../middleware/session.js';
 const batchCreateSchema = z.object({
   name: z.string().min(1).max(64),
   remark: z.string().max(255).optional(),
-  /** 面额（厘），正整数 */
-  amount: z.number().int().positive(),
+  /** 面额（元，正小数） */
+  amount: z.coerce.number().positive(),
   /** 生成数量，1~10000 */
   count: z.number().int().min(1).max(10_000),
   expiresAt: z.string().datetime().optional(),
@@ -68,7 +68,7 @@ export function redeemAdminRoutes(db: Db): Hono<AdminEnv> {
           .values({
             name: body.name,
             remark: body.remark ?? null,
-            amount: body.amount,
+            amount: String(body.amount),
             total: body.count,
             usedCount: 0,
             createdBy: creatorId,

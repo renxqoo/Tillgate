@@ -36,6 +36,11 @@ services:
     env_file:
       - path: ../.env
         required: true
+    environment:
+      # B1 修复：容器内 localhost 指向容器自身，必须显式覆盖为 compose 服务名。
+      # POSTGRES_PASSWORD / POSTGRES_USER / POSTGRES_DB 来自 .env（与 postgres 服务同源）。
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -47,6 +52,7 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
+    stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
     # 多副本：docker compose up -d --scale gateway=2
 
   worker:
@@ -58,12 +64,16 @@ services:
     env_file:
       - path: ../.env
         required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
 
   admin-api:
     build:
@@ -74,12 +84,16 @@ services:
     env_file:
       - path: ../.env
         required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
     # 安全：不发布任何端口，仅 compose 内网可达（console 服务端代理调用）
 
   console:
@@ -89,6 +103,9 @@ services:
     env_file:
       - path: ../.env
         required: true
+    environment:
+      # B2 修复：console 容器内必须指向 admin-api 服务，而非 localhost（=自己）。
+      ADMIN_API_BASE: http://admin-api:8790
     depends_on:
       - admin-api
     restart: unless-stopped
@@ -107,11 +124,14 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ['redis-server', '--appendonly', 'yes']
+    # B3 修复：启用 requirepass（与 REDIS_URL 的密码对齐），生产 Redis 不裸奔。
+    # REDIS_PASSWORD 来自 .env（默认 root123 仅开发；生产务必覆盖为强随机值）。
+    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:-root123}']
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      # 带鉴权 ping（requirepass 启用后无密码 ping 返回 NOAUTH）
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD:-root123}', 'ping']
       interval: 5s
       timeout: 3s
       retries: 10

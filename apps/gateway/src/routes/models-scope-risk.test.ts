@@ -41,7 +41,7 @@ function baseAuth(over: Partial<AuthContext>): AuthContext {
     apiKeyId: null,
     appId: null,
     credentialType: 'jwt',
-    coefficientMilli: 1000,
+    coefficient: '1.0',
     rateCardId: null,
     keyRpmLimit: null,
     userRpmLimit: null,

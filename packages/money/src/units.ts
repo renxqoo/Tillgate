@@ -1,31 +1,50 @@
 /**
- * 金额单位与换算（计算规范，见 data-model.md §1 与「计算规范」章节）
+ * 金额单位与计算规范（重构后：元 + numeric 全精度）。
  *
- * 防错原则：
- *   1. 金额一律整数「厘」（1 元 = 1000 厘），禁止浮点金额入账
- *   2. 单价单位为「厘 / 百万 token」（整数）
- *   3. 系数（numeric(6,3)）计算时 ×1000 转毫整数
- *   4. 先乘后除，只在最后一步一次舍入（Math.round，半值进一）
+ * 设计原则（金融级，与 data-model.md 一致）：
+ *   1. 金额一律「元」，DB 存 numeric(24,18)（精确到 1e-18 元，累加不丢精度）
+ *   2. 单价为「元 / 百万 token」（decimal，可带小数）
+ *   3. 系数为小数（如 1.5），不再 ×1000 编码成毫整数
+ *   4. 账本永不 round：calcAmount 返回 Decimal，全精度参与余额扣减/流水
+ *   5. 仅「对外结算」边界（平台↔渠道/提现）用银行家舍入到分（round-half-even），
+ *      尾差入平台专门科目；账本内部零 round
+ *
+ * 计算库：decimal.js（任意精度十进制，避免 IEEE754 浮点误差）。
+ * 边界约定：DB 读写用 string（drizzle numeric 原生 string），业务运算用 Decimal。
  */
+import Decimal from 'decimal.js';
 
-/** 厘/元 */
-export const LI_PER_YUAN = 1000;
-/** 单价分母：厘/百万 token */
+/** 单价分母：元/百万 token */
 export const PRICE_PER_MILLION = 1_000_000;
-/** 系数放大：numeric(6,3) 三位小数 → 毫整数 */
-export const COEFFICIENT_SCALE = 1000;
 
-/** 展示用：厘 → 元字符串（两位小数，仅展示，不进账本） */
-export function liToYuan(li: number): string {
-  return (li / LI_PER_YUAN).toFixed(2);
+/** 银行家舍入（round-half-even）：仅对外结算到分时使用 */
+Decimal.set({ rounding: Decimal.ROUND_HALF_EVEN });
+export { Decimal };
+
+/**
+ * 把 Decimal 金额舍入到「分」（0.01 元），用银行家舍入（half-even）。
+ * 仅用于对外结算边界（平台付渠道 / 用户提现），账本内部不调用。
+ * @returns 两位小数的元值（Decimal）
+ */
+export function toCents(amount: Decimal): Decimal {
+  return amount.toDecimalPlaces(2, Decimal.ROUND_HALF_EVEN);
 }
 
-/** 配置输入：元 → 厘（四舍五入到厘） */
-export function yuanToLi(yuan: number): number {
-  return Math.round(yuan * LI_PER_YUAN);
+/**
+ * 把 Decimal 格式化为 DB 可存的 string（numeric 列接受任意精度字符串）。
+ * 不做任何 round——保留全精度，让 DB numeric 存真实值。
+ */
+export function toStorage(amount: Decimal): string {
+  return amount.toString();
 }
 
-/** 系数（浮点，如 1.5）→ 毫整数（1500） */
-export function coefficientToMilli(coeff: number): number {
-  return Math.round(coeff * COEFFICIENT_SCALE);
+/**
+ * 把 string/number/Decimal 统一转成 Decimal（DB 读出的 numeric 是 string）。
+ * 非法输入（空/NaN）→ 0（防御，防污染运算）。
+ */
+export function toDecimal(v: Decimal | string | number | null | undefined): Decimal {
+  if (v instanceof Decimal) return v;
+  if (v === null || v === undefined || v === '') return new Decimal(0);
+  const d = new Decimal(v);
+  return d.isFinite() ? d : new Decimal(0);
 }

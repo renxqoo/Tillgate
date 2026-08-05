@@ -1,4 +1,4 @@
-import { pgTable, bigserial, varchar, timestamp, bigint, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, varchar, timestamp, bigint, index, uniqueIndex, numeric } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 
@@ -17,10 +17,10 @@ export const transactions = pgTable(
       .notNull()
       .references(() => users.id),
     type: varchar('type', { length: 16 }).notNull(),
-    /** 有符号：负=支出，正=收入 */
-    amount: bigint('amount', { mode: 'number' }).notNull(),
-    balanceBefore: bigint('balance_before', { mode: 'number' }).notNull(),
-    balanceAfter: bigint('balance_after', { mode: 'number' }).notNull(),
+    /** 有符号：负=支出，正=收入（元，numeric(24,18) 全精度） */
+    amount: numeric('amount', { precision: 38, scale: 18 }).notNull(),
+    balanceBefore: numeric('balance_before', { precision: 38, scale: 18 }).notNull(),
+    balanceAfter: numeric('balance_after', { precision: 38, scale: 18 }).notNull(),
     /** 来源关联（usage_logs.request_id / redeem_codes.id / 管理员） */
     refType: varchar('ref_type', { length: 32 }),
     refId: varchar('ref_id', { length: 64 }),

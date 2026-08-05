@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { channels } from './channels.js';
 
@@ -23,12 +24,12 @@ export const modelMappings = pgTable(
     realModel: varchar('real_model', { length: 128 }).notNull(),
     /** 0 上架 / 1 下架 */
     status: smallint('status').notNull().default(0),
-    /** 官方输入单价（厘/百万 token，随官方调价更新） */
-    inputPrice: bigint('input_price', { mode: 'number' }).notNull().default(0),
+    /** 官方输入单价（元/百万 token，numeric 全精度） */
+    inputPrice: numeric('input_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 官方输出单价 */
-    outputPrice: bigint('output_price', { mode: 'number' }).notNull().default(0),
+    outputPrice: numeric('output_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 官方缓存输入单价（缓存命中计价；不启用缓存计费则与输入价同值） */
-    cacheInputPrice: bigint('cache_input_price', { mode: 'number' }).notNull().default(0),
+    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** fallback 模型链（对外模型名数组，配置启用；默认空 = 不降级） */
     fallbackModels: jsonb('fallback_models').$type<string[]>(),
     /**

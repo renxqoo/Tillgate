@@ -2,6 +2,7 @@ import { sql, eq, and } from 'drizzle-orm';
 import { redeemCodes, redeemBatches, users, transactions } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
+import { Decimal } from '@ai-gateway/money';
 import { sha256Hex } from './secrets.js';
 import { unfreezeIfBadDebt } from './balance.js';
 
@@ -31,9 +32,9 @@ const BALANCE_CACHE_KEY = (userId: number) => `billing:balance:${userId}`;
 
 export interface RedeemResult {
   ok: boolean;
-  amount?: number;
-  balanceBefore?: number;
-  balanceAfter?: number;
+  amount?: string;
+  balanceBefore?: string;
+  balanceAfter?: string;
   code?: 'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired';
 }
 
@@ -82,10 +83,10 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string, 
     }
     const amount = batch[0]!.amount;
 
-    // 3. 原子加余额（RETURNING 拿前后值）
+    // 3. 原子加余额（RETURNING 拿前后值；amount 是元 string）
     const updated = await tx
       .update(users)
-      .set({ balance: sql`${users.balance} + ${amount}`, updatedAt: new Date() })
+      .set({ balance: sql`${users.balance} + ${amount}::numeric`, updatedAt: new Date() })
       .where(eq(users.id, userId))
       .returning({ balance: users.balance });
     if (updated.length === 0) {
@@ -93,7 +94,7 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string, 
       throw new Error('user_not_found');
     }
     const balanceAfter = updated[0]!.balance;
-    const balanceBefore = balanceAfter - amount;
+    const balanceBefore = new Decimal(balanceAfter).minus(new Decimal(amount)).toString();
 
     // 4. 写流水（type=redeem；幂等：ref_type='redeem_codes' 部分唯一索引 + ON CONFLICT）
     await tx.insert(transactions).values({
@@ -113,7 +114,7 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string, 
     return { ok: true, amount, balanceBefore, balanceAfter };
   }).then(async (r) => {
     // 5. 成功后解冻坏账冻结 + 失效 gateway 余额缓存（事务外，避免长事务）
-    if (r.ok && r.amount && r.amount > 0) {
+    if (r.ok && r.amount && new Decimal(r.amount).gt(0)) {
       await unfreezeIfBadDebt(db, userId).catch(() => {});
       // 失效 gateway 余额缓存：充值后 gateway 必须重读 DB，否则读到旧缓存（含负数）→ 误判余额不足
       redis?.del(BALANCE_CACHE_KEY(userId)).catch(() => {});

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { eq, and } from 'drizzle-orm';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { users, rateCards, rateCardCoefficients, transactions } from '@ai-gateway/db/schema';
+import { Decimal } from '@ai-gateway/money';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { sql } from 'drizzle-orm';
@@ -116,7 +117,9 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
       // #6 修复：原子条件 UPDATE（WHERE balance = 0）防并发首次登录双倍赠送
       // 旧实现 balance===0 + txCount===0 检查非原子，两个并发请求都能通过 → 各加一次 gift
       let gifted = false;
-      if (opts.giftAmount > 0 && user.balance === 0) {
+      const giftAmountStr = String(opts.giftAmount);
+      // 用 Decimal 判余额为 0（DB numeric 返回 '0.000...' 带尾随零，严格 === 不匹配）
+      if (opts.giftAmount > 0 && new Decimal(user.balance).isZero()) {
         const txCount = await db
           .select({ count: sql<number>`count(*)::int` })
           .from(transactions)
@@ -126,7 +129,7 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
           const result = await db.transaction(async (tx) => {
             const updated = await tx
               .update(users)
-              .set({ balance: sql`${users.balance} + ${opts.giftAmount}`, updatedAt: new Date() })
+              .set({ balance: sql`${users.balance} + ${giftAmountStr}::numeric`, updatedAt: new Date() })
               .where(sql`${users.id} = ${user.id} and ${users.balance} = 0`)
               .returning({ balance: users.balance });
             if (updated.length === 0) return null; // 并发竞态：已被另一个请求赠送，跳过
@@ -134,12 +137,12 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
             await tx.insert(transactions).values({
               userId: user.id,
               type: 'gift',
-              amount: opts.giftAmount,
-              balanceBefore: 0,
+              amount: giftAmountStr,
+              balanceBefore: '0',
               balanceAfter: after,
               refType: 'signup_gift',
               refId: `gift:${user.id}`,
-              remark: `新用户赠送 ${opts.giftAmount}`,
+              remark: `新用户赠送 ${giftAmountStr}`,
             }).onConflictDoNothing({
               target: [transactions.refType, transactions.refId],
               where: sql`ref_type = 'signup_gift'`,
@@ -214,9 +217,13 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
     })
 
     // 管理员开通本地账号（仅 role=1）：设置初始密码 + 绑定默认费率卡
+    // 鉴权断链修复：原实现读 c.get('session')，但 session 仅由 userSessionMiddleware 注入，
+    // 而它只挂 /api/me/*、/api/keys/* 等，未挂 /api/admin/*。/api/admin/* 链路只有
+    // adminIdInjector 注入的 adminId（role=1 时为 userId，否则 undefined）。改用 adminId：
+    // 既满足管理员判定（!=undefined 等价于 role=1），又取到操作人 userId 供审计。
     .post('/api/admin/users/:id/set-password', async (c) => {
-      const session = c.get('session');
-      if (!session || session.role !== 1) {
+      const adminId = c.get('adminId');
+      if (adminId === undefined) {
         return c.json({ error: { message: '需要管理员权限', code: 'FORBIDDEN' } }, 403);
       }
       const id = Number(c.req.param('id'));
@@ -245,7 +252,7 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
         }
       }
       await db.update(users).set(update).where(eq(users.id, id));
-      await recordAudit(db, { adminId: session.userId, action: 'user.set_password', targetType: 'user', targetId: id });
+      await recordAudit(db, { adminId, action: 'user.set_password', targetType: 'user', targetId: id });
       return c.json({ ok: true });
     });
 }

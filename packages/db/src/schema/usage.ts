@@ -20,7 +20,7 @@ import { userSubscriptions } from './plans.js';
 /**
  * usage_logs — 用量明细（只追加、长期保留，data-model.md §3.10）
  * 计费：amount = (未缓存输入×输入价 + 缓存输入×缓存价 + 输出×输出价)/1e6 × 系数
- * status: 0 成功已计费 / 1 失败不计费 / 2 坏账（status=2 时 amount-plan-payg = 未收回差额）
+ * status: 0 成功已计费 / 1 失败不计费（一期仅 0/1；透支如实扣全额，余额可为负=欠款，不单列坏账状态）
  */
 export const usageLogs = pgTable(
   'usage_logs',
@@ -44,20 +44,20 @@ export const usageLogs = pgTable(
     outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
     /** usage 缺失时按估算（估算结果全部按未缓存输入计） */
     tokensEstimated: boolean('tokens_estimated').notNull().default(false),
-    /** 官方价快照（厘/百万 token） */
-    inputPrice: bigint('input_price', { mode: 'number' }).notNull().default(0),
-    outputPrice: bigint('output_price', { mode: 'number' }).notNull().default(0),
-    cacheInputPrice: bigint('cache_input_price', { mode: 'number' }).notNull().default(0),
+    /** 官方价快照（元/百万 token，numeric 全精度） */
+    inputPrice: numeric('input_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    outputPrice: numeric('output_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 费率卡系数快照（最终单价 = 官方价 × 系数） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
-    /** 费用（厘）；status=0 时 = plan_amount + payg_amount */
-    amount: bigint('amount', { mode: 'number' }).notNull().default(0),
-    /** 上游成本估算（厘，官方价×实际用量快照；供应商对账数据基础） */
-    upstreamCost: bigint('upstream_cost', { mode: 'number' }).notNull().default(0),
+    /** 费用（元，numeric 全精度）；status=0 时 = plan_amount + payg_amount（实扣，余额可为负=欠款） */
+    amount: numeric('amount', { precision: 38, scale: 18 }).notNull().default('0'),
+    /** 上游成本估算（元，官方价×实际用量快照；供应商对账数据基础） */
+    upstreamCost: numeric('upstream_cost', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 套餐额度承担部分（默认 0） */
-    planAmount: bigint('plan_amount', { mode: 'number' }).notNull().default(0),
+    planAmount: numeric('plan_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 余额承担部分（默认 0） */
-    paygAmount: bigint('payg_amount', { mode: 'number' }).notNull().default(0),
+    paygAmount: numeric('payg_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** plan / payg / both（同一请求套餐+余额混扣） */
     billedBy: varchar('billed_by', { length: 8 }).notNull(),
     subscriptionId: bigint('subscription_id', { mode: 'number' }).references(

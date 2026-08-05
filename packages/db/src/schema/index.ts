@@ -12,4 +12,5 @@ export * from './transactions.js';
 export * from './redeem.js';
 export * from './logs.js';
 export * from './plans.js';
+export * from './reconcile.js';
 export * from './relations.js';

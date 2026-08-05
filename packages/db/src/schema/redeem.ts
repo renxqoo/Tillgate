@@ -7,6 +7,7 @@ import {
   bigint,
   index,
   uniqueIndex,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
@@ -17,8 +18,8 @@ export const redeemBatches = pgTable(
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     name: varchar('name', { length: 64 }).notNull(),
     remark: varchar('remark', { length: 255 }),
-    /** 统一面额（厘） */
-    amount: bigint('amount', { mode: 'number' }).notNull(),
+    /** 统一面额（元，numeric 全精度） */
+    amount: numeric('amount', { precision: 38, scale: 18 }).notNull(),
     total: bigint('total', { mode: 'number' }).notNull(),
     usedCount: bigint('used_count', { mode: 'number' }).notNull().default(0),
     createdBy: bigint('created_by', { mode: 'number' })

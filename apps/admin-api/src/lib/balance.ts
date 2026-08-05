@@ -2,6 +2,7 @@ import { sql, eq } from 'drizzle-orm';
 import { users, transactions } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
+import { Decimal } from '@ai-gateway/money';
 
 /** gateway 余额缓存键（与 apps/gateway/src/lib/billing.ts 一致，跨服务 DEL 失效） */
 const BALANCE_CACHE_KEY = (userId: number) => `billing:balance:${userId}`;
@@ -19,7 +20,7 @@ const BALANCE_CACHE_KEY = (userId: number) => `billing:balance:${userId}`;
  */
 
 export type BalanceChangeResult =
-  | { ok: true; balanceBefore: number; balanceAfter: number }
+  | { ok: true; balanceBefore: string; balanceAfter: string }
   | { ok: false; reason: 'not_found' | 'insufficient' };
 
 /**
@@ -35,45 +36,48 @@ export type BalanceChangeResult =
 export async function changeBalance(
   db: Db,
   userId: number,
-  amount: number,
+  amount: string | number,
   opts: { checkSufficient?: boolean; redis?: Redis } = {},
 ): Promise<BalanceChangeResult> {
-  const delta = Math.round(amount); // 厘整数
-  if (!Number.isFinite(delta)) return { ok: false, reason: 'not_found' };
+  // delta 用 string 透传给 DB（numeric 列原生 string，避免 JS number 浮点）
+  const delta = typeof amount === 'number' ? String(amount) : amount;
+  if (!/^-?\d+(\.\d+)?$/.test(delta)) return { ok: false, reason: 'not_found' };
 
-  // 失效 gateway 余额缓存（充值/扣费后，gateway 的 Redis 缓存必须失效，
-  // 否则下次请求读到旧缓存 → 误判余额不足/虚高。DEL 失败静默——TTL 1h 兜底）。
+  // 失效 gateway 余额缓存（充值/扣费后，gateway 的 Redis 缓存必须失效）。
+  // 注：重构后 gateway 不再缓存余额（DB 行锁权威），此处 DEL 仅清理可能的残留/兼容旧实例。
   const invalidateCache = () => {
     opts.redis?.del(BALANCE_CACHE_KEY(userId)).catch(() => {});
   };
 
   // 扣减且要求不透支：用条件 UPDATE（WHERE balance + delta >= 0）
-  if (delta < 0 && opts.checkSufficient) {
+  if (delta.startsWith('-') && opts.checkSufficient) {
     const updated = await db
       .update(users)
-      .set({ balance: sql`${users.balance} + ${delta}`, updatedAt: new Date() })
-      .where(sql`${users.id} = ${userId} and ${users.balance} + ${delta} >= 0`)
+      .set({ balance: sql`${users.balance} + ${delta}::numeric`, updatedAt: new Date() })
+      .where(sql`${users.id} = ${userId} and ${users.balance} + ${delta}::numeric >= 0`)
       .returning({ balance: users.balance });
     if (updated.length === 0) {
-      // 用户不存在 或 余额不足（二者需调用方按存在性区分）
       const exists = await db.select({ id: users.id }).from(users).where(sql`${users.id} = ${userId}`).limit(1);
       return { ok: false, reason: exists.length === 0 ? 'not_found' : 'insufficient' };
     }
     const after = updated[0]!.balance;
     invalidateCache();
-    return { ok: true, balanceBefore: after - delta, balanceAfter: after };
+    // balanceBefore = after - delta（用 Decimal 避免浮点）
+    const before = new Decimal(after).minus(new Decimal(delta)).toString();
+    return { ok: true, balanceBefore: before, balanceAfter: after };
   }
 
   // 普通变更（充值/赠送/调账，不检查透支）
   const updated = await db
     .update(users)
-    .set({ balance: sql`${users.balance} + ${delta}`, updatedAt: new Date() })
+    .set({ balance: sql`${users.balance} + ${delta}::numeric`, updatedAt: new Date() })
     .where(eq(users.id, userId))
     .returning({ balance: users.balance });
   if (updated.length === 0) return { ok: false, reason: 'not_found' };
   const after = updated[0]!.balance;
   invalidateCache();
-  return { ok: true, balanceBefore: after - delta, balanceAfter: after };
+  const before = new Decimal(after).minus(new Decimal(delta)).toString();
+  return { ok: true, balanceBefore: before, balanceAfter: after };
 }
 
 /**
@@ -85,9 +89,9 @@ export async function recordTransaction(
   input: {
     userId: number;
     type: 'consume' | 'redeem' | 'gift' | 'manual' | 'refund' | 'subscribe';
-    amount: number; // 有符号
-    balanceBefore: number;
-    balanceAfter: number;
+    amount: string; // 有符号（元，string）
+    balanceBefore: string;
+    balanceAfter: string;
     refType?: string;
     refId?: string;
     remark?: string;

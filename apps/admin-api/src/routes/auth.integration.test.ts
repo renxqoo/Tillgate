@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createDb, type Db } from '@ai-gateway/db';
 import { users, transactions, auditLogs } from '@ai-gateway/db/schema';
+import { Decimal } from '@ai-gateway/money';
 import { authRoutes } from './auth.js';
 import { userSessionMiddleware, type AdminEnv } from '../middleware/session.js';
 import { hashPassword } from '../lib/password.js';
@@ -33,7 +34,12 @@ loadEnvFile();
 const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 const db: Db = createDb(DATABASE_URL);
 const SECRET = 'test-jwt-secret-0123456789';
-const GIFT = 1000; // ¥1 = 1000 厘
+const GIFT = 1; // ¥1（元，重构后金额单位为元）
+
+/** 余额比较：DB 返回 string（numeric 带尾随零），用 Decimal.equals */
+function expectDec(actual: string | undefined, expected: string | number): void {
+  expect(new Decimal(actual ?? '0').equals(new Decimal(String(expected)))).toBe(true);
+}
 
 let connected = false;
 beforeAll(async () => {
@@ -56,7 +62,7 @@ function makeApp(): Hono<AdminEnv> {
   return app;
 }
 
-async function createLocalUser(subject: string, password: string, balance: number, status = 0): Promise<number> {
+async function createLocalUser(subject: string, password: string, balance: string, status = 0): Promise<number> {
   const hash = await hashPassword(password);
   const [u] = await db.insert(users).values({
     issuer: 'local',
@@ -80,7 +86,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('正确密码 → 登录成功 + Set-Cookie', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'login-test-' + Date.now();
-    const uid = await createLocalUser(subject, 'Passw0rd!', 5000);
+    const uid = await createLocalUser(subject, 'Passw0rd!', '5');
     const app = makeApp();
     try {
       const res = await app.request('/api/auth/login', {
@@ -104,7 +110,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('错误密码 → 401（统一消息，防枚举）', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'login-test-' + Date.now();
-    const uid = await createLocalUser(subject, 'RightPass1', 0);
+    const uid = await createLocalUser(subject, 'RightPass1', '0');
     const app = makeApp();
     try {
       const res = await app.request('/api/auth/login', {
@@ -136,7 +142,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('封禁用户 → 403', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'banned-' + Date.now();
-    const uid = await createLocalUser(subject, 'Passw0rd!', 0, 1);
+    const uid = await createLocalUser(subject, 'Passw0rd!', '0', 1);
     const app = makeApp();
     try {
       const res = await app.request('/api/auth/login', {
@@ -153,7 +159,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('新用户（余额0 + 无流水）首次登录 → 自动赠送 ¥1', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'newuser-' + Date.now();
-    const uid = await createLocalUser(subject, 'Passw0rd!', 0);
+    const uid = await createLocalUser(subject, 'Passw0rd!', '0');
     const app = makeApp();
     try {
       const res = await app.request('/api/auth/login', {
@@ -165,11 +171,11 @@ describe('登录 + 新用户赠送（集成）', () => {
       const body = await res.json() as { user: { gifted: boolean } };
       expect(body.user.gifted).toBe(true);
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(GIFT);
+      expectDec(u?.balance, GIFT);
       const txs = await db.select().from(transactions).where(eq(transactions.userId, uid));
       expect(txs).toHaveLength(1);
       expect(txs[0]!.type).toBe('gift');
-      expect(txs[0]!.amount).toBe(GIFT);
+      expectDec(txs[0]!.amount, GIFT);
     } finally {
       await cleanup(uid);
     }
@@ -178,7 +184,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('第二次登录不再赠送（按身份源唯一判定防刷）', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'repeat-' + Date.now();
-    const uid = await createLocalUser(subject, 'Passw0rd!', 0);
+    const uid = await createLocalUser(subject, 'Passw0rd!', '0');
     const app = makeApp();
     try {
       // 第一次：赠送
@@ -196,7 +202,7 @@ describe('登录 + 新用户赠送（集成）', () => {
       const body2 = await res2.json() as { user: { gifted: boolean } };
       expect(body2.user.gifted).toBe(false);
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(GIFT); // 仍是首次赠送的额度，未重复加
+      expectDec(u?.balance, GIFT); // 仍是首次赠送的额度，未重复加
     } finally {
       await cleanup(uid);
     }
@@ -214,7 +220,7 @@ describe('登录 + 新用户赠送（集成）', () => {
   it('修改密码：旧密码正确 → 成功；登录可用新密码', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'chpwd-' + Date.now();
-    const uid = await createLocalUser(subject, 'OldPass1', 100);
+    const uid = await createLocalUser(subject, 'OldPass1', '0.1');
     const app = makeApp();
     const session = await signSession({ userId: uid, role: 0 }, SECRET);
     try {

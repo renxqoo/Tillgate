@@ -58,7 +58,7 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
           requests: sql<number>`count(*)::int`,
           inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}),0)::bigint`,
           outputTokens: sql<number>`coalesce(sum(${usageLogs.outputTokens}),0)::bigint`,
-          cost: sql<number>`coalesce(sum(${usageLogs.amount}),0)::bigint`,
+          cost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric`,
           successCount: sql<number>`count(*) filter (where ${usageLogs.status} = 0)::int`,
         })
         .from(usageLogs)
@@ -80,7 +80,7 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
       // 总用户数 / 总费用
       const totals = await db
         .select({
-          totalCost: sql<number>`coalesce(sum(${usageLogs.amount}),0)::bigint`,
+          totalCost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric`,
           totalRequests: sql<number>`count(*)::int`,
         })
         .from(usageLogs);
@@ -125,8 +125,8 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
           inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}),0)::bigint`,
           outputTokens: sql<number>`coalesce(sum(${usageLogs.outputTokens}),0)::bigint`,
           cachedInputTokens: sql<number>`coalesce(sum(${usageLogs.cachedInputTokens}),0)::bigint`,
-          cost: sql<number>`coalesce(sum(${usageLogs.amount}),0)::bigint`,
-          upstreamCost: sql<number>`coalesce(sum(${usageLogs.upstreamCost}),0)::bigint`,
+          cost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric`,
+          upstreamCost: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
         })
         .from(usageLogs)
         .where(where)

@@ -7,6 +7,7 @@ import {
   smallint,
   timestamp,
   uniqueIndex,
+  numeric,
 } from 'drizzle-orm/pg-core';
 import { rateCards } from './billing.js';
 
@@ -27,7 +28,7 @@ export const users = pgTable(
     role: smallint('role').notNull().default(0),
     rateCardId: bigint('rate_card_id', { mode: 'number' }).references(() => rateCards.id),
     /** 余额（厘），权威账本字段，只允许通过结算事务原子修改（预扣/补扣/退款） */
-    balance: bigint('balance', { mode: 'number' }).notNull().default(0),
+    balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 0 正常 / 1 封禁 / 2 注销 */
     status: smallint('status').notNull().default(0),
     freezeReason: varchar('freeze_reason', { length: 128 }),

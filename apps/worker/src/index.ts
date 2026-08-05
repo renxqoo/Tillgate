@@ -5,6 +5,7 @@ import { createLogger } from '@ai-gateway/logger';
 import { initOtel, metrics } from '@ai-gateway/otel';
 import { createDb } from '@ai-gateway/db';
 import { settle, type MeterJobData } from './settle.js';
+import { reconcileAll } from './reconcile.js';
 import { createShutdownHandler } from './shutdown-handler.js';
 
 const env = loadWorkerEnv();
@@ -29,7 +30,7 @@ const meterFailedCounter = metrics.getMeter('worker.metrics').createCounter('met
  * 幂等：requestId（usage_logs 唯一约束，重复 job 自动跳过）
  *
  * 重试/兜底（资损防线）：
- *   - 生产者侧（meter.ts）已配 attempts:3 + 指数退避 + removeOnFail:true（死信永久留存）
+ *   - 生产者侧（meter.ts）已配 attempts:3 + 指数退避 + removeOnFail:false（死信永久留存，false=count:-1）
  *   - 消费侧 failed 事件：重试耗尽后记 error 日志 + 告警计数器，运维介入重放
  *   - P1：加 DLQ 自动重放 Worker（消费 failed 队列二次处理）
  */
@@ -73,13 +74,33 @@ meterWorker.on('error', (err) => {
 
 logger.info({ concurrency: env.WORKER_CONCURRENCY }, 'worker started (meter consumer)');
 
+// 对账作业（金融级护栏）：每小时跑一次，发现账本不平写 reconcile_discrepancies + 告警。
+// best-effort，异常不致命（独立于计费链路）。
+const reconcileTimer = setInterval(() => {
+  reconcileAll(db)
+    .then((r) => {
+      if (r.discrepancies > 0) {
+        logger.error({ checkedUsers: r.checkedUsers, discrepancies: r.discrepancies }, 'reconcile found discrepancies (账本不平，需核查 reconcile_discrepancies 表)');
+      } else {
+        logger.info({ checkedUsers: r.checkedUsers }, 'reconcile ok (账本一致)');
+      }
+    })
+    .catch((err) => {
+      logger.warn({ err: (err as Error).message }, 'reconcile job failed');
+    });
+}, 60 * 60 * 1000); // 每小时
+reconcileTimer.unref();
+
 // W-1：优雅关闭——SIGTERM/SIGINT 都处理，防重复触发，确保 process.exit
 const shutdown = createShutdownHandler(
   {
     closeWorker: () => meterWorker.close(),
     quitRedis: () => connection.quit(),
     endDb: () => db.$client.end(),
-    exit: (code) => process.exit(code),
+    exit: (code) => {
+      clearInterval(reconcileTimer);
+      process.exit(code);
+    },
   },
   logger,
 );

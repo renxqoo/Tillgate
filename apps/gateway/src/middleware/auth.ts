@@ -1,5 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, or, gt } from 'drizzle-orm';
 import { apiKeys, apps, rateCardCoefficients } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
@@ -26,8 +26,8 @@ export interface AuthContext {
   appId: number | null;
   /** key / jwt（计量记录用） */
   credentialType: 'key' | 'jwt';
-  /** 费率卡系数（毫，1.0 = 1000），用于计费 */
-  coefficientMilli: number;
+  /** 费率卡系数（小数 string，如 "1.0"），用于计费 */
+  coefficient: string;
   rateCardId: number | null;
   /** Key 级 RPM 限流（null = 继承用户/全局） */
   keyRpmLimit: number | null;
@@ -88,13 +88,18 @@ export function authMiddleware(db: Db, redis: Redis): MiddlewareHandler<AuthEnv>
 
       // S5：Redis 缓存 keyHash → 鉴权快照（cache miss 才查 DB）
       const cached = await keyCache.getOrLoad(keyHash, async () => {
+        // C4 修复：DB 查询直接过滤过期 Key（expires_at IS NULL 或 > now）。
+        // 原实现只按 keyHash 查 → 过期 Key 一直能用。
         const apiKey = await db.query.apiKeys.findFirst({
-          where: eq(apiKeys.keyHash, keyHash),
+          where: and(
+            eq(apiKeys.keyHash, keyHash),
+            or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, new Date())),
+          ),
           with: { user: true },
         });
         if (!apiKey) return null;
-        // 查费率卡系数
-        let coefficientMilli = 1000;
+        // 查费率卡系数（小数 string，如 "1.0"）
+        let coefficient = '1';
         if (apiKey.user.rateCardId) {
           const coeff = await db.query.rateCardCoefficients.findFirst({
             where: and(
@@ -103,19 +108,21 @@ export function authMiddleware(db: Db, redis: Redis): MiddlewareHandler<AuthEnv>
               isNull(rateCardCoefficients.modelMappingId),
             ),
           });
-          if (coeff) coefficientMilli = Math.round(Number(coeff.coefficient) * 1000);
+          if (coeff) coefficient = String(coeff.coefficient);
         }
         return {
           userId: apiKey.userId,
           apiKeyId: apiKey.id,
           status: apiKey.status,
           rateCardId: apiKey.user.rateCardId ?? null,
-          coefficientMilli,
+          coefficient,
           rpmLimit: apiKey.rpmLimit ?? null,
           tpmLimit: apiKey.tpmLimit ?? null,
           userStatus: apiKey.user.status,
           userRpmLimit: apiKey.user.rpmLimit ?? null,
           userTpmLimit: apiKey.user.tpmLimit ?? null,
+          // C4 修复：携带过期时间，缓存层据此判过期（DB 已过滤，但缓存窗口内需复核）
+          expiresAtMs: apiKey.expiresAt ? apiKey.expiresAt.getTime() : null,
           cachedAt: Date.now(),
         } as const;
       });
@@ -142,7 +149,7 @@ export function authMiddleware(db: Db, redis: Redis): MiddlewareHandler<AuthEnv>
         apiKeyId: cached.apiKeyId,
         appId: null,
         credentialType: 'key' as const,
-        coefficientMilli: cached.coefficientMilli,
+        coefficient: cached.coefficient,
         rateCardId: cached.rateCardId,
         keyRpmLimit: cached.rpmLimit,
         userRpmLimit: cached.userRpmLimit,
@@ -190,7 +197,7 @@ export function authMiddleware(db: Db, redis: Redis): MiddlewareHandler<AuthEnv>
       apiKeyId: null,
       appId: payload.appId,
       credentialType: 'jwt' as const,
-      coefficientMilli: Math.round(payload.coefficient * 1000),
+      coefficient: String(payload.coefficient),
       rateCardId: null,
       keyRpmLimit: null,
       userRpmLimit: null, // JWT 路径不查 DB 用户限流（用 scope 内的）

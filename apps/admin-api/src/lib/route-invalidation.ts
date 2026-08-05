@@ -15,7 +15,11 @@ import { Redis } from 'ioredis';
 const VERSION_KEY = 'route:cache:v';
 let redis: Redis | null = null;
 
-function getRedis(): Redis {
+/**
+ * admin-api 共享 Redis 单例（懒连接）。
+ * 用于路由缓存失效（bump 版本）+ 登录限流（C6）。复用同一连接避免多开。
+ */
+export function getAdminRedis(): Redis {
   if (!redis) {
     // 懒读 REDIS_URL（避免模块加载时触发 env 校验）
     const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
@@ -27,6 +31,11 @@ function getRedis(): Redis {
     });
   }
   return redis;
+}
+
+/** @deprecated 用 getAdminRedis（语义更清晰） */
+function getRedis(): Redis {
+  return getAdminRedis();
 }
 
 /**

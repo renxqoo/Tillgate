@@ -3,7 +3,7 @@ import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { type Ai, type ChannelDesc, type Usage, estimateTokens, extractRequestChars } from '@ai-gateway/ai';
 
-import { calcHold, estimateMaxCost } from '@ai-gateway/money';
+import { calcHold, estimateMaxCost, toDecimal } from '@ai-gateway/money';
 import { BillingService } from '../lib/billing.js';
 import { RateLimiter } from '../lib/rate-limit.js';
 import { MeterProducer } from '../lib/meter.js';
@@ -16,6 +16,7 @@ import { jsonBody } from '../lib/validation.js';
 import { estimateStreamUsage, estimateNonStreamUsage } from '../lib/stream-usage.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { isModelAllowed } from '../lib/model-scope.js';
+import { isChannelSwitchable } from '../lib/channel-switch.js';
 import { getMapping, getChannels, type ChannelCache } from '../lib/route-cache.js';
 import { env, logger } from '../index.js';
 
@@ -151,15 +152,14 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
           outputTokens: usage.outputTokens,
           estimated: usage.estimated,
         },
-        inputPrice: mapping.inputPrice,
-        outputPrice: mapping.outputPrice,
-        cacheInputPrice: mapping.cacheInputPrice,
-        coefficient: auth.coefficientMilli / 1000,
-        coefficientMilli: auth.coefficientMilli,
+        inputPrice: String(mapping.inputPrice),
+        outputPrice: String(mapping.outputPrice),
+        cacheInputPrice: String(mapping.cacheInputPrice),
+        coefficient: auth.coefficient,
         durationMs,
         stream,
         streamAborted,
-        holdAmount,
+        holdAmount: holdAmount.toString(),
         mappingId: mapping.id,
       };
       const result = await meter.enqueue(jobData);
@@ -203,34 +203,35 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
       maxOutputTokens,
       inputPrice: mapping.inputPrice,
       outputPrice: mapping.outputPrice,
-      coefficientMilli: auth.coefficientMilli,
+      coefficient: auth.coefficient,
     });
     const balance = await billing.getBalance(auth.userId);
-    const holdAmount = calcHold(estimate, balance, env.HOLD_MAX);
-    if (holdAmount <= 0 && balance <= 0) {
+    const balanceDec = toDecimal(balance);
+    const holdAmount = calcHold(estimate, balanceDec, env.HOLD_MAX);
+    if (holdAmount.isZero() && balanceDec.lte(0)) {
       // 余额耗尽才拒绝（estimate=0 但 balance>0 时不拦截：极小请求靠 worker 结算实际扣费）
       return errorResponse(
         c,
         402,
         'insufficient_balance',
-        `可用余额不足（当前余额 ${balance} 厘）`,
+        `可用余额不足（当前余额 ${balance} 元）`,
         '请充值后再试',
       );
     }
     // holdAmount=0（极小请求估算为 0）时跳过预扣，直接放行（靠 worker 结算实际扣费）
-    const holdResult = holdAmount > 0
+    const holdResult = !holdAmount.isZero()
       ? await billing.hold(auth.userId, requestId, holdAmount)
-      : { ok: true as const, balance, degraded: false };
+      : { ok: true as const, balance };
     if (!holdResult.ok) {
       return errorResponse(
         c,
         402,
         'insufficient_balance',
-        `可用余额不足（当前余额 ${holdResult.balance} 厘，需要预扣 ${holdAmount} 厘）`,
+        `可用余额不足（当前余额 ${holdResult.balance} 元，需要预扣 ${holdAmount.toString()} 元）`,
         '请充值后再试',
       );
     }
-    logger.debug({ requestId, userId: auth.userId, estimate, holdAmount, balance: holdResult.balance }, 'billing hold');
+    logger.debug({ requestId, userId: auth.userId, estimate: estimate.toString(), holdAmount: holdAmount.toString(), balance: holdResult.balance }, 'billing hold');
 
     // ---- 候选循环（requirements 5.9）----
     // 主模型渠道 → 全失败 → fallback 模型渠道 → 全失败 → 503
@@ -404,25 +405,4 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
 /** 候选渠道（渠道解析走 Redis 缓存，见 route-cache.ts 的 ChannelCache） */
 type ResolvedChannel = ChannelCache;
 
-/**
- * 判断错误是否值得换渠道（vs 直接返回客户端）：
- *   换渠道：5xx/网络/超时/死凭据/熔断/限流/空完成（渠道问题或配置问题，别的渠道可能好的）
- *   不换：400/404/413 等 4xx 客户端错误（换渠道也一样会失败）
- */
-const CHANNEL_SWITCHABLE_CODES = new Set([
-  'upstream_error',
-  'network',
-  'timeout',
-  'rate_limited',
-  'quota_exhausted',
-  'circuit_open',
-  'dead_credential',
-  'invalid_api_key', // 401 死凭据：此渠道 key 坏了，别的渠道可能好
-  'forbidden', // 403：同上
-  'empty_completion',
-  'invalid_response',
-]);
-
-function isChannelSwitchable(code: string | undefined): boolean {
-  return code ? CHANNEL_SWITCHABLE_CODES.has(code) : false;
-}
+// isChannelSwitchable 已抽到 lib/channel-switch.ts，与 embeddings 路由共用，杜绝两路由漂移。

@@ -13,8 +13,8 @@ import { changeBalance, type BalanceChangeResult, unfreezeIfBadDebt } from './ba
  */
 
 function makeMockDb(opts: {
-  /** update().returning() 返回的余额行（空 = 未更新） */
-  returningBalance?: number[];
+  /** update().returning() 返回的余额行（空 = 未更新）；余额为 string（DB numeric） */
+  returningBalance?: string[];
   /** select exists 探针返回的行数 */
   existsRows?: number;
 }) {
@@ -30,56 +30,59 @@ function makeMockDb(opts: {
   } as unknown as Parameters<typeof changeBalance>[0];
 }
 
-describe('changeBalance 逻辑分支', () => {
-  it('普通变更成功 → ok:true + before/after', async () => {
-    const db = makeMockDb({ returningBalance: [1050] });
-    const r = await changeBalance(db, 1, 50);
+describe('changeBalance 逻辑分支（元 + decimal）', () => {
+  it('普通变更成功 → ok:true + before/after（string）', async () => {
+    const db = makeMockDb({ returningBalance: ['1.05'] });
+    const r = await changeBalance(db, 1, '0.05');
     expect(r.ok).toBe(true);
-    expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceAfter).toBe(1050);
-    expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceBefore).toBe(1000);
+    const ok = r as Extract<BalanceChangeResult, { ok: true }>;
+    expect(ok.balanceAfter).toBe('1.05');
+    expect(ok.balanceBefore).toBe('1'); // 1.05 - 0.05 = 1
   });
 
   it('扣减成功（不检查透支） → before/after', async () => {
-    const db = makeMockDb({ returningBalance: [950] });
-    const r = await changeBalance(db, 1, -50);
+    const db = makeMockDb({ returningBalance: ['0.95'] });
+    const r = await changeBalance(db, 1, '-0.05');
     expect(r.ok).toBe(true);
-    expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceBefore).toBe(1000);
-    expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceAfter).toBe(950);
+    const ok = r as Extract<BalanceChangeResult, { ok: true }>;
+    expect(ok.balanceBefore).toBe('1'); // 0.95 - (-0.05) = 1
+    expect(ok.balanceAfter).toBe('0.95');
   });
 
   it('用户不存在 → ok:false reason:not_found', async () => {
     const db = makeMockDb({ returningBalance: [], existsRows: 0 });
-    const r = await changeBalance(db, 999, 50);
+    const r = await changeBalance(db, 999, '0.05');
     expect(r.ok).toBe(false);
     expect((r as Extract<BalanceChangeResult, { ok: false }>).reason).toBe('not_found');
   });
 
   it('扣减 + checkSufficient + 余额不足 → ok:false reason:insufficient', async () => {
-    // update 未命中（返回空）+ exists 命中（用户存在但余额不足）
     const db = makeMockDb({ returningBalance: [], existsRows: 1 });
-    const r = await changeBalance(db, 1, -9999, { checkSufficient: true });
+    const r = await changeBalance(db, 1, '-99.99', { checkSufficient: true });
     expect(r.ok).toBe(false);
     expect((r as Extract<BalanceChangeResult, { ok: false }>).reason).toBe('insufficient');
   });
 
   it('扣减 + checkSufficient + 用户不存在 → ok:false reason:not_found', async () => {
     const db = makeMockDb({ returningBalance: [], existsRows: 0 });
-    const r = await changeBalance(db, 999, -10, { checkSufficient: true });
+    const r = await changeBalance(db, 999, '-0.1', { checkSufficient: true });
     expect(r.ok).toBe(false);
     expect((r as Extract<BalanceChangeResult, { ok: false }>).reason).toBe('not_found');
   });
 
-  it('非有限金额 → ok:false reason:not_found', async () => {
+  it('非数字金额 → ok:false reason:not_found', async () => {
     const db = makeMockDb({});
-    const r = await changeBalance(db, 1, Number.NaN);
+    const r = await changeBalance(db, 1, 'not-a-number');
     expect(r.ok).toBe(false);
   });
 
-  it('浮点金额 → 取整（厘）', async () => {
-    const db = makeMockDb({ returningBalance: [1050] });
-    const r = await changeBalance(db, 1, 50.7);
+  it('小数金额 → 全精度（不取整，重构后账本永不 round）', async () => {
+    const db = makeMockDb({ returningBalance: ['1.05'] });
+    const r = await changeBalance(db, 1, '0.057');
     expect(r.ok).toBe(true);
-    expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceBefore).toBe(999); // 1050 - 51(rounded)
+    const ok = r as Extract<BalanceChangeResult, { ok: true }>;
+    // balanceBefore = 1.05 - 0.057 = 0.993（全精度，不 round 成厘）
+    expect(ok.balanceBefore).toBe('0.993');
   });
 });
 

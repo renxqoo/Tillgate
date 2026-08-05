@@ -43,7 +43,26 @@ const args = process.argv.slice(2);
 const usernameArg = args.find((a) => a.startsWith('--username='));
 const passwordArg = args.find((a) => a.startsWith('--password='));
 const username = usernameArg ? usernameArg.split('=')[1] : 'admin';
-const password = passwordArg ? passwordArg.split('=')[1] : 'Admin@123456';
+// B3 修复：禁止写死默认密码 Admin@123456（曾直接入库 → 已知凭据可被利用）。
+// 必须显式提供 --password（或 stdin），否则报错退出。
+let password = passwordArg ? passwordArg.split('=')[1] : '';
+if (!password) {
+  // 允许 stdin 传入（echo "xxx" | pnpm tsx scripts/seed-admin.ts），便于自动化/CI
+  if (!process.stdin.isTTY) {
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve) => {
+      process.stdin.on('data', (c) => chunks.push(c));
+      process.stdin.on('end', () => resolve());
+      process.stdin.on('error', () => resolve());
+    });
+    password = Buffer.concat(chunks).toString('utf8').trim();
+  }
+}
+if (!password || password.length < 8) {
+  console.error('✗ 必须通过 --password=<至少8位> 或 stdin 提供管理员密码（禁止默认密码 Admin@123456）');
+  console.error('  用法：pnpm tsx scripts/seed-admin.ts --password=YourStrongPass1');
+  process.exit(1);
+}
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {

@@ -32,12 +32,13 @@ const VALID_SNAPSHOT: CachedKeyAuth = {
   apiKeyId: 5,
   status: 0,
   rateCardId: 1,
-  coefficientMilli: 1000,
+  coefficient: '1.0',
   rpmLimit: null,
   tpmLimit: null,
   userStatus: 0,
   userRpmLimit: 60,
   userTpmLimit: 1_000_000,
+  expiresAtMs: null, // 永不过期
   cachedAt: Date.now(),
 };
 

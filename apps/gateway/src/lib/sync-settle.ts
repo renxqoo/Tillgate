@@ -1,20 +1,14 @@
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { usageLogs, transactions, users } from '@ai-gateway/db/schema';
-import { calcAmount, PRICE_PER_MILLION } from '@ai-gateway/money';
+import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
 
 /**
  * 同步降级结算（资损防线：meter 入队失败时的 DB 兜底）。
+ * 重构后：元 + decimal 全精度。
  *
- * 场景：Redis 挂 → BullMQ 入队失败 → worker 收不到 job → 漏扣。
- * 修复：gateway 在 enqueueMeter 失败时，直接在请求路径内调用 syncSettle（DB 原子扣费）。
- *
- * 幂等保障（与 worker settle 共享）：
- *   - usage_logs.request_id 唯一约束：INSERT ON CONFLICT DO NOTHING + returning() 判定首次
- *   - transactions (ref_type='usage_logs', ref_id) 部分唯一索引：双保险
- *   → Redis 恢复后 worker 收到同一 job 也会跳过（已结算），不重复扣费
- *
- * 与 worker settle 的区别：不刷 Redis 缓存 / 不清 hold / 不回填 TPM（Redis 不可用时这些无意义）。
+ * 幂等保障（与 worker settle 共享）：usage_logs.request_id 唯一 + transactions 部分唯一索引。
+ * 与 worker settle 的区别：不删 Redis hold / 不回填 TPM（Redis 不可用时这些无意义）。
  */
 export interface SyncSettleData {
   requestId: string;
@@ -26,37 +20,44 @@ export interface SyncSettleData {
   realModel: string;
   channelId: number | null;
   usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number; estimated: boolean };
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
-  coefficient: number;
-  coefficientMilli: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  coefficient: string;
   durationMs: number;
   stream: boolean;
   streamAborted: boolean;
-  holdAmount: number;
+  holdAmount: string;
   mappingId: number;
 }
 
 export async function syncSettle(
   db: Db,
   data: SyncSettleData,
-): Promise<{ settled: boolean; amount: number; overdraft: boolean }> {
-  const amount = calcAmount({
+): Promise<{ settled: boolean; amount: string; overdraft: boolean }> {
+  const amountDec = calcAmount({
     inputTokens: data.usage.inputTokens,
     cachedInputTokens: data.usage.cachedInputTokens,
     outputTokens: data.usage.outputTokens,
     inputPrice: data.inputPrice,
     cacheInputPrice: data.cacheInputPrice,
     outputPrice: data.outputPrice,
-    coefficientMilli: data.coefficientMilli,
+    coefficient: data.coefficient,
   });
-  const upstreamCost = Math.max(0, Math.round(
-    (Math.max(0, data.usage.inputTokens - data.usage.cachedInputTokens) * data.inputPrice +
-      data.usage.cachedInputTokens * data.cacheInputPrice +
-      data.usage.outputTokens * data.outputPrice) /
-      PRICE_PER_MILLION,
-  ));
+  const amount = toStorage(amountDec);
+
+  const upstreamCostDec = (() => {
+    const inputTokens = Math.max(0, data.usage.inputTokens);
+    const cached = Math.min(Math.max(0, data.usage.cachedInputTokens), inputTokens);
+    const uncached = inputTokens - cached;
+    const base = toDecimal(data.inputPrice)
+      .times(uncached)
+      .plus(toDecimal(data.cacheInputPrice).times(cached))
+      .plus(toDecimal(data.outputPrice).times(Math.max(0, data.usage.outputTokens)));
+    const cost = base.div(1_000_000);
+    return cost.lt(0) ? new Decimal(0) : cost;
+  })();
+  const upstreamCost = toStorage(upstreamCostDec);
 
   let settled = false;
   let overdraft = false;
@@ -77,10 +78,10 @@ export async function syncSettle(
       inputPrice: data.inputPrice,
       outputPrice: data.outputPrice,
       cacheInputPrice: data.cacheInputPrice,
-      coefficient: data.coefficient.toFixed(3),
+      coefficient: toDecimal(data.coefficient).toFixed(3),
       amount,
       upstreamCost,
-      planAmount: 0,
+      planAmount: '0',
       paygAmount: amount,
       billedBy: 'payg',
       durationMs: data.durationMs,
@@ -89,50 +90,29 @@ export async function syncSettle(
       streamAborted: data.streamAborted,
     }).onConflictDoNothing({ target: usageLogs.requestId }).returning({ id: usageLogs.id });
 
-    if (inserted.length === 0) return; // 已结算（幂等跳过）
+    if (inserted.length === 0) return;
     settled = true;
 
-    // 原子扣余额：WHERE balance >= amount 防透支（资损防线，与 worker settle 一致）
+    // 原子扣实际费用（sync-settle 是 Redis 宕机时的兜底，此时无法可靠判定 hold 标记状态，
+    // 故不退 hold——hold 若存在会由 worker 后续重试结算时处理，或 TTL 过期自然释放）。
     const updated = await tx.update(users)
       .set({ balance: sql`${users.balance} - ${amount}`, updatedAt: new Date() })
-      .where(sql`${users.id} = ${data.userId} and ${users.balance} >= ${amount}`)
+      .where(eq(users.id, data.userId))
       .returning({ balance: users.balance });
 
-    if (updated.length === 0) {
-      // 透支：余额 < amount → 不扣（保余额非负），usage_logs 已记真实 amount 供对账追回
-      overdraft = true;
-      const cur = await tx.query.users.findFirst({
-        where: eq(users.id, data.userId),
-        columns: { balance: true },
-      });
-      const curBalance = cur?.balance ?? 0;
-      await tx.insert(transactions).values({
-        userId: data.userId,
-        type: 'consume',
-        amount: -amount,
-        balanceBefore: curBalance,
-        balanceAfter: curBalance,
-        refType: 'usage_logs',
-        refId: data.requestId,
-        remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens) [sync OVERDRAFT-资损待追回]`,
-      }).onConflictDoNothing({
-        target: [transactions.refType, transactions.refId],
-        where: sql`ref_type = 'usage_logs'`,
-      });
-      return;
-    }
-
-    const newBalance = updated[0]?.balance ?? 0;
+    const newBalance = updated[0]?.balance ?? '0';
+    const balanceBefore = toStorage(toDecimal(newBalance).plus(amountDec));
+    if (toDecimal(newBalance).lt(0)) overdraft = true;
 
     await tx.insert(transactions).values({
       userId: data.userId,
       type: 'consume',
-      amount: -amount,
-      balanceBefore: newBalance + amount,
+      amount: toStorage(amountDec.negated()),
+      balanceBefore,
       balanceAfter: newBalance,
       refType: 'usage_logs',
       refId: data.requestId,
-      remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens) [sync]`,
+      remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens) [sync]${overdraft ? ' [OVERDRAFT-余额为负]' : ''}`,
     }).onConflictDoNothing({
       target: [transactions.refType, transactions.refId],
       where: sql`ref_type = 'usage_logs'`,

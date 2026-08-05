@@ -154,8 +154,8 @@ describe('route-cache 渠道解析缓存', () => {
     expect(r1[0]?.channelId).toBe(5);
     expect(r1[0]?.baseUrl).toBe('http://up:8080');
 
-    // 第二次命中缓存
-    const r2 = await getChannels(db, redis as never, 'gpt-4-real', 'testkey');
+    // 第二次命中缓存（必须用同一 ENCRYPTION_KEY 解密缓存里的密文）
+    const r2 = await getChannels(db, redis as never, 'gpt-4-real', TEST_KEY);
     expect(r2).toHaveLength(1);
     // db.select 只被调一次（miss 时），命中不再调
     expect(db.select).toHaveBeenCalledTimes(1);
@@ -166,7 +166,7 @@ describe('route-cache 渠道解析缓存', () => {
     const db = makeMockDb(null, []); // 无渠道
     const r1 = await getChannels(db, redis as never, 'orphan-model', TEST_KEY);
     expect(r1).toEqual([]);
-    const r2 = await getChannels(db, redis as never, 'orphan-model', 'testkey');
+    const r2 = await getChannels(db, redis as never, 'orphan-model', TEST_KEY);
     expect(r2).toEqual([]);
     expect(db.select).toHaveBeenCalledTimes(1); // 第二次命中空缓存
   });

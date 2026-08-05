@@ -26,8 +26,8 @@ export interface CachedKeyAuth {
   /** 0 有效 / 1 吊销 */
   status: number;
   rateCardId: number | null;
-  /** 费率卡系数（毫，1.0=1000） */
-  coefficientMilli: number;
+  /** 费率卡系数（小数 string，如 "1.0"） */
+  coefficient: string;
   /** Key 级限流 */
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -35,6 +35,11 @@ export interface CachedKeyAuth {
   userStatus: number;
   userRpmLimit: number | null;
   userTpmLimit: number | null;
+  /**
+   * Key 过期时间（ms 时间戳，null=永不过期）。
+   * C4 修复：缓存层据此做过期判定，避免过期 Key 在 TTL 窗口内继续可用。
+   */
+  expiresAtMs: number | null;
   /** 写入缓存的时间戳（ms，用于过期判定） */
   cachedAt: number;
 }
@@ -65,7 +70,13 @@ export class KeyAuthCache {
         const parsed = JSON.parse(cached) as CachedKeyAuth;
         // 过期判定（兜底：TTL 自然过期，但 JSON 里也存了 cachedAt 防边界）
         if (Date.now() - parsed.cachedAt < KEY_AUTH_TTL_S * 1000) {
-          return parsed;
+          // C4 修复：缓存命中也判 Key 过期（expiresAtMs）。过期 → 视为失效，走 DB 重新确认。
+          if (parsed.expiresAtMs !== null && parsed.expiresAtMs <= Date.now()) {
+            // 失效缓存，下次重新查（过期 Key 不应继续放行）
+            await this.redis.del(cacheKey).catch(() => {});
+          } else {
+            return parsed;
+          }
         }
       }
     } catch {

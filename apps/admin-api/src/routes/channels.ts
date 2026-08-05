@@ -35,9 +35,9 @@ const channelCreateSchema = z.object({
 const modelCreateSchema = z.object({
   externalName: z.string().min(1),
   realModel: z.string().min(1),
-  inputPrice: z.number().optional(),
-  outputPrice: z.number().optional(),
-  cacheInputPrice: z.number().optional(),
+  inputPrice: z.coerce.number().optional(),
+  outputPrice: z.coerce.number().optional(),
+  cacheInputPrice: z.coerce.number().optional(),
 }).passthrough();
 
 /**
@@ -238,9 +238,9 @@ export function channelAdminRoutes(db: Db): Hono {
           externalName: body.externalName,
           realModel: body.realModel,
           status: 0,
-          inputPrice: body.inputPrice ?? 0,
-          outputPrice: body.outputPrice ?? 0,
-          cacheInputPrice: body.cacheInputPrice ?? 0,
+          inputPrice: String(body.inputPrice ?? 0),
+          outputPrice: String(body.outputPrice ?? 0),
+          cacheInputPrice: String(body.cacheInputPrice ?? 0),
         })
         .returning();
       invalidateRouteCache();
@@ -254,9 +254,9 @@ export function channelAdminRoutes(db: Db): Hono {
       if (body.externalName !== undefined) update.externalName = body.externalName;
       if (body.realModel !== undefined) update.realModel = body.realModel;
       if (body.status !== undefined) update.status = body.status;
-      if (body.inputPrice !== undefined) update.inputPrice = body.inputPrice;
-      if (body.outputPrice !== undefined) update.outputPrice = body.outputPrice;
-      if (body.cacheInputPrice !== undefined) update.cacheInputPrice = body.cacheInputPrice;
+      if (body.inputPrice !== undefined) update.inputPrice = String(body.inputPrice);
+      if (body.outputPrice !== undefined) update.outputPrice = String(body.outputPrice);
+      if (body.cacheInputPrice !== undefined) update.cacheInputPrice = String(body.cacheInputPrice);
       if (body.fallbackModels !== undefined) update.fallbackModels = body.fallbackModels;
       if (body.paramRules !== undefined) update.paramRules = body.paramRules;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;

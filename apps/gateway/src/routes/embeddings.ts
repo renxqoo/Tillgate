@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { type Ai, type ChannelDesc, estimateTokens, extractRequestChars } from '@ai-gateway/ai';
-import { calcHold, estimateMaxCost } from '@ai-gateway/money';
+import { calcHold, estimateMaxCost, toDecimal } from '@ai-gateway/money';
 import { BillingService } from '../lib/billing.js';
 import { RateLimiter } from '../lib/rate-limit.js';
 import { MeterProducer } from '../lib/meter.js';
 import { recordRequest } from '../lib/metrics.js';
 import { jsonBody } from '../lib/validation.js';
 import { isModelAllowed } from '../lib/model-scope.js';
+import { isChannelSwitchable } from '../lib/channel-switch.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { markChannelDeadCredential, isDeadCredentialError } from '../lib/dead-credential-persist.js';
 import { getMapping, getChannels } from '../lib/route-cache.js';
@@ -76,12 +77,13 @@ export function embeddingsRoutes(
 
     // 预扣
     const estInput = estimateTokens(extractRequestChars(body), 3.5);
-    const estimate = estimateMaxCost({ estimatedInputTokens: estInput, maxOutputTokens: 0, inputPrice: mapping.inputPrice, outputPrice: 0, coefficientMilli: auth.coefficientMilli });
+    const estimate = estimateMaxCost({ estimatedInputTokens: estInput, maxOutputTokens: 0, inputPrice: mapping.inputPrice, outputPrice: 0, coefficient: auth.coefficient });
     const balance = await billing.getBalance(auth.userId);
-    const holdAmount = calcHold(estimate, balance, env.HOLD_MAX);
+    const balanceDec = toDecimal(balance);
+    const holdAmount = calcHold(estimate, balanceDec, env.HOLD_MAX);
     // 余额耗尽才拒绝（estimate=0 但 balance>0 时不拦截：靠 worker 结算实际扣费）
-    if (holdAmount <= 0 && balance <= 0) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
-    const holdResult = holdAmount > 0 ? await billing.hold(auth.userId, requestId, holdAmount) : { ok: true as const, balance, degraded: false };
+    if (holdAmount.isZero() && balanceDec.lte(0)) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
+    const holdResult = !holdAmount.isZero() ? await billing.hold(auth.userId, requestId, holdAmount) : { ok: true as const, balance };
     if (!holdResult.ok) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
 
     // 渠道选择（走 Redis 缓存）
@@ -106,7 +108,7 @@ export function embeddingsRoutes(
             const usage = result.usage ?? estimateNonStreamUsage(body, result.body);
             if (usage) {
               // 资损防线：入队失败（Redis 挂）→ 同步降级结算（DB 兜底），绝不漏扣
-              const jobData = { requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, credentialType: auth.credentialType, externalModel: model, realModel: mapping.realModel, channelId: channel.channelId, usage: { inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, estimated: usage.estimated }, inputPrice: mapping.inputPrice, outputPrice: mapping.outputPrice, cacheInputPrice: mapping.cacheInputPrice, coefficient: auth.coefficientMilli / 1000, coefficientMilli: auth.coefficientMilli, durationMs: result.durationMs, stream: false, streamAborted: false, holdAmount, mappingId: mapping.id };
+              const jobData = { requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, credentialType: auth.credentialType, externalModel: model, realModel: mapping.realModel, channelId: channel.channelId, usage: { inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, estimated: usage.estimated }, inputPrice: String(mapping.inputPrice), outputPrice: String(mapping.outputPrice), cacheInputPrice: String(mapping.cacheInputPrice), coefficient: auth.coefficient, durationMs: result.durationMs, stream: false, streamAborted: false, holdAmount: holdAmount.toString(), mappingId: mapping.id };
               void meter.enqueue(jobData).then((r) => {
                 if (!r.ok) {
                   logger.warn({ requestId, err: r.error?.message }, 'meter enqueue failed, falling back to sync settle');
@@ -123,15 +125,24 @@ export function embeddingsRoutes(
             return c.json(result.body ?? { model: mapping.realModel, data: [], usage: {} });
           }
           const err = result.error;
-          if (err && ['upstream_error', 'network', 'timeout', 'rate_limited', 'invalid_api_key', 'circuit_open'].includes(err.code)) {
-            lastError = { code: err.code, message: err.message, status: err.status ?? 502 };
+          // 渠道切换判定与 chat-completions 共用（lib/channel-switch），避免两路由漂移。
+          if (isChannelSwitchable(err?.code)) {
+            lastError = { code: err!.code, message: err!.message, status: err!.status ?? 502 };
             // 死凭据 → 写回 DB status=4（永久退出路由 + 管理端可见）
-            if (isDeadCredentialError(err.code)) {
+            if (isDeadCredentialError(err?.code)) {
               void markChannelDeadCredential(db, channel.channelId, logger, redis);
             }
             continue;
           }
-          return errorResponse(c, err?.status ?? 502, err?.code ?? 'upstream_error', err?.message ?? '上游错误', err?.suggestion);
+          // 不可换渠道的错误（4xx 客户端问题）→ 直接返回，状态码夹到 [400,600)
+          const httpStatus = err?.status ?? 502;
+          return errorResponse(
+            c,
+            httpStatus >= 400 && httpStatus < 600 ? httpStatus : 502,
+            err?.code ?? 'upstream_error',
+            err?.message ?? '上游错误',
+            err?.suggestion,
+          );
         } catch {
           lastError = { code: 'upstream_error', message: '内部错误', status: 500 };
           continue;

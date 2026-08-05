@@ -44,8 +44,8 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   JWT_SECRET: secretSchema('JWT_SECRET', 16),
   /** 渠道上游 Key 的 AES-256-GCM 加密密钥 */
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
-  /** 预扣参数 */
-  HOLD_MAX: z.coerce.number().int().min(1).default(50_000), // 厘，默认 ¥50
+  /** 预扣参数（元，重构后金额单位为元） */
+  HOLD_MAX: z.coerce.number().min(0.000001).default(50), // 元，默认 ¥50
   HOLD_TTL_SECONDS: z.coerce.number().int().min(1).default(600),
   /** 新用户默认限流（用户级） */
   DEFAULT_USER_RPM: z.coerce.number().int().min(1).default(60),
@@ -87,8 +87,8 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
    * 必填：控制台登录（/api/auth/login）签发会话 JWT 必须有密钥；缺省则登录功能不可用。
    */
   JWT_SECRET: secretSchema('JWT_SECRET', 16),
-  /** 新用户赠送额度（厘），默认 ¥1 = 1000 厘（requirements 4.1） */
-  GIFT_AMOUNT: z.coerce.number().int().min(0).default(1_000),
+  /** 新用户赠送额度（元，重构后金额单位为元），默认 ¥1（requirements 4.1） */
+  GIFT_AMOUNT: z.coerce.number().min(0).default(1),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_ENABLED: z
     .enum(['true', 'false'])

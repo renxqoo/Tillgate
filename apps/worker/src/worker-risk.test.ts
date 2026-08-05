@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
  *
  * 资损防线（requirements 5.1/5.2）：
  *   计量是资损关键路径，job 失败不能静默丢失。三层兜底：
- *     (1) 生产者侧（meter.ts）：attempts:3 + 指数退避 + removeOnFail:true（死信永久留存不自动删）
+ *     (1) 生产者侧（meter.ts）：attempts:3 + 指数退避 + removeOnFail:false（死信永久留存不自动删）
  *     (2) 消费侧 failed 事件：重试耗尽 → error 日志 + meter_job_failed_total 告警计数器（运维介入）
  *     (3) P1：DLQ 自动重放 Worker（消费 failed 队列二次处理）—— 当前一期靠运维告警 + 手动重放
  *
@@ -21,10 +21,12 @@ const INDEX_SRC = readFileSync(resolve(SRC_DIR, 'index.ts'), 'utf8');
 const METER_SRC = readFileSync(resolve(SRC_DIR, '../../gateway/src/lib/meter.ts'), 'utf8');
 
 describe('计量重试 / 告警兜底（绿灯）', () => {
-  it('生产者侧配 attempts + 指数退避 + 死信留存（removeOnFail=true）', () => {
+  it('生产者侧配 attempts + 指数退避 + 死信留存（removeOnFail=false）', () => {
     expect(METER_SRC).toMatch(/attempts:\s*3/);
     expect(METER_SRC).toMatch(/backoff.*exponential|type:\s*['"]exponential/);
-    expect(METER_SRC).toMatch(/removeOnFail:\s*true/);
+    // BullMQ 语义：removeOnFail=true → count:0（删除全部失败 job）；false → count:-1（永久保留）。
+    // 计费资损防线：失败 job 必须保留供运维重放，故必须为 false。
+    expect(METER_SRC).toMatch(/removeOnFail:\s*false/);
   });
 
   it('消费侧 failed 事件转发告警（meter_job_failed_total 计数器，不静默丢失）', () => {

@@ -22,6 +22,27 @@
       "when": 1785881425748,
       "tag": "0002_lonely_scarlet_witch",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785930316585,
+      "tag": "0003_flashy_enchantress",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785931630821,
+      "tag": "0004_silly_lockheed",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785940000000,
+      "tag": "0005_money_decimal_yuan",
+      "breakpoints": true
     }
   ]
 }

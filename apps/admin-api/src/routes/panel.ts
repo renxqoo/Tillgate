@@ -147,7 +147,7 @@ export function panelRoutes(db: Db): Hono<AdminEnv> {
           inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}),0)::bigint`,
           outputTokens: sql<number>`coalesce(sum(${usageLogs.outputTokens}),0)::bigint`,
           cachedInputTokens: sql<number>`coalesce(sum(${usageLogs.cachedInputTokens}),0)::bigint`,
-          cost: sql<number>`coalesce(sum(${usageLogs.amount}),0)::bigint`,
+          cost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric`,
         })
         .from(usageLogs)
         .where(where)

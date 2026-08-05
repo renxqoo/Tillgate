@@ -5,8 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import { users, transactions, redeemBatches, redeemCodes } from '@ai-gateway/db/schema';
+import { Decimal } from '@ai-gateway/money';
 import { redeemCode } from './redeem.js';
 import { generateRedeemCode, sha256Hex } from './secrets.js';
+
+/** 余额/金额比较：DB 返回 string，用 Decimal.equals（不依赖字符串表示形式） */
+function expectDec(actual: string | undefined, expected: string): void {
+  expect(new Decimal(actual ?? '0').equals(new Decimal(expected))).toBe(true);
+}
 
 // 加载 monorepo 根 .env
 const cwd = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +50,7 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-async function createTestUser(balance: number): Promise<number> {
+async function createTestUser(balance: string): Promise<number> {
   const [u] = await db.insert(users).values({
     issuer: 'test',
     subject: 'redeem-test-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
@@ -55,12 +61,12 @@ async function createTestUser(balance: number): Promise<number> {
   return u!.id;
 }
 
-async function createBatch(amount: number, count: number, expiresAt: Date | null): Promise<{ batchId: number; codes: string[] }> {
+async function createBatch(amount: string, count: number, expiresAt: Date | null): Promise<{ batchId: number; codes: string[] }> {
   const codes: string[] = [];
   const rows: Array<{ batchId: number; codeHash: string; expiresAt: Date | null }> = [];
   const [batch] = await db.insert(redeemBatches).values({
     name: 'test-batch-' + Date.now(),
-    amount,
+    amount: String(amount),
     total: count,
     usedCount: 0,
     createdBy: 1,
@@ -84,21 +90,21 @@ async function cleanup(userId: number, batchId: number): Promise<void> {
 describe('redeemCode 充值码兑换（真实 PG）', () => {
   it('正常兑换 → 余额增加 + 流水', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, null);
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, null);
     try {
       const r = await redeemCode(db, uid, codes[0]!);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
-      expect(r.amount).toBe(5000);
-      expect(r.balanceBefore).toBe(0);
-      expect(r.balanceAfter).toBe(5000);
+      expectDec(r.amount, '5');
+      expectDec(r.balanceBefore, '0');
+      expectDec(r.balanceAfter, '5');
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(5000);
+      expectDec(u?.balance, '5');
       const txs = await db.select().from(transactions).where(eq(transactions.userId, uid));
       expect(txs).toHaveLength(1);
       expect(txs[0]!.type).toBe('redeem');
-      expect(txs[0]!.amount).toBe(5000);
+      expectDec(txs[0]!.amount, '5');
     } finally {
       await cleanup(uid, batchId);
     }
@@ -106,8 +112,8 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('重复兑换同一码 → code_already_used（并发安全）', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, null);
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, null);
     try {
       const first = await redeemCode(db, uid, codes[0]!);
       expect(first.ok).toBe(true);
@@ -117,7 +123,7 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
       expect(second.code).toBe('code_already_used');
       // 余额只加一次
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(5000);
+      expectDec(u?.balance, '5');
     } finally {
       await cleanup(uid, batchId);
     }
@@ -125,14 +131,14 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('并发兑换同一码 → 只有 1 个成功（原子条件 UPDATE 防双花）', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, null);
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, null);
     try {
       const results = await Promise.all([redeemCode(db, uid, codes[0]!), redeemCode(db, uid, codes[0]!)]);
       const okCount = results.filter((r) => r.ok).length;
       expect(okCount).toBe(1); // 双花防护
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(5000); // 只加一次
+      expectDec(u?.balance, '5'); // 只加一次
     } finally {
       await cleanup(uid, batchId);
     }
@@ -140,7 +146,7 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('不存在的码 → invalid_code', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
+    const uid = await createTestUser('0');
     try {
       const r = await redeemCode(db, uid, 'RC-NONEXISTENT1234567890ABCDEFGH');
       expect(r.ok).toBe(false);
@@ -153,15 +159,15 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('过期码 → code_expired', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, new Date(Date.now() - 86400_000)); // 昨天过期
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, new Date(Date.now() - 86400_000)); // 昨天过期
     try {
       const r = await redeemCode(db, uid, codes[0]!);
       expect(r.ok).toBe(false);
       if (r.ok) return;
       expect(r.code).toBe('code_expired');
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(0); // 未加
+      expectDec(u?.balance, '0'); // 未加
     } finally {
       await cleanup(uid, batchId);
     }
@@ -169,8 +175,8 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('作废码 → code_revoked', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, null);
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, null);
     try {
       // 手动作废
       await db.update(redeemCodes).set({ status: 2 }).where(eq(redeemCodes.codeHash, sha256Hex(codes[0]!)));
@@ -185,14 +191,14 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
 
   it('两张不同码各兑换一次 → 余额累计', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(1000);
-    const { batchId, codes } = await createBatch(3000, 2, null);
+    const uid = await createTestUser('1');
+    const { batchId, codes } = await createBatch('3', 2, null);
     try {
       const r1 = await redeemCode(db, uid, codes[0]!);
       const r2 = await redeemCode(db, uid, codes[1]!);
       expect(r1.ok && r2.ok).toBe(true);
       const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
-      expect(u?.balance).toBe(7000); // 1000 + 3000 + 3000
+      expectDec(u?.balance, '7'); // 1 + 3 + 3
     } finally {
       await cleanup(uid, batchId);
     }
@@ -229,8 +235,8 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
   // R-2：同一 code 重复兑换只产生一条流水（幂等保护）
   it('重复兑换同一码 → transactions 只有一条流水（幂等）', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0);
-    const { batchId, codes } = await createBatch(5000, 1, null);
+    const uid = await createTestUser('0');
+    const { batchId, codes } = await createBatch('5', 1, null);
     try {
       await redeemCode(db, uid, codes[0]!);
       // 尝试再次兑换（会被条件 UPDATE 拦截，返回 code_already_used）
