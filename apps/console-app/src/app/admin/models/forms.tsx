@@ -3,16 +3,16 @@
 import { useState } from 'react';
 import { Dialog, Field, Input, Feedback, ConfirmButton } from '@/components/dialog';
 import { createModelAction, updateModelAction, deleteModelAction, bindModelChannelsAction } from '../actions';
-import { liPerMillionToYuan } from '@/lib/api-client';
+import { fmtPrice } from '@/lib/api-client';
 
 interface ModelRow {
   id: number;
   externalName: string;
   realModel: string;
   status: number;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
 }
 
 /** 新建模型映射 */
@@ -76,13 +76,13 @@ export function EditModelForm({ model, open, onClose }: { model: ModelRow; open:
         </Field>
         <div className="grid grid-cols-3 gap-3">
           <Field label="输入价（元/M）">
-            <Input name="inputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.inputPrice)} />
+            <Input name="inputPrice" type="number" step="0.0001" defaultValue={fmtPrice(model.inputPrice)} />
           </Field>
           <Field label="输出价（元/M）">
-            <Input name="outputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.outputPrice)} />
+            <Input name="outputPrice" type="number" step="0.0001" defaultValue={fmtPrice(model.outputPrice)} />
           </Field>
           <Field label="缓存输入价（元/M）">
-            <Input name="cacheInputPrice" type="number" step="0.0001" defaultValue={liPerMillionToYuan(model.cacheInputPrice)} />
+            <Input name="cacheInputPrice" type="number" step="0.0001" defaultValue={fmtPrice(model.cacheInputPrice)} />
           </Field>
         </div>
         <Field label="状态">

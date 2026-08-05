@@ -8,9 +8,9 @@ interface ModelRow {
   externalName: string;
   realModel: string;
   status: number;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
 }
 
 /** 模型行操作：编辑/绑定渠道/删除 */

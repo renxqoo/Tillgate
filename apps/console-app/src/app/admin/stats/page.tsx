@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, apiFetch, liToYuan } from '@/lib/api-client';
+import { getMe, getCookieHeader, apiFetch, fmtBalance } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -12,12 +12,12 @@ interface Overview {
     requests: number;
     inputTokens: number;
     outputTokens: number;
-    cost: number;
+    cost: string;
     successCount: number;
     failedCount: number;
     successRate: number;
   };
-  total: { cost: number; requests: number };
+  total: { cost: string; requests: number };
   channelHealth: Array<{ status: number; count: number }>;
 }
 
@@ -64,10 +64,10 @@ export default async function AdminStatsPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <CardDescription>今日费用</CardDescription>
-                  <CardTitle className="text-2xl">¥{liToYuan(overview.today.cost)}</CardTitle>
+                  <CardTitle className="text-2xl">¥{fmtBalance(overview.today.cost)}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-xs text-muted-foreground">
-                  累计 ¥{liToYuan(overview.total.cost)}
+                  累计 ¥{fmtBalance(overview.total.cost)}
                 </CardContent>
               </Card>
               <Card>

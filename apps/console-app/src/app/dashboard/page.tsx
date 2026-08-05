@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, liToYuan } from '@/lib/api-client';
+import { getMe, getCookieHeader, fmtBalance } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>当前余额</CardDescription>
-              <CardTitle className="text-2xl">¥{liToYuan(me.balance)}</CardTitle>
+              <CardTitle className="text-2xl">¥{fmtBalance(me.balance)}</CardTitle>
             </CardHeader>
             <CardContent>
               <Link href="/redeem" className="text-sm text-primary hover:underline">

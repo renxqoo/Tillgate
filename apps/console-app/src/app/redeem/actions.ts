@@ -10,11 +10,11 @@ async function cookieStr(): Promise<string> {
   return token ? `ag_session=${token}` : '';
 }
 
-export async function redeemAction(formData: FormData): Promise<{ error?: string; ok?: boolean; balanceAfter?: number }> {
+export async function redeemAction(formData: FormData): Promise<{ error?: string; ok?: boolean; balanceAfter?: string }> {
   const code = String(formData.get('code') ?? '');
   if (!code) return { error: '请输入充值码' };
   try {
-    const res = await apiFetch<{ ok: boolean; amount: number; balanceAfter: number }>('/api/redeem', {
+    const res = await apiFetch<{ ok: boolean; amount: string; balanceAfter: string }>('/api/redeem', {
       method: 'POST',
       body: { code },
       cookieHeader: await cookieStr(),

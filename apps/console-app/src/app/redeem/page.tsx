@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, liToYuan, apiFetch, type Paginated } from '@/lib/api-client';
+import { getMe, getCookieHeader, fmtBalance, apiFetch, type Paginated } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RedeemForm } from './forms';
@@ -10,9 +10,9 @@ export const dynamic = 'force-dynamic';
 interface TxRow {
   id: number;
   type: string;
-  amount: number;
-  balanceBefore: number;
-  balanceAfter: number;
+  amount: string;
+  balanceBefore: string;
+  balanceAfter: string;
   remark: string | null;
   createdAt: string;
 }
@@ -60,10 +60,10 @@ export default async function RedeemPage() {
                       <div className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString('zh-CN')}</div>
                     </div>
                     <div className="text-right">
-                      <div className={`font-mono ${t.amount > 0 ? 'text-primary' : 'text-destructive'}`}>
-                        {t.amount > 0 ? '+' : ''}¥{liToYuan(t.amount)}
+                      <div className={`font-mono ${Number(t.amount) > 0 ? 'text-primary' : 'text-destructive'}`}>
+                        {Number(t.amount) > 0 ? '+' : ''}¥{fmtBalance(t.amount)}
                       </div>
-                      <div className="text-xs text-muted-foreground">余额 ¥{liToYuan(t.balanceAfter)}</div>
+                      <div className="text-xs text-muted-foreground">余额 ¥{fmtBalance(t.balanceAfter)}</div>
                     </div>
                   </div>
                 ))}

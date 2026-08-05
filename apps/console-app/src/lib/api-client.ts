@@ -60,42 +60,36 @@ export function getCookieHeader(headers: Headers): string {
   return headers.get('cookie') ?? '';
 }
 
-/** 厘 → 元展示（余额/流水用，保留 2 位小数） */
-export function liToYuan(li: number | bigint): string {
-  const n = typeof li === 'bigint' ? Number(li) : li;
-  return (n / 1000).toFixed(2);
+/**
+ * 格式化金额展示（DB 现存「元」numeric 字符串，如 "49.999990000000000000"）。
+ * 余额/流水用 2 位小数；单次费用用 6 位（小额请求精确展示）。
+ * 入参兼容 string（DB numeric）/ number（历史/兜底）。
+ */
+export function formatYuan(v: string | number | null | undefined, digits = 2): string {
+  const n = typeof v === 'string' ? Number(v) : (v ?? 0);
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(digits);
 }
 
-/**
- * 厘 → 元展示（单次费用用，保留 4 位小数）。
- * 小额请求（缓存命中率高时）费用可能 < ¥0.01，
- * 2 位会显示 ¥0.00 误导用户以为免费；4 位最小展示 ¥0.0001（= 0.1 厘）。
- */
-export function liToYuanPrecise(li: number | bigint): string {
-  const n = typeof li === 'bigint' ? Number(li) : li;
-  return (n / 1000).toFixed(4);
+/** 余额/流水展示（2 位小数） */
+export function fmtBalance(v: string | number | null | undefined): string {
+  return formatYuan(v, 2);
+}
+
+/** 单次费用展示（6 位小数，小额请求精确到 ¥0.000001） */
+export function fmtCost(v: string | number | null | undefined): string {
+  return formatYuan(v, 6);
+}
+
+/** 模型单价展示（元/百万 token，4 位小数） */
+export function fmtPrice(v: string | number | null | undefined): string {
+  return formatYuan(v, 4);
 }
 
 /** 毫秒 → 友好展示：<1s 显示 ms，≥1s 显示秒（保留 2 位） */
 export function msToHuman(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
-}
-
-/**
- * 元 → 厘（用户在前端输入元，提交后端需转厘）。
- * 输入支持小数（如 5.5 元 → 5500 厘），四舍五入到整数厘。
- */
-export function yuanToLi(yuan: number): number {
-  return Math.round(yuan * 1000);
-}
-
-/**
- * 厘/百万token → 元/百万token 展示（模型官方价，保留 4 位小数）。
- * 如 inputPrice=1000000 厘/M → ¥1.0000/M。
- */
-export function liPerMillionToYuan(li: number): string {
-  return (li / 1000).toFixed(4);
 }
 
 /** 标准分页响应 */
@@ -115,7 +109,7 @@ export interface MeInfo {
   role: number;
   rateCardId: number | null;
   rateCardName: string | null;
-  balance: number;
+  balance: string;
   status: number;
   rpmLimit: number | null;
   tpmLimit: number | null;

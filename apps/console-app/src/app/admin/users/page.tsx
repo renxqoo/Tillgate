@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, apiFetch, type Paginated, liToYuan } from '@/lib/api-client';
+import { getMe, getCookieHeader, apiFetch, type Paginated, fmtBalance } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { AdminNav } from '@/components/admin-nav';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +16,7 @@ interface UserRow {
   role: number;
   rateCardId: number | null;
   rateCardName: string | null;
-  balance: number;
+  balance: string;
   status: number;
   createdAt: string;
 }
@@ -99,7 +99,7 @@ export default async function AdminUsersPage({
                           {u.role === 1 && <span className="ml-1 text-xs text-primary">管理员</span>}
                         </td>
                         <td className="py-2 pr-4 text-xs">{u.rateCardName ?? '-'}</td>
-                        <td className="py-2 pr-4 text-right font-mono">¥{liToYuan(u.balance)}</td>
+                        <td className="py-2 pr-4 text-right font-mono">¥{fmtBalance(u.balance)}</td>
                         <td className="py-2 pr-4">
                           <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                         </td>

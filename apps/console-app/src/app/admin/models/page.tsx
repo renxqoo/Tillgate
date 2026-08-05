@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, apiFetch, liPerMillionToYuan } from '@/lib/api-client';
+import { getMe, getCookieHeader, apiFetch, fmtPrice } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { AdminNav } from '@/components/admin-nav';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,9 +14,9 @@ interface ModelRow {
   externalName: string;
   realModel: string;
   status: number;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
 }
 
 export default async function AdminModelsPage() {
@@ -63,9 +63,9 @@ export default async function AdminModelsPage() {
                         <td className="py-2 pr-4 font-mono text-xs">{m.id}</td>
                         <td className="py-2 pr-4 font-medium">{m.externalName}</td>
                         <td className="py-2 pr-4 text-xs font-mono">{m.realModel}</td>
-                        <td className="py-2 pr-4 text-right font-mono text-xs">{liPerMillionToYuan(m.inputPrice)}</td>
-                        <td className="py-2 pr-4 text-right font-mono text-xs">{liPerMillionToYuan(m.outputPrice)}</td>
-                        <td className="py-2 pr-4 text-right font-mono text-xs">{liPerMillionToYuan(m.cacheInputPrice)}</td>
+                        <td className="py-2 pr-4 text-right font-mono text-xs">{fmtPrice(m.inputPrice)}</td>
+                        <td className="py-2 pr-4 text-right font-mono text-xs">{fmtPrice(m.outputPrice)}</td>
+                        <td className="py-2 pr-4 text-right font-mono text-xs">{fmtPrice(m.cacheInputPrice)}</td>
                         <td className="py-2 pr-4">
                           <span className={`rounded px-1.5 py-0.5 text-xs ${m.status === 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                             {m.status === 0 ? '上架' : '下架'}

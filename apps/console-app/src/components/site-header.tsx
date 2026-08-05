@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { logoutAction } from '@/app/actions';
-import { liToYuan } from '@/lib/api-client';
+import { fmtBalance } from '@/lib/api-client';
 
 /**
  * 站点顶栏：Logo + 用户信息 + 注销。
- * 显示当前余额（厘→元）、角色徽章。
+ * 显示当前余额（元，DB numeric 字符串）、角色徽章。
  */
-export function SiteHeader({ me }: { me: { subject: string; balance: number; role: number; displayName: string | null } | null }) {
+export function SiteHeader({ me }: { me: { subject: string; balance: string; role: number; displayName: string | null } | null }) {
   return (
     <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
@@ -20,7 +20,7 @@ export function SiteHeader({ me }: { me: { subject: string; balance: number; rol
               {me.displayName ?? me.subject}
               {me.role === 1 && <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">管理员</span>}
             </span>
-            <span className="font-mono">¥{liToYuan(me.balance ?? 0)}</span>
+            <span className="font-mono">¥{fmtBalance(me.balance ?? 0)}</span>
             <form action={logoutAction}>
               <button type="submit" className="text-muted-foreground hover:text-foreground">
                 注销

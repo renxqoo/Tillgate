@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { headers } from 'next/headers';
-import { getMe, getCookieHeader, apiFetch, type Paginated, liToYuan } from '@/lib/api-client';
+import { getMe, getCookieHeader, apiFetch, type Paginated, fmtBalance } from '@/lib/api-client';
 import { SiteHeader } from '@/components/site-header';
 import { AdminNav } from '@/components/admin-nav';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,7 +12,7 @@ interface BatchRow {
   id: number;
   name: string;
   remark: string | null;
-  amount: number;
+  amount: string;
   total: number;
   usedCount: number;
   createdAt: string;
@@ -62,7 +62,7 @@ export default async function AdminRedeemBatchesPage() {
                         <tr key={b.id} className="border-b">
                           <td className="py-2 pr-4 font-mono text-xs">{b.id}</td>
                           <td className="py-2 pr-4 font-medium">{b.name}</td>
-                          <td className="py-2 pr-4 text-right font-mono">¥{liToYuan(b.amount)}</td>
+                          <td className="py-2 pr-4 text-right font-mono">¥{fmtBalance(b.amount)}</td>
                           <td className="py-2 pr-4 text-right font-mono">{b.total}</td>
                           <td className="py-2 pr-4 text-right font-mono">{b.usedCount}</td>
                           <td className="py-2 pr-4 text-right">
