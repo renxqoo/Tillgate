@@ -18,51 +18,26 @@ export interface PeekResult {
 }
 
 /**
- * 预读首个 chunk。超时/abort 时抛 Error（调用方按 timeout/network 分类）。
- * 注意：返回的 rest 已消费 first.value，调用方应使用 rest 而非原 body。
+ * 预读首个 chunk 检测空流，但不消费 body（用 tee 分流）。
+ *   branchA 读首块检测空流 → 立即 cancel（不再读）
+ *   branchB 是完整流（含首块），交给 relayStream pipeTo（保持流式特性）
  */
 export async function peekFirstChunk(
   body: ReadableStream<Uint8Array>,
   opts: { signal?: AbortSignal } = {},
 ): Promise<PeekResult> {
-  const reader = body.getReader();
+  const [branchA, branchB] = body.tee();
+  const reader = branchA.getReader();
   const onAbort = (): void => {
     void reader.cancel().catch(() => {});
   };
   opts.signal?.addEventListener('abort', onAbort, { once: true });
   try {
     const { done, value } = await reader.read();
-    if (done) {
-      // 上游空流：reader 已释放，body 无需再读
-      return { done: true };
-    }
-    if (!value || value.length === 0) {
-      // 边界：读到空 chunk（极少见），按 done 处理避免空帧进入 relay
-      return { done: true };
-    }
-    // 有首帧：包装 rest = [first] + 原始 reader 剩余
-    const first = value;
-    const rest = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(first); // 先吐首帧
-      },
-      async pull(controller) {
-        try {
-          const r = await reader.read();
-          if (r.done) {
-            controller.close();
-            return;
-          }
-          if (r.value) controller.enqueue(r.value);
-        } catch (err) {
-          controller.error(err);
-        }
-      },
-      cancel(reason) {
-        return reader.cancel(reason);
-      },
-    });
-    return { done: false, first, rest };
+    void reader.cancel().catch(() => {});
+    if (done) return { done: true };
+    if (!value || value.length === 0) return { done: true };
+    return { done: false, first: value, rest: branchB };
   } finally {
     opts.signal?.removeEventListener('abort', onAbort);
   }

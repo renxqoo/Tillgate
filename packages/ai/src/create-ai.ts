@@ -364,12 +364,11 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
               const raw = await readBody(res, { signal });
               return fail(adapter.mapError(res.status, tryParseJson(raw) ?? raw));
             }
-            // B7：body 可能为 null（HEAD/某些代理）
             if (!res.body) return fail(invalidResponseError());
-            // D3：首帧探测——空流（200 但无任何 data 帧）→ 空完成，走 withRetry 的 empty 重试
+            // D3：空流检测（tee 分流，不破坏流式）
             const peeked = await peekFirstChunk(res.body, { signal });
             if (peeked.done) return fail(emptyError(), true);
-            // 有首帧：包装后的 rest（含 first）交给 relayStream；body 已被 peek 消费
+            // branchB（tee 的完整流）交给 relayStream
             return { ok: true, value: peeked.rest! };
           } catch (err) {
             if (signal.aborted) return fail(abortedError());
@@ -398,15 +397,15 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
         return failEarly(error);
       }
       const rest = outcome.value;
-      // 拿到首帧才算成功（修了「空完成也计 success」的问题）
-      await breaker.recordSuccess();
-      await credential.recordSuccess();
-
-      // 透传管道：relay 事件 → AiEvent 桥接（done 一定最后发，见 relay-stream）
+      // 先创建 relayStream（立即开始消费上游数据，防缓冲区堆积），
+      // breaker/credential 的 Redis 写入在后面做（不阻塞数据流）
       const handle = relayStream(rest, {
         heartbeatIdleMs: cfg.stream.heartbeatIdleMs,
         inactivityTimeoutMs: cfg.stream.inactivityTimeoutMs,
       });
+      // 拿到首帧才算成功
+      void breaker.recordSuccess();
+      void credential.recordSuccess();
       handle.onEvent((e) => {
         switch (e.type) {
           case 'stream_error':
