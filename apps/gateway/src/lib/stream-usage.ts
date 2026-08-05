@@ -68,7 +68,8 @@ export function estimateNonStreamUsage(
       }
     }
   }
-  if (outputChars <= 0) return null; // 无可计费的输出
+  // 输入始终可计费（请求体在 gateway 手上）；输出可能为 0（embeddings 无文本输出）
+  // 即便 outputChars=0 也按输入估算入队（防漏计费 + hold 残留）
   return {
     inputTokens: estimateTokens(extractRequestChars(reqBody), CHAR_PER_TOKEN),
     cachedInputTokens: 0,

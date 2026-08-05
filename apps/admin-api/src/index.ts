@@ -17,6 +17,7 @@ import { panelRoutes } from './routes/panel.js';
 import { adminAuthMiddleware } from './middleware/admin-auth.js';
 import { resolveSession, userSessionMiddleware, type AdminEnv } from './middleware/session.js';
 import { ValidationError } from './lib/validation.js';
+import { getAdminRedis } from './lib/route-invalidation.js';
 import type { MiddlewareHandler } from 'hono';
 
 export const env = loadAdminApiEnv();
@@ -56,11 +57,8 @@ export function createApp() {
 
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
 
-  // 管理端鉴权（S4 + §5）：
-  //   - 机器令牌：Authorization: Bearer <ADMIN_API_TOKEN> 或 X-Admin-Token
-  //   - 管理员会话：HttpOnly Cookie 中 role=1 的面板 JWT（控制台登录后获得）
-  //   - 任一通过即放行
-  app.use('/api/admin/*', adminAuthMiddleware(env.ADMIN_API_TOKEN, db, env.JWT_SECRET));
+  // 管理端鉴权（S4 + §5）：仅管理员会话（HttpOnly Cookie 中 role=1 的面板 JWT）
+  app.use('/api/admin/*', adminAuthMiddleware(db, env.JWT_SECRET));
   // 鉴权通过后注入 adminId（审计操作人，可空）
   app.use('/api/admin/*', adminIdInjector(db, env.JWT_SECRET));
 
@@ -78,10 +76,12 @@ export function createApp() {
   app.route('/', statsAdminRoutes(db));
 
   // 登录/注销（公开：/api/auth/login 不需要会话）
+  // C6 修复：注入 Redis 启用登录限流/锁定（复用 route-invalidation 的共享单例）
   app.route('/', authRoutes(db, {
     jwtSecret: env.JWT_SECRET,
     giftAmount: env.GIFT_AMOUNT,
     secureCookie: env.NODE_ENV === 'production',
+    redis: getAdminRedis(),
   }));
 
   // 用户面板：必须有有效会话（userSessionMiddleware 注入 c.var.session）

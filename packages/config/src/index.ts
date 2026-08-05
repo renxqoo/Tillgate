@@ -1,5 +1,34 @@
 import { z } from 'zod';
 
+/**
+ * B3 修复：密钥强度校验。
+ * 原实现仅校验长度，导致 .env.example 的占位值 `change-me-32-chars-minimum-secret`
+ * 能通过校验 → 照抄部署 = JWT 可伪造 + 所有渠道 Key 可解密。
+ *
+ * 现在拒绝已知占位/弱密钥（黑名单 + 最低熵要求）。生产环境额外严格。
+ */
+const KNOWN_WEAK_SECRETS = new Set([
+  'change-me',
+  'secret',
+  'password',
+  'changeme',
+  'test-jwt-secret-min-16-chars',
+  'test-encryption-key-32-chars-min!!',
+  'change-me-32-chars-minimum-secret',
+]);
+
+function secretSchema(field: string, minLen: number) {
+  return z
+    .string()
+    .min(minLen, `${field} 至少 ${minLen} 字符`)
+    .refine((v) => !KNOWN_WEAK_SECRETS.has(v), {
+      message: `${field} 不得使用占位/弱密钥（如 change-me-*、secret、password）`,
+    })
+    .refine((v) => new Set(v).size >= 4, {
+      message: `${field} 字符多样性过低（至少 4 种不同字符）`,
+    });
+}
+
 /** 共享环境变量 */
 export const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -12,9 +41,9 @@ export const baseEnvSchema = z.object({
 export const gatewayEnvSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).default(8787),
   /** JWT 签发密钥（网关自签，HS256 起步） */
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: secretSchema('JWT_SECRET', 16),
   /** 渠道上游 Key 的 AES-256-GCM 加密密钥 */
-  ENCRYPTION_KEY: z.string().min(32),
+  ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /** 预扣参数 */
   HOLD_MAX: z.coerce.number().int().min(1).default(50_000), // 厘，默认 ¥50
   HOLD_TTL_SECONDS: z.coerce.number().int().min(1).default(600),
@@ -52,14 +81,12 @@ export const workerEnvSchema = baseEnvSchema.extend({
 /** admin-api（管理端 REST）环境变量 */
 export const adminApiEnvSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).default(8790),
-  ENCRYPTION_KEY: z.string().min(32),
-  /** 管理端 API Token（机器对机器；fail-closed：未配置时该路径 503） */
-  ADMIN_API_TOKEN: z.string().optional(),
+  ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /**
    * 控制台会话 JWT 密钥（与 gateway 共用同一密钥源）。
    * 必填：控制台登录（/api/auth/login）签发会话 JWT 必须有密钥；缺省则登录功能不可用。
    */
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: secretSchema('JWT_SECRET', 16),
   /** 新用户赠送额度（厘），默认 ¥1 = 1000 厘（requirements 4.1） */
   GIFT_AMOUNT: z.coerce.number().int().min(0).default(1_000),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),

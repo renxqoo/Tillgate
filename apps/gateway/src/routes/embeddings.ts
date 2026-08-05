@@ -12,6 +12,7 @@ import { isModelAllowed } from '../lib/model-scope.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { markChannelDeadCredential, isDeadCredentialError } from '../lib/dead-credential-persist.js';
 import { getMapping, getChannels } from '../lib/route-cache.js';
+import { estimateNonStreamUsage } from '../lib/stream-usage.js';
 import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { z } from 'zod';
 import { env, logger } from '../index.js';
@@ -90,9 +91,11 @@ export function embeddingsRoutes(
           const result = await ai.chat({ channel: channelDesc, request: body, ctx });
           if (result.status === 'success') {
             logger.info({ requestId, channel: channel.key, usage: result.usage }, 'embeddings success');
-            if (result.usage) {
+            // usage 缺失时兜底估算（防漏计费 + hold 残留，与 chat-completions 非流式对称）
+            const usage = result.usage ?? estimateNonStreamUsage(body, result.body);
+            if (usage) {
               // 资损防线：入队失败（Redis 挂）→ 同步降级结算（DB 兜底），绝不漏扣
-              const jobData = { requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, credentialType: auth.credentialType, externalModel: model, realModel: mapping.realModel, channelId: channel.channelId, usage: { inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens, estimated: result.usage.estimated }, inputPrice: mapping.inputPrice, outputPrice: mapping.outputPrice, cacheInputPrice: mapping.cacheInputPrice, coefficient: auth.coefficientMilli / 1000, coefficientMilli: auth.coefficientMilli, durationMs: result.durationMs, stream: false, streamAborted: false, holdAmount, mappingId: mapping.id };
+              const jobData = { requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, credentialType: auth.credentialType, externalModel: model, realModel: mapping.realModel, channelId: channel.channelId, usage: { inputTokens: usage.inputTokens, cachedInputTokens: usage.cachedInputTokens, outputTokens: usage.outputTokens, estimated: usage.estimated }, inputPrice: mapping.inputPrice, outputPrice: mapping.outputPrice, cacheInputPrice: mapping.cacheInputPrice, coefficient: auth.coefficientMilli / 1000, coefficientMilli: auth.coefficientMilli, durationMs: result.durationMs, stream: false, streamAborted: false, holdAmount, mappingId: mapping.id };
               void meter.enqueue(jobData).then((r) => {
                 if (!r.ok) {
                   logger.warn({ requestId, err: r.error?.message }, 'meter enqueue failed, falling back to sync settle');
@@ -101,6 +104,8 @@ export function embeddingsRoutes(
                   });
                 }
               });
+            } else {
+              logger.warn({ requestId, channel: channel.key }, 'embeddings success without usage, skip metering');
             }
             recordRequest(mapping.realModel, 200, result.durationMs);
             settled = true;

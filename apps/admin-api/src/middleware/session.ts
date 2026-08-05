@@ -13,9 +13,7 @@ import { verifySession, SESSION_COOKIE } from '../lib/session.js';
  *     （回查是因为封禁/注销需要即时生效；status 是 DB 权威字段）
  *   - role 注入会话上下文，路由层据此判定管理员权限
  *
- * 与 admin-auth（API Token，机器对机器）并存：
- *   - /api/admin/* 同时接受 Cookie 会话（管理员）或 X-Admin-Token（脚本）
- *   - 用户面板 /api/me /api/keys 等只接受 Cookie 会话
+ * /api/admin/* 和用户面板 /api/me /api/keys 等统一使用 Cookie 会话鉴权。
  */
 
 export interface SessionContext {
