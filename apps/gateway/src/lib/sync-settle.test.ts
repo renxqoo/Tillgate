@@ -52,6 +52,19 @@ function makeMockDb(settled: boolean = true) {
   } as unknown as Db;
 }
 
+/** mock insert 链：values → onConflictDoNothing → returning（透支测试用） */
+function makeInsertChain(returning: unknown[]): {
+  values: ReturnType<typeof vi.fn>;
+} {
+  return {
+    values: vi.fn().mockReturnValue({
+      onConflictDoNothing: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue(returning),
+      }),
+    }),
+  };
+}
+
 describe('syncSettle（meter 入队失败时的同步降级结算）', () => {
   it('首次结算 → 成功扣费', async () => {
     const db = makeMockDb(true);
@@ -80,5 +93,36 @@ describe('syncSettle（meter 入队失败时的同步降级结算）', () => {
     const result = await syncSettle(db, { ...MOCK_DATA, usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, estimated: false } });
     expect(result.amount).toBe(0);
     expect(result.settled).toBe(true);
+  });
+
+  // ---- P0 资损修复：透支守卫（WHERE balance >= amount）----
+  // insertChain 提到模块作用域（避免 unicorn/consistent-function-scoping）
+  it('透支守卫：UPDATE 返回空（余额 < amount）→ 不扣费，overdraft=true，写 OVERDRAFT 流水', async () => {
+    // 透支分支：update.returning 返回空 []（条件 WHERE balance>=amount 未命中）
+    // 需要 mock 两条 insert 链（usage_logs 命中返回 id + transactions OVERDRAFT 流水）
+    //   + update.returning=[] + query.users.findFirst（读当前余额）
+    const overdraftTx = {
+      insert: vi.fn().mockImplementation(() => makeInsertChain([{ id: 1 }])),
+      update: vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([]), // 余额不足，UPDATE 0 行
+          }),
+        }),
+      }),
+      query: {
+        users: { findFirst: vi.fn().mockResolvedValue({ balance: 500 }) },
+      },
+    };
+    const db = {
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(overdraftTx)),
+    } as unknown as Db;
+    const result = await syncSettle(db, MOCK_DATA);
+    expect(result.settled).toBe(true);
+    expect(result.overdraft).toBe(true);
+    expect(result.amount).toBe(2000); // 真实费用仍记录（对账用）
+    // 写了两条 insert（usage_logs + OVERDRAFT transactions）
+    expect(overdraftTx.insert).toHaveBeenCalledTimes(2);
+    expect(overdraftTx.query.users.findFirst).toHaveBeenCalled();
   });
 });

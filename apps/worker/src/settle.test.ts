@@ -227,4 +227,76 @@ describe('settle 结算（幂等 + 并发安全 + 预扣对账）', () => {
       await cleanupUser(userId);
     }
   });
+
+  // ---- P0 资损修复：透支守卫 ----
+  // 场景：fail-open（Redis 不可用）放行后，实际 amount > 余额 → 不允许扣成负数（平台垫付）
+  it('透支守卫：amount > balance → 余额不透支（保持 0），标 overdraft=true，usage_logs 仍写入', async () => {
+    // 余额 1000 厘，实际费用 2000 厘（1000 输入 + 500 输出，系数 1.0）
+    const userId = await createTestUser(1000);
+    try {
+      const job = makeJob({ userId, requestId: randomUUID(), holdAmount: 0 });
+      const r = await settle(db, redis, job);
+      expect(r.amount).toBe(2000);
+      expect(r.settled).toBe(true); // usage_logs 写入（明细不丢）
+      expect(r.overdraft).toBe(true); // 但余额扣不动 → 透支标记（告警/对账用）
+      // 余额保持原值（不被扣成负数）—— 或扣到 0（取实现，关键是不为负）
+      const u = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { balance: true } });
+      expect(u?.balance).toBeGreaterThanOrEqual(0);
+      expect(u?.balance).toBeLessThanOrEqual(1000);
+      // usage_logs 已写（amount 记录真实费用，便于对账追回）
+      const logs = await db.select().from(usageLogs).where(eq(usageLogs.requestId, job.requestId));
+      expect(logs).toHaveLength(1);
+      expect(logs[0]?.amount).toBe(2000);
+    } finally {
+      await cleanupUser(userId);
+    }
+  });
+
+  it('透支守卫：amount ≤ balance → 正常扣费，overdraft=false', async () => {
+    // 余额 10000 厘，实际费用 2000 厘 → 正常扣
+    const userId = await createTestUser(10000);
+    try {
+      const job = makeJob({ userId, requestId: randomUUID(), holdAmount: 0 });
+      const r = await settle(db, redis, job);
+      expect(r.amount).toBe(2000);
+      expect(r.settled).toBe(true);
+      expect(r.overdraft).toBe(false);
+      const u = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { balance: true } });
+      expect(u?.balance).toBe(8000);
+    } finally {
+      await cleanupUser(userId);
+    }
+  });
+
+  // ---- P0 资损修复：Redis 余额缓存失效（不覆盖进行中 hold） ----
+  // 场景：用户余额 10000，请求 A hold 6000（缓存=4000），请求 B 在此期间结算扣 1000。
+  //       旧实现 redis.set(9000) 会把缓存覆盖成 9000（抹掉 A 的 hold 占位 → A 可超额）。
+  //       修复：settle 后 DEL 缓存键，下次 hold 走 cache_miss 从 DB 懒加载（此时 DB 已扣为 9000）。
+  it('缓存失效：settle 后 DEL 余额缓存键（不覆盖进行中 hold 占位）', async () => {
+    const userId = await createTestUser(10000);
+    try {
+      // 模拟：先 hold（缓存变 10000-6000=4000），写 hold key
+      await redis.set(`billing:balance:${userId}`, 10000);
+      await redis.set(`billing:hold:req-A`, 6000);
+      await redis.decrby(`billing:balance:${userId}`, 6000); // 缓存=4000
+      const cachedBefore = await redis.get(`billing:balance:${userId}`);
+      expect(cachedBefore).toBe('4000'); // hold 占位后缓存=4000
+
+      // 请求 B 结算（实际扣 2000，DB 10000→8000）
+      const jobB = makeJob({ userId, requestId: randomUUID(), holdAmount: 0 });
+      await settle(db, redis, jobB);
+
+      // 修复后：缓存键应被 DEL（不存在），而非覆盖成 DB 值 8000
+      const cachedAfter = await redis.get(`billing:balance:${userId}`);
+      expect(cachedAfter).toBeNull(); // 失效，下次 hold 从 DB 懒加载
+
+      // hold 占位 key 也被清理（req-B 的 hold，但 req-A 的仍保留）
+      // 注意：settle 只清自己的 requestId hold
+      const holdA = await redis.get(`billing:hold:req-A`);
+      expect(holdA).toBe('6000'); // A 的 hold 仍在（未被误清）
+    } finally {
+      await cleanupUser(userId);
+      await redis.del('billing:hold:req-A');
+    }
+  });
 });

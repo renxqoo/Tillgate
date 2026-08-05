@@ -33,11 +33,15 @@ describe('安全中间件', () => {
 
   it('请求体 > 16MB → 413 Payload Too Large', async () => {
     const app = makeApp();
-    // 用 Request 构造（Hono bodyLimit 在读取流时按字节计，不依赖 content-length 头）
+    // bodyParserLimit 用 content-length 预判（不缓冲 body，保流式）。
+    // 必须带 content-length 头；无 content-length 的 chunked 请求不拦截（已知权衡，见 security.ts 注释）。
     const huge = 'x'.repeat(BODY_LIMIT_BYTES + 1000);
     const req = new Request('http://localhost/v1/chat/completions', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'content-length': String(huge.length),
+      },
       body: huge,
     });
     const res = await app.fetch(req);

@@ -39,10 +39,19 @@ const meterWorker = new Worker<MeterJobData>(
     logger.info({ jobId: job.id, requestId: data.requestId, model: data.realModel }, 'meter job start');
     const result = await settle(db, connection, data);
     if (result.settled) {
-      logger.info(
-        { jobId: job.id, requestId: data.requestId, amount: result.amount, usage: data.usage },
-        'meter settled',
-      );
+      if (result.overdraft) {
+        // 透支：fail-open 放行后实际用量超余额 → 余额未扣（保非负），usage_logs 已记真实 amount。
+        // 资损告警：需运维介入对账追回（用户已享服务但未付费）。
+        logger.error(
+          { jobId: job.id, requestId: data.requestId, amount: result.amount, usage: data.usage, userId: data.userId },
+          'meter overdraft (revenue loss — balance held non-negative, amount logged for reconciliation)',
+        );
+      } else {
+        logger.info(
+          { jobId: job.id, requestId: data.requestId, amount: result.amount, usage: data.usage },
+          'meter settled',
+        );
+      }
     } else {
       logger.info({ jobId: job.id, requestId: data.requestId }, 'meter skipped (already settled)');
     }

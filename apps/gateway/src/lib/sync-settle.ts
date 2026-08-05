@@ -41,7 +41,7 @@ export interface SyncSettleData {
 export async function syncSettle(
   db: Db,
   data: SyncSettleData,
-): Promise<{ settled: boolean; amount: number }> {
+): Promise<{ settled: boolean; amount: number; overdraft: boolean }> {
   const amount = calcAmount({
     inputTokens: data.usage.inputTokens,
     cachedInputTokens: data.usage.cachedInputTokens,
@@ -59,6 +59,7 @@ export async function syncSettle(
   ));
 
   let settled = false;
+  let overdraft = false;
   await db.transaction(async (tx) => {
     const inserted = await tx.insert(usageLogs).values({
       requestId: data.requestId,
@@ -91,11 +92,36 @@ export async function syncSettle(
     if (inserted.length === 0) return; // 已结算（幂等跳过）
     settled = true;
 
-    // 原子扣余额
+    // 原子扣余额：WHERE balance >= amount 防透支（资损防线，与 worker settle 一致）
     const updated = await tx.update(users)
       .set({ balance: sql`${users.balance} - ${amount}`, updatedAt: new Date() })
-      .where(eq(users.id, data.userId))
+      .where(sql`${users.id} = ${data.userId} and ${users.balance} >= ${amount}`)
       .returning({ balance: users.balance });
+
+    if (updated.length === 0) {
+      // 透支：余额 < amount → 不扣（保余额非负），usage_logs 已记真实 amount 供对账追回
+      overdraft = true;
+      const cur = await tx.query.users.findFirst({
+        where: eq(users.id, data.userId),
+        columns: { balance: true },
+      });
+      const curBalance = cur?.balance ?? 0;
+      await tx.insert(transactions).values({
+        userId: data.userId,
+        type: 'consume',
+        amount: -amount,
+        balanceBefore: curBalance,
+        balanceAfter: curBalance,
+        refType: 'usage_logs',
+        refId: data.requestId,
+        remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens) [sync OVERDRAFT-资损待追回]`,
+      }).onConflictDoNothing({
+        target: [transactions.refType, transactions.refId],
+        where: sql`ref_type = 'usage_logs'`,
+      });
+      return;
+    }
+
     const newBalance = updated[0]?.balance ?? 0;
 
     await tx.insert(transactions).values({
@@ -113,5 +139,5 @@ export async function syncSettle(
     });
   });
 
-  return { settled, amount };
+  return { settled, amount, overdraft };
 }

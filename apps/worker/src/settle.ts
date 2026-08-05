@@ -44,7 +44,7 @@ export async function settle(
   db: Db,
   redis: Redis,
   data: MeterJobData,
-): Promise<{ settled: boolean; amount: number }> {
+): Promise<{ settled: boolean; amount: number; overdraft: boolean }> {
   // 1. 算实际费用（money 包公式，已防御异常 usage）
   const amount = calcAmount({
     inputTokens: data.usage.inputTokens,
@@ -66,6 +66,7 @@ export async function settle(
   // 2. 单事务：写明细 + 流水 + 原子扣余额
   //    幂等靠 INSERT ... ON CONFLICT DO NOTHING + returning()：首次返回行，重复返回空
   let settled = false;
+  let overdraft = false;
   let balanceAfter: number | null = null;
   await db.transaction(async (tx) => {
     // 2a. 写 usage_logs（幂等：request_id 唯一，冲突跳过；returning 判定是否首次写入）
@@ -102,13 +103,40 @@ export async function settle(
 
     settled = true;
 
-    // 2b. 原子扣余额：SET balance = balance - amount RETURNING balance
-    //    PG 单条 UPDATE 内完成读-改-写，并发事务串行化执行（不丢更新，无需 FOR UPDATE）
-    //    返回扣减后的余额，用于流水 balanceAfter
+    // 2b. 原子扣余额：SET balance = balance - amount WHERE balance >= amount RETURNING balance
+    //    条件 UPDATE 防透支：余额不足时不扣（returning 空）→ 标 overdraft，usage_logs 已记真实 amount 供对账追回。
+    //    PG 单条 UPDATE 内完成读-改-写 + 条件判定，并发事务串行化执行（不丢更新，无需 FOR UPDATE）。
+    //    fail-open 路径（Redis 不可用时 hold 跳过放行）的资损兜底：余额绝不为负。
     const updated = await tx.update(users)
       .set({ balance: sql`${users.balance} - ${amount}`, updatedAt: new Date() })
-      .where(eq(users.id, data.userId))
+      .where(sql`${users.id} = ${data.userId} and ${users.balance} >= ${amount}`)
       .returning({ balance: users.balance });
+
+    if (updated.length === 0) {
+      // 透支：余额 < amount（fail-open 放行后实际用量超余额）→ 不扣（保余额非负），
+      // usage_logs 已写真实 amount（对账/追回依据）。流水仍记，balanceAfter = 当前余额。
+      overdraft = true;
+      const cur = await tx.query.users.findFirst({
+        where: eq(users.id, data.userId),
+        columns: { balance: true },
+      });
+      balanceAfter = cur?.balance ?? 0;
+      await tx.insert(transactions).values({
+        userId: data.userId,
+        type: 'consume',
+        amount: -amount,
+        balanceBefore: balanceAfter,
+        balanceAfter,
+        refType: 'usage_logs',
+        refId: data.requestId,
+        remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens) [OVERDRAFT-资损待追回]`,
+      }).onConflictDoNothing({
+        target: [transactions.refType, transactions.refId],
+        where: sql`ref_type = 'usage_logs'`,
+      });
+      return;
+    }
+
     const newBalance = updated[0]?.balance ?? 0;
     const balanceBefore = newBalance + amount; // 扣前 = 扣后 + 本次扣额
 
@@ -130,10 +158,12 @@ export async function settle(
     });
   });
 
-  // 3. 已结算 → 刷 Redis 缓存 + 清 hold + TPM 回填
+  // 3. 已结算 → 失效 Redis 余额缓存 + 清 hold + TPM 回填
   if (settled && balanceAfter !== null) {
-    // Redis 余额缓存覆盖为 DB 权威值（worker 结算后余额校正）
-    await redis.set(`billing:balance:${data.userId}`, balanceAfter);
+    // 失效缓存（而非覆盖）：并发 hold 期间，redis.set(dbBalance) 会抹掉其他请求的 hold 占位，
+    // 导致虚高余额 → 超额放行（资损）。改为 DEL：下次 hold 走 cache_miss → 从 DB 懒加载权威值，
+    // 此时 DB 已扣减（本事务已提交），新 hold 基于真实余额判定，不破坏进行中 hold 的占位。
+    await redis.del(`billing:balance:${data.userId}`);
   }
   // 无论是否首次结算，都清 hold key（防残留；幂等 DEL 无副作用）
   await redis.del(`billing:hold:${data.requestId}`);
@@ -153,5 +183,5 @@ export async function settle(
     }
   }
 
-  return { settled, amount };
+  return { settled, amount, overdraft };
 }
