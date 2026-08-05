@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { providers, channels, modelMappings, modelChannels } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import { encrypt } from '../lib/crypto.js';
+import { invalidateRouteCache } from '../lib/route-invalidation.js';
 import { z } from 'zod';
 import { recordAudit } from '../lib/audit.js';
 import type { AdminEnv } from '../middleware/session.js';
@@ -128,6 +129,9 @@ export function channelImportRoutes(db: Db, encryptionKey: string): Hono<AdminEn
       targetType: 'channel',
       detail: { total: items.length, success },
     });
+
+    // 批量失效路由缓存（一次 bump 覆盖整批导入，而非逐条）
+    if (success > 0) invalidateRouteCache();
 
     return c.json({ total: items.length, success, failed: items.length - success, details }, success > 0 ? 200 : 400);
   });

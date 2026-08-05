@@ -1,11 +1,9 @@
 import { Hono } from 'hono';
-import { and, desc, eq } from 'drizzle-orm';
-import { modelMappings, modelChannels, channels, providers } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
 import { type Ai, type ChannelDesc, type Usage, estimateTokens, extractRequestChars } from '@ai-gateway/ai';
 
 import { calcHold, estimateMaxCost } from '@ai-gateway/money';
-import { decrypt } from '../lib/crypto.js';
 import { BillingService } from '../lib/billing.js';
 import { RateLimiter } from '../lib/rate-limit.js';
 import { MeterProducer } from '../lib/meter.js';
@@ -18,6 +16,7 @@ import { jsonBody } from '../lib/validation.js';
 import { estimateStreamUsage } from '../lib/stream-usage.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { isModelAllowed } from '../lib/model-scope.js';
+import { getMapping, getChannels, type ChannelCache } from '../lib/route-cache.js';
 import { env, logger } from '../index.js';
 
 /** chat/completions 请求 schema（必需字段校验，未知参数透传） */
@@ -32,8 +31,15 @@ const chatSchema = z
 
 /** 默认输出上限估算（请求未带 max_tokens 时） */
 const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
-/** 全局 RPM 上限（防整站被打；tech-stack §5：2000 RPM/实例） */
-const GLOBAL_RPM = 2000;
+/**
+ * 全局 RPM 上限（防整站被打；tech-stack §5：2000 RPM/实例）。
+ * 全站共享一个 Redis key（多副本合计 ≤ GLOBAL_RPM，非每副本）。
+ * 可用 GLOBAL_RPM 环境变量覆盖（压测调高用；生产默认 2000 不变）。
+ */
+const GLOBAL_RPM = (() => {
+  const v = Number(process.env.GLOBAL_RPM);
+  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 2000;
+})();
 
 /**
  * POST /v1/chat/completions — 对话补全（OpenAI 格式，含 SSE 流式）
@@ -41,7 +47,7 @@ const GLOBAL_RPM = 2000;
  * 链路：鉴权 → 限流(RPM) → 预扣(hold) → 模型路由 → 渠道选择 → ai 包调用 → 释放 hold → SSE/JSON
  * 结算（写 usage_logs + transactions）留 worker 异步队列。
  */
-export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, rateLimiter: RateLimiter, meter: MeterProducer): Hono<AuthEnv> {
+export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, rateLimiter: RateLimiter, meter: MeterProducer, redis: Redis): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
   const upstreamTracer = trace.getTracer('gateway.upstream');
 
@@ -106,13 +112,13 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
       );
     }
 
-    // 模型路由：externalName → model_mappings（上架）→ 渠道列表
-    const mapping = await db.query.modelMappings.findFirst({
-      where: and(eq(modelMappings.externalName, model), eq(modelMappings.status, 0)),
-    });
-    if (!mapping) {
+    // 模型路由：externalName → model_mappings（走 Redis 缓存，消除热路径每请求查 DB）
+    const mappingCache = await getMapping(db, redis, model);
+    if (!mappingCache) {
       return errorResponse(c, 404, 'model_not_found', `模型「${model}」不存在或已下架`);
     }
+    // 缓存对象与原 Drizzle row 形状兼容（字段名一致），后续直接用 mappingCache 替代 mapping
+    const mapping = mappingCache;
 
     /** 构造计量 job 并入队（fire-and-forget，幂等 jobId=requestId）。
      *  资损防线：入队失败（Redis 挂）→ 同步降级结算（DB 兜底），绝不漏扣。 */
@@ -222,15 +228,14 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
     // ---- 候选循环（requirements 5.9）----
     // 主模型渠道 → 全失败 → fallback 模型渠道 → 全失败 → 503
     // 每个渠道内：ai 包 withRetry 已覆盖同渠道重试；gateway 层只做「换渠道」
-    const mainChannels = await resolveChannels(db, mapping.realModel);
+    // 渠道解析走 Redis 缓存（getChannels），消除热路径多表 JOIN 查 DB
+    const mainChannels = await getChannels(db, redis, mapping.realModel, env.ENCRYPTION_KEY);
     // fallback 模型的渠道列表（lazy 查询：仅主模型全失败时才解析）
     const fallbackTargets: Array<{ realModel: string; channels: ResolvedChannel[] }> = [];
     for (const fb of mapping.fallbackModels ?? []) {
-      const fbMapping = await db.query.modelMappings.findFirst({
-        where: and(eq(modelMappings.externalName, fb), eq(modelMappings.status, 0)),
-      });
+      const fbMapping = await getMapping(db, redis, fb);
       if (fbMapping) {
-        fallbackTargets.push({ realModel: fbMapping.realModel, channels: await resolveChannels(db, fbMapping.realModel) });
+        fallbackTargets.push({ realModel: fbMapping.realModel, channels: await getChannels(db, redis, fbMapping.realModel, env.ENCRYPTION_KEY) });
       }
     }
     const targets = [{ realModel: mapping.realModel, channels: mainChannels }, ...fallbackTargets];
@@ -286,7 +291,7 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
                 logger.warn({ requestId, channel: channel.key, code: state.failed.code }, 'candidate failed, switching');
                 recordChannelFailure(channel.key);
                 if (isDeadCredentialError(state.failed.code)) {
-                  void markChannelDeadCredential(db, channel.channelId, logger);
+                  void markChannelDeadCredential(db, channel.channelId, logger, redis);
                 }
                 continue;
               }
@@ -328,7 +333,7 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
               recordChannelFailure(channel.key);
               // 死凭据 → 写回 DB status=4（永久退出路由 + 管理端可见）
               if (isDeadCredentialError(err?.code)) {
-                void markChannelDeadCredential(db, channel.channelId, logger);
+                void markChannelDeadCredential(db, channel.channelId, logger, redis);
               }
               continue; // 换渠道
             }
@@ -375,48 +380,8 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
 
 // ---- 渠道解析 + 候选循环（requirements 5.9） ----
 
-interface ResolvedChannel {
-  channelId: number;
-  baseUrl: string;
-  apiKey: string;
-  protocol: ChannelDesc['protocol'];
-  providerName: string;
-  key: string;
-}
-
-/**
- * 解析模型的所有可用候选渠道（status=0 启用），按 priority DESC + weight DESC 排序。
- * 熔断/凭据无效/禁用的渠道由 ai 包的 breaker/canRequest 在调用时过滤（gateway 层不查 Redis 状态）。
- */
-async function resolveChannels(db: Db, realModel: string): Promise<ResolvedChannel[]> {
-  const rows = await db
-    .select({
-      channelId: channels.id,
-      channelName: channels.name,
-      apiKeyEnc: channels.apiKeyEnc,
-      baseUrlOverride: channels.baseUrlOverride,
-      providerName: providers.name,
-      providerBaseUrl: providers.baseUrl,
-      providerProtocol: providers.protocol,
-      mcWeight: modelChannels.weight,
-      mcPriority: modelChannels.priority,
-    })
-    .from(modelChannels)
-    .innerJoin(channels, eq(modelChannels.channelId, channels.id))
-    .innerJoin(providers, eq(channels.providerId, providers.id))
-    .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
-    .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
-    .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
-
-  return rows.map((row) => ({
-    channelId: row.channelId,
-    baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
-    apiKey: decrypt(row.apiKeyEnc, env.ENCRYPTION_KEY),
-    protocol: row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'],
-    providerName: row.providerName,
-    key: `${row.providerName}/${row.channelName}`,
-  }));
-}
+/** 候选渠道（渠道解析走 Redis 缓存，见 route-cache.ts 的 ChannelCache） */
+type ResolvedChannel = ChannelCache;
 
 /**
  * 判断错误是否值得换渠道（vs 直接返回客户端）：

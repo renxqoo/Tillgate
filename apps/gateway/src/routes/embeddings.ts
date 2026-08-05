@@ -1,10 +1,8 @@
 import { Hono } from 'hono';
-import { and, desc, eq } from 'drizzle-orm';
-import { modelMappings, modelChannels, channels, providers } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
 import { type Ai, type ChannelDesc, estimateTokens, extractRequestChars } from '@ai-gateway/ai';
 import { calcHold, estimateMaxCost } from '@ai-gateway/money';
-import { decrypt } from '../lib/crypto.js';
 import { BillingService } from '../lib/billing.js';
 import { RateLimiter } from '../lib/rate-limit.js';
 import { MeterProducer } from '../lib/meter.js';
@@ -13,6 +11,7 @@ import { jsonBody } from '../lib/validation.js';
 import { isModelAllowed } from '../lib/model-scope.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { markChannelDeadCredential, isDeadCredentialError } from '../lib/dead-credential-persist.js';
+import { getMapping, getChannels } from '../lib/route-cache.js';
 import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { z } from 'zod';
 import { env, logger } from '../index.js';
@@ -36,6 +35,7 @@ export function embeddingsRoutes(
   billing: BillingService,
   rateLimiter: RateLimiter,
   meter: MeterProducer,
+  redis: Redis,
 ): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', jsonBody(embedSchema), async (c) => {
     const auth = c.var.auth;
@@ -58,10 +58,8 @@ export function embeddingsRoutes(
       return errorResponse(c, 429, 'rate_limit_exceeded', `请求过于频繁（${rlResult.dimension}）`, `请 ${rlResult.retryAfterSec} 秒后重试`);
     }
 
-    // 模型路由
-    const mapping = await db.query.modelMappings.findFirst({
-      where: and(eq(modelMappings.externalName, model), eq(modelMappings.status, 0)),
-    });
+    // 模型路由（走 Redis 缓存）
+    const mapping = await getMapping(db, redis, model);
     if (!mapping) return errorResponse(c, 404, 'model_not_found', `模型「${model}」不存在或已下架`);
 
     // 预扣
@@ -74,8 +72,8 @@ export function embeddingsRoutes(
     const holdResult = holdAmount > 0 ? await billing.hold(auth.userId, requestId, holdAmount) : { ok: true as const, balance, degraded: false };
     if (!holdResult.ok) return errorResponse(c, 402, 'insufficient_balance', `可用余额不足`, '请充值后再试');
 
-    // 渠道选择
-    const candidates = await resolveChannels(db, mapping.realModel);
+    // 渠道选择（走 Redis 缓存）
+    const candidates = await getChannels(db, redis, mapping.realModel, env.ENCRYPTION_KEY);
     if (candidates.length === 0) {
       await billing.release(auth.userId, requestId);
       return errorResponse(c, 503, 'no_available_channel', `模型「${model}」当前无可用渠道`);
@@ -113,7 +111,7 @@ export function embeddingsRoutes(
             lastError = { code: err.code, message: err.message, status: err.status ?? 502 };
             // 死凭据 → 写回 DB status=4（永久退出路由 + 管理端可见）
             if (isDeadCredentialError(err.code)) {
-              void markChannelDeadCredential(db, channel.channelId, logger);
+              void markChannelDeadCredential(db, channel.channelId, logger, redis);
             }
             continue;
           }
@@ -128,17 +126,4 @@ export function embeddingsRoutes(
       if (!settled) await billing.release(auth.userId, requestId).catch(() => {});
     }
   });
-}
-
-// 复用 chat-completions 的渠道解析逻辑
-async function resolveChannels(db: Db, realModel: string) {
-  const rows = await db
-    .select({ channelId: channels.id, channelName: channels.name, apiKeyEnc: channels.apiKeyEnc, baseUrlOverride: channels.baseUrlOverride, providerName: providers.name, providerBaseUrl: providers.baseUrl, providerProtocol: providers.protocol, mcWeight: modelChannels.weight, mcPriority: modelChannels.priority })
-    .from(modelChannels)
-    .innerJoin(channels, eq(modelChannels.channelId, channels.id))
-    .innerJoin(providers, eq(channels.providerId, providers.id))
-    .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
-    .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
-    .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
-  return rows.map((r) => ({ channelId: r.channelId, baseUrl: r.baseUrlOverride ?? r.providerBaseUrl, apiKey: decrypt(r.apiKeyEnc, env.ENCRYPTION_KEY), protocol: r.providerProtocol.replace('_', '-') as ChannelDesc['protocol'], providerName: r.providerName, key: `${r.providerName}/${r.channelName}` }));
 }

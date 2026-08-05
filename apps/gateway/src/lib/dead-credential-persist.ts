@@ -1,7 +1,9 @@
 import { eq, inArray, and } from 'drizzle-orm';
 import { channels } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
 import type { Logger } from '@ai-gateway/logger';
+import { invalidateRouteCache } from './route-cache.js';
 
 /**
  * 死凭据 DB 持久化（requirements 5.16：死凭据隔离）。
@@ -14,6 +16,8 @@ import type { Logger } from '@ai-gateway/logger';
  *   - 运营换 Key（PATCH body.apiKey）时重置 status=0 恢复路由
  *
  * 设计：幂等写（多次标记同渠道 status=4 无副作用），失败仅记日志不阻塞请求。
+ * 缓存失效：status=4 后该渠道不应再被路由返回，必须 bump 路由缓存版本
+ *   （否则缓存的 status=0 渠道列表仍包含死凭据渠道，下次请求还会路由到它）。
  */
 
 /**
@@ -24,6 +28,7 @@ export async function markChannelDeadCredential(
   db: Db,
   channelId: number,
   logger?: Logger,
+  redis?: Redis,
 ): Promise<void> {
   try {
     const updated = await db
@@ -33,6 +38,8 @@ export async function markChannelDeadCredential(
       .returning({ id: channels.id });
     if (updated.length > 0) {
       logger?.warn({ channelId }, 'channel marked as dead credential (status=4)');
+      // 失效路由缓存：该渠道从 status=0 列表移除，下次解析不再返回它
+      if (redis) await invalidateRouteCache(redis);
     }
   } catch (err) {
     logger?.error({ channelId, err: (err as Error).message }, 'failed to mark channel dead credential in DB');

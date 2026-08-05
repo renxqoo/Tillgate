@@ -9,6 +9,7 @@ import {
 import type { Db } from '@ai-gateway/db';
 import { createAi, defaultAiConfig, type ChannelDesc } from '@ai-gateway/ai';
 import { encrypt, decrypt, maskKey } from '../lib/crypto.js';
+import { invalidateRouteCache } from '../lib/route-invalidation.js';
 import { jsonBody } from '../lib/validation.js';
 import { z } from 'zod';
 import { env, logger } from '../index.js';
@@ -70,6 +71,7 @@ export function channelAdminRoutes(db: Db): Hono {
           status: body.status ?? 0,
         })
         .returning();
+      invalidateRouteCache();
       return c.json(created, 201);
     })
 
@@ -82,12 +84,14 @@ export function channelAdminRoutes(db: Db): Hono {
         .where(eq(providers.id, id))
         .returning();
       if (!updated) return c.json({ error: '供应商不存在' }, 404);
+      invalidateRouteCache();
       return c.json(updated);
     })
 
     .delete('/api/admin/providers/:id', async (c) => {
       const id = Number(c.req.param('id'));
       await db.delete(providers).where(eq(providers.id, id));
+      invalidateRouteCache();
       return c.json({ ok: true });
     })
 
@@ -141,6 +145,7 @@ export function channelAdminRoutes(db: Db): Hono {
         })
         .returning({ id: channels.id, name: channels.name, providerId: channels.providerId });
       logger.info({ channelId: created!.id, name: created!.name }, 'channel created (key encrypted)');
+      invalidateRouteCache();
       // 响应不含 key（明文或密文都不返回）
       return c.json(created, 201);
     })
@@ -173,6 +178,7 @@ export function channelAdminRoutes(db: Db): Hono {
         failCount: channels.failCount,
       });
       if (!updated) return c.json({ error: '渠道不存在' }, 404);
+      invalidateRouteCache();
       logger.info({ channelId: id, keyChanged: body.apiKey !== undefined }, 'channel updated');
       return c.json(updated);
     })
@@ -181,6 +187,7 @@ export function channelAdminRoutes(db: Db): Hono {
       const id = Number(c.req.param('id'));
       await db.delete(modelChannels).where(eq(modelChannels.channelId, id));
       await db.delete(channels).where(eq(channels.id, id));
+      invalidateRouteCache();
       return c.json({ ok: true });
     })
 
@@ -231,6 +238,7 @@ export function channelAdminRoutes(db: Db): Hono {
           cacheInputPrice: body.cacheInputPrice ?? 0,
         })
         .returning();
+      invalidateRouteCache();
       return c.json(created, 201);
     })
 
@@ -243,6 +251,7 @@ export function channelAdminRoutes(db: Db): Hono {
         .where(eq(modelMappings.id, id))
         .returning();
       if (!updated) return c.json({ error: '模型不存在' }, 404);
+      invalidateRouteCache();
       return c.json(updated);
     })
 
@@ -250,6 +259,7 @@ export function channelAdminRoutes(db: Db): Hono {
       const id = Number(c.req.param('id'));
       await db.delete(modelChannels).where(eq(modelChannels.mappingId, id));
       await db.delete(modelMappings).where(eq(modelMappings.id, id));
+      invalidateRouteCache();
       return c.json({ ok: true });
     })
 
@@ -271,6 +281,7 @@ export function channelAdminRoutes(db: Db): Hono {
       if (binds.length > 0) {
         await db.insert(modelChannels).values(binds);
       }
+      invalidateRouteCache();
       return c.json({ ok: true, bound: binds.length });
     });
 }
