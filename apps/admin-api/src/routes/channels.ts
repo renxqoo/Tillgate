@@ -78,9 +78,14 @@ export function channelAdminRoutes(db: Db): Hono {
     .patch('/api/admin/providers/:id', async (c) => {
       const id = Number(c.req.param('id'));
       const body = await c.req.json();
+      const update: Record<string, unknown> = { updatedAt: new Date() };
+      if (body.name !== undefined) update.name = body.name;
+      if (body.baseUrl !== undefined) update.baseUrl = body.baseUrl;
+      if (body.protocol !== undefined) update.protocol = body.protocol;
+      if (body.status !== undefined) update.status = body.status;
       const [updated] = await db
         .update(providers)
-        .set({ ...body, updatedAt: new Date() })
+        .set(update)
         .where(eq(providers.id, id))
         .returning();
       if (!updated) return c.json({ error: '供应商不存在' }, 404);
@@ -245,9 +250,20 @@ export function channelAdminRoutes(db: Db): Hono {
     .patch('/api/admin/models/:id', async (c) => {
       const id = Number(c.req.param('id'));
       const body = await c.req.json();
+      const update: Record<string, unknown> = { updatedAt: new Date() };
+      if (body.externalName !== undefined) update.externalName = body.externalName;
+      if (body.realModel !== undefined) update.realModel = body.realModel;
+      if (body.status !== undefined) update.status = body.status;
+      if (body.inputPrice !== undefined) update.inputPrice = body.inputPrice;
+      if (body.outputPrice !== undefined) update.outputPrice = body.outputPrice;
+      if (body.cacheInputPrice !== undefined) update.cacheInputPrice = body.cacheInputPrice;
+      if (body.fallbackModels !== undefined) update.fallbackModels = body.fallbackModels;
+      if (body.paramRules !== undefined) update.paramRules = body.paramRules;
+      if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
+      if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
       const [updated] = await db
         .update(modelMappings)
-        .set({ ...body, updatedAt: new Date() })
+        .set(update)
         .where(eq(modelMappings.id, id))
         .returning();
       if (!updated) return c.json({ error: '模型不存在' }, 404);

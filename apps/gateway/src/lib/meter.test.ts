@@ -112,12 +112,11 @@ describe('MeterProducer 入队失败处理', () => {
     );
   });
 
-  it('enqueue 配置 removeOnFail 不为小值（防死信被自动删导致永久丢失）', async () => {
+  it('enqueue 配置 removeOnFail=false（失败 job 永久保留，防死信被自动删导致漏计费）', async () => {
     let capturedConfig: unknown = null;
     const producer = makeProducer(async (_data: unknown) => {
       return ({ id: '1' });
     });
-    // 拦截 add 的第三个参数（options）
     const realAdd = (producer as unknown as { queue: { add: (n: string, d: unknown, o: unknown) => Promise<unknown> } }).queue.add;
     (producer as unknown as { queue: { add: (n: string, d: unknown, o: unknown) => Promise<unknown> } }).queue.add = (
       name: string,
@@ -149,7 +148,9 @@ describe('MeterProducer 入队失败处理', () => {
       mappingId: 1,
     });
     const cfg = capturedConfig as { removeOnFail?: number | boolean };
-    // removeOnFail 必须为 true（永久保留）或大数（>=50000），不能是 1000
-    expect(cfg.removeOnFail === true || (typeof cfg.removeOnFail === 'number' && cfg.removeOnFail >= 50000)).toBe(true);
+    // BullMQ 语义：removeOnFail=true → count:0（删除全部失败 job）；
+    //   removeOnFail=false → count:-1（永久保留，不自动删）。
+    // 计费资损防线：失败 job 必须保留供运维重放，因此 removeOnFail 必须为 false。
+    expect(cfg.removeOnFail).toBe(false);
   });
 });

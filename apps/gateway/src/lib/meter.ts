@@ -61,7 +61,8 @@ export type EnqueueFailureHandler = (data: MeterJobData, error: Error) => void;
  *
  * 资损防线（B4）：
  *   - 失败不静默吞掉：返回 {ok:false, error}，调用方据此记日志 + 告警指标
- *   - removeOnFail=true：重试耗尽的死信永久保留（而非 1000 条后自动删），防漏计费
+ *   - removeOnFail=false：失败 job 永久保留（BullMQ 语义 false=count:-1=保留全部），
+ *     供运维定期处理死信队列（重放 syncSettle）；true=count:0=删除全部（旧 bug，已修）
  *   - attempts 3 + 指数退避：短暂抖动自动恢复
  */
 export class MeterProducer {
@@ -81,8 +82,9 @@ export class MeterProducer {
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: 100,
-        // 永久保留失败 job：重试耗尽后不自动删（防漏计费），需运维定期处理死信队列
-        removeOnFail: true,
+        // removeOnFail=false：失败 job 永久保留（BullMQ false=count:-1），
+        // 防死信被自动删导致永久漏计费。需运维定期处理死信队列（重放 syncSettle）。
+        removeOnFail: false,
       });
       return { ok: true };
     } catch (err) {

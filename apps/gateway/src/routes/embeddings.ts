@@ -30,6 +30,17 @@ const embedSchema = z
  * 透传 + usage 计量，规则同 chat（鉴权 → 限流 → 预扣 → 渠道 → ai.chat(endpoint=embeddings)）。
  * 非流式（embeddings 无 SSE）。
  */
+
+/** 全局 RPM 上限（与 chat-completions 一致：生产硬上限 5000，开发可配） */
+const PROD_GLOBAL_RPM_CAP = 5000;
+const GLOBAL_RPM = (() => {
+  const v = Number(process.env.GLOBAL_RPM);
+  const isProd = process.env.NODE_ENV === 'production';
+  if (Number.isFinite(v) && v > 0) {
+    return isProd ? Math.min(Math.floor(v), PROD_GLOBAL_RPM_CAP) : Math.floor(v);
+  }
+  return 2000;
+})();
 export function embeddingsRoutes(
   db: Db,
   ai: Ai,
@@ -51,7 +62,7 @@ export function embeddingsRoutes(
 
     // 限流（RPM + TPM，同 chat）
     const rlResult = await rateLimiter.checkAll(
-      [{ dimension: 'global', max: 2000 }, { dimension: `user:${auth.userId}`, max: auth.userRpmLimit ?? env.DEFAULT_USER_RPM }],
+      [{ dimension: 'global', max: GLOBAL_RPM }, { dimension: `user:${auth.userId}`, max: auth.userRpmLimit ?? env.DEFAULT_USER_RPM }],
       requestId,
     );
     if (!rlResult.allowed) {
