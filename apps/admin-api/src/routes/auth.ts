@@ -3,6 +3,7 @@ import { eq, and } from 'drizzle-orm';
 import { setCookie, deleteCookie } from 'hono/cookie';
 import { users, rateCards, rateCardCoefficients, transactions } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
 import { sql } from 'drizzle-orm';
 import { jsonBody } from '../lib/validation.js';
 import { z } from 'zod';
@@ -11,6 +12,12 @@ import { signSession, SESSION_COOKIE, SESSION_DEFAULT_TTL_S } from '../lib/sessi
 import { recordAudit } from '../lib/audit.js';
 import { unfreezeIfBadDebt } from '../lib/balance.js';
 import type { AdminEnv } from '../middleware/session.js';
+import {
+  checkLoginThrottle,
+  recordLoginFailure,
+  resetLoginFailures,
+  clientIp,
+} from '../lib/login-throttle.js';
 
 /**
  * 控制台会话与登录（api-contract §4.1 / §5）。
@@ -52,12 +59,27 @@ function cookieOptions(secure: boolean) {
   };
 }
 
-export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number; secureCookie: boolean }): Hono<AdminEnv> {
+export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number; secureCookie: boolean; redis?: Redis }): Hono<AdminEnv> {
+  const redis = opts.redis;
   return new Hono<AdminEnv>()
 
     // 登录
     .post('/api/auth/login', jsonBody(loginSchema), async (c) => {
       const body = c.req.valid('json');
+      const ip = clientIp(c.req.raw.headers);
+
+      // C6 修复：登录限流——锁定中直接拒绝（防 scrypt DoS）
+      if (redis) {
+        const throttle = await checkLoginThrottle(redis, body.username, ip);
+        if (throttle.locked) {
+          c.header('retry-after', String(throttle.retryAfterSec));
+          return c.json(
+            { error: { message: '登录尝试过多，已临时锁定', code: 'TOO_MANY_ATTEMPTS' } },
+            429,
+          );
+        }
+      }
+
       // 查本地账号（issuer='local', subject=username）
       const rows = await db
         .select({
@@ -78,6 +100,8 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
       const passwordOk = user ? await verifyPassword(body.password, user.passwordHash) : false;
       // 用户不存在时也跑一次 verify（恒定时间，防根据响应时间区分「用户不存在」vs「密码错」）
       if (!user || !passwordOk) {
+        // C6 修复：记录失败（达阈值锁定）
+        if (redis) await recordLoginFailure(redis, body.username, ip);
         return c.json({ error: { message: '用户名或密码错误', code: 'INVALID_CREDENTIALS' } }, 401);
       }
 
@@ -85,7 +109,12 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
       if (user.status === 1) return c.json({ error: { message: '账号已封禁', code: 'ACCOUNT_BANNED' } }, 403);
       if (user.status === 2) return c.json({ error: { message: '账号已注销', code: 'ACCOUNT_DELETED' } }, 403);
 
-      // 首次登录赠送（余额为 0 且无任何流水 = 新用户；按身份源唯一判定防刷）
+      // C6 修复：登录成功 → 清零失败计数
+      if (redis) await resetLoginFailures(redis, body.username, ip);
+
+      // 首次登录赠送（余额为 0 且无任何流水 = 新用户）
+      // #6 修复：原子条件 UPDATE（WHERE balance = 0）防并发首次登录双倍赠送
+      // 旧实现 balance===0 + txCount===0 检查非原子，两个并发请求都能通过 → 各加一次 gift
       let gifted = false;
       if (opts.giftAmount > 0 && user.balance === 0) {
         const txCount = await db
@@ -93,13 +122,14 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
           .from(transactions)
           .where(eq(transactions.userId, user.id));
         if (Number(txCount[0]?.count ?? 0) === 0) {
-          // 赠送体验额度（原子加余额 + 写流水）
-          await db.transaction(async (tx) => {
+          // 赠送体验额度（原子条件 UPDATE：仅 balance=0 时加，防并发双花）
+          const result = await db.transaction(async (tx) => {
             const updated = await tx
               .update(users)
               .set({ balance: sql`${users.balance} + ${opts.giftAmount}`, updatedAt: new Date() })
-              .where(eq(users.id, user.id))
+              .where(sql`${users.id} = ${user.id} and ${users.balance} = 0`)
               .returning({ balance: users.balance });
+            if (updated.length === 0) return null; // 并发竞态：已被另一个请求赠送，跳过
             const after = updated[0]!.balance;
             await tx.insert(transactions).values({
               userId: user.id,
@@ -108,10 +138,17 @@ export function authRoutes(db: Db, opts: { jwtSecret: string; giftAmount: number
               balanceBefore: 0,
               balanceAfter: after,
               refType: 'signup_gift',
+              refId: `gift:${user.id}`,
               remark: `新用户赠送 ${opts.giftAmount}`,
+            }).onConflictDoNothing({
+              target: [transactions.refType, transactions.refId],
+              where: sql`ref_type = 'signup_gift'`,
             });
+            return after;
           });
-          gifted = true;
+          if (result !== null) {
+            gifted = true;
+          }
           await unfreezeIfBadDebt(db, user.id).catch(() => {});
           await recordAudit(db, {
             adminId: null,

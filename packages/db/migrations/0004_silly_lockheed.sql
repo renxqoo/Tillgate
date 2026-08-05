@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "transactions_gift_ref_uq" ON "transactions" USING btree ("ref_type","ref_id") WHERE ref_type = 'signup_gift';

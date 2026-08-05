@@ -42,5 +42,9 @@ export const transactions = pgTable(
     uniqueIndex('transactions_redeem_ref_uq')
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'redeem_codes'`),
+    // signup_gift 幂等：防并发首次登录双倍赠送（#6 修复）
+    uniqueIndex('transactions_gift_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'signup_gift'`),
   ],
 );

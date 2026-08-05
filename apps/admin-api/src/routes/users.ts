@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { eq, and, or, ilike, sql } from 'drizzle-orm';
-import { users, rateCards, transactions, auditLogs } from '@ai-gateway/db/schema';
+import { users, rateCards, transactions, auditLogs, apiKeys } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import { jsonBody, query } from '../lib/validation.js';
 import { z } from 'zod';
 import { recordAudit } from '../lib/audit.js';
 import { changeBalance, recordTransaction, unfreezeIfBadDebt } from '../lib/balance.js';
+import { getAdminRedis } from '../lib/route-invalidation.js';
 import {
   paginationQuerySchema,
   parsePagination,
@@ -163,6 +164,16 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       const [updated] = await db.update(users).set(update).where(eq(users.id, id)).returning();
       if (!updated) return c.json({ error: '用户不存在' }, 404);
 
+      // #5 修复：封禁/解封/限流变更时清 gateway auth cache（防封禁后 60s 内 key 仍可用）
+      // auth:key:{hash} 缓存 TTL 60s，不主动清则封禁最多延迟 60 秒生效
+      if (body.status !== undefined || body.rpmLimit !== undefined || body.tpmLimit !== undefined) {
+        const keys = await db.select({ keyHash: apiKeys.keyHash }).from(apiKeys).where(eq(apiKeys.userId, id));
+        const redis = getAdminRedis();
+        if (keys.length > 0 && redis) {
+          await Promise.all(keys.map((k) => redis.del(`auth:key:${k.keyHash}`).catch(() => {})));
+        }
+      }
+
       await recordAudit(db, {
         adminId,
         action: 'user.update',
@@ -182,6 +193,7 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       // 扣减时检查不透支；增加时不检查
       const result = await changeBalance(db, id, body.amount, {
         checkSufficient: body.amount < 0,
+        redis: getAdminRedis(),
       });
       if (!result.ok) {
         if (result.reason === 'not_found') return c.json({ error: '用户不存在' }, 404);
@@ -258,7 +270,7 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       const id = Number(c.req.param('id'));
       const body = c.req.valid('json');
       const adminId = c.get('adminId');
-      const result = await changeBalance(db, id, body.amount);
+      const result = await changeBalance(db, id, body.amount, { redis: getAdminRedis() });
       if (!result.ok) return c.json({ error: '用户不存在' }, 404);
       await recordTransaction(db, {
         userId: id,
