@@ -143,7 +143,7 @@ describe('changeBalance 集成测试（真实 PG）', () => {
 
   it('unfreezeIfBadDebt：坏账冻结用户加钱后自动解冻', async () => {
     if (!connected) return it.skip('no DB');
-    const uid = await createTestUser(0, 1, 'insufficient_balance');
+    const uid = await createTestUser(0, 1, 'bad_debt');
     try {
       await changeBalance(db, uid, 1000);
       await unfreezeIfBadDebt(db, uid);
@@ -152,6 +152,19 @@ describe('changeBalance 集成测试（真实 PG）', () => {
       expect(u?.freezeReason).toBeNull(); // 坏账原因清除
       // 注意：status 仍为 1（封禁），unfreeze 只清 freezeReason，不解封 status（解封需管理员显式操作）
       expect(u?.status).toBe(1);
+    } finally {
+      await cleanupUser(uid);
+    }
+  });
+
+  it('B-1：unfreezeIfBadDebt 不清非坏账冻结（manual_review 保留）', async () => {
+    if (!connected) return it.skip('no DB');
+    const uid = await createTestUser(0, 1, 'manual_review');
+    try {
+      await changeBalance(db, uid, 1000);
+      await unfreezeIfBadDebt(db, uid);
+      const u = await db.query.users.findFirst({ where: eq(users.id, uid) });
+      expect(u?.freezeReason).toBe('manual_review'); // 不被误清
     } finally {
       await cleanupUser(uid);
     }

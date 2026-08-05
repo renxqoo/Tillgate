@@ -6,6 +6,7 @@ import { jsonBody, query } from '../lib/validation.js';
 import { z } from 'zod';
 import { generateClientId, generateClientSecret, sha256Hex } from '../lib/secrets.js';
 import { recordAudit } from '../lib/audit.js';
+import { getAdminRedis } from '../lib/route-invalidation.js';
 import {
   paginationQuerySchema,
   parsePagination,
@@ -115,9 +116,14 @@ export function appRoutes(db: Db): Hono<AdminEnv> {
         targetId: id,
         detail: { appId: disabled.appId },
       });
-      // 清 gateway 侧 App 状态缓存（app:{appId}）→ 已签发 JWT 立即失效
-      // admin-api 一期不直连 Redis（避免引入依赖）；靠 gateway KeyAuthCache TTL 自然过期。
-      // P1：共享 Redis + 主动失效广播。
+      // G2 修复：清 gateway 侧 App 状态缓存（app_status:{id}）→ 已签发 JWT 立即失效。
+      // admin-api 现已通过 getAdminRedis() 连 Redis（余额/路由缓存都主动清），
+      // 这里补上 app_status 缓存的失效（auth.ts:181 读这个缓存，TTL 60s）。
+      try {
+        await getAdminRedis().del(`app_status:${id}`);
+      } catch {
+        // Redis 不可用：靠 TTL 60s 兜底（gateway 下次查 DB 拿到 status=1）
+      }
       return c.json({ ok: true });
     })
 
@@ -126,11 +132,19 @@ export function appRoutes(db: Db): Hono<AdminEnv> {
       const session = c.get('session');
       const id = Number(c.req.param('id'));
       const newSecret = generateClientSecret();
-      const [updated] = await db
-        .update(apps)
-        .set({ clientSecretHash: sha256Hex(newSecret), rotatedAt: new Date() })
-        .where(and(eq(apps.id, id), eq(apps.userId, session.userId)))
-        .returning({ id: apps.id });
+      // A-2 修复：事务 + FOR UPDATE 行锁，防并发 rotate 竞争（两请求各返回 secret，后者覆盖前者）
+      const [updated] = await db.transaction(async (tx) => {
+        // 先锁行（FOR UPDATE），确保并发 rotate 串行化
+        await tx.select({ id: apps.id }).from(apps)
+          .where(and(eq(apps.id, id), eq(apps.userId, session.userId)))
+          .for('update').limit(1);
+        const [u] = await tx
+          .update(apps)
+          .set({ clientSecretHash: sha256Hex(newSecret), rotatedAt: new Date() })
+          .where(and(eq(apps.id, id), eq(apps.userId, session.userId)))
+          .returning({ id: apps.id });
+        return [u];
+      });
       if (!updated) return c.json({ error: '应用不存在或无权操作' }, 404);
       await recordAudit(db, {
         adminId: session.userId,

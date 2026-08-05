@@ -11,6 +11,7 @@ import {
   paginatedResult,
 } from '../lib/pagination.js';
 import { redeemCode } from '../lib/redeem.js';
+import { getAdminRedis } from '../lib/route-invalidation.js';
 import type { AdminEnv } from '../middleware/session.js';
 
 /**
@@ -87,7 +88,19 @@ export function panelRoutes(db: Db): Hono<AdminEnv> {
     .post('/api/redeem', jsonBody(redeemSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
-      const r = await redeemCode(db, session.userId, body.code);
+      // P-1 修复：兑换限流（防脚本爆破充值码，10 次/分钟）
+      const redis = getAdminRedis();
+      if (redis) {
+        const key = `redeem:rl:${session.userId}`;
+        const n = await redis.incr(key);
+        if (n === 1) await redis.expire(key, 60);
+        if (n > 10) {
+          const ttl = await redis.ttl(key);
+          c.header('retry-after', String(Math.max(1, ttl)));
+          return c.json({ error: { message: '兑换过于频繁，请稍后再试', code: 'RATE_LIMITED' } }, 429);
+        }
+      }
+      const r = await redeemCode(db, session.userId, body.code, getAdminRedis());
       if (!r.ok) {
         const code = r.code ?? 'invalid_code';
         // 错误码 → HTTP 状态（api-contract §4.1）

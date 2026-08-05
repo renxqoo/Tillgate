@@ -33,10 +33,14 @@ export const transactions = pgTable(
     index('transactions_user_created_idx').on(t.userId, t.createdAt),
     index('transactions_type_created_idx').on(t.type, t.createdAt),
     index('transactions_ref_idx').on(t.refType, t.refId),
-    // 部分唯一索引：consume 类型（扣费）按来源去重，非 consume 类型（充值/调账）不受约束
+    // 部分唯一索引：consume（扣费）+ redeem（充值码）按来源去重
     // worker 结算用 ON CONFLICT DO NOTHING，重复 job 只写一条流水
+    // redeem 也加幂等：防双击/重试导致重复入账（R-2 修复）
     uniqueIndex('transactions_consume_ref_uq')
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'usage_logs'`),
+    uniqueIndex('transactions_redeem_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'redeem_codes'`),
   ],
 );

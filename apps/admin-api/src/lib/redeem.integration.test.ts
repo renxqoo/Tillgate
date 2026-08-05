@@ -197,4 +197,48 @@ describe('redeemCode 充值码兑换（真实 PG）', () => {
       await cleanup(uid, batchId);
     }
   });
+
+  // R-1：batch 缺失时不应静默 0 元入账（资损防御）
+  // 注：DB 有 FK 约束（redeem_codes.batch_id → redeem_batches.id），孤儿 code 不可能通过正常操作产生。
+  // 但代码层仍需防御（防 migration/手动 SQL 产生孤儿）。此测试验证代码逻辑：batch 查询为空时抛错。
+  it('R-1 代码防御：batch 查询返回空 → 抛 batch_not_found（非静默 0 元）', async () => {
+    // 用 mock 验证纯逻辑（绕过 FK 约束）
+    const mockTx = {
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: () => Promise.resolve([{ id: 999, batchId: 999999998 }]), // code 命中
+          }),
+        }),
+      }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([]), // batch 查不到 → 空
+          }),
+        }),
+      }),
+      insert: () => ({ values: () => ({ onConflictDoNothing: () => ({}) }) }),
+    };
+    const mockDb = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(mockTx),
+    } as never;
+    await expect(redeemCode(mockDb, 1, 'dummy-code')).rejects.toThrow(/batch/);
+  });
+
+  // R-2：同一 code 重复兑换只产生一条流水（幂等保护）
+  it('重复兑换同一码 → transactions 只有一条流水（幂等）', async () => {
+    if (!connected) return it.skip('no DB');
+    const uid = await createTestUser(0);
+    const { batchId, codes } = await createBatch(5000, 1, null);
+    try {
+      await redeemCode(db, uid, codes[0]!);
+      // 尝试再次兑换（会被条件 UPDATE 拦截，返回 code_already_used）
+      await redeemCode(db, uid, codes[0]!);
+      const txs = await db.select().from(transactions).where(eq(transactions.userId, uid));
+      expect(txs).toHaveLength(1); // 只有一条流水
+    } finally {
+      await cleanup(uid, batchId);
+    }
+  });
 });

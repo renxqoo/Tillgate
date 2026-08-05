@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { changeBalance, type BalanceChangeResult } from './balance.js';
+import { changeBalance, type BalanceChangeResult, unfreezeIfBadDebt } from './balance.js';
 
 /**
  * changeBalance 纯逻辑测试：用 mock Db 验证分支逻辑（不连真实 DB）。
@@ -80,5 +80,30 @@ describe('changeBalance 逻辑分支', () => {
     const r = await changeBalance(db, 1, 50.7);
     expect(r.ok).toBe(true);
     expect((r as Extract<BalanceChangeResult, { ok: true }>).balanceBefore).toBe(999); // 1050 - 51(rounded)
+  });
+});
+
+describe('B-1: unfreezeIfBadDebt 只清坏账冻结（不动 manual_review 等）', () => {
+  it('unfreezeIfBadDebt 是函数且可正常调用（不抛错）', async () => {
+    const db = {
+      update: () => ({
+        set: () => ({
+          where: () => Promise.resolve(undefined),
+        }),
+      }),
+    } as never;
+    // 不抛错即通过（WHERE 条件的 bad_debt 精确性由源码审查 + 集成测试保证）
+    await expect(unfreezeIfBadDebt(db, 1)).resolves.toBeUndefined();
+  });
+
+  it('源码 WHERE 条件包含 freeze_reason = bad_debt（防回退）', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(fileURLToPath(new URL('balance.ts', import.meta.url)), 'utf8');
+    const start = src.indexOf('export async function unfreezeIfBadDebt');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const body = src.slice(start, start + 500);
+    expect(body).toMatch(/bad_debt/);
+    expect(body).not.toMatch(/freezeReason.*is not null/i);
   });
 });

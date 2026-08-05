@@ -1,8 +1,12 @@
 import { sql, eq, and } from 'drizzle-orm';
 import { redeemCodes, redeemBatches, users, transactions } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
 import { sha256Hex } from './secrets.js';
 import { unfreezeIfBadDebt } from './balance.js';
+
+/** gateway 余额缓存键（与 billing.ts 一致） */
+const BALANCE_CACHE_KEY = (userId: number) => `billing:balance:${userId}`;
 
 /**
  * 充值码兑换核心逻辑（data-model §3.12 / requirements 4.8）。
@@ -33,7 +37,7 @@ export interface RedeemResult {
   code?: 'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired';
 }
 
-export async function redeemCode(db: Db, userId: number, plaintextCode: string): Promise<RedeemResult> {
+export async function redeemCode(db: Db, userId: number, plaintextCode: string, redis?: Redis): Promise<RedeemResult> {
   const codeHash = sha256Hex(plaintextCode);
 
   // 单事务：原子标记 + 加余额 + 写流水
@@ -67,13 +71,16 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string):
     }
 
     const code = claimed[0]!;
-    // 2. 取面额
+    // 2. 取面额（batch 缺失时抛错回滚，防 code 被消费但用户拿 0 元——R-1 资损修复）
     const batch = await tx
       .select({ amount: redeemBatches.amount })
       .from(redeemBatches)
       .where(eq(redeemBatches.id, code.batchId))
       .limit(1);
-    const amount = batch[0]?.amount ?? 0;
+    if (batch.length === 0) {
+      throw new Error(`batch_not_found: batchId=${code.batchId}（兑换码 ${code.id} 关联的批次不存在）`);
+    }
+    const amount = batch[0]!.amount;
 
     // 3. 原子加余额（RETURNING 拿前后值）
     const updated = await tx
@@ -88,7 +95,7 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string):
     const balanceAfter = updated[0]!.balance;
     const balanceBefore = balanceAfter - amount;
 
-    // 4. 写流水（type=redeem）
+    // 4. 写流水（type=redeem；幂等：ref_type='redeem_codes' 部分唯一索引 + ON CONFLICT）
     await tx.insert(transactions).values({
       userId,
       type: 'redeem',
@@ -98,13 +105,18 @@ export async function redeemCode(db: Db, userId: number, plaintextCode: string):
       refType: 'redeem_codes',
       refId: String(code.id),
       remark: `充值码兑换 +${amount}`,
+    }).onConflictDoNothing({
+      target: [transactions.refType, transactions.refId],
+      where: sql`ref_type = 'redeem_codes'`,
     });
 
     return { ok: true, amount, balanceBefore, balanceAfter };
   }).then(async (r) => {
-    // 5. 成功后解冻坏账冻结（事务外，避免长事务）
+    // 5. 成功后解冻坏账冻结 + 失效 gateway 余额缓存（事务外，避免长事务）
     if (r.ok && r.amount && r.amount > 0) {
       await unfreezeIfBadDebt(db, userId).catch(() => {});
+      // 失效 gateway 余额缓存：充值后 gateway 必须重读 DB，否则读到旧缓存（含负数）→ 误判余额不足
+      redis?.del(BALANCE_CACHE_KEY(userId)).catch(() => {});
     }
     return r;
   });

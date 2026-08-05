@@ -1,6 +1,10 @@
 import { sql, eq } from 'drizzle-orm';
 import { users, transactions } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
+import type { Redis } from 'ioredis';
+
+/** gateway 余额缓存键（与 apps/gateway/src/lib/billing.ts 一致，跨服务 DEL 失效） */
+const BALANCE_CACHE_KEY = (userId: number) => `billing:balance:${userId}`;
 
 /**
  * 余额变更工具（admin-api 调账 / 充值码兑换 / 赠送共用）。
@@ -32,10 +36,16 @@ export async function changeBalance(
   db: Db,
   userId: number,
   amount: number,
-  opts: { checkSufficient?: boolean } = {},
+  opts: { checkSufficient?: boolean; redis?: Redis } = {},
 ): Promise<BalanceChangeResult> {
   const delta = Math.round(amount); // 厘整数
   if (!Number.isFinite(delta)) return { ok: false, reason: 'not_found' };
+
+  // 失效 gateway 余额缓存（充值/扣费后，gateway 的 Redis 缓存必须失效，
+  // 否则下次请求读到旧缓存 → 误判余额不足/虚高。DEL 失败静默——TTL 1h 兜底）。
+  const invalidateCache = () => {
+    opts.redis?.del(BALANCE_CACHE_KEY(userId)).catch(() => {});
+  };
 
   // 扣减且要求不透支：用条件 UPDATE（WHERE balance + delta >= 0）
   if (delta < 0 && opts.checkSufficient) {
@@ -50,6 +60,7 @@ export async function changeBalance(
       return { ok: false, reason: exists.length === 0 ? 'not_found' : 'insufficient' };
     }
     const after = updated[0]!.balance;
+    invalidateCache();
     return { ok: true, balanceBefore: after - delta, balanceAfter: after };
   }
 
@@ -61,6 +72,7 @@ export async function changeBalance(
     .returning({ balance: users.balance });
   if (updated.length === 0) return { ok: false, reason: 'not_found' };
   const after = updated[0]!.balance;
+  invalidateCache();
   return { ok: true, balanceBefore: after - delta, balanceAfter: after };
 }
 
@@ -96,12 +108,13 @@ export async function recordTransaction(
 }
 
 /**
- * 解冻账户：充值/调账后若 status=1（封禁因坏账冻结）且 freezeReason 非空 → 自动解冻。
+ * 解冻账户：充值/调账后若 status=1 且 freezeReason='bad_debt' → 自动解冻。
  * requirements：充值后自动解冻并清空 freeze_reason（data-model §3.1）。
+ * B-1 修复：只清坏账冻结（freeze_reason='bad_debt'），不动 manual_review 等人工冻结原因。
  */
 export async function unfreezeIfBadDebt(db: Db, userId: number): Promise<void> {
   await db
     .update(users)
     .set({ freezeReason: null, updatedAt: new Date() })
-    .where(sql`${users.id} = ${userId} and ${users.freezeReason} is not null and ${users.status} = 1`);
+    .where(sql`${users.id} = ${userId} and ${users.freezeReason} = 'bad_debt' and ${users.status} = 1`);
 }
