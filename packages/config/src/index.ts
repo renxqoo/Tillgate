@@ -21,6 +21,15 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   /** 新用户默认限流（用户级） */
   DEFAULT_USER_RPM: z.coerce.number().int().min(1).default(60),
   DEFAULT_USER_TPM: z.coerce.number().int().min(1).default(1_000_000),
+  /**
+   * 允许 http:// 与内网上游（仅压测/本地调试）。
+   * 双重门控：本开关为 true 且 NODE_ENV !== 'production' 才生效（见 createGatewayAi）。
+   * 生产镜像即便误配本开关也安全（被 NODE_ENV 门控拦下）。
+   */
+  ALLOW_LOCAL_UPSTREAM: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   /** OTel（可选） */
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_ENABLED: z

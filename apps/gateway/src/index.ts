@@ -41,7 +41,10 @@ export const otel: { shutdown: () => Promise<void> } = initOtel({
  *    否则各副本内存独立，熔断形同虚设。
  */
 export function createGatewayAi(redis?: Redis): Ai {
-  const cfg = { ...defaultAiConfig(), allowLocalUrl: false }; // 生产安全：强制 https
+  // 双重门控：ALLOW_LOCAL_UPSTREAM=true 且 NODE_ENV !== 'production' 才放行 http://内网上游。
+  // 仅用于本地 mock 上游压测；生产镜像即便误配 ALLOW_LOCAL_UPSTREAM 也被 NODE_ENV 拦下。
+  const allowLocal = env.ALLOW_LOCAL_UPSTREAM && env.NODE_ENV !== 'production';
+  const cfg = { ...defaultAiConfig(), allowLocalUrl: allowLocal };
   if (redis) {
     return createAi(cfg, {
       breakerStorage: createRedisBreakerStorage(redis),
@@ -118,8 +121,8 @@ export function createApp(db: Db, ai: Ai, billing: BillingService, rateLimiter: 
 
   app.route('/healthz', healthRoutes);
   app.route('/v1/models', modelsRoutes(db));
-  app.route('/v1/chat/completions', chatCompletionsRoutes(db, ai, billing, rateLimiter, meter));
-  app.route('/v1/embeddings', embeddingsRoutes(db, ai, billing, rateLimiter, meter));
+  app.route('/v1/chat/completions', chatCompletionsRoutes(db, ai, billing, rateLimiter, meter, redis));
+  app.route('/v1/embeddings', embeddingsRoutes(db, ai, billing, rateLimiter, meter, redis));
   app.route('/oauth/token', oauthTokenRoutes(db, redis));
 
   return app;
@@ -128,6 +131,14 @@ export function createApp(db: Db, ai: Ai, billing: BillingService, rateLimiter: 
 const isMain =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
+  // 提高 Node 原生 fetch（undici）的每源连接池上限。
+  // 默认 ~128 连接/源 → 单上游时并发被卡在 ~128-200（即使 DB/事件循环空闲）。
+  // 这是「单实例并发瓶颈」的真因：不是 DB 连接池，是 undici 出站连接池。
+  // 用 plain Agent（只调 connections，不设 connect 钩子）→ 不破坏 SSE 流式逐块推送
+  // （早先用 connect.lookup 的 custom dispatcher 会缓冲 body，已移除；plain Agent 无此问题）。
+  const { Agent, setGlobalDispatcher } = await import('undici');
+  setGlobalDispatcher(new Agent({ connections: 2048, keepAliveTimeout: 30_000, keepAliveMaxTimeout: 60_000 }));
+
   const db = createDb(env.DATABASE_URL);
   // BullMQ 要求 maxRetriesPerRequest: null（阻塞命令如 BLPOP 需要无限重试）
   const redis = new Redis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: null });
