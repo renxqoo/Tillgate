@@ -13,7 +13,7 @@ import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { trace, SpanStatusCode, type Span } from '@opentelemetry/api';
 import { z } from 'zod';
 import { jsonBody } from '../lib/validation.js';
-import { estimateStreamUsage } from '../lib/stream-usage.js';
+import { estimateStreamUsage, estimateNonStreamUsage } from '../lib/stream-usage.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { isModelAllowed } from '../lib/model-scope.js';
 import { getMapping, getChannels, type ChannelCache } from '../lib/route-cache.js';
@@ -34,11 +34,18 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
 /**
  * 全局 RPM 上限（防整站被打；tech-stack §5：2000 RPM/实例）。
  * 全站共享一个 Redis key（多副本合计 ≤ GLOBAL_RPM，非每副本）。
- * 可用 GLOBAL_RPM 环境变量覆盖（压测调高用；生产默认 2000 不变）。
+ *
+ * B4 修复：原实现从 env 裸读 GLOBAL_RPM 无门控，.env 残留压测值 200000 → 全局限流形同虚设。
+ * 现在生产环境（NODE_ENV=production）强制硬上限 5000，开发/测试不限制（便于压测）。
  */
+const PROD_GLOBAL_RPM_CAP = 5000;
 const GLOBAL_RPM = (() => {
   const v = Number(process.env.GLOBAL_RPM);
-  return Number.isFinite(v) && v > 0 ? Math.floor(v) : 2000;
+  const isProd = process.env.NODE_ENV === 'production';
+  if (Number.isFinite(v) && v > 0) {
+    return isProd ? Math.min(Math.floor(v), PROD_GLOBAL_RPM_CAP) : Math.floor(v);
+  }
+  return 2000;
 })();
 
 /**
@@ -282,7 +289,18 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
                   if (usage) {
                     void enqueueMeter(usage, e.durationMs, channel.channelId, target.realModel, !!e.terminated);
                   } else {
-                    logger.warn({ requestId, channel: channel.key, bytesRelayed: e.bytesRelayed }, 'stream ended without output, skip metering');
+                    // G1 修复：上游已实际执行（平台已付钱），即便无 usage + 0 字节也不能跳过计量——
+                    // 否则 settled=true 但不入队 → worker 不结算 → 漏计费 + hold 残留到 TTL（10min 锁余额）。
+                    // 兜底：按输入 token 估算（输入是真实成本；输出 0）。标 estimated=true 供审计识别。
+                    const fallbackUsage = {
+                      inputTokens: estimateTokens(extractRequestChars(body), 3.5),
+                      cachedInputTokens: 0,
+                      outputTokens: 0,
+                      estimated: true,
+                      raw: { source: 'gateway_input_only_fallback', bytesRelayed: e.bytesRelayed ?? 0 },
+                    };
+                    logger.warn({ requestId, channel: channel.key, bytesRelayed: e.bytesRelayed, inputTokens: fallbackUsage.inputTokens }, 'stream ended without usage/output, metering input tokens only');
+                    void enqueueMeter(fallbackUsage, e.durationMs, channel.channelId, target.realModel, !!e.terminated);
                   }
                 }
               });
@@ -310,9 +328,12 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
             const result = await ai.chat({ channel: channelDesc, request: body, ctx });
             if (result.status === 'success') {
               logger.info({ requestId, channel: channel.key, usage: result.usage }, 'chat success');
-              // 计量入队
-              if (result.usage) {
-                void enqueueMeter(result.usage, result.durationMs, channel.channelId, target.realModel, false);
+              // 计量入队（usage 缺失时兜底估算，防漏计费 + hold 残留；与流式分支对称）
+              const usage = result.usage ?? estimateNonStreamUsage(body, result.body);
+              if (usage) {
+                void enqueueMeter(usage, result.durationMs, channel.channelId, target.realModel, false);
+              } else {
+                logger.warn({ requestId, channel: channel.key }, 'non-stream success without usage, skip metering');
               }
               // hold 保持到 worker 结算
               recordRequest(target.realModel, 200, result.durationMs);

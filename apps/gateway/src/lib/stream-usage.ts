@@ -40,3 +40,40 @@ export function estimateStreamUsage(
     raw: { bytesRelayed, source: 'gateway_bytes_estimate' },
   };
 }
+
+/**
+ * 非流式 usage 缺失时的兜底估算（与 estimateStreamUsage 对称，防漏计费）。
+ *
+ * 触发场景：上游返回 200+JSON 但无 usage 字段，且 ai 包 extractUsage/estimateUsage
+ * 也未命中（理论上不会发生，但防御性兜底——与流式分支对称）。
+ * 不兜底则 settled=true 但不入队 → hold 残留 10min + 永不计费。
+ *
+ * @param reqBody 请求体（估算输入 tokens）
+ * @param resBody 上游响应 JSON（从 choices[].message.content 估算输出 tokens）
+ * @returns 估算的 Usage；resBody 无可提取 content 时返回 null（无输出不计费）
+ */
+export function estimateNonStreamUsage(
+  reqBody: Record<string, unknown>,
+  resBody: unknown,
+): Usage | null {
+  // 从响应体提取所有 content 字符（choices[].message.content）
+  let outputChars = 0;
+  if (resBody && typeof resBody === 'object') {
+    const choices = (resBody as { choices?: unknown }).choices;
+    if (Array.isArray(choices)) {
+      for (const ch of choices) {
+        const msg = (ch as { message?: { content?: unknown } })?.message;
+        const content = msg?.content;
+        if (typeof content === 'string') outputChars += content.length;
+      }
+    }
+  }
+  if (outputChars <= 0) return null; // 无可计费的输出
+  return {
+    inputTokens: estimateTokens(extractRequestChars(reqBody), CHAR_PER_TOKEN),
+    cachedInputTokens: 0,
+    outputTokens: estimateTokens(outputChars, CHAR_PER_TOKEN),
+    estimated: true,
+    raw: { source: 'gateway_nonstream_estimate' },
+  };
+}

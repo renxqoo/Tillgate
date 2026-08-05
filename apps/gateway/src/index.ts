@@ -140,12 +140,26 @@ if (isMain) {
   setGlobalDispatcher(new Agent({ connections: 2048, keepAliveTimeout: 30_000, keepAliveMaxTimeout: 60_000 }));
 
   const db = createDb(env.DATABASE_URL);
-  // BullMQ 要求 maxRetriesPerRequest: null（阻塞命令如 BLPOP 需要无限重试）
-  const redis = new Redis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: null });
+  // B5 修复：拆两条 Redis 连接——共用一条会导致 Redis 宕机时业务命令进入 offline
+  // queue 永不 reject，billing/route-cache/key-auth 的 try/catch fail-open 分支不可达，
+  // /v1/* 全部 hang（sync-settle 兜底也够不着）。
+  //
+  //   - bullRedis：BullMQ 专用，保留 maxRetriesPerRequest: null（阻塞命令要求）。
+  //   - redis（业务）：enableOfflineQueue: false + 有限 maxRetriesPerRequest + commandTimeout，
+  //     Redis 宕机时命令立即 reject → 触发各业务的 catch 降级（fail-open）。
+  const bullRedis = new Redis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: null });
+  await bullRedis.connect();
+  const redis = new Redis(env.REDIS_URL, {
+    lazyConnect: true,
+    enableOfflineQueue: false, // 宕机时命令立即 reject（而非无限排队）→ fail-open 可达
+    maxRetriesPerRequest: 1, // 单条命令最多重试 1 次（有限，不无限挂起）
+    commandTimeout: 2_000, // 单命令 2s 超时（防慢命令拖垮请求）
+    retryStrategy: (times) => (times > 10 ? null : Math.min(times * 200, 2_000)),
+  });
   await redis.connect();
   const billing = new BillingService(redis, db, env.HOLD_TTL_SECONDS * 1000);
   const rateLimiter = new RateLimiter(redis);
-  const meter = new MeterProducer(redis);
+  const meter = new MeterProducer(bullRedis);
   // 入队失败 → 记日志 + 告警指标（资损防线 B4：防漏计费无感知）
   meter.onFailure = (data, error) => {
     logger.error({ requestId: data.requestId, userId: data.userId, err: error.message }, 'meter enqueue failed (revenue loss risk)');
@@ -158,6 +172,19 @@ if (isMain) {
     logger.info({ port: info.port }, 'gateway listening');
   });
 
+  // C3 修复：定期回收泄漏的 hold（hold 后 gateway 崩溃、settle 未跑 → hold 残留 → 余额滞留）。
+  // 每 60s 扫描一次，退还无 TTL 残留的真正泄漏 hold。best-effort，异常不致命。
+  // 阈值=0：仅回收 ttl===-1（无 TTL 的异常残留），不碰仍在 TTL 内的正常在途 hold。
+  // （旧值 60_000 会把 TTL 剩余 <60s 的长请求 hold 误回收 → 余额错乱资损）
+  const reclaimTimer = setInterval(() => {
+    billing.reclaimExpiredHolds(0).then((n) => {
+      if (n > 0) logger.info({ reclaimed: n }, 'reclaimed leaked holds (balance refunded)');
+    }).catch((err) => {
+      logger.warn({ err: (err as Error).message }, 'hold reclaim sweep failed');
+    });
+  }, 60_000);
+  reclaimTimer.unref();
+
   // H2：优雅关闭——SIGTERM/SIGINT 时停止接收新连接，等待在途请求完成（含 SSE 长连接）
   // 滚动更新时 compose stop_grace_period 给足时间（默认 10s，建议配 30s）
   let shuttingDown = false;
@@ -165,10 +192,11 @@ if (isMain) {
     if (shuttingDown) return; // 防重复触发
     shuttingDown = true;
     logger.info({ signal }, 'gateway shutting down (draining in-flight requests)...');
+    clearInterval(reclaimTimer);
     httpServer.close((err) => {
       if (err) logger.error({ err: err.message }, 'server close error');
-      // 关闭 Redis 连接（meter queue + billing）
-      Promise.allSettled([meter.close(), redis.quit(), otel.shutdown()])
+      // 关闭 Redis 连接（meter queue 用 bullRedis + 业务用 redis）
+      Promise.allSettled([meter.close(), bullRedis.quit(), redis.quit(), otel.shutdown()])
         .then(() => {
           logger.info('gateway shutdown complete');
           process.exit(0);
