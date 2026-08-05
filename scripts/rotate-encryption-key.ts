@@ -19,8 +19,12 @@ for (let i = 0; i < 6; i++) {
   }
 }
 
-const OLD_KEY = process.env.ENCRYPTION_KEY_OLD ?? 'change-me-32-chars-minimum-secret';
+const OLD_KEY = process.env.ENCRYPTION_KEY_OLD;
 const NEW_KEY = process.env.ENCRYPTION_KEY_NEW;
+if (!OLD_KEY || OLD_KEY.length < 32) {
+  console.error('✗ ENCRYPTION_KEY_OLD 未设置或不足 32 字符（必须显式传入旧密钥，无默认值）');
+  process.exit(1);
+}
 if (!NEW_KEY || NEW_KEY.length < 32) {
   console.error('✗ ENCRYPTION_KEY_NEW 未设置或不足 32 字符');
   process.exit(1);

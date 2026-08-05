@@ -68,10 +68,16 @@ function sha256hex(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
-// 固定的压测 key（幂等：每次 seed 不换 key，避免拿到一堆一次性 key）
-const LOADTEST_API_KEY = 'ag_loadtest_sk_fixed_do_not_use_in_prod';
+// 压测 key：每次随机生成（不写死常量，防泄漏后被用于生产库）
+const LOADTEST_API_KEY = 'ag_loadtest_sk_' + randomBytes(16).toString('hex');
 
 async function main(): Promise<void> {
+  // 生产门控：禁止在生产环境执行（防误跑创建高额度压测 key）
+  if (process.env.NODE_ENV === 'production') {
+    console.error('✗ 拒绝在生产环境执行 seed-loadtest（会创建高额度压测用户 + key）');
+    process.exit(1);
+  }
+
   const db = createDb(DATABASE_URL);
   console.log('→ 连接 DB:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
   console.log('→ mock 上游:', MOCK_BASE_URL);
@@ -107,28 +113,22 @@ async function main(): Promise<void> {
     console.log('✓ 用户 loadtest 已存在，已刷新余额/限流 (id=' + user.id + ')');
   }
 
-  // 2. api_key（固定明文，便于反复 seed 后还能用同一 key）
+  // 2. api_key（每次随机生成；旧 loadtest key 吊销而非删除——有 FK 关联 usage_logs）
+  await db
+    .update(apiKeys)
+    .set({ status: 1 }) // 1=已吊销（保留行满足 FK，但不再可用）
+    .where(and(eq(apiKeys.userId, user.id), eq(apiKeys.name, 'loadtest-key'), eq(apiKeys.status, 0)));
   const keyHash = sha256hex(LOADTEST_API_KEY);
-  const existingKey = await db.query.apiKeys?.findFirst?.({ where: eq(apiKeys.keyHash, keyHash) });
-  if (!existingKey) {
-    await db.insert(apiKeys).values({
-      keyHash,
-      keyPreview: 'ag_****loadtest',
-      userId: user.id,
-      name: 'loadtest-key',
-      status: 0,
-      rpmLimit: 100_000,
-      tpmLimit: 1_000_000_000,
-    });
-    console.log('✓ 创建压测 Key');
-  } else {
-    // 已存在：确保有效（可能被误改状态）
-    await db
-      .update(apiKeys)
-      .set({ status: 0, userId: user.id, rpmLimit: 100_000, tpmLimit: 1_000_000_000 })
-      .where(eq(apiKeys.id, existingKey.id));
-    console.log('✓ 压测 Key 已存在，已刷新状态/限流');
-  }
+  await db.insert(apiKeys).values({
+    keyHash,
+    keyPreview: 'ag_****' + LOADTEST_API_KEY.slice(-4),
+    userId: user.id,
+    name: 'loadtest-key',
+    status: 0,
+    rpmLimit: 100_000,
+    tpmLimit: 1_000_000_000,
+  });
+  console.log('✓ 创建压测 Key（随机生成，每次 seed 不同；旧 key 已吊销）');
 
   // 3. provider（mock）
   let provider = await db.query.providers?.findFirst?.({ where: eq(providers.name, 'mock') });
