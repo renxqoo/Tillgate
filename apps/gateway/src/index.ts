@@ -105,17 +105,15 @@ export function createApp(db: Db, ai: Ai, billing: BillingService, rateLimiter: 
     );
   });
 
-  // 全局中间件链（顺序：CORS预检 → 安全头 → bodyLimit → OTel → request_id → 鉴权）
+  // 全局中间件链（顺序：CORS预检 → 安全头+bodyLimit预判 → OTel → request_id → 鉴权）
   app.use('*', corsPreflight);
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit);
   app.use('*', otelMiddleware());
   app.use('*', requestIdMiddleware());
-  // 鉴权：仅业务路由（healthz 不需要）
   app.use('/v1/chat/completions', authMiddleware(db, redis));
   app.use('/v1/models', authMiddleware(db, redis));
   app.use('/v1/embeddings', authMiddleware(db, redis));
-  // 请求日志（data-model §3.13）：/v1/* 请求完成后写 request_logs（fire-and-forget）
   app.use('/v1/*', requestLogMiddleware(db, logger));
 
   app.route('/healthz', healthRoutes);

@@ -15,7 +15,6 @@ import {
   invalidResponseError,
 } from './errors/internal.js';
 import { asRecord, tryParseJson } from './internal/util.js';
-import { peekFirstChunk } from './internal/stream.js';
 import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-client.js';
 import { relayStream } from './transport/relay-stream.js';
 import { estimateUsage, normalizeUsage } from './usage/normalize.js';
@@ -365,11 +364,9 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
               return fail(adapter.mapError(res.status, tryParseJson(raw) ?? raw));
             }
             if (!res.body) return fail(invalidResponseError());
-            // D3：空流检测（tee 分流，不破坏流式）
-            const peeked = await peekFirstChunk(res.body, { signal });
-            if (peeked.done) return fail(emptyError(), true);
-            // branchB（tee 的完整流）交给 relayStream
-            return { ok: true, value: peeked.rest! };
+            // 不做 peekFirstChunk：tee 的 read() 触发 Node fetch 预读整个 body（缓冲）
+            // 空完成检测移到 relayStream flush（bytesRelayed=0 时 emit empty）
+            return { ok: true, value: res.body };
           } catch (err) {
             if (signal.aborted) return fail(abortedError());
             if (err instanceof BodyTooLargeError) return fail(invalidResponseError());

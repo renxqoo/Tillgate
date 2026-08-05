@@ -47,14 +47,9 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
 
     const status = c.res.status;
     const auth = c.var.auth;
-    let errorCode: string | null = null;
-    try {
-      const clone = c.res.clone();
-      const body = (await clone.json().catch(() => null)) as { error?: { code?: string } } | null;
-      errorCode = body?.error?.code ?? null;
-    } catch {
-      // 流式响应 / 非 JSON
-    }
+    // 错误码：只用 HTTP 状态码推断（不 clone 读 body）。
+    // c.res.clone() + .json() 会缓冲整个流式 Response（破坏 SSE 逐块推送）。
+    const errorCode = status >= 400 ? `http_${status}` : null;
 
     void writeRequestLog(db, {
       requestId,

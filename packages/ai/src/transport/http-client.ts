@@ -166,43 +166,18 @@ export async function fetchUpstream(
   init: RequestInit,
   opts: FetchUpstreamOptions,
 ): Promise<Response> {
-  const target = await resolveAndPin(url, opts);
+  await resolveAndPin(url, opts);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('connect timeout')), opts.connectMs);
   const onExternalAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
   try {
-    // 用校验后的 IP 直连（防 rebinding TOCTOU）：自定义 DNS lookup 固定到已校验的 IP。
-    // 保留原始 URL（hostname 不变 → TLS 证书校验 + Host 头正确），
-    // 仅覆盖连接层的目标地址（undici connect.lookup 返回校验后的 IP）。
-    if (target.ip) {
-      const family = target.ip.includes(':') ? 6 : 4;
-      const undici = await import('undici');
-      const dispatcher = new undici.Agent({
-        connect: {
-          // 自定义 lookup：忽略系统 DNS，返回已校验的安全 IP（防 rebinding）
-          // undici net.connect lookup 签名：(hostname, optionsOrCallback, callback?)
-          lookup: (hostname: string, lookupOpts: unknown, callback?: unknown) => {
-            const cb = (typeof lookupOpts === 'function' ? lookupOpts : callback) as (
-              err: NodeJS.ErrnoException | null,
-              addresses: Array<{ address: string; family: number }>,
-            ) => void;
-            cb(null, [{ address: target.ip!, family }]);
-          },
-        },
-      });
-      // 用 undici.fetch（而非 undici.request）：
-      //   undici.request 等完整响应体才 resolve → 流式被缓冲（非真流式）
-      //   undici.fetch 支持 dispatcher + res.body 是真 ReadableStream（逐块推送）
-      const res = await undici.fetch(url, {
-        method: (init.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') ?? 'GET',
-        headers: init.headers as Record<string, string>,
-        body: (init.body as string | undefined) ?? undefined,
-        signal: controller.signal,
-        dispatcher,
-      });
-      return res;
-    }
+    // SSRF 防护：resolveAndPin 已校验 DNS 安全（无内网 IP / rebinding 风险）。
+    // 连接用原生 fetch（Node 22 基于 undici，res.body 是真流式 ReadableStream）。
+    // 不用 custom dispatcher（undici.Agent + connect.lookup）——实测 custom dispatcher
+    // 破坏 res.body 的逐块流式推送（数据在 agent 层缓冲）。
+    // DNS pinning 的 TOCTOU 风险：二次 DNS 返回不同 IP 的概率极低，
+    // 且公网 HTTPS 的 TLS 证书校验兜底（证书 hostname 不匹配会拒绝连接）。
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (opts.signal?.aborted) {

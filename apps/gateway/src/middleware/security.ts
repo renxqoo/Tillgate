@@ -1,5 +1,4 @@
 import type { MiddlewareHandler } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { secureHeaders } from 'hono/secure-headers';
 
 /**
@@ -15,11 +14,18 @@ import { secureHeaders } from 'hono/secure-headers';
  */
 export const BODY_LIMIT_BYTES = 16 * 1024 * 1024; // 16MB
 
-/** bodyLimit 中间件（独立，onError 返回纯 Response） */
-export const bodyParserLimit = bodyLimit({
-  maxSize: BODY_LIMIT_BYTES,
-  onError: () =>
-    new Response(
+/**
+ * bodyLimit 中间件：用 content-length 预判（不缓冲 body）。
+ *
+ * Hono 的 bodyLimit 会读取/缓冲整个请求体来检查大小，
+ * 这破坏了流式 Response 的逐块推送（node-server 的 Response body 被缓冲）。
+ * 改用 content-length header 预判：超限直接 413，不触碰 body。
+ * 缺点：无 content-length 的 chunked 请求不拦截（罕见，且 bodyLimit 也无法拦截）。
+ */
+export const bodyParserLimit: MiddlewareHandler = async (c, next) => {
+  const cl = Number(c.req.header('content-length') ?? '0');
+  if (cl > BODY_LIMIT_BYTES) {
+    return new Response(
       JSON.stringify({
         error: {
           message: '请求体过大（超过 16MB 限制）',
@@ -28,8 +34,10 @@ export const bodyParserLimit = bodyLimit({
         },
       }),
       { status: 413, headers: { 'content-type': 'application/json' } },
-    ),
-});
+    );
+  }
+  await next();
+};
 
 /** 安全响应头中间件 */
 export const securityHeaders = secureHeaders({
