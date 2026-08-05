@@ -191,19 +191,17 @@ export async function fetchUpstream(
           },
         },
       });
-      // 用 undici 的 request（而非全局 fetch，全局 fetch 不支持 dispatcher 选项）
-      const res = await undici.request(url, {
+      // 用 undici.fetch（而非 undici.request）：
+      //   undici.request 等完整响应体才 resolve → 流式被缓冲（非真流式）
+      //   undici.fetch 支持 dispatcher + res.body 是真 ReadableStream（逐块推送）
+      const res = await undici.fetch(url, {
         method: (init.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH') ?? 'GET',
         headers: init.headers as Record<string, string>,
-        body: init.body as string | undefined,
+        body: (init.body as string | undefined) ?? undefined,
         signal: controller.signal,
         dispatcher,
       });
-      // 转为标准 Response 形态（供上层 readBody 消费）
-      return new Response(res.body, {
-        status: res.statusCode,
-        headers: res.headers as Record<string, string>,
-      });
+      return res;
     }
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {

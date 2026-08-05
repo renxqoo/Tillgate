@@ -300,7 +300,6 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
                 continue; // 换下一个渠道
               }
               // 成功 或 不可换渠道的错误 → 直接透传给客户端
-              // hold 保持到 worker 结算（success 事件已 enqueue meter；failed 事件 onEvent 内释放）
               settled = true;
               return new Response(handle.stream, {
                 headers: {
