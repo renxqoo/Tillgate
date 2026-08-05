@@ -15,26 +15,10 @@ import { errorResponse, type AuthEnv } from '../middleware/auth.js';
 import { trace, SpanStatusCode, type Span } from '@opentelemetry/api';
 import { z } from 'zod';
 import { jsonBody } from '../lib/validation.js';
+import { estimateStreamUsage } from '../lib/stream-usage.js';
 import { syncSettle } from '../lib/sync-settle.js';
 import { isModelAllowed } from '../lib/model-scope.js';
 import { env, logger } from '../index.js';
-
-/** 归一化上游 usage（OpenAI/DeepSeek/MiniMax 多格式 → 标准 Usage） */
-function normalizeUpstreamUsage(raw: Record<string, unknown>): Usage {
-  const promptTokens = Number(raw.prompt_tokens ?? raw.input_tokens ?? 0);
-  const completionTokens = Number(raw.completion_tokens ?? raw.output_tokens ?? 0);
-  const cached = Number(
-    (raw.prompt_tokens_details as { cached_tokens?: number })?.cached_tokens ??
-    raw.prompt_cache_hit_tokens ?? 0,
-  );
-  return {
-    inputTokens: promptTokens,
-    cachedInputTokens: cached,
-    outputTokens: completionTokens,
-    estimated: false,
-    raw,
-  };
-}
 
 /** chat/completions 请求 schema（必需字段校验，未知参数透传） */
 const chatSchema = z
@@ -279,69 +263,42 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
           upSpan.setAttributes({ 'channel.id': channel.channelId, 'channel.key': channel.key, 'ai.model': target.realModel, 'ai.attempt_stream': stream });
           try {
             if (stream) {
-              // 流式：直接 fetch 上游 + new Response(res.body) 透传（真流式，不缓冲）
-              // 旁路扫描（usage/计量）用 tee 分支，不阻塞主流
-              const upUrl = channelDesc.baseUrl + '/v1/chat/completions';
-              const upRes = await fetch(upUrl, {
-                method: 'POST',
-                headers: {
-                  authorization: `Bearer ${channelDesc.apiKey}`,
-                  'content-type': 'application/json',
-                },
-                body: JSON.stringify({ ...body, model: target.realModel, stream: true }),
-              });
-              if (upRes.status >= 400) {
-                const errBody = await upRes.text().catch(() => '');
-                logger.warn({ requestId, channel: channel.key, status: upRes.status, body: errBody.slice(0, 200) }, 'upstream stream error');
-                lastError = { code: 'upstream_error', message: '上游错误', status: upRes.status };
-                recordChannelFailure(channel.key);
-                continue;
-              }
-              if (!upRes.body) {
-                lastError = { code: 'upstream_error', message: '上游无响应体', status: 502 };
-                continue;
-              }
-              // tee：主流透传给客户端（真流式），旁路分支扫描 usage
-              const [mainStream, scanStream] = upRes.body.tee();
-              // 旁路扫描（fire-and-forget，不阻塞响应）
-              void (async (): Promise<void> => {
-                const reader = scanStream.getReader();
-                const decoder = new TextDecoder();
-                let buf = '';
-                let bytesRelayed = 0;
-                try {
-                  for (;;) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    bytesRelayed += value.byteLength;
-                    buf += decoder.decode(value, { stream: true });
-                    // 解析 SSE 帧找 usage
-                    const lines = buf.split('\n');
-                    buf = lines.pop() ?? '';
-                    for (const line of lines) {
-                      if (line.startsWith('data: ') && line.includes('"usage"')) {
-                        try {
-                          const data = JSON.parse(line.slice(6));
-                          if (data.usage) {
-                            const usage = normalizeUpstreamUsage(data.usage);
-                            logger.info({ requestId, channel: channel.key, usage }, 'stream usage captured');
-                            void enqueueMeter(usage, 0, channel.channelId, target.realModel, false);
-                          }
-                        } catch { /* 非 JSON，跳过 */ }
-                      }
-                    }
+              const handle = await ai.chatStream({ channel: channelDesc, request: body, ctx });
+              const state: { failed: { code: string; message: string } | null } = { failed: null };
+              handle.onEvent((e) => {
+                if (e.type === 'failed') {
+                  state.failed = { code: e.error.code, message: e.error.message };
+                  billing.release(auth.userId, requestId).catch(() => {});
+                }
+                if (e.type === 'success') {
+                  logger.info({ requestId, channel: channel.key, usage: e.usage, terminated: e.terminated, bytesRelayed: e.bytesRelayed }, 'stream completed');
+                  recordRequest(target.realModel, 200, e.durationMs);
+                  const usage = e.usage ?? estimateStreamUsage(body, e.bytesRelayed ?? 0);
+                  if (usage) {
+                    void enqueueMeter(usage, e.durationMs, channel.channelId, target.realModel, !!e.terminated);
+                  } else {
+                    logger.warn({ requestId, channel: channel.key, bytesRelayed: e.bytesRelayed }, 'stream ended without output, skip metering');
                   }
-                } catch { /* 客户端断开等 */ }
-                recordRequest(target.realModel, 200, 0);
-              })();
+                }
+              });
+              if (state.failed && isChannelSwitchable(state.failed.code)) {
+                lastError = { code: state.failed.code, message: state.failed.message, status: 502 };
+                logger.warn({ requestId, channel: channel.key, code: state.failed.code }, 'candidate failed, switching');
+                recordChannelFailure(channel.key);
+                if (isDeadCredentialError(state.failed.code)) {
+                  void markChannelDeadCredential(db, channel.channelId, logger);
+                }
+                continue;
+              }
               settled = true;
-              // 用 Hono c.header + c.body（而非 new Response）：
-              // 实测 new Response(stream) 在 chat-completions 路由链下被缓冲，
-              // c.body 走 Hono 的原生流式路径
-              c.header('content-type', 'text/event-stream; charset=utf-8');
-              c.header('cache-control', 'no-cache');
-              c.header('x-request-id', requestId);
-              return c.body(mainStream);
+              return new Response(handle.stream, {
+                headers: {
+                  'content-type': 'text/event-stream; charset=utf-8',
+                  'cache-control': 'no-cache',
+                  connection: 'keep-alive',
+                  'x-request-id': requestId,
+                },
+              });
             }
 
             // 非流式
