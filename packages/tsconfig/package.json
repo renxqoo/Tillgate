@@ -1,0 +1,10 @@
+{
+  "name": "@ai-gateway/tsconfig",
+  "version": "0.1.0",
+  "private": true,
+  "description": "共享 tsconfig.base.json + tsconfig.next.json",
+  "files": [
+    "base.json",
+    "next.json"
+  ]
+}

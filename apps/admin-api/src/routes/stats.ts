@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { sql, gte, lte, and, eq } from 'drizzle-orm';
-import { usageLogs, requestLogs, channels, auditLogs } from '@ai-gateway/db/schema';
+import { usageLogs, requestLogs, channels, auditLogs, users } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import { query } from '../lib/validation.js';
 import { z } from 'zod';
@@ -160,8 +160,25 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
       const where = and(...conds);
       const [rows, countRows] = await Promise.all([
         db
-          .select()
+          .select({
+            id: requestLogs.id,
+            requestId: requestLogs.requestId,
+            userId: requestLogs.userId,
+            apiKeyId: requestLogs.apiKeyId,
+            method: requestLogs.method,
+            path: requestLogs.path,
+            statusCode: requestLogs.statusCode,
+            errorCode: requestLogs.errorCode,
+            durationMs: requestLogs.durationMs,
+            requestSummary: requestLogs.requestSummary,
+            attempts: requestLogs.attempts,
+            candidatesTried: requestLogs.candidatesTried,
+            createdAt: requestLogs.createdAt,
+            // 用户名（供前端展示）：优先 displayName，其次 email
+            userName: sql<string | null>`coalesce(${users.displayName}, ${users.email})`.as('user_name'),
+          })
           .from(requestLogs)
+          .leftJoin(users, eq(requestLogs.userId, users.id))
           .where(where)
           .orderBy(sql`${requestLogs.createdAt} desc`)
           .limit(limit)

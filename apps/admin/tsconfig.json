@@ -1,0 +1,36 @@
+{
+  "extends": "../../packages/tsconfig/next.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@ai-gateway/ui": ["../../packages/ui/src/index.ts"],
+      "@ai-gateway/ui/components/*": ["../../packages/ui/src/components/*"],
+      "@ai-gateway/ui/components/ui/*": ["../../packages/ui/src/components/ui/*"],
+      "@ai-gateway/ui/lib/*": ["../../packages/ui/src/lib/*"],
+      "@ai-gateway/ui/hooks/*": ["../../packages/ui/src/hooks/*"],
+      "@ai-gateway/ui/scripts/*": ["../../packages/ui/src/scripts/*"],
+      "@ai-gateway/ui/stores/*": ["../../packages/ui/src/stores/*"],
+      "@ai-gateway/ui/server/*": ["../../packages/ui/src/server/*"],
+      "@ai-gateway/api-client": ["../../packages/api-client/src/index.ts"],
+      "@/components/ui": ["../../packages/ui/src/components/ui/index.ts"],
+      "@/components/ui/*": ["../../packages/ui/src/components/ui/*"],
+      "@/lib/utils": ["../../packages/ui/src/lib/utils.ts"],
+      "@/hooks/*": ["../../packages/ui/src/hooks/*"],
+      "@/lib/preferences/*": ["../../packages/ui/src/lib/preferences/*"],
+      "@/lib/fonts/*": ["../../packages/ui/src/lib/fonts/*"],
+      "@/lib/cookie.client": ["../../packages/ui/src/lib/cookie.client.ts"],
+      "@/lib/local-storage.client": ["../../packages/ui/src/lib/local-storage.client.ts"],
+      "@/stores/*": ["../../packages/ui/src/stores/*"],
+      "@/scripts/*": ["../../packages/ui/src/scripts/*"],
+      "@/server/*": ["../../packages/ui/src/server/*"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", ".next"]
+}

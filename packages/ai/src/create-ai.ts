@@ -163,6 +163,13 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
     const adapter = adapterFor(input.channel);
     const rules = mergeRules(loadProfile(input.ctx.providerName), input.ctx.paramRules);
     const { body, adjustments } = adapter.normalizeRequest(input.request, rules);
+    // model 重写：对外名 externalName → 上游真实名 realModel（ctx.model）。
+    // normalizeRequest 把 model 视为已知参数原样保留，从不改写；
+    // 若不在此覆盖，发往上游的 body.model 会是客户端原始 externalName，
+    // 与渠道实际服务的上游模型不符（如 external=deepseek-v4-pro 发给了只认 deepseek-chat 的官方）。
+    if (body && typeof body === 'object') {
+      (body as Record<string, unknown>).model = input.ctx.model;
+    }
     for (const a of adjustments) {
       log.info(`[ai] ${input.ctx.requestId} param_adjustment ${a.action} ${a.param}`, {
         from: a.from,

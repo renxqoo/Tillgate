@@ -1,0 +1,59 @@
+/**
+ * @ai-gateway/identity — 会话/JWT/鉴权中间件 + 密码哈希 + 登录限流。
+ *
+ * 双身份物理隔离：用户面（client-api）与管理面（admin-api）各自独立的
+ * cookie / issuer / 密钥 / 校验表，由本包统一提供，避免两个 app 各自实现导致漂移。
+ */
+
+// 会话 JWT（双身份：type + issuer 区分）
+export {
+  signSession,
+  verifySession,
+  SESSION_DEFAULT_TTL_S,
+  type SessionType,
+  type SessionPayload,
+  type SessionSignInput,
+  type SessionVerifyResult,
+} from './session.js';
+
+// Cookie 容器（双身份）
+export {
+  SESSION_COOKIE,
+  ADMIN_SESSION_COOKIE,
+  cookieOptions,
+} from './cookies.js';
+
+// 密码哈希（scrypt，users/admins 共用格式）
+export {
+  hashPassword,
+  verifyPassword,
+  SCRYPT_N,
+  SCRYPT_R,
+  SCRYPT_P,
+  HASH_LEN,
+} from './password.js';
+
+// 登录限流（双维度 + namespace 区分用户/管理员）
+export {
+  checkLoginThrottle,
+  recordLoginFailure,
+  resetLoginFailures,
+  clientIp,
+  LOGIN_FAIL_THRESHOLD,
+  LOGIN_FAIL_WINDOW_S,
+  LOGIN_LOCK_DURATION_S,
+  type ThrottleCheck,
+} from './login-throttle.js';
+
+// Hono Variables 类型
+export {
+  type ClientEnv,
+  type AdminEnv,
+  type LegacyAdminEnv,
+  type UserSessionContext,
+  type AdminSessionContext,
+} from './types.js';
+
+// 中间件
+export { userSessionMiddleware, resolveUserSession } from './middleware/user-session.js';
+export { adminAuthMiddleware, tryResolveAdminSession } from './middleware/admin-session.js';

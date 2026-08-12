@@ -10,12 +10,9 @@ import { userAdminRoutes } from './routes/users.js';
 import { redeemAdminRoutes } from './routes/redeem.js';
 import { statsAdminRoutes } from './routes/stats.js';
 import { channelImportRoutes } from './routes/channel-import.js';
-import { authRoutes } from './routes/auth.js';
-import { keyRoutes } from './routes/keys.js';
-import { appRoutes } from './routes/apps.js';
-import { panelRoutes } from './routes/panel.js';
-import { adminAuthMiddleware } from './middleware/admin-auth.js';
-import { resolveSession, userSessionMiddleware, type AdminEnv } from './middleware/session.js';
+import { adminUserRoutes } from './routes/auth.js';
+import { adminAuthRoutes } from './routes/admin-auth.js';
+import { adminAuthMiddleware, tryResolveAdminSession, type AdminEnv } from '@ai-gateway/identity';
 import { ValidationError } from './lib/validation.js';
 import { getAdminRedis } from './lib/route-invalidation.js';
 import type { MiddlewareHandler } from 'hono';
@@ -30,14 +27,16 @@ initOtel({
 
 /**
  * 注入 adminId（供审计日志回溯操作人）。
- *   - 机器令牌调用：无 session → adminId 保持 undefined（审计 actor 仍为 'admin'，adminId 为 NULL）
- *   - 会话调用：从 Cookie 解析 session.userId 注入 c.var.adminId
+ *   - 机器令牌调用：无 admin 会话 → adminId 保持 undefined（审计 adminId 为 NULL）
+ *   - 会话调用：从 ag_admin_session Cookie 解析管理员会话 → 注入 c.var.adminId（admins.id）
  *   - 失败/无会话：不阻塞（adminId 可空，审计容忍 NULL）
+ *
+ * 拆分后：改用 tryResolveAdminSession + ADMIN_JWT_SECRET（仅认管理员会话）。
  */
-function adminIdInjector(db: ReturnType<typeof createDb>, jwtSecret: string): MiddlewareHandler<AdminEnv> {
+function adminIdInjector(db: ReturnType<typeof createDb>, adminJwtSecret: string): MiddlewareHandler<AdminEnv> {
   return async (c, next) => {
-    const session = await resolveSession(c, db, jwtSecret).catch(() => null);
-    if (session && session.role === 1) c.set('adminId', session.userId);
+    const session = await tryResolveAdminSession(c, db, adminJwtSecret).catch(() => null);
+    if (session) c.set('adminId', session.adminId);
     await next();
   };
 }
@@ -57,10 +56,28 @@ export function createApp() {
 
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
 
-  // 管理端鉴权（S4 + §5）：仅管理员会话（HttpOnly Cookie 中 role=1 的面板 JWT）
-  app.use('/api/admin/*', adminAuthMiddleware(db, env.JWT_SECRET));
+  // 管理端鉴权（拆分后用独立 ADMIN_JWT_SECRET + ag_admin_session cookie + admins 表回查）
+  // 公开端点（/api/admin/auth/login、/api/admin/auth/logout）需在下方显式跳过本中间件
+  app.use('/api/admin/*', async (c, next) => {
+    // 登录/注销是公开端点，不要求管理员会话（否则无法首次登录）
+    const path = c.req.path;
+    if (path === '/api/admin/auth/login' || path === '/api/admin/auth/logout') {
+      return next();
+    }
+    return adminAuthMiddleware(db, env.ADMIN_JWT_SECRET)(c, next);
+  });
   // 鉴权通过后注入 adminId（审计操作人，可空）
-  app.use('/api/admin/*', adminIdInjector(db, env.JWT_SECRET));
+  app.use('/api/admin/*', adminIdInjector(db, env.ADMIN_JWT_SECRET));
+
+  // 管理员登录/注销/改密码/me（公开登录端点 + 需登录的改密/me）
+  app.route('/', adminAuthRoutes(db, {
+    adminJwtSecret: env.ADMIN_JWT_SECRET,
+    secureCookie: env.NODE_ENV === 'production',
+    redis: getAdminRedis(),
+  }));
+
+  // 管理员开通用户账号（set-password，需管理员会话）
+  app.route('/', adminUserRoutes(db));
 
   // 渠道/供应商/模型管理（api-contract §4.5/§4.6）
   app.route('/', channelAdminRoutes(db));
@@ -74,26 +91,6 @@ export function createApp() {
   app.route('/', redeemAdminRoutes(db));
   // 报表/仪表盘/日志/审计（§4.8）
   app.route('/', statsAdminRoutes(db));
-
-  // 登录/注销（公开：/api/auth/login 不需要会话）
-  // C6 修复：注入 Redis 启用登录限流/锁定（复用 route-invalidation 的共享单例）
-  app.route('/', authRoutes(db, {
-    jwtSecret: env.JWT_SECRET,
-    giftAmount: env.GIFT_AMOUNT,
-    secureCookie: env.NODE_ENV === 'production',
-    redis: getAdminRedis(),
-  }));
-
-  // 用户面板：必须有有效会话（userSessionMiddleware 注入 c.var.session）
-  app.use('/api/me/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/keys/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/apps/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/usage/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/redeem', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/auth/password', userSessionMiddleware(db, env.JWT_SECRET));
-  app.route('/', keyRoutes(db));
-  app.route('/', appRoutes(db));
-  app.route('/', panelRoutes(db));
 
   return app;
 }

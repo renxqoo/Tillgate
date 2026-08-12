@@ -30,6 +30,9 @@ const channelCreateSchema = z.object({
   models: z.array(z.string()).nullable().optional(),
   weight: z.number().optional(),
   priority: z.number().optional(),
+  /** 渠道级限流（保护上游 API key 配额；null=不限流）。G-RL 限流重构新增可配置项 */
+  rpmLimit: z.number().int().positive().nullable().optional(),
+  tpmLimit: z.number().int().positive().nullable().optional(),
 }).passthrough();
 
 const modelCreateSchema = z.object({
@@ -125,8 +128,30 @@ export function channelAdminRoutes(db: Db): Hono {
         .from(channels)
         .innerJoin(providers, eq(channels.providerId, providers.id))
         .orderBy(channels.id);
-      // 注意：不返回 api_key_enc（永不回显加密 Key，也不回显明文）
-      return c.json({ list: rows, total: rows.length });
+
+      // 查每个渠道绑定的模型映射，join 到返回里
+      const bindings = await db
+        .select({
+          channelId: modelChannels.channelId,
+          externalName: modelMappings.externalName,
+          realModel: modelMappings.realModel,
+        })
+        .from(modelChannels)
+        .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id));
+
+      const bindingMap = new Map<number, Array<{ externalName: string; realModel: string }>>();
+      for (const b of bindings) {
+        const arr = bindingMap.get(b.channelId) ?? [];
+        arr.push({ externalName: b.externalName, realModel: b.realModel });
+        bindingMap.set(b.channelId, arr);
+      }
+
+      const rowsWithModels = rows.map((r) => ({
+        ...r,
+        boundModels: bindingMap.get(r.id) ?? [],
+      }));
+
+      return c.json({ list: rowsWithModels, total: rowsWithModels.length });
     })
 
     .post('/api/admin/channels', jsonBody(channelCreateSchema), async (c) => {
@@ -146,6 +171,8 @@ export function channelAdminRoutes(db: Db): Hono {
           models: body.models ?? null,
           weight: body.weight ?? 1,
           priority: body.priority ?? 0,
+          rpmLimit: body.rpmLimit ?? null,
+          tpmLimit: body.tpmLimit ?? null,
           status: 0,
         })
         .returning({ id: channels.id, name: channels.name, providerId: channels.providerId });
@@ -226,7 +253,16 @@ export function channelAdminRoutes(db: Db): Hono {
 
     .get('/api/admin/models', async (c) => {
       const rows = await db.select().from(modelMappings).orderBy(modelMappings.id);
-      return c.json({ list: rows, total: rows.length });
+      // 附带每个模型已绑定的渠道 id（供前端「绑定渠道」弹窗回显已选）
+      const bindings = await db.select().from(modelChannels);
+      const channelIdsByModel = new Map<number, number[]>();
+      for (const b of bindings) {
+        const arr = channelIdsByModel.get(b.mappingId) ?? [];
+        arr.push(b.channelId);
+        channelIdsByModel.set(b.mappingId, arr);
+      }
+      const list = rows.map((r) => ({ ...r, channelIds: channelIdsByModel.get(r.id) ?? [] }));
+      return c.json({ list, total: list.length });
     })
 
     .post('/api/admin/models', jsonBody(modelCreateSchema), async (c) => {
@@ -284,7 +320,15 @@ export function channelAdminRoutes(db: Db): Hono {
       const mappingId = Number(c.req.param('id'));
       const body = await c.req.json();
       const binds: Array<{ mappingId: number; channelId: number; weight: number; priority: number }> = [];
-      for (const item of body.channels ?? []) {
+      // 兼容前端两种入参：{channels:[{channelId,weight,priority}]}（完整）或 {channelIds:[number]}（简格式）。
+      // 原实现只读 body.channels，前端发 {channelIds} 时解析为空 → 删旧插空 → 绑定静默丢失（503 根因）。
+      const channelItems: Array<{ channelId: number; weight?: number; priority?: number }> =
+        Array.isArray(body.channels) && body.channels.length > 0
+          ? body.channels
+          : Array.isArray(body.channelIds)
+            ? body.channelIds.map((id: number) => ({ channelId: id }))
+            : [];
+      for (const item of channelItems) {
         binds.push({
           mappingId,
           channelId: item.channelId,

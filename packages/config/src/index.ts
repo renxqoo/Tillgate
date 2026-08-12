@@ -83,8 +83,25 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).default(8790),
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /**
-   * 控制台会话 JWT 密钥（与 gateway 共用同一密钥源）。
-   * 必填：控制台登录（/api/auth/login）签发会话 JWT 必须有密钥；缺省则登录功能不可用。
+   * 管理员会话 JWT 密钥（独立于用户面 JWT_SECRET，物理隔离）。
+   * 必填且强度校验：fail-closed，缺省或弱密钥则 admin-api 启动失败。
+   * 与 client-api 的 JWT_SECRET 必须不同值（隔离要求）。
+   */
+  ADMIN_JWT_SECRET: secretSchema('ADMIN_JWT_SECRET', 16),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+});
+
+/** client-api（用户面板 REST）环境变量 */
+export const clientApiEnvSchema = baseEnvSchema.extend({
+  PORT: z.coerce.number().int().min(1).default(8791),
+  ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
+  /**
+   * 用户面会话 JWT 密钥（独立于管理员 ADMIN_JWT_SECRET，物理隔离）。
+   * 必填：用户登录（/api/auth/login）签发会话 JWT 必须有密钥。
    */
   JWT_SECRET: secretSchema('JWT_SECRET', 16),
   /** 新用户赠送额度（元，重构后金额单位为元），默认 ¥1（requirements 4.1） */
@@ -99,6 +116,7 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
 export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 export type AdminApiEnv = z.infer<typeof adminApiEnvSchema>;
+export type ClientApiEnv = z.infer<typeof clientApiEnvSchema>;
 
 /** 解析并校验环境变量，失败即抛错（fail fast） */
 export function loadGatewayEnv(env = process.env): GatewayEnv {
@@ -111,4 +129,8 @@ export function loadWorkerEnv(env = process.env): WorkerEnv {
 
 export function loadAdminApiEnv(env = process.env): AdminApiEnv {
   return adminApiEnvSchema.parse(env);
+}
+
+export function loadClientApiEnv(env = process.env): ClientApiEnv {
+  return clientApiEnvSchema.parse(env);
 }

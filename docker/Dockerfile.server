@@ -16,5 +16,8 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=builder /out/dist ./dist
+COPY --from=builder /repo/package.json ./package.json
+COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /repo/packages ./packages
 COPY --from=builder /repo/node_modules ./node_modules
 CMD ["node", "dist/index.js"]

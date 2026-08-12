@@ -24,8 +24,6 @@ export const users = pgTable(
     identityProvider: varchar('identity_provider', { length: 16 }).notNull(),
     email: varchar('email', { length: 255 }),
     displayName: varchar('display_name', { length: 64 }),
-    /** 0 普通用户 / 1 管理员 */
-    role: smallint('role').notNull().default(0),
     rateCardId: bigint('rate_card_id', { mode: 'number' }).references(() => rateCards.id),
     /** 余额（厘），权威账本字段，只允许通过结算事务原子修改（预扣/补扣/退款） */
     balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),

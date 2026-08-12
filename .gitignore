@@ -23,6 +23,11 @@ logs/
 # docker
 docker/data/
 
+# redis 持久化数据（运行时产物，勿入库）
+*.rdb
+appendonlydir/
+*.aof
+
 # misc
 .DS_Store
 coverage/

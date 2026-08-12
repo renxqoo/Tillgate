@@ -6,7 +6,7 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "dev": "NODE_OPTIONS='--conditions=development' tsx watch --env-file=../../.env src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@ai-gateway/ai": "workspace:*",
+    "@ai-gateway/billing": "workspace:*",
     "@ai-gateway/config": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
     "@ai-gateway/logger": "workspace:*",
     "@ai-gateway/money": "workspace:*",
     "@ai-gateway/otel": "workspace:*",

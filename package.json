@@ -5,6 +5,17 @@
   "description": "AI Gateway — 多供应商 LLM API 中转站（对外售卖）",
   "scripts": {
     "dev": "turbo dev",
+    "dev:client": "turbo run dev --filter @ai-gateway/client",
+    "dev:admin": "turbo run dev --filter @ai-gateway/admin",
+    "dev:client-api": "turbo run dev --filter @ai-gateway/client-api",
+    "dev:admin-api": "turbo run dev --filter @ai-gateway/admin-api",
+    "dev:gateway": "turbo run dev --filter @ai-gateway/gateway",
+    "dev:worker": "turbo run dev --filter @ai-gateway/worker",
+    "dev:v1": "turbo run dev --filter @ai-gateway/console",
+    "start:gateway": "node apps/gateway/dist/index.js",
+    "start:worker": "node apps/worker/dist/index.js",
+    "start:admin-api": "node apps/admin-api/dist/index.js",
+    "start:client-api": "node apps/client-api/dist/index.js",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
@@ -29,5 +40,10 @@
     "node": ">=22",
     "pnpm": ">=11"
   },
-  "packageManager": "pnpm@11.1.2"
+  "packageManager": "pnpm@11.1.2",
+  "pnpm": {
+    "overrides": {
+      "recharts": "3.10.1"
+    }
+  }
 }

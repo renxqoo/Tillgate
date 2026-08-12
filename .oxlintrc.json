@@ -13,6 +13,7 @@
     "**/.next/**",
     "**/node_modules/**",
     "**/migrations/**",
-    "apps/console-app/.next/**"
+    "apps/console-app/.next/**",
+    "**/components/ui/**"
   ]
 }

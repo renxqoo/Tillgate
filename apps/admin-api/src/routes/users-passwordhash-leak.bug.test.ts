@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { createDb, type Db } from '@ai-gateway/db';
-import { users } from '@ai-gateway/db/schema';
+import { users, admins } from '@ai-gateway/db/schema';
 import { userAdminRoutes } from './users.js';
 import { adminAuthMiddleware } from '../middleware/admin-auth.js';
 import { hashPassword } from '../lib/password.js';
-import { signSession } from '../lib/session.js';
+import { signSession, ADMIN_SESSION_COOKIE } from '../lib/session.js';
 
 /**
  * BUG 复现（中危 / 凭据泄露）：PATCH /api/admin/users/:id 返回了 passwordHash。
@@ -20,6 +20,8 @@ import { signSession } from '../lib/session.js';
  *
  * 本测试：创建一个有 passwordHash 的真实用户，以管理员会话 PATCH 它，
  * 断言响应体不应包含 passwordHash（修复前红；修复后绿）。
+ *
+ * 拆分后：管理员身份在 admins 表（物理隔离），管理员会话 type='admin' + ag_admin_session cookie。
  */
 
 const cwd = dirname(fileURLToPath(import.meta.url));
@@ -58,18 +60,15 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-/** 建一个管理员（role=1）用于签发会话 + 一个普通用户作为 PATCH 目标 */
+/** 建一个管理员（admins 表，物理隔离）用于签发会话 + 一个普通用户作为 PATCH 目标 */
 async function seedAdminAndTarget(): Promise<{ adminId: number; targetId: number; adminCookie: string }> {
   const stamp = Date.now();
   const adminHash = await hashPassword('AdminPass1');
-  const [admin] = await db.insert(users).values({
-    issuer: 'local',
-    subject: `bug-admin-${stamp}`,
-    identityProvider: 'local',
+  const [admin] = await db.insert(admins).values({
+    email: `bug-admin-${stamp}@test.local`,
     displayName: `bug-admin-${stamp}`,
-    role: 1,
-    status: 0,
     passwordHash: adminHash,
+    status: 0,
   }).returning();
   const targetHash = await hashPassword('TargetPass1');
   const [target] = await db.insert(users).values({
@@ -77,17 +76,17 @@ async function seedAdminAndTarget(): Promise<{ adminId: number; targetId: number
     subject: `bug-target-${stamp}`,
     identityProvider: 'local',
     displayName: `bug-target-${stamp}`,
-    role: 0,
     status: 0,
     passwordHash: targetHash,
   }).returning();
-  const token = await signSession({ userId: admin!.id, role: 1 }, SECRET);
+  const token = await signSession({ type: 'admin', id: admin!.id }, SECRET);
   return { adminId: admin!.id, targetId: target!.id, adminCookie: token };
 }
 
 async function cleanup(...ids: number[]): Promise<void> {
   for (const id of ids) {
     await db.delete(users).where(eq(users.id, id)).catch(() => {});
+    await db.delete(admins).where(eq(admins.id, id)).catch(() => {});
   }
 }
 
@@ -104,7 +103,7 @@ describe('PATCH /api/admin/users/:id 不应泄露 passwordHash', () => {
         method: 'PATCH',
         headers: {
           'content-type': 'application/json',
-          cookie: `ag_session=${adminCookie}`,
+          cookie: `${ADMIN_SESSION_COOKIE}=${adminCookie}`,
         },
         body: JSON.stringify({ displayName: 'changed-by-admin' }),
       });

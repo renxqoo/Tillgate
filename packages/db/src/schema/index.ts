@@ -1,6 +1,7 @@
-// 数据模型统一出口（data-model.md 直译，17 张表）
+// 数据模型统一出口（data-model.md 直译，18 张表：拆分 admins 后）
 
 export * from './users.js';
+export * from './admins.js';
 export * from './apps.js';
 export * from './api-keys.js';
 export * from './providers.js';

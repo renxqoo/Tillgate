@@ -1,0 +1,23 @@
+{
+  "name": "@ai-gateway/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "admin-api 调用封装（apiFetch / ApiError / 类型 / formatters / session）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "oxlint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^16.3.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}

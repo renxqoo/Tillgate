@@ -100,9 +100,13 @@ describe('B-1: unfreezeIfBadDebt 只清坏账冻结（不动 manual_review 等�
   });
 
   it('源码 WHERE 条件包含 freeze_reason = bad_debt（防回退）', async () => {
+    // balance.ts 已抽到 @ai-gateway/billing，读 billing 包源码验证 WHERE 条件
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
-    const src = readFileSync(fileURLToPath(new URL('balance.ts', import.meta.url)), 'utf8');
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../../packages/billing/src/balance.ts', import.meta.url)),
+      'utf8',
+    );
     const start = src.indexOf('export async function unfreezeIfBadDebt');
     expect(start).toBeGreaterThanOrEqual(0);
     const body = src.slice(start, start + 500);

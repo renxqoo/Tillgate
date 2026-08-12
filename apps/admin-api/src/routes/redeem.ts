@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { eq, sql, and } from 'drizzle-orm';
-import { redeemBatches, redeemCodes, users } from '@ai-gateway/db/schema';
+import { redeemBatches, redeemCodes, admins } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import { jsonBody, query } from '../lib/validation.js';
 import { z } from 'zod';
@@ -34,7 +34,11 @@ const batchCreateSchema = z.object({
   amount: z.coerce.number().positive(),
   /** 生成数量，1~10000 */
   count: z.number().int().min(1).max(10_000),
-  expiresAt: z.string().datetime().optional(),
+  /** 过期时间，兼容 datetime-local（YYYY-MM-DDTHH:mm）与完整 ISO 8601 */
+  expiresAt: z
+    .string()
+    .refine((v) => !Number.isNaN(Date.parse(v)), "无效的过期时间")
+    .optional(),
 });
 
 export function redeemAdminRoutes(db: Db): Hono<AdminEnv> {
@@ -46,14 +50,14 @@ export function redeemAdminRoutes(db: Db): Hono<AdminEnv> {
       const adminId = c.get('adminId');
       const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
 
-      // createdBy 解析：机器令牌调用无 adminId → 兜底取第一个管理员（role=1）
+      // createdBy 解析：机器令牌调用无 adminId → 兜底取第一个管理员（admins 表，拆分后从 users.role 迁出）
       let creatorId = adminId;
       if (creatorId === undefined) {
         const admin = await db
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.role, 1))
-          .orderBy(users.id)
+          .select({ id: admins.id })
+          .from(admins)
+          .where(eq(admins.status, 0))
+          .orderBy(admins.id)
           .limit(1);
         if (admin.length === 0) {
           return c.json({ error: '系统无管理员账号，无法记录批次创建人' }, 400);

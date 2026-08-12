@@ -9,9 +9,27 @@
  * 输出：测试用虚拟 Key 明文（ag_xxx），用于 curl 测试。
  */
 import { createDb } from '../src/index.js';
-import { users, rateCards, rateCardCoefficients, apiKeys, providers, channels, modelMappings, modelChannels } from '../src/schema/index.js';
+import { users, admins, rateCards, rateCardCoefficients, apiKeys, providers, channels, modelMappings, modelChannels } from '../src/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { createHash, createCipheriv, randomBytes } from 'node:crypto';
+import { createHash, createCipheriv, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
+
+// ---- scrypt 哈希（与 @ai-gateway/identity/password.ts 同格式，seed 脚本独立实现避免循环依赖） ----
+const scrypt = promisify(scryptCallback) as (
+  password: string | Buffer,
+  salt: string | Buffer,
+  keylen: number,
+  options: { N: number; r: number; p: number; maxmem: number },
+) => Promise<Buffer>;
+const SCRYPT_N = 1 << 15;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const HASH_LEN = 32;
+async function hashPassword(plaintext: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scrypt(plaintext, salt, HASH_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 512 * 1024 * 1024 });
+  return `scrypt:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt.toString('hex')}:${hash.toString('hex')}`;
+}
 
 // ---- .env 加载（从 cwd 向上查找 monorepo 根） ----
 import { existsSync, readFileSync } from 'node:fs';
@@ -87,6 +105,20 @@ async function main() {
     }).returning();
     user = u;
     console.log('✓ 创建用户 dev (id=' + u.id + ')');
+  }
+
+  // 2.5 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
+  const adminEmail = 'admin@ai-gateway.local';
+  const existingAdmin = await db.query.admins?.findFirst?.({ where: eq(admins.email, adminEmail) });
+  if (!existingAdmin) {
+    const passwordHash = await hashPassword('admin12345');
+    await db.insert(admins).values({
+      email: adminEmail,
+      displayName: 'Dev Admin',
+      passwordHash,
+      status: 0,
+    });
+    console.log('✓ 创建管理员 admin@ai-gateway.local (密码 admin12345，仅开发用)');
   }
 
   // 3. 测试虚拟 Key

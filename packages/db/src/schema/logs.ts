@@ -9,6 +9,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
+import { admins } from './admins.js';
 import { apiKeys } from './api-keys.js';
 
 /**
@@ -44,12 +45,15 @@ export const requestLogs = pgTable(
 /**
  * audit_logs — 管理操作审计（data-model.md §3.14）
  * actor: admin / system（系统任务如对账/赠送/自动冻结，adminId 为 NULL）
+ *
+ * adminId 引用 admins.id（拆分后）：系统任务（赠送/对账）adminId 为 NULL，
+ * 管理员手动操作 adminId 对应 admins.id。
  */
 export const auditLogs = pgTable(
   'audit_logs',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
-    adminId: bigint('admin_id', { mode: 'number' }).references(() => users.id),
+    adminId: bigint('admin_id', { mode: 'number' }).references(() => admins.id, { onDelete: 'set null' }),
     actor: varchar('actor', { length: 8 }).notNull().default('admin'),
     /** 如 channel.update / user.adjust */
     action: varchar('action', { length: 64 }).notNull(),

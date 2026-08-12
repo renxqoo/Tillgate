@@ -19,18 +19,27 @@ describe('BUG C-1 — config.secretSchema 应拒绝 .env.example 占位密钥', 
   it('change-me-32-chars-minimum-secret 必须被拒绝（当前被接受）', async () => {
     // 隔离环境：确保 process.env 没有真生产密钥覆盖
     const origJwt = process.env.JWT_SECRET;
+    const origAdminJwt = process.env.ADMIN_JWT_SECRET;
     const origEnc = process.env.ENCRYPTION_KEY;
     delete process.env.JWT_SECRET;
+    delete process.env.ADMIN_JWT_SECRET;
     delete process.env.ENCRYPTION_KEY;
 
     try {
-      const { loadAdminApiEnv, loadGatewayEnv } = await import('../../src/index.js');
-      // admin-api 和 gateway 都调用 secretSchema，应该拒绝占位值
+      const { loadAdminApiEnv, loadClientApiEnv, loadGatewayEnv } = await import('../../src/index.js');
+      // admin-api（ADMIN_JWT_SECRET）、client-api（JWT_SECRET）、gateway 都调用 secretSchema，应该拒绝占位值
       expect(() => loadAdminApiEnv({
         DATABASE_URL: 'postgres://x',
         REDIS_URL: 'redis://x',
+        ADMIN_JWT_SECRET: 'change-me-32-chars-minimum-secret',
+        ENCRYPTION_KEY: 'a-strong-encryption-key-32-chars-min!!',
+      })).toThrow(/占位|弱密钥/);
+
+      expect(() => loadClientApiEnv({
+        DATABASE_URL: 'postgres://x',
+        REDIS_URL: 'redis://x',
         JWT_SECRET: 'change-me-32-chars-minimum-secret',
-        ENCRYPTION_KEY: 'change-me-32-chars-minimum-secret',
+        ENCRYPTION_KEY: 'a-strong-encryption-key-32-chars-min!!',
       })).toThrow(/占位|弱密钥/);
 
       expect(() => loadGatewayEnv({
@@ -41,27 +50,40 @@ describe('BUG C-1 — config.secretSchema 应拒绝 .env.example 占位密钥', 
       })).toThrow(/占位|弱密钥/);
     } finally {
       if (origJwt) process.env.JWT_SECRET = origJwt;
+      if (origAdminJwt) process.env.ADMIN_JWT_SECRET = origAdminJwt;
       if (origEnc) process.env.ENCRYPTION_KEY = origEnc;
     }
   });
 
   it('对照组：合法强密钥应通过', async () => {
     const origJwt = process.env.JWT_SECRET;
+    const origAdminJwt = process.env.ADMIN_JWT_SECRET;
     const origEnc = process.env.ENCRYPTION_KEY;
     delete process.env.JWT_SECRET;
+    delete process.env.ADMIN_JWT_SECRET;
     delete process.env.ENCRYPTION_KEY;
 
     try {
-      const { loadAdminApiEnv } = await import('../../src/index.js');
-      const env = loadAdminApiEnv({
+      const { loadAdminApiEnv, loadClientApiEnv } = await import('../../src/index.js');
+      // admin-api 用 ADMIN_JWT_SECRET
+      const adminEnv = loadAdminApiEnv({
+        DATABASE_URL: 'postgres://x',
+        REDIS_URL: 'redis://x',
+        ADMIN_JWT_SECRET: 'a-strong-admin-jwt-secret-for-testing-9k2m',
+        ENCRYPTION_KEY: 'a-strong-encryption-key-32-chars-min!!',
+      });
+      expect(adminEnv.ADMIN_JWT_SECRET).toBe('a-strong-admin-jwt-secret-for-testing-9k2m');
+      // client-api 用 JWT_SECRET
+      const clientEnv = loadClientApiEnv({
         DATABASE_URL: 'postgres://x',
         REDIS_URL: 'redis://x',
         JWT_SECRET: 'a-strong-jwt-secret-for-testing-only-7f3a',
         ENCRYPTION_KEY: 'a-strong-encryption-key-32-chars-min!!',
       });
-      expect(env.JWT_SECRET).toBe('a-strong-jwt-secret-for-testing-only-7f3a');
+      expect(clientEnv.JWT_SECRET).toBe('a-strong-jwt-secret-for-testing-only-7f3a');
     } finally {
       if (origJwt) process.env.JWT_SECRET = origJwt;
+      if (origAdminJwt) process.env.ADMIN_JWT_SECRET = origAdminJwt;
       if (origEnc) process.env.ENCRYPTION_KEY = origEnc;
     }
   });

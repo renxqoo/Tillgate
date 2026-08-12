@@ -13,7 +13,8 @@ services:
       - certbot-web:/var/www/certbot:ro
     depends_on:
       - gateway
-      - console
+      - console-client
+      - console-admin
     restart: unless-stopped
 
   # certbot 证书签发与续期（Let's Encrypt）
@@ -94,17 +95,68 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 15s
-    # 安全：不发布任何端口，仅 compose 内网可达（console 服务端代理调用）
+    # 安全：不发布任何端口，仅 compose 内网可达（console-admin 服务端代理调用）
 
-  console:
+  # 用户面板 REST（从 admin-api 拆分，处理 /api/me /api/keys /api/apps /api/usage /api/redeem /api/auth/*）
+  client-api:
     build:
       context: ..
-      dockerfile: apps/console-app/Dockerfile
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: client-api
     env_file:
       - path: ../.env
         required: true
     environment:
-      # B2 修复：console 容器内必须指向 admin-api 服务，而非 localhost（=自己）。
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+    # 安全：不发布任何端口，仅 compose 内网可达（console-client 服务端代理调用）
+
+  console-v1:
+    build:
+      context: ..
+      dockerfile: apps/console-app-v1/Dockerfile
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      ADMIN_API_BASE: http://admin-api:8790
+    depends_on:
+      - admin-api
+    restart: unless-stopped
+    # v1 console 已废弃，新部署走 client + admin。可注释下面一行禁用。
+    profiles: ["legacy"]
+
+  console-client:
+    build:
+      context: ..
+      dockerfile: apps/client/Dockerfile
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      # 拆分后：用户前端指向 client-api（用户面，8791）
+      CLIENT_API_BASE: http://client-api:8791
+    depends_on:
+      - client-api
+    restart: unless-stopped
+
+  console-admin:
+    build:
+      context: ..
+      dockerfile: apps/admin/Dockerfile
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      # 管理后台指向 admin-api（管理面，8790）
       ADMIN_API_BASE: http://admin-api:8790
     depends_on:
       - admin-api

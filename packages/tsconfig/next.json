@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@ai-gateway/ui": ["../../packages/ui/src/index.ts"],
+      "@ai-gateway/ui/*": ["../../packages/ui/src/*"],
+      "@ai-gateway/api-client": ["../../packages/api-client/src/index.ts"]
+    }
+  }
+}
