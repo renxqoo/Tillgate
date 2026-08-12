@@ -10,6 +10,7 @@ import {
   numeric,
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
+import { admins } from './admins.js';
 
 /** redeem_batches — 充值码批次（data-model.md §3.12，面额创建后不可修改） */
 export const redeemBatches = pgTable(
@@ -22,9 +23,10 @@ export const redeemBatches = pgTable(
     amount: numeric('amount', { precision: 38, scale: 18 }).notNull(),
     total: bigint('total', { mode: 'number' }).notNull(),
     usedCount: bigint('used_count', { mode: 'number' }).notNull().default(0),
+    /** 创建人（admins.id；admins 从 users 拆分后，外键同步改指 admins） */
     createdBy: bigint('created_by', { mode: 'number' })
       .notNull()
-      .references(() => users.id),
+      .references(() => admins.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('redeem_batches_created_by_idx').on(t.createdBy)],

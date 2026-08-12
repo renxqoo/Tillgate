@@ -25,6 +25,8 @@ import { decrypt } from './crypto.js';
 const VERSION_KEY = 'route:cache:v';
 const CACHE_TTL_SEC = 300; // 5 分钟兜底（版本 bump 是主失效手段）
 const EMPTY_MARKER = '__empty__'; // 缓存「不存在」结果（防穿透：已下架模型反复查 DB）
+/** channels 缓存结构版本：ChannelCacheStored 形状变化时 bump，使旧 key 自然 miss（强制重查 DB 加载新字段） */
+const CHANNELS_SCHEMA_V = 2;
 
 // ---- 版本管理 ----
 
@@ -79,6 +81,9 @@ export interface ChannelCache {
   protocol: ChannelDesc['protocol'];
   providerName: string;
   key: string;
+  /** 渠道级限流（保护上游 API key 配额；null=该渠道不限流） */
+  rpmLimit: number | null;
+  tpmLimit: number | null;
 }
 
 /**
@@ -92,6 +97,8 @@ interface ChannelCacheStored {
   protocol: ChannelDesc['protocol'];
   providerName: string;
   key: string;
+  rpmLimit: number | null;
+  tpmLimit: number | null;
 }
 
 // ---- 模型映射缓存 ----
@@ -157,7 +164,7 @@ export async function getChannels(
   encryptionKey: string,
 ): Promise<ChannelCache[]> {
   const v = await getVersion(redis);
-  const key = `route:channels:v${v}:${realModel}`;
+  const key = `route:channels:v${v}:s${CHANNELS_SCHEMA_V}:${realModel}`;
   try {
     const cached = await redis.get(key);
     if (cached !== null) {
@@ -181,6 +188,8 @@ export async function getChannels(
       providerProtocol: providers.protocol,
       mcWeight: modelChannels.weight,
       mcPriority: modelChannels.priority,
+      rpmLimit: channels.rpmLimit,
+      tpmLimit: channels.tpmLimit,
     })
     .from(modelChannels)
     .innerJoin(channels, eq(modelChannels.channelId, channels.id))
@@ -197,6 +206,8 @@ export async function getChannels(
     protocol: row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'],
     providerName: row.providerName,
     key: `${row.providerName}/${row.channelName}`,
+    rpmLimit: row.rpmLimit,
+    tpmLimit: row.tpmLimit,
   }));
   // 落 Redis 的版本：apiKeyEnc（密文），不含明文
   const storedResult: ChannelCacheStored[] = rows.map((row) => ({
@@ -206,6 +217,8 @@ export async function getChannels(
     protocol: row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'],
     providerName: row.providerName,
     key: `${row.providerName}/${row.channelName}`,
+    rpmLimit: row.rpmLimit,
+    tpmLimit: row.tpmLimit,
   }));
 
   try {

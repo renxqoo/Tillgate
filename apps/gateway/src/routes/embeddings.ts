@@ -61,22 +61,59 @@ export function embeddingsRoutes(
       return errorResponse(c, 403, 'model_not_allowed', `模型「${model}」不在当前凭证的可用范围内`);
     }
 
-    // 限流（RPM + TPM，同 chat）
-    const rlResult = await rateLimiter.checkAll(
-      [{ dimension: 'global', max: GLOBAL_RPM }, { dimension: `user:${auth.userId}`, max: auth.userRpmLimit ?? env.DEFAULT_USER_RPM }],
-      requestId,
-    );
+    // ---- 限流（RPM，对齐 chat-completions：global / user / key / app）----
+    const rlDims: Array<{ dimension: string; max: number }> = [
+      { dimension: 'global', max: GLOBAL_RPM },
+      { dimension: `user:${auth.userId}`, max: auth.userRpmLimit ?? env.DEFAULT_USER_RPM },
+    ];
+    if (auth.apiKeyId !== null && auth.keyRpmLimit !== null) {
+      rlDims.push({ dimension: `key:${auth.apiKeyId}`, max: auth.keyRpmLimit });
+    }
+    if (auth.appId !== null && auth.appRpmLimit !== null) {
+      rlDims.push({ dimension: `app:${auth.appId}`, max: auth.appRpmLimit });
+    }
+    const rlResult = await rateLimiter.checkAll(rlDims, requestId);
     if (!rlResult.allowed) {
       c.header('retry-after', String(rlResult.retryAfterSec ?? 1));
-      return errorResponse(c, 429, 'rate_limit_exceeded', `请求过于频繁（${rlResult.dimension}）`, `请 ${rlResult.retryAfterSec} 秒后重试`);
+      return errorResponse(c, 429, 'rate_limit_exceeded', `请求过于频繁（${rlResult.dimension} 维度超限）`, `请 ${rlResult.retryAfterSec} 秒后重试`);
     }
 
     // 模型路由（走 Redis 缓存）
     const mapping = await getMapping(db, redis, model);
     if (!mapping) return errorResponse(c, 404, 'model_not_found', `模型「${model}」不存在或已下架`);
 
-    // 预扣
+    // 输入 token 估算（TPM 预占 + 预扣共用）
     const estInput = estimateTokens(extractRequestChars(body), 3.5);
+
+    // ---- 模型级 RPM 限流（对齐 chat-completions）----
+    if (mapping.rpmLimit) {
+      const mRpm = await rateLimiter.check(`model:${mapping.id}`, mapping.rpmLimit, requestId);
+      if (!mRpm.allowed) {
+        c.header('retry-after', String(mRpm.retryAfterSec ?? 1));
+        return errorResponse(c, 429, 'rate_limit_exceeded', `模型「${model}」请求超限（RPM）`, `请 ${mRpm.retryAfterSec} 秒后重试`);
+      }
+    }
+
+    // ---- TPM 限流（user 维度按模型拆，对齐 chat-completions）----
+    const tpmDims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [
+      { dimension: `user:${auth.userId}:model:${mapping.id}`, estimatedTokens: estInput, max: auth.userTpmLimit ?? env.DEFAULT_USER_TPM },
+    ];
+    if (mapping.tpmLimit) {
+      tpmDims.push({ dimension: `model:${mapping.id}`, estimatedTokens: estInput, max: mapping.tpmLimit });
+    }
+    if (auth.apiKeyId !== null && auth.keyTpmLimit !== null) {
+      tpmDims.push({ dimension: `key:${auth.apiKeyId}`, estimatedTokens: estInput, max: auth.keyTpmLimit });
+    }
+    if (auth.appId !== null && auth.appTpmLimit !== null) {
+      tpmDims.push({ dimension: `app:${auth.appId}`, estimatedTokens: estInput, max: auth.appTpmLimit });
+    }
+    const tpmResult = await rateLimiter.checkTpmAll(tpmDims);
+    if (!tpmResult.allowed) {
+      c.header('retry-after', String(tpmResult.retryAfterSec ?? 1));
+      return errorResponse(c, 429, 'rate_limit_exceeded', `Token 用量超限（${tpmResult.dimension} 维度 TPM）`, `请 ${tpmResult.retryAfterSec} 秒后重试`);
+    }
+
+    // 预扣
     const estimate = estimateMaxCost({ estimatedInputTokens: estInput, maxOutputTokens: 0, inputPrice: mapping.inputPrice, outputPrice: 0, coefficient: auth.coefficient });
     const balance = await billing.getBalance(auth.userId);
     const balanceDec = toDecimal(balance);
@@ -99,6 +136,24 @@ export function embeddingsRoutes(
 
     try {
       for (const channel of candidates) {
+        // ---- 渠道级限流（保护上游 API key 配额；超限换下一个渠道）----
+        if (channel.rpmLimit) {
+          const cRpm = await rateLimiter.check(`channel:${channel.channelId}`, channel.rpmLimit, requestId);
+          if (!cRpm.allowed) {
+            logger.warn({ requestId, channel: channel.key, retryAfter: cRpm.retryAfterSec }, 'channel RPM limited, switching');
+            lastError = { code: 'rate_limited', message: '渠道请求频率超限', status: 429 };
+            continue;
+          }
+        }
+        if (channel.tpmLimit) {
+          const cTpm = await rateLimiter.checkTpm(`channel:${channel.channelId}`, estInput, channel.tpmLimit);
+          if (!cTpm.allowed) {
+            logger.warn({ requestId, channel: channel.key, retryAfter: cTpm.retryAfterSec }, 'channel TPM limited, switching');
+            lastError = { code: 'rate_limited', message: '渠道 Token 用量超限', status: 429 };
+            continue;
+          }
+        }
+
         const channelDesc: ChannelDesc = { baseUrl: channel.baseUrl, apiKey: channel.apiKey, protocol: channel.protocol };
         try {
           const result = await ai.chat({ channel: channelDesc, request: body, ctx });

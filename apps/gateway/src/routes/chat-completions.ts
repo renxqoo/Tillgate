@@ -52,8 +52,8 @@ const GLOBAL_RPM = (() => {
 /**
  * POST /v1/chat/completions — 对话补全（OpenAI 格式，含 SSE 流式）
  *
- * 链路：鉴权 → 限流(RPM) → 预扣(hold) → 模型路由 → 渠道选择 → ai 包调用 → 释放 hold → SSE/JSON
- * 结算（写 usage_logs + transactions）留 worker 异步队列。
+ * 链路：鉴权 → 限流(RPM, global/user/key/app) → 模型路由 → 模型级限流(RPM) + TPM(user:model 拆分) → 预扣(hold) → 渠道选择 → 循环[channel 维度限流 → ai 包调用] → 释放 hold → SSE/JSON
+ * 结算（写 usage_logs + transactions + TPM 回填 user:model/model/channel 维度）留 worker 异步队列。
  */
 export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, rateLimiter: RateLimiter, meter: MeterProducer, redis: Redis): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
@@ -65,7 +65,6 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
     const body = c.req.valid('json') as Record<string, unknown>;
     const model = body.model as string;
     const stream = body.stream === true;
-
     // ---- JWT scope.models 越权校验（S3）----
     // JWT 签发的 scope.models 白名单：不在白名单内的模型直接 403（防越权计费）
     if (!isModelAllowed(auth.allowedModels, model)) {
@@ -96,12 +95,33 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
       );
     }
 
+    // 模型路由：externalName → model_mappings（走 Redis 缓存，消除热路径每请求查 DB）
+    const mappingCache = await getMapping(db, redis, model);
+    if (!mappingCache) {
+      return errorResponse(c, 404, 'model_not_found', `模型「${model}」不存在或已下架`);
+    }
+    // 缓存对象与原 Drizzle row 形状兼容（字段名一致），后续直接用 mappingCache 替代 mapping
+    const mapping = mappingCache;
+
+    // ---- 模型级 RPM 限流（model_mappings.rpmLimit，保护上游配额）----
+    if (mapping.rpmLimit) {
+      const mRpm = await rateLimiter.check(`model:${mapping.id}`, mapping.rpmLimit, requestId);
+      if (!mRpm.allowed) {
+        c.header('retry-after', String(mRpm.retryAfterSec ?? 1));
+        return errorResponse(c, 429, 'rate_limit_exceeded', `模型「${model}」请求超限（RPM）`, `请 ${mRpm.retryAfterSec} 秒后重试`);
+      }
+    }
+
     // ---- TPM 限流（token/分钟，requirements 4.6）----
+    // user 维度按模型拆（user:${id}:model:${mappingId}）：消除同用户多模型共享桶导致的同时 429（G-RL 修复）。
     // 预占 = 输入 token（输出不可预知，不计入当前窗口，由 worker 回填）
     const estimatedInputTokensForTpm = estimateTokens(extractRequestChars(body), 3.5);
     const tpmDims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [
-      { dimension: `user:${auth.userId}`, estimatedTokens: estimatedInputTokensForTpm, max: auth.userTpmLimit ?? env.DEFAULT_USER_TPM },
+      { dimension: `user:${auth.userId}:model:${mapping.id}`, estimatedTokens: estimatedInputTokensForTpm, max: auth.userTpmLimit ?? env.DEFAULT_USER_TPM },
     ];
+    if (mapping.tpmLimit) {
+      tpmDims.push({ dimension: `model:${mapping.id}`, estimatedTokens: estimatedInputTokensForTpm, max: mapping.tpmLimit });
+    }
     if (auth.apiKeyId !== null && auth.keyTpmLimit !== null) {
       tpmDims.push({ dimension: `key:${auth.apiKeyId}`, estimatedTokens: estimatedInputTokensForTpm, max: auth.keyTpmLimit });
     }
@@ -119,14 +139,6 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
         `请 ${tpmResult.retryAfterSec} 秒后重试`,
       );
     }
-
-    // 模型路由：externalName → model_mappings（走 Redis 缓存，消除热路径每请求查 DB）
-    const mappingCache = await getMapping(db, redis, model);
-    if (!mappingCache) {
-      return errorResponse(c, 404, 'model_not_found', `模型「${model}」不存在或已下架`);
-    }
-    // 缓存对象与原 Drizzle row 形状兼容（字段名一致），后续直接用 mappingCache 替代 mapping
-    const mapping = mappingCache;
 
     /** 构造计量 job 并入队（fire-and-forget，幂等 jobId=requestId）。
      *  资损防线：入队失败（Redis 挂）→ 同步降级结算（DB 兜底），绝不漏扣。 */
@@ -174,22 +186,6 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
         }
       }
     };
-
-    // ---- 模型级限流（model_mappings.rpmLimit/tpmLimit，保护上游配额）----
-    if (mapping.rpmLimit) {
-      const mRpm = await rateLimiter.check(`model:${mapping.id}`, mapping.rpmLimit, requestId);
-      if (!mRpm.allowed) {
-        c.header('retry-after', String(mRpm.retryAfterSec ?? 1));
-        return errorResponse(c, 429, 'rate_limit_exceeded', `模型「${model}」请求超限（RPM）`, `请 ${mRpm.retryAfterSec} 秒后重试`);
-      }
-    }
-    if (mapping.tpmLimit) {
-      const mTpm = await rateLimiter.checkTpm(`model:${mapping.id}`, estimatedInputTokensForTpm, mapping.tpmLimit);
-      if (!mTpm.allowed) {
-        c.header('retry-after', String(mTpm.retryAfterSec ?? 1));
-        return errorResponse(c, 429, 'rate_limit_exceeded', `模型「${model}」Token 超限（TPM）`, `请 ${mTpm.retryAfterSec} 秒后重试`);
-      }
-    }
 
     // ---- 预扣计费（billing hold）----
     // 估算上限 = (估算输入 × 输入价 + 默认输出上限 × 输出价) × 系数（缓存按全价保守估）
@@ -269,6 +265,25 @@ export function chatCompletionsRoutes(db: Db, ai: Ai, billing: BillingService, r
 
         for (const channel of target.channels) {
           logger.info({ requestId, channel: channel.key, model: target.realModel, stream }, 'candidate attempt');
+
+          // ---- 渠道级限流（保护上游 API key 配额；超限换下一个渠道，复用 channel-switch 语义）----
+          if (channel.rpmLimit) {
+            const cRpm = await rateLimiter.check(`channel:${channel.channelId}`, channel.rpmLimit, requestId);
+            if (!cRpm.allowed) {
+              logger.warn({ requestId, channel: channel.key, retryAfter: cRpm.retryAfterSec }, 'channel RPM limited, switching');
+              lastError = { code: 'rate_limited', message: '渠道请求频率超限', status: 429 };
+              continue;
+            }
+          }
+          if (channel.tpmLimit) {
+            const cTpm = await rateLimiter.checkTpm(`channel:${channel.channelId}`, estimatedInputTokensForTpm, channel.tpmLimit);
+            if (!cTpm.allowed) {
+              logger.warn({ requestId, channel: channel.key, retryAfter: cTpm.retryAfterSec }, 'channel TPM limited, switching');
+              lastError = { code: 'rate_limited', message: '渠道 Token 用量超限', status: 429 };
+              continue;
+            }
+          }
+
           const channelDesc: ChannelDesc = { baseUrl: channel.baseUrl, apiKey: channel.apiKey, protocol: channel.protocol };
 
           // 上游调用 Span（渠道级，OTel 链路追踪）

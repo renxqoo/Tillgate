@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
-import { users, usageLogs, transactions } from '@ai-gateway/db/schema';
+import { users, usageLogs, transactions, channels, providers } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
 import { settle, type MeterJobData } from './settle.js';
 
@@ -313,6 +313,54 @@ describe('settle 结算（元 + decimal 全精度，幂等 + 并发安全）', (
     } finally {
       await cleanupUser(userId);
       await redis.del(`billing:hold:`).catch(() => {});
+    }
+  });
+
+  // ---- TPM 回填维度（G-RL 限流重构：user 维度按模型拆 + 新增 channel 维度）----
+  it('TPM 回填：user:model 复合维度（拆分核心）+ model 维度；旧 user:${id} 不再回填', async () => {
+    if (!connected) return it.skip('no DB');
+    const userId = await createTestUser('1000');
+    const mappingId = 88888; // 测试用虚拟 mappingId（usage_logs 无 FK 到 model_mappings）
+    try {
+      const job = makeJob({ userId, requestId: randomUUID(), channelId: null, mappingId });
+      const r = await settle(db, redis, job);
+      expect(r.settled).toBe(true);
+      const minute = Math.floor(Date.now() / 60_000);
+      // user:model 复合维度回填（totalTokens = input 1000 + output 500 = 1500）
+      expect(parseInt((await redis.get(`tpm:user:${userId}:model:${mappingId}:${minute}`)) ?? '0', 10)).toBe(1500);
+      // model 维度回填
+      expect(parseInt((await redis.get(`tpm:model:${mappingId}:${minute}`)) ?? '0', 10)).toBe(1500);
+      // 旧格式 user:${userId}（无 model 后缀）不再回填——拆分后该桶废弃
+      expect(await redis.get(`tpm:user:${userId}:${minute}`)).toBeNull();
+      await redis.del(`tpm:user:${userId}:model:${mappingId}:${minute}`, `tpm:model:${mappingId}:${minute}`);
+    } finally {
+      await cleanupUser(userId);
+    }
+  });
+
+  it('TPM 回填：channel 维度（channelId 非空时回填，保护上游 API key 配额）', async () => {
+    if (!connected) return it.skip('no DB');
+    const userId = await createTestUser('1000');
+    const mappingId = 88889;
+    const suffix = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    // usage_logs.channel_id 有 FK → 创建真实 provider + channel
+    const [prov] = await db.insert(providers).values({ name: 'tpm-prov-' + suffix, protocol: 'openai_compatible', baseUrl: 'http://localhost:9999', status: 0 }).returning();
+    const [ch] = await db.insert(channels).values({ name: 'tpm-ch-' + suffix, providerId: prov!.id, apiKeyEnc: 'dummy', status: 0 }).returning();
+    const channelId = ch!.id;
+    try {
+      const job = makeJob({ userId, requestId: randomUUID(), channelId, mappingId });
+      const r = await settle(db, redis, job);
+      expect(r.settled).toBe(true);
+      const minute = Math.floor(Date.now() / 60_000);
+      // channel 维度回填
+      expect(parseInt((await redis.get(`tpm:channel:${channelId}:${minute}`)) ?? '0', 10)).toBe(1500);
+      await redis.del(`tpm:user:${userId}:model:${mappingId}:${minute}`, `tpm:model:${mappingId}:${minute}`, `tpm:channel:${channelId}:${minute}`);
+    } finally {
+      // FK 顺序：usage_logs 引用 channel → 先删 usage_logs，再删 channel/provider
+      await db.delete(usageLogs).where(eq(usageLogs.userId, userId)).catch(() => {});
+      await db.delete(channels).where(eq(channels.id, channelId)).catch(() => {});
+      await db.delete(providers).where(eq(providers.id, prov!.id)).catch(() => {});
+      await cleanupUser(userId);
     }
   });
 });

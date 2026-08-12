@@ -164,9 +164,11 @@ export async function settle(
   if (settled) {
     const totalTokens = Math.max(0, data.usage.inputTokens) + Math.max(0, data.usage.outputTokens);
     const minute = Math.floor(Date.now() / 60_000);
-    const tpmDims = [`user:${data.userId}`, `model:${data.mappingId}`];
+    // user 维度按模型拆（user:${id}:model:${mappingId}）：与 gateway 检查端口径一致，消除跨模型共享桶。
+    const tpmDims = [`user:${data.userId}:model:${data.mappingId}`, `model:${data.mappingId}`];
     if (data.apiKeyId) tpmDims.push(`key:${data.apiKeyId}`);
     if (data.appId) tpmDims.push(`app:${data.appId}`);
+    if (data.channelId) tpmDims.push(`channel:${data.channelId}`);
     for (const dim of tpmDims) {
       const key = `tpm:${dim}:${minute}`;
       await redis.incrby(key, totalTokens);

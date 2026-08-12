@@ -10,6 +10,7 @@ import { usageLogs } from './usage.js';
 import { transactions } from './transactions.js';
 import { redeemBatches, redeemCodes } from './redeem.js';
 import { auditLogs, requestLogs } from './logs.js';
+import { admins } from './admins.js';
 import { plans, userSubscriptions } from './plans.js';
 
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -102,7 +103,7 @@ export const requestLogsRelations = relations(requestLogs, ({ one }) => ({
 }));
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
-  admin: one(users, { fields: [auditLogs.adminId], references: [users.id] }),
+  admin: one(admins, { fields: [auditLogs.adminId], references: [admins.id] }),
 }));
 
 export const plansRelations = relations(plans, ({ many }) => ({
