@@ -33,7 +33,7 @@ export function RequestsChart({ data }: { data: ReadonlyArray<{ date: string; va
 
 export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value: number }> }) {
   return (
-    <ChartContainer config={tokensConfig} className="aspect-auto h-62.5 ">3232
+    <ChartContainer config={tokensConfig} className="aspect-auto h-62.5 w-full">
       <BarChart data={data as Array<{ date: string; value: number }>} margin={{ left: 12, right: 12, top: 4, bottom: 4 }}>
         <CartesianGrid vertical={false} strokeOpacity={0.15} />
         <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(v) => v.slice(5)} />
