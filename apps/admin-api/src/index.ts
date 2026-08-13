@@ -8,6 +8,7 @@ import { channelAdminRoutes } from './routes/channels.js';
 import { rateCardAdminRoutes } from './routes/rate-cards.js';
 import { userAdminRoutes } from './routes/users.js';
 import { redeemAdminRoutes } from './routes/redeem.js';
+import { keyAdminRoutes } from './routes/keys.js';
 import { statsAdminRoutes } from './routes/stats.js';
 import { channelImportRoutes } from './routes/channel-import.js';
 import { adminUserRoutes } from './routes/auth.js';
@@ -89,6 +90,8 @@ export function createApp() {
   app.route('/', userAdminRoutes(db));
   // 充值码管理（§4.7）
   app.route('/', redeemAdminRoutes(db));
+  // Key 限流管理（管理员配置 Key 的 RPM/TPM，改后立即生效）
+  app.route('/', keyAdminRoutes(db));
   // 报表/仪表盘/日志/审计（§4.8）
   app.route('/', statsAdminRoutes(db));
 

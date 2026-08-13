@@ -41,6 +41,9 @@ const modelCreateSchema = z.object({
   inputPrice: z.coerce.number().optional(),
   outputPrice: z.coerce.number().optional(),
   cacheInputPrice: z.coerce.number().optional(),
+  /** 模型级限流（保护上游配额）；null=不限流 */
+  rpmLimit: z.number().int().positive().nullable().optional(),
+  tpmLimit: z.number().int().positive().nullable().optional(),
 }).passthrough();
 
 /**
@@ -277,6 +280,8 @@ export function channelAdminRoutes(db: Db): Hono {
           inputPrice: String(body.inputPrice ?? 0),
           outputPrice: String(body.outputPrice ?? 0),
           cacheInputPrice: String(body.cacheInputPrice ?? 0),
+          rpmLimit: body.rpmLimit ?? null,
+          tpmLimit: body.tpmLimit ?? null,
         })
         .returning();
       invalidateRouteCache();

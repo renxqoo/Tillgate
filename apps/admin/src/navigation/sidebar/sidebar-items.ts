@@ -1,6 +1,7 @@
 import {
   Banknote,
   ChartBar,
+  Gauge,
   History,
   KeyRound,
   type LucideIcon,
@@ -67,6 +68,7 @@ export function buildSidebarItems(): NavGroup[] {
         { id: "channels", title: "渠道", url: "/dashboard/channels", icon: Network },
         { id: "models", title: "模型映射", url: "/dashboard/models", icon: Server },
         { id: "rate-cards", title: "费率卡", url: "/dashboard/rate-cards", icon: Banknote },
+        { id: "rate-limits", title: "限流设置", url: "/dashboard/rate-limits", icon: Gauge },
       ],
     },
     {

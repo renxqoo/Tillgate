@@ -268,6 +268,30 @@ export interface ModelUpdateBody {
   status?: number;
 }
 
+// ── Admin: Keys (GET/PATCH /api/admin/keys) ─────────────────────────────────
+export interface AdminKeyRow {
+  id: number;
+  /** 脱敏预览 ag_****abcd（明文永不回显） */
+  keyPreview: string;
+  name: string;
+  remark: string | null;
+  userId: number;
+  userEmail: string | null;
+  userDisplayName: string | null;
+  rpmLimit: number | null;
+  tpmLimit: number | null;
+  status: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+export interface AdminKeyUpdateBody {
+  name?: string;
+  /** null=不限流（继承用户/全局） */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  status?: number;
+}
+
 // ── Admin: Rate Cards (GET/POST /api/admin/rate-cards) ──────────────────────
 export interface AdminRateCardRow {
   id: number;
