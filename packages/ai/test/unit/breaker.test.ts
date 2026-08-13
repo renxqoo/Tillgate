@@ -101,13 +101,28 @@ describe('MemoryBreakerStorage', () => {
   it('compareAndSet：version 匹配才写入，返回是否成功', async () => {
     const s = new MemoryBreakerStorage();
     // key 不存在 → expectedVersion=0 可写入
-    const ok1 = await s.compareAndSet('k', 0, { state: 'closed', failures: [], windowStart: 0, version: 1 }, 10_000);
+    const ok1 = await s.compareAndSet(
+      'k',
+      0,
+      { state: 'closed', failures: [], windowStart: 0, version: 1 },
+      10_000,
+    );
     expect(ok1).toBe(true);
     // version 不匹配 → 失败
-    const ok2 = await s.compareAndSet('k', 0, { state: 'open', failures: [], windowStart: 0, version: 2 }, 10_000);
+    const ok2 = await s.compareAndSet(
+      'k',
+      0,
+      { state: 'open', failures: [], windowStart: 0, version: 2 },
+      10_000,
+    );
     expect(ok2).toBe(false);
     // version 匹配 → 成功
-    const ok3 = await s.compareAndSet('k', 1, { state: 'open', failures: [], windowStart: 0, version: 2 }, 10_000);
+    const ok3 = await s.compareAndSet(
+      'k',
+      1,
+      { state: 'open', failures: [], windowStart: 0, version: 2 },
+      10_000,
+    );
     expect(ok3).toBe(true);
     const got = await s.getState('k');
     expect(got?.state).toBe('open');
@@ -145,7 +160,10 @@ describe('CircuitBreaker 并发安全（B5）', () => {
     let t = 1000;
     const b = new CircuitBreaker('cas-test', config, storage, () => t);
     // 阈值 3，并发 2 个（不足以熔断，验证计数不丢）
-    await Promise.all([b.recordFailure({ circuitTrip: true }), b.recordFailure({ circuitTrip: true })]);
+    await Promise.all([
+      b.recordFailure({ circuitTrip: true }),
+      b.recordFailure({ circuitTrip: true }),
+    ]);
     const state = await storage.getState('cas-test');
     expect(state?.failures.length).toBe(2); // 两次失败都计入窗口
     expect(state?.state).toBe('closed');

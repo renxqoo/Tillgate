@@ -38,15 +38,15 @@
 ```
 
 - `usage` 透传供应商原值（含各家缓存字段：OpenAI 风格 `prompt_tokens_details.cached_tokens`、DeepSeek 风格 `prompt_cache_hit_tokens` 等）；网关内部按标准化字段（未缓存输入/缓存输入/输出）计量计费（官方价 × 费率卡系数）。
-- `usage` 缺失时网关按估算系数填充（1 token ≈ 3.5 字符，全部按未缓存输入计）。
+- `usage` 缺失或校验失败时不得估算扣费：该请求的授权转 `uncertain`，等待供应商证据恢复或人工审计。
 - `model` 返回**真实模型名**（映射后）。
 
-**流式响应**（`stream: true`）：`Content-Type: text/event-stream`，逐帧透传 OpenAI chunk 格式（`choices[].delta`），流尾 `data: [DONE]`。计量在流结束后进行（从流尾 usage 捕获，缺失则估算）。
+**流式响应**（`stream: true`）：`Content-Type: text/event-stream`，逐帧透传 OpenAI chunk 格式（`choices[].delta`），流尾 `data: [DONE]`。计量在流结束后从可信 usage 捕获；缺失则进入 uncertain。
 
 **流式错误与中断语义**：
 - 流开始前（首帧前）出错 → 返回正常 JSON 错误响应（错误码表格式）。
 - 流开始后上游/网关出错 → 发送 OpenAI 风格错误 chunk：`data: {"error": {"message", "type", "code"}}` 后结束（不再发 `[DONE]`；客户端以 error chunk 为准）。
-- 客户端中途断开 → 网关内部主动断开上游连接（停止生成、节省成本），客户端无感；计费按已收内容估算（requirements.md 5.11）。
+- 客户端中途断开 → 网关内部主动断开上游连接（停止生成、节省成本）；有可信 usage 才精确结算，否则冻结预扣进入 uncertain，禁止估算扣费。
 - chunk 中 `model`/`id` 默认**不改写**（透传上游真实值）；"改写为对外模型名"为可配置开关。
 
 ### 2.2 GET /v1/models — 模型列表
@@ -80,7 +80,7 @@ client_secret=<app.client_secret>
 - JWT 载荷：`sub`=user_id、`app_id`、`scope`（App 限制项）、`coefficient`（费率卡系数快照）、`iat`/`exp`、`jti`、`iss`=`ai-gateway`。
 - 撤销：**禁用 App**（清状态缓存，已签发 JWT 立即全部失效）；单令牌紧急吊销走 jti 黑名单（管理端功能，P1）。**轮换 client_secret 不撤销已签发 JWT**（JWT 由网关密钥签发）。
 
-### 2.4 GET /healthz — 存活探针（无鉴权）
+### 2.4 GET /livez、GET /readyz — 存活与就绪探针（无鉴权）
 
 返回 `{"status":"ok"}`；K8s/Docker healthcheck 用。
 

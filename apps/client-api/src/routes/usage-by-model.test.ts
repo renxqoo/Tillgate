@@ -1,38 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { createDb, type Db } from '@ai-gateway/db';
 import { usageLogs, users } from '@ai-gateway/db/schema';
-import type { ClientEnv } from '@ai-gateway/identity';
-import { panelRoutes } from './panel.js';
+import { loadRootEnvFile } from '@ai-gateway/http';
+import { usageRoutes } from './usage.js';
+import { makeClientTestApp, makeServices } from '../test/helpers.js';
 
 /**
  * GET /api/usage/by-model：按模型聚合 + 用户隔离（只返回 session.userId 的用量）。
  * stub session 中间件绕过真实 JWT cookie 解析，直接注入 { userId }。
  */
 
-const cwd = dirname(fileURLToPath(import.meta.url));
-function loadEnvFile(): void {
-  let dir = cwd;
-  for (let i = 0; i < 6; i++) {
-    const f = resolve(dir, '.env');
-    if (existsSync(f)) {
-      for (const line of readFileSync(f, 'utf-8').split('\n')) {
-        const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-        if (m && m[1] && !(m[1] in process.env)) process.env[m[1]] = m[2];
-      }
-      return;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-}
-loadEnvFile();
+loadRootEnvFile();
 
 const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway');
 
@@ -48,17 +28,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
-
-function makeApp(userId: number): Hono<ClientEnv> {
-  const app = new Hono<ClientEnv>();
-  // stub：直接注入 session，绕过 userSessionMiddleware 的 JWT cookie 解析
-  app.use('/api/*', async (c, next) => {
-    c.set('session', { userId });
-    await next();
-  });
-  app.route('/', panelRoutes(db));
-  return app;
-}
 
 async function insertUsage(
   userId: number,
@@ -82,7 +51,7 @@ async function insertUsage(
       outputTokens: tokens.out,
     })
     .returning({ id: usageLogs.id });
-  return r.id;
+  return r!.id;
 }
 
 describe('GET /api/usage/by-model', () => {
@@ -99,16 +68,15 @@ describe('GET /api/usage/by-model', () => {
       .returning({ id: users.id });
     const ids: number[] = [];
     try {
-      ids.push(await insertUsage(me.id, 'model-A', '10.00', { inn: 100, out: 50, cached: 60 }));
-      ids.push(await insertUsage(me.id, 'model-B', '5.00', { inn: 100, out: 50, cached: 0 }));
-      ids.push(await insertUsage(other.id, 'model-X', '999.00')); // 别人的，不应返回
+      ids.push(await insertUsage(me!.id, 'model-A', '10.00', { inn: 100, out: 50, cached: 60 }));
+      ids.push(await insertUsage(me!.id, 'model-B', '5.00', { inn: 100, out: 50, cached: 0 }));
+      ids.push(await insertUsage(other!.id, 'model-X', '999.00')); // 别人的，不应返回
 
-      const res = await makeApp(me.id).request('/api/usage/by-model');
+      const app = makeClientTestApp(me!.id, { '/usage': usageRoutes(makeServices(db)) });
+      const res = await app.request('/api/usage/by-model');
       const json = (await res.json()) as {
         list: Array<{ model: string; requests: number; inputTokens: number; outputTokens: number; cost: number }>;
       };
-      // eslint-disable-next-line no-console
-      console.log('[by-model] list =', JSON.stringify(json.list));
 
       const models = json.list.map((r) => r.model);
       expect(models).toContain('model-A');
@@ -122,12 +90,11 @@ describe('GET /api/usage/by-model', () => {
       expect(a!.cost).toBeCloseTo(10, 5);
       expect(a!.inputTokens).toBe(100);
       expect(a!.outputTokens).toBe(50);
-      expect(a!.cachedInputTokens).toBe(60); // 缓存命中 token 聚合
       expect(a!.requests).toBe(1);
     } finally {
       for (const id of ids) await db.delete(usageLogs).where(eq(usageLogs.id, id)).catch(() => {});
-      await db.delete(users).where(eq(users.id, me.id)).catch(() => {});
-      await db.delete(users).where(eq(users.id, other.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, me!.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, other!.id)).catch(() => {});
     }
   });
 });

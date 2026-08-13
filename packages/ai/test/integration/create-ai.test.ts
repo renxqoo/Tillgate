@@ -46,7 +46,9 @@ const OK_JSON = JSON.stringify({
   usage: { prompt_tokens: 10, completion_tokens: 5 },
 });
 
-async function collectStream(handle: ChatStreamResult): Promise<{ text: string; events: AiEvent[] }> {
+async function collectStream(
+  handle: ChatStreamResult,
+): Promise<{ text: string; events: AiEvent[] }> {
   const events: AiEvent[] = [];
   handle.onEvent((e) => events.push(e));
   const reader = handle.stream.getReader();
@@ -184,8 +186,16 @@ describe('ai.chat 集成', () => {
       // 阈值设为 2，便于测试
       const ai = makeAi({ deadCredential: { failureThreshold: 2, windowMs: 3_600_000 } });
       // 前两次 401：返回 invalid_api_key，但凭据计数累积
-      await ai.chat({ channel: channel(server.baseUrl), request: { messages: [] }, ctx: ctx('r-dc-1') });
-      await ai.chat({ channel: channel(server.baseUrl), request: { messages: [] }, ctx: ctx('r-dc-2') });
+      await ai.chat({
+        channel: channel(server.baseUrl),
+        request: { messages: [] },
+        ctx: ctx('r-dc-1'),
+      });
+      await ai.chat({
+        channel: channel(server.baseUrl),
+        request: { messages: [] },
+        ctx: ctx('r-dc-2'),
+      });
       expect(calls).toBe(2);
       // 第三次：凭据已 invalid，被 dead_credential 拒绝，不再请求上游
       const result = await ai.chat({
@@ -265,7 +275,12 @@ describe('ai.chat 集成', () => {
   it('usage 缺失：按请求/响应字符估算（estimated=true）', async () => {
     const server = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ id: 'x', choices: [{ index: 0, message: { role: 'assistant', content: 'hello world' } }] }));
+      res.end(
+        JSON.stringify({
+          id: 'x',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'hello world' } }],
+        }),
+      );
     });
     try {
       const result = await makeAi().chat({
@@ -277,7 +292,7 @@ describe('ai.chat 集成', () => {
       if (result.status === 'success') {
         expect(result.usage?.estimated).toBe(true);
         expect(result.usage?.cachedInputTokens).toBe(0);
-        expect((result.usage?.outputTokens ?? 0)).toBeGreaterThanOrEqual(1);
+        expect(result.usage?.outputTokens ?? 0).toBeGreaterThanOrEqual(1);
       }
     } finally {
       await server.close();
@@ -378,7 +393,9 @@ describe('ai.chatStream 集成', () => {
   it('流内错误帧：透传 + stream_error 事件', async () => {
     const server = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
-      res.write(sseFrame(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } })));
+      res.write(
+        sseFrame(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } })),
+      );
       res.end();
     });
     try {
@@ -421,7 +438,7 @@ describe('ai.chatStream 集成', () => {
         // B2：中断语义显式带出，gateway 据此标 stream_aborted
         expect(successEv.terminated).toBe('upstream_disconnected');
         // B3：已透字节量 > 0，gateway 可据此估算 tokens（5.11）
-        expect((successEv.bytesRelayed ?? 0)).toBeGreaterThan(0);
+        expect(successEv.bytesRelayed ?? 0).toBeGreaterThan(0);
       }
     } finally {
       await server.close();
@@ -627,7 +644,11 @@ describe('配置校验（fail fast：空 key/model/baseUrl 直接报错，不发
   it('chat：空 model → invalid_config', async () => {
     const ai = makeAi();
     const result = await ai.chat({
-      channel: { baseUrl: 'https://api.example.com', apiKey: 'sk-x', protocol: 'openai-compatible' },
+      channel: {
+        baseUrl: 'https://api.example.com',
+        apiKey: 'sk-x',
+        protocol: 'openai-compatible',
+      },
       request: { messages: [] },
       ctx: { requestId: 'r-empty-model', model: '', providerName: 'x' },
     });
@@ -655,7 +676,11 @@ describe('配置校验（fail fast：空 key/model/baseUrl 直接报错，不发
 
   it('probe：空 apiKey → invalid_config（不发请求）', async () => {
     const ai = makeAi();
-    const result = await ai.probe({ baseUrl: 'https://api.example.com', apiKey: '', protocol: 'openai-compatible' });
+    const result = await ai.probe({
+      baseUrl: 'https://api.example.com',
+      apiKey: '',
+      protocol: 'openai-compatible',
+    });
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe('invalid_config');
     expect(result.durationMs).toBe(0); // 立即返回，未发起请求

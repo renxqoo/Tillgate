@@ -1,9 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
-import {
-  createRedisBreakerStorage,
-  createRedisDeadCredentialStorage,
-} from './ai-storage.js';
+import { createRedisBreakerStorage, createRedisDeadCredentialStorage } from './ai-storage.js';
 import type { BreakerState, DeadCredentialState } from '@ai-gateway/ai';
 
 /**
@@ -46,7 +43,9 @@ describe('RedisKvStorage（BreakerStorage 实现）', () => {
     // version 不匹配 → 失败
     expect(await storage.compareAndSet(key, 0, { ...s1, version: 2 }, 60_000)).toBe(false);
     // version 匹配 → 成功
-    expect(await storage.compareAndSet(key, 1, { ...s1, state: 'open', version: 2 }, 60_000)).toBe(true);
+    expect(await storage.compareAndSet(key, 1, { ...s1, state: 'open', version: 2 }, 60_000)).toBe(
+      true,
+    );
     const got = await storage.getState(key);
     expect(got?.state).toBe('open');
     expect(got?.version).toBe(2);
@@ -75,7 +74,9 @@ describe('RedisKvStorage（DeadCredentialStorage 实现）', () => {
     const key = 'test-dc-' + Date.now();
     const s: DeadCredentialState = { status: 'valid', consecutiveFailures: 1, version: 1 };
     expect(await storage.compareAndSet(key, 0, s, 60_000)).toBe(true);
-    expect(await storage.compareAndSet(key, 1, { ...s, status: 'invalid', version: 2 }, 60_000)).toBe(true);
+    expect(
+      await storage.compareAndSet(key, 1, { ...s, status: 'invalid', version: 2 }, 60_000),
+    ).toBe(true);
     const got = await storage.getState(key);
     expect(got?.status).toBe('invalid');
     await redis.del('ai:credential:' + key);
@@ -85,7 +86,11 @@ describe('RedisKvStorage（DeadCredentialStorage 实现）', () => {
     const breaker = createRedisBreakerStorage(redis);
     const cred = createRedisDeadCredentialStorage(redis);
     const key = 'test-isolation-' + Date.now();
-    await breaker.setState(key, { state: 'closed', failures: [], windowStart: 0, version: 1 }, 60_000);
+    await breaker.setState(
+      key,
+      { state: 'closed', failures: [], windowStart: 0, version: 1 },
+      60_000,
+    );
     // 同名 key 在不同存储互不影响
     expect(await cred.getState(key)).toBeNull();
     await redis.del('ai:breaker:' + key);

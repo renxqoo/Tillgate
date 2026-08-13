@@ -1,5 +1,4 @@
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible.js';
-import { loadProfile, mergeRules } from './adapters/profiles/index.js';
 import type { ProtocolAdapter } from './adapters/protocol-adapter.js';
 import { CircuitBreaker } from './breaker/breaker.js';
 import { MemoryBreakerStorage } from './breaker/memory-storage.js';
@@ -13,6 +12,7 @@ import {
   emptyError,
   invalidConfigError,
   invalidResponseError,
+  unsupportedProtocolError,
 } from './errors/internal.js';
 import { asRecord, tryParseJson } from './internal/util.js';
 import { peekFirstChunk } from './internal/stream.js';
@@ -20,15 +20,16 @@ import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-cli
 import { relayStream } from './transport/relay-stream.js';
 import { estimateUsage, normalizeUsage } from './usage/normalize.js';
 import { withRetry, type RetryOptions } from './retry/with-retry.js';
-import { defaultAiConfig, type AiConfig, type AiDeps, type BreakerStorage, type DeadCredentialStorage } from './config.js';
+import {
+  type AiConfig,
+  aiConfigSchema,
+  type AiConfigInput,
+  type AiDeps,
+  type BreakerStorage,
+  type DeadCredentialStorage,
+} from './config.js';
 import type { AiEvent } from './events.js';
-import type {
-  Ai,
-  ChannelDesc,
-  ChatStreamResult,
-  RequestCtx,
-  UpstreamError,
-} from './types.js';
+import type { Ai, ChannelDesc, ChatStreamResult, RequestCtx, UpstreamError } from './types.js';
 
 /**
  * create-ai 组装（ai-package.md §5/§6）：适配器注册表 + withRetry + breaker 绑定 + 事件输出
@@ -121,8 +122,8 @@ function authHeaders(channel: ChannelDesc, requestId: string): Record<string, st
   };
 }
 
-export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
-  const cfg = config ?? defaultAiConfig();
+export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
+  const cfg: AiConfig = aiConfigSchema.parse(config ?? {});
   const breakerStorage: BreakerStorage = deps?.breakerStorage ?? new MemoryBreakerStorage();
   const deadCredentialStorage: DeadCredentialStorage =
     deps?.deadCredentialStorage ?? new MemoryDeadCredentialStorage();
@@ -135,33 +136,39 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
   const adapters = new Map<string, ProtocolAdapter>([
     ['openai-compatible', new OpenAICompatibleAdapter()],
   ]);
-  const adapterFor = (channel: ChannelDesc): ProtocolAdapter =>
-    adapters.get(channel.protocol) ?? adapters.get('openai-compatible')!;
+  // 未知协议显式报错（不静默回退 openai-compatible——配置错误必须可发现）
+  const resolveAdapter = (channel: ChannelDesc): ProtocolAdapter | UpstreamError =>
+    adapters.get(channel.protocol) ?? unsupportedProtocolError(channel.protocol);
 
   const breakerFor = (channel: ChannelDesc): CircuitBreaker =>
     new CircuitBreaker(channelKey(channel), cfg.breaker, breakerStorage, Date.now);
 
   const credentialFor = (channel: ChannelDesc): DeadCredentialTracker =>
-    new DeadCredentialTracker(channelKey(channel), cfg.deadCredential, deadCredentialStorage, Date.now);
+    new DeadCredentialTracker(
+      channelKey(channel),
+      cfg.deadCredential,
+      deadCredentialStorage,
+      Date.now,
+    );
 
   /** 组装 per-request 上下文：参数抹平 + 熔断/凭据准入，返回失败则返回 ChatResult 错误分支 */
-  function prepare(input: {
-    channel: ChannelDesc;
-    request: unknown;
-    ctx: RequestCtx;
-  }): {
-    ok: true;
-    body: unknown;
-    breaker: CircuitBreaker;
-    credential: DeadCredentialTracker;
-    adapter: ProtocolAdapter;
-    key: string;
-  } | { ok: false; error: UpstreamError } {
+  function prepare(input: { channel: ChannelDesc; request: unknown; ctx: RequestCtx }):
+    | {
+        ok: true;
+        body: unknown;
+        breaker: CircuitBreaker;
+        credential: DeadCredentialTracker;
+        adapter: ProtocolAdapter;
+        key: string;
+      }
+    | { ok: false; error: UpstreamError } {
     // 配置校验（fail fast）：必需字段为空时直接返回错误，不发垃圾请求
     const cfgErr = assertChannelAndCtx(input.channel, input.ctx);
     if (cfgErr) return { ok: false, error: cfgErr };
-    const adapter = adapterFor(input.channel);
-    const rules = mergeRules(loadProfile(input.ctx.providerName), input.ctx.paramRules);
+    const adapter = resolveAdapter(input.channel);
+    if (isUpstreamError(adapter)) return { ok: false, error: adapter };
+    // 参数抹平规则唯一来源：DB param_rules（per-model），无 provider 内置默认
+    const rules = input.ctx.paramRules ?? {};
     const { body, adjustments } = adapter.normalizeRequest(input.request, rules);
     // model 重写：对外名 externalName → 上游真实名 realModel（ctx.model）。
     // normalizeRequest 把 model 视为已知参数原样保留，从不改写；
@@ -203,6 +210,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       jitterRatio: cfg.retry.jitterRatio,
       deadlineMs: ctx.deadlineMs ?? cfg.retry.deadlineMs,
       emptyCompletionRetries: cfg.retry.emptyCompletionRetries,
+      signal: ctx.signal,
     };
   }
 
@@ -232,7 +240,8 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       }
 
       // endpoint 选择：embeddings 走 /v1/embeddings，默认 chat
-      const endpointPath = input.ctx.endpoint === 'embeddings' ? '/v1/embeddings' : '/v1/chat/completions';
+      const endpointPath =
+        input.ctx.endpoint === 'embeddings' ? '/v1/embeddings' : '/v1/chat/completions';
       const url = joinUrl(input.channel.baseUrl, endpointPath);
       // 每次尝试失败即计熔断数（429/4xx/死凭据 circuitTrip=false 自动不计）+ 死凭据计数
       const fail = async (
@@ -254,8 +263,17 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           try {
             const res = await fetchUpstream(
               url,
-              { method: 'POST', headers: authHeaders(input.channel, requestId), body: JSON.stringify(body) },
-              { connectMs: cfg.timeout.connectMs, signal: totalSignal, allowLocal: cfg.allowLocalUrl },
+              {
+                method: 'POST',
+                headers: authHeaders(input.channel, requestId),
+                body: JSON.stringify(body),
+              },
+              {
+                connectMs: cfg.timeout.connectMs,
+                signal: totalSignal,
+                allowLocal: cfg.allowLocalUrl,
+                allowedHosts: cfg.allowedHosts,
+              },
             );
             if (res.status >= 400) {
               const raw = await readBody(res, { signal: totalSignal });
@@ -279,9 +297,10 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           }
         },
         retryOptions(input.ctx),
-        (info) => log.warn(`[ai] ${requestId} retry attempt=${info.attempt} delay=${info.delayMs}`, {
-          code: info.error.code,
-        }),
+        (info) =>
+          log.warn(`[ai] ${requestId} retry attempt=${info.attempt} delay=${info.delayMs}`, {
+            code: info.error.code,
+          }),
       );
 
       const durationMs = Date.now() - start;
@@ -289,11 +308,25 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
         await breaker.recordSuccess();
         await credential.recordSuccess();
         log.info(`[ai] ${requestId} success attempts=${attempts} usage=`, outcome.value.usage);
-        emit({ type: 'success', requestId, channelKey: key, usage: outcome.value.usage, durationMs });
-        return { status: 'success', usage: outcome.value.usage, body: outcome.value.body, durationMs };
+        emit({
+          type: 'success',
+          requestId,
+          channelKey: key,
+          usage: outcome.value.usage,
+          durationMs,
+        });
+        return {
+          status: 'success',
+          usage: outcome.value.usage,
+          body: outcome.value.body,
+          durationMs,
+        };
       }
       const { error, empty } = outcome;
-      log.error(`[ai] ${requestId} failed attempts=${attempts}`, { code: error.code, status: error.status });
+      log.error(`[ai] ${requestId} failed attempts=${attempts}`, {
+        code: error.code,
+        status: error.status,
+      });
       if (empty) {
         emit({ type: 'empty_completion', requestId, channelKey: key, attempt: attempts });
       } else {
@@ -387,8 +420,17 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；connectMs 保证连接
             const res = await fetchUpstream(
               url,
-              { method: 'POST', headers: authHeaders(input.channel, requestId), body: JSON.stringify(body) },
-              { connectMs: cfg.timeout.connectMs, signal, allowLocal: cfg.allowLocalUrl },
+              {
+                method: 'POST',
+                headers: authHeaders(input.channel, requestId),
+                body: JSON.stringify(body),
+              },
+              {
+                connectMs: cfg.timeout.connectMs,
+                signal,
+                allowLocal: cfg.allowLocalUrl,
+                allowedHosts: cfg.allowedHosts,
+              },
             );
             if (res.status >= 400) {
               const raw = await readBody(res, { signal });
@@ -408,9 +450,10 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           }
         },
         retryOptions(input.ctx),
-        (info) => log.warn(`[ai] ${requestId} retry attempt=${info.attempt} delay=${info.delayMs}`, {
-          code: info.error.code,
-        }),
+        (info) =>
+          log.warn(`[ai] ${requestId} retry attempt=${info.attempt} delay=${info.delayMs}`, {
+            code: info.error.code,
+          }),
       );
 
       if (!outcome.ok) {
@@ -432,6 +475,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       const handle = relayStream(rest, {
         heartbeatIdleMs: cfg.stream.heartbeatIdleMs,
         inactivityTimeoutMs: cfg.stream.inactivityTimeoutMs,
+        signal: input.ctx.signal,
       });
       // 拿到首帧才算成功
       // 熔断/死凭据状态写入是 best-effort：不阻塞数据流，且吞掉存储错误
@@ -445,7 +489,7 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
             break;
           case 'aborted':
             emitStream({ type: 'aborted', requestId, reason: e.reason });
-            // B6：非客户端断开 → 计入熔断（渠道故障：inactivity/upstream_disconnected）
+            // B6：非客户端断开 → 计入熔断（渠道故障或协议错误）
             // client_disconnect 是用户主动断开，非渠道问题，不计熔断
             if (e.reason !== 'client_disconnect') {
               fireAndForget(breaker.recordFailure({ circuitTrip: true }));
@@ -485,7 +529,8 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
       // 配置校验（fail fast）：空 apiKey/baseUrl 不发垃圾请求
       const cfgErr = assertChannel(channel);
       if (cfgErr) return { ok: false, durationMs: 0, error: cfgErr };
-      const adapter = adapterFor(channel);
+      const adapter = resolveAdapter(channel);
+      if (isUpstreamError(adapter)) return { ok: false, durationMs: 0, error: adapter };
       let firstError: UpstreamError | undefined;
       // 死凭据优先：即使先遇到网络错误，只要任一路径返回 401/403（死凭据），
       // 最终返回死凭据——连通性测试的核心目的是验证 Key 是否有效
@@ -495,7 +540,11 @@ export function createAi(config?: AiConfig, deps?: AiDeps): Ai {
           const res = await fetchUpstream(
             joinUrl(channel.baseUrl, path),
             { method: 'GET', headers: { authorization: `Bearer ${channel.apiKey}` } },
-            { connectMs: cfg.timeout.connectMs, allowLocal: cfg.allowLocalUrl },
+            {
+              connectMs: cfg.timeout.connectMs,
+              allowLocal: cfg.allowLocalUrl,
+              allowedHosts: cfg.allowedHosts,
+            },
           );
           if (res.status < 400) return { ok: true, durationMs: Date.now() - start };
           const raw = await readBody(res);

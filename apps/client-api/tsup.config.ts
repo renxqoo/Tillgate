@@ -1,9 +1,7 @@
 import { defineConfig } from 'tsup';
+import { shared } from '../../tsup.config.base';
 
 export default defineConfig({
+  ...shared,
   entry: ['src/index.ts'],
-  format: ['esm'],
-  sourcemap: true,
-  clean: true,
-  target: 'node22',
 });

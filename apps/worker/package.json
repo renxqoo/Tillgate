@@ -2,7 +2,7 @@
   "name": "@ai-gateway/worker",
   "version": "0.1.0",
   "private": true,
-  "description": "BullMQ 消费者：计量结算 / 对账 / 清理任务",
+  "description": "BullMQ meter 队列消费编排（结算/对账领域逻辑在 @ai-gateway/ledger）",
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
@@ -14,12 +14,10 @@
     "lint": "oxlint"
   },
   "dependencies": {
-    "@ai-gateway/ai": "workspace:*",
-    "@ai-gateway/config": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
-    "@ai-gateway/logger": "workspace:*",
+    "@ai-gateway/ledger": "workspace:*",
     "@ai-gateway/money": "workspace:*",
-    "@ai-gateway/otel": "workspace:*",
     "bullmq": "^6.0.7",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0"

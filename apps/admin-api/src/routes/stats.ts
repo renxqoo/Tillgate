@@ -1,27 +1,18 @@
 import { Hono } from 'hono';
-import { sql, gte, lte, and, eq } from 'drizzle-orm';
-import { usageLogs, requestLogs, channels, auditLogs, users } from '@ai-gateway/db/schema';
-import type { Db } from '@ai-gateway/db';
-import { query } from '../lib/validation.js';
+import { sql, gte, lte, and } from 'drizzle-orm';
+import { usageLogs, channels } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import {
-  paginationQuerySchema,
-  parsePagination,
-  limitOffset,
-  paginatedResult,
-} from '../lib/pagination.js';
-import type { AdminEnv } from '../middleware/session.js';
+import { query } from '@ai-gateway/http';
+import type { AdminEnv } from '@ai-gateway/identity';
+import type { AdminServices } from '../services/index.js';
 
 /**
  * 报表与仪表盘（api-contract §4.8）。
  *
- *   - GET /api/admin/stats/overview：仪表盘（今日请求量/tokens/费用/成功率/渠道健康）
- *   - GET /api/admin/stats/usage：多维度用量与费用聚合（group=user|model|channel）
- *   - GET /api/admin/logs：请求日志查询（30 天）
- *   - GET /api/admin/audit-logs：管理操作审计
+ *   - GET /overview：仪表盘（今日请求量/tokens/费用/成功率/渠道健康）
+ *   - GET /usage：多维度用量与费用聚合（group=user|model|channel）
  *
- * 注意：展示时区 Asia/Shanghai（requirements 4.10）——存储仍 UTC，查询时按需 to_char 转换。
- *       一期直接查 usage_logs（数据量不大）；P1 加 daily_stats 聚合表加速。
+ * 注意：存储 UTC；一期直接查 usage_logs（数据量不大），P1 加 daily_stats 聚合表加速。
  */
 
 const usageStatsQuerySchema = z.object({
@@ -31,14 +22,6 @@ const usageStatsQuerySchema = z.object({
   group: z.enum(['user', 'model', 'channel']).default('model'),
 });
 
-const logsQuerySchema = paginationQuerySchema.extend({
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
-  userId: z.coerce.number().int().optional(),
-  statusCode: z.coerce.number().int().optional(),
-  model: z.string().optional(),
-});
-
 /** 今日 UTC 0 点（用于 overview） */
 function startOfTodayUtc(): Date {
   const d = new Date();
@@ -46,14 +29,13 @@ function startOfTodayUtc(): Date {
   return d;
 }
 
-export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
+export function statsAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
     // 仪表盘概览
-    .get('/api/admin/stats/overview', async (c) => {
+    .get('/overview', async (c) => {
       const today = startOfTodayUtc();
-      // 今日 usage_logs 聚合
-      const todayStats = await db
+      const todayStats = await s.db
         .select({
           requests: sql<number>`count(*)::int`,
           inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}),0)::bigint`,
@@ -69,7 +51,7 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
       const successRate = requests > 0 ? successCount / requests : 0;
 
       // 渠道健康状态分布
-      const channelHealth = await db
+      const channelHealth = await s.db
         .select({
           status: channels.status,
           count: sql<number>`count(*)::int`,
@@ -77,8 +59,8 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
         .from(channels)
         .groupBy(channels.status);
 
-      // 总用户数 / 总费用
-      const totals = await db
+      // 总费用
+      const totals = await s.db
         .select({
           totalCost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric`,
           totalRequests: sql<number>`count(*)::int`,
@@ -104,7 +86,7 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
     })
 
     // 多维度用量与费用聚合
-    .get('/api/admin/stats/usage', query(usageStatsQuerySchema), async (c) => {
+    .get('/usage', query(usageStatsQuerySchema), async (c) => {
       const q = c.req.valid('query');
       const conds = [];
       if (q.from) conds.push(gte(usageLogs.createdAt, new Date(q.from)));
@@ -118,7 +100,7 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
           ? usageLogs.channelId
           : usageLogs.externalModel;
 
-      const rows = await db
+      const rows = await s.db
         .select({
           key: groupCol,
           requests: sql<number>`count(*)::int`,
@@ -143,59 +125,5 @@ export function statsAdminRoutes(db: Db): Hono<AdminEnv> {
           upstreamCost: Number(r.upstreamCost),
         })),
       });
-    })
-
-    // 请求日志查询（30 天滚动）
-    .get('/api/admin/logs', query(logsQuerySchema), async (c) => {
-      const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [];
-      // 默认查最近 30 天
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000);
-      conds.push(gte(requestLogs.createdAt, q.from ? new Date(q.from) : thirtyDaysAgo));
-      if (q.to) conds.push(lte(requestLogs.createdAt, new Date(q.to)));
-      if (q.userId !== undefined) conds.push(eq(requestLogs.userId, q.userId));
-      if (q.statusCode !== undefined) conds.push(eq(requestLogs.statusCode, q.statusCode));
-      const where = and(...conds);
-      const [rows, countRows] = await Promise.all([
-        db
-          .select({
-            id: requestLogs.id,
-            requestId: requestLogs.requestId,
-            userId: requestLogs.userId,
-            apiKeyId: requestLogs.apiKeyId,
-            method: requestLogs.method,
-            path: requestLogs.path,
-            statusCode: requestLogs.statusCode,
-            errorCode: requestLogs.errorCode,
-            durationMs: requestLogs.durationMs,
-            requestSummary: requestLogs.requestSummary,
-            attempts: requestLogs.attempts,
-            candidatesTried: requestLogs.candidatesTried,
-            createdAt: requestLogs.createdAt,
-            // 用户名（供前端展示）：优先 displayName，其次 email
-            userName: sql<string | null>`coalesce(${users.displayName}, ${users.email})`.as('user_name'),
-          })
-          .from(requestLogs)
-          .leftJoin(users, eq(requestLogs.userId, users.id))
-          .where(where)
-          .orderBy(sql`${requestLogs.createdAt} desc`)
-          .limit(limit)
-          .offset(offset),
-        db.select({ count: sql<number>`count(*)::int` }).from(requestLogs).where(where),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
-    })
-
-    // 管理操作审计
-    .get('/api/admin/audit-logs', query(paginationQuerySchema), async (c) => {
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const [rows, countRows] = await Promise.all([
-        db.select().from(auditLogs).orderBy(sql`created_at desc`).limit(limit).offset(offset),
-        db.select({ count: sql<number>`count(*)::int` }).from(auditLogs),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
     });
 }

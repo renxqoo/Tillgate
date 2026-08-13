@@ -1,0 +1,34 @@
+{
+  "name": "@ai-gateway/ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "资金账本领域（gateway 与 worker 共用）：请求级预扣生命周期 + 计量结算 + 对账，DB 单事实来源",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/money": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

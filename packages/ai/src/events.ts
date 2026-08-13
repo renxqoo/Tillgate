@@ -11,7 +11,8 @@ import type { StreamError, UpstreamError, Usage } from './types.js';
  *
  * 计费语义（requirements 5.11）：
  *   - success.terminated !== undefined → 流式中断，gateway 标 stream_aborted=true
- *   - success.usage 为空 + bytesRelayed > 0 → gateway 按已透字节估算 tokens（口径同非流式 estimate）
+ *   - 中断且 success.usage 为空 → 账务进入 uncertain，禁止把未知缓存命中估成 0 后直接扣费
+ *   - 正常结束但 success.usage 为空 → gateway 按已透字节估算 tokens（口径同非流式 estimate）
  */
 export type AiEvent =
   | { type: 'attempt_start'; requestId: string; channelKey: string; attempt: number }
@@ -28,7 +29,13 @@ export type AiEvent =
   | {
       type: 'aborted';
       requestId: string;
-      reason: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
+      reason:
+        | 'client_disconnect'
+        | 'request_cancelled'
+        | 'inactivity'
+        | 'upstream_error'
+        | 'upstream_disconnected'
+        | 'upstream_truncated';
     }
   | { type: 'failed'; requestId: string; channelKey: string; error: UpstreamError }
   | { type: 'empty_completion'; requestId: string; channelKey: string; attempt: number }
@@ -43,7 +50,13 @@ export type AiEvent =
        * 流式正常结束 = undefined；中断结束 = 中断原因。
        * gateway 据此标 stream_aborted 并走中断计费路径（5.11）。
        */
-      terminated?: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
+      terminated?:
+        | 'client_disconnect'
+        | 'request_cancelled'
+        | 'inactivity'
+        | 'upstream_error'
+        | 'upstream_disconnected'
+        | 'upstream_truncated';
       /**
        * 已透传给客户端的字节数（仅流式有意义）。
        * usage 缺失时 gateway 按 bytesRelayed / charPerToken 估算 tokens。

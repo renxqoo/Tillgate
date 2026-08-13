@@ -1,20 +1,32 @@
 /**
- * 开发环境种子数据（scripts/seed-dev.ts）
- * 插入最小闭环所需：用户 + 费率卡(系数1.0) + 测试虚拟Key + 供应商 + 渠道 + 模型映射。
+ * 开发环境种子数据（packages/db/scripts/seed-dev.ts）
+ * 插入最小闭环所需：用户 + 费率卡(系数1.0) + 管理员 + 测试虚拟Key + 供应商 + 渠道 + 模型映射。
  *
- * 用法：pnpm tsx scripts/seed-dev.ts
+ * 用法：pnpm tsx packages/db/scripts/seed-dev.ts
  *   从 .env 读 DATABASE_URL / ENCRYPTION_KEY / DEEPSEEK_* / MINIMAX_*
  *   幂等：已存在的数据跳过（按唯一键判断）
  *
  * 输出：测试用虚拟 Key 明文（ag_xxx），用于 curl 测试。
+ * 金额单位：元（numeric 全精度），价格单位为「元/百万 token」。
  */
 import { createDb } from '../src/index.js';
-import { users, admins, rateCards, rateCardCoefficients, apiKeys, providers, channels, modelMappings, modelChannels } from '../src/schema/index.js';
+import {
+  users,
+  admins,
+  rateCards,
+  rateCardCoefficients,
+  apiKeys,
+  providers,
+  channels,
+  modelMappings,
+  modelChannels,
+} from '../src/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { createHash, createCipheriv, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { createHash, randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
+import { encrypt } from '@ai-gateway/core';
 
-// ---- scrypt 哈希（与 @ai-gateway/identity/password.ts 同格式，seed 脚本独立实现避免循环依赖） ----
+// ---- scrypt 哈希（与 @ai-gateway/identity/password.ts 同格式；seed 脚本独立实现避免 db→identity 循环依赖） ----
 const scrypt = promisify(scryptCallback) as (
   password: string | Buffer,
   salt: string | Buffer,
@@ -27,7 +39,12 @@ const SCRYPT_P = 1;
 const HASH_LEN = 32;
 async function hashPassword(plaintext: string): Promise<string> {
   const salt = randomBytes(16);
-  const hash = await scrypt(plaintext, salt, HASH_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 512 * 1024 * 1024 });
+  const hash = await scrypt(plaintext, salt, HASH_LEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: 512 * 1024 * 1024,
+  });
   return `scrypt:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt.toString('hex')}:${hash.toString('hex')}`;
 }
 
@@ -53,21 +70,12 @@ if (envPath) {
   }
 }
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const DATABASE_URL =
+  process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY;
 if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 32) {
   console.error('✗ ENCRYPTION_KEY 未设置或不足 32 字符（.env）');
   process.exit(1);
-}
-
-// ---- AES-256-GCM（与 gateway/src/lib/crypto.ts 同逻辑） ----
-function encrypt(plaintext: string): string {
-  const key = createHash('sha256').update(ENCRYPTION_KEY).digest();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `enc:v1:${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
 }
 
 function sha256hex(s: string): string {
@@ -84,30 +92,39 @@ async function main() {
   // 1. 费率卡（系数 1.0）
   let card = await db.query.rateCards?.findFirst?.({ where: eq(rateCards.name, '标准') });
   if (!card) {
-    const [c] = await db.insert(rateCards).values({ name: '标准', description: '标准定价 1.0x' }).returning();
+    const [c] = await db
+      .insert(rateCards)
+      .values({ name: '标准', description: '标准定价 1.0x' })
+      .returning();
     card = c;
-    await db.insert(rateCardCoefficients).values({ rateCardId: c.id, scope: 'global', coefficient: '1.000' });
+    await db
+      .insert(rateCardCoefficients)
+      .values({ rateCardId: c.id, scope: 'global', coefficient: '1.000' });
     console.log('✓ 创建费率卡「标准」(系数 1.0)');
   }
 
-  // 2. 用户（本地账号，绑定费率卡，赠送 ¥1 = 1000 厘）
-  let user = await db.query.users?.findFirst?.({ where: and(eq(users.issuer, 'local'), eq(users.subject, 'dev')) });
+  // 2. 用户（本地账号，绑定费率卡，开发余额 ¥1000）
+  let user = await db.query.users?.findFirst?.({
+    where: and(eq(users.issuer, 'local'), eq(users.subject, 'dev')),
+  });
   if (!user) {
-    const [u] = await db.insert(users).values({
-      issuer: 'local',
-      subject: 'dev',
-      identityProvider: 'local',
-      email: 'dev@ai-gateway.local',
-      displayName: 'Dev User',
-      role: 0,
-      rateCardId: card.id,
-      balance: 100_000_000, // ¥100000（厘）—— 开发用，足够测试
-    }).returning();
+    const [u] = await db
+      .insert(users)
+      .values({
+        issuer: 'local',
+        subject: 'dev',
+        identityProvider: 'local',
+        email: 'dev@ai-gateway.local',
+        displayName: 'Dev User',
+        rateCardId: card.id,
+        balance: '1000', // ¥1000（元）—— 开发用，足够测试
+      })
+      .returning();
     user = u;
     console.log('✓ 创建用户 dev (id=' + u.id + ')');
   }
 
-  // 2.5 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
+  // 3. 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
   const adminEmail = 'admin@ai-gateway.local';
   const existingAdmin = await db.query.admins?.findFirst?.({ where: eq(admins.email, adminEmail) });
   if (!existingAdmin) {
@@ -121,7 +138,7 @@ async function main() {
     console.log('✓ 创建管理员 admin@ai-gateway.local (密码 admin12345，仅开发用)');
   }
 
-  // 3. 测试虚拟 Key
+  // 4. 测试虚拟 Key
   const keyHash = sha256hex(TEST_API_KEY);
   const existingKey = await db.query.apiKeys?.findFirst?.({ where: eq(apiKeys.keyHash, keyHash) });
   if (!existingKey) {
@@ -135,10 +152,25 @@ async function main() {
     console.log('✓ 创建测试虚拟 Key');
   }
 
-  // 4. 供应商 + 渠道（DeepSeek + MiniMax）
+  // 5. 供应商 + 渠道（DeepSeek + MiniMax）
+  // 占位价（元/百万 token）——上线前请按实际成本调整
   const providerData = [
-    { name: 'deepseek', baseUrl: 'https://api.deepseek.com', apiKey: process.env.DEEPSEEK_API_KEY, model: 'deepseek-chat', realModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat', price: { input: 1_000_000, output: 2_000_000, cache: 100_000 } }, // 占位价（厘/M）
-    { name: 'minimax', baseUrl: 'https://api.minimaxi.com', apiKey: process.env.MINIMAX_API_KEY, model: 'MiniMax-M3', realModel: 'MiniMax-M3', price: { input: 1_000_000, output: 2_000_000, cache: 200_000 } },
+    {
+      name: 'deepseek',
+      baseUrl: 'https://api.deepseek.com',
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      model: 'deepseek-chat',
+      realModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+      price: { input: '0.001', output: '0.002', cache: '0.0001' },
+    },
+    {
+      name: 'minimax',
+      baseUrl: 'https://api.minimaxi.com',
+      apiKey: process.env.MINIMAX_API_KEY,
+      model: 'MiniMax-M3',
+      realModel: 'MiniMax-M3',
+      price: { input: '0.001', output: '0.002', cache: '0.0002' },
+    },
   ];
 
   for (const p of providerData) {
@@ -149,33 +181,46 @@ async function main() {
     // provider
     let provider = await db.query.providers?.findFirst?.({ where: eq(providers.name, p.name) });
     if (!provider) {
-      const [pr] = await db.insert(providers).values({ name: p.name, protocol: 'openai_compatible', baseUrl: p.baseUrl }).returning();
+      const [pr] = await db
+        .insert(providers)
+        .values({ name: p.name, protocol: 'openai_compatible', baseUrl: p.baseUrl })
+        .returning();
       provider = pr;
     }
     // channel（加密 key）
-    let channel = await db.query.channels?.findFirst?.({ where: eq(channels.name, p.name + '-default') });
+    let channel = await db.query.channels?.findFirst?.({
+      where: eq(channels.name, p.name + '-default'),
+    });
     if (!channel) {
-      const [ch] = await db.insert(channels).values({
-        providerId: provider.id,
-        name: p.name + '-default',
-        apiKeyEnc: encrypt(p.apiKey),
-        status: 0,
-        weight: 1,
-        priority: 0,
-      }).returning();
+      const [ch] = await db
+        .insert(channels)
+        .values({
+          providerId: provider.id,
+          name: p.name + '-default',
+          apiKeyEnc: encrypt(p.apiKey, ENCRYPTION_KEY),
+          status: 0,
+          weight: 1,
+          priority: 0,
+        })
+        .returning();
       channel = ch;
     }
     // model mapping
-    let mapping = await db.query.modelMappings?.findFirst?.({ where: eq(modelMappings.externalName, p.model) });
+    let mapping = await db.query.modelMappings?.findFirst?.({
+      where: eq(modelMappings.externalName, p.model),
+    });
     if (!mapping) {
-      const [m] = await db.insert(modelMappings).values({
-        externalName: p.model,
-        realModel: p.realModel,
-        status: 0,
-        inputPrice: p.price.input,
-        outputPrice: p.price.output,
-        cacheInputPrice: p.price.cache,
-      }).returning();
+      const [m] = await db
+        .insert(modelMappings)
+        .values({
+          externalName: p.model,
+          realModel: p.realModel,
+          status: 0,
+          inputPrice: p.price.input,
+          outputPrice: p.price.output,
+          cacheInputPrice: p.price.cache,
+        })
+        .returning();
       mapping = m;
     }
     // model_channels 关联
@@ -183,7 +228,9 @@ async function main() {
       where: and(eq(modelChannels.mappingId, mapping.id), eq(modelChannels.channelId, channel.id)),
     });
     if (!exists) {
-      await db.insert(modelChannels).values({ mappingId: mapping.id, channelId: channel.id, weight: 1, priority: 0 });
+      await db
+        .insert(modelChannels)
+        .values({ mappingId: mapping.id, channelId: channel.id, weight: 1, priority: 0 });
     }
     console.log(`✓ ${p.name}: provider + channel + mapping(${p.model})`);
   }
@@ -197,7 +244,9 @@ async function main() {
   console.log(`  curl http://localhost:8787/v1/chat/completions \\`);
   console.log(`    -H "Authorization: Bearer ${TEST_API_KEY}" \\`);
   console.log(`    -H "Content-Type: application/json" \\`);
-  console.log(`    -d '{"model":"deepseek-chat","messages":[{"role":"user","content":"你好"}],"stream":true}'`);
+  console.log(
+    `    -d '{"model":"deepseek-chat","messages":[{"role":"user","content":"你好"}],"stream":true}'`,
+  );
   console.log('');
 
   await db.$client.end();

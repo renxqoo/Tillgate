@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono';
-import { getTracer } from '@ai-gateway/otel';
+import { getTracer } from '@ai-gateway/core';
 import { SpanStatusCode } from '@opentelemetry/api';
 import type { AuthEnv } from './auth.js';
 import { recordError } from '../lib/metrics.js';
@@ -23,7 +23,10 @@ export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
     try {
       await next();
     } catch (err) {
-      span.setStatus({ code: SpanStatusCode.ERROR, message: err instanceof Error ? err.message : String(err) });
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: err instanceof Error ? err.message : String(err),
+      });
       span.recordException(err as Error);
       throw err;
     } finally {

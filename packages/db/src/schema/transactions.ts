@@ -1,4 +1,13 @@
-import { pgTable, bigserial, varchar, timestamp, bigint, index, uniqueIndex, numeric } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  bigserial,
+  varchar,
+  timestamp,
+  bigint,
+  index,
+  uniqueIndex,
+  numeric,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 
@@ -17,7 +26,7 @@ export const transactions = pgTable(
       .notNull()
       .references(() => users.id),
     type: varchar('type', { length: 16 }).notNull(),
-    /** 有符号：负=支出，正=收入（元，numeric(24,18) 全精度） */
+    /** 有符号：负=支出，正=收入（元，numeric(38,18) 全精度） */
     amount: numeric('amount', { precision: 38, scale: 18 }).notNull(),
     balanceBefore: numeric('balance_before', { precision: 38, scale: 18 }).notNull(),
     balanceAfter: numeric('balance_after', { precision: 38, scale: 18 }).notNull(),

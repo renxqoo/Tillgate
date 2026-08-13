@@ -20,7 +20,7 @@ import { userSubscriptions } from './plans.js';
 /**
  * usage_logs — 用量明细（只追加、长期保留，data-model.md §3.10）
  * 计费：amount = (未缓存输入×输入价 + 缓存输入×缓存价 + 输出×输出价)/1e6 × 系数
- * status: 0 成功已计费 / 1 失败不计费（一期仅 0/1；透支如实扣全额，余额可为负=欠款，不单列坏账状态）
+ * status: 0 成功已计费 / 1 失败不计费。预付费实扣不超过 authorized reservation。
  */
 export const usageLogs = pgTable(
   'usage_logs',
@@ -31,27 +31,37 @@ export const usageLogs = pgTable(
     userId: bigint('user_id', { mode: 'number' })
       .notNull()
       .references(() => users.id),
-    appId: bigint('app_id', { mode: 'number' }).references(() => apps.id),
-    apiKeyId: bigint('api_key_id', { mode: 'number' }).references(() => apiKeys.id),
+    appId: bigint('app_id', { mode: 'number' }).references(() => apps.id, {
+      onDelete: 'set null',
+    }),
+    apiKeyId: bigint('api_key_id', { mode: 'number' }).references(() => apiKeys.id, {
+      onDelete: 'set null',
+    }),
     /** key / jwt */
     credentialType: varchar('credential_type', { length: 8 }).notNull(),
     externalModel: varchar('external_model', { length: 64 }).notNull(),
     realModel: varchar('real_model', { length: 128 }).notNull(),
-    channelId: bigint('channel_id', { mode: 'number' }).references(() => channels.id),
+    channelId: bigint('channel_id', { mode: 'number' }).references(() => channels.id, {
+      onDelete: 'set null',
+    }),
     inputTokens: bigint('input_tokens', { mode: 'number' }).notNull().default(0),
     /** 缓存命中输入（usage 无缓存字段时为 0） */
     cachedInputTokens: bigint('cached_input_tokens', { mode: 'number' }).notNull().default(0),
     outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
-    /** usage 缺失时按估算（估算结果全部按未缓存输入计） */
-    tokensEstimated: boolean('tokens_estimated').notNull().default(false),
     /** 官方价快照（元/百万 token，numeric 全精度） */
     inputPrice: numeric('input_price', { precision: 38, scale: 18 }).notNull().default('0'),
     outputPrice: numeric('output_price', { precision: 38, scale: 18 }).notNull().default('0'),
-    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 费率卡系数快照（最终单价 = 官方价 × 系数） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
-    /** 费用（元，numeric 全精度）；status=0 时 = plan_amount + payg_amount（实扣，余额可为负=欠款） */
+    /** 实扣费用（元，numeric 全精度）；预付费模式不超过 reserved amount。 */
     amount: numeric('amount', { precision: 38, scale: 18 }).notNull().default('0'),
+    /** 按实际 usage 计算的理论费用；预付费模式下可能高于本次实扣。 */
+    calculatedAmount: numeric('calculated_amount', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 上游成本估算（元，官方价×实际用量快照；供应商对账数据基础） */
     upstreamCost: numeric('upstream_cost', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 套餐额度承担部分（默认 0） */
@@ -66,7 +76,7 @@ export const usageLogs = pgTable(
     durationMs: bigint('duration_ms', { mode: 'number' }).notNull().default(0),
     status: smallint('status').notNull().default(1),
     stream: boolean('stream').notNull().default(false),
-    /** 流式提前中断（客户端断开/上游中途失败），按已收内容估算计费 */
+    /** 流式提前中断；只有供应商仍返回可信 usage 时才允许精确结算。 */
     streamAborted: boolean('stream_aborted').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

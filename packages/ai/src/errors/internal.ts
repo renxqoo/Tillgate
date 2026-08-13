@@ -60,6 +60,17 @@ export function deadCredentialError(): UpstreamError {
   });
 }
 
+/** 协议不支持：channels.protocol 不是已注册适配器之一（配置错误，显式报错而非静默回退） */
+export function unsupportedProtocolError(protocol: string): UpstreamError {
+  return createUpstreamError({
+    code: 'invalid_config',
+    message: `unsupported protocol: ${protocol} (only 'openai-compatible' is supported)`,
+    retryable: false,
+    circuitTrip: false,
+    suggestion: '请检查渠道协议配置（当前仅支持 openai-compatible）',
+  });
+}
+
 /** 配置非法：ChannelDesc/RequestCtx 必需字段缺失或为空（调用方 bug，不应发往上游） */
 export function invalidConfigError(message: string): UpstreamError {
   return createUpstreamError({

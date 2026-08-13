@@ -15,19 +15,14 @@
   },
   "dependencies": {
     "@ai-gateway/ai": "workspace:*",
-    "@ai-gateway/billing": "workspace:*",
-    "@ai-gateway/config": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
     "@ai-gateway/identity": "workspace:*",
-    "@ai-gateway/logger": "workspace:*",
-    "@ai-gateway/money": "workspace:*",
-    "@ai-gateway/otel": "workspace:*",
+    "@ai-gateway/ledger": "workspace:*",
     "@hono/node-server": "^1.19.0",
-    "@hono/zod-validator": "^0.9.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.0",
-    "ioredis": "^6.0.0",
-    "jose": "^6.2.8",
     "zod": "^4.4.3"
   },
   "devDependencies": {

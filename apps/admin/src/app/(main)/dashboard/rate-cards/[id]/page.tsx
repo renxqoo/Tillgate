@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeftIcon } from "lucide-react";
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { ArrowLeftIcon } from 'lucide-react';
 
 import {
   ApiError,
@@ -10,15 +10,15 @@ import {
   type AdminRateCardRow,
   type AdminUserRow,
   type ListResult,
-} from "@ai-gateway/api-client";
-import { Button } from "@ai-gateway/ui/components/ui/button";
+} from '@ai-gateway/api-client';
+import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@ai-gateway/ui/components/ui/card";
+} from '@ai-gateway/ui/components/ui/card';
 import {
   Table,
   TableBody,
@@ -26,9 +26,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ai-gateway/ui/components/ui/table";
+} from '@ai-gateway/ui/components/ui/table';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -43,18 +43,16 @@ export default async function RateCardDetailPage({ params }: PageProps) {
   let error: string | null = null;
   try {
     // 后端没有单条 GET /:id，从列表里找
-    const list = await adminFetch<ListResult<AdminRateCardRow>>("/api/admin/rate-cards");
+    const list = await adminFetch<ListResult<AdminRateCardRow>>('/api/admin/rate-cards');
     card = list.list.find((c) => c.id === rcId) ?? null;
     if (!card) notFound();
   } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
+    error = e instanceof ApiError ? e.message : '加载失败';
   }
 
   let users: AdminUserRow[] = [];
   try {
-    const data = await adminFetch<ListResult<AdminUserRow>>(
-      `/api/admin/rate-cards/${rcId}/users`,
-    );
+    const data = await adminFetch<ListResult<AdminUserRow>>(`/api/admin/rate-cards/${rcId}/users`);
     users = data.list ?? [];
   } catch {
     // 失败不阻塞
@@ -69,7 +67,9 @@ export default async function RateCardDetailPage({ params }: PageProps) {
           </Link>
         </Button>
         <Card>
-          <CardContent className="p-6 text-sm text-destructive">{error ?? "费率卡不存在"}</CardContent>
+          <CardContent className="p-6 text-sm text-destructive">
+            {error ?? '费率卡不存在'}
+          </CardContent>
         </Card>
       </div>
     );
@@ -86,18 +86,16 @@ export default async function RateCardDetailPage({ params }: PageProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">
-            {card.name}{" "}
+            {card.name}{' '}
             <span className="text-base font-normal text-muted-foreground">×{card.coefficient}</span>
           </CardTitle>
           <CardDescription>
-            {card.description ?? "无说明"} · 状态 {card.status === 0 ? "启用" : "禁用"} · 更新于{" "}
+            {card.description ?? '无说明'} · 状态 {card.status === 0 ? '启用' : '禁用'} · 更新于{' '}
             {fmtDateTime(card.updatedAt)}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            共绑定 {users.length} 个用户
-          </p>
+          <p className="text-sm text-muted-foreground">共绑定 {users.length} 个用户</p>
         </CardContent>
       </Card>
 
@@ -110,27 +108,41 @@ export default async function RateCardDetailPage({ params }: PageProps) {
                 <TableHead>账号</TableHead>
                 <TableHead>显示名</TableHead>
                 <TableHead>邮箱</TableHead>
-                <TableHead className="text-right">余额（元）</TableHead>
+                <TableHead className="text-right">已结算</TableHead>
+                <TableHead className="text-right">处理中预留</TableHead>
+                <TableHead className="text-right">可用额度</TableHead>
                 <TableHead className="w-44">最近登录</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                     暂无绑定用户
                   </TableCell>
                 </TableRow>
               ) : (
                 users.map((u) => (
                   <TableRow key={u.id}>
-                    <TableCell className="text-xs text-muted-foreground tabular-nums">#{u.id}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground tabular-nums">
+                      #{u.id}
+                    </TableCell>
                     <TableCell className="font-medium">{u.subject}</TableCell>
-                    <TableCell className="text-muted-foreground">{u.displayName ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{u.email ?? "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{fmtBalance(u.balance)}</TableCell>
+                    <TableCell className="text-muted-foreground">{u.displayName ?? '—'}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("zh-CN") : "从未"}
+                      {u.email ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtBalance(u.balance)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-amber-600">
+                      {fmtBalance(u.reservedBalance)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtBalance(u.availableBalance)}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('zh-CN') : '从未'}
                     </TableCell>
                   </TableRow>
                 ))

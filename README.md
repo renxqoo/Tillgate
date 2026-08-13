@@ -1,41 +1,43 @@
 # AI Gateway
 
-多供应商 LLM API 中转站（对外售卖）：统一 OpenAI 兼容入口，双凭证鉴权（静态 Key / 网关签发 JWT），官方价 × 费率卡定价，缓存 token 计价，预扣模式计费，套餐与余额并存。
+多供应商 LLM API 中转站（对外售卖）：统一 OpenAI 兼容入口，双凭证鉴权（静态 Key / 网关签发 JWT），官方价 × 费率卡定价，缓存 token 计价，预扣模式计费（DB 权威账本）。
 
 ## 文档（设计已定稿）
 
 | 文档                                         | 内容                          |
 | -------------------------------------------- | ----------------------------- |
 | [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版）  |
-| [docs/data-model.md](docs/data-model.md)     | 数据模型（15+2 张表）         |
+| [docs/data-model.md](docs/data-model.md)     | 数据模型（含 billing_requests）  |
 | [docs/api-contract.md](docs/api-contract.md) | API 契约（对外 + 管理端）     |
 | [docs/tech-stack.md](docs/tech-stack.md)     | 技术选型 / 观测 / 运维 / 安全 |
-| [docs/architecture.md](docs/architecture.md) | 架构与流程图（8 张 mermaid）  |
+| [docs/architecture.md](docs/architecture.md) | 架构与流程图                  |
 | [docs/ai-package.md](docs/ai-package.md)     | packages/ai 传输层包设计      |
 
 ## 仓库结构
 
 ```
 apps/
-  gateway/         # 对外代理（Hono）：/v1/* + /oauth/token + 预扣
-  worker/          # BullMQ 消费者：计量结算 / 对账 / 清理
+  gateway/         # 对外代理（Hono）：/v1/* + /oauth/token + 预扣（组件化管线）
+  worker/          # BullMQ 消费编排（结算/对账领域逻辑在 packages/ledger）
   admin-api/       # 管理端 REST（仅内网）
-  client/          # ★ v2 端用户面板（Next.js，端口 3001）—— 见 apps/client/README.md
-  admin/           # ★ v2 运营后台（Next.js，端口 3002，role=1 才能进）—— 见 apps/admin/README.md
-  console-app-v1/  # ⚠ 已废弃（DEPRECATED）—— 老 console，保留作回滚兜底
+  client-api/      # 用户面 REST（仅内网）
+  client/          # 端用户面板（Next.js，端口 3001）—— 见 apps/client/README.md
+  admin/           # 运营后台（Next.js，端口 3002）—— 见 apps/admin/README.md
 packages/
-  ui/              # ★ v2 共享 shadcn 原语（60 个）+ 主题 + 字体注册
-  api-client/      # ★ v2 共享 admin-api 调用封装（apiFetch / ApiError / formatters）
-  tsconfig/        # ★ v2 共享 tsconfig（base + next）
+  core/            # 共享基础设施：环境变量校验 + 日志 + OTel + 对称加密
+  ledger/          # 资金账本领域：请求计费状态机 + durable receipt + 结算与对账
+  money/           # 金额计算（元 + decimal 全精度，账本永不 round，见 docs/data-model.md §2）
+  db/              # Drizzle schema + migrations + seed 脚本
   ai/              # 上游 LLM 传输层（自研，见 docs/ai-package.md）
-  money/           # 金额计算（整数厘，防浮点/舍入错误，见 docs/data-model.md §2）
-  db/              # Drizzle schema + migrations
-  config/          # 环境变量 zod 校验
-  logger/          # pino 封装
-  otel/            # OTel SDK 初始化
+  ui/              # 共享 shadcn 原语 + 主题 + 字体注册（前端用）
+  api-client/      # 共享 REST 调用封装（apiFetch / ApiError / formatters，前端用）
+  ledger/          # 统一资金账本（余额/流水/预扣/结算/对账）
+  identity/        # 会话/JWT/鉴权（admin-api/client-api 共用，双身份物理隔离）
 docker/            # compose.yml（生产）+ compose.dev.yml + nginx
 docs/              # 设计文档
 ```
+
+TypeScript 配置收敛在根目录：`tsconfig.base.json`（后端）+ `tsconfig.next.json`（前端/React）。
 
 ## 快速开始
 
@@ -52,9 +54,12 @@ pnpm dev                  # 启动所有服务（Turborepo 编排，turbo dev）
 按需启动单独服务：
 
 ```bash
-pnpm dev:v1      # 旧的 console-app（已废弃；仅作回滚兜底）
-pnpm dev:client  # ★ v2 端用户面板（端口 3001）
-pnpm dev:admin   # ★ v2 运营后台（端口 3002）
+pnpm dev:gateway   # 对外代理（端口 8787）
+pnpm dev:worker    # 计量结算消费者
+pnpm dev:client    # 端用户面板（端口 3001）
+pnpm dev:admin     # 运营后台（端口 3002）
+pnpm dev:admin-api # 管理端 REST（8790，仅内网）
+pnpm dev:client-api# 用户面 REST（8791，仅内网）
 ```
 
 本地开发（仅依赖 Redis + PostgreSQL）：
@@ -72,6 +77,12 @@ docker compose -f docker/compose.yml up -d       # 主服务
 docker compose -f docker/compose.yml --profile obs up -d   # 加观测栈
 ```
 
+### 企业计费状态机迁移（billing_requests）
+
+迁移 0011 会删除旧 `billing_holds`，不提供双轨兼容。发布前必须停流量，并确认：
+`SELECT count(*) FROM billing_holds WHERE status='held'` 返回 0。随后运行迁移，先启动 worker，
+再启动 gateway。新流程为足额授权 → 上游 lease → durable receipt → DB drain 结算；BullMQ 只做唤醒。
+
 ## 验证
 
 ```bash
@@ -82,11 +93,9 @@ pnpm build        # 各包构建
 
 ## 前端
 
-v2 前端拆成两个独立 Next.js 部署，详见各自 README：
+两个独立 Next.js 部署，详见各自 README：
 
 - **用户面板** [`apps/client`](apps/client/README.md)：API Key / 充值码 / 用量 / 账单流水（端口 3001）
 - **运营后台** [`apps/admin`](apps/admin/README.md)：用户 / 渠道 / 模型映射 / 费率卡 / 充值码批次 / 统计（端口 3002）
 
 技术栈：Next.js 16.3 + React 19 + Tailwind v4 + shadcn `radix-nova` style + React Hook Form + Zod + TanStack Table 风格的原生 `<Table>` + Sonner + Lucide。视觉/组件跟 [`next-shadcn-admin-dashboard`](https://github.com/ArhamKhan09/studio-admin) 模板同款。
-
-v1 在 [`apps/console-app-v1`](apps/console-app-v1/README.md) 已 DEPRECATED，只是为回滚兜底保留。

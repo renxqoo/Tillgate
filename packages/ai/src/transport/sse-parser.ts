@@ -19,6 +19,8 @@ export interface SseScannerCallbacks {
 export class SseScanner {
   private usage: unknown | null = null;
   private errorFrame: StreamError | null = null;
+  private doneReceived = false;
+  private terminalFrameReceived = false;
   private eventsCompleted = 0;
   private lastEventAt = 0;
   /** stream 模式：跨 chunk 的多字节 UTF-8 安全解码（feed 需 string） */
@@ -36,8 +38,21 @@ export class SseScanner {
       this.eventsCompleted += 1;
       this.lastEventAt = Date.now();
       this.callbacks?.onEvent?.(ev.data, ev.event);
+      if (ev.data === '[DONE]') {
+        this.doneReceived = true;
+        return;
+      }
       const parsed = this.tryParse(ev.data);
       if (!parsed) return;
+      if (
+        Array.isArray(parsed.choices) &&
+        parsed.choices.some((choice) => {
+          if (typeof choice !== 'object' || choice === null) return false;
+          return typeof (choice as Record<string, unknown>).finish_reason === 'string';
+        })
+      ) {
+        this.terminalFrameReceived = true;
+      }
       if (parsed.usage !== undefined && parsed.usage !== null) {
         // 最后 usage 帧胜出；忽略 usage:null（部分供应商中间/尾帧带 null，避免覆盖真实 usage）
         this.usage = parsed.usage;
@@ -98,6 +113,16 @@ export class SseScanner {
     return this.errorFrame;
   }
 
+  /** 上游是否发送了 OpenAI-compatible `[DONE]` 终止事件。 */
+  hasDone(): boolean {
+    return this.doneReceived;
+  }
+
+  /** 上游是否在 choices 中发送了非空 finish_reason。 */
+  hasTerminalFrame(): boolean {
+    return this.terminalFrameReceived;
+  }
+
   /** 最近一次完整事件的时间戳（心跳判定） */
   getLastEventAt(): number {
     return this.lastEventAt;
@@ -106,6 +131,8 @@ export class SseScanner {
   reset(): void {
     this.usage = null;
     this.errorFrame = null;
+    this.doneReceived = false;
+    this.terminalFrameReceived = false;
     this.eventsCompleted = 0;
     this.lastEventAt = 0;
     this.lastLineEnded = false;

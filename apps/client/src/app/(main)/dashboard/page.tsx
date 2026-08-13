@@ -1,16 +1,29 @@
-import { CoinsIcon, GaugeIcon, KeyRoundIcon, WalletIcon } from "lucide-react";
+import { CoinsIcon, GaugeIcon, KeyRoundIcon, WalletIcon } from 'lucide-react';
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ai-gateway/ui/components/ui/card";
-import { apiFetch, fmtBalance, fmtInt, type Paginated, type UsageByModelItem, type UsageSummaryItem } from "@ai-gateway/api-client";
+import { Button } from '@ai-gateway/ui/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@ai-gateway/ui/components/ui/card';
+import {
+  apiFetch,
+  fmtBalance,
+  fmtInt,
+  type Paginated,
+  type UsageByModelItem,
+  type UsageSummaryItem,
+} from '@ai-gateway/api-client';
 
-import Link from "next/link";
+import Link from 'next/link';
 
-import { CostChart } from "./_components/cost-chart";
-import { ModelUsageChart } from "./_components/model-usage-chart";
-import { requireMe } from "@/lib/server/get-user";
+import { CostChart } from './_components/cost-chart';
+import { ModelUsageChart } from './_components/model-usage-chart';
+import { requireMe } from '@/lib/server/get-user';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 interface DashboardData {
   balance: string;
@@ -47,7 +60,9 @@ export default async function DashboardPage() {
 
   // 获取 Key 列表（统计活跃 / 总数）
   try {
-    const keysData = await apiFetch<Paginated<{ status: number }>>("/api/keys?page=1&page_size=100");
+    const keysData = await apiFetch<Paginated<{ status: number }>>(
+      '/api/keys?page=1&page_size=100',
+    );
     data.totalKeys = keysData.total;
     data.activeKeys = keysData.list.filter((k) => k.status === 0).length;
   } catch {
@@ -56,7 +71,7 @@ export default async function DashboardPage() {
 
   // 获取用量汇总（每日费用趋势）
   try {
-    const summary = await apiFetch<{ list: UsageSummaryItem[] }>("/api/usage/summary");
+    const summary = await apiFetch<{ list: UsageSummaryItem[] }>('/api/usage/summary');
     data.dailyCost = summary.list.map((it) => ({
       date: it.date,
       value: Number(it.cost) || 0,
@@ -68,7 +83,7 @@ export default async function DashboardPage() {
 
   // 获取按模型聚合的用量（不同模型使用量图表）
   try {
-    const byModel = await apiFetch<{ list: UsageByModelItem[] }>("/api/usage/by-model");
+    const byModel = await apiFetch<{ list: UsageByModelItem[] }>('/api/usage/by-model');
     data.byModel = byModel.list ?? [];
   } catch {
     // 按模型用量不可达时图表留空
@@ -76,7 +91,7 @@ export default async function DashboardPage() {
 
   // 获取实时速率（近 60 秒 RPM / TPM）
   try {
-    const rate = await apiFetch<{ rpm: number; tpm: number }>("/api/usage/rate");
+    const rate = await apiFetch<{ rpm: number; tpm: number }>('/api/usage/rate');
     data.rpm = rate.rpm;
     data.tpm = rate.tpm;
   } catch {
@@ -105,9 +120,9 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 @3xl/main:grid-cols-4">
         <KpiCard
           icon={<WalletIcon className="size-4" />}
-          title="账户余额（元）"
+          title="已结算余额（元）"
           value={fmtBalance(data.balance)}
-          hint="当前可用余额"
+          hint="在途请求完成结算后更新"
         />
         <KpiCard
           icon={<CoinsIcon className="size-4" />}
@@ -127,7 +142,7 @@ export default async function DashboardPage() {
           title="RPM / TPM"
           value={fmtInt(data.rpm)}
           sub={`TPM ${fmtInt(data.tpm)}`}
-          hint={`近 60 秒实际速率 · 限额 ${data.rpmLimit == null ? "∞" : fmtInt(data.rpmLimit)}/${data.tpmLimit == null ? "∞" : fmtInt(data.tpmLimit)}`}
+          hint={`近 60 秒实际速率 · 限额 ${data.rpmLimit == null ? '∞' : fmtInt(data.rpmLimit)}/${data.tpmLimit == null ? '∞' : fmtInt(data.tpmLimit)}`}
         />
       </div>
 

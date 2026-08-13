@@ -1,27 +1,28 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArrowLeftIcon } from "lucide-react";
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { ArrowLeftIcon } from 'lucide-react';
 
 import {
   ApiError,
   adminFetch,
+  formatMoney,
   type AdminBatchRow,
   type RedeemCodeRow as ApiRedeemCodeRow,
   type ListResult,
-} from "@ai-gateway/api-client";
-import { Button } from "@ai-gateway/ui/components/ui/button";
+} from '@ai-gateway/api-client';
+import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@ai-gateway/ui/components/ui/card";
+} from '@ai-gateway/ui/components/ui/card';
 
-import { CodesTable } from "./_components/codes-table";
-import type { RedeemCodeRow } from "../types";
+import { CodesTable } from './_components/codes-table';
+import type { RedeemCodeRow } from '../types';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -37,7 +38,7 @@ export default async function BatchDetailPage({ params }: PageProps) {
   try {
     batch = await adminFetch<AdminBatchRow>(`/api/admin/redeem-batches/${batchId}`);
   } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
+    error = e instanceof ApiError ? e.message : '加载失败';
   }
 
   let codes: RedeemCodeRow[] = [];
@@ -59,7 +60,9 @@ export default async function BatchDetailPage({ params }: PageProps) {
           </Link>
         </Button>
         <Card>
-          <CardContent className="p-6 text-sm text-destructive">{error ?? "批次不存在"}</CardContent>
+          <CardContent className="p-6 text-sm text-destructive">
+            {error ?? '批次不存在'}
+          </CardContent>
         </Card>
       </div>
     );
@@ -76,12 +79,12 @@ export default async function BatchDetailPage({ params }: PageProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">
-            {batch.name}{" "}
+            {batch.name}{' '}
             <span className="text-base font-normal text-muted-foreground">#{batch.id}</span>
           </CardTitle>
           <CardDescription>
-            面值 ¥{batch.amount} · 共 {batch.total} 张 · 已用 {batch.usedCount} 张
-            {batch.remark ? ` · ${batch.remark}` : ""}
+            面值 ¥{formatMoney(batch.amount)} · 共 {batch.total} 张 · 已用 {batch.usedCount} 张
+            {batch.remark ? ` · ${batch.remark}` : ''}
           </CardDescription>
         </CardHeader>
       </Card>

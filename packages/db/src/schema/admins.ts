@@ -1,11 +1,4 @@
-import {
-  pgTable,
-  bigserial,
-  varchar,
-  smallint,
-  timestamp,
-  uniqueIndex,
-} from 'drizzle-orm/pg-core';
+import { pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /**
  * admins — 管理员账户（与 users 物理隔离）。

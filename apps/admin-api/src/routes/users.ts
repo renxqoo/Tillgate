@@ -1,29 +1,21 @@
 import { Hono } from 'hono';
 import { eq, and, or, ilike, sql } from 'drizzle-orm';
-import { users, rateCards, transactions, auditLogs, apiKeys } from '@ai-gateway/db/schema';
-import type { Db } from '@ai-gateway/db';
-import { jsonBody, query } from '../lib/validation.js';
+import { users, rateCards, transactions, auditLogs } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { recordAudit } from '../lib/audit.js';
-import { changeBalance, recordTransaction, unfreezeIfBadDebt } from '../lib/balance.js';
-import { getAdminRedis } from '../lib/route-invalidation.js';
-import {
-  paginationQuerySchema,
-  parsePagination,
-  limitOffset,
-  paginatedResult,
-} from '../lib/pagination.js';
-import type { AdminEnv } from '../middleware/session.js';
+import { HttpError, jsonBody, limitOffset, operationId, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import type { AdminEnv } from '@ai-gateway/identity';
+import type { AdminServices } from '../services/index.js';
+import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from '../services/users.js';
 
 /**
  * 用户管理（api-contract §4.4）。
  *
- *   - 列表：搜索（q 走 subject/email/display_name 模糊）/状态筛选/分页
- *   - PATCH：封禁/解封、绑定费率卡、调限流
- *   - adjust：手动调账（正负皆可，写 transactions type=manual + audit）
- *
- * 资损注意：调账走原子条件 UPDATE + 流水（balance.ts），与 worker 结算同口径，
- *           避免并发更新丢失；审计落 audit_logs（detail 含变更前后）。
+ *   - GET  /：列表（搜索 q 走 subject/email/display_name 模糊 / 状态筛选 / 分页）
+ *   - GET  /:id：详情
+ *   - PATCH /:id：封禁/解封、绑定费率卡、调限流（规则见 services/users.updateUser）
+ *   - POST /:id/set-password：管理员开通本地账号（初始密码 + 绑定默认费率卡）
+ *   - POST /:id/adjust | /:id/gift：调账/赠送（ledger 事务 + 幂等键）
+ *   - GET  /:id/transactions | /:id/audit-logs：管理员视角流水与审计
  */
 
 const userListQuerySchema = paginationQuerySchema.extend({
@@ -43,17 +35,26 @@ const userUpdateSchema = z.object({
   freezeReason: z.string().max(128).nullable().optional(),
 });
 
+const setPasswordSchema = z.object({
+  password: z.string().min(8).max(128),
+});
+
 const userAdjustSchema = z.object({
   /** 调账金额（元，小数），正=增加，负=扣减 */
   amount: z.coerce.number().refine((v) => v !== 0, '调账金额不能为 0'),
   remark: z.string().max(255).optional(),
 });
 
-export function userAdminRoutes(db: Db): Hono<AdminEnv> {
+const userGiftSchema = z.object({
+  amount: z.coerce.number().positive(),
+  remark: z.string().max(255).optional(),
+});
+
+export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
     // 列表（搜索 + 状态筛选 + 分页）
-    .get('/api/admin/users', query(userListQuerySchema), async (c) => {
+    .get('/', query(userListQuerySchema), async (c) => {
       const q = c.req.valid('query');
       const p = parsePagination(q);
       const { limit, offset } = limitOffset(p);
@@ -67,243 +68,125 @@ export function userAdminRoutes(db: Db): Hono<AdminEnv> {
       if (q.status !== undefined) conditions.push(eq(users.status, q.status));
       const where = conditions.length ? and(...conditions) : undefined;
 
-      const [rows, countRows] = await Promise.all([
-        db
-          .select({
-            id: users.id,
-            issuer: users.issuer,
-            subject: users.subject,
-            identityProvider: users.identityProvider,
-            email: users.email,
-            displayName: users.displayName,
-            rateCardId: users.rateCardId,
-            rateCardName: rateCards.name,
-            balance: users.balance,
-            status: users.status,
-            freezeReason: users.freezeReason,
-            rpmLimit: users.rpmLimit,
-            tpmLimit: users.tpmLimit,
-            lastLoginAt: users.lastLoginAt,
-            createdAt: users.createdAt,
-          })
+      const result = await paginateQuery(
+        p,
+        s.db
+          .select(userProfileColumns)
           .from(users)
           .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
           .where(where)
           .orderBy(users.id)
           .limit(limit)
           .offset(offset),
-        db
+        s.db
           .select({ count: sql<number>`count(*)::int` })
           .from(users)
           .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
           .where(where),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
+      );
+      return c.json(result);
     })
 
     // 详情
-    .get('/api/admin/users/:id', async (c) => {
+    .get('/:id', async (c) => {
       const id = Number(c.req.param('id'));
-      const rows = await db
-        .select({
-          id: users.id,
-          issuer: users.issuer,
-          subject: users.subject,
-          identityProvider: users.identityProvider,
-          email: users.email,
-          displayName: users.displayName,
-          rateCardId: users.rateCardId,
-          rateCardName: rateCards.name,
-          balance: users.balance,
-          status: users.status,
-          freezeReason: users.freezeReason,
-          rpmLimit: users.rpmLimit,
-          tpmLimit: users.tpmLimit,
-          lastLoginAt: users.lastLoginAt,
-          createdAt: users.createdAt,
-          updatedAt: users.updatedAt,
-        })
+      const rows = await s.db
+        .select(userProfileColumns)
         .from(users)
         .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
         .where(eq(users.id, id))
         .limit(1);
-      if (rows.length === 0) return c.json({ error: '用户不存在' }, 404);
+      if (rows.length === 0) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
       return c.json(rows[0]);
     })
 
-    // PATCH：封禁/解封/绑卡/限流
-    .patch('/api/admin/users/:id', jsonBody(userUpdateSchema), async (c) => {
+    // PATCH：封禁/解封/绑卡/限流/资料
+    .patch('/:id', jsonBody(userUpdateSchema), async (c) => {
       const id = Number(c.req.param('id'));
-      const body = c.req.valid('json');
-      const adminId = c.get('adminId');
-
-      // 绑卡前校验费率卡存在且启用
-      if (body.rateCardId !== undefined && body.rateCardId !== null) {
-        const card = await db
-          .select({ id: rateCards.id, status: rateCards.status })
-          .from(rateCards)
-          .where(eq(rateCards.id, body.rateCardId))
-          .limit(1);
-        if (card.length === 0) return c.json({ error: '费率卡不存在' }, 400);
-        if (card[0]!.status !== 0) return c.json({ error: '费率卡已停用，无法绑定' }, 400);
-      }
-
-      const update: Record<string, unknown> = { updatedAt: new Date() };
-      if (body.status !== undefined) update.status = body.status;
-      if (body.rateCardId !== undefined) update.rateCardId = body.rateCardId;
-      if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
-      if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-      if (body.displayName !== undefined) update.displayName = body.displayName;
-      if (body.email !== undefined) update.email = body.email;
-      // 封禁时记原因；解封清空原因
-      if (body.status === 1) update.freezeReason = body.freezeReason ?? '管理员封禁';
-      if (body.status === 0) update.freezeReason = null;
-
-      // 显式列白名单返回（资损/安全防线）：绝不能 .returning() 无参返回整行——
-      // users 表含 password_hash（scrypt 凭据），无参 returning 会把它泄露进响应体。
-      // 与同文件 GET handler 的列集合保持一致。
-      const [updated] = await db.update(users).set(update).where(eq(users.id, id)).returning({
-        id: users.id,
-        issuer: users.issuer,
-        subject: users.subject,
-        identityProvider: users.identityProvider,
-        email: users.email,
-        displayName: users.displayName,
-        rateCardId: users.rateCardId,
-        balance: users.balance,
-        status: users.status,
-        freezeReason: users.freezeReason,
-        rpmLimit: users.rpmLimit,
-        tpmLimit: users.tpmLimit,
-        lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-      });
-      if (!updated) return c.json({ error: '用户不存在' }, 404);
-
-      // #5 修复：封禁/解封/限流变更时清 gateway auth cache（防封禁后 60s 内 key 仍可用）
-      // auth:key:{hash} 缓存 TTL 60s，不主动清则封禁最多延迟 60 秒生效
-      if (body.status !== undefined || body.rpmLimit !== undefined || body.tpmLimit !== undefined) {
-        const keys = await db.select({ keyHash: apiKeys.keyHash }).from(apiKeys).where(eq(apiKeys.userId, id));
-        const redis = getAdminRedis();
-        if (keys.length > 0 && redis) {
-          await Promise.all(keys.map((k) => redis.del(`auth:key:${k.keyHash}`).catch(() => {})));
-        }
-      }
-
-      await recordAudit(db, {
-        adminId,
-        action: 'user.update',
-        targetType: 'user',
-        targetId: id,
-        detail: body,
-      });
+      const updated = await updateUser(s, id, c.req.valid('json'), c.get('adminId'));
       return c.json(updated);
     })
 
-    // 手动调账（正负皆可）
-    .post('/api/admin/users/:id/adjust', jsonBody(userAdjustSchema), async (c) => {
+    // 管理员开通本地账号（设置初始密码 + 绑定默认费率卡）
+    .post('/:id/set-password', jsonBody(setPasswordSchema), async (c) => {
+      const id = Number(c.req.param('id'));
+      await setUserPassword(s, id, c.req.valid('json').password, c.get('adminId'));
+      return c.json({ ok: true });
+    })
+
+    // 手动调账（正负皆可，扣减拒绝透支）
+    .post('/:id/adjust', jsonBody(userAdjustSchema), async (c) => {
       const id = Number(c.req.param('id'));
       const body = c.req.valid('json');
-      const adminId = c.get('adminId');
-
-      // 扣减时检查不透支；增加时不检查
       const amountStr = String(body.amount);
-      const result = await changeBalance(db, id, amountStr, {
-        checkSufficient: body.amount < 0,
-        redis: getAdminRedis(),
-      });
-      if (!result.ok) {
-        if (result.reason === 'not_found') return c.json({ error: '用户不存在' }, 404);
-        return c.json({ error: '余额不足，调账失败（拒绝透支）' }, 400);
+      try {
+        const result = await s.ledger.adminAdjust({
+          operationId: operationId(c),
+          userId: id,
+          amount: amountStr,
+          adminId: c.get('adminId'),
+          remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${amountStr}`,
+        });
+        return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
+      } catch (error) {
+        throw mapLedgerError(error);
       }
+    })
 
-      // 写流水（type=manual）
-      await recordTransaction(db, {
-        userId: id,
-        type: 'manual',
-        amount: amountStr,
-        balanceBefore: result.balanceBefore,
-        balanceAfter: result.balanceAfter,
-        refType: 'admin_adjust',
-        refId: adminId != null ? String(adminId) : undefined,
-        remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${amountStr}`,
-        createdBy: adminId ?? null,
-      });
-
-      // 增加余额后尝试解冻（坏账冻结自动解除）
-      if (body.amount > 0) await unfreezeIfBadDebt(db, id);
-
-      await recordAudit(db, {
-        adminId,
-        action: 'user.adjust',
-        targetType: 'user',
-        targetId: id,
-        detail: { amount: body.amount, before: result.balanceBefore, after: result.balanceAfter, remark: body.remark },
-      });
-      return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
+    // 手动赠送（type=gift）
+    .post('/:id/gift', jsonBody(userGiftSchema), async (c) => {
+      const id = Number(c.req.param('id'));
+      const body = c.req.valid('json');
+      try {
+        const result = await s.ledger.adminGift({
+          operationId: operationId(c),
+          userId: id,
+          amount: String(body.amount),
+          adminId: c.get('adminId'),
+          remark: body.remark ?? '管理员赠送',
+        });
+        return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
+      } catch (error) {
+        throw mapLedgerError(error);
+      }
     })
 
     // 用户资金流水（管理员视角）
-    .get('/api/admin/users/:id/transactions', query(paginationQuerySchema), async (c) => {
+    .get('/:id/transactions', query(paginationQuerySchema), async (c) => {
       const id = Number(c.req.param('id'));
       const p = parsePagination(c.req.valid('query'));
       const { limit, offset } = limitOffset(p);
-      const [rows, countRows] = await Promise.all([
-        db
+      const result = await paginateQuery(
+        p,
+        s.db
           .select()
           .from(transactions)
           .where(eq(transactions.userId, id))
           .orderBy(sql`${transactions.createdAt} desc`)
           .limit(limit)
           .offset(offset),
-        db.select({ count: sql<number>`count(*)::int` }).from(transactions).where(eq(transactions.userId, id)),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
+        s.db.select({ count: sql<number>`count(*)::int` }).from(transactions).where(eq(transactions.userId, id)),
+      );
+      return c.json(result);
     })
 
     // 用户审计日志（管理员视角，target_type=user）
-    .get('/api/admin/users/:id/audit-logs', query(paginationQuerySchema), async (c) => {
+    .get('/:id/audit-logs', query(paginationQuerySchema), async (c) => {
       const id = Number(c.req.param('id'));
       const p = parsePagination(c.req.valid('query'));
       const { limit, offset } = limitOffset(p);
-      const [rows, countRows] = await Promise.all([
-        db
+      const target = and(eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id)));
+      const result = await paginateQuery(
+        p,
+        s.db
           .select()
           .from(auditLogs)
-          .where(and(eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id))))
+          .where(target)
           .orderBy(sql`${auditLogs.createdAt} desc`)
           .limit(limit)
           .offset(offset),
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(auditLogs)
-          .where(and(eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id)))),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
-    })
-
-    // 手动赠送（管理员给用户加赠送额度，type=gift）
-    .post('/api/admin/users/:id/gift', jsonBody(z.object({ amount: z.coerce.number().positive(), remark: z.string().max(255).optional() })), async (c) => {
-      const id = Number(c.req.param('id'));
-      const body = c.req.valid('json');
-      const adminId = c.get('adminId');
-      const amountStr = String(body.amount);
-      const result = await changeBalance(db, id, amountStr, { redis: getAdminRedis() });
-      if (!result.ok) return c.json({ error: '用户不存在' }, 404);
-      await recordTransaction(db, {
-        userId: id,
-        type: 'gift',
-        amount: amountStr,
-        balanceBefore: result.balanceBefore,
-        balanceAfter: result.balanceAfter,
-        refType: 'admin_gift',
-        refId: adminId != null ? String(adminId) : undefined,
-        remark: body.remark ?? '管理员赠送',
-        createdBy: adminId ?? null,
-      });
-      await unfreezeIfBadDebt(db, id);
-      await recordAudit(db, { adminId, action: 'user.gift', targetType: 'user', targetId: id, detail: { amount: body.amount } });
-      return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
+        s.db.select({ count: sql<number>`count(*)::int` }).from(auditLogs).where(target),
+      );
+      return c.json(result);
     });
 }

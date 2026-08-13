@@ -27,7 +27,12 @@ const opts: RetryOptions = {
 
 function retryableErr() {
   // 与 classifyTransportError('network'/'timeout') 一致：retryable=true
-  return createUpstreamError({ code: 'network_error', message: 'network', retryable: true, circuitTrip: true });
+  return createUpstreamError({
+    code: 'network_error',
+    message: 'network',
+    retryable: true,
+    circuitTrip: true,
+  });
 }
 
 describe('C5 — POST 重试非幂等（TDD 复现，当前应 FAIL）', () => {

@@ -60,6 +60,31 @@ describe('normalizeUsage', () => {
     expect(normalizeUsage({ foo: 1 })).toBeNull();
     expect(normalizeUsage('nope')).toBeNull();
   });
+
+  it('Responses input/output tokens 与缓存明细可归一化', () => {
+    expect(
+      normalizeUsage({
+        input_tokens: 12,
+        output_tokens: 3,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 2, audio_tokens: 4 },
+        output_tokens_details: { reasoning_tokens: 1 },
+      }),
+    ).toMatchObject({ inputTokens: 12, cachedInputTokens: 2, outputTokens: 3 });
+  });
+
+  it('冲突、负数、小数、超安全整数、cached 超界和零 usage 均不可信', () => {
+    const invalid = [
+      { prompt_tokens: 10, input_tokens: 11, completion_tokens: 1 },
+      { prompt_tokens: -1, completion_tokens: 1 },
+      { prompt_tokens: 1.5, completion_tokens: 1 },
+      { prompt_tokens: Number.MAX_SAFE_INTEGER + 1, completion_tokens: 1 },
+      { prompt_tokens: 2, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 3 } },
+      { prompt_tokens: 0, completion_tokens: 0 },
+      { prompt_tokens: 2, completion_tokens: 1, total_tokens: 99 },
+    ];
+    for (const usage of invalid) expect(normalizeUsage(usage)).toBeNull();
+  });
 });
 
 describe('estimateTokens', () => {
@@ -86,15 +111,15 @@ describe('extractRequestChars', () => {
 
   it('messages.content 多模态数组（取 text 长度）', () => {
     const n = extractRequestChars({
-      messages: [
-        { role: 'user', content: [{ type: 'text', text: 'abc' }, { type: 'image_url' }] },
-      ],
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'abc' }, { type: 'image_url' }] }],
     });
     expect(n).toBe(3);
   });
 
   it('tools 定义体纳入估算（企业 Agent 主要输入消耗源）', () => {
-    const tools = [{ type: 'function', function: { name: 'get_weather', parameters: { type: 'object' } } }];
+    const tools = [
+      { type: 'function', function: { name: 'get_weather', parameters: { type: 'object' } } },
+    ];
     const n = extractRequestChars({ messages: [{ role: 'user', content: 'hi' }], tools });
     expect(n).toBeGreaterThan(2); // content(2) + tools JSON 长度
   });
@@ -107,6 +132,11 @@ describe('extractRequestChars', () => {
   it('无 messages 返回 0（仅 tools 仍计）', () => {
     const n = extractRequestChars({ tools: [{ function: { name: 'x' } }] });
     expect(n).toBeGreaterThan(0);
+  });
+
+  it('embeddings input 支持单字符串和字符串数组', () => {
+    expect(extractRequestChars({ input: 'hello' })).toBe(5);
+    expect(extractRequestChars({ input: ['hello', 'world'] })).toBe(10);
   });
 });
 

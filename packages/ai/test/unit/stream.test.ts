@@ -4,7 +4,10 @@ import { peekFirstChunk } from '../../src/internal/stream.js';
 const enc = (s: string) => new TextEncoder().encode(s);
 const dec = (u: Uint8Array) => new TextDecoder().decode(u);
 
-function makeStream(chunks: Uint8Array[], opts: { error?: unknown } = {}): ReadableStream<Uint8Array> {
+function makeStream(
+  chunks: Uint8Array[],
+  opts: { error?: unknown } = {},
+): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(c) {
       for (const ch of chunks) c.enqueue(ch);

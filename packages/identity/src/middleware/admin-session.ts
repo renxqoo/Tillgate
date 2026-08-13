@@ -48,8 +48,9 @@ async function resolveAdminSession(
  *
  *   - jwtSecret 空串 → 503（fail-closed，防裸奔）
  *   - 会话无效/缺失 → 401
+ *   - 放行后注入 c.var.adminId（必填语义，下游路由无需再做防御性检查）
  *
- * 挂在 /api/admin/*（登录端点除外）。
+ * 挂载在受保护子应用（/api/admin/* 除显式公开端点外）。
  */
 export function adminAuthMiddleware(
   db: Db,
@@ -66,16 +67,4 @@ export function adminAuthMiddleware(
     c.set('adminId', session.adminId);
     await next();
   };
-}
-
-/**
- * 尽力解析管理面会话（不阻塞）。
- * 供 adminIdInjector 之外需要「可选管理员身份」的场景使用；当前 admin 链路用 adminAuthMiddleware 即注入 adminId。
- */
-export async function tryResolveAdminSession(
-  c: Parameters<MiddlewareHandler>[0],
-  db: Db,
-  jwtSecret: string,
-): Promise<AdminSessionContext | null> {
-  return resolveAdminSession(c, db, jwtSecret);
 }

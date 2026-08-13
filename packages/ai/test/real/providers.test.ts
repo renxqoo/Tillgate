@@ -145,7 +145,11 @@ function channel(p: ProviderConfig): ChannelDesc {
 }
 
 function ctx(p: ProviderConfig, tag: string): RequestCtx {
-  return { requestId: `real-${p.name}-${tag}-${Date.now()}`, model: p.model, providerName: p.providerName };
+  return {
+    requestId: `real-${p.name}-${tag}-${Date.now()}`,
+    model: p.model,
+    providerName: p.providerName,
+  };
 }
 
 describeOrSkip('真实供应商集成', () => {
@@ -199,7 +203,12 @@ describeOrSkip('真实供应商集成', () => {
           // 窗口限流（如 MiniMax Token Plan 5h 窗口 / RPM 限流）：可重试，重试耗尽后仍失败
           console.log(`[${p.name}] chat 限流（${result.error?.code}，可重试，重试耗尽后失败）`);
         } else {
-          console.warn(`[${p.name}] chat 非预期:`, result.status, result.error?.code, result.error?.message);
+          console.warn(
+            `[${p.name}] chat 非预期:`,
+            result.status,
+            result.error?.code,
+            result.error?.message,
+          );
         }
         expect(['success', 'empty', 'error']).toContain(result.status);
       }, 60_000);
@@ -244,7 +253,7 @@ describeOrSkip('真实供应商集成', () => {
             expect(successEv.usage.estimated).toBe(false);
             console.log(`[${p.name}] stream usage:`, JSON.stringify(successEv.usage));
           }
-          expect((successEv.bytesRelayed ?? 0)).toBeGreaterThan(0);
+          expect(successEv.bytesRelayed ?? 0).toBeGreaterThan(0);
         } else if (failedEv?.type === 'failed') {
           // 供应商错误（额度耗尽/key 失效等）：验证错误帧透传 + failed 事件
           console.log(`[${p.name}] stream 供应商错误（已透传错误帧）:`, failedEv.error.code);
@@ -278,7 +287,11 @@ describeOrSkip('真实供应商集成', () => {
           expect(calls).toBe(1);
           expect(result.error?.retryable).toBe(false);
           expect(result.error?.circuitTrip).toBe(false);
-          console.log(`[${p.name}] bad-model error:`, result.error?.code, 'status=' + result.error?.status);
+          console.log(
+            `[${p.name}] bad-model error:`,
+            result.error?.code,
+            'status=' + result.error?.status,
+          );
         }
       }, 30_000);
 
@@ -359,7 +372,10 @@ describeOrSkip('真实供应商集成', () => {
 
         // 供应商应静默接受（success）；即使忽略该参数也应正常返回
         if (result.status === 'success') {
-          console.log(`[${p.name}] reasoning_effort=low 被静默接受，usage:`, JSON.stringify(result.usage));
+          console.log(
+            `[${p.name}] reasoning_effort=low 被静默接受，usage:`,
+            JSON.stringify(result.usage),
+          );
         } else {
           // 少数供应商可能对未知参数报 400——记录但不强制失败（行为符合预期：透传基底）
           console.warn(`[${p.name}] reasoning_effort 导致:`, result.status, result.error?.code);

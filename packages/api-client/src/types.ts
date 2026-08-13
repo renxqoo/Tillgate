@@ -66,7 +66,11 @@ export interface KeyRow {
   lastUsedAt: string | null;
   createdAt: string;
 }
-export interface KeyCreated { id: number; name: string; key: string }
+export interface KeyCreated {
+  id: number;
+  name: string;
+  key: string;
+}
 
 // ── App (GET/POST /api/apps) ────────────────────────────────────────────────
 export interface AppRow {
@@ -80,7 +84,13 @@ export interface AppRow {
   createdAt: string;
   rotatedAt: string | null;
 }
-export interface AppCreated { id: number; appId: string; clientId: string; name: string; clientSecret: string }
+export interface AppCreated {
+  id: number;
+  appId: string;
+  clientId: string;
+  name: string;
+  clientSecret: string;
+}
 
 // ── Transactions (GET /api/me/transactions, /api/admin/users/:id/transactions) ─
 export interface TransactionRow {
@@ -163,6 +173,8 @@ export interface AdminUserRow {
   rateCardId: number | null;
   rateCardName: string | null;
   balance: string;
+  reservedBalance: string;
+  availableBalance: string;
   status: number;
   freezeReason: string | null;
   rpmLimit: number | null;
@@ -211,7 +223,12 @@ export interface ChannelUpdateBody {
   rpmLimit?: number;
   tpmLimit?: number;
 }
-export interface ChannelTestResult { ok: boolean; durationMs: number; error?: string; keyPreview?: string }
+export interface ChannelTestResult {
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+  keyPreview?: string;
+}
 
 // ── Admin: Providers (GET /api/admin/providers) ─────────────────────────────
 export interface AdminProviderRow {
@@ -240,6 +257,7 @@ export interface AdminModelRow {
   cacheInputPrice: string;
   fallbackModels: string | null;
   paramRules: string | null;
+  billingPolicy: Record<string, unknown> | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
   status: number;
@@ -254,6 +272,7 @@ export interface ModelCreateBody {
   inputPrice: string | number;
   outputPrice: string | number;
   cacheInputPrice?: string | number;
+  billingPolicy?: Record<string, unknown> | null;
 }
 export interface ModelUpdateBody {
   externalName?: string;
@@ -263,6 +282,7 @@ export interface ModelUpdateBody {
   cacheInputPrice?: string | number;
   fallbackModels?: string;
   paramRules?: string;
+  billingPolicy?: Record<string, unknown> | null;
   rpmLimit?: number;
   tpmLimit?: number;
   status?: number;
@@ -404,8 +424,8 @@ export interface AuditLogRow {
 
 // ── Redeem error code → 中文 ────────────────────────────────────────────────
 export const REDEEM_ERROR_MESSAGES: Record<string, string> = {
-  invalid_code: "充值码无效",
-  code_already_used: "充值码已被使用",
-  code_revoked: "充值码已撤销",
-  code_expired: "充值码已过期",
+  invalid_code: '充值码无效',
+  code_already_used: '充值码已被使用',
+  code_revoked: '充值码已撤销',
+  code_expired: '充值码已过期',
 };

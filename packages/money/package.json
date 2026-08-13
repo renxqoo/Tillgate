@@ -2,8 +2,8 @@
   "name": "@ai-gateway/money",
   "version": "0.1.0",
   "private": true,
+  "description": "金额计算（元 + Decimal 全精度，账本永不 round）：费用/预扣，gateway 与 worker 共用",
   "type": "module",
-  "description": "金额计算（整数厘，先乘后除一次舍入）：费用/hold/套餐额度，gateway 与 worker 共用",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -19,13 +19,13 @@
     "lint": "oxlint",
     "test": "vitest run"
   },
+  "dependencies": {
+    "decimal.js": "^10.6.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"
-  },
-  "dependencies": {
-    "decimal.js": "^10.6.0"
   }
 }

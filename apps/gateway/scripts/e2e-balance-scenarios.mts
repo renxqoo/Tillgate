@@ -40,12 +40,17 @@ const USER_PASS = 'ScenarioPass@2026';
 const MODEL = 'deepseek-chat';
 
 const psql = (sql: string): string =>
-  execSync(`psql "${DATABASE_URL}" -At -F '|' -c ${JSON.stringify(sql)}`, { encoding: 'utf8' }).trim();
+  execSync(`psql "${DATABASE_URL}" -At -F '|' -c ${JSON.stringify(sql)}`, {
+    encoding: 'utf8',
+  }).trim();
 
 let step = 0;
 const section = (t: string): void => console.log(`\n━━━ [${++step}] ${t} ━━━`);
 const ok = (m: string): void => console.log(`  ✅ ${m}`);
-const die = (m: string): never => { console.error(`\n❌ ${m}`); process.exit(1); };
+const die = (m: string): never => {
+  console.error(`\n❌ ${m}`);
+  process.exit(1);
+};
 
 /** 规范化余额字符串（去小数尾随零） */
 function normBalance(s: string): string {
@@ -77,7 +82,9 @@ async function adminLogin(): Promise<string> {
 
 /** 管理员开通用户行（一期无建用户接口，DB insert 用户行；后续全走接口） */
 function provisionUser(subject: string): number {
-  psql(`insert into users (issuer, subject, identity_provider, display_name, role, status, balance) values ('local','${subject}','local','${subject}',0,0,'0');`);
+  psql(
+    `insert into users (issuer, subject, identity_provider, display_name, status, balance) values ('local','${subject}','local','${subject}',0,'0');`,
+  );
   return Number(psql(`select id from users where subject='${subject}';`));
 }
 
@@ -123,22 +130,41 @@ async function createApiKey(userCookie: string): Promise<string> {
     body: JSON.stringify({ name: 'e2e-scenario' }),
   });
   if (res.status !== 201) die(`创建 key 失败：${res.status}`);
-  const body = await res.json() as { key: string };
+  const body = (await res.json()) as { key: string };
   if (!body.key?.startsWith('ag_')) die(`key 格式错：${body.key}`);
   return body.key;
 }
 
 /** 真实接口：用 API key 调 gateway chat（真 DeepSeek） */
-async function chat(apiKey: string, prompt: string, maxTokens: number): Promise<{ status: number; body: string; requestId: string | null; usage: { prompt_tokens?: number; completion_tokens?: number } | null }> {
+async function chat(
+  apiKey: string,
+  prompt: string,
+  maxTokens: number,
+): Promise<{
+  status: number;
+  body: string;
+  requestId: string | null;
+  usage: { prompt_tokens?: number; completion_tokens?: number } | null;
+}> {
   const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens }),
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+    }),
   });
   const requestId = res.headers.get('x-request-id');
   const text = await res.text();
   let usage: { prompt_tokens?: number; completion_tokens?: number } | null = null;
-  try { usage = (JSON.parse(text) as { usage?: { prompt_tokens?: number; completion_tokens?: number } }).usage ?? null; } catch { /* 错误响应无 usage */ }
+  try {
+    usage =
+      (JSON.parse(text) as { usage?: { prompt_tokens?: number; completion_tokens?: number } })
+        .usage ?? null;
+  } catch {
+    /* 错误响应无 usage */
+  }
   return { status: res.status, body: text, requestId, usage };
 }
 
@@ -146,7 +172,9 @@ async function chat(apiKey: string, prompt: string, maxTokens: number): Promise<
 async function waitForSettle(userId: number, timeoutMs = 15000): Promise<string> {
   for (let i = 0; i < timeoutMs / 1000; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    const row = psql(`select amount from usage_logs where user_id=${userId} order by id desc limit 1;`);
+    const row = psql(
+      `select amount from usage_logs where user_id=${userId} order by id desc limit 1;`,
+    );
     if (row) return row;
   }
   die('worker 未结算（usage_logs 无记录）');
@@ -166,9 +194,9 @@ async function main(): Promise<void> {
   console.log('🧪 真实接口端到端：三种余额场景（正常扣款 / 余额不足 / 超扣为负）');
   console.log(`   gateway: ${GATEWAY} | admin-api: ${ADMIN_API} | 模型: ${MODEL}（真 DeepSeek）`);
 
-  const health = await fetch(`${GATEWAY}/healthz`);
+  const health = await fetch(`${GATEWAY}/readyz`);
   if (health.status !== 200) die('gateway 未就绪');
-  ok('gateway healthz ok');
+  ok('gateway readyz ok');
 
   // ---- 场景 A：正常扣款 ----
   section('场景 A：充足余额 → 正常扣款（精确计费，非 0）');
@@ -186,7 +214,9 @@ async function main(): Promise<void> {
     const balanceBefore = psql(`select balance from users where id=${userA};`);
     const r = await chat(apiKeyA, '回复一个字：好', 5);
     if (r.status !== 200) die(`场景A chat 失败：${r.status} ${r.body.slice(0, 200)}`);
-    ok(`chat 成功（usage: prompt=${r.usage?.prompt_tokens} completion=${r.usage?.completion_tokens}）`);
+    ok(
+      `chat 成功（usage: prompt=${r.usage?.prompt_tokens} completion=${r.usage?.completion_tokens}）`,
+    );
     const amount = await waitForSettle(userA);
     const balanceAfter = psql(`select balance from users where id=${userA};`);
     ok(`结算落库：amount=${amount} 元`);
@@ -215,7 +245,8 @@ async function main(): Promise<void> {
       const body = JSON.parse(r.body) as { error: { code: string; message: string } };
       ok(`正确拒绝：${r.status} ${body.error.code}（${body.error.message.slice(0, 40)}）`);
       const balanceAfter = psql(`select balance from users where id=${userB};`);
-      if (!balanceEqual(balanceAfter, '0.000001')) die(`场景B 余额不应变（hold 拒绝不扣费），实际 ${balanceAfter}`);
+      if (!balanceEqual(balanceAfter, '0.000001'))
+        die(`场景B 余额不应变（hold 拒绝不扣费），实际 ${balanceAfter}`);
       ok(`余额未变（hold 拒绝未扣费）：${balanceAfter} 元`);
       console.log('\n🎉 场景 B 通过：余额不足正确拒绝（402），未扣费');
     } else if (r.status === 200) {
@@ -271,7 +302,9 @@ async function main(): Promise<void> {
     if (rBlock.status === 402) {
       ok(`负余额用户再次请求被正确拒绝（402）— 防止持续欠款`);
     } else {
-      ok(`负余额再次请求 status=${rBlock.status}（极小请求 hold 估算 0 可能放行，靠 worker 继续扣）`);
+      ok(
+        `负余额再次请求 status=${rBlock.status}（极小请求 hold 估算 0 可能放行，靠 worker 继续扣）`,
+      );
     }
     console.log('\n🎉 场景 C 通过：超扣为负数（欠款），后续请求被拦截');
   } finally {

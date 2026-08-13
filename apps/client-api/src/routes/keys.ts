@@ -1,32 +1,35 @@
 import { Hono } from 'hono';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { apiKeys } from '@ai-gateway/db/schema';
-import type { Db } from '@ai-gateway/db';
-import { jsonBody, query } from '../lib/validation.js';
 import { z } from 'zod';
-import { generateApiKey, sha256Hex, maskKey } from '../lib/secrets.js';
-import { recordAudit } from '@ai-gateway/billing';
 import {
+  HttpError,
+  generateApiKey,
+  invalidateKeyAuthCache,
+  jsonBody,
+  limitOffset,
+  maskKey,
+  paginateQuery,
   paginationQuerySchema,
   parsePagination,
-  limitOffset,
-  paginatedResult,
-} from '../lib/pagination.js';
+  query,
+  recordAudit,
+  sha256Hex,
+} from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
+import type { ClientServices } from '../services/index.js';
 
 /**
  * 用户面板：虚拟 Key 管理（api-contract §4.2）。
  *
- *   - GET /api/keys：自己的 Key 列表（只显示脱敏预览，不回显明文）
- *   - POST /api/keys：创建，明文 Key 仅在响应中出现一次（落库的是 SHA-256 哈希）
- *   - PATCH /api/keys/:id：改名/限流/过期调整（不可改 Key 本身）
- *   - DELETE /api/keys/:id：吊销（立即失效）
+ *   - GET /：自己的 Key 列表（只显示脱敏预览，不回显明文）
+ *   - POST /：创建，明文 Key 仅在响应中出现一次（落库的是 SHA-256 哈希）
+ *   - PATCH /:id：改名/限流/过期调整（不可改 Key 本身）
+ *   - DELETE /:id：吊销（清网关鉴权缓存，立即失效）
  *
  * 安全（data-model §3.3）：
  *   - 明文 Key 不落库，只存 key_hash + key_preview
  *   - 所有操作限定 user_id = session.userId（防越权）
- *
- * 拆分后：用户自助操作的审计 adminId 传 null（非管理员动作），仅记录 action 留痕。
  */
 
 const keyCreateSchema = z.object({
@@ -45,16 +48,18 @@ const keyUpdateSchema = z.object({
   tpmLimit: z.number().int().min(1).nullable().optional(),
 });
 
-export function keyRoutes(db: Db): Hono<ClientEnv> {
+export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
 
     // 列表
-    .get('/api/keys', query(paginationQuerySchema), async (c) => {
+    .get('/', query(paginationQuerySchema), async (c) => {
       const session = c.get('session');
       const p = parsePagination(c.req.valid('query'));
       const { limit, offset } = limitOffset(p);
-      const [rows, countRows] = await Promise.all([
-        db
+      const where = eq(apiKeys.userId, session.userId);
+      const result = await paginateQuery(
+        p,
+        s.db
           .select({
             id: apiKeys.id,
             keyPreview: apiKeys.keyPreview,
@@ -68,25 +73,24 @@ export function keyRoutes(db: Db): Hono<ClientEnv> {
             createdAt: apiKeys.createdAt,
           })
           .from(apiKeys)
-          .where(eq(apiKeys.userId, session.userId))
+          .where(where)
           .orderBy(desc(apiKeys.createdAt))
           .limit(limit)
           .offset(offset),
-        db.select({ count: sql<number>`count(*)::int` }).from(apiKeys).where(eq(apiKeys.userId, session.userId)),
-      ]);
-      return c.json(paginatedResult(rows, Number(countRows[0]?.count ?? 0), p));
+        s.db.select({ count: sql<number>`count(*)::int` }).from(apiKeys).where(where),
+      );
+      return c.json(result);
     })
 
     // 创建（明文 Key 仅此一次回显）
-    .post('/api/keys', jsonBody(keyCreateSchema), async (c) => {
+    .post('/', jsonBody(keyCreateSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
       const plaintext = generateApiKey();
-      const keyHash = sha256Hex(plaintext);
-      const [created] = await db
+      const [created] = await s.db
         .insert(apiKeys)
         .values({
-          keyHash,
+          keyHash: sha256Hex(plaintext),
           keyPreview: maskKey(plaintext),
           userId: session.userId,
           name: body.name,
@@ -97,8 +101,8 @@ export function keyRoutes(db: Db): Hono<ClientEnv> {
           status: 0,
         })
         .returning({ id: apiKeys.id, name: apiKeys.name });
-      await recordAudit(db, {
-        adminId: null,
+      await recordAudit(s.db, {
+        actor: 'user',
         action: 'api_key.create',
         targetType: 'api_key',
         targetId: created!.id,
@@ -108,7 +112,7 @@ export function keyRoutes(db: Db): Hono<ClientEnv> {
     })
 
     // 更新（不可改 Key 本身）
-    .patch('/api/keys/:id', jsonBody(keyUpdateSchema), async (c) => {
+    .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
       const session = c.get('session');
       const id = Number(c.req.param('id'));
       const body = c.req.valid('json');
@@ -118,34 +122,33 @@ export function keyRoutes(db: Db): Hono<ClientEnv> {
       if (body.expiresAt !== undefined) update.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
       if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-      const [updated] = await db
+      const [updated] = await s.db
         .update(apiKeys)
         .set(update)
         .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId))) // 限定自己的 Key
         .returning();
-      if (!updated) return c.json({ error: 'Key 不存在或无权操作' }, 404);
+      if (!updated) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在或无权操作');
       return c.json(updated);
     })
 
-    // 吊销（立即失效）
-    .delete('/api/keys/:id', async (c) => {
+    // 吊销（清网关鉴权缓存，立即失效）
+    .delete('/:id', async (c) => {
       const session = c.get('session');
       const id = Number(c.req.param('id'));
-      const [revoked] = await db
+      const [revoked] = await s.db
         .update(apiKeys)
         .set({ status: 1, revokedAt: new Date() })
         .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)))
-        .returning({ id: apiKeys.id });
-      if (!revoked) return c.json({ error: 'Key 不存在、无权操作或已吊销' }, 404);
-      await recordAudit(db, {
-        adminId: null,
+        .returning({ id: apiKeys.id, keyHash: apiKeys.keyHash });
+      if (!revoked) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
+      await recordAudit(s.db, {
+        actor: 'user',
         action: 'api_key.revoke',
         targetType: 'api_key',
         targetId: id,
       });
-      // 注意：吊销后需清 gateway 侧 Redis 鉴权缓存（KeyAuthCache）才即时生效；
-      // gateway 与 client-api 共享同一 Redis，可通过 Redis pub/sub 或 TTL（60s）自然过期。
-      // 一期靠 TTL 自然过期（60s 内仍可用，可接受）。
+      // 清 gateway 鉴权缓存（auth:key:{hash}）→ 吊销立即生效，无需等 60s TTL
+      await invalidateKeyAuthCache(s.redis, [revoked.keyHash]);
       return c.json({ ok: true });
     });
 }

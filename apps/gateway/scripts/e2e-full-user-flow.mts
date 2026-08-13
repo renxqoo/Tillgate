@@ -47,7 +47,9 @@ const USER_PASS = 'E2eUser@2026';
 const TOPUP = 50; // 50 元（重构后金额单位为元），足够一次小请求
 
 const psql = (sql: string): string =>
-  execSync(`psql "${DATABASE_URL}" -At -F '|' -c ${JSON.stringify(sql)}`, { encoding: 'utf8' }).trim();
+  execSync(`psql "${DATABASE_URL}" -At -F '|' -c ${JSON.stringify(sql)}`, {
+    encoding: 'utf8',
+  }).trim();
 const psqlVal = (sql: string): string => psql(sql).split('|')[0]!;
 
 /** 规范化余额字符串（去小数尾随零） */
@@ -71,7 +73,10 @@ function balanceSub(a: string, b: string): string {
 let step = 0;
 const section = (t: string): void => console.log(`\n━━━ [${++step}] ${t} ━━━`);
 const ok = (m: string): void => console.log(`  ✅ ${m}`);
-const die = (m: string): never => { console.error(`\n❌ ${m}`); process.exit(1); };
+const die = (m: string): never => {
+  console.error(`\n❌ ${m}`);
+  process.exit(1);
+};
 
 /** 从 fetch response 的 set-cookie 头提取 ag_session=xxx，返回可直接回传的 cookie 串 */
 function cookieFromRes(res: Response): string {
@@ -84,12 +89,21 @@ function cookieFromRes(res: Response): string {
 let testUserId: number | null = null;
 let testUserSubject = '';
 
-async function post(url: string, body: unknown, cookie?: string): Promise<{ status: number; body: unknown; raw: string }> {
+async function post(
+  url: string,
+  body: unknown,
+  cookie?: string,
+): Promise<{ status: number; body: unknown; raw: string }> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (cookie) headers.cookie = cookie;
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   const raw = await res.text();
-  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = raw;
+  }
   return { status: res.status, body: parsed, raw };
 }
 async function get(url: string, cookie?: string): Promise<{ status: number; body: unknown }> {
@@ -97,7 +111,12 @@ async function get(url: string, cookie?: string): Promise<{ status: number; body
   if (cookie) headers.cookie = cookie;
   const res = await fetch(url, { method: 'GET', headers });
   const raw = await res.text();
-  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { parsed = raw; }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = raw;
+  }
   return { status: res.status, body: parsed };
 }
 
@@ -106,9 +125,9 @@ async function main(): Promise<void> {
   console.log(`   admin-api: ${ADMIN_API} | gateway: ${GATEWAY}`);
 
   // 健康检查：三个服务都要在
-  const health = await get(`${GATEWAY}/healthz`);
-  if (health.status !== 200) die(`gateway 未就绪（healthz=${health.status}），请先 pnpm dev`);
-  ok('gateway healthz ok');
+  const health = await get(`${GATEWAY}/readyz`);
+  if (health.status !== 200) die(`gateway 未就绪（readyz=${health.status}），请先 pnpm dev`);
+  ok('gateway readyz ok');
 
   // ---- [1] 管理员登录 ----
   section('管理员登录拿会话 cookie');
@@ -118,23 +137,34 @@ async function main(): Promise<void> {
     body: JSON.stringify({ username: ADMIN_USER, password: ADMIN_PASS }),
   });
   const adminLoginBody = await adminLoginRes.text();
-  if (adminLoginRes.status !== 200) die(`管理员登录失败：${adminLoginRes.status} ${adminLoginBody}`);
+  if (adminLoginRes.status !== 200)
+    die(`管理员登录失败：${adminLoginRes.status} ${adminLoginBody}`);
   const adminCookie = cookieFromRes(adminLoginRes);
   if (!adminCookie) die('登录响应未带 ag_session cookie');
-  const adminUser = JSON.parse(adminLoginBody) as { user: { id: number; role: number; username: string } };
-  ok(`管理员登录成功（ id=${adminUser.user.id} / role=${adminUser.user.role} / ${adminUser.user.username}）`);
+  const adminUser = JSON.parse(adminLoginBody) as {
+    user: { id: number; role: number; username: string };
+  };
+  ok(
+    `管理员登录成功（ id=${adminUser.user.id} / role=${adminUser.user.role} / ${adminUser.user.username}）`,
+  );
 
   // ---- [2] 开通全新普通用户行 ----
   section('DB 开通全新普通用户行（管理员开通）');
   testUserSubject = `e2e-user-${Date.now()}`;
-  psql(`insert into users (issuer, subject, identity_provider, display_name, role, status, balance) values ('local','${testUserSubject}','local','${testUserSubject}',0,0,0);`);
+  psql(
+    `insert into users (issuer, subject, identity_provider, display_name, role, status, balance) values ('local','${testUserSubject}','local','${testUserSubject}',0,0,0);`,
+  );
   testUserId = Number(psqlVal(`select id from users where subject='${testUserSubject}';`));
   ok(`新建普通用户 id=${testUserId} subject=${testUserSubject}（余额 0）`);
 
   try {
     // ---- [3] 设密码 + 绑费率卡（真实接口）----
     section('真实接口：管理员 set-password（设密码 + 绑「标准」卡）');
-    const sp = await post(`${ADMIN_API}/api/admin/users/${testUserId}/set-password`, { password: USER_PASS }, adminCookie);
+    const sp = await post(
+      `${ADMIN_API}/api/admin/users/${testUserId}/set-password`,
+      { password: USER_PASS },
+      adminCookie,
+    );
     if (sp.status !== 200) die(`set-password 失败：${sp.status} ${sp.raw}`);
     const rateCardId = psqlVal(`select rate_card_id from users where id=${testUserId};`);
     if (rateCardId === '') die('费率卡未绑定');
@@ -142,10 +172,15 @@ async function main(): Promise<void> {
 
     // ---- [4] 管理员充值（adjust）----
     section(`真实接口：管理员 adjust 充值 ${TOPUP} 元`);
-    const adj = await post(`${ADMIN_API}/api/admin/users/${testUserId}/adjust`, { amount: TOPUP, remark: 'e2e 充值' }, adminCookie);
+    const adj = await post(
+      `${ADMIN_API}/api/admin/users/${testUserId}/adjust`,
+      { amount: TOPUP, remark: 'e2e 充值' },
+      adminCookie,
+    );
     if (adj.status !== 200) die(`adjust 失败：${adj.status} ${adj.raw}`);
     const balanceAfterTopup = psqlVal(`select balance from users where id=${testUserId};`);
-    if (!balanceEqual(balanceAfterTopup, String(TOPUP))) die(`充值后余额应为 ${TOPUP}，实际 ${balanceAfterTopup}`);
+    if (!balanceEqual(balanceAfterTopup, String(TOPUP)))
+      die(`充值后余额应为 ${TOPUP}，实际 ${balanceAfterTopup}`);
     ok(`充值成功，DB 余额 = ${balanceAfterTopup} 元`);
 
     // ---- [5] 普通用户自己登录 ----
@@ -156,7 +191,8 @@ async function main(): Promise<void> {
       body: JSON.stringify({ username: testUserSubject, password: USER_PASS }),
     });
     const userLoginBody = await userLoginRes.text();
-    if (userLoginRes.status !== 200) die(`普通用户登录失败：${userLoginRes.status} ${userLoginBody}`);
+    if (userLoginRes.status !== 200)
+      die(`普通用户登录失败：${userLoginRes.status} ${userLoginBody}`);
     const userCookie = cookieFromRes(userLoginRes);
     if (!userCookie) die('普通用户登录响应未带 cookie');
     const userLoginJson = JSON.parse(userLoginBody) as { ok: boolean; user: { id: number } };
@@ -177,14 +213,27 @@ async function main(): Promise<void> {
     const chatRes2 = await fetch(`${GATEWAY}/v1/chat/completions`, {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: 'deepseek-chat', messages: [{ role: 'user', content: '回复一个字：好' }], max_tokens: 5 }),
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [{ role: 'user', content: '回复一个字：好' }],
+        max_tokens: 5,
+      }),
     });
     const chatBody = await chatRes2.text();
     const duration = Date.now() - t0;
     if (chatRes2.status !== 200) die(`chat 调用失败：${chatRes2.status} ${chatBody.slice(0, 300)}`);
-    let chatJson: { choices?: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-    try { chatJson = JSON.parse(chatBody); } catch { die(`chat 响应非 JSON：${chatBody.slice(0, 200)}`); }
-    ok(`chat 成功（${duration}ms），上游 usage: prompt=${chatJson.usage?.prompt_tokens} completion=${chatJson.usage?.completion_tokens}`);
+    let chatJson: {
+      choices?: unknown;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    try {
+      chatJson = JSON.parse(chatBody);
+    } catch {
+      die(`chat 响应非 JSON：${chatBody.slice(0, 200)}`);
+    }
+    ok(
+      `chat 成功（${duration}ms），上游 usage: prompt=${chatJson.usage?.prompt_tokens} completion=${chatJson.usage?.completion_tokens}`,
+    );
     console.log(`     预扣前余额: ${beforeCall}`);
 
     // ---- [8] 等 worker 异步结算，验证完整链路 ----
@@ -195,22 +244,32 @@ async function main(): Promise<void> {
     for (let i = 0; i < 15; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       const cnt = psqlVal(`select count(*) from usage_logs where user_id=${testUserId};`);
-      if (Number(cnt) >= 1) { settled = true; break; }
+      if (Number(cnt) >= 1) {
+        settled = true;
+        break;
+      }
     }
     if (!settled) die('worker 15s 内未结算（usage_logs 无记录）');
 
-    const usageRow = psql(`select request_id, input_tokens, output_tokens, amount, payg_amount, status, billed_by from usage_logs where user_id=${testUserId} order by id desc limit 1;`);
+    const usageRow = psql(
+      `select request_id, input_tokens, output_tokens, amount, payg_amount, status, billed_by from usage_logs where user_id=${testUserId} order by id desc limit 1;`,
+    );
     const [, inTok, outTok, amount, payg, status, billedBy] = usageRow.split('|');
-    ok(`usage_logs 落库：input=${inTok} output=${outTok} amount=${amount} payg=${payg} status=${status} billed_by=${billedBy}`);
+    ok(
+      `usage_logs 落库：input=${inTok} output=${outTok} amount=${amount} payg=${payg} status=${status} billed_by=${billedBy}`,
+    );
 
-    const txRow = psql(`select type, amount, balance_before, balance_after from transactions where user_id=${testUserId} and type='consume' order by id desc limit 1;`);
+    const txRow = psql(
+      `select type, amount, balance_before, balance_after from transactions where user_id=${testUserId} and type='consume' order by id desc limit 1;`,
+    );
     if (!txRow) die('consume 流水未落库（transactions 缺失）');
     const [txType, txAmount, bBefore, bAfter] = txRow.split('|');
     ok(`transactions 流水：type=${txType} amount=${txAmount} before=${bBefore} after=${bAfter}`);
 
     const finalBalance = psqlVal(`select balance from users where id=${testUserId};`);
     const expected = balanceSub(String(beforeCall), amount);
-    if (!balanceEqual(finalBalance, expected)) die(`余额对账不符：期望 ${expected}（${beforeCall}-${amount}），实际 ${finalBalance}`);
+    if (!balanceEqual(finalBalance, expected))
+      die(`余额对账不符：期望 ${expected}（${beforeCall}-${amount}），实际 ${finalBalance}`);
     ok(`余额对账一致：${beforeCall} - ${amount} = ${finalBalance} 元`);
     // 【精度核心】重构后 amount 不再为 0（旧厘+round 会算成 0 → 资损）
     if (balanceEqual(amount, '0')) die(`amount 为 0（资损！真实 token 消耗却未计费）`);
@@ -220,7 +279,9 @@ async function main(): Promise<void> {
     ok(`Redis hold 检查通过（无残留 ${testUserId} 的 hold）`);
 
     console.log('\n🎉 全链路端到端验证通过：');
-    console.log('   管理员登录 → 开通用户 → 设密码绑卡 → 充值 → 用户登录 → 建 key → chat(真DeepSeek) → worker 结算 → usage_logs+transactions+余额全对账');
+    console.log(
+      '   管理员登录 → 开通用户 → 设密码绑卡 → 充值 → 用户登录 → 建 key → chat(真DeepSeek) → worker 结算 → usage_logs+transactions+余额全对账',
+    );
   } finally {
     // ---- [9] 清理 ----
     section('清理测试数据');

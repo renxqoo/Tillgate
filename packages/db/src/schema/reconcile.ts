@@ -1,4 +1,12 @@
-import { pgTable, bigserial, bigint, varchar, numeric, timestamp, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  bigserial,
+  bigint,
+  varchar,
+  numeric,
+  timestamp,
+  index,
+} from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
 /**

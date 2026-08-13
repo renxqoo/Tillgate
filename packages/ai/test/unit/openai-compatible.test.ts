@@ -17,9 +17,7 @@ describe('OpenAICompatibleAdapter.normalizeRequest', () => {
       { ignore: ['temperature'] },
     );
     expect(body).toEqual({ model: 'deepseek-reasoner', top_p: 1 });
-    expect(adjustments).toEqual([
-      { param: 'temperature', action: 'ignore', from: 0.7 },
-    ]);
+    expect(adjustments).toEqual([{ param: 'temperature', action: 'ignore', from: 0.7 }]);
   });
 
   it('ignore 不存在的参数：无调整', () => {
@@ -43,7 +41,9 @@ describe('OpenAICompatibleAdapter.normalizeRequest', () => {
     const rules = { clamp: { max_tokens: { max: 8192 } } };
     const over = adapter.normalizeRequest({ max_tokens: 16384 }, rules);
     expect(over.body).toEqual({ max_tokens: 8192 });
-    expect(over.adjustments).toEqual([{ param: 'max_tokens', action: 'clamp', from: 16384, to: 8192 }]);
+    expect(over.adjustments).toEqual([
+      { param: 'max_tokens', action: 'clamp', from: 16384, to: 8192 },
+    ]);
 
     const ok = adapter.normalizeRequest({ max_tokens: 1024 }, rules);
     expect(ok.adjustments).toEqual([]);
@@ -55,7 +55,10 @@ describe('OpenAICompatibleAdapter.normalizeRequest', () => {
   it('执行顺序：map 在 clamp 前（clamp 作用于最终参数名）', () => {
     const { body, adjustments } = adapter.normalizeRequest(
       { max_tokens: 100000 },
-      { map: { max_tokens: { to: 'max_completion_tokens' } }, clamp: { max_completion_tokens: { max: 8192 } } },
+      {
+        map: { max_tokens: { to: 'max_completion_tokens' } },
+        clamp: { max_completion_tokens: { max: 8192 } },
+      },
     );
     expect(body).toEqual({ max_completion_tokens: 8192 });
     expect(adjustments).toEqual([
@@ -104,7 +107,11 @@ describe('OpenAICompatibleAdapter.normalizeRequest', () => {
 describe('OpenAICompatibleAdapter.extractUsage', () => {
   it('OpenAI 风格 cached_tokens 归一化', () => {
     const usage = adapter.extractUsage({
-      usage: { prompt_tokens: 100, prompt_tokens_details: { cached_tokens: 40 }, completion_tokens: 20 },
+      usage: {
+        prompt_tokens: 100,
+        prompt_tokens_details: { cached_tokens: 40 },
+        completion_tokens: 20,
+      },
     });
     expect(usage).toMatchObject({
       inputTokens: 100,
@@ -116,7 +123,12 @@ describe('OpenAICompatibleAdapter.extractUsage', () => {
 
   it('DeepSeek 风格 cache_hit 优先', () => {
     const usage = adapter.extractUsage({
-      usage: { prompt_tokens: 100, prompt_cache_hit_tokens: 60, prompt_cache_miss_tokens: 40, completion_tokens: 20 },
+      usage: {
+        prompt_tokens: 100,
+        prompt_cache_hit_tokens: 60,
+        prompt_cache_miss_tokens: 40,
+        completion_tokens: 20,
+      },
     });
     expect(usage).toMatchObject({ inputTokens: 100, cachedInputTokens: 60 });
   });

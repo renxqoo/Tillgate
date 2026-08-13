@@ -1,37 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
 import { createDb, type Db } from '@ai-gateway/db';
 import { usageLogs, users, apiKeys, apps } from '@ai-gateway/db/schema';
-import type { ClientEnv } from '@ai-gateway/identity';
-import { panelRoutes } from './panel.js';
+import { loadRootEnvFile } from '@ai-gateway/http';
+import { usageRoutes } from './usage.js';
+import { makeClientTestApp, makeServices } from '../test/helpers.js';
 
 /**
  * GET /api/usage 来源展示：key 调用 → keyName；app 调用（jwt）→ appName。
  */
 
-const cwd = dirname(fileURLToPath(import.meta.url));
-function loadEnvFile(): void {
-  let dir = cwd;
-  for (let i = 0; i < 6; i++) {
-    const f = resolve(dir, '.env');
-    if (existsSync(f)) {
-      for (const line of readFileSync(f, 'utf-8').split('\n')) {
-        const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-        if (m && m[1] && !(m[1] in process.env)) process.env[m[1]] = m[2];
-      }
-      return;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-}
-loadEnvFile();
+loadRootEnvFile();
 
 const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway');
 
@@ -48,86 +28,69 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-function makeApp(userId: number): Hono<ClientEnv> {
-  const app = new Hono<ClientEnv>();
-  app.use('/api/*', async (c, next) => {
-    c.set('session', { userId });
-    await next();
-  });
-  app.route('/', panelRoutes(db));
-  return app;
+async function insertUsage(
+  userId: number,
+  model: string,
+  opts: { apiKeyId?: number; appId?: number; credentialType?: string } = {},
+): Promise<number> {
+  const [r] = await db
+    .insert(usageLogs)
+    .values({
+      requestId: randomUUID(),
+      userId,
+      credentialType: opts.credentialType ?? (opts.apiKeyId !== undefined ? 'key' : 'jwt'),
+      externalModel: model,
+      realModel: model,
+      coefficient: '1.000',
+      billedBy: 'payg',
+      amount: '1.00',
+      inputTokens: 10,
+      outputTokens: 5,
+      apiKeyId: opts.apiKeyId,
+      appId: opts.appId,
+    })
+    .returning({ id: usageLogs.id });
+  return r!.id;
 }
 
-describe('GET /api/usage 来源（keyName / appName）', () => {
-  it('key 调用显示 key 名称，app 调用（jwt）显示 app 名称', async () => {
+describe('GET /api/usage 来源展示（keyName / appName）', () => {
+  it('key 调用 → keyName = key 名称；app 调用 → appName = app 名称', async () => {
     if (!connected) return it.skip('no DB');
     const s = `${Date.now()}`;
     const [me] = await db
       .insert(users)
-      .values({ issuer: 'local', subject: `__us_me_${s}`, identityProvider: 'local' })
+      .values({ issuer: 'local', subject: `__usrc_me_${s}`, identityProvider: 'local' })
       .returning({ id: users.id });
-    const [key] = await db
+    const [k] = await db
       .insert(apiKeys)
-      .values({ keyHash: randomUUID(), keyPreview: 'ag_****test', userId: me.id, name: '我的Key' })
+      .values({ keyHash: randomUUID(), keyPreview: 'ag_****test', userId: me!.id, name: `测试Key_${s}` })
       .returning({ id: apiKeys.id });
-    const [app] = await db
+    const [ap] = await db
       .insert(apps)
-      .values({ appId: `app_${s}`, userId: me.id, clientId: `cid_${s}`, clientSecretHash: randomUUID(), name: '我的应用' })
+      .values({ appId: `app_${s}`, clientId: `app_${s}`, clientSecretHash: randomUUID(), userId: me!.id, name: `测试App_${s}` })
       .returning({ id: apps.id });
-
     const ids: number[] = [];
     try {
-      const [u1] = await db
-        .insert(usageLogs)
-        .values({
-          requestId: randomUUID(),
-          userId: me.id,
-          apiKeyId: key.id,
-          credentialType: 'key',
-          externalModel: 'm',
-          realModel: 'm',
-          coefficient: '1',
-          billedBy: 'payg',
-          amount: '1',
-        })
-        .returning({ id: usageLogs.id });
-      ids.push(u1.id);
-      const [u2] = await db
-        .insert(usageLogs)
-        .values({
-          requestId: randomUUID(),
-          userId: me.id,
-          appId: app.id,
-          credentialType: 'jwt',
-          externalModel: 'm',
-          realModel: 'm',
-          coefficient: '1',
-          billedBy: 'payg',
-          amount: '1',
-        })
-        .returning({ id: usageLogs.id });
-      ids.push(u2.id);
+      ids.push(await insertUsage(me!.id, 'm1', { apiKeyId: k!.id }));
+      ids.push(await insertUsage(me!.id, 'm2', { appId: ap!.id }));
 
-      const res = await makeApp(me.id).request('/api/usage?page=1&page_size=10');
+      const app = makeClientTestApp(me!.id, { '/usage': usageRoutes(makeServices(db)) });
+      const res = await app.request('/api/usage?page=1&page_size=10');
       const json = (await res.json()) as {
-        list: Array<{ id: number; credentialType: string; keyName: string | null; appName: string | null }>;
+        list: Array<{ id: number; keyName: string | null; appName: string | null }>;
       };
-      const r1 = json.list.find((r) => r.id === u1.id);
-      const r2 = json.list.find((r) => r.id === u2.id);
-      // eslint-disable-next-line no-console
-      console.log('[usage-source] key 调用 →', r1?.credentialType, r1?.keyName, '| app 调用 →', r2?.credentialType, r2?.appName);
 
-      expect(r1?.credentialType).toBe('key');
-      expect(r1?.keyName).toBe('我的Key');
-      expect(r1?.appName).toBeNull();
-      expect(r2?.credentialType).toBe('jwt');
-      expect(r2?.appName).toBe('我的应用');
-      expect(r2?.keyName).toBeNull();
+      const keyRow = json.list.find((r) => r.id === ids[0]);
+      const appRow = json.list.find((r) => r.id === ids[1]);
+      expect(keyRow?.keyName).toBe(`测试Key_${s}`);
+      expect(keyRow?.appName).toBeNull();
+      expect(appRow?.appName).toBe(`测试App_${s}`);
+      expect(appRow?.keyName).toBeNull();
     } finally {
       for (const id of ids) await db.delete(usageLogs).where(eq(usageLogs.id, id)).catch(() => {});
-      await db.delete(apiKeys).where(eq(apiKeys.id, key.id)).catch(() => {});
-      await db.delete(apps).where(eq(apps.id, app.id)).catch(() => {});
-      await db.delete(users).where(eq(users.id, me.id)).catch(() => {});
+      await db.delete(apiKeys).where(eq(apiKeys.id, k!.id)).catch(() => {});
+      await db.delete(apps).where(eq(apps.id, ap!.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, me!.id)).catch(() => {});
     }
   });
 });

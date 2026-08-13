@@ -64,14 +64,20 @@ describe('relay-stream（http 上游）', () => {
       setTimeout(() => {
         res.write(sseFrame(JSON.stringify({ choices: [{ delta: { content: '好' } }] })));
         res.write(sseFrame(JSON.stringify({ usage: { prompt_tokens: 5, completion_tokens: 2 } })));
+        res.write(sseFrame(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })));
+        res.write(sseFrame('[DONE]'));
         res.end();
       }, 20);
     });
     try {
-      const res = await fetchUpstream(server.baseUrl + '/v1/chat/completions', { method: 'POST' }, {
-        connectMs: 2000,
-        allowLocal: true,
-      });
+      const res = await fetchUpstream(
+        server.baseUrl + '/v1/chat/completions',
+        { method: 'POST' },
+        {
+          connectMs: 2000,
+          allowLocal: true,
+        },
+      );
       expect(res.status).toBe(200);
       const { text, events } = await runRelay(res.body!, {
         heartbeatIdleMs: 10_000,
@@ -81,6 +87,7 @@ describe('relay-stream（http 上游）', () => {
       expect(text).toContain('你');
       expect(text).toContain('好');
       expect(text).toContain('prompt_tokens');
+      expect(text).toContain('[DONE]');
       // 事件序列：无 stream_error / aborted，done 最后携带 usage
       expect(events.filter((e) => e.type === 'stream_error')).toHaveLength(0);
       expect(events.filter((e) => e.type === 'aborted')).toHaveLength(0);
@@ -100,13 +107,18 @@ describe('relay-stream（http 上游）', () => {
       setTimeout(() => res.destroy(), 30); // 模拟 TCP 半段断开
     });
     try {
-      const res = await fetchUpstream(server.baseUrl + '/v1/chat/completions', { method: 'POST' }, {
-        connectMs: 2000,
-        allowLocal: true,
-      });
+      const res = await fetchUpstream(
+        server.baseUrl + '/v1/chat/completions',
+        { method: 'POST' },
+        {
+          connectMs: 2000,
+          allowLocal: true,
+        },
+      );
       const { text, events } = await runRelay(res.body!, FAST_OPTS);
       // 错误帧转换：客户端能看到合成错误帧（OpenAI 兼容）
       expect(text).toContain('upstream_disconnected');
+      expect(text).toContain('[DONE]');
       const reasons = events
         .filter((e) => e.type === 'aborted')
         .map((e) => (e as Extract<RelayStreamEvent, { type: 'aborted' }>).reason);
@@ -127,6 +139,7 @@ describe('relay-stream（mock 流）', () => {
     mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'a' } }] })));
     await wait(160); // 静默 > 心跳阈值，应注入心跳
     mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'b' } }] })));
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })));
     mock.close();
     const { text, events } = await pending;
     expect(text).toContain(': keep-alive');
@@ -135,11 +148,42 @@ describe('relay-stream（mock 流）', () => {
     out.consume(enc(text));
     expect(out.atBoundary()).toBe(true);
     const frames = text.match(/data: \{/g);
-    expect(frames).toHaveLength(2);
+    expect(frames).toHaveLength(3);
+    expect(text).toContain('[DONE]');
     // 正常结束：done 无错误
     const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
     expect(done.type).toBe('done');
     expect(done.errorFrame).toBeNull();
+  });
+
+  it('收到 finish_reason 但缺 DONE 时只补终止哨兵并保持成功', async () => {
+    const mock = controllableStream();
+    const pending = runRelay(mock.stream, FAST_OPTS);
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'a' } }] })));
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })));
+    mock.close();
+    const { text, events } = await pending;
+    expect(text.match(/data: \[DONE\]/g)).toHaveLength(1);
+    expect(events.some((event) => event.type === 'aborted')).toBe(false);
+    const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
+    expect(done.terminated).toBeUndefined();
+  });
+
+  it('内容帧后 clean EOF 是截断：发结构化错误并以 DONE 收口', async () => {
+    const mock = controllableStream();
+    const pending = runRelay(mock.stream, FAST_OPTS);
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'partial' } }] })));
+    mock.close();
+    const { text, events } = await pending;
+    expect(text).toContain('upstream_stream_truncated');
+    expect(text).toContain('[DONE]');
+    const aborted = events.find((event) => event.type === 'aborted') as Extract<
+      RelayStreamEvent,
+      { type: 'aborted' }
+    >;
+    expect(aborted.reason).toBe('upstream_truncated');
+    const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
+    expect(done.terminated).toBe('upstream_truncated');
   });
 
   it('心跳不拆半截事件：事件中途静默也不注入', async () => {
@@ -162,9 +206,10 @@ describe('relay-stream（mock 流）', () => {
     mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'a' } }] })));
     const { text, events } = await pending; // inactivity 触发后流会结束
     expect(text).toContain('stream_inactivity_timeout');
-    const aborted = events.find(
-      (e) => e.type === 'aborted',
-    ) as Extract<RelayStreamEvent, { type: 'aborted' }>;
+    const aborted = events.find((e) => e.type === 'aborted') as Extract<
+      RelayStreamEvent,
+      { type: 'aborted' }
+    >;
     expect(aborted.reason).toBe('inactivity');
     const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
     expect(done.errorFrame?.code).toBe('stream_inactivity_timeout');
@@ -182,9 +227,10 @@ describe('relay-stream（mock 流）', () => {
     mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'b' } }] })));
     await reader.read();
     await reader.cancel('client gone'); // 客户端断开
-    const aborted = events.find(
-      (e) => e.type === 'aborted',
-    ) as Extract<RelayStreamEvent, { type: 'aborted' }>;
+    const aborted = events.find((e) => e.type === 'aborted') as Extract<
+      RelayStreamEvent,
+      { type: 'aborted' }
+    >;
     expect(aborted.reason).toBe('client_disconnect');
     expect(events.at(-1)?.type).toBe('done'); // 部分 usage 仍可结算
     expect(mock.cancelled).toBe(true);
@@ -193,17 +239,22 @@ describe('relay-stream（mock 流）', () => {
   it('上游错误帧：原样透传 + stream_error 事件 + done 携带错误帧', async () => {
     const mock = controllableStream();
     const pending = runRelay(mock.stream, FAST_OPTS);
-    mock.enqueue(sseFrame(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } })));
+    mock.enqueue(
+      sseFrame(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } })),
+    );
     mock.enqueue(sseFrame(JSON.stringify({ usage: { prompt_tokens: 3 } })));
+    mock.enqueue(sseFrame('[DONE]'));
     mock.close();
     const { text, events } = await pending;
     expect(text).toContain('slow down'); // 透传
-    const se = events.find(
-      (e) => e.type === 'stream_error',
-    ) as Extract<RelayStreamEvent, { type: 'stream_error' }>;
+    const se = events.find((e) => e.type === 'stream_error') as Extract<
+      RelayStreamEvent,
+      { type: 'stream_error' }
+    >;
     expect(se.frame.code).toBe('rate_limited');
     const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
     expect(done.errorFrame?.code).toBe('rate_limited');
+    expect(done.terminated).toBe('upstream_error');
     expect((done.usage as { prompt_tokens: number }).prompt_tokens).toBe(3);
   });
 });

@@ -28,10 +28,12 @@ for (let dir = cwd, i = 0; i < 6; i++) {
   dir = parent;
 }
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'e2e-jwt-secret-0123456789abcdef';
-process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? 'e2e-enc-9a4f2c7d8b1e5a3f6c0d4b2e8a7f1c9d';
+process.env.ENCRYPTION_KEY =
+  process.env.ENCRYPTION_KEY ?? 'e2e-enc-9a4f2c7d8b1e5a3f6c0d4b2e8a7f1c9d';
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'development';
 
-const DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
+const DATABASE_URL =
+  process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
 // 动态 import（让生产代码读 process.env）
@@ -41,7 +43,11 @@ const { Redis } = await import('ioredis');
 const { serve } = await import('@hono/node-server');
 
 const db = createDb(DATABASE_URL);
-const redis = new Redis(REDIS_URL, { retryStrategy: () => null, lazyConnect: true, maxRetriesPerRequest: null });
+const redis = new Redis(REDIS_URL, {
+  retryStrategy: () => null,
+  lazyConnect: true,
+  maxRetriesPerRequest: null,
+});
 await redis.connect();
 
 const stamp = Date.now();
@@ -50,7 +56,9 @@ const cleanup = async (): Promise<void> => {
   for (const fn of created.toReversed()) await fn().catch(() => {});
 };
 
-function startHono(fetch: (req: Request) => Promise<Response>): Promise<{ port: number; close: () => Promise<void> }> {
+function startHono(
+  fetch: (req: Request) => Promise<Response>,
+): Promise<{ port: number; close: () => Promise<void> }> {
   // 用 @hono/node-server 的 serve（与生产入口同款），绑定随机端口隔离测试
   return new Promise((resolveFn, rejectFn) => {
     let server: ReturnType<typeof serve> extends infer S ? S : never;
@@ -67,7 +75,11 @@ function startHono(fetch: (req: Request) => Promise<Response>): Promise<{ port: 
 let step = 0;
 const section = (t: string): void => console.log(`\n━━━ [${++step}] ${t} ━━━`);
 const ok = (m: string): void => console.log(`  ✅ ${m}`);
-const fail = (m: string): never => { console.error(`  ❌ ${m}`); process.exitCode = 1; throw new Error(m); };
+const fail = (m: string): never => {
+  console.error(`  ❌ ${m}`);
+  process.exitCode = 1;
+  throw new Error(m);
+};
 
 async function hashPassword(pw: string): Promise<string> {
   const { scryptSync, randomBytes } = await import('node:crypto');
@@ -92,14 +104,29 @@ async function verifyBug2(): Promise<void> {
   const targetSubject = `e2e-target-${stamp}`;
   const adminHash = await hashPassword('AdminPass1');
   const targetHash = await hashPassword('TargetPass1');
-  const [admin] = await db.insert(dbSchema.users).values({
-    issuer: 'local', subject: adminSubject, identityProvider: 'local', displayName: adminSubject,
-    role: 1, status: 0, passwordHash: adminHash,
-  }).returning();
-  const [target] = await db.insert(dbSchema.users).values({
-    issuer: 'local', subject: targetSubject, identityProvider: 'local', displayName: targetSubject,
-    role: 0, status: 0, passwordHash: targetHash, balance: 0,
-  }).returning();
+  const [admin] = await db
+    .insert(dbSchema.users)
+    .values({
+      issuer: 'local',
+      subject: adminSubject,
+      identityProvider: 'local',
+      displayName: adminSubject,
+      status: 0,
+      passwordHash: adminHash,
+    })
+    .returning();
+  const [target] = await db
+    .insert(dbSchema.users)
+    .values({
+      issuer: 'local',
+      subject: targetSubject,
+      identityProvider: 'local',
+      displayName: targetSubject,
+      status: 0,
+      passwordHash: targetHash,
+      balance: 0,
+    })
+    .returning();
   created.push(async () => {
     await db.delete(dbSchema.users).where(eq(dbSchema.users.id, admin!.id));
     await db.delete(dbSchema.users).where(eq(dbSchema.users.id, target!.id));
@@ -117,7 +144,7 @@ async function verifyBug2(): Promise<void> {
       body: JSON.stringify({ displayName: 'changed-e2e' }),
     });
     if (res.status !== 200) fail(`PATCH 应返回 200，实际 ${res.status}`);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     if (body.passwordHash !== undefined) fail(`响应泄露 passwordHash: ${body.passwordHash}`);
     if (body.password_hash !== undefined) fail(`响应泄露 password_hash`);
     const serialized = JSON.stringify(body);
@@ -133,25 +160,68 @@ async function verifyBug2(): Promise<void> {
 // ============================================================
 async function verifyBug4(): Promise<void> {
   section('Bug 4 端到端：embeddings 第一个渠道 dead_credential → 换渠道成功');
-  const { createApp } = await import('../src/index.ts');
-  const { encrypt } = await import('../src/lib/crypto.ts');
-  const { BillingService } = await import('../src/lib/billing.ts');
-  const { RateLimiter } = await import('../src/lib/rate-limit.ts');
-  const { MeterProducer } = await import('../src/lib/meter.ts');
+  const { createApp } = await import('../src/app.ts');
+  const { encrypt, loadGatewayEnv, createLogger } = await import('@ai-gateway/core');
+  const { RateLimiter } = await import('../src/services/billing/rate-limit-service.ts');
+  const { BillingDispatcher } = await import('../src/services/billing/billing-dispatcher.ts');
 
   const externalModel = `e2e-emb-dead-${stamp}`;
   const realModel = externalModel + '-real';
-  const userId = (await db.insert(dbSchema.users).values({
-    issuer: 'test', subject: `e2e-emb-user-${stamp}`, identityProvider: 'local',
-    displayName: 'E2EEmb', balance: 1_000_000,
-  }).returning())[0]!.id;
+  const userId = (
+    await db
+      .insert(dbSchema.users)
+      .values({
+        issuer: 'test',
+        subject: `e2e-emb-user-${stamp}`,
+        identityProvider: 'local',
+        displayName: 'E2EEmb',
+        balance: 1_000_000,
+      })
+      .returning()
+  )[0]!.id;
   const token = 'ag_' + randomUUID().replace(/-/g, '');
   const keyHash = createHash('sha256').update(token).digest('hex');
-  await db.insert(dbSchema.apiKeys).values({ keyHash, keyPreview: 'ag_****', userId, name: 'e2e-emb', status: 0 });
-  const [prov] = await db.insert(dbSchema.providers).values({ name: `e2e-prov-${stamp}`, protocol: 'openai_compatible', baseUrl: 'http://localhost:9999', status: 0 }).returning();
-  const [ch1] = await db.insert(dbSchema.channels).values({ name: `e2e-ch1-${stamp}`, providerId: prov!.id, apiKeyEnc: encrypt('sk-dead', process.env.ENCRYPTION_KEY!), status: 0 }).returning();
-  const [ch2] = await db.insert(dbSchema.channels).values({ name: `e2e-ch2-${stamp}`, providerId: prov!.id, apiKeyEnc: encrypt('sk-good', process.env.ENCRYPTION_KEY!), status: 0 }).returning();
-  const [m] = await db.insert(dbSchema.modelMappings).values({ externalName: externalModel, realModel, status: 0, inputPrice: 1_000_000, outputPrice: 0, cacheInputPrice: 100_000 }).returning();
+  await db
+    .insert(dbSchema.apiKeys)
+    .values({ keyHash, keyPreview: 'ag_****', userId, name: 'e2e-emb', status: 0 });
+  const [prov] = await db
+    .insert(dbSchema.providers)
+    .values({
+      name: `e2e-prov-${stamp}`,
+      protocol: 'openai_compatible',
+      baseUrl: 'http://localhost:9999',
+      status: 0,
+    })
+    .returning();
+  const [ch1] = await db
+    .insert(dbSchema.channels)
+    .values({
+      name: `e2e-ch1-${stamp}`,
+      providerId: prov!.id,
+      apiKeyEnc: encrypt('sk-dead', process.env.ENCRYPTION_KEY!),
+      status: 0,
+    })
+    .returning();
+  const [ch2] = await db
+    .insert(dbSchema.channels)
+    .values({
+      name: `e2e-ch2-${stamp}`,
+      providerId: prov!.id,
+      apiKeyEnc: encrypt('sk-good', process.env.ENCRYPTION_KEY!),
+      status: 0,
+    })
+    .returning();
+  const [m] = await db
+    .insert(dbSchema.modelMappings)
+    .values({
+      externalName: externalModel,
+      realModel,
+      status: 0,
+      inputPrice: 1_000_000,
+      outputPrice: 0,
+      cacheInputPrice: 100_000,
+    })
+    .returning();
   await db.insert(dbSchema.modelChannels).values([
     { mappingId: m!.id, channelId: ch1!.id, priority: 0, weight: 1 },
     { mappingId: m!.id, channelId: ch2!.id, priority: 0, weight: 1 },
@@ -172,18 +242,47 @@ async function verifyBug4(): Promise<void> {
   const ai = {
     chat: async () => {
       calls += 1;
-      if (calls === 1) return { status: 'error', error: { code: 'dead_credential', message: 'invalid', retryable: false, circuitTrip: false }, durationMs: 5 };
-      return { status: 'success', usage: { inputTokens: 5, cachedInputTokens: 0, outputTokens: 0, estimated: false }, body: { object: 'list', data: [{ embedding: [0.1], index: 0 }], model: realModel, usage: { prompt_tokens: 5, total_tokens: 5 } }, durationMs: 10 };
+      if (calls === 1)
+        return {
+          status: 'error',
+          error: {
+            code: 'dead_credential',
+            message: 'invalid',
+            retryable: false,
+            circuitTrip: false,
+          },
+          durationMs: 5,
+        };
+      return {
+        status: 'success',
+        usage: { inputTokens: 5, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+        body: {
+          object: 'list',
+          data: [{ embedding: [0.1], index: 0 }],
+          model: realModel,
+          usage: { prompt_tokens: 5, total_tokens: 5 },
+        },
+        durationMs: 10,
+      };
     },
-    chatStream: async () => { throw new Error('not used'); },
+    chatStream: async () => {
+      throw new Error('not used');
+    },
     probe: async () => true,
     onEvent: () => () => {},
   };
 
-  const billing = new BillingService(redis, db, 600_000);
   const rateLimiter = new RateLimiter(redis);
-  const meter = new MeterProducer(redis);
-  const app = createApp(db, ai as never, billing, rateLimiter, meter, redis);
+  const billingDispatcher = new BillingDispatcher(redis);
+  const app = createApp({
+    db,
+    ai: ai as never,
+    redis,
+    env: loadGatewayEnv(),
+    logger: createLogger({ level: 'error' }),
+    billingDispatcher,
+    rateLimiter,
+  });
   const { port, close } = await startHono(app.fetch);
   try {
     const res = await fetch(`http://127.0.0.1:${port}/v1/embeddings`, {
@@ -191,7 +290,8 @@ async function verifyBug4(): Promise<void> {
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model: externalModel, input: 'hello' }),
     });
-    if (res.status !== 200) fail(`embeddings 遇 dead_credential 应换渠道返回 200，实际 ${res.status}`);
+    if (res.status !== 200)
+      fail(`embeddings 遇 dead_credential 应换渠道返回 200，实际 ${res.status}`);
     if (calls < 2) fail(`应至少调用两个渠道，实际 ${calls}`);
     ok(`embeddings 换渠道成功（status=200，ai.chat 调用 ${calls} 次：坏渠道→好渠道）`);
   } finally {

@@ -15,7 +15,14 @@ import { startServer } from './helpers.js';
 
 function makeAi(): Ai {
   return createAi({
-    retry: { maxAttempts: 1, baseDelayMs: 5, maxDelayMs: 10, jitterRatio: 0, deadlineMs: 5000, emptyCompletionRetries: 0 },
+    retry: {
+      maxAttempts: 1,
+      baseDelayMs: 5,
+      maxDelayMs: 10,
+      jitterRatio: 0,
+      deadlineMs: 5000,
+      emptyCompletionRetries: 0,
+    },
     breaker: { windowMs: 60_000, failureThreshold: 99, cooldownMs: 300_000, halfOpenProbe: true },
     stream: { heartbeatIdleMs: 1000, inactivityTimeoutMs: 5000 },
     timeout: { connectMs: 2000, totalMs: 5000 },
@@ -25,7 +32,11 @@ function makeAi(): Ai {
   });
 }
 
-const channel = (baseUrl: string): ChannelDesc => ({ baseUrl, apiKey: 'sk-test', protocol: 'openai-compatible' });
+const channel = (baseUrl: string): ChannelDesc => ({
+  baseUrl,
+  apiKey: 'sk-test',
+  protocol: 'openai-compatible',
+});
 
 const OK_JSON = JSON.stringify({
   id: 'chatcmpl-1',
@@ -33,11 +44,16 @@ const OK_JSON = JSON.stringify({
   usage: { prompt_tokens: 10, completion_tokens: 5 },
 });
 
-async function captureUpstreamModel(): Promise<{ server: Awaited<ReturnType<typeof startServer>>; getModel: () => string | undefined }> {
+async function captureUpstreamModel(): Promise<{
+  server: Awaited<ReturnType<typeof startServer>>;
+  getModel: () => string | undefined;
+}> {
   let receivedModel: string | undefined;
   const server = await startServer((req, res) => {
     let raw = '';
-    req.on('data', (c) => { raw += c; });
+    req.on('data', (c) => {
+      raw += c;
+    });
     req.on('end', () => {
       try {
         receivedModel = (JSON.parse(raw) as Record<string, unknown>).model as string;
@@ -60,7 +76,11 @@ describe('model 重写复现', () => {
         // 客户端发出的对外名
         request: { model: 'deepseek-v4-pro', messages: [{ role: 'user', content: 'hi' }] },
         // 映射后的上游真实名
-        ctx: { requestId: 'r-rewrite', model: 'deepseek-chat', providerName: 'deepseek' } as RequestCtx,
+        ctx: {
+          requestId: 'r-rewrite',
+          model: 'deepseek-chat',
+          providerName: 'deepseek',
+        } as RequestCtx,
       });
       // eslint-disable-next-line no-console
       console.log('[场景A] 上游实际收到 model =', getModel(), '| result.status =', result.status);
@@ -77,7 +97,11 @@ describe('model 重写复现', () => {
       await makeAi().chat({
         channel: channel(server.baseUrl),
         request: { model: 'deepseek-v4-pro', messages: [{ role: 'user', content: 'hi' }] },
-        ctx: { requestId: 'r-same', model: 'deepseek-v4-pro', providerName: 'deepseek' } as RequestCtx,
+        ctx: {
+          requestId: 'r-same',
+          model: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+        } as RequestCtx,
       });
       // eslint-disable-next-line no-console
       console.log('[场景B] 上游实际收到 model =', getModel());
@@ -92,8 +116,16 @@ describe('model 重写复现', () => {
     try {
       const handle = await makeAi().chatStream({
         channel: channel(server.baseUrl),
-        request: { model: 'deepseek-v4-pro', stream: true, messages: [{ role: 'user', content: 'hi' }] },
-        ctx: { requestId: 'r-rewrite-stream', model: 'deepseek-chat', providerName: 'deepseek' } as RequestCtx,
+        request: {
+          model: 'deepseek-v4-pro',
+          stream: true,
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        ctx: {
+          requestId: 'r-rewrite-stream',
+          model: 'deepseek-chat',
+          providerName: 'deepseek',
+        } as RequestCtx,
       });
       const reader = handle.stream.getReader();
       // 读完整流，触发上游请求

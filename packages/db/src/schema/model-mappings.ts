@@ -14,7 +14,7 @@ import { channels } from './channels.js';
 
 /**
  * model_mappings — 模型映射（对外模型名 → 真实模型，data-model.md §3.6）
- * 定价：input/output/cache_input 均为**官方价**（厘/百万 token），用户价 = 官方价 × 费率卡系数
+ * 定价：input/output/cache_input 均为**官方价**（元/百万 token），用户价 = 官方价 × 费率卡系数
  */
 export const modelMappings = pgTable(
   'model_mappings',
@@ -29,7 +29,9 @@ export const modelMappings = pgTable(
     /** 官方输出单价 */
     outputPrice: numeric('output_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 官方缓存输入单价（缓存命中计价；不启用缓存计费则与输入价同值） */
-    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** fallback 模型链（对外模型名数组，配置启用；默认空 = 不降级） */
     fallbackModels: jsonb('fallback_models').$type<string[]>(),
     /**
@@ -42,6 +44,8 @@ export const modelMappings = pgTable(
       map?: Record<string, { to: string }>;
       unknown?: 'passthrough' | 'drop';
     }>(),
+    /** 版本化多模态足额授权策略；最终结算仍只使用供应商可信 usage。 */
+    billingPolicy: jsonb('billing_policy').$type<Record<string, unknown>>(),
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

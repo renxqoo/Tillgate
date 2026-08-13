@@ -1,20 +1,35 @@
-import { CoinsIcon } from "lucide-react";
+import { CoinsIcon } from 'lucide-react';
 
-import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ai-gateway/ui/components/ui/table";
-import { ApiError, apiFetch, fmtBalance, fmtDateTime, type Paginated, type TransactionRow } from "@ai-gateway/api-client";
+import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@ai-gateway/ui/components/ui/table';
+import {
+  ApiError,
+  apiFetch,
+  fmtBalance,
+  fmtDateTime,
+  formatMoney,
+  type Paginated,
+  type TransactionRow,
+} from '@ai-gateway/api-client';
 
-import Link from "next/link";
-import { Button } from "@ai-gateway/ui/components/ui/button";
+import Link from 'next/link';
+import { Button } from '@ai-gateway/ui/components/ui/button';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 const TYPE_LABEL: Record<string, string> = {
-  redeem: "充值",
-  gift: "赠送",
-  consume: "消费",
-  refund: "退款",
-  adjust: "调账",
+  redeem: '充值',
+  gift: '赠送',
+  consume: '消费',
+  refund: '退款',
+  adjust: '调账',
 };
 
 interface PageProps {
@@ -36,7 +51,7 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
     rows = data.list;
     total = data.total;
   } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
+    error = e instanceof ApiError ? e.message : '加载失败';
   }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -63,7 +78,7 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
                   <TableHead>类型</TableHead>
                   <TableHead>说明</TableHead>
                   <TableHead className="text-right">金额（元）</TableHead>
-                  <TableHead className="text-right">余额后</TableHead>
+                  <TableHead className="text-right">已结算余额后</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -80,14 +95,20 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
                         {fmtDateTime(t.createdAt)}
                       </TableCell>
                       <TableCell>{TYPE_LABEL[t.type] ?? t.type}</TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{t.remark ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {t.remark ?? '—'}
+                      </TableCell>
                       <TableCell
                         className={
-                          "text-right tabular-nums font-medium " +
-                          (t.amount.startsWith("-") ? "text-destructive" : "text-emerald-600 dark:text-emerald-400")
+                          'text-right tabular-nums font-medium ' +
+                          (t.amount.startsWith('-')
+                            ? 'text-destructive'
+                            : 'text-emerald-600 dark:text-emerald-400')
                         }
                       >
-                        {t.amount.startsWith("-") ? t.amount : `+${t.amount}`}
+                        {t.amount.startsWith('-')
+                          ? formatMoney(t.amount)
+                          : `+${formatMoney(t.amount)}`}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {fmtBalance(t.balanceAfter)}

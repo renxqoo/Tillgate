@@ -14,18 +14,26 @@ export interface NormalizeOptions {
 }
 
 function num(v: unknown): number | undefined {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+  if (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0) return v;
+  if (typeof v === 'string' && /^(0|[1-9]\d*)$/.test(v)) {
+    const parsed = Number(v);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
   return undefined;
+}
+
+function compatible(a: number | undefined, b: number | undefined): number | undefined | null {
+  if (a !== undefined && b !== undefined && a !== b) return null;
+  return a ?? b;
 }
 
 export function normalizeUsage(usageRaw: unknown): Usage | null {
   const u = asRecord(usageRaw);
   if (!u) return null;
 
-  const promptTokens = num(u.prompt_tokens);
-  const completionTokens = num(u.completion_tokens);
-  if (promptTokens === undefined && completionTokens === undefined) return null;
+  const input = compatible(num(u.prompt_tokens), num(u.input_tokens));
+  const output = compatible(num(u.completion_tokens), num(u.output_tokens));
+  if (input === null || output === null) return null;
 
   // DeepSeek 风格优先（同时存在时以 cache_hit/cache_miss 为准）
   const hit = num(u.prompt_cache_hit_tokens);
@@ -34,16 +42,29 @@ export function normalizeUsage(usageRaw: unknown): Usage | null {
   if (hit !== undefined || miss !== undefined) {
     cached = hit ?? 0;
   } else {
-    const details = asRecord(u.prompt_tokens_details);
-    cached = details ? (num(details.cached_tokens) ?? 0) : 0;
+    const promptDetails = asRecord(u.prompt_tokens_details);
+    const inputDetails = asRecord(u.input_tokens_details);
+    const detailCached = compatible(
+      promptDetails ? num(promptDetails.cached_tokens) : undefined,
+      inputDetails ? num(inputDetails.cached_tokens) : undefined,
+    );
+    if (detailCached === null) return null;
+    cached = detailCached ?? 0;
   }
 
-  // 加括号消除歧义：?? 优先级低于 +，原写法正确但易误读
-  const inputTokens = promptTokens ?? ((hit ?? 0) + (miss ?? 0));
+  const reconstructedInput =
+    hit !== undefined || miss !== undefined ? (hit ?? 0) + (miss ?? 0) : undefined;
+  if (!Number.isSafeInteger(reconstructedInput ?? 0)) return null;
+  const inputTokens = compatible(input, reconstructedInput);
+  if (inputTokens === null || inputTokens === undefined || cached > inputTokens) return null;
+  const outputTokens = output ?? 0;
+  const total = num(u.total_tokens);
+  if (total !== undefined && total !== inputTokens + outputTokens) return null;
+  if (inputTokens === 0 && outputTokens === 0) return null;
   return {
     inputTokens,
     cachedInputTokens: cached,
-    outputTokens: completionTokens ?? 0,
+    outputTokens,
     estimated: false,
     raw: usageRaw,
   };
@@ -77,6 +98,14 @@ export function extractRequestChars(body: unknown): number {
           if (p && typeof p.text === 'string') n += p.text.length;
         }
       }
+    }
+  }
+  // embeddings：input 可以是单字符串或字符串数组。
+  if (typeof rec.input === 'string') {
+    n += rec.input.length;
+  } else if (Array.isArray(rec.input)) {
+    for (const input of rec.input) {
+      if (typeof input === 'string') n += input.length;
     }
   }
   // tools 数组：企业 Agent 工具调用的主要输入 token 消耗源，纳入估算避免显著少计

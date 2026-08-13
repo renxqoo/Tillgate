@@ -20,17 +20,33 @@ export interface RelayStreamOptions {
   heartbeatIdleMs: number;
   inactivityTimeoutMs: number;
   checkIntervalMs?: number;
+  signal?: AbortSignal;
 }
 
 export type RelayStreamEvent =
   | { type: 'stream_error'; frame: StreamError }
-  | { type: 'aborted'; reason: 'client_disconnect' | 'inactivity' | 'upstream_disconnected' }
+  | {
+      type: 'aborted';
+      reason:
+        | 'client_disconnect'
+        | 'request_cancelled'
+        | 'inactivity'
+        | 'upstream_error'
+        | 'upstream_disconnected'
+        | 'upstream_truncated';
+    }
   | {
       type: 'done';
       usage: unknown | null;
       errorFrame: StreamError | null;
       bytesRelayed: number;
-      terminated?: 'client_disconnect' | 'inactivity' | 'upstream_disconnected';
+      terminated?:
+        | 'client_disconnect'
+        | 'request_cancelled'
+        | 'inactivity'
+        | 'upstream_error'
+        | 'upstream_disconnected'
+        | 'upstream_truncated';
     };
 
 export interface RelayStreamHandle {
@@ -43,7 +59,8 @@ export function relayStream(
   options: RelayStreamOptions,
 ): RelayStreamHandle {
   const { heartbeatIdleMs, inactivityTimeoutMs } = options;
-  const checkIntervalMs = options.checkIntervalMs ?? Math.min(250, Math.max(10, heartbeatIdleMs / 2));
+  const checkIntervalMs =
+    options.checkIntervalMs ?? Math.min(250, Math.max(10, heartbeatIdleMs / 2));
   const listeners: Array<(e: RelayStreamEvent) => void> = [];
   const emit = (e: RelayStreamEvent): void => {
     for (const l of listeners) {
@@ -67,32 +84,40 @@ export function relayStream(
   // 控制器引用（transform.start 里赋值），供定时器/错误帧注入用
   let tCtrl: TransformStreamDefaultController<Uint8Array> | null = null;
 
-  const finishOk = (): void => {
+  const finishOk = (normalizedMissingDone = false): void => {
     if (finished) return;
     finished = true;
     if (timer !== null) clearInterval(timer);
+    const errorFrame = scanner.getErrorFrame();
+    if (errorFrame && !normalizedMissingDone) emit({ type: 'aborted', reason: 'upstream_error' });
     emit({
       type: 'done',
       usage: scanner.getUsage(),
-      errorFrame: scanner.getErrorFrame(),
+      errorFrame,
       bytesRelayed,
-      terminated: undefined,
+      terminated: errorFrame && !normalizedMissingDone ? 'upstream_error' : undefined,
     });
   };
 
   const failWithErrorFrame = (
     frame: StreamError,
-    reason: 'inactivity' | 'upstream_disconnected',
+    reason: 'request_cancelled' | 'inactivity' | 'upstream_disconnected' | 'upstream_truncated',
+    controller: TransformStreamDefaultController<Uint8Array> | null = tCtrl,
+    terminate = true,
   ): void => {
     if (finished) return;
     finished = true;
     if (timer !== null) clearInterval(timer);
+    emit({ type: 'stream_error', frame });
     emit({ type: 'aborted', reason });
-    if (tCtrl) {
+    if (controller) {
       try {
-        tCtrl.enqueue(
-          enc(`data: ${JSON.stringify({ error: { code: frame.code, type: frame.type, message: frame.detail } })}\n\n`),
+        controller.enqueue(
+          enc(
+            `data: ${JSON.stringify({ error: { code: frame.code, type: frame.type, message: frame.detail } })}\n\n`,
+          ),
         );
+        controller.enqueue(enc('data: [DONE]\n\n'));
       } catch {
         /* 已关闭 */
       }
@@ -104,9 +129,9 @@ export function relayStream(
       bytesRelayed,
       terminated: reason,
     });
-    if (tCtrl) {
+    if (terminate && controller) {
       try {
-        tCtrl.terminate();
+        controller.terminate();
       } catch {
         /* 已终止 */
       }
@@ -121,7 +146,10 @@ export function relayStream(
         const now = Date.now();
         if (lastDataAt > 0 && now - lastDataAt >= inactivityTimeoutMs) {
           failWithErrorFrame(
-            { code: 'stream_inactivity_timeout', detail: `no upstream data for ${inactivityTimeoutMs}ms` },
+            {
+              code: 'stream_inactivity_timeout',
+              detail: `no upstream data for ${inactivityTimeoutMs}ms`,
+            },
             'inactivity',
           );
           return;
@@ -144,9 +172,28 @@ export function relayStream(
       bytesRelayed += chunk.byteLength;
       lastWriteAt = Date.now();
     },
-    flush() {
-      // 上游正常 EOF → flush 触发（pipeThrough 自动关闭 writable → flush）
-      finishOk();
+    flush(ctrl) {
+      // `[DONE]` 是成功的权威边界。只有 finish_reason 到达但尾哨兵缺失时可安全补齐；
+      // 既无终止帧又无哨兵的 clean EOF 仍是截断，不能伪装成成功。
+      if (scanner.hasDone()) {
+        finishOk();
+      } else if (scanner.hasTerminalFrame() && !scanner.getErrorFrame()) {
+        ctrl.enqueue(enc('data: [DONE]\n\n'));
+        finishOk(true);
+      } else if (scanner.getErrorFrame()) {
+        ctrl.enqueue(enc('data: [DONE]\n\n'));
+        finishOk();
+      } else {
+        failWithErrorFrame(
+          {
+            code: 'upstream_stream_truncated',
+            detail: 'upstream stream ended before a terminal event',
+          },
+          'upstream_truncated',
+          ctrl,
+          false,
+        );
+      }
     },
     cancel() {
       // 客户端断开（readable 端被 cancel）
@@ -168,32 +215,22 @@ export function relayStream(
   // pipeTo：上游 → transform.writable
   // preventAbort: 上游错误时不自动 abort writable（让我们手动注入错误帧后再关闭）
   // preventCancel: 不自动 cancel 上游（已在 cancel 回调里处理客户端断开）
-  const pipePromise = upstream.pipeTo(transform.writable, {
-    preventAbort: true,
-    preventCancel: false,
-  }).catch(async () => {
-    // 上游读取错误 → 注入错误帧（通过 controller，pipeTo 已结束但 writable 未 abort）
-    if (!finished && tCtrl) {
-      try {
-        tCtrl.enqueue(
-          enc(`data: ${JSON.stringify({ error: { code: 'upstream_disconnected', message: 'upstream read error' } })}\n\n`),
-        );
-        tCtrl.terminate();
-      } catch {
-        /* 已关闭 */
+  const pipePromise = upstream
+    .pipeTo(transform.writable, {
+      preventAbort: true,
+      preventCancel: false,
+      signal: options.signal,
+    })
+    .catch(async () => {
+      // 上游读取错误 → 注入错误帧（通过 controller，pipeTo 已结束但 writable 未 abort）
+      if (!finished && tCtrl) {
+        const reason = options.signal?.aborted ? 'request_cancelled' : 'upstream_disconnected';
+        const frame = options.signal?.aborted
+          ? { code: 'request_cancelled', detail: 'request cancelled while reading upstream' }
+          : { code: 'upstream_disconnected', detail: 'upstream read error' };
+        failWithErrorFrame(frame, reason);
       }
-      finished = true;
-      if (timer !== null) clearInterval(timer);
-      emit({ type: 'aborted', reason: 'upstream_disconnected' });
-      emit({
-        type: 'done',
-        usage: scanner.getUsage(),
-        errorFrame: { code: 'upstream_disconnected', detail: 'upstream read error' },
-        bytesRelayed,
-        terminated: 'upstream_disconnected',
-      });
-    }
-  });
+    });
   void pipePromise;
 
   const stream = transform.readable;

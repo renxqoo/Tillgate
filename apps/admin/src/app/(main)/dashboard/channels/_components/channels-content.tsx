@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState, useTransition } from "react";
+import { useState, useTransition } from 'react';
 
 import {
   Loader2Icon,
@@ -10,13 +10,13 @@ import {
   Trash2Icon,
   UploadIcon,
   WifiIcon,
-} from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { z } from "zod";
+} from 'lucide-react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
+import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Dialog,
   DialogClose,
@@ -26,16 +26,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@ai-gateway/ui/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
-import { Input } from "@ai-gateway/ui/components/ui/input";
+} from '@ai-gateway/ui/components/ui/dialog';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/field';
+import { Input } from '@ai-gateway/ui/components/ui/input';
+import { NumberField } from '@ai-gateway/ui/components/ui/number-field';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@ai-gateway/ui/components/ui/select";
+} from '@ai-gateway/ui/components/ui/select';
 import {
   Table,
   TableBody,
@@ -43,24 +44,28 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ai-gateway/ui/components/ui/table";
-import { Textarea } from "@ai-gateway/ui/components/ui/textarea";
+} from '@ai-gateway/ui/components/ui/table';
+import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
+import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { ChannelRow, ProviderOption } from "../types";
+import type { ChannelRow, ProviderOption } from '../types';
 
 const STATUS_META: Record<number, { label: string; tone: string; dot: string }> = {
-  0: { label: "启用", tone: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
-  1: { label: "降级", tone: "text-amber-700 dark:text-amber-300", dot: "bg-amber-500" },
-  2: { label: "禁用", tone: "text-muted-foreground", dot: "bg-muted-foreground" },
-  3: { label: "冷却", tone: "text-amber-700 dark:text-amber-300", dot: "bg-amber-500" },
+  0: { label: '启用', tone: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500' },
+  1: { label: '降级', tone: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
+  2: { label: '禁用', tone: 'text-muted-foreground', dot: 'bg-muted-foreground' },
+  3: { label: '冷却', tone: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
 };
 
 function getStatusMeta(status: number): { label: string; tone: string; dot: string } {
-  return STATUS_META[status] ?? STATUS_META[2] ?? {
-    label: "未知",
-    tone: "text-muted-foreground",
-    dot: "bg-muted-foreground",
-  };
+  return (
+    STATUS_META[status] ??
+    STATUS_META[2] ?? {
+      label: '未知',
+      tone: 'text-muted-foreground',
+      dot: 'bg-muted-foreground',
+    }
+  );
 }
 
 export function ChannelsTable({
@@ -92,9 +97,7 @@ export function ChannelsTable({
             </TableCell>
           </TableRow>
         ) : (
-          channels.map((c) => (
-            <ChannelRowItem key={c.id} channel={c} providers={providers} />
-          ))
+          channels.map((c) => <ChannelRowItem key={c.id} channel={c} providers={providers} />)
         )}
       </TableBody>
     </Table>
@@ -123,15 +126,15 @@ function ChannelRowItem({
       </TableCell>
       <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
         {channel.boundModels && channel.boundModels.length > 0
-          ? channel.boundModels.map((m) => m.externalName).join(", ")
-          : "—"}
+          ? channel.boundModels.map((m) => m.externalName).join(', ')
+          : '—'}
       </TableCell>
       <TableCell className="text-right text-xs tabular-nums">
         {channel.weight} / {channel.priority}
       </TableCell>
       <TableCell>
-        <span className={"inline-flex items-center gap-1 text-xs font-medium " + meta.tone}>
-          <span className={"size-1.5 rounded-full " + meta.dot} />
+        <span className={'inline-flex items-center gap-1 text-xs font-medium ' + meta.tone}>
+          <span className={'size-1.5 rounded-full ' + meta.dot} />
           {meta.label}
           {channel.cooldownUntil ? (
             <span className="text-muted-foreground" title={channel.cooldownUntil}>
@@ -151,7 +154,7 @@ function ChannelRowItem({
             disabled={testing}
             onClick={async () => {
               setTesting(true);
-              const { testChannelAction } = await import("../actions");
+              const { testChannelAction } = await import('../actions');
               const res = await testChannelAction(channel.id);
               setTesting(false);
               if (res.error) toast.error(String(res.error));
@@ -169,11 +172,11 @@ function ChannelRowItem({
             onClick={async () => {
               if (!confirm(`确定删除渠道 ${channel.name}？`)) return;
               setDeleting(true);
-              const { deleteChannelAction } = await import("../actions");
+              const { deleteChannelAction } = await import('../actions');
               const res = await deleteChannelAction(channel.id);
               setDeleting(false);
               if (res.error) toast.error(res.error);
-              else toast.success("已删除");
+              else toast.success('已删除');
             }}
             className="text-destructive hover:text-destructive"
           >
@@ -186,13 +189,17 @@ function ChannelRowItem({
 }
 
 const createSchema = z.object({
-  providerId: z.coerce.number().min(1, "请选择供应商"),
-  name: z.string().min(1, "请输入名称"),
-  apiKey: z.string().min(1, "请输入 API Key"),
+  providerId: z.coerce.number().min(1, '请选择供应商'),
+  name: z.string().min(1, '请输入名称'),
+  apiKey: z.string().min(1, '请输入 API Key'),
   baseUrlOverride: z.string().optional(),
   models: z.string().optional(),
-  weight: z.coerce.number().min(1).max(1000).default(100),
-  priority: z.coerce.number().int().min(0).default(0),
+  weight: numericText({ message: '请输入整数' })
+    .refine((v) => Number.isInteger(v), '请输入整数')
+    .refine((v) => v >= 1 && v <= 1000, '权重范围 1-1000'),
+  priority: numericText({ message: '请输入整数' })
+    .refine((v) => Number.isInteger(v), '请输入整数')
+    .refine((v) => v >= 0, '优先级不能为负'),
 });
 
 export function CreateChannelDialog({
@@ -203,29 +210,34 @@ export function CreateChannelDialog({
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
-  type FormValues = z.infer<typeof createSchema>;
+  type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
     defaultValues: {
       providerId: providers[0]?.id ?? 0,
-      name: "",
-      apiKey: "",
-      baseUrlOverride: "",
-      models: "",
-      weight: 100,
-      priority: 0,
+      name: '',
+      apiKey: '',
+      baseUrlOverride: '',
+      models: '',
+      weight: '100',
+      priority: '0',
     },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { createChannelAction } = await import("../actions");
-      const res = await createChannelAction(values);
+      const { createChannelAction } = await import('../actions');
+      const res = await createChannelAction({
+        ...values,
+        providerId: Number(values.providerId),
+        weight: Number(values.weight),
+        priority: Number(values.priority),
+      });
       if (res.error) {
-        toast.error("创建失败", { description: res.error });
+        toast.error('创建失败', { description: res.error });
         return;
       }
-      toast.success("已创建渠道");
+      toast.success('已创建渠道');
       form.reset();
       setOpen(false);
     });
@@ -271,52 +283,56 @@ function EditChannelDialog({
   const [pending, startTransition] = useTransition();
 
   const editSchema = z.object({
-    name: z.string().min(1, "请输入名称"),
+    name: z.string().min(1, '请输入名称'),
     apiKey: z.string().optional(),
     baseUrlOverride: z.string().optional(),
     models: z.string().optional(),
-    weight: z.coerce.number().min(1).max(1000),
-    priority: z.coerce.number().int().min(0),
+    weight: numericText({ message: '请输入整数' })
+      .refine((v) => Number.isInteger(v), '请输入整数')
+      .refine((v) => v >= 1 && v <= 1000, '权重范围 1-1000'),
+    priority: numericText({ message: '请输入整数' })
+      .refine((v) => Number.isInteger(v), '请输入整数')
+      .refine((v) => v >= 0, '优先级不能为负'),
     status: z.coerce.number().int(),
     rpmLimit: z.string().optional(),
     tpmLimit: z.string().optional(),
   });
-  type FormValues = z.infer<typeof editSchema>;
+  type FormValues = z.input<typeof editSchema>;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
     defaultValues: {
       name: channel.name,
-      apiKey: "",
-      baseUrlOverride: channel.baseUrlOverride ?? "",
-      models: channel.models ?? "",
-      weight: channel.weight,
-      priority: channel.priority,
+      apiKey: '',
+      baseUrlOverride: channel.baseUrlOverride ?? '',
+      models: channel.models ?? '',
+      weight: String(channel.weight),
+      priority: String(channel.priority),
       status: channel.status,
-      rpmLimit: channel.rpmLimit === null ? "" : String(channel.rpmLimit),
-      tpmLimit: channel.tpmLimit === null ? "" : String(channel.tpmLimit),
+      rpmLimit: channel.rpmLimit === null ? '' : String(channel.rpmLimit),
+      tpmLimit: channel.tpmLimit === null ? '' : String(channel.tpmLimit),
     },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { updateChannelAction } = await import("../actions");
+      const { updateChannelAction } = await import('../actions');
       const res = await updateChannelAction(channel.id, {
         name: values.name,
         apiKey: values.apiKey?.trim() || undefined,
         baseUrlOverride: values.baseUrlOverride?.trim() || undefined,
         models: values.models?.trim() || undefined,
-        weight: values.weight,
-        priority: values.priority,
-        status: values.status,
-        rpmLimit: values.rpmLimit === "" ? null : Number(values.rpmLimit),
-        tpmLimit: values.tpmLimit === "" ? null : Number(values.tpmLimit),
+        weight: Number(values.weight),
+        priority: Number(values.priority),
+        status: Number(values.status),
+        rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
+        tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
       });
       if (res.error) {
-        toast.error("保存失败", { description: res.error });
+        toast.error('保存失败', { description: res.error });
         return;
       }
-      toast.success("已保存");
+      toast.success('已保存');
       setOpen(false);
     });
   }
@@ -377,7 +393,13 @@ function ChannelForm<T extends Record<string, unknown>>({
           <Controller
             control={form.control}
             name="providerId"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+            render={({
+              field,
+              fieldState,
+            }: {
+              field: { value: number; onChange: (v: number) => void };
+              fieldState: { invalid?: boolean; error?: { message?: string } };
+            }) => (
               <Field data-invalid={fieldState.invalid}>
                 <FieldLabel>供应商</FieldLabel>
                 <Select
@@ -403,7 +425,13 @@ function ChannelForm<T extends Record<string, unknown>>({
         <Controller
           control={form.control}
           name="name"
-          render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+          render={({
+            field,
+            fieldState,
+          }: {
+            field: { value: string };
+            fieldState: { invalid?: boolean; error?: { message?: string } };
+          }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="ch-name">渠道名称</FieldLabel>
               <Input id="ch-name" {...field} />
@@ -414,10 +442,16 @@ function ChannelForm<T extends Record<string, unknown>>({
         <Controller
           control={form.control}
           name="apiKey"
-          render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+          render={({
+            field,
+            fieldState,
+          }: {
+            field: { value: string };
+            fieldState: { invalid?: boolean; error?: { message?: string } };
+          }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="ch-key">API Key{isEdit ? "（留空不修改）" : ""}</FieldLabel>
-              <Input id="ch-key" type="password" {...field} placeholder={isEdit ? "••••••" : ""} />
+              <FieldLabel htmlFor="ch-key">API Key{isEdit ? '（留空不修改）' : ''}</FieldLabel>
+              <Input id="ch-key" type="password" {...field} placeholder={isEdit ? '••••••' : ''} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -443,39 +477,21 @@ function ChannelForm<T extends Record<string, unknown>>({
           )}
         />
         <div className="grid grid-cols-2 gap-3">
-          <Controller
+          <NumberField
             control={form.control}
             name="weight"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="ch-weight">权重（1-1000）</FieldLabel>
-                <Input
-                  id="ch-weight"
-                  type="number"
-                  {...field}
-                  value={field.value ?? 100}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
+            label="权重（1-1000）"
+            id="ch-weight"
+            step="1"
+            min={1}
           />
-          <Controller
+          <NumberField
             control={form.control}
             name="priority"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="ch-priority">优先级（数字越大越优先）</FieldLabel>
-                <Input
-                  id="ch-priority"
-                  type="number"
-                  {...field}
-                  value={field.value ?? 0}
-                  onChange={(e) => field.onChange(Number(e.target.value))}
-                />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
+            label="优先级（数字越大越优先）"
+            id="ch-priority"
+            step="1"
+            min={0}
           />
         </div>
         {isEdit && (
@@ -486,7 +502,10 @@ function ChannelForm<T extends Record<string, unknown>>({
               render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
                 <Field>
                   <FieldLabel>状态</FieldLabel>
-                  <Select value={String(field.value ?? 0)} onValueChange={(v) => field.onChange(Number(v))}>
+                  <Select
+                    value={String(field.value ?? 0)}
+                    onValueChange={(v) => field.onChange(Number(v))}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -531,7 +550,7 @@ function ChannelForm<T extends Record<string, unknown>>({
 export function ImportChannelsDialog() {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  const [text, setText] = useState("");
+  const [text, setText] = useState('');
 
   function onSubmit() {
     startTransition(async () => {
@@ -545,20 +564,20 @@ export function ImportChannelsDialog() {
       }> = [];
       try {
         const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error("需要 JSON 数组");
+        if (!Array.isArray(parsed)) throw new Error('需要 JSON 数组');
         channels = parsed;
       } catch {
-        toast.error("请输入合法的 JSON 数组");
+        toast.error('请输入合法的 JSON 数组');
         return;
       }
-      const { importChannelsAction } = await import("../actions");
+      const { importChannelsAction } = await import('../actions');
       const res = await importChannelsAction(channels);
       if (res.error) {
-        toast.error("导入失败", { description: res.error });
+        toast.error('导入失败', { description: res.error });
         return;
       }
       toast.success(`已导入 ${res.created ?? channels.length} 条`);
-      setText("");
+      setText('');
       setOpen(false);
     });
   }
@@ -577,7 +596,8 @@ export function ImportChannelsDialog() {
             <UploadIcon /> 批量导入渠道
           </DialogTitle>
           <DialogDescription>
-            粘贴 JSON 数组，每项含 provider（供应商名）、name、apiKey、可选 models / weight / priority
+            粘贴 JSON 数组，每项含 provider（供应商名）、name、apiKey、可选 models / weight /
+            priority
           </DialogDescription>
         </DialogHeader>
         <Textarea
@@ -585,7 +605,9 @@ export function ImportChannelsDialog() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="font-mono text-xs"
-          placeholder={'[\n  {"provider":"OpenAI","name":"openai-main","apiKey":"sk-xxx","models":"gpt-4o"}\n]'}
+          placeholder={
+            '[\n  {"provider":"OpenAI","name":"openai-main","apiKey":"sk-xxx","models":"gpt-4o"}\n]'
+          }
         />
         <DialogFooter>
           <DialogClose asChild>

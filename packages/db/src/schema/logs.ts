@@ -53,7 +53,9 @@ export const auditLogs = pgTable(
   'audit_logs',
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
-    adminId: bigint('admin_id', { mode: 'number' }).references(() => admins.id, { onDelete: 'set null' }),
+    adminId: bigint('admin_id', { mode: 'number' }).references(() => admins.id, {
+      onDelete: 'set null',
+    }),
     actor: varchar('actor', { length: 8 }).notNull().default('admin'),
     /** 如 channel.update / user.adjust */
     action: varchar('action', { length: 64 }).notNull(),

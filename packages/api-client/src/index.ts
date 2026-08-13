@@ -48,11 +48,7 @@ export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
 /**
  * 内部通用 fetch：注入 base，转发 cookie。
  */
-async function doFetch<T>(
-  base: string,
-  path: string,
-  opts: ApiFetchOptions = {},
-): Promise<T> {
+async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}): Promise<T> {
   const { method = 'GET', body, cookieHeader, revalidate, headers: extraHeaders, ...rest } = opts;
   const cookie = cookieHeader ?? (await _readCookieHeader());
 
@@ -62,7 +58,7 @@ async function doFetch<T>(
     headers: {
       'content-type': 'application/json',
       ...(cookie ? { cookie } : {}),
-      ...(extraHeaders ?? {}),
+      ...extraHeaders,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
     cache: revalidate === false ? 'no-store' : 'default',
@@ -81,7 +77,8 @@ async function doFetch<T>(
   }
 
   if (!res.ok) {
-    const err = (data as { error?: { message?: string; code?: string; details?: unknown } } | null)?.error;
+    const err = (data as { error?: { message?: string; code?: string; details?: unknown } } | null)
+      ?.error;
     throw new ApiError(
       res.status,
       err?.code,

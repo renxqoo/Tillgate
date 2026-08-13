@@ -153,45 +153,30 @@ importers:
       '@ai-gateway/ai':
         specifier: workspace:*
         version: link:../../packages/ai
-      '@ai-gateway/billing':
+      '@ai-gateway/core':
         specifier: workspace:*
-        version: link:../../packages/billing
-      '@ai-gateway/config':
-        specifier: workspace:*
-        version: link:../../packages/config
+        version: link:../../packages/core
       '@ai-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ai-gateway/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@ai-gateway/identity':
         specifier: workspace:*
         version: link:../../packages/identity
-      '@ai-gateway/logger':
+      '@ai-gateway/ledger':
         specifier: workspace:*
-        version: link:../../packages/logger
-      '@ai-gateway/money':
-        specifier: workspace:*
-        version: link:../../packages/money
-      '@ai-gateway/otel':
-        specifier: workspace:*
-        version: link:../../packages/otel
+        version: link:../../packages/ledger
       '@hono/node-server':
         specifier: ^1.19.0
         version: 1.19.17(hono@4.13.0)
-      '@hono/zod-validator':
-        specifier: ^0.9.0
-        version: 0.9.0(hono@4.13.0)(zod@4.4.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       hono:
         specifier: ^4.13.0
         version: 4.13.0
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
-      jose:
-        specifier: ^6.2.8
-        version: 6.2.8
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -341,42 +326,30 @@ importers:
 
   apps/client-api:
     dependencies:
-      '@ai-gateway/billing':
+      '@ai-gateway/core':
         specifier: workspace:*
-        version: link:../../packages/billing
-      '@ai-gateway/config':
-        specifier: workspace:*
-        version: link:../../packages/config
+        version: link:../../packages/core
       '@ai-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@ai-gateway/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@ai-gateway/identity':
         specifier: workspace:*
         version: link:../../packages/identity
-      '@ai-gateway/logger':
+      '@ai-gateway/ledger':
         specifier: workspace:*
-        version: link:../../packages/logger
-      '@ai-gateway/money':
-        specifier: workspace:*
-        version: link:../../packages/money
-      '@ai-gateway/otel':
-        specifier: workspace:*
-        version: link:../../packages/otel
+        version: link:../../packages/ledger
       '@hono/node-server':
         specifier: ^1.19.0
         version: 1.19.17(hono@4.13.0)
-      '@hono/zod-validator':
-        specifier: ^0.9.0
-        version: 0.9.0(hono@4.13.0)(zod@4.4.3)
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       hono:
         specifier: ^4.13.0
         version: 4.13.0
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -402,21 +375,18 @@ importers:
       '@ai-gateway/ai':
         specifier: workspace:*
         version: link:../../packages/ai
-      '@ai-gateway/config':
+      '@ai-gateway/core':
         specifier: workspace:*
-        version: link:../../packages/config
+        version: link:../../packages/core
       '@ai-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@ai-gateway/logger':
+      '@ai-gateway/ledger':
         specifier: workspace:*
-        version: link:../../packages/logger
+        version: link:../../packages/ledger
       '@ai-gateway/money':
         specifier: workspace:*
         version: link:../../packages/money
-      '@ai-gateway/otel':
-        specifier: workspace:*
-        version: link:../../packages/otel
       '@hono/node-server':
         specifier: ^1.19.0
         version: 1.19.17(hono@4.13.0)
@@ -463,24 +433,18 @@ importers:
 
   apps/worker:
     dependencies:
-      '@ai-gateway/ai':
+      '@ai-gateway/core':
         specifier: workspace:*
-        version: link:../../packages/ai
-      '@ai-gateway/config':
-        specifier: workspace:*
-        version: link:../../packages/config
+        version: link:../../packages/core
       '@ai-gateway/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@ai-gateway/logger':
+      '@ai-gateway/ledger':
         specifier: workspace:*
-        version: link:../../packages/logger
+        version: link:../../packages/ledger
       '@ai-gateway/money':
         specifier: workspace:*
         version: link:../../packages/money
-      '@ai-gateway/otel':
-        specifier: workspace:*
-        version: link:../../packages/otel
       bullmq:
         specifier: ^6.0.7
         version: 6.0.7(ioredis@6.0.0)(pg@8.22.0)
@@ -544,21 +508,42 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
-  packages/billing:
+  packages/core:
     dependencies:
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../db
-      '@ai-gateway/money':
-        specifier: workspace:*
-        version: link:../money
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
+      '@opentelemetry/api':
+        specifier: ^1.9.1
+        version: 1.9.1
+      '@opentelemetry/exporter-metrics-otlp-http':
+        specifier: ^0.221.0
+        version: 0.221.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: ^0.221.0
+        version: 0.221.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/resources':
+        specifier: ^2.10.0
+        version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-metrics':
+        specifier: ^2.0.0
+        version: 2.10.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/sdk-node':
+        specifier: ^0.221.0
+        version: 0.221.0(@opentelemetry/api@1.9.1)
+      '@opentelemetry/semantic-conventions':
+        specifier: ^1.43.0
+        version: 1.43.0
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
+      pino-pretty:
+        specifier: ^13.0.0
+        version: 13.1.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -573,25 +558,6 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
-  packages/config:
-    dependencies:
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
   packages/db:
     dependencies:
       drizzle-orm:
@@ -601,6 +567,9 @@ importers:
         specifier: ^8.22.0
         version: 8.22.0
     devDependencies:
+      '@ai-gateway/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1
@@ -616,6 +585,37 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.2
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
+
+  packages/http:
+    dependencies:
+      '@ai-gateway/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
+      hono:
+        specifier: ^4.13.0
+        version: 4.13.0
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
@@ -654,24 +654,30 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
-  packages/logger:
+  packages/ledger:
     dependencies:
-      pino:
-        specifier: ^10.3.1
-        version: 10.3.1
-      pino-pretty:
-        specifier: ^13.0.0
-        version: 13.1.3
+      '@ai-gateway/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ai-gateway/money':
+        specifier: workspace:*
+        version: link:../money
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
+      ioredis:
+        specifier: ^6.0.0
+        version: 6.0.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1
       tsup:
         specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.9.0
-        version: 5.9.2
+        version: 5.9.3
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
@@ -694,45 +700,6 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
-  packages/otel:
-    dependencies:
-      '@opentelemetry/api':
-        specifier: ^1.9.1
-        version: 1.9.1
-      '@opentelemetry/exporter-metrics-otlp-http':
-        specifier: ^0.221.0
-        version: 0.221.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/exporter-trace-otlp-http':
-        specifier: ^0.221.0
-        version: 0.221.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/resources':
-        specifier: ^2.10.0
-        version: 2.10.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-metrics':
-        specifier: ^2.0.0
-        version: 2.10.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/sdk-node':
-        specifier: ^0.221.0
-        version: 0.221.0(@opentelemetry/api@1.9.1)
-      '@opentelemetry/semantic-conventions':
-        specifier: ^1.43.0
-        version: 1.43.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
-  packages/tsconfig: {}
 
   packages/ui:
     dependencies:

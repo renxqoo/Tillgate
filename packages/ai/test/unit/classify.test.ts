@@ -63,7 +63,9 @@ describe('classifyHttpError', () => {
   });
 
   it('429 限流（RPM/TPM）：retryable=true', () => {
-    const err = classifyHttpError(429, { error: { code: 'rate_limit_error', message: 'too many requests' } });
+    const err = classifyHttpError(429, {
+      error: { code: 'rate_limit_error', message: 'too many requests' },
+    });
     expect(err.code).toBe('rate_limit_error');
     expect(err.retryable).toBe(true);
   });
@@ -71,7 +73,10 @@ describe('classifyHttpError', () => {
   it('429 MiniMax 窗口配额（Token Plan 5h，可恢复）：retryable=true（限流而非额度耗尽）', () => {
     // MiniMax 真实返回：code=rate_limit_error + "用量上限/套餐/积分"，但 5h 窗口后自动恢复 → 限流
     const err = classifyHttpError(429, {
-      error: { code: 'rate_limit_error', message: '已达到 Token Plan 用量上限：请升级套餐或购买积分 (2056)' },
+      error: {
+        code: 'rate_limit_error',
+        message: '已达到 Token Plan 用量上限：请升级套餐或购买积分 (2056)',
+      },
     });
     expect(err.code).toBe('rate_limit_error'); // 保持供应商 code
     expect(err.retryable).toBe(true); // 可恢复，应重试
@@ -79,7 +84,9 @@ describe('classifyHttpError', () => {
 
   it('429 账户余额耗尽（body code insufficient_quota）：retryable=false', () => {
     // OpenAI 真实 code：明确是计费耗尽，需充值才恢复
-    const err = classifyHttpError(429, { error: { code: 'insufficient_quota', message: 'over limit' } });
+    const err = classifyHttpError(429, {
+      error: { code: 'insufficient_quota', message: 'over limit' },
+    });
     expect(err.code).toBe('quota_exhausted');
     expect(err.retryable).toBe(false);
     expect(err.circuitTrip).toBe(false);
@@ -92,7 +99,9 @@ describe('classifyHttpError', () => {
   });
 
   it('429 英文余额耗尽（insufficient balance / billing）：retryable=false', () => {
-    const err = classifyHttpError(429, { error: { message: 'insufficient balance, please top up' } });
+    const err = classifyHttpError(429, {
+      error: { message: 'insufficient balance, please top up' },
+    });
     expect(err.code).toBe('quota_exhausted');
     expect(err.retryable).toBe(false);
   });

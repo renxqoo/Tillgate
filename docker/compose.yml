@@ -48,7 +48,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8787/healthz']
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8787/readyz']
       interval: 10s
       timeout: 3s
       retries: 5
@@ -75,6 +75,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 30s
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8792/readyz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   admin-api:
     build:
@@ -118,21 +123,6 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
     # 安全：不发布任何端口，仅 compose 内网可达（console-client 服务端代理调用）
-
-  console-v1:
-    build:
-      context: ..
-      dockerfile: apps/console-app-v1/Dockerfile
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      ADMIN_API_BASE: http://admin-api:8790
-    depends_on:
-      - admin-api
-    restart: unless-stopped
-    # v1 console 已废弃，新部署走 client + admin。可注释下面一行禁用。
-    profiles: ["legacy"]
 
   console-client:
     build:

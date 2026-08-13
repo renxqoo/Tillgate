@@ -32,14 +32,16 @@ export interface RequestCtx {
   requestId: string;
   /** 真实模型名 */
   model: string;
-  /** 厂商名（deepseek/glm/...，用于加载 profiles 默认规则） */
+  /** 厂商名（deepseek/glm/...，用于日志/排障标识） */
   providerName: string;
   /** per-model 参数规则，覆盖 profile 默认 */
   paramRules?: ParamRules;
   /** 同渠道最大重试次数，默认 3 */
   maxRetries?: number;
-  /** 总 deadline，默认 240s */
+  /** 本次调用可使用的剩余预算；Gateway 每个 fallback 前重新计算，绝不重置总预算。 */
   deadlineMs?: number;
+  /** 调用方取消：客户端断开、请求总 deadline 或服务 drain。 */
+  signal?: AbortSignal;
   /** 调用端点：chat（默认）或 embeddings（决定 URL 路径） */
   endpoint?: 'chat' | 'embeddings';
 }

@@ -32,17 +32,21 @@
 ```
 ai-getway/
 ├── apps/
-│   ├── gateway/        # 对外代理（/v1/* + /oauth/token + /healthz），无状态，可多副本
-│   ├── worker/         # BullMQ 消费者：计量结算、充值码过期、每日对账、日志分区清理
-│   ├── admin-api/      # 管理端 REST（/api/*，仅内网/Next.js 服务端可达）
-│   └── console/        # Next.js 控制台（用户面板 + 管理后台，服务端调 admin-api）
+│   ├── gateway/        # 对外代理（/v1/* + /oauth/token + /livez + /readyz），无状态，可多副本
+│   ├── worker/         # BullMQ 消费编排（结算/对账领域逻辑在 packages/ledger）
+│   ├── admin-api/      # 管理端 REST（/api/*，仅内网）
+│   ├── client-api/     # 用户面 REST（/api/*，仅内网）
+│   ├── client/         # 端用户面板（Next.js，3001）
+│   └── admin/          # 运营后台（Next.js，3002）
 ├── packages/
 │   ├── ai/             # 上游 LLM 传输层（自研，详见 docs/ai-package.md）
-│   ├── money/          # 金额计算（整数厘，公式/单测锁死，详见 data-model.md §2）
-│   ├── db/             # Drizzle schema + migrations（gateway/admin-api/worker 共用）
-│   ├── config/         # 环境变量 zod 校验（共享 schema + 各应用扩展）
-│   ├── logger/         # pino 封装（JSON、脱敏 Authorization、request_id 注入）
-│   └── otel/           # OTel SDK 初始化（service.name 按应用注入）
+│   ├── ledger/         # 统一资金账本：余额/流水/预扣生命周期 + 结算 + 对账
+│   ├── money/          # 金额计算（元 + Decimal 全精度，公式/单测锁死，详见 data-model.md §2）
+│   ├── db/             # Drizzle schema + migrations（各服务共用）
+│   ├── core/           # 共享基础设施：env zod 校验 + pino 日志 + OTel + AES-256-GCM
+│   ├── identity/       # 会话/JWT/鉴权（admin-api/client-api 共用，双身份物理隔离）
+│   ├── ui/             # 共享 shadcn 原语 + 主题（前端用）
+│   └── api-client/     # REST 调用封装（前端用）
 ├── docker/
 │   ├── compose.yml            # 生产编排（含观测栈）
 │   └── compose.dev.yml        # 本地开发（含 adminer/pg 等）
@@ -60,7 +64,7 @@ ai-getway/
 gateway ──┐
 worker  ──┼─ OTLP (4317/4318) ─▶ OpenTelemetry Collector ─┬─▶ Prometheus（指标）
 admin-api─┤                                             └─▶ Tempo（链路）
-console ──┘
+client-api┘
 日志：pino → stdout（Docker json-file 驱动统一收集，Grafana 直接查 Loki 可选后期加）
 ```
 
@@ -101,11 +105,13 @@ console ──┘
 
 | 服务 | 镜像 | 说明 |
 |---|---|---|
-| nginx | nginx:alpine | TLS 终止、静态资源、反代 gateway / console |
+| nginx | nginx:alpine | TLS 终止、静态资源、反代 gateway / client / admin |
 | gateway | node:lts-alpine 构建 | 对外代理，`replicas` 可扩 |
 | worker | 同构建 | 计量消费，与 gateway 同镜像不同 command |
 | admin-api | 同构建 | 管理端 REST（不暴露公网，仅内网） |
-| console | node:lts-alpine | Next.js standalone 输出 |
+| client-api | 同构建 | 用户面 REST（不暴露公网，仅内网） |
+| console-client | 前端构建 | 端用户面板（Next.js standalone，3001） |
+| console-admin | 前端构建 | 运营后台（Next.js standalone，3002） |
 | redis | redis:7-alpine | 限流/缓存/队列（AOF 持久化） |
 | postgres | postgres:16-alpine | 主存储（含初始化迁移） |
 | migrate | 同构建 | 一次性：drizzle-kit migrate（postgres 就绪后执行并退出） |
@@ -120,12 +126,16 @@ console ──┘
 
 **迁移方式**：`drizzle-kit migrate` 作为 compose 中独立的 `migrate` 服务执行，不混入应用启动。
 
-**网络边界**：nginx 只发布 gateway（80/443）与 console；**admin-api 不发布任何端口**，仅 compose 内网可达，由 console 服务端代理调用。
+> **billing_requests 迁移注意**：0011 删除旧 billing_holds；停流量并确认无 held 后迁移，
+> 新旧版本不可混合运行（新 gateway/worker 只认 `billing_requests` DB 状态机，旧进程仍使用已删除的 hold/Redis 语义）。
+> 发布顺序：先跑 migrate → 停旧 gateway+worker 排空在途请求 → 起新 worker → 起新 gateway。
+
+**网络边界**：nginx 只发布 gateway（80/443）与 client/admin 前端；**admin-api / client-api 不发布任何端口**，仅 compose 内网可达，由前端服务端代理调用。
 
 **运维细节**：
 - **备份策略（必做）**：PostgreSQL 每日 `pg_dump`（压缩 + 加密）至独立存储（对象存储/异机），保留 30 天；每周一次恢复演练；Redis 开启 `appendonly yes`（AOF，Redis 仅缓存/队列，不作为主账本）。
 - **日志滚动**：Docker json-file 驱动 `max-size: 50m`、`max-file: 5`。
-- **健康检查**：gateway `/healthz`（浅）+ `/health`（深：上游可达性/熔断状态/滚动错误率，异常 503）；worker / admin-api 增加内部 `/healthz` 端点，compose healthcheck 统一配置。
+- **健康检查**：gateway `/livez` 只检查进程，`/readyz` 检查 PostgreSQL、Redis、账务 schema 与 drain 状态；worker 暴露 `/livez`、`/readyz`、`/health`，Redis 队列故障为 degraded、DB 故障为 not-ready。
 - **时区**：各容器 `TZ=Asia/Shanghai`（日志时间戳与报表展示一致，存储仍 UTC）。
 
 ---
@@ -140,7 +150,7 @@ console ──┘
 | 流式心跳 | 静默 >30s 注入 `: keep-alive` 帧（仅 SSE 事件边界，防拆半截事件）；nginx `proxy_read_timeout` 调至 >5min | 防代理/LB 掐断长流 |
 | 重试退避 | 指数退避 250ms 起 ×2 + jitter；总 deadline 240s；仅 5xx/429/网络/超时重试 | |
 | 空完成重试 | 200 但无内容 → 同渠道退避重试 ≤2 次，仍空换渠道 | 非流式在完整 body 收到后判定 |
-| 预扣参数 | 估算输出上限默认 4096 tokens；HOLD_MAX 默认 ¥50；hold TTL 10min | 预扣模式（billing hold） |
+| 计费授权 | 默认输出上限 4096；BILLING_RESERVATION_MAX 默认 ¥50；lease 默认 60s | 足额授权 + durable receipt |
 | 流式总时长上限 | 10 分钟（可配），超限主动断流 | agent 长任务场景按需调大 |
 | 性能目标 | 单实例 ≥300 QPS 非流式转发、流式并发 ≥200 | 脚手架完成后 k6/autocannon 压测验证，结果决定副本数与 K8s 化时机 |
 | 请求体上限 | 16MB | 超出返回 413 |

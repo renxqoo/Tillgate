@@ -87,9 +87,7 @@ describe('DeadCredentialTracker 并发安全', () => {
     const storage = new MemoryDeadCredentialStorage();
     const d = new DeadCredentialTracker('conc-test', config, storage, () => t);
     // 阈值 3，并发 3 个死凭据失败 → 应 invalid
-    await Promise.all(
-      Array.from({ length: 3 }, () => d.recordFailure({ deadCredential: true })),
-    );
+    await Promise.all(Array.from({ length: 3 }, () => d.recordFailure({ deadCredential: true })));
     expect(await d.canRequest()).toBe(false);
   });
 
@@ -97,9 +95,7 @@ describe('DeadCredentialTracker 并发安全', () => {
     let t = 1000;
     const d = makeTracker(() => t);
     for (let i = 0; i < 3; i++) await d.recordFailure({ deadCredential: true });
-    const results = await Promise.all(
-      Array.from({ length: 10 }, () => d.canRequest()),
-    );
+    const results = await Promise.all(Array.from({ length: 10 }, () => d.canRequest()));
     expect(results.every((r) => r === false)).toBe(true);
   });
 });
@@ -116,9 +112,30 @@ describe('MemoryDeadCredentialStorage', () => {
 
   it('compareAndSet：version 匹配才写入', async () => {
     const s = new MemoryDeadCredentialStorage();
-    expect(await s.compareAndSet('k', 0, { status: 'valid', consecutiveFailures: 1, version: 1 }, 10_000)).toBe(true);
-    expect(await s.compareAndSet('k', 0, { status: 'valid', consecutiveFailures: 2, version: 2 }, 10_000)).toBe(false);
-    expect(await s.compareAndSet('k', 1, { status: 'invalid', consecutiveFailures: 3, version: 2 }, 10_000)).toBe(true);
+    expect(
+      await s.compareAndSet(
+        'k',
+        0,
+        { status: 'valid', consecutiveFailures: 1, version: 1 },
+        10_000,
+      ),
+    ).toBe(true);
+    expect(
+      await s.compareAndSet(
+        'k',
+        0,
+        { status: 'valid', consecutiveFailures: 2, version: 2 },
+        10_000,
+      ),
+    ).toBe(false);
+    expect(
+      await s.compareAndSet(
+        'k',
+        1,
+        { status: 'invalid', consecutiveFailures: 3, version: 2 },
+        10_000,
+      ),
+    ).toBe(true);
     const got = await s.getState('k');
     expect(got?.status).toBe('invalid');
   });

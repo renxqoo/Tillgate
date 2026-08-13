@@ -198,10 +198,16 @@ function report(r: ScenarioResult): void {
 
   console.log(`\n┌─ [${r.name}] 结果 ────────────────────────────`);
   console.log(`│ 并发 ${r.concurrency} · ${r.stream ? '流式' : '非流式'} · 总计 ${r.total}`);
-  console.log(`│ 吞吐      : ${rps.toFixed(1)} rps（${ok.length}/${r.total} 成功，${(r.wallMs / 1000).toFixed(1)}s）`);
+  console.log(
+    `│ 吞吐      : ${rps.toFixed(1)} rps（${ok.length}/${r.total} 成功，${(r.wallMs / 1000).toFixed(1)}s）`,
+  );
   if (ok.length > 0) {
-    console.log(`│ TTFB      : p50=${fmtMs(percentile(ttfbMs, 50))} p90=${fmtMs(percentile(ttfbMs, 90))} p99=${fmtMs(percentile(ttfbMs, 99))} max=${fmtMs(ttfbMs[ttfbMs.length - 1]!)}`);
-    console.log(`│ 总耗时    : p50=${fmtMs(percentile(totalMs, 50))} p90=${fmtMs(percentile(totalMs, 90))} p99=${fmtMs(percentile(totalMs, 99))} max=${fmtMs(totalMs[totalMs.length - 1]!)}`);
+    console.log(
+      `│ TTFB      : p50=${fmtMs(percentile(ttfbMs, 50))} p90=${fmtMs(percentile(ttfbMs, 90))} p99=${fmtMs(percentile(ttfbMs, 99))} max=${fmtMs(ttfbMs[ttfbMs.length - 1]!)}`,
+    );
+    console.log(
+      `│ 总耗时    : p50=${fmtMs(percentile(totalMs, 50))} p90=${fmtMs(percentile(totalMs, 90))} p99=${fmtMs(percentile(totalMs, 99))} max=${fmtMs(totalMs[totalMs.length - 1]!)}`,
+    );
     console.log(`│ 平均字节  : ${avgBytes.toFixed(0)}`);
   }
   if (fail.length > 0) {
@@ -249,7 +255,9 @@ async function preflight(): Promise<void> {
     const s = await oneRequest(false, 15_000);
     if (!s.ok) {
       console.error(`preflight: 整链验证失败 - ${s.error ?? 'HTTP ' + s.status}`);
-      console.error('  请确认：1) mock-llm-server 在跑  2) seed-loadtest 已执行  3) gateway 已重启加载 ALLOW_LOCAL_UPSTREAM');
+      console.error(
+        '  请确认：1) mock-llm-server 在跑  2) seed-loadtest 已执行  3) gateway 已重启加载 ALLOW_LOCAL_UPSTREAM',
+      );
       process.exit(1);
     }
     console.log(`preflight: 整链 ✓ (${s.ttfbMs}ms ttfb, ${s.totalMs}ms total)`);
@@ -268,7 +276,9 @@ async function main(): Promise<void> {
     let filter = arg('scenario');
     const scenarios = filter ? ALL_SCENARIOS.filter((s) => s.name === filter) : ALL_SCENARIOS;
     if (scenarios.length === 0) {
-      console.error(`未找到场景：${filter}（可选：${ALL_SCENARIOS.map((s) => s.name).join(', ')}）`);
+      console.error(
+        `未找到场景：${filter}（可选：${ALL_SCENARIOS.map((s) => s.name).join(', ')}）`,
+      );
       process.exit(1);
     }
     for (const sc of scenarios) {
@@ -283,7 +293,9 @@ async function main(): Promise<void> {
     console.log('  并发能力对比汇总');
     console.log('═══════════════════════════════════════════════════════════════');
     console.log('场景             | 并发 | 吞吐(rps) | 成功率   | p50    | p90    | p99    | max');
-    console.log('-----------------|------|-----------|----------|--------|--------|--------|--------');
+    console.log(
+      '-----------------|------|-----------|----------|--------|--------|--------|--------',
+    );
     for (const r of results) {
       const ok = r.samples.filter((s) => s.ok);
       const totalMs = ok.map((s) => s.totalMs).sort((a, b) => a - b);
@@ -298,7 +310,9 @@ async function main(): Promise<void> {
       );
     }
     console.log('═══════════════════════════════════════════════════════════════');
-    console.log('提示：观察 mock-llm-server 终端的「★ 最大并发 in-flight」=网关真实打到上游的并发数');
+    console.log(
+      '提示：观察 mock-llm-server 终端的「★ 最大并发 in-flight」=网关真实打到上游的并发数',
+    );
     return;
   }
 

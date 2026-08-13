@@ -9,6 +9,8 @@ export interface UserRow {
   rateCardId: number | null;
   rateCardName: string | null;
   balance: string;
+  reservedBalance: string;
+  availableBalance: string;
   status: number;
   freezeReason: string | null;
   rpmLimit: number | null;

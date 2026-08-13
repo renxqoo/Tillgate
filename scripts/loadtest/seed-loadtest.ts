@@ -51,7 +51,7 @@ if (!ENCRYPTION_KEY || ENCRYPTION_KEY.length < 32) {
 }
 
 const MOCK_PORT = process.argv.includes('--mock-port')
-  ? process.argv[process.argv.indexOf('--mock-port') + 1] ?? '9999'
+  ? (process.argv[process.argv.indexOf('--mock-port') + 1] ?? '9999')
   : '9999';
 const MOCK_BASE_URL = `http://127.0.0.1:${MOCK_PORT}`;
 
@@ -117,7 +117,9 @@ async function main(): Promise<void> {
   await db
     .update(apiKeys)
     .set({ status: 1 }) // 1=已吊销（保留行满足 FK，但不再可用）
-    .where(and(eq(apiKeys.userId, user.id), eq(apiKeys.name, 'loadtest-key'), eq(apiKeys.status, 0)));
+    .where(
+      and(eq(apiKeys.userId, user.id), eq(apiKeys.name, 'loadtest-key'), eq(apiKeys.status, 0)),
+    );
   const keyHash = sha256hex(LOADTEST_API_KEY);
   await db.insert(apiKeys).values({
     keyHash,
@@ -229,7 +231,9 @@ async function main(): Promise<void> {
   console.log(`  curl http://localhost:8787/v1/chat/completions \\`);
   console.log(`    -H "Authorization: Bearer ${LOADTEST_API_KEY}" \\`);
   console.log(`    -H "Content-Type: application/json" \\`);
-  console.log(`    -d '{"model":"mock-gpt","messages":[{"role":"user","content":"hi"}],"stream":true}'`);
+  console.log(
+    `    -d '{"model":"mock-gpt","messages":[{"role":"user","content":"hi"}],"stream":true}'`,
+  );
   console.log('');
 
   await db.$client.end();

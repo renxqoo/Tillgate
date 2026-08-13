@@ -1,42 +1,17 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { createDb, type Db } from '@ai-gateway/db';
+import { modelMappings, modelChannels, channels } from '@ai-gateway/db/schema';
+import { loadRootEnvFile } from '@ai-gateway/http';
+import { modelAdminRoutes } from './models.js';
+import { makeAdminTestApp, makeServices } from '../test/helpers.js';
 
 /**
  * 回显数据源验证：GET /api/admin/models 必须返回每个模型已绑定的渠道 channelIds，
  * 否则前端「绑定渠道」弹窗无法回显已选。
  */
-vi.mock('../index.js', () => ({
-  env: { ENCRYPTION_KEY: 'a'.repeat(32) },
-  logger: { info() {}, warn() {}, error() {}, debug() {} },
-}));
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { createDb, type Db } from '@ai-gateway/db';
-import { modelMappings, modelChannels, channels } from '@ai-gateway/db/schema';
-import { channelAdminRoutes } from './channels.js';
-import type { AdminEnv } from '../middleware/session.js';
-
-const cwd = dirname(fileURLToPath(import.meta.url));
-function loadEnvFile(): void {
-  let dir = cwd;
-  for (let i = 0; i < 6; i++) {
-    const f = resolve(dir, '.env');
-    if (existsSync(f)) {
-      for (const line of readFileSync(f, 'utf8').split('\n')) {
-        const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-        if (m && m[1] && !(m[1] in process.env)) process.env[m[1]] = m[2];
-      }
-      return;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-}
-loadEnvFile();
+loadRootEnvFile();
 
 const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway');
 
@@ -59,15 +34,6 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-function makeApp(): Hono<AdminEnv> {
-  const app = new Hono<AdminEnv>();
-  app.use('/api/admin/*', async (_c, next) => {
-    await next();
-  });
-  app.route('/', channelAdminRoutes(db));
-  return app;
-}
-
 async function cleanup(mappingId: number): Promise<void> {
   await db.delete(modelChannels).where(eq(modelChannels.mappingId, mappingId)).catch(() => {});
   await db.delete(modelMappings).where(eq(modelMappings.id, mappingId)).catch(() => {});
@@ -81,21 +47,17 @@ describe('GET /api/admin/models 回显已绑定渠道（channelIds）', () => {
       .insert(modelMappings)
       .values({ externalName: ext, realModel: ext, status: 0 })
       .returning({ id: modelMappings.id });
-    const mappingId = m.id;
+    const mappingId = m!.id;
     try {
-      const app = makeApp();
-      // 绑定一个渠道
+      const app = makeAdminTestApp({ '/models': modelAdminRoutes(makeServices(db)) });
       await app.request(`/api/admin/models/${mappingId}/channels`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ channels: [{ channelId }] }),
       });
-      // 查列表
       const res = await app.request('/api/admin/models');
       const json = (await res.json()) as { list: Array<{ id: number; channelIds: number[] }> };
       const mine = json.list.find((row) => row.id === mappingId);
-      // eslint-disable-next-line no-console
-      console.log('[echo] mine.channelIds =', mine?.channelIds);
       expect(Array.isArray(mine?.channelIds)).toBe(true);
       expect(mine!.channelIds).toContain(channelId);
     } finally {
@@ -110,9 +72,9 @@ describe('GET /api/admin/models 回显已绑定渠道（channelIds）', () => {
       .insert(modelMappings)
       .values({ externalName: ext, realModel: ext, status: 0 })
       .returning({ id: modelMappings.id });
-    const mappingId = m.id;
+    const mappingId = m!.id;
     try {
-      const app = makeApp();
+      const app = makeAdminTestApp({ '/models': modelAdminRoutes(makeServices(db)) });
       const res = await app.request('/api/admin/models');
       const json = (await res.json()) as { list: Array<{ id: number; channelIds: number[] }> };
       const mine = json.list.find((row) => row.id === mappingId);

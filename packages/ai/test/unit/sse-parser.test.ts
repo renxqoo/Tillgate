@@ -169,6 +169,18 @@ describe('SseScanner', () => {
     expect(frames[0]?.code).toBe('rate_limited');
   });
 
+  it('区分 DONE、finish_reason 与未终止的内容帧', () => {
+    const s = new SseScanner();
+    s.consume(enc('data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
+    expect(s.hasTerminalFrame()).toBe(false);
+    expect(s.hasDone()).toBe(false);
+    s.consume(enc('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'));
+    expect(s.hasTerminalFrame()).toBe(true);
+    expect(s.hasDone()).toBe(false);
+    s.consume(enc('data: [DONE]\n\n'));
+    expect(s.hasDone()).toBe(true);
+  });
+
   it('非错误帧不触发 onErrorFrame', () => {
     const frames: unknown[] = [];
     const s = new SseScanner({ onErrorFrame: (frame) => frames.push(frame) });

@@ -1,15 +1,16 @@
 /**
  * 密钥轮换脚本：用旧 ENCRYPTION_KEY 解密所有渠道 → 用新 key 重新加密 → 写回 DB。
- * 用法：ENCRYPTION_KEY_OLD=<旧key> ENCRYPTION_KEY_NEW=<新key> npx tsx scripts/rotate-encryption-key.ts
+ * 用法：pnpm --filter @ai-gateway/db exec tsx ../../scripts/rotate-encryption-key.ts
+ * 环境：ENCRYPTION_KEY_OLD=<旧key> ENCRYPTION_KEY_NEW=<新key>
  */
-import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { encrypt, decrypt } from '@ai-gateway/core';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve } from 'node:path';
 
 // 加载 .env
-const dir = process.cwd();
+let dir = process.cwd();
 for (let i = 0; i < 6; i++) {
-  const f = resolve(dir, ...Array.from({ length: i }, () => '..'), '.env');
+  const f = resolve(dir, '.env');
   if (existsSync(f)) {
     for (const line of readFileSync(f, 'utf8').split('\n')) {
       const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
@@ -17,6 +18,7 @@ for (let i = 0; i < 6; i++) {
     }
     break;
   }
+  dir = resolve(dir, '..');
 }
 
 const OLD_KEY = process.env.ENCRYPTION_KEY_OLD;
@@ -30,31 +32,14 @@ if (!NEW_KEY || NEW_KEY.length < 32) {
   process.exit(1);
 }
 
-function decrypt(packed: string, encKey: string): string {
-  const parts = packed.split(':');
-  const iv = Buffer.from(parts[2]!, 'hex');
-  const tag = Buffer.from(parts[3]!, 'hex');
-  const enc = Buffer.from(parts[4]!, 'hex');
-  const key = createHash('sha256').update(encKey).digest();
-  const d = createDecipheriv('aes-256-gcm', key, iv);
-  d.setAuthTag(tag);
-  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
-}
-function encrypt(plain: string, encKey: string): string {
-  const key = createHash('sha256').update(encKey).digest();
-  const iv = randomBytes(12);
-  const c = createCipheriv('aes-256-gcm', key, iv);
-  const enc = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
-  const tag = c.getAuthTag();
-  return `enc:v1:${iv.toString('hex')}:${tag.toString('hex')}:${enc.toString('hex')}`;
-}
-
 async function main(): Promise<void> {
   const { default: pg } = await import('pg');
   const client = new pg.Client(process.env.DATABASE_URL);
   await client.connect();
   const { rows } = await client.query('SELECT id, name, api_key_enc FROM channels ORDER BY id');
-  console.log(`找到 ${rows.length} 个渠道，开始轮换 (old=${OLD_KEY.slice(0, 8)}... → new=${NEW_KEY.slice(0, 8)}...)`);
+  console.log(
+    `找到 ${rows.length} 个渠道，开始轮换 (old=${OLD_KEY.slice(0, 8)}... → new=${NEW_KEY.slice(0, 8)}...)`,
+  );
   let ok = 0;
   let fail = 0;
   for (const ch of rows) {

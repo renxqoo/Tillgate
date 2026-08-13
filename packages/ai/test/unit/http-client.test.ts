@@ -41,7 +41,14 @@ describe('isUnsafeIpv4', () => {
     'not-an-ip',
     '1.2.3',
   ];
-  const safe = ['8.8.8.8', '1.1.1.1', '114.114.114.114', '172.15.255.255', '100.63.0.1', '223.5.5.5'];
+  const safe = [
+    '8.8.8.8',
+    '1.1.1.1',
+    '114.114.114.114',
+    '172.15.255.255',
+    '100.63.0.1',
+    '223.5.5.5',
+  ];
 
   it('拒绝内网/保留段，放行公网', () => {
     for (const ip of unsafe) expect(isUnsafeIpv4(ip), ip).toBe(true);
@@ -118,11 +125,17 @@ describe('assertSafeUrl（含 DNS 判定，防 rebinding）', () => {
     await expect(assertSafeUrl('https://evil.example.com/v1')).resolves.toBeTruthy();
   });
 
-  it('allowedHosts 白名单跳过 DNS 判定', async () => {
+  it('allowedHosts 仍执行 DNS 私网判定', async () => {
     mockedLookup.mockResolvedValue([{ address: '10.0.0.1', family: 4 }]);
     await expect(
       assertSafeUrl('https://internal.example.com/v1', { allowedHosts: ['internal.example.com'] }),
-    ).resolves.toBeTruthy();
+    ).rejects.toThrow('blocked address');
+  });
+
+  it('配置白名单时拒绝白名单外域名', async () => {
+    await expect(
+      assertSafeUrl('https://evil.example.com/v1', { allowedHosts: ['api.example.com'] }),
+    ).rejects.toThrow('not allowlisted');
   });
 
   it('DNS 解析失败放行（fetch 自然报 network 错误）', async () => {
@@ -145,13 +158,10 @@ describe('isUnsafeIpv6 — IPv4-mapped IPv6 绕过防护', () => {
   });
 });
 
-describe('resolveAndPin（防 DNS rebinding TOCTOU）', () => {
-  // fetchUpstream 的 TOCTOU：assertSafeUrl 解析校验后，fetch(url) 会再次 DNS 解析，
-  // 两次解析间攻击者可换答案（rebinding → 169.254.169.254）。
-  // 修复：resolveAndPin 返回校验后的 IP + hostname，fetchUpstream 用 IP 直连 + Host 头。
+describe('resolveAndPin（受信 host + DNS 地址校验）', () => {
   beforeEach(() => mockedLookup.mockReset());
 
-  it('返回校验后的 IP + 原始 hostname（供 fetch 固定 IP 用）', async () => {
+  it('返回校验后的 IP + 原始 hostname（供诊断与策略记录）', async () => {
     mockedLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
     const { resolveAndPin } = await import('../../src/transport/http-client.js');
     const result = await resolveAndPin('https://api.example.com/v1');

@@ -18,14 +18,16 @@ flowchart LR
     subgraph DOCKER["Docker Compose（云服务器）"]
         NGINX["nginx<br/>TLS 终止 / 反代 / 静态资源"]
         subgraph APP["应用层（Node.js 集群，可水平扩展）"]
-            GATEWAY["gateway · Hono<br/>/v1/chat/completions · /v1/embeddings<br/>/v1/models · /oauth/token · /healthz"]
+            GATEWAY["gateway · Hono<br/>/v1/chat/completions · /v1/embeddings<br/>/v1/models · /oauth/token · /livez · /readyz"]
             ADMIN["admin-api · Hono<br/>/api/* 管理端 REST<br/>仅内网，不发布端口"]
-            CONSOLE["console · Next.js<br/>用户面板 + 管理后台"]
-            WORKER["worker · BullMQ 消费者<br/>计量结算 · 对账 · 清理任务"]
+            CLIENTAPI["client-api · Hono<br/>/api/* 用户面 REST<br/>仅内网，不发布端口"]
+            CLIENT["client · Next.js<br/>端用户面板"]
+            ADMINWEB["admin · Next.js<br/>运营后台"]
+            WORKER["worker · BullMQ 消费者<br/>计量结算 · 对账"]
         end
         subgraph DATA["数据层"]
-            REDIS["Redis 7<br/>预扣 · 限流 · 鉴权缓存 · 队列 · jti 黑名单"]
-            PG[("PostgreSQL 16<br/>13+2 张表")]
+            REDIS["Redis 7<br/>限流 · 鉴权缓存 · 队列 · 熔断 · jti 黑名单"]
+            PG[("PostgreSQL 16<br/>账本权威（billing_requests + durable receipt）")]
         end
         subgraph OBS["观测栈（compose profile `obs`，默认关闭）"]
             OTEL["OTel Collector"]
@@ -77,15 +79,17 @@ flowchart LR
 flowchart LR
     subgraph APPS["apps/"]
         GW["gateway<br/>对外代理 · 预扣 · 转发"]
-        WK["worker<br/>结算 · 对账"]
+        WK["worker<br/>结算 · 对账（编排）"]
         ADM["admin-api<br/>管理端 REST"]
-        CS["console<br/>Next.js 控制台"]
+        CA["client-api<br/>用户面 REST"]
+        CS["client + admin<br/>Next.js 前端（两个独立部署）"]
     end
     subgraph PKGS["packages/（共享）"]
         DB["db<br/>Drizzle schema + migrations"]
-        CFG["config<br/>环境变量校验"]
-        LG["logger<br/>pino 封装"]
-        OT["otel<br/>SDK 初始化"]
+        CORE["core<br/>env 校验 + 日志 + OTel + 加密"]
+        LEDGER["ledger<br/>预扣生命周期 + 结算 + 对账"]
+        MONEY["money<br/>金额计算（Decimal）"]
+        AI["ai<br/>上游 LLM 传输层"]
     end
     GW --> DB
     GW --> CFG
@@ -108,7 +112,7 @@ flowchart TD
     A1["① 鉴权<br/>Key 哈希查库 / JWT 本地验签<br/>+ App 状态缓存 + jti 黑名单"] -->|"失败"| ERR["统一错误信封<br/>401 invalid_api_key"]
     A1 -->|"通过"| A2
 
-    A2["①.5 预扣 billing hold<br/>hold = min(估算上限, 可用余额, HOLD_MAX)<br/>Redis Lua 原子：bal -= hold"] -->|"hold ≤ 0"| E402["402 insufficient_balance<br/>不发往上游"]
+    A2["①.5 足额授权<br/>required = 最贵候选完整费用上限<br/>DB 条件扣余额"] -->|"balance < required"| E402["402 insufficient_balance<br/>不发往上游"]
     A2 -->|"已预扣"| A3
 
     A3["② 限流<br/>Redis 计数：全局/用户/Key/模型<br/>RPM · TPM（输入预占+历史回填）"] -->|"超限"| E429["429 rate_limit_exceeded<br/>Retry-After"]
@@ -128,10 +132,10 @@ flowchart TD
     STR["⑦ SSE 流式透传<br/>心跳注入 · 中断处理（见第 7 节）"]
     JSN["⑦ 非流式 JSON 返回<br/>空内容 → 空完成重试 ≤2"]
 
-    STR --> M["⑧ 计量<br/>usage 解析（缓存字段归一化）<br/>缺失 → 估算（1:3.5 字符）"]
+    STR --> M["⑧ 计量<br/>严格解析可信 usage<br/>缺失/非法 → uncertain"]
     JSN --> M
-    M --> Q["计量事件 → bull:meter<br/>（request_id 幂等）"]
-    Q --> W["⑨ worker 结算对账<br/>与预扣 hold 补扣/退款<br/>写 usage_logs + transactions"]
+    M --> Q["durable receipt → billing_requests<br/>队列只唤醒"]
+    Q --> W["⑨ worker 结算对账<br/>actual ≤ reserved 才提交<br/>写 usage_logs + transactions"]
 
     W --> R["⑩ 响应返回客户端"]
     ERR --> C
@@ -172,15 +176,15 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph PH1["请求前（gateway）"]
-        H1["估算费用上限<br/>（输入估算×输入价 + 输出上限×输出价）× 系数"] --> H2["hold = min(上限, 可用余额, HOLD_MAX)"]
-        H2 --> H3{"hold > 0 ?"}
+        H1["编译费用上界<br/>文本按 UTF-8 字节；多模态按模型硬上限"] --> H2["required = max(所有候选)<br/>超风险上限直接拒绝"]
+        H2 --> H3{"已结算余额 - 处理中预留 ≥ required ?"}
         H3 -->|"否"| H4["402 拒绝"]
-        H3 -->|"是"| H5["Redis Lua：bal -= hold<br/>SET hold:{reqId} EX 600"]
+        H3 -->|"是"| H5["PostgreSQL 事务<br/>写 billing_requests + 增加预留<br/>已结算余额不变"]
         H5 --> F["转发上游"]
     end
 
     subgraph PH2["请求完成后（worker）"]
-        F --> M["计量事件 → bull:meter"]
+        F --> M["成功收据 → billing_requests"]
         M --> S1["计算实际费用 amount<br/>（缓存/未缓存/输出 × 官方价 × 系数）"]
         S1 --> S2{"有有效套餐？"}
         S2 -->|"是"| S3["扣套餐额度<br/>plan_amount = min(amount, 剩余额度)<br/>quota 原子扣减"]
@@ -188,13 +192,13 @@ flowchart TD
         S3 --> S4{"剩余部分？"}
         S4 -->|"fallback 开 + 余额足"| S5
         S4 -->|"fallback 关 / 余额不足"| S6["坏账 status=2<br/>纯余额用户冻结 / 套餐用户不冻结"]
-        S5["余额结算 payg_amount<br/>与 hold 对账：<br/>超出补扣 / 剩余退款（DB 原子）"]
+        S5["余额结算 payg_amount<br/>actual ≤ reserved：扣实际 + 释放全额预留<br/>actual > reserved：dead 审核"]
         S6 --> S7
-        S5 --> S7["写 usage_logs + transactions<br/>删 hold:{reqId} → 刷新缓存"]
+        S5 --> S7["写 usage_logs + transactions<br/>billing_requests → settled"]
     end
 
     subgraph PH3["兜底与对账"]
-        H5 -.->|"TTL 10min 未结算"| T1["Lua 原子释放（存在才释放）<br/>+ 告警 → request_logs 重放（P1）"]
+        H5 -.->|"授权/租约过期"| T1["DB CAS 恢复<br/>未触达上游才退款；否则 uncertain"]
         S7 --> T2["每日对账<br/>Σ amount(status=0) = Σ transactions<br/>upstream_cost ↔ 供应商账单"]
     end
 ```
@@ -223,7 +227,7 @@ flowchart TD
     C4 -->|"429 上游限流"| R2["不计入熔断<br/>退避后下一候选"]
     C4 -->|"401 / 403"| R3["死凭据计数<br/>≥N → 凭据无效 + 停路由 + 告警"]
     C4 -->|"其他 4xx"| R4["原样返回该状态<br/>upstream_client_error"]
-    C4 -->|"流式错误帧 / 流中断"| R5["排除候选<br/>已收内容按估算计费（5.11）"]
+    C4 -->|"流式错误帧 / 流中断"| R5["排除候选<br/>可信 usage 精确结算；否则 uncertain"]
 
     R1 --> CHK
     R2 --> CHK
@@ -254,9 +258,9 @@ flowchart TD
     LOOP -->|"数据块"| SCAN["IncrementalSseScanner（O(1) 内存）<br/>usage 最后帧胜出<br/>首个错误帧记录 code/detail"]
     LOOP -->|"静默 >30s"| HB["注入心跳帧 ': keep-alive'<br/>（仅 SSE 事件边界，防拆半截事件）"]
     LOOP -->|"静默 ≥5min"| TO["取消上游读<br/>发流式错误帧 stream_inactivity_timeout"]
-    LOOP -->|"客户端 abort"| ABORT["主动断开上游（停止生成、省成本）<br/>已收内容按估算计费<br/>stream_aborted=true"]
+    LOOP -->|"客户端 abort"| ABORT["主动断开上游（停止生成、省成本）<br/>可信 usage 精确结算；否则 uncertain"]
 
-    SCAN -->|"流结束"| SETTLE["结算事件 → bull:meter<br/>（流尾 usage 优先，缺失估算）"]
+    SCAN -->|"流结束"| SETTLE["先提交 durable receipt<br/>再关闭 SSE"]
     TO --> ABORT
     SETTLE --> DONE["响应完成（[DONE] / 错误帧）"]
 ```

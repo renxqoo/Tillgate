@@ -22,6 +22,8 @@ export interface RetryOptions {
   deadlineMs: number;
   /** 空完成（200 但无内容）重试次数，默认 2 */
   emptyCompletionRetries: number;
+  /** 调用方取消信号；与本地 deadline 合并。 */
+  signal?: AbortSignal;
 }
 
 /** fn 的返回：成功 / 失败（可重试错误 或 空完成） */
@@ -91,13 +93,19 @@ export async function withRetry<T>(
   onRetry?: (info: RetryAttemptInfo) => void,
 ): Promise<RetryResult<T>> {
   const controller = new AbortController();
-  const deadlineTimer = setTimeout(() => controller.abort(), opts.deadlineMs);
+  const deadlineTimer = setTimeout(
+    () => controller.abort(new Error('retry deadline exceeded')),
+    opts.deadlineMs,
+  );
+  const signal = opts.signal
+    ? AbortSignal.any([controller.signal, opts.signal])
+    : controller.signal;
   try {
     let attempts = 0;
     let emptyCount = 0;
     for (;;) {
       attempts += 1;
-      const outcome = await fn(attempts, controller.signal);
+      const outcome = await fn(attempts, signal);
       if (outcome.ok) return { outcome, attempts };
 
       const { error } = outcome;
@@ -111,8 +119,8 @@ export async function withRetry<T>(
       if (outcome.empty) emptyCount += 1;
       const delayMs = backoffDelayMs(attempts, opts.baseDelayMs, opts.maxDelayMs, opts.jitterRatio);
       onRetry?.({ attempt: attempts, error, delayMs });
-      await sleep(delayMs, controller.signal);
-      if (controller.signal.aborted) return { outcome, attempts }; // deadline 到，不再重试
+      await sleep(delayMs, signal);
+      if (signal.aborted) return { outcome, attempts }; // deadline/调用方取消，不再重试
     }
   } finally {
     clearTimeout(deadlineTimer);

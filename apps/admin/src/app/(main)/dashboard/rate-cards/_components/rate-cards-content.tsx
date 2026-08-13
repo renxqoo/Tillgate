@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useState, useTransition } from "react";
-import Link from "next/link";
+import { useState, useTransition } from 'react';
+import Link from 'next/link';
 
 import {
   BanknoteIcon,
@@ -10,13 +10,13 @@ import {
   PencilIcon,
   PlusCircleIcon,
   Trash2Icon,
-} from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { z } from "zod";
+} from 'lucide-react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
+import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Dialog,
   DialogClose,
@@ -26,16 +26,17 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@ai-gateway/ui/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
-import { Input } from "@ai-gateway/ui/components/ui/input";
+} from '@ai-gateway/ui/components/ui/dialog';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/field';
+import { Input } from '@ai-gateway/ui/components/ui/input';
+import { NumberField } from '@ai-gateway/ui/components/ui/number-field';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@ai-gateway/ui/components/ui/select";
+} from '@ai-gateway/ui/components/ui/select';
 import {
   Table,
   TableBody,
@@ -43,13 +44,17 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ai-gateway/ui/components/ui/table";
+} from '@ai-gateway/ui/components/ui/table';
+import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { RateCardRow } from "../types";
+import type { RateCardRow } from '../types';
 
 const createSchema = z.object({
   name: z.string().min(1),
-  coefficient: z.coerce.number().min(0).max(10),
+  coefficient: numericText({ message: '请输入有效系数' }).refine(
+    (v) => v >= 0 && v <= 10,
+    '系数范围 0-10',
+  ),
   description: z.string().optional(),
 });
 
@@ -91,7 +96,7 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
         </Link>
       </TableCell>
       <TableCell className="text-right tabular-nums">×{card.coefficient}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">{card.description ?? "—"}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">{card.description ?? '—'}</TableCell>
       <TableCell>
         {card.status === 0 ? (
           <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
@@ -104,7 +109,7 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(card.updatedAt).toLocaleString("zh-CN")}
+        {new Date(card.updatedAt).toLocaleString('zh-CN')}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
@@ -121,11 +126,11 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
             onClick={async () => {
               if (!confirm(`确定删除费率卡 ${card.name}？若有绑定用户会失败。`)) return;
               setPending(true);
-              const { deleteRateCardAction } = await import("../actions");
+              const { deleteRateCardAction } = await import('../actions');
               const res = await deleteRateCardAction(card.id);
               setPending(false);
               if (res.error) toast.error(res.error);
-              else toast.success("已删除");
+              else toast.success('已删除');
             }}
             className="text-destructive hover:text-destructive"
           >
@@ -140,21 +145,25 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
 export function CreateRateCardDialog() {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  type FormValues = z.infer<typeof createSchema>;
+  type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
-    defaultValues: { name: "", coefficient: 1, description: "" },
+    defaultValues: { name: '', coefficient: '1', description: '' },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { createRateCardAction } = await import("../actions");
-      const res = await createRateCardAction(values);
+      const { createRateCardAction } = await import('../actions');
+      const res = await createRateCardAction({
+        name: values.name,
+        coefficient: Number(values.coefficient),
+        description: values.description?.trim() || undefined,
+      });
       if (res.error) {
-        toast.error("创建失败", { description: res.error });
+        toast.error('创建失败', { description: res.error });
         return;
       }
-      toast.success("已创建");
+      toast.success('已创建');
       form.reset();
       setOpen(false);
     });
@@ -191,7 +200,10 @@ export function CreateRateCardDialog() {
 
 const editSchema = z.object({
   name: z.string().min(1),
-  coefficient: z.coerce.number().min(0).max(10),
+  coefficient: numericText({ message: '请输入有效系数' }).refine(
+    (v) => v >= 0 && v <= 10,
+    '系数范围 0-10',
+  ),
   description: z.string().optional(),
   status: z.coerce.number().int(),
 });
@@ -199,31 +211,31 @@ const editSchema = z.object({
 function EditRateCardDialog({ card }: { card: RateCardRow }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  type FormValues = z.infer<typeof editSchema>;
+  type FormValues = z.input<typeof editSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
     defaultValues: {
       name: card.name,
-      coefficient: Number(card.coefficient),
-      description: card.description ?? "",
+      coefficient: card.coefficient,
+      description: card.description ?? '',
       status: card.status,
     },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { updateRateCardAction } = await import("../actions");
+      const { updateRateCardAction } = await import('../actions');
       const res = await updateRateCardAction(card.id, {
         name: values.name,
-        coefficient: values.coefficient,
+        coefficient: Number(values.coefficient),
         description: values.description?.trim() || undefined,
-        status: values.status,
+        status: Number(values.status),
       });
       if (res.error) {
-        toast.error("保存失败", { description: res.error });
+        toast.error('保存失败', { description: res.error });
         return;
       }
-      toast.success("已保存");
+      toast.success('已保存');
       setOpen(false);
     });
   }
@@ -256,14 +268,30 @@ function EditRateCardDialog({ card }: { card: RateCardRow }) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function RateCardForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSubmit: (v: never) => void; formId: string; isEdit?: boolean }) {
+function RateCardForm({
+  form,
+  onSubmit,
+  formId,
+  isEdit = false,
+}: {
+  form: any;
+  onSubmit: (v: never) => void;
+  formId: string;
+  isEdit?: boolean;
+}) {
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
         <Controller
           control={form.control}
           name="name"
-          render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+          render={({
+            field,
+            fieldState,
+          }: {
+            field: { value: string };
+            fieldState: { invalid?: boolean; error?: { message?: string } };
+          }) => (
             <Field data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="rc-name">名称</FieldLabel>
               <Input id="rc-name" placeholder="例如 标准版 / 8 折版" {...field} />
@@ -271,16 +299,13 @@ function RateCardForm({ form, onSubmit, formId, isEdit = false }: { form: any; o
             </Field>
           )}
         />
-        <Controller
+        <NumberField
           control={form.control}
           name="coefficient"
-          render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="rc-coef">系数（0-10，1 = 原价）</FieldLabel>
-              <Input id="rc-coef" type="number" step="0.05" {...field} value={field.value ?? 1} onChange={(e) => field.onChange(Number(e.target.value))} />
-              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
-          )}
+          label="系数（0-10，1 = 原价）"
+          id="rc-coef"
+          step="0.05"
+          min={0}
         />
         <Controller
           control={form.control}
@@ -299,7 +324,10 @@ function RateCardForm({ form, onSubmit, formId, isEdit = false }: { form: any; o
             render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
               <Field>
                 <FieldLabel>状态</FieldLabel>
-                <Select value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
+                <Select
+                  value={String(field.value)}
+                  onValueChange={(v) => field.onChange(Number(v))}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>

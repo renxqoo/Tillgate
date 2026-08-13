@@ -49,11 +49,10 @@ export {
 export {
   type ClientEnv,
   type AdminEnv,
-  type LegacyAdminEnv,
   type UserSessionContext,
   type AdminSessionContext,
 } from './types.js';
 
 // 中间件
-export { userSessionMiddleware, resolveUserSession } from './middleware/user-session.js';
-export { adminAuthMiddleware, tryResolveAdminSession } from './middleware/admin-session.js';
+export { userSessionMiddleware } from './middleware/user-session.js';
+export { adminAuthMiddleware } from './middleware/admin-session.js';

@@ -1,10 +1,16 @@
-"use client";
+'use client';
 
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@ai-gateway/ui/components/ui/chart";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@ai-gateway/ui/components/ui/chart';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { formatMoney } from '@ai-gateway/api-client/formatters';
 
 const chartConfig: ChartConfig = {
-  cost: { label: "费用（元）", color: "var(--chart-1)" },
+  cost: { label: '费用（元）', color: 'var(--chart-1)' },
 };
 
 export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value: number }> }) {
@@ -17,7 +23,10 @@ export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value:
   }
   return (
     <ChartContainer config={chartConfig} className="aspect-auto h-62.5 w-full">
-      <AreaChart data={data as Array<{ date: string; value: number }>} margin={{ left: 12, right: 12, top: 4, bottom: 4 }}>
+      <AreaChart
+        data={data as Array<{ date: string; value: number }>}
+        margin={{ left: 12, right: 12, top: 4, bottom: 4 }}
+      >
         <defs>
           <linearGradient id="cost-fill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
@@ -35,10 +44,18 @@ export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value:
         <YAxis
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v: number) => v.toFixed(2)}
+          tickFormatter={(v: number) => formatMoney(v)}
           width={48}
         />
-        <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              indicator="line"
+              formatter={(value) => `¥${formatMoney(Number(value))}`}
+            />
+          }
+        />
         <Area
           type="monotone"
           dataKey="value"

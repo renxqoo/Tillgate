@@ -37,7 +37,7 @@ function safe(v: number): number {
 
 /**
  * 计算费用（元，Decimal 全精度，不 round）。
- * @returns Decimal 金额（元）。调用方按需 toStorage() 存 DB 或 toCents() 对外结算。
+ * @returns Decimal 金额（元）。调用方按需 toStorage() 存 DB。
  */
 export function calcAmount(input: AmountInput): Decimal {
   const inputTokens = safe(input.inputTokens);

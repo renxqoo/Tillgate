@@ -35,7 +35,9 @@ function enter(): void {
     maxInFlight = inFlight;
     // 只在创新高时打印（避免刷屏）
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[mock-llm] ⬆ max in-flight = ${maxInFlight} (at ${elapsed}s, current ${inFlight})`);
+    console.log(
+      `[mock-llm] ⬆ max in-flight = ${maxInFlight} (at ${elapsed}s, current ${inFlight})`,
+    );
   }
 }
 function leave(): void {
@@ -62,7 +64,22 @@ async function streamChat(res: ServerResponse, body: unknown): Promise<void> {
   const model = reqBody.model ?? 'mock-model';
   // 总帧数 = duration / interval，至少 2 帧（首帧 role + 内容帧）
   const frameCount = Math.max(2, Math.floor(DURATION_MS / TOKEN_INTERVAL_MS));
-  const tokens = ['你', '好', '，', '这', '是', '一', '个', '压', '测', '模', '拟', '回', '复', '。'];
+  const tokens = [
+    '你',
+    '好',
+    '，',
+    '这',
+    '是',
+    '一',
+    '个',
+    '压',
+    '测',
+    '模',
+    '拟',
+    '回',
+    '复',
+    '。',
+  ];
   res.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache',

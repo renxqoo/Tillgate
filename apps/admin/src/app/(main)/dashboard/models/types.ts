@@ -8,6 +8,7 @@ export interface ModelRow {
   cacheInputPrice: string;
   fallbackModels: string | null;
   paramRules: string | null;
+  billingPolicy: Record<string, unknown> | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
   status: number;

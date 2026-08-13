@@ -3,16 +3,16 @@ import {
   ChartBar,
   Gauge,
   History,
-  KeyRound,
+  ShieldAlert,
   type LucideIcon,
   Network,
   ScrollText,
   Server,
   Ticket,
   UsersRound,
-} from "lucide-react";
+} from 'lucide-react';
 
-export type NavBadge = "new" | "soon";
+export type NavBadge = 'new' | 'soon';
 
 interface NavItemBase {
   id: string;
@@ -54,36 +54,40 @@ export function buildSidebarItems(): NavGroup[] {
   return [
     {
       id: 1,
-      label: "运营总览",
-      items: [
-        { id: "stats", title: "仪表盘", url: "/dashboard", icon: ChartBar },
-      ],
+      label: '运营总览',
+      items: [{ id: 'stats', title: '仪表盘', url: '/dashboard', icon: ChartBar }],
     },
     {
       id: 2,
-      label: "资源管理",
+      label: '资源管理',
       items: [
-        { id: "users", title: "用户", url: "/dashboard/users", icon: UsersRound },
-        { id: "providers", title: "供应商", url: "/dashboard/providers", icon: Server },
-        { id: "channels", title: "渠道", url: "/dashboard/channels", icon: Network },
-        { id: "models", title: "模型映射", url: "/dashboard/models", icon: Server },
-        { id: "rate-cards", title: "费率卡", url: "/dashboard/rate-cards", icon: Banknote },
-        { id: "rate-limits", title: "限流设置", url: "/dashboard/rate-limits", icon: Gauge },
+        { id: 'users', title: '用户', url: '/dashboard/users', icon: UsersRound },
+        { id: 'providers', title: '供应商', url: '/dashboard/providers', icon: Server },
+        { id: 'channels', title: '渠道', url: '/dashboard/channels', icon: Network },
+        { id: 'models', title: '模型映射', url: '/dashboard/models', icon: Server },
+        { id: 'rate-cards', title: '费率卡', url: '/dashboard/rate-cards', icon: Banknote },
+        { id: 'rate-limits', title: '限流设置', url: '/dashboard/rate-limits', icon: Gauge },
       ],
     },
     {
       id: 3,
-      label: "充值码",
+      label: '充值码',
       items: [
-        { id: "redeem-batches", title: "批次管理", url: "/dashboard/redeem-batches", icon: Ticket },
+        { id: 'redeem-batches', title: '批次管理', url: '/dashboard/redeem-batches', icon: Ticket },
       ],
     },
     {
       id: 4,
-      label: "审计",
+      label: '审计',
       items: [
-        { id: "logs", title: "请求日志", url: "/dashboard/logs", icon: ScrollText },
-        { id: "audit-logs", title: "操作审计", url: "/dashboard/audit-logs", icon: History },
+        {
+          id: 'billing-operations',
+          title: '计费复核',
+          url: '/dashboard/billing-operations',
+          icon: ShieldAlert,
+        },
+        { id: 'logs', title: '请求日志', url: '/dashboard/logs', icon: ScrollText },
+        { id: 'audit-logs', title: '操作审计', url: '/dashboard/audit-logs', icon: History },
       ],
     },
   ];

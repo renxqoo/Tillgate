@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState, useTransition } from "react";
+import { useState, useTransition } from 'react';
 
 import {
   CpuIcon,
@@ -9,14 +9,14 @@ import {
   PencilIcon,
   PlusCircleIcon,
   Trash2Icon,
-} from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { z } from "zod";
+} from 'lucide-react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
-import { Checkbox } from "@ai-gateway/ui/components/ui/checkbox";
+import { Button } from '@ai-gateway/ui/components/ui/button';
+import { Checkbox } from '@ai-gateway/ui/components/ui/checkbox';
 import {
   Dialog,
   DialogClose,
@@ -26,9 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@ai-gateway/ui/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
-import { Input } from "@ai-gateway/ui/components/ui/input";
+} from '@ai-gateway/ui/components/ui/dialog';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/field';
+import { Input } from '@ai-gateway/ui/components/ui/input';
+import { NumberField } from '@ai-gateway/ui/components/ui/number-field';
 import {
   Table,
   TableBody,
@@ -36,23 +37,19 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ai-gateway/ui/components/ui/table";
-import { Textarea } from "@ai-gateway/ui/components/ui/textarea";
+} from '@ai-gateway/ui/components/ui/table';
+import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
+import { numericText } from '@ai-gateway/ui/lib/forms';
+import { fmtPrice } from '@ai-gateway/api-client/formatters';
 
-import type { ChannelOption, ModelRow } from "../types";
-
-// 内联格式化，避免引入 server-only 的 api-client
-function fmtPrice(v: string | number | null | undefined): string {
-  const n = typeof v === "string" ? Number(v) : (v ?? 0);
-  return (Number.isFinite(n) ? n : 0).toFixed(4);
-}
+import type { ChannelOption, ModelRow } from '../types';
 
 const createSchema = z.object({
   externalName: z.string().min(1),
   realModel: z.string().min(1),
-  inputPrice: z.coerce.number().min(0),
-  outputPrice: z.coerce.number().min(0),
-  cacheInputPrice: z.coerce.number().min(0),
+  inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
 });
 
 export function ModelsTable({
@@ -84,9 +81,7 @@ export function ModelsTable({
             </TableCell>
           </TableRow>
         ) : (
-          models.map((m) => (
-            <ModelRowItem key={m.id} model={m} channels={channels} />
-          ))
+          models.map((m) => <ModelRowItem key={m.id} model={m} channels={channels} />)
         )}
       </TableBody>
     </Table>
@@ -111,7 +106,7 @@ function ModelRowItem({
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.outputPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.cacheInputPrice)}</TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
-        {model.fallbackModels ?? "—"}
+        {model.fallbackModels ?? '—'}
       </TableCell>
       <TableCell>
         {model.status === 0 ? (
@@ -135,11 +130,11 @@ function ModelRowItem({
             onClick={async () => {
               if (!confirm(`确定删除模型映射 ${model.externalName}？`)) return;
               setPending(true);
-              const { deleteModelAction } = await import("../actions");
+              const { deleteModelAction } = await import('../actions');
               const res = await deleteModelAction(model.id);
               setPending(false);
               if (res.error) toast.error(res.error);
-              else toast.success("已删除");
+              else toast.success('已删除');
             }}
             className="text-destructive hover:text-destructive"
           >
@@ -154,21 +149,33 @@ function ModelRowItem({
 export function CreateModelDialog() {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  type FormValues = z.infer<typeof createSchema>;
+  type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
-    defaultValues: { externalName: "", realModel: "", inputPrice: 0, outputPrice: 0, cacheInputPrice: 0 },
+    defaultValues: {
+      externalName: '',
+      realModel: '',
+      inputPrice: '',
+      outputPrice: '',
+      cacheInputPrice: '',
+    },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { createModelAction } = await import("../actions");
-      const res = await createModelAction(values);
+      const { createModelAction } = await import('../actions');
+      const res = await createModelAction({
+        externalName: values.externalName,
+        realModel: values.realModel,
+        inputPrice: Number(values.inputPrice),
+        outputPrice: Number(values.outputPrice),
+        cacheInputPrice: Number(values.cacheInputPrice),
+      });
       if (res.error) {
-        toast.error("创建失败", { description: res.error });
+        toast.error('创建失败', { description: res.error });
         return;
       }
-      toast.success("已创建");
+      toast.success('已创建');
       form.reset();
       setOpen(false);
     });
@@ -206,56 +213,72 @@ export function CreateModelDialog() {
 const editSchema = z.object({
   externalName: z.string().min(1),
   realModel: z.string().min(1),
-  inputPrice: z.coerce.number().min(0),
-  outputPrice: z.coerce.number().min(0),
-  cacheInputPrice: z.coerce.number().min(0),
+  inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   fallbackModels: z.string().optional(),
   paramRules: z.string().optional(),
+  billingPolicy: z
+    .string()
+    .optional()
+    .refine((value) => {
+      if (!value?.trim()) return true;
+      try {
+        JSON.parse(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }, '请输入合法 JSON'),
   rpmLimit: z.string().optional(),
   tpmLimit: z.string().optional(),
-  status: z.coerce.number().int(),
+  status: numericText({ message: '请输入整数' }).refine((v) => Number.isInteger(v), '请输入整数'),
 });
 
 function EditModelDialog({ model }: { model: ModelRow }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
-  type FormValues = z.infer<typeof editSchema>;
+  type FormValues = z.input<typeof editSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
     defaultValues: {
       externalName: model.externalName,
       realModel: model.realModel,
-      inputPrice: Number(model.inputPrice),
-      outputPrice: Number(model.outputPrice),
-      cacheInputPrice: Number(model.cacheInputPrice),
-      fallbackModels: model.fallbackModels ?? "",
-      paramRules: model.paramRules ?? "",
-      rpmLimit: model.rpmLimit === null ? "" : String(model.rpmLimit),
-      tpmLimit: model.tpmLimit === null ? "" : String(model.tpmLimit),
-      status: model.status,
+      inputPrice: model.inputPrice ?? '',
+      outputPrice: model.outputPrice ?? '',
+      cacheInputPrice: model.cacheInputPrice ?? '',
+      fallbackModels: model.fallbackModels ?? '',
+      paramRules: model.paramRules ?? '',
+      billingPolicy: model.billingPolicy ? JSON.stringify(model.billingPolicy, null, 2) : '',
+      rpmLimit: model.rpmLimit === null ? '' : String(model.rpmLimit),
+      tpmLimit: model.tpmLimit === null ? '' : String(model.tpmLimit),
+      status: String(model.status),
     },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { updateModelAction } = await import("../actions");
+      const { updateModelAction } = await import('../actions');
       const res = await updateModelAction(model.id, {
         externalName: values.externalName,
         realModel: values.realModel,
-        inputPrice: values.inputPrice,
-        outputPrice: values.outputPrice,
-        cacheInputPrice: values.cacheInputPrice,
+        inputPrice: Number(values.inputPrice),
+        outputPrice: Number(values.outputPrice),
+        cacheInputPrice: Number(values.cacheInputPrice),
         fallbackModels: values.fallbackModels?.trim() || undefined,
         paramRules: values.paramRules?.trim() || undefined,
-        rpmLimit: values.rpmLimit === "" ? null : Number(values.rpmLimit),
-        tpmLimit: values.tpmLimit === "" ? null : Number(values.tpmLimit),
-        status: values.status,
+        billingPolicy: values.billingPolicy?.trim()
+          ? (JSON.parse(values.billingPolicy) as Record<string, unknown>)
+          : null,
+        rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
+        tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
+        status: Number(values.status),
       });
       if (res.error) {
-        toast.error("保存失败", { description: res.error });
+        toast.error('保存失败', { description: res.error });
         return;
       }
-      toast.success("已保存");
+      toast.success('已保存');
       setOpen(false);
     });
   }
@@ -288,7 +311,17 @@ function EditModelDialog({ model }: { model: ModelRow }) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSubmit: (v: never) => void; formId: string; isEdit?: boolean }) {
+function ModelForm({
+  form,
+  onSubmit,
+  formId,
+  isEdit = false,
+}: {
+  form: any;
+  onSubmit: (v: never) => void;
+  formId: string;
+  isEdit?: boolean;
+}) {
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -296,7 +329,13 @@ function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSu
           <Controller
             control={form.control}
             name="externalName"
-            render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+            render={({
+              field,
+              fieldState,
+            }: {
+              field: { value: string };
+              fieldState: { invalid?: boolean; error?: { message?: string } };
+            }) => (
               <Field data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-ext">外部名称</FieldLabel>
                 <Input id="m-ext" placeholder="例如 gpt-4o-mini" {...field} />
@@ -307,7 +346,13 @@ function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSu
           <Controller
             control={form.control}
             name="realModel"
-            render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
+            render={({
+              field,
+              fieldState,
+            }: {
+              field: { value: string };
+              fieldState: { invalid?: boolean; error?: { message?: string } };
+            }) => (
               <Field data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-real">真实模型</FieldLabel>
                 <Input id="m-real" placeholder="例如 gpt-4o-mini-2024-07-18" {...field} />
@@ -317,38 +362,26 @@ function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSu
           />
         </div>
         <div className="grid grid-cols-3 gap-3">
-          <Controller
+          <NumberField
             control={form.control}
             name="inputPrice"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="m-in">输入价</FieldLabel>
-                <Input id="m-in" type="number" step="0.0001" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
+            label="输入价"
+            id="m-in"
+            step="0.0001"
           />
-          <Controller
+          <NumberField
             control={form.control}
             name="outputPrice"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="m-out">输出价</FieldLabel>
-                <Input id="m-out" type="number" step="0.0001" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
+            label="输出价"
+            id="m-out"
+            step="0.0001"
           />
-          <Controller
+          <NumberField
             control={form.control}
             name="cacheInputPrice"
-            render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-              <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="m-cache">缓存价</FieldLabel>
-                <Input id="m-cache" type="number" step="0.0001" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
-                {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
-            )}
+            label="缓存价"
+            id="m-cache"
+            step="0.0001"
           />
         </div>
         <p className="text-xs text-muted-foreground">单位：元 / 百万 token</p>
@@ -374,6 +407,24 @@ function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSu
                 </Field>
               )}
             />
+            <Controller
+              control={form.control}
+              name="billingPolicy"
+              render={({ field }: { field: { value: string } }) => (
+                <Field>
+                  <FieldLabel htmlFor="m-billing-policy">多模态计费策略（JSON）</FieldLabel>
+                  <Textarea
+                    id="m-billing-policy"
+                    rows={8}
+                    className="font-mono text-xs"
+                    placeholder={
+                      '{"version":1,"billingMode":"unified_input_tokens","maxInputTokens":128000,"modalities":{"image":{"maxItems":20,"maxInlineBytes":20971520}}}'
+                    }
+                    {...field}
+                  />
+                </Field>
+              )}
+            />
             <div className="grid grid-cols-3 gap-3">
               <Controller
                 control={form.control}
@@ -395,15 +446,13 @@ function ModelForm({ form, onSubmit, formId, isEdit = false }: { form: any; onSu
                   </Field>
                 )}
               />
-              <Controller
+              <NumberField
                 control={form.control}
                 name="status"
-                render={({ field, fieldState }: { field: { value: number; onChange: (v: number) => void }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
-                  <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="m-status">状态</FieldLabel>
-                    <Input id="m-status" type="number" {...field} value={field.value ?? 0} onChange={(e) => field.onChange(Number(e.target.value))} />
-                  </Field>
-                )}
+                label="状态"
+                id="m-status"
+                step="1"
+                min={0}
               />
             </div>
           </>
@@ -430,10 +479,10 @@ function BindChannelsDialog({
 
   function onSubmit() {
     startTransition(async () => {
-      const { bindChannelsAction } = await import("../actions");
+      const { bindChannelsAction } = await import('../actions');
       const res = await bindChannelsAction(model.id, selected);
       if (res.error) {
-        toast.error("绑定失败", { description: res.error });
+        toast.error('绑定失败', { description: res.error });
         return;
       }
       toast.success(`已绑定 ${selected.length} 个渠道`);

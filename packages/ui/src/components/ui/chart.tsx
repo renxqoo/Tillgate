@@ -277,7 +277,6 @@ function ChartLegendContent({
   hideIcon = false,
   payload,
   verticalAlign = "bottom",
-  nameKey,
 }: React.ComponentProps<"div"> & {
   hideIcon?: boolean
 } & RechartsPrimitive.DefaultLegendContentProps) {
@@ -297,7 +296,7 @@ function ChartLegendContent({
       {payload
         .filter((item) => item.type !== "none")
         .map((item, index) => {
-          const key = `${nameKey ?? item.dataKey ?? "value"}`
+          const key = `${item.dataKey ?? "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
 
           return (

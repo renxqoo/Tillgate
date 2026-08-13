@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Db } from '@ai-gateway/db';
-import type { Logger } from '@ai-gateway/logger';
+import type { Logger } from '@ai-gateway/core';
 import { writeRequestLog, truncateSummary } from '../lib/request-log.js';
 import type { AuthEnv } from './auth.js';
 
@@ -26,7 +26,10 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
       try {
         // c.req.valid('json') 返回 zod 校验后的 body（validator 缓存）
         // 中间件层无类型信息，用 unknown 断言
-        const raw = (c.req as { valid: (k: string) => unknown }).valid('json') as Record<string, unknown> | null;
+        const raw = (c.req as { valid: (k: string) => unknown }).valid('json') as Record<
+          string,
+          unknown
+        > | null;
         if (raw && typeof raw === 'object') {
           requestSummary = truncateSummary({
             model: raw.model,
@@ -51,18 +54,21 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
     // c.res.clone() + .json() 会缓冲整个流式 Response（破坏 SSE 逐块推送）。
     const errorCode = status >= 400 ? `http_${status}` : null;
 
-    void writeRequestLog(db, {
-      requestId,
-      userId: auth?.userId ?? null,
-      apiKeyId: auth?.apiKeyId ?? null,
-      method: c.req.method,
-      path,
-      statusCode: status,
-      errorCode,
-      durationMs,
-      attempts: 1,
-      requestSummary,
-    }, logger);
+    void writeRequestLog(
+      db,
+      {
+        requestId,
+        userId: auth?.userId ?? null,
+        apiKeyId: auth?.apiKeyId ?? null,
+        method: c.req.method,
+        path,
+        statusCode: status,
+        errorCode,
+        durationMs,
+        requestSummary,
+      },
+      logger,
+    );
   };
 }
 

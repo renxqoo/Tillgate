@@ -1,63 +1,48 @@
-import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
-import { loadClientApiEnv } from '@ai-gateway/config';
-import { createLogger, type Logger } from '@ai-gateway/logger';
-import { initOtel } from '@ai-gateway/otel';
+import { loadClientApiEnv, createLogger, initOtel } from '@ai-gateway/core';
 import { createDb } from '@ai-gateway/db';
-import { clientAuthRoutes } from './routes/auth.js';
-import { keyRoutes } from './routes/keys.js';
-import { appRoutes } from './routes/apps.js';
-import { panelRoutes } from './routes/panel.js';
-import { userSessionMiddleware, type ClientEnv } from '@ai-gateway/identity';
-import { ValidationError } from './lib/validation.js';
-import { getSharedRedis } from '@ai-gateway/billing';
+import { createLedger } from '@ai-gateway/ledger';
+import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
+import { createApp } from './app.js';
 
-export const env = loadClientApiEnv();
-export const logger: Logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'client-api' });
+/**
+ * client-api 启动入口（仅 bootstrap，无业务逻辑）：
+ * 加载环境 → 初始化可观测性 → 组装依赖（db/redis/ledger）→ createApp → serve。
+ */
+
+const env = loadClientApiEnv();
+const logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'client-api' });
 initOtel({
   serviceName: 'client-api',
   endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
   enabled: env.OTEL_ENABLED,
 });
 
-export function createApp() {
-  const db = createDb(env.DATABASE_URL);
-  const app = new Hono<ClientEnv>();
+const db = createDb(env.DATABASE_URL);
+const redis = createRedis(env.REDIS_URL);
+const ledger = createLedger({
+  db,
+  effects: {
+    balanceChanged: async ({ userId }) => {
+      await redis.del(balanceCache(userId)).catch(() => {});
+    },
+    // client-api 触发的资金变动均为用户自助行为（兑换/首登赠额），actor 记 user
+    audit: async (event) => recordAudit(db, { ...event, actor: 'user', adminId: null }),
+  },
+});
 
-  // 统一错误处理
-  app.onError((err, c) => {
-    if (err instanceof ValidationError) {
-      return c.json({ error: { message: '参数校验失败', code: 'VALIDATION_ERROR', details: err.details } }, 400);
-    }
-    logger.error({ err: err.message }, 'unhandled error');
-    return c.json({ error: { message: '内部错误', code: 'INTERNAL_ERROR' } }, 500);
-  });
-
-  app.get('/healthz', (c) => c.json({ status: 'ok' }));
-
-  // 登录/注销（公开：/api/auth/login 不需要会话）
-  // C6 修复：注入 Redis 启用登录限流/锁定
-  app.route('/', clientAuthRoutes(db, {
+const app = createApp({
+  db,
+  redis,
+  ledger,
+  logger,
+  config: {
     jwtSecret: env.JWT_SECRET,
-    giftAmount: env.GIFT_AMOUNT,
     secureCookie: env.NODE_ENV === 'production',
-    redis: getSharedRedis(),
-  }));
+    giftAmount: env.GIFT_AMOUNT,
+  },
+});
 
-  // 用户面板：必须有有效用户会话（userSessionMiddleware 注入 c.var.session）
-  app.use('/api/me/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/keys/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/apps/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/usage/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/redeem/*', userSessionMiddleware(db, env.JWT_SECRET));
-  app.use('/api/auth/password', userSessionMiddleware(db, env.JWT_SECRET));
-  app.route('/', keyRoutes(db));
-  app.route('/', appRoutes(db));
-  app.route('/', panelRoutes(db));
-
-  return app;
-}
-
-serve({ fetch: createApp().fetch, port: env.PORT }, (info) => {
+serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   logger.info({ port: info.port }, 'client-api listening (internal only)');
 });

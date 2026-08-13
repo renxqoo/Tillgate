@@ -28,15 +28,7 @@ export type ClientEnv = {
 /** admin-api 全局 Variables */
 export type AdminEnv = {
   Variables: {
-    /** 管理员操作人 ID（对应 admins.id）；机器令牌调用时可能为 undefined */
-    adminId?: number;
+    /** 管理员操作人 ID（对应 admins.id）。受保护路由由 adminAuthMiddleware 保证注入，故为必填 */
+    adminId: number;
   };
 };
-
-/**
- * 兼容旧代码的 AdminEnv 别名。
- * 旧 admin-api 路由工厂签名大量使用 Hono<AdminEnv> 且读 c.get('adminId')，
- * 拆分后管理面路由仍用此类型（adminId 由 adminIdInjector 注入）。
- * 用户面路由迁到 client-api 后改用 ClientEnv。
- */
-export type LegacyAdminEnv = AdminEnv;

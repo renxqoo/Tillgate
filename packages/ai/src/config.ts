@@ -55,6 +55,8 @@ export const aiConfigSchema = z.object({
     }),
   /** 允许 http + 内网地址（仅测试/本地调试；生产必须 false，SSRF 防线在配置层+此处双重） */
   allowLocalUrl: z.boolean().default(false),
+  /** 生产上游域名白名单；配置后拒绝任何不在列表中的 hostname。 */
+  allowedHosts: z.array(z.string().min(1)).default([]),
   estimate: z
     .object({
       charPerToken: z.number().min(1).default(3.5),
@@ -77,6 +79,7 @@ export const aiConfigSchema = z.object({
 });
 
 export type AiConfig = z.infer<typeof aiConfigSchema>;
+export type AiConfigInput = z.input<typeof aiConfigSchema>;
 
 /** 依赖注入：宿主实现，包保持零业务/零 OTel 直接依赖 */
 export interface AiDeps {

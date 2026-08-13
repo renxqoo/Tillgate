@@ -2,10 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAi } from '../../src/create-ai.js';
 import { defaultAiConfig } from '../../src/config.js';
 import type { Ai } from '../../src/types.js';
-import type {
-  BreakerStorage,
-  DeadCredentialStorage,
-} from '../../src/config.js';
+import type { BreakerStorage, DeadCredentialStorage } from '../../src/config.js';
 import { startServer, sseFrame, wait } from '../integration/helpers.js';
 
 /**
@@ -79,7 +76,14 @@ describe('流式熔断器 void 调用：存储不可用时不应产生 unhandled
     upstream = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'hi' } }] })));
-      res.write(sseFrame(JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 1, completion_tokens: 1 } })));
+      res.write(
+        sseFrame(
+          JSON.stringify({
+            choices: [{ delta: {} }],
+            usage: { prompt_tokens: 1, completion_tokens: 1 },
+          }),
+        ),
+      );
       res.write('data: [DONE]\n\n');
       res.end();
     });
@@ -113,7 +117,10 @@ describe('流式熔断器 void 调用：存储不可用时不应产生 unhandled
       await reader.cancel().catch(() => {});
       // 给微任务/事件循环一点时间让被 void 丢弃的 promise 的 rejection 冒泡
       await wait(50);
-      expect(rejections, '不应有未处理的 Promise rejection（流式 breaker void 调用需吞掉存储错误）').toHaveLength(0);
+      expect(
+        rejections,
+        '不应有未处理的 Promise rejection（流式 breaker void 调用需吞掉存储错误）',
+      ).toHaveLength(0);
     } finally {
       process.off('unhandledRejection', handler);
     }

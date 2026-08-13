@@ -83,9 +83,9 @@ export function LayoutControls() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {fontOptions.map((font) => (
-                      <SelectItem key={font.key} className="text-xs" value={font.key}>
-                        {font.label}
+                    {fontOptions.map((option) => (
+                      <SelectItem key={option.key} className="text-xs" value={option.key}>
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectGroup>

@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useState, useTransition } from "react";
-import Link from "next/link";
+import { useState, useTransition } from 'react';
+import Link from 'next/link';
 
-import { Loader2Icon, SparklesIcon, TicketIcon } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
-import { z } from "zod";
+import { Loader2Icon, SparklesIcon, TicketIcon } from 'lucide-react';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { z } from 'zod';
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
+import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Dialog,
   DialogClose,
@@ -19,9 +19,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@ai-gateway/ui/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
-import { Input } from "@ai-gateway/ui/components/ui/input";
+} from '@ai-gateway/ui/components/ui/dialog';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/field';
+import { Input } from '@ai-gateway/ui/components/ui/input';
 import {
   Table,
   TableBody,
@@ -29,24 +29,21 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ai-gateway/ui/components/ui/table";
+} from '@ai-gateway/ui/components/ui/table';
 
-import { CopyButton } from "@/components/shell/copy-button";
-import type { RedeemBatchRow } from "../types";
+import { CopyButton } from '@/components/shell/copy-button';
+import { formatMoney } from '@ai-gateway/api-client/formatters';
+import type { RedeemBatchRow } from '../types';
 
 const schema = z.object({
-  name: z.string().min(1, "请输入批次名称"),
-  amount: z.coerce.number().positive("金额必须 > 0"),
-  count: z.coerce.number().int().min(1).max(1000, "最多 1000 张"),
+  name: z.string().min(1, '请输入批次名称'),
+  amount: z.coerce.number().positive('金额必须 > 0'),
+  count: z.coerce.number().int().min(1).max(1000, '最多 1000 张'),
   remark: z.string().optional(),
   expiresAt: z.string().optional(),
 });
 
-export function BatchesTable({
-  batches,
-}: {
-  readonly batches: ReadonlyArray<RedeemBatchRow>;
-}) {
+export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<RedeemBatchRow> }) {
   return (
     <Table>
       <TableHeader>
@@ -80,16 +77,18 @@ export function BatchesTable({
                   </Link>
                   <span className="ml-1 text-xs text-muted-foreground">#{b.id}</span>
                 </TableCell>
-                <TableCell className="text-right font-medium tabular-nums">¥{b.amount}</TableCell>
+                <TableCell className="text-right font-medium tabular-nums">
+                  ¥{formatMoney(b.amount)}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{b.total}</TableCell>
                 <TableCell className="text-right tabular-nums">{b.usedCount}</TableCell>
                 <TableCell className="text-right">
                   <UsageBadge rate={usedRate} />
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">{b.remark ?? "—"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{b.remark ?? '—'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{b.createdBy}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {new Date(b.createdAt).toLocaleString("zh-CN")}
+                  {new Date(b.createdAt).toLocaleString('zh-CN')}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild size="sm" variant="ghost">
@@ -108,10 +107,10 @@ export function BatchesTable({
 function UsageBadge({ rate }: { rate: number }) {
   const color =
     rate >= 80
-      ? "text-emerald-600 dark:text-emerald-400"
+      ? 'text-emerald-600 dark:text-emerald-400'
       : rate >= 30
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-muted-foreground";
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-muted-foreground';
   return <span className={`text-xs font-medium tabular-nums ${color}`}>{rate}%</span>;
 }
 
@@ -123,15 +122,15 @@ export function GenerateBatchDialog() {
   type FormValues = z.infer<typeof schema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
-    defaultValues: { name: "", amount: 100, count: 10, remark: "", expiresAt: "" },
+    defaultValues: { name: '', amount: 100, count: 10, remark: '', expiresAt: '' },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
-      const { generateBatchAction } = await import("../actions");
+      const { generateBatchAction } = await import('../actions');
       const res = await generateBatchAction(values);
       if (res.error) {
-        toast.error("生成失败", { description: res.error });
+        toast.error('生成失败', { description: res.error });
         return;
       }
       setRevealedCodes(res.batch!.codes);
@@ -169,7 +168,7 @@ export function GenerateBatchDialog() {
               <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
                 已生成 {revealedCodes.length} 张充值码（请立即保存）
               </p>
-              <CopyButton text={revealedCodes.join("\n")} label="全部复制" />
+              <CopyButton text={revealedCodes.join('\n')} label="全部复制" />
             </div>
             <div className="max-h-80 space-y-1 overflow-y-auto rounded bg-background/80 p-3 font-mono text-xs">
               {revealedCodes.map((c, i) => (

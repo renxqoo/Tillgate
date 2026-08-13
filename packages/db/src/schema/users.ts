@@ -8,7 +8,9 @@ import {
   timestamp,
   uniqueIndex,
   numeric,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { rateCards } from './billing.js';
 
 /**
@@ -25,8 +27,12 @@ export const users = pgTable(
     email: varchar('email', { length: 255 }),
     displayName: varchar('display_name', { length: 64 }),
     rateCardId: bigint('rate_card_id', { mode: 'number' }).references(() => rateCards.id),
-    /** 余额（厘），权威账本字段，只允许通过结算事务原子修改（预扣/补扣/退款） */
+    /** 已结算余额（元）；授权阶段不得修改，真实结算/充值/调账才修改。 */
     balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),
+    /** 所有未终结请求占用的处理中预留总额（元）。 */
+    reservedBalance: numeric('reserved_balance', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 0 正常 / 1 封禁 / 2 注销 */
     status: smallint('status').notNull().default(0),
     freezeReason: varchar('freeze_reason', { length: 128 }),
@@ -46,5 +52,8 @@ export const users = pgTable(
   (t) => [
     uniqueIndex('users_issuer_subject_uq').on(t.issuer, t.subject),
     index('users_rate_card_id_idx').on(t.rateCardId),
+    check('users_balance_nonnegative_ck', sql`${t.balance} >= 0`),
+    check('users_reserved_balance_nonnegative_ck', sql`${t.reservedBalance} >= 0`),
+    check('users_reserved_not_over_balance_ck', sql`${t.reservedBalance} <= ${t.balance}`),
   ],
 );

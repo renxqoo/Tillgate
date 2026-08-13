@@ -79,19 +79,9 @@ console-client:
     context: ..
     dockerfile: apps/client/Dockerfile
   environment:
-    ADMIN_API_BASE: http://admin-api:8790
+    CLIENT_API_BASE: http://client-api:8791
   depends_on:
-    - admin-api
+    - client-api
 ```
 
-生产端口通过 `.env` 的 `CLIENT_PORT` 控制（默认 `3001`）。
-
-## 与 v1 的对比
-
-旧的 `apps/console-app` 已被重命名为 `apps/console-app-v1`（DEPRECATED）。新版本特点：
-- 完整的 60 个 shadcn 原语（v1 仅装了 Button、Card）
-- 真正的 sidebar + Topbar 布局（v1 是简单 header）
-- 主题预设切换 + Dark Mode + 字体切换（v1 无主题系统）
-- TanStack Table 风格表格（v1 是手撸 `<table>`）
-- React Hook Form + Zod 表单验证（v1 是裸 FormData）
-- Sonner 统一 toast（v1 是 alert 字符串）
+生产端口在 `apps/client/package.json` 的 dev/start 脚本固定为 `3001`。

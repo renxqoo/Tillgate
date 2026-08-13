@@ -1,4 +1,4 @@
-// 数据模型统一出口（data-model.md 直译，18 张表：拆分 admins 后）
+// 数据模型统一出口（data-model.md 直译，19 张表）
 
 export * from './users.js';
 export * from './admins.js';
@@ -10,6 +10,8 @@ export * from './model-mappings.js';
 export * from './billing.js';
 export * from './usage.js';
 export * from './transactions.js';
+export * from './billing-requests.js';
+export * from './fund-operations.js';
 export * from './redeem.js';
 export * from './logs.js';
 export * from './plans.js';

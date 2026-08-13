@@ -51,11 +51,16 @@ export function isUnsafeIpv6(ip: string): boolean {
 export interface SafeUrlOptions {
   /** 允许 http:// 与内网地址（仅测试/本地调试；生产必须 false） */
   allowLocal?: boolean;
-  /** hostname 白名单（跳过 DNS 内网判定，如内网自建渠道的显式配置） */
+  /** 生产可调用的受信 hostname 白名单；命中后仍执行 DNS 私网地址校验。 */
   allowedHosts?: string[];
 }
 
-const PRIVATE_HOSTS = new Set(['localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback']);
+const PRIVATE_HOSTS = new Set([
+  'localhost',
+  'localhost.localdomain',
+  'ip6-localhost',
+  'ip6-loopback',
+]);
 
 function isIpLiteral(host: string): boolean {
   return host.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
@@ -91,7 +96,11 @@ export function assertSafeUrlSync(url: string, opts: SafeUrlOptions = {}): URL {
  */
 export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Promise<URL> {
   const u = assertSafeUrlSync(url, opts);
-  if (opts.allowLocal || opts.allowedHosts?.includes(u.hostname)) return u;
+  if (opts.allowLocal) return u;
+  const hostname = u.hostname.toLowerCase();
+  if (opts.allowedHosts?.length && !opts.allowedHosts.includes(hostname)) {
+    throw new Error(`upstream host is not allowlisted: ${hostname}`);
+  }
   let addresses: string[];
   try {
     addresses = (await lookup(u.hostname, { all: true, verbatim: true })).map((a) => a.address);
@@ -106,10 +115,7 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
 }
 
 /**
- * 解析 URL 的 DNS 并校验所有地址安全，返回校验后的首个 IP（防 DNS rebinding TOCTOU）。
- *
- * fetchUpstream 用返回的 IP 直连（固定本次连接的目标地址），而非让 fetch 再次走系统 DNS 解析——
- * 否则 assertSafeUrl 校验与 fetch 实际连接之间，攻击者可换 DNS 答案（rebinding → 169.254.169.254）。
+ * 校验受信 host 并解析 DNS，拒绝任何私网/回环/保留地址。
  *
  * 域名解析失败时返回 ip=null（降级：fetchUpstream 用原始 URL，fetch 自然报 network 错误，安全）。
  * allowLocal 时跳过校验返回 null（测试/本地调试）。
@@ -123,12 +129,16 @@ export interface ResolvedTarget {
   port: number;
 }
 
-export async function resolveAndPin(url: string, opts: SafeUrlOptions = {}): Promise<ResolvedTarget> {
+export async function resolveAndPin(
+  url: string,
+  opts: SafeUrlOptions = {},
+): Promise<ResolvedTarget> {
   const u = assertSafeUrlSync(url, opts);
   const hostname = u.hostname.replace(/^\[|\]$/g, '');
   const port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80;
-  if (opts.allowLocal || opts.allowedHosts?.includes(hostname)) {
-    return { ip: null, hostname, port };
+  if (opts.allowLocal) return { ip: null, hostname, port };
+  if (opts.allowedHosts?.length && !opts.allowedHosts.includes(hostname.toLowerCase())) {
+    throw new Error(`upstream host is not allowlisted: ${hostname}`);
   }
   let addresses: string[];
   try {
@@ -153,13 +163,11 @@ export interface FetchUpstreamOptions {
 }
 
 /**
- * fetch 封装：DNS 解析固定 IP（防 rebinding TOCTOU）→ connectMs 超时 → 外部信号传播 → 错误分类。
+ * fetch 封装：受信 host + DNS 私网校验 → connectMs 超时 → 外部信号传播 → 错误分类。
  * 返回原始 Response（含非 2xx，状态码分类由 adapter.mapError 负责）；body 由调用方接管。
  *
- * SSRF 防护（防 DNS rebinding）：
- *   - resolveAndPin 先解析 DNS 并校验所有地址公网安全
- *   - 用校验后的 IP 直连（undici dispatcher 固定连接目标），不再让 fetch 二次走系统 DNS
- *   - TLS SNI / Host 头仍用原始 hostname（证书校验正常）
+ * SSRF 防护：生产必须配置受信 provider hostname 白名单，同时逐个拒绝 DNS 私网地址。
+ * 白名单从根上禁止用户/数据库注入任意攻击者域名；TLS 仍校验原 hostname。
  */
 export async function fetchUpstream(
   url: string,
@@ -172,12 +180,8 @@ export async function fetchUpstream(
   const onExternalAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
   try {
-    // SSRF 防护：resolveAndPin 已校验 DNS 安全（无内网 IP / rebinding 风险）。
-    // 连接用原生 fetch（Node 22 基于 undici，res.body 是真流式 ReadableStream）。
-    // 不用 custom dispatcher（undici.Agent + connect.lookup）——实测 custom dispatcher
-    // 破坏 res.body 的逐块流式推送（数据在 agent 层缓冲）。
-    // DNS pinning 的 TOCTOU 风险：二次 DNS 返回不同 IP 的概率极低，
-    // 且公网 HTTPS 的 TLS 证书校验兜底（证书 hostname 不匹配会拒绝连接）。
+    // 原生 fetch 保持响应体逐块流式传输；生产安全边界是不可由请求方控制的
+    // provider host allowlist，加上 DNS 私网地址检查和 HTTPS 证书校验。
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (err) {
     if (opts.signal?.aborted) {

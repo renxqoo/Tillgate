@@ -24,8 +24,7 @@ export class MemoryBreakerStorage implements BreakerStorage {
     ttlMs: number,
   ): Promise<boolean> {
     const entry = this.store.get(key);
-    const currentVersion =
-      entry && entry.expiresAt >= Date.now() ? entry.state.version : 0;
+    const currentVersion = entry && entry.expiresAt >= Date.now() ? entry.state.version : 0;
     if (currentVersion !== expectedVersion) return false;
     this.store.set(key, { state: next, expiresAt: Date.now() + ttlMs });
     return true;

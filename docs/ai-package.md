@@ -40,7 +40,7 @@
 
 **不做（边界，全部留在 gateway / worker）**：
 - 鉴权 / 预扣 / 限流 / 渠道路由 / 模型映射 / 费率卡
-- 计费 / 结算 / 计量落库（包只发事件，gateway 转 bull:meter）
+- 计费 / 结算 / 计量落库（包只发事件，gateway 持久化 durable receipt）
 - 对外 HTTP 表面（Hono 路由、入站 SSE、错误信封组装）
 - 换渠道 / fallback 模型编排（**候选循环是 gateway 的职责**，包只负责"单个候选内的重试"）
 
@@ -57,8 +57,8 @@ interface ChannelDesc {
 interface RequestCtx {
   requestId: string        // 幂等键
   model: string            // 真实模型名
-  providerName: string     // 厂商名（deepseek/glm/...，用于加载 profiles 默认规则）
-  paramRules?: ParamRules  // 钳制规则（来自 model_mappings，per-model 覆盖 profile）
+  providerName: string     // 厂商名（deepseek/glm/...，用于日志/排障标识）
+  paramRules?: ParamRules  // 钳制规则（唯一来源：model_mappings.param_rules，运营可调）
   maxRetries?: number      // 默认 3
   deadlineMs?: number      // 总 deadline，默认 240s
 }
@@ -106,7 +106,7 @@ type AiEvent =
       usage?: Usage
       durationMs: number
       terminated?: 'client_disconnect' | 'inactivity' | 'upstream_disconnected'  // 流式中断语义（gateway 据此标 stream_aborted）
-      bytesRelayed?: number              // 已透字节量（usage 缺失时 gateway 估算 tokens，5.11）
+      bytesRelayed?: number              // 已透字节量（观测用途，不作为最终资金结算依据）
     }
 
 interface StreamError { code: string; type?: string; detail?: string }
@@ -174,9 +174,7 @@ packages/ai/
 │   │   └── relay-stream.ts    # 透传管道：心跳注入 / abort 传播 / 错误帧转换 / bytesRelayed 计数
 │   ├── adapters/
 │   │   ├── protocol-adapter.ts    # ProtocolAdapter 接口（含参数抹平执行引擎）
-│   │   ├── openai-compatible.ts   # 一期实现（透传 + 规则抹平 + usage 归一化 + 错误映射）
-│   │   └── profiles/              # provider profile（内置默认规则，per-model 规则可覆盖）
-│   │       └── index.ts           # 五家 provider 默认规则（一期空，待联调回填）
+│   │   └── openai-compatible.ts   # 一期唯一实现（透传 + 规则抹平 + usage 归一化 + 错误映射）
 │   ├── usage/
 │   │   └── normalize.ts       # 缓存字段归一化（OpenAI cached_tokens / DeepSeek cache_hit+miss）
 │   ├── errors/
@@ -277,8 +275,8 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 **流式中断计费语义（requirements 5.11）**：
 - `done` 事件携带 `terminated`（中断原因）+ `bytesRelayed`（已透字节量）
 - create-ai 桥接为 `success` 事件：`terminated=undefined` 正常结束；`terminated='upstream_disconnected'|'inactivity'` 流内中断
-- gateway 消费侧：`success.terminated !== undefined` → 标 `stream_aborted=true`；`usage` 为空时按 `bytesRelayed / charPerToken` 估算 tokens（与非流式 estimate 同口径）
-- `client_disconnect`（用户主动断开）：不计熔断，已收内容仍可估算计费
+- gateway 消费侧：`success.terminated !== undefined` → 标 `stream_aborted=true`；`usage` 为空或非法时进入 uncertain，`bytesRelayed` 只用于诊断/容量规划，不用于资金结算
+- `client_disconnect`（用户主动断开）：不计熔断；有可信 usage 才结算，否则进入 uncertain
 
 ### 7.5 usage 归一化（usage/normalize.ts）
 
@@ -287,7 +285,7 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 | OpenAI 风格 | `prompt_tokens_details.cached_tokens` | cachedInputTokens |
 | DeepSeek | `prompt_cache_hit_tokens` | cachedInputTokens（`cache_miss` 计入未缓存） |
 | 无缓存字段 | — | cachedInputTokens = 0 |
-| usage 缺失 | — | 按 `estimate.charPerToken`（3.5）估算，`estimated=true`，全部按未缓存计 |
+| usage 缺失 | — | 可生成 `estimated=true` 供容量规划，但 Gateway 禁止用估算值做资金结算 |
 
 ### 7.6 参数抹平策略（透传为基底，规则驱动）
 
@@ -302,14 +300,8 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 | clamp | 超范围会 400 的 → 钳制到上限 | `max_tokens` > 8192 → 8192 |
 | map | 参数改名/换算 | `max_tokens` ↔ `max_completion_tokens`（OpenAI 新模型） |
 
-**规则来源两层，per-model 覆盖**：
-
-```
-provider profile（packages/ai/src/adapters/profiles/*.ts 内置默认）
-        ×
-model_mappings.param_rules（DB 配置，运营可调）
-        = 生效规则（per-model 优先）
-```
+**规则来源单一**：`model_mappings.param_rules`（DB 配置，运营可调，per-model 生效）。
+未配置时全部透传（unknown=passthrough）。
 
 **执行引擎**（adapter 内）：
 
@@ -337,7 +329,7 @@ type ParamAdjustment = { param: string; action: 'ignore' | 'clamp' | 'map'; from
 | 熔断机制（原语 + Storage 接口） | ✅ | 注入 Redis Storage 实现 |
 | 候选循环（换渠道 / fallback 模型） | | ✅ 消费事件编排 |
 | 鉴权 / 预扣 / 限流 / 路由 / 模型映射 | | ✅ |
-| 计量事件 / 结算 | | ✅（ai 事件 → bull:meter） |
+| 计量事件 / 结算 | | ✅（ai 事件 → billing_requests receipt） |
 | 错误信封组装 / 入站 SSE（Hono） | | ✅ |
 | 渠道测试（admin-api 复用 probe） | ✅ | 接线 |
 
