@@ -162,7 +162,12 @@ export async function settle(
 
   // 4. TPM 回填：实际 token 数累加到分钟桶（仅首次结算，避免重试翻倍）
   if (settled) {
-    const totalTokens = Math.max(0, data.usage.inputTokens) + Math.max(0, data.usage.outputTokens);
+    // TPM 只计「未缓存 input + output」：缓存命中的 token 上游从缓存读取，不消耗新处理配额
+    // （与计费端一致：计费已按 cacheInputPrice 对缓存打折，TPM 这边缓存 token 直接不计入）。
+    // 否则高缓存命中率（如 99.8%）用户的 TPM 会被虚高数百倍，过早撞顶。
+    const inputTokens = Math.max(0, data.usage.inputTokens);
+    const cachedInput = Math.min(Math.max(0, data.usage.cachedInputTokens), inputTokens);
+    const totalTokens = (inputTokens - cachedInput) + Math.max(0, data.usage.outputTokens);
     const minute = Math.floor(Date.now() / 60_000);
     // user 维度按模型拆（user:${id}:model:${mappingId}）：与 gateway 检查端口径一致，消除跨模型共享桶。
     const tpmDims = [`user:${data.userId}:model:${data.mappingId}`, `model:${data.mappingId}`];
