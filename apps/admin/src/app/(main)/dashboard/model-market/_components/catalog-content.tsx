@@ -49,13 +49,19 @@ interface Draft {
 }
 
 export function CatalogContent({
+  sourceId,
+  sourceName,
   items,
   fetchedAt,
   channelReady,
+  needsKey,
 }: {
+  sourceId: string;
+  sourceName: string;
   items: CatalogItem[];
   fetchedAt: string;
   channelReady: boolean;
+  needsKey: boolean;
 }) {
   const router = useRouter();
   const [apiKey, setApiKey] = useState('');
@@ -102,13 +108,14 @@ export function CatalogContent({
 
   function doImport(): void {
     if (selectedItems.length === 0) return;
-    if (!channelReady && apiKey.trim().length === 0) {
-      toast.error('首次导入需要填写 OpenRouter 平台 API Key');
+    if (needsKey && !channelReady && apiKey.trim().length === 0) {
+      toast.error(`首次从 ${sourceName} 导入需要填写平台 API Key`);
       return;
     }
     startTransition(async () => {
       const res = await importCatalogAction({
-        ...(channelReady ? {} : { apiKey: apiKey.trim() }),
+        sourceId,
+        ...(needsKey && !channelReady ? { apiKey: apiKey.trim() } : {}),
         models: selectedItems.map((i) => {
           const d = draftOf(i);
           return {
@@ -141,13 +148,13 @@ export function CatalogContent({
           className="w-56"
         />
         <span className="text-xs text-muted-foreground">
-          目录抓取于 {new Date(fetchedAt).toLocaleString()} · 共 {items.length} 个免费模型
+          {sourceName} 目录抓取于 {new Date(fetchedAt).toLocaleString()} · 共 {items.length} 个免费模型
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {!channelReady ? (
+          {needsKey && !channelReady ? (
             <Input
               type="password"
-              placeholder="OpenRouter API Key（首次导入必填）"
+              placeholder={`${sourceName} API Key（首次导入必填）`}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               className="w-72"
@@ -250,7 +257,7 @@ export function CatalogContent({
       </div>
       <p className="text-xs text-muted-foreground">
         价格单位为 元/百万 token，默认预填平台价（免费模型为 0），提交即确认为你的卖价；
-        渠道限流预填 20 RPM，渠道名 free-openrouter。导入后到「模型映射」点烧瓶图标逐渠道测试。
+        渠道限流预填 20 RPM，渠道名带 free- 前缀。导入后到「模型映射」点烧瓶图标逐渠道测试。
       </p>
     </div>
   );

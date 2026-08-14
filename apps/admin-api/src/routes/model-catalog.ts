@@ -3,25 +3,25 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { jsonBody } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
-import { modelMappings } from '@ai-gateway/db/schema';
+import { channels as channelsTable, modelMappings } from '@ai-gateway/db/schema';
 import type { AdminServices } from '../services/index.js';
-import { channels as channelsTable } from '@ai-gateway/db/schema';
 import {
+  CATALOG_SOURCES,
   compareCatalog,
+  getCatalogSource,
   importCatalogModels,
-  mapOpenRouterCatalog,
-  OPENROUTER_BASE_URL,
-  OPENROUTER_FREE_CHANNEL,
 } from '../services/model-catalog.js';
 
 /**
- * 模型目录（免费模型一键入库）：
- *   GET  /openrouter  拉取 OpenRouter 免费模型（内存缓存 10min），比对库内
- *                     已导入状态与价格漂移（上游收费而我们仍 0 卖 → 标红）
- *   POST /import      勾选模型 + 平台 key → 复用现有三层落库（护栏见 service）
+ * 模型市场目录（多源）：
+ *   GET  /sources            可用目录源列表（前端 Tab）
+ *   GET  /:sourceId          该源免费模型（源内 10min 缓存），比对已导入与价格漂移
+ *   POST /import             勾选模型 + 平台 key → 复用现有三层落库（护栏见 service）
+ * 新增源：services/model-catalog.ts 的 CATALOG_SOURCES 注册 adapter 即可。
  */
 
 const importSchema = z.object({
+  sourceId: z.string().min(1).max(32),
   apiKey: z.string().min(1).optional(),
   models: z
     .array(
@@ -38,33 +38,36 @@ const importSchema = z.object({
 });
 
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
-let cache: { fetchedAt: number; raw: unknown } | null = null;
+const sourceCaches = new Map<string, { fetchedAt: number; raw: unknown }>();
 
-async function fetchOpenRouterModels(): Promise<{ fetchedAt: number; raw: unknown }> {
-  if (cache && Date.now() - cache.fetchedAt < CATALOG_CACHE_TTL_MS) {
-    return { fetchedAt: cache.fetchedAt, raw: cache.raw };
+async function fetchSourceModels(sourceId: string): Promise<{ fetchedAt: number; raw: unknown }> {
+  const source = getCatalogSource(sourceId);
+  const cached = sourceCaches.get(sourceId);
+  if (cached && Date.now() - cached.fetchedAt < CATALOG_CACHE_TTL_MS) {
+    return { fetchedAt: cached.fetchedAt, raw: cached.raw };
   }
-  const res = await fetch(`${OPENROUTER_BASE_URL}/v1/models`, {
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) {
-    // 拉取失败时若有旧缓存则降级返回（带旧时间戳，页面可提示数据新鲜度）
-    if (cache) return { fetchedAt: cache.fetchedAt, raw: cache.raw, stale: true } as {
-      fetchedAt: number;
-      raw: unknown;
-    };
-    throw new Error(`openrouter catalog fetch failed: ${res.status}`);
-  }
-  const raw = await res.json();
-  cache = { fetchedAt: Date.now(), raw };
-  return cache;
+  const raw = await source.fetchModels();
+  const entry = { fetchedAt: Date.now(), raw };
+  sourceCaches.set(sourceId, entry);
+  return entry;
 }
 
 export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
-    .get('/openrouter', async (c) => {
-      const { fetchedAt, raw } = await fetchOpenRouterModels();
-      const items = mapOpenRouterCatalog(raw);
+    .get('/sources', (c) => {
+      return c.json({
+        sources: Object.values(CATALOG_SOURCES).map((src) => ({
+          id: src.id,
+          name: src.name,
+          needsKey: src.needsKey,
+          channelName: src.channelName,
+        })),
+      });
+    })
+    .get('/:sourceId', async (c) => {
+      const source = getCatalogSource(c.req.param('sourceId'));
+      const { fetchedAt, raw } = await fetchSourceModels(source.id);
+      const items = source.mapModels(raw);
       // 比对库内：按真实模型名回填已导入卖价与漂移警告
       const reals = items.map((i) => i.realModel);
       const existing =
@@ -80,13 +83,13 @@ export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
               .where(eq(modelMappings.status, 0))
               .then((rows) => rows.filter((r) => reals.includes(r.realModel)))
           : [];
-      // 免费渠道是否已存在：首次导入需要平台 key（前端据此显隐 key 输入）
+      // 该源免费渠道是否已存在：首次导入需要平台 key（前端据此显隐 key 输入）
       const freeChannel = await s.db.query.channels.findFirst({
-        where: eq(channelsTable.name, OPENROUTER_FREE_CHANNEL),
+        where: eq(channelsTable.name, source.channelName),
       });
       return c.json({
+        source: source.id,
         fetchedAt: new Date(fetchedAt).toISOString(),
-        source: 'openrouter',
         channelReady: freeChannel != null,
         channelRpmLimit: freeChannel?.rpmLimit ?? null,
         items: compareCatalog(items, existing),
@@ -95,6 +98,7 @@ export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
     .post('/import', jsonBody(importSchema), async (c) => {
       const body = c.req.valid('json');
       const result = await importCatalogModels(s, {
+        sourceId: body.sourceId,
         apiKey: body.apiKey,
         models: body.models,
       });

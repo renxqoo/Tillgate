@@ -5,10 +5,11 @@ import { createDb, type Db } from '@ai-gateway/db';
 import { channels, modelChannels, modelMappings, providers } from '@ai-gateway/db/schema';
 import { loadRootEnvFile } from '@ai-gateway/http';
 import {
-  mapOpenRouterCatalog,
+  mapOpenAiCompatibleCatalog,
   compareCatalog,
   importCatalogModels,
   suggestExternalName,
+  CATALOG_SOURCES,
 } from '../services/model-catalog.js';
 import { modelCatalogRoutes } from './model-catalog.js';
 import { makeAdminTestApp, makeServices } from '../test/helpers.js';
@@ -61,9 +62,9 @@ const RAW = {
   ],
 };
 
-describe('目录纯函数', () => {
-  it('mapOpenRouterCatalog：只留免费模型，带对外名建议与上下文长度', () => {
-    const items = mapOpenRouterCatalog(RAW);
+describe('目录纯函数与多源注册表', () => {
+  it('mapOpenAiCompatibleCatalog：只留免费模型，带对外名建议与上下文长度', () => {
+    const items = mapOpenAiCompatibleCatalog(RAW);
     expect(items).toHaveLength(2);
     const llama = items.find((i) => i.realModel.includes('llama'))!;
     expect(llama.suggestedName).toBe('llama-3.3-70b-instruct');
@@ -77,7 +78,7 @@ describe('目录纯函数', () => {
   });
 
   it('compareCatalog：已导入回填卖价；上游价>0 且卖价=0 → 漂移警告', () => {
-    const items = mapOpenRouterCatalog(RAW);
+    const items = mapOpenAiCompatibleCatalog(RAW);
     const compared = compareCatalog(items, [
       {
         externalName: 'mc-test-deepseek',
@@ -120,6 +121,7 @@ describe('目录导入（真 PG）', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          sourceId: 'openrouter',
           apiKey: 'sk-or-v1-test',
           models: [
             { externalName: ext1, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, contextLength: 65536 },
@@ -153,6 +155,7 @@ describe('目录导入（真 PG）', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          sourceId: 'openrouter',
           models: [
             { externalName: ext1, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 5, outputPrice: 6, cacheInputPrice: 0 },
           ],
@@ -172,6 +175,7 @@ describe('目录导入（真 PG）', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          sourceId: 'openrouter',
           models: [
             { externalName: ext1, realModel: 'another/different-model:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0 },
           ],
@@ -184,6 +188,7 @@ describe('目录导入（真 PG）', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          sourceId: 'openrouter',
           models: [{ externalName: 'mc-test-x', realModel: 'x/y:free', outputPrice: 0 }],
         }),
       });
@@ -210,6 +215,7 @@ describe('目录导入（真 PG）', () => {
     let created: { providerId: number; channelId: number } | null = null;
     try {
       const result = await importCatalogModels(s, {
+        sourceId: 'openrouter',
         apiKey: 'sk-or-v1-test',
         models: [
           { externalName: ext, realModel: 'qwen/qwen3-14b:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0 },
@@ -231,5 +237,24 @@ describe('目录导入（真 PG）', () => {
         await db.delete(providers).where(eq(providers.id, created.providerId));
       }
     }
+  });
+});
+describe('多源契约', () => {
+  it('未知目录源 → 404（边界层翻译，不裸泄漏）', async () => {
+    if (!connected) return it.skip('no DB');
+    const s = makeServices(db);
+    const app = makeAdminTestApp({ '/model-catalog': modelCatalogRoutes(s) });
+    const res = await app.request('/api/admin/model-catalog/no-such-source');
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('CATALOG_SOURCE_NOT_FOUND');
+  });
+
+  it('源注册表：openrouter 已注册且为 OpenAI 兼容目录', () => {
+    const src = CATALOG_SOURCES['openrouter']!;
+    expect(src.providerName).toBe('openrouter');
+    expect(src.channelName).toBe('free-openrouter');
+    expect(src.needsKey).toBe(true);
+    expect(src.mapModels).toBe(mapOpenAiCompatibleCatalog);
   });
 });

@@ -5,10 +5,11 @@ import { bumpRouteCache, HttpError, recordAudit } from '@ai-gateway/http';
 import type { AdminServices } from './index.js';
 
 /**
- * 模型目录（OpenRouter 免费模型一键入库）。
+ * 模型市场目录源（多源架构）：目录 = 临时货架（内存缓存，不落库）；
+ * 导入落的是既有三层 provider/channel/model_mappings，无新概念。
  *
- * 目录 = 临时货架（内存缓存，不落库）；导入落的是既有三层
- * provider/channel/model_mappings，无新概念。
+ * 新增一个目录源 = 在 CATALOG_SOURCES 注册一个 adapter（id/名称/落库命名/
+ * 是否需要 key/拉取+映射），路由与前端自动获得该源——不再改业务代码。
  *
  * 护栏（默认平台价能安全成立的前提）：
  *   - 价格必填（前端预填平台价，提交即确认；目录价绝不静默写入）
@@ -18,10 +19,7 @@ import type { AdminServices } from './index.js';
  * 漂移：GET 比对当前目录价与库里卖价，上游收费而我们仍 0 卖 → priceWarning。
  */
 
-export const OPENROUTER_PROVIDER_NAME = 'openrouter';
-export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api';
-export const OPENROUTER_FREE_CHANNEL = 'free-openrouter';
-/** 免费档渠道限流预填（OpenRouter free 档公开限额量级） */
+/** 免费档渠道限流预填（公开免费档限额量级） */
 export const FREE_CHANNEL_RPM = 20;
 /** 免费渠道进货额度：上游真实成本为 0，但管理员可改卖价（upstreamEstimate 随卖价走），给足余量 */
 const FREE_CHANNEL_BUDGET = '1000000';
@@ -47,6 +45,25 @@ export interface CatalogModel {
   priceWarning: boolean;
 }
 
+/** 目录源 adapter：拉取 + 映射 + 落库命名（新增源只加这里） */
+export interface CatalogSource {
+  id: string;
+  /** 展示名（前端 Tab） */
+  name: string;
+  /** 落库 provider 名（目录源即供应商） */
+  providerName: string;
+  providerBaseUrl: string;
+  providerProtocol: string;
+  /** 免费渠道名（free- 前缀护栏） */
+  channelName: string;
+  /** 导入是否需要平台 API key */
+  needsKey: boolean;
+  /** 拉目录原始数据（公开接口） */
+  fetchModels(): Promise<unknown>;
+  /** 原始数据 → 免费模型目录（纯函数，各自源独立实现） */
+  mapModels(raw: unknown): Omit<CatalogModel, 'imported' | 'priceWarning'>[];
+}
+
 /** 对外名建议：`meta-llama/llama-3.3-70b-instruct:free` → `llama-3.3-70b-instruct` */
 export function suggestExternalName(id: string): string {
   const stripped = id.replace(/:free$/, '');
@@ -54,8 +71,8 @@ export function suggestExternalName(id: string): string {
   return (segments[segments.length - 1] || stripped).slice(0, 64);
 }
 
-/** OpenRouter /models 原始响应 → 免费模型目录（纯函数） */
-export function mapOpenRouterCatalog(raw: unknown): Omit<CatalogModel, 'imported' | 'priceWarning'>[] {
+/** OpenAI 兼容 models 列表 → 免费模型目录（pricing 全 0 判定；OpenRouter/SiliconFlow 等同构） */
+export function mapOpenAiCompatibleCatalog(raw: unknown): Omit<CatalogModel, 'imported' | 'priceWarning'>[] {
   const data = (raw as { data?: unknown[] } | null)?.data;
   if (!Array.isArray(data)) return [];
   const items: Omit<CatalogModel, 'imported' | 'priceWarning'>[] = [];
@@ -84,6 +101,34 @@ export function mapOpenRouterCatalog(raw: unknown): Omit<CatalogModel, 'imported
   return items;
 }
 
+export const CATALOG_SOURCES: Record<string, CatalogSource> = {
+  openrouter: {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    providerName: 'openrouter',
+    providerBaseUrl: 'https://openrouter.ai/api',
+    providerProtocol: 'openai_compatible',
+    channelName: 'free-openrouter',
+    needsKey: true,
+    fetchModels: async () => {
+      const res = await fetch('https://openrouter.ai/api/v1/models', {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`openrouter catalog fetch failed: ${res.status}`);
+      return res.json();
+    },
+    mapModels: mapOpenAiCompatibleCatalog,
+  },
+};
+
+export function getCatalogSource(sourceId: string): CatalogSource {
+  const source = CATALOG_SOURCES[sourceId];
+  if (!source) {
+    throw new HttpError(404, 'CATALOG_SOURCE_NOT_FOUND', `未知的目录源：${sourceId}`);
+  }
+  return source;
+}
+
 /** 目录 × 库内映射 → 回填已导入状态与漂移警告（纯函数） */
 export function compareCatalog(
   items: Omit<CatalogModel, 'imported' | 'priceWarning'>[],
@@ -104,6 +149,7 @@ export function compareCatalog(
 }
 
 export interface ImportCatalogInput {
+  sourceId: string;
   /** 平台 key：渠道首次创建时必填；复用已有渠道时可省（不覆盖已存 key） */
   apiKey?: string;
   models: Array<{
@@ -125,7 +171,7 @@ export interface ImportCatalogResult {
   updated: number;
 }
 
-/** 一键入库：provider/channel 复用或创建，映射创建或价格更新，全部绑定到免费渠道 */
+/** 一键入库：按源落 provider/channel（复用或创建），映射创建或价格更新，绑定到免费渠道 */
 export async function importCatalogModels(
   s: AdminServices,
   input: ImportCatalogInput,
@@ -133,36 +179,41 @@ export async function importCatalogModels(
   if (input.models.length === 0) {
     throw new HttpError(400, 'CATALOG_EMPTY', '至少选择一个模型');
   }
+  const source = getCatalogSource(input.sourceId);
 
-  let provider = await db_findProvider(s, OPENROUTER_PROVIDER_NAME);
+  let provider = await s.db.query.providers.findFirst({
+    where: eq(providers.name, source.providerName),
+  });
   if (!provider) {
     const [created] = await s.db
       .insert(providers)
       .values({
-        name: OPENROUTER_PROVIDER_NAME,
-        baseUrl: OPENROUTER_BASE_URL,
-        protocol: 'openai_compatible',
+        name: source.providerName,
+        baseUrl: source.providerBaseUrl,
+        protocol: source.providerProtocol,
         status: 0,
       })
       .returning();
     provider = created!;
   }
 
-  let channel = await db_findChannel(s, OPENROUTER_FREE_CHANNEL);
+  let channel = await s.db.query.channels.findFirst({
+    where: eq(channels.name, source.channelName),
+  });
   if (!channel) {
-    if (!input.apiKey) {
+    if (!input.apiKey && source.needsKey) {
       throw new HttpError(
         400,
         'API_KEY_REQUIRED',
-        '首次导入需要填写平台 API Key（用于创建渠道）',
+        `首次从 ${source.name} 导入需要填写平台 API Key（用于创建渠道）`,
       );
     }
     const [created] = await s.db
       .insert(channels)
       .values({
         providerId: provider.id,
-        name: OPENROUTER_FREE_CHANNEL,
-        apiKeyEnc: encrypt(input.apiKey, s.encryptionKey),
+        name: source.channelName,
+        apiKeyEnc: encrypt(input.apiKey ?? 'no-key-required', s.encryptionKey),
         weight: 1,
         priority: 0,
         rpmLimit: FREE_CHANNEL_RPM,
@@ -226,18 +277,10 @@ export async function importCatalogModels(
     action: 'model_catalog.import',
     targetType: 'provider',
     targetId: String(provider.id),
-    detail: { created, updated, models: input.models.map((m) => m.externalName) },
+    detail: { source: source.id, created, updated, models: input.models.map((m) => m.externalName) },
   });
 
   return { providerId: provider.id, channelId: channel.id, created, updated };
-}
-
-async function db_findProvider(s: AdminServices, name: string) {
-  return s.db.query.providers.findFirst({ where: eq(providers.name, name) });
-}
-
-async function db_findChannel(s: AdminServices, name: string) {
-  return s.db.query.channels.findFirst({ where: eq(channels.name, name) });
 }
 
 /** 绑定映射到免费渠道（已绑定时幂等） */

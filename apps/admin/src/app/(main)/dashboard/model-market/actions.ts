@@ -14,10 +14,12 @@ export interface CatalogImportModel {
 
 /** 一键入库：勾选模型 +（首次）平台 key → provider/channel/mappings */
 export async function importCatalogAction(input: {
+  sourceId: string;
   apiKey?: string;
   models: CatalogImportModel[];
 }): Promise<{ error?: string }> {
   if (input.models.length === 0) return { error: '至少选择一个模型' };
+  if (!/^[a-z0-9-]{1,32}$/.test(input.sourceId)) return { error: '目录源非法' };
   for (const m of input.models) {
     if (!m.externalName.trim() || !m.realModel.trim()) {
       return { error: '对外名与真实模型名不能为空' };
@@ -27,6 +29,7 @@ export async function importCatalogAction(input: {
     await adminFetch('/api/admin/model-catalog/import', {
       method: 'POST',
       body: {
+        sourceId: input.sourceId,
         ...(input.apiKey ? { apiKey: input.apiKey } : {}),
         models: input.models.map((m) => ({
           externalName: m.externalName.trim(),
