@@ -206,6 +206,7 @@ describe('目录导入（真 PG）', () => {
     if (!connected) return it.skip('no DB');
     const s = makeServices(db);
     const ext = `mc-test-svc-${randomUUID().slice(0, 6)}`;
+    let created: { providerId: number; channelId: number } | null = null;
     try {
       const result = await importCatalogModels(s, {
         apiKey: 'sk-or-v1-test',
@@ -213,14 +214,20 @@ describe('目录导入（真 PG）', () => {
           { externalName: ext, realModel: 'qwen/qwen3-14b:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0 },
         ],
       });
+      created = { providerId: result.providerId, channelId: result.channelId };
       expect(result.created).toBe(1);
       const m = (await db.query.modelMappings.findFirst({ where: and(eq(modelMappings.externalName, ext)) }))!;
       expect(m.realModel).toBe('qwen/qwen3-14b:free');
     } finally {
+      // 服务层直调可能新建 provider/channel——同样清干净（不留带测试 key 的渠道）
       const m = await db.query.modelMappings.findFirst({ where: eq(modelMappings.externalName, ext) });
       if (m) {
         await db.delete(modelChannels).where(eq(modelChannels.mappingId, m.id));
         await db.delete(modelMappings).where(eq(modelMappings.id, m.id));
+      }
+      if (created) {
+        await db.delete(channels).where(eq(channels.id, created.channelId));
+        await db.delete(providers).where(eq(providers.id, created.providerId));
       }
     }
   });
