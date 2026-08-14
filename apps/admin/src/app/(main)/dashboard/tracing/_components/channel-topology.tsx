@@ -105,7 +105,7 @@ export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
   }
 
   return (
-    <div className="h-[420px] overflow-hidden rounded-lg border">
+    <div className="h-full overflow-hidden rounded-lg border">
       <ReactFlow
         nodes={nodes}
         edges={edges}
