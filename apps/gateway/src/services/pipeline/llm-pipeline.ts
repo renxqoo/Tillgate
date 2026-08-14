@@ -8,6 +8,7 @@ import {
   BillingBacklogError,
   DailySpendLimitExceededError,
   InsufficientBalanceError,
+  SubscriptionQuotaExhaustedError,
   type Billing,
   type UsageReceipt,
 } from '@ai-gateway/ledger';
@@ -266,6 +267,16 @@ export class LlmPipeline {
           'daily_spend_limit_exceeded',
           `${scope}花费已达上限（上限 ${error.dailySpendLimit} 元，当前预计 ${error.projected} 元）`,
           '请明天再试，或联系管理员调整每日花费上限',
+        );
+      }
+      if (error instanceof SubscriptionQuotaExhaustedError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        return errorResponse(
+          c,
+          402,
+          'subscription_quota_exhausted',
+          `套餐额度不足（剩余 ${error.remaining} 元，本次预估 ${error.requested} 元）`,
+          '请升级套餐、加购余额，或联系管理员',
         );
       }
       if (error instanceof BillingConfigurationError) {

@@ -20,6 +20,8 @@ import { channelFundsRoutes } from './routes/channel-funds.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { modelAdminRoutes } from './routes/models.js';
 import { rateCardAdminRoutes } from './routes/rate-cards.js';
+import { planAdminRoutes } from './routes/plans.js';
+import { subscriptionAdminRoutes } from './routes/subscriptions.js';
 import { redeemAdminRoutes } from './routes/redeem.js';
 import { statsAdminRoutes } from './routes/stats.js';
 import { logAdminRoutes, auditLogAdminRoutes } from './routes/logs.js';
@@ -82,6 +84,8 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/vouchers', voucherRoutes(services));
   admin.route('/models', modelAdminRoutes(services));
   admin.route('/rate-cards', rateCardAdminRoutes(services));
+  admin.route('/plans', planAdminRoutes(services));
+  admin.route('/subscriptions', subscriptionAdminRoutes(services));
   admin.route('/redeem-batches', redeemAdminRoutes(services));
   admin.route('/stats', statsAdminRoutes(services));
   admin.route('/logs', logAdminRoutes(services));

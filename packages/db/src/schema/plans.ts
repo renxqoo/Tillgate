@@ -8,7 +8,9 @@ import {
   smallint,
   index,
   numeric,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 
 /**
@@ -52,6 +54,10 @@ export const userSubscriptions = pgTable(
     quotaAmount: numeric('quota_amount', { precision: 38, scale: 18 }).notNull(),
     /** 已用额度（元，原子扣减，同余额模式） */
     usedAmount: numeric('used_amount', { precision: 38, scale: 18 }).notNull().default('0'),
+    /** 在途敞口（元）：所有未终结请求对套餐额度的预占之和，结算/释放时清。 */
+    reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 0 有效 / 1 到期 / 2 取消 */
     status: smallint('status').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -59,5 +65,9 @@ export const userSubscriptions = pgTable(
   (t) => [
     index('user_subscriptions_user_idx').on(t.userId),
     index('user_subscriptions_plan_idx').on(t.planId),
+    // 套餐额度「永不为负」硬不变量：已用 + 在途 ≤ 额度，且二者非负。
+    check('user_subscriptions_used_nonnegative_ck', sql`${t.usedAmount} >= 0`),
+    check('user_subscriptions_reserved_nonnegative_ck', sql`${t.reservedAmount} >= 0`),
+    check('user_subscriptions_within_quota_ck', sql`${t.usedAmount} + ${t.reservedAmount} <= ${t.quotaAmount}`),
   ],
 );

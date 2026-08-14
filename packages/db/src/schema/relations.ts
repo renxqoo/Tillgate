@@ -91,6 +91,10 @@ export const billingRequestsRelations = relations(billingRequests, ({ one }) => 
   user: one(users, { fields: [billingRequests.userId], references: [users.id] }),
   apiKey: one(apiKeys, { fields: [billingRequests.apiKeyId], references: [apiKeys.id] }),
   channel: one(channels, { fields: [billingRequests.channelId], references: [channels.id] }),
+  subscription: one(userSubscriptions, {
+    fields: [billingRequests.subscriptionId],
+    references: [userSubscriptions.id],
+  }),
 }));
 
 export const channelRechargesRelations = relations(channelRecharges, ({ one }) => ({

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { eq, and, sql, gte, lte, desc } from 'drizzle-orm';
-import { users, rateCards, transactions } from '@ai-gateway/db/schema';
+import { eq, and, sql, gte, lte, desc, gt } from 'drizzle-orm';
+import { users, rateCards, transactions, userSubscriptions, plans } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { HttpError, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
@@ -44,6 +44,37 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
         .where(eq(users.id, session.userId))
         .limit(1);
       if (rows.length === 0) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
+      return c.json(rows[0]);
+    })
+
+    // 当前订阅（套餐/生效期/剩余额度），无有效订阅返回 null
+    .get('/subscription', async (c) => {
+      const session = c.get('session');
+      const rows = await s.db
+        .select({
+          id: userSubscriptions.id,
+          planId: userSubscriptions.planId,
+          planName: plans.name,
+          startAt: userSubscriptions.startAt,
+          endAt: userSubscriptions.endAt,
+          quotaAmount: userSubscriptions.quotaAmount,
+          usedAmount: userSubscriptions.usedAmount,
+          reservedAmount: userSubscriptions.reservedAmount,
+          remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount}`,
+          fallbackToBalance: plans.fallbackToBalance,
+        })
+        .from(userSubscriptions)
+        .innerJoin(plans, eq(userSubscriptions.planId, plans.id))
+        .where(
+          and(
+            eq(userSubscriptions.userId, session.userId),
+            eq(userSubscriptions.status, 0),
+            gt(userSubscriptions.endAt, new Date()),
+          ),
+        )
+        .orderBy(desc(userSubscriptions.id))
+        .limit(1);
+      if (rows.length === 0) return c.json(null);
       return c.json(rows[0]);
     })
 

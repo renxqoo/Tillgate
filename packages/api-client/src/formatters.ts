@@ -120,3 +120,20 @@ export function fmtDate(iso: string | null | undefined): string {
   if (Number.isNaN(d.getTime())) return iso;
   return `${d.getFullYear()}-${padTwoDigits(d.getMonth() + 1)}-${padTwoDigits(d.getDate())}`;
 }
+
+/**
+ * 积分 = 钱（元）× 固定汇率（纯展示层，不参与账本/结算）。
+ * 1 元 = 100 积分（即 1 积分 = 1 分钱）；汇率是全局常量，日后可零成本调整
+ * （不动数据库、不动历史流水，因为积分是钱的实时投影）。
+ */
+export const POINTS_PER_YUAN = 100;
+
+/** 元 → 积分（number，仅展示换算）。 */
+export function toPoints(value: MoneyValue): number {
+  return toFiniteNumber(value) * POINTS_PER_YUAN;
+}
+
+/** 积分展示（2 位小数，截断，与 formatMoney 口径一致）。 */
+export function formatPoints(value: MoneyValue): string {
+  return formatMoney(toFiniteNumber(value) * POINTS_PER_YUAN, 2);
+}

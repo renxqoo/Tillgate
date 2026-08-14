@@ -1,5 +1,6 @@
 import {
   Coins,
+  Gem,
   Gift,
   KeyRound,
   LayoutDashboard,
@@ -76,6 +77,12 @@ export function buildSidebarItems(): NavGroup[] {
           title: "充值码",
           url: "/dashboard/redeem",
           icon: Gift,
+        },
+        {
+          id: "subscription",
+          title: "套餐订阅",
+          url: "/dashboard/subscription",
+          icon: Gem,
         },
         {
           id: "usage",

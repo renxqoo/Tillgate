@@ -16,6 +16,7 @@ import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 import { apiKeys } from './api-keys.js';
 import { channels } from './channels.js';
+import { userSubscriptions } from './plans.js';
 
 /**
  * 请求级计费状态机，也是结算收据的 durable outbox。
@@ -37,6 +38,12 @@ export const billingRequests = pgTable(
       precision: 38,
       scale: 18,
     }),
+    /** 套餐额度承担的在途部分（元，<= reservedAmount）。NULL=无套餐/纯余额。 */
+    planReservedAmount: numeric('plan_reserved_amount', { precision: 38, scale: 18 }),
+    /** 结算/释放时关联的订阅（套餐分流来源）。 */
+    subscriptionId: bigint('subscription_id', { mode: 'number' }).references(
+      () => userSubscriptions.id,
+    ),
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
     /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/uncertain/dead */
     status: varchar('status', { length: 32 }).notNull().default('authorized'),

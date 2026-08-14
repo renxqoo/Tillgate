@@ -1,7 +1,9 @@
 import {
   Banknote,
+  CalendarClock,
   ChartBar,
   Gauge,
+  Gem,
   History,
   ShieldAlert,
   type LucideIcon,
@@ -68,6 +70,8 @@ export function buildSidebarItems(): NavGroup[] {
         { id: 'models', title: '模型映射', url: '/dashboard/models', icon: Server },
         { id: 'rate-cards', title: '费率卡', url: '/dashboard/rate-cards', icon: Banknote },
         { id: 'rate-limits', title: '限流设置', url: '/dashboard/rate-limits', icon: Gauge },
+        { id: 'plans', title: '套餐', url: '/dashboard/plans', icon: Gem },
+        { id: 'subscriptions', title: '订阅', url: '/dashboard/subscriptions', icon: CalendarClock },
         { id: 'channel-funds', title: '渠道资金', url: '/dashboard/channel-funds', icon: Wallet },
       ],
     },

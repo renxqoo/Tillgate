@@ -198,6 +198,7 @@ export function cleanupUser(userId: number): void {
     `delete from audit_logs where target_id=${q(String(userId))} or admin_id=${userId};`,
     `delete from api_keys where user_id=${userId};`,
     `delete from apps where user_id=${userId};`,
+    `delete from user_subscriptions where user_id=${userId};`,
     `delete from users where id=${userId};`,
   ]) {
     try {

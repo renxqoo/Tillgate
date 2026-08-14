@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, channels, users } from '@ai-gateway/db/schema';
-import { toDecimal } from '@ai-gateway/money';
+import { billingRequests, channels, users, userSubscriptions } from '@ai-gateway/db/schema';
+import { toDecimal, toStorage } from '@ai-gateway/money';
 import { settleClaim } from './settle.js';
 import type {
   BillingEffects,
@@ -300,6 +300,8 @@ export function createBillingProcessor({
         const released = await tx.execute<{
           user_id: number;
           amount: string;
+          plan_reserved_amount: string | null;
+          subscription_id: number | null;
           channel_id: number | null;
           channel_reserved_amount: string | null;
         }>(sql`
@@ -320,22 +322,41 @@ export function createBillingProcessor({
           where b.request_id = c.request_id
             and b.status = 'authorized'
             and b.upstream_started_at is null
-          returning b.user_id, b.reserved_amount as amount, b.channel_id, b.channel_reserved_amount
+          returning b.user_id, b.reserved_amount as amount, b.plan_reserved_amount,
+                    b.subscription_id, b.channel_id, b.channel_reserved_amount
         `);
         result.released = released.rows.length;
         for (const row of released.rows) {
-          const reservation = await tx
-            .update(users)
-            .set({
-              reservedBalance: sql`${users.reservedBalance} - ${row.amount}::numeric`,
-              updatedAt: now,
-            })
-            .where(
-              sql`${users.id} = ${row.user_id}
-                  and ${users.reservedBalance} >= ${row.amount}::numeric`,
-            )
-            .returning({ id: users.id });
-          if (reservation.length === 0) throw new Error('billing_reservation_invariant');
+          const planPart = row.plan_reserved_amount ?? '0';
+          const paygPart = toStorage(toDecimal(row.amount).minus(toDecimal(planPart)));
+          if (toDecimal(paygPart).gt(0)) {
+            const reservation = await tx
+              .update(users)
+              .set({
+                reservedBalance: sql`${users.reservedBalance} - ${paygPart}::numeric`,
+                updatedAt: now,
+              })
+              .where(
+                sql`${users.id} = ${row.user_id}
+                    and ${users.reservedBalance} >= ${paygPart}::numeric`,
+              )
+              .returning({ id: users.id });
+            if (reservation.length === 0) throw new Error('billing_reservation_invariant');
+          }
+          // 释放套餐在途敞口（若有）
+          if (row.subscription_id != null && toDecimal(planPart).gt(0)) {
+            const subReleased = await tx
+              .update(userSubscriptions)
+              .set({
+                reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
+              })
+              .where(
+                sql`${userSubscriptions.id} = ${row.subscription_id}
+                    and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
+              )
+              .returning({ id: userSubscriptions.id });
+            if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
+          }
           // 释放渠道在途敞口（若有：reserve 后未触达上游即过期）
           if (row.channel_id != null && row.channel_reserved_amount != null) {
             const channelReleased = await tx

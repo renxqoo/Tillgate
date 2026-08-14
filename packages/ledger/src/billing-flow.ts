@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, apiKeys, channels, transactions, users, usageLogs } from '@ai-gateway/db/schema';
+import { billingRequests, apiKeys, channels, users, usageLogs, userSubscriptions } from '@ai-gateway/db/schema';
 import {
   Decimal,
   estimateMaxCost,
@@ -79,6 +79,17 @@ export class ChannelBudgetExceededError extends Error {
   ) {
     super(`channel upstream budget exceeded for channel ${channelId}`);
     this.name = 'ChannelBudgetExceededError';
+  }
+}
+
+export class SubscriptionQuotaExhaustedError extends Error {
+  constructor(
+    public readonly userId: number,
+    public readonly remaining: string,
+    public readonly requested: string,
+  ) {
+    super(`subscription quota exhausted for user ${userId}`);
+    this.name = 'SubscriptionQuotaExhaustedError';
   }
 }
 
@@ -261,12 +272,14 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
         });
         if (profile && profile.dailySpendLimit !== null) {
           const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          // 已结算消费按 usage_logs.amount 统计（含套餐+余额，与 Key 级口径统一）：
+          // 套餐覆盖的消耗不再写 consume 流水，改用 usage_logs 才能正确计入「单日总价值消耗」。
           const spentRow = await tx.execute<{ total: string }>(sql`
-            select coalesce(sum(abs(${transactions.amount})), 0)::numeric as total
-            from ${transactions}
-            where ${transactions.userId} = ${command.userId}
-              and ${transactions.type} = 'consume'
-              and ${transactions.createdAt} >= ${todayStart}
+            select coalesce(sum(${usageLogs.amount}), 0)::numeric as total
+            from ${usageLogs}
+            where ${usageLogs.userId} = ${command.userId}
+              and ${usageLogs.status} = 0
+              and ${usageLogs.createdAt} >= ${todayStart}
           `);
           const exposureRow = await tx.execute<{ total: string }>(sql`
             select coalesce(sum(${billingRequests.reservedAmount}), 0)::numeric as total
@@ -326,6 +339,43 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           }
         }
 
+        // 套餐分流：找有效订阅（同时只一个，业务保证），套餐额度优先、余额兜底。
+        // 套餐额度永不为负（硬上限）：remaining = quota - used - reserved；预估在套餐内 → 全走套餐，
+        // 超出部分 → fallback 开走余额（可透支到 -credit_limit），关 → 402。
+        const sub = await tx.query.userSubscriptions.findFirst({
+          where: and(
+            eq(userSubscriptions.userId, command.userId),
+            eq(userSubscriptions.status, 0),
+            gt(userSubscriptions.endAt, now),
+          ),
+          with: { plan: { columns: { fallbackToBalance: true } } },
+          columns: {
+            id: true,
+            quotaAmount: true,
+            usedAmount: true,
+            reservedAmount: true,
+          },
+        });
+        const amountDec = toDecimal(amount);
+        let planReserve = new Decimal(0);
+        let paygReserve = amountDec;
+        let subscriptionId: number | null = null;
+        if (sub) {
+          subscriptionId = sub.id;
+          const remaining = toDecimal(sub.quotaAmount)
+            .minus(toDecimal(sub.usedAmount))
+            .minus(toDecimal(sub.reservedAmount));
+          planReserve = Decimal.min(amountDec, remaining.gt(0) ? remaining : new Decimal(0));
+          paygReserve = amountDec.minus(planReserve);
+          if (paygReserve.gt(0) && !sub.plan.fallbackToBalance) {
+            throw new SubscriptionQuotaExhaustedError(
+              command.userId,
+              remaining.toString(),
+              amount,
+            );
+          }
+        }
+
         const inserted = await tx
           .insert(billingRequests)
           .values({
@@ -333,6 +383,8 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
             userId: command.userId,
             apiKeyId: command.apiKeyId ?? null,
             reservedAmount: amount,
+            planReservedAmount: subscriptionId != null ? planReserve.toString() : null,
+            subscriptionId,
             status: 'authorized',
             stream: command.stream,
             quote: command.quote as unknown as Record<string, unknown>,
@@ -372,7 +424,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           };
         }
 
-        if (toDecimal(amount).isZero()) {
+        if (amountDec.isZero()) {
           const user = await tx.query.users.findFirst({
             where: eq(users.id, command.userId),
             columns: { balance: true, reservedBalance: true, creditLimit: true },
@@ -388,48 +440,78 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           };
         }
 
-        // 信用模型（事后扣 + 透支上限兜底）：authorize 只记「在途敞口」reserved_balance，
-        // 不冻结 balance；放行条件是「已结算余额 + 透支上限 - 在途敞口 >= 本次预估」。
-        const updated = await tx
-          .update(users)
-          .set({
-            reservedBalance: sql`${users.reservedBalance} + ${amount}::numeric`,
-            updatedAt: now,
-          })
-          .where(
-            sql`${users.id} = ${command.userId}
-                and ${users.balance} + ${users.creditLimit} - ${users.reservedBalance} >= ${amount}::numeric`,
-          )
-          .returning({
-            balance: users.balance,
-            reservedBalance: users.reservedBalance,
-            creditLimit: users.creditLimit,
-          });
-        if (updated.length === 0) {
+        // 先预占套餐额度（硬闸原子校验），再预占余额；同事务内任一失败整体回滚。
+        if (planReserve.gt(0) && subscriptionId != null) {
+          const subUpdated = await tx
+            .update(userSubscriptions)
+            .set({
+              reservedAmount: sql`${userSubscriptions.reservedAmount} + ${planReserve.toString()}::numeric`,
+            })
+            .where(
+              and(
+                eq(userSubscriptions.id, subscriptionId),
+                sql`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount} >= ${planReserve.toString()}::numeric`,
+              ),
+            )
+            .returning({ id: userSubscriptions.id });
+          if (subUpdated.length === 0) {
+            throw new SubscriptionQuotaExhaustedError(command.userId, '0', amount);
+          }
+        }
+
+        // 信用模型（事后扣 + 透支上限兜底）：余额只预占 payg 部分（套餐已覆盖 plan 部分），
+        // 放行条件「已结算余额 + 透支上限 - 在途敞口 >= 本次 payg 预估」。
+        let userRow: { balance: string; reservedBalance: string; creditLimit: string };
+        if (paygReserve.gt(0)) {
+          const updated = await tx
+            .update(users)
+            .set({
+              reservedBalance: sql`${users.reservedBalance} + ${paygReserve.toString()}::numeric`,
+              updatedAt: now,
+            })
+            .where(
+              sql`${users.id} = ${command.userId}
+                  and ${users.balance} + ${users.creditLimit} - ${users.reservedBalance} >= ${paygReserve.toString()}::numeric`,
+            )
+            .returning({
+              balance: users.balance,
+              reservedBalance: users.reservedBalance,
+              creditLimit: users.creditLimit,
+            });
+          if (updated.length === 0) {
+            const current = await tx.query.users.findFirst({
+              where: eq(users.id, command.userId),
+              columns: { balance: true, reservedBalance: true, creditLimit: true },
+            });
+            const available = current
+              ? toStorage(
+                  toDecimal(current.balance).plus(current.creditLimit).minus(current.reservedBalance),
+                )
+              : '0';
+            throw new InsufficientBalanceError(
+              command.userId,
+              available,
+              current?.balance ?? '0',
+              current?.reservedBalance ?? '0',
+              current?.creditLimit ?? '0',
+            );
+          }
+          userRow = updated[0]!;
+        } else {
           const current = await tx.query.users.findFirst({
             where: eq(users.id, command.userId),
             columns: { balance: true, reservedBalance: true, creditLimit: true },
           });
-          const available = current
-            ? toStorage(
-                toDecimal(current.balance).plus(current.creditLimit).minus(current.reservedBalance),
-              )
-            : '0';
-          throw new InsufficientBalanceError(
-            command.userId,
-            available,
-            current?.balance ?? '0',
-            current?.reservedBalance ?? '0',
-            current?.creditLimit ?? '0',
-          );
+          if (!current) throw new InsufficientBalanceError(command.userId, '0');
+          userRow = current;
         }
         return {
-          settledBalance: updated[0]!.balance,
-          reservedBalance: updated[0]!.reservedBalance,
+          settledBalance: userRow.balance,
+          reservedBalance: userRow.reservedBalance,
           availableBalance: toStorage(
-            toDecimal(updated[0]!.balance)
-              .plus(updated[0]!.creditLimit)
-              .minus(updated[0]!.reservedBalance),
+            toDecimal(userRow.balance)
+              .plus(userRow.creditLimit)
+              .minus(userRow.reservedBalance),
           ),
           replayed: false,
         };
@@ -693,22 +775,45 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
             .returning({
               userId: billingRequests.userId,
               amount: billingRequests.reservedAmount,
+              planReservedAmount: billingRequests.planReservedAmount,
+              subscriptionId: billingRequests.subscriptionId,
               channelId: billingRequests.channelId,
               channelReservedAmount: billingRequests.channelReservedAmount,
             });
           if (row.length === 0) return null;
-          const reservation = await tx
-            .update(users)
-            .set({
-              reservedBalance: sql`${users.reservedBalance} - ${row[0]!.amount}::numeric`,
-              updatedAt: now,
-            })
-            .where(
-              sql`${users.id} = ${row[0]!.userId}
-                  and ${users.reservedBalance} >= ${row[0]!.amount}::numeric`,
-            )
-            .returning({ id: users.id });
-          if (reservation.length === 0) throw new Error('billing_reservation_invariant');
+          const row0 = row[0]!;
+          const planPart = row0.planReservedAmount ?? '0';
+          const paygPart = toStorage(
+            toDecimal(row0.amount).minus(toDecimal(planPart)),
+          );
+          if (toDecimal(paygPart).gt(0)) {
+            const reservation = await tx
+              .update(users)
+              .set({
+                reservedBalance: sql`${users.reservedBalance} - ${paygPart}::numeric`,
+                updatedAt: now,
+              })
+              .where(
+                sql`${users.id} = ${row0.userId}
+                    and ${users.reservedBalance} >= ${paygPart}::numeric`,
+              )
+              .returning({ id: users.id });
+            if (reservation.length === 0) throw new Error('billing_reservation_invariant');
+          }
+          // 释放套餐在途敞口（若有）
+          if (row0.subscriptionId != null && toDecimal(planPart).gt(0)) {
+            const subReleased = await tx
+              .update(userSubscriptions)
+              .set({
+                reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
+              })
+              .where(
+                sql`${userSubscriptions.id} = ${row0.subscriptionId}
+                    and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
+              )
+              .returning({ id: userSubscriptions.id });
+            if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
+          }
           // 释放渠道在途敞口（若有）
           if (row[0]!.channelId != null && row[0]!.channelReservedAmount != null) {
             const channelReleased = await tx

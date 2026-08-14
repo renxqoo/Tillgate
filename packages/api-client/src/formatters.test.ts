@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { fmtBalance, fmtCost, fmtPrice, formatMoney, formatYuan } from './formatters';
+import {
+  fmtBalance,
+  fmtCost,
+  fmtPrice,
+  formatMoney,
+  formatYuan,
+  formatPoints,
+  toPoints,
+  POINTS_PER_YUAN,
+} from './formatters';
 
 describe('formatMoney', () => {
   it('固定展示 4 位并截断多余小数', () => {
@@ -32,5 +41,20 @@ describe('formatMoney', () => {
     expect(formatMoney(null)).toBe('0.0000');
     expect(formatMoney('invalid')).toBe('0.0000');
     expect(formatMoney(Number.POSITIVE_INFINITY)).toBe('0.0000');
+  });
+});
+
+describe('formatPoints（积分 = 元 × 100，纯展示）', () => {
+  it('固定汇率 1 元 = 100 积分', () => {
+    expect(POINTS_PER_YUAN).toBe(100);
+    expect(toPoints('1')).toBe(100);
+    expect(toPoints('0.00046')).toBe(0.046);
+    expect(toPoints(null)).toBe(0);
+  });
+
+  it('积分展示保留 2 位小数并截断', () => {
+    expect(formatPoints('100')).toBe('10000.00');
+    expect(formatPoints('0.00046')).toBe('0.04'); // 0.046 → 截断到 0.04
+    expect(formatPoints('1')).toBe('100.00');
   });
 });

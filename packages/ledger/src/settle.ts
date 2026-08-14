@@ -5,6 +5,7 @@ import {
   channels,
   transactions,
   usageLogs,
+  userSubscriptions,
   users,
 } from '@ai-gateway/db/schema';
 import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
@@ -54,6 +55,8 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       columns: {
         userId: true,
         reservedAmount: true,
+        planReservedAmount: true,
+        subscriptionId: true,
         channelId: true,
         channelReservedAmount: true,
       },
@@ -76,8 +79,39 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
     // balance 可降至 -credit_limit（由 DB 约束 users_balance_credit_floor_ck 兜底，触底即 check
     // violation → processor 归为 invariant_violation → dead 人工复核/充值）。
     if (data.usage.estimated) throw new Error('billing_invariant_estimated_usage');
-    const charged = calculated;
     amount = calculatedAmount;
+
+    // 套餐/余额分流：plan 部分封顶在「释放后剩余额度」内，套餐额度永不为负；ε 溢出走余额。
+    const planReserve = toDecimal(billing.planReservedAmount ?? '0');
+    const paygReserve = toDecimal(billing.reservedAmount).minus(planReserve);
+    let planCharge = new Decimal(0);
+    let paygCharge = calculated;
+    let billedBy: 'plan' | 'payg' | 'both' = 'payg';
+
+    if (billing.subscriptionId != null) {
+      // 释放套餐在途敞口（本请求的 plan 部分），并读回当前 used 以计算剩余。
+      const subReleased = await tx
+        .update(userSubscriptions)
+        .set({
+          reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planReserve.toString()}::numeric`,
+        })
+        .where(
+          sql`${userSubscriptions.id} = ${billing.subscriptionId}
+              and ${userSubscriptions.reservedAmount} >= ${planReserve.toString()}::numeric`,
+        )
+        .returning({
+          quotaAmount: userSubscriptions.quotaAmount,
+          usedAmount: userSubscriptions.usedAmount,
+        });
+      if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
+      const remaining = toDecimal(subReleased[0]!.quotaAmount).minus(
+        toDecimal(subReleased[0]!.usedAmount),
+      );
+      planCharge = Decimal.min(calculated, remaining.gt(0) ? remaining : new Decimal(0));
+      paygCharge = calculated.minus(planCharge);
+      billedBy =
+        planCharge.gt(0) && paygCharge.gt(0) ? 'both' : planCharge.gt(0) ? 'plan' : 'payg';
+    }
 
     const inserted = await tx
       .insert(usageLogs)
@@ -100,9 +134,10 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
         amount,
         calculatedAmount,
         upstreamCost,
-        planAmount: '0',
-        paygAmount: amount,
-        billedBy: 'payg',
+        planAmount: planCharge.toString(),
+        paygAmount: paygCharge.toString(),
+        billedBy,
+        subscriptionId: planCharge.gt(0) ? billing.subscriptionId : null,
         durationMs: data.durationMs,
         status: 0,
         stream: data.stream,
@@ -112,24 +147,40 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       .returning({ id: usageLogs.id });
     if (inserted.length === 0) throw new Error('billing_invariant_usage_conflict');
 
+    // 套餐已用额度累加（封顶：used + planCharge ≤ quota，硬闸保证不扣负）。
+    if (planCharge.gt(0)) {
+      const subCharged = await tx
+        .update(userSubscriptions)
+        .set({
+          usedAmount: sql`${userSubscriptions.usedAmount} + ${planCharge.toString()}::numeric`,
+        })
+        .where(
+          sql`${userSubscriptions.id} = ${billing.subscriptionId}
+              and ${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} >= ${planCharge.toString()}::numeric`,
+        )
+        .returning({ id: userSubscriptions.id });
+      if (subCharged.length === 0) throw new Error('subscription_quota_invariant');
+    }
+
+    // 余额只扣 payg 部分、只释放 payg 在途敞口。
     const updated = await tx
       .update(users)
       .set({
-        balance: sql`${users.balance} - ${amount}::numeric`,
-        reservedBalance: sql`${users.reservedBalance} - ${billing.reservedAmount}::numeric`,
+        balance: sql`${users.balance} - ${paygCharge.toString()}::numeric`,
+        reservedBalance: sql`${users.reservedBalance} - ${paygReserve.toString()}::numeric`,
         updatedAt: sql`clock_timestamp()`,
       })
       .where(
         and(
           eq(users.id, billing.userId),
-          sql`${users.reservedBalance} >= ${billing.reservedAmount}::numeric`,
+          sql`${users.reservedBalance} >= ${paygReserve.toString()}::numeric`,
         ),
       )
       .returning({ balance: users.balance });
     if (updated.length === 0) throw new Error('billing_user_missing');
     const balanceAfter = updated[0]!.balance;
-    // reservation 本身不写资金流水；consume 流水必须直接表达最终实扣。
-    const balanceBefore = toStorage(toDecimal(balanceAfter).plus(charged));
+    // reservation 本身不写资金流水；consume 流水只表达余额实扣（payg 部分）。
+    const balanceBefore = toStorage(toDecimal(balanceAfter).plus(paygCharge));
 
     // 释放渠道在途敞口（若有：本请求在最终成功渠道上的上游成本预估）
     if (billing.channelId != null && billing.channelReservedAmount != null) {
@@ -147,25 +198,28 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       if (channelReleased.length === 0) throw new Error('channel_reservation_invariant');
     }
 
-    const insertedTransaction = await tx
-      .insert(transactions)
-      .values({
-        userId: billing.userId,
-        type: 'consume',
-        amount: toStorage(charged.negated()),
-        balanceBefore,
-        balanceAfter,
-        refType: 'usage_logs',
-        refId: data.requestId,
-        remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens)`,
-      })
-      .onConflictDoNothing({
-        target: [transactions.refType, transactions.refId],
-        where: sql`ref_type = 'usage_logs'`,
-      })
-      .returning({ id: transactions.id });
-    if (insertedTransaction.length === 0) {
-      throw new Error('billing_invariant_transaction_conflict');
+    // consume 流水只表达余额实扣（payg 部分）；全额由套餐覆盖（payg=0）时不写余额流水。
+    if (paygCharge.gt(0)) {
+      const insertedTransaction = await tx
+        .insert(transactions)
+        .values({
+          userId: billing.userId,
+          type: 'consume',
+          amount: toStorage(paygCharge.negated()),
+          balanceBefore,
+          balanceAfter,
+          refType: 'usage_logs',
+          refId: data.requestId,
+          remark: `${data.externalModel} (${data.usage.inputTokens}+${data.usage.outputTokens} tokens)`,
+        })
+        .onConflictDoNothing({
+          target: [transactions.refType, transactions.refId],
+          where: sql`ref_type = 'usage_logs'`,
+        })
+        .returning({ id: transactions.id });
+      if (insertedTransaction.length === 0) {
+        throw new Error('billing_invariant_transaction_conflict');
+      }
     }
 
     const finalized = await tx

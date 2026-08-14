@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { auditLogs, billingRequests, channels, fundOperations, users } from '@ai-gateway/db/schema';
+import { auditLogs, billingRequests, channels, fundOperations, users, userSubscriptions } from '@ai-gateway/db/schema';
+import { toDecimal, toStorage } from '@ai-gateway/money';
 import { validateReceipt } from './billing-flow.js';
 import type { BillingQuote, BillingRequestStatus, UsageReceipt } from './types.js';
 
@@ -274,23 +275,43 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
               requestId: billingRequests.requestId,
               userId: billingRequests.userId,
               reservedAmount: billingRequests.reservedAmount,
+              planReservedAmount: billingRequests.planReservedAmount,
+              subscriptionId: billingRequests.subscriptionId,
               channelId: billingRequests.channelId,
               channelReservedAmount: billingRequests.channelReservedAmount,
               revision: billingRequests.revision,
             });
           if (!changed) throw new BillingOperationError('state_conflict');
-          const [balance] = await tx
-            .update(users)
-            .set({
-              reservedBalance: sql`${users.reservedBalance} - ${changed.reservedAmount}::numeric`,
-              updatedAt: now,
-            })
-            .where(
-              sql`${users.id} = ${changed.userId}
-                  and ${users.reservedBalance} >= ${changed.reservedAmount}::numeric`,
-            )
-            .returning({ value: users.balance });
-          if (!balance) throw new BillingOperationError('not_found');
+          const planPart = changed.planReservedAmount ?? '0';
+          const paygPart = toStorage(toDecimal(changed.reservedAmount).minus(toDecimal(planPart)));
+          if (toDecimal(paygPart).gt(0)) {
+            const [balance] = await tx
+              .update(users)
+              .set({
+                reservedBalance: sql`${users.reservedBalance} - ${paygPart}::numeric`,
+                updatedAt: now,
+              })
+              .where(
+                sql`${users.id} = ${changed.userId}
+                    and ${users.reservedBalance} >= ${paygPart}::numeric`,
+              )
+              .returning({ value: users.balance });
+            if (!balance) throw new BillingOperationError('not_found');
+          }
+          // 释放套餐在途敞口（若有）
+          if (changed.subscriptionId != null && toDecimal(planPart).gt(0)) {
+            const subReleased = await tx
+              .update(userSubscriptions)
+              .set({
+                reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
+              })
+              .where(
+                sql`${userSubscriptions.id} = ${changed.subscriptionId}
+                    and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
+              )
+              .returning({ id: userSubscriptions.id });
+            if (subReleased.length === 0) throw new BillingOperationError('state_conflict');
+          }
           // 释放渠道在途敞口（若有：uncertain 请求保守保留，确认无收费后释放）
           if (changed.channelId != null && changed.channelReservedAmount != null) {
             const channelReleased = await tx

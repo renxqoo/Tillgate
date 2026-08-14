@@ -6,9 +6,10 @@ import {
   users,
   usageLogs,
   transactions,
+  userSubscriptions,
   reconcileDiscrepancies,
 } from '@ai-gateway/db/schema';
-import { Decimal } from '@ai-gateway/money';
+import { Decimal, toDecimal } from '@ai-gateway/money';
 
 /**
  * 对账作业（金融级护栏）。
@@ -65,8 +66,12 @@ export async function reconcileUser(db: Db, userId: number): Promise<boolean> {
   );
 
   // 活跃请求汇总必须与用户行上的事务型预留计数一致。
+  // 信用模型 + 套餐分流：users.reserved_balance 只承载 payg 部分；
+  // billing_requests.reserved_amount 是总额，减去 plan_reserved_amount 才是余额在途。
   const heldRow = await db
-    .select({ total: sql<string>`coalesce(sum(${billingRequests.reservedAmount}),0)::numeric` })
+    .select({
+      total: sql<string>`coalesce(sum(${billingRequests.reservedAmount} - coalesce(${billingRequests.planReservedAmount}, 0)), 0)::numeric`,
+    })
     .from(billingRequests)
     .where(
       and(
@@ -123,40 +128,105 @@ export async function reconcileAll(db: Db, recentDays = 7): Promise<ReconcileRes
   let discrepancies = 0;
   for (const row of recentUsers.rows) {
     const userId = Number(row.user_id);
-    const [balanceOk, usageOk] = await Promise.all([
+    const [balanceOk, usageOk, subscriptionOk] = await Promise.all([
       reconcileUser(db, userId),
       reconcileUsageVsTransactions(db, userId),
+      reconcileSubscriptionReserved(db, userId),
     ]);
     if (!balanceOk) discrepancies += 1;
     if (!usageOk) discrepancies += 1;
+    if (!subscriptionOk) discrepancies += 1;
   }
   return { checkedUsers: recentUsers.rows.length, discrepancies };
 }
 
 /**
- * 用量金额一致性校验（辅助）：sum(usage_logs.amount) 应等于 sum(consume 流水 amount 的绝对值)。
- * 用于发现 usage_logs 与 transactions 脱节的场景。
+ * 用量金额一致性校验（辅助）：
+ *   - 余额部分：sum(usage_logs.payg_amount) 应等于 sum(consume 流水 amount 的绝对值)
+ *   - 套餐部分：sum(usage_logs.plan_amount) 应等于 sum(user_subscriptions.used_amount)
+ * 用于发现 usage_logs 与 transactions / 订阅账本脱节的场景。
  */
 export async function reconcileUsageVsTransactions(db: Db, userId: number): Promise<boolean> {
-  const usageSum = await db
-    .select({ total: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric` })
+  const paygSum = await db
+    .select({ total: sql<string>`coalesce(sum(${usageLogs.paygAmount}),0)::numeric` })
+    .from(usageLogs)
+    .where(eq(usageLogs.userId, userId));
+  const planSum = await db
+    .select({ total: sql<string>`coalesce(sum(${usageLogs.planAmount}),0)::numeric` })
     .from(usageLogs)
     .where(eq(usageLogs.userId, userId));
   const consumeSum = await db
     .select({ total: sql<string>`coalesce(sum(abs(${transactions.amount})),0)::numeric` })
     .from(transactions)
     .where(sql`${transactions.userId} = ${userId} AND ${transactions.type} = 'consume'`);
-  const usage = new Decimal(usageSum[0]?.total ?? '0');
+  const subUsedSum = await db
+    .select({ total: sql<string>`coalesce(sum(${userSubscriptions.usedAmount}),0)::numeric` })
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.userId, userId));
+
+  const payg = new Decimal(paygSum[0]?.total ?? '0');
+  const plan = new Decimal(planSum[0]?.total ?? '0');
   const consume = new Decimal(consumeSum[0]?.total ?? '0');
-  const diff = usage.minus(consume);
+  const subUsed = new Decimal(subUsedSum[0]?.total ?? '0');
+
+  const paygDiff = payg.minus(consume);
+  const planDiff = plan.minus(subUsed);
+  if (paygDiff.abs().lte(new Decimal('0.000000001')) && planDiff.abs().lte(new Decimal('0.000000001'))) {
+    return true;
+  }
+  await db.insert(reconcileDiscrepancies).values({
+    scope: 'user',
+    userId,
+    expected: consume.plus(subUsed).toString(),
+    actual: payg.plus(plan).toString(),
+    diff: paygDiff.abs().gt(planDiff.abs()) ? paygDiff.toString() : planDiff.toString(),
+    detail: `用量-流水对账不平：payg ${payg.toString()} vs consume ${consume.toString()}；plan ${plan.toString()} vs subscription_used ${subUsed.toString()}`,
+  });
+  return false;
+}
+
+/**
+ * 订阅在途敞口一致性校验：user_subscriptions.reserved_amount 必须等于
+ * 该用户所有活跃 billing_requests.plan_reserved_amount 之和（容差 1e-9）。
+ */
+export async function reconcileSubscriptionReserved(db: Db, userId: number): Promise<boolean> {
+  const subs = await db
+    .select({ id: userSubscriptions.id, reservedAmount: userSubscriptions.reservedAmount })
+    .from(userSubscriptions)
+    .where(eq(userSubscriptions.userId, userId));
+  const reservedActual = subs.reduce(
+    (acc, s) => acc.plus(toDecimal(s.reservedAmount)),
+    new Decimal(0),
+  );
+  const activeSum = await db
+    .select({
+      total: sql<string>`coalesce(sum(${billingRequests.planReservedAmount}),0)::numeric`,
+    })
+    .from(billingRequests)
+    .where(
+      and(
+        eq(billingRequests.userId, userId),
+        inArray(billingRequests.status, [
+          'authorized',
+          'in_flight',
+          'settlement_pending',
+          'processing',
+          'retry_wait',
+          'uncertain',
+          'dead',
+        ]),
+      ),
+    );
+  const reservedExpected = new Decimal(activeSum[0]?.total ?? '0');
+  const diff = reservedActual.minus(reservedExpected);
   if (diff.abs().lte(new Decimal('0.000000001'))) return true;
   await db.insert(reconcileDiscrepancies).values({
     scope: 'user',
     userId,
-    expected: consume.toString(),
-    actual: usage.toString(),
+    expected: reservedExpected.toString(),
+    actual: reservedActual.toString(),
     diff: diff.toString(),
-    detail: `用量-流水对账不平：usage_logs ${usage.toString()} vs consume ${consume.toString()}`,
+    detail: `订阅在途敞口不平（user=${userId}）：user_subscriptions.reserved ${reservedActual.toString()} vs 活跃请求 plan_reserved 和 ${reservedExpected.toString()}`,
   });
   return false;
 }

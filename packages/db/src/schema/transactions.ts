@@ -55,5 +55,9 @@ export const transactions = pgTable(
     uniqueIndex('transactions_gift_ref_uq')
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'signup_gift'`),
+    // subscribe 幂等：同一订阅周期只产生一条购买流水
+    uniqueIndex('transactions_subscription_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'subscription'`),
   ],
 );

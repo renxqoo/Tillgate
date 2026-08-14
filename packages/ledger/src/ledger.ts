@@ -1,12 +1,14 @@
 import { createHash } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import {
   fundOperations,
+  plans,
   redeemBatches,
   redeemCodes,
   transactions,
   users,
+  userSubscriptions,
 } from '@ai-gateway/db/schema';
 import { Decimal, toDecimal, toStorage } from '@ai-gateway/money';
 import { reconcileAll, reconcileUsageVsTransactions, reconcileUser } from './reconcile.js';
@@ -68,13 +70,31 @@ export type RedeemResult =
       reason: 'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired';
     };
 
+export interface SubscribeResult {
+  userId: number;
+  subscriptionId: number;
+  planId: number;
+  planName: string;
+  startAt: string;
+  endAt: string;
+  quotaAmount: string;
+  price: string;
+  balanceBefore: string;
+  balanceAfter: string;
+  replayed: boolean;
+}
+
 export class LedgerError extends Error {
   constructor(
     public readonly code:
       | 'user_not_found'
       | 'insufficient_balance'
       | 'invalid_amount'
-      | 'idempotency_conflict',
+      | 'idempotency_conflict'
+      | 'already_subscribed'
+      | 'plan_not_found'
+      | 'plan_disabled'
+      | 'no_subscription',
     message: string = code,
   ) {
     super(message);
@@ -100,6 +120,25 @@ export interface Ledger {
   }): Promise<BalanceMutationResult>;
   grantSignupGift(input: { userId: number; amount: MoneyInput }): Promise<SignupGiftResult>;
   redeemCode(input: { userId: number; code: string }): Promise<RedeemResult>;
+  /** 购买套餐：扣余额、开新订阅期（已有有效订阅则拒绝）。 */
+  subscribePlan(input: {
+    operationId: string;
+    userId: number;
+    planId: number;
+    adminId?: number | null;
+  }): Promise<SubscribeResult>;
+  /** 续费指定订阅：扣余额、旧订阅转到期、新订阅期顺延（到期后可再续）。 */
+  renewSubscription(input: {
+    operationId: string;
+    subscriptionId: number;
+    adminId?: number | null;
+  }): Promise<SubscribeResult>;
+  /** 取消订阅：剩余额度作废，不退款。 */
+  cancelSubscription(input: {
+    operationId: string;
+    subscriptionId: number;
+    adminId?: number | null;
+  }): Promise<{ subscriptionId: number; replayed: boolean }>;
   reconcile(input?: {
     scope?: 'all' | 'user' | 'usage';
     userId?: number;
@@ -250,6 +289,172 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
               before: result.balanceBefore,
               after: result.balanceAfter,
             },
+          }) ?? Promise.resolve(),
+      );
+    }
+    return result;
+  }
+
+  async function applySubscription(input: {
+    kind: 'subscription.purchase' | 'subscription.renew';
+    operationId: string;
+    userId: number | null;
+    planId: number | null;
+    subscriptionId: number | null;
+    adminId: number | null;
+  }): Promise<SubscribeResult> {
+    const fp = fingerprint({
+      kind: input.kind,
+      userId: input.userId,
+      planId: input.planId,
+      subscriptionId: input.subscriptionId,
+    });
+    const result = await db.transaction(async (tx): Promise<SubscribeResult> => {
+      const inserted = await tx
+        .insert(fundOperations)
+        .values({ operationId: input.operationId, kind: input.kind, fingerprint: fp })
+        .onConflictDoNothing({ target: fundOperations.operationId })
+        .returning({ operationId: fundOperations.operationId });
+      if (inserted.length === 0) {
+        const existing = await tx.query.fundOperations.findFirst({
+          where: eq(fundOperations.operationId, input.operationId),
+        });
+        if (!existing || existing.kind !== input.kind || existing.fingerprint !== fp) {
+          throw new LedgerError('idempotency_conflict');
+        }
+        if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
+        return { ...(existing.result as Omit<SubscribeResult, 'replayed'>), replayed: true };
+      }
+
+      const now = clock();
+      let userId = input.userId;
+      let planId = input.planId;
+      let startAt = now;
+
+      if (input.kind === 'subscription.renew') {
+        const sub = await tx.query.userSubscriptions.findFirst({
+          where: eq(userSubscriptions.id, input.subscriptionId ?? 0),
+          columns: { userId: true, planId: true, endAt: true },
+        });
+        if (!sub) throw new LedgerError('no_subscription');
+        userId = sub.userId;
+        planId = sub.planId;
+        // 顺延：到期后续费从 now 起，未到期续费从旧 end 起
+        startAt = sub.endAt > now ? sub.endAt : now;
+        // 旧订阅转到期（幂等：已非有效的跳过）
+        await tx
+          .update(userSubscriptions)
+          .set({ status: 1 })
+          .where(
+            and(
+              eq(userSubscriptions.id, input.subscriptionId ?? 0),
+              eq(userSubscriptions.status, 0),
+            ),
+          );
+      } else {
+        const active = await tx.query.userSubscriptions.findFirst({
+          where: and(
+            eq(userSubscriptions.userId, userId!),
+            eq(userSubscriptions.status, 0),
+            gt(userSubscriptions.endAt, now),
+          ),
+          columns: { id: true },
+        });
+        if (active) throw new LedgerError('already_subscribed');
+      }
+
+      const plan = await tx.query.plans.findFirst({
+        where: eq(plans.id, planId ?? 0),
+        columns: { name: true, price: true, periodDays: true, quotaAmount: true, status: true },
+      });
+      if (!plan) throw new LedgerError('plan_not_found');
+      if (plan.status !== 0) throw new LedgerError('plan_disabled');
+
+      const endAt = new Date(startAt.getTime() + Number(plan.periodDays) * 86_400_000);
+      const price = toStorage(toDecimal(plan.price));
+      // 不允许透支余额买套餐（防套现）：可用余额 balance - reserved >= price
+      const updated = await tx
+        .update(users)
+        .set({ balance: sql`${users.balance} - ${price}::numeric`, updatedAt: now })
+        .where(
+          sql`${users.id} = ${userId}
+              and ${users.balance} - ${users.reservedBalance} >= ${price}::numeric`,
+        )
+        .returning({ balance: users.balance });
+      if (updated.length === 0) {
+        const u = await tx.query.users.findFirst({
+          where: eq(users.id, userId!),
+          columns: { id: true },
+        });
+        throw new LedgerError(u ? 'insufficient_balance' : 'user_not_found');
+      }
+      const balanceAfter = updated[0]!.balance;
+      const balanceBefore = toStorage(toDecimal(balanceAfter).plus(plan.price));
+
+      const [sub] = await tx
+        .insert(userSubscriptions)
+        .values({
+          userId: userId!,
+          planId: planId!,
+          startAt,
+          endAt,
+          quotaAmount: plan.quotaAmount,
+          usedAmount: '0',
+          reservedAmount: '0',
+          status: 0,
+        })
+        .returning({ id: userSubscriptions.id });
+
+      const [entry] = await tx
+        .insert(transactions)
+        .values({
+          userId: userId!,
+          type: 'subscribe',
+          amount: toStorage(toDecimal(plan.price).negated()),
+          balanceBefore,
+          balanceAfter,
+          refType: 'subscription',
+          refId: String(sub!.id),
+          remark: `购买套餐「${plan.name}」`,
+          createdBy: input.adminId,
+        })
+        .returning({ id: transactions.id });
+
+      const stored: Omit<SubscribeResult, 'replayed'> = {
+        userId: userId!,
+        subscriptionId: sub!.id,
+        planId: planId!,
+        planName: plan.name,
+        startAt: startAt.toISOString(),
+        endAt: endAt.toISOString(),
+        quotaAmount: plan.quotaAmount,
+        price,
+        balanceBefore,
+        balanceAfter,
+      };
+      await tx
+        .update(fundOperations)
+        .set({ transactionId: entry!.id, result: stored })
+        .where(eq(fundOperations.operationId, input.operationId));
+      return { ...stored, replayed: false };
+    });
+
+    if (!result.replayed) {
+      await runEffect(
+        () =>
+          effects?.balanceChanged?.({
+            userId: result.userId,
+            balanceAfter: result.balanceAfter,
+          }) ?? Promise.resolve(),
+      );
+      await runEffect(
+        () =>
+          effects?.audit?.({
+            adminId: input.adminId,
+            action: input.kind,
+            targetType: 'subscription',
+            targetId: result.subscriptionId,
+            detail: { planId: result.planId, price: result.price },
           }) ?? Promise.resolve(),
       );
     }
@@ -480,6 +685,79 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             effects?.balanceChanged?.({
               userId: input.userId,
               balanceAfter: result.balanceAfter,
+            }) ?? Promise.resolve(),
+        );
+      }
+      return result;
+    },
+
+    subscribePlan(input) {
+      return applySubscription({
+        kind: 'subscription.purchase',
+        operationId: input.operationId,
+        userId: input.userId,
+        planId: input.planId,
+        subscriptionId: null,
+        adminId: input.adminId ?? null,
+      });
+    },
+
+    renewSubscription(input) {
+      return applySubscription({
+        kind: 'subscription.renew',
+        operationId: input.operationId,
+        userId: null,
+        planId: null,
+        subscriptionId: input.subscriptionId,
+        adminId: input.adminId ?? null,
+      });
+    },
+
+    async cancelSubscription(input) {
+      const fp = fingerprint({ kind: 'subscription.cancel', subscriptionId: input.subscriptionId });
+      const result = await db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(fundOperations)
+          .values({ operationId: input.operationId, kind: 'subscription.cancel', fingerprint: fp })
+          .onConflictDoNothing({ target: fundOperations.operationId })
+          .returning({ operationId: fundOperations.operationId });
+        if (inserted.length === 0) {
+          const existing = await tx.query.fundOperations.findFirst({
+            where: eq(fundOperations.operationId, input.operationId),
+          });
+          if (!existing || existing.kind !== 'subscription.cancel' || existing.fingerprint !== fp) {
+            throw new LedgerError('idempotency_conflict');
+          }
+          if (!existing.result)
+            throw new LedgerError('idempotency_conflict', 'operation incomplete');
+          return { ...(existing.result as { subscriptionId: number }), replayed: true };
+        }
+        const changed = await tx
+          .update(userSubscriptions)
+          .set({ status: 2 })
+          .where(
+            and(
+              eq(userSubscriptions.id, input.subscriptionId),
+              eq(userSubscriptions.status, 0),
+            ),
+          )
+          .returning({ id: userSubscriptions.id });
+        if (changed.length === 0) throw new LedgerError('no_subscription');
+        const stored = { subscriptionId: changed[0]!.id };
+        await tx
+          .update(fundOperations)
+          .set({ result: stored })
+          .where(eq(fundOperations.operationId, input.operationId));
+        return { ...stored, replayed: false };
+      });
+      if (!result.replayed) {
+        await runEffect(
+          () =>
+            effects?.audit?.({
+              adminId: input.adminId ?? null,
+              action: 'subscription.cancel',
+              targetType: 'subscription',
+              targetId: result.subscriptionId,
             }) ?? Promise.resolve(),
         );
       }

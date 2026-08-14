@@ -469,3 +469,77 @@ export const REDEEM_ERROR_MESSAGES: Record<string, string> = {
   code_revoked: '充值码已撤销',
   code_expired: '充值码已过期',
 };
+
+// ── 套餐订阅（包月）────────────────────────────────────────────────────────
+/** plans 表行（amount 均为元 numeric 字符串）。 */
+export interface PlanRow {
+  id: number;
+  name: string;
+  price: string;
+  periodDays: number;
+  quotaAmount: string;
+  fallbackToBalance: boolean;
+  status: number;
+}
+export interface PlanCreateBody {
+  name: string;
+  price: number;
+  periodDays: number;
+  quotaAmount: number;
+  fallbackToBalance?: boolean;
+}
+export interface PlanUpdateBody {
+  name?: string;
+  price?: number;
+  periodDays?: number;
+  quotaAmount?: number;
+  fallbackToBalance?: boolean;
+  status?: number;
+}
+
+/** 当前订阅摘要（client GET /api/me/subscription）。 */
+export interface CurrentSubscription {
+  id: number;
+  planId: number;
+  planName: string;
+  startAt: string;
+  endAt: string;
+  quotaAmount: string;
+  usedAmount: string;
+  reservedAmount: string;
+  remainingAmount: string;
+  fallbackToBalance: boolean;
+}
+
+/** 订阅购买/续费结果。 */
+export interface SubscribeResult {
+  userId: number;
+  subscriptionId: number;
+  planId: number;
+  planName: string;
+  startAt: string;
+  endAt: string;
+  quotaAmount: string;
+  price: string;
+  balanceBefore: string;
+  balanceAfter: string;
+  replayed: boolean;
+}
+
+/** admin 订阅列表行。 */
+export interface AdminSubscriptionRow {
+  id: number;
+  userId: number;
+  userSubject: string;
+  userDisplayName: string | null;
+  planId: number;
+  planName: string;
+  startAt: string;
+  endAt: string;
+  quotaAmount: string;
+  usedAmount: string;
+  reservedAmount: string;
+  remainingAmount: string;
+  status: number;
+  createdAt: string;
+}

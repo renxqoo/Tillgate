@@ -12,6 +12,8 @@ import { appRoutes } from './routes/apps.js';
 import { meRoutes } from './routes/me.js';
 import { usageRoutes } from './routes/usage.js';
 import { redeemRoutes } from './routes/redeem.js';
+import { planRoutes } from './routes/plans.js';
+import { subscriptionRoutes } from './routes/subscriptions.js';
 
 /**
  * client-api 应用组装（依赖注入唯一入口）。
@@ -55,6 +57,8 @@ export function createApp(deps: ClientApiDeps): Hono {
   api.route('/apps', appRoutes(services));
   api.route('/usage', usageRoutes(services));
   api.route('/redeem', redeemRoutes(services));
+  api.route('/plans', planRoutes(services));
+  api.route('/subscriptions', subscriptionRoutes(services));
   app.route('/api', api);
 
   return app;
