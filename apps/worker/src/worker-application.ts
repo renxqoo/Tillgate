@@ -4,9 +4,11 @@ import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { sql } from 'drizzle-orm';
 import type { Logger, WorkerEnv } from '@ai-gateway/core';
+import { getTracer } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
 import { maintainPartitions } from '@ai-gateway/tracing';
+import { settleTelemetry } from './settle-telemetry.js';
 import {
   createBillingAutoReleaser,
   createBillingOperations,
@@ -129,6 +131,8 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         retryMaxMs: env.WORKER_RETRY_MAX_MS,
         maxAttempts: env.WORKER_MAX_SETTLEMENT_ATTEMPTS,
         recoveryBatchSize: env.WORKER_RECOVERY_BATCH_SIZE,
+        // 结算 span 以 trace_parent 挂回请求 trace（OTEL off 时 no-op 零开销）
+        telemetry: settleTelemetry(getTracer('worker.billing')),
       },
     });
   const ledger = createLedger({ db, effects: createRedisLedgerEffects(redis) });

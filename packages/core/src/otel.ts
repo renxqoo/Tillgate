@@ -14,12 +14,23 @@ import {
   type Span,
   type Meter,
   type Context,
+  type SpanContext,
   SpanStatusCode,
 } from '@opentelemetry/api';
 import type { Logger } from './logger.js';
 
 // Re-export OTel API（SDK 未启动时返回 no-op，业务代码无条件可用）
-export { trace, metrics, context, type Tracer, type Span, type Meter, type Context, SpanStatusCode };
+export {
+  trace,
+  metrics,
+  context,
+  type Tracer,
+  type Span,
+  type Meter,
+  type Context,
+  type SpanContext,
+  SpanStatusCode,
+};
 
 /**
  * 链路追踪模式：
@@ -244,6 +255,25 @@ export function initOtel({
 /** 获取 tracer（SDK 未启动时返回全局 no-op tracer） */
 export function getTracer(name = 'ai-gateway'): Tracer {
   return trace.getTracer(name);
+}
+
+// ---------- W3C traceparent（跨进程 trace 关联：gateway 授权落列 ↔ worker 结算挂回） ----------
+
+/** 根 span 上下文 → `00-{traceId}-{spanId}-01`；无效上下文（no-op tracer）返回 null */
+export function formatTraceParent(sc: SpanContext): string | null {
+  if (!trace.isSpanContextValid(sc)) return null;
+  return `00-${sc.traceId}-${sc.spanId}-01`;
+}
+
+/** 解析 traceparent 为远端父 Context；空/格式非法返回 undefined */
+export function remoteParentContext(traceParent: string | null | undefined): Context | undefined {
+  if (typeof traceParent !== 'string') return undefined;
+  const m = /^00-([0-9a-f]{32})-([0-9a-f]{16})-0[01]$/.exec(traceParent);
+  if (!m) return undefined;
+  return trace.setSpan(
+    context.active(),
+    trace.wrapSpanContext({ traceId: m[1]!, spanId: m[2]!, isRemote: true, traceFlags: 1 }),
+  );
 }
 
 /** 获取 meter（SDK 未启动时返回全局 no-op meter） */

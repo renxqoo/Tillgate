@@ -37,6 +37,7 @@ type ClaimedRow = {
   settlement_attempts: number | string;
   receipt: UsageReceipt | string;
   claim_until: Date | string;
+  trace_parent: string | null;
 };
 
 function decodeReceipt(value: UsageReceipt | string): UsageReceipt {
@@ -156,7 +157,7 @@ export function createBillingProcessor({
         from candidates c
         where b.request_id = c.request_id
         returning b.request_id, b.claim_token, b.revision, b.settlement_attempts,
-                  b.receipt, b.claim_until
+                  b.receipt, b.claim_until, b.trace_parent
       `);
       return result.rows;
     });
@@ -169,6 +170,7 @@ export function createBillingProcessor({
       receipt: row.receipt as unknown as UsageReceipt,
       claimedAt: clock(),
       claimUntil: new Date(row.claim_until),
+      traceParent: row.trace_parent,
     }));
   }
 
@@ -271,7 +273,10 @@ export function createBillingProcessor({
           claims.map(async (claimed) => {
             try {
               claimed.receipt = decodeReceipt(claimed.receipt);
-              const settled = await settleClaim(db, claimed);
+              const runSettle = () => settleClaim(db, claimed);
+              const settled = await (options.telemetry?.settle
+                ? options.telemetry.settle(claimed, runSettle)
+                : runSettle());
               if (settled.outcome === 'settled') {
                 result.settled += 1;
                 await safeEffect(

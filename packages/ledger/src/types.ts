@@ -100,6 +100,8 @@ export interface AuthorizeBillingCommand {
   quote: BillingQuote;
   reservationLimit: string;
   authorizationTtlMs: number;
+  /** 根 span 的 traceparent（00-{traceId}-{spanId}-01）；worker 结算时据此挂回同一 trace。 */
+  traceParent?: string | null;
 }
 
 /** 渠道「进货额度」精确硬闸：路由选渠前为本次上游成本预估预留在途敞口。 */
@@ -200,6 +202,8 @@ export interface SettlementClaim {
   receipt: UsageReceipt;
   claimedAt: Date;
   claimUntil: Date;
+  /** 授权时落列的根 traceparent；worker 以远端父创建 billing.settle span。 */
+  traceParent: string | null;
 }
 
 export interface SettlementProcessorOptions {
@@ -212,6 +216,16 @@ export interface SettlementProcessorOptions {
   retryMaxMs: number;
   maxAttempts: number;
   recoveryBatchSize?: number;
+  /**
+   * 结算遥测钩子（worker 注入：以远端父创建 billing.settle span）。
+   * 包裹 settleClaim：可观测结算耗时/结果，不改变结算语义。
+   */
+  telemetry?: {
+    settle?(
+      claim: SettlementClaim,
+      next: () => Promise<SettleClaimResult>,
+    ): Promise<SettleClaimResult>;
+  };
 }
 
 export interface SettlementRunResult {

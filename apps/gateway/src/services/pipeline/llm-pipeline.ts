@@ -15,8 +15,14 @@ import {
 } from '@ai-gateway/ledger';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
-import { getTracer, type GatewayEnv, type Logger, SpanStatusCode } from '@ai-gateway/core';
-import { context as otelContext } from '@opentelemetry/api';
+import { context as otelContext, trace as otelTrace } from '@opentelemetry/api';
+import {
+  formatTraceParent,
+  getTracer,
+  type GatewayEnv,
+  type Logger,
+  SpanStatusCode,
+} from '@ai-gateway/core';
 import type { AttemptTraceContext, RequestTraceContext } from './trace-context.js';
 import type { AuthContext, AuthEnv } from '../../middleware/auth.js';
 import { errorResponse } from '../../lib/http.js';
@@ -230,6 +236,9 @@ export class LlmPipeline {
     );
     // 请求级链路上下文：后续所有 span（authorize/upstream/finalize）的父
     const requestTrace: RequestTraceContext = { requestContext: otelContext.active() };
+    // 根 span traceparent：落列 billing_requests，worker 结算时挂回同一 trace
+    const rootSpanContext = otelTrace.getSpan(requestTrace.requestContext)?.spanContext();
+    const traceParent = rootSpanContext ? formatTraceParent(rootSpanContext) : null;
     let authorization;
     const authSpan = this.billingTracer.startSpan('billing.authorize');
     authSpan.setAttribute('request.id', requestId);
@@ -239,6 +248,7 @@ export class LlmPipeline {
         userId: auth.userId,
         apiKeyId: auth.apiKeyId,
         stream,
+        traceParent,
         reservationLimit: String(env.BILLING_RESERVATION_MAX),
         authorizationTtlMs: env.BILLING_AUTHORIZATION_TTL_SECONDS * 1_000,
         quote: {

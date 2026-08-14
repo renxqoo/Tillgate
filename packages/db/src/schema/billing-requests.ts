@@ -52,6 +52,12 @@ export const billingRequests = pgTable(
     stream: boolean('stream').notNull().default(false),
     quote: jsonb('quote').$type<Record<string, unknown>>().notNull(),
     authorizationFingerprint: varchar('authorization_fingerprint', { length: 64 }).notNull(),
+    /**
+     * 根 span 的 traceparent（00-{traceId}-{spanId}-01，55 字符）。
+     * gateway 授权时写入；worker 结算时以此为远端父创建 billing.settle span，
+     * 使「扣费」出现在请求的同一条 trace 里。
+     */
+    traceParent: varchar('trace_parent', { length: 55 }),
     receipt: jsonb('receipt').$type<Record<string, unknown>>(),
     receiptFingerprint: varchar('receipt_fingerprint', { length: 64 }),
     leaseOwner: varchar('lease_owner', { length: 128 }),

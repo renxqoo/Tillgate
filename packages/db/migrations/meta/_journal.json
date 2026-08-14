@@ -204,6 +204,13 @@
       "when": 1786720379086,
       "tag": "0028_hard_jocasta",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786727766575,
+      "tag": "0029_bumpy_wolverine",
+      "breakpoints": true
     }
   ]
 }

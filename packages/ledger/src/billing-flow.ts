@@ -387,6 +387,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
             stream: command.stream,
             quote: command.quote as unknown as Record<string, unknown>,
             authorizationFingerprint: fp,
+            traceParent: command.traceParent ?? null,
             leaseExpiresAt: leaseUntil(now, command.authorizationTtlMs),
             nextSettlementAt: now,
             createdAt: now,
