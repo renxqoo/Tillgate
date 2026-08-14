@@ -120,7 +120,6 @@ function ModelRowItem({
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.inputPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.outputPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.cacheInputPrice)}</TableCell>
-      <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
       </TableCell>
@@ -135,6 +134,7 @@ function ModelRowItem({
           </span>
         )}
       </TableCell>
+      <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
           <BindChannelsDialog model={model} channels={channels} />
