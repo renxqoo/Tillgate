@@ -30,8 +30,8 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-describe('并发席位不变量：同席位并发建 Key 不超发', () => {
-  it('3 席并发建 5 把 Key → 恰好 3 把 201、2 把 409', async () => {
+describe('Key 创建并发（席位不约束 Key 数量）', () => {
+  it('3 席用户并发建 5 把 Key → 全部 201（Key 管理独立于订阅席位）', async () => {
     if (!connected) return it.skip('no DB');
     const s = `${Date.now()}`;
     const [me] = await db
@@ -76,14 +76,12 @@ describe('并发席位不变量：同席位并发建 Key 不超发', () => {
         ),
       );
       const okCount = results.filter((r) => r.status === 201).length;
-      const fullCount = results.filter((r) => r.status === 409).length;
-      expect(okCount).toBe(3);
-      expect(fullCount).toBe(2);
+      expect(okCount).toBe(5);
       const active = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(apiKeys)
         .where(and(eq(apiKeys.userId, me!.id), eq(apiKeys.status, 0)));
-      expect(Number(active[0]?.count ?? 0)).toBe(3);
+      expect(Number(active[0]?.count ?? 0)).toBe(5);
     } finally {
       await db.delete(apiKeys).where(eq(apiKeys.userId, me!.id)).catch(() => {});
       await db.delete(userSubscriptions).where(eq(userSubscriptions.id, sub!.id)).catch(() => {});

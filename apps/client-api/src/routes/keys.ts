@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { eq, and, gt, sql, desc } from 'drizzle-orm';
-import { apiKeys, userSubscriptions } from '@ai-gateway/db/schema';
+import { eq, and, sql, desc } from 'drizzle-orm';
+import { apiKeys } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
   HttpError,
@@ -88,59 +88,35 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
       return c.json(result);
     })
 
-    // 创建（明文 Key 仅此一次回显）
+    // 创建（明文 Key 仅此一次回显）。
+    // Key 管理（认证凭证）独立于订阅：套餐管的是计费闸门（调用侧 402），
+    // 席位（quantity）是套餐计价维度，都不约束 Key 的创建/数量。
     .post('/', jsonBody(keyCreateSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
 
-      // 席位 = Key 名额：必须有有效订阅，且活跃 Key 数 < 订阅席位（个人=1，企业=席位）。
-      // 事务内锁定订阅行（FOR UPDATE）串行化同席位并发建 Key，杜绝「数了再插」超发。
       const plaintext = generateApiKey();
-      const created = await s.db.transaction(async (tx) => {
-        const subs = await tx
-          .select({ id: userSubscriptions.id, quantity: userSubscriptions.quantity })
-          .from(userSubscriptions)
-          .where(
-            and(
-              eq(userSubscriptions.userId, session.userId),
-              eq(userSubscriptions.status, 0),
-              gt(userSubscriptions.endAt, new Date()),
-            ),
-          )
-          .limit(1)
-          .for('update');
-        const sub = subs[0];
-        if (!sub) throw new HttpError(402, 'SUBSCRIPTION_REQUIRED', '请先订阅套餐后再创建 Key');
-        const activeRow = await tx
-          .select({ count: sql<number>`count(*)::int` })
-          .from(apiKeys)
-          .where(and(eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)));
-        if (Number(activeRow[0]?.count ?? 0) >= sub.quantity) {
-          throw new HttpError(409, 'SEATS_FULL', `席位已满（${sub.quantity}），请扩容或先删除现有 Key`);
-        }
-        const [row] = await tx
-          .insert(apiKeys)
-          .values({
-            keyHash: sha256Hex(plaintext),
-            keyPreview: maskKey(plaintext),
-            userId: session.userId,
-            name: body.name,
-            remark: body.remark ?? null,
-            expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-            rpmLimit: body.rpmLimit ?? null,
-            tpmLimit: body.tpmLimit ?? null,
-            // numeric 列接受字符串；number → string 对齐 schema 类型
-            dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
-            status: 0,
-          })
-          .returning({ id: apiKeys.id, name: apiKeys.name });
-        return row!;
-      });
+      const [created] = await s.db
+        .insert(apiKeys)
+        .values({
+          keyHash: sha256Hex(plaintext),
+          keyPreview: maskKey(plaintext),
+          userId: session.userId,
+          name: body.name,
+          remark: body.remark ?? null,
+          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+          rpmLimit: body.rpmLimit ?? null,
+          tpmLimit: body.tpmLimit ?? null,
+          // numeric 列接受字符串；number → string 对齐 schema 类型
+          dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
+          status: 0,
+        })
+        .returning({ id: apiKeys.id, name: apiKeys.name });
       await recordAudit(s.db, {
         actor: 'user',
         action: 'api_key.create',
         targetType: 'api_key',
-        targetId: created.id,
+        targetId: created!.id,
       });
       // 明文 key 只在此响应中下发
       return c.json({ ...created, key: plaintext }, 201);

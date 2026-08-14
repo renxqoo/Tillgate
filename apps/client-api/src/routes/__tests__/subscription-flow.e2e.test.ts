@@ -398,7 +398,7 @@ describe('套餐完整流程 E2E（个人）', () => {
 });
 
 describe('套餐到期与续费 E2E', () => {
-  it('到期 → 402 subscription_required（调用与建 Key 双闸）→ 续费恢复', async () => {
+  it('到期 → 调用 402 subscription_required（计费闸）但建 Key 不受影响 → 续费恢复', async () => {
     if (!connected) return it.skip('no DB');
 
     const user = await createE2eUser();
@@ -436,13 +436,12 @@ describe('套餐到期与续费 E2E', () => {
     const expBody = (await expChat.json()) as { error: { code: string } };
     expect(expBody.error.code).toBe('subscription_required');
 
-    // 到期后：建 Key → 402 SUBSCRIPTION_REQUIRED（席位闸门）
-    const key402 = await clientJson(client, '/api/keys', {
+    // 到期后：建 Key → 201（Key 管理独立于订阅；套餐只管计费闸门）
+    const keyAfterExp = await clientJson(client, '/api/keys', {
       method: 'POST',
       body: { name: 'e2e-exp-key-2' },
     });
-    expect(key402.status).toBe(402);
-    expect((key402.body.error as { code: string }).code).toBe('SUBSCRIPTION_REQUIRED');
+    expect(keyAfterExp.status).toBe(201);
 
     // me/subscription → null
     const meSub = await clientJson(client, '/api/me/subscription', { method: 'GET' });
@@ -520,7 +519,7 @@ describe('企业 / 个人席位规则 E2E', () => {
     expect((buy3.body.error as { code: string }).code).toBe('INSUFFICIENT_BALANCE');
   });
 
-  it('企业 3 席团队套餐：额度×3，Key 席位=3，第 4 把 409，吊销释放席位', async () => {
+  it('企业 3 席团队套餐：额度×3；席位是计费维度，Key 数量不受席位限制', async () => {
     if (!connected) return it.skip('no DB');
 
     const user = await createE2eUser({ enterprise: true });
@@ -554,22 +553,14 @@ describe('企业 / 个人席位规则 E2E', () => {
       expect(res.status).toBe(201);
       keyIds.push(Number(res.body.id));
     }
-    // 第 4 把 → 409 SEATS_FULL
-    const full = await clientJson(client, '/api/keys', {
+    // 第 4 把 → 201（Key 创建不受席位限制；席位只用于套餐计价）
+    const fourth = await clientJson(client, '/api/keys', {
       method: 'POST',
       body: { name: 'e2e-team3-key-4' },
     });
-    expect(full.status).toBe(409);
-    expect((full.body.error as { code: string }).code).toBe('SEATS_FULL');
+    expect(fourth.status).toBe(201);
 
-    // 共享额度池：席位已满时先 409，吊销一把释放席位后建调用 Key → 正常扣费
-    const chatKeyBlocked = await clientJson(client, '/api/keys', {
-      method: 'POST',
-      body: { name: 'e2e-team3-key-chat' },
-    });
-    expect(chatKeyBlocked.status).toBe(409);
-    const del = await clientJson(client, `/api/keys/${keyIds[2]}`, { method: 'DELETE' });
-    expect(del.status).toBe(200);
+    // 共享额度池：直接建调用 Key → 正常扣费
     const chatKey = await clientJson(client, '/api/keys', {
       method: 'POST',
       body: { name: 'e2e-team3-key-chat' },
@@ -583,7 +574,7 @@ describe('企业 / 个人席位规则 E2E', () => {
     });
     expect(numEq(sub!.usedAmount, '0.09')).toBe(true);
 
-    // 吊销后席位释放，可再建（当前活跃 = keyIds[0..1] + chatKey，共 3 席满）
+    // 吊销仍正常工作（Key 生命周期管理与订阅无关）
     const del2 = await clientJson(client, `/api/keys/${keyIds[1]}`, { method: 'DELETE' });
     expect(del2.status).toBe(200);
     const recreate = await clientJson(client, '/api/keys', {
