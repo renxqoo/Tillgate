@@ -17,8 +17,6 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
-import { TraceWaterfall } from './_components/trace-waterfall';
-import { TraceGraph } from './_components/trace-graph';
 import { TraceDetailDialog } from './_components/trace-detail-dialog';
 
 export const dynamic = 'force-dynamic';
@@ -34,40 +32,15 @@ interface TraceSummary {
   requestId: string | null;
 }
 
-interface TraceDetail {
-  spans: Array<{
-    traceId: string;
-    spanId: string;
-    parentSpanId: string | null;
-    name: string;
-    service: string;
-    startTime: string;
-    endTime: string;
-    durationMs: number;
-    statusCode: number;
-    statusMessage: string | null;
-    requestId: string | null;
-    channel: string | null;
-    model: string | null;
-    attributes: Record<string, unknown>;
-  }>;
-  services: string[];
-  startMs: number;
-  durationMs: number;
-}
-
 export default async function TracingPage({
   searchParams,
 }: {
   searchParams: Promise<{
     requestId?: string;
     errorsOnly?: string;
-    traceId?: string;
-    view?: string;
   }>;
 }) {
   const params = await searchParams;
-  const view = params.view === 'waterfall' ? 'waterfall' : 'graph';
   const query = new URLSearchParams({ limit: '50' });
   if (params.requestId) query.set('requestId', params.requestId);
   if (params.errorsOnly === 'true') query.set('errorsOnly', 'true');
@@ -81,18 +54,6 @@ export default async function TracingPage({
     items = response.items;
   } catch (caught) {
     error = caught instanceof ApiError ? caught.message : '加载失败';
-  }
-
-  // traceId 直达（计费复核「查链路」入口也可带 requestId 过滤）
-  let detail: TraceDetail | null = null;
-  const wantedTrace = params.traceId ?? items[0]?.traceId;
-  if (wantedTrace && !error) {
-    try {
-      const response = await adminFetch<TraceDetail>(`/api/admin/tracing/traces/${wantedTrace}`);
-      if (response.spans.length > 0) detail = response;
-    } catch {
-      detail = null;
-    }
   }
 
   return (
@@ -178,12 +139,7 @@ export default async function TracingPage({
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {t.requestId ? (
-                        <Link
-                          href={`/dashboard/tracing?requestId=${t.requestId}`}
-                          className="underline"
-                        >
-                          {t.requestId.slice(0, 14)}…
-                        </Link>
+                        <TraceDetailDialog requestId={t.requestId} />
                       ) : (
                         '—'
                       )}
@@ -197,33 +153,9 @@ export default async function TracingPage({
         </CardContent>
       </Card>
 
-      {detail ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-3">
-              <code className="font-mono text-sm">{detail.spans[0]!.traceId}</code>
-              <span className="text-sm font-normal">
-                <Link
-                  href={`/dashboard/tracing?traceId=${detail.spans[0]!.traceId}&view=${view === 'graph' ? 'waterfall' : 'graph'}`}
-                  className="underline"
-                >
-                  {view === 'graph' ? '切换到瀑布图（时序）' : '切换到路线图（拓扑）'}
-                </Link>
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {view === 'graph' ? (
-              <TraceGraph spans={detail.spans} totalMs={detail.durationMs} />
-            ) : (
-              <TraceWaterfall
-                spans={detail.spans}
-                startMs={detail.startMs}
-                totalMs={detail.durationMs}
-              />
-            )}
-          </CardContent>
-        </Card>
+      {/* 计费复核「查链路」深链落地：自动打开该请求的链路弹窗（替代原列表下方内联模块） */}
+      {params.requestId && !error ? (
+        <TraceDetailDialog requestId={params.requestId} defaultOpen hideTrigger />
       ) : null}
     </div>
   );

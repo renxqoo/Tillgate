@@ -33,3 +33,15 @@ export async function fetchTraceDetail(traceId: string): Promise<TraceDetail | {
     return { error: caught instanceof ApiError ? caught.message : '加载失败' };
   }
 }
+
+/** 按 request_id 懒加载关联 trace（计费复核「查链路」入口），响应与 trace 详情同形状 */
+export async function fetchTraceDetailByRequestId(
+  requestId: string,
+): Promise<TraceDetail | { error: string }> {
+  if (!/^[0-9a-zA-Z-]{1,64}$/.test(requestId)) return { error: 'requestId 格式非法' };
+  try {
+    return await adminFetch<TraceDetail>(`/api/admin/tracing/by-request/${requestId}`);
+  } catch (caught) {
+    return { error: caught instanceof ApiError ? caught.message : '加载失败' };
+  }
+}

@@ -11,22 +11,39 @@ import {
   DialogTrigger,
 } from '@ai-gateway/ui/components/ui/dialog';
 import { Button } from '@ai-gateway/ui/components/ui/button';
-import { fetchTraceDetail, type TraceDetail } from '../actions';
+import {
+  fetchTraceDetail,
+  fetchTraceDetailByRequestId,
+  type TraceDetail,
+} from '../actions';
 import { TraceGraph } from './trace-graph';
 import { TraceWaterfall } from './trace-waterfall';
 
 /**
- * trace 详情弹窗：点击列表里的 traceId 打开，懒加载详情；
- * 路线图/瀑布双 tab；右上角全屏切换（图内容组件与 inline 卡片共用，单一展示真相）。
+ * trace 详情弹窗：点击列表里的 traceId / request_id 打开，懒加载详情；
+ * 路线图/瀑布双 tab；右上角全屏切换（图内容组件与内联卡共用，单一展示真相）。
+ * traceId 与 requestId 二选一：requestId 变体走 by-request 关联（计费复核入口）。
  */
 export function TraceDetailDialog({
   traceId,
+  requestId,
   rootName,
+  defaultOpen = false,
+  hideTrigger = false,
 }: {
-  traceId: string;
-  rootName: string;
+  traceId?: string;
+  requestId?: string;
+  rootName?: string;
+  /** 落地带 requestId 深链（计费复核「查链路」）时自动打开 */
+  defaultOpen?: boolean;
+  /** 深链自动打开实例不渲染 trigger（列表行内已有点击入口） */
+  hideTrigger?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  if (Boolean(traceId) === Boolean(requestId)) {
+    throw new Error('TraceDetailDialog 需要 traceId 或 requestId 恰好一个');
+  }
+  const subjectId = traceId ?? requestId ?? '';
+  const [open, setOpen] = useState(defaultOpen);
   const [detail, setDetail] = useState<TraceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -36,16 +53,18 @@ export function TraceDetailDialog({
   useEffect(() => {
     if (!open || detail || error) return;
     startTransition(async () => {
-      const result = await fetchTraceDetail(traceId);
+      const result = traceId
+        ? await fetchTraceDetail(traceId)
+        : await fetchTraceDetailByRequestId(requestId!);
       if ('error' in result) {
         setError(result.error);
       } else if (result.spans.length === 0) {
-        setError('该 trace 无 span 数据');
+        setError('该请求无 span 数据');
       } else {
         setDetail(result);
       }
     });
-  }, [open, detail, error, traceId]);
+  }, [open, detail, error, traceId, requestId]);
 
   return (
     <Dialog
@@ -61,26 +80,28 @@ export function TraceDetailDialog({
         }
       }}
     >
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="font-mono text-xs text-primary underline underline-offset-2"
-          title="点击查看链路路线图"
-        >
-          {traceId.slice(0, 12)}…
-        </button>
-      </DialogTrigger>
+      {hideTrigger ? null : (
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="font-mono text-xs text-primary underline underline-offset-2"
+            title={traceId ? '点击查看链路路线图' : '点击查看该请求的链路'}
+          >
+            {subjectId.slice(0, 12)}…
+          </button>
+        </DialogTrigger>
+      )}
       <DialogContent
         className={
           fullscreen
             ? 'left-0 top-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none p-4 sm:max-w-none'
-            : 'w-[96vw] max-w-5xl overflow-hidden'
+            : // 基类含 sm:max-w-md（448px），必须显式清掉，w-[80vw] 才能生效
+              'w-[80vw] max-w-none overflow-hidden sm:max-w-none'
         }
       >
-        {/* pr-12：为右上角 absolute 关闭按钮（X，约 48px 宽区域）预留空间，两种模式下操作按钮都不被遮挡 */}
         <DialogHeader className="flex-row items-center gap-3 space-y-0 pr-12">
           <DialogTitle className="flex items-center gap-2 text-base">
-            <code className="font-mono text-sm">{traceId.slice(0, 16)}…</code>
+            <code className="font-mono text-sm">{subjectId.slice(0, 16)}…</code>
             {rootName ? (
               <span className="max-w-72 truncate text-sm font-normal text-muted-foreground">
                 {rootName}

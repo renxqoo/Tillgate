@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { query } from '@ai-gateway/http';
+import type { SpanRow } from '@ai-gateway/tracing';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -25,6 +26,21 @@ const recentQuerySchema = z.object({
   beforeMs: z.coerce.number().int().positive().optional(),
 });
 
+/**
+ * 单 trace 详情的统一聚合形状（/traces/:id 与 /by-request/:id 共用，前端单一真相）。
+ */
+function buildTraceDetail(spans: SpanRow[]) {
+  if (spans.length === 0) return { spans, services: [] as string[], startMs: 0, durationMs: 0 };
+  const start = Math.min(...spans.map((sp) => sp.startTime.getTime()));
+  const end = Math.max(...spans.map((sp) => sp.endTime.getTime()));
+  return {
+    spans,
+    services: [...new Set(spans.map((sp) => sp.service))],
+    startMs: start,
+    durationMs: end - start,
+  };
+}
+
 export function tracingAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
     .get('/recent', query(recentQuerySchema), async (c) => {
@@ -42,19 +58,11 @@ export function tracingAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
     .get('/traces/:traceId', async (c) => {
       const spans = await s.tracingStore.findByTraceId(c.req.param('traceId'));
-      if (spans.length === 0) return c.json({ spans: [], services: [], durationMs: 0 });
-      const start = Math.min(...spans.map((sp) => sp.startTime.getTime()));
-      const end = Math.max(...spans.map((sp) => sp.endTime.getTime()));
-      return c.json({
-        spans,
-        services: [...new Set(spans.map((sp) => sp.service))],
-        startMs: start,
-        durationMs: end - start,
-      });
+      return c.json(buildTraceDetail(spans));
     })
     .get('/by-request/:requestId', async (c) => {
       const spans = await s.tracingStore.findByRequestId(c.req.param('requestId'));
-      return c.json({ spans });
+      return c.json(buildTraceDetail(spans));
     })
     .get('/topology', async (c) => {
       const hours = Math.min(168, Math.max(1, Number(c.req.query('hours')) || 24));

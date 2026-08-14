@@ -112,12 +112,20 @@ describe('管理台链路查询（真 PG）', () => {
       expect(detailBody.services).toContain('gateway');
       expect(detailBody.durationMs).toBeGreaterThanOrEqual(280);
 
-      // request_id 关联（计费复核入口）
+      // request_id 关联（计费复核入口）：与 /traces/:id 同形状的 TraceDetail
       const byRequest = await app.request(`/api/admin/tracing/by-request/${requestId}`);
-      const byRequestBody = (await byRequest.json()) as { spans: Array<{ traceId: string }> };
+      const byRequestBody = (await byRequest.json()) as {
+        spans: Array<{ traceId: string }>;
+        services: string[];
+        startMs: number;
+        durationMs: number;
+      };
       expect(byRequest.status).toBe(200);
       expect(byRequestBody.spans).toHaveLength(2);
       expect(byRequestBody.spans.every((s) => s.traceId === traceId)).toBe(true);
+      expect(byRequestBody.services).toContain('tra-test-svc');
+      expect(byRequestBody.durationMs).toBeGreaterThanOrEqual(280);
+      expect(byRequestBody.startMs).toBeGreaterThan(0);
 
       // stats
       const stats = await app.request('/api/admin/tracing/stats');
