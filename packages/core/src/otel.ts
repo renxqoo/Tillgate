@@ -9,15 +9,17 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import {
   trace,
   metrics,
+  context,
   type Tracer,
   type Span,
   type Meter,
+  type Context,
   SpanStatusCode,
 } from '@opentelemetry/api';
 import type { Logger } from './logger.js';
 
 // Re-export OTel API（SDK 未启动时返回 no-op，业务代码无条件可用）
-export { trace, metrics, type Tracer, type Span, type Meter, SpanStatusCode };
+export { trace, metrics, context, type Tracer, type Span, type Meter, type Context, SpanStatusCode };
 
 /**
  * 链路追踪模式：

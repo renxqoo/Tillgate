@@ -127,6 +127,7 @@ function receipt(
     externalModel: 'test-model',
     realModel: 'test-real',
     channelId: null,
+    channelKey: 'test-channel',
     usage: { inputTokens, cachedInputTokens: 0, outputTokens, estimated: false },
     inputPrice: '1000',
     outputPrice: '2000',

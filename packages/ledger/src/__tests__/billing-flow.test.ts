@@ -191,6 +191,7 @@ function receipt(userId: number, requestId: string): UsageReceipt {
     externalModel: 'test-model',
     realModel: 'test-real',
     channelId: null,
+    channelKey: 'test-channel',
     usage: { inputTokens: 1_000, cachedInputTokens: 0, outputTokens: 500, estimated: false },
     inputPrice: '1000',
     outputPrice: '2000',

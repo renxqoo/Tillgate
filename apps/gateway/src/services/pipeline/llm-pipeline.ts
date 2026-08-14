@@ -16,6 +16,8 @@ import {
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { getTracer, type GatewayEnv, type Logger, SpanStatusCode } from '@ai-gateway/core';
+import { context as otelContext } from '@opentelemetry/api';
+import type { AttemptTraceContext, RequestTraceContext } from './trace-context.js';
 import type { AuthContext, AuthEnv } from '../../middleware/auth.js';
 import { errorResponse } from '../../lib/http.js';
 import { isModelAllowed } from '../../lib/model-scope.js';
@@ -118,6 +120,7 @@ type AttemptOutcome =
 
 export class LlmPipeline {
   private readonly upstreamTracer = getTracer('gateway.upstream');
+  private readonly billingTracer = getTracer('gateway.billing');
 
   constructor(private readonly deps: PipelineDeps) {}
 
@@ -225,7 +228,11 @@ export class LlmPipeline {
       (max, t) => (t.estimate.gt(max) ? t.estimate : max),
       new Decimal(0),
     );
+    // 请求级链路上下文：后续所有 span（authorize/upstream/finalize）的父
+    const requestTrace: RequestTraceContext = { requestContext: otelContext.active() };
     let authorization;
+    const authSpan = this.billingTracer.startSpan('billing.authorize');
+    authSpan.setAttribute('request.id', requestId);
     try {
       authorization = await billing.authorize({
         requestId,
@@ -249,7 +256,33 @@ export class LlmPipeline {
           })),
         },
       });
+      authSpan.setAttributes({
+        'billing.result': 'authorized',
+        // 预估敞口（非冻结额），结算按实扣
+        'billing.amount_reserved': authorization.reservedAmount,
+        'billing.available_balance': authorization.availableBalance,
+        'billing.replayed': authorization.replayed,
+      });
     } catch (error) {
+      // 拒绝语义码与对外 402/422 响应同源（链路里直接看拒绝原因）
+      const rejectCode =
+        error instanceof InsufficientBalanceError
+          ? 'insufficient_balance'
+          : error instanceof DailySpendLimitExceededError
+            ? 'daily_spend_limit_exceeded'
+            : error instanceof SubscriptionRequiredError
+              ? 'subscription_required'
+              : error instanceof SubscriptionQuotaExhaustedError
+                ? 'subscription_quota_exhausted'
+                : error instanceof BillingConfigurationError
+                  ? error.code
+                  : 'authorize_error';
+      authSpan.setAttributes({
+        'billing.result': 'rejected',
+        'billing.reject_code': rejectCode,
+        'billing.amount_required': maxEstimate.toString(),
+      });
+      authSpan.setStatus({ code: SpanStatusCode.ERROR, message: rejectCode });
       if (error instanceof InsufficientBalanceError) {
         await rateLimiter.releaseTpm(requestId).catch(() => {});
         return errorResponse(
@@ -321,6 +354,8 @@ export class LlmPipeline {
       }
       await rateLimiter.releaseTpm(requestId).catch(() => {});
       throw error;
+    } finally {
+      authSpan.end();
     }
     logger.debug(
       {
@@ -409,6 +444,7 @@ export class LlmPipeline {
             channel,
             ctx,
             stream,
+            requestTrace,
           );
           if (outcome.kind === 'success') {
             deliveryAccepted = true;
@@ -605,6 +641,7 @@ export class LlmPipeline {
     channel: ChannelCache,
     ctx: AttemptCtx,
     stream: boolean,
+    requestTrace: RequestTraceContext,
   ): Promise<AttemptOutcome> {
     const { logger, rateLimiter } = this.deps;
 
@@ -681,9 +718,11 @@ export class LlmPipeline {
       'ai.attempt_stream': stream,
       // 第几次渠道尝试（路线图节点显性化「换了 N 次渠」）
       'channel.attempt': ctx.attemptNo,
+      'request.id': requestId,
     });
+    const attemptTrace: AttemptTraceContext = { requestContext: requestTrace.requestContext, upSpan };
     try {
-      return stream
+      const outcome = stream
         ? await this.attemptStream(
             auth,
             requestId,
@@ -693,6 +732,7 @@ export class LlmPipeline {
             channel,
             channelDesc,
             ctx,
+            attemptTrace,
           )
         : await this.attemptNonStream(
             c,
@@ -705,7 +745,18 @@ export class LlmPipeline {
             channel,
             channelDesc,
             ctx,
+            attemptTrace,
           );
+      // 终态属性：上游真实状态码语义（成功 200 / 失败用映射后的错误码与状态）
+      if (outcome.kind === 'success') {
+        upSpan.setAttribute('http.status_code', 200);
+      } else if (outcome.error) {
+        upSpan.setAttributes({
+          'http.status_code': outcome.error.status,
+          'upstream.error_code': outcome.error.code,
+        });
+      }
+      return outcome;
     } catch (err) {
       logger.error({ requestId, channel: channel.key, err }, 'candidate unexpected error');
       upSpan.setStatus({
@@ -739,8 +790,11 @@ export class LlmPipeline {
     channel: ChannelCache,
     channelDesc: ChannelDesc,
     ctx: AttemptCtx,
+    trace: AttemptTraceContext,
   ): Promise<AttemptOutcome> {
     const { ai, logger } = this.deps;
+    const startedAt = Date.now();
+    let ttfbRecorded = false;
     const handle = await ai.chatStream({ channel: channelDesc, request: body, ctx });
     const state: { failed: UpstreamError | null } = { failed: null };
     let resolveCompletion!: () => void;
@@ -750,6 +804,11 @@ export class LlmPipeline {
       rejectCompletion = reject;
     });
     handle.onEvent((e) => {
+      // 首个上游事件 = TTFB（含建连；只记一次）
+      if (!ttfbRecorded) {
+        ttfbRecorded = true;
+        trace.upSpan.setAttribute('upstream.ttfb_ms', Date.now() - startedAt);
+      }
       if (e.type === 'failed') {
         state.failed = e.error;
       }
@@ -765,6 +824,14 @@ export class LlmPipeline {
           'stream completed',
         );
         recordRequest(target.realModel, 200, e.durationMs);
+        if (e.usage && !e.usage.estimated) {
+          // usage 终值（span 已结束时为 no-op，最终真相在 billing.finalize）
+          trace.upSpan.setAttributes({
+            'usage.input_tokens': e.usage.inputTokens,
+            'usage.cached_input_tokens': e.usage.cachedInputTokens,
+            'usage.output_tokens': e.usage.outputTokens,
+          });
+        }
         if (!e.usage || e.usage.estimated) {
           const durable = this.deps.completions.track(
             this.recordUncertain(
@@ -772,6 +839,7 @@ export class LlmPipeline {
               e.usage?.estimated
                 ? 'stream_estimated_usage_not_billable'
                 : `stream_${e.terminated ?? 'completed'}_without_usage`,
+              trace,
             ),
           );
           void durable.then(resolveCompletion, rejectCompletion);
@@ -790,6 +858,7 @@ export class LlmPipeline {
               !!e.terminated,
               true,
             ),
+            trace,
           ),
         );
         void durable.then(resolveCompletion, rejectCompletion);
@@ -858,12 +927,24 @@ export class LlmPipeline {
     channel: ChannelCache,
     channelDesc: ChannelDesc,
     ctx: AttemptCtx,
+    trace: AttemptTraceContext,
   ): Promise<AttemptOutcome> {
     const { ai, logger } = this.deps;
     const result = await ai.chat({ channel: channelDesc, request: body, ctx });
 
     if (result.status === 'success') {
       logger.info({ requestId, channel: channel.key, usage: result.usage }, 'non-stream success');
+      // 非流式：整响应一次到达，TTFB = 上游耗时；usage 终值此时已知
+      trace.upSpan.setAttributes({
+        'upstream.ttfb_ms': result.durationMs,
+        ...(result.usage && !result.usage.estimated
+          ? {
+              'usage.input_tokens': result.usage.inputTokens,
+              'usage.cached_input_tokens': result.usage.cachedInputTokens,
+              'usage.output_tokens': result.usage.outputTokens,
+            }
+          : {}),
+      });
       try {
         if (!result.usage || result.usage.estimated) {
           await this.recordUncertain(
@@ -871,6 +952,7 @@ export class LlmPipeline {
             result.usage?.estimated
               ? 'nonstream_estimated_usage_not_billable'
               : 'nonstream_completed_without_usage',
+            trace,
           );
         } else {
           await this.recordSuccess(
@@ -885,6 +967,7 @@ export class LlmPipeline {
               false,
               false,
             ),
+            trace,
           );
         }
       } catch (error) {
@@ -988,6 +1071,7 @@ export class LlmPipeline {
       externalModel,
       realModel: target.realModel,
       channelId: channel.channelId,
+      channelKey: channel.key,
       usage: {
         inputTokens: usage.inputTokens,
         cachedInputTokens: usage.cachedInputTokens,
@@ -1025,35 +1109,77 @@ export class LlmPipeline {
   }
 
   /** 先把不可变收据提交 PostgreSQL，再 best-effort 唤醒 worker。 */
-  private async recordSuccess(receipt: UsageReceipt): Promise<void> {
+  private async recordSuccess(
+    receipt: UsageReceipt,
+    trace?: RequestTraceContext,
+  ): Promise<void> {
     const { billing, billingDispatcher, logger } = this.deps;
-    const result = await billing.signal({
-      type: 'request.succeeded',
-      requestId: receipt.requestId,
-      receipt,
-    });
-    if (result.status !== 'settlement_pending' && result.status !== 'settled') {
-      logger.error(
-        { requestId: receipt.requestId, billingStatus: result.status },
-        'provider usage exceeded authorization; reservation frozen for review',
-      );
-      return;
-    }
-    // DB 收据提交即完成正确性边界；Redis/BullMQ 唤醒不得延迟成功响应。
-    void billingDispatcher.wake(receipt.requestId).then((wakeup) => {
-      if (!wakeup.ok) {
-        logger.warn(
-          { requestId: receipt.requestId, err: wakeup.error?.message },
-          'billing wakeup failed; DB drain will recover',
+    // 收尾 span：流式生命周期可能晚于根 span 结束，显式以请求上下文为父保证同 trace
+    const span = this.billingTracer.startSpan(
+      'billing.finalize',
+      {},
+      trace?.requestContext,
+    );
+    try {
+      const result = await billing.signal({
+        type: 'request.succeeded',
+        requestId: receipt.requestId,
+        receipt,
+      });
+      if (result.status !== 'settlement_pending' && result.status !== 'settled') {
+        span.setAttributes({
+          'request.id': receipt.requestId,
+          'billing.finalize': 'overrun_review',
+          'billing.state': result.status,
+        });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'usage_exceeded_authorization' });
+        logger.error(
+          { requestId: receipt.requestId, billingStatus: result.status },
+          'provider usage exceeded authorization; reservation frozen for review',
         );
-        recordBillingWakeupFailed();
+        return;
       }
-    });
+      span.setAttributes({
+        'request.id': receipt.requestId,
+        'billing.finalize': 'succeeded',
+        'billing.state': result.status,
+        'usage.input_tokens': receipt.usage.inputTokens,
+        'usage.cached_input_tokens': receipt.usage.cachedInputTokens,
+        'usage.output_tokens': receipt.usage.outputTokens,
+        ...(receipt.usage.estimated ? { 'usage.estimated': true } : {}),
+        'channel.final': receipt.channelKey,
+        'ai.model': receipt.realModel,
+        'request.duration_ms': receipt.durationMs,
+        'request.stream': receipt.stream,
+      });
+      // DB 收据提交即完成正确性边界；Redis/BullMQ 唤醒不得延迟成功响应。
+      void billingDispatcher.wake(receipt.requestId).then((wakeup) => {
+        if (!wakeup.ok) {
+          logger.warn(
+            { requestId: receipt.requestId, err: wakeup.error?.message },
+            'billing wakeup failed; DB drain will recover',
+          );
+          recordBillingWakeupFailed();
+        }
+      });
+    } finally {
+      span.end();
+    }
   }
 
   /** 中断流缺少可信 usage 时保留预扣，等待供应商回执或人工审计。 */
-  private async recordUncertain(requestId: string, reason: string): Promise<void> {
-    await this.deps.billing.signal({ type: 'request.uncertain', requestId, reason });
+  private async recordUncertain(
+    requestId: string,
+    reason: string,
+    trace?: RequestTraceContext,
+  ): Promise<void> {
+    const span = this.billingTracer.startSpan('billing.finalize', {}, trace?.requestContext);
+    try {
+      span.setAttributes({ 'request.id': requestId, 'billing.finalize': 'uncertain', 'billing.uncertain_reason': reason });
+      await this.deps.billing.signal({ type: 'request.uncertain', requestId, reason });
+    } finally {
+      span.end();
+    }
   }
 
   /** 长流续租；底层流结束后先等待 durable receipt，再允许客户端看到 EOF。 */

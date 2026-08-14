@@ -16,6 +16,8 @@ export interface UsageReceipt {
   realModel: string;
   /** 最终成功的渠道 ID（候选循环选中的） */
   channelId: number | null;
+  /** 最终成功的渠道名（链路 channel.final 与渠道拓扑同源命名） */
+  channelKey: string;
   /** usage（ai 包归一化后的 token 数） */
   usage: {
     inputTokens: number;
