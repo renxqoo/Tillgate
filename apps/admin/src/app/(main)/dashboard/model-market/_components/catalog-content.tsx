@@ -114,6 +114,7 @@ export function CatalogContent({
             inputPrice: Number(d.inputPrice) || 0,
             outputPrice: Number(d.outputPrice) || 0,
             cacheInputPrice: Number(d.cacheInputPrice) || 0,
+            ...(i.contextLength != null ? { contextLength: i.contextLength } : {}),
           };
         }),
       });

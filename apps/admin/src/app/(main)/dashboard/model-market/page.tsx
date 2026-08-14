@@ -40,7 +40,7 @@ export default async function ModelCatalogPage() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <Store className="size-5" />
-          模型目录
+          模型市场
         </h1>
         <p className="text-sm text-muted-foreground">
           OpenRouter 免费模型一键入库（自动获取最新目录）；

@@ -44,6 +44,14 @@ import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 import { fmtPrice } from '@ai-gateway/api-client/formatters';
 
+/** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
+function fmtContext(tokens: number | null): string {
+  if (tokens == null || tokens <= 0) return '—';
+  if (tokens >= 1_000_000) return `${+(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
+
 import type { ChannelOption, ModelRow } from '../types';
 
 const createSchema = z.object({
@@ -52,6 +60,10 @@ const createSchema = z.object({
   inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  contextLength: numericText({ message: '请输入有效 token 数' }).refine(
+    (v) => v === 0 || Number.isInteger(v),
+    '需为整数',
+  ),
 });
 
 export function ModelsTable({
@@ -72,6 +84,7 @@ export function ModelsTable({
           <TableHead className="text-right">缓存 / 百万 token</TableHead>
           <TableHead>兜底模型</TableHead>
           <TableHead className="w-44">状态</TableHead>
+          <TableHead className="text-right">上下文</TableHead>
           <TableHead className="w-32 text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
@@ -107,6 +120,7 @@ function ModelRowItem({
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.inputPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.outputPrice)}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.cacheInputPrice)}</TableCell>
+      <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
       </TableCell>
@@ -161,6 +175,7 @@ export function CreateModelDialog() {
       inputPrice: '',
       outputPrice: '',
       cacheInputPrice: '',
+      contextLength: '',
     },
   });
 
@@ -173,6 +188,7 @@ export function CreateModelDialog() {
         inputPrice: Number(values.inputPrice),
         outputPrice: Number(values.outputPrice),
         cacheInputPrice: Number(values.cacheInputPrice),
+        contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
       if (res.error) {
         toast.error('创建失败', { description: res.error });
@@ -219,6 +235,10 @@ const editSchema = z.object({
   inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  contextLength: numericText({ message: '请输入有效 token 数' }).refine(
+    (v) => v === 0 || Number.isInteger(v),
+    '需为整数',
+  ),
   fallbackModels: z.string().optional(),
   paramRules: z.string().optional(),
   billingPolicy: z
@@ -250,6 +270,7 @@ function EditModelDialog({ model }: { model: ModelRow }) {
       inputPrice: model.inputPrice ?? '',
       outputPrice: model.outputPrice ?? '',
       cacheInputPrice: model.cacheInputPrice ?? '',
+      contextLength: model.contextLength == null ? '' : String(model.contextLength),
       fallbackModels: model.fallbackModels ?? '',
       paramRules: model.paramRules ?? '',
       billingPolicy: model.billingPolicy ? JSON.stringify(model.billingPolicy, null, 2) : '',
@@ -268,6 +289,7 @@ function EditModelDialog({ model }: { model: ModelRow }) {
         inputPrice: Number(values.inputPrice),
         outputPrice: Number(values.outputPrice),
         cacheInputPrice: Number(values.cacheInputPrice),
+        contextLength: values.contextLength === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
         paramRules: values.paramRules?.trim() || undefined,
         billingPolicy: values.billingPolicy?.trim()
@@ -385,6 +407,13 @@ function ModelForm({
             label="缓存价"
             id="m-cache"
             step="0.0001"
+          />
+          <NumberField
+            control={form.control}
+            name="contextLength"
+            label="上下文（token）"
+            id="m-ctx"
+            step="1"
           />
         </div>
         <p className="text-xs text-muted-foreground">单位：元 / 百万 token</p>

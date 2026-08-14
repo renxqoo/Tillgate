@@ -211,6 +211,13 @@
       "when": 1786727766575,
       "tag": "0029_bumpy_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786732878561,
+      "tag": "0030_first_madripoor",
+      "breakpoints": true
     }
   ]
 }

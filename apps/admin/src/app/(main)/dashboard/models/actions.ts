@@ -11,6 +11,7 @@ export interface ModelCreateInput {
   inputPrice: number;
   outputPrice: number;
   cacheInputPrice?: number;
+  contextLength?: number | null;
   billingPolicy?: Record<string, unknown> | null;
 }
 
@@ -27,6 +28,7 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
         inputPrice: input.inputPrice,
         outputPrice: input.outputPrice,
         cacheInputPrice: input.cacheInputPrice ?? 0,
+        ...(input.contextLength != null ? { contextLength: input.contextLength } : {}),
         billingPolicy: input.billingPolicy ?? null,
       },
     });
@@ -44,6 +46,7 @@ export interface ModelUpdateInput {
   inputPrice?: number;
   outputPrice?: number;
   cacheInputPrice?: number;
+  contextLength?: number | null;
   fallbackModels?: string;
   paramRules?: string;
   billingPolicy?: Record<string, unknown> | null;

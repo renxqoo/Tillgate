@@ -122,8 +122,8 @@ describe('目录导入（真 PG）', () => {
         body: JSON.stringify({
           apiKey: 'sk-or-v1-test',
           models: [
-            { externalName: ext1, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0 },
-            { externalName: ext2, realModel: 'deepseek/deepseek-chat-v3:free', inputPrice: 1, outputPrice: 2, cacheInputPrice: 0 },
+            { externalName: ext1, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, contextLength: 65536 },
+            { externalName: ext2, realModel: 'deepseek/deepseek-chat-v3:free', inputPrice: 1, outputPrice: 2, cacheInputPrice: 0, contextLength: 163840 },
           ],
         }),
       });
@@ -144,6 +144,7 @@ describe('目录导入（真 PG）', () => {
       // 映射 + 绑定
       const m1 = (await db.query.modelMappings.findFirst({ where: eq(modelMappings.externalName, ext1) }))!;
       expect(m1.realModel).toBe('meta-llama/llama-3.3-70b-instruct:free');
+      expect(m1.contextLength).toBe(65536);
       const binds = await db.select().from(modelChannels).where(eq(modelChannels.mappingId, m1.id));
       expect(binds.map((b) => b.channelId)).toContain(ch.id);
 

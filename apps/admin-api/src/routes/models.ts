@@ -52,6 +52,8 @@ const modelCreateSchema = z
     inputPrice: z.coerce.number().optional(),
     outputPrice: z.coerce.number().optional(),
     cacheInputPrice: z.coerce.number().optional(),
+    /** 上下文窗口（token 数）；null=未知 */
+    contextLength: z.coerce.number().int().positive().nullable().optional(),
     /** 模型级限流（保护上游配额）；null=不限流 */
     rpmLimit: z.number().int().positive().nullable().optional(),
     tpmLimit: z.number().int().positive().nullable().optional(),
@@ -67,6 +69,7 @@ const modelUpdateSchema = z
     inputPrice: z.coerce.number().optional(),
     outputPrice: z.coerce.number().optional(),
     cacheInputPrice: z.coerce.number().optional(),
+    contextLength: z.coerce.number().int().positive().nullable().optional(),
     fallbackModels: z.unknown().optional(),
     paramRules: z.unknown().optional(),
     billingPolicy: billingPolicySchema.nullable().optional(),
@@ -143,6 +146,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
         if (body.outputPrice !== undefined) update.outputPrice = String(body.outputPrice);
         if (body.cacheInputPrice !== undefined)
           update.cacheInputPrice = String(body.cacheInputPrice);
+        if (body.contextLength !== undefined) update.contextLength = body.contextLength;
         if (body.fallbackModels !== undefined) update.fallbackModels = body.fallbackModels;
         if (body.paramRules !== undefined) update.paramRules = body.paramRules;
         if (body.billingPolicy !== undefined) update.billingPolicy = body.billingPolicy;

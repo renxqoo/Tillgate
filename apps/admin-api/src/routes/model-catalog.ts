@@ -31,6 +31,7 @@ const importSchema = z.object({
         inputPrice: z.coerce.number().min(0),
         outputPrice: z.coerce.number().min(0),
         cacheInputPrice: z.coerce.number().min(0),
+        contextLength: z.coerce.number().int().positive().nullable().optional(),
       }),
     )
     .min(1),

@@ -113,6 +113,8 @@ export interface ImportCatalogInput {
     inputPrice: number;
     outputPrice: number;
     cacheInputPrice: number;
+    /** 上下文窗口（token）；目录带入，可空 */
+    contextLength?: number | null;
   }>;
 }
 
@@ -194,6 +196,7 @@ export async function importCatalogModels(
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
+          ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .where(eq(modelMappings.id, existing.id));
       await ensureBound(s, existing.id, channel.id);
@@ -208,6 +211,7 @@ export async function importCatalogModels(
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
+          ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .returning();
       await ensureBound(s, inserted!.id, channel.id);

@@ -70,7 +70,6 @@ export function buildSidebarItems(): NavGroup[] {
         { id: 'providers', title: '供应商', url: '/dashboard/providers', icon: Server },
         { id: 'channels', title: '渠道', url: '/dashboard/channels', icon: Network },
         { id: 'models', title: '模型映射', url: '/dashboard/models', icon: Server },
-        { id: 'model-catalog', title: '模型目录', url: '/dashboard/model-catalog', icon: Store },
         { id: 'rate-cards', title: '费率卡', url: '/dashboard/rate-cards', icon: Banknote },
         { id: 'rate-limits', title: '限流设置', url: '/dashboard/rate-limits', icon: Gauge },
         { id: 'plans', title: '套餐', url: '/dashboard/plans', icon: Gem },
@@ -80,13 +79,25 @@ export function buildSidebarItems(): NavGroup[] {
     },
     {
       id: 3,
+      label: '模型生态',
+      items: [
+        {
+          id: 'model-market',
+          title: '模型市场',
+          url: '/dashboard/model-market',
+          icon: Store,
+        },
+      ],
+    },
+    {
+      id: 4,
       label: '充值码',
       items: [
         { id: 'redeem-batches', title: '批次管理', url: '/dashboard/redeem-batches', icon: Ticket },
       ],
     },
     {
-      id: 4,
+      id: 5,
       label: '审计',
       items: [
         {

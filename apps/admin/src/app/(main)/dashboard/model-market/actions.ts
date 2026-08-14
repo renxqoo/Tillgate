@@ -9,6 +9,7 @@ export interface CatalogImportModel {
   inputPrice: number;
   outputPrice: number;
   cacheInputPrice: number;
+  contextLength?: number | null;
 }
 
 /** 一键入库：勾选模型 +（首次）平台 key → provider/channel/mappings */
@@ -33,10 +34,11 @@ export async function importCatalogAction(input: {
           inputPrice: m.inputPrice,
           outputPrice: m.outputPrice,
           cacheInputPrice: m.cacheInputPrice,
+          ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })),
       },
     });
-    revalidatePath('/dashboard/model-catalog');
+    revalidatePath('/dashboard/model-market');
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {

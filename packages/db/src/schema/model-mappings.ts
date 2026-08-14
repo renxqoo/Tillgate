@@ -21,6 +21,8 @@ export const modelMappings = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     externalName: varchar('external_name', { length: 64 }).notNull(),
+  /** 上下文窗口（token 数）；null=未知。目录导入带入，可编辑。 */
+  contextLength: bigint('context_length', { mode: 'number' }),
     realModel: varchar('real_model', { length: 128 }).notNull(),
     /** 0 上架 / 1 下架 */
     status: smallint('status').notNull().default(0),
