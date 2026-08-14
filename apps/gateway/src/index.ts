@@ -26,8 +26,9 @@ export const logger: Logger = createLogger({
 });
 export const otel: { shutdown: () => Promise<void> } = initOtel({
   serviceName: 'gateway',
+  mode: env.OTEL_TRACES_MODE,
   endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  enabled: env.OTEL_ENABLED,
+  logger,
 });
 
 /**

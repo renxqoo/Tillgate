@@ -197,6 +197,10 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | 方法/路径 | 说明 |
 |---|---|
 | `GET/POST/PATCH /api/admin/plans` | 套餐 CRUD（价格、周期、金额额度、席位模式、状态）；kind 创建后不可变 |
+| `GET /api/admin/tracing/recent` | 最近 traces（24h；service/errorsOnly/minDurationMs/requestId/limit/beforeMs 过滤） |
+| `GET /api/admin/tracing/traces/:traceId` | 单 trace 全部 span（瀑布图数据） |
+| `GET /api/admin/tracing/by-request/:requestId` | 按 request_id 关联（计费复核「查链路」入口） |
+| `GET /api/admin/tracing/stats` | trace 存储统计（分区列表、保留水位） |
 | `GET /api/admin/subscriptions?plan_id&status&page` | 订阅列表 |
 | `POST /api/admin/subscriptions/:id/renew` | 续费（开启新订阅期） |
 | `POST /api/admin/subscriptions/:id/cancel` | 取消（剩余额度作废） |

@@ -1,0 +1,32 @@
+{
+  "name": "@ai-gateway/tracing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "链路追踪领域（receiver/admin-api/worker 共用）：OTLP JSON 解码 + span 存储（PG 日分区）+ 分区维护",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/db": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

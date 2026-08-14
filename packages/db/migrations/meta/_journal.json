@@ -197,6 +197,13 @@
       "when": 1786714513676,
       "tag": "0027_hard_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786720379086,
+      "tag": "0028_hard_jocasta",
+      "breakpoints": true
     }
   ]
 }

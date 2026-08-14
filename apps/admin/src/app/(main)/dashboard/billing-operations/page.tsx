@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
 import { ApiError, adminFetch, fmtDateTime, formatMoney } from '@ai-gateway/api-client';
 import {
@@ -105,7 +106,13 @@ export default async function BillingOperationsPage({
                   items.map((item) => (
                     <TableRow key={item.requestId}>
                       <TableCell>
-                        <code className="text-xs">{item.requestId}</code>
+                        <code className="text-xs">{item.requestId}</code>{' '}
+                        <Link
+                          href={`/dashboard/tracing?requestId=${item.requestId}`}
+                          className="text-xs underline"
+                        >
+                          查链路
+                        </Link>
                       </TableCell>
                       <TableCell>#{item.userId}</TableCell>
                       <TableCell>¥{formatMoney(item.reservedAmount)}</TableCell>

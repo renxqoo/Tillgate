@@ -451,3 +451,17 @@ in_flight 过期只能转 uncertain 并告警/人工复核。
 - **套餐计费**：通过 `plans` + `user_subscriptions` 实现「额度扣减」而非「金额扣费」；`usage_logs` 已预留 `subscription_id` / `plan_amount` / `payg_amount` / `billed_by`（plan/payg/both）字段，二期启用套餐无需迁移。
 - **报表加速**：P1 加 `daily_stats` 聚合表，由 worker 按天聚合写入，管理端报表读聚合表，明细仍可下钻 `usage_logs`。
 - **请求日志分区**：P1 起按月分区，保留策略做成配置项。
+
+### trace_spans —— 链路 span 存储（诊断数据，best-effort）
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| trace_id / span_id / parent_span_id | varchar | OTel hex id（PK = start_time + span_id） |
+| name / service | varchar | span 名 / 服务名（resource service.name） |
+| start_time / end_time / duration_ms | timestamptz / bigint | **分区键 start_time（UTC 日分区，TTL 滚动删除）** |
+| status_code / status_message | smallint / varchar | OTel StatusCode（2=ERROR） |
+| request_id / user_id / channel / model | 提升列 | 计费关联点查索引（来自 span attributes） |
+| attributes / events | jsonb | 完整原始属性与事件 |
+
+数据等级：诊断数据（非资金）——接收端过载即丢、绝不反压业务；默认保留 7 天（TRACE_RETENTION_DAYS，worker 分区维护）。
+写入方：trace-receiver（OTLP/HTTP JSON → 批量 INSERT，主键冲突忽略）；读取方：admin-api `/api/admin/tracing/*`。

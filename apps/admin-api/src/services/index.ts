@@ -1,5 +1,6 @@
 import type { Db } from '@ai-gateway/db';
 import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
+import type { TraceStore } from '@ai-gateway/tracing';
 import type { Logger } from '@ai-gateway/core';
 import type { Redis } from '@ai-gateway/http';
 import type { VoucherStorage } from './voucher-storage.js';
@@ -15,6 +16,8 @@ export interface AdminServices {
   redis: Redis;
   ledger: Ledger;
   billingOperations: BillingOperations;
+  /** 链路追踪存储（trace-receiver 写入，管理台查询） */
+  tracingStore: TraceStore;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
   encryptionKey: string;
   /** 凭证截图存储（本地磁盘/未来 OSS） */

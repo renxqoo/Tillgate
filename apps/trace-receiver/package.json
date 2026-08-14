@@ -1,12 +1,12 @@
 {
-  "name": "@ai-gateway/worker",
+  "name": "@ai-gateway/trace-receiver",
   "version": "0.1.0",
   "private": true,
-  "description": "BullMQ meter 队列消费编排（结算/对账领域逻辑在 @ai-gateway/ledger）",
+  "description": "链路接收端（内网）：OTLP/HTTP JSON 接收 → 批量写 PG 日分区；过载即丢绝不反压业务",
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "dev": "NODE_OPTIONS='--conditions=development' tsx watch --env-file=../../.env src/index.ts",
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -16,13 +16,10 @@
   "dependencies": {
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
-    "@ai-gateway/http": "workspace:*",
-    "@ai-gateway/ledger": "workspace:*",
-    "@ai-gateway/money": "workspace:*",
-    "bullmq": "^6.0.7",
-    "drizzle-orm": "^0.45.2",
-    "ioredis": "^6.0.0",
-    "@ai-gateway/tracing": "workspace:*"
+    "@ai-gateway/tracing": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

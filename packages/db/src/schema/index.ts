@@ -18,3 +18,4 @@ export * from './logs.js';
 export * from './plans.js';
 export * from './reconcile.js';
 export * from './relations.js';
+export * from './tracing.js';

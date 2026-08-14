@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { createBillingOperations, createLedger } from '@ai-gateway/ledger';
+import { createPgTraceStore } from '@ai-gateway/tracing';
 import type { Db } from '@ai-gateway/db';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, type Redis } from '@ai-gateway/http';
@@ -59,6 +60,7 @@ export function makeServices(db: Db, overrides: Partial<AdminServices> = {}): Ad
     redis: stubRedis(),
     ledger: createLedger({ db }),
     billingOperations: createBillingOperations({ db }),
+    tracingStore: createPgTraceStore(db),
     encryptionKey: TEST_ENCRYPTION_KEY,
     voucherStorage: stubVoucherStorage(),
     logger: noopLogger(),

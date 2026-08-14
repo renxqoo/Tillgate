@@ -6,7 +6,7 @@ import { recordError } from '../lib/metrics.js';
 
 /**
  * OTel HTTP 入口中间件：为每个请求创建 Span（tech-stack §3.1）。
- * SDK 未启动时（OTEL_ENABLED=false）为 no-op tracer，无性能开销。
+ * SDK 未启动时（OTEL_TRACES_MODE=off）为 no-op tracer，无性能开销。
  *
  * Span 属性：http.method/http.route/http.status_code/duration_ms
  * 鉴权后补充：user_id/credential_type（从 c.var.auth）
@@ -14,10 +14,17 @@ import { recordError } from '../lib/metrics.js';
 export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
   const tracer = getTracer('gateway.http');
   return async (c, next) => {
+    // 健康检查/本地调试页不产 span（探活噪音会淹没真实请求 trace）
+    const path = new URL(c.req.url).pathname;
+    if (path === '/readyz' || path === '/healthz' || path.startsWith('/debug/')) {
+      return next();
+    }
     const span = tracer.startSpan(`${c.req.method} ${new URL(c.req.url).pathname}`);
     span.setAttributes({
       'http.method': c.req.method,
       'http.target': c.req.url,
+      // 计费关联锚点：接收端提升为 request_id 索引列（复核页「查链路」）
+      ...(c.var.requestId ? { 'request.id': c.var.requestId } : {}),
     });
 
     try {

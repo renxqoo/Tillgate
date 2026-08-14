@@ -26,6 +26,8 @@ import { redeemAdminRoutes } from './routes/redeem.js';
 import { statsAdminRoutes } from './routes/stats.js';
 import { logAdminRoutes, auditLogAdminRoutes } from './routes/logs.js';
 import { billingOperationsRoutes } from './routes/billing-operations.js';
+import { tracingAdminRoutes } from './routes/tracing.js';
+import { createPgTraceStore, type TraceStore } from '@ai-gateway/tracing';
 
 /**
  * admin-api 应用组装（依赖注入唯一入口）。
@@ -44,6 +46,8 @@ export interface AdminApiDeps {
   redis: Redis;
   ledger: Ledger;
   billingOperations: BillingOperations;
+  /** 链路存储（缺省由 db 构造 PG 实现） */
+  tracingStore?: TraceStore;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
   encryptionKey: string;
   /** 凭证截图存储（本地磁盘/未来 OSS） */
@@ -58,6 +62,7 @@ export function createApp(deps: AdminApiDeps): Hono {
     redis: deps.redis,
     ledger: deps.ledger,
     billingOperations: deps.billingOperations,
+    tracingStore: deps.tracingStore ?? createPgTraceStore(deps.db),
     encryptionKey: deps.encryptionKey,
     voucherStorage: deps.voucherStorage,
     logger: deps.logger,
@@ -91,6 +96,7 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/logs', logAdminRoutes(services));
   admin.route('/audit-logs', auditLogAdminRoutes(services));
   admin.route('/billing-operations', billingOperationsRoutes(services));
+  admin.route('/tracing', tracingAdminRoutes(services));
   app.route('/api/admin', admin);
 
   return app;

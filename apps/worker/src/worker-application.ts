@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import type { Logger, WorkerEnv } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
+import { maintainPartitions } from '@ai-gateway/tracing';
 import {
   createBillingAutoReleaser,
   createBillingOperations,
@@ -147,6 +148,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let recoveryTimer: ReturnType<typeof setInterval> | null = null;
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  let traceMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
   let accepting = false;
   let started = false;
   let stopping: Promise<StopReport> | null = null;
@@ -232,6 +234,30 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         client.release();
       }
     }).catch((error) => logger.warn({ err: (error as Error).message }, 'reconcile failed'));
+  };
+
+  /** trace_spans 分区维护：预建未来 + 清理超期；advisory lock 保证多副本只跑一份。 */
+  const runTraceMaintenance = async (): Promise<void> => {
+    if (!accepting) return;
+    await track(async () => {
+      const client = await db.$client.connect();
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          "select pg_try_advisory_lock(hashtext('ai-gateway:trace-partition')) as acquired",
+        );
+        if (!lock.rows[0]?.acquired) return;
+        try {
+          const result = await maintainPartitions(db, { retentionDays: env.TRACE_RETENTION_DAYS });
+          if (result.created.length + result.dropped.length > 0) {
+            logger.info({ result }, 'trace partitions maintained');
+          }
+        } finally {
+          await client.query("select pg_advisory_unlock(hashtext('ai-gateway:trace-partition'))");
+        }
+      } finally {
+        client.release();
+      }
+    }).catch((error) => logger.warn({ err: (error as Error).message }, 'trace partition maintenance failed'));
   };
 
   const runRecovery = async (): Promise<void> => {
@@ -382,9 +408,14 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         pollTimer = setInterval(() => void runSettlement(), env.WORKER_POLL_INTERVAL_MS);
         recoveryTimer = setInterval(() => void runRecovery(), env.WORKER_RECOVERY_INTERVAL_MS);
         reconcileTimer = setInterval(() => void runReconcile(), env.WORKER_RECONCILE_INTERVAL_MS);
+        traceMaintenanceTimer = setInterval(
+          () => void runTraceMaintenance(),
+          env.WORKER_TRACE_MAINTENANCE_INTERVAL_MS,
+        );
         pollTimer.unref();
         recoveryTimer.unref();
         reconcileTimer.unref();
+        traceMaintenanceTimer.unref();
         started = true;
         logger.info({ instanceId, healthPort: env.WORKER_HEALTH_PORT }, 'billing worker ready');
         return { instanceId };
@@ -393,6 +424,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (pollTimer) clearInterval(pollTimer);
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
+        if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
         await Promise.allSettled([
           queueWorker?.close() ?? Promise.resolve(),
           processor.abandonOwnedClaims(),
@@ -419,6 +451,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (pollTimer) clearInterval(pollTimer);
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
+        if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
         logger.info({ reason }, 'billing worker draining');
         let clean = true;
         let activeAbandoned = 0;

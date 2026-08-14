@@ -3,7 +3,7 @@ import type { Counter, Histogram, Meter } from '@opentelemetry/api';
 
 /**
  * 网关指标（tech-stack §3.2）。
- * SDK 未启动时（OTEL_ENABLED=false）为 no-op meter，无开销。
+ * SDK 未启动时（OTEL_TRACES_MODE=off 或非 otlp 模式）为 no-op meter，无开销。
  * 启动后通过 OTLP 导出到 collector → Prometheus。
  *
  * 指标清单：

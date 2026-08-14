@@ -48,11 +48,13 @@ const otelOptions = {
 };
 
 /** 未显式设置时：开发/测试默认 memory（零基建可用），生产默认 off */
-function resolveOtelDefaults<T extends { NODE_ENV: string; OTEL_TRACES_MODE?: string; OTEL_EXPORTER_OTLP_ENDPOINT?: string }>(
-  parsed: T,
-): T & { OTEL_TRACES_MODE: 'off' | 'memory' | 'console' | 'otlp' } {
+type OtelTracesMode = 'off' | 'memory' | 'console' | 'otlp';
+
+function resolveOtelDefaults<
+  T extends { NODE_ENV: string; OTEL_TRACES_MODE?: string; OTEL_EXPORTER_OTLP_ENDPOINT?: string },
+>(parsed: T): Omit<T, 'OTEL_TRACES_MODE'> & { OTEL_TRACES_MODE: OtelTracesMode } {
   const mode = (parsed.OTEL_TRACES_MODE ??
-    (parsed.NODE_ENV === 'production' ? 'off' : 'memory')) as 'off' | 'memory' | 'console' | 'otlp';
+    (parsed.NODE_ENV === 'production' ? 'off' : 'memory')) as OtelTracesMode;
   if (mode === 'otlp' && !parsed.OTEL_EXPORTER_OTLP_ENDPOINT) {
     throw new Error('OTEL_TRACES_MODE=otlp 时必须配置 OTEL_EXPORTER_OTLP_ENDPOINT');
   }
@@ -106,6 +108,8 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
    * 敞口估算按 min(max_tokens×n, 本值) 计，超出部分由 credit_limit 透支缓冲兜底。
    */
   GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().min(1).default(32_768),
+  /** 本地 /debug/traces 查看页令牌（memory 模式）；未设时仅开发环境放行 */
+  DEBUG_TRACES_TOKEN: z.string().min(8).optional(),
   /**
    * 允许 http:// 与内网上游（仅压测/本地调试）。
    * 双重门控：本开关为 true 且 NODE_ENV !== 'production' 才生效（见 gateway createAi）。
@@ -154,6 +158,10 @@ export const workerEnvSchema = baseEnvSchema.extend({
     .string()
     .regex(/^\d+(\.\d+)?$/, 'WORKER_AUTO_RELEASE_MAX_AMOUNT 须为非负小数（元）')
     .default('0.1'),
+  /** trace_spans 分区保留天数（滚动删除） */
+  TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+  /** trace 分区维护间隔（预建未来分区 + 清理超期） */
+  WORKER_TRACE_MAINTENANCE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
   ...otelOptions,
 });
 
@@ -207,13 +215,32 @@ export const clientApiEnvSchema = baseEnvSchema.extend({
   ...otelOptions,
 });
 
-export type GatewayEnv = z.infer<typeof gatewayEnvSchema>;
-export type WorkerEnv = z.infer<typeof workerEnvSchema>;
-export type AdminApiEnv = z.infer<typeof adminApiEnvSchema>;
-export type ClientApiEnv = z.infer<typeof clientApiEnvSchema>;
+export type GatewayEnv = ReturnType<typeof loadGatewayEnv>;
+export type WorkerEnv = ReturnType<typeof loadWorkerEnv>;
+/** trace-receiver（链路接收端，内网服务）环境变量 */
+export const traceReceiverEnvSchema = baseEnvSchema.extend({
+  PORT: z.coerce.number().int().min(1).default(8793),
+  /**
+   * 接收端共享令牌：设置后所有接口要求 Authorization: Bearer <token>。
+   * 生产环境必须设置（fail fast）；开发默认不设（内网放行）。
+   */
+  TRACE_RECEIVER_TOKEN: z.string().min(16).optional(),
+  /** 批量写入阈值（span 数） */
+  TRACE_BATCH_MAX: z.coerce.number().int().min(1).default(500),
+  /** 刷写间隔（毫秒） */
+  TRACE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(100).default(2_000),
+  /** 有界队列上限：满时丢最旧并计数（观测永不反压业务） */
+  TRACE_QUEUE_MAX: z.coerce.number().int().min(100).default(10_000),
+  ...otelOptions,
+});
+
+export type TraceReceiverEnv = ReturnType<typeof loadTraceReceiverEnv>;
+
+export type AdminApiEnv = ReturnType<typeof loadAdminApiEnv>;
+export type ClientApiEnv = ReturnType<typeof loadClientApiEnv>;
 
 /** 解析并校验环境变量，失败即抛错（fail fast） */
-export function loadGatewayEnv(env = process.env): GatewayEnv {
+export function loadGatewayEnv(env = process.env) {
   const parsed = resolveOtelDefaults(gatewayEnvSchema.parse(env));
   if (parsed.NODE_ENV === 'production' && parsed.UPSTREAM_HOST_ALLOWLIST.length === 0) {
     throw new Error('production requires UPSTREAM_HOST_ALLOWLIST');
@@ -226,7 +253,7 @@ export function loadGatewayEnv(env = process.env): GatewayEnv {
   return { ...parsed, GLOBAL_RPM: globalRpm };
 }
 
-export function loadWorkerEnv(env = process.env): WorkerEnv {
+export function loadWorkerEnv(env = process.env) {
   const parsed = resolveOtelDefaults(workerEnvSchema.parse(env));
   if (parsed.WORKER_RETRY_BASE_MS > parsed.WORKER_RETRY_MAX_MS) {
     throw new Error('WORKER_RETRY_BASE_MS must be <= WORKER_RETRY_MAX_MS');
@@ -237,10 +264,18 @@ export function loadWorkerEnv(env = process.env): WorkerEnv {
   return parsed;
 }
 
-export function loadAdminApiEnv(env = process.env): AdminApiEnv {
+export function loadAdminApiEnv(env = process.env) {
   return resolveOtelDefaults(adminApiEnvSchema.parse(env));
 }
 
-export function loadClientApiEnv(env = process.env): ClientApiEnv {
+export function loadClientApiEnv(env = process.env) {
   return resolveOtelDefaults(clientApiEnvSchema.parse(env));
+}
+
+export function loadTraceReceiverEnv(env = process.env) {
+  const parsed = resolveOtelDefaults(traceReceiverEnvSchema.parse(env));
+  if (parsed.NODE_ENV === 'production' && !parsed.TRACE_RECEIVER_TOKEN) {
+    throw new Error('production 环境必须设置 TRACE_RECEIVER_TOKEN（链路接收端鉴权）');
+  }
+  return parsed;
 }

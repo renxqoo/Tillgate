@@ -1,4 +1,5 @@
 import {
+  Activity,
   Banknote,
   CalendarClock,
   ChartBar,
@@ -92,6 +93,7 @@ export function buildSidebarItems(): NavGroup[] {
           url: '/dashboard/billing-operations',
           icon: ShieldAlert,
         },
+        { id: 'tracing', title: '链路追踪', url: '/dashboard/tracing', icon: Activity },
         { id: 'logs', title: '请求日志', url: '/dashboard/logs', icon: ScrollText },
         { id: 'audit-logs', title: '操作审计', url: '/dashboard/audit-logs', icon: History },
       ],

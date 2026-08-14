@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import type { Ai } from '@ai-gateway/ai';
 import type { GatewayEnv, Logger } from '@ai-gateway/core';
 import { healthRoutes } from './routes/health.js';
+import { debugTracesRoutes } from './routes/debug-traces.js';
 import { modelsRoutes } from './routes/models.js';
 import { chatCompletionsRoutes } from './routes/chat-completions.js';
 import { embeddingsRoutes } from './routes/embeddings.js';
@@ -80,8 +81,9 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   app.use('*', corsPreflight(deps.env.CORS_ALLOWED_ORIGINS));
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit());
-  app.use('*', otelMiddleware());
+  // requestId 先于 otel：span 属性 request.id（计费关联锚点）依赖它
   app.use('*', requestIdMiddleware());
+  app.use('*', otelMiddleware());
   // requestLog 前置到鉴权之前：鉴权失败（401/429）也写入 request_logs
   app.use('/v1/*', requestLogMiddleware(deps.db, deps.logger));
   app.use('/v1/chat/completions', authMiddleware(authService));
@@ -90,6 +92,16 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
 
   // 路由
   app.route('/', healthRoutes({ db: deps.db, redis: deps.redis, lifecycle: deps.lifecycle }));
+  // 本地零基建链路查看页：仅 memory 模式暴露（otlp/off 下路由不存在）
+  if (deps.env.OTEL_TRACES_MODE === 'memory') {
+    app.route(
+      '/debug',
+      debugTracesRoutes({
+        token: deps.env.DEBUG_TRACES_TOKEN,
+        dev: deps.env.NODE_ENV === 'development',
+      }),
+    );
+  }
   app.route('/v1/models', modelsRoutes(router));
   app.route('/v1/chat/completions', chatCompletionsRoutes(pipeline));
   app.route('/v1/embeddings', embeddingsRoutes(pipeline));

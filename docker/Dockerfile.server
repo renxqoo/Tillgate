@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# 服务端统一镜像（gateway / worker / admin-api），compose 通过 build arg APP 指定
+# 服务端统一镜像（gateway / worker / admin-api / client-api / trace-receiver），compose 通过 build arg APP 指定
 FROM node:22-alpine AS builder
 ARG APP
 RUN corepack enable

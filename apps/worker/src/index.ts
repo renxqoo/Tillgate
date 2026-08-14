@@ -5,8 +5,9 @@ const env = loadWorkerEnv();
 const logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'worker' });
 const telemetry = initOtel({
   serviceName: 'worker',
+  mode: env.OTEL_TRACES_MODE,
   endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  enabled: env.OTEL_ENABLED,
+  logger,
 });
 const application = createBillingWorkerApplication({
   env,
