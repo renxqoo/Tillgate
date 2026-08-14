@@ -16,6 +16,8 @@ import {
   channels,
   modelMappings,
   modelChannels,
+  plans,
+  userSubscriptions,
 } from '../../packages/db/src/schema/index.js';
 import { eq, and } from 'drizzle-orm';
 import { createHash, createCipheriv, randomBytes } from 'node:crypto';
@@ -95,8 +97,7 @@ async function main(): Promise<void> {
         identityProvider: 'local',
         email: 'loadtest@ai-gateway.local',
         displayName: 'Load Test',
-        role: 0,
-        balance: 1_000_000_000, // ¥1,000,000（厘）
+        balance: '1000', // 元；纯额度模型下余额不参与扣费，仅保持账户健康
         status: 0,
         rpmLimit: 100_000, // 远超 GLOBAL_RPM=2000（让全局限流成为天花板，而非用户限流）
         tpmLimit: 1_000_000_000,
@@ -108,7 +109,7 @@ async function main(): Promise<void> {
     // 已存在：确保高余额（用户可能跑过多次，余额被扣）
     await db
       .update(users)
-      .set({ balance: 1_000_000_000, status: 0, rpmLimit: 100_000, tpmLimit: 1_000_000_000 })
+      .set({ balance: '1000', status: 0, rpmLimit: 100_000, tpmLimit: 1_000_000_000 })
       .where(eq(users.id, user.id));
     console.log('✓ 用户 loadtest 已存在，已刷新余额/限流 (id=' + user.id + ')');
   }
@@ -164,6 +165,7 @@ async function main(): Promise<void> {
         status: 0,
         weight: 1,
         priority: 0,
+        upstreamBudget: '1000000000', // 进货额度给足：压测关注网关吞吐，不关注渠道预算耗尽
       })
       .returning();
     channel = ch;
@@ -178,6 +180,8 @@ async function main(): Promise<void> {
         status: 0,
         failCount: 0,
         cooldownUntil: null,
+        upstreamBudget: '1000000000',
+        upstreamReserved: '0',
       })
       .where(eq(channels.id, channel.id));
     console.log('✓ channel mock-default 已存在，已刷新 baseUrl/status（含熔断重置）');
@@ -194,9 +198,9 @@ async function main(): Promise<void> {
         externalName: 'mock-gpt',
         realModel: 'mock-model',
         status: 0,
-        inputPrice: 1_000_000, // 1 元/M（厘）—— 象征性，便于看计费链路
-        outputPrice: 2_000_000,
-        cacheInputPrice: 100_000,
+        inputPrice: 1, // 1 元/M tokens —— 象征性，便于看计费链路
+        outputPrice: 2,
+        cacheInputPrice: 0.1,
       })
       .returning();
     mapping = m;
@@ -204,9 +208,59 @@ async function main(): Promise<void> {
   } else {
     await db
       .update(modelMappings)
-      .set({ status: 0, realModel: 'mock-model' })
+      .set({ status: 0, realModel: 'mock-model', inputPrice: '1', outputPrice: '2', cacheInputPrice: '0.1' })
       .where(eq(modelMappings.id, mapping.id));
     console.log('✓ model mapping mock-gpt 已存在，已刷新');
+  }
+
+  // 5b. 有效订阅（订阅即闸门：无订阅 authorize 直接 402）——超大额度，压测只关注吞吐
+  let plan = await db.query.plans?.findFirst?.({ where: eq(plans.name, 'loadtest-plan') });
+  if (!plan) {
+    const [pl] = await db
+      .insert(plans)
+      .values({
+        name: 'loadtest-plan',
+        kind: 'subscription',
+        price: '0',
+        periodDays: 3650,
+        quotaAmount: '1000000000', // 10 亿额度，压测期间不可能耗尽
+        sortOrder: null,
+        status: 0,
+      })
+      .returning();
+    plan = pl;
+    console.log('✓ 创建 plan loadtest-plan');
+  }
+  const activeSub = await db.query.userSubscriptions?.findFirst?.({
+    where: and(eq(userSubscriptions.userId, user.id), eq(userSubscriptions.status, 0)),
+  });
+  if (activeSub && activeSub.endAt > new Date()) {
+    await db
+      .update(userSubscriptions)
+      .set({ quotaAmount: '1000000000', endAt: new Date(Date.now() + 3650 * 86_400_000) })
+      .where(eq(userSubscriptions.id, activeSub.id));
+    console.log('✓ 压测订阅已存在，已刷新额度/有效期');
+  } else {
+    if (activeSub) {
+      // 过期但 status=0 的旧行会占用单有效订阅唯一索引，先转到期
+      await db
+        .update(userSubscriptions)
+        .set({ status: 1 })
+        .where(eq(userSubscriptions.id, activeSub.id));
+    }
+    await db.insert(userSubscriptions).values({
+      userId: user.id,
+      planId: plan.id,
+      startAt: new Date(),
+      endAt: new Date(Date.now() + 3650 * 86_400_000),
+      quotaAmount: '1000000000',
+      usedAmount: '0',
+      reservedAmount: '0',
+      quantity: 1,
+      price: '0',
+      status: 0,
+    });
+    console.log('✓ 创建压测订阅（额度 10 亿，有效期 3650 天）');
   }
 
   // 6. model_channels 关联

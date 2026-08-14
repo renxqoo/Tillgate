@@ -7,7 +7,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { eq } from 'drizzle-orm';
+import { eq, and, like } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import {
   users,
@@ -20,6 +20,8 @@ import {
   transactions,
   requestLogs,
   billingRequests,
+  plans,
+  userSubscriptions,
 } from '@ai-gateway/db/schema';
 import {
   loadGatewayEnv,
@@ -107,17 +109,55 @@ export interface TestModelIds {
   mappingId: number;
 }
 
-export async function createTestUser(db: Db, balance: string, prefix = 'u'): Promise<number> {
+/**
+ * 创建测试用户。默认同时建一条大额度有效订阅（订阅即闸门：纯额度模型下无订阅
+ * 的用户会被 authorize 直接 402 subscription_required）；测无订阅路径传
+ * { withSubscription: false }。
+ */
+export async function createTestUser(
+  db: Db,
+  balance: string,
+  prefix = 'u',
+  opts: { withSubscription?: boolean } = {},
+): Promise<number> {
+  const subject = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const [u] = await db
     .insert(users)
     .values({
       issuer: 'test',
-      subject: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      subject,
       identityProvider: 'local',
       displayName: prefix,
       balance,
     })
     .returning();
+  if (opts.withSubscription !== false) {
+    const [p] = await db
+      .insert(plans)
+      .values({
+        name: `subplan-${subject}`.slice(0, 32),
+        kind: 'subscription',
+        price: '0',
+        periodDays: 3650,
+        // 大到不会被额度闸挡（测试关注计费/路由逻辑，不关注额度耗尽）
+        quotaAmount: '1000000000',
+        sortOrder: null,
+        status: 0,
+      })
+      .returning({ id: plans.id });
+    await db.insert(userSubscriptions).values({
+      userId: u!.id,
+      planId: p!.id,
+      startAt: new Date(),
+      endAt: new Date(Date.now() + 3650 * 86_400_000),
+      quotaAmount: '1000000000',
+      usedAmount: '0',
+      reservedAmount: '0',
+      quantity: 1,
+      price: '0',
+      status: 0,
+    });
+  }
   return u!.id;
 }
 
@@ -195,6 +235,16 @@ export async function cleanupTestData(
   ids: Partial<TestModelIds> | null,
 ): Promise<void> {
   if (userId !== null) {
+    // 先收集该用户订阅引用的「测试专属套餐」（subplan- 前缀），删订阅后一并清理
+    const subs = await db
+      .select({ planId: userSubscriptions.planId })
+      .from(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId))
+      .catch(() => [] as Array<{ planId: number }>);
+    await db
+      .delete(userSubscriptions)
+      .where(eq(userSubscriptions.userId, userId))
+      .catch(() => {});
     await db
       .delete(billingRequests)
       .where(eq(billingRequests.userId, userId))
@@ -218,6 +268,13 @@ export async function cleanupTestData(
       .delete(transactions)
       .where(eq(transactions.userId, userId))
       .catch(() => {});
+    for (const planId of new Set(subs.map((s) => s.planId))) {
+      // 名称前缀双重保险：只删 createTestUser 生成的测试套餐，绝不碰业务套餐
+      await db
+        .delete(plans)
+        .where(and(eq(plans.id, planId), like(plans.name, 'subplan-%')))
+        .catch(() => {});
+    }
   }
   if (ids?.mappingId) {
     await db

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
-import { users, apiKeys } from '@ai-gateway/db/schema';
+import { plans, users, userSubscriptions, apiKeys } from '@ai-gateway/db/schema';
 import { loadRootEnvFile } from '@ai-gateway/http';
 import { keyRoutes } from './keys.js';
 import { makeClientTestApp, makeServices } from '../test/helpers.js';
@@ -10,6 +10,7 @@ import { makeClientTestApp, makeServices } from '../test/helpers.js';
 /**
  * PATCH /api/keys/:id 安全回显：不回显 keyHash（明文 Key 创建后不可再取回），
  * 只返回与列表一致的脱敏字段（keyPreview + 业务字段）。
+ * 并发席位不变量：同席位并发建 Key 恰好发放 quantity 把（FOR UPDATE 串行化）。
  */
 
 loadRootEnvFile();
@@ -27,6 +28,69 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await db.$client.end().catch(() => {});
+});
+
+describe('并发席位不变量：同席位并发建 Key 不超发', () => {
+  it('3 席并发建 5 把 Key → 恰好 3 把 201、2 把 409', async () => {
+    if (!connected) return it.skip('no DB');
+    const s = `${Date.now()}`;
+    const [me] = await db
+      .insert(users)
+      .values({ issuer: 'local', subject: `__kseat_me_${s}`, identityProvider: 'local', isEnterprise: true })
+      .returning({ id: users.id });
+    const [plan] = await db
+      .insert(plans)
+      .values({
+        name: `__kseat_plan_${s}`.slice(0, 32),
+        kind: 'subscription',
+        price: '10',
+        periodDays: 30,
+        quotaAmount: '100',
+        sortOrder: 1,
+        allowSeats: true,
+        status: 0,
+      })
+      .returning({ id: plans.id });
+    const [sub] = await db
+      .insert(userSubscriptions)
+      .values({
+        userId: me!.id,
+        planId: plan!.id,
+        startAt: new Date(),
+        endAt: new Date(Date.now() + 86_400_000),
+        quotaAmount: '300',
+        quantity: 3,
+        price: '30',
+        status: 0,
+      })
+      .returning({ id: userSubscriptions.id });
+    try {
+      const app = makeClientTestApp(me!.id, { '/keys': keyRoutes(makeServices(db)) });
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          app.request('/api/keys', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: `seat-race-${i}` }),
+          }),
+        ),
+      );
+      const okCount = results.filter((r) => r.status === 201).length;
+      const fullCount = results.filter((r) => r.status === 409).length;
+      expect(okCount).toBe(3);
+      expect(fullCount).toBe(2);
+      const active = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.userId, me!.id), eq(apiKeys.status, 0)));
+      expect(Number(active[0]?.count ?? 0)).toBe(3);
+    } finally {
+      await db.delete(apiKeys).where(eq(apiKeys.userId, me!.id)).catch(() => {});
+      await db.delete(userSubscriptions).where(eq(userSubscriptions.id, sub!.id)).catch(() => {});
+      await db.delete(plans).where(eq(plans.id, plan!.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, me!.id)).catch(() => {});
+    }
+  });
 });
 
 describe('PATCH /api/keys/:id 回显脱敏（不回显 keyHash）', () => {

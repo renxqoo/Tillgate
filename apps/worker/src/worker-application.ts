@@ -7,6 +7,8 @@ import type { Logger, WorkerEnv } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
 import {
+  createBillingAutoReleaser,
+  createBillingOperations,
   createBillingProcessor,
   createLedger,
   createRedisLedgerEffects,
@@ -102,6 +104,20 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
             );
           }
         },
+        // 转 dead 即时告警：不变量被打破是缺陷信号，不允许静默积压在复核队列
+        async requestDead(event) {
+          logger.error(
+            {
+              requestId: event.requestId,
+              userId: event.userId,
+              failureClass: event.failureClass,
+              lastError: event.lastError,
+              reservedAmount: event.reservedAmount,
+              attempt: event.attempt,
+            },
+            'billing request moved to dead; manual review required',
+          );
+        },
       },
       options: {
         ownerId: instanceId,
@@ -115,6 +131,16 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
       },
     });
   const ledger = createLedger({ db, effects: createRedisLedgerEffects(redis) });
+  // uncertain 小额白名单自动放行（dead 永不自动处置）；阈值 '0' 时整体关闭
+  const billingOperations = createBillingOperations({ db });
+  const autoReleaser = createBillingAutoReleaser({
+    db,
+    operations: billingOperations,
+    config: {
+      maxAmount: env.WORKER_AUTO_RELEASE_MAX_AMOUNT,
+      batchSize: env.WORKER_RECOVERY_BATCH_SIZE,
+    },
+  });
 
   let queueWorker: Worker<BillingSettlementWakeup> | null = null;
   let healthServer: Server | null = null;
@@ -220,6 +246,12 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         logger.info({ result }, 'billing recovery completed');
       }
       if (result.uncertain > 0) logger.error({ result }, 'billing requests require review');
+      // 小额白名单自动放行：与 recovery 同节奏（默认 30s），全程走 resolveUncertain 审计
+      const autoReleased = await autoReleaser.runOnce();
+      if (autoReleased.released > 0) {
+        inventory = await processor.inventory();
+        logger.warn({ result: autoReleased }, 'billing auto-release applied (system actor)');
+      }
     }).catch((error) => {
       postgres = 'down';
       lastRecoveryError = (error as Error).message;

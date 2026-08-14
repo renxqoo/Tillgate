@@ -65,8 +65,8 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
           usedAmount: userSubscriptions.usedAmount,
           reservedAmount: userSubscriptions.reservedAmount,
           price: userSubscriptions.price,
-          remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount}`,
-          fallbackToBalance: plans.fallbackToBalance,
+          /** 剩余额度（元）= 额度 - 已用 - 在途预占，与网关授权口径一致 */
+          remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}`,
           periodDays: plans.periodDays,
           /** 续费总价（当前档价 × 席位），供前端确认弹窗展示 */
           renewPrice: sql<string>`${plans.price} * ${userSubscriptions.quantity}::numeric`,

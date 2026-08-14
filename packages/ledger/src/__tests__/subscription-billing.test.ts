@@ -49,11 +49,7 @@ async function createUser(balance: string, creditLimit = '0'): Promise<number> {
   return user!.id;
 }
 
-async function createPlan(
-  quotaAmount: string,
-  fallback = true,
-  price = '100',
-): Promise<number> {
+async function createPlan(quotaAmount: string, price = '100'): Promise<number> {
   const [plan] = await db
     .insert(plans)
     .values({
@@ -61,7 +57,6 @@ async function createPlan(
       price,
       periodDays: 30,
       quotaAmount,
-      fallbackToBalance: fallback,
       status: 0,
     })
     .returning({ id: plans.id });
@@ -158,7 +153,7 @@ describe('套餐分流（authorize/settle）', () => {
   it('套餐全包：authorize 只预占套餐额度，不动余额', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('0', '0');
-    const planId = await createPlan('10', true);
+    const planId = await createPlan('10');
     const subId = await createSubscription(userId, planId, '10', '0');
     const requestId = randomUUID();
     try {
@@ -209,7 +204,7 @@ describe('套餐分流（authorize/settle）', () => {
   it('额度不足：预估超剩余额度 → authorize 拒绝（无余额兜底）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '0');
-    const planId = await createPlan('1', false);
+    const planId = await createPlan('1');
     await createSubscription(userId, planId, '1', '0');
     try {
       await expect(
@@ -230,7 +225,7 @@ describe('套餐分流（authorize/settle）', () => {
   it('settle 全包：billedBy=plan、余额不动、不写 consume 流水', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('0', '0');
-    const planId = await createPlan('10', true);
+    const planId = await createPlan('10');
     const subId = await createSubscription(userId, planId, '10', '0');
     const requestId = randomUUID();
     const billing = createBilling({ db });
@@ -280,7 +275,7 @@ describe('套餐分流（authorize/settle）', () => {
   it('settle 实际金额略超预估但仍在额度内：全额扣额度，billedBy=plan、不写余额', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '0');
-    const planId = await createPlan('10', true);
+    const planId = await createPlan('10');
     const subId = await createSubscription(userId, planId, '10', '0');
     const requestId = randomUUID();
     const billing = createBilling({ db });
@@ -333,7 +328,7 @@ describe('套餐购买/续费/取消（ledger）', () => {
   it('购买：扣余额、开订阅、写 subscribe 流水；已有有效订阅拒绝', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('100', '0');
-    const planId = await createPlan('50', true, '100');
+    const planId = await createPlan('50');
     const ledger = createLedger({ db });
     try {
       const result = await ledger.subscribePlan({
@@ -372,7 +367,7 @@ describe('套餐购买/续费/取消（ledger）', () => {
   it('续费：旧订阅转到期、新订阅顺延；余额不足拒绝', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('200', '0');
-    const planId = await createPlan('50', true, '100');
+    const planId = await createPlan('50');
     const ledger = createLedger({ db });
     try {
       const first = await ledger.subscribePlan({
@@ -409,7 +404,7 @@ describe('套餐购买/续费/取消（ledger）', () => {
     if (!connected) return context.skip();
     const userA = await createUser('200', '0');
     const userB = await createUser('200', '0');
-    const planId = await createPlan('100', true, '100');
+    const planId = await createPlan('100');
     const ledger = createLedger({ db });
     try {
       const sub = await ledger.subscribePlan({
@@ -441,7 +436,7 @@ describe('套餐购买/续费/取消（ledger）', () => {
   it('取消：状态=2、不退款', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('100', '0');
-    const planId = await createPlan('50', true, '100');
+    const planId = await createPlan('50');
     const ledger = createLedger({ db });
     try {
       const result = await ledger.subscribePlan({

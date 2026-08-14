@@ -46,7 +46,6 @@ async function main(): Promise<void> {
   async function createPlan(name: string, price: number, quota: number, sortOrder: number | null, kind: 'subscription' | 'pack'): Promise<number> {
     const res = await post(
       `${ADMIN_API}/api/admin/plans`,
-      { name, price, quotaAmount: quota, periodDays: kind === 'pack' ? 0 : 30, kind, sortOrder, fallbackToBalance: true },
       { cookie: admin },
     );
     if (res.status !== 201) throw new Error(`建套餐失败: ${res.status} ${res.raw.slice(0, 300)}`);

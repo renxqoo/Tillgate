@@ -35,10 +35,12 @@ export const userColumns = {
   updatedAt: users.updatedAt,
 };
 
-/** 列表/详情展示列：userColumns + 费率卡名（联表） */
+/** 列表/详情展示列：userColumns + 费率卡名（联表）。
+ *  availableBalance = 购买力口径：纯额度模型下余额只用于购买套餐/加油包，
+ *  判定是 balance - reserved >= price，不含 creditLimit（透支额度不构成购买力）。 */
 export const userProfileColumns = {
   ...userColumns,
-  availableBalance: sql<string>`${users.balance} + ${users.creditLimit} - ${users.reservedBalance}`,
+  availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,
   rateCardName: rateCards.name,
 };
 
@@ -73,6 +75,8 @@ export function mapLedgerError(error: unknown): HttpError {
         return USER_NOT_FOUND;
       case 'insufficient_balance':
         return new HttpError(400, 'INSUFFICIENT_BALANCE', '余额不足，调账失败（拒绝透支）');
+      case 'invalid_amount':
+        return new HttpError(400, 'INVALID_AMOUNT', '金额无效（非有限数或超限）');
       case 'idempotency_conflict':
         return new HttpError(409, 'IDEMPOTENCY_CONFLICT', '幂等键已被不同请求使用');
     }
@@ -159,11 +163,15 @@ export async function setUserPassword(
   adminId: number,
 ): Promise<void> {
   const cur = await s.db
-    .select({ rateCardId: users.rateCardId })
+    .select({ rateCardId: users.rateCardId, issuer: users.issuer })
     .from(users)
     .where(eq(users.id, id))
     .limit(1);
   if (cur.length === 0) throw USER_NOT_FOUND;
+  // 本地密码只对本地账号有意义；给外部 OIDC 身份挂本地密码等于管理员接管该身份
+  if (cur[0]!.issuer !== 'local') {
+    throw new HttpError(400, 'NOT_LOCAL_ACCOUNT', '只能为本地账号（issuer=local）设置密码');
+  }
 
   const hash = await hashPassword(password);
   const update: Record<string, unknown> = { passwordHash: hash, updatedAt: new Date() };
@@ -202,8 +210,10 @@ export async function ensureGlobalCoefficient(s: AdminServices, rateCardId: numb
     )
     .limit(1);
   if (coeff.length === 0) {
+    // onConflictDoNothing：并发补齐（如两个管理员同时 set-password）不炸唯一键
     await s.db
       .insert(rateCardCoefficients)
-      .values({ rateCardId, scope: 'global', coefficient: '1.000' });
+      .values({ rateCardId, scope: 'global', coefficient: '1.000' })
+      .onConflictDoNothing();
   }
 }

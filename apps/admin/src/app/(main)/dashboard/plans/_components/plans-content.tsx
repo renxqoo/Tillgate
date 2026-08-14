@@ -107,7 +107,6 @@ export function PlansTable({ plans }: { readonly plans: ReadonlyArray<PlanRow> }
           <TableHead className="text-right">价格</TableHead>
           <TableHead className="w-20">周期</TableHead>
           <TableHead className="text-right">额度</TableHead>
-          <TableHead>余额兜底</TableHead>
           <TableHead className="w-20">席位</TableHead>
           <TableHead className="w-24">状态</TableHead>
           <TableHead className="w-36 text-right">操作</TableHead>
@@ -143,17 +142,6 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
       <TableCell>{plan.kind === 'pack' ? '—' : fmtPeriod(plan.periodDays)}</TableCell>
       <TableCell className="text-right">
         <MoneyPoints value={plan.quotaAmount} />
-      </TableCell>
-      <TableCell>
-        {plan.fallbackToBalance ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            允许
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            不允许
-          </span>
-        )}
       </TableCell>
       <TableCell>
         {plan.kind === 'pack' ? (
@@ -284,7 +272,6 @@ const createSchema = z.object({
   price: numericText({ message: '请输入有效价格' }).refine((v) => v > 0, '价格须 > 0'),
   periodDays: z.string(),
   quotaAmount: numericText({ message: '请输入有效额度' }).refine((v) => v > 0, '额度须 > 0'),
-  fallbackToBalance: z.boolean(),
   allowSeats: z.boolean(),
 });
 
@@ -305,7 +292,6 @@ export function CreatePlanDialog() {
       price: '',
       periodDays: '30',
       quotaAmount: '',
-      fallbackToBalance: false,
       allowSeats: false,
     },
   });
@@ -320,7 +306,6 @@ export function CreatePlanDialog() {
         price: Number(values.price),
         periodDays: values.kind === 'pack' ? 0 : Number(values.periodDays),
         quotaAmount: Number(values.quotaAmount),
-        fallbackToBalance: values.fallbackToBalance,
         allowSeats: values.allowSeats,
       });
       if (res.error) {
@@ -346,7 +331,7 @@ export function CreatePlanDialog() {
           <DialogTitle className="flex items-center gap-2">
             <GemIcon /> 新建套餐
           </DialogTitle>
-          <DialogDescription>设置类型、售价、周期与套餐额度（额度耗尽后可余额兜底）</DialogDescription>
+          <DialogDescription>设置类型、售价、周期与套餐额度（纯额度模型：额度是唯一用量货币）</DialogDescription>
         </DialogHeader>
         <PlanForm form={form} onSubmit={onSubmit} formId="plan-form" />
         <DialogFooter>
@@ -375,7 +360,6 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
       price: plan.price,
       periodDays: String(plan.periodDays),
       quotaAmount: plan.quotaAmount,
-      fallbackToBalance: plan.fallbackToBalance,
       allowSeats: plan.allowSeats,
       status: plan.status,
     },
@@ -386,12 +370,10 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
       const { updatePlanAction } = await import('../actions');
       const res = await updatePlanAction(plan.id, {
         name: values.name,
-        kind: values.kind,
         sortOrder: values.sortOrder.trim() === '' ? null : Number(values.sortOrder),
         price: Number(values.price),
         periodDays: values.kind === 'pack' ? 0 : Number(values.periodDays),
         quotaAmount: Number(values.quotaAmount),
-        fallbackToBalance: values.fallbackToBalance,
         allowSeats: values.allowSeats,
         status: Number(values.status),
       });
@@ -477,7 +459,7 @@ function PlanForm({
           }) => (
             <Field>
               <FieldLabel>类型</FieldLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select value={field.value} onValueChange={field.onChange} disabled={isEdit}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -545,31 +527,6 @@ function PlanForm({
           id="plan-quota"
           step="0.01"
           min={0}
-        />
-        <Controller
-          control={form.control}
-          name="fallbackToBalance"
-          render={({
-            field,
-          }: {
-            field: { value: boolean; onChange: (v: boolean) => void };
-          }) => (
-            <Field>
-              <FieldLabel>额度耗尽后</FieldLabel>
-              <Select
-                value={field.value ? '1' : '0'}
-                onValueChange={(v) => field.onChange(v === '1')}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">余额兜底</SelectItem>
-                  <SelectItem value="0">停止（不扣余额）</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
         />
         {!isPack && (
           <Controller

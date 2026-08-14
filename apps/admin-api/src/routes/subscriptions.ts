@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { plans, users, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
+  intParam,
   jsonBody,
   limitOffset,
   operationId,
@@ -29,9 +30,12 @@ const subListQuerySchema = paginationQuerySchema.extend({
   status: z.coerce.number().int().min(0).max(2).optional(),
 });
 
+/** 席位上限：与用户自助变更同口径，防 numeric 溢出 */
+const SEATS_MAX = 1000;
+
 const changeSchema = z.object({
   targetPlanId: z.number().int().positive(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().int().min(1).max(SEATS_MAX),
 });
 
 export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
@@ -62,7 +66,8 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
             reservedAmount: userSubscriptions.reservedAmount,
             quantity: userSubscriptions.quantity,
             price: userSubscriptions.price,
-            remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount}`,
+            /** 剩余额度（元）= 额度 - 已用 - 在途预占，与网关授权口径一致 */
+            remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}`,
             status: userSubscriptions.status,
             createdAt: userSubscriptions.createdAt,
           })
@@ -82,7 +87,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .post('/:id/renew', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       try {
         const result = await s.ledger.renewSubscription({
           operationId: operationId(c),
@@ -96,7 +101,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .post('/:id/change', jsonBody(changeSchema), async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
       try {
         const result = await s.ledger.changeSubscription({
@@ -113,7 +118,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .post('/:id/cancel', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       try {
         const result = await s.ledger.cancelSubscription({
           operationId: operationId(c),

@@ -36,14 +36,28 @@ export const baseEnvSchema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
 });
 
-/** OTel（可选，所有服务一致） */
+/** OTel（可选，所有服务一致）；默认值在 resolveOtelDefaults 按 NODE_ENV 决定 */
 const otelOptions = {
+  /**
+   * 链路追踪模式：
+   *   off=关闭；memory=进程内缓冲+内置 /debug/traces（零基建，开发默认）；
+   *   console=每次 span 一行日志；otlp=导出 collector（生产）
+   */
+  OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
-  OTEL_ENABLED: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
 };
+
+/** 未显式设置时：开发/测试默认 memory（零基建可用），生产默认 off */
+function resolveOtelDefaults<T extends { NODE_ENV: string; OTEL_TRACES_MODE?: string; OTEL_EXPORTER_OTLP_ENDPOINT?: string }>(
+  parsed: T,
+): T & { OTEL_TRACES_MODE: 'off' | 'memory' | 'console' | 'otlp' } {
+  const mode = (parsed.OTEL_TRACES_MODE ??
+    (parsed.NODE_ENV === 'production' ? 'off' : 'memory')) as 'off' | 'memory' | 'console' | 'otlp';
+  if (mode === 'otlp' && !parsed.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    throw new Error('OTEL_TRACES_MODE=otlp 时必须配置 OTEL_EXPORTER_OTLP_ENDPOINT');
+  }
+  return { ...parsed, OTEL_TRACES_MODE: mode };
+}
 
 /** 全局 RPM 生产硬上限（防 .env 残留压测值让全局限流形同虚设） */
 export const PROD_GLOBAL_RPM_CAP = 5000;
@@ -132,6 +146,14 @@ export const workerEnvSchema = baseEnvSchema.extend({
   WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_LOOP_STALE_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
+  /**
+   * uncertain 单小额自动放行阈值（元）：白名单失败码（证明上游未计费）无条件放行；
+   * 其余 uncertain 预扣 ≤ 此值自动放行（actor=system，全程审计）。'0' 关闭整个通道。
+   */
+  WORKER_AUTO_RELEASE_MAX_AMOUNT: z
+    .string()
+    .regex(/^\d+(\.\d+)?$/, 'WORKER_AUTO_RELEASE_MAX_AMOUNT 须为非负小数（元）')
+    .default('0.1'),
   ...otelOptions,
 });
 
@@ -192,7 +214,7 @@ export type ClientApiEnv = z.infer<typeof clientApiEnvSchema>;
 
 /** 解析并校验环境变量，失败即抛错（fail fast） */
 export function loadGatewayEnv(env = process.env): GatewayEnv {
-  const parsed = gatewayEnvSchema.parse(env);
+  const parsed = resolveOtelDefaults(gatewayEnvSchema.parse(env));
   if (parsed.NODE_ENV === 'production' && parsed.UPSTREAM_HOST_ALLOWLIST.length === 0) {
     throw new Error('production requires UPSTREAM_HOST_ALLOWLIST');
   }
@@ -205,7 +227,7 @@ export function loadGatewayEnv(env = process.env): GatewayEnv {
 }
 
 export function loadWorkerEnv(env = process.env): WorkerEnv {
-  const parsed = workerEnvSchema.parse(env);
+  const parsed = resolveOtelDefaults(workerEnvSchema.parse(env));
   if (parsed.WORKER_RETRY_BASE_MS > parsed.WORKER_RETRY_MAX_MS) {
     throw new Error('WORKER_RETRY_BASE_MS must be <= WORKER_RETRY_MAX_MS');
   }
@@ -216,9 +238,9 @@ export function loadWorkerEnv(env = process.env): WorkerEnv {
 }
 
 export function loadAdminApiEnv(env = process.env): AdminApiEnv {
-  return adminApiEnvSchema.parse(env);
+  return resolveOtelDefaults(adminApiEnvSchema.parse(env));
 }
 
 export function loadClientApiEnv(env = process.env): ClientApiEnv {
-  return clientApiEnvSchema.parse(env);
+  return resolveOtelDefaults(clientApiEnvSchema.parse(env));
 }

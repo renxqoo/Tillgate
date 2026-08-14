@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { plans, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, jsonBody, operationId, recordAudit } from '@ai-gateway/http';
+import { HttpError, intParam, jsonBody, operationId, recordAudit } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { mapSubscriptionError } from '../services/subscriptions.js';
@@ -11,31 +11,57 @@ import { mapSubscriptionError } from '../services/subscriptions.js';
  * 套餐管理（api-contract §4.10）。
  *
  * 定价模型：套餐额度 = 金额（元），按「官方价 × 系数」折算扣减；底层账本全元，
- * 积分仅展示层（前端换算）。fallback_to_balance = 额度耗尽后是否走余额。
+ * 积分仅展示层（前端换算）。纯额度模型：额度是唯一用量货币，无余额兜底。
+ *
+ * 业务规则：
+ *   - kind 创建后不可变（subscription/pack 的下游语义完全不同）
+ *   - 包月套餐 periodDays ∈ [1, 3650]；加油包固定 0（无周期）
+ *   - 订阅即闸门：删除套餐前须确认无任何关联订阅（含历史，外键约束）
  */
 
-const planCreateSchema = z.object({
-  name: z.string().min(1).max(32),
-  kind: z.enum(['subscription', 'pack']).optional(),
-  sortOrder: z.number().int().positive().nullable().optional(),
-  price: z.number().positive(),
-  periodDays: z.number().int().min(0),
-  quotaAmount: z.number().positive(),
-  fallbackToBalance: z.boolean().optional(),
-  allowSeats: z.boolean().optional(),
-});
+const PLAN_PRICE_MAX = 1e9;
 
-const planUpdateSchema = z.object({
-  name: z.string().min(1).max(32).optional(),
-  kind: z.enum(['subscription', 'pack']).optional(),
-  sortOrder: z.number().int().positive().nullable().optional(),
-  price: z.number().positive().optional(),
-  periodDays: z.number().int().min(0).optional(),
-  quotaAmount: z.number().positive().optional(),
-  fallbackToBalance: z.boolean().optional(),
-  allowSeats: z.boolean().optional(),
-  status: z.number().int().min(0).max(1).optional(),
-});
+const planCreateSchema = z
+  .object({
+    name: z.string().min(1).max(32),
+    kind: z.enum(['subscription', 'pack']).optional(),
+    sortOrder: z.number().int().positive().nullable().optional(),
+    price: z.number().positive().finite().max(PLAN_PRICE_MAX),
+    /** 包月：1~3650；加油包：0 或省略 */
+    periodDays: z.number().int().min(0).max(3650).optional(),
+    quotaAmount: z.number().positive().finite().max(PLAN_PRICE_MAX),
+    allowSeats: z.boolean().optional(),
+  })
+  .strict();
+
+const planUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(32).optional(),
+    sortOrder: z.number().int().positive().nullable().optional(),
+    price: z.number().positive().finite().max(PLAN_PRICE_MAX).optional(),
+    periodDays: z.number().int().min(0).max(3650).optional(),
+    quotaAmount: z.number().positive().finite().max(PLAN_PRICE_MAX).optional(),
+    allowSeats: z.boolean().optional(),
+    status: z.number().int().min(0).max(1).optional(),
+  })
+  .strict();
+
+/** kind × periodDays 一致性（创建用完整值，更新用「覆盖值 ∪ 现值」的合成值） */
+function assertKindPeriodConsistency(
+  kind: 'subscription' | 'pack',
+  periodDays: number | null,
+): number {
+  if (kind === 'pack') {
+    if (periodDays != null && periodDays !== 0) {
+      throw new HttpError(400, 'INVALID_PERIOD_DAYS', '加油包无周期，periodDays 必须为 0 或省略');
+    }
+    return 0;
+  }
+  if (periodDays == null || periodDays < 1) {
+    throw new HttpError(400, 'INVALID_PERIOD_DAYS', '包月套餐 periodDays 必须为 1~3650 的整数');
+  }
+  return periodDays;
+}
 
 export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return (
@@ -49,16 +75,17 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       // 创建
       .post('/', jsonBody(planCreateSchema), async (c) => {
         const body = c.req.valid('json');
+        const kind = body.kind ?? 'subscription';
+        const periodDays = assertKindPeriodConsistency(kind, body.periodDays ?? null);
         const [plan] = await s.db
           .insert(plans)
           .values({
             name: body.name,
-            kind: body.kind ?? 'subscription',
+            kind,
             sortOrder: body.sortOrder ?? null,
             price: String(body.price),
-            periodDays: body.kind === 'pack' ? 0 : body.periodDays,
+            periodDays,
             quotaAmount: String(body.quotaAmount),
-            fallbackToBalance: body.fallbackToBalance ?? true,
             allowSeats: body.allowSeats ?? false,
             status: 0,
           })
@@ -74,22 +101,28 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         return c.json(plan, 201);
       })
 
-      // 更新
+      // 更新（kind 不可变；periodDays 与现 kind 联合校验）
       .patch('/:id', jsonBody(planUpdateSchema), async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const body = c.req.valid('json');
+        const current = await s.db.query.plans.findFirst({
+          where: eq(plans.id, id),
+          columns: { kind: true, periodDays: true },
+        });
+        if (!current) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
+        const periodDays = assertKindPeriodConsistency(
+          current.kind as 'subscription' | 'pack',
+          body.periodDays ?? current.periodDays,
+        );
         const update: Record<string, unknown> = {};
         if (body.name !== undefined) update.name = body.name;
-        if (body.kind !== undefined) update.kind = body.kind;
         if (body.sortOrder !== undefined) update.sortOrder = body.sortOrder;
         if (body.price !== undefined) update.price = String(body.price);
-        if (body.periodDays !== undefined) update.periodDays = body.periodDays;
+        if (body.periodDays !== undefined) update.periodDays = periodDays;
         if (body.quotaAmount !== undefined) update.quotaAmount = String(body.quotaAmount);
-        if (body.fallbackToBalance !== undefined) update.fallbackToBalance = body.fallbackToBalance;
         if (body.allowSeats !== undefined) update.allowSeats = body.allowSeats;
         if (body.status !== undefined) update.status = body.status;
         const [updated] = await s.db.update(plans).set(update).where(eq(plans.id, id)).returning();
-        if (!updated) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
         await recordAudit(s.db, {
           actor: 'admin',
           adminId: c.get('adminId'),
@@ -101,9 +134,9 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         return c.json(updated);
       })
 
-      // 发放加油包（kind=pack）：扣 pack.price，用户余额 += pack.quota_amount
+      // 发放加油包（kind=pack）：扣 pack.price，有效订阅额度 += pack.quota_amount
       .post('/:id/grant', jsonBody(z.object({ userId: z.number().int().positive() })), async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const body = c.req.valid('json');
         try {
           const result = await s.ledger.grantPack({
@@ -118,16 +151,16 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         }
       })
 
-      // 删除（仅无有效订阅时允许，防孤儿订阅）
+      // 删除（存在任何关联订阅——含历史——都不允许，外键无 ON DELETE，防 500）
       .delete('/:id', async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const bound = await s.db
           .select({ id: userSubscriptions.id })
           .from(userSubscriptions)
-          .where(and(eq(userSubscriptions.planId, id), eq(userSubscriptions.status, 0)))
+          .where(eq(userSubscriptions.planId, id))
           .limit(1);
         if (bound.length > 0) {
-          throw new HttpError(409, 'PLAN_IN_USE', '该套餐仍有有效订阅，无法删除');
+          throw new HttpError(409, 'PLAN_IN_USE', '该套餐存在关联订阅（含历史），无法删除，可改为停用');
         }
         const [deleted] = await s.db.delete(plans).where(eq(plans.id, id)).returning({ id: plans.id });
         if (!deleted) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');

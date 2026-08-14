@@ -152,7 +152,7 @@ export interface Ledger {
     userId?: number | null;
     adminId?: number | null;
   }): Promise<SubscribeResult>;
-  /** 发放加油包：扣 pack.price、balance += pack.quota_amount（管理员触发，不透支）。 */
+  /** 发放加油包：扣 pack.price、有效订阅额度 += pack.quota_amount（管理员触发，不透支）。 */
   grantPack(input: {
     operationId: string;
     userId: number;
@@ -201,6 +201,34 @@ async function runEffect(effect: (() => Promise<void>) | undefined): Promise<voi
     await effect();
   } catch {
     // PostgreSQL 已提交；临时副作用失败不能改变资金结果。
+  }
+}
+
+/** 「单有效订阅」唯一部分索引的并发兜底：冲突事务以业务错误暴露，而非裸 23505。
+ *  drizzle 会把驱动错误包在 cause 链里，需逐层解包探测。 */
+function isOneActiveSubscriptionViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current != null && depth < 5; depth++) {
+    if (
+      (current as { code?: string }).code === '23505' &&
+      (current as { constraint?: string }).constraint === 'user_subscriptions_one_active_uq'
+    ) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/** 订阅类事务统一收口：唯一索引冲突 → already_subscribed（事务整体回滚，幂等键随事务回退可安全重试） */
+async function runSubscriptionTx<T>(tx: Promise<T>): Promise<T> {
+  try {
+    return await tx;
+  } catch (error) {
+    if (isOneActiveSubscriptionViolation(error)) {
+      throw new LedgerError('already_subscribed');
+    }
+    throw error;
   }
 }
 
@@ -337,168 +365,170 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
       subscriptionId: input.subscriptionId,
       quantity: input.quantity,
     });
-    const result = await db.transaction(async (tx): Promise<SubscribeResult> => {
-      const inserted = await tx
-        .insert(fundOperations)
-        .values({ operationId: input.operationId, kind: input.kind, fingerprint: fp })
-        .onConflictDoNothing({ target: fundOperations.operationId })
-        .returning({ operationId: fundOperations.operationId });
-      if (inserted.length === 0) {
-        const existing = await tx.query.fundOperations.findFirst({
-          where: eq(fundOperations.operationId, input.operationId),
-        });
-        if (!existing || existing.kind !== input.kind || existing.fingerprint !== fp) {
-          throw new LedgerError('idempotency_conflict');
+    const result = await runSubscriptionTx(
+      db.transaction(async (tx): Promise<SubscribeResult> => {
+        const inserted = await tx
+          .insert(fundOperations)
+          .values({ operationId: input.operationId, kind: input.kind, fingerprint: fp })
+          .onConflictDoNothing({ target: fundOperations.operationId })
+          .returning({ operationId: fundOperations.operationId });
+        if (inserted.length === 0) {
+          const existing = await tx.query.fundOperations.findFirst({
+            where: eq(fundOperations.operationId, input.operationId),
+          });
+          if (!existing || existing.kind !== input.kind || existing.fingerprint !== fp) {
+            throw new LedgerError('idempotency_conflict');
+          }
+          if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
+          return { ...(existing.result as Omit<SubscribeResult, 'replayed'>), replayed: true };
         }
-        if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
-        return { ...(existing.result as Omit<SubscribeResult, 'replayed'>), replayed: true };
-      }
 
-      const now = clock();
-      let userId = input.userId;
-      let planId = input.planId;
-      let quantity = input.quantity ?? 1;
-      let startAt = now;
+        const now = clock();
+        let userId = input.userId;
+        let planId = input.planId;
+        let quantity = input.quantity ?? 1;
+        let startAt = now;
 
-      if (input.kind === 'subscription.renew') {
-        const sub = await tx.query.userSubscriptions.findFirst({
-          where: eq(userSubscriptions.id, input.subscriptionId ?? 0),
-          columns: { userId: true, planId: true, endAt: true, quantity: true },
-        });
-        if (!sub) throw new LedgerError('no_subscription');
-        // 用户自助续费：校验订阅归属（管理员不传 userId，不限归属）
-        if (input.userId != null && sub.userId !== input.userId) {
-          throw new LedgerError('no_subscription');
-        }
-        userId = sub.userId;
-        planId = sub.planId;
-        quantity = sub.quantity; // 续费沿用原席位
-        // 顺延：到期后续费从 now 起，未到期续费从旧 end 起
-        startAt = sub.endAt > now ? sub.endAt : now;
-        // 旧订阅转到期（幂等：已非有效的跳过）
-        await tx
-          .update(userSubscriptions)
-          .set({ status: 1 })
-          .where(
-            and(
-              eq(userSubscriptions.id, input.subscriptionId ?? 0),
+        if (input.kind === 'subscription.renew') {
+          const sub = await tx.query.userSubscriptions.findFirst({
+            where: eq(userSubscriptions.id, input.subscriptionId ?? 0),
+            columns: { userId: true, planId: true, endAt: true, quantity: true },
+          });
+          if (!sub) throw new LedgerError('no_subscription');
+          // 用户自助续费：校验订阅归属（管理员不传 userId，不限归属）
+          if (input.userId != null && sub.userId !== input.userId) {
+            throw new LedgerError('no_subscription');
+          }
+          userId = sub.userId;
+          planId = sub.planId;
+          quantity = sub.quantity; // 续费沿用原席位
+          // 顺延：到期后续费从 now 起，未到期续费从旧 end 起
+          startAt = sub.endAt > now ? sub.endAt : now;
+          // 旧订阅转到期（幂等：已非有效的跳过）
+          await tx
+            .update(userSubscriptions)
+            .set({ status: 1 })
+            .where(
+              and(
+                eq(userSubscriptions.id, input.subscriptionId ?? 0),
+                eq(userSubscriptions.status, 0),
+              ),
+            );
+        } else {
+          if (!Number.isInteger(quantity) || quantity < 1) {
+            throw new LedgerError('invalid_quantity');
+          }
+          const active = await tx.query.userSubscriptions.findFirst({
+            where: and(
+              eq(userSubscriptions.userId, userId!),
               eq(userSubscriptions.status, 0),
+              gt(userSubscriptions.endAt, now),
             ),
-          );
-      } else {
-        if (!Number.isInteger(quantity) || quantity < 1) {
-          throw new LedgerError('invalid_quantity');
+            columns: { id: true },
+          });
+          if (active) throw new LedgerError('already_subscribed');
         }
-        const active = await tx.query.userSubscriptions.findFirst({
-          where: and(
-            eq(userSubscriptions.userId, userId!),
-            eq(userSubscriptions.status, 0),
-            gt(userSubscriptions.endAt, now),
-          ),
-          columns: { id: true },
-        });
-        if (active) throw new LedgerError('already_subscribed');
-      }
 
-      const plan = await tx.query.plans.findFirst({
-        where: eq(plans.id, planId ?? 0),
-        columns: {
-          name: true,
-          price: true,
-          periodDays: true,
-          quotaAmount: true,
-          status: true,
-          kind: true,
-          allowSeats: true,
-        },
-      });
-      if (!plan) throw new LedgerError('plan_not_found');
-      if (plan.status !== 0) throw new LedgerError('plan_disabled');
-      if (plan.kind !== 'subscription') throw new LedgerError('not_a_pack');
-      if (quantity > 1 && !plan.allowSeats) throw new LedgerError('seats_not_allowed');
-      if (plan.allowSeats) {
-        const userRow = await tx.query.users.findFirst({
-          where: eq(users.id, userId!),
-          columns: { isEnterprise: true },
+        const plan = await tx.query.plans.findFirst({
+          where: eq(plans.id, planId ?? 0),
+          columns: {
+            name: true,
+            price: true,
+            periodDays: true,
+            quotaAmount: true,
+            status: true,
+            kind: true,
+            allowSeats: true,
+          },
         });
-        if (!userRow) throw new LedgerError('user_not_found');
-        if (!userRow.isEnterprise) throw new LedgerError('enterprise_required');
-      }
+        if (!plan) throw new LedgerError('plan_not_found');
+        if (plan.status !== 0) throw new LedgerError('plan_disabled');
+        if (plan.kind !== 'subscription') throw new LedgerError('not_a_pack');
+        if (quantity > 1 && !plan.allowSeats) throw new LedgerError('seats_not_allowed');
+        if (plan.allowSeats) {
+          const userRow = await tx.query.users.findFirst({
+            where: eq(users.id, userId!),
+            columns: { isEnterprise: true },
+          });
+          if (!userRow) throw new LedgerError('user_not_found');
+          if (!userRow.isEnterprise) throw new LedgerError('enterprise_required');
+        }
 
-      const endAt = new Date(startAt.getTime() + Number(plan.periodDays) * 86_400_000);
-      // 总价 = 档价 × 席位；总额度 = 档额度 × 席位（快照）
-      const totalPrice = toDecimal(plan.price).times(quantity);
-      const totalQuota = toDecimal(plan.quotaAmount).times(quantity);
-      const price = toStorage(totalPrice);
-      // 不允许透支余额买套餐（防套现）：可用余额 balance - reserved >= price
-      const updated = await tx
-        .update(users)
-        .set({ balance: sql`${users.balance} - ${price}::numeric`, updatedAt: now })
-        .where(
-          sql`${users.id} = ${userId}
-              and ${users.balance} - ${users.reservedBalance} >= ${price}::numeric`,
-        )
-        .returning({ balance: users.balance });
-      if (updated.length === 0) {
-        const u = await tx.query.users.findFirst({
-          where: eq(users.id, userId!),
-          columns: { id: true },
-        });
-        throw new LedgerError(u ? 'insufficient_balance' : 'user_not_found');
-      }
-      const balanceAfter = updated[0]!.balance;
-      const balanceBefore = toStorage(toDecimal(balanceAfter).plus(totalPrice));
+        const endAt = new Date(startAt.getTime() + Number(plan.periodDays) * 86_400_000);
+        // 总价 = 档价 × 席位；总额度 = 档额度 × 席位（快照）
+        const totalPrice = toDecimal(plan.price).times(quantity);
+        const totalQuota = toDecimal(plan.quotaAmount).times(quantity);
+        const price = toStorage(totalPrice);
+        // 不允许透支余额买套餐（防套现）：可用余额 balance - reserved >= price
+        const updated = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${price}::numeric`, updatedAt: now })
+          .where(
+            sql`${users.id} = ${userId}
+                and ${users.balance} - ${users.reservedBalance} >= ${price}::numeric`,
+          )
+          .returning({ balance: users.balance });
+        if (updated.length === 0) {
+          const u = await tx.query.users.findFirst({
+            where: eq(users.id, userId!),
+            columns: { id: true },
+          });
+          throw new LedgerError(u ? 'insufficient_balance' : 'user_not_found');
+        }
+        const balanceAfter = updated[0]!.balance;
+        const balanceBefore = toStorage(toDecimal(balanceAfter).plus(totalPrice));
 
-      const [sub] = await tx
-        .insert(userSubscriptions)
-        .values({
+        const [sub] = await tx
+          .insert(userSubscriptions)
+          .values({
+            userId: userId!,
+            planId: planId!,
+            startAt,
+            endAt,
+            quotaAmount: toStorage(totalQuota),
+            usedAmount: '0',
+            reservedAmount: '0',
+            quantity,
+            price,
+            status: 0,
+          })
+          .returning({ id: userSubscriptions.id });
+
+        const [entry] = await tx
+          .insert(transactions)
+          .values({
+            userId: userId!,
+            type: 'subscribe',
+            amount: toStorage(totalPrice.negated()),
+            balanceBefore,
+            balanceAfter,
+            refType: 'subscription',
+            refId: String(sub!.id),
+            remark: `购买套餐「${plan.name}」×${quantity}`,
+            createdBy: input.adminId,
+          })
+          .returning({ id: transactions.id });
+
+        const stored: Omit<SubscribeResult, 'replayed'> = {
           userId: userId!,
+          subscriptionId: sub!.id,
           planId: planId!,
-          startAt,
-          endAt,
-          quotaAmount: toStorage(totalQuota),
-          usedAmount: '0',
-          reservedAmount: '0',
+          planName: plan.name,
           quantity,
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+          quotaAmount: toStorage(totalQuota),
           price,
-          status: 0,
-        })
-        .returning({ id: userSubscriptions.id });
-
-      const [entry] = await tx
-        .insert(transactions)
-        .values({
-          userId: userId!,
-          type: 'subscribe',
-          amount: toStorage(totalPrice.negated()),
           balanceBefore,
           balanceAfter,
-          refType: 'subscription',
-          refId: String(sub!.id),
-          remark: `购买套餐「${plan.name}」×${quantity}`,
-          createdBy: input.adminId,
-        })
-        .returning({ id: transactions.id });
-
-      const stored: Omit<SubscribeResult, 'replayed'> = {
-        userId: userId!,
-        subscriptionId: sub!.id,
-        planId: planId!,
-        planName: plan.name,
-        quantity,
-        startAt: startAt.toISOString(),
-        endAt: endAt.toISOString(),
-        quotaAmount: toStorage(totalQuota),
-        price,
-        balanceBefore,
-        balanceAfter,
-      };
-      await tx
-        .update(fundOperations)
-        .set({ transactionId: entry!.id, result: stored })
-        .where(eq(fundOperations.operationId, input.operationId));
-      return { ...stored, replayed: false };
-    });
+        };
+        await tx
+          .update(fundOperations)
+          .set({ transactionId: entry!.id, result: stored })
+          .where(eq(fundOperations.operationId, input.operationId));
+        return { ...stored, replayed: false };
+      }),
+    );
 
     if (!result.replayed) {
       await runEffect(
@@ -783,180 +813,191 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         targetPlanId: input.targetPlanId,
         quantity: input.quantity,
       });
-      const result = await db.transaction(async (tx): Promise<SubscribeResult> => {
-        const inserted = await tx
-          .insert(fundOperations)
-          .values({ operationId: input.operationId, kind: 'subscription.change', fingerprint: fp })
-          .onConflictDoNothing({ target: fundOperations.operationId })
-          .returning({ operationId: fundOperations.operationId });
-        if (inserted.length === 0) {
-          const existing = await tx.query.fundOperations.findFirst({
-            where: eq(fundOperations.operationId, input.operationId),
-          });
-          if (!existing || existing.kind !== 'subscription.change' || existing.fingerprint !== fp) {
-            throw new LedgerError('idempotency_conflict');
+      const result = await runSubscriptionTx(
+        db.transaction(async (tx): Promise<SubscribeResult> => {
+          const inserted = await tx
+            .insert(fundOperations)
+            .values({ operationId: input.operationId, kind: 'subscription.change', fingerprint: fp })
+            .onConflictDoNothing({ target: fundOperations.operationId })
+            .returning({ operationId: fundOperations.operationId });
+          if (inserted.length === 0) {
+            const existing = await tx.query.fundOperations.findFirst({
+              where: eq(fundOperations.operationId, input.operationId),
+            });
+            if (!existing || existing.kind !== 'subscription.change' || existing.fingerprint !== fp) {
+              throw new LedgerError('idempotency_conflict');
+            }
+            if (!existing.result)
+              throw new LedgerError('idempotency_conflict', 'operation incomplete');
+            return { ...(existing.result as Omit<SubscribeResult, 'replayed'>), replayed: true };
           }
-          if (!existing.result)
-            throw new LedgerError('idempotency_conflict', 'operation incomplete');
-          return { ...(existing.result as Omit<SubscribeResult, 'replayed'>), replayed: true };
-        }
 
-        if (!Number.isInteger(input.quantity) || input.quantity < 1) {
-          throw new LedgerError('invalid_quantity');
-        }
-        const now = clock();
-        const current = await tx.query.userSubscriptions.findFirst({
-          where: and(
-            eq(userSubscriptions.id, input.subscriptionId),
-            eq(userSubscriptions.status, 0),
-            gt(userSubscriptions.endAt, now),
-          ),
-          with: { plan: { columns: { sortOrder: true, name: true } } },
-          columns: {
-            userId: true,
-            planId: true,
-            quotaAmount: true,
-            usedAmount: true,
-            reservedAmount: true,
-            quantity: true,
-            price: true,
-          },
-        });
-        if (!current) throw new LedgerError('no_subscription');
-        if (input.userId != null && current.userId !== input.userId) {
-          throw new LedgerError('no_subscription');
-        }
-
-        const target = await tx.query.plans.findFirst({
-          where: eq(plans.id, input.targetPlanId),
-          columns: {
-            name: true,
-            price: true,
-            periodDays: true,
-            quotaAmount: true,
-            status: true,
-            kind: true,
-            sortOrder: true,
-            allowSeats: true,
-          },
-        });
-        if (!target) throw new LedgerError('plan_not_found');
-        if (target.status !== 0) throw new LedgerError('plan_disabled');
-        if (target.kind !== 'subscription') throw new LedgerError('not_a_pack');
-
-        // 只能升不能降：sort_order 不降、席位不缩容，且至少一项变化。（先判层级，再判席位能力）
-        const curSort = current.plan.sortOrder ?? 0;
-        const targetSort = target.sortOrder ?? 0;
-        if (targetSort < curSort || input.quantity < current.quantity) {
-          throw new LedgerError('downgrade_not_allowed');
-        }
-        if (targetSort === curSort && input.quantity === current.quantity) {
-          throw new LedgerError('already_subscribed');
-        }
-        if (input.quantity > 1 && !target.allowSeats) throw new LedgerError('seats_not_allowed');
-        if (target.allowSeats) {
-          const userRow = await tx.query.users.findFirst({
-            where: eq(users.id, current.userId),
-            columns: { isEnterprise: true },
+          if (!Number.isInteger(input.quantity) || input.quantity < 1) {
+            throw new LedgerError('invalid_quantity');
+          }
+          const now = clock();
+          const current = await tx.query.userSubscriptions.findFirst({
+            where: and(
+              eq(userSubscriptions.id, input.subscriptionId),
+              eq(userSubscriptions.status, 0),
+              gt(userSubscriptions.endAt, now),
+            ),
+            with: { plan: { columns: { sortOrder: true, name: true } } },
+            columns: {
+              userId: true,
+              planId: true,
+              quotaAmount: true,
+              usedAmount: true,
+              reservedAmount: true,
+              quantity: true,
+              price: true,
+            },
           });
-          if (!userRow) throw new LedgerError('user_not_found');
-          if (!userRow.isEnterprise) throw new LedgerError('enterprise_required');
-        }
+          if (!current) throw new LedgerError('no_subscription');
+          if (input.userId != null && current.userId !== input.userId) {
+            throw new LedgerError('no_subscription');
+          }
 
-        // 剩余额度 = 总额度 - 已用 - 在途；剩余价值 = 购买总价 × 剩余额度/总额度
-        const remainingQuota = toDecimal(current.quotaAmount)
-          .minus(toDecimal(current.usedAmount))
-          .minus(toDecimal(current.reservedAmount));
-        const remainingValue =
-          toDecimal(current.quotaAmount).gt(0)
-            ? toDecimal(current.price).times(remainingQuota).div(current.quotaAmount)
+          const target = await tx.query.plans.findFirst({
+            where: eq(plans.id, input.targetPlanId),
+            columns: {
+              name: true,
+              price: true,
+              periodDays: true,
+              quotaAmount: true,
+              status: true,
+              kind: true,
+              sortOrder: true,
+              allowSeats: true,
+            },
+          });
+          if (!target) throw new LedgerError('plan_not_found');
+          if (target.status !== 0) throw new LedgerError('plan_disabled');
+          if (target.kind !== 'subscription') throw new LedgerError('not_a_pack');
+
+          // 只能升不能降：sort_order 不降、席位不缩容，且至少一项变化。（先判层级，再判席位能力）
+          const curSort = current.plan.sortOrder ?? 0;
+          const targetSort = target.sortOrder ?? 0;
+          if (targetSort < curSort || input.quantity < current.quantity) {
+            throw new LedgerError('downgrade_not_allowed');
+          }
+          if (targetSort === curSort && input.quantity === current.quantity) {
+            throw new LedgerError('already_subscribed');
+          }
+          if (input.quantity > 1 && !target.allowSeats) throw new LedgerError('seats_not_allowed');
+          if (target.allowSeats) {
+            const userRow = await tx.query.users.findFirst({
+              where: eq(users.id, current.userId),
+              columns: { isEnterprise: true },
+            });
+            if (!userRow) throw new LedgerError('user_not_found');
+            if (!userRow.isEnterprise) throw new LedgerError('enterprise_required');
+          }
+
+          // 剩余额度 = 总额度 - 已用 - 在途；剩余价值 = 购买总价 × 剩余额度/总额度
+          const remainingQuota = toDecimal(current.quotaAmount)
+            .minus(toDecimal(current.usedAmount))
+            .minus(toDecimal(current.reservedAmount));
+          const remainingValue =
+            toDecimal(current.quotaAmount).gt(0)
+              ? toDecimal(current.price).times(remainingQuota).div(current.quotaAmount)
+              : new Decimal(0);
+          const newTotalPrice = toDecimal(target.price).times(input.quantity);
+          // 补差价 = max(0, 新总价 - 剩余价值)；<=0 免费升级
+          const diff = newTotalPrice.minus(remainingValue).gt(0)
+            ? newTotalPrice.minus(remainingValue)
             : new Decimal(0);
-        const newTotalPrice = toDecimal(target.price).times(input.quantity);
-        // 补差价 = max(0, 新总价 - 剩余价值)；<=0 免费升级
-        const diff = newTotalPrice.minus(remainingValue).gt(0)
-          ? newTotalPrice.minus(remainingValue)
-          : new Decimal(0);
 
-        // 旧订阅转到期（保留 used/reserved，供在途请求结算）
-        await tx
-          .update(userSubscriptions)
-          .set({ status: 1 })
-          .where(and(eq(userSubscriptions.id, input.subscriptionId), eq(userSubscriptions.status, 0)));
+          // 旧订阅转到期（保留 used/reserved，供在途请求结算）
+          await tx
+            .update(userSubscriptions)
+            .set({ status: 1 })
+            .where(and(eq(userSubscriptions.id, input.subscriptionId), eq(userSubscriptions.status, 0)));
 
-        let balanceAfter = current.price;
-        let balanceBefore = current.price;
-        if (diff.gt(0)) {
-          const updated = await tx
-            .update(users)
-            .set({ balance: sql`${users.balance} - ${diff.toString()}::numeric`, updatedAt: now })
-            .where(
-              sql`${users.id} = ${current.userId}
-                  and ${users.balance} - ${users.reservedBalance} >= ${diff.toString()}::numeric`,
-            )
-            .returning({ balance: users.balance });
-          if (updated.length === 0) {
+          // 流水的余额快照必须是用户真实余额：免费升级（diff=0）也要读库，绝不能用订阅价格顶替。
+          let balanceAfter: string;
+          let balanceBefore: string;
+          if (diff.gt(0)) {
+            const updated = await tx
+              .update(users)
+              .set({ balance: sql`${users.balance} - ${diff.toString()}::numeric`, updatedAt: now })
+              .where(
+                sql`${users.id} = ${current.userId}
+                    and ${users.balance} - ${users.reservedBalance} >= ${diff.toString()}::numeric`,
+              )
+              .returning({ balance: users.balance });
+            if (updated.length === 0) {
+              const u = await tx.query.users.findFirst({
+                where: eq(users.id, current.userId),
+                columns: { id: true },
+              });
+              throw new LedgerError(u ? 'insufficient_balance' : 'user_not_found');
+            }
+            balanceAfter = updated[0]!.balance;
+            balanceBefore = toStorage(toDecimal(balanceAfter).plus(diff));
+          } else {
             const u = await tx.query.users.findFirst({
               where: eq(users.id, current.userId),
-              columns: { id: true },
+              columns: { balance: true },
             });
-            throw new LedgerError(u ? 'insufficient_balance' : 'user_not_found');
+            if (!u) throw new LedgerError('user_not_found');
+            balanceAfter = u.balance;
+            balanceBefore = u.balance;
           }
-          balanceAfter = updated[0]!.balance;
-          balanceBefore = toStorage(toDecimal(balanceAfter).plus(diff));
-        }
 
-        const endAt = new Date(now.getTime() + Number(target.periodDays) * 86_400_000);
-        const totalQuota = toDecimal(target.quotaAmount).times(input.quantity);
-        const [sub] = await tx
-          .insert(userSubscriptions)
-          .values({
+          const endAt = new Date(now.getTime() + Number(target.periodDays) * 86_400_000);
+          const totalQuota = toDecimal(target.quotaAmount).times(input.quantity);
+          const [sub] = await tx
+            .insert(userSubscriptions)
+            .values({
+              userId: current.userId,
+              planId: input.targetPlanId,
+              startAt: now,
+              endAt,
+              quotaAmount: toStorage(totalQuota),
+              usedAmount: '0',
+              reservedAmount: '0',
+              quantity: input.quantity,
+              price: toStorage(newTotalPrice),
+              status: 0,
+            })
+            .returning({ id: userSubscriptions.id });
+
+          const [entry] = await tx
+            .insert(transactions)
+            .values({
+              userId: current.userId,
+              type: 'subscribe',
+              amount: toStorage(diff.negated()),
+              balanceBefore,
+              balanceAfter,
+              refType: 'subscription',
+              refId: String(sub!.id),
+              remark: `变更套餐「${current.plan.name}」→「${target.name}」×${input.quantity} 补差价 ${toStorage(diff)}`,
+              createdBy: input.adminId,
+            })
+            .returning({ id: transactions.id });
+
+          const stored: Omit<SubscribeResult, 'replayed'> = {
             userId: current.userId,
+            subscriptionId: sub!.id,
             planId: input.targetPlanId,
-            startAt: now,
-            endAt,
-            quotaAmount: toStorage(totalQuota),
-            usedAmount: '0',
-            reservedAmount: '0',
+            planName: target.name,
             quantity: input.quantity,
+            startAt: now.toISOString(),
+            endAt: endAt.toISOString(),
+            quotaAmount: toStorage(totalQuota),
             price: toStorage(newTotalPrice),
-            status: 0,
-          })
-          .returning({ id: userSubscriptions.id });
-
-        const [entry] = await tx
-          .insert(transactions)
-          .values({
-            userId: current.userId,
-            type: 'subscribe',
-            amount: toStorage(diff.negated()),
             balanceBefore,
             balanceAfter,
-            refType: 'subscription',
-            refId: String(sub!.id),
-            remark: `变更套餐「${current.plan.name}」→「${target.name}」×${input.quantity} 补差价 ${toStorage(diff)}`,
-            createdBy: input.adminId,
-          })
-          .returning({ id: transactions.id });
-
-        const stored: Omit<SubscribeResult, 'replayed'> = {
-          userId: current.userId,
-          subscriptionId: sub!.id,
-          planId: input.targetPlanId,
-          planName: target.name,
-          quantity: input.quantity,
-          startAt: now.toISOString(),
-          endAt: endAt.toISOString(),
-          quotaAmount: toStorage(totalQuota),
-          price: toStorage(newTotalPrice),
-          balanceBefore,
-          balanceAfter,
-        };
-        await tx
-          .update(fundOperations)
-          .set({ transactionId: entry!.id, result: stored })
-          .where(eq(fundOperations.operationId, input.operationId));
-        return { ...stored, replayed: false };
-      });
+          };
+          await tx
+            .update(fundOperations)
+            .set({ transactionId: entry!.id, result: stored })
+            .where(eq(fundOperations.operationId, input.operationId));
+          return { ...stored, replayed: false };
+        }),
+      );
 
       if (!result.replayed) {
         await runEffect(

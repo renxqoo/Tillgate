@@ -207,8 +207,20 @@ export function createBillingProcessor({
           gt(billingRequests.claimUntil, sql`clock_timestamp()`),
         ),
       )
-      .returning({ requestId: billingRequests.requestId });
+      .returning({ requestId: billingRequests.requestId, reservedAmount: billingRequests.reservedAmount });
     if (changed.length === 0) return 'claim_lost';
+    if (dead) {
+      await safeEffect(() =>
+        effects?.requestDead?.({
+          requestId: claimed.requestId,
+          userId: (claimed.receipt as { userId?: number } | null)?.userId ?? 0,
+          failureClass,
+          lastError: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+          reservedAmount: changed[0]!.reservedAmount,
+          attempt: claimed.attempt,
+        }) ?? Promise.resolve(),
+      );
+    }
     return dead ? 'dead' : 'retried';
   }
 

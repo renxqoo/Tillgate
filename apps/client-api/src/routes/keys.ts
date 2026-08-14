@@ -5,6 +5,7 @@ import { z } from 'zod';
 import {
   HttpError,
   generateApiKey,
+  intParam,
   invalidateKeyAuthCache,
   jsonBody,
   limitOffset,
@@ -93,45 +94,53 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
       const body = c.req.valid('json');
 
       // 席位 = Key 名额：必须有有效订阅，且活跃 Key 数 < 订阅席位（个人=1，企业=席位）。
-      const sub = await s.db.query.userSubscriptions.findFirst({
-        where: and(
-          eq(userSubscriptions.userId, session.userId),
-          eq(userSubscriptions.status, 0),
-          gt(userSubscriptions.endAt, new Date()),
-        ),
-        columns: { quantity: true },
-      });
-      if (!sub) throw new HttpError(402, 'SUBSCRIPTION_REQUIRED', '请先订阅套餐后再创建 Key');
-      const activeRow = await s.db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(apiKeys)
-        .where(and(eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)));
-      if (Number(activeRow[0]?.count ?? 0) >= sub.quantity) {
-        throw new HttpError(409, 'SEATS_FULL', `席位已满（${sub.quantity}），请扩容或先删除现有 Key`);
-      }
-
+      // 事务内锁定订阅行（FOR UPDATE）串行化同席位并发建 Key，杜绝「数了再插」超发。
       const plaintext = generateApiKey();
-      const [created] = await s.db
-        .insert(apiKeys)
-        .values({
-          keyHash: sha256Hex(plaintext),
-          keyPreview: maskKey(plaintext),
-          userId: session.userId,
-          name: body.name,
-          remark: body.remark ?? null,
-          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-          rpmLimit: body.rpmLimit ?? null,
-          tpmLimit: body.tpmLimit ?? null,
-          // numeric 列接受字符串；number → string 对齐 schema 类型
-          dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
-          status: 0,
-        })
-        .returning({ id: apiKeys.id, name: apiKeys.name });
+      const created = await s.db.transaction(async (tx) => {
+        const subs = await tx
+          .select({ id: userSubscriptions.id, quantity: userSubscriptions.quantity })
+          .from(userSubscriptions)
+          .where(
+            and(
+              eq(userSubscriptions.userId, session.userId),
+              eq(userSubscriptions.status, 0),
+              gt(userSubscriptions.endAt, new Date()),
+            ),
+          )
+          .limit(1)
+          .for('update');
+        const sub = subs[0];
+        if (!sub) throw new HttpError(402, 'SUBSCRIPTION_REQUIRED', '请先订阅套餐后再创建 Key');
+        const activeRow = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(apiKeys)
+          .where(and(eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)));
+        if (Number(activeRow[0]?.count ?? 0) >= sub.quantity) {
+          throw new HttpError(409, 'SEATS_FULL', `席位已满（${sub.quantity}），请扩容或先删除现有 Key`);
+        }
+        const [row] = await tx
+          .insert(apiKeys)
+          .values({
+            keyHash: sha256Hex(plaintext),
+            keyPreview: maskKey(plaintext),
+            userId: session.userId,
+            name: body.name,
+            remark: body.remark ?? null,
+            expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+            rpmLimit: body.rpmLimit ?? null,
+            tpmLimit: body.tpmLimit ?? null,
+            // numeric 列接受字符串；number → string 对齐 schema 类型
+            dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
+            status: 0,
+          })
+          .returning({ id: apiKeys.id, name: apiKeys.name });
+        return row!;
+      });
       await recordAudit(s.db, {
         actor: 'user',
         action: 'api_key.create',
         targetType: 'api_key',
-        targetId: created!.id,
+        targetId: created.id,
       });
       // 明文 key 只在此响应中下发
       return c.json({ ...created, key: plaintext }, 201);
@@ -140,7 +149,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
     // 轮换（个人「刷新」）：原子吊销旧 Key + 建新 Key，沿用旧 Key 的 name/限流，明文只回显一次。
     .post('/:id/rotate', async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const [oldKey] = await s.db
         .select({
           keyHash: apiKeys.keyHash,
@@ -195,7 +204,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
     // 更新（不可改 Key 本身）
     .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
       const update: Record<string, unknown> = {};
       if (body.name !== undefined) update.name = body.name;
@@ -230,7 +239,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
     // 吊销（清网关鉴权缓存，立即失效）
     .delete('/:id', async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const [revoked] = await s.db
         .update(apiKeys)
         .set({ status: 1, revokedAt: new Date() })

@@ -239,14 +239,14 @@ const ALL_SCENARIOS: ScenarioDef[] = [
 ];
 
 async function preflight(): Promise<void> {
-  console.log(`preflight: 探活 ${GATEWAY}/healthz ...`);
+  console.log(`preflight: 探活 ${GATEWAY}/readyz ...`);
   try {
-    const res = await fetch(`${GATEWAY}/healthz`);
+    const res = await fetch(`${GATEWAY}/readyz`);
     if (!res.ok) throw new Error(`status ${res.status}`);
     console.log('preflight: gateway ✓');
   } catch (e) {
     console.error(`preflight: gateway ✗ - ${(e as Error).message}`);
-    console.error('  请确认 gateway 已启动且 ALLOW_LOCAL_UPSTREAM=true（重启后生效）');
+    console.error('  请确认 gateway 已启动、DB/Redis 可达、seed-loadtest 已执行');
     process.exit(1);
   }
   // 探活 mock 上游

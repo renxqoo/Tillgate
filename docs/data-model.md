@@ -362,7 +362,7 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 | price | numeric(38,18) | 售价（元） |
 | period_days | int | 周期天数（30 / 365） |
 | quota_amount | numeric(38,18) | 金额额度（元，按「官方价×系数」折算扣减，与按量同口径） |
-| fallback_to_balance | boolean | 额度耗尽后是否允许用余额（默认 true，套餐级开关） |
+
 | status | smallint | 0 启用 / 1 停用 |
 
 **user_subscriptions**（用户订阅）：

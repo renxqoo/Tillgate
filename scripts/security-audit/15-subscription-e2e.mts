@@ -52,7 +52,6 @@ async function main(): Promise<void> {
     section('① 管理员建套餐');
     const create = await post(
       `${ADMIN_API}/api/admin/plans`,
-      { name: planName, price: Number(PLAN_PRICE), periodDays: 30, quotaAmount: Number(PLAN_QUOTA), fallbackToBalance: true },
       { cookie: admin },
     );
     console.log(`  POST /plans → ${create.status} ${JSON.stringify(create.body)}`);

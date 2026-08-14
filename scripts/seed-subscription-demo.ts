@@ -99,7 +99,6 @@ async function main(): Promise<void> {
         price: p.price,
         periodDays: 30,
         quotaAmount: p.quotaAmount,
-        fallbackToBalance: true,
         allowSeats: p.allowSeats,
         status: 0,
       })),

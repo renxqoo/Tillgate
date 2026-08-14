@@ -484,7 +484,6 @@ export interface PlanRow {
   price: string;
   periodDays: number;
   quotaAmount: string;
-  fallbackToBalance: boolean;
   allowSeats: boolean;
   status: number;
 }
@@ -493,19 +492,18 @@ export interface PlanCreateBody {
   kind?: 'subscription' | 'pack';
   sortOrder?: number | null;
   price: number;
-  periodDays: number;
+  /** 包月套餐必填 1~3650；加油包传 0 或省略 */
+  periodDays?: number;
   quotaAmount: number;
-  fallbackToBalance?: boolean;
   allowSeats?: boolean;
 }
 export interface PlanUpdateBody {
   name?: string;
-  kind?: 'subscription' | 'pack';
+  /** kind 创建后不可变，更新接口不接受 */
   sortOrder?: number | null;
   price?: number;
   periodDays?: number;
   quotaAmount?: number;
-  fallbackToBalance?: boolean;
   allowSeats?: boolean;
   status?: number;
 }
@@ -526,7 +524,6 @@ export interface CurrentSubscription {
   reservedAmount: string;
   remainingAmount: string;
   price: string;
-  fallbackToBalance: boolean;
   /** 周期天数（30/365） */
   periodDays: number;
   /** 续费总价（元）= 当前档价 × 席位 */

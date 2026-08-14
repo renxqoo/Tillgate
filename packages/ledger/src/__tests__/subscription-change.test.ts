@@ -50,7 +50,6 @@ async function createPlan(input: {
       price: input.price,
       periodDays: input.kind === 'pack' ? 0 : 30,
       quotaAmount: input.quota,
-      fallbackToBalance: true,
       status: 0,
       kind: input.kind ?? 'subscription',
       sortOrder: input.sortOrder,
@@ -143,6 +142,39 @@ describe('席位购买 + 变更（升级/扩容）补差价 + 加油包', () => 
       expect(subs[0]!.status).toBe(1); // 旧到期
       expect(subs[1]!.status).toBe(0);
       expect(new Decimal(subs[1]!.quotaAmount).eq(300)).toBe(true);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('免费升级（补差价 ≤ 0）：流水记录用户真实余额，而非订阅价格快照', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('500');
+    const lite = await createPlan({ price: '50', quota: '100', sortOrder: 1 });
+    // 高档但售价极低：剩余价值 50 ≥ 新总价 1 → 补差价 0（免费升级路径）
+    const cheapPro = await createPlan({ price: '1', quota: '300', sortOrder: 2 });
+    const ledger = createLedger({ db });
+    try {
+      const first = await ledger.subscribePlan({ operationId: randomUUID(), userId, planId: lite });
+      expect(await balanceOf(userId)).toEqual(new Decimal(450)); // 500 - 50
+
+      const changed = await ledger.changeSubscription({
+        operationId: randomUUID(),
+        subscriptionId: first.subscriptionId,
+        targetPlanId: cheapPro,
+        quantity: 1,
+      });
+      // 免费升级不扣款
+      expect(await balanceOf(userId)).toEqual(new Decimal(450));
+      // 返回值与流水的余额快照必须是用户真实余额（450），而非订阅价格（50/1）
+      expect(new Decimal(changed.balanceBefore).eq(450)).toBe(true);
+      expect(new Decimal(changed.balanceAfter).eq(450)).toBe(true);
+      const changeTx = (
+        await db.select().from(transactions).where(eq(transactions.userId, userId))
+      ).find((t) => t.refId === String(changed.subscriptionId))!;
+      expect(new Decimal(changeTx.amount).eq(0)).toBe(true);
+      expect(new Decimal(changeTx.balanceBefore).eq(450)).toBe(true);
+      expect(new Decimal(changeTx.balanceAfter).eq(450)).toBe(true);
     } finally {
       await cleanup(userId);
     }

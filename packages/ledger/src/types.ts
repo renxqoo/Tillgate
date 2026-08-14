@@ -55,6 +55,15 @@ export interface SettleResult {
 export interface BillingEffects {
   balanceChanged?(event: { userId: number; balanceAfter?: string }): Promise<void>;
   usageSettled?(event: { data: UsageReceipt; result: SettleResult }): Promise<void>;
+  /** 请求转 dead（进入人工复核）：产生即告警——不变量被打破是缺陷信号，不允许静默积压 */
+  requestDead?(event: {
+    requestId: string;
+    userId: number;
+    failureClass: SettlementFailureClass;
+    lastError: string;
+    reservedAmount: string;
+    attempt: number;
+  }): Promise<void>;
 }
 
 export interface BillingQuoteCandidate {

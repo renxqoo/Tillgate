@@ -21,7 +21,6 @@ export interface CurrentSubscription {
   remainingAmount: string;
   /** 当前售价快照（元，numeric 字符串） */
   price: string;
-  fallbackToBalance: boolean;
   /** 周期天数（30=月付，365=年付） */
   periodDays: number;
   /** 续费总价（元）= 当前档价 × 席位 */
@@ -52,7 +51,6 @@ export interface PlanRow {
   periodDays: number;
   /** 套餐额度（元） */
   quotaAmount: string;
-  fallbackToBalance: boolean;
   /** 是否支持席位（团队套餐）；false=个人套餐固定 1 席 */
   allowSeats: boolean;
   status: number;

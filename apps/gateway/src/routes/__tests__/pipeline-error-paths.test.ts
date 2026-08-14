@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { apps, billingRequests } from '@ai-gateway/db/schema';
+import { apps, billingRequests, userSubscriptions } from '@ai-gateway/db/schema';
 import type { UpstreamError } from '@ai-gateway/ai';
 import { createBillingProcessor } from '@ai-gateway/ledger';
 import { Decimal } from '@ai-gateway/money';
@@ -185,16 +185,21 @@ describe('管线失败路径', () => {
       const settledUser = await db.query.users.findFirst({
         where: (table, { eq: equals }) => equals(table.id, userId),
       });
-      expect(new Decimal(settledUser!.balance).eq('999.46')).toBe(true);
+      // 纯额度模型：结算扣订阅额度（(500×1000+20×2000)/1M = 0.54 元），余额不动
+      expect(new Decimal(settledUser!.balance).eq('1000')).toBe(true);
+      const settledSub = await db.query.userSubscriptions.findFirst({
+        where: eq(userSubscriptions.userId, userId),
+      });
+      expect(new Decimal(settledSub!.usedAmount).eq('0.54')).toBe(true);
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }
   });
 
-  it('余额耗尽 → 402 insufficient_balance', async () => {
+  it('无有效订阅 → 402 subscription_required（订阅即闸门，纯额度模型）', async () => {
     if (!connected) return it.skip('no DB');
-    const userId = await createTestUser(db, '0', 'err402');
-    const { token, keyHash } = await createTestApiKey(db, userId, 'err402');
+    const userId = await createTestUser(db, '1000', 'nosub', { withSubscription: false });
+    const { token, keyHash } = await createTestApiKey(db, userId, 'nosub');
     const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!);
     try {
       const app = buildTestApp(db, redis, makeMockAi());
@@ -209,7 +214,7 @@ describe('管线失败路径', () => {
       });
       expect(res.status).toBe(402);
       const body = (await res.json()) as { error: { code: string } };
-      expect(body.error.code).toBe('insufficient_balance');
+      expect(body.error.code).toBe('subscription_required');
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }

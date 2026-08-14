@@ -10,9 +10,9 @@ export interface PlanCreateInput {
   kind?: "subscription" | "pack";
   sortOrder?: number | null;
   price: number;
+  /** 包月 1~3650；加油包 0 */
   periodDays: number;
   quotaAmount: number;
-  fallbackToBalance?: boolean;
   allowSeats?: boolean;
 }
 
@@ -28,7 +28,6 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
         price: input.price,
         periodDays: input.periodDays,
         quotaAmount: input.quotaAmount,
-        fallbackToBalance: input.fallbackToBalance ?? false,
         allowSeats: input.allowSeats ?? false,
       },
     });
@@ -42,12 +41,10 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
 // ── 编辑套餐 ─────────────────────────────────────────────────────────────────
 export interface PlanUpdateInput {
   name?: string;
-  kind?: "subscription" | "pack";
   sortOrder?: number | null;
   price?: number;
   periodDays?: number;
   quotaAmount?: number;
-  fallbackToBalance?: boolean;
   allowSeats?: boolean;
   status?: number;
 }

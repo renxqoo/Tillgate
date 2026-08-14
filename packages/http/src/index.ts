@@ -25,6 +25,8 @@ export {
   query,
 } from './validation.js';
 
+export { intParam } from './params.js';
+
 export {
   PAGE_SIZE_MAX,
   PAGE_SIZE_DEFAULT,

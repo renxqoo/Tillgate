@@ -7,6 +7,7 @@ import {
   boolean,
   smallint,
   index,
+  uniqueIndex,
   numeric,
   check,
 } from 'drizzle-orm/pg-core';
@@ -33,8 +34,6 @@ export const plans = pgTable(
     periodDays: bigint('period_days', { mode: 'number' }).notNull(),
     /** 金额额度（元，按「官方价×系数」折算扣减，与按量同口径）；加油包=到账额度 */
     quotaAmount: numeric('quota_amount', { precision: 38, scale: 18 }).notNull(),
-    /** 额度耗尽后是否允许用余额（默认 true，套餐级开关） */
-    fallbackToBalance: boolean('fallback_to_balance').notNull().default(true),
     /** 是否支持席位（团队套餐）：true=可 quantity>1 加份；false=固定 1 席（个人套餐） */
     allowSeats: boolean('allow_seats').notNull().default(false),
     /** 0 启用 / 1 停用 */
@@ -75,6 +74,11 @@ export const userSubscriptions = pgTable(
   (t) => [
     index('user_subscriptions_user_idx').on(t.userId),
     index('user_subscriptions_plan_idx').on(t.planId),
+    // 「单有效订阅」硬不变量：每用户至多一条 status=0 的订阅（购买/续费/变更在事务内
+    // 先把旧订阅转 status=1 再插入新行，因此唯一部分索引可兜底并发双开）。
+    uniqueIndex('user_subscriptions_one_active_uq')
+      .on(t.userId)
+      .where(sql`${t.status} = 0`),
     // 套餐额度「永不为负」硬不变量：已用 + 在途 ≤ 额度，且二者非负。
     check('user_subscriptions_used_nonnegative_ck', sql`${t.usedAmount} >= 0`),
     check('user_subscriptions_reserved_nonnegative_ck', sql`${t.reservedAmount} >= 0`),

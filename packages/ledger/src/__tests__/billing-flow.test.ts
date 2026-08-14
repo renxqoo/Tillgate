@@ -64,7 +64,6 @@ async function createUser(initialBalance: string, quota = '10000'): Promise<numb
       price: '0',
       periodDays: 30,
       quotaAmount: quota,
-      fallbackToBalance: false,
       allowSeats: false,
       status: 0,
     })

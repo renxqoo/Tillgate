@@ -89,6 +89,21 @@ export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
         return mapError(error);
       }
     })
+    // 废弃 dead 单：确认不收费并释放全部预扣（与 retry 二选一的人工处置）
+    .post('/:requestId/abandon', jsonBody(decisionBase), async (c) => {
+      try {
+        return c.json(
+          await s.billingOperations.abandonDead({
+            operationId: operationId(c),
+            requestId: c.req.param('requestId'),
+            adminId: c.get('adminId'),
+            ...c.req.valid('json'),
+          }),
+        );
+      } catch (error) {
+        return mapError(error);
+      }
+    })
     .post('/:requestId/resolve', jsonBody(resolveSchema), async (c) => {
       try {
         const body = c.req.valid('json');

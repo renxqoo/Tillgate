@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { HttpError, jsonBody, operationId } from '@ai-gateway/http';
+import { HttpError, intParam, jsonBody, operationId } from '@ai-gateway/http';
 import { LedgerError } from '@ai-gateway/ledger';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
@@ -11,14 +11,17 @@ import type { ClientServices } from '../services/index.js';
  *   - POST /:id/change：升级/加席位（补差价，只能升不能降）
  *   - POST /:id/renew：续费（按原席位扣余额、旧订阅转到期、新订阅顺延）
  */
+/** 席位上限：防 numeric 溢出与恶意超大值（足够任何企业团队，超此规模走线下） */
+const SEATS_MAX = 1000;
+
 const purchaseSchema = z.object({
   planId: z.number().int().positive(),
-  quantity: z.number().int().min(1).optional(),
+  quantity: z.number().int().min(1).max(SEATS_MAX).optional(),
 });
 
 const changeSchema = z.object({
   targetPlanId: z.number().int().positive(),
-  quantity: z.number().int().min(1),
+  quantity: z.number().int().min(1).max(SEATS_MAX),
 });
 
 function mapError(error: unknown): never {
@@ -71,7 +74,7 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
 
     .post('/:id/change', jsonBody(changeSchema), async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
       try {
         const result = await s.ledger.changeSubscription({
@@ -89,7 +92,7 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
 
     .post('/:id/renew', async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       try {
         const result = await s.ledger.renewSubscription({
           operationId: operationId(c),

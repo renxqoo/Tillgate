@@ -4,7 +4,11 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Input } from '@ai-gateway/ui/components/ui/input';
-import { retryDeadBillingRequest, confirmNoUpstreamCharge } from '../actions';
+import {
+  abandonDeadBillingRequest,
+  retryDeadBillingRequest,
+  confirmNoUpstreamCharge,
+} from '../actions';
 
 export function ReviewActions(props: {
   requestId: string;
@@ -14,36 +18,74 @@ export function ReviewActions(props: {
   const [reason, setReason] = useState('');
   const [pending, startTransition] = useTransition();
 
-  const submit = () => {
+  const run = (action: () => Promise<{ error?: string }>, successMessage: string) => {
     if (!reason.trim()) {
       toast.error('必须填写复核理由');
       return;
     }
     startTransition(async () => {
-      const result =
-        props.status === 'dead'
-          ? await retryDeadBillingRequest({ ...props, expectedRevision: props.revision, reason })
-          : await confirmNoUpstreamCharge({ ...props, expectedRevision: props.revision, reason });
+      const result = await action();
       if (result.error) toast.error(result.error);
-      else toast.success(props.status === 'dead' ? '已进入重试队列' : '已确认上游未收费并退回预扣');
+      else toast.success(successMessage);
     });
   };
+
+  const base = { ...props, expectedRevision: props.revision, reason };
+
+  if (props.status === 'dead') {
+    return (
+      <div className="flex min-w-96 gap-2">
+        <Input
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="重试 / 废弃原因（必填，进审计）"
+          maxLength={1000}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={pending}
+          onClick={() => run(() => retryDeadBillingRequest(base), '已进入重试队列')}
+        >
+          重试
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          disabled={pending}
+          onClick={() =>
+            run(
+              () =>
+                abandonDeadBillingRequest({
+                  requestId: props.requestId,
+                  expectedRevision: props.revision,
+                  reason,
+                }),
+              '已废弃并释放预扣',
+            )
+          }
+        >
+          废弃
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-w-80 gap-2">
       <Input
         value={reason}
         onChange={(event) => setReason(event.target.value)}
-        placeholder={props.status === 'dead' ? '重试原因' : '无收费证据/工单号'}
+        placeholder="无收费证据/工单号"
         maxLength={1000}
       />
       <Button
         size="sm"
-        variant={props.status === 'dead' ? 'outline' : 'destructive'}
+        variant="destructive"
         disabled={pending}
-        onClick={submit}
+        onClick={() => run(() => confirmNoUpstreamCharge(base), '已确认上游未收费并退回预扣')}
       >
-        {props.status === 'dead' ? '重试' : '确认退款'}
+        确认退款
       </Button>
     </div>
   );
