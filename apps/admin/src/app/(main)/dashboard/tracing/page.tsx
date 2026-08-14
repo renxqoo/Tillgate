@@ -18,6 +18,7 @@ import {
 } from '@ai-gateway/ui/components/ui/table';
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
 import { TraceWaterfall } from './_components/trace-waterfall';
+import { TraceGraph } from './_components/trace-graph';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,9 +58,15 @@ interface TraceDetail {
 export default async function TracingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ requestId?: string; errorsOnly?: string; traceId?: string }>;
+  searchParams: Promise<{
+    requestId?: string;
+    errorsOnly?: string;
+    traceId?: string;
+    view?: string;
+  }>;
 }) {
   const params = await searchParams;
+  const view = params.view === 'waterfall' ? 'waterfall' : 'graph';
   const query = new URLSearchParams({ limit: '50' });
   if (params.requestId) query.set('requestId', params.requestId);
   if (params.errorsOnly === 'true') query.set('errorsOnly', 'true');
@@ -97,6 +104,9 @@ export default async function TracingPage({
         <p className="text-sm text-muted-foreground">
           内置 trace 接收端数据（trace_spans，按日分区滚动保留）；与计费系统同库，支持
           request_id 关联。
+          <Link href="/dashboard/tracing/topology" className="ml-2 underline">
+            渠道健康拓扑 →
+          </Link>
         </p>
       </div>
 
@@ -194,12 +204,28 @@ export default async function TracingPage({
       {detail ? (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle>
-              瀑布图 · <code className="font-mono text-sm">{detail.spans[0]!.traceId}</code>
+            <CardTitle className="flex items-center gap-3">
+              <code className="font-mono text-sm">{detail.spans[0]!.traceId}</code>
+              <span className="text-sm font-normal">
+                <Link
+                  href={`/dashboard/tracing?traceId=${detail.spans[0]!.traceId}&view=${view === 'graph' ? 'waterfall' : 'graph'}`}
+                  className="underline"
+                >
+                  {view === 'graph' ? '切换到瀑布图（时序）' : '切换到路线图（拓扑）'}
+                </Link>
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <TraceWaterfall spans={detail.spans} startMs={detail.startMs} totalMs={detail.durationMs} />
+            {view === 'graph' ? (
+              <TraceGraph spans={detail.spans} totalMs={detail.durationMs} />
+            ) : (
+              <TraceWaterfall
+                spans={detail.spans}
+                startMs={detail.startMs}
+                totalMs={detail.durationMs}
+              />
+            )}
           </CardContent>
         </Card>
       ) : null}

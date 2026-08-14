@@ -11,6 +11,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./graph": {
+      "development": "./src/graph.ts",
+      "types": "./dist/graph.d.ts",
+      "import": "./dist/graph.js"
     }
   },
   "scripts": {

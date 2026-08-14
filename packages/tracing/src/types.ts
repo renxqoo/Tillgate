@@ -47,6 +47,16 @@ export interface RecentFilter {
   beforeMs?: number;
 }
 
+/** 渠道健康聚合（24h 窗口，来自 gateway upstream spans） */
+export interface ChannelHealth {
+  channel: string;
+  attempts: number;
+  errors: number;
+  avgDurationMs: number;
+  lastAt: number | null;
+  lastError: string | null;
+}
+
 export interface TraceStore {
   /** 批量写入（幂等：主键冲突忽略；自动确保目标日分区存在） */
   writeBatch(rows: SpanRow[]): Promise<number>;
@@ -54,4 +64,6 @@ export interface TraceStore {
   findByTraceId(traceId: string): Promise<SpanRow[]>;
   findByRequestId(requestId: string): Promise<SpanRow[]>;
   stats(): Promise<{ spans: number; oldestDays: number | null; partitions: string[] }>;
+  /** 渠道健康拓扑（网关 → 各渠道的尝试/错误/延迟聚合） */
+  channelTopology(sinceMs: number): Promise<ChannelHealth[]>;
 }

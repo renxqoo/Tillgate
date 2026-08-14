@@ -103,6 +103,8 @@ interface AttemptCtx {
   requestId: string;
   model: string;
   providerName: string;
+  /** 第几次渠道尝试（1 起；路线图显性化换渠次数） */
+  attemptNo: number;
   endpoint?: 'embeddings';
   paramRules?: ParamRules;
   deadlineMs: number;
@@ -341,8 +343,10 @@ export class LlmPipeline {
         target.channels = channels;
         if (channels.length === 0) continue;
 
+        let attemptNo = 0;
         for (const channel of channels) {
           if (budget.signal.aborted) break;
+          attemptNo += 1;
           // 渠道「进货额度」精确硬闸：路由选渠前原子预留在途上游成本敞口。
           // 余额（进货额度 - 已消耗 - 在途）不足本次上游预估 → 跳过改试下一渠道（没钱即拦截）。
           let reservation: { allowed: boolean; remaining: string };
@@ -382,6 +386,7 @@ export class LlmPipeline {
             requestId,
             model: target.realModel,
             providerName: channel.providerName,
+            attemptNo,
             endpoint: kind === 'embeddings' ? 'embeddings' : undefined,
             paramRules: target.paramRules ?? undefined,
             // 每次 fallback 只拿整个请求预算的剩余值，绝不重置 deadline。
@@ -674,6 +679,8 @@ export class LlmPipeline {
       'channel.key': channel.key,
       'ai.model': target.realModel,
       'ai.attempt_stream': stream,
+      // 第几次渠道尝试（路线图节点显性化「换了 N 次渠」）
+      'channel.attempt': ctx.attemptNo,
     });
     try {
       return stream

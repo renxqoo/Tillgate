@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SpanDetailPanel } from './span-detail-panel';
 
 interface SpanRow {
   spanId: string;
@@ -15,9 +16,11 @@ interface SpanRow {
   channel: string | null;
   model: string | null;
   attributes: Record<string, unknown>;
+  traceId: string;
+  requestId: string | null;
 }
 
-/** 瀑布图：条形按 trace 起点归一化；点击展开属性面板 */
+/** 瀑布图：条形按 trace 起点归一化；点击展开属性面板（与路线图共用 SpanDetailPanel） */
 export function TraceWaterfall({
   spans,
   startMs,
@@ -28,6 +31,7 @@ export function TraceWaterfall({
   totalMs: number;
 }) {
   const [openSpan, setOpenSpan] = useState<string | null>(null);
+  const selected = spans.find((s) => s.spanId === openSpan) ?? null;
   const sorted = spans.toSorted(
     (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
   );
@@ -62,23 +66,11 @@ export function TraceWaterfall({
                 {span.model ? ` · ${span.model}` : ''}
               </span>
             </button>
-            {openSpan === span.spanId ? (
-              <pre className="mx-10 my-1 max-h-48 overflow-auto rounded bg-muted p-2 text-[11px] leading-relaxed">
-                {JSON.stringify(
-                  {
-                    spanId: span.spanId,
-                    parentSpanId: span.parentSpanId,
-                    status: span.statusMessage ?? span.statusCode,
-                    attributes: span.attributes,
-                  },
-                  null,
-                  2,
-                )}
-              </pre>
-            ) : null}
+
           </div>
         );
       })}
+      {selected ? <SpanDetailPanel span={selected} onClose={() => setOpenSpan(null)} /> : null}
     </div>
   );
 }

@@ -56,5 +56,9 @@ export function tracingAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       const spans = await s.tracingStore.findByRequestId(c.req.param('requestId'));
       return c.json({ spans });
     })
+    .get('/topology', async (c) => {
+      const hours = Math.min(168, Math.max(1, Number(c.req.query('hours')) || 24));
+      return c.json({ hours, channels: await s.tracingStore.channelTopology(Date.now() - hours * 3_600_000) });
+    })
     .get('/stats', async (c) => c.json({ storage: await s.tracingStore.stats() }));
 }

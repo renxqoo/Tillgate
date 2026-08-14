@@ -54,6 +54,8 @@ function spanRow(overrides: Partial<SpanRow> = {}): SpanRow {
 
 async function cleanup(): Promise<void> {
   await db.execute(sql`delete from trace_spans where service = 'trt-test-svc'`);
+  // 拓扑用例的行 service='gateway'，按测试渠道白名单清（不碰真实渠道数据）
+  await db.execute(sql`delete from trace_spans where service = 'gateway' and channel in ('ch-a', 'ch-b')`);
 }
 
 describe('PgTraceStore（真 PG）', () => {
@@ -125,5 +127,32 @@ describe('分区维护（真 PG）', () => {
       sql`select relname from pg_class where relname = ${'trace_spans_p' + oldDay}`,
     );
     expect(left.rows).toHaveLength(0);
+  });
+});
+
+describe('渠道健康拓扑（真 PG）', () => {
+  it('按渠道聚合尝试/错误/均延迟/最近错误', async (context) => {
+    if (!connected) return context.skip();
+    await cleanup();
+    const store = createPgTraceStore(db);
+    const base = Date.now() - 1_000;
+    await store.writeBatch([
+      spanRow({ name: 'upstream p1', service: 'gateway', channel: 'ch-a', statusCode: 0, startTime: new Date(base), endTime: new Date(base + 100) }),
+      spanRow({ name: 'upstream p1', service: 'gateway', channel: 'ch-a', statusCode: 2, statusMessage: 'rate_limited', startTime: new Date(base + 1000), endTime: new Date(base + 1300) }),
+      spanRow({ name: 'upstream p2', service: 'gateway', channel: 'ch-b', statusCode: 0, startTime: new Date(base + 2000), endTime: new Date(base + 2500) }),
+      // 窗口外不计入
+      spanRow({ name: 'upstream p1', service: 'gateway', channel: 'ch-a', statusCode: 0, startTime: new Date(base - 48 * 3_600_000) }),
+    ]);
+    const topo = await store.channelTopology(Date.now() - 3_600_000);
+    const a = topo.find((t) => t.channel === 'ch-a');
+    const b = topo.find((t) => t.channel === 'ch-b');
+    expect(a).toBeDefined();
+    expect(a!.attempts).toBe(2);
+    expect(a!.errors).toBe(1);
+    expect(a!.avgDurationMs).toBe(200);
+    expect(a!.lastError).toBe('rate_limited');
+    expect(b!.attempts).toBe(1);
+    expect(b!.errors).toBe(0);
+    await cleanup();
   });
 });

@@ -31,7 +31,8 @@ export function createPgTraceStore(db: Db): TraceStore {
             service: r.service,
             startTime: r.startTime,
             endTime: r.endTime,
-            durationMs: r.durationMs,
+            // 派生值存储端重算：duration 必须与起止一致（单一真相）
+            durationMs: r.endTime.getTime() - r.startTime.getTime(),
             statusCode: r.statusCode,
             statusMessage: r.statusMessage,
             requestId: r.requestId,
@@ -122,6 +123,38 @@ export function createPgTraceStore(db: Db): TraceStore {
         .from(traceSpans)
         .where(and(isNotNull(traceSpans.requestId), eq(traceSpans.requestId, requestId)))
         .orderBy(asc(traceSpans.startTime));
+    },
+
+    async channelTopology(sinceMs) {
+      const result = await db.execute<{
+        channel: string | null;
+        attempts: string;
+        errors: string;
+        avg_ms: string | null;
+        last_at: Date | string | null;
+        last_error: string | null;
+      }>(sql`
+        select channel,
+               count(*)::text as attempts,
+               count(*) filter (where status_code = 2)::text as errors,
+               round(avg(duration_ms))::text as avg_ms,
+               max(start_time) as last_at,
+               (array_agg(status_message) filter (where status_code = 2))[1] as last_error
+        from trace_spans
+        where service = 'gateway'
+          and name like 'upstream%'
+          and start_time >= ${new Date(sinceMs)}
+        group by channel
+        order by count(*) desc
+      `);
+      return result.rows.map((row) => ({
+        channel: row.channel ?? '(未标注)',
+        attempts: Number(row.attempts),
+        errors: Number(row.errors),
+        avgDurationMs: Number(row.avg_ms ?? 0),
+        lastAt: row.last_at ? new Date(row.last_at).getTime() : null,
+        lastError: row.last_error,
+      }));
     },
 
     async stats() {

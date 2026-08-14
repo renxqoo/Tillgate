@@ -12,7 +12,7 @@ import type { Db } from '@ai-gateway/db';
 
 const PARTITION_PREFIX = 'trace_spans_p';
 
-/** Date → 'YYYY-MM-DD'（UTC） */
+/** Date → 'YYYY-MM-DD'（UTC）；分区边界统一用 UTC，杜绝会话时区错位 */
 export function dayKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -32,7 +32,8 @@ export async function ensureDailyPartition(db: Db, day: string): Promise<void> {
   await db.execute(
     sql.raw(
       `create table if not exists "${PARTITION_PREFIX}${day}" ` +
-        `partition of trace_spans for values from ('${day}') to ('${shiftDay(day, 1)}')`,
+        // 边界显式 +00 偏移：裸日期串会按建分区会话的时区解释，与 UTC dayKey 错位
+        `partition of trace_spans for values from ('${day} 00:00:00+00') to ('${shiftDay(day, 1)} 00:00:00+00')`,
     ),
   );
   ensured.add(day);
