@@ -65,6 +65,9 @@ export function createApp(deps: AdminApiDeps): Hono {
     tracingStore: deps.tracingStore ?? createPgTraceStore(deps.db),
     encryptionKey: deps.encryptionKey,
     voucherStorage: deps.voucherStorage,
+    // 双重门控与网关一致：生产即便误配 ALLOW_LOCAL_UPSTREAM 也不放行内网上游
+    allowLocalUpstream:
+      deps.config.allowLocalUpstream && process.env.NODE_ENV !== 'production',
     logger: deps.logger,
   };
 

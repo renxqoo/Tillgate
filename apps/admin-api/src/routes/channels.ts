@@ -236,7 +236,11 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       const apiKey = decrypt(row.apiKeyEnc, s.encryptionKey);
       const baseUrl = row.baseUrlOverride ?? row.providerBaseUrl;
       const protocol = row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'];
-      const ai = createAi(defaultAiConfig());
+      const ai = createAi({
+        ...defaultAiConfig(),
+        // 与网关同源门控：开发放行内网上游（生产即便误配也被 NODE_ENV 拦下）
+        allowLocalUrl: s.allowLocalUpstream,
+      });
       const result = await ai.probe({ baseUrl, apiKey, protocol });
       return c.json({
         ok: result.ok,

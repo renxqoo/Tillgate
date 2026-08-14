@@ -22,5 +22,10 @@ export interface AdminServices {
   encryptionKey: string;
   /** 凭证截图存储（本地磁盘/未来 OSS） */
   voucherStorage: VoucherStorage;
+  /**
+   * 渠道测试探活是否放行内网上游（ALLOW_LOCAL_UPSTREAM && 非生产，
+   * 与网关同一双重门控——否则管理台测 LAN/本地渠道永远误报 network）。
+   */
+  allowLocalUpstream: boolean;
   logger: Logger;
 }

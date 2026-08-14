@@ -26,6 +26,7 @@ const usageReceiptSchema = z.object({
   externalModel: z.string().min(1),
   realModel: z.string().min(1),
   channelId: z.number().int().positive().nullable(),
+  channelKey: z.string().min(1),
   usage: z.object({
     inputTokens: z.number().int().nonnegative(),
     cachedInputTokens: z.number().int().nonnegative(),

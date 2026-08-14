@@ -45,6 +45,7 @@ const app = createApp({
     secureCookie: env.NODE_ENV === 'production',
     trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
     voucherStorageDir: env.VOUCHER_STORAGE_DIR,
+    allowLocalUpstream: env.ALLOW_LOCAL_UPSTREAM,
     voucherMaxBytes: env.VOUCHER_MAX_BYTES,
   },
   voucherStorage: createLocalVoucherStorage(env.VOUCHER_STORAGE_DIR),

@@ -12,4 +12,6 @@ export interface AdminApiConfig {
   voucherStorageDir: string;
   /** 凭证截图最大字节数 */
   voucherMaxBytes: number;
+  /** 是否允许内网上游（仅开发；渠道测试探活与网关同源门控） */
+  allowLocalUpstream: boolean;
 }

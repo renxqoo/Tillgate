@@ -186,6 +186,13 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
     ),
   /** 渠道进货凭证截图本地存储目录（后续可切 OSS） */
   VOUCHER_STORAGE_DIR: z.string().default('./data/vouchers'),
+  /**
+   * 渠道测试探活放行内网上游（与网关同一双重门控：true 且非生产才生效）。
+   */
+  ALLOW_LOCAL_UPSTREAM: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   /** 凭证截图最大字节数（默认 2MB） */
   VOUCHER_MAX_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
   ...otelOptions,

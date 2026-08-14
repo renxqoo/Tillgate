@@ -63,6 +63,7 @@ export function makeServices(db: Db, overrides: Partial<AdminServices> = {}): Ad
     tracingStore: createPgTraceStore(db),
     encryptionKey: TEST_ENCRYPTION_KEY,
     voucherStorage: stubVoucherStorage(),
+    allowLocalUpstream: false,
     logger: noopLogger(),
     ...overrides,
   };
