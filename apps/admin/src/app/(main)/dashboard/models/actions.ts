@@ -94,3 +94,27 @@ export async function bindChannelsAction(
     return { error: e instanceof ApiError ? e.message : '绑定失败' };
   }
 }
+
+// ── 模型级测试（最小生成探针：逐绑定渠道真实生成 "1" + max_tokens 1） ────────
+export interface ModelTestResult {
+  channelId: number;
+  channel: string;
+  ok: boolean;
+  durationMs: number;
+  tokens?: number;
+  error?: { code: string; message: string };
+}
+
+export async function testModelAction(id: number): Promise<
+  { results?: ModelTestResult[]; error?: string }
+> {
+  try {
+    const data = await adminFetch<{ results: ModelTestResult[] }>(
+      `/api/admin/models/${id}/test`,
+      { method: 'POST' },
+    );
+    return { results: data.results };
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : '测试失败' };
+  }
+}

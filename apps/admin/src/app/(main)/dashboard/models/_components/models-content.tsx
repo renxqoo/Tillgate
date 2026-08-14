@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 
 import {
   CpuIcon,
+  FlaskConicalIcon,
   Loader2Icon,
   NetworkIcon,
   PencilIcon,
@@ -15,6 +16,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import type { ModelTestResult } from '../actions';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Checkbox } from '@ai-gateway/ui/components/ui/checkbox';
 import {
@@ -123,6 +125,7 @@ function ModelRowItem({
         <div className="flex items-center justify-end gap-1">
           <BindChannelsDialog model={model} channels={channels} />
           <EditModelDialog model={model} />
+          <TestModelDialog model={model} />
           <Button
             size="sm"
             variant="ghost"
@@ -539,6 +542,88 @@ function BindChannelsDialog({
             {pending && <Loader2Icon className="animate-spin" />}确认绑定（{selected.length}）
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** 模型级测试：逐绑定渠道真实最小生成（"1" + max_tokens 1，厘级成本） */
+export function TestModelDialog({ model }: { model: ModelRow }) {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<ModelTestResult[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) {
+          setResults(null);
+          setError(null);
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          title="逐渠道发真实最小生成，验证映射配置可用"
+          onClick={() => {
+            setResults(null);
+            setError(null);
+            startTransition(async () => {
+              const { testModelAction } = await import('../actions');
+              const res = await testModelAction(model.id);
+              if (res.error) setError(res.error);
+              else setResults(res.results ?? []);
+            });
+          }}
+        >
+          <FlaskConicalIcon />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="w-[32rem] max-w-[90vw]">
+        <DialogHeader>
+          <DialogTitle>测试 {model.externalName}</DialogTitle>
+          <DialogDescription>
+            逐绑定渠道发送真实最小生成（提示词 "1" + max_tokens 1）。付费模型成本为厘级/次。
+          </DialogDescription>
+        </DialogHeader>
+        {pending ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <Loader2Icon className="mr-2 animate-spin" /> 正在逐渠道测试…
+          </div>
+        ) : error ? (
+          <p className="py-6 text-center text-sm text-destructive">{error}</p>
+        ) : results ? (
+          results.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              该模型尚未绑定渠道，先绑定再测试。
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {results.map((r) => (
+                <li
+                  key={r.channelId}
+                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+                >
+                  <span className="font-medium">{r.channel}</span>
+                  {r.ok ? (
+                    <span className="text-emerald-600">
+                      ✓ {r.durationMs}ms · {r.tokens ?? 0} tokens
+                    </span>
+                  ) : (
+                    <span className="max-w-56 truncate text-destructive" title={r.error?.message}>
+                      ✗ {r.error?.code ?? 'error'}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
       </DialogContent>
     </Dialog>
   );
