@@ -45,6 +45,7 @@ interface Draft {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  contextLength: string;
 }
 
 export function CatalogContent({
@@ -81,6 +82,8 @@ export function CatalogContent({
         inputPrice: '0',
         outputPrice: '0',
         cacheInputPrice: '0',
+        contextLength:
+          item.contextLength != null ? String(item.contextLength) : '',
       }
     );
   }
@@ -114,7 +117,9 @@ export function CatalogContent({
             inputPrice: Number(d.inputPrice) || 0,
             outputPrice: Number(d.outputPrice) || 0,
             cacheInputPrice: Number(d.cacheInputPrice) || 0,
-            ...(i.contextLength != null ? { contextLength: i.contextLength } : {}),
+            ...(d.contextLength.trim() !== '' && Number.isInteger(Number(d.contextLength))
+              ? { contextLength: Number(d.contextLength) }
+              : {}),
           };
         }),
       });
@@ -165,6 +170,7 @@ export function CatalogContent({
               <TableHead className="w-24 text-right">输入价</TableHead>
               <TableHead className="w-24 text-right">输出价</TableHead>
               <TableHead className="w-24 text-right">缓存价</TableHead>
+              <TableHead className="w-28 text-right">上下文</TableHead>
               <TableHead className="w-28">状态</TableHead>
             </TableRow>
           </TableHeader>
@@ -183,10 +189,7 @@ export function CatalogContent({
                   <TableCell>
                     <div className="flex flex-col">
                       <code className="text-xs">{item.realModel}</code>
-                      <span className="text-xs text-muted-foreground">
-                        {item.displayName} · 上下文{' '}
-                        {item.contextLength ? `${Math.round(item.contextLength / 1024)}K` : '—'}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{item.displayName}</span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -215,6 +218,15 @@ export function CatalogContent({
                       value={d.cacheInputPrice}
                       onChange={(e) => patch(item, { cacheInputPrice: e.target.value })}
                       className="h-8 text-right text-xs tabular-nums"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      value={d.contextLength}
+                      placeholder="—"
+                      onChange={(e) => patch(item, { contextLength: e.target.value })}
+                      className="h-8 text-right text-xs tabular-nums"
+                      title="上下文窗口（token），默认取目录值"
                     />
                   </TableCell>
                   <TableCell>
