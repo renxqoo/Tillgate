@@ -4,13 +4,15 @@ import type { SpanRow } from './types.js';
  * spans → 路线图视图模型（纯函数，零展示层依赖）。
  *
  * 展示层（React Flow 等）只做渲染，语义判定全部在这里：
- *   - 节点 kind：http（根/带 http 属性）/ upstream（渠道调用）/ generic
+ *   - 节点 kind：http（根/带 http 属性）/ upstream（渠道调用）/
+ *     billing（网关侧计费动作：authorize/finalize）/ settle（worker 结算）/ generic
  *   - 状态：statusCode=2 → error
- *   - 同父多兄弟 = 渠道尝试链：首个接父边，其余链式 fallback 边
- *     （网关候选循环成功即停，因此 2 个以上兄弟必为换渠道重试）
+ *   - 同父的 upstream 兄弟 = 渠道尝试链：首个接父边，其余链式 fallback 边
+ *     （网关候选循环成功即停，因此 2 个以上 upstream 兄弟必为换渠道重试）；
+ *     其他 kind 的兄弟（billing/settle 等）各自直连父，不串尝试链
  */
 
-export type GraphNodeKind = 'http' | 'upstream' | 'generic';
+export type GraphNodeKind = 'http' | 'upstream' | 'billing' | 'settle' | 'generic';
 export type GraphNodeStatus = 'ok' | 'error' | 'unset';
 
 export interface GraphNode {
@@ -53,6 +55,8 @@ export interface TraceGraph {
 
 function inferKind(row: SpanRow): GraphNodeKind {
   if (row.name.startsWith('upstream')) return 'upstream';
+  if (row.name === 'billing.settle' || row.service === 'worker') return 'settle';
+  if (row.name === 'billing.authorize' || row.name === 'billing.finalize') return 'billing';
   if (
     'http.method' in row.attributes ||
     'http.status_code' in row.attributes ||
@@ -74,6 +78,21 @@ function buildSubtitle(row: SpanRow, kind: GraphNodeKind): string {
   if (kind === 'upstream') {
     return [row.channel, row.model].filter(Boolean).join(' · ');
   }
+  if (kind === 'billing' || kind === 'settle') {
+    // 计费节点副标题带核心数字：预授权/实扣金额（元）或 token 汇总
+    const amount =
+      row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
+    if (typeof amount === 'string' && amount !== '') {
+      const label = kind === 'settle' ? '实扣' : '预授权';
+      return `${label} ${amount} 元`;
+    }
+    const input = row.attributes['usage.input_tokens'];
+    const output = row.attributes['usage.output_tokens'];
+    if (typeof input === 'number' || typeof output === 'number') {
+      return `tokens ${input ?? 0}→${output ?? 0}`;
+    }
+    return row.service;
+  }
   return row.service;
 }
 
@@ -86,6 +105,10 @@ function inferStatus(row: SpanRow, kind: GraphNodeKind): GraphNodeStatus {
     if (typeof code === 'number') return code >= 400 ? 'error' : 'ok';
   }
   return 'unset';
+}
+
+function childEdge(from: string, to: string): GraphEdge {
+  return { id: `${from}->${to}`, from, to, kind: 'child' };
 }
 
 export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
@@ -116,7 +139,8 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
     };
   });
 
-  // 按父分组；组内 >1 视为尝试链：首节点接父，其余链式 fallback
+  // 按父分组；组内 upstream 兄弟 >1 视为尝试链：首节点接父，其余链式 fallback；
+  // 其他 kind 的兄弟（billing/settle/…）各自直连父，绝不串进尝试链
   const byParent = new Map<string, SpanRow[]>();
   for (const row of sorted) {
     const key = row.parentSpanId ?? '__root__';
@@ -128,16 +152,18 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
       // 根层多个孤立 trace 碎片（跨服务未串联）不出边，仅出节点
       continue;
     }
-    if (children.length === 1) {
-      edges.push({ id: `${parentKey}->${children[0]!.spanId}`, from: parentKey, to: children[0]!.spanId, kind: 'child' });
-      continue;
+    const attemptChain = children.filter((row) => inferKind(row) === 'upstream');
+    const direct = children.filter((row) => inferKind(row) !== 'upstream');
+    for (const row of direct) {
+      edges.push(childEdge(parentKey, row.spanId));
     }
-    edges.push({ id: `${parentKey}->${children[0]!.spanId}`, from: parentKey, to: children[0]!.spanId, kind: 'child' });
-    for (let i = 1; i < children.length; i++) {
+    if (attemptChain.length === 0) continue;
+    edges.push(childEdge(parentKey, attemptChain[0]!.spanId));
+    for (let i = 1; i < attemptChain.length; i++) {
       edges.push({
-        id: `${children[i - 1]!.spanId}->${children[i]!.spanId}`,
-        from: children[i - 1]!.spanId,
-        to: children[i]!.spanId,
+        id: `${attemptChain[i - 1]!.spanId}->${attemptChain[i]!.spanId}`,
+        from: attemptChain[i - 1]!.spanId,
+        to: attemptChain[i]!.spanId,
         kind: 'fallback',
       });
     }

@@ -107,4 +107,74 @@ describe('buildTraceGraph', () => {
     const childNode = graph.nodes.find((n) => n.id === child.spanId)!;
     expect(childNode.startOffsetMs).toBe(5_000);
   });
+
+  // ---- 阶段3：完整链路形态（预授权 → 上游（含换渠道）→ 收尾/结算）----
+
+  it('根的多类子节点：billing 子节点直连父，只有 upstream 兄弟才串 fallback 链', () => {
+    const root = span({ spanId: 'r'.repeat(16) });
+    const authorize = span({
+      spanId: 'a'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.authorize',
+      attributes: { 'billing.result': 'authorized', 'billing.amount_reserved': '2.5' },
+    });
+    const up1 = span({ spanId: 'b'.repeat(16), parentSpanId: root.spanId, name: 'upstream p1', statusCode: 2, statusMessage: 'rate_limited' });
+    const up2 = span({ spanId: 'c'.repeat(16), parentSpanId: root.spanId, name: 'upstream p2' });
+    const finalize = span({
+      spanId: 'd'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.finalize',
+      attributes: { 'billing.finalize': 'succeeded', 'usage.input_tokens': 10 },
+      startTime: new Date(1_700_000_002_000),
+    });
+    const graph = buildTraceGraph([root, authorize, up1, up2, finalize]);
+
+    // billing/finalize 直连根（child 边），绝不串进 fallback 链
+    expect(graph.edges).toContainEqual({ id: `${root.spanId}->${authorize.spanId}`, from: root.spanId, to: authorize.spanId, kind: 'child' });
+    expect(graph.edges).toContainEqual({ id: `${root.spanId}->${finalize.spanId}`, from: root.spanId, to: finalize.spanId, kind: 'child' });
+    // upstream 兄弟仍按尝试链：首接父、后续 fallback
+    expect(graph.edges.filter((e) => e.kind === 'fallback')).toEqual([
+      { id: `${up1.spanId}->${up2.spanId}`, from: up1.spanId, to: up2.spanId, kind: 'fallback' },
+    ]);
+  });
+
+  it('billing 节点 kind/subtitle：预授权显示金额，finalize 显示 usage 汇总', () => {
+    const root = span({ spanId: 'r'.repeat(16) });
+    const authorize = span({
+      spanId: 'a'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.authorize',
+      attributes: { 'billing.result': 'authorized', 'billing.amount_reserved': '2.5' },
+    });
+    const finalize = span({
+      spanId: 'd'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.finalize',
+      attributes: { 'billing.finalize': 'succeeded', 'usage.input_tokens': 1000, 'usage.output_tokens': 200 },
+    });
+    const graph = buildTraceGraph([root, authorize, finalize]);
+    const authNode = graph.nodes.find((n) => n.id === authorize.spanId)!;
+    expect(authNode.kind).toBe('billing');
+    expect(authNode.subtitle).toContain('2.5');
+    const finNode = graph.nodes.find((n) => n.id === finalize.spanId)!;
+    expect(finNode.kind).toBe('billing');
+    expect(finNode.subtitle).toContain('1000');
+  });
+
+  it('worker 结算 span：kind=settle，subtitle 显示实扣金额', () => {
+    const root = span({ spanId: 'r'.repeat(16) });
+    const settle = span({
+      spanId: 's'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.settle',
+      service: 'worker',
+      attributes: { 'billing.state': 'settled', 'billing.amount': '1.8' },
+      startTime: new Date(1_700_000_003_000),
+    });
+    const graph = buildTraceGraph([root, settle]);
+    const node = graph.nodes.find((n) => n.id === settle.spanId)!;
+    expect(node.kind).toBe('settle');
+    expect(node.subtitle).toContain('1.8');
+    expect(graph.edges).toContainEqual({ id: `${root.spanId}->${settle.spanId}`, from: root.spanId, to: settle.spanId, kind: 'child' });
+  });
 });

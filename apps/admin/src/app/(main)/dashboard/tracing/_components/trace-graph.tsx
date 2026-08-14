@@ -44,13 +44,27 @@ function layout(nodes: Node[], edges: Edge[]): Node[] {
 function SpanCard({ data }: NodeProps) {
   const node = data.graphNode as GraphNode;
   const isError = node.status === 'error';
-  const icon = node.kind === 'http' ? '🌐' : node.kind === 'upstream' ? '🔀' : '⚙️';
+  const icon =
+    node.kind === 'http'
+      ? '🌐'
+      : node.kind === 'upstream'
+        ? '🔀'
+        : node.kind === 'billing'
+          ? '💰'
+          : node.kind === 'settle'
+            ? '🧾'
+            : '⚙️';
+  // 计费节点默认蓝调（金额语义），结算成功绿调
   const tone =
     node.status === 'error'
       ? 'border-destructive/70 bg-destructive/10 animate-pulse'
       : node.status === 'ok'
         ? 'border-emerald-600/40 bg-emerald-500/5'
-        : 'border-border bg-background';
+        : node.kind === 'billing'
+          ? 'border-sky-600/40 bg-sky-500/5'
+          : node.kind === 'settle'
+            ? 'border-violet-600/40 bg-violet-500/5'
+            : 'border-border bg-background';
   return (
     <div
       className={`w-[230px] rounded-lg border-2 px-3 py-2 shadow-sm transition-colors ${tone}`}
