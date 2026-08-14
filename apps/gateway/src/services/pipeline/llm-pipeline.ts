@@ -26,6 +26,7 @@ import {
 import type { AttemptTraceContext, RequestTraceContext } from './trace-context.js';
 import type { AuthContext, AuthEnv } from '../../middleware/auth.js';
 import { errorResponse } from '../../lib/http.js';
+import { rewriteSseModel } from '../../lib/sse-model-rewrite.js';
 import { isModelAllowed } from '../../lib/model-scope.js';
 import {
   recordChannelFailure,
@@ -916,10 +917,15 @@ export class LlmPipeline {
     }
 
     // 关闭 SSE 前等待成功收据提交；入队只是提交后的 best-effort 唤醒。
+    // 流先过模型名改写（对外只可见对外名），再进计费生命周期包装。
     return {
       kind: 'success',
       response: sseResponse(
-        this.withBillingLifecycle(handle.stream, requestId, completion),
+        this.withBillingLifecycle(
+          rewriteSseModel(handle.stream, externalModel),
+          requestId,
+          completion,
+        ),
         requestId,
       ),
     };
@@ -999,17 +1005,23 @@ export class LlmPipeline {
         };
       }
       recordRequest(target.realModel, 200, result.durationMs);
-      // 直接透传上游完整响应体；缺失时给同构空信封
+      // 直接透传上游完整响应体（model 字段改写为对外名——白标）；缺失时给同构空信封
       const fallbackBody =
         kind === 'chat'
           ? {
               id: `chatcmpl-${requestId.slice(0, 24)}`,
               object: 'chat.completion',
-              model: target.realModel,
+              model: externalModel,
               choices: [],
             }
-          : { model: target.realModel, data: [], usage: {} };
-      return { kind: 'success', response: c.json(result.body ?? fallbackBody) };
+          : { model: externalModel, data: [], usage: {} };
+      const relayed =
+        result.body &&
+        typeof result.body === 'object' &&
+        typeof (result.body as { model?: unknown }).model === 'string'
+          ? { ...result.body, model: externalModel }
+          : result.body;
+      return { kind: 'success', response: c.json(relayed ?? fallbackBody) };
     }
 
     const err = result.error;
