@@ -19,6 +19,7 @@ import { channelAdminRoutes } from './routes/channels.js';
 import { channelFundsRoutes } from './routes/channel-funds.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { modelAdminRoutes } from './routes/models.js';
+import { modelCatalogRoutes } from './routes/model-catalog.js';
 import { rateCardAdminRoutes } from './routes/rate-cards.js';
 import { planAdminRoutes } from './routes/plans.js';
 import { subscriptionAdminRoutes } from './routes/subscriptions.js';
@@ -91,6 +92,7 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/channel-funds', channelFundsRoutes(services, deps.config.voucherMaxBytes));
   admin.route('/vouchers', voucherRoutes(services));
   admin.route('/models', modelAdminRoutes(services));
+  admin.route('/model-catalog', modelCatalogRoutes(services));
   admin.route('/rate-cards', rateCardAdminRoutes(services));
   admin.route('/plans', planAdminRoutes(services));
   admin.route('/subscriptions', subscriptionAdminRoutes(services));
