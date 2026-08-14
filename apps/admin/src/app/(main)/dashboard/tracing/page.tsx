@@ -19,6 +19,7 @@ import {
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
 import { TraceWaterfall } from './_components/trace-waterfall';
 import { TraceGraph } from './_components/trace-graph';
+import { TraceDetailDialog } from './_components/trace-detail-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,12 +161,7 @@ export default async function TracingPage({
                 {items.map((t) => (
                   <TableRow key={t.traceId}>
                     <TableCell className="font-mono text-xs">
-                      <Link
-                        href={`/dashboard/tracing?traceId=${t.traceId}`}
-                        className="underline"
-                      >
-                        {t.traceId.slice(0, 12)}…
-                      </Link>
+                      <TraceDetailDialog traceId={t.traceId} rootName={t.rootName} />
                     </TableCell>
                     <TableCell className="max-w-64 truncate">{t.rootName}</TableCell>
                     <TableCell className="text-right tabular-nums">{t.durationMs} ms</TableCell>

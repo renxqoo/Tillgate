@@ -89,7 +89,16 @@ function SpanCard({ data }: NodeProps) {
 
 const nodeTypes = { spanCard: SpanCard };
 
-export function TraceGraph({ spans, totalMs }: { spans: SpanRowLike[]; totalMs: number }) {
+export function TraceGraph({
+  spans,
+  totalMs,
+  heightClass = 'h-[420px]',
+}: {
+  spans: SpanRowLike[];
+  totalMs: number;
+  /** 画布高度（弹窗全屏时传更大值） */
+  heightClass?: string;
+}) {
   const [selected, setSelected] = useState<SpanDetail | null>(null);
   const graph = useMemo(() => buildTraceGraph(spans), [spans]);
 
@@ -140,7 +149,7 @@ export function TraceGraph({ spans, totalMs }: { spans: SpanRowLike[]; totalMs: 
           </span>
         </span>
       </div>
-      <div className="h-[420px] overflow-hidden rounded-lg border">
+      <div className={`${heightClass} overflow-hidden rounded-lg border`}>
         <ReactFlow
           nodes={nodes}
           edges={edges}

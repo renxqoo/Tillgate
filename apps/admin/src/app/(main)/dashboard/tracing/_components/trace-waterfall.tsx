@@ -25,10 +25,13 @@ export function TraceWaterfall({
   spans,
   startMs,
   totalMs,
+  heightClass = '',
 }: {
   spans: SpanRow[];
   startMs: number;
   totalMs: number;
+  /** 容器限高（弹窗全屏时传值；默认不限） */
+  heightClass?: string;
 }) {
   const [openSpan, setOpenSpan] = useState<string | null>(null);
   const selected = spans.find((s) => s.spanId === openSpan) ?? null;
@@ -37,7 +40,7 @@ export function TraceWaterfall({
   );
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className={`flex flex-col gap-1 ${heightClass} overflow-auto`}>
       {sorted.map((span) => {
         const offset = new Date(span.startTime).getTime() - startMs;
         const left = totalMs > 0 ? (offset / totalMs) * 100 : 0;
