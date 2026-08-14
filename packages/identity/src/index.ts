@@ -33,15 +33,15 @@ export {
   HASH_LEN,
 } from './password.js';
 
-// 登录限流（双维度 + namespace 区分用户/管理员）
+// 登录限流（单源硬锁 + identifier-only 分布式信号，namespace 区分用户/管理员）
 export {
-  checkLoginThrottle,
   recordLoginFailure,
   resetLoginFailures,
   clientIp,
   LOGIN_FAIL_THRESHOLD,
   LOGIN_FAIL_WINDOW_S,
   LOGIN_LOCK_DURATION_S,
+  LOGIN_DISTRIBUTED_SIGNAL_THRESHOLD,
   type ThrottleCheck,
 } from './login-throttle.js';
 

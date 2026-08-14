@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
 
+import { formatMoney } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Dialog,
@@ -21,6 +22,7 @@ import {
 } from "@ai-gateway/ui/components/ui/dialog";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
 import { Input } from "@ai-gateway/ui/components/ui/input";
+import { NumberField } from "@ai-gateway/ui/components/ui/number-field";
 import {
   Table,
   TableBody,
@@ -41,7 +43,38 @@ const createSchema = z.object({
 const editSchema = z.object({
   name: z.string().min(1, "请输入名称").max(100),
   remark: z.string().max(200).optional(),
+  rpmLimit: z.string().optional(),
+  tpmLimit: z.string().optional(),
+  dailySpendLimit: z.string().optional(),
 });
+
+/** RPM/TPM：留空=不限；填值须正整数。 */
+function parsePositiveInt(raw: string | undefined, field: string): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+    throw new Error(`${field} 须为正整数`);
+  }
+  return n;
+}
+
+/** 每日花费上限：留空=不限；填值须 >= 0。 */
+function parseDailySpend(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error("每日花费上限须为 >= 0 的金额");
+  }
+  return n;
+}
+
+function fmtLimit(v: number | null): string {
+  return v === null ? "不限" : v.toLocaleString();
+}
+
+function fmtMoney(v: string | null): string {
+  return v === null ? "不限" : formatMoney(v);
+}
 
 export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
   return (
@@ -51,6 +84,9 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
           <TableHead>名称</TableHead>
           <TableHead>Key</TableHead>
           <TableHead>备注</TableHead>
+          <TableHead className="text-right">RPM</TableHead>
+          <TableHead className="text-right">TPM</TableHead>
+          <TableHead className="text-right">每日花费上限</TableHead>
           <TableHead>状态</TableHead>
           <TableHead>创建时间</TableHead>
           <TableHead>最近使用</TableHead>
@@ -60,7 +96,7 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
       <TableBody>
         {keys.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
               暂无 Key
             </TableCell>
           </TableRow>
@@ -72,6 +108,9 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
                 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{k.keyPreview}</code>
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">{k.remark || "—"}</TableCell>
+              <TableCell className="text-right tabular-nums">{fmtLimit(k.rpmLimit)}</TableCell>
+              <TableCell className="text-right tabular-nums">{fmtLimit(k.tpmLimit)}</TableCell>
+              <TableCell className="text-right tabular-nums">{fmtMoney(k.dailySpendLimit)}</TableCell>
               <TableCell>
                 <StatusBadge status={k.status} />
               </TableCell>
@@ -83,7 +122,7 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
-                  {k.status === 0 && <EditKeyInline id={k.id} name={k.name} remark={k.remark} />}
+                  {k.status === 0 && <EditKeyInline key={k.id} keyRow={k} />}
                   {k.status === 0 && <RevokeInline id={k.id} />}
                 </div>
               </TableCell>
@@ -134,41 +173,69 @@ function RevokeInline({ id }: { id: number }) {
   );
 }
 
-function EditKeyInline({
-  id,
-  name,
-  remark,
-}: {
-  id: number;
-  name: string;
-  remark: string | null;
-}) {
+function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
   const [open, setOpen] = useState(false);
   const form = useForm<z.infer<typeof editSchema>>({
     resolver: zodResolver(editSchema),
-    defaultValues: { name, remark: remark ?? "" },
+    defaultValues: {
+      name: keyRow.name,
+      remark: keyRow.remark ?? "",
+      rpmLimit: keyRow.rpmLimit === null ? "" : String(keyRow.rpmLimit),
+      tpmLimit: keyRow.tpmLimit === null ? "" : String(keyRow.tpmLimit),
+      dailySpendLimit: keyRow.dailySpendLimit === null ? "" : String(keyRow.dailySpendLimit),
+    },
   });
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) form.reset({ name, remark: remark ?? "" }); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o)
+          form.reset({
+            name: keyRow.name,
+            remark: keyRow.remark ?? "",
+            rpmLimit: keyRow.rpmLimit === null ? "" : String(keyRow.rpmLimit),
+            tpmLimit: keyRow.tpmLimit === null ? "" : String(keyRow.tpmLimit),
+            dailySpendLimit:
+              keyRow.dailySpendLimit === null ? "" : String(keyRow.dailySpendLimit),
+          });
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <PencilIcon />
           编辑
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>编辑 Key</DialogTitle>
-          <DialogDescription>修改名称或备注（不可更改 Key 本身）。</DialogDescription>
+          <DialogDescription>
+            修改名称、备注或限流（RPM / TPM / 每日花费上限，留空 = 不限）。
+          </DialogDescription>
         </DialogHeader>
         <form
           id="edit-key-form"
           onSubmit={form.handleSubmit(async (values) => {
+            let rpmLimit: number | null;
+            let tpmLimit: number | null;
+            let dailySpendLimit: number | null;
+            try {
+              rpmLimit = parsePositiveInt(values.rpmLimit, "RPM");
+              tpmLimit = parsePositiveInt(values.tpmLimit, "TPM");
+              dailySpendLimit = parseDailySpend(values.dailySpendLimit);
+            } catch (e) {
+              toast.error((e as Error).message);
+              return;
+            }
             const { updateKeyAction } = await import("../actions");
-            const res = await updateKeyAction(id, {
+            const res = await updateKeyAction(keyRow.id, {
               name: values.name,
               remark: values.remark,
+              rpmLimit,
+              tpmLimit,
+              dailySpendLimit,
             });
             if (res.error) {
               toast.error("更新失败", { description: res.error });
@@ -201,6 +268,33 @@ function EditKeyInline({
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
               )}
+            />
+            <NumberField
+              control={form.control}
+              name="rpmLimit"
+              label="RPM（每分钟请求数，留空=不限）"
+              id="edit-key-rpm"
+              min={1}
+              step="1"
+              placeholder="不限"
+            />
+            <NumberField
+              control={form.control}
+              name="tpmLimit"
+              label="TPM（每分钟 Token 数，留空=不限）"
+              id="edit-key-tpm"
+              min={1}
+              step="1"
+              placeholder="不限"
+            />
+            <NumberField
+              control={form.control}
+              name="dailySpendLimit"
+              label="每日花费上限（元，留空=不限）"
+              id="edit-key-dailyspend"
+              min={0}
+              step="0.01"
+              placeholder="不限"
             />
           </FieldGroup>
         </form>

@@ -42,26 +42,72 @@ export async function hashPassword(plaintext: string): Promise<string> {
   return `scrypt:${SCRYPT_N}:${SCRYPT_R}:${SCRYPT_P}:${salt.toString('hex')}:${hash.toString('hex')}`;
 }
 
-/**
- * 校验明文 vs 已存储哈希。
- *   - 格式非法/不支持 → false（不抛错，调用方按「凭证错误」处理）
- *   - 常量时间比较防时序攻击
- */
-export async function verifyPassword(plaintext: string, stored: string | null | undefined): Promise<boolean> {
-  if (!stored) return false;
+interface ParsedHash {
+  N: number;
+  r: number;
+  p: number;
+  salt: Buffer;
+  expected: Buffer;
+}
+
+/** 解析自描述哈希格式 scrypt:N:r:p:<saltHex>:<hashHex>；非法/不支持 → null */
+function parseStored(stored: string | null | undefined): ParsedHash | null {
+  if (!stored) return null;
   const parts = stored.split(':');
-  if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
+  if (parts.length !== 6 || parts[0] !== 'scrypt') return null;
   const N = Number(parts[1]);
   const r = Number(parts[2]);
   const p = Number(parts[3]);
-  if (!Number.isFinite(N) || !Number.isFinite(r) || !Number.isFinite(p) || N < 1 || r < 1 || p < 1) return false;
+  if (!Number.isFinite(N) || !Number.isFinite(r) || !Number.isFinite(p) || N < 1 || r < 1 || p < 1) {
+    return null;
+  }
   const salt = Buffer.from(parts[4]!, 'hex');
   const expected = Buffer.from(parts[5]!, 'hex');
-  if (expected.length !== HASH_LEN) return false;
+  if (expected.length !== HASH_LEN) return null;
+  return { N, r, p, salt, expected };
+}
+
+/** 对给定哈希参数跑一次 scrypt + 常量时间比较（不抛错，异常按 false 处理） */
+async function verifyAgainst(plaintext: string, parsed: ParsedHash): Promise<boolean> {
   try {
-    const actual = await scrypt(plaintext, salt, HASH_LEN, { N, r, p, maxmem: SCRYPT_MAXMEM });
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+    const actual = await scrypt(plaintext, parsed.salt, HASH_LEN, {
+      N: parsed.N,
+      r: parsed.r,
+      p: parsed.p,
+      maxmem: SCRYPT_MAXMEM,
+    });
+    return actual.length === parsed.expected.length && timingSafeEqual(actual, parsed.expected);
   } catch {
     return false;
   }
+}
+
+/**
+ * 固定的「哑哈希」：用户不存在 / 哈希非法时也跑一次等参数 scrypt，
+ * 使「用户不存在」与「密码错误」的响应耗时一致，杜绝时序侧信道枚举（01 修复）。
+ * 懒生成一次并缓存（scrypt 参数与真实哈希一致）。
+ */
+let dummyHashPromise: Promise<string> | null = null;
+async function ensureDummyHash(): Promise<string> {
+  dummyHashPromise ??= hashPassword('ai-gateway-constant-time-dummy');
+  return dummyHashPromise;
+}
+
+/**
+ * 校验明文 vs 已存储哈希。
+ *   - 格式非法/不存在 → 仍执行一次等量 scrypt（对哑哈希），恒定时间返回 false
+ *   - 常量时间比较防时序攻击
+ */
+export async function verifyPassword(
+  plaintext: string,
+  stored: string | null | undefined,
+): Promise<boolean> {
+  const parsed = parseStored(stored);
+  if (parsed) {
+    return verifyAgainst(plaintext, parsed);
+  }
+  // 用户不存在或哈希非法：对哑哈希执行一次 scrypt，保证与「密码错」同耗时后返回 false。
+  const dummy = parseStored(await ensureDummyHash())!;
+  await verifyAgainst(plaintext, dummy);
+  return false;
 }

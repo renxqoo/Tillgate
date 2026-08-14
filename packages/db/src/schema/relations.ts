@@ -7,6 +7,8 @@ import { providers } from './providers.js';
 import { modelChannels, modelMappings } from './model-mappings.js';
 import { rateCardCoefficients, rateCards } from './billing.js';
 import { usageLogs } from './usage.js';
+import { billingRequests } from './billing-requests.js';
+import { channelRecharges } from './channel-recharges.js';
 import { transactions } from './transactions.js';
 import { redeemBatches, redeemCodes } from './redeem.js';
 import { auditLogs, requestLogs } from './logs.js';
@@ -42,6 +44,7 @@ export const channelsRelations = relations(channels, ({ one, many }) => ({
   provider: one(providers, { fields: [channels.providerId], references: [providers.id] }),
   modelChannels: many(modelChannels),
   usageLogs: many(usageLogs),
+  recharges: many(channelRecharges),
 }));
 
 export const modelMappingsRelations = relations(modelMappings, ({ many }) => ({
@@ -82,6 +85,17 @@ export const usageLogsRelations = relations(usageLogs, ({ one }) => ({
     fields: [usageLogs.subscriptionId],
     references: [userSubscriptions.id],
   }),
+}));
+
+export const billingRequestsRelations = relations(billingRequests, ({ one }) => ({
+  user: one(users, { fields: [billingRequests.userId], references: [users.id] }),
+  apiKey: one(apiKeys, { fields: [billingRequests.apiKeyId], references: [apiKeys.id] }),
+  channel: one(channels, { fields: [billingRequests.channelId], references: [channels.id] }),
+}));
+
+export const channelRechargesRelations = relations(channelRecharges, ({ one }) => ({
+  channel: one(channels, { fields: [channelRecharges.channelId], references: [channels.id] }),
+  admin: one(admins, { fields: [channelRecharges.adminId], references: [admins.id] }),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({

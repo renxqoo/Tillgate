@@ -29,6 +29,10 @@ const userUpdateSchema = z.object({
   rateCardId: z.number().int().positive().nullable().optional(),
   rpmLimit: z.number().int().min(1).nullable().optional(),
   tpmLimit: z.number().int().min(1).nullable().optional(),
+  /** 透支上限（元，>=0）。信用模型：balance 允许降到 -credit_limit。 */
+  creditLimit: z.number().min(0).optional(),
+  /** 每日花费上限（元，>=0）。NULL=不限。 */
+  dailySpendLimit: z.number().min(0).nullable().optional(),
   displayName: z.string().max(64).optional(),
   email: z.string().email().max(255).nullable().optional(),
   /** 封禁原因（写入 freeze_reason，便于审计/解冻判定） */

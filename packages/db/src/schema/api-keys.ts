@@ -5,6 +5,7 @@ import {
   smallint,
   timestamp,
   bigint,
+  numeric,
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
@@ -33,6 +34,11 @@ export const apiKeys = pgTable(
     /** Key 级限流，NULL=继承用户/全局 */
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
+    /**
+     * Key 级每日花费上限（元，NULL=不限）。团队场景：一个用户（团队）挂多个 Key（团员），
+     * 管理员可对单个团员 Key 单独设「单日最多消费」；独立于用户级 daily_spend_limit，两者都设时双闸门。
+     */
+    dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
     /** 0 有效 / 1 吊销 */
     status: smallint('status').notNull().default(0),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),

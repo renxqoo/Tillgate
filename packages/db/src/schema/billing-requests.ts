@@ -14,6 +14,8 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
+import { apiKeys } from './api-keys.js';
+import { channels } from './channels.js';
 
 /**
  * 请求级计费状态机，也是结算收据的 durable outbox。
@@ -26,6 +28,15 @@ export const billingRequests = pgTable(
     userId: bigint('user_id', { mode: 'number' })
       .notNull()
       .references(() => users.id),
+    /** 发起凭证的 Key（JWT/无 Key 为 NULL）。用于 Key 级每日花费上限统计。 */
+    apiKeyId: bigint('api_key_id', { mode: 'number' }).references(() => apiKeys.id),
+    /** 当前尝试的渠道（路由选渠时写入）。用于渠道「进货额度」精确硬闸。 */
+    channelId: bigint('channel_id', { mode: 'number' }).references(() => channels.id),
+    /** 该请求在当前渠道上的在途上游成本敞口（元）。结算/释放/换渠道时清或改写。 */
+    channelReservedAmount: numeric('channel_reserved_amount', {
+      precision: 38,
+      scale: 18,
+    }),
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
     /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/uncertain/dead */
     status: varchar('status', { length: 32 }).notNull().default('authorized'),
@@ -55,6 +66,7 @@ export const billingRequests = pgTable(
   },
   (t) => [
     index('billing_requests_user_status_idx').on(t.userId, t.status),
+    index('billing_requests_api_key_status_idx').on(t.apiKeyId, t.status),
     index('billing_requests_status_created_idx').on(t.status, t.createdAt),
     index('billing_requests_pending_idx').on(t.status, t.nextSettlementAt),
     index('billing_requests_lease_idx').on(t.status, t.leaseExpiresAt),

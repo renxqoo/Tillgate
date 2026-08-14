@@ -53,6 +53,7 @@ export function makeTestConfig(overrides: Partial<ClientApiConfig> = {}): Client
     jwtSecret: 'test-jwt-secret-0123456789-abcdef',
     secureCookie: false,
     giftAmount: 0,
+    trustedOrigins: [],
     ...overrides,
   };
 }

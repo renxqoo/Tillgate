@@ -27,6 +27,8 @@ const keyUpdateSchema = z.object({
   rpmLimit: z.number().int().min(1).nullable().optional(),
   /** TPM 限流，null=不限流 */
   tpmLimit: z.number().int().min(1).nullable().optional(),
+  /** Key 级每日花费上限（元，>=0），null=不限。团队团员单 Key 封顶。 */
+  dailySpendLimit: z.number().min(0).nullable().optional(),
   status: z.number().int().min(0).max(1).optional(),
 });
 
@@ -56,6 +58,7 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
             userDisplayName: users.displayName,
             rpmLimit: apiKeys.rpmLimit,
             tpmLimit: apiKeys.tpmLimit,
+            dailySpendLimit: apiKeys.dailySpendLimit,
             status: apiKeys.status,
             lastUsedAt: apiKeys.lastUsedAt,
             createdAt: apiKeys.createdAt,
@@ -80,6 +83,7 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       if (body.name !== undefined) update.name = body.name;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
       if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
+      if (body.dailySpendLimit !== undefined) update.dailySpendLimit = body.dailySpendLimit;
       if (body.status !== undefined) update.status = body.status;
 
       const [updated] = await s.db

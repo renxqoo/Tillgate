@@ -9,15 +9,11 @@ import { clientAuthRoutesPublic } from './auth.js';
 import { makeClientPublicApp, makeServices, makeTestConfig } from '../test/helpers.js';
 
 /**
- * TDD 回归测试 —— client-api 登录限流 IP 可通过 X-Forwarded-For 伪造绕过。
+ * TDD 回归测试 —— 登录限流的 IP 维度（02 修复后语义）。
  *
- * 修复：@ai-gateway/identity 的 checkLoginThrottle/recordLoginFailure 采用双维度计数：
- *   - (identifier, ip) 防 单IP 爆破
- *   - identifier-only 防分布式爆破（username 不可被 XFF 伪造绕过）
- *
- * 本测试验证：
- *   - 固定 username + 每次换 XFF → 第 6 次仍触发 429（identifier-only 维度生效）
- *   - 对照组：固定 IP + 连续失败 → 触发 429
+ * 修复前：identifier-only 维度会硬锁账号 → 任意匿名者换 IP 也能把目标账号锁死（登录 DoS）。
+ * 修复后：硬锁只绑 (identifier, ip)，identifier-only 仅计数（分布式爆破观测信号，不锁定）。
+ *   因此「固定 username + 每次换 XFF」不再触发 429 锁死账号，正确密码始终可用。
  *
  * 需要真实 Postgres + Redis。
  */
@@ -59,11 +55,10 @@ async function createUser(subject: string, password: string): Promise<number> {
 }
 
 async function cleanup(uid: number, subject: string) {
-  // namespace='user'，清理该 subject 的所有限流键
-  for (const prefix of ['login:fails:user:', 'login:lock:user:']) {
+  for (const pattern of [`login:*:${subject}*`, `login:*:id:${subject}`]) {
     let cursor = '0';
     do {
-      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}${subject}*`, 'COUNT', 100);
+      const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = next;
       if (keys.length > 0) await redis.del(...keys);
     } while (cursor !== '0');
@@ -71,55 +66,51 @@ async function cleanup(uid: number, subject: string) {
   await db.delete(users).where(eq(users.id, uid));
 }
 
-describe('client-api 登录限流：X-Forwarded-For 伪造不能绕过锁定', () => {
-  it('固定 username + 每次换 XFF → 仍触发 429 锁定（identifier-only 维度兜底）', async () => {
+function login(app: ReturnType<typeof makeApp>, subject: string, password: string, ip?: string) {
+  return app.request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(ip ? { 'x-forwarded-for': ip } : {}) },
+    body: JSON.stringify({ username: subject, password }),
+  });
+}
+
+describe('client-api 登录限流：分布式爆破不再锁死账号（02 修复）', () => {
+  it('固定 username + 每次换 XFF → 不再触发硬锁（全部 401），正确密码始终可用', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'xff-bypass-' + Date.now();
     const uid = await createUser(subject, 'RightPass1');
     const app = makeApp();
     try {
-      const body = JSON.stringify({ username: subject, password: 'WrongPass1' });
-      let locked = false;
+      let saw429 = false;
       let all401 = true;
-      // 失败 50 次（远超阈值 5），但每次换 XFF
+      // 失败 50 次，但每次换 XFF（模拟分布式爆破）：每个 (username, ip) 各只失败 1 次
       for (let i = 0; i < 50; i++) {
         const fakeIp = `10.99.${i >> 8}.${i & 0xff}`;
-        const res = await app.request('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-forwarded-for': fakeIp,
-          },
-          body,
-        });
-        if (res.status === 429) { locked = true; break; }
+        const res = await login(app, subject, 'WrongPass1', fakeIp);
+        if (res.status === 429) saw429 = true;
         if (res.status !== 401) all401 = false;
       }
-      // 修复后预期：identifier-only 维度使 fixed username 第 6 次开始触发 429
-      expect(locked).toBe(true);
+      // 修复后：identifier-only 不锁定，分布式换 IP 不会锁死账号 → 0 个 429
+      expect(saw429).toBe(false);
       expect(all401).toBe(true);
+
+      // 正确密码仍然可用（合法用户不被分布式爆破锁死）
+      const ok = await login(app, subject, 'RightPass1', '203.0.113.9');
+      expect(ok.status).toBe(200);
     } finally {
       await cleanup(uid, subject);
     }
   });
 
-  it('对照组：固定 IP + 连续失败 → 应触发 429 锁定', async () => {
+  it('对照组：固定 IP + 连续失败 → 单源硬锁触发 429', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'xff-control-' + Date.now();
     const uid = await createUser(subject, 'RightPass1');
     const app = makeApp();
     try {
-      const body = JSON.stringify({ username: subject, password: 'WrongPass1' });
       let locked = false;
-      for (let i = 0; i < 8; i++) {
-        const res = await app.request('/api/auth/login', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-forwarded-for': '203.0.113.7', // 固定 IP
-          },
-          body,
-        });
+      for (let i = 0; i < 6; i++) {
+        const res = await login(app, subject, 'WrongPass1', '203.0.113.7');
         if (res.status === 429) { locked = true; break; }
       }
       expect(locked).toBe(true);

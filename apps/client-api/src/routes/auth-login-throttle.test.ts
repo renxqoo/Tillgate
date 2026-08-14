@@ -9,13 +9,12 @@ import { clientAuthRoutesPublic } from './auth.js';
 import { makeClientPublicApp, makeServices, makeTestConfig } from '../test/helpers.js';
 
 /**
- * TDD 回归测试 —— client-api /api/auth/login 登录限流/锁定（C6）。
+ * TDD 回归测试 —— client-api /api/auth/login 登录限流/锁定（02 修复后语义）。
  *
- * gateway 对静态 Key 有 brute-force-guard（5 次失败锁 10 分钟），
- * 但用户登录路由原本没有任何限流/锁定。scrypt verifyPassword 可被放大 DoS。
- *
- * 限流实现位于 @ai-gateway/identity（namespace='user'，双维度计数）。
- * 本测试验证：连续失败达阈值（5 次）后锁定（429），登录成功清零计数。
+ * 安全模型：
+ *   - 单源硬锁只绑 (identifier, ip)：同一来源连续失败达阈值（5）→ 后续「错误密码」429。
+ *   - 正确密码豁免：锁定期间正确密码仍 200 并清零计数（攻击者无法锁死合法账号）。
+ *   - 统一错误文案：用户不存在与密码错都返回 401 INVALID_CREDENTIALS。
  *
  * 需要真实 Postgres + Redis（hashPassword 走真实 scrypt）。
  */
@@ -61,80 +60,70 @@ async function cleanup(uid: number): Promise<void> {
   await db.delete(users).where(eq(users.id, uid));
 }
 
-/** 清理某 subject 的所有限流键（namespace='user'） */
+/** 清理某 subject 的所有登录限流键（含单源 + identifier-only 信号） */
 async function clearThrottleKeys(subject: string): Promise<void> {
-  for (const prefix of ['login:fails:user:', 'login:lock:user:']) {
+  for (const pattern of [`login:*:${subject}*`, `login:*:id:${subject}`]) {
     let cursor = '0';
     do {
-      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}${subject}*`, 'COUNT', 100);
+      const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
       cursor = next;
       if (keys.length > 0) await redis.del(...keys);
     } while (cursor !== '0');
   }
 }
 
-describe('C6 — client-api 登录限流/锁定', () => {
-  it('连续失败达阈值（5 次）后 → 后续尝试被锁定（429）', async () => {
+function loginReq(app: ReturnType<typeof makeApp>, subject: string, password: string) {
+  return app.request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: subject, password }),
+  });
+}
+
+describe('02 — client-api 登录限流（单源硬锁 + 正确密码豁免）', () => {
+  it('单源连续失败达阈值（5）→ 第 5 次起错误密码 429；正确密码在锁定期间仍 200 并清零', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'brute-c6-' + Date.now();
     const uid = await createLocalUser(subject, 'RightPass1');
     const app = makeApp();
     try {
-      const body = JSON.stringify({ username: subject, password: 'WrongPass1' });
-      const req = () => app.request('/api/auth/login', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body,
-      });
-
-      // 前 5 次：密码错误 → 401（并累计失败计数）
-      for (let i = 0; i < 5; i++) {
-        const res = await req();
+      // 前 4 次：密码错误 → 401（累计失败计数）
+      for (let i = 0; i < 4; i++) {
+        const res = await loginReq(app, subject, 'WrongPass1');
         expect(res.status).toBe(401);
       }
-      // 第 6 次：已达阈值（5 次失败）→ 锁定 → 429
-      const res6 = await req();
-      expect(res6.status).toBe(429);
-      // retry-after 头存在
-      expect(res6.headers.get('retry-after')).not.toBeNull();
+      // 第 5 次：达阈值 → 单源锁定 → 429
+      const res5 = await loginReq(app, subject, 'WrongPass1');
+      expect(res5.status).toBe(429);
+      expect(res5.headers.get('retry-after')).not.toBeNull();
 
-      // 锁定期间：即便密码正确也被拒（429，不泄露密码对错）
-      const correctBody = JSON.stringify({ username: subject, password: 'RightPass1' });
-      const resCorrect = await app.request('/api/auth/login', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: correctBody,
-      });
-      expect(resCorrect.status).toBe(429);
+      // 正确密码豁免：锁定期间正确密码仍 200，并清零计数（合法用户不被锁死）
+      const resCorrect = await loginReq(app, subject, 'RightPass1');
+      expect(resCorrect.status).toBe(200);
+
+      // 清零后：再次失败 4 次仍 401（未误锁）
+      for (let i = 0; i < 4; i++) {
+        const r = await loginReq(app, subject, 'WrongPass1');
+        expect(r.status).toBe(401);
+      }
     } finally {
       await clearThrottleKeys(subject);
       await cleanup(uid);
     }
   });
 
-  it('登录成功 → 清零计数（不误锁）', async () => {
+  it('用户不存在与密码错误返回一致（401 INVALID_CREDENTIALS，不泄露账号存在性）', async () => {
     if (!connected) return it.skip('no DB');
-    const subject = 'brute-c6-ok-' + Date.now();
+    const subject = 'brute-c6-none-' + Date.now();
     const uid = await createLocalUser(subject, 'RightPass1');
     const app = makeApp();
     try {
-      // 4 次失败（未达阈值 5）
-      for (let i = 0; i < 4; i++) {
-        await app.request('/api/auth/login', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ username: subject, password: 'WrongPass1' }),
-        });
-      }
-      // 正确密码 → 200（清零计数）
-      const res = await app.request('/api/auth/login', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ username: subject, password: 'RightPass1' }),
-      });
-      expect(res.status).toBe(200);
-      // 再次失败 4 次仍不应锁（计数已清零，第 5 次才锁）
-      for (let i = 0; i < 4; i++) {
-        const r = await app.request('/api/auth/login', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ username: subject, password: 'WrongPass1' }),
-        });
-        expect(r.status).toBe(401); // 未达阈值，仍 401
-      }
+      const wrong = await loginReq(app, subject, 'WrongPass1');
+      const nonexist = await loginReq(app, 'brute-c6-none-' + Date.now() + '-ghost', 'whatever');
+      expect(wrong.status).toBe(401);
+      expect(nonexist.status).toBe(401);
+      expect(((await wrong.json()) as any).error?.code).toBe('INVALID_CREDENTIALS');
+      expect(((await nonexist.json()) as any).error?.code).toBe('INVALID_CREDENTIALS');
     } finally {
       await clearThrottleKeys(subject);
       await cleanup(uid);

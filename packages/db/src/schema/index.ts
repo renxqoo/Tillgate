@@ -6,6 +6,7 @@ export * from './apps.js';
 export * from './api-keys.js';
 export * from './providers.js';
 export * from './channels.js';
+export * from './channel-recharges.js';
 export * from './model-mappings.js';
 export * from './billing.js';
 export * from './usage.js';

@@ -7,6 +7,7 @@ import {
   bigint,
   jsonb,
   text,
+  numeric,
   index,
 } from 'drizzle-orm/pg-core';
 import { providers } from './providers.js';
@@ -37,6 +38,25 @@ export const channels = pgTable(
     /** 渠道级限流（保护上游配额） */
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
+    /**
+     * 当前余额（元）= 渠道「有没有钱」的唯一依据。入货 +、调账 ±、结算时按实际上游成本原子扣减。
+     * 余额 ≤ 0 即「没钱」，路由精确硬闸拦截新请求；余额可为负（历史/在途超支）。
+     */
+    upstreamBudget: numeric('upstream_budget', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
+    /**
+     * 熔断阈值（元）。剩余 ≤ 此值 → 自动熔断（status=3）+ 清路由缓存。
+     * NULL = 0（耗尽才熔断）。仅 upstream_budget > 0 时生效。
+     */
+    upstreamThreshold: numeric('upstream_threshold', { precision: 38, scale: 18 }),
+    /**
+     * 在途上游成本敞口（元）。路由选渠时原子累加本次上游预估，结算/释放时原子扣减。
+     * 仅 upstream_budget > 0 的渠道启用（精确硬闸）；与 billing_requests.channel_reserved_amount 对应。
+     */
+    upstreamReserved: numeric('upstream_reserved', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

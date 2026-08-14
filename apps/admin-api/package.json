@@ -20,6 +20,7 @@
     "@ai-gateway/http": "workspace:*",
     "@ai-gateway/identity": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
+    "@ai-gateway/money": "workspace:*",
     "@hono/node-server": "^1.19.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.0",

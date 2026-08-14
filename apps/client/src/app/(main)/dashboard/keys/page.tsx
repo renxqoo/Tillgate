@@ -107,8 +107,8 @@ export default async function KeysPage({ searchParams }: PageProps) {
 }
 
 const MOCK_KEYS: KeyRow[] = [
-  { id: 1, name: "production", keyPreview: "ag-****-a1b2", remark: "主项目", status: 0, rpmLimit: 2000, tpmLimit: 1000000, expiresAt: null, lastUsedAt: new Date().toISOString(), createdAt: "2026-07-15T09:21:00.000Z" },
-  { id: 2, name: "staging", keyPreview: "ag-****-c3d4", remark: "测试环境", status: 0, rpmLimit: 500, tpmLimit: 200000, expiresAt: null, lastUsedAt: "2026-08-01T14:00:00.000Z", createdAt: "2026-07-10T11:00:00.000Z" },
-  { id: 3, name: "legacy-bot", keyPreview: "ag-****-e5f6", remark: null, status: 1, rpmLimit: 100, tpmLimit: 50000, expiresAt: null, lastUsedAt: "2025-12-01T08:00:00.000Z", createdAt: "2025-06-04T11:00:00.000Z" },
+  { id: 1, name: "production", keyPreview: "ag-****-a1b2", remark: "主项目", status: 0, rpmLimit: 2000, tpmLimit: 1000000, dailySpendLimit: null, expiresAt: null, lastUsedAt: new Date().toISOString(), createdAt: "2026-07-15T09:21:00.000Z" },
+  { id: 2, name: "staging", keyPreview: "ag-****-c3d4", remark: "测试环境", status: 0, rpmLimit: 500, tpmLimit: 200000, dailySpendLimit: "50", expiresAt: null, lastUsedAt: "2026-08-01T14:00:00.000Z", createdAt: "2026-07-10T11:00:00.000Z" },
+  { id: 3, name: "legacy-bot", keyPreview: "ag-****-e5f6", remark: null, status: 1, rpmLimit: 100, tpmLimit: 50000, dailySpendLimit: null, expiresAt: null, lastUsedAt: "2025-12-01T08:00:00.000Z", createdAt: "2025-06-04T11:00:00.000Z" },
 ];
 

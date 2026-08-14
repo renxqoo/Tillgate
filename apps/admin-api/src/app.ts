@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
-import { errorHandler, type Redis } from '@ai-gateway/http';
+import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { adminAuthMiddleware, type AdminEnv } from '@ai-gateway/identity';
 import type { AdminApiConfig } from './config.js';
 import type { AdminServices } from './services/index.js';
+import type { VoucherStorage } from './services/voucher-storage.js';
 import {
   adminAuthRoutesPublic,
   adminAuthRoutesProtected,
@@ -15,6 +16,8 @@ import { userAdminRoutes } from './routes/users.js';
 import { keyAdminRoutes } from './routes/keys.js';
 import { providerAdminRoutes } from './routes/providers.js';
 import { channelAdminRoutes } from './routes/channels.js';
+import { channelFundsRoutes } from './routes/channel-funds.js';
+import { voucherRoutes } from './routes/vouchers.js';
 import { modelAdminRoutes } from './routes/models.js';
 import { rateCardAdminRoutes } from './routes/rate-cards.js';
 import { redeemAdminRoutes } from './routes/redeem.js';
@@ -41,6 +44,8 @@ export interface AdminApiDeps {
   billingOperations: BillingOperations;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
   encryptionKey: string;
+  /** 凭证截图存储（本地磁盘/未来 OSS） */
+  voucherStorage: VoucherStorage;
   logger: Logger;
   config: AdminApiConfig;
 }
@@ -52,6 +57,7 @@ export function createApp(deps: AdminApiDeps): Hono {
     ledger: deps.ledger,
     billingOperations: deps.billingOperations,
     encryptionKey: deps.encryptionKey,
+    voucherStorage: deps.voucherStorage,
     logger: deps.logger,
   };
 
@@ -62,15 +68,18 @@ export function createApp(deps: AdminApiDeps): Hono {
   // 公开端点（不要求管理员会话）
   app.route('/api/admin/auth', adminAuthRoutesPublic(services, deps.config));
 
-  // 受保护子应用：默认要求管理员会话
+  // 受保护子应用：默认要求管理员会话 + 状态变更 Origin 校验（CSRF 纵深防御）
   const admin = new Hono<AdminEnv>();
   admin.use('*', adminAuthMiddleware(deps.db, deps.config.adminJwtSecret));
+  admin.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins }));
   admin.route('/auth', adminAuthRoutesProtected(services));
   admin.route('/me', adminMeRoutes(services));
   admin.route('/users', userAdminRoutes(services));
   admin.route('/keys', keyAdminRoutes(services));
   admin.route('/providers', providerAdminRoutes(services));
   admin.route('/channels', channelAdminRoutes(services));
+  admin.route('/channel-funds', channelFundsRoutes(services, deps.config.voucherMaxBytes));
+  admin.route('/vouchers', voucherRoutes(services));
   admin.route('/models', modelAdminRoutes(services));
   admin.route('/rate-cards', rateCardAdminRoutes(services));
   admin.route('/redeem-batches', redeemAdminRoutes(services));

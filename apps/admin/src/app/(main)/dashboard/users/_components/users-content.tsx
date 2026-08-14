@@ -69,6 +69,8 @@ export function UsersContent({
           <TableHead className="text-right">已结算</TableHead>
           <TableHead className="text-right">处理中预留</TableHead>
           <TableHead className="text-right">可用额度</TableHead>
+          <TableHead className="text-right">透支上限</TableHead>
+          <TableHead className="text-right">每日花费上限</TableHead>
           <TableHead className="w-44">最近登录</TableHead>
           <TableHead className="w-40 text-right">操作</TableHead>
         </TableRow>
@@ -76,7 +78,7 @@ export function UsersContent({
       <TableBody>
         {users.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
               无匹配用户
             </TableCell>
           </TableRow>
@@ -150,6 +152,12 @@ function UserRowItem({
       </TableCell>
       <TableCell className="text-right font-medium tabular-nums">
         {formatMoney(user.availableBalance)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {formatMoney(user.creditLimit)}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {user.dailySpendLimit === null ? '不限' : formatMoney(user.dailySpendLimit)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('zh-CN') : '从未'}

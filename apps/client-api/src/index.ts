@@ -40,6 +40,7 @@ const app = createApp({
     jwtSecret: env.JWT_SECRET,
     secureCookie: env.NODE_ENV === 'production',
     giftAmount: env.GIFT_AMOUNT,
+    trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
   },
 });
 

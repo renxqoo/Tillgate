@@ -19,7 +19,7 @@ import {
 /**
  * JWT 路径用户状态检查（与静态 Key 对称）：
  * 用户被封禁后，已签发的 JWT 应立即失效（而非等 2 小时过期）。
- * Redis 缓存 user_status:{userId} 60s，测试间清缓存。
+ * Redis 缓存 user_profile:{userId} 60s，测试间清缓存。
  */
 
 loadEnvFileIntoProcess();
@@ -66,7 +66,7 @@ describe('JWT 路径用户状态检查', () => {
     if (!connected) return it.skip('no DB');
     const { userId, appId, token, model } = await setupJwtUser(1);
     try {
-      await redis.del(`user_status:${userId}`);
+      await redis.del(`user_profile:${userId}`);
       const ai = makeMockAi({
         chat: vi.fn(async () => ({
           status: 'success' as const,
@@ -96,7 +96,7 @@ describe('JWT 路径用户状态检查', () => {
       expect(body.error.type).toBe('authentication_error');
       expect(ai.chat).not.toHaveBeenCalled();
     } finally {
-      await redis.del(`user_status:${userId}`).catch(() => {});
+      await redis.del(`user_profile:${userId}`).catch(() => {});
       await db
         .delete(apps)
         .where(eq(apps.id, appId))
@@ -109,7 +109,7 @@ describe('JWT 路径用户状态检查', () => {
     if (!connected) return it.skip('no DB');
     const { userId, appId, token, model } = await setupJwtUser(0);
     try {
-      await redis.del(`user_status:${userId}`);
+      await redis.del(`user_profile:${userId}`);
       const ai = makeMockAi({
         chat: vi.fn(async () => ({
           status: 'success' as const,
@@ -135,7 +135,7 @@ describe('JWT 路径用户状态检查', () => {
       });
       expect(res.status).toBe(200);
     } finally {
-      await redis.del(`user_status:${userId}`).catch(() => {});
+      await redis.del(`user_profile:${userId}`).catch(() => {});
       await db
         .delete(apps)
         .where(eq(apps.id, appId))

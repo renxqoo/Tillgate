@@ -67,6 +67,7 @@ async function setupModelWithTwoChannels(encryptionKey: string) {
       providerId: prov!.id,
       apiKeyEnc: encrypt('sk-1', encryptionKey),
       status: 0,
+      upstreamBudget: '1000000',
     })
     .returning();
   const [ch2] = await db
@@ -76,6 +77,7 @@ async function setupModelWithTwoChannels(encryptionKey: string) {
       providerId: prov!.id,
       apiKeyEnc: encrypt('sk-2', encryptionKey),
       status: 0,
+      upstreamBudget: '1000000',
     })
     .returning();
   const [m] = await db

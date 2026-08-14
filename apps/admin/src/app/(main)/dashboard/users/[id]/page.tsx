@@ -121,6 +121,11 @@ export default async function UserDetailPage({ params }: PageProps) {
             <Field label="已结算余额" value={fmtBalance(user.balance)} />
             <Field label="处理中预留" value={fmtBalance(user.reservedBalance)} />
             <Field label="可用额度" value={fmtBalance(user.availableBalance)} />
+            <Field label="透支上限" value={fmtBalance(user.creditLimit)} />
+            <Field
+              label="每日花费上限"
+              value={user.dailySpendLimit === null ? '不限' : fmtBalance(user.dailySpendLimit)}
+            />
             <Field label="费率卡" value={user.rateCardName ?? '—'} />
             <Field
               label="RPM 限额"

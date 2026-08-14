@@ -49,7 +49,10 @@ export interface GatewayDeps {
 export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
-  const authService = new AuthService(deps.db, deps.redis, deps.env.JWT_SECRET);
+  const authService = new AuthService(deps.db, deps.redis, deps.env.JWT_SECRET, {
+    authFailureLimit: deps.env.GATEWAY_AUTH_FAILURE_LIMIT,
+    authFailureWindowS: deps.env.GATEWAY_AUTH_FAILURE_WINDOW_S,
+  });
   const oauthService = new OAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, deps.logger);
   const billing = createBilling({
     db: deps.db,

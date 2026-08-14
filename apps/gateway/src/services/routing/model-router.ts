@@ -1,9 +1,10 @@
 import type { Redis } from 'ioredis';
 import type { Db } from '@ai-gateway/db';
-import { and, desc, eq } from 'drizzle-orm';
-import { channels, modelChannels, modelMappings, providers } from '@ai-gateway/db/schema';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { channels, modelChannels, modelMappings, providers, usageLogs } from '@ai-gateway/db/schema';
 import type { ChannelDesc, ParamRules } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
+import { toDecimal } from '@ai-gateway/money';
 
 /**
  * 路由缓存（模型映射 + 渠道解析）—— 消除热路径每请求查 DB。
@@ -21,7 +22,7 @@ const VERSION_KEY = 'route:cache:v';
 const CACHE_TTL_SEC = 300; // 5 分钟兜底（版本 bump 是主失效手段）
 const EMPTY_MARKER = '__empty__'; // 缓存「不存在」结果（防穿透：已下架模型反复查 DB）
 /** channels 缓存结构版本：形状变化时 bump，使旧 key 自然 miss */
-const CHANNELS_SCHEMA_V = 2;
+const CHANNELS_SCHEMA_V = 3;
 
 export interface MappingCache {
   id: number;
@@ -53,6 +54,10 @@ export interface ChannelCache {
   /** 渠道级限流（保护上游 API key 配额；null=该渠道不限流） */
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** 进货总额（元，0=未接入进货管理） */
+  upstreamBudget: string;
+  /** 剩余额度 = budget - 已结算上游成本（元，string） */
+  upstreamRemaining: string;
 }
 
 /** 落 Redis 的缓存项（C1 修复后：只存密文 apiKeyEnc，不存明文 apiKey） */
@@ -65,6 +70,8 @@ interface ChannelCacheStored {
   key: string;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  upstreamBudget: string;
+  upstreamRemaining: string;
 }
 
 /** DB 协议列（snake）→ 渠道描述协议（kebab） */
@@ -190,6 +197,7 @@ export class ModelRouter {
         mcPriority: modelChannels.priority,
         rpmLimit: channels.rpmLimit,
         tpmLimit: channels.tpmLimit,
+        upstreamBudget: channels.upstreamBudget,
       })
       .from(modelChannels)
       .innerJoin(channels, eq(modelChannels.channelId, channels.id))
@@ -197,6 +205,23 @@ export class ModelRouter {
       .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
       .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
       .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
+
+    // 渠道进货消耗聚合：consumed = sum(upstream_cost)，只计成功结算
+    const channelIds = rows.map((row) => row.channelId);
+    let consumedMap = new Map<number, string>();
+    if (channelIds.length > 0) {
+      const consumedRows = await this.db
+        .select({
+          channelId: usageLogs.channelId,
+          total: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
+        })
+        .from(usageLogs)
+        .where(and(inArray(usageLogs.channelId, channelIds), eq(usageLogs.status, 0)))
+        .groupBy(usageLogs.channelId);
+      for (const cr of consumedRows) {
+        if (cr.channelId != null) consumedMap.set(cr.channelId, cr.total);
+      }
+    }
 
     // 内存对象含解密明文 apiKey（供调用方用）；落 Redis 的只含密文 apiKeyEnc
     const memResult: ChannelCache[] = rows.map((row) => ({
@@ -208,6 +233,10 @@ export class ModelRouter {
       key: `${row.providerName}/${row.channelName}`,
       rpmLimit: row.rpmLimit,
       tpmLimit: row.tpmLimit,
+      upstreamBudget: row.upstreamBudget,
+      upstreamRemaining: toDecimal(row.upstreamBudget)
+        .minus(toDecimal(consumedMap.get(row.channelId) ?? '0'))
+        .toString(),
     }));
     const storedResult: ChannelCacheStored[] = rows.map((row) => ({
       channelId: row.channelId,
@@ -218,6 +247,10 @@ export class ModelRouter {
       key: `${row.providerName}/${row.channelName}`,
       rpmLimit: row.rpmLimit,
       tpmLimit: row.tpmLimit,
+      upstreamBudget: row.upstreamBudget,
+      upstreamRemaining: toDecimal(row.upstreamBudget)
+        .minus(toDecimal(consumedMap.get(row.channelId) ?? '0'))
+        .toString(),
     }));
 
     try {

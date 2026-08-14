@@ -11,6 +11,7 @@ import {
   resetAuthFailures,
   createRedisBruteForceStorage,
 } from '../../middleware/brute-force-guard.js';
+import { AuthFailureGuard } from '../../middleware/auth-failure-guard.js';
 
 /**
  * 鉴权上下文（鉴权通过后挂在 c.var.auth，后续路由/计量使用）。
@@ -74,32 +75,74 @@ function extractBearer(header: string | undefined): string | null {
  *   - Key 鉴权快照走 Redis 缓存（60s，含过期复核）
  *   - App 状态缓存 60s（禁用 App → 清缓存即生效）
  */
+/** 来源级鉴权失败限流默认策略（07 修复） */
+export const DEFAULT_AUTH_FAILURE_LIMIT = 10;
+export const DEFAULT_AUTH_FAILURE_WINDOW_S = 60;
+
+export interface AuthServiceOptions {
+  authFailureLimit?: number;
+  authFailureWindowS?: number;
+}
+
 export class AuthService {
   private readonly bruteForce: ReturnType<typeof createRedisBruteForceStorage>;
   private readonly keyCache: ReturnType<typeof createRedisKeyAuthCache>;
+  private readonly authFailureGuard: AuthFailureGuard;
 
   constructor(
     private readonly db: Db,
     private readonly redis: Redis,
     private readonly jwtSecret: string,
+    options: AuthServiceOptions = {},
   ) {
     this.bruteForce = createRedisBruteForceStorage(redis);
     this.keyCache = createRedisKeyAuthCache(redis);
+    this.authFailureGuard = new AuthFailureGuard(redis, {
+      limit: options.authFailureLimit ?? DEFAULT_AUTH_FAILURE_LIMIT,
+      windowS: options.authFailureWindowS ?? DEFAULT_AUTH_FAILURE_WINDOW_S,
+    });
   }
 
-  async authenticate(header: string | undefined): Promise<AuthResult> {
+  async authenticate(header: string | undefined, sourceIp = 'unknown'): Promise<AuthResult> {
     const token = extractBearer(header);
     if (!token) {
+      return this.applyAuthFailureGuard(
+        {
+          ok: false,
+          status: 401,
+          code: 'invalid_api_key',
+          message: '缺少 Authorization Bearer 凭证',
+        },
+        sourceIp,
+      );
+    }
+    const result = token.startsWith('ag_')
+      ? await this.authenticateStaticKey(token)
+      : await this.authenticateJwt(token);
+    if (!result.ok) {
+      return this.applyAuthFailureGuard(result, sourceIp);
+    }
+    return result;
+  }
+
+  /**
+   * 鉴权失败 → 计数来源失败；达阈值则把响应升级为 429（07）。
+   * 采用「正确凭证豁免」语义：有效 Key/JWT 永不因来源历史失败被拒，
+   * 只有「本次也失败」才累计并可能 429，避免误伤共享出口 IP 的合法用户。
+   */
+  private async applyAuthFailureGuard(result: Extract<AuthResult, { ok: false }>, sourceIp: string): Promise<AuthResult> {
+    const guard = await this.authFailureGuard.recordFailure(sourceIp);
+    if (guard.limited) {
       return {
         ok: false,
-        status: 401,
-        code: 'invalid_api_key',
-        message: '缺少 Authorization Bearer 凭证',
+        status: 429,
+        code: 'auth_failure_rate_limited',
+        message: '鉴权失败过于频繁，请稍后重试',
+        suggestion: `${guard.retryAfterSec} 秒后重试`,
+        retryAfterSec: guard.retryAfterSec,
       };
     }
-    return token.startsWith('ag_')
-      ? this.authenticateStaticKey(token)
-      : this.authenticateJwt(token);
+    return result;
   }
 
   /** 路径 A：静态 Key（ag_ 前缀） */
@@ -158,9 +201,10 @@ export class AuthService {
       } as const;
     });
 
-    // 认证失败 → 记录（S2：失败计数递增，达阈值自动锁）
+    // 认证失败（S2）：只对「已存在的真实 Key」做 per-key 失败计数（防爆破已泄露/已吊销的 Key）。
+    // 07 修复：不存在的随机 Key 不写 per-key 计数——否则攻击者换随机 Key 可在 Redis 累积海量
+    // `auth:fails:{hash}` 键打爆内存；对随机 Key 的限流由来源级 authFailureGuard 统一承担。
     if (!cached) {
-      await recordAuthFailure(this.bruteForce, keyHash);
       return { ok: false, status: 401, code: 'invalid_api_key', message: '凭证不存在' };
     }
     if (cached.status !== 0) {
@@ -230,18 +274,39 @@ export class AuthService {
       return { ok: false, status: 401, code: 'app_disabled', message: '应用已禁用' };
     }
 
-    // 用户状态检查（与静态 Key 路径对称：封禁/注销用户立即失效，而非等 JWT 过期）。
-    // Redis 缓存 60s（与 app_status 同策略）；用户不存在 → '404' 拒绝。
+    // 用户网关画像（status + 每用户 rpm/tpm 限流）：与静态 Key 路径对称，JWT 也必须受
+    // 管理员设置的每用户限流约束（04 修复）。Redis 缓存 60s（与 app_status 同策略）；
+    // 用户不存在 → '404' 拒绝。
     const userId = Number(payload.sub);
-    const userStatusKey = `user_status:${userId}`;
-    let userStatus = await this.redis.get(userStatusKey);
-    if (userStatus === null) {
+    const profileKey = `user_profile:${userId}`;
+    let profileRaw = await this.redis.get(profileKey);
+    if (profileRaw === null) {
       const user = await this.db.query.users.findFirst({
         where: eq(users.id, userId),
-        columns: { status: true },
+        columns: { status: true, rpmLimit: true, tpmLimit: true },
       });
-      userStatus = user ? String(user.status) : '404';
-      await this.redis.set(userStatusKey, userStatus, 'EX', 60);
+      profileRaw = user
+        ? JSON.stringify({
+            status: user.status,
+            rpm: user.rpmLimit ?? null,
+            tpm: user.tpmLimit ?? null,
+          })
+        : '404';
+      await this.redis.set(profileKey, profileRaw, 'EX', 60);
+    }
+
+    let userStatus = '404';
+    let userRpmLimit: number | null = null;
+    let userTpmLimit: number | null = null;
+    if (profileRaw !== '404') {
+      const profile = JSON.parse(profileRaw) as {
+        status: number;
+        rpm: number | null;
+        tpm: number | null;
+      };
+      userStatus = String(profile.status);
+      userRpmLimit = profile.rpm ?? null;
+      userTpmLimit = profile.tpm ?? null;
     }
     if (userStatus !== '0') {
       return { ok: false, status: 401, code: 'user_disabled', message: '账户已被禁用' };
@@ -257,10 +322,10 @@ export class AuthService {
         coefficient: String(payload.coefficient),
         rateCardId: null,
         keyRpmLimit: null,
-        userRpmLimit: null, // JWT 路径不查 DB 用户限流（用 scope 内的）
+        userRpmLimit,
         appRpmLimit: payload.scope?.rpm ?? null,
         keyTpmLimit: null,
-        userTpmLimit: null,
+        userTpmLimit,
         appTpmLimit: payload.scope?.tpm ?? null,
         // S3：JWT scope.models 白名单（越权防线：签了只能调 A 模型的 JWT 不能调 B）
         allowedModels: payload.scope?.models?.length ? payload.scope.models : null,

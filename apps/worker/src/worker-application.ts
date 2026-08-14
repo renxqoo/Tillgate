@@ -5,6 +5,7 @@ import IORedis from 'ioredis';
 import { sql } from 'drizzle-orm';
 import type { Logger, WorkerEnv } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
+import { bumpRouteCache } from '@ai-gateway/http';
 import {
   createBillingProcessor,
   createLedger,
@@ -83,11 +84,25 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
       maxRetriesPerRequest: null,
       retryStrategy: (attempt) => Math.min(5_000, attempt * 250),
     });
+  const redisEffects = createRedisLedgerEffects(redis);
   const processor =
     deps.processor ??
     createBillingProcessor({
       db,
-      effects: createRedisLedgerEffects(redis),
+      effects: {
+        balanceChanged: redisEffects.balanceChanged?.bind(redisEffects),
+        // 结算成功 → TPM 回填 + 渠道进货额度熔断时清路由缓存（软闸立即生效）
+        async usageSettled({ data, result }) {
+          await redisEffects.usageSettled?.({ data, result });
+          if (result.channelCircuitBroken && data.channelId != null) {
+            await bumpRouteCache(redis).catch(() => {});
+            logger.warn(
+              { channelId: data.channelId },
+              'channel upstream budget exhausted; circuit broken',
+            );
+          }
+        },
+      },
       options: {
         ownerId: instanceId,
         batchSize: env.WORKER_CLAIM_BATCH_SIZE,

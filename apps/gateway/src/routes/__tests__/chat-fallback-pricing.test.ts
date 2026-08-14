@@ -8,7 +8,7 @@ import {
   providers,
 } from '@ai-gateway/db/schema';
 import { Decimal, estimateMaxCost } from '@ai-gateway/money';
-import type { UpstreamError } from '@ai-gateway/ai';
+import { extractRequestChars, type UpstreamError } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,
   ensureTestSecrets,
@@ -91,6 +91,7 @@ async function setupFallbackModels(encryptionKey: string): Promise<ModelFixture>
       providerId: prov!.id,
       apiKeyEnc: encrypt('sk-main', encryptionKey),
       status: 0,
+      upstreamBudget: '1000000',
     })
     .returning();
   const [fbCh] = await db
@@ -100,6 +101,7 @@ async function setupFallbackModels(encryptionKey: string): Promise<ModelFixture>
       providerId: prov!.id,
       apiKeyEnc: encrypt('sk-fb', encryptionKey),
       status: 0,
+      upstreamBudget: '1000000',
     })
     .returning();
   const [main] = await db
@@ -208,8 +210,8 @@ describe('候选定价：预扣按最贵候选 + 计量携带实际成功渠道�
       expect(res.status).toBe(200);
       expect(ai.chat).toHaveBeenCalledTimes(2); // 主渠道失败 → fallback 渠道
 
-      // 预扣按最贵候选（fallback 5 倍价）估算
-      const inputUpperBound = Buffer.byteLength(JSON.stringify(reqBody), 'utf8');
+      // 预扣按最贵候选（fallback 5 倍价）估算；输入敞口上界用字符数（信用模型，token ≤ 字符数）
+      const inputUpperBound = extractRequestChars(reqBody);
       const fbEstimate = estimateMaxCost({
         estimatedInputTokens: inputUpperBound,
         maxOutputTokens: 100,

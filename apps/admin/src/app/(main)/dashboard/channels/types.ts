@@ -12,6 +12,14 @@ export interface ChannelRow {
   cooldownUntil: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** 进货总额（元，numeric 字符串，0=未接入进货管理） */
+  upstreamBudget: string;
+  /** 熔断阈值（元，string | null） */
+  upstreamThreshold: string | null;
+  /** 已消耗上游成本（元，string） */
+  upstreamConsumed: string;
+  /** 剩余 = 进货 - 已消耗（元，string，可为负） */
+  upstreamRemaining: string;
   createdAt: string;
   updatedAt: string;
   providerName: string;

@@ -49,6 +49,7 @@ function makeMockDb(mappingRow: unknown | null, channelRows: unknown[] = []) {
     },
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
+        // 渠道解析查询路径（join 链）
         innerJoin: vi.fn().mockReturnValue({
           innerJoin: vi.fn().mockReturnValue({
             innerJoin: vi.fn().mockReturnValue({
@@ -57,6 +58,10 @@ function makeMockDb(mappingRow: unknown | null, channelRows: unknown[] = []) {
               }),
             }),
           }),
+        }),
+        // 渠道进货消耗聚合查询路径（where + groupBy），默认空
+        where: vi.fn().mockReturnValue({
+          groupBy: vi.fn().mockResolvedValue([]),
         }),
       }),
     }),
@@ -157,6 +162,7 @@ describe('route-cache 渠道解析缓存', () => {
       mcPriority: 0,
       rpmLimit: null,
       tpmLimit: null,
+      upstreamBudget: '0',
     };
     const db = makeMockDb(null, [channelRow]);
     const router = makeRouter(redis, db);
@@ -168,8 +174,8 @@ describe('route-cache 渠道解析缓存', () => {
     // 第二次命中缓存（必须用同一 ENCRYPTION_KEY 解密缓存里的密文）
     const r2 = await router.getChannels('gpt-4-real');
     expect(r2).toHaveLength(1);
-    // db.select 只被调一次（miss 时），命中不再调
-    expect(db.select).toHaveBeenCalledTimes(1);
+    // db.select 只被调用一次（miss 时：渠道解析 + 消耗聚合各 1 次），命中不再调
+    expect(db.select).toHaveBeenCalledTimes(2);
   });
 
   it('空渠道列表 → 缓存 EMPTY，防穿透', async () => {

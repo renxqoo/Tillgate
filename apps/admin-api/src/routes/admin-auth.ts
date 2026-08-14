@@ -10,7 +10,6 @@ import {
   ADMIN_SESSION_COOKIE,
   SESSION_DEFAULT_TTL_S,
   cookieOptions,
-  checkLoginThrottle,
   recordLoginFailure,
   resetLoginFailures,
   clientIp,
@@ -54,16 +53,6 @@ export function adminAuthRoutesPublic(s: AdminServices, config: AdminApiConfig):
       const body = c.req.valid('json');
       const ip = clientIp(c.req.raw.headers);
 
-      // 登录限流（namespace='admin'，与用户登录键空间隔离）
-      const throttle = await checkLoginThrottle(s.redis, 'admin', body.email, ip);
-      if (throttle.locked) {
-        c.header('retry-after', String(throttle.retryAfterSec));
-        return c.json(
-          { error: { message: '登录尝试过多，已临时锁定', code: 'TOO_MANY_ATTEMPTS' } },
-          429,
-        );
-      }
-
       const rows = await s.db
         .select({
           id: admins.id,
@@ -76,10 +65,20 @@ export function adminAuthRoutesPublic(s: AdminServices, config: AdminApiConfig):
         .limit(1);
 
       const admin = rows[0];
-      const passwordOk = admin ? await verifyPassword(body.password, admin.passwordHash) : false;
-      // 邮箱不存在时也跑一次 verify（恒定时间，防根据响应时间区分）
+      // 恒定时间校验（01 修复）：邮箱不存在也跑等量 scrypt，防时序枚举。
+      const passwordOk = await verifyPassword(body.password, admin?.passwordHash ?? null);
+
+      // 正确密码豁免（02 修复）：仅密码错误才累计失败并可能触发单源锁定，
+      // 正确密码永远放行并清零，防止管理员邮箱被匿名锁死。
       if (!admin || !passwordOk) {
-        await recordLoginFailure(s.redis, 'admin', body.email, ip);
+        const throttle = await recordLoginFailure(s.redis, 'admin', body.email, ip);
+        if (throttle.locked) {
+          c.header('retry-after', String(throttle.retryAfterSec));
+          return c.json(
+            { error: { message: '登录尝试过多，已临时锁定', code: 'TOO_MANY_ATTEMPTS' } },
+            429,
+          );
+        }
         return c.json({ error: { message: '邮箱或密码错误', code: 'INVALID_CREDENTIALS' } }, 401);
       }
 

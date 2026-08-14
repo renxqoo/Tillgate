@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import type { Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
-import { errorHandler, type Redis } from '@ai-gateway/http';
+import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { userSessionMiddleware, type ClientEnv } from '@ai-gateway/identity';
 import type { ClientApiConfig } from './config.js';
 import type { ClientServices } from './services/index.js';
@@ -45,9 +45,10 @@ export function createApp(deps: ClientApiDeps): Hono {
   // 公开端点（不要求用户会话）
   app.route('/api/auth', clientAuthRoutesPublic(services, deps.config));
 
-  // 受保护子应用：默认要求有效用户会话
+  // 受保护子应用：默认要求有效用户会话 + 状态变更 Origin 校验（CSRF 纵深防御）
   const api = new Hono<ClientEnv>();
   api.use('*', userSessionMiddleware(deps.db, deps.config.jwtSecret));
+  api.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins }));
   api.route('/auth', clientAuthRoutesProtected(services));
   api.route('/me', meRoutes(services));
   api.route('/keys', keyRoutes(services));

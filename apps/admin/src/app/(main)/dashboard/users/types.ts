@@ -11,6 +11,8 @@ export interface UserRow {
   balance: string;
   reservedBalance: string;
   availableBalance: string;
+  creditLimit: string;
+  dailySpendLimit: string | null;
   status: number;
   freezeReason: string | null;
   rpmLimit: number | null;

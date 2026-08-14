@@ -4,15 +4,18 @@ import { eq } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import {
   admins,
+  apiKeys,
   auditLogs,
   billingRequests,
+  channels,
   fundOperations,
+  providers,
   transactions,
   usageLogs,
   users,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
-import { BillingBacklogError, InsufficientBalanceError, createBilling } from '../billing-flow.js';
+import { BillingBacklogError, DailySpendLimitExceededError, InsufficientBalanceError, createBilling } from '../billing-flow.js';
 import { createBillingProcessor } from '../billing-processor.js';
 import { createBillingOperations } from '../billing-operations.js';
 import type { BillingQuote, UsageReceipt } from '../types.js';
@@ -50,7 +53,41 @@ async function cleanup(userId: number): Promise<void> {
   await db.delete(billingRequests).where(eq(billingRequests.userId, userId));
   await db.delete(usageLogs).where(eq(usageLogs.userId, userId));
   await db.delete(transactions).where(eq(transactions.userId, userId));
+  await db.delete(apiKeys).where(eq(apiKeys.userId, userId));
   await db.delete(users).where(eq(users.id, userId));
+}
+
+async function createKey(userId: number, dailySpendLimit: string | null): Promise<number> {
+  const [key] = await db
+    .insert(apiKeys)
+    .values({
+      keyHash: `hash-${randomUUID()}`,
+      keyPreview: 'ag_****test',
+      userId,
+      name: 'team-member',
+      dailySpendLimit,
+    })
+    .returning({ id: apiKeys.id });
+  return key!.id;
+}
+
+/** 建一个上游供应商 + 渠道（用于渠道进货额度测试），返回 { providerId, channelId } */
+async function createChannel(upstreamBudget: string): Promise<{ providerId: number; channelId: number }> {
+  const suffix = randomUUID().slice(0, 8);
+  const [provider] = await db
+    .insert(providers)
+    .values({ name: `p-${suffix}`, baseUrl: 'https://upstream.test' })
+    .returning({ id: providers.id });
+  const [channel] = await db
+    .insert(channels)
+    .values({
+      providerId: provider!.id,
+      name: `ch-${suffix}`,
+      apiKeyEnc: 'test-enc',
+      upstreamBudget,
+    })
+    .returning({ id: channels.id });
+  return { providerId: provider!.id, channelId: channel!.id };
 }
 
 async function balance(userId: number): Promise<Decimal> {
@@ -68,11 +105,12 @@ async function balances(userId: number): Promise<{
 }> {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { balance: true, reservedBalance: true },
+    columns: { balance: true, reservedBalance: true, creditLimit: true },
   });
   const settled = new Decimal(user?.balance ?? 0);
   const reserved = new Decimal(user?.reservedBalance ?? 0);
-  return { settled, reserved, available: settled.minus(reserved) };
+  const credit = new Decimal(user?.creditLimit ?? 0);
+  return { settled, reserved, available: settled.plus(credit).minus(reserved) };
 }
 
 function quote(overrides: Partial<BillingQuote> = {}): BillingQuote {
@@ -589,7 +627,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     }
   });
 
-  it('实际金额超过足额预扣时进入 dead，绝不静默少扣或产生错误流水', async (context) => {
+  it('信用模型：实际金额超预估也正常扣费（balance 精确扣减、敞口释放、无死账）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
     const requestId = randomUUID();
@@ -603,32 +641,174 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         reservationLimit: '50',
         authorizationTtlMs: 60_000,
       });
-      const impossible = receipt(userId, requestId);
-      impossible.usage.outputTokens = 501;
-      const result = await billing.signal({
+      const over = receipt(userId, requestId);
+      over.usage.outputTokens = 501; // 实际 2.002 > 预估 2
+      const signalResult = await billing.signal({
         type: 'request.succeeded',
         requestId,
-        receipt: impossible,
+        receipt: over,
       });
-      expect(result.status).toBe('dead');
+      expect(signalResult.status).toBe('settlement_pending');
+
+      // 信用模型：不再有「calculated > 预估 → dead」，结算无条件按实际金额扣费。
+      const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
+        requestId,
+      ]);
+      expect(run.settled).toBe(1);
       expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
-        reserved: new Decimal(2),
-        available: new Decimal(8),
+        settled: new Decimal('7.998'), // 10 - 2.002
+        reserved: new Decimal(0),
+        available: new Decimal('7.998'),
       });
-      expect(
-        await db.query.billingRequests.findFirst({
-          where: eq(billingRequests.requestId, requestId),
-        }),
-      ).toMatchObject({ status: 'dead', failureClass: 'invariant_violation' });
       expect(
         await db.query.usageLogs.findFirst({ where: eq(usageLogs.requestId, requestId) }),
-      ).toBeUndefined();
+      ).toBeDefined();
       expect(
-        await db.query.transactions.findFirst({
-          where: eq(transactions.refId, requestId),
+        await db.query.transactions.findFirst({ where: eq(transactions.refId, requestId) }),
+      ).toBeDefined();
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('信用模型：credit_limit 允许透支，authorize 只记敞口不冻结余额', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('2');
+    await db.update(users).set({ creditLimit: '10' }).where(eq(users.id, userId));
+    const billing = createBilling({ db });
+    try {
+      // 每请求预估 2 元；可用信用 = balance(2) + credit(10) - reserved(0) = 12
+      // 连续 6 个请求（6×2=12 敞口）全部放行，balance 始终不变（只记敞口）。
+      for (let i = 0; i < 6; i++) {
+        await billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        });
+      }
+      expect(await balances(userId)).toEqual({
+        settled: new Decimal('2'), // 余额未被冻结
+        reserved: new Decimal('12'), // 在途敞口
+        available: new Decimal('0'), // 2 + 10 - 12
+      });
+      // 第 7 个请求：可用信用 0 < 2 → 拒绝（信用熔断）
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
         }),
-      ).toBeUndefined();
+      ).rejects.toBeInstanceOf(InsufficientBalanceError);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('信用模型：结算可让 balance 变负（不透支超过 credit_limit）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('1');
+    await db.update(users).set({ creditLimit: '5' }).where(eq(users.id, userId));
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({
+        type: 'upstream.started',
+        requestId,
+        leaseOwner: 'gateway-1',
+        leaseMs: 60_000,
+      });
+      const r = receipt(userId, requestId);
+      r.usage.inputTokens = 2000; // 2 元
+      r.usage.outputTokens = 500; // 1 元 → 实际 3 元（超预估 2）
+      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
+      const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
+        requestId,
+      ]);
+      expect(run.settled).toBe(1);
+      expect(await balances(userId)).toEqual({
+        settled: new Decimal('-2'), // 1 - 3 = -2（>= -credit_limit 5）
+        reserved: new Decimal(0),
+        available: new Decimal('3'), // -2 + 5 - 0
+      });
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('06 回归：inputTokens 超过敞口上界但金额未超预估 → 正常结算（不再误判 dead）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10');
+    const requestId = randomUUID();
+    const billing = createBilling({ db });
+    try {
+      // 敞口上界只有 100，但真实 inputTokens=200（全部缓存命中，实际金额 0.02 远低于预估 1.1）
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote({
+          maxOutputTokens: 500,
+          candidates: [
+            {
+              mappingId: 1,
+              externalModel: 'test-model',
+              realModel: 'test-real',
+              inputPrice: '1000',
+              outputPrice: '2000',
+              cacheInputPrice: '100',
+              coefficient: '1',
+              inputTokenUpperBound: 100,
+              billingPolicyFingerprint: null,
+            },
+          ],
+        }),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({
+        type: 'upstream.started',
+        requestId,
+        leaseOwner: 'gateway-1',
+        leaseMs: 60_000,
+      });
+      const overBound = receipt(userId, requestId);
+      overBound.usage.inputTokens = 200; // > inputTokenUpperBound(100)
+      overBound.usage.cachedInputTokens = 200; // 全缓存 → 金额 0.02 <= 预估 1.1
+      overBound.usage.outputTokens = 0;
+      const signalResult = await billing.signal({
+        type: 'request.succeeded',
+        requestId,
+        receipt: overBound,
+      });
+      expect(signalResult.status).toBe('settlement_pending');
+
+      const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
+        requestId,
+      ]);
+      expect(run.settled).toBe(1);
+      expect(await balances(userId)).toEqual({
+        settled: new Decimal('9.98'),
+        reserved: new Decimal(0),
+        available: new Decimal('9.98'),
+      });
+      const usage = await db.query.usageLogs.findFirst({
+        where: eq(usageLogs.requestId, requestId),
+      });
+      expect(new Decimal(usage?.amount ?? 0).eq(0.02)).toBe(true);
     } finally {
       await cleanup(userId);
     }
@@ -696,6 +876,536 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       await db.delete(fundOperations).where(eq(fundOperations.operationId, operationId));
       await cleanup(userId);
       await db.delete(admins).where(eq(admins.id, admin!.id));
+    }
+  });
+
+  it('每日花费上限：当日累计消费+在途敞口+本次预估 超限即拒绝', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    await db.update(users).set({ dailySpendLimit: '2' }).where(eq(users.id, userId));
+    const billing = createBilling({ db });
+    try {
+      // 第 1 个请求（预估 2 元）→ 放行
+      await billing.authorize({
+        requestId: randomUUID(),
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      // 第 2 个请求（再预估 2 元）→ 2(在途) + 2(本次) = 4 > 2 → 拒绝
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(DailySpendLimitExceededError);
+      // 未设置上限（NULL）→ 不受限
+      const unlimited = await createUser('100');
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId: unlimited,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).resolves.toBeDefined();
+      await cleanup(unlimited);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('每日花费上限：已结算消费（consume 为负，取 abs）正确计入并拦截', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10');
+    await db.update(users).set({ dailySpendLimit: '3' }).where(eq(users.id, userId));
+    const billing = createBilling({ db });
+    try {
+      // 先结算一笔 2 元消费（consume 流水 amount 为 -2）
+      const rid = randomUUID();
+      await billing.authorize({
+        requestId: rid,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({ type: 'upstream.started', requestId: rid, leaseOwner: 'g', leaseMs: 60_000 });
+      await billing.signal({ type: 'request.succeeded', requestId: rid, receipt: receipt(userId, rid) });
+      await createBillingProcessor({ db, options: processorOptions }).runOnce([rid]);
+      // 已结算 2 元 > 上限 1 → 下一个 authorize 被拦（即使无在途敞口）
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(DailySpendLimitExceededError);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('Key 级每日花费上限：团队团员单 Key 封顶（在途敞口拦截 + scope=key）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    // 用户级不设上限，只给 Key 设每日 2 元
+    const keyId = await createKey(userId, '2');
+    const billing = createBilling({ db });
+    try {
+      const first = await billing.authorize({
+        requestId: randomUUID(),
+        userId,
+        apiKeyId: keyId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      expect(new Decimal(first.reservedAmount).eq(2)).toBe(true);
+      // billing_requests 已记录 apiKeyId
+      const row = await db.query.billingRequests.findFirst({
+        where: eq(billingRequests.requestId, first.requestId),
+      });
+      expect(row?.apiKeyId).toBe(keyId);
+      // 第二个请求：在途 2 + 本次 2 = 4 > 2 → 拦截，scope=key
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          apiKeyId: keyId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toMatchObject({ name: 'DailySpendLimitExceededError', scope: 'key', apiKeyId: keyId });
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('Key 级每日花费上限：已结算消费按 Key 统计拦截（usage_logs 关联）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const keyId = await createKey(userId, '3');
+    const billing = createBilling({ db });
+    try {
+      // 用该 Key 结算一笔 2 元消费
+      const rid = randomUUID();
+      await billing.authorize({
+        requestId: rid,
+        userId,
+        apiKeyId: keyId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({ type: 'upstream.started', requestId: rid, leaseOwner: 'g', leaseMs: 60_000 });
+      const r = receipt(userId, rid);
+      r.apiKeyId = keyId;
+      await billing.signal({ type: 'request.succeeded', requestId: rid, receipt: r });
+      await createBillingProcessor({ db, options: processorOptions }).runOnce([rid]);
+      // 已结算 2 元；下一个请求再预估 2 → 4 > 3 → 拦截
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          apiKeyId: keyId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(DailySpendLimitExceededError);
+      // 不携带 apiKeyId 的请求（JWT 场景）不受 Key 上限影响
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).resolves.toBeDefined();
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('Key 级每日花费上限：NULL=不限，用户级与 Key 级双闸门独立', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const keyId = await createKey(userId, null);
+    const billing = createBilling({ db });
+    try {
+      // Key 未设上限 → 放行
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          apiKeyId: keyId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).resolves.toBeDefined();
+      // 用户级设 1 元 → 用户级闸门拦截（scope=user）
+      await db.update(users).set({ dailySpendLimit: '1' }).where(eq(users.id, userId));
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          apiKeyId: keyId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toMatchObject({ name: 'DailySpendLimitExceededError', scope: 'user' });
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('渠道进货额度：结算耗尽后自动熔断（status=3，channelCircuitBroken=true）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10');
+    const { providerId, channelId } = await createChannel('1'); // 进货 1 元
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({
+        type: 'upstream.started',
+        requestId,
+        leaseOwner: 'gateway-1',
+        leaseMs: 60_000,
+      });
+      // 该单上游成本 = (1000×1000 + 2000×500)/1e6 = 2 元 > 进货 1 元 → 耗尽
+      const r = receipt(userId, requestId);
+      r.channelId = channelId;
+      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
+
+      const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
+        requestId,
+      ]);
+      expect(run.settled).toBe(1);
+      const ch = await db.query.channels.findFirst({
+        where: eq(channels.id, channelId),
+        columns: { status: true },
+      });
+      expect(ch?.status).toBe(3); // 熔断
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
+    }
+  });
+
+  it('渠道进货额度：未耗尽不熔断；threshold 提前熔断', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10');
+    // 进货 10 元，threshold=9（剩余 ≤ 9 熔断）；单笔上游成本 2 元 → 剩余 8 ≤ 9 → 提前熔断
+    const { providerId, channelId } = await createChannel('10');
+    await db.update(channels).set({ upstreamThreshold: '9' }).where(eq(channels.id, channelId));
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({
+        type: 'upstream.started',
+        requestId,
+        leaseOwner: 'g',
+        leaseMs: 60_000,
+      });
+      const r = receipt(userId, requestId);
+      r.channelId = channelId;
+      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
+      await createBillingProcessor({ db, options: processorOptions }).runOnce([requestId]);
+      const ch = await db.query.channels.findFirst({
+        where: eq(channels.id, channelId),
+        columns: { status: true },
+      });
+      expect(ch?.status).toBe(3);
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
+    }
+  });
+
+  it('渠道进货额度：没钱（budget=0）结算后熔断', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10');
+    const { providerId, channelId } = await createChannel('0'); // 没钱（未进货）
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.signal({
+        type: 'upstream.started',
+        requestId,
+        leaseOwner: 'g',
+        leaseMs: 60_000,
+      });
+      const r = receipt(userId, requestId);
+      r.channelId = channelId;
+      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
+      await createBillingProcessor({ db, options: processorOptions }).runOnce([requestId]);
+      const ch = await db.query.channels.findFirst({
+        where: eq(channels.id, channelId),
+        columns: { status: true },
+      });
+      expect(ch?.status).toBe(3); // 余额=0-已消耗 <0 → 熔断（没钱）
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
+    }
+  });
+
+  it('渠道精确硬闸：reserveChannel 预留在途敞口，耗尽拒绝，结算释放', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const { providerId, channelId } = await createChannel('5'); // 进货 5 元
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      // 预留 2 元上游敞口 → allowed，渠道 upstream_reserved=2
+      const r1 = await billing.reserveChannel({ requestId, channelId, amount: '2' });
+      expect(r1.allowed).toBe(true);
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({ upstreamReserved: '2.000000000000000000' });
+      // 同一请求同渠道重复预留（幂等）→ 仍放行，不重复累加
+      const r3 = await billing.reserveChannel({ requestId, channelId, amount: '2' });
+      expect(r3.allowed).toBe(true);
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({ upstreamReserved: '2.000000000000000000' });
+
+      // 另一个请求再预留 4 元 → 2(在途) + 4(本次) = 6 > 5 → 拒绝
+      const requestId2 = randomUUID();
+      await billing.authorize({
+        requestId: requestId2,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      const r2 = await billing.reserveChannel({ requestId: requestId2, channelId, amount: '4' });
+      expect(r2.allowed).toBe(false);
+
+      // 结算 → 释放渠道在途敞口（归 0）+ 按实际上游成本扣减余额（5 → 3）
+      await billing.signal({ type: 'upstream.started', requestId, leaseOwner: 'g', leaseMs: 60_000 });
+      const r = receipt(userId, requestId);
+      r.channelId = channelId;
+      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
+      await createBillingProcessor({ db, options: processorOptions }).runOnce([requestId]);
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({
+        upstreamReserved: '0.000000000000000000',
+        upstreamBudget: '3.000000000000000000', // 5 - 上游成本 2
+      });
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
+    }
+  });
+
+  it('渠道精确硬闸：没钱（budget=0）reserve 直接拒绝', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const { providerId, channelId } = await createChannel('0'); // 没钱（未进货）
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      // 余额 = 0 - 0 - 0 = 0 < 预估 → 拒绝
+      const r = await billing.reserveChannel({ requestId, channelId, amount: '2' });
+      expect(r.allowed).toBe(false);
+      expect(r.remaining).toBe('0');
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
+    }
+  });
+
+  it('渠道精确硬闸：fallback 换渠道原子释放旧敞口', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const a = await createChannel('10');
+    const b = await createChannel('10');
+    const billing = createBilling({ db });
+    try {
+      const requestId = randomUUID();
+      await billing.authorize({
+        requestId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      // 先预留渠道 A 2 元
+      const rA = await billing.reserveChannel({ requestId, channelId: a.channelId, amount: '2' });
+      expect(rA.allowed).toBe(true);
+      // 换渠道 B 预留 3 元 → 原子释放 A 的 2 元，再在 B 预留 3 元
+      const rB = await billing.reserveChannel({ requestId, channelId: b.channelId, amount: '3' });
+      expect(rB.allowed).toBe(true);
+      expect(rB.switched).toBe(true);
+      const ca = await db.query.channels.findFirst({ where: eq(channels.id, a.channelId) });
+      const cb = await db.query.channels.findFirst({ where: eq(channels.id, b.channelId) });
+      expect(ca?.upstreamReserved).toBe('0.000000000000000000');
+      expect(cb?.upstreamReserved).toBe('3.000000000000000000');
+      // 请求级渠道敞口指向 B
+      expect(
+        await db.query.billingRequests.findFirst({ where: eq(billingRequests.requestId, requestId) }),
+      ).toMatchObject({ channelId: b.channelId, channelReservedAmount: '3.000000000000000000' });
+    } finally {
+      await cleanup(userId);
+      for (const c of [a, b]) {
+        await db.delete(channels).where(eq(channels.id, c.channelId));
+        await db.delete(providers).where(eq(providers.id, c.providerId));
+      }
+    }
+  });
+
+  it('渠道精确硬闸：失败释放渠道敞口；uncertain 保守保留，确认无收费后释放', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('100');
+    const { providerId, channelId } = await createChannel('10');
+    const billing = createBilling({ db });
+    try {
+      // 场景 1：失败（upstreamCharge=none）→ 释放渠道敞口
+      const failId = randomUUID();
+      await billing.authorize({
+        requestId: failId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.reserveChannel({ requestId: failId, channelId, amount: '2' });
+      await billing.signal({
+        type: 'request.failed',
+        requestId: failId,
+        reason: 'rate_limited',
+        delivery: 'none',
+        upstreamCharge: 'none',
+      });
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({ upstreamReserved: '0.000000000000000000' });
+
+      // 场景 2：uncertain（上游收费未知）→ 保守保留渠道敞口
+      const unId = randomUUID();
+      await billing.authorize({
+        requestId: unId,
+        userId,
+        stream: false,
+        quote: quote(),
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      await billing.reserveChannel({ requestId: unId, channelId, amount: '2' });
+      await billing.signal({ type: 'upstream.started', requestId: unId, leaseOwner: 'g', leaseMs: 60_000 });
+      await billing.signal({
+        type: 'request.failed',
+        requestId: unId,
+        reason: 'network',
+        delivery: 'none',
+        upstreamCharge: 'unknown',
+      });
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({ upstreamReserved: '2.000000000000000000' }); // 保守保留
+
+      // 确认无收费 → 释放
+      const [admin] = await db
+        .insert(admins)
+        .values({ email: `ch-review-${randomUUID()}@test.local`, passwordHash: 'x' })
+        .returning({ id: admins.id });
+      const br = await db.query.billingRequests.findFirst({
+        where: eq(billingRequests.requestId, unId),
+      });
+      const operations = createBillingOperations({ db });
+      await operations.resolveUncertain({
+        operationId: `ch-review:${unId}`,
+        requestId: unId,
+        expectedRevision: br!.revision,
+        adminId: admin!.id,
+        reason: 'confirmed no charge',
+        decision: 'confirmed_no_charge',
+      });
+      expect(
+        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
+      ).toMatchObject({ upstreamReserved: '0.000000000000000000' });
+
+      await db.delete(auditLogs).where(eq(auditLogs.targetId, unId));
+      await db.delete(fundOperations).where(eq(fundOperations.operationId, `ch-review:${unId}`));
+      await db.delete(admins).where(eq(admins.id, admin!.id));
+    } finally {
+      await cleanup(userId);
+      await db.delete(channels).where(eq(channels.id, channelId));
+      await db.delete(providers).where(eq(providers.id, providerId));
     }
   });
 });

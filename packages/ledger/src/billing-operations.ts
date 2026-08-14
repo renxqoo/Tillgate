@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { auditLogs, billingRequests, fundOperations, users } from '@ai-gateway/db/schema';
+import { auditLogs, billingRequests, channels, fundOperations, users } from '@ai-gateway/db/schema';
 import { validateReceipt } from './billing-flow.js';
 import type { BillingQuote, BillingRequestStatus, UsageReceipt } from './types.js';
 
@@ -274,6 +274,8 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
               requestId: billingRequests.requestId,
               userId: billingRequests.userId,
               reservedAmount: billingRequests.reservedAmount,
+              channelId: billingRequests.channelId,
+              channelReservedAmount: billingRequests.channelReservedAmount,
               revision: billingRequests.revision,
             });
           if (!changed) throw new BillingOperationError('state_conflict');
@@ -289,6 +291,21 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
             )
             .returning({ value: users.balance });
           if (!balance) throw new BillingOperationError('not_found');
+          // 释放渠道在途敞口（若有：uncertain 请求保守保留，确认无收费后释放）
+          if (changed.channelId != null && changed.channelReservedAmount != null) {
+            const channelReleased = await tx
+              .update(channels)
+              .set({
+                upstreamReserved: sql`${channels.upstreamReserved} - ${changed.channelReservedAmount}::numeric`,
+                updatedAt: now,
+              })
+              .where(
+                sql`${channels.id} = ${changed.channelId}
+                    and ${channels.upstreamReserved} >= ${changed.channelReservedAmount}::numeric`,
+              )
+              .returning({ id: channels.id });
+            if (channelReleased.length === 0) throw new BillingOperationError('state_conflict');
+          }
           return {
             requestId: changed.requestId,
             userId: changed.userId,

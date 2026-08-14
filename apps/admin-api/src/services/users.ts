@@ -23,6 +23,8 @@ export const userColumns = {
   rateCardId: users.rateCardId,
   balance: users.balance,
   reservedBalance: users.reservedBalance,
+  creditLimit: users.creditLimit,
+  dailySpendLimit: users.dailySpendLimit,
   status: users.status,
   freezeReason: users.freezeReason,
   rpmLimit: users.rpmLimit,
@@ -35,7 +37,7 @@ export const userColumns = {
 /** 列表/详情展示列：userColumns + 费率卡名（联表） */
 export const userProfileColumns = {
   ...userColumns,
-  availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,
+  availableBalance: sql<string>`${users.balance} + ${users.creditLimit} - ${users.reservedBalance}`,
   rateCardName: rateCards.name,
 };
 
@@ -45,6 +47,10 @@ export type UserPatch = {
   rateCardId?: number | null;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
+  /** 透支上限（元，>=0）。信用模型：balance 允许降到 -credit_limit。 */
+  creditLimit?: number;
+  /** 每日花费上限（元，>=0）。NULL=不限。防羊毛党细水长流。 */
+  dailySpendLimit?: number | null;
   displayName?: string;
   email?: string | null;
   freezeReason?: string | null;
@@ -100,6 +106,8 @@ export async function updateUser(
   if (patch.rateCardId !== undefined) update.rateCardId = patch.rateCardId;
   if (patch.rpmLimit !== undefined) update.rpmLimit = patch.rpmLimit;
   if (patch.tpmLimit !== undefined) update.tpmLimit = patch.tpmLimit;
+  if (patch.creditLimit !== undefined) update.creditLimit = patch.creditLimit;
+  if (patch.dailySpendLimit !== undefined) update.dailySpendLimit = patch.dailySpendLimit;
   if (patch.displayName !== undefined) update.displayName = patch.displayName;
   if (patch.email !== undefined) update.email = patch.email;
   // 封禁时记原因；解封清空原因

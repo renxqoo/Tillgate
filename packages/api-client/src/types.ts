@@ -62,6 +62,8 @@ export interface KeyRow {
   status: number;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** Key 级每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit: string | null;
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
@@ -175,6 +177,10 @@ export interface AdminUserRow {
   balance: string;
   reservedBalance: string;
   availableBalance: string;
+  /** 透支上限（元，>=0）。信用模型：balance 允许降到 -creditLimit。 */
+  creditLimit: string;
+  /** 每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit: string | null;
   status: number;
   freezeReason: string | null;
   rpmLimit: number | null;
@@ -197,6 +203,14 @@ export interface AdminChannelRow {
   cooldownUntil: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** 进货总额（元，numeric 字符串） */
+  upstreamBudget: string;
+  /** 熔断阈值（元，string | null） */
+  upstreamThreshold: string | null;
+  /** 已消耗上游成本（元，string） */
+  upstreamConsumed: string;
+  /** 剩余 = 进货 - 已消耗（元，string） */
+  upstreamRemaining: string;
   createdAt: string;
   updatedAt: string;
   providerName: string;
@@ -300,6 +314,8 @@ export interface AdminKeyRow {
   userDisplayName: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** Key 级每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit: string | null;
   status: number;
   lastUsedAt: string | null;
   createdAt: string;
@@ -309,7 +325,31 @@ export interface AdminKeyUpdateBody {
   /** null=不限流（继承用户/全局） */
   rpmLimit?: number | null;
   tpmLimit?: number | null;
+  /** Key 级每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit?: number | null;
   status?: number;
+}
+
+// ── Admin: Channel Funds (GET/POST /api/admin/channel-funds) ────────────────
+export interface AdminChannelFundRow {
+  id: number;
+  channelId: number;
+  channelName: string;
+  /** recharge（入货）/ adjust（调账） */
+  type: 'recharge' | 'adjust';
+  /** 有符号金额（元，numeric 字符串） */
+  amount: string;
+  /** 变动后渠道额度余额快照（元） */
+  balanceAfter: string;
+  /** 支付订单号 */
+  orderNo: string | null;
+  /** 支付凭证 key（本地磁盘 / 未来 OSS） */
+  voucher: string | null;
+  remark: string | null;
+  adminId: number | null;
+  adminEmail: string | null;
+  adminDisplayName: string | null;
+  createdAt: string;
 }
 
 // ── Admin: Rate Cards (GET/POST /api/admin/rate-cards) ──────────────────────

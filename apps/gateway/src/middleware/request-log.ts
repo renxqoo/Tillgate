@@ -50,6 +50,11 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
 
     const status = c.res.status;
     const auth = c.var.auth;
+
+    // 07 修复：来源级鉴权失败限流的 429（无 auth 上下文）不写 request_logs，
+    // 避免攻击者用海量随机 Key 刷 429 打爆日志库。401（前 N 次失败）仍记录以观测爆破。
+    if (status === 429 && !auth) return;
+
     // 错误码：只用 HTTP 状态码推断（不 clone 读 body）。
     // c.res.clone() + .json() 会缓冲整个流式 Response（破坏 SSE 逐块推送）。
     const errorCode = status >= 400 ? `http_${status}` : null;

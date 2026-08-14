@@ -10,6 +10,8 @@ export interface KeyRow {
   status: number;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** Key 级每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit: string | null;
   expiresAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;

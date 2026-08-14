@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { GaugeIcon, PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { formatMoney } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Dialog,
@@ -37,6 +38,12 @@ function fmtLimit(v: number | null): string {
   return v === null ? "不限" : v.toLocaleString();
 }
 
+/** 元金额：NULL=不限；数值保留 2 位小数。 */
+function fmtMoney(v: number | null | undefined): string {
+  if (v === null || v === undefined) return "不限";
+  return formatMoney(v);
+}
+
 function RateLimitTable({
   items,
   kind,
@@ -49,6 +56,8 @@ function RateLimitTable({
   if (items.length === 0) {
     return <p className="p-8 text-center text-sm text-muted-foreground">暂无数据</p>;
   }
+  const showCredit = kind === "user";
+  const showDailySpend = kind === "user" || kind === "key";
   return (
     <Table>
       <TableHeader>
@@ -56,6 +65,8 @@ function RateLimitTable({
           <TableHead>名称</TableHead>
           <TableHead className="text-right">RPM</TableHead>
           <TableHead className="text-right">TPM</TableHead>
+          {showCredit ? <TableHead className="text-right">透支上限</TableHead> : null}
+          {showDailySpend ? <TableHead className="text-right">每日花费上限</TableHead> : null}
           <TableHead className="text-center">状态</TableHead>
           <TableHead className="text-right">操作</TableHead>
         </TableRow>
@@ -71,6 +82,14 @@ function RateLimitTable({
             </TableCell>
             <TableCell className="text-right tabular-nums">{fmtLimit(it.rpmLimit)}</TableCell>
             <TableCell className="text-right tabular-nums">{fmtLimit(it.tpmLimit)}</TableCell>
+            {showCredit ? (
+              <TableCell className="text-right tabular-nums">{fmtMoney(it.creditLimit)}</TableCell>
+            ) : null}
+            {showDailySpend ? (
+              <TableCell className="text-right tabular-nums">
+                {fmtMoney(it.dailySpendLimit)}
+              </TableCell>
+            ) : null}
             <TableCell className="text-center">
               {it.status === 0 ? (
                 <span className="text-xs text-emerald-600">正常</span>
@@ -105,12 +124,20 @@ export function RateLimitsClient({
   const [editing, setEditing] = useState<{ kind: RateLimitKind; item: RateLimitItem } | null>(null);
   const [rpm, setRpm] = useState<string>("");
   const [tpm, setTpm] = useState<string>("");
+  const [credit, setCredit] = useState<string>("");
+  const [dailySpend, setDailySpend] = useState<string>("");
   const [pending, startTransition] = useTransition();
 
   const openEdit = (kind: RateLimitKind, item: RateLimitItem) => {
     setEditing({ kind, item });
     setRpm(item.rpmLimit === null ? "" : String(item.rpmLimit));
     setTpm(item.tpmLimit === null ? "" : String(item.tpmLimit));
+    setCredit(item.creditLimit === null || item.creditLimit === undefined ? "" : String(item.creditLimit));
+    setDailySpend(
+      item.dailySpendLimit === null || item.dailySpendLimit === undefined
+        ? ""
+        : String(item.dailySpendLimit),
+    );
   };
 
   const save = () => {
@@ -125,8 +152,37 @@ export function RateLimitsClient({
       toast.error("TPM 须为正整数");
       return;
     }
+
+    // 信用模型字段仅 user/key 实体校验/提交
+    let creditVal: number | undefined;
+    let dailySpendVal: number | null | undefined;
+    if (editing.kind === "user") {
+      // creditLimit 不可为 null：留空 = 0（不透支）
+      creditVal = credit.trim() === "" ? 0 : Number(credit);
+      dailySpendVal = dailySpend.trim() === "" ? null : Number(dailySpend);
+      if (!Number.isFinite(creditVal) || creditVal < 0) {
+        toast.error("透支上限须为 >= 0 的金额");
+        return;
+      }
+      if (dailySpendVal !== null && (!Number.isFinite(dailySpendVal) || dailySpendVal < 0)) {
+        toast.error("每日花费上限须为 >= 0 的金额");
+        return;
+      }
+    } else if (editing.kind === "key") {
+      dailySpendVal = dailySpend.trim() === "" ? null : Number(dailySpend);
+      if (dailySpendVal !== null && (!Number.isFinite(dailySpendVal) || dailySpendVal < 0)) {
+        toast.error("每日花费上限须为 >= 0 的金额");
+        return;
+      }
+    }
+
     startTransition(async () => {
-      const res = await updateRateLimitAction(editing.kind, editing.item.id, rpmVal, tpmVal);
+      const res = await updateRateLimitAction(editing.kind, editing.item.id, {
+        rpmLimit: rpmVal,
+        tpmLimit: tpmVal,
+        creditLimit: creditVal,
+        dailySpendLimit: dailySpendVal,
+      });
       if (res.error) {
         toast.error(res.error);
       } else {
@@ -135,6 +191,9 @@ export function RateLimitsClient({
       }
     });
   };
+
+  const showCreditField = editing?.kind === "user";
+  const showDailySpendField = editing?.kind === "user" || editing?.kind === "key";
 
   return (
     <div className="flex flex-col gap-4">
@@ -191,6 +250,32 @@ export function RateLimitsClient({
                 onChange={(e) => setTpm(e.target.value)}
               />
             </Field>
+            {showCreditField ? (
+              <Field>
+                <FieldLabel>透支上限（元，留空 = 0 不透支）</FieldLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0"
+                  value={credit}
+                  onChange={(e) => setCredit(e.target.value)}
+                />
+              </Field>
+            ) : null}
+            {showDailySpendField ? (
+              <Field>
+                <FieldLabel>每日花费上限（元，留空 = 不限）</FieldLabel>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="不限"
+                  value={dailySpend}
+                  onChange={(e) => setDailySpend(e.target.value)}
+                />
+              </Field>
+            ) : null}
           </FieldGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)} disabled={pending}>

@@ -84,6 +84,14 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   /** 新用户默认限流（用户级） */
   DEFAULT_USER_RPM: z.coerce.number().int().min(1).default(60),
   DEFAULT_USER_TPM: z.coerce.number().int().min(1).default(1_000_000),
+  /** 来源级鉴权失败限流（07）：短窗口内同一来源鉴权失败达阈值即 429 */
+  GATEWAY_AUTH_FAILURE_LIMIT: z.coerce.number().int().min(1).default(10),
+  GATEWAY_AUTH_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(60),
+  /**
+   * 信用模型：单请求输出敞口上限（token）。max_tokens 是「上限」不是「预期」，
+   * 敞口估算按 min(max_tokens×n, 本值) 计，超出部分由 credit_limit 透支缓冲兜底。
+   */
+  GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().min(1).default(32_768),
   /**
    * 允许 http:// 与内网上游（仅压测/本地调试）。
    * 双重门控：本开关为 true 且 NODE_ENV !== 'production' 才生效（见 gateway createAi）。
@@ -136,6 +144,20 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
    * 与 client-api 的 JWT_SECRET 必须不同值（隔离要求）。
    */
   ADMIN_JWT_SECRET: secretSchema('ADMIN_JWT_SECRET', 16),
+  /** CSRF 受信浏览器来源（逗号分隔），用于状态变更接口的 Origin 校验 */
+  CSRF_TRUSTED_ORIGINS: z
+    .string()
+    .default('http://localhost:3000,http://localhost:3001')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  /** 渠道进货凭证截图本地存储目录（后续可切 OSS） */
+  VOUCHER_STORAGE_DIR: z.string().default('./data/vouchers'),
+  /** 凭证截图最大字节数（默认 2MB） */
+  VOUCHER_MAX_BYTES: z.coerce.number().int().positive().default(2 * 1024 * 1024),
   ...otelOptions,
 });
 
@@ -150,6 +172,16 @@ export const clientApiEnvSchema = baseEnvSchema.extend({
   JWT_SECRET: secretSchema('JWT_SECRET', 16),
   /** 新用户赠送额度（元），默认 ¥1（requirements 4.1） */
   GIFT_AMOUNT: z.coerce.number().min(0).default(1),
+  /** CSRF 受信浏览器来源（逗号分隔），用于状态变更接口的 Origin 校验 */
+  CSRF_TRUSTED_ORIGINS: z
+    .string()
+    .default('http://localhost:3000,http://localhost:3001')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
   ...otelOptions,
 });
 

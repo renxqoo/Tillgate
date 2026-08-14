@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, users } from '@ai-gateway/db/schema';
+import { billingRequests, channels, users } from '@ai-gateway/db/schema';
 import { toDecimal } from '@ai-gateway/money';
 import { settleClaim } from './settle.js';
 import type {
@@ -72,6 +72,9 @@ function classifyFailure(error: unknown): SettlementFailureClass {
   const message = error instanceof Error ? error.message : String(error);
   const code = (error as { code?: string } | null)?.code;
   if (code === '40001' || code === '40P01') return 'serialization';
+  // 23514 check_violation：信用模型下 balance < -credit_limit 触底（DB 约束 users_balance_credit_floor_ck）。
+  // 归为 invariant_violation（永久）→ dead，待人工充值后 retry。
+  if (code === '23514') return 'invariant_violation';
   if (code?.startsWith('08') || ['53300', '57P01', '57P02', '57P03'].includes(code ?? '')) {
     return 'db_transient';
   }
@@ -294,7 +297,12 @@ export function createBillingProcessor({
 
       // 资格判断与状态迁移在同一事务完成；授权未改已结算余额，只释放预留。
       await db.transaction(async (tx) => {
-        const released = await tx.execute<{ user_id: number; amount: string }>(sql`
+        const released = await tx.execute<{
+          user_id: number;
+          amount: string;
+          channel_id: number | null;
+          channel_reserved_amount: string | null;
+        }>(sql`
           with candidates as (
             select request_id from billing_requests
             where status = 'authorized'
@@ -312,7 +320,7 @@ export function createBillingProcessor({
           where b.request_id = c.request_id
             and b.status = 'authorized'
             and b.upstream_started_at is null
-          returning b.user_id, b.reserved_amount as amount
+          returning b.user_id, b.reserved_amount as amount, b.channel_id, b.channel_reserved_amount
         `);
         result.released = released.rows.length;
         for (const row of released.rows) {
@@ -328,6 +336,21 @@ export function createBillingProcessor({
             )
             .returning({ id: users.id });
           if (reservation.length === 0) throw new Error('billing_reservation_invariant');
+          // 释放渠道在途敞口（若有：reserve 后未触达上游即过期）
+          if (row.channel_id != null && row.channel_reserved_amount != null) {
+            const channelReleased = await tx
+              .update(channels)
+              .set({
+                upstreamReserved: sql`${channels.upstreamReserved} - ${row.channel_reserved_amount}::numeric`,
+                updatedAt: now,
+              })
+              .where(
+                sql`${channels.id} = ${row.channel_id}
+                    and ${channels.upstreamReserved} >= ${row.channel_reserved_amount}::numeric`,
+              )
+              .returning({ id: channels.id });
+            if (channelReleased.length === 0) throw new Error('channel_reservation_invariant');
+          }
         }
       });
 

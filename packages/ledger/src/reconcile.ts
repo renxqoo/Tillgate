@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import {
   billingRequests,
+  channels,
   users,
   usageLogs,
   transactions,
@@ -34,10 +35,10 @@ export interface ReconcileResult {
 }
 
 /**
- * 对账单个用户：已结算余额与资金流水一致；预留汇总与活跃请求一致。
+ * 对账单个用户：已结算余额与资金流水一致；在途敞口与活跃请求一致。
  *
- * 授权不修改 users.balance，因此余额直接等于流水净额；users.reserved_balance
- * 必须等于所有未终结 billing_requests.reserved_amount 之和。
+ * 信用模型：authorize 只记在途敞口、不修改 users.balance，余额可为负（≥ -credit_limit）；
+ * users.reserved_balance 必须等于所有未终结 billing_requests.reserved_amount 之和。
  *
  * @returns true = 一致
  */
@@ -156,6 +157,50 @@ export async function reconcileUsageVsTransactions(db: Db, userId: number): Prom
     actual: usage.toString(),
     diff: diff.toString(),
     detail: `用量-流水对账不平：usage_logs ${usage.toString()} vs consume ${consume.toString()}`,
+  });
+  return false;
+}
+
+/**
+ * 渠道级在途敞口一致性校验：channels.upstream_reserved 必须等于
+ * 该渠道所有活跃 billing_requests.channel_reserved_amount 之和（容差 1e-9）。
+ * 用于发现 reserve/release 脱节（资损护栏自身的正确性）。
+ */
+export async function reconcileChannelReserved(db: Db, channelId: number): Promise<boolean> {
+  const channel = await db.query.channels.findFirst({
+    where: eq(channels.id, channelId),
+    columns: { upstreamReserved: true },
+  });
+  if (!channel) return true;
+  const activeSum = await db
+    .select({
+      total: sql<string>`coalesce(sum(${billingRequests.channelReservedAmount}),0)::numeric`,
+    })
+    .from(billingRequests)
+    .where(
+      and(
+        eq(billingRequests.channelId, channelId),
+        inArray(billingRequests.status, [
+          'authorized',
+          'in_flight',
+          'settlement_pending',
+          'processing',
+          'retry_wait',
+          'uncertain',
+        ]),
+      ),
+    );
+  const expected = new Decimal(activeSum[0]?.total ?? '0');
+  const actual = new Decimal(channel.upstreamReserved);
+  const diff = actual.minus(expected);
+  if (diff.abs().lte(new Decimal('0.000000001'))) return true;
+  await db.insert(reconcileDiscrepancies).values({
+    scope: 'channel',
+    userId: null,
+    expected: expected.toString(),
+    actual: actual.toString(),
+    diff: diff.toString(),
+    detail: `渠道在途敞口不平（channel=${channelId}）：channels.upstream_reserved ${actual.toString()} vs 活跃请求敞口和 ${expected.toString()}`,
   });
   return false;
 }

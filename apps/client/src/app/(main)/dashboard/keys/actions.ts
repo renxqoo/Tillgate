@@ -25,12 +25,21 @@ export async function createKeyAction(input: {
 
 export async function updateKeyAction(
   id: number,
-  input: { name?: string; remark?: string },
+  input: {
+    name?: string;
+    remark?: string;
+    rpmLimit?: number | null;
+    tpmLimit?: number | null;
+    dailySpendLimit?: number | null;
+  },
 ): Promise<{ error?: string }> {
   try {
     const body: Record<string, unknown> = {};
     if (input.name !== undefined) body.name = input.name.trim();
     if (input.remark !== undefined) body.remark = input.remark.trim() || null;
+    if (input.rpmLimit !== undefined) body.rpmLimit = input.rpmLimit;
+    if (input.tpmLimit !== undefined) body.tpmLimit = input.tpmLimit;
+    if (input.dailySpendLimit !== undefined) body.dailySpendLimit = input.dailySpendLimit;
     await apiFetch<KeyRow>(`/api/keys/${id}`, { method: "PATCH", body });
     revalidatePath("/dashboard/keys");
     return {};

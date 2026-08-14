@@ -16,6 +16,7 @@
   "dependencies": {
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
     "@ai-gateway/money": "workspace:*",
     "bullmq": "^6.0.7",

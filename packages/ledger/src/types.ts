@@ -48,6 +48,8 @@ export interface SettleResult {
   amount: string;
   /** 按供应商可信 usage 精确计算的费用。 */
   calculatedAmount: string;
+  /** 本次结算是否触发了渠道「进货额度」熔断（软闸：status=3）。调用方据此清路由缓存。 */
+  channelCircuitBroken?: boolean;
 }
 
 export interface BillingEffects {
@@ -81,20 +83,40 @@ export interface BillingQuote {
 export interface AuthorizeBillingCommand {
   requestId: string;
   userId: number;
+  /** 发起凭证的 Key（JWT/无 Key 为 null）。用于 Key 级每日花费上限。 */
+  apiKeyId?: number | null;
   stream: boolean;
   quote: BillingQuote;
   reservationLimit: string;
   authorizationTtlMs: number;
 }
 
+/** 渠道「进货额度」精确硬闸：路由选渠前为本次上游成本预估预留在途敞口。 */
+export interface ReserveChannelCommand {
+  requestId: string;
+  /** 目标渠道（同一请求 fallback 换渠道时，旧渠道敞口在本次事务内原子释放） */
+  channelId: number;
+  /** 本次上游成本预估（元，官方价×上界，系数=1） */
+  amount: string;
+}
+
+export interface ChannelReservationResult {
+  allowed: boolean;
+  /** 拒绝时的剩余可用额度（元，string）；放行时为本渠道本次预留后剩余 */
+  remaining: string;
+  /** 是否为本请求切换了渠道（释放了旧渠道敞口） */
+  switched: boolean;
+}
+
 export interface BillingAuthorization {
   requestId: string;
+  /** 本次预估敞口（元），非冻结金额；仅用于并发熔断，结算按实际金额扣费。 */
   reservedAmount: string;
-  /** 授权不会改变已结算余额。 */
+  /** 已结算余额（信用模型下可为负，≥ -credit_limit）。 */
   settledBalance: string;
-  /** 授权完成后的处理中预留总额。 */
+  /** 在途敞口总额（所有未终结请求预估之和）。 */
   reservedBalance: string;
-  /** settledBalance - reservedBalance。 */
+  /** 可用信用 = settledBalance + creditLimit - reservedBalance。 */
   availableBalance: string;
   replayed: boolean;
 }

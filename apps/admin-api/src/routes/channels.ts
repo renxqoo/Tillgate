@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
-import { providers, channels, modelMappings, modelChannels } from '@ai-gateway/db/schema';
+import { eq, sql } from 'drizzle-orm';
+import { providers, channels, modelMappings, modelChannels, usageLogs } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { decrypt, encrypt } from '@ai-gateway/core';
 import { createAi, defaultAiConfig, type ChannelDesc } from '@ai-gateway/ai';
@@ -41,6 +41,8 @@ const channelUpdateSchema = z.object({
   status: z.number().optional(),
   rpmLimit: z.number().int().positive().nullable().optional(),
   tpmLimit: z.number().int().positive().nullable().optional(),
+  /** 熔断阈值（元，>=0），null=0（耗尽才熔断） */
+  upstreamThreshold: z.number().min(0).nullable().optional(),
   /** 换 Key：重新加密 + 恢复启用状态 */
   apiKey: z.string().min(1).optional(),
 }).passthrough();
@@ -65,6 +67,8 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           cooldownUntil: channels.cooldownUntil,
           rpmLimit: channels.rpmLimit,
           tpmLimit: channels.tpmLimit,
+          upstreamBudget: channels.upstreamBudget,
+          upstreamThreshold: channels.upstreamThreshold,
           createdAt: channels.createdAt,
           updatedAt: channels.updatedAt,
           providerName: providers.name,
@@ -91,7 +95,30 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         bindingMap.set(b.channelId, arr);
       }
 
-      const list = rows.map((r) => ({ ...r, boundModels: bindingMap.get(r.id) ?? [] }));
+      // 渠道已消耗（上游成本）聚合：consumed = sum(upstream_cost)，只计成功结算（报表用）
+      const consumedRows = await s.db
+        .select({
+          channelId: usageLogs.channelId,
+          total: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
+        })
+        .from(usageLogs)
+        .where(eq(usageLogs.status, 0))
+        .groupBy(usageLogs.channelId);
+      const consumedMap = new Map<number, string>();
+      for (const cr of consumedRows) {
+        if (cr.channelId != null) consumedMap.set(cr.channelId, cr.total);
+      }
+
+      const list = rows.map((r) => {
+        const consumed = consumedMap.get(r.id) ?? '0';
+        return {
+          ...r,
+          boundModels: bindingMap.get(r.id) ?? [],
+          // upstreamBudget 即「当前余额」（结算已扣减），已消耗单独给出供报表/追溯
+          upstreamConsumed: consumed,
+          upstreamRemaining: r.upstreamBudget,
+        };
+      });
       return c.json({ list, total: list.length });
     })
 
@@ -145,6 +172,8 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       if (body.status !== undefined) update.status = body.status;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
       if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
+      if (body.upstreamThreshold !== undefined)
+        update.upstreamThreshold = body.upstreamThreshold == null ? null : String(body.upstreamThreshold);
       // 换 Key：重新加密 + 清除「凭据无效」状态（status=4 死凭据/3 熔断 → 恢复启用）
       if (body.apiKey !== undefined) {
         update.apiKeyEnc = encrypt(body.apiKey, s.encryptionKey);

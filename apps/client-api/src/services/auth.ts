@@ -1,7 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { users } from '@ai-gateway/db/schema';
 import {
-  checkLoginThrottle,
   recordLoginFailure,
   resetLoginFailures,
   signSession,
@@ -13,9 +12,9 @@ import type { ClientApiConfig } from '../config.js';
 /**
  * 登录流程组件（从路由抽出，可单测）。
  *
- * 流程：限流检查（namespace='user'，双维度防 XFF 伪造）→ 查本地账号 →
- *       常量时间密码校验（防枚举/防时序）→ 状态检查 → 清零失败计数 →
- *       首登赠额（幂等，由 ledger 判定）→ 更新 last_login → 签发会话 JWT。
+ * 流程：查本地账号 → 恒定时间密码校验（防枚举/防时序，用户不存在也跑等量 scrypt）
+ *   → 密码错误才累计失败（正确密码豁免，防锁定 DoS）→ 状态检查 → 清零失败计数
+ *   → 首登赠额（幂等，由 ledger 判定）→ 更新 last_login → 签发会话 JWT。
  *
  * 返回可判别结果，HTTP 映射（状态码/retry-after/Cookie）留在路由层。
  */
@@ -38,12 +37,6 @@ export async function login(
   config: ClientApiConfig,
   input: LoginInput,
 ): Promise<LoginOutcome> {
-  // 限流：锁定中直接拒绝（防 scrypt DoS）
-  const throttle = await checkLoginThrottle(s.redis, 'user', input.username, input.ip);
-  if (throttle.locked) {
-    return { kind: 'locked', retryAfterSec: throttle.retryAfterSec };
-  }
-
   // 查本地账号（issuer='local', subject=username）
   const rows = await s.db
     .select({
@@ -56,12 +49,18 @@ export async function login(
     .where(and(eq(users.issuer, 'local'), eq(users.subject, input.username)))
     .limit(1);
 
-  // 统一错误（防用户名枚举）：无论用户不存在还是密码错，都返回相同结果
   const user = rows[0];
-  const passwordOk = user ? await verifyPassword(input.password, user.passwordHash) : false;
-  // 用户不存在时也跑一次 verify（恒定时间，防根据响应时间区分「用户不存在」vs「密码错」）
+  // 恒定时间密码校验（01 修复）：用户不存在/哈希缺失也执行等量 scrypt（dummy hash），
+  // 使「用户不存在」与「密码错」响应耗时一致，杜绝时序枚举。
+  const passwordOk = await verifyPassword(input.password, user?.passwordHash ?? null);
+
+  // 正确密码豁免（02 修复）：只有密码错误才累计失败并可能触发单源锁定；
+  // 正确密码永远放行并清零计数，攻击者无法用错误密码锁死合法账号。
   if (!user || !passwordOk) {
-    await recordLoginFailure(s.redis, 'user', input.username, input.ip);
+    const throttle = await recordLoginFailure(s.redis, 'user', input.username, input.ip);
+    if (throttle.locked) {
+      return { kind: 'locked', retryAfterSec: throttle.retryAfterSec };
+    }
     return { kind: 'invalid_credentials' };
   }
 

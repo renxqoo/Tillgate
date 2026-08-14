@@ -17,6 +17,8 @@ export {
   type ErrorLogger,
 } from './errors.js';
 
+export { csrfProtection, type CsrfOptions } from './csrf.js';
+
 export {
   ValidationError,
   jsonBody,

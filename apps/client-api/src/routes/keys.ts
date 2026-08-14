@@ -38,6 +38,8 @@ const keyCreateSchema = z.object({
   expiresAt: z.string().datetime().nullable().optional(),
   rpmLimit: z.number().int().min(1).nullable().optional(),
   tpmLimit: z.number().int().min(1).nullable().optional(),
+  /** Key 级每日花费上限（元，>=0），null=不限。团队团员自助封顶。 */
+  dailySpendLimit: z.number().min(0).nullable().optional(),
 });
 
 const keyUpdateSchema = z.object({
@@ -46,6 +48,8 @@ const keyUpdateSchema = z.object({
   expiresAt: z.string().datetime().nullable().optional(),
   rpmLimit: z.number().int().min(1).nullable().optional(),
   tpmLimit: z.number().int().min(1).nullable().optional(),
+  /** Key 级每日花费上限（元，>=0），null=不限。 */
+  dailySpendLimit: z.number().min(0).nullable().optional(),
 });
 
 export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
@@ -68,6 +72,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
             expiresAt: apiKeys.expiresAt,
             rpmLimit: apiKeys.rpmLimit,
             tpmLimit: apiKeys.tpmLimit,
+            dailySpendLimit: apiKeys.dailySpendLimit,
             status: apiKeys.status,
             lastUsedAt: apiKeys.lastUsedAt,
             createdAt: apiKeys.createdAt,
@@ -98,6 +103,8 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
           rpmLimit: body.rpmLimit ?? null,
           tpmLimit: body.tpmLimit ?? null,
+          // numeric 列接受字符串；number → string 对齐 schema 类型
+          dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
           status: 0,
         })
         .returning({ id: apiKeys.id, name: apiKeys.name });
@@ -122,11 +129,26 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
       if (body.expiresAt !== undefined) update.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
       if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
       if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
+      if (body.dailySpendLimit !== undefined)
+        update.dailySpendLimit = body.dailySpendLimit == null ? null : String(body.dailySpendLimit);
       const [updated] = await s.db
         .update(apiKeys)
         .set(update)
         .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId))) // 限定自己的 Key
-        .returning();
+        // 只回显脱敏字段（与列表一致），绝不回显 keyHash；明文 Key 早在创建后就不可再取回
+        .returning({
+          id: apiKeys.id,
+          keyPreview: apiKeys.keyPreview,
+          name: apiKeys.name,
+          remark: apiKeys.remark,
+          expiresAt: apiKeys.expiresAt,
+          rpmLimit: apiKeys.rpmLimit,
+          tpmLimit: apiKeys.tpmLimit,
+          dailySpendLimit: apiKeys.dailySpendLimit,
+          status: apiKeys.status,
+          lastUsedAt: apiKeys.lastUsedAt,
+          createdAt: apiKeys.createdAt,
+        });
       if (!updated) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在或无权操作');
       return c.json(updated);
     })

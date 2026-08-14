@@ -89,42 +89,33 @@ describe('Ledger public boundary', () => {
     }
   });
 
-  it('negative adjustment cannot consume funds reserved by active requests', async (context) => {
+  it('信用模型：负向调账受 credit_limit 约束，balance 可负到 -credit_limit，不受在途敞口约束', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    await db.update(users).set({ creditLimit: '5' }).where(eq(users.id, userId));
     const ledger = createLedger({ db });
     try {
+      // 在途敞口(reserved)不是冻结，不影响负向调账；balance 允许扣到 -credit_limit(-5)。
       await db.update(users).set({ reservedBalance: '8' }).where(eq(users.id, userId));
+      const applied = await ledger.adminAdjust({
+        operationId: `adjust-neg:${userId}`,
+        userId,
+        amount: '-14',
+        adminId: null,
+      });
+      expect(applied.balanceAfter).toBe('-4.000000000000000000'); // 10 - 14 = -4 >= -5
+      // 再扣会跌破 -credit_limit → 拒绝
       await expect(
         ledger.adminAdjust({
-          operationId: `adjust-too-much:${userId}`,
+          operationId: `adjust-over:${userId}`,
           userId,
-          amount: '-3',
+          amount: '-2',
           adminId: null,
         }),
       ).rejects.toMatchObject({ code: 'insufficient_balance' } satisfies Partial<LedgerError>);
-      const applied = await ledger.adminAdjust({
-        operationId: `adjust-available:${userId}`,
-        userId,
-        amount: '-2',
-        adminId: null,
-      });
-      expect(applied.balanceAfter).toBe('8.000000000000000000');
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, userId),
-        columns: { balance: true, reservedBalance: true },
-      });
-      expect(user).toMatchObject({
-        balance: '8.000000000000000000',
-        reservedBalance: '8.000000000000000000',
-      });
     } finally {
-      await db
-        .delete(fundOperations)
-        .where(eq(fundOperations.operationId, `adjust-too-much:${userId}`));
-      await db
-        .delete(fundOperations)
-        .where(eq(fundOperations.operationId, `adjust-available:${userId}`));
+      await db.delete(fundOperations).where(eq(fundOperations.operationId, `adjust-neg:${userId}`));
+      await db.delete(fundOperations).where(eq(fundOperations.operationId, `adjust-over:${userId}`));
       await cleanup(userId);
     }
   });

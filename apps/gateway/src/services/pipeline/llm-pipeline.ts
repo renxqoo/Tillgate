@@ -6,6 +6,7 @@ import { Decimal, estimateMaxCost } from '@ai-gateway/money';
 import {
   BillingConfigurationError,
   BillingBacklogError,
+  DailySpendLimitExceededError,
   InsufficientBalanceError,
   type Billing,
   type UsageReceipt,
@@ -80,8 +81,10 @@ interface CandidateTarget {
   billingPolicy: Record<string, unknown> | null;
   billingPolicyFingerprint: string | null;
   inputTokenUpperBound: number;
-  /** 预扣估算（元，Decimal） */
+  /** 预扣估算（元，Decimal，用户价=官方价×费率卡系数） */
   estimate: Decimal;
+  /** 上游成本预估（元，Decimal，官方价，系数=1）——渠道进货额度精确硬闸用 */
+  upstreamEstimate: Decimal;
   channels: ChannelCache[] | null;
 }
 
@@ -152,8 +155,10 @@ export class LlmPipeline {
 
     // 输入 token 估算（TPM 预占 + 预扣共用）
     const estInput = estimateTokens(extractRequestChars(body), 3.5);
-    // 资金授权不能使用平均 token 比例。对通用文本/JSON 请求，以 UTF-8 字节数作为
-    // tokenizer 无关的保守 token 上界；实际 usage 超界会由 ledger 不变量转 dead。
+    // 预扣估算用 UTF-8 字节数作为保守输入上界（仅为「预留足够资金」的估算值）。
+    // 它不是「真实 token 的硬上限」：供应商会报告隐藏的 system/cached token，
+    // 真实 inputTokens 可远超字节数。资损不变量由 settleClaim 的「金额」判定兜底
+    // （calculated > reserved → dead），不在此处用字节数卡 token。
     const textInputUpperBound = this.inputTokenUpperBound(body);
 
     // ---- 请求 + 模型 RPM 一次原子判定；后维拒绝不会污染前维窗口。 ----
@@ -221,6 +226,7 @@ export class LlmPipeline {
       authorization = await billing.authorize({
         requestId,
         userId: auth.userId,
+        apiKeyId: auth.apiKeyId,
         stream,
         reservationLimit: String(env.BILLING_RESERVATION_MAX),
         authorizationTtlMs: env.BILLING_AUTHORIZATION_TTL_SECONDS * 1_000,
@@ -248,6 +254,18 @@ export class LlmPipeline {
           'insufficient_balance',
           `可用余额不足（当前余额 ${error.balance} 元，需要预扣 ${maxEstimate.toString()} 元）`,
           '请充值后再试',
+        );
+      }
+      if (error instanceof DailySpendLimitExceededError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        const scope =
+          error.scope === 'key' ? `该 Key（#${error.apiKeyId}）今日` : '今日';
+        return errorResponse(
+          c,
+          402,
+          'daily_spend_limit_exceeded',
+          `${scope}花费已达上限（上限 ${error.dailySpendLimit} 元，当前预计 ${error.projected} 元）`,
+          '请明天再试，或联系管理员调整每日花费上限',
         );
       }
       if (error instanceof BillingConfigurationError) {
@@ -303,6 +321,41 @@ export class LlmPipeline {
 
         for (const channel of channels) {
           if (budget.signal.aborted) break;
+          // 渠道「进货额度」精确硬闸：路由选渠前原子预留在途上游成本敞口。
+          // 余额（进货额度 - 已消耗 - 在途）不足本次上游预估 → 跳过改试下一渠道（没钱即拦截）。
+          let reservation: { allowed: boolean; remaining: string };
+          try {
+            reservation = await billing.reserveChannel({
+              requestId,
+              channelId: channel.channelId,
+              amount: target.upstreamEstimate.toString(),
+            });
+          } catch (error) {
+            logger.warn(
+              { requestId, channel: channel.key, err: (error as Error).message },
+              'channel reserve failed, skipping',
+            );
+            lastError = {
+              code: 'channel_budget_exhausted',
+              message: '渠道额度不足',
+              status: 503,
+              upstreamCharge: 'none',
+            };
+            continue;
+          }
+          if (!reservation.allowed) {
+            logger.warn(
+              { requestId, channel: channel.key, remaining: reservation.remaining },
+              'channel upstream budget exhausted, skipping',
+            );
+            lastError = {
+              code: 'channel_budget_exhausted',
+              message: '渠道额度不足',
+              status: 503,
+              upstreamCharge: 'none',
+            };
+            continue;
+          }
           const ctx: AttemptCtx = {
             requestId,
             model: target.realModel,
@@ -450,6 +503,15 @@ export class LlmPipeline {
         outputPrice: kind === 'chat' ? m.outputPrice : 0,
         coefficient,
       });
+      // 上游成本 = 官方价 × 上界（系数=1），与 settle.ts 的 upstream_cost 同口径
+      const upstreamEstimate = estimateMaxCost({
+        estimatedInputTokens: candidateInputUpperBound,
+        maxOutputTokens,
+        inputPrice: m.inputPrice,
+        cacheInputPrice: m.cacheInputPrice,
+        outputPrice: kind === 'chat' ? m.outputPrice : 0,
+        coefficient: '1',
+      });
       targets.push({
         realModel: m.realModel,
         mappingId: m.id,
@@ -463,6 +525,7 @@ export class LlmPipeline {
           : null,
         inputTokenUpperBound: candidateInputUpperBound,
         estimate,
+        upstreamEstimate,
         channels: null,
       });
     };
@@ -487,16 +550,19 @@ export class LlmPipeline {
           ? body.max_tokens
           : DEFAULT_MAX_OUTPUT_TOKENS;
     const count = typeof body.n === 'number' && body.n > 0 ? body.n : 1;
-    return requested * count;
+    // 信用模型：输出敞口（及 TPM 预算）不按 max_tokens 全额预估——max_tokens 是「上限」不是「预期」。
+    // cap 之外的部分由 credit_limit 透支缓冲 + 结算扣负兜底，避免长输出上限把在途敞口虚高。
+    return Math.min(requested * count, this.deps.env.GATEWAY_OUTPUT_EXPOSURE_CAP);
   }
 
   /**
-   * 通用文本协议的保守输入 token 上界。BPE/SentencePiece 的 token 数不会高于
-   * 其 UTF-8 原始字节数；完整 JSON 还覆盖 role、tools 和结构开销。
+   * 输入 token 的保守上界（信用模型下用于预估在途敞口）。
+   * 用「字符数」而非 UTF-8 字节数：token 数恒 ≤ 字符数（中文 1 字符≈1 token，英文更低），
+   * 字节数对中文会高估约 3 倍，字符数仍是可靠上界且不虚高。
    * 多模态语义成本由模型 billing_policy 的 maxInputTokens 接管。
    */
   private inputTokenUpperBound(body: Record<string, unknown>): number {
-    return Math.max(1, Buffer.byteLength(JSON.stringify(body), 'utf8'));
+    return Math.max(1, extractRequestChars(body));
   }
 
   /** 单渠道尝试：渠道级限流 → ai 包调用（流式/非流式） */
@@ -918,6 +984,7 @@ export class LlmPipeline {
         'unauthorized',
         'forbidden',
         'rate_limited',
+        'quota_exhausted',
         'model_not_found',
         'invalid_request',
         'circuit_open',

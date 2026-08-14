@@ -164,6 +164,8 @@ export async function setupTestModel(
       providerId: prov!.id,
       apiKeyEnc: encrypt('sk-dummy', encryptionKey),
       status: 0,
+      // 进货额度给足，让路由精确硬闸放行（测试只验证计费/路由逻辑，不验证预算耗尽）
+      upstreamBudget: '1000000',
     })
     .returning();
   const [m] = await db

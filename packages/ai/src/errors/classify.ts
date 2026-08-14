@@ -156,9 +156,13 @@ export function classifyHttpError(
         rawBody,
       });
     }
+    // 08 修复：429 一律归一为规范码 'rate_limited'。绝不透传供应商 body code
+    // （如 MiniMax 的 rate_limit_error）——gateway 的 upstreamCharge()/isChannelSwitchable()
+    // 只认 'rate_limited'，透传会导致预留被误冻结为 uncertain、且不做渠道切换。
+    // 供应商原始 code 保留在 rawBody 供排障/审计。
     return createUpstreamError({
       status,
-      code: bodyCode ?? 'rate_limited',
+      code: 'rate_limited',
       message,
       retryable: true,
       circuitTrip: false,

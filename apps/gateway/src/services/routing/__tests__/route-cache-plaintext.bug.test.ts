@@ -60,11 +60,16 @@ function makeDbMock(apiKeyEnc: string): Db {
                       providerProtocol: 'openai',
                       mcWeight: 100,
                       mcPriority: 1,
+                      upstreamBudget: '0',
                     },
                   ]),
               }),
             }),
           }),
+        }),
+        // 渠道进货消耗聚合查询路径（where + groupBy），默认空
+        where: () => ({
+          groupBy: () => Promise.resolve([]),
         }),
       }),
     }),
@@ -96,9 +101,9 @@ describe('路由缓存明文 Key 泄露（修复后只存密文 apiKeyEnc）', (
   it('从 Redis 读缓存 → 内存解密出明文（缓存命中路径也安全）', async () => {
     const redis = makeCaptureRedis();
     const apiKeyEnc = encrypt(PLAINTEXT_KEY, ENCRYPTION_KEY);
-    // 预置 Redis 缓存（密文版）
+    // 预置 Redis 缓存（密文版；key 含 schema 版本 s3）
     redis.store.set(
-      'route:channels:v0:gpt-4',
+      'route:channels:v0:s3:gpt-4',
       JSON.stringify([
         {
           channelId: 1,
@@ -107,6 +112,10 @@ describe('路由缓存明文 Key 泄露（修复后只存密文 apiKeyEnc）', (
           protocol: 'openai',
           providerName: 'openai',
           key: 'openai/test',
+          rpmLimit: null,
+          tpmLimit: null,
+          upstreamBudget: '0',
+          upstreamRemaining: '0',
         },
       ]),
     );

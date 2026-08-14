@@ -176,9 +176,11 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
       }
 
       const amountDec = new Decimal(amount);
+      // 信用模型：扣减（负向调账）只要求 balance 不跌破 -credit_limit（由 DB 约束兜底），
+      // 不再要求覆盖在途敞口（reserved_balance 是熔断敞口，非冻结）。
       const where = amountDec.isNegative()
         ? sql`${users.id} = ${input.userId}
-              and ${users.balance} + ${amount}::numeric - ${users.reservedBalance} >= 0`
+              and ${users.balance} + ${amount}::numeric >= -${users.creditLimit}`
         : eq(users.id, input.userId);
       const updated = await tx
         .update(users)

@@ -16,6 +16,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
+import { formatMoney } from '@ai-gateway/api-client/formatters';
+
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Dialog,
@@ -84,15 +86,16 @@ export function ChannelsTable({
           <TableHead>Base URL</TableHead>
           <TableHead>模型</TableHead>
           <TableHead className="text-right">权重 / 优先级</TableHead>
+          <TableHead className="text-right">额度</TableHead>
           <TableHead>状态</TableHead>
           <TableHead className="text-right">失败次数</TableHead>
-          <TableHead className="w-52 text-right">操作</TableHead>
+          <TableHead className="w-64 text-right">操作</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {channels.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
               暂无渠道
             </TableCell>
           </TableRow>
@@ -131,6 +134,9 @@ function ChannelRowItem({
       </TableCell>
       <TableCell className="text-right text-xs tabular-nums">
         {channel.weight} / {channel.priority}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        <span className="font-medium">{formatMoney(channel.upstreamBudget)}</span>
       </TableCell>
       <TableCell>
         <span className={'inline-flex items-center gap-1 text-xs font-medium ' + meta.tone}>
@@ -296,6 +302,7 @@ function EditChannelDialog({
     status: z.coerce.number().int(),
     rpmLimit: z.string().optional(),
     tpmLimit: z.string().optional(),
+    upstreamThreshold: z.string().optional(),
   });
   type FormValues = z.input<typeof editSchema>;
 
@@ -311,6 +318,8 @@ function EditChannelDialog({
       status: channel.status,
       rpmLimit: channel.rpmLimit === null ? '' : String(channel.rpmLimit),
       tpmLimit: channel.tpmLimit === null ? '' : String(channel.tpmLimit),
+      upstreamThreshold:
+        channel.upstreamThreshold === null ? '' : String(channel.upstreamThreshold),
     },
   });
 
@@ -327,6 +336,7 @@ function EditChannelDialog({
         status: Number(values.status),
         rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
         tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
+        upstreamThreshold: values.upstreamThreshold === '' ? null : Number(values.upstreamThreshold),
       });
       if (res.error) {
         toast.error('保存失败', { description: res.error });
@@ -539,6 +549,18 @@ function ChannelForm<T extends Record<string, unknown>>({
                 )}
               />
             </div>
+            <Controller
+              control={form.control}
+              name="upstreamThreshold"
+              render={({ field }: { field: { value: string } }) => (
+                <Field>
+                  <FieldLabel htmlFor="ch-threshold">
+                    熔断阈值（元，剩余 ≤ 此值自动熔断；空=0 即耗尽才熔断）
+                  </FieldLabel>
+                  <Input id="ch-threshold" type="number" step="0.01" {...field} placeholder="0" />
+                </Field>
+              )}
+            />
           </>
         )}
       </FieldGroup>

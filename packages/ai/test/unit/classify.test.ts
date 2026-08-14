@@ -62,15 +62,17 @@ describe('classifyHttpError', () => {
     expect(err.deadCredential).toBe(true);
   });
 
-  it('429 限流（RPM/TPM）：retryable=true', () => {
+  it('429 限流（RPM/TPM）：归一为 rate_limited，retryable=true', () => {
+    // 08 修复：供应商 body code（如 MiniMax 的 rate_limit_error）必须归一为规范码，
+    // 否则 gateway 的 upstreamCharge()/isChannelSwitchable() 只认 rate_limited → 误冻结预留。
     const err = classifyHttpError(429, {
       error: { code: 'rate_limit_error', message: 'too many requests' },
     });
-    expect(err.code).toBe('rate_limit_error');
+    expect(err.code).toBe('rate_limited');
     expect(err.retryable).toBe(true);
   });
 
-  it('429 MiniMax 窗口配额（Token Plan 5h，可恢复）：retryable=true（限流而非额度耗尽）', () => {
+  it('429 MiniMax 窗口配额（Token Plan 5h，可恢复）：归一为 rate_limited（限流而非额度耗尽）', () => {
     // MiniMax 真实返回：code=rate_limit_error + "用量上限/套餐/积分"，但 5h 窗口后自动恢复 → 限流
     const err = classifyHttpError(429, {
       error: {
@@ -78,7 +80,7 @@ describe('classifyHttpError', () => {
         message: '已达到 Token Plan 用量上限：请升级套餐或购买积分 (2056)',
       },
     });
-    expect(err.code).toBe('rate_limit_error'); // 保持供应商 code
+    expect(err.code).toBe('rate_limited'); // 归一为规范码，原供应商 code 保留在 rawBody
     expect(err.retryable).toBe(true); // 可恢复，应重试
   });
 

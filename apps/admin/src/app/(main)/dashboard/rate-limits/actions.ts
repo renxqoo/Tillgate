@@ -13,6 +13,15 @@ const PATH_BY_KIND: Record<RateLimitKind, (id: number) => string> = {
   key: (id) => `/api/admin/keys/${id}`,
 };
 
+export interface RateLimitPatch {
+  rpmLimit: number | null;
+  tpmLimit: number | null;
+  /** 仅 user：透支上限（元，>=0）。必填数值，不可为 null（DB notNull default 0）。 */
+  creditLimit?: number;
+  /** user/key：每日花费上限（元，NULL=不限）。 */
+  dailySpendLimit?: number | null;
+}
+
 /**
  * 统一更新限流（null=不限流，继承上层）。
  * 改后 admin-api 端清缓存：user/key 清 auth:key:{hash}，model/channel 走 invalidateRouteCache，立即生效。
@@ -20,13 +29,23 @@ const PATH_BY_KIND: Record<RateLimitKind, (id: number) => string> = {
 export async function updateRateLimitAction(
   kind: RateLimitKind,
   id: number,
-  rpmLimit: number | null,
-  tpmLimit: number | null,
+  patch: RateLimitPatch,
 ): Promise<{ error?: string }> {
   try {
+    const body: Record<string, number | null> = {
+      rpmLimit: patch.rpmLimit,
+      tpmLimit: patch.tpmLimit,
+    };
+    // 信用模型字段仅 user/key 实体支持（模型/渠道无 creditLimit / dailySpendLimit）
+    if (kind === "user") {
+      if (patch.creditLimit !== undefined) body.creditLimit = patch.creditLimit;
+      if (patch.dailySpendLimit !== undefined) body.dailySpendLimit = patch.dailySpendLimit;
+    } else if (kind === "key") {
+      if (patch.dailySpendLimit !== undefined) body.dailySpendLimit = patch.dailySpendLimit;
+    }
     await adminFetch(PATH_BY_KIND[kind](id), {
       method: "PATCH",
-      body: { rpmLimit, tpmLimit },
+      body,
     });
     revalidatePath("/dashboard/rate-limits");
     return {};

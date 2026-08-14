@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "daily_spend_limit" numeric(38, 18);

@@ -35,6 +35,8 @@ export default async function RateLimitsPage() {
           sublabel: u.displayName,
           rpmLimit: u.rpmLimit,
           tpmLimit: u.tpmLimit,
+          creditLimit: u.creditLimit === null ? null : Number(u.creditLimit),
+          dailySpendLimit: u.dailySpendLimit === null ? null : Number(u.dailySpendLimit),
           status: u.status,
         }))
       : [];
@@ -68,6 +70,7 @@ export default async function RateLimitsPage() {
           sublabel: k.keyPreview,
           rpmLimit: k.rpmLimit,
           tpmLimit: k.tpmLimit,
+          dailySpendLimit: k.dailySpendLimit === null ? null : Number(k.dailySpendLimit),
           status: k.status,
         }))
       : [];
@@ -86,7 +89,7 @@ export default async function RateLimitsPage() {
           限流设置
         </h1>
         <p className="text-sm text-muted-foreground">
-          集中管理 用户 / 模型 / 渠道 / Key 的 RPM·TPM 限额（改后立即生效）
+          集中管理 用户 / 模型 / 渠道 / Key 的 RPM·TPM 限额；用户另含透支上限，用户与 Key 另含每日花费上限（改后立即生效）
         </p>
       </div>
 

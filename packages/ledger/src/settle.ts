@@ -1,6 +1,12 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, transactions, usageLogs, users } from '@ai-gateway/db/schema';
+import {
+  billingRequests,
+  channels,
+  transactions,
+  usageLogs,
+  users,
+} from '@ai-gateway/db/schema';
 import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
 import type { Redis } from 'ioredis';
 import type { SettleClaimResult, SettlementClaim, UsageReceipt } from './types.js';
@@ -34,6 +40,7 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
 
   let outcome: SettleClaimResult['outcome'] = 'claim_lost';
   let amount = '0';
+  let channelCircuitBroken = false;
   await db.transaction(async (tx) => {
     const billing = await tx.query.billingRequests.findFirst({
       where: and(
@@ -44,7 +51,12 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
         eq(billingRequests.revision, claim.revision),
         gt(billingRequests.claimUntil, sql`clock_timestamp()`),
       ),
-      columns: { userId: true, reservedAmount: true },
+      columns: {
+        userId: true,
+        reservedAmount: true,
+        channelId: true,
+        channelReservedAmount: true,
+      },
     });
     if (!billing) {
       const existingUsage = await tx.query.usageLogs.findFirst({
@@ -59,9 +71,11 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
     }
     if (billing.userId !== data.userId) throw new Error('billing_receipt_user_mismatch');
 
-    const reserved = toDecimal(billing.reservedAmount);
+    // 信用模型：不再有「calculated > 预估 → dead」的金额不变量。reserved_amount 只是并发熔断的
+    // 在途敞口估算（authorize 时记），实际金额可能略超预估；结算无条件按实际金额扣费，
+    // balance 可降至 -credit_limit（由 DB 约束 users_balance_credit_floor_ck 兜底，触底即 check
+    // violation → processor 归为 invariant_violation → dead 人工复核/充值）。
     if (data.usage.estimated) throw new Error('billing_invariant_estimated_usage');
-    if (calculated.gt(reserved)) throw new Error('billing_invariant_actual_exceeds_reservation');
     const charged = calculated;
     amount = calculatedAmount;
 
@@ -108,7 +122,6 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       .where(
         and(
           eq(users.id, billing.userId),
-          sql`${users.balance} >= ${amount}::numeric`,
           sql`${users.reservedBalance} >= ${billing.reservedAmount}::numeric`,
         ),
       )
@@ -117,6 +130,22 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
     const balanceAfter = updated[0]!.balance;
     // reservation 本身不写资金流水；consume 流水必须直接表达最终实扣。
     const balanceBefore = toStorage(toDecimal(balanceAfter).plus(charged));
+
+    // 释放渠道在途敞口（若有：本请求在最终成功渠道上的上游成本预估）
+    if (billing.channelId != null && billing.channelReservedAmount != null) {
+      const channelReleased = await tx
+        .update(channels)
+        .set({
+          upstreamReserved: sql`${channels.upstreamReserved} - ${billing.channelReservedAmount}::numeric`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          sql`${channels.id} = ${billing.channelId}
+              and ${channels.upstreamReserved} >= ${billing.channelReservedAmount}::numeric`,
+        )
+        .returning({ id: channels.id });
+      if (channelReleased.length === 0) throw new Error('channel_reservation_invariant');
+    }
 
     const insertedTransaction = await tx
       .insert(transactions)
@@ -165,6 +194,34 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       .returning({ requestId: billingRequests.requestId });
     if (finalized.length === 0) throw new Error('billing_state_changed_during_settlement');
     outcome = 'settled';
+
+    // 渠道「进货额度」= 余额模型：结算时原子扣减实际上游成本，并检查余额耗尽 → 熔断。
+    if (data.channelId != null) {
+      const channelDeduct = await tx
+        .update(channels)
+        .set({
+          upstreamBudget: sql`${channels.upstreamBudget} - ${upstreamCost}::numeric`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(eq(channels.id, data.channelId))
+        .returning({
+          upstreamBudget: channels.upstreamBudget,
+          upstreamThreshold: channels.upstreamThreshold,
+        });
+      if (channelDeduct.length > 0) {
+        const threshold =
+          channelDeduct[0]!.upstreamThreshold != null
+            ? toDecimal(channelDeduct[0]!.upstreamThreshold)
+            : new Decimal(0);
+        if (toDecimal(channelDeduct[0]!.upstreamBudget).lte(threshold)) {
+          await tx
+            .update(channels)
+            .set({ status: 3, updatedAt: sql`clock_timestamp()` })
+            .where(and(eq(channels.id, data.channelId), eq(channels.status, 0)));
+          channelCircuitBroken = true;
+        }
+      }
+    }
   });
 
   const finalOutcome = outcome as SettleClaimResult['outcome'];
@@ -173,6 +230,7 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
     settled: finalOutcome === 'settled',
     amount,
     calculatedAmount,
+    channelCircuitBroken,
   };
 }
 

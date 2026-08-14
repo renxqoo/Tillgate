@@ -2,6 +2,7 @@ import type { Db } from '@ai-gateway/db';
 import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
 import type { Redis } from '@ai-gateway/http';
+import type { VoucherStorage } from './voucher-storage.js';
 
 /**
  * admin-api 服务依赖集合（依赖注入的唯一入口）。
@@ -16,5 +17,7 @@ export interface AdminServices {
   billingOperations: BillingOperations;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
   encryptionKey: string;
+  /** 凭证截图存储（本地磁盘/未来 OSS） */
+  voucherStorage: VoucherStorage;
   logger: Logger;
 }

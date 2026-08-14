@@ -51,6 +51,8 @@ export interface ChannelUpdateInput {
   status?: number;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
+  /** 熔断阈值（元，>=0），null=0（耗尽才熔断） */
+  upstreamThreshold?: number | null;
 }
 
 export async function updateChannelAction(

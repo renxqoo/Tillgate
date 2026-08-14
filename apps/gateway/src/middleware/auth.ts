@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
 import { errorResponse } from '../lib/http.js';
 import { AuthService, type AuthContext } from '../services/auth/auth-service.js';
+import { sourceIp } from './auth-failure-guard.js';
 
 /** 鉴权上下文（鉴权通过后挂在 c.var.auth，后续路由/计量使用） */
 export type { AuthContext };
@@ -20,7 +21,7 @@ export interface AuthEnv {
  */
 export function authMiddleware(authService: AuthService): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
-    const result = await authService.authenticate(c.req.header('authorization'));
+    const result = await authService.authenticate(c.req.header('authorization'), sourceIp(c));
     if (!result.ok) {
       if (result.retryAfterSec !== undefined) {
         c.header('retry-after', String(result.retryAfterSec));
