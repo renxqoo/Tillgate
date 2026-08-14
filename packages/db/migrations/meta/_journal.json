@@ -162,6 +162,34 @@
       "when": 1786675837802,
       "tag": "0022_mushy_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786680475543,
+      "tag": "0023_slim_ikaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786701209487,
+      "tag": "0024_lively_captain_flint",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786701982220,
+      "tag": "0025_silly_mephistopheles",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786713348417,
+      "tag": "0026_icy_quasar",
+      "breakpoints": true
     }
   ]
 }

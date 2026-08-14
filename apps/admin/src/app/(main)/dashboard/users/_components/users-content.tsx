@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import {
   BanknoteIcon,
+  BriefcaseIcon,
   EyeIcon,
   GiftIcon,
   KeyRoundIcon,
@@ -13,6 +14,7 @@ import {
   ScaleIcon,
   ShieldCheckIcon,
   ShieldOffIcon,
+  UserIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -65,6 +67,7 @@ export function UsersContent({
           <TableHead>显示名</TableHead>
           <TableHead>邮箱</TableHead>
           <TableHead className="w-20">状态</TableHead>
+          <TableHead className="w-20">类型</TableHead>
           <TableHead>费率卡</TableHead>
           <TableHead className="text-right">已结算</TableHead>
           <TableHead className="text-right">处理中预留</TableHead>
@@ -78,7 +81,7 @@ export function UsersContent({
       <TableBody>
         {users.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={13} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
               无匹配用户
             </TableCell>
           </TableRow>
@@ -115,6 +118,15 @@ function UserRowItem({
     else toast.success(`已${action}`);
   }
 
+  async function toggleEnterprise() {
+    setPending(true);
+    const { setUserEnterpriseAction } = await import('../actions');
+    const res = await setUserEnterpriseAction(user.id, !user.isEnterprise);
+    setPending(false);
+    if (res.error) toast.error('操作失败', { description: res.error });
+    else toast.success(user.isEnterprise ? '已取消企业' : '已设为企业');
+  }
+
   return (
     <TableRow>
       <TableCell className="text-xs text-muted-foreground tabular-nums">
@@ -140,6 +152,17 @@ function UserRowItem({
             className="inline-flex items-center rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive"
           >
             已封禁
+          </span>
+        )}
+      </TableCell>
+      <TableCell>
+        {user.isEnterprise ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+            <BriefcaseIcon className="size-3" /> 企业
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            <UserIcon className="size-3" /> 个人
           </span>
         )}
       </TableCell>
@@ -189,6 +212,15 @@ function UserRowItem({
             }
           />
           <BindRateCardDialog user={user} rateCards={rateCards} />
+          <Button
+            size="sm"
+            variant="ghost"
+            title={user.isEnterprise ? '取消企业' : '设为企业'}
+            disabled={pending}
+            onClick={toggleEnterprise}
+          >
+            {user.isEnterprise ? <UserIcon /> : <BriefcaseIcon />}
+          </Button>
           <Button
             size="sm"
             variant="ghost"

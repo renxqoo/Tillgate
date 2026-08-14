@@ -118,6 +118,7 @@ export default async function UserDetailPage({ params }: PageProps) {
                   : `已封禁${user.freezeReason ? `（${user.freezeReason}）` : ''}`
               }
             />
+            <Field label="账户类型" value={user.isEnterprise ? '企业' : '个人'} />
             <Field label="已结算余额" value={fmtBalance(user.balance)} />
             <Field label="处理中预留" value={fmtBalance(user.reservedBalance)} />
             <Field label="可用额度" value={fmtBalance(user.availableBalance)} />

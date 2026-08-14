@@ -25,8 +25,8 @@ import { Decimal, toDecimal } from '@ai-gateway/money';
  * 不平 → 写 reconcile_discrepancies 表（留痕）+ 返回差异数（调用方告警）。
  */
 
-/** 收入类流水类型（amount > 0） */
-const INCOME_TYPES = ['redeem', 'gift', 'manual', 'refund', 'subscribe'] as const;
+/** 非 consume 类流水（余额变动，签名正负皆可；reconcile 只求和，分桶只为穷尽覆盖） */
+const INCOME_TYPES = ['redeem', 'gift', 'manual', 'refund', 'subscribe', 'pack'] as const;
 /** 支出类流水类型（amount < 0） */
 const EXPENSE_TYPES = ['consume'] as const;
 

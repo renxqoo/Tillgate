@@ -52,6 +52,7 @@ export function logAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           requestSummary: requestLogs.requestSummary,
           attempts: requestLogs.attempts,
           candidatesTried: requestLogs.candidatesTried,
+          sourceIp: requestLogs.sourceIp,
           createdAt: requestLogs.createdAt,
           // 用户名（供前端展示）：优先 displayName，其次 email
           userName: sql<string | null>`coalesce(${users.displayName}, ${users.email})`.as('user_name'),

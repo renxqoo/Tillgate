@@ -13,6 +13,7 @@ import {
 import { Decimal } from '@ai-gateway/money';
 import {
   SubscriptionQuotaExhaustedError,
+  SubscriptionRequiredError,
   createBilling,
   createBillingProcessor,
   createLedger,
@@ -186,33 +187,26 @@ describe('套餐分流（authorize/settle）', () => {
     }
   });
 
-  it('套餐不足 + fallback 开：差额走余额在途', async (context) => {
+  it('无订阅 → authorize 拒绝（subscription_required）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '0');
-    const planId = await createPlan('1', true);
-    const subId = await createSubscription(userId, planId, '1', '0');
-    const requestId = randomUUID();
     try {
-      await createBilling({ db }).authorize({
-        requestId,
-        userId,
-        stream: false,
-        quote: quote(), // required = 2
-        reservationLimit: '50',
-        authorizationTtlMs: 60_000,
-      });
-      const sub = await db.query.userSubscriptions.findFirst({
-        where: eq(userSubscriptions.id, subId),
-      });
-      expect(new Decimal(sub!.reservedAmount).eq(1)).toBe(true);
-      const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-      expect(new Decimal(user!.reservedBalance).eq(1)).toBe(true);
+      await expect(
+        createBilling({ db }).authorize({
+          requestId: randomUUID(),
+          userId,
+          stream: false,
+          quote: quote(),
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(SubscriptionRequiredError);
     } finally {
       await cleanup(userId);
     }
   });
 
-  it('套餐不足 + fallback 关：拒绝 402（不透支余额）', async (context) => {
+  it('额度不足：预估超剩余额度 → authorize 拒绝（无余额兜底）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '0');
     const planId = await createPlan('1', false);
@@ -283,11 +277,11 @@ describe('套餐分流（authorize/settle）', () => {
     }
   });
 
-  it('settle ε 溢出：套餐封顶不扣负，溢出走余额（billedBy=both）', async (context) => {
+  it('settle 实际金额略超预估但仍在额度内：全额扣额度，billedBy=plan、不写余额', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '0');
     const planId = await createPlan('10', true);
-    const subId = await createSubscription(userId, planId, '10', '9'); // remaining 1
+    const subId = await createSubscription(userId, planId, '10', '0');
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
@@ -295,14 +289,14 @@ describe('套餐分流（authorize/settle）', () => {
         requestId,
         userId,
         stream: false,
-        quote: quote(), // estimate 2 → planReserve=1, paygReserve=1
+        quote: quote(), // estimate 2
         reservationLimit: '50',
         authorizationTtlMs: 60_000,
       });
       await billing.signal({
         type: 'request.succeeded',
         requestId,
-        // 实际 3 token（input 2000 + output 500 → calculated 3）> estimate 2
+        // 实际 3（input 2000 + output 500 → calculated 3）> estimate 2，额度 10 足够
         receipt: receipt(userId, requestId, 2_000, 500),
       });
       const processor = createBillingProcessor({ db, options: processorOptions });
@@ -311,18 +305,24 @@ describe('套餐分流（authorize/settle）', () => {
       const usage = await db.query.usageLogs.findFirst({
         where: eq(usageLogs.requestId, requestId),
       });
-      expect(usage!.billedBy).toBe('both');
-      expect(new Decimal(usage!.planAmount).eq(1)).toBe(true); // 套餐封顶 = remaining
-      expect(new Decimal(usage!.paygAmount).eq(2)).toBe(true); // 溢出 ε 走余额
+      expect(usage!.billedBy).toBe('plan');
+      expect(new Decimal(usage!.planAmount).eq(3)).toBe(true);
+      expect(new Decimal(usage!.paygAmount).eq(0)).toBe(true);
 
       const sub = await db.query.userSubscriptions.findFirst({
         where: eq(userSubscriptions.id, subId),
       });
-      expect(new Decimal(sub!.usedAmount).eq(10)).toBe(true); // 9 + 1，永不为负（= quota）
+      expect(new Decimal(sub!.usedAmount).eq(3)).toBe(true);
       expect(new Decimal(sub!.reservedAmount).eq(0)).toBe(true);
 
       const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-      expect(new Decimal(user!.balance).eq(8)).toBe(true); // 10 - 2
+      expect(new Decimal(user!.balance).eq(10)).toBe(true);
+      expect(new Decimal(user!.reservedBalance).eq(0)).toBe(true);
+      const consume = await db
+        .select()
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.refId, requestId)));
+      expect(consume).toHaveLength(0);
     } finally {
       await cleanup(userId);
     }
@@ -402,6 +402,39 @@ describe('套餐购买/续费/取消（ledger）', () => {
       ).rejects.toMatchObject({ code: 'insufficient_balance' });
     } finally {
       await cleanup(userId);
+    }
+  });
+
+  it('续费归属校验：传入 userId 时只能续自己的订阅，跨用户拒绝', async (context) => {
+    if (!connected) return context.skip();
+    const userA = await createUser('200', '0');
+    const userB = await createUser('200', '0');
+    const planId = await createPlan('100', true, '100');
+    const ledger = createLedger({ db });
+    try {
+      const sub = await ledger.subscribePlan({
+        operationId: randomUUID(),
+        userId: userA,
+        planId,
+      });
+      // B 带 userId 尝试续 A 的订阅 → 视为不存在（no_subscription）
+      await expect(
+        ledger.renewSubscription({
+          operationId: randomUUID(),
+          subscriptionId: sub.subscriptionId,
+          userId: userB,
+        }),
+      ).rejects.toMatchObject({ code: 'no_subscription' });
+      // A 带 userId 续自己的订阅 → 成功
+      const renewed = await ledger.renewSubscription({
+        operationId: randomUUID(),
+        subscriptionId: sub.subscriptionId,
+        userId: userA,
+      });
+      expect(renewed.subscriptionId).not.toBe(sub.subscriptionId);
+    } finally {
+      await cleanup(userA);
+      await cleanup(userB);
     }
   });
 

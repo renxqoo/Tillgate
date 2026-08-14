@@ -9,6 +9,7 @@ import {
   DailySpendLimitExceededError,
   InsufficientBalanceError,
   SubscriptionQuotaExhaustedError,
+  SubscriptionRequiredError,
   type Billing,
   type UsageReceipt,
 } from '@ai-gateway/ledger';
@@ -269,14 +270,24 @@ export class LlmPipeline {
           '请明天再试，或联系管理员调整每日花费上限',
         );
       }
+      if (error instanceof SubscriptionRequiredError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        return errorResponse(
+          c,
+          402,
+          'subscription_required',
+          '无有效订阅（未订阅或已到期）',
+          '请先订阅或续费后再使用',
+        );
+      }
       if (error instanceof SubscriptionQuotaExhaustedError) {
         await rateLimiter.releaseTpm(requestId).catch(() => {});
         return errorResponse(
           c,
           402,
           'subscription_quota_exhausted',
-          `套餐额度不足（剩余 ${error.remaining} 元，本次预估 ${error.requested} 元）`,
-          '请升级套餐、加购余额，或联系管理员',
+          `套餐额度已用完（剩余 ${error.remaining} 元，本次预估 ${error.requested} 元）`,
+          '请升级套餐、续费或扩容后再使用',
         );
       }
       if (error instanceof BillingConfigurationError) {

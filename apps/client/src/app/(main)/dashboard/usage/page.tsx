@@ -3,7 +3,7 @@ import { LineChartIcon } from "lucide-react";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ai-gateway/ui/components/ui/table";
-import { ApiError, apiFetch, fmtCost, fmtInt, msToHuman, type Paginated, type UsageRow } from "@ai-gateway/api-client";
+import { ApiError, apiFetch, fmtCost, formatPoints, fmtInt, msToHuman, type Paginated, type UsageRow } from "@ai-gateway/api-client";
 
 import Link from "next/link";
 
@@ -60,7 +60,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
                   <TableHead className="text-right">缓存</TableHead>
                   <TableHead className="text-right">缓存率</TableHead>
                   <TableHead className="text-right">输出</TableHead>
-                  <TableHead className="text-right">费用</TableHead>
+                  <TableHead className="text-right">消耗</TableHead>
                   <TableHead className="text-right">耗时</TableHead>
                 </TableRow>
               </TableHeader>
@@ -98,7 +98,8 @@ export default async function UsagePage({ searchParams }: PageProps) {
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{fmtInt(r.outputTokens)}</TableCell>
                       <TableCell className="text-right tabular-nums font-medium">
-                        ¥{fmtCost(r.amount)}
+                        {formatPoints(r.amount).replace(/\.?0+$/, "")} 积分
+                        <span className="ml-1 text-xs text-muted-foreground">¥{fmtCost(r.amount)}</span>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {msToHuman(r.durationMs)}

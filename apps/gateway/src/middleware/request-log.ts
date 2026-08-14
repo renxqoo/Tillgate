@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import type { Logger } from '@ai-gateway/core';
 import { writeRequestLog, truncateSummary } from '../lib/request-log.js';
+import { sourceIp } from './auth-failure-guard.js';
 import type { AuthEnv } from './auth.js';
 
 /**
@@ -65,6 +66,7 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
         requestId,
         userId: auth?.userId ?? null,
         apiKeyId: auth?.apiKeyId ?? null,
+        sourceIp: sourceIp(c),
         method: c.req.method,
         path,
         statusCode: status,

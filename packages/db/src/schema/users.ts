@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   numeric,
   check,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { rateCards } from './billing.js';
@@ -46,6 +47,8 @@ export const users = pgTable(
     dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
     /** 0 正常 / 1 封禁 / 2 注销 */
     status: smallint('status').notNull().default(0),
+    /** 是否企业用户：企业用户可购买团队套餐（支持席位）；个人用户只能买个人套餐（固定 1 席） */
+    isEnterprise: boolean('is_enterprise').notNull().default(false),
     freezeReason: varchar('freeze_reason', { length: 128 }),
     /** 用户级限流，NULL=继承全局默认 */
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),

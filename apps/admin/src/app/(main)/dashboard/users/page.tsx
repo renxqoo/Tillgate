@@ -17,21 +17,28 @@ import {
 } from "@ai-gateway/ui/components/ui/card";
 import { Input } from "@ai-gateway/ui/components/ui/input";
 
+import { Pager } from "@ai-gateway/ui/components/ui/pager";
+
 import { UsersContent } from "./_components/users-content";
+import { UsersEnterpriseFilter } from "./_components/users-enterprise-filter";
 import { UsersExport } from "./_components/users-export";
 import { UsersStatusFilter } from "./_components/users-status-filter";
 import type { RateCardOption, UserRow } from "./types";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 20;
+
 interface PageProps {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; enterprise?: string; page?: string }>;
 }
 
 export default async function UsersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = sp.status ?? "all";
+  const enterprise = sp.enterprise ?? "all";
+  const page = Math.max(1, Number(sp.page ?? "1") || 1);
 
   let rows: UserRow[] = [];
   let total = 0;
@@ -39,10 +46,10 @@ export default async function UsersPage({ searchParams }: PageProps) {
   let rateCards: RateCardOption[] = [];
 
   try {
-    const query = new URLSearchParams({ page: "1", page_size: "100" });
+    const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
     if (q) query.set("q", q);
     if (status === "0" || status === "1") query.set("status", status);
-    if (status === "admin") query.set("role", "1");
+    if (enterprise === "0" || enterprise === "1") query.set("enterprise", enterprise);
     const data = await adminFetch<ListResult<AdminUserRow>>(
       `/api/admin/users?${query.toString()}`,
     );
@@ -91,6 +98,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
                 />
               </form>
               <UsersStatusFilter value={status} />
+              <UsersEnterpriseFilter value={enterprise} />
               <UsersExport users={rows} />
             </div>
           </div>
@@ -103,6 +111,13 @@ export default async function UsersPage({ searchParams }: PageProps) {
           )}
         </CardContent>
       </Card>
+
+      <Pager
+        page={page}
+        totalPages={Math.max(1, Math.ceil(total / PAGE_SIZE))}
+        total={total}
+        searchParams={{ q, status, enterprise }}
+      />
     </div>
   );
 }

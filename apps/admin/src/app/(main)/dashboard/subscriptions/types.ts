@@ -14,9 +14,21 @@ export interface SubscriptionRow {
   usedAmount: string;
   /** 在途预留（元） */
   reservedAmount: string;
+  /** 席位数量 */
+  quantity: number;
+  /** 当前售价快照（元，numeric 字符串） */
+  price: string;
   /** 剩余额度（元） */
   remainingAmount: string;
   /** 0=有效，1=到期，2=取消 */
   status: number;
   createdAt: string;
+}
+
+/** 供「变更」弹窗选择的目标套餐（仅 subscription）。 */
+export interface PlanOption {
+  id: number;
+  name: string;
+  kind: 'subscription' | 'pack';
+  sortOrder: number | null;
 }

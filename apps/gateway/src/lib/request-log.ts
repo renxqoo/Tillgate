@@ -23,6 +23,8 @@ export interface RequestLogInput {
   durationMs: number;
   /** 请求摘要（截断，不含敏感内容） */
   requestSummary?: unknown | null;
+  /** 来源 IP（鉴权前记录，401 也有） */
+  sourceIp?: string | null;
 }
 
 /**
@@ -46,6 +48,7 @@ export async function writeRequestLog(
       durationMs: input.durationMs,
       attempts: 1,
       requestSummary: (input.requestSummary as never) ?? null,
+      sourceIp: input.sourceIp ?? null,
     });
   } catch (err) {
     // 写失败不阻塞主流程（计费链路独立）；仅记日志便于运维排查

@@ -86,6 +86,24 @@ export async function setUserStatusAction(
   }
 }
 
+// ── 设为 / 取消 企业用户 ────────────────────────────────────────────────────
+export async function setUserEnterpriseAction(
+  id: number,
+  isEnterprise: boolean,
+): Promise<{ error?: string }> {
+  try {
+    await adminFetch(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      body: { isEnterprise },
+    });
+    revalidatePath("/dashboard/users");
+    revalidatePath(`/dashboard/users/${id}`);
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "操作失败" };
+  }
+}
+
 // ── 绑定费率卡 ──────────────────────────────────────────────────────────────
 export async function bindRateCardAction(
   id: number,

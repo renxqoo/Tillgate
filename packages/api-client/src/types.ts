@@ -25,6 +25,7 @@ export interface MeInfo {
   rateCardName: string | null;
   balance: string;
   status: number;
+  isEnterprise: boolean;
   rpmLimit: number | null;
   tpmLimit: number | null;
   lastLoginAt: string | null;
@@ -182,6 +183,7 @@ export interface AdminUserRow {
   /** 每日花费上限（元，NULL=不限）。 */
   dailySpendLimit: string | null;
   status: number;
+  isEnterprise: boolean;
   freezeReason: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -448,6 +450,8 @@ export interface LogRow {
   } | null;
   attempts: number;
   candidatesTried: string | null;
+  /** 来源 IP（X-Forwarded-For 首段 / X-Real-IP / socket，鉴权前记录） */
+  sourceIp: string | null;
   createdAt: string;
 }
 export interface AuditLogRow {
@@ -475,25 +479,34 @@ export const REDEEM_ERROR_MESSAGES: Record<string, string> = {
 export interface PlanRow {
   id: number;
   name: string;
+  kind: 'subscription' | 'pack';
+  sortOrder: number | null;
   price: string;
   periodDays: number;
   quotaAmount: string;
   fallbackToBalance: boolean;
+  allowSeats: boolean;
   status: number;
 }
 export interface PlanCreateBody {
   name: string;
+  kind?: 'subscription' | 'pack';
+  sortOrder?: number | null;
   price: number;
   periodDays: number;
   quotaAmount: number;
   fallbackToBalance?: boolean;
+  allowSeats?: boolean;
 }
 export interface PlanUpdateBody {
   name?: string;
+  kind?: 'subscription' | 'pack';
+  sortOrder?: number | null;
   price?: number;
   periodDays?: number;
   quotaAmount?: number;
   fallbackToBalance?: boolean;
+  allowSeats?: boolean;
   status?: number;
 }
 
@@ -502,21 +515,35 @@ export interface CurrentSubscription {
   id: number;
   planId: number;
   planName: string;
+  planSortOrder: number | null;
+  /** 是否支持席位（团队套餐）；false=个人套餐固定 1 席 */
+  allowSeats: boolean;
+  quantity: number;
   startAt: string;
   endAt: string;
   quotaAmount: string;
   usedAmount: string;
   reservedAmount: string;
   remainingAmount: string;
+  price: string;
   fallbackToBalance: boolean;
+  /** 周期天数（30/365） */
+  periodDays: number;
+  /** 续费总价（元）= 当前档价 × 席位 */
+  renewPrice: string;
+  /** 当前档单价（元/席） */
+  planPrice: string;
+  /** 剩余价值（元）= 总价 × (额度-已用-在途)/额度 */
+  remainingValue: string;
 }
 
-/** 订阅购买/续费结果。 */
+/** 订阅购买/续费/变更结果。 */
 export interface SubscribeResult {
   userId: number;
   subscriptionId: number;
   planId: number;
   planName: string;
+  quantity: number;
   startAt: string;
   endAt: string;
   quotaAmount: string;
@@ -539,6 +566,8 @@ export interface AdminSubscriptionRow {
   quotaAmount: string;
   usedAmount: string;
   reservedAmount: string;
+  quantity: number;
+  price: string;
   remainingAmount: string;
   status: number;
   createdAt: string;

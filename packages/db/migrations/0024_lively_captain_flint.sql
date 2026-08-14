@@ -1,0 +1,1 @@
+ALTER TABLE "plans" ADD COLUMN "allow_seats" boolean DEFAULT false NOT NULL;

@@ -23,6 +23,8 @@ import {
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
 
+import { Pager } from "@ai-gateway/ui/components/ui/pager";
+
 export const dynamic = "force-dynamic";
 
 interface PageProps {
@@ -111,23 +113,7 @@ export default async function AuditLogsPage({ searchParams }: PageProps) {
       </Card>
 
       {totalPages > 1 ? (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            第 {page} / {totalPages} 页
-          </span>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <a href={`?page=${page - 1}`} className="rounded-md border px-3 py-1 hover:bg-muted">
-                上一页
-              </a>
-            ) : null}
-            {page < totalPages ? (
-              <a href={`?page=${page + 1}`} className="rounded-md border px-3 py-1 hover:bg-muted">
-                下一页
-              </a>
-            ) : null}
-          </div>
-        </div>
+        <Pager page={page} totalPages={totalPages} total={total} />
       ) : null}
     </div>
   );

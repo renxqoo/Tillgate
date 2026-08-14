@@ -31,6 +31,7 @@ export async function requireMe(): Promise<MeInfo> {
       rateCardName: "标准版 ×1.0",
       balance: "4321.50",
       status: 0,
+      isEnterprise: false,
       rpmLimit: 2000,
       tpmLimit: 1000000,
       lastLoginAt: new Date().toISOString(),

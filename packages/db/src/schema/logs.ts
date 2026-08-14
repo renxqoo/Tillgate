@@ -34,6 +34,8 @@ export const requestLogs = pgTable(
     attempts: bigint('attempts', { mode: 'number' }).notNull().default(1),
     /** 尝试过的候选列表（渠道/模型与结果） */
     candidatesTried: jsonb('candidates_tried'),
+    /** 来源 IP（X-Forwarded-For 首段 / X-Real-IP / socket，鉴权前记录，401 也有） */
+    sourceIp: varchar('source_ip', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

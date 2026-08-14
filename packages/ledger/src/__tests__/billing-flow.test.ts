@@ -9,13 +9,20 @@ import {
   billingRequests,
   channels,
   fundOperations,
+  plans,
   providers,
   transactions,
   usageLogs,
   users,
+  userSubscriptions,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
-import { BillingBacklogError, DailySpendLimitExceededError, InsufficientBalanceError, createBilling } from '../billing-flow.js';
+import {
+  BillingBacklogError,
+  DailySpendLimitExceededError,
+  SubscriptionQuotaExhaustedError,
+  createBilling,
+} from '../billing-flow.js';
 import { createBillingProcessor } from '../billing-processor.js';
 import { createBillingOperations } from '../billing-operations.js';
 import type { BillingQuote, UsageReceipt } from '../types.js';
@@ -35,7 +42,7 @@ beforeAll(async () => {
 });
 afterAll(async () => db.$client.end().catch(() => {}));
 
-async function createUser(initialBalance: string): Promise<number> {
+async function createUser(initialBalance: string, quota = '10000'): Promise<number> {
   const [user] = await db
     .insert(users)
     .values({
@@ -46,7 +53,37 @@ async function createUser(initialBalance: string): Promise<number> {
       balance: initialBalance,
     })
     .returning({ id: users.id });
-  return user!.id;
+  const userId = user!.id;
+  // 订阅即闸门：测试用户默认带一个额度充足的订阅，authorize 才能放行（余额不再作为用量货币）。
+  const [plan] = await db
+    .insert(plans)
+    .values({
+      name: `plan-${randomUUID().slice(0, 6)}`,
+      kind: 'subscription',
+      sortOrder: 1,
+      price: '0',
+      periodDays: 30,
+      quotaAmount: quota,
+      fallbackToBalance: false,
+      allowSeats: false,
+      status: 0,
+    })
+    .returning({ id: plans.id });
+  await db
+    .insert(userSubscriptions)
+    .values({
+      userId,
+      planId: plan!.id,
+      startAt: new Date(),
+      endAt: new Date(Date.now() + 86_400_000),
+      quotaAmount: quota,
+      usedAmount: '0',
+      reservedAmount: '0',
+      quantity: 1,
+      price: '0',
+      status: 0,
+    });
+  return userId;
 }
 
 async function cleanup(userId: number): Promise<void> {
@@ -54,6 +91,7 @@ async function cleanup(userId: number): Promise<void> {
   await db.delete(usageLogs).where(eq(usageLogs.userId, userId));
   await db.delete(transactions).where(eq(transactions.userId, userId));
   await db.delete(apiKeys).where(eq(apiKeys.userId, userId));
+  await db.delete(userSubscriptions).where(eq(userSubscriptions.userId, userId));
   await db.delete(users).where(eq(users.id, userId));
 }
 
@@ -113,6 +151,17 @@ async function balances(userId: number): Promise<{
   return { settled, reserved, available: settled.plus(credit).minus(reserved) };
 }
 
+/** 订阅额度状态（用量/在途），纯额度模型下 authorization 只动这里、不动余额。 */
+async function quotaState(userId: number): Promise<{ used: Decimal; reserved: Decimal }> {
+  const sub = await db.query.userSubscriptions.findFirst({
+    where: eq(userSubscriptions.userId, userId),
+  });
+  return {
+    used: new Decimal(sub?.usedAmount ?? 0),
+    reserved: new Decimal(sub?.reservedAmount ?? 0),
+  };
+}
+
 function quote(overrides: Partial<BillingQuote> = {}): BillingQuote {
   return {
     maxOutputTokens: 500,
@@ -166,9 +215,9 @@ const processorOptions = {
 };
 
 describe('Billing authorize/signal + durable processor boundary', () => {
-  it('足额原子预扣：余额不足不留 billing request', async (context) => {
+  it('足额原子预扣：额度不足不留 billing request', async (context) => {
     if (!connected) return context.skip();
-    const userId = await createUser('1.9732838');
+    const userId = await createUser('0', '1.9732838'); // 额度 1.97 < 预估 2
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
@@ -181,8 +230,11 @@ describe('Billing authorize/signal + durable processor boundary', () => {
           reservationLimit: '50',
           authorizationTtlMs: 60_000,
         }),
-      ).rejects.toBeInstanceOf(InsufficientBalanceError);
-      expect(await balance(userId)).toEqual(new Decimal('1.9732838'));
+      ).rejects.toBeInstanceOf(SubscriptionQuotaExhaustedError);
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
+        reserved: new Decimal(0),
+      });
       expect(
         await db.query.billingRequests.findFirst({
           where: eq(billingRequests.requestId, requestId),
@@ -213,9 +265,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     }
   });
 
-  it('并发严格授权只占用可用额度，已结算余额不跳动', async (context) => {
+  it('并发严格授权只占用可用额度，余额不跳动', async (context) => {
     if (!connected) return context.skip();
-    const userId = await createUser('4');
+    const userId = await createUser('4', '4'); // 额度 4 = 2×2
     const billing = createBilling({ db });
     const commands = Array.from({ length: 3 }, () => ({
       requestId: randomUUID(),
@@ -231,10 +283,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       );
       expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
       expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
+        reserved: new Decimal(4),
+      });
       expect(await balances(userId)).toEqual({
         settled: new Decimal(4),
-        reserved: new Decimal(4),
-        available: new Decimal(0),
+        reserved: new Decimal(0),
+        available: new Decimal(4),
       });
       expect(
         await db.query.billingRequests.findMany({ where: eq(billingRequests.userId, userId) }),
@@ -259,10 +315,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         authorizationTtlMs: 60_000,
       });
       expect(new Decimal(authorization.reservedAmount).eq(2)).toBe(true);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
 
       await billing.signal({
@@ -272,10 +327,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         leaseMs: 60_000,
       });
       // 单渠道失败没有 release 事件；fallback 继续使用同一 reservation。
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
 
       await billing.signal({
@@ -289,10 +343,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         processor.runOnce([requestId]),
       ]);
       expect(first.settled + second.settled).toBe(1);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(8),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(2),
         reserved: new Decimal(0),
-        available: new Decimal(8),
       });
       const row = await db.query.billingRequests.findFirst({
         where: eq(billingRequests.requestId, requestId),
@@ -301,9 +354,10 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       expect(
         await db.select().from(usageLogs).where(eq(usageLogs.requestId, requestId)),
       ).toHaveLength(1);
+      // 纯额度模型：不写余额 consume 流水
       expect(
         await db.select().from(transactions).where(eq(transactions.refId, requestId)),
-      ).toHaveLength(1);
+      ).toHaveLength(0);
     } finally {
       await cleanup(userId);
     }
@@ -344,10 +398,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
           authorizationTtlMs: 60_000,
         }),
       ).rejects.toBeInstanceOf(BillingBacklogError);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(20),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(18),
       });
       expect(
         await db.query.billingRequests.findFirst({
@@ -387,10 +440,10 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         upstreamCharge: 'unknown',
       });
       expect(result.status).toBe('uncertain');
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      // uncertain 保守保留额度敞口，不释放
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
     } finally {
       await cleanup(userId);
@@ -539,10 +592,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       });
       expect(row?.status).toBe('dead');
       expect(row?.failureClass).toBe('poison_receipt');
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
     } finally {
       await cleanup(userId);
@@ -568,10 +620,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       await expect(
         billing.signal({ type: 'request.succeeded', requestId, receipt: estimated }),
       ).rejects.toThrow('billing_receipt_estimated_usage');
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
       expect(
         await db.query.billingRequests.findFirst({
@@ -609,10 +660,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       await expect(
         billing.signal({ type: 'request.succeeded', requestId, receipt: mismatched }),
       ).rejects.toThrow('billing_receipt_not_authorized');
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal(10),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
         reserved: new Decimal(2),
-        available: new Decimal(8),
       });
       expect(
         await db.query.billingRequests.findFirst({
@@ -627,9 +677,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     }
   });
 
-  it('信用模型：实际金额超预估也正常扣费（balance 精确扣减、敞口释放、无死账）', async (context) => {
+  it('实际金额超预估但在额度内：按实际全额扣额度（无死账、不动余额）', async (context) => {
     if (!connected) return context.skip();
-    const userId = await createUser('10');
+    const userId = await createUser('10', '10');
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
@@ -642,7 +692,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         authorizationTtlMs: 60_000,
       });
       const over = receipt(userId, requestId);
-      over.usage.outputTokens = 501; // 实际 2.002 > 预估 2
+      over.usage.outputTokens = 501; // 实际 2.002 > 预估 2，额度 10 足够
       const signalResult = await billing.signal({
         type: 'request.succeeded',
         requestId,
@@ -650,100 +700,26 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       });
       expect(signalResult.status).toBe('settlement_pending');
 
-      // 信用模型：不再有「calculated > 预估 → dead」，结算无条件按实际金额扣费。
       const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
         requestId,
       ]);
       expect(run.settled).toBe(1);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal('7.998'), // 10 - 2.002
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal('2.002'),
         reserved: new Decimal(0),
-        available: new Decimal('7.998'),
+      });
+      expect(await balances(userId)).toEqual({
+        settled: new Decimal('10'),
+        reserved: new Decimal(0),
+        available: new Decimal('10'),
       });
       expect(
         await db.query.usageLogs.findFirst({ where: eq(usageLogs.requestId, requestId) }),
       ).toBeDefined();
+      // 纯额度：不写余额 consume 流水
       expect(
         await db.query.transactions.findFirst({ where: eq(transactions.refId, requestId) }),
-      ).toBeDefined();
-    } finally {
-      await cleanup(userId);
-    }
-  });
-
-  it('信用模型：credit_limit 允许透支，authorize 只记敞口不冻结余额', async (context) => {
-    if (!connected) return context.skip();
-    const userId = await createUser('2');
-    await db.update(users).set({ creditLimit: '10' }).where(eq(users.id, userId));
-    const billing = createBilling({ db });
-    try {
-      // 每请求预估 2 元；可用信用 = balance(2) + credit(10) - reserved(0) = 12
-      // 连续 6 个请求（6×2=12 敞口）全部放行，balance 始终不变（只记敞口）。
-      for (let i = 0; i < 6; i++) {
-        await billing.authorize({
-          requestId: randomUUID(),
-          userId,
-          stream: false,
-          quote: quote(),
-          reservationLimit: '50',
-          authorizationTtlMs: 60_000,
-        });
-      }
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal('2'), // 余额未被冻结
-        reserved: new Decimal('12'), // 在途敞口
-        available: new Decimal('0'), // 2 + 10 - 12
-      });
-      // 第 7 个请求：可用信用 0 < 2 → 拒绝（信用熔断）
-      await expect(
-        billing.authorize({
-          requestId: randomUUID(),
-          userId,
-          stream: false,
-          quote: quote(),
-          reservationLimit: '50',
-          authorizationTtlMs: 60_000,
-        }),
-      ).rejects.toBeInstanceOf(InsufficientBalanceError);
-    } finally {
-      await cleanup(userId);
-    }
-  });
-
-  it('信用模型：结算可让 balance 变负（不透支超过 credit_limit）', async (context) => {
-    if (!connected) return context.skip();
-    const userId = await createUser('1');
-    await db.update(users).set({ creditLimit: '5' }).where(eq(users.id, userId));
-    const billing = createBilling({ db });
-    try {
-      const requestId = randomUUID();
-      await billing.authorize({
-        requestId,
-        userId,
-        stream: false,
-        quote: quote(),
-        reservationLimit: '50',
-        authorizationTtlMs: 60_000,
-      });
-      await billing.signal({
-        type: 'upstream.started',
-        requestId,
-        leaseOwner: 'gateway-1',
-        leaseMs: 60_000,
-      });
-      const r = receipt(userId, requestId);
-      r.usage.inputTokens = 2000; // 2 元
-      r.usage.outputTokens = 500; // 1 元 → 实际 3 元（超预估 2）
-      await billing.signal({ type: 'request.succeeded', requestId, receipt: r });
-      const run = await createBillingProcessor({ db, options: processorOptions }).runOnce([
-        requestId,
-      ]);
-      expect(run.settled).toBe(1);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal('-2'), // 1 - 3 = -2（>= -credit_limit 5）
-        reserved: new Decimal(0),
-        available: new Decimal('3'), // -2 + 5 - 0
-      });
+      ).toBeUndefined();
     } finally {
       await cleanup(userId);
     }
@@ -800,10 +776,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         requestId,
       ]);
       expect(run.settled).toBe(1);
-      expect(await balances(userId)).toEqual({
-        settled: new Decimal('9.98'),
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal('0.02'),
         reserved: new Decimal(0),
-        available: new Decimal('9.98'),
       });
       const usage = await db.query.usageLogs.findFirst({
         where: eq(usageLogs.requestId, requestId),

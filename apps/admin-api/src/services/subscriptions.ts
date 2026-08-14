@@ -16,6 +16,16 @@ export function mapSubscriptionError(error: unknown): HttpError {
         return new HttpError(400, 'PLAN_DISABLED', '套餐已停用，无法购买');
       case 'no_subscription':
         return new HttpError(404, 'SUBSCRIPTION_NOT_FOUND', '订阅不存在或已失效');
+      case 'downgrade_not_allowed':
+        return new HttpError(409, 'DOWNGRADE_NOT_ALLOWED', '只能升级或加席位，不支持降级/缩容');
+      case 'invalid_quantity':
+        return new HttpError(400, 'INVALID_QUANTITY', '席位数量必须为 >=1 的整数');
+      case 'not_a_pack':
+        return new HttpError(400, 'NOT_A_PACK', '目标不是该类型的商品');
+      case 'seats_not_allowed':
+        return new HttpError(400, 'SEATS_NOT_ALLOWED', '该套餐不支持席位（个人套餐固定 1 席）');
+      case 'enterprise_required':
+        return new HttpError(403, 'ENTERPRISE_REQUIRED', '团队套餐仅企业用户可购买');
       case 'insufficient_balance':
         return new HttpError(402, 'INSUFFICIENT_BALANCE', '余额不足，无法购买套餐');
       case 'user_not_found':

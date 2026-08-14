@@ -34,6 +34,7 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
           rateCardName: rateCards.name,
           balance: users.balance,
           status: users.status,
+          isEnterprise: users.isEnterprise,
           rpmLimit: users.rpmLimit,
           tpmLimit: users.tpmLimit,
           lastLoginAt: users.lastLoginAt,
@@ -55,13 +56,24 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
           id: userSubscriptions.id,
           planId: userSubscriptions.planId,
           planName: plans.name,
+          planSortOrder: plans.sortOrder,
+          allowSeats: plans.allowSeats,
+          quantity: userSubscriptions.quantity,
           startAt: userSubscriptions.startAt,
           endAt: userSubscriptions.endAt,
           quotaAmount: userSubscriptions.quotaAmount,
           usedAmount: userSubscriptions.usedAmount,
           reservedAmount: userSubscriptions.reservedAmount,
+          price: userSubscriptions.price,
           remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount}`,
           fallbackToBalance: plans.fallbackToBalance,
+          periodDays: plans.periodDays,
+          /** 续费总价（当前档价 × 席位），供前端确认弹窗展示 */
+          renewPrice: sql<string>`${plans.price} * ${userSubscriptions.quantity}::numeric`,
+          /** 当前档单价（元/席），供升级/加席位弹窗算补差价 */
+          planPrice: plans.price,
+          /** 剩余价值（元）= 总价 × (额度-已用-在途)/额度，与变更补差价同口径 */
+          remainingValue: sql<string>`CASE WHEN ${userSubscriptions.quotaAmount} > 0 THEN ${userSubscriptions.price} * (${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}) / ${userSubscriptions.quotaAmount} ELSE 0 END`,
         })
         .from(userSubscriptions)
         .innerJoin(plans, eq(userSubscriptions.planId, plans.id))

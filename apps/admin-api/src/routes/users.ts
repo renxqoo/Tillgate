@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, or, ilike, sql } from 'drizzle-orm';
+import { eq, and, or, ilike, sql, desc } from 'drizzle-orm';
 import { users, rateCards, transactions, auditLogs } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { HttpError, jsonBody, limitOffset, operationId, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
@@ -21,6 +21,8 @@ import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from 
 const userListQuerySchema = paginationQuerySchema.extend({
   q: z.string().optional(),
   status: z.coerce.number().int().min(0).max(2).optional(),
+  /** 企业/个人筛选：1=企业，0=个人 */
+  enterprise: z.enum(['0', '1']).optional(),
 });
 
 const userUpdateSchema = z.object({
@@ -35,6 +37,8 @@ const userUpdateSchema = z.object({
   dailySpendLimit: z.number().min(0).nullable().optional(),
   displayName: z.string().max(64).optional(),
   email: z.string().email().max(255).nullable().optional(),
+  /** 是否企业用户（企业用户可购买团队套餐/席位） */
+  isEnterprise: z.boolean().optional(),
   /** 封禁原因（写入 freeze_reason，便于审计/解冻判定） */
   freezeReason: z.string().max(128).nullable().optional(),
 });
@@ -70,6 +74,7 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         );
       }
       if (q.status !== undefined) conditions.push(eq(users.status, q.status));
+      if (q.enterprise !== undefined) conditions.push(eq(users.isEnterprise, q.enterprise === '1'));
       const where = conditions.length ? and(...conditions) : undefined;
 
       const result = await paginateQuery(
@@ -79,7 +84,7 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           .from(users)
           .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
           .where(where)
-          .orderBy(users.id)
+          .orderBy(desc(users.id))
           .limit(limit)
           .offset(offset),
         s.db

@@ -26,6 +26,7 @@ export const userColumns = {
   creditLimit: users.creditLimit,
   dailySpendLimit: users.dailySpendLimit,
   status: users.status,
+  isEnterprise: users.isEnterprise,
   freezeReason: users.freezeReason,
   rpmLimit: users.rpmLimit,
   tpmLimit: users.tpmLimit,
@@ -54,6 +55,8 @@ export type UserPatch = {
   displayName?: string;
   email?: string | null;
   freezeReason?: string | null;
+  /** 是否企业用户（企业用户可购买团队套餐/席位） */
+  isEnterprise?: boolean;
 };
 
 /** 用户不存在（供调整错误分支复用） */
@@ -110,6 +113,7 @@ export async function updateUser(
   if (patch.dailySpendLimit !== undefined) update.dailySpendLimit = patch.dailySpendLimit;
   if (patch.displayName !== undefined) update.displayName = patch.displayName;
   if (patch.email !== undefined) update.email = patch.email;
+  if (patch.isEnterprise !== undefined) update.isEnterprise = patch.isEnterprise;
   // 封禁时记原因；解封清空原因
   if (patch.status === 1) update.freezeReason = patch.freezeReason ?? '管理员封禁';
   if (patch.status === 0) update.freezeReason = null;

@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { plans, users, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
+  jsonBody,
   limitOffset,
   operationId,
   paginateQuery,
@@ -26,6 +27,11 @@ const subListQuerySchema = paginationQuerySchema.extend({
   planId: z.coerce.number().int().positive().optional(),
   userId: z.coerce.number().int().positive().optional(),
   status: z.coerce.number().int().min(0).max(2).optional(),
+});
+
+const changeSchema = z.object({
+  targetPlanId: z.number().int().positive(),
+  quantity: z.number().int().min(1),
 });
 
 export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
@@ -54,6 +60,8 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
             quotaAmount: userSubscriptions.quotaAmount,
             usedAmount: userSubscriptions.usedAmount,
             reservedAmount: userSubscriptions.reservedAmount,
+            quantity: userSubscriptions.quantity,
+            price: userSubscriptions.price,
             remainingAmount: sql<string>`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount}`,
             status: userSubscriptions.status,
             createdAt: userSubscriptions.createdAt,
@@ -79,6 +87,23 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         const result = await s.ledger.renewSubscription({
           operationId: operationId(c),
           subscriptionId: id,
+          adminId: c.get('adminId'),
+        });
+        return c.json(result);
+      } catch (error) {
+        throw mapSubscriptionError(error);
+      }
+    })
+
+    .post('/:id/change', jsonBody(changeSchema), async (c) => {
+      const id = Number(c.req.param('id'));
+      const body = c.req.valid('json');
+      try {
+        const result = await s.ledger.changeSubscription({
+          operationId: operationId(c),
+          subscriptionId: id,
+          targetPlanId: body.targetPlanId,
+          quantity: body.quantity,
           adminId: c.get('adminId'),
         });
         return c.json(result);

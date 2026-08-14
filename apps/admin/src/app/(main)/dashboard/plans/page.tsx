@@ -31,7 +31,7 @@ export default async function PlansPage() {
             <GemIcon className="size-5 text-muted-foreground" />
             套餐
           </h1>
-          <p className="text-sm text-muted-foreground">包月订阅套餐（价格 / 额度均含积分展示）</p>
+          <p className="text-sm text-muted-foreground">包月订阅与加油包套餐（价格 / 额度均含积分展示）</p>
         </div>
         <CreatePlanDialog />
       </div>

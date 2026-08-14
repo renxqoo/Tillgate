@@ -7,10 +7,13 @@ import { adminFetch, ApiError } from "@ai-gateway/api-client";
 // ── 创建套餐 ─────────────────────────────────────────────────────────────────
 export interface PlanCreateInput {
   name: string;
+  kind?: "subscription" | "pack";
+  sortOrder?: number | null;
   price: number;
   periodDays: number;
   quotaAmount: number;
   fallbackToBalance?: boolean;
+  allowSeats?: boolean;
 }
 
 export async function createPlanAction(input: PlanCreateInput): Promise<{ error?: string }> {
@@ -20,10 +23,13 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
       method: "POST",
       body: {
         name: input.name.trim(),
+        kind: input.kind ?? "subscription",
+        sortOrder: input.sortOrder ?? null,
         price: input.price,
         periodDays: input.periodDays,
         quotaAmount: input.quotaAmount,
         fallbackToBalance: input.fallbackToBalance ?? false,
+        allowSeats: input.allowSeats ?? false,
       },
     });
     revalidatePath("/dashboard/plans");
@@ -36,10 +42,13 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
 // ── 编辑套餐 ─────────────────────────────────────────────────────────────────
 export interface PlanUpdateInput {
   name?: string;
+  kind?: "subscription" | "pack";
+  sortOrder?: number | null;
   price?: number;
   periodDays?: number;
   quotaAmount?: number;
   fallbackToBalance?: boolean;
+  allowSeats?: boolean;
   status?: number;
 }
 
@@ -64,5 +73,20 @@ export async function deletePlanAction(id: number): Promise<{ error?: string }> 
     return {};
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : "删除失败" };
+  }
+}
+
+// ── 发放加油包（仅 kind=pack 的套餐）────────────────────────────────────────
+export async function grantPackAction(
+  planId: number,
+  userId: number,
+): Promise<{ error?: string }> {
+  if (!Number.isInteger(userId) || userId <= 0) return { error: "请输入有效用户 ID" };
+  try {
+    await adminFetch(`/api/admin/plans/${planId}/grant`, { method: "POST", body: { userId } });
+    revalidatePath("/dashboard/plans");
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "发放失败" };
   }
 }

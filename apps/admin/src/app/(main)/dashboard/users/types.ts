@@ -14,6 +14,7 @@ export interface UserRow {
   creditLimit: string;
   dailySpendLimit: string | null;
   status: number;
+  isEnterprise: boolean;
   freezeReason: string | null;
   rpmLimit: number | null;
   tpmLimit: number | null;

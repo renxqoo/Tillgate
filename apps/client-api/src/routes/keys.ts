@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc } from 'drizzle-orm';
-import { apiKeys } from '@ai-gateway/db/schema';
+import { eq, and, gt, sql, desc } from 'drizzle-orm';
+import { apiKeys, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
   HttpError,
@@ -91,6 +91,25 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
     .post('/', jsonBody(keyCreateSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
+
+      // 席位 = Key 名额：必须有有效订阅，且活跃 Key 数 < 订阅席位（个人=1，企业=席位）。
+      const sub = await s.db.query.userSubscriptions.findFirst({
+        where: and(
+          eq(userSubscriptions.userId, session.userId),
+          eq(userSubscriptions.status, 0),
+          gt(userSubscriptions.endAt, new Date()),
+        ),
+        columns: { quantity: true },
+      });
+      if (!sub) throw new HttpError(402, 'SUBSCRIPTION_REQUIRED', '请先订阅套餐后再创建 Key');
+      const activeRow = await s.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)));
+      if (Number(activeRow[0]?.count ?? 0) >= sub.quantity) {
+        throw new HttpError(409, 'SEATS_FULL', `席位已满（${sub.quantity}），请扩容或先删除现有 Key`);
+      }
+
       const plaintext = generateApiKey();
       const [created] = await s.db
         .insert(apiKeys)
@@ -115,6 +134,61 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
         targetId: created!.id,
       });
       // 明文 key 只在此响应中下发
+      return c.json({ ...created, key: plaintext }, 201);
+    })
+
+    // 轮换（个人「刷新」）：原子吊销旧 Key + 建新 Key，沿用旧 Key 的 name/限流，明文只回显一次。
+    .post('/:id/rotate', async (c) => {
+      const session = c.get('session');
+      const id = Number(c.req.param('id'));
+      const [oldKey] = await s.db
+        .select({
+          keyHash: apiKeys.keyHash,
+          name: apiKeys.name,
+          remark: apiKeys.remark,
+          expiresAt: apiKeys.expiresAt,
+          rpmLimit: apiKeys.rpmLimit,
+          tpmLimit: apiKeys.tpmLimit,
+          dailySpendLimit: apiKeys.dailySpendLimit,
+        })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)))
+        .limit(1);
+      if (!oldKey) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
+
+      const plaintext = generateApiKey();
+      const created = await s.db.transaction(async (tx) => {
+        const [revoked] = await tx
+          .update(apiKeys)
+          .set({ status: 1, revokedAt: new Date() })
+          .where(and(eq(apiKeys.id, id), eq(apiKeys.status, 0)))
+          .returning({ id: apiKeys.id });
+        if (!revoked) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在或已吊销');
+        const [row] = await tx
+          .insert(apiKeys)
+          .values({
+            keyHash: sha256Hex(plaintext),
+            keyPreview: maskKey(plaintext),
+            userId: session.userId,
+            name: oldKey.name,
+            remark: oldKey.remark,
+            expiresAt: oldKey.expiresAt,
+            rpmLimit: oldKey.rpmLimit,
+            tpmLimit: oldKey.tpmLimit,
+            dailySpendLimit: oldKey.dailySpendLimit,
+            status: 0,
+          })
+          .returning({ id: apiKeys.id, name: apiKeys.name });
+        return row!;
+      });
+
+      await recordAudit(s.db, {
+        actor: 'user',
+        action: 'api_key.rotate',
+        targetType: 'api_key',
+        targetId: created.id,
+      });
+      await invalidateKeyAuthCache(s.redis, [oldKey.keyHash]);
       return c.json({ ...created, key: plaintext }, 201);
     })
 

@@ -4,14 +4,18 @@ import {
   ApiError,
   adminFetch,
   type AdminSubscriptionRow,
+  type ListResult,
   type Paginated,
+  type PlanRow as ApiPlanRow,
 } from "@ai-gateway/api-client";
 import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
 import { Input } from "@ai-gateway/ui/components/ui/input";
 
+import { Pager } from "@ai-gateway/ui/components/ui/pager";
+
 import { SubscriptionsTable } from "./_components/subscriptions-content";
 import { SubscriptionsStatusFilter } from "./_components/subscriptions-status-filter";
-import type { SubscriptionRow } from "./types";
+import type { PlanOption, SubscriptionRow } from "./types";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +49,20 @@ export default async function SubscriptionsPage({ searchParams }: PageProps) {
     error = e instanceof ApiError ? e.message : "加载失败";
   }
 
+  // 变更弹窗需要套餐列表（按 planId 找当前层级、筛选可升目标）
+  let plans: PlanOption[] = [];
+  try {
+    const data = await adminFetch<ListResult<ApiPlanRow>>("/api/admin/plans");
+    plans = (data.list ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      kind: p.kind,
+      sortOrder: p.sortOrder,
+    }));
+  } catch {
+    // 套餐列表加载失败不阻断订阅列表，变更弹窗将仅支持同套餐加席位
+  }
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -75,34 +93,19 @@ export default async function SubscriptionsPage({ searchParams }: PageProps) {
           {error ? (
             <p className="p-8 text-center text-sm text-destructive">{error}</p>
           ) : (
-            <SubscriptionsTable rows={rows} />
+            <SubscriptionsTable rows={rows} plans={plans} />
           )}
         </CardContent>
       </Card>
 
-      {totalPages > 1 ? <Pager page={page} totalPages={totalPages} /> : null}
-    </div>
-  );
-}
-
-function Pager({ page, totalPages }: { page: number; totalPages: number }) {
-  return (
-    <div className="flex items-center justify-between text-sm text-muted-foreground">
-      <span>
-        第 {page} / {totalPages} 页
-      </span>
-      <div className="flex gap-2">
-        {page > 1 ? (
-          <a href={`?page=${page - 1}`} className="rounded-md border px-3 py-1 hover:bg-muted">
-            上一页
-          </a>
-        ) : null}
-        {page < totalPages ? (
-          <a href={`?page=${page + 1}`} className="rounded-md border px-3 py-1 hover:bg-muted">
-            下一页
-          </a>
-        ) : null}
-      </div>
+      {totalPages > 1 ? (
+        <Pager
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          searchParams={{ planId: sp.planId, userId: sp.userId, status: sp.status }}
+        />
+      ) : null}
     </div>
   );
 }
