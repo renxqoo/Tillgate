@@ -12,7 +12,6 @@ export interface PlanRow {
   periodDays: number;
   /** 套餐额度（元，numeric 字符串） */
   quotaAmount: string;
-  /** 额度耗尽后是否走余额兜底 */
   /** 是否支持席位（团队套餐）；false=个人套餐固定 1 席 */
   allowSeats: boolean;
   /** 0=上架，1=下架 */

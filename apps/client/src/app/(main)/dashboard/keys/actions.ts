@@ -9,12 +9,17 @@ import type { KeyCreated, KeyRow } from "./types";
 export async function createKeyAction(input: {
   name: string;
   remark?: string;
+  subscriptionId?: number | null;
 }): Promise<{ error?: string; key?: KeyCreated }> {
   if (!input.name.trim()) return { error: "请输入名称" };
   try {
     const res = await apiFetch<KeyCreated>("/api/keys", {
       method: "POST",
-      body: { name: input.name.trim(), remark: input.remark?.trim() || undefined },
+      body: {
+        name: input.name.trim(),
+        remark: input.remark?.trim() || undefined,
+        subscriptionId: input.subscriptionId ?? null,
+      },
     });
     revalidatePath("/dashboard/keys");
     return { key: res };

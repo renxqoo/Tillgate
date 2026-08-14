@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, sql, gte, lte, desc, gt } from 'drizzle-orm';
+import { eq, and, sql, gte, lte, desc, gt, isNull } from 'drizzle-orm';
 import { users, rateCards, transactions, userSubscriptions, plans } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { HttpError, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
@@ -80,6 +80,8 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
         .where(
           and(
             eq(userSubscriptions.userId, session.userId),
+            // 只返回「个人订阅」；组织订阅（org_id 非空）归 /api/orgs 展示。
+            isNull(userSubscriptions.orgId),
             eq(userSubscriptions.status, 0),
             gt(userSubscriptions.endAt, new Date()),
           ),

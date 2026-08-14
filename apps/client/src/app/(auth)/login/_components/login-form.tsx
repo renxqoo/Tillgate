@@ -28,7 +28,7 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
-export function LoginForm() {
+export function LoginForm({ next }: { next: string | null }) {
   const [pending, startTransition] = useTransition();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -42,6 +42,7 @@ export function LoginForm() {
       const fd = new FormData();
       fd.append("username", values.username);
       fd.append("password", values.password);
+      if (next) fd.append("next", next);
       const res = await loginAction(fd);
       if (res?.error) {
         toast("登录失败", { description: res.error });

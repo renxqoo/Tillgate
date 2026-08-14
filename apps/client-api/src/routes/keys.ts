@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc } from 'drizzle-orm';
-import { apiKeys } from '@ai-gateway/db/schema';
+import { eq, and, sql, desc, gt } from 'drizzle-orm';
+import { apiKeys, orgMembers, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
   HttpError,
@@ -17,6 +17,7 @@ import {
   recordAudit,
   sha256Hex,
 } from '@ai-gateway/http';
+import type { Db } from '@ai-gateway/db';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -28,18 +29,20 @@ import type { ClientServices } from '../services/index.js';
  *   - PATCH /:id：改名/限流/过期调整（不可改 Key 本身）
  *   - DELETE /:id：吊销（清网关鉴权缓存，立即失效）
  *
- * 安全（data-model §3.3）：
- *   - 明文 Key 不落库，只存 key_hash + key_preview
- *   - 所有操作限定 user_id = session.userId（防越权）
+ * 计费来源（org/member 模型）：`subscriptionId` 显式绑定计费账户。
+ *   - NULL = 余额；非空 = 扣该订阅额度（个人订阅 / 所属组织订阅）。
+ * 创建时校验：用户须是该订阅 owner 或 active 成员，否则拒绝。
  */
 
 const keyCreateSchema = z.object({
   name: z.string().min(1).max(64),
   remark: z.string().max(255).optional(),
+  /** 计费来源：NULL=余额；非空=扣该订阅额度。 */
+  subscriptionId: z.number().int().positive().nullable().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   rpmLimit: z.number().int().min(1).nullable().optional(),
   tpmLimit: z.number().int().min(1).nullable().optional(),
-  /** Key 级每日花费上限（元，>=0），null=不限。团队团员自助封顶。 */
+  /** Key 级每日花费上限（元，>=0），null=不限。 */
   dailySpendLimit: z.number().min(0).nullable().optional(),
 });
 
@@ -52,6 +55,36 @@ const keyUpdateSchema = z.object({
   /** Key 级每日花费上限（元，>=0），null=不限。 */
   dailySpendLimit: z.number().min(0).nullable().optional(),
 });
+
+/** 校验用户能否用某订阅：owner 或该订阅 org 的 active 成员。 */
+async function assertCanUseSubscription(
+  db: Db,
+  userId: number,
+  subscriptionId: number,
+): Promise<void> {
+  const sub = await db.query.userSubscriptions.findFirst({
+    where: and(
+      eq(userSubscriptions.id, subscriptionId),
+      eq(userSubscriptions.status, 0),
+      gt(userSubscriptions.endAt, new Date()),
+    ),
+    columns: { userId: true, orgId: true },
+  });
+  if (!sub) throw new HttpError(404, 'SUBSCRIPTION_NOT_FOUND', '订阅不存在或已到期');
+  if (sub.userId === userId) return;
+  if (sub.orgId != null) {
+    const member = await db.query.orgMembers.findFirst({
+      where: and(
+        eq(orgMembers.orgId, sub.orgId),
+        eq(orgMembers.userId, userId),
+        eq(orgMembers.status, 0),
+      ),
+      columns: { id: true },
+    });
+    if (member) return;
+  }
+  throw new HttpError(403, 'SUBSCRIPTION_FORBIDDEN', '无权使用该订阅');
+}
 
 export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
@@ -70,6 +103,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
             keyPreview: apiKeys.keyPreview,
             name: apiKeys.name,
             remark: apiKeys.remark,
+            subscriptionId: apiKeys.subscriptionId,
             expiresAt: apiKeys.expiresAt,
             rpmLimit: apiKeys.rpmLimit,
             tpmLimit: apiKeys.tpmLimit,
@@ -89,11 +123,14 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
     })
 
     // 创建（明文 Key 仅此一次回显）。
-    // Key 管理（认证凭证）独立于订阅：套餐管的是计费闸门（调用侧 402），
-    // 席位（quantity）是套餐计价维度，都不约束 Key 的创建/数量。
     .post('/', jsonBody(keyCreateSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
+
+      const subscriptionId = body.subscriptionId ?? null;
+      if (subscriptionId != null) {
+        await assertCanUseSubscription(s.db, session.userId, subscriptionId);
+      }
 
       const plaintext = generateApiKey();
       const [created] = await s.db
@@ -104,6 +141,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           userId: session.userId,
           name: body.name,
           remark: body.remark ?? null,
+          subscriptionId,
           expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
           rpmLimit: body.rpmLimit ?? null,
           tpmLimit: body.tpmLimit ?? null,
@@ -111,7 +149,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
           status: 0,
         })
-        .returning({ id: apiKeys.id, name: apiKeys.name });
+        .returning({ id: apiKeys.id, name: apiKeys.name, subscriptionId: apiKeys.subscriptionId });
       await recordAudit(s.db, {
         actor: 'user',
         action: 'api_key.create',
@@ -122,7 +160,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
       return c.json({ ...created, key: plaintext }, 201);
     })
 
-    // 轮换（个人「刷新」）：原子吊销旧 Key + 建新 Key，沿用旧 Key 的 name/限流，明文只回显一次。
+    // 轮换：原子吊销旧 Key + 建新 Key，沿用旧 Key 的 name/限流/计费来源，明文只回显一次。
     .post('/:id/rotate', async (c) => {
       const session = c.get('session');
       const id = intParam(c, 'id');
@@ -131,6 +169,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           keyHash: apiKeys.keyHash,
           name: apiKeys.name,
           remark: apiKeys.remark,
+          subscriptionId: apiKeys.subscriptionId,
           expiresAt: apiKeys.expiresAt,
           rpmLimit: apiKeys.rpmLimit,
           tpmLimit: apiKeys.tpmLimit,
@@ -157,13 +196,14 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
             userId: session.userId,
             name: oldKey.name,
             remark: oldKey.remark,
+            subscriptionId: oldKey.subscriptionId,
             expiresAt: oldKey.expiresAt,
             rpmLimit: oldKey.rpmLimit,
             tpmLimit: oldKey.tpmLimit,
             dailySpendLimit: oldKey.dailySpendLimit,
             status: 0,
           })
-          .returning({ id: apiKeys.id, name: apiKeys.name });
+          .returning({ id: apiKeys.id, name: apiKeys.name, subscriptionId: apiKeys.subscriptionId });
         return row!;
       });
 
@@ -177,7 +217,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
       return c.json({ ...created, key: plaintext }, 201);
     })
 
-    // 更新（不可改 Key 本身）
+    // 更新（不可改 Key 本身 / 计费来源）
     .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
       const session = c.get('session');
       const id = intParam(c, 'id');
@@ -200,6 +240,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           keyPreview: apiKeys.keyPreview,
           name: apiKeys.name,
           remark: apiKeys.remark,
+          subscriptionId: apiKeys.subscriptionId,
           expiresAt: apiKeys.expiresAt,
           rpmLimit: apiKeys.rpmLimit,
           tpmLimit: apiKeys.tpmLimit,

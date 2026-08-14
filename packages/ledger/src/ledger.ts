@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import {
+  apiKeys,
+  apps,
   fundOperations,
   plans,
   redeemBatches,
@@ -126,12 +128,14 @@ export interface Ledger {
   }): Promise<BalanceMutationResult>;
   grantSignupGift(input: { userId: number; amount: MoneyInput }): Promise<SignupGiftResult>;
   redeemCode(input: { userId: number; code: string }): Promise<RedeemResult>;
-  /** 购买套餐：扣余额、开新订阅期（已有有效订阅则拒绝）。quantity=席位（默认 1）。 */
+  /** 购买套餐：扣余额、开新订阅期（已有有效订阅则拒绝）。quantity=席位（默认 1）。
+   *  orgId 非空 = 组织订阅（企业团队套餐，user_id=owner）。 */
   subscribePlan(input: {
     operationId: string;
     userId: number;
     planId: number;
     quantity?: number;
+    orgId?: number | null;
     adminId?: number | null;
   }): Promise<SubscribeResult>;
   /** 续费指定订阅：按原席位扣余额、旧订阅转到期、新订阅期顺延（到期后可再续）。
@@ -205,15 +209,19 @@ async function runEffect(effect: (() => Promise<void>) | undefined): Promise<voi
 }
 
 /** 「单有效订阅」唯一部分索引的并发兜底：冲突事务以业务错误暴露，而非裸 23505。
+ *  个人/组织分开的两个部分唯一索引：个人=one_personal、组织=one_org。
  *  drizzle 会把驱动错误包在 cause 链里，需逐层解包探测。 */
 function isOneActiveSubscriptionViolation(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; current != null && depth < 5; depth++) {
-    if (
-      (current as { code?: string }).code === '23505' &&
-      (current as { constraint?: string }).constraint === 'user_subscriptions_one_active_uq'
-    ) {
-      return true;
+    if ((current as { code?: string }).code === '23505') {
+      const constraint = (current as { constraint?: string }).constraint;
+      if (
+        constraint === 'user_subscriptions_one_personal_uq' ||
+        constraint === 'user_subscriptions_one_org_uq'
+      ) {
+        return true;
+      }
     }
     current = (current as { cause?: unknown }).cause;
   }
@@ -356,6 +364,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
     planId: number | null;
     subscriptionId: number | null;
     quantity: number | null;
+    orgId: number | null;
     adminId: number | null;
   }): Promise<SubscribeResult> {
     const fp = fingerprint({
@@ -364,6 +373,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
       planId: input.planId,
       subscriptionId: input.subscriptionId,
       quantity: input.quantity,
+      orgId: input.orgId,
     });
     const result = await runSubscriptionTx(
       db.transaction(async (tx): Promise<SubscribeResult> => {
@@ -490,9 +500,22 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             reservedAmount: '0',
             quantity,
             price,
+            orgId: input.orgId,
             status: 0,
           })
           .returning({ id: userSubscriptions.id });
+
+        // 续费：把绑定到旧订阅的凭证改绑到新订阅（续费不打断现有 key/app）。
+        if (input.kind === 'subscription.renew' && input.subscriptionId != null) {
+          await tx
+            .update(apiKeys)
+            .set({ subscriptionId: sub!.id })
+            .where(eq(apiKeys.subscriptionId, input.subscriptionId));
+          await tx
+            .update(apps)
+            .set({ subscriptionId: sub!.id })
+            .where(eq(apps.subscriptionId, input.subscriptionId));
+        }
 
         const [entry] = await tx
           .insert(transactions)
@@ -790,6 +813,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         planId: input.planId,
         subscriptionId: null,
         quantity: input.quantity ?? 1,
+        orgId: input.orgId ?? null,
         adminId: input.adminId ?? null,
       });
     },
@@ -802,6 +826,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         planId: null,
         subscriptionId: input.subscriptionId,
         quantity: null, // 沿用原席位
+        orgId: null,
         adminId: input.adminId ?? null,
       });
     },

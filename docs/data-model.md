@@ -119,6 +119,7 @@ providers (供应商: base_url/协议)
 | user_id | FK → users | |
 | app_id | FK → apps NULL | 可选归属某 App |
 | name / remark | varchar | |
+| subscription_id | FK → user_subscriptions NULL | 计费来源：NULL=余额；非空=扣该订阅额度（个人/组织订阅） |
 | expires_at | timestamptz NULL | NULL=永久 |
 | rpm_limit / tpm_limit | int NULL | Key 级限流，NULL=继承用户/全局 |
 | status | smallint | 0 有效 / 1 吊销 |
@@ -227,7 +228,7 @@ providers (供应商: base_url/协议)
 | upstream_cost | numeric(38,18) | 上游成本估算（元，官方价×实际用量快照；供应商对账数据基础） |
 | plan_amount | numeric(38,18) | 套餐额度承担部分（默认 0） |
 | payg_amount | numeric(38,18) | 余额承担部分（默认 0）；**status=0 时 amount = plan_amount + payg_amount** |
-| billed_by | varchar(8) | `plan` / `payg` / `both`（同一请求套餐+余额混扣） |
+| billed_by | varchar(8) | `plan` / `payg`（Key 类型分流后 `both` 结构性删除，DB CHECK 强制） |
 | subscription_id | FK → user_subscriptions NULL | 套餐扣减时关联（二期启用，字段一期建表） |
 | duration_ms | int | |
 | status | smallint | 0 成功已计费 / 1 失败不计费 |
@@ -378,7 +379,7 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 | status | smallint | 0 有效 / 1 到期 / 2 取消 |
 | created_at | timestamptz | |
 
-**计费判定（套餐额度优先，余额兜底）**：见 requirements.md 4.9；单请求可同时扣套餐额度与余额（usage_logs.billed_by=both）。
+**计费判定（组织/成员模型，凭证绑定计费账户）**：见 requirements.md 4.9；凭证绑定的 `subscription_id` 决定扣哪个订阅额度还是余额，单请求不混扣（usage_logs.billed_by 恒为 plan 或 payg）。
 
 ### 3.16 二期预留表（本期不建）
 
@@ -448,7 +449,7 @@ in_flight 过期只能转 uncertain 并告警/人工复核。
 逐条结算，聚合为后续优化项）。
 ## 6. 二期预留设计说明
 
-- **套餐计费**：通过 `plans` + `user_subscriptions` 实现「额度扣减」而非「金额扣费」；`usage_logs` 已预留 `subscription_id` / `plan_amount` / `payg_amount` / `billed_by`（plan/payg/both）字段，二期启用套餐无需迁移。
+- **套餐计费**：通过 `plans` + `user_subscriptions` 实现「额度扣减」而非「金额扣费」；`usage_logs` 已预留 `subscription_id` / `plan_amount` / `payg_amount` / `billed_by`（plan/payg）字段。凭证（`api_keys.subscription_id` / `apps.subscription_id`）绑定计费账户决定扣额度还是余额。
 - **报表加速**：P1 加 `daily_stats` 聚合表，由 worker 按天聚合写入，管理端报表读聚合表，明细仍可下钻 `usage_logs`。
 - **请求日志分区**：P1 起按月分区，保留策略做成配置项。
 

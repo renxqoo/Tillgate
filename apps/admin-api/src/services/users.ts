@@ -36,8 +36,8 @@ export const userColumns = {
 };
 
 /** 列表/详情展示列：userColumns + 费率卡名（联表）。
- *  availableBalance = 购买力口径：纯额度模型下余额只用于购买套餐/加油包，
- *  判定是 balance - reserved >= price，不含 creditLimit（透支额度不构成购买力）。 */
+ *  availableBalance = 可用余额口径：普通 Key 扣费 + 购买套餐/加油包都用余额，
+ *  判定是 balance - reserved，不含 creditLimit（透支额度不构成购买力/可用余额展示）。 */
 export const userProfileColumns = {
   ...userColumns,
   availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,

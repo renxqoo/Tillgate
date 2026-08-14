@@ -218,6 +218,20 @@
       "when": 1786732878561,
       "tag": "0030_first_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1786741958169,
+      "tag": "0031_dusty_callisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786748699730,
+      "tag": "0032_chunky_ben_parker",
+      "breakpoints": true
     }
   ]
 }

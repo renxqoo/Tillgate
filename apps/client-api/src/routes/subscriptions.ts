@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { organizations, orgMembers, plans } from '@ai-gateway/db/schema';
 import { HttpError, intParam, jsonBody, operationId } from '@ai-gateway/http';
 import { LedgerError } from '@ai-gateway/ledger';
 import type { ClientEnv } from '@ai-gateway/identity';
@@ -60,11 +63,31 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
       const session = c.get('session');
       const body = c.req.valid('json');
       try {
+        // 团队套餐（allowSeats）：先建组织，owner 占 1 席，订阅挂 org_id。
+        const plan = await s.db.query.plans.findFirst({
+          where: eq(plans.id, body.planId),
+          columns: { allowSeats: true },
+        });
+        let orgId: number | null = null;
+        if (plan?.allowSeats) {
+          const [org] = await s.db
+            .insert(organizations)
+            .values({ name: `组织-${randomUUID().slice(0, 6)}`, ownerUserId: session.userId })
+            .returning({ id: organizations.id });
+          await s.db.insert(orgMembers).values({
+            orgId: org!.id,
+            userId: session.userId,
+            role: 'owner',
+            status: 0,
+          });
+          orgId = org!.id;
+        }
         const result = await s.ledger.subscribePlan({
           operationId: operationId(c),
           userId: session.userId,
           planId: body.planId,
           quantity: body.quantity ?? 1,
+          orgId,
         });
         return c.json(result, 201);
       } catch (error) {

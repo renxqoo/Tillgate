@@ -7,6 +7,8 @@ export interface KeyRow {
   keyPreview: string;
   name: string;
   remark: string | null;
+  /** 计费来源：NULL=余额；非空=扣该订阅额度（个人/组织订阅）。 */
+  subscriptionId: number | null;
   status: number;
   rpmLimit: number | null;
   tpmLimit: number | null;

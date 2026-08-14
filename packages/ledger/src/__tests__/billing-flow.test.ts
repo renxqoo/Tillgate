@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import {
   admins,
@@ -19,6 +19,7 @@ import {
 import { Decimal } from '@ai-gateway/money';
 import {
   BillingBacklogError,
+  BillingConfigurationError,
   DailySpendLimitExceededError,
   SubscriptionQuotaExhaustedError,
   createBilling,
@@ -54,7 +55,8 @@ async function createUser(initialBalance: string, quota = '10000'): Promise<numb
     })
     .returning({ id: users.id });
   const userId = user!.id;
-  // 订阅即闸门：测试用户默认带一个额度充足的订阅，authorize 才能放行（余额不再作为用量货币）。
+  // 测试用户默认带一个额度充足的订阅；套餐分流用例用 subscription Key 走额度分支，
+  // 普通 Key/无 Key 则走余额（payg）分支。
   const [plan] = await db
     .insert(plans)
     .values({
@@ -108,6 +110,25 @@ async function createKey(userId: number, dailySpendLimit: string | null): Promis
   return key!.id;
 }
 
+/** 订阅 Key：绑定到该用户 active 订阅（owner），authorize 走套餐额度分支。 */
+async function createSubscriptionKey(userId: number): Promise<number> {
+  const sub = await db.query.userSubscriptions.findFirst({
+    where: and(eq(userSubscriptions.userId, userId), eq(userSubscriptions.status, 0)),
+    columns: { id: true },
+  });
+  const [key] = await db
+    .insert(apiKeys)
+    .values({
+      keyHash: `hash-sub-${randomUUID()}`,
+      keyPreview: 'ag_****sub',
+      userId,
+      name: 'subscription-key',
+      subscriptionId: sub!.id,
+    })
+    .returning({ id: apiKeys.id });
+  return key!.id;
+}
+
 /** 建一个上游供应商 + 渠道（用于渠道进货额度测试），返回 { providerId, channelId } */
 async function createChannel(upstreamBudget: string): Promise<{ providerId: number; channelId: number }> {
   const suffix = randomUUID().slice(0, 8);
@@ -150,7 +171,7 @@ async function balances(userId: number): Promise<{
   return { settled, reserved, available: settled.plus(credit).minus(reserved) };
 }
 
-/** 订阅额度状态（用量/在途），纯额度模型下 authorization 只动这里、不动余额。 */
+/** 订阅额度状态（用量/在途）：subscription Key 分流下 authorization 只动这里、不动余额。 */
 async function quotaState(userId: number): Promise<{ used: Decimal; reserved: Decimal }> {
   const sub = await db.query.userSubscriptions.findFirst({
     where: eq(userSubscriptions.userId, userId),
@@ -218,6 +239,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('足额原子预扣：额度不足不留 billing request', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('0', '1.9732838'); // 额度 1.97 < 预估 2
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
@@ -225,6 +247,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         billing.authorize({
           requestId,
           userId,
+          apiKeyId: keyId,
           stream: false,
           quote: quote(), // required = 2
           reservationLimit: '50',
@@ -240,6 +263,92 @@ describe('Billing authorize/signal + durable processor boundary', () => {
           where: eq(billingRequests.requestId, requestId),
         }),
       ).toBeUndefined();
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('显式免费模型 → 0 元授权：不校验余额、不预留额度', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('0', '10'); // 余额 0、套餐额度 10
+    const keyId = await createSubscriptionKey(userId); // 订阅 Key（走套餐分支）
+    const requestId = randomUUID();
+    const billing = createBilling({ db });
+    const freeQuote: BillingQuote = {
+      maxOutputTokens: 500,
+      explicitlyFree: true,
+      candidates: [
+        {
+          mappingId: 1,
+          externalModel: 'gpt-oss-20b',
+          realModel: 'openai/gpt-oss-20b:free',
+          inputPrice: '0',
+          outputPrice: '0',
+          cacheInputPrice: '0',
+          coefficient: '1',
+          inputTokenUpperBound: 1_000,
+          billingPolicyFingerprint: null,
+        },
+      ],
+    };
+    try {
+      const auth = await billing.authorize({
+        requestId,
+        userId,
+        apiKeyId: keyId,
+        stream: false,
+        quote: freeQuote,
+        reservationLimit: '50',
+        authorizationTtlMs: 60_000,
+      });
+      expect(auth.reservedAmount).toBe('0');
+      // 套餐额度不动（0 元不走额度预占），余额也为 0 但无需校验
+      expect(await quotaState(userId)).toEqual({
+        used: new Decimal(0),
+        reserved: new Decimal(0),
+      });
+      const row = await db.query.billingRequests.findFirst({
+        where: eq(billingRequests.requestId, requestId),
+      });
+      expect(new Decimal(row?.reservedAmount ?? '0').isZero()).toBe(true);
+    } finally {
+      await cleanup(userId);
+    }
+  });
+
+  it('全零价但未标记 explicitlyFree → invalid_quote（防漏填价格被静默免费）', async (context) => {
+    if (!connected) return context.skip();
+    const userId = await createUser('10', '10');
+    const keyId = await createSubscriptionKey(userId);
+    const billing = createBilling({ db });
+    const misconfigured: BillingQuote = {
+      maxOutputTokens: 500,
+      candidates: [
+        {
+          mappingId: 1,
+          externalModel: 'misconfigured',
+          realModel: 'misconfigured-real',
+          inputPrice: '0',
+          outputPrice: '0',
+          cacheInputPrice: '0',
+          coefficient: '1',
+          inputTokenUpperBound: 1_000,
+          billingPolicyFingerprint: null,
+        },
+      ],
+    };
+    try {
+      await expect(
+        billing.authorize({
+          requestId: randomUUID(),
+          userId,
+          apiKeyId: keyId,
+          stream: false,
+          quote: misconfigured,
+          reservationLimit: '50',
+          authorizationTtlMs: 60_000,
+        }),
+      ).rejects.toBeInstanceOf(BillingConfigurationError);
     } finally {
       await cleanup(userId);
     }
@@ -268,10 +377,12 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('并发严格授权只占用可用额度，余额不跳动', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('4', '4'); // 额度 4 = 2×2
+    const keyId = await createSubscriptionKey(userId);
     const billing = createBilling({ db });
     const commands = Array.from({ length: 3 }, () => ({
       requestId: randomUUID(),
       userId,
+      apiKeyId: keyId,
       stream: false,
       quote: quote(),
       reservationLimit: '50',
@@ -303,12 +414,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('fallback 尝试失败不释放；成功收据持久化后 processor 只结算一次', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
       const authorization = await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -366,6 +479,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('Worker 积压超过阈值时在预扣前关闭准入', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('20');
+    const keyId = await createSubscriptionKey(userId);
     const pendingId = randomUUID();
     const rejectedId = randomUUID();
     const billing = createBilling({ db });
@@ -373,6 +487,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       await billing.authorize({
         requestId: pendingId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -392,6 +507,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         guarded.authorize({
           requestId: rejectedId,
           userId,
+          apiKeyId: keyId,
           stream: false,
           quote: quote(),
           reservationLimit: '50',
@@ -415,12 +531,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('未知上游结果不退款，转 uncertain', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
       await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -569,11 +687,13 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('毒收据直接进入 dead，不形成无限热重试', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     try {
       await createBilling({ db }).authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -604,12 +724,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('估算 usage 不能进入资金结算', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
       await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -637,12 +759,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('多模态策略指纹不一致时拒绝收据且不扣款', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
       await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote({
           candidates: [
@@ -680,12 +804,14 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('实际金额超预估但在额度内：按实际全额扣额度（无死账、不动余额）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10', '10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
       await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote(),
         reservationLimit: '50',
@@ -728,6 +854,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
   it('06 回归：inputTokens 超过敞口上界但金额未超预估 → 正常结算（不再误判 dead）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
+    const keyId = await createSubscriptionKey(userId);
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
@@ -735,6 +862,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       await billing.authorize({
         requestId,
         userId,
+        apiKeyId: keyId,
         stream: false,
         quote: quote({
           maxOutputTokens: 500,

@@ -147,6 +147,7 @@ describe('目录导入（真 PG）', () => {
       const m1 = (await db.query.modelMappings.findFirst({ where: eq(modelMappings.externalName, ext1) }))!;
       expect(m1.realModel).toBe('meta-llama/llama-3.3-70b-instruct:free');
       expect(m1.contextLength).toBe(65536);
+      expect(m1.isFree).toBe(true); // 目录源只暴露免费档：免费标记显式落库
       const binds = await db.select().from(modelChannels).where(eq(modelChannels.mappingId, m1.id));
       expect(binds.map((b) => b.channelId)).toContain(ch.id);
 
@@ -212,6 +213,10 @@ describe('目录导入（真 PG）', () => {
     if (!connected) return it.skip('no DB');
     const s = makeServices(db);
     const ext = `mc-test-svc-${randomUUID().slice(0, 6)}`;
+    const existedProviderBefore =
+      (await db.query.providers.findFirst({ where: eq(providers.name, 'openrouter') })) != null;
+    const existedChannelBefore =
+      (await db.query.channels.findFirst({ where: eq(channels.name, 'free-openrouter') })) != null;
     let created: { providerId: number; channelId: number } | null = null;
     try {
       const result = await importCatalogModels(s, {
@@ -225,15 +230,20 @@ describe('目录导入（真 PG）', () => {
       expect(result.created).toBe(1);
       const m = (await db.query.modelMappings.findFirst({ where: and(eq(modelMappings.externalName, ext)) }))!;
       expect(m.realModel).toBe('qwen/qwen3-14b:free');
+      expect(m.isFree).toBe(true);
     } finally {
-      // 服务层直调可能新建 provider/channel——同样清干净（不留带测试 key 的渠道）
+      // 先清本次新建的映射 + 绑定（服务层直调可能新建 provider/channel）
       const m = await db.query.modelMappings.findFirst({ where: eq(modelMappings.externalName, ext) });
       if (m) {
         await db.delete(modelChannels).where(eq(modelChannels.mappingId, m.id));
         await db.delete(modelMappings).where(eq(modelMappings.id, m.id));
       }
-      if (created) {
+      // 只清理本次新建的共享基础设施：复用已有 free-openrouter/openrouter 时绝不删除，
+      // 否则会误删真实免费模型（gpt-oss-20b 等）的渠道绑定。
+      if (created && !existedChannelBefore) {
         await db.delete(channels).where(eq(channels.id, created.channelId));
+      }
+      if (created && !existedProviderBefore) {
         await db.delete(providers).where(eq(providers.id, created.providerId));
       }
     }

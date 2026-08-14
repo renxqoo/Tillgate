@@ -6,6 +6,7 @@ export interface ModelRow {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  isFree: boolean;
   contextLength: number | null;
   fallbackModels: string | null;
   paramRules: string | null;

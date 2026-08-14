@@ -3,8 +3,10 @@ import type { Db } from '@ai-gateway/db';
 import {
   billingRequests,
   channels,
+  transactions,
   usageLogs,
   userSubscriptions,
+  users,
 } from '@ai-gateway/db/schema';
 import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
 import type { Redis } from 'ioredis';
@@ -79,36 +81,67 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
     if (data.usage.estimated) throw new Error('billing_invariant_estimated_usage');
     amount = calculatedAmount;
 
-    // 纯额度模型：plan 部分封顶在「释放后剩余额度」内，套餐额度永不为负；无余额兜底。
-    if (billing.subscriptionId == null) {
-      throw new Error('billing_invariant_no_subscription');
+    // 计费域严格隔离（authorize 落列的权威事实）：subscription_id 非空=包月 Key，空=普通 Key。
+    const billedBy: 'plan' | 'payg' = billing.subscriptionId != null ? 'plan' : 'payg';
+    let planCharge = new Decimal(0);
+    let paygCharge = new Decimal(0);
+    let balanceBefore: string | null = null;
+    let balanceAfter: string | null = null;
+
+    if (billing.subscriptionId != null) {
+      // 包月 Key：plan 部分封顶在「释放后剩余额度」内，套餐额度永不为负；无余额兜底。
+      const planReserve = toDecimal(billing.planReservedAmount ?? '0');
+      // 释放套餐在途敞口（本请求的 plan 部分），并读回当前 used 以计算剩余。
+      const subReleased = await tx
+        .update(userSubscriptions)
+        .set({
+          reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planReserve.toString()}::numeric`,
+        })
+        .where(
+          sql`${userSubscriptions.id} = ${billing.subscriptionId}
+              and ${userSubscriptions.reservedAmount} >= ${planReserve.toString()}::numeric`,
+        )
+        .returning({
+          quotaAmount: userSubscriptions.quotaAmount,
+          usedAmount: userSubscriptions.usedAmount,
+        });
+      if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
+      const remaining = toDecimal(subReleased[0]!.quotaAmount).minus(
+        toDecimal(subReleased[0]!.usedAmount),
+      );
+      planCharge = Decimal.min(calculated, remaining.gt(0) ? remaining : new Decimal(0));
+      paygCharge = calculated.minus(planCharge);
+      if (paygCharge.gt(0)) {
+        // 授权时已预留足额额度，ε 溢出理论上不应发生；真发生即无余额可兜底 → 亮红灯人工复核。
+        throw new Error('subscription_quota_exhausted_during_settle');
+      }
+    } else {
+      // 普通 Key：只扣余额。单条原子 UPDATE 同时「释放余额在途敞口 + 扣款」；
+      // 信用地板由 users_balance_credit_floor_ck 兜底（23514 → classify invariant → dead 复核）。
+      const reserved = toDecimal(billing.reservedAmount);
+      planCharge = new Decimal(0);
+      paygCharge = calculated;
+      const charged = await tx
+        .update(users)
+        .set({
+          reservedBalance: sql`${users.reservedBalance} - ${reserved.toString()}::numeric`,
+          balance: sql`${users.balance} - ${calculatedAmount}::numeric`,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(users.id, billing.userId),
+            sql`${users.reservedBalance} >= ${reserved.toString()}::numeric`,
+          ),
+        )
+        .returning({ balance: users.balance });
+      if (charged.length === 0) throw new Error('billing_reservation_invariant');
+      // 0 元（免费模型）：不扣款、不写余额流水（只写 usage_logs）。
+      if (!calculated.isZero()) {
+        balanceAfter = charged[0]!.balance;
+        balanceBefore = toStorage(toDecimal(balanceAfter).plus(calculated));
+      }
     }
-    const planReserve = toDecimal(billing.planReservedAmount ?? '0');
-    // 释放套餐在途敞口（本请求的 plan 部分），并读回当前 used 以计算剩余。
-    const subReleased = await tx
-      .update(userSubscriptions)
-      .set({
-        reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planReserve.toString()}::numeric`,
-      })
-      .where(
-        sql`${userSubscriptions.id} = ${billing.subscriptionId}
-            and ${userSubscriptions.reservedAmount} >= ${planReserve.toString()}::numeric`,
-      )
-      .returning({
-        quotaAmount: userSubscriptions.quotaAmount,
-        usedAmount: userSubscriptions.usedAmount,
-      });
-    if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
-    const remaining = toDecimal(subReleased[0]!.quotaAmount).minus(
-      toDecimal(subReleased[0]!.usedAmount),
-    );
-    const planCharge = Decimal.min(calculated, remaining.gt(0) ? remaining : new Decimal(0));
-    const paygCharge = calculated.minus(planCharge);
-    if (paygCharge.gt(0)) {
-      // 授权时已预留足额额度，ε 溢出理论上不应发生；真发生即无余额可兜底 → 亮红灯人工复核。
-      throw new Error('subscription_quota_exhausted_during_settle');
-    }
-    const billedBy: 'plan' | 'payg' | 'both' = 'plan';
 
     const inserted = await tx
       .insert(usageLogs)
@@ -143,6 +176,23 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       .onConflictDoNothing({ target: usageLogs.requestId })
       .returning({ id: usageLogs.id });
     if (inserted.length === 0) throw new Error('billing_invariant_usage_conflict');
+
+    // 余额扣费流水（普通 Key）：0 元不写；幂等靠 transactions_consume_ref_uq（ref_type=usage_logs）。
+    if (billing.subscriptionId == null && balanceBefore != null && balanceAfter != null) {
+      await tx
+        .insert(transactions)
+        .values({
+          userId: billing.userId,
+          type: 'consume',
+          amount: `-${calculatedAmount}`,
+          balanceBefore,
+          balanceAfter,
+          refType: 'usage_logs',
+          refId: data.requestId,
+          remark: 'usage consume',
+        })
+        .onConflictDoNothing();
+    }
 
     // 套餐已用额度累加（封顶：used + planCharge ≤ quota，硬闸保证不扣负）。
     if (planCharge.gt(0)) {

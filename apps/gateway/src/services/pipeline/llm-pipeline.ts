@@ -8,6 +8,9 @@ import {
   BillingBacklogError,
   DailySpendLimitExceededError,
   InsufficientBalanceError,
+  MemberDailyLimitExceededError,
+  MemberQuotaExceededError,
+  SubscriptionForbiddenError,
   SubscriptionQuotaExhaustedError,
   SubscriptionRequiredError,
   type Billing,
@@ -91,6 +94,8 @@ interface CandidateTarget {
   paramRules: ParamRules | null;
   billingPolicy: Record<string, unknown> | null;
   billingPolicyFingerprint: string | null;
+  /** 显式免费模型（`:free` 变体 + 官方价全 0）：整条候选链全免费才产生 0 元授权 */
+  isFree: boolean;
   inputTokenUpperBound: number;
   /** 预扣估算（元，Decimal，用户价=官方价×费率卡系数） */
   estimate: Decimal;
@@ -248,12 +253,16 @@ export class LlmPipeline {
         requestId,
         userId: auth.userId,
         apiKeyId: auth.apiKeyId,
+        appId: auth.appId,
         stream,
         traceParent,
         reservationLimit: String(env.BILLING_RESERVATION_MAX),
         authorizationTtlMs: env.BILLING_AUTHORIZATION_TTL_SECONDS * 1_000,
         quote: {
           maxOutputTokens,
+          // 整条候选链（主模型 + fallback）全部为显式免费模型才允许 0 元授权；
+          // 任一 fallback 收费则按最贵候选正常预扣，杜绝免费主模型降到收费模型后透支。
+          explicitlyFree: targets.length > 0 && targets.every((t) => t.isFree),
           candidates: targets.map((target) => ({
             mappingId: target.mappingId,
             externalModel: model,
@@ -281,13 +290,19 @@ export class LlmPipeline {
           ? 'insufficient_balance'
           : error instanceof DailySpendLimitExceededError
             ? 'daily_spend_limit_exceeded'
-            : error instanceof SubscriptionRequiredError
-              ? 'subscription_required'
-              : error instanceof SubscriptionQuotaExhaustedError
-                ? 'subscription_quota_exhausted'
-                : error instanceof BillingConfigurationError
-                  ? error.code
-                  : 'authorize_error';
+            : error instanceof MemberDailyLimitExceededError
+              ? 'member_daily_limit'
+              : error instanceof MemberQuotaExceededError
+                ? 'member_quota_exceeded'
+                : error instanceof SubscriptionRequiredError
+                  ? 'subscription_required'
+                  : error instanceof SubscriptionQuotaExhaustedError
+                    ? 'subscription_quota_exhausted'
+                    : error instanceof SubscriptionForbiddenError
+                      ? 'subscription_forbidden'
+                      : error instanceof BillingConfigurationError
+                        ? error.code
+                        : 'authorize_error';
       authSpan.setAttributes({
         'billing.result': 'rejected',
         'billing.reject_code': rejectCode,
@@ -334,6 +349,36 @@ export class LlmPipeline {
           'subscription_quota_exhausted',
           `套餐额度已用完（剩余 ${error.remaining} 元，本次预估 ${error.requested} 元）`,
           '请升级套餐、续费或扩容后再使用',
+        );
+      }
+      if (error instanceof SubscriptionForbiddenError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        return errorResponse(
+          c,
+          402,
+          'subscription_forbidden',
+          '当前凭证绑定的订阅无权使用（非 owner 或非组织成员）',
+          '请改用绑定到你有权订阅的凭证',
+        );
+      }
+      if (error instanceof MemberDailyLimitExceededError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        return errorResponse(
+          c,
+          402,
+          'member_daily_limit',
+          `本日花费已达上限（上限 ${error.dailySpendLimit} 元，当前预计 ${error.projected} 元）`,
+          '请联系组织管理员调整每日上限，或明日再试',
+        );
+      }
+      if (error instanceof MemberQuotaExceededError) {
+        await rateLimiter.releaseTpm(requestId).catch(() => {});
+        return errorResponse(
+          c,
+          402,
+          'member_quota_exceeded',
+          `本月配额已用完（配额 ${error.monthlyQuota} 元，当前预计 ${error.projected} 元）`,
+          '请联系组织管理员调整配额',
         );
       }
       if (error instanceof BillingConfigurationError) {
@@ -597,6 +642,7 @@ export class LlmPipeline {
         billingPolicyFingerprint: m.billingPolicy
           ? createHash('sha256').update(JSON.stringify(m.billingPolicy)).digest('hex')
           : null,
+        isFree: m.isFree,
         inputTokenUpperBound: candidateInputUpperBound,
         estimate,
         upstreamEstimate,

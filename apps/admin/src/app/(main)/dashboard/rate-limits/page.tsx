@@ -67,7 +67,7 @@ export default async function RateLimitsPage() {
       ? (keysRes.value.list ?? []).map((k) => ({
           id: k.id,
           label: k.name,
-          sublabel: k.keyPreview,
+          sublabel: `${k.subscriptionId != null ? "套餐" : "余额"} · ${k.keyPreview}`,
           rpmLimit: k.rpmLimit,
           tpmLimit: k.tpmLimit,
           dailySpendLimit: k.dailySpendLimit === null ? null : Number(k.dailySpendLimit),

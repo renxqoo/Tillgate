@@ -11,10 +11,16 @@ import {
 } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 import { apps } from './apps.js';
+import { userSubscriptions } from './plans.js';
 
 /**
  * api_keys — 虚拟 Key（data-model.md §3.3）
  * 安全设计：明文 Key 不落库——只存 SHA-256(key_hash) + 展示用 key_preview
+ *
+ * 计费来源（org/member 模型）：`subscription_id` 显式绑定「用哪个计费账户」。
+ *   - NULL = 用成员自己的余额（payg）。
+ *   - 非空 = 扣该订阅额度（个人订阅 / 所属组织的订阅）。
+ * key 归属成员本人（user_id），数量自由；换额度 = 换绑不同 subscription_id 的 key。
  */
 export const apiKeys = pgTable(
   'api_keys',
@@ -28,6 +34,10 @@ export const apiKeys = pgTable(
       .notNull()
       .references(() => users.id),
     appId: bigint('app_id', { mode: 'number' }).references(() => apps.id),
+    /** 计费来源：NULL=余额；非空=扣该订阅额度。authorize 直读此列（单一真相）。 */
+    subscriptionId: bigint('subscription_id', { mode: 'number' }).references(
+      () => userSubscriptions.id,
+    ),
     name: varchar('name', { length: 64 }).notNull(),
     remark: varchar('remark', { length: 255 }),
     expiresAt: timestamp('expires_at', { withTimezone: true }),
@@ -49,5 +59,6 @@ export const apiKeys = pgTable(
     uniqueIndex('api_keys_key_hash_uq').on(t.keyHash),
     index('api_keys_user_id_idx').on(t.userId),
     index('api_keys_app_id_idx').on(t.appId),
+    index('api_keys_subscription_id_idx').on(t.subscriptionId),
   ],
 );

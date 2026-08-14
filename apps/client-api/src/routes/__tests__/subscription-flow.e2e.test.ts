@@ -296,10 +296,10 @@ describe('套餐完整流程 E2E（个人）', () => {
     expect(again.status).toBe(409);
     expect((again.body.error as { code: string }).code).toBe('ALREADY_SUBSCRIBED');
 
-    // 4. 建 Key（个人 1 席）
+    // 4. 建 Key 绑定到个人订阅
     const keyRes = await clientJson(client, '/api/keys', {
       method: 'POST',
-      body: { name: 'e2e-sub-key' },
+      body: { name: 'e2e-sub-key', subscriptionId },
     });
     expect(keyRes.status).toBe(201);
     const apiKey = String(keyRes.body.key);
@@ -320,12 +320,13 @@ describe('套餐完整流程 E2E（个人）', () => {
     });
     expect(['settlement_pending', 'processing', 'settled']).toContain(row?.status);
     expect(row?.subscriptionId).toBe(subscriptionId);
+    // 预占套餐额度：plan_reserved_amount 是落库的耐久事实（结算后也不清零），证明授权已预占。
     expect(Number(row?.planReservedAmount ?? '0')).toBeGreaterThan(0);
-    // 套餐在途敞口 = 预扣金额（结算前未释放）
+    // 注：user_subscriptions.reserved_amount 是「在途敞口」的瞬态，真实 worker 可能已抢先结算
+    // 释放为 0，故这里不断言其 >0（避免与 worker 竞态）；释放清零在 settle 后统一断言。
     let subRow = await db.query.userSubscriptions.findFirst({
       where: eq(userSubscriptions.id, subscriptionId),
     });
-    expect(Number(subRow!.reservedAmount)).toBeGreaterThan(0);
 
     // 6. 结算（worker 同款 processor）：扣套餐额度、不动余额
     await settleAndWait(requestId);
@@ -335,7 +336,7 @@ describe('套餐完整流程 E2E（个人）', () => {
     expect(numEq(subRow!.reservedAmount, '0')).toBe(true);
     // usage = (50×1000 + 20×2000)/1M = 0.09 元
     expect(numEq(subRow!.usedAmount, '0.09')).toBe(true);
-    // 余额不动（纯额度模型）
+    // 余额不动（包月 Key 只扣套餐额度）
     expect(numEq(await getBalance(user.id), '80')).toBe(true);
     const usage = await db.query.usageLogs.findFirst({
       where: eq(usageLogs.requestId, requestId),
@@ -373,7 +374,7 @@ describe('套餐完整流程 E2E（个人）', () => {
 
     const keyRes = await clientJson(client, '/api/keys', {
       method: 'POST',
-      body: { name: 'e2e-tiny-key' },
+      body: { name: 'e2e-tiny-key', subscriptionId: Number(purchase.body.subscriptionId) },
     });
     expect(keyRes.status).toBe(201);
 
@@ -414,7 +415,7 @@ describe('套餐到期与续费 E2E', () => {
     const subscriptionId = Number(purchase.body.subscriptionId);
     const keyRes = await clientJson(client, '/api/keys', {
       method: 'POST',
-      body: { name: 'e2e-exp-key' },
+      body: { name: 'e2e-exp-key', subscriptionId },
     });
     expect(keyRes.status).toBe(201);
     const apiKey = String(keyRes.body.key);
@@ -436,12 +437,19 @@ describe('套餐到期与续费 E2E', () => {
     const expBody = (await expChat.json()) as { error: { code: string } };
     expect(expBody.error.code).toBe('subscription_required');
 
-    // 到期后：建 Key → 201（Key 管理独立于订阅；套餐只管计费闸门）
+    // 到期后：建普通 Key → 201（普通 Key 管理独立于订阅）
     const keyAfterExp = await clientJson(client, '/api/keys', {
       method: 'POST',
       body: { name: 'e2e-exp-key-2' },
     });
     expect(keyAfterExp.status).toBe(201);
+
+    // 到期后：建绑定到过期订阅的 Key → 404（订阅已不可用）
+    const subKeyAfterExp = await clientJson(client, '/api/keys', {
+      method: 'POST',
+      body: { name: 'e2e-exp-key-2-sub', subscriptionId },
+    });
+    expect(subKeyAfterExp.status).toBe(404);
 
     // me/subscription → null
     const meSub = await clientJson(client, '/api/me/subscription', { method: 'GET' });
@@ -560,10 +568,13 @@ describe('企业 / 个人席位规则 E2E', () => {
     });
     expect(fourth.status).toBe(201);
 
-    // 共享额度池：直接建调用 Key → 正常扣费
+    // 共享额度池：建 Key 绑定到订阅 → 正常扣费
     const chatKey = await clientJson(client, '/api/keys', {
       method: 'POST',
-      body: { name: 'e2e-team3-key-chat' },
+      body: {
+        name: 'e2e-team3-key-chat',
+        subscriptionId: Number(purchase.body.subscriptionId),
+      },
     });
     expect(chatKey.status).toBe(201);
     const chat = await gatewayChat(buildTestApp(db, redis, successAi()), String(chatKey.body.key));

@@ -37,6 +37,8 @@ export interface MappingCache {
   billingPolicy: Record<string, unknown> | null;
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** 显式免费模型（model_mappings.is_free）：授权走 0 元 fast-path，不预留余额/额度。 */
+  isFree: boolean;
 }
 
 /**
@@ -119,6 +121,7 @@ export class ModelRouter {
           billingPolicy: row.billingPolicy ?? null,
           rpmLimit: row.rpmLimit,
           tpmLimit: row.tpmLimit,
+          isFree: row.isFree,
         }
       : null;
     try {

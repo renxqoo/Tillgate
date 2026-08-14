@@ -53,6 +53,7 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
             keyPreview: apiKeys.keyPreview,
             name: apiKeys.name,
             remark: apiKeys.remark,
+            subscriptionId: apiKeys.subscriptionId,
             userId: apiKeys.userId,
             userEmail: users.email,
             userDisplayName: users.displayName,

@@ -9,6 +9,7 @@ import {
   index,
   uniqueIndex,
   numeric,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { channels } from './channels.js';
 
@@ -34,6 +35,11 @@ export const modelMappings = pgTable(
     cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 })
       .notNull()
       .default('0'),
+    /**
+     * 显式免费模型标记：true 时授权走 0 元 fast-path（不预留余额/额度）。
+     * 免费判定不再靠 `:free` 命名约定——由管理员在建模时显式声明，是唯一事实源。
+     */
+    isFree: boolean('is_free').notNull().default(false),
     /** fallback 模型链（对外模型名数组，配置启用；默认空 = 不降级） */
     fallbackModels: jsonb('fallback_models').$type<string[]>(),
     /**

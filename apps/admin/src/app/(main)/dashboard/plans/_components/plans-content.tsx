@@ -331,7 +331,7 @@ export function CreatePlanDialog() {
           <DialogTitle className="flex items-center gap-2">
             <GemIcon /> 新建套餐
           </DialogTitle>
-          <DialogDescription>设置类型、售价、周期与套餐额度（纯额度模型：额度是唯一用量货币）</DialogDescription>
+          <DialogDescription>设置类型、售价、周期与套餐额度（额度按官方价×系数折算扣减）</DialogDescription>
         </DialogHeader>
         <PlanForm form={form} onSubmit={onSubmit} formId="plan-form" />
         <DialogFooter>

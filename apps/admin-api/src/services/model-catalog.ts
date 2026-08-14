@@ -240,13 +240,15 @@ export async function importCatalogModels(
           `对外名 ${m.externalName} 已绑定 ${existing.realModel}，请换一个名字`,
         );
       }
-      // 重复导入 = 价格更新确认（同一真实模型）
+      // 重复导入 = 价格更新确认（同一真实模型）。目录源只暴露免费档（全零价），
+      // 免费标记显式落库，不再靠 `:free` 命名约定推断。
       await s.db
         .update(modelMappings)
         .set({
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
+          isFree: true,
           ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .where(eq(modelMappings.id, existing.id));
@@ -262,6 +264,7 @@ export async function importCatalogModels(
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
+          isFree: true,
           ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .returning();

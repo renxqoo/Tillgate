@@ -11,12 +11,12 @@ import { mapSubscriptionError } from '../services/subscriptions.js';
  * 套餐管理（api-contract §4.10）。
  *
  * 定价模型：套餐额度 = 金额（元），按「官方价 × 系数」折算扣减；底层账本全元，
- * 积分仅展示层（前端换算）。纯额度模型：额度是唯一用量货币，无余额兜底。
+ * 积分仅展示层（前端换算）。包月 Key 只扣套餐额度，普通 Key 只扣余额（Key 类型分流）。
  *
  * 业务规则：
  *   - kind 创建后不可变（subscription/pack 的下游语义完全不同）
  *   - 包月套餐 periodDays ∈ [1, 3650]；加油包固定 0（无周期）
- *   - 订阅即闸门：删除套餐前须确认无任何关联订阅（含历史，外键约束）
+ *   - 删除套餐前须确认无任何关联订阅（含历史，外键约束）
  */
 
 const PLAN_PRICE_MAX = 1e9;

@@ -76,6 +76,7 @@ const SAMPLE_MAPPING = {
   inputPrice: '1000',
   outputPrice: '2000',
   cacheInputPrice: '100',
+  isFree: false,
   fallbackModels: ['gpt-3.5'],
   paramRules: null,
   rpmLimit: null,
@@ -130,6 +131,26 @@ describe('route-cache 模型映射缓存', () => {
     // 再次查询：版本变了 → miss → 重新查 DB
     await router.getMapping('gpt-4');
     expect(db.query.modelMappings.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it('is_free 列透传：DB 标记免费模型 → isFree=true', async () => {
+    const redis = makeMockRedis();
+    const db = makeMockDb({
+      ...SAMPLE_MAPPING,
+      realModel: 'openai/gpt-oss-20b:free',
+      isFree: true,
+    });
+    const router = makeRouter(redis, db);
+    const r = await router.getMapping('gpt-oss-20b');
+    expect(r?.isFree).toBe(true);
+  });
+
+  it('收费模型（is_free=false）→ isFree=false', async () => {
+    const redis = makeMockRedis();
+    const db = makeMockDb(SAMPLE_MAPPING);
+    const router = makeRouter(redis, db);
+    const r = await router.getMapping('gpt-4');
+    expect(r?.isFree).toBe(false);
   });
 
   it('Redis 不可用 → 降级查 DB（不抛错）', async () => {

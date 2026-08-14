@@ -10,7 +10,9 @@ import {
   numeric,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './users.js';
 import { apps } from './apps.js';
 import { apiKeys } from './api-keys.js';
@@ -68,7 +70,7 @@ export const usageLogs = pgTable(
     planAmount: numeric('plan_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 余额承担部分（默认 0） */
     paygAmount: numeric('payg_amount', { precision: 38, scale: 18 }).notNull().default('0'),
-    /** plan / payg / both（同一请求套餐+余额混扣） */
+    /** plan / payg（Key 类型分流后 'both' 结构性删除） */
     billedBy: varchar('billed_by', { length: 8 }).notNull(),
     subscriptionId: bigint('subscription_id', { mode: 'number' }).references(
       () => userSubscriptions.id,
@@ -86,5 +88,7 @@ export const usageLogs = pgTable(
     index('usage_logs_model_created_idx').on(t.externalModel, t.createdAt),
     index('usage_logs_channel_created_idx').on(t.channelId, t.createdAt),
     index('usage_logs_subscription_idx').on(t.subscriptionId, t.createdAt),
+    // Key 类型分流后 'both'（同一请求套餐+余额混扣）结构性不可达：DB 层强制只允许 plan/payg。
+    check('usage_logs_billed_by_ck', sql`${t.billedBy} in ('plan','payg')`),
   ],
 );

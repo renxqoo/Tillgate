@@ -60,6 +60,8 @@ export interface KeyRow {
   keyPreview: string;
   name: string;
   remark: string | null;
+  /** 计费来源：NULL=余额；非空=扣该订阅额度（个人/组织订阅）。 */
+  subscriptionId: number | null;
   status: number;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -271,6 +273,7 @@ export interface AdminModelRow {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  isFree: boolean;
   contextLength: number | null;
   fallbackModels: string | null;
   paramRules: string | null;
@@ -289,6 +292,7 @@ export interface ModelCreateBody {
   inputPrice: string | number;
   outputPrice: string | number;
   cacheInputPrice?: string | number;
+  isFree?: boolean;
   billingPolicy?: Record<string, unknown> | null;
 }
 export interface ModelUpdateBody {
@@ -297,12 +301,42 @@ export interface ModelUpdateBody {
   inputPrice?: string | number;
   outputPrice?: string | number;
   cacheInputPrice?: string | number;
+  isFree?: boolean;
   fallbackModels?: string;
   paramRules?: string;
   billingPolicy?: Record<string, unknown> | null;
   rpmLimit?: number;
   tpmLimit?: number;
   status?: number;
+}
+
+// ── 组织/成员（GET /api/orgs）─────────────────────────────────────────────
+export interface OrgRow {
+  id: number;
+  name: string;
+  role: 'owner' | 'member';
+  /** 组织当前 active 订阅 id（无套餐为 null） */
+  subscriptionId: number | null;
+  subscriptionName: string | null;
+  /** 席位（成员名额，无订阅为 null） */
+  quantity: number | null;
+  quotaAmount: string | null;
+  usedAmount: string | null;
+  /** 组织订阅剩余额度（元，无订阅为 null） */
+  remainingAmount: string | null;
+}
+export interface OrgMemberRow {
+  userId: number;
+  role: string;
+  status: number;
+  dailySpendLimit: string | null;
+  monthlyQuota: string | null;
+  email: string | null;
+  displayName: string | null;
+}
+export interface OrgDetail {
+  org: { id: number; name: string; ownerUserId: number } | null;
+  members: OrgMemberRow[];
 }
 
 // ── Admin: Keys (GET/PATCH /api/admin/keys) ─────────────────────────────────
@@ -312,6 +346,8 @@ export interface AdminKeyRow {
   keyPreview: string;
   name: string;
   remark: string | null;
+  /** 计费来源：NULL=余额；非空=扣该订阅额度。 */
+  subscriptionId: number | null;
   userId: number;
   userEmail: string | null;
   userDisplayName: string | null;

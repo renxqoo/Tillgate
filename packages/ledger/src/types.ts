@@ -94,8 +94,10 @@ export interface BillingQuote {
 export interface AuthorizeBillingCommand {
   requestId: string;
   userId: number;
-  /** 发起凭证的 Key（JWT/无 Key 为 null）。用于 Key 级每日花费上限。 */
+  /** 发起凭证的 Key（JWT/无 Key 为 null）。用于 Key 级每日花费上限与订阅绑定。 */
   apiKeyId?: number | null;
+  /** 发起凭证的 App（JWT 场景；Key/无凭证为 null）。用于 App 订阅绑定。 */
+  appId?: number | null;
   stream: boolean;
   quote: BillingQuote;
   reservationLimit: string;

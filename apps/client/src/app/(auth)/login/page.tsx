@@ -5,7 +5,13 @@ import { Sparkles } from "lucide-react";
 import { LoginForm } from "./_components/login-form";
 import { APP_CONFIG } from "@/config/app-config";
 
-export default function LoginPage() {
+interface PageProps {
+  searchParams: Promise<{ next?: string }>;
+}
+
+export default async function LoginPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const next = typeof sp.next === "string" && sp.next.startsWith("/") ? sp.next : null;
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* 左侧：登录表单 */}
@@ -16,7 +22,7 @@ export default function LoginPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
-            <LoginForm />
+            <LoginForm next={next} />
           </div>
         </div>
       </div>

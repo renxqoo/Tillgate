@@ -14,6 +14,7 @@ import {
   isBackendAvailable,
   createTestUser,
   createTestApiKey,
+  activeSubscriptionId,
   setupTestModel,
   cleanupTestData,
   buildTestApp,
@@ -107,7 +108,12 @@ describe('管线失败路径', () => {
   it('配置严格上界策略后多模态可正常调用并持久化可信 usage', async () => {
     if (!connected) return it.skip('no DB');
     const userId = await createTestUser(db, '1000', 'multimodal-ok');
-    const { token, keyHash } = await createTestApiKey(db, userId, 'multimodal-ok');
+    const { token, keyHash } = await createTestApiKey(
+      db,
+      userId,
+      'multimodal-ok',
+      await activeSubscriptionId(db, userId),
+    );
     const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!, {
       billingPolicy: {
         version: 1,
@@ -185,7 +191,7 @@ describe('管线失败路径', () => {
       const settledUser = await db.query.users.findFirst({
         where: (table, { eq: equals }) => equals(table.id, userId),
       });
-      // 纯额度模型：结算扣订阅额度（(500×1000+20×2000)/1M = 0.54 元），余额不动
+      // 包月 Key：结算扣订阅额度（(500×1000+20×2000)/1M = 0.54 元），余额不动
       expect(new Decimal(settledUser!.balance).eq('1000')).toBe(true);
       const settledSub = await db.query.userSubscriptions.findFirst({
         where: eq(userSubscriptions.userId, userId),
@@ -196,10 +202,16 @@ describe('管线失败路径', () => {
     }
   });
 
-  it('无有效订阅 → 402 subscription_required（订阅即闸门，纯额度模型）', async () => {
+  it('无有效订阅 → 402 subscription_required（key 绑到过期订阅）', async () => {
     if (!connected) return it.skip('no DB');
-    const userId = await createTestUser(db, '1000', 'nosub', { withSubscription: false });
-    const { token, keyHash } = await createTestApiKey(db, userId, 'nosub');
+    const userId = await createTestUser(db, '1000', 'nosub');
+    const subId = await activeSubscriptionId(db, userId);
+    // 模拟到期：endAt 置为过去（等价到期，authorize 惰性判定 endAt <= now）
+    await db
+      .update(userSubscriptions)
+      .set({ endAt: new Date(Date.now() - 60_000) })
+      .where(eq(userSubscriptions.id, subId!));
+    const { token, keyHash } = await createTestApiKey(db, userId, 'nosub', subId);
     const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!);
     try {
       const app = buildTestApp(db, redis, makeMockAi());

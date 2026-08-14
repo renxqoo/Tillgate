@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@ai-gateway/ui/components/ui/card";
 import { Input } from "@ai-gateway/ui/components/ui/input";
-import { ApiError, apiFetch, fmtInt, type KeyRow as ApiKeyRow, type Paginated } from "@ai-gateway/api-client";
+import { ApiError, apiFetch, fmtInt, type CurrentSubscription as ApiCurrentSubscription, type KeyRow as ApiKeyRow, type Paginated } from "@ai-gateway/api-client";
 
 import { type KeyRow } from "./types";
 import { CreateKeyDialog, KeysTable } from "./_components/keys-content";
@@ -31,6 +31,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
   let keys: KeyRow[] = [];
   let total = 0;
   let error: string | null = null;
+  let subscriptions: Array<{ id: number; label: string }> = [];
   if (process.env.DEV_FAKE_ME === "1") {
     keys = MOCK_KEYS;
     total = MOCK_KEYS.length;
@@ -47,7 +48,30 @@ export default async function KeysPage({ searchParams }: PageProps) {
     } catch (e) {
       error = e instanceof ApiError ? e.message : "加载失败";
     }
+    // 计费来源下拉：个人订阅 + 所属组织订阅（含余额选项，由弹窗固定渲染）。
+    try {
+      const sub = await apiFetch<ApiCurrentSubscription | null>("/api/me/subscription");
+      if (sub) subscriptions.push({ id: sub.id, label: sub.planName });
+    } catch {
+      // 拿不到个人订阅不影响创建
+    }
+    try {
+      const orgs = await apiFetch<{
+        list: Array<{ name: string; subscriptionId: number | null; subscriptionName: string | null }>;
+      }>("/api/orgs");
+      for (const o of orgs.list ?? []) {
+        if (o.subscriptionId != null) {
+          subscriptions.push({ id: o.subscriptionId, label: `${o.name} · ${o.subscriptionName ?? "套餐"}` });
+        }
+      }
+    } catch {
+      // 拿不到组织订阅不影响创建
+    }
   }
+
+  const subscriptionLabels = new Map<number, string>(
+    subscriptions.map((s) => [s.id, s.label]),
+  );
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
@@ -68,7 +92,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
             管理虚拟 API Key（共 {fmtInt(total)} 个）
           </p>
         </div>
-        <CreateKeyDialog />
+        <CreateKeyDialog subscriptions={subscriptions} />
       </div>
 
       <Card>
@@ -98,7 +122,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
           {error ? (
             <p className="p-8 text-center text-sm text-destructive">{error}</p>
           ) : (
-            <KeysTable keys={keys} />
+            <KeysTable keys={keys} subscriptionLabels={subscriptionLabels} />
           )}
         </CardContent>
       </Card>
@@ -107,8 +131,8 @@ export default async function KeysPage({ searchParams }: PageProps) {
 }
 
 const MOCK_KEYS: KeyRow[] = [
-  { id: 1, name: "production", keyPreview: "ag-****-a1b2", remark: "主项目", status: 0, rpmLimit: 2000, tpmLimit: 1000000, dailySpendLimit: null, expiresAt: null, lastUsedAt: new Date().toISOString(), createdAt: "2026-07-15T09:21:00.000Z" },
-  { id: 2, name: "staging", keyPreview: "ag-****-c3d4", remark: "测试环境", status: 0, rpmLimit: 500, tpmLimit: 200000, dailySpendLimit: "50", expiresAt: null, lastUsedAt: "2026-08-01T14:00:00.000Z", createdAt: "2026-07-10T11:00:00.000Z" },
-  { id: 3, name: "legacy-bot", keyPreview: "ag-****-e5f6", remark: null, status: 1, rpmLimit: 100, tpmLimit: 50000, dailySpendLimit: null, expiresAt: null, lastUsedAt: "2025-12-01T08:00:00.000Z", createdAt: "2025-06-04T11:00:00.000Z" },
+  { id: 1, name: "production", keyPreview: "ag-****-a1b2", remark: "主项目", subscriptionId: null, status: 0, rpmLimit: 2000, tpmLimit: 1000000, dailySpendLimit: null, expiresAt: null, lastUsedAt: new Date().toISOString(), createdAt: "2026-07-15T09:21:00.000Z" },
+  { id: 2, name: "staging", keyPreview: "ag-****-c3d4", remark: "测试环境", subscriptionId: 1, status: 0, rpmLimit: 500, tpmLimit: 200000, dailySpendLimit: "50", expiresAt: null, lastUsedAt: "2026-08-01T14:00:00.000Z", createdAt: "2026-07-10T11:00:00.000Z" },
+  { id: 3, name: "legacy-bot", keyPreview: "ag-****-e5f6", remark: null, subscriptionId: null, status: 1, rpmLimit: 100, tpmLimit: 50000, dailySpendLimit: null, expiresAt: null, lastUsedAt: "2025-12-01T08:00:00.000Z", createdAt: "2025-06-04T11:00:00.000Z" },
 ];
 

@@ -51,7 +51,9 @@ export async function loginAction(formData: FormData): Promise<{ error?: string 
     secure: process.env.NODE_ENV === "production",
   });
 
-  redirect("/dashboard");
+  // 回跳：只允许站内相对路径，防 open redirect；非法/缺省回落 /dashboard。
+  const next = String(formData.get("next") ?? "").trim();
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
 }
 
 /** 注销 */

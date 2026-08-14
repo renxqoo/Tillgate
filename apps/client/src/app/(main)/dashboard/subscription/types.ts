@@ -31,15 +31,6 @@ export interface CurrentSubscription {
   remainingValue: string;
 }
 
-/** 订阅页 Key 区块用的精简 Key 行。 */
-export interface SubKeyRow {
-  id: number;
-  keyPreview: string;
-  name: string;
-  status: number;
-  dailySpendLimit: string | null;
-}
-
 export interface PlanRow {
   id: number;
   name: string;

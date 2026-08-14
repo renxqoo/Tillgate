@@ -35,6 +35,8 @@ import type { ClientServices } from '../services/index.js';
 const appCreateSchema = z.object({
   name: z.string().min(1).max(64),
   description: z.string().max(255).optional(),
+  /** 计费来源：NULL=余额；非空=扣该订阅额度。 */
+  subscriptionId: z.number().int().positive().nullable().optional(),
   scope: z.object({
     models: z.array(z.string()).optional(),
     rpm: z.number().int().min(1).optional(),
@@ -60,6 +62,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
             clientId: apps.clientId,
             name: apps.name,
             description: apps.description,
+            subscriptionId: apps.subscriptionId,
             scope: apps.scope,
             status: apps.status,
             createdAt: apps.createdAt,
@@ -90,6 +93,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
           clientSecretHash: sha256Hex(clientSecret),
           name: body.name,
           description: body.description ?? null,
+          subscriptionId: body.subscriptionId ?? null,
           scope: body.scope ?? null,
           status: 0,
         })

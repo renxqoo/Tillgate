@@ -4,22 +4,30 @@ import {
   ApiError,
   apiFetch,
   type CurrentSubscription as ApiCurrentSubscription,
-  type KeyRow as ApiKeyRow,
   type ListResult,
   type MeInfo,
-  type Paginated,
+  type OrgRow as ApiOrgRow,
   type PlanRow as ApiPlanRow,
 } from "@ai-gateway/api-client";
 
 import { SubscriptionContent } from "./_components/subscription-content";
-import type { CurrentSubscription, PlanRow, SubKeyRow } from "./types";
+import type { CurrentSubscription, PlanRow } from "./types";
 
 export const dynamic = "force-dynamic";
 
 export default async function SubscriptionPage() {
   let subscription: CurrentSubscription | null = null;
   let plans: PlanRow[] = [];
-  let keys: SubKeyRow[] = [];
+  let orgs: Array<{
+    id: number;
+    name: string;
+    role: string;
+    subscriptionName: string | null;
+    quantity: number | null;
+    quotaAmount: string | null;
+    usedAmount: string | null;
+    remainingAmount: string | null;
+  }> = [];
   let subError: string | null = null;
   let plansError: string | null = null;
   let isEnterprise = false;
@@ -50,17 +58,22 @@ export default async function SubscriptionPage() {
   }
 
   try {
-    const data = await apiFetch<Paginated<ApiKeyRow>>("/api/keys");
-    keys = (data.list ?? []).map((k) => ({
-      id: k.id,
-      keyPreview: k.keyPreview,
-      name: k.name,
-      status: k.status,
-      dailySpendLimit: k.dailySpendLimit,
-    }));
+    const data = await apiFetch<{ list: ApiOrgRow[] }>("/api/orgs");
+    // 只展示有有效套餐的组织；无套餐组织在 /dashboard/orgs 管理，不在此展示。
+    orgs = (data.list ?? [])
+      .filter((o) => o.subscriptionId != null)
+      .map((o) => ({
+        id: o.id,
+        name: o.name,
+        role: o.role,
+        subscriptionName: o.subscriptionName,
+        quantity: o.quantity,
+        quotaAmount: o.quotaAmount,
+        usedAmount: o.usedAmount,
+        remainingAmount: o.remainingAmount,
+      }));
   } catch {
-    // Key 加载失败不阻塞订阅页
-    keys = [];
+    orgs = [];
   }
 
   return (
@@ -87,8 +100,7 @@ export default async function SubscriptionPage() {
         plans={plans}
         subError={subError}
         plansError={plansError}
-        keys={keys}
-        seats={subscription?.quantity ?? 0}
+        orgs={orgs}
       />
     </div>
   );

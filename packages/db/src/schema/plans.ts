@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
+import { organizations } from './organizations.js';
 
 /**
  * 二期表（一期建表，业务逻辑二期启用；data-model.md §3.15）
@@ -65,6 +66,8 @@ export const userSubscriptions = pgTable(
       .default('0'),
     /** 席位/数量（共享额度池：总额度 = 档额度 × 席位）。默认 1。 */
     quantity: bigint('quantity', { mode: 'number' }).notNull().default(1),
+    /** 组织订阅：org_id 非空 = 企业/团队订阅（user_id=owner）；NULL = 个人订阅。 */
+    orgId: bigint('org_id', { mode: 'number' }).references(() => organizations.id),
     /** 订阅总价快照（元）= 档价 × 席位，购买时落库；升级算「剩余价值」用。 */
     price: numeric('price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 0 有效 / 1 到期 / 2 取消 */
@@ -74,11 +77,16 @@ export const userSubscriptions = pgTable(
   (t) => [
     index('user_subscriptions_user_idx').on(t.userId),
     index('user_subscriptions_plan_idx').on(t.planId),
-    // 「单有效订阅」硬不变量：每用户至多一条 status=0 的订阅（购买/续费/变更在事务内
-    // 先把旧订阅转 status=1 再插入新行，因此唯一部分索引可兜底并发双开）。
-    uniqueIndex('user_subscriptions_one_active_uq')
+    index('user_subscriptions_org_idx').on(t.orgId),
+    // 「单有效订阅」硬不变量，按个人/组织分开：
+    //   个人：每用户至多一条 active（org_id IS NULL）。
+    //   组织：每组织至多一条 active（org_id 非空）。
+    uniqueIndex('user_subscriptions_one_personal_uq')
       .on(t.userId)
-      .where(sql`${t.status} = 0`),
+      .where(sql`${t.status} = 0 and ${t.orgId} is null`),
+    uniqueIndex('user_subscriptions_one_org_uq')
+      .on(t.orgId)
+      .where(sql`${t.status} = 0 and ${t.orgId} is not null`),
     // 套餐额度「永不为负」硬不变量：已用 + 在途 ≤ 额度，且二者非负。
     check('user_subscriptions_used_nonnegative_ck', sql`${t.usedAmount} >= 0`),
     check('user_subscriptions_reserved_nonnegative_ck', sql`${t.reservedAmount} >= 0`),

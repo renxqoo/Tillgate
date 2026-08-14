@@ -60,6 +60,7 @@ const createSchema = z.object({
   inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
     '需为整数',
@@ -115,6 +116,11 @@ function ModelRowItem({
     <TableRow>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{model.externalName}</code>
+        {model.isFree && (
+          <span className="ml-2 inline-flex items-center rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300">
+            免费
+          </span>
+        )}
       </TableCell>
       <TableCell className="font-medium">{model.realModel}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.inputPrice)}</TableCell>
@@ -175,6 +181,7 @@ export function CreateModelDialog() {
       inputPrice: '',
       outputPrice: '',
       cacheInputPrice: '',
+      isFree: false,
       contextLength: '',
     },
   });
@@ -188,6 +195,7 @@ export function CreateModelDialog() {
         inputPrice: Number(values.inputPrice),
         outputPrice: Number(values.outputPrice),
         cacheInputPrice: Number(values.cacheInputPrice),
+        isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
       if (res.error) {
@@ -235,6 +243,7 @@ const editSchema = z.object({
   inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
   cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
     '需为整数',
@@ -270,6 +279,7 @@ function EditModelDialog({ model }: { model: ModelRow }) {
       inputPrice: model.inputPrice ?? '',
       outputPrice: model.outputPrice ?? '',
       cacheInputPrice: model.cacheInputPrice ?? '',
+      isFree: model.isFree ?? false,
       contextLength: model.contextLength == null ? '' : String(model.contextLength),
       fallbackModels: model.fallbackModels ?? '',
       paramRules: model.paramRules ?? '',
@@ -289,6 +299,7 @@ function EditModelDialog({ model }: { model: ModelRow }) {
         inputPrice: Number(values.inputPrice),
         outputPrice: Number(values.outputPrice),
         cacheInputPrice: Number(values.cacheInputPrice),
+        isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
         paramRules: values.paramRules?.trim() || undefined,
@@ -417,6 +428,19 @@ function ModelForm({
           />
         </div>
         <p className="text-xs text-muted-foreground">单位：元 / 百万 token</p>
+        <Controller
+          control={form.control}
+          name="isFree"
+          render={({ field }: { field: { value?: boolean; onChange: (v: boolean) => void } }) => (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={field.value ?? false}
+                onCheckedChange={(v) => field.onChange(v === true)}
+              />
+              显式免费模型（0 元授权，不预留余额/额度）
+            </label>
+          )}
+        />
         {isEdit && (
           <>
             <Controller

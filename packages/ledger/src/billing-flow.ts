@@ -1,7 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, apiKeys, channels, users, usageLogs, userSubscriptions } from '@ai-gateway/db/schema';
+import {
+  billingRequests,
+  apiKeys,
+  apps,
+  channels,
+  orgMembers,
+  users,
+  usageLogs,
+  userSubscriptions,
+} from '@ai-gateway/db/schema';
 import {
   Decimal,
   estimateMaxCost,
@@ -93,7 +102,42 @@ export class SubscriptionQuotaExhaustedError extends Error {
   }
 }
 
-/** 无有效订阅（未订阅或已到期）：订阅即闸门，无订阅不能使用 API。 */
+/** 成员日限（a）：该成员在 org 套餐内单日封顶，硬顶 402，不溢出共享。 */
+export class MemberDailyLimitExceededError extends Error {
+  constructor(
+    public readonly userId: number,
+    public readonly dailySpendLimit: string,
+    public readonly projected: string,
+  ) {
+    super(`member daily spend limit exceeded for user ${userId}`);
+    this.name = 'MemberDailyLimitExceededError';
+  }
+}
+
+/** 成员子配额（b）：该成员在共享额度池中分到的额度上限，硬顶 402，不溢出共享。 */
+export class MemberQuotaExceededError extends Error {
+  constructor(
+    public readonly userId: number,
+    public readonly monthlyQuota: string,
+    public readonly projected: string,
+  ) {
+    super(`member monthly quota exceeded for user ${userId}`);
+    this.name = 'MemberQuotaExceededError';
+  }
+}
+
+/** 防御：凭证绑定的订阅，用户既非 owner 也非该订阅 org 的 active 成员 → 拒绝。 */
+export class SubscriptionForbiddenError extends Error {
+  constructor(
+    public readonly userId: number,
+    public readonly subscriptionId: number,
+  ) {
+    super(`subscription ${subscriptionId} not allowed for user ${userId}`);
+    this.name = 'SubscriptionForbiddenError';
+  }
+}
+
+/** 包月 Key 无有效订阅（未订阅或已到期）：计费域隔离下仅 subscription Key 触发。 */
 export class SubscriptionRequiredError extends Error {
   constructor(public readonly userId: number) {
     super(`no active subscription for user ${userId}`);
@@ -309,11 +353,14 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
         }
 
         // Key 级每日花费上限（团队团员单 Key 单日封顶）：与用户级独立，两者都设时双闸门。
+        // 同时读订阅绑定（单一真相）：authorize 据此分流，不信任调用方传参。
+        let subscriptionId: number | null = null;
         if (command.apiKeyId != null) {
           const key = await tx.query.apiKeys.findFirst({
             where: eq(apiKeys.id, command.apiKeyId),
-            columns: { dailySpendLimit: true },
+            columns: { dailySpendLimit: true, subscriptionId: true },
           });
+          if (key) subscriptionId = key.subscriptionId;
           if (key && key.dailySpendLimit !== null) {
             const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             // 已结算：该 Key 今日 consume 流水（usage_logs 按 apiKeyId 关联，amount 为实际扣费）
@@ -345,34 +392,144 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
               );
             }
           }
+        } else if (command.appId != null) {
+          // JWT/App 凭证：读 apps.subscription_id（单一真相）。
+          const app = await tx.query.apps.findFirst({
+            where: eq(apps.id, command.appId),
+            columns: { subscriptionId: true },
+          });
+          if (app) subscriptionId = app.subscriptionId;
         }
 
-        // 订阅即闸门：必须存在有效订阅（未到期），否则拒绝；额度是唯一用量货币，无余额兜底。
-        const sub = await tx.query.userSubscriptions.findFirst({
-          where: and(
-            eq(userSubscriptions.userId, command.userId),
-            eq(userSubscriptions.status, 0),
-            gt(userSubscriptions.endAt, now),
-          ),
-          columns: {
-            id: true,
-            quotaAmount: true,
-            usedAmount: true,
-            reservedAmount: true,
-          },
-        });
-        if (!sub) throw new SubscriptionRequiredError(command.userId);
-
+        // 计费来源（单一真相 = 凭证绑定的 subscription_id）：NULL=余额，非空=该订阅额度。
         const amountDec = toDecimal(amount);
-        const remaining = toDecimal(sub.quotaAmount)
-          .minus(toDecimal(sub.usedAmount))
-          .minus(toDecimal(sub.reservedAmount));
-        // 额度硬顶：预估超出剩余额度 → 402（套餐额度永不为负，无余额兜底）。
-        if (remaining.lt(amountDec)) {
-          throw new SubscriptionQuotaExhaustedError(command.userId, remaining.toString(), amount);
+        let planReservedAmount: string | null = null;
+
+        if (subscriptionId != null) {
+          // 订阅来源：读订阅行 + 防御校验（owner 或 active 成员）+ 成员上限 a/b。
+          const sub = await tx.query.userSubscriptions.findFirst({
+            where: and(
+              eq(userSubscriptions.id, subscriptionId),
+              eq(userSubscriptions.status, 0),
+              gt(userSubscriptions.endAt, now),
+            ),
+            columns: {
+              id: true,
+              userId: true,
+              orgId: true,
+              quotaAmount: true,
+              usedAmount: true,
+              reservedAmount: true,
+            },
+          });
+          if (!sub) throw new SubscriptionRequiredError(command.userId);
+
+          // 防御校验：用户 = 订阅 owner，或该订阅 org 的 active 成员；否则拒绝（防绑到别人套餐）。
+          let allowed = sub.userId === command.userId;
+          if (!allowed && sub.orgId != null) {
+            const member = await tx.query.orgMembers.findFirst({
+              where: and(
+                eq(orgMembers.orgId, sub.orgId),
+                eq(orgMembers.userId, command.userId),
+                eq(orgMembers.status, 0),
+              ),
+              columns: { dailySpendLimit: true, monthlyQuota: true },
+            });
+            if (member) {
+              allowed = true;
+              // 成员日限 a：该成员在 org 套餐内单日封顶（硬顶，不溢出共享）。
+              if (member.dailySpendLimit != null) {
+                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const spent = await tx.execute<{ total: string }>(sql`
+                  select coalesce(sum(${usageLogs.amount}), 0)::numeric as total
+                  from ${usageLogs}
+                  where ${usageLogs.userId} = ${command.userId}
+                    and ${usageLogs.subscriptionId} = ${subscriptionId}
+                    and ${usageLogs.status} = 0
+                    and ${usageLogs.createdAt} >= ${todayStart}
+                `);
+                const exposure = await tx.execute<{ total: string }>(sql`
+                  select coalesce(sum(${billingRequests.reservedAmount}), 0)::numeric as total
+                  from ${billingRequests}
+                  where ${billingRequests.userId} = ${command.userId}
+                    and ${billingRequests.subscriptionId} = ${subscriptionId}
+                    and ${billingRequests.createdAt} >= ${todayStart}
+                    and ${billingRequests.status} in ('authorized','in_flight','settlement_pending','processing','retry_wait','uncertain','dead')
+                `);
+                const projected = toDecimal(spent.rows[0]?.total ?? '0')
+                  .plus(toDecimal(exposure.rows[0]?.total ?? '0'))
+                  .plus(amountDec);
+                if (projected.gt(member.dailySpendLimit)) {
+                  throw new MemberDailyLimitExceededError(
+                    command.userId,
+                    member.dailySpendLimit,
+                    projected.toString(),
+                  );
+                }
+              }
+              // 成员子配额 b：该成员在共享额度池中分到的额度上限（硬顶，不溢出共享）。
+              if (member.monthlyQuota != null) {
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const spent = await tx.execute<{ total: string }>(sql`
+                  select coalesce(sum(${usageLogs.amount}), 0)::numeric as total
+                  from ${usageLogs}
+                  where ${usageLogs.userId} = ${command.userId}
+                    and ${usageLogs.subscriptionId} = ${subscriptionId}
+                    and ${usageLogs.status} = 0
+                    and ${usageLogs.createdAt} >= ${monthStart}
+                `);
+                const exposure = await tx.execute<{ total: string }>(sql`
+                  select coalesce(sum(${billingRequests.reservedAmount}), 0)::numeric as total
+                  from ${billingRequests}
+                  where ${billingRequests.userId} = ${command.userId}
+                    and ${billingRequests.subscriptionId} = ${subscriptionId}
+                    and ${billingRequests.createdAt} >= ${monthStart}
+                    and ${billingRequests.status} in ('authorized','in_flight','settlement_pending','processing','retry_wait','uncertain','dead')
+                `);
+                const projected = toDecimal(spent.rows[0]?.total ?? '0')
+                  .plus(toDecimal(exposure.rows[0]?.total ?? '0'))
+                  .plus(amountDec);
+                if (projected.gt(member.monthlyQuota)) {
+                  throw new MemberQuotaExceededError(
+                    command.userId,
+                    member.monthlyQuota,
+                    projected.toString(),
+                  );
+                }
+              }
+            }
+          }
+          if (!allowed) throw new SubscriptionForbiddenError(command.userId, subscriptionId);
+
+          const remaining = toDecimal(sub.quotaAmount)
+            .minus(toDecimal(sub.usedAmount))
+            .minus(toDecimal(sub.reservedAmount));
+          // 额度硬顶：预估超出剩余额度 → 402（套餐额度永不为负）。
+          if (remaining.lt(amountDec)) {
+            throw new SubscriptionQuotaExhaustedError(command.userId, remaining.toString(), amount);
+          }
+          planReservedAmount = amount;
+        } else {
+          // 余额来源：只扣余额（含信用透支）。可用信用 = balance + credit_limit − reserved。
+          // 0 元（免费模型）不校验余额（fast-path 见下）。
+          const user = await tx.query.users.findFirst({
+            where: eq(users.id, command.userId),
+            columns: { balance: true, reservedBalance: true, creditLimit: true },
+          });
+          if (!user) throw new InsufficientBalanceError(command.userId, '0');
+          const available = toDecimal(user.balance)
+            .plus(user.creditLimit)
+            .minus(user.reservedBalance);
+          if (!amountDec.isZero() && available.lt(amountDec)) {
+            throw new InsufficientBalanceError(
+              command.userId,
+              available.toString(),
+              user.balance,
+              user.reservedBalance,
+              user.creditLimit,
+            );
+          }
         }
-        const planReserve = amountDec;
-        const subscriptionId = sub.id;
 
         const inserted = await tx
           .insert(billingRequests)
@@ -381,7 +538,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
             userId: command.userId,
             apiKeyId: command.apiKeyId ?? null,
             reservedAmount: amount,
-            planReservedAmount: subscriptionId != null ? planReserve.toString() : null,
+            planReservedAmount,
             subscriptionId,
             status: 'authorized',
             stream: command.stream,
@@ -424,6 +581,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
         }
 
         if (amountDec.isZero()) {
+          // 免费模型 fast-path：不预留、不落余额动作（billing_requests 已落行供链路观测）。
           const user = await tx.query.users.findFirst({
             where: eq(users.id, command.userId),
             columns: { balance: true, reservedBalance: true, creditLimit: true },
@@ -439,21 +597,45 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           };
         }
 
-        // 预占套餐额度（硬闸原子校验），无余额兜底。
-        const subUpdated = await tx
-          .update(userSubscriptions)
-          .set({
-            reservedAmount: sql`${userSubscriptions.reservedAmount} + ${planReserve.toString()}::numeric`,
-          })
-          .where(
-            and(
-              eq(userSubscriptions.id, subscriptionId),
-              sql`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount} >= ${planReserve.toString()}::numeric`,
-            ),
-          )
-          .returning({ id: userSubscriptions.id });
-        if (subUpdated.length === 0) {
-          throw new SubscriptionQuotaExhaustedError(command.userId, '0', amount);
+        if (subscriptionId != null) {
+          // 预占套餐额度（硬闸原子校验），无余额兜底。
+          const subUpdated = await tx
+            .update(userSubscriptions)
+            .set({
+              reservedAmount: sql`${userSubscriptions.reservedAmount} + ${planReservedAmount!}::numeric`,
+            })
+            .where(
+              and(
+                eq(userSubscriptions.id, subscriptionId!),
+                sql`${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount} >= ${planReservedAmount!}::numeric`,
+              ),
+            )
+            .returning({ id: userSubscriptions.id });
+          if (subUpdated.length === 0) {
+            throw new SubscriptionQuotaExhaustedError(command.userId, '0', amount);
+          }
+        } else {
+          // 预占余额在途敞口（硬闸原子校验）：可用信用 = balance + credit_limit − reserved_balance。
+          const reserved = await tx
+            .update(users)
+            .set({
+              reservedBalance: sql`${users.reservedBalance} + ${amount}::numeric`,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(users.id, command.userId),
+                sql`${users.balance} + ${users.creditLimit} - ${users.reservedBalance} >= ${amount}::numeric`,
+              ),
+            )
+            .returning({
+              balance: users.balance,
+              reservedBalance: users.reservedBalance,
+              creditLimit: users.creditLimit,
+            });
+          if (reserved.length === 0) {
+            throw new InsufficientBalanceError(command.userId, '0', '0', '0', '0');
+          }
         }
 
         const userRow = await tx.query.users.findFirst({

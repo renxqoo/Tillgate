@@ -27,8 +27,7 @@ import {
 import { Input } from "@ai-gateway/ui/components/ui/input";
 import { Progress } from "@ai-gateway/ui/components/ui/progress";
 
-import { KeysSection } from "./keys-section";
-import type { CurrentSubscription, PlanRow, SubKeyRow } from "../types";
+import type { CurrentSubscription, PlanRow } from "../types";
 
 /** 周期天数展示：30→月付，365→年付，其余按天。 */
 function fmtPeriod(days: number): string {
@@ -60,15 +59,22 @@ export function SubscriptionContent({
   plans,
   subError,
   plansError,
-  keys,
-  seats,
+  orgs,
 }: {
   readonly subscription: CurrentSubscription | null;
   readonly plans: ReadonlyArray<PlanRow>;
   readonly subError: string | null;
   readonly plansError: string | null;
-  readonly keys: ReadonlyArray<SubKeyRow>;
-  readonly seats: number;
+  readonly orgs: ReadonlyArray<{
+    id: number;
+    name: string;
+    role: string;
+    subscriptionName: string | null;
+    quantity: number | null;
+    quotaAmount: string | null;
+    usedAmount: string | null;
+    remainingAmount: string | null;
+  }>;
 }) {
   // 有订阅时只展示更高档（升级目标）；无订阅展示全部（开通）。
   const visiblePlans = subscription
@@ -94,7 +100,44 @@ export function SubscriptionContent({
         </Card>
       ) : null}
 
-      {subscription ? <KeysSection keys={keys} seats={seats} /> : null}
+      {orgs.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">所属组织套餐</CardTitle>
+            <CardDescription>作为成员消耗的组织额度（用组织 Key 调用时扣这里）</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {orgs.map((o) => (
+              <div key={o.id} className="rounded-md border p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{o.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {o.subscriptionName ?? "无有效套餐"}
+                      {o.quantity != null ? ` · ${o.quantity} 席` : ""}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    {o.remainingAmount != null ? (
+                      <div className="text-xs text-muted-foreground">
+                        剩余 {fmtPoints(o.remainingAmount)} 积分
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                {o.quotaAmount != null && o.usedAmount != null ? (
+                  <div className="mt-2">
+                    <Progress value={usagePercent(o.usedAmount, o.quotaAmount)} />
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      已用 {fmtPoints(o.usedAmount)} / {fmtPoints(o.quotaAmount)} 积分
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {subError ? (
         <Card>

@@ -52,6 +52,8 @@ const modelCreateSchema = z
     inputPrice: z.coerce.number().optional(),
     outputPrice: z.coerce.number().optional(),
     cacheInputPrice: z.coerce.number().optional(),
+    /** 显式免费模型（0 元授权）；付费模型必须 false。 */
+    isFree: z.boolean().optional(),
     /** 上下文窗口（token 数）；null=未知 */
     contextLength: z.coerce.number().int().positive().nullable().optional(),
     /** 模型级限流（保护上游配额）；null=不限流 */
@@ -69,6 +71,7 @@ const modelUpdateSchema = z
     inputPrice: z.coerce.number().optional(),
     outputPrice: z.coerce.number().optional(),
     cacheInputPrice: z.coerce.number().optional(),
+    isFree: z.boolean().optional(),
     contextLength: z.coerce.number().int().positive().nullable().optional(),
     fallbackModels: z.unknown().optional(),
     paramRules: z.unknown().optional(),
@@ -118,6 +121,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
             inputPrice: String(body.inputPrice ?? 0),
             outputPrice: String(body.outputPrice ?? 0),
             cacheInputPrice: String(body.cacheInputPrice ?? 0),
+            isFree: body.isFree ?? false,
             rpmLimit: body.rpmLimit ?? null,
             tpmLimit: body.tpmLimit ?? null,
             billingPolicy: body.billingPolicy ?? null,
@@ -146,6 +150,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
         if (body.outputPrice !== undefined) update.outputPrice = String(body.outputPrice);
         if (body.cacheInputPrice !== undefined)
           update.cacheInputPrice = String(body.cacheInputPrice);
+        if (body.isFree !== undefined) update.isFree = body.isFree;
         if (body.contextLength !== undefined) update.contextLength = body.contextLength;
         if (body.fallbackModels !== undefined) update.fallbackModels = body.fallbackModels;
         if (body.paramRules !== undefined) update.paramRules = body.paramRules;

@@ -1,4 +1,5 @@
 import {
+  Building2,
   Coins,
   Gem,
   Gift,
@@ -83,6 +84,12 @@ export function buildSidebarItems(): NavGroup[] {
           title: "套餐订阅",
           url: "/dashboard/subscription",
           icon: Gem,
+        },
+        {
+          id: "orgs",
+          title: "组织",
+          url: "/dashboard/orgs",
+          icon: Building2,
         },
         {
           id: "usage",

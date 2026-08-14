@@ -110,9 +110,8 @@ export interface TestModelIds {
 }
 
 /**
- * 创建测试用户。默认同时建一条大额度有效订阅（订阅即闸门：纯额度模型下无订阅
- * 的用户会被 authorize 直接 402 subscription_required）；测无订阅路径传
- * { withSubscription: false }。
+ * 创建测试用户。默认同时建一条大额度有效订阅（供 subscription Key 走套餐额度分支）；
+ * 测无订阅路径传 { withSubscription: false }。普通 Key/无 Key 则走余额（payg）分支。
  */
 export async function createTestUser(
   db: Db,
@@ -161,16 +160,26 @@ export async function createTestUser(
   return u!.id;
 }
 
+/** 读某用户当前 active 订阅 id（无则 null）。 */
+export async function activeSubscriptionId(db: Db, userId: number): Promise<number | null> {
+  const sub = await db.query.userSubscriptions.findFirst({
+    where: and(eq(userSubscriptions.userId, userId), eq(userSubscriptions.status, 0)),
+    columns: { id: true },
+  });
+  return sub?.id ?? null;
+}
+
 export async function createTestApiKey(
   db: Db,
   userId: number,
   name = 'test',
+  subscriptionId: number | null = null,
 ): Promise<{ token: string; keyHash: string }> {
   const token = 'ag_' + randomUUID().replace(/-/g, '');
   const keyHash = createHash('sha256').update(token).digest('hex');
   await db
     .insert(apiKeys)
-    .values({ keyHash, keyPreview: `ag_****${token.slice(-4)}`, userId, name, status: 0 });
+    .values({ keyHash, keyPreview: `ag_****${token.slice(-4)}`, userId, name, subscriptionId, status: 0 });
   return { token, keyHash };
 }
 

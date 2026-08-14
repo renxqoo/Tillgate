@@ -127,8 +127,96 @@ describe('PATCH /api/keys/:id 回显脱敏（不回显 keyHash）', () => {
       expect(json.id).toBe(k!.id);
       expect(json).toHaveProperty('dailySpendLimit');
       expect(json).toHaveProperty('status');
+      expect(json.subscriptionId).toBeNull();
     } finally {
       await db.delete(apiKeys).where(eq(apiKeys.id, k!.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, me!.id)).catch(() => {});
+    }
+  });
+});
+
+describe('Key 计费来源绑定（subscriptionId）', () => {
+  it('绑到他人订阅 → 403 SUBSCRIPTION_FORBIDDEN；绑到自己的订阅 → 201', async () => {
+    if (!connected) return it.skip('no DB');
+    const s = `${Date.now()}`;
+    const [me] = await db
+      .insert(users)
+      .values({ issuer: 'local', subject: `__ksrc_me_${s}`, identityProvider: 'local' })
+      .returning({ id: users.id });
+    const [other] = await db
+      .insert(users)
+      .values({ issuer: 'local', subject: `__ksrc_other_${s}`, identityProvider: 'local' })
+      .returning({ id: users.id });
+    try {
+      const app = makeClientTestApp(me!.id, { '/keys': keyRoutes(makeServices(db)) });
+
+      // 他人的订阅：无权绑定
+      const [plan] = await db
+        .insert(plans)
+        .values({
+          name: `__ksrc_plan_${s}`.slice(0, 32),
+          kind: 'subscription',
+          price: '10',
+          periodDays: 30,
+          quotaAmount: '100',
+          status: 0,
+        })
+        .returning({ id: plans.id });
+      const [otherSub] = await db
+        .insert(userSubscriptions)
+        .values({
+          userId: other!.id,
+          planId: plan!.id,
+          startAt: new Date(),
+          endAt: new Date(Date.now() + 86_400_000),
+          quotaAmount: '100',
+          quantity: 1,
+          price: '10',
+          status: 0,
+        })
+        .returning({ id: userSubscriptions.id });
+
+      const denied = await app.request('/api/keys', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: `sub-key-${s}`, subscriptionId: otherSub!.id }),
+      });
+      expect(denied.status).toBe(403);
+      expect(((await denied.json()) as { error?: { code?: string } }).error?.code).toBe(
+        'SUBSCRIPTION_FORBIDDEN',
+      );
+
+      // 自己的订阅 → 201 并回显 subscriptionId
+      const [mySub] = await db
+        .insert(userSubscriptions)
+        .values({
+          userId: me!.id,
+          planId: plan!.id,
+          startAt: new Date(),
+          endAt: new Date(Date.now() + 86_400_000),
+          quotaAmount: '100',
+          quantity: 1,
+          price: '10',
+          status: 0,
+        })
+        .returning({ id: userSubscriptions.id });
+
+      const created = await app.request('/api/keys', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: `sub-key-${s}`, subscriptionId: mySub!.id }),
+      });
+      expect(created.status).toBe(201);
+      expect(((await created.json()) as { subscriptionId?: number | null }).subscriptionId).toBe(
+        mySub!.id,
+      );
+
+      await db.delete(userSubscriptions).where(eq(userSubscriptions.userId, me!.id)).catch(() => {});
+      await db.delete(userSubscriptions).where(eq(userSubscriptions.id, otherSub!.id)).catch(() => {});
+      await db.delete(plans).where(eq(plans.id, plan!.id)).catch(() => {});
+      await db.delete(users).where(eq(users.id, other!.id)).catch(() => {});
+    } finally {
+      await db.delete(apiKeys).where(eq(apiKeys.userId, me!.id)).catch(() => {});
       await db.delete(users).where(eq(users.id, me!.id)).catch(() => {});
     }
   });

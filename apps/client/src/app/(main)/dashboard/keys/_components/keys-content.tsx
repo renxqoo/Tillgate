@@ -38,6 +38,7 @@ import type { KeyRow } from "../types";
 const createSchema = z.object({
   name: z.string().min(1, "请输入名称").max(100),
   remark: z.string().max(200).optional(),
+  subscriptionId: z.number().int().positive().nullable(),
 });
 
 const editSchema = z.object({
@@ -76,12 +77,19 @@ function fmtMoney(v: string | null): string {
   return v === null ? "不限" : formatMoney(v);
 }
 
-export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
+export function KeysTable({
+  keys,
+  subscriptionLabels,
+}: {
+  readonly keys: ReadonlyArray<KeyRow>;
+  readonly subscriptionLabels: ReadonlyMap<number, string>;
+}) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>名称</TableHead>
+          <TableHead>类型</TableHead>
           <TableHead>Key</TableHead>
           <TableHead>备注</TableHead>
           <TableHead className="text-right">RPM</TableHead>
@@ -96,7 +104,7 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
       <TableBody>
         {keys.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
               暂无 Key
             </TableCell>
           </TableRow>
@@ -104,6 +112,11 @@ export function KeysTable({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
           keys.map((k) => (
             <TableRow key={k.id}>
               <TableCell className="font-medium">{k.name}</TableCell>
+              <TableCell>
+                <SourceBadge
+                  label={k.subscriptionId != null ? (subscriptionLabels.get(k.subscriptionId) ?? "套餐") : "余额"}
+                />
+              </TableCell>
               <TableCell>
                 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{k.keyPreview}</code>
               </TableCell>
@@ -145,6 +158,21 @@ function StatusBadge({ status }: { status: number }) {
   return (
     <span className="inline-flex items-center rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
       已吊销
+    </span>
+  );
+}
+
+function SourceBadge({ label }: { label: string }) {
+  const isBalance = label === "余额";
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+        isBalance
+          ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+          : "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+      }`}
+    >
+      {label}
     </span>
   );
 }
@@ -312,13 +340,17 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
   );
 }
 
-export function CreateKeyDialog() {
+export function CreateKeyDialog({
+  subscriptions,
+}: {
+  readonly subscriptions: ReadonlyArray<{ id: number; label: string }>;
+}) {
   const [open, setOpen] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
-    defaultValues: { name: "", remark: "" },
+    defaultValues: { name: "", remark: "", subscriptionId: null },
   });
 
   return (
@@ -371,6 +403,30 @@ export function CreateKeyDialog() {
                     <FieldLabel htmlFor="key-name">名称</FieldLabel>
                     <Input id="key-name" placeholder="例如 production" {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="subscriptionId"
+                render={({ field }) => (
+                  <Field>
+                    <FieldLabel htmlFor="key-source">计费来源</FieldLabel>
+                    <select
+                      id="key-source"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(e.target.value === "" ? null : Number(e.target.value))
+                      }
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <option value="">余额（扣余额）</option>
+                      {subscriptions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}（扣套餐额度）
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                 )}
               />
