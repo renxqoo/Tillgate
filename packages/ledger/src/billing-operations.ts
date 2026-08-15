@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { auditLogs, billingRequests, channels, fundOperations, users, userSubscriptions } from '@ai-gateway/db/schema';
-import { toDecimal, toStorage } from '@ai-gateway/money';
+import { auditLogs, billingRequests, fundOperations } from '@ai-gateway/db/schema';
 import { validateReceipt } from './billing-flow.js';
+import { releaseReservedAmounts } from './release.js';
 import type { BillingQuote, BillingRequestStatus, UsageReceipt } from './types.js';
 
 export interface BillingReviewCase {
@@ -83,7 +83,8 @@ function assertCommand(input: OperationBase): void {
   }
 }
 
-/** 释放一个请求的三类预扣（余额在途 / 套餐在途 / 渠道在途），供 resolve 与 abandon 共用。 */
+/** 释放一个请求的三类预扣（余额在途 / 套餐在途 / 渠道在途），供 resolve 与 abandon 共用。
+ *  唯一实现在 release.ts，此处仅注入本模块的错误语义。 */
 async function releaseReservations(
   tx: Parameters<Parameters<Db['transaction']>[0]>[0],
   row: {
@@ -95,51 +96,9 @@ async function releaseReservations(
     channelReservedAmount: string | null;
   },
 ): Promise<void> {
-  const planPart = row.planReservedAmount ?? '0';
-  const paygPart = toStorage(toDecimal(row.reservedAmount).minus(toDecimal(planPart)));
-  if (toDecimal(paygPart).gt(0)) {
-    const [balance] = await tx
-      .update(users)
-      .set({
-        reservedBalance: sql`${users.reservedBalance} - ${paygPart}::numeric`,
-        updatedAt: sql`clock_timestamp()`,
-      })
-      .where(
-        sql`${users.id} = ${row.userId}
-            and ${users.reservedBalance} >= ${paygPart}::numeric`,
-      )
-      .returning({ value: users.balance });
-    if (!balance) throw new BillingOperationError('not_found');
-  }
-  // 释放套餐在途敞口（若有）
-  if (row.subscriptionId != null && toDecimal(planPart).gt(0)) {
-    const subReleased = await tx
-      .update(userSubscriptions)
-      .set({
-        reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
-      })
-      .where(
-        sql`${userSubscriptions.id} = ${row.subscriptionId}
-            and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
-      )
-      .returning({ id: userSubscriptions.id });
-    if (subReleased.length === 0) throw new BillingOperationError('state_conflict');
-  }
-  // 释放渠道在途敞口（若有）
-  if (row.channelId != null && row.channelReservedAmount != null) {
-    const channelReleased = await tx
-      .update(channels)
-      .set({
-        upstreamReserved: sql`${channels.upstreamReserved} - ${row.channelReservedAmount}::numeric`,
-        updatedAt: sql`clock_timestamp()`,
-      })
-      .where(
-        sql`${channels.id} = ${row.channelId}
-            and ${channels.upstreamReserved} >= ${row.channelReservedAmount}::numeric`,
-      )
-      .returning({ id: channels.id });
-    if (channelReleased.length === 0) throw new BillingOperationError('state_conflict');
-  }
+  await releaseReservedAmounts(tx, row, (dimension) =>
+    new BillingOperationError(dimension === 'user' ? 'not_found' : 'state_conflict'),
+  );
 }
 
 export function createBillingOperations(input: { db: Db; clock?: () => Date }): BillingOperations {

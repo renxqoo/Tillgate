@@ -1,10 +1,12 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import {
   apiKeys,
   apps,
   fundOperations,
+  orgMembers,
+  organizations,
   plans,
   redeemBatches,
   redeemCodes,
@@ -75,6 +77,8 @@ export type RedeemResult =
 export interface SubscribeResult {
   userId: number;
   subscriptionId: number;
+  /** 团队套餐购买/续费/变更时挂靠的组织（T3：org 在账本事务内创建/复用） */
+  orgId: number | null;
   planId: number;
   planName: string;
   quantity: number;
@@ -102,7 +106,8 @@ export class LedgerError extends Error {
       | 'invalid_quantity'
       | 'not_a_pack'
       | 'seats_not_allowed'
-      | 'enterprise_required',
+      | 'enterprise_required'
+      | 'plan_not_purchasable',
     message: string = code,
   ) {
     super(message);
@@ -136,6 +141,8 @@ export interface Ledger {
     planId: number;
     quantity?: number;
     orgId?: number | null;
+    /** true = 团队套餐购买时在账本事务内「复用或创建」组织（T3：org 不再由路由层预建） */
+    ensureOrg?: boolean;
     adminId?: number | null;
   }): Promise<SubscribeResult>;
   /** 续费指定订阅：按原席位扣余额、旧订阅转到期、新订阅期顺延（到期后可再续）。
@@ -173,7 +180,7 @@ export interface Ledger {
     scope?: 'all' | 'user' | 'usage';
     userId?: number;
     recentDays?: number;
-  }): Promise<{ checkedUsers: number; discrepancies: number }>;
+  }): Promise<{ checkedUsers: number; checkedChannels?: number; discrepancies: number }>;
 }
 
 type StoredMutation = Omit<BalanceMutationResult, 'replayed'>;
@@ -365,6 +372,8 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
     subscriptionId: number | null;
     quantity: number | null;
     orgId: number | null;
+    /** 团队套餐购买时在事务内复用/创建组织（T3：org 与订阅同生共死，重放不刷行） */
+    ensureOrg?: boolean;
     adminId: number | null;
   }): Promise<SubscribeResult> {
     const fp = fingerprint({
@@ -398,11 +407,18 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         let planId = input.planId;
         let quantity = input.quantity ?? 1;
         let startAt = now;
+        // 续费时从旧订阅继承的组织归属（R3-1）；购买时以 input.orgId 为准
+        let renewOrgId: number | null = null;
 
         if (input.kind === 'subscription.renew') {
+          // 只允许对有效订阅续费（R3-3：status=0 过滤，已取消/已被替换的订阅不得复活）；
+          // orgId 随订阅继承（R3-1：组织订阅续费不得降级为个人订阅）。
           const sub = await tx.query.userSubscriptions.findFirst({
-            where: eq(userSubscriptions.id, input.subscriptionId ?? 0),
-            columns: { userId: true, planId: true, endAt: true, quantity: true },
+            where: and(
+              eq(userSubscriptions.id, input.subscriptionId ?? 0),
+              eq(userSubscriptions.status, 0),
+            ),
+            columns: { userId: true, planId: true, endAt: true, quantity: true, orgId: true },
           });
           if (!sub) throw new LedgerError('no_subscription');
           // 用户自助续费：校验订阅归属（管理员不传 userId，不限归属）
@@ -412,10 +428,11 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           userId = sub.userId;
           planId = sub.planId;
           quantity = sub.quantity; // 续费沿用原席位
+          renewOrgId = sub.orgId;
           // 顺延：到期后续费从 now 起，未到期续费从旧 end 起
           startAt = sub.endAt > now ? sub.endAt : now;
-          // 旧订阅转到期（幂等：已非有效的跳过）
-          await tx
+          // 旧订阅转到期；0 行命中 = 状态已被并发改变（如取消），不得继续
+          const expired = await tx
             .update(userSubscriptions)
             .set({ status: 1 })
             .where(
@@ -423,7 +440,9 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
                 eq(userSubscriptions.id, input.subscriptionId ?? 0),
                 eq(userSubscriptions.status, 0),
               ),
-            );
+            )
+            .returning({ id: userSubscriptions.id });
+          if (expired.length === 0) throw new LedgerError('no_subscription');
         } else {
           if (!Number.isInteger(quantity) || quantity < 1) {
             throw new LedgerError('invalid_quantity');
@@ -453,6 +472,10 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         });
         if (!plan) throw new LedgerError('plan_not_found');
         if (plan.status !== 0) throw new LedgerError('plan_disabled');
+        // 自助购买闸门：上架套餐必须正价——price<=0 的「套餐」走余额闸门恒真，
+        // 等于免费额度印刷机（R2：e2e 实测 ¥0 白得 ¥10 亿额度）。零价套餐只允许
+        // 存在于非上架状态（管理端创建/更新已强制 price>0，此处为资金侧最后防线）。
+        if (toDecimal(plan.price).lte(0)) throw new LedgerError('plan_not_purchasable');
         if (plan.kind !== 'subscription') throw new LedgerError('not_a_pack');
         if (quantity > 1 && !plan.allowSeats) throw new LedgerError('seats_not_allowed');
         if (plan.allowSeats) {
@@ -462,6 +485,23 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           });
           if (!userRow) throw new LedgerError('user_not_found');
           if (!userRow.isEnterprise) throw new LedgerError('enterprise_required');
+        }
+        // T3：团队套餐的组织在账本事务内创建（与订阅同生共死）——路由层预建会在
+        // 购买失败时留下孤儿 org，且重放时新 org 改变 fingerprint → 409（幂等性失效）。
+        // 幂等重放在 fund_operations 提前返回（携带首次 orgId），失败回滚则 org 一并消失。
+        let orgId = input.orgId;
+        if (input.ensureOrg && orgId == null && userId != null && plan.allowSeats) {
+          const [org] = await tx
+            .insert(organizations)
+            .values({ name: `组织-${randomUUID().slice(0, 6)}`, ownerUserId: userId })
+            .returning({ id: organizations.id });
+          orgId = org!.id;
+          await tx.insert(orgMembers).values({
+            orgId: org!.id,
+            userId,
+            role: 'owner',
+            status: 0,
+          });
         }
 
         const endAt = new Date(startAt.getTime() + Number(plan.periodDays) * 86_400_000);
@@ -500,7 +540,8 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             reservedAmount: '0',
             quantity,
             price,
-            orgId: input.orgId,
+            // 续费继承旧订阅的组织归属（R3-1）；购买用事务内复用/创建的 orgId（T3）
+            orgId: input.kind === 'subscription.renew' ? renewOrgId : orgId,
             status: 0,
           })
           .returning({ id: userSubscriptions.id });
@@ -535,6 +576,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         const stored: Omit<SubscribeResult, 'replayed'> = {
           userId: userId!,
           subscriptionId: sub!.id,
+          orgId: input.kind === 'subscription.renew' ? renewOrgId : orgId,
           planId: planId!,
           planName: plan.name,
           quantity,
@@ -814,6 +856,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         subscriptionId: null,
         quantity: input.quantity ?? 1,
         orgId: input.orgId ?? null,
+        ensureOrg: input.ensureOrg ?? false,
         adminId: input.adminId ?? null,
       });
     },
@@ -832,8 +875,12 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
     },
 
     async changeSubscription(input) {
+      // 指纹含发起者（T2 修复）：幂等 receipt 绑定 actor——跨用户用相同键重放
+      // 必须是冲突（409），而不是把别人的余额快照（balanceBefore/After）回给攻击者。
       const fp = fingerprint({
         kind: 'subscription.change',
+        userId: input.userId ?? null,
+        adminId: input.adminId ?? null,
         subscriptionId: input.subscriptionId,
         targetPlanId: input.targetPlanId,
         quantity: input.quantity,
@@ -871,6 +918,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             columns: {
               userId: true,
               planId: true,
+              orgId: true,
               quotaAmount: true,
               usedAmount: true,
               reservedAmount: true,
@@ -898,6 +946,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           });
           if (!target) throw new LedgerError('plan_not_found');
           if (target.status !== 0) throw new LedgerError('plan_disabled');
+          if (toDecimal(target.price).lte(0)) throw new LedgerError('plan_not_purchasable');
           if (target.kind !== 'subscription') throw new LedgerError('not_a_pack');
 
           // 只能升不能降：sort_order 不降、席位不缩容，且至少一项变化。（先判层级，再判席位能力）
@@ -933,11 +982,14 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             ? newTotalPrice.minus(remainingValue)
             : new Decimal(0);
 
-          // 旧订阅转到期（保留 used/reserved，供在途请求结算）
-          await tx
+          // 旧订阅转到期（保留 used/reserved，供在途请求结算）；
+          // 0 行命中 = 状态已被并发改变（如取消），继续按剩余价值抵扣等于给已作废额度退钱 → 拒绝
+          const expired = await tx
             .update(userSubscriptions)
             .set({ status: 1 })
-            .where(and(eq(userSubscriptions.id, input.subscriptionId), eq(userSubscriptions.status, 0)));
+            .where(and(eq(userSubscriptions.id, input.subscriptionId), eq(userSubscriptions.status, 0)))
+            .returning({ id: userSubscriptions.id });
+          if (expired.length === 0) throw new LedgerError('no_subscription');
 
           // 流水的余额快照必须是用户真实余额：免费升级（diff=0）也要读库，绝不能用订阅价格顶替。
           let balanceAfter: string;
@@ -984,9 +1036,22 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
               reservedAmount: '0',
               quantity: input.quantity,
               price: toStorage(newTotalPrice),
+              // 组织归属随订阅继承（R3-2b：升档不得把组织订阅变个人订阅）
+              orgId: current.orgId,
               status: 0,
             })
             .returning({ id: userSubscriptions.id });
+
+          // 升档同样要把绑定旧订阅的凭证改绑到新订阅（R3-2：与续费同语义——
+          // 用户付了差价后，既有 Key/App 不应全员 402 subscription_required）。
+          await tx
+            .update(apiKeys)
+            .set({ subscriptionId: sub!.id })
+            .where(eq(apiKeys.subscriptionId, input.subscriptionId));
+          await tx
+            .update(apps)
+            .set({ subscriptionId: sub!.id })
+            .where(eq(apps.subscriptionId, input.subscriptionId));
 
           const [entry] = await tx
             .insert(transactions)
@@ -1006,6 +1071,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           const stored: Omit<SubscribeResult, 'replayed'> = {
             userId: current.userId,
             subscriptionId: sub!.id,
+            orgId: current.orgId,
             planId: input.targetPlanId,
             planName: target.name,
             quantity: input.quantity,
@@ -1135,6 +1201,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         const stored: Omit<SubscribeResult, 'replayed'> = {
           userId: input.userId,
           subscriptionId: 0,
+          orgId: null,
           planId: input.packId,
           planName: pack.name,
           quantity: 1,
@@ -1173,7 +1240,12 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
     },
 
     async cancelSubscription(input) {
-      const fp = fingerprint({ kind: 'subscription.cancel', subscriptionId: input.subscriptionId });
+      const fp = fingerprint({
+        kind: 'subscription.cancel',
+        userId: null,
+        adminId: input.adminId ?? null,
+        subscriptionId: input.subscriptionId,
+      });
       const result = await db.transaction(async (tx) => {
         const inserted = await tx
           .insert(fundOperations)

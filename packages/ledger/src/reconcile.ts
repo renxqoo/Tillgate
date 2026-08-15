@@ -32,6 +32,8 @@ const EXPENSE_TYPES = ['consume'] as const;
 
 export interface ReconcileResult {
   checkedUsers: number;
+  /** 渠道在途敞口校验覆盖的渠道数（R4：接入渠道维度对账） */
+  checkedChannels?: number;
   discrepancies: number;
 }
 
@@ -137,7 +139,35 @@ export async function reconcileAll(db: Db, recentDays = 7): Promise<ReconcileRes
     if (!usageOk) discrepancies += 1;
     if (!subscriptionOk) discrepancies += 1;
   }
-  return { checkedUsers: recentUsers.rows.length, discrepancies };
+  const channelsResult = await reconcileChannels(db, recentDays);
+  return {
+    checkedUsers: recentUsers.rows.length,
+    checkedChannels: channelsResult.checkedChannels,
+    discrepancies: discrepancies + channelsResult.discrepancies,
+  };
+}
+
+/**
+ * 渠道维度批量对账（R4 接线）：覆盖「近 N 天有账单」或「当前在途敞口非 0」的渠道。
+ * 此前 reconcileChannelReserved 从未被调度，渠道敞口泄漏只能靠人工发现。
+ */
+export async function reconcileChannels(
+  db: Db,
+  recentDays = 7,
+): Promise<{ checkedChannels: number; discrepancies: number }> {
+  const candidates = await db.execute<{ channel_id: number }>(sql`
+    select distinct channel_id from billing_requests
+      where channel_id is not null
+        and created_at >= now() - (${recentDays}::text || ' days')::interval
+    union
+    select id as channel_id from channels where upstream_reserved <> 0
+  `);
+  let discrepancies = 0;
+  for (const row of candidates.rows) {
+    const ok = await reconcileChannelReserved(db, Number(row.channel_id));
+    if (!ok) discrepancies += 1;
+  }
+  return { checkedChannels: candidates.rows.length, discrepancies };
 }
 
 /**
@@ -251,12 +281,14 @@ export async function reconcileChannelReserved(db: Db, channelId: number): Promi
       and(
         eq(billingRequests.channelId, channelId),
         inArray(billingRequests.status, [
+          // dead 仍持有渠道敞口直到 abandonDead，属合法在途，缺失会造成假差异
           'authorized',
           'in_flight',
           'settlement_pending',
           'processing',
           'retry_wait',
           'uncertain',
+          'dead',
         ]),
       ),
     );

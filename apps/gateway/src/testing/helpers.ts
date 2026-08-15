@@ -7,7 +7,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, sql } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import {
   users,
@@ -254,10 +254,31 @@ export async function cleanupTestData(
       .delete(userSubscriptions)
       .where(eq(userSubscriptions.userId, userId))
       .catch(() => {});
+    // 先收集该用户账单引用的渠道敞口（删除账单后用于同步清零渠道投影，
+    // R4 教训：只删账单不平 channels.upstream_reserved 会留下无主敞口）
+    const channelExposure = await db
+      .select({
+        channelId: billingRequests.channelId,
+        total: sql<string>`coalesce(sum(${billingRequests.channelReservedAmount}),0)::numeric`,
+      })
+      .from(billingRequests)
+      .where(eq(billingRequests.userId, userId))
+      .groupBy(billingRequests.channelId)
+      .catch(() => [] as Array<{ channelId: number | null; total: string }>);
     await db
       .delete(billingRequests)
       .where(eq(billingRequests.userId, userId))
       .catch(() => {});
+    for (const exp of channelExposure) {
+      if (exp.channelId == null) continue;
+      await db
+        .update(channels)
+        .set({
+          upstreamReserved: sql`greatest(${channels.upstreamReserved} - ${exp.total}::numeric, 0)`,
+        })
+        .where(eq(channels.id, exp.channelId))
+        .catch(() => {});
+    }
     // 测试清理会绕过账务状态机直接删除预留明细，必须同步清理投影。
     // 生产代码禁止这种写法，只能通过 billing signal/settlement 转移状态。
     await db
@@ -299,7 +320,9 @@ export async function cleanupTestData(
     await db
       .delete(channels)
       .where(eq(channels.id, ids.channelId))
-      .catch(() => {});
+      .catch(() => {
+        /* 渠道删除失败不阻塞清理（残留由名称前缀识别） */
+      });
   if (ids?.providerId)
     await db
       .delete(providers)

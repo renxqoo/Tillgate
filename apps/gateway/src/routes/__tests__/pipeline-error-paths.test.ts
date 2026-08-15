@@ -186,7 +186,7 @@ describe('管线失败路径', () => {
             }),
           ).toMatchObject({ status: 'settled' });
         },
-        { timeout: 3_000, interval: 25 },
+        { timeout: 10_000, interval: 50 }, // 全量并行时真实 Worker 的结算可能 >3s
       );
       const settledUser = await db.query.users.findFirst({
         where: (table, { eq: equals }) => equals(table.id, userId),

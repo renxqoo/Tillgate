@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
-import { billingRequests, channels, users, userSubscriptions } from '@ai-gateway/db/schema';
-import { toDecimal, toStorage } from '@ai-gateway/money';
+import { billingRequests } from '@ai-gateway/db/schema';
+import { toDecimal } from '@ai-gateway/money';
 import { settleClaim } from './settle.js';
+import { releaseReservedAmounts } from './release.js';
 import type {
   BillingEffects,
   BillingInventory,
@@ -308,7 +309,6 @@ export function createBillingProcessor({
     },
 
     async recoverOnce() {
-      const now = clock();
       const recoveryBatchSize = options.recoveryBatchSize ?? options.batchSize;
       const result: RecoveryRunResult = { released: 0, uncertain: 0, claimsRequeued: 0 };
 
@@ -344,51 +344,24 @@ export function createBillingProcessor({
         `);
         result.released = released.rows.length;
         for (const row of released.rows) {
-          const planPart = row.plan_reserved_amount ?? '0';
-          const paygPart = toStorage(toDecimal(row.amount).minus(toDecimal(planPart)));
-          if (toDecimal(paygPart).gt(0)) {
-            const reservation = await tx
-              .update(users)
-              .set({
-                reservedBalance: sql`${users.reservedBalance} - ${paygPart}::numeric`,
-                updatedAt: now,
-              })
-              .where(
-                sql`${users.id} = ${row.user_id}
-                    and ${users.reservedBalance} >= ${paygPart}::numeric`,
-              )
-              .returning({ id: users.id });
-            if (reservation.length === 0) throw new Error('billing_reservation_invariant');
-          }
-          // 释放套餐在途敞口（若有）
-          if (row.subscription_id != null && toDecimal(planPart).gt(0)) {
-            const subReleased = await tx
-              .update(userSubscriptions)
-              .set({
-                reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
-              })
-              .where(
-                sql`${userSubscriptions.id} = ${row.subscription_id}
-                    and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
-              )
-              .returning({ id: userSubscriptions.id });
-            if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
-          }
-          // 释放渠道在途敞口（若有：reserve 后未触达上游即过期）
-          if (row.channel_id != null && row.channel_reserved_amount != null) {
-            const channelReleased = await tx
-              .update(channels)
-              .set({
-                upstreamReserved: sql`${channels.upstreamReserved} - ${row.channel_reserved_amount}::numeric`,
-                updatedAt: now,
-              })
-              .where(
-                sql`${channels.id} = ${row.channel_id}
-                    and ${channels.upstreamReserved} >= ${row.channel_reserved_amount}::numeric`,
-              )
-              .returning({ id: channels.id });
-            if (channelReleased.length === 0) throw new Error('channel_reservation_invariant');
-          }
+          // 三类预扣投影同步释放（唯一实现 release.ts），错误语义保持原 invariant 命名
+          await releaseReservedAmounts(
+            tx,
+            {
+              userId: row.user_id,
+              reservedAmount: row.amount,
+              planReservedAmount: row.plan_reserved_amount,
+              subscriptionId: row.subscription_id,
+              channelId: row.channel_id,
+              channelReservedAmount: row.channel_reserved_amount,
+            },
+            (dimension) =>
+              new Error(
+                dimension === 'user'
+                  ? 'billing_reservation_invariant'
+                  : `${dimension}_reservation_invariant`,
+              ),
+          );
         }
       });
 
@@ -415,7 +388,7 @@ export function createBillingProcessor({
         update billing_requests b set
           status = 'retry_wait', revision = b.revision + 1, next_settlement_at = clock_timestamp(),
           claim_owner = null, claim_token = null, claim_until = null,
-          failure_class = 'claim_expired', last_error = 'settlement claim lease expired', updated_at = ${now}
+          failure_class = 'claim_expired', last_error = 'settlement claim lease expired', updated_at = clock_timestamp()
         from candidates c where b.request_id = c.request_id and b.status = 'processing'
         returning b.request_id
       `);

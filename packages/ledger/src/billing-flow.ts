@@ -28,6 +28,7 @@ import type {
   ReserveChannelCommand,
   UsageReceipt,
 } from './types.js';
+import { releaseReservedAmounts } from './release.js';
 
 export class BillingConfigurationError extends Error {
   constructor(
@@ -184,7 +185,16 @@ function leaseUntil(now: Date, leaseMs: number): Date {
 
 function calculateRequired(quote: BillingQuote, limit: string): Decimal {
   if (quote.candidates.length === 0) throw new BillingConfigurationError('invalid_quote');
-  if (quote.explicitlyFree) return new Decimal(0);
+  // 免费口径一致性（R6）：explicitlyFree 是「授权 0 元、不校验余额」的开关，
+  // 若候选价格非全零，结算会按价格实扣——授权与结算两套口径。结构上拒绝该矛盾配置。
+  if (quote.explicitlyFree) {
+    const charged = quote.candidates.some((candidate) => {
+      const prices = [candidate.inputPrice, candidate.outputPrice, candidate.cacheInputPrice];
+      return prices.some((price) => toDecimal(price).gt(0));
+    });
+    if (charged) throw new BillingConfigurationError('invalid_quote');
+    return new Decimal(0);
+  }
 
   let maximum = new Decimal(0);
   for (const candidate of quote.candidates) {
@@ -691,7 +701,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
         }
 
         // 目标渠道：按「余额 = 进货额度（当前余额，结算已扣减）- 在途敞口」校验是否有钱（所有渠道统一）。
-        // 余额不足本次上游预估 → 拒绝（没钱）。
+        // 此读仅为快速路径与提示信息；权威闸门在下方 UPDATE 的 WHERE（R4：check-then-act 并发超扣）。
         const ch = await tx.query.channels.findFirst({
           where: eq(channels.id, command.channelId),
           columns: { upstreamBudget: true, upstreamReserved: true },
@@ -725,22 +735,48 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           switched = true;
         }
 
-        await tx
+        // 原子预留：余额守卫必须内联在 UPDATE 的 WHERE——并发对手在检查与写入之间
+        // 占走余额时此条件更新命中 0 行 → 拒绝（整个事务原子回退，敞口不会虚增）。
+        const reservedNow = await tx
           .update(channels)
           .set({
             upstreamReserved: sql`${channels.upstreamReserved} + ${amount.toString()}::numeric`,
             updatedAt: now,
           })
-          .where(eq(channels.id, command.channelId));
-        await tx
+          .where(
+            sql`${channels.id} = ${command.channelId}
+                and ${channels.upstreamBudget} - ${channels.upstreamReserved} >= ${amount.toString()}::numeric`,
+          )
+          .returning({
+            budget: channels.upstreamBudget,
+            reserved: channels.upstreamReserved,
+          });
+        if (reservedNow.length === 0) {
+          return { allowed: false, remaining: '0', switched: false };
+        }
+        // 状态守卫：账单必须仍在可预留状态。与过期回收（recoverOnce）竞态时，
+        // 终态行上不得落渠道敞口——0 行命中则抛错回滚整个事务（含上面的敞口递增）。
+        const claimed = await tx
           .update(billingRequests)
           .set({
             channelId: command.channelId,
             channelReservedAmount: amount.toString(),
             updatedAt: now,
           })
-          .where(eq(billingRequests.requestId, command.requestId));
-        return { allowed: true, remaining: remaining.minus(amount).toString(), switched };
+          .where(
+            and(
+              eq(billingRequests.requestId, command.requestId),
+              inArray(billingRequests.status, ['authorized', 'in_flight']),
+            ),
+          )
+          .returning({ requestId: billingRequests.requestId });
+        if (claimed.length === 0) {
+          throw new BillingStateConflictError(command.requestId, 'reserve target not reservable');
+        }
+        const remainingAfter = toDecimal(reservedNow[0]!.budget).minus(
+          toDecimal(reservedNow[0]!.reserved),
+        );
+        return { allowed: true, remaining: remainingAfter.toString(), switched };
       });
     },
 
@@ -912,44 +948,18 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
             )
             .returning({
               userId: billingRequests.userId,
-              amount: billingRequests.reservedAmount,
+              reservedAmount: billingRequests.reservedAmount,
               planReservedAmount: billingRequests.planReservedAmount,
               subscriptionId: billingRequests.subscriptionId,
               channelId: billingRequests.channelId,
               channelReservedAmount: billingRequests.channelReservedAmount,
             });
           if (row.length === 0) return null;
-          const row0 = row[0]!;
-          const planPart = row0.planReservedAmount ?? '0';
-          // 释放套餐在途敞口（若有）
-          if (row0.subscriptionId != null && toDecimal(planPart).gt(0)) {
-            const subReleased = await tx
-              .update(userSubscriptions)
-              .set({
-                reservedAmount: sql`${userSubscriptions.reservedAmount} - ${planPart}::numeric`,
-              })
-              .where(
-                sql`${userSubscriptions.id} = ${row0.subscriptionId}
-                    and ${userSubscriptions.reservedAmount} >= ${planPart}::numeric`,
-              )
-              .returning({ id: userSubscriptions.id });
-            if (subReleased.length === 0) throw new Error('subscription_reservation_invariant');
-          }
-          // 释放渠道在途敞口（若有）
-          if (row[0]!.channelId != null && row[0]!.channelReservedAmount != null) {
-            const channelReleased = await tx
-              .update(channels)
-              .set({
-                upstreamReserved: sql`${channels.upstreamReserved} - ${row[0]!.channelReservedAmount}::numeric`,
-                updatedAt: now,
-              })
-              .where(
-                sql`${channels.id} = ${row[0]!.channelId}
-                    and ${channels.upstreamReserved} >= ${row[0]!.channelReservedAmount}::numeric`,
-              )
-              .returning({ id: channels.id });
-            if (channelReleased.length === 0) throw new Error('channel_reservation_invariant');
-          }
+          // 三类预扣投影同步释放（余额在途/套餐在途/渠道在途）——唯一实现见 release.ts。
+          // R1 回归：此处曾遗漏余额部分，导致 PAYG 预占永久冻结。
+          await releaseReservedAmounts(tx, row[0]!, (dimension) => {
+            throw new Error(`${dimension}_reservation_invariant`);
+          });
           return row[0]!;
         });
         if (released) {

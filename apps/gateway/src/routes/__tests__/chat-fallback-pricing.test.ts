@@ -226,7 +226,8 @@ describe('候选定价：预扣按最贵候选 + 计量携带实际成功渠道�
         columns: { reservedAmount: true, status: true, receipt: true, requestId: true },
       });
       expect(billingRow).toBeDefined();
-      expect(['settlement_pending', 'settled']).toContain(billingRow?.status);
+      // processing = 共享环境里真实 worker 已抢先 claim（本测试断言的价格快照在 claim 前已写定）
+      expect(['settlement_pending', 'processing', 'settled']).toContain(billingRow?.status);
       expect(new Decimal(billingRow?.reservedAmount ?? '0').equals(expectedHold)).toBe(true);
 
       // 收据先落 DB；队列只收到 requestId。
