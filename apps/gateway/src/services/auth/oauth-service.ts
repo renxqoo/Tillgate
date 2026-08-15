@@ -43,19 +43,11 @@ export class OAuthService {
   ) {}
 
   async issueToken(clientId: string, clientSecret: string, ip: string): Promise<OAuthResult> {
-    // 爆破防护：检查是否已锁定
+    // 爆破计数（R5-1：锁定判断只作用于「错误凭证」路径——client_id 是公开标识，
+    // 任何人 10 次错误 secret 就把合法客户的令牌交换打断 10 分钟属于拒绝服务；
+    // 正确凭证无条件豁免，语义与登录路径的「正确密码豁免」一致）
     const attemptKey = `oauth_attempts:${clientId}`;
     const attempts = parseInt((await this.redis.get(attemptKey)) ?? '0', 10);
-    if (attempts >= OAUTH_MAX_ATTEMPTS) {
-      const ttl = await this.redis.ttl(attemptKey);
-      return {
-        ok: false,
-        status: 429,
-        error: 'rate_limit_exceeded',
-        description: `认证失败次数过多，请 ${Math.max(1, ttl)} 秒后重试`,
-        retryAfterSec: Math.max(1, ttl),
-      };
-    }
 
     const app = await this.db.query.apps.findFirst({
       where: eq(apps.clientId, clientId),
@@ -68,6 +60,16 @@ export class OAuthService {
       app?.clientSecretHash ?? createHash('sha256').update('nonexistent-app-dummy').digest('hex');
     const secretMatch = safeEqualHex(secretHash, expectedHash);
     if (!app || !secretMatch) {
+      if (attempts >= OAUTH_MAX_ATTEMPTS) {
+        const ttl = await this.redis.ttl(attemptKey);
+        return {
+          ok: false,
+          status: 429,
+          error: 'rate_limit_exceeded',
+          description: `认证失败次数过多，请 ${Math.max(1, ttl)} 秒后重试`,
+          retryAfterSec: Math.max(1, ttl),
+        };
+      }
       // 失败计数（INCR + TTL，首次设过期）
       const newAttempts = await this.redis.incr(attemptKey);
       if (newAttempts === 1) await this.redis.expire(attemptKey, OAUTH_LOCKOUT_TTL);

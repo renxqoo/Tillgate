@@ -87,6 +87,8 @@ export async function verifyJwt(token: string, jwtSecret: string): Promise<Verif
     const { payload } = await jwtVerify(token, secretKey(jwtSecret), {
       issuer: ISSUER,
       audience: AUDIENCE,
+      // 算法白名单：oct 密钥默认还接受 HS384/512——签名族必须显式唯一
+      algorithms: ['HS256'],
     });
     const parsed = payloadSchema.safeParse(payload);
     if (!parsed.success) return { ok: false, error: 'invalid_token' };

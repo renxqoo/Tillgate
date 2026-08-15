@@ -272,7 +272,12 @@ export function loadWorkerEnv(env = process.env) {
 }
 
 export function loadAdminApiEnv(env = process.env) {
-  return resolveOtelDefaults(adminApiEnvSchema.parse(env));
+  const parsed = adminApiEnvSchema.parse(env);
+  // 双面密钥物理隔离：同值会让隔离退化为仅靠 iss+type 声明——配置期直接拒绝
+  if (env.JWT_SECRET && env.JWT_SECRET === parsed.ADMIN_JWT_SECRET) {
+    throw new Error('ADMIN_JWT_SECRET 不得与 JWT_SECRET 同值（双身份面必须物理隔离）');
+  }
+  return resolveOtelDefaults(parsed);
 }
 
 export function loadClientApiEnv(env = process.env) {

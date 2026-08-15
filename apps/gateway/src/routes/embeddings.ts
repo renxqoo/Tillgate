@@ -4,11 +4,13 @@ import type { AuthEnv } from '../middleware/auth.js';
 import { jsonBody } from '../lib/validation.js';
 import type { LlmPipeline } from '../services/pipeline/llm-pipeline.js';
 
-/** embeddings 请求 schema */
+/** embeddings 请求 schema（input 数组 ≤2048，对齐 OpenAI 批量上界，防内存放大） */
 const embedSchema = z
   .object({
-    model: z.string().min(1, 'model 不能为空'),
-    input: z.union([z.string(), z.array(z.string())]),
+    model: z.string().min(1, 'model 不能为空').max(64).refine((v) => !v.includes('\0'), {
+      message: 'model 含非法字符',
+    }),
+    input: z.union([z.string(), z.array(z.string()).max(2048)]),
   })
   .passthrough();
 

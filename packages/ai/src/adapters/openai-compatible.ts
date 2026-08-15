@@ -61,9 +61,12 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
       }
     }
 
-    // 2) map：参数改名（后到者覆盖同名目标）
+    // 2) map：参数改名（后到者覆盖同名目标）。
+    //    原型键防护：目标名命中 __proto__/constructor/prototype 时跳过——
+    //    out[to] 赋值会触发 __proto__ setter 改写本地原型（管理员误配置即畸形请求体）。
     for (const [name, { to }] of Object.entries(rules.map ?? {})) {
       if (name in out) {
+        if (to === '__proto__' || to === 'constructor' || to === 'prototype') continue;
         adjustments.push({ param: name, action: 'map', from: out[name], to });
         out[to] = out[name];
         delete out[name];

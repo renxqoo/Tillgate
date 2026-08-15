@@ -36,6 +36,9 @@ export interface SessionPayload {
   iss: string;
   exp: number;
   iat: number;
+  /** 签发时刻（毫秒）。R5-2：会话失效线需要亚秒精度——标准 iat 只有秒分辨率，
+   *  同一秒内「改密 vs 重新登录」无法区分。旧 token 无此声明时回退 iat×1000。 */
+  iatMs?: number;
 }
 
 export interface SessionSignInput {
@@ -64,7 +67,7 @@ function issuerFor(type: SessionType): string {
 export function signSession(input: SessionSignInput, jwtSecret: string): Promise<string> {
   const ttl = input.expiresInSeconds ?? SESSION_DEFAULT_TTL_S;
   const issuer = issuerFor(input.type);
-  return new SignJWT({ type: input.type })
+  return new SignJWT({ type: input.type, iatMs: Date.now() })
     .setProtectedHeader({ alg: ALG })
     .setIssuer(issuer)
     .setSubject(String(input.id))
@@ -94,6 +97,8 @@ export async function verifySession(
   try {
     const { payload } = await jwtVerify(token, secretKey(jwtSecret), {
       issuer: issuerFor(expectedType),
+      // 算法白名单：oct 密钥默认还接受 HS384/512——签名族必须显式唯一
+      algorithms: ['HS256'],
     });
     // 载荷 type 必须匹配（双保险：即便 issuer 碰巧相同，type 不符也拒绝）
     if ((payload as { type?: string }).type !== expectedType) {
@@ -108,6 +113,7 @@ export async function verifySession(
         iss: payload.iss!,
         exp: payload.exp!,
         iat: payload.iat!,
+        iatMs: (payload as { iatMs?: number }).iatMs,
       },
     };
   } catch (err) {

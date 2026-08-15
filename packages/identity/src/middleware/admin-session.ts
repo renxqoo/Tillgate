@@ -34,12 +34,18 @@ async function resolveAdminSession(
   if (!Number.isFinite(adminId) || adminId <= 0) return null;
   // 回查管理员状态（封禁/注销需即时生效）
   const row = await db
-    .select({ id: admins.id, status: admins.status })
+    .select({ id: admins.id, status: admins.status, sessionInvalidBefore: admins.sessionInvalidBefore })
     .from(admins)
     .where(eq(admins.id, adminId))
     .limit(1);
   if (row.length === 0) return null;
   if (row[0]!.status !== 0) return null;
+  // 会话失效线（R5-2）：管理面改密后旧 token 一律拒绝
+  // R5-2：毫秒精确失效线（iatMs 亚秒声明）；旧 token 无 iatMs 时回退秒级（部署期一次性收紧）
+  const issuedMs = result.payload.iatMs ?? result.payload.iat * 1000;
+  if (row[0]!.sessionInvalidBefore && issuedMs < row[0]!.sessionInvalidBefore.getTime()) {
+    return null;
+  }
   return { adminId: row[0]!.id };
 }
 

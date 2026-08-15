@@ -108,7 +108,6 @@ export interface TransactionRow {
   refType: string | null;
   refId: string | null;
   remark: string | null;
-  createdBy: string | null;
   createdAt: string;
 }
 

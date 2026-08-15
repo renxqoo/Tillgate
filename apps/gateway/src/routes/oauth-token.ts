@@ -60,6 +60,11 @@ export function oauthTokenRoutes(oauth: OAuthService): Hono {
     if (!clientId || !clientSecret) {
       return oauthError(c, 400, 'invalid_request', '缺少 client_id 或 client_secret');
     }
+    // T4：长度上界在任何 DB/Redis 访问之前——未鉴权接口不得把兆级 client_id
+    // 变成 Redis 键（oauth_attempts:{id}）与 PG 绑定参（内存放大）。
+    if (clientId.length > 64 || clientSecret.length > 256) {
+      return oauthError(c, 400, 'invalid_request', 'client_id 或 client_secret 超长');
+    }
 
     const result = await oauth.issueToken(clientId, clientSecret, ip);
     if (!result.ok) {
