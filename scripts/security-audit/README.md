@@ -1,4 +1,16 @@
-# AI Gateway 安全审计 · 回归测试集（7 处缺陷已全部修复）
+# AI Gateway 安全审计 · 回归测试集（三轮缺陷均已修复）
+
+> ✅ **第二轮审查（2026-08-15）**：全量复审发现 6 处缺陷（R1-R6），**同日全部修复**（TDD 红转绿，
+> （R1 预占泄漏 / R2 零价套餐资损 / R3 订阅生命周期 / R4 渠道预算并发 / R5 认证三缺陷 /
+> R6 is_free 口径分裂）+ 约 20 项静态发现，脚本编号 **18~21**，红测 4 文件 9 用例。
+> 明细 → [`FINDINGS-2.md`](./FINDINGS-2.md) · 账号 → [`ACCOUNTS-2.md`](./ACCOUNTS-2.md) ·
+> 总报告 → `docs/reviews/2026-08-15-security-money-concurrency-review.md`。
+>
+> ✅ **第三轮攻击审查（2026-08-15）**：交易/金额/幂等/越权/DoS 实弹攻击。实弹复现 4 项
+> （**T1 幂等键命名空间投毒→任意新用户登录永久 500** / T1b 超长键 500 / T3 席位购买
+> 幂等失效+孤儿 org / T4 1MB client_id 落 Redis）+ 静态实锤修复 8 项（T2 幂等指纹未绑
+> 操作者、T5 API 无 bodyLimit、T6×6 批量加固），同日全部修复。脚本 **22**（修复前 RED →
+> 修复后 GREEN ×2）。明细 → [`FINDINGS-3.md`](./FINDINGS-3.md) · 账号 → [`ACCOUNTS-3.md`](./ACCOUNTS-3.md)。
 
 针对**已运行的真实服务**（gateway `:8787` / admin-api `:8790` / client-api `:8791` / worker `:8792`，
 真实 PostgreSQL + Redis）发真实 HTTP 请求。审计共发现 **7 个缺陷 + 2 项正确性验证**，现已**全部按 TDD 修复**：
@@ -23,6 +35,11 @@ pnpm tsx scripts/security-audit/06-billing-settlement-minimax.mts      # ✅ exi
 pnpm tsx scripts/security-audit/07-auth-failure-no-rate-limit.mts      # ✅ exit 0
 pnpm tsx scripts/security-audit/08-concurrent-billing-minimax.mts      # ✅ exit 0（真实 MiniMax-M3）
 pnpm tsx scripts/security-audit/09-billing-review-flow.mts             # ✅ exit 0
+pnpm tsx scripts/security-audit/18-free-plan-self-subscribe.mts        # ✅ exit 0（R2 验收）
+pnpm tsx scripts/security-audit/19-oauth-lockout-session-nan.mts       # ✅ exit 0（R5 验收）
+pnpm tsx scripts/security-audit/20-boundary-billing-e2e.mts            # ✅ exit 0（临界值扣费 7 场景，S3 需等结算重试退避）
+pnpm tsx scripts/security-audit/21-real-models-reconciliation.mts      # ✅ exit 0（真实模型对账：deepseek 20 并发 / MiniMax-M3 / gpt-oss-20b）
+pnpm tsx scripts/security-audit/22-idempotency-oauth-attacks.mts       # ✅ exit 0（T1/T1b/T3/T4 验收）
 ```
 
 > 按指示：**所有脚本都不清理自建账号与测试流水**（账号/Key/App/请求日志/审计日志/账单全部保留）。
