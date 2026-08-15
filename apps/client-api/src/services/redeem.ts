@@ -21,8 +21,14 @@ export async function redeemCode(
   code: string,
 ): Promise<RedeemOutcome> {
   const key = `redeem:rl:${userId}`;
-  const n = await s.redis.incr(key);
-  if (n === 1) await s.redis.expire(key, RATE_LIMIT_WINDOW_S);
+  // 原子 INCR+EXPIRE（Lua）：incr/expire 两步在崩溃间隙会留下无 TTL 键 → 用户永久 429
+  const n = (await s.redis.eval(
+    'local v = redis.call("INCR", KEYS[1]) ' +
+      'if v == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end return v',
+    1,
+    key,
+    RATE_LIMIT_WINDOW_S,
+  )) as number;
   if (n > REDEEM_RATE_LIMIT_PER_MIN) {
     const ttl = await s.redis.ttl(key);
     return { kind: 'rate_limited', retryAfterSec: Math.max(1, ttl) };

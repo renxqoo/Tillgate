@@ -17,7 +17,7 @@ import { adjustChannel, rechargeChannel } from '../services/channel-funds.js';
 
 const rechargeSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.number().positive(),
+  amount: z.number().positive().finite(),
   orderNo: z.string().max(128).optional(),
   /** 凭证截图 base64 data URL（png/jpeg/webp/gif，≤ 配置上限） */
   voucherDataUrl: z.string().max(20_000_000).optional(),
@@ -26,7 +26,7 @@ const rechargeSchema = z.object({
 
 const adjustSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.coerce.number().refine((v) => v !== 0, '调账金额不能为 0'),
+  amount: z.coerce.number().finite().refine((v) => v !== 0, '调账金额不能为 0'),
   remark: z.string().max(255).optional(),
 });
 

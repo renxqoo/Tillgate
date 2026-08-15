@@ -170,6 +170,8 @@ describe('目录导入（真 PG）', () => {
       expect(body2.channelId).toBe(ch.id);
       const m1b = (await db.query.modelMappings.findFirst({ where: eq(modelMappings.externalName, ext1) }))!;
       expect(m1b.inputPrice).toBe('5.000000000000000000');
+      // R6 单一真相：价格更新为非零 → is_free 必须同步翻转为 false（免费由价格决定）
+      expect(m1b.isFree).toBe(false);
 
       // 外部名被其他真实模型占用 → 409（约束冲突在边界层翻译）
       const res3 = await app.request('/api/admin/model-catalog/import', {

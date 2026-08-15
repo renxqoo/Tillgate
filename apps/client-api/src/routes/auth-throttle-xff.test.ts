@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { Redis } from '@ai-gateway/http';
 import { createDb, type Db } from '@ai-gateway/db';
@@ -75,6 +75,8 @@ function login(app: ReturnType<typeof makeApp>, subject: string, password: strin
 }
 
 describe('client-api 登录限流：分布式爆破不再锁死账号（02 修复）', () => {
+  // 50 次真实登录（scrypt+DB）是 I/O 密集用例：全量并行跑时 >5s 默认超时，放宽到 20s
+  vi.setConfig({ testTimeout: 20_000 });
   it('固定 username + 每次换 XFF → 不再触发硬锁（全部 401），正确密码始终可用', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'xff-bypass-' + Date.now();

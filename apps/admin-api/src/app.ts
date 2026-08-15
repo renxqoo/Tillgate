@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import type { Db } from '@ai-gateway/db';
 import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
@@ -73,6 +74,8 @@ export function createApp(deps: AdminApiDeps): Hono {
   };
 
   const app = new Hono();
+  // T5：管理面请求体上限（32MB，兼容兑换券图 ≤20MB）
+  app.use('*', bodyLimit({ maxSize: 32 * 1024 * 1024 }));
   app.onError(errorHandler(deps.logger));
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
 

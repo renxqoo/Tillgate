@@ -174,7 +174,8 @@ export async function setUserPassword(
   }
 
   const hash = await hashPassword(password);
-  const update: Record<string, unknown> = { passwordHash: hash, updatedAt: new Date() };
+  // R5-2：重置密码即吊销该用户全部既有会话
+  const update: Record<string, unknown> = { passwordHash: hash, sessionInvalidBefore: new Date(), updatedAt: new Date() };
   if (cur[0]!.rateCardId === null) {
     const card = await s.db
       .select({ id: rateCards.id })

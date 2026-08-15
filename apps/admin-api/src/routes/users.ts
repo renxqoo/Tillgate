@@ -58,7 +58,8 @@ const setPasswordSchema = z.object({
 });
 
 /** 资金操作金额上限（元）：numeric(38,18) 安全范围内的人为业务上限 */
-const MONEY_MAX = 1e9;
+/** 资金操作金额上限（元）：numeric(38,18) 安全范围内的人为业务上限（全管理端统一口径） */
+export const MONEY_MAX = 1e9;
 
 const userAdjustSchema = z.object({
   /** 调账金额（元，小数），正=增加，负=扣减 */

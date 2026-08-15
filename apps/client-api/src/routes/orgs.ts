@@ -228,7 +228,13 @@ export function orgRoutes(s: ClientServices): Hono<ClientEnv> {
         await tx
           .insert(orgMembers)
           .values({ orgId: inv.orgId, userId: session.userId, role: 'member', status: 0 })
-          .onConflictDoNothing({ target: [orgMembers.orgId, orgMembers.userId] });
+          // 重入语义：成员被移除（status=1）后再次接受邀请 → 复活该行；
+          // 原先 onConflictDoNothing 会静默跳过但邀请仍标记 accepted（owner 以为成员回来了）
+          .onConflictDoUpdate({
+            target: [orgMembers.orgId, orgMembers.userId],
+            set: { status: 0, updatedAt: new Date() },
+            setWhere: eq(orgMembers.status, 1),
+          });
         await tx
           .update(orgInvitations)
           .set({ status: 1, acceptedByUserId: session.userId, updatedAt: new Date() })

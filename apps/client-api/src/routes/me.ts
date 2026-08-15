@@ -102,9 +102,22 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
       if (q.from) conds.push(gte(transactions.createdAt, new Date(q.from)));
       if (q.to) conds.push(lte(transactions.createdAt, new Date(q.to)));
       const where = and(...conds);
+      // 显式列（T6）：select() 全列会把 transactions.created_by（操作管理员 id）泄给终端用户
+      const txColumns = {
+        id: transactions.id,
+        userId: transactions.userId,
+        type: transactions.type,
+        amount: transactions.amount,
+        balanceBefore: transactions.balanceBefore,
+        balanceAfter: transactions.balanceAfter,
+        refType: transactions.refType,
+        refId: transactions.refId,
+        remark: transactions.remark,
+        createdAt: transactions.createdAt,
+      };
       const result = await paginateQuery(
         p,
-        s.db.select().from(transactions).where(where).orderBy(desc(transactions.createdAt)).limit(limit).offset(offset),
+        s.db.select(txColumns).from(transactions).where(where).orderBy(desc(transactions.createdAt)).limit(limit).offset(offset),
         s.db.select({ count: sql<number>`count(*)::int` }).from(transactions).where(where),
       );
       return c.json(result);

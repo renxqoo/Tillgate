@@ -14,8 +14,7 @@ import {
   parsePagination,
   query,
   recordAudit,
-  sha256Hex,
-} from '@ai-gateway/http';
+  sha256Hex, intParam } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -111,7 +110,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
     // 禁用应用（已签发 JWT 立即失效）
     .delete('/:id', async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const [disabled] = await s.db
         .update(apps)
         .set({ status: 1 })
@@ -134,7 +133,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
     // 轮换 secret（旧 secret 不能换新 JWT；不影响已签发 JWT）
     .post('/:id/rotate-secret', async (c) => {
       const session = c.get('session');
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const newSecret = generateClientSecret();
       // 事务 + FOR UPDATE 行锁，防并发 rotate 竞争（两请求各返回 secret，后者覆盖前者）
       const [updated] = await s.db.transaction(async (tx) => {

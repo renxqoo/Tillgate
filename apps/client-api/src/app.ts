@@ -3,6 +3,7 @@ import type { Db } from '@ai-gateway/db';
 import type { Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
+import { bodyLimit } from 'hono/body-limit';
 import { userSessionMiddleware, type ClientEnv } from '@ai-gateway/identity';
 import type { ClientApiConfig } from './config.js';
 import type { ClientServices } from './services/index.js';
@@ -43,6 +44,9 @@ export function createApp(deps: ClientApiDeps): Hono {
 
   const app = new Hono();
   app.onError(errorHandler(deps.logger));
+  // T5：内部面也设请求体上限（32MB，兼容兑换券图 ≤20MB）——无上限时
+  // /api/auth/login 一个未鉴权大 body 即可打爆堆内存。
+  app.use('*', bodyLimit({ maxSize: 32 * 1024 * 1024 }));
   app.get('/healthz', (c) => c.json({ status: 'ok' }));
 
   // 公开端点（不要求用户会话）

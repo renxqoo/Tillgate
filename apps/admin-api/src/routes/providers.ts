@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { providers } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { bumpRouteCache, HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
+import { bumpRouteCache, HttpError, jsonBody, recordAudit, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -57,7 +57,7 @@ export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .patch('/:id', jsonBody(providerUpdateSchema), async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
       const update: Record<string, unknown> = { updatedAt: new Date() };
       if (body.name !== undefined) update.name = body.name;
@@ -83,7 +83,7 @@ export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .delete('/:id', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const [retired] = await s.db
         .update(providers)
         .set({ status: 1 })

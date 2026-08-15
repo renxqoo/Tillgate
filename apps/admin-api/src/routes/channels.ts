@@ -4,7 +4,7 @@ import { providers, channels, modelMappings, modelChannels, usageLogs } from '@a
 import { z } from 'zod';
 import { decrypt, encrypt } from '@ai-gateway/core';
 import { createAi, defaultAiConfig, type ChannelDesc } from '@ai-gateway/ai';
-import { bumpRouteCache, HttpError, jsonBody, maskUpstreamKey, recordAudit } from '@ai-gateway/http';
+import { bumpRouteCache, HttpError, jsonBody, maskUpstreamKey, recordAudit, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { channelImportSchema, importChannels } from '../services/channels.js';
@@ -160,7 +160,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     // ====== 更新 ======
 
     .patch('/:id', jsonBody(channelUpdateSchema), async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
       const update: Record<string, unknown> = { updatedAt: new Date() };
       // 可更新字段（白名单）
@@ -202,7 +202,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     .delete('/:id', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const [retired] = await s.db
         .update(channels)
         .set({ status: 1, updatedAt: new Date() })
@@ -223,7 +223,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     // ====== 连通性测试 ======
 
     .post('/:id/test', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const ch = await s.db
         .select({ apiKeyEnc: channels.apiKeyEnc, baseUrlOverride: channels.baseUrlOverride, providerBaseUrl: providers.baseUrl, providerProtocol: providers.protocol })
         .from(channels)

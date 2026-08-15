@@ -123,7 +123,11 @@ export function adminAuthRoutesProtected(s: AdminServices): Hono<AdminEnv> {
       if (!ok) return c.json({ error: { message: '原密码错误', code: 'INVALID_CREDENTIALS' } }, 401);
 
       const newHash = await hashPassword(body.newPassword);
-      await s.db.update(admins).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(admins.id, a.id));
+      // R5-2：管理面改密即吊销全部既有管理会话
+      await s.db
+        .update(admins)
+        .set({ passwordHash: newHash, sessionInvalidBefore: new Date(), updatedAt: new Date() })
+        .where(eq(admins.id, a.id));
       await recordAudit(s.db, {
         actor: 'admin',
         adminId,

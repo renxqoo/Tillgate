@@ -4,10 +4,10 @@ import { channels, modelMappings, modelChannels, providers } from '@ai-gateway/d
 import { z } from 'zod';
 import { createAi, defaultAiConfig, type Ai, type ChannelDesc } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
-import { bumpRouteCache, HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
+import { intParam,  bumpRouteCache, HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
-import { replaceModelChannels } from '../services/models.js';
+import { assertFreePriceConsistency,  replaceModelChannels } from '../services/models.js';
 
 const billingPolicySchema = z.object({
   version: z.literal(1),
@@ -49,9 +49,9 @@ const modelCreateSchema = z
   .object({
     externalName: z.string().min(1),
     realModel: z.string().min(1),
-    inputPrice: z.coerce.number().optional(),
-    outputPrice: z.coerce.number().optional(),
-    cacheInputPrice: z.coerce.number().optional(),
+    inputPrice: z.coerce.number().min(0).optional(),
+    outputPrice: z.coerce.number().min(0).optional(),
+    cacheInputPrice: z.coerce.number().min(0).optional(),
     /** 显式免费模型（0 元授权）；付费模型必须 false。 */
     isFree: z.boolean().optional(),
     /** 上下文窗口（token 数）；null=未知 */
@@ -68,9 +68,9 @@ const modelUpdateSchema = z
     externalName: z.string().min(1).optional(),
     realModel: z.string().min(1).optional(),
     status: z.number().optional(),
-    inputPrice: z.coerce.number().optional(),
-    outputPrice: z.coerce.number().optional(),
-    cacheInputPrice: z.coerce.number().optional(),
+    inputPrice: z.coerce.number().min(0).optional(),
+    outputPrice: z.coerce.number().min(0).optional(),
+    cacheInputPrice: z.coerce.number().min(0).optional(),
     isFree: z.boolean().optional(),
     contextLength: z.coerce.number().int().positive().nullable().optional(),
     fallbackModels: z.unknown().optional(),
@@ -112,6 +112,12 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
 
       .post('/', jsonBody(modelCreateSchema), async (c) => {
         const body = c.req.valid('json');
+        assertFreePriceConsistency({
+          isFree: body.isFree ?? false,
+          inputPrice: body.inputPrice ?? 0,
+          outputPrice: body.outputPrice ?? 0,
+          cacheInputPrice: body.cacheInputPrice ?? 0,
+        });
         const [created] = await s.db
           .insert(modelMappings)
           .values({
@@ -140,8 +146,20 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
       })
 
       .patch('/:id', jsonBody(modelUpdateSchema), async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const body = c.req.valid('json');
+        // 合并旧值做免费/价格互斥校验（R6）：部分更新只改 isFree 或只改价格都可能造成矛盾态
+        const existing = await s.db.query.modelMappings.findFirst({
+          where: eq(modelMappings.id, id),
+          columns: { inputPrice: true, outputPrice: true, cacheInputPrice: true, isFree: true },
+        });
+        if (!existing) throw new HttpError(404, 'MODEL_NOT_FOUND', '模型不存在');
+        assertFreePriceConsistency({
+          isFree: body.isFree ?? existing.isFree,
+          inputPrice: body.inputPrice ?? Number(existing.inputPrice),
+          outputPrice: body.outputPrice ?? Number(existing.outputPrice),
+          cacheInputPrice: body.cacheInputPrice ?? Number(existing.cacheInputPrice),
+        });
         const update: Record<string, unknown> = { updatedAt: new Date() };
         if (body.externalName !== undefined) update.externalName = body.externalName;
         if (body.realModel !== undefined) update.realModel = body.realModel;
@@ -175,7 +193,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
       })
 
       .delete('/:id', async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const [retired] = await s.db
           .update(modelMappings)
           .set({ status: 1, updatedAt: new Date() })
@@ -195,7 +213,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
 
       // 绑定渠道（全量替换，事务保证原子性）
       .post('/:id/channels', jsonBody(bindChannelsSchema), async (c) => {
-        const mappingId = Number(c.req.param('id'));
+        const mappingId = intParam(c, 'id');
         const body = c.req.valid('json');
         const bound = await replaceModelChannels(s, mappingId, body.channels, c.get('adminId'));
         return c.json({ ok: true, bound });
@@ -207,7 +225,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
        * 与渠道测试互补（后者只探连通与 key）。
        */
       .post('/:id/test', async (c) => {
-        const mappingId = Number(c.req.param('id'));
+        const mappingId = intParam(c, 'id');
         const mapping = await s.db.query.modelMappings.findFirst({
           where: eq(modelMappings.id, mappingId),
         });

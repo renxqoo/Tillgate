@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { apiKeys, users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, invalidateKeyAuthCache, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit } from '@ai-gateway/http';
+import { HttpError, invalidateKeyAuthCache, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -77,7 +77,7 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
     // 更新限流（+ name/status），改后清 auth:key 缓存立即生效
     .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const body = c.req.valid('json');
 
       const update: Record<string, unknown> = {};

@@ -255,9 +255,15 @@ describe('组织/成员端到端（企业套餐 → 邀请 → 成员 Key 扣组
       },
     }).runOnce([requestId]);
 
-    const usage = await db.query.usageLogs.findFirst({
-      where: eq(usageLogs.requestId, requestId),
-    });
+    // 结算竞态容忍：真实 worker 与本测试 processor 都可能 claim 本账单（共享 Redis 队列），
+    // 谁先 claim 谁结算——轮询等待 usage 落库，而不是假设 runOnce 必然是结算方。
+    let usage: typeof usageLogs.$inferSelect | undefined;
+    for (let i = 0; i < 50 && !usage; i++) {
+      usage = await db.query.usageLogs.findFirst({
+        where: eq(usageLogs.requestId, requestId),
+      });
+      if (!usage) await new Promise((r) => setTimeout(r, 100));
+    }
     expect(usage!.userId).toBe(member.id); // 用量归成员
     expect(usage!.subscriptionId).toBe(subscriptionId); // 扣组织订阅
     expect(usage!.billedBy).toBe('plan');

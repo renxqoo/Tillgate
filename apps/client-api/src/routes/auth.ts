@@ -106,7 +106,11 @@ export function clientAuthRoutesProtected(s: ClientServices): Hono<ClientEnv> {
       if (!ok) return c.json({ error: { message: '原密码错误', code: 'INVALID_CREDENTIALS' } }, 401);
 
       const newHash = await hashPassword(body.newPassword);
-      await s.db.update(users).set({ passwordHash: newHash, updatedAt: new Date() }).where(eq(users.id, u.id));
+      // R5-2：改密即吊销全部既有会话（iat 早于失效线的旧 token 一律 401）
+      await s.db
+        .update(users)
+        .set({ passwordHash: newHash, sessionInvalidBefore: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, u.id));
       await recordAudit(s.db, {
         actor: 'user',
         action: 'user.password_change',

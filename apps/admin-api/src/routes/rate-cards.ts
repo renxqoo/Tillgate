@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { eq, sql } from 'drizzle-orm';
 import { rateCards, rateCardCoefficients, users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
+import { HttpError, jsonBody, recordAudit, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { createRateCard, fmtCoeff, updateRateCard } from '../services/rate-cards.js';
@@ -73,14 +73,14 @@ export function rateCardAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
       // 更新（名称/描述/状态/全局系数）
       .patch('/:id', jsonBody(rateCardUpdateSchema), async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const updated = await updateRateCard(s, id, c.req.valid('json'), c.get('adminId'));
         return c.json(updated);
       })
 
       // 查看绑定该卡的账户（api-contract §4.9）
       .get('/:id/users', async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const rows = await s.db
           .select({
             id: users.id,
@@ -100,7 +100,7 @@ export function rateCardAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
       // 删除：仅当无用户绑定时允许（防误删导致账户孤儿）
       .delete('/:id', async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const bound = await s.db
           .select({ id: users.id })
           .from(users)
@@ -131,7 +131,7 @@ export function rateCardAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
       // 健康自检：全局系数行是否存在（data-model §3.9 约束校验）
       .get('/:id/health', async (c) => {
-        const id = Number(c.req.param('id'));
+        const id = intParam(c, 'id');
         const globalRow = await s.db
           .select({ coefficient: rateCardCoefficients.coefficient })
           .from(rateCardCoefficients)

@@ -231,6 +231,7 @@ export async function importCatalogModels(
     const existing = await s.db.query.modelMappings.findFirst({
       where: eq(modelMappings.externalName, m.externalName),
     });
+    const catalogFree = m.inputPrice === 0 && m.outputPrice === 0 && m.cacheInputPrice === 0;
     if (existing) {
       if (existing.realModel !== m.realModel) {
         // 外部名被其他真实模型占用：约束冲突在边界层翻译为业务错误
@@ -240,15 +241,17 @@ export async function importCatalogModels(
           `对外名 ${m.externalName} 已绑定 ${existing.realModel}，请换一个名字`,
         );
       }
-      // 重复导入 = 价格更新确认（同一真实模型）。目录源只暴露免费档（全零价），
-      // 免费标记显式落库，不再靠 `:free` 命名约定推断。
+      // 重复导入 = 价格更新确认（同一真实模型）。
+      // R6 单一真相：is_free 由价格决定（全零价=免费），不由 `:free` 命名约定推断——
+      // 目录漂移出现非零价时按付费导入（compareCatalog 的 priceWarning 负责告警），
+      // 绝不落「is_free=true + 非零价」的矛盾配置（授权 0 元/结算实扣口径分裂）。
       await s.db
         .update(modelMappings)
         .set({
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
-          isFree: true,
+          isFree: catalogFree,
           ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .where(eq(modelMappings.id, existing.id));
@@ -264,7 +267,7 @@ export async function importCatalogModels(
           inputPrice: String(m.inputPrice),
           outputPrice: String(m.outputPrice),
           cacheInputPrice: String(m.cacheInputPrice),
-          isFree: true,
+          isFree: catalogFree,
           ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .returning();

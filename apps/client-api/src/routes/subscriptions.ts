@@ -1,8 +1,5 @@
 import { Hono } from 'hono';
-import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { organizations, orgMembers, plans } from '@ai-gateway/db/schema';
 import { HttpError, intParam, jsonBody, operationId } from '@ai-gateway/http';
 import { LedgerError } from '@ai-gateway/ledger';
 import type { ClientEnv } from '@ai-gateway/identity';
@@ -38,6 +35,8 @@ function mapError(error: unknown): never {
         throw new HttpError(404, 'NO_SUBSCRIPTION', '订阅不存在或已失效');
       case 'plan_disabled':
         throw new HttpError(400, 'PLAN_DISABLED', '套餐已停用，无法购买');
+      case 'plan_not_purchasable':
+        throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', '该套餐不可自助购买，请联系客服');
       case 'downgrade_not_allowed':
         throw new HttpError(409, 'DOWNGRADE_NOT_ALLOWED', '只能升级或加席位，不支持降级/缩容');
       case 'invalid_quantity':
@@ -63,31 +62,14 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
       const session = c.get('session');
       const body = c.req.valid('json');
       try {
-        // 团队套餐（allowSeats）：先建组织，owner 占 1 席，订阅挂 org_id。
-        const plan = await s.db.query.plans.findFirst({
-          where: eq(plans.id, body.planId),
-          columns: { allowSeats: true },
-        });
-        let orgId: number | null = null;
-        if (plan?.allowSeats) {
-          const [org] = await s.db
-            .insert(organizations)
-            .values({ name: `组织-${randomUUID().slice(0, 6)}`, ownerUserId: session.userId })
-            .returning({ id: organizations.id });
-          await s.db.insert(orgMembers).values({
-            orgId: org!.id,
-            userId: session.userId,
-            role: 'owner',
-            status: 0,
-          });
-          orgId = org!.id;
-        }
+        // 团队套餐（allowSeats）：组织在账本事务内创建（T3）——路由层预建会在失败时
+        // 留孤儿 org，且重放时新 org 改变指纹 → 409，幂等性失效。
         const result = await s.ledger.subscribePlan({
           operationId: operationId(c),
           userId: session.userId,
           planId: body.planId,
           quantity: body.quantity ?? 1,
-          orgId,
+          ensureOrg: true,
         });
         return c.json(result, 201);
       } catch (error) {

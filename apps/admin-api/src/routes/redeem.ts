@@ -2,10 +2,11 @@ import { Hono } from 'hono';
 import { eq, sql, and } from 'drizzle-orm';
 import { redeemBatches, redeemCodes } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit } from '@ai-gateway/http';
+import { HttpError, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { createRedeemBatch } from '../services/redeem.js';
+import { MONEY_MAX } from './users.js';
 
 /**
  * 充值码管理（api-contract §4.7 / requirements 4.8）。
@@ -21,8 +22,12 @@ import { createRedeemBatch } from '../services/redeem.js';
 const batchCreateSchema = z.object({
   name: z.string().min(1).max(64),
   remark: z.string().max(255).optional(),
-  /** 面额（元，正小数） */
-  amount: z.coerce.number().positive(),
+  /** 面额（元，正小数）；finite+上限与调账/赠送统一（MONEY_MAX）——'1e999'→Infinity 曾穿透 .positive() */
+  amount: z.coerce
+    .number()
+    .positive()
+    .finite()
+    .refine((v) => v <= MONEY_MAX, `面额不得超过 ${MONEY_MAX} 元`),
   /** 生成数量，1~10000 */
   count: z.number().int().min(1).max(10_000),
   /** 过期时间，兼容 datetime-local（YYYY-MM-DDTHH:mm）与完整 ISO 8601 */
@@ -84,7 +89,7 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
     // 批次详情
     .get('/:id', async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const rows = await s.db.select().from(redeemBatches).where(eq(redeemBatches.id, id)).limit(1);
       if (rows.length === 0) throw new HttpError(404, 'REDEEM_BATCH_NOT_FOUND', '批次不存在');
       return c.json(rows[0]);
@@ -92,7 +97,7 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
     // 批次内码明细（脱敏哈希 + 状态 + 兑换人）
     .get('/:id/codes', query(batchCodesQuerySchema), async (c) => {
-      const id = Number(c.req.param('id'));
+      const id = intParam(c, 'id');
       const q = c.req.valid('query');
       const p = parsePagination(q);
       const { limit, offset } = limitOffset(p);
@@ -123,7 +128,7 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
     // 作废单张码（管理员）
     .post('/codes/:codeId/revoke', async (c) => {
-      const codeId = Number(c.req.param('codeId'));
+      const codeId = intParam(c, 'codeId');
       const result = await s.db
         .update(redeemCodes)
         .set({ status: 2 })
