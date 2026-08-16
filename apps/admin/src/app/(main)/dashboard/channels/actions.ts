@@ -3,11 +3,51 @@
 import { revalidatePath } from "next/cache";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
-import type { ChannelCreateBody, ChannelTestResult, ChannelUpdateBody } from "@ai-gateway/api-client/types";
+import type { ChannelTestResult } from "@ai-gateway/api-client/types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 表单侧输入类型：models 是逗号分隔文本（管理端表单 UX 形态）。
+// 线上契约（channels 路由 zod / DB jsonb / GET 响应 / import）是 string[]。
+// 字符串 → 数组的转换只在本边界发生一次——修复缺陷：表单把字符串直传
+// z.array 校验的接口，填了模型白名单的创建/编辑/导入必然 4xx。
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ChannelFormCreateInput {
+  providerId: number;
+  name: string;
+  apiKey: string;
+  baseUrlOverride?: string;
+  models?: string;
+  weight?: number;
+  priority?: number;
+}
+
+interface ChannelFormUpdateInput {
+  name?: string;
+  apiKey?: string;
+  baseUrlOverride?: string;
+  models?: string;
+  weight?: number;
+  priority?: number;
+  status?: number;
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  upstreamThreshold?: number | null;
+}
+
+/** 逗号/空白/中文逗号分隔的白名单文本 → 数组；空文本 → undefined（创建=不限，编辑=不变） */
+function splitModels(value?: string): string[] | undefined {
+  if (!value?.trim()) return undefined;
+  const list = value
+    .split(/[\s,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : undefined;
+}
 
 // ── 创建渠道 ────────────────────────────────────────────────────────────────
 export async function createChannelAction(
-  input: ChannelCreateBody,
+  input: ChannelFormCreateInput,
 ): Promise<{ error?: string }> {
   if (!input.name?.trim()) return { error: "请输入渠道名称" };
   if (!input.apiKey?.trim()) return { error: "请输入 API Key" };
@@ -19,7 +59,7 @@ export async function createChannelAction(
         name: input.name.trim(),
         apiKey: input.apiKey,
         baseUrlOverride: input.baseUrlOverride?.trim() || undefined,
-        models: input.models?.trim() || undefined,
+        models: splitModels(input.models),
         weight: input.weight ?? 100,
         priority: input.priority ?? 0,
       },
@@ -34,12 +74,23 @@ export async function createChannelAction(
 // ── 编辑渠道 ────────────────────────────────────────────────────────────────
 export async function updateChannelAction(
   id: number,
-  input: ChannelUpdateBody,
+  input: ChannelFormUpdateInput,
 ): Promise<{ error?: string }> {
   try {
     await adminFetch(`/api/admin/channels/${id}`, {
       method: "PATCH",
-      body: input,
+      body: {
+        name: input.name,
+        apiKey: input.apiKey,
+        baseUrlOverride: input.baseUrlOverride,
+        models: splitModels(input.models),
+        weight: input.weight,
+        priority: input.priority,
+        status: input.status,
+        rpmLimit: input.rpmLimit,
+        tpmLimit: input.tpmLimit,
+        upstreamThreshold: input.upstreamThreshold,
+      },
     });
     revalidatePath("/dashboard/channels");
     return {};
@@ -112,7 +163,12 @@ export async function importChannelsAction(
   try {
     const res = await adminFetch<{ created: number } | { list?: unknown[] } | unknown>(
       "/api/admin/channels/import",
-      { method: "POST", body: { channels } },
+      {
+        method: "POST",
+        body: {
+          channels: channels.map((item) => ({ ...item, models: splitModels(item.models) })),
+        },
+      },
     );
     revalidatePath("/dashboard/channels");
     const created =

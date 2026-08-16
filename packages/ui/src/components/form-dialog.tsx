@@ -67,19 +67,7 @@ export interface FormDialogRenderProps {
   close: () => void;
 }
 
-export function FormDialog({
-  trigger,
-  title,
-  description,
-  submitLabel,
-  cancelLabel = "取消",
-  formId,
-  contentClassName,
-  titleClassName,
-  onOpenChange,
-  children,
-  onSubmitClick,
-}: {
+interface FormDialogBaseProps {
   /** DialogTrigger asChild 的触发器（通常是 Button） */
   trigger: ReactNode;
   title: ReactNode;
@@ -87,8 +75,6 @@ export function FormDialog({
   /** 提交按钮文案（如 创建 / 保存 / 确认入货） */
   submitLabel: string;
   cancelLabel?: string;
-  /** 表单元素 id：提交按钮通过 form 属性关联原生提交 */
-  formId?: string;
   /** 透传 DialogContent className（如 "sm:max-w-lg"） */
   contentClassName?: string;
   /** 透传 DialogTitle className（如 "flex items-center gap-2"） */
@@ -97,9 +83,41 @@ export function FormDialog({
   onOpenChange?: (open: boolean) => void;
   /** 表单体；render-prop 形式拿 { pending, run, close } */
   children: ReactNode | ((ctx: FormDialogRenderProps) => ReactNode);
-  /** formId 缺省时提交按钮 onClick 执行的动作；返回 true 关闭弹窗 */
-  onSubmitClick?: () => Promise<boolean>;
-}) {
+}
+
+/** 表单模式：footer 提交按钮通过 form={formId} 关联原生提交（render-prop 必配） */
+interface FormDialogFormProps extends FormDialogBaseProps {
+  formId: string;
+  onSubmitClick?: never;
+}
+
+/** 无表单模式：提交按钮 onClick 执行 onSubmitClick（返回 true 关闭） */
+interface FormDialogClickProps extends FormDialogBaseProps {
+  formId?: never;
+  onSubmitClick: () => Promise<boolean>;
+}
+
+/**
+ * 两种模式互斥且必选其一（判别联合）：都不传时 footer 按钮是没有任何行为
+ * 的 type="button"——那是接线 bug，必须变成编译期错误（渠道页曾因此
+ * 「点创建无任何反应且不调接口」）。
+ */
+export type FormDialogProps = FormDialogFormProps | FormDialogClickProps;
+
+export function FormDialog(props: FormDialogProps) {
+  const {
+    trigger,
+    title,
+    description,
+    submitLabel,
+    cancelLabel = "取消",
+    contentClassName,
+    titleClassName,
+    onOpenChange,
+    children,
+  } = props;
+  const formId = props.formId ?? undefined;
+  const onSubmitClick = props.onSubmitClick ?? undefined;
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 

@@ -44,7 +44,7 @@ import {
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { AdminChannelRow, ChannelCreateBody, ProviderOption } from '@ai-gateway/api-client/types';
+import type { AdminChannelRow, ProviderOption } from '@ai-gateway/api-client/types';
 
 const STATUS_META = defineStatusMeta({
   0: { label: '启用', tone: 'success' },
@@ -225,6 +225,7 @@ export function CreateChannelDialog({
       titleClassName="flex items-center gap-2"
       description="添加一条 LLM 供应商渠道"
       submitLabel="创建"
+      formId="channel-form"
     >
       {({ run }) => (
         <ChannelForm
@@ -237,7 +238,7 @@ export function CreateChannelDialog({
                 providerId: Number(values.providerId),
                 weight: Number(values.weight),
                 priority: Number(values.priority),
-              } as ChannelCreateBody);
+              });
               if (!notify(res, '创建失败', '已创建渠道')) return false;
               form.reset();
               return true;
@@ -310,6 +311,7 @@ function EditChannelDialog({
       titleClassName="flex items-center gap-2"
       description="留空 API Key 表示不修改"
       submitLabel="保存"
+      formId="channel-edit-form"
     >
       {({ run }) => (
         <ChannelForm
