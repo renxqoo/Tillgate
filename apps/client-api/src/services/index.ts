@@ -2,7 +2,7 @@ import type { Db } from '@ai-gateway/db';
 import type { Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
 import type { Redis } from '@ai-gateway/http';
-import type { Mailer } from '@ai-gateway/identity';
+import type { CaptchaService, Mailer } from '@ai-gateway/identity';
 
 /**
  * client-api 服务依赖集合（依赖注入的唯一入口）。
@@ -15,4 +15,6 @@ export interface ClientServices {
   logger: Logger;
   /** 登录验证码发信；null = SMTP 未配置 → 登录 fail-closed 503 */
   mailer: Mailer | null;
+  /** 注册面人机验证（Turnstile）；null = 未配置 → 门禁关闭（部署兼容期，生产应配置） */
+  captcha: CaptchaService | null;
 }

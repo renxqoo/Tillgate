@@ -1,9 +1,13 @@
 /** @type {import('next').NextConfig} */
 
 /**
- * 浏览器安全头（两个面板同款；API 面由各自 hono app 的 securityHeaders 覆盖）。
+ * 浏览器安全头（API 面由各自 hono app 的 securityHeaders 覆盖）。
  * CSP 为保守版：Next.js 水合需要内联脚本与样式，故 script/style 留 'unsafe-inline'；
- * frame-ancestors 'none' + X-Frame-Options DENY 防点击劫持（管理面板不允许被嵌入）。
+ * frame-ancestors 'none' + X-Frame-Options DENY 防点击劫持（面板不允许被嵌入）。
+ *
+ * client 面板与管理面板的差异：注册页嵌 Cloudflare Turnstile（隐形人机验证），
+ * 需放行其脚本与 iframe（frame-src；缺省会回落 default-src 'self' 被拦）；admin
+ * 无自助注册，CSP 不含此项。
  */
 const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -14,11 +18,12 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
+      "frame-src https://challenges.cloudflare.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

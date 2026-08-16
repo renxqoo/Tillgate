@@ -46,6 +46,7 @@ export function makeServices(db: Db, overrides: Partial<ClientServices> = {}): C
     ledger: createLedger({ db }),
     logger: noopLogger(),
     mailer: null,
+    captcha: null,
     ...overrides,
   };
 }

@@ -20,6 +20,7 @@ export default async function RegisterPage({
   if (clean) redirect(clean);
   const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
   let oauthOptions: OAuthOption[] = [];
+  let captchaSiteKey: string | null = null;
   try {
     const res = await fetch(`${base}/api/auth/oauth/providers`, {
       cache: "no-store",
@@ -29,6 +30,17 @@ export default async function RegisterPage({
     oauthOptions = oauthOptionsFromProviders(body.providers ?? [], base);
   } catch {
     oauthOptions = [];
+  }
+  // 人机验证能力发现：后端配置是单一真相（未配置 → 不渲染 widget）
+  try {
+    const res = await fetch(`${base}/api/auth/captcha`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    const body = (await res.json()) as { siteKey?: string | null };
+    captchaSiteKey = body.siteKey ?? null;
+  } catch {
+    captchaSiteKey = null;
   }
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -40,7 +52,7 @@ export default async function RegisterPage({
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
-            <RegisterForm oauthOptions={oauthOptions} />
+            <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} />
             <p className="mt-4 text-center text-sm text-muted-foreground">
               已有账号？
               <Link href="/login" className="ml-1 text-foreground hover:underline">

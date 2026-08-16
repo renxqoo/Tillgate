@@ -71,6 +71,7 @@ const services: ClientServices = {
   ledger: createLedger({ db }),
   logger: noopLogger() as unknown as ClientServices['logger'],
   mailer: null,
+  captcha: null,
 };
 
 function makeClientApp(userId: number): Hono {

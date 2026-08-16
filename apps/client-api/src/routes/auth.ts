@@ -11,7 +11,7 @@ import {
   cookieOptions,
   type ClientEnv,
 } from '@ai-gateway/identity';
-import { clientIpFromContext, csrfProtection, HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
+import { clientIpFromContext, csrfProtection, HttpError, jsonBody, recordAudit, timingSafeTokenEqual } from '@ai-gateway/http';
 import type { ClientServices } from '../services/index.js';
 import { login, verifyLoginCode, register, verifyRegistration } from '../services/auth.js';
 import type { ClientApiConfig } from '../config.js';
@@ -23,6 +23,9 @@ import type { ClientApiConfig } from '../config.js';
  *   - POST /login：邮箱 + 密码 → 发 6 位邮箱验证码（强制两步，60s 冷却/账号）
  *   - POST /login/verify：验证码通过 → 签发 HttpOnly Cookie 会话 JWT（24h，type='user'）
  *   - POST /logout：清 Cookie
+ *   - GET /captcha：人机验证能力发现（siteKey 或 null；前端据此渲染 Turnstile widget）
+ *   - POST /register：邮箱 + 密码 →（启用时过人机验证门禁）发验证码（不建号）
+ *   - POST /register/verify：验证码通过 → 建号 + 自动登录
  *
  * 受保护端点（挂载于受保护子应用 /auth）：
  *   - POST /password：修改自己的密码（已登录用户）
@@ -42,6 +45,8 @@ const verifySchema = z.object({
 const registerSchema = z.object({
   email: z.string().email().max(255),
   password: z.string().min(8, '密码至少 8 位').max(128),
+  /** 人机验证 token（Turnstile，启用 captcha 时必填；服务间豁免调用可不带） */
+  captchaToken: z.string().min(1).max(2048).optional(),
 });
 
 const passwordChangeSchema = z.object({
@@ -143,11 +148,26 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
 
     // ── 邮箱自助注册（两步：注册 → 邮箱验证码 → 建号并自动登录）──
 
+    // 人机验证能力发现（前端渲染 widget 的单一真相在后端配置；GET 无 CSRF 面）
+    .get('/captcha', (c) => c.json({ siteKey: s.captcha?.siteKey ?? null }))
+
     // 第一步：邮箱 + 密码 → 发验证码（不建号）
     .post('/register', jsonBody(registerSchema), async (c) => {
       const body = c.req.valid('json');
       const ip = clientIpFromContext(c, config);
-      const outcome = await register(s, config, { email: body.email, password: body.password, ip });
+      // 服务间豁免：恒定时间匹配 x-internal-token（Next.js BFF 转发注册时不携带——
+      // token 由浏览器 widget 产生经 body 转发，BFF 若代持内部令牌则机器人调
+      // server action 即可绕过人机验证）。
+      const captchaExempt =
+        !!config.internalApiToken &&
+        timingSafeTokenEqual(c.req.header('x-internal-token') ?? '', config.internalApiToken);
+      const outcome = await register(s, config, {
+        email: body.email,
+        password: body.password,
+        ip,
+        captchaToken: body.captchaToken,
+        captchaExempt,
+      });
 
       void recordAudit(s.db, {
         actor: 'user',
@@ -162,6 +182,12 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
           throw new HttpError('REGISTER_RATE_LIMITED', '注册请求过于频繁，请稍后再试', undefined, {
             'retry-after': String(outcome.retryAfterSec),
           });
+        case 'captcha_required':
+          throw new HttpError('CAPTCHA_REQUIRED');
+        case 'captcha_invalid':
+          throw new HttpError('CAPTCHA_INVALID');
+        case 'captcha_unavailable':
+          throw new HttpError('CAPTCHA_UNAVAILABLE');
         case 'email_taken':
           throw new HttpError('EMAIL_TAKEN', '该邮箱已注册，请直接登录');
         case 'mailer_unavailable':

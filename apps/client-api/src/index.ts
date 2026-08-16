@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
 import { loadClientApiEnv, createLogger, initOtel } from '@ai-gateway/core';
-import { mailerFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
+import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
 import { createDb } from '@ai-gateway/db';
 import { createLedger } from '@ai-gateway/ledger';
 import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
@@ -39,6 +39,7 @@ const app = createApp({
   ledger,
   logger,
   mailer: mailerFromEnv(env, USER_MAIL_BRAND),
+  captcha: captchaFromEnv(env),
   config: {
     oauth: {
       frontendUrl: env.OAUTH_FRONTEND_URL,

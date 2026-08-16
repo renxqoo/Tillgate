@@ -26,7 +26,8 @@ export interface CsrfOptions {
   internalToken?: string;
 }
 
-function tokenEquals(provided: string, expected: string): boolean {
+/** 恒定时间令牌比对：长度不同直接 false（比较耗时与内容无关，防逐字节时序泄露） */
+export function timingSafeTokenEqual(provided: string, expected: string): boolean {
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -69,7 +70,7 @@ export function csrfProtection(options: CsrfOptions): MiddlewareHandler {
     // 浏览器攻击者无法携带该令牌（令牌只存在于服务端 env，永不下发到浏览器）。
     if (options.internalToken) {
       const provided = c.req.header('x-internal-token');
-      if (!provided || !tokenEquals(provided, options.internalToken)) {
+      if (!provided || !timingSafeTokenEqual(provided, options.internalToken)) {
         throw new HttpError('CSRF_TOKEN_REQUIRED');
       }
     }

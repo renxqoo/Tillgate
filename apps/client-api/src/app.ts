@@ -4,7 +4,7 @@ import type { Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { bodyLimit } from 'hono/body-limit';
-import { userSessionMiddleware, type Mailer, type ClientEnv } from '@ai-gateway/identity';
+import { userSessionMiddleware, type Mailer, type CaptchaService, type ClientEnv } from '@ai-gateway/identity';
 import type { ClientApiConfig } from './config.js';
 import type { ClientServices } from './services/index.js';
 import { clientAuthRoutesPublic, clientAuthRoutesProtected } from './routes/auth.js';
@@ -34,6 +34,8 @@ export interface ClientApiDeps {
   logger: Logger;
   /** 登录验证码发信（null = SMTP 未配置 → 登录 fail-closed） */
   mailer?: Mailer | null;
+  /** 注册面人机验证（null = 未配置 → 门禁关闭，生产应配置） */
+  captcha?: CaptchaService | null;
   config: ClientApiConfig;
 }
 
@@ -42,6 +44,7 @@ export function createApp(deps: ClientApiDeps): Hono {
     db: deps.db,
     redis: deps.redis,
     mailer: deps.mailer ?? null,
+    captcha: deps.captcha ?? null,
     ledger: deps.ledger,
     logger: deps.logger,
   };

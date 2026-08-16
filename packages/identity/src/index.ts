@@ -70,6 +70,15 @@ export {
   type MailBrand,
 } from './mailer.js';
 
+// 注册面人机验证（Turnstile；token 浏览器产生、服务端验签，fail-closed）
+export {
+  createTurnstileCaptcha,
+  captchaFromEnv,
+  type CaptchaService,
+  type CaptchaVerifyOutcome,
+  type TurnstileCaptchaOptions,
+} from './captcha.js';
+
 // Hono Variables 类型
 export {
   type ClientEnv,

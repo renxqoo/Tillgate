@@ -180,10 +180,17 @@ export interface RegisterInput {
   email: string;
   password: string;
   ip: string;
+  /** 浏览器 widget 产生的人机验证 token（启用 captcha 时必填） */
+  captchaToken?: string;
+  /** 可信服务间调用豁免（路由层已恒定时间校验 x-internal-token） */
+  captchaExempt?: boolean;
 }
 
 export type RegisterOutcome =
   | { kind: 'rate_limited'; retryAfterSec: number }
+  | { kind: 'captcha_required' }
+  | { kind: 'captcha_invalid' }
+  | { kind: 'captcha_unavailable' }
   | { kind: 'email_taken' }
   | { kind: 'mailer_unavailable' }
   | { kind: 'code_rate_limited'; retryAfterSec: number }
@@ -203,6 +210,17 @@ export async function register(
   if (n === 1) await s.redis.expire(reqKey, 3600);
   if (n > REGISTER_IP_LIMIT_PER_HOUR) {
     return { kind: 'rate_limited', retryAfterSec: 3600 };
+  }
+
+  // 人机验证门禁（位于 IP 限流之后：垃圾请求先吃便宜的 429，再谈验签）。
+  // 厂商不可用 fail-closed——打瘫 Turnstile 不能换来自动放行。
+  if (s.captcha && !input.captchaExempt) {
+    const token = input.captchaToken?.trim();
+    if (!token) return { kind: 'captcha_required' };
+    const outcome = await s.captcha.verify({ token, remoteIp: input.ip });
+    if (!outcome.ok) {
+      return outcome.reason === 'unavailable' ? { kind: 'captcha_unavailable' } : { kind: 'captcha_invalid' };
+    }
   }
 
   // 邮箱占用检查（DB 唯一索引 users_local_email_uq 兜底并发）

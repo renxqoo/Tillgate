@@ -58,6 +58,11 @@ export const ERROR_REGISTRY = {
   TWO_FACTOR_UNAVAILABLE: { status: 503, message: '两步验证服务不可用' },
   SMTP_NOT_CONFIGURED: { status: 400, message: '邮件服务未配置' },
 
+  // ── 人机验证（注册面防刷，Turnstile）──
+  CAPTCHA_REQUIRED: { status: 400, message: '需要人机验证' },
+  CAPTCHA_INVALID: { status: 400, message: '人机验证未通过，请重试' },
+  CAPTCHA_UNAVAILABLE: { status: 503, message: '人机验证服务不可用，请稍后重试' },
+
   // ── OAuth ──
   OAUTH_NOT_CONFIGURED: { status: 400, message: 'OAuth 登录未配置' },
   OAUTH_INVALID: { status: 400, message: '缺少授权参数' },

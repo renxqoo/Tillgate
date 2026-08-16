@@ -273,6 +273,13 @@ export const clientApiEnvSchema = baseEnvSchema.extend({
   OAUTH_GITHUB_CLIENT_SECRET: z.string().max(255).optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().max(255).optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().max(255).optional(),
+  /**
+   * ── 注册面人机验证（Turnstile，可选；成对配置即启用——只配一半在启动装配时抛错）。
+   * 生产暴露自助注册时必须配置：防分布式刷号薅首登赠额。本地开发可用官方测试键：
+   * siteKey 1x00000000000000000000AA / secretKey 1x0000000000000000000000000000000AA（恒过）。
+   */
+  CAPTCHA_SITE_KEY: z.string().min(1).max(255).optional(),
+  CAPTCHA_SECRET_KEY: z.string().min(1).max(255).optional(),
   /** OAuth 登录完成后重定向回的前端地址（默认本地面板） */
   OAUTH_FRONTEND_URL: z.string().url().default('http://localhost:3001'),
   /** 本服务对外可达基地址（拼 OAuth redirect_uri；默认本地 8791） */

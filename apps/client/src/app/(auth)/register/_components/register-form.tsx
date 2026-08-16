@@ -20,6 +20,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@ai-gateway/ui/com
 
 import { registerAction, registerVerifyAction } from "@/lib/server-actions/auth";
 import { OAuthButtons, type OAuthOption } from "../../_components/oauth-buttons";
+import { TurnstileWidget } from "../../_components/turnstile-widget";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 const schema = z
@@ -35,13 +36,23 @@ const schema = z
 
 type RegisterValues = z.infer<typeof schema>;
 
-export function RegisterForm({ oauthOptions = [] }: { oauthOptions?: OAuthOption[] }) {
+export function RegisterForm({
+  oauthOptions = [],
+  captchaSiteKey = null,
+}: {
+  oauthOptions?: OAuthOption[];
+  /** 后端 GET /api/auth/captcha 下发；null = 未启用，不渲染 widget */
+  captchaSiteKey?: string | null;
+}) {
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [showPassword, setShowPassword] = useState(false);
   // 注册两步：邮箱+密码 → 邮箱验证码 → 建号并自动登录
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState("");
+  // 人机验证：token 单次消费，提交被拒后递增 resetNonce 换新票
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetNonce, setCaptchaResetNonce] = useState(0);
 
   const form = useForm<RegisterValues>({
     resolver: zodResolver(schema),
@@ -53,9 +64,17 @@ export function RegisterForm({ oauthOptions = [] }: { oauthOptions?: OAuthOption
       const fd = new FormData();
       fd.append("email", values.email);
       fd.append("password", values.password);
+      if (captchaSiteKey && captchaToken) fd.append("captchaToken", captchaToken);
       const res = await registerAction(fd);
       if (res?.challengeId) setChallenge(res.challengeId);
-      else notify(res ?? {}, "注册失败");
+      else {
+        // 人机验证被拒：token 已消费作废，强制换票后让用户重试
+        if (res?.code === "CAPTCHA_REQUIRED" || res?.code === "CAPTCHA_INVALID") {
+          setCaptchaToken(null);
+          setCaptchaResetNonce((n) => n + 1);
+        }
+        notify(res ?? {}, "注册失败");
+      }
     });
   }
 
@@ -205,9 +224,17 @@ export function RegisterForm({ oauthOptions = [] }: { oauthOptions?: OAuthOption
             />
           </FieldGroup>
 
-          <Button type="submit" disabled={pending} className="w-full">
+          {captchaSiteKey && (
+            <TurnstileWidget siteKey={captchaSiteKey} onToken={setCaptchaToken} resetNonce={captchaResetNonce} />
+          )}
+
+          <Button
+            type="submit"
+            disabled={pending || (!!captchaSiteKey && !captchaToken)}
+            className="w-full"
+          >
             {pending && <Loader2Icon className="animate-spin" />}
-            注册
+            {!!captchaSiteKey && !captchaToken ? "请先完成人机验证" : "注册"}
           </Button>
 
           <FieldDescription className="text-center">

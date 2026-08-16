@@ -101,31 +101,37 @@ export async function verifyLoginCodeAction(
 
 /**
  * 邮箱自助注册（两步：注册 → 邮箱验证码 → 建号并自动登录）。
- *   - 第一步 registerAction：邮箱 + 密码 → 返回 challengeId（验证码已发到邮箱）
+ *   - 第一步 registerAction：邮箱 + 密码 +（启用时的）人机验证 token → 返回 challengeId
+ *     captchaToken 由浏览器 Turnstile widget 产生、经 FormData 上来原样转发；
+ *     此处刻意不携带 x-internal-token——BFF 若代持内部令牌，机器人调本 action
+ *     即可绕过人机验证（豁免只留给真正的服务间调用）。
  *   - 第二步 registerVerifyAction：验证码 → 建号 + 签发 ag_session → 跳 /dashboard
  */
-export async function registerAction(formData: FormData): Promise<{ error?: string; challengeId?: string }> {
+export async function registerAction(
+  formData: FormData,
+): Promise<{ error?: string; code?: string; challengeId?: string }> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const captchaToken = String(formData.get("captchaToken") ?? "");
   if (!email || !password) return { error: "请输入邮箱和密码" };
 
   const r = await authFetch(`${CLIENT_API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, ...(captchaToken ? { captchaToken } : {}) }),
     cache: "no-store",
   });
   if (isFetchError(r)) return { error: r.fetchError };
   const res: Response = r;
 
   const body = (await res.json().catch(() => null)) as
-    | { ok?: boolean; challengeId?: string; error?: { message?: string } }
+    | { ok?: boolean; challengeId?: string; error?: { message?: string; code?: string } }
     | null;
 
   if (res.ok && body?.challengeId) {
     return { challengeId: body.challengeId };
   }
-  return { error: body?.error?.message ?? `注册失败 (${res.status})` };
+  return { error: body?.error?.message ?? `注册失败 (${res.status})`, code: body?.error?.code };
 }
 
 /** 注册第二步：验证邮箱验证码，成功建号+落会话并跳转 */

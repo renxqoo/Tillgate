@@ -24,7 +24,7 @@ export {
   type KnownErrorCode,
 } from './error-codes.js';
 
-export { csrfProtection, type CsrfOptions } from './csrf.js';
+export { csrfProtection, timingSafeTokenEqual, type CsrfOptions } from './csrf.js';
 
 export {
   ValidationError,

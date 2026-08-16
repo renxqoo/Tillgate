@@ -14,6 +14,7 @@
 | `JWT_SECRET` / `ADMIN_JWT_SECRET` | ≥32 字符且互不相同 | 生产 <32 拒绝启动；相同值拒绝启动（双平面隔离） |
 | `ENCRYPTION_KEY` | ≥32 字符，一次性生成永不直改 | 轮换走双 key 窗流程（见下） |
 | `SMTP_HOST/PORT/USER/PASS` | 个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱均可；不配则管理员邮箱验证码二次登录不可用（fail-closed） | 管理员开了 2FA 但没配 SMTP → 登录 503（不降级单密码，属预期防线） |
+| `CAPTCHA_SITE_KEY` + `CAPTCHA_SECRET_KEY` | Cloudflare Turnstile 成对配置（Dashboard → Turnstile → Add site）；只配一半拒绝启动 | 不配 = 注册面人机验证关闭：分布式刷号可薅首登赠额（单 IP 限流 5 次/时挡不住僵尸网络）。开发可用官方测试键（恒过） |
 | `FREE_MODEL_DAILY_LIMIT` | 按产品策略（默认 500/天/用户；0=不限） | 默认值即生效，无需动作 |
 | `REQUEST_LOG_RETENTION_DAYS` | 默认 30（分区滚动窗口） | 无需动作；调整保留期时改此值 |
 
