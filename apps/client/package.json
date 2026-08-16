@@ -4,7 +4,7 @@
   "private": true,
   "description": "端用户面板（API Key / 充值码 / 用量 / 应用）",
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "ulimit -n 10240 2>/dev/null; next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
     "typecheck": "tsc --noEmit",

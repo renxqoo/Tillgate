@@ -4,7 +4,7 @@
   "private": true,
   "description": "运营后台（用户 / 渠道 / 模型 / 费率卡 / 充值码批次 / 统计）",
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "ulimit -n 10240 2>/dev/null; next dev -p 3002",
     "build": "next build",
     "start": "next start -p 3002",
     "typecheck": "tsc --noEmit",
