@@ -14,7 +14,7 @@ import { createLedger } from '../index.js';
  * （与 renew 的「旧订阅转到期」同语义），不变量「一个在期个人订阅」成立。
  */
 
-const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway');
+const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway', { poolMax: 5 });
 let connected = false;
 beforeAll(async () => {
   try {

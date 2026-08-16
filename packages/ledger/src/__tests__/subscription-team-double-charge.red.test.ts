@@ -26,6 +26,7 @@ import { createLedger } from '../index.js';
 
 const db: Db = createDb(
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+  { poolMax: 5 },
 );
 let connected = false;
 

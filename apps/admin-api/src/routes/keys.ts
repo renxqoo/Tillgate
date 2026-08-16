@@ -1,12 +1,9 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
-import { apiKeys, users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import {
-  MONEY_MAX, HttpError, invalidateKeyAuthCache, jsonBody, paginateQuery, query, recordAudit, intParam,
-  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
+import { MONEY_MAX, jsonBody, query, intParam } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
+import { keyListQuerySchema, listApiKeys, updateApiKey } from '../services/keys.js';
 
 /**
  * 管理员 Key 管理（限流配置视角，api-contract §4.x）。
@@ -17,11 +14,6 @@ import type { AdminServices } from '../services/index.js';
  *
  * 安全：明文 Key 永不回显，只返回 keyPreview（脱敏，由创建时写入）。
  */
-
-const keyListQuerySchema = listQuerySchema.extend({
-  userId: z.coerce.number().int().positive().optional(),
-  status: z.coerce.number().int().min(0).max(1).optional(),
-});
 
 const keyUpdateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
@@ -38,81 +30,13 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
     // 列表（关联用户，脱敏 preview）
-    .get('/', query(keyListQuerySchema), async (c) => {
-      const q = c.req.valid('query');
-      const { page, limit, offset, where, orderBy } = buildList(q, {
-        search: [apiKeys.name, apiKeys.keyPreview, users.email, users.displayName],
-        conditions: [
-          q.userId ? eq(apiKeys.userId, q.userId) : undefined,
-          q.status !== undefined ? eq(apiKeys.status, q.status) : undefined,
-        ],
-        sort: {
-          by: { id: apiKeys.id, name: apiKeys.name, status: apiKeys.status, lastUsedAt: apiKeys.lastUsedAt, createdAt: apiKeys.createdAt },
-          fallback: 'createdAt',
-          tiebreaker: apiKeys.id,
-        },
-      });
+    .get('/', query(keyListQuerySchema), async (c) =>
+      c.json(await listApiKeys(s, c.req.valid('query'))),
+    )
 
-      const result = await paginateQuery(
-        page,
-        s.db
-          .select({
-            id: apiKeys.id,
-            keyPreview: apiKeys.keyPreview,
-            name: apiKeys.name,
-            remark: apiKeys.remark,
-            subscriptionId: apiKeys.subscriptionId,
-            userId: apiKeys.userId,
-            userEmail: users.email,
-            userDisplayName: users.displayName,
-            rpmLimit: apiKeys.rpmLimit,
-            tpmLimit: apiKeys.tpmLimit,
-            dailySpendLimit: apiKeys.dailySpendLimit,
-            status: apiKeys.status,
-            lastUsedAt: apiKeys.lastUsedAt,
-            createdAt: apiKeys.createdAt,
-          })
-          .from(apiKeys)
-          .innerJoin(users, eq(apiKeys.userId, users.id))
-          .where(where)
-          .orderBy(...orderBy)
-          .limit(limit)
-          .offset(offset),
-        countAll(s.db, apiKeys, where, [{ table: users, on: eq(apiKeys.userId, users.id) }]),
-      );
-      return c.json(result);
-    })
-
-    // 更新限流（+ name/status），改后清 auth:key 缓存立即生效
+    // 更新限流（+ name/status），改后清 auth:key 缓存立即生效（见 service）
     .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
-      const id = intParam(c, 'id');
-      const body = c.req.valid('json');
-
-      const update: Record<string, unknown> = {};
-      if (body.name !== undefined) update.name = body.name;
-      if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
-      if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-      if (body.dailySpendLimit !== undefined) update.dailySpendLimit = body.dailySpendLimit;
-      if (body.status !== undefined) update.status = body.status;
-
-      const [updated] = await s.db
-        .update(apiKeys)
-        .set(update)
-        .where(eq(apiKeys.id, id))
-        .returning({ id: apiKeys.id, keyHash: apiKeys.keyHash });
-      if (!updated) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在');
-
-      // 立即生效：清 gateway 鉴权缓存（无需等 60s TTL）
-      await invalidateKeyAuthCache(s.redis, [updated.keyHash]);
-
-      await recordAudit(s.db, {
-        actor: 'admin',
-        adminId: c.get('adminId'),
-        action: 'api_key.update_limit',
-        targetType: 'api_key',
-        targetId: id,
-        detail: body,
-      });
+      await updateApiKey(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
       return c.json({ ok: true });
     });
 }

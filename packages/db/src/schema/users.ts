@@ -45,7 +45,7 @@ export const users = pgTable(
      * + 在途敞口 + 本次预估不得超过。RPM/TPM 只挡频率，这个挡总量。
      */
     dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
-    /** 0 正常 / 1 封禁 / 2 注销 */
+    /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK users_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(0),
     /**
      * 会话失效线（R5-2）：iat 早于此时间点的会话 JWT 一律拒绝。
@@ -78,6 +78,8 @@ export const users = pgTable(
     index('users_rate_card_id_idx').on(t.rateCardId),
     // 信用模型：balance 可为负，但不得低于 -credit_limit；在途敞口非负。
     check('users_reserved_balance_nonnegative_ck', sql`${t.reservedBalance} >= 0`),
+    // 集合与 ACCOUNT_STATUS 一致（新增状态须同步常量与本约束）
+    check('users_status_ck', sql`${t.status} in (0, 1, 2)`),
     check('users_balance_credit_floor_ck', sql`${t.balance} >= -${t.creditLimit}`),
   ],
 );

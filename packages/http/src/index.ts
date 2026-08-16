@@ -10,6 +10,9 @@
  *   - 基础设施：createRedis + 网关缓存键/失效操作 + operationId + loadRootEnvFile
  */
 
+export { FlowError, type HttpFailSpec } from './flow-error.js';
+export { createEphemeralRedis, type EphemeralRedis } from './testing.js';
+
 export {
   HttpError,
   errorHandler,

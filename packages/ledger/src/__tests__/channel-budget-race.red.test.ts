@@ -34,6 +34,7 @@ import type { BillingQuote } from '../types.js';
  */
 const db: Db = createDb(
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+  { poolMax: 5 },
 );
 let connected = false;
 

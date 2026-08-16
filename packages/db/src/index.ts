@@ -16,10 +16,12 @@ import * as schema from './schema/index.js';
  */
 export function createDb(
   url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+  /** 连接池上限：生产默认 20；并行测试应传小值（worker 数 × poolMax 须 < PG max_connections） */
+  options: { poolMax?: number } = {},
 ) {
   const pool = new pg.Pool({
     connectionString: url,
-    max: 20, // 连接池上限
+    max: options.poolMax ?? 20, // 连接池上限
     idleTimeoutMillis: 30_000, // 空闲连接 30s 后回收
     connectionTimeoutMillis: 5_000, // 连接获取超时 5s
     maxUses: 1_000, // 单连接最大使用次数（防长连接内存泄漏）

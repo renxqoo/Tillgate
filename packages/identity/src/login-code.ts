@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Redis } from 'ioredis';
 import { sha256Hex } from '@ai-gateway/http';
+import { CodeVerifyError, LoginCodeCooldownError } from './errors.js';
 
 /**
  * 登录验证码挑战（client-api 强制邮箱验证 / admin-api 2FA 共用，单一实现）。
@@ -12,6 +13,10 @@ import { sha256Hex } from '@ai-gateway/http';
  *   - 发送冷却 60s/主体：防邮件轰炸（密码爆破由 login-throttle 管）
  *   - 6 位码 + 5 次机会：单挑战猜中概率 5/1e6
  *   - namespace 隔离 admin/user，键空间不串
+ *
+ * 错误约定：冷却抛 LoginCodeCooldownError，验码失败抛 CodeVerifyError
+ * （携带 reason）；成功直接返回 { subjectId, data }。消费方在边界 catch 后
+ * 翻译成 HTTP 语义，不得裸冒（errorHandler 不认识领域错误）。
  */
 
 export const LOGIN_CODE_TTL_S = 300;
@@ -20,21 +25,15 @@ export const LOGIN_CODE_RESEND_COOLDOWN_S = 60;
 
 export type LoginCodeNamespace = 'admin' | 'user';
 
-export type LoginCodeVerifyResult =
-  | { ok: true; subjectId: string; data?: Record<string, string> }
-  | { ok: false; reason: 'CHALLENGE_INVALID' | 'CHALLENGE_EXHAUSTED' | 'CODE_INVALID' };
-
-/** 同一主体冷却期内重复签发（路由层映射 429 CODE_RATE_LIMITED） */
-export class LoginCodeCooldownError extends Error {
-  constructor(cooldownSec: number) {
-    super(`验证码发送过于频繁，请 ${cooldownSec} 秒后再试`);
-    this.name = 'LoginCodeCooldownError';
-  }
+export interface LoginCodeVerified {
+  subjectId: string;
+  /** 附加字段（注册场景暂存的 email/密码哈希等，验证成功时原样返回） */
+  data?: Record<string, string>;
 }
 
 /**
  * 签发挑战（含 60s 发送冷却）。code 由调用方生成（6 位数字）并负责投递（邮件）；
- * 投递失败时调用方应删除 challenge 键（见 admin-auth/client-auth 用法）。
+ * 投递失败时调用方应删除 challenge 键（见 admin/client auth service 用法）。
  */
 export async function issueLoginCodeChallenge(
   redis: Redis,
@@ -69,28 +68,29 @@ export async function abortLoginCodeChallenge(
 }
 
 /**
- * 验证挑战。成功一次性消费；第 5 次错误即作废（此后正确码也 CHALLENGE_INVALID）。
+ * 验证挑战。成功一次性消费并返回主体与附加字段；失败抛 CodeVerifyError
+ * （第 5 次错误即作废，此后正确码也 CHALLENGE_INVALID）。
  */
 export async function verifyLoginCodeChallenge(
   redis: Redis,
   ns: LoginCodeNamespace,
   challengeId: string,
   code: string,
-): Promise<LoginCodeVerifyResult> {
+): Promise<LoginCodeVerified> {
   const key = `logincode:${ns}:challenge:${challengeId}`;
   const stored = await redis.hgetall(key);
   if (!stored || !stored.subjectId || !stored.codeHash) {
-    return { ok: false, reason: 'CHALLENGE_INVALID' };
+    throw new CodeVerifyError('CHALLENGE_INVALID');
   }
   const tries = await redis.hincrby(key, 'tries', 1);
   if (sha256Hex(code) === stored.codeHash) {
     await redis.del(key);
     const { subjectId, codeHash: _codeHash, tries: _tries, ...data } = stored;
-    return { ok: true, subjectId, data: Object.keys(data).length > 0 ? data : undefined };
+    return { subjectId, data: Object.keys(data).length > 0 ? data : undefined };
   }
   if (tries >= LOGIN_CODE_MAX_TRIES) {
     await redis.del(key);
-    return { ok: false, reason: 'CHALLENGE_EXHAUSTED' };
+    throw new CodeVerifyError('CHALLENGE_EXHAUSTED');
   }
-  return { ok: false, reason: 'CODE_INVALID' };
+  throw new CodeVerifyError('CODE_INVALID');
 }

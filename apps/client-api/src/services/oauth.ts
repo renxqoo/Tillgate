@@ -1,9 +1,9 @@
 import { and, eq } from 'drizzle-orm';
-import { users } from '@ai-gateway/db/schema';
-import { pgSqlState } from '@ai-gateway/http';
+import { users, isAccountUsable } from '@ai-gateway/db/schema';
+import { FlowError, pgSqlState, recordAudit } from '@ai-gateway/http';
 import type { ClientServices } from './index.js';
 import type { ClientApiConfig, OAuthCredentials } from '../config.js';
-import { defaultDisplayName, issueSession } from './auth.js';
+import { defaultDisplayName, issueSession } from './auth-common.js';
 
 /**
  * OAuth 社交登录（GitHub / Google，Authorization Code 流，服务端机密客户端）。
@@ -165,17 +165,22 @@ export async function fetchOAuthProfile(
   };
 }
 
-export type OAuthLoginOutcome =
-  | { kind: 'success'; token: string; userId: number; email: string | null; gifted: boolean; created: boolean }
-  | { kind: 'account_unavailable' };
+export type OAuthLoginResult = {
+  token: string;
+  userId: number;
+  email: string | null;
+  gifted: boolean;
+  created: boolean;
+};
 
-/** find-or-create（issuer=provider, subject=平台 id）+ 签发会话（赠额幂等） */
+/** find-or-create（issuer=provider, subject=平台 id）+ 签发会话（赠额幂等）。
+ *  失败分支直接抛 FlowError（审计随抛落库），errorHandler 统一出响应。 */
 export async function loginWithOAuth(
   s: ClientServices,
   config: ClientApiConfig,
   provider: OAuthProviderName,
   profile: OAuthProfile,
-): Promise<OAuthLoginOutcome> {
+): Promise<OAuthLoginResult> {
   let created = false;
   let rows = await s.db
     .select({ id: users.id, email: users.email, status: users.status })
@@ -212,11 +217,26 @@ export async function loginWithOAuth(
       }
     }
   }
-  if (!user || user.status !== 0) return { kind: 'account_unavailable' };
+  if (!user || !isAccountUsable(user.status)) {
+    void recordAudit(s.db, {
+      actor: 'user',
+      action: 'auth.oauth.unavailable',
+      targetType: 'user',
+      targetId: null,
+      detail: { provider },
+    });
+    throw new FlowError('account_unavailable', { code: 'ACCOUNT_UNAVAILABLE' });
+  }
 
   const session = await issueSession(s, config, user.id);
+  void recordAudit(s.db, {
+    actor: 'user',
+    action: 'auth.oauth.success',
+    targetType: 'user',
+    targetId: user.id,
+    detail: { provider, created },
+  });
   return {
-    kind: 'success',
     token: session.token,
     userId: user.id,
     email: user.email ?? profile.email,

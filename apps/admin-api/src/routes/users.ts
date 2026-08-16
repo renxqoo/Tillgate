@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
-import { gte, lte, eq } from 'drizzle-orm';
-import { users, rateCards, transactions, auditLogs } from '@ai-gateway/db/schema';
+import { ACCOUNT_STATUS } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import {
-  MONEY_MAX, HttpError, intParam, jsonBody, operationId, paginateQuery, query,
-  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
+import { MONEY_MAX, intParam, jsonBody, operationId, query, listQuerySchema } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
-import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from '../services/users.js';
+import {
+  getUserProfile, listUserAuditLogs, listUsers, listUserTransactions, mapLedgerError, setUserPassword,
+  updateUser, userListQuerySchema, userTransactionsQuerySchema,
+} from '../services/users.js';
 
 /**
  * 用户管理（api-contract §4.4）。
@@ -19,12 +19,6 @@ import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from 
  *   - POST /:id/adjust | /:id/gift：调账/赠送（ledger 事务 + 幂等键）
  *   - GET  /:id/transactions | /:id/audit-logs：管理员视角流水与审计
  */
-
-const userListQuerySchema = listQuerySchema.extend({
-  status: z.coerce.number().int().min(0).max(2).optional(),
-  /** 企业/个人筛选：1=企业，0=个人 */
-  enterprise: z.enum(['0', '1']).optional(),
-});
 
 const userUpdateSchema = z
   .object({
@@ -45,7 +39,7 @@ const userUpdateSchema = z
     freezeReason: z.string().max(128).nullable().optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.freezeReason !== undefined && v.status !== 1) {
+    if (v.freezeReason !== undefined && v.status !== ACCOUNT_STATUS.BANNED) {
       ctx.addIssue({
         code: 'custom',
         path: ['freezeReason'],
@@ -84,54 +78,12 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
     // 列表（搜索 + 状态筛选 + 分页）
-    .get('/', query(userListQuerySchema), async (c) => {
-      const q = c.req.valid('query');
-      const { page, limit, offset, where, orderBy } = buildList(q, {
-        search: [users.subject, users.email, users.displayName],
-        conditions: [
-          q.status !== undefined ? eq(users.status, q.status) : undefined,
-          q.enterprise !== undefined ? eq(users.isEnterprise, q.enterprise === '1') : undefined,
-        ],
-        sort: {
-          by: {
-            id: users.id,
-            subject: users.subject,
-            balance: users.balance,
-            createdAt: users.createdAt,
-            lastLoginAt: users.lastLoginAt,
-          },
-          fallback: 'createdAt',
-          tiebreaker: users.id,
-        },
-      });
-
-      const result = await paginateQuery(
-        page,
-        s.db
-          .select(userProfileColumns)
-          .from(users)
-          .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
-          .where(where)
-          .orderBy(...orderBy)
-          .limit(limit)
-          .offset(offset),
-        countAll(s.db, users, where),
-      );
-      return c.json(result);
-    })
+    .get('/', query(userListQuerySchema), async (c) =>
+      c.json(await listUsers(s, c.req.valid('query'))),
+    )
 
     // 详情
-    .get('/:id', async (c) => {
-      const id = intParam(c, 'id');
-      const rows = await s.db
-        .select(userProfileColumns)
-        .from(users)
-        .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
-        .where(eq(users.id, id))
-        .limit(1);
-      if (rows.length === 0) throw new HttpError('USER_NOT_FOUND', '用户不存在');
-      return c.json(rows[0]);
-    })
+    .get('/:id', async (c) => c.json(await getUserProfile(s, intParam(c, 'id'))))
 
     // PATCH：封禁/解封/绑卡/限流/资料
     .patch('/:id', jsonBody(userUpdateSchema), async (c) => {
@@ -187,54 +139,12 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     // 用户资金流水（管理员视角）
     .get(
       '/:id/transactions',
-      query(listQuerySchema.extend({
-        from: z.string().datetime().optional(),
-        to: z.string().datetime().optional(),
-      })),
-      async (c) => {
-        const id = intParam(c, 'id');
-        const q = c.req.valid('query');
-        // from/to 时间范围（与用户面 /api/me/transactions 同语义）
-        const { page, limit, offset, where, orderBy } = buildList(q, {
-          search: [transactions.remark, transactions.refId, transactions.type],
-          conditions: [
-            eq(transactions.userId, id),
-            q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
-            q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
-          ],
-          sort: {
-            by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
-            fallback: 'createdAt',
-            tiebreaker: transactions.id,
-          },
-        });
-        const result = await paginateQuery(
-          page,
-          s.db.select().from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-          countAll(s.db, transactions, where),
-        );
-        return c.json(result);
-      },
+      query(userTransactionsQuerySchema),
+      async (c) => c.json(await listUserTransactions(s, intParam(c, 'id'), c.req.valid('query'))),
     )
 
     // 用户审计日志（管理员视角，target_type=user）
-    .get('/:id/audit-logs', query(listQuerySchema), async (c) => {
-      const id = intParam(c, 'id');
-      const input = c.req.valid('query');
-      const { page, limit, offset, where, orderBy } = buildList(input, {
-        search: [auditLogs.action, auditLogs.targetId],
-        conditions: [eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id))],
-        sort: {
-          by: { id: auditLogs.id, action: auditLogs.action, createdAt: auditLogs.createdAt },
-          fallback: 'createdAt',
-          tiebreaker: auditLogs.id,
-        },
-      });
-      const result = await paginateQuery(
-        page,
-        s.db.select().from(auditLogs).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-        countAll(s.db, auditLogs, where),
-      );
-      return c.json(result);
-    });
+    .get('/:id/audit-logs', query(listQuerySchema), async (c) =>
+      c.json(await listUserAuditLogs(s, intParam(c, 'id'), c.req.valid('query'))),
+    );
 }

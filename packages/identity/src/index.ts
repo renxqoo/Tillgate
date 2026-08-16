@@ -13,7 +13,6 @@ export {
   type SessionType,
   type SessionPayload,
   type SessionSignInput,
-  type SessionVerifyResult,
 } from './session.js';
 
 // Cookie 容器（双身份）
@@ -50,12 +49,11 @@ export {
   issueLoginCodeChallenge,
   abortLoginCodeChallenge,
   verifyLoginCodeChallenge,
-  LoginCodeCooldownError,
   LOGIN_CODE_TTL_S,
   LOGIN_CODE_MAX_TRIES,
   LOGIN_CODE_RESEND_COOLDOWN_S,
   type LoginCodeNamespace,
-  type LoginCodeVerifyResult,
+  type LoginCodeVerified,
 } from './login-code.js';
 
 // 登录验证码发信（SMTP fail-closed；品牌参数化管理后台/用户面板）
@@ -75,9 +73,17 @@ export {
   createTurnstileCaptcha,
   captchaFromEnv,
   type CaptchaService,
-  type CaptchaVerifyOutcome,
   type TurnstileCaptchaOptions,
 } from './captcha.js';
+
+// 领域错误家谱（冷却/验码/人机验证；边界 catch 后翻译，不得裸冒到 HTTP）
+export {
+  IdentityError,
+  LoginCodeCooldownError,
+  CodeVerifyError,
+  CaptchaError,
+  SessionVerifyError,
+} from './errors.js';
 
 // Hono Variables 类型
 export {

@@ -1,15 +1,12 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   MONEY_MAX, jsonBody } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
-import { channels as channelsTable, modelMappings } from '@ai-gateway/db/schema';
 import type { AdminServices } from '../services/index.js';
 import {
   CATALOG_SOURCES,
-  compareCatalog,
-  getCatalogSource,
+  getCatalogComparison,
   importCatalogModels,
 } from '../services/model-catalog.js';
 
@@ -38,21 +35,6 @@ const importSchema = z.object({
     .min(1),
 });
 
-const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
-const sourceCaches = new Map<string, { fetchedAt: number; raw: unknown }>();
-
-async function fetchSourceModels(sourceId: string): Promise<{ fetchedAt: number; raw: unknown }> {
-  const source = getCatalogSource(sourceId);
-  const cached = sourceCaches.get(sourceId);
-  if (cached && Date.now() - cached.fetchedAt < CATALOG_CACHE_TTL_MS) {
-    return { fetchedAt: cached.fetchedAt, raw: cached.raw };
-  }
-  const raw = await source.fetchModels();
-  const entry = { fetchedAt: Date.now(), raw };
-  sourceCaches.set(sourceId, entry);
-  return entry;
-}
-
 export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
     .get('/sources', (c) => {
@@ -65,37 +47,10 @@ export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
         })),
       });
     })
-    .get('/:sourceId', async (c) => {
-      const source = getCatalogSource(c.req.param('sourceId'));
-      const { fetchedAt, raw } = await fetchSourceModels(source.id);
-      const items = source.mapModels(raw);
-      // 比对库内：按真实模型名回填已导入卖价与漂移警告
-      const reals = items.map((i) => i.realModel);
-      const existing =
-        reals.length > 0
-          ? await s.db
-              .select({
-                externalName: modelMappings.externalName,
-                realModel: modelMappings.realModel,
-                inputPrice: modelMappings.inputPrice,
-                outputPrice: modelMappings.outputPrice,
-              })
-              .from(modelMappings)
-              .where(eq(modelMappings.status, 0))
-              .then((rows) => rows.filter((r) => reals.includes(r.realModel)))
-          : [];
-      // 该源免费渠道是否已存在：首次导入需要平台 key（前端据此显隐 key 输入）
-      const freeChannel = await s.db.query.channels.findFirst({
-        where: eq(channelsTable.name, source.channelName),
-      });
-      return c.json({
-        source: source.id,
-        fetchedAt: new Date(fetchedAt).toISOString(),
-        channelReady: freeChannel != null,
-        channelRpmLimit: freeChannel?.rpmLimit ?? null,
-        items: compareCatalog(items, existing),
-      });
-    })
+    .get('/:sourceId', async (c) =>
+      c.json(await getCatalogComparison(s, c.req.param('sourceId'))),
+    )
+
     .post('/import', jsonBody(importSchema), async (c) => {
       const body = c.req.valid('json');
       const result = await importCatalogModels(s, {

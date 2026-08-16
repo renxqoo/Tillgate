@@ -67,6 +67,11 @@ export type SignupGiftResult =
   | ({ granted: true } & BalanceMutationResult)
   | { granted: false; reason: 'already_granted' | 'not_eligible' };
 
+/**
+ * 兑换结果（含拒绝）。注意：拒绝是「可落库重放的领域事实」——rejected 会写入
+ * fund_operations.result，重试按幂等回执重放同一拒绝；改抛异常会回滚事务丢失
+ * 回执（重试将重新 claim 而非重放）。因此此处保留结果联合，不做抛式改造。
+ */
 export type RedeemResult =
   | ({ ok: true; codeId: number } & BalanceMutationResult)
   | {
@@ -772,7 +777,10 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             and(
               eq(redeemCodes.codeHash, codeHash),
               eq(redeemCodes.status, 0),
-              sql`${redeemCodes.expiresAt} is null or ${redeemCodes.expiresAt} > ${clock()}`,
+              // OR 必须整体加括号：and() 不给裸 SQL 片段加括号，SQL 里 AND 优先级
+              // 高于 OR，缺括号会把 WHERE 变成「hash 匹配 OR 任意未过期码」——
+              // 任意乱码都能消费一张随机有效码并按其面值入账（资金级缺陷）。
+              sql`(${redeemCodes.expiresAt} is null or ${redeemCodes.expiresAt} > ${clock()})`,
             ),
           )
           .returning({ id: redeemCodes.id, batchId: redeemCodes.batchId });

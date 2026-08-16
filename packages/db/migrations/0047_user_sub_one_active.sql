@@ -21,4 +21,5 @@ WHERE us.status = 0
 -- per-user 全维硬不变量：每用户至多一条 status=0（个人或组织皆然）。
 -- org 维保留 one_org_uq（防跨用户在同一组织重复开订阅）。
 DROP INDEX IF EXISTS user_subscriptions_one_personal_uq; -- 被 per-user 索引完全覆盖，删除以免双真相
-CREATE UNIQUE INDEX user_subscriptions_one_active_uq ON user_subscriptions (user_id) WHERE status = 0;
+-- IF NOT EXISTS：该迁移生成早于手工应用（开发库已建同名索引），幂等保证链路可重放
+CREATE UNIQUE INDEX IF NOT EXISTS user_subscriptions_one_active_uq ON user_subscriptions (user_id) WHERE status = 0;

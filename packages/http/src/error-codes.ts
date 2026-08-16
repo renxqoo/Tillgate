@@ -44,8 +44,6 @@ export const ERROR_REGISTRY = {
 
   // ── 认证 / 会话（admin-auth / auth）──
   INVALID_CREDENTIALS: { status: 401, message: '邮箱或密码错误' },
-  ACCOUNT_BANNED: { status: 403, message: '账号已封禁' },
-  ACCOUNT_DELETED: { status: 403, message: '账号已注销' },
   ACCOUNT_UNAVAILABLE: { status: 403, message: '账号不可用' },
   NOT_LOCAL_ACCOUNT: { status: 400, message: '该账号不支持此操作（非本地密码账号）' },
   CHALLENGE_INVALID: { status: 400, message: '验证码挑战无效或已过期' },
@@ -62,13 +60,14 @@ export const ERROR_REGISTRY = {
   CAPTCHA_REQUIRED: { status: 400, message: '需要人机验证' },
   CAPTCHA_INVALID: { status: 400, message: '人机验证未通过，请重试' },
   CAPTCHA_UNAVAILABLE: { status: 503, message: '人机验证服务不可用，请稍后重试' },
+  REGISTER_DISABLED: { status: 403, message: '注册已关闭，请使用第三方登录或直接登录' },
 
   // ── OAuth ──
   OAUTH_NOT_CONFIGURED: { status: 400, message: 'OAuth 登录未配置' },
   OAUTH_INVALID: { status: 400, message: '缺少授权参数' },
   OAUTH_STATE_MISMATCH: { status: 403, message: '登录会话已失效，请重新登录' },
   OAUTH_STATE_EXPIRED: { status: 403, message: '登录状态已过期，请重新登录' },
-  OAUTH_EXCHANGE_FAILED: { status: 401, message: 'OAuth 授权交换失败' },
+  OAUTH_EXCHANGE_FAILED: { status: 502, message: '第三方登录失败，请重试或改用邮箱登录' },
   OAUTH_UNKNOWN: { status: 404, message: '未知登录方式' },
 
   // ── 用户 / 管理员 ──

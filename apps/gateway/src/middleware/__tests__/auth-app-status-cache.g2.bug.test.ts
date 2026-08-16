@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { EphemeralRedis } from '@ai-gateway/http';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +28,7 @@ process.env.ENCRYPTION_KEY =
   process.env.ENCRYPTION_KEY ?? 'test-enc-9a4f2c7d8b1e5a3f6c0d4b2e8a7f1c9d';
 process.env.NODE_ENV = process.env.NODE_ENV ?? 'development';
 
-const { Redis } = await import('ioredis');
+const { createEphemeralRedis } = await import('@ai-gateway/http');
 const { eq } = await import('drizzle-orm');
 const { Hono } = await import('hono');
 const { createDb } = await import('@ai-gateway/db');
@@ -55,18 +56,13 @@ const { signJwt } = await import('../../services/auth/jwt.js');
 
 const DATABASE_URL =
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 const db = createDb(DATABASE_URL);
-const redis = new Redis(REDIS_URL, {
-  retryStrategy: () => null,
-  lazyConnect: true,
-  maxRetriesPerRequest: null,
-});
+let redis: EphemeralRedis;
 
 let connected = false;
 beforeAll(async () => {
   try {
-    await redis.connect();
+    redis = await createEphemeralRedis();
     await db.query.users.findFirst({ where: eq(users.id, 1), columns: { id: true } });
     connected = true;
   } catch {
@@ -74,7 +70,7 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => {
-  await redis.quit().catch(() => {});
+  await redis?.close();
   await db.$client.end().catch(() => {});
 });
 

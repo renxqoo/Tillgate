@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import Redis from 'ioredis';
+import { createEphemeralRedis, type EphemeralRedis } from '@ai-gateway/http';
 import { backfillTpm } from '../settle.js';
 import type { UsageReceipt } from '../types.js';
 
@@ -50,15 +50,11 @@ const DIMS = [
   `key:${KEY}`,
 ];
 
-const redis = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
-  retryStrategy: () => null,
-  lazyConnect: true,
-  maxRetriesPerRequest: null,
-});
+let redis: EphemeralRedis;
 let connected = false;
 beforeAll(async () => {
   try {
-    await redis.connect();
+    redis = await createEphemeralRedis();
     await redis.ping();
     connected = true;
   } catch {
@@ -91,7 +87,7 @@ afterAll(async () => {
     }
     await redis.del('{tpm}:request:tpm-bf-red-test', '{tpm}:projected:tpm-bf-red-test');
   }
-  await redis.quit().catch(() => {});
+  await redis?.close();
 });
 
 function receipt(): UsageReceipt {

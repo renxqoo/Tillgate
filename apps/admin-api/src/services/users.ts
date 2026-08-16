@@ -1,8 +1,9 @@
-import { eq, and, sql } from 'drizzle-orm';
-import { users, rateCards, rateCardCoefficients, apiKeys } from '@ai-gateway/db/schema';
+import { eq, and, sql, gte, lte } from 'drizzle-orm';
+import { users, rateCards, rateCardCoefficients, apiKeys, transactions, auditLogs } from '@ai-gateway/db/schema';
 import { hashPassword } from '@ai-gateway/identity';
 import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
-import { HttpError, invalidateKeyAuthCache, recordAudit, type KnownErrorCode } from '@ai-gateway/http';
+import { HttpError, invalidateKeyAuthCache, recordAudit, buildList, countAll, listQuerySchema, paginateQuery, type KnownErrorCode } from '@ai-gateway/http';
+import { z } from 'zod';
 import type { AdminServices } from './index.js';
 
 /**
@@ -212,4 +213,98 @@ export async function ensureGlobalCoefficient(s: AdminServices, rateCardId: numb
       .values({ rateCardId, scope: 'global', coefficient: '1.000' })
       .onConflictDoNothing();
   }
+}
+
+export const userListQuerySchema = listQuerySchema.extend({
+  status: z.coerce.number().int().min(0).max(2).optional(),
+  /** 企业/个人筛选：1=企业，0=个人 */
+  enterprise: z.enum(['0', '1']).optional(),
+});
+
+export const userTransactionsQuerySchema = listQuerySchema.extend({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+export async function listUsers(s: AdminServices, q: z.infer<typeof userListQuerySchema>) {
+  const { page, limit, offset, where, orderBy } = buildList(q, {
+    search: [users.subject, users.email, users.displayName],
+    conditions: [
+      q.status !== undefined ? eq(users.status, q.status) : undefined,
+      q.enterprise !== undefined ? eq(users.isEnterprise, q.enterprise === '1') : undefined,
+    ],
+    sort: {
+      by: {
+        id: users.id,
+        subject: users.subject,
+        balance: users.balance,
+        createdAt: users.createdAt,
+        lastLoginAt: users.lastLoginAt,
+      },
+      fallback: 'createdAt',
+      tiebreaker: users.id,
+    },
+  });
+  return paginateQuery(
+    page,
+    s.db
+      .select(userProfileColumns)
+      .from(users)
+      .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    countAll(s.db, users, where),
+  );
+}
+
+export async function getUserProfile(s: AdminServices, id: number) {
+  const rows = await s.db
+    .select(userProfileColumns)
+    .from(users)
+    .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
+    .where(eq(users.id, id))
+    .limit(1);
+  if (rows.length === 0) throw USER_NOT_FOUND;
+  return rows[0];
+}
+
+export async function listUserTransactions(s: AdminServices, id: number, q: z.infer<typeof userTransactionsQuerySchema>) {
+  // from/to 时间范围（与用户面 /api/me/transactions 同语义）
+  const { page, limit, offset, where, orderBy } = buildList(q, {
+    search: [transactions.remark, transactions.refId, transactions.type],
+    conditions: [
+      eq(transactions.userId, id),
+      q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
+      q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
+    ],
+    sort: {
+      by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
+      fallback: 'createdAt',
+      tiebreaker: transactions.id,
+    },
+  });
+  return paginateQuery(
+    page,
+    s.db.select().from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+    countAll(s.db, transactions, where),
+  );
+}
+
+export async function listUserAuditLogs(s: AdminServices, id: number, input: z.infer<typeof listQuerySchema>) {
+  const { page, limit, offset, where, orderBy } = buildList(input, {
+    search: [auditLogs.action, auditLogs.targetId],
+    conditions: [eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id))],
+    sort: {
+      by: { id: auditLogs.id, action: auditLogs.action, createdAt: auditLogs.createdAt },
+      fallback: 'createdAt',
+      tiebreaker: auditLogs.id,
+    },
+  });
+  return paginateQuery(
+    page,
+    s.db.select().from(auditLogs).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+    countAll(s.db, auditLogs, where),
+  );
 }

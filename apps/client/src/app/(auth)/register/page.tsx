@@ -6,7 +6,7 @@ import { Sparkles } from "lucide-react";
 import { stripAuthParams, type SearchParamsLike } from "@ai-gateway/ui/lib/auth-url";
 
 import { RegisterForm } from "./_components/register-form";
-import { oauthOptionsFromProviders, type OAuthOption } from "../_components/oauth-buttons";
+import { OAuthButtons, oauthOptionsFromProviders, type OAuthOption } from "../_components/oauth-buttons";
 import { APP_CONFIG } from "@/config/app-config";
 
 export default async function RegisterPage({
@@ -20,6 +20,7 @@ export default async function RegisterPage({
   if (clean) redirect(clean);
   const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
   let oauthOptions: OAuthOption[] = [];
+  let registerEnabled = true;
   let captchaSiteKey: string | null = null;
   try {
     const res = await fetch(`${base}/api/auth/oauth/providers`, {
@@ -31,16 +32,18 @@ export default async function RegisterPage({
   } catch {
     oauthOptions = [];
   }
-  // 人机验证能力发现：后端配置是单一真相（未配置 → 不渲染 widget）
+  // 注册能力发现（开关 + 人机验证）：后端配置是单一真相。探测失败按开启渲染，
+  // 由提交时的 403 兜底（不因网络抖动误显「注册已关闭」）。
   try {
-    const res = await fetch(`${base}/api/auth/captcha`, {
+    const res = await fetch(`${base}/api/auth/register/capabilities`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });
-    const body = (await res.json()) as { siteKey?: string | null };
-    captchaSiteKey = body.siteKey ?? null;
+    const body = (await res.json()) as { enabled?: boolean; captchaSiteKey?: string | null };
+    registerEnabled = body.enabled !== false;
+    captchaSiteKey = registerEnabled ? (body.captchaSiteKey ?? null) : null;
   } catch {
-    captchaSiteKey = null;
+    registerEnabled = true;
   }
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
@@ -52,13 +55,33 @@ export default async function RegisterPage({
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
-            <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} />
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              已有账号？
-              <Link href="/login" className="ml-1 text-foreground hover:underline">
-                直接登录
-              </Link>
-            </p>
+            {registerEnabled ? (
+              <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} />
+            ) : (
+              <div className="rounded-xl border bg-card p-6 text-center">
+                <h1 className="text-lg font-semibold">注册暂未开放</h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  邮箱注册当前已关闭。已有账号可直接登录，或使用下方第三方登录方式。
+                </p>
+                <Link
+                  href="/login"
+                  className="mt-4 inline-block text-sm text-primary underline-offset-2 hover:underline"
+                >
+                  去登录 →
+                </Link>
+                <div className="mt-4">
+                  <OAuthButtons options={oauthOptions} />
+                </div>
+              </div>
+            )}
+            {registerEnabled && (
+              <p className="mt-4 text-center text-sm text-muted-foreground">
+                已有账号？
+                <Link href="/login" className="ml-1 text-foreground hover:underline">
+                  直接登录
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       </div>

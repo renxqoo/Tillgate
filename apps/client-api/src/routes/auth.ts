@@ -1,19 +1,16 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
 import { setCookie, deleteCookie } from 'hono/cookie';
-import { users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
-  hashPassword,
-  verifyPassword,
   SESSION_COOKIE,
   SESSION_DEFAULT_TTL_S,
   cookieOptions,
   type ClientEnv,
 } from '@ai-gateway/identity';
-import { clientIpFromContext, csrfProtection, HttpError, jsonBody, recordAudit, timingSafeTokenEqual } from '@ai-gateway/http';
+import { clientIpFromContext, csrfProtection, jsonBody, timingSafeTokenEqual } from '@ai-gateway/http';
 import type { ClientServices } from '../services/index.js';
-import { login, verifyLoginCode, register, verifyRegistration } from '../services/auth.js';
+import { changeMyPassword, login, verifyLoginCode } from '../services/auth-login.js';
+import { register, verifyRegistration } from '../services/auth-register.js';
 import type { ClientApiConfig } from '../config.js';
 
 /**
@@ -23,7 +20,7 @@ import type { ClientApiConfig } from '../config.js';
  *   - POST /login：邮箱 + 密码 → 发 6 位邮箱验证码（强制两步，60s 冷却/账号）
  *   - POST /login/verify：验证码通过 → 签发 HttpOnly Cookie 会话 JWT（24h，type='user'）
  *   - POST /logout：清 Cookie
- *   - GET /captcha：人机验证能力发现（siteKey 或 null；前端据此渲染 Turnstile widget）
+ *   - GET /register/capabilities：注册页能力发现（开关 + Turnstile siteKey）
  *   - POST /register：邮箱 + 密码 →（启用时过人机验证门禁）发验证码（不建号）
  *   - POST /register/verify：验证码通过 → 建号 + 自动登录
  *
@@ -60,102 +57,48 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
     // 合法浏览器登录带受信 Origin；脚本/SDK 双缺失头按 INTERNAL_API_TOKEN 兼容规则处理。
     .use(csrfProtection({ trustedOrigins: config.trustedOrigins, internalToken: config.internalApiToken }))
 
-    // 第一步：邮箱 + 密码 → 发验证码（不签会话）
+    // 第一步：邮箱 + 密码 → 发验证码（不签会话）。
+    // 失败分支由 service 抛 FlowError（审计随抛一并落库），errorHandler 统一出响应。
     .post('/login', jsonBody(loginSchema), async (c) => {
       const body = c.req.valid('json');
       const ip = clientIpFromContext(c, config);
       const outcome = await login(s, config, { email: body.email, password: body.password, ip });
-
-      // 登录审计（旁路）：成功/失败/锁定均落 audit_logs
-      void recordAudit(s.db, {
-        actor: 'user',
-        action: `auth.login.${outcome.kind}`,
-        targetType: 'user',
-        targetId: null,
-        detail: { email: body.email.slice(0, 64), ip },
-      });
-
-      switch (outcome.kind) {
-        case 'locked':
-          throw new HttpError('TOO_MANY_ATTEMPTS', '登录尝试过多，已临时锁定', undefined, {
-            'retry-after': String(outcome.retryAfterSec),
-          });
-        case 'invalid_credentials':
-          throw new HttpError('INVALID_CREDENTIALS');
-        case 'banned':
-          throw new HttpError('ACCOUNT_BANNED');
-        case 'deleted':
-          throw new HttpError('ACCOUNT_DELETED');
-        case 'mailer_unavailable':
-          throw new HttpError(
-            'TWO_FACTOR_UNAVAILABLE',
-            '登录需邮箱验证码，但服务端未配置 SMTP——请联系管理员（不降级为单密码）',
-          );
-        case 'code_rate_limited':
-          throw new HttpError('CODE_RATE_LIMITED', '验证码发送过于频繁，请 1 分钟后再试', undefined, {
-            'retry-after': String(outcome.retryAfterSec),
-          });
-        case 'code_send_failed':
-          throw new HttpError('CODE_SEND_FAILED');
-        case 'code_required':
-          return c.json({ ok: true, twoFactorRequired: true, challengeId: outcome.challengeId });
-      }
+      return c.json({ ok: true, twoFactorRequired: true, challengeId: outcome.challengeId });
     })
 
     // 第二步：验证邮箱验证码（挑战 5 分钟有效，错 5 次作废，一次性消费防重放）
     .post('/login/verify', jsonBody(verifySchema), async (c) => {
       const body = c.req.valid('json');
       const ip = clientIpFromContext(c, config);
-
       const outcome = await verifyLoginCode(s, config, {
         challengeId: body.challengeId,
         code: body.code,
         ip,
       });
-
-      void recordAudit(s.db, {
-        actor: 'user',
-        action: `auth.login.verify.${outcome.kind}`,
-        targetType: 'user',
-        targetId: outcome.kind === 'success' ? outcome.userId : null,
-        detail: { ip },
+      setCookie(c, SESSION_COOKIE, outcome.token, cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S));
+      return c.json({
+        ok: true,
+        user: { id: outcome.userId, email: outcome.email, gifted: outcome.gifted },
       });
-
-      switch (outcome.kind) {
-        case 'code_invalid':
-          throw new HttpError('CODE_INVALID');
-        case 'challenge_invalid':
-          return c.json(
-            { error: { message: '验证码已过期、不存在或错误次数过多，请重新登录', code: 'CHALLENGE_INVALID' } },
-            400,
-          );
-        case 'account_unavailable':
-          throw new HttpError('ACCOUNT_UNAVAILABLE');
-        case 'success': {
-          setCookie(
-            c,
-            SESSION_COOKIE,
-            outcome.token,
-            cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S),
-          );
-          return c.json({
-            ok: true,
-            user: { id: outcome.userId, email: outcome.email, gifted: outcome.gifted },
-          });
-        }
-      }
     })
 
     // ── 邮箱自助注册（两步：注册 → 邮箱验证码 → 建号并自动登录）──
 
-    // 人机验证能力发现（前端渲染 widget 的单一真相在后端配置；GET 无 CSRF 面）
-    .get('/captcha', (c) => c.json({ siteKey: s.captcha?.siteKey ?? null }))
+    // 注册页能力发现（单一真相：开关 + 人机验证 siteKey；GET 无 CSRF 面）。
+    // 关闭注册时 captchaSiteKey 一并为 null——无注册即无 widget。
+    .get('/register/capabilities', (c) =>
+      c.json({
+        enabled: config.registerEnabled,
+        captchaSiteKey: config.registerEnabled ? (s.captcha?.siteKey ?? null) : null,
+      }),
+    )
 
     // 第一步：邮箱 + 密码 → 发验证码（不建号）
     .post('/register', jsonBody(registerSchema), async (c) => {
       const body = c.req.valid('json');
       const ip = clientIpFromContext(c, config);
-      // 服务间豁免：恒定时间匹配 x-internal-token（Next.js BFF 转发注册时不携带——
+      // 注册开关/审计在 service（auth.register.disabled）；服务间豁免：
+      // 恒定时间匹配 x-internal-token（Next.js BFF 转发注册时不携带——
       // token 由浏览器 widget 产生经 body 转发，BFF 若代持内部令牌则机器人调
       // server action 即可绕过人机验证）。
       const captchaExempt =
@@ -168,42 +111,7 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
         captchaToken: body.captchaToken,
         captchaExempt,
       });
-
-      void recordAudit(s.db, {
-        actor: 'user',
-        action: `auth.register.${outcome.kind}`,
-        targetType: 'user',
-        targetId: null,
-        detail: { email: body.email.slice(0, 64), ip },
-      });
-
-      switch (outcome.kind) {
-        case 'rate_limited':
-          throw new HttpError('REGISTER_RATE_LIMITED', '注册请求过于频繁，请稍后再试', undefined, {
-            'retry-after': String(outcome.retryAfterSec),
-          });
-        case 'captcha_required':
-          throw new HttpError('CAPTCHA_REQUIRED');
-        case 'captcha_invalid':
-          throw new HttpError('CAPTCHA_INVALID');
-        case 'captcha_unavailable':
-          throw new HttpError('CAPTCHA_UNAVAILABLE');
-        case 'email_taken':
-          throw new HttpError('EMAIL_TAKEN', '该邮箱已注册，请直接登录');
-        case 'mailer_unavailable':
-          throw new HttpError(
-            'TWO_FACTOR_UNAVAILABLE',
-            '注册需邮箱验证码，但服务端未配置 SMTP——请联系管理员（不降级）',
-          );
-        case 'code_rate_limited':
-          throw new HttpError('CODE_RATE_LIMITED', '验证码发送过于频繁，请 1 分钟后再试', undefined, {
-            'retry-after': String(outcome.retryAfterSec),
-          });
-        case 'code_send_failed':
-          throw new HttpError('CODE_SEND_FAILED');
-        case 'code_required':
-          return c.json({ ok: true, challengeId: outcome.challengeId });
-      }
+      return c.json({ ok: true, challengeId: outcome.challengeId });
     })
 
     // 第二步：验证注册验证码 → 建号 + 自动登录（并发撞邮箱由唯一索引兜底 → 409）
@@ -213,38 +121,11 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
         challengeId: body.challengeId,
         code: body.code,
       });
-
-      void recordAudit(s.db, {
-        actor: 'user',
-        action: `auth.register.verify.${outcome.kind}`,
-        targetType: 'user',
-        targetId: outcome.kind === 'success' ? outcome.userId : null,
-        detail: outcome.kind === 'email_taken' ? { reason: 'concurrent' } : {},
+      setCookie(c, SESSION_COOKIE, outcome.token, cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S));
+      return c.json({
+        ok: true,
+        user: { id: outcome.userId, email: outcome.email, gifted: outcome.gifted },
       });
-
-      switch (outcome.kind) {
-        case 'code_invalid':
-          throw new HttpError('CODE_INVALID');
-        case 'challenge_invalid':
-          return c.json(
-            { error: { message: '验证码已过期、不存在或错误次数过多，请重新注册', code: 'CHALLENGE_INVALID' } },
-            400,
-          );
-        case 'email_taken':
-          throw new HttpError('EMAIL_TAKEN', '该邮箱已注册，请直接登录');
-        case 'success': {
-          setCookie(
-            c,
-            SESSION_COOKIE,
-            outcome.token,
-            cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S),
-          );
-          return c.json({
-            ok: true,
-            user: { id: outcome.userId, email: outcome.email, gifted: outcome.gifted },
-          });
-        }
-      }
     })
 
     // 注销
@@ -258,34 +139,9 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
 export function clientAuthRoutesProtected(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
 
-    // 修改密码（userSessionMiddleware 已注入 session）
+    // 修改密码（校验/换哈希/吊销会话/审计见 service）
     .post('/password', jsonBody(passwordChangeSchema), async (c) => {
-      const session = c.get('session');
-      const body = c.req.valid('json');
-
-      const rows = await s.db
-        .select({ id: users.id, passwordHash: users.passwordHash })
-        .from(users)
-        .where(eq(users.id, session.userId))
-        .limit(1);
-      if (rows.length === 0) throw new HttpError('USER_NOT_FOUND', '用户不存在');
-      const u = rows[0]!;
-
-      const ok = await verifyPassword(body.oldPassword, u.passwordHash);
-      if (!ok) throw new HttpError('INVALID_CREDENTIALS', '原密码错误');
-
-      const newHash = await hashPassword(body.newPassword);
-      // R5-2：改密即吊销全部既有会话（iat 早于失效线的旧 token 一律 401）
-      await s.db
-        .update(users)
-        .set({ passwordHash: newHash, sessionInvalidBefore: new Date(), updatedAt: new Date() })
-        .where(eq(users.id, u.id));
-      await recordAudit(s.db, {
-        actor: 'user',
-        action: 'user.password_change',
-        targetType: 'user',
-        targetId: session.userId,
-      });
+      await changeMyPassword(s, c.get('session').userId, c.req.valid('json'));
       return c.json({ ok: true });
     });
 }

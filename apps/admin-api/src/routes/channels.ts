@@ -1,15 +1,15 @@
 import { Hono } from 'hono';
-import { eq, and, inArray, sql } from 'drizzle-orm';
-import { providers, channels, modelMappings, modelChannels, usageLogs } from '@ai-gateway/db/schema';
+import { eq } from 'drizzle-orm';
+import { channels, providers } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { decrypt } from '@ai-gateway/core';
 import { createAi, defaultAiConfig } from '@ai-gateway/ai';
-import {
-  MONEY_MAX, bumpRouteCache, HttpError, jsonBody, maskUpstreamKey, recordAudit, intParam,
-  paginateQuery, query, listQuerySchema, buildList, encryptCurrent, countAll } from '@ai-gateway/http';
+import { MONEY_MAX, HttpError, jsonBody, maskUpstreamKey, intParam, query, listQuerySchema } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
-import { channelImportSchema, importChannels } from '../services/channels.js';
+import {
+  channelImportSchema, createChannel, importChannels, listChannels, retireChannel, updateChannel,
+} from '../services/channels.js';
 import { MemoryKvStorage, type BreakerState, type DeadCredentialState } from '@ai-gateway/ai';
 
 /**
@@ -53,205 +53,29 @@ const channelUpdateSchema = z.object({
 export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
-    // ====== 列表 ======
+    // ====== 列表（含绑定模型/上游消耗聚合，见 service）======
 
-    .get('/', query(listQuerySchema), async (c) => {
-      const input = c.req.valid('query');
-      const { page, limit, offset, where, orderBy } = buildList(input, {
-        search: [channels.name, providers.name],
-        sort: {
-          by: {
-            id: channels.id,
-            name: channels.name,
-            status: channels.status,
-            priority: channels.priority,
-            createdAt: channels.createdAt,
-          },
-          fallback: 'createdAt',
-          tiebreaker: channels.id,
-        },
-      });
+    .get('/', query(listQuerySchema), async (c) =>
+      c.json(await listChannels(s, c.req.valid('query'))),
+    )
 
-      const result = await paginateQuery(
-        page,
-        s.db
-          .select({
-            id: channels.id,
-            providerId: channels.providerId,
-            name: channels.name,
-            baseUrlOverride: channels.baseUrlOverride,
-            models: channels.models,
-            weight: channels.weight,
-            priority: channels.priority,
-            status: channels.status,
-            failCount: channels.failCount,
-            cooldownUntil: channels.cooldownUntil,
-            rpmLimit: channels.rpmLimit,
-            tpmLimit: channels.tpmLimit,
-            upstreamBudget: channels.upstreamBudget,
-            upstreamThreshold: channels.upstreamThreshold,
-            createdAt: channels.createdAt,
-            updatedAt: channels.updatedAt,
-            providerName: providers.name,
-            providerBaseUrl: providers.baseUrl,
-          })
-          .from(channels)
-          .innerJoin(providers, eq(channels.providerId, providers.id))
-          .where(where)
-          .orderBy(...orderBy)
-          .limit(limit)
-          .offset(offset),
-        // 计数与主查询同源 join（搜索目标含 providers.name）
-        countAll(s.db, channels, where, [
-          { table: providers, on: eq(channels.providerId, providers.id) },
-        ]),
-      );
-
-      // 查当页渠道绑定的模型映射（分页后 inArray 限定，不再全表拉取）
-      const pageIds = result.list.map((r) => r.id);
-      const bindings = pageIds.length
-        ? await s.db
-            .select({
-              channelId: modelChannels.channelId,
-              externalName: modelMappings.externalName,
-              realModel: modelMappings.realModel,
-            })
-            .from(modelChannels)
-            .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
-            .where(inArray(modelChannels.channelId, pageIds))
-        : [];
-
-      const bindingMap = new Map<number, Array<{ externalName: string; realModel: string }>>();
-      for (const b of bindings) {
-        const arr = bindingMap.get(b.channelId) ?? [];
-        arr.push({ externalName: b.externalName, realModel: b.realModel });
-        bindingMap.set(b.channelId, arr);
-      }
-
-      // 渠道已消耗（上游成本）聚合：consumed = sum(upstream_cost)，只计成功结算（报表用）
-      const consumedRows = pageIds.length
-        ? await s.db
-            .select({
-              channelId: usageLogs.channelId,
-              total: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
-            })
-            .from(usageLogs)
-            .where(and(eq(usageLogs.status, 0), inArray(usageLogs.channelId, pageIds)))
-            .groupBy(usageLogs.channelId)
-        : [];
-      const consumedMap = new Map<number, string>();
-      for (const cr of consumedRows) {
-        if (cr.channelId != null) consumedMap.set(cr.channelId, cr.total);
-      }
-
-      const list = result.list.map((r) => {
-        const consumed = consumedMap.get(r.id) ?? '0';
-        return {
-          ...r,
-          boundModels: bindingMap.get(r.id) ?? [],
-          // upstreamBudget 即「当前余额」（结算已扣减），已消耗单独给出供报表/追溯
-          upstreamConsumed: consumed,
-          upstreamRemaining: r.upstreamBudget,
-        };
-      });
-      return c.json({ ...result, list });
-    })
-
-    // ====== 创建 ======
+    // ====== 创建（Key 加密与审计见 service）======
 
     .post('/', jsonBody(channelCreateSchema), async (c) => {
-      const body = c.req.valid('json');
-      // 明文 key → AES 加密 → 存 DB（明文不保留在任何返回值/日志中）
-      const apiKeyEnc = encryptCurrent(body.apiKey, s.encryptionKey, s.encryptionKeyOld);
-      const [created] = await s.db
-        .insert(channels)
-        .values({
-          providerId: body.providerId,
-          name: body.name,
-          apiKeyEnc,
-          baseUrlOverride: body.baseUrlOverride ?? null,
-          models: body.models ?? null,
-          weight: body.weight ?? 1,
-          priority: body.priority ?? 0,
-          rpmLimit: body.rpmLimit ?? null,
-          tpmLimit: body.tpmLimit ?? null,
-          status: 0,
-        })
-        .returning({ id: channels.id, name: channels.name, providerId: channels.providerId });
-      s.logger.info({ channelId: created!.id, name: created!.name }, 'channel created (key encrypted)');
-      await bumpRouteCache(s.redis);
-      await recordAudit(s.db, {
-        actor: 'admin',
-        adminId: c.get('adminId'),
-        action: 'channel.create',
-        targetType: 'channel',
-        targetId: created!.id,
-        detail: { name: created!.name, providerId: created!.providerId },
-      });
+      const created = await createChannel(s, c.req.valid('json'), c.get('adminId'));
       // 响应不含 key（明文或密文都不返回）
       return c.json(created, 201);
     })
 
-    // ====== 更新 ======
+    // ====== 更新（换 Key 重加密 + 恢复启用见 service）======
 
     .patch('/:id', jsonBody(channelUpdateSchema), async (c) => {
-      const id = intParam(c, 'id');
-      const body = c.req.valid('json');
-      const update: Record<string, unknown> = { updatedAt: new Date() };
-      // 可更新字段（白名单）
-      if (body.name !== undefined) update.name = body.name;
-      if (body.baseUrlOverride !== undefined) update.baseUrlOverride = body.baseUrlOverride;
-      if (body.models !== undefined) update.models = body.models;
-      if (body.weight !== undefined) update.weight = body.weight;
-      if (body.priority !== undefined) update.priority = body.priority;
-      if (body.status !== undefined) update.status = body.status;
-      if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
-      if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-      if (body.upstreamThreshold !== undefined)
-        update.upstreamThreshold = body.upstreamThreshold == null ? null : String(body.upstreamThreshold);
-      // 换 Key：重新加密 + 清除「凭据无效」状态（status=4 死凭据/3 熔断 → 恢复启用）
-      if (body.apiKey !== undefined) {
-        update.apiKeyEnc = encryptCurrent(body.apiKey, s.encryptionKey, s.encryptionKeyOld);
-        update.status = 0;
-        update.failCount = 0;
-        update.cooldownUntil = null;
-      }
-      const [updated] = await s.db.update(channels).set(update).where(eq(channels.id, id)).returning({
-        id: channels.id,
-        name: channels.name,
-        status: channels.status,
-        failCount: channels.failCount,
-      });
-      if (!updated) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
-      await bumpRouteCache(s.redis);
-      s.logger.info({ channelId: id, keyChanged: body.apiKey !== undefined }, 'channel updated');
-      await recordAudit(s.db, {
-        actor: 'admin',
-        adminId: c.get('adminId'),
-        action: 'channel.update',
-        targetType: 'channel',
-        targetId: id,
-        detail: { keyChanged: body.apiKey !== undefined, ...(body.name !== undefined ? { name: body.name } : {}) },
-      });
+      const updated = await updateChannel(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
       return c.json(updated);
     })
 
     .delete('/:id', async (c) => {
-      const id = intParam(c, 'id');
-      const [retired] = await s.db
-        .update(channels)
-        .set({ status: 1, updatedAt: new Date() })
-        .where(eq(channels.id, id))
-        .returning({ id: channels.id });
-      if (!retired) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
-      await bumpRouteCache(s.redis);
-      await recordAudit(s.db, {
-        actor: 'admin',
-        adminId: c.get('adminId'),
-        action: 'channel.retire',
-        targetType: 'channel',
-        targetId: id,
-      });
+      await retireChannel(s, intParam(c, 'id'), c.get('adminId'));
       return c.json({ ok: true });
     })
 

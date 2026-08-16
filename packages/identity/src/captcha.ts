@@ -1,3 +1,5 @@
+import { CaptchaError } from './errors.js';
+
 /**
  * 人机验证组件（Cloudflare Turnstile）——注册面防刷的单一实现。
  *
@@ -6,21 +8,15 @@
  * token 由浏览器 widget 产生、经 BFF 原样转发——服务间调用不代答（否则机器人
  * 调 server action 即可绕过），仅持 x-internal-token 的可信内部调用豁免（路由层判定）。
  *
- * 结果语义分级（消费方为路由层，映射 400/503）：
- *   - invalid     → 票据缺失/伪造/过期/重放：客户端过错，可换新票重试
- *   - unavailable → 厂商 API 不可达/我方配置过错：fail-closed 绝不放行（503），
- *                   防「打瘫厂商即可免验证」的旁路
+ * 错误约定：失败抛 CaptchaError（reason: invalid/unavailable，语义分级见 errors.ts），
+ * 成功返回 void；消费方在边界 catch 后映射 400/503，不得裸冒。
  */
-export interface CaptchaVerifyOutcome {
-  ok: boolean;
-  reason?: 'invalid' | 'unavailable';
-}
 
 export interface CaptchaService {
   /** 公开 siteKey（GET /api/auth/captcha 下发给前端渲染 widget） */
   siteKey: string;
-  /** 服务端验签：token 由浏览器 widget 产生 */
-  verify(input: { token: string; remoteIp?: string }): Promise<CaptchaVerifyOutcome>;
+  /** 服务端验签：token 由浏览器 widget 产生；失败抛 CaptchaError */
+  verify(input: { token: string; remoteIp?: string }): Promise<void>;
 }
 
 export interface TurnstileCaptchaOptions {
@@ -58,7 +54,7 @@ export function createTurnstileCaptcha(opts: TurnstileCaptchaOptions): CaptchaSe
     siteKey: opts.siteKey,
     async verify({ token, remoteIp }) {
       const trimmed = token.trim();
-      if (!trimmed) return { ok: false, reason: 'invalid' };
+      if (!trimmed) throw new CaptchaError('invalid');
       let res: Response;
       try {
         res = await doFetch(verifyUrl, {
@@ -71,22 +67,22 @@ export function createTurnstileCaptcha(opts: TurnstileCaptchaOptions): CaptchaSe
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch {
-        return { ok: false, reason: 'unavailable' };
+        throw new CaptchaError('unavailable');
       }
-      if (!res.ok) return { ok: false, reason: 'unavailable' };
+      if (!res.ok) throw new CaptchaError('unavailable');
       let body: SiteverifyResponse;
       try {
         body = (await res.json()) as SiteverifyResponse;
       } catch {
-        return { ok: false, reason: 'unavailable' };
+        throw new CaptchaError('unavailable');
       }
-      if (body.success === true) return { ok: true };
+      if (body.success === true) return;
       const codes = body['error-codes'] ?? [];
       // 全部为已知客户端过错才归因用户；空码表/未知码/配置过错一律 unavailable（fail-closed）
       if (codes.length > 0 && codes.every((code) => CLIENT_FAULT_CODES.has(code))) {
-        return { ok: false, reason: 'invalid' };
+        throw new CaptchaError('invalid');
       }
-      return { ok: false, reason: 'unavailable' };
+      throw new CaptchaError('unavailable');
     },
   };
 }

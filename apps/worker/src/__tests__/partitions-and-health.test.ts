@@ -13,7 +13,7 @@ import { isDeepHealthAuthorized } from '../health-gate.js';
 
 loadRootEnvFile();
 
-const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway');
+const db: Db = createDb(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway', { poolMax: 5 });
 const pool = new Pool({ connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway' });
 const TMP = 'tmp_part_test';
 

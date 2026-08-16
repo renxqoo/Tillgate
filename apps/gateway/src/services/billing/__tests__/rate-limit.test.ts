@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { Redis } from 'ioredis';
+import { createEphemeralRedis, type EphemeralRedis } from '@ai-gateway/http';
 import { RateLimiter } from '../rate-limit-service.js';
 
 // 加载 monorepo 根 .env（vitest 不自动加载）
@@ -37,17 +37,12 @@ loadEnvFile();
  *
  * 无 Redis 时 beforeAll 置 connected=false，所有 it 走 skip（不阻塞 CI）。
  */
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
-const redis = new Redis(REDIS_URL, {
-  retryStrategy: () => null,
-  lazyConnect: true,
-  maxRetriesPerRequest: null,
-});
+let redis: EphemeralRedis;
 
 let connected = false;
 beforeAll(async () => {
   try {
-    await redis.connect();
+    redis = await createEphemeralRedis();
     await redis.ping();
     connected = true;
   } catch {
@@ -56,7 +51,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await redis.quit().catch(() => {});
+  await redis?.close();
 });
 
 /** 唯一 dimension 后缀，避免多 case / 多次运行间 Redis key 串扰 */

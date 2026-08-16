@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Redis } from 'ioredis';
+import { createEphemeralRedis, type EphemeralRedis } from '@ai-gateway/http';
 import { createRedisBreakerStorage, createRedisDeadCredentialStorage } from './ai-storage.js';
 import type { BreakerState, DeadCredentialState } from '@ai-gateway/ai';
 
@@ -7,15 +7,13 @@ import type { BreakerState, DeadCredentialState } from '@ai-gateway/ai';
  * Redis 存储实现集成测试：需要真实 Redis（CI 环境）。
  * 本地无 Redis / 认证失败时自动 skip，不阻塞开发。
  */
-const REDIS_URL = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
 
-let redis: Redis;
+let redis: EphemeralRedis;
 let connected = false;
 
 beforeAll(async () => {
-  redis = new Redis(REDIS_URL, { retryStrategy: () => null, lazyConnect: true });
   try {
-    await redis.connect();
+    redis = await createEphemeralRedis();
     connected = true;
   } catch {
     connected = false;
@@ -23,7 +21,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (redis) await redis.quit().catch(() => {});
+  if (redis) await redis?.close();
 });
 
 const itWithRedis = connected ? it : it.skip;

@@ -59,6 +59,7 @@ const app = createApp({
     trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
     internalApiToken: env.INTERNAL_API_TOKEN,
+    registerEnabled: env.REGISTER_ENABLED,
   },
 });
 

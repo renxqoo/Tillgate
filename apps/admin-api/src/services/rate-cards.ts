@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm';
-import { rateCards, rateCardCoefficients } from '@ai-gateway/db/schema';
-import { HttpError, recordAudit } from '@ai-gateway/http';
+import { rateCards, rateCardCoefficients, users } from '@ai-gateway/db/schema';
+import { buildList, countAll, HttpError, listQuerySchema, paginateQuery, recordAudit } from '@ai-gateway/http';
+import { sql } from 'drizzle-orm';
+import { z } from 'zod';
 import type { AdminServices } from './index.js';
 
 /**
@@ -103,4 +105,119 @@ export async function updateRateCard(
     detail: patch,
   });
   return result;
+}
+
+/** 删除：仅当无用户绑定时允许（防误删导致账户孤儿；系数行一并清理） */
+export async function deleteRateCard(s: AdminServices, id: number, adminId: number): Promise<void> {
+  const bound = await s.db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.rateCardId, id))
+    .limit(1);
+  if (bound.length > 0) {
+    throw new HttpError('RATE_CARD_IN_USE', '该费率卡仍有用户绑定，无法删除（请先迁移用户）');
+  }
+  await s.db.delete(rateCardCoefficients).where(eq(rateCardCoefficients.rateCardId, id));
+  const result = await s.db
+    .delete(rateCards)
+    .where(eq(rateCards.id, id))
+    .returning({ id: rateCards.id });
+  if (result.length === 0) throw RATE_CARD_NOT_FOUND;
+  await recordAudit(s.db, {
+    actor: 'admin',
+    adminId,
+    action: 'rate_card.delete',
+    targetType: 'rate_card',
+    targetId: id,
+  });
+}
+
+export async function listRateCards(s: AdminServices, input: z.infer<typeof listQuerySchema>) {
+  const { page, limit, offset, where, orderBy } = buildList(input, {
+    search: [rateCards.name, rateCards.description],
+    sort: {
+      by: { id: rateCards.id, name: rateCards.name, status: rateCards.status, createdAt: rateCards.createdAt },
+      fallback: 'createdAt',
+      tiebreaker: rateCards.id,
+    },
+  });
+  const result = await paginateQuery(
+    page,
+    s.db
+      .select({
+        id: rateCards.id,
+        name: rateCards.name,
+        description: rateCards.description,
+        status: rateCards.status,
+        createdAt: rateCards.createdAt,
+        updatedAt: rateCards.updatedAt,
+      })
+      .from(rateCards)
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    countAll(s.db, rateCards, where),
+  );
+  const ids = result.list.map((r) => r.id);
+  const coeffs = ids.length
+    ? await s.db
+        .select({
+          rateCardId: rateCardCoefficients.rateCardId,
+          coefficient: rateCardCoefficients.coefficient,
+        })
+        .from(rateCardCoefficients)
+        .where(eq(rateCardCoefficients.scope, 'global'))
+    : [];
+  const coeffMap = new Map(coeffs.map((x) => [x.rateCardId, x.coefficient]));
+  const list = result.list.map((r) => ({ ...r, coefficient: coeffMap.get(r.id) ?? '1.000' }));
+  return { ...result, list };
+}
+
+/** 查看绑定该卡的账户（api-contract §4.9） */
+export async function listRateCardUsers(s: AdminServices, id: number, input: z.infer<typeof listQuerySchema>) {
+  const { page, limit, offset, where, orderBy } = buildList(input, {
+    search: [users.subject, users.displayName, users.email],
+    conditions: [eq(users.rateCardId, id)],
+    sort: {
+      by: { id: users.id, subject: users.subject, balance: users.balance, createdAt: users.createdAt },
+      fallback: 'createdAt',
+      tiebreaker: users.id,
+    },
+  });
+  return paginateQuery(
+    page,
+    s.db
+      .select({
+        id: users.id,
+        subject: users.subject,
+        displayName: users.displayName,
+        email: users.email,
+        status: users.status,
+        balance: users.balance,
+        reservedBalance: users.reservedBalance,
+        availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,
+      })
+      .from(users)
+      .where(where)
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    countAll(s.db, users, where),
+  );
+}
+
+/** 健康自检：全局系数行是否存在（data-model §3.9 约束校验） */
+export async function rateCardHealth(s: AdminServices, id: number) {
+  const globalRow = await s.db
+    .select({ coefficient: rateCardCoefficients.coefficient })
+    .from(rateCardCoefficients)
+    .where(
+      sql`${rateCardCoefficients.rateCardId} = ${id} and ${rateCardCoefficients.scope} = 'global'`,
+    )
+    .limit(1);
+  return {
+    hasGlobalCoefficient: globalRow.length === 1,
+    coefficient: globalRow[0]?.coefficient ?? null,
+  };
 }

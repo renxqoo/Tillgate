@@ -280,6 +280,14 @@ export const clientApiEnvSchema = baseEnvSchema.extend({
    */
   CAPTCHA_SITE_KEY: z.string().min(1).max(255).optional(),
   CAPTCHA_SECRET_KEY: z.string().min(1).max(255).optional(),
+  /**
+   * 邮箱自助注册开关（默认开）。关闭 = 只留 GitHub/Google OAuth 建号（身份锚点外包
+   * 给平台方），存量邮箱账号登录不受影响。赠额套利压力大时的运营闸门。
+   */
+  REGISTER_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   /** OAuth 登录完成后重定向回的前端地址（默认本地面板） */
   OAUTH_FRONTEND_URL: z.string().url().default('http://localhost:3001'),
   /** 本服务对外可达基地址（拼 OAuth redirect_uri；默认本地 8791） */

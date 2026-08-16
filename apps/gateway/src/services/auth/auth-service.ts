@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
-import { apiKeys, apps, rateCardCoefficients, users } from '@ai-gateway/db/schema';
+import { apiKeys, apps, rateCardCoefficients, users, isAccountUsable } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { createHash } from 'node:crypto';
@@ -208,7 +208,7 @@ export class AuthService {
     if (!cached) {
       return { ok: false, status: 401, code: 'invalid_api_key', message: '凭证不存在' };
     }
-    if (cached.status !== 0) {
+    if (!isAccountUsable(cached.status)) {
       await recordAuthFailure(this.bruteForce, keyHash);
       return { ok: false, status: 401, code: 'key_revoked', message: '凭证已吊销' };
     }

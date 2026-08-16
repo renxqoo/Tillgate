@@ -1,5 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm';
-import { apps, rateCardCoefficients } from '@ai-gateway/db/schema';
+import { apps, rateCardCoefficients, isAccountUsable } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -92,7 +92,7 @@ export class OAuthService {
     if (app.status !== 0) {
       return { ok: false, status: 401, error: 'invalid_client', description: '应用已禁用' };
     }
-    if (app.user.status !== 0) {
+    if (!isAccountUsable(app.user.status)) {
       return { ok: false, status: 401, error: 'invalid_client', description: '账户已被禁用' };
     }
 

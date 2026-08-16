@@ -1,15 +1,13 @@
 import { Hono } from 'hono';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { channels, modelMappings, modelChannels, providers } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { createAi, defaultAiConfig, type Ai, type ChannelDesc } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
-import {
-  MONEY_MAX, intParam,  bumpRouteCache, HttpError, jsonBody, recordAudit,
-  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
+import { MONEY_MAX, intParam, HttpError, jsonBody, query, listQuerySchema } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
-import { assertFreePriceConsistency,  replaceModelChannels } from '../services/models.js';
+import { createModel, listModels, replaceModelChannels, retireModel, updateModel } from '../services/models.js';
 import { MemoryKvStorage, type BreakerState, type DeadCredentialState } from '@ai-gateway/ai';
 
 const billingPolicySchema = z.object({
@@ -100,142 +98,22 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
     new Hono<AdminEnv>()
 
       // 模型列表 + 已绑定渠道 id 回显
-      .get('/', query(listQuerySchema), async (c) => {
-        const input = c.req.valid('query');
-        const { page, limit, offset, where, orderBy } = buildList(input, {
-          search: [modelMappings.externalName, modelMappings.realModel],
-          sort: {
-            by: {
-              id: modelMappings.id,
-              externalName: modelMappings.externalName,
-              realModel: modelMappings.realModel,
-              status: modelMappings.status,
-              createdAt: modelMappings.createdAt,
-            },
-            fallback: 'createdAt',
-            tiebreaker: modelMappings.id,
-          },
-        });
-        const result = await paginateQuery(
-          page,
-          s.db.select().from(modelMappings).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-          countAll(s.db, modelMappings, where),
-        );
-        // 只查当页模型的渠道绑定（分页后 inArray 限定）
-        const pageIds = result.list.map((r) => r.id);
-        const bindings = pageIds.length
-          ? await s.db.select().from(modelChannels).where(inArray(modelChannels.mappingId, pageIds))
-          : [];
-        const channelIdsByModel = new Map<number, number[]>();
-        for (const b of bindings) {
-          const arr = channelIdsByModel.get(b.mappingId) ?? [];
-          arr.push(b.channelId);
-          channelIdsByModel.set(b.mappingId, arr);
-        }
-        const list = result.list.map((r) => ({ ...r, channelIds: channelIdsByModel.get(r.id) ?? [] }));
-        return c.json({ ...result, list });
-      })
+      .get('/', query(listQuerySchema), async (c) =>
+        c.json(await listModels(s, c.req.valid('query'))),
+      )
 
       .post('/', jsonBody(modelCreateSchema), async (c) => {
-        const body = c.req.valid('json');
-        assertFreePriceConsistency({
-          isFree: body.isFree ?? false,
-          inputPrice: body.inputPrice ?? 0,
-          outputPrice: body.outputPrice ?? 0,
-          cacheInputPrice: body.cacheInputPrice ?? 0,
-        });
-        const [created] = await s.db
-          .insert(modelMappings)
-          .values({
-            externalName: body.externalName,
-            realModel: body.realModel,
-            status: 0,
-            inputPrice: String(body.inputPrice ?? 0),
-            outputPrice: String(body.outputPrice ?? 0),
-            cacheInputPrice: String(body.cacheInputPrice ?? 0),
-            isFree: body.isFree ?? false,
-            rpmLimit: body.rpmLimit ?? null,
-            tpmLimit: body.tpmLimit ?? null,
-            billingPolicy: body.billingPolicy ?? null,
-          })
-          .returning();
-        await bumpRouteCache(s.redis);
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'model.create',
-          targetType: 'model',
-          targetId: created!.id,
-          detail: { externalName: body.externalName },
-        });
+        const created = await createModel(s, c.req.valid('json'), c.get('adminId'));
         return c.json(created, 201);
       })
 
       .patch('/:id', jsonBody(modelUpdateSchema), async (c) => {
-        const id = intParam(c, 'id');
-        const body = c.req.valid('json');
-        // 合并旧值做免费/价格互斥校验（R6）：部分更新只改 isFree 或只改价格都可能造成矛盾态
-        const existing = await s.db.query.modelMappings.findFirst({
-          where: eq(modelMappings.id, id),
-          columns: { inputPrice: true, outputPrice: true, cacheInputPrice: true, isFree: true },
-        });
-        if (!existing) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
-        assertFreePriceConsistency({
-          isFree: body.isFree ?? existing.isFree,
-          inputPrice: body.inputPrice ?? Number(existing.inputPrice),
-          outputPrice: body.outputPrice ?? Number(existing.outputPrice),
-          cacheInputPrice: body.cacheInputPrice ?? Number(existing.cacheInputPrice),
-        });
-        const update: Record<string, unknown> = { updatedAt: new Date() };
-        if (body.externalName !== undefined) update.externalName = body.externalName;
-        if (body.realModel !== undefined) update.realModel = body.realModel;
-        if (body.status !== undefined) update.status = body.status;
-        if (body.inputPrice !== undefined) update.inputPrice = String(body.inputPrice);
-        if (body.outputPrice !== undefined) update.outputPrice = String(body.outputPrice);
-        if (body.cacheInputPrice !== undefined)
-          update.cacheInputPrice = String(body.cacheInputPrice);
-        if (body.isFree !== undefined) update.isFree = body.isFree;
-        if (body.contextLength !== undefined) update.contextLength = body.contextLength;
-        if (body.fallbackModels !== undefined) update.fallbackModels = body.fallbackModels;
-        if (body.paramRules !== undefined) update.paramRules = body.paramRules;
-        if (body.billingPolicy !== undefined) update.billingPolicy = body.billingPolicy;
-        if (body.rpmLimit !== undefined) update.rpmLimit = body.rpmLimit;
-        if (body.tpmLimit !== undefined) update.tpmLimit = body.tpmLimit;
-        const [updated] = await s.db
-          .update(modelMappings)
-          .set(update)
-          .where(eq(modelMappings.id, id))
-          .returning();
-        if (!updated) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
-        await bumpRouteCache(s.redis);
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'model.update',
-          targetType: 'model',
-          targetId: id,
-          // 改价直接影响计费——审计必须可查到改了什么
-          detail: body,
-        });
+        const updated = await updateModel(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
         return c.json(updated);
       })
 
       .delete('/:id', async (c) => {
-        const id = intParam(c, 'id');
-        const [retired] = await s.db
-          .update(modelMappings)
-          .set({ status: 1, updatedAt: new Date() })
-          .where(eq(modelMappings.id, id))
-          .returning({ id: modelMappings.id });
-        if (!retired) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
-        await bumpRouteCache(s.redis);
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'model.retire',
-          targetType: 'model',
-          targetId: id,
-        });
+        await retireModel(s, intParam(c, 'id'), c.get('adminId'));
         return c.json({ ok: true });
       })
 

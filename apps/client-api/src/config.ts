@@ -14,6 +14,8 @@ export interface ClientApiConfig {
   trustedProxyHops: number;
   /** BFF 服务间令牌（CSRF fail-closed；未配置=兼容期放行双缺失头） */
   internalApiToken?: string;
+  /** 邮箱自助注册开关（默认开；关闭只留 OAuth 建号，存量账号登录不受影响） */
+  registerEnabled: boolean;
   /** OAuth 社交登录（未配置的 provider 端点 404、前端按钮隐藏） */
   oauth: {
     /** 登录完成后重定向回的前端地址 */

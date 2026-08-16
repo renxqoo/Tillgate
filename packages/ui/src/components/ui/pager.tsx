@@ -1,12 +1,12 @@
-import * as React from "react";
+import * as React from 'react';
 
-import { pagerHref } from "../../lib/pager-href";
+import { pagerHref } from '../../lib/pager-href';
 
 /** 当前页两侧各展示的兄弟页数。 */
 const SIBLINGS = 2;
 
 /** 生成页码序列（含省略号）：首尾页 + 当前页 ±SIBLINGS；只缺 1 页时直接补上，缺多页才用 "..."。 */
-function buildPages(page: number, totalPages: number): Array<number | "..."> {
+function buildPages(page: number, totalPages: number): Array<number | '...'> {
   const maxItems = SIBLINGS * 2 + 5; // 首 + 尾 + 当前 ±2 + 2 个省略号
   if (totalPages <= maxItems) {
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -16,12 +16,13 @@ function buildPages(page: number, totalPages: number): Array<number | "..."> {
     if (i >= 1 && i <= totalPages) set.add(i);
   }
   const sorted = [...set].sort((a, b) => a - b);
-  const out: Array<number | "..."> = [];
+  const out: Array<number | '...'> = [];
   let prev = 0;
   for (const p of sorted) {
     const gap = p - prev;
-    if (gap === 2) out.push(prev + 1); // 只缺 1 页 → 直接显示该页，不用省略号
-    else if (gap > 2) out.push("...");
+    if (gap === 2)
+      out.push(prev + 1); // 只缺 1 页 → 直接显示该页，不用省略号
+    else if (gap > 2) out.push('...');
     out.push(p);
     prev = p;
   }
@@ -31,13 +32,14 @@ function buildPages(page: number, totalPages: number): Array<number | "..."> {
 /**
  * 通用分页条（框架无关，服务端/客户端通用），支持点击页号。
  * 传入当前 query 参数（searchParams），翻页时只改 page、保留其余筛选条件。
+ * 总页数 <= 1（数据不足一页）时整条不渲染——所有列表页统一。
  */
 export function Pager({
   page,
   totalPages,
   total,
   searchParams = {},
-  pageKey = "page",
+  pageKey = 'page',
   className,
 }: {
   page: number;
@@ -56,17 +58,19 @@ export function Pager({
 }) {
   const makeHref = (target: number): string => pagerHref(searchParams, pageKey, target);
 
-  const arrowBase = "rounded-md border px-2.5 py-1";
-  const pageBase = "min-w-8 rounded-md border px-2 py-1 text-center";
-  const active = "hover:bg-muted";
-  const disabled = "pointer-events-none opacity-50";
+  if (totalPages <= 1) return null;
+
+  const arrowBase = 'rounded-md border px-2.5 py-1';
+  const pageBase = 'min-w-8 rounded-md border px-2 py-1 text-center';
+  const active = 'hover:bg-muted';
+  const disabled = 'pointer-events-none opacity-50';
 
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground ${className ?? ""}`}
+      className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground ${className ?? ''}`}
     >
       <span>
-        第 {page} / {totalPages} 页{total !== undefined ? ` · 共 ${total} 条` : ""}
+        第 {page} / {totalPages} 页{total !== undefined ? ` · 共 ${total} 条` : ''}
       </span>
       <div className="flex items-center gap-1">
         <a
@@ -77,7 +81,7 @@ export function Pager({
           上一页
         </a>
         {buildPages(page, totalPages).map((p, i) =>
-          p === "..." ? (
+          p === '...' ? (
             <span key={`e${i}`} className="px-1.5 text-muted-foreground/60">
               …
             </span>

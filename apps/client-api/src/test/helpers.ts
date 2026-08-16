@@ -59,6 +59,7 @@ export function makeTestConfig(overrides: Partial<ClientApiConfig> = {}): Client
     trustedOrigins: [],
     trustedProxyHops: 1, // 测试信任单跳：单条 XFF 即客户端 IP（模拟代理后部署）
     oauth: { frontendUrl: 'http://localhost:3001', apiBase: 'http://localhost:8791', github: null, google: null },
+    registerEnabled: true,
     ...overrides,
   };
 }

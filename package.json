@@ -5,6 +5,7 @@
   "description": "AI Gateway — 多供应商 LLM API 中转站（对外售卖）",
   "scripts": {
     "dev": "turbo dev",
+    "regress": "turbo typecheck lint --force && turbo test --concurrency=1 --force",
     "dev:client": "turbo run dev --filter @ai-gateway/client",
     "dev:admin": "turbo run dev --filter @ai-gateway/admin",
     "dev:client-api": "turbo run dev --filter @ai-gateway/client-api",

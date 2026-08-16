@@ -775,6 +775,9 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
     devDependencies:
+      '@ai-gateway/http':
+        specifier: workspace:*
+        version: link:../http
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1

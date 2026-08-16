@@ -36,9 +36,7 @@ describe('createTurnstileCaptcha.verify', () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ success: true }));
     const captcha = service(fetchImpl as unknown as typeof fetch);
 
-    const outcome = await captcha.verify({ token: 'tok', remoteIp: '203.0.113.10' });
-
-    expect(outcome).toEqual({ ok: true });
+    await expect(captcha.verify({ token: 'tok', remoteIp: '203.0.113.10' })).resolves.toBeUndefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(VERIFY_URL);
@@ -56,8 +54,7 @@ describe('createTurnstileCaptcha.verify', () => {
       const captcha = service(
         vi.fn(async () => jsonResponse({ success: false, 'error-codes': [code] })) as unknown as typeof fetch,
       );
-      const outcome = await captcha.verify({ token: 'tok' });
-      expect(outcome).toEqual({ ok: false, reason: 'invalid' });
+      await expect(captcha.verify({ token: 'tok' })).rejects.toMatchObject({ reason: 'invalid' });
     },
   );
 
@@ -67,8 +64,7 @@ describe('createTurnstileCaptcha.verify', () => {
       const captcha = service(
         vi.fn(async () => jsonResponse({ success: false, 'error-codes': [code] })) as unknown as typeof fetch,
       );
-      const outcome = await captcha.verify({ token: 'tok' });
-      expect(outcome).toEqual({ ok: false, reason: 'unavailable' });
+      await expect(captcha.verify({ token: 'tok' })).rejects.toMatchObject({ reason: 'unavailable' });
     },
   );
 
@@ -83,16 +79,14 @@ describe('createTurnstileCaptcha.verify', () => {
     ];
     for (const fetchImpl of cases) {
       const captcha = service(fetchImpl);
-      const outcome = await captcha.verify({ token: 'tok' });
-      expect(outcome).toEqual({ ok: false, reason: 'unavailable' });
+      await expect(captcha.verify({ token: 'tok' })).rejects.toMatchObject({ reason: 'unavailable' });
     }
   });
 
   it('空 token 本地拒绝为 invalid，不触达厂商 API', async () => {
     const fetchImpl = vi.fn();
     const captcha = service(fetchImpl as unknown as typeof fetch);
-    const outcome = await captcha.verify({ token: '   ' });
-    expect(outcome).toEqual({ ok: false, reason: 'invalid' });
+    await expect(captcha.verify({ token: '   ' })).rejects.toMatchObject({ reason: 'invalid' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

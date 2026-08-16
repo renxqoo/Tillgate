@@ -108,35 +108,13 @@ export function oauthRoutes(s: ClientServices, config: ClientApiConfig): Hono<Cl
 
       try {
         const profile = await fetchOAuthProfile(config, provider, code);
-        const outcome = await loginWithOAuth(s, config, provider, profile);
-        if (outcome.kind !== 'success') {
-          void recordAudit(s.db, {
-            actor: 'user',
-            action: 'auth.oauth.unavailable',
-            targetType: 'user',
-            targetId: null,
-            detail: { provider },
-          });
-          throw new HttpError('ACCOUNT_UNAVAILABLE');
-        }
-        void recordAudit(s.db, {
-          actor: 'user',
-          action: 'auth.oauth.success',
-          targetType: 'user',
-          targetId: outcome.userId,
-          detail: { provider, created: outcome.created },
-        });
-        setCookie(
-          c,
-          SESSION_COOKIE,
-          outcome.token,
-          cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S),
-        );
+        // 成功/不可用审计均在 service 内收口；失败分支抛 FlowError 直达 errorHandler
+        const result = await loginWithOAuth(s, config, provider, profile);
+        setCookie(c, SESSION_COOKIE, result.token, cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S));
         return c.redirect(`${config.oauth.frontendUrl}${safeNext(stored.next)}`);
       } catch (e) {
-        // 业务结果（HttpError，如封禁账号 403）直接透传——502 兜底只属于
+        // 业务结果（HttpError/FlowError，如封禁账号 403）直接透传——502 兜底只属于
         // 真正的交换失败（网络/上游错误）；吞掉会把业务拒绝伪装成服务端故障
-        // 并重复落审计
         if (e instanceof HttpError) throw e;
         void recordAudit(s.db, {
           actor: 'user',
@@ -145,10 +123,7 @@ export function oauthRoutes(s: ClientServices, config: ClientApiConfig): Hono<Cl
           targetId: null,
           detail: { provider, err: (e as Error).message.slice(0, 120) },
         });
-        return c.json(
-          { error: { message: '第三方登录失败，请重试或改用邮箱登录', code: 'OAUTH_EXCHANGE_FAILED' } },
-          502,
-        );
+        throw new HttpError('OAUTH_EXCHANGE_FAILED');
       }
     });
 }

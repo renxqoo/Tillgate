@@ -1,4 +1,5 @@
-import { SignJWT, jwtVerify, errors as joseErrors } from 'jose';
+import { SignJWT, jwtVerify, errors as joseErrors, type JWTPayload } from 'jose';
+import { SessionVerifyError } from './errors.js';
 import { randomUUID } from 'node:crypto';
 
 /**
@@ -77,14 +78,17 @@ export function signSession(input: SessionSignInput, jwtSecret: string): Promise
     .sign(secretKey(jwtSecret));
 }
 
-export interface SessionVerifyResult {
-  ok: boolean;
-  payload?: SessionPayload;
-  error?: 'token_expired' | 'invalid_token';
-}
+
 
 /**
  * 验签会话 JWT（指定身份类型 + 密钥）。
+ *
+ * 调用方按身份传入对应密钥与期望类型，issuer 由类型决定并强制校验。
+ * 这样用户面密钥签出的 token 无法在管理面验签通过（反之亦然），实现密钥隔离。
+ */
+/**
+ * 验签会话 JWT（指定身份类型 + 密钥）。成功返回载荷；失败抛 SessionVerifyError
+ * （reason: invalid_token / token_expired）。
  *
  * 调用方按身份传入对应密钥与期望类型，issuer 由类型决定并强制校验。
  * 这样用户面密钥签出的 token 无法在管理面验签通过（反之亦然），实现密钥隔离。
@@ -93,31 +97,29 @@ export async function verifySession(
   token: string,
   jwtSecret: string,
   expectedType: SessionType,
-): Promise<SessionVerifyResult> {
+): Promise<SessionPayload> {
+  let payload: JWTPayload;
   try {
-    const { payload } = await jwtVerify(token, secretKey(jwtSecret), {
+    ({ payload } = await jwtVerify(token, secretKey(jwtSecret), {
       issuer: issuerFor(expectedType),
       // 算法白名单：oct 密钥默认还接受 HS384/512——签名族必须显式唯一
       algorithms: ['HS256'],
-    });
-    // 载荷 type 必须匹配（双保险：即便 issuer 碰巧相同，type 不符也拒绝）
-    if ((payload as { type?: string }).type !== expectedType) {
-      return { ok: false, error: 'invalid_token' };
-    }
-    return {
-      ok: true,
-      payload: {
-        type: expectedType,
-        sub: payload.sub!,
-        jti: payload.jti!,
-        iss: payload.iss!,
-        exp: payload.exp!,
-        iat: payload.iat!,
-        iatMs: (payload as { iatMs?: number }).iatMs,
-      },
-    };
+    }));
   } catch (err) {
-    if (err instanceof joseErrors.JWTExpired) return { ok: false, error: 'token_expired' };
-    return { ok: false, error: 'invalid_token' };
+    if (err instanceof joseErrors.JWTExpired) throw new SessionVerifyError('token_expired');
+    throw new SessionVerifyError('invalid_token');
   }
+  // 载荷 type 必须匹配（双保险：即便 issuer 碰巧相同，type 不符也拒绝）
+  if ((payload as { type?: string }).type !== expectedType) {
+    throw new SessionVerifyError('invalid_token');
+  }
+  return {
+    type: expectedType,
+    sub: payload.sub!,
+    jti: payload.jti!,
+    iss: payload.iss!,
+    exp: payload.exp!,
+    iat: payload.iat!,
+    iatMs: (payload as { iatMs?: number }).iatMs,
+  };
 }

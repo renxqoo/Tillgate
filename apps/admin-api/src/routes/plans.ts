@@ -1,13 +1,10 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
-import { plans, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import {
-  HttpError, intParam, jsonBody, operationId, recordAudit,
-  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
+import { intParam, jsonBody, operationId, query, listQuerySchema } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { mapSubscriptionError } from '../services/subscriptions.js';
+import { createPlan, deletePlan, listPlans, updatePlan } from '../services/plans.js';
 
 /**
  * 套餐管理（api-contract §4.10）。
@@ -48,107 +45,23 @@ const planUpdateSchema = z
   })
   .strict();
 
-/** kind × periodDays 一致性（创建用完整值，更新用「覆盖值 ∪ 现值」的合成值） */
-function assertKindPeriodConsistency(
-  kind: 'subscription' | 'pack',
-  periodDays: number | null,
-): number {
-  if (kind === 'pack') {
-    if (periodDays != null && periodDays !== 0) {
-      throw new HttpError('INVALID_PERIOD_DAYS', '加油包无周期，periodDays 必须为 0 或省略');
-    }
-    return 0;
-  }
-  if (periodDays == null || periodDays < 1) {
-    throw new HttpError('INVALID_PERIOD_DAYS', '包月套餐 periodDays 必须为 1~3650 的整数');
-  }
-  return periodDays;
-}
-
 export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return (
     new Hono<AdminEnv>()
       // 列表
-      .get('/', query(listQuerySchema), async (c) => {
-        const input = c.req.valid('query');
-        const { page, limit, offset, where, orderBy } = buildList(input, {
-          search: [plans.name],
-          // plans 无 created_at，默认按 id desc（创建序倒序）
-          sort: {
-            by: { id: plans.id, name: plans.name, status: plans.status, price: plans.price, sortOrder: plans.sortOrder },
-            fallback: 'id',
-            tiebreaker: plans.id,
-          },
-        });
-        return c.json(
-          await paginateQuery(
-            page,
-            s.db.select().from(plans).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-            countAll(s.db, plans, where),
-          ),
-        );
-      })
+      .get('/', query(listQuerySchema), async (c) =>
+        c.json(await listPlans(s, c.req.valid('query'))),
+      )
 
       // 创建
       .post('/', jsonBody(planCreateSchema), async (c) => {
-        const body = c.req.valid('json');
-        const kind = body.kind ?? 'subscription';
-        const periodDays = assertKindPeriodConsistency(kind, body.periodDays ?? null);
-        const [plan] = await s.db
-          .insert(plans)
-          .values({
-            name: body.name,
-            kind,
-            sortOrder: body.sortOrder ?? null,
-            price: String(body.price),
-            periodDays,
-            quotaAmount: String(body.quotaAmount),
-            allowSeats: body.allowSeats ?? false,
-            status: 0,
-          })
-          .returning();
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'plan.create',
-          targetType: 'plan',
-          targetId: plan!.id,
-          detail: body,
-        });
+        const plan = await createPlan(s, c.req.valid('json'), c.get('adminId'));
         return c.json(plan, 201);
       })
 
       // 更新（kind 不可变；periodDays 与现 kind 联合校验）
       .patch('/:id', jsonBody(planUpdateSchema), async (c) => {
-        const id = intParam(c, 'id');
-        const body = c.req.valid('json');
-        const current = await s.db.query.plans.findFirst({
-          where: eq(plans.id, id),
-          columns: { kind: true, periodDays: true },
-        });
-        if (!current) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
-        const periodDays = assertKindPeriodConsistency(
-          current.kind as 'subscription' | 'pack',
-          body.periodDays ?? current.periodDays,
-        );
-        const update: Record<string, unknown> = {};
-        if (body.name !== undefined) update.name = body.name;
-        if (body.sortOrder !== undefined) update.sortOrder = body.sortOrder;
-        if (body.price !== undefined) update.price = String(body.price);
-        if (body.periodDays !== undefined) update.periodDays = periodDays;
-        if (body.quotaAmount !== undefined) update.quotaAmount = String(body.quotaAmount);
-        if (body.allowSeats !== undefined) update.allowSeats = body.allowSeats;
-        if (body.status !== undefined) update.status = body.status;
-        const [updated] = await s.db.update(plans).set(update).where(eq(plans.id, id)).returning();
-        if (!updated) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'plan.update',
-          targetType: 'plan',
-          targetId: id,
-          detail: body,
-        });
+        const updated = await updatePlan(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
         return c.json(updated);
       })
 
@@ -169,26 +82,9 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         }
       })
 
-      // 删除（存在任何关联订阅——含历史——都不允许，外键无 ON DELETE，防 500）
+      // 删除（存在任何关联订阅——含历史——都不允许，见 service）
       .delete('/:id', async (c) => {
-        const id = intParam(c, 'id');
-        const bound = await s.db
-          .select({ id: userSubscriptions.id })
-          .from(userSubscriptions)
-          .where(eq(userSubscriptions.planId, id))
-          .limit(1);
-        if (bound.length > 0) {
-          throw new HttpError('PLAN_IN_USE', '该套餐存在关联订阅（含历史），无法删除，可改为停用');
-        }
-        const [deleted] = await s.db.delete(plans).where(eq(plans.id, id)).returning({ id: plans.id });
-        if (!deleted) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
-        await recordAudit(s.db, {
-          actor: 'admin',
-          adminId: c.get('adminId'),
-          action: 'plan.delete',
-          targetType: 'plan',
-          targetId: id,
-        });
+        await deletePlan(s, intParam(c, 'id'), c.get('adminId'));
         return c.json({ ok: true });
       })
   );
