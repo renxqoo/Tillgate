@@ -1,0 +1,39 @@
+import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
+import type { UsageReceipt } from '../types.js';
+
+/**
+ * 结算金额推导（拆自 settleClaim，行为零变更，纯函数）：
+ *
+ *   calculated   用户侧实扣 = calcAmount（真实 usage × 价格快照 × 系数，Decimal 全精度）
+ *   upstreamCost 渠道侧成本 = 官方价口径（系数=1），渠道进货额度按此扣减
+ */
+export interface SettleAmounts {
+  calculated: Decimal;
+  calculatedAmount: string;
+  upstreamCost: string;
+}
+
+export function computeAmounts(data: UsageReceipt): SettleAmounts {
+  const calculated = calcAmount({
+    inputTokens: data.usage.inputTokens,
+    cachedInputTokens: data.usage.cachedInputTokens,
+    outputTokens: data.usage.outputTokens,
+    inputPrice: data.inputPrice,
+    cacheInputPrice: data.cacheInputPrice,
+    outputPrice: data.outputPrice,
+    coefficient: data.coefficient,
+  });
+  const calculatedAmount = toStorage(calculated);
+
+  const inputTokens = Math.max(0, data.usage.inputTokens);
+  const cached = Math.min(Math.max(0, data.usage.cachedInputTokens), inputTokens);
+  const uncached = inputTokens - cached;
+  const base = toDecimal(data.inputPrice)
+    .times(uncached)
+    .plus(toDecimal(data.cacheInputPrice).times(cached))
+    .plus(toDecimal(data.outputPrice).times(Math.max(0, data.usage.outputTokens)));
+  const upstreamCostDec = base.div(1_000_000);
+  const upstreamCost = toStorage(upstreamCostDec.lt(0) ? new Decimal(0) : upstreamCostDec);
+
+  return { calculated, calculatedAmount, upstreamCost };
+}

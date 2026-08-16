@@ -1,4 +1,5 @@
 import type { Context } from 'hono';
+import type { GatewayReject } from './errors.js';
 
 /**
  * 统一错误模型：全仓唯一 HttpError（packages/http，code 主键 + 注册表推导
@@ -14,17 +15,6 @@ function errorType(status: number): string {
   if (status === 429) return 'rate_limit_error';
   if (status >= 500) return 'server_error';
   return 'invalid_request_error';
-}
-
-/** OpenAI 风格错误信封（api-contract.md §3） */
-export function errorResponse(
-  c: Context,
-  status: number,
-  code: string,
-  message: string,
-  suggestion?: string,
-): Response {
-  return errorEnvelope(c, status, code, message, suggestion, readRequestId(c));
 }
 
 /**
@@ -51,6 +41,18 @@ export function errorEnvelope(
     },
     status as 401,
   );
+}
+
+/**
+ * GatewayReject → OpenAI 错误信封 + retry-after 头。
+ * 管线步骤拒绝的唯一出站渲染入口（2026-08 统一错误体系）：描述符纯数据，
+ * 渲染集中在此，出站脱敏/信封格式/头语义不可能在步骤里被绕过。
+ */
+export function renderReject(c: Context, r: GatewayReject): Response {
+  if (r.retryAfterSec !== undefined) {
+    c.header('retry-after', String(r.retryAfterSec));
+  }
+  return errorEnvelope(c, r.status, r.code, r.message, r.suggestion, readRequestId(c));
 }
 
 /** 安全读取 requestId（onError 可能在 requestId 中间件之前触发） */

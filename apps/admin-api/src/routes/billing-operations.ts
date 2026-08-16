@@ -10,7 +10,7 @@ import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
 const listSchema = paginationQuerySchema.extend({
-  status: z.enum(['dead', 'uncertain']),
+  status: z.literal('dead'),
 });
 
 const decisionBase = z.object({
@@ -18,44 +18,6 @@ const decisionBase = z.object({
   reason: z.string().trim().min(1).max(1000),
   evidenceRefs: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
 });
-
-const usageReceiptSchema = z.object({
-  requestId: z.string().uuid(),
-  userId: z.number().int().positive(),
-  apiKeyId: z.number().int().positive().nullable(),
-  appId: z.number().int().positive().nullable(),
-  credentialType: z.string().min(1).max(16),
-  externalModel: z.string().min(1),
-  realModel: z.string().min(1),
-  channelId: z.number().int().positive().nullable(),
-  channelKey: z.string().min(1),
-  usage: z.object({
-    inputTokens: z.number().int().nonnegative(),
-    cachedInputTokens: z.number().int().nonnegative(),
-    outputTokens: z.number().int().nonnegative(),
-    estimated: z.boolean(),
-  }),
-  inputPrice: z.string(),
-  outputPrice: z.string(),
-  cacheInputPrice: z.string(),
-  coefficient: z.string(),
-  durationMs: z.number().int().nonnegative(),
-  stream: z.boolean(),
-  streamAborted: z.boolean(),
-  mappingId: z.number().int().positive(),
-  billingPolicyFingerprint: z
-    .string()
-    .regex(/^[a-f0-9]{64}$/)
-    .nullable(),
-});
-
-const resolveSchema = z.discriminatedUnion('decision', [
-  decisionBase.extend({ decision: z.literal('confirmed_no_charge') }),
-  decisionBase.extend({
-    decision: z.literal('provider_receipt_recovered'),
-    receipt: usageReceiptSchema,
-  }),
-]);
 
 /** BillingOperationError → HTTP（表驱动：状态码/码名由注册表单一真相给出） */
 const BILLING_OP_CODE: Record<BillingOperationError['code'], KnownErrorCode> = {
@@ -109,21 +71,6 @@ export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
             requestId: c.req.param('requestId'),
             adminId: c.get('adminId'),
             ...c.req.valid('json'),
-          }),
-        );
-      } catch (error) {
-        return mapError(error);
-      }
-    })
-    .post('/:requestId/resolve', jsonBody(resolveSchema), async (c) => {
-      try {
-        const body = c.req.valid('json');
-        return c.json(
-          await s.billingOperations.resolveUncertain({
-            operationId: operationId(c),
-            requestId: c.req.param('requestId'),
-            adminId: c.get('adminId'),
-            ...body,
           }),
         );
       } catch (error) {

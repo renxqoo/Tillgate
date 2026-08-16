@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Endpoint } from '@ai-gateway/ai';
 import type { AuthEnv } from '../middleware/auth.js';
 import { jsonBody } from '../lib/validation.js';
-import type { LlmPipeline } from '../services/pipeline/llm-pipeline.js';
+import type { RunInference } from '../services/pipeline/run.js';
 
 /**
  * 推理端点注册表（下游单一真相）：path / kind / schema 一处定义，
@@ -75,9 +75,12 @@ export const inferenceEndpoints: readonly InferenceEndpoint[] = [
  * 推理路由工厂（表项驱动）：schema 校验 + 委托管线。
  * 管线承载全部业务编排（限流/预扣/候选循环/计量），路由保持薄。
  */
-export function inferenceRoutes(pipeline: LlmPipeline, endpoint: InferenceEndpoint): Hono<AuthEnv> {
+export function inferenceRoutes(
+  runInference: RunInference,
+  endpoint: InferenceEndpoint,
+): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', jsonBody(endpoint.schema), async (c) => {
     const body = c.req.valid('json') as Record<string, unknown>;
-    return pipeline.run(c, endpoint.kind, body);
+    return runInference(c, endpoint.kind, body);
   });
 }

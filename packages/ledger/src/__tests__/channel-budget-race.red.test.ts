@@ -12,8 +12,8 @@ import {
   userSubscriptions,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
-import { createBilling } from '../billing-flow.js';
-import type { BillingQuote } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import type { BillingQuote } from '../billing/types.js';
 /**
  * 【红测 · R4】reserveChannel 渠道预算校验是 check-then-act，并发下可超扣进货预算
  *

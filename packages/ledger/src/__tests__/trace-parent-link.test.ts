@@ -11,9 +11,9 @@ import {
   users,
   userSubscriptions,
 } from '@ai-gateway/db/schema';
-import { createBilling } from '../billing-flow.js';
-import { createBillingProcessor } from '../billing-processor.js';
-import type { BillingQuote, SettleClaimResult, SettlementClaim, UsageReceipt } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import { createBillingProcessor } from '../billing/processor/index.js';
+import type { BillingQuote, SettleClaimResult, SettlementClaim, UsageReceipt } from '../billing/types.js';
 
 /**
  * 阶段2（链路完整性）：跨进程 trace 关联。

@@ -568,6 +568,8 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
               durationMs: Date.now() - start,
               terminated: e.terminated,
               bytesRelayed: e.bytesRelayed,
+              doneSentinel: e.doneSentinel,
+              terminalFrame: e.terminalFrame,
             });
             break;
           }

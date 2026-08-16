@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RequestLifecycle } from '../request-lifecycle.js';
+import { createRequestLifecycle } from '../request-lifecycle.js';
 
 /**
  * H2 语义回归：drain 只拒绝新请求，不得中止在途请求。
@@ -16,20 +16,20 @@ import { RequestLifecycle } from '../request-lifecycle.js';
  */
 describe('RequestLifecycle — drain 语义', () => {
   it('在途 budget 在 beginDrain 后不被 abort', () => {
-    const lc = new RequestLifecycle(60_000);
+    const lc = createRequestLifecycle(60_000);
     const budget = lc.create(new AbortController().signal);
     lc.beginDrain(1_000);
     expect(budget.signal.aborted).toBe(false);
   });
 
   it('beginDrain 后新请求被拒绝', () => {
-    const lc = new RequestLifecycle(60_000);
+    const lc = createRequestLifecycle(60_000);
     lc.beginDrain(1_000);
     expect(() => lc.create(new AbortController().signal)).toThrow();
   });
 
   it('drain 前创建的 budget 在宽限期后被 abort，且 reason 携带服务端标记', async () => {
-    const lc = new RequestLifecycle(60_000);
+    const lc = createRequestLifecycle(60_000);
     const budget = lc.create(new AbortController().signal);
     lc.beginDrain(20);
     await new Promise((r) => setTimeout(r, 60));

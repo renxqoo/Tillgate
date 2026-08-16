@@ -1,6 +1,6 @@
 import type { Redis } from 'ioredis';
 import type { Logger } from '@ai-gateway/core';
-import { RedisScriptRunner } from '../../infrastructure/redis-script-runner.js';
+import { createRedisScriptRunner } from '../../infrastructure/redis-script-runner.js';
 
 /**
  * 限流器（requirements 4.6）：
@@ -99,30 +99,41 @@ export interface RateLimitResult {
   dimension?: string;
 }
 
-export class RateLimiter {
-  private readonly scripts: RedisScriptRunner;
+export interface RateLimiter {
+  /** 检查并计数（原子）；超限不计数。maxCount<=0 视为无限制。 */
+  check(dimension: string, maxCount: number, requestId: string): Promise<RateLimitResult>;
+  /** 多维度原子检查：任一维度超限时一项都不计数。 */
+  checkAll(
+    dims: Array<{ dimension: string; max: number }>,
+    requestId: string,
+  ): Promise<RateLimitResult>;
+  /** 多维 TPM 原子预占。无上游执行的失败必须 releaseTpm。 */
+  reserveTpmAll(
+    dims: Array<{ dimension: string; estimatedTokens: number; max: number }>,
+    requestId: string,
+  ): Promise<RateLimitResult>;
+  releaseTpm(requestId: string): Promise<void>;
+  /** 长流续租 TPM 预占，避免流仍在传输时 reservation TTL 提前释放。 */
+  renewTpm(requestId: string): Promise<void>;
+}
 
-  constructor(
-    private readonly redis: Redis,
-    private readonly logger?: Logger,
-  ) {
-    this.scripts = new RedisScriptRunner(redis);
-  }
+export function createRateLimiter(redis: Redis, logger?: Logger): RateLimiter {
+  const scripts = createRedisScriptRunner(redis);
 
   /**
-   * 付费链路限流的存储故障降级（单一真相，与 rate-guards/key-auth-cache 的
+   * 付费链路限流的存储故障降级（单一真相，与 steps/rate-limit/key-auth-cache 的
    * fail-open 声明一致）：RPM/TPM 是准入闸门而非资金闸门，Redis 故障时放行，
    * 资金正确性由 billing_requests DB 硬闸门兜底。免费模型日计数不在此列
-   * （rate-guards 内自行 fail-closed，F7：免费链路唯一防线）。
+   * （steps/rate-limit 内自行 fail-closed，F7：免费链路唯一防线）。
    */
-  private async failOpen(
+  async function failOpen(
     op: () => Promise<RateLimitResult>,
     fallback: RateLimitResult,
   ): Promise<RateLimitResult> {
     try {
       return await op();
     } catch (error) {
-      this.logger?.warn(
+      logger?.warn(
         { err: (error as Error).message },
         'rate limit storage unavailable, failing open (DB hard gate remains)',
       );
@@ -130,23 +141,7 @@ export class RateLimiter {
     }
   }
 
-  /**
-   * 检查并计数（原子）。超限不计数（请求被拒绝，不占窗口配额）。
-   * @param dimension 维度标识（如 'user:1' / 'key:5' / 'global'）
-   * @param maxCount 窗口内最大请求数
-   * @param requestId 唯一请求 ID（ZSET member，防重复计数）
-   */
-  async check(dimension: string, maxCount: number, requestId: string): Promise<RateLimitResult> {
-    if (maxCount <= 0) {
-      return { allowed: true }; // 无限制（limit 未配置）
-    }
-    return this.failOpen(() => this.checkInner(dimension, maxCount, requestId), {
-      allowed: true,
-      dimension,
-    });
-  }
-
-  private async checkInner(
+  async function checkInner(
     dimension: string,
     maxCount: number,
     requestId: string,
@@ -154,7 +149,7 @@ export class RateLimiter {
     // 固定 hash tag，保证多维 Lua 在 Redis Cluster 中落在同一 slot。
     const key = `rl:{rpm}:${dimension}`;
     const now = Date.now();
-    const res = (await this.scripts.run(
+    const res = (await scripts.run(
       CHECK_SCRIPT,
       1,
       key,
@@ -172,23 +167,11 @@ export class RateLimiter {
     return { allowed: false, retryAfterSec, dimension };
   }
 
-  /**
-   * 多维度原子检查：任一维度超限时一项都不计数。
-   */
-  async checkAll(
-    dims: Array<{ dimension: string; max: number }>,
-    requestId: string,
-  ): Promise<RateLimitResult> {
-    const limited = dims.filter((item) => item.max > 0);
-    if (limited.length === 0) return { allowed: true };
-    return this.failOpen(() => this.checkAllInner(limited, requestId), { allowed: true });
-  }
-
-  private async checkAllInner(
+  async function checkAllInner(
     limited: Array<{ dimension: string; max: number }>,
     requestId: string,
   ): Promise<RateLimitResult> {
-    const result = (await this.scripts.run(
+    const result = (await scripts.run(
       CHECK_ALL_SCRIPT,
       limited.length,
       ...limited.map((item) => `rl:{rpm}:${item.dimension}`),
@@ -202,20 +185,7 @@ export class RateLimiter {
     return { allowed: false, retryAfterSec: 60, dimension: blocked?.dimension };
   }
 
-  /**
-   * 多维 TPM 原子预占。所有维度先检查再统一写入；任一超限则一项都不写。
-   * 预占由结算后的 backfillTpm 提交为 actual；无上游执行的失败必须调用 releaseTpm。
-   */
-  async reserveTpmAll(
-    dims: Array<{ dimension: string; estimatedTokens: number; max: number }>,
-    requestId: string,
-  ): Promise<RateLimitResult> {
-    const limited = dims.filter((item) => item.max > 0);
-    if (limited.length === 0) return { allowed: true };
-    return this.failOpen(() => this.reserveTpmAllInner(limited, requestId), { allowed: true });
-  }
-
-  private async reserveTpmAllInner(
+  async function reserveTpmAllInner(
     limited: Array<{ dimension: string; estimatedTokens: number; max: number }>,
     requestId: string,
   ): Promise<RateLimitResult> {
@@ -230,7 +200,7 @@ export class RateLimiter {
       Math.max(0, Math.ceil(item.estimatedTokens)),
       item.max,
     ]);
-    const result = (await this.scripts.run(
+    const result = (await scripts.run(
       RESERVE_TPM_SCRIPT,
       keys.length + 1,
       ...keys,
@@ -247,36 +217,55 @@ export class RateLimiter {
     };
   }
 
-  async releaseTpm(requestId: string): Promise<void> {
-    await this.scripts.run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`).catch(
-      (error: Error) => {
-        this.logger?.warn(
-          { requestId, err: error.message },
-          'releaseTpm storage unavailable (best-effort; TTL reclaims)',
-        );
-      },
-    );
-  }
+  return {
+    async check(dimension, maxCount, requestId) {
+      if (maxCount <= 0) {
+        return { allowed: true }; // 无限制（limit 未配置）
+      }
+      return failOpen(() => checkInner(dimension, maxCount, requestId), {
+        allowed: true,
+        dimension,
+      });
+    },
 
-  /** 长流续租 TPM 预占，避免流仍在传输时 reservation TTL 提前释放。 */
-  async renewTpm(requestId: string): Promise<void> {
-    try {
-      const key = `{tpm}:request:${requestId}`;
-      const reservedKeys = await this.redis.hkeys(key);
-      if (reservedKeys.length === 0) return;
-      const tx = this.redis.multi();
-      tx.expire(key, 600);
-      for (const reservedKey of reservedKeys) tx.expire(reservedKey, 600);
-      await tx.exec();
-    } catch (error) {
-      this.logger?.warn(
-        { requestId, err: (error as Error).message },
-        'renewTpm storage unavailable (best-effort; TTL reclaims)',
+    async checkAll(dims, requestId) {
+      const limited = dims.filter((item) => item.max > 0);
+      if (limited.length === 0) return { allowed: true };
+      return failOpen(() => checkAllInner(limited, requestId), { allowed: true });
+    },
+
+    async reserveTpmAll(dims, requestId) {
+      const limited = dims.filter((item) => item.max > 0);
+      if (limited.length === 0) return { allowed: true };
+      return failOpen(() => reserveTpmAllInner(limited, requestId), { allowed: true });
+    },
+
+    async releaseTpm(requestId) {
+      await scripts.run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`).catch(
+        (error: Error) => {
+          logger?.warn(
+            { requestId, err: error.message },
+            'releaseTpm storage unavailable (best-effort; TTL reclaims)',
+          );
+        },
       );
-    }
-  }
+    },
 
-
-
-
+    async renewTpm(requestId) {
+      try {
+        const key = `{tpm}:request:${requestId}`;
+        const reservedKeys = await redis.hkeys(key);
+        if (reservedKeys.length === 0) return;
+        const tx = redis.multi();
+        tx.expire(key, 600);
+        for (const reservedKey of reservedKeys) tx.expire(reservedKey, 600);
+        await tx.exec();
+      } catch (error) {
+        logger?.warn(
+          { requestId, err: (error as Error).message },
+          'renewTpm storage unavailable (best-effort; TTL reclaims)',
+        );
+      }
+    },
+  };
 }

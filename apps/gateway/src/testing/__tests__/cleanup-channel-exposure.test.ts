@@ -74,7 +74,7 @@ describe('cleanupTestData 渠道敞口回收（R4）', () => {
         ...(withReceipt ? { receipt: { requestId: 'r', tokens: 1 }, settledAt: new Date() } : {}),
       });
       await db.insert(billingRequests).values([
-        mk('uncertain', '0.5', 2), // 在途：预占仍占着渠道投影
+        mk('in_flight', '0.5', 2), // 在途：预占仍占着渠道投影
         mk('settled', '0.3', 3, true), // 已结算：结算时渠道预占已释放，账上不再包含
         mk('released', '0.1', 4), // 已释放：同上
       ]);
@@ -83,7 +83,7 @@ describe('cleanupTestData 渠道敞口回收（R4）', () => {
         where: eq(channels.id, ch!.id),
         columns: { upstreamReserved: true },
       });
-      // 正确：只扣在途 uncertain 的 0.5 → 1.0-0.5=0.5
+      // 正确：只扣在途 in_flight 的 0.5 → 1.0-0.5=0.5
       // （旧 bug：把 settled 0.3 + released 0.1 也扣了 → 0.1，渠道投影被蛀空）
       expect(Number(after?.upstreamReserved)).toBe(0.5);
     } finally {

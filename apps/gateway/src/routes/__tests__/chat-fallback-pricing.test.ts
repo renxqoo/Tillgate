@@ -22,7 +22,7 @@ import {
   makeMockAi,
   encrypt,
 } from '../../testing/helpers.js';
-import { BillingDispatcher } from '../../services/billing/billing-dispatcher.js';
+import { createBillingDispatcher } from '../../services/billing/billing-dispatcher.js';
 
 /**
  * 候选定价（fallback 定价错配根治）：
@@ -193,7 +193,7 @@ describe('候选定价：预扣按最贵候选 + 计量携带实际成功渠道�
         }),
       });
 
-      const dispatcher = new BillingDispatcher(redis);
+      const dispatcher = createBillingDispatcher(redis);
       let wakeupRequestId: string | null = null;
       const origWake = dispatcher.wake.bind(dispatcher);
       dispatcher.wake = async (requestId) => {

@@ -17,7 +17,7 @@ import type {
  * 两个接口（Breaker/DeadCredential）结构同构（getState/compareAndSet/setState + version 字段），
  * 共用一个泛型实现，通过工厂函数分别产出两个 typed adapter。
  */
-import { RedisScriptRunner } from './redis-script-runner.js';
+import { createRedisScriptRunner } from './redis-script-runner.js';
 
 /** 带 version 字段的状态类型（CAS 依据） */
 interface Versioned {
@@ -51,62 +51,48 @@ return 1
 `;
 
 /**
- * 泛型 Redis KV 存储：实现 getState / compareAndSet / setState。
+ * 泛型 Redis KV 存储（闭包工厂）：实现 getState / compareAndSet / setState。
  * T 必须带 version 字段（BreakerState / DeadCredentialState 均满足）。
  */
-export class RedisKvStorage<T extends Versioned> {
-  private readonly scripts: RedisScriptRunner;
+export function createRedisKvStorage<T extends Versioned>(redis: Redis, prefix: string) {
+  const scripts = createRedisScriptRunner(redis);
 
-  constructor(
-    private readonly redis: Redis,
-    private readonly prefix: string,
-  ) {
-    this.scripts = new RedisScriptRunner(redis);
-  }
+  return {
+    async getState(key: string): Promise<T | null> {
+      let raw: string | null;
+      try {
+        raw = await redis.get(prefix + key);
+      } catch {
+        // 存储故障 = 状态未知（null）：熔断/死凭据按「无已知状态」放行，
+        // 计数降级内存——Redis 故障不得把全渠道判死（fail-open，与限流同语义）
+        return null;
+      }
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        return null;
+      }
+    },
 
-  async getState(key: string): Promise<T | null> {
-    let raw: string | null;
-    try {
-      raw = await this.redis.get(this.prefix + key);
-    } catch {
-      // 存储故障 = 状态未知（null）：熔断/死凭据按「无已知状态」放行，
-      // 计数降级内存——Redis 故障不得把全渠道判死（fail-open，与限流同语义）
-      return null;
-    }
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return null;
-    }
-  }
+    async compareAndSet(
+      key: string,
+      expectedVersion: number,
+      next: T,
+      ttlMs: number,
+    ): Promise<boolean> {
+      const res = (await scripts
+        .run(CAS_SCRIPT, 1, prefix + key, expectedVersion, JSON.stringify(next), ttlMs)
+        .catch(() => 0)) as number;
+      return res === 1;
+    },
 
-  async compareAndSet(
-    key: string,
-    expectedVersion: number,
-    next: T,
-    ttlMs: number,
-  ): Promise<boolean> {
-    const res = (await this.scripts
-      .run(
-        CAS_SCRIPT,
-        1,
-        this.prefix + key,
-        expectedVersion,
-        JSON.stringify(next),
-        ttlMs,
-      )
-      .catch(() => 0)) as number;
-    return res === 1;
-  }
-
-  async setState(key: string, state: T, ttlMs: number): Promise<void> {
-    await this.redis
-      .set(this.prefix + key, JSON.stringify(state), 'PX', ttlMs)
-      .catch(() => {
+    async setState(key: string, state: T, ttlMs: number): Promise<void> {
+      await redis.set(prefix + key, JSON.stringify(state), 'PX', ttlMs).catch(() => {
         /* best-effort：状态写失败只影响本实例降级期的精度 */
       });
-  }
+    },
+  };
 }
 
 /**
@@ -114,7 +100,7 @@ export class RedisKvStorage<T extends Versioned> {
  * gateway 启动时注入 createAi({ ... }, { breakerStorage: createRedisBreakerStorage(redis) })
  */
 export function createRedisBreakerStorage(redis: Redis): BreakerStorage {
-  return new RedisKvStorage<BreakerState>(redis, PREFIX_BREAKER);
+  return createRedisKvStorage<BreakerState>(redis, PREFIX_BREAKER);
 }
 
 /**
@@ -122,5 +108,5 @@ export function createRedisBreakerStorage(redis: Redis): BreakerStorage {
  * 可与 breaker 共用同一 Redis 连接（key 前缀隔离）。
  */
 export function createRedisDeadCredentialStorage(redis: Redis): DeadCredentialStorage {
-  return new RedisKvStorage<DeadCredentialState>(redis, PREFIX_CREDENTIAL);
+  return createRedisKvStorage<DeadCredentialState>(redis, PREFIX_CREDENTIAL);
 }

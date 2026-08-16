@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ModelRouter } from '../model-router.js';
+import { createModelRouter } from '../model-router.js';
 import { decrypt, encrypt } from '@ai-gateway/core';
 import type { Db } from '@ai-gateway/db';
 
@@ -74,17 +74,17 @@ describe('model-router 双 key 解密（A6）', () => {
     const fresh = encrypt('upstream-secret-fresh', KEY_V2, 2); // enc:v2
 
     // 窗口期：NEW + OLD
-    const windowRouter = new ModelRouter(makeMockDb([channelRow(legacy), channelRow(fresh)]) as never, makeMockRedis() as never, KEY_V2, KEY_V1);
+    const windowRouter = createModelRouter(makeMockDb([channelRow(legacy), channelRow(fresh)]) as never, makeMockRedis() as never, KEY_V2, KEY_V1);
     const channels = await windowRouter.getChannels('some-real-model');
     expect(channels.map((c) => c.apiKey).toSorted()).toEqual(['upstream-secret-fresh', 'upstream-secret-legacy']);
 
     // 收窗后（无 OLD）：v2 可解
-    const closedRouter = new ModelRouter(makeMockDb([channelRow(fresh)]) as never, makeMockRedis() as never, KEY_V2);
+    const closedRouter = createModelRouter(makeMockDb([channelRow(fresh)]) as never, makeMockRedis() as never, KEY_V2);
     const closed = await closedRouter.getChannels('some-real-model');
     expect(closed[0]!.apiKey).toBe('upstream-secret-fresh');
 
     // 收窗后遗留 v1 行 → GCM 认证失败（绝不解出垃圾明文）
-    const staleRouter = new ModelRouter(makeMockDb([channelRow(legacy)]) as never, makeMockRedis() as never, KEY_V2);
+    const staleRouter = createModelRouter(makeMockDb([channelRow(legacy)]) as never, makeMockRedis() as never, KEY_V2);
     await expect(staleRouter.getChannels('some-real-model')).rejects.toThrow();
     // 信封语义自证：v1 行在无 OLD 时用当前 key 解必然认证失败
     expect(() => decrypt(legacy, KEY_V2)).toThrow();

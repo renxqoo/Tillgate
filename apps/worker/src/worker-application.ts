@@ -12,8 +12,6 @@ import { maintainRequestLogPartitions } from './request-log-partitions.js';
 import { isDeepHealthAuthorized } from './health-gate.js';
 import { settleTelemetry } from './settle-telemetry.js';
 import {
-  createBillingAutoReleaser,
-  createBillingOperations,
   createBillingProcessor,
   createLedger,
   createRedisLedgerEffects,
@@ -59,7 +57,6 @@ const emptyInventory = (): BillingInventory => ({
   processing: 0,
   retrying: 0,
   dead: 0,
-  uncertain: 0,
   oldestPendingMs: 0,
 });
 
@@ -138,28 +135,6 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
       },
     });
   const ledger = createLedger({ db, effects: createRedisLedgerEffects(redis) });
-  // uncertain 小额白名单自动放行（dead 永不自动处置）；阈值 '0' 时整体关闭
-  const billingOperations = createBillingOperations({ db });
-  // 时效放行（R11-B）：env 层已保证双参数同配同缺；未配置 → 通道关闭
-  const uncertainTimeout =
-    env.WORKER_UNCERTAIN_TIMEOUT_HOURS !== undefined &&
-    env.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT !== undefined
-      ? {
-          hours: env.WORKER_UNCERTAIN_TIMEOUT_HOURS,
-          maxAmount: env.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT,
-        }
-      : undefined;
-  const autoReleaser = createBillingAutoReleaser({
-    db,
-    operations: billingOperations,
-    config: {
-      maxAmount: env.WORKER_AUTO_RELEASE_MAX_AMOUNT,
-      batchSize: env.WORKER_RECOVERY_BATCH_SIZE,
-      // 小额通道只放滞留单：滞留下界取一个租约周期（与网关租约同源）
-      minAgeMs: env.BILLING_LEASE_SECONDS * 1_000,
-      timeout: uncertainTimeout,
-    },
-  });
 
   let queueWorker: Worker<BillingSettlementWakeup> | null = null;
   let healthServer: Server | null = null;
@@ -314,15 +289,8 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
       lastRecoveryAt = new Date();
       lastRecoveryError = null;
       postgres = 'up';
-      if (result.released + result.uncertain + result.claimsRequeued > 0) {
+      if (result.released + result.claimsRequeued > 0) {
         logger.info({ result }, 'billing recovery completed');
-      }
-      if (result.uncertain > 0) logger.error({ result }, 'billing requests require review');
-      // 小额白名单自动放行：与 recovery 同节奏（默认 30s），全程走 resolveUncertain 审计
-      const autoReleased = await autoReleaser.runOnce();
-      if (autoReleased.released > 0) {
-        inventory = await processor.inventory();
-        logger.warn({ result: autoReleased }, 'billing auto-release applied (system actor)');
       }
     }).catch((error) => {
       postgres = 'down';
@@ -371,7 +339,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
     const status =
       !started || postgres === 'down' || !accepting || stale
         ? 'fail'
-        : redisState === 'down' || inventory.dead > 0 || inventory.uncertain > 0
+        : redisState === 'down' || inventory.dead > 0
           ? 'degraded'
           : 'ok';
     return {

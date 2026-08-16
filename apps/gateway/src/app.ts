@@ -1,5 +1,4 @@
 import { Hono, type Context } from 'hono';
-import { HTTPException } from 'hono/http-exception';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import type { Ai } from '@ai-gateway/ai';
@@ -14,17 +13,16 @@ import { requestIdMiddleware } from './middleware/request-id.js';
 import { requestLogMiddleware } from './middleware/request-log.js';
 import { otelMiddleware } from './middleware/otel.js';
 import { corsPreflight, securityHeaders, bodyParserLimit } from './middleware/security.js';
-import { errorEnvelope, HttpError } from './lib/http.js';
-import { pgSqlState } from '@ai-gateway/http';
-import { ValidationError } from './lib/validation.js';
-import { AuthService } from './services/auth/auth-service.js';
-import { OAuthService } from './services/auth/oauth-service.js';
-import { RateLimiter } from './services/billing/rate-limit-service.js';
-import { BillingDispatcher } from './services/billing/billing-dispatcher.js';
-import { ModelRouter } from './services/routing/model-router.js';
-import { LlmPipeline } from './services/pipeline/llm-pipeline.js';
-import { RequestLifecycle } from './services/runtime/request-lifecycle.js';
-import { CompletionRegistry } from './services/runtime/completion-registry.js';
+import { errorEnvelope, renderReject } from './lib/http.js';
+import { translateBoundaryError } from './lib/errors.js';
+import { createAuthService } from './services/auth/auth-service.js';
+import { createOAuthService } from './services/auth/oauth-service.js';
+import type { RateLimiter } from './services/billing/rate-limit-service.js';
+import type { BillingDispatcher } from './services/billing/billing-dispatcher.js';
+import { createModelRouter } from './services/routing/model-router.js';
+import { createPipeline } from './services/pipeline/run.js';
+import type { RequestLifecycle } from './services/runtime/request-lifecycle.js';
+import type { CompletionRegistry } from './services/runtime/completion-registry.js';
 import { createBilling } from '@ai-gateway/ledger';
 
 /** gateway 依赖（启动时装配，测试可注入） */
@@ -50,11 +48,11 @@ export interface GatewayDeps {
 export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
-  const authService = new AuthService(deps.db, deps.redis, deps.env.JWT_SECRET, {
+  const authService = createAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, {
     authFailureLimit: deps.env.GATEWAY_AUTH_FAILURE_LIMIT,
     authFailureWindowS: deps.env.GATEWAY_AUTH_FAILURE_WINDOW_S,
   });
-  const oauthService = new OAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, deps.logger);
+  const oauthService = createOAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, deps.logger);
   const billing = createBilling({
     db: deps.db,
     admission: {
@@ -63,13 +61,13 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
       cacheMs: deps.env.BILLING_ADMISSION_CACHE_MS,
     },
   });
-  const router = new ModelRouter(
+  const router = createModelRouter(
     deps.db,
     deps.redis,
     deps.env.ENCRYPTION_KEY,
     deps.env.ENCRYPTION_KEY_OLD,
   );
-  const pipeline = new LlmPipeline({ ...deps, billing, router });
+  const runInference = createPipeline({ ...deps, billing, router });
 
   // 统一错误处理（OpenAI 风格错误信封；不用 message 文本启发式）
   app.onError((err, c) => appErrorHandler(deps.logger, err, c));
@@ -114,55 +112,26 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   app.route('/v1/models', modelsRoutes(router));
   // 推理端点注册表驱动挂载（单一真相：routes/inference-endpoints.ts）
   for (const endpoint of inferenceEndpoints) {
-    app.route(endpoint.path, inferenceRoutes(pipeline, endpoint));
+    app.route(endpoint.path, inferenceRoutes(runInference, endpoint));
   }
   app.route('/oauth/token', oauthTokenRoutes(oauthService, deps.env.TRUSTED_PROXY_HOPS));
 
   return app;
 }
 
-/** PG 约束错误 → 网关 OpenAI 信封（与 packages/http PG_CODE_MAP 同语义、网关码风格） */
-const PG_GATEWAY_MAP: Record<string, { status: number; code: string; message: string }> = {
-  '23505': { status: 409, code: 'conflict', message: '记录已存在（唯一约束冲突）' },
-  '23503': { status: 400, code: 'invalid_reference', message: '引用的资源不存在' },
-  '23514': { status: 400, code: 'constraint_violation', message: '操作违反数据约束' },
-  '22001': { status: 400, code: 'value_too_long', message: '字段值超出长度限制' },
-  '22P02': { status: 400, code: 'invalid_value', message: '字段值格式非法' },
-  '22003': { status: 400, code: 'value_out_of_range', message: '字段值超出数值范围' },
-};
-
-/** 统一错误处理（导出供测试复用）：HttpError/ValidationError/PG 约束/HTTPException/其他 → OpenAI 错误信封 */
+/** 统一错误处理（导出供测试复用）：任何抛出的错误 → 统一翻译 → OpenAI 错误信封。
+ *  翻译单一真相在 lib/errors.ts（HttpError/ValidationError/PG 约束/HTTPException/兜底 500），
+ *  渲染单一真相在 lib/http.ts renderReject——本函数只补「未知异常记日志」这一件事。 */
 export function appErrorHandler(logger: Logger, err: Error, c: Context): Response {
-  const requestId = readRequestId(c);
-  if (err instanceof HttpError) {
-    return errorEnvelope(c, err.status, err.code, err.message, err.suggestion, requestId);
-  }
-  if (err instanceof ValidationError) {
-    return errorEnvelope(c, 400, 'invalid_request', '请求参数校验失败', undefined, requestId);
-  }
-  // PG 约束/值错误 → 4xx（可预期拒绝不得伪装 500；与 packages/http 同表同义）
-  const pg = PG_GATEWAY_MAP[pgSqlState(err) ?? ''];
-  if (pg) {
-    return errorEnvelope(c, pg.status, pg.code, pg.message, undefined, requestId);
-  }
-  if (err instanceof HTTPException) {
-    // Hono 内置错误：JSON 解析失败（400）/ 未匹配路由（404）等
-    const status = err.status >= 400 && err.status < 600 ? err.status : 400;
-    const message = status === 400 ? '请求体不是合法 JSON' : '路径不存在';
-    return errorEnvelope(
-      c,
-      status,
-      status === 404 ? 'not_found' : 'invalid_request',
-      message,
-      undefined,
-      requestId,
+  const reject = translateBoundaryError(err);
+  if (reject.status >= 500) {
+    const requestId = readRequestId(c);
+    logger.error(
+      { requestId, errorName: err.name, err: err.message, stack: err.stack, cause: err.cause },
+      'unhandled error',
     );
   }
-  logger.error(
-    { requestId, errorName: err.name, err: err.message, stack: err.stack, cause: err.cause },
-    'unhandled error',
-  );
-  return errorEnvelope(c, 500, 'internal_error', '网关内部错误', undefined, requestId);
+  return renderReject(c, reject);
 }
 
 /** 安全读取 requestId（onError 可能在 requestId 中间件之前触发） */

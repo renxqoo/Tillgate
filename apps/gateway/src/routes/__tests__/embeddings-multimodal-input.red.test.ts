@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { inferenceEndpoints, inferenceRoutes } from '../inference-endpoints.js';
-import type { LlmPipeline } from '../../services/pipeline/llm-pipeline.js';
+import type { RunInference } from '../../services/pipeline/run.js';
 
 /**
  * 红测（new-api #2463 / #2443 同类）：embeddings input 校验过窄，拒绝
@@ -20,10 +20,9 @@ import type { LlmPipeline } from '../../services/pipeline/llm-pipeline.js';
 
 function makeEmbeddingsApp(): Hono {
   const endpoint = inferenceEndpoints.find((e) => e.kind === 'embeddings')!;
-  const stubPipeline = {
-    run: async () => new Response(JSON.stringify({ data: [], model: 'x', usage: {} }), { status: 200 }),
-  } as unknown as LlmPipeline;
-  return new Hono().route('/', inferenceRoutes(stubPipeline, endpoint));
+  const stubRun = (async () =>
+    new Response(JSON.stringify({ data: [], model: 'x', usage: {} }), { status: 200 })) as RunInference;
+  return new Hono().route('/', inferenceRoutes(stubRun, endpoint));
 }
 
 describe('embeddings input 形态（#2463 同类红测）', () => {

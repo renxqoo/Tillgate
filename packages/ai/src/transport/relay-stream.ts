@@ -43,6 +43,9 @@ export type RelayStreamEvent =
       usage: unknown | null;
       errorFrame: StreamError | null;
       bytesRelayed: number;
+      /** 终止细节（观测/计费留痕）：[DONE] 哨兵是否到达；终止帧（finish_reason）是否到达 */
+      doneSentinel?: boolean;
+      terminalFrame?: boolean;
       terminated?:
         | 'client_disconnect'
         | 'request_cancelled'
@@ -99,6 +102,8 @@ export function relayStream(
       usage: scanner.getUsage(),
       errorFrame,
       bytesRelayed,
+      doneSentinel: normalizedMissingDone ? false : scanner.hasDone(),
+      terminalFrame: scanner.hasTerminalFrame(),
       terminated: errorFrame && !normalizedMissingDone ? 'upstream_error' : undefined,
     });
   };
@@ -136,6 +141,8 @@ export function relayStream(
       usage: scanner.getUsage(),
       errorFrame: frame,
       bytesRelayed,
+      doneSentinel: scanner.hasDone(),
+      terminalFrame: scanner.hasTerminalFrame(),
       terminated: reason,
     });
     if (terminate && controller) {
@@ -225,6 +232,8 @@ export function relayStream(
             usage: scanner.getUsage(),
             errorFrame,
             bytesRelayed,
+            doneSentinel: scanner.hasDone(),
+            terminalFrame: scanner.hasTerminalFrame(),
             terminated: 'client_disconnect',
           });
         } else {
@@ -234,6 +243,8 @@ export function relayStream(
             usage: scanner.getUsage(),
             errorFrame,
             bytesRelayed,
+            doneSentinel: scanner.hasDone(),
+            terminalFrame: scanner.hasTerminalFrame(),
             terminated: errorFrame ? 'upstream_error' : undefined,
           });
         }

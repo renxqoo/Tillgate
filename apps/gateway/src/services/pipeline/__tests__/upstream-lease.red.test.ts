@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { upstreamLeaseMs } from '../pipeline-shared.js';
+import { upstreamLeaseMs } from '../types.js';
 
 /**
  * 审计 P0-5（租约侧）：非流式调用没有任何租约续期（续期只存在于流式的

@@ -71,4 +71,8 @@ export type AiEvent =
        * （见 usage-estimator.ts）；input tokens 用 estimateInputTokens（CJK 感知，与预扣同源）。
        */
       bytesRelayed?: number;
+      /** [DONE] 哨兵是否到达（观测/计费留痕：区分自然完成与终止后断开） */
+      doneSentinel?: boolean;
+      /** 终止帧（finish_reason）是否到达 */
+      terminalFrame?: boolean;
     };

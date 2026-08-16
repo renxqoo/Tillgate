@@ -14,8 +14,9 @@ import {
   cleanupTestData,
   buildTestApp,
   makeMockAi,
+  BILLING_SETTLE_STATES,
 } from '../../testing/helpers.js';
-import { BillingDispatcher } from '../../services/billing/billing-dispatcher.js';
+import { createBillingDispatcher } from '../../services/billing/billing-dispatcher.js';
 
 /**
  * 金额正确性回归：流式成功但无可信 usage 时禁止估算扣费，保留预扣等待审计。
@@ -37,8 +38,8 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () => {
-  it('不唤醒结算且冻结预扣', async () => {
+describe('G1（2026-08-17 修订）— 流式完成无 usage → 估算结算；中断 → 释放', () => {
+  it('完成缺 usage（bytesRelayed=0）→ 估算结算（input 计费）+ 唤醒', async () => {
     if (!connected) return it.skip('no DB');
     const userId = await createTestUser(db, '1000', 'g1');
     const { token, keyHash } = await createTestApiKey(db, userId, 'g1');
@@ -70,13 +71,9 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
       });
 
       // spy enqueue：观察计量是否入队
-      const dispatcher = new BillingDispatcher(redis);
-      let wakeCalled = false;
+      const dispatcher = createBillingDispatcher(redis);
       const origWake = dispatcher.wake.bind(dispatcher);
-      dispatcher.wake = async (requestId) => {
-        wakeCalled = true;
-        return origWake(requestId);
-      };
+      dispatcher.wake = origWake;
 
       const honoApp = buildTestApp(db, redis, ai, undefined, undefined, dispatcher);
       const res = await honoApp.request('/v1/chat/completions', {
@@ -92,21 +89,21 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
 
       expect(res.status).toBe(200);
       await res.text(); // 消费到 EOF；flush 会等待 durable receipt 提交后才结束。
-      expect(wakeCalled).toBe(false);
+      // 2026-08-17 政策：估算结算 → 唤醒 worker（DB drain 兜底，唤醒失败不影响正确性）
       const billing = await db.query.billingRequests.findFirst({
         where: eq(billingRequests.userId, userId),
       });
-      expect(billing).toMatchObject({
-        status: 'uncertain',
-        failureCode: 'stream_completed_without_usage',
-        receipt: null,
-      });
+      // 2026-08-17 政策：完成态缺 usage → 估算结算（bytes=0 → 仅 input），不再冻结
+      expect(BILLING_SETTLE_STATES).toContain(billing!.status);
+      const receipt = billing!.receipt as Record<string, unknown>;
+      expect((receipt.usage as Record<string, unknown>).estimated).toBe(true);
+      expect(receipt.estimatedFor).toBe('usage_missing_completed');
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }
   });
 
-  it('中断流无 usage → 不唤醒结算，billing request 保持 uncertain', async () => {
+  it('中断流无 usage（upstream_truncated）→ 释放不扣（released）', async () => {
     if (!connected) return it.skip('no DB');
     const userId = await createTestUser(db, '1000', 'truncated');
     const { token, keyHash } = await createTestApiKey(db, userId, 'truncated');
@@ -139,8 +136,7 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
           };
         }),
       });
-      const dispatcher = new BillingDispatcher(redis);
-      const wake = vi.spyOn(dispatcher, 'wake');
+      const dispatcher = createBillingDispatcher(redis);
       const app = buildTestApp(db, redis, ai, undefined, undefined, dispatcher);
       const res = await app.request('/v1/chat/completions', {
         method: 'POST',
@@ -154,12 +150,15 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
       });
       expect(res.status).toBe(200);
       expect(await res.text()).toContain('upstream_stream_truncated');
-      expect(wake).not.toHaveBeenCalled();
+      // 2026-08-17 政策：上游服务端异常 → 释放不扣（不再 uncertain 冻结）
+      await new Promise((r) => setTimeout(r, 150));
       const requests = await db.query.billingRequests.findMany({
         where: eq(billingRequests.userId, userId),
-        columns: { status: true, receipt: true },
+        columns: { status: true, failureCode: true, receipt: true },
       });
-      expect(requests).toEqual([{ status: 'uncertain', receipt: null }]);
+      expect(requests).toEqual([
+        { status: 'released', failureCode: 'upstream_truncated', receipt: null },
+      ]);
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }
@@ -198,7 +197,7 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
           };
         }),
       });
-      const dispatcher = new BillingDispatcher(redis);
+      const dispatcher = createBillingDispatcher(redis);
       const wake = vi.spyOn(dispatcher, 'wake');
       const app = buildTestApp(db, redis, ai, undefined, undefined, dispatcher);
       const res = await app.request('/v1/chat/completions', {

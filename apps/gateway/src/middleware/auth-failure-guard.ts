@@ -30,39 +30,44 @@ export interface AuthFailureCheck {
 const failKey = (ip: string) => `authfail:ip:${ip}`;
 const lockKey = (ip: string) => `authfail:ip:lock:${ip}`;
 
-export class AuthFailureGuard {
-  constructor(
-    private readonly redis: Redis,
-    private readonly policy: AuthFailurePolicy,
-  ) {}
-
+export interface AuthFailureGuard {
   /** 是否已被锁定（请求前调用，避免对锁定来源继续查 DB） */
-  async isLocked(ip: string): Promise<AuthFailureCheck> {
-    try {
-      const ttl = await this.redis.ttl(lockKey(ip));
-      if (ttl > 0) return { limited: true, retryAfterSec: ttl };
-    } catch {
-      // Redis 不可用：fail-open
-    }
-    return { limited: false, retryAfterSec: 0 };
-  }
-
+  isLocked(ip: string): Promise<AuthFailureCheck>;
   /** 记录一次鉴权失败；达阈值即锁定 */
-  async recordFailure(ip: string): Promise<AuthFailureCheck> {
-    try {
-      const key = failKey(ip);
-      const n = await this.redis.incr(key);
-      if (n === 1) await this.redis.expire(key, this.policy.windowS);
-      if (n >= this.policy.limit) {
-        await this.redis.set(lockKey(ip), '1', 'EX', this.policy.windowS);
-        return { limited: true, retryAfterSec: this.policy.windowS };
+  recordFailure(ip: string): Promise<AuthFailureCheck>;
+}
+
+export function createAuthFailureGuard(
+  redis: Redis,
+  policy: AuthFailurePolicy,
+): AuthFailureGuard {
+  return {
+    async isLocked(ip) {
+      try {
+        const ttl = await redis.ttl(lockKey(ip));
+        if (ttl > 0) return { limited: true, retryAfterSec: ttl };
+      } catch {
+        // Redis 不可用：fail-open
       }
       return { limited: false, retryAfterSec: 0 };
-    } catch {
-      // Redis 不可用：fail-open（不阻塞鉴权，仅失去限流保护）
-      return { limited: false, retryAfterSec: 0 };
-    }
-  }
+    },
+
+    async recordFailure(ip) {
+      try {
+        const key = failKey(ip);
+        const n = await redis.incr(key);
+        if (n === 1) await redis.expire(key, policy.windowS);
+        if (n >= policy.limit) {
+          await redis.set(lockKey(ip), '1', 'EX', policy.windowS);
+          return { limited: true, retryAfterSec: policy.windowS };
+        }
+        return { limited: false, retryAfterSec: 0 };
+      } catch {
+        // Redis 不可用：fail-open（不阻塞鉴权，仅失去限流保护）
+        return { limited: false, retryAfterSec: 0 };
+      }
+    },
+  };
 }
 
 /**

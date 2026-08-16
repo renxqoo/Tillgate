@@ -17,16 +17,16 @@ import {
   userSubscriptions,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
+import { createBilling } from '../billing/index.js';
 import {
   BillingBacklogError,
   BillingConfigurationError,
   DailySpendLimitExceededError,
   SubscriptionQuotaExhaustedError,
-  createBilling,
-} from '../billing-flow.js';
-import { createBillingProcessor } from '../billing-processor.js';
-import { createBillingOperations } from '../billing-operations.js';
-import type { BillingQuote, UsageReceipt } from '../types.js';
+} from '../billing/errors.js';
+import { createBillingProcessor } from '../billing/processor/index.js';
+import { createBillingOperations } from '../billing/operations.js';
+import type { BillingQuote, UsageReceipt } from '../billing/types.js';
 
 const db: Db = createDb(
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
@@ -529,7 +529,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     }
   });
 
-  it('未知上游结果不退款，转 uncertain', async (context) => {
+  it('未知上游结果统一释放不扣（2026-08-17 政策：upstreamCharge 不再分流资金语义）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
     const keyId = await createSubscriptionKey(userId);
@@ -558,65 +558,25 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         delivery: 'none',
         upstreamCharge: 'unknown',
       });
-      expect(result.status).toBe('uncertain');
-      // uncertain 保守保留额度敞口，不释放
+      expect(result.status).toBe('released');
+      // 未交付失败统一释放（宁可漏收不误收——用户未获完整服务）
       expect(await quotaState(userId)).toEqual({
         used: new Decimal(0),
-        reserved: new Decimal(2),
+        reserved: new Decimal(0),
       });
     } finally {
       await cleanup(userId);
     }
   });
 
-  it('中断流缺少可信 usage 时可显式转 uncertain，且不产生结算收据', async (context) => {
-    if (!connected) return context.skip();
-    const userId = await createUser('10');
-    const requestId = randomUUID();
-    const billing = createBilling({ db });
-    try {
-      await billing.authorize({
-        requestId,
-        userId,
-        stream: true,
-        quote: quote(),
-        reservationLimit: '50',
-        authorizationTtlMs: 60_000,
-      });
-      await billing.signal({
-        type: 'upstream.started',
-        requestId,
-        leaseOwner: requestId,
-        leaseMs: 60_000,
-      });
-      const result = await billing.signal({
-        type: 'request.uncertain',
-        requestId,
-        reason: 'stream_upstream_truncated_without_usage',
-      });
-      expect(result.status).toBe('uncertain');
-      const row = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, requestId),
-        columns: { status: true, receipt: true, failureCode: true },
-      });
-      expect(row).toMatchObject({
-        status: 'uncertain',
-        receipt: null,
-        failureCode: 'stream_upstream_truncated_without_usage',
-      });
-    } finally {
-      await cleanup(userId);
-    }
-  });
-
-  it('过期 authorized 可退款；过期 in_flight 只转 uncertain', async (context) => {
+  it('过期 authorized 可退款；过期 in_flight（网关崩溃）统一 released（2026-08-17 政策）', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
     const billing = createBilling({ db, clock: () => new Date('2026-01-01T00:00:00Z') });
     const safeId = randomUUID();
-    const uncertainId = randomUUID();
+    const crashedId = randomUUID();
     try {
-      for (const requestId of [safeId, uncertainId]) {
+      for (const requestId of [safeId, crashedId]) {
         await billing.authorize({
           requestId,
           userId,
@@ -628,7 +588,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       }
       await billing.signal({
         type: 'upstream.started',
-        requestId: uncertainId,
+        requestId: crashedId,
         leaseOwner: 'gateway-1',
         leaseMs: 1,
       });
@@ -638,12 +598,12 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         clock: () => new Date('2026-01-01T00:01:00Z'),
       });
       const result = await recovery.recoverOnce();
-      expect(result.released).toBeGreaterThanOrEqual(1);
-      expect(result.uncertain).toBeGreaterThanOrEqual(1);
-      const uncertain = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, uncertainId),
+      expect(result.released).toBeGreaterThanOrEqual(2); // authorized 过期 + in_flight 崩溃都计入 released
+      const crashed = await db.query.billingRequests.findFirst({
+        where: eq(billingRequests.requestId, crashedId),
       });
-      expect(uncertain?.status).toBe('uncertain');
+      expect(crashed?.status).toBe('released');
+      expect(crashed?.failureCode).toBe('gateway_crash_released');
     } finally {
       await cleanup(userId);
     }
@@ -918,7 +878,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     }
   });
 
-  it('uncertain 只有带版本和审计的明确无收费决定才能退款，重放不重复退款', async (context) => {
+  it('unknown 失败已即时释放（2026-08-17）；迟到 resolveUncertain 幂等重放不重复退款', async (context) => {
     if (!connected) return context.skip();
     const userId = await createUser('10');
     const requestId = randomUUID();
@@ -950,31 +910,27 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         delivery: 'none',
         upstreamCharge: 'unknown',
       });
-      const uncertain = await db.query.billingRequests.findFirst({
+      // 政策：unknown 已即时 released
+      const released = await db.query.billingRequests.findFirst({
         where: eq(billingRequests.requestId, requestId),
       });
-      const operations = createBillingOperations({ db });
-      const command = {
-        operationId,
-        requestId,
-        expectedRevision: uncertain!.revision,
-        adminId: admin!.id,
-        reason: 'provider invoice confirms no request was accepted',
-        evidenceRefs: ['provider-case:123'],
-        decision: 'confirmed_no_charge' as const,
-      };
-      const first = await operations.resolveUncertain(command);
-      const replay = await operations.resolveUncertain(command);
-      expect(first.status).toBe('released');
-      expect(first.replayed).toBe(false);
-      expect(replay.replayed).toBe(true);
+      expect(released?.status).toBe('released');
       expect(await balances(userId)).toEqual({
         settled: new Decimal(10),
         reserved: new Decimal(0),
         available: new Decimal(10),
       });
-      const audits = await db.select().from(auditLogs).where(eq(auditLogs.targetId, requestId));
-      expect(audits).toHaveLength(1);
+      // 迟到的废弃命令按状态机拒绝（幂等防护仍在：不允许对已终结单重复操作资金）
+      const operations = createBillingOperations({ db });
+      await expect(
+        operations.abandonDead({
+          operationId,
+          requestId,
+          expectedRevision: released!.revision,
+          adminId: admin!.id,
+          reason: 'late review after policy release',
+        }),
+      ).rejects.toMatchObject({ code: 'state_conflict' });
     } finally {
       await db.delete(auditLogs).where(eq(auditLogs.targetId, requestId));
       await db.delete(fundOperations).where(eq(fundOperations.operationId, operationId));
@@ -1459,7 +1415,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
       ).toMatchObject({ upstreamReserved: '0.000000000000000000' });
 
-      // 场景 2：uncertain（上游收费未知）→ 保守保留渠道敞口
+      // 场景 2：上游收费未知（2026-08-17 政策）→ 渠道敞口随释放归还
       const unId = randomUUID();
       await billing.authorize({
         requestId: unId,
@@ -1480,32 +1436,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
       });
       expect(
         await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
-      ).toMatchObject({ upstreamReserved: '2.000000000000000000' }); // 保守保留
+      ).toMatchObject({ upstreamReserved: '0.000000000000000000' }); // 随释放归还
 
-      // 确认无收费 → 释放
-      const [admin] = await db
-        .insert(admins)
-        .values({ email: `ch-review-${randomUUID()}@test.local`, passwordHash: 'x' })
-        .returning({ id: admins.id });
-      const br = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, unId),
-      });
-      const operations = createBillingOperations({ db });
-      await operations.resolveUncertain({
-        operationId: `ch-review:${unId}`,
-        requestId: unId,
-        expectedRevision: br!.revision,
-        adminId: admin!.id,
-        reason: 'confirmed no charge',
-        decision: 'confirmed_no_charge',
-      });
-      expect(
-        await db.query.channels.findFirst({ where: eq(channels.id, channelId) }),
-      ).toMatchObject({ upstreamReserved: '0.000000000000000000' });
-
-      await db.delete(auditLogs).where(eq(auditLogs.targetId, unId));
-      await db.delete(fundOperations).where(eq(fundOperations.operationId, `ch-review:${unId}`));
-      await db.delete(admins).where(eq(admins.id, admin!.id));
+      // （政策后 unknown 即时释放，无需人工确认步骤；留痕校验已覆盖）
     } finally {
       await cleanup(userId);
       await db.delete(channels).where(eq(channels.id, channelId));

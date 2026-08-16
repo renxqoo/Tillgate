@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono';
-import { errorResponse } from '../lib/http.js';
-import { AuthService, type AuthContext } from '../services/auth/auth-service.js';
+import { GatewayError } from '../lib/errors.js';
+import type { KnownErrorCode } from '@ai-gateway/http';
+import type { AuthService, AuthContext } from '../services/auth/auth-service.js';
 import { sourceIp } from './auth-failure-guard.js';
 
 /** 鉴权上下文（鉴权通过后挂在 c.var.auth，后续路由/计量使用） */
@@ -23,10 +24,12 @@ export function authMiddleware(authService: AuthService, trustedProxyHops = 0): 
   return async (c, next) => {
     const result = await authService.authenticate(c.req.header('authorization'), sourceIp(c, trustedProxyHops));
     if (!result.ok) {
-      if (result.retryAfterSec !== undefined) {
-        c.header('retry-after', String(result.retryAfterSec));
-      }
-      return errorResponse(c, result.status, result.code, result.message, result.suggestion);
+      // AuthResult 拒绝码均已登记注册表 → 统一抛 GatewayError（app.onError 收口渲染）
+      throw new GatewayError(result.code as KnownErrorCode, {
+        message: result.message,
+        ...(result.suggestion !== undefined ? { suggestion: result.suggestion } : {}),
+        ...(result.retryAfterSec !== undefined ? { retryAfterSec: result.retryAfterSec } : {}),
+      });
     }
     c.set('auth', result.auth);
     await next();

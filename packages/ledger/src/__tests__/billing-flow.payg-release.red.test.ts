@@ -11,8 +11,8 @@ import {
   userSubscriptions,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
-import { createBilling } from '../billing-flow.js';
-import type { BillingQuote } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import type { BillingQuote } from '../billing/types.js';
 
 /**
  * 【红测 · R1】request.failed 释放路径不递减 users.reserved_balance（PAYG 预占永久泄漏）

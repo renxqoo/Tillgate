@@ -11,17 +11,16 @@ import {
 } from '@ai-gateway/db/schema';
 import {
   BillingOperationError,
-  createBillingAutoReleaser,
   createBillingOperations,
   createBillingProcessor,
 } from '../index.js';
 
 /**
- * 计费异常复核自动化（TDD）：
+ * 计费复核操作（TDD）：
  *   - abandonDead：dead 单人工废弃 → released + 三类预扣全释放 + 幂等 + 版本冲突
- *   - 小额自动放行：≤ 阈值放、> 阈值与 dead 不碰、阈值 0 关闭（按失败码白名单无条件放的
- *     旧通道已删除——rate_limit_error 归一化后无生产者，单一真相=金额阈值）
  *   - requestDead 告警 effect：转 dead 即触发（含金额与失败类目）
+ * （uncertain 自动放行通道已随 2026-08-17 估算结算政策删除：完成缺 usage 即时
+ *   估算结算、上游异常/崩溃即时释放，uncertain 不再产生）
  */
 
 const db: Db = createDb(
@@ -206,120 +205,6 @@ describe('abandonDead：dead 单人工废弃', () => {
       expect(BillingOperationError).toBeDefined();
     } finally {
       await cleanup(f.userId, f.subId);
-    }
-  });
-});
-
-describe('小额白名单自动放行', () => {
-  it('小额放；超阈值、dead、阈值0 不放（无白名单通道）', async (context) => {
-    if (!connected) return context.skip();
-    const operations = createBillingOperations({ db });
-    const releaser = createBillingAutoReleaser({
-      db,
-      operations,
-      config: { maxAmount: '0.1', batchSize: 50 },
-    });
-    const disabled = createBillingAutoReleaser({
-      db,
-      operations,
-      config: { maxAmount: '0', batchSize: 50 },
-    });
-
-    // 白名单已删：rate_limit_error 且金额超阈值 → 不放（与其他码同语义）
-    const free = await createFixture({ status: 'uncertain', failureCode: 'rate_limit_error', reservedAmount: '5' });
-    const small = await createFixture({ status: 'uncertain', failureCode: 'network', reservedAmount: '0.05', ageHours: 2 });
-    const big = await createFixture({ status: 'uncertain', failureCode: 'network', reservedAmount: '1.002' });
-    const dead = await createFixture({ status: 'dead', failureCode: 'usage_exceeds_authorization', reservedAmount: '0.0002' });
-    try {
-      const r = await releaser.runOnce();
-      expect(r.released).toBeGreaterThanOrEqual(1);
-      const freeRow = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, free.requestId),
-      });
-      expect(freeRow!.status).toBe('uncertain'); // 超阈值：即便旧白名单码也不放
-      const smallRow = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, small.requestId),
-      });
-      expect(smallRow!.status).toBe('released');
-      // 超阈值与 dead 不动
-      const bigRow = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, big.requestId),
-      });
-      expect(bigRow!.status).toBe('uncertain');
-      const deadRow = await db.query.billingRequests.findFirst({
-        where: eq(billingRequests.requestId, dead.requestId),
-      });
-      expect(deadRow!.status).toBe('dead');
-
-      // 幂等：再跑一轮无新放行
-      const again = await releaser.runOnce();
-      expect(again.released).toBe(0);
-
-      // 阈值 0 → 整个通道关闭
-      const d = await disabled.runOnce();
-      expect(d.released).toBe(0);
-      expect(d.considered).toBe(0);
-    } finally {
-      await cleanup(free.userId, free.subId);
-      await cleanup(small.userId, small.subId);
-      await cleanup(big.userId, big.subId);
-      await cleanup(dead.userId, dead.subId);
-    }
-  });
-});
-
-describe('uncertain 时效自动放行（R11-B：双参数配置，无默认，不配即关）', () => {
-  it('超时且 ≤ 上限 → 放行；超时但 > 上限 / 未超时 / dead → 不动；不配置 → 通道关闭；幂等', async (context) => {
-    if (!connected) return context.skip();
-    const operations = createBillingOperations({ db });
-    // 金额通道阈值 0（关闭），只考察时效通道，隔离两通道互相干扰
-    const releaser = createBillingAutoReleaser({
-      db,
-      operations,
-      config: { maxAmount: '0', batchSize: 50, timeout: { hours: 24, maxAmount: '5' } },
-    });
-    const noTimeout = createBillingAutoReleaser({
-      db,
-      operations,
-      config: { maxAmount: '0', batchSize: 50 },
-    });
-
-    const oldSmall = await createFixture({ status: 'uncertain', failureCode: 'in_flight_lease_expired', reservedAmount: '3', ageHours: 25 });
-    const oldBig = await createFixture({ status: 'uncertain', failureCode: 'in_flight_lease_expired', reservedAmount: '8.194', ageHours: 25 });
-    const fresh = await createFixture({ status: 'uncertain', failureCode: 'in_flight_lease_expired', reservedAmount: '3', ageHours: 1 });
-    const oldDead = await createFixture({ status: 'dead', failureCode: 'usage_exceeds_authorization', reservedAmount: '3', ageHours: 25 });
-    const oldTiny = await createFixture({ status: 'uncertain', failureCode: 'in_flight_lease_expired', reservedAmount: '0.05', ageHours: 30 });
-    try {
-      const r = await releaser.runOnce();
-      expect(r.released).toBe(2); // oldSmall + oldTiny（oldTiny 同时命中两条件也只放一次）
-      const status = async (id: string) =>
-        (await db.query.billingRequests.findFirst({ where: eq(billingRequests.requestId, id) }))!.status;
-      expect(await status(oldSmall.requestId)).toBe('released');
-      expect(await status(oldTiny.requestId)).toBe('released');
-      expect(await status(oldBig.requestId)).toBe('uncertain'); // 超上限：留人工
-      expect(await status(fresh.requestId)).toBe('uncertain'); // 未超时
-      expect(await status(oldDead.requestId)).toBe('dead'); // dead 永不自动处置
-
-      // 幂等：第二轮无新放行
-      const again = await releaser.runOnce();
-      expect(again.released).toBe(0);
-
-      // 未配置 timeout → 同样的老单一律不动
-      const other = await createFixture({ status: 'uncertain', failureCode: 'in_flight_lease_expired', reservedAmount: '3', ageHours: 25 });
-      try {
-        const d = await noTimeout.runOnce();
-        expect(d.released).toBe(0);
-        const otherRow = await db.query.billingRequests.findFirst({
-          where: eq(billingRequests.requestId, other.requestId),
-        });
-        expect(otherRow!.status).toBe('uncertain');
-      } finally {
-        await cleanup(other.userId, other.subId);
-      }
-    } finally {
-      for (const f of [oldSmall, oldBig, fresh, oldDead, oldTiny]) {
-        await cleanup(f.userId, f.subId);
-      }
     }
   });
 });

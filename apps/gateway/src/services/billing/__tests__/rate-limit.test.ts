@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createEphemeralRedis, type EphemeralRedis } from '@ai-gateway/http';
-import { RateLimiter } from '../rate-limit-service.js';
+import { createRateLimiter } from '../rate-limit-service.js';
 
 // 加载 monorepo 根 .env（vitest 不自动加载）
 const cwd = dirname(fileURLToPath(import.meta.url));
@@ -62,7 +62,7 @@ function uniqDim(prefix: string): string {
 describe('RateLimiter.check（RPM 滑动窗口）', () => {
   it('未超限：连续请求通过，remaining 递减', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const dim = uniqDim('test-rpm-pass');
     try {
       // max=3：前 3 个通过，remaining 依次为 2/1/0
@@ -83,7 +83,7 @@ describe('RateLimiter.check（RPM 滑动窗口）', () => {
 
   it('超限不计数：被拒请求不进窗口（ZCARD 不增）', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const dim = uniqDim('test-rpm-noadd');
     try {
       // 填满窗口（max=2）
@@ -103,7 +103,7 @@ describe('RateLimiter.check（RPM 滑动窗口）', () => {
 
   it('maxCount ≤ 0 → 无限制（始终放行）', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const dim = uniqDim('test-rpm-unlimited');
     const r = await rl.check(dim, 0, `${dim}-0`);
     expect(r.allowed).toBe(true);
@@ -115,7 +115,7 @@ describe('RateLimiter.check（RPM 滑动窗口）', () => {
 describe('RateLimiter.checkAll（多维度 RPM）', () => {
   it('任一维度超限即拒，dimension 指向首个超限维度', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const loose = uniqDim('test-all-loose'); // max 大，永不超
     const tight = uniqDim('test-all-tight'); // max=1，第二个请求即超
     try {
@@ -146,7 +146,7 @@ describe('RateLimiter.checkAll（多维度 RPM）', () => {
 
   it('后续维度拒绝时所有维度都不计数', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const a = uniqDim('test-all-rollback-a'); // max=5（会通过并计数）
     const b = uniqDim('test-all-rollback-b'); // max=1（第二请求超）
     try {
@@ -176,7 +176,7 @@ describe('RateLimiter.checkAll（多维度 RPM）', () => {
 describe('RateLimiter.reserveTpmAll（原子并发预占）', () => {
   it('并发请求只能放行额度能覆盖的数量，并可整单释放', async () => {
     if (!connected) return it.skip('no Redis');
-    const rl = new RateLimiter(redis);
+    const rl = createRateLimiter(redis);
     const dim = uniqDim('test-tpm-reserve');
     const minute = Math.floor(Date.now() / 60_000);
     const reservedKey = `{tpm}:reserved:${minute}:${dim}`;

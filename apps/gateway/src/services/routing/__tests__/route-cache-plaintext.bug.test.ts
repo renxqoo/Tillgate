@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ModelRouter } from '../model-router.js';
+import { createModelRouter } from '../model-router.js';
 import { encrypt } from '@ai-gateway/core';
 import type { Db } from '@ai-gateway/db';
 
@@ -82,7 +82,7 @@ describe('路由缓存明文 Key 泄露（修复后只存密文 apiKeyEnc）', (
     const apiKeyEnc = encrypt(PLAINTEXT_KEY, ENCRYPTION_KEY); // DB 里存的是密文
     const dbMock = makeDbMock(apiKeyEnc);
 
-    const router = new ModelRouter(dbMock, redis as never, ENCRYPTION_KEY);
+    const router = createModelRouter(dbMock, redis as never, ENCRYPTION_KEY);
     const result = await router.getChannels('gpt-4');
 
     // 内存返回值：含解密明文（供调用方使用）
@@ -120,7 +120,7 @@ describe('路由缓存明文 Key 泄露（修复后只存密文 apiKeyEnc）', (
       ]),
     );
     const dbMock = makeDbMock(apiKeyEnc); // 不应被调用（缓存命中）
-    const router = new ModelRouter(dbMock, redis as never, ENCRYPTION_KEY);
+    const router = createModelRouter(dbMock, redis as never, ENCRYPTION_KEY);
     const result = await router.getChannels('gpt-4');
     expect(result[0]?.apiKey).toBe(PLAINTEXT_KEY); // 内存解密出明文
   });

@@ -11,8 +11,9 @@ import {
   cleanupTestData,
   buildTestApp,
   makeMockAi,
+  BILLING_SETTLE_STATES,
 } from '../../testing/helpers.js';
-import { BillingDispatcher } from '../../services/billing/billing-dispatcher.js';
+import { createBillingDispatcher } from '../../services/billing/billing-dispatcher.js';
 import { eq } from 'drizzle-orm';
 import { billingRequests } from '@ai-gateway/db/schema';
 
@@ -36,8 +37,8 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-describe('embeddings 非流式 success 无 usage → uncertain', () => {
-  it('不唤醒结算且冻结预扣', async () => {
+describe('embeddings 非流式 success 无 usage → 估算结算（2026-08-17 政策）', () => {
+  it('估算结算 + 唤醒（estimatedFor=usage_missing_nonstream）', async () => {
     if (!connected) return it.skip('no DB');
     const userId = await createTestUser(db, '1000', 'emb');
     const { token, keyHash } = await createTestApiKey(db, userId, 'emb');
@@ -57,13 +58,9 @@ describe('embeddings 非流式 success 无 usage → uncertain', () => {
         })),
       });
 
-      const dispatcher = new BillingDispatcher(redis);
-      let wakeCalled = false;
+      const dispatcher = createBillingDispatcher(redis);
       const origWake = dispatcher.wake.bind(dispatcher);
-      dispatcher.wake = async (requestId) => {
-        wakeCalled = true;
-        return origWake(requestId);
-      };
+      dispatcher.wake = origWake;
 
       const honoApp = buildTestApp(db, redis, ai, undefined, undefined, dispatcher);
       const res = await honoApp.request('/v1/embeddings', {
@@ -73,15 +70,13 @@ describe('embeddings 非流式 success 无 usage → uncertain', () => {
       });
 
       expect(res.status).toBe(200);
-      expect(wakeCalled).toBe(false);
       const billing = await db.query.billingRequests.findFirst({
         where: eq(billingRequests.userId, userId),
       });
-      expect(billing).toMatchObject({
-        status: 'uncertain',
-        failureCode: 'nonstream_completed_without_usage',
-        receipt: null,
-      });
+      expect(BILLING_SETTLE_STATES).toContain(billing!.status);
+      const receipt = billing!.receipt as Record<string, unknown>;
+      expect((receipt.usage as Record<string, unknown>).estimated).toBe(true);
+      expect(receipt.estimatedFor).toBe('usage_missing_nonstream');
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }

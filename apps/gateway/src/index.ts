@@ -9,10 +9,10 @@ import {
   createRedisDeadCredentialStorage,
 } from './infrastructure/ai-storage.js';
 import { createApp } from './app.js';
-import { RateLimiter } from './services/billing/rate-limit-service.js';
-import { BillingDispatcher } from './services/billing/billing-dispatcher.js';
-import { RequestLifecycle } from './services/runtime/request-lifecycle.js';
-import { CompletionRegistry } from './services/runtime/completion-registry.js';
+import { createRateLimiter } from './services/billing/rate-limit-service.js';
+import { createBillingDispatcher } from './services/billing/billing-dispatcher.js';
+import { createRequestLifecycle } from './services/runtime/request-lifecycle.js';
+import { createCompletionRegistry } from './services/runtime/completion-registry.js';
 
 /**
  * gateway 启动入口（纯 bootstrap：装配依赖 → 起服务 → 优雅关闭）。
@@ -85,17 +85,17 @@ if (isMain) {
   });
   await redis.connect();
 
-  let billingDispatcher = new BillingDispatcher();
+  let billingDispatcher = createBillingDispatcher();
   try {
     await bullRedis.connect();
-    billingDispatcher = new BillingDispatcher(bullRedis);
+    billingDispatcher = createBillingDispatcher(bullRedis);
   } catch (error) {
     logger.warn(
       { err: (error as Error).message },
       'billing wakeup unavailable; DB worker poll remains authoritative',
     );
   }
-  const rateLimiter = new RateLimiter(redis, logger);
+  const rateLimiter = createRateLimiter(redis, logger);
   const ai = createGatewayAi(redis);
   // 启动期 fail-fast：时序参数关系（见 timing-validation 注释）
   const streamBudget = defaultAiConfig().stream;
@@ -105,8 +105,8 @@ if (isMain) {
     firstByteMs: streamBudget.firstByteTimeoutMs,
     shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
   });
-  const lifecycle = new RequestLifecycle(env.GATEWAY_REQUEST_DEADLINE_MS);
-  const completions = new CompletionRegistry();
+  const lifecycle = createRequestLifecycle(env.GATEWAY_REQUEST_DEADLINE_MS);
+  const completions = createCompletionRegistry();
   const app = createApp({
     db,
     ai,

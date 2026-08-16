@@ -34,96 +34,100 @@ export type OAuthResult =
  *     混入 IP 会让攻击者每请求换伪造 IP 绕过锁定
  *   - 签发 JWT：sub=userId、appId、scope、coefficient 快照、exp=7200s
  */
-export class OAuthService {
-  constructor(
-    private readonly db: Db,
-    private readonly redis: Redis,
-    private readonly jwtSecret: string,
-    private readonly logger?: Logger,
-  ) {}
+export interface OAuthService {
+  issueToken(clientId: string, clientSecret: string, ip: string): Promise<OAuthResult>;
+}
 
-  async issueToken(clientId: string, clientSecret: string, ip: string): Promise<OAuthResult> {
-    // 爆破计数（R5-1：锁定判断只作用于「错误凭证」路径——client_id 是公开标识，
-    // 任何人 10 次错误 secret 就把合法客户的令牌交换打断 10 分钟属于拒绝服务；
-    // 正确凭证无条件豁免，语义与登录路径的「正确密码豁免」一致）
-    const attemptKey = `oauth_attempts:${clientId}`;
-    // 爆破计数 fail-open（Redis 故障只损失锁定精度，不得让 /oauth/token 整体 500）
-    const attempts = await this.redis
-      .get(attemptKey)
-      .then((v) => parseInt(v ?? '0', 10))
-      .catch(() => 0);
+export function createOAuthService(
+  db: Db,
+  redis: Redis,
+  jwtSecret: string,
+  logger?: Logger,
+): OAuthService {
+  return {
+    async issueToken(clientId, clientSecret, ip) {
+      // 爆破计数（R5-1：锁定判断只作用于「错误凭证」路径——client_id 是公开标识，
+      // 任何人 10 次错误 secret 就把合法客户的令牌交换打断 10 分钟属于拒绝服务；
+      // 正确凭证无条件豁免，语义与登录路径的「正确密码豁免」一致）
+      const attemptKey = `oauth_attempts:${clientId}`;
+      // 爆破计数 fail-open（Redis 故障只损失锁定精度，不得让 /oauth/token 整体 500）
+      const attempts = await redis
+        .get(attemptKey)
+        .then((v) => parseInt(v ?? '0', 10))
+        .catch(() => 0);
 
-    const app = await this.db.query.apps.findFirst({
-      where: eq(apps.clientId, clientId),
-      with: { user: true },
-    });
-    const secretHash = createHash('sha256').update(clientSecret).digest('hex');
+      const app = await db.query.apps.findFirst({
+        where: eq(apps.clientId, clientId),
+        with: { user: true },
+      });
+      const secretHash = createHash('sha256').update(clientSecret).digest('hex');
 
-    // 常量时间比较 clientSecretHash（防计时攻击）；App 不存在也对假 hash 比较（防用户名枚举）
-    const expectedHash =
-      app?.clientSecretHash ?? createHash('sha256').update('nonexistent-app-dummy').digest('hex');
-    const secretMatch = safeEqualHex(secretHash, expectedHash);
-    if (!app || !secretMatch) {
-      if (attempts >= OAUTH_MAX_ATTEMPTS) {
-        const ttl = await this.redis.ttl(attemptKey);
+      // 常量时间比较 clientSecretHash（防计时攻击）；App 不存在也对假 hash 比较（防用户名枚举）
+      const expectedHash =
+        app?.clientSecretHash ?? createHash('sha256').update('nonexistent-app-dummy').digest('hex');
+      const secretMatch = safeEqualHex(secretHash, expectedHash);
+      if (!app || !secretMatch) {
+        if (attempts >= OAUTH_MAX_ATTEMPTS) {
+          const ttl = await redis.ttl(attemptKey);
+          return {
+            ok: false,
+            status: 429,
+            error: 'rate_limit_exceeded',
+            description: `认证失败次数过多，请 ${Math.max(1, ttl)} 秒后重试`,
+            retryAfterSec: Math.max(1, ttl),
+          };
+        }
+        // 失败计数（原子 multi：incr+expire 一次落盘，崩溃间隙不留无 TTL 键；
+        // best-effort——Redis 故障只损失锁定精度，不得影响 401 响应）
+        await redis
+          .multi()
+          .incr(attemptKey)
+          .expire(attemptKey, OAUTH_LOCKOUT_TTL)
+          .exec()
+          .catch(() => {});
         return {
           ok: false,
-          status: 429,
-          error: 'rate_limit_exceeded',
-          description: `认证失败次数过多，请 ${Math.max(1, ttl)} 秒后重试`,
-          retryAfterSec: Math.max(1, ttl),
+          status: 401,
+          error: 'invalid_client',
+          description: 'client_id 或 client_secret 错误',
         };
       }
-      // 失败计数（原子 multi：incr+expire 一次落盘，崩溃间隙不留无 TTL 键；
-      // best-effort——Redis 故障只损失锁定精度，不得影响 401 响应）
-      await this.redis
-        .multi()
-        .incr(attemptKey)
-        .expire(attemptKey, OAUTH_LOCKOUT_TTL)
-        .exec()
-        .catch(() => {});
-      return {
-        ok: false,
-        status: 401,
-        error: 'invalid_client',
-        description: 'client_id 或 client_secret 错误',
-      };
-    }
-    if (app.status !== 0) {
-      return { ok: false, status: 401, error: 'invalid_client', description: '应用已禁用' };
-    }
-    if (!isAccountUsable(app.user.status)) {
-      return { ok: false, status: 401, error: 'invalid_client', description: '账户已被禁用' };
-    }
+      if (app.status !== 0) {
+        return { ok: false, status: 401, error: 'invalid_client', description: '应用已禁用' };
+      }
+      if (!isAccountUsable(app.user.status)) {
+        return { ok: false, status: 401, error: 'invalid_client', description: '账户已被禁用' };
+      }
 
-    // 认证成功：清零失败计数
-    await this.redis.del(attemptKey);
+      // 认证成功：清零失败计数
+      await redis.del(attemptKey);
 
-    // 费率卡系数快照（JWT 内）
-    let coefficient = 1.0;
-    if (app.user.rateCardId) {
-      const coeff = await this.db.query.rateCardCoefficients.findFirst({
-        where: and(
-          eq(rateCardCoefficients.rateCardId, app.user.rateCardId),
-          eq(rateCardCoefficients.scope, 'global'),
-          isNull(rateCardCoefficients.modelMappingId),
-        ),
-      });
-      if (coeff) coefficient = Number(coeff.coefficient);
-    }
+      // 费率卡系数快照（JWT 内）
+      let coefficient = 1.0;
+      if (app.user.rateCardId) {
+        const coeff = await db.query.rateCardCoefficients.findFirst({
+          where: and(
+            eq(rateCardCoefficients.rateCardId, app.user.rateCardId),
+            eq(rateCardCoefficients.scope, 'global'),
+            isNull(rateCardCoefficients.modelMappingId),
+          ),
+        });
+        if (coeff) coefficient = Number(coeff.coefficient);
+      }
 
-    const token = await signJwt(
-      {
-        userId: app.userId,
-        appId: app.id,
-        scope: app.scope ?? undefined,
-        coefficient,
-        expiresInSeconds: OAUTH_TOKEN_TTL_SECONDS,
-      },
-      this.jwtSecret,
-    );
+      const token = await signJwt(
+        {
+          userId: app.userId,
+          appId: app.id,
+          scope: app.scope ?? undefined,
+          coefficient,
+          expiresInSeconds: OAUTH_TOKEN_TTL_SECONDS,
+        },
+        jwtSecret,
+      );
 
-    this.logger?.info({ clientId, appId: app.id, userId: app.userId, ip }, 'oauth token issued');
-    return { ok: true, accessToken: token, expiresIn: OAUTH_TOKEN_TTL_SECONDS };
-  }
+      logger?.info({ clientId, appId: app.id, userId: app.userId, ip }, 'oauth token issued');
+      return { ok: true, accessToken: token, expiresIn: OAUTH_TOKEN_TTL_SECONDS };
+    },
+  };
 }

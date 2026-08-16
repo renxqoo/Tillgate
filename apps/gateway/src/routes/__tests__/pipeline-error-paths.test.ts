@@ -287,7 +287,7 @@ describe('管线失败路径', () => {
     }
   });
 
-  it('网络错误导致全部渠道耗尽 → 503，结果未知转 uncertain 不误退款', async () => {
+  it('网络错误导致全部渠道耗尽 → 503，上游异常释放不扣（2026-08-17 政策）', async () => {
     if (!connected) return it.skip('no DB');
     const userId = await createTestUser(db, '1000', 'err503');
     const { token, keyHash } = await createTestApiKey(db, userId, 'err503');
@@ -320,7 +320,7 @@ describe('管线失败路径', () => {
         where: eq(billingRequests.userId, userId),
         columns: { status: true },
       });
-      expect(requests.every((request) => request.status === 'uncertain')).toBe(true);
+      expect(requests.every((request) => request.status === 'released')).toBe(true);
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }

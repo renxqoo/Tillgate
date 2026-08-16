@@ -25,7 +25,7 @@ import {
   createBillingProcessor,
   createLedger,
 } from '../index.js';
-import type { BillingQuote, UsageReceipt } from '../types.js';
+import type { BillingQuote, UsageReceipt } from '../billing/types.js';
 
 const db: Db = createDb(
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',

@@ -225,6 +225,7 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | `GET /api/admin/stats/overview` | 仪表盘：今日请求量/tokens/费用/成功率/各渠道健康状态 |
 | `GET /api/admin/stats/usage?from&to&group=user\|model\|channel` | 多维度用量与费用聚合 |
 | `GET /api/admin/logs?from&to&user_id&status_code&model&page` | 请求日志查询（30 天） |
+| `GET /api/admin/usage-logs?from&to&user_id&model&estimated&page` | 用量明细（含 estimated/estimateReason 估算扣款标记，2026-08-17 政策；仅管理端） |
 | `GET /api/admin/audit-logs?page` | 管理操作审计 |
 
 ### 4.9 管理端：费率卡（定价档位）

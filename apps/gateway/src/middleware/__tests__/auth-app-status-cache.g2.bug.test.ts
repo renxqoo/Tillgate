@@ -37,7 +37,8 @@ const users = dbSchema.users;
 const apps = dbSchema.apps;
 const authMod = await import('../auth.js');
 const authMiddleware = authMod.authMiddleware;
-const { AuthService } = await import('../../services/auth/auth-service.js');
+const { createAuthService } = await import('../../services/auth/auth-service.js');
+const { appErrorHandler } = await import('../../app.js');
 const { signJwt } = await import('../../services/auth/jwt.js');
 
 /**
@@ -115,9 +116,13 @@ async function cleanup(userId: number, appId: number): Promise<void> {
   await db.delete(users).where(eq(users.id, userId));
 }
 
+const silentLogger = { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} };
+
 function makeApp(): unknown {
   const app = new Hono<AuthEnv>();
-  app.use('/v1/*', authMiddleware(new AuthService(db, redis, process.env.JWT_SECRET!)));
+  // 镜像生产接线：鉴权中间件抛 GatewayError，onError 统一渲染（app.ts 同构）
+  app.onError((err, c) => appErrorHandler(silentLogger as never, err, c));
+  app.use('/v1/*', authMiddleware(createAuthService(db, redis, process.env.JWT_SECRET!)));
   app.get('/v1/echo', (c) => c.json({ ok: true, userId: c.var.auth?.userId }));
   return app;
 }

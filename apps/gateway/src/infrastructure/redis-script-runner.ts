@@ -12,25 +12,29 @@ import type { Redis, RedisValue } from 'ioredis';
  * 脚本体极短，evalsha→eval 的性能差异可忽略；保留 evalsha 路径只为
  * 高频调用省一点带宽。缓存的正确性不依赖进程存活时间。
  */
-export class RedisScriptRunner {
-  private readonly shas = new Map<string, string>();
 
-  constructor(private readonly redis: Redis) {}
+export interface RedisScriptRunner {
+  run(script: string, numKeys: number, ...args: RedisValue[]): Promise<unknown>;
+}
 
-  async run(script: string, numKeys: number, ...args: RedisValue[]): Promise<unknown> {
-    const cached = this.shas.get(script);
-    if (cached !== undefined) {
-      try {
-        return await this.redis.evalsha(cached, numKeys, ...args);
-      } catch (err) {
-        if (!isNoScriptError(err)) throw err;
-        // NOSCRIPT：脚本缓存消失，走重载路径
+export function createRedisScriptRunner(redis: Redis): RedisScriptRunner {
+  const shas = new Map<string, string>();
+  return {
+    async run(script, numKeys, ...args) {
+      const cached = shas.get(script);
+      if (cached !== undefined) {
+        try {
+          return await redis.evalsha(cached, numKeys, ...args);
+        } catch (err) {
+          if (!isNoScriptError(err)) throw err;
+          // NOSCRIPT：脚本缓存消失，走重载路径
+        }
       }
-    }
-    const sha = (await this.redis.script('LOAD', script)) as unknown as string;
-    this.shas.set(script, sha);
-    return this.redis.evalsha(sha, numKeys, ...args);
-  }
+      const sha = (await redis.script('LOAD', script)) as unknown as string;
+      shas.set(script, sha);
+      return redis.evalsha(sha, numKeys, ...args);
+    },
+  };
 }
 
 /** ioredis 把 NOSCRIPT 作为 message 前缀抛出（无独立 code） */

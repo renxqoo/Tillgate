@@ -3,8 +3,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createEphemeralRedis, type EphemeralRedis } from '@ai-gateway/http';
-import { backfillTpm } from '../settle.js';
-import type { UsageReceipt } from '../types.js';
+import { backfillTpm } from '../billing/settle/index.js';
+import type { UsageReceipt } from '../billing/types.js';
 
 // vitest 不自动加载 .env；本地 Redis 带密码，先注入再取连接串
 {

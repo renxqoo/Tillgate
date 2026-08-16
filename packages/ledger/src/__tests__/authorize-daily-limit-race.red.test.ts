@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import { billingRequests, transactions, users } from '@ai-gateway/db/schema';
-import { createBilling, DailySpendLimitExceededError } from '../billing-flow.js';
-import type { BillingQuote } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import { DailySpendLimitExceededError } from '../billing/errors.js';
+import type { BillingQuote } from '../billing/types.js';
 
 /**
  * 红测（F4）：每日花费上限是无锁 SUM（READ COMMITTED 下并发事务互相看不见

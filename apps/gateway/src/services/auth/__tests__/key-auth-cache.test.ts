@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { KeyAuthCache, KEY_AUTH_TTL_S, type CachedKeyAuth } from '../key-auth-cache.js';
+import { createKeyAuthCache, KEY_AUTH_TTL_S, type CachedKeyAuth } from '../key-auth-cache.js';
 
 /**
  * 鉴权 Redis 缓存（S5）：
@@ -45,7 +45,7 @@ const VALID_SNAPSHOT: CachedKeyAuth = {
 describe('KeyAuthCache', () => {
   it('缓存命中 → 返回快照（不查 DB）', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     const loadFromDb = vi.fn().mockResolvedValue(VALID_SNAPSHOT);
     // 第一次：miss → 查 DB + 回填缓存
     await cache.getOrLoad('keyhash-abc', loadFromDb);
@@ -58,7 +58,7 @@ describe('KeyAuthCache', () => {
 
   it('缓存未命中 → 查 DB 并写入缓存', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     const loadFromDb = vi.fn().mockResolvedValue(VALID_SNAPSHOT);
     const result = await cache.getOrLoad('keyhash-def', loadFromDb);
     expect(result).toEqual(VALID_SNAPSHOT);
@@ -70,7 +70,7 @@ describe('KeyAuthCache', () => {
 
   it('吊销 → DEL 清缓存后下次重新查 DB', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     const loadFromDb = vi.fn().mockResolvedValue(VALID_SNAPSHOT);
     await cache.getOrLoad('keyhash-revoke', loadFromDb);
     expect(loadFromDb).toHaveBeenCalledOnce();
@@ -81,7 +81,7 @@ describe('KeyAuthCache', () => {
 
   it('DB 查无此 Key → 不写缓存（null 不缓存，防缓存穿透）', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     const loadFromDb = vi.fn().mockResolvedValue(null);
     const result = await cache.getOrLoad('keyhash-none', loadFromDb);
     expect(result).toBeNull();
@@ -90,7 +90,7 @@ describe('KeyAuthCache', () => {
 
   it('快照过期（cachedAt + TTL < now）→ 重新查 DB', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     // 手动写入过期快照
     const expired = { ...VALID_SNAPSHOT, cachedAt: Date.now() - (KEY_AUTH_TTL_S + 10) * 1000 };
     storage.store.set('auth:key:keyhash-expired', JSON.stringify(expired));
@@ -101,7 +101,7 @@ describe('KeyAuthCache', () => {
 
   it('status≠0（已吊销）的快照不缓存有效，下次重新查', async () => {
     const storage = makeMockStorage();
-    const cache = new KeyAuthCache(storage as never);
+    const cache = createKeyAuthCache(storage as never);
     const revokedSnapshot = { ...VALID_SNAPSHOT, status: 1 };
     const loadFromDb = vi.fn().mockResolvedValue(revokedSnapshot);
     await cache.getOrLoad('keyhash-revoked', loadFromDb);

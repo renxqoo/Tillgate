@@ -10,8 +10,8 @@ import {
   users,
 } from '@ai-gateway/db/schema';
 import { Decimal } from '@ai-gateway/money';
-import { createBilling } from '../billing-flow.js';
-import type { BillingQuote } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import type { BillingQuote } from '../billing/types.js';
 
 /**
  * 红测（F3）：reserveChannel 幂等捷径不比对金额——同渠道二次预留更大金额时

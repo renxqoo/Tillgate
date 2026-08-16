@@ -1,15 +1,15 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import Redis from 'ioredis';
-import { RateLimiter } from '../rate-limit-service.js';
-import { RedisKvStorage } from '../../../infrastructure/ai-storage.js';
+import { createRateLimiter } from '../rate-limit-service.js';
+import { createRedisKvStorage } from '../../../infrastructure/ai-storage.js';
 import {
   checkBruteForce,
   createRedisBruteForceStorage,
 } from '../../../middleware/brute-force-guard.js';
-import { RateGuards } from '../../pipeline/rate-guards.js';
+import { checkFreeDailyLimit } from '../../pipeline/steps/rate-limit.js';
 import { loadGatewayEnv, createLogger } from '@ai-gateway/core';
 import { loadEnvFileIntoProcess, ensureTestSecrets } from '../../../testing/helpers.js';
-import type { PipelineDeps } from '../../pipeline/pipeline-shared.js';
+import type { PipelineDeps } from '../../pipeline/types.js';
 
 loadEnvFileIntoProcess();
 ensureTestSecrets();
@@ -43,13 +43,13 @@ afterAll(async () => {
 
 describe('P0-2 — Redis 故障降级', () => {
   it('checkAll 存储故障 → fail-open 放行', async () => {
-    const limiter = new RateLimiter(redis);
+    const limiter = createRateLimiter(redis);
     const result = await limiter.checkAll([{ dimension: 'global', max: 100 }], 'p02-req');
     expect(result.allowed).toBe(true);
   });
 
   it('reserveTpmAll 存储故障 → fail-open 放行', async () => {
-    const limiter = new RateLimiter(redis);
+    const limiter = createRateLimiter(redis);
     const result = await limiter.reserveTpmAll(
       [{ dimension: 'user:1:model:1', estimatedTokens: 100, max: 1000 }],
       'p02-req',
@@ -58,24 +58,24 @@ describe('P0-2 — Redis 故障降级', () => {
   });
 
   it('releaseTpm 存储故障 → 不抛（best-effort）', async () => {
-    const limiter = new RateLimiter(redis);
+    const limiter = createRateLimiter(redis);
     await expect(limiter.releaseTpm('p02-req')).resolves.toBeUndefined();
   });
 
   it('免费模型日计数保持 fail-closed（语义不回退）', async () => {
     const env = loadGatewayEnv();
-    const guards = new RateGuards({
+    const deps = {
       redis,
       env,
       logger: createLogger({ level: 'silent' }),
-    } as unknown as PipelineDeps);
-    const result = await guards.checkFreeDailyLimit(1);
+    } as unknown as PipelineDeps;
+    const result = await checkFreeDailyLimit(deps, 1);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('free_model_counter_unavailable');
   });
 
   it('熔断/死凭据状态读取故障 → 返回未知状态（null），不抛', async () => {
-    const storage = new RedisKvStorage(redis, 'ai:breaker:');
+    const storage = createRedisKvStorage(redis, 'ai:breaker:');
     await expect(storage.getState('p02-channel')).resolves.toBeNull();
   });
 

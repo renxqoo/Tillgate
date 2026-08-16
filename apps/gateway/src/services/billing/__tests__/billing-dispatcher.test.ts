@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { BillingDispatcher } from '../billing-dispatcher.js';
+import { createBillingDispatcherFromQueue } from '../billing-dispatcher.js';
 
-function dispatcher(queueAdd: (name: string, data: unknown, options: unknown) => Promise<unknown>) {
-  const value = Object.create(BillingDispatcher.prototype) as BillingDispatcher;
-  (value as unknown as { queue: { add: typeof queueAdd } }).queue = { add: queueAdd };
-  return value;
+function dispatcher(
+  queueAdd: (name: string, data: unknown, options: unknown) => Promise<unknown>,
+) {
+  return createBillingDispatcherFromQueue({
+    add: queueAdd,
+    close: () => Promise.resolve(),
+  });
 }
 
 describe('BillingDispatcher', () => {

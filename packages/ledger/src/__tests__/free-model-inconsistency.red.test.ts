@@ -9,8 +9,8 @@ import {
   users,
   userSubscriptions,
 } from '@ai-gateway/db/schema';
-import { createBilling } from '../billing-flow.js';
-import type { BillingQuote } from '../types.js';
+import { createBilling } from '../billing/index.js';
+import type { BillingQuote } from '../billing/types.js';
 
 /**
  * 【红测 · R6】explicitlyFree（is_free 标志）与候选价格是两套口径，允许互相矛盾

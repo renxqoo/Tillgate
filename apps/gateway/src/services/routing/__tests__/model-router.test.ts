@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ModelRouter } from '../model-router.js';
+import { createModelRouter, type ModelRouter } from '../model-router.js';
 import { encrypt } from '@ai-gateway/core';
 import type { Db } from '@ai-gateway/db';
 
@@ -84,7 +84,7 @@ const SAMPLE_MAPPING = {
 };
 
 function makeRouter(redis: unknown, db: Db): ModelRouter {
-  return new ModelRouter(db, redis as never, TEST_KEY);
+  return createModelRouter(db, redis as never, TEST_KEY);
 }
 
 describe('route-cache 模型映射缓存', () => {

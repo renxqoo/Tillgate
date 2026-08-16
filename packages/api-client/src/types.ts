@@ -226,12 +226,14 @@ export interface AdminChannelRow {
   providerBaseUrl: string;
   boundModels: Array<{ externalName: string; realModel: string }>;
 }
+/** 模型白名单线上契约是数组（DB jsonb / GET 响应 / import 同口径）；
+ * 逗号分隔文本是管理端表单的 UX 形态，转换收口在 admin server action 边界。 */
 export interface ChannelCreateBody {
   providerId: number;
   name: string;
   apiKey: string;
   baseUrlOverride?: string;
-  models?: string;
+  models?: string[] | null;
   weight?: number;
   priority?: number;
 }
@@ -239,7 +241,7 @@ export interface ChannelUpdateBody {
   name?: string;
   apiKey?: string;
   baseUrlOverride?: string;
-  models?: string;
+  models?: string[] | null;
   weight?: number;
   priority?: number;
   status?: number;
@@ -513,6 +515,34 @@ export interface LogRow {
   sourceIp: string | null;
   createdAt: string;
 }
+/** 管理端用量明细行（GET /api/admin/usage-logs）——估算扣款一等字段 */
+export interface AdminUsageRow {
+  id: number;
+  requestId: string;
+  userId: number;
+  userName: string | null;
+  credentialType: string;
+  externalModel: string;
+  realModel: string;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  amount: string;
+  calculatedAmount: string;
+  planAmount: string;
+  paygAmount: string;
+  billedBy: string;
+  upstreamCost: string | null;
+  durationMs: number;
+  stream: boolean;
+  streamAborted: boolean;
+  /** 估算结算标记（2026-08-17 政策）：用户取消/完成缺 usage 按估算扣款 */
+  estimated: boolean;
+  /** 估算归属（estimated=true 时有值） */
+  estimateReason: string | null;
+  createdAt: string;
+}
+
 export interface AuditLogRow {
   id: number;
   adminId: number | null;

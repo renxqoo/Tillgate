@@ -1,23 +1,31 @@
 /** 追踪客户端断开后仍必须完成的 durable billing promise。 */
-export class CompletionRegistry {
-  private readonly active = new Set<Promise<unknown>>();
+export interface CompletionRegistry {
+  track<T>(promise: Promise<T>): Promise<T>;
+  drain(timeoutMs: number): Promise<{ completed: boolean; remaining: number }>;
+  readonly size: number;
+}
 
-  track<T>(promise: Promise<T>): Promise<T> {
-    this.active.add(promise);
-    void promise.finally(() => this.active.delete(promise)).catch(() => {});
-    return promise;
-  }
+export function createCompletionRegistry(): CompletionRegistry {
+  const active = new Set<Promise<unknown>>();
 
-  async drain(timeoutMs: number): Promise<{ completed: boolean; remaining: number }> {
-    const all = Promise.allSettled(this.active);
-    const completed = await Promise.race([
-      all.then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
-    ]);
-    return { completed, remaining: this.active.size };
-  }
+  return {
+    track<T>(promise: Promise<T>): Promise<T> {
+      active.add(promise);
+      void promise.finally(() => active.delete(promise)).catch(() => {});
+      return promise;
+    },
 
-  get size(): number {
-    return this.active.size;
-  }
+    async drain(timeoutMs: number): Promise<{ completed: boolean; remaining: number }> {
+      const all = Promise.allSettled(active);
+      const completed = await Promise.race([
+        all.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+      ]);
+      return { completed, remaining: active.size };
+    },
+
+    get size(): number {
+      return active.size;
+    },
+  };
 }

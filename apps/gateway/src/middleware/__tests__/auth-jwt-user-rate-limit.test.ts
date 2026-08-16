@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { apps, users } from '@ai-gateway/db/schema';
 import { signJwt } from '../../services/auth/jwt.js';
-import { AuthService } from '../../services/auth/auth-service.js';
+import { createAuthService } from '../../services/auth/auth-service.js';
 import {
   loadEnvFileIntoProcess,
   ensureTestSecrets,
@@ -58,7 +58,7 @@ describe('04 — JWT 鉴权加载每用户 rpm/tpm 限流', () => {
       await redis.del(`user_profile:${userId}`);
 
       const token = await signJwt({ userId, appId: a!.id, coefficient: 1.0 }, process.env.JWT_SECRET!);
-      const result = await new AuthService(db, redis, process.env.JWT_SECRET!).authenticate(
+      const result = await createAuthService(db, redis, process.env.JWT_SECRET!).authenticate(
         `Bearer ${token}`,
         '127.0.0.1',
       );
@@ -93,7 +93,7 @@ describe('04 — JWT 鉴权加载每用户 rpm/tpm 限流', () => {
     try {
       await redis.del(`user_profile:${userId}`);
       const token = await signJwt({ userId, appId: a!.id, coefficient: 1.0 }, process.env.JWT_SECRET!);
-      const result = await new AuthService(db, redis, process.env.JWT_SECRET!).authenticate(
+      const result = await createAuthService(db, redis, process.env.JWT_SECRET!).authenticate(
         `Bearer ${token}`,
         '127.0.0.1',
       );

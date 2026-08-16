@@ -32,10 +32,10 @@ import {
 } from '@ai-gateway/core';
 import type { Ai } from '@ai-gateway/ai';
 import { createApp } from '../app.js';
-import { RateLimiter } from '../services/billing/rate-limit-service.js';
-import { BillingDispatcher } from '../services/billing/billing-dispatcher.js';
-import { RequestLifecycle } from '../services/runtime/request-lifecycle.js';
-import { CompletionRegistry } from '../services/runtime/completion-registry.js';
+import { createRateLimiter } from '../services/billing/rate-limit-service.js';
+import { createBillingDispatcher, type BillingDispatcher } from '../services/billing/billing-dispatcher.js';
+import { createRequestLifecycle } from '../services/runtime/request-lifecycle.js';
+import { createCompletionRegistry } from '../services/runtime/completion-registry.js';
 
 export { encrypt };
 
@@ -274,7 +274,6 @@ export async function cleanupTestData(
             'settlement_pending',
             'processing',
             'retry_wait',
-            'uncertain',
             'dead',
           ]),
         ),
@@ -365,7 +364,7 @@ export function buildTestApp(
   ai: Ai,
   env: GatewayEnv = loadGatewayEnv(),
   logger: Logger = createLogger({ level: 'silent' }),
-  billingDispatcher: BillingDispatcher = new BillingDispatcher(redis),
+  billingDispatcher: BillingDispatcher = createBillingDispatcher(redis),
 ) {
   return createApp({
     db,
@@ -374,9 +373,9 @@ export function buildTestApp(
     env,
     logger,
     billingDispatcher,
-    rateLimiter: new RateLimiter(redis),
-    lifecycle: new RequestLifecycle(env.GATEWAY_REQUEST_DEADLINE_MS),
-    completions: new CompletionRegistry(),
+    rateLimiter: createRateLimiter(redis),
+    lifecycle: createRequestLifecycle(env.GATEWAY_REQUEST_DEADLINE_MS),
+    completions: createCompletionRegistry(),
   });
 }
 
@@ -391,4 +390,30 @@ export function makeMockAi(overrides: Partial<Ai> = {}): Ai {
     onEvent: () => () => {},
     ...overrides,
   };
+}
+
+/**
+ * 估算/真实结算已提交后的 billing_requests 可见状态集合（测试断言用）：
+ * settlement_pending（网关已落收据）→ processing（worker 认领中）→ settled。
+ * 本地 worker（tsx watch）可能在断言前完成认领甚至结算，三态皆合法。
+ */
+export const BILLING_SETTLE_STATES = ['settlement_pending', 'processing', 'settled'] as const;
+
+/** 轮询等待该用户最新账单进入给定状态集合（收尾为异步） */
+export async function waitForBillingStatus(
+  db: Db,
+  userId: number,
+  states: readonly string[],
+  timeoutMs = 3000,
+): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const row = await db.query.billingRequests.findFirst({
+      where: eq(billingRequests.userId, userId),
+      columns: { status: true },
+    });
+    if (row && states.includes(row.status)) return;
+    if (Date.now() - start >= timeoutMs) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
 }

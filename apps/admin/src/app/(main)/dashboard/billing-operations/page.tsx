@@ -3,7 +3,7 @@ import { ShieldAlert } from 'lucide-react';
 import { fmtDateTime, formatMoney } from '@ai-gateway/api-client';
 import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
-import { firstParam, listHref, parseListSearchParams } from '@ai-gateway/ui/lib/list-query';
+import { parseListSearchParams } from '@ai-gateway/ui/lib/list-query';
 import { DataTable } from '@ai-gateway/ui/components/data-table';
 import { ReviewActions } from './_components/review-actions';
 
@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 interface BillingCase {
   requestId: string;
   userId: number;
-  status: 'dead' | 'uncertain';
+  status: 'dead';
   revision: number;
   reservedAmount: string;
   failureCode: string | null;
@@ -30,8 +30,7 @@ export default async function BillingOperationsPage({
 }) {
   const sp = await searchParams;
   const { page } = parseListSearchParams(sp);
-  const requested = firstParam(sp.status);
-  const status = requested === 'dead' ? 'dead' : 'uncertain';
+  const status = 'dead' as const; // uncertain 队列已随 2026-08-17 估算结算政策删除
   const { rows: items, total, error } = await fetchAdminList<BillingCase>(
     '/api/admin/billing-operations',
     { page, pageSize: PAGE_SIZE, extra: { status } },
@@ -41,24 +40,8 @@ export default async function BillingOperationsPage({
     <ListPage
       title="计费异常复核"
       icon={<ShieldAlert className="size-5 text-muted-foreground" />}
-      description="不确定请求不会自动退款；所有处理均要求版本校验并写入审计日志。"
+      description="结算死信（不变量破坏）人工复核；所有处理均要求版本校验并写入审计日志。"
       total={total}
-      filters={
-        <div className="flex gap-2 text-sm">
-          <a
-            className={`rounded border px-3 py-1 ${status === 'uncertain' ? 'bg-muted' : ''}`}
-            href={listHref({ status: 'uncertain' })}
-          >
-            待确认
-          </a>
-          <a
-            className={`rounded border px-3 py-1 ${status === 'dead' ? 'bg-muted' : ''}`}
-            href={listHref({ status: 'dead' })}
-          >
-            结算死信
-          </a>
-        </div>
-      }
       searchParams={{ status }}
       error={error}
       page={page}

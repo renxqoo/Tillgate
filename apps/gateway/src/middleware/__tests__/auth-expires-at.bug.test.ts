@@ -46,7 +46,8 @@ const users = dbSchema.users;
 const apiKeys = dbSchema.apiKeys;
 const authMod = await import('../auth.js');
 const authMiddleware = authMod.authMiddleware;
-const { AuthService } = await import('../../services/auth/auth-service.js');
+const { createAuthService } = await import('../../services/auth/auth-service.js');
+const { appErrorHandler } = await import('../../app.js');
 
 /**
  * TDD 复现测试 —— api_keys.expires_at 从未被强制执行（C4）。
@@ -117,9 +118,13 @@ async function cleanup(userId: number, keyHash: string): Promise<void> {
   await redis.del('auth:key:' + keyHash);
 }
 
+const silentLogger = { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} };
+
 function makeApp() {
   const app = new Hono<AuthEnv>();
-  app.use('/v1/*', authMiddleware(new AuthService(db, redis, process.env.JWT_SECRET!)));
+  // 镜像生产接线：鉴权中间件抛 GatewayError，onError 统一渲染（app.ts 同构）
+  app.onError((err, c) => appErrorHandler(silentLogger as never, err, c));
+  app.use('/v1/*', authMiddleware(createAuthService(db, redis, process.env.JWT_SECRET!)));
   app.get('/v1/echo', (c) => c.json({ ok: true, userId: c.var.auth?.userId }));
   return app;
 }

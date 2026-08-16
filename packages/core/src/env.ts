@@ -88,7 +88,7 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   BILLING_RESERVATION_MAX: z.coerce.number().min(0.000001).default(50),
   /** authorize 后尚未调用上游的安全退款租约。 */
   BILLING_AUTHORIZATION_TTL_SECONDS: z.coerce.number().int().min(1).default(60),
-  /** 上游在途 lease；长流按周期续租，过期只转 uncertain。 */
+  /** 上游在途 lease；长流按周期续租，网关崩溃过期由 recoverOnce 释放（gateway_crash_released）。 */
   BILLING_LEASE_SECONDS: z.coerce.number().int().min(3).default(60),
   /** Worker 故障时的 DB durable backlog 准入阈值；超过任一阈值停止新增付费请求。 */
   BILLING_PENDING_MAX: z.coerce.number().int().min(1).default(10_000),
@@ -173,24 +173,6 @@ export const workerEnvSchema = baseEnvSchema.extend({
   WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_LOOP_STALE_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
-  /**
-   * uncertain 单小额自动放行阈值（元）：预扣 ≤ 此值自动放行（actor=system，全程审计）。
-   * '0' 关闭该通道。（按失败码白名单无条件放的旧通道已删除——单一真相=金额阈值。）
-   */
-  WORKER_AUTO_RELEASE_MAX_AMOUNT: z
-    .string()
-    .regex(/^\d+(\.\d+)?$/, 'WORKER_AUTO_RELEASE_MAX_AMOUNT 须为非负小数（元）')
-    .default('0.1'),
-  /**
-   * uncertain 时效自动放行（R11-B，给预占加时间上界）。双参数【无默认值、不配即关】，
-   * 且必须同时配置：滞留超过 HOURS 且预扣 ≤ MAX_AMOUNT 的单由系统自动「确认不收费」；
-   * 超过金额上限的滞留单留给人工（大额漏收决策不下放给定时器）。
-   */
-  WORKER_UNCERTAIN_TIMEOUT_HOURS: z.coerce.number().int().min(1).optional(),
-  WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT: z
-    .string()
-    .regex(/^\d+(\.\d+)?$/, 'WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 须为非负小数（元）')
-    .optional(),
   /** trace_spans 分区保留天数（滚动删除） */
   TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   /** request_logs 月分区保留窗口（滚动删除更早分区）；30 = data-model §3.13 承诺 */
@@ -350,17 +332,6 @@ export function loadWorkerEnv(env = process.env) {
   }
   if (parsed.WORKER_CLAIM_LEASE_MS <= parsed.WORKER_POLL_INTERVAL_MS) {
     throw new Error('WORKER_CLAIM_LEASE_MS must be greater than WORKER_POLL_INTERVAL_MS');
-  }
-  // 时效放行双参数：要么都不配（通道关闭），要么同时配置且金额为正——缺一即拒
-  const th = parsed.WORKER_UNCERTAIN_TIMEOUT_HOURS;
-  const tm = parsed.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT;
-  if ((th === undefined) !== (tm === undefined)) {
-    throw new Error(
-      'WORKER_UNCERTAIN_TIMEOUT_HOURS 与 WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 必须同时配置（同时缺省 = 时效放行关闭）',
-    );
-  }
-  if (tm !== undefined && Number(tm) <= 0) {
-    throw new Error('WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 必须为正数（元）');
   }
   return parsed;
 }

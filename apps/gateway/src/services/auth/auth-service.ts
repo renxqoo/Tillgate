@@ -12,7 +12,7 @@ import {
   resetAuthFailures,
   createRedisBruteForceStorage,
 } from '../../middleware/brute-force-guard.js';
-import { AuthFailureGuard } from '../../middleware/auth-failure-guard.js';
+import { createAuthFailureGuard } from '../../middleware/auth-failure-guard.js';
 
 /**
  * 鉴权上下文（鉴权通过后挂在 c.var.auth，后续路由/计量使用）。
@@ -85,54 +85,33 @@ export interface AuthServiceOptions {
   authFailureWindowS?: number;
 }
 
-export class AuthService {
-  private readonly bruteForce: ReturnType<typeof createRedisBruteForceStorage>;
-  private readonly keyCache: ReturnType<typeof createRedisKeyAuthCache>;
-  private readonly authFailureGuard: AuthFailureGuard;
+export interface AuthService {
+  authenticate(header: string | undefined, sourceIp?: string): Promise<AuthResult>;
+}
 
-  constructor(
-    private readonly db: Db,
-    private readonly redis: Redis,
-    private readonly jwtSecret: string,
-    options: AuthServiceOptions = {},
-  ) {
-    this.bruteForce = createRedisBruteForceStorage(redis);
-    this.keyCache = createRedisKeyAuthCache(redis);
-    this.authFailureGuard = new AuthFailureGuard(redis, {
-      limit: options.authFailureLimit ?? DEFAULT_AUTH_FAILURE_LIMIT,
-      windowS: options.authFailureWindowS ?? DEFAULT_AUTH_FAILURE_WINDOW_S,
-    });
-  }
-
-  async authenticate(header: string | undefined, sourceIp = 'unknown'): Promise<AuthResult> {
-    const token = extractBearer(header);
-    if (!token) {
-      return this.applyAuthFailureGuard(
-        {
-          ok: false,
-          status: 401,
-          code: 'invalid_api_key',
-          message: '缺少 Authorization Bearer 凭证',
-        },
-        sourceIp,
-      );
-    }
-    const result = token.startsWith('ag_')
-      ? await this.authenticateStaticKey(token)
-      : await this.authenticateJwt(token);
-    if (!result.ok) {
-      return this.applyAuthFailureGuard(result, sourceIp);
-    }
-    return result;
-  }
+export function createAuthService(
+  db: Db,
+  redis: Redis,
+  jwtSecret: string,
+  options: AuthServiceOptions = {},
+): AuthService {
+  const bruteForce = createRedisBruteForceStorage(redis);
+  const keyCache = createRedisKeyAuthCache(redis);
+  const authFailureGuard = createAuthFailureGuard(redis, {
+    limit: options.authFailureLimit ?? DEFAULT_AUTH_FAILURE_LIMIT,
+    windowS: options.authFailureWindowS ?? DEFAULT_AUTH_FAILURE_WINDOW_S,
+  });
 
   /**
    * 鉴权失败 → 计数来源失败；达阈值则把响应升级为 429（07）。
    * 采用「正确凭证豁免」语义：有效 Key/JWT 永不因来源历史失败被拒，
    * 只有「本次也失败」才累计并可能 429，避免误伤共享出口 IP 的合法用户。
    */
-  private async applyAuthFailureGuard(result: Extract<AuthResult, { ok: false }>, sourceIp: string): Promise<AuthResult> {
-    const guard = await this.authFailureGuard.recordFailure(sourceIp);
+  async function applyAuthFailureGuard(
+    result: Extract<AuthResult, { ok: false }>,
+    sourceIp: string,
+  ): Promise<AuthResult> {
+    const guard = await authFailureGuard.recordFailure(sourceIp);
     if (guard.limited) {
       return {
         ok: false,
@@ -147,11 +126,11 @@ export class AuthService {
   }
 
   /** 路径 A：静态 Key（ag_ 前缀） */
-  private async authenticateStaticKey(token: string): Promise<AuthResult> {
+  async function authenticateStaticKey(token: string): Promise<AuthResult> {
     const keyHash = createHash('sha256').update(token).digest('hex');
 
     // S2：暴力破解防护——锁定中直接拒绝
-    const bf = await checkBruteForce(this.bruteForce, keyHash);
+    const bf = await checkBruteForce(bruteForce, keyHash);
     if (bf.locked) {
       return {
         ok: false,
@@ -164,9 +143,9 @@ export class AuthService {
     }
 
     // S5：Redis 缓存 keyHash → 鉴权快照（cache miss 才查 DB）
-    const cached = await this.keyCache.getOrLoad(keyHash, async () => {
+    const cached = await keyCache.getOrLoad(keyHash, async () => {
       // C4 修复：DB 查询直接过滤过期 Key（expires_at IS NULL 或 > now）
-      const apiKey = await this.db.query.apiKeys.findFirst({
+      const apiKey = await db.query.apiKeys.findFirst({
         where: and(
           eq(apiKeys.keyHash, keyHash),
           or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, new Date())),
@@ -177,7 +156,7 @@ export class AuthService {
       // 查费率卡系数（小数 string，如 "1.0"）
       let coefficient = '1';
       if (apiKey.user.rateCardId) {
-        const coeff = await this.db.query.rateCardCoefficients.findFirst({
+        const coeff = await db.query.rateCardCoefficients.findFirst({
           where: and(
             eq(rateCardCoefficients.rateCardId, apiKey.user.rateCardId),
             eq(rateCardCoefficients.scope, 'global'),
@@ -209,16 +188,16 @@ export class AuthService {
       return { ok: false, status: 401, code: 'invalid_api_key', message: '凭证不存在' };
     }
     if (!isAccountUsable(cached.status)) {
-      await recordAuthFailure(this.bruteForce, keyHash);
+      await recordAuthFailure(bruteForce, keyHash);
       return { ok: false, status: 401, code: 'key_revoked', message: '凭证已吊销' };
     }
     if (cached.userStatus !== 0) {
-      await recordAuthFailure(this.bruteForce, keyHash);
+      await recordAuthFailure(bruteForce, keyHash);
       return { ok: false, status: 401, code: 'app_disabled', message: '账户已被禁用' };
     }
 
     // 认证成功 → 清零失败计数（S2）
-    await resetAuthFailures(this.bruteForce, keyHash);
+    await resetAuthFailures(bruteForce, keyHash);
 
     return {
       ok: true,
@@ -241,8 +220,8 @@ export class AuthService {
   }
 
   /** 路径 B：JWT（企业 Agent） */
-  private async authenticateJwt(token: string): Promise<AuthResult> {
-    const result = await verifyJwt(token, this.jwtSecret);
+  async function authenticateJwt(token: string): Promise<AuthResult> {
+    const result = await verifyJwt(token, jwtSecret);
     if (!result.ok) {
       const code = result.error === 'token_expired' ? 'token_expired' : 'invalid_token';
       return {
@@ -256,14 +235,14 @@ export class AuthService {
 
     // App 状态检查（Redis 缓存 60s，避免每次查 DB；禁用 App → 清缓存即生效）
     const appStatusKey = appStatusCache(payload.appId);
-    let appStatus = await this.redis.get(appStatusKey);
+    let appStatus = await redis.get(appStatusKey);
     if (appStatus === null) {
-      const app = await this.db.query.apps.findFirst({
+      const app = await db.query.apps.findFirst({
         where: eq(apps.id, payload.appId),
         columns: { status: true },
       });
       appStatus = app ? String(app.status) : '404';
-      await this.redis.set(appStatusKey, appStatus, 'EX', 60);
+      await redis.set(appStatusKey, appStatus, 'EX', 60);
     }
     if (appStatus !== '0') {
       return { ok: false, status: 401, code: 'app_disabled', message: '应用已禁用' };
@@ -274,9 +253,9 @@ export class AuthService {
     // 用户不存在 → '404' 拒绝。
     const userId = Number(payload.sub);
     const profileKey = userProfileCache(userId);
-    let profileRaw = await this.redis.get(profileKey);
+    let profileRaw = await redis.get(profileKey);
     if (profileRaw === null) {
-      const user = await this.db.query.users.findFirst({
+      const user = await db.query.users.findFirst({
         where: eq(users.id, userId),
         columns: { status: true, rpmLimit: true, tpmLimit: true },
       });
@@ -287,7 +266,7 @@ export class AuthService {
             tpm: user.tpmLimit ?? null,
           })
         : '404';
-      await this.redis.set(profileKey, profileRaw, 'EX', 60);
+      await redis.set(profileKey, profileRaw, 'EX', 60);
     }
 
     let userStatus = '404';
@@ -327,4 +306,28 @@ export class AuthService {
       },
     };
   }
+
+  return {
+    async authenticate(header: string | undefined, sourceIp = 'unknown'): Promise<AuthResult> {
+      const token = extractBearer(header);
+      if (!token) {
+        return applyAuthFailureGuard(
+          {
+            ok: false,
+            status: 401,
+            code: 'invalid_api_key',
+            message: '缺少 Authorization Bearer 凭证',
+          },
+          sourceIp,
+        );
+      }
+      const result = token.startsWith('ag_')
+        ? await authenticateStaticKey(token)
+        : await authenticateJwt(token);
+      if (!result.ok) {
+        return applyAuthFailureGuard(result, sourceIp);
+      }
+      return result;
+    },
+  };
 }

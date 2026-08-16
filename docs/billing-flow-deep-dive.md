@@ -45,8 +45,8 @@ apps/worker（结算：认领→实扣→对账→恢复）─▶ Redis（限流
 | **唯一事实源** | PostgreSQL 是资金唯一事实源；Redis/BullMQ 全部是可降级的加速层。队列消息只带 `requestId`，不带任何资金数据（`apps/gateway/src/services/billing/billing-dispatcher.ts:6`），结算事实只从 DB 收据读取。 |
 | **两阶段扣款** | 热路径只做「冻结」（`reserved_balance`），worker 结算才做「真扣」（`balance`）。 |
 | **估算与实测分界** | 估算值只用于授权预扣与 TPM 预占；资金结算只认厂商回传的真实 usage（G1 不变量）。 |
-| **不确定即冻结** | 分不清该不该收钱时转 `uncertain` 冻结预扣，等回执/人工复核/小额自动放行，绝不瞎扣或瞎退。 |
-| **预扣口径（2026-08 拍板）** | 预扣用校准估算而非字符硬上界——估算偏小导致结算实扣可超预扣，该敞口由 `credit_limit` 信用模型 + DB 约束兜底，换取更少的资金占用（`llm-pipeline.ts:113`）。 |
+| **估算结算政策（2026-08-17）** | 完成缺 usage / 用户取消 → 按已交付估算**即时结算**（防刷）；上游服务端异常 / 未交付 / 崩溃 → 即时释放不扣（宁可漏收不误收）；uncertain 状态不再产生，仅 dead 保留人工复核。详见 `docs/plan-estimate-settlement.md`。 |
+| **预扣口径（2026-08 拍板）** | 预扣用校准估算而非字符硬上界——估算偏小导致结算实扣可超预扣，该敞口由 `credit_limit` 信用模型 + DB 约束兜底，换取更少的资金占用（`steps/resolve.ts` 口径注释）。 |
 
 ---
 
@@ -69,7 +69,7 @@ apps/worker（结算：认领→实扣→对账→恢复）─▶ Redis（限流
        ▲                                                 │ (丢了也不怕,轮询兜底)
        │                                                 ▼
        └──────── 认领→实扣→settled ◀──────────── WORKER 结算(异步,秒级)
-                                      + 恢复循环(退款/转uncertain) + 对账(周期)
+                                      + 恢复循环(退款/崩溃释放) + 对账(周期)
 ```
 
 一句话总纲：**热路径只做"冻结"，worker 才做"真扣"；PostgreSQL 是唯一账本，Redis/队列全是可丢的加速层。**
@@ -114,13 +114,13 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
 | coefficient | 从这步就带出「费率卡系数」，后面所有金额公式都要乘它。 |
 | allowedModels | JWT scope 的模型白名单，下一阶段要校验。 |
 
-管线入口处还有一道：`isModelAllowed(auth.allowedModels, model)` 不过 → **403**（`llm-pipeline.ts:91`）——防止拿到受限凭证却去调贵的模型越权计费（S3）。
+管线入口处还有一道：`isModelAllowed(auth.allowedModels, model)` 不过 → **403**（`steps/admission.ts`）——防止拿到受限凭证却去调贵的模型越权计费（S3）。
 
 ---
 
 ## 4. 分图②：限流
 
-> 代码：`apps/gateway/src/services/pipeline/rate-guards.ts`、`services/billing/rate-limit-service.ts`
+> 代码：`apps/gateway/src/services/pipeline/steps/rate-limit.ts`、`services/billing/rate-limit-service.ts`
 
 ```
               ┌────────────── 2a. RPM：请求数闸（一次原子判定）──────────────┐
@@ -186,13 +186,13 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
       （authorizeMultimodalQuote，渠道未配置策略时 422 拒绝）
 
 输出token上界 = min( (max_completion_tokens ?? max_tokens ?? 4096) × n, 敞口上限CAP )
-  （pipeline-shared.ts:114；embeddings = 0；CAP = GATEWAY_OUTPUT_EXPOSURE_CAP，
+  （pipeline/types.ts maxOutputTokens；embeddings = 0；CAP = GATEWAY_OUTPUT_EXPOSURE_CAP，
     防用户传 max_tokens=1e6 把在途敞口顶爆；超 CAP 部分由 credit_limit 透支缓冲兜底）
 
 上游成本预估 = 同公式但 coefficient = 1（官方价口径）——给渠道「进货额度」闸用
 ```
 
-### 5b. 四道闸门 + 落账单（`ledger/billing-flow.ts:326`，单 DB 事务）
+### 5b. 四道闸门 + 落账单（`ledger/src/authorize.ts`，单 DB 事务）
 
 ```
  billing.authorize()
@@ -239,7 +239,7 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
 
 ## 6. 分图④：调上游
 
-### 6a. 候选循环（`llm-pipeline.ts:290`）
+### 6a. 候选循环（`steps/dispatch.ts`）
 
 ```
 ┌─ 对每个 target(主模型→fallback模型), 对每个渠道(priority分层+weight加权随机) ─┐
@@ -296,7 +296,7 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
 
 ## 7. 分图⑤：落收据
 
-> 代码：`apps/gateway/src/services/pipeline/billing-recorder.ts`、`attempt-runner.ts`
+> 代码：`apps/gateway/src/services/pipeline/steps/finalize.ts`、`steps/attempt.ts`
 
 ```
 上游返回终态
@@ -311,8 +311,10 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
    │     3. billing_requests → settlement_pending, 收据+指纹落库
    │     4. BullMQ best-effort 唤醒 worker(失败仅记指标,DB轮询会捡到)
    │
-   ├─【成功但 usage 缺失/是估算值】──▶ recordUncertain → status='uncertain'
-   │     预扣冻结不退: 等厂商回执/人工复核/小额自动放行 (估算值绝不进资金结算)
+   ├─【成功但 usage 缺失：完成态】──▶ recordEstimatedOutcome（估算结算，2026-08-17 政策）
+   │     流式 output=bytesRelayed×tokensPerByte；非流式 output=响应体估算
+   │     estimatedFor=usage_missing_completed/usage_missing_nonstream 留痕
+   ├─【成功但 usage 缺失：上游异常中断】──▶ recordReleasedFailure → released 不扣
    │
    ├─【用户主动取消(断开/中止)】──▶ recordEstimatedCancel(唯一允许估算结算的场景)
    │     ┌─────────────── 取消估算公式（usage-estimator.ts:49）─────────────┐
@@ -326,14 +328,14 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
    ├─【服务端发布中止(server_draining)】──▶ 全额释放(平台吸收发布成本,不估算不冻结)
    │
    └─【失败】──▶ request.failed 信号:
-         upstreamCharge='none'(白名单:invalid_key/4xx/熔断…见 billing-recorder.ts:65)
+         upstreamCharge='none'(白名单:invalid_key/4xx/熔断…见 steps/finalize.ts upstreamCharge 白名单)
            → released + 三类预扣(余额/套餐/渠道)全退
          upstreamCharge='unknown'(超时后挂,不知厂商有没有计费)
            → uncertain 冻结
 
 时序保证(防"响应了却没记账"):
    非流式: 收据落库失败 → 503 billing_receipt_unavailable + 保留预扣(绝不误退款)
-           (attempt-runner.ts:439: 上游已成功,必须保留 reservation,租约恢复链转 uncertain)
+           (steps/attempt.ts 非流式分支: 上游已成功,必须保留 reservation,租约恢复链转 uncertain)
    流式:   withBillingLifecycle 包住 SSE ─ 每 lease/3 续账单租约+续TPM
            flush() 先 await 收据落库, 再让客户端看到 EOF
            (收据失败也照常 EOF: 内容已交付无法收回,预扣留 in_flight 由恢复链转 uncertain)
@@ -342,7 +344,7 @@ AuthContext = { userId, apiKeyId|appId, credentialType,
 | 步骤 | 一句话解释 |
 |---|---|
 | 价格快照校验 | 收据的价格必须和授权时一模一样，管理员中途改价不影响在途账单。 |
-| uncertain | 分不清该不该收就先冻着，宁可事后放行也不瞎扣或瞎退。 |
+| 估算结算（原 uncertain 位） | 完成缺 usage/用户取消 → 按已交付估算即时结算；上游异常/崩溃 → 即时释放。 |
 | 收据先于 EOF | 内容已经交付给用户了，账必须先落库——这是「正确性边界」。 |
 | upstreamCharge 分类 | 确定厂商没收钱才退款；不确定就冻结，防止把已产生成本当失败退掉。 |
 | 06 修复注记 | 收据校验不再用「字节数上界 vs 真实 token」判死——厂商会报隐藏 system/cached token，inputTokens 可远超字节数；真正的资损不变量是金额，由 settle 的信用地板兜底。 |
@@ -502,7 +504,7 @@ BullMQ 唤醒 / DB轮询扫到 settlement_pending
 
 ---
 
-## 13. 附录：状态机
+## 13. 附录：状态机（2026-08-17 估算结算政策后）
 
 ```
                     ┌────────────┐
@@ -512,32 +514,33 @@ BullMQ 唤醒 / DB轮询扫到 settlement_pending
                           │ upstream.started
                           ▼
                     ┌────────────┐
-                    │  in_flight │ 租约过期 ──recoverOnce──▶ uncertain
-                    │ (流式期间  │
+                    │  in_flight │ 租约过期(网关崩溃) ──recoverOnce──▶ released
+                    │ (流式期间  │                          (gateway_crash_released, 同事务释放三类预扣)
                     │  持续续租) │──上游成功+可信usage──▶ settlement_pending ──worker──▶ settled
-                    └─────┬──────┘                              │
-                          │                                    └ 失败: retry_wait ⇄ processing
-                          ├──上游失败(确定没计费)──▶ released(退款)      └ 永久失败 → dead ──人工──▶ retry_wait / released
-                          ├──上游失败(不确定)──────▶ uncertain
-                          └──缺可信usage──────────▶ uncertain
-                                                    │
-                              小额/超时自动放行(审计) ├──▶ released
-                              厂商回执补录(人工)     ├──▶ settlement_pending
-                              人工确认不收费         └──▶ released
-```
+                          │       └ 完成缺usage/用户取消──▶ settlement_pending(估算 receipt,
+                          │           estimatedFor=usage_missing_*/取消三态) ──worker──▶ settled
+                          ├──上游失败/未交付/超时/截断/发布──▶ released(退款, 三类预扣全释放)
+                          └──收据落库失败──▶ 保留 in_flight ──租约过期──▶ released(崩溃口径)
 
----
+（uncertain 状态不再产生：2026-08-17 政策将「完成缺 usage」改为估算结算、
+ 「上游异常/未知/崩溃」改为即时释放；dead 仍由结算失败产生，人工复核是唯一保留队列）
+```
 
 ## 14. 附录：文件索引
 
 | 模块 | 文件 | 职责 |
 |---|---|---|
-| gateway | `apps/gateway/src/services/pipeline/llm-pipeline.ts` | 管线编排器：准入→限流→授权→候选循环 |
-| gateway | `apps/gateway/src/services/pipeline/attempt-runner.ts` | 单渠道尝试：流式/非流式 + 终态分岔 |
-| gateway | `apps/gateway/src/services/pipeline/billing-recorder.ts` | 收据组装 + 三条收尾产线 + SSE 生命周期包装 |
-| gateway | `apps/gateway/src/services/pipeline/pipeline-shared.ts` | 管线契约 + maxOutputTokens 口径 |
+| gateway | `apps/gateway/src/services/pipeline/run.ts` | 管线编排器：六步清单 + 唯一 catch 收口渲染（异常风格） |
+| gateway | `apps/gateway/src/services/pipeline/steps/attempt.ts` | 单渠道尝试：流式/非流式 + 终态分岔 |
+| gateway | `apps/gateway/src/services/pipeline/steps/finalize.ts` | 收据组装 + 四条收尾产线 + SSE 生命周期包装 |
+| gateway | `apps/gateway/src/services/pipeline/types.ts` | 管线契约 + TpmReservation 句柄 + maxOutputTokens 口径 |
 | gateway | `apps/gateway/src/services/pipeline/usage-estimator.ts` | 用户取消估算公式（tokensPerByte） |
-| gateway | `apps/gateway/src/services/pipeline/authorize-rejection.ts` | 授权拒绝翻译表 |
+| gateway | `apps/gateway/src/services/pipeline/steps/admission.ts` | 准入三查（drain/取消/scope） |
+| gateway | `apps/gateway/src/services/pipeline/steps/resolve.ts` | 路由+多模态+估算+候选定价 |
+| gateway | `apps/gateway/src/services/pipeline/steps/rate-limit.ts` | RPM/TPM/免费日限 + TPM 句柄 |
+| gateway | `apps/gateway/src/services/pipeline/steps/authorize.ts` | billing.authorize + 拒绝翻译 |
+| gateway | `apps/gateway/src/services/pipeline/steps/dispatch.ts` | 候选×渠道两层循环 |
+| gateway | `apps/gateway/src/lib/errors.ts` | 统一错误体系：GatewayError（继承 HttpError，注册表推导）+ translate |
 | gateway | `apps/gateway/src/services/routing/model-router.ts` | 模型/渠道路由 + 版本计数缓存 + 加权调度 |
 | gateway | `apps/gateway/src/services/billing/billing-dispatcher.ts` | BullMQ 结算唤醒（只带 requestId） |
 | gateway | `apps/gateway/src/services/auth/auth-service.ts` | 双凭证鉴权 + 爆破防护 + 费率系数 |
@@ -547,7 +550,12 @@ BullMQ 唤醒 / DB轮询扫到 settlement_pending
 | ai | `packages/ai/src/usage/normalize.ts` | 厂商 usage 方言归一化 |
 | ai | `packages/ai/src/usage/token-estimate.ts` | 字符特征 token 估算 |
 | ai | `packages/ai/src/usage/calibration.ts` | 估算校准配置（权重/偏移/tokensPerByte） |
-| ledger | `packages/ledger/src/billing-flow.ts` | authorize / reserveChannel / signal 状态机 |
+| ledger | `packages/ledger/src/authorize.ts` | 授权预扣事务（四道闸 + 原子预占） |
+| ledger | `packages/ledger/src/channel-reserve.ts` | 渠道进货硬闸（敞口预留/换渠释放/差额补足） |
+| ledger | `packages/ledger/src/signal.ts` | 账单状态机事件（started/renewed/succeeded/failed） |
+| ledger | `packages/ledger/src/quote.ts` | 报价推导 + durable receipt 校验（纯函数） |
+| ledger | `packages/ledger/src/errors.ts` | 账本域错误（唯一真相，含语义分级注释） |
+| ledger | `packages/ledger/src/billing.ts` | createBilling 装配门面 |
 | ledger | `packages/ledger/src/settle.ts` | settleClaim 实扣事务 + TPM 回填 |
 | ledger | `packages/ledger/src/billing-processor.ts` | 认领/重试/恢复/库存（多副本安全） |
 | ledger | `packages/ledger/src/billing-operations.ts` | 人工复核命令（幂等 + 审计） |

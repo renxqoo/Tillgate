@@ -36,21 +36,21 @@ beforeAll(async () => {
 afterAll(async () => db.$client.end().catch(() => {}));
 
 describe('B: billing-operations 路由', () => {
-  it('decision 非法 400；requestId 非 uuid 400（intParam/uuid 层）；不存在单 resolve 404', async (context) => {
+  it('理由缺失 400；requestId 非 uuid 400（intParam/uuid 层）；不存在单 abandon 404（resolve 端点已随 uncertain 删除）', async (context) => {
     if (!connected) return context.skip();
     const app = makeAdminTestApp({ '/billing-operations': billingOperationsRoutes(makeServices(db)) });
-    const badDecision = await app.request(`/api/admin/billing-operations/00000000-0000-4000-8000-000000000000/resolve`, {
+    const badDecision = await app.request(`/api/admin/billing-operations/00000000-0000-4000-8000-000000000000/abandon`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ expectedRevision: 0, decision: 'whatever' }),
+      body: JSON.stringify({ expectedRevision: 0, reason: '  ' }),
     });
     expect(badDecision.status).toBe(400);
-    const ghost = await app.request(`/api/admin/billing-operations/00000000-0000-4000-8000-000000000000/resolve`, {
+    const ghost = await app.request(`/api/admin/billing-operations/00000000-0000-4000-8000-000000000000/abandon`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ expectedRevision: 0, decision: 'confirmed_no_charge' }),
+      body: JSON.stringify({ expectedRevision: 0, reason: 'not exists' }),
     });
-    expect([404, 400]).toContain(ghost.status); // 不存在单：业务 404 或参数层拒绝，均非 500
+    expect([404, 409]).toContain(ghost.status); // 不存在单：业务 404 或幂等冲突 409，均非 500
     const badId = await app.request(`/api/admin/billing-operations/not-a-uuid/retry`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

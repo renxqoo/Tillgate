@@ -27,6 +27,7 @@ import { subscriptionAdminRoutes } from './routes/subscriptions.js';
 import { redeemAdminRoutes } from './routes/redeem.js';
 import { statsAdminRoutes } from './routes/stats.js';
 import { logAdminRoutes, auditLogAdminRoutes } from './routes/logs.js';
+import { usageLogAdminRoutes } from './routes/usage-logs.js';
 import { billingOperationsRoutes } from './routes/billing-operations.js';
 import { tracingAdminRoutes } from './routes/tracing.js';
 import type { Mailer } from '@ai-gateway/identity';
@@ -114,6 +115,7 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/redeem-batches', redeemAdminRoutes(services));
   admin.route('/stats', statsAdminRoutes(services));
   admin.route('/logs', logAdminRoutes(services));
+  admin.route('/usage-logs', usageLogAdminRoutes(services));
   admin.route('/audit-logs', auditLogAdminRoutes(services));
   admin.route('/billing-operations', billingOperationsRoutes(services));
   admin.route('/tracing', tracingAdminRoutes(services));

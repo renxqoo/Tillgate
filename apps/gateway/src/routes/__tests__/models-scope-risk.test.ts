@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { modelsRoutes } from '../models.js';
-import { ModelRouter } from '../../services/routing/model-router.js';
+import { createModelRouter } from '../../services/routing/model-router.js';
 import type { Db } from '@ai-gateway/db';
 import type { AuthContext, AuthEnv } from '../../middleware/auth.js';
 
@@ -80,7 +80,7 @@ async function callModels(db: Db, auth: Partial<AuthContext>) {
   });
   parent.route(
     '/v1/models',
-    modelsRoutes(new ModelRouter(db, makeMockRedis() as never, 'x'.repeat(32))),
+    modelsRoutes(createModelRouter(db, makeMockRedis() as never, 'x'.repeat(32))),
   );
   const res = await parent.request('/v1/models', { method: 'GET' });
   const body =

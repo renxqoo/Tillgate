@@ -25,28 +25,6 @@ export async function retryDeadBillingRequest(input: {
   }
 }
 
-export async function confirmNoUpstreamCharge(input: {
-  requestId: string;
-  expectedRevision: number;
-  reason: string;
-  evidenceRefs?: string[];
-}): Promise<{ error?: string }> {
-  try {
-    await adminFetch(`/api/admin/billing-operations/${input.requestId}/resolve`, {
-      method: 'POST',
-      body: {
-        decision: 'confirmed_no_charge',
-        expectedRevision: input.expectedRevision,
-        reason: input.reason,
-        evidenceRefs: input.evidenceRefs ?? [],
-      },
-    });
-    revalidatePath('/dashboard/billing-operations');
-    return {};
-  } catch (error) {
-    return { error: error instanceof ApiError ? error.message : '复核提交失败' };
-  }
-}
 
 /** 废弃 dead 单：确认不收费并释放全部预扣（与「重试」二选一） */
 export async function abandonDeadBillingRequest(input: {

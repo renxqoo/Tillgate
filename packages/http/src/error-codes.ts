@@ -155,6 +155,56 @@ export const ERROR_REGISTRY = {
   cors_origin_denied: { status: 403, message: '来源不被允许' },
   rate_limit_exceeded: { status: 429, message: '请求过于频繁' },
   server_draining: { status: 503, message: '服务正在发布维护，请稍后重试' },
+
+  // ── 网关推理管线（2026-08 函数化重构：全部对外码一次登记，唯一真相）──
+  // 分级纪律：本区只有 internal_error 允许 500；资金拒绝 402；限流 429 + retry-after；
+  // 上游不可用 502/503；上游 4xx 透传码不在此登记（动态值，经 sanitize 白名单放行）。
+  internal_error: { status: 500, message: '网关内部错误' },
+  not_found: { status: 404, message: '路径不存在' },
+  conflict: { status: 409, message: '记录已存在（唯一约束冲突）' },
+  invalid_reference: { status: 400, message: '引用的资源不存在' },
+  constraint_violation: { status: 400, message: '操作违反数据约束' },
+  value_too_long: { status: 400, message: '字段值超出长度限制' },
+  invalid_value: { status: 400, message: '字段值格式非法' },
+  value_out_of_range: { status: 400, message: '字段值超出数值范围' },
+  model_not_allowed: { status: 403, message: '模型不在当前凭证的可用范围内' },
+  model_not_found: { status: 404, message: '模型不存在或已下架' },
+  no_available_channel: { status: 503, message: '模型所有渠道均不可用' },
+  upstream_error: { status: 502, message: '网关内部错误' },
+  request_cancelled: { status: 408, message: '请求已取消' },
+  billing_receipt_unavailable: { status: 503, message: '请求已完成，但账务收据暂时无法持久化' },
+  free_model_daily_limit_exceeded: { status: 429, message: '免费模型每日请求数已达上限' },
+  free_model_counter_unavailable: {
+    status: 503,
+    message: '免费模型计数服务暂不可用，为防滥用已暂停免费模型请求',
+  },
+  insufficient_balance: { status: 402, message: '可用余额不足' },
+  daily_spend_limit_exceeded: { status: 402, message: '今日花费已达上限' },
+  member_daily_limit: { status: 402, message: '本日花费已达上限' },
+  member_quota_exceeded: { status: 402, message: '本月配额已用完' },
+  subscription_required: { status: 402, message: '无有效订阅（未订阅或已到期）' },
+  subscription_quota_exhausted: { status: 402, message: '套餐额度已用完' },
+  subscription_forbidden: { status: 402, message: '当前凭证绑定的订阅无权使用' },
+  authorization_conflict: { status: 409, message: '请求 ID 已存在内容不同的授权记录' },
+  billing_temporarily_unavailable: {
+    status: 503,
+    message: '计费结算服务暂时繁忙，为保护资金准确性已暂停新请求',
+  },
+  reservation_limit_exceeded: { status: 422, message: '请求最大费用超过单请求上限' },
+  invalid_quote: { status: 503, message: '模型计费配置无效' },
+  invalid_coefficient: { status: 503, message: '模型计费配置无效' },
+  invalid_multimodal_input: { status: 422, message: '多模态输入内容不合法' },
+  unsupported_multimodal_input: { status: 422, message: '不支持的多模态输入类型' },
+  billing_quote_unavailable: { status: 422, message: '模型没有有效的多模态计费策略' },
+
+  // ── 网关鉴权（auth-service 结果码，2026-08 统一登记）──
+  key_revoked: { status: 401, message: '凭证已吊销' },
+  key_locked: { status: 429, message: '凭证已被临时锁定' },
+  app_disabled: { status: 401, message: '应用已被禁用' },
+  user_disabled: { status: 401, message: '账户已被禁用' },
+  auth_failure_rate_limited: { status: 429, message: '认证失败次数过多' },
+  token_expired: { status: 401, message: '令牌已过期' },
+  invalid_token: { status: 401, message: '令牌无效' },
 } as const satisfies Record<string, ErrorSpec>;
 
 export type KnownErrorCode = keyof typeof ERROR_REGISTRY;

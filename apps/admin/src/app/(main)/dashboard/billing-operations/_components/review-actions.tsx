@@ -4,16 +4,12 @@ import { useState, useTransition } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Input } from '@ai-gateway/ui/components/ui/input';
-import {
-  abandonDeadBillingRequest,
-  retryDeadBillingRequest,
-  confirmNoUpstreamCharge,
-} from '../actions';
+import { abandonDeadBillingRequest, retryDeadBillingRequest } from '../actions';
 
 export function ReviewActions(props: {
   requestId: string;
   revision: number;
-  status: 'dead' | 'uncertain';
+  status: 'dead';
 }) {
   const [reason, setReason] = useState('');
   const [pending, startTransition] = useTransition();
@@ -71,22 +67,4 @@ export function ReviewActions(props: {
     );
   }
 
-  return (
-    <div className="flex min-w-80 gap-2">
-      <Input
-        value={reason}
-        onChange={(event) => setReason(event.target.value)}
-        placeholder="无收费证据/工单号"
-        maxLength={1000}
-      />
-      <Button
-        size="sm"
-        variant="destructive"
-        disabled={pending}
-        onClick={() => run(() => confirmNoUpstreamCharge(base), '已确认上游未收费并退回预扣')}
-      >
-        确认退款
-      </Button>
-    </div>
-  );
 }

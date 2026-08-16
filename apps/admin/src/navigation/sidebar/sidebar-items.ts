@@ -1,5 +1,6 @@
 import {
   Activity,
+  Coins,
   Banknote,
   CalendarClock,
   ChartBar,
@@ -80,6 +81,7 @@ export function buildSidebarItems(): NavGroup[] {
         },
         { id: 'tracing', title: '链路追踪', url: '/dashboard/tracing', icon: Activity },
         { id: 'logs', title: '请求日志', url: '/dashboard/logs', icon: ScrollText },
+        { id: 'usage-logs', title: '用量明细', url: '/dashboard/usage-logs', icon: Coins },
         { id: 'audit-logs', title: '操作审计', url: '/dashboard/audit-logs', icon: History },
       ],
     },

@@ -52,61 +52,63 @@ export interface CacheStorage {
   del(key: string): Promise<unknown>;
 }
 
-export class KeyAuthCache {
-  constructor(private readonly redis: CacheStorage) {}
-
+export interface KeyAuthCache {
   /**
    * 获取鉴权快照：先查 Redis 缓存，miss 则调 loader 查 DB 并回填。
    * @param keyHash SHA-256(token)
    * @param loader DB 查询函数（cache miss 时调用），返回 null 表示 Key 不存在
    */
-  async getOrLoad(
-    keyHash: string,
-    loader: () => Promise<CachedKeyAuth | null>,
-  ): Promise<CachedKeyAuth | null> {
-    const cacheKey = authKeyCache(keyHash);
-    try {
-      const cached = await this.redis.get(cacheKey);
-      if (cached) {
-        const parsed = JSON.parse(cached) as CachedKeyAuth;
-        // 过期判定（兜底：TTL 自然过期，但 JSON 里也存了 cachedAt 防边界）
-        if (Date.now() - parsed.cachedAt < KEY_AUTH_TTL_S * 1000) {
-          // C4 修复：缓存命中也判 Key 过期（expiresAtMs）。过期 → 视为失效，走 DB 重新确认。
-          if (parsed.expiresAtMs !== null && parsed.expiresAtMs <= Date.now()) {
-            // 失效缓存，下次重新查（过期 Key 不应继续放行）
-            await this.redis.del(cacheKey).catch(() => {});
-          } else {
-            return parsed;
+  getOrLoad(keyHash: string, loader: () => Promise<CachedKeyAuth | null>): Promise<CachedKeyAuth | null>;
+  /** 吊销/禁用 Key 时清缓存（管理端调用，加速失效） */
+  invalidate(keyHash: string): Promise<void>;
+}
+
+export function createKeyAuthCache(redis: CacheStorage): KeyAuthCache {
+  return {
+    async getOrLoad(keyHash, loader) {
+      const cacheKey = authKeyCache(keyHash);
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as CachedKeyAuth;
+          // 过期判定（兜底：TTL 自然过期，但 JSON 里也存了 cachedAt 防边界）
+          if (Date.now() - parsed.cachedAt < KEY_AUTH_TTL_S * 1000) {
+            // C4 修复：缓存命中也判 Key 过期（expiresAtMs）。过期 → 视为失效，走 DB 重新确认。
+            if (parsed.expiresAtMs !== null && parsed.expiresAtMs <= Date.now()) {
+              // 失效缓存，下次重新查（过期 Key 不应继续放行）
+              await redis.del(cacheKey).catch(() => {});
+            } else {
+              return parsed;
+            }
           }
         }
-      }
-    } catch {
-      // Redis 不可用 → fail-open 降级查 DB
-    }
-    // cache miss → 查 DB
-    const fresh = await loader();
-    if (fresh && fresh.status === 0 && fresh.userStatus === 0) {
-      // 仅有效 Key 写缓存（吊销/禁用状态不缓存，防状态过期）
-      try {
-        await this.redis.setex(cacheKey, KEY_AUTH_TTL_S, JSON.stringify(fresh));
       } catch {
-        // Redis 写失败 → fail-open（本次返回结果，下次仍查 DB）
+        // Redis 不可用 → fail-open 降级查 DB
       }
-    }
-    return fresh;
-  }
+      // cache miss → 查 DB
+      const fresh = await loader();
+      if (fresh && fresh.status === 0 && fresh.userStatus === 0) {
+        // 仅有效 Key 写缓存（吊销/禁用状态不缓存，防状态过期）
+        try {
+          await redis.setex(cacheKey, KEY_AUTH_TTL_S, JSON.stringify(fresh));
+        } catch {
+          // Redis 写失败 → fail-open（本次返回结果，下次仍查 DB）
+        }
+      }
+      return fresh;
+    },
 
-  /** 吊销/禁用 Key 时清缓存（管理端调用，加速失效） */
-  async invalidate(keyHash: string): Promise<void> {
-    try {
-      await this.redis.del(authKeyCache(keyHash));
-    } catch {
-      // 忽略：TTL 60s 兜底
-    }
-  }
+    async invalidate(keyHash) {
+      try {
+        await redis.del(authKeyCache(keyHash));
+      } catch {
+        // 忽略：TTL 60s 兜底
+      }
+    },
+  };
 }
 
 /** 适配 ioredis 到 CacheStorage 接口 */
 export function createRedisKeyAuthCache(redis: Redis): KeyAuthCache {
-  return new KeyAuthCache(redis);
+  return createKeyAuthCache(redis);
 }

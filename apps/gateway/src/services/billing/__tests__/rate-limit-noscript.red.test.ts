@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Redis } from 'ioredis';
-import { RateLimiter } from '../rate-limit-service.js';
+import { createRateLimiter } from '../rate-limit-service.js';
 
 /**
  * 红测（new-api #6412 / #2841 同类）：Lua 脚本 evalsha 无 NOSCRIPT 回退。
@@ -45,7 +45,7 @@ class RestartingRedis {
 describe('RateLimiter NOSCRIPT 自愈（#6412 同类红测）', () => {
   it('Redis 脚本被 FLUSH 后（evalsha 抛 NOSCRIPT）→ 限流判定必须自愈，不得抛错', async () => {
     const redis = new RestartingRedis();
-    const limiter = new RateLimiter(redis as unknown as Redis);
+    const limiter = createRateLimiter(redis as unknown as Redis);
 
     // 第一次调用：LOAD + evalsha 成功，limiter 实例内缓存了 sha
     const first = await limiter.check('user:noscript-test', 10, 'req-noscript-1');

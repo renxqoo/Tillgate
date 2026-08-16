@@ -337,6 +337,20 @@
       "when": 1786887524183,
       "tag": "0048_big_wendell_vaughn",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1786902822479,
+      "tag": "0049_large_golden_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786905492661,
+      "tag": "0050_magenta_gorgon",
+      "breakpoints": true
     }
   ]
 }

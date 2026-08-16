@@ -9,7 +9,7 @@ import {
   buildTestApp,
   makeMockAi,
 } from '../../testing/helpers.js';
-import { AuthFailureGuard } from '../auth-failure-guard.js';
+import { createAuthFailureGuard } from '../auth-failure-guard.js';
 
 /**
  * 07 修复回归测试 —— 来源级鉴权失败限流。
@@ -39,7 +39,7 @@ describe('AuthFailureGuard（07）', () => {
   it('窗口内失败达阈值后锁定，之后 isLocked=true', async () => {
     if (!connected) return it.skip('no DB');
     const ip = '198.51.100.' + Math.floor(Math.random() * 250 + 1);
-    const guard = new AuthFailureGuard(redis, { limit: 3, windowS: 60 });
+    const guard = createAuthFailureGuard(redis, { limit: 3, windowS: 60 });
     try {
       for (let i = 0; i < 3; i++) {
         const r = await guard.recordFailure(ip);

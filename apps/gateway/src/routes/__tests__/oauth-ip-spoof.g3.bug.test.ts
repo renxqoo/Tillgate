@@ -35,7 +35,7 @@ const users = dbSchema.users;
 const apps = dbSchema.apps;
 const oauthMod = await import('../oauth-token.js');
 const oauthTokenRoutes = oauthMod.oauthTokenRoutes;
-const { OAuthService } = await import('../../services/auth/oauth-service.js');
+const { createOAuthService } = await import('../../services/auth/oauth-service.js');
 
 /**
  * G3 实证：OAuth 爆破防护的 IP 维度可被 X-Forwarded-For 伪造绕过。
@@ -119,7 +119,7 @@ async function cleanup(userId: number, appId: number, clientId: string): Promise
 function makeApp(): unknown {
   const app = new Hono();
   // 与 index.ts 挂载一致：/oauth/token + 路由 .post('/')
-  app.route('/oauth/token', oauthTokenRoutes(new OAuthService(db, redis, process.env.JWT_SECRET!)));
+  app.route('/oauth/token', oauthTokenRoutes(createOAuthService(db, redis, process.env.JWT_SECRET!)));
   return app;
 }
 

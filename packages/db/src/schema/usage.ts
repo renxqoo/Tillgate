@@ -81,11 +81,16 @@ export const usageLogs = pgTable(
     /** 流式提前中断；只有供应商仍返回可信 usage 时才允许精确结算。 */
     streamAborted: boolean('stream_aborted').notNull().default(false),
     /**
-     * 估算结算标记：用户侧取消（client_disconnect/request_cancelled/aborted）且
-     * 无可信 usage 时按 bytesRelayed 估算的结算行。区分真实获取与估算，
-     * 报表/对账分桶的口径来源（receipt.estimatedFor 为权威归属）。
+     * 估算结算标记（2026-08-17 政策扩展）：用户取消 ∪ 完成缺 usage 且无可信
+     * usage 时按估算结算的行。区分真实获取与估算，报表/对账分桶的口径来源
+     * （receipt.estimatedFor 为权威归属）。
      */
     estimated: boolean('estimated').notNull().default(false),
+    /**
+     * 估算归属（ESTIMATE_ATTRIBUTIONS）：用户端展示与审计的一等公民字段
+     * （「这笔是估算扣的、为什么」——取消三态 + 完成缺 usage 两态）。
+     */
+    estimateReason: varchar('estimate_reason', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

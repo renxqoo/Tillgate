@@ -45,7 +45,7 @@ export const billingRequests = pgTable(
       () => userSubscriptions.id,
     ),
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
-    /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/uncertain/dead */
+    /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/dead（2026-08-17 政策：uncertain 删除） */
     status: varchar('status', { length: 32 }).notNull().default('authorized'),
     /** 每次状态迁移递增；同时作为 worker fencing token。 */
     revision: bigint('revision', { mode: 'number' }).notNull().default(0),
@@ -87,7 +87,7 @@ export const billingRequests = pgTable(
     uniqueIndex('billing_requests_claim_token_uq').on(t.claimToken),
     check(
       'billing_requests_status_ck',
-      sql`${t.status} in ('authorized','in_flight','settlement_pending','processing','retry_wait','settled','released','uncertain','dead')`,
+      sql`${t.status} in ('authorized','in_flight','settlement_pending','processing','retry_wait','settled','released','dead')`,
     ),
     check(
       'billing_requests_receipt_state_ck',

@@ -1,0 +1,1 @@
+ALTER TABLE "usage_logs" ADD COLUMN "estimate_reason" varchar(64);
