@@ -1,25 +1,26 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc, gt } from 'drizzle-orm';
-import { apiKeys, orgMembers, userSubscriptions } from '@ai-gateway/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
+import { apiKeys } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
+  MONEY_MAX,
   HttpError,
   generateApiKey,
   intParam,
   invalidateKeyAuthCache,
   jsonBody,
-  limitOffset,
   maskKey,
   paginateQuery,
-  paginationQuerySchema,
-  parsePagination,
   query,
   recordAudit,
+  listQuerySchema,
+  buildList,
+  countAll,
   sha256Hex,
 } from '@ai-gateway/http';
-import type { Db } from '@ai-gateway/db';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
+import { assertCanUseSubscription } from '../services/subscription-guard.js';
 
 /**
  * 用户面板：虚拟 Key 管理（api-contract §4.2）。
@@ -40,63 +41,40 @@ const keyCreateSchema = z.object({
   /** 计费来源：NULL=余额；非空=扣该订阅额度。 */
   subscriptionId: z.number().int().positive().nullable().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
-  rpmLimit: z.number().int().min(1).nullable().optional(),
-  tpmLimit: z.number().int().min(1).nullable().optional(),
+  rpmLimit: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  tpmLimit: z.number().int().min(1).max(1_000_000_000).nullable().optional(),
   /** Key 级每日花费上限（元，>=0），null=不限。 */
-  dailySpendLimit: z.number().min(0).nullable().optional(),
+  dailySpendLimit: z.number().min(0).max(MONEY_MAX).nullable().optional(),
 });
 
 const keyUpdateSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   remark: z.string().max(255).nullable().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
-  rpmLimit: z.number().int().min(1).nullable().optional(),
-  tpmLimit: z.number().int().min(1).nullable().optional(),
+  rpmLimit: z.number().int().min(1).max(1_000_000).nullable().optional(),
+  tpmLimit: z.number().int().min(1).max(1_000_000_000).nullable().optional(),
   /** Key 级每日花费上限（元，>=0），null=不限。 */
-  dailySpendLimit: z.number().min(0).nullable().optional(),
+  dailySpendLimit: z.number().min(0).max(MONEY_MAX).nullable().optional(),
 });
-
-/** 校验用户能否用某订阅：owner 或该订阅 org 的 active 成员。 */
-async function assertCanUseSubscription(
-  db: Db,
-  userId: number,
-  subscriptionId: number,
-): Promise<void> {
-  const sub = await db.query.userSubscriptions.findFirst({
-    where: and(
-      eq(userSubscriptions.id, subscriptionId),
-      eq(userSubscriptions.status, 0),
-      gt(userSubscriptions.endAt, new Date()),
-    ),
-    columns: { userId: true, orgId: true },
-  });
-  if (!sub) throw new HttpError(404, 'SUBSCRIPTION_NOT_FOUND', '订阅不存在或已到期');
-  if (sub.userId === userId) return;
-  if (sub.orgId != null) {
-    const member = await db.query.orgMembers.findFirst({
-      where: and(
-        eq(orgMembers.orgId, sub.orgId),
-        eq(orgMembers.userId, userId),
-        eq(orgMembers.status, 0),
-      ),
-      columns: { id: true },
-    });
-    if (member) return;
-  }
-  throw new HttpError(403, 'SUBSCRIPTION_FORBIDDEN', '无权使用该订阅');
-}
 
 export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
 
-    // 列表
-    .get('/', query(paginationQuerySchema), async (c) => {
+    // 列表（q：名称/备注模糊搜索——此前前端发 q 后端不接收，搜索无效，R10 根治）
+    .get('/', query(listQuerySchema), async (c) => {
       const session = c.get('session');
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const where = eq(apiKeys.userId, session.userId);
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [apiKeys.name, apiKeys.remark],
+        conditions: [eq(apiKeys.userId, session.userId)],
+        sort: {
+          by: { id: apiKeys.id, name: apiKeys.name, status: apiKeys.status, lastUsedAt: apiKeys.lastUsedAt, createdAt: apiKeys.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: apiKeys.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: apiKeys.id,
@@ -114,10 +92,10 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           })
           .from(apiKeys)
           .where(where)
-          .orderBy(desc(apiKeys.createdAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(apiKeys).where(where),
+        countAll(s.db, apiKeys, where),
       );
       return c.json(result);
     })
@@ -132,29 +110,45 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
         await assertCanUseSubscription(s.db, session.userId, subscriptionId);
       }
 
+      // 每用户 Key 数量配额（防脚本化刷行；吊销的不占额）。
+      // advisory xact lock 按 (资源, user) 串行化 count→insert，杜绝并发
+      // 双击/重试全部通过 count 后超限插入（与账本授权同模式，锁随事务释放）
       const plaintext = generateApiKey();
-      const [created] = await s.db
-        .insert(apiKeys)
-        .values({
-          keyHash: sha256Hex(plaintext),
-          keyPreview: maskKey(plaintext),
-          userId: session.userId,
-          name: body.name,
-          remark: body.remark ?? null,
-          subscriptionId,
-          expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-          rpmLimit: body.rpmLimit ?? null,
-          tpmLimit: body.tpmLimit ?? null,
-          // numeric 列接受字符串；number → string 对齐 schema 类型
-          dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
-          status: 0,
-        })
-        .returning({ id: apiKeys.id, name: apiKeys.name, subscriptionId: apiKeys.subscriptionId });
+      const created = await s.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext('quota.api_keys.user:' || ${session.userId}::text))`,
+        );
+        const [row_keyCount] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(apiKeys)
+          .where(and(eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)));
+        if (Number(row_keyCount?.count ?? 0) >= 100) {
+          throw new HttpError('KEY_LIMIT_REACHED', '每人最多保留 100 把有效 Key，请先吊销再创建');
+        }
+        const [row] = await tx
+          .insert(apiKeys)
+          .values({
+            keyHash: sha256Hex(plaintext),
+            keyPreview: maskKey(plaintext),
+            userId: session.userId,
+            name: body.name,
+            remark: body.remark ?? null,
+            subscriptionId,
+            expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+            rpmLimit: body.rpmLimit ?? null,
+            tpmLimit: body.tpmLimit ?? null,
+            // numeric 列接受字符串；number → string 对齐 schema 类型
+            dailySpendLimit: body.dailySpendLimit == null ? null : String(body.dailySpendLimit),
+            status: 0,
+          })
+          .returning({ id: apiKeys.id, name: apiKeys.name, subscriptionId: apiKeys.subscriptionId });
+        return row!;
+      });
       await recordAudit(s.db, {
         actor: 'user',
         action: 'api_key.create',
         targetType: 'api_key',
-        targetId: created!.id,
+        targetId: created.id,
       });
       // 明文 key 只在此响应中下发
       return c.json({ ...created, key: plaintext }, 201);
@@ -178,7 +172,26 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
         .from(apiKeys)
         .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)))
         .limit(1);
-      if (!oldKey) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
+      if (!oldKey) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
+
+      // 轮换沿用计费来源，但必须重过创建面同款订阅归属校验（L1）：
+      // 订阅已到期/被移出组织时盲目沿用会把新 Key 绑到不可用订阅上。
+      // 校验不过 → 降级为个人余额 Key（订阅侧变化不应阻断轮换）。
+      let subscriptionId = oldKey.subscriptionId;
+      if (subscriptionId != null) {
+        try {
+          await assertCanUseSubscription(s.db, session.userId, subscriptionId);
+        } catch (error) {
+          if (
+            error instanceof HttpError &&
+            (error.code === 'SUBSCRIPTION_NOT_FOUND' || error.code === 'SUBSCRIPTION_FORBIDDEN')
+          ) {
+            subscriptionId = null;
+          } else {
+            throw error;
+          }
+        }
+      }
 
       const plaintext = generateApiKey();
       const created = await s.db.transaction(async (tx) => {
@@ -187,7 +200,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           .set({ status: 1, revokedAt: new Date() })
           .where(and(eq(apiKeys.id, id), eq(apiKeys.status, 0)))
           .returning({ id: apiKeys.id });
-        if (!revoked) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在或已吊销');
+        if (!revoked) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在或已吊销');
         const [row] = await tx
           .insert(apiKeys)
           .values({
@@ -196,7 +209,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
             userId: session.userId,
             name: oldKey.name,
             remark: oldKey.remark,
-            subscriptionId: oldKey.subscriptionId,
+            subscriptionId,
             expiresAt: oldKey.expiresAt,
             rpmLimit: oldKey.rpmLimit,
             tpmLimit: oldKey.tpmLimit,
@@ -249,7 +262,21 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
           lastUsedAt: apiKeys.lastUsedAt,
           createdAt: apiKeys.createdAt,
         });
-      if (!updated) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在或无权操作');
+      if (!updated) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在或无权操作');
+      // 限流/有效期收紧必须即时生效：清网关鉴权缓存（auth:key TTL 60s，不主动清则延迟生效）
+      if (
+        body.rpmLimit !== undefined ||
+        body.tpmLimit !== undefined ||
+        body.dailySpendLimit !== undefined ||
+        body.expiresAt !== undefined
+      ) {
+        const [keyRow] = await s.db
+          .select({ keyHash: apiKeys.keyHash })
+          .from(apiKeys)
+          .where(eq(apiKeys.id, id))
+          .limit(1);
+        if (keyRow) await invalidateKeyAuthCache(s.redis, [keyRow.keyHash]);
+      }
       return c.json(updated);
     })
 
@@ -262,7 +289,7 @@ export function keyRoutes(s: ClientServices): Hono<ClientEnv> {
         .set({ status: 1, revokedAt: new Date() })
         .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, session.userId), eq(apiKeys.status, 0)))
         .returning({ id: apiKeys.id, keyHash: apiKeys.keyHash });
-      if (!revoked) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
+      if (!revoked) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在、无权操作或已吊销');
       await recordAudit(s.db, {
         actor: 'user',
         action: 'api_key.revoke',

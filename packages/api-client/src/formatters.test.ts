@@ -4,7 +4,6 @@ import {
   fmtCost,
   fmtPrice,
   formatMoney,
-  formatYuan,
   formatPoints,
   toPoints,
   POINTS_PER_YUAN,
@@ -32,7 +31,7 @@ describe('formatMoney', () => {
   });
 
   it('所有金额语义方法统一使用 4 位截断', () => {
-    for (const format of [fmtBalance, fmtCost, fmtPrice, formatYuan]) {
+    for (const format of [fmtBalance, fmtCost, fmtPrice]) {
       expect(format('8.76549')).toBe('8.7654');
     }
   });

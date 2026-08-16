@@ -30,7 +30,7 @@
 |---|---|
 | Transport | fetch 封装（SSRF 校验 / 超时 / abort）→ 非流式 JSON + 流式 SSE |
 | SseParser | 增量解析：事件边界 / 注释行 / 多行 data / **最后 usage 帧胜出** / 错误帧捕获 |
-| ProtocolAdapter | 接口：chat / embeddings / usage 归一化 / 错误映射 / **参数抹平（透传基底 + 规则驱动：ignore/clamp/map）**；一期唯一实现 `OpenAICompatibleAdapter` |
+| ProtocolAdapter | 接口：**上游寻址（路径+认证头）/ 请求体终改（model 重写、stream_options）/ 参数抹平 / usage 归一化 / 错误映射 / 探测请求**；默认实现 `OpenAICompatibleAdapter`，`createAi({ adapters })` 注册即扩展 |
 | Streaming 控制 | 心跳注入（静默 >30s，仅 SSE 事件边界）、abort 传播、空完成判定（probe）、流式错误帧转换 |
 | Errors | 统一错误模型：code / retryable / circuitTrip / deadCredential（死凭据文本特征） |
 | Retry | 同渠道重试：指数退避 + jitter + 总 deadline + maxAttempts（含**空完成重试**） |
@@ -51,7 +51,7 @@
 interface ChannelDesc {
   baseUrl: string          // 已验证（SSRF 防护在配置层）
   apiKey: string           // gateway 解密后传入，包内不落盘
-  protocol: 'openai-compatible'   // 一期仅此值
+  protocol: string          // 协议键 = 适配器注册表键（默认注册表仅 openai-compatible，见 SUPPORTED_PROTOCOLS）
 }
 
 interface RequestCtx {
@@ -130,7 +130,6 @@ interface AiConfig {
   breaker: { windowMs: number; failureThreshold: number; cooldownMs: number; halfOpenProbe: boolean }
   stream: { heartbeatIdleMs: number; inactivityTimeoutMs: number }
   timeout: { connectMs: number; totalMs: number }
-  estimate: { charPerToken: number }     // 默认 3.5
   deadCredential: { failureThreshold: number; windowMs: number }   // 死凭据计数（5.16）
 }
 interface AiDeps {
@@ -173,8 +172,8 @@ packages/ai/
 │   │   ├── sse-parser.ts      # eventsource-parser 薄封装：增量解析 + usage 最后帧 + 错误帧捕获
 │   │   └── relay-stream.ts    # 透传管道：心跳注入 / abort 传播 / 错误帧转换 / bytesRelayed 计数
 │   ├── adapters/
-│   │   ├── protocol-adapter.ts    # ProtocolAdapter 接口（含参数抹平执行引擎）
-│   │   └── openai-compatible.ts   # 一期唯一实现（透传 + 规则抹平 + usage 归一化 + 错误映射）
+│   │   ├── protocol-adapter.ts    # ProtocolAdapter 接口（寻址/终改/抹平/计量/错误/探测 契约）
+│   │   └── openai-compatible.ts   # 默认实现（寻址 + 终改 + 规则抹平 + usage 归一化 + 错误映射）
 │   ├── usage/
 │   │   └── normalize.ts       # 缓存字段归一化（OpenAI cached_tokens / DeepSeek cache_hit+miss）
 │   ├── errors/
@@ -285,7 +284,13 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 | OpenAI 风格 | `prompt_tokens_details.cached_tokens` | cachedInputTokens |
 | DeepSeek | `prompt_cache_hit_tokens` | cachedInputTokens（`cache_miss` 计入未缓存） |
 | 无缓存字段 | — | cachedInputTokens = 0 |
-| usage 缺失 | — | 可生成 `estimated=true` 供容量规划，但 Gateway 禁止用估算值做资金结算 |
+
+usage 缺失时的字符估算兜底在 `usage/token-estimate.ts`（单一真相）：
+`estimateTextTokens`（特征向量 × 权重，权重为 `usage/calibration.ts` 代码内固定配置：
+CJK ~0.7 token/字、拉丁词段 ~1.1 token/段，按 provider/model 覆盖）、
+`estimateInputTokens` / `estimateOutputTokens`（结构提取）、`estimateUsage`（组合，`estimated=true`）。
+`estimated=true` 供容量规划，但 Gateway 禁止用估算值做资金结算（仅用户侧取消的 `bytesRelayed × K`
+估算可计费，见 gateway usage-estimator.ts）。
 
 ### 7.6 参数抹平策略（透传为基底，规则驱动）
 
@@ -303,20 +308,32 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 **规则来源单一**：`model_mappings.param_rules`（DB 配置，运营可调，per-model 生效）。
 未配置时全部透传（unknown=passthrough）。
 
-**执行引擎**（adapter 内）：
+**执行引擎**（adapter 内，契约见 `src/adapters/protocol-adapter.ts`）：
 
 ```ts
 interface ProtocolAdapter {
   protocol: string
+  // 上游寻址：路径 + 完整认证头由协议决定（支持 model 进 path 的协议，如 gemini）
+  planRequest(channel, { endpoint, model, requestId }): { path: string; headers: Record<string, string> }
+  // 请求体终态化：model 重写（对外名→真实名）、流式 stream_options 强制注入、格式转换
+  finalizeRequestBody(body, { endpoint, model, stream }): Record<string, unknown>
   // 请求方向：透传为基底，按规则抹平，返回调整记录（进 param_adjustment 事件）
   normalizeRequest(req: unknown, rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] }
   // 响应方向：仅提取计量与错误，正文透传
   extractUsage(res: unknown): Usage | null
   mapError(status: number, body: unknown): UpstreamError
-  probePaths(): string[]    // ['/v1/models', 最小补全]
+  // 连通性探测（GET，无副作用），路径与认证头由协议决定
+  probeRequests(channel): Array<{ path: string; headers: Record<string, string> }>
 }
 type ParamAdjustment = { param: string; action: 'ignore' | 'clamp' | 'map'; from?: unknown; to?: unknown }
 ```
+
+**注册即扩展**：一切协议特定行为（路径、认证头、model 重写、stream_options 注入、
+usage 提取、错误映射、探测请求）都收敛在 ProtocolAdapter；编排层（create-ai.ts）
+不含任何协议字面量。新协议 = 实现本接口 + `createAi(cfg, deps, { adapters: [...] })`
+注册一行。适配器默认注册表为 `[OpenAICompatibleAdapter]`，键即协议词表单一真相
+（`SUPPORTED_PROTOCOLS` 导出，admin 配置面校验引用）。同 protocol 键重复注册启动即抛。
+未注册协议显式报 `invalid_config`（错误信息列出实际已注册键），不静默回退。
 
 **可观测**：每次抹平产生 `param_adjustment` 事件（requestId / 参数 / 动作 / 原值→新值）——排障时能看出"客户端传了什么、网关改了什么"。
 
@@ -348,7 +365,7 @@ type ParamAdjustment = { param: string; action: 'ignore' | 'clamp' | 'map'; from
 
 ## 10. 二期扩展
 
-- `AnthropicAdapter` / `GeminiAdapter`：实现 `ProtocolAdapter` 接口（格式转换 + usage 映射 + 错误映射），届时评估是否局部引 SDK provider 包（仅转换、不透传，见 tech-stack §9）
+- `AnthropicAdapter` / `GeminiAdapter`：实现 `ProtocolAdapter` 接口（格式转换发生在 `normalizeRequest`/`finalizeRequestBody`，寻址/认证在 `planRequest`），注册进 `createAi({ adapters })` 即生效，届时评估是否局部引 SDK provider 包（仅转换、不透传，见 tech-stack §9）
 - ~~`BreakerStorage` 的 Redis 实现~~ ✅ 已由 gateway 提供（`apps/gateway/src/infrastructure/ai-storage.ts`）：
   - 泛型 `RedisKvStorage<T extends {version}>` 用 Lua 脚本实现原子 CAS（`script LOAD` 预加载 + `evalsha` 调用）
   - `createRedisBreakerStorage(redis)` / `createRedisDeadCredentialStorage(redis)` 两个工厂，key 前缀隔离（`ai:breaker:` / `ai:credential:`）

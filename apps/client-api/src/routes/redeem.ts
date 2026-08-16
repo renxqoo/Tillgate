@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { redeemCodes, redeemBatches } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import {
+  jsonBody, paginateQuery, query, buildList, countAll, paginationQuerySchema,
+  sortQuerySchema, HttpError, type KnownErrorCode } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 import { redeemCode } from '../services/redeem.js';
@@ -16,6 +18,17 @@ import { redeemCode } from '../services/redeem.js';
 
 const redeemSchema = z.object({ code: z.string().min(1).max(64) });
 
+/** 兑换拒绝 reason → 注册表错误码（状态码/文案从注册表单一真相推导） */
+const REDEEM_REJECT_CODE: Record<
+  'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired',
+  KnownErrorCode
+> = {
+  invalid_code: 'REDEEM_INVALID_CODE',
+  code_already_used: 'REDEEM_CODE_ALREADY_USED',
+  code_revoked: 'REDEEM_CODE_REVOKED',
+  code_expired: 'REDEEM_CODE_EXPIRED',
+} as const;
+
 export function redeemRoutes(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
 
@@ -27,12 +40,12 @@ export function redeemRoutes(s: ClientServices): Hono<ClientEnv> {
 
       switch (outcome.kind) {
         case 'rate_limited':
-          c.header('retry-after', String(outcome.retryAfterSec));
-          return c.json({ error: { message: '兑换过于频繁，请稍后再试', code: 'RATE_LIMITED' } }, 429);
+          throw new HttpError('RATE_LIMITED', '兑换过于频繁，请稍后再试', undefined, {
+            'retry-after': String(outcome.retryAfterSec),
+          });
         case 'rejected': {
-          // 错误码 → HTTP 状态（api-contract §4.1）：已使用 → 409，其余 → 400
-          const status: 400 | 409 = outcome.reason === 'code_already_used' ? 409 : 400;
-          return c.json({ error: { message: outcome.reason, code: outcome.reason } }, status);
+          // 机器 reason → 注册表码 + 人类文案（此前直接把机器串当文案返回给用户）
+          throw new HttpError(REDEEM_REJECT_CODE[outcome.reason]);
         }
         case 'success':
           return c.json({ ok: true, amount: outcome.amount, balanceAfter: outcome.balanceAfter });
@@ -40,13 +53,16 @@ export function redeemRoutes(s: ClientServices): Hono<ClientEnv> {
     })
 
     // 我的兑换记录（已兑换的；不含明文码/哈希）
-    .get('/history', query(paginationQuerySchema), async (c) => {
+    .get('/history', query(paginationQuerySchema.extend({ ...sortQuerySchema.shape })), async (c) => {
       const session = c.get('session');
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const where = and(eq(redeemCodes.usedBy, session.userId), eq(redeemCodes.status, 1));
+      const input = c.req.valid('query');
+      // 兑换记录无文本列，不提供 q
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        conditions: [eq(redeemCodes.usedBy, session.userId), eq(redeemCodes.status, 1)],
+        sort: { by: { id: redeemCodes.id, usedAt: redeemCodes.usedAt }, fallback: 'usedAt', tiebreaker: redeemCodes.id },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: redeemCodes.id,
@@ -57,10 +73,10 @@ export function redeemRoutes(s: ClientServices): Hono<ClientEnv> {
           .from(redeemCodes)
           .innerJoin(redeemBatches, eq(redeemCodes.batchId, redeemBatches.id))
           .where(where)
-          .orderBy(desc(redeemCodes.usedAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(redeemCodes).where(where),
+        countAll(s.db, redeemCodes, where),
       );
       return c.json(result);
     });

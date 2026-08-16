@@ -11,6 +11,7 @@ export function UsersEnterpriseFilter({ value }: { value: string }) {
     const next = new URLSearchParams(sp.toString());
     if (e.target.value === "all") next.delete("enterprise");
     else next.set("enterprise", e.target.value);
+    next.delete("page");
     router.push(`?${next.toString()}`);
   }
 

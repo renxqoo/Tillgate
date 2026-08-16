@@ -40,18 +40,22 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
+function stubMailer() {
+  return { async sendLoginCode() {} } as unknown as import('@ai-gateway/identity').Mailer;
+}
+
 function makeApp() {
-  const services = makeServices(db, { redis });
+  const services = makeServices(db, { redis, mailer: stubMailer() });
   return makeClientPublicApp({ '/api/auth': clientAuthRoutesPublic(services, makeTestConfig()) });
 }
 
-async function createUser(subject: string, password: string): Promise<number> {
+async function createUser(subject: string, password: string): Promise<{ uid: number; email: string }> {
   const hash = await hashPassword(password);
   const [u] = await db.insert(users).values({
-    issuer: 'local', subject, identityProvider: 'local', displayName: subject,
+    issuer: 'local', subject, identityProvider: 'local', email: `${subject}@test.local`, displayName: subject,
     balance: '0', passwordHash: hash,
   }).returning();
-  return u!.id;
+  return { uid: u!.id, email: `${subject}@test.local` };
 }
 
 async function cleanup(uid: number, subject: string) {
@@ -66,11 +70,11 @@ async function cleanup(uid: number, subject: string) {
   await db.delete(users).where(eq(users.id, uid));
 }
 
-function login(app: ReturnType<typeof makeApp>, subject: string, password: string, ip?: string) {
+function login(app: ReturnType<typeof makeApp>, email: string, password: string, ip?: string) {
   return app.request('/api/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...(ip ? { 'x-forwarded-for': ip } : {}) },
-    body: JSON.stringify({ username: subject, password }),
+    body: JSON.stringify({ email, password }),
   });
 }
 
@@ -80,7 +84,7 @@ describe('client-api 登录限流：分布式爆破不再锁死账号（02 修�
   it('固定 username + 每次换 XFF → 不再触发硬锁（全部 401），正确密码始终可用', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'xff-bypass-' + Date.now();
-    const uid = await createUser(subject, 'RightPass1');
+    const { uid, email } = await createUser(subject, 'RightPass1');
     const app = makeApp();
     try {
       let saw429 = false;
@@ -88,7 +92,7 @@ describe('client-api 登录限流：分布式爆破不再锁死账号（02 修�
       // 失败 50 次，但每次换 XFF（模拟分布式爆破）：每个 (username, ip) 各只失败 1 次
       for (let i = 0; i < 50; i++) {
         const fakeIp = `10.99.${i >> 8}.${i & 0xff}`;
-        const res = await login(app, subject, 'WrongPass1', fakeIp);
+        const res = await login(app, email, 'WrongPass1', fakeIp);
         if (res.status === 429) saw429 = true;
         if (res.status !== 401) all401 = false;
       }
@@ -97,27 +101,27 @@ describe('client-api 登录限流：分布式爆破不再锁死账号（02 修�
       expect(all401).toBe(true);
 
       // 正确密码仍然可用（合法用户不被分布式爆破锁死）
-      const ok = await login(app, subject, 'RightPass1', '203.0.113.9');
+      const ok = await login(app, email, 'RightPass1', '203.0.113.9');
       expect(ok.status).toBe(200);
     } finally {
-      await cleanup(uid, subject);
+      await cleanup(uid, email);
     }
   });
 
   it('对照组：固定 IP + 连续失败 → 单源硬锁触发 429', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'xff-control-' + Date.now();
-    const uid = await createUser(subject, 'RightPass1');
+    const { uid, email } = await createUser(subject, 'RightPass1');
     const app = makeApp();
     try {
       let locked = false;
       for (let i = 0; i < 6; i++) {
-        const res = await login(app, subject, 'WrongPass1', '203.0.113.7');
+        const res = await login(app, email, 'WrongPass1', '203.0.113.7');
         if (res.status === 429) { locked = true; break; }
       }
       expect(locked).toBe(true);
     } finally {
-      await cleanup(uid, subject);
+      await cleanup(uid, email);
     }
   });
 });

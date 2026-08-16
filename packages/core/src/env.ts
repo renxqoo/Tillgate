@@ -16,6 +16,15 @@ const KNOWN_WEAK_SECRETS = new Set([
   'change-me-32-chars-minimum-secret',
 ]);
 
+/** 会话签名密钥长度：生产强制 32 字节（HS256 最佳实践），开发环境 16 可用 */
+function sessionSecretSchema(field: string) {
+  const minLen = process.env.NODE_ENV === 'production' ? 32 : 16;
+  return secretSchema(field, minLen).refine(
+    (v: string) => v.length >= minLen,
+    { message: `${field} 在生产环境至少 32 字符（当前 HS256 密钥强度要求）` },
+  );
+}
+
 function secretSchema(field: string, minLen: number) {
   return z
     .string()
@@ -66,9 +75,13 @@ export const PROD_GLOBAL_RPM_CAP = 5000;
 
 /** gateway（对外代理）环境变量 */
 export const gatewayEnvSchema = baseEnvSchema.extend({
+  /** 轮换双 key 窗：旧密钥（仅在轮换期间设置；v1 密文用它解密，收窗后必须移除） */
+  ENCRYPTION_KEY_OLD: z.string().min(32).max(256).optional(),
+  /** 可信反向代理层数：0=不信任 XFF（默认，直连安全）；nginx 单层部署设 1（右数第 1 跳为真实客户端） */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   PORT: z.coerce.number().int().min(1).default(8787),
   /** JWT 签发密钥（网关自签，HS256 起步） */
-  JWT_SECRET: secretSchema('JWT_SECRET', 16),
+  JWT_SECRET: sessionSecretSchema('JWT_SECRET'),
   /** 渠道上游 Key 的 AES-256-GCM 加密密钥 */
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /** 单请求允许授权的最大费用暴露（元）；超过时拒绝，绝不截断。 */
@@ -83,6 +96,12 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   BILLING_ADMISSION_CACHE_MS: z.coerce.number().int().min(100).default(1_000),
   /** 整个请求跨重试、渠道和 fallback 共享的绝对时间预算。 */
   GATEWAY_REQUEST_DEADLINE_MS: z.coerce.number().int().min(1_000).default(240_000),
+  /**
+   * 优雅停机宽限（SIGTERM → 强制退出的总窗口，应 ≤ k8s terminationGracePeriodSeconds）。
+   * 语义：停机即拒新请求；宽限期结束前 5s 以 ServerDrainAbort 中止在途请求
+   * （服务端责任全额释放），宽限期到强制退出。
+   */
+  GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(6_000).default(30_000),
   GATEWAY_MAX_CONNECTIONS: z.coerce.number().int().min(1).default(10_000),
   GATEWAY_HEADERS_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(10_000),
   GATEWAY_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(300_000),
@@ -99,6 +118,8 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
   GLOBAL_RPM: z.coerce.number().int().min(1).default(2000),
   /** 新用户默认限流（用户级） */
   DEFAULT_USER_RPM: z.coerce.number().int().min(1).default(60),
+  /** 免费模型每用户每日请求上限（0 元授权不计每日花费上限，需独立闸防滥用）；0=不限制 */
+  FREE_MODEL_DAILY_LIMIT: z.coerce.number().int().min(0).default(500),
   DEFAULT_USER_TPM: z.coerce.number().int().min(1).default(1_000_000),
   /** 来源级鉴权失败限流（07）：短窗口内同一来源鉴权失败达阈值即 429 */
   GATEWAY_AUTH_FAILURE_LIMIT: z.coerce.number().int().min(1).default(10),
@@ -137,6 +158,8 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
 export const workerEnvSchema = baseEnvSchema.extend({
   /** 计量队列并发数 */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).default(10),
+  /** 上游在途 lease（与网关同源：小额自动放行的最小滞留下界取一个租约周期） */
+  BILLING_LEASE_SECONDS: z.coerce.number().int().min(3).default(60),
   WORKER_INSTANCE_ID: z.string().min(1).optional(),
   WORKER_HEALTH_PORT: z.coerce.number().int().min(1).default(8792),
   WORKER_CLAIM_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(100),
@@ -151,33 +174,64 @@ export const workerEnvSchema = baseEnvSchema.extend({
   WORKER_LOOP_STALE_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
   /**
-   * uncertain 单小额自动放行阈值（元）：白名单失败码（证明上游未计费）无条件放行；
-   * 其余 uncertain 预扣 ≤ 此值自动放行（actor=system，全程审计）。'0' 关闭整个通道。
+   * uncertain 单小额自动放行阈值（元）：预扣 ≤ 此值自动放行（actor=system，全程审计）。
+   * '0' 关闭该通道。（按失败码白名单无条件放的旧通道已删除——单一真相=金额阈值。）
    */
   WORKER_AUTO_RELEASE_MAX_AMOUNT: z
     .string()
     .regex(/^\d+(\.\d+)?$/, 'WORKER_AUTO_RELEASE_MAX_AMOUNT 须为非负小数（元）')
     .default('0.1'),
+  /**
+   * uncertain 时效自动放行（R11-B，给预占加时间上界）。双参数【无默认值、不配即关】，
+   * 且必须同时配置：滞留超过 HOURS 且预扣 ≤ MAX_AMOUNT 的单由系统自动「确认不收费」；
+   * 超过金额上限的滞留单留给人工（大额漏收决策不下放给定时器）。
+   */
+  WORKER_UNCERTAIN_TIMEOUT_HOURS: z.coerce.number().int().min(1).optional(),
+  WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT: z
+    .string()
+    .regex(/^\d+(\.\d+)?$/, 'WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 须为非负小数（元）')
+    .optional(),
   /** trace_spans 分区保留天数（滚动删除） */
   TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+  /** request_logs 月分区保留窗口（滚动删除更早分区）；30 = data-model §3.13 承诺 */
+  REQUEST_LOG_RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(30),
   /** trace 分区维护间隔（预建未来分区 + 清理超期） */
   WORKER_TRACE_MAINTENANCE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
   ...otelOptions,
 });
 
+/** 发信 SMTP（登录邮箱验证码；admin 2FA 与 client 强制验证共用）。三要素齐全才启用 */
+const smtpEnvSchema = {
+  SMTP_HOST: z.string().max(255).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+  SMTP_USER: z.string().max(255).optional(),
+  /** 邮箱授权码（非登录密码；QQ/163 在设置-账户中生成） */
+  SMTP_PASS: z.string().max(255).optional(),
+  SMTP_FROM: z.string().max(255).optional(),
+};
+
 /** admin-api（管理端 REST）环境变量 */
 export const adminApiEnvSchema = baseEnvSchema.extend({
+  ...smtpEnvSchema,
+  /** 轮换双 key 窗：旧密钥（仅在轮换期间设置；v1 密文用它解密，收窗后必须移除） */
+  ENCRYPTION_KEY_OLD: z.string().min(32).max(256).optional(),
+  /** BFF 服务间令牌：配置后 Origin/Referer 双缺失请求必须携带 x-internal-token（CSRF fail-closed） */
+  INTERNAL_API_TOKEN: z.string().min(16).max(128).optional(),
+  /** 可信反向代理层数：0=不信任 XFF（默认，直连安全）；nginx 单层部署设 1（右数第 1 跳为真实客户端） */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   PORT: z.coerce.number().int().min(1).default(8790),
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /**
    * 管理员会话 JWT 密钥（独立于用户面 JWT_SECRET，物理隔离）。
    * 与 client-api 的 JWT_SECRET 必须不同值（隔离要求）。
    */
-  ADMIN_JWT_SECRET: secretSchema('ADMIN_JWT_SECRET', 16),
-  /** CSRF 受信浏览器来源（逗号分隔），用于状态变更接口的 Origin 校验 */
+  ADMIN_JWT_SECRET: sessionSecretSchema('ADMIN_JWT_SECRET'),
+  /** CSRF 受信浏览器来源（逗号分隔），用于状态变更接口的 Origin 校验。
+   *  默认含管理面板自身端口 3002（apps/admin dev/start 固定 -p 3002）——
+   *  原默认漏掉 3002，浏览器登录全部 CSRF_ORIGIN_DENIED。 */
   CSRF_TRUSTED_ORIGINS: z
     .string()
-    .default('http://localhost:3000,http://localhost:3001')
+    .default('http://localhost:3002,http://localhost:3000')
     .transform((value) =>
       value
         .split(',')
@@ -200,15 +254,29 @@ export const adminApiEnvSchema = baseEnvSchema.extend({
 
 /** client-api（用户面板 REST）环境变量 */
 export const clientApiEnvSchema = baseEnvSchema.extend({
+  ...smtpEnvSchema,
+  /** BFF 服务间令牌：配置后 Origin/Referer 双缺失请求必须携带 x-internal-token（CSRF fail-closed） */
+  INTERNAL_API_TOKEN: z.string().min(16).max(128).optional(),
+  /** 可信反向代理层数：0=不信任 XFF（默认，直连安全）；nginx 单层部署设 1（右数第 1 跳为真实客户端） */
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   PORT: z.coerce.number().int().min(1).default(8791),
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /**
    * 用户面会话 JWT 密钥（独立于管理员 ADMIN_JWT_SECRET，物理隔离）。
    * 用户登录（/api/auth/login）签发会话 JWT 必须有密钥。
    */
-  JWT_SECRET: secretSchema('JWT_SECRET', 16),
+  JWT_SECRET: sessionSecretSchema('JWT_SECRET'),
   /** 新用户赠送额度（元），默认 ¥1（requirements 4.1） */
-  GIFT_AMOUNT: z.coerce.number().min(0).default(1),
+  GIFT_AMOUNT: z.coerce.number().min(0).default(0),
+  /** ── OAuth 社交登录（可选；client 对未配置的 provider 隐藏入口）── */
+  OAUTH_GITHUB_CLIENT_ID: z.string().max(255).optional(),
+  OAUTH_GITHUB_CLIENT_SECRET: z.string().max(255).optional(),
+  OAUTH_GOOGLE_CLIENT_ID: z.string().max(255).optional(),
+  OAUTH_GOOGLE_CLIENT_SECRET: z.string().max(255).optional(),
+  /** OAuth 登录完成后重定向回的前端地址（默认本地面板） */
+  OAUTH_FRONTEND_URL: z.string().url().default('http://localhost:3001'),
+  /** 本服务对外可达基地址（拼 OAuth redirect_uri；默认本地 8791） */
+  OAUTH_API_BASE: z.string().url().default('http://localhost:8791'),
   /** CSRF 受信浏览器来源（逗号分隔），用于状态变更接口的 Origin 校验 */
   CSRF_TRUSTED_ORIGINS: z
     .string()
@@ -267,6 +335,17 @@ export function loadWorkerEnv(env = process.env) {
   }
   if (parsed.WORKER_CLAIM_LEASE_MS <= parsed.WORKER_POLL_INTERVAL_MS) {
     throw new Error('WORKER_CLAIM_LEASE_MS must be greater than WORKER_POLL_INTERVAL_MS');
+  }
+  // 时效放行双参数：要么都不配（通道关闭），要么同时配置且金额为正——缺一即拒
+  const th = parsed.WORKER_UNCERTAIN_TIMEOUT_HOURS;
+  const tm = parsed.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT;
+  if ((th === undefined) !== (tm === undefined)) {
+    throw new Error(
+      'WORKER_UNCERTAIN_TIMEOUT_HOURS 与 WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 必须同时配置（同时缺省 = 时效放行关闭）',
+    );
+  }
+  if (tm !== undefined && Number(tm) <= 0) {
+    throw new Error('WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT 必须为正数（元）');
   }
   return parsed;
 }

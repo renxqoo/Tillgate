@@ -43,7 +43,7 @@ async function setupModelWithChannel(): Promise<{
   const ext = `mt-test-${suffix}`;
   const [prov] = await db
     .insert(providers)
-    .values({ name: `mt-prov-${suffix}`, baseUrl: 'http://localhost:9999', protocol: 'openai_compatible', status: 0 })
+    .values({ name: `mt-prov-${suffix}`, baseUrl: 'http://localhost:9999', protocol: 'openai-compatible', status: 0 })
     .returning();
   const [ch] = await db
     .insert(channels)

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { rateCards, rateCardCoefficients } from '@ai-gateway/db/schema';
 import { HttpError, recordAudit } from '@ai-gateway/http';
 import type { AdminServices } from './index.js';
@@ -11,7 +11,7 @@ import type { AdminServices } from './index.js';
  * 创建卡与建 global 系数行在同一事务提交。
  */
 
-export const RATE_CARD_NOT_FOUND = new HttpError(404, 'RATE_CARD_NOT_FOUND', '费率卡不存在');
+export const RATE_CARD_NOT_FOUND = new HttpError('RATE_CARD_NOT_FOUND', '费率卡不存在');
 
 /** 系数保留 3 位小数的字符串（numeric(6,3) 列） */
 export function fmtCoeff(v: number): string {
@@ -80,11 +80,15 @@ export async function updateRateCard(
       .returning({ id: rateCards.id, name: rateCards.name });
     if (!updated) return null;
     if (patch.coefficient !== undefined) {
-      // 更新 global 系数行
+      // 更新 global 兜底系数行——必须限定 scope=global：
+      // schema 支持 model/group 级覆盖行（uq (rateCardId, scope, modelMappingId)），
+      // 无 scope 过滤会把模型级系数一并拍平（定价静默漂移）
       await tx
         .update(rateCardCoefficients)
         .set({ coefficient: fmtCoeff(patch.coefficient) })
-        .where(eq(rateCardCoefficients.rateCardId, id));
+        .where(
+          and(eq(rateCardCoefficients.rateCardId, id), eq(rateCardCoefficients.scope, 'global')),
+        );
     }
     return updated;
   });

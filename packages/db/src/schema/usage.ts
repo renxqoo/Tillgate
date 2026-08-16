@@ -80,6 +80,12 @@ export const usageLogs = pgTable(
     stream: boolean('stream').notNull().default(false),
     /** 流式提前中断；只有供应商仍返回可信 usage 时才允许精确结算。 */
     streamAborted: boolean('stream_aborted').notNull().default(false),
+    /**
+     * 估算结算标记：用户侧取消（client_disconnect/request_cancelled/aborted）且
+     * 无可信 usage 时按 bytesRelayed 估算的结算行。区分真实获取与估算，
+     * 报表/对账分桶的口径来源（receipt.estimatedFor 为权威归属）。
+     */
+    estimated: boolean('estimated').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -90,5 +96,14 @@ export const usageLogs = pgTable(
     index('usage_logs_subscription_idx').on(t.subscriptionId, t.createdAt),
     // Key 类型分流后 'both'（同一请求套餐+余额混扣）结构性不可达：DB 层强制只允许 plan/payg。
     check('usage_logs_billed_by_ck', sql`${t.billedBy} in ('plan','payg')`),
+    // 金额不变量下沉（FINDINGS-2 静态项）：四方金额非负；成功单 amount = plan + payg。
+    check(
+      'usage_logs_amounts_nonnegative_ck',
+      sql`${t.amount} >= 0 and ${t.planAmount} >= 0 and ${t.paygAmount} >= 0 and ${t.upstreamCost} >= 0`,
+    ),
+    check(
+      'usage_logs_amount_split_ck',
+      sql`(${t.status} <> 0) or (${t.amount} = ${t.planAmount} + ${t.paygAmount})`,
+    ),
   ],
 );

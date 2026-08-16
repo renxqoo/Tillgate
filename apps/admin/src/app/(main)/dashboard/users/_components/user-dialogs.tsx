@@ -6,7 +6,6 @@ import { useState, useTransition } from 'react';
 import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon } from 'lucide-react';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
@@ -27,7 +26,8 @@ import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 import { formatMoney } from '@ai-gateway/api-client/formatters';
 
-import type { UserRow } from '../types';
+import type { AdminUserRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 /**
  * 用户资金/密码操作弹窗（列表页与详情页共用）。
@@ -58,10 +58,11 @@ export function AdjustDialog({
   user,
   trigger,
 }: {
-  user: UserRow;
+  user: AdminUserRow;
   /** 自定义触发按钮（列表行用 icon 幽灵按钮，详情页用默认文字按钮） */
   trigger?: React.ReactNode;
 }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<BalanceFormValues>({
@@ -76,11 +77,7 @@ export function AdjustDialog({
         amount: Number(values.amount),
         remark: values.remark,
       });
-      if (res.error) {
-        toast.error('调账失败', { description: res.error });
-        return;
-      }
-      toast.success('已调账');
+      if (!notify(res, '调账失败', '已调账')) return;
       form.reset();
       setOpen(false);
     });
@@ -130,7 +127,8 @@ export function AdjustDialog({
   );
 }
 
-export function GiftDialog({ user, trigger }: { user: UserRow; trigger?: React.ReactNode }) {
+export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: React.ReactNode }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<BalanceFormValues>({
@@ -145,11 +143,7 @@ export function GiftDialog({ user, trigger }: { user: UserRow; trigger?: React.R
         amount: Number(values.amount),
         remark: values.remark,
       });
-      if (res.error) {
-        toast.error('赠送失败', { description: res.error });
-        return;
-      }
-      toast.success('已赠送');
+      if (!notify(res, '赠送失败', '已赠送')) return;
       form.reset();
       setOpen(false);
     });
@@ -196,7 +190,8 @@ export function GiftDialog({ user, trigger }: { user: UserRow; trigger?: React.R
   );
 }
 
-export function PasswordDialog({ user, trigger }: { user: UserRow; trigger?: React.ReactNode }) {
+export function PasswordDialog({ user, trigger }: { user: AdminUserRow; trigger?: React.ReactNode }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -209,11 +204,7 @@ export function PasswordDialog({ user, trigger }: { user: UserRow; trigger?: Rea
     startTransition(async () => {
       const { setPasswordAction } = await import('../actions');
       const res = await setPasswordAction(user.id, values);
-      if (res.error) {
-        toast.error('设置失败', { description: res.error });
-        return;
-      }
-      toast.success('已设置密码');
+      if (!notify(res, '设置失败', '已设置密码')) return;
       form.reset();
       setShow(false);
       setOpen(false);

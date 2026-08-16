@@ -3,9 +3,8 @@
 
 /* 让 Tailwind v4 看到 packages/ui 里的所有原语 className，
    否则会漏掉 bg-card / text-muted-foreground 之类的工具类 */
-@source "../../../../packages/ui/src/components/ui";
+@source "../../../../packages/ui/src/components";
 @source "../../../../packages/ui/src/hooks";
-@source "../../../../packages/ui/src/components/simple-icon.tsx";
 
 @custom-variant dark (&:is(.dark *));
 

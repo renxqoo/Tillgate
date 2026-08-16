@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
-import { channels, channelRecharges } from '@ai-gateway/db/schema';
+import { channelRecharges, channels, fundOperations } from '@ai-gateway/db/schema';
 import { HttpError } from '@ai-gateway/http';
 import { toDecimal } from '@ai-gateway/money';
 import type { AdminServices } from './index.js';
@@ -10,6 +11,9 @@ import type { AdminServices } from './index.js';
  * 入货 recharge：amount 恒正，可选支付订单号 + 凭证截图（base64 data URL → 存 storage）。
  * 调账 adjust：amount 可正可负（修正错误），不可把 upstream_budget 调成负。
  * 两者都在事务内：原子改 channels.upstream_budget + 写 channel_recharges（含 balance_after 快照）。
+ *
+ * P2-4：与用户侧资金操作同一套 fund_operations 幂等收据——同 operationId 重放
+ * 返回首次结果（upstream_budget 只动一次）；同 key 不同请求 → 409。
  */
 
 /** 解析 base64 data URL → { data, mimeType }；非法返回 null */
@@ -21,6 +25,42 @@ export function parseVoucherDataUrl(dataUrl: string): { data: Buffer; mimeType: 
   } catch {
     return null;
   }
+}
+
+interface ChannelFundResult {
+  rechargeId: number;
+  balanceAfter: string;
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+/**
+ * fund_operations 幂等收据（事务内首个语句）：
+ *   - 插入成功 = 首次提交，继续执行资金变更；
+ *   - 冲突 = 同 key 重放：kind + fingerprint 一致 → 返回首次结果（replayed），
+ *     否则 409 IDEMPOTENCY_CONFLICT（网络重试携带不同 body 不得覆盖首次入账）。
+ * 凭证截图内容不进 fingerprint（base64 最大 20MB）；以 hasVoucher 布尔参与指纹。
+ */
+async function claimFundOperation(
+  tx: Parameters<Parameters<AdminServices['db']['transaction']>[0]>[0],
+  input: { operationId: string; kind: 'channel.recharge' | 'channel.adjust'; fingerprint: string },
+): Promise<ChannelFundResult | null> {
+  const inserted = await tx
+    .insert(fundOperations)
+    .values({ operationId: input.operationId, kind: input.kind, fingerprint: input.fingerprint })
+    .onConflictDoNothing({ target: fundOperations.operationId })
+    .returning({ operationId: fundOperations.operationId });
+  if (inserted.length > 0) return null;
+  const existing = await tx.query.fundOperations.findFirst({
+    where: eq(fundOperations.operationId, input.operationId),
+  });
+  if (!existing || existing.kind !== input.kind || existing.fingerprint !== input.fingerprint) {
+    throw new HttpError('IDEMPOTENCY_CONFLICT', '幂等键已被不同请求使用');
+  }
+  if (!existing.result) throw new HttpError('IDEMPOTENCY_CONFLICT', '幂等操作尚未完成，请稍后重试');
+  return existing.result as ChannelFundResult;
 }
 
 export interface RechargeInput {
@@ -46,19 +86,34 @@ export async function rechargeChannel(
   input: RechargeInput,
   adminId: number,
   voucherMaxBytes: number,
-): Promise<{ rechargeId: number; balanceAfter: string }> {
+  operationId: string,
+): Promise<ChannelFundResult & { replayed: boolean }> {
   const amountStr = String(input.amount);
   let voucherKey: string | null = null;
   if (input.voucherDataUrl) {
     const parsed = parseVoucherDataUrl(input.voucherDataUrl);
-    if (!parsed) throw new HttpError(400, 'INVALID_VOUCHER', '凭证截图格式无效（仅支持 png/jpeg/webp/gif base64）');
+    if (!parsed) throw new HttpError('INVALID_VOUCHER', '凭证截图格式无效（仅支持 png/jpeg/webp/gif base64）');
     if (parsed.data.length > voucherMaxBytes) {
-      throw new HttpError(400, 'VOUCHER_TOO_LARGE', `凭证截图超过 ${Math.floor(voucherMaxBytes / 1024 / 1024)}MB 上限`);
+      throw new HttpError('VOUCHER_TOO_LARGE', `凭证截图超过 ${Math.floor(voucherMaxBytes / 1024 / 1024)}MB 上限`);
     }
     voucherKey = await s.voucherStorage.save(parsed.data, parsed.mimeType);
   }
 
   return s.db.transaction(async (tx) => {
+    const fingerprint = sha256(
+      JSON.stringify({
+        kind: 'channel.recharge',
+        channelId: input.channelId,
+        amount: amountStr,
+        orderNo: input.orderNo?.trim() || null,
+        remark: input.remark?.trim() || null,
+        adminId,
+        hasVoucher: !!input.voucherDataUrl,
+      }),
+    );
+    const replayed = await claimFundOperation(tx, { operationId, kind: 'channel.recharge', fingerprint });
+    if (replayed) return { ...replayed, replayed: true };
+
     const [updated] = await tx
       .update(channels)
       .set({
@@ -69,7 +124,7 @@ export async function rechargeChannel(
       })
       .where(eq(channels.id, input.channelId))
       .returning({ upstreamBudget: channels.upstreamBudget });
-    if (!updated) throw new HttpError(404, 'CHANNEL_NOT_FOUND', '渠道不存在');
+    if (!updated) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
     const [recharge] = await tx
       .insert(channelRecharges)
       .values({
@@ -83,7 +138,15 @@ export async function rechargeChannel(
         adminId,
       })
       .returning({ id: channelRecharges.id });
-    return { rechargeId: recharge!.id, balanceAfter: updated.upstreamBudget };
+    const stored: ChannelFundResult = {
+      rechargeId: recharge!.id,
+      balanceAfter: updated.upstreamBudget,
+    };
+    await tx
+      .update(fundOperations)
+      .set({ result: stored })
+      .where(eq(fundOperations.operationId, operationId));
+    return { ...stored, replayed: false };
   });
 }
 
@@ -91,9 +154,22 @@ export async function adjustChannel(
   s: AdminServices,
   input: AdjustInput,
   adminId: number,
-): Promise<{ rechargeId: number; balanceAfter: string }> {
+  operationId: string,
+): Promise<ChannelFundResult & { replayed: boolean }> {
   const amountStr = String(input.amount);
   return s.db.transaction(async (tx) => {
+    const fingerprint = sha256(
+      JSON.stringify({
+        kind: 'channel.adjust',
+        channelId: input.channelId,
+        amount: amountStr,
+        remark: input.remark?.trim() || null,
+        adminId,
+      }),
+    );
+    const replayed = await claimFundOperation(tx, { operationId, kind: 'channel.adjust', fingerprint });
+    if (replayed) return { ...replayed, replayed: true };
+
     const [updated] = await tx
       .update(channels)
       .set({
@@ -111,8 +187,8 @@ export async function adjustChannel(
         where: eq(channels.id, input.channelId),
         columns: { id: true },
       });
-      if (!exists) throw new HttpError(404, 'CHANNEL_NOT_FOUND', '渠道不存在');
-      throw new HttpError(400, 'INSUFFICIENT_BUDGET', '调账金额超出当前进货额度，无法扣减');
+      if (!exists) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
+      throw new HttpError('INSUFFICIENT_BUDGET', '调账金额超出当前进货额度，无法扣减');
     }
     const [recharge] = await tx
       .insert(channelRecharges)
@@ -125,7 +201,15 @@ export async function adjustChannel(
         adminId,
       })
       .returning({ id: channelRecharges.id });
-    return { rechargeId: recharge!.id, balanceAfter: updated.upstreamBudget };
+    const stored: ChannelFundResult = {
+      rechargeId: recharge!.id,
+      balanceAfter: updated.upstreamBudget,
+    };
+    await tx
+      .update(fundOperations)
+      .set({ result: stored })
+      .where(eq(fundOperations.operationId, operationId));
+    return { ...stored, replayed: false };
   });
 }
 

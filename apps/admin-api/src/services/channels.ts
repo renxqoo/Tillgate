@@ -1,8 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { encrypt } from '@ai-gateway/core';
 import { providers, channels, modelMappings, modelChannels } from '@ai-gateway/db/schema';
-import { bumpRouteCache, recordAudit } from '@ai-gateway/http';
+import { bumpRouteCache, encryptCurrent, HttpError, recordAudit } from '@ai-gateway/http';
 import type { AdminServices } from './index.js';
 
 /**
@@ -20,7 +19,7 @@ import type { AdminServices } from './index.js';
 export const importItemSchema = z.object({
   provider: z.string().min(1),
   name: z.string().min(1).max(64),
-  apiKey: z.string().min(1),
+  apiKey: z.string().min(1).max(512),
   models: z.array(z.string()).optional(),
   weight: z.number().int().min(1).optional(),
   priority: z.number().int().optional(),
@@ -81,7 +80,7 @@ export async function importChannels(
       }
 
       // 3. 加密 key + 建渠道
-      const apiKeyEnc = encrypt(item.apiKey, s.encryptionKey);
+      const apiKeyEnc = encryptCurrent(item.apiKey, s.encryptionKey, s.encryptionKeyOld);
       const [created] = await s.db
         .insert(channels)
         .values({
@@ -116,7 +115,13 @@ export async function importChannels(
       success++;
       s.logger.info({ channelId: created!.id, name: item.name }, 'channel imported');
     } catch (err) {
-      details.push({ index: i, ok: false, name: item.name, error: (err as Error).message });
+      details.push({
+        index: i,
+        ok: false,
+        name: item.name,
+        // 不回传底层异常原文（可能含 PG 约束名/驱动细节）——只给分类语义
+        error: err instanceof HttpError ? err.message : '导入失败（数据冲突或校验不过）',
+      });
     }
   }
 

@@ -1,4 +1,5 @@
 import type { Db } from '@ai-gateway/db';
+import type { Mailer } from '@ai-gateway/identity';
 import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
 import type { TraceStore } from '@ai-gateway/tracing';
 import type { Logger } from '@ai-gateway/core';
@@ -19,7 +20,10 @@ export interface AdminServices {
   /** 链路追踪存储（trace-receiver 写入，管理台查询） */
   tracingStore: TraceStore;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
+  /** 邮箱验证码发信（未配置 SMTP = null，2FA fail-closed） */
+  mailer: Mailer | null;
   encryptionKey: string;
+  encryptionKeyOld?: string;
   /** 凭证截图存储（本地磁盘/未来 OSS） */
   voucherStorage: VoucherStorage;
   /**

@@ -10,12 +10,14 @@ import type {
  * ai 包状态持久化的 Redis 实现（gateway 注入 ai 包的 BreakerStorage / DeadCredentialStorage）。
  *
  * 核心是 compareAndSet 的原子性——用 Lua 脚本保证 GET+条件SET 不可拆分（防多实例竞态）：
- *   - 一次 EVALSHA 执行：读 key → 解析 version → 匹配 expectedVersion → SET next PX ttl → 返回 1/0
+ *   - 脚本经 RedisScriptRunner 执行（evalsha + NOSCRIPT 自愈，BUG-C）：
+ *     读 key → 解析 version → 匹配 expectedVersion → SET next PX ttl → 返回 1/0
  *   - Lua 在 Redis 单线程内原子执行，多实例并发下只有一个赢家成功
  *
  * 两个接口（Breaker/DeadCredential）结构同构（getState/compareAndSet/setState + version 字段），
  * 共用一个泛型实现，通过工厂函数分别产出两个 typed adapter。
  */
+import { RedisScriptRunner } from './redis-script-runner.js';
 
 /** 带 version 字段的状态类型（CAS 依据） */
 interface Versioned {
@@ -53,15 +55,24 @@ return 1
  * T 必须带 version 字段（BreakerState / DeadCredentialState 均满足）。
  */
 export class RedisKvStorage<T extends Versioned> {
-  private sha: string | null = null;
+  private readonly scripts: RedisScriptRunner;
 
   constructor(
     private readonly redis: Redis,
     private readonly prefix: string,
-  ) {}
+  ) {
+    this.scripts = new RedisScriptRunner(redis);
+  }
 
   async getState(key: string): Promise<T | null> {
-    const raw = await this.redis.get(this.prefix + key);
+    let raw: string | null;
+    try {
+      raw = await this.redis.get(this.prefix + key);
+    } catch {
+      // 存储故障 = 状态未知（null）：熔断/死凭据按「无已知状态」放行，
+      // 计数降级内存——Redis 故障不得把全渠道判死（fail-open，与限流同语义）
+      return null;
+    }
     if (!raw) return null;
     try {
       return JSON.parse(raw) as T;
@@ -76,28 +87,25 @@ export class RedisKvStorage<T extends Versioned> {
     next: T,
     ttlMs: number,
   ): Promise<boolean> {
-    const sha = await this.ensureSha();
-    const res = (await this.redis.evalsha(
-      sha,
-      1,
-      this.prefix + key,
-      expectedVersion,
-      JSON.stringify(next),
-      ttlMs,
-    )) as number;
+    const res = (await this.scripts
+      .run(
+        CAS_SCRIPT,
+        1,
+        this.prefix + key,
+        expectedVersion,
+        JSON.stringify(next),
+        ttlMs,
+      )
+      .catch(() => 0)) as number;
     return res === 1;
   }
 
   async setState(key: string, state: T, ttlMs: number): Promise<void> {
-    await this.redis.set(this.prefix + key, JSON.stringify(state), 'PX', ttlMs);
-  }
-
-  /** 预加载 Lua 脚本（首次调用 lazy load，后续复用 sha） */
-  private async ensureSha(): Promise<string> {
-    if (this.sha) return this.sha;
-    const sha = (await this.redis.script('LOAD', CAS_SCRIPT)) as unknown as string;
-    this.sha = sha;
-    return sha;
+    await this.redis
+      .set(this.prefix + key, JSON.stringify(state), 'PX', ttlMs)
+      .catch(() => {
+        /* best-effort：状态写失败只影响本实例降级期的精度 */
+      });
   }
 }
 

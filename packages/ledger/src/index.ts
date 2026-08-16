@@ -1,5 +1,7 @@
 export * from './types.js';
+export * from './daily-window.js';
 export * from './ledger.js';
+export * from './error-catalog.js';
 export * from './billing-flow.js';
 export * from './billing-processor.js';
 export * from './billing-operations.js';

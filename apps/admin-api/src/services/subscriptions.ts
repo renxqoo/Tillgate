@@ -1,38 +1,13 @@
-import { LedgerError } from '@ai-gateway/ledger';
-import { HttpError } from '@ai-gateway/http';
+import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
+import { HttpError, type KnownErrorCode } from '@ai-gateway/http';
 
 /**
- * 套餐/订阅 ledger 业务错误 → HTTP 错误映射（购买/续费/取消共用）。
- * 非 LedgerError 原样抛出，交给 errorHandler 归一到 500。
+ * 套餐/订阅 ledger 业务错误 → HTTP（映射表单一真相：packages/ledger error-catalog）。
  */
 export function mapSubscriptionError(error: unknown): HttpError {
   if (error instanceof LedgerError) {
-    switch (error.code) {
-      case 'already_subscribed':
-        return new HttpError(409, 'ALREADY_SUBSCRIBED', '已有有效订阅，请先取消或续费');
-      case 'plan_not_found':
-        return new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
-      case 'plan_disabled':
-        return new HttpError(400, 'PLAN_DISABLED', '套餐已停用，无法购买');
-      case 'no_subscription':
-        return new HttpError(404, 'SUBSCRIPTION_NOT_FOUND', '订阅不存在或已失效');
-      case 'downgrade_not_allowed':
-        return new HttpError(409, 'DOWNGRADE_NOT_ALLOWED', '只能升级或加席位，不支持降级/缩容');
-      case 'invalid_quantity':
-        return new HttpError(400, 'INVALID_QUANTITY', '席位数量必须为 >=1 的整数');
-      case 'not_a_pack':
-        return new HttpError(400, 'NOT_A_PACK', '目标不是该类型的商品');
-      case 'seats_not_allowed':
-        return new HttpError(400, 'SEATS_NOT_ALLOWED', '该套餐不支持席位（个人套餐固定 1 席）');
-      case 'enterprise_required':
-        return new HttpError(403, 'ENTERPRISE_REQUIRED', '团队套餐仅企业用户可购买');
-      case 'insufficient_balance':
-        return new HttpError(402, 'INSUFFICIENT_BALANCE', '余额不足，无法购买套餐');
-      case 'user_not_found':
-        return new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
-      case 'idempotency_conflict':
-        return new HttpError(409, 'IDEMPOTENCY_CONFLICT', '幂等键已被不同请求使用');
-    }
+    const m = LEDGER_HTTP[error.code];
+    return new HttpError(m.code as KnownErrorCode, error.message || m.message);
   }
   throw error;
 }

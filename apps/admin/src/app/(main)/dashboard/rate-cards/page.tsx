@@ -1,49 +1,46 @@
 import { BanknoteIcon } from "lucide-react";
 
-import {
-  ApiError,
-  adminFetch,
-  type AdminRateCardRow,
-  type ListResult,
-} from "@ai-gateway/api-client";
-import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
+import { fetchAdminList } from "@ai-gateway/api-client/list";
+import { ListPage } from "@ai-gateway/ui/components/list-page";
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
 import { CreateRateCardDialog, RateCardsTable } from "./_components/rate-cards-content";
-import type { RateCardRow } from "./types";
+import type { AdminRateCardRow } from "@ai-gateway/api-client/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function RateCardsPage() {
-  let cards: RateCardRow[] = [];
-  let error: string | null = null;
-  try {
-    const data = await adminFetch<ListResult<AdminRateCardRow>>("/api/admin/rate-cards");
-    cards = data.list ?? [];
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
-  }
+const PAGE_SIZE = 20;
+
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function RateCardsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const { rows, total, error } = await fetchAdminList<AdminRateCardRow>("/api/admin/rate-cards", {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    order,
+    extra: { q },
+  });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <BanknoteIcon className="size-5 text-muted-foreground" />
-            费率卡
-          </h1>
-          <p className="text-sm text-muted-foreground">基于官方价格 ×系数</p>
-        </div>
-        <CreateRateCardDialog />
-      </div>
-      <Card>
-        <CardContent className="px-0">
-          {error ? (
-            <p className="p-8 text-center text-sm text-destructive">{error}</p>
-          ) : (
-            <RateCardsTable cards={cards} />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <ListPage
+      title="费率卡"
+      icon={<BanknoteIcon className="size-5 text-muted-foreground" />}
+      description="基于官方价格 ×系数"
+      total={total}
+      searchPlaceholder="搜索名称 / 描述"
+      q={q}
+      searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
+      actions={<CreateRateCardDialog />}
+      error={error}
+      page={page}
+      pageSize={PAGE_SIZE}
+    >
+      <RateCardsTable cards={rows} />
+    </ListPage>
   );
 }

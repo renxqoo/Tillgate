@@ -2,25 +2,24 @@
 
 import { useTransition } from "react";
 import { BriefcaseIcon, Loader2Icon, UserIcon } from "lucide-react";
-import { toast } from "sonner";
-
 import { Button } from "@ai-gateway/ui/components/ui/button";
 
 import { AdjustDialog, GiftDialog, PasswordDialog } from "../../_components/user-dialogs";
-import type { UserRow } from "../../types";
+import type { AdminUserRow } from "@ai-gateway/api-client/types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 /**
  * 用户详情页操作按钮组（弹窗实现在共享组件 user-dialogs）。
  */
-export function UserActions({ user }: { readonly user: UserRow }) {
+export function UserActions({ user }: { readonly user: AdminUserRow }) {
+  const notify = useActionResult();
   const [pending, startTransition] = useTransition();
 
   function toggleEnterprise() {
     startTransition(async () => {
       const { setUserEnterpriseAction } = await import("../../actions");
       const res = await setUserEnterpriseAction(user.id, !user.isEnterprise);
-      if (res.error) toast.error("操作失败", { description: res.error });
-      else toast.success(user.isEnterprise ? "已取消企业" : "已设为企业");
+      notify(res, "操作失败", user.isEnterprise ? "已取消企业" : "已设为企业");
     });
   }
 

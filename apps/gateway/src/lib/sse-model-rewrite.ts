@@ -8,6 +8,7 @@
 export function rewriteSseModel(
   stream: ReadableStream<Uint8Array>,
   externalModel: string,
+  sanitize?: (frame: Record<string, unknown>) => Record<string, unknown>,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -18,9 +19,15 @@ export function rewriteSseModel(
     const payload = line.slice(5).trimStart();
     if (!payload.startsWith('{')) return line;
     try {
-      const obj = JSON.parse(payload) as { model?: unknown };
+      let obj = JSON.parse(payload) as { model?: unknown; error?: unknown; message?: unknown };
+      const isErrorFrame = obj.error !== undefined || obj.message !== undefined;
+      if (typeof obj.model === 'string') obj.model = externalModel;
+      // 错误帧 message 脱敏：上游真实模型名/供应商/URL 不得经错误面出站
+      if (isErrorFrame && sanitize) {
+        obj = sanitize(obj) as { model?: unknown };
+        return `data: ${JSON.stringify(obj)}`;
+      }
       if (typeof obj.model !== 'string') return line;
-      obj.model = externalModel;
       return `data: ${JSON.stringify(obj)}`;
     } catch {
       return line;

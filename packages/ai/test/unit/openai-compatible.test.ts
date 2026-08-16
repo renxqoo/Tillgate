@@ -160,8 +160,66 @@ describe('OpenAICompatibleAdapter.mapError', () => {
   });
 });
 
-describe('OpenAICompatibleAdapter.probePaths', () => {
-  it('优先 /v1/models（GET 无副作用）', () => {
-    expect(adapter.probePaths()).toEqual(['/v1/models']);
+describe('OpenAICompatibleAdapter.planRequest', () => {
+  it('chat 端点 → /v1/chat/completions,Bearer + content-type + idempotency-key', () => {
+    const plan = adapter.planRequest(
+      { baseUrl: 'http://u', apiKey: 'sk-1', protocol: 'openai-compatible' },
+      { endpoint: 'chat', model: 'm', requestId: 'r-1' },
+    );
+    expect(plan.path).toBe('/v1/chat/completions');
+    expect(plan.headers).toEqual({
+      authorization: 'Bearer sk-1',
+      'content-type': 'application/json',
+      'idempotency-key': 'r-1',
+    });
+  });
+
+  it('embeddings 端点 → /v1/embeddings', () => {
+    const plan = adapter.planRequest(
+      { baseUrl: 'http://u', apiKey: 'sk-1', protocol: 'openai-compatible' },
+      { endpoint: 'embeddings', model: 'm', requestId: 'r-1' },
+    );
+    expect(plan.path).toBe('/v1/embeddings');
+  });
+});
+
+describe('OpenAICompatibleAdapter.finalizeRequestBody', () => {
+  it('model 重写为真实模型名', () => {
+    const out = adapter.finalizeRequestBody(
+      { model: 'external-name', messages: [] },
+      { endpoint: 'chat', model: 'real-name', stream: false },
+    );
+    expect(out.model).toBe('real-name');
+  });
+
+  it('非流式不注入 stream_options', () => {
+    const out = adapter.finalizeRequestBody(
+      { model: 'm', messages: [] },
+      { endpoint: 'chat', model: 'm', stream: false },
+    );
+    expect('stream_options' in out).toBe(false);
+  });
+
+  it('流式强制注入 include_usage + continuous_usage_stats,保留用户键并覆盖 include_usage:false', () => {
+    const out = adapter.finalizeRequestBody(
+      { model: 'm', stream: true, stream_options: { custom_flag: true, include_usage: false } },
+      { endpoint: 'chat', model: 'm', stream: true },
+    );
+    expect(out.stream_options).toEqual({
+      custom_flag: true,
+      include_usage: true,
+      continuous_usage_stats: true,
+    });
+  });
+});
+
+describe('OpenAICompatibleAdapter.probeRequests', () => {
+  it('优先 /v1/models（GET 无副作用，Bearer 认证）', () => {
+    const probes = adapter.probeRequests({
+      baseUrl: 'http://u',
+      apiKey: 'sk-1',
+      protocol: 'openai-compatible',
+    });
+    expect(probes).toEqual([{ path: '/v1/models', headers: { authorization: 'Bearer sk-1' } }]);
   });
 });

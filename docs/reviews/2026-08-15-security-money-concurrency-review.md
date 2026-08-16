@@ -9,6 +9,15 @@
 > 孤儿 org / T4 巨型 client_id 落 Redis）+ 静态实锤 8 项（T2 幂等指纹未绑操作者、T5 API
 > 无 bodyLimit、T6×6 批量加固），同日全部修复并全量回归通过。明细见
 > `scripts/security-audit/FINDINGS-3.md`（账号 `ACCOUNTS-3.md`、验收脚本 `22-*.mts`）。
+>
+> **状态更新（第四~八轮，同日）**：④ 逐接口审计（74 接口矩阵脚本 23-25 + 三路深审），
+> 修 W1/W2 + 四族结构缺陷（PG 错误翻译/zod 硬化/过期订阅死锁 C4/并发结构 A8）+ G1-G4 →
+> FINDINGS-4。⑤ 挂账清偿六批次（资金 DB 约束迁移 0038、上游错误脱敏、死代码删净、
+> 登录审计、HS256 生产 32 字节）→ FINDINGS-5。⑥ 架构清偿（XFF 信任模型、CSRF/BFF
+> 令牌、免费模型日限额、加密轮换双 key 窗、request_logs 月分区 0040）→ FINDINGS-6。
+> ⑦ 收尾（脚本 20/21 复跑、pnpm audit 清零、login/logout CSRF 收口、前端入口、面板
+> 安全头、部署清单）→ FINDINGS-7。⑧ 管理员邮箱验证码二次登录（迁移 0041）→
+> FINDINGS-8。全量回归自第四轮起每轮 14/14 包四关全绿。
 
 > 分支 `feat/gateway-production-hardening`（工作区含未提交改动，审查即针对当前工作区状态）。
 > 方法：5 路并行静态审查（认证、金额、并发、薅羊毛、架构）→ 全部候选缺陷逐个人工验证

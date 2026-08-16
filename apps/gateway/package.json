@@ -17,6 +17,7 @@
     "@ai-gateway/ai": "workspace:*",
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
     "@ai-gateway/money": "workspace:*",
     "@hono/node-server": "^1.19.0",

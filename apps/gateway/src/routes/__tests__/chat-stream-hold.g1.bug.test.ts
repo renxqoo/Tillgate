@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { billingRequests } from '@ai-gateway/db/schema';
+import { billingRequests, usageLogs } from '@ai-gateway/db/schema';
 import type { AiEvent, ChatStreamResult } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,
@@ -160,6 +160,75 @@ describe('G1 — 流式 success 无 usage + bytesRelayed=0 → uncertain', () =>
         columns: { status: true, receipt: true },
       });
       expect(requests).toEqual([{ status: 'uncertain', receipt: null }]);
+    } finally {
+      await cleanupTestData(db, redis, userId, keyHash, ids);
+    }
+  });
+
+  it('客户端取消但流已带 usage（逐帧累计）→ 按最新 usage 正常结算，不进 uncertain', async () => {
+    if (!connected) return it.skip('no DB');
+    // 契约：usage 是流的随行状态。供应商逐帧发累计 usage（continuous_usage_stats）
+    // 时，客户端取消的瞬间已有可信 usage → 走正常结算（receipt 带 streamAborted），
+    // 不掉进 uncertain 复核队列。
+    const userId = await createTestUser(db, '1000', 'cancelbill');
+    const { token, keyHash } = await createTestApiKey(db, userId, 'cancelbill');
+    const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!);
+    try {
+      const ai = makeMockAi({
+        chatStream: vi.fn(async (): Promise<ChatStreamResult> => {
+          const stream = new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"部分"}}]}\n\n'));
+              c.close();
+            },
+          });
+          return {
+            stream,
+            onEvent: (cb: (e: AiEvent) => void) => {
+              cb({
+                type: 'success',
+                requestId: 'cancelbill-test',
+                channelKey: 'cancelbill-ch',
+                usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 7, estimated: false, raw: {} },
+                durationMs: 80,
+                bytesRelayed: 50,
+                terminated: 'client_disconnect',
+              });
+            },
+          };
+        }),
+      });
+      const dispatcher = new BillingDispatcher(redis);
+      const wake = vi.spyOn(dispatcher, 'wake');
+      const app = buildTestApp(db, redis, ai, undefined, undefined, dispatcher);
+      const res = await app.request('/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: ids.externalModel,
+          messages: [{ role: 'user', content: 'hi' }],
+          stream: true,
+          max_tokens: 100,
+        }),
+      });
+      expect(res.status).toBe(200);
+      await res.text();
+      expect(wake).toHaveBeenCalled(); // 有可信 usage → 唤醒结算
+      await vi.waitFor(async () => {
+        const rows = await db.query.billingRequests.findMany({
+          where: eq(billingRequests.userId, userId),
+        });
+        expect(rows[0]?.status).toBe('settled');
+      });
+      const bill = await db.query.billingRequests.findFirst({
+        where: eq(billingRequests.userId, userId),
+      });
+      expect(bill?.failureCode).toBeNull();
+      const usage = await db.query.usageLogs.findMany({
+        where: eq(usageLogs.userId, userId),
+      });
+      expect(usage.length).toBe(1);
+      expect(usage[0]?.outputTokens).toBe(7); // 最新累计 usage
     } finally {
       await cleanupTestData(db, redis, userId, keyHash, ids);
     }

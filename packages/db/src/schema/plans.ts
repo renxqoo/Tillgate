@@ -78,12 +78,12 @@ export const userSubscriptions = pgTable(
     index('user_subscriptions_user_idx').on(t.userId),
     index('user_subscriptions_plan_idx').on(t.planId),
     index('user_subscriptions_org_idx').on(t.orgId),
-    // 「单有效订阅」硬不变量，按个人/组织分开：
-    //   个人：每用户至多一条 active（org_id IS NULL）。
-    //   组织：每组织至多一条 active（org_id 非空）。
-    uniqueIndex('user_subscriptions_one_personal_uq')
+    // 「单有效订阅」硬不变量，两个维度：
+    //   用户：每用户至多一条 active（个人或组织皆然，覆盖 ensureOrg 并发建多 org 的绕过）。
+    //   组织：每组织至多一条 active（防跨用户在同一组织重复开订阅）。
+    uniqueIndex('user_subscriptions_one_active_uq')
       .on(t.userId)
-      .where(sql`${t.status} = 0 and ${t.orgId} is null`),
+      .where(sql`${t.status} = 0`),
     uniqueIndex('user_subscriptions_one_org_uq')
       .on(t.orgId)
       .where(sql`${t.status} = 0 and ${t.orgId} is not null`),

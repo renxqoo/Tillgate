@@ -58,12 +58,22 @@ export interface HttpOpts {
   cookie?: string;
   headers?: Record<string, string>;
 }
+function internalTokenHeader(): Record<string, string> {
+  return process.env.INTERNAL_API_TOKEN
+    ? { 'x-internal-token': process.env.INTERNAL_API_TOKEN }
+    : {};
+}
+
 export async function post(
   url: string,
   body: unknown,
   opts: HttpOpts = {},
 ): Promise<{ status: number; body: unknown; raw: string; headers: Headers }> {
-  const headers: Record<string, string> = { 'content-type': 'application/json', ...opts.headers };
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...internalTokenHeader(),
+    ...opts.headers,
+  };
   if (opts.cookie) headers.cookie = opts.cookie;
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
   const raw = await res.text();
@@ -81,7 +91,11 @@ export async function patch(
   body: unknown,
   opts: HttpOpts = {},
 ): Promise<{ status: number; body: unknown; raw: string; headers: Headers }> {
-  const headers: Record<string, string> = { 'content-type': 'application/json', ...opts.headers };
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    ...internalTokenHeader(),
+    ...opts.headers,
+  };
   if (opts.cookie) headers.cookie = opts.cookie;
   const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(body) });
   const raw = await res.text();

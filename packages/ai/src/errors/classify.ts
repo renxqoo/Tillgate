@@ -1,5 +1,5 @@
-import { asRecord } from '../internal/util.js';
-import type { UpstreamError } from '../types.js';
+import { asRecord } from '../internal/util';
+import type { UpstreamError } from '../types';
 
 /**
  * 错误分类矩阵（ai-package.md §7.1）：一次分类同时驱动重试/熔断/死凭据三种机制
@@ -56,9 +56,20 @@ const QUOTA_EXHAUSTED_CODES = new Set([
   'payment_required',
 ]);
 
+/** 限流文本特征（无状态码可依时的 body-only 分类用） */
+export const DEFAULT_RATE_LIMIT_PATTERNS: RegExp[] = [
+  /rate.?limit/i,
+  /too many requests/i,
+  /请求过于频繁/,
+  /频率.*(?:限制|超限)/,
+  /并发.*(?:超限|上限|过多)/,
+  /concurrent.*(?:limit|reached|exceed)/i,
+];
+
 export interface ClassifyOptions {
   deadCredentialPatterns?: RegExp[];
   quotaExhaustedPatterns?: RegExp[];
+  rateLimitPatterns?: RegExp[];
 }
 
 export function createUpstreamError(input: {
@@ -237,6 +248,71 @@ export function classifyHttpError(
     message,
     retryable: false,
     circuitTrip: false,
+    rawBody,
+  });
+}
+
+/**
+ * 无状态码可依的 body-only 错误分类（new-api #6643 同类修复）：
+ * 供应商以 HTTP 200 建流/返回，但错误对象放在首个 data 帧或 JSON 体里。
+ * 无 error 字段 → 返回 null（不是错误体）；有则按 body 特征归类：
+ *   配额耗尽（不可重试）→ 限流（可重试不跳闸）→ 死凭据（不可重试）→
+ *   默认 upstream_error（可重试+跳闸——200 包错误属上游异常，与 5xx 同权重）。
+ */
+export function classifyBodyOnlyError(body: unknown, opts: ClassifyOptions = {}): UpstreamError | null {
+  const record = asRecord(body);
+  if (!record) return null;
+  const err = record.error;
+  if (err === undefined || err === null) return null;
+  // 归一为 {error:{...}} 形状复用 extract*（string 形态的错误包一层）
+  const normalized = {
+    ...record,
+    error: typeof err === 'string' ? { message: err } : err,
+  };
+  const patterns = opts.deadCredentialPatterns ?? DEFAULT_DEAD_CREDENTIAL_PATTERNS;
+  const quotaPatterns = opts.quotaExhaustedPatterns ?? DEFAULT_QUOTA_EXHAUSTED_PATTERNS;
+  const ratePatterns = opts.rateLimitPatterns ?? DEFAULT_RATE_LIMIT_PATTERNS;
+  const message = extractMessage(normalized) ?? 'upstream error in 200 body';
+  const bodyCode = extractCode(normalized);
+  const rawBody = typeof body === 'string' ? body : undefined;
+
+  if (isQuotaExhausted(bodyCode, message, quotaPatterns)) {
+    return createUpstreamError({
+      code: 'quota_exhausted',
+      message,
+      retryable: false,
+      circuitTrip: false,
+      suggestion: '渠道额度/配额已耗尽，请充值或更换渠道',
+      rawBody,
+    });
+  }
+  if ((bodyCode !== undefined && /rate/i.test(bodyCode)) || ratePatterns.some((p) => p.test(message))) {
+    return createUpstreamError({
+      code: 'rate_limited',
+      message,
+      retryable: true,
+      circuitTrip: false,
+      suggestion: '请求过于频繁，请稍后重试',
+      rawBody,
+    });
+  }
+  if (patterns.some((p) => p.test(message))) {
+    return createUpstreamError({
+      code: 'invalid_api_key',
+      message,
+      retryable: false,
+      circuitTrip: false,
+      deadCredential: true,
+      suggestion: '请检查渠道上游 API Key',
+      rawBody,
+    });
+  }
+  return createUpstreamError({
+    code: 'upstream_error',
+    message,
+    retryable: true,
+    circuitTrip: true,
+    suggestion: '上游服务异常，请稍后重试',
     rawBody,
   });
 }

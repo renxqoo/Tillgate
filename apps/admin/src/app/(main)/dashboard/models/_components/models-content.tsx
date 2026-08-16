@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'sonner';
 import { z } from 'zod';
 
 import type { ModelTestResult } from '../actions';
@@ -52,7 +51,10 @@ function fmtContext(tokens: number | null): string {
   return String(tokens);
 }
 
-import type { ChannelOption, ModelRow } from '../types';
+import type { ChannelOption, AdminModelRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const createSchema = z.object({
   externalName: z.string().min(1),
@@ -71,7 +73,7 @@ export function ModelsTable({
   models,
   channels,
 }: {
-  readonly models: ReadonlyArray<ModelRow>;
+  readonly models: ReadonlyArray<AdminModelRow>;
   readonly channels: ReadonlyArray<ChannelOption>;
 }) {
   return (
@@ -108,19 +110,14 @@ function ModelRowItem({
   model,
   channels,
 }: {
-  model: ModelRow;
+  model: AdminModelRow;
   channels: ReadonlyArray<ChannelOption>;
 }) {
-  const [pending, setPending] = useState(false);
   return (
     <TableRow>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{model.externalName}</code>
-        {model.isFree && (
-          <span className="ml-2 inline-flex items-center rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300">
-            免费
-          </span>
-        )}
+        {model.isFree && <StatusPill className="ml-2" tone="info" label="免费" />}
       </TableCell>
       <TableCell className="font-medium">{model.realModel}</TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.inputPrice)}</TableCell>
@@ -131,13 +128,9 @@ function ModelRowItem({
       </TableCell>
       <TableCell>
         {model.status === 0 ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            启用
-          </span>
+          <StatusPill tone="success" label="启用" />
         ) : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            禁用
-          </span>
+          <StatusPill tone="neutral" label="禁用" />
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
@@ -146,23 +139,23 @@ function ModelRowItem({
           <BindChannelsDialog model={model} channels={channels} />
           <EditModelDialog model={model} />
           <TestModelDialog model={model} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onClick={async () => {
-              if (!confirm(`确定删除模型映射 ${model.externalName}？`)) return;
-              setPending(true);
-              const { deleteModelAction } = await import('../actions');
-              const res = await deleteModelAction(model.id);
-              setPending(false);
-              if (res.error) toast.error(res.error);
-              else toast.success('已删除');
-            }}
-            className="text-destructive hover:text-destructive"
+          <ConfirmAction
+            confirm={`确定删除模型映射 ${model.externalName}？`}
+            action={async () => (await import('../actions')).deleteModelAction(model.id)}
+            success='已删除'
           >
-            {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          </Button>
+            {({ pending, onClick }) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={onClick}
+                className="text-destructive hover:text-destructive"
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              </Button>
+            )}
+          </ConfirmAction>
         </div>
       </TableCell>
     </TableRow>
@@ -170,6 +163,7 @@ function ModelRowItem({
 }
 
 export function CreateModelDialog() {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof createSchema>;
@@ -198,11 +192,7 @@ export function CreateModelDialog() {
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
-      if (res.error) {
-        toast.error('创建失败', { description: res.error });
-        return;
-      }
-      toast.success('已创建');
+      if (!notify(res, '创建失败', '已创建')) return;
       form.reset();
       setOpen(false);
     });
@@ -267,7 +257,8 @@ const editSchema = z.object({
   status: numericText({ message: '请输入整数' }).refine((v) => Number.isInteger(v), '请输入整数'),
 });
 
-function EditModelDialog({ model }: { model: ModelRow }) {
+function EditModelDialog({ model }: { model: AdminModelRow }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof editSchema>;
@@ -310,11 +301,7 @@ function EditModelDialog({ model }: { model: ModelRow }) {
         tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
         status: Number(values.status),
       });
-      if (res.error) {
-        toast.error('保存失败', { description: res.error });
-        return;
-      }
-      toast.success('已保存');
+      if (!notify(res, '保存失败', '已保存')) return;
       setOpen(false);
     });
   }
@@ -522,9 +509,10 @@ function BindChannelsDialog({
   model,
   channels,
 }: {
-  model: ModelRow;
+  model: AdminModelRow;
   channels: ReadonlyArray<ChannelOption>;
 }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<number[]>(model.channelIds ?? []);
@@ -537,11 +525,7 @@ function BindChannelsDialog({
     startTransition(async () => {
       const { bindChannelsAction } = await import('../actions');
       const res = await bindChannelsAction(model.id, selected);
-      if (res.error) {
-        toast.error('绑定失败', { description: res.error });
-        return;
-      }
-      toast.success(`已绑定 ${selected.length} 个渠道`);
+      if (!notify(res, '绑定失败', `已绑定 ${selected.length} 个渠道`)) return;
       setSelected([]);
       setOpen(false);
     });
@@ -601,7 +585,7 @@ function BindChannelsDialog({
 }
 
 /** 模型级测试：逐绑定渠道真实最小生成（"1" + max_tokens 1，厘级成本） */
-export function TestModelDialog({ model }: { model: ModelRow }) {
+export function TestModelDialog({ model }: { model: AdminModelRow }) {
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<ModelTestResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);

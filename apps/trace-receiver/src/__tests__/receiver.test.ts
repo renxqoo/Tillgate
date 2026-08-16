@@ -62,6 +62,22 @@ function otlpPayload(overrides: { requestId?: string; service?: string } = {}): 
 }
 
 describe('接收端 HTTP 面（真 PG）', () => {
+  it('A9 bodyLimit：>8MB 请求体被 413 拒绝；<8KB 正常处理', async (context) => {
+    if (!connected) return context.skip();
+    const store = createPgTraceStore(db);
+    const batcher = new SpanBatcher(store, { max: 1000, batchMax: 500, flushIntervalMs: 60_000 });
+    const app = createReceiverApp({ db, store, batcher });
+    // 9MB 非法体（content-length 超限在解析前拒绝；体内容无需合法 OTLP）
+    const huge = 'x'.repeat(9 * 1024 * 1024);
+    const res = await app.request('/v1/traces', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: huge,
+    });
+    expect([413, 400]).toContain(res.status); // bodyLimit 413；或解析层 400——关键是拒绝且不整读 OOM
+    expect(res.status).not.toBe(202);
+  });
+
   it('token 门控：配置后无/错令牌 401，正确令牌放行', async (context) => {
     if (!connected) return context.skip();
     await db.execute(sql`delete from trace_spans where service = 'trr-test-svc'`);

@@ -9,11 +9,14 @@ import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ai-gateway/ui/components/ui/card";
 import { Input } from "@ai-gateway/ui/components/ui/input";
 
-import type { OrgMemberRow, OrgRow } from "../types";
+import type { OrgInvitationSummary, OrgMemberRow, OrgRow } from "@ai-gateway/api-client/types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 
 export interface OrgWithMembers {
   org: OrgRow;
   members: OrgMemberRow[];
+  invitations: OrgInvitationSummary[];
 }
 
 function fmt(v: string | null): string {
@@ -34,15 +37,15 @@ export function OrgsContent({ orgs }: { readonly orgs: ReadonlyArray<OrgWithMemb
           </CardContent>
         </Card>
       ) : (
-        orgs.map(({ org, members }) => (
-          <OrgCard key={org.id} org={org} members={members} />
+        orgs.map(({ org, members, invitations }) => (
+          <OrgCard key={org.id} org={org} members={members} invitations={invitations} />
         ))
       )}
     </div>
   );
 }
 
-function OrgCard({ org, members }: OrgWithMembers) {
+function OrgCard({ org, members, invitations }: OrgWithMembers) {
   const isOwner = org.role === "owner";
   const active = members.filter((m) => m.status === 0);
   return (
@@ -67,6 +70,7 @@ function OrgCard({ org, members }: OrgWithMembers) {
       <CardContent className="space-y-4">
         {isOwner ? <InviteForm org={org} /> : null}
         <MemberList org={org} members={active} isOwner={isOwner} />
+        {isOwner ? <PendingInvitations org={org} invitations={invitations} /> : null}
       </CardContent>
     </Card>
   );
@@ -76,6 +80,7 @@ function InviteForm({ org }: { org: OrgRow }) {
   const [email, setEmail] = useState("");
   const [link, setLink] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   return (
     <div className="rounded-md border p-3 space-y-2">
@@ -111,11 +116,7 @@ function InviteForm({ org }: { org: OrgRow }) {
               startTransition(async () => {
                 const { inviteMemberAction } = await import("../actions");
                 const res = await inviteMemberAction(org.id, email);
-                if (res.error) toast.error("邀请失败", { description: res.error });
-                else {
-                  setLink(res.link ?? "");
-                  toast.success("已生成邀请链接");
-                }
+                if (notify(res, "邀请失败", "已生成邀请链接")) setLink(res.link ?? "");
               })
             }
           >
@@ -153,8 +154,44 @@ function MemberList({ org, members, isOwner }: { org: OrgRow; members: OrgMember
   );
 }
 
+function PendingInvitations({ org, invitations }: { org: OrgRow; invitations: OrgInvitationSummary[] }) {
+  const notify = useActionResult();
+  const [pending, startTransition] = useTransition();
+  if (invitations.length === 0) return null;
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-medium text-muted-foreground">待接受邀请（{invitations.length}）</p>
+      <ul className="space-y-1.5">
+        {invitations.map((inv) => (
+          <li key={inv.id} className="flex items-center gap-2 rounded-md border border-dashed p-2 text-sm">
+            <span className="min-w-0 flex-1 truncate">{inv.email}</span>
+            <span className="text-xs text-muted-foreground">
+              {new Date(inv.expiresAt).toLocaleDateString()} 到期
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={pending}
+              onClick={() =>
+                startTransition(async () => {
+                  const { revokeInvitationAction } = await import("../actions");
+                  const res = await revokeInvitationAction(org.id, inv.id);
+                  notify(res, "撤销失败", "已撤销邀请");
+                })
+              }
+            >
+              <Trash2Icon className="size-4" /> 撤销
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function QuotaEditor({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
   const [open, setOpen] = useState(false);
+  const notify = useActionResult();
   const [daily, setDaily] = useState(member.dailySpendLimit ?? "");
   const [monthly, setMonthly] = useState(member.monthlyQuota ?? "");
   const [pending, startTransition] = useTransition();
@@ -190,11 +227,7 @@ function QuotaEditor({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
               dailySpendLimit: parseNullableNumber(daily),
               monthlyQuota: parseNullableNumber(monthly),
             });
-            if (res.error) toast.error("保存失败", { description: res.error });
-            else {
-              setOpen(false);
-              toast.success("已保存");
-            }
+            if (notify(res, "保存失败", "已保存")) setOpen(false);
           })
         }
       >
@@ -208,24 +241,24 @@ function QuotaEditor({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
 }
 
 function RemoveButton({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
-  const [pending, startTransition] = useTransition();
   return (
-    <Button
-      size="sm"
-      variant="ghost"
-      className="text-destructive hover:text-destructive"
-      disabled={pending}
-      onClick={() => {
-        if (!confirm(`确定移除成员 ${member.displayName || member.email}？其历史用量保留。`)) return;
-        startTransition(async () => {
-          const { removeMemberAction } = await import("../actions");
-          const res = await removeMemberAction(org.id, member.userId);
-          if (res.error) toast.error("移除失败", { description: res.error });
-          else toast.success("已移除");
-        });
-      }}
+    <ConfirmAction
+      confirm={`确定移除成员 ${member.displayName || member.email}？其历史用量保留。`}
+      action={async () => (await import("../actions")).removeMemberAction(org.id, member.userId)}
+      errorTitle="移除失败"
+      success="已移除"
     >
-      {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon className="size-4" />}
-    </Button>
+      {({ pending, onClick }) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive hover:text-destructive"
+          disabled={pending}
+          onClick={onClick}
+        >
+          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon className="size-4" />}
+        </Button>
+      )}
+    </ConfirmAction>
   );
 }

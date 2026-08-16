@@ -2,7 +2,7 @@
   "name": "@ai-gateway/admin-api",
   "version": "0.1.0",
   "private": true,
-  "description": "管理端 REST（Hono，仅内网，不发布端口）",
+  "description": "\u7ba1\u7406\u7aef REST\uff08Hono\uff0c\u4ec5\u5185\u7f51\uff0c\u4e0d\u53d1\u5e03\u7aef\u53e3\uff09",
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
@@ -21,14 +21,16 @@
     "@ai-gateway/identity": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
     "@ai-gateway/money": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
     "@hono/node-server": "^1.19.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.0",
-    "zod": "^4.4.3",
-    "@ai-gateway/tracing": "workspace:*"
+    "nodemailer": "^9.0.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",

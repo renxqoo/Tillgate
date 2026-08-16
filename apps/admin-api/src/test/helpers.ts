@@ -62,6 +62,7 @@ export function makeServices(db: Db, overrides: Partial<AdminServices> = {}): Ad
     billingOperations: createBillingOperations({ db }),
     tracingStore: createPgTraceStore(db),
     encryptionKey: TEST_ENCRYPTION_KEY,
+    mailer: null,
     voucherStorage: stubVoucherStorage(),
     allowLocalUpstream: false,
     logger: noopLogger(),

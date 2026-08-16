@@ -1,5 +1,7 @@
 import * as React from "react";
 
+import { pagerHref } from "../../lib/pager-href";
+
 /** 当前页两侧各展示的兄弟页数。 */
 const SIBLINGS = 2;
 
@@ -35,30 +37,24 @@ export function Pager({
   totalPages,
   total,
   searchParams = {},
+  pageKey = "page",
   className,
 }: {
   page: number;
   totalPages: number;
   /** 可选：总条数（显示「共 N 条」） */
   total?: number;
-  /** 当前 query 参数（page 会被覆盖；空值跳过） */
+  /** 当前 query 参数（pageKey 会被覆盖；空值跳过） */
   searchParams?: Record<string, string | string[] | undefined>;
+  /**
+   * 页码参数名。单列表页用默认 page；同页多列表（如用户详情的流水/审计）
+   * 必须各用独立键（tpage/apage）——此前硬编码 page，页面读 tpage 导致
+   * 点击分页参数名对不上、翻页无效。
+   */
+  pageKey?: string;
   className?: string;
 }) {
-  function makeHref(target: number): string {
-    const sp = new URLSearchParams();
-    for (const [key, value] of Object.entries(searchParams)) {
-      if (value === undefined || value === null || value === "") continue;
-      if (Array.isArray(value)) {
-        for (const v of value) sp.append(key, v);
-      } else {
-        sp.set(key, value);
-      }
-    }
-    sp.set("page", String(target));
-    const qs = sp.toString();
-    return qs ? `?${qs}` : "";
-  }
+  const makeHref = (target: number): string => pagerHref(searchParams, pageKey, target);
 
   const arrowBase = "rounded-md border px-2.5 py-1";
   const pageBase = "min-w-8 rounded-md border px-2 py-1 text-center";

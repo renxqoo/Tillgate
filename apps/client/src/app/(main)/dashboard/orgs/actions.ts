@@ -46,6 +46,16 @@ export async function setMemberQuotaAction(
   }
 }
 
+export async function revokeInvitationAction(orgId: number, invitationId: number): Promise<{ error?: string }> {
+  try {
+    await apiFetch(`/api/orgs/${orgId}/invitations/${invitationId}/revoke`, { method: "POST" });
+    revalidatePath("/dashboard/orgs");
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : "撤销失败" };
+  }
+}
+
 export async function removeMemberAction(orgId: number, userId: number): Promise<{ error?: string }> {
   try {
     await apiFetch(`/api/orgs/${orgId}/members/${userId}`, { method: "DELETE" });

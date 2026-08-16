@@ -19,6 +19,13 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // ── 语义 tone（状态徽章统一色板，与各页原内联样式一一对应）──────────
+        success: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+        warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+        neutral: "bg-muted text-muted-foreground",
+        info: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+        accent: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+        danger: "bg-destructive/15 text-destructive",
       },
     },
     defaultVariants: {

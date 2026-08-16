@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 
 import {
   Loader2Icon,
@@ -18,17 +18,11 @@ import { z } from 'zod';
 
 import { formatMoney } from '@ai-gateway/api-client/formatters';
 
+import { useActionResult } from '@ai-gateway/ui/components/action-toast';
+import { ConfirmAction } from '@ai-gateway/ui/components/confirm-action';
+import { FormDialog } from '@ai-gateway/ui/components/form-dialog';
+import { defineStatusMeta, StatusPill } from '@ai-gateway/ui/components/status-pill';
 import { Button } from '@ai-gateway/ui/components/ui/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@ai-gateway/ui/components/ui/dialog';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/field';
 import { Input } from '@ai-gateway/ui/components/ui/input';
 import { NumberField } from '@ai-gateway/ui/components/ui/number-field';
@@ -50,31 +44,20 @@ import {
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { ChannelRow, ProviderOption } from '../types';
+import type { AdminChannelRow, ChannelCreateBody, ProviderOption } from '@ai-gateway/api-client/types';
 
-const STATUS_META: Record<number, { label: string; tone: string; dot: string }> = {
-  0: { label: '启用', tone: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500' },
-  1: { label: '降级', tone: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
-  2: { label: '禁用', tone: 'text-muted-foreground', dot: 'bg-muted-foreground' },
-  3: { label: '冷却', tone: 'text-amber-700 dark:text-amber-300', dot: 'bg-amber-500' },
-};
-
-function getStatusMeta(status: number): { label: string; tone: string; dot: string } {
-  return (
-    STATUS_META[status] ??
-    STATUS_META[2] ?? {
-      label: '未知',
-      tone: 'text-muted-foreground',
-      dot: 'bg-muted-foreground',
-    }
-  );
-}
+const STATUS_META = defineStatusMeta({
+  0: { label: '启用', tone: 'success' },
+  1: { label: '降级', tone: 'warning' },
+  2: { label: '禁用', tone: 'neutral' },
+  3: { label: '冷却', tone: 'warning' },
+});
 
 export function ChannelsTable({
   channels,
   providers,
 }: {
-  readonly channels: ReadonlyArray<ChannelRow>;
+  readonly channels: ReadonlyArray<AdminChannelRow>;
   readonly providers: ReadonlyArray<ProviderOption>;
 }) {
   return (
@@ -111,12 +94,11 @@ function ChannelRowItem({
   channel,
   providers,
 }: {
-  channel: ChannelRow;
+  channel: AdminChannelRow;
   providers: ReadonlyArray<ProviderOption>;
 }) {
-  const [deleting, setDeleting] = useState(false);
   const [testing, setTesting] = useState(false);
-  const meta = getStatusMeta(channel.status);
+  const meta = STATUS_META.get(channel.status);
 
   return (
     <TableRow>
@@ -139,15 +121,13 @@ function ChannelRowItem({
         <span className="font-medium">{formatMoney(channel.upstreamBudget)}</span>
       </TableCell>
       <TableCell>
-        <span className={'inline-flex items-center gap-1 text-xs font-medium ' + meta.tone}>
-          <span className={'size-1.5 rounded-full ' + meta.dot} />
-          {meta.label}
+        <StatusPill dot tone={meta.tone} label={meta.label}>
           {channel.cooldownUntil ? (
             <span className="text-muted-foreground" title={channel.cooldownUntil}>
               （冷却中）
             </span>
           ) : null}
-        </span>
+        </StatusPill>
       </TableCell>
       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
         {channel.failCount}
@@ -171,23 +151,23 @@ function ChannelRowItem({
             测试
           </Button>
           <EditChannelDialog channel={channel} providers={providers} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={deleting}
-            onClick={async () => {
-              if (!confirm(`确定删除渠道 ${channel.name}？`)) return;
-              setDeleting(true);
-              const { deleteChannelAction } = await import('../actions');
-              const res = await deleteChannelAction(channel.id);
-              setDeleting(false);
-              if (res.error) toast.error(res.error);
-              else toast.success('已删除');
-            }}
-            className="text-destructive hover:text-destructive"
+          <ConfirmAction
+            confirm={`确定删除渠道 ${channel.name}？`}
+            action={async () => (await import('../actions')).deleteChannelAction(channel.id)}
+            success="已删除"
           >
-            {deleting ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          </Button>
+            {({ pending, onClick }) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={onClick}
+                className="text-destructive hover:text-destructive"
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              </Button>
+            )}
+          </ConfirmAction>
         </div>
       </TableCell>
     </TableRow>
@@ -213,8 +193,7 @@ export function CreateChannelDialog({
 }: {
   readonly providers: ReadonlyArray<ProviderOption>;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
@@ -230,51 +209,45 @@ export function CreateChannelDialog({
     },
   });
 
-  function onSubmit(values: FormValues) {
-    startTransition(async () => {
-      const { createChannelAction } = await import('../actions');
-      const res = await createChannelAction({
-        ...values,
-        providerId: Number(values.providerId),
-        weight: Number(values.weight),
-        priority: Number(values.priority),
-      });
-      if (res.error) {
-        toast.error('创建失败', { description: res.error });
-        return;
-      }
-      toast.success('已创建渠道');
-      form.reset();
-      setOpen(false);
-    });
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <FormDialog
+      trigger={
         <Button>
           <PlusCircleIcon />
           新建渠道
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <NetworkIcon /> 新建渠道
-          </DialogTitle>
-          <DialogDescription>添加一条 LLM 供应商渠道</DialogDescription>
-        </DialogHeader>
-        <ChannelForm form={form} onSubmit={onSubmit} formId="channel-form" providers={providers} />
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">取消</Button>
-          </DialogClose>
-          <Button type="submit" form="channel-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}创建
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }
+      title={
+        <>
+          <NetworkIcon /> 新建渠道
+        </>
+      }
+      titleClassName="flex items-center gap-2"
+      description="添加一条 LLM 供应商渠道"
+      submitLabel="创建"
+    >
+      {({ run }) => (
+        <ChannelForm
+          form={form}
+          onSubmit={(values: FormValues) =>
+            run(async () => {
+              const { createChannelAction } = await import('../actions');
+              const res = await createChannelAction({
+                ...values,
+                providerId: Number(values.providerId),
+                weight: Number(values.weight),
+                priority: Number(values.priority),
+              } as ChannelCreateBody);
+              if (!notify(res, '创建失败', '已创建渠道')) return false;
+              form.reset();
+              return true;
+            })
+          }
+          formId="channel-form"
+          providers={providers}
+        />
+      )}
+    </FormDialog>
   );
 }
 
@@ -282,11 +255,10 @@ function EditChannelDialog({
   channel,
   providers,
 }: {
-  channel: ChannelRow;
+  channel: AdminChannelRow;
   providers: ReadonlyArray<ProviderOption>;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   const editSchema = z.object({
     name: z.string().min(1, '请输入名称'),
@@ -323,61 +295,50 @@ function EditChannelDialog({
     },
   });
 
-  function onSubmit(values: FormValues) {
-    startTransition(async () => {
-      const { updateChannelAction } = await import('../actions');
-      const res = await updateChannelAction(channel.id, {
-        name: values.name,
-        apiKey: values.apiKey?.trim() || undefined,
-        baseUrlOverride: values.baseUrlOverride?.trim() || undefined,
-        models: values.models?.trim() || undefined,
-        weight: Number(values.weight),
-        priority: Number(values.priority),
-        status: Number(values.status),
-        rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
-        tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
-        upstreamThreshold: values.upstreamThreshold === '' ? null : Number(values.upstreamThreshold),
-      });
-      if (res.error) {
-        toast.error('保存失败', { description: res.error });
-        return;
-      }
-      toast.success('已保存');
-      setOpen(false);
-    });
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <FormDialog
+      trigger={
         <Button size="sm" variant="ghost" title="编辑">
           <PencilIcon />
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <PencilIcon /> 编辑渠道 - {channel.name}
-          </DialogTitle>
-          <DialogDescription>留空 API Key 表示不修改</DialogDescription>
-        </DialogHeader>
+      }
+      title={
+        <>
+          <PencilIcon /> 编辑渠道 - {channel.name}
+        </>
+      }
+      titleClassName="flex items-center gap-2"
+      description="留空 API Key 表示不修改"
+      submitLabel="保存"
+    >
+      {({ run }) => (
         <ChannelForm
           form={form as never}
-          onSubmit={onSubmit as never}
+          onSubmit={(values: FormValues) =>
+            run(async () => {
+              const { updateChannelAction } = await import('../actions');
+              const res = await updateChannelAction(channel.id, {
+                name: values.name,
+                apiKey: values.apiKey?.trim() || undefined,
+                baseUrlOverride: values.baseUrlOverride?.trim() || undefined,
+                models: values.models?.trim() || undefined,
+                weight: Number(values.weight),
+                priority: Number(values.priority),
+                status: Number(values.status),
+                rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
+                tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
+                upstreamThreshold:
+                  values.upstreamThreshold === '' ? null : Number(values.upstreamThreshold),
+              });
+              return notify(res, '保存失败', '已保存');
+            })
+          }
           formId="channel-edit-form"
           providers={providers}
           isEdit
         />
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">取消</Button>
-          </DialogClose>
-          <Button type="submit" form="channel-edit-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}保存
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      )}
+    </FormDialog>
   );
 }
 
@@ -570,76 +531,59 @@ function ChannelForm<T extends Record<string, unknown>>({
 
 // ── 批量导入 ────────────────────────────────────────────────────────────────
 export function ImportChannelsDialog() {
-  const [open, setOpen] = useState(false);
-  const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
   const [text, setText] = useState('');
 
-  function onSubmit() {
-    startTransition(async () => {
-      let channels: Array<{
-        provider: string;
-        name: string;
-        apiKey: string;
-        models?: string;
-        weight?: number;
-        priority?: number;
-      }> = [];
-      try {
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) throw new Error('需要 JSON 数组');
-        channels = parsed;
-      } catch {
-        toast.error('请输入合法的 JSON 数组');
-        return;
-      }
-      const { importChannelsAction } = await import('../actions');
-      const res = await importChannelsAction(channels);
-      if (res.error) {
-        toast.error('导入失败', { description: res.error });
-        return;
-      }
-      toast.success(`已导入 ${res.created ?? channels.length} 条`);
-      setText('');
-      setOpen(false);
-    });
-  }
-
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <FormDialog
+      trigger={
         <Button variant="outline">
           <UploadIcon />
           批量导入
         </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UploadIcon /> 批量导入渠道
-          </DialogTitle>
-          <DialogDescription>
-            粘贴 JSON 数组，每项含 provider（供应商名）、name、apiKey、可选 models / weight /
-            priority
-          </DialogDescription>
-        </DialogHeader>
-        <Textarea
-          rows={10}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className="font-mono text-xs"
-          placeholder={
-            '[\n  {"provider":"OpenAI","name":"openai-main","apiKey":"sk-xxx","models":"gpt-4o"}\n]'
-          }
-        />
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">取消</Button>
-          </DialogClose>
-          <Button disabled={pending} onClick={onSubmit}>
-            {pending && <Loader2Icon className="animate-spin" />}导入
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      }
+      title={
+        <>
+          <UploadIcon /> 批量导入渠道
+        </>
+      }
+      titleClassName="flex items-center gap-2"
+      description="粘贴 JSON 数组，每项含 provider（供应商名）、name、apiKey、可选 models / weight / priority"
+      submitLabel="导入"
+      onSubmitClick={async () => {
+        let channels: Array<{
+          provider: string;
+          name: string;
+          apiKey: string;
+          models?: string;
+          weight?: number;
+          priority?: number;
+        }> = [];
+        try {
+          const parsed = JSON.parse(text);
+          if (!Array.isArray(parsed)) throw new Error('需要 JSON 数组');
+          channels = parsed;
+        } catch {
+          toast.error('请输入合法的 JSON 数组');
+          return false;
+        }
+        const { importChannelsAction } = await import('../actions');
+        const res = await importChannelsAction(channels);
+        if (!notify(res, '导入失败')) return false;
+        toast.success(`已导入 ${res.created ?? channels.length} 条`);
+        setText('');
+        return true;
+      }}
+    >
+      <Textarea
+        rows={10}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        className="font-mono text-xs"
+        placeholder={
+          '[\n  {"provider":"OpenAI","name":"openai-main","apiKey":"sk-xxx","models":"gpt-4o"}\n]'
+        }
+      />
+    </FormDialog>
   );
 }

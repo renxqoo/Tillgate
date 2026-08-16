@@ -4,6 +4,7 @@ import { createDb } from '@ai-gateway/db';
 import { createBillingOperations, createLedger } from '@ai-gateway/ledger';
 import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
 import { createApp } from './app.js';
+import { mailerFromEnv, ADMIN_MAIL_BRAND } from '@ai-gateway/identity';
 import { createLocalVoucherStorage } from './services/voucher-storage.js';
 
 /**
@@ -39,11 +40,15 @@ const app = createApp({
   ledger,
   billingOperations,
   encryptionKey: env.ENCRYPTION_KEY,
+  encryptionKeyOld: env.ENCRYPTION_KEY_OLD,
+  mailer: mailerFromEnv(env, ADMIN_MAIL_BRAND),
   logger,
   config: {
     adminJwtSecret: env.ADMIN_JWT_SECRET,
     secureCookie: env.NODE_ENV === 'production',
     trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
+    trustedProxyHops: env.TRUSTED_PROXY_HOPS,
+    internalApiToken: env.INTERNAL_API_TOKEN,
     voucherStorageDir: env.VOUCHER_STORAGE_DIR,
     allowLocalUpstream: env.ALLOW_LOCAL_UPSTREAM,
     voucherMaxBytes: env.VOUCHER_MAX_BYTES,

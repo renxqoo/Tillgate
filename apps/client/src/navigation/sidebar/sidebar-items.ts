@@ -6,47 +6,12 @@ import {
   KeyRound,
   LayoutDashboard,
   LineChart,
-  type LucideIcon,
   Settings,
   ShieldCheck,
 } from "lucide-react";
 
-export type NavBadge = "new" | "soon";
+import type { NavGroup } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
 
-interface NavItemBase {
-  id: string;
-  title: string;
-  icon?: LucideIcon;
-  badge?: NavBadge;
-  disabled?: boolean;
-  newTab?: boolean;
-}
-
-export interface NavMainLinkItem extends NavItemBase {
-  url: string;
-  subItems?: never;
-}
-
-export interface NavMainParentItem extends NavItemBase {
-  subItems: NavSubItem[];
-}
-
-export type NavMainItem = NavMainLinkItem | NavMainParentItem;
-
-export interface NavSubItem {
-  id: string;
-  title: string;
-  url: string;
-  icon?: LucideIcon;
-  disabled?: boolean;
-  newTab?: boolean;
-}
-
-export interface NavGroup {
-  id: number;
-  label?: string;
-  items: NavMainItem[];
-}
 
 /** 用户面板 sidebar 数据。拆分后用户面板无管理入口（管理后台在 apps/admin 独立部署）。 */
 export function buildSidebarItems(): NavGroup[] {

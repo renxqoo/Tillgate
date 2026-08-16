@@ -1,10 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
 import { Loader2Icon, ShieldBanIcon } from "lucide-react";
-import { toast } from "sonner";
-
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Table,
@@ -15,23 +11,17 @@ import {
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
 
-import type { RedeemCodeRow } from "../../types";
+import type { RedeemCodeRow } from "@ai-gateway/api-client/types";
+import { fmtDateTime } from "@ai-gateway/api-client/formatters";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill, defineStatusMeta } from "@ai-gateway/ui/components/status-pill";
 
-const STATUS_LABEL: Record<number, { label: string; tone: string }> = {
-  0: { label: "未使用", tone: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
-  1: { label: "已使用", tone: "bg-blue-500/15 text-blue-700 dark:text-blue-300" },
-  2: { label: "已撤销", tone: "bg-muted text-muted-foreground" },
-  3: { label: "已过期", tone: "bg-muted text-muted-foreground" },
-};
-
-function getStatusLabel(status: number): { label: string; tone: string } {
-  return (
-    STATUS_LABEL[status] ?? {
-      label: "未知",
-      tone: "bg-muted text-muted-foreground",
-    }
-  );
-}
+const STATUS_LABEL = defineStatusMeta({
+  0: { label: "未使用", tone: "success" },
+  1: { label: "已使用", tone: "info" },
+  2: { label: "已撤销", tone: "neutral" },
+  3: { label: "已过期", tone: "neutral" },
+});
 
 export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCodeRow> }) {
   return (
@@ -63,8 +53,7 @@ export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCode
 }
 
 function CodeRowItem({ code }: { code: RedeemCodeRow }) {
-  const [pending, setPending] = useState(false);
-  const meta = getStatusLabel(code.status);
+  const meta = STATUS_LABEL.get(code.status);
   const revocable = code.status === 0;
 
   return (
@@ -74,36 +63,34 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{code.codeMasked}</code>
       </TableCell>
       <TableCell>
-        <span className={"inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " + meta.tone}>
-          {meta.label}
-        </span>
+        <StatusPill tone={meta.tone} label={meta.label} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{code.usedBy ?? "—"}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {code.usedAt ? new Date(code.usedAt).toLocaleString("zh-CN") : "—"}
+        {fmtDateTime(code.usedAt)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {code.expiresAt ? new Date(code.expiresAt).toLocaleString("zh-CN") : "—"}
+        {fmtDateTime(code.expiresAt)}
       </TableCell>
       <TableCell className="text-right">
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={pending || !revocable}
-          onClick={async () => {
-            if (!confirm(`确定撤销兑换码 #${code.id}？`)) return;
-            setPending(true);
-            const { revokeCodeAction } = await import("../../actions");
-            const res = await revokeCodeAction(code.id);
-            setPending(false);
-            if (res.error) toast.error(res.error);
-            else toast.success("已撤销");
-          }}
-          className="text-destructive hover:text-destructive"
-          title={revocable ? "撤销" : "不可撤销"}
+        <ConfirmAction
+          confirm={`确定撤销兑换码 #${code.id}？`}
+          action={async () => (await import("../../actions")).revokeCodeAction(code.id)}
+          success="已撤销"
         >
-          {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
-        </Button>
+          {({ pending, onClick }) => (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pending || !revocable}
+              onClick={onClick}
+              className="text-destructive hover:text-destructive"
+              title={revocable ? "撤销" : "不可撤销"}
+            >
+              {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
+            </Button>
+          )}
+        </ConfirmAction>
       </TableCell>
     </TableRow>
   );

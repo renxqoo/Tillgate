@@ -59,3 +59,50 @@ describe('csrfProtection（03 修复）', () => {
     expect(res.status).toBe(200);
   });
 });
+
+
+describe('csrfProtection：Origin/Referer 双缺失 + BFF 内部令牌（fail-closed 收口）', () => {
+  const base = { trustedOrigins: ['http://localhost:3000'] };
+  function appWith(internalToken?: string) {
+    const app = new Hono();
+    app.onError(errorHandler());
+    app.use('*', csrfProtection({ ...base, internalToken }));
+    app.post('/x', (c) => c.json({ ok: true }));
+    return app;
+  }
+
+  it('未配置令牌（兼容期）：双缺失头仍放行', async () => {
+    const res = await appWith().request('/x', { method: 'POST' });
+    expect(res.status).toBe(200);
+  });
+
+  it('配置令牌：双缺失头且无令牌 → 403 CSRF_TOKEN_REQUIRED', async () => {
+    const res = await appWith('t'.repeat(32)).request('/x', { method: 'POST' });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe('CSRF_TOKEN_REQUIRED');
+  });
+
+  it('配置令牌：携带正确 x-internal-token → 放行（BFF 服务端调用）', async () => {
+    const token = 't'.repeat(32);
+    const res = await appWith(token).request('/x', {
+      method: 'POST',
+      headers: { 'x-internal-token': token },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('配置令牌：错误令牌 → 403；正确 Origin 仍放行（浏览器路径不受影响）', async () => {
+    const token = 't'.repeat(32);
+    const bad = await appWith(token).request('/x', {
+      method: 'POST',
+      headers: { 'x-internal-token': 'wrong-token-value-aaaaaaaaaa' },
+    });
+    expect(bad.status).toBe(403);
+    const ok = await appWith(token).request('/x', {
+      method: 'POST',
+      headers: { origin: 'http://localhost:3000' },
+    });
+    expect(ok.status).toBe(200);
+  });
+});

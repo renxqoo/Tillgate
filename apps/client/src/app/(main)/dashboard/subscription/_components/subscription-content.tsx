@@ -27,7 +27,8 @@ import {
 import { Input } from "@ai-gateway/ui/components/ui/input";
 import { Progress } from "@ai-gateway/ui/components/ui/progress";
 
-import type { CurrentSubscription, PlanRow } from "../types";
+import type { CurrentSubscription, OrgRow, PlanRow } from "@ai-gateway/api-client/types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 /** 周期天数展示：30→月付，365→年付，其余按天。 */
 function fmtPeriod(days: number): string {
@@ -65,16 +66,7 @@ export function SubscriptionContent({
   readonly plans: ReadonlyArray<PlanRow>;
   readonly subError: string | null;
   readonly plansError: string | null;
-  readonly orgs: ReadonlyArray<{
-    id: number;
-    name: string;
-    role: string;
-    subscriptionName: string | null;
-    quantity: number | null;
-    quotaAmount: string | null;
-    usedAmount: string | null;
-    remainingAmount: string | null;
-  }>;
+  readonly orgs: ReadonlyArray<OrgRow>;
 }) {
   // 有订阅时只展示更高档（升级目标）；无订阅展示全部（开通）。
   const visiblePlans = subscription
@@ -225,6 +217,7 @@ function CurrentSubscriptionCard({ sub }: { sub: CurrentSubscription }) {
 
 /** 续费按钮（位于「当前订阅」卡片右上角，与标题水平对齐），点击弹确认框。 */
 function RenewButton({ sub }: { sub: CurrentSubscription }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -232,11 +225,7 @@ function RenewButton({ sub }: { sub: CurrentSubscription }) {
     startTransition(async () => {
       const { renewSubscriptionAction } = await import("../actions");
       const res = await renewSubscriptionAction(sub.id);
-      if (res.error) {
-        toast.error("续费失败", { description: res.error });
-        return;
-      }
-      toast.success("续费成功");
+      if (!notify(res, "续费失败", "续费成功")) return;
       setOpen(false);
     });
   }
@@ -300,6 +289,7 @@ function InfoRow({
 
 /** 团队套餐：在当前订阅基础上加席位。 */
 function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
+  const notify = useActionResult();
   const [seatQty, setSeatQty] = useState(String(sub.quantity + 1));
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -321,11 +311,7 @@ function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
         targetPlanId: sub.planId,
         quantity: n,
       });
-      if (res.error) {
-        toast.error("扩容失败", { description: res.error });
-        return;
-      }
-      toast.success("扩容成功");
+      if (!notify(res, "扩容失败", "扩容成功")) return;
       setOpen(false);
     });
   }
@@ -409,6 +395,7 @@ function PlanCard({
 }
 
 function PurchaseAction({ plan }: { plan: PlanRow }) {
+  const notify = useActionResult();
   const [quantity, setQuantity] = useState("1");
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -426,11 +413,7 @@ function PurchaseAction({ plan }: { plan: PlanRow }) {
     startTransition(async () => {
       const { purchaseSubscriptionAction } = await import("../actions");
       const res = await purchaseSubscriptionAction(plan.id, n);
-      if (res.error) {
-        toast.error("购买失败", { description: res.error });
-        return;
-      }
-      toast.success("购买成功");
+      if (!notify(res, "购买失败", "购买成功")) return;
       setOpen(false);
     });
   }
@@ -490,6 +473,7 @@ function UpgradeAction({
   plan: PlanRow;
   subscription: CurrentSubscription;
 }) {
+  const notify = useActionResult();
   const [quantity, setQuantity] = useState(String(subscription.quantity));
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -514,11 +498,7 @@ function UpgradeAction({
         targetPlanId: plan.id,
         quantity: n,
       });
-      if (res.error) {
-        toast.error("升级失败", { description: res.error });
-        return;
-      }
-      toast.success("升级成功");
+      if (!notify(res, "升级失败", "升级成功")) return;
       setOpen(false);
     });
   }

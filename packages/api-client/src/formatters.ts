@@ -74,10 +74,6 @@ function toFiniteNumber(value: string | number | null | undefined): number {
 
 const padTwoDigits = (n: number): string => String(n).padStart(2, '0');
 
-/** @deprecated 使用 formatMoney；保留该名称兼容已有调用。 */
-export function formatYuan(v: MoneyValue, digits = DEFAULT_MONEY_DIGITS): string {
-  return formatMoney(v, digits);
-}
 
 /** 余额 / 流水展示（4 位小数，截断） */
 export function fmtBalance(v: MoneyValue): string {

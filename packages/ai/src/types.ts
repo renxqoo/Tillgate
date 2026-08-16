@@ -2,17 +2,24 @@
  * packages/ai 核心类型（设计见 docs/ai-package.md）
  * 本包只做「可靠调用上游并产出结构化事件」，不含任何业务知识。
  */
-import type { AiEvent } from './events.js';
+import type { AiEvent } from './events';
 
 /** 渠道描述（由 gateway 注入，apiKey 为解密后的明文，包内不落盘） */
 export interface ChannelDesc {
   baseUrl: string;
   apiKey: string;
-  /** 一期仅 openai-compatible */
-  protocol: Protocol;
+  /**
+   * 协议标识 = 适配器注册表的键。合法值由 createAi 的注册表决定
+   * （未注册协议显式报错 invalid_config，不静默回退）——词表单一真相见 SUPPORTED_PROTOCOLS。
+   */
+  protocol: string;
 }
 
-export type Protocol = 'openai-compatible' | 'anthropic' | 'gemini';
+/** 调用端点（决定 adapter 选择的上游路径） */
+export type Endpoint = 'chat' | 'embeddings';
+
+/** 语义别名：协议标识（string；合法值由适配器注册表决定，见 ChannelDesc.protocol） */
+export type Protocol = string;
 
 /** 参数抹平规则（透传为基底，规则驱动，见 ai-package.md §7.6） */
 export interface ParamRules {
@@ -42,8 +49,8 @@ export interface RequestCtx {
   deadlineMs?: number;
   /** 调用方取消：客户端断开、请求总 deadline 或服务 drain。 */
   signal?: AbortSignal;
-  /** 调用端点：chat（默认）或 embeddings（决定 URL 路径） */
-  endpoint?: 'chat' | 'embeddings';
+  /** 调用端点：chat（默认）或 embeddings（adapter 据此选上游路径） */
+  endpoint?: Endpoint;
 }
 
 /** usage 归一化（缓存计费数据源） */

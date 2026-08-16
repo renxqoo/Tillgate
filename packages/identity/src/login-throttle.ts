@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis';
+import { trustedClientIp } from '@ai-gateway/http';
 
 /**
  * 登录限流/锁定（02 修复，client-api 与 admin-api 共用）。
@@ -85,14 +86,15 @@ export async function resetLoginFailures(
   }
 }
 
-/** 提取客户端 IP（优先 X-Forwarded-For 首段，fallback socket） */
-export function clientIp(headers: Headers, fallbackRemote = 'unknown'): string {
-  const xff = headers.get('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = headers.get('x-real-ip');
-  if (realIp) return realIp.trim();
-  return fallbackRemote;
+/**
+ * 提取客户端 IP（可信代理语义，单一实现在 @ai-gateway/http trustedClientIp）：
+ * trustedProxyHops=0（默认）完全不信任 XFF/X-Real-IP（可伪造），只用 socket 地址；
+ * hops=N 取 XFF 右数第 N 跳（我们信任的第一层代理看到的客户端 IP）。
+ * 客户端伪造 XFF 首段的攻击在 hops>0 时被结构性丢弃；hops=0 时头整体被忽略。
+ */
+export function clientIp(
+  headers: Headers,
+  opts: { trustedProxyHops: number; socketAddress?: string | null; fallbackRemote?: string } = { trustedProxyHops: 0 },
+): string {
+  return trustedClientIp({ headers, trustedProxyHops: opts.trustedProxyHops, socketAddress: opts.socketAddress });
 }

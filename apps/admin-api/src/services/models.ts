@@ -24,7 +24,6 @@ export function assertFreePriceConsistency(input: {
   if (!input.isFree) return;
   if (input.inputPrice > 0 || input.outputPrice > 0 || input.cacheInputPrice > 0) {
     throw new HttpError(
-      400,
       'FREE_MODEL_PRICE_CONFLICT',
       '显式免费模型必须全零价（is_free 与非零价互斥），否则授权 0 元与结算实扣口径分裂',
     );

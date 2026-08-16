@@ -33,6 +33,7 @@ import {
 
 import { updateRateLimitAction } from "../actions";
 import type { RateLimitItem, RateLimitKind } from "../types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 function fmtLimit(v: number | null): string {
   return v === null ? "不限" : v.toLocaleString();
@@ -127,6 +128,7 @@ export function RateLimitsClient({
   const [credit, setCredit] = useState<string>("");
   const [dailySpend, setDailySpend] = useState<string>("");
   const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   const openEdit = (kind: RateLimitKind, item: RateLimitItem) => {
     setEditing({ kind, item });
@@ -183,12 +185,7 @@ export function RateLimitsClient({
         creditLimit: creditVal,
         dailySpendLimit: dailySpendVal,
       });
-      if (res.error) {
-        toast.error(res.error);
-      } else {
-        toast.success("已保存，立即生效");
-        setEditing(null);
-      }
+      if (notify(res, undefined, "已保存，立即生效")) setEditing(null);
     });
   };
 

@@ -7,7 +7,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import Redis from 'ioredis';
-import { eq, and, like, sql } from 'drizzle-orm';
+import { eq, and, inArray, like, sql } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
 import {
   users,
@@ -201,7 +201,7 @@ export async function setupTestModel(
     .insert(providers)
     .values({
       name: 'tprov-' + suffix,
-      protocol: 'openai_compatible',
+      protocol: 'openai-compatible',
       baseUrl: 'http://localhost:9999',
       status: 0,
     })
@@ -254,15 +254,31 @@ export async function cleanupTestData(
       .delete(userSubscriptions)
       .where(eq(userSubscriptions.userId, userId))
       .catch(() => {});
-    // 先收集该用户账单引用的渠道敞口（删除账单后用于同步清零渠道投影，
-    // R4 教训：只删账单不平 channels.upstream_reserved 会留下无主敞口）
+    // 先收集该用户账单中「仍在途」的渠道敞口（删除账单后用于同步清零渠道投影，
+    // R4 教训：只删账单不平 channels.upstream_reserved 会留下无主敞口）。
+    // 必须按在途状态过滤（与账本侧 R4 口径同一状态集）：settled/released 的渠道
+    // 预占在结算/释放时已释放过，再扣一次会把投影蛀空 → 人工 resolve 的释放
+    // 守卫失败 → state_conflict 复核单卡死（2026-08-16 渠道 2 实发）。
     const channelExposure = await db
       .select({
         channelId: billingRequests.channelId,
         total: sql<string>`coalesce(sum(${billingRequests.channelReservedAmount}),0)::numeric`,
       })
       .from(billingRequests)
-      .where(eq(billingRequests.userId, userId))
+      .where(
+        and(
+          eq(billingRequests.userId, userId),
+          inArray(billingRequests.status, [
+            'authorized',
+            'in_flight',
+            'settlement_pending',
+            'processing',
+            'retry_wait',
+            'uncertain',
+            'dead',
+          ]),
+        ),
+      )
       .groupBy(billingRequests.channelId)
       .catch(() => [] as Array<{ channelId: number | null; total: string }>);
     await db

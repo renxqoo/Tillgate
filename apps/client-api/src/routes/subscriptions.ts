@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { HttpError, intParam, jsonBody, operationId } from '@ai-gateway/http';
-import { LedgerError } from '@ai-gateway/ledger';
+import { HttpError, intParam, jsonBody, operationId, type KnownErrorCode } from '@ai-gateway/http';
+import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -26,32 +26,8 @@ const changeSchema = z.object({
 
 function mapError(error: unknown): never {
   if (error instanceof LedgerError) {
-    switch (error.code) {
-      case 'already_subscribed':
-        throw new HttpError(409, 'ALREADY_SUBSCRIBED', '已有有效订阅，请先取消或续费');
-      case 'plan_not_found':
-        throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
-      case 'no_subscription':
-        throw new HttpError(404, 'NO_SUBSCRIPTION', '订阅不存在或已失效');
-      case 'plan_disabled':
-        throw new HttpError(400, 'PLAN_DISABLED', '套餐已停用，无法购买');
-      case 'plan_not_purchasable':
-        throw new HttpError(400, 'PLAN_NOT_PURCHASABLE', '该套餐不可自助购买，请联系客服');
-      case 'downgrade_not_allowed':
-        throw new HttpError(409, 'DOWNGRADE_NOT_ALLOWED', '只能升级或加席位，不支持降级/缩容');
-      case 'invalid_quantity':
-        throw new HttpError(400, 'INVALID_QUANTITY', '席位数量必须为 >=1 的整数');
-      case 'seats_not_allowed':
-        throw new HttpError(400, 'SEATS_NOT_ALLOWED', '该套餐不支持席位（个人套餐固定 1 席）');
-      case 'enterprise_required':
-        throw new HttpError(403, 'ENTERPRISE_REQUIRED', '团队套餐仅企业用户可购买');
-      case 'insufficient_balance':
-        throw new HttpError(402, 'INSUFFICIENT_BALANCE', '余额不足，无法购买套餐');
-      case 'user_not_found':
-        throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
-      case 'idempotency_conflict':
-        throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '幂等键已被不同请求使用');
-    }
+    const m = LEDGER_HTTP[error.code];
+    throw new HttpError(m.code as KnownErrorCode, error.message || m.message);
   }
   throw error;
 }

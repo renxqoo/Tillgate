@@ -1,17 +1,43 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Sparkles } from "lucide-react";
 
+import { stripAuthParams, type SearchParamsLike } from "@ai-gateway/ui/lib/auth-url";
+
 import { LoginForm } from "./_components/login-form";
+import { oauthOptionsFromProviders, type OAuthOption } from "../_components/oauth-buttons";
 import { APP_CONFIG } from "@/config/app-config";
 
 interface PageProps {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<SearchParamsLike>;
+}
+
+/** client-api 已配置的第三方登录（不可达/未配置 = 无按钮） */
+async function fetchOAuthOptions(next: string | null): Promise<OAuthOption[]> {
+  const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
+  try {
+    const res = await fetch(`${base}/api/auth/oauth/providers`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    const body = (await res.json()) as { providers?: string[] };
+    const options = oauthOptionsFromProviders(body.providers ?? [], base);
+    return next ? options.map((o) => ({ ...o, url: `${o.url}?next=${encodeURIComponent(next)}` })) : options;
+  } catch {
+    return [];
+  }
 }
 
 export default async function LoginPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const next = typeof sp.next === "string" && sp.next.startsWith("/") ? sp.next : null;
+  // 登录页 URL 不承载登录信息：白名单（next）外的查询参数一律剥除并 307 到
+  // 干净 URL——凭证/令牌不留地址栏与浏览器历史（白名单制：新参数须显式登记）
+  const clean = stripAuthParams("/login", sp, ["next"]);
+  if (clean) redirect(clean);
+  const nextRaw = Array.isArray(sp.next) ? sp.next[0] : sp.next;
+  const next = typeof nextRaw === "string" && nextRaw.startsWith("/") ? nextRaw : null;
+  const oauthOptions = await fetchOAuthOptions(next);
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* 左侧：登录表单 */}
@@ -22,7 +48,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
-            <LoginForm next={next} />
+            <LoginForm next={next} oauthOptions={oauthOptions} />
           </div>
         </div>
       </div>

@@ -111,6 +111,7 @@
   3. `settle` 无条件按实际金额扣费 `balance -= actual`（DB 约束 `balance >= -credit_limit` 触底熔断），
      同时释放敞口 `reserved -= 预估`；**删除「calculated > 预估 → dead」的金额不变量**。
   4. 预估更贴近真实：输入敞口用**字符数**（`extractRequestChars`，token ≤ 字符数）而非字节数；
+     （2026-08 起 `extractRequestChars` 已被 CJK 感知的 `estimateInputTokens` 取代，见下「token 估算单一真相」。）
      输出敞口 `min(max_tokens×n, GATEWAY_OUTPUT_EXPOSURE_CAP=32768)`。
   5. admin-api `PATCH /users/:id` 支持 `creditLimit`；`userProfileColumns.availableBalance` 改为
      `balance + credit_limit - reserved`。
@@ -166,6 +167,25 @@
   C 端 keys 页编辑弹窗复用共享 `NumberField` 组件，新增 RPM / TPM / 每日花费上限 三个输入（留空=不限），
   表格新增对应三列。
 - **E2E**：C 端登录 → 建 Key → `PATCH /api/keys/:id {dailySpendLimit:0}` → gateway 402「该 Key（#1922）」实测通过。
+
+---
+
+## token 估算单一真相（CJK 感知，取代 chars/3.5 与 extractRequestChars）
+
+- **为什么**：旧估算 `ceil(字符数/3.5)` 对中文低估约 3.5×（TPM 预占不足、限流可绕过）；且 TPM 预占
+  （chars/3.5）与预扣上界（字符数）口径自相矛盾；媒体 part 计 0、reasoning/多轮 tool_calls/多选
+  choices 漏计；`charPerToken=3.5` 在 config 与 usage-estimator 两处硬编码。
+- **改法（单一真相）**：`packages/ai/src/usage/token-estimate.ts` 收敛为唯一权威实现——
+  `estimateTextTokens`（CJK 1 token/字、拉丁/数字连续段 1 token/段、其他非空白 1 token/个，code point 遍历）、
+  `estimateInputTokens`（messages content + 历史 tool_calls + tools 定义体 + embeddings input + 媒体非零下限 85）、
+  `estimateOutputTokens`（全量 choices：content/reasoning/tool_calls/text）、`estimateUsage`（estimated=true，非计费）。
+  TPM 预占、预扣、用户取消结算统一引用 `estimateInputTokens`；删除 `estimateTokens`/`extractRequestChars`/
+  `extractResponseChars` 与 `estimate.charPerToken` 配置。
+- **涉及**：`packages/ai/src/usage/{normalize,token-estimate}.ts`、`packages/ai/src/{index,config,create-ai}.ts`、
+  `apps/gateway/src/services/pipeline/{llm-pipeline,usage-estimator}.ts`、docs/ai-package.md。
+- **测试（TDD）**：`packages/ai/test/unit/token-estimate.test.ts` 新增 21 用例（中文/CJK/媒体/reasoning/多轮
+  tool_calls/n>1/数组 content/code point）；`normalize.test.ts` 删旧估算用例；gateway usage-estimator.test.ts、
+  chat-fallback-pricing.test.ts 同步改 estimateInputTokens 口径。
 
 ---
 

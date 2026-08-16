@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis';
+import { authKeyCache } from '@ai-gateway/http';
 
 /**
  * 鉴权 Redis 缓存（S5，requirements 4.2）。
@@ -17,7 +18,7 @@ import type { Redis } from 'ioredis';
 /** 缓存 TTL（秒）——短暂窗口保证吊销最终生效 */
 export const KEY_AUTH_TTL_S = 60;
 
-const KEY_PREFIX = 'auth:key:';
+
 
 /** 缓存的鉴权快照（从 DB 查到的 apiKey + user + coefficient 精简版） */
 export interface CachedKeyAuth {
@@ -63,7 +64,7 @@ export class KeyAuthCache {
     keyHash: string,
     loader: () => Promise<CachedKeyAuth | null>,
   ): Promise<CachedKeyAuth | null> {
-    const cacheKey = KEY_PREFIX + keyHash;
+    const cacheKey = authKeyCache(keyHash);
     try {
       const cached = await this.redis.get(cacheKey);
       if (cached) {
@@ -98,7 +99,7 @@ export class KeyAuthCache {
   /** 吊销/禁用 Key 时清缓存（管理端调用，加速失效） */
   async invalidate(keyHash: string): Promise<void> {
     try {
-      await this.redis.del(KEY_PREFIX + keyHash);
+      await this.redis.del(authKeyCache(keyHash));
     } catch {
       // 忽略：TTL 60s 兜底
     }

@@ -2,8 +2,12 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { providers } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { bumpRouteCache, HttpError, jsonBody, recordAudit, intParam } from '@ai-gateway/http';
+import {
+  bumpRouteCache, HttpError, jsonBody, recordAudit, intParam,
+  paginateQuery, query, listQuerySchema, buildList, countAll,
+} from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
+import { SUPPORTED_PROTOCOLS } from '@ai-gateway/ai';
 import type { AdminServices } from '../services/index.js';
 
 /**
@@ -11,26 +15,47 @@ import type { AdminServices } from '../services/index.js';
  * 变更后 bump 路由缓存版本，gateway 检测版本变化后重建路由表。
  */
 
+/** 协议词表单一真相：ai 包适配器注册表键。非法值 400（错误语义分级：可预期拒绝 ≠ 异常） */
+const protocolSchema = z
+  .string()
+  .max(32)
+  .refine((v) => (SUPPORTED_PROTOCOLS as readonly string[]).includes(v), {
+    message: `不支持的协议（可选: ${SUPPORTED_PROTOCOLS.join(', ')}）`,
+  });
+
 const providerCreateSchema = z.object({
-  name: z.string().min(1),
-  baseUrl: z.string().url(),
-  protocol: z.string().optional(),
-  status: z.number().optional(),
+  name: z.string().min(1).max(32),
+  baseUrl: z.string().url().max(255),
+  protocol: protocolSchema.optional(),
+  status: z.number().int().min(0).max(1).optional(),
 }).passthrough();
 
 const providerUpdateSchema = z.object({
-  name: z.string().min(1).optional(),
-  baseUrl: z.string().url().optional(),
-  protocol: z.string().optional(),
-  status: z.number().optional(),
+  name: z.string().min(1).max(32).optional(),
+  baseUrl: z.string().url().max(255).optional(),
+  protocol: protocolSchema.optional(),
+  status: z.number().int().min(0).max(1).optional(),
 }).passthrough();
 
 export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
 
-    .get('/', async (c) => {
-      const rows = await s.db.select().from(providers).orderBy(providers.id);
-      return c.json({ list: rows, total: rows.length });
+    .get('/', query(listQuerySchema), async (c) => {
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [providers.name, providers.baseUrl],
+        sort: {
+          by: { id: providers.id, name: providers.name, status: providers.status, createdAt: providers.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: providers.id,
+        },
+      });
+      const result = await paginateQuery(
+        page,
+        s.db.select().from(providers).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+        countAll(s.db, providers, where),
+      );
+      return c.json(result);
     })
 
     .post('/', jsonBody(providerCreateSchema), async (c) => {
@@ -39,7 +64,7 @@ export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .insert(providers)
         .values({
           name: body.name,
-          protocol: body.protocol ?? 'openai_compatible',
+          protocol: body.protocol ?? 'openai-compatible',
           baseUrl: body.baseUrl,
           status: body.status ?? 0,
         })
@@ -69,7 +94,7 @@ export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .set(update)
         .where(eq(providers.id, id))
         .returning();
-      if (!updated) throw new HttpError(404, 'PROVIDER_NOT_FOUND', '供应商不存在');
+      if (!updated) throw new HttpError('PROVIDER_NOT_FOUND', '供应商不存在');
       await bumpRouteCache(s.redis);
       await recordAudit(s.db, {
         actor: 'admin',
@@ -89,7 +114,7 @@ export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .set({ status: 1 })
         .where(eq(providers.id, id))
         .returning({ id: providers.id });
-      if (!retired) throw new HttpError(404, 'PROVIDER_NOT_FOUND', '供应商不存在');
+      if (!retired) throw new HttpError('PROVIDER_NOT_FOUND', '供应商不存在');
       await bumpRouteCache(s.redis);
       await recordAudit(s.db, {
         actor: 'admin',

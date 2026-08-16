@@ -4,6 +4,7 @@ import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { createHash } from 'node:crypto';
 import { verifyJwt } from './jwt.js';
+import { appStatusCache, userProfileCache } from '@ai-gateway/http';
 import { createRedisKeyAuthCache } from './key-auth-cache.js';
 import {
   checkBruteForce,
@@ -253,14 +254,8 @@ export class AuthService {
     }
     const payload = result.payload!;
 
-    // jti 黑名单检查（单令牌紧急吊销：管理端 SET jti_blacklist:{jti} EX <剩余有效期>）
-    const jtiBlocked = await this.redis.get(`jti_blacklist:${payload.jti}`);
-    if (jtiBlocked !== null) {
-      return { ok: false, status: 401, code: 'token_revoked', message: '令牌已被吊销' };
-    }
-
     // App 状态检查（Redis 缓存 60s，避免每次查 DB；禁用 App → 清缓存即生效）
-    const appStatusKey = `app_status:${payload.appId}`;
+    const appStatusKey = appStatusCache(payload.appId);
     let appStatus = await this.redis.get(appStatusKey);
     if (appStatus === null) {
       const app = await this.db.query.apps.findFirst({
@@ -278,7 +273,7 @@ export class AuthService {
     // 管理员设置的每用户限流约束（04 修复）。Redis 缓存 60s（与 app_status 同策略）；
     // 用户不存在 → '404' 拒绝。
     const userId = Number(payload.sub);
-    const profileKey = `user_profile:${userId}`;
+    const profileKey = userProfileCache(userId);
     let profileRaw = await this.redis.get(profileKey);
     if (profileRaw === null) {
       const user = await this.db.query.users.findFirst({

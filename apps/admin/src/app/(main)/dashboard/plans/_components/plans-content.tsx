@@ -47,7 +47,10 @@ import {
 } from '@ai-gateway/ui/components/ui/table';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { PlanRow } from '../types';
+import type { PlanRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 /** 周期天数展示：30→月，365→年，其余按天。 */
 function fmtPeriod(days: number): string {
@@ -69,30 +72,22 @@ function MoneyPoints({ value }: { value: string }) {
 function StatusBadge({ status }: { status: number }) {
   if (status === 0) {
     return (
-      <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-        上架
-      </span>
+      <StatusPill tone="success" label="上架" />
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      下架
-    </span>
+    <StatusPill tone="neutral" label="下架" />
   );
 }
 
 function KindBadge({ kind }: { kind: PlanRow['kind'] }) {
   if (kind === 'pack') {
     return (
-      <span className="inline-flex items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
-        加油包
-      </span>
+      <StatusPill tone="accent" label="加油包" />
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300">
-      包月
-    </span>
+    <StatusPill tone="info" label="包月" />
   );
 }
 
@@ -128,7 +123,6 @@ export function PlansTable({ plans }: { readonly plans: ReadonlyArray<PlanRow> }
 }
 
 function PlanRowItem({ plan }: { plan: PlanRow }) {
-  const [pending, setPending] = useState(false);
   return (
     <TableRow>
       <TableCell className="font-medium">{plan.name}</TableCell>
@@ -147,13 +141,9 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
         {plan.kind === 'pack' ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : plan.allowSeats ? (
-          <span className="inline-flex items-center rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
-            团队
-          </span>
+          <StatusPill tone="accent" label="团队" />
         ) : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            个人
-          </span>
+          <StatusPill tone="neutral" label="个人" />
         )}
       </TableCell>
       <TableCell>
@@ -163,23 +153,23 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
         <div className="flex items-center justify-end gap-1">
           {plan.kind === 'pack' ? <GrantPackDialog plan={plan} /> : null}
           <EditPlanDialog plan={plan} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onClick={async () => {
-              if (!confirm(`确定删除套餐 ${plan.name}？若有有效订阅会失败。`)) return;
-              setPending(true);
-              const { deletePlanAction } = await import('../actions');
-              const res = await deletePlanAction(plan.id);
-              setPending(false);
-              if (res.error) toast.error(res.error);
-              else toast.success('已删除');
-            }}
-            className="text-destructive hover:text-destructive"
+          <ConfirmAction
+            confirm={`确定删除套餐 ${plan.name}？若有有效订阅会失败。`}
+            action={async () => (await import('../actions')).deletePlanAction(plan.id)}
+            success='已删除'
           >
-            {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          </Button>
+            {({ pending, onClick }) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={onClick}
+                className="text-destructive hover:text-destructive"
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              </Button>
+            )}
+          </ConfirmAction>
         </div>
       </TableCell>
     </TableRow>
@@ -188,6 +178,7 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
 
 /** 发放加油包：输入 userId，扣 pack 售价、给用户余额加额度。 */
 function GrantPackDialog({ plan }: { plan: PlanRow }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState('');
@@ -201,11 +192,7 @@ function GrantPackDialog({ plan }: { plan: PlanRow }) {
     startTransition(async () => {
       const { grantPackAction } = await import('../actions');
       const res = await grantPackAction(plan.id, uid);
-      if (res.error) {
-        toast.error('发放失败', { description: res.error });
-        return;
-      }
-      toast.success('已发放');
+      if (!notify(res, '发放失败', '已发放')) return;
       setUserId('');
       setOpen(false);
     });
@@ -280,6 +267,7 @@ const editSchema = createSchema.extend({
 });
 
 export function CreatePlanDialog() {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof createSchema>;
@@ -308,11 +296,7 @@ export function CreatePlanDialog() {
         quotaAmount: Number(values.quotaAmount),
         allowSeats: values.allowSeats,
       });
-      if (res.error) {
-        toast.error('创建失败', { description: res.error });
-        return;
-      }
-      toast.success('已创建');
+      if (!notify(res, '创建失败', '已创建')) return;
       form.reset();
       setOpen(false);
     });
@@ -348,6 +332,7 @@ export function CreatePlanDialog() {
 }
 
 function EditPlanDialog({ plan }: { plan: PlanRow }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof editSchema>;
@@ -377,11 +362,7 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
         allowSeats: values.allowSeats,
         status: Number(values.status),
       });
-      if (res.error) {
-        toast.error('保存失败', { description: res.error });
-        return;
-      }
-      toast.success('已保存');
+      if (!notify(res, '保存失败', '已保存')) return;
       setOpen(false);
     });
   }

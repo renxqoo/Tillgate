@@ -7,7 +7,9 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./formatters": "./src/formatters.ts"
+    "./formatters": "./src/formatters.ts",
+    "./list": "./src/list.ts",
+    "./types": "./src/types.ts"
   },
   "scripts": {
     "lint": "oxlint",

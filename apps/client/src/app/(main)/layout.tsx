@@ -7,10 +7,11 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@ai-gateway/ui/co
 import { cn } from "@ai-gateway/ui/lib/utils";
 import { getPreference } from "@ai-gateway/ui/server/server-actions";
 
-import { AccountSwitcher } from "@/components/shell/header/account-switcher";
-import { LayoutControls } from "@/components/shell/header/layout-controls";
-import { ThemeSwitcher } from "@/components/shell/header/theme-switcher";
+import { AccountSwitcher } from "@ai-gateway/ui/components/shell/header/account-switcher";
+import { LayoutControls } from "@ai-gateway/ui/components/shell/header/layout-controls";
+import { ThemeSwitcher } from "@ai-gateway/ui/components/shell/header/theme-switcher";
 import { AppSidebar } from "@/components/shell/sidebar/app-sidebar";
+import { logoutAction } from "@/lib/server-actions/auth";
 import { requireMe, userFromMe } from "@/lib/server/get-user";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +64,7 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
             <div className="flex items-center gap-2">
               <LayoutControls />
               <ThemeSwitcher />
-              <AccountSwitcher user={{ name: user.name, email: user.email }} />
+              <AccountSwitcher user={{ name: user.name, email: user.email }} onLogout={logoutAction} />
             </div>
           </div>
         </header>

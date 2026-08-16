@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { DecodeError, decodeOtlpJson, type TraceStore } from '@ai-gateway/tracing';
 import { SpanBatcher } from './batcher.js';
+import { errorHandler } from '@ai-gateway/http';
+import { timingSafeEqual } from './token-compare.js';
 
 /**
  * 链路接收端 HTTP 面（内网服务）：
@@ -25,11 +28,17 @@ export interface ReceiverAppDeps {
 
 export function createReceiverApp({ db, store, token, batcher }: ReceiverAppDeps): Hono {
   const app = new Hono();
+  // 统一兜底：未分类异常（含 drizzle/pg 错误）→ 500 信封而非 Hono 默认纯文本
+  app.onError(errorHandler());
+
+  // G1：/v1/traces 请求体上限 8MB（OTLP JSON 批次远小于此；无上限则 c.req.json()
+  // 整读任意体积 → OOM/存储耗尽）。放在令牌校验之后＝通过认证的调用方同样受限。
+  app.use('/v1/traces', bodyLimit({ maxSize: 8 * 1024 * 1024 }));
 
   app.use('*', async (c, next) => {
     if (!token) return next();
-    const auth = c.req.header('authorization');
-    if (auth !== `Bearer ${token}`) {
+    const auth = c.req.header('authorization') ?? '';
+    if (!timingSafeEqual(auth, `Bearer ${token}`)) {
       return c.json({ error: { code: 'UNAUTHORIZED', message: '缺少或错误的接收端令牌' } }, 401);
     }
     return next();

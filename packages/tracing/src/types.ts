@@ -43,8 +43,8 @@ export interface RecentFilter {
   /** 按 requestId 精确过滤（计费复核页关联入口） */
   requestId?: string;
   limit?: number;
-  /** 分页游标：上一页最后一条的 startTimeMs */
-  beforeMs?: number;
+  /** 分页偏移（page/page_size 语义） */
+  offset?: number;
 }
 
 /** 渠道健康聚合（24h 窗口，来自 gateway upstream spans） */
@@ -61,6 +61,8 @@ export interface TraceStore {
   /** 批量写入（幂等：主键冲突忽略；自动确保目标日分区存在） */
   writeBatch(rows: SpanRow[]): Promise<number>;
   findRecentTraces(filter: RecentFilter): Promise<TraceSummary[]>;
+  /** 最近 trace 总数（与 findRecentTraces 同过滤条件，分页 total） */
+  countRecentTraces(filter: Omit<RecentFilter, 'limit' | 'offset'>): Promise<number>;
   findByTraceId(traceId: string): Promise<SpanRow[]>;
   findByRequestId(requestId: string): Promise<SpanRow[]>;
   stats(): Promise<{ spans: number; oldestDays: number | null; partitions: string[] }>;

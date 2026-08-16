@@ -312,7 +312,7 @@ describe('管线失败路径', () => {
       });
       expect(res.status).toBe(503);
       const body = (await res.json()) as { error: { code: string; type: string } };
-      expect(body.error.code).toBe('network');
+      expect(body.error.code).toBe('no_available_channel');
       expect(body.error.type).toBe('server_error');
       // 网络错误不能证明上游未计费：保留 reservation 并进入人工复核。
       await new Promise((r) => setTimeout(r, 100));

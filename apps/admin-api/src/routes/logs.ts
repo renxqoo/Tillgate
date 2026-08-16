@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
-import { sql, gte, lte, and, eq } from 'drizzle-orm';
+import { sql, gte, lte, lt, and, eq, type SQL } from 'drizzle-orm';
 import { requestLogs, auditLogs, users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import {
+  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -13,31 +14,52 @@ import type { AdminServices } from '../services/index.js';
  *   - GET /api/admin/audit-logs：管理操作审计
  */
 
-const logsQuerySchema = paginationQuerySchema.extend({
+const logsQuerySchema = listQuerySchema.extend({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  userId: z.coerce.number().int().optional(),
-  statusCode: z.coerce.number().int().optional(),
-  model: z.string().optional(),
+  userId: z.coerce.number().int().min(1).optional(),
+  /** 精确状态码，或分组 2xx/4xx/5xx（区间在 DB 层展开——前端当页过滤跨页失真，R10 下沉） */
+  statusCode: z
+    .union([z.coerce.number().int().min(100).max(599), z.enum(['2xx', '4xx', '5xx'])])
+    .optional(),
 });
+
+function statusCodeCondition(v: number | '2xx' | '4xx' | '5xx'): SQL {
+  if (v === '2xx') return and(gte(requestLogs.statusCode, 200), lt(requestLogs.statusCode, 300))!;
+  if (v === '4xx') return and(gte(requestLogs.statusCode, 400), lt(requestLogs.statusCode, 500))!;
+  if (v === '5xx') return and(gte(requestLogs.statusCode, 500), lt(requestLogs.statusCode, 600))!;
+  return eq(requestLogs.statusCode, v);
+}
 
 /** 请求日志（挂载于 /api/admin/logs） */
 export function logAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>().get('/', query(logsQuerySchema), async (c) => {
     const q = c.req.valid('query');
-    const p = parsePagination(q);
-    const { limit, offset } = limitOffset(p);
-    const conds = [];
     // 默认查最近 30 天
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000);
-    conds.push(gte(requestLogs.createdAt, q.from ? new Date(q.from) : thirtyDaysAgo));
-    if (q.to) conds.push(lte(requestLogs.createdAt, new Date(q.to)));
-    if (q.userId !== undefined) conds.push(eq(requestLogs.userId, q.userId));
-    if (q.statusCode !== undefined) conds.push(eq(requestLogs.statusCode, q.statusCode));
-    const where = and(...conds);
+    // requestId 是 uuid 列：ilike 需 ::text；计费复核单下钻全靠它
+    const { page, limit, offset, where, orderBy } = buildList(q, {
+      search: [
+        requestLogs.path,
+        requestLogs.errorCode,
+        requestLogs.sourceIp,
+        sql`${requestLogs.requestId}::text`,
+      ],
+      conditions: [
+        gte(requestLogs.createdAt, q.from ? new Date(q.from) : thirtyDaysAgo),
+        q.to ? lte(requestLogs.createdAt, new Date(q.to)) : undefined,
+        q.userId !== undefined ? eq(requestLogs.userId, q.userId) : undefined,
+        q.statusCode !== undefined ? statusCodeCondition(q.statusCode) : undefined,
+      ],
+      sort: {
+        by: { id: requestLogs.id, statusCode: requestLogs.statusCode, durationMs: requestLogs.durationMs, createdAt: requestLogs.createdAt },
+        fallback: 'createdAt',
+        tiebreaker: requestLogs.id,
+      },
+    });
 
     const result = await paginateQuery(
-      p,
+      page,
       s.db
         .select({
           id: requestLogs.id,
@@ -51,7 +73,6 @@ export function logAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           durationMs: requestLogs.durationMs,
           requestSummary: requestLogs.requestSummary,
           attempts: requestLogs.attempts,
-          candidatesTried: requestLogs.candidatesTried,
           sourceIp: requestLogs.sourceIp,
           createdAt: requestLogs.createdAt,
           // 用户名（供前端展示）：优先 displayName，其次 email
@@ -60,10 +81,10 @@ export function logAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .from(requestLogs)
         .leftJoin(users, eq(requestLogs.userId, users.id))
         .where(where)
-        .orderBy(sql`${requestLogs.createdAt} desc`)
+        .orderBy(...orderBy)
         .limit(limit)
         .offset(offset),
-      s.db.select({ count: sql<number>`count(*)::int` }).from(requestLogs).where(where),
+      countAll(s.db, requestLogs, where),
     );
     return c.json(result);
   });
@@ -71,13 +92,20 @@ export function logAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
 /** 管理操作审计（挂载于 /api/admin/audit-logs） */
 export function auditLogAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>().get('/', query(paginationQuerySchema), async (c) => {
-    const p = parsePagination(c.req.valid('query'));
-    const { limit, offset } = limitOffset(p);
+  return new Hono<AdminEnv>().get('/', query(listQuerySchema), async (c) => {
+    const input = c.req.valid('query');
+    const { page, limit, offset, where, orderBy } = buildList(input, {
+      search: [auditLogs.action, auditLogs.targetType, auditLogs.targetId],
+      sort: {
+        by: { id: auditLogs.id, action: auditLogs.action, createdAt: auditLogs.createdAt },
+        fallback: 'createdAt',
+        tiebreaker: auditLogs.id,
+      },
+    });
     const result = await paginateQuery(
-      p,
-      s.db.select().from(auditLogs).orderBy(sql`created_at desc`).limit(limit).offset(offset),
-      s.db.select({ count: sql<number>`count(*)::int` }).from(auditLogs),
+      page,
+      s.db.select().from(auditLogs).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+      countAll(s.db, auditLogs, where),
     );
     return c.json(result);
   });

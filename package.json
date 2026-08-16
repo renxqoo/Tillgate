@@ -39,10 +39,5 @@
     "node": ">=22",
     "pnpm": ">=11"
   },
-  "packageManager": "pnpm@11.1.2",
-  "pnpm": {
-    "overrides": {
-      "recharts": "3.10.1"
-    }
-  }
+  "packageManager": "pnpm@11.1.2"
 }

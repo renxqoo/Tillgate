@@ -20,7 +20,9 @@
     "lint": "oxlint"
   },
   "dependencies": {
+    "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@hono/node-server": "^1.19.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.0",
     "ioredis": "^6.0.0",

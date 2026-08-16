@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { DeadCredentialTracker } from '../../src/dead-credential/tracker.js';
-import { MemoryDeadCredentialStorage } from '../../src/dead-credential/memory-storage.js';
+import { MemoryKvStorage } from '../../src/internal/memory-storage.js';
+import type { DeadCredentialState } from '../../src/config.js';
 import type { DeadCredentialConfig } from '../../src/dead-credential/tracker.js';
 
 const config: DeadCredentialConfig = { failureThreshold: 3, windowMs: 3_600_000 };
 
 function makeTracker(now: () => number) {
-  return new DeadCredentialTracker('test-channel', config, new MemoryDeadCredentialStorage(), now);
+  return new DeadCredentialTracker('test-channel', config, new MemoryKvStorage<DeadCredentialState>(), now);
 }
 
 describe('DeadCredentialTracker', () => {
@@ -72,7 +73,7 @@ describe('DeadCredentialTracker', () => {
 
   it('不同 key 状态隔离', async () => {
     let t = 1000;
-    const storage = new MemoryDeadCredentialStorage();
+    const storage = new MemoryKvStorage<DeadCredentialState>();
     const a = new DeadCredentialTracker('channel-a', config, storage, () => t);
     const b = new DeadCredentialTracker('channel-b', config, storage, () => t);
     for (let i = 0; i < 3; i++) await a.recordFailure({ deadCredential: true });
@@ -84,7 +85,7 @@ describe('DeadCredentialTracker', () => {
 describe('DeadCredentialTracker 并发安全', () => {
   it('并发 recordFailure 不丢计数：N 个并发后状态正确', async () => {
     let t = 1000;
-    const storage = new MemoryDeadCredentialStorage();
+    const storage = new MemoryKvStorage<DeadCredentialState>();
     const d = new DeadCredentialTracker('conc-test', config, storage, () => t);
     // 阈值 3，并发 3 个死凭据失败 → 应 invalid
     await Promise.all(Array.from({ length: 3 }, () => d.recordFailure({ deadCredential: true })));
@@ -100,43 +101,3 @@ describe('DeadCredentialTracker 并发安全', () => {
   });
 });
 
-describe('MemoryDeadCredentialStorage', () => {
-  it('缺失 key → null；TTL 过期 → null', async () => {
-    const s = new MemoryDeadCredentialStorage();
-    expect(await s.getState('x')).toBeNull();
-    await s.setState('x', { status: 'valid', consecutiveFailures: 0, version: 0 }, 5);
-    expect(await s.getState('x')).not.toBeNull();
-    await new Promise((r) => setTimeout(r, 20));
-    expect(await s.getState('x')).toBeNull();
-  });
-
-  it('compareAndSet：version 匹配才写入', async () => {
-    const s = new MemoryDeadCredentialStorage();
-    expect(
-      await s.compareAndSet(
-        'k',
-        0,
-        { status: 'valid', consecutiveFailures: 1, version: 1 },
-        10_000,
-      ),
-    ).toBe(true);
-    expect(
-      await s.compareAndSet(
-        'k',
-        0,
-        { status: 'valid', consecutiveFailures: 2, version: 2 },
-        10_000,
-      ),
-    ).toBe(false);
-    expect(
-      await s.compareAndSet(
-        'k',
-        1,
-        { status: 'invalid', consecutiveFailures: 3, version: 2 },
-        10_000,
-      ),
-    ).toBe(true);
-    const got = await s.getState('k');
-    expect(got?.status).toBe('invalid');
-  });
-});

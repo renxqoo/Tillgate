@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { eq, and, or, ilike, sql, desc } from 'drizzle-orm';
+import { gte, lte, eq } from 'drizzle-orm';
 import { users, rateCards, transactions, auditLogs } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, intParam, jsonBody, limitOffset, operationId, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import {
+  MONEY_MAX, HttpError, intParam, jsonBody, operationId, paginateQuery, query,
+  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from '../services/users.js';
@@ -18,8 +20,7 @@ import { mapLedgerError, setUserPassword, updateUser, userProfileColumns } from 
  *   - GET  /:id/transactions | /:id/audit-logs：管理员视角流水与审计
  */
 
-const userListQuerySchema = paginationQuerySchema.extend({
-  q: z.string().optional(),
+const userListQuerySchema = listQuerySchema.extend({
   status: z.coerce.number().int().min(0).max(2).optional(),
   /** 企业/个人筛选：1=企业，0=个人 */
   enterprise: z.enum(['0', '1']).optional(),
@@ -33,9 +34,9 @@ const userUpdateSchema = z
     rpmLimit: z.number().int().min(1).nullable().optional(),
     tpmLimit: z.number().int().min(1).nullable().optional(),
     /** 透支上限（元，>=0）。信用模型：balance 允许降到 -credit_limit。 */
-    creditLimit: z.number().min(0).optional(),
+    creditLimit: z.number().min(0).max(MONEY_MAX).optional(),
     /** 每日花费上限（元，>=0）。NULL=不限。 */
-    dailySpendLimit: z.number().min(0).nullable().optional(),
+    dailySpendLimit: z.number().min(0).max(MONEY_MAX).nullable().optional(),
     displayName: z.string().max(64).optional(),
     email: z.string().email().max(255).nullable().optional(),
     /** 是否企业用户（企业用户可购买团队套餐/席位） */
@@ -59,7 +60,6 @@ const setPasswordSchema = z.object({
 
 /** 资金操作金额上限（元）：numeric(38,18) 安全范围内的人为业务上限 */
 /** 资金操作金额上限（元）：numeric(38,18) 安全范围内的人为业务上限（全管理端统一口径） */
-export const MONEY_MAX = 1e9;
 
 const userAdjustSchema = z.object({
   /** 调账金额（元，小数），正=增加，负=扣减 */
@@ -86,33 +86,36 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     // 列表（搜索 + 状态筛选 + 分页）
     .get('/', query(userListQuerySchema), async (c) => {
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conditions = [];
-      if (q.q) {
-        const like = `%${q.q}%`;
-        conditions.push(
-          or(ilike(users.subject, like), ilike(users.email, like), ilike(users.displayName, like))!,
-        );
-      }
-      if (q.status !== undefined) conditions.push(eq(users.status, q.status));
-      if (q.enterprise !== undefined) conditions.push(eq(users.isEnterprise, q.enterprise === '1'));
-      const where = conditions.length ? and(...conditions) : undefined;
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [users.subject, users.email, users.displayName],
+        conditions: [
+          q.status !== undefined ? eq(users.status, q.status) : undefined,
+          q.enterprise !== undefined ? eq(users.isEnterprise, q.enterprise === '1') : undefined,
+        ],
+        sort: {
+          by: {
+            id: users.id,
+            subject: users.subject,
+            balance: users.balance,
+            createdAt: users.createdAt,
+            lastLoginAt: users.lastLoginAt,
+          },
+          fallback: 'createdAt',
+          tiebreaker: users.id,
+        },
+      });
 
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select(userProfileColumns)
           .from(users)
           .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
           .where(where)
-          .orderBy(desc(users.id))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(users)
-          .where(where),
+        countAll(s.db, users, where),
       );
       return c.json(result);
     })
@@ -126,7 +129,7 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
         .where(eq(users.id, id))
         .limit(1);
-      if (rows.length === 0) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
+      if (rows.length === 0) throw new HttpError('USER_NOT_FOUND', '用户不存在');
       return c.json(rows[0]);
     })
 
@@ -182,40 +185,55 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     // 用户资金流水（管理员视角）
-    .get('/:id/transactions', query(paginationQuerySchema), async (c) => {
-      const id = intParam(c, 'id');
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const result = await paginateQuery(
-        p,
-        s.db
-          .select()
-          .from(transactions)
-          .where(eq(transactions.userId, id))
-          .orderBy(sql`${transactions.createdAt} desc`)
-          .limit(limit)
-          .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(transactions).where(eq(transactions.userId, id)),
-      );
-      return c.json(result);
-    })
+    .get(
+      '/:id/transactions',
+      query(listQuerySchema.extend({
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+      })),
+      async (c) => {
+        const id = intParam(c, 'id');
+        const q = c.req.valid('query');
+        // from/to 时间范围（与用户面 /api/me/transactions 同语义）
+        const { page, limit, offset, where, orderBy } = buildList(q, {
+          search: [transactions.remark, transactions.refId, transactions.type],
+          conditions: [
+            eq(transactions.userId, id),
+            q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
+            q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
+          ],
+          sort: {
+            by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
+            fallback: 'createdAt',
+            tiebreaker: transactions.id,
+          },
+        });
+        const result = await paginateQuery(
+          page,
+          s.db.select().from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+          countAll(s.db, transactions, where),
+        );
+        return c.json(result);
+      },
+    )
 
     // 用户审计日志（管理员视角，target_type=user）
-    .get('/:id/audit-logs', query(paginationQuerySchema), async (c) => {
+    .get('/:id/audit-logs', query(listQuerySchema), async (c) => {
       const id = intParam(c, 'id');
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const target = and(eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id)));
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [auditLogs.action, auditLogs.targetId],
+        conditions: [eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(id))],
+        sort: {
+          by: { id: auditLogs.id, action: auditLogs.action, createdAt: auditLogs.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: auditLogs.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
-        s.db
-          .select()
-          .from(auditLogs)
-          .where(target)
-          .orderBy(sql`${auditLogs.createdAt} desc`)
-          .limit(limit)
-          .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(auditLogs).where(target),
+        page,
+        s.db.select().from(auditLogs).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+        countAll(s.db, auditLogs, where),
       );
       return c.json(result);
     });

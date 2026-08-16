@@ -1,4 +1,4 @@
-import { pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /**
  * admins — 管理员账户（与 users 物理隔离）。
@@ -24,6 +24,8 @@ export const admins = pgTable(
     twoFactorSecret: varchar('two_factor_secret', { length: 64 }),
     /** 0 正常 / 1 封禁 / 2 注销 */
     status: smallint('status').notNull().default(0),
+    /** 邮箱验证码二次登录开关（默认关；开启后登录需邮箱收码验证。SMTP 未配置时开启失败） */
+    twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
     /** 会话失效线（R5-2）：iat 早于此时间点的管理面会话 JWT 一律拒绝（改密即全网下线） */
     sessionInvalidBefore: timestamp('session_invalid_before', { withTimezone: true }),
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),

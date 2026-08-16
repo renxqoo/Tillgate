@@ -2,7 +2,7 @@
   "name": "@ai-gateway/worker",
   "version": "0.1.0",
   "private": true,
-  "description": "BullMQ meter 队列消费编排（结算/对账领域逻辑在 @ai-gateway/ledger）",
+  "description": "BullMQ meter \u961f\u5217\u6d88\u8d39\u7f16\u6392\uff08\u7ed3\u7b97/\u5bf9\u8d26\u9886\u57df\u903b\u8f91\u5728 @ai-gateway/ledger\uff09",
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
@@ -26,6 +26,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "pg": "^8.22.0",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",

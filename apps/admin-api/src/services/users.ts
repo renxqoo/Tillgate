@@ -1,8 +1,8 @@
 import { eq, and, sql } from 'drizzle-orm';
 import { users, rateCards, rateCardCoefficients, apiKeys } from '@ai-gateway/db/schema';
 import { hashPassword } from '@ai-gateway/identity';
-import { LedgerError } from '@ai-gateway/ledger';
-import { HttpError, invalidateKeyAuthCache, recordAudit } from '@ai-gateway/http';
+import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
+import { HttpError, invalidateKeyAuthCache, recordAudit, type KnownErrorCode } from '@ai-gateway/http';
 import type { AdminServices } from './index.js';
 
 /**
@@ -62,24 +62,15 @@ export type UserPatch = {
 };
 
 /** 用户不存在（供调整错误分支复用） */
-export const USER_NOT_FOUND = new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
+export const USER_NOT_FOUND = new HttpError('USER_NOT_FOUND', '用户不存在');
 
 /**
- * ledger 业务错误 → HTTP 错误映射（调账/赠送共用）。
- * 非 ledger 错误原样抛出，交给 errorHandler 归一到 500。
+ * ledger 业务错误 → HTTP（映射表单一真相：packages/ledger error-catalog）。
  */
 export function mapLedgerError(error: unknown): HttpError {
   if (error instanceof LedgerError) {
-    switch (error.code) {
-      case 'user_not_found':
-        return USER_NOT_FOUND;
-      case 'insufficient_balance':
-        return new HttpError(400, 'INSUFFICIENT_BALANCE', '余额不足，调账失败（拒绝透支）');
-      case 'invalid_amount':
-        return new HttpError(400, 'INVALID_AMOUNT', '金额无效（非有限数或超限）');
-      case 'idempotency_conflict':
-        return new HttpError(409, 'IDEMPOTENCY_CONFLICT', '幂等键已被不同请求使用');
-    }
+    const m = LEDGER_HTTP[error.code];
+    return new HttpError(m.code as KnownErrorCode, error.message || m.message);
   }
   throw error;
 }
@@ -103,9 +94,9 @@ export async function updateUser(
       .from(rateCards)
       .where(eq(rateCards.id, patch.rateCardId))
       .limit(1);
-    if (card.length === 0) throw new HttpError(400, 'RATE_CARD_NOT_FOUND', '费率卡不存在');
+    if (card.length === 0) throw new HttpError('RATE_CARD_NOT_FOUND', '费率卡不存在');
     if (card[0]!.status !== 0)
-      throw new HttpError(400, 'RATE_CARD_DISABLED', '费率卡已停用，无法绑定');
+      throw new HttpError('RATE_CARD_DISABLED', '费率卡已停用，无法绑定');
   }
 
   const update: Record<string, unknown> = { updatedAt: new Date() };
@@ -116,7 +107,11 @@ export async function updateUser(
   if (patch.creditLimit !== undefined) update.creditLimit = patch.creditLimit;
   if (patch.dailySpendLimit !== undefined) update.dailySpendLimit = patch.dailySpendLimit;
   if (patch.displayName !== undefined) update.displayName = patch.displayName;
-  if (patch.email !== undefined) update.email = patch.email;
+  if (patch.email !== undefined) {
+    update.email = patch.email;
+    // email 是 org 邀请匹配键且关联登录身份——变更视同敏感操作，吊销既有会话
+    update.sessionInvalidBefore = new Date();
+  }
   if (patch.isEnterprise !== undefined) update.isEnterprise = patch.isEnterprise;
   // 封禁时记原因；解封清空原因
   if (patch.status === 1) update.freezeReason = patch.freezeReason ?? '管理员封禁';
@@ -170,7 +165,7 @@ export async function setUserPassword(
   if (cur.length === 0) throw USER_NOT_FOUND;
   // 本地密码只对本地账号有意义；给外部 OIDC 身份挂本地密码等于管理员接管该身份
   if (cur[0]!.issuer !== 'local') {
-    throw new HttpError(400, 'NOT_LOCAL_ACCOUNT', '只能为本地账号（issuer=local）设置密码');
+    throw new HttpError('NOT_LOCAL_ACCOUNT', '只能为本地账号（issuer=local）设置密码');
   }
 
   const hash = await hashPassword(password);

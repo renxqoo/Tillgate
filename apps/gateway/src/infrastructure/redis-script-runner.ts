@@ -1,0 +1,39 @@
+import type { Redis, RedisValue } from 'ioredis';
+
+/**
+ * Redis Lua 脚本运行器（组件化下沉）：evalsha + NOSCRIPT 自愈。
+ *
+ * Redis 官方文档规定的恢复模式：evalsha 收到 NOSCRIPT（脚本未缓存——重启、
+ * 故障转移、SCRIPT FLUSH 后）→ 重新 LOAD → 重试。sha 是脚本人的确定性哈希，
+ * 重载返回同值，重试即自愈。此前 rate-limit 4 脚本与熔断 CAS 各自缓存 sha
+ * 且永不重载（BUG-C，new-api #6412 同类）——Redis 一次重启后限流持续抛错
+ * （管线无 catch → 全量 500）、熔断状态写入静默失效，直到网关进程重启。
+ *
+ * 脚本体极短，evalsha→eval 的性能差异可忽略；保留 evalsha 路径只为
+ * 高频调用省一点带宽。缓存的正确性不依赖进程存活时间。
+ */
+export class RedisScriptRunner {
+  private readonly shas = new Map<string, string>();
+
+  constructor(private readonly redis: Redis) {}
+
+  async run(script: string, numKeys: number, ...args: RedisValue[]): Promise<unknown> {
+    const cached = this.shas.get(script);
+    if (cached !== undefined) {
+      try {
+        return await this.redis.evalsha(cached, numKeys, ...args);
+      } catch (err) {
+        if (!isNoScriptError(err)) throw err;
+        // NOSCRIPT：脚本缓存消失，走重载路径
+      }
+    }
+    const sha = (await this.redis.script('LOAD', script)) as unknown as string;
+    this.shas.set(script, sha);
+    return this.redis.evalsha(sha, numKeys, ...args);
+  }
+}
+
+/** ioredis 把 NOSCRIPT 作为 message 前缀抛出（无独立 code） */
+function isNoScriptError(err: unknown): boolean {
+  return err instanceof Error && err.message.toUpperCase().includes('NOSCRIPT');
+}

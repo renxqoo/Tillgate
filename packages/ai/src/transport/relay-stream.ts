@@ -1,5 +1,6 @@
-import { SseScanner } from './sse-parser.js';
-import type { StreamError } from '../types.js';
+import { SseScanner } from './sse-parser';
+import type { StreamError } from '../types';
+import { asServerDrainAbort } from '../errors/server-drain';
 
 /**
  * 透传管道（ai-package.md §7.4）：
@@ -24,12 +25,14 @@ export interface RelayStreamOptions {
 }
 
 export type RelayStreamEvent =
+  | { type: 'first_chunk' }
   | { type: 'stream_error'; frame: StreamError }
   | {
       type: 'aborted';
       reason:
         | 'client_disconnect'
         | 'request_cancelled'
+        | 'server_draining'
         | 'inactivity'
         | 'upstream_error'
         | 'upstream_disconnected'
@@ -43,6 +46,7 @@ export type RelayStreamEvent =
       terminated?:
         | 'client_disconnect'
         | 'request_cancelled'
+        | 'server_draining'
         | 'inactivity'
         | 'upstream_error'
         | 'upstream_disconnected'
@@ -101,7 +105,12 @@ export function relayStream(
 
   const failWithErrorFrame = (
     frame: StreamError,
-    reason: 'request_cancelled' | 'inactivity' | 'upstream_disconnected' | 'upstream_truncated',
+    reason:
+      | 'request_cancelled'
+      | 'server_draining'
+      | 'inactivity'
+      | 'upstream_disconnected'
+      | 'upstream_truncated',
     controller: TransformStreamDefaultController<Uint8Array> | null = tCtrl,
     terminate = true,
   ): void => {
@@ -166,6 +175,9 @@ export function relayStream(
     },
     transform(chunk, ctrl) {
       if (finished) return;
+      // 首个数据 chunk 流经（上游首字节 → 客户端）：一次性事件，网关据此记真实 TTFB
+      // （订阅晚于流开始的消费方拿不到「尝试开始」，只能从这里锚定首字节时刻）
+      if (bytesRelayed === 0) emit({ type: 'first_chunk' });
       lastDataAt = Date.now();
       scanner.consume(chunk);
       ctrl.enqueue(chunk);
@@ -196,18 +208,35 @@ export function relayStream(
       }
     },
     cancel() {
-      // 客户端断开（readable 端被 cancel）
+      // 客户端断开（readable 端被 cancel）。#6649 同类：客户端在 [DONE]/终止帧
+      // 之后立刻关闭连接是 HTTP/1.1 流式客户端的标准行为——已正常完成的流
+      // 不得归类为 client_disconnect（否则 usage_logs.stream_aborted 被打标、
+      // 无 usage 的流误走估算结算）。完成语义与 flush() 同优先级：
+      // [DONE] > 终止帧（无错误帧）> 错误帧（upstream_error）> 真正的用户中断。
       if (!finished) {
         finished = true;
         if (timer !== null) clearInterval(timer);
-        emit({ type: 'aborted', reason: 'client_disconnect' });
-        emit({
-          type: 'done',
-          usage: scanner.getUsage(),
-          errorFrame: scanner.getErrorFrame(),
-          bytesRelayed,
-          terminated: 'client_disconnect',
-        });
+        const errorFrame = scanner.getErrorFrame();
+        const completed = scanner.hasDone() || (scanner.hasTerminalFrame() && !errorFrame);
+        if (!completed) {
+          emit({ type: 'aborted', reason: 'client_disconnect' });
+          emit({
+            type: 'done',
+            usage: scanner.getUsage(),
+            errorFrame,
+            bytesRelayed,
+            terminated: 'client_disconnect',
+          });
+        } else {
+          if (errorFrame) emit({ type: 'aborted', reason: 'upstream_error' });
+          emit({
+            type: 'done',
+            usage: scanner.getUsage(),
+            errorFrame,
+            bytesRelayed,
+            terminated: errorFrame ? 'upstream_error' : undefined,
+          });
+        }
       }
     },
   });
@@ -224,10 +253,19 @@ export function relayStream(
     .catch(async () => {
       // 上游读取错误 → 注入错误帧（通过 controller，pipeTo 已结束但 writable 未 abort）
       if (!finished && tCtrl) {
-        const reason = options.signal?.aborted ? 'request_cancelled' : 'upstream_disconnected';
-        const frame = options.signal?.aborted
-          ? { code: 'request_cancelled', detail: 'request cancelled while reading upstream' }
-          : { code: 'upstream_disconnected', detail: 'upstream read error' };
+        // 服务端 drain 中止（宽限期后的 ServerDrainAbort 标记）是服务端责任：
+        // 归类 server_draining（计费侧全额释放），不得混入用户取消（估算结算）
+        const drain = options.signal ? asServerDrainAbort(options.signal.reason) : null;
+        const reason = drain
+          ? 'server_draining'
+          : options.signal?.aborted
+            ? 'request_cancelled'
+            : 'upstream_disconnected';
+        const frame = drain
+          ? { code: 'server_draining', detail: 'gateway draining' }
+          : options.signal?.aborted
+            ? { code: 'request_cancelled', detail: 'request cancelled while reading upstream' }
+            : { code: 'upstream_disconnected', detail: 'upstream read error' };
         failWithErrorFrame(frame, reason);
       }
     });

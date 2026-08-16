@@ -8,6 +8,8 @@ import { getTracer } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
 import { maintainPartitions } from '@ai-gateway/tracing';
+import { maintainRequestLogPartitions } from './request-log-partitions.js';
+import { isDeepHealthAuthorized } from './health-gate.js';
 import { settleTelemetry } from './settle-telemetry.js';
 import {
   createBillingAutoReleaser,
@@ -138,12 +140,24 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   const ledger = createLedger({ db, effects: createRedisLedgerEffects(redis) });
   // uncertain 小额白名单自动放行（dead 永不自动处置）；阈值 '0' 时整体关闭
   const billingOperations = createBillingOperations({ db });
+  // 时效放行（R11-B）：env 层已保证双参数同配同缺；未配置 → 通道关闭
+  const uncertainTimeout =
+    env.WORKER_UNCERTAIN_TIMEOUT_HOURS !== undefined &&
+    env.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT !== undefined
+      ? {
+          hours: env.WORKER_UNCERTAIN_TIMEOUT_HOURS,
+          maxAmount: env.WORKER_UNCERTAIN_TIMEOUT_MAX_AMOUNT,
+        }
+      : undefined;
   const autoReleaser = createBillingAutoReleaser({
     db,
     operations: billingOperations,
     config: {
       maxAmount: env.WORKER_AUTO_RELEASE_MAX_AMOUNT,
       batchSize: env.WORKER_RECOVERY_BATCH_SIZE,
+      // 小额通道只放滞留单：滞留下界取一个租约周期（与网关租约同源）
+      minAgeMs: env.BILLING_LEASE_SECONDS * 1_000,
+      timeout: uncertainTimeout,
     },
   });
 
@@ -153,6 +167,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   let recoveryTimer: ReturnType<typeof setInterval> | null = null;
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   let traceMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  let requestLogMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
   let accepting = false;
   let started = false;
   let stopping: Promise<StopReport> | null = null;
@@ -241,6 +256,33 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   };
 
   /** trace_spans 分区维护：预建未来 + 清理超期；advisory lock 保证多副本只跑一份。 */
+/** request_logs 月分区维护：advisory lock 防多实例并发，逻辑在 request-log-partitions.ts（可测） */
+  const runRequestLogMaintenance = async (): Promise<void> => {
+    if (!accepting) return;
+    await track(async () => {
+      const client = await db.$client.connect();
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          "select pg_try_advisory_lock(hashtext('ai-gateway:request-log-partition')) as acquired",
+        );
+        if (!lock.rows[0]?.acquired) return;
+        try {
+          const result = await maintainRequestLogPartitions(client, {
+            retentionDays: env.REQUEST_LOG_RETENTION_DAYS,
+          });
+          if (result.created.length + result.dropped.length > 0) {
+            logger.info({ result }, 'request_logs partitions maintained');
+          }
+        } finally {
+          await client.query("select pg_advisory_unlock(hashtext('ai-gateway:request-log-partition'))");
+        }
+      } finally {
+        client.release();
+      }
+    }).catch((error) => logger.warn({ err: (error as Error).message }, 'request-log partition maintenance failed'));
+  };
+
+
   const runTraceMaintenance = async (): Promise<void> => {
     if (!accepting) return;
     await track(async () => {
@@ -392,6 +434,21 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
             response.writeHead(404).end();
             return;
           }
+          // G2：深度健康报告含结算积压/lastError 等内部信息——须带令牌访问；
+          // livez/readyz 保持开放（编排器探针语义，无敏感字段）。
+          if (kind === 'deep') {
+            const provided = Array.isArray(request.headers['x-health-token'])
+              ? request.headers['x-health-token'][0]
+              : request.headers['x-health-token'];
+            if (!isDeepHealthAuthorized(provided, process.env.WORKER_HEALTH_TOKEN)) {
+              response.writeHead(403, { 'content-type': 'application/json' }).end(
+                JSON.stringify({
+                  error: { message: '深度健康报告需要令牌', code: 'WORKER_HEALTH_TOKEN_REQUIRED' },
+                }),
+              );
+              return;
+            }
+          }
           void healthReport(kind)
             .then((report) => {
               response.writeHead(report.status === 'fail' ? 503 : 200, {
@@ -401,7 +458,12 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
             })
             .catch((error) => {
               response.writeHead(503, { 'content-type': 'application/json' });
-              response.end(JSON.stringify({ status: 'fail', error: (error as Error).message }));
+              response.end(
+                JSON.stringify({
+                  status: 'fail',
+                  error: { message: (error as Error).message, code: 'HEALTH_REPORT_FAILED' },
+                }),
+              );
             });
         });
         await new Promise<void>((resolve, reject) => {
@@ -416,7 +478,12 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
           () => void runTraceMaintenance(),
           env.WORKER_TRACE_MAINTENANCE_INTERVAL_MS,
         );
+        requestLogMaintenanceTimer = setInterval(
+          () => void runRequestLogMaintenance(),
+          env.WORKER_TRACE_MAINTENANCE_INTERVAL_MS,
+        );
         pollTimer.unref();
+        requestLogMaintenanceTimer.unref();
         recoveryTimer.unref();
         reconcileTimer.unref();
         traceMaintenanceTimer.unref();
@@ -429,6 +496,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
         if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
+        if (requestLogMaintenanceTimer) clearInterval(requestLogMaintenanceTimer);
         await Promise.allSettled([
           queueWorker?.close() ?? Promise.resolve(),
           processor.abandonOwnedClaims(),
@@ -456,6 +524,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
         if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
+        if (requestLogMaintenanceTimer) clearInterval(requestLogMaintenanceTimer);
         logger.info({ reason }, 'billing worker draining');
         let clean = true;
         let activeAbandoned = 0;

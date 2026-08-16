@@ -30,8 +30,12 @@ import {
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
 
-import { CopyButton } from "@/components/shell/copy-button";
-import type { AppCreated, AppRow } from "../types";
+import { CopyButton } from "@ai-gateway/ui/components/shell/copy-button";
+import type { AppCreated, AppRow } from "@ai-gateway/api-client/types";
+import { fmtDateTime } from "@ai-gateway/api-client/formatters";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const createSchema = z.object({
   name: z.string().min(1, "请输入名称").max(100),
@@ -81,10 +85,10 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
                 <StatusBadge status={a.status} />
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {new Date(a.createdAt).toLocaleString("zh-CN")}
+                {fmtDateTime(a.createdAt)}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {a.rotatedAt ? new Date(a.rotatedAt).toLocaleString("zh-CN") : "—"}
+                {fmtDateTime(a.rotatedAt)}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -102,41 +106,38 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
 
 function StatusBadge({ status }: { status: number }) {
   return status === 0 ? (
-    <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-      启用
-    </span>
+    <StatusPill tone="success" label="启用" />
   ) : (
-    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      停用
-    </span>
+    <StatusPill tone="neutral" label="停用" />
   );
 }
 
 function DeleteInline({ id, name }: { id: number; name: string }) {
-  const [pending, setPending] = useState(false);
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      disabled={pending}
-      onClick={async () => {
-        if (!confirm(`确定删除应用「${name}」？无法恢复。`)) return;
-        setPending(true);
-        const { deleteAppAction } = await import("../actions");
-        const res = await deleteAppAction(id);
-        setPending(false);
-        if (res.error) toast.error("删除失败", { description: res.error });
-        else toast.success("已删除");
-      }}
-      className="text-destructive hover:text-destructive"
+    <ConfirmAction
+      confirm={`确定删除应用「${name}」？无法恢复。`}
+      action={async () => (await import("../actions")).deleteAppAction(id)}
+      errorTitle="删除失败"
+      success="已删除"
     >
-      {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-      删除
-    </Button>
+      {({ pending, onClick }) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={onClick}
+          className="text-destructive hover:text-destructive"
+        >
+          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+          删除
+        </Button>
+      )}
+    </ConfirmAction>
   );
 }
 
 function RotateSecretInline({ id, name }: { id: number; name: string }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null);
@@ -196,10 +197,7 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
                   const { rotateSecretAction } = await import("../actions");
                   const res = await rotateSecretAction(id);
                   setPending(false);
-                  if (res.error) {
-                    toast.error("轮换失败", { description: res.error });
-                    return;
-                  }
+                  if (!notify(res, "轮换失败")) return;
                   setRevealed(res.clientSecret!);
                   toast.success("已轮换 secret");
                 }}
@@ -216,6 +214,7 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
 }
 
 export function CreateAppDialog() {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<AppCreated | null>(null);
 
@@ -255,10 +254,7 @@ export function CreateAppDialog() {
             onSubmit={form.handleSubmit(async (values) => {
               const { createAppAction } = await import("../actions");
               const res = await createAppAction(values);
-              if (res.error) {
-                toast.error("创建失败", { description: res.error });
-                return;
-              }
+              if (!notify(res, "创建失败")) return;
               setCreated(res.app!);
               toast.success("已创建应用");
             })}

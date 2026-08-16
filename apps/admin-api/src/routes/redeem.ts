@@ -1,12 +1,15 @@
 import { Hono } from 'hono';
-import { eq, sql, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { redeemBatches, redeemCodes } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit, intParam } from '@ai-gateway/http';
+import {
+  HttpError, jsonBody, paginateQuery, query, recordAudit, intParam,
+  listQuerySchema, buildList, countAll,
+  sortQuerySchema, paginationQuerySchema } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { createRedeemBatch } from '../services/redeem.js';
-import { MONEY_MAX } from './users.js';
+import { MONEY_MAX } from '@ai-gateway/http';
 
 /**
  * 充值码管理（api-contract §4.7 / requirements 4.8）。
@@ -38,6 +41,7 @@ const batchCreateSchema = z.object({
 });
 
 const batchCodesQuerySchema = paginationQuerySchema.extend({
+  ...sortQuerySchema.shape,
   status: z.coerce.number().int().min(0).max(2).optional(),
 });
 
@@ -62,11 +66,18 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     })
 
     // 批次列表
-    .get('/', query(paginationQuerySchema), async (c) => {
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
+    .get('/', query(listQuerySchema), async (c) => {
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [redeemBatches.name, redeemBatches.remark],
+        sort: {
+          by: { id: redeemBatches.id, name: redeemBatches.name, amount: redeemBatches.amount, createdAt: redeemBatches.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: redeemBatches.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: redeemBatches.id,
@@ -79,10 +90,11 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
             createdAt: redeemBatches.createdAt,
           })
           .from(redeemBatches)
-          .orderBy(sql`${redeemBatches.id} desc`)
+          .where(where)
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(redeemBatches),
+        countAll(s.db, redeemBatches, where),
       );
       return c.json(result);
     })
@@ -91,7 +103,7 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     .get('/:id', async (c) => {
       const id = intParam(c, 'id');
       const rows = await s.db.select().from(redeemBatches).where(eq(redeemBatches.id, id)).limit(1);
-      if (rows.length === 0) throw new HttpError(404, 'REDEEM_BATCH_NOT_FOUND', '批次不存在');
+      if (rows.length === 0) throw new HttpError('REDEEM_BATCH_NOT_FOUND', '批次不存在');
       return c.json(rows[0]);
     })
 
@@ -99,13 +111,16 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     .get('/:id/codes', query(batchCodesQuerySchema), async (c) => {
       const id = intParam(c, 'id');
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const where = q.status !== undefined
-        ? and(eq(redeemCodes.batchId, id), eq(redeemCodes.status, q.status))
-        : eq(redeemCodes.batchId, id);
+      // 兑换码只有哈希无文本列，不提供 q；默认 id desc（新生成在前）
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        conditions: [
+          eq(redeemCodes.batchId, id),
+          q.status !== undefined ? eq(redeemCodes.status, q.status) : undefined,
+        ],
+        sort: { by: { id: redeemCodes.id, usedAt: redeemCodes.usedAt }, fallback: 'id', tiebreaker: redeemCodes.id },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: redeemCodes.id,
@@ -118,10 +133,10 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           })
           .from(redeemCodes)
           .where(where)
-          .orderBy(redeemCodes.id)
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(redeemCodes).where(where),
+        countAll(s.db, redeemCodes, where),
       );
       return c.json(result);
     })
@@ -134,7 +149,7 @@ export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .set({ status: 2 })
         .where(and(eq(redeemCodes.id, codeId), eq(redeemCodes.status, 0)))
         .returning({ id: redeemCodes.id });
-      if (result.length === 0) throw new HttpError(404, 'REDEEM_CODE_NOT_FOUND', '码不存在或已使用/已作废');
+      if (result.length === 0) throw new HttpError('REDEEM_CODE_NOT_FOUND', '码不存在或已使用/已作废');
       await recordAudit(s.db, {
         actor: 'admin',
         adminId: c.get('adminId'),

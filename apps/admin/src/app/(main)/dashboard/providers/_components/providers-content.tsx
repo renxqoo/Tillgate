@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -43,7 +42,11 @@ import {
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
 
-import type { ProviderRow } from "../types";
+import type { AdminProviderRow } from "@ai-gateway/api-client/types";
+import { fmtDateTime } from "@ai-gateway/api-client/formatters";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const schema = z.object({
   name: z.string().min(1, "请输入名称"),
@@ -53,7 +56,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-export function ProvidersTable({ providers }: { readonly providers: ReadonlyArray<ProviderRow> }) {
+export function ProvidersTable({ providers, protocols }: { readonly providers: ReadonlyArray<AdminProviderRow>; readonly protocols: ReadonlyArray<string> }) {
   return (
     <Table>
       <TableHeader>
@@ -74,15 +77,14 @@ export function ProvidersTable({ providers }: { readonly providers: ReadonlyArra
             </TableCell>
           </TableRow>
         ) : (
-          providers.map((p) => <ProviderRowItem key={p.id} provider={p} />)
+          providers.map((p) => <ProviderRowItem key={p.id} provider={p} protocols={protocols} />)
         )}
       </TableBody>
     </Table>
   );
 }
 
-function ProviderRowItem({ provider }: { provider: ProviderRow }) {
-  const [pending, setPending] = useState(false);
+function ProviderRowItem({ provider, protocols }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string> }) {
   return (
     <TableRow>
       <TableCell className="font-medium">{provider.name}</TableCell>
@@ -92,63 +94,56 @@ function ProviderRowItem({ provider }: { provider: ProviderRow }) {
       <TableCell className="text-xs text-muted-foreground">{provider.protocol}</TableCell>
       <TableCell>
         {provider.status === 0 ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            启用
-          </span>
+          <StatusPill tone="success" label="启用" />
         ) : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            禁用
-          </span>
+          <StatusPill tone="neutral" label="禁用" />
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {provider.updatedAt
-          ? new Date(provider.updatedAt).toLocaleString("zh-CN")
-          : new Date(provider.createdAt).toLocaleString("zh-CN")}
+          ? fmtDateTime(provider.updatedAt)
+          : fmtDateTime(provider.createdAt)}
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <EditProviderDialog provider={provider} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onClick={async () => {
-              if (!confirm(`确定删除供应商 ${provider.name}？关联渠道将不可用。`)) return;
-              setPending(true);
-              const { deleteProviderAction } = await import("../actions");
-              const res = await deleteProviderAction(provider.id);
-              setPending(false);
-              if (res.error) toast.error(res.error);
-              else toast.success("已删除");
-            }}
-            className="text-destructive hover:text-destructive"
+          <EditProviderDialog provider={provider} protocols={protocols} />
+          <ConfirmAction
+            confirm={`确定删除供应商 ${provider.name}？关联渠道将不可用。`}
+            action={async () => (await import("../actions")).deleteProviderAction(provider.id)}
+            success="已删除"
           >
-            {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          </Button>
+            {({ pending, onClick }) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={onClick}
+                className="text-destructive hover:text-destructive"
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              </Button>
+            )}
+          </ConfirmAction>
         </div>
       </TableCell>
     </TableRow>
   );
 }
 
-export function CreateProviderDialog() {
+export function CreateProviderDialog({ protocols }: { readonly protocols: ReadonlyArray<string> }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
-    defaultValues: { name: "", baseUrl: "", protocol: "openai", status: 0 },
+    defaultValues: { name: "", baseUrl: "", protocol: protocols[0] ?? "openai-compatible", status: 0 },
   });
 
   function onSubmit(values: FormValues) {
     startTransition(async () => {
       const { createProviderAction } = await import("../actions");
       const res = await createProviderAction(values);
-      if (res.error) {
-        toast.error("创建失败", { description: res.error });
-        return;
-      }
-      toast.success("已创建");
+      if (!notify(res, "创建失败", "已创建")) return;
       form.reset();
       setOpen(false);
     });
@@ -169,7 +164,7 @@ export function CreateProviderDialog() {
           </DialogTitle>
           <DialogDescription>定义一个 LLM 供应商入口</DialogDescription>
         </DialogHeader>
-        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-form" />
+        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-form" protocols={protocols} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
@@ -183,7 +178,8 @@ export function CreateProviderDialog() {
   );
 }
 
-function EditProviderDialog({ provider }: { provider: ProviderRow }) {
+function EditProviderDialog({ provider, protocols }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string> }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
@@ -200,11 +196,7 @@ function EditProviderDialog({ provider }: { provider: ProviderRow }) {
     startTransition(async () => {
       const { updateProviderAction } = await import("../actions");
       const res = await updateProviderAction(provider.id, values);
-      if (res.error) {
-        toast.error("保存失败", { description: res.error });
-        return;
-      }
-      toast.success("已保存");
+      if (!notify(res, "保存失败", "已保存")) return;
       setOpen(false);
     });
   }
@@ -222,7 +214,7 @@ function EditProviderDialog({ provider }: { provider: ProviderRow }) {
             <PencilIcon /> 编辑供应商 - {provider.name}
           </DialogTitle>
         </DialogHeader>
-        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-edit-form" />
+        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-edit-form" protocols={protocols} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
@@ -237,7 +229,7 @@ function EditProviderDialog({ provider }: { provider: ProviderRow }) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ProviderForm({ form, onSubmit, formId }: { form: any; onSubmit: (v: FormValues) => void; formId: string }) {
+function ProviderForm({ form, onSubmit, formId, protocols }: { form: any; onSubmit: (v: FormValues) => void; formId: string; protocols: ReadonlyArray<string> }) {
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -274,9 +266,9 @@ function ProviderForm({ form, onSubmit, formId }: { form: any; onSubmit: (v: For
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openai">openai</SelectItem>
-                  <SelectItem value="anthropic">anthropic</SelectItem>
-                  <SelectItem value="gemini">gemini</SelectItem>
+                  {protocols.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>

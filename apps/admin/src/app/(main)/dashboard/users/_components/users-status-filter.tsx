@@ -11,6 +11,7 @@ export function UsersStatusFilter({ value }: { value: string }) {
     const next = new URLSearchParams(sp.toString());
     if (e.target.value === "all") next.delete("status");
     else next.set("status", e.target.value);
+    next.delete("page");
     router.push(`?${next.toString()}`);
   }
 

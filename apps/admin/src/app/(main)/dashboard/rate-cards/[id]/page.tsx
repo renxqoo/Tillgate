@@ -4,37 +4,28 @@ import { ArrowLeftIcon } from 'lucide-react';
 
 import {
   ApiError,
-  adminFetch,
   fmtBalance,
   fmtDateTime,
   type AdminRateCardRow,
   type AdminUserRow,
-  type ListResult,
 } from '@ai-gateway/api-client';
+import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { Button } from '@ai-gateway/ui/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@ai-gateway/ui/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@ai-gateway/ui/components/ui/table';
+import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
+import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
+import { ListPage } from '@ai-gateway/ui/components/list-page';
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
 export const dynamic = 'force-dynamic';
 
+const PAGE_SIZE = 20;
+
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function RateCardDetailPage({ params }: PageProps) {
+export default async function RateCardDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const rcId = Number(id);
   if (!Number.isFinite(rcId) || rcId <= 0) notFound();
@@ -43,20 +34,19 @@ export default async function RateCardDetailPage({ params }: PageProps) {
   let error: string | null = null;
   try {
     // 后端没有单条 GET /:id，从列表里找
-    const list = await adminFetch<ListResult<AdminRateCardRow>>('/api/admin/rate-cards');
-    card = list.list.find((c) => c.id === rcId) ?? null;
+    const list = await fetchAdminList<AdminRateCardRow>('/api/admin/rate-cards', { pageSize: 100 });
+    card = list.rows.find((c) => c.id === rcId) ?? null;
     if (!card) notFound();
   } catch (e) {
     error = e instanceof ApiError ? e.message : '加载失败';
   }
 
-  let users: AdminUserRow[] = [];
-  try {
-    const data = await adminFetch<ListResult<AdminUserRow>>(`/api/admin/rate-cards/${rcId}/users`);
-    users = data.list ?? [];
-  } catch {
-    // 失败不阻塞
-  }
+  const sp = await searchParams;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const { rows: users, total, error: usersError } = await fetchAdminList<AdminUserRow>(
+    `/api/admin/rate-cards/${rcId}/users`,
+    { page, pageSize: PAGE_SIZE, sortBy, order, extra: { q } },
+  );
 
   if (!card) {
     return (
@@ -75,6 +65,23 @@ export default async function RateCardDetailPage({ params }: PageProps) {
     );
   }
 
+  const columns: DataTableColumn<AdminUserRow>[] = [
+    {
+      key: 'id',
+      header: 'ID',
+      sortable: true,
+      headerClassName: 'w-16',
+      render: (u) => <span className="text-xs text-muted-foreground tabular-nums">#{u.id}</span>,
+    },
+    { key: 'subject', header: '账号', sortable: true, render: (u) => <span className="font-medium">{u.subject}</span> },
+    { key: 'displayName', header: '显示名', render: (u) => <span className="text-muted-foreground">{u.displayName ?? '—'}</span> },
+    { key: 'email', header: '邮箱', render: (u) => <span className="text-xs text-muted-foreground">{u.email ?? '—'}</span> },
+    { key: 'balance', header: '已结算', sortable: true, align: 'right', render: (u) => <span className="text-right tabular-nums">{fmtBalance(u.balance)}</span> },
+    { key: 'reservedBalance', header: '处理中预留', align: 'right', render: (u) => <span className="text-right tabular-nums text-amber-600">{fmtBalance(u.reservedBalance)}</span> },
+    { key: 'availableBalance', header: '可用额度', align: 'right', render: (u) => <span className="text-right tabular-nums">{fmtBalance(u.availableBalance)}</span> },
+    { key: 'lastLoginAt', header: '最近登录', headerClassName: 'w-44', render: (u) => <span className="text-xs text-muted-foreground">{u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : '从未'}</span> },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <Button asChild variant="ghost" size="sm" className="w-fit">
@@ -83,74 +90,27 @@ export default async function RateCardDetailPage({ params }: PageProps) {
         </Link>
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">
-            {card.name}{' '}
-            <span className="text-base font-normal text-muted-foreground">×{card.coefficient}</span>
-          </CardTitle>
-          <CardDescription>
-            {card.description ?? '无说明'} · 状态 {card.status === 0 ? '启用' : '禁用'} · 更新于{' '}
-            {fmtDateTime(card.updatedAt)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">共绑定 {users.length} 个用户</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">ID</TableHead>
-                <TableHead>账号</TableHead>
-                <TableHead>显示名</TableHead>
-                <TableHead>邮箱</TableHead>
-                <TableHead className="text-right">已结算</TableHead>
-                <TableHead className="text-right">处理中预留</TableHead>
-                <TableHead className="text-right">可用额度</TableHead>
-                <TableHead className="w-44">最近登录</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                    暂无绑定用户
-                  </TableCell>
-                </TableRow>
-              ) : (
-                users.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      #{u.id}
-                    </TableCell>
-                    <TableCell className="font-medium">{u.subject}</TableCell>
-                    <TableCell className="text-muted-foreground">{u.displayName ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {u.email ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {fmtBalance(u.balance)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-amber-600">
-                      {fmtBalance(u.reservedBalance)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {fmtBalance(u.availableBalance)}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('zh-CN') : '从未'}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <ListPage
+        title={`${card.name} ×${card.coefficient}`}
+        description={`${card.description ?? '无说明'} · 状态 ${card.status === 0 ? '启用' : '禁用'} · 更新于 ${fmtDateTime(card.updatedAt)}`}
+        total={total}
+        totalUnit="个绑定用户"
+        searchPlaceholder="搜索 subject / 显示名 / 邮箱"
+        q={q}
+        searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
+        error={usersError ?? error}
+        page={page}
+        pageSize={PAGE_SIZE}
+      >
+        <DataTable
+          columns={columns}
+          rows={users}
+          rowKey={(u) => u.id}
+          sort={{ sortBy, order }}
+          searchParams={{ q }}
+          empty="暂无绑定用户"
+        />
+      </ListPage>
     </div>
   );
 }

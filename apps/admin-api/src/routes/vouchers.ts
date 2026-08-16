@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { HttpError } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -12,7 +13,7 @@ export function voucherRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>().get('/:key', async (c) => {
     const key = c.req.param('key');
     const stored = await s.voucherStorage.load(key);
-    if (!stored) return c.json({ error: { code: 'VOUCHER_NOT_FOUND', message: '凭证不存在' } }, 404);
+    if (!stored) throw new HttpError('VOUCHER_NOT_FOUND');
     return new Response(stored.data, { headers: { 'content-type': stored.mimeType } });
   });
 }

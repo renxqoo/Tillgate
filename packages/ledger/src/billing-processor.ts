@@ -3,7 +3,9 @@ import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { billingRequests } from '@ai-gateway/db/schema';
 import { toDecimal } from '@ai-gateway/money';
+import { pgSqlState } from '@ai-gateway/core';
 import { settleClaim } from './settle.js';
+import { BillingStateConflictError } from './billing-flow.js';
 import { releaseReservedAmounts } from './release.js';
 import type {
   BillingEffects,
@@ -15,6 +17,7 @@ import type {
   SettlementRunResult,
   UsageReceipt,
 } from './types.js';
+import { PoisonReceiptError, ReceiptUserMismatchError } from './types.js';
 
 export interface BillingProcessor {
   runOnce(requestIds?: string[]): Promise<SettlementRunResult>;
@@ -65,25 +68,32 @@ function decodeReceipt(value: UsageReceipt | string): UsageReceipt {
     (receipt.billingPolicyFingerprint !== null &&
       !/^[a-f0-9]{64}$/.test(receipt.billingPolicyFingerprint))
   ) {
-    throw new Error('poison_receipt');
+    throw new PoisonReceiptError();
   }
   return receipt;
 }
 
+/**
+ * 结算失败分类（结构化判定，不做 message 文本启发式——文案变更不得改变分类）：
+ *   - PG SQLSTATE 沿 cause 链探测（drizzle 包装后顶层无 code）
+ *   - 收据校验失败 → PoisonReceiptError / ReceiptUserMismatchError（类型化）
+ *   - 状态机冲突 → BillingStateConflictError（类型化）
+ *   - JSON 解析失败（毒收据载荷）→ SyntaxError
+ */
 function classifyFailure(error: unknown): SettlementFailureClass {
-  const message = error instanceof Error ? error.message : String(error);
-  const code = (error as { code?: string } | null)?.code;
-  if (code === '40001' || code === '40P01') return 'serialization';
+  const pg = error instanceof Error ? pgSqlState(error) : null;
+  if (pg === '40001' || pg === '40P01') return 'serialization';
   // 23514 check_violation：信用模型下 balance < -credit_limit 触底（DB 约束 users_balance_credit_floor_ck）。
   // 归为 invariant_violation（永久）→ dead，待人工充值后 retry。
-  if (code === '23514') return 'invariant_violation';
-  if (code?.startsWith('08') || ['53300', '57P01', '57P02', '57P03'].includes(code ?? '')) {
+  if (pg === '23514') return 'invariant_violation';
+  if (pg?.startsWith('08') || ['53300', '57P01', '57P02', '57P03'].includes(pg ?? '')) {
     return 'db_transient';
   }
-  if (message.includes('billing_user_missing')) return 'missing_subject';
-  if (message.includes('receipt') || message.includes('JSON')) return 'poison_receipt';
-  if (message.includes('invariant_') || message.includes('state_') || message.includes('mismatch'))
-    return 'invariant_violation';
+  if (error instanceof PoisonReceiptError || error instanceof SyntaxError) {
+    return 'poison_receipt';
+  }
+  if (error instanceof ReceiptUserMismatchError) return 'poison_receipt';
+  if (error instanceof BillingStateConflictError) return 'invariant_violation';
   return 'unknown';
 }
 

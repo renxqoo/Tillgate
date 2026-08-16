@@ -17,18 +17,22 @@ import {
   requiredReservation,
   toDecimal,
   toStorage,
+  ReservationError,
 } from '@ai-gateway/money';
-import type {
-  AuthorizeBillingCommand,
-  BillingAuthorization,
-  BillingEvent,
-  BillingQuote,
-  BillingSignalResult,
-  ChannelReservationResult,
-  ReserveChannelCommand,
-  UsageReceipt,
+import {
+  isAttributedEstimate,
+  type AuthorizeBillingCommand,
+  type BillingAuthorization,
+  type BillingEvent,
+  type BillingQuote,
+  type BillingSignalResult,
+  type ChannelReservationResult,
+  type ReserveChannelCommand,
+  type UsageReceipt,
 } from './types.js';
+import { billingDayStart } from './daily-window.js';
 import { releaseReservedAmounts } from './release.js';
+import { ReceiptUserMismatchError } from './types.js';
 
 export class BillingConfigurationError extends Error {
   constructor(
@@ -224,7 +228,10 @@ function calculateRequired(quote: BillingQuote, limit: string): Decimal {
   try {
     return requiredReservation(maximum, limit);
   } catch (error) {
-    if ((error as Error).message === 'reservation_limit_exceeded') {
+    if (
+      error instanceof ReservationError &&
+      error.code === 'reservation_limit_exceeded'
+    ) {
       throw new BillingConfigurationError('reservation_limit_exceeded');
     }
     throw new BillingConfigurationError('invalid_quote');
@@ -232,8 +239,11 @@ function calculateRequired(quote: BillingQuote, limit: string): Decimal {
 }
 
 export function validateReceipt(userId: number, quote: BillingQuote, receipt: UsageReceipt): void {
-  if (receipt.userId !== userId) throw new Error('billing_receipt_user_mismatch');
-  if (receipt.usage.estimated) throw new Error('billing_receipt_estimated_usage');
+  if (receipt.userId !== userId) throw new ReceiptUserMismatchError();
+  // G1 不变量（精细化）：估算 usage 只允许归属用户侧取消，判定与 settle 共用单一真相
+  if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
+    throw new Error('billing_receipt_estimated_usage');
+  }
   const usageValues = [
     receipt.usage.inputTokens,
     receipt.usage.cachedInputTokens,
@@ -326,6 +336,13 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
       });
       const now = clock();
       const result = await db.transaction(async (tx) => {
+        // F4：每日/成员限额是 SUM 口径，READ COMMITTED 下看不见并发未提交行 →
+        // 并发突刺可整体突破「细水长流」上限（硬闸门余额/额度本就原子，不受影响）。
+        // pg_advisory_xact_lock 按 user 串行化授权决策，锁随事务终结自动释放——
+        // DB 层串行原语，不是重试补丁。
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext('billing.authorize.user:' || ${command.userId}::text))`,
+        );
         // 每日花费上限（防羊毛党「细水长流」）：当日已结算消费 + 在途敞口 + 本次预估 不得超过。
         // RPM/TPM 只挡频率，这里挡「每日总量」。
         const profile = await tx.query.users.findFirst({
@@ -333,7 +350,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           columns: { dailySpendLimit: true },
         });
         if (profile && profile.dailySpendLimit !== null) {
-          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const todayStart = billingDayStart(now);
           // 已结算消费按 usage_logs.amount 统计（含套餐+余额，与 Key 级口径统一）：
           // 套餐覆盖的消耗不再写 consume 流水，改用 usage_logs 才能正确计入「单日总价值消耗」。
           const spentRow = await tx.execute<{ total: string }>(sql`
@@ -372,7 +389,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           });
           if (key) subscriptionId = key.subscriptionId;
           if (key && key.dailySpendLimit !== null) {
-            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const todayStart = billingDayStart(now);
             // 已结算：该 Key 今日 consume 流水（usage_logs 按 apiKeyId 关联，amount 为实际扣费）
             const keySpentRow = await tx.execute<{ total: string }>(sql`
               select coalesce(sum(${usageLogs.amount}), 0)::numeric as total
@@ -449,7 +466,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
               allowed = true;
               // 成员日限 a：该成员在 org 套餐内单日封顶（硬顶，不溢出共享）。
               if (member.dailySpendLimit != null) {
-                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const todayStart = billingDayStart(now);
                 const spent = await tx.execute<{ total: string }>(sql`
                   select coalesce(sum(${usageLogs.amount}), 0)::numeric as total
                   from ${usageLogs}
@@ -657,9 +674,7 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
           settledBalance: userRow.balance,
           reservedBalance: userRow.reservedBalance,
           availableBalance: toStorage(
-            toDecimal(userRow.balance)
-              .plus(userRow.creditLimit)
-              .minus(userRow.reservedBalance),
+            toDecimal(userRow.balance).plus(userRow.creditLimit).minus(userRow.reservedBalance),
           ),
           replayed: false,
         };
@@ -695,9 +710,60 @@ export function createBilling({ db, clock = () => new Date(), admission }: Billi
         if (!['authorized', 'in_flight'].includes(br.status)) {
           return { allowed: false, remaining: '0', switched: false };
         }
-        // 同一渠道重复预留（幂等）：已预留过则直接放行
+        // 同渠道重复预留：金额不大于已留 → 幂等放行；更大 → 按差额补足。
+        // 场景：主模型预估 ¥5 全渠道失败 → fallback 模型预估 ¥8 路由回同一渠道，
+        // 敞口必须从 5 补到 8（F3），否则渠道进货预算闸门被弱化；预算不足则拒绝
+        // （调用方换渠道）。账单 channelReservedAmount 同步新值（结算按此释放）。
         if (br.channelId === command.channelId && br.channelReservedAmount != null) {
-          return { allowed: true, remaining: '0', switched: false };
+          const delta = amount.minus(toDecimal(br.channelReservedAmount));
+          if (delta.lte(0)) {
+            return { allowed: true, remaining: '0', switched: false };
+          }
+          const topped = await tx
+            .update(channels)
+            .set({
+              upstreamReserved: sql`${channels.upstreamReserved} + ${delta.toString()}::numeric`,
+              updatedAt: now,
+            })
+            .where(
+              sql`${channels.id} = ${command.channelId}
+                  and ${channels.upstreamBudget} - ${channels.upstreamReserved} >= ${delta.toString()}::numeric`,
+            )
+            .returning({
+              budget: channels.upstreamBudget,
+              reserved: channels.upstreamReserved,
+            });
+          if (topped.length === 0) {
+            const chNow = await tx.query.channels.findFirst({
+              where: eq(channels.id, command.channelId),
+              columns: { upstreamBudget: true, upstreamReserved: true },
+            });
+            return {
+              allowed: false,
+              remaining: chNow
+                ? toDecimal(chNow.upstreamBudget).minus(toDecimal(chNow.upstreamReserved)).toString()
+                : '0',
+              switched: false,
+            };
+          }
+          const claimedTopup = await tx
+            .update(billingRequests)
+            .set({ channelReservedAmount: amount.toString(), updatedAt: now })
+            .where(
+              and(
+                eq(billingRequests.requestId, command.requestId),
+                inArray(billingRequests.status, ['authorized', 'in_flight']),
+              ),
+            )
+            .returning({ requestId: billingRequests.requestId });
+          if (claimedTopup.length === 0) {
+            throw new BillingStateConflictError(command.requestId, 'reserve target not reservable');
+          }
+          return {
+            allowed: true,
+            remaining: toDecimal(topped[0]!.budget).minus(toDecimal(topped[0]!.reserved)).toString(),
+            switched: false,
+          };
         }
 
         // 目标渠道：按「余额 = 进货额度（当前余额，结算已扣减）- 在途敞口」校验是否有钱（所有渠道统一）。

@@ -1,4 +1,4 @@
-import type { DeadCredentialState, DeadCredentialStorage } from '../config.js';
+import type { DeadCredentialState, DeadCredentialStorage } from '../config';
 
 /**
  * 死凭据计数器（requirements 5.16）：

@@ -8,7 +8,7 @@ import {
   providers,
 } from '@ai-gateway/db/schema';
 import { Decimal, estimateMaxCost } from '@ai-gateway/money';
-import { extractRequestChars, type UpstreamError } from '@ai-gateway/ai';
+import { estimateInputTokens, type UpstreamError } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,
   ensureTestSecrets,
@@ -79,7 +79,7 @@ async function setupFallbackModels(encryptionKey: string): Promise<ModelFixture>
     .insert(providers)
     .values({
       name: 'fb-prov-' + suffix,
-      protocol: 'openai_compatible',
+      protocol: 'openai-compatible',
       baseUrl: 'http://localhost:9999',
       status: 0,
     })
@@ -210,10 +210,10 @@ describe('候选定价：预扣按最贵候选 + 计量携带实际成功渠道�
       expect(res.status).toBe(200);
       expect(ai.chat).toHaveBeenCalledTimes(2); // 主渠道失败 → fallback 渠道
 
-      // 预扣按最贵候选（fallback 5 倍价）估算；输入敞口上界用字符数（信用模型，token ≤ 字符数）
-      const inputUpperBound = extractRequestChars(reqBody);
+      // 预扣按最贵候选（fallback 5 倍价）估算；输入敞口用权威估算（estimateInputTokens，CJK 感知）
+      const inputEstimate = estimateInputTokens(reqBody);
       const fbEstimate = estimateMaxCost({
-        estimatedInputTokens: inputUpperBound,
+        estimatedInputTokens: inputEstimate,
         maxOutputTokens: 100,
         inputPrice: '5000',
         outputPrice: '10000',

@@ -13,8 +13,13 @@ import { admins } from './admins.js';
 import { apiKeys } from './api-keys.js';
 
 /**
- * request_logs — 请求日志（30 天滚动，按月分区 P1 实现；data-model.md §3.13）
- * 与 usage_logs 分工：本表为排障日志，usage_logs 为计费账本
+ * request_logs — 请求日志（30 天滚动，按月分区；data-model.md §3.13）
+ * 与 usage_logs 分工：本表为排障日志，usage_logs 为计费账本。
+ *
+ * ⚠️ 分区表漂移警示：实际 DB 中本表自迁移 0040 起是 PARTITION BY RANGE (created_at)
+ * 的分区母表（主键 (id, created_at)，无 FK；分区由 worker 每小时维护）。本 drizzle 声明
+ * 只描述列结构供查询类型使用——**不要对 request_logs 跑 db:generate 产生 DDL**，
+ * 涉及该表的变更必须手写迁移并同步核对分区母表/索引。
  */
 export const requestLogs = pgTable(
   'request_logs',
@@ -32,8 +37,6 @@ export const requestLogs = pgTable(
     requestSummary: jsonb('request_summary'),
     /** 尝试渠道次数（排障/观测用） */
     attempts: bigint('attempts', { mode: 'number' }).notNull().default(1),
-    /** 尝试过的候选列表（渠道/模型与结果） */
-    candidatesTried: jsonb('candidates_tried'),
     /** 来源 IP（X-Forwarded-For 首段 / X-Real-IP / socket，鉴权前记录，401 也有） */
     sourceIp: varchar('source_ip', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

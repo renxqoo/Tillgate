@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { admins, channelRecharges, channels } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit } from '@ai-gateway/http';
+import {
+  MONEY_MAX, jsonBody, operationId, paginateQuery, query, recordAudit,
+  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { adjustChannel, rechargeChannel } from '../services/channel-funds.js';
@@ -17,7 +19,9 @@ import { adjustChannel, rechargeChannel } from '../services/channel-funds.js';
 
 const rechargeSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.number().positive().finite(),
+  // MONEY_MAX 上界与调账对齐：schema 层快速拒绝（numeric(38,18) 溢出虽有全局
+  // 22003→400 兜底，但业务上界应在入口给业务语义，不靠 DB 报错）
+  amount: z.number().positive().finite().max(MONEY_MAX),
   orderNo: z.string().max(128).optional(),
   /** 凭证截图 base64 data URL（png/jpeg/webp/gif，≤ 配置上限） */
   voucherDataUrl: z.string().max(20_000_000).optional(),
@@ -26,11 +30,11 @@ const rechargeSchema = z.object({
 
 const adjustSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.coerce.number().finite().refine((v) => v !== 0, '调账金额不能为 0'),
+  amount: z.coerce.number().finite().max(MONEY_MAX).refine((v) => v !== 0, '调账金额不能为 0'),
   remark: z.string().max(255).optional(),
 });
 
-const listQuerySchema = paginationQuerySchema.extend({
+const channelFundsListQuerySchema = listQuerySchema.extend({
   channelId: z.coerce.number().int().positive().optional(),
   type: z.enum(['recharge', 'adjust']).optional(),
 });
@@ -40,17 +44,23 @@ export function channelFundsRoutes(
   voucherMaxBytes: number,
 ): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
-    .get('/', query(listQuerySchema), async (c) => {
+    .get('/', query(channelFundsListQuerySchema), async (c) => {
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [];
-      if (q.channelId) conds.push(eq(channelRecharges.channelId, q.channelId));
-      if (q.type) conds.push(eq(channelRecharges.type, q.type));
-      const where = conds.length ? and(...conds) : undefined;
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [channelRecharges.orderNo, channelRecharges.remark, channels.name],
+        conditions: [
+          q.channelId ? eq(channelRecharges.channelId, q.channelId) : undefined,
+          q.type ? eq(channelRecharges.type, q.type) : undefined,
+        ],
+        sort: {
+          by: { id: channelRecharges.id, amount: channelRecharges.amount, createdAt: channelRecharges.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: channelRecharges.id,
+        },
+      });
 
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: channelRecharges.id,
@@ -71,20 +81,19 @@ export function channelFundsRoutes(
           .innerJoin(channels, eq(channelRecharges.channelId, channels.id))
           .leftJoin(admins, eq(channelRecharges.adminId, admins.id))
           .where(where)
-          .orderBy(desc(channelRecharges.createdAt), desc(channelRecharges.id))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(channelRecharges)
-          .where(where),
+        countAll(s.db, channelRecharges, where, [
+          { table: channels, on: eq(channelRecharges.channelId, channels.id) },
+        ]),
       );
       return c.json(result);
     })
 
     .post('/recharge', jsonBody(rechargeSchema), async (c) => {
       const body = c.req.valid('json');
-      const result = await rechargeChannel(s, body, c.get('adminId'), voucherMaxBytes);
+      const result = await rechargeChannel(s, body, c.get('adminId'), voucherMaxBytes, operationId(c));
       await recordAudit(s.db, {
         actor: 'admin',
         adminId: c.get('adminId'),
@@ -103,7 +112,7 @@ export function channelFundsRoutes(
 
     .post('/adjust', jsonBody(adjustSchema), async (c) => {
       const body = c.req.valid('json');
-      const result = await adjustChannel(s, body, c.get('adminId'));
+      const result = await adjustChannel(s, body, c.get('adminId'), operationId(c));
       await recordAudit(s.db, {
         actor: 'admin',
         adminId: c.get('adminId'),

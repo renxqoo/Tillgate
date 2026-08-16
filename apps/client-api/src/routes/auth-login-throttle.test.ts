@@ -41,18 +41,25 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
+function stubMailer() {
+  return {
+    async sendLoginCode() {},
+  } as unknown as import('@ai-gateway/identity').Mailer;
+}
+
 function makeApp() {
-  const services = makeServices(db, { redis });
+  const services = makeServices(db, { redis, mailer: stubMailer() });
   return makeClientPublicApp({ '/api/auth': clientAuthRoutesPublic(services, makeTestConfig()) });
 }
 
-async function createLocalUser(subject: string, password: string): Promise<number> {
+async function createLocalUser(subject: string, password: string): Promise<{ uid: number; email: string }> {
   const hash = await hashPassword(password);
+  const email = `${subject}@test.local`;
   const [u] = await db.insert(users).values({
-    issuer: 'local', subject, identityProvider: 'local', displayName: subject,
+    issuer: 'local', subject, identityProvider: 'local', email, displayName: subject,
     balance: '0', passwordHash: hash,
   }).returning();
-  return u!.id;
+  return { uid: u!.id, email };
 }
 async function cleanup(uid: number): Promise<void> {
   await db.delete(auditLogs).where(eq(auditLogs.adminId, uid));
@@ -72,11 +79,11 @@ async function clearThrottleKeys(subject: string): Promise<void> {
   }
 }
 
-function loginReq(app: ReturnType<typeof makeApp>, subject: string, password: string) {
+function loginReq(app: ReturnType<typeof makeApp>, email: string, password: string) {
   return app.request('/api/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: subject, password }),
+    body: JSON.stringify({ email, password }),
   });
 }
 
@@ -84,30 +91,31 @@ describe('02 — client-api 登录限流（单源硬锁 + 正确密码豁免）'
   it('单源连续失败达阈值（5）→ 第 5 次起错误密码 429；正确密码在锁定期间仍 200 并清零', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'brute-c6-' + Date.now();
-    const uid = await createLocalUser(subject, 'RightPass1');
+    const { uid, email } = await createLocalUser(subject, 'RightPass1');
     const app = makeApp();
     try {
       // 前 4 次：密码错误 → 401（累计失败计数）
       for (let i = 0; i < 4; i++) {
-        const res = await loginReq(app, subject, 'WrongPass1');
+        const res = await loginReq(app, email, 'WrongPass1');
         expect(res.status).toBe(401);
       }
       // 第 5 次：达阈值 → 单源锁定 → 429
-      const res5 = await loginReq(app, subject, 'WrongPass1');
+      const res5 = await loginReq(app, email, 'WrongPass1');
       expect(res5.status).toBe(429);
       expect(res5.headers.get('retry-after')).not.toBeNull();
 
-      // 正确密码豁免：锁定期间正确密码仍 200，并清零计数（合法用户不被锁死）
-      const resCorrect = await loginReq(app, subject, 'RightPass1');
+      // 正确密码豁免：锁定期间正确密码仍 200（进入验证码步），并清零计数（合法用户不被锁死）
+      const resCorrect = await loginReq(app, email, 'RightPass1');
       expect(resCorrect.status).toBe(200);
+      expect(((await resCorrect.json()) as { twoFactorRequired: boolean }).twoFactorRequired).toBe(true);
 
       // 清零后：再次失败 4 次仍 401（未误锁）
       for (let i = 0; i < 4; i++) {
-        const r = await loginReq(app, subject, 'WrongPass1');
+        const r = await loginReq(app, email, 'WrongPass1');
         expect(r.status).toBe(401);
       }
     } finally {
-      await clearThrottleKeys(subject);
+      await clearThrottleKeys(email);
       await cleanup(uid);
     }
   });
@@ -115,17 +123,17 @@ describe('02 — client-api 登录限流（单源硬锁 + 正确密码豁免）'
   it('用户不存在与密码错误返回一致（401 INVALID_CREDENTIALS，不泄露账号存在性）', async () => {
     if (!connected) return it.skip('no DB');
     const subject = 'brute-c6-none-' + Date.now();
-    const uid = await createLocalUser(subject, 'RightPass1');
+    const { uid, email } = await createLocalUser(subject, 'RightPass1');
     const app = makeApp();
     try {
-      const wrong = await loginReq(app, subject, 'WrongPass1');
-      const nonexist = await loginReq(app, 'brute-c6-none-' + Date.now() + '-ghost', 'whatever');
+      const wrong = await loginReq(app, email, 'WrongPass1');
+      const nonexist = await loginReq(app, `ghost-${Date.now()}@test.local`, 'whatever');
       expect(wrong.status).toBe(401);
       expect(nonexist.status).toBe(401);
       expect(((await wrong.json()) as any).error?.code).toBe('INVALID_CREDENTIALS');
       expect(((await nonexist.json()) as any).error?.code).toBe('INVALID_CREDENTIALS');
     } finally {
-      await clearThrottleKeys(subject);
+      await clearThrottleKeys(email);
       await cleanup(uid);
     }
   });

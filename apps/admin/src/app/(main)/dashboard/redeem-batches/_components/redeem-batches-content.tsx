@@ -31,9 +31,10 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 
-import { CopyButton } from '@/components/shell/copy-button';
-import { formatMoney } from '@ai-gateway/api-client/formatters';
-import type { RedeemBatchRow } from '../types';
+import { CopyButton } from '@ai-gateway/ui/components/shell/copy-button';
+import { fmtDateTime, formatMoney } from '@ai-gateway/api-client/formatters';
+import type { AdminBatchRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 const schema = z.object({
   name: z.string().min(1, '请输入批次名称'),
@@ -43,7 +44,7 @@ const schema = z.object({
   expiresAt: z.string().optional(),
 });
 
-export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<RedeemBatchRow> }) {
+export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<AdminBatchRow> }) {
   return (
     <Table>
       <TableHeader>
@@ -88,7 +89,7 @@ export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<Rede
                 <TableCell className="text-sm text-muted-foreground">{b.remark ?? '—'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{b.createdBy}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {new Date(b.createdAt).toLocaleString('zh-CN')}
+                  {fmtDateTime(b.createdAt)}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild size="sm" variant="ghost">
@@ -115,6 +116,7 @@ function UsageBadge({ rate }: { rate: number }) {
 }
 
 export function GenerateBatchDialog() {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [revealedCodes, setRevealedCodes] = useState<string[] | null>(null);
@@ -129,10 +131,7 @@ export function GenerateBatchDialog() {
     startTransition(async () => {
       const { generateBatchAction } = await import('../actions');
       const res = await generateBatchAction(values);
-      if (res.error) {
-        toast.error('生成失败', { description: res.error });
-        return;
-      }
+      if (!notify(res, '生成失败')) return;
       setRevealedCodes(res.batch!.codes);
       toast.success(`已生成 ${res.batch!.codes.length} 张充值码`);
     });

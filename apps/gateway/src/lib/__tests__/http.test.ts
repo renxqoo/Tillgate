@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { createLogger } from '@ai-gateway/core';
-import { HttpError } from '../http.js';
+import { HttpError, errorEnvelope } from '../http.js';
 import { appErrorHandler } from '../../app.js';
 
 /**
@@ -14,7 +14,15 @@ function makeApp() {
   const app = new Hono();
   app.onError((err, c) => appErrorHandler(silentLogger, err, c));
   app.get('/boom/:status', (c) => {
-    throw new HttpError(Number(c.req.param('status')), 'boom', 'test error');
+    // 信封渲染按状态映射 error.type（状态驱动的渲染契约与错误码注册表无关）
+    return errorEnvelope(
+      c,
+      Number(c.req.param('status')),
+      'invalid_request',
+      'test error',
+      undefined,
+      null,
+    );
   });
   return app;
 }
@@ -33,14 +41,14 @@ describe('错误信封 error.type 按状态映射', () => {
     expect(res.status).toBe(status);
     const body = (await res.json()) as { error: { type: string; code: string } };
     expect(body.error.type).toBe(expectedType);
-    expect(body.error.code).toBe('boom');
+    expect(body.error.code).toBe('invalid_request');
   });
 
   it('HttpError 携带 suggestion 透传到信封', async () => {
     const app = new Hono();
     app.onError((err, c) => appErrorHandler(silentLogger, err, c));
     app.get('/x', () => {
-      throw new HttpError(429, 'rate_limit_exceeded', '请求过于频繁', '请稍后重试');
+      throw new HttpError('rate_limit_exceeded', '请求过于频繁', undefined, undefined, '请稍后重试');
     });
     const res = await app.request('/x');
     const body = (await res.json()) as { error: { suggestion: string } };

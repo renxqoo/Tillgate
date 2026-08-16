@@ -7,8 +7,7 @@ import type { GatewayEnv, Logger } from '@ai-gateway/core';
 import { healthRoutes } from './routes/health.js';
 import { debugTracesRoutes } from './routes/debug-traces.js';
 import { modelsRoutes } from './routes/models.js';
-import { chatCompletionsRoutes } from './routes/chat-completions.js';
-import { embeddingsRoutes } from './routes/embeddings.js';
+import { inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
 import { oauthTokenRoutes } from './routes/oauth-token.js';
 import { authMiddleware, type AuthEnv } from './middleware/auth.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -16,6 +15,7 @@ import { requestLogMiddleware } from './middleware/request-log.js';
 import { otelMiddleware } from './middleware/otel.js';
 import { corsPreflight, securityHeaders, bodyParserLimit } from './middleware/security.js';
 import { errorEnvelope, HttpError } from './lib/http.js';
+import { pgSqlState } from '@ai-gateway/http';
 import { ValidationError } from './lib/validation.js';
 import { AuthService } from './services/auth/auth-service.js';
 import { OAuthService } from './services/auth/oauth-service.js';
@@ -45,7 +45,7 @@ export interface GatewayDeps {
  *
  * 中间件顺序：
  *   CORS 预检 → 安全头 → body 上限 → OTel → requestId → requestLog（鉴权前：401/429 也入日志）
- *   → 鉴权（/v1/chat/completions、/v1/models、/v1/embeddings）→ 路由
+ *   → 鉴权（推理端点表 + /v1/models）→ 路由
  */
 export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
@@ -63,7 +63,12 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
       cacheMs: deps.env.BILLING_ADMISSION_CACHE_MS,
     },
   });
-  const router = new ModelRouter(deps.db, deps.redis, deps.env.ENCRYPTION_KEY);
+  const router = new ModelRouter(
+    deps.db,
+    deps.redis,
+    deps.env.ENCRYPTION_KEY,
+    deps.env.ENCRYPTION_KEY_OLD,
+  );
   const pipeline = new LlmPipeline({ ...deps, billing, router });
 
   // 统一错误处理（OpenAI 风格错误信封；不用 message 文本启发式）
@@ -74,7 +79,7 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
     if (c.req.path.startsWith('/v1/')) {
       return errorEnvelope(c, 404, 'not_found', '路径不存在', undefined, readRequestId(c));
     }
-    return c.json({ error: 'not found' }, 404);
+    return c.json({ error: { message: 'not found', code: 'not_found' } }, 404);
   });
 
   // 全局中间件链
@@ -84,11 +89,15 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   // requestId 先于 otel：span 属性 request.id（计费关联锚点）依赖它
   app.use('*', requestIdMiddleware());
   app.use('*', otelMiddleware());
-  // requestLog 前置到鉴权之前：鉴权失败（401/429）也写入 request_logs
-  app.use('/v1/*', requestLogMiddleware(deps.db, deps.logger));
-  app.use('/v1/chat/completions', authMiddleware(authService));
-  app.use('/v1/models', authMiddleware(authService));
-  app.use('/v1/embeddings', authMiddleware(authService));
+  // requestLog 前置到鉴权之前：鉴权失败（401/429）也写入 request_logs。
+  // 刻意按 /v1/* 前缀挂载而非端点表驱动——其语义是「记录一切 /v1 请求」（含未注册路径的 404），
+  // 与推理端点表（只管已注册路径）职责不同。
+  app.use('/v1/*', requestLogMiddleware(deps.db, deps.logger, deps.env.TRUSTED_PROXY_HOPS));
+  // 鉴权：推理端点表驱动 + /v1/models（GET，非推理）
+  for (const endpoint of inferenceEndpoints) {
+    app.use(endpoint.path, authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  }
+  app.use('/v1/models', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
 
   // 路由
   app.route('/', healthRoutes({ db: deps.db, redis: deps.redis, lifecycle: deps.lifecycle }));
@@ -103,14 +112,26 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
     );
   }
   app.route('/v1/models', modelsRoutes(router));
-  app.route('/v1/chat/completions', chatCompletionsRoutes(pipeline));
-  app.route('/v1/embeddings', embeddingsRoutes(pipeline));
-  app.route('/oauth/token', oauthTokenRoutes(oauthService));
+  // 推理端点注册表驱动挂载（单一真相：routes/inference-endpoints.ts）
+  for (const endpoint of inferenceEndpoints) {
+    app.route(endpoint.path, inferenceRoutes(pipeline, endpoint));
+  }
+  app.route('/oauth/token', oauthTokenRoutes(oauthService, deps.env.TRUSTED_PROXY_HOPS));
 
   return app;
 }
 
-/** 统一错误处理（导出供测试复用）：HttpError/ValidationError/HTTPException/其他 → OpenAI 错误信封 */
+/** PG 约束错误 → 网关 OpenAI 信封（与 packages/http PG_CODE_MAP 同语义、网关码风格） */
+const PG_GATEWAY_MAP: Record<string, { status: number; code: string; message: string }> = {
+  '23505': { status: 409, code: 'conflict', message: '记录已存在（唯一约束冲突）' },
+  '23503': { status: 400, code: 'invalid_reference', message: '引用的资源不存在' },
+  '23514': { status: 400, code: 'constraint_violation', message: '操作违反数据约束' },
+  '22001': { status: 400, code: 'value_too_long', message: '字段值超出长度限制' },
+  '22P02': { status: 400, code: 'invalid_value', message: '字段值格式非法' },
+  '22003': { status: 400, code: 'value_out_of_range', message: '字段值超出数值范围' },
+};
+
+/** 统一错误处理（导出供测试复用）：HttpError/ValidationError/PG 约束/HTTPException/其他 → OpenAI 错误信封 */
 export function appErrorHandler(logger: Logger, err: Error, c: Context): Response {
   const requestId = readRequestId(c);
   if (err instanceof HttpError) {
@@ -118,6 +139,11 @@ export function appErrorHandler(logger: Logger, err: Error, c: Context): Respons
   }
   if (err instanceof ValidationError) {
     return errorEnvelope(c, 400, 'invalid_request', '请求参数校验失败', undefined, requestId);
+  }
+  // PG 约束/值错误 → 4xx（可预期拒绝不得伪装 500；与 packages/http 同表同义）
+  const pg = PG_GATEWAY_MAP[pgSqlState(err) ?? ''];
+  if (pg) {
+    return errorEnvelope(c, pg.status, pg.code, pg.message, undefined, requestId);
   }
   if (err instanceof HTTPException) {
     // Hono 内置错误：JSON 解析失败（400）/ 未匹配路由（404）等

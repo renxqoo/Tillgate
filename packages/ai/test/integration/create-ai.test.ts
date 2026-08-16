@@ -3,7 +3,8 @@ import { createAi } from '../../src/create-ai.js';
 import type { AiConfig } from '../../src/config.js';
 import type { AiEvent } from '../../src/events.js';
 import type { Ai, ChannelDesc, ChatStreamResult, RequestCtx } from '../../src/types.js';
-import { sseFrame, startServer } from './helpers.js';
+import { sseFrame, startServer, wait } from './helpers.js';
+import { memoryDeps } from '../helpers/memory-deps.js';
 
 /**
  * create-ai 集成场景（本地 http server mock 上游）：
@@ -25,11 +26,10 @@ function makeAi(overrides?: Partial<AiConfig>): Ai {
     breaker: { windowMs: 60_000, failureThreshold: 3, cooldownMs: 300_000, halfOpenProbe: true },
     stream: { heartbeatIdleMs: 1000, inactivityTimeoutMs: 5000 },
     timeout: { connectMs: 2000, totalMs: 5000 },
-    estimate: { charPerToken: 3.5 },
     deadCredential: { failureThreshold: 3, windowMs: 3_600_000 },
     allowLocalUrl: true, // 集成测试连 127.0.0.1（生产必须 false）
     ...overrides,
-  });
+  }, memoryDeps());
 }
 
 function channel(baseUrl: string): ChannelDesc {
@@ -330,9 +330,10 @@ describe('ai.chatStream 集成', () => {
     }
   });
 
-  it('chatStream 自动注入 stream_options.include_usage（用户未显式设置时）', async () => {
-    // 真实驱动：MiniMax/OpenAI 流式需 include_usage:true 才在尾帧发 usage，
-    // 不注入则全程 usage:null → gateway 只能靠 bytesRelayed 粗估（漏计费风险）。
+  it('chatStream 强制注入 stream_options.include_usage + continuous_usage_stats（用户未设置时）', async () => {
+    // 真实驱动：MiniMax/OpenAI 流式需 include_usage:true 才在尾帧发 usage；
+    // continuous_usage_stats:true 要求逐帧累计 usage（OpenAI 系生效——取消时也有最新值可结算；
+    // MiniMax 实测忽略该键、不报错）。不注入则全程 usage:null → 漏计费。
     let receivedBody: any = null;
     const server = await startServer((req, res) => {
       let raw = '';
@@ -352,14 +353,18 @@ describe('ai.chatStream 集成', () => {
         ctx: ctx('rs-stream-options'),
       });
       await collectStream(handle);
-      // 注入 include_usage:true（用户未显式设置时）
-      expect(receivedBody?.stream_options).toEqual({ include_usage: true });
+      expect(receivedBody?.stream_options).toEqual({
+        include_usage: true,
+        continuous_usage_stats: true,
+      });
     } finally {
       await server.close();
     }
   });
 
-  it('chatStream 不覆盖用户显式设置的 stream_options', async () => {
+  it('chatStream 强制覆盖：用户显式 include_usage:false 也写死 true', async () => {
+    // MiniMax 实测（2026-08）：include_usage=false（显式或空对象缺省）→ 全程无 usage，
+    // 正常完成的流也拿不到计费数据 → 全部进 uncertain。计费数据完整性优先于用户偏好。
     let receivedBody: any = null;
     const server = await startServer((req, res) => {
       let raw = '';
@@ -378,19 +383,57 @@ describe('ai.chatStream 集成', () => {
           model: 'deepseek-chat',
           stream: true,
           messages: [],
-          stream_options: { include_usage: false }, // 用户显式关闭
+          stream_options: { include_usage: false }, // 用户显式关闭 → 仍强制 true
         },
-        ctx: ctx('rs-stream-options-preserve'),
+        ctx: ctx('rs-stream-options-force'),
       });
       await collectStream(handle);
-      // 用户显式设置 → 不覆盖
-      expect(receivedBody?.stream_options).toEqual({ include_usage: false });
+      expect(receivedBody?.stream_options).toEqual({
+        include_usage: true,
+        continuous_usage_stats: true,
+      });
     } finally {
       await server.close();
     }
   });
 
-  it('流内错误帧：透传 + stream_error 事件', async () => {
+  it('chatStream 强制补齐：用户传空 stream_options:{} 也补 include_usage=true（保留其余键）', async () => {
+    // 该用例锁死 2026-08 实测漏洞：旧逻辑只在 stream_options 整体缺省时注入，
+    // 用户传空对象 → MiniMax 默认 false → 正常完成也无 usage → uncertain。
+    let receivedBody: any = null;
+    const server = await startServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        receivedBody = JSON.parse(raw);
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'ok' } }] })));
+        res.end();
+      });
+    });
+    try {
+      const handle = await makeAi().chatStream({
+        channel: channel(server.baseUrl),
+        request: {
+          model: 'deepseek-chat',
+          stream: true,
+          messages: [],
+          stream_options: { continuous_usage_stats: true }, // 有其他键但缺 include_usage
+        },
+        ctx: ctx('rs-stream-options-fill'),
+      });
+      await collectStream(handle);
+      // 补齐 include_usage，其余键保留
+      expect(receivedBody?.stream_options).toEqual({
+        continuous_usage_stats: true,
+        include_usage: true,
+      });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('首帧即错误帧（200 + 流内错误）：failEarly 错误流 + failed 事件（#6643 可换渠道）', async () => {
     const server = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write(
@@ -405,6 +448,42 @@ describe('ai.chatStream 集成', () => {
         ctx: ctx('rs-err'),
       });
       const { text, events } = await collectStream(handle);
+      // 错误消息保留在合成错误帧里（分类后的 message 透传）
+      expect(text).toContain('slow down');
+      // 新契约：首字节未流动即识别 → failed 终态事件（网关据此换渠道），
+      // 不再走「透传 + stream_error」的中流语义
+      const failed = events.find((e) => e.type === 'failed');
+      expect(failed).toBeDefined();
+      if (failed?.type === 'failed') {
+        expect(failed.error.code).toBe('rate_limited');
+        expect(failed.error.retryable).toBe(true);
+      }
+      expect(events.find((e) => e.type === 'stream_error')).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('中流错误帧（先内容后错误）：透传 + stream_error 事件（语义不变）', async () => {
+    const server = await startServer(async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(sseFrame(JSON.stringify({ choices: [{ delta: { content: '部分内容' } }] })));
+      // 分属不同 chunk：peek 只看首帧——若同 chunk 到达，错误在首字节流动前被
+      // 识别，走 failEarly（那也是正确行为，见上一定义）
+      await wait(50);
+      res.write(
+        sseFrame(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } })),
+      );
+      res.end();
+    });
+    try {
+      const handle = await makeAi().chatStream({
+        channel: channel(server.baseUrl),
+        request: { stream: true, messages: [] },
+        ctx: ctx('rs-err-mid'),
+      });
+      const { text, events } = await collectStream(handle);
+      expect(text).toContain('部分内容');
       expect(text).toContain('slow down');
       const se = events.find((e) => e.type === 'stream_error');
       expect(se?.type).toBe('stream_error');

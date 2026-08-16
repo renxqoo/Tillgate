@@ -3,6 +3,7 @@ import Redis from 'ioredis';
 import { loadGatewayEnv, createLogger, initOtel, type Logger } from '@ai-gateway/core';
 import { createDb } from '@ai-gateway/db';
 import { createAi, defaultAiConfig, type Ai } from '@ai-gateway/ai';
+import { assertGatewayTiming } from './services/runtime/timing-validation.js';
 import {
   createRedisBreakerStorage,
   createRedisDeadCredentialStorage,
@@ -36,7 +37,7 @@ export const otel: { shutdown: () => Promise<void> } = initOtel({
  * H1：注入 Redis 熔断/死凭据存储——多副本（--scale gateway=N）共享熔断状态，
  *     否则各副本内存独立，熔断形同虚设。
  */
-export function createGatewayAi(redis?: Redis): Ai {
+export function createGatewayAi(redis: Redis): Ai {
   // 双重门控：ALLOW_LOCAL_UPSTREAM=true 且 NODE_ENV !== 'production' 才放行 http://内网上游。
   // 仅用于本地 mock 上游压测；生产镜像即便误配 ALLOW_LOCAL_UPSTREAM 也被 NODE_ENV 拦下。
   const allowLocal = env.ALLOW_LOCAL_UPSTREAM && env.NODE_ENV !== 'production';
@@ -45,14 +46,12 @@ export function createGatewayAi(redis?: Redis): Ai {
     allowLocalUrl: allowLocal,
     allowedHosts: env.UPSTREAM_HOST_ALLOWLIST,
   };
-  if (redis) {
-    return createAi(cfg, {
-      breakerStorage: createRedisBreakerStorage(redis),
-      deadCredentialStorage: createRedisDeadCredentialStorage(redis),
-    });
-  }
-  // 单实例退化：内存存储（开发用）
-  return createAi(cfg);
+  // 状态存储显式注入（多副本共享熔断/死凭据状态，H1）；无内存退路——
+  // Redis 是网关硬依赖，启动即连接失败（fail fast），不存在无 Redis 的运行形态
+  return createAi(cfg, {
+    breakerStorage: createRedisBreakerStorage(redis),
+    deadCredentialStorage: createRedisDeadCredentialStorage(redis),
+  });
 }
 
 const isMain =
@@ -96,8 +95,16 @@ if (isMain) {
       'billing wakeup unavailable; DB worker poll remains authoritative',
     );
   }
-  const rateLimiter = new RateLimiter(redis);
+  const rateLimiter = new RateLimiter(redis, logger);
   const ai = createGatewayAi(redis);
+  // 启动期 fail-fast：时序参数关系（见 timing-validation 注释）
+  const streamBudget = defaultAiConfig().stream;
+  assertGatewayTiming({
+    deadlineMs: env.GATEWAY_REQUEST_DEADLINE_MS,
+    inactivityMs: streamBudget.inactivityTimeoutMs,
+    firstByteMs: streamBudget.firstByteTimeoutMs,
+    shutdownGraceMs: env.GATEWAY_SHUTDOWN_GRACE_MS,
+  });
   const lifecycle = new RequestLifecycle(env.GATEWAY_REQUEST_DEADLINE_MS);
   const completions = new CompletionRegistry();
   const app = createApp({
@@ -129,17 +136,23 @@ if (isMain) {
   nodeServer.keepAliveTimeout = 65_000;
   nodeServer.maxRequestsPerSocket = 1_000;
 
-  // H2：优雅关闭——SIGTERM/SIGINT 时停止接收新连接，等待在途请求完成（含 SSE 长连接）
+  // H2：优雅关闭——SIGTERM/SIGINT 时停止接收新请求（lifecycle 拒新），
+  // 在途请求（含 SSE 长连接）继续跑；宽限期结束前中止在途（服务端责任释放），宽限期到强制退出。
+  const shutdownGraceMs = env.GATEWAY_SHUTDOWN_GRACE_MS;
+  const abortInFlightAfterMs = Math.max(1_000, shutdownGraceMs - 5_000);
   let shuttingDown = false;
   const shutdown = (signal: string) => {
     if (shuttingDown) return; // 防重复触发
     shuttingDown = true;
-    lifecycle.beginDrain();
-    logger.info({ signal }, 'gateway shutting down (draining in-flight requests)...');
+    lifecycle.beginDrain(abortInFlightAfterMs);
+    logger.info(
+      { signal, shutdownGraceMs },
+      'gateway shutting down (rejecting new requests, draining in-flight)...',
+    );
     httpServer.close((err) => {
       if (err) logger.error({ err: err.message }, 'server close error');
       Promise.allSettled([
-        completions.drain(10_000),
+        completions.drain(Math.min(10_000, shutdownGraceMs)),
         billingDispatcher.close(),
         bullRedis.quit(),
         redis.quit(),
@@ -150,11 +163,11 @@ if (isMain) {
         process.exit(0);
       });
     });
-    // 超时兜底：30s 后强制退出（防僵死连接卡住）
+    // 超时兜底：宽限期后强制退出（防僵死连接卡住）
     setTimeout(() => {
       logger.warn('graceful shutdown timeout, forcing exit');
       process.exit(1);
-    }, 30_000);
+    }, shutdownGraceMs);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));

@@ -87,13 +87,19 @@ describe('管理台链路查询（真 PG）', () => {
     const { traceId, requestId } = await seed();
     const app = makeAdminTestApp({ '/tracing': tracingAdminRoutes(makeServices(db)) });
     try {
-      // recent：errorsOnly 过滤命中含 ERROR 的 trace
-      const recent = await app.request('/api/admin/tracing/recent?errorsOnly=true&limit=10');
+      // recent：errorsOnly 过滤命中含 ERROR 的 trace（R10 起标准分页 envelope）
+      const recent = await app.request('/api/admin/tracing/recent?errorsOnly=true&page=1&page_size=10');
       expect(recent.status).toBe(200);
       const body = (await recent.json()) as {
-        items: Array<{ traceId: string; hasError: boolean; spanCount: number; requestId: string | null }>;
+        list: Array<{ traceId: string; hasError: boolean; spanCount: number; requestId: string | null }>;
+        total: number;
+        page: number;
+        page_size: number;
       };
-      const mine = body.items.find((t) => t.traceId === traceId);
+      expect(body.page).toBe(1);
+      expect(body.page_size).toBe(10);
+      expect(body.total).toBeGreaterThanOrEqual(1);
+      const mine = body.list.find((t) => t.traceId === traceId);
       expect(mine).toBeDefined();
       expect(mine!.hasError).toBe(true);
       expect(mine!.spanCount).toBe(2);

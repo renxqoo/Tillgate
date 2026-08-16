@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import type { Redis } from 'ioredis';
-import { randomUUID } from 'node:crypto';
 import { getConnInfo } from '@hono/node-server/conninfo';
+import { trustedClientIp } from '@ai-gateway/http';
 
 /**
  * 鉴权失败来源限流（07 修复）：按「来源 IP」对鉴权失败计数，短窗口内超过阈值即锁定。
@@ -66,29 +66,16 @@ export class AuthFailureGuard {
 }
 
 /**
- * 提取来源 IP（优先 X-Forwarded-For 首段，其次 X-Real-IP，最后 socket 地址）。
- * XFF/X-Real-IP 可被客户端伪造，但 socket 地址（getConnInfo）不可伪造；
- * 部署在反向代理后时以代理注入的 XFF 首段为准。
+ * 提取来源 IP（可信代理语义，单一实现在 @ai-gateway/http trustedClientIp）。
+ * trustedProxyHops=0（默认）：XFF/X-Real-IP 整体不信任（首段可伪造），只用 socket 地址；
+ * hops=N（反向代理后）：取 XFF 右数第 N 跳——客户端伪造的首段被结构性丢弃。
  */
-export function sourceIp(c: Context): string {
-  const xff = c.req.header('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const realIp = c.req.header('x-real-ip');
-  if (realIp && realIp.trim()) return realIp.trim();
+export function sourceIp(c: Context, trustedProxyHops = 0): string {
+  let socketAddress: string | null = null;
   try {
-    const info = getConnInfo(c);
-    const addr = info?.remote?.address;
-    if (addr) return addr;
+    socketAddress = getConnInfo(c).remote?.address ?? null;
   } catch {
     // 测试环境 app.request() 无 socket 连接
   }
-  // 无 socket（测试/极端环境）时用进程级唯一值兜底，避免多个测试 worker 共享 'unknown'
-  // 导致鉴权失败计数互相污染（测试隔离）。
-  processFallbackIp ??= `unknown-${randomUUID()}`;
-  return processFallbackIp;
+  return trustedClientIp({ headers: c.req.raw.headers, trustedProxyHops, socketAddress });
 }
-
-let processFallbackIp: string | null = null;

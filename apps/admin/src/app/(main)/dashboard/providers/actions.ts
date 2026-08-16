@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
+import { SUPPORTED_PROTOCOLS } from "@ai-gateway/ai";
 
 export interface ProviderInput {
   name: string;
@@ -20,7 +21,7 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
       body: {
         name: input.name.trim(),
         baseUrl: input.baseUrl.trim(),
-        protocol: input.protocol?.trim() || "openai",
+        protocol: input.protocol?.trim() || SUPPORTED_PROTOCOLS[0]!,
         status: input.status ?? 0,
       },
     });

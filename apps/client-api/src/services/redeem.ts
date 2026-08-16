@@ -13,7 +13,7 @@ const RATE_LIMIT_WINDOW_S = 60;
 export type RedeemOutcome =
   | { kind: 'rate_limited'; retryAfterSec: number }
   | { kind: 'success'; amount: string; balanceAfter: string }
-  | { kind: 'rejected'; reason: string };
+  | { kind: 'rejected'; reason: 'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired' };
 
 export async function redeemCode(
   s: ClientServices,

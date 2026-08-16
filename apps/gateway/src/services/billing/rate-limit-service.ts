@@ -1,4 +1,6 @@
 import type { Redis } from 'ioredis';
+import type { Logger } from '@ai-gateway/core';
+import { RedisScriptRunner } from '../../infrastructure/redis-script-runner.js';
 
 /**
  * 限流器（requirements 4.6）：
@@ -8,6 +10,8 @@ import type { Redis } from 'ioredis';
  * 实现：Redis ZSET 滑动窗口（score=timestamp ms，member=requestId）。
  *   Lua 原子：清理过期 → 计数 → 超限返回 Retry-After → 否则 ZADD。
  *   精度优于固定窗口（无边界突刺）；O(log N) 但 N=窗口内请求数，实际很小。
+ *   脚本经 RedisScriptRunner 执行：evalsha + NOSCRIPT 自愈（BUG-C，
+ *   Redis 重启/SCRIPT FLUSH 后自动重载，不再持续抛错导致全量 500）。
  */
 
 const WINDOW_MS = 60_000; // 1 分钟窗口
@@ -96,12 +100,35 @@ export interface RateLimitResult {
 }
 
 export class RateLimiter {
-  private sha: string | null = null;
-  private allSha: string | null = null;
-  private reserveTpmSha: string | null = null;
-  private releaseTpmSha: string | null = null;
+  private readonly scripts: RedisScriptRunner;
 
-  constructor(private readonly redis: Redis) {}
+  constructor(
+    private readonly redis: Redis,
+    private readonly logger?: Logger,
+  ) {
+    this.scripts = new RedisScriptRunner(redis);
+  }
+
+  /**
+   * 付费链路限流的存储故障降级（单一真相，与 rate-guards/key-auth-cache 的
+   * fail-open 声明一致）：RPM/TPM 是准入闸门而非资金闸门，Redis 故障时放行，
+   * 资金正确性由 billing_requests DB 硬闸门兜底。免费模型日计数不在此列
+   * （rate-guards 内自行 fail-closed，F7：免费链路唯一防线）。
+   */
+  private async failOpen(
+    op: () => Promise<RateLimitResult>,
+    fallback: RateLimitResult,
+  ): Promise<RateLimitResult> {
+    try {
+      return await op();
+    } catch (error) {
+      this.logger?.warn(
+        { err: (error as Error).message },
+        'rate limit storage unavailable, failing open (DB hard gate remains)',
+      );
+      return fallback;
+    }
+  }
 
   /**
    * 检查并计数（原子）。超限不计数（请求被拒绝，不占窗口配额）。
@@ -113,12 +140,22 @@ export class RateLimiter {
     if (maxCount <= 0) {
       return { allowed: true }; // 无限制（limit 未配置）
     }
-    const sha = await this.ensureSha();
+    return this.failOpen(() => this.checkInner(dimension, maxCount, requestId), {
+      allowed: true,
+      dimension,
+    });
+  }
+
+  private async checkInner(
+    dimension: string,
+    maxCount: number,
+    requestId: string,
+  ): Promise<RateLimitResult> {
     // 固定 hash tag，保证多维 Lua 在 Redis Cluster 中落在同一 slot。
     const key = `rl:{rpm}:${dimension}`;
     const now = Date.now();
-    const res = (await this.redis.evalsha(
-      sha,
+    const res = (await this.scripts.run(
+      CHECK_SCRIPT,
       1,
       key,
       now,
@@ -144,9 +181,15 @@ export class RateLimiter {
   ): Promise<RateLimitResult> {
     const limited = dims.filter((item) => item.max > 0);
     if (limited.length === 0) return { allowed: true };
-    const sha = await this.ensureAllSha();
-    const result = (await this.redis.evalsha(
-      sha,
+    return this.failOpen(() => this.checkAllInner(limited, requestId), { allowed: true });
+  }
+
+  private async checkAllInner(
+    limited: Array<{ dimension: string; max: number }>,
+    requestId: string,
+  ): Promise<RateLimitResult> {
+    const result = (await this.scripts.run(
+      CHECK_ALL_SCRIPT,
       limited.length,
       ...limited.map((item) => `rl:{rpm}:${item.dimension}`),
       Date.now(),
@@ -169,6 +212,13 @@ export class RateLimiter {
   ): Promise<RateLimitResult> {
     const limited = dims.filter((item) => item.max > 0);
     if (limited.length === 0) return { allowed: true };
+    return this.failOpen(() => this.reserveTpmAllInner(limited, requestId), { allowed: true });
+  }
+
+  private async reserveTpmAllInner(
+    limited: Array<{ dimension: string; estimatedTokens: number; max: number }>,
+    requestId: string,
+  ): Promise<RateLimitResult> {
     const minute = Math.floor(Date.now() / 60_000);
     const tag = `{tpm}`;
     const keys = limited.flatMap((item) => [
@@ -180,9 +230,8 @@ export class RateLimiter {
       Math.max(0, Math.ceil(item.estimatedTokens)),
       item.max,
     ]);
-    const sha = await this.ensureReserveTpmSha();
-    const result = (await this.redis.evalsha(
-      sha,
+    const result = (await this.scripts.run(
+      RESERVE_TPM_SCRIPT,
       keys.length + 1,
       ...keys,
       reservationKey,
@@ -199,51 +248,35 @@ export class RateLimiter {
   }
 
   async releaseTpm(requestId: string): Promise<void> {
-    const sha = await this.ensureReleaseTpmSha();
-    await this.redis.evalsha(sha, 1, `{tpm}:request:${requestId}`);
+    await this.scripts.run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`).catch(
+      (error: Error) => {
+        this.logger?.warn(
+          { requestId, err: error.message },
+          'releaseTpm storage unavailable (best-effort; TTL reclaims)',
+        );
+      },
+    );
   }
 
   /** 长流续租 TPM 预占，避免流仍在传输时 reservation TTL 提前释放。 */
   async renewTpm(requestId: string): Promise<void> {
-    const key = `{tpm}:request:${requestId}`;
-    const reservedKeys = await this.redis.hkeys(key);
-    if (reservedKeys.length === 0) return;
-    const tx = this.redis.multi();
-    tx.expire(key, 600);
-    for (const reservedKey of reservedKeys) tx.expire(reservedKey, 600);
-    await tx.exec();
-  }
-
-  private async ensureSha(): Promise<string> {
-    if (this.sha) return this.sha;
-    this.sha = (await this.redis.script('LOAD', CHECK_SCRIPT)) as unknown as string;
-    return this.sha;
-  }
-
-  private async ensureAllSha(): Promise<string> {
-    if (!this.allSha) {
-      this.allSha = (await this.redis.script('LOAD', CHECK_ALL_SCRIPT)) as unknown as string;
+    try {
+      const key = `{tpm}:request:${requestId}`;
+      const reservedKeys = await this.redis.hkeys(key);
+      if (reservedKeys.length === 0) return;
+      const tx = this.redis.multi();
+      tx.expire(key, 600);
+      for (const reservedKey of reservedKeys) tx.expire(reservedKey, 600);
+      await tx.exec();
+    } catch (error) {
+      this.logger?.warn(
+        { requestId, err: (error as Error).message },
+        'renewTpm storage unavailable (best-effort; TTL reclaims)',
+      );
     }
-    return this.allSha;
   }
 
-  private async ensureReserveTpmSha(): Promise<string> {
-    if (!this.reserveTpmSha) {
-      this.reserveTpmSha = (await this.redis.script(
-        'LOAD',
-        RESERVE_TPM_SCRIPT,
-      )) as unknown as string;
-    }
-    return this.reserveTpmSha;
-  }
 
-  private async ensureReleaseTpmSha(): Promise<string> {
-    if (!this.releaseTpmSha) {
-      this.releaseTpmSha = (await this.redis.script(
-        'LOAD',
-        RELEASE_TPM_SCRIPT,
-      )) as unknown as string;
-    }
-    return this.releaseTpmSha;
-  }
+
+
 }

@@ -14,14 +14,22 @@ export {
   HttpError,
   errorHandler,
   errorResponseBody,
+  pgSqlState,
   type ErrorLogger,
 } from './errors.js';
+export {
+  ERROR_REGISTRY,
+  errorSpec,
+  type ErrorSpec,
+  type KnownErrorCode,
+} from './error-codes.js';
 
 export { csrfProtection, type CsrfOptions } from './csrf.js';
 
 export {
   ValidationError,
   jsonBody,
+  MONEY_MAX,
   query,
 } from './validation.js';
 
@@ -40,6 +48,24 @@ export {
 } from './pagination.js';
 
 export {
+  sortOrderSchema,
+  sortQuerySchema,
+  searchQuerySchema,
+  escapeLike,
+  searchCondition,
+  resolveOrderBy,
+  listQuerySchema,
+  buildList,
+  countAll,
+  type SortInput,
+  type Searchable,
+  type ListQueryInput,
+  type ListSortSpec,
+  type BuildListOptions,
+  type ListParts,
+} from './list-query.js';
+
+export {
   sha256Hex,
   generateRedeemCode,
   generateApiKey,
@@ -47,6 +73,7 @@ export {
   generateClientSecret,
   maskKey,
   maskUpstreamKey,
+  encryptCurrent,
 } from './secrets.js';
 
 export { recordAudit, type AuditActor, type AuditInput } from './audit.js';
@@ -57,11 +84,19 @@ export {
   ROUTE_CACHE_VERSION_KEY,
   authKeyCache,
   appStatusCache,
+  userProfileCache,
   balanceCache,
   bumpRouteCache,
   invalidateKeyAuthCache,
 } from './cache.js';
 
 export { operationId } from './idempotency.js';
+
+export {
+  trustedClientIp,
+  socketAddressFromContext,
+  clientIpFromContext,
+  type TrustedClientIpInput,
+} from './network.js';
 
 export { loadRootEnvFile } from './load-env.js';

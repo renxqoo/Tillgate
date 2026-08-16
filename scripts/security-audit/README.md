@@ -11,6 +11,45 @@
 > 幂等失效+孤儿 org / T4 1MB client_id 落 Redis）+ 静态实锤修复 8 项（T2 幂等指纹未绑
 > 操作者、T5 API 无 bodyLimit、T6×6 批量加固），同日全部修复。脚本 **22**（修复前 RED →
 > 修复后 GREEN ×2）。明细 → [`FINDINGS-3.md`](./FINDINGS-3.md) · 账号 → [`ACCOUNTS-3.md`](./ACCOUNTS-3.md)。
+>
+> ✅ **第四轮逐接口审计（2026-08-15）**：先盘点全部 **74 个接口**
+> （[`ENDPOINTS.md`](./ENDPOINTS.md)），实弹矩阵脚本 **23/24/25** 逐接口打
+> （无认证/错面/横向越权/非法输入），三路深审逐文件复核。实锤 W1（apps 绑他人订阅）、
+> W2（坏 JSON → 500，系统性）+ 结构性缺陷族 4 组（PG 约束错误裸奔 500 一族、zod 数值域
+> 缺失一族、**C4 过期订阅永久无法再购死锁**、A8 并发/结构三处：channels 名唯一 +
+> model_channels PK 从未落库）+ G1-G4（receiver 体积闸、worker 健康口门禁、fallback
+> 限流盲区、大响应误判冻结），当日全部修复，14/14 包全量回归绿。
+> 明细 → [`FINDINGS-4.md`](./FINDINGS-4.md) · 账号 → [`ACCOUNTS-4.md`](./ACCOUNTS-4.md)。
+>
+> ✅ **第五轮挂账清偿（2026-08-15）**：前三轮「明确未修复」清单中可代码级治本的全部事项
+> 六批次修完——资金 DB 约束族（迁移 0038：transactions 余额链恒等式 CHECK + 1359 行存量
+> 整链重算、usage_logs 双 CHECK、模型非负价、rate_card 全局行唯一）、上游错误出站脱敏、
+> 金额类型/文档对齐、死代码一次删净（jti_blacklist/bad_debt/candidates_tried 列迁移 0039/
+> 白名单/formatYuan/MeInfo.role）、功能补齐（登录审计双面、邀请撤销、admin 交易过滤、
+> Redis 键名单一来源）、HS256 生产 32 字节 + DEV_FAKE_ME 生产门控。14/14 包全量回归绿。
+> 明细 → [`FINDINGS-5.md`](./FINDINGS-5.md)。剩余 6 项架构决策待用户拍板（见 FINDINGS-5 文末）。
+>
+> ✅ **第六轮架构清偿（2026-08-15）**：挂账 6 项中的 5 项按推荐方案实施——
+> **XFF 信任模型**（TRUSTED_PROXY_HOPS 右数第 N 跳，伪造首段结构性丢弃）、
+> **CSRF fail-closed**（INTERNAL_API_TOKEN BFF 令牌，双缺失头不再裸放行）、
+> **免费模型日限额**（500/天默认，429 业务码）、**加密轮换重设计**（enc:v1/v2 信封 +
+> 双 key 窗 + 事务化脚本）、**request_logs 月分区**（迁移 0040 + worker 30 天滚动维护）。
+> 14/14 包全量回归绿；worker /health 令牌门实测生效。maker-checker 仍挂账（产品设计）。
+> 明细 → [`FINDINGS-6.md`](./FINDINGS-6.md)。
+>
+> ✅ **第七轮收尾清偿（2026-08-15）**：验证债务清偿（脚本 20/21 复跑全绿）；
+> 首次 `pnpm audit` → nanoid high 钉版后生产依赖零漏洞（esbuild 仅 dev 工具链，接受）；
+> **login/logout CSRF 收口**（公开组挂 csrfProtection，C7 关闭）；前端入口补齐
+> （org 邀请撤销 + admin 交易时间筛选）；两个面板补浏览器安全头（CSP/XFO/nosniff）；
+> 新增部署检查清单 `docs/deployment-checklist.md` + 分区表 drizzle 漂移警示。
+> 14/14 包全量回归绿。剩余 7 项挂账均为产品/运维决策（FINDINGS-7 文末表）。
+> 明细 → [`FINDINGS-7.md`](./FINDINGS-7.md)。
+>
+> ✅ **第八轮功能交付（2026-08-15）**：管理员**邮箱验证码二次登录**（国内习惯方案，替代
+> TOTP）——默认关、设置页自助开；个人邮箱 SMTP（QQ/163 授权码）即可用；SMTP 未配置
+> fail-closed（503 不降级单密码）；验证码 SHA-256 落 Redis、5 分钟有效、错 5 次作废、
+> 60s 限发；登录页两步 UI + 安全设置页。迁移 0041；nodemailer 钉 9.0.5 后 audit 仍零漏洞。
+> 明细 → [`FINDINGS-8.md`](./FINDINGS-8.md)。
 
 针对**已运行的真实服务**（gateway `:8787` / admin-api `:8790` / client-api `:8791` / worker `:8792`，
 真实 PostgreSQL + Redis）发真实 HTTP 请求。审计共发现 **7 个缺陷 + 2 项正确性验证**，现已**全部按 TDD 修复**：
@@ -40,6 +79,9 @@ pnpm tsx scripts/security-audit/19-oauth-lockout-session-nan.mts       # ✅ exi
 pnpm tsx scripts/security-audit/20-boundary-billing-e2e.mts            # ✅ exit 0（临界值扣费 7 场景，S3 需等结算重试退避）
 pnpm tsx scripts/security-audit/21-real-models-reconciliation.mts      # ✅ exit 0（真实模型对账：deepseek 20 并发 / MiniMax-M3 / gpt-oss-20b）
 pnpm tsx scripts/security-audit/22-idempotency-oauth-attacks.mts       # ✅ exit 0（T1/T1b/T3/T4 验收）
+pnpm tsx scripts/security-audit/23-client-api-endpoint-matrix.mts      # ✅ exit 0（用户面接口矩阵）
+pnpm tsx scripts/security-audit/24-admin-api-endpoint-matrix.mts       # ✅ exit 0（管理面接口矩阵）
+pnpm tsx scripts/security-audit/25-gateway-internal-matrix.mts         # ✅ exit 0（网关/内部面矩阵）
 ```
 
 > 按指示：**所有脚本都不清理自建账号与测试流水**（账号/Key/App/请求日志/审计日志/账单全部保留）。

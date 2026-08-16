@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   BanknoteIcon,
   ImageIcon,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { formatMoney } from "@ai-gateway/api-client/formatters";
+import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Dialog,
@@ -40,7 +40,8 @@ import {
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
 
-import type { ChannelFundRow, ChannelOption } from "../types";
+import type { AdminChannelFundRow, ChannelOption } from "@ai-gateway/api-client/types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 function fmtSigned(v: string): string {
   const n = Number(v);
@@ -54,7 +55,7 @@ export function ChannelFundsClient({
   initialChannelId,
   initialType,
 }: {
-  readonly rows: ReadonlyArray<ChannelFundRow>;
+  readonly rows: ReadonlyArray<AdminChannelFundRow>;
   readonly channels: ReadonlyArray<ChannelOption>;
   readonly total: number;
   readonly initialChannelId?: number;
@@ -65,13 +66,18 @@ export function ChannelFundsClient({
   );
   const [typeFilter, setTypeFilter] = useState<string>(initialType ?? "all");
   const router = useRouter();
+  const currentParams = useSearchParams();
 
   function applyFilter(nextChannel: string, nextType: string) {
     setChannelFilter(nextChannel);
     setTypeFilter(nextType);
-    const qs = new URLSearchParams();
+    // 保留 q/排序等其余筛选，只换 channel/type 并回到第 1 页
+    const qs = new URLSearchParams(currentParams.toString());
+    qs.delete("page");
     if (nextChannel !== "all") qs.set("channelId", nextChannel);
+    else qs.delete("channelId");
     if (nextType !== "all") qs.set("type", nextType);
+    else qs.delete("type");
     router.push(`/dashboard/channel-funds${qs.toString() ? `?${qs}` : ""}`);
   }
 
@@ -140,7 +146,7 @@ export function ChannelFundsClient({
                   #{r.id}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {new Date(r.createdAt).toLocaleString("zh-CN")}
+                  {fmtDateTime(r.createdAt)}
                 </TableCell>
                 <TableCell className="font-medium">{r.channelName}</TableCell>
                 <TableCell>
@@ -222,6 +228,7 @@ function ChannelSelect({
 }
 
 function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [channelId, setChannelId] = useState("");
@@ -263,11 +270,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
         remark,
         voucherDataUrl: voucher ?? undefined,
       });
-      if (res.error) {
-        toast.error("入货失败", { description: res.error });
-        return;
-      }
-      toast.success("已入货");
+      if (!notify(res, "入货失败", "已入货")) return;
       reset();
       setOpen(false);
     });
@@ -348,6 +351,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
 }
 
 function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [channelId, setChannelId] = useState("");
@@ -371,11 +375,7 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
         amount: amt,
         remark,
       });
-      if (res.error) {
-        toast.error("调账失败", { description: res.error });
-        return;
-      }
-      toast.success("已调账");
+      if (!notify(res, "调账失败", "已调账")) return;
       reset();
       setOpen(false);
     });

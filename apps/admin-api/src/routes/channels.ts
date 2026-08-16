@@ -1,13 +1,16 @@
 import { Hono } from 'hono';
-import { eq, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { providers, channels, modelMappings, modelChannels, usageLogs } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { decrypt, encrypt } from '@ai-gateway/core';
-import { createAi, defaultAiConfig, type ChannelDesc } from '@ai-gateway/ai';
-import { bumpRouteCache, HttpError, jsonBody, maskUpstreamKey, recordAudit, intParam } from '@ai-gateway/http';
+import { decrypt } from '@ai-gateway/core';
+import { createAi, defaultAiConfig } from '@ai-gateway/ai';
+import {
+  MONEY_MAX, bumpRouteCache, HttpError, jsonBody, maskUpstreamKey, recordAudit, intParam,
+  paginateQuery, query, listQuerySchema, buildList, encryptCurrent, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { channelImportSchema, importChannels } from '../services/channels.js';
+import { MemoryKvStorage, type BreakerState, type DeadCredentialState } from '@ai-gateway/ai';
 
 /**
  * 渠道管理（api-contract §4.5）。
@@ -21,28 +24,28 @@ import { channelImportSchema, importChannels } from '../services/channels.js';
 
 const channelCreateSchema = z.object({
   providerId: z.number().int().positive(),
-  name: z.string().min(1),
-  apiKey: z.string().min(1, 'apiKey 不能为空'),
-  baseUrlOverride: z.string().nullable().optional(),
+  name: z.string().min(1).max(64),
+  apiKey: z.string().min(1, 'apiKey 不能为空').max(512),
+  baseUrlOverride: z.string().max(255).nullable().optional(),
   models: z.array(z.string()).nullable().optional(),
-  weight: z.number().optional(),
-  priority: z.number().optional(),
+  weight: z.number().int().min(0).max(1_000_000).optional(),
+  priority: z.number().int().min(0).max(1_000_000).optional(),
   /** 渠道级限流（保护上游 API key 配额；null=不限流） */
   rpmLimit: z.number().int().positive().nullable().optional(),
   tpmLimit: z.number().int().positive().nullable().optional(),
 }).passthrough();
 
 const channelUpdateSchema = z.object({
-  name: z.string().min(1).optional(),
-  baseUrlOverride: z.string().nullable().optional(),
+  name: z.string().min(1).max(64).optional(),
+  baseUrlOverride: z.string().max(255).nullable().optional(),
   models: z.array(z.string()).nullable().optional(),
-  weight: z.number().optional(),
-  priority: z.number().optional(),
-  status: z.number().optional(),
+  weight: z.number().int().min(0).max(1_000_000).optional(),
+  priority: z.number().int().min(0).max(1_000_000).optional(),
+  status: z.number().int().min(0).max(4).optional(),
   rpmLimit: z.number().int().positive().nullable().optional(),
   tpmLimit: z.number().int().positive().nullable().optional(),
   /** 熔断阈值（元，>=0），null=0（耗尽才熔断） */
-  upstreamThreshold: z.number().min(0).nullable().optional(),
+  upstreamThreshold: z.number().min(0).max(MONEY_MAX).nullable().optional(),
   /** 换 Key：重新加密 + 恢复启用状态 */
   apiKey: z.string().min(1).optional(),
 }).passthrough();
@@ -52,41 +55,71 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
 
     // ====== 列表 ======
 
-    .get('/', async (c) => {
-      const rows = await s.db
-        .select({
-          id: channels.id,
-          providerId: channels.providerId,
-          name: channels.name,
-          baseUrlOverride: channels.baseUrlOverride,
-          models: channels.models,
-          weight: channels.weight,
-          priority: channels.priority,
-          status: channels.status,
-          failCount: channels.failCount,
-          cooldownUntil: channels.cooldownUntil,
-          rpmLimit: channels.rpmLimit,
-          tpmLimit: channels.tpmLimit,
-          upstreamBudget: channels.upstreamBudget,
-          upstreamThreshold: channels.upstreamThreshold,
-          createdAt: channels.createdAt,
-          updatedAt: channels.updatedAt,
-          providerName: providers.name,
-          providerBaseUrl: providers.baseUrl,
-        })
-        .from(channels)
-        .innerJoin(providers, eq(channels.providerId, providers.id))
-        .orderBy(channels.id);
+    .get('/', query(listQuerySchema), async (c) => {
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [channels.name, providers.name],
+        sort: {
+          by: {
+            id: channels.id,
+            name: channels.name,
+            status: channels.status,
+            priority: channels.priority,
+            createdAt: channels.createdAt,
+          },
+          fallback: 'createdAt',
+          tiebreaker: channels.id,
+        },
+      });
 
-      // 查每个渠道绑定的模型映射，join 到返回里
-      const bindings = await s.db
-        .select({
-          channelId: modelChannels.channelId,
-          externalName: modelMappings.externalName,
-          realModel: modelMappings.realModel,
-        })
-        .from(modelChannels)
-        .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id));
+      const result = await paginateQuery(
+        page,
+        s.db
+          .select({
+            id: channels.id,
+            providerId: channels.providerId,
+            name: channels.name,
+            baseUrlOverride: channels.baseUrlOverride,
+            models: channels.models,
+            weight: channels.weight,
+            priority: channels.priority,
+            status: channels.status,
+            failCount: channels.failCount,
+            cooldownUntil: channels.cooldownUntil,
+            rpmLimit: channels.rpmLimit,
+            tpmLimit: channels.tpmLimit,
+            upstreamBudget: channels.upstreamBudget,
+            upstreamThreshold: channels.upstreamThreshold,
+            createdAt: channels.createdAt,
+            updatedAt: channels.updatedAt,
+            providerName: providers.name,
+            providerBaseUrl: providers.baseUrl,
+          })
+          .from(channels)
+          .innerJoin(providers, eq(channels.providerId, providers.id))
+          .where(where)
+          .orderBy(...orderBy)
+          .limit(limit)
+          .offset(offset),
+        // 计数与主查询同源 join（搜索目标含 providers.name）
+        countAll(s.db, channels, where, [
+          { table: providers, on: eq(channels.providerId, providers.id) },
+        ]),
+      );
+
+      // 查当页渠道绑定的模型映射（分页后 inArray 限定，不再全表拉取）
+      const pageIds = result.list.map((r) => r.id);
+      const bindings = pageIds.length
+        ? await s.db
+            .select({
+              channelId: modelChannels.channelId,
+              externalName: modelMappings.externalName,
+              realModel: modelMappings.realModel,
+            })
+            .from(modelChannels)
+            .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
+            .where(inArray(modelChannels.channelId, pageIds))
+        : [];
 
       const bindingMap = new Map<number, Array<{ externalName: string; realModel: string }>>();
       for (const b of bindings) {
@@ -96,20 +129,22 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       }
 
       // 渠道已消耗（上游成本）聚合：consumed = sum(upstream_cost)，只计成功结算（报表用）
-      const consumedRows = await s.db
-        .select({
-          channelId: usageLogs.channelId,
-          total: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
-        })
-        .from(usageLogs)
-        .where(eq(usageLogs.status, 0))
-        .groupBy(usageLogs.channelId);
+      const consumedRows = pageIds.length
+        ? await s.db
+            .select({
+              channelId: usageLogs.channelId,
+              total: sql<string>`coalesce(sum(${usageLogs.upstreamCost}),0)::numeric`,
+            })
+            .from(usageLogs)
+            .where(and(eq(usageLogs.status, 0), inArray(usageLogs.channelId, pageIds)))
+            .groupBy(usageLogs.channelId)
+        : [];
       const consumedMap = new Map<number, string>();
       for (const cr of consumedRows) {
         if (cr.channelId != null) consumedMap.set(cr.channelId, cr.total);
       }
 
-      const list = rows.map((r) => {
+      const list = result.list.map((r) => {
         const consumed = consumedMap.get(r.id) ?? '0';
         return {
           ...r,
@@ -119,7 +154,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           upstreamRemaining: r.upstreamBudget,
         };
       });
-      return c.json({ list, total: list.length });
+      return c.json({ ...result, list });
     })
 
     // ====== 创建 ======
@@ -127,7 +162,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     .post('/', jsonBody(channelCreateSchema), async (c) => {
       const body = c.req.valid('json');
       // 明文 key → AES 加密 → 存 DB（明文不保留在任何返回值/日志中）
-      const apiKeyEnc = encrypt(body.apiKey, s.encryptionKey);
+      const apiKeyEnc = encryptCurrent(body.apiKey, s.encryptionKey, s.encryptionKeyOld);
       const [created] = await s.db
         .insert(channels)
         .values({
@@ -176,7 +211,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         update.upstreamThreshold = body.upstreamThreshold == null ? null : String(body.upstreamThreshold);
       // 换 Key：重新加密 + 清除「凭据无效」状态（status=4 死凭据/3 熔断 → 恢复启用）
       if (body.apiKey !== undefined) {
-        update.apiKeyEnc = encrypt(body.apiKey, s.encryptionKey);
+        update.apiKeyEnc = encryptCurrent(body.apiKey, s.encryptionKey, s.encryptionKeyOld);
         update.status = 0;
         update.failCount = 0;
         update.cooldownUntil = null;
@@ -187,7 +222,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         status: channels.status,
         failCount: channels.failCount,
       });
-      if (!updated) throw new HttpError(404, 'CHANNEL_NOT_FOUND', '渠道不存在');
+      if (!updated) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
       await bumpRouteCache(s.redis);
       s.logger.info({ channelId: id, keyChanged: body.apiKey !== undefined }, 'channel updated');
       await recordAudit(s.db, {
@@ -208,7 +243,7 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .set({ status: 1, updatedAt: new Date() })
         .where(eq(channels.id, id))
         .returning({ id: channels.id });
-      if (!retired) throw new HttpError(404, 'CHANNEL_NOT_FOUND', '渠道不存在');
+      if (!retired) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
       await bumpRouteCache(s.redis);
       await recordAudit(s.db, {
         actor: 'admin',
@@ -230,17 +265,24 @@ export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .innerJoin(providers, eq(channels.providerId, providers.id))
         .where(eq(channels.id, id))
         .limit(1);
-      if (ch.length === 0) throw new HttpError(404, 'CHANNEL_NOT_FOUND', '渠道不存在');
+      if (ch.length === 0) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
 
       const row = ch[0]!;
-      const apiKey = decrypt(row.apiKeyEnc, s.encryptionKey);
+      const apiKey = decrypt(row.apiKeyEnc, s.encryptionKey, s.encryptionKeyOld);
       const baseUrl = row.baseUrlOverride ?? row.providerBaseUrl;
-      const protocol = row.providerProtocol.replace('_', '-') as ChannelDesc['protocol'];
-      const ai = createAi({
-        ...defaultAiConfig(),
-        // 与网关同源门控：开发放行内网上游（生产即便误配也被 NODE_ENV 拦下）
-        allowLocalUrl: s.allowLocalUpstream,
-      });
+      const protocol = row.providerProtocol;
+      const ai = createAi(
+        {
+          ...defaultAiConfig(),
+          // 与网关同源门控：开发放行内网上游（生产即便误配也被 NODE_ENV 拦下）
+          allowLocalUrl: s.allowLocalUpstream,
+        },
+        // 探测是独立诊断面：每次探测全新内存状态（不受网关熔断影响、不污染它）
+        {
+          breakerStorage: new MemoryKvStorage<BreakerState>(),
+          deadCredentialStorage: new MemoryKvStorage<DeadCredentialState>(),
+        },
+      );
       const result = await ai.probe({ baseUrl, apiKey, protocol });
       return c.json({
         ok: result.ok,

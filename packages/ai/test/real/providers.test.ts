@@ -10,10 +10,16 @@ import type { ChannelDesc, RequestCtx } from '../../src/types.js';
  * 仅在配置了 *_API_KEY 时运行；CI 默认 skip（无 key 自动跳过）。
  *
  * 加载 monorepo 根 .env，把 MINIMAX_ 与 DEEPSEEK_ 环境变量注入 process.env。
+ *
+ * env 契约（唯一文档处——.env.example 已不列供应商键，生产渠道凭据走管理台 channels 落库）：
+ *   MiniMax：MINIMAX_API_KEY + MINIMAX_BASE_URL 必填；MINIMAX_MODEL 可选（默认 MiniMax-M3）
+ *   DeepSeek：DEEPSEEK_API_KEY + DEEPSEEK_BASE_URL 必填；DEEPSEEK_MODEL 可选（默认 deepseek-chat）
+ * 任一变量声明即视为启用该供应商，缺必填项直接 fail（防半配置静默跑错环境）。
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { memoryDeps } from '../helpers/memory-deps.js';
 
 /** 从起始目录向上逐级查找 .env（到根为止），找到第一个存在的 */
 function findEnvFile(startDirs: string[]): string | undefined {
@@ -134,10 +140,9 @@ function makeAi() {
     breaker: { windowMs: 60_000, failureThreshold: 10, cooldownMs: 300_000, halfOpenProbe: true },
     stream: { heartbeatIdleMs: 30_000, inactivityTimeoutMs: 60_000 },
     timeout: { connectMs: 15_000, totalMs: 30_000 },
-    estimate: { charPerToken: 3.5 },
     deadCredential: { failureThreshold: 5, windowMs: 3_600_000 },
     allowLocalUrl: false, // 生产配置：强制 https，禁内网
-  });
+  }, memoryDeps());
 }
 
 function channel(p: ProviderConfig): ChannelDesc {

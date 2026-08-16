@@ -1,50 +1,48 @@
 import { ServerIcon } from "lucide-react";
 
-import {
-  ApiError,
-  adminFetch,
-  type AdminProviderRow,
-  type ListResult,
-} from "@ai-gateway/api-client";
-import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
+import { SUPPORTED_PROTOCOLS } from "@ai-gateway/ai";
+
+import { fetchAdminList } from "@ai-gateway/api-client/list";
+import { ListPage } from "@ai-gateway/ui/components/list-page";
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
 import { CreateProviderDialog, ProvidersTable } from "./_components/providers-content";
-import type { ProviderRow } from "./types";
+import type { AdminProviderRow } from "@ai-gateway/api-client/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProvidersPage() {
-  let providers: ProviderRow[] = [];
-  let error: string | null = null;
-  try {
-    const data = await adminFetch<ListResult<AdminProviderRow>>("/api/admin/providers");
-    providers = data.list ?? [];
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
-  }
+const PAGE_SIZE = 20;
+
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function ProvidersPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const { rows, total, error } = await fetchAdminList<AdminProviderRow>("/api/admin/providers", {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    order,
+    extra: { q },
+  });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <ServerIcon className="size-5 text-muted-foreground" />
-            供应商
-          </h1>
-          <p className="text-sm text-muted-foreground">LLM 供应商入口（baseUrl + 协议）</p>
-        </div>
-        <CreateProviderDialog />
-      </div>
-
-      <Card>
-        <CardContent className="px-0">
-          {error ? (
-            <p className="p-8 text-center text-sm text-destructive">{error}</p>
-          ) : (
-            <ProvidersTable providers={providers} />
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <ListPage
+      title="供应商"
+      icon={<ServerIcon className="size-5 text-muted-foreground" />}
+      description="LLM 供应商入口（baseUrl + 协议）"
+      total={total}
+      searchPlaceholder="搜索名称 / baseUrl"
+      q={q}
+      searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
+      actions={<CreateProviderDialog protocols={SUPPORTED_PROTOCOLS} />}
+      error={error}
+      page={page}
+      pageSize={PAGE_SIZE}
+    >
+      <ProvidersTable providers={rows} protocols={SUPPORTED_PROTOCOLS} />
+    </ListPage>
   );
 }

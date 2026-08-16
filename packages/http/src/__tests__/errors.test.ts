@@ -6,12 +6,12 @@ import { z } from 'zod';
 
 describe('统一错误模型', () => {
   it('errorResponseBody：无 details 时不输出 details 字段', () => {
-    const body = errorResponseBody(new HttpError(404, 'USER_NOT_FOUND', '用户不存在'));
+    const body = errorResponseBody(new HttpError('USER_NOT_FOUND', '用户不存在'));
     expect(body).toEqual({ error: { message: '用户不存在', code: 'USER_NOT_FOUND' } });
   });
 
   it('errorResponseBody：带 details 时输出', () => {
-    const body = errorResponseBody(new HttpError(400, 'VALIDATION_ERROR', '参数校验失败', [{ path: 'body.a', reason: 'x' }]));
+    const body = errorResponseBody(new HttpError('VALIDATION_ERROR', '参数校验失败', [{ path: 'body.a', reason: 'x' }]));
     expect(body.error.details).toEqual([{ path: 'body.a', reason: 'x' }]);
   });
 
@@ -19,11 +19,11 @@ describe('统一错误模型', () => {
     const app = new Hono();
     app.onError(errorHandler());
     app.get('/boom', () => {
-      throw new HttpError(403, 'FORBIDDEN', '需要管理员权限');
+      throw new HttpError('ORG_FORBIDDEN', '需要管理员权限');
     });
     const res = await app.request('/boom');
     expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: { message: '需要管理员权限', code: 'FORBIDDEN' } });
+    expect(await res.json()).toEqual({ error: { message: '需要管理员权限', code: 'ORG_FORBIDDEN' } });
   });
 
   it('errorHandler：未知错误 → 500 INTERNAL_ERROR 且记日志', async () => {

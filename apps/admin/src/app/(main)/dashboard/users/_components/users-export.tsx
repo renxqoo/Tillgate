@@ -4,9 +4,9 @@ import { DownloadIcon } from 'lucide-react';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 
-import type { UserRow } from '../types';
+import type { AdminUserRow } from '@ai-gateway/api-client/types';
 
-export function UsersExport({ users }: { readonly users: ReadonlyArray<UserRow> }) {
+export function UsersExport({ users }: { readonly users: ReadonlyArray<AdminUserRow> }) {
   return (
     <Button
       variant="outline"

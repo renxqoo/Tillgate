@@ -55,7 +55,7 @@ async function setupModelWithTwoChannels(encryptionKey: string) {
     .insert(providers)
     .values({
       name: 'sfp-' + suffix,
-      protocol: 'openai_compatible',
+      protocol: 'openai-compatible',
       baseUrl: 'http://localhost:9999',
       status: 0,
     })

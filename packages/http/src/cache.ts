@@ -28,6 +28,11 @@ export function balanceCache(userId: number): string {
   return `billing:balance:${userId}`;
 }
 
+/** 用户限流画像快照（rpm/tpm 约束；网关 auth-service 消费） */
+export function userProfileCache(userId: number): string {
+  return `user_profile:${userId}`;
+}
+
 /**
  * 路由缓存失效：bump 版本计数，网关检测到版本变化后重建路由缓存。
  * Redis 不可用时静默降级（网关侧有自身的缓存 TTL 兜底）。

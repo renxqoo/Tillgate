@@ -1,13 +1,16 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { channels, modelMappings, modelChannels, providers } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import { createAi, defaultAiConfig, type Ai, type ChannelDesc } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
-import { intParam,  bumpRouteCache, HttpError, jsonBody, recordAudit } from '@ai-gateway/http';
+import {
+  MONEY_MAX, intParam,  bumpRouteCache, HttpError, jsonBody, recordAudit,
+  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { assertFreePriceConsistency,  replaceModelChannels } from '../services/models.js';
+import { MemoryKvStorage, type BreakerState, type DeadCredentialState } from '@ai-gateway/ai';
 
 const billingPolicySchema = z.object({
   version: z.literal(1),
@@ -47,32 +50,32 @@ const billingPolicySchema = z.object({
 
 const modelCreateSchema = z
   .object({
-    externalName: z.string().min(1),
-    realModel: z.string().min(1),
-    inputPrice: z.coerce.number().min(0).optional(),
-    outputPrice: z.coerce.number().min(0).optional(),
-    cacheInputPrice: z.coerce.number().min(0).optional(),
+    externalName: z.string().min(1).max(64),
+    realModel: z.string().min(1).max(128),
+    inputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
+    outputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
+    cacheInputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
     /** 显式免费模型（0 元授权）；付费模型必须 false。 */
     isFree: z.boolean().optional(),
     /** 上下文窗口（token 数）；null=未知 */
-    contextLength: z.coerce.number().int().positive().nullable().optional(),
+    contextLength: z.coerce.number().int().positive().finite().max(2_000_000_000).nullable().optional(),
     /** 模型级限流（保护上游配额）；null=不限流 */
-    rpmLimit: z.number().int().positive().nullable().optional(),
-    tpmLimit: z.number().int().positive().nullable().optional(),
+    rpmLimit: z.number().int().positive().max(1_000_000_000).nullable().optional(),
+    tpmLimit: z.number().int().positive().max(1_000_000_000).nullable().optional(),
     billingPolicy: billingPolicySchema.nullable().optional(),
   })
   .passthrough();
 
 const modelUpdateSchema = z
   .object({
-    externalName: z.string().min(1).optional(),
-    realModel: z.string().min(1).optional(),
-    status: z.number().optional(),
-    inputPrice: z.coerce.number().min(0).optional(),
-    outputPrice: z.coerce.number().min(0).optional(),
-    cacheInputPrice: z.coerce.number().min(0).optional(),
+    externalName: z.string().min(1).max(64).optional(),
+    realModel: z.string().min(1).max(128).optional(),
+    status: z.number().int().min(0).max(1).optional(),
+    inputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
+    outputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
+    cacheInputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX).optional(),
     isFree: z.boolean().optional(),
-    contextLength: z.coerce.number().int().positive().nullable().optional(),
+    contextLength: z.coerce.number().int().positive().finite().max(2_000_000_000).nullable().optional(),
     fallbackModels: z.unknown().optional(),
     paramRules: z.unknown().optional(),
     billingPolicy: billingPolicySchema.nullable().optional(),
@@ -97,17 +100,40 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
     new Hono<AdminEnv>()
 
       // 模型列表 + 已绑定渠道 id 回显
-      .get('/', async (c) => {
-        const rows = await s.db.select().from(modelMappings).orderBy(modelMappings.id);
-        const bindings = await s.db.select().from(modelChannels);
+      .get('/', query(listQuerySchema), async (c) => {
+        const input = c.req.valid('query');
+        const { page, limit, offset, where, orderBy } = buildList(input, {
+          search: [modelMappings.externalName, modelMappings.realModel],
+          sort: {
+            by: {
+              id: modelMappings.id,
+              externalName: modelMappings.externalName,
+              realModel: modelMappings.realModel,
+              status: modelMappings.status,
+              createdAt: modelMappings.createdAt,
+            },
+            fallback: 'createdAt',
+            tiebreaker: modelMappings.id,
+          },
+        });
+        const result = await paginateQuery(
+          page,
+          s.db.select().from(modelMappings).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+          countAll(s.db, modelMappings, where),
+        );
+        // 只查当页模型的渠道绑定（分页后 inArray 限定）
+        const pageIds = result.list.map((r) => r.id);
+        const bindings = pageIds.length
+          ? await s.db.select().from(modelChannels).where(inArray(modelChannels.mappingId, pageIds))
+          : [];
         const channelIdsByModel = new Map<number, number[]>();
         for (const b of bindings) {
           const arr = channelIdsByModel.get(b.mappingId) ?? [];
           arr.push(b.channelId);
           channelIdsByModel.set(b.mappingId, arr);
         }
-        const list = rows.map((r) => ({ ...r, channelIds: channelIdsByModel.get(r.id) ?? [] }));
-        return c.json({ list, total: list.length });
+        const list = result.list.map((r) => ({ ...r, channelIds: channelIdsByModel.get(r.id) ?? [] }));
+        return c.json({ ...result, list });
       })
 
       .post('/', jsonBody(modelCreateSchema), async (c) => {
@@ -153,7 +179,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
           where: eq(modelMappings.id, id),
           columns: { inputPrice: true, outputPrice: true, cacheInputPrice: true, isFree: true },
         });
-        if (!existing) throw new HttpError(404, 'MODEL_NOT_FOUND', '模型不存在');
+        if (!existing) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
         assertFreePriceConsistency({
           isFree: body.isFree ?? existing.isFree,
           inputPrice: body.inputPrice ?? Number(existing.inputPrice),
@@ -180,7 +206,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
           .set(update)
           .where(eq(modelMappings.id, id))
           .returning();
-        if (!updated) throw new HttpError(404, 'MODEL_NOT_FOUND', '模型不存在');
+        if (!updated) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
         await bumpRouteCache(s.redis);
         await recordAudit(s.db, {
           actor: 'admin',
@@ -188,6 +214,8 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
           action: 'model.update',
           targetType: 'model',
           targetId: id,
+          // 改价直接影响计费——审计必须可查到改了什么
+          detail: body,
         });
         return c.json(updated);
       })
@@ -199,7 +227,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
           .set({ status: 1, updatedAt: new Date() })
           .where(eq(modelMappings.id, id))
           .returning({ id: modelMappings.id });
-        if (!retired) throw new HttpError(404, 'MODEL_NOT_FOUND', '模型不存在');
+        if (!retired) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
         await bumpRouteCache(s.redis);
         await recordAudit(s.db, {
           actor: 'admin',
@@ -229,7 +257,7 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
         const mapping = await s.db.query.modelMappings.findFirst({
           where: eq(modelMappings.id, mappingId),
         });
-        if (!mapping) throw new HttpError(404, 'MODEL_NOT_FOUND', '模型不存在');
+        if (!mapping) throw new HttpError('MODEL_NOT_FOUND', '模型不存在');
         const bound = await s.db
           .select({
             channelId: channels.id,
@@ -246,16 +274,23 @@ export function modelAdminRoutes(s: AdminServices, ai?: Ai): Hono<AdminEnv> {
         // 与渠道测试同一 Ai 实例语义：开发放行内网上游（双重门控在 services 注入时完成）
         const tester =
           ai ??
-          createAi({
-            ...defaultAiConfig(),
-            allowLocalUrl: s.allowLocalUpstream,
-          });
+          createAi(
+            {
+              ...defaultAiConfig(),
+              allowLocalUrl: s.allowLocalUpstream,
+            },
+            // 探测是独立诊断面：每次探测全新内存状态（不受网关熔断影响、不污染它）
+            {
+              breakerStorage: new MemoryKvStorage<BreakerState>(),
+              deadCredentialStorage: new MemoryKvStorage<DeadCredentialState>(),
+            },
+          );
         const results = [];
         for (const ch of bound) {
           const desc: ChannelDesc = {
             baseUrl: ch.baseUrlOverride ?? ch.providerBaseUrl,
-            apiKey: decrypt(ch.apiKeyEnc, s.encryptionKey),
-            protocol: ch.providerProtocol.replace('_', '-') as ChannelDesc['protocol'],
+            apiKey: decrypt(ch.apiKeyEnc, s.encryptionKey, s.encryptionKeyOld),
+            protocol: ch.providerProtocol,
           };
           const startedAt = Date.now();
           try {

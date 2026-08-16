@@ -26,13 +26,6 @@ const schema = z.object({
   code: z.string().min(4, '请输入有效的充值码'),
 });
 
-const ERROR_MESSAGES: Record<string, string> = {
-  invalid_code: '充值码无效或已过期',
-  code_already_used: '充值码已被使用',
-  code_revoked: '充值码已被撤销',
-  code_expired: '充值码已过期',
-};
-
 export function RedeemForm() {
   const [result, setResult] = useState<{ amount: string; balanceAfter: string } | null>(null);
 
@@ -74,9 +67,9 @@ export function RedeemForm() {
             onSubmit={form.handleSubmit(async (values) => {
               const res = await redeemAction(values.code);
               if (res.error) {
-                const msg = (res.code && ERROR_MESSAGES[res.code]) || res.error;
-                toast.error('充值失败', { description: msg });
-                form.setError('code', { message: msg });
+                // 文案单一真相 = 服务端注册表 message（错误码：REDEEM_INVALID_CODE 等）
+                toast.error('充值失败', { description: res.error });
+                form.setError('code', { message: res.error });
                 return;
               }
               setResult({ amount: res.amount!, balanceAfter: res.balanceAfter! });

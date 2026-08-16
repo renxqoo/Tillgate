@@ -1,5 +1,6 @@
 import { serve } from '@hono/node-server';
 import { loadClientApiEnv, createLogger, initOtel } from '@ai-gateway/core';
+import { mailerFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
 import { createDb } from '@ai-gateway/db';
 import { createLedger } from '@ai-gateway/ledger';
 import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
@@ -37,11 +38,26 @@ const app = createApp({
   redis,
   ledger,
   logger,
+  mailer: mailerFromEnv(env, USER_MAIL_BRAND),
   config: {
+    oauth: {
+      frontendUrl: env.OAUTH_FRONTEND_URL,
+      apiBase: env.OAUTH_API_BASE,
+      github:
+        env.OAUTH_GITHUB_CLIENT_ID && env.OAUTH_GITHUB_CLIENT_SECRET
+          ? { clientId: env.OAUTH_GITHUB_CLIENT_ID, clientSecret: env.OAUTH_GITHUB_CLIENT_SECRET }
+          : null,
+      google:
+        env.OAUTH_GOOGLE_CLIENT_ID && env.OAUTH_GOOGLE_CLIENT_SECRET
+          ? { clientId: env.OAUTH_GOOGLE_CLIENT_ID, clientSecret: env.OAUTH_GOOGLE_CLIENT_SECRET }
+          : null,
+    },
     jwtSecret: env.JWT_SECRET,
     secureCookie: env.NODE_ENV === 'production',
     giftAmount: env.GIFT_AMOUNT,
     trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
+    trustedProxyHops: env.TRUSTED_PROXY_HOPS,
+    internalApiToken: env.INTERNAL_API_TOKEN,
   },
 });
 

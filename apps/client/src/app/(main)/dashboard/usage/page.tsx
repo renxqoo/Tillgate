@@ -1,133 +1,133 @@
 import { LineChartIcon } from "lucide-react";
 
-import { Button } from "@ai-gateway/ui/components/ui/button";
-import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ai-gateway/ui/components/ui/table";
-import { ApiError, apiFetch, fmtCost, formatPoints, fmtInt, msToHuman, type Paginated, type UsageRow } from "@ai-gateway/api-client";
-
-import Link from "next/link";
+import { fmtDateTime, fmtCost, formatPoints, fmtInt, msToHuman, type UsageRow } from "@ai-gateway/api-client";
+import { fetchUserList } from "@ai-gateway/api-client/list";
+import { DataTable, type DataTableColumn } from "@ai-gateway/ui/components/data-table";
+import { ListPage } from "@ai-gateway/ui/components/list-page";
+import { firstParam, parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 20;
+
 interface PageProps {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export default async function UsagePage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = 20;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const model = firstParam(sp.model) ?? "";
+  const { rows, total, error } = await fetchUserList<UsageRow>("/api/usage", {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    order,
+    extra: { q, model },
+  });
 
-  let rows: UsageRow[] = [];
-  let total = 0;
-  let error: string | null = null;
-  try {
-    const data = await apiFetch<Paginated<UsageRow>>(
-      `/api/usage?page=${page}&page_size=${pageSize}`,
-    );
-    rows = data.list;
-    total = data.total;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
-  }
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const columns: DataTableColumn<UsageRow>[] = [
+    {
+      key: "createdAt",
+      header: "时间",
+      sortable: true,
+      render: (r) => (
+        <span className="text-xs text-muted-foreground">{fmtDateTime(r.createdAt)}</span>
+      ),
+    },
+    {
+      key: "externalModel",
+      header: "模型",
+      render: (r) => <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>,
+    },
+    {
+      key: "source",
+      header: "来源",
+      render: (r) => (
+        <span className="text-xs text-muted-foreground">
+          {r.credentialType === "key" && r.keyName
+            ? `🔑 ${r.keyName}`
+            : r.credentialType === "jwt" && r.appName
+              ? `📦 ${r.appName}`
+              : "—"}
+        </span>
+      ),
+    },
+    { key: "inputTokens", header: "输入", align: "right", render: (r) => <span className="text-right tabular-nums">{fmtInt(r.inputTokens)}</span> },
+    {
+      key: "cachedInputTokens",
+      header: "缓存",
+      align: "right",
+      render: (r) => (
+        <span className="text-right tabular-nums text-muted-foreground">
+          {r.cachedInputTokens > 0 ? fmtInt(r.cachedInputTokens) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "cacheRate",
+      header: "缓存率",
+      align: "right",
+      render: (r) => (
+        <span className="text-right tabular-nums text-muted-foreground">
+          {r.inputTokens > 0 ? `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%` : "—"}
+        </span>
+      ),
+    },
+    { key: "outputTokens", header: "输出", align: "right", render: (r) => <span className="text-right tabular-nums">{fmtInt(r.outputTokens)}</span> },
+    {
+      key: "amount",
+      header: "消耗",
+      sortable: true,
+      align: "right",
+      render: (r) => (
+        <span className="text-right font-medium tabular-nums">
+          {r.billedBy === "plan" ? (
+            <>
+              {formatPoints(r.planAmount).replace(/\.?0+$/, "")} 积分
+              <span className="ml-1 text-xs text-muted-foreground">套餐</span>
+            </>
+          ) : (
+            <>
+              ¥{fmtCost(r.paygAmount)}
+              <span className="ml-1 text-xs text-muted-foreground">余额</span>
+            </>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "durationMs",
+      header: "耗时",
+      sortable: true,
+      align: "right",
+      render: (r) => <span className="text-right tabular-nums text-muted-foreground">{msToHuman(r.durationMs)}</span>,
+    },
+  ];
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
-      <div className="space-y-1">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <LineChartIcon className="size-5 text-muted-foreground" />
-          用量
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          共 {fmtInt(total)} 条请求
-        </p>
-      </div>
-
-      <Card>
-        <CardContent className="px-0">
-          {error ? (
-            <p className="p-8 text-center text-sm text-destructive">{error}</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>时间</TableHead>
-                  <TableHead>模型</TableHead>
-                  <TableHead>来源</TableHead>
-                  <TableHead className="text-right">输入</TableHead>
-                  <TableHead className="text-right">缓存</TableHead>
-                  <TableHead className="text-right">缓存率</TableHead>
-                  <TableHead className="text-right">输出</TableHead>
-                  <TableHead className="text-right">消耗</TableHead>
-                  <TableHead className="text-right">耗时</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.length === 0 ? (
-                  <TableRow>
-                        <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
-                      暂无用量记录
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleString("zh-CN")}
-                      </TableCell>
-                      <TableCell>
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {r.credentialType === "key" && r.keyName
-                          ? `🔑 ${r.keyName}`
-                          : r.credentialType === "jwt" && r.appName
-                            ? `📦 ${r.appName}`
-                            : "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtInt(r.inputTokens)}</TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {r.cachedInputTokens > 0 ? fmtInt(r.cachedInputTokens) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {r.inputTokens > 0
-                          ? `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%`
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtInt(r.outputTokens)}</TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">
-                        {formatPoints(r.amount).replace(/\.?0+$/, "")} 积分
-                        <span className="ml-1 text-xs text-muted-foreground">¥{fmtCost(r.amount)}</span>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {msToHuman(r.durationMs)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {total > pageSize && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            第 {page} / {totalPages} 页
-          </p>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm" disabled={page <= 1}>
-              <Link href={`/dashboard/usage?page=${page - 1}`}>上一页</Link>
-            </Button>
-            <Button asChild variant="outline" size="sm" disabled={page >= totalPages}>
-              <Link href={`/dashboard/usage?page=${page + 1}`}>下一页</Link>
-            </Button>
-          </div>
-        </div>
-      )}
+      <ListPage
+        title="用量"
+        icon={<LineChartIcon className="size-5 text-muted-foreground" />}
+        total={total}
+        totalUnit="条请求"
+        searchPlaceholder="搜索模型 / request_id"
+        q={q}
+        searchParams={{ q, model, sort_by: sortBy, order: sortBy ? order : undefined }}
+        error={error}
+        page={page}
+        pageSize={PAGE_SIZE}
+      >
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(r) => r.id}
+          sort={{ sortBy, order }}
+          searchParams={{ q, model }}
+          empty="暂无用量记录"
+        />
+      </ListPage>
     </div>
   );
 }

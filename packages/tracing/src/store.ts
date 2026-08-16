@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { traceSpans } from '@ai-gateway/db/schema';
 import { dayKey, ensureDailyPartition, listPartitionDays } from './partition.js';
-import type { SpanRow, TraceStore, TraceSummary } from './types.js';
+import type { TraceStore, TraceSummary } from './types.js';
 
 /**
  * PG 实现的 trace 存储。
@@ -49,10 +49,10 @@ export function createPgTraceStore(db: Db): TraceStore {
     },
 
     async findRecentTraces(filter): Promise<TraceSummary[]> {
-      const limit = Math.min(200, Math.max(1, filter.limit ?? 50));
+      const limit = Math.min(100, Math.max(1, filter.limit ?? 50));
+      const offset = Math.max(0, filter.offset ?? 0);
       const since = new Date(Date.now() - 24 * 3_600_000);
-      // errorsOnly 是 trace 级语义（含 ERROR span 的 trace 全量保留）：
-      // 先取含错 traceId 集，再按常规条件取这些 trace 的全部 span
+      // errorsOnly 是 trace 级语义（含 ERROR span 的 trace 全量保留）
       const errorTraceIds = filter.errorsOnly
         ? db
             .select({ traceId: traceSpans.traceId })
@@ -60,51 +60,96 @@ export function createPgTraceStore(db: Db): TraceStore {
             .where(and(gte(traceSpans.startTime, since), eq(traceSpans.statusCode, 2)))
         : undefined;
 
+      // recent 查询限定 24h，命中 start_time 索引 + 分区裁剪
       const conds = [
-        filter.beforeMs ? lt(traceSpans.startTime, new Date(filter.beforeMs)) : undefined,
         filter.service ? eq(traceSpans.service, filter.service) : undefined,
         filter.requestId ? eq(traceSpans.requestId, filter.requestId) : undefined,
         errorTraceIds ? inArray(traceSpans.traceId, errorTraceIds) : undefined,
-        // recent 查询限定 24h，命中 start_time 索引 + 分区裁剪
         gte(traceSpans.startTime, since),
       ].filter((c) => c !== undefined);
+      const where = and(...conds);
+      // trace 级时长 = max(end) - min(start)；下限过滤走 HAVING（数据库完成）
+      const having = filter.minDurationMs
+        ? sql`(extract(epoch from (max(${traceSpans.endTime}) - min(${traceSpans.startTime}))) * 1000) >= ${filter.minDurationMs}`
+        : undefined;
 
+      // 聚合数组用 array_to_json 显式序列化（drizzle 下 PG 数组以字符串返回，
+      // 不能依赖驱动端解析；JSON 是唯一确定性的传输格式）
       const rows = await db
-        .select()
+        .select({
+          traceId: traceSpans.traceId,
+          names: sql<string[]>`array_to_json(array_agg(${traceSpans.name} order by ${traceSpans.startTime}))`,
+          startTimes: sql<string[]>`array_to_json(array_agg(${traceSpans.startTime} order by ${traceSpans.startTime}))`,
+          endTimes: sql<string[]>`array_to_json(array_agg(${traceSpans.endTime}))`,
+          minStart: sql<string>`min(${traceSpans.startTime})`,
+          parentIds: sql<Array<string | null>>`array_to_json(array_agg(${traceSpans.parentSpanId} order by ${traceSpans.startTime}))`,
+          spanIds: sql<string[]>`array_to_json(array_agg(${traceSpans.spanId} order by ${traceSpans.startTime}))`,
+          services: sql<string[]>`array_to_json(array_agg(distinct ${traceSpans.service}))`,
+          requestIds: sql<Array<string | null>>`array_to_json(array_agg(${traceSpans.requestId}))`,
+          spanCount: sql<number>`count(*)::int`,
+          hasError: sql<boolean>`bool_or(${traceSpans.statusCode} = 2)`,
+        })
         .from(traceSpans)
-        .where(and(...conds))
-        .orderBy(desc(traceSpans.startTime))
-        .limit(limit * 60);
+        .where(where)
+        .groupBy(traceSpans.traceId)
+        .having(having)
+        .orderBy(desc(sql`min(${traceSpans.startTime})`), desc(traceSpans.traceId))
+        .limit(limit)
+        .offset(offset);
 
-      const byTrace = new Map<string, SpanRow[]>();
-      for (const row of rows) {
-        const list = byTrace.get(row.traceId) ?? [];
-        list.push(row);
-        byTrace.set(row.traceId, list);
-        if (byTrace.size >= limit) break;
-      }
-
-      const summaries: TraceSummary[] = [];
-      for (const spans of byTrace.values()) {
-        const root =
-          spans.find((s) => !s.parentSpanId || !spans.some((o) => o.spanId === s.parentSpanId)) ??
-          spans[0]!;
-        const durationMs =
-          Math.max(...spans.map((s) => s.endTime.getTime())) -
-          Math.min(...spans.map((s) => s.startTime.getTime()));
-        if (filter.minDurationMs && durationMs < filter.minDurationMs) continue;
-        summaries.push({
-          traceId: root.traceId,
-          rootName: root.name,
-          startTimeMs: root.startTime.getTime(),
-          durationMs,
-          spanCount: spans.length,
-          hasError: spans.some((s) => s.statusCode === 2),
-          services: [...new Set(spans.map((s) => s.service))],
-          requestId: spans.find((s) => s.requestId != null)?.requestId ?? null,
+      return rows.map((r) => {
+        const names = r.names;
+        const startTimes = r.startTimes;
+        const endTimes = r.endTimes;
+        const parentIds = r.parentIds;
+        const spanIds = r.spanIds;
+        const requestIds = r.requestIds;
+        // root：第一个 parent 不在本 trace span 集内的 span（与旧逐行分组语义一致）
+        const spanIdSet = new Set(spanIds);
+        let rootIdx = names.findIndex((_, i) => {
+          const parent = parentIds[i];
+          return !parent || !spanIdSet.has(parent);
         });
-      }
-      return summaries.toSorted((a, b) => b.startTimeMs - a.startTimeMs);
+        if (rootIdx < 0) rootIdx = 0;
+        const startMs = new Date(startTimes[rootIdx]!).getTime();
+        const endMs = Math.max(...endTimes.map((t) => new Date(t).getTime()));
+        return {
+          traceId: r.traceId,
+          rootName: names[rootIdx]!,
+          startTimeMs: startMs,
+          durationMs: endMs - new Date(r.minStart).getTime(),
+          spanCount: r.spanCount,
+          hasError: r.hasError,
+          services: [...new Set(r.services)],
+          requestId: requestIds.find((id) => id != null) ?? null,
+        };
+      });
+    },
+
+    async countRecentTraces(filter) {
+      const since = new Date(Date.now() - 24 * 3_600_000);
+      const errorTraceIds = filter.errorsOnly
+        ? db
+            .select({ traceId: traceSpans.traceId })
+            .from(traceSpans)
+            .where(and(gte(traceSpans.startTime, since), eq(traceSpans.statusCode, 2)))
+        : undefined;
+      const conds = [
+        filter.service ? eq(traceSpans.service, filter.service) : undefined,
+        filter.requestId ? eq(traceSpans.requestId, filter.requestId) : undefined,
+        errorTraceIds ? inArray(traceSpans.traceId, errorTraceIds) : undefined,
+        gte(traceSpans.startTime, since),
+      ].filter((c) => c !== undefined);
+      const where = and(...conds);
+      const having = filter.minDurationMs
+        ? sql`having (extract(epoch from (max(${traceSpans.endTime}) - min(${traceSpans.startTime}))) * 1000) >= ${filter.minDurationMs}`
+        : sql``;
+      const result = await db.execute<{ count: string }>(sql`
+        select count(*)::text as count from (
+          select 1 from ${traceSpans} where ${where} group by ${traceSpans.traceId} ${having}
+        ) t
+      `);
+      return Number(result.rows[0]?.count ?? 0);
     },
 
     async findByTraceId(traceId) {

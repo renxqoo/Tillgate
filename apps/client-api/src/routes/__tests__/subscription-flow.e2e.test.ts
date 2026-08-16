@@ -84,6 +84,7 @@ const services: ClientServices = {
   redis: redis as unknown as Redis,
   ledger: createLedger({ db }),
   logger: noopLogger() as unknown as ClientServices['logger'],
+  mailer: null,
 };
 
 function makeClientApp(userId: number): Hono {
@@ -310,6 +311,7 @@ describe('套餐完整流程 E2E（个人）', () => {
     const ai = successAi();
     const gw = buildTestApp(db, redis, ai);
     const chat = await gatewayChat(gw, apiKey);
+    if (chat.status !== 200) console.log('E2E-503:', chat.status, (await chat.text()).slice(0, 160));
     expect(chat.status).toBe(200);
     const requestId = chat.headers.get('x-request-id')!;
     expect(requestId).toBeTruthy();

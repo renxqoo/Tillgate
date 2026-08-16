@@ -35,6 +35,7 @@ export function stubRedis(): Redis {
     expire: async () => 1,
     ttl: async () => 60,
     del: async () => 1,
+    hset: async () => 1,
   } as unknown as Redis;
 }
 
@@ -44,6 +45,7 @@ export function makeServices(db: Db, overrides: Partial<ClientServices> = {}): C
     redis: stubRedis(),
     ledger: createLedger({ db }),
     logger: noopLogger(),
+    mailer: null,
     ...overrides,
   };
 }
@@ -54,6 +56,8 @@ export function makeTestConfig(overrides: Partial<ClientApiConfig> = {}): Client
     secureCookie: false,
     giftAmount: 0,
     trustedOrigins: [],
+    trustedProxyHops: 1, // 测试信任单跳：单条 XFF 即客户端 IP（模拟代理后部署）
+    oauth: { frontendUrl: 'http://localhost:3001', apiBase: 'http://localhost:8791', github: null, google: null },
     ...overrides,
   };
 }
@@ -75,8 +79,8 @@ export function makeClientTestApp(userId: number, mounts: Record<string, Hono<Cl
 }
 
 /** 公开端点测试 app（登录/注销等，无会话守护） */
-export function makeClientPublicApp(mounts: Record<string, Hono>): Hono {
-  const app = new Hono();
+export function makeClientPublicApp(mounts: Record<string, Hono<ClientEnv>>): Hono<ClientEnv> {
+  const app = new Hono<ClientEnv>();
   app.onError(errorHandler(noopLogger()));
   for (const [prefix, route] of Object.entries(mounts)) {
     app.route(prefix, route);

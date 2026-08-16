@@ -3,7 +3,8 @@
  * 插入最小闭环所需：用户 + 费率卡(系数1.0) + 管理员 + 测试虚拟Key + 供应商 + 渠道 + 模型映射。
  *
  * 用法：pnpm tsx packages/db/scripts/seed-dev.ts
- *   从 .env 读 DATABASE_URL / ENCRYPTION_KEY / DEEPSEEK_* / MINIMAX_*
+ *   从 .env 读 DATABASE_URL / ENCRYPTION_KEY / DEEPSEEK_API_KEY(+MODEL) / MINIMAX_API_KEY
+ *   （供应商键可选：API_KEY 缺失则跳过该供应商；baseUrl/模型名本脚本固定，env 契约唯一文档处在此）
  *   幂等：已存在的数据跳过（按唯一键判断）
  *
  * 输出：测试用虚拟 Key 明文（ag_xxx），用于 curl 测试。
@@ -183,7 +184,7 @@ async function main() {
     if (!provider) {
       const [pr] = await db
         .insert(providers)
-        .values({ name: p.name, protocol: 'openai_compatible', baseUrl: p.baseUrl })
+        .values({ name: p.name, protocol: 'openai-compatible', baseUrl: p.baseUrl })
         .returning();
       provider = pr;
     }

@@ -20,6 +20,7 @@
     "lint": "oxlint"
   },
   "dependencies": {
+    "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
     "@ai-gateway/money": "workspace:*",
     "drizzle-orm": "^0.45.2",

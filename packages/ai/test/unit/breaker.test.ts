@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CircuitBreaker } from '../../src/breaker/breaker.js';
-import { MemoryBreakerStorage } from '../../src/breaker/memory-storage.js';
+import { MemoryKvStorage } from '../../src/internal/memory-storage.js';
+import type { BreakerState } from '../../src/config.js';
 import type { BreakerConfig } from '../../src/breaker/breaker.js';
 
 const config: BreakerConfig = {
@@ -11,7 +12,7 @@ const config: BreakerConfig = {
 };
 
 function makeBreaker(now: () => number) {
-  return new CircuitBreaker('test-channel', config, new MemoryBreakerStorage(), now);
+  return new CircuitBreaker('test-channel', config, new MemoryKvStorage<BreakerState>(), now);
 }
 
 describe('CircuitBreaker', () => {
@@ -72,7 +73,7 @@ describe('CircuitBreaker', () => {
 
   it('不同 key 状态隔离', async () => {
     let t = 1000;
-    const storage = new MemoryBreakerStorage();
+    const storage = new MemoryKvStorage<BreakerState>();
     const a = new CircuitBreaker('channel-a', config, storage, () => t);
     const b = new CircuitBreaker('channel-b', config, storage, () => t);
     for (let i = 0; i < 3; i++) await a.recordFailure({ circuitTrip: true });
@@ -81,9 +82,9 @@ describe('CircuitBreaker', () => {
   });
 });
 
-describe('MemoryBreakerStorage', () => {
+describe('MemoryKvStorage（内存兜底实现）', () => {
   it('缺失 key → null；TTL 过期 → null', async () => {
-    const s = new MemoryBreakerStorage();
+    const s = new MemoryKvStorage<BreakerState>();
     expect(await s.getState('x')).toBeNull();
     const state = {
       state: 'open' as const,
@@ -99,7 +100,7 @@ describe('MemoryBreakerStorage', () => {
   });
 
   it('compareAndSet：version 匹配才写入，返回是否成功', async () => {
-    const s = new MemoryBreakerStorage();
+    const s = new MemoryKvStorage<BreakerState>();
     // key 不存在 → expectedVersion=0 可写入
     const ok1 = await s.compareAndSet(
       'k',
@@ -156,7 +157,7 @@ describe('CircuitBreaker 并发安全（B5）', () => {
 
   it('recordFailure CAS 失败可重试：并发窗口计数最终正确', async () => {
     // 用计数 storage 验证 CAS 重试后状态一致
-    const storage = new MemoryBreakerStorage();
+    const storage = new MemoryKvStorage<BreakerState>();
     let t = 1000;
     const b = new CircuitBreaker('cas-test', config, storage, () => t);
     // 阈值 3，并发 2 个（不足以熔断，验证计数不丢）

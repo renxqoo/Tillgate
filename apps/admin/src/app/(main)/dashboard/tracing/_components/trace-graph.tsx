@@ -49,11 +49,13 @@ function SpanCard({ data }: NodeProps) {
       ? '🌐'
       : node.kind === 'upstream'
         ? '🔀'
-        : node.kind === 'billing'
-          ? '💰'
-          : node.kind === 'settle'
-            ? '🧾'
-            : '⚙️';
+        : node.kind === 'stream'
+          ? '📡'
+          : node.kind === 'billing'
+            ? '💰'
+            : node.kind === 'settle'
+              ? '🧾'
+              : '⚙️';
   // 计费节点默认蓝调（金额语义），结算成功绿调
   const tone =
     node.status === 'error'
@@ -66,20 +68,26 @@ function SpanCard({ data }: NodeProps) {
             ? 'border-violet-600/40 bg-violet-500/5'
             : 'border-border bg-background';
   return (
-    <div
-      className={`w-[230px] rounded-lg border-2 px-3 py-2 shadow-sm transition-colors ${tone}`}
-    >
+    <div className={`w-[230px] rounded-lg border-2 px-3 py-2 shadow-sm transition-colors ${tone}`}>
       <Handle type="target" position={Position.Left} className="!bg-muted-foreground" />
       <div className="flex items-center gap-2">
         <span>{icon}</span>
         <span className="truncate text-xs font-semibold" title={node.title}>
           {node.title}
         </span>
-        {node.attempt != null && node.attempt > 1 ? (
-          <span className="ml-auto rounded bg-amber-500/15 px-1.5 text-[10px] text-amber-600">
-            第{node.attempt}次
+        <span className="ml-auto flex items-center gap-1">
+          <span
+            className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground"
+            title="执行序（按开始时间）"
+          >
+            第{node.step}步
           </span>
-        ) : null}
+          {node.attempt != null && node.attempt > 1 ? (
+            <span className="rounded bg-amber-500/15 px-1.5 text-[10px] text-amber-600">
+              第{node.attempt}次
+            </span>
+          ) : null}
+        </span>
       </div>
       {node.subtitle ? (
         <div className="mt-1 truncate text-[11px] text-muted-foreground" title={node.subtitle}>
@@ -131,7 +139,10 @@ export function TraceGraph({
       style: e.kind === 'fallback' ? { strokeDasharray: '6 4', stroke: '#d97706' } : undefined,
       label: e.kind === 'fallback' ? 'fallback' : undefined,
       labelStyle: { fontSize: 10, fill: '#d97706' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: e.kind === 'fallback' ? '#d97706' : '#71717a' },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: e.kind === 'fallback' ? '#d97706' : '#71717a',
+      },
     }));
     return { nodes: layout(rfNodes, rfEdges), edges: rfEdges };
   }, [graph, spans]);

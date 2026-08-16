@@ -52,11 +52,15 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
   const { method = 'GET', body, cookieHeader, revalidate, headers: extraHeaders, ...rest } = opts;
   const cookie = cookieHeader ?? (await _readCookieHeader());
 
+  // BFF 服务间令牌：Next.js 服务端调用无 Origin/Referer 头，凭此令牌通过 CSRF
+  // fail-closed 校验（令牌只在服务端 env，永不下发浏览器）。未配置时不注入（兼容期）。
+  const internalToken = process.env.INTERNAL_API_TOKEN;
   const res = await fetch(`${base}${path}`, {
     method,
     ...rest,
     headers: {
       'content-type': 'application/json',
+      ...(internalToken ? { 'x-internal-token': internalToken } : {}),
       ...(cookie ? { cookie } : {}),
       ...extraHeaders,
     },

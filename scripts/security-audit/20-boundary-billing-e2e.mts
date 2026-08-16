@@ -22,6 +22,7 @@ import { createServer } from 'node:http';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { encrypt } from '../../packages/core/src/index.js';
+import { estimateInputTokens } from '../../packages/ai/src/index.js';
 import {
   loadEnv,
   psql,
@@ -42,8 +43,10 @@ const MOCK_PORT = 9899;
 const SUFFIX = randomUUID().slice(0, 8);
 const MODEL = `rede2e-boundary-${SUFFIX}`;
 const FREE_MODEL = `rede2e-free-${SUFFIX}`;
-const CONTENT = 'hi'; // extractRequestChars 口径：content 字符数 = 2
+const CONTENT = 'hi'; // estimateInputTokens 口径：'hi' = 1 token（1 个单词）
 const MAX_TOKENS = 1000;
+const estIn = (content: string): number =>
+  estimateInputTokens({ messages: [{ role: 'user', content }] });
 
 let reds = 0;
 function check(name: string, ok: boolean, detail: string): void {
@@ -213,9 +216,9 @@ async function main(): Promise<void> {
   check('S2 差最小单位拒绝且零残留', s2res.status === 402 && s2rows.startsWith('0|'), `http=${s2res.status} ${s2rows}`);
 
   // ── S3 上游超发（实际 > 预估 > 余额）→ 不得负余额 ──
-  // content 带 OUT 标签 → 字符数 10，预估 = (10+1000)/1e6 = 0.00101；余额恰好给到预估
+  // content 带 OUT 标签 → 预估输入 estIn=2（'IN2'/'OUT2000' 两段），预估 = (2+1000)/1e6；余额恰好给到预估
   const s3Content = 'IN2 OUT2000'; // 实额 = (2+2000)/1e6 = 0.002002，两倍于预估
-  const s3Estimate = ((s3Content.length + MAX_TOKENS) / 1e6).toFixed(18);
+  const s3Estimate = ((estIn(s3Content) + MAX_TOKENS) / 1e6).toFixed(18);
   const s3 = await newUserWithBalance(s3Estimate);
   const s3res = await chat(s3.key, s3Content);
   const s3req = psql(`select request_id from billing_requests where user_id=${s3.userId} order by created_at desc limit 1;`);
@@ -263,8 +266,8 @@ async function main(): Promise<void> {
   console.log('[S4b] R6 证据已在上一轮运行采集，红测见 ledger 包（本段仅备案）');
 
   // ── S5 上游 429（upstreamCharge=none → released）：预占必须全额释放（R1 实时复现）──
-  const s5Content = 'RATE429'; // 7 字符 → 预估 (7+1000)/1e6
-  const s5Estimate = ((s5Content.length + MAX_TOKENS) / 1e6).toFixed(18);
+  const s5Content = 'RATE429'; // estIn=1 → 预估 (1+1000)/1e6
+  const s5Estimate = ((estIn(s5Content) + MAX_TOKENS) / 1e6).toFixed(18);
   const s5 = await newUserWithBalance(s5Estimate);
   const s5res = await chat(s5.key, s5Content);
   const s5req = psql(`select request_id from billing_requests where user_id=${s5.userId} order by created_at desc limit 1;`);

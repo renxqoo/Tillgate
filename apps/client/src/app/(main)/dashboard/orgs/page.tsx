@@ -1,63 +1,61 @@
 import { Building2 } from "lucide-react";
 
-import {
-  ApiError,
-  apiFetch,
-  type OrgDetail,
-  type OrgRow as ApiOrgRow,
-} from "@ai-gateway/api-client";
+import { apiFetch, type OrgDetail, type OrgRow } from "@ai-gateway/api-client";
+import { fetchUserList } from "@ai-gateway/api-client/list";
+import { ListPage } from "@ai-gateway/ui/components/list-page";
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
 import { OrgsContent, type OrgWithMembers } from "./_components/orgs-content";
-import type { OrgRow } from "./types";
 
 export const dynamic = "force-dynamic";
 
-export default async function OrgsPage() {
-  let orgs: OrgWithMembers[] = [];
-  let error: string | null = null;
+const PAGE_SIZE = 20;
 
-  try {
-    const data = await apiFetch<{ list: ApiOrgRow[] }>("/api/orgs");
-    orgs = await Promise.all(
-      (data.list ?? []).map(async (o) => {
-        const org: OrgRow = {
-          id: o.id,
-          name: o.name,
-          role: o.role,
-          subscriptionId: o.subscriptionId,
-          subscriptionName: o.subscriptionName,
-        };
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function OrgsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const { q, page } = parseListSearchParams(sp);
+  const { rows, total, error } = await fetchUserList<OrgRow>("/api/orgs", {
+    page,
+    pageSize: PAGE_SIZE,
+    extra: { q },
+  });
+  const orgs: OrgWithMembers[] = await Promise.all(
+    rows.map(async (org) => {
         let members: OrgWithMembers["members"] = [];
+        let invitations: OrgWithMembers["invitations"] = [];
         try {
-          const detail = await apiFetch<OrgDetail>(`/api/orgs/${o.id}`);
+          const detail = await apiFetch<OrgDetail>(`/api/orgs/${org.id}`);
           members = detail.members ?? [];
+          invitations = detail.invitations ?? [];
         } catch {
           members = [];
+          invitations = [];
         }
-        return { org, members };
+        return { org, members, invitations };
       }),
-    );
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
-  }
+  );
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
-      <div className="space-y-1">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <Building2 className="size-5 text-muted-foreground" />
-          组织
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          加入/管理的组织。企业套餐以组织为单位：owner 邀请成员，成员各自建自己的 Key 走组织额度。
-        </p>
-      </div>
-
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
-      ) : (
+      <ListPage
+        title="组织"
+        icon={<Building2 className="size-5 text-muted-foreground" />}
+        description="加入/管理的组织。企业套餐以组织为单位：owner 邀请成员，成员各自建自己的 Key 走组织额度。"
+        total={total}
+        totalUnit="个组织"
+        searchPlaceholder="搜索组织名"
+        q={q}
+        searchParams={{ q }}
+        error={error}
+        page={page}
+        pageSize={PAGE_SIZE}
+      >
         <OrgsContent orgs={orgs} />
-      )}
+      </ListPage>
     </div>
   );
 }

@@ -3,20 +3,11 @@
 import { revalidatePath } from "next/cache";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
+import type { ChannelCreateBody, ChannelTestResult, ChannelUpdateBody } from "@ai-gateway/api-client/types";
 
 // ── 创建渠道 ────────────────────────────────────────────────────────────────
-export interface ChannelCreateInput {
-  providerId: number;
-  name: string;
-  apiKey: string;
-  baseUrlOverride?: string;
-  models?: string;
-  weight?: number;
-  priority?: number;
-}
-
 export async function createChannelAction(
-  input: ChannelCreateInput,
+  input: ChannelCreateBody,
 ): Promise<{ error?: string }> {
   if (!input.name?.trim()) return { error: "请输入渠道名称" };
   if (!input.apiKey?.trim()) return { error: "请输入 API Key" };
@@ -41,23 +32,9 @@ export async function createChannelAction(
 }
 
 // ── 编辑渠道 ────────────────────────────────────────────────────────────────
-export interface ChannelUpdateInput {
-  name?: string;
-  apiKey?: string;
-  baseUrlOverride?: string;
-  models?: string;
-  weight?: number;
-  priority?: number;
-  status?: number;
-  rpmLimit?: number | null;
-  tpmLimit?: number | null;
-  /** 熔断阈值（元，>=0），null=0（耗尽才熔断） */
-  upstreamThreshold?: number | null;
-}
-
 export async function updateChannelAction(
   id: number,
-  input: ChannelUpdateInput,
+  input: ChannelUpdateBody,
 ): Promise<{ error?: string }> {
   try {
     await adminFetch(`/api/admin/channels/${id}`, {
@@ -83,21 +60,19 @@ export async function deleteChannelAction(id: number): Promise<{ error?: string 
 }
 
 // ── 测试渠道连通性 ──────────────────────────────────────────────────────────
-export interface ChannelTestResult {
+/** 归一化后的连通性测试结果（error 恒为 string，供 client toast 直接展示）。 */
+export interface ChannelTestOutcome {
   ok?: boolean;
   durationMs?: number;
   error?: string;
   keyPreview?: string;
 }
 
-export async function testChannelAction(id: number): Promise<ChannelTestResult> {
+export async function testChannelAction(id: number): Promise<ChannelTestOutcome> {
   try {
-    const res = await adminFetch<{
-      ok: boolean;
-      durationMs: number;
-      error?: string | { code?: string; message?: string };
-      keyPreview?: string;
-    }>(`/api/admin/channels/${id}/test`, { method: "POST" });
+    const res = await adminFetch<ChannelTestResult>(`/api/admin/channels/${id}/test`, {
+      method: "POST",
+    });
 
     if (!res.ok) {
       // error 可能是 string 或 { code, message }

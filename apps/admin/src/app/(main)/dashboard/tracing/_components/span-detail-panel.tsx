@@ -87,18 +87,24 @@ function fmtTokens(v: unknown): string {
  * 计费相关属性的友好摘要（金额/ token 千分位）：
  * billing.* / usage.* 存在时渲染 chips，一眼看金额与用量，细节仍看原始 JSON。
  */
-function summarizeBilling(attrs: Record<string, unknown>):
-  | Array<{ label: string; title?: string }>
-  | null {
+function summarizeBilling(
+  attrs: Record<string, unknown>,
+): Array<{ label: string; title?: string }> | null {
   const chips: Array<{ label: string; title?: string }> = [];
 
   const settledAmount = attrs['billing.amount'];
   if (typeof settledAmount === 'string' && settledAmount !== '') {
-    chips.push({ label: `实扣 ${fmtAmount(settledAmount)}`, title: 'billing.amount（元，string）' });
+    chips.push({
+      label: `实扣 ${fmtAmount(settledAmount)}`,
+      title: 'billing.amount（元，string）',
+    });
   }
   const reserved = attrs['billing.amount_reserved'];
   if (typeof reserved === 'string' && reserved !== '') {
-    chips.push({ label: `预授权 ${fmtAmount(reserved)}`, title: 'billing.amount_reserved（预估敞口）' });
+    chips.push({
+      label: `预授权 ${fmtAmount(reserved)}`,
+      title: 'billing.amount_reserved（预估敞口）',
+    });
   }
   const required = attrs['billing.amount_required'];
   if (typeof required === 'string' && required !== '') {
@@ -121,9 +127,16 @@ function summarizeBilling(attrs: Record<string, unknown>):
   if (typeof reject === 'string' && reject !== '') {
     chips.push({ label: `拒绝: ${reject}`, title: 'billing.reject_code' });
   }
-  const ttfb = attrs['upstream.ttfb_ms'];
+  const ttfb = attrs['upstream.ttfb_ms'] ?? attrs['stream.ttfb_ms'];
   if (typeof ttfb === 'number') {
-    chips.push({ label: `TTFB ${ttfb} ms`, title: 'upstream.ttfb_ms（首个上游事件）' });
+    chips.push({
+      label: `TTFB ${ttfb} ms`,
+      title: '首个上游事件（upstream.ttfb_ms / stream.ttfb_ms）',
+    });
+  }
+  const terminated = attrs['stream.terminated'];
+  if (typeof terminated === 'string' && terminated !== '') {
+    chips.push({ label: `流中断: ${terminated}`, title: 'stream.terminated（取消/截断原因）' });
   }
   return chips.length > 0 ? chips : null;
 }

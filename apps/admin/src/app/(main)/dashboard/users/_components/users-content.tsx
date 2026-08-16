@@ -16,7 +16,6 @@ import {
   ShieldOffIcon,
   UserIcon,
 } from 'lucide-react';
-import { toast } from 'sonner';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
@@ -44,18 +43,18 @@ import {
   TableHeader,
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
-import { formatMoney } from '@ai-gateway/api-client/formatters';
+import { fmtDateTime, formatMoney } from '@ai-gateway/api-client/formatters';
 
 import { AdjustDialog, GiftDialog, PasswordDialog } from './user-dialogs';
-import type { RateCardOption, UserRow } from '../types';
+import type { RateCardOption, AdminUserRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 export function UsersContent({
   users,
-  initialQuery: _initialQuery,
   rateCards,
 }: {
-  readonly users: ReadonlyArray<UserRow>;
-  readonly initialQuery: string;
+  readonly users: ReadonlyArray<AdminUserRow>;
   readonly rateCards: ReadonlyArray<RateCardOption>;
 }) {
   return (
@@ -97,9 +96,10 @@ function UserRowItem({
   user,
   rateCards,
 }: {
-  user: UserRow;
+  user: AdminUserRow;
   rateCards: ReadonlyArray<RateCardOption>;
 }) {
+  const notify = useActionResult();
   const [pending, setPending] = useState(false);
 
   async function toggleStatus() {
@@ -114,8 +114,7 @@ function UserRowItem({
       freezeReason: newStatus === 1 ? freezeReason : '',
     });
     setPending(false);
-    if (res.error) toast.error(`${action}失败`, { description: res.error });
-    else toast.success(`已${action}`);
+    notify(res, `${action}失败`, `已${action}`);
   }
 
   async function toggleEnterprise() {
@@ -123,8 +122,7 @@ function UserRowItem({
     const { setUserEnterpriseAction } = await import('../actions');
     const res = await setUserEnterpriseAction(user.id, !user.isEnterprise);
     setPending(false);
-    if (res.error) toast.error('操作失败', { description: res.error });
-    else toast.success(user.isEnterprise ? '已取消企业' : '已设为企业');
+    notify(res, '操作失败', user.isEnterprise ? '已取消企业' : '已设为企业');
   }
 
   return (
@@ -143,27 +141,20 @@ function UserRowItem({
       <TableCell className="text-xs text-muted-foreground">{user.email ?? '—'}</TableCell>
       <TableCell>
         {user.status === 0 ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            正常
-          </span>
+          <StatusPill tone="success" label="正常" />
         ) : (
-          <span
-            title={user.freezeReason ?? undefined}
-            className="inline-flex items-center rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive"
-          >
-            已封禁
-          </span>
+          <StatusPill tone="danger" label="已封禁" title={user.freezeReason ?? undefined} />
         )}
       </TableCell>
       <TableCell>
         {user.isEnterprise ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-300">
+          <StatusPill tone="accent">
             <BriefcaseIcon className="size-3" /> 企业
-          </span>
+          </StatusPill>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          <StatusPill tone="neutral">
             <UserIcon className="size-3" /> 个人
-          </span>
+          </StatusPill>
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{user.rateCardName ?? '—'}</TableCell>
@@ -183,7 +174,7 @@ function UserRowItem({
         {user.dailySpendLimit === null ? '不限' : formatMoney(user.dailySpendLimit)}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('zh-CN') : '从未'}
+        {user.lastLoginAt ? fmtDateTime(user.lastLoginAt) : '从未'}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
@@ -256,9 +247,10 @@ function BindRateCardDialog({
   user,
   rateCards,
 }: {
-  user: UserRow;
+  user: AdminUserRow;
   rateCards: ReadonlyArray<RateCardOption>;
 }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState<string>(
@@ -270,11 +262,7 @@ function BindRateCardDialog({
       const targetId = value === 'none' ? null : Number(value);
       const { bindRateCardAction } = await import('../actions');
       const res = await bindRateCardAction(user.id, targetId);
-      if (res.error) {
-        toast.error('绑定失败', { description: res.error });
-        return;
-      }
-      toast.success('已更新费率卡');
+      if (!notify(res, '绑定失败', '已更新费率卡')) return;
       setOpen(false);
     });
   }

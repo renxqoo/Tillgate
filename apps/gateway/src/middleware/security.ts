@@ -26,7 +26,7 @@ export function bodyParserLimit(maxBytes: number = BODY_LIMIT_BYTES): Middleware
   return async (c, next) => {
     const rawContentLength = c.req.header('content-length');
     if (rawContentLength !== undefined && !/^\d+$/.test(rawContentLength)) {
-      throw new HttpError(400, 'invalid_content_length', 'Content-Length 必须是非负整数');
+      throw new HttpError('invalid_content_length', 'Content-Length 必须是非负整数');
     }
     const cl = Number(rawContentLength ?? '0');
     if (cl > maxBytes) {
@@ -76,7 +76,7 @@ function countLimitedBody(
           if (total > maxBytes) {
             await reader.cancel().catch(() => {});
             controller.error(
-              new HttpError(413, 'request_too_large', '请求体过大（超过 16MB 限制）'),
+              new HttpError('request_too_large', '请求体过大（超过 16MB 限制）'),
             );
             return;
           }
@@ -108,7 +108,7 @@ export function corsPreflight(allowedOrigins: readonly string[] = []): Middlewar
     }
     if (c.req.method === 'OPTIONS') {
       if (!origin || !allowedOrigins.includes(origin)) {
-        throw new HttpError(403, 'cors_origin_denied', '不允许的浏览器来源');
+        throw new HttpError('cors_origin_denied', '不允许的浏览器来源');
       }
       c.header('access-control-allow-methods', 'GET, POST, OPTIONS');
       c.header('access-control-allow-headers', 'Authorization, Content-Type, X-Request-Id');

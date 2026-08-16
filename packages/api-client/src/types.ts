@@ -16,11 +16,6 @@ export interface MeInfo {
   subject: string;
   email: string | null;
   displayName: string | null;
-  /**
-   * 拆分后 client-api 的 /api/me 不再返回 role（用户面 role 对用户无意义，且 users.role 列即将删除）。
-   * 保留为可选字段以兼容旧前端代码（apps/client 旧版可能仍读 role）。
-   */
-  role?: 0 | 1;
   rateCardId: number | null;
   rateCardName: string | null;
   balance: string;
@@ -38,20 +33,19 @@ export interface AdminMeInfo {
   email: string;
   displayName: string | null;
   lastLoginAt: string | null;
+  /** 邮箱验证码二次登录已开启 */
+  twoFactorEnabled?: boolean;
 }
 
-/** 分页结果 */
+/**
+ * 统一分页 envelope（api-contract §4：所有记录列表接口一律 {list,total,page,page_size}，
+ * 配套 ?page=&page_size=&q=&sort_by=&order= 查询参数）。
+ */
 export interface Paginated<T> {
   list: T[];
   total: number;
   page: number;
   page_size: number;
-}
-
-/** 非分页列表（admin-api 的 channels/models/rate-cards 用） */
-export interface ListResult<T> {
-  list: T[];
-  total: number;
 }
 
 // ── Key (GET/POST /api/keys) ────────────────────────────────────────────────
@@ -111,6 +105,11 @@ export interface TransactionRow {
   createdAt: string;
 }
 
+/** 管理面交易行（GET /api/admin/users/:id/transactions；多操作管理员字段，终端用户不可见） */
+export interface AdminTransactionRow extends TransactionRow {
+  createdBy: number | null;
+}
+
 /** 我的充值码兑换记录（GET /api/redeem/history；不含明文码/哈希） */
 export interface RedeemHistoryItem {
   id: number;
@@ -127,6 +126,8 @@ export interface UsageRow {
   id: number;
   requestId: string;
   userId: number;
+  appId: number | null;
+  apiKeyId: number | null;
   externalModel: string;
   realModel: string;
   channelId: number | null;
@@ -134,8 +135,11 @@ export interface UsageRow {
   cachedInputTokens: number;
   outputTokens: number;
   amount: string;
+  /** 计费来源：plan=套餐额度（展示积分）/ payg=余额（展示金额） */
+  billedBy: 'plan' | 'payg';
+  planAmount: string;
+  paygAmount: string;
   upstreamCost: string | null;
-  statusCode: number;
   durationMs: number;
   createdAt: string;
   /** 凭证类型：key（API Key）/ jwt（应用） */
@@ -153,7 +157,8 @@ export interface UsageSummaryItem {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
-  cost: number;
+  /** 金额字符串（numeric 全精度；图表端按需 Number() 展示） */
+  cost: string;
 }
 
 /** 用量按模型聚合（GET /api/usage/by-model） */
@@ -163,7 +168,8 @@ export interface UsageByModelItem {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
-  cost: number;
+  /** 金额字符串（numeric 全精度；图表端按需 Number() 展示） */
+  cost: string;
 }
 
 // ── Admin: Users (GET /api/admin/users) ─────────────────────────────────────
@@ -237,13 +243,17 @@ export interface ChannelUpdateBody {
   weight?: number;
   priority?: number;
   status?: number;
-  rpmLimit?: number;
-  tpmLimit?: number;
+  /** null=不限流（继承用户/全局），与后端 channelUpdateSchema 对齐。 */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  /** 熔断阈值（元，>=0），null=0（耗尽才熔断）。与后端 channelUpdateSchema 对齐。 */
+  upstreamThreshold?: number | null;
 }
 export interface ChannelTestResult {
   ok: boolean;
   durationMs: number;
-  error?: string;
+  /** 后端返回 string 或 { code, message } */
+  error?: string | { code?: string; message?: string };
   keyPreview?: string;
 }
 
@@ -255,7 +265,11 @@ export interface AdminProviderRow {
   protocol: string;
   status: number;
   createdAt: string;
-  updatedAt: string;
+  /**
+   * providers 表当前无 updated_at 列，接口实际不返回该字段（undefined）。
+   * 前端展示需做空值兜底（回退 createdAt）。
+   */
+  updatedAt?: string;
 }
 export interface ProviderCreateBody {
   name: string;
@@ -333,9 +347,19 @@ export interface OrgMemberRow {
   email: string | null;
   displayName: string | null;
 }
+export interface OrgInvitationSummary {
+  id: number;
+  email: string;
+  status: number;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface OrgDetail {
   org: { id: number; name: string; ownerUserId: number } | null;
   members: OrgMemberRow[];
+  /** 待接受邀请（仅 owner 可见；token 不回显——链接只在邀请创建时下发一次） */
+  invitations?: OrgInvitationSummary[];
 }
 
 // ── Admin: Keys (GET/PATCH /api/admin/keys) ─────────────────────────────────
@@ -485,7 +509,6 @@ export interface LogRow {
     messageCount: number;
   } | null;
   attempts: number;
-  candidatesTried: string | null;
   /** 来源 IP（X-Forwarded-For 首段 / X-Real-IP / socket，鉴权前记录） */
   sourceIp: string | null;
   createdAt: string;
@@ -502,13 +525,34 @@ export interface AuditLogRow {
   createdAt: string;
 }
 
-// ── Redeem error code → 中文 ────────────────────────────────────────────────
-export const REDEEM_ERROR_MESSAGES: Record<string, string> = {
-  invalid_code: '充值码无效',
-  code_already_used: '充值码已被使用',
-  code_revoked: '充值码已撤销',
-  code_expired: '充值码已过期',
-};
+// ── 下拉选项（页面从列表行投影的 client-safe 选项，单一真相）──────────────
+/** 供应商下拉选项（渠道表单用，来源 AdminProviderRow）。 */
+export interface ProviderOption {
+  id: number;
+  name: string;
+  baseUrl: string;
+  protocol: string;
+  status: number;
+}
+/** 渠道下拉选项（统一形状：models 绑定弹窗展示 providerName，channel-funds 仅用 id/name）。 */
+export interface ChannelOption {
+  id: number;
+  name: string;
+  providerName?: string;
+}
+/** 费率卡下拉选项（用户绑定费率卡用，来源 AdminRateCardRow）。 */
+export interface RateCardOption {
+  id: number;
+  name: string;
+  coefficient: string;
+}
+/** 订阅「变更」弹窗的目标套餐选项（仅 subscription）。 */
+export interface PlanOption {
+  id: number;
+  name: string;
+  kind: 'subscription' | 'pack';
+  sortOrder: number | null;
+}
 
 // ── 套餐订阅（包月）────────────────────────────────────────────────────────
 /** plans 表行（amount 均为元 numeric 字符串）。 */

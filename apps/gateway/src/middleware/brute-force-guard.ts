@@ -72,18 +72,24 @@ export async function checkBruteForce(
   storage: BruteForceStorage,
   keyHash: string,
 ): Promise<BruteForceCheckResult> {
-  // 先查显式 lock key（锁定后失败次数可能已过期但锁还在）
-  const lockTtl = await storage.getLockTtl(keyHash);
-  if (lockTtl > 0) {
-    return { locked: true, retryAfterSec: lockTtl };
+  try {
+    // 先查显式 lock key（锁定后失败次数可能已过期但锁还在）
+    const lockTtl = await storage.getLockTtl(keyHash);
+    if (lockTtl > 0) {
+      return { locked: true, retryAfterSec: lockTtl };
+    }
+    // 查失败次数：达阈值则设锁（首次触发锁定）
+    const failures = await storage.getFailures(keyHash);
+    if (failures >= BRUTE_FORCE_THRESHOLD) {
+      await storage.setLock(keyHash, BRUTE_LOCK_DURATION_S);
+      return { locked: true, retryAfterSec: BRUTE_LOCK_DURATION_S };
+    }
+    return { locked: false, retryAfterSec: 0 };
+  } catch {
+    // 防爆破是尽力而为（防枚举），存储故障 fail-open——
+    // Redis 故障不得让鉴权成功的路径整体 500
+    return { locked: false, retryAfterSec: 0 };
   }
-  // 查失败次数：达阈值则设锁（首次触发锁定）
-  const failures = await storage.getFailures(keyHash);
-  if (failures >= BRUTE_FORCE_THRESHOLD) {
-    await storage.setLock(keyHash, BRUTE_LOCK_DURATION_S);
-    return { locked: true, retryAfterSec: BRUTE_LOCK_DURATION_S };
-  }
-  return { locked: false, retryAfterSec: 0 };
 }
 
 /** 记录认证失败（失败后递增计数） */
@@ -91,11 +97,15 @@ export async function recordAuthFailure(
   storage: BruteForceStorage,
   keyHash: string,
 ): Promise<void> {
-  await storage.incrFailures(keyHash, BRUTE_FAILURE_WINDOW_S);
-  // 达阈值即设锁（不等下次 checkBruteForce，立即生效）
-  const failures = await storage.getFailures(keyHash);
-  if (failures >= BRUTE_FORCE_THRESHOLD) {
-    await storage.setLock(keyHash, BRUTE_LOCK_DURATION_S);
+  try {
+    await storage.incrFailures(keyHash, BRUTE_FAILURE_WINDOW_S);
+    // 达阈值即设锁（不等下次 checkBruteForce，立即生效）
+    const failures = await storage.getFailures(keyHash);
+    if (failures >= BRUTE_FORCE_THRESHOLD) {
+      await storage.setLock(keyHash, BRUTE_LOCK_DURATION_S);
+    }
+  } catch {
+    /* best-effort：计数写失败只影响降级期的锁定精度 */
   }
 }
 
@@ -104,6 +114,10 @@ export async function resetAuthFailures(
   storage: BruteForceStorage,
   keyHash: string,
 ): Promise<void> {
-  await storage.resetFailures(keyHash);
-  await storage.clearLock(keyHash);
+  try {
+    await storage.resetFailures(keyHash);
+    await storage.clearLock(keyHash);
+  } catch {
+    /* best-effort：清零失败等 TTL 自然过期 */
+  }
 }

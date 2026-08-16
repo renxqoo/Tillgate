@@ -1,14 +1,16 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { BillingOperationError } from '@ai-gateway/ledger';
-import { HttpError, jsonBody, operationId, query } from '@ai-gateway/http';
+import {
+  HttpError, jsonBody, operationId, query,
+  paginateQuery, paginationQuerySchema, buildList,
+  type KnownErrorCode,
+} from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
-const listSchema = z.object({
+const listSchema = paginationQuerySchema.extend({
   status: z.enum(['dead', 'uncertain']),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  before: z.string().datetime().optional(),
 });
 
 const decisionBase = z.object({
@@ -55,10 +57,17 @@ const resolveSchema = z.discriminatedUnion('decision', [
   }),
 ]);
 
+/** BillingOperationError → HTTP（表驱动：状态码/码名由注册表单一真相给出） */
+const BILLING_OP_CODE: Record<BillingOperationError['code'], KnownErrorCode> = {
+  not_found: 'BILLING_NOT_FOUND',
+  state_conflict: 'BILLING_STATE_CONFLICT',
+  idempotency_conflict: 'BILLING_IDEMPOTENCY_CONFLICT',
+  invalid_receipt: 'BILLING_INVALID_RECEIPT',
+};
+
 function mapError(error: unknown): never {
   if (error instanceof BillingOperationError) {
-    const status = error.code === 'not_found' ? 404 : error.code === 'invalid_receipt' ? 422 : 409;
-    throw new HttpError(status, `BILLING_${error.code.toUpperCase()}`, error.message);
+    throw new HttpError(BILLING_OP_CODE[error.code], error.message);
   }
   throw error;
 }
@@ -68,13 +77,14 @@ export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
     .get('/', query(listSchema), async (c) => {
       const input = c.req.valid('query');
-      return c.json({
-        items: await s.billingOperations.listCases({
-          status: input.status,
-          limit: input.limit,
-          before: input.before ? new Date(input.before) : undefined,
-        }),
-      });
+      const { page, limit, offset } = buildList(input);
+      return c.json(
+        await paginateQuery(
+          page,
+          s.billingOperations.listCases({ status: input.status, limit, offset }),
+          s.billingOperations.countCases(input.status).then((count) => [{ count }]),
+        ),
+      );
     })
     .post('/:requestId/retry', jsonBody(decisionBase), async (c) => {
       try {

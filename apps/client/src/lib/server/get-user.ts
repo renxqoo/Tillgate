@@ -21,7 +21,7 @@ export function userFromMe(me: MeInfo): SidebarUser {
  * 设置环境变量 `DEV_FAKE_ME=1` 可跳过 admin-api 调用（截图/演示用）。
  */
 export async function requireMe(): Promise<MeInfo> {
-  if (process.env.DEV_FAKE_ME === "1") {
+  if (process.env.DEV_FAKE_ME === "1" && process.env.NODE_ENV !== "production") {
     return {
       id: 1,
       subject: "demo_user",

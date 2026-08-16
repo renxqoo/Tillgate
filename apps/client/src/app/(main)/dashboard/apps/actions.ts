@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
 
-import type { AppCreated, AppRow } from "./types";
+import type { AppCreated, AppRow } from "@ai-gateway/api-client/types";
 
 export async function createAppAction(input: {
   name: string;

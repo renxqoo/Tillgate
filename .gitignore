@@ -41,3 +41,4 @@ apps/admin-api/data/
 
 # 安全审计测试账号清单（含密码，仅本地，不入库）
 scripts/security-audit/ACCOUNTS.md
+docker/nginx/certs/

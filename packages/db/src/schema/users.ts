@@ -71,6 +71,10 @@ export const users = pgTable(
   },
   (t) => [
     uniqueIndex('users_issuer_subject_uq').on(t.issuer, t.subject),
+    // 本地账号 email 唯一（登录标识；NULL 排除——OIDC 用户/无邮箱测试账号不受约束）
+    uniqueIndex('users_local_email_uq')
+      .on(t.email)
+      .where(sql`${t.issuer} = 'local' and ${t.email} is not null`),
     index('users_rate_card_id_idx').on(t.rateCardId),
     // 信用模型：balance 可为负，但不得低于 -credit_limit；在途敞口非负。
     check('users_reserved_balance_nonnegative_ck', sql`${t.reservedBalance} >= 0`),

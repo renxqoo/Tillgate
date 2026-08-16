@@ -1,7 +1,6 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { channels, modelChannels, modelMappings, providers } from '@ai-gateway/db/schema';
-import { encrypt } from '@ai-gateway/core';
-import { bumpRouteCache, HttpError, recordAudit } from '@ai-gateway/http';
+import { bumpRouteCache, encryptCurrent, HttpError, recordAudit } from '@ai-gateway/http';
 import type { AdminServices } from './index.js';
 
 /**
@@ -107,7 +106,7 @@ export const CATALOG_SOURCES: Record<string, CatalogSource> = {
     name: 'OpenRouter',
     providerName: 'openrouter',
     providerBaseUrl: 'https://openrouter.ai/api',
-    providerProtocol: 'openai_compatible',
+    providerProtocol: 'openai-compatible',
     channelName: 'free-openrouter',
     needsKey: true,
     fetchModels: async () => {
@@ -124,7 +123,7 @@ export const CATALOG_SOURCES: Record<string, CatalogSource> = {
 export function getCatalogSource(sourceId: string): CatalogSource {
   const source = CATALOG_SOURCES[sourceId];
   if (!source) {
-    throw new HttpError(404, 'CATALOG_SOURCE_NOT_FOUND', `未知的目录源：${sourceId}`);
+    throw new HttpError('CATALOG_SOURCE_NOT_FOUND', `未知的目录源：${sourceId}`);
   }
   return source;
 }
@@ -150,6 +149,8 @@ export function compareCatalog(
 
 export interface ImportCatalogInput {
   sourceId: string;
+  /** 操作管理员（审计 actor；路由注入） */
+  adminId?: number | null;
   /** 平台 key：渠道首次创建时必填；复用已有渠道时可省（不覆盖已存 key） */
   apiKey?: string;
   models: Array<{
@@ -171,130 +172,140 @@ export interface ImportCatalogResult {
   updated: number;
 }
 
-/** 一键入库：按源落 provider/channel（复用或创建），映射创建或价格更新，绑定到免费渠道 */
+/** db.transaction 回调参数（事务句柄）类型 */
+type Tx = Parameters<Parameters<AdminServices['db']['transaction']>[0]>[0];
+
+/** 一键入库：按源落 provider/channel（复用或创建），映射创建或价格更新，绑定到免费渠道。
+ * 整个导入在一个事务内：中途任何失败（如 EXTERNAL_NAME_CONFLICT）整体回滚，
+ * 不留半成品（provider/免费渠道/部分映射已落库的脏状态）。 */
 export async function importCatalogModels(
   s: AdminServices,
   input: ImportCatalogInput,
 ): Promise<ImportCatalogResult> {
   if (input.models.length === 0) {
-    throw new HttpError(400, 'CATALOG_EMPTY', '至少选择一个模型');
+    throw new HttpError('CATALOG_EMPTY', '至少选择一个模型');
   }
   const source = getCatalogSource(input.sourceId);
 
-  let provider = await s.db.query.providers.findFirst({
-    where: eq(providers.name, source.providerName),
-  });
-  if (!provider) {
-    const [created] = await s.db
-      .insert(providers)
-      .values({
-        name: source.providerName,
-        baseUrl: source.providerBaseUrl,
-        protocol: source.providerProtocol,
-        status: 0,
-      })
-      .returning();
-    provider = created!;
-  }
-
-  let channel = await s.db.query.channels.findFirst({
-    where: eq(channels.name, source.channelName),
-  });
-  if (!channel) {
-    if (!input.apiKey && source.needsKey) {
-      throw new HttpError(
-        400,
-        'API_KEY_REQUIRED',
-        `首次从 ${source.name} 导入需要填写平台 API Key（用于创建渠道）`,
-      );
-    }
-    const [created] = await s.db
-      .insert(channels)
-      .values({
-        providerId: provider.id,
-        name: source.channelName,
-        apiKeyEnc: encrypt(input.apiKey ?? 'no-key-required', s.encryptionKey),
-        weight: 1,
-        priority: 0,
-        rpmLimit: FREE_CHANNEL_RPM,
-        upstreamBudget: FREE_CHANNEL_BUDGET,
-        status: 0,
-      })
-      .returning();
-    channel = created!;
-    s.logger.info({ channelId: channel.id }, 'catalog import: free channel created (key encrypted)');
-  }
-
-  let created = 0;
-  let updated = 0;
-  for (const m of input.models) {
-    const existing = await s.db.query.modelMappings.findFirst({
-      where: eq(modelMappings.externalName, m.externalName),
+  const result = await s.db.transaction(async (tx) => {
+    let provider = await tx.query.providers.findFirst({
+      where: eq(providers.name, source.providerName),
     });
-    const catalogFree = m.inputPrice === 0 && m.outputPrice === 0 && m.cacheInputPrice === 0;
-    if (existing) {
-      if (existing.realModel !== m.realModel) {
-        // 外部名被其他真实模型占用：约束冲突在边界层翻译为业务错误
-        throw new HttpError(
-          409,
-          'EXTERNAL_NAME_CONFLICT',
-          `对外名 ${m.externalName} 已绑定 ${existing.realModel}，请换一个名字`,
-        );
-      }
-      // 重复导入 = 价格更新确认（同一真实模型）。
-      // R6 单一真相：is_free 由价格决定（全零价=免费），不由 `:free` 命名约定推断——
-      // 目录漂移出现非零价时按付费导入（compareCatalog 的 priceWarning 负责告警），
-      // 绝不落「is_free=true + 非零价」的矛盾配置（授权 0 元/结算实扣口径分裂）。
-      await s.db
-        .update(modelMappings)
-        .set({
-          inputPrice: String(m.inputPrice),
-          outputPrice: String(m.outputPrice),
-          cacheInputPrice: String(m.cacheInputPrice),
-          isFree: catalogFree,
-          ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
-        })
-        .where(eq(modelMappings.id, existing.id));
-      await ensureBound(s, existing.id, channel.id);
-      updated += 1;
-    } else {
-      const [inserted] = await s.db
-        .insert(modelMappings)
+    if (!provider) {
+      const [created] = await tx
+        .insert(providers)
         .values({
-          externalName: m.externalName,
-          realModel: m.realModel,
+          name: source.providerName,
+          baseUrl: source.providerBaseUrl,
+          protocol: source.providerProtocol,
           status: 0,
-          inputPrice: String(m.inputPrice),
-          outputPrice: String(m.outputPrice),
-          cacheInputPrice: String(m.cacheInputPrice),
-          isFree: catalogFree,
-          ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
         })
         .returning();
-      await ensureBound(s, inserted!.id, channel.id);
-      created += 1;
+      provider = created!;
     }
-  }
+
+    let channel = await tx.query.channels.findFirst({
+      where: eq(channels.name, source.channelName),
+    });
+    if (!channel) {
+      if (!input.apiKey && source.needsKey) {
+        throw new HttpError(
+          'API_KEY_REQUIRED',
+          `首次从 ${source.name} 导入需要填写平台 API Key（用于创建渠道）`,
+        );
+      }
+      const [created] = await tx
+        .insert(channels)
+        .values({
+          providerId: provider.id,
+          name: source.channelName,
+          apiKeyEnc: encryptCurrent(input.apiKey ?? 'no-key-required', s.encryptionKey, s.encryptionKeyOld),
+          weight: 1,
+          priority: 0,
+          rpmLimit: FREE_CHANNEL_RPM,
+          upstreamBudget: FREE_CHANNEL_BUDGET,
+          status: 0,
+        })
+        .returning();
+      channel = created!;
+      s.logger.info({ channelId: channel.id }, 'catalog import: free channel created (key encrypted)');
+    }
+
+    let imported = 0;
+    let refreshed = 0;
+    for (const m of input.models) {
+      const existing = await tx.query.modelMappings.findFirst({
+        where: eq(modelMappings.externalName, m.externalName),
+      });
+      const catalogFree = m.inputPrice === 0 && m.outputPrice === 0 && m.cacheInputPrice === 0;
+      if (existing) {
+        if (existing.realModel !== m.realModel) {
+          // 外部名被其他真实模型占用：约束冲突在边界层翻译为业务错误
+          throw new HttpError(
+            'EXTERNAL_NAME_CONFLICT',
+            `对外名 ${m.externalName} 已绑定 ${existing.realModel}，请换一个名字`,
+          );
+        }
+        // 重复导入 = 价格更新确认（同一真实模型）。
+        // R6 单一真相：is_free 由价格决定（全零价=免费），不由 `:free` 命名约定推断——
+        // 目录漂移出现非零价时按付费导入（compareCatalog 的 priceWarning 负责告警），
+        // 绝不落「is_free=true + 非零价」的矛盾配置（授权 0 元/结算实扣口径分裂）。
+        await tx
+          .update(modelMappings)
+          .set({
+            inputPrice: String(m.inputPrice),
+            outputPrice: String(m.outputPrice),
+            cacheInputPrice: String(m.cacheInputPrice),
+            isFree: catalogFree,
+            ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
+          })
+          .where(eq(modelMappings.id, existing.id));
+        await ensureBound(tx, existing.id, channel.id);
+        refreshed += 1;
+      } else {
+        const [inserted] = await tx
+          .insert(modelMappings)
+          .values({
+            externalName: m.externalName,
+            realModel: m.realModel,
+            status: 0,
+            inputPrice: String(m.inputPrice),
+            outputPrice: String(m.outputPrice),
+            cacheInputPrice: String(m.cacheInputPrice),
+            isFree: catalogFree,
+            ...(m.contextLength != null ? { contextLength: m.contextLength } : {}),
+          })
+          .returning();
+        await ensureBound(tx, inserted!.id, channel.id);
+        imported += 1;
+      }
+    }
+
+    return { providerId: provider.id, channelId: channel.id, created: imported, updated: refreshed };
+  });
 
   await bumpRouteCache(s.redis);
   await recordAudit(s.db, {
     actor: 'admin',
-    adminId: null,
+    adminId: input.adminId ?? null,
     action: 'model_catalog.import',
     targetType: 'provider',
-    targetId: String(provider.id),
-    detail: { source: source.id, created, updated, models: input.models.map((m) => m.externalName) },
+    targetId: String(result.providerId),
+    detail: {
+      source: source.id,
+      created: result.created,
+      updated: result.updated,
+      models: input.models.map((m) => m.externalName),
+    },
   });
 
-  return { providerId: provider.id, channelId: channel.id, created, updated };
+  return result;
 }
 
 /** 绑定映射到免费渠道（已绑定时幂等） */
-async function ensureBound(s: AdminServices, mappingId: number, channelId: number): Promise<void> {
-  const bound = await s.db
-    .select()
-    .from(modelChannels)
-    .where(and(eq(modelChannels.mappingId, mappingId), inArray(modelChannels.channelId, [channelId])));
-  if (bound.length > 0) return;
-  await s.db.insert(modelChannels).values({ mappingId, channelId, weight: 1, priority: 0 });
+async function ensureBound(tx: Tx, mappingId: number, channelId: number): Promise<void> {
+  await tx
+    .insert(modelChannels)
+    .values({ mappingId, channelId, weight: 1, priority: 0 })
+    .onConflictDoNothing({ target: [modelChannels.mappingId, modelChannels.channelId] });
 }

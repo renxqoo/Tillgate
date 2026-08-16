@@ -47,7 +47,11 @@ export class OAuthService {
     // 任何人 10 次错误 secret 就把合法客户的令牌交换打断 10 分钟属于拒绝服务；
     // 正确凭证无条件豁免，语义与登录路径的「正确密码豁免」一致）
     const attemptKey = `oauth_attempts:${clientId}`;
-    const attempts = parseInt((await this.redis.get(attemptKey)) ?? '0', 10);
+    // 爆破计数 fail-open（Redis 故障只损失锁定精度，不得让 /oauth/token 整体 500）
+    const attempts = await this.redis
+      .get(attemptKey)
+      .then((v) => parseInt(v ?? '0', 10))
+      .catch(() => 0);
 
     const app = await this.db.query.apps.findFirst({
       where: eq(apps.clientId, clientId),
@@ -70,9 +74,14 @@ export class OAuthService {
           retryAfterSec: Math.max(1, ttl),
         };
       }
-      // 失败计数（INCR + TTL，首次设过期）
-      const newAttempts = await this.redis.incr(attemptKey);
-      if (newAttempts === 1) await this.redis.expire(attemptKey, OAUTH_LOCKOUT_TTL);
+      // 失败计数（原子 multi：incr+expire 一次落盘，崩溃间隙不留无 TTL 键；
+      // best-effort——Redis 故障只损失锁定精度，不得影响 401 响应）
+      await this.redis
+        .multi()
+        .incr(attemptKey)
+        .expire(attemptKey, OAUTH_LOCKOUT_TTL)
+        .exec()
+        .catch(() => {});
       return {
         ok: false,
         status: 401,

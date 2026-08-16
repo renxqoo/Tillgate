@@ -1,60 +1,102 @@
 /**
- * 密钥轮换脚本：用旧 ENCRYPTION_KEY 解密所有渠道 → 用新 key 重新加密 → 写回 DB。
- * 用法：pnpm --filter @ai-gateway/db exec tsx ../../scripts/rotate-encryption-key.ts
- * 环境：ENCRYPTION_KEY_OLD=<旧key> ENCRYPTION_KEY_NEW=<新key>
+ * 渠道上游 Key 加密轮换（双 key 窗设计，事务化）。
+ *
+ * 流程（运维照做）：
+ *   1. 生成新密钥（openssl rand -hex 32）。编辑 .env：
+ *        ENCRYPTION_KEY_OLD=<现在的 ENCRYPTION_KEY>   ← 打开双 key 窗
+ *        ENCRYPTION_KEY=<新密钥>
+ *   2. 重启 gateway + admin-api（新写入走 enc:v2，存量 v1 用 OLD 解密，服务不中断）。
+ *   3. 运行本脚本：把 channels.api_key_enc 存量 enc:v1 行事务化重加密为 v2
+ *      （每批 FOR UPDATE SKIP LOCKED，可与业务并发；幂等可重跑）。
+ *   4. 脚本报「全部完成」后，从 .env 移除 ENCRYPTION_KEY_OLD 并重启（收窗）。
+ *
+ * 安全：密钥只从 env 读取；任何输出不含密钥/明文片段。
  */
-import { encrypt, decrypt } from '@ai-gateway/core';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { Pool } from 'pg';
+import { decrypt, encrypt } from '@ai-gateway/core';
+import { loadRootEnvFile } from '@ai-gateway/http';
 
-// 加载 .env
-let dir = process.cwd();
-for (let i = 0; i < 6; i++) {
-  const f = resolve(dir, '.env');
-  if (existsSync(f)) {
-    for (const line of readFileSync(f, 'utf8').split('\n')) {
-      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-      if (m && m[1] && !(m[1] in process.env)) process.env[m[1]] = m[2];
-    }
-    break;
-  }
-  dir = resolve(dir, '..');
-}
+loadRootEnvFile();
 
+const NEW_KEY = process.env.ENCRYPTION_KEY;
 const OLD_KEY = process.env.ENCRYPTION_KEY_OLD;
-const NEW_KEY = process.env.ENCRYPTION_KEY_NEW;
-if (!OLD_KEY || OLD_KEY.length < 32) {
-  console.error('✗ ENCRYPTION_KEY_OLD 未设置或不足 32 字符（必须显式传入旧密钥，无默认值）');
+
+if (!NEW_KEY || !OLD_KEY) {
+  console.error(
+    '需要同时设置 ENCRYPTION_KEY（新）与 ENCRYPTION_KEY_OLD（旧）——双 key 窗未打开。\n' +
+      '按脚本头部流程先改 .env 并重启服务，再运行本脚本。',
+  );
   process.exit(1);
 }
-if (!NEW_KEY || NEW_KEY.length < 32) {
-  console.error('✗ ENCRYPTION_KEY_NEW 未设置或不足 32 字符');
+if (NEW_KEY === OLD_KEY) {
+  console.error('ENCRYPTION_KEY 与 ENCRYPTION_KEY_OLD 相同：无需轮换。');
   process.exit(1);
 }
+
+const BATCH = 100;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+});
 
 async function main(): Promise<void> {
-  const { default: pg } = await import('pg');
-  const client = new pg.Client(process.env.DATABASE_URL);
-  await client.connect();
-  const { rows } = await client.query('SELECT id, name, api_key_enc FROM channels ORDER BY id');
-  console.log(
-    `找到 ${rows.length} 个渠道，开始轮换 (old=${OLD_KEY.slice(0, 8)}... → new=${NEW_KEY.slice(0, 8)}...)`,
-  );
-  let ok = 0;
-  let fail = 0;
-  for (const ch of rows) {
+  let migrated = 0;
+  let failed = 0;
+  for (;;) {
+    const client = await pool.connect();
     try {
-      const plain = decrypt(ch.api_key_enc, OLD_KEY);
-      const newEnc = encrypt(plain, NEW_KEY);
-      await client.query('UPDATE channels SET api_key_enc = $1 WHERE id = $2', [newEnc, ch.id]);
-      console.log(`  ✓ id=${ch.id} ${ch.name} (明文: ${plain.slice(0, 6)}...)`);
-      ok++;
+      await client.query('begin');
+      const { rows } = await client.query<{ id: string; api_key_enc: string }>(
+        `select id, api_key_enc from channels
+          where api_key_enc like 'enc:v1:%'
+          order by id
+          limit $1
+          for update skip locked`,
+        [BATCH],
+      );
+      if (rows.length === 0) {
+        await client.query('commit');
+        break;
+      }
+      for (const row of rows) {
+        try {
+          const plain = decrypt(row.api_key_enc, NEW_KEY, OLD_KEY);
+          const reEncrypted = encrypt(plain, NEW_KEY, 2);
+          await client.query('update channels set api_key_enc = $2, updated_at = now() where id = $1', [
+            row.id,
+            reEncrypted,
+          ]);
+          migrated += 1;
+        } catch (e) {
+          failed += 1;
+          console.error(`  ✗ channel id=${row.id} 重加密失败：${(e as Error).message}`);
+        }
+      }
+      await client.query('commit');
+      console.log(`  批次完成（累计迁移 ${migrated}${failed ? `，失败 ${failed}` : ''}）`);
     } catch (e) {
-      console.log(`  ✗ id=${ch.id} ${ch.name}: ${(e as Error).message}`);
-      fail++;
+      await client.query('rollback').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
     }
   }
-  console.log(`轮换完成: 成功 ${ok} 失败 ${fail}`);
-  await client.end();
+
+  const { rows: left } = await pool.query<{ count: string }>(
+    `select count(*)::text as count from channels where api_key_enc like 'enc:v1:%'`,
+  );
+  const remaining = Number(left[0]?.count ?? 0);
+  console.log(`轮换完成：迁移 ${migrated} 行，失败 ${failed} 行，剩余 v1 ${remaining} 行。`);
+  if (remaining === 0 && failed === 0) {
+    console.log('✔ 全部迁移完成：现在可以从 .env 移除 ENCRYPTION_KEY_OLD 并重启服务（收窗）。');
+  } else {
+    console.error('仍有 v1/失败行：请检查失败原因后重跑本脚本（幂等）。');
+    process.exitCode = 1;
+  }
 }
-void main();
+
+main()
+  .catch((e) => {
+    console.error(`脚本异常：${(e as Error).message}`);
+    process.exitCode = 1;
+  })
+  .finally(() => pool.end());

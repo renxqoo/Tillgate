@@ -22,3 +22,24 @@ export async function changePasswordAction(input: {
     return { error: "修改失败，请重试" };
   }
 }
+
+/** 修改显示名称（1-32 字符，服务端二次校验） */
+export async function updateDisplayNameAction(input: {
+  displayName: string;
+}): Promise<{ error?: string; displayName?: string }> {
+  const name = input.displayName.trim();
+  if (!name) return { error: "请输入显示名称" };
+  if (name.length > 32) return { error: "最多 32 个字符" };
+  try {
+    const res = await apiFetch("/api/me/display-name", {
+      method: "PATCH",
+      body: { displayName: name },
+    });
+    return { displayName: (res as { displayName: string }).displayName };
+  } catch (e) {
+    if (e instanceof ApiError) {
+      return { error: e.message };
+    }
+    return { error: "修改失败，请重试" };
+  }
+}

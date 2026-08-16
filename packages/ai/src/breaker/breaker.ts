@@ -1,4 +1,4 @@
-import type { BreakerState, BreakerStorage } from '../config.js';
+import type { BreakerState, BreakerStorage } from '../config';
 
 /**
  * 熔断器原语：closed / open / half-open 状态机 + 滚动窗口计数。

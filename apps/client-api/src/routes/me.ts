@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { eq, and, sql, gte, lte, desc, gt, isNull } from 'drizzle-orm';
 import { users, rateCards, transactions, userSubscriptions, plans } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import {
+  HttpError, jsonBody, paginateQuery, query, recordAudit,
+  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -13,7 +15,7 @@ import type { ClientServices } from '../services/index.js';
  *   - GET /transactions：自己的资金流水（分页 + 时间范围）
  */
 
-const txQuerySchema = paginationQuerySchema.extend({
+const txQuerySchema = listQuerySchema.extend({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
 });
@@ -44,9 +46,33 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
         .leftJoin(rateCards, eq(users.rateCardId, rateCards.id))
         .where(eq(users.id, session.userId))
         .limit(1);
-      if (rows.length === 0) throw new HttpError(404, 'USER_NOT_FOUND', '用户不存在');
+      if (rows.length === 0) throw new HttpError('USER_NOT_FOUND', '用户不存在');
       return c.json(rows[0]);
     })
+
+    // 修改显示名称（自助，1-32 字符去空白）
+    .patch(
+      '/display-name',
+      jsonBody(z.object({ displayName: z.string().trim().min(1, '请输入显示名称').max(32, '最多 32 个字符') })),
+      async (c) => {
+        const session = c.get('session');
+        const body = c.req.valid('json');
+        const [updated] = await s.db
+          .update(users)
+          .set({ displayName: body.displayName, updatedAt: new Date() })
+          .where(eq(users.id, session.userId))
+          .returning({ id: users.id, displayName: users.displayName });
+        if (!updated) throw new HttpError('USER_NOT_FOUND', '用户不存在');
+        void recordAudit(s.db, {
+          actor: 'user',
+          action: 'user.display_name_change',
+          targetType: 'user',
+          targetId: session.userId,
+          detail: { displayName: body.displayName },
+        });
+        return c.json({ ok: true, displayName: updated.displayName });
+      },
+    )
 
     // 当前订阅（套餐/生效期/剩余额度），无有效订阅返回 null
     .get('/subscription', async (c) => {
@@ -96,12 +122,19 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
     .get('/transactions', query(txQuerySchema), async (c) => {
       const session = c.get('session');
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [eq(transactions.userId, session.userId)];
-      if (q.from) conds.push(gte(transactions.createdAt, new Date(q.from)));
-      if (q.to) conds.push(lte(transactions.createdAt, new Date(q.to)));
-      const where = and(...conds);
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [transactions.remark, transactions.refId, transactions.type],
+        conditions: [
+          eq(transactions.userId, session.userId),
+          q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
+          q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
+        ],
+        sort: {
+          by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: transactions.id,
+        },
+      });
       // 显式列（T6）：select() 全列会把 transactions.created_by（操作管理员 id）泄给终端用户
       const txColumns = {
         id: transactions.id,
@@ -116,9 +149,9 @@ export function meRoutes(s: ClientServices): Hono<ClientEnv> {
         createdAt: transactions.createdAt,
       };
       const result = await paginateQuery(
-        p,
-        s.db.select(txColumns).from(transactions).where(where).orderBy(desc(transactions.createdAt)).limit(limit).offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(transactions).where(where),
+        page,
+        s.db.select(txColumns).from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+        countAll(s.db, transactions, where),
       );
       return c.json(result);
     });

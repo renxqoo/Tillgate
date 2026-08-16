@@ -6,8 +6,11 @@ export const providers = pgTable(
   {
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     name: varchar('name', { length: 32 }).notNull(),
-    /** 一期全为 openai_compatible */
-    protocol: varchar('protocol', { length: 32 }).notNull().default('openai_compatible'),
+    /**
+     * 协议标识 = ai 包适配器注册表键（SUPPORTED_PROTOCOLS 单一真相，
+     * admin-api 校验引用；当前仅 openai-compatible）。
+     */
+    protocol: varchar('protocol', { length: 32 }).notNull().default('openai-compatible'),
     baseUrl: varchar('base_url', { length: 255 }).notNull(),
     /** 0 启用 / 1 禁用 */
     status: smallint('status').notNull().default(0),

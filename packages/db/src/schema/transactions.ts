@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   bigserial,
   varchar,
@@ -59,5 +60,8 @@ export const transactions = pgTable(
     uniqueIndex('transactions_subscription_ref_uq')
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'subscription'`),
+    // 余额链恒等（不变量下沉）：每条流水 after = before + amount。
+    // 存量 1359 行旧计费脏数据（balance_before 错记 0）已由迁移 0038 链式回填收敛。
+    check('transactions_balance_chain_ck', sql`${t.balanceAfter} = ${t.balanceBefore} + ${t.amount}`),
   ],
 );

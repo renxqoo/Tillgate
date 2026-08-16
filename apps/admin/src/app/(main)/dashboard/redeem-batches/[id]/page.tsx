@@ -8,27 +8,26 @@ import {
   formatMoney,
   type AdminBatchRow,
   type RedeemCodeRow as ApiRedeemCodeRow,
-  type ListResult,
 } from '@ai-gateway/api-client';
+import { fetchAdminList } from '@ai-gateway/api-client/list';
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 import { Button } from '@ai-gateway/ui/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@ai-gateway/ui/components/ui/card';
+import { ListPage } from '@ai-gateway/ui/components/list-page';
+import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
 
 import { CodesTable } from './_components/codes-table';
-import type { RedeemCodeRow } from '../types';
+import type { RedeemCodeRow } from '@ai-gateway/api-client/types';
+
+const PAGE_SIZE = 20;
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function BatchDetailPage({ params }: PageProps) {
+export default async function BatchDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const batchId = Number(id);
   if (!Number.isFinite(batchId) || batchId <= 0) notFound();
@@ -41,15 +40,15 @@ export default async function BatchDetailPage({ params }: PageProps) {
     error = e instanceof ApiError ? e.message : '加载失败';
   }
 
-  let codes: RedeemCodeRow[] = [];
-  try {
-    const data = await adminFetch<ListResult<ApiRedeemCodeRow>>(
-      `/api/admin/redeem-batches/${batchId}/codes`,
-    );
-    codes = data.list ?? [];
-  } catch {
-    // codes 失败不阻塞
-  }
+  const sp = await searchParams;
+  const { page, sortBy, order } = parseListSearchParams(sp);
+  const codesResult = await fetchAdminList<ApiRedeemCodeRow>(
+    `/api/admin/redeem-batches/${batchId}/codes`,
+    { page, pageSize: PAGE_SIZE, sortBy, order },
+  );
+  const codes: RedeemCodeRow[] = codesResult.rows;
+  const codesTotal = codesResult.total;
+  const codesError = codesResult.error;
 
   if (!batch) {
     return (
@@ -76,24 +75,18 @@ export default async function BatchDetailPage({ params }: PageProps) {
         </Link>
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl">
-            {batch.name}{' '}
-            <span className="text-base font-normal text-muted-foreground">#{batch.id}</span>
-          </CardTitle>
-          <CardDescription>
-            面值 ¥{formatMoney(batch.amount)} · 共 {batch.total} 张 · 已用 {batch.usedCount} 张
-            {batch.remark ? ` · ${batch.remark}` : ''}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      <Card>
-        <CardContent className="px-0">
-          <CodesTable codes={codes} />
-        </CardContent>
-      </Card>
+      <ListPage
+        title={`${batch.name} #${batch.id}`}
+        description={`面值 ¥${formatMoney(batch.amount)} · 共 ${batch.total} 张 · 已用 ${batch.usedCount} 张${batch.remark ? ` · ${batch.remark}` : ''}`}
+        total={codesTotal}
+        totalUnit="张"
+        error={codesError}
+        page={page}
+        pageSize={PAGE_SIZE}
+        searchParams={{ sort_by: sortBy, order: sortBy ? order : undefined }}
+      >
+        <CodesTable codes={codes} />
+      </ListPage>
     </div>
   );
 }

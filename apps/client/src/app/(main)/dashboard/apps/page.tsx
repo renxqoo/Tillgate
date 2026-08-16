@@ -1,43 +1,49 @@
 import { ShieldCheckIcon } from "lucide-react";
 
-import { Card, CardContent } from "@ai-gateway/ui/components/ui/card";
-import { ApiError, apiFetch, fmtInt, type AppRow as ApiAppRow, type Paginated } from "@ai-gateway/api-client";
+import { fetchUserList } from "@ai-gateway/api-client/list";
+import { ListPage } from "@ai-gateway/ui/components/list-page";
+import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 
-import { type AppRow } from "./types";
+import type { AppRow } from "@ai-gateway/api-client/types";
 import { AppsTable, CreateAppDialog } from "./_components/apps-content";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppsPage() {
-  let apps: AppRow[] = [];
-  let total = 0;
-  let error: string | null = null;
-  try {
-    const data = await apiFetch<Paginated<ApiAppRow>>("/api/apps?page=1&page_size=100");
-    apps = data.list;
-    total = data.total;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
-  }
+const PAGE_SIZE = 20;
+
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+export default async function AppsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const { rows, total, error } = await fetchUserList<AppRow>("/api/apps", {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    order,
+    extra: { q },
+  });
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <ShieldCheckIcon className="size-5 text-muted-foreground" />
-            应用
-          </h1>
-          <p className="text-sm text-muted-foreground">OAuth 风格 client_id / secret（共 {fmtInt(total)} 个）</p>
-        </div>
-        <CreateAppDialog />
-      </div>
-
-      <Card>
-        <CardContent className="px-0">
-          {error ? <p className="p-8 text-center text-sm text-destructive">{error}</p> : <AppsTable apps={apps} />}
-        </CardContent>
-      </Card>
+      <ListPage
+        title="应用"
+        icon={<ShieldCheckIcon className="size-5 text-muted-foreground" />}
+        description="OAuth 风格 client_id / secret"
+        total={total}
+        totalUnit="个"
+        searchPlaceholder="搜索应用名 / 描述"
+        q={q}
+        searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
+        actions={<CreateAppDialog />}
+        error={error}
+        page={page}
+        pageSize={PAGE_SIZE}
+      >
+        <AppsTable apps={rows} />
+      </ListPage>
     </div>
   );
 }

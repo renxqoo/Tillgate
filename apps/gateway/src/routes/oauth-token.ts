@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { sourceIp } from '../middleware/auth-failure-guard.js';
 import type { OAuthService } from '../services/auth/oauth-service.js';
 import { HttpError } from '../lib/http.js';
 
@@ -12,9 +13,9 @@ import { HttpError } from '../lib/http.js';
  * 成功 → { access_token, token_type: "Bearer", expires_in: 7200 }
  * 失败 → 400 invalid_request / 401 invalid_client
  */
-export function oauthTokenRoutes(oauth: OAuthService): Hono {
+export function oauthTokenRoutes(oauth: OAuthService, trustedProxyHops = 0): Hono {
   return new Hono().post('/', async (c) => {
-    const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+    const ip = sourceIp(c, trustedProxyHops);
     let clientId: string | undefined;
     let clientSecret: string | undefined;
     let grantType: string | undefined;
@@ -30,7 +31,7 @@ export function oauthTokenRoutes(oauth: OAuthService): Hono {
       try {
         body = (await c.req.json()) as Record<string, unknown>;
       } catch {
-        throw new HttpError(400, 'invalid_request', '请求体不是合法 JSON');
+        throw new HttpError('invalid_request', '请求体不是合法 JSON');
       }
       clientId = body.client_id as string;
       clientSecret = body.client_secret as string;

@@ -45,6 +45,31 @@ export {
   type ThrottleCheck,
 } from './login-throttle.js';
 
+// 登录验证码挑战（client-api 强制邮箱验证 / admin-api 2FA 共用）
+export {
+  issueLoginCodeChallenge,
+  abortLoginCodeChallenge,
+  verifyLoginCodeChallenge,
+  LoginCodeCooldownError,
+  LOGIN_CODE_TTL_S,
+  LOGIN_CODE_MAX_TRIES,
+  LOGIN_CODE_RESEND_COOLDOWN_S,
+  type LoginCodeNamespace,
+  type LoginCodeVerifyResult,
+} from './login-code.js';
+
+// 登录验证码发信（SMTP fail-closed；品牌参数化管理后台/用户面板）
+export {
+  mailerFromEnv,
+  createMailer,
+  renderLoginCodeEmail,
+  ADMIN_MAIL_BRAND,
+  USER_MAIL_BRAND,
+  type Mailer,
+  type MailerConfig,
+  type MailBrand,
+} from './mailer.js';
+
 // Hono Variables 类型
 export {
   type ClientEnv,

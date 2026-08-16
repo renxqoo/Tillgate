@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createAi } from '../../src/create-ai.js';
 import type { Ai, ChannelDesc, RequestCtx } from '../../src/types.js';
 import { startServer } from './helpers.js';
+import { memoryDeps } from '../helpers/memory-deps.js';
 
 /**
  * 复现测试：模型映射 externalName(对外名) → realModel(上游真实名) 时，
@@ -26,10 +27,9 @@ function makeAi(): Ai {
     breaker: { windowMs: 60_000, failureThreshold: 99, cooldownMs: 300_000, halfOpenProbe: true },
     stream: { heartbeatIdleMs: 1000, inactivityTimeoutMs: 5000 },
     timeout: { connectMs: 2000, totalMs: 5000 },
-    estimate: { charPerToken: 3.5 },
     deadCredential: { failureThreshold: 99, windowMs: 3_600_000 },
     allowLocalUrl: true,
-  });
+  }, memoryDeps());
 }
 
 const channel = (baseUrl: string): ChannelDesc => ({

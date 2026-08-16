@@ -8,7 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { formatMoney } from "@ai-gateway/api-client/formatters";
+import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Dialog,
@@ -31,9 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@ai-gateway/ui/components/ui/table";
-import { CopyButton } from "@/components/shell/copy-button";
+import { CopyButton } from "@ai-gateway/ui/components/shell/copy-button";
 
-import type { KeyRow } from "../types";
+import type { KeyRow } from "@ai-gateway/api-client/types";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const createSchema = z.object({
   name: z.string().min(1, "请输入名称").max(100),
@@ -128,10 +131,10 @@ export function KeysTable({
                 <StatusBadge status={k.status} />
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {new Date(k.createdAt).toLocaleString("zh-CN")}
+                {fmtDateTime(k.createdAt)}
               </TableCell>
               <TableCell className="text-xs text-muted-foreground">
-                {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString("zh-CN") : "—"}
+                {fmtDateTime(k.lastUsedAt)}
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -150,15 +153,11 @@ export function KeysTable({
 function StatusBadge({ status }: { status: number }) {
   if (status === 0) {
     return (
-      <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-        正常
-      </span>
+      <StatusPill tone="success" label="正常" />
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive">
-      已吊销
-    </span>
+    <StatusPill tone="danger" label="已吊销" />
   );
 }
 
@@ -178,30 +177,31 @@ function SourceBadge({ label }: { label: string }) {
 }
 
 function RevokeInline({ id }: { id: number }) {
-  const [pending, setPending] = useState(false);
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      disabled={pending}
-      onClick={async () => {
-        if (!confirm("确定吊销此 Key？吊销后无法恢复。")) return;
-        setPending(true);
-        const { revokeKeyAction } = await import("../actions");
-        const res = await revokeKeyAction(id);
-        setPending(false);
-        if (res.error) toast.error("吊销失败", { description: res.error });
-        else toast.success("已吊销");
-      }}
-      className="text-destructive hover:text-destructive"
+    <ConfirmAction
+      confirm="确定吊销此 Key？吊销后无法恢复。"
+      action={async () => (await import("../actions")).revokeKeyAction(id)}
+      errorTitle="吊销失败"
+      success="已吊销"
     >
-      {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-      吊销
-    </Button>
+      {({ pending, onClick }) => (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          onClick={onClick}
+          className="text-destructive hover:text-destructive"
+        >
+          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+          吊销
+        </Button>
+      )}
+    </ConfirmAction>
   );
 }
 
 function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const form = useForm<z.infer<typeof editSchema>>({
     resolver: zodResolver(editSchema),
@@ -265,11 +265,7 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
               tpmLimit,
               dailySpendLimit,
             });
-            if (res.error) {
-              toast.error("更新失败", { description: res.error });
-              return;
-            }
-            toast.success("已更新");
+            if (!notify(res, "更新失败", "已更新")) return;
             setOpen(false);
           })}
           className="space-y-4"
@@ -345,6 +341,7 @@ export function CreateKeyDialog({
 }: {
   readonly subscriptions: ReadonlyArray<{ id: number; label: string }>;
 }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
@@ -385,10 +382,7 @@ export function CreateKeyDialog({
             onSubmit={form.handleSubmit(async (values) => {
               const { createKeyAction } = await import("../actions");
               const res = await createKeyAction(values);
-              if (res.error) {
-                toast.error("创建失败", { description: res.error });
-                return;
-              }
+              if (!notify(res, "创建失败")) return;
               setRevealedKey(res.key!.key);
               toast.success("已创建 Key");
             })}

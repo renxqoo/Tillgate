@@ -10,9 +10,12 @@ import { HttpError } from './errors.js';
  * 不用 @hono/zod-validator：zod v4 classic API 下联合类型会导致 TS 重载报错。
  */
 
+/** 金额/额度输入上界（¥10 亿）——与 numeric(38,18) 的安全余量无关，是业务面防呆上界 */
+export const MONEY_MAX = 1e9;
+
 export class ValidationError extends HttpError {
   constructor(public readonly details: Array<{ path: string; reason: string }>) {
-    super(400, 'VALIDATION_ERROR', '参数校验失败', details);
+    super('VALIDATION_ERROR', '参数校验失败', details);
     this.name = 'ValidationError';
   }
 }

@@ -4,7 +4,7 @@ import { DownloadIcon } from "lucide-react";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 
-import type { KeyRow } from "../types";
+import type { KeyRow } from "@ai-gateway/api-client/types";
 
 export function ExportKeys({ keys }: { readonly keys: ReadonlyArray<KeyRow> }) {
   return (

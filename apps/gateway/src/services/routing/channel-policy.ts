@@ -27,15 +27,24 @@ const CHANNEL_SWITCHABLE_CODES = new Set([
   'forbidden', // 403：同上
   'empty_completion',
   'invalid_response',
+  // 渠道协议/key/URL 配置错误：该渠道必然失败（从未触达上游），换渠道可能好
+  'invalid_config',
 ]);
 
 export function isChannelSwitchable(code: string | undefined): boolean {
   return code ? CHANNEL_SWITCHABLE_CODES.has(code) : false;
 }
 
-/** 死凭据错误码（应触发 DB 写回 status=4） */
-export function isDeadCredentialError(code: string | undefined): boolean {
-  return code === 'invalid_api_key';
+/**
+ * 死凭据判定（应触发 DB 写回 status=4）。
+ * 单一真相 = ai 包 classify 的 deadCredential 标志（401 恒真；403 命中文本特征真）——
+ * 不在网关侧按错误码再判一遍（历史上两套词表不一致：classify 归一 forbidden+标志，
+ * 网关只认 invalid_api_key，导致 403 死凭据渠道不落库、Redis TTL 过期后反复撞墙）。
+ */
+export function isDeadCredentialError(
+  error: { deadCredential?: boolean; code?: string } | undefined,
+): boolean {
+  return error?.deadCredential === true;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ProtocolAdapter } from './adapters/protocol-adapter';
 
 /**
  * ai 包配置（纯机制参数，无业务；zod 校验 + 默认值）
@@ -38,11 +39,15 @@ export const aiConfigSchema = z.object({
   stream: z
     .object({
       heartbeatIdleMs: z.number().int().min(1).default(30_000),
-      inactivityTimeoutMs: z.number().int().min(1).default(300_000),
+      /** 首字节预算（headers 后 body 首字节；connectMs 只覆盖到响应头） */
+      firstByteTimeoutMs: z.number().int().min(1).default(60_000),
+      /** 流中段静默预算（首 chunk 之后无数据的上限） */
+      inactivityTimeoutMs: z.number().int().min(1).default(120_000),
     })
     .default({
       heartbeatIdleMs: 30_000,
-      inactivityTimeoutMs: 300_000,
+      firstByteTimeoutMs: 60_000,
+      inactivityTimeoutMs: 120_000,
     }),
   timeout: z
     .object({
@@ -57,13 +62,6 @@ export const aiConfigSchema = z.object({
   allowLocalUrl: z.boolean().default(false),
   /** 生产上游域名白名单；配置后拒绝任何不在列表中的 hostname。 */
   allowedHosts: z.array(z.string().min(1)).default([]),
-  estimate: z
-    .object({
-      charPerToken: z.number().min(1).default(3.5),
-    })
-    .default({
-      charPerToken: 3.5,
-    }),
   /** 死凭据计数（requirements 5.16：连续 401/403 → 凭据无效 + 停止路由 + 告警） */
   deadCredential: z
     .object({
@@ -81,6 +79,15 @@ export const aiConfigSchema = z.object({
 export type AiConfig = z.infer<typeof aiConfigSchema>;
 export type AiConfigInput = z.input<typeof aiConfigSchema>;
 
+/**
+ * createAi 第三参（注册即扩展）：协议适配器注入。
+ * 不传 → 默认注册表（openai-compatible）。传入则整体替换（显式优先，不做隐式合并）；
+ * 同 protocol 键重复注册在启动时抛错（结构上杜绝双真相）。
+ */
+export interface AiOptions {
+  adapters?: ProtocolAdapter[];
+}
+
 /** 依赖注入：宿主实现，包保持零业务/零 OTel 直接依赖 */
 export interface AiDeps {
   logger?: {
@@ -91,8 +98,13 @@ export interface AiDeps {
   tracer?: {
     startSpan: (name: string, attrs?: Record<string, unknown>) => { end: () => void };
   };
-  breakerStorage?: BreakerStorage;
-  deadCredentialStorage?: DeadCredentialStorage;
+  /**
+   * 状态存储必须显式注入（无默认实现）：多实例部署注入 Redis 实现共享
+   * 熔断/死凭据状态；单进程调用方与测试显式注入内存实现（MemoryKvStorage，
+   * 从包入口导出）——库不做静默退化，调用点声明状态语义。
+   */
+  breakerStorage: BreakerStorage;
+  deadCredentialStorage: DeadCredentialStorage;
 }
 
 /**

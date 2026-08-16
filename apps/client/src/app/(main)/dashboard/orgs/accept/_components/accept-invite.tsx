@@ -4,15 +4,16 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Building2, Loader2Icon } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ai-gateway/ui/components/ui/card";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 export function AcceptInvite({ token }: { token: string }) {
   const router = useRouter();
   const [done, setDone] = useState(false);
   const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   if (!token) {
     return (
@@ -49,11 +50,7 @@ export function AcceptInvite({ token }: { token: string }) {
                 startTransition(async () => {
                   const { acceptInviteAction } = await import("../../actions");
                   const res = await acceptInviteAction(token);
-                  if (res.error) toast.error("接受失败", { description: res.error });
-                  else {
-                    setDone(true);
-                    toast.success("已加入组织");
-                  }
+                  if (notify(res, "接受失败", "已加入组织")) setDone(true);
                 })
               }
             >

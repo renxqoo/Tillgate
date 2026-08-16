@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { jsonBody } from '@ai-gateway/http';
+import {
+  MONEY_MAX, jsonBody } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import { channels as channelsTable, modelMappings } from '@ai-gateway/db/schema';
 import type { AdminServices } from '../services/index.js';
@@ -28,9 +29,9 @@ const importSchema = z.object({
       z.object({
         externalName: z.string().min(1).max(64),
         realModel: z.string().min(1).max(128),
-        inputPrice: z.coerce.number().min(0),
-        outputPrice: z.coerce.number().min(0),
-        cacheInputPrice: z.coerce.number().min(0),
+        inputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
+        outputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
+        cacheInputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
         contextLength: z.coerce.number().int().positive().nullable().optional(),
       }),
     )
@@ -101,6 +102,7 @@ export function modelCatalogRoutes(s: AdminServices): Hono<AdminEnv> {
         sourceId: body.sourceId,
         apiKey: body.apiKey,
         models: body.models,
+        adminId: c.get('adminId') ?? null,
       });
       return c.json(result);
     });

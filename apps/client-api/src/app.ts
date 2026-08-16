@@ -4,10 +4,11 @@ import type { Ledger } from '@ai-gateway/ledger';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { bodyLimit } from 'hono/body-limit';
-import { userSessionMiddleware, type ClientEnv } from '@ai-gateway/identity';
+import { userSessionMiddleware, type Mailer, type ClientEnv } from '@ai-gateway/identity';
 import type { ClientApiConfig } from './config.js';
 import type { ClientServices } from './services/index.js';
 import { clientAuthRoutesPublic, clientAuthRoutesProtected } from './routes/auth.js';
+import { oauthRoutes } from './routes/oauth.js';
 import { keyRoutes } from './routes/keys.js';
 import { appRoutes } from './routes/apps.js';
 import { meRoutes } from './routes/me.js';
@@ -31,6 +32,8 @@ export interface ClientApiDeps {
   redis: Redis;
   ledger: Ledger;
   logger: Logger;
+  /** 登录验证码发信（null = SMTP 未配置 → 登录 fail-closed） */
+  mailer?: Mailer | null;
   config: ClientApiConfig;
 }
 
@@ -38,6 +41,7 @@ export function createApp(deps: ClientApiDeps): Hono {
   const services: ClientServices = {
     db: deps.db,
     redis: deps.redis,
+    mailer: deps.mailer ?? null,
     ledger: deps.ledger,
     logger: deps.logger,
   };
@@ -51,11 +55,13 @@ export function createApp(deps: ClientApiDeps): Hono {
 
   // 公开端点（不要求用户会话）
   app.route('/api/auth', clientAuthRoutesPublic(services, deps.config));
+  // OAuth 社交登录（公开组：authorize/callback 均为浏览器跳转流）
+  app.route('/api/auth/oauth', oauthRoutes(services, deps.config));
 
   // 受保护子应用：默认要求有效用户会话 + 状态变更 Origin 校验（CSRF 纵深防御）
   const api = new Hono<ClientEnv>();
   api.use('*', userSessionMiddleware(deps.db, deps.config.jwtSecret));
-  api.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins }));
+  api.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins, internalToken: deps.config.internalApiToken }));
   api.route('/auth', clientAuthRoutesProtected(services));
   api.route('/me', meRoutes(services));
   api.route('/keys', keyRoutes(services));

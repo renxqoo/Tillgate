@@ -29,6 +29,7 @@ import { statsAdminRoutes } from './routes/stats.js';
 import { logAdminRoutes, auditLogAdminRoutes } from './routes/logs.js';
 import { billingOperationsRoutes } from './routes/billing-operations.js';
 import { tracingAdminRoutes } from './routes/tracing.js';
+import type { Mailer } from '@ai-gateway/identity';
 import { createPgTraceStore, type TraceStore } from '@ai-gateway/tracing';
 
 /**
@@ -50,8 +51,12 @@ export interface AdminApiDeps {
   billingOperations: BillingOperations;
   /** 链路存储（缺省由 db 构造 PG 实现） */
   tracingStore?: TraceStore;
+  /** 邮箱验证码发信（未配置 = null） */
+  mailer?: Mailer | null;
   /** 渠道上游 Key 加密密钥（AES-256-GCM） */
   encryptionKey: string;
+  /** 轮换双 key 窗：旧密钥（v1 密文解密用）；加密新密文时 OLD 设置则写 v2 */
+  encryptionKeyOld?: string;
   /** 凭证截图存储（本地磁盘/未来 OSS） */
   voucherStorage: VoucherStorage;
   logger: Logger;
@@ -65,11 +70,12 @@ export function createApp(deps: AdminApiDeps): Hono {
     ledger: deps.ledger,
     billingOperations: deps.billingOperations,
     tracingStore: deps.tracingStore ?? createPgTraceStore(deps.db),
+    mailer: deps.mailer ?? null,
     encryptionKey: deps.encryptionKey,
+    encryptionKeyOld: deps.encryptionKeyOld,
     voucherStorage: deps.voucherStorage,
     // 双重门控与网关一致：生产即便误配 ALLOW_LOCAL_UPSTREAM 也不放行内网上游
-    allowLocalUpstream:
-      deps.config.allowLocalUpstream && process.env.NODE_ENV !== 'production',
+    allowLocalUpstream: deps.config.allowLocalUpstream && process.env.NODE_ENV !== 'production',
     logger: deps.logger,
   };
 
@@ -85,7 +91,13 @@ export function createApp(deps: AdminApiDeps): Hono {
   // 受保护子应用：默认要求管理员会话 + 状态变更 Origin 校验（CSRF 纵深防御）
   const admin = new Hono<AdminEnv>();
   admin.use('*', adminAuthMiddleware(deps.db, deps.config.adminJwtSecret));
-  admin.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins }));
+  admin.use(
+    '*',
+    csrfProtection({
+      trustedOrigins: deps.config.trustedOrigins,
+      internalToken: deps.config.internalApiToken,
+    }),
+  );
   admin.route('/auth', adminAuthRoutesProtected(services));
   admin.route('/me', adminMeRoutes(services));
   admin.route('/users', userAdminRoutes(services));

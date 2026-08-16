@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { timingSafeEqual } from 'node:crypto';
 import { clearRecentTraces, getRecentTraces, type ViewableTrace } from '@ai-gateway/core';
 
 /**
@@ -6,7 +7,8 @@ import { clearRecentTraces, getRecentTraces, type ViewableTrace } from '@ai-gate
  *
  * 门控（挂载与鉴权都从严）：
  *   - 仅 memory 模式挂载（生产 otlp/off 模式下路由不存在 → 404）
- *   - DEBUG_TRACES_TOKEN 设置后必须带 ?token= 或 Authorization: Bearer
+ *   - DEBUG_TRACES_TOKEN 设置后必须带 Authorization: Bearer（query 传 token 会进
+ *     访问日志/浏览器历史，已移除；比较用恒定时间）
  *   - 未设置 token 时仅 NODE_ENV=development 放行
  * 数据：进程内环形缓冲（重启即失）；JSON 用 /debug/traces?format=json。
  */
@@ -15,9 +17,12 @@ export function debugTracesRoutes(options: { token?: string; dev: boolean }): Ho
   return new Hono()
     .get('/traces', async (c) => {
       if (token) {
-        const provided =
-          c.req.query('token') ?? c.req.header('authorization')?.replace(/^Bearer\s+/i, '');
-        if (provided !== token) return c.json({ error: { code: 'UNAUTHORIZED' } }, 401);
+        const provided = c.req.header('authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+        const a = Buffer.from(token);
+        const b = Buffer.from(provided);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) {
+          return c.json({ error: { code: 'UNAUTHORIZED' } }, 401);
+        }
       } else if (!dev) {
         return c.json({ error: { code: 'NOT_FOUND' } }, 404);
       }

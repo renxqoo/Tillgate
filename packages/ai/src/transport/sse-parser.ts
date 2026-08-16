@@ -1,5 +1,5 @@
 import { createParser } from 'eventsource-parser';
-import type { StreamError } from '../types.js';
+import type { StreamError } from '../types';
 
 /**
  * SSE 增量扫描器（eventsource-parser v3 薄封装）：

@@ -1,10 +1,8 @@
-import { OpenAICompatibleAdapter } from './adapters/openai-compatible.js';
-import type { ProtocolAdapter } from './adapters/protocol-adapter.js';
-import { CircuitBreaker } from './breaker/breaker.js';
-import { MemoryBreakerStorage } from './breaker/memory-storage.js';
-import { MemoryDeadCredentialStorage } from './dead-credential/memory-storage.js';
-import { DeadCredentialTracker } from './dead-credential/tracker.js';
-import { classifyTransportError } from './errors/classify.js';
+import { OpenAICompatibleAdapter } from './adapters/openai-compatible';
+import type { ProtocolAdapter } from './adapters/protocol-adapter';
+import { CircuitBreaker } from './breaker/breaker';
+import { DeadCredentialTracker } from './dead-credential/tracker';
+import { classifyBodyOnlyError, classifyTransportError } from './errors/classify';
 import {
   abortedError,
   circuitOpenError,
@@ -12,24 +10,35 @@ import {
   emptyError,
   invalidConfigError,
   invalidResponseError,
+  serverDrainingError,
   unsupportedProtocolError,
-} from './errors/internal.js';
-import { asRecord, tryParseJson } from './internal/util.js';
-import { peekFirstChunk } from './internal/stream.js';
-import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-client.js';
-import { relayStream } from './transport/relay-stream.js';
-import { estimateUsage, normalizeUsage } from './usage/normalize.js';
-import { withRetry, type RetryOptions } from './retry/with-retry.js';
+} from './errors/internal';
+import { asServerDrainAbort } from './errors/server-drain';
+import { asRecord, tryParseJson } from './internal/util';
+import { peekFirstChunk, firstChunkStreamError, PeekTimeoutError } from './internal/stream';
+import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-client';
+import { relayStream } from './transport/relay-stream';
+import { normalizeUsage } from './usage/normalize';
+import { estimateUsage } from './usage/token-estimate';
+import { withRetry, type RetryOptions } from './retry/with-retry';
 import {
   type AiConfig,
   aiConfigSchema,
   type AiConfigInput,
   type AiDeps,
+  type AiOptions,
   type BreakerStorage,
   type DeadCredentialStorage,
-} from './config.js';
-import type { AiEvent } from './events.js';
-import type { Ai, ChannelDesc, ChatStreamResult, RequestCtx, UpstreamError } from './types.js';
+} from './config';
+import type { AiEvent } from './events';
+import type {
+  Ai,
+  ChannelDesc,
+  ChatStreamResult,
+  Endpoint,
+  RequestCtx,
+  UpstreamError,
+} from './types';
 
 /**
  * create-ai 组装（ai-package.md §5/§6）：适配器注册表 + withRetry + breaker 绑定 + 事件输出
@@ -57,9 +66,27 @@ function fireAndForget(p: Promise<unknown>): void {
   p.catch(noop);
 }
 
+/**
+ * 拼接上游 URL（BUG-E，new-api #3133 同类修复）：baseUrl 尾段是版本段
+ * （/v1、/v2…）且与适配器路径首段相同时去重——管理员按 OpenAI 文档惯例填
+ * `https://host/v1` 时不得拼出 `/v1/v1/chat/completions`（404 且与配置
+ * 根源无关，极难排查）。版本段之外的内容（如 openrouter 的 `/api`）不动。
+ */
 function joinUrl(baseUrl: string, path: string): string {
-  return baseUrl.replace(/\/+$/, '') + path;
+  const base = baseUrl.replace(/\/+$/, '');
+  const versionSeg = /\/(v\d+)(?=\/)/i.exec(path);
+  const baseTail = base.split('/').pop() ?? '';
+  if (versionSeg && versionSeg[1]!.toLowerCase() === baseTail.toLowerCase()) {
+    return base + path.slice(versionSeg[0]!.length);
+  }
+  return base + path;
 }
+
+/** 默认协议注册表（不注入 adapters 时的注册项） */
+const defaultAdapters: ProtocolAdapter[] = [new OpenAICompatibleAdapter()];
+
+/** 默认注册表键——协议词表的单一真相（admin 配置面校验引用此处，不再各自枚举） */
+export const SUPPORTED_PROTOCOLS: readonly string[] = defaultAdapters.map((a) => a.protocol);
 
 function channelKey(channel: ChannelDesc): string {
   try {
@@ -108,37 +135,29 @@ function emitTo(listeners: Array<(e: AiEvent) => void>, e: AiEvent): void {
   }
 }
 
-/**
- * 上游请求头。
- * C5 修复：加 Idempotency-Key（= requestId）。withRetry 在 retryable 错误时会重发 POST，
- * 若上游已处理首请求（仅响应丢失/超时），重试会触发第二次生成 → 供应商成本翻倍。
- * Idempotency-Key 让供应商侧按 requestId 去重（OpenAI/多数供应商支持该头）。
- */
-function authHeaders(channel: ChannelDesc, requestId: string): Record<string, string> {
-  return {
-    authorization: `Bearer ${channel.apiKey}`,
-    'content-type': 'application/json',
-    'idempotency-key': requestId,
-  };
-}
-
-export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
+export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOptions): Ai {
   const cfg: AiConfig = aiConfigSchema.parse(config ?? {});
-  const breakerStorage: BreakerStorage = deps?.breakerStorage ?? new MemoryBreakerStorage();
-  const deadCredentialStorage: DeadCredentialStorage =
-    deps?.deadCredentialStorage ?? new MemoryDeadCredentialStorage();
+  const breakerStorage: BreakerStorage = deps.breakerStorage;
+  const deadCredentialStorage: DeadCredentialStorage = deps.deadCredentialStorage;
   const log = deps?.logger ?? { info: noop, warn: noop, error: noop };
 
   // 全局事件总线（chat + chatStream 共用；gateway 订阅用于计量/排障/候选循环）
   const listeners: Array<(e: AiEvent) => void> = [];
   const emit = (e: AiEvent): void => emitTo(listeners, e);
 
-  const adapters = new Map<string, ProtocolAdapter>([
-    ['openai-compatible', new OpenAICompatibleAdapter()],
-  ]);
+  // 协议注册表（注册即扩展）：默认仅 openai-compatible；传入则整体替换（显式优先）。
+  // 同键重复注册启动即抛——一个协议两个实现 = 双真相，必须在结构上杜绝。
+  const adapters = new Map<string, ProtocolAdapter>();
+  for (const adapter of options?.adapters ?? defaultAdapters) {
+    if (adapters.has(adapter.protocol)) {
+      throw new Error(`duplicate protocol adapter registration: ${adapter.protocol}`);
+    }
+    adapters.set(adapter.protocol, adapter);
+  }
   // 未知协议显式报错（不静默回退 openai-compatible——配置错误必须可发现）
   const resolveAdapter = (channel: ChannelDesc): ProtocolAdapter | UpstreamError =>
-    adapters.get(channel.protocol) ?? unsupportedProtocolError(channel.protocol);
+    adapters.get(channel.protocol) ??
+    unsupportedProtocolError(channel.protocol, [...adapters.keys()]);
 
   const breakerFor = (channel: ChannelDesc): CircuitBreaker =>
     new CircuitBreaker(channelKey(channel), cfg.breaker, breakerStorage, Date.now);
@@ -170,13 +189,8 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
     // 参数抹平规则唯一来源：DB param_rules（per-model），无 provider 内置默认
     const rules = input.ctx.paramRules ?? {};
     const { body, adjustments } = adapter.normalizeRequest(input.request, rules);
-    // model 重写：对外名 externalName → 上游真实名 realModel（ctx.model）。
-    // normalizeRequest 把 model 视为已知参数原样保留，从不改写；
-    // 若不在此覆盖，发往上游的 body.model 会是客户端原始 externalName，
-    // 与渠道实际服务的上游模型不符（如 external=deepseek-v4-pro 发给了只认 deepseek-chat 的官方）。
-    if (body && typeof body === 'object') {
-      (body as Record<string, unknown>).model = input.ctx.model;
-    }
+    // model 重写与 stream_options 注入等协议特定终改由 adapter.finalizeRequestBody
+    // 在发往上游前完成（chat/chatStream 入口调用），编排层不再出现协议字面量。
     for (const a of adjustments) {
       log.info(`[ai] ${input.ctx.requestId} param_adjustment ${a.action} ${a.param}`, {
         from: a.from,
@@ -239,10 +253,18 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
         return { status: 'error', error: err, durationMs: Date.now() - start };
       }
 
-      // endpoint 选择：embeddings 走 /v1/embeddings，默认 chat
-      const endpointPath =
-        input.ctx.endpoint === 'embeddings' ? '/v1/embeddings' : '/v1/chat/completions';
-      const url = joinUrl(input.channel.baseUrl, endpointPath);
+      // 上游寻址 + 请求体终改：全部由协议适配器决定（路径/认证头/model 重写）
+      const endpoint: Endpoint = input.ctx.endpoint ?? 'chat';
+      const plan = adapter.planRequest(input.channel, {
+        endpoint,
+        model: input.ctx.model,
+        requestId,
+      });
+      const url = joinUrl(input.channel.baseUrl, plan.path);
+      const rec = asRecord(body);
+      const finalBody = rec
+        ? adapter.finalizeRequestBody(rec, { endpoint, model: input.ctx.model, stream: false })
+        : body;
       // 每次尝试失败即计熔断数（429/4xx/死凭据 circuitTrip=false 自动不计）+ 死凭据计数
       const fail = async (
         error: UpstreamError,
@@ -265,8 +287,8 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
               url,
               {
                 method: 'POST',
-                headers: authHeaders(input.channel, requestId),
-                body: JSON.stringify(body),
+                headers: plan.headers,
+                body: JSON.stringify(finalBody),
               },
               {
                 connectMs: cfg.timeout.connectMs,
@@ -276,17 +298,26 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
               },
             );
             if (res.status >= 400) {
-              const raw = await readBody(res, { signal: totalSignal });
+              const raw = await readBody(res, { signal: totalSignal, maxBytes: 8 * 1024 * 1024 });
               return fail(adapter.mapError(res.status, tryParseJson(raw) ?? raw));
             }
-            const raw = await readBody(res, { signal: totalSignal });
+            const raw = await readBody(res, { signal: totalSignal, maxBytes: 8 * 1024 * 1024 });
             if (raw.trim() === '') return fail(emptyError(), true);
             const json = tryParseJson(raw);
             if (json === undefined) return fail(invalidResponseError());
+            // #6643 同类（非流式面）：部分供应商把错误对象包在 200 JSON 体里——
+            // 必须归类失败（可换渠道），不得按成功 + 估算 usage 计费透传。
+            const bodyError = classifyBodyOnlyError(json);
+            if (bodyError) return fail(bodyError);
             const usage =
-              adapter.extractUsage(json) ?? estimateUsage(body, json, cfg.estimate.charPerToken);
+              adapter.extractUsage(json) ??
+              estimateUsage(finalBody, json, {
+                providerName: input.ctx.providerName,
+                model: input.ctx.model,
+              });
             return { ok: true, value: { usage, body: json } };
           } catch (err) {
+            if (asServerDrainAbort(signal.reason)) return fail(serverDrainingError());
             if (signal.aborted) return fail(abortedError());
             if (totalSignal.aborted) return fail(classifyTransportError('timeout'));
             if (err instanceof BodyTooLargeError) {
@@ -383,15 +414,6 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
       if (!prepared.ok) return failEarly(prepared.error);
       const { body, breaker, credential, adapter } = prepared;
 
-      // 流式自动注入 stream_options.include_usage（用户未显式设置时）：
-      // MiniMax/OpenAI 流式需该字段才在尾帧发 usage，不注入则全程 usage:null
-      // → gateway 只能按 bytesRelayed 粗估（漏计费/估算偏差）。
-      // DeepSeek 默认就发 usage，注入无副作用；用户显式设置则尊重不覆盖。
-      const streamBody = (asRecord(body) ?? {}) as Record<string, unknown>;
-      if (streamBody.stream_options === undefined) {
-        streamBody.stream_options = { include_usage: true };
-      }
-
       if (!(await breaker.canRequest())) {
         const err = circuitOpenError();
         log.error(`[ai] ${requestId} circuit open, rejected (${key})`);
@@ -403,7 +425,18 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
         return failEarly(err);
       }
 
-      const url = joinUrl(input.channel.baseUrl, '/v1/chat/completions');
+      // 上游寻址 + 请求体终改（含 stream_options 强制注入——见 OpenAICompatibleAdapter.finalizeRequestBody）
+      const endpoint: Endpoint = input.ctx.endpoint ?? 'chat';
+      const plan = adapter.planRequest(input.channel, {
+        endpoint,
+        model: input.ctx.model,
+        requestId,
+      });
+      const url = joinUrl(input.channel.baseUrl, plan.path);
+      const rec = asRecord(body);
+      const finalBody = rec
+        ? adapter.finalizeRequestBody(rec, { endpoint, model: input.ctx.model, stream: true })
+        : body;
       const fail = async (
         error: UpstreamError,
         empty?: boolean,
@@ -422,8 +455,8 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
               url,
               {
                 method: 'POST',
-                headers: authHeaders(input.channel, requestId),
-                body: JSON.stringify(body),
+                headers: plan.headers,
+                body: JSON.stringify(finalBody),
               },
               {
                 connectMs: cfg.timeout.connectMs,
@@ -439,12 +472,26 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
             if (!res.body) return fail(invalidResponseError());
             // D3：空流检测（tee 分流，不破坏流式）
             // 缓冲根因（bodyLimit + requestLog clone）已修复，tee 不再导致缓冲
-            const peeked = await peekFirstChunk(res.body, { signal });
+            const peeked = await peekFirstChunk(res.body, {
+              signal,
+              timeoutMs: cfg.stream.firstByteTimeoutMs,
+            });
             if (peeked.done) return fail(emptyError(), true);
+            // #6643 同类（流式面）：200 + 首帧即错误（限流/配额错误放在流体内）。
+            // 首字节尚未发给客户端——在 peek 处识别即可安全进入 withRetry（同渠道
+            // 退避重试），耗尽后 failEarly 发 failed 终态事件 → 网关换渠道。
+            const firstFrameError = firstChunkStreamError(peeked.first!);
+            if (firstFrameError) {
+              // 放弃 rest（tee branchB = 完整上游 body）必须 cancel，否则连接泄漏
+              void peeked.rest?.cancel().catch(() => {});
+              return fail(firstFrameError);
+            }
             return { ok: true, value: peeked.rest! };
           } catch (err) {
+            if (asServerDrainAbort(signal.reason)) return fail(serverDrainingError());
             if (signal.aborted) return fail(abortedError());
             if (err instanceof BodyTooLargeError) return fail(invalidResponseError());
+            if (err instanceof PeekTimeoutError) return fail(classifyTransportError('timeout'));
             if (isUpstreamError(err)) return fail(err);
             return fail(classifyTransportError('network'));
           }
@@ -484,14 +531,19 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
       fireAndForget(credential.recordSuccess());
       handle.onEvent((e) => {
         switch (e.type) {
+          case 'first_chunk':
+            // TTFB 权威观察点：上游首字节流向客户端（一次性），转发给晚订阅的消费方
+            emitStream({ type: 'first_chunk', requestId });
+            break;
           case 'stream_error':
             emitStream({ type: 'stream_error', requestId, frame: e.frame });
             break;
           case 'aborted':
             emitStream({ type: 'aborted', requestId, reason: e.reason });
             // B6：非客户端断开 → 计入熔断（渠道故障或协议错误）
-            // client_disconnect 是用户主动断开，非渠道问题，不计熔断
-            if (e.reason !== 'client_disconnect') {
+            // client_disconnect 是用户主动断开，server_draining 是本服务停机，
+            // 均非渠道问题，不计熔断
+            if (e.reason !== 'client_disconnect' && e.reason !== 'server_draining') {
               fireAndForget(breaker.recordFailure({ circuitTrip: true }));
             }
             break;
@@ -535,11 +587,11 @@ export function createAi(config?: AiConfigInput, deps?: AiDeps): Ai {
       // 死凭据优先：即使先遇到网络错误，只要任一路径返回 401/403（死凭据），
       // 最终返回死凭据——连通性测试的核心目的是验证 Key 是否有效
       let deadCredError: UpstreamError | undefined;
-      for (const path of adapter.probePaths()) {
+      for (const probe of adapter.probeRequests(channel)) {
         try {
           const res = await fetchUpstream(
-            joinUrl(channel.baseUrl, path),
-            { method: 'GET', headers: { authorization: `Bearer ${channel.apiKey}` } },
+            joinUrl(channel.baseUrl, probe.path),
+            { method: 'GET', headers: probe.headers },
             {
               connectMs: cfg.timeout.connectMs,
               allowLocal: cfg.allowLocalUrl,

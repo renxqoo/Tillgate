@@ -2,10 +2,9 @@
 
 import { useState, useTransition } from "react";
 
-import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, ShieldCheckIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
 import { z } from "zod";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -13,7 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ai-g
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@ai-gateway/ui/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@ai-gateway/ui/components/ui/input-group";
 
-import { loginAction } from "@/lib/server-actions/auth";
+import { loginAction, verifyLoginAction } from "@/lib/server-actions/auth";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 const schema = z.object({
   email: z.string().email("请输入有效邮箱"),
@@ -24,7 +24,11 @@ type Values = z.infer<typeof schema>;
 
 export function LoginForm() {
   const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
   const [showPwd, setShowPwd] = useState(false);
+  // 邮箱验证码二次登录：第一步通过后进入验证码步
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
 
   const form = useForm<Values>({
     resolver: zodResolver(schema),
@@ -37,8 +41,64 @@ export function LoginForm() {
       fd.append("email", values.email);
       fd.append("password", values.password);
       const res = await loginAction(fd);
-      if (res?.error) toast.error("登录失败", { description: res.error });
+      if (res?.challengeId) setChallenge(res.challengeId);
+      else notify(res ?? {}, "登录失败");
     });
+  }
+
+  if (challenge) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>邮箱验证码</CardTitle>
+          <CardDescription>验证码已发送到你的管理员邮箱，5 分钟内有效</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              startTransition(async () => {
+                const res = await verifyLoginAction(challenge, code);
+                notify(res ?? {}, "验证失败");
+              });
+            }}
+            className="space-y-4"
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="admin-2fa-code">6 位验证码</FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon><ShieldCheckIcon /></InputGroupAddon>
+                  <InputGroupInput
+                    id="admin-2fa-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    autoFocus
+                  />
+                </InputGroup>
+                <FieldDescription>连续错 5 次验证码作废，需重新登录。</FieldDescription>
+              </Field>
+            </FieldGroup>
+            <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
+              {pending && <Loader2Icon className="animate-spin" />}
+              验证并登录
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => { setChallenge(null); setCode(""); }}
+            >
+              返回重新登录
+            </button>
+          </form>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

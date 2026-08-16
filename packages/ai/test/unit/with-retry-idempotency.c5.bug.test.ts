@@ -57,15 +57,19 @@ describe('C5 — POST 重试非幂等（TDD 复现，当前应 FAIL）', () => {
     // （本测试聚焦原语行为；是否带头由 create-ai 集成测试覆盖。）
   });
 
-  it('create-ai 调用上游时应携带 Idempotency-Key 头（契约检查，当前缺失 → FAIL）', async () => {
-    // 直接读源码字符串，确认 authHeaders/fetchUpstream 调用未包含幂等键。
-    // 这是静态契约断言：修复后 create-ai.ts 应在某处注入 'Idempotency-Key'。
+  it('上游请求头应包含 Idempotency-Key（契约检查：由协议适配器的 planRequest 提供）', async () => {
+    // 静态契约断言：idempotency-key 字面量随 C5 逻辑下沉进了 OpenAICompatibleAdapter.planRequest
+    // （契约扩展后编排层不再拼认证头）。断言跟随代码新家，意图不变：
+    // 发往上游的 POST 必须携带幂等键，重试才有供应商侧去重凭证。
+    // 运行时行为由 upstream-wire.characterization.test.ts 动态断言（idempotency-key = requestId）。
     const { readFileSync } = await import('node:fs');
     const { resolve, dirname } = await import('node:path');
     const { fileURLToPath } = await import('node:url');
     const cwd = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(resolve(cwd, '../../src/create-ai.ts'), 'utf8');
-    // 当前实现不含 Idempotency-Key → 期望（修复后）包含 → 当前 FAIL
-    expect(src).toMatch(/idempotency-key|Idempotency-Key/i); // 当前 FAIL：源码无此字符串
+    const src = readFileSync(
+      resolve(cwd, '../../src/adapters/openai-compatible.ts'),
+      'utf8',
+    );
+    expect(src).toMatch(/idempotency-key|Idempotency-Key/i);
   });
 });

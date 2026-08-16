@@ -9,8 +9,14 @@ import {
   users,
 } from '@ai-gateway/db/schema';
 import { Decimal, calcAmount, toDecimal, toStorage } from '@ai-gateway/money';
+import { ReceiptUserMismatchError } from './types.js';
 import type { Redis } from 'ioredis';
-import type { SettleClaimResult, SettlementClaim, UsageReceipt } from './types.js';
+import {
+  isAttributedEstimate,
+  type SettleClaimResult,
+  type SettlementClaim,
+  type UsageReceipt,
+} from './types.js';
 
 /**
  * 结算一个已持久化收据。调用方不能直接指定扣费主体或可捕获金额：
@@ -72,13 +78,15 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
       }
       return;
     }
-    if (billing.userId !== data.userId) throw new Error('billing_receipt_user_mismatch');
+    if (billing.userId !== data.userId) throw new ReceiptUserMismatchError();
 
     // 信用模型：不再有「calculated > 预估 → dead」的金额不变量。reserved_amount 只是并发熔断的
     // 在途敞口估算（authorize 时记），实际金额可能略超预估；结算无条件按实际金额扣费，
     // balance 可降至 -credit_limit（由 DB 约束 users_balance_credit_floor_ck 兜底，触底即 check
     // violation → processor 归为 invariant_violation → dead 人工复核/充值）。
-    if (data.usage.estimated) throw new Error('billing_invariant_estimated_usage');
+    if (data.usage.estimated && !isAttributedEstimate(data)) {
+      throw new Error('billing_invariant_estimated_usage');
+    }
     amount = calculatedAmount;
 
     // 计费域严格隔离（authorize 落列的权威事实）：subscription_id 非空=包月 Key，空=普通 Key。
@@ -172,6 +180,7 @@ export async function settleClaim(db: Db, claim: SettlementClaim): Promise<Settl
         status: 0,
         stream: data.stream,
         streamAborted: data.streamAborted,
+        estimated: data.usage.estimated,
       })
       .onConflictDoNothing({ target: usageLogs.requestId })
       .returning({ id: usageLogs.id });
@@ -303,35 +312,28 @@ export async function backfillTpm(redis: Redis | null, data: UsageReceipt): Prom
   if (data.channelId) dimensions.push(`channel:${data.channelId}`);
   try {
     const minute = Math.floor(Date.now() / 60_000);
+    // 语义（口径单一真相）：预占与实际归属是两件事——
+    //   1) 预占 hash 里的**每个**维度都要释放（hold 全放，不管谁承接）；
+    //   2) 实际用量只记 **KEYS[3..]**（收据归属维度：成功 mapping/channel
+    //      + user×成功model + key/app）——hash 里可能累积候选尝试的全部维度
+    //      （failover 切走的主模型、试过即弃的渠道），把它们计入 actual 会
+    //      虚增未承接维度的消耗、误触发其限流。
+    // 预占丢失（hash 空/Redis 降级后结算）时同样按收据维度记账，行为统一。
     const script = `
       if redis.call('EXISTS', KEYS[2]) == 1 then
         return 0
       end
       local values = redis.call('HGETALL', KEYS[1])
-      local increments = {}
       for i = 1, #values, 2 do
         local reservedKey = values[i]
         local current = tonumber(redis.call('GET', reservedKey) or '0')
         local amount = tonumber(values[i + 1])
-        local actualKey = string.gsub(reservedKey, ':reserved:', ':actual:', 1)
-        table.insert(increments, reservedKey)
-        table.insert(increments, tostring(math.max(0, current - amount)))
-        table.insert(increments, actualKey)
-      end
-      if #values == 0 then
-        for i = 3, #KEYS do
-          table.insert(increments, '')
-          table.insert(increments, '')
-          table.insert(increments, KEYS[i])
-        end
+        redis.call('SET', reservedKey, tostring(math.max(0, current - amount)), 'EX', 600)
       end
       redis.call('SET', KEYS[2], '1', 'EX', 86400)
-      for i = 1, #increments, 3 do
-        if increments[i] ~= '' then
-          redis.call('SET', increments[i], increments[i + 1], 'EX', 600)
-        end
-        redis.call('INCRBY', increments[i + 2], tonumber(ARGV[1]))
-        redis.call('EXPIRE', increments[i + 2], 600)
+      for i = 3, #KEYS do
+        redis.call('INCRBY', KEYS[i], tonumber(ARGV[1]))
+        redis.call('EXPIRE', KEYS[i], 600)
       end
       redis.call('DEL', KEYS[1])
       return 1

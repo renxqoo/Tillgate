@@ -70,6 +70,7 @@ const services: ClientServices = {
   redis: redis as unknown as Redis,
   ledger: createLedger({ db }),
   logger: noopLogger() as unknown as ClientServices['logger'],
+  mailer: null,
 };
 
 function makeClientApp(userId: number): Hono {

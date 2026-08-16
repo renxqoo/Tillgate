@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
 import { plans, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, intParam, jsonBody, operationId, recordAudit } from '@ai-gateway/http';
+import {
+  HttpError, intParam, jsonBody, operationId, recordAudit,
+  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import { mapSubscriptionError } from '../services/subscriptions.js';
@@ -53,12 +55,12 @@ function assertKindPeriodConsistency(
 ): number {
   if (kind === 'pack') {
     if (periodDays != null && periodDays !== 0) {
-      throw new HttpError(400, 'INVALID_PERIOD_DAYS', '加油包无周期，periodDays 必须为 0 或省略');
+      throw new HttpError('INVALID_PERIOD_DAYS', '加油包无周期，periodDays 必须为 0 或省略');
     }
     return 0;
   }
   if (periodDays == null || periodDays < 1) {
-    throw new HttpError(400, 'INVALID_PERIOD_DAYS', '包月套餐 periodDays 必须为 1~3650 的整数');
+    throw new HttpError('INVALID_PERIOD_DAYS', '包月套餐 periodDays 必须为 1~3650 的整数');
   }
   return periodDays;
 }
@@ -67,9 +69,24 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return (
     new Hono<AdminEnv>()
       // 列表
-      .get('/', async (c) => {
-        const rows = await s.db.select().from(plans).orderBy(plans.id);
-        return c.json({ list: rows, total: rows.length });
+      .get('/', query(listQuerySchema), async (c) => {
+        const input = c.req.valid('query');
+        const { page, limit, offset, where, orderBy } = buildList(input, {
+          search: [plans.name],
+          // plans 无 created_at，默认按 id desc（创建序倒序）
+          sort: {
+            by: { id: plans.id, name: plans.name, status: plans.status, price: plans.price, sortOrder: plans.sortOrder },
+            fallback: 'id',
+            tiebreaker: plans.id,
+          },
+        });
+        return c.json(
+          await paginateQuery(
+            page,
+            s.db.select().from(plans).where(where).orderBy(...orderBy).limit(limit).offset(offset),
+            countAll(s.db, plans, where),
+          ),
+        );
       })
 
       // 创建
@@ -109,7 +126,7 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           where: eq(plans.id, id),
           columns: { kind: true, periodDays: true },
         });
-        if (!current) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
+        if (!current) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
         const periodDays = assertKindPeriodConsistency(
           current.kind as 'subscription' | 'pack',
           body.periodDays ?? current.periodDays,
@@ -123,6 +140,7 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         if (body.allowSeats !== undefined) update.allowSeats = body.allowSeats;
         if (body.status !== undefined) update.status = body.status;
         const [updated] = await s.db.update(plans).set(update).where(eq(plans.id, id)).returning();
+        if (!updated) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
         await recordAudit(s.db, {
           actor: 'admin',
           adminId: c.get('adminId'),
@@ -160,10 +178,10 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           .where(eq(userSubscriptions.planId, id))
           .limit(1);
         if (bound.length > 0) {
-          throw new HttpError(409, 'PLAN_IN_USE', '该套餐存在关联订阅（含历史），无法删除，可改为停用');
+          throw new HttpError('PLAN_IN_USE', '该套餐存在关联订阅（含历史），无法删除，可改为停用');
         }
         const [deleted] = await s.db.delete(plans).where(eq(plans.id, id)).returning({ id: plans.id });
-        if (!deleted) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
+        if (!deleted) throw new HttpError('PLAN_NOT_FOUND', '套餐不存在');
         await recordAudit(s.db, {
           actor: 'admin',
           adminId: c.get('adminId'),

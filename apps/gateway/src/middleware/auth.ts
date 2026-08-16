@@ -19,9 +19,9 @@ export interface AuthEnv {
  *   - 非 ag_ → JWT（jose 验签 + jti 黑名单 + App 状态缓存）
  * 鉴权逻辑集中在 AuthService，中间件只做「失败转错误信封 / 成功挂上下文」。
  */
-export function authMiddleware(authService: AuthService): MiddlewareHandler<AuthEnv> {
+export function authMiddleware(authService: AuthService, trustedProxyHops = 0): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
-    const result = await authService.authenticate(c.req.header('authorization'), sourceIp(c));
+    const result = await authService.authenticate(c.req.header('authorization'), sourceIp(c, trustedProxyHops));
     if (!result.ok) {
       if (result.retryAfterSec !== undefined) {
         c.header('retry-after', String(result.retryAfterSec));

@@ -8,6 +8,10 @@ export interface AdminApiConfig {
   secureCookie: boolean;
   /** CSRF 受信浏览器来源（状态变更接口 Origin 校验用） */
   trustedOrigins: string[];
+  /** 可信反向代理层数（XFF 信任模型；0=不信任 XFF） */
+  trustedProxyHops: number;
+  /** BFF 服务间令牌（CSRF fail-closed；未配置=兼容期放行双缺失头） */
+  internalApiToken?: string;
   /** 渠道进货凭证截图本地存储目录 */
   voucherStorageDir: string;
   /** 凭证截图最大字节数 */

@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
-import { eq, and, sql, gte, lte, desc } from 'drizzle-orm';
+import { eq, and, sql, gte, lte } from 'drizzle-orm';
 import { usageLogs, apiKeys, apps } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query } from '@ai-gateway/http';
+import {
+  paginateQuery, query, listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -15,10 +16,10 @@ import type { ClientServices } from '../services/index.js';
  *   - GET /by-model：按模型聚合（默认近 30 天，图表用）
  */
 
-const usageQuerySchema = paginationQuerySchema.extend({
+const usageQuerySchema = listQuerySchema.extend({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-  model: z.string().optional(),
+  model: z.string().max(64).optional(),
 });
 
 const rangeQuerySchema = z.object({
@@ -47,15 +48,22 @@ export function usageRoutes(s: ClientServices): Hono<ClientEnv> {
     .get('/', query(usageQuerySchema), async (c) => {
       const session = c.get('session');
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [eq(usageLogs.userId, session.userId)];
-      if (q.from) conds.push(gte(usageLogs.createdAt, new Date(q.from)));
-      if (q.to) conds.push(lte(usageLogs.createdAt, new Date(q.to)));
-      if (q.model) conds.push(eq(usageLogs.externalModel, q.model));
-      const where = and(...conds);
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [usageLogs.externalModel, usageLogs.realModel, sql`${usageLogs.requestId}::text`],
+        conditions: [
+          eq(usageLogs.userId, session.userId),
+          q.from ? gte(usageLogs.createdAt, new Date(q.from)) : undefined,
+          q.to ? lte(usageLogs.createdAt, new Date(q.to)) : undefined,
+          q.model ? eq(usageLogs.externalModel, q.model) : undefined,
+        ],
+        sort: {
+          by: { id: usageLogs.id, amount: usageLogs.amount, durationMs: usageLogs.durationMs, createdAt: usageLogs.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: usageLogs.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: usageLogs.id,
@@ -71,6 +79,10 @@ export function usageRoutes(s: ClientServices): Hono<ClientEnv> {
             cachedInputTokens: usageLogs.cachedInputTokens,
             outputTokens: usageLogs.outputTokens,
             amount: usageLogs.amount,
+            /** 计费来源拆分（套餐=积分 / 余额=金额，前端区分展示） */
+            billedBy: usageLogs.billedBy,
+            planAmount: usageLogs.planAmount,
+            paygAmount: usageLogs.paygAmount,
             upstreamCost: usageLogs.upstreamCost,
             durationMs: usageLogs.durationMs,
             createdAt: usageLogs.createdAt,
@@ -82,10 +94,10 @@ export function usageRoutes(s: ClientServices): Hono<ClientEnv> {
           .leftJoin(apiKeys, eq(usageLogs.apiKeyId, apiKeys.id))
           .leftJoin(apps, eq(usageLogs.appId, apps.id))
           .where(where)
-          .orderBy(desc(usageLogs.createdAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(usageLogs).where(where),
+        countAll(s.db, usageLogs, where),
       );
       return c.json(result);
     })
@@ -145,7 +157,8 @@ export function usageRoutes(s: ClientServices): Hono<ClientEnv> {
           inputTokens: Number(r.inputTokens),
           outputTokens: Number(r.outputTokens),
           cachedInputTokens: Number(r.cachedInputTokens),
-          cost: Number(r.cost),
+          // 金额全程字符串（与 /summary 一致；Number() 会 IEEE754 化聚合金额）
+          cost: r.cost,
         })),
       });
     });

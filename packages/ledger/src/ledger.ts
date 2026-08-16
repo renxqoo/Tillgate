@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, eq, gt, sql } from 'drizzle-orm';
+import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import {
   apiKeys,
@@ -107,7 +107,8 @@ export class LedgerError extends Error {
       | 'not_a_pack'
       | 'seats_not_allowed'
       | 'enterprise_required'
-      | 'plan_not_purchasable',
+      | 'plan_not_purchasable'
+      | 'subscription_inactive',
     message: string = code,
   ) {
     super(message);
@@ -224,7 +225,7 @@ function isOneActiveSubscriptionViolation(error: unknown): boolean {
     if ((current as { code?: string }).code === '23505') {
       const constraint = (current as { constraint?: string }).constraint;
       if (
-        constraint === 'user_subscriptions_one_personal_uq' ||
+        constraint === 'user_subscriptions_one_active_uq' ||
         constraint === 'user_subscriptions_one_org_uq'
       ) {
         return true;
@@ -305,14 +306,6 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
 
       const balanceAfter = updated[0]!.balance;
       const balanceBefore = toStorage(new Decimal(balanceAfter).minus(amountDec));
-      if (amountDec.isPositive()) {
-        await tx
-          .update(users)
-          .set({ freezeReason: null, updatedAt: clock() })
-          .where(
-            sql`${users.id} = ${input.userId} and ${users.freezeReason} = 'bad_debt' and ${users.status} = 1`,
-          );
-      }
       const [entry] = await tx
         .insert(transactions)
         .values({
@@ -447,6 +440,21 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           if (!Number.isInteger(quantity) || quantity < 1) {
             throw new LedgerError('invalid_quantity');
           }
+          // C4：惰性翻转「已自然到期但 status 仍为 0」的订阅行（个人与组织皆翻）。
+          // 覆盖范围对齐 user_subscriptions_one_active_uq（per-user 全维）——不翻则
+          // 新购买 insert 撞唯一索引 → already_subscribed，用户被死锁。过期行翻 1
+          // 不影响续费：renew 只认 status=0，而「翻过期行」必然伴随同事务内插入
+          // 新活跃订阅（此时续费本就该走新订阅）。
+          await tx
+            .update(userSubscriptions)
+            .set({ status: 1 })
+            .where(
+              and(
+                eq(userSubscriptions.userId, userId!),
+                eq(userSubscriptions.status, 0),
+                lte(userSubscriptions.endAt, now),
+              ),
+            );
           const active = await tx.query.userSubscriptions.findFirst({
             where: and(
               eq(userSubscriptions.userId, userId!),
@@ -801,12 +809,6 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         if (updated.length === 0) throw new LedgerError('user_not_found');
         const balanceAfter = updated[0]!.balance;
         const balanceBefore = toStorage(new Decimal(balanceAfter).minus(batch.amount));
-        await tx
-          .update(users)
-          .set({ freezeReason: null, updatedAt: clock() })
-          .where(
-            sql`${users.id} = ${input.userId} and ${users.freezeReason} = 'bad_debt' and ${users.status} = 1`,
-          );
         const [entry] = await tx
           .insert(transactions)
           .values({
@@ -908,28 +910,39 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
             throw new LedgerError('invalid_quantity');
           }
           const now = clock();
-          const current = await tx.query.userSubscriptions.findFirst({
-            where: and(
-              eq(userSubscriptions.id, input.subscriptionId),
-              eq(userSubscriptions.status, 0),
-              gt(userSubscriptions.endAt, now),
-            ),
-            with: { plan: { columns: { sortOrder: true, name: true } } },
-            columns: {
-              userId: true,
-              planId: true,
-              orgId: true,
-              quotaAmount: true,
-              usedAmount: true,
-              reservedAmount: true,
-              quantity: true,
-              price: true,
-            },
-          });
+          // F2：折算价必须基于「拿到行锁后的新鲜快照」。无锁读会和并发结算/释放
+          // 竞态（used+=x / reserved-=y 在读与翻转之间提交）→ 剩余价值被低估 →
+          // 升级补差价多收。FOR UPDATE 与结算/释放的行写互斥，读到提交后状态。
+          const currentRows = await tx
+            .select({
+              userId: userSubscriptions.userId,
+              planId: userSubscriptions.planId,
+              orgId: userSubscriptions.orgId,
+              quotaAmount: userSubscriptions.quotaAmount,
+              usedAmount: userSubscriptions.usedAmount,
+              reservedAmount: userSubscriptions.reservedAmount,
+              quantity: userSubscriptions.quantity,
+              price: userSubscriptions.price,
+            })
+            .from(userSubscriptions)
+            .where(
+              and(
+                eq(userSubscriptions.id, input.subscriptionId),
+                eq(userSubscriptions.status, 0),
+                gt(userSubscriptions.endAt, now),
+              ),
+            )
+            .for('update');
+          const current = currentRows[0];
           if (!current) throw new LedgerError('no_subscription');
           if (input.userId != null && current.userId !== input.userId) {
             throw new LedgerError('no_subscription');
           }
+          // plan 元数据（层级/名称）不受订阅行竞态影响，单独无锁读
+          const currentPlan = await tx.query.plans.findFirst({
+            where: eq(plans.id, current.planId),
+            columns: { sortOrder: true, name: true },
+          });
 
           const target = await tx.query.plans.findFirst({
             where: eq(plans.id, input.targetPlanId),
@@ -950,7 +963,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
           if (target.kind !== 'subscription') throw new LedgerError('not_a_pack');
 
           // 只能升不能降：sort_order 不降、席位不缩容，且至少一项变化。（先判层级，再判席位能力）
-          const curSort = current.plan.sortOrder ?? 0;
+          const curSort = currentPlan?.sortOrder ?? 0;
           const targetSort = target.sortOrder ?? 0;
           if (targetSort < curSort || input.quantity < current.quantity) {
             throw new LedgerError('downgrade_not_allowed');
@@ -1063,7 +1076,7 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
               balanceAfter,
               refType: 'subscription',
               refId: String(sub!.id),
-              remark: `变更套餐「${current.plan.name}」→「${target.name}」×${input.quantity} 补差价 ${toStorage(diff)}`,
+              remark: `变更套餐「${currentPlan?.name ?? `#${current.planId}`}」→「${target.name}」×${input.quantity} 补差价 ${toStorage(diff)}`,
               createdBy: input.adminId,
             })
             .returning({ id: transactions.id });
@@ -1143,14 +1156,21 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         const quota = toDecimal(pack.quotaAmount);
 
         // 加油包加的是「订阅额度」：必须有有效订阅；扣售价，订阅额度 += 到账额度。
-        const sub = await tx.query.userSubscriptions.findFirst({
-          where: and(
-            eq(userSubscriptions.userId, input.userId),
-            eq(userSubscriptions.status, 0),
-            gt(userSubscriptions.endAt, now),
-          ),
-          columns: { id: true },
-        });
+        // P1-3：选订阅行 FOR UPDATE——无锁读会和并发取消/变更竞态（读到 status=0
+        // 后该行被置 1），随后额度加到失效订阅 = 用户付了钱额度进了死行。
+        // 行锁与取消/变更的行写互斥，READ COMMITTED 下等到的是提交后的最新版本。
+        const subRows = await tx
+          .select({ id: userSubscriptions.id })
+          .from(userSubscriptions)
+          .where(
+            and(
+              eq(userSubscriptions.userId, input.userId),
+              eq(userSubscriptions.status, 0),
+              gt(userSubscriptions.endAt, now),
+            ),
+          )
+          .for('update');
+        const sub = subRows[0];
         if (!sub) throw new LedgerError('no_subscription');
 
         const updated = await tx
@@ -1174,14 +1194,16 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         const balanceAfter = updated[0]!.balance;
         const balanceBefore = toStorage(toDecimal(balanceAfter).plus(price));
 
-        const [subUpdated] = await tx
+        // P1-3：额度 UPDATE 带 status=0 守卫并校验 returning——不变量下沉 DB 语义，
+        // 0 行命中说明订阅已被并发取消/替换，绝不能把额度加到失效行上。
+        const subUpdated = await tx
           .update(userSubscriptions)
           .set({
             quotaAmount: sql`${userSubscriptions.quotaAmount} + ${toStorage(quota)}::numeric`,
           })
-          .where(eq(userSubscriptions.id, sub.id))
+          .where(and(eq(userSubscriptions.id, sub.id), eq(userSubscriptions.status, 0)))
           .returning({ id: userSubscriptions.id });
-        if (!subUpdated) throw new LedgerError('no_subscription');
+        if (subUpdated.length === 0) throw new LedgerError('subscription_inactive');
 
         const [entry] = await tx
           .insert(transactions)

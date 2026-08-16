@@ -10,6 +10,7 @@ import {
   numeric,
   index,
   check,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { providers } from './providers.js';
@@ -64,6 +65,8 @@ export const channels = pgTable(
   },
   (t) => [
     index('channels_provider_id_idx').on(t.providerId),
+    // 渠道名全局唯一（导入查重按 name，并发导入不得产生同名双渠道——A8 结构化收口）
+    uniqueIndex('channels_name_uq').on(t.name),
     // 渠道在途敞口非负（R4）：释放路径带 >= 守卫的原子扣减，DB 兜底禁止穿透为负。
     // 注：不加 upstream_reserved <= upstream_budget 的 CHECK——管理端允许调低 budget，
     // 该场景由 reserveChannel 的守卫 UPDATE 拦截新预留，不构成结构不变量。

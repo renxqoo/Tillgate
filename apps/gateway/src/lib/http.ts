@@ -1,20 +1,10 @@
 import type { Context } from 'hono';
 
 /**
- * 统一错误模型：路由/服务层抛 HttpError（带 OpenAI 风格错误码），
- * app.onError 统一映射成错误信封。不再用 message 文本启发式判断错误类型。
+ * 统一错误模型：全仓唯一 HttpError（packages/http，code 主键 + 注册表推导
+ * 状态码/默认文案——见 error-codes.ts）。网关只保留 OpenAI 风格信封的渲染。
  */
-export class HttpError extends Error {
-  constructor(
-    public readonly status: number,
-    public readonly code: string,
-    message: string,
-    public readonly suggestion?: string,
-  ) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
+export { HttpError } from '@ai-gateway/http';
 
 /** OpenAI 风格错误类型（按 HTTP 状态映射，供下游 SDK 区分处理） */
 function errorType(status: number): string {

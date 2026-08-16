@@ -20,7 +20,7 @@ export function userFromAdminMe(me: AdminMeInfo): SidebarUser {
  * + ADMIN_JWT_SECRET 签发的 type='admin' token 能通过）。拿不到 → 重定向登录。
  */
 export async function requireAdmin(): Promise<AdminMeInfo> {
-  if (process.env.DEV_FAKE_ME === "1") {
+  if (process.env.DEV_FAKE_ME === "1" && process.env.NODE_ENV !== "production") {
     return {
       id: 99,
       email: "admin@studio-admin.dev",

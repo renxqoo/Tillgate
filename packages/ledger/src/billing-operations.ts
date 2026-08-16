@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { auditLogs, billingRequests, fundOperations } from '@ai-gateway/db/schema';
 import { validateReceipt } from './billing-flow.js';
@@ -49,8 +49,10 @@ export interface BillingOperations {
   listCases(input: {
     status: 'dead' | 'uncertain';
     limit?: number;
-    before?: Date;
+    offset?: number;
   }): Promise<BillingReviewCase[]>;
+  /** 队列总数（分页 total） */
+  countCases(status: 'dead' | 'uncertain'): Promise<number>;
   retryDead(input: OperationBase): Promise<BillingReviewResult>;
   resolveUncertain(input: ResolveUncertainCommand): Promise<BillingReviewResult>;
   /** 废弃 dead 单：确认不收费并释放全部预扣（人工复核或治理脚本，幂等 + 审计）。 */
@@ -169,7 +171,7 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
   }
 
   return {
-    async listCases({ status, limit = 50, before }) {
+    async listCases({ status, limit = 50, offset = 0 }) {
       const rows = await db
         .select({
           requestId: billingRequests.requestId,
@@ -184,16 +186,20 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
           updatedAt: billingRequests.updatedAt,
         })
         .from(billingRequests)
-        .where(
-          and(
-            eq(billingRequests.status, status),
-            before ? lt(billingRequests.updatedAt, before) : undefined,
-          ),
-        )
+        .where(eq(billingRequests.status, status))
         // 金额优先：钱数大的先被人看到；同额按时间倒序
         .orderBy(desc(billingRequests.reservedAmount), desc(billingRequests.updatedAt))
-        .limit(Math.min(200, Math.max(1, limit)));
+        .limit(Math.min(200, Math.max(1, limit)))
+        .offset(Math.max(0, offset));
       return rows as BillingReviewCase[];
+    },
+
+    async countCases(status) {
+      const [row] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(billingRequests)
+        .where(eq(billingRequests.status, status));
+      return Number(row?.count ?? 0);
     },
 
     async retryDead(command) {
@@ -277,7 +283,8 @@ export function createBillingOperations(input: { db: Db; clock?: () => Date }): 
                 status: billingRequests.status,
                 revision: billingRequests.revision,
               });
-            return { ...changed!, status: 'settlement_pending', replayed: false };
+            if (!changed) throw new BillingOperationError('state_conflict');
+            return { ...changed, status: 'settlement_pending', replayed: false };
           }
 
           const [changed] = await tx

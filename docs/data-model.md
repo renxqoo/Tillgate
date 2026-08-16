@@ -83,7 +83,8 @@ providers (供应商: base_url/协议)
 | display_name | varchar(64) | |
 | role | smallint | 0 普通用户 / 1 管理员（控制台权限判定） |
 | balance | numeric(38,18) | 已结算余额（元）；授权期间不变，仅真实结算、充值、赠送和调账修改 |
-| reserved_balance | numeric(38,18) | 所有未终结请求的处理中预留总额；可用额度 = balance - reserved_balance |
+| credit_limit | numeric(38,18) ≥0 | 透支上限（信用模型）：授权校验「balance + credit_limit − reserved_balance ≥ 预估」，结算实扣允许短暂透支至 −credit_limit（DB CHECK `balance >= -credit_limit` 兜底） |
+| reserved_balance | numeric(38,18) | 所有未终结请求的处理中预留总额；可用额度 = balance + credit_limit - reserved_balance |
 | rate_card_id | FK → rate_cards | 绑定费率卡（一期默认「标准」卡，全局系数 1.0；替换原单一倍率字段，见 3.8） |
 | rpm_limit / tpm_limit | int NULL | 用户级限流，NULL=继承全局默认（tech-stack §5：默认 60 RPM / 1M TPM） |
 | status | smallint | 0 正常 / 1 封禁 / 2 注销 |
@@ -133,7 +134,7 @@ providers (供应商: base_url/协议)
 |---|---|---|
 | id | bigserial PK | |
 | name | varchar(32) UNIQUE | deepseek / openai / minimax / glm / qwen |
-| protocol | varchar(32) | 一期全为 `openai_compatible` |
+| protocol | varchar(32) | 协议 = ai 包适配器注册表键（SUPPORTED_PROTOCOLS 单一真相，admin-api 校验）；当前仅 `openai-compatible` |
 | base_url | varchar(255) | 上游入口（可被渠道覆盖） |
 | status | smallint | 0 启用 / 1 禁用 |
 | created_at | timestamptz | |
@@ -206,7 +207,7 @@ providers (供应商: base_url/协议)
 | coefficient | numeric(6,3) | 系数（1.0 = 按官方价原价） |
 | created_at | timestamptz | |
 
-**约束**：UNIQUE(rate_card_id, scope, model_mapping_id)；每卡必有且仅有一行 `global`（兜底系数），model 覆盖行优先。二期扩展：scope 预留 `group`（模型分组覆盖），无需改表结构。
+**约束**：UNIQUE(rate_card_id, scope, model_mapping_id)；部分唯一索引 `(rate_card_id, scope) WHERE model_mapping_id IS NULL` 保证每卡至多一行 `global`（兜底系数）；model 覆盖行优先。二期扩展：scope 预留 `group`（模型分组覆盖），无需改表结构。
 
 ### 3.10 usage_logs — 用量明细（只追加，长期保留）
 
@@ -236,7 +237,7 @@ providers (供应商: base_url/协议)
 | stream_aborted | boolean | 流式提前中断；仅在仍有供应商可信 usage 时结算（见 requirements.md 5.11） |
 | created_at | timestamptz | |
 
-**索引**：`(user_id, created_at DESC)`、`(external_model, created_at)`、`(channel_id, created_at)`、`(subscription_id, created_at)`、`request_id UNIQUE`。（P2 优化：不建独立 `(created_at)` 单列索引——与复合索引重叠、纯写放大；按月分区后靠分区裁剪）
+**索引**：`(user_id, created_at DESC)`、`(external_model, created_at)`、`(channel_id, created_at)`、`(subscription_id, created_at)`、`request_id UNIQUE`。（P2 优化：不建独立 `(created_at)` 单列索引——与复合索引重叠、纯写放大；按月分区（迁移 0040 已实现，worker 每小时维护滚动）后靠分区裁剪）
 
 ### 3.11 transactions — 资金流水（余额变化的唯一依据）
 
@@ -340,12 +341,23 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 
 **按月 RANGE 分区**，定时任务删除 30 天前分区。索引：`(created_at)`、`(user_id, created_at)`。
 
+### 3.13b admins — 管理员账户（管理面登录主体）
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| id | bigserial PK | |
+| email | varchar(255) UNIQUE | 登录标识 |
+| password_hash | scrypt | 恒定时间校验 |
+| two_factor_enabled | boolean 默认 false | 邮箱验证码二次登录开关（R8；SMTP 未配置 fail-closed） |
+| session_invalid_before | timestamptz NULL | 会话吊销线（改密全网下线） |
+| status | smallint | 0 正常 / 1 封禁 / 2 注销 |
+
 ### 3.14 audit_logs — 管理操作审计
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | bigserial PK | |
-| admin_id | FK → users NULL | 操作人；系统任务（对账/赠送/自动冻结）为 NULL |
+| admin_id | FK → admins NULL | 操作人；系统任务（对账/赠送/自动冻结）为 NULL |
 | actor | varchar(8) | 操作方：`admin` / `system` |
 | action | varchar(64) | 如 `channel.update` / `user.adjust` |
 | target_type / target_id | varchar | |

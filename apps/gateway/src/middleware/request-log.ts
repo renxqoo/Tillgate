@@ -12,7 +12,7 @@ import type { AuthEnv } from './auth.js';
  *   - await next() 之后读 status / 计算耗时 / 提取错误码
  *   - fire-and-forget：写日志失败不阻塞响应
  */
-export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<AuthEnv> {
+export function requestLogMiddleware(db: Db, logger: Logger, trustedProxyHops = 0): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
     const start = Date.now();
     const requestId = c.var.requestId;
@@ -66,7 +66,7 @@ export function requestLogMiddleware(db: Db, logger: Logger): MiddlewareHandler<
         requestId,
         userId: auth?.userId ?? null,
         apiKeyId: auth?.apiKeyId ?? null,
-        sourceIp: sourceIp(c),
+        sourceIp: sourceIp(c, trustedProxyHops),
         method: c.req.method,
         path,
         statusCode: status,

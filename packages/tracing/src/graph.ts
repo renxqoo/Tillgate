@@ -5,14 +5,15 @@ import type { SpanRow } from './types.js';
  *
  * 展示层（React Flow 等）只做渲染，语义判定全部在这里：
  *   - 节点 kind：http（根/带 http 属性）/ upstream（渠道调用）/
+ *     stream（流中继生命周期：首包→流终止，取消/截断的可追溯载体）/
  *     billing（网关侧计费动作：authorize/finalize）/ settle（worker 结算）/ generic
- *   - 状态：statusCode=2 → error
- *   - 同父的 upstream 兄弟 = 渠道尝试链：首个接父边，其余链式 fallback 边
- *     （网关候选循环成功即停，因此 2 个以上 upstream 兄弟必为换渠道重试）；
- *     其他 kind 的兄弟（billing/settle 等）各自直连父，不串尝试链
+ *   - 状态：statusCode=2 → error（客户端取消流不是网关错误，不标红）
+ *   - 执行线：同父兄弟按开始时间排序，首节点接父（child 边），后续依次连前一个
+ *     （next 边）——流程按「第一步→第二步」叙事展开，而非并列铺开；
+ *     相邻 upstream 兄弟之间的边是渠道重试（fallback，虚线动画在展示层）
  */
 
-export type GraphNodeKind = 'http' | 'upstream' | 'billing' | 'settle' | 'generic';
+export type GraphNodeKind = 'http' | 'upstream' | 'stream' | 'billing' | 'settle' | 'generic';
 export type GraphNodeStatus = 'ok' | 'error' | 'unset';
 
 export interface GraphNode {
@@ -36,13 +37,15 @@ export interface GraphNode {
   /** ERROR 时的 message（status_message） */
   errorText: string | null;
   service: string;
+  /** 执行序（全 trace 按开始时间排序的 1 基序号，「第N步」徽标用） */
+  step: number;
 }
 
 export interface GraphEdge {
   id: string;
   from: string;
   to: string;
-  kind: 'child' | 'fallback';
+  kind: 'child' | 'next' | 'fallback';
 }
 
 export interface TraceGraph {
@@ -55,8 +58,15 @@ export interface TraceGraph {
 
 function inferKind(row: SpanRow): GraphNodeKind {
   if (row.name.startsWith('upstream')) return 'upstream';
+  if (row.name === 'stream.relay') return 'stream';
   if (row.name === 'billing.settle' || row.service === 'worker') return 'settle';
-  if (row.name === 'billing.authorize' || row.name === 'billing.finalize') return 'billing';
+  if (
+    row.name === 'billing.authorize' ||
+    row.name === 'billing.finalize' ||
+    row.name === 'billing.estimate'
+  ) {
+    return 'billing';
+  }
   if (
     'http.method' in row.attributes ||
     'http.status_code' in row.attributes ||
@@ -78,18 +88,30 @@ function buildSubtitle(row: SpanRow, kind: GraphNodeKind): string {
   if (kind === 'upstream') {
     return [row.channel, row.model].filter(Boolean).join(' · ');
   }
+  if (kind === 'stream') {
+    // 流终态语义：中断带原因（复核线索），正常终态只报字节
+    const terminated = row.attributes['stream.terminated'];
+    const bytes = row.attributes['stream.bytes_relayed'];
+    return [
+      typeof terminated === 'string' ? `已中断 ${terminated}` : null,
+      typeof bytes === 'number' ? `${bytes} B` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
   if (kind === 'billing' || kind === 'settle') {
-    // 计费节点副标题带核心数字：预授权/实扣金额（元）或 token 汇总
-    const amount =
-      row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
+    // 计费节点副标题带核心数字：预授权/实扣金额（元）或 token 汇总；
+    // 估算节点（billing.estimate / estimated 收尾）显式标注非真实获取
+    const estimated = row.attributes['usage.estimated'] === true ? '估算 · ' : '';
+    const amount = row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
     if (typeof amount === 'string' && amount !== '') {
       const label = kind === 'settle' ? '实扣' : '预授权';
-      return `${label} ${amount} 元`;
+      return `${estimated}${label} ${amount} 元`;
     }
     const input = row.attributes['usage.input_tokens'];
     const output = row.attributes['usage.output_tokens'];
     if (typeof input === 'number' || typeof output === 'number') {
-      return `tokens ${input ?? 0}→${output ?? 0}`;
+      return `${estimated}tokens ${input ?? 0}→${output ?? 0}`;
     }
     return row.service;
   }
@@ -119,7 +141,7 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
   const endMs = Math.max(...spans.map((s) => s.endTime.getTime()));
 
   const sorted = spans.toSorted((a, b) => a.startTime.getTime() - b.startTime.getTime());
-  const nodes: GraphNode[] = sorted.map((row) => {
+  const nodes: GraphNode[] = sorted.map((row, index) => {
     const kind = inferKind(row);
     const attemptRaw = row.attributes['channel.attempt'];
     return {
@@ -136,11 +158,12 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
       attempt: typeof attemptRaw === 'number' ? attemptRaw : null,
       errorText: row.statusMessage,
       service: row.service,
+      step: index + 1,
     };
   });
 
-  // 按父分组；组内 upstream 兄弟 >1 视为尝试链：首节点接父，其余链式 fallback；
-  // 其他 kind 的兄弟（billing/settle/…）各自直连父，绝不串进尝试链
+  // 按父分组（保持开始时间序）；执行线：首节点接父，后续依次连前一个。
+  // 相邻 upstream 兄弟 = 渠道重试（fallback）；其余相邻兄弟 = 时序推进（next）。
   const byParent = new Map<string, SpanRow[]>();
   for (const row of sorted) {
     const key = row.parentSpanId ?? '__root__';
@@ -152,19 +175,15 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
       // 根层多个孤立 trace 碎片（跨服务未串联）不出边，仅出节点
       continue;
     }
-    const attemptChain = children.filter((row) => inferKind(row) === 'upstream');
-    const direct = children.filter((row) => inferKind(row) !== 'upstream');
-    for (const row of direct) {
-      edges.push(childEdge(parentKey, row.spanId));
-    }
-    if (attemptChain.length === 0) continue;
-    edges.push(childEdge(parentKey, attemptChain[0]!.spanId));
-    for (let i = 1; i < attemptChain.length; i++) {
+    edges.push(childEdge(parentKey, children[0]!.spanId));
+    for (let i = 1; i < children.length; i++) {
+      const prev = children[i - 1]!;
+      const cur = children[i]!;
       edges.push({
-        id: `${attemptChain[i - 1]!.spanId}->${attemptChain[i]!.spanId}`,
-        from: attemptChain[i - 1]!.spanId,
-        to: attemptChain[i]!.spanId,
-        kind: 'fallback',
+        id: `${prev.spanId}->${cur.spanId}`,
+        from: prev.spanId,
+        to: cur.spanId,
+        kind: inferKind(prev) === 'upstream' && inferKind(cur) === 'upstream' ? 'fallback' : 'next',
       });
     }
   }

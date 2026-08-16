@@ -45,7 +45,7 @@ export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageBy
 
   const meta = METRICS[metric];
   const valueOf = (it: UsageByModelItem): number => {
-    if (metric === 'cost') return it.cost;
+    if (metric === 'cost') return Number(it.cost) || 0;
     if (metric === 'tokens') return it.inputTokens + it.outputTokens;
     // 缓存率 = 缓存命中 token / 输入 token（聚合后的总比例）
     if (metric === 'cacheRate')

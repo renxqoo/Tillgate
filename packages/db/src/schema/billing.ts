@@ -9,6 +9,7 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { modelMappings } from './model-mappings.js';
 
 /**
@@ -51,6 +52,11 @@ export const rateCardCoefficients = pgTable(
   },
   (t) => [
     uniqueIndex('rate_card_coefficients_uq').on(t.rateCardId, t.scope, t.modelMappingId),
+    // 全局行（model_mapping_id IS NULL）每卡每 scope 至多一条——
+    // 原 uq 因 NULLS DISTINCT 拦不住重复全局行。
+    uniqueIndex('rate_card_coefficients_global_uq')
+      .on(t.rateCardId, t.scope)
+      .where(sql`model_mapping_id is null`),
     index('rate_card_coefficients_mapping_idx').on(t.modelMappingId),
   ],
 );

@@ -1,5 +1,5 @@
-import type { UpstreamError } from '../types.js';
-import { createUpstreamError } from './classify.js';
+import type { UpstreamError } from '../types';
+import { createUpstreamError } from './classify';
 
 /**
  * 包内策略性错误（非上游响应分类——那是 classify.ts 的职责）：
@@ -37,6 +37,16 @@ export function abortedError(): UpstreamError {
   });
 }
 
+/** 服务端 drain 中止（宽限期后 ServerDrainAbort）：服务端责任，不计熔断、不换渠道 */
+export function serverDrainingError(): UpstreamError {
+  return createUpstreamError({
+    code: 'server_draining',
+    message: 'gateway shutting down',
+    retryable: false,
+    circuitTrip: false,
+  });
+}
+
 /** 熔断打开：渠道被拒（gateway 路由层据此跳过该渠道走 fallback） */
 export function circuitOpenError(): UpstreamError {
   return createUpstreamError({
@@ -61,13 +71,13 @@ export function deadCredentialError(): UpstreamError {
 }
 
 /** 协议不支持：channels.protocol 不是已注册适配器之一（配置错误，显式报错而非静默回退） */
-export function unsupportedProtocolError(protocol: string): UpstreamError {
+export function unsupportedProtocolError(protocol: string, supported: readonly string[]): UpstreamError {
   return createUpstreamError({
     code: 'invalid_config',
-    message: `unsupported protocol: ${protocol} (only 'openai-compatible' is supported)`,
+    message: `unsupported protocol: ${protocol} (registered: ${supported.join(', ')})`,
     retryable: false,
     circuitTrip: false,
-    suggestion: '请检查渠道协议配置（当前仅支持 openai-compatible）',
+    suggestion: `请检查渠道协议配置（当前已注册适配器: ${supported.join(', ')}）`,
   });
 }
 

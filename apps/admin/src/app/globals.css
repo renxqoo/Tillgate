@@ -2,9 +2,8 @@
 @import "tw-animate-css";
 
 /* Tailwind v4: 显式扫描 packages/ui 里的原语 className */
-@source "../../../../packages/ui/src/components/ui";
+@source "../../../../packages/ui/src/components";
 @source "../../../../packages/ui/src/hooks";
-@source "../../../../packages/ui/src/components/simple-icon.tsx";
 
 @custom-variant dark (&:is(.dark *));
 

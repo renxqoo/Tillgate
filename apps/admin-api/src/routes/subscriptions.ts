@@ -1,16 +1,16 @@
 import { Hono } from 'hono';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { plans, users, userSubscriptions } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
   intParam,
   jsonBody,
-  limitOffset,
   operationId,
   paginateQuery,
-  paginationQuerySchema,
-  parsePagination,
   query,
+  listQuerySchema,
+  buildList,
+  countAll,
 } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
@@ -24,7 +24,7 @@ import { mapSubscriptionError } from '../services/subscriptions.js';
  *   - POST /:id/cancel：取消（剩余额度作废，不退款）
  */
 
-const subListQuerySchema = paginationQuerySchema.extend({
+const subListQuerySchema = listQuerySchema.extend({
   planId: z.coerce.number().int().positive().optional(),
   userId: z.coerce.number().int().positive().optional(),
   status: z.coerce.number().int().min(0).max(2).optional(),
@@ -42,15 +42,27 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
   return new Hono<AdminEnv>()
     .get('/', query(subListQuerySchema), async (c) => {
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [];
-      if (q.planId) conds.push(eq(userSubscriptions.planId, q.planId));
-      if (q.userId) conds.push(eq(userSubscriptions.userId, q.userId));
-      if (q.status !== undefined) conds.push(eq(userSubscriptions.status, q.status));
-      const where = conds.length > 0 ? and(...conds) : undefined;
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [users.subject, users.displayName, plans.name],
+        conditions: [
+          q.planId ? eq(userSubscriptions.planId, q.planId) : undefined,
+          q.userId ? eq(userSubscriptions.userId, q.userId) : undefined,
+          q.status !== undefined ? eq(userSubscriptions.status, q.status) : undefined,
+        ],
+        sort: {
+          by: {
+            id: userSubscriptions.id,
+            createdAt: userSubscriptions.createdAt,
+            startAt: userSubscriptions.startAt,
+            endAt: userSubscriptions.endAt,
+            usedAmount: userSubscriptions.usedAmount,
+          },
+          fallback: 'createdAt',
+          tiebreaker: userSubscriptions.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: userSubscriptions.id,
@@ -75,13 +87,13 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           .innerJoin(plans, eq(userSubscriptions.planId, plans.id))
           .innerJoin(users, eq(userSubscriptions.userId, users.id))
           .where(where)
-          .orderBy(desc(userSubscriptions.createdAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(userSubscriptions)
-          .where(where),
+        countAll(s.db, userSubscriptions, where, [
+          { table: plans, on: eq(userSubscriptions.planId, plans.id) },
+          { table: users, on: eq(userSubscriptions.userId, users.id) },
+        ]),
       );
       return c.json(result);
     })

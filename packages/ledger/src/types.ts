@@ -41,6 +41,31 @@ export interface UsageReceipt {
   mappingId: number;
   /** 必须与授权候选的多模态策略快照一致；纯文本为 null。 */
   billingPolicyFingerprint: string | null;
+  /**
+   * 估算结算归属：用户侧取消且无可信 usage 时按 bytesRelayed 估算结算。
+   * usage.estimated=true 时必填且必须属于 USER_SIDE_CANCELS（validateReceipt
+   * 结构化把关：无归属的估算 receipt 一律拒绝——G1 不变量精细化，不允许绕过）。
+   */
+  estimatedFor?: UserSideCancel;
+  /** 触发估算的透传字节数（校准作业与审计的数据源；TTFB 期取消为 0） */
+  bytesRelayed?: number;
+}
+
+/** 允许估算结算的用户侧取消原因（单一真相：gateway 路由判定与 ledger 校验共用） */
+export const USER_SIDE_CANCELS = ['client_disconnect', 'request_cancelled', 'aborted'] as const;
+export type UserSideCancel = (typeof USER_SIDE_CANCELS)[number];
+
+/**
+ * G1 不变量（精细化，2026-08）：估算 usage 只允许归属用户侧取消后结算。
+ * validateReceipt 与 settle 共用本判定——无归属/归属不明的估算 receipt 一律拒绝，
+ * 不允许借估算口径给其他场景开后门。
+ */
+export function isAttributedEstimate(receipt: UsageReceipt): boolean {
+  return (
+    receipt.usage.estimated &&
+    receipt.estimatedFor !== undefined &&
+    USER_SIDE_CANCELS.includes(receipt.estimatedFor as never)
+  );
 }
 
 export interface SettleResult {
@@ -184,6 +209,22 @@ export type BillingRequestStatus =
   | 'released'
   | 'uncertain'
   | 'dead';
+
+/** 收据校验失败（毒收据）：永久失败类，dead 人工（分类按类型，不按 message 文本） */
+export class PoisonReceiptError extends Error {
+  constructor(message = 'poison_receipt') {
+    super(message);
+    this.name = 'PoisonReceiptError';
+  }
+}
+
+/** 收据用户与账单用户不一致（毒收据）：永久失败类 */
+export class ReceiptUserMismatchError extends Error {
+  constructor(message = 'billing_receipt_user_mismatch') {
+    super(message);
+    this.name = 'ReceiptUserMismatchError';
+  }
+}
 
 export type SettlementFailureClass =
   | 'db_transient'

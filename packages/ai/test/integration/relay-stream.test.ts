@@ -236,6 +236,64 @@ describe('relay-stream（mock 流）', () => {
     expect(mock.cancelled).toBe(true);
   });
 
+  it('first_chunk：首个数据 chunk 通过时发一次性事件（TTFB 观察点），在终态事件之前', async () => {
+    // 生产事故（req c2dee8ff）：网关在 chatStream 返回后才注册 onEvent，create-ai
+    // 只重放终态事件 → 网关首个事件回调=流结束，TTFB 记成了"到终态的时长"。
+    // 契约：首 chunk 流经 transform 时发 first_chunk（一次），网关据此记真实 TTFB。
+    const mock = controllableStream();
+    const handle = relayStream(mock.stream, FAST_OPTS);
+    const events: RelayStreamEvent[] = [];
+    handle.onEvent((e) => events.push(e));
+    const reader = handle.stream.getReader();
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'a' } }] })));
+    await reader.read();
+    mock.enqueue(sseFrame(JSON.stringify({ choices: [{ delta: { content: 'b' } }] })));
+    await reader.read();
+    mock.enqueue(sseFrame('[DONE]'));
+    mock.close();
+    while (!(await reader.read()).done) {} // 排干至 EOF，flush 触发 done
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe('first_chunk');
+    expect(types.filter((t) => t === 'first_chunk')).toHaveLength(1); // 只发一次
+    expect(types.at(-1)).toBe('done'); // 终态最后（既有契约不变）
+    expect(types.indexOf('first_chunk')).toBeLessThan(types.indexOf('done'));
+  });
+
+  it('客户端 abort + 逐帧累计 usage：done 携带最新累计值（usage 是随行状态，非尾帧附属）', async () => {
+    // 契约：供应商逐帧带累计 usage（如 OpenAI continuous_usage_stats）时，
+    // 客户端取消的瞬间 scanner 已持最新值 → done.usage 即结算依据，不需要等到尾帧。
+    const mock = controllableStream();
+    const handle = relayStream(mock.stream, FAST_OPTS);
+    const events: RelayStreamEvent[] = [];
+    handle.onEvent((e) => events.push(e));
+    const reader = handle.stream.getReader();
+    mock.enqueue(
+      sseFrame(
+        JSON.stringify({
+          choices: [{ delta: { content: 'a' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 3 },
+        }),
+      ),
+    );
+    await reader.read();
+    mock.enqueue(
+      sseFrame(
+        JSON.stringify({
+          choices: [{ delta: { content: 'b' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 7 },
+        }),
+      ),
+    );
+    await reader.read();
+    mock.enqueue(sseFrame(JSON.stringify({ usage: null }))); // null 帧不得覆盖真值
+    await reader.read();
+    await reader.cancel('client gone');
+    const done = events.at(-1) as Extract<RelayStreamEvent, { type: 'done' }>;
+    expect(done.terminated).toBe('client_disconnect');
+    expect(done.usage).toMatchObject({ prompt_tokens: 10, completion_tokens: 7 }); // 最新累计
+    expect(mock.cancelled).toBe(true);
+  });
+
   it('上游错误帧：原样透传 + stream_error 事件 + done 携带错误帧', async () => {
     const mock = controllableStream();
     const pending = runRelay(mock.stream, FAST_OPTS);

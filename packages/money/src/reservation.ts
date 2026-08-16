@@ -28,6 +28,22 @@ export function estimateMaxCost(input: ReservationEstimateInput): Decimal {
   return cost.isFinite() && cost.gte(0) ? cost : new Decimal(0);
 }
 
+/**
+ * 预扣估算拒绝（类型化跨包契约：消费方 instanceof 判定，
+ * 不做 message 字符串匹配——文案变更不得破坏上游分类）。
+ */
+export class ReservationError extends Error {
+  constructor(
+    public readonly code:
+      | 'invalid_reservation_estimate'
+      | 'invalid_reservation_limit'
+      | 'reservation_limit_exceeded',
+  ) {
+    super(code);
+    this.name = 'ReservationError';
+  }
+}
+
 /** 余额由账本事务足额判断；风险上限只用于拒绝，绝不截断。 */
 export function requiredReservation(
   estimate: Decimal | string | number,
@@ -35,8 +51,10 @@ export function requiredReservation(
 ): Decimal {
   const required = toDecimal(estimate);
   const limit = toDecimal(reservationLimit);
-  if (!required.isFinite() || required.lt(0)) throw new Error('invalid_reservation_estimate');
-  if (!limit.isFinite() || limit.lte(0)) throw new Error('invalid_reservation_limit');
-  if (required.gt(limit)) throw new Error('reservation_limit_exceeded');
+  if (!required.isFinite() || required.lt(0))
+    throw new ReservationError('invalid_reservation_estimate');
+  if (!limit.isFinite() || limit.lte(0))
+    throw new ReservationError('invalid_reservation_limit');
+  if (required.gt(limit)) throw new ReservationError('reservation_limit_exceeded');
   return required;
 }

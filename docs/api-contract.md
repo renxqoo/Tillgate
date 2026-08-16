@@ -103,22 +103,64 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | 429 | upstream_rate_limited | 上游 429 透传（渠道级，网关会尝试换渠道） |
 | 500 | upstream_error | 上游异常（错误信息脱敏后透传） |
 | 503 | no_available_channel | 模型映射的所有渠道不可用（禁用/熔断中） |
+| 503 | server_draining | 网关滚动发布停机窗口（拒新请求；在途请求在宽限期结束前由服务端中止，全额释放不计费） |
+| 408 | request_cancelled | 请求中止（重试预算耗尽 / TTFB 期取消；用户侧取消按已透传内容估算结算，见 requirements 5.11） |
 
 ---
 
 ## 4. 管理端接口（控制台后端 REST，前缀 `/api`）
 
 > 调用方：Next.js 控制台（服务端调用，不直接暴露公网）。会话鉴权：HttpOnly Cookie 中的面板 JWT（24h），管理端接口校验 `role=admin`。
-> 分页统一：`?page=&page_size=`（**page_size 上限 100**），返回 `{list, total, page, page_size}`。时间范围统一 `?from=&to=`（UTC）。
+
+### 列表接口统一约定（R10，api-contract §4）
+
+所有「记录列表」接口（admin-api 与 client-api）统一三件套：
+
+| 参数 | 说明 |
+|---|---|
+| `?page=&page_size=` | 分页（page 从 1 起，**page_size 上限 100**），响应统一 `{list, total, page, page_size}` |
+| `?q=` | 文本搜索（1~100 字符，ilike 模糊；`%`/`_`/`\` 按字面匹配；按接口白名单列生效，无文本列的列表不提供） |
+| `?sort_by=&order=asc\|desc` | 排序（字段白名单，白名单外 **400 INVALID_SORT_FIELD**）；不传时默认时间倒序（`created_at desc`，无该列的表为 `id desc`），多主排序附加 `id desc` 保证分页稳定 |
+
+实现组件：后端 `@ai-gateway/http` 的 `paginationQuerySchema` + `searchQuerySchema`/`searchCondition` + `sortQuerySchema`/`resolveOrderBy`；前端 `@ai-gateway/ui` 的 `DataTable`（排序表头）+ `ListPage`（搜索/筛选/分页骨架）+ `@ai-gateway/api-client/list`（`fetchAdminList`/`fetchUserList`）。
+分组统计类接口（`stats/usage`、`usage/summary`、`usage/by-model`、`tracing/topology`）与外部目录（`model-catalog`）不是记录列表，不适用本约定。
+时间范围统一 `?from=&to=`（UTC）。
 
 ### 4.1 会话与用户（普通用户 + 管理员共用）
 
 | 方法/路径 | 说明 |
 |---|---|
 | `GET /api/me` | 当前用户信息（含余额、订阅摘要、状态） |
-| `POST /api/auth/login` | 登录：一期本地账号（用户名+密码） |
+| `POST /api/auth/login` | 登录第一步：邮箱+密码 → 发 6 位邮箱验证码（强制两步）→ `200 {ok,twoFactorRequired:true,challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发/账号） |
+| `POST /api/auth/login/verify` `{challengeId, code}` | 第二步：验 6 位邮箱码（5 分钟有效，错 5 次作废，一次性消费）→ 签发 ag_session；首登赠额/lastLogin 在此步 |
+| `POST /api/auth/register` `{email, password}` | 邮箱自助注册第一步 → 发验证码 → `200 {ok,challengeId}`（邮箱占用 409；同 IP >5 次/小时 429；SMTP 未配置 503） |
+| `POST /api/auth/register/verify` `{challengeId, code}` | 第二步：验码通过建号（subject=email）+ 签发 ag_session + 首登赠额（并发撞邮箱由唯一索引兜底 → 409） |
+| `GET /api/auth/oauth/providers` | 已配置的第三方登录方式 `{providers:[github?,google?]}`（前端显隐按钮的单一真相） |
+| `GET /api/auth/oauth/:provider/authorize?next=` | 302 到 GitHub/Google 授权页（state 双提交：HttpOnly cookie + Redis 单次 10 分钟；未配置 404） |
+| `PATCH /api/me/display-name` `{displayName}` | 自助修改显示名称（1-32 字符去空白；审计 user.display_name_change） |
+| `GET /api/auth/oauth/:provider/callback?code&state` | 验 state（不符 403）→ 换码取 profile → find-or-create（issuer=provider, subject=平台 id；邮箱不与本地账号合并）→ ag_session → 302 前端（next 仅站内） |
 | `POST /api/auth/oidc-login` `{id_token}` | OIDC 建会话（P1）：**OIDC 重定向流程由 Next.js 服务端执行**（code 换 token、校验 IdP 签名），再调本接口由 admin-api 建立会话——admin-api 不直接对接 IdP |
 | `POST /api/auth/logout` | 注销 |
+
+### 管理员二次登录（R8，默认关闭）
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/admin/auth/login`（开启 2FA 时） | 密码正确 → `200 {twoFactorRequired:true, challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发） |
+| `POST /api/admin/auth/login/verify` `{challengeId, code}` | 验 6 位邮箱码（5 分钟有效，错 5 次作废）→ 签发 ag_admin_session |
+| `POST /api/admin/auth/two-factor` `{enabled}` | 自助开关（需管理员会话；开启要求 SMTP 已配置） |
+
+### 用量列表计费来源拆分（R9）
+
+`GET /api/usage` 行新增 `billedBy`（`plan` | `payg`）、`planAmount`、`paygAmount`——
+前端区分展示：套餐消耗显示积分（planAmount），余额消耗显示金额（paygAmount，¥）。
+
+### org 邀请撤销（R7）
+
+| 接口 | 说明 |
+|---|---|
+| `POST /api/orgs/:id/invitations/:invitationId/revoke` | owner 撤销待接受邀请（0→2 revoked；幂等 404） |
+| `GET /api/orgs/:id` 变更 | owner 附带 `invitations[]`（pending 列表，不含 token） |
 | `GET /api/me/transactions?from&to&page` | 自己的资金流水 |
 | `POST /api/redeem` `{code}` | 兑换充值码（成功 → 余额增加并返回新余额）；失败：`400 invalid_code`（不存在）/ `400 code_expired`（已过期）/ `409 code_already_used`（已使用） |
 | `GET /api/me/subscription` | 当前订阅信息（套餐/生效期/剩余额度），无订阅返回 null |

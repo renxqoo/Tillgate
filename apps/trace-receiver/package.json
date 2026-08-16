@@ -16,10 +16,11 @@
   "dependencies": {
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
     "@ai-gateway/tracing": "workspace:*",
     "@hono/node-server": "^1.19.0",
-    "hono": "^4.13.0",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

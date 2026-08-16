@@ -1,6 +1,9 @@
 "use client";
 
-import { CircleUser, CreditCard, EllipsisVertical, LogOut, MessageSquareDot } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+
+import { CircleUser, Coins, EllipsisVertical, Loader2Icon, LogOut } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -25,6 +28,15 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  async function handleLogout() {
+    startTransition(async () => {
+      const { logoutAction } = await import("@/lib/server-actions/auth");
+      await logoutAction();
+    });
+  }
 
   return (
     <SidebarMenu>
@@ -66,23 +78,23 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
                 <CircleUser />
-                Account
+                账户设置
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <MessageSquareDot />
-                Notifications
+              <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/transactions")}>
+                <Coins />
+                账单流水
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOut />
-              Log out
+            <DropdownMenuItem
+              onClick={handleLogout}
+              disabled={pending}
+              className="cursor-pointer text-destructive focus:text-destructive"
+            >
+              {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
+              退出登录
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

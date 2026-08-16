@@ -1,4 +1,4 @@
-import type { UpstreamError } from '../types.js';
+import type { UpstreamError } from '../types';
 
 /**
  * 同渠道重试：指数退避 + jitter + deadline + maxAttempts（含空完成重试）

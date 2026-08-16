@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'sonner';
 import { z } from 'zod';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
@@ -47,7 +46,11 @@ import {
 } from '@ai-gateway/ui/components/ui/table';
 import { numericText } from '@ai-gateway/ui/lib/forms';
 
-import type { RateCardRow } from '../types';
+import type { AdminRateCardRow } from '@ai-gateway/api-client/types';
+import { fmtDateTime } from "@ai-gateway/api-client/formatters";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
+import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -58,7 +61,7 @@ const createSchema = z.object({
   description: z.string().optional(),
 });
 
-export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<RateCardRow> }) {
+export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<AdminRateCardRow> }) {
   return (
     <Table>
       <TableHeader>
@@ -86,8 +89,7 @@ export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<RateCa
   );
 }
 
-function RateCardRowItem({ card }: { card: RateCardRow }) {
-  const [pending, setPending] = useState(false);
+function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
   return (
     <TableRow>
       <TableCell className="font-medium">
@@ -99,17 +101,13 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
       <TableCell className="text-sm text-muted-foreground">{card.description ?? '—'}</TableCell>
       <TableCell>
         {card.status === 0 ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-            启用
-          </span>
+          <StatusPill tone="success" label="启用" />
         ) : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-            禁用
-          </span>
+          <StatusPill tone="neutral" label="禁用" />
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
-        {new Date(card.updatedAt).toLocaleString('zh-CN')}
+        {fmtDateTime(card.updatedAt)}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
@@ -119,23 +117,23 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
             </Link>
           </Button>
           <EditRateCardDialog card={card} />
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={pending}
-            onClick={async () => {
-              if (!confirm(`确定删除费率卡 ${card.name}？若有绑定用户会失败。`)) return;
-              setPending(true);
-              const { deleteRateCardAction } = await import('../actions');
-              const res = await deleteRateCardAction(card.id);
-              setPending(false);
-              if (res.error) toast.error(res.error);
-              else toast.success('已删除');
-            }}
-            className="text-destructive hover:text-destructive"
+          <ConfirmAction
+            confirm={`确定删除费率卡 ${card.name}？若有绑定用户会失败。`}
+            action={async () => (await import('../actions')).deleteRateCardAction(card.id)}
+            success='已删除'
           >
-            {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          </Button>
+            {({ pending, onClick }) => (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={onClick}
+                className="text-destructive hover:text-destructive"
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+              </Button>
+            )}
+          </ConfirmAction>
         </div>
       </TableCell>
     </TableRow>
@@ -143,6 +141,7 @@ function RateCardRowItem({ card }: { card: RateCardRow }) {
 }
 
 export function CreateRateCardDialog() {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof createSchema>;
@@ -159,11 +158,7 @@ export function CreateRateCardDialog() {
         coefficient: Number(values.coefficient),
         description: values.description?.trim() || undefined,
       });
-      if (res.error) {
-        toast.error('创建失败', { description: res.error });
-        return;
-      }
-      toast.success('已创建');
+      if (!notify(res, '创建失败', '已创建')) return;
       form.reset();
       setOpen(false);
     });
@@ -208,7 +203,8 @@ const editSchema = z.object({
   status: z.coerce.number().int(),
 });
 
-function EditRateCardDialog({ card }: { card: RateCardRow }) {
+function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   type FormValues = z.input<typeof editSchema>;
@@ -231,11 +227,7 @@ function EditRateCardDialog({ card }: { card: RateCardRow }) {
         description: values.description?.trim() || undefined,
         status: Number(values.status),
       });
-      if (res.error) {
-        toast.error('保存失败', { description: res.error });
-        return;
-      }
-      toast.success('已保存');
+      if (!notify(res, '保存失败', '已保存')) return;
       setOpen(false);
     });
   }

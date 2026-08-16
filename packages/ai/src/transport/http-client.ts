@@ -1,5 +1,5 @@
 import { lookup } from 'node:dns/promises';
-import { classifyTransportError } from '../errors/classify.js';
+import { classifyTransportError } from '../errors/classify';
 
 /**
  * fetch 封装（ai-package.md §7.4 传输层）：

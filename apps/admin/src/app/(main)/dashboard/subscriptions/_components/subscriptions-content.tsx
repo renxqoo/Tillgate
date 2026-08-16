@@ -35,19 +35,15 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 
-import type { PlanOption, SubscriptionRow } from '../types';
+import type { PlanOption, AdminSubscriptionRow } from '@ai-gateway/api-client/types';
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { defineStatusMeta, StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const STATUS_META: Record<number, { label: string; cls: string }> = {
-  0: { label: '有效', cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' },
-  1: { label: '到期', cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
-  2: { label: '取消', cls: 'bg-muted text-muted-foreground' },
-};
-
-function statusMeta(status: number): { label: string; cls: string } {
-  return (
-    STATUS_META[status] ?? { label: '未知', cls: 'bg-muted text-muted-foreground' }
-  );
-}
+const STATUS_META = defineStatusMeta({
+  0: { label: '有效', tone: 'success' },
+  1: { label: '到期', tone: 'warning' },
+  2: { label: '取消', tone: 'neutral' },
+});
 
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
 function MoneyPoints({ value }: { value: string }) {
@@ -63,7 +59,7 @@ export function SubscriptionsTable({
   rows,
   plans,
 }: {
-  readonly rows: ReadonlyArray<SubscriptionRow>;
+  readonly rows: ReadonlyArray<AdminSubscriptionRow>;
   readonly plans: ReadonlyArray<PlanOption>;
 }) {
   return (
@@ -101,11 +97,12 @@ function SubscriptionRowItem({
   row,
   plans,
 }: {
-  row: SubscriptionRow;
+  row: AdminSubscriptionRow;
   plans: ReadonlyArray<PlanOption>;
 }) {
+  const notify = useActionResult();
   const [pending, setPending] = useState<'renew' | 'cancel' | null>(null);
-  const meta = statusMeta(row.status);
+  const meta = STATUS_META.get(row.status);
 
   async function run(action: 'renew' | 'cancel') {
     setPending(action);
@@ -115,8 +112,7 @@ function SubscriptionRowItem({
         ? await mod.renewSubscriptionAction(row.id)
         : await mod.cancelSubscriptionAction(row.id);
     setPending(null);
-    if (res.error) toast.error(action === 'renew' ? '续费失败' : '取消失败', { description: res.error });
-    else toast.success(action === 'renew' ? '已续费' : '已取消');
+    notify(res, action === 'renew' ? '续费失败' : '取消失败', action === 'renew' ? '已续费' : '已取消');
   }
 
   return (
@@ -146,11 +142,7 @@ function SubscriptionRowItem({
         <MoneyPoints value={row.remainingAmount} />
       </TableCell>
       <TableCell>
-        <span
-          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}
-        >
-          {meta.label}
-        </span>
+        <StatusPill tone={meta.tone} label={meta.label} />
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
@@ -194,9 +186,10 @@ function ChangeSubscriptionDialog({
   row,
   plans,
 }: {
-  row: SubscriptionRow;
+  row: AdminSubscriptionRow;
   plans: ReadonlyArray<PlanOption>;
 }) {
+  const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
@@ -241,11 +234,7 @@ function ChangeSubscriptionDialog({
     startTransition(async () => {
       const { changeSubscriptionAction } = await import('../actions');
       const res = await changeSubscriptionAction(row.id, { targetPlanId: target, quantity: qty });
-      if (res.error) {
-        toast.error('变更失败', { description: res.error });
-        return;
-      }
-      toast.success('已变更');
+      if (!notify(res, '变更失败', '已变更')) return;
       setOpen(false);
     });
   }

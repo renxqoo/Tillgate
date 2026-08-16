@@ -178,7 +178,7 @@ describe('route-cache 渠道解析缓存', () => {
       baseUrlOverride: 'http://up:8080',
       providerName: 'testprov',
       providerBaseUrl: 'http://default:8080',
-      providerProtocol: 'openai_compatible',
+      providerProtocol: 'openai-compatible',
       mcWeight: 1,
       mcPriority: 0,
       rpmLimit: null,

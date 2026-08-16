@@ -10,7 +10,7 @@ import { APP_CONFIG } from "@/config/app-config";
 import { buildSidebarItems } from "@/navigation/sidebar/sidebar-items";
 import { usePreferencesStore } from "@ai-gateway/ui/stores/preferences/preferences-provider";
 
-import { NavMain } from "./nav-main";
+import { NavMain } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
 import { NavUser } from "./nav-user";
 import { SupportCard } from "./support-card";
 

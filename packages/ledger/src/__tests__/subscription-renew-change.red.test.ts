@@ -23,7 +23,7 @@ import { createLedger } from '../index.js';
  *   （ledger.ts:821-832），且 renew 分支读旧订阅不取 orgId 列（ledger.ts:401-403），
  *   新订阅 org_id=NULL。后果：组织订阅续费后变成「个人订阅」——
  *   成员鉴权（billing-flow.ts:427-437 要求 sub.orgId 非空才认成员）全部 402，
- *   且新订阅占掉 user_subscriptions_one_personal_uq 唯一槽位，个人购套餐被误拒。
+ *   且新订阅占掉 user_subscriptions_one_active_uq 唯一槽位，个人购套餐被误拒。
  *
  * R3-2 变更（升档）不重绑凭证：renew 有改绑 apiKeys/apps 的逻辑（ledger.ts:509-517），
  *   changeSubscription 的插入段（ledger.ts:977-989）没有等价逻辑，也没有 orgId。

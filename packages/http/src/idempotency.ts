@@ -18,7 +18,6 @@ export function operationId(c: Context): string {
   if (key === undefined || key === '') return randomUUID();
   if (!CLIENT_KEY_RE.test(key)) {
     throw new HttpError(
-      400,
       'INVALID_IDEMPOTENCY_KEY',
       'idempotency-key 只允许 1-64 位字母/数字/下划线/中划线（不得含冒号等系统命名空间字符）',
     );

@@ -1,4 +1,5 @@
 import {
+  check,
   pgTable,
   bigserial,
   varchar,
@@ -11,6 +12,7 @@ import {
   numeric,
   boolean,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { channels } from './channels.js';
 
 /**
@@ -59,7 +61,14 @@ export const modelMappings = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('model_mappings_external_name_uq').on(t.externalName)],
+  (t) => [
+    uniqueIndex('model_mappings_external_name_uq').on(t.externalName),
+    // 价格非负（入口 zod 已拦，DB 兜底——负价经 calcAmount 钳 0 会静默免费）
+    check(
+      'model_mappings_prices_nonnegative_ck',
+      sql`${t.inputPrice} >= 0 and ${t.outputPrice} >= 0 and ${t.cacheInputPrice} >= 0`,
+    ),
+  ],
 );
 
 /**

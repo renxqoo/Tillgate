@@ -8,7 +8,7 @@ import { HttpError } from './errors.js';
 export function intParam(c: Context, name: string): number {
   const value = Number(c.req.param(name));
   if (!Number.isInteger(value) || value < 1) {
-    throw new HttpError(400, 'INVALID_PARAM', `路径参数 ${name} 必须为正整数`);
+    throw new HttpError('INVALID_PARAM', `路径参数 ${name} 必须为正整数`);
   }
   return value;
 }

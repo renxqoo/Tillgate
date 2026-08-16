@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { apps } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
@@ -8,15 +8,16 @@ import {
   generateClientSecret,
   HttpError,
   jsonBody,
-  limitOffset,
   paginateQuery,
-  paginationQuerySchema,
-  parsePagination,
   query,
   recordAudit,
+  listQuerySchema,
+  buildList,
+  countAll,
   sha256Hex, intParam } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
+import { assertCanUseSubscription } from '../services/subscription-guard.js';
 
 /**
  * 用户面板：应用（App）管理（api-contract §4.2）。
@@ -37,9 +38,9 @@ const appCreateSchema = z.object({
   /** 计费来源：NULL=余额；非空=扣该订阅额度。 */
   subscriptionId: z.number().int().positive().nullable().optional(),
   scope: z.object({
-    models: z.array(z.string()).optional(),
-    rpm: z.number().int().min(1).optional(),
-    tpm: z.number().int().min(1).optional(),
+    models: z.array(z.string().min(1).max(64)).max(100).optional(),
+    rpm: z.number().int().min(1).max(1_000_000).optional(),
+    tpm: z.number().int().min(1).max(1_000_000_000).optional(),
   }).optional(),
 });
 
@@ -47,13 +48,20 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
   return new Hono<ClientEnv>()
 
     // 列表
-    .get('/', query(paginationQuerySchema), async (c) => {
+    .get('/', query(listQuerySchema), async (c) => {
       const session = c.get('session');
-      const p = parsePagination(c.req.valid('query'));
-      const { limit, offset } = limitOffset(p);
-      const where = eq(apps.userId, session.userId);
+      const input = c.req.valid('query');
+      const { page, limit, offset, where, orderBy } = buildList(input, {
+        search: [apps.name, apps.description],
+        conditions: [eq(apps.userId, session.userId)],
+        sort: {
+          by: { id: apps.id, name: apps.name, status: apps.status, createdAt: apps.createdAt, rotatedAt: apps.rotatedAt },
+          fallback: 'createdAt',
+          tiebreaker: apps.id,
+        },
+      });
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: apps.id,
@@ -69,10 +77,10 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
           })
           .from(apps)
           .where(where)
-          .orderBy(desc(apps.createdAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(apps).where(where),
+        countAll(s.db, apps, where),
       );
       return c.json(result);
     })
@@ -81,22 +89,41 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
     .post('/', jsonBody(appCreateSchema), async (c) => {
       const session = c.get('session');
       const body = c.req.valid('json');
+      // W1：与 keys.ts 同语义——绑定他人订阅在创建面即拒绝（授权侧另有兜底，纵深防御）
+      if (body.subscriptionId != null) {
+        await assertCanUseSubscription(s.db, session.userId, body.subscriptionId);
+      }
+      // 每用户 App 数量配额（防脚本化刷行）。advisory xact lock 按 (资源, user)
+      // 串行化 count→insert，杜绝并发双击全部通过 count 后超限插入
       const clientId = generateClientId();
       const clientSecret = generateClientSecret();
-      const [created] = await s.db
-        .insert(apps)
-        .values({
-          appId: clientId, // 复用 client_id 作为对外 app_id（一期简化，二者同值）
-          userId: session.userId,
-          clientId,
-          clientSecretHash: sha256Hex(clientSecret),
-          name: body.name,
-          description: body.description ?? null,
-          subscriptionId: body.subscriptionId ?? null,
-          scope: body.scope ?? null,
-          status: 0,
-        })
-        .returning({ id: apps.id, appId: apps.appId, clientId: apps.clientId, name: apps.name });
+      const created = await s.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext('quota.apps.user:' || ${session.userId}::text))`,
+        );
+        const [row_appCount] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(apps)
+          .where(and(eq(apps.userId, session.userId), eq(apps.status, 0)));
+        if (Number(row_appCount?.count ?? 0) >= 100) {
+          throw new HttpError('APP_LIMIT_REACHED', '每人最多保留 100 个应用，请先禁用再创建');
+        }
+        const [row] = await tx
+          .insert(apps)
+          .values({
+            appId: clientId, // 复用 client_id 作为对外 app_id（一期简化，二者同值）
+            userId: session.userId,
+            clientId,
+            clientSecretHash: sha256Hex(clientSecret),
+            name: body.name,
+            description: body.description ?? null,
+            subscriptionId: body.subscriptionId ?? null,
+            scope: body.scope ?? null,
+            status: 0,
+          })
+          .returning({ id: apps.id, appId: apps.appId, clientId: apps.clientId, name: apps.name });
+        return row!;
+      });
       await recordAudit(s.db, {
         actor: 'user',
         action: 'app.create',
@@ -116,7 +143,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
         .set({ status: 1 })
         .where(and(eq(apps.id, id), eq(apps.userId, session.userId), eq(apps.status, 0)))
         .returning({ id: apps.id, appId: apps.appId });
-      if (!disabled) throw new HttpError(404, 'APP_NOT_FOUND', '应用不存在、无权操作或已禁用');
+      if (!disabled) throw new HttpError('APP_NOT_FOUND', '应用不存在、无权操作或已禁用');
       await recordAudit(s.db, {
         actor: 'user',
         action: 'app.disable',
@@ -147,7 +174,7 @@ export function appRoutes(s: ClientServices): Hono<ClientEnv> {
           .returning({ id: apps.id });
         return [u];
       });
-      if (!updated) throw new HttpError(404, 'APP_NOT_FOUND', '应用不存在或无权操作');
+      if (!updated) throw new HttpError('APP_NOT_FOUND', '应用不存在或无权操作');
       await recordAudit(s.db, {
         actor: 'user',
         action: 'app.rotate_secret',

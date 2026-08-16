@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { apiKeys, users } from '@ai-gateway/db/schema';
 import { z } from 'zod';
-import { HttpError, invalidateKeyAuthCache, jsonBody, limitOffset, paginateQuery, paginationQuerySchema, parsePagination, query, recordAudit, intParam } from '@ai-gateway/http';
+import {
+  MONEY_MAX, HttpError, invalidateKeyAuthCache, jsonBody, paginateQuery, query, recordAudit, intParam,
+  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 
@@ -16,7 +18,7 @@ import type { AdminServices } from '../services/index.js';
  * 安全：明文 Key 永不回显，只返回 keyPreview（脱敏，由创建时写入）。
  */
 
-const keyListQuerySchema = paginationQuerySchema.extend({
+const keyListQuerySchema = listQuerySchema.extend({
   userId: z.coerce.number().int().positive().optional(),
   status: z.coerce.number().int().min(0).max(1).optional(),
 });
@@ -28,7 +30,7 @@ const keyUpdateSchema = z.object({
   /** TPM 限流，null=不限流 */
   tpmLimit: z.number().int().min(1).nullable().optional(),
   /** Key 级每日花费上限（元，>=0），null=不限。团队团员单 Key 封顶。 */
-  dailySpendLimit: z.number().min(0).nullable().optional(),
+  dailySpendLimit: z.number().min(0).max(MONEY_MAX).nullable().optional(),
   status: z.number().int().min(0).max(1).optional(),
 });
 
@@ -38,15 +40,21 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     // 列表（关联用户，脱敏 preview）
     .get('/', query(keyListQuerySchema), async (c) => {
       const q = c.req.valid('query');
-      const p = parsePagination(q);
-      const { limit, offset } = limitOffset(p);
-      const conds = [];
-      if (q.userId) conds.push(eq(apiKeys.userId, q.userId));
-      if (q.status !== undefined) conds.push(eq(apiKeys.status, q.status));
-      const where = conds.length > 0 ? and(...conds) : undefined;
+      const { page, limit, offset, where, orderBy } = buildList(q, {
+        search: [apiKeys.name, apiKeys.keyPreview, users.email, users.displayName],
+        conditions: [
+          q.userId ? eq(apiKeys.userId, q.userId) : undefined,
+          q.status !== undefined ? eq(apiKeys.status, q.status) : undefined,
+        ],
+        sort: {
+          by: { id: apiKeys.id, name: apiKeys.name, status: apiKeys.status, lastUsedAt: apiKeys.lastUsedAt, createdAt: apiKeys.createdAt },
+          fallback: 'createdAt',
+          tiebreaker: apiKeys.id,
+        },
+      });
 
       const result = await paginateQuery(
-        p,
+        page,
         s.db
           .select({
             id: apiKeys.id,
@@ -67,10 +75,10 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
           .from(apiKeys)
           .innerJoin(users, eq(apiKeys.userId, users.id))
           .where(where)
-          .orderBy(desc(apiKeys.createdAt))
+          .orderBy(...orderBy)
           .limit(limit)
           .offset(offset),
-        s.db.select({ count: sql<number>`count(*)::int` }).from(apiKeys).where(where),
+        countAll(s.db, apiKeys, where, [{ table: users, on: eq(apiKeys.userId, users.id) }]),
       );
       return c.json(result);
     })
@@ -92,7 +100,7 @@ export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         .set(update)
         .where(eq(apiKeys.id, id))
         .returning({ id: apiKeys.id, keyHash: apiKeys.keyHash });
-      if (!updated) throw new HttpError(404, 'API_KEY_NOT_FOUND', 'Key 不存在');
+      if (!updated) throw new HttpError('API_KEY_NOT_FOUND', 'Key 不存在');
 
       // 立即生效：清 gateway 鉴权缓存（无需等 60s TTL）
       await invalidateKeyAuthCache(s.redis, [updated.keyHash]);

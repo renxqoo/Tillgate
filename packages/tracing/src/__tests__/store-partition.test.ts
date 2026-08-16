@@ -63,12 +63,14 @@ describe('PgTraceStore（真 PG）', () => {
     if (!connected) return context.skip();
     await cleanup();
     const store = createPgTraceStore(db);
-    const root = spanRow();
+    // start_time 错开毫秒：findByTraceId 仅按 startTime 排序，同毫秒时顺序未定义
+    const root = spanRow({ startTime: new Date(Date.now() - 2) });
     const child = spanRow({
       traceId: root.traceId,
       parentSpanId: root.spanId,
       statusCode: 2,
       requestId: root.requestId, // 同一请求的 span 共享 requestId（计费关联口径）
+      startTime: new Date(Date.now() - 1),
     });
     const other = spanRow();
 

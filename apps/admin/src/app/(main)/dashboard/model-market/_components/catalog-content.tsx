@@ -17,6 +17,8 @@ import {
 } from '@ai-gateway/ui/components/ui/table';
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
 import { importCatalogAction } from '../actions';
+import { fmtDateTime } from "@ai-gateway/api-client/formatters";
+import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 /**
  * 模型目录（OpenRouter 免费模型一键入库）：
@@ -68,6 +70,7 @@ export function CatalogContent({
   const [query, setQuery] = useState('');
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -130,11 +133,7 @@ export function CatalogContent({
           };
         }),
       });
-      if (res.error) toast.error(res.error);
-      else {
-        toast.success(`已导入 ${selectedItems.length} 个模型（价格按提交值生效）`);
-        router.refresh();
-      }
+      if (notify(res, undefined, `已导入 ${selectedItems.length} 个模型（价格按提交值生效）`)) router.refresh();
     });
   }
 
@@ -148,7 +147,7 @@ export function CatalogContent({
           className="w-56"
         />
         <span className="text-xs text-muted-foreground">
-          {sourceName} 目录抓取于 {new Date(fetchedAt).toLocaleString()} · 共 {items.length} 个免费模型
+          {sourceName} 目录抓取于 {fmtDateTime(fetchedAt)} · 共 {items.length} 个免费模型
         </span>
         <div className="ml-auto flex items-center gap-2">
           {needsKey && !channelReady ? (
