@@ -134,6 +134,323 @@ describe('wallet 错误面契约', () => {
   });
 });
 
+describe('wallet 边缘：金额与词表边界', () => {
+  it('金额字符串格式边界：合法接受 / 非法拒绝一览', async () => {
+    const user = nextUser();
+    // CNY 侧只测小额（共享 outside 科目不能被推到 numeric 上限）
+    const ok = ['0.000000000000000001', '007', '0.5000', '1'];
+    for (const [i, amount] of ok.entries()) {
+      await wallet.credit({ userId: user, amount, refType: 'topup', refId: `${ref(user, 'fmt')}-${i}` });
+    }
+    // 20 位整数上限在独立币种验证（隔离科目，单笔恰好到达 numeric(38,18) 天花板）
+    await wallet.credit({
+      userId: user, currency: 'XAU', amount: '99999999999999999999',
+      refType: 'topup', refId: ref(user, 'max'),
+    });
+    expect(sameAmount(await wallet.balance(user, 'XAU'), '99999999999999999999')).toBe(true);
+    const bad = [
+      '0', '-5', '-0', '+1', '.5', '5.', '1e3', '1E3', 'NaN', 'Infinity', '', ' 5', '5 ',
+      'abc', '0.0000000000000000001',           // 19 位小数
+      '999999999999999999999',                  // 21 位整数
+      '1; DROP TABLE wallet_accounts', '1 OR 1=1',
+    ];
+    for (const amount of bad) {
+      await expect(
+        wallet.credit({ userId: user, amount, refType: 'topup', refId: 'x' }),
+        `amount=${JSON.stringify(amount)} 应被拒绝`,
+      ).rejects.toThrow();
+    }
+    // 合法前导零/尾零归一：'007' 存储后 replay 返回 '7'
+    const replay = await wallet.credit({ userId: user, amount: '7', refType: 'topup', refId: `${ref(user, 'fmt')}-1` });
+    expect(replay.replayed).toBe(true);
+    expect(replay.amount).toBe('7');
+  });
+
+  it('精度安全：0.1 + 0.2 精确为 0.3（无 IEEE 浮点误差）', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '0.1', refType: 'topup', refId: ref(user, 'a') });
+    await wallet.credit({ userId: user, amount: '0.2', refType: 'topup', refId: ref(user, 'b') });
+    expect(sameAmount(await wallet.balance(user), '0.3')).toBe(true);
+  });
+
+  it('词表边界：refId 128 字符恰好、129 拒绝；refType 大写/连字符拒绝；memo 256 拒绝', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: 'x'.repeat(128) });
+    await expect(
+      wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: 'x'.repeat(129) }),
+    ).rejects.toThrow();
+    // 'constructor' 等普通英文词按 snake_case 合法接受（参数化存储，无原型风险），不在此列
+    for (const refType of ['Order', 'ORDER-X', 'order x', "'; DROP--", '__proto__', '1order']) {
+      await expect(
+        wallet.credit({ userId: user, amount: '1', refType, refId: 'x' }),
+        `refType=${refType} 应被拒绝`,
+      ).rejects.toThrow();
+    }
+    await expect(
+      wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: 'y', memo: 'm'.repeat(256) }),
+    ).rejects.toThrow();
+  });
+
+  it('userId 边界：0 / 负数 / 非整数拒绝，无状态残留', async () => {
+    for (const userId of [0, -5, 1.5]) {
+      await expect(
+        wallet.credit({ userId, amount: '1', refType: 'topup', refId: 'x' }),
+        `userId=${userId} 应被拒绝`,
+      ).rejects.toThrow();
+    }
+  });
+
+  it('expiresAt 为过去时间：authorize 成功但首轮扫描即释放', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({
+      userId: user, amount: '10', refType: 'order', refId: ref(user, 'past'),
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    const { released } = await wallet.releaseExpired(new Date());
+    expect(released).toBeGreaterThanOrEqual(1);
+    expect(sameAmount(await wallet.balance(user), '100')).toBe(true);
+  });
+
+  it('恰好的边界金额：余额恰好冻结成功、结算恰好等于冻结额', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({ userId: user, amount: '10', refType: 'order', refId: ref(user, 'exact') });
+    const settled = await wallet.settle({ refType: 'order', refId: ref(user, 'exact'), amount: '10' });
+    expect(sameAmount(settled.balanceAfter, '0')).toBe(true);
+    expect(sameAmount(settled.releasedRemainder, '0')).toBe(true);
+  });
+});
+
+describe('wallet 攻击：注入与伪造载荷', () => {
+  it('SQL 注入载荷在 refId：参数化存储、表完好、余额正确', async () => {
+    const user = nextUser();
+    const payload = "'; DROP TABLE wallet_accounts; --";
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: payload });
+    await wallet.credit({ userId: user, amount: '5', refType: 'topup', refId: "' OR '1'='1" });
+    // 表还在（能继续正常入账）、参数化未执行任何注入语义
+    await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: ref(user, 'after') });
+    expect(sameAmount(await wallet.balance(user), '16')).toBe(true);
+    const [header] = await db.select().from(walletTransactions).where(eq(walletTransactions.refId, payload));
+    expect(header?.kind).toBe('credit');
+  });
+
+  it('XSS/原型污染载荷在 memo 与 refId：按纯文本原样存储，不解释执行', async () => {
+    const user = nextUser();
+    const memo = '<script>alert(1)</script>';
+    await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: '__proto__.pollution', memo });
+    const [header] = await db.select().from(walletTransactions).where(eq(walletTransactions.refId, '__proto__.pollution'));
+    expect(header?.memo).toBe(memo);
+  });
+
+  it('Unicode refId（中文/emoji/韩文）合法且幂等键有效', async () => {
+    const user = nextUser();
+    const key = '订单-🚀-결제-2026';
+    const first = await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: key });
+    const replay = await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: key });
+    expect(replay.replayed).toBe(true);
+    expect(replay.transactionId).toBe(first.transactionId);
+  });
+
+  it('金额伪造重放：同键不同金额的重复调用返回首次金额，不采信新值', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '50', refType: 'topup', refId: ref(user, 'forge') });
+    const tampered = await wallet.credit({ userId: user, amount: '999', refType: 'topup', refId: ref(user, 'forge') });
+    expect(tampered.replayed).toBe(true);
+    expect(sameAmount(tampered.amount, '50')).toBe(true); // 首次金额
+    expect(sameAmount(await wallet.balance(user), '50')).toBe(true);
+  });
+
+  it('结算越权攻击：超额 settle / 0 额 settle / 释放后重结算全部拒绝且状态不变', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({ userId: user, amount: '10', refType: 'order', refId: ref(user, 'atk') });
+    await expect(wallet.settle({ refType: 'order', refId: ref(user, 'atk'), amount: '1000000' })).rejects.toBeInstanceOf(SettleExceedsHoldError);
+    await expect(wallet.settle({ refType: 'order', refId: ref(user, 'atk'), amount: '0' })).rejects.toThrow();
+    await wallet.release({ refType: 'order', refId: ref(user, 'atk') });
+    await expect(wallet.settle({ refType: 'order', refId: ref(user, 'atk'), amount: '10' })).rejects.toBeInstanceOf(AuthorizationNotActiveError);
+    expect(sameAmount(await wallet.balance(user), '100')).toBe(true);
+  });
+
+  it('授信调整攻击：欠款期内降额击穿地板被拒，并发调整恰好一次生效', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    await wallet.setCreditLimit({ userId: user, amount: '100', refType: 'credit_line', refId: ref(user, 'g1') });
+    await wallet.authorize({ userId: user, amount: '80', refType: 'order', refId: ref(user, 'o') });
+    await wallet.settle({ refType: 'order', refId: ref(user, 'o'), amount: '80' });
+    // 欠 70（balance = 10 − 80），降额到 50 击穿 → 拒
+    await expect(
+      wallet.setCreditLimit({ userId: user, amount: '50', refType: 'credit_line', refId: ref(user, 'down') }),
+    ).rejects.toBeInstanceOf(CreditLimitConflictError);
+    // 并发同键调整：恰好一次
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        wallet.setCreditLimit({ userId: user, amount: '70', refType: 'credit_line', refId: ref(user, 'race') }),
+      ),
+    );
+    expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+  });
+});
+
+describe('wallet 并发：资金安全竞态', () => {
+  it('10 路并发同键入账：恰好 1 笔交易、9 路重放、余额只加一次', async () => {
+    const user = nextUser();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 'n10') }),
+      ),
+    );
+    expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+    expect(sameAmount(await wallet.balance(user), '10')).toBe(true);
+  });
+
+  it('可用额度不被超卖：余额 10 下 11 路并发 authorize 1 元——恰好成功 10 路', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    const results = await Promise.allSettled(
+      Array.from({ length: 11 }, (_, i) =>
+        wallet.authorize({ userId: user, amount: '1', refType: 'order', refId: `${ref(user, 'sell')}-${i}` }),
+      ),
+    );
+    const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
+    expect(fulfilled).toBe(10);
+    const account = await accountOf(user);
+    expect(sameAmount(account.inFlight, '10')).toBe(true);
+    expect(sameAmount(account.balance, '10')).toBe(true); // 余额未被冻结动过
+  });
+
+  it('并发 settle vs release 同一冻结单：恰好一方终态化，资金与状态一致', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({ userId: user, amount: '40', refType: 'order', refId: ref(user, 'duel') });
+    const [settleRes, releaseRes] = await Promise.allSettled([
+      wallet.settle({ refType: 'order', refId: ref(user, 'duel'), amount: '40' }),
+      wallet.release({ refType: 'order', refId: ref(user, 'duel') }),
+    ]);
+    const settledWon = settleRes.status === 'fulfilled';
+    if (settledWon) {
+      expect(releaseRes.status === 'rejected' || (releaseRes.value as { replayed: boolean }).replayed).toBeTruthy();
+      expect(sameAmount(await wallet.balance(user), '60')).toBe(true);
+    } else {
+      expect(settleRes.reason).toBeInstanceOf(AuthorizationNotActiveError);
+      expect(sameAmount(await wallet.balance(user), '100')).toBe(true);
+    }
+    const account = await accountOf(user);
+    expect(sameAmount(account.inFlight, '0')).toBe(true); // 无论谁赢，在途必归零
+  });
+
+  it('并发对向转账（A→B 与 B→A）：定序锁防死锁，双方守恒', async () => {
+    const a = nextUser();
+    const b = nextUser();
+    await wallet.credit({ userId: a, amount: '10', refType: 'topup', refId: ref(a, 't') });
+    await wallet.credit({ userId: b, amount: '10', refType: 'topup', refId: ref(b, 't') });
+    // 若有死锁，vitest 默认 10s 超时即失败
+    await Promise.all([
+      wallet.transfer({ from: { userId: a }, to: { userId: b }, amount: '5', refType: 'p2p', refId: ref(a, 'ab') }),
+      wallet.transfer({ from: { userId: b }, to: { userId: a }, amount: '5', refType: 'p2p', refId: ref(b, 'ba') }),
+    ]);
+    expect(sameAmount(await wallet.balance(a), '10')).toBe(true);
+    expect(sameAmount(await wallet.balance(b), '10')).toBe(true);
+  });
+
+  it('并发同键 transfer：恰好一次，双腿不重复', async () => {
+    const a = nextUser();
+    const b = nextUser();
+    await wallet.credit({ userId: a, amount: '10', refType: 'topup', refId: ref(a, 't') });
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        wallet.transfer({ from: { userId: a }, to: { userId: b }, amount: '4', refType: 'p2p', refId: ref(a, 'tr5') }),
+      ),
+    );
+    expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+    expect(sameAmount(await wallet.balance(a), '6')).toBe(true);
+    expect(sameAmount(await wallet.balance(b), '4')).toBe(true);
+  });
+
+  it('并发不同键入账 20 路：总额精确（顺序无关）', async () => {
+    const user = nextUser();
+    await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        wallet.credit({ userId: user, amount: '0.15', refType: 'topup', refId: `${ref(user, 'sum')}-${i}` }),
+      ),
+    );
+    expect(sameAmount(await wallet.balance(user), '3')).toBe(true); // 20 × 0.15
+  });
+
+  it('并发同键 refund：恰好一次退款', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        wallet.refund({ userId: user, amount: '30', refType: 'topup_refund', refId: ref(user, 'rf5') }),
+      ),
+    );
+    expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+    expect(sameAmount(await wallet.balance(user), '70')).toBe(true);
+  });
+});
+
+describe('wallet 安全：冻结边界与完整性', () => {
+  it('冻结账户上的 active 冻结单：settle 被拒且单据保持 active（解冻后可结算）', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({ userId: user, amount: '30', refType: 'order', refId: ref(user, 'o') });
+    await wallet.freeze({ target: { userId: user }, frozen: true, refType: 'risk_control', refId: ref(user, 'f') });
+    await expect(
+      wallet.settle({ refType: 'order', refId: ref(user, 'o'), amount: '30' }),
+    ).rejects.toBeInstanceOf(FrozenAccountError);
+    const [auth] = await db.select().from(walletAuthorizations).where(eq(walletAuthorizations.refId, ref(user, 'o')));
+    expect(auth?.status).toBe('active'); // CAS 也一并回滚
+
+    await wallet.freeze({ target: { userId: user }, frozen: false, refType: 'risk_control', refId: ref(user, 'uf') });
+    await wallet.settle({ refType: 'order', refId: ref(user, 'o'), amount: '30' });
+    expect(sameAmount(await wallet.balance(user), '70')).toBe(true);
+  });
+
+  it('冻结账户的过期冻结单：releaseExpired 跳过不中断，解冻后下轮释放', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    await wallet.authorize({
+      userId: user, amount: '20', refType: 'order', refId: ref(user, 'stale'),
+      expiresAt: new Date(Date.now() - 1_000),
+    });
+    await wallet.freeze({ target: { userId: user }, frozen: true, refType: 'risk_control', refId: ref(user, 'f') });
+    // 不炸、不释放（冻结优先）
+    const { released } = await wallet.releaseExpired(new Date());
+    expect(released).toBe(0);
+    const [auth] = await db.select().from(walletAuthorizations).where(eq(walletAuthorizations.refId, ref(user, 'stale')));
+    expect(auth?.status).toBe('active');
+
+    await wallet.freeze({ target: { userId: user }, frozen: false, refType: 'risk_control', refId: ref(user, 'uf') });
+    const second = await wallet.releaseExpired(new Date());
+    expect(second.released).toBeGreaterThanOrEqual(1);
+    const account = await accountOf(user);
+    expect(sameAmount(account.inFlight, '0')).toBe(true);
+  });
+
+  it('非法输入不产生任何状态残留（攻击后账户数与交易数不变）', async () => {
+    const accountsBefore = (await db.select().from(walletAccounts)).length;
+    const txsBefore = (await db.select().from(walletTransactions)).length;
+    const attacks = [
+      () => wallet.credit({ userId: 0, amount: '1', refType: 'topup', refId: 'x' }),
+      () => wallet.credit({ userId: 12345, amount: '-1', refType: 'topup', refId: 'x' }),
+      () => wallet.credit({ userId: 12345, amount: '1', refType: 'TOPUP', refId: 'x' }),
+      () => wallet.settle({ refType: 'topup', refId: 'x', amount: '0' }),
+      () => wallet.transfer({ from: { userId: 1 }, to: {}, amount: '1', refType: 'p2p', refId: 'x' }),
+      () => wallet.transfer({ from: { userId: 1, code: 'a' }, to: { userId: 2 }, amount: '1', refType: 'p2p', refId: 'x' }),
+    ];
+    for (const attack of attacks) {
+      await expect(attack()).rejects.toThrow();
+    }
+    expect((await db.select().from(walletAccounts)).length).toBe(accountsBefore);
+    expect((await db.select().from(walletTransactions)).length).toBe(txsBefore);
+  });
+
+  it('全套攻击/并发打完：全账本仍自洽（Σ=0 / 链恒等 / 余额=代数和）', async () => {
+    await assertLedgerCoherent();
+  });
+});
+
 describe('wallet 入账 credit', () => {
   it('入账更新余额，顺序重放返回首次结果（幂等）', async () => {
     const user = nextUser();

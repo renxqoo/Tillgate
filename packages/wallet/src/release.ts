@@ -7,6 +7,7 @@ import { Decimal, toStorage } from './money';
 import {
   AuthorizationNotActiveError,
   AuthorizationNotFoundError,
+  FrozenAccountError,
   WalletInternalError,
 } from './errors';
 import { walletAccounts, walletAuthorizations } from './schema';
@@ -115,7 +116,11 @@ export async function releaseExpired(
       const result = await transitionRelease(db, item.refType, item.refId, 'expired', 'expired');
       if (!result.replayed) released += 1;
     } catch (error) {
-      if (!(error instanceof AuthorizationNotActiveError)) throw error;
+      // 状态已被他路迁移 → 跳过；账户风控冻结 → 留待解冻后下轮处理（不得中断整轮扫描）
+      if (error instanceof AuthorizationNotActiveError || error instanceof FrozenAccountError) {
+        continue;
+      }
+      throw error;
     }
   }
   return { released };

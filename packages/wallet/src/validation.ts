@@ -29,6 +29,7 @@ export const currencySchema = z.string().length(3).regex(/^[A-Z]{3}$/, {
 export const accountCodeSchema = z.string().min(1).max(64).regex(/^[a-z][a-z0-9_]*$/, {
   message: '内部科目代码须为 snake_case（如 platform_revenue）',
 });
+export const memoSchema = z.string().max(255).optional();
 
 /** 账户寻址校验：userId（用户账户）或 code（内部科目）二选一；返回币种 */
 export function parseAccountRef(ref: {
@@ -68,15 +69,16 @@ export function parseUserRef(input: {
   refType: string;
   refId: string;
   currency?: string;
+  memo?: string;
 }): string {
   const { currency, ...rest } = input;
-  z.object({ userId: userIdSchema, refType: refTypeSchema, refId: refIdSchema }).parse(rest);
+  z.object({ userId: userIdSchema, refType: refTypeSchema, refId: refIdSchema, memo: memoSchema }).parse(rest);
   const resolved = currency ?? DEFAULT_CURRENCY;
   currencySchema.parse(resolved);
   return resolved;
 }
 
-/** 校验幂等键二元组（settle/release 共用） */
-export function parseRef(input: { refType: string; refId: string }): void {
-  z.object({ refType: refTypeSchema, refId: refIdSchema }).parse(input);
+/** 校验幂等键二元组（settle/release/transfer/freeze 共用） */
+export function parseRef(input: { refType: string; refId: string; memo?: string }): void {
+  z.object({ refType: refTypeSchema, refId: refIdSchema, memo: memoSchema }).parse(input);
 }
