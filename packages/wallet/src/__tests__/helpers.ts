@@ -14,7 +14,22 @@ export const pool = new Pool({
   max: 3, // 并行测试文件各持一池：16 文件 × 3 连接 < PG max_connections
 });
 export const db = drizzle(pool);
-export const wallet = createWallet(db);
+// 测试宽白名单：覆盖全部测试文件用到的科目/业务域/币种（含各文件专属隔离币种 ZB*）
+export const wallet = createWallet(db, {
+  accounts: [
+    'marketing_expense', 'marketing_budget', 'merchant_income', 'channel_cost',
+    'any_new_account', 'platform_treasury',
+  ],
+  refTypes: [
+    'topup', 'order', 'gift', 'payout', 'p2p', 'credit_line',
+    'risk_control', 'topup_refund', 'gift_refund', 'exchange',
+    'whatever_domain', 'inference',
+  ],
+  currencies: [
+    'CNY', 'USD', 'XAU', 'XDG', 'DIX', 'TSF', 'CUX',
+    'ZBA', 'ZBB', 'ZBC', 'ZBD', 'ZBE', 'ZBF',
+  ],
+});
 
 /** 跨文件并行的随机用户 ID（1e11 空间，碰撞概率可忽略） */
 export const nextUser = (): number => 900_000_000_000 + randomInt(0, 99_999_999_999);

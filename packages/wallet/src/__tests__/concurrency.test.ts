@@ -90,7 +90,9 @@ describe('并发：资金安全竞态', () => {
       connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
       max: 8,
     });
-    const raceWallet = createWallet(drizzle(racePool));
+    const raceWallet = createWallet(drizzle(racePool), {
+      accounts: [], refTypes: ['topup', 'order'], currencies: ['CNY'],
+    });
     try {
       const results = await Promise.all(
         Array.from({ length: 8 }, () =>

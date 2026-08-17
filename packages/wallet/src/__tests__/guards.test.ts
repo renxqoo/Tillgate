@@ -1,6 +1,6 @@
-/** 白名单守卫（createWallet 可选三张表）：堵三类静默错误——
+/** 三张白名单守卫（必填，fail-closed）：堵三类静默错误——
  *  科目拼错静默建抽屉 / refType 拼错幂等域分裂双入账 / 币种拼错余额隐身。
- *  不传 options = 开发期自由模式（行为与无守卫完全一致，零默认成本）。 */
+ *  未声明即拒绝：错误消息附可用清单。 */
 import { afterAll, describe, expect, it } from 'vitest';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
@@ -10,7 +10,7 @@ import {
   UnknownCurrencyError,
   UnknownRefTypeError,
 } from '../index';
-import { db, nextUser, ref, sameAmount } from './helpers';
+import { nextUser, ref, sameAmount } from './helpers';
 
 const guardedPool = new Pool({
   connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
@@ -89,13 +89,3 @@ describe('币种白名单（currencies）——防拼错币种余额隐身', () 
   });
 });
 
-describe('不传 options = 自由模式（零默认成本）', () => {
-  it('任何合法 code/refType/币种照旧可用，自动建科目行为不变', async () => {
-    const free = createWallet(db);
-    const user = nextUser();
-    await free.credit({ userId: user, amount: '1', refType: 'whatever_domain', refId: ref(user, 'x'), counterparty: 'any_new_account' });
-    await free.credit({ userId: user, currency: 'XDG', amount: '1', refType: 'whatever_domain', refId: ref(user, 'y') });
-    expect(sameAmount(await free.balance(user), '1')).toBe(true);
-    expect(sameAmount(await free.balance(user, 'XDG'), '1')).toBe(true);
-  });
-});

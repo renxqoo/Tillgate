@@ -19,19 +19,13 @@ import type { CreateWalletOptions, Wallet } from './types';
 import { DEFAULT_CURRENCY, OUTSIDE_ACCOUNT, REVENUE_ACCOUNT } from './types';
 import type { ValidationGuards } from './validation';
 
-export function createWallet(db: NodePgDatabase, options?: CreateWalletOptions): Wallet {
-  // 白名单守卫（可选维度；内置科目恒并入 accounts 集合）
-  const guards: ValidationGuards | undefined = options
-    ? {
-        refTypes: options.refTypes ? new Set(options.refTypes) : undefined,
-        currencies: options.currencies ? new Set(options.currencies) : undefined,
-        accountCodes: new Set([
-          OUTSIDE_ACCOUNT,
-          REVENUE_ACCOUNT,
-          ...(options.accounts ?? []),
-        ]),
-      }
-    : undefined;
+export function createWallet(db: NodePgDatabase, options: CreateWalletOptions): Wallet {
+  // 三张白名单必填（fail-closed）；内置科目恒并入 accounts 集合
+  const guards: ValidationGuards = {
+    refTypes: new Set(options.refTypes),
+    currencies: new Set(options.currencies),
+    accountCodes: new Set([OUTSIDE_ACCOUNT, REVENUE_ACCOUNT, ...options.accounts]),
+  };
   return {
     credit: (input) => credit(db, input, guards),
     authorize: (input) => authorize(db, input, guards),
