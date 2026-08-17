@@ -5,7 +5,7 @@ import { InsufficientBalanceError, WalletInternalError } from './errors';
 import { walletTransactions } from './schema';
 import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
-import { isUniqueViolation } from './internal';
+import { isUniqueViolation, runTx } from './internal';
 import { hasTransaction, replayLegged } from './replay';
 import { parseAmount, parseUserRef } from './validation';
 import { OUTSIDE_ACCOUNT } from './types';
@@ -23,7 +23,7 @@ export async function refund(db: NodePgDatabase, input: RefundInput): Promise<Cr
   }
 
   try {
-    return await db.transaction(async (tx) => {
+    return await runTx(db, async (tx) => {
       const userAccountId = await resolveUserAccount(tx, input.userId, currency);
       const cpAccountId = await resolveInternalAccount(tx, counterparty, currency);
       const accounts = await lockAccounts(tx, [userAccountId, cpAccountId]);

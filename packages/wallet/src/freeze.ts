@@ -5,7 +5,7 @@ import { WalletInternalError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
 import { resolveAccount } from './account';
 import { applyLeg } from './legs';
-import { isUniqueViolation } from './internal';
+import { isUniqueViolation, runTx } from './internal';
 import { replayFreeze } from './replay';
 import { parseAccountRef, parseRef } from './validation';
 import { Decimal } from './money';
@@ -16,7 +16,7 @@ export async function freeze(db: NodePgDatabase, input: FreezeInput): Promise<Fr
   const currency = parseAccountRef(input.target);
 
   try {
-    return await db.transaction(async (tx) => {
+    return await runTx(db, async (tx) => {
       const accountId = await resolveAccount(tx, input.target, currency);
       // 冻结操作本身允许作用于已冻结账户（幂等再冻结）——用原生行锁，不走 lockAccounts 的冻结检查
       const [account] = await tx

@@ -6,7 +6,7 @@ import { InsufficientBalanceError, RefKeyConflictError, WalletInternalError } fr
 import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccounts, resolveUserAccount } from './account';
 import { findAuthorization } from './authorizations';
-import { isUniqueViolation } from './internal';
+import { isUniqueViolation, runTx } from './internal';
 import { parseAmount, parseUserRef } from './validation';
 import type { AuthorizeInput, AuthorizeResult } from './types';
 
@@ -37,7 +37,7 @@ export async function authorize(
   }
 
   try {
-    return await db.transaction(async (tx) => {
+    return await runTx(db, async (tx) => {
       const accountId = await resolveUserAccount(tx, input.userId, currency);
       const accounts = await lockAccounts(tx, [accountId]);
       const account = accounts.get(accountId)!;

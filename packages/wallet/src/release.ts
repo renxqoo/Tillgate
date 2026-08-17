@@ -15,7 +15,7 @@ import { lockAccounts } from './account';
 import { findAuthorization } from './authorizations';
 import { parseRef } from './validation';
 import type { ReleaseInput, ReleaseResult } from './types';
-import type { Tx } from './internal';
+import { runTx, type Tx } from './internal';
 
 /** 释放：取消/失败——重复释放为幂等 no-op */
 export async function release(db: NodePgDatabase, input: ReleaseInput): Promise<ReleaseResult> {
@@ -37,7 +37,7 @@ async function transitionRelease(
   reason: string,
   terminal: 'released' | 'expired',
 ): Promise<ReleaseResult> {
-  return db.transaction(async (tx) => {
+  return runTx(db, async (tx) => {
     const claimed = await tx
       .update(walletAuthorizations)
       .set({ status: terminal, releaseReason: reason, updatedAt: new Date() })

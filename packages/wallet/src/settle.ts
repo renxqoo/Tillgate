@@ -20,14 +20,14 @@ import { findAuthorization } from './authorizations';
 import { parseAmount, parseRef } from './validation';
 import { REVENUE_ACCOUNT } from './types';
 import type { SettleInput, SettleResult } from './types';
-import type { Tx } from './internal';
+import { runTx, type Tx } from './internal';
 
 export async function settle(db: NodePgDatabase, input: SettleInput): Promise<SettleResult> {
   parseRef(input);
   const settleAmount = parseAmount(input.amount);
   const counterparty = input.counterparty ?? REVENUE_ACCOUNT;
 
-  return db.transaction(async (tx) => {
+  return runTx(db, async (tx) => {
     // CAS：active → settled（0 行 = 他路已处理：settled 重放、released/expired 拒绝）
     const claimed = await tx
       .update(walletAuthorizations)

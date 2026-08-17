@@ -11,7 +11,7 @@ import { WalletInternalError } from './errors';
 import { walletTransactions } from './schema';
 import { lockAccounts, resolveAccount } from './account';
 import { applyLeg } from './legs';
-import { isUniqueViolation } from './internal';
+import { isUniqueViolation, runTx } from './internal';
 import { hasTransaction, replayTransfer } from './replay';
 import { parseAccountRef, parseAmount, parseRef } from './validation';
 import type { TransferInput, TransferResult } from './types';
@@ -28,7 +28,7 @@ export async function transfer(db: NodePgDatabase, input: TransferInput): Promis
   }
 
   try {
-    return await db.transaction(async (tx) => {
+    return await runTx(db, async (tx) => {
       const fromId = await resolveAccount(tx, input.from, fromCurrency);
       const toId = await resolveAccount(tx, input.to, toCurrency);
       if (fromId === toId) throw new SameAccountTransferError(fromId);

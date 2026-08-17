@@ -7,7 +7,7 @@ import { CreditLimitConflictError, WalletInternalError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
 import { lockAccounts, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
-import { isUniqueViolation } from './internal';
+import { isUniqueViolation, runTx } from './internal';
 import { replayCreditLine } from './replay';
 import { parseNonNegativeAmount, parseUserRef } from './validation';
 import type { CreditLineInput, CreditLineResult } from './types';
@@ -20,7 +20,7 @@ export async function setCreditLimit(
   const newLimit = parseNonNegativeAmount(input.amount);
 
   try {
-    return await db.transaction(async (tx) => {
+    return await runTx(db, async (tx) => {
       const accountId = await resolveUserAccount(tx, input.userId, currency);
       const accounts = await lockAccounts(tx, [accountId]);
       const account = accounts.get(accountId)!;
