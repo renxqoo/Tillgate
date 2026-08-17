@@ -2,7 +2,8 @@ import { classifyHttpError, createUpstreamError } from '../errors/classify';
 import { asRecord } from '../internal/util';
 import type { ChannelDesc, Endpoint, GenerationArtifact, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
-import { createRestTaskOps } from './task-kit.js';
+// 裸扩展名导入（包约定）：Next transpilePackages 不做 .js→.ts 映射，带后缀会让 admin 打包解析失败
+import { createRestTaskOps } from './task-kit';
 
 /**
  * MiniMax 适配器（protocol 'minimax'）：
