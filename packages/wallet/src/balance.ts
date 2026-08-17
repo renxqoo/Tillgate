@@ -2,9 +2,10 @@
 import { and, asc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { z } from 'zod';
+import { UnknownCurrencyError } from './errors';
 import { normalizeAmount } from './money';
 import { walletAccounts } from './schema';
-import { currencySchema, userIdSchema } from './validation';
+import { currencySchema, userIdSchema, type ValidationGuards } from './validation';
 import { DEFAULT_CURRENCY } from './types';
 import type { AccountSummary } from './types';
 
@@ -12,9 +13,13 @@ export async function balance(
   db: NodePgDatabase,
   userId: number,
   currency: string = DEFAULT_CURRENCY,
+  guards?: ValidationGuards,
 ): Promise<string> {
   z.object({ userId: userIdSchema }).parse({ userId });
   currencySchema.parse(currency);
+  if (guards?.currencies && !guards.currencies.has(currency)) {
+    throw new UnknownCurrencyError(currency, [...guards.currencies]);
+  }
   const [row] = await db
     .select({ balance: walletAccounts.balance })
     .from(walletAccounts)

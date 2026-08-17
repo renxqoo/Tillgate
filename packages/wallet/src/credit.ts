@@ -7,14 +7,19 @@ import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './acco
 import { applyLeg } from './legs';
 import { isUniqueViolation, runTx } from './internal';
 import { replayLegged } from './replay';
-import { parseAmount, parseUserRef } from './validation';
+import { parseAmount, parseCounterparty, parseUserRef, type ValidationGuards } from './validation';
 import { OUTSIDE_ACCOUNT } from './types';
 import type { CreditInput, CreditResult } from './types';
 
-export async function credit(db: NodePgDatabase, input: CreditInput): Promise<CreditResult> {
-  const currency = parseUserRef(input);
+export async function credit(
+  db: NodePgDatabase,
+  input: CreditInput,
+  guards?: ValidationGuards,
+): Promise<CreditResult> {
+  const currency = parseUserRef(input, guards);
   const amount = parseAmount(input.amount);
   const counterparty = input.counterparty ?? OUTSIDE_ACCOUNT;
+  parseCounterparty(counterparty, guards);
 
   try {
     return await runTx(db, async (tx) => {

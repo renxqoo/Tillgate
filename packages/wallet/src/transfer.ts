@@ -13,14 +13,18 @@ import { lockAccounts, resolveAccount } from './account';
 import { applyLeg } from './legs';
 import { isUniqueViolation, runTx } from './internal';
 import { hasTransaction, replayTransfer } from './replay';
-import { parseAccountRef, parseAmount, parseRef } from './validation';
+import { parseAccountRef, parseAmount, parseRef, type ValidationGuards } from './validation';
 import type { TransferInput, TransferResult } from './types';
 
-export async function transfer(db: NodePgDatabase, input: TransferInput): Promise<TransferResult> {
-  parseRef({ refType: input.refType, refId: input.refId });
+export async function transfer(
+  db: NodePgDatabase,
+  input: TransferInput,
+  guards?: ValidationGuards,
+): Promise<TransferResult> {
+  parseRef({ refType: input.refType, refId: input.refId }, guards);
   const amount = parseAmount(input.amount);
-  const fromCurrency = parseAccountRef(input.from);
-  const toCurrency = parseAccountRef(input.to);
+  const fromCurrency = parseAccountRef(input.from, guards);
+  const toCurrency = parseAccountRef(input.to, guards);
 
   // 幂等快速路径：守卫之前先查已存在（首笔可能已把余额转走，重放不该再过守卫）
   if (await hasTransaction(db, input.refType, input.refId, 'transfer')) {

@@ -15,21 +15,37 @@ import { setCreditLimit } from './credit-line';
 import { freeze } from './freeze';
 import { accounts, balance } from './balance';
 import { statement } from './statement';
-import type { Wallet } from './types';
+import type { CreateWalletOptions, Wallet } from './types';
+import { DEFAULT_CURRENCY, OUTSIDE_ACCOUNT, REVENUE_ACCOUNT } from './types';
+import type { ValidationGuards } from './validation';
 
-export function createWallet(db: NodePgDatabase): Wallet {
+export function createWallet(db: NodePgDatabase, options?: CreateWalletOptions): Wallet {
+  // 白名单守卫（可选维度；内置科目恒并入 accounts 集合）
+  const guards: ValidationGuards | undefined = options
+    ? {
+        refTypes: options.refTypes ? new Set(options.refTypes) : undefined,
+        currencies: options.currencies ? new Set(options.currencies) : undefined,
+        accountCodes: new Set([
+          OUTSIDE_ACCOUNT,
+          REVENUE_ACCOUNT,
+          ...(options.accounts ?? []),
+        ]),
+      }
+    : undefined;
   return {
-    credit: (input) => credit(db, input),
-    authorize: (input) => authorize(db, input),
-    settle: (input) => settle(db, input),
-    release: (input) => release(db, input),
-    refund: (input) => refund(db, input),
-    transfer: (input) => transfer(db, input),
-    setCreditLimit: (input) => setCreditLimit(db, input),
-    freeze: (input) => freeze(db, input),
-    balance: (userId, currency) => balance(db, userId, currency),
+    credit: (input) => credit(db, input, guards),
+    authorize: (input) => authorize(db, input, guards),
+    settle: (input) => settle(db, input, guards),
+    release: (input) => release(db, input, guards),
+    refund: (input) => refund(db, input, guards),
+    transfer: (input) => transfer(db, input, guards),
+    setCreditLimit: (input) => setCreditLimit(db, input, guards),
+    freeze: (input) => freeze(db, input, guards),
+    balance: (userId, currency) => balance(db, userId, currency ?? DEFAULT_CURRENCY, currency !== undefined ? guards : undefined),
     accounts: (userId) => accounts(db, userId),
     statement: (input) => statement(db, input),
     releaseExpired: (now, limit) => releaseExpired(db, now, limit),
   };
 }
+
+export { DEFAULT_CURRENCY };

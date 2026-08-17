@@ -201,8 +201,15 @@ authorize 时带上 expiresAt（如 15 分钟后）
 
 ```ts
 import { createWallet, provision } from '@ai-gateway/wallet';
-const wallet = createWallet(db);
 await provision(db);
+
+// 生产建议：声明三张白名单（全部可选；不传 = 开发期自由模式）
+const wallet = createWallet(db, {
+  accounts: ['channel_cost', 'marketing_expense'], // 自定义科目（内置 outside/platform_revenue 免声明）
+  refTypes: ['topup', 'order', 'payout'],          // 业务域——防拼错导致幂等域分裂双入账
+  currencies: ['CNY', 'USD'],                       // 币种——防拼错导致余额"隐身"
+});
+// 越界即抛 UnknownAccountCodeError / UnknownRefTypeError / UnknownCurrencyError（错误消息附可用清单）
 
 await wallet.credit({ userId, amount: '99.00', refType: 'topup', refId: tradeNo });            // 充值
 await wallet.authorize({ userId, amount: '259', refType: 'order', refId: orderId, expiresAt });// 冻结
@@ -234,6 +241,7 @@ await wallet.releaseExpired(new Date(), 100);                                   
 3. **一个冻结单次结算**：分次扣款 = 多次独立 authorize（installment 维度已设计、挂起）
 4. **幂等键全局唯一**：不含用户/币种维度；顶撞抛 `RefKeyConflictError`（键设计责任在调用方）
 5. **守卫前重放**：transfer/refund/authorize 先查重放再过余额守卫——首笔花掉余额后重放不被误伤
+6. **三张白名单**：accounts/refTypes/currencies 可选声明——分别堵「科目拼错静默建抽屉（Σ=0 抓不到）」「refType 拼错幂等域分裂双入账」「币种拼错余额隐身」三类静默错误；不传 = 自由模式
 
 ## 八、数据模型：四张表逐字段讲清
 

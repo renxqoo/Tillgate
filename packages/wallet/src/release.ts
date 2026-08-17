@@ -13,13 +13,17 @@ import {
 import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccounts } from './account';
 import { findAuthorization } from './authorizations';
-import { parseRef } from './validation';
+import { parseRef, type ValidationGuards } from './validation';
 import type { ReleaseInput, ReleaseResult } from './types';
 import { runTx, type Tx } from './internal';
 
 /** 释放：取消/失败——重复释放为幂等 no-op */
-export async function release(db: NodePgDatabase, input: ReleaseInput): Promise<ReleaseResult> {
-  parseRef(input);
+export async function release(
+  db: NodePgDatabase,
+  input: ReleaseInput,
+  guards?: ValidationGuards,
+): Promise<ReleaseResult> {
+  parseRef(input, guards);
   return transitionRelease(
     db,
     input.refType,

@@ -17,15 +17,20 @@ import {
 import { lockAccounts, resolveInternalAccount } from './account';
 import { applyLeg } from './legs';
 import { findAuthorization } from './authorizations';
-import { parseAmount, parseRef } from './validation';
+import { parseAmount, parseCounterparty, parseRef, type ValidationGuards } from './validation';
 import { REVENUE_ACCOUNT } from './types';
 import type { SettleInput, SettleResult } from './types';
 import { runTx, type Tx } from './internal';
 
-export async function settle(db: NodePgDatabase, input: SettleInput): Promise<SettleResult> {
-  parseRef(input);
+export async function settle(
+  db: NodePgDatabase,
+  input: SettleInput,
+  guards?: ValidationGuards,
+): Promise<SettleResult> {
+  parseRef(input, guards);
   const settleAmount = parseAmount(input.amount);
   const counterparty = input.counterparty ?? REVENUE_ACCOUNT;
+  parseCounterparty(counterparty, guards);
 
   return runTx(db, async (tx) => {
     // CAS：active → settled（0 行 = 他路已处理：settled 重放、released/expired 拒绝）

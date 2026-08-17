@@ -7,15 +7,20 @@ import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './acco
 import { applyLeg } from './legs';
 import { isUniqueViolation, runTx } from './internal';
 import { hasTransaction, replayLegged } from './replay';
-import { parseAmount, parseUserRef } from './validation';
+import { parseAmount, parseCounterparty, parseUserRef, type ValidationGuards } from './validation';
 import { OUTSIDE_ACCOUNT } from './types';
 import type { CreditResult, RefundInput } from './types';
 
-export async function refund(db: NodePgDatabase, input: RefundInput): Promise<CreditResult> {
-  const currency = parseUserRef(input);
+export async function refund(
+  db: NodePgDatabase,
+  input: RefundInput,
+  guards?: ValidationGuards,
+): Promise<CreditResult> {
+  const currency = parseUserRef(input, guards);
   const amount = parseAmount(input.amount);
   // 退款 = 钱离开用户余额回到对手科目（缺省原路退回外部；费用承担类退款可指定营销费用等科目）
   const counterparty = input.counterparty ?? OUTSIDE_ACCOUNT;
+  parseCounterparty(counterparty, guards);
 
   // 幂等快速路径：守卫之前先查已存在（首笔可能已把余额花掉，重放不该再过守卫）
   if (await hasTransaction(db, input.refType, input.refId, 'refund')) {

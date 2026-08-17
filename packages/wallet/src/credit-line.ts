@@ -9,14 +9,15 @@ import { lockAccounts, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
 import { isUniqueViolation, runTx } from './internal';
 import { replayCreditLine } from './replay';
-import { parseNonNegativeAmount, parseUserRef } from './validation';
+import { parseNonNegativeAmount, parseUserRef, type ValidationGuards } from './validation';
 import type { CreditLineInput, CreditLineResult } from './types';
 
 export async function setCreditLimit(
   db: NodePgDatabase,
   input: CreditLineInput,
+  guards?: ValidationGuards,
 ): Promise<CreditLineResult> {
-  const currency = parseUserRef(input);
+  const currency = parseUserRef(input, guards);
   const newLimit = parseNonNegativeAmount(input.amount);
 
   try {

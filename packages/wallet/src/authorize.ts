@@ -7,14 +7,15 @@ import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccounts, resolveUserAccount } from './account';
 import { findAuthorization } from './authorizations';
 import { isUniqueViolation, runTx } from './internal';
-import { parseAmount, parseUserRef } from './validation';
+import { parseAmount, parseUserRef, type ValidationGuards } from './validation';
 import type { AuthorizeInput, AuthorizeResult } from './types';
 
 export async function authorize(
   db: NodePgDatabase,
   input: AuthorizeInput,
+  guards?: ValidationGuards,
 ): Promise<AuthorizeResult> {
-  const currency = parseUserRef(input);
+  const currency = parseUserRef(input, guards);
   const amount = parseAmount(input.amount);
 
   // 幂等快速路径：可用口径守卫之前先查既有冻结（重放不该被余额守卫误伤）

@@ -100,6 +100,41 @@ export class InvalidAccountRefError extends WalletError {
   }
 }
 
+/** 科目未声明：counterparty/转账目标/freeze 目标不在启动时声明的科目白名单内。
+ *  没有白名单时科目会静默自动创建——拼错的 code 会把钱记进错的抽屉且 Σ腿=0 抓不到，
+ *  生产应显式声明科目表（createWallet({ accounts: [...] })）。 */
+export class UnknownAccountCodeError extends WalletError {
+  constructor(
+    readonly code: string,
+    readonly allowed: readonly string[],
+  ) {
+    super(`unknown account code '${code}' (allowed: ${allowed.join(', ')})`, 'unknown_account_code');
+    this.name = 'UnknownAccountCodeError';
+  }
+}
+
+/** 业务域未声明：refType 不在白名单内——拼错 refType 会让幂等域分裂（同一单号双入账） */
+export class UnknownRefTypeError extends WalletError {
+  constructor(
+    readonly refType: string,
+    readonly allowed: readonly string[],
+  ) {
+    super(`unknown refType '${refType}' (allowed: ${allowed.join(', ')})`, 'unknown_ref_type');
+    this.name = 'UnknownRefTypeError';
+  }
+}
+
+/** 币种未声明：拼错币种会静默建新币种账户，用户余额"隐身" */
+export class UnknownCurrencyError extends WalletError {
+  constructor(
+    readonly currency: string,
+    readonly allowed: readonly string[],
+  ) {
+    super(`unknown currency '${currency}' (allowed: ${allowed.join(', ')})`, 'unknown_currency');
+    this.name = 'UnknownCurrencyError';
+  }
+}
+
 /** 业务键无对应冻结（settle/release 寻址失败）——调用方数据不一致 */
 export class AuthorizationNotFoundError extends WalletError {
   constructor(refType: string, refId: string) {

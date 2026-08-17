@@ -7,13 +7,17 @@ import { resolveAccount } from './account';
 import { applyLeg } from './legs';
 import { isUniqueViolation, runTx } from './internal';
 import { replayFreeze } from './replay';
-import { parseAccountRef, parseRef } from './validation';
+import { parseAccountRef, parseRef, type ValidationGuards } from './validation';
 import { Decimal } from './money';
 import type { FreezeInput, FreezeResult } from './types';
 
-export async function freeze(db: NodePgDatabase, input: FreezeInput): Promise<FreezeResult> {
-  parseRef({ refType: input.refType, refId: input.refId });
-  const currency = parseAccountRef(input.target);
+export async function freeze(
+  db: NodePgDatabase,
+  input: FreezeInput,
+  guards?: ValidationGuards,
+): Promise<FreezeResult> {
+  parseRef({ refType: input.refType, refId: input.refId }, guards);
+  const currency = parseAccountRef(input.target, guards);
 
   try {
     return await runTx(db, async (tx) => {

@@ -197,6 +197,21 @@ export interface StatementResult {
   nextCursor: number | null;
 }
 
+/** 生产白名单（全部可选；不传 = 开发期自由模式，行为与无选项完全一致）。
+ *  三张白名单各堵一类静默错误：
+ *    accounts   —— 科目拼错会静默建科目、钱进错抽屉（Σ腿=0 抓不到）
+ *    refTypes   —— 业务域拼错会让幂等域分裂，同一单号双入账
+ *    currencies —— 币种拼错会静默建新币种账户，余额"隐身"
+ *  内置科目 outside / platform_revenue 恒可用，无需声明。 */
+export interface CreateWalletOptions {
+  /** 允许的内部科目 code 白名单（内置科目免声明） */
+  accounts?: readonly string[];
+  /** 允许的 refType 业务域白名单 */
+  refTypes?: readonly string[];
+  /** 允许的币种白名单（如 ['CNY', 'USD']） */
+  currencies?: readonly string[];
+}
+
 export interface Wallet {
   credit(input: CreditInput): Promise<CreditResult>;
   authorize(input: AuthorizeInput): Promise<AuthorizeResult>;
