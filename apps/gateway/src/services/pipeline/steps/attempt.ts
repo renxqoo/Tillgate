@@ -1,6 +1,13 @@
 import type { Context } from 'hono';
 import type { ChannelDesc, UpstreamError } from '@ai-gateway/ai';
-import { estimateInputTokens, estimateUsage } from '@ai-gateway/ai';
+import {
+  estimateInputTokens,
+  estimateUsage,
+  generationKindDescriptor,
+  isTaskKind,
+  type GenerationKind,
+} from '@ai-gateway/ai';
+import { isModalityKind, modalityUsage } from '../../modality-usage.js';
 import { SpanStatusCode } from '@ai-gateway/core';
 import { upstreamPassthroughReject, type GatewayReject } from '../../../lib/errors.js';
 import { renderReject } from '../../../lib/http.js';
@@ -34,6 +41,7 @@ import {
   recordEstimatedOutcome,
   recordReleasedFailure,
   recordSuccess,
+  recordTaskSubmitted,
   upstreamCharge,
   withBillingLifecycle,
 } from './finalize.js';
@@ -64,7 +72,7 @@ export async function attemptChannel(
   tracers: PipelineTracers,
   args: AttemptArgs,
 ): Promise<AttemptOutcome> {
-  const { requestId, target, channel, ctx, stream } = args;
+  const { requestId, target, channel, ctx, stream, kind } = args;
   const { logger } = deps;
 
   // ---- 渠道级限流（保护上游 API key 配额；超限换下一个渠道）----
@@ -78,6 +86,49 @@ export async function attemptChannel(
     apiKey: channel.apiKey,
     protocol: channel.protocol,
   };
+
+  // ---- 任务族（execution ≠ sync）：提交即返回。upstream.started（带 TTL 租约）在
+  // recordTaskSubmitted 内与任务行同序落库，不走下面的同步请求租约。----
+  if (isTaskKind(kind)) {
+    const upSpan = tracers.upstream.startSpan(`upstream ${channel.providerName}`);
+    upSpan.setAttributes({
+      'channel.id': channel.channelId,
+      'channel.key': channel.key,
+      'ai.model': target.realModel,
+      'channel.attempt': ctx.attemptNo,
+      'request.id': requestId,
+      'generation.kind': kind,
+    });
+    try {
+      const outcome = await attemptTaskSubmit(deps, tracers, {
+        ...args,
+        channelDesc,
+        trace: { requestContext: args.requestTrace.requestContext, upSpan },
+      });
+      if (outcome.kind === 'success') {
+        upSpan.setAttribute('http.status_code', 201);
+      } else if (outcome.error) {
+        upSpan.setAttributes({
+          'http.status_code': outcome.error.status,
+          'upstream.error_code': outcome.error.code,
+        });
+        upSpan.setStatus({ code: SpanStatusCode.ERROR, message: outcome.error.code });
+      }
+      return outcome;
+    } catch (err) {
+      logger.error({ requestId, channel: channel.key, err }, 'generation submit unexpected error');
+      upSpan.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        kind: 'switch',
+        error: channelError('upstream_error', '网关内部错误', 500, 'unknown'),
+      };
+    } finally {
+      upSpan.end();
+    }
+  }
 
   await deps.billing.signal({
     type: 'upstream.started',
@@ -122,6 +173,11 @@ export async function attemptChannel(
         'http.status_code': outcome.error.status,
         'upstream.error_code': outcome.error.code,
       });
+      // 失败尝试必须在 span 状态上可见（图谱标红 + errorText=错误码）；
+      // aborted 是用户侧取消，按链路政策不标红（graph.ts 口径）。
+      if (outcome.error.code !== 'aborted') {
+        upSpan.setStatus({ code: SpanStatusCode.ERROR, message: outcome.error.code });
+      }
     }
     return outcome;
   } catch (err) {
@@ -189,6 +245,10 @@ async function attemptStream(
     if (e.type === 'failed') {
       state.failed = e.error;
       relaySpan.setAttributes({ 'upstream.error_code': e.error.code });
+      // aborted（用户侧取消）不标红，其余失败在 span 状态上留痕
+      if (e.error.code !== 'aborted') {
+        relaySpan.setStatus({ code: SpanStatusCode.ERROR, message: e.error.code });
+      }
       relaySpan.end();
     }
     if (e.type === 'success') {
@@ -399,10 +459,33 @@ async function attemptNonStream(
   const { c, auth, requestId, body, externalModel, kind, target, channel, channelDesc, ctx, trace } =
     args;
   const { ai, logger } = deps;
-  const result = await ai.chat({ channel: channelDesc, request: args.body, ctx });
+  // multipart 模态端点：wrapper.upstreamForm 是重组好的上游 FormData（字节原样）
+  const upstreamRequest =
+    args.body.upstreamForm instanceof FormData ? args.body.upstreamForm : args.body;
+  const result = await ai.chat({ channel: channelDesc, request: upstreamRequest, ctx });
 
   if (result.status === 'success') {
     logger.info({ requestId, channel: channel.key, usage: result.usage }, 'non-stream success');
+    // 二进制响应（audio_speech）：计费收据（units 由模态计量源给出）后原样字节透传
+    if (result.rawBody) {
+      const usage = modalityUsage(kind as never, args.body, null);
+      await recordSuccess(
+        deps,
+        tracers,
+        makeReceipt(auth, requestId, externalModel, target, channel, usage, result.durationMs, false, false),
+        trace,
+      );
+      recordRequest(target.realModel, 200, result.durationMs);
+      return {
+        kind: 'success',
+        response: new Response(result.rawBody, {
+          headers: {
+            'content-type': result.rawContentType ?? 'application/octet-stream',
+            'x-request-id': requestId,
+          },
+        }),
+      };
+    }
     // 非流式：整响应一次到达，TTFB = 上游耗时；usage 终值此时已知
     trace.upSpan.setAttributes({
       'upstream.ttfb_ms': result.durationMs,
@@ -415,7 +498,16 @@ async function attemptNonStream(
         : {}),
     });
     try {
-      if (!result.usage || result.usage.estimated) {
+      if (isModalityKind(kind) && kind !== 'audio_speech') {
+        // 模态端点计量：units 从响应体/请求体提取（images 张数等），不走 token 估算
+        const usage = modalityUsage(kind, args.body, result.body);
+        await recordSuccess(
+          deps,
+          tracers,
+          makeReceipt(auth, requestId, externalModel, target, channel, usage, result.durationMs, false, false),
+          trace,
+        );
+      } else if (!result.usage || result.usage.estimated) {
         // 2026-08-17 政策：非流式完成缺 usage → 按请求体+响应体估算结算
         //（estimateUsage 单一真相；estimatedFor=usage_missing_nonstream 留痕）
         const estimated = estimateUsage(body, result.body, {
@@ -480,7 +572,11 @@ async function attemptNonStream(
             model: externalModel,
             choices: [],
           }
-        : { model: externalModel, data: [], usage: {} };
+        : kind === 'images' || kind === 'images_edits'
+          ? { created: Math.floor(Date.now() / 1000), data: [] }
+          : kind === 'moderations'
+            ? { id: requestId, model: externalModel, results: [] }
+            : { model: externalModel, data: [], usage: {} };
     const relayed =
       result.body &&
       typeof result.body === 'object' &&
@@ -560,4 +656,182 @@ function sseResponse(stream: ReadableStream<Uint8Array>, requestId: string): Res
       'x-request-id': requestId,
     },
   });
+}
+
+/**
+ * 任务族尝试（video/music）：
+ *   video —— 调上游提交（ai.chat endpoint=video）→ 解析 task_id →
+ *            recordTaskSubmitted（任务行 + TTL 租约）→ 201 {id, task_id, status}
+ *   music —— 不调上游（同步阻塞型，由 worker 代执行）：直接登记任务 → 201
+ * 失败语义与同步尝试一致：可换渠道错误 → switch（上层换渠道/候选）；
+ * 4xx 客户端问题 → 原样透传；任务行落库失败 → 503（预留保留，禁止误退款）。
+ */
+async function attemptTaskSubmit(
+  deps: PipelineDeps,
+  tracers: PipelineTracers,
+  args: AttemptArgs & {
+    channelDesc: ChannelDesc;
+    trace: AttemptTraceContext;
+  },
+): Promise<AttemptOutcome> {
+  const { c, auth, requestId, body, externalModel, kind, target, channel, channelDesc, ctx, trace } =
+    args;
+  const { ai, logger } = deps;
+  const startedAt = Date.now();
+  const descriptor = generationKindDescriptor(kind);
+  if (!descriptor?.snapshotParams) {
+    // 词表单一真相在描述符注册表：任务 kind 必有描述符与快照白名单
+    return {
+      kind: 'switch',
+      error: channelError('upstream_error', `未知生成类型 ${kind}`, 500, 'unknown'),
+    };
+  }
+  // units 单一真相：预扣上界（resolve）与结算快照同一实现（descriptors.ts）
+  const units = descriptor.unitsUpperBoundOf(body, target.pricingUnit);
+  const params = descriptor.snapshotParams(body);
+
+  const persist = async (upstreamTaskId: string | null): Promise<Response> => {
+    try {
+      await recordTaskSubmitted(deps, tracers, {
+        auth,
+        requestId,
+        externalModel,
+        target,
+        channel,
+        kind: kind as GenerationKind,
+        params,
+        upstreamTaskId,
+        units,
+        durationMs: Date.now() - startedAt,
+        trace,
+      });
+    } catch (error) {
+      logger.error(
+        { requestId, err: error instanceof Error ? error.message : String(error) },
+        'generation task persistence failed',
+      );
+      // 任务行未落库：预留保留（租约恢复链释放），客户端收到可重试错误——
+      // 与同步路径 billing_receipt_unavailable 同语义。
+      return renderReject(c, {
+        code: 'billing_receipt_unavailable',
+        status: 503,
+        message: '任务登记暂时无法持久化',
+        suggestion: '请稍后重试；若已扣费请联系管理员核对',
+      });
+    }
+    recordRequest(target.realModel, 201, Date.now() - startedAt);
+    return c.json(
+      {
+        id: requestId,
+        object: kind,
+        model: externalModel,
+        ...(upstreamTaskId !== null ? { task_id: upstreamTaskId } : {}),
+        status: 'queued',
+      },
+      201,
+      { 'x-request-id': requestId },
+    );
+  };
+
+  // task_execute（同步阻塞型上游，如 music）：网关不调上游，worker 代执行
+  if (descriptor.execution === 'task_execute') {
+    return { kind: 'success', response: await persist(null) };
+  }
+
+  // task_poll：上游提交（提交型调用仍走 ai.chat 的重试/熔断/凭据面）
+  const result = await ai.chat({ channel: channelDesc, request: body, ctx });
+  if (result.status === 'success') {
+    const parsed = ai.parseGenerationResponse?.({
+      channel: channelDesc,
+      endpoint: kind as 'video',
+      body: result.body,
+    });
+    if (parsed && parsed.kind === 'task_submitted') {
+      const response = await persist(parsed.taskId);
+      // 任务行落库失败 → 503 已构建，但上游任务已提交（可能已计费）——按 respond
+      // 语义穿出（不换渠道重提，防同一请求双任务）；成功则正常 success。
+      if (response.status === 503) {
+        return {
+          kind: 'respond',
+          response,
+          error: {
+            code: 'billing_receipt_unavailable',
+            message: 'task persistence failed',
+            status: 503,
+            upstreamCharge: 'unknown',
+          },
+        };
+      }
+      return { kind: 'success', response };
+    }
+    // 200 但无 task_id（或协议不支持任务）→ 渠道级错误，换渠道
+    const err = parsed?.kind === 'error' ? parsed.error : undefined;
+    logger.warn({ requestId, channel: channel.key }, 'generation submit response unparsable');
+    recordChannelFailure(channel.key);
+    return {
+      kind: 'switch',
+      error: {
+        code: err?.code ?? 'invalid_response',
+        message: err?.message ?? '上游未返回任务号',
+        status: err?.status ?? 502,
+        upstreamCharge: upstreamCharge(err?.code ?? 'invalid_response'),
+      },
+    };
+  }
+
+  const err = result.error;
+  if (err && isChannelSwitchable(err.code)) {
+    logger.warn(
+      { requestId, channel: channel.key, code: err.code },
+      'generation submit failed, switching',
+    );
+    recordChannelFailure(channel.key);
+    if (isDeadCredentialError(err)) {
+      void markChannelDeadCredential(deps.db, deps.router, channel.channelId, deps.logger);
+    }
+    return {
+      kind: 'switch',
+      error: {
+        code: err.code,
+        message: err.message,
+        status: err.status ?? 502,
+        suggestion: err.suggestion,
+        upstreamCharge: upstreamCharge(err.code),
+      },
+    };
+  }
+  const status =
+    err?.status !== undefined && err.status >= 400 && err.status < 600 ? err.status : 502;
+  const safeMessage = sanitizeUpstreamDetail(
+    err?.message,
+    sanitizeCtx(externalModel, target, channel),
+  );
+  const passthrough =
+    status >= 400 && status < 500
+      ? upstreamPassthroughReject({
+          code: err?.code ?? 'upstream_error',
+          status,
+          message: safeMessage,
+          suggestion: err?.suggestion,
+        })
+      : null;
+  return {
+    kind: 'respond',
+    response: renderReject(
+      c,
+      passthrough ?? {
+        code: err?.code ?? 'upstream_error',
+        status,
+        message: safeMessage,
+        suggestion: err?.suggestion,
+      },
+    ),
+    error: {
+      code: err?.code ?? 'upstream_error',
+      message: safeMessage,
+      status,
+      suggestion: err?.suggestion,
+      upstreamCharge: upstreamCharge(err?.code),
+    },
+  };
 }

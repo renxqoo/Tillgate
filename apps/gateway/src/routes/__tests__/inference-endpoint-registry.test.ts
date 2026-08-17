@@ -39,18 +39,36 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-/** 按 kind 生成合法请求体 */
-function bodyFor(kind: string, model: string): Record<string, unknown> {
-  return kind === 'embeddings'
-    ? { model, input: 'hello' }
-    : { model, messages: [{ role: 'user', content: 'hi' }], stream: false };
+/** 按端点路径生成合法外部请求体（入站协议端点用各自线格式的字段） */
+function bodyFor(path: string, model: string): Record<string, unknown> {
+  switch (path) {
+    case '/v1/embeddings':
+      return { model, input: 'hello' };
+    case '/v1/completions':
+      return { model, prompt: 'hi', stream: false };
+    case '/v1/responses':
+      return { model, input: 'hi', stream: false };
+    case '/v1/messages':
+      return { model, max_tokens: 64, messages: [{ role: 'user', content: 'hi' }], stream: false };
+    case '/v1/video/generations':
+      return { model, prompt: '一只猫在散步', duration: 6 };
+    case '/v1/music/generations':
+      return { model, prompt: '爵士乐' };
+    default:
+      return { model, messages: [{ role: 'user', content: 'hi' }], stream: false };
+  }
 }
 
 describe('推理端点注册表（inferenceEndpoints 单一真相）', () => {
-  it('注册表覆盖当前对外面：chat 与 embeddings', () => {
+  it('注册表覆盖当前对外面：chat / embeddings / completions / responses / claude messages', () => {
     expect(inferenceEndpoints.map((e) => e.path)).toEqual([
       '/v1/chat/completions',
       '/v1/embeddings',
+      '/v1/completions',
+      '/v1/responses',
+      '/v1/messages',
+      '/v1/video/generations',
+      '/v1/music/generations',
     ]);
   });
 
@@ -61,7 +79,7 @@ describe('推理端点注册表（inferenceEndpoints 单一真相）', () => {
       const res = await app.request(endpoint.path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(bodyFor(endpoint.kind, 'whatever')),
+        body: JSON.stringify(bodyFor(endpoint.path, 'whatever')),
       });
       expect(res.status).toBe(401);
     });
@@ -74,6 +92,7 @@ describe('推理端点注册表（inferenceEndpoints 单一真相）', () => {
       try {
         const seenEndpoints: Array<RequestCtx['endpoint']> = [];
         const ai = makeMockAi({
+          parseGenerationResponse: vi.fn(() => ({ kind: 'task_submitted' as const, taskId: 'reg-1' })),
           chat: vi.fn(async () => ({
             status: 'success' as const,
             usage: {
@@ -96,11 +115,17 @@ describe('推理端点注册表（inferenceEndpoints 单一真相）', () => {
         const res = await app.request(endpoint.path, {
           method: 'POST',
           headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify(bodyFor(endpoint.kind, ids.externalModel)),
+          body: JSON.stringify(bodyFor(endpoint.path, ids.externalModel)),
         });
-        expect(res.status).toBe(200);
-        // chat 无显式 endpoint（默认）；embeddings 显式 'embeddings'
-        expect(seenEndpoints).toEqual([endpoint.kind === 'embeddings' ? 'embeddings' : undefined]);
+        // 任务族提交即 201；music 不调上游（worker 代执行），video 显式 'video'
+        const isTask = endpoint.kind === 'video' || endpoint.kind === 'music';
+        expect(res.status).toBe(isTask ? 201 : 200);
+        const expectedEndpoint = isTask
+          ? endpoint.kind === 'video'
+            ? ['video' as const]
+            : []
+          : [endpoint.kind === 'embeddings' ? ('embeddings' as const) : undefined];
+        expect(seenEndpoints).toEqual(expectedEndpoint);
       } finally {
         await cleanupTestData(db, redis, userId, keyHash, ids);
       }

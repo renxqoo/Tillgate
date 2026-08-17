@@ -7,6 +7,9 @@ import { healthRoutes } from './routes/health.js';
 import { debugTracesRoutes } from './routes/debug-traces.js';
 import { modelsRoutes } from './routes/models.js';
 import { inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
+import { generationTaskRoutes } from './routes/generation-tasks.js';
+import { nativeProtocolRoutes } from './routes/native-protocol.js';
+import { modalityRoutes, modalityEndpointPaths } from './routes/modality-endpoints.js';
 import { oauthTokenRoutes } from './routes/oauth-token.js';
 import { authMiddleware, type AuthEnv } from './middleware/auth.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
@@ -20,6 +23,7 @@ import { createOAuthService } from './services/auth/oauth-service.js';
 import type { RateLimiter } from './services/billing/rate-limit-service.js';
 import type { BillingDispatcher } from './services/billing/billing-dispatcher.js';
 import { createModelRouter } from './services/routing/model-router.js';
+import { createCoefficientCache } from './services/auth/coefficient-cache.js';
 import { createPipeline } from './services/pipeline/run.js';
 import type { RequestLifecycle } from './services/runtime/request-lifecycle.js';
 import type { CompletionRegistry } from './services/runtime/completion-registry.js';
@@ -67,7 +71,8 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
     deps.env.ENCRYPTION_KEY,
     deps.env.ENCRYPTION_KEY_OLD,
   );
-  const runInference = createPipeline({ ...deps, billing, router });
+  const coefficients = createCoefficientCache(deps.db, deps.redis);
+  const runInference = createPipeline({ ...deps, billing, router, coefficients });
 
   // 统一错误处理（OpenAI 风格错误信封；不用 message 文本启发式）
   app.onError((err, c) => appErrorHandler(deps.logger, err, c));
@@ -95,10 +100,21 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   for (const endpoint of inferenceEndpoints) {
     app.use(endpoint.path, authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
   }
-  app.use('/v1/models', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  app.use('/v1/models/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  // 异步生成任务查询（video/music 提交后轮询）
+  app.use('/v1/videos/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  app.use('/v1/musics/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  // 原生协议端点（模型名在 URL）：gemini v1beta 族 + 旧版 engines 别名
+  app.use('/v1beta/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  // 模态端点（images/audio/rerank/moderations；multipart 族无 JSON body 校验）
+  for (const path of modalityEndpointPaths) {
+    app.use(path, authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
+  }
+  app.use('/v1/engines/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
 
   // 路由
   app.route('/', healthRoutes({ db: deps.db, redis: deps.redis, lifecycle: deps.lifecycle }));
+  app.route('/', generationTaskRoutes(deps.db));
   // 本地零基建链路查看页：仅 memory 模式暴露（otlp/off 下路由不存在）
   if (deps.env.OTEL_TRACES_MODE === 'memory') {
     app.route(
@@ -114,6 +130,8 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
   for (const endpoint of inferenceEndpoints) {
     app.route(endpoint.path, inferenceRoutes(runInference, endpoint));
   }
+  app.route('/', nativeProtocolRoutes(runInference));
+  app.route('/', modalityRoutes(runInference));
   app.route('/oauth/token', oauthTokenRoutes(oauthService, deps.env.TRUSTED_PROXY_HOPS));
 
   return app;

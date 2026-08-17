@@ -1,7 +1,8 @@
-import { resolveCalibration, type Usage } from '@ai-gateway/ai';
+import { resolveCalibration, type GenerationKind, type Usage } from '@ai-gateway/ai';
 import { estimateCancelledUsage, asUserSideCancel } from '../usage-estimator.js';
 import type { EstimateAttribution, UsageReceipt } from '@ai-gateway/ledger';
 import { SpanStatusCode } from '@ai-gateway/core';
+import { generationTasks } from '@ai-gateway/db/schema';
 import type { RequestTraceContext, AttemptTraceContext } from '../types.js';
 import type { AuthContext } from '../../../middleware/auth.js';
 import { recordBillingWakeupFailed } from '../../../lib/metrics.js';
@@ -45,11 +46,13 @@ export function makeReceipt(
       cachedInputTokens: usage.cachedInputTokens,
       outputTokens: usage.outputTokens,
       estimated: usage.estimated,
+      units: usage.units ?? 0,
     },
     inputPrice: target.inputPrice,
     outputPrice: target.outputPrice,
     cacheInputPrice: target.cacheInputPrice,
-    coefficient: auth.coefficient,
+    unitPrice: target.unitPrice,
+    coefficient: target.coefficient,
     durationMs,
     stream,
     streamAborted,
@@ -155,13 +158,21 @@ export async function recordReleasedFailure(
       'billing.finalize': 'released',
       'billing.release_reason': reason,
     });
-    await deps.billing.signal({
+    // 释放收尾必须能回答「扣没扣钱」：signal 终态 + 释放金额（未扣费证据）
+    const result = await deps.billing.signal({
       type: 'request.failed',
       requestId,
       reason,
       delivery: 'none',
       upstreamCharge: 'none',
     });
+    span.setAttributes({
+      'billing.state': result.status,
+      ...(result.amountReleased !== undefined
+        ? { 'billing.amount_released': result.amountReleased }
+        : {}),
+    });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: reason });
   } finally {
     span.end();
   }
@@ -241,6 +252,96 @@ export async function recordEstimatedOutcome(
     receipt.estimatedFor = args.reason;
     if (args.bytesRelayed !== undefined) receipt.bytesRelayed = args.bytesRelayed;
     await recordSuccess(deps, tracers, receipt, args.trace);
+  } finally {
+    span.end();
+  }
+}
+
+/**
+ * 异步生成任务提交收尾（video/music，两阶段账本的任务形态）：
+ *
+ *   INSERT generation_tasks（收据模板 + 单位快照 + expires_at）→
+ *   signal upstream.started（租约 = 任务 TTL，worker 轮询期续租）
+ *
+ * 资金语义：提交只预留（authorize 已在第四步完成），完成由 worker 轮询驱动——
+ * succeeded 时以收据模板填 units 结算 / failed·expired 时 request.failed 释放。
+ * 顺序不变量：任务行先落（崩溃时 authorized/in_flight 由租约恢复链释放），
+ * upstream.started 后置（客户端拿到 201 即代表任务已持久化）。
+ */
+export interface TaskSubmittedArgs {
+  auth: AuthContext;
+  requestId: string;
+  externalModel: string;
+  target: CandidateTarget;
+  channel: ChannelCache;
+  /** 生成类型（词表：packages/ai descriptors；DB CHECK 当前为 video|music） */
+  kind: GenerationKind;
+
+  /** 提交参数快照（zod 校验后的 canonical body 子集） */
+  params: Record<string, unknown>;
+  /** video：上游任务号（music 无——由 worker 代执行） */
+  upstreamTaskId: string | null;
+  /** 结算单位快照（按次=1；按秒=时长） */
+  units: number;
+  durationMs: number;
+  trace?: AttemptTraceContext | RequestTraceContext;
+}
+
+export async function recordTaskSubmitted(
+  deps: PipelineDeps,
+  tracers: PipelineTracers,
+  args: TaskSubmittedArgs,
+): Promise<void> {
+  const span = tracers.billing.startSpan('billing.finalize', {}, args.trace?.requestContext);
+  try {
+    // 收据模板：除 usage.units 外全部字段定型（价格快照 + mappingId 幂等键）；
+    // worker 终态时填 units 即成完整收据——不让 worker 反解 quote。
+    const template = makeReceipt(
+      args.auth,
+      args.requestId,
+      args.externalModel,
+      args.target,
+      args.channel,
+      { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, estimated: false, units: 0, raw: null },
+      args.durationMs,
+      false,
+      false,
+    );
+    const ttlMs = deps.env.GENERATION_TASK_TTL_SECONDS * 1_000;
+    const now = new Date();
+    await deps.db.insert(generationTasks).values({
+      id: args.requestId,
+      requestId: args.requestId,
+      userId: args.auth.userId,
+      apiKeyId: args.auth.apiKeyId,
+      mappingId: args.target.mappingId,
+      channelId: args.channel.channelId,
+      upstreamTaskId: args.upstreamTaskId,
+      kind: args.kind,
+      status: 'queued',
+      params: args.params,
+      receiptTemplate: template as unknown as Record<string, unknown>,
+      unitsSnapshot: String(args.units),
+      expiresAt: new Date(now.getTime() + ttlMs),
+      createdAt: now,
+      updatedAt: now,
+    });
+    const result = await deps.billing.signal({
+      type: 'upstream.started',
+      requestId: args.requestId,
+      leaseOwner: args.requestId,
+      // 租约覆盖任务 TTL：worker 轮询期续租；未续到 → recoverOnce 按崩溃口径释放
+      leaseMs: ttlMs + 30_000,
+    });
+    span.setAttributes({
+      'request.id': args.requestId,
+      'billing.finalize': 'task_submitted',
+      'generation.kind': args.kind,
+      'generation.upstream_task_id': args.upstreamTaskId ?? '',
+      'generation.units_snapshot': args.units,
+      'billing.state': result.status,
+      'channel.final': args.channel.key,
+    });
   } finally {
     span.end();
   }

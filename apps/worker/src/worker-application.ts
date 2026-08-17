@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Logger, WorkerEnv } from '@ai-gateway/core';
 import { getTracer } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
+import { notifyOutbox, users } from '@ai-gateway/db/schema';
 import { maintainPartitions } from '@ai-gateway/tracing';
 import { maintainRequestLogPartitions } from './request-log-partitions.js';
 import { isDeepHealthAuthorized } from './health-gate.js';
@@ -20,6 +21,18 @@ import {
   BILLING_SETTLEMENT_QUEUE,
   type BillingSettlementWakeup,
 } from '@ai-gateway/ledger';
+import { runReferralCommissionOnce, runNotifyDispatchOnce } from './tasks/notify-referral.js';
+import { runGenerationPollOnce } from './tasks/generation-poller.js';
+import { createBilling, type Billing } from '@ai-gateway/ledger';
+import {
+  createAi,
+  defaultAiConfig,
+  MemoryKvStorage,
+  type Ai,
+  type BreakerState,
+  type DeadCredentialState,
+} from '@ai-gateway/ai';
+import { mailerFromEnv } from '@ai-gateway/identity';
 
 export interface WorkerHealth {
   status: 'ok' | 'degraded' | 'fail';
@@ -119,6 +132,23 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
             },
             'billing request moved to dead; manual review required',
           );
+          // 事务性发件箱：死单事件落箱（worker 投递到订阅渠道；best-effort 与日志双轨）
+          await db
+            .insert(notifyOutbox)
+            .values({
+              event: 'billing_dead',
+              payload: {
+                requestId: event.requestId,
+                userId: event.userId,
+                failureClass: event.failureClass,
+                lastError: event.lastError,
+                reservedAmount: event.reservedAmount,
+                attempt: event.attempt,
+              },
+              dedupeKey: `billing-dead:${event.requestId}`,
+            })
+            .onConflictDoNothing()
+            .catch(() => undefined);
         },
       },
       options: {
@@ -134,7 +164,35 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         telemetry: settleTelemetry(getTracer('worker.billing')),
       },
     });
-  const ledger = createLedger({ db, effects: createRedisLedgerEffects(redis) });
+  const notifyMailer = mailerFromEnv(env, { brand: 'AI Gateway 运维告警', brandSub: 'AI GATEWAY · OPS' }) ?? undefined;
+  const BALANCE_LOW_THRESHOLD = '5';
+  const ledger = createLedger({
+    db,
+    effects: {
+      ...createRedisLedgerEffects(redis),
+      // 余额预警（按用户×日幂等入箱）：结算后余额低于阈值即提醒充值
+      usageSettled: async ({ data, result }) => {
+        if (Number(result.amount) <= 0) return;
+        const [user] = await db
+          .select({ balance: users.balance })
+          .from(users)
+          .where(eq(users.id, data.userId))
+          .limit(1);
+        const balance = Number(user?.balance ?? '0');
+        if (balance < Number(BALANCE_LOW_THRESHOLD)) {
+          await db
+            .insert(notifyOutbox)
+            .values({
+              event: 'balance_low',
+              payload: { userId: data.userId, balance: user?.balance ?? '0', requestId: data.requestId },
+              dedupeKey: `balance-low:${data.userId}:${new Date().toISOString().slice(0, 10)}`,
+            })
+            .onConflictDoNothing()
+            .catch(() => undefined);
+        }
+      },
+    },
+  });
 
   let queueWorker: Worker<BillingSettlementWakeup> | null = null;
   let healthServer: Server | null = null;
@@ -143,6 +201,9 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   let traceMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
   let requestLogMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  let referralTimer: ReturnType<typeof setInterval> | null = null;
+  let generationTimer: ReturnType<typeof setInterval> | null = null;
+  let notifyTimer: ReturnType<typeof setInterval> | null = null;
   let accepting = false;
   let started = false;
   let stopping: Promise<StopReport> | null = null;
@@ -209,6 +270,100 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
   };
 
   /** 只让一个副本执行昂贵全量对账；专用 PG 会话持有 advisory lock。 */
+  const runReferralCommission = async (): Promise<void> => {
+    if (!accepting) return;
+    await track(async () => {
+      const client = await db.$client.connect();
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          "select pg_try_advisory_lock(hashtext('ai-gateway:referral-commission')) as acquired",
+        );
+        if (!lock.rows[0]?.acquired) return;
+        try {
+          const result = await runReferralCommissionOnce(db, ledger, {
+            commissionRate: env.REFERRAL_COMMISSION_RATE,
+          });
+          if (result.credited > 0) logger.info({ credited: result.credited }, 'referral commission settled');
+        } finally {
+          await client.query("select pg_advisory_unlock(hashtext('ai-gateway:referral-commission'))");
+        }
+      } finally {
+        client.release();
+      }
+    }).catch((error) => logger.warn({ err: (error as Error).message }, 'referral commission failed'));
+  };
+
+  const runNotifyDispatch = async (): Promise<void> => {
+    if (!accepting) return;
+    await track(async () => {
+      const client = await db.$client.connect();
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          "select pg_try_advisory_lock(hashtext('ai-gateway:notify-dispatch')) as acquired",
+        );
+        if (!lock.rows[0]?.acquired) return;
+        try {
+          const result = await runNotifyDispatchOnce(db, logger, notifyMailer);
+          if (result.sent > 0 || result.failed > 0) {
+            logger.info(result, 'notify dispatched');
+          }
+        } finally {
+          await client.query("select pg_advisory_unlock(hashtext('ai-gateway:notify-dispatch'))");
+        }
+      } finally {
+        client.release();
+      }
+    }).catch((error) => logger.warn({ err: (error as Error).message }, 'notify dispatch failed'));
+  };
+
+  /**
+   * 异步生成任务轮询（video 状态查询 + music 代执行 + 续租 + 超时）。
+   * 同 referral/notify：advisory lock 只让一个副本执行整轮，任务行 CAS 兜底。
+   * ai 实例按需构造（Redis 可用时共享熔断存储，降级用内存存储——轮询量级低）。
+   */
+  let generationAi: Ai | null = null;
+  let generationBilling: Billing | null = null;
+  const runGenerationPoll = async (): Promise<void> => {
+    if (!accepting) return;
+    await track(async () => {
+      const client = await db.$client.connect();
+      try {
+        const lock = await client.query<{ acquired: boolean }>(
+          "select pg_try_advisory_lock(hashtext('ai-gateway:generation-poll')) as acquired",
+        );
+        if (!lock.rows[0]?.acquired) return;
+        try {
+          // 内存状态存储（与 admin 渠道探测同取舍）：轮询量级低且刻意与 gateway
+          // 的 Redis 共享熔断隔离——任务轮询的渠道判定不放大网关侧熔断计数。
+          generationAi ??= createAi(
+            {
+              ...defaultAiConfig(),
+              allowLocalUrl: env.ALLOW_LOCAL_UPSTREAM && env.NODE_ENV !== 'production',
+              allowedHosts: env.UPSTREAM_HOST_ALLOWLIST,
+            },
+            {
+              breakerStorage: new MemoryKvStorage<BreakerState>(),
+              deadCredentialStorage: new MemoryKvStorage<DeadCredentialState>(),
+            },
+          );
+          generationBilling ??= createBilling({ db });
+          const result = await runGenerationPollOnce(
+            { db, ai: generationAi, billing: generationBilling, logger, batch: env.WORKER_GENERATION_BATCH,
+              leaseMs: Math.max(env.WORKER_GENERATION_POLL_INTERVAL_MS * 3, 30_000) },
+            { encryptionKey: env.ENCRYPTION_KEY, encryptionKeyOld: env.ENCRYPTION_KEY_OLD },
+          );
+          if (result.succeeded + result.failed + result.expired > 0) {
+            logger.info(result, 'generation tasks progressed');
+          }
+        } finally {
+          await client.query("select pg_advisory_unlock(hashtext('ai-gateway:generation-poll'))");
+        }
+      } finally {
+        client.release();
+      }
+    }).catch((error) => logger.warn({ err: (error as Error).message }, 'generation poll failed'));
+  };
+
   const runReconcile = async (): Promise<void> => {
     if (!accepting) return;
     await track(async () => {
@@ -220,7 +375,18 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (!lock.rows[0]?.acquired) return;
         try {
           const result = await ledger.reconcile({ scope: 'all' });
-          if (result.discrepancies > 0) logger.error({ result }, 'reconciliation discrepancies');
+          if (result.discrepancies > 0) {
+            logger.error({ result }, 'reconciliation discrepancies');
+            await db
+              .insert(notifyOutbox)
+              .values({
+                event: 'reconcile_discrepancy',
+                payload: { discrepancies: result.discrepancies },
+                dedupeKey: `reconcile-discrepancy:${new Date().toISOString().slice(0, 13)}`,
+              })
+              .onConflictDoNothing()
+              .catch(() => undefined);
+          }
         } finally {
           await client.query("select pg_advisory_unlock(hashtext('ai-gateway:billing-reconcile'))");
         }
@@ -442,6 +608,12 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         pollTimer = setInterval(() => void runSettlement(), env.WORKER_POLL_INTERVAL_MS);
         recoveryTimer = setInterval(() => void runRecovery(), env.WORKER_RECOVERY_INTERVAL_MS);
         reconcileTimer = setInterval(() => void runReconcile(), env.WORKER_RECONCILE_INTERVAL_MS);
+        referralTimer = setInterval(() => void runReferralCommission(), env.WORKER_REFERRAL_INTERVAL_MS);
+        notifyTimer = setInterval(() => void runNotifyDispatch(), env.WORKER_NOTIFY_INTERVAL_MS);
+        generationTimer = setInterval(
+          () => void runGenerationPoll(),
+          env.WORKER_GENERATION_POLL_INTERVAL_MS,
+        );
         traceMaintenanceTimer = setInterval(
           () => void runTraceMaintenance(),
           env.WORKER_TRACE_MAINTENANCE_INTERVAL_MS,
@@ -454,6 +626,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         requestLogMaintenanceTimer.unref();
         recoveryTimer.unref();
         reconcileTimer.unref();
+        generationTimer.unref();
         traceMaintenanceTimer.unref();
         started = true;
         logger.info({ instanceId, healthPort: env.WORKER_HEALTH_PORT }, 'billing worker ready');
@@ -463,6 +636,10 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (pollTimer) clearInterval(pollTimer);
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
+        if (referralTimer) clearInterval(referralTimer);
+        if (notifyTimer) clearInterval(notifyTimer);
+        if (generationTimer) clearInterval(generationTimer);
+        if (generationTimer) clearInterval(generationTimer);
         if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
         if (requestLogMaintenanceTimer) clearInterval(requestLogMaintenanceTimer);
         await Promise.allSettled([
@@ -491,6 +668,9 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         if (pollTimer) clearInterval(pollTimer);
         if (recoveryTimer) clearInterval(recoveryTimer);
         if (reconcileTimer) clearInterval(reconcileTimer);
+        if (referralTimer) clearInterval(referralTimer);
+        if (notifyTimer) clearInterval(notifyTimer);
+        if (generationTimer) clearInterval(generationTimer);
         if (traceMaintenanceTimer) clearInterval(traceMaintenanceTimer);
         if (requestLogMaintenanceTimer) clearInterval(requestLogMaintenanceTimer);
         logger.info({ reason }, 'billing worker draining');
