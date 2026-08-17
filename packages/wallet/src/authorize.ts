@@ -1,10 +1,10 @@
 /** authorize：冻结/预占——可用口径 = balance + credit_limit − in_flight；(refType, refId) 幂等 */
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
 import { InsufficientBalanceError, RefKeyConflictError } from './errors';
 import { walletAccounts, walletAuthorizations } from './schema';
-import { lockAccount } from './account';
+import { lockAccounts, resolveUserAccount } from './account';
 import { findAuthorization } from './authorizations';
 import { isUniqueViolation } from './internal';
 import { parseAmount, parseUserRef } from './validation';
@@ -17,9 +17,30 @@ export async function authorize(
   const currency = parseUserRef(input);
   const amount = parseAmount(input.amount);
 
+  // 幂等快速路径：可用口径守卫之前先查既有冻结（重放不该被余额守卫误伤）
+  const prior = await findAuthorization(db, input.refType, input.refId);
+  if (prior) {
+    const [owner] = await db
+      .select({ userId: walletAccounts.userId })
+      .from(walletAccounts)
+      .where(eq(walletAccounts.id, prior.accountId));
+    if (owner?.userId !== input.userId) {
+      throw new RefKeyConflictError(input.refType, input.refId, owner?.userId ?? 0);
+    }
+    return {
+      authorizationId: prior.id,
+      amount: prior.amount,
+      status: prior.status as AuthorizeResult['status'],
+      expiresAt: prior.expiresAt ? prior.expiresAt.toISOString() : null,
+      replayed: true,
+    };
+  }
+
   try {
     return await db.transaction(async (tx) => {
-      const account = await lockAccount(tx, input.userId, currency);
+      const accountId = await resolveUserAccount(tx, input.userId, currency);
+      const accounts = await lockAccounts(tx, [accountId]);
+      const account = accounts.get(accountId)!;
       const inFlight = new Decimal(account.inFlight);
       const available = new Decimal(account.balance)
         .plus(account.creditLimit)
@@ -35,8 +56,7 @@ export async function authorize(
       const [auth] = await tx
         .insert(walletAuthorizations)
         .values({
-          userId: input.userId,
-          currency,
+          accountId,
           refType: input.refType,
           refId: input.refId,
           amount: toStorage(amount),
@@ -48,9 +68,7 @@ export async function authorize(
       await tx
         .update(walletAccounts)
         .set({ inFlight: toStorage(inFlight.plus(amount)), updatedAt: new Date() })
-        .where(
-          and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
-        );
+        .where(eq(walletAccounts.id, accountId));
       return {
         authorizationId: auth.id,
         amount: normalizeAmount(input.amount),
@@ -64,8 +82,12 @@ export async function authorize(
       const existing = await findAuthorization(db, input.refType, input.refId);
       if (existing) {
         // 幂等键归属校验：同键跨账户顶撞必须炸，不能把别人的冻结当自己的重放
-        if (existing.userId !== input.userId || existing.currency !== currency) {
-          throw new RefKeyConflictError(input.refType, input.refId, existing.userId);
+        const owner = await db
+          .select({ userId: walletAccounts.userId })
+          .from(walletAccounts)
+          .where(eq(walletAccounts.id, existing.accountId));
+        if (owner[0]?.userId !== input.userId) {
+          throw new RefKeyConflictError(input.refType, input.refId, owner[0]?.userId ?? 0);
         }
         return {
           authorizationId: existing.id,

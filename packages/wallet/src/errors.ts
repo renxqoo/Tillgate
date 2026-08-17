@@ -50,6 +50,30 @@ export class CreditLimitConflictError extends WalletError {
   }
 }
 
+/** 账户冻结（风控）：拒绝一切资金变动（查询不受限） */
+export class FrozenAccountError extends WalletError {
+  constructor(readonly accountId: string) {
+    super(`wallet account ${accountId} is frozen`, 'account_frozen');
+    this.name = 'FrozenAccountError';
+  }
+}
+
+/** 转账双方为同一账户 */
+export class SameAccountTransferError extends WalletError {
+  constructor(readonly accountId: string) {
+    super(`transfer from and to resolve to the same account ${accountId}`, 'same_account_transfer');
+    this.name = 'SameAccountTransferError';
+  }
+}
+
+/** 跨币种转账：换汇是业务的两腿操作，单笔 transfer 不做币种转换 */
+export class CurrencyMismatchError extends WalletError {
+  constructor(readonly from: string, readonly to: string) {
+    super(`transfer currency mismatch: ${from} vs ${to}（换汇应为两笔独立转账）`, 'currency_mismatch');
+    this.name = 'CurrencyMismatchError';
+  }
+}
+
 /** 业务键无对应冻结（settle/release 寻址失败）——调用方数据不一致 */
 export class AuthorizationNotFoundError extends WalletError {
   constructor(refType: string, refId: string) {

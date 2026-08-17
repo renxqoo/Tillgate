@@ -5,26 +5,42 @@ export { authorize } from './authorize';
 export { settle } from './settle';
 export { release, releaseExpired } from './release';
 export { refund } from './refund';
+export { transfer } from './transfer';
 export { setCreditLimit } from './credit-line';
+export { freeze } from './freeze';
 export { accounts, balance } from './balance';
 export type {
   Wallet,
+  AccountRef,
   CreditInput,
   AuthorizeInput,
   SettleInput,
   ReleaseInput,
   RefundInput,
+  TransferInput,
   CreditLineInput,
+  FreezeInput,
   CreditResult,
   AuthorizeResult,
   SettleResult,
   ReleaseResult,
+  TransferResult,
   CreditLineResult,
+  FreezeResult,
   AccountSummary,
 } from './types';
-export { DEFAULT_CURRENCY } from './types';
+export {
+  DEFAULT_CURRENCY,
+  OUTSIDE_ACCOUNT,
+  REVENUE_ACCOUNT,
+} from './types';
 export { provision, deprovision } from './schema';
-export { walletAccounts, walletAuthorizations, walletTransactions } from './schema';
+export {
+  walletAccounts,
+  walletAuthorizations,
+  walletTransactions,
+  walletLegs,
+} from './schema';
 export {
   WalletError,
   InvalidAmountError,
@@ -34,5 +50,8 @@ export {
   SettleExceedsHoldError,
   RefKeyConflictError,
   CreditLimitConflictError,
+  FrozenAccountError,
+  SameAccountTransferError,
+  CurrencyMismatchError,
 } from './errors';
 export { Decimal, normalizeAmount, toStorage } from './money';

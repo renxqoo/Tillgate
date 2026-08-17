@@ -1,70 +1,73 @@
 # @ai-gateway/wallet
 
-通用资金钱包：**业务无关**的两阶段账本。不依赖本仓任何其他包（仅
-decimal.js / drizzle-orm / zod），可整体目录拎出独立仓复用——电商订单
-（冻结→实扣/取消）、内容平台（打赏/按次付费）与 AI 网关（推理预扣→结算）
-在它眼里是同一套动词。
+通用企业级钱包：**复式账本**（double-entry）+ 业务无关两阶段扣费。零 workspace 依赖
+（仅 decimal.js / drizzle-orm / zod），可整目录拎出独立仓——电商/AI/订阅同构复用。
 
-## API（4+2 个动词）
+## 会计模型（复式三件套）
+
+- **腿（legs）**：每笔资金交易 = 批头（幂等键）+ ≥2 腿，**Σ 腿 = 0**（有借必有贷）；
+  每腿独立链式恒等 `after = before + amount`（DB check）
+- **内部科目（chart of accounts）**：账户分 `user`（用户，按 `(user_id, currency)`）与
+  `internal`（科目，按 `(code, currency)`）——`outside` 外部世界镜像、`platform_revenue`
+  平台收入（结算即收入确认）、业务自定义科目（如 `marketing_expense`）按需自动建
+- **原子转账（transfer）**：双腿守恒，`from/to` 可为用户或科目——分账/P2P/佣金拆分
+  的结构保证；同币种限定（换汇 = 两笔独立转账）
+
+## API
 
 ```ts
 import { createWallet, provision } from '@ai-gateway/wallet';
+const wallet = createWallet(db);
+await provision(db);
 
-const wallet = createWallet(db);   // drizzle 实例（node-postgres）
-await provision(db);               // 一次性建表（幂等）
-
-// 充值入账（幂等：回调重放/并发只入一次账）
+// 充值（对手腿自动落 outside；可指定 counterparty 科目）
 await wallet.credit({ userId, amount: '99.00', refType: 'topup', refId: tradeNo });
 
-// 下单冻结（两阶段第一步；expiresAt 到点由 releaseExpired 释放）
-const hold = await wallet.authorize({ userId, amount: '259.00', refType: 'order', refId: orderId, expiresAt });
-
-// 支付成功实扣（可少于冻结额，余量自动归还）；或取消释放
-await wallet.settle({ refType: 'order', refId: orderId, amount: '259.00' });
+// 两阶段扣费：冻结 → 实扣（收入自动确认到 platform_revenue；可少于冻结额）→ 或释放
+await wallet.authorize({ userId, amount: '259.00', refType: 'order', refId: orderId, expiresAt });
+await wallet.settle({ refType: 'order', refId: orderId, amount: '249.00' });
 await wallet.release({ refType: 'order', refId: orderId, reason: 'user_cancel' });
 
-// 退款（授信地板守卫）与余额查询
+// 退款（原路退回 outside；费用承担型退款可指定 counterparty）+ 原子转账
 await wallet.refund({ userId, amount: '59.00', refType: 'topup_refund', refId: tradeNo });
-await wallet.balance(userId);
+await wallet.transfer({ from: { code: 'platform_revenue' }, to: { userId: merchantId },
+  amount: '80.00', refType: 'payout', refId: settlementId });   // 分账：佣金留收入
 
-// 多币种（缺省 CNY；一币一账互不净额）
-await wallet.credit({ userId, currency: 'USD', amount: '14.99', refType: 'topup', refId: stripeId });
-
-// 授信地板（缺省 0 = 纯预付）：可用 = balance + credit_limit − in_flight
+// 多币种（缺省 CNY，一币一账互不净额）+ 授信地板（缺省 0 = 纯预付）
+await wallet.credit({ userId, currency: 'USD', amount: '14.99', refType: 'topup', refId: id });
 await wallet.setCreditLimit({ userId, amount: '50', refType: 'credit_line', refId: grantId });
-const summaries = await wallet.accounts(userId);   // 全部币种账户摘要
 
-// worker 周期调用：超时冻结转 expired 并归还在途
+// 风控冻结（拒绝一切资金变动，查询不受限）+ 账户摘要 + 超时释放扫描
+await wallet.freeze({ target: { userId }, frozen: true, refType: 'risk_control', refId });
+const summaries = await wallet.accounts(userId);
 await wallet.releaseExpired(new Date(), 100);
 ```
 
-## 不变量（代码 + DB check 双保险）
+## 不变量（代码 + DB check 双保险 + 对账测试）
 
+- 每笔资金交易 Σ 腿 = 0；每账户腿链恒等且连续；账户余额 = 腿的代数和
 - 每笔冻结必达终态（settled / released / expired），settle 与 release 经 CAS 互斥
-- 流水链恒等：`balance_after = balance_before + amount`（DB check 兜底）
-- `balance ≥ −credit_limit`、`in_flight`、`credit_limit` 恒非负；settle 不得超过冻结额
-- 同一业务键同一动作至多一条流水：`(ref_type, ref_id, kind)` 唯一索引（键不含币种维度）
+- 用户账户 `balance ≥ −credit_limit`（授信地板；内部科目按语义可负——outside 镜像）
+- settle 不得超过冻结额；同一业务键同一动作至多一笔交易（`(ref_type, ref_id, kind)` 唯一）
+- 冻结账户拒绝一切资金变动
 
-## 业务约定
+## 设计边界
 
-- 金额恒为字符串（Decimal 全精度，永不 round；1e-18 级不丢不进科学计数法）
-- 调用方只带 `userId + 金额 + 幂等键（refType/refId）`，资金安全全部由本包承担
-- 金额字符串格式：`≤20 位整数 + ≤18 位小数`（numeric(38,18) 落库前防御）
+1. **多币种**：一币一账互不净额；跨币 = 两笔独立转账（换汇汇率是业务策略）
+2. **授信地板**：覆盖「先花后充、封顶欠款」；真账期（发票/催收）是单据系统不属钱包
+3. **一个冻结单次结算**：分次扣款 = 多次独立 authorize（installment 维度已设计、挂起）
+4. **幂等键全局唯一**：不含 user/币种维度；跨账户/跨币种顶撞抛 `RefKeyConflictError`
+5. **守卫前重放**：transfer/refund/authorize 的幂等快速路径先于余额守卫——首笔花掉余额后重放不被守卫误伤
 
-## 设计边界（消费方须知，刻意为之）
+## 表（本包私有四表）
 
-1. ~~单币种~~ → **已支持多币种**：`(user_id, currency)` 一币一账互不净额；动词可选传 currency（缺省 CNY，单币种业务零感知）；幂等键与币种无关（同键跨币顶撞报错）；跨币换汇是业务的两腿操作（汇率是策略，不进底层）
-2. ~~纯预付~~ → **已支持授信地板**：`credit_limit`（缺省 0 = 纯预付），可用口径 = balance + credit_limit − in_flight，balance 可至 −credit_limit；`setCreditLimit` 幂等（授多少是业务策略，地板机制在底层）。真账期（发票/催收）是单据系统，不属钱包
-3. **一个冻结单次结算**：分次扣款 = 多次独立 authorize（分次结算 installment 维度已设计、挂起——等真实分期业务，避免为想象需求付并发模型复杂度）
-4. **幂等键全局唯一**：(ref_type, ref_id) 不含 user/币种维度；跨账户/跨币种顶撞抛 `RefKeyConflictError`（键设计责任在调用方，此错误是串号事故的最后闸门）
-
-## 表（本包私有三表）
-
-`wallet_accounts`（balance + in_flight）/ `wallet_authorizations`（冻结单状态机）/
-`wallet_transactions`（有符号流水，链式不变量）。测试 beforeAll 建 / afterAll 删，
-不碰业务表。
+`wallet_accounts`（user/internal 账户）/ `wallet_transactions`（批头，幂等键）/
+`wallet_legs`（腿，链式恒等）/ `wallet_authorizations`（冻结单状态机，释放审计在单据）。
+测试 beforeAll 建 / afterAll 删 + 全账本对账（Σ=0 / 链恒等 / 余额=代数和）。
 
 ## 测试
 
-16 组契约测试打真 PG：幂等（顺序重放/并发竞态）、部分结算、超扣拒绝、
-状态机互斥、余额守卫、超时释放、流水链恒等、全精度。`pnpm --filter @ai-gateway/wallet test`。
+32 组契约测试打真 PG：复式守恒与对账、科目累积（差值断言）、两阶段全场景、
+并发竞态（双结算/双入账恰好一次）、授信地板、多币种隔离、transfer 全家
+（分账/同账户/跨币/守卫/重放）、freeze 风控、1e-18 精度。
+`pnpm --filter @ai-gateway/wallet test`。

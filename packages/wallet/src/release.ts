@@ -1,16 +1,18 @@
-/** release / releaseExpired：冻结终态迁移——余额不动、in_flight 归还、零额审计流水 */
+/** release / releaseExpired：冻结终态迁移——余额不动、in_flight 归还。
+ *  复式模型下释放不落交易（零额噪声行取消）——审计在 authorizations 单据本身
+ *  （status + release_reason + updated_at）。 */
 import { and, eq, lte, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, toStorage } from './money';
 import { AuthorizationNotActiveError, AuthorizationNotFoundError } from './errors';
-import { walletAccounts, walletAuthorizations, walletTransactions } from './schema';
-import { lockAccount } from './account';
+import { walletAccounts, walletAuthorizations } from './schema';
+import { lockAccounts } from './account';
 import { findAuthorization } from './authorizations';
 import { parseRef } from './validation';
 import type { ReleaseInput, ReleaseResult } from './types';
 import type { Tx } from './internal';
 
-/** 释放：取消/失败——reason 落审计行，重复释放为幂等 no-op */
+/** 释放：取消/失败——重复释放为幂等 no-op */
 export async function release(db: NodePgDatabase, input: ReleaseInput): Promise<ReleaseResult> {
   parseRef(input);
   return transitionRelease(
@@ -43,8 +45,7 @@ async function transitionRelease(
       )
       .returning({
         id: walletAuthorizations.id,
-        userId: walletAuthorizations.userId,
-        currency: walletAuthorizations.currency,
+        accountId: walletAuthorizations.accountId,
         amount: walletAuthorizations.amount,
       });
     if (claimed.length === 0) {
@@ -52,26 +53,12 @@ async function transitionRelease(
     }
     const claim = claimed[0];
     if (!claim) throw new Error('wallet release cas returned empty');
-    const account = await lockAccount(tx, claim.userId, claim.currency);
+    const account = (await lockAccounts(tx, [claim.accountId])).get(claim.accountId)!;
     const inFlightAfter = new Decimal(account.inFlight).minus(claim.amount);
-    await tx.insert(walletTransactions).values({
-      userId: claim.userId,
-      currency: claim.currency,
-      kind: 'release',
-      refType,
-      refId,
-      amount: '0',
-      balanceBefore: account.balance,
-      balanceAfter: account.balance,
-      authorizationId: claim.id,
-      memo: reason,
-    });
     await tx
       .update(walletAccounts)
       .set({ inFlight: toStorage(inFlightAfter), updatedAt: new Date() })
-      .where(
-        and(eq(walletAccounts.userId, claim.userId), eq(walletAccounts.currency, claim.currency)),
-      );
+      .where(eq(walletAccounts.id, claim.accountId));
     return {
       authorizationId: claim.id,
       amount: claim.amount,

@@ -1,24 +1,36 @@
-/** refund：退款——授信地板守卫（balance − amount ≥ −credit_limit），独立幂等域 */
-import { and, eq } from 'drizzle-orm';
+/** refund：退款——双腿 [本方 −a, 收入科目冲回 −a]；授信地板守卫；独立幂等域 */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
 import { InsufficientBalanceError } from './errors';
-import { walletAccounts, walletTransactions } from './schema';
-import { lockAccount } from './account';
+import { walletTransactions } from './schema';
+import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './account';
+import { applyLeg } from './legs';
 import { isUniqueViolation } from './internal';
-import { replayMovement } from './replay';
+import { hasTransaction, replayLegged } from './replay';
 import { parseAmount, parseUserRef } from './validation';
+import { OUTSIDE_ACCOUNT } from './types';
 import type { CreditResult, RefundInput } from './types';
 
 export async function refund(db: NodePgDatabase, input: RefundInput): Promise<CreditResult> {
   const currency = parseUserRef(input);
   const amount = parseAmount(input.amount);
+  // 退款 = 钱离开用户余额回到对手科目（缺省原路退回外部；费用承担类退款可指定营销费用等科目）
+  const counterparty = input.counterparty ?? OUTSIDE_ACCOUNT;
+
+  // 幂等快速路径：守卫之前先查已存在（首笔可能已把余额花掉，重放不该再过守卫）
+  if (await hasTransaction(db, input.refType, input.refId, 'refund')) {
+    return replayLegged(db, input.refType, input.refId, 'refund', input.userId, currency);
+  }
 
   try {
     return await db.transaction(async (tx) => {
-      const account = await lockAccount(tx, input.userId, currency);
-      const balance = new Decimal(account.balance);
-      const floor = new Decimal(account.creditLimit).neg();
+      const userAccountId = await resolveUserAccount(tx, input.userId, currency);
+      const cpAccountId = await resolveInternalAccount(tx, counterparty, currency);
+      const accounts = await lockAccounts(tx, [userAccountId, cpAccountId]);
+
+      const user = accounts.get(userAccountId)!;
+      const balance = new Decimal(user.balance);
+      const floor = new Decimal(user.creditLimit).neg();
       if (balance.minus(amount).lt(floor)) {
         throw new InsufficientBalanceError(
           input.userId,
@@ -27,41 +39,29 @@ export async function refund(db: NodePgDatabase, input: RefundInput): Promise<Cr
           currency,
         );
       }
-      const balanceAfter = balance.minus(amount);
-      const [row] = await tx
+
+      const [header] = await tx
         .insert(walletTransactions)
-        .values({
-          userId: input.userId,
-          currency,
-          kind: 'refund',
-          refType: input.refType,
-          refId: input.refId,
-          amount: toStorage(amount.neg()),
-          balanceBefore: account.balance,
-          balanceAfter: toStorage(balanceAfter),
-          memo: input.memo,
-        })
+        .values({ kind: 'refund', refType: input.refType, refId: input.refId, memo: input.memo })
         .returning({ id: walletTransactions.id });
-      if (!row) throw new Error('wallet refund insert failed');
-      await tx
-        .update(walletAccounts)
-        .set({ balance: toStorage(balanceAfter), updatedAt: new Date() })
-        .where(
-          and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
-        );
+      if (!header) throw new Error('wallet refund insert failed');
+
+      const userAfter = await applyLeg(
+        tx, header.id, userAccountId, currency, amount.neg(), user.balance,
+      );
+      await applyLeg(
+        tx, header.id, cpAccountId, currency, amount, accounts.get(cpAccountId)!.balance,
+      );
       return {
-        transactionId: row.id,
+        transactionId: header.id,
         amount: normalizeAmount(input.amount),
-        balanceAfter: toStorage(balanceAfter),
+        balanceAfter: userAfter,
         replayed: false,
       };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return replayMovement(db, input.refType, input.refId, 'refund', {
-        userId: input.userId,
-        currency,
-      });
+      return replayLegged(db, input.refType, input.refId, 'refund', input.userId, currency);
     }
     throw error;
   }

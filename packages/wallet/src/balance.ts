@@ -18,7 +18,13 @@ export async function balance(
   const [row] = await db
     .select({ balance: walletAccounts.balance })
     .from(walletAccounts)
-    .where(and(eq(walletAccounts.userId, userId), eq(walletAccounts.currency, currency)));
+    .where(
+      and(
+        eq(walletAccounts.kind, 'user'),
+        eq(walletAccounts.userId, userId),
+        eq(walletAccounts.currency, currency),
+      ),
+    );
   return row ? normalizeAmount(row.balance) : '0';
 }
 
@@ -32,7 +38,7 @@ export async function accounts(db: NodePgDatabase, userId: number): Promise<Acco
       creditLimit: walletAccounts.creditLimit,
     })
     .from(walletAccounts)
-    .where(eq(walletAccounts.userId, userId))
+    .where(and(eq(walletAccounts.kind, 'user'), eq(walletAccounts.userId, userId)))
     .orderBy(asc(walletAccounts.currency));
   return rows.map((row) => ({
     currency: row.currency,

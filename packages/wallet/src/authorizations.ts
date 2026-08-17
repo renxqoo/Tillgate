@@ -9,8 +9,7 @@ export async function findAuthorization(
   refId: string,
 ): Promise<{
   id: string;
-  userId: number;
-  currency: string;
+  accountId: string;
   amount: string;
   status: string;
   settledAmount: string | null;

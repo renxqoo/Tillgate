@@ -1,11 +1,12 @@
-/** setCreditLimit：授信地板调整——不动余额（零额审计流水），幂等键同其他动词；
- *  守卫：新额度不得低于当前欠款（balance ≥ −newLimit），否则击穿地板拒绝 */
-import { and, eq } from 'drizzle-orm';
+/** setCreditLimit：授信地板调整——零额审计交易（单腿 amount=0），幂等；
+ *  守卫：新额度不得低于当前欠款（balance ≥ −newLimit）。 */
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
 import { CreditLimitConflictError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
-import { lockAccount } from './account';
+import { lockAccounts, resolveUserAccount } from './account';
+import { applyLeg } from './legs';
 import { isUniqueViolation } from './internal';
 import { replayCreditLine } from './replay';
 import { parseNonNegativeAmount, parseUserRef } from './validation';
@@ -20,7 +21,9 @@ export async function setCreditLimit(
 
   try {
     return await db.transaction(async (tx) => {
-      const account = await lockAccount(tx, input.userId, currency);
+      const accountId = await resolveUserAccount(tx, input.userId, currency);
+      const accounts = await lockAccounts(tx, [accountId]);
+      const account = accounts.get(accountId)!;
       const balance = new Decimal(account.balance);
       if (balance.lt(newLimit.neg())) {
         throw new CreditLimitConflictError(
@@ -30,40 +33,31 @@ export async function setCreditLimit(
           toStorage(newLimit),
         );
       }
-      const [row] = await tx
+      const [header] = await tx
         .insert(walletTransactions)
         .values({
-          userId: input.userId,
-          currency,
           kind: 'credit_line',
           refType: input.refType,
           refId: input.refId,
-          amount: '0',
-          balanceBefore: account.balance,
-          balanceAfter: account.balance,
-          creditLimitAfter: toStorage(newLimit),
           memo: input.memo,
+          creditLimitAfter: toStorage(newLimit),
         })
         .returning({ id: walletTransactions.id });
-      if (!row) throw new Error('wallet credit_line insert failed');
+      if (!header) throw new Error('wallet credit_line insert failed');
+      await applyLeg(tx, header.id, accountId, currency, new Decimal(0), account.balance);
       await tx
         .update(walletAccounts)
         .set({ creditLimit: toStorage(newLimit), updatedAt: new Date() })
-        .where(
-          and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
-        );
+        .where(eq(walletAccounts.id, accountId));
       return {
-        transactionId: row.id,
+        transactionId: header.id,
         creditLimit: normalizeAmount(input.amount),
         replayed: false,
       };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return replayCreditLine(db, input.refType, input.refId, {
-        userId: input.userId,
-        currency,
-      });
+      return replayCreditLine(db, input.refType, input.refId, input.userId, currency);
     }
     throw error;
   }

@@ -4,6 +4,8 @@ import { Decimal, isValidAmountString } from './money';
 import { InvalidAmountError } from './errors';
 import { DEFAULT_CURRENCY } from './types';
 
+export { DEFAULT_CURRENCY };
+
 /** 正金额（字符串十进制，>0，≤18 位小数） */
 const amountSchema = z.string().refine((v) => isValidAmountString(v) && new Decimal(v).gt(0), {
   message: '金额必须为正的十进制字符串（≤18 位小数）',
@@ -24,6 +26,27 @@ export const userIdSchema = z.number().int().positive();
 export const currencySchema = z.string().length(3).regex(/^[A-Z]{3}$/, {
   message: 'currency 须为 ISO 4217 三字母大写（如 CNY/USD）',
 });
+export const accountCodeSchema = z.string().min(1).max(64).regex(/^[a-z][a-z0-9_]*$/, {
+  message: '内部科目代码须为 snake_case（如 platform_revenue）',
+});
+
+/** 账户寻址校验：userId（用户账户）或 code（内部科目）二选一；返回币种 */
+export function parseAccountRef(ref: {
+  userId?: number;
+  code?: string;
+  currency?: string;
+}): string {
+  const hasUser = typeof ref.userId === 'number';
+  const hasCode = typeof ref.code === 'string';
+  if (hasUser === hasCode) {
+    throw new InvalidAmountError('AccountRef 必须且只能指定 userId 或 code 之一');
+  }
+  const currency = ref.currency ?? DEFAULT_CURRENCY;
+  currencySchema.parse(currency);
+  if (hasCode) accountCodeSchema.parse(ref.code);
+  else userIdSchema.parse(ref.userId);
+  return currency;
+}
 
 /** 金额字符串 → Decimal（非法抛 InvalidAmountError） */
 export function parseAmount(value: string): Decimal {
