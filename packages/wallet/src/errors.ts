@@ -63,3 +63,22 @@ export class SettleExceedsHoldError extends WalletError {
     this.name = 'SettleExceedsHoldError';
   }
 }
+
+/**
+ * 幂等键跨账户顶撞：同一 (refType, refId) 已属于另一账户。
+ * 幂等键全局唯一是调用方的设计责任——本错误是串号事故的最后一道闸
+ * （没有它，重放路径会把别人的流水静默当成自己的结果返回）。
+ */
+export class RefKeyConflictError extends WalletError {
+  constructor(
+    readonly refType: string,
+    readonly refId: string,
+    readonly ownerUserId: number,
+  ) {
+    super(
+      `ref key ${refType}/${refId} already belongs to user ${ownerUserId}`,
+      'ref_key_conflict',
+    );
+    this.name = 'RefKeyConflictError';
+  }
+}

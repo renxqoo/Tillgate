@@ -43,7 +43,9 @@ export async function credit(db: NodePgDatabase, input: CreditInput): Promise<Cr
       };
     });
   } catch (error) {
-    if (isUniqueViolation(error)) return replayMovement(db, input.refType, input.refId, 'credit');
+    if (isUniqueViolation(error)) {
+      return replayMovement(db, input.refType, input.refId, 'credit', input.userId);
+    }
     throw error;
   }
 }

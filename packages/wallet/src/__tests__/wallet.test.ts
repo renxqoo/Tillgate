@@ -14,6 +14,7 @@ import {
   AuthorizationNotActiveError,
   Decimal,
   InsufficientBalanceError,
+  RefKeyConflictError,
   SettleExceedsHoldError,
 } from '../index';
 
@@ -86,6 +87,24 @@ describe('wallet 入账 credit', () => {
     await expect(wallet.credit({ userId: user, amount: '-5', refType: 'topup', refId: 'x' })).rejects.toThrow();
     await expect(wallet.credit({ userId: user, amount: 'abc', refType: 'topup', refId: 'x' })).rejects.toThrow();
     expect(sameAmount(await wallet.balance(user), '0')).toBe(true);
+  });
+
+  it('幂等键跨账户顶撞：拒绝并指向键主，绝不把别人的流水当重放结果', async () => {
+    const owner = nextUser();
+    const intruder = nextUser();
+    await wallet.credit({ userId: owner, amount: '10', refType: 'topup', refId: ref(owner, 'clash') });
+    const error = await wallet
+      .credit({ userId: intruder, amount: '5', refType: 'topup', refId: ref(owner, 'clash') })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RefKeyConflictError);
+    expect((error as RefKeyConflictError).ownerUserId).toBe(owner);
+    expect(sameAmount(await wallet.balance(intruder), '0')).toBe(true); // 串号方余额零污染
+
+    await wallet.credit({ userId: intruder, amount: '10', refType: 'topup', refId: ref(intruder, 't') });
+    await wallet.authorize({ userId: owner, amount: '3', refType: 'order', refId: ref(owner, 'clash2') });
+    await expect(
+      wallet.authorize({ userId: intruder, amount: '1', refType: 'order', refId: ref(owner, 'clash2') }),
+    ).rejects.toBeInstanceOf(RefKeyConflictError);
   });
 });
 

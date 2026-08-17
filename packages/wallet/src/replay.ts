@@ -2,6 +2,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { normalizeAmount } from './money';
+import { RefKeyConflictError } from './errors';
 import { walletTransactions } from './schema';
 import type { CreditResult } from './types';
 
@@ -10,6 +11,7 @@ export async function replayMovement(
   refType: string,
   refId: string,
   kind: 'credit' | 'refund',
+  expectedUserId?: number,
 ): Promise<CreditResult> {
   const [row] = await db
     .select()
@@ -22,6 +24,10 @@ export async function replayMovement(
       ),
     );
   if (!row) throw new Error(`unique violation but no ${kind} row for ${refType}/${refId}`);
+  // 幂等键归属校验：同键跨账户顶撞 = 调用方键设计冲突，必须炸而不是串号
+  if (expectedUserId !== undefined && row.userId !== expectedUserId) {
+    throw new RefKeyConflictError(refType, refId, row.userId);
+  }
   return {
     transactionId: row.id,
     amount: normalizeAmount(row.amount.replace('-', '')),

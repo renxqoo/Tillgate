@@ -2,7 +2,7 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
-import { InsufficientBalanceError } from './errors';
+import { InsufficientBalanceError, RefKeyConflictError } from './errors';
 import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccount } from './account';
 import { findAuthorization } from './authorizations';
@@ -57,6 +57,10 @@ export async function authorize(
     if (isUniqueViolation(error)) {
       const existing = await findAuthorization(db, input.refType, input.refId);
       if (existing) {
+        // 幂等键归属校验：同键跨账户顶撞必须炸，不能把别人的冻结当自己的重放
+        if (existing.userId !== input.userId) {
+          throw new RefKeyConflictError(input.refType, input.refId, existing.userId);
+        }
         return {
           authorizationId: existing.id,
           amount: existing.amount,

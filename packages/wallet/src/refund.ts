@@ -48,7 +48,9 @@ export async function refund(db: NodePgDatabase, input: RefundInput): Promise<Cr
       };
     });
   } catch (error) {
-    if (isUniqueViolation(error)) return replayMovement(db, input.refType, input.refId, 'refund');
+    if (isUniqueViolation(error)) {
+      return replayMovement(db, input.refType, input.refId, 'refund', input.userId);
+    }
     throw error;
   }
 }

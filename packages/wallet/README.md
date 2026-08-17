@@ -44,6 +44,13 @@ await wallet.releaseExpired(new Date(), 100);
 - 调用方只带 `userId + 金额 + 幂等键（refType/refId）`，资金安全全部由本包承担
 - 金额字符串格式：`≤20 位整数 + ≤18 位小数`（numeric(38,18) 落库前防御）
 
+## 设计边界（消费方须知，刻意为之）
+
+1. **单币种**：无 currency 列；多币种 = 每币种独立账户（未来可迁移 (user_id, currency) 主键，属破坏性变更）
+2. **预付模型**：balance ≥ 0 恒成立；账期/后付款（应收账款）模式不适用
+3. **一个冻结单次结算**：分次扣款应建模为多次独立 authorize
+4. **幂等键全局唯一**：(ref_type, ref_id) 不含 user 维度；跨账户顶撞抛 `RefKeyConflictError`（键设计责任在调用方，此错误是串号事故的最后闸门）
+
 ## 表（本包私有三表）
 
 `wallet_accounts`（balance + in_flight）/ `wallet_authorizations`（冻结单状态机）/

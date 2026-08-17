@@ -27,5 +27,6 @@ export {
   AuthorizationNotFoundError,
   AuthorizationNotActiveError,
   SettleExceedsHoldError,
+  RefKeyConflictError,
 } from './errors';
 export { Decimal, normalizeAmount, toStorage } from './money';
