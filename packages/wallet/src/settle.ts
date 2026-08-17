@@ -1,4 +1,5 @@
-/** settle：实扣落定——CAS active→settled（可少于冻结额，余量即归还）；重放返回首次结果 */
+/** settle：实扣落定——CAS active→settled（可少于冻结额，余量即归还）；重放返回首次结果。
+ *  币种随冻结单走（claim 带回 currency），账户按 (user, currency) 定位。 */
 import { and, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
@@ -37,6 +38,7 @@ export async function settle(db: NodePgDatabase, input: SettleInput): Promise<Se
       .returning({
         id: walletAuthorizations.id,
         userId: walletAuthorizations.userId,
+        currency: walletAuthorizations.currency,
         amount: walletAuthorizations.amount,
       });
     if (claimed.length === 0) {
@@ -49,11 +51,12 @@ export async function settle(db: NodePgDatabase, input: SettleInput): Promise<Se
       throw new SettleExceedsHoldError(toStorage(held), input.amount);
     }
 
-    const account = await lockAccount(tx, claim.userId);
+    const account = await lockAccount(tx, claim.userId, claim.currency);
     const balanceAfter = new Decimal(account.balance).minus(settleAmount);
     const inFlightAfter = new Decimal(account.inFlight).minus(held);
     await tx.insert(walletTransactions).values({
       userId: claim.userId,
+      currency: claim.currency,
       kind: 'settle',
       refType: input.refType,
       refId: input.refId,
@@ -70,7 +73,9 @@ export async function settle(db: NodePgDatabase, input: SettleInput): Promise<Se
         inFlight: toStorage(inFlightAfter),
         updatedAt: new Date(),
       })
-      .where(eq(walletAccounts.userId, claim.userId));
+      .where(
+        and(eq(walletAccounts.userId, claim.userId), eq(walletAccounts.currency, claim.currency)),
+      );
     return {
       authorizationId: claim.id,
       settledAmount: normalizeAmount(input.amount),
@@ -93,7 +98,9 @@ async function replaySettle(
     const [account] = await tx
       .select({ balance: walletAccounts.balance })
       .from(walletAccounts)
-      .where(eq(walletAccounts.userId, auth.userId));
+      .where(
+        and(eq(walletAccounts.userId, auth.userId), eq(walletAccounts.currency, auth.currency)),
+      );
     return {
       authorizationId: auth.id,
       settledAmount: auth.settledAmount ?? '0',

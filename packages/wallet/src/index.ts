@@ -5,7 +5,8 @@ export { authorize } from './authorize';
 export { settle } from './settle';
 export { release, releaseExpired } from './release';
 export { refund } from './refund';
-export { balance } from './balance';
+export { setCreditLimit } from './credit-line';
+export { accounts, balance } from './balance';
 export type {
   Wallet,
   CreditInput,
@@ -13,11 +14,15 @@ export type {
   SettleInput,
   ReleaseInput,
   RefundInput,
+  CreditLineInput,
   CreditResult,
   AuthorizeResult,
   SettleResult,
   ReleaseResult,
+  CreditLineResult,
+  AccountSummary,
 } from './types';
+export { DEFAULT_CURRENCY } from './types';
 export { provision, deprovision } from './schema';
 export { walletAccounts, walletAuthorizations, walletTransactions } from './schema';
 export {
@@ -28,5 +33,6 @@ export {
   AuthorizationNotActiveError,
   SettleExceedsHoldError,
   RefKeyConflictError,
+  CreditLimitConflictError,
 } from './errors';
 export { Decimal, normalizeAmount, toStorage } from './money';

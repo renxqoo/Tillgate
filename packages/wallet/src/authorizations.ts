@@ -10,6 +10,7 @@ export async function findAuthorization(
 ): Promise<{
   id: string;
   userId: number;
+  currency: string;
   amount: string;
   status: string;
   settledAmount: string | null;

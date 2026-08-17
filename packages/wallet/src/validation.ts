@@ -1,18 +1,29 @@
-/** 入参校验（zod）：金额/refType/refId/userId 词表与格式——非法即抛，不静默纠正 */
+/** 入参校验（zod）：金额/refType/refId/userId/currency 词表与格式——非法即抛，不静默纠正 */
 import { z } from 'zod';
 import { Decimal, isValidAmountString } from './money';
 import { InvalidAmountError } from './errors';
+import { DEFAULT_CURRENCY } from './types';
 
 /** 正金额（字符串十进制，>0，≤18 位小数） */
 const amountSchema = z.string().refine((v) => isValidAmountString(v) && new Decimal(v).gt(0), {
   message: '金额必须为正的十进制字符串（≤18 位小数）',
 });
 
+/** 非负金额（授信额允许 0 = 收回授信） */
+const nonNegativeAmountSchema = z
+  .string()
+  .refine((v) => isValidAmountString(v) && new Decimal(v).gte(0), {
+    message: '金额必须为非负的十进制字符串（≤18 位小数）',
+  });
+
 export const refTypeSchema = z.string().min(1).max(32).regex(/^[a-z][a-z0-9_]*$/, {
   message: 'refType 须为 snake_case 业务域标识',
 });
 export const refIdSchema = z.string().min(1).max(128);
 export const userIdSchema = z.number().int().positive();
+export const currencySchema = z.string().length(3).regex(/^[A-Z]{3}$/, {
+  message: 'currency 须为 ISO 4217 三字母大写（如 CNY/USD）',
+});
 
 /** 金额字符串 → Decimal（非法抛 InvalidAmountError） */
 export function parseAmount(value: string): Decimal {
@@ -21,9 +32,25 @@ export function parseAmount(value: string): Decimal {
   return new Decimal(value);
 }
 
-/** 校验「用户 + 幂等键」三元组（credit/refund/authorize 共用） */
-export function parseUserRef(input: { userId: number; refType: string; refId: string }): void {
-  z.object({ userId: userIdSchema, refType: refTypeSchema, refId: refIdSchema }).parse(input);
+/** 非负金额（授信用） */
+export function parseNonNegativeAmount(value: string): Decimal {
+  const parsed = z.object({ amount: nonNegativeAmountSchema }).safeParse({ amount: value });
+  if (!parsed.success) throw new InvalidAmountError(value);
+  return new Decimal(value);
+}
+
+/** 校验「用户 + 币种 + 幂等键」（credit/refund/authorize/credit_line 共用） */
+export function parseUserRef(input: {
+  userId: number;
+  refType: string;
+  refId: string;
+  currency?: string;
+}): string {
+  const { currency, ...rest } = input;
+  z.object({ userId: userIdSchema, refType: refTypeSchema, refId: refIdSchema }).parse(rest);
+  const resolved = currency ?? DEFAULT_CURRENCY;
+  currencySchema.parse(resolved);
+  return resolved;
 }
 
 /** 校验幂等键二元组（settle/release 共用） */

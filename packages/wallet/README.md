@@ -23,9 +23,16 @@ const hold = await wallet.authorize({ userId, amount: '259.00', refType: 'order'
 await wallet.settle({ refType: 'order', refId: orderId, amount: '259.00' });
 await wallet.release({ refType: 'order', refId: orderId, reason: 'user_cancel' });
 
-// 退款（余额守卫）与余额查询
+// 退款（授信地板守卫）与余额查询
 await wallet.refund({ userId, amount: '59.00', refType: 'topup_refund', refId: tradeNo });
 await wallet.balance(userId);
+
+// 多币种（缺省 CNY；一币一账互不净额）
+await wallet.credit({ userId, currency: 'USD', amount: '14.99', refType: 'topup', refId: stripeId });
+
+// 授信地板（缺省 0 = 纯预付）：可用 = balance + credit_limit − in_flight
+await wallet.setCreditLimit({ userId, amount: '50', refType: 'credit_line', refId: grantId });
+const summaries = await wallet.accounts(userId);   // 全部币种账户摘要
 
 // worker 周期调用：超时冻结转 expired 并归还在途
 await wallet.releaseExpired(new Date(), 100);
@@ -35,8 +42,8 @@ await wallet.releaseExpired(new Date(), 100);
 
 - 每笔冻结必达终态（settled / released / expired），settle 与 release 经 CAS 互斥
 - 流水链恒等：`balance_after = balance_before + amount`（DB check 兜底）
-- `balance`、`in_flight` 恒非负；settle 不得超过冻结额
-- 同一业务键同一动作至多一条流水：`(ref_type, ref_id, kind)` 唯一索引
+- `balance ≥ −credit_limit`、`in_flight`、`credit_limit` 恒非负；settle 不得超过冻结额
+- 同一业务键同一动作至多一条流水：`(ref_type, ref_id, kind)` 唯一索引（键不含币种维度）
 
 ## 业务约定
 
@@ -46,10 +53,10 @@ await wallet.releaseExpired(new Date(), 100);
 
 ## 设计边界（消费方须知，刻意为之）
 
-1. **单币种**：无 currency 列；多币种 = 每币种独立账户（未来可迁移 (user_id, currency) 主键，属破坏性变更）
-2. **预付模型**：balance ≥ 0 恒成立；账期/后付款（应收账款）模式不适用
-3. **一个冻结单次结算**：分次扣款应建模为多次独立 authorize
-4. **幂等键全局唯一**：(ref_type, ref_id) 不含 user 维度；跨账户顶撞抛 `RefKeyConflictError`（键设计责任在调用方，此错误是串号事故的最后闸门）
+1. ~~单币种~~ → **已支持多币种**：`(user_id, currency)` 一币一账互不净额；动词可选传 currency（缺省 CNY，单币种业务零感知）；幂等键与币种无关（同键跨币顶撞报错）；跨币换汇是业务的两腿操作（汇率是策略，不进底层）
+2. ~~纯预付~~ → **已支持授信地板**：`credit_limit`（缺省 0 = 纯预付），可用口径 = balance + credit_limit − in_flight，balance 可至 −credit_limit；`setCreditLimit` 幂等（授多少是业务策略，地板机制在底层）。真账期（发票/催收）是单据系统，不属钱包
+3. **一个冻结单次结算**：分次扣款 = 多次独立 authorize（分次结算 installment 维度已设计、挂起——等真实分期业务，避免为想象需求付并发模型复杂度）
+4. **幂等键全局唯一**：(ref_type, ref_id) 不含 user/币种维度；跨账户/跨币种顶撞抛 `RefKeyConflictError`（键设计责任在调用方，此错误是串号事故的最后闸门）
 
 ## 表（本包私有三表）
 

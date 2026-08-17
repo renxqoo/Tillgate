@@ -1,5 +1,5 @@
 /** credit：入账（充值/赠送/返佣）——(refType, refId, 'credit') 幂等，并发重放读回首条 */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
 import { walletAccounts, walletTransactions } from './schema';
@@ -10,17 +10,18 @@ import { parseAmount, parseUserRef } from './validation';
 import type { CreditInput, CreditResult } from './types';
 
 export async function credit(db: NodePgDatabase, input: CreditInput): Promise<CreditResult> {
-  parseUserRef(input);
+  const currency = parseUserRef(input);
   const amount = parseAmount(input.amount);
 
   try {
     return await db.transaction(async (tx) => {
-      const account = await lockAccount(tx, input.userId);
+      const account = await lockAccount(tx, input.userId, currency);
       const balanceAfter = new Decimal(account.balance).plus(amount);
       const [row] = await tx
         .insert(walletTransactions)
         .values({
           userId: input.userId,
+          currency,
           kind: 'credit',
           refType: input.refType,
           refId: input.refId,
@@ -34,7 +35,9 @@ export async function credit(db: NodePgDatabase, input: CreditInput): Promise<Cr
       await tx
         .update(walletAccounts)
         .set({ balance: toStorage(balanceAfter), updatedAt: new Date() })
-        .where(eq(walletAccounts.userId, input.userId));
+        .where(
+          and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
+        );
       return {
         transactionId: row.id,
         amount: normalizeAmount(input.amount),
@@ -44,7 +47,10 @@ export async function credit(db: NodePgDatabase, input: CreditInput): Promise<Cr
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return replayMovement(db, input.refType, input.refId, 'credit', input.userId);
+      return replayMovement(db, input.refType, input.refId, 'credit', {
+        userId: input.userId,
+        currency,
+      });
     }
     throw error;
   }

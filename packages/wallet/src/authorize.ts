@@ -1,5 +1,5 @@
-/** authorize：冻结/预占——可用口径 = balance − in_flight；(refType, refId) 幂等 */
-import { eq } from 'drizzle-orm';
+/** authorize：冻结/预占——可用口径 = balance + credit_limit − in_flight；(refType, refId) 幂等 */
+import { and, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
 import { InsufficientBalanceError, RefKeyConflictError } from './errors';
@@ -14,25 +14,29 @@ export async function authorize(
   db: NodePgDatabase,
   input: AuthorizeInput,
 ): Promise<AuthorizeResult> {
-  parseUserRef(input);
+  const currency = parseUserRef(input);
   const amount = parseAmount(input.amount);
 
   try {
     return await db.transaction(async (tx) => {
-      const account = await lockAccount(tx, input.userId);
+      const account = await lockAccount(tx, input.userId, currency);
       const inFlight = new Decimal(account.inFlight);
-      const available = new Decimal(account.balance).minus(inFlight);
+      const available = new Decimal(account.balance)
+        .plus(account.creditLimit)
+        .minus(inFlight);
       if (available.lt(amount)) {
         throw new InsufficientBalanceError(
           input.userId,
           toStorage(available),
           toStorage(amount),
+          currency,
         );
       }
       const [auth] = await tx
         .insert(walletAuthorizations)
         .values({
           userId: input.userId,
+          currency,
           refType: input.refType,
           refId: input.refId,
           amount: toStorage(amount),
@@ -44,7 +48,9 @@ export async function authorize(
       await tx
         .update(walletAccounts)
         .set({ inFlight: toStorage(inFlight.plus(amount)), updatedAt: new Date() })
-        .where(eq(walletAccounts.userId, input.userId));
+        .where(
+          and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
+        );
       return {
         authorizationId: auth.id,
         amount: normalizeAmount(input.amount),
@@ -58,7 +64,7 @@ export async function authorize(
       const existing = await findAuthorization(db, input.refType, input.refId);
       if (existing) {
         // 幂等键归属校验：同键跨账户顶撞必须炸，不能把别人的冻结当自己的重放
-        if (existing.userId !== input.userId) {
+        if (existing.userId !== input.userId || existing.currency !== currency) {
           throw new RefKeyConflictError(input.refType, input.refId, existing.userId);
         }
         return {

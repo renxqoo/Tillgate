@@ -12,6 +12,7 @@ import {
 } from '../schema';
 import {
   AuthorizationNotActiveError,
+  CreditLimitConflictError,
   Decimal,
   InsufficientBalanceError,
   RefKeyConflictError,
@@ -318,5 +319,113 @@ describe('wallet 全局不变量', () => {
     for (const row of rows) {
       expect(row.amount.includes('e')).toBe(false);
     }
+  });
+});
+
+describe('wallet 多币种 currency（缺省 CNY，一币一账互不净额）', () => {
+  it('同用户双币账户隔离：USD 冻结不影响 CNY 可用；accounts 列出双币', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 'cny') });
+    await wallet.credit({ userId: user, currency: 'USD', amount: '20', refType: 'topup', refId: ref(user, 'usd') });
+
+    await wallet.authorize({ userId: user, currency: 'USD', amount: '15', refType: 'order', refId: ref(user, 'usd-hold') });
+    // CNY 可用不受 USD 在途影响
+    await wallet.authorize({ userId: user, amount: '100', refType: 'order', refId: ref(user, 'cny-hold') });
+
+    const summaries = await wallet.accounts(user);
+    expect(summaries.map((s) => s.currency).toSorted()).toEqual(['CNY', 'USD']);
+    const usd = summaries.find((s) => s.currency === 'USD');
+    const cny = summaries.find((s) => s.currency === 'CNY');
+    expect(usd && sameAmount(usd.inFlight, '15')).toBe(true);
+    expect(cny && sameAmount(cny.inFlight, '100')).toBe(true);
+    expect(sameAmount(await wallet.balance(user, 'USD'), '20')).toBe(true);
+  });
+
+  it('幂等键与币种无关：同键跨币种顶撞即 RefKeyConflictError', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, currency: 'USD', amount: '5', refType: 'topup', refId: ref(user, 'k') });
+    await expect(
+      wallet.credit({ userId: user, amount: '5', refType: 'topup', refId: ref(user, 'k') }),
+    ).rejects.toBeInstanceOf(RefKeyConflictError);
+  });
+
+  it('非法币种拒绝（小写/长度错）', async () => {
+    const user = nextUser();
+    await expect(
+      wallet.credit({ userId: user, currency: 'usd', amount: '1', refType: 'topup', refId: 'x' }),
+    ).rejects.toThrow();
+    await expect(
+      wallet.credit({ userId: user, currency: 'USDT', amount: '1', refType: 'topup', refId: 'x' }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('wallet 授信地板 credit_limit（缺省 0 = 纯预付）', () => {
+  it('授信扩大可用口径，消费可至负余额但不击穿地板', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    // 无授信：可用 10
+    await expect(
+      wallet.authorize({ userId: user, amount: '11', refType: 'order', refId: ref(user, 'x') }),
+    ).rejects.toBeInstanceOf(InsufficientBalanceError);
+    // 授信 50：可用 = 10 + 50
+    await wallet.setCreditLimit({ userId: user, amount: '50', refType: 'credit_line', refId: ref(user, 'grant') });
+    await wallet.authorize({ userId: user, amount: '55', refType: 'order', refId: ref(user, 'big') });
+    await expect(
+      wallet.authorize({ userId: user, amount: '6', refType: 'order', refId: ref(user, 'over') }),
+    ).rejects.toBeInstanceOf(InsufficientBalanceError);
+
+    // 结算后负余额成立（10 − 55×部分）：结 35 → balance = −25 ≥ −50
+    await wallet.settle({ refType: 'order', refId: ref(user, 'big'), amount: '35' });
+    expect(sameAmount(await wallet.balance(user), '-25')).toBe(true);
+  });
+
+  it('退款受地板守卫：可用授信额度内可退，击穿即拒', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    await wallet.setCreditLimit({ userId: user, amount: '50', refType: 'credit_line', refId: ref(user, 'grant') });
+    // balance 10 → 退 30：到 −20 ≥ −50 ✓
+    await wallet.refund({ userId: user, amount: '30', refType: 'topup_refund', refId: ref(user, 'r1') });
+    expect(sameAmount(await wallet.balance(user), '-20')).toBe(true);
+    // 再退 35：到 −55 < −50 ✗
+    await expect(
+      wallet.refund({ userId: user, amount: '35', refType: 'topup_refund', refId: ref(user, 'r2') }),
+    ).rejects.toBeInstanceOf(InsufficientBalanceError);
+  });
+
+  it('setCreditLimit 幂等；降额低于当前欠款拒绝；审计行不破坏余额链', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
+    const first = await wallet.setCreditLimit({ userId: user, amount: '50', refType: 'credit_line', refId: ref(user, 'g') });
+    const replay = await wallet.setCreditLimit({ userId: user, amount: '50', refType: 'credit_line', refId: ref(user, 'g') });
+    expect(replay.replayed).toBe(true);
+    expect(replay.transactionId).toBe(first.transactionId);
+    expect(sameAmount(replay.creditLimit, '50')).toBe(true);
+
+    // 欠款 30（授信 50 内消费）
+    await wallet.authorize({ userId: user, amount: '30', refType: 'order', refId: ref(user, 'o') });
+    await wallet.settle({ refType: 'order', refId: ref(user, 'o'), amount: '30' });
+    expect(sameAmount(await wallet.balance(user), '-20')).toBe(true);
+    // 降额到 10：−20 < −10 击穿地板
+    await expect(
+      wallet.setCreditLimit({ userId: user, amount: '10', refType: 'credit_line', refId: ref(user, 'down') }),
+    ).rejects.toBeInstanceOf(CreditLimitConflictError);
+    // 降额到 20：恰好贴地板，允许
+    const lowered = await wallet.setCreditLimit({ userId: user, amount: '20', refType: 'credit_line', refId: ref(user, 'ok') });
+    expect(sameAmount(lowered.creditLimit, '20')).toBe(true);
+
+    // 审计行链完整性：credit_line 行 amount=0 且 before=after
+    const rows = await db
+      .select()
+      .from(walletTransactions)
+      .where(eq(walletTransactions.userId, user))
+      .orderBy(asc(walletTransactions.id));
+    let expected = new Decimal(0);
+    for (const row of rows) {
+      expect(d(row.balanceAfter).eq(d(row.balanceBefore).plus(d(row.amount)))).toBe(true);
+      expect(d(row.balanceBefore).eq(expected)).toBe(true);
+      expected = d(row.balanceAfter);
+    }
+    expect(expected.eq(new Decimal('-20'))).toBe(true);
   });
 });

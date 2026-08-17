@@ -44,6 +44,7 @@ async function transitionRelease(
       .returning({
         id: walletAuthorizations.id,
         userId: walletAuthorizations.userId,
+        currency: walletAuthorizations.currency,
         amount: walletAuthorizations.amount,
       });
     if (claimed.length === 0) {
@@ -51,10 +52,11 @@ async function transitionRelease(
     }
     const claim = claimed[0];
     if (!claim) throw new Error('wallet release cas returned empty');
-    const account = await lockAccount(tx, claim.userId);
+    const account = await lockAccount(tx, claim.userId, claim.currency);
     const inFlightAfter = new Decimal(account.inFlight).minus(claim.amount);
     await tx.insert(walletTransactions).values({
       userId: claim.userId,
+      currency: claim.currency,
       kind: 'release',
       refType,
       refId,
@@ -67,7 +69,9 @@ async function transitionRelease(
     await tx
       .update(walletAccounts)
       .set({ inFlight: toStorage(inFlightAfter), updatedAt: new Date() })
-      .where(eq(walletAccounts.userId, claim.userId));
+      .where(
+        and(eq(walletAccounts.userId, claim.userId), eq(walletAccounts.currency, claim.currency)),
+      );
     return {
       authorizationId: claim.id,
       amount: claim.amount,

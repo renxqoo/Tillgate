@@ -1,64 +1,66 @@
-/** refund：退款——授信地板守卫（balance − amount ≥ −credit_limit），独立幂等域 */
+/** setCreditLimit：授信地板调整——不动余额（零额审计流水），幂等键同其他动词；
+ *  守卫：新额度不得低于当前欠款（balance ≥ −newLimit），否则击穿地板拒绝 */
 import { and, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
-import { InsufficientBalanceError } from './errors';
+import { CreditLimitConflictError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
 import { lockAccount } from './account';
 import { isUniqueViolation } from './internal';
-import { replayMovement } from './replay';
-import { parseAmount, parseUserRef } from './validation';
-import type { CreditResult, RefundInput } from './types';
+import { replayCreditLine } from './replay';
+import { parseNonNegativeAmount, parseUserRef } from './validation';
+import type { CreditLineInput, CreditLineResult } from './types';
 
-export async function refund(db: NodePgDatabase, input: RefundInput): Promise<CreditResult> {
+export async function setCreditLimit(
+  db: NodePgDatabase,
+  input: CreditLineInput,
+): Promise<CreditLineResult> {
   const currency = parseUserRef(input);
-  const amount = parseAmount(input.amount);
+  const newLimit = parseNonNegativeAmount(input.amount);
 
   try {
     return await db.transaction(async (tx) => {
       const account = await lockAccount(tx, input.userId, currency);
       const balance = new Decimal(account.balance);
-      const floor = new Decimal(account.creditLimit).neg();
-      if (balance.minus(amount).lt(floor)) {
-        throw new InsufficientBalanceError(
+      if (balance.lt(newLimit.neg())) {
+        throw new CreditLimitConflictError(
           input.userId,
-          toStorage(balance.minus(floor)),
-          toStorage(amount),
           currency,
+          account.balance,
+          toStorage(newLimit),
         );
       }
-      const balanceAfter = balance.minus(amount);
       const [row] = await tx
         .insert(walletTransactions)
         .values({
           userId: input.userId,
           currency,
-          kind: 'refund',
+          kind: 'credit_line',
           refType: input.refType,
           refId: input.refId,
-          amount: toStorage(amount.neg()),
+          amount: '0',
           balanceBefore: account.balance,
-          balanceAfter: toStorage(balanceAfter),
+          balanceAfter: account.balance,
+          creditLimitAfter: toStorage(newLimit),
           memo: input.memo,
         })
         .returning({ id: walletTransactions.id });
-      if (!row) throw new Error('wallet refund insert failed');
+      if (!row) throw new Error('wallet credit_line insert failed');
       await tx
         .update(walletAccounts)
-        .set({ balance: toStorage(balanceAfter), updatedAt: new Date() })
+        .set({ creditLimit: toStorage(newLimit), updatedAt: new Date() })
         .where(
           and(eq(walletAccounts.userId, input.userId), eq(walletAccounts.currency, currency)),
         );
       return {
         transactionId: row.id,
-        amount: normalizeAmount(input.amount),
-        balanceAfter: toStorage(balanceAfter),
+        creditLimit: normalizeAmount(input.amount),
         replayed: false,
       };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return replayMovement(db, input.refType, input.refId, 'refund', {
+      return replayCreditLine(db, input.refType, input.refId, {
         userId: input.userId,
         currency,
       });

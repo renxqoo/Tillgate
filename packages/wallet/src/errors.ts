@@ -24,12 +24,29 @@ export class InsufficientBalanceError extends WalletError {
     readonly userId: number,
     readonly available: string,
     readonly required: string,
+    readonly currency: string = 'CNY',
   ) {
     super(
-      `insufficient balance for user ${userId}: available ${available}, required ${required}`,
+      `insufficient ${currency} balance for user ${userId}: available ${available}, required ${required}`,
       'insufficient_balance',
     );
     this.name = 'InsufficientBalanceError';
+  }
+}
+
+/** 授信调整冲突：新授信额低于当前欠款（|负余额| > 新额度），调低会击穿地板 */
+export class CreditLimitConflictError extends WalletError {
+  constructor(
+    readonly userId: number,
+    readonly currency: string,
+    readonly balance: string,
+    readonly requestedLimit: string,
+  ) {
+    super(
+      `cannot lower credit limit for user ${userId} (${currency}) to ${requestedLimit}: balance ${balance} would breach the floor`,
+      'credit_limit_conflict',
+    );
+    this.name = 'CreditLimitConflictError';
   }
 }
 
