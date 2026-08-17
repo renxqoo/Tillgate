@@ -43,6 +43,8 @@ export const USER_MAIL_BRAND: MailBrand = {
 export interface Mailer {
   /** 发送登录验证码（6 位数字，5 分钟有效） */
   sendLoginCode(to: string, code: string, ctx: { ip: string }): Promise<void>;
+  /** 通用文本邮件（告警通知等 worker 场景） */
+  send(to: string, subject: string, text: string): Promise<void>;
 }
 
 const STYLE = {
@@ -143,6 +145,9 @@ export function createMailer(config: MailerConfig, brand: MailBrand): Mailer {
         text: mail.text,
         html: mail.html,
       });
+    },
+    async send(to, subject, text) {
+      await transporter.sendMail({ from: config.from, to, subject, text });
     },
   };
 }

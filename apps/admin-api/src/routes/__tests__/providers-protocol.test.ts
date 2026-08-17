@@ -41,9 +41,9 @@ async function cleanup(): Promise<void> {
 }
 
 describe('providers 协议词表（SUPPORTED_PROTOCOLS 单一真相）', () => {
-  it('非法协议（旧词表 openai_compatible / UI 旧值 openai / 任意串）→ 400', async () => {
+  it('非法协议（旧词表 openai_compatible / UI 旧值 openai / 任意串）→ 400（anthropic/gemini 等六协议族为合法词表）', async () => {
     const app = makeAdminTestApp({ '/providers': providerAdminRoutes(makeServices(db)) });
-    for (const bad of ['openai', 'openai_compatible', 'anthropic', 'made-up']) {
+    for (const bad of ['openai', 'openai_compatible', 'made-up']) {
       const res = await app.request('/api/admin/providers', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

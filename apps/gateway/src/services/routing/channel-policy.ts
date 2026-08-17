@@ -1,5 +1,5 @@
 import { and, eq, inArray } from 'drizzle-orm';
-import { channels } from '@ai-gateway/db/schema';
+import { channels, notifyOutbox } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Logger } from '@ai-gateway/core';
 import type { ModelRouter } from './model-router.js';
@@ -66,11 +66,25 @@ export async function markChannelDeadCredential(
   logger?: Logger,
 ): Promise<void> {
   try {
-    const updated = await db
-      .update(channels)
-      .set({ status: 4, updatedAt: new Date() })
-      .where(and(eq(channels.id, channelId), inArray(channels.status, [0, 3])))
-      .returning({ id: channels.id });
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(channels)
+        .set({ status: 4, updatedAt: new Date() })
+        .where(and(eq(channels.id, channelId), inArray(channels.status, [0, 3])))
+        .returning({ id: channels.id });
+      if (rows.length > 0) {
+        // 事务性发件箱：渠道禁用事件与状态变更同事务落箱（worker 投递，不搞事后扫描）
+        await tx
+          .insert(notifyOutbox)
+          .values({
+            event: 'channel_disabled',
+            payload: { channelId, reason: 'dead_credential' },
+            dedupeKey: `channel-disabled:${channelId}:${Date.now()}`,
+          })
+          .onConflictDoNothing();
+      }
+      return rows;
+    });
     if (updated.length > 0) {
       logger?.warn({ channelId }, 'channel marked as dead credential (status=4)');
       await router.invalidate();

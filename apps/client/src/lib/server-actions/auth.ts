@@ -135,11 +135,11 @@ export async function registerAction(
 }
 
 /** 注册第二步：验证邮箱验证码，成功建号+落会话并跳转 */
-export async function registerVerifyAction(challengeId: string, code: string): Promise<{ error?: string }> {
+export async function registerVerifyAction(challengeId: string, code: string, aff?: string | null): Promise<{ error?: string }> {
   const r = await authFetch(`${CLIENT_API_BASE}/api/auth/register/verify`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ challengeId, code }),
+    body: JSON.stringify({ challengeId, code, ...(aff ? { aff } : {}) }),
     cache: "no-store",
   });
   if (isFetchError(r)) return { error: r.fetchError };

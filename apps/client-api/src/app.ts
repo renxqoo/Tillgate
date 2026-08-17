@@ -9,6 +9,13 @@ import type { ClientApiConfig } from './config.js';
 import type { ClientServices } from './services/index.js';
 import { clientAuthRoutesPublic, clientAuthRoutesProtected } from './routes/auth.js';
 import { oauthRoutes } from './routes/oauth.js';
+import { paymentRoutes, paymentPublicRoutes } from './routes/payments.js';
+import { publicPricingRoutes, pricingRoutes } from './routes/public-pricing.js';
+import { referralRoutes } from './routes/referrals.js';
+import { playgroundRoutes } from './routes/playground.js';
+import { inviteOverview } from './services/referrals.js';
+import { createPaymentServices } from './services/payments/orders.js';
+import { createEpayProvider, createStripeProvider, type PaymentProvider } from './services/payments/providers.js';
 import { keyRoutes } from './routes/keys.js';
 import { appRoutes } from './routes/apps.js';
 import { meRoutes } from './routes/me.js';
@@ -61,6 +68,12 @@ export function createApp(deps: ClientApiDeps): Hono {
   // OAuth 社交登录（公开组：authorize/callback 均为浏览器跳转流）
   app.route('/api/auth/oauth', oauthRoutes(services, deps.config));
 
+  // 公开定价页（未登录可访问；官方价）
+  app.route('/api/public', publicPricingRoutes(deps.db));
+  // 支付公开回调（签名验证替代会话；渠道服务器直连）
+  const paymentServices = createPaymentServices(deps.db, deps.ledger, buildPaymentProviders(deps.config), deps.logger);
+  app.route('/api/public/payments', paymentPublicRoutes(paymentServices));
+
   // 受保护子应用：默认要求有效用户会话 + 状态变更 Origin 校验（CSRF 纵深防御）
   const api = new Hono<ClientEnv>();
   api.use('*', userSessionMiddleware(deps.db, deps.config.jwtSecret));
@@ -74,7 +87,32 @@ export function createApp(deps: ClientApiDeps): Hono {
   api.route('/plans', planRoutes(services));
   api.route('/subscriptions', subscriptionRoutes(services));
   api.route('/orgs', orgRoutes(services));
+  api.route('/payments', paymentRoutes(paymentServices));
+  api.route('/pricing', pricingRoutes(deps.db));
+  // Playground 操练场代理（成组配置才挂载；未配置 = 404）
+  if (deps.config.playground) {
+    api.route('/playground', playgroundRoutes(deps.db, deps.config.playground));
+  }
+  api.route('/referrals', referralRoutes((userId) =>
+    inviteOverview(deps.db, userId, {
+      frontendUrl: deps.config.oauth.frontendUrl,
+      signupBonus: deps.config.referralSignupBonus,
+      commissionRate: deps.config.referralCommissionRate,
+    }),
+  ));
   app.route('/api', api);
 
   return app;
+}
+
+/** 渠道装配（config 驱动；未配置渠道不注册 → 下单 503 payment_unavailable） */
+function buildPaymentProviders(config: ClientApiConfig): { epay?: PaymentProvider; stripe?: PaymentProvider } {
+  const providers: { epay?: PaymentProvider; stripe?: PaymentProvider } = {};
+  if (config.payments.epay) {
+    providers.epay = createEpayProvider(config.payments.epay);
+  }
+  if (config.payments.stripe) {
+    providers.stripe = createStripeProvider(config.payments.stripe);
+  }
+  return providers;
 }

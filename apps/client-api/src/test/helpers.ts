@@ -58,6 +58,10 @@ export function makeTestConfig(overrides: Partial<ClientApiConfig> = {}): Client
     giftAmount: 0,
     trustedOrigins: [],
     trustedProxyHops: 1, // 测试信任单跳：单条 XFF 即客户端 IP（模拟代理后部署）
+    payments: { epay: null, stripe: null },
+    referralSignupBonus: 0,
+    playground: null,
+    referralCommissionRate: 0,
     oauth: { frontendUrl: 'http://localhost:3001', apiBase: 'http://localhost:8791', github: null, google: null },
     registerEnabled: true,
     ...overrides,

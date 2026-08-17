@@ -15,6 +15,7 @@ import { users } from '@ai-gateway/db/schema';
 import type { ClientServices } from './index.js';
 import type { ClientApiConfig } from '../config.js';
 import { audited, defaultDisplayName, issueSession, type VerifySuccess } from './auth-common.js';
+import { applyReferral } from './referrals.js';
 
 /**
  * 邮箱自助注册流程（两步：注册 → 邮箱验证码 → 建号并自动登录）：
@@ -141,7 +142,7 @@ export async function register(
 export async function verifyRegistration(
   s: ClientServices,
   config: ClientApiConfig,
-  input: { challengeId: string; code: string },
+  input: { challengeId: string; code: string; aff?: string },
 ): Promise<VerifySuccess> {
   return audited(
     s,
@@ -191,6 +192,14 @@ export async function verifyRegistration(
             passwordHash,
           })
           .returning({ id: users.id, email: users.email });
+        // 邀请归因（自声明 aff 码；建号成功后尽力而为，不影响注册结果）
+        if (input.aff) {
+          await applyReferral(s.db, s.ledger, {
+            inviteeId: created!.id,
+            affCode: input.aff,
+            signupBonus: config.referralSignupBonus,
+          }).catch(() => undefined);
+        }
         const session = await issueSession(s, config, created!.id);
         return {
           kind: 'success',

@@ -19,6 +19,9 @@ export default function Landing() {
       </div>
 
       <Button asChild size="lg">
+        <Link href="/pricing" className="mr-4 text-sm text-muted-foreground underline">
+          模型定价
+        </Link>
         <Link href="/dashboard">
           进入用户面板 <ArrowRight />
         </Link>

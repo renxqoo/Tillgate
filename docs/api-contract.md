@@ -272,3 +272,44 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | `GET /health` | 深健康：上游可达性 + 熔断状态 + 滚动错误率，异常 503（P1） |
 | `POST /api/webhooks` | 事件推送：余额不足提醒、充值成功通知（P2） |
 | `GET /api/admin/stats/export` | 报表导出 CSV（P1） |
+
+
+## 2026-08 扩展：协议矩阵 / 模态端点 / 支付 / 运营（对齐 new-api）
+
+### 网关推理端点（鉴权同 §2：Bearer ag_ Key / App JWT / Playground JWT）
+
+| 端点 | 说明 |
+|---|---|
+| POST /v1/chat/completions | OpenAI chat（规范形本体） |
+| POST /v1/completions | legacy text completions（codec 翻译） |
+| POST /v1/responses | OpenAI Responses（codec 翻译） |
+| POST /v1/messages | Claude Messages（codec 翻译，非流式/流式） |
+| POST /v1beta/models/{model}:generateContent / :streamGenerateContent | Gemini 原生（?alt=sse 流式） |
+| POST /v1/embeddings、/v1/engines/{model}/embeddings | 向量（含旧版别名） |
+| GET /v1/models、/v1/models/{model} | 模型列表/详情；按 anthropic-version / x-goog-api-key 头三态输出 |
+| POST /v1/images/generations、/v1/images/edits | 图像（按张计费；edits multipart） |
+| POST /v1/audio/speech | TTS（JSON 入/二进制出，按字符计费） |
+| POST /v1/audio/transcriptions、/v1/audio/translations | STT（multipart，按秒计费） |
+| POST /v1/rerank、/v1/moderations | 重排/审核（按次计费） |
+| POST /v1/video/generations | 视频生成提交（new-api 形状；201 {id, task_id, status}；按次或按秒计费） |
+| POST /v1/music/generations | 音乐生成提交（201 {id, status}；worker 代执行同步上游；按次计费） |
+| GET /v1/videos/{id}、/v1/musics/{id} | 任务查询（status/video_url/audio_url/尺寸/失败原因；归属校验） |
+
+- 管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（packages/ai protocol/codec 单一真相）。
+- 上游协议族：openai-compatible / anthropic / gemini / azure-openai / aws-bedrock(SigV4+eventstream) / vertex-ai(SA JWT)。厂商 baseUrl 预设见 admin-api GET /api/admin/vendor-catalog。
+- 异步生成任务（video/music）：提交即预留（两阶段账本 authorize），worker 轮询驱动终态——succeeded 按收据实扣（units=1 或 duration 快照）、failed/expired 释放不扣（对齐 new-api 任务计费语义，无「真扣+退款」双轨）。管理端任务列表 GET /api/admin/generation-tasks。
+
+### 计费扩展
+- 计费单位：model_mappings.pricing_unit ∈ token/request/image/second/char + unit_price；金额 = (token 部分 + units×unit_price)×系数（packages/money 单一真相）。
+- 费率卡系数：model > group（pricing_group 匹配）> global 优先级解析（packages/ledger coefficient.ts）；停用卡拒绝新请求（403 rate_card_disabled）。
+
+### client-api 新端点
+- POST /api/payments（下单）、GET /api/payments、GET /api/payments/:id —— 受会话保护
+- GET /api/public/payments/epay/notify（MD5 验签，回 success/fail）、POST /api/public/payments/stripe/webhook（HMAC t/v1 验签）—— 公开回调
+- GET /api/public/pricing（公开官方价）、GET /api/pricing（会话个性化到手价）
+- GET /api/referrals —— 邀请概览；注册 POST /api/auth/register/verify 增可选 aff 字段
+- POST /api/playground/chat/completions —— 操练场代理（会话→短期网关 JWT 桥，SSE 透传）
+
+### admin-api 新端点
+- GET /api/admin/vendor-catalog、GET /api/admin/payment-orders、POST /api/admin/payment-orders/{id}/close
+- /api/admin/notifications（GET/POST/PATCH/DELETE + POST {id}/test）—— 告警渠道 CRUD 与测试

@@ -37,6 +37,8 @@ const loginSchema = z.object({
 const verifySchema = z.object({
   challengeId: z.string().uuid(),
   code: z.string().regex(/^\d{6}$/),
+  /** 邀请归因（自声明 aff 码，如 u1a2b3） */
+  aff: z.string().max(32).regex(/^u[0-9a-z]+$/i).optional(),
 });
 
 const registerSchema = z.object({
@@ -120,6 +122,7 @@ export function clientAuthRoutesPublic(s: ClientServices, config: ClientApiConfi
       const outcome = await verifyRegistration(s, config, {
         challengeId: body.challengeId,
         code: body.code,
+        aff: body.aff,
       });
       setCookie(c, SESSION_COOKIE, outcome.token, cookieOptions(config.secureCookie, SESSION_DEFAULT_TTL_S));
       return c.json({

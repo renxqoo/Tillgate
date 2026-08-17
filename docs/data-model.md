@@ -478,3 +478,17 @@ in_flight 过期只能转 uncertain 并告警/人工复核。
 
 数据等级：诊断数据（非资金）——接收端过载即丢、绝不反压业务；默认保留 7 天（TRACE_RETENTION_DAYS，worker 分区维护）。
 写入方：trace-receiver（OTLP/HTTP JSON → 批量 INSERT，主键冲突忽略）；读取方：admin-api `/api/admin/tracing/*`。
+
+
+## 2026-08 扩展表（迁移 0051/0052）
+
+| 表 | 用途 |
+|---|---|
+| payment_orders | 在线支付订单（状态机 0 created→2 credited→3 refunded；入账幂等 ledger.paymentCredit 三件套） |
+| referrals | 邀请关系（invitee 唯一；佣金日结 worker runReferralCommission 按日幂等） |
+| notification_channels | 告警渠道（webhook url+secret / email recipients；events 订阅） |
+| notify_outbox | 事务性发件箱（dedupe_key 唯一；worker runNotifyDispatch 投递，3 次退避后终态） |
+
+既有表扩展：
+- model_mappings + pricing_unit/unit_price/pricing_group；usage_logs + units/unit_price 快照
+- rate_card_coefficients + group_key（model>group>global）；transactions + payment/payment_refunds/commission 幂等部分唯一索引

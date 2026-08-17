@@ -16,7 +16,9 @@ export default async function RegisterPage({
 }) {
   // 注册页 URL 不承载登录信息：无合法查询参数，全部剥除并 307 到干净 URL
   const sp = await searchParams;
-  const clean = stripAuthParams("/register", sp, []);
+  const affParam = Array.isArray(sp.aff) ? sp.aff[0] : sp.aff;
+  const aff = typeof affParam === 'string' && /^u[0-9a-z]+$/i.test(affParam) ? affParam : null;
+  const clean = stripAuthParams("/register", sp, ["aff"]);
   if (clean) redirect(clean);
   const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
   let oauthOptions: OAuthOption[] = [];
@@ -56,7 +58,7 @@ export default async function RegisterPage({
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
             {registerEnabled ? (
-              <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} />
+              <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} affCode={aff} />
             ) : (
               <div className="rounded-xl border bg-card p-6 text-center">
                 <h1 className="text-lg font-semibold">注册暂未开放</h1>

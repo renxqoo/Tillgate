@@ -78,6 +78,7 @@ describe('显示名称：rx 默认名 + 自助修改', () => {
         async sendLoginCode(to: string, code: string) {
           (services.mailer as unknown as { sent: Array<{ to: string; code: string }> }).sent.push({ to, code });
         },
+        async send() {},
       } as never,
     });
     app.route('/api/auth', clientAuthRoutesPublic(services, makeTestConfig()));

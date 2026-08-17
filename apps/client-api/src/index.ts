@@ -60,6 +60,35 @@ const app = createApp({
     trustedProxyHops: env.TRUSTED_PROXY_HOPS,
     internalApiToken: env.INTERNAL_API_TOKEN,
     registerEnabled: env.REGISTER_ENABLED,
+    referralSignupBonus: env.REFERRAL_SIGNUP_BONUS,
+    playground:
+      env.GATEWAY_URL && env.GATEWAY_JWT_SECRET
+        ? { gatewayUrl: env.GATEWAY_URL, gatewayJwtSecret: env.GATEWAY_JWT_SECRET }
+        : null,
+    referralCommissionRate: env.REFERRAL_COMMISSION_RATE,
+    payments: {
+      // 渠道成组配置才启用（半配置 = 渠道关闭并告警，不静默半启用）
+      epay:
+        env.EPAY_PID && env.EPAY_KEY && env.EPAY_GATEWAY_URL && env.CLIENT_PUBLIC_ORIGIN
+          ? {
+              pid: env.EPAY_PID,
+              key: env.EPAY_KEY,
+              gatewayUrl: env.EPAY_GATEWAY_URL,
+              notifyUrl: `${env.CLIENT_PUBLIC_ORIGIN}/api/public/payments/epay/notify`,
+              returnUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing`,
+            }
+          : null,
+      stripe:
+        env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.CLIENT_PUBLIC_ORIGIN
+          ? {
+              secretKey: env.STRIPE_SECRET_KEY,
+              webhookSecret: env.STRIPE_WEBHOOK_SECRET,
+              webhookUrl: `${env.CLIENT_PUBLIC_ORIGIN}/api/public/payments/stripe/webhook`,
+              successUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing?paid=1`,
+              cancelUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing?canceled=1`,
+            }
+          : null,
+    },
   },
 });
 

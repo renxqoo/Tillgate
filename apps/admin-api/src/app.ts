@@ -16,6 +16,9 @@ import {
 import { userAdminRoutes } from './routes/users.js';
 import { keyAdminRoutes } from './routes/keys.js';
 import { providerAdminRoutes } from './routes/providers.js';
+import { vendorCatalogRoutes } from './routes/vendor-catalog.js';
+import { paymentOrderAdminRoutes } from './routes/payment-orders.js';
+import { notificationAdminRoutes } from './routes/notifications.js';
 import { channelAdminRoutes } from './routes/channels.js';
 import { channelFundsRoutes } from './routes/channel-funds.js';
 import { voucherRoutes } from './routes/vouchers.js';
@@ -29,6 +32,7 @@ import { statsAdminRoutes } from './routes/stats.js';
 import { logAdminRoutes, auditLogAdminRoutes } from './routes/logs.js';
 import { usageLogAdminRoutes } from './routes/usage-logs.js';
 import { billingOperationsRoutes } from './routes/billing-operations.js';
+import { generationTaskAdminRoutes } from './routes/generation-tasks.js';
 import { tracingAdminRoutes } from './routes/tracing.js';
 import type { Mailer } from '@ai-gateway/identity';
 import { createPgTraceStore, type TraceStore } from '@ai-gateway/tracing';
@@ -104,6 +108,9 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/users', userAdminRoutes(services));
   admin.route('/keys', keyAdminRoutes(services));
   admin.route('/providers', providerAdminRoutes(services));
+  admin.route('/vendor-catalog', vendorCatalogRoutes());
+  admin.route('/payment-orders', paymentOrderAdminRoutes(deps.db));
+  admin.route('/notifications', notificationAdminRoutes(deps.db));
   admin.route('/channels', channelAdminRoutes(services));
   admin.route('/channel-funds', channelFundsRoutes(services, deps.config.voucherMaxBytes));
   admin.route('/vouchers', voucherRoutes(services));
@@ -116,6 +123,7 @@ export function createApp(deps: AdminApiDeps): Hono {
   admin.route('/stats', statsAdminRoutes(services));
   admin.route('/logs', logAdminRoutes(services));
   admin.route('/usage-logs', usageLogAdminRoutes(services));
+  admin.route('/generation-tasks', generationTaskAdminRoutes(services));
   admin.route('/audit-logs', auditLogAdminRoutes(services));
   admin.route('/billing-operations', billingOperationsRoutes(services));
   admin.route('/tracing', tracingAdminRoutes(services));

@@ -49,6 +49,9 @@ function stubMailer(): Mailer & { sent: Array<{ to: string; code: string }> } {
     async sendLoginCode(to: string, code: string) {
       m.sent.push({ to, code });
     },
+    async send() {
+      // 通用邮件（告警）在登录流测试中不可达
+    },
   }) as Mailer & { sent: Array<{ to: string; code: string }> };
 }
 

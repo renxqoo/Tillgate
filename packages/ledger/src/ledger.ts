@@ -7,6 +7,7 @@ import {
   fundOperations,
   orgMembers,
   organizations,
+  paymentOrders,
   plans,
   redeemBatches,
   redeemCodes,
@@ -121,6 +122,22 @@ export class LedgerError extends Error {
   }
 }
 
+export interface PaymentCreditResult {
+  ok: boolean;
+  transactionId?: number;
+  amount?: string;
+  balanceAfter?: string;
+  replayed: boolean;
+}
+
+export interface PaymentRefundResult {
+  ok: boolean;
+  transactionId?: number;
+  amount?: string;
+  balanceAfter?: string;
+  replayed: boolean;
+}
+
 export interface Ledger {
   getBalance(userId: number): Promise<string>;
   adminGift(input: {
@@ -139,6 +156,32 @@ export interface Ledger {
   }): Promise<BalanceMutationResult>;
   grantSignupGift(input: { userId: number; amount: MoneyInput }): Promise<SignupGiftResult>;
   redeemCode(input: { userId: number; code: string }): Promise<RedeemResult>;
+  /** 在线支付入账（幂等：operationId=payment-credit:{provider}:{providerOrderId}） */
+  paymentCredit(input: {
+    provider: 'epay' | 'stripe';
+    providerOrderId: string;
+    paymentOrderId: string;
+    userId: number;
+    amount: MoneyInput;
+    creditAmount: MoneyInput;
+  }): Promise<PaymentCreditResult>;
+  /** 在线支付退款（余额守卫；幂等：payment-refund:{providerOrderId}） */
+  paymentRefund(input: {
+    provider: 'epay' | 'stripe';
+    providerOrderId: string;
+    paymentOrderId: string;
+    userId: number;
+    amount: MoneyInput;
+  }): Promise<PaymentRefundResult>;
+  /** 定向营销入账（邀请奖励/返佣共用；幂等键自然来自 operationId） */
+  grantPromotionalCredit(input: {
+    operationId: string;
+    userId: number;
+    amount: MoneyInput;
+    kind: 'referral_signup' | 'referral_commission';
+    refId: string;
+    remark?: string;
+  }): Promise<BalanceMutationResult>;
   /** 购买套餐：扣余额、开新订阅期（已有有效订阅则拒绝）。quantity=席位（默认 1）。
    *  orgId 非空 = 组织订阅（企业团队套餐，user_id=owner）。 */
   subscribePlan(input: {
@@ -855,6 +898,255 @@ export function createLedger({ db, effects, clock = () => new Date() }: LedgerDe
         );
       }
       return result;
+    },
+
+    async paymentCredit(input) {
+      const operationId = `payment-credit:${input.provider}:${input.providerOrderId}`;
+      const fp = fingerprint({
+        kind: 'payment.credit',
+        provider: input.provider,
+        providerOrderId: input.providerOrderId,
+        userId: input.userId,
+        creditAmount: String(input.creditAmount),
+      });
+      const result = await db.transaction(async (tx): Promise<PaymentCreditResult> => {
+        const inserted = await tx
+          .insert(fundOperations)
+          .values({ operationId, kind: 'payment.credit', fingerprint: fp })
+          .onConflictDoNothing({ target: fundOperations.operationId })
+          .returning({ operationId: fundOperations.operationId });
+        if (inserted.length === 0) {
+          const existing = await tx.query.fundOperations.findFirst({
+            where: eq(fundOperations.operationId, operationId),
+          });
+          if (!existing || existing.fingerprint !== fp) throw new LedgerError('idempotency_conflict');
+          if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
+          return { ...(existing.result as PaymentCreditResult), replayed: true };
+        }
+
+        // 订单状态机：created(0) → credited(2)；重复回调（已 credited/settled 外状态）幂等拒绝
+        const credited = await tx
+          .update(paymentOrders)
+          .set({ status: 2, updatedAt: clock(), creditedAt: clock(), creditedOperationId: operationId })
+          .where(
+            and(
+              eq(paymentOrders.id, input.paymentOrderId),
+              // 合法迁移：0 created → 2 credited（回调重复到达时 0 行 → 走重放/拒绝）
+              eq(paymentOrders.status, 0),
+              eq(paymentOrders.userId, input.userId),
+            ),
+          )
+          .returning({ id: paymentOrders.id });
+        if (credited.length === 0) {
+          const row = await tx.query.paymentOrders.findFirst({
+            where: eq(paymentOrders.id, input.paymentOrderId),
+          });
+          const rejected: PaymentCreditResult = {
+            ok: false,
+            replayed: false,
+            ...(row?.status === 2 ? { transactionId: undefined } : {}),
+          };
+          await tx
+            .update(fundOperations)
+            .set({ result: rejected })
+            .where(eq(fundOperations.operationId, operationId));
+          return rejected;
+        }
+
+        const amount = toStorage(toDecimal(input.creditAmount));
+        const updated = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${amount}::numeric`, updatedAt: clock() })
+          .where(eq(users.id, input.userId))
+          .returning({ balance: users.balance });
+        if (updated.length === 0) throw new LedgerError('user_not_found');
+        const balanceAfter = updated[0]!.balance;
+        const balanceBefore = toStorage(new Decimal(balanceAfter).minus(amount));
+        const [entry] = await tx
+          .insert(transactions)
+          .values({
+            userId: input.userId,
+            type: 'payment',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            refType: 'payment_orders',
+            refId: String(input.paymentOrderId),
+            remark: `在线支付入账（${input.provider}）+${amount}`,
+          })
+          .returning({ id: transactions.id });
+        const applied: PaymentCreditResult = {
+          ok: true,
+          transactionId: entry!.id,
+          amount,
+          balanceAfter,
+          replayed: false,
+        };
+        await tx
+          .update(fundOperations)
+          .set({ transactionId: entry!.id, result: applied })
+          .where(eq(fundOperations.operationId, operationId));
+        return applied;
+      });
+      if (result.ok && !result.replayed) {
+        await runEffect(
+          () =>
+            effects?.balanceChanged?.({ userId: input.userId, balanceAfter: result.balanceAfter }) ??
+            Promise.resolve(),
+        );
+      }
+      return result;
+    },
+
+    async paymentRefund(input) {
+      const operationId = `payment-refund:${input.provider}:${input.providerOrderId}`;
+      const fp = fingerprint({
+        kind: 'payment.refund',
+        provider: input.provider,
+        providerOrderId: input.providerOrderId,
+        userId: input.userId,
+        amount: String(input.amount),
+      });
+      const result = await db.transaction(async (tx): Promise<PaymentRefundResult> => {
+        const inserted = await tx
+          .insert(fundOperations)
+          .values({ operationId, kind: 'payment.refund', fingerprint: fp })
+          .onConflictDoNothing({ target: fundOperations.operationId })
+          .returning({ operationId: fundOperations.operationId });
+        if (inserted.length === 0) {
+          const existing = await tx.query.fundOperations.findFirst({
+            where: eq(fundOperations.operationId, operationId),
+          });
+          if (!existing || existing.fingerprint !== fp) throw new LedgerError('idempotency_conflict');
+          if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
+          return { ...(existing.result as PaymentRefundResult), replayed: true };
+        }
+
+        // 订单状态机：credited(2) → refunded(3)；扣减余额受信用地板守卫
+        const updatedOrder = await tx
+          .update(paymentOrders)
+          .set({ status: 3, updatedAt: clock() })
+          .where(
+            and(
+              eq(paymentOrders.id, input.paymentOrderId),
+              eq(paymentOrders.status, 2),
+              eq(paymentOrders.userId, input.userId),
+            ),
+          )
+          .returning({ id: paymentOrders.id });
+        if (updatedOrder.length === 0) {
+          const rejected: PaymentRefundResult = { ok: false, replayed: false };
+          await tx
+            .update(fundOperations)
+            .set({ result: rejected })
+            .where(eq(fundOperations.operationId, operationId));
+          return rejected;
+        }
+
+        const amount = toStorage(toDecimal(input.amount));
+        const deducted = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} - ${amount}::numeric`, updatedAt: clock() })
+          .where(
+            sql`${users.id} = ${input.userId} and ${users.balance} - ${amount}::numeric >= -${users.creditLimit}::numeric`,
+          )
+          .returning({ balance: users.balance });
+        if (deducted.length === 0) throw new LedgerError('insufficient_balance');
+        const balanceAfter = deducted[0]!.balance;
+        const balanceBefore = toStorage(new Decimal(balanceAfter).plus(amount));
+        const [entry] = await tx
+          .insert(transactions)
+          .values({
+            userId: input.userId,
+            type: 'refund',
+            amount: `-${amount}`,
+            balanceBefore,
+            balanceAfter,
+            refType: 'payment_refunds',
+            refId: input.providerOrderId,
+            remark: `在线支付退款（${input.provider}）-${amount}`,
+          })
+          .returning({ id: transactions.id });
+        const applied: PaymentRefundResult = {
+          ok: true,
+          transactionId: entry!.id,
+          amount,
+          balanceAfter,
+          replayed: false,
+        };
+        await tx
+          .update(fundOperations)
+          .set({ transactionId: entry!.id, result: applied })
+          .where(eq(fundOperations.operationId, operationId));
+        return applied;
+      });
+      if (result.ok && !result.replayed) {
+        await runEffect(
+          () =>
+            effects?.balanceChanged?.({ userId: input.userId, balanceAfter: result.balanceAfter }) ??
+            Promise.resolve(),
+        );
+      }
+      return result;
+    },
+
+    async grantPromotionalCredit(input) {
+      const fp = fingerprint({
+        kind: `promo.${input.kind}`,
+        userId: input.userId,
+        amount: String(input.amount),
+        refId: input.refId,
+      });
+      return db.transaction(async (tx): Promise<BalanceMutationResult> => {
+        const inserted = await tx
+          .insert(fundOperations)
+          .values({ operationId: input.operationId, kind: `promo.${input.kind}`, fingerprint: fp })
+          .onConflictDoNothing({ target: fundOperations.operationId })
+          .returning({ operationId: fundOperations.operationId });
+        if (inserted.length === 0) {
+          const existing = await tx.query.fundOperations.findFirst({
+            where: eq(fundOperations.operationId, input.operationId),
+          });
+          if (!existing || existing.fingerprint !== fp) throw new LedgerError('idempotency_conflict');
+          if (!existing.result) throw new LedgerError('idempotency_conflict', 'operation incomplete');
+          return existing.result as BalanceMutationResult;
+        }
+
+        const amount = toStorage(toDecimal(input.amount));
+        const updated = await tx
+          .update(users)
+          .set({ balance: sql`${users.balance} + ${amount}::numeric`, updatedAt: clock() })
+          .where(eq(users.id, input.userId))
+          .returning({ balance: users.balance });
+        if (updated.length === 0) throw new LedgerError('user_not_found');
+        const balanceAfter = updated[0]!.balance;
+        const balanceBefore = toStorage(new Decimal(balanceAfter).minus(amount));
+        const [entry] = await tx
+          .insert(transactions)
+          .values({
+            userId: input.userId,
+            type: input.kind === 'referral_commission' ? 'commission' : 'gift',
+            amount,
+            balanceBefore,
+            balanceAfter,
+            refType: input.kind === 'referral_commission' ? 'referral_commission' : 'referral_signup',
+            refId: input.refId,
+            remark: input.remark ?? `邀请${input.kind === 'referral_commission' ? '返佣' : '奖励'} +${amount}`,
+          })
+          .returning({ id: transactions.id });
+        const result: BalanceMutationResult = {
+          transactionId: entry!.id,
+          amount,
+          balanceBefore,
+          balanceAfter,
+          replayed: false,
+        };
+        await tx
+          .update(fundOperations)
+          .set({ transactionId: entry!.id, result })
+          .where(eq(fundOperations.operationId, input.operationId));
+        return result;
+      });
     },
 
     subscribePlan(input) {

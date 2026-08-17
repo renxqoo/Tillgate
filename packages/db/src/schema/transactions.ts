@@ -60,6 +60,19 @@ export const transactions = pgTable(
     uniqueIndex('transactions_subscription_ref_uq')
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'subscription'`),
+    // 在线支付入账幂等：同一支付订单只产生一条入账流水（回调重放/并发双保险）
+    uniqueIndex('transactions_payment_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'payment_orders'`),
+    // 退款流水独立幂等域：入账与退款是同一订单的两条合法流水，
+    // 各自去重（ref_id = providerOrderId）——分离域防互相顶撞
+    uniqueIndex('transactions_payment_refund_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'payment_refunds'`),
+    // 邀请返佣幂等：按 (inviter, 结算日) 去重——ref_id = referral-commission:{inviterId}:{yyyyMMdd}
+    uniqueIndex('transactions_referral_commission_ref_uq')
+      .on(t.refType, t.refId)
+      .where(sql`ref_type = 'referral_commission'`),
     // 余额链恒等（不变量下沉）：每条流水 after = before + amount。
     // 存量 1359 行旧计费脏数据（balance_before 错记 0）已由迁移 0038 链式回填收敛。
     check('transactions_balance_chain_ck', sql`${t.balanceAfter} = ${t.balanceBefore} + ${t.amount}`),

@@ -39,10 +39,13 @@ type RegisterValues = z.infer<typeof schema>;
 export function RegisterForm({
   oauthOptions = [],
   captchaSiteKey = null,
+  affCode = null,
 }: {
   oauthOptions?: OAuthOption[];
   /** 后端 GET /api/auth/captcha 下发；null = 未启用，不渲染 widget */
   captchaSiteKey?: string | null;
+  /** 邀请归因 aff 码（?aff=，注册第二步透传） */
+  affCode?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
@@ -91,7 +94,7 @@ export function RegisterForm({
             onSubmit={(e) => {
               e.preventDefault();
               startTransition(async () => {
-                const res = await registerVerifyAction(challenge, code);
+                const res = await registerVerifyAction(challenge, code, affCode);
                 notify(res ?? {}, "验证失败");
                 // 成功会 redirect，不会回到这里
               });

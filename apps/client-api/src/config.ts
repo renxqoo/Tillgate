@@ -16,6 +16,16 @@ export interface ClientApiConfig {
   internalApiToken?: string;
   /** 邮箱自助注册开关（默认开；关闭只留 OAuth 建号，存量账号登录不受影响） */
   registerEnabled: boolean;
+  /** 邀请返利参数 */
+  referralSignupBonus: number;
+  referralCommissionRate: number;
+  /** Playground 网关桥（GATEWAY_URL + GATEWAY_JWT_SECRET 成组配置才启用） */
+  playground: { gatewayUrl: string; gatewayJwtSecret: string } | null;
+  /** 在线支付渠道（未配置的渠道关闭；null = 支付整体关闭） */
+  payments: {
+    epay: { pid: string; key: string; gatewayUrl: string; notifyUrl: string; returnUrl: string } | null;
+    stripe: { secretKey: string; webhookSecret: string; webhookUrl: string; successUrl: string; cancelUrl: string } | null;
+  };
   /** OAuth 社交登录（未配置的 provider 端点 404、前端按钮隐藏） */
   oauth: {
     /** 登录完成后重定向回的前端地址 */

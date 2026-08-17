@@ -8,6 +8,9 @@ import {
   LineChart,
   Settings,
   ShieldCheck,
+  Wallet,
+  Users,
+  FlaskConical,
 } from "lucide-react";
 
 import type { NavGroup } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
@@ -37,6 +40,24 @@ export function buildSidebarItems(): NavGroup[] {
           title: "应用",
           url: "/dashboard/apps",
           icon: ShieldCheck,
+        },
+        {
+          id: "playground",
+          title: "操练场",
+          url: "/dashboard/playground",
+          icon: FlaskConical,
+        },
+        {
+          id: "invite",
+          title: "邀请返利",
+          url: "/dashboard/invite",
+          icon: Users,
+        },
+        {
+          id: "billing",
+          title: "在线充值",
+          url: "/dashboard/billing",
+          icon: Wallet,
         },
         {
           id: "redeem",
