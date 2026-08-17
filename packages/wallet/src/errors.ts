@@ -74,6 +74,32 @@ export class CurrencyMismatchError extends WalletError {
   }
 }
 
+/**
+ * 内部不变量违反：防御性检查命中——理论上不可达，出现即代码 bug 或 DB 异常。
+ * operation 指明发生点（如 'credit.insert'、'replay.header_missing'）便于上报定位；
+ * 调用方不应捕获重试。
+ */
+export class WalletInternalError extends WalletError {
+  constructor(
+    readonly operation: string,
+    detail?: string,
+  ) {
+    super(
+      `wallet internal error at ${operation}${detail ? `: ${detail}` : ''}`,
+      'internal_error',
+    );
+    this.name = 'WalletInternalError';
+  }
+}
+
+/** 账户寻址非法：AccountRef 必须且只能指定 userId 或 code 之一 */
+export class InvalidAccountRefError extends WalletError {
+  constructor(detail: string) {
+    super(`invalid account ref: ${detail}`, 'invalid_account_ref');
+    this.name = 'InvalidAccountRefError';
+  }
+}
+
 /** 业务键无对应冻结（settle/release 寻址失败）——调用方数据不一致 */
 export class AuthorizationNotFoundError extends WalletError {
   constructor(refType: string, refId: string) {

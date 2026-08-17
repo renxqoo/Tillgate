@@ -3,7 +3,7 @@
  * 多腿交易按 account_id 定序加锁（防死锁）；冻结账户拒绝资金变动。
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { FrozenAccountError } from './errors';
+import { FrozenAccountError, WalletInternalError } from './errors';
 import { walletAccounts } from './schema';
 import type { DbLike, Tx } from './internal';
 
@@ -33,7 +33,7 @@ export async function resolveUserAccount(
     .where(
       and(eq(walletAccounts.kind, 'user'), eq(walletAccounts.userId, userId), eq(walletAccounts.currency, currency)),
     );
-  if (!row) throw new Error('wallet user account resolve failed');
+  if (!row) throw new WalletInternalError('account.resolve_user');
   return row.id;
 }
 
@@ -53,7 +53,7 @@ export async function resolveInternalAccount(
     .where(
       and(eq(walletAccounts.kind, 'internal'), eq(walletAccounts.code, code), eq(walletAccounts.currency, currency)),
     );
-  if (!row) throw new Error('wallet internal account resolve failed');
+  if (!row) throw new WalletInternalError('account.resolve_internal');
   return row.id;
 }
 
@@ -89,7 +89,7 @@ export async function lockAccounts(tx: Tx, accountIds: readonly string[]): Promi
     map.set(row.id, row);
   }
   for (const id of ordered) {
-    if (!map.has(id)) throw new Error(`wallet account lock failed: ${id}`);
+    if (!map.has(id)) throw new WalletInternalError('account.lock', id);
   }
   return map;
 }

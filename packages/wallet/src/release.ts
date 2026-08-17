@@ -4,7 +4,11 @@
 import { and, eq, lte, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, toStorage } from './money';
-import { AuthorizationNotActiveError, AuthorizationNotFoundError } from './errors';
+import {
+  AuthorizationNotActiveError,
+  AuthorizationNotFoundError,
+  WalletInternalError,
+} from './errors';
 import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccounts } from './account';
 import { findAuthorization } from './authorizations';
@@ -52,7 +56,7 @@ async function transitionRelease(
       return replayRelease(tx, refType, refId, reason);
     }
     const claim = claimed[0];
-    if (!claim) throw new Error('wallet release cas returned empty');
+    if (!claim) throw new WalletInternalError('release.cas_empty');
     const account = (await lockAccounts(tx, [claim.accountId])).get(claim.accountId)!;
     const inFlightAfter = new Decimal(account.inFlight).minus(claim.amount);
     await tx

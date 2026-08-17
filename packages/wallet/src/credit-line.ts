@@ -3,7 +3,7 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
-import { CreditLimitConflictError } from './errors';
+import { CreditLimitConflictError, WalletInternalError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
 import { lockAccounts, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
@@ -43,7 +43,7 @@ export async function setCreditLimit(
           creditLimitAfter: toStorage(newLimit),
         })
         .returning({ id: walletTransactions.id });
-      if (!header) throw new Error('wallet credit_line insert failed');
+      if (!header) throw new WalletInternalError('credit_line.insert');
       await applyLeg(tx, header.id, accountId, currency, new Decimal(0), account.balance);
       await tx
         .update(walletAccounts)

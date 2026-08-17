@@ -7,6 +7,7 @@ import {
   InsufficientBalanceError,
   SameAccountTransferError,
 } from './errors';
+import { WalletInternalError } from './errors';
 import { walletTransactions } from './schema';
 import { lockAccounts, resolveAccount } from './account';
 import { applyLeg } from './legs';
@@ -61,7 +62,7 @@ export async function transfer(db: NodePgDatabase, input: TransferInput): Promis
           memo: input.memo,
         })
         .returning({ id: walletTransactions.id });
-      if (!header) throw new Error('wallet transfer insert failed');
+      if (!header) throw new WalletInternalError('transfer.insert');
 
       const fromAfter = await applyLeg(
         tx, header.id, fromId, from.currency, amount.neg(), from.balance,

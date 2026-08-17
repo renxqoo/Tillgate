@@ -1,7 +1,7 @@
 /** 入参校验（zod）：金额/refType/refId/userId/currency 词表与格式——非法即抛，不静默纠正 */
 import { z } from 'zod';
 import { Decimal, isValidAmountString } from './money';
-import { InvalidAmountError } from './errors';
+import { InvalidAccountRefError, InvalidAmountError } from './errors';
 import { DEFAULT_CURRENCY } from './types';
 
 export { DEFAULT_CURRENCY };
@@ -39,7 +39,7 @@ export function parseAccountRef(ref: {
   const hasUser = typeof ref.userId === 'number';
   const hasCode = typeof ref.code === 'string';
   if (hasUser === hasCode) {
-    throw new InvalidAmountError('AccountRef 必须且只能指定 userId 或 code 之一');
+    throw new InvalidAccountRefError('必须且只能指定 userId 或 code 之一');
   }
   const currency = ref.currency ?? DEFAULT_CURRENCY;
   currencySchema.parse(currency);

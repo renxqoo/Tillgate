@@ -1,7 +1,7 @@
 /** refund：退款——双腿 [本方 −a, 收入科目冲回 −a]；授信地板守卫；独立幂等域 */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
-import { InsufficientBalanceError } from './errors';
+import { InsufficientBalanceError, WalletInternalError } from './errors';
 import { walletTransactions } from './schema';
 import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
@@ -44,7 +44,7 @@ export async function refund(db: NodePgDatabase, input: RefundInput): Promise<Cr
         .insert(walletTransactions)
         .values({ kind: 'refund', refType: input.refType, refId: input.refId, memo: input.memo })
         .returning({ id: walletTransactions.id });
-      if (!header) throw new Error('wallet refund insert failed');
+      if (!header) throw new WalletInternalError('refund.insert');
 
       const userAfter = await applyLeg(
         tx, header.id, userAccountId, currency, amount.neg(), user.balance,

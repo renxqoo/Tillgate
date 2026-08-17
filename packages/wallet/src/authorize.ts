@@ -2,7 +2,7 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Decimal, normalizeAmount, toStorage } from './money';
-import { InsufficientBalanceError, RefKeyConflictError } from './errors';
+import { InsufficientBalanceError, RefKeyConflictError, WalletInternalError } from './errors';
 import { walletAccounts, walletAuthorizations } from './schema';
 import { lockAccounts, resolveUserAccount } from './account';
 import { findAuthorization } from './authorizations';
@@ -64,7 +64,7 @@ export async function authorize(
           expiresAt: input.expiresAt ?? null,
         })
         .returning({ id: walletAuthorizations.id });
-      if (!auth) throw new Error('wallet authorize insert failed');
+      if (!auth) throw new WalletInternalError('authorize.insert');
       await tx
         .update(walletAccounts)
         .set({ inFlight: toStorage(inFlight.plus(amount)), updatedAt: new Date() })

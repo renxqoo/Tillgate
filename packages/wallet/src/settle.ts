@@ -7,6 +7,7 @@ import {
   AuthorizationNotActiveError,
   AuthorizationNotFoundError,
   SettleExceedsHoldError,
+  WalletInternalError,
 } from './errors';
 import {
   walletAccounts,
@@ -51,7 +52,7 @@ export async function settle(db: NodePgDatabase, input: SettleInput): Promise<Se
       return replaySettle(tx, input.refType, input.refId);
     }
     const claim = claimed[0];
-    if (!claim) throw new Error('wallet settle cas returned empty');
+    if (!claim) throw new WalletInternalError('settle.cas_empty');
     const held = new Decimal(claim.amount);
     if (settleAmount.gt(held)) {
       throw new SettleExceedsHoldError(toStorage(held), input.amount);
@@ -66,7 +67,7 @@ export async function settle(db: NodePgDatabase, input: SettleInput): Promise<Se
       .insert(walletTransactions)
       .values({ kind: 'settle', refType: input.refType, refId: input.refId, memo: input.memo })
       .returning({ id: walletTransactions.id });
-    if (!header) throw new Error('wallet settle insert failed');
+    if (!header) throw new WalletInternalError('settle.insert');
 
     const holderAfter = await applyLeg(
       tx, header.id, claim.accountId, holder.currency, settleAmount.neg(), holder.balance,

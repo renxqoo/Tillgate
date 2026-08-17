@@ -2,7 +2,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { normalizeAmount } from './money';
-import { RefKeyConflictError } from './errors';
+import { RefKeyConflictError, WalletInternalError } from './errors';
 import { walletAccounts, walletLegs, walletTransactions } from './schema';
 import { resolveAccount } from './account';
 import type { CreditLineResult, CreditResult, TransferResult } from './types';
@@ -39,7 +39,7 @@ async function loadTransaction(db: NodePgDatabase, refType: string, refId: strin
         eq(walletTransactions.kind, kind),
       ),
     );
-  if (!header) throw new Error(`unique violation but no ${kind} row for ${refType}/${refId}`);
+  if (!header) throw new WalletInternalError('replay.header_missing', `${kind} ${refType}/${refId}`);
   const legs = await db
     .select({
       accountId: walletLegs.accountId,

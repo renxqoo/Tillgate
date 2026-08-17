@@ -1,6 +1,7 @@
 /** credit：入账（充值/赠送/返佣）——双腿 [本方 +a, 对手科目 −a]；幂等键同 v1 */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { normalizeAmount } from './money';
+import { WalletInternalError } from './errors';
 import { walletTransactions } from './schema';
 import { lockAccounts, resolveInternalAccount, resolveUserAccount } from './account';
 import { applyLeg } from './legs';
@@ -25,7 +26,7 @@ export async function credit(db: NodePgDatabase, input: CreditInput): Promise<Cr
         .insert(walletTransactions)
         .values({ kind: 'credit', refType: input.refType, refId: input.refId, memo: input.memo })
         .returning({ id: walletTransactions.id });
-      if (!header) throw new Error('wallet credit insert failed');
+      if (!header) throw new WalletInternalError('credit.insert');
 
       const userAfter = await applyLeg(
         tx, header.id, userAccountId, currency, amount, accounts.get(userAccountId)!.balance,

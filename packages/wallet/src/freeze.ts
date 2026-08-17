@@ -1,6 +1,7 @@
 /** freeze：账户冻结/解冻（风控）——零额审计交易；冻结账户拒绝一切资金变动（查询不受限） */
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { WalletInternalError } from './errors';
 import { walletAccounts, walletTransactions } from './schema';
 import { resolveAccount } from './account';
 import { applyLeg } from './legs';
@@ -23,7 +24,7 @@ export async function freeze(db: NodePgDatabase, input: FreezeInput): Promise<Fr
         .from(walletAccounts)
         .where(eq(walletAccounts.id, accountId))
         .for('update');
-      if (!account) throw new Error('wallet freeze target missing');
+      if (!account) throw new WalletInternalError('freeze.target_missing');
       const [header] = await tx
         .insert(walletTransactions)
         .values({
@@ -33,7 +34,7 @@ export async function freeze(db: NodePgDatabase, input: FreezeInput): Promise<Fr
           memo: input.memo ?? (input.frozen ? 'frozen' : 'unfrozen'),
         })
         .returning({ id: walletTransactions.id });
-      if (!header) throw new Error('wallet freeze insert failed');
+      if (!header) throw new WalletInternalError('freeze.insert');
       await applyLeg(tx, header.id, accountId, currency, new Decimal(0), account.balance);
       await tx
         .update(walletAccounts)

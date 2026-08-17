@@ -43,7 +43,9 @@ export {
 } from './schema';
 export {
   WalletError,
+  WalletInternalError,
   InvalidAmountError,
+  InvalidAccountRefError,
   InsufficientBalanceError,
   AuthorizationNotFoundError,
   AuthorizationNotActiveError,
