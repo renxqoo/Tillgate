@@ -129,6 +129,9 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
    * 敞口估算按 min(max_tokens×n, 本值) 计，超出部分由 credit_limit 透支缓冲兜底。
    */
   GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().min(1).default(32_768),
+  /** 异步生成任务（video/music）生命周期上界（秒）：提交时写 generation_tasks.expires_at，
+   *  billing 租约与 worker 超时扫描共用该值——任务要么在 TTL 内终态结算，要么按 expired 释放。 */
+  GENERATION_TASK_TTL_SECONDS: z.coerce.number().int().min(60).default(1_800),
   /** 本地 /debug/traces 查看页令牌（memory 模式）；未设时仅开发环境放行 */
   DEBUG_TRACES_TOKEN: z.string().min(8).optional(),
   /**
@@ -155,7 +158,28 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
 });
 
 /** worker（计量结算）环境变量 */
+const smtpEnvSchema = {
+  SMTP_HOST: z.string().max(255).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+  SMTP_USER: z.string().max(255).optional(),
+  /** 邮箱授权码（非登录密码；QQ/163 在设置-账户中生成） */
+  SMTP_PASS: z.string().max(255).optional(),
+  SMTP_FROM: z.string().max(255).optional(),
+};
+
 export const workerEnvSchema = baseEnvSchema.extend({
+  ...smtpEnvSchema,
+  /** 渠道 Key 解密（generation poller 调上游用；与 gateway 同源） */
+  ENCRYPTION_KEY_OLD: z.string().min(32).max(256).optional(),
+  ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
+  /** 上游调用面（generation poller 的 music 代执行/任务查询用；与 gateway 同源语义） */
+  ALLOW_LOCAL_UPSTREAM: z
+    .boolean()
+    .default(false)
+    .describe('允许 http:// 上游（仅本地 mock；生产强制 false）'),
+  UPSTREAM_HOST_ALLOWLIST: z.array(z.string()).default([]),
+  /** 邀请人佣金比例（与 client-api 同源语义：被邀请人日消费 × 比例） */
+  REFERRAL_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0.1),
   /** 计量队列并发数 */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).default(10),
   /** 上游在途 lease（与网关同源：小额自动放行的最小滞留下界取一个租约周期） */
@@ -173,6 +197,14 @@ export const workerEnvSchema = baseEnvSchema.extend({
   WORKER_SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_LOOP_STALE_MS: z.coerce.number().int().min(1000).default(30_000),
   WORKER_RECONCILE_INTERVAL_MS: z.coerce.number().int().min(60_000).default(3_600_000),
+  /** 邀请佣金日结间隔（默认 6h——幂等键按日，重复运行安全） */
+  WORKER_REFERRAL_INTERVAL_MS: z.coerce.number().int().min(60_000).default(6 * 3600_000),
+  /** 告警通知投递轮询间隔 */
+  WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().min(1_000).default(15_000),
+  /** 异步生成任务轮询（video 状态查询 + music 代执行 + 续租 + 超时扫描） */
+  WORKER_GENERATION_POLL_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
+  /** 单轮任务轮询的批量上界 */
+  WORKER_GENERATION_BATCH: z.coerce.number().int().min(1).default(50),
   /** trace_spans 分区保留天数（滚动删除） */
   TRACE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   /** request_logs 月分区保留窗口（滚动删除更早分区）；30 = data-model §3.13 承诺 */
@@ -183,14 +215,6 @@ export const workerEnvSchema = baseEnvSchema.extend({
 });
 
 /** 发信 SMTP（登录邮箱验证码；admin 2FA 与 client 强制验证共用）。三要素齐全才启用 */
-const smtpEnvSchema = {
-  SMTP_HOST: z.string().max(255).optional(),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
-  SMTP_USER: z.string().max(255).optional(),
-  /** 邮箱授权码（非登录密码；QQ/163 在设置-账户中生成） */
-  SMTP_PASS: z.string().max(255).optional(),
-  SMTP_FROM: z.string().max(255).optional(),
-};
 
 /** admin-api（管理端 REST）环境变量 */
 export const adminApiEnvSchema = baseEnvSchema.extend({
@@ -255,6 +279,25 @@ export const clientApiEnvSchema = baseEnvSchema.extend({
   OAUTH_GITHUB_CLIENT_SECRET: z.string().max(255).optional(),
   OAUTH_GOOGLE_CLIENT_ID: z.string().max(255).optional(),
   OAUTH_GOOGLE_CLIENT_SECRET: z.string().max(255).optional(),
+  /** ── 邀请返利 ── */
+  /** 受邀注册双方奖励（元/人；0=关闭） */
+  REFERRAL_SIGNUP_BONUS: z.coerce.number().min(0).default(0),
+  /** 邀请人佣金比例（被邀请人日消费额 × 比例；0=关闭） */
+  REFERRAL_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0.1),
+  /** ── Playground（网关 JWT 桥；成组配置即启用，缺省 = Playground 关闭）── */
+  GATEWAY_URL: z.string().url().max(255).optional(),
+  /** 与网关 JWT_SECRET 同值（Playground 替用户现签 5 分钟短期 JWT） */
+  GATEWAY_JWT_SECRET: z.string().min(16).max(256).optional(),
+  /** ── 在线支付（可选；成组配置即启用对应渠道，缺省 = 渠道关闭）── */
+  /** 易支付：商户 PID + 密钥 + 网关提交地址 */
+  EPAY_PID: z.string().min(1).max(64).optional(),
+  EPAY_KEY: z.string().min(16).max(128).optional(),
+  EPAY_GATEWAY_URL: z.string().url().max(255).optional(),
+  /** 支付回调/回跳地址（两渠道共用，默认按 CLIENT_PUBLIC_ORIGIN 拼） */
+  CLIENT_PUBLIC_ORIGIN: z.string().url().max(255).optional(),
+  /** Stripe：Secret Key + Webhook 签名密钥 */
+  STRIPE_SECRET_KEY: z.string().min(16).max(255).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(16).max(255).optional(),
   /**
    * ── 注册面人机验证（Turnstile，可选；成对配置即启用——只配一半在启动装配时抛错）。
    * 生产暴露自助注册时必须配置：防分布式刷号薅首登赠额。本地开发可用官方测试键：

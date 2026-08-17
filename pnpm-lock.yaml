@@ -371,6 +371,9 @@ importers:
       '@ai-gateway/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@ai-gateway/money':
+        specifier: workspace:*
+        version: link:../../packages/money
       '@hono/node-server':
         specifier: ^1.19.0
         version: 1.19.17(hono@4.13.0)
@@ -506,6 +509,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ai-gateway/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@ai-gateway/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -515,6 +521,9 @@ importers:
       '@ai-gateway/http':
         specifier: workspace:*
         version: link:../../packages/http
+      '@ai-gateway/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
       '@ai-gateway/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
