@@ -16,10 +16,6 @@ export function toStorage(amount: Decimal): string {
   return amount.toString();
 }
 
-/** string → Decimal；非法（空/NaN/科学计数以外格式）抛 InvalidAmountError 由调用方包装 */
-export function toDecimal(value: string): Decimal {
-  return new Decimal(value);
-}
 
 /** 合法金额字符串：非负十进制、≤18 位小数、≤20 位整数（numeric(38,18) 落库前防御） */
 const AMOUNT_PATTERN = /^\d{1,20}(\.\d{1,18})?$/;

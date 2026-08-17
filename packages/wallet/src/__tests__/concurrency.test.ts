@@ -1,5 +1,8 @@
 // wallet 并发：资金安全竞态 → 模块化测试（源自 wallet.test.ts 拆分）
 
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import { createWallet } from '../wallet';
 import { wallet, nextUser, ref, sameAmount, accountOf } from './helpers';
 import { AuthorizationNotActiveError } from '../index';
 import { describe, expect, it } from 'vitest';
@@ -76,6 +79,31 @@ describe('并发：资金安全竞态', () => {
     expect(results.filter((r) => !r.replayed)).toHaveLength(1);
     expect(sameAmount(await wallet.balance(a), '6')).toBe(true);
     expect(sameAmount(await wallet.balance(b), '4')).toBe(true);
+  });
+
+
+  it('8 路真并发同键 authorize：恰好一张冻结单（含唯一索引竞态兜底路径）', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
+    // 独立大池制造真并发窗口（共享池 max 3 会把竞态串行化成快速路径）
+    const racePool = new Pool({
+      connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+      max: 8,
+    });
+    const raceWallet = createWallet(drizzle(racePool));
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          raceWallet.authorize({ userId: user, amount: '5', refType: 'order', refId: ref(user, 'race8') }),
+        ),
+      );
+      expect(results.filter((r) => !r.replayed)).toHaveLength(1);
+      expect(new Set(results.map((r) => r.authorizationId)).size).toBe(1);
+      const account = await accountOf(user);
+      expect(sameAmount(account.inFlight, '5')).toBe(true);
+    } finally {
+      await racePool.end();
+    }
   });
 
   it('并发不同键入账 20 路：总额精确（顺序无关）', async () => {

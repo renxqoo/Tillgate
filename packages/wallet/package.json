@@ -26,10 +26,11 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "pg": "^8.13.0",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.10",
-    "@types/pg": "^8.20.0"
+    "vitest": "^4.1.10"
   }
 }

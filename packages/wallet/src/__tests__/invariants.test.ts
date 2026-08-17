@@ -1,6 +1,7 @@
 // wallet 全局不变量 → 模块化测试（源自 wallet.test.ts 拆分）
 
-import { wallet, nextUser, ref, sameAmount, d, accountOf, legsOfAccount, assertLedgerCoherent } from './helpers';
+import { provision } from '../schema';
+import { db, wallet, nextUser, ref, sameAmount, d, accountOf, legsOfAccount, assertLedgerCoherent } from './helpers';
 import { Decimal } from '../index';
 import { describe, expect, it } from 'vitest';
 describe('全局不变量', () => {
@@ -27,6 +28,14 @@ describe('全局不变量', () => {
       expected = d(leg.balanceAfter);
     }
     await assertLedgerCoherent();
+  });
+
+
+  it('provision 幂等：重复执行不炸不重置（IF NOT EXISTS）', async () => {
+    const user = nextUser();
+    await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: ref(user, 't') });
+    await provision(db); // 第二次建表——幂等
+    expect(sameAmount(await wallet.balance(user), '1')).toBe(true); // 数据不受影响
   });
 
   it('全精度：1e-18 级金额不丢不 round、不落科学计数法', async () => {
