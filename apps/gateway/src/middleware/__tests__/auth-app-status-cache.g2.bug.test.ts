@@ -134,7 +134,7 @@ describe('G2 — 禁用 App 不清 app_status 缓存（JWT 60s 内仍可用）',
     const { appId } = await createApp(userId);
     try {
       const jwt = await signJwt(
-        { userId, appId, coefficient: 1.0, expiresInSeconds: 3600 },
+        { userId, appId, rateCardId: null, expiresInSeconds: 3600 },
         process.env.JWT_SECRET!,
       );
       const honoApp = makeApp() as { request: (url: string, init?: unknown) => Promise<Response> };

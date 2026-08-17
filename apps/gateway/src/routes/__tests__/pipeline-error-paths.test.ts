@@ -239,7 +239,7 @@ describe('管线失败路径', () => {
     const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!);
     try {
       const token = await signJwt(
-        { userId, appId, scope: { models: ['allowed-model-only'] }, coefficient: 1.0 },
+        { userId, appId, scope: { models: ['allowed-model-only'] }, rateCardId: null },
         process.env.JWT_SECRET!,
       );
       const app = buildTestApp(db, redis, makeMockAi());

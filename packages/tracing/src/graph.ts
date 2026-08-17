@@ -103,6 +103,11 @@ function buildSubtitle(row: SpanRow, kind: GraphNodeKind): string {
     // 计费节点副标题带核心数字：预授权/实扣金额（元）或 token 汇总；
     // 估算节点（billing.estimate / estimated 收尾）显式标注非真实获取
     const estimated = row.attributes['usage.estimated'] === true ? '估算 · ' : '';
+    // 释放型收尾（billing.finalize: failed/released）：直接回答「扣没扣钱」
+    const amountReleased = row.attributes['billing.amount_released'];
+    if (typeof amountReleased === 'string' && amountReleased !== '') {
+      return `已释放 ${amountReleased} 元 · 未扣费`;
+    }
     const amount = row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
     if (typeof amount === 'string' && amount !== '') {
       const label = kind === 'settle' ? '实扣' : '预授权';

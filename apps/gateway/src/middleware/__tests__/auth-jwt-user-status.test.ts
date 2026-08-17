@@ -55,7 +55,7 @@ async function setupJwtUser(
     })
     .returning();
   // 直接签 JWT（OAuth 签发路径由 oauth 测试覆盖）
-  const token = await signJwt({ userId, appId: a!.id, coefficient: 1.0 }, process.env.JWT_SECRET!);
+  const token = await signJwt({ userId, appId: a!.id, rateCardId: null }, process.env.JWT_SECRET!);
   await db.update(users).set({ status }).where(eq(users.id, userId));
   const ids = await setupTestModel(db, process.env.ENCRYPTION_KEY!);
   return { userId, appId: a!.id, token, model: ids };

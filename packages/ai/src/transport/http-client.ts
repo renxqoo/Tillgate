@@ -244,3 +244,34 @@ export async function readBody(
     opts.signal?.removeEventListener('abort', onAbort);
   }
 }
+
+/** 读完整响应体（二进制，限长同 readBody）——audio_speech 等二进制端点用 */
+export async function readRawBody(
+  res: Response,
+  opts: { maxBytes?: number; signal?: AbortSignal } = {},
+): Promise<Uint8Array> {
+  const maxBytes = opts.maxBytes ?? 8 * 1024 * 1024;
+  if (!res.body) return new Uint8Array(0);
+  const reader = res.body.getReader();
+  const onAbort = (): void => {
+    void reader.cancel().catch(() => {});
+  };
+  opts.signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new BodyTooLargeError(maxBytes);
+      }
+      chunks.push(value!);
+    }
+    return Buffer.concat(chunks);
+  } finally {
+    opts.signal?.removeEventListener('abort', onAbort);
+  }
+}

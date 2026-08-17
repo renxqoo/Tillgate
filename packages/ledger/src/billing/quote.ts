@@ -27,7 +27,12 @@ export function calculateRequired(quote: BillingQuote, limit: string): Decimal {
   if (quote.candidates.length === 0) throw new BillingConfigurationError('invalid_quote');
   if (quote.explicitlyFree) {
     const charged = quote.candidates.some((candidate) => {
-      const prices = [candidate.inputPrice, candidate.outputPrice, candidate.cacheInputPrice];
+      const prices = [
+        candidate.inputPrice,
+        candidate.outputPrice,
+        candidate.cacheInputPrice,
+        candidate.unitPrice ?? '0',
+      ];
       return prices.some((price) => toDecimal(price).gt(0));
     });
     if (charged) throw new BillingConfigurationError('invalid_quote');
@@ -41,6 +46,7 @@ export function calculateRequired(quote: BillingQuote, limit: string): Decimal {
       toDecimal(candidate.inputPrice),
       toDecimal(candidate.outputPrice),
       toDecimal(candidate.cacheInputPrice),
+      toDecimal(candidate.unitPrice ?? 0),
     ];
     if (!coefficient.isFinite() || coefficient.lte(0)) {
       throw new BillingConfigurationError('invalid_coefficient');
@@ -54,6 +60,8 @@ export function calculateRequired(quote: BillingQuote, limit: string): Decimal {
       inputPrice: candidate.inputPrice,
       cacheInputPrice: candidate.cacheInputPrice,
       outputPrice: candidate.outputPrice,
+      unitPrice: candidate.unitPrice ?? 0,
+      unitUpperBound: candidate.unitUpperBound ?? 0,
       coefficient,
     });
     if (estimate.gt(maximum)) maximum = estimate;
@@ -83,6 +91,7 @@ export function validateReceipt(userId: number, quote: BillingQuote, receipt: Us
     receipt.usage.inputTokens,
     receipt.usage.cachedInputTokens,
     receipt.usage.outputTokens,
+    receipt.usage.units ?? 0,
     receipt.durationMs,
   ];
   if (usageValues.some((value) => !Number.isFinite(value) || value < 0)) {
@@ -92,6 +101,7 @@ export function validateReceipt(userId: number, quote: BillingQuote, receipt: Us
     !Number.isInteger(receipt.usage.inputTokens) ||
     !Number.isInteger(receipt.usage.cachedInputTokens) ||
     !Number.isInteger(receipt.usage.outputTokens) ||
+    !Number.isInteger(receipt.usage.units ?? 0) ||
     receipt.usage.cachedInputTokens > receipt.usage.inputTokens
   ) {
     throw new Error('billing_receipt_invalid_usage');
@@ -104,6 +114,7 @@ export function validateReceipt(userId: number, quote: BillingQuote, receipt: Us
       toDecimal(item.inputPrice).eq(receipt.inputPrice) &&
       toDecimal(item.outputPrice).eq(receipt.outputPrice) &&
       toDecimal(item.cacheInputPrice).eq(receipt.cacheInputPrice) &&
+      toDecimal(item.unitPrice ?? 0).eq(receipt.unitPrice ?? '0') &&
       toDecimal(item.coefficient).eq(receipt.coefficient) &&
       item.billingPolicyFingerprint === receipt.billingPolicyFingerprint,
   );

@@ -44,15 +44,34 @@ const CHAT_KNOWN_PARAMS = new Set([
 ]);
 
 export class OpenAICompatibleAdapter implements ProtocolAdapter {
-  readonly protocol = 'openai-compatible';
+  readonly protocol: string = 'openai-compatible';
 
   /** 上游寻址：endpoint 决定路径；认证头带幂等键（见下方 finalizeRequestBody 上方 C5 注释） */
   planRequest(
     channel: ChannelDesc,
-    input: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string },
+    input: { endpoint: 'chat' | 'embeddings' | 'images' | 'images_edits' | 'audio_speech' | 'audio_transcription' | 'audio_translation' | 'rerank' | 'moderations'; model: string; requestId: string; stream: boolean },
   ): { path: string; headers: Record<string, string> } {
+    void input.stream;
+    const path =
+      input.endpoint === 'embeddings'
+        ? '/v1/embeddings'
+        : input.endpoint === 'images'
+          ? '/v1/images/generations'
+          : input.endpoint === 'images_edits'
+            ? '/v1/images/edits'
+            : input.endpoint === 'audio_speech'
+              ? '/v1/audio/speech'
+              : input.endpoint === 'audio_transcription'
+                ? '/v1/audio/transcriptions'
+                : input.endpoint === 'audio_translation'
+                  ? '/v1/audio/translations'
+                  : input.endpoint === 'rerank'
+                    ? '/v1/rerank'
+                    : input.endpoint === 'moderations'
+                      ? '/v1/moderations'
+                      : '/v1/chat/completions';
     return {
-      path: input.endpoint === 'embeddings' ? '/v1/embeddings' : '/v1/chat/completions',
+      path,
       headers: {
         authorization: `Bearer ${channel.apiKey}`,
         'content-type': 'application/json',

@@ -195,6 +195,10 @@ export function estimateInputTokens(body: unknown, opts: EstimateOptions = {}): 
       else if (Array.isArray(item)) n += item.length;
     }
   }
+  // 生成类端点（images/video/music）与 rerank 的顶层 prompt/query：
+  // 混合计价（token 价 + 单位价并存）时 token 分量的预扣来源
+  if (typeof rec.prompt === 'string') n += estimateTextTokens(rec.prompt, weights);
+  if (typeof rec.query === 'string') n += estimateTextTokens(rec.query, weights);
   return n + templateInputOffset;
 }
 

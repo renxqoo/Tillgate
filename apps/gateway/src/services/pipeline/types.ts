@@ -13,6 +13,7 @@ import type { BillingDispatcher } from '../billing/billing-dispatcher.js';
 import type { ModelRouter, ChannelCache } from '../routing/model-router.js';
 import type { RequestLifecycle, RequestBudget } from '../runtime/request-lifecycle.js';
 import type { CompletionRegistry } from '../runtime/completion-registry.js';
+import type { CoefficientCache } from '../auth/coefficient-cache.js';
 
 /**
  * 管线契约层（单一真相，全部类型 + 无依赖纯函数）：
@@ -43,6 +44,8 @@ export interface PipelineDeps {
   router: ModelRouter;
   lifecycle: RequestLifecycle;
   completions: CompletionRegistry;
+  /** 费率卡系数快照（resolve 步按选中映射解析系数；单一真相 ledger/coefficient.ts） */
+  coefficients: CoefficientCache;
 }
 
 /** tracer 注入束（run.ts 创建一次，各步骤共享同源；2026-08 从旧 attempt-runner 迁入终结环状 import） */
@@ -71,6 +74,13 @@ export interface CandidateTarget {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 计费单位与单位单价（token 模型 unitPrice='0'；计价公式单一真相 money/amount.ts） */
+  pricingUnit: string;
+  unitPrice: string;
+  /** 单位计量上界（body.n 等倍数参数；token 模型 0）——预扣口径 */
+  unitUpperBound: number;
+  /** 本候选的费率卡系数（按 mappingId/pricingGroup 解析，model>group>global） */
+  coefficient: string;
   paramRules: ParamRules | null;
   billingPolicy: Record<string, unknown> | null;
   billingPolicyFingerprint: string | null;
@@ -109,7 +119,7 @@ export interface AttemptCtx {
   providerName: string;
   /** 第几次渠道尝试（1 起；路线图显性化换渠次数） */
   attemptNo: number;
-  endpoint?: Extract<Endpoint, 'embeddings'>;
+  endpoint?: Exclude<Endpoint, 'chat'>;
   paramRules?: ParamRules;
   deadlineMs: number;
   /** 本请求的输出 token 上界（估算结算硬夹用，run() 单一来源） */
@@ -174,7 +184,7 @@ export function maxOutputTokens(
   body: Record<string, unknown>,
   exposureCap: number,
 ): number {
-  if (kind === 'embeddings') return 0;
+  if (kind !== 'chat') return 0; // embeddings 无输出；模态端点按单位计费（units 上界走 unitUpperBound）
   const requested =
     typeof body.max_completion_tokens === 'number' && body.max_completion_tokens > 0
       ? body.max_completion_tokens

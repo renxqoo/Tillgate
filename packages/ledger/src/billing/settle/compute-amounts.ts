@@ -21,6 +21,8 @@ export function computeAmounts(data: UsageReceipt): SettleAmounts {
     inputPrice: data.inputPrice,
     cacheInputPrice: data.cacheInputPrice,
     outputPrice: data.outputPrice,
+    units: data.usage.units ?? 0,
+    unitPrice: data.unitPrice ?? '0',
     coefficient: data.coefficient,
   });
   const calculatedAmount = toStorage(calculated);
@@ -28,11 +30,15 @@ export function computeAmounts(data: UsageReceipt): SettleAmounts {
   const inputTokens = Math.max(0, data.usage.inputTokens);
   const cached = Math.min(Math.max(0, data.usage.cachedInputTokens), inputTokens);
   const uncached = inputTokens - cached;
-  const base = toDecimal(data.inputPrice)
+  const tokenBase = toDecimal(data.inputPrice)
     .times(uncached)
     .plus(toDecimal(data.cacheInputPrice).times(cached))
     .plus(toDecimal(data.outputPrice).times(Math.max(0, data.usage.outputTokens)));
-  const upstreamCostDec = base.div(1_000_000);
+  const unitPrice = toDecimal(data.unitPrice ?? 0);
+  const unitBase = unitPrice.lt(0)
+    ? new Decimal(0)
+    : unitPrice.times(Math.max(0, data.usage.units ?? 0));
+  const upstreamCostDec = tokenBase.div(1_000_000).plus(unitBase);
   const upstreamCost = toStorage(upstreamCostDec.lt(0) ? new Decimal(0) : upstreamCostDec);
 
   return { calculated, calculatedAmount, upstreamCost };

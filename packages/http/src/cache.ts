@@ -33,6 +33,11 @@ export function userProfileCache(userId: number): string {
   return `user_profile:${userId}`;
 }
 
+/** 费率卡系数快照（整卡 model/group/global 行；网关 coefficient-cache 消费，TTL 60s） */
+export function rateCardCoefficientsCache(rateCardId: number): string {
+  return `rate_card_coeff:${rateCardId}`;
+}
+
 /**
  * 路由缓存失效：bump 版本计数，网关检测到版本变化后重建路由缓存。
  * Redis 不可用时静默降级（网关侧有自身的缓存 TTL 兜底）。

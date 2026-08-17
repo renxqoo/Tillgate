@@ -1,5 +1,5 @@
-import { and, eq, isNull } from 'drizzle-orm';
-import { apps, rateCardCoefficients, isAccountUsable } from '@ai-gateway/db/schema';
+import { eq } from 'drizzle-orm';
+import { apps, isAccountUsable } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { createHash, timingSafeEqual } from 'node:crypto';
@@ -32,7 +32,8 @@ export type OAuthResult =
  *   - App 不存在时也对假 hash 比较（保持响应时间一致，防用户名枚举）
  *   - G3 修复：爆破计数 key 只按 clientId（不混入 IP）——X-Forwarded-For 可伪造，
  *     混入 IP 会让攻击者每请求换伪造 IP 绕过锁定
- *   - 签发 JWT：sub=userId、appId、scope、coefficient 快照、exp=7200s
+ *   - 签发 JWT：sub=userId、appId、scope、rateCardId 绑定、exp=7200s
+ *     （系数按卡实时解析，见 ledger/coefficient.ts）
  */
 export interface OAuthService {
   issueToken(clientId: string, clientSecret: string, ip: string): Promise<OAuthResult>;
@@ -102,25 +103,12 @@ export function createOAuthService(
       // 认证成功：清零失败计数
       await redis.del(attemptKey);
 
-      // 费率卡系数快照（JWT 内）
-      let coefficient = 1.0;
-      if (app.user.rateCardId) {
-        const coeff = await db.query.rateCardCoefficients.findFirst({
-          where: and(
-            eq(rateCardCoefficients.rateCardId, app.user.rateCardId),
-            eq(rateCardCoefficients.scope, 'global'),
-            isNull(rateCardCoefficients.modelMappingId),
-          ),
-        });
-        if (coeff) coefficient = Number(coeff.coefficient);
-      }
-
       const token = await signJwt(
         {
           userId: app.userId,
           appId: app.id,
           scope: app.scope ?? undefined,
-          coefficient,
+          rateCardId: app.user.rateCardId ?? null,
           expiresInSeconds: OAUTH_TOKEN_TTL_SECONDS,
         },
         jwtSecret,

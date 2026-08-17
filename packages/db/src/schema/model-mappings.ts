@@ -38,6 +38,19 @@ export const modelMappings = pgTable(
       .notNull()
       .default('0'),
     /**
+     * 计费单位（单一真相，2026-08 单位计费扩展）：
+     * token 按 token（三元组计价）/ request 按次 / image 按张 / second 按音频秒 / char 按字符。
+     * 非 token 单位使用 unit_price 计价，token 三元组对该模型不参与结算。
+     */
+    pricingUnit: varchar('pricing_unit', { length: 16 }).notNull().default('token'),
+    /** 单位单价（元/单位：次/张/秒/字符；token 单位模型恒为 0） */
+    unitPrice: numeric('unit_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    /**
+     * 定价分组键（可空）：费率卡 scope='group' 系数行按此键匹配（如 'anthropic'、'image-gen'）。
+     * 系数解析优先级 model > group > global（packages/ledger coefficient.ts 单一真相）。
+     */
+    pricingGroup: varchar('pricing_group', { length: 32 }),
+    /**
      * 显式免费模型标记：true 时授权走 0 元 fast-path（不预留余额/额度）。
      * 免费判定不再靠 `:free` 命名约定——由管理员在建模时显式声明，是唯一事实源。
      */
@@ -63,10 +76,16 @@ export const modelMappings = pgTable(
   },
   (t) => [
     uniqueIndex('model_mappings_external_name_uq').on(t.externalName),
+    index('model_mappings_pricing_group_idx').on(t.pricingGroup),
     // 价格非负（入口 zod 已拦，DB 兜底——负价经 calcAmount 钳 0 会静默免费）
     check(
       'model_mappings_prices_nonnegative_ck',
-      sql`${t.inputPrice} >= 0 and ${t.outputPrice} >= 0 and ${t.cacheInputPrice} >= 0`,
+      sql`${t.inputPrice} >= 0 and ${t.outputPrice} >= 0 and ${t.cacheInputPrice} >= 0 and ${t.unitPrice} >= 0`,
+    ),
+    // 计费单位词表（新增单位须同步 PRICING_UNITS 常量与计价公式）
+    check(
+      'model_mappings_pricing_unit_ck',
+      sql`${t.pricingUnit} in ('token','request','image','second','char')`,
     ),
   ],
 );

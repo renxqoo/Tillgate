@@ -238,6 +238,43 @@ describe('buildTraceGraph', () => {
     expect(finNode.subtitle).toContain('1000');
   });
 
+  it('释放型收尾节点：subtitle 显示释放金额与未扣费，状态标红可定位错步', () => {
+    const root = span({
+      attributes: { 'http.method': 'POST', 'http.status_code': 402 },
+      statusCode: 2,
+    });
+    const upstream = span({
+      spanId: 'u'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'upstream minimax',
+      startTime: new Date(1_700_000_001_000),
+      statusCode: 2,
+      statusMessage: 'insufficient_balance_error',
+      attributes: { 'http.status_code': 402, 'upstream.error_code': 'insufficient_balance_error' },
+    });
+    const finalize = span({
+      spanId: 'f'.repeat(16),
+      parentSpanId: root.spanId,
+      name: 'billing.finalize',
+      startTime: new Date(1_700_000_002_000),
+      statusCode: 2,
+      statusMessage: 'insufficient_balance_error',
+      attributes: {
+        'billing.finalize': 'failed',
+        'billing.failure_reason': 'insufficient_balance_error',
+        'billing.state': 'released',
+        'billing.amount_released': '0.6751185',
+      },
+    });
+    const graph = buildTraceGraph([root, upstream, finalize]);
+    const upNode = graph.nodes.find((n) => n.id === upstream.spanId)!;
+    expect(upNode.status).toBe('error');
+    expect(upNode.errorText).toBe('insufficient_balance_error');
+    const finNode = graph.nodes.find((n) => n.id === finalize.spanId)!;
+    expect(finNode.status).toBe('error');
+    expect(finNode.subtitle).toBe('已释放 0.6751185 元 · 未扣费');
+  });
+
   it('worker 结算 span：kind=settle，subtitle 显示实扣金额', () => {
     const root = span({ spanId: 'r'.repeat(16) });
     const settle = span({

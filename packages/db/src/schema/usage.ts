@@ -50,12 +50,19 @@ export const usageLogs = pgTable(
     /** 缓存命中输入（usage 无缓存字段时为 0） */
     cachedInputTokens: bigint('cached_input_tokens', { mode: 'number' }).notNull().default(0),
     outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
+    /**
+     * 单位计费计量（2026-08 扩展）：按次=次数 / 按张=张数 / 按秒=音频秒数 / 按字符=字符数。
+     * token 计费模型恒为 0；单位计费模型 token 三项不参与结算（计价公式单一真相 money/amount.ts）。
+     */
+    units: bigint('units', { mode: 'number' }).notNull().default(0),
     /** 官方价快照（元/百万 token，numeric 全精度） */
     inputPrice: numeric('input_price', { precision: 38, scale: 18 }).notNull().default('0'),
     outputPrice: numeric('output_price', { precision: 38, scale: 18 }).notNull().default('0'),
     cacheInputPrice: numeric('cache_input_price', { precision: 38, scale: 18 })
       .notNull()
       .default('0'),
+    /** 单位单价快照（元/单位；token 计费模型为 0） */
+    unitPrice: numeric('unit_price', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 费率卡系数快照（最终单价 = 官方价 × 系数） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
     /** 实扣费用（元，numeric 全精度）；预付费模式不超过 reserved amount。 */

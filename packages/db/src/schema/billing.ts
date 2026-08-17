@@ -8,6 +8,7 @@ import {
   numeric,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { modelMappings } from './model-mappings.js';
@@ -32,7 +33,9 @@ export const rateCards = pgTable(
 
 /**
  * rate_card_coefficients — 费率卡系数（data-model.md §3.9）
- * 约束：每卡必有且仅有一行 global（兜底系数，应用层保证）；scope 预留 group（二期）
+ * 解析优先级：model（按 model_mapping_id）> group（按 model_mappings.pricing_group 匹配 group_key）
+ * > global（兜底）；解析器单一真相 = packages/ledger/src/billing/coefficient.ts。
+ * 约束：每卡必有且仅有一行 global；model 行 model_mapping_id 非空；group 行 group_key 非空。
  */
 export const rateCardCoefficients = pgTable(
   'rate_card_coefficients',
@@ -41,11 +44,13 @@ export const rateCardCoefficients = pgTable(
     rateCardId: bigint('rate_card_id', { mode: 'number' })
       .notNull()
       .references(() => rateCards.id),
-    /** global 全局 / model 按模型（二期）/ group 按分组（二期预留） */
+    /** global 全局 / model 按模型 / group 按定价分组 */
     scope: varchar('scope', { length: 8 }).notNull(),
     modelMappingId: bigint('model_mapping_id', { mode: 'number' }).references(
       () => modelMappings.id,
     ),
+    /** scope='group' 行的分组键（与 model_mappings.pricing_group 匹配）；其余 scope 为 NULL */
+    groupKey: varchar('group_key', { length: 32 }),
     /** 系数（1.0 = 按官方价原价） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -57,6 +62,12 @@ export const rateCardCoefficients = pgTable(
     uniqueIndex('rate_card_coefficients_global_uq')
       .on(t.rateCardId, t.scope)
       .where(sql`model_mapping_id is null`),
+    // group 行每卡每分组键至多一条；model 行按 uq(rate_card_id, scope, model_mapping_id) 去重
+    uniqueIndex('rate_card_coefficients_group_uq')
+      .on(t.rateCardId, t.groupKey)
+      .where(sql`scope = 'group' and group_key is not null`),
     index('rate_card_coefficients_mapping_idx').on(t.modelMappingId),
+    // scope 词表（新增 scope 须同步 coefficient.ts 解析器）
+    check('rate_card_coefficients_scope_ck', sql`${t.scope} in ('global','model','group')`),
   ],
 );

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOKEN_ESTIMATE_CALIBRATION, type AiEvent, type ChatStreamResult } from '@ai-gateway/ai';
 import { eq } from 'drizzle-orm';
 import { billingRequests, usageLogs } from '@ai-gateway/db/schema';
+import { createBillingProcessor } from '@ai-gateway/ledger';
 import { initOtel, clearRecentTraces, getRecentTraces } from '@ai-gateway/core';
 import {
   loadEnvFileIntoProcess,
@@ -135,10 +136,24 @@ describe('链路追踪 + 估算结算：客户端断流取消', () => {
       expect(finalize!.attributes['usage.estimated']).toBe(true);
 
       // ④ 计费落库：settled + estimated usage_logs + receipt 凭证
+      // 结算泵（幂等）：不再依赖本地 dev worker 的 ambient 结算——用例自足
       await vi.waitFor(async () => {
         const bill = await db.query.billingRequests.findFirst({
           where: eq(billingRequests.userId, userId),
         });
+        if (bill && bill.status === 'settlement_pending') {
+          await createBillingProcessor({
+            db,
+            options: {
+              ownerId: 'e2e-settle',
+              batchSize: 5,
+              claimLeaseMs: 60_000,
+              retryBaseMs: 10,
+              retryMaxMs: 100,
+              maxAttempts: 3,
+            },
+          }).runOnce([bill.requestId]);
+        }
         expect(bill?.status).toBe('settled');
       });
       const bill = await db.query.billingRequests.findFirst({

@@ -4,6 +4,8 @@ export * from './ledger.js';
 export * from './error-catalog.js';
 export * from './billing/errors.js';
 export * from './billing/quote.js';
+export * from './billing/coefficient.js';
+export { computeAmounts } from './billing/settle/compute-amounts.js';
 export * from './billing/index.js';
 export * from './billing/processor/index.js';
 export * from './billing/operations.js';

@@ -536,7 +536,7 @@ describe('Billing authorize/signal + durable processor boundary', () => {
     const requestId = randomUUID();
     const billing = createBilling({ db });
     try {
-      await billing.authorize({
+      const authorization = await billing.authorize({
         requestId,
         userId,
         apiKeyId: keyId,
@@ -559,6 +559,9 @@ describe('Billing authorize/signal + durable processor boundary', () => {
         upstreamCharge: 'unknown',
       });
       expect(result.status).toBe('released');
+      // 释放金额（= 预扣额）随结果返回——网关收尾 span 的「未扣费」证据
+      //（DB 存 18 位小数、authorize 返回归一化串，按数值比较）
+      expect(new Decimal(result.amountReleased!).eq(authorization.reservedAmount)).toBe(true);
       // 未交付失败统一释放（宁可漏收不误收——用户未获完整服务）
       expect(await quotaState(userId)).toEqual({
         used: new Decimal(0),

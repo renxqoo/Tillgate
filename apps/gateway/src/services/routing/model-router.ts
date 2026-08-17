@@ -64,6 +64,11 @@ export interface MappingCache {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 计费单位（token/request/image/second/char）与单位单价——计价公式单一真相 money/amount.ts */
+  pricingUnit: string;
+  unitPrice: string;
+  /** 定价分组键（费率卡 scope='group' 系数行匹配用；null=不参与分组系数） */
+  pricingGroup: string | null;
   fallbackModels: string[] | null;
   paramRules: ParamRules | null;
   billingPolicy: Record<string, unknown> | null;
@@ -165,6 +170,9 @@ export function createModelRouter(
             inputPrice: row.inputPrice,
             outputPrice: row.outputPrice,
             cacheInputPrice: row.cacheInputPrice,
+            pricingUnit: row.pricingUnit,
+            unitPrice: row.unitPrice,
+            pricingGroup: row.pricingGroup ?? null,
             fallbackModels: row.fallbackModels ?? null,
             paramRules: row.paramRules ?? null,
             billingPolicy: row.billingPolicy ?? null,

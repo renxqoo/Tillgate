@@ -37,17 +37,21 @@ export interface UsageReceipt {
   channelId: number | null;
   /** 最终成功的渠道名（链路 channel.final 与渠道拓扑同源命名） */
   channelKey: string;
-  /** usage（ai 包归一化后的 token 数） */
+  /** usage（ai 包归一化后的 token 数 + 单位计量） */
   usage: {
     inputTokens: number;
     cachedInputTokens: number;
     outputTokens: number;
     estimated: boolean;
+    /** 单位计量（按次/张/秒/字符；token 模型为 0）——与 unitPrice 快照配对结算 */
+    units?: number;
   };
   /** 价格快照（元/百万 token，来自实际成功模型 model_mappings numeric 列） */
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 单位单价快照（元/单位；token 模型为 '0'） */
+  unitPrice?: string;
   /** 费率卡系数（小数，如 1.0） */
   coefficient: string;
   /** 请求耗时 ms */
@@ -133,9 +137,13 @@ export interface BillingQuoteCandidate {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 单位单价（元/单位；token 模型为 '0'）——预扣与结算共用 */
+  unitPrice?: string;
   coefficient: string;
   /** 本候选请求输入 token 的可证明上界（文本字节或模型多模态硬上限）。 */
   inputTokenUpperBound: number;
+  /** 单位计量上界（如 images 的 n；token 模型为 0）。 */
+  unitUpperBound?: number;
   /** 多模态策略快照指纹；纯文本为 null。 */
   billingPolicyFingerprint: string | null;
 }
@@ -224,6 +232,8 @@ export interface BillingSignalResult {
   changed: boolean;
   status: string;
   replayed: boolean;
+  /** request.failed 实际释放的预扣金额（元，string，永不 round）——链路「未扣费」证据 */
+  amountReleased?: string;
 }
 
 export type BillingRequestStatus =

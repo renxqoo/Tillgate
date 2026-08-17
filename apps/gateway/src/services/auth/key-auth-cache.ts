@@ -4,7 +4,7 @@ import { authKeyCache } from '@ai-gateway/http';
 /**
  * 鉴权 Redis 缓存（S5，requirements 4.2）。
  *
- * 静态 Key（ag_ 前缀）每次鉴权要查 DB（apiKeys + rateCardCoefficients），
+ * 静态 Key（ag_ 前缀）每次鉴权要查 DB（apiKeys + users），
  * 高 QPS 下 PG 是瓶颈。用 Redis 缓存 keyHash → 鉴权快照：
  *   - 命中 → 跳过 DB 查询（PG 只在 cache miss 时被命中）
  *   - TTL 60s（短暂窗口，吊销/禁用后最多 60s 失效；管理端可主动 DEL 加速）
@@ -20,15 +20,13 @@ export const KEY_AUTH_TTL_S = 60;
 
 
 
-/** 缓存的鉴权快照（从 DB 查到的 apiKey + user + coefficient 精简版） */
+/** 缓存的鉴权快照（从 DB 查到的 apiKey + user 精简版） */
 export interface CachedKeyAuth {
   userId: number;
   apiKeyId: number;
   /** 0 有效 / 1 吊销 */
   status: number;
   rateCardId: number | null;
-  /** 费率卡系数（小数 string，如 "1.0"） */
-  coefficient: string;
   /** Key 级限流 */
   rpmLimit: number | null;
   tpmLimit: number | null;

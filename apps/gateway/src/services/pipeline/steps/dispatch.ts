@@ -126,7 +126,7 @@ export async function dispatchCandidates(
         model: target.realModel,
         providerName: channel.providerName,
         attemptNo,
-        endpoint: kind === 'embeddings' ? 'embeddings' : undefined,
+        endpoint: kind === 'chat' ? undefined : (kind as Exclude<typeof kind, 'chat'>),
         paramRules: target.paramRules ?? undefined,
         maxOutputTokens: outputCap,
         // 每次 fallback 只拿整个请求预算的剩余值，绝不重置 deadline。

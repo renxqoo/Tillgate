@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
-import { apiKeys, apps, rateCardCoefficients, users, isAccountUsable } from '@ai-gateway/db/schema';
+import { apiKeys, apps, users, isAccountUsable } from '@ai-gateway/db/schema';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import { createHash } from 'node:crypto';
@@ -28,8 +28,10 @@ export interface AuthContext {
   appId: number | null;
   /** key / jwt（计量记录用） */
   credentialType: 'key' | 'jwt';
-  /** 费率卡系数（小数 string，如 "1.0"），用于计费 */
-  coefficient: string;
+  /**
+   * 账户绑定的费率卡。系数不在此快照——由 resolve 步按「选中的映射」实时解析
+   * （model>group>global，单一真相 ledger/coefficient.ts）；null=未绑卡（系数 1）。
+   */
   rateCardId: number | null;
   /** Key 级 RPM 限流（null = 继承用户/全局） */
   keyRpmLimit: number | null;
@@ -67,9 +69,10 @@ function extractBearer(header: string | undefined): string | null {
 
 /**
  * 双凭证鉴权服务（requirements 4.2）：
- *   - ag_ 前缀 → 静态 Key：SHA-256 查 api_keys → 校验有效 → 加载用户+费率卡
+ *   - ag_ 前缀 → 静态 Key：SHA-256 查 api_keys → 校验有效 → 加载用户（含 rateCardId）
  *   - 非 ag_ → JWT：jose 验签 → jti 黑名单 → App 状态（禁用 App 的 JWT 立即失效）
- *     → 用 JWT 内 coefficient 快照
+ *     → 用 JWT 内 rateCardId 绑定
+ *   - 系数不在此层解析：resolve 步按选中映射实时解析（ledger/coefficient.ts 单一真相）
  *
  * 安全：
  *   - 静态 Key 爆破防护（连续失败锁定，维度=keyHash，不依赖可伪造的 IP）
@@ -153,24 +156,11 @@ export function createAuthService(
         with: { user: true },
       });
       if (!apiKey) return null;
-      // 查费率卡系数（小数 string，如 "1.0"）
-      let coefficient = '1';
-      if (apiKey.user.rateCardId) {
-        const coeff = await db.query.rateCardCoefficients.findFirst({
-          where: and(
-            eq(rateCardCoefficients.rateCardId, apiKey.user.rateCardId),
-            eq(rateCardCoefficients.scope, 'global'),
-            isNull(rateCardCoefficients.modelMappingId),
-          ),
-        });
-        if (coeff) coefficient = String(coeff.coefficient);
-      }
       return {
         userId: apiKey.userId,
         apiKeyId: apiKey.id,
         status: apiKey.status,
         rateCardId: apiKey.user.rateCardId ?? null,
-        coefficient,
         rpmLimit: apiKey.rpmLimit ?? null,
         tpmLimit: apiKey.tpmLimit ?? null,
         userStatus: apiKey.user.status,
@@ -206,7 +196,6 @@ export function createAuthService(
         apiKeyId: cached.apiKeyId,
         appId: null,
         credentialType: 'key',
-        coefficient: cached.coefficient,
         rateCardId: cached.rateCardId,
         keyRpmLimit: cached.rpmLimit,
         userRpmLimit: cached.userRpmLimit,
@@ -233,19 +222,22 @@ export function createAuthService(
     }
     const payload = result.payload!;
 
-    // App 状态检查（Redis 缓存 60s，避免每次查 DB；禁用 App → 清缓存即生效）
-    const appStatusKey = appStatusCache(payload.appId);
-    let appStatus = await redis.get(appStatusKey);
-    if (appStatus === null) {
-      const app = await db.query.apps.findFirst({
-        where: eq(apps.id, payload.appId),
-        columns: { status: true },
-      });
-      appStatus = app ? String(app.status) : '404';
-      await redis.set(appStatusKey, appStatus, 'EX', 60);
-    }
-    if (appStatus !== '0') {
-      return { ok: false, status: 401, code: 'app_disabled', message: '应用已禁用' };
+    // App 状态检查（Playground 桥 JWT 无 App，跳过）
+    if (payload.appId != null) {
+      // Redis 缓存 60s，避免每次查 DB；禁用 App → 清缓存即生效
+      const appStatusKey = appStatusCache(payload.appId);
+      let appStatus = await redis.get(appStatusKey);
+      if (appStatus === null) {
+        const app = await db.query.apps.findFirst({
+          where: eq(apps.id, payload.appId),
+          columns: { status: true },
+        });
+        appStatus = app ? String(app.status) : '404';
+        await redis.set(appStatusKey, appStatus, 'EX', 60);
+      }
+      if (appStatus !== '0') {
+        return { ok: false, status: 401, code: 'app_disabled', message: '应用已禁用' };
+      }
     }
 
     // 用户网关画像（status + 每用户 rpm/tpm 限流）：与静态 Key 路径对称，JWT 也必须受
@@ -293,8 +285,7 @@ export function createAuthService(
         apiKeyId: null,
         appId: payload.appId,
         credentialType: 'jwt',
-        coefficient: String(payload.coefficient),
-        rateCardId: null,
+        rateCardId: payload.rateCardId,
         keyRpmLimit: null,
         userRpmLimit,
         appRpmLimit: payload.scope?.rpm ?? null,

@@ -32,7 +32,6 @@ const VALID_SNAPSHOT: CachedKeyAuth = {
   apiKeyId: 5,
   status: 0,
   rateCardId: 1,
-  coefficient: '1.0',
   rpmLimit: null,
   tpmLimit: null,
   userStatus: 0,

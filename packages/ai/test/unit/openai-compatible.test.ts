@@ -164,7 +164,7 @@ describe('OpenAICompatibleAdapter.planRequest', () => {
   it('chat 端点 → /v1/chat/completions,Bearer + content-type + idempotency-key', () => {
     const plan = adapter.planRequest(
       { baseUrl: 'http://u', apiKey: 'sk-1', protocol: 'openai-compatible' },
-      { endpoint: 'chat', model: 'm', requestId: 'r-1' },
+      { endpoint: 'chat', model: 'm', requestId: 'r-1', stream: false },
     );
     expect(plan.path).toBe('/v1/chat/completions');
     expect(plan.headers).toEqual({
@@ -177,7 +177,7 @@ describe('OpenAICompatibleAdapter.planRequest', () => {
   it('embeddings 端点 → /v1/embeddings', () => {
     const plan = adapter.planRequest(
       { baseUrl: 'http://u', apiKey: 'sk-1', protocol: 'openai-compatible' },
-      { endpoint: 'embeddings', model: 'm', requestId: 'r-1' },
+      { endpoint: 'embeddings', model: 'm', requestId: 'r-1', stream: false },
     );
     expect(plan.path).toBe('/v1/embeddings');
   });

@@ -56,7 +56,12 @@ export async function applyRequestFailed(
     return row[0]!;
   });
   if (released) {
-    return { changed: true, status: 'released', replayed: false };
+    return {
+      changed: true,
+      status: 'released',
+      replayed: false,
+      amountReleased: released.reservedAmount,
+    };
   }
   return undefined;
 }

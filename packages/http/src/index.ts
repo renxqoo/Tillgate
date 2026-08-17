@@ -89,6 +89,7 @@ export {
   appStatusCache,
   userProfileCache,
   balanceCache,
+  rateCardCoefficientsCache,
   bumpRouteCache,
   invalidateKeyAuthCache,
 } from './cache.js';

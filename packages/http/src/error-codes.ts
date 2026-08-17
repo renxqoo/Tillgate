@@ -196,6 +196,7 @@ export const ERROR_REGISTRY = {
   invalid_multimodal_input: { status: 422, message: '多模态输入内容不合法' },
   unsupported_multimodal_input: { status: 422, message: '不支持的多模态输入类型' },
   billing_quote_unavailable: { status: 422, message: '模型没有有效的多模态计费策略' },
+  rate_card_disabled: { status: 403, message: '账户绑定的费率卡已停用，请联系管理员' },
 
   // ── 网关鉴权（auth-service 结果码，2026-08 统一登记）──
   key_revoked: { status: 401, message: '凭证已吊销' },

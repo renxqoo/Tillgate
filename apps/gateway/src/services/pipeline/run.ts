@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { getTracer } from '@ai-gateway/core';
+import { getTracer, SpanStatusCode } from '@ai-gateway/core';
 import { renderReject } from '../../lib/http.js';
 import { GatewayError, UpstreamRespondError } from '../../lib/errors.js';
 import type { AuthEnv } from '../../middleware/auth.js';
@@ -65,14 +65,16 @@ export function createPipeline(deps: PipelineDeps): RunInference {
     let tpm: TpmReservation | null = null;
     let requestTrace: RequestTraceContext | null = null;
     let dispatched = false;
+    // 授权预扣额（收尾 span 的金额兜底：signal 未返回退款额时用它证明「未扣费」）
+    let reservedAmount: string | null = null;
 
     try {
       // ---- 第一步：准入（drain / 取消 / scope）----
       const admitted = await admitRequest(deps, c, kind, body);
       budget = admitted.budget;
 
-      // ---- 第二步：解析（路由 + 多模态 + 估算 + 候选定价）----
-      const resolved = await resolveRequest(deps, kind, body, admitted.model, auth.coefficient);
+      // ---- 第二步：解析（路由 + 费率卡系数 + 多模态 + 估算 + 候选定价）----
+      const resolved = await resolveRequest(deps, kind, body, admitted.model, auth);
       const estimatedTotalTokens = resolved.estInput + resolved.outputCap;
 
       // ---- 第三步：限流（RPM → TPM 预占 → 免费日限）----
@@ -94,6 +96,7 @@ export function createPipeline(deps: PipelineDeps): RunInference {
         outputCap: resolved.outputCap,
       });
       requestTrace = authorized.requestTrace;
+      reservedAmount = authorized.authorization.reservedAmount;
 
       // ---- 第五步：候选循环（主模型渠道 → fallback → 503）----
       dispatched = true;
@@ -148,22 +151,30 @@ export function createPipeline(deps: PipelineDeps): RunInference {
             'billing.finalize': 'failed',
             'billing.failure_reason': failReason,
           });
+          // 失败收尾必须能回答「扣没扣钱」：记录 signal 终态与释放金额（未扣费证据）
+          let releasedAmount = reservedAmount;
           try {
-            await deps.billing.signal({
+            const result = await deps.billing.signal({
               type: 'request.failed',
               requestId,
               reason: failReason,
               delivery: 'none',
               upstreamCharge: 'none',
             });
+            finalizeSpan.setAttributes({ 'billing.state': result.status });
+            if (result.amountReleased !== undefined) releasedAmount = result.amountReleased;
           } catch (e) {
+            finalizeSpan.setAttributes({ 'billing.state': 'signal_failed' });
             deps.logger.warn(
               { requestId, err: (e as Error).message },
               'billing failure signal failed',
             );
-          } finally {
-            finalizeSpan.end();
           }
+          if (releasedAmount !== null) {
+            finalizeSpan.setAttribute('billing.amount_released', releasedAmount);
+          }
+          finalizeSpan.setStatus({ code: SpanStatusCode.ERROR, message: failReason });
+          finalizeSpan.end();
         }
         // TPM 处置：未交付失败统一释放（2026-08-17 政策：unknown 不再保留）
         await tpm?.release();

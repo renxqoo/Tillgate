@@ -192,6 +192,12 @@ export async function setupTestModel(
     cacheInputPrice?: string;
     fallbackModels?: string[];
     billingPolicy?: Record<string, unknown>;
+    /** 计费单位（默认 token；单位计费用 image/request/second/char） */
+    pricingUnit?: string;
+    /** 单位单价（元/单位；单位计费模型的计量价） */
+    unitPrice?: string;
+    /** 定价分组键（费率卡 scope='group' 系数行匹配） */
+    pricingGroup?: string;
   } = {},
 ): Promise<TestModelIds> {
   const suffix = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -228,6 +234,9 @@ export async function setupTestModel(
       cacheInputPrice: opts.cacheInputPrice ?? '100',
       fallbackModels: opts.fallbackModels ?? null,
       billingPolicy: opts.billingPolicy ?? null,
+      pricingUnit: opts.pricingUnit ?? 'token',
+      unitPrice: opts.unitPrice ?? '0',
+      pricingGroup: opts.pricingGroup ?? null,
     })
     .returning();
   await db
@@ -353,7 +362,9 @@ export async function cleanupTestData(
       .delete(users)
       .where(eq(users.id, userId))
       .catch(() => {});
-  await redis.del('route:cache:v').catch(() => {});
+  // bump 而非 del：版本计数必须单调递增（del 会让下次 incr 归 1，撞上残留
+  // v1 缓存条目——与生产失效语义一致）
+  await redis.incr('route:cache:v').catch(() => {});
   if (keyHash) await redis.del(`auth:key:${keyHash}`).catch(() => {});
 }
 

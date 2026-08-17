@@ -5,7 +5,9 @@ import { z } from 'zod';
 /**
  * JWT 签发/验签（jose，HS256，requirements 4.2）。
  *
- * 载荷：sub=user_id, app_id, scope, coefficient(费率卡快照), exp, jti(吊销/审计), iss=ai-gateway
+ * 载荷：sub=user_id, app_id, scope, rate_card_id(费率卡绑定), exp, jti(吊销/审计), iss=ai-gateway
+ * 系数按卡实时解析（model>group>global，packages/ledger coefficient.ts 单一真相）；
+ * 卡停用时新请求拒绝（resolve 步 rate_card_disabled）。
  * 撤销方式：① 禁用 App（清状态缓存，已签发 JWT 立即失效）
  *           ② 单令牌紧急吊销 → jti 黑名单（Redis，TTL=剩余有效期）
  * 密钥：JWT_SECRET（HS256，≥16 chars）。
@@ -18,9 +20,13 @@ const ALG = 'HS256';
 /** JWT 载荷（验签后用于构建 AuthContext） */
 export interface JwtPayload {
   sub: string; // user_id
-  appId: number;
+  /** OAuth App JWT 必填；Playground 桥 JWT（typ='playground'）为 null */
+  appId: number | null;
+  /** 载荷变体：缺省 = OAuth App token；'playground' = 控制台操练场短期桥 */
+  typ?: 'playground';
   scope?: { models?: string[]; rpm?: number; tpm?: number };
-  coefficient: number; // 费率卡系数快照（如 1.0）
+  /** 签发时账户绑定的费率卡（null=未绑卡按系数 1） */
+  rateCardId: number | null;
   jti: string;
   iss: string;
   exp: number;
@@ -28,7 +34,7 @@ export interface JwtPayload {
 
 const payloadSchema = z.object({
   sub: z.string().regex(/^\d+$/),
-  appId: z.number().int().positive(),
+  appId: z.number().int().positive().nullable(),
   scope: z
     .object({
       models: z.array(z.string().min(1).max(255)).max(500).optional(),
@@ -36,7 +42,7 @@ const payloadSchema = z.object({
       tpm: z.number().int().positive().optional(),
     })
     .optional(),
-  coefficient: z.number().finite().positive(),
+  rateCardId: z.number().int().positive().nullable(),
   jti: z.string().uuid(),
   iss: z.literal(ISSUER),
   exp: z.number().int().positive(),
@@ -48,9 +54,11 @@ function secretKey(jwtSecret: string): Uint8Array {
 
 export interface SignInput {
   userId: number;
-  appId: number;
+  appId: number | null;
   scope?: { models?: string[]; rpm?: number; tpm?: number };
-  coefficient: number;
+  rateCardId: number | null;
+  /** 载荷变体（playground 桥用）；缺省 = OAuth App token */
+  typ?: 'playground';
   /** 有效期秒（默认 7200 = 2h） */
   expiresInSeconds?: number;
 }
@@ -61,7 +69,8 @@ export async function signJwt(input: SignInput, jwtSecret: string): Promise<stri
   return new SignJWT({
     appId: input.appId,
     scope: input.scope,
-    coefficient: input.coefficient,
+    rateCardId: input.rateCardId,
+    ...(input.typ ? { typ: input.typ } : {}),
   })
     .setProtectedHeader({ alg: ALG })
     .setIssuer(ISSUER)

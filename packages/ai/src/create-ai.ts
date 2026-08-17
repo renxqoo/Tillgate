@@ -1,4 +1,10 @@
 import { OpenAICompatibleAdapter } from './adapters/openai-compatible';
+import { AnthropicAdapter } from './adapters/anthropic';
+import { GeminiAdapter } from './adapters/gemini';
+import { AzureOpenAIAdapter } from './adapters/azure-openai';
+import { AwsBedrockAdapter } from './adapters/aws-bedrock';
+import { VertexAiAdapter } from './adapters/vertex-ai';
+import { MiniMaxAdapter } from './adapters/minimax';
 import type { ProtocolAdapter } from './adapters/protocol-adapter';
 import { CircuitBreaker } from './breaker/breaker';
 import { DeadCredentialTracker } from './dead-credential/tracker';
@@ -16,7 +22,7 @@ import {
 import { asServerDrainAbort } from './errors/server-drain';
 import { asRecord, tryParseJson } from './internal/util';
 import { peekFirstChunk, firstChunkStreamError, PeekTimeoutError } from './internal/stream';
-import { BodyTooLargeError, fetchUpstream, readBody } from './transport/http-client';
+import { BodyTooLargeError, fetchUpstream, readBody, readRawBody } from './transport/http-client';
 import { relayStream } from './transport/relay-stream';
 import { normalizeUsage } from './usage/normalize';
 import { estimateUsage } from './usage/token-estimate';
@@ -38,6 +44,7 @@ import type {
   Endpoint,
   RequestCtx,
   UpstreamError,
+  Usage,
 } from './types';
 
 /**
@@ -82,8 +89,20 @@ function joinUrl(baseUrl: string, path: string): string {
   return base + path;
 }
 
-/** 默认协议注册表（不注入 adapters 时的注册项） */
-const defaultAdapters: ProtocolAdapter[] = [new OpenAICompatibleAdapter()];
+/**
+ * 默认协议注册表（不注入 adapters 时的注册项）。
+ * 七个协议族：openai-compatible（含全部 OpenAI 兼容厂商）+ 五个原生协议
+ * + minimax（任务族 video/music + MiniMax chat 兼容）。
+ */
+const defaultAdapters: ProtocolAdapter[] = [
+  new OpenAICompatibleAdapter(),
+  new AnthropicAdapter(),
+  new GeminiAdapter(),
+  new AzureOpenAIAdapter(),
+  new AwsBedrockAdapter(),
+  new VertexAiAdapter(),
+  new MiniMaxAdapter(),
+];
 
 /** 默认注册表键——协议词表的单一真相（admin 配置面校验引用此处，不再各自枚举） */
 export const SUPPORTED_PROTOCOLS: readonly string[] = defaultAdapters.map((a) => a.protocol);
@@ -259,6 +278,7 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
         endpoint,
         model: input.ctx.model,
         requestId,
+        stream: false,
       });
       const url = joinUrl(input.channel.baseUrl, plan.path);
       const rec = asRecord(body);
@@ -276,19 +296,30 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
         return { ok: false, error, empty };
       };
       const { outcome, attempts } = await withRetry(
-        async (attempt, signal) => {
+        async (attempt, signal): Promise<
+          | { ok: false; error: UpstreamError; empty?: boolean }
+          | { ok: true; value: { usage?: Usage; durationMs?: never; body?: unknown; rawBody?: Uint8Array; rawContentType?: string } }
+        > => {
           log.info(`[ai] ${requestId} attempt ${attempt} (${key})`);
           // B4：每次尝试发 attempt_start（gateway 知道第几次尝试、打到哪个渠道）
           emit({ type: 'attempt_start', requestId, channelKey: key, attempt });
           // totalMs = 单次尝试上限；deadlineMs = 全部尝试上限（signal 由 withRetry 管理）
           const totalSignal = AbortSignal.any([signal, AbortSignal.timeout(cfg.timeout.totalMs)]);
           try {
+            // FormData（multipart 模态端点）原样直传——fetch 自动生成 boundary 头，
+            // 显式 content-type 会破坏 multipart 边界；签名协议（bedrock）不支持 FormData
+            const isFormData = typeof FormData !== 'undefined' && finalBody instanceof FormData;
+            const serializedBody = isFormData ? '' : JSON.stringify(finalBody);
+            const signedHeaders = adapter.signRequest
+              ? { ...plan.headers, ...await adapter.signRequest({ url: new URL(url), body: serializedBody, apiKey: input.channel.apiKey, amzDate: new Date() }) }
+              : { ...plan.headers };
+            if (isFormData) delete (signedHeaders as Record<string, string>)['content-type'];
             const res = await fetchUpstream(
               url,
               {
                 method: 'POST',
-                headers: plan.headers,
-                body: JSON.stringify(finalBody),
+                headers: signedHeaders,
+                body: isFormData ? (finalBody as unknown as NonNullable<Parameters<typeof fetchUpstream>[1]>['body']) : serializedBody,
               },
               {
                 connectMs: cfg.timeout.connectMs,
@@ -301,10 +332,20 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
               const raw = await readBody(res, { signal: totalSignal, maxBytes: 8 * 1024 * 1024 });
               return fail(adapter.mapError(res.status, tryParseJson(raw) ?? raw));
             }
+            // 二进制响应（audio_speech 等）：content-type 非 JSON → 原样字节透传
+            const contentType = res.headers.get('content-type') ?? '';
+            if (!contentType.includes('json')) {
+              const rawBytes = await readRawBody(res, { signal: totalSignal, maxBytes: 32 * 1024 * 1024 });
+              if (rawBytes.byteLength === 0) return fail(emptyError(), true);
+              return { ok: true, value: { usage: undefined, rawBody: rawBytes, rawContentType: contentType } };
+            }
             const raw = await readBody(res, { signal: totalSignal, maxBytes: 8 * 1024 * 1024 });
             if (raw.trim() === '') return fail(emptyError(), true);
-            const json = tryParseJson(raw);
+            let json = tryParseJson(raw);
             if (json === undefined) return fail(invalidResponseError());
+            // 原生线格式（anthropic/gemini/bedrock）→ 规范形：此后分类/计量/响应
+            // 全部只面对规范形（管线内部恒为规范形，单一真相）
+            if (adapter.translateResponseBody) json = adapter.translateResponseBody(json);
             // #6643 同类（非流式面）：部分供应商把错误对象包在 200 JSON 体里——
             // 必须归类失败（可换渠道），不得按成功 + 估算 usage 计费透传。
             const bodyError = classifyBodyOnlyError(json);
@@ -431,6 +472,7 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
         endpoint,
         model: input.ctx.model,
         requestId,
+        stream: true,
       });
       const url = joinUrl(input.channel.baseUrl, plan.path);
       const rec = asRecord(body);
@@ -451,12 +493,16 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
           emit({ type: 'attempt_start', requestId, channelKey: key, attempt });
           try {
             // 流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；connectMs 保证连接
+            const serializedBody = JSON.stringify(finalBody);
+            const signedHeaders = adapter.signRequest
+              ? { ...plan.headers, ...await adapter.signRequest({ url: new URL(url), body: serializedBody, apiKey: input.channel.apiKey, amzDate: new Date() }) }
+              : plan.headers;
             const res = await fetchUpstream(
               url,
               {
                 method: 'POST',
-                headers: plan.headers,
-                body: JSON.stringify(finalBody),
+                headers: signedHeaders,
+                body: serializedBody,
               },
               {
                 connectMs: cfg.timeout.connectMs,
@@ -471,8 +517,12 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
             }
             if (!res.body) return fail(invalidResponseError());
             // D3：空流检测（tee 分流，不破坏流式）
+            // 原生线格式先归一为规范形 SSE（peek/首帧错误识别/scanner 全部只面对规范形）
+            const upstreamBody = adapter.translateUpstreamStream
+              ? adapter.translateUpstreamStream(res.body, input.ctx.model)
+              : res.body;
             // 缓冲根因（bodyLimit + requestLog clone）已修复，tee 不再导致缓冲
-            const peeked = await peekFirstChunk(res.body, {
+            const peeked = await peekFirstChunk(upstreamBody, {
               signal,
               timeoutMs: cfg.stream.firstByteTimeoutMs,
             });
@@ -589,7 +639,10 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
       // 死凭据优先：即使先遇到网络错误，只要任一路径返回 401/403（死凭据），
       // 最终返回死凭据——连通性测试的核心目的是验证 Key 是否有效
       let deadCredError: UpstreamError | undefined;
-      for (const probe of adapter.probeRequests(channel)) {
+      const probes = adapter.probeRequests(channel);
+      // 无廉价无副作用探测的协议（bedrock 等）返回空表：探测是尽力而为，跳过=通过
+      if (probes.length === 0) return { ok: true, durationMs: Date.now() - start };
+      for (const probe of probes) {
         try {
           const res = await fetchUpstream(
             joinUrl(channel.baseUrl, probe.path),
@@ -623,6 +676,92 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
         const i = listeners.indexOf(cb);
         if (i >= 0) listeners.splice(i, 1);
       };
+    },
+
+    // ---- 异步生成任务操作面（仅 tasks 适配器提供；轮询为周期性只读，不进重试/熔断）----
+
+    parseGenerationResponse(input) {
+      const adapter = resolveAdapter(input.channel);
+      if (isUpstreamError(adapter)) return { kind: 'error', error: adapter };
+      const tasks = adapter.tasks;
+      if (!tasks) {
+        return {
+          kind: 'error',
+          error: unsupportedProtocolError(input.channel.protocol, [...adapters.keys()]),
+        };
+      }
+      return tasks.parseResponse(input.endpoint, input.body);
+    },
+
+    async queryGenerationTask(input) {
+      const adapter = resolveAdapter(input.channel);
+      if (isUpstreamError(adapter)) return { ok: false, error: adapter };
+      const tasks = adapter.tasks;
+      if (!tasks) {
+        return {
+          ok: false,
+          error: unsupportedProtocolError(input.channel.protocol, [...adapters.keys()]),
+        };
+      }
+      const plan = tasks.planTaskQuery(input.channel, input.taskId);
+      try {
+        const res = await fetchUpstream(
+          joinUrl(input.channel.baseUrl, plan.path),
+          { method: 'GET', headers: plan.headers },
+          {
+            connectMs: cfg.timeout.connectMs,
+            allowLocal: cfg.allowLocalUrl,
+            allowedHosts: cfg.allowedHosts,
+          },
+        );
+        if (res.status >= 400) {
+          const raw = await readBody(res);
+          return { ok: false, error: adapter.mapError(res.status, tryParseJson(raw) ?? raw) };
+        }
+        const raw = await readBody(res);
+        return tasks.parseTaskStatus(tryParseJson(raw));
+      } catch (err) {
+        // 轮询是周期性的：瞬时网络错误归 error，调用方下轮再查（不重试单次）
+        return {
+          ok: false,
+          error: isUpstreamError(err) ? err : classifyTransportError('network'),
+        };
+      }
+    },
+
+    async retrieveGenerationFile(input) {
+      const adapter = resolveAdapter(input.channel);
+      if (isUpstreamError(adapter)) return { ok: false, error: adapter };
+      const tasks = adapter.tasks;
+      if (!tasks?.planFileRetrieve || !tasks.parseFileRetrieve) {
+        return {
+          ok: false,
+          error: unsupportedProtocolError(input.channel.protocol, [...adapters.keys()]),
+        };
+      }
+      const plan = tasks.planFileRetrieve(input.channel, input.fileId);
+      try {
+        const res = await fetchUpstream(
+          joinUrl(input.channel.baseUrl, plan.path),
+          { method: 'GET', headers: plan.headers },
+          {
+            connectMs: cfg.timeout.connectMs,
+            allowLocal: cfg.allowLocalUrl,
+            allowedHosts: cfg.allowedHosts,
+          },
+        );
+        if (res.status >= 400) {
+          const raw = await readBody(res);
+          return { ok: false, error: adapter.mapError(res.status, tryParseJson(raw) ?? raw) };
+        }
+        const raw = await readBody(res);
+        return tasks.parseFileRetrieve(tryParseJson(raw));
+      } catch (err) {
+        return {
+          ok: false,
+          error: isUpstreamError(err) ? err : classifyTransportError('network'),
+        };
+      }
     },
   };
 }

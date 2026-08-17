@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { billingRequests, usageLogs } from '@ai-gateway/db/schema';
+import { createBillingProcessor } from '@ai-gateway/ledger';
 import type { AiEvent, ChatStreamResult } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,
@@ -217,6 +218,20 @@ describe('G1（2026-08-17 修订）— 流式完成无 usage → 估算结算；
         const rows = await db.query.billingRequests.findMany({
           where: eq(billingRequests.userId, userId),
         });
+        // 结算泵（幂等）：不依赖本地 dev worker 的 ambient 结算——用例自足
+        if (rows[0] && rows[0].status === 'settlement_pending') {
+          await createBillingProcessor({
+            db,
+            options: {
+              ownerId: 'e2e-settle',
+              batchSize: 5,
+              claimLeaseMs: 60_000,
+              retryBaseMs: 10,
+              retryMaxMs: 100,
+              maxAttempts: 3,
+            },
+          }).runOnce([rows[0].requestId]);
+        }
         expect(rows[0]?.status).toBe('settled');
       });
       const bill = await db.query.billingRequests.findFirst({
