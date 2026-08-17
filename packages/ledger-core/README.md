@@ -99,6 +99,96 @@ await ledger.run({
 });
 ```
 
+## 核心流程图
+
+### 流程 1：run 三态判定（每一条 run 的完整决策路径）
+
+```
+ run({ operationId, kind, fingerprint, execute })
+   │
+   ├─ 守卫（先于任何写）：kind ∈ 白名单？operationId 形状？fingerprint 可 canonical？
+   │      └─ 否 → 拒绝，execute 零调用（fail-closed，库零痕迹）
+   │
+   └─→ 事务开始
+        ├─ INSERT ledger_operations (operationId, fingerprint) ON CONFLICT DO NOTHING
+        │
+        ├─ 插入成功（首个到达者）
+        │      └─→ execute(tx)
+        │            ├─ 业务状态机写 + wallet 动词（同事务）
+        │            ├─ 抛错？→ 整体回滚：档案随业务写一起消失（=「没做过」）
+        │            ↓
+        │         回执校验（≤16KB 纯对象）→ receipt 落档 → 提交
+        │            └─ 提交后：effects.committed(replayed: false)
+        │
+        └─ 插入 0 行（键已存在）→ 读回存档核对
+               ├─ kind 不符   → OperationConflictError (kind_mismatch)
+               ├─ 指纹不符    → OperationConflictError (fingerprint_mismatch) ← 串号事故的闸
+               └─ 完全一致    → 返回存档 receipt，replayed: true（execute 不执行）
+                                └─ 提交后：effects.committed(replayed: true)
+```
+
+### 流程 2：支付回调全链路（与 wallet 组合，回调重放只入账一次）
+
+```
+ 支付网关          ledger-core                     wallet               DB 事务边界
+    │                 │                             │                      │
+    ├─ 回调 #1 ─────→ run('payment.credit:epay:9527')                      │
+    │                 ├─ INSERT 档案占位 ─────────────────────────────────→ │ ┐
+    │                 ├─ execute(tx)：                                   │ │
+    │                 │    ├─ 订单 created → credited ──────────────────→ │ │ 同一事务
+    │                 │    └─ wallet.credit(tx, 100.00) ──→ 入账 100 ───→ │ │
+    │                 ├─ receipt 落档 {transactionId, balanceAfter} ────→ │ ┘
+    │                 └─ 提交 → effects.committed(replayed: false)        │
+    │ ←── 200 ────────┤                                                   │
+    │                 │                                                   │
+    ├─ 回调 #2 重放 → run（同 operationId、同 fingerprint）                │
+    │                 ├─ INSERT 0 行 → 读回核对一致                        │
+    │                 └─ 返回存档回执 replayed: true（execute 未执行，钱包零变动）
+    │ ←── 200 ────────┤                                                   │
+    │                 │                                                   │
+    ├─ 回调 #3 篡改 → run（同键，amount 改 1000）── 指纹漂移                │
+    │                 └─ OperationConflictError（409）                     │
+    │                     ——绝不把 100 元的存档回执当 1000 元的结果归还     │
+```
+
+跟着档案与账走一遍（充值 100）：
+
+| 到达 | fingerprint | execute | 档案 | 钱包余额 | 结果 |
+| --- | --- | --- | --- | --- | --- |
+| 回调 #1 | `{userId, '100.00'}` | 执行 1 次 | 建立+回执落档 | **+100.00** | `replayed: false` |
+| 回调 #2 网关重发 | 同 #1 | 不执行 | 读回原回执 | 不变 | `replayed: true` |
+| 回调 #3 金额篡改 | `{userId, '1000.00'}` | 不执行 | 不动 | 不变 | **409 冲突** |
+| #1 执行中途宕机后重试 | 同 #1 | 回滚→接棒 1 次 | 重建 | +100.00（恰一次） | `replayed: false` |
+
+### 流程 3：并发同键——唯一索引定序（无锁设计的正确性来源）
+
+```
+ 事务 A                                 事务 B（同时开始）
+    │                                      │
+    ├─ INSERT 档案 ✓（占住唯一键）           ├─ INSERT 档案 ……阻塞……
+    ├─ execute：订单状态机 + 入账            │   （等在唯一索引上，不轮询、无超时竞态）
+    └─ COMMIT ─────────────────────────────→ B 的 INSERT 惊醒：撞键 → 0 行
+                                           ├─ 读回 A 的存档，指纹一致
+                                           └─ 返回 A 的回执，replayed: true
+                                               ——不存在读到 A 半成品数据的窗口
+
+ 事务 A 中途失败时：
+    ├─ INSERT ✓ → execute 抛错 → ROLLBACK（档案与业务写一起消失）
+    └─ B 的 INSERT 惊醒：键位空出 → 插入成功 → B 接棒 execute
+        ——「回滚 = 没做过」，下一个到达者顶上
+```
+
+### 流程 4：电商三步——ledger-core 记事、wallet 记钱
+
+```
+ 下单 ──→ run(order.place:X)   ── execute：建订单    + wallet.authorize 259（押住，余额没动）
+ 支付 ──→ run(order.settle:X)  ── execute：订单已付  + wallet.settle 249（实扣，差额 10 自动归还）
+ 取消 ──→ run(order.cancel:X)  ── execute：订单关闭  + wallet.release（全退，分文未动）
+              │
+              └─ 三个 operationId 互不相同——「同一订单的三件事」各自幂等、互不顶替；
+                 每件事的重试/重放都只会落到自己的档案上
+```
+
 ## 数据模型（单表，本包私有）
 
 ```
