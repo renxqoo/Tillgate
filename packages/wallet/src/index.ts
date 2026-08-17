@@ -9,6 +9,7 @@ export { transfer } from './transfer';
 export { setCreditLimit } from './credit-line';
 export { freeze } from './freeze';
 export { accounts, balance } from './balance';
+export { statement } from './statement';
 export type {
   Wallet,
   AccountRef,
@@ -28,6 +29,10 @@ export type {
   CreditLineResult,
   FreezeResult,
   AccountSummary,
+  StatementInput,
+  StatementItem,
+  StatementResult,
+  StatementCounterparty,
 } from './types';
 export {
   DEFAULT_CURRENCY,

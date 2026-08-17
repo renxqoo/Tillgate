@@ -147,8 +147,9 @@ export const walletAuthorizations = pgTable(
  * 建表（幂等 IF NOT EXISTS）——消费方接入时执行一次；
  * 测试用 deprovision 清场。
  */
-export async function provision(db: NodePgDatabase): Promise<void> {
-  await db.execute(sql`
+/** 建表 DDL（幂等 IF NOT EXISTS）——provisionSql 供消费方贴入自己的版本化迁移 */
+const WALLET_DDL: readonly string[] = [
+  `
     create table if not exists wallet_accounts (
       id uuid primary key default gen_random_uuid(),
       kind varchar(8) not null,
@@ -167,14 +168,14 @@ export async function provision(db: NodePgDatabase): Promise<void> {
       constraint wallet_accounts_floor_ck check (credit_limit >= 0 and in_flight >= 0),
       constraint wallet_accounts_balance_floor_ck check (kind = 'internal' or balance >= -credit_limit),
       constraint wallet_accounts_status_ck check (status in ('active', 'frozen'))
-    )`);
-  await db.execute(sql`
+    )`,
+  `
     create unique index if not exists wallet_accounts_user_uq
-      on wallet_accounts (user_id, currency) where kind = 'user'`);
-  await db.execute(sql`
+      on wallet_accounts (user_id, currency) where kind = 'user'`,
+  `
     create unique index if not exists wallet_accounts_internal_uq
-      on wallet_accounts (code, currency) where kind = 'internal'`);
-  await db.execute(sql`
+      on wallet_accounts (code, currency) where kind = 'internal'`,
+  `
     create table if not exists wallet_transactions (
       id bigserial primary key,
       kind varchar(16) not null,
@@ -186,11 +187,11 @@ export async function provision(db: NodePgDatabase): Promise<void> {
       constraint wallet_transactions_ref_kind_uq unique (ref_type, ref_id, kind),
       constraint wallet_transactions_kind_ck
         check (kind in ('credit', 'settle', 'refund', 'transfer', 'credit_line', 'freeze'))
-    )`);
-  await db.execute(sql`
+    )`,
+  `
     create index if not exists wallet_transactions_ref_idx
-      on wallet_transactions (ref_type, created_at)`);
-  await db.execute(sql`
+      on wallet_transactions (ref_type, created_at)`,
+  `
     create table if not exists wallet_legs (
       id bigserial primary key,
       transaction_id bigint not null references wallet_transactions (id),
@@ -200,12 +201,12 @@ export async function provision(db: NodePgDatabase): Promise<void> {
       balance_before numeric(38, 18) not null,
       balance_after numeric(38, 18) not null,
       constraint wallet_legs_chain_ck check (balance_after = balance_before + amount)
-    )`);
-  await db.execute(sql`
-    create index if not exists wallet_legs_account_idx on wallet_legs (account_id, id)`);
-  await db.execute(sql`
-    create index if not exists wallet_legs_transaction_idx on wallet_legs (transaction_id)`);
-  await db.execute(sql`
+    )`,
+  `
+    create index if not exists wallet_legs_account_idx on wallet_legs (account_id, id)`,
+  `
+    create index if not exists wallet_legs_transaction_idx on wallet_legs (transaction_id)`,
+  `
     create table if not exists wallet_authorizations (
       id uuid primary key default gen_random_uuid(),
       account_id uuid not null references wallet_accounts (id),
@@ -222,11 +223,23 @@ export async function provision(db: NodePgDatabase): Promise<void> {
       constraint wallet_authorizations_amount_ck check (amount > 0),
       constraint wallet_authorizations_status_ck
         check (status in ('active', 'settled', 'released', 'expired'))
-    )`);
-  await db.execute(sql`
+    )`,
+  `
     create index if not exists wallet_authorizations_expiry_idx
       on wallet_authorizations (expires_at)
-      where status = 'active' and expires_at is not null`);
+      where status = 'active' and expires_at is not null`,
+];
+
+/** 建表（幂等 IF NOT EXISTS）——消费方接入时执行一次；测试用 deprovision 清场 */
+export async function provision(db: NodePgDatabase): Promise<void> {
+  for (const ddl of WALLET_DDL) {
+    await db.execute(sql.raw(ddl));
+  }
+}
+
+/** 导出建表 DDL 文本：供消费方的版本化迁移工具（drizzle journal 等）收录 */
+export function provisionSql(): readonly string[] {
+  return WALLET_DDL;
 }
 
 /** 测试清场：drop 四表（业务环境勿用） */

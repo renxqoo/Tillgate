@@ -28,7 +28,7 @@ function isTransientTxError(error: unknown): boolean {
 }
 
 /**
- * 事务执行壳：瞬态死锁/串行化冲突自动重试（3 次，指数退避 + 抖动）。
+ * 事务执行壳：瞬态死锁/串行化冲突自动重试（5 次，指数退避 + 抖动）。
  * 动词幂等（唯一索引 + 重放读回）保证重试安全——重试后撞唯一键走重放路径。
  */
 export async function runTx<T>(
@@ -39,7 +39,7 @@ export async function runTx<T>(
     try {
       return await db.transaction(fn);
     } catch (error) {
-      if (attempt >= 2 || !isTransientTxError(error)) throw error;
+      if (attempt >= 4 || !isTransientTxError(error)) throw error;
       await new Promise((resolve) =>
         setTimeout(resolve, 15 * 2 ** attempt + Math.floor(Math.random() * 20)),
       );

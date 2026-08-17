@@ -14,6 +14,7 @@ import { transfer } from './transfer';
 import { setCreditLimit } from './credit-line';
 import { freeze } from './freeze';
 import { accounts, balance } from './balance';
+import { statement } from './statement';
 import type { Wallet } from './types';
 
 export function createWallet(db: NodePgDatabase): Wallet {
@@ -28,6 +29,7 @@ export function createWallet(db: NodePgDatabase): Wallet {
     freeze: (input) => freeze(db, input),
     balance: (userId, currency) => balance(db, userId, currency),
     accounts: (userId) => accounts(db, userId),
+    statement: (input) => statement(db, input),
     releaseExpired: (now, limit) => releaseExpired(db, now, limit),
   };
 }

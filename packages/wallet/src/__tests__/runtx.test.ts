@@ -49,9 +49,9 @@ describe('runTx 瞬态重试壳', () => {
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
-  it('连续死锁 3 次耗尽后上抛最后一个错误', async () => {
-    const db = fakeDb([deadlock(), deadlock(), deadlock()]);
+  it('连续死锁 5 次耗尽后上抛最后一个错误', async () => {
+    const db = fakeDb([deadlock(), deadlock(), deadlock(), deadlock(), deadlock()]);
     await expect(runTx(db, async () => 'x')).rejects.toThrow('deadlock');
-    expect(db.transaction).toHaveBeenCalledTimes(3);
+    expect(db.transaction).toHaveBeenCalledTimes(5);
   });
 });

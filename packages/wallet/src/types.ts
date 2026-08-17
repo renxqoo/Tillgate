@@ -157,6 +157,46 @@ export interface AccountSummary {
   creditLimit: string;
 }
 
+/** 流水查询（账单页/对账导出）：游标分页，newest-first，只读 */
+export interface StatementInput {
+  userId: number;
+  currency?: string;
+  /** 按交易种类过滤（credit/settle/refund/transfer/credit_line/freeze） */
+  kinds?: readonly ('credit' | 'settle' | 'refund' | 'transfer' | 'credit_line' | 'freeze')[];
+  /** 游标：返回 transactionId 严格小于它的记录（首页不传） */
+  before?: number;
+  /** 页大小 1–100，缺省 20 */
+  limit?: number;
+}
+
+export interface StatementCounterparty {
+  kind: 'user' | 'internal';
+  userId: number | null;
+  code: string | null;
+}
+
+export interface StatementItem {
+  transactionId: number;
+  kind: string;
+  refType: string;
+  refId: string;
+  currency: string;
+  /** 本方腿有符号金额（正=入，负=出） */
+  amount: string;
+  /** 本腿落账后余额——逐条连起来就是完整余额历史 */
+  balanceAfter: string;
+  memo: string | null;
+  createdAt: string;
+  /** 同交易对手腿的账户（钱从哪来/到哪去） */
+  counterparties: StatementCounterparty[];
+}
+
+export interface StatementResult {
+  items: StatementItem[];
+  /** 下一页游标（null = 没有更多）；传入下次请求的 before */
+  nextCursor: number | null;
+}
+
 export interface Wallet {
   credit(input: CreditInput): Promise<CreditResult>;
   authorize(input: AuthorizeInput): Promise<AuthorizeResult>;
@@ -172,6 +212,8 @@ export interface Wallet {
   balance(userId: number, currency?: string): Promise<string>;
   /** 用户全部币种账户摘要 */
   accounts(userId: number): Promise<AccountSummary[]>;
+  /** 流水查询（账单页/对账导出）：游标分页 newest-first，只读零副作用 */
+  statement(input: StatementInput): Promise<StatementResult>;
   /** 超时释放扫描（worker 周期调用）；返回本次释放条数 */
   releaseExpired(now?: Date, limit?: number): Promise<{ released: number }>;
 }
