@@ -73,6 +73,28 @@ function resolveOtelDefaults<
 /** 全局 RPM 生产硬上限（防 .env 残留压测值让全局限流形同虚设） */
 export const PROD_GLOBAL_RPM_CAP = 5000;
 
+/**
+ * 上游调用面共用变量（gateway 与 worker 同源语义，解析单一真相）：
+ * env 变量恒为字符串——布尔只接受 'true'/'false'（拼错即启动失败，不做猜测式转换），
+ * 白名单为逗号分隔字符串，解析后小写去空。
+ */
+const allowLocalUpstreamSchema = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((v) => v === 'true');
+
+const upstreamHostAllowlistSchema = z
+  .string()
+  .default(
+    'api.openai.com,api.deepseek.com,api.minimax.chat,api.minimaxi.com,open.bigmodel.cn,api.anthropic.com,generativelanguage.googleapis.com',
+  )
+  .transform((value) =>
+    value
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
 /** gateway（对外代理）环境变量 */
 export const gatewayEnvSchema = baseEnvSchema.extend({
   /** 轮换双 key 窗：旧密钥（仅在轮换期间设置；v1 密文用它解密，收窗后必须移除） */
@@ -138,22 +160,9 @@ export const gatewayEnvSchema = baseEnvSchema.extend({
    * 允许 http:// 与内网上游（仅压测/本地调试）。
    * 双重门控：本开关为 true 且 NODE_ENV !== 'production' 才生效（见 gateway createAi）。
    */
-  ALLOW_LOCAL_UPSTREAM: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
+  ALLOW_LOCAL_UPSTREAM: allowLocalUpstreamSchema,
   /** 生产允许访问的上游域名，逗号分隔；生产必须显式配置，禁止任意可控 DNS。 */
-  UPSTREAM_HOST_ALLOWLIST: z
-    .string()
-    .default(
-      'api.openai.com,api.deepseek.com,api.minimax.chat,api.minimaxi.com,open.bigmodel.cn,api.anthropic.com,generativelanguage.googleapis.com',
-    )
-    .transform((value) =>
-      value
-        .split(',')
-        .map((item) => item.trim().toLowerCase())
-        .filter(Boolean),
-    ),
+  UPSTREAM_HOST_ALLOWLIST: upstreamHostAllowlistSchema,
   ...otelOptions,
 });
 
@@ -173,11 +182,8 @@ export const workerEnvSchema = baseEnvSchema.extend({
   ENCRYPTION_KEY_OLD: z.string().min(32).max(256).optional(),
   ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
   /** 上游调用面（generation poller 的 music 代执行/任务查询用；与 gateway 同源语义） */
-  ALLOW_LOCAL_UPSTREAM: z
-    .boolean()
-    .default(false)
-    .describe('允许 http:// 上游（仅本地 mock；生产强制 false）'),
-  UPSTREAM_HOST_ALLOWLIST: z.array(z.string()).default([]),
+  ALLOW_LOCAL_UPSTREAM: allowLocalUpstreamSchema,
+  UPSTREAM_HOST_ALLOWLIST: upstreamHostAllowlistSchema,
   /** 邀请人佣金比例（与 client-api 同源语义：被邀请人日消费 × 比例） */
   REFERRAL_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0.1),
   /** 计量队列并发数 */

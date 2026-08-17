@@ -18,14 +18,17 @@ export default function Landing() {
         <p className="text-muted-foreground">多供应商 LLM API 中转，统一余额、统一接入</p>
       </div>
 
-      <Button asChild size="lg">
-        <Link href="/pricing" className="mr-4 text-sm text-muted-foreground underline">
-          模型定价
-        </Link>
-        <Link href="/dashboard">
-          进入用户面板 <ArrowRight />
-        </Link>
-      </Button>
+      {/* Slot 一次只能接收一个子元素——两个链接必须是两颗独立按钮 */}
+      <div className="flex items-center gap-4">
+        <Button asChild variant="link" size="lg" className="text-sm text-muted-foreground underline">
+          <Link href="/pricing">模型定价</Link>
+        </Button>
+        <Button asChild size="lg">
+          <Link href="/dashboard">
+            进入用户面板 <ArrowRight />
+          </Link>
+        </Button>
+      </div>
     </main>
   );
 }
