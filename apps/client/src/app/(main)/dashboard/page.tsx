@@ -14,7 +14,6 @@ import {
   fmtInt,
   type Paginated,
   type UsageByModelItem,
-  type UsageSummaryItem,
 } from '@ai-gateway/api-client';
 
 import Link from 'next/link';
