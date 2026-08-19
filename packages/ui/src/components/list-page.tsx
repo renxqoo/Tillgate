@@ -62,7 +62,10 @@ export function ListPage({
   /** 传 page/pageSize 且 total 超过一页（total > pageSize）时渲染分页条 */
   page?: number;
   pageSize?: number;
-  /** 去掉内容 Card 的外描边（ring）——非列表形态的页面（操练场/邀请/账单等）用 */
+  /**
+   * 内容不套 Card 容器、直接平铺——非列表形态的页面（操练场/邀请/账单等）用。
+   * 子内容需自带边框容器（Card / rounded-lg border）；搜索/筛选/分页插槽不生效
+   */
   unbordered?: boolean;
 }) {
   const hiddenParams = Object.entries(searchParams).filter(
@@ -94,7 +97,14 @@ export function ListPage({
       {aboveList}
 
       {error || children ? (
-        <Card className={unbordered ? 'ring-0' : undefined}>
+        unbordered ? (
+          error ? (
+            <p className="p-8 text-center text-sm text-destructive">{error}</p>
+          ) : (
+            children
+          )
+        ) : (
+        <Card>
           {(searchPlaceholder || filters) && (
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -142,7 +152,8 @@ export function ListPage({
               />
             </CardContent>
           ) : null}
-        </Card>
+          </Card>
+        )
       ) : null}
     </div>
   );
