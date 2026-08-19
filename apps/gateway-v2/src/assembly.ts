@@ -73,7 +73,8 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const ai = createAi(
     {
       timeout: { connectMs: config.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS },
-      ...(config.GATEWAY_AI_ALLOW_LOCAL_URL ? { allowLocalUrl: true } : {}),
+      // SSRF 双门（与 admin-api-v2 同口径）：逃生门仅非生产可用——生产误配 env 也恒关
+      ...(config.GATEWAY_AI_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production' ? { allowLocalUrl: true } : {}),
     },
     { ...storages },
   );
@@ -83,6 +84,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const rateLimit: RateLimitGate = {
     limiter,
     freeDaily: createFreeDailyGate(redis, config.FREE_MODEL_DAILY_LIMIT),
+    globalRpm: config.GLOBAL_RPM,
   };
   const authGuards: AuthGuards = {
     keyGuard: createKeyBruteForceGuard(redis, {
@@ -94,6 +96,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       limit: config.AUTH_IP_FAILURE_LIMIT,
       windowS: config.AUTH_IP_FAILURE_WINDOW_S,
     }),
+    // 用户级限流兜底（凭证/Scope 未声明时生效——v1 DEFAULT_USER_RPM 对位）
+    defaultUserRpm: config.DEFAULT_USER_RPM,
+    defaultUserTpm: config.DEFAULT_USER_TPM,
     trustedProxyHops: config.TRUSTED_PROXY_HOPS,
   };
 

@@ -15,6 +15,8 @@ export interface ReceiptParams {
   requestId: string;
   userId: number;
   apiKeyId: number | null;
+  /** App-JWT 凭证（null = 静态 Key/playground）——usage_logs 归属与订阅结算维度 */
+  appId?: number | null;
   candidate: BillingQuoteCandidate;
   externalModel: string;
   channelId: number | null;
@@ -36,8 +38,8 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     requestId: params.requestId,
     userId: params.userId,
     apiKeyId: params.apiKeyId,
-    appId: null,
-    credentialType: 'key',
+    appId: params.appId ?? null,
+    credentialType: params.appId != null ? 'jwt' : 'key',
     externalModel: params.externalModel,
     realModel: candidate.realModel,
     channelId: params.channelId,

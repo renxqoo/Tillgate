@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-import { clearSessionCookie, setSessionToken } from "@ai-gateway/api-client";
+import { apiFetch, clearSessionCookie, getSessionToken, setSessionToken } from "@ai-gateway/api-client";
 
 const CLIENT_API_BASE = process.env.CLIENT_API_BASE!;
 
@@ -143,8 +143,19 @@ export async function registerVerifyAction(challengeId: string, code: string, af
   redirect("/dashboard");
 }
 
-/** 注销（v2 Bearer 无服务端态——清本地 cookie 即全网下线） */
+/** 注销：先吊销服务端 jti（泄露副本即失效）再清本地 cookie；吊销 best-effort */
 export async function logoutAction(): Promise<void> {
+  await revokeSessionServerSide();
   await clearSessionCookie();
   redirect("/login");
+}
+
+async function revokeSessionServerSide(): Promise<void> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return;
+    await apiFetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    // 吊销失败不阻塞登出（本地 cookie 已清；服务端令牌最迟 TTL 自然过期）
+  }
 }

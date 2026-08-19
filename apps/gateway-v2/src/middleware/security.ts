@@ -54,6 +54,8 @@ export function corsPreflight(allowedOrigins: readonly string[]): MiddlewareHand
             Vary: 'Origin',
             'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Request-Id',
+            // 预检缓存一天（v1 对位——重复预检往返浪费浏览器首请求时延）
+            'Access-Control-Max-Age': '86400',
           },
         });
       }

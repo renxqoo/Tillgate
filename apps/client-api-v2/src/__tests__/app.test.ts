@@ -78,6 +78,7 @@ async function buildApp(config = buildConfig()) {
     app: createApp({
       db,
       assembly,
+      revocationStore: assembly.revocationStore,
       jwtSecret: config.JWT_SECRET,
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       corsOrigins: [],
@@ -91,18 +92,27 @@ const json = (res: Response) => res.json() as Promise<Record<string, unknown>>;
 const authed = (token: string) => ({ authorization: `Bearer ${token}` });
 
 describe('用户闭环（HTTP 全链）', () => {
-  it('注册→登录→me→Key→兑换→充值→回调→流水', async () => {
+  it('注册 fail-closed（无 SMTP → 503）→ 登录→me→Key→兑换→充值→回调→流水', async () => {
     const { app } = await buildApp();
-    const mail = email();
+    const account = await newUser();
+    const mail = account.email;
 
-    // 注册（Bearer 会话直接返回）
+    // 注册恒两步（邮箱所有权验证）：本装配无 SMTP → 503 绝不单步建号
     const regRes = await app.request('/v1/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: mail, password: password() }),
+      body: JSON.stringify({ email: email(), password: password() }),
     });
-    expect(regRes.status).toBe(201);
-    const reg = (await json(regRes)) as { token: string; userId: number };
+    expect(regRes.status).toBe(503);
+
+    // 单步登录（EMAIL_CODE_REQUIRED=off 测试形态）拿会话
+    const loginRes = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: mail, password: 'correct-horse-battery' }),
+    });
+    expect(loginRes.status).toBe(200);
+    const reg = (await json(loginRes)) as { token: string; userId: number };
     expect(reg.token).toBeTruthy();
 
     // me（余额 0 起步）
@@ -269,34 +279,32 @@ describe('支付多渠道（Stripe 路由层）', () => {
 });
 
 describe('邀请返利（注册归因全链 HTTP）', () => {
-  it('注册带 aff → 双方奖励入账 → 邀请人概览可见被邀人', async () => {
-    // 邀请人：先注册一个（无 aff）
-    const { app } = await buildApp(buildConfig({ REFERRAL_SIGNUP_BONUS: '5' }));
-    const inviterMail = email();
-    const inviterReg = (await json(
-      await app.request('/v1/auth/register', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: inviterMail, password: password() }),
-      }),
-    )) as { token: string; userId: number };
+  it('aff 归因（建号后 apply）→ 双方奖励入账 → 邀请人概览可见被邀人', async () => {
+    // HTTP 注册已恒两步（无 SMTP → 503）；aff 归因链路 = verifyRegistration 建号后
+    // referral.apply（两步 HTTP 形态在 auth-code.test 全覆盖，此处钉归因与奖励闭环）
+    const { app, assembly } = await buildApp(buildConfig({ REFERRAL_SIGNUP_BONUS: '5' }));
+    const inviter = await newUser();
+    const invitee = await newUser();
+    const aff = `u${inviter.id.toString(36)}`;
 
-    // 被邀人：带 aff 码注册（单步模式直发会话）
-    const aff = `u${inviterReg.userId.toString(36)}`;
-    const inviteeMail = email();
-    const inviteeReg = (await json(
-      await app.request('/v1/auth/register', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ email: inviteeMail, password: password(), aff }),
-      }),
-    )) as { token: string; userId: number };
+    await (assembly.referralService as unknown as {
+      applyReferral: (ctx: unknown, input: { inviteeId: number; affCode: string }) => Promise<unknown>;
+    }).applyReferral(
+      { requestId: 'aff-e2e', actor: { kind: 'system' }, traceParent: null },
+      { inviteeId: invitee.id, affCode: aff },
+    );
 
     // 双方各得 5 元注册奖励
-    expectAmountEq(await balanceOf(inviterReg.userId), '5');
-    expectAmountEq(await balanceOf(inviteeReg.userId), '5');
+    expectAmountEq(await balanceOf(inviter.id), '5');
+    expectAmountEq(await balanceOf(invitee.id), '5');
 
-    // 邀请人概览：名单含被邀人、邀请链接带自己的 aff 码
+    // 邀请人登录拿会话 → 概览：名单含被邀人、邀请链接带自己的 aff 码
+    const loginRes = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: inviter.email, password: 'correct-horse-battery' }),
+    });
+    const inviterReg = (await json(loginRes)) as { token: string };
     const overviewRes = await app.request('/v1/referrals', { headers: authed(inviterReg.token) });
     expect(overviewRes.status).toBe(200);
     const overview = (await json(overviewRes)) as {
@@ -309,7 +317,7 @@ describe('邀请返利（注册归因全链 HTTP）', () => {
     expect(overview.affCode).toBe(aff);
     expect(overview.inviteUrl).toContain(`/register?aff=${aff}`);
     expect(overview.signupBonus).toBe(5);
-    expect(overview.invited.map((r) => r.inviteeId)).toContain(inviteeReg.userId);
+    expect(overview.invited.map((r) => r.inviteeId)).toContain(invitee.id);
     expectAmountEq(overview.totalCommission, '0');
 
     // 未登录 401
@@ -405,4 +413,38 @@ describe('协议信封', () => {
     });
     expect(denied.headers.get('access-control-allow-origin')).toBeNull();
   });
+});
+
+describe('登出即时下线（jti 吊销表）', () => {
+  it('login → logout → 同一 token 立即 401（不再活到 TTL）', async () => {
+    const { app } = await buildApp(buildConfig({ EMAIL_CODE_REQUIRED: 'off' }));
+    const account = await newUser();
+    const login = (await json(
+      await app.request('/v1/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: account.email, password: 'correct-horse-battery' }),
+      }),
+    )) as { token: string };
+    expect(login.token).toBeTruthy();
+
+    // 登出前可用
+    const before = await app.request('/v1/me', {
+      headers: { authorization: `Bearer ${login.token}` },
+    });
+    expect(before.status).toBe(200);
+
+    // 登出（吊销 jti）
+    const logout = await app.request('/v1/auth/logout', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${login.token}` },
+    });
+    expect(logout.status).toBe(200);
+
+    // 登出后同一 token 401（Redis 键存活至令牌自然过期）
+    const after = await app.request('/v1/me', {
+      headers: { authorization: `Bearer ${login.token}` },
+    });
+    expect(after.status).toBe(401);
+  }, 30_000);
 });

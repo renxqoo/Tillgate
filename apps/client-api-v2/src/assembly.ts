@@ -16,7 +16,7 @@ import {
   initOtel,
 } from '@ai-gateway/core';
 import { createWallet, createSubscriptionDomain, type WalletApi, type SubscriptionDomain } from '@ai-gateway/service';
-import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
+import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND, createRedisSessionRevocationStore } from '@ai-gateway/identity';
 import { createAuthService } from './services/auth.service.js';
 import { createKeysService } from './services/keys.service.js';
 import { createWalletService } from './services/wallet.service.js';
@@ -37,6 +37,8 @@ import {
 import type { ClientApiConfig } from './config.js';
 
 export interface ClientApiAssembly {
+  /** 会话 jti 吊销表（logout 即时下线） */
+  revocationStore: ReturnType<typeof createRedisSessionRevocationStore>;
   wallet: WalletApi;
   subscriptions: SubscriptionDomain;
   auth: ReturnType<typeof createAuthService>;
@@ -190,7 +192,7 @@ export function assembleClientApi(
   const usage = createUsageService({ db });
   const subscriptionService = createSubscriptionService({ db, domain: subscriptions });
   const org = createOrgService({ db });
-  const apps = createAppsService({ db });
+  const apps = createAppsService({ db, maxAppsPerUser: config.MAX_APPS_PER_USER });
 
   // OAuth：前后端基地址与凭证成组配置才可用（frontend/api 缺一 = 启动失败——半配 = 静默坏流）
   const oauthConfigured =
@@ -276,7 +278,13 @@ export function assembleClientApi(
     endpoint: config.OTEL_EXPORTER_OTLP_ENDPOINT,
   });
 
+  // 会话 jti 吊销表（logout 即时下线；Redis 键随令牌自然过期自动清理）
+  const revocationStore = createRedisSessionRevocationStore(redis, {
+    logger: { warn: (obj: unknown, msg: string) => console.warn('[client-api]', msg, obj) },
+  });
+
   return {
+    revocationStore,
     wallet,
     subscriptions,
     auth,

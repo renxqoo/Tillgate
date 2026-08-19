@@ -7,9 +7,10 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories } from '@ai-gateway/repository';
-import { mapErrorToHttp } from './http/error-map.js';
+import { AppError, mapErrorToHttp } from './http/error-map.js';
 import { ZodError } from 'zod';
 import { sessionMiddleware, type SessionEnv } from './middleware/session.js';
+import type { SessionRevocationStore } from '@ai-gateway/identity';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import { bodyParserLimit, corsPreflight, securityHeaders } from './middleware/security.js';
 import { authRoutes } from './routes/auth.js';
@@ -31,6 +32,8 @@ import type { ClientApiAssembly } from './assembly.js';
 export interface AppDeps {
   db: Db;
   assembly: ClientApiAssembly;
+  /** 会话吊销表（logout 即时下线；缺省 = 无吊销能力的开发形态） */
+  revocationStore?: SessionRevocationStore;
   jwtSecret: string;
   trustedProxyHops: number;
   corsOrigins: readonly string[];
@@ -42,7 +45,7 @@ export function createApp(deps: AppDeps) {
   const { db } = deps;
   const app = new Hono<SessionEnv>();
   const repos = createRepositories();
-  const session = sessionMiddleware(db, deps.jwtSecret);
+  const session = sessionMiddleware(db, deps.jwtSecret, deps.revocationStore);
 
   app.onError((error, c) => {
     if (error instanceof ZodError) {
@@ -53,6 +56,10 @@ export function createApp(deps: AppDeps) {
     }
     const mapped = mapErrorToHttp(error);
     if (mapped.status >= 500) console.error('[client-api] internal error:', error);
+    // AppError 自带响应头透传（429 Retry-After 等）
+    if (error instanceof AppError && error.headers) {
+      for (const [key, value] of Object.entries(error.headers)) c.header(key, value);
+    }
     return c.json(
       { error: { code: mapped.code, message: mapped.message } },
       mapped.status as ContentfulStatusCode,
@@ -84,7 +91,11 @@ export function createApp(deps: AppDeps) {
 
   app.route(
     '/',
-    authRoutes(deps.assembly.auth, { session, trustedProxyHops: deps.trustedProxyHops }),
+    authRoutes(deps.assembly.auth, {
+      session,
+      trustedProxyHops: deps.trustedProxyHops,
+      revocationStore: deps.revocationStore,
+    }),
   );
   app.route('/', meRoutes(deps.assembly.auth, session));
   app.route('/', keysRoutes(deps.assembly.keys, session));
@@ -117,7 +128,7 @@ export function createApp(deps: AppDeps) {
     );
   }
   app.route('/', oauthRoutes(deps.assembly.oauth, { secureCookie: deps.secureCookie ?? false }));
-  app.route('/', pricingRoutes(db));
+  app.route('/', pricingRoutes(db, undefined, session));
 
   return app;
 }

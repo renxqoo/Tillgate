@@ -31,6 +31,7 @@ import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { KeyBruteForceGuard, AuthFailureGuard, GuardCheck } from '@ai-gateway/core';
 import type { RunContext, WalletApi } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { recordAudit } from '@ai-gateway/http';
 import type { FixedWindowCounter } from './rate-counter.js';
 
 /** 密码策略（identity-core 默认口径：长度 10..128；强度判定在哈希前的纯规则层） */
@@ -228,14 +229,18 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         throw new AppError(503, 'rate_counter_unavailable', '频率计数器不可用，请稍后再试');
       }
       if (regHits > deps.registerIpLimitPerHour) {
-        throw new AppError(429, 'register_rate_limited', '注册请求过于频繁，请稍后再试');
+        throw new AppError(429, 'register_rate_limited', '注册请求过于频繁，请稍后再试', {
+          'retry-after': '3600',
+        });
       }
 
       await assertCaptcha(input.captchaToken, input.ip);
       assertPasswordPolicy(input.password, PASSWORD_POLICY);
 
-      // 两步注册：密码哈希随挑战存（不落明文），验码通过直接用于建号
-      if (deps.emailCodeRequired) {
+      // 注册恒两步（fail-closed）：邮箱所有权必须验证——单步注册等于允许
+      // 用任意他人邮箱建号。EMAIL_CODE_REQUIRED 开关只作用于登录，不作用于注册。
+      // SMTP 未配置时 requireChallenger 抛错 → 503（宁可不可注册，不可无验证注册）。
+      {
         const existing = await repos.userAccount.findByLocalEmail({ db, ...sys(ctx) }, email);
         if (existing) {
           throw new AppError(409, 'email_taken', '该邮箱已注册，请直接登录');
@@ -255,12 +260,8 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         }
       }
 
-      const existing = await repos.userAccount.findByLocalEmail({ db, ...sys(ctx) }, email);
-      if (existing) {
-        throw new AppError(409, 'email_taken', '该邮箱已注册，请直接登录');
-      }
-      const passwordHash = await hashPassword(input.password);
-      return createAccountAndSession(ctx, email, passwordHash, input.aff);
+      // 单步注册路径已删除（邮箱所有权恒验证）；emailCodeRequired 仅登录消费
+      throw new AppError(503, 'two_factor_unavailable', '注册需要邮箱验证码，但服务端未配置 SMTP');
     },
 
     async verifyRegistration(ctx, input) {
@@ -289,9 +290,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
 
     async login(ctx, input) {
       const email = input.email.trim().toLowerCase();
-      const guardKey = sha256Hex(email);
+      // 锁维度 = (email, ip)——v1「02 修复」语义：纯 email 维度会被匿名攻击者
+      // 锁死受害者（正确密码也进不来）；绑定来源后受害者自己的 IP 永远不被他人连坐，
+      // 单 IP 撞多账号由 ipGuard 独立兜住
+      const guardKey = sha256Hex(`${email}:${input.ip}`);
 
-      // 爆破锁检查（Redis 必配；不可达 fail-closed 503——防护不在即拒绝）
+      // 爆破锁状态读取（Redis 必配；不可达 fail-closed 503——防护不在即拒绝）。
+      // 锁不前置拒绝：正确密码永远放行并清零（否则锁本身沦为 DoS 开关）
       let byKey: GuardCheck, byIp: GuardCheck;
       try {
         [byKey, byIp] = await Promise.all([
@@ -300,10 +305,6 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         ]);
       } catch {
         throw new AppError(503, 'auth_guard_unavailable', '鉴权防护不可用，请稍后再试');
-      }
-      const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
-      if (retry > 0) {
-        throw new AppError(429, 'login_locked', '尝试过于频繁，请稍后再试');
       }
 
       const account = await repos.userAccount.findByLocalEmail({ db, ...sys(ctx) }, email);
@@ -316,12 +317,22 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           deps.loginGuard.recordFailure(guardKey).catch(() => undefined),
           deps.ipGuard.recordFailure(input.ip).catch(() => undefined),
         ]);
+        // 已锁定的继续请求给 429（提示等待）；未锁给 401（防枚举口径统一）
+        const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
+        if (retry > 0) {
+          throw new AppError(429, 'login_locked', '尝试过于频繁，请稍后再试', {
+            'retry-after': String(Math.max(1, retry)),
+          });
+        }
         throw new AppError(401, 'invalid_credentials', '邮箱或密码错误');
       }
       if (account.status !== 0) {
         throw new AppError(403, 'account_unavailable', '账号不可用');
       }
-      await deps.loginGuard.recordSuccess(guardKey).catch(() => undefined);
+      await Promise.all([
+        deps.loginGuard.recordSuccess(guardKey).catch(() => undefined),
+        deps.ipGuard.recordSuccess?.(input.ip).catch(() => undefined),
+      ]);
 
       // 强制邮箱验证（fail-closed）：密码对不签会话，发码走第二步
       if (deps.emailCodeRequired) {
@@ -387,6 +398,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           { userId: input.userId, passwordHash, invalidBefore },
         ),
       );
+      // 密码修改 = 全量会话吊销事件（安全审计主观察点之一）
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'auth.password_change',
+        targetType: 'user',
+        targetId: input.userId,
+      }).catch(() => undefined);
       return { token: await issue(input.userId) };
     },
 
@@ -394,12 +412,21 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       const runCtx = asUser(ctx, userId);
       const account = await repos.userAccount.findById({ db, ...runCtx }, userId);
       if (!account) throw new AppError(401, 'unauthorized', '账号不存在');
+      // v1 /api/me 对位字段：设置页费率卡/限流卡片、dashboard 速率卡、最近登录时间
+      const profileRow = await repos.user.findProfile({ db, ...runCtx }, userId);
       const accounts = await wallet.accounts(runCtx, userId);
       return {
         id: account.id,
+        subject: account.subject,
         email: account.email,
         displayName: account.displayName,
-        isEnterprise: await repos.user.isEnterprise({ db, ...runCtx }, userId),
+        isEnterprise: profileRow?.isEnterprise ?? false,
+        rateCardId: profileRow?.rateCardId ?? null,
+        rateCardName: profileRow?.rateCardName ?? null,
+        status: profileRow?.status ?? 0,
+        rpmLimit: profileRow?.rpmLimit ?? null,
+        tpmLimit: profileRow?.tpmLimit ?? null,
+        lastLoginAt: profileRow?.lastLoginAt?.toISOString() ?? null,
         createdAt: account.createdAt,
         accounts,
       };
@@ -411,6 +438,13 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
         repos.userAccount.updateDisplayName({ db: tx, ...runCtx }, { userId, displayName }),
       );
       if (!updated) throw new AppError(401, 'unauthorized', '账号不存在');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'me.display_name_change',
+        targetType: 'user',
+        targetId: userId,
+        detail: { displayName },
+      }).catch(() => undefined);
       return { displayName };
     },
 

@@ -35,6 +35,13 @@ export interface SettleEnv {
   channelBudget?: ChannelBudgetCloseout;
   clock?: () => Date;
   repos?: Repositories;
+  /** 运营投影钩子（事务外 best-effort——TPM 回填/余额预警；异常不反杀结算） */
+  onSettled?: (data: {
+    requestId: string;
+    userId: number;
+    receipt: Record<string, unknown>;
+    amount: string;
+  }) => void;
 }
 
 export interface SettleClaimResult {
@@ -71,6 +78,7 @@ export function createSettleClaimUseCase(env: SettleEnv) {
     const receipt = decodeReceipt(claim.receipt);
     const { calculatedAmount, upstreamCost } = computeAmounts(receipt);
 
+    let settledUserId = receipt.userId;
     const result = await db.transaction(async (tx): Promise<SettleClaimResult> => {
       const c = inTx(ctx, tx);
       const claimKeys = {
@@ -89,6 +97,7 @@ export function createSettleClaimUseCase(env: SettleEnv) {
         return { outcome: 'claim_lost', settled: false, amount: '0', channelCircuitBroken: false };
       }
       if (billing.userId !== receipt.userId) throw new ReceiptUserMismatchError();
+      settledUserId = billing.userId;
       // G1：估算 usage 只允许归属「用户取消 ∪ 完成缺 usage」
       if (receipt.usage.estimated && !isAttributedEstimate(receipt)) {
         throw new BillingInvariantError('settle_estimated_usage');
@@ -173,6 +182,20 @@ export function createSettleClaimUseCase(env: SettleEnv) {
       };
     });
 
+    // 运营投影（事务已提交）：TPM actual 回填 / balance_low 入箱——best-effort，
+    // 钩子异常只记日志绝不改写资金结果
+    if (result.outcome === 'settled') {
+      try {
+        env.onSettled?.({
+          requestId: claim.requestId,
+          userId: settledUserId,
+          receipt: claim.receipt ?? (receipt as unknown as Record<string, unknown>),
+          amount: result.amount,
+        });
+      } catch (error) {
+        console.error(`[settlement] onSettled hook failed request=${claim.requestId}:`, error);
+      }
+    }
     return result;
   };
 }

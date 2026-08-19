@@ -35,6 +35,19 @@ export interface SettlementDomainDeps {
   repos?: Repositories;
   /** 失败处置策略（装配必填——最大尝试次数/退避参数不写死） */
   policy: SettleFailurePolicyConfig;
+  /**
+   * 运营投影钩子（worker 装配注入；事务外 best-effort，异常不反杀资金动作）：
+   * TPM actual 回填 / balance_low 预警入箱等。缺省 no-op。
+   */
+  onSettled?: (data: {
+    requestId: string;
+    userId: number;
+    /** 结算收据（usage/归属维度——TPM 回填的记账依据） */
+    receipt: Record<string, unknown>;
+    amount: string;
+  }) => void;
+  /** 死信入箱钩子（billing_dead 告警）；缺省 no-op */
+  onDead?: (data: { requestId: string; failureClass: string; attempt: number; lastError: string }) => void;
 }
 
 export function createSettlementDomain(deps: SettlementDomainDeps) {
@@ -59,9 +72,10 @@ export function createSettlementDomain(deps: SettlementDomainDeps) {
     channelBudget,
     clock: deps.clock,
     repos: deps.repos,
+    onSettled: deps.onSettled,
   };
   const settleClaim = createSettleClaimUseCase(env);
-  const finishFailure = createFailureUseCase({ db: deps.db, policy: deps.policy, repos: deps.repos });
+  const finishFailure = createFailureUseCase({ db: deps.db, policy: deps.policy, repos: deps.repos, onDead: deps.onDead });
   return {
     claim: createClaimUseCase({ db: deps.db, repos: deps.repos }),
     renewClaims: createRenewClaimsUseCase({ db: deps.db, repos: deps.repos }),

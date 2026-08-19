@@ -69,6 +69,8 @@ export function createRedeemService(deps: RedeemServiceDeps): RedeemService {
           // 抢占失败 → 区分错误语义（无效 / 已用 / 过期）
           const row = await repos.redeemCode.findByCodeHash(c, codeHash);
           if (!row) throw new AppError(404, 'invalid_code', '兑换码无效');
+          // v1 对位：区分「已使用」与「已吊销」（运营撤回的码语义不同）
+          if (row.status === 2) throw new AppError(409, 'code_revoked', '兑换码已被撤销');
           if (row.status !== 0) throw new AppError(409, 'code_already_used', '兑换码已被使用');
           throw new AppError(410, 'code_expired', '兑换码已过期');
         }

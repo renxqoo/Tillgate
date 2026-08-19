@@ -15,7 +15,22 @@ export interface UsageRowModel {
   cost: string;
 }
 
+export interface UsageDayRow {
+  date: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cost: string;
+}
+
 export interface UsageService {
+  /** 按日聚合（v1 /api/usage/summary 对位——dashboard 趋势图） */
+  summary(
+    ctx: RunContext,
+    userId: number,
+    input: { from?: string; to?: string },
+  ): Promise<{ list: UsageDayRow[] }>;
   list(
     ctx: RunContext,
     userId: number,
@@ -36,6 +51,17 @@ export function createUsageService(deps: { db: Db; repos?: Repositories }): Usag
   const repos = deps.repos ?? createRepositories();
 
   return {
+    async summary(ctx, userId, input) {
+      const rows = await repos.usageLog.summarizeByDay(
+        { db, ...asUser(ctx, userId) },
+        {
+          userId,
+          ...(input.from ? { from: new Date(input.from) } : {}),
+          ...(input.to ? { to: new Date(input.to) } : {}),
+        },
+      );
+      return { list: rows };
+    },
     async list(ctx, userId, input) {
       return repos.usageLog.listForUser({ db, ...asUser(ctx, userId) }, {
         userId,

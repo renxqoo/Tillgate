@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  clearAdminSessionCookie,
+  adminFetch,  clearAdminSessionCookie,
   getAdminSessionToken,
   setAdminSessionToken,
 } from "@ai-gateway/api-client";
@@ -100,8 +100,14 @@ export async function setTwoFactorAction(enabled: boolean): Promise<{ error?: st
   return {};
 }
 
-/** 注销（v2 Bearer 无服务端态——清本地 cookie 即下线） */
+/** 注销：先吊销服务端 jti（泄露副本即失效）再清本地 cookie；吊销 best-effort */
 export async function logoutAction(): Promise<void> {
+  try {
+    const token = await getAdminSessionToken();
+    if (token) await adminFetch("/api/admin/auth/logout", { method: "POST" });
+  } catch {
+    // 吊销失败不阻塞登出
+  }
   await clearAdminSessionCookie();
   redirect("/login");
 }

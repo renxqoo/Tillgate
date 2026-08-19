@@ -24,7 +24,10 @@ export function walletRoutes(service: WalletService, session: MiddlewareHandler<
   app.get('/v1/wallet/statement', session, async (c) => {
     const query = statementQuerySchema.parse(c.req.query());
     const rows = await service.statement(userCtxOf(c), { userId: c.get('userId'), ...query });
-    return c.json({ rows });
+    // nextCursor = 游标分页续读锚（v1 对位；行数 < limit 即末页）
+    const last = rows[rows.length - 1] as { legId?: number; id?: number } | undefined;
+    const nextCursor = rows.length >= query.limit && last != null ? String(last.legId ?? last.id ?? '') : null;
+    return c.json({ rows, ...(nextCursor ? { nextCursor } : {}) });
   });
 
   return app;

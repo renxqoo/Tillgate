@@ -82,7 +82,7 @@ importers:
         version: 8.6.0(react@19.2.8)
       geist:
         specifier: ^1.7.2
-        version: 1.7.2(next@16.3.0(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
+        version: 1.7.2(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -228,7 +228,7 @@ importers:
         version: 5.9.2
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
   apps/admin-api-v2:
     dependencies:
@@ -346,7 +346,7 @@ importers:
         version: 8.6.0(react@19.2.8)
       geist:
         specifier: ^1.7.2
-        version: 1.7.2(next@16.3.0(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
+        version: 1.7.2(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -660,7 +660,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
   apps/trace-receiver:
     dependencies:
@@ -774,18 +774,33 @@ importers:
       '@ai-gateway/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@ai-gateway/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
       '@ai-gateway/repository':
         specifier: workspace:*
         version: link:../../packages/repository
       '@ai-gateway/service':
         specifier: workspace:*
         version: link:../../packages/service
+      '@ai-gateway/tracing':
+        specifier: workspace:*
+        version: link:../../packages/tracing
+      '@ai-gateway/wallet':
+        specifier: workspace:*
+        version: link:../../packages/wallet
       bullmq:
         specifier: ^6.0.7
         version: 6.0.7(ioredis@5.11.1)(pg@8.22.0)
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
       ioredis:
         specifier: ^5.8.0
         version: 5.11.1
+      pg:
+        specifier: ^8.22.0
+        version: 8.22.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -793,6 +808,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1
+      '@types/pg':
+        specifier: ^8.20.0
+        version: 8.20.3
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
@@ -1246,7 +1264,7 @@ importers:
         version: 8.6.0(react@19.2.8)
       geist:
         specifier: ^1.7.2
-        version: 1.7.2(next@16.3.0(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
+        version: 1.7.2(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
       input-otp:
         specifier: ^1.4.2
         version: 1.4.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -9844,7 +9862,7 @@ snapshots:
 
   fuzzysort@3.1.0: {}
 
-  geist@1.7.2(next@16.3.0(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)):
+  geist@1.7.2(next@16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)):
     dependencies:
       next: 16.3.0(@babel/core@7.29.7)(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
 

@@ -17,6 +17,23 @@ export function requestLogMiddleware(
   return async (c, next) => {
     const startedAt = Date.now();
     const requestId = c.get('requestId') ?? crypto.randomUUID(); // 服务端生成（requestId 中间件先挂载）
+    // 请求摘要（v1 对位：截断的 model/stream/max_tokens——运营日志的模型上下文）
+    let requestSummary: Record<string, unknown> | null = null;
+    if (c.req.method === 'POST') {
+      try {
+        const cloned = c.req.raw.clone();
+        const body = (await cloned.json()) as { model?: unknown; stream?: unknown; max_tokens?: unknown };
+        if (typeof body.model === 'string') {
+          requestSummary = {
+            model: body.model.slice(0, 64),
+            ...(body.stream === true ? { stream: true } : {}),
+            ...(typeof body.max_tokens === 'number' ? { max_tokens: body.max_tokens } : {}),
+          };
+        }
+      } catch {
+        requestSummary = null;
+      }
+    }
     await next();
     const durationMs = Date.now() - startedAt;
     const auth = c.get('auth');
@@ -45,7 +62,7 @@ export function requestLogMiddleware(
         statusCode: c.res.status,
         errorCode,
         durationMs,
-        requestSummary: null,
+        requestSummary,
         sourceIp,
       });
     } catch (error) {

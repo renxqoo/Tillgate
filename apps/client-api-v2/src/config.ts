@@ -22,7 +22,9 @@ const schema = z.object({
   /** 新用户赠送额度（元，字符串金额；'0' = 关闭——开源注册无赠送即无薅羊毛收益） */
   GIFT_AMOUNT: z.string().default('0'),
   /** 单用户在用 Key 上限（配额闸） */
-  MAX_KEYS_PER_USER: z.coerce.number().int().positive().default(20),
+  MAX_KEYS_PER_USER: z.coerce.number().int().positive().default(100),
+  /** 每用户 App 数上限（v1 对位——无闸可无限建 App 蹭免费额度语义位） */
+  MAX_APPS_PER_USER: z.coerce.number().int().positive().default(100),
   /** 同 IP 注册请求上限/小时（防批量刷号；Redis 形态生效，缺省开发形态不限） */
   REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(5),
   /** 兑换频率闸：每用户每分钟兑换尝试上限（防暴力猜码） */
@@ -38,7 +40,7 @@ const schema = z.object({
   /** CORS 白名单（逗号分隔；空 = 不放行跨域） */
   CORS_ORIGINS: z.string().default(''),
   /** 请求体上限（字节） */
-  BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(65_536),
+  BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
   /** 充值面额闸：单笔下限/上限（元）与入账汇率（creditAmount = amount × 汇率） */
   TOPUP_MIN: z.string().default('1'),
   TOPUP_MAX: z.string().default('100000'),

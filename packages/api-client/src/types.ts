@@ -38,18 +38,13 @@ export interface AdminMeInfo {
 }
 
 /**
- * 统一分页 envelope（api-contract §4：所有记录列表接口一律 {list,total,page,page_size}，
- * 配套 ?page=&page_size=&q=&sort_by=&order= 查询参数）。
+ * 统一分页 envelope（v2 正位 {rows,total,page,limit}，配套 ?page=&limit= 查询参数）。
  */
 export interface Paginated<T> {
-  /** v2 信封 rows；v1 兼容 list（适配层统一读 rows ?? list） */
-  rows?: T[];
-  list?: T[];
+  rows: T[];
   total: number;
   page: number;
-  page_size?: number;
-  pageSize?: number;
-  limit?: number;
+  limit: number;
 }
 
 // ── Key (GET/POST /api/keys) ────────────────────────────────────────────────
@@ -72,7 +67,7 @@ export interface KeyRow {
 export interface KeyCreated {
   id: number;
   name: string;
-  key: string;
+  plaintext: string;
 }
 
 // ── App (GET/POST /api/apps) ────────────────────────────────────────────────
@@ -331,18 +326,19 @@ export interface ModelUpdateBody {
 
 // ── 组织/成员（GET /api/orgs）─────────────────────────────────────────────
 export interface OrgRow {
-  id: number;
+  orgId: number;
   name: string;
   role: 'owner' | 'member';
   /** 组织当前 active 订阅 id（无套餐为 null） */
   subscriptionId: number | null;
-  subscriptionName: string | null;
+  planName: string | null;
   /** 席位（成员名额，无订阅为 null） */
   quantity: number | null;
   quotaAmount: string | null;
   usedAmount: string | null;
-  /** 组织订阅剩余额度（元，无订阅为 null） */
-  remainingAmount: string | null;
+  reservedAmount: string | null;
+  /** 组织订阅剩余额度（quota−used−reserved，无订阅为 0） */
+  remainingAmount: string;
 }
 export interface OrgMemberRow {
   userId: number;

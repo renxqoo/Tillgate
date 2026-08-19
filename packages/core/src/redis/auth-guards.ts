@@ -114,6 +114,8 @@ export interface AuthFailureGuard {
   isLocked(ip: string): Promise<GuardCheck>;
   /** 记录一次鉴权失败；达阈值即锁定 */
   recordFailure(ip: string): Promise<GuardCheck>;
+  /** 成功即清零该来源的失败计数与锁定（正确密码不应被他人连坐锁死） */
+  recordSuccess?(ip: string): Promise<void>;
 }
 
 export function createAuthFailureGuard(
@@ -150,6 +152,14 @@ export function createAuthFailureGuard(
         rethrow(error);
       }
       return { locked: false, retryAfterSec: 0 };
+    },
+
+    async recordSuccess(ip) {
+      try {
+        await redis.del(ipFailsKey(ip), ipLockKey(ip));
+      } catch (error) {
+        rethrow(error);
+      }
     },
   };
 }

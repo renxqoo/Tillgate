@@ -8,7 +8,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { ZodError } from 'zod';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories } from '@ai-gateway/repository';
-import { mapErrorToHttp } from './http/error-map.js';
+import { AppError, mapErrorToHttp } from './http/error-map.js';
 import { sessionMiddleware, type SessionEnv } from './middleware/session.js';
 import {
   requestIdMiddleware,
@@ -49,7 +49,7 @@ export function createApp(deps: AppDeps) {
   const { db } = deps;
   const app = new Hono<SessionEnv>();
   const repos = createRepositories();
-  const session = sessionMiddleware(db, deps.jwtSecret);
+  const session = sessionMiddleware(db, deps.jwtSecret, deps.assembly.revocationStore);
 
   app.onError((error, c) => {
     if (error instanceof ZodError) {
@@ -57,6 +57,9 @@ export function createApp(deps: AppDeps) {
     }
     const mapped = mapErrorToHttp(error);
     if (mapped.status >= 500) console.error('[admin-api-v2] internal error:', error);
+    if (error instanceof AppError && error.headers) {
+      for (const [key, value] of Object.entries(error.headers)) c.header(key, value);
+    }
     return c.json(
       { error: { code: mapped.code, message: mapped.message } },
       mapped.status as ContentfulStatusCode,
@@ -86,7 +89,14 @@ export function createApp(deps: AppDeps) {
     return c.json({ ok: true });
   });
 
-  app.route('/', authRoutes(deps.assembly.auth, { trustedProxyHops: deps.trustedProxyHops }));
+  app.route(
+    '/',
+    authRoutes(deps.assembly.auth, {
+      trustedProxyHops: deps.trustedProxyHops,
+      session,
+      revocationStore: deps.assembly.revocationStore,
+    }),
+  );
   app.route('/', meRoutes(deps.assembly.auth, session));
   app.route('/', providersRoutes(deps.assembly.providers, session));
   app.route('/', channelsRoutes(deps.assembly.channels, session));

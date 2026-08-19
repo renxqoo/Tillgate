@@ -99,7 +99,7 @@ export function OrgsContent({ orgs }: { readonly orgs: ReadonlyArray<OrgWithMemb
   return (
     <div className="divide-y">
       {orgs.map(({ org, members, invitations }) => (
-        <OrgSection key={org.id} org={org} members={members} invitations={invitations} />
+        <OrgSection key={org.orgId} org={org} members={members} invitations={invitations} />
       ))}
     </div>
   );
@@ -128,7 +128,7 @@ function OrgSection({ org, members, invitations }: OrgWithMembers) {
             <p className="mt-0.5 text-xs text-muted-foreground">
               {hasSub ? (
                 <>
-                  {org.subscriptionName}
+                  {org.planName}
                   {org.quantity != null ? ` · ${org.quantity} 席` : ''}
                   {` · 成员 ${active.length}${org.quantity != null ? `/${org.quantity}` : ''}`}
                 </>
@@ -221,7 +221,7 @@ function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | nul
         onClick={() =>
           startTransition(async () => {
             const { inviteMemberAction } = await import('../actions');
-            const res = await inviteMemberAction(org.id, email.trim());
+            const res = await inviteMemberAction(org.orgId, email.trim());
             if (notify(res, '邀请失败', '已生成邀请链接')) setLink(res.link ?? '');
           })
         }
@@ -344,7 +344,7 @@ function QuotaCell({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
               onClick={() =>
                 startTransition(async () => {
                   const { setMemberQuotaAction } = await import('../actions');
-                  const res = await setMemberQuotaAction(org.id, member.userId, {
+                  const res = await setMemberQuotaAction(org.orgId, member.userId, {
                     dailySpendLimit: parseNullableNumber(daily),
                     monthlyQuota: parseNullableNumber(monthly),
                   });
@@ -401,7 +401,7 @@ function PendingInvitations({
                 onClick={() =>
                   startTransition(async () => {
                     const { revokeInvitationAction } = await import('../actions');
-                    const res = await revokeInvitationAction(org.id, inv.id);
+                    const res = await revokeInvitationAction(org.orgId, inv.id);
                     notify(res, '撤销失败', '已撤销邀请');
                   })
                 }
@@ -420,7 +420,7 @@ function RemoveButton({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
   return (
     <ConfirmAction
       confirm={`确定移除成员 ${member.displayName || member.email}？其历史用量保留。`}
-      action={async () => (await import('../actions')).removeMemberAction(org.id, member.userId)}
+      action={async () => (await import('../actions')).removeMemberAction(org.orgId, member.userId)}
       errorTitle="移除失败"
       success="已移除"
     >

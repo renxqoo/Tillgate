@@ -6,7 +6,8 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { trustedClientIp } from '@ai-gateway/http';
+import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
+import type { SessionRevocationStore } from '@ai-gateway/identity';
 import type { SessionEnv } from '../middleware/session.js';
 import type { AdminAuthService } from '../services/auth.service.js';
 
@@ -25,11 +26,26 @@ const sysCtx = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
 
 export function authRoutes(
   service: AdminAuthService,
-  deps: { trustedProxyHops: number },
+  deps: { trustedProxyHops: number; session: MiddlewareHandler<SessionEnv>; revocationStore?: SessionRevocationStore },
 ) {
   const app = new Hono<SessionEnv>();
   const clientIp = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
-    trustedClientIp({ headers: c.req.raw.headers, trustedProxyHops: deps.trustedProxyHops, socketAddress: null });
+    trustedClientIp({
+      headers: c.req.raw.headers,
+      trustedProxyHops: deps.trustedProxyHops,
+      // 真实 socket 地址（null = 全进程共享一桶——30 次失败锁死所有管理员，DoS 放大器）
+      socketAddress: socketAddressFromContext(c),
+    });
+
+  /** 登出：吊销当前会话 jti（管理端会话即时下线——泄露令牌不再活到 TTL） */
+  app.post('/v1/auth/logout', deps.session, async (c) => {
+    if (deps.revocationStore) {
+      const jti = c.get('sessionJti');
+      const exp = c.get('sessionExp');
+      await deps.revocationStore.revoke(jti, Math.max(1, exp - Math.floor(Date.now() / 1000)));
+    }
+    return c.json({ ok: true });
+  });
 
   app.post('/v1/auth/login', async (c) => {
     const body = loginSchema.parse(await c.req.json());

@@ -12,6 +12,8 @@ export interface QuoteMappingRow {
   id: number;
   externalName: string;
   realModel: string;
+  /** 上下文窗口（token 数；null=未知——公开价格目录展示用） */
+  contextLength: number | null;
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
@@ -33,6 +35,7 @@ export interface QuoteMappingRow {
 const QUOTE_COLUMNS = {
   id: modelMappings.id,
   externalName: modelMappings.externalName,
+  contextLength: modelMappings.contextLength,
   realModel: modelMappings.realModel,
   inputPrice: modelMappings.inputPrice,
   outputPrice: modelMappings.outputPrice,
@@ -86,6 +89,7 @@ const MAPPING_ADMIN_COLUMNS = {
   outputPrice: modelMappings.outputPrice,
   cacheInputPrice: modelMappings.cacheInputPrice,
   isFree: modelMappings.isFree,
+  billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,
   tpmLimit: modelMappings.tpmLimit,
   createdAt: modelMappings.createdAt,
@@ -155,6 +159,7 @@ export class ModelMappingRepository {
       outputPrice: string;
       cacheInputPrice: string;
       isFree: boolean;
+      billingPolicy?: Record<string, unknown> | null;
       rpmLimit?: number | null;
       tpmLimit?: number | null;
     },
@@ -170,6 +175,7 @@ export class ModelMappingRepository {
         outputPrice: input.outputPrice,
         cacheInputPrice: input.cacheInputPrice,
         isFree: input.isFree,
+        billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,
         tpmLimit: input.tpmLimit ?? null,
       })

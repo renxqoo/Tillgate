@@ -12,7 +12,8 @@ import { otelMiddleware } from './middleware/otel.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import { bodyParserLimit, corsPreflight, securityHeaders } from './middleware/security.js';
 import { requestLogMiddleware } from './middleware/request-log.js';
-import { inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
+import { enginesAliasRoutes, inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
+import { geminiNativeRoutes } from './routes/native-protocol.js';
 import { modelsRoutes } from './routes/models.js';
 import { modalityMultipartRoutes } from './routes/modality-multipart.js';
 import { generationRoutes } from './routes/generation.js';
@@ -64,6 +65,8 @@ export function createApp(deps: AppDeps) {
     await repos.health.ping({ ...systemContext('healthz'), db });
     return c.json({ ok: true });
   });
+  // /livez（v1 对位——nginx/LB 存活探针路径；轻量不查依赖）
+  app.get('/livez', (c) => c.json({ ok: true }));
   app.get('/readyz', async (c) => {
     await repos.health.ping({ ...systemContext('readyz'), db });
     if (deps.redisProbe) await deps.redisProbe.ping();
@@ -82,6 +85,13 @@ export function createApp(deps: AppDeps) {
       app.use(endpoint.path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
       app.route(endpoint.path, inferenceRoutes(deps.runChat, endpoint));
     }
+    // OpenAI legacy 引擎别名（v1 对位：pre-1.0 SDK 走 /v1/engines/:model/embeddings）
+    const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings')!;
+    app.use('/v1/engines/:model/embeddings', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.route('/v1/engines/:model', enginesAliasRoutes(deps.runChat, embeddings));
+    // Gemini 原生入口（v1 对位：/v1beta/models/:model:generateContent|streamGenerateContent）
+    app.use('/v1beta/models/:modelAction', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.route('/', geminiNativeRoutes(deps.runChat));
     // 模态 multipart 族（同鉴权）
     for (const path of ['/v1/images/edits', '/v1/audio/transcriptions', '/v1/audio/translations']) {
       app.use(path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));

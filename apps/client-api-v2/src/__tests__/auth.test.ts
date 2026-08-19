@@ -30,6 +30,18 @@ import {
 const ctx = systemContext('cav2-auth');
 const PASSWORD = password();
 
+/** 假 mailer：注册恒两步（邮箱所有权验证 fail-closed）——捕获验证码供验码建号 */
+function fakeMailer() {
+  const codes: string[] = [];
+  const mailer = {
+    sendLoginCode: async (_to: string, code: string) => {
+      codes.push(code);
+    },
+    send: async () => {},
+  };
+  return { mailer: mailer as never, lastCode: () => codes.at(-1)! };
+}
+
 function buildService(overrides: Partial<Parameters<typeof createAuthService>[0]> = {}) {
   return createAuthService({
     db,
@@ -50,10 +62,16 @@ function buildService(overrides: Partial<Parameters<typeof createAuthService>[0]
 }
 
 describe('注册', () => {
-  it('happy path：建号（哈希落库，明文不落库）+ 返回会话 token', async () => {
-    const service = buildService();
+  it('happy path：两步建号（发码→验码）+ 返回会话 token', async () => {
+    const fm = fakeMailer();
+    const service = buildService({ mailer: fm.mailer });
     const mail = email();
-    const result = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    const issued = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    expect(issued.kind).toBe('code_required');
+    const result = await service.verifyRegistration(ctx, {
+      challengeId: (issued as { challengeId: string }).challengeId,
+      code: fm.lastCode(),
+    });
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') throw new Error('expected success');
     await trackUser(result.userId);
@@ -73,13 +91,18 @@ describe('注册', () => {
     ).rejects.toThrow(WeakPasswordError);
   });
 
-  it('重复邮箱 409（预检与唯一索引兜底两路）', async () => {
-    const service = buildService();
+  it('重复邮箱 409（发码阶段预检 + 建号唯一索引兜底）', async () => {
+    const fm = fakeMailer();
+    const service = buildService({ mailer: fm.mailer });
     const mail = email();
-    const first = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    const issued = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    const first = await service.verifyRegistration(ctx, {
+      challengeId: (issued as { challengeId: string }).challengeId,
+      code: fm.lastCode(),
+    });
     if (first.kind !== 'success') throw new Error('expected success');
     await trackUser(first.userId);
-    // 预检路径
+    // 预检路径（发码前即拒）
     await expect(
       service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' }),
     ).rejects.toMatchObject({ code: 'email_taken' });
@@ -96,15 +119,16 @@ describe('注册', () => {
     ).rejects.toMatchObject({ code: 'register_disabled' });
   });
 
-  it('同 IP 超注册配额 → 429', async () => {
+  it('同 IP 超注册配额 → 429（每次发码请求都计入配额）', async () => {
     let hits = 0;
+    const fm = fakeMailer();
     const service = buildService({
       registerLimiter: { hit: async () => ++hits },
+      mailer: fm.mailer,
     });
     for (let i = 0; i < 5; i++) {
-      const ok = await service.register(ctx, { email: email(), password: PASSWORD, ip: '9.9.9.9' });
-      if (ok.kind !== 'success') throw new Error('expected success');
-      await trackUser(ok.userId);
+      const issued = await service.register(ctx, { email: email(), password: PASSWORD, ip: '9.9.9.9' });
+      expect(issued.kind).toBe('code_required');
     }
     await expect(
       service.register(ctx, { email: email(), password: PASSWORD, ip: '9.9.9.9' }),
@@ -112,9 +136,14 @@ describe('注册', () => {
   });
 
   it('赠送金额幂等：refKey 重放不产生第二笔入账', async () => {
-    const service = buildService({ giftAmount: '5' });
+    const fm = fakeMailer();
+    const service = buildService({ giftAmount: '5', mailer: fm.mailer });
     const mail = email();
-    const result = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    const issued = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' });
+    const result = await service.verifyRegistration(ctx, {
+      challengeId: (issued as { challengeId: string }).challengeId,
+      code: fm.lastCode(),
+    });
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') throw new Error('expected success');
     await trackUser(result.userId);
@@ -200,9 +229,14 @@ describe('登录', () => {
         service.login(ctx, { email: account.email, password: 'wrong-password-123', ip: '2.2.2.2' }),
       ).rejects.toMatchObject({ status: 401 });
     }
+    // v1「02 修复」语义：正确密码永远放行并清零（锁不得成为 DoS 受害者的开关）
     await expect(
       service.login(ctx, { email: account.email, password: PASSWORD, ip: '2.2.2.2' }),
-    ).rejects.toMatchObject({ status: 429, code: 'login_locked' });
+    ).resolves.toMatchObject({ kind: 'success' });
+    // 清零后再次错误从 401 重新累计
+    await expect(
+      service.login(ctx, { email: account.email, password: 'wrong-password-123', ip: '2.2.2.2' }),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it('IP 维度锁生效（换账号遍历被挡）', async () => {
@@ -216,8 +250,13 @@ describe('登录', () => {
     };
     const service = buildService({ ipGuard });
     const account = await newUser();
+    // 锁定来源 + 正确密码 → 放行（受害者自证即解锁语义）
     await expect(
       service.login(ctx, { email: account.email, password: PASSWORD, ip: '3.3.3.3' }),
+    ).resolves.toMatchObject({ kind: 'success', userId: account.id });
+    // 锁定来源 + 错误密码 → 429（继续爆破被挡）
+    await expect(
+      service.login(ctx, { email: account.email, password: 'wrong-password-123', ip: '3.3.3.3' }),
     ).rejects.toMatchObject({ status: 429, code: 'login_locked' });
     await expect(
       service.login(ctx, { email: account.email, password: PASSWORD, ip: '4.4.4.4' }),

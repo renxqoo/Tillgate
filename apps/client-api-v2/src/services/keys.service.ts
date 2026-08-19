@@ -8,6 +8,7 @@ import { createRepositories, type Repositories, type ApiKeyRow } from '@ai-gatew
 import { generateApiKey, maskKey, sha256Hex } from '@ai-gateway/http';
 import type { RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { recordAudit } from '@ai-gateway/http';
 
 export interface KeysServiceDeps {
   db: Db;
@@ -78,10 +79,6 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
   return {
     async create(ctx, userId, input) {
       const runCtx = asUser(ctx, userId);
-      const active = await repos.apiKey.countActiveByUser({ db, ...runCtx }, userId);
-      if (active >= deps.maxKeysPerUser) {
-        throw new AppError(409, 'key_limit_reached', `在用 Key 数已达上限 ${deps.maxKeysPerUser}`);
-      }
       // 计费来源归属守卫（W1）：绑他人订阅 → 404（不泄漏存在性；与授权侧防御互为纵深）
       let subscriptionId = input.subscriptionId ?? null;
       if (subscriptionId != null) {
@@ -94,8 +91,15 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
         }
       }
       const plaintext = generateApiKey();
-      const row = await db.transaction(async (tx) =>
-        repos.apiKey.insertKey({ db: tx, ...runCtx }, {
+      const row = await db.transaction(async (tx) => {
+        // 配额闸进事务 + advisory lock（v1 对位）：事务外的 count→insert 双击竞态可超限
+        const c = { db: tx, ...runCtx };
+        await repos.apiKey.advisoryLockKeyQuota(c, userId);
+        const active = await repos.apiKey.countActiveByUser(c, userId);
+        if (active >= deps.maxKeysPerUser) {
+          throw new AppError(409, 'key_limit_reached', `在用 Key 数已达上限 ${deps.maxKeysPerUser}`);
+        }
+        return repos.apiKey.insertKey(c, {
           keyHash: sha256Hex(plaintext),
           keyPreview: maskKey(plaintext),
           userId,
@@ -106,8 +110,16 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
           dailySpendLimit: input.dailySpendLimit ?? null,
           expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
           subscriptionId,
-        }),
-      );
+        });
+      });
+      // 用户面审计（v1 对位：凭证操作可追溯）
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'key.create',
+        targetType: 'api_key',
+        targetId: row.id,
+        detail: { name: input.name, subscriptionId },
+      }).catch(() => undefined);
       // 明文唯一一次出库：此后只存哈希 + 末4位预览
       return { ...row, plaintext };
     },
@@ -131,6 +143,12 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
         repos.apiKey.revokeKey({ db: tx, ...runCtx }, { userId, keyId, now: clock() }),
       );
       if (!revoked) throw new AppError(409, 'key_already_revoked', 'Key 已吊销');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'key.revoke',
+        targetType: 'api_key',
+        targetId: keyId,
+      }).catch(() => undefined);
       return { id: keyId };
     },
 
@@ -183,6 +201,13 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
         if (!revoked) throw new AppError(409, 'key_already_revoked', 'Key 已吊销');
         return inserted;
       });
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'key.rotate',
+        targetType: 'api_key',
+        targetId: created.id,
+        detail: { revokedId: keyId },
+      }).catch(() => undefined);
       return { revokedId: keyId, ...created, plaintext };
     },
   };

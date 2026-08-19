@@ -33,6 +33,25 @@ const schema = z.object({
   /** 邀请返利：佣金比例（0–1；0 = 关闭）与日结节奏 */
   REFERRAL_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0),
   WORKER_REFERRAL_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  /** 告警投递（notify_outbox 消费者——webhook/邮件；v1 对位循环） */
+  WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  /** 周期对账哨兵（wallet 复式不变量核验——资损最后防线） */
+  WORKER_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  /** 分区维护节奏与保留期（trace_spans / request_logs——缺位则窗口过后插入失败） */
+  WORKER_PARTITION_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  TRACE_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
+  REQUEST_LOG_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
+  /** 余额预警阈值（元；结算后低于即 balance_low 入箱，按用户×日幂等） */
+  WORKER_BALANCE_LOW_THRESHOLD: z.string().default('5'),
+  /** 健康端点（compose healthcheck 依赖；0 = 关闭——测试隔离用；
+   *  /health 深度报告令牌——空 = 恒 403） */
+  WORKER_HEALTH_PORT: z.coerce.number().int().min(0).default(8792),
+  WORKER_HEALTH_TOKEN: z.string().default(''),
+  /** 通知邮件 SMTP（可选；未配置 = email 渠道 fail-closed 跳过） */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
   /** 渠道 apiKeyEnc 解密密钥（任务适配器用） */
   CHANNEL_API_KEY_ENCRYPTION: z.string().min(1),
   /** 允许上游寻址回环/私网（SSRF 防护 dev/test 逃生门——生产恒为 false） */

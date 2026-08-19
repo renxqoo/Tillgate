@@ -1,6 +1,6 @@
 /**
  * 列表页统一数据获取（R10，api-contract §4）：
- *   - 所有记录列表接口统一 ?page=&page_size=&q=&sort_by=&order=
+ *   - 所有记录列表接口统一 ?page=&limit=（v2 正位）
  *   - 默认不传 sort_by → 后端按各表 fallback（通常 created_at desc）排序
  *   - 页面骨架（ListPage）+ 表格（DataTable）+ 本模块共同构成统一列表页组件
  */
@@ -26,7 +26,7 @@ export interface ListFetchResult<T> {
 export function buildListQuery(opts: ListFetchOptions): string {
   const query = new URLSearchParams({
     page: String(opts.page ?? 1),
-    page_size: String(opts.pageSize),
+    limit: String(opts.pageSize),
   });
   if (opts.sortBy) {
     query.set('sort_by', opts.sortBy);
@@ -42,8 +42,8 @@ export function buildListQuery(opts: ListFetchOptions): string {
 async function run<T>(fetcher: typeof adminFetch, path: string, opts: ListFetchOptions): Promise<ListFetchResult<T>> {
   try {
     const data = await fetcher<Paginated<T>>(`${path}?${buildListQuery(opts)}`);
-    // v2 信封 {rows,...}；v1 兼容 {list,...}
-    const rows = (data.rows ?? data.list ?? []) as T[];
+    // v2 信封 {rows,...}
+    const rows = (data.rows ?? []) as T[];
     return { rows, total: data.total ?? 0, error: null };
   } catch (e) {
     return {

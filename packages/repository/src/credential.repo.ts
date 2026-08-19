@@ -56,23 +56,55 @@ export class CredentialRepository {
     return { subscriptionId, allowPaygFallback, userDailyLimit, keyDailyLimit };
   }
 
-  /** 按 appId 查有效 App 凭证（JWT 鉴权路径：app status=0 且属主正常） */
+  /** 按 appId 查有效 App 凭证（JWT 鉴权路径：app status=0 且属主正常；
+   *  带属主用户级限流——JWT 无凭证级限额时的执行口径） */
   async findActiveAppById(
     c: RepoContext,
     appId: number,
-  ): Promise<{ id: number; userId: number; subscriptionId: number | null } | null> {
+  ): Promise<{
+    id: number;
+    userId: number;
+    subscriptionId: number | null;
+    userRpmLimit: number | null;
+    userTpmLimit: number | null;
+  } | null> {
     const [row] = await c.db
-      .select({ id: apps.id, userId: apps.userId, subscriptionId: apps.subscriptionId })
+      .select({
+        id: apps.id,
+        userId: apps.userId,
+        subscriptionId: apps.subscriptionId,
+        userRpmLimit: users.rpmLimit,
+        userTpmLimit: users.tpmLimit,
+      })
       .from(apps)
       .innerJoin(users, eq(users.id, apps.userId))
       .where(and(eq(apps.id, appId), eq(apps.status, 0), eq(users.status, 0)));
     if (!row) return null;
-    return { id: row.id, userId: row.userId, subscriptionId: row.subscriptionId ?? null };
+    return {
+      id: row.id,
+      userId: row.userId,
+      subscriptionId: row.subscriptionId ?? null,
+      userRpmLimit: row.userRpmLimit,
+      userTpmLimit: row.userTpmLimit,
+    };
+  }
+
+  /** 按用户 id 查有效用户（playground JWT 分支：存在性 + status=0 + 用户级限额） */
+  async findActiveUserById(
+    c: RepoContext,
+    userId: number,
+  ): Promise<{ rpmLimit: number | null; tpmLimit: number | null } | null> {
+    const [row] = await c.db
+      .select({ rpmLimit: users.rpmLimit, tpmLimit: users.tpmLimit })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.status, 0)));
+    return row ?? null;
   }
 
   /** 按哈希查有效静态 Key（鉴权路径：status=0 且未过期且属主用户正常；返回鉴权与来源解析所需全集）
    *  属主 join 不可省：封禁用户（users.status≠0）的存量 Key 必须立即失效——
-   *  否则封禁只挡控制台登录，网关推理照常放行 */
+   *  否则封禁只挡控制台登录，网关推理照常放行。
+   *  带用户级限流（users.rpm/tpm_limit——Key 级限额缺省时的执行口径，v1 对位） */
   async findActiveKeyByKeyHash(
     c: RepoContext,
     keyHash: string,
@@ -86,6 +118,9 @@ export class CredentialRepository {
     /** Key 级限流（null/0 = 不限） */
     rpmLimit: number | null;
     tpmLimit: number | null;
+    /** 属主用户级限流（Key 级缺省时生效） */
+    userRpmLimit: number | null;
+    userTpmLimit: number | null;
   } | null> {
     const [key] = await c.db
       .select({
@@ -97,6 +132,8 @@ export class CredentialRepository {
         allowPaygFallback: apiKeys.allowPaygFallback,
         rpmLimit: apiKeys.rpmLimit,
         tpmLimit: apiKeys.tpmLimit,
+        userRpmLimit: users.rpmLimit,
+        userTpmLimit: users.tpmLimit,
       })
       .from(apiKeys)
       .innerJoin(users, eq(users.id, apiKeys.userId))

@@ -46,6 +46,8 @@ export interface PaymentProviderPort {
    */
   parseNotify(raw: Record<string, string>): {
     providerOrderId: string;
+    /** 商户订单号回退锚（Stripe client_reference_id——attach 失败/竞态时按它定位订单） */
+    merchantOrderId?: string;
     paidAmount: string;
   } | null;
 }
@@ -140,7 +142,11 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
       if (!verifyStripeSignature(header, payload, config.webhookSecret, nowMs())) return null;
       const event = parseStripeEvent(payload);
       if (!event) return null;
-      return { providerOrderId: event.sessionId, paidAmount: event.paidAmount };
+      return {
+        providerOrderId: event.sessionId,
+        merchantOrderId: event.orderId,
+        paidAmount: event.paidAmount,
+      };
     },
   };
 }
@@ -175,6 +181,8 @@ export interface PaymentsService {
     provider: 'epay' | 'stripe',
     raw: Record<string, string>,
   ): Promise<string>;
+  /** 订单详情（v1 GET /api/payments/:id 对位——支付后轮询） */
+  orderDetail(ctx: RunContext, userId: number, orderId: string): Promise<PaymentOrderRow>;
   listOrders(
     ctx: RunContext,
     userId: number,
@@ -228,18 +236,16 @@ export function createPaymentsService(deps: PaymentsServiceDeps): PaymentsServic
       const provider = resolveProvider(input.provider);
       const creditAmount = computeCreditAmount(input.amount, deps.exchangeRate);
       const orderId = randomUUID();
-      const channel = await provider.createOrder({
-        orderId,
-        amount: input.amount,
-        subject: '余额充值',
-      });
+      // 先落 DB 行再调渠道（v1 对位）：渠道成功与落库之间的崩溃会留下
+      // 「可支付但无 DB 行」的渠道会话 = 无法对账的资金黑洞；反过来渠道失败
+      // 只是本地一行 status=0 订单（由 TTL 关单自然回收）
       await db.transaction(async (tx) =>
         repos.paymentOrder.insertOrder(
           { db: tx, ...asUser(ctx, userId) },
           {
             id: orderId,
             provider: provider.name,
-            providerOrderId: channel.providerOrderId,
+            providerOrderId: orderId, // 占位：epay 即终值；Stripe 建会话后回填
             userId,
             amount: input.amount,
             currency: deps.currency,
@@ -247,6 +253,32 @@ export function createPaymentsService(deps: PaymentsServiceDeps): PaymentsServic
           },
         ),
       );
+      let channel: { providerOrderId: string; payUrl: string };
+      try {
+        channel = await provider.createOrder({
+          orderId,
+          amount: input.amount,
+          subject: '余额充值',
+        });
+      } catch (error) {
+        // 渠道下单失败：关单留痕（v1 语义）——渠道侧确定性失败即刻可见；
+        // 用户拿到明确 502 而非裸 500
+        console.error(`[client-api] payment channel create failed order=${orderId}:`, error);
+        await db.$client
+          .query("update payment_orders set status = 4, failure_reason = 'channel_create_failed', updated_at = clock_timestamp() where id = $1 and status = 0", [orderId])
+          .catch(() => undefined);
+        throw new AppError(502, 'payment_channel_unavailable', '支付渠道暂时不可用，请稍后再试');
+      }
+      // 渠道会话已建立：回填真实渠道单号（Stripe session id；epay 与占位相同无操作）。
+      // 回填是回调定位锚——失败必须大声（静默吞 = webhook 永远找不到订单 = 已付款搁浅）
+      if (channel.providerOrderId !== orderId) {
+        await repos.paymentOrder.attachProviderOrderId(
+          { db, ...asUser(ctx, userId) },
+          { orderId, providerOrderId: channel.providerOrderId },
+        ).catch((error) => {
+          console.error(`[client-api] attach provider order id failed order=${orderId} channel=${channel.providerOrderId}:`, error);
+        });
+      }
       return { orderId, payUrl: channel.payUrl, creditAmount };
     },
 
@@ -257,10 +289,16 @@ export function createPaymentsService(deps: PaymentsServiceDeps): PaymentsServic
       if (!parsed) return 'fail';
 
       const sys: RunContext = { ...ctx, actor: { kind: 'system' } };
-      const order = await repos.paymentOrder.findByProviderOrderId(
+      let order = await repos.paymentOrder.findByProviderOrderId(
         { db, ...sys },
         { provider: providerName, providerOrderId: parsed.providerOrderId },
       );
+      if (!order && parsed.merchantOrderId) {
+        // 回退锚：渠道会话号回填失败/竞态未达时按商户订单号定位（v1 同语义——
+        // 没有它 Stripe webhook 在 attach 缺席时永远找不到订单 = 已付款搁浅）
+        const byMerchant = await repos.paymentOrder.findById({ db, ...sys }, parsed.merchantOrderId);
+        if (byMerchant?.provider === providerName) order = byMerchant;
+      }
       if (!order) return 'fail';
       // 金额核对：签名只证来源，金额才防「少付多得」（按订单实付比对，全精度）
       if (!amountsMatch(parsed.paidAmount, order.amount)) {
@@ -313,6 +351,15 @@ export function createPaymentsService(deps: PaymentsServiceDeps): PaymentsServic
         console.error('[client-api] payment credit failed (order stays retryable):', e);
         return 'fail';
       }
+    },
+
+    async orderDetail(ctx, userId, orderId) {
+      const row = await repos.paymentOrder.findByUserAndId(
+        { db, ...asUser(ctx, userId) },
+        { userId, orderId },
+      );
+      if (!row) throw new AppError(404, 'order_not_found', '订单不存在');
+      return row;
     },
 
     async listOrders(ctx, userId, input) {

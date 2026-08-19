@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
+import type { SessionRevocationStore } from '@ai-gateway/identity';
 import { userCtxOf } from './ctx.js';
 import type { SessionEnv } from '../middleware/session.js';
 import type { AuthService } from '../services/auth.service.js';
@@ -24,8 +25,8 @@ const loginSchema = z.object({
 });
 
 const verifySchema = z.object({
-  challengeId: z.string().min(1).max(128),
-  code: z.string().trim().min(1).max(16),
+  challengeId: z.string().uuid(),
+  code: z.string().trim().regex(/^\d{6}$/, '验证码为 6 位数字'),
   aff: z.string().trim().max(32).optional(),
 });
 
@@ -39,7 +40,12 @@ const sysCtx = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
 
 export function authRoutes(
   service: AuthService,
-  deps: { session: MiddlewareHandler<SessionEnv>; trustedProxyHops: number },
+  deps: {
+    session: MiddlewareHandler<SessionEnv>;
+    trustedProxyHops: number;
+    /** jti 吊销（登出即时下线；缺省 logout 仅客户端弃令牌） */
+    revocationStore?: SessionRevocationStore;
+  },
 ) {
   const app = new Hono<SessionEnv>();
   // 真实 socket 对端地址必须注入：置 null 时全部请求落到进程级常量桶——
@@ -53,6 +59,16 @@ export function authRoutes(
 
   /** 前端能力探测（登录页/注册页按钮渲染依据；无个人数据） */
   app.get('/v1/auth/capabilities', (c) => c.json(service.capabilities()));
+
+  /** 登出：吊销当前会话 jti（Redis 键存活至令牌自然过期——此前泄露令牌最长活 TTL） */
+  app.post('/v1/auth/logout', deps.session, async (c) => {
+    if (deps.revocationStore) {
+      const jti = c.get('sessionJti');
+      const exp = c.get('sessionExp');
+      await deps.revocationStore.revoke(jti, Math.max(1, exp - Math.floor(Date.now() / 1000)));
+    }
+    return c.json({ ok: true });
+  });
 
   app.post('/v1/auth/register', async (c) => {
     const body = registerSchema.parse(await c.req.json());

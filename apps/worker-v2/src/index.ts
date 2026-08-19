@@ -1,12 +1,18 @@
 /**
- * worker 入口：事件驱动结算（BullMQ 'settle-wake' 唤醒，毫秒级）+
- * 四定时器兜底（结算扫描 + 滞留回收 + 生成任务轮询 + 佣金日结），优雅停机。
- * 业务全部来自 service 包；本文件只有节奏与生命周期。
+ * worker 入口：事件驱动结算（BullMQ 'settle-wake' 唤醒，毫秒级）+ 八定时器兜底
+ * （结算扫描 + 滞留回收 + 生成任务轮询 + 佣金日结 + 告警投递 + 周期对账 +
+ * trace/request_logs 分区维护），健康端点 + 优雅停机。
+ * 业务全部来自 service/wallet/tracing 包；本文件只有节奏与生命周期。
  * 账务正确性不依赖消息：认领/幂等全在 DB，唤醒通道故障退化为兜底扫描节奏。
  */
-import { createDb, type Db } from '@ai-gateway/db';
-import { assertRedisReachable, createRedisClient } from '@ai-gateway/core';
+import { createDb, notifyOutbox, type Db } from '@ai-gateway/db';
+import {
+  assertRedisReachable,
+  createRedisClient,
+  createSlidingWindowLimiter,
+} from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
+import { mailerFromEnv } from '@ai-gateway/identity';
 import {
   createBillingDomain,
   createGenerationPollUseCase,
@@ -18,6 +24,13 @@ import { loadConfig, type WorkerConfig } from './config.js';
 import { createRunOnce } from './run-once.js';
 import { createTaskAdapter } from './generation-adapter.js';
 import { runReferralCommissionOnce } from './tasks/referral-commission.js';
+import { runNotifyDispatchOnce } from './tasks/notify-dispatch.js';
+import { runReconcileOnce } from './tasks/reconcile.js';
+import {
+  runRequestLogPartitionMaintenance,
+  runTracePartitionMaintenance,
+} from './tasks/partition-maintenance.js';
+import { startHealthServer } from './health.js';
 import { createSettleWakeupConsumer } from './wakeup.js';
 
 export interface WorkerHandles {
@@ -44,6 +57,19 @@ export async function startWorker(
       maxAttempts: config.WORKER_MAX_ATTEMPTS,
     })}`,
   );
+  // 运营投影钩子（settlement 装配注入，事务外 best-effort）：
+  //   onSettled → TPM actual 回填（成功请求的预占收尾 + 真实消耗记账——v1 对位能力）
+  //             + balance_low 预警入箱（按用户×日幂等）
+  //   onDead    → billing_dead 告警入箱
+  const logger = {
+    warn: (obj: unknown, msg: string) => console.warn('[worker]', msg, obj),
+    error: (obj: unknown, msg: string) => console.error('[worker]', msg, obj),
+    info: (obj: unknown, msg: string) => console.log('[worker]', msg, obj),
+  };
+  const notifyMailer =
+    mailerFromEnv(config, { brand: 'AI Gateway 运维告警', brandSub: 'AI GATEWAY · OPS' }) ?? undefined;
+  const balanceLowThreshold = config.WORKER_BALANCE_LOW_THRESHOLD;
+  const projectionLimiter = createSlidingWindowLimiter(redis, { failMode: 'open' });
   const settlement = createSettlementDomain({
     db,
     currency: config.WORKER_CURRENCY,
@@ -51,6 +77,60 @@ export async function startWorker(
       maxAttempts: config.WORKER_MAX_ATTEMPTS,
       baseDelayMs: config.WORKER_BASE_DELAY_MS,
       maxDelayMs: config.WORKER_MAX_DELAY_MS,
+    },
+    onSettled: (data) => {
+      const receipt = data.receipt as {
+        apiKeyId?: number | null;
+        channelId?: number | null;
+        usage?: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number };
+      };
+      const input = Math.max(0, receipt.usage?.inputTokens ?? 0);
+      const cached = Math.min(Math.max(0, receipt.usage?.cachedInputTokens ?? 0), input);
+      const tokens = input - cached + Math.max(0, receipt.usage?.outputTokens ?? 0);
+      const dimensions = [
+        receipt.apiKeyId != null ? `key:${receipt.apiKeyId}` : `user:${data.userId}`,
+        ...(receipt.channelId != null ? [`channel:${receipt.channelId}`] : []),
+      ];
+      void projectionLimiter.backfillTpm(data.requestId, dimensions, tokens);
+      // 余额预警（读结算后的钱包事实；入箱失败静默——告警不反噬结算）
+      void repos.wallet
+        .userAccountSummaries({ ...ctx, db }, data.userId)
+        .then((rows) => {
+          const account = rows.find((r) => r.kind === 'user');
+          if (account && Number(account.balance) < Number(balanceLowThreshold)) {
+            return db
+              .insert(notifyOutbox)
+              .values({
+                event: 'balance_low',
+                payload: { userId: data.userId, balance: account.balance, requestId: data.requestId },
+                dedupeKey: `balance-low:${data.userId}:${new Date().toISOString().slice(0, 10)}`,
+              })
+              .onConflictDoNothing();
+          }
+        })
+        .catch(() => undefined);
+    },
+    onDead: (data) => {
+      // 补齐 userId（告警模板直读——v1 payload 对位）
+      void (async () => {
+        const row = await db.$client
+          .query<{ user_id: number }>('select user_id from billing_requests where request_id = $1', [data.requestId])
+          .catch(() => null);
+        await db
+          .insert(notifyOutbox)
+          .values({
+            event: 'billing_dead',
+            payload: {
+              requestId: data.requestId,
+              userId: row?.rows[0]?.user_id ?? null,
+              failureClass: data.failureClass,
+              attempt: data.attempt,
+              lastError: data.lastError,
+            },
+            dedupeKey: `billing-dead:${data.requestId}`,
+          })
+          .onConflictDoNothing();
+      })().catch(() => undefined);
     },
   });
   const runOnce = createRunOnce({
@@ -83,7 +163,8 @@ export async function startWorker(
     taskPort: createTaskAdapter({
       encryptionKey: config.CHANNEL_API_KEY_ENCRYPTION,
       redis,
-      ...(config.WORKER_AI_ALLOW_LOCAL_URL ? { allowLocalUrl: true } : {}),
+      // SSRF 双门：逃生门仅非生产可用（与 gateway/admin-v2 同口径）
+      ...(config.WORKER_AI_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production' ? { allowLocalUrl: true } : {}),
     }),
     config: {
       batch: config.WORKER_GENERATION_BATCH_SIZE,
@@ -144,7 +225,47 @@ export async function startWorker(
         }),
       'referral',
     ),
+    // ---- v1 对位循环（2026-08-19 退役审计补齐）----
+    // 告警投递：notify_outbox 消费者（缺位 = channel_disabled/billing_dead/…全静默）
+    loop(
+      config.WORKER_NOTIFY_INTERVAL_MS,
+      () => runNotifyDispatchOnce(db, logger, notifyMailer, { encryptionKey: config.CHANNEL_API_KEY_ENCRYPTION }),
+      'notify',
+    ),
+    // 周期对账哨兵：wallet 复式不变量（资损最后防线）
+    loop(config.WORKER_RECONCILE_INTERVAL_MS, () => runReconcileOnce(db, logger), 'reconcile'),
+    // 分区维护：trace_spans / request_logs（缺位 = 窗口过后插入失败）
+    loop(
+      config.WORKER_PARTITION_INTERVAL_MS,
+      () => runTracePartitionMaintenance(db, { retentionDays: config.TRACE_RETENTION_DAYS }, logger),
+      'trace-partitions',
+    ),
+    loop(
+      config.WORKER_PARTITION_INTERVAL_MS,
+      () =>
+        runRequestLogPartitionMaintenance(db, { retentionDays: config.REQUEST_LOG_RETENTION_DAYS }, logger),
+      'request-log-partitions',
+    ),
   ];
+
+  // 健康端点（compose healthcheck：livez/readyz 开放；/health 深度报告令牌保护）。
+  // 0 = 关闭（测试隔离）；端口占用只告警不崩主进程（健康面是辅助，结算才是主业）
+  const healthServer =
+    config.WORKER_HEALTH_PORT > 0
+      ? startHealthServer(
+          config.WORKER_HEALTH_PORT,
+          {
+            live: () => running,
+            ready: () => running,
+            deep: () => ({ owner: config.WORKER_OWNER_ID, running }),
+          },
+          config.WORKER_HEALTH_TOKEN,
+        )
+      : null;
+  healthServer?.on('error', (error: Error) => {
+    console.error(`[worker] health server error (port=${config.WORKER_HEALTH_PORT}):`, error.message);
+  });
+  healthServer?.unref?.();
 
   return {
     async stop() {
@@ -159,6 +280,7 @@ export async function startWorker(
       await repos.billingRequest
         .abandonOwnedClaims({ ...ctx, db }, config.WORKER_OWNER_ID, new Date())
         .catch(() => undefined);
+      if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve()));
       await settleWakeup?.close().catch(() => undefined);
       await redis?.quit().catch(() => {});
       await db.$client.end().catch(() => {});

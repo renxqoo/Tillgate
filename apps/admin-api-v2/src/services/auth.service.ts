@@ -24,6 +24,7 @@ import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { KeyBruteForceGuard, AuthFailureGuard, GuardCheck } from '@ai-gateway/core';
 import type { RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { recordAudit } from '@ai-gateway/http';
 
 /** 密码策略（identity-core 默认口径：长度 10..128） */
 const PASSWORD_POLICY = { minLength: 10, maxLength: 128 };
@@ -110,9 +111,11 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
   return {
     async login(ctx, input) {
       const email = input.email.trim().toLowerCase();
-      const guardKey = sha256Hex(email);
+      // 锁维度 = (email, ip) 且正确密码永远放行（与用户面同语义：纯 email 锁可被
+      // 匿名攻击者用于锁死管理员 = 把爆破锁变成 DoS 开关）
+      const guardKey = sha256Hex(`${email}:${input.ip}`);
 
-      // 爆破锁检查（Redis 必配；不可达 fail-closed 503——防护不在即拒绝）
+      // 爆破锁状态读取（Redis 必配；不可达 fail-closed 503）——锁不前置拒绝
       let byKey: GuardCheck, byIp: GuardCheck;
       try {
         [byKey, byIp] = await Promise.all([
@@ -121,10 +124,6 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
         ]);
       } catch {
         throw new AppError(503, 'auth_guard_unavailable', '鉴权防护不可用，请稍后再试');
-      }
-      const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
-      if (retry > 0) {
-        throw new AppError(429, 'login_locked', '尝试过于频繁，请稍后再试');
       }
 
       const account = await repos.adminAccount.findByEmail({ db, ...sys(ctx) }, email);
@@ -135,12 +134,29 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
           deps.loginGuard.recordFailure(guardKey).catch(() => undefined),
           deps.ipGuard.recordFailure(input.ip).catch(() => undefined),
         ]);
+        // 管理面登录失败必留审计（安全事件取证主观察点——v1 对位）
+        await recordAudit(deps.db, {
+          actor: 'system',
+          action: 'auth.login.invalid_credentials',
+          targetType: 'admin',
+          targetId: account?.id ?? null,
+          detail: { email, ip: input.ip },
+        }).catch(() => undefined);
+        const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
+        if (retry > 0) {
+          throw new AppError(429, 'login_locked', '尝试过于频繁，请稍后再试', {
+            'retry-after': String(Math.max(1, retry)),
+          });
+        }
         throw new AppError(401, 'invalid_credentials', '邮箱或密码错误');
       }
       if (account.status !== 0) {
         throw new AppError(403, 'account_unavailable', '账号不可用');
       }
-      await deps.loginGuard.recordSuccess(guardKey).catch(() => undefined);
+      await Promise.all([
+        deps.loginGuard.recordSuccess(guardKey).catch(() => undefined),
+        deps.ipGuard.recordSuccess?.(input.ip).catch(() => undefined),
+      ]);
 
       // 2FA：密码对不签会话，发码走第二步
       if (account.twoFactorEnabled) {
@@ -150,6 +166,13 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
             email: account.email,
             ip: input.ip,
           });
+          await recordAudit(deps.db, {
+            actor: 'system',
+            action: 'auth.login.2fa_challenge',
+            targetType: 'admin',
+            targetId: account.id,
+            detail: { ip: input.ip },
+          }).catch(() => undefined);
           return { kind: 'code_required', challengeId };
         } catch (e) {
           translateIssueError(e);
@@ -157,6 +180,13 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
       }
 
       await repos.adminAccount.touchLastLogin({ db, ...sys(ctx) }, account.id);
+      await recordAudit(deps.db, {
+        actor: 'system',
+        action: 'auth.login.success',
+        targetType: 'admin',
+        targetId: account.id,
+        detail: { ip: input.ip },
+      }).catch(() => undefined);
       return { kind: 'success', token: await issue(account.id), adminId: account.id };
     },
 
@@ -179,6 +209,13 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
       if (!account) throw new AppError(401, 'invalid_credentials', '邮箱或密码错误');
       if (account.status !== 0) throw new AppError(403, 'account_unavailable', '账号不可用');
       await repos.adminAccount.touchLastLogin({ db, ...sys(ctx) }, account.id);
+      await recordAudit(deps.db, {
+        actor: 'system',
+        action: 'auth.login.success',
+        targetType: 'admin',
+        targetId: account.id,
+        detail: { twoFactor: true },
+      }).catch(() => undefined);
       return { token: await issue(account.id), adminId: account.id };
     },
 

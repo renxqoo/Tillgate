@@ -8,18 +8,22 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import { createRepositories } from '@ai-gateway/repository';
-import { verifySession } from '@ai-gateway/identity';
+import { verifySession, type SessionRevocationStore } from '@ai-gateway/identity';
 
 export interface SessionEnv {
   Variables: {
     requestId: string;
     userId: number;
+    /** 当前会话 jti/exp（logout 端点吊销消费） */
+    sessionJti: string;
+    sessionExp: number;
   };
 }
 
 export function sessionMiddleware(
   db: Db,
   jwtSecret: string,
+  revocationStore?: SessionRevocationStore,
 ): MiddlewareHandler<SessionEnv> {
   const repos = createRepositories();
   return async (c, next) => {
@@ -38,6 +42,10 @@ export function sessionMiddleware(
     if (!Number.isInteger(userId) || userId <= 0) {
       return c.json({ error: { code: 'unauthorized', message: '会话无效' } }, 401);
     }
+    // jti 吊销表（登出/强制下线——fail-open，主防线仍是上方 DB 校验）
+    if (revocationStore && (await revocationStore.isRevoked(payload.jti))) {
+      return c.json({ error: { code: 'unauthorized', message: '会话已注销' } }, 401);
+    }
     const account = await repos.userAccount.findById(
       { db, requestId: c.get('requestId'), actor: { kind: 'system' }, traceParent: null },
       userId,
@@ -52,6 +60,8 @@ export function sessionMiddleware(
       return c.json({ error: { code: 'unauthorized', message: '会话无效或已过期' } }, 401);
     }
     c.set('userId', userId);
+    c.set('sessionJti', payload.jti);
+    c.set('sessionExp', payload.exp);
     await next();
   };
 }

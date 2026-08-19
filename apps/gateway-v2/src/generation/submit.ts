@@ -66,7 +66,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
 
   return async function submitGeneration(
     ctx: RunContext,
-    auth: { userId: number; apiKeyId: number; rpmLimit?: number | null; tpmLimit?: number | null },
+    auth: { userId: number; apiKeyId: number; appId?: number | null; allowedModels?: string[] | null; rpmLimit?: number | null; tpmLimit?: number | null; userRpmLimit?: number | null; userTpmLimit?: number | null },
     kind: GenerationTaskKind,
     body: Record<string, unknown>,
   ): Promise<SubmitGenerationResult> {
@@ -74,6 +74,10 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
     const descriptor = generationKindDescriptor(kind);
     if (descriptor == null) throw new AppError(404, 'not_found', `未知生成类型 ${kind}`);
     const externalModel = String(body.model ?? '');
+    // 模型白名单（App JWT scope.models）——与 chat 管线同口径
+    if (auth.allowedModels != null && !auth.allowedModels.includes(externalModel)) {
+      throw new AppError(403, 'model_not_allowed', `模型 ${externalModel} 不在该凭证的授权范围内`);
+    }
     const startedAt = Date.now();
 
     // 每用户在途任务上限（TTL 长达小时级——无闸用户可无限堆任务占满预扣与轮询容量）
@@ -91,10 +95,17 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
     if (deps.rateLimit) {
       await admitKey(deps.rateLimit, {
         requestId,
-        dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
-        rpmLimit: auth.rpmLimit ?? null,
-        tpmLimit: null,
         estimatedTokens: 0,
+        dims: [
+          {
+            dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
+            rpmLimit: auth.rpmLimit ?? null,
+            tpmLimit: null,
+          },
+          ...(auth.apiKeyId != null
+            ? [{ dimension: `user:${auth.userId}`, rpmLimit: auth.userRpmLimit ?? null, tpmLimit: null }]
+            : []),
+        ],
       });
     }
 
@@ -110,7 +121,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
       requestId,
       userId: auth.userId,
       apiKeyId: auth.apiKeyId,
-      appId: null,
+      appId: auth.appId ?? null,
       stream: false,
       quote,
       reservationLimit: deps.config.reservationLimit,

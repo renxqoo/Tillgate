@@ -37,6 +37,12 @@ export function usageRoutes(service: UsageService, session: MiddlewareHandler<Se
     return c.json({ rows });
   });
 
+  app.get('/v1/usage/summary', session, async (c) => {
+    const query = rangeQuerySchema.parse(c.req.query());
+    const result = await service.summary(userCtxOf(c), c.get('userId'), query);
+    return c.json(result);
+  });
+
   app.get('/v1/usage/rate', session, async (c) => {
     const rate = await service.rate(userCtxOf(c), c.get('userId'));
     return c.json(rate);

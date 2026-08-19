@@ -38,6 +38,17 @@ export function createUpstreamAdapter(deps: {
         },
       });
       if (result.status === 'success') {
+        if (result.rawBody) {
+          return {
+            ok: true,
+            body: {},
+            rawBody: result.rawBody,
+            rawContentType: result.rawContentType ?? 'application/octet-stream',
+            ...(result.usage && !result.usage.estimated
+              ? { usage: { inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens } }
+              : {}),
+          };
+        }
         return {
           ok: true,
           body: (result.body as Record<string, unknown>) ?? {},
@@ -57,6 +68,7 @@ export function createUpstreamAdapter(deps: {
       }
       return {
         ok: false,
+        status: result.error.status,
         error: {
           code: result.error.code,
           message: result.error.message,
@@ -93,6 +105,7 @@ export function createUpstreamAdapter(deps: {
                 code: event.error.code,
                 message: event.error.message,
                 deadCredential: event.error.deadCredential,
+                status: event.error.status,
               }
             : event.type === 'first_chunk'
               ? { type: 'first_chunk' }

@@ -25,11 +25,16 @@ export interface AuthContext {
   apiKeyId: number | null;
   /** App JWT 凭证（playground/静态 Key 为 null） */
   appId: number | null;
+  /** 模型白名单（App JWT scope.models；null = 不限——准入与 /v1/models 过滤的单一真相） */
+  allowedModels: string[] | null;
   subscriptionId: number | null;
   allowPaygFallback: boolean;
   /** 凭证级限流（null/0 = 不限；限流闸消费） */
   rpmLimit: number | null;
   tpmLimit: number | null;
+  /** 用户级限流（users.rpm/tpm_limit——与凭证级并罚，不互相覆盖） */
+  userRpmLimit: number | null;
+  userTpmLimit: number | null;
   ctx: RunContext;
 }
 
@@ -45,6 +50,14 @@ export interface AuthGuards {
   ipGuard: AuthFailureGuard;
   /** 可信代理跳数（来源 IP 提取语义） */
   trustedProxyHops: number;
+  /** 用户级限流兜底（凭证/Scope 未声明时生效；0 = 不限——v1 DEFAULT_USER_RPM 语义） */
+  defaultUserRpm?: number;
+  defaultUserTpm?: number;
+}
+
+/** 限额有效性（0/null/undefined = 不限维） */
+function positive(v: number | null | undefined): number | null {
+  return v != null && v > 0 ? v : null;
 }
 
 const KEY_PREFIX = 'ag_';
@@ -54,7 +67,7 @@ interface GatewayJwtPayload {
   typ?: string;
   sub?: string;
   app_id?: number;
-  scope?: { rpm?: number; tpm?: number };
+  scope?: { rpm?: number; tpm?: number; models?: string[] };
 }
 
 export function apiKeyMiddleware(
@@ -77,6 +90,7 @@ export function apiKeyMiddleware(
     const { payload } = await jwtVerify(token, new TextEncoder().encode(jwtSecret), {
       issuer: 'ai-gateway',
       audience: 'ai-gateway-api',
+      algorithms: ['HS256'], // 算法族白名单（防混淆攻击；v1 对位）
     }).catch(() => {
       throw new UnauthorizedError('invalid or expired jwt credential');
     });
@@ -104,8 +118,11 @@ export function apiKeyMiddleware(
           appId: app.id,
           subscriptionId: app.subscriptionId,
           allowPaygFallback: false, // App JWT 恒 false（与 resolveSourceAndLimits 同口径）
-          rpmLimit: payload.scope?.rpm ?? null,
-          tpmLimit: payload.scope?.tpm ?? null,
+          rpmLimit: positive(payload.scope?.rpm),
+          tpmLimit: positive(payload.scope?.tpm),
+          userRpmLimit: positive(app.userRpmLimit) ?? positive(guards?.defaultUserRpm),
+          userTpmLimit: positive(app.userTpmLimit) ?? positive(guards?.defaultUserTpm),
+          allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
           ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: null },
         });
         await next();
@@ -113,14 +130,23 @@ export function apiKeyMiddleware(
       }
       if (payload.typ === 'playground' && payload.sub != null) {
         const userId = Number(payload.sub);
+        // 属主状态核验（v1 对位）：封禁/删除用户的存量 playground JWT 不得在 TTL 窗口内继续放行
+        const active = await repos.credential.findActiveUserById(
+          { ...systemContext('gateway-auth'), db },
+          userId,
+        );
+        if (!active) throw new UnauthorizedError('account unavailable');
         c.set('auth', {
           userId,
           apiKeyId: null,
           appId: null,
           subscriptionId: null,
           allowPaygFallback: false,
-          rpmLimit: payload.scope?.rpm ?? null,
-          tpmLimit: payload.scope?.tpm ?? null,
+          rpmLimit: positive(payload.scope?.rpm),
+          tpmLimit: positive(payload.scope?.tpm),
+          userRpmLimit: positive(active.rpmLimit) ?? positive(guards?.defaultUserRpm),
+          userTpmLimit: positive(active.tpmLimit) ?? positive(guards?.defaultUserTpm),
+          allowedModels: null,
           ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: null },
         });
         await next();
@@ -155,8 +181,11 @@ export function apiKeyMiddleware(
       appId: null,
       subscriptionId: key.subscriptionId,
       allowPaygFallback: key.allowPaygFallback,
-      rpmLimit: key.rpmLimit,
-      tpmLimit: key.tpmLimit,
+      rpmLimit: positive(key.rpmLimit),
+      tpmLimit: positive(key.tpmLimit),
+      userRpmLimit: positive(key.userRpmLimit) ?? positive(guards?.defaultUserRpm),
+      userTpmLimit: positive(key.userTpmLimit) ?? positive(guards?.defaultUserTpm),
+      allowedModels: null,
       ctx: { requestId, actor: { kind: 'user', id: key.userId }, traceParent: null },
     });
     await next();

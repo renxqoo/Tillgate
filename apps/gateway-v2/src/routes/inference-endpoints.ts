@@ -48,7 +48,7 @@ export const claudeMessagesCodec: InboundCodec = {
   encodeStream: (stream, model) => canonicalStreamToClaudeStream(stream, model),
 };
 
-const modelField = z.string().min(1, 'model 不能为空').max(64);
+const modelField = z.string().min(1, 'model 不能为空').max(64).refine((v) => !v.includes('\0'), 'model 含非法字符');
 
 const chatSchema = z.object({
   model: modelField,
@@ -138,6 +138,33 @@ export const inferenceEndpoints: readonly InferenceEndpoint[] = [
 ];
 
 /** 端点路由：schema 校验 →（codec 端点先 decode）→ 管线 → 响应按外部线格式编码 */
+/**
+ * OpenAI legacy 引擎别名路由（v1 对位：pre-1.0 SDK 的 /v1/engines/:model/embeddings）。
+ * 路径段模型名注入 body.model 后走端点同一管线（鉴权/计费/计量完全一致）。
+ */
+export function enginesAliasRoutes(runChat: RunChat, endpoint: InferenceEndpoint): Hono<AuthEnv> {
+  // 挂载路径已带 :model 参数段（app.route('/v1/engines/:model', …)——param 全程可见）
+  return new Hono<AuthEnv>().post('/embeddings', async (c) => {
+    const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const model = c.req.param('model');
+    const merged = { ...raw, model };
+    const parsed = endpoint.schema.safeParse(merged);
+    if (!parsed.success) {
+      return c.json(
+        { error: { code: 'invalid_body', message: parsed.error.issues[0]?.message ?? 'invalid request body' } },
+        400,
+      );
+    }
+    const auth = c.get('auth');
+    const externalModel = (parsed.data as { model: string }).model;
+    const body = parsed.data as unknown as ChatCompletionBody;
+    body.stream = false;
+    (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
+    return encodeResult(c, result, endpoint, externalModel);
+  });
+}
+
 export function inferenceRoutes(runChat: RunChat, endpoint: InferenceEndpoint): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
@@ -159,13 +186,13 @@ export function inferenceRoutes(runChat: RunChat, endpoint: InferenceEndpoint): 
       body.stream = false; // 非规范形 chat 的端点族无流式（embeddings/模态 JSON 族）
     }
     (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
-    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit }, body);
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
     return encodeResult(c, result, endpoint, externalModel);
   });
 }
 
 async function encodeResult(
-  c: { json: (body: unknown, status?: ContentfulStatusCode) => Response },
+  c: { json: (body: unknown, status?: ContentfulStatusCode) => Response } & { get: (key: 'requestId') => string | undefined },
   result: ChatResponse,
   endpoint: InferenceEndpoint,
   model: string,
@@ -173,9 +200,28 @@ async function encodeResult(
   const codec = endpoint.codec;
   if ('stream' in result) {
     const body = codec ? codec.encodeStream(result.stream, model) : result.stream;
+    // x-request-id 显式带上：raw Response 不走 Hono 的 c.header 合并路径，
+    // 缺它则流式客户端无法把账单/日志与本响应对齐（v1 对位；非流式 c.json 自动带）
     return new Response(body, {
       status: 200,
-      headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' },
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+        // nginx 反代默认 proxy_buffering on 会缓冲整条 SSE（首字节到达前攒满缓冲）——
+        // 显式关闭（v1 未设、生产 nginx 前置时的隐形卡流）
+        'x-accel-buffering': 'no',
+        'x-request-id': c.get('requestId') ?? '',
+      },
+    });
+  }
+  if ('rawBody' in result) {
+    return new Response(result.rawBody, {
+      status: 200,
+      headers: {
+        'content-type': result.rawContentType,
+        'x-request-id': c.get('requestId') ?? '',
+      },
     });
   }
   if (codec && result.status === 200) {

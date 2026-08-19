@@ -315,3 +315,69 @@ describe('error-map 单元（家谱穿透）', () => {
     expect(mapErrorToHttp(new Error('plain'))).toMatchObject({ status: 500, code: 'internal_error' });
   });
 });
+
+describe('plans grant（正位）+ billingPolicy', () => {
+  it('POST /v1/subscriptions/:id/grant → 加油包发放成功；旧 plans 路径 404', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const name = uid('grant');
+    const plan = (await (
+      await request('/v1/plans', { token, body: { name, kind: 'pack', price: 1, quotaAmount: 1 } })
+    ).json()) as { id: number };
+    const user = await newUserRow();
+    // grantPack 语义：加油包挂靠有效订阅（现金口径发放）——先给用户造一条生效订阅
+    const { userSubscriptions } = await import('@ai-gateway/db');
+    const subPlan = (await (
+      await request('/v1/plans', { token, body: { name: uid('sub'), kind: 'subscription', price: 10, quotaAmount: 100, periodDays: 30 } })
+    ).json()) as { id: number };
+    await db.insert(userSubscriptions).values({
+      userId: user,
+      planId: subPlan.id,
+      status: 0,
+      quantity: 1,
+      quotaAmount: '100',
+      usedAmount: '0',
+      reservedAmount: '0',
+      price: '10',
+      startAt: new Date(Date.now() - 60_000),
+      endAt: new Date(Date.now() + 30 * 86_400_000),
+    });
+    // 发放走现金口径（零价加油包=印刷机红线）：先给用户充值足够余额
+    await request(`/v1/users/${user}/gift`, { token, body: { amount: '100', remark: 'grant-test', idempotencyKey: `gt-${plan.id}-${user}` } });
+    // 正位路径（兼容别名已拆——前端已改调）
+    const grant = await request(`/v1/subscriptions/${plan.id}/grant`, {
+      token,
+      body: { userId: user },
+    });
+    expect(grant.status).toBe(200);
+    const legacy = await request(`/v1/plans/${plan.id}/grant`, { token, body: { userId: user } });
+    expect(legacy.status).toBe(404);
+  });
+
+  it('models 创建带 billingPolicy（多模态统一输入计费——网关在消费该字段）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const external = uid('mm');
+    const created = await request('/v1/models', {
+      token,
+      body: {
+        externalName: external,
+        realModel: `${external}-real`,
+        inputPrice: 0,
+        outputPrice: 0,
+        cacheInputPrice: 0,
+        isFree: true,
+        unitPrice: 0,
+        billingPolicy: {
+          version: 1,
+          billingMode: 'unified_input_tokens',
+          maxInputTokens: 128000,
+          modalities: { image: { maxItems: 4 } },
+        },
+      },
+    });
+    expect(created.status).toBe(201);
+    const row = (await created.json()) as { billingPolicy: { billingMode: string } | null };
+    expect(row.billingPolicy?.billingMode).toBe('unified_input_tokens');
+  });
+});

@@ -31,7 +31,7 @@ export async function rotateSecretAction(
 ): Promise<{ error?: string; clientSecret?: string }> {
   try {
     const res = await apiFetch<{ ok: boolean; clientSecret: string }>(
-      `/api/apps/${id}/rotate-secret`,
+      `/api/apps/${id}/rotate`,
       { method: "POST" },
     );
     revalidatePath("/dashboard/apps");
@@ -43,7 +43,8 @@ export async function rotateSecretAction(
 
 export async function deleteAppAction(id: number): Promise<{ error?: string }> {
   try {
-    await apiFetch<AppRow>(`/api/apps/${id}`, { method: "DELETE" });
+    // v2 正位：删除 = 禁用（应用不物理删除——历史计费归属保留）
+    await apiFetch(`/api/apps/${id}/disable`, { method: "POST" });
     revalidatePath("/dashboard/apps");
     return {};
   } catch (e) {

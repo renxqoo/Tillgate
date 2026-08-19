@@ -19,8 +19,20 @@ export interface UpstreamUsage {
 }
 
 export type UpstreamResult =
-  | { ok: true; body: Record<string, unknown>; usage?: UpstreamUsage }
-  | { ok: false; error: { code?: string; message?: string; deadCredential?: boolean } };
+  | {
+      ok: true;
+      body: Record<string, unknown>;
+      usage?: UpstreamUsage;
+      /** 二进制成功体（audio_speech——原样字节回传，JSON 信封会毁掉流） */
+      rawBody?: Uint8Array;
+      rawContentType?: string;
+    }
+  | {
+      ok: false;
+      /** 上游原始状态码（4xx 透传语义——客户端问题原码返回，不吞成 502） */
+      status?: number;
+      error: { code?: string; message?: string; deadCredential?: boolean };
+    };
 
 /** 流式结果（ai 包 ChatStreamResult 的端口形态——透传管道 + 终态事件） */
 export interface UpstreamStreamResult {
@@ -31,7 +43,7 @@ export interface UpstreamStreamResult {
 
 export type UpstreamStreamEvent =
   | { type: 'first_chunk' }
-  | { type: 'failed'; code?: string; message?: string; deadCredential?: boolean }
+  | { type: 'failed'; code?: string; message?: string; deadCredential?: boolean; status?: number }
   | {
       type: 'success';
       usage?: UpstreamUsage & { estimated: boolean };

@@ -3,11 +3,13 @@
  * 接受（事务内锁订阅行防 TOCTOU + 邀请原子翻转）/ 成员日限与移除。
  * 语义等价迁移自 v1 orgs.ts；SQL 全部走 org.repo 的原子方法。
  */
+import { Decimal } from '@ai-gateway/domain';
 import { randomUUID } from 'node:crypto';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { recordAudit } from '@ai-gateway/http';
 
 /** 邀请有效期（7 天）；待接受上限 = min(max(剩余席位,1) × 2, 20) */
 const INVITATION_TTL_MS = 7 * 86_400_000;
@@ -88,6 +90,10 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
       return Promise.all(
         memberships.map(async (m) => {
           const sub = await repos.subscription.findOrgSubscriptionDetail(runCtx, { orgId: m.orgId, now });
+          const remainingAmount =
+            sub != null
+              ? Decimal.max(new Decimal(sub.quotaAmount).minus(sub.usedAmount).minus(sub.reservedAmount), new Decimal(0)).toString()
+              : '0';
           return {
             orgId: m.orgId,
             name: m.name,
@@ -98,6 +104,7 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
             quotaAmount: sub?.quotaAmount ?? null,
             usedAmount: sub?.usedAmount ?? null,
             reservedAmount: sub?.reservedAmount ?? null,
+            remainingAmount,
           };
         }),
       );
@@ -146,6 +153,13 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
           expiresAt: new Date(now.getTime() + INVITATION_TTL_MS),
         }),
       );
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'org.invite',
+        targetType: 'org',
+        targetId: orgId,
+        detail: { invitationId: inserted.id, invitedEmail: email },
+      }).catch(() => undefined);
       return { invitationId: inserted.id, token: inserted.token };
     },
 
@@ -156,6 +170,13 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
         repos.org.revokeInvitation(inUserTx(ctx, userId, tx), { orgId, invitationId }),
       );
       if (!revoked) throw new AppError(404, 'invitation_not_found', '邀请不存在或已处理');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'org.invite_revoke',
+        targetType: 'org',
+        targetId: orgId,
+        detail: { invitationId },
+      }).catch(() => undefined);
     },
 
     async acceptInvitation(ctx, userId, token) {
@@ -191,6 +212,12 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
           throw new AppError(409, 'invitation_invalid', '邀请已被并发处理，请刷新重试');
         }
       });
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'org.invite_accept',
+        targetType: 'org',
+        targetId: inv.orgId,
+      }).catch(() => undefined);
       return { orgId: inv.orgId };
     },
 
@@ -213,6 +240,13 @@ export function createOrgService(deps: { db: Db; repos?: Repositories; clock?: (
         repos.org.removeMember(inUserTx(ctx, userId, tx), { orgId, userId: memberUserId }),
       );
       if (!removed) throw new AppError(404, 'org_member_not_found', '成员不存在');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'org.member_remove',
+        targetType: 'org',
+        targetId: orgId,
+        detail: { memberUserId },
+      }).catch(() => undefined);
     },
   };
 }

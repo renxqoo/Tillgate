@@ -18,6 +18,20 @@ const CONTEXT_LENGTH_MAX = 2_000_000_000;
 
 const price = z.coerce.number().min(0).finite().max(MONEY_MAX);
 
+
+/** 多模态统一输入计费策略（v1 对位：billingConfig 消费方在网关 build-quote/receipt） */
+const billingPolicySchema = z.object({
+  version: z.literal(1),
+  billingMode: z.literal('unified_input_tokens'),
+  maxInputTokens: z.number().int().positive(),
+  modalities: z
+    .object({
+      image: z.object({ maxItems: z.number().int().positive(), maxInlineBytes: z.number().int().positive().optional() }).optional(),
+      audio: z.object({ maxItems: z.number().int().positive(), maxInlineBytes: z.number().int().positive().optional() }).optional(),
+      file: z.object({ maxItems: z.number().int().positive(), maxInlineBytes: z.number().int().positive().optional() }).optional(),
+    })
+    .strict(),
+});
 const createSchema = z.object({
   externalName: z.string().min(1).max(64),
   realModel: z.string().min(1).max(128),
@@ -26,6 +40,7 @@ const createSchema = z.object({
   outputPrice: price,
   cacheInputPrice: price,
   isFree: z.boolean().optional(),
+  billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
   tpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
 });
@@ -39,6 +54,7 @@ const updateSchema = z.object({
   outputPrice: price.optional(),
   cacheInputPrice: price.optional(),
   isFree: z.boolean().optional(),
+  billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().nullable().optional(),
   tpmLimit: z.coerce.number().int().positive().nullable().optional(),
 });
@@ -87,6 +103,7 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
       isFree: body.isFree,
       rpmLimit: body.rpmLimit ?? null,
       tpmLimit: body.tpmLimit ?? null,
+      billingPolicy: body.billingPolicy ?? null,
     });
     return c.json(row, 201);
   });
@@ -103,6 +120,7 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         ...(body.contextLength !== undefined ? { contextLength: body.contextLength } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
         ...(body.isFree !== undefined ? { isFree: body.isFree } : {}),
+        ...(body.billingPolicy !== undefined ? { billingPolicy: body.billingPolicy } : {}),
         ...(body.rpmLimit !== undefined ? { rpmLimit: body.rpmLimit } : {}),
         ...(body.tpmLimit !== undefined ? { tpmLimit: body.tpmLimit } : {}),
         ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined

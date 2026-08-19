@@ -9,16 +9,23 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import { createRepositories } from '@ai-gateway/repository';
-import { verifySession } from '@ai-gateway/identity';
+import { verifySession, type SessionRevocationStore } from '@ai-gateway/identity';
 
 export interface SessionEnv {
   Variables: {
     requestId: string;
     adminId: number;
+    /** 当前会话 jti/exp（logout 吊销消费） */
+    sessionJti: string;
+    sessionExp: number;
   };
 }
 
-export function sessionMiddleware(db: Db, jwtSecret: string): MiddlewareHandler<SessionEnv> {
+export function sessionMiddleware(
+  db: Db,
+  jwtSecret: string,
+  revocationStore?: SessionRevocationStore,
+): MiddlewareHandler<SessionEnv> {
   const repos = createRepositories();
   return async (c, next) => {
     const header = c.req.header('authorization') ?? '';
@@ -49,7 +56,14 @@ export function sessionMiddleware(db: Db, jwtSecret: string): MiddlewareHandler<
     ) {
       return c.json({ error: { code: 'unauthorized', message: '会话无效或已过期' } }, 401);
     }
+    // jti 吊销表（登出/强制下线——fail-open，主防线是上方 DB 校验）
+    if (revocationStore && (await revocationStore.isRevoked(payload.jti))) {
+      return c.json({ error: { code: 'unauthorized', message: '会话已注销' } }, 401);
+    }
+
     c.set('adminId', adminId);
+    c.set('sessionJti', payload.jti);
+    c.set('sessionExp', payload.exp);
     await next();
   };
 }

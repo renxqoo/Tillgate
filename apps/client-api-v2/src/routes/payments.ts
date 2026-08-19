@@ -30,6 +30,14 @@ export function paymentsRoutes(service: PaymentsService, session: MiddlewareHand
     return c.json(result, 201);
   });
 
+  app.get('/v1/payments/orders/:id', session, async (c) => {
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      return c.json({ error: { code: 'invalid_request', message: '订单号非法' } }, 400);
+    }
+    return c.json(await service.orderDetail(userCtxOf(c), c.get('userId'), id));
+  });
+
   app.get('/v1/payments/orders', session, async (c) => {
     const query = listQuerySchema.parse(c.req.query());
     const rows = await service.listOrders(userCtxOf(c), c.get('userId'), query);

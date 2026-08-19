@@ -441,4 +441,46 @@ export class UsageLogRepository {
       .orderBy(desc(sql`sum(${usageLogs.amount})`))
       .limit(200);
   }
+
+  /** 按日聚合（v1 /api/usage/summary 对位——dashboard 趋势图数据源） */
+  async summarizeByDay(
+    c: RepoContext,
+    input: { userId: number; from?: Date; to?: Date },
+  ): Promise<
+    Array<{
+      date: string;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      cachedInputTokens: number;
+      cost: string;
+    }>
+  > {
+    const day = sql`to_char(${usageLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const conditions = [eq(usageLogs.userId, input.userId)];
+    if (input.from) conditions.push(gte(usageLogs.createdAt, input.from));
+    if (input.to) conditions.push(lte(usageLogs.createdAt, input.to));
+    const rows = await c.db
+      .select({
+        date: sql<string>`${day}`,
+        requests: sql<number>`count(*)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}),0)::bigint`,
+        outputTokens: sql<number>`coalesce(sum(${usageLogs.outputTokens}),0)::bigint`,
+        cachedInputTokens: sql<number>`coalesce(sum(${usageLogs.cachedInputTokens}),0)::bigint`,
+        cost: sql<string>`coalesce(sum(${usageLogs.amount}),0)::numeric::text`,
+      })
+      .from(usageLogs)
+      .where(and(...conditions))
+      .groupBy(day)
+      .orderBy(day);
+    // pg int8（bigint 聚合）回传为字符串——与 byModel 同口径映射为 number（前端图表数学）
+    return rows.map((row) => ({
+      date: row.date,
+      requests: Number(row.requests),
+      inputTokens: Number(row.inputTokens),
+      outputTokens: Number(row.outputTokens),
+      cachedInputTokens: Number(row.cachedInputTokens),
+      cost: row.cost,
+    }));
+  }
 }

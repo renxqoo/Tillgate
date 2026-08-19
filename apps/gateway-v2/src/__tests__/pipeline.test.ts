@@ -596,7 +596,7 @@ describe('runChat 单位计费（计量注册表接线）', () => {
     });
 
     const audioCtx = systemContext(randomUUID());
-    const result = await runChat(audioCtx, { userId, apiKeyId, rpmLimit: null, tpmLimit: null }, {
+    const result = await runChat(audioCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
       inferenceKind: 'audio_transcription',
       audioSeconds: 90.4,
@@ -629,7 +629,7 @@ describe('runChat 单位计费（计量注册表接线）', () => {
     });
 
     const imageCtx = systemContext(randomUUID());
-    const result = await runChat(imageCtx, { userId, apiKeyId, rpmLimit: null, tpmLimit: null }, {
+    const result = await runChat(imageCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
       inferenceKind: 'images',
       prompt: 'a cat',
@@ -695,7 +695,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
 
     const lowCtx = systemContext(randomUUID());
     const { userId, apiKeyId } = await newUserWithBalance('0.15');
-    const result = await runChat(lowCtx, { userId, apiKeyId, rpmLimit: null, tpmLimit: null }, body(seeded.model));
+    const result = await runChat(lowCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model));
     expect(result.status).toBe(200);
     createdRequests.push(lowCtx.requestId);
     const row = await billingRow(lowCtx.requestId);
@@ -740,7 +740,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     });
 
     const videoCtx = systemContext(randomUUID());
-    const result = await runChat(videoCtx, { userId, apiKeyId, rpmLimit: null, tpmLimit: null }, {
+    const result = await runChat(videoCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
       inferenceKind: 'video',
       duration: 4,
@@ -771,7 +771,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     });
 
     const floorCtx = systemContext(randomUUID());
-    const result = await runChat(floorCtx, { userId, apiKeyId, rpmLimit: null, tpmLimit: null }, body(seeded.model));
+    const result = await runChat(floorCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model));
     expect(result.status).toBe(200);
     createdRequests.push(floorCtx.requestId);
 

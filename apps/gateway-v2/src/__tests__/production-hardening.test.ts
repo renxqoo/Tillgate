@@ -48,6 +48,7 @@ function fakeLimiter(plan: Record<string, () => RateLimitResult>): SlidingWindow
     async reserveTpmAll(dims) { for (const d of dims) { const r = decide(d.dimension); if (!r.allowed) return r; } return { allowed: true }; },
     async releaseTpm(requestId) { released.push(requestId); },
     async renewTpm() { /* 流式续租不在本套件 */ },
+    async backfillTpm() { /* 结算回填在 worker 侧 */ },
   };
 }
 

@@ -35,6 +35,11 @@ const schema = z.object({
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   /** 免费模型每日请求上限/用户（免费链路唯一防线——计数器不可用 fail-closed） */
   FREE_MODEL_DAILY_LIMIT: z.coerce.number().int().positive().default(100),
+  /** 用户级限流兜底（凭证/Scope 均未声明时生效——v1 对位；0 = 不限） */
+  DEFAULT_USER_RPM: z.coerce.number().int().min(0).default(60),
+  DEFAULT_USER_TPM: z.coerce.number().int().min(0).default(1_000_000),
+  /** 全局 RPM 上限（所有请求并罚 global 维；生产强制 ≤5000——v1 对位） */
+  GLOBAL_RPM: z.coerce.number().int().min(0).default(2_000),
   /** 上游调用总预算（ms——deadlineMs 传入 ai 包重试/熔断面） */
   GATEWAY_UPSTREAM_DEADLINE_MS: z.coerce.number().int().positive().default(120_000),
   /** 上游连接+响应头（TTFB）预算（ms——慢上游的非流式长生成需放宽；默认 10s 同 v1） */
@@ -59,10 +64,15 @@ const schema = z.object({
 export type GatewayConfig = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
-  return schema.parse({
+  const parsed = schema.parse({
     ...env,
     // 渠道密钥：专用名优先，缺省回落 .env 规范键 ENCRYPTION_KEY（两处都未配置 =
     // 启动即失败——fail-closed，不带默认值）
     CHANNEL_API_KEY_ENCRYPTION: env.CHANNEL_API_KEY_ENCRYPTION ?? env.ENCRYPTION_KEY,
   });
+  // 生产硬顶（v1 对位）：全局闸是护栏不是配额误配的放大器
+  if (process.env.NODE_ENV === 'production' && parsed.GLOBAL_RPM > 5_000) {
+    return { ...parsed, GLOBAL_RPM: 5_000 };
+  }
+  return parsed;
 }

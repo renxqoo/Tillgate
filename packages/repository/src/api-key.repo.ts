@@ -319,4 +319,9 @@ export class ApiKeyRepository {
     return rows[0] ?? null;
   }
 
+
+  /** Key 配额串行化（v1 对位：count→insert 竞态双击可超限——advisory xact lock 防并发突破） */
+  async advisoryLockKeyQuota(c: RepoContext, userId: number): Promise<void> {
+    await c.db.execute(sql`select pg_advisory_xact_lock(hashtext('api-key-quota'), ${userId})`);
+  }
 }

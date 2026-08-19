@@ -55,6 +55,7 @@ export interface ModelsService {
       contextLength?: number | null;
       prices: ModelPricesInput;
       isFree?: boolean;
+      billingPolicy?: Record<string, unknown> | null;
       rpmLimit?: number | null;
       tpmLimit?: number | null;
     },
@@ -71,6 +72,7 @@ export interface ModelsService {
         status?: number;
         prices?: Partial<ModelPricesInput>;
         isFree?: boolean;
+        billingPolicy?: Record<string, unknown> | null;
         rpmLimit?: number | null;
         tpmLimit?: number | null;
       };
@@ -148,6 +150,7 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
           outputPrice: input.prices.outputPrice,
           cacheInputPrice: input.prices.cacheInputPrice,
           isFree,
+          billingPolicy: (input.billingPolicy ?? null) as Record<string, unknown> | null,
           rpmLimit: input.rpmLimit ?? null,
           tpmLimit: input.tpmLimit ?? null,
         }),

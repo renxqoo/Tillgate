@@ -8,6 +8,7 @@ import { createRepositories, type AppRow, type Repositories } from '@ai-gateway/
 import { generateClientId, generateClientSecret, sha256Hex } from '@ai-gateway/http';
 import type { RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { recordAudit } from '@ai-gateway/http';
 
 const asUser = (ctx: RunContext, userId: number): RunContext => ({
   ...ctx,
@@ -38,7 +39,7 @@ export interface AppsService {
   ): Promise<{ id: number; clientSecret: string }>;
 }
 
-export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: () => Date }): AppsService {
+export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: () => Date; maxAppsPerUser?: number }): AppsService {
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
   const clock = deps.clock ?? (() => new Date());
@@ -58,8 +59,17 @@ export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: 
         }
       }
       const clientSecret = generateClientSecret();
-      const row = await db.transaction(async (tx) =>
-        repos.apps.insertApp({ db: tx, ...runCtx }, {
+      const row = await db.transaction(async (tx) => {
+        // App 配额闸（v1 对位：无闸可无限建 App）——advisory lock 防双击竞态
+        if (deps.maxAppsPerUser != null) {
+          const c = { db: tx, ...runCtx };
+          await repos.apps.advisoryLockAppQuota(c, userId);
+          const active = await repos.apps.countActiveByUser(c, userId);
+          if (active >= deps.maxAppsPerUser) {
+            throw new AppError(409, 'app_limit_reached', `在用 App 数已达上限 ${deps.maxAppsPerUser}`);
+          }
+        }
+        return repos.apps.insertApp({ db: tx, ...runCtx }, {
           appId: randomUUID().replace(/-/g, '').slice(0, 32),
           userId,
           clientId: generateClientId(),
@@ -68,8 +78,15 @@ export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: 
           description: input.description ?? null,
           subscriptionId,
           scope: input.scope ?? null,
-        }),
-      );
+        });
+      });
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'app.create',
+        targetType: 'app',
+        targetId: row.id,
+        detail: { name: input.name },
+      }).catch(() => undefined);
       // 明文唯一一次出库
       return { ...row, clientSecret };
     },
@@ -92,6 +109,12 @@ export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: 
         repos.apps.disableApp({ db: tx, ...runCtx }, { userId, appId }),
       );
       if (!disabled) throw new AppError(409, 'app_already_disabled', 'App 已禁用');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'app.disable',
+        targetType: 'app',
+        targetId: appId,
+      }).catch(() => undefined);
     },
 
     async rotateSecret(ctx, userId, appId) {
@@ -108,6 +131,12 @@ export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: 
         }),
       );
       if (!rotated) throw new AppError(404, 'app_not_found', 'App 不存在');
+      await recordAudit(deps.db, {
+        actor: 'user',
+        action: 'app.rotate_secret',
+        targetType: 'app',
+        targetId: appId,
+      }).catch(() => undefined);
       return { id: appId, clientSecret };
     },
   };

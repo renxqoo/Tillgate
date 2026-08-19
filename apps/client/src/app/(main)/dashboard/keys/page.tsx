@@ -50,11 +50,11 @@ export default async function KeysPage({ searchParams }: PageProps) {
     }
     try {
       const orgs = await apiFetch<{
-        list: Array<{ name: string; subscriptionId: number | null; subscriptionName: string | null }>;
+        rows: Array<{ name: string; subscriptionId: number | null; planName: string | null }>;
       }>("/api/orgs");
-      for (const o of orgs.list ?? []) {
+      for (const o of orgs.rows) {
         if (o.subscriptionId != null) {
-          subscriptions.push({ id: o.subscriptionId, label: `${o.name} · ${o.subscriptionName ?? "套餐"}` });
+          subscriptions.push({ id: o.subscriptionId, label: `${o.name} · ${o.planName ?? "套餐"}` });
         }
       }
     } catch {

@@ -18,6 +18,7 @@ await assertRedisReachable(startupRedis, 'client-api-v2', config.REDIS_URL);
 await startupRedis.quit().catch(() => {});
 const assembly = assembleClientApi(config, db);
 const app = createApp({
+    revocationStore: assembly.revocationStore,
   db,
   assembly,
   jwtSecret: config.JWT_SECRET,

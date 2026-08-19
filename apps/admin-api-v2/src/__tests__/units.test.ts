@@ -357,3 +357,33 @@ describe('idParam 非法分支全路由扫尾', () => {
     }
   });
 });
+
+describe('通知渠道 secret 落库加密', () => {
+  it('create 后 config.secret 为 enc: 密文（读取侧掩码不变）', async () => {
+    const { token } = await newAdmin();
+    const { request } = buildTestApp();
+    const created = await request('/v1/notifications', {
+      token,
+      body: {
+        name: uid('sec'),
+        type: 'webhook',
+        config: { url: 'https://hooks.example.test/x', secret: 'whsec-plain-123456' },
+        events: ['billing_dead'],
+      },
+    });
+    expect(created.status).toBe(201);
+    const row = (await created.json()) as { id: number; config: { secret?: string } };
+    // 读取侧：掩码（不回明文也不回密文全文）
+    expect(row.config.secret).toMatch(/^\*\*\*\*/);
+    // 落库侧：密文前缀（直接查库验证）
+    try {
+      const stored = await db.$client.query<{ config: { secret?: string } }>(
+        'select config from notification_channels where id = $1', [row.id],
+      );
+      expect(stored.rows[0]!.config.secret!.startsWith('enc:')).toBe(true);
+    } finally {
+      // 断言失败也不残留渠道（残留渠道会匹配 worker 派发→连带他测试投递失败）
+      await request(`/v1/notifications/${row.id}`, { method: 'DELETE', token }).catch(() => undefined);
+    }
+  });
+});

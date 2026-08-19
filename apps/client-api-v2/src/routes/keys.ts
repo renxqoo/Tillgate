@@ -19,9 +19,11 @@ const createSchema = z.object({
   remark: z.string().max(255).optional().nullable(),
   rpmLimit: z.number().int().positive().max(1_000_000).optional().nullable(),
   tpmLimit: z.number().int().positive().max(100_000_000).optional().nullable(),
-  // 结构性金额校验（拒科学计数法/超尺度——防 numeric(38,18) 溢出 500）
+  // 结构性金额校验（拒科学计数法/超尺度——防 numeric(38,18) 溢出 500）。
+  // number|string 双收：v1 前端发 number（表单 parse 出数值）——只收 string 会 400
   dailySpendLimit: z
-    .string()
+    .union([z.string(), z.number()])
+    .transform((v) => String(v))
     .refine(isValidDailySpendLimitInput, '必须为正金额（过大或格式非法）')
     .optional()
     .nullable(),
@@ -43,7 +45,8 @@ const patchSchema = z.object({
   rpmLimit: z.number().int().positive().max(1_000_000).nullable().optional(),
   tpmLimit: z.number().int().positive().max(100_000_000).nullable().optional(),
   dailySpendLimit: z
-    .string()
+    .union([z.string(), z.number()])
+    .transform((v) => String(v))
     .refine(isValidDailySpendLimitInput, '必须为正金额（过大或格式非法）')
     .nullable()
     .optional(),

@@ -208,8 +208,121 @@ apps/
 > 逻辑；OTEL_TRACES_MODE=off 不参与链路，开 otlp 时由 collector 直对接。
 > 管理面 tracing 查询（admin-api-v2 /v1/tracing/* 五端点）读同一 PG 存储，
 > 与 receiver 写侧天然兼容。
-> 低优先遗留：TPM actual 结算回填。
+> ~~低优先遗留：TPM actual 结算回填~~（2026-08-20 §11 Wave1 已补：backfillTpm + onSettled 钩子）。
 > v1/v2 共存清理（删 v1 应用代码）仍待用户逐项确认。
+
+## §11 v1 退役验收：对位缺口全部补齐（2026-08-19/20，R 系列四波）
+
+删 v1 前的深度验收发现「v2 已全覆盖」不成立（字段级形状/worker 后台循环/前端消费契约
+三大盲区，含 v1 修过的 bug 回归）。本批在 feat/remove-v1 分支全部补齐 + 测试钉死，
+全仓门禁 32/32 绿。
+
+### Wave 1 worker 资损防线（v1 四循环对位）
+- 通知投递 runNotifyDispatch（webhook HMAC + email + 3 次退避终态）
+- 周期对账哨兵 runReconcile（wallet verifyInvariants + reconcile_discrepancy 入箱）
+- 分区维护 trace_spans + request_logs（缺位 = 窗口后插入失败）
+- TPM 回填 backfillTpm（core limiter 新方法：释放预占 + actual 记账 + projected 幂等；
+  缺位时成功请求预占只能等 TTL——TPM 越用越紧）
+- settlement 钩子 onSettled/onDead（事务外 best-effort：TPM 回填 + balance_low/billing_dead 入箱）
+- 健康端点 livez/readyz/health(令牌)；WORKER_HEALTH_PORT=0 测试隔离
+
+### Wave 2 前端联动（v2 自身 bug，双轨别名兼容）
+apps DELETE/:id 与 rotate-secret 别名；keys 返回 key=plaintext；redeem history id；
+org 列表补 id/subscriptionName/remainingAmount + list/total 信封；订阅列表「生效中个人
+订阅置顶」+ remainingAmount/renewPrice/planPrice/remainingValue；金额字段 number|string
+双收；BODY_LIMIT 8MB（playground 3.2MB 白名单上限可工作）；admin plans/:id/grant 别名；
+models billingPolicy 全链路（schema→service→repo insert/回显）。
+
+### Wave 3 安全与语义
+- 登录锁 DoS 回归修复（用户面+管理面）：锁维度 (email,ip)、正确密码永远放行并清零、
+  错误密码在已锁后 429+Retry-After（v1「02 修复」语义恢复）
+- 注册恒两步 fail-closed（无 SMTP=503 绝不单步建号；EMAIL_CODE_REQUIRED 只管登录）
+- 固定窗口计数器 Lua 原子化（v1 修过的无 TTL 键坑不重蹈）
+- keys/apps 配额 advisory lock + 100/100；rotate-secret FOR UPDATE 行锁
+- 订单先落库后建渠道（占位单号 + attach 回填——渠道会话无 DB 行的资金黑洞封死）
+- 订单详情端点 + failureReason；支付回调 v1 旧路径别名（epay GET/stripe POST）
+- page_size 别名 ×6 + wallet nextCursor；me 补 rateCard/status/rpm/tpm/lastLoginAt；
+  usage/summary 按日聚合；个性化定价 /v1/pricing/personal（费率卡系数×到手价）+ contextLength
+- 用户面审计（key/app/org/密码/昵称）+ 管理面登录事件审计；redeem revoked 码区分；
+  verify schema 收紧（uuid+6 位码）；通知渠道 type 冻结；CORS Max-Age；FE 密码提示 10 位
+
+### Wave 4 测试（19 个新用例）
+- client-api frontend-contract.test（11 例：apps 动词/keys 字段/org 形状/订阅置顶/
+  number 金额/page_size/订单详情/回调别名/注册 fail-closed）
+- worker parity-loops.test（5 例：webhook 签名/无渠道终态/TPM 回填幂等/健康端点/balance_low dedupe）
+- gateway v1-parity.test（3 例：livez/engines 别名/SSE x-request-id）
+- admin coverage-gaps +2（plans grant 别名含现金口径语义/billingPolicy 落库回显）
+- 既有测试按新语义更新（注册两步/登录锁正确密码放行/aff 归因改 service 直调）
+
+### 终审轮（2026-08-20，三路深度复审：上轮补齐验证 + 新 bug + fail-open 全库扫描）
+
+三路并行审计（client/admin+gateway/worker+共享包）发现 7 个高危并当日全部修复：
+
+- **P0 SSRF 硬门缺失**：gateway-v2/worker-v2 的 ALLOW_LOCAL_URL 无 NODE_ENV 生产联锁
+  （admin-v2 有）——生产误配 env 即可打内网/元数据地址。已补双门。
+- **plans grant 别名不幂等**（上轮自引入）：operationId 带 Date.now() → 重试双扣现金。
+  已改 operationId(c)（尊重 idempotency-key 头）。
+- **admin 登录 IP 桶塌缩**（上轮漏网）：路由层 socketAddress null → 30 次失败锁死全进程
+  管理员。已注入真实 socket 地址。
+- **每用户 RPM/TPM 限额完全未执行**（上轮漏网）：users.rpm/tpm_limit 管理端可设但无消费方，
+  v1 的 DEFAULT_USER_RPM 兜底也没了。已恢复：凭证级 > 用户级 > 全局兜底（60RPM/1M TPM）
+  三级合成（effectiveLimit），静态 Key/app_jwt/playground 三分支全覆盖 + 表驱动测试。
+- **playground JWT 不查属主状态**：封禁用户存量 JWT 在 TTL 内照用。已加 findActiveUserById
+  核验 + 封禁 401 测试。
+- **Stripe 两处资金边**（上轮自引入）：v1 别名 webhook 恒 200（fail 不重试=钱收了不入账）→
+  改 400-on-fail；attach 失败被吞 + client_reference_id 丢弃 → 回退锚定位（merchantOrderId）。
+- P1 批：summarizeByDay bigint→number、渠道下单失败关单+502、register 429 Retry-After、
+  jwtVerify HS256 白名单、2FA 验证成功审计、org remainingAmount clamp、planPrice coalesce、
+  backfillTpm 零额也释放预占、worker-v2 compose healthcheck、SSE X-Accel-Buffering:no
+  （nginx 前置反代缓冲卡流——v1 也缺的运维地雷）+ connection:keep-alive。
+
+fail-open 全库扫描结论（B 表 21 项）：v2 资金/鉴权主干全部 fail-closed（限流器/爆破锁/
+免费日限/计数器/会话/OAuth state 默认关）；可接受的 best-effort（告警入箱/遥测/缓存失效）
+按 P2 记录在案；v1 遗留 fail-open（login-throttle/CSRF/cache 失效）只被 v1 消费——删 v1
+时随之消亡。终审后全仓门禁 32/32 绿（新增 final-hardening.test 2 例）。
+
+### 第三轮独立终审 + 兼容层拆除（2026-08-20，用户决策：不留任何 v1 双轨）
+
+第三路独立代理扫描抓出 4 个全新 HIGH 真 bug（当日全修）+ MEDIUM 批：
+
+- **appId 未传 billing**（资金 bug）：App-JWT 的订阅绑定丢失 → 全部错走 PAYG。
+  run-chat/submit/receipt 全链补齐 appId + credentialType（jwt/key）。
+- **音频二进制返回 {}**：rawBody 在适配层被丢——audio_speech 端点坏。三层透传修复
+  （adapter→ChatResponse binary 形态→encodeResult 原样字节回传）。
+- **上游 4xx 不透传**：客户端错误被吞成 502 且遍历全部 fallback（白耗上游调用与预占）。
+  4xx 原码返回 + 退出候选循环；纯渠道耗尽恢复 v1 的 503 no_available_channel。
+- **JWT scope.models 白名单缺失**：v1 企业 App 限模型能力丢失。/oauth/token 全量签
+  scope → middleware 解析 allowedModels → chat/submit 预扣前 403 + /v1/models 列表过滤。
+- MEDIUM：requestSummary 恢复（截断 model/stream/max_tokens）、model NUL 守卫、
+  billing_dead 补 userId、/oauth/token per-clientId 爆破锁（IP 轮换绕不过）、
+  models/:model 的 Gemini 前缀剥离。
+
+**兼容层全部拆除（用户拍板「不要兼容老代码的逻辑」）**——v2 只剩单一正位形态，
+前端/api-client 同步改直连：apps disable/rotate 正位动词（DELETE/rotate-secret 别名删）、
+keys 明文只回 plaintext（key 字段删）、orgs 只回 orgId/planName/rows 信封（id/
+subscriptionName/list 删）、redeem 只回 codeId、支付旧回调路径删（**运维清单：EPAY 后台
+与 Stripe webhook 须指向 /v1/payments/notify/:provider**）、admin grant 只走
+/v1/subscriptions/:id/grant、分页只认 page+limit（page_size 删，api-client buildListQuery
+改发 limit）、Paginated 只读 rows。contract 测试全部改为断言正位 + 旧别名 404。
+
+**三个留档项全部补齐（同日）**：
+- **限流并罚制**：admitKey 改多维原子（limiter.checkAll/reserveTpmAll——core 原语已在，
+  此前未用）：凭证维 + 用户维各自生效任一超限即拒（高限额 Key 不可越用户帽）；模型维
+  TPM 预占（主+fallback mappingId 一并占，v1 reserveFallbackDims 语义）。旧 effectiveLimit
+  择优制删除；final-hardening 测试钉死「用户帽 2 + 凭证 1000 → 第 3 次被用户维拒绝」。
+- **/v1/models 协议形状**：anthropic-version 头 → Anthropic 列表形、x-goog-api-key →
+  Gemini models/ 形（v1 对位移植）。
+- **v1beta Gemini 原生入口**：/v1beta/models/:model:generateContent|:streamGenerateContent
+  上线——转换函数本就在共享包 packages/ai（与出站共用一套真相），只差路由接线；
+  鉴权/白名单/计费/限流与全部端点同管线。至此 v1 gateway 已知功能缺口清零。
+  前后端 production build 通过，全仓门禁 32/32 绿（v1-parity 6 例）。
+
+### 遗留（复验后处理）
+- playground JWT 不带 rateCardId：v2 buildQuote 按 userId 查费率卡——已个性化，无需修
+- ~~v1beta Gemini 原生入口未移植~~（2026-08-20 第三轮后续已补：见下方三留档项补齐段）
+- nginx 切 v2 + 删 v1 待用户最终确认（本分支已具备验收条件）
+- **支付回调 URL 迁移（兼容层拆除后成为强制项）**：EPAY 后台 notify_url 与 Stripe
+  webhook 端点必须指向 /v1/payments/notify/epay|stripe——旧路径已 404，漏配=充值不入账
 
 ## §10 生产上线前资金安全大审查（2026-08-19，D 系列刷费用专项）
 
@@ -303,10 +416,20 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
 ### 已知未修（记录在案，非阻断上线）
 
 - admin 无 RBAC（所有管理员等价超管）——产品设计决策，建议尽快排期角色/双人来管控。
-- 通知渠道 webhook secret 存储侧未加密（读取侧已掩码）；渠道 apiKeyEnc 已加密（对照项）。
 - 凭证文件存本地磁盘 ./data/vouchers——多副本部署需先迁共享存储。
-- Bearer 会话无 jti 吊销表（改密/封禁即全量失效，泄露令牌最长活 TTL）。
 - /v1/pricing 公开无缓存（低危：读多写少，可在 nginx 层加）。
+
+> 2026-08-20 三项加固完成并从上表移除：
+> ① **jti 吊销表**（Bearer 会话即时下线）：identity 新增 SessionRevocationStore（Redis
+>   SETEX 至令牌自然过期，免 GC；故障 fail-open+告警——主防线 DB 属主校验仍 fail-closed）；
+>   client/admin 双面 middleware 验签后查表；新增 POST /v1/auth/logout（吊销当前 jti），
+>   两端 FE 登出先吊销再清 cookie；测试钉死「logout → 同 token 立即 401」。
+> ② **global RPM 维**：admitKey 并罚加 global 维（config GLOBAL_RPM 默认 2000，生产
+>   硬顶 5000——v1 对位），至此并罚维度 = 凭证+用户+global(+渠道+模型 TPM)。
+> ③ **webhook secret 落库加密**：admin 写入侧 encrypt（enc:v1，与渠道 apiKeyEnc 同口径），
+>   create/list/patch 响应一律掩码（密文也不回显）；worker 派发侧按前缀解密（存量明文
+>   懒兼容，解密失败 fail-closed 该渠道不可投递）；迁移脚本
+>   scripts/encrypt-notification-secrets.ts（幂等，dry-run 默认）。
 
 ## §9 v2 全面审计与加固（2026-08-19/20，25 项清单 + 施工记录）
 

@@ -123,3 +123,39 @@ export async function verifySession(
     iatMs: (payload as { iatMs?: number }).iatMs,
   };
 }
+
+// ── jti 吊销表（P1 落地：单会话强制下线）────────────────────────────────────
+// Redis SETEX 存活至令牌自然过期——无需 GC；登出/管理员强制下线写键，
+// 验签后查询命中即拒。故障语义 fail-open + 告警：吊销是增强层（主防线是
+// DB 属主实时校验 + sessionInvalidBefore，均 fail-closed），Redis 抖动不应
+// 把全站会话打成不可用。
+
+export interface SessionRevocationStore {
+  /** 吊销一个会话（remainingTtlSec = 令牌剩余有效期，键随过期自动消亡） */
+  revoke(jti: string, remainingTtlSec: number): Promise<void>;
+  /** 是否已吊销（故障时返回 false 并告警——fail-open 语义见上） */
+  isRevoked(jti: string): Promise<boolean>;
+}
+
+export function createRedisSessionRevocationStore(
+  redis: { set(key: string, value: string, mode: 'EX', ttl: number): Promise<unknown>; get(key: string): Promise<string | null> },
+  options: { logger?: { warn(obj: unknown, msg: string): void }; prefix?: string } = {},
+): SessionRevocationStore {
+  const prefix = options.prefix ?? 'session:rev';
+  const logger = options.logger;
+  return {
+    async revoke(jti, remainingTtlSec) {
+      // 剩余 ≤0 的令牌本就过期——无需落键
+      if (remainingTtlSec > 0) await redis.set(`${prefix}:${jti}`, '1', 'EX', remainingTtlSec);
+    },
+    async isRevoked(jti) {
+      try {
+        return (await redis.get(`${prefix}:${jti}`)) != null;
+      } catch (error) {
+        logger?.warn({ err: (error as Error).message, jti }, 'session revocation lookup failed (fail-open; DB checks remain authoritative)');
+        return false;
+      }
+    },
+  };
+}
+

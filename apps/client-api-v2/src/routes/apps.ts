@@ -56,5 +56,6 @@ export function appsRoutes(service: AppsService, session: MiddlewareHandler<Sess
     return c.json(result);
   });
 
+
   return app;
 }

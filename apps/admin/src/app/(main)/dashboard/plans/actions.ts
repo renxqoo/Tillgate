@@ -80,7 +80,7 @@ export async function grantPackAction(
 ): Promise<{ error?: string }> {
   if (!Number.isInteger(userId) || userId <= 0) return { error: "请输入有效用户 ID" };
   try {
-    await adminFetch(`/api/admin/plans/${planId}/grant`, { method: "POST", body: { userId } });
+    await adminFetch(`/api/admin/subscriptions/${planId}/grant`, { method: "POST", body: { userId } });
     revalidatePath("/dashboard/plans");
     return {};
   } catch (e) {

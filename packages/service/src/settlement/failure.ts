@@ -14,6 +14,8 @@ export interface FailureEnv {
   /** 失败策略参数（装配必填——最大尝试/退避不写死） */
   policy: SettleFailurePolicyConfig;
   repos?: Repositories;
+  /** 死信钩子（billing_dead 告警入箱；事务外 best-effort） */
+  onDead?: (data: { requestId: string; failureClass: string; attempt: number; lastError: string }) => void;
 }
 
 export type FailureOutcome = 'retried' | 'dead';
@@ -49,9 +51,17 @@ export function createFailureUseCase(env: FailureEnv) {
         },
       ),
     );
-    if (!changed) {
-      // 认领已被回收/接管：幂等让位（recover 已重排，或并发方已处置）
-      return decision.dead ? 'dead' : 'retried';
+    if (changed && decision.dead) {
+      try {
+        env.onDead?.({
+          requestId: claim.requestId,
+          failureClass: decision.failureClass,
+          attempt: claim.attempt,
+          lastError,
+        });
+      } catch (hookError) {
+        console.error(`[settlement] onDead hook failed request=${claim.requestId}:`, hookError);
+      }
     }
     return decision.dead ? 'dead' : 'retried';
   };

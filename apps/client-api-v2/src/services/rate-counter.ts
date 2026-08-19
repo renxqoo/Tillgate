@@ -12,11 +12,16 @@ export interface FixedWindowCounter {
 }
 
 export function createRedisFixedWindowCounter(redis: Redis, prefix: string): FixedWindowCounter {
+  // INCR+EXPIRE 单脚本原子化：两步写法在「首 INCR 后进程崩溃」窗口会留下无 TTL
+  // 键 → 该桶永久计数、用户被永久 429（v1 用 Lua 修过同一坑——v2 不重蹈）
+  const script = `
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1])) end
+return n
+` as string;
   return {
     async hit(key, windowS) {
-      const k = `${prefix}:${key}`;
-      const n = await redis.incr(k);
-      if (n === 1) await redis.expire(k, windowS);
+      const n = (await redis.eval(script, 1, `${prefix}:${key}`, windowS)) as number;
       return n;
     },
   };

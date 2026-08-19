@@ -8,6 +8,7 @@ import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories, type NotificationChannelRow } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
+import { encrypt } from '@ai-gateway/core';
 
 export const NOTIFY_EVENTS = ['channel_disabled', 'reconcile_discrepancy', 'billing_dead', 'balance_low'] as const;
 export type NotifyEvent = (typeof NOTIFY_EVENTS)[number];
@@ -21,6 +22,8 @@ export interface NotificationChannelInput {
 }
 
 export interface NotificationsServiceDeps {
+  /** config.secret 落库加密密钥（core.encrypt enc:v1——与渠道 apiKeyEnc 同口径） */
+  encryptionKey: string;
   db: Db;
   repos?: Repositories;
 }
@@ -41,6 +44,18 @@ export interface NotificationsService {
 function maskSecret(secret: string): string {
   if (!secret) return '****';
   return `****${secret.slice(-4)}`;
+}
+
+/** 写入侧加密（v2 加固）：config.secret 落库为 enc:v1 密文（与渠道 apiKeyEnc 同口径）。
+ *  读取侧掩码不变；worker 派发时按前缀解密——存量明文兼容（读取时非 enc: 前缀原样用）。 */
+function encryptNotificationConfig(
+  config: Record<string, unknown> | undefined,
+  encryptionKey: string,
+): Record<string, unknown> | undefined {
+  if (config == null || typeof config.secret !== 'string' || config.secret === '' || config.secret.startsWith('enc:')) {
+    return config;
+  }
+  return { ...config, secret: encrypt(config.secret, encryptionKey) };
 }
 
 function assertChannelInput(input: { type?: string; config?: { url?: string; secret?: string; recipients?: string[] }; events?: string[] }): void {
@@ -68,6 +83,7 @@ function assertChannelInput(input: { type?: string; config?: { url?: string; sec
 export function createNotificationsService(deps: NotificationsServiceDeps): NotificationsService {
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
+  const encryptionKey = deps.encryptionKey;
 
   return {
     async list(ctx) {
@@ -87,13 +103,24 @@ export function createNotificationsService(deps: NotificationsServiceDeps): Noti
     async create(ctx, input) {
       assertChannelInput(input);
       try {
-        return await repos.notification.insert({ db, ...ctx }, {
+        const row = await repos.notification.insert({ db, ...ctx }, {
           name: input.name,
           type: input.type,
-          config: input.config as Record<string, unknown>,
+          config: encryptNotificationConfig(input.config as Record<string, unknown> | undefined, encryptionKey) as Record<string, unknown>,
           events: input.events,
           status: input.status,
         });
+        // 响应侧掩码（与 list/patch 同口径——密文也不回显，防库转储外的二次扩散）
+        if (row.config && typeof row.config === 'object' && 'secret' in (row.config as Record<string, unknown>)) {
+          return {
+            ...row,
+            config: {
+              ...(row.config as Record<string, unknown>),
+              secret: maskSecret(String((row.config as Record<string, unknown>).secret)),
+            },
+          };
+        }
+        return row;
       } catch (e) {
         if ((e as { code?: string }).code === '23505') {
           throw new AppError(409, 'conflict', '同名渠道已存在');
@@ -109,7 +136,9 @@ export function createNotificationsService(deps: NotificationsServiceDeps): Noti
         channelId: input.channelId,
         patch: {
           ...input.patch,
-          ...(input.patch.config !== undefined ? { config: input.patch.config as Record<string, unknown> } : {}),
+          ...(input.patch.config !== undefined
+            ? { config: encryptNotificationConfig(input.patch.config as Record<string, unknown> | undefined, encryptionKey) as Record<string, unknown> }
+            : {}),
         },
       });
       if (!row) throw new AppError(404, 'not_found', '渠道不存在');

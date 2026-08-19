@@ -17,6 +17,7 @@ function tx(c: RepoContext): DbTx {
 export interface PaymentOrderRow {
   id: string;
   provider: string;
+  /** 渠道单号（列 notNull：先落库时以本单 orderId 占位——epay 即终值；Stripe 建会话后回填真实 session id） */
   providerOrderId: string;
   userId: number;
   amount: string;
@@ -56,6 +57,29 @@ export class PaymentOrderRepository {
       })
       .returning(this.projection);
     return row!;
+  }
+
+  /** 订单详情（属主域——前端支付后轮询用） */
+  async findByUserAndId(
+    c: RepoContext,
+    input: { userId: number; orderId: string },
+  ): Promise<PaymentOrderRow | null> {
+    const [row] = await c.db
+      .select(this.projection)
+      .from(paymentOrders)
+      .where(and(eq(paymentOrders.id, input.orderId), eq(paymentOrders.userId, input.userId)));
+    return row ?? null;
+  }
+
+  /** 渠道会话建立后回填单号（回调定位锚） */
+  async attachProviderOrderId(
+    c: RepoContext,
+    input: { orderId: string; providerOrderId: string },
+  ): Promise<void> {
+    await tx(c)
+      .update(paymentOrders)
+      .set({ providerOrderId: input.providerOrderId, updatedAt: sql`clock_timestamp()` })
+      .where(and(eq(paymentOrders.id, input.orderId), eq(paymentOrders.status, 0)));
   }
 
   /** 渠道单号定位（回调路径；provider+providerOrderId 唯一） */
@@ -178,6 +202,7 @@ export class PaymentOrderRepository {
     currency: paymentOrders.currency,
     creditAmount: paymentOrders.creditAmount,
     status: paymentOrders.status,
+    failureReason: paymentOrders.failureReason,
     createdAt: paymentOrders.createdAt,
     paidAt: paymentOrders.paidAt,
     creditedAt: paymentOrders.creditedAt,

@@ -112,6 +112,34 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /** 用户面 profile 单查（含费率卡名——v1 /api/me 对位） */
+  async findProfile(
+    c: RepoContext,
+    userId: number,
+  ): Promise<Omit<AdminUserRow, 'id'> | null> {
+    const [row] = await c.db
+      .select({
+        issuer: users.issuer,
+        subject: users.subject,
+        email: users.email,
+        displayName: users.displayName,
+        rateCardId: users.rateCardId,
+        rateCardName: rateCards.name,
+        dailySpendLimit: users.dailySpendLimit,
+        status: users.status,
+        freezeReason: users.freezeReason,
+        isEnterprise: users.isEnterprise,
+        rpmLimit: users.rpmLimit,
+        tpmLimit: users.tpmLimit,
+        lastLoginAt: users.lastLoginAt,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .leftJoin(rateCards, eq(rateCards.id, users.rateCardId))
+      .where(eq(users.id, userId));
+    return row ?? null;
+  }
+
   /** 统一列表：q 命中 subject/email/displayName；leftJoin rateCards 带卡名 */
   async listAdminUsers(
     c: RepoContext,

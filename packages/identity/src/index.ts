@@ -14,6 +14,8 @@ export {
   type SessionPayload,
   type SessionSignInput,
 } from './session.js';
+export { createRedisSessionRevocationStore } from './session.js';
+export type { SessionRevocationStore } from './session.js';
 
 // Cookie 容器（双身份）
 export {

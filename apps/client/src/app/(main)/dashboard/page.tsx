@@ -64,7 +64,7 @@ export default async function DashboardPage() {
       '/api/keys?page=1&limit=100',
     );
     data.totalKeys = keysData.total;
-    const keyRows = keysData.rows ?? keysData.list ?? [];
+    const keyRows = keysData.rows ?? [];
     data.activeKeys = keyRows.filter((k) => k.status === 0).length;
   } catch {
     // ignore
@@ -73,7 +73,7 @@ export default async function DashboardPage() {
   // 按模型聚合用量（v2：/usage/by-model；日费用趋势以模型维度近似，今日费用取总额）
   try {
     const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>('/api/usage/by-model');
-    const modelRows = byModel.rows ?? byModel.list ?? [];
+    const modelRows = byModel.rows ?? [];
     data.byModel = modelRows;
     const todayTotal = modelRows.reduce((sum, it) => sum + (Number(it.cost) || 0), 0);
     data.dailyCost = [{ date: new Date().toISOString().slice(0, 10), value: todayTotal }];

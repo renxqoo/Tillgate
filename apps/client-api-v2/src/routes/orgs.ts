@@ -40,7 +40,7 @@ export function orgRoutes(service: OrgService, session: MiddlewareHandler<Sessio
 
   app.get('/v1/orgs', session, async (c) => {
     const rows = await service.listMyOrgs(userCtxOf(c), c.get('userId'));
-    return c.json({ rows });
+    return c.json({ rows, total: rows.length });
   });
 
   app.get('/v1/orgs/:id', session, async (c) => {

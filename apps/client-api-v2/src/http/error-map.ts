@@ -17,13 +17,22 @@ import { WeakPasswordError } from '@ai-gateway/identity-core';
 
 /** app 编排期拒绝（status + code + message 自带） */
 export class AppError extends Error {
+  public readonly status: number;
+  public readonly code: string;
+  /** 响应附加头（如 429 的 Retry-After——客户端礼貌退避依据） */
+  public readonly headers?: Record<string, string>;
+
   constructor(
-    public readonly status: number,
-    public readonly code: string,
+    status: number,
+    code: string,
     message: string,
+    headers?: Record<string, string>,
   ) {
     super(message);
     this.name = 'AppError';
+    this.status = status;
+    this.code = code;
+    this.headers = headers;
   }
 }
 

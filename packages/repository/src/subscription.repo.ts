@@ -291,6 +291,10 @@ export class SubscriptionRepository {
   }
 
   /** 用户订阅列表（含到期行；用户面「我的订阅」读模型，附套餐名） */
+  /** 用户订阅列表（v1 /api/me/subscription 语义合并）：
+   *  「生效中的个人订阅」置顶（前端取 rows[0] 当当前订阅——不置顶会把过期/组织
+   *  订阅当生效中展示），其余按 id 倒序；行内带 v1 消费的计算字段
+   *  （remainingAmount/renewPrice/planPrice/remainingValue）。 */
   async listByUser(
     c: RepoContext,
     userId: number,
@@ -300,32 +304,63 @@ export class SubscriptionRepository {
       planId: number;
       planName: string | null;
       status: number;
+      orgId: number | null;
       quantity: number;
       quotaAmount: string;
       usedAmount: string;
       reservedAmount: string;
+      remainingAmount: string;
+      renewPrice: string;
+      planPrice: string;
+      remainingValue: string;
       startAt: Date;
       endAt: Date;
     }>
   > {
-    return c.db
+    const rows = await c.db
       .select({
         id: userSubscriptions.id,
         planId: userSubscriptions.planId,
         planName: plans.name,
         status: userSubscriptions.status,
+        orgId: userSubscriptions.orgId,
         quantity: userSubscriptions.quantity,
         quotaAmount: userSubscriptions.quotaAmount,
         usedAmount: userSubscriptions.usedAmount,
         reservedAmount: userSubscriptions.reservedAmount,
+        remainingAmount: sql<string>`greatest(${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}, 0)::text`,
+        renewPrice: sql<string>`coalesce(${plans.price} * ${userSubscriptions.quantity}::numeric, 0)::text`,
+        planPrice: sql<string>`coalesce(${plans.price}, 0)::text`,
+        remainingValue: sql<string>`(CASE WHEN ${userSubscriptions.quotaAmount} > 0 THEN ${userSubscriptions.price} * (${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}) / ${userSubscriptions.quotaAmount} ELSE 0 END)::text`,
         startAt: userSubscriptions.startAt,
         endAt: userSubscriptions.endAt,
       })
       .from(userSubscriptions)
       .leftJoin(plans, eq(userSubscriptions.planId, plans.id))
       .where(eq(userSubscriptions.userId, userId))
-      .orderBy(desc(userSubscriptions.id))
+      .orderBy(
+        sql`(case when ${userSubscriptions.status} = 0 and ${userSubscriptions.endAt} > clock_timestamp() and ${userSubscriptions.orgId} is null then 0 else 1 end)`,
+        desc(userSubscriptions.id),
+      )
       .limit(50);
+    // cast：drizzle 对含 raw-sql 投影 + 多键 orderBy 的推断会产出两份同构匿名类型（TS2719）
+    return rows as Array<{
+      id: number;
+      planId: number;
+      planName: string | null;
+      status: number;
+      orgId: number | null;
+      quantity: number;
+      quotaAmount: string;
+      usedAmount: string;
+      reservedAmount: string;
+      remainingAmount: string;
+      renewPrice: string;
+      planPrice: string;
+      remainingValue: string;
+      startAt: Date;
+      endAt: Date;
+    }>;
   }
 
   // ── 管理面 ──────────────────────────────────────────────────────────────────

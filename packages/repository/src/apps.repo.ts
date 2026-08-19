@@ -117,11 +117,36 @@ export class AppsRepository {
     c: RepoContext,
     input: { userId: number; appId: number; clientSecretHash: string; rotatedAt: Date },
   ): Promise<boolean> {
+    // FOR UPDATE 行锁（v1 对位）：并发轮换两个都"成功"、其中一个 secret 被静默孤儿化
+    const locked = await tx(c)
+      .select({ id: apps.id })
+      .from(apps)
+      .where(and(eq(apps.id, input.appId), eq(apps.userId, input.userId)))
+      .for('update')
+      .limit(1);
+    if (locked.length === 0) return false;
     const rows = await tx(c)
       .update(apps)
       .set({ clientSecretHash: input.clientSecretHash, rotatedAt: input.rotatedAt })
       .where(and(eq(apps.id, input.appId), eq(apps.userId, input.userId)))
       .returning({ id: apps.id });
     return rows.length > 0;
+  }
+
+  /** 在用 App 数（配额闸） */
+  async countActiveByUser(
+    c: RepoContext,
+    userId: number,
+  ): Promise<number> {
+    const [row] = await c.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(apps)
+      .where(and(eq(apps.userId, userId), eq(apps.status, 0)));
+    return row?.count ?? 0;
+  }
+
+  /** App 配额串行化（与 Key 配额同口径：advisory xact lock 防 count→insert 竞态） */
+  async advisoryLockAppQuota(c: RepoContext, userId: number): Promise<void> {
+    await c.db.execute(sql`select pg_advisory_xact_lock(hashtext('apps-quota'), ${userId})`);
   }
 }

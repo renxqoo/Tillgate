@@ -41,14 +41,11 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
     });
   return new Hono().post('/', async (c) => {
     const ip = sourceIp(c);
-    if (deps.ipGuard) {
-      const lock = await deps.ipGuard.isLocked(ip);
-      if (lock.locked) {
-        return c.json({ error: 'invalid_client', error_description: '来源已锁定，稍后重试' }, 401);
+    const fail = async (guardKey: string) => {
+      if (deps.ipGuard) {
+        await deps.ipGuard.recordFailure(ip).catch(() => undefined);
+        await deps.ipGuard.recordFailure(guardKey).catch(() => undefined);
       }
-    }
-    const fail = async () => {
-      if (deps.ipGuard) await deps.ipGuard.recordFailure(ip).catch(() => undefined);
       return c.json({ error: 'invalid_client', error_description: '凭证无效或应用已禁用' }, 401);
     };
     // 支持 form / JSON / Basic Auth 三种凭证传递
@@ -88,18 +85,36 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
       return c.json({ error: 'invalid_client', error_description: '缺少 client_id / client_secret' }, 401);
     }
 
+    // per-clientId 爆破锁（v1 对位）：IP 可轮换——按 clientId 锁定才能挡住撞 client_secret
+    const guardKey = `client:${clientId}`;
+    if (deps.ipGuard) {
+      const [ipLock, keyLock] = await Promise.all([
+        deps.ipGuard.isLocked(ip),
+        deps.ipGuard.isLocked(guardKey),
+      ]);
+      if (ipLock.locked || keyLock.locked) {
+        return c.json({ error: 'invalid_client', error_description: '来源已锁定，稍后重试' }, 401);
+      }
+    }
+
     const secretHash = createHash('sha256').update(clientSecret).digest('hex');
     const [app] = await deps.db
-      .select({ id: apps.id, userId: apps.userId, status: apps.status })
+      .select({ id: apps.id, userId: apps.userId, status: apps.status, scope: apps.scope })
       .from(apps)
       .where(and(eq(apps.clientId, clientId), eq(apps.clientSecretHash, secretHash)));
     if (!app || app.status !== 0) {
-      return fail();
+      return fail(guardKey);
     }
 
     const secret = new TextEncoder().encode(deps.jwtSecret);
     // app_id = apps.id（数字主键的字符串形——验证端 findActiveAppById 的查询键）
-    const token = await new SignJWT({ sub: String(app.userId), app_id: app.id, typ: 'app_jwt' })
+    // scope 全量入令牌（rpm/tpm 限流 + models 白名单——网关准入与模型列表过滤的执行依据）
+    const token = await new SignJWT({
+      sub: String(app.userId),
+      app_id: app.id,
+      typ: 'app_jwt',
+      ...(app.scope && typeof app.scope === 'object' ? { scope: app.scope } : {}),
+    })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setIssuer(JWT_ISSUER)

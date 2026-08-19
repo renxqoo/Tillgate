@@ -6,6 +6,7 @@
  * 靠网关 5 分钟 TTL 兜底；配置即生产形态。
  * 探针 SSRF 硬闸：allowLocalUpstream 生产恒关（配置开了也被拦——fail-closed）。
  */
+import { createRedisSessionRevocationStore } from '@ai-gateway/identity';
 import { createDb } from '@ai-gateway/db';
 import type { Db } from '@ai-gateway/repository';
 import type { Redis } from 'ioredis';
@@ -75,6 +76,8 @@ export interface AdminApiAssembly {
   wallet: WalletApi;
   mailer: Mailer | null;
   redis: Redis;
+  /** 会话 jti 吊销表（logout 即时下线） */
+  revocationStore: ReturnType<typeof createRedisSessionRevocationStore>;
   otel: { shutdown(): Promise<void> };
 }
 
@@ -167,7 +170,7 @@ export function assembleAdminApi(
   const opsLogs = createOpsLogsService({ db });
   const billingReview = createBillingReviewService({ db, wallet });
   const tracing = createTracingService({ db });
-  const notifications = createNotificationsService({ db });
+  const notifications = createNotificationsService({ db, encryptionKey: config.ENCRYPTION_KEY });
 
   const otel = initOtel({
     mode: config.OTEL_TRACES_MODE,
@@ -175,7 +178,12 @@ export function assembleAdminApi(
     serviceName: 'admin-api-v2',
   });
 
+  const revocationStore = createRedisSessionRevocationStore(redis, {
+    logger: { warn: (obj: unknown, msg: string) => console.warn('[admin-api]', msg, obj) },
+  });
+
   return {
+    revocationStore,
     auth,
     providers,
     channels,

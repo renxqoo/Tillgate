@@ -16,7 +16,7 @@ import type { AuthEnv } from '../middleware/api-key.js';
 import type { createSubmitGeneration } from '../generation/submit.js';
 
 type SubmitGeneration = ReturnType<typeof createSubmitGeneration>;
-type Auth = { ctx: RunContext; userId: number; apiKeyId: number; rpmLimit?: number | null; tpmLimit?: number | null };
+type Auth = { ctx: RunContext; userId: number; apiKeyId: number; appId?: number | null; allowedModels?: string[] | null; rpmLimit?: number | null; tpmLimit?: number | null; userRpmLimit?: number | null; userTpmLimit?: number | null };
 
 const modelField = z.string().min(1).max(200);
 
@@ -83,7 +83,7 @@ export function generationRoutes(deps: { db: Db; submit: SubmitGeneration }): Ho
         );
       }
       const auth = c.get('auth');
-      const result = await deps.submit(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit }, kind, parsed.data);
+      const result = await deps.submit(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, kind, parsed.data);
       return c.json(result.body, 201);
     };
 

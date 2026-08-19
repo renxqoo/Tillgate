@@ -176,14 +176,19 @@ describe('两步登录（密码对不签会话）', () => {
 describe('人机验证门禁（注册面）', () => {
   it('缺 token 400 / 无效 400 / 厂商不可达 503（fail-closed）/ 通过放行', async () => {
     const mail = email();
-    // 启用 captcha（单步注册模式——聚焦 captcha 语义）
-    const service = buildService({ captcha: fakeCaptcha('ok') });
+    // 启用 captcha（注册恒两步——聚焦 captcha 语义；发码阶段先过 captcha）
+    const fm = fakeMailer();
+    const service = buildService({ captcha: fakeCaptcha('ok'), mailer: fm.mailer });
     await expect(
       service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1' }),
     ).rejects.toMatchObject({ status: 400, code: 'captcha_required' });
-    await expect(
-      service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1', captchaToken: 'tok' }),
-    ).resolves.toMatchObject({ kind: 'success' });
+    const issued = await service.register(ctx, { email: mail, password: PASSWORD, ip: '1.1.1.1', captchaToken: 'tok' });
+    expect(issued.kind).toBe('code_required');
+    const done = await service.verifyRegistration(ctx, {
+      challengeId: (issued as { challengeId: string }).challengeId,
+      code: fm.lastCode(),
+    });
+    expect(done.kind).toBe('success');
 
     const invalid = buildService({ captcha: fakeCaptcha('invalid') });
     await expect(

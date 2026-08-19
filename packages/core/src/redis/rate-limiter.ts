@@ -57,6 +57,28 @@ end
 return {1, 0}
 `;
 
+// 结算回填：释放预占 + 记账 actual（幂等）。KEYS[1]=reservation hash，KEYS[2]=projected
+// 防重标记，KEYS[3..]=actual 计数键；ARGV[1]=真实 token 数。
+const BACKFILL_TPM_SCRIPT = `
+if redis.call('EXISTS', KEYS[2]) == 1 then
+  return 0
+end
+local values = redis.call('HGETALL', KEYS[1])
+for i = 1, #values, 2 do
+  local reservedKey = values[i]
+  local current = tonumber(redis.call('GET', reservedKey) or '0')
+  local amount = tonumber(values[i + 1])
+  redis.call('SET', reservedKey, tostring(math.max(0, current - amount)), 'EX', 600)
+end
+redis.call('SET', KEYS[2], '1', 'EX', 86400)
+for i = 3, #KEYS do
+  redis.call('INCRBY', KEYS[i], tonumber(ARGV[1]))
+  redis.call('EXPIRE', KEYS[i], 600)
+end
+redis.call('DEL', KEYS[1])
+return 1
+` as string;
+
 // 多维 TPM 原子预占。KEYS 最后一个是 request reservation hash，前面每维两项：actual/reserved。
 const RESERVE_TPM_SCRIPT = `
 local count = tonumber(ARGV[1])
@@ -117,6 +139,13 @@ export interface SlidingWindowLimiter {
   releaseTpm(requestId: string): Promise<void>;
   /** 长流续租 TPM 预占，避免流仍在传输时 reservation TTL 提前释放。 */
   renewTpm(requestId: string): Promise<void>;
+  /**
+   * 结算回填（成功请求的 TPM 收尾——契约写明「结算时 worker 回填 actual」）：
+   * 释放该请求 reservation hash 里的全部预占维度 + 把真实 token 记到收据归属
+   * 维度的 actual 计数。幂等（projected 标记防重放）；best-effort 不抛错。
+   * 缺席时成功请求的预占只能等 TTL 600s 自然过期——TPM 窗口被残留预占越占越紧。
+   */
+  backfillTpm(requestId: string, dimensions: readonly string[], tokens: number): Promise<void>;
 }
 
 export interface SlidingWindowLimiterOptions {
@@ -221,6 +250,18 @@ export function createSlidingWindowLimiter(
       await scripts.run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`).catch((error: Error) => {
         logger?.warn({ requestId, err: error.message }, 'releaseTpm storage unavailable (best-effort; TTL reclaims)');
       });
+    },
+    async backfillTpm(requestId, dimensions, tokens) {
+      // dimensions 空才可跳过：tokens=0 也必须走脚本（释放预占——零额结算的请求
+      // 预占若不释放会占满 TPM 窗口直到 TTL）
+      if (dimensions.length === 0) return;
+      const minute = Math.floor(Date.now() / 60_000);
+      const actualKeys = dimensions.map((dimension) => `{tpm}:actual:${minute}:${dimension}`);
+      await scripts
+        .run(BACKFILL_TPM_SCRIPT, actualKeys.length + 2, `{tpm}:request:${requestId}`, `{tpm}:projected:${requestId}`, ...actualKeys, tokens)
+        .catch((error: Error) => {
+          logger?.warn({ requestId, err: error.message }, 'backfillTpm storage unavailable (best-effort; TTL reclaims)');
+        });
     },
     async renewTpm(requestId) {
       try {

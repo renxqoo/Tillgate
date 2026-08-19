@@ -135,6 +135,11 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8792/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
     stop_grace_period: 30s
 

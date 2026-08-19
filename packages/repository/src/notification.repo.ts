@@ -75,9 +75,11 @@ export class NotificationRepository {
       };
     },
   ): Promise<NotificationChannelRow | null> {
+    // type 不可改（config 校验口径与渠道类型绑定——服务层声明的不变量在此强制）
+    const { type: _ignored, ...patch } = input.patch;
     const rows = await c.db
       .update(notificationChannels)
-      .set({ ...input.patch, updatedAt: new Date() })
+      .set({ ...patch, updatedAt: new Date() })
       .where(eq(notificationChannels.id, input.channelId))
       .returning(CHANNEL_COLUMNS);
     return (rows[0] as NotificationChannelRow) ?? null;

@@ -24,7 +24,7 @@ import { createResolveChannels } from '../routing/resolve-channels.js';
 import { isChannelSwitchable } from '../routing/switchable.js';
 import { clampForwardedOutputLimit, maxOutputTokensFor, type OutputCapConfig } from './output-cap.js';
 import { buildReceipt } from './receipt.js';
-import { admitFreeDaily, admitKey, tryChannel, type RateLimitGate } from '../rate-limit/gate.js';
+import { admitFreeDaily, admitKey, reserveModelDims, tryChannel, type RateLimitGate } from '../rate-limit/gate.js';
 import { sanitizeUpstreamDetail } from '../http/sanitize.js';
 import type { UpstreamPort, UpstreamStreamEvent } from './upstream-port.js';
 
@@ -70,7 +70,9 @@ export interface PipelineDeps {
 
 export type ChatResponse =
   | { status: number; body: Record<string, unknown> }
-  | { status: 200; stream: ReadableStream<Uint8Array>; contentType: 'text/event-stream' };
+  | { status: 200; stream: ReadableStream<Uint8Array>; contentType: 'text/event-stream' }
+  /** 二进制成功（音频等）：字节体 + 上游 content-type（v1 对位——JSON 信封会毁掉字节流） */
+  | { status: 200; rawBody: Uint8Array; rawContentType: string };
 
 /** 流式终态（success 事件）→ 收据 usage 形态（估算归属政策单一真相在 domain）。
  *  usage 缺失/不可信时输出 token 从扫描器累计的输出文本校准估算（与输入同一估算器）
@@ -112,10 +114,14 @@ export function createRunChat(deps: PipelineDeps) {
   const noteError = deps.onError ?? ((error, context) => console.error(`[pipeline] ${context}:`, error));
   return async function runChat(
     ctx: RunContext,
-    auth: Pick<AuthContext, 'userId' | 'apiKeyId' | 'rpmLimit' | 'tpmLimit'>,
+    auth: Pick<AuthContext, 'userId' | 'apiKeyId' | 'appId' | 'rpmLimit' | 'tpmLimit' | 'userRpmLimit' | 'userTpmLimit' | 'allowedModels'>,
     body: ChatCompletionBody,
   ): Promise<ChatResponse> {
     const requestId = ctx.requestId;
+    // 模型白名单（App JWT scope.models）：预扣前拒绝——受限凭证调未授权模型的越权计费
+    if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
+      throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
+    }
     const estInput = estimateInputTokens(body);
     const kind = kindOf(body);
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
@@ -124,14 +130,22 @@ export function createRunChat(deps: PipelineDeps) {
     // 预扣口径与上游实许输出对齐：声明超口径的输出上限压回口径内（不注入——兼容优先）
     const upstreamBody = clampForwardedOutputLimit(body as Record<string, unknown>, outputCap);
 
-    // key 维准入（RPM 原子 + TPM 预占；未装配限流闸时全放行）
+    // 准入并罚（v1 五维语义的 v2 形态）：凭证维 + 用户维各自生效——
+    // 高限额 Key 不得越过用户帽；未装配限流闸时全放行（单副本开发形态）
     if (deps.rateLimit) {
       await admitKey(deps.rateLimit, {
         requestId,
-        dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
-        rpmLimit: auth.rpmLimit ?? null,
-        tpmLimit: auth.tpmLimit ?? null,
         estimatedTokens,
+        dims: [
+          {
+            dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
+            rpmLimit: auth.rpmLimit ?? null,
+            tpmLimit: auth.tpmLimit ?? null,
+          },
+          ...(auth.apiKeyId != null
+            ? [{ dimension: `user:${auth.userId}`, rpmLimit: auth.userRpmLimit ?? null, tpmLimit: auth.userTpmLimit ?? null }]
+            : []),
+        ],
       });
     }
 
@@ -151,6 +165,16 @@ export function createRunChat(deps: PipelineDeps) {
       throw error;
     }
     if (quote.candidates.length === 0) throw new AppError(404, 'model_not_found', '模型不存在或已下架');
+    // 模型维 TPM 预占（主 + fallback 候选 mappingId 一并占住——v1 reserveFallbackDims 语义）
+    if (deps.rateLimit) {
+      await reserveModelDims(deps.rateLimit, {
+        requestId,
+        mappingIds: quote.candidates.map((candidate) => candidate.mappingId),
+        tpmLimit: auth.userTpmLimit ?? auth.tpmLimit ?? null,
+        estimatedTokens,
+      });
+    }
+
     // 免费模型日限（唯一防线——fail-closed，与付费限流的 fail-open 语义相反）
     if (deps.rateLimit && quote.explicitlyFree) {
       try {
@@ -168,7 +192,8 @@ export function createRunChat(deps: PipelineDeps) {
         requestId,
         userId: auth.userId,
         apiKeyId: auth.apiKeyId,
-        appId: null,
+        // App-JWT 凭证的订阅绑定（resolveSourceAndLimits 按它取订阅——漏传=App 全走 PAYG）
+        appId: auth.appId ?? null,
         stream,
         quote,
         reservationLimit: deps.config.reservationLimit,
@@ -181,7 +206,18 @@ export function createRunChat(deps: PipelineDeps) {
     void authorization;
 
     let leaseStarted = false;
-    let lastError: { code?: string; message?: string } | undefined;
+    let lastError: { code?: string; message?: string; status?: number } | undefined;
+    /** 上游 4xx 透传（OpenAI 兼容语义：客户端问题原码返回——不吞成 502、不空耗 fallback） */
+    const passthrough4xx = (error: { code?: string; message?: string; status?: number }) =>
+      ({
+        status: error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502,
+        body: {
+          error: {
+            code: error.code ?? 'upstream_error',
+            message: sanitizeUpstreamDetail(error.message, { externalModel: body.model, realModels: quote.candidates.map((c) => c.realModel) }),
+          },
+        },
+      }) satisfies ChatResponse;
     const startChannel = async (channelId: number, amount: string): Promise<boolean> => {
       const reservation = await deps.billing.reserveChannel(ctx, { requestId, channelId, amount });
       if (!reservation.allowed) {
@@ -203,11 +239,17 @@ export function createRunChat(deps: PipelineDeps) {
      *  （message 脱敏：真实模型名等内部细节进日志不进响应） */
     const releaseAndFail = async (): Promise<never> => {
       if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
+      // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel
+      const channelExhausted =
+        lastError == null || lastError.code === 'channel_budget_exhausted' || lastError.code === 'rate_limit_exceeded';
       await deps.billing.signal(ctx, {
         type: 'request.failed',
         requestId,
-        reason: (lastError?.code ?? 'no_available_channel').slice(0, 64),
+        reason: (channelExhausted ? 'no_available_channel' : (lastError?.code ?? 'no_available_channel')).slice(0, 64),
       });
+      if (channelExhausted) {
+        throw new AppError(503, 'no_available_channel', '模型所有渠道均不可用，请稍后重试');
+      }
       throw new AppError(
         502,
         'upstream_failed',
@@ -274,11 +316,20 @@ export function createRunChat(deps: PipelineDeps) {
                   : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body) },
               }),
             });
+            if (result.rawBody) {
+              return { status: 200, rawBody: result.rawBody, rawContentType: result.rawContentType ?? 'application/octet-stream' };
+            }
             return { status: 200, body: result.body };
           }
           lastError = result.error;
           if (result.error.deadCredential) await markDead(channel.channelId);
-          if (!isChannelSwitchable(result.error.code)) break;
+          if (!isChannelSwitchable(result.error.code)) {
+            // 4xx 客户端错误：退出全部候选（fallback 救不了参数错误——白耗上游调用与预占）
+            if ((result.status ?? 0) >= 400 && (result.status ?? 0) < 500) {
+              return passthrough4xx({ ...result.error, status: result.status });
+            }
+            break;
+          }
           continue;
         }
 
@@ -300,7 +351,12 @@ export function createRunChat(deps: PipelineDeps) {
         if (decisive.type === 'failed') {
           lastError = decisive;
           if (decisive.deadCredential) await markDead(channel.channelId);
-          if (!isChannelSwitchable(decisive.code)) break;
+          if (!isChannelSwitchable(decisive.code)) {
+            if ((decisive.status ?? 0) >= 400 && (decisive.status ?? 0) < 500) {
+              return passthrough4xx(decisive);
+            }
+            break;
+          }
           continue;
         }
         // 上线（first_chunk 或零块完成）：终态监听收尾，立即把管道交还路由

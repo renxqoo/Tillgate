@@ -16,16 +16,22 @@
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
     "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
     "@ai-gateway/repository": "workspace:*",
     "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
+    "@ai-gateway/wallet": "workspace:*",
     "bullmq": "^6.0.7",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.8.0",
+    "pg": "^8.22.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@types/pg": "^8.20.0"
   }
 }
