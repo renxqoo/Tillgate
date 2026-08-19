@@ -27,7 +27,17 @@ export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
           throw err;
         }
       });
-      span.setAttributes({ 'http.status_code': c.res?.status ?? 0 });
+      // 鉴权中间件在 next() 内完成——回到这里时 c.var.auth 已就绪，补根 span 关联列
+      const auth = c.var.auth;
+      span.setAttributes({
+        'http.status_code': c.res?.status ?? 0,
+        ...(auth
+          ? {
+              'user.id': auth.userId,
+              ...(auth.apiKeyId != null ? { 'api_key.id': auth.apiKeyId } : {}),
+            }
+          : {}),
+      });
       if ((c.res?.status ?? 200) >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
     } finally {
       span.end();

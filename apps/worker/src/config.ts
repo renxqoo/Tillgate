@@ -60,15 +60,23 @@ const schema = z.object({
   WORKER_WEBHOOK_ALLOW_LOCAL_URL: z.coerce.boolean().default(false),
   /** 优雅停机：等待在途批次完成的上界（ms） */
   WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(15_000),
+  /** 链路追踪（与网关同源：otlp = 导出 trace-receiver；结算 span 挂 request.id 关联请求链） */
+  OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).default('off'),
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
 });
 
 export type WorkerConfig = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
-  return schema.parse({
+  const config = schema.parse({
     ...env,
     // 渠道密钥：专用名优先，缺省回落 .env 规范键 ENCRYPTION_KEY（两处都未配置 =
     // 启动即失败——fail-closed，不带默认值）
     CHANNEL_API_KEY_ENCRYPTION: env.CHANNEL_API_KEY_ENCRYPTION ?? env.ENCRYPTION_KEY,
   });
+  // otlp 成组校验（与网关同语义：半配 = 启动失败，fail-closed）
+  if (config.OTEL_TRACES_MODE === 'otlp' && !config.OTEL_EXPORTER_OTLP_ENDPOINT) {
+    throw new Error('OTEL_TRACES_MODE=otlp 时必须配置 OTEL_EXPORTER_OTLP_ENDPOINT');
+  }
+  return config;
 }

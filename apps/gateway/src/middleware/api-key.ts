@@ -15,9 +15,16 @@ import type { MiddlewareHandler } from 'hono';
 import { createRepositories } from '@ai-gateway/repository';
 import type { Db } from '@ai-gateway/repository';
 import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
-import type { AuthFailureGuard, KeyBruteForceGuard } from '@ai-gateway/core';
+import { context, formatTraceParent, trace, type AuthFailureGuard, type KeyBruteForceGuard } from '@ai-gateway/core';
 import { systemContext, type RunContext } from '@ai-gateway/service';
 import { UnauthorizedError } from '../http/error-map.js';
+
+/** 当前 active span（otel 中间件在前 = 请求根 span）→ W3C traceparent；
+ *  SDK 未启动 / 无 active 返回 null——授权落列后 worker 结算按它挂回同一 trace。 */
+function activeTraceParent(): string | null {
+  const sc = trace.getSpan(context.active())?.spanContext();
+  return sc ? formatTraceParent(sc) : null;
+}
 
 export interface AuthContext {
   userId: number;
@@ -130,7 +137,7 @@ export function apiKeyMiddleware(
             userRpmLimit: positive(app.userRpmLimit) ?? positive(guards?.defaultUserRpm),
             userTpmLimit: positive(app.userTpmLimit) ?? positive(guards?.defaultUserTpm),
             allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
-            ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: null },
+            ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: activeTraceParent() },
           });
           await next();
           return;
@@ -154,7 +161,7 @@ export function apiKeyMiddleware(
             userRpmLimit: positive(active.rpmLimit) ?? positive(guards?.defaultUserRpm),
             userTpmLimit: positive(active.tpmLimit) ?? positive(guards?.defaultUserTpm),
             allowedModels: null,
-            ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: null },
+            ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: activeTraceParent() },
           });
           await next();
           return;
@@ -199,7 +206,7 @@ export function apiKeyMiddleware(
       userRpmLimit: positive(key.userRpmLimit) ?? positive(guards?.defaultUserRpm),
       userTpmLimit: positive(key.userTpmLimit) ?? positive(guards?.defaultUserTpm),
       allowedModels: null,
-      ctx: { requestId, actor: { kind: 'user', id: key.userId }, traceParent: null },
+      ctx: { requestId, actor: { kind: 'user', id: key.userId }, traceParent: activeTraceParent() },
     });
     await next();
   };

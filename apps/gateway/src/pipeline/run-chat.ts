@@ -14,6 +14,7 @@
 import { estimateInputTokens, estimateOutputTokens, estimateTextTokens } from '@ai-gateway/ai';
 import { estimateMaxCost, USER_SIDE_CANCELS } from '@ai-gateway/domain';
 import type { UsageReceipt } from '@ai-gateway/domain';
+import { getTracer, SpanStatusCode, withAsyncSpan } from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
 import type { Db, Repositories } from '@ai-gateway/repository';
 import type { BillingDomain, RunContext } from '@ai-gateway/service';
@@ -125,18 +126,36 @@ export async function signalSucceededWithRetry(
 ): Promise<boolean> {
   const attempts = opts.attempts ?? SIGNAL_FINALIZE_ATTEMPTS;
   const baseDelayMs = opts.baseDelayMs ?? SIGNAL_FINALIZE_BASE_DELAY_MS;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      await billing.signal(ctx, { type: 'request.succeeded', requestId, receipt });
-      return true;
-    } catch (error) {
-      onError(error, `signal request.succeeded request=${requestId} attempt=${attempt}/${attempts}`);
-      if (attempt < attempts) {
-        await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, baseDelayMs * 2 ** (attempt - 1))));
+  // 结算信号 span：流式/非流式共用；重试逐次 addEvent，耗尽置 ERROR（漏收可见）
+  return withAsyncSpan(getTracer('gateway.pipeline'), 'billing.settle_signal', {
+    'request.id': requestId,
+    ...(receipt.userId != null ? { 'user.id': receipt.userId } : {}),
+    ...(receipt.externalModel != null ? { 'ai.model': receipt.externalModel } : {}),
+    ...(receipt.channelKey != null ? { 'channel.key': receipt.channelKey } : {}),
+    ...(receipt.usage
+      ? {
+          'usage.estimated': receipt.usage.estimated,
+          'tokens.input': receipt.usage.inputTokens,
+          'tokens.output': receipt.usage.outputTokens,
+        }
+      : {}),
+    'billing.stream': receipt.stream,
+  }, async (span) => {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await billing.signal(ctx, { type: 'request.succeeded', requestId, receipt });
+        return true;
+      } catch (error) {
+        onError(error, `signal request.succeeded request=${requestId} attempt=${attempt}/${attempts}`);
+        if (attempt < attempts) {
+          span.addEvent('signal.retry', { attempt });
+          await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, baseDelayMs * 2 ** (attempt - 1))));
+        }
       }
     }
-  }
-  return false;
+    span.setStatus({ code: SpanStatusCode.ERROR, message: 'signal retries exhausted' });
+    return false;
+  });
 }
 
 export function createRunChat(deps: PipelineDeps) {
@@ -147,6 +166,7 @@ export function createRunChat(deps: PipelineDeps) {
     auth: Pick<AuthContext, 'userId' | 'apiKeyId' | 'appId' | 'rpmLimit' | 'tpmLimit' | 'userRpmLimit' | 'userTpmLimit' | 'allowedModels'>,
     body: ChatCompletionBody,
   ): Promise<ChatResponse> {
+    const tracer = getTracer('gateway.pipeline');
     const requestId = ctx.requestId;
     // 模型白名单（App JWT scope.models）：预扣前拒绝——受限凭证调未授权模型的越权计费
     if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
@@ -167,34 +187,49 @@ export function createRunChat(deps: PipelineDeps) {
     if (deps.rateLimit) {
       const credentialDimension =
         auth.apiKeyId != null ? `key:${auth.apiKeyId}` : auth.appId != null ? `app:${auth.appId}` : `pg:${auth.userId}`;
-      await admitKey(deps.rateLimit, {
-        requestId,
-        estimatedTokens,
-        dims: [
-          {
-            dimension: credentialDimension,
-            rpmLimit: auth.rpmLimit ?? null,
-            tpmLimit: auth.tpmLimit ?? null,
-          },
-          {
-            dimension: `user:${auth.userId}`,
-            rpmLimit: auth.userRpmLimit ?? null,
-            tpmLimit: auth.userTpmLimit ?? null,
-          },
-        ],
-      });
+      await withAsyncSpan(tracer, 'rate_limit.admit', {
+        'request.id': requestId,
+        'user.id': auth.userId,
+        'rate_limit.credential_dim': credentialDimension,
+        'tokens.estimate': estimatedTokens,
+      }, () =>
+        admitKey(deps.rateLimit!, {
+          requestId,
+          estimatedTokens,
+          dims: [
+            {
+              dimension: credentialDimension,
+              rpmLimit: auth.rpmLimit ?? null,
+              tpmLimit: auth.tpmLimit ?? null,
+            },
+            {
+              dimension: `user:${auth.userId}`,
+              rpmLimit: auth.userRpmLimit ?? null,
+              tpmLimit: auth.userTpmLimit ?? null,
+            },
+          ],
+        }),
+      );
     }
 
     // 报价/免费额度可能拒绝（404/403/429）——TPM 已预占，失败路径同样归还
     // （其余罕见异常路径由 600s 预占 TTL 自回收，同 v1 语义）
     let quote;
     try {
-      quote = await deps.buildQuote(ctx, {
-        model: body.model,
-        userId: auth.userId,
-        inputTokenUpperBound: estInput,
-        maxOutputTokens: outputCap,
-        body: body as Record<string, unknown>,
+      quote = await withAsyncSpan(tracer, 'quote.build', {
+        'request.id': requestId,
+        'user.id': auth.userId,
+        'ai.model': body.model,
+      }, async (span) => {
+        const q = await deps.buildQuote(ctx, {
+          model: body.model,
+          userId: auth.userId,
+          inputTokenUpperBound: estInput,
+          maxOutputTokens: outputCap,
+          body: body as Record<string, unknown>,
+        });
+        span.setAttributes({ 'quote.candidates': q.candidates.length, 'quote.free': q.explicitlyFree });
+        return q;
       });
     } catch (error) {
       if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
@@ -207,18 +242,27 @@ export function createRunChat(deps: PipelineDeps) {
     }
     // 模型维 TPM 预占（主 + fallback 候选 mappingId 一并占住——v1 reserveFallbackDims 语义）
     if (deps.rateLimit) {
-      await reserveModelDims(deps.rateLimit, {
-        requestId,
-        mappingIds: quote.candidates.map((candidate) => candidate.mappingId),
-        tpmLimit: auth.userTpmLimit ?? auth.tpmLimit ?? null,
-        estimatedTokens,
-      });
+      await withAsyncSpan(tracer, 'rate_limit.reserve_model', {
+        'request.id': requestId,
+        'ai.model': body.model,
+        'tokens.estimate': estimatedTokens,
+      }, () =>
+        reserveModelDims(deps.rateLimit!, {
+          requestId,
+          mappingIds: quote.candidates.map((candidate) => candidate.mappingId),
+          tpmLimit: auth.userTpmLimit ?? auth.tpmLimit ?? null,
+          estimatedTokens,
+        }),
+      );
     }
 
     // 免费模型日限（唯一防线——fail-closed，与付费限流的 fail-open 语义相反）
     if (deps.rateLimit && quote.explicitlyFree) {
       try {
-        await admitFreeDaily(deps.rateLimit, auth.userId);
+        await withAsyncSpan(tracer, 'rate_limit.free_daily', {
+          'request.id': requestId,
+          'user.id': auth.userId,
+        }, () => admitFreeDaily(deps.rateLimit!, auth.userId));
       } catch (error) {
         await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
         throw error;
@@ -228,17 +272,26 @@ export function createRunChat(deps: PipelineDeps) {
     // 授权可能拒绝（402/限额/配置）
     let authorization;
     try {
-      authorization = await deps.billing.authorize(ctx, {
-        requestId,
-        userId: auth.userId,
-        apiKeyId: auth.apiKeyId,
-        // App-JWT 凭证的订阅绑定（resolveSourceAndLimits 按它取订阅——漏传=App 全走 PAYG）
-        appId: auth.appId ?? null,
-        stream,
-        quote,
-        reservationLimit: deps.config.reservationLimit,
-        authorizationTtlMs: deps.config.authorizationTtlMs,
-      });
+      authorization = await withAsyncSpan(tracer, 'billing.authorize', {
+        'request.id': requestId,
+        'user.id': auth.userId,
+        'ai.model': body.model,
+        'billing.stream': stream,
+      }, () =>
+        deps.billing.authorize(ctx, {
+          requestId,
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          // App-JWT 凭证的订阅绑定（resolveSourceAndLimits 按它取订阅——漏传=App 全走 PAYG）
+          appId: auth.appId ?? null,
+          stream,
+          quote,
+          reservationLimit: deps.config.reservationLimit,
+          authorizationTtlMs: deps.config.authorizationTtlMs,
+          // 请求根 span 的 traceparent 落列——worker 结算按它挂回同一 trace
+          traceParent: ctx.traceParent,
+        }),
+      );
     } catch (error) {
       if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
       throw error;
@@ -251,30 +304,41 @@ export function createRunChat(deps: PipelineDeps) {
      *  透传≠免收尾：TPM 预占归还 + request.failed 三路释放（4xx = 上游确定未计费） */
     const passthrough4xx = async (error: {
       code?: string; message?: string; status?: number;
-    }): Promise<ChatResponse> => {
-      if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
-      await deps.billing.signal(ctx, {
-        type: 'request.failed',
-        requestId,
-        reason: (error.code ?? 'upstream_client_error').slice(0, 64),
-      });
-      return {
-        status: error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502,
-        body: {
-          error: {
-            code: error.code ?? 'upstream_error',
-            message: sanitizeUpstreamDetail(error.message, {
-              externalModel: body.model,
-              realModels: quote.candidates.map((c) => c.realModel),
-            }),
+    }): Promise<ChatResponse> =>
+      withAsyncSpan(tracer, 'billing.passthrough_4xx', {
+        'request.id': requestId,
+        'error.code': error.code ?? 'upstream_client_error',
+        'http.status_code': error.status ?? 0,
+      }, async (span) => {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.code ?? 'upstream_client_error' });
+        if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
+        await deps.billing.signal(ctx, {
+          type: 'request.failed',
+          requestId,
+          reason: (error.code ?? 'upstream_client_error').slice(0, 64),
+        });
+        return {
+          status: error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502,
+          body: {
+            error: {
+              code: error.code ?? 'upstream_error',
+              message: sanitizeUpstreamDetail(error.message, {
+                externalModel: body.model,
+                realModels: quote.candidates.map((c) => c.realModel),
+              }),
+            },
           },
-        },
-      };
-    };
-    const startChannel = async (channelId: number, amount: string): Promise<boolean> => {
+        };
+      });
+    const startChannel = async (channelId: number, amount: string, channelKey: string): Promise<boolean> => {
       const reservation = await deps.billing.reserveChannel(ctx, { requestId, channelId, amount });
       if (!reservation.allowed) {
         lastError = { code: 'channel_budget_exhausted' };
+        await withAsyncSpan(tracer, 'channel.skip', {
+          'request.id': requestId,
+          'channel.key': channelKey,
+          'skip.reason': 'budget_exhausted',
+        }, async () => {});
         return false;
       }
       if (!leaseStarted) {
@@ -290,28 +354,33 @@ export function createRunChat(deps: PipelineDeps) {
     };
     /** 全败收尾：TPM 预占归还（无上游执行的失败）→ request.failed 三路归还 → 502
      *  （message 脱敏：真实模型名等内部细节进日志不进响应） */
-    const releaseAndFail = async (): Promise<never> => {
-      if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
-      // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel
-      const channelExhausted =
-        lastError == null || lastError.code === 'channel_budget_exhausted' || lastError.code === 'rate_limit_exceeded';
-      await deps.billing.signal(ctx, {
-        type: 'request.failed',
-        requestId,
-        reason: (channelExhausted ? 'no_available_channel' : (lastError?.code ?? 'no_available_channel')).slice(0, 64),
+    const releaseAndFail = async (): Promise<never> =>
+      withAsyncSpan(tracer, 'billing.release_and_fail', {
+        'request.id': requestId,
+        'user.id': auth.userId,
+        'error.code': lastError?.code ?? 'no_available_channel',
+      }, async () => {
+        if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
+        // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel
+        const channelExhausted =
+          lastError == null || lastError.code === 'channel_budget_exhausted' || lastError.code === 'rate_limit_exceeded';
+        await deps.billing.signal(ctx, {
+          type: 'request.failed',
+          requestId,
+          reason: (channelExhausted ? 'no_available_channel' : (lastError?.code ?? 'no_available_channel')).slice(0, 64),
+        });
+        if (channelExhausted) {
+          throw new AppError(503, 'no_available_channel', '模型所有渠道均不可用，请稍后重试');
+        }
+        throw new AppError(
+          502,
+          'upstream_failed',
+          sanitizeUpstreamDetail(lastError?.message, {
+            externalModel: body.model,
+            realModels: quote.candidates.map((candidate) => candidate.realModel),
+          }),
+        );
       });
-      if (channelExhausted) {
-        throw new AppError(503, 'no_available_channel', '模型所有渠道均不可用，请稍后重试');
-      }
-      throw new AppError(
-        502,
-        'upstream_failed',
-        sanitizeUpstreamDetail(lastError?.message, {
-          externalModel: body.model,
-          realModels: quote.candidates.map((candidate) => candidate.realModel),
-        }),
-      );
-    };
     const markDead = async (channelId: number): Promise<void> => {
       try {
         await deps.db.transaction((tx) => repos.channel.markDeadCredential({ ...ctx, db: tx }, channelId));
@@ -321,7 +390,14 @@ export function createRunChat(deps: PipelineDeps) {
     };
 
     for (const candidate of quote.candidates) {
-      const channels = await deps.resolveChannels(ctx, candidate.realModel);
+      const channels = await withAsyncSpan(tracer, 'routing.resolve', {
+        'request.id': requestId,
+        'ai.model': candidate.realModel,
+      }, async (span) => {
+        const list = await deps.resolveChannels(ctx, candidate.realModel);
+        span.setAttribute('routing.channels', list.length);
+        return list;
+      });
       const upstreamEstimate = estimateMaxCost({
         estimatedInputTokens: estInput,
         maxOutputTokens: outputCap,
@@ -333,7 +409,9 @@ export function createRunChat(deps: PipelineDeps) {
         coefficient: '1',
       }).toString();
 
+      let channelAttempt = 0;
       for (const channel of channels) {
+        channelAttempt += 1;
         // 渠道维尝试前判定（超限视同可换渠：continue 换下一渠道）
         if (deps.rateLimit && !(await tryChannel(deps.rateLimit, {
           requestId,
@@ -343,15 +421,46 @@ export function createRunChat(deps: PipelineDeps) {
           estimatedTokens,
         }))) {
           lastError = { code: 'rate_limit_exceeded', message: '渠道限流' };
+          await withAsyncSpan(tracer, 'channel.skip', {
+            'request.id': requestId,
+            'channel.key': channel.channelName,
+            'channel.attempt': channelAttempt,
+            'skip.reason': 'rate_limited',
+          }, async () => {});
           continue;
         }
-        if (!(await startChannel(channel.channelId, upstreamEstimate))) continue;
+        if (!(await startChannel(channel.channelId, upstreamEstimate, channel.channelName))) continue;
 
         if (!stream) {
           // ---- 非流式：同步结果 ----
           const startedAt = Date.now();
-          const result = await deps.upstream.chat(channel, {
-            requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
+          const result = await withAsyncSpan(tracer, 'upstream.attempt', {
+            'request.id': requestId,
+            'user.id': auth.userId,
+            'channel.key': channel.channelName,
+            'channel.attempt': channelAttempt,
+            'ai.model': candidate.realModel,
+            'upstream.stream': false,
+          }, async (span) => {
+            const r = await deps.upstream.chat(channel, {
+              requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
+            });
+            if (r.ok) {
+              span.setAttributes({
+                'upstream.ok': true,
+                'upstream.duration_ms': Date.now() - startedAt,
+                ...(r.usage ? { 'tokens.input': r.usage.inputTokens, 'tokens.output': r.usage.outputTokens } : {}),
+              });
+            } else {
+              span.setAttributes({
+                'upstream.ok': false,
+                'upstream.error_code': r.error.code ?? 'upstream_error',
+                ...(r.status != null ? { 'http.status_code': r.status } : {}),
+                ...(r.error.deadCredential ? { 'upstream.dead_credential': true } : {}),
+              });
+              span.setStatus({ code: SpanStatusCode.ERROR, message: r.error.code ?? 'upstream_error' });
+            }
+            return r;
           });
           const durationMs = Date.now() - startedAt;
           if (result.ok) {
@@ -387,19 +496,44 @@ export function createRunChat(deps: PipelineDeps) {
         }
 
         // ---- 流式：first_chunk 前可换渠，上线后终态由事件锚定 ----
-        const streamResult = await deps.upstream.chatStream(channel, {
-          requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
-        });
         const startedAt = Date.now();
-        const decisive = await new Promise<UpstreamStreamEvent>((resolve) => {
-          let settled = false;
-          streamResult.onEvent((event) => {
-            if (settled) return;
-            if (event.type === 'first_chunk' || event.type === 'failed' || event.type === 'success') {
-              settled = true;
-              resolve(event);
-            }
+        const { streamResult, decisive } = await withAsyncSpan(tracer, 'upstream.attempt', {
+          'request.id': requestId,
+          'user.id': auth.userId,
+          'channel.key': channel.channelName,
+          'channel.attempt': channelAttempt,
+          'ai.model': candidate.realModel,
+          'upstream.stream': true,
+        }, async (span) => {
+          const s = await deps.upstream.chatStream(channel, {
+            requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
           });
+          const d = await new Promise<UpstreamStreamEvent>((resolve) => {
+            let settled = false;
+            s.onEvent((event) => {
+              if (settled) return;
+              if (event.type === 'first_chunk' || event.type === 'failed' || event.type === 'success') {
+                settled = true;
+                resolve(event);
+              }
+            });
+          });
+          span.setAttributes({
+            'upstream.event': d.type,
+            'upstream.duration_ms': Date.now() - startedAt,
+            ...(d.type === 'failed'
+              ? {
+                  'upstream.ok': false,
+                  'upstream.error_code': d.code ?? 'upstream_error',
+                  ...(d.status != null ? { 'http.status_code': d.status } : {}),
+                  ...(d.deadCredential ? { 'upstream.dead_credential': true } : {}),
+                }
+              : { 'upstream.ok': true }),
+          });
+          if (d.type === 'failed') {
+            span.setStatus({ code: SpanStatusCode.ERROR, message: d.code ?? 'upstream_error' });
+          }
+          return { streamResult: s, decisive: d };
         });
         if (decisive.type === 'failed') {
           lastError = decisive;

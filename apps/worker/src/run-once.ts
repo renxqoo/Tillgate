@@ -6,6 +6,7 @@
  */
 import type { SettlementDomain } from '@ai-gateway/service';
 import type { RunContext } from '@ai-gateway/service';
+import { context, getTracer, remoteParentContext, SpanStatusCode, withAsyncSpan } from '@ai-gateway/core';
 
 export interface SettlementRunResult {
   claimed: number;
@@ -50,7 +51,24 @@ export function createRunOnce(deps: RunOnceDeps) {
     try {
       await Promise.all(
         claims.map(async (claim) => {
-          const outcome = await deps.settlement.processClaim(ctx, claim);
+          // 结算 span：优先挂网关授权时落列的 traceParent（同一 trace 还原「预扣→实扣」全链）；
+          // 无 traceParent（SDK 未启动期授权的存量单）= 独立 trace，仍带 request.id 可查
+          const settleOne = () =>
+            withAsyncSpan(getTracer('worker.settlement'), 'settle.claim', {
+              'request.id': claim.requestId,
+            }, async (span) => {
+              try {
+                const o = await deps.settlement.processClaim(ctx, claim);
+                span.setAttribute('settle.outcome', o);
+                if (o === 'dead') span.setStatus({ code: SpanStatusCode.ERROR, message: 'settle dead' });
+                return o;
+              } catch (error) {
+                span.setAttribute('settle.outcome', 'throw');
+                throw error;
+              }
+            });
+          const parent = remoteParentContext(claim.traceParent);
+          const outcome = parent ? await context.with(parent, settleOne) : await settleOne();
           if (outcome === 'settled') result.settled += 1;
           else if (outcome === 'retried') result.retried += 1;
           else if (outcome === 'dead') result.dead += 1;

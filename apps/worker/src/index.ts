@@ -10,6 +10,7 @@ import {
   assertRedisReachable,
   createRedisClient,
   createSlidingWindowLimiter,
+  initOtel,
 } from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
 import { mailerFromEnv } from '@ai-gateway/identity';
@@ -49,6 +50,12 @@ export async function startWorker(
   const ctx = systemContext(config.WORKER_OWNER_ID);
   const repos = createRepositories();
   liveWorkerInstances.push({ owner: config.WORKER_OWNER_ID, startedAt: Date.now() });
+  // 链路追踪（结算 span；off = no-op 零开销）——停机时 shutdown 排空批处理器
+  const otel = initOtel({
+    serviceName: 'worker',
+    mode: config.OTEL_TRACES_MODE,
+    endpoint: config.OTEL_EXPORTER_OTLP_ENDPOINT,
+  });
   // Redis 必配（首选组件：ai 状态共享；连不上拒绝启动）
   const redis = createRedisClient(config.REDIS_URL, { serviceName: 'worker' });
   await assertRedisReachable(redis, 'worker', config.REDIS_URL);
@@ -298,6 +305,7 @@ export async function startWorker(
         .catch(() => undefined);
       if (healthServer) await new Promise<void>((resolve) => healthServer.close(() => resolve()));
       await settleWakeup?.close().catch(() => undefined);
+      await otel.shutdown().catch(() => {});
       await redis?.quit().catch(() => {});
       await db.$client.end().catch(() => {});
     },
