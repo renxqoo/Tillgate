@@ -32,7 +32,7 @@ interface AuthStepResult {
 }
 
 /**
- * 用户登录 Server Action（client-api-v2，两步：密码 → 邮箱验证码；未强制验证码时单步直落）。
+ * 用户登录 Server Action（client-api，两步：密码 → 邮箱验证码；未强制验证码时单步直落）。
  */
 export async function loginAction(formData: FormData): Promise<{ error?: string; challengeId?: string }> {
   const email = String(formData.get("email") ?? "").trim();

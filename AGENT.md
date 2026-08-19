@@ -21,7 +21,7 @@
 7. **行为等价验证**：重构类改动必须有测试兜底且全绿才算完成（见 §5 四门）。
 8. **v1 冻结**：`packages/ledger`、`packages/ledger-core`、`packages/wallet`、老 apps（gateway/
    worker/client-api/admin-api/admin/client）**一律不许改**。当前只允许动：
-   `packages/{db,repository,domain,service}`、`apps/gateway-v2`。
+   `packages/{db,repository,domain,service}`、`apps/gateway`。
    **删除 v1 代码必须由用户逐项确认，代理不得自行删除**（哪怕"全部逻辑已完成"）。
 
 ---
@@ -35,8 +35,8 @@ packages/
   domain/        全部业务规则（纯函数）；只依赖 decimal.js + node: 内建
   service/       全部用例（事务编排）；只依赖 domain + repository
 apps/
-  gateway-v2/    纯网关 app：路由/管线/装配根（消费 service 包；暂只有架构测试）
-  worker-v2 …    将来的 app（BullMQ 壳 + 装配根，业务全部来自 service 包）
+  gateway/    纯网关 app：路由/管线/装配根（消费 service 包；暂只有架构测试）
+  worker …    将来的 app（BullMQ 壳 + 装配根，业务全部来自 service 包）
 ```
 
 - 域目录：`domain/{shared,wallet,rating,billing,channel-budget}`、
@@ -46,8 +46,8 @@ apps/
     如 user/plan/org-member 的 SQL 已在 repository 包），守卫与事务口径必须同源。
   - `domain` / `service`：**只有 ≥2 个 app 需要的业务规则/用例进包**（资金域：wallet/billing/
     funding/channel-budget/settlement，将来 subscription 生命周期、渠道充值调账）。
-  - 单 app 域**不进共享包**：用户管理、API Key 管理、支付、促销 → `client-api-v2/src/services/`；
-    模型目录/费率卡/渠道 CRUD、管理端复核 → `admin-api-v2/src/services/`。app 内同样四层：
+  - 单 app 域**不进共享包**：用户管理、API Key 管理、支付、促销 → `client-api/src/services/`；
+    模型目录/费率卡/渠道 CRUD、管理端复核 → `admin-api/src/services/`。app 内同样四层：
     routes → app services →（需要时 app domain）→ packages/repository。
 - 文档：`docs/funding-package-plan.md`（分包与资金域实现方案，v1-v9 变更史都在头部）。
 
@@ -98,7 +98,7 @@ apps/
 ## 5. 测试与质量门
 
 1. **四门全过才算完成**：typecheck / lint(oxlint) / test / build。
-   快捷：`pnpm exec turbo run typecheck lint build test --filter=@ai-gateway/domain --filter=@ai-gateway/repository --filter=@ai-gateway/service --filter=gateway-v2`
+   快捷：`pnpm exec turbo run typecheck lint build test --filter=@ai-gateway/domain --filter=@ai-gateway/repository --filter=@ai-gateway/service --filter=gateway`
 2. 测试归属：domain 规则单测（零 DB，毫秒级）→ domain 包；
    用例集成测试（真实 PG，`DATABASE_URL` 缺省 `postgres://postgres:postgres@localhost:5432/ai_gateway`）
    → service 包 `src/__tests__/`；app 端到端 → app。
@@ -106,7 +106,7 @@ apps/
    （DB 触发器禁删），业务行按 FK 逆序清理（先 billing_reservations 再 billing_requests…）。
 4. 金额断言用 `new Decimal(x).eq('0.6')` / `normalizeAmount`（PG 尾零）。
 5. 架构边界测试必须存在且跟随结构演进（domain 禁引表 / service 禁 drizzle+db /
-   gateway-v2 只许四个 @ai-gateway 包 / 全仓禁旧包）。
+   gateway 只许四个 @ai-gateway 包 / 全仓禁旧包）。
 6. 迁移：DDL 写进 `packages/db/migrations/NNNN_xxx.sql`（幂等、`--> statement-breakpoint` 分隔、
    内联约束）+ `_journal.json` 追加条目 + `pnpm --filter @ai-gateway/db db:migrate` 应用。
    schema 与迁移同步改（单一真源在 db 包）。
@@ -148,11 +148,11 @@ apps/
 
 > **当前基线**（随每轮更新；下方条目是按时间的完成留痕）：
 > 默认门禁 `pnpm regress`（v2 四件套 + 共享包 32 任务：typecheck/lint/test 全绿）——
-> domain 124 / service 98 / repository 5 / core 14+5skip(Redis) / ai 299 / gateway-v2 97 /
-> worker-v2 7 / client-api-v2 108 / **admin-api-v2 151**（21 文件；覆盖率门禁
+> domain 124 / service 98 / repository 5 / core 14+5skip(Redis) / ai 299 / gateway 97 /
+> worker 7 / client-api 108 / **admin-api 151**（21 文件；覆盖率门禁
 > 语句 94.5%/分支 85.1%/函数 97.7%/行 96.0%，阈值 90/85/90/90；**22/22 v1 模块
 > 全覆盖**）。前端 admin/client 已就地切换 v2 后端（见 §8 末条）。
-> admin-api-v2 E2E 独立通道 `pnpm --filter @ai-gateway/admin-api-v2 test:e2e`
+> admin-api E2E 独立通道 `pnpm --filter @ai-gateway/admin-api test:e2e`
 > （23 例 5 文件：①登录全链含改密全网下线 ②金钱计算链——双 app 共库真进程：
 > 进货/调账/幂等重放/凭证回读 + client 注册→admin 入金→client 购订阅→admin
 > 续费/取消→双面余额对账同一数字 ③新增接口+状态修改全扫 ④跨 app——管理面
@@ -160,7 +160,7 @@ apps/
 > audit/payment-orders/generation-tasks/billing-operations/tracing 五端点/
 > notifications CRUD）。
 > E2E 独立通道两处（依赖外网与 dev 库，不进默认门禁）：
-> `pnpm --filter gateway-v2 test:e2e`（25 例）+ `pnpm --filter @ai-gateway/client-api-v2 test:e2e`
+> `pnpm --filter gateway test:e2e`（25 例）+ `pnpm --filter @ai-gateway/client-api test:e2e`
 > （22 例 4 文件：①用户全链 ②组织团队 ③OAuth mock GitHub 全链 ④跨 app——client-api 注册
 > 充值开 Key → 真网关 RX-M3 消费 → 结算对账 → 吊销即阻断）。E2E 四轮抓修 4 个真 bug：
 > 流式换渠死锁 / S1 requestId 信任（限流绕过）/ max_tokens 直通 / floor 封顶投影死信。
@@ -171,13 +171,13 @@ apps/
 > ④ playground 操练场推理（chat/completions SSE——v1 调用点本就未被 nginx
 >   路由，latent 功能，需一并设计前端代理）。
 > ~~① org 成员子配额授权侧执行~~（2026-08-19 复核撤销——审计结论过时：
-> 资金域重写时已接线，gateway-v2 assembly → createBillingDomain → 默认
+> 资金域重写时已接线，gateway assembly → createBillingDomain → 默认
 > funding registry → SubscriptionSource.probe 消费 orgMember.memberLimits，
 > domain subscriptionAvailability 执行 a 日限/b 月配额双闸（含 PAYG 回退拆分：
-> 限额只封顶订阅份额、缺口走个人余额）；管理面 admin/client-api-v2 可设置。
+> 限额只封顶订阅份额、缺口走个人余额）；管理面 admin/client-api 可设置。
 > 补服务级集成测试 3 例——月配额拦截 / 回退瀑布两源拆分 / 越权，服务包
 > 100/100 全绿）；
-> ~~② Stripe 支付渠道~~（2026-08-19 移植完成：client-api-v2 多渠道化——
+> ~~② Stripe 支付渠道~~（2026-08-19 移植完成：client-api 多渠道化——
 > PaymentProviderPort 从单渠道改 providers 数组，domain/stripe.ts 纯规则
 > （HMAC-SHA256 恒定时间验签 + 300s 重放窗 + checkout.session.completed
 > 事件归一 + 分↔元整数转换），createStripeProvider 适配（Checkout Session
@@ -194,10 +194,10 @@ apps/
 > ~~③ referrals 邀请返利~~（2026-08-19 移植完成：aff 码 = u{base36(userId)}
 > 与 v1 同格式（历史链接继续有效）；repository 新增 referral.repo（invitee
 > 唯一插入/邀请人有效性/名单/日结聚合）+ wallet.sumCreditedByRefPrefix
-> 聚合读；client-api-v2 domain/referral.ts 纯规则 + referral.service
+> 聚合读；client-api domain/referral.ts 纯规则 + referral.service
 > （注册归因尽力而为不阻断 + 双方奖励 wallet 自然键幂等 + 概览）；
 > auth register/verifyRegistration 双入口接 aff（单步+两步），路由
-> GET /v1/referrals；worker-v2 佣金日结任务（昨日 UTC 窗口 × 比例 →
+> GET /v1/referrals；worker 佣金日结任务（昨日 UTC 窗口 × 比例 →
 > wallet.credit 自然键幂等，重放不计数）；配置 REFERRAL_SIGNUP_BONUS/
 > REFERRAL_COMMISSION_RATE/WORKER_REFERRAL_INTERVAL_MS，wallet 白名单
 > 两 app 加 'referral'。测试：client 10 例 + 路由全链 1 例 + worker 4 例，
@@ -206,7 +206,7 @@ apps/
 > 部署面已决策（用户确认 2026-08-19）：apps/trace-receiver（OTLP span 接收
 > :8788）**保持 v1 代码，不移植**——只依赖共享 @ai-gateway/tracing 包、无业务
 > 逻辑；OTEL_TRACES_MODE=off 不参与链路，开 otlp 时由 collector 直对接。
-> 管理面 tracing 查询（admin-api-v2 /v1/tracing/* 五端点）读同一 PG 存储，
+> 管理面 tracing 查询（admin-api /v1/tracing/* 五端点）读同一 PG 存储，
 > 与 receiver 写侧天然兼容。
 > ~~低优先遗留：TPM actual 结算回填~~（2026-08-20 §11 Wave1 已补：backfillTpm + onSettled 钩子）。
 > v1/v2 共存清理（删 v1 应用代码）仍待用户逐项确认。
@@ -258,7 +258,7 @@ models billingPolicy 全链路（schema→service→repo insert/回显）。
 
 三路并行审计（client/admin+gateway/worker+共享包）发现 7 个高危并当日全部修复：
 
-- **P0 SSRF 硬门缺失**：gateway-v2/worker-v2 的 ALLOW_LOCAL_URL 无 NODE_ENV 生产联锁
+- **P0 SSRF 硬门缺失**：gateway/worker 的 ALLOW_LOCAL_URL 无 NODE_ENV 生产联锁
   （admin-v2 有）——生产误配 env 即可打内网/元数据地址。已补双门。
 - **plans grant 别名不幂等**（上轮自引入）：operationId 带 Date.now() → 重试双扣现金。
   已改 operationId(c)（尊重 idempotency-key 头）。
@@ -273,7 +273,7 @@ models billingPolicy 全链路（schema→service→repo insert/回显）。
   改 400-on-fail；attach 失败被吞 + client_reference_id 丢弃 → 回退锚定位（merchantOrderId）。
 - P1 批：summarizeByDay bigint→number、渠道下单失败关单+502、register 429 Retry-After、
   jwtVerify HS256 白名单、2FA 验证成功审计、org remainingAmount clamp、planPrice coalesce、
-  backfillTpm 零额也释放预占、worker-v2 compose healthcheck、SSE X-Accel-Buffering:no
+  backfillTpm 零额也释放预占、worker compose healthcheck、SSE X-Accel-Buffering:no
   （nginx 前置反代缓冲卡流——v1 也缺的运维地雷）+ connection:keep-alive。
 
 fail-open 全库扫描结论（B 表 21 项）：v2 资金/鉴权主干全部 fail-closed（限流器/爆破锁/
@@ -333,10 +333,10 @@ subscriptionName/list 删）、redeem 只回 codeId、支付旧回调路径删�
 - v1 专属共享模块下线：http cache.ts（v1 路由缓存失效——v2 网关直读 DB 无缓存）、
   http csrf.ts（v2 纯 Bearer 无 Cookie）、identity login-throttle.ts（v1 fail-open 登录
   限流——v2 用 core fail-closed 守卫）、wallet metering 子导出（v1 计费公式——v2 在 domain rating）
-- admin-api-v2 的 bumpRouteCache/invalidateKeyAuthCache 十二处调用全部拆除（失效的是
+- admin-api 的 bumpRouteCache/invalidateKeyAuthCache 十二处调用全部拆除（失效的是
   v1 网关的 60s 缓存——对 v2 是无效操作）
-- compose：v1 四服务块删除；console-client/console-admin 指向 client-api-v2:8081 /
-  admin-api-v2:8082；**nginx upstream 切 gateway-v2:8083**（生产入口正式切换）
+- compose：v1 四服务块删除；console-client/console-admin 指向 client-api:8081 /
+  admin-api:8082；**nginx upstream 切 gateway:8083**（生产入口正式切换）
 - .env.example：30 行 v1 专属键清理
 - Dockerfile.server 注释更新（v2 五应用）
 
@@ -424,23 +424,23 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
 
 ### 新增测试（生产前资金安全网）
 
-- `gateway-v2 e2e-cost-drain.test.ts`（7 例，e2e 配置）：D1–D5 全向量闭环——钳制转发体、
+- `gateway e2e-cost-drain.test.ts`（7 例，e2e 配置）：D1–D5 全向量闭环——钳制转发体、
   取消/缺 usage 估算收费、累计 usage 精确收费、402 整单拒绝、超额收满预留不死信、
   Idempotency-Key 注入。
-- `gateway-v2 oauth-appjwt.test.ts`（3 例）：/oauth/token → app_jwt → /v1/models 闭环。
+- `gateway oauth-appjwt.test.ts`（3 例）：/oauth/token → app_jwt → /v1/models 闭环。
 - `service settlement.test.ts` +1：毒行隔离（B 的资金不因 A 的毒行冻结）。
 - `service generation-poll.test.ts` +2：信号失败不终态化（不再免费交付）、崩溃窗口自愈。
 - `client-api payments.test.ts` +3：过期单复活入账、金额不符不复活、>2 位小数拒绝。
 
 ### 扣款逻辑文档化（2026-08-19 补）
 
-- 新增 `docs/billing-flow-deep-dive-v2.md`——v2 扣款全流程唯一真相文档：预扣四道保守
+- 新增 `docs/billing-flow-deep-dive.md`——v2 扣款全流程唯一真相文档：预扣四道保守
   公式 / outputCap 与转发钳制 / balanceFloor 两模式 / 资金规划 take·放行门 / 实扣公式与
   consume·over 分配 / #over 补充授权与收满预留降级 / 估算收据三归属 / 状态机 8 态 /
   刷费用五向量防线表 / v1↔v2 差异表 / 文件索引。
-- 旧 `billing-flow-deep-dive.md`、`gateway-pipeline.md`、`architecture.md`、
-  `data-model.md` 均为 v1 视角，已加历史横幅并链到 v2 文档（估算口径差异尤其注意：
-  v1 取消估算用 bytesRelayed×tokensPerByte，v2 用扫描器累计内容×校准估算器）。
+- v1 视角的旧 `billing-flow-deep-dive.md`（取消估算用 bytesRelayed×tokensPerByte，
+  与现扫描器累计内容×校准估算器口径不同）已随 v1 退役整体删除；
+  `gateway-pipeline.md`、`architecture.md`、`data-model.md` 带历史横幅并链到唯一真相文档。
 - README 文档表补 v2 扣款文档入口。
 
 ### 已知未修（记录在案，非阻断上线）
@@ -516,17 +516,17 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
   `SETTLE_WAKE_QUEUE` 常量下沉 service（生产/消费共同契约）；
   WORKER_SETTLE_INTERVAL_MS 1s→30s（唤醒为主、扫描兜底）；集成测试：
   合并语义 + signal→队列→唤醒→结算全链（无定时器参与）。
-- **Wave D playground 移植**（P20 关闭，最后一个功能件）：gateway-v2
+- **Wave D playground 移植**（P20 关闭，最后一个功能件）：gateway
   api-key 中间件加 **JWT 凭证分支**（typ app_jwt 查 apps 有效行 / typ
   playground 载荷限额；顺带修复 /oauth/token 发的 JWT 无人能接的死角）；
   AuthContext 加 appId、apiKeyId 可空；限流维度 key:{id}/user:{userId}；
-  client-api-v2 `POST /v1/playground/chat/completions`（会话守护 → 现签
+  client-api `POST /v1/playground/chat/completions`（会话守护 → 现签
   5 分钟 typ playground JWT 独立低限额 RPM10/TPM20万 → 代理网关 SSE
   原样回传，请求体 zod 白名单收敛）；PLAYGROUND_* 成组配置；FE
   `/api/playground/chat/completions` route handler（HttpOnly cookie 换
   Bearer + SSE 流式）；测试 6 例（含上游错误直传/封禁 403/字段收敛）。
-- **Wave E 部署**：compose.yml 增 v2 四服务（gateway-v2:8083/client-api-v2/
-  admin-api-v2/worker-v2，与 v1 并存；**nginx 切流节奏待用户确认**——
+- **Wave E 部署**：compose.yml 增 v2 四服务（gateway:8083/client-api/
+  admin-api/worker，与 v1 并存；**nginx 切流节奏待用户确认**——
   当前生产入口仍指 v1）；.env.example 同步 v2 键位。
 - **验证**：全仓 regress 32/32（client 151/gateway 97/admin 151/worker 14
   + 共享包）；Redis 故障注入实测（brew stop redis → 四 app 启动拒绝
@@ -549,51 +549,51 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
   子路径导出。
 
 - 已建成：domain（79 单测）/ service（49 集成测试：billing 瀑布 12 + settlement 9 + wallet 15 +
-  funding 13）/ repository / gateway-v2 消费方形态。0060 迁移（billing_reservations + 开关列）已入 dev 库。
+  funding 13）/ repository / gateway 消费方形态。0060 迁移（billing_reservations + 开关列）已入 dev 库。
 - 待办（做完划掉并更新此节）：
   - ~~资金域收尾：积压准入工厂、wallet refund 动词、文件原子化~~（2026-08-19 完成：
     domain 90 测试 + service 91 测试全绿；wallet 九动词、channel-budget 一动词一文件、
     billing/admission.ts 工厂、domain rating 拆 calculate/receipt/amounts；测试补齐攻击面/
     幂等竞态/限额闸/失败退避/渠道收尾六套件，并修复 settlement 装配漏配 channelBudget 的真 bug）；
   - app 层（业务全在 service 包，app 只做协议/编排/装配）：
-    - gateway-v2 G1 已完成（2026-08-19）：hono 骨架 + 装配根（config zod 全显式）+
+    - gateway G1 已完成（2026-08-19）：hono 骨架 + 装配根（config zod 全显式）+
       错误信封翻译表（domain 家谱→HTTP 契约）+ API Key 鉴权中间件（SHA-256 查表 +
       吊销/过期守卫）+ /healthz（repo health.ping）——15 测试全绿；
-    - gateway-v2 G2 已完成：报价构建——repo 新增 model-mapping.repo（候选链批量解析）+
+    - gateway G2 已完成：报价构建——repo 新增 model-mapping.repo（候选链批量解析）+
       user.findRateCardId；app 侧 quote/build-quote.ts（链序/fallback 跳过/系数按映射分档/
       停用卡拒/全链免费才 explicitlyFree）+ AppError 协议错误——20 测试全绿；
-    - gateway-v2 G3 已完成：模型路由——repo channel.findRouteCandidates（model_channels
+    - gateway G3 已完成：模型路由——repo channel.findRouteCandidates（model_channels
       绑定表 join，仅 status=0，priority/weight 基序）+ app routing/（schedule 分层加权
       随机纯规则·rng 可注入 / switchable 换渠判定词表 / resolve-channels 编排）——27 测试全绿；
-    - gateway-v2 G4a 已完成：推理管线编排——pipeline/（output-cap 输出上界纯规则 /
+    - gateway G4a 已完成：推理管线编排——pipeline/（output-cap 输出上界纯规则 /
       upstream-port 上游接缝 / receipt 收据装配含缺 usage 估算政策 / run-chat 编排核心：
       报价→预扣→渠道调度→逐渠预留→换渠→收据 signal→全败三路归还）+ POST /v1/chat/completions
       路由——31 测试全绿（成功/换渠敞口原子归还/全败 released 归零/余额不足 402 零落）；
-    - gateway-v2 G4b 已完成：生产上游适配器（createAi 七协议 + apiKeyEnc core.decrypt
+    - gateway G4b 已完成：生产上游适配器（createAi 七协议 + apiKeyEnc core.decrypt
       解密 + ai Usage.estimated→缺 usage 语义）+ 跨模型 fallback 双层循环（候选模型 × 渠道，
       收据用实际成功候选快照——externalModel 一律请求名锚点，老网关语义）+ 死凭据落库
       （repo markDeadCredential：status 0/3→4 + 事件箱同事务）+ 进程内存 ai 状态存储 +
       生产装配（assembly 挂 runChat，index 启动即带路由）——33 测试全绿；
-    - gateway-v2 G4c 已完成：SSE 流式中继——端口 chatStream（事件含终态重放契约）+
+    - gateway G4c 已完成：SSE 流式中继——端口 chatStream（事件含终态重放契约）+
       适配器透传 + runChat 统一双分支（first_chunk 前同语义换渠 / 上线后事件锚定收尾；
       终态收据三形态：可信 usage 正常 / 用户侧取消估算 estimatedFor=client_disconnect +
       bytesRelayed / 完成缺 usage 估算 usage_missing_completed）——36 测试全绿；
-    - gateway-v2 G4d（运营加固，依赖部署设施）：Redis 熔断/死凭据/路由缓存多副本共享、
+    - gateway G4d（运营加固，依赖部署设施）：Redis 熔断/死凭据/路由缓存多副本共享、
       鉴权爆破防护、App JWT（jose）、OTel 链路；
-    - worker-v2 已完成（2026-08-19）：config（节奏/批次/策略全显式）+ run-once 批次编排
+    - worker 已完成（2026-08-19）：config（节奏/批次/策略全显式）+ run-once 批次编排
       （认领→并发 processClaim→计数回执）+ index 双定时器（结算轮询 + 滞留回收）+ 优雅停机
       ——3 集成测试全绿（批次闭环实扣/幂等/回收释放）；BullMQ 唤醒待接 Redis（轮询已是
       正确性兜底）；
-    - gateway-v2 接口面补齐（G4c+，2026-08-19）：GET /v1/models(/:model) 模型目录（repo
+    - gateway 接口面补齐（G4c+，2026-08-19）：GET /v1/models(/:model) 模型目录（repo
       listEnabledModels）+ 安全中间件三件套（CORS 预检白名单/安全头/body 413 上限）+
       /v1/* requestLog（鉴权前挂载，401 也入日志；repo insertRequestLog）+ notFound 404
       信封 + 鉴权按已注册端点挂载（未知路径 404 而非 401，老网关语义）——42 测试全绿；
-    - gateway-v2 G5a 已完成：文本族全端点 + 原生协议——端点注册表驱动挂载
+    - gateway G5a 已完成：文本族全端点 + 原生协议——端点注册表驱动挂载
       （inference-endpoints.ts：chat/completions/embeddings + completions/responses/messages
       三 codec）；embeddings 输出恒 0 口径（output-cap kind 分档）；模态 JSON 族
       （images/rerank/moderations/audio-speech）走同一管线单位计费；旧单路由退役
       ——50 测试全绿（含真实 codec 双向翻译 8 例）；
-    - gateway-v2 G5b 已完成：模态 multipart 族 + /oauth/token + 计费配置系统——
+    - gateway G5b 已完成：模态 multipart 族 + /oauth/token + 计费配置系统——
       pricing-strategy（flat/variant 策略注册表，新公式=加一行；estimate 保守/settle 精确；
       变体选择器支持多参数组合键 "size:quality"）+ measurement（计量描述符注册表，
       token/image/second/char/request 五维度）+ DB 0061 billing_config JSONB 列
@@ -624,21 +624,21 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       回归测试：余额 0.15≥0.1 放行 hold=0.15 / 0.05<0.1 → 402 / duration=4 保底 5s
       hold=2.5 且结算实值仍 4s / 未声明 402 语义零变更
       ——domain 110 + gateway 58 测试全绿；
-    - gateway-v2 G4d 已完成（2026-08-19，生产加固）：内存实现全部替换为可选 Redis
+    - gateway G4d 已完成（2026-08-19，生产加固）：内存实现全部替换为可选 Redis
       生产形态——core 新增 redis/ 基建模块（script-runner evalsha+NOSCRIPT 自愈 /
       ai 状态 CAS 存储（熔断+死凭据多副本共享，fail-open）/ 滑动窗口限流器
       （RPM ZSET + TPM actual+reserved 预占/释放/续租，付费链路 fail-open）/
       两层鉴权爆破防护（per-keyHash 失败计数锁 + per-IP 无差别刷锁定，fail-open），
       全部 v1 语义忠实移植；REDIS_URL 未配置 = 单副本开发形态（状态内存化、
-      限流/防护跳过）。gateway-v2：key 维 RPM/TPM 准入（api_keys 列）+ 渠道维
+      限流/防护跳过）。gateway：key 维 RPM/TPM 准入（api_keys 列）+ 渠道维
       尝试前判定（超限换渠）+ TPM 失败归还 + 免费模型日限（唯一防线 fail-closed，
       超限 429/计数器不可用 503 两口径）；上游调用 deadlineMs；OTel 中间件
       （off=no-op）+ /readyz；优雅停机（停收新请求→宽限 drain→OTel flush→
-      连接收口，宽限耗尽强退）。worker-v2：Redis ai 状态 + 优雅停机（等在途
+      连接收口，宽限耗尽强退）。worker：Redis ai 状态 + 优雅停机（等在途
       批次→关连接）。测试：gateway 71（+7 加固）+ core 12+5skip（真实 Redis
       才跑）。遗留（低优先）：TPM actual 结算回填（当前 reserved 由 600s TTL
       自回收，分钟内保守正确）；BullMQ 唤醒（轮询已是正确性兜底）；
-      client-api-v2、admin-api-v2 待建；
+      client-api、admin-api 待建；
     - 测试完备化（2026-08-19，生产水准收口）：五类缺口全部补齐——
       ① worker 装配层（config fail-closed/适配器 ai 注入+解密透传/三定时器真实
       批次闭环/stop 关连接拒绝后续查询）；② gateway 停机抽 createShutdown 可测
@@ -654,7 +654,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       + switchable 词表 + output-cap 优先级。gateway 集成套件 fileParallelism=false
       （共享单 PG 确定性优先）+ 用户维度兜底清账。终态：gateway 90 例 90.4% stmts
       / worker 7 例 / ai 299 / core 12+5skip(Redis) / domain 114 / service 97；
-      client-api-v2、admin-api-v2 待建；
+      client-api、admin-api 待建；
     - 安全/资损专项（2026-08-19 审计后修复）：① **S1 复发堵死**——v2 的 requestId
       曾采信客户端 X-Request-Id（v1 已修的 S1 漏洞复发：固定 ID → 限流 ZSET
       member 去重 → RPM/TPM 全绕过 + uuid 列 500）；修复=服务端生成+响应回显，
@@ -665,8 +665,8 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       ③ 任务双副本并发双结算回归（两 poller 并发同任务 → CAS 单赢家、
       settlement 只扣一次 97=100-3）。④ 流式终态 double-fire 重入回归
       （success 事件重复投递 → 同 requestId 恒一行单据态）。终态：gateway 95 例
-      / service 98（generation-poll 7）；client-api-v2、admin-api-v2 待建；
-    - E2E 真链路（2026-08-19，独立通道 `pnpm --filter gateway-v2 test:e2e`——
+      / service 98（generation-poll 7）；client-api、admin-api 待建；
+    - E2E 真链路（2026-08-19，独立通道 `pnpm --filter gateway test:e2e`——
       默认门禁不依赖外网）：真网关进程（hono serve + 全真装配）+ 平台 ag_ key
       + dev 库 RX-M3→MiniMax-M3 真上游。四场景实测：① 流式中途取消（已有输出）
       → 单笔账单、结算后余额 ≥ -0.05、在途归零；② 上游未返回时取消 → 账单
@@ -689,7 +689,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       int positive ≤1M，n≤16 同步补）。无法本地确定性复现的向量显式归档到集成/
       单测层（覆盖矩阵在 e2e-attack.test.ts 文件尾）：Redis 两层爆破防护、免费
       模型日限、§4 超额推负、上游故障注入换渠、任务双副本双结算、流式 double-fire。
-      终态：E2E 11 例 + 集成 99 + 单测全绿；client-api-v2、admin-api-v2 待建；
+      终态：E2E 11 例 + 集成 99 + 单测全绿；client-api、admin-api 待建；
     - E2E ⑪认证绕过 + ⑫全库审计（2026-08-19，e2e-auth-audit，E2E 累计 15 例）：
       ⑪ 全部推理/任务/目录/查询端点无凭证与坏凭证五形态（Basic/裸串/JWT 样/空
       Bearer/错位 key）一律 401——不存在绕过认证直调模型的路径；上游真实密钥
@@ -727,7 +727,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       lease.renewed、终态即停、100 次上限防协议违约泄漏——修复前 >TTL(300s)
       的长流会被 recover 误释放→终态冲突→**漏收**；pipeline 补短 TTL 慢流
       集成回归（续租期间结算不冲突）。
-    - E2E ⑯worker-v2 全链（2026-08-19，e2e-worker，E2E 累计 25 例）：补齐 worker
+    - E2E ⑯worker 全链（2026-08-19，e2e-worker，E2E 累计 25 例）：补齐 worker
       「真网关 HTTP → 真 worker 三定时器 → 落库」的全链验证——⑯a 结算环（chat
       请求 → settle 定时器消费 → usage_logs/钱包腿/渠道预算扣减三处由 worker 落账，
       证明数据接收正确）；⑯b 生成环（本地 mock MiniMax 视频上游按协议形状：提交
@@ -736,7 +736,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       落库）；⑯c 停机语义（stop 后 pending 停留不再消费）。配套：SSRF 防护的
       dev 逃生门两枚（GATEWAY/WORKER_AI_ALLOW_LOCAL_URL，默认 false——生产
       恒关，测试连本地 mock 专用）；worker 侧 createAi 支持注入 allowLocalUrl。
-    - gateway-v2 G6 已完成（2026-08-19）：video/music 异步任务族——接口面与 v1 对齐。
+    - gateway G6 已完成（2026-08-19）：video/music 异步任务族——接口面与 v1 对齐。
       domain 新增 generation 词表（task_poll/task_execute 执行模型 + 快照白名单，
       新类型=注册一个描述符；计量不重复——单一真相在 measurement 注册表）；
       repository 新增 generation-task.repo（插入/归属查/认领/超时扫描/CAS 终态，
@@ -744,16 +744,16 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       （在途任务可达，不做 status 过滤）；service 新增 generation 域：TaskPort 纯接口
       （service 零 ai 依赖）+ 轮询用例（超时释放/running 续租/succeeded 收据结算/
       failed 释放/music 代执行——幂等靠任务行 CAS + signal 状态机守卫）；
-      gateway-v2 新增 generation/submit 编排（报价→authorize（含预扣策略）→候选×渠道
+      gateway 新增 generation/submit 编排（报价→authorize（含预扣策略）→候选×渠道
       →task_poll 提交上游/task_execute 只登记→任务行落库（收据模板+计量快照）→
       租约覆盖 TTL→201；全败 502 三路归还；落库失败 503 预留保留禁误退款）+
       routes/generation（POST /v1/video|music/generations + GET /v1/videos|musics/:id
       归属校验 404）；ai 包新增 createGenerationTaskAdapter（协议单一真相，decrypt 注入、
       结构化对齐 service 端口——gateway/worker 两 app 共用，薄绑定各 10 行）；
-      worker-v2 新增第三定时器（generation 轮询）+ config 全显式。回归测试 12 例：
+      worker 新增第三定时器（generation 轮询）+ config 全显式。回归测试 12 例：
       提交两形态/全败 502/402/非法体/归属查询 404 × 轮询六态（含经 settlement 实扣
       6s×0.5=3 元端到端）——domain 114 + service 97 + gateway 64 + worker 3 全绿；
-    - client-api-v2 C1 已完成（2026-08-19，用户面闭环）：注册→登录→Key→钱包→兑换→充值
+    - client-api C1 已完成（2026-08-19，用户面闭环）：注册→登录→Key→钱包→兑换→充值
       全链生产可用。架构落点遵守「单 app 域不进共享包」：SQL 全部进 repository
       （新增 user-account/api-key/redeem-code/payment-order 四仓储——建号唯一索引兜底、
       改密+会话失效线单语句原子、核销/吊销/订单跃迁全 CAS），业务在 app services
@@ -774,7 +774,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       Apps/兑换频率限流）；扫描抓获并修复 1 个真 bug：dailySpendLimit=1e21 科学计数法
       绕过裸 Decimal refine → numeric 溢出 500（v1 keys.numeric-limit 同类）——结构性
       拒绝下沉 domain/key-limits + topup（parsePositiveAmount + 1e12 业务上界），48 例全绿。
-    - client-api-v2 C1.5+C2 已完成（2026-08-19，「都补」五轮——v1 27 测试文件 27/27 语义等价）：
+    - client-api C1.5+C2 已完成（2026-08-19，「都补」五轮——v1 27 测试文件 27/27 语义等价）：
       C1.5 小件：兑换频率闸（per-user 10/min 429）+ usage 三端点（明细 billedBy 拆分+
       keyName/appName 来源 / by-model 聚合 / 实时速率——usage_logs 用户隔离硬条件）+
       Key PATCH（网关每请求查库，v1「PATCH 清缓存」结构性不存在）+ 兑换历史 +
@@ -805,8 +805,8 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       （org 成员子配额授权侧执行后经复核确认已在 service 资金域接线——
       SubscriptionSource.probe 消费 memberLimits，非缺口；Stripe 渠道与
       referrals 邀请返利 2026-08-19 已移植，见基线待办）。app 累计 108 例 12 文件全绿。
-    - client-api-v2 E2E 通道（2026-08-19，22 例 4 文件，test:e2e）：e2e-kit 起真服务进程
-      （全真装配 + epay 测试商户凭证注入）；④跨 app 复用 gateway-v2 e2e-kit（相对路径
+    - client-api E2E 通道（2026-08-19，22 例 4 文件，test:e2e）：e2e-kit 起真服务进程
+      （全真装配 + epay 测试商户凭证注入）；④跨 app 复用 gateway e2e-kit（相对路径
       import）双真服务同库拓扑——HTTP 注册→epay 回调充值→HTTP 开 Key→真网关 RX-M3 小
       请求→settleAll 结算→assertReconciled（余额==20−Σ实扣、在途 0）→client-api 用量/
       按模型/钱包三面读数与网关对账同一数字→吊销 Key 网关即 401。②组织全链含席位闸/
@@ -816,7 +816,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       E2E 抓到的真缺口）。配套：默认 vitest 排除 e2e-*，独立 vitest.config.e2e.ts。
     - 兼容垫片清除（2026-08-19）：加密「双 key 轮换窗」整族删除——core/crypto 的
       version/oldKey 参数（单 key 单格式 enc:v1，盘上格式不变故 2400 条存量渠道密文
-      不受影响）、gateway-v2/worker-v2 的 CHANNEL_API_KEY_ENCRYPTION_OLD 配置与
+      不受影响）、gateway/worker 的 CHANNEL_API_KEY_ENCRYPTION_OLD 配置与
       upstream/task/generation 三适配器穿线、ai task-adapter、http encryptCurrent 的
       世代选择。v1 admin-api/gateway 的调用点在冻结层（运行时多传参无害）；其
       typecheck 报错按既定规则忽略。core 加密测试重写为单 key 语义（5 例）。
@@ -831,11 +831,11 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       → core 新增 createRedisClient 工厂（错误监听必挂 + 30s 去重日志 + URL 认证
       脱敏 + 降级语义提示），三 app 装配统一接入；真启动验证：Redis 挂死时单条清晰
       日志、服务照常、healthz 200、优雅停机。core 14+5skip。
-    - admin-api-v2 切片一·计费三轴（2026-08-19，71 例 9 文件）：四层重写 v1 管理面
+    - admin-api 切片一·计费三轴（2026-08-19，71 例 9 文件）：四层重写 v1 管理面
       配置族——SQL 全部下沉 repository（新 admin-account/provider/rate-card 三仓储 +
       channel/model-mapping 扩管理 CRUD：插入/部分更新/软退役/统一列表 join 计数/
       绑定全量替换/探针连接信息/页内聚合下推；列表 ilike 转义助手包内 search.ts）。
-      app 层（apps/admin-api-v2）：Bearer 管理会话（identity type=admin issuer 物理隔离，
+      app 层（apps/admin-api）：Bearer 管理会话（identity type=admin issuer 物理隔离，
       跨面 token 互斥 + R5-2 失效线 + 封禁即时下线，无 Cookie 无 CSRF）+ auth 服务
       （密码登录哑哈希防枚举 / 2FA 邮箱验证码两步：4×401 后挑战作废、60s 冷却 429、
       SMTP 缺席 503 fail-closed / 改密原子推进失效线 + 同拍新 token / 2FA 开关
@@ -855,21 +855,21 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       {rows,total,page,pageSize}+q 字面 %+排序白名单 400+分页钳制不 400+join 计数。
       共享层两小修：http cache.ts 失效函数改结构化 RedisLike（跨 ioredis 实例类型
       互换）；app error-map PG 翻译走 cause 链（drizzle 包装穿透）。根 pnpm dev 扩为
-      v2 四件套（:8082 admin-api-v2）。顺带清掉上轮未提交工作积欠、挡 `pnpm regress`
+      v2 四件套（:8082 admin-api）。顺带清掉上轮未提交工作积欠、挡 `pnpm regress`
       （含 lint）的 lint 债七处文件：core redis.test 纯函数内联 / ai task-adapter
       upstreamError 外提 / domain subscription 测试 import 指正 / service
-      generation-poll 未用导入 / worker-v2 generation-adapter 冗余 spread /
-      gateway-v2 23 处（未用导入×10、shadow 改名×5、泵循环状态对象化×2、
+      generation-poll 未用导入 / worker generation-adapter 冗余 spread /
+      gateway 23 处（未用导入×10、shadow 改名×5、泵循环状态对象化×2、
       makeApp 参数约定、fakeGuards 外提）——至此 regress 门禁恢复全绿。
       收尾两笔：①regress 门禁范围收敛——v1 六 app 结构性排除（--filter=!，
       与 pnpm dev 同口径；共享包 + v2 四件套共 32 任务），起因是 v1 worker 的
       decrypt 三参调用点在上轮删双 key 后 typecheck 报错（运行时无害，按
       「v1 报错不进门禁」既定规则）；②pipeline「长流续租」测试改为容忍
-      settlement_pending|settled 二态——开发库常有活 worker-v2（默认 1s 一轮）
+      settlement_pending|settled 二态——开发库常有活 worker（默认 1s 一轮）
       在测试观察窗内合法结算，回归点是误释放（released/dead=漏收）不是
       「别人合法结算」，默认门禁不得假设独占共享开发库。
       测试走真实会话链（种子管理员 + signSession Bearer），非中间件注入桩。
-    - admin-api-v2 切片二·用户资产（2026-08-19，+28 例至 99）：users（列表钱包富化
+    - admin-api 切片二·用户资产（2026-08-19，+28 例至 99）：users（列表钱包富化
       balance/在Flight/creditLimit/availableBalance + 企业过滤闭包 enterprise=0/1 组合 q +
       列白名单永不回 passwordHash 三查 camel/snake/scrypt + 封禁语义 freezeReason 只随
       status=1 且解封清原因 + 换卡守卫卡存在且启用 + 邮箱变更同事务 advanceAnchor 全网
@@ -895,7 +895,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       等共享组件错误免费获得 v1 注册表状态码）。config +ADMIN_CURRENCY/VOUCHER_*。
       顺带：service settlement-failure 测试同「活 worker 竞态」加固（外部 dev worker
       1s 抢领合法结算——终态轮询收敛断言）。
-    - admin-api-v2 质量收口（2026-08-19，138 例 19 文件 + E2E 18 例 4 文件）：
+    - admin-api 质量收口（2026-08-19，138 例 19 文件 + E2E 18 例 4 文件）：
       ①覆盖率门禁（vitest coverage-v8，阈值 90/85/90/90；入口/装配/env 解析/
       测试基建不计入）——补异常/安全/攻击面五套件：auth-routes（HTTP 登录/验码/
       封禁 403）、security（CORS 白名单外无 ACAO、413 提前拒绝、幂等键含冒号抢占
@@ -908,7 +908,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       扫、三过滤组合、全零价 isFree 合法翻转）。抓出并修 1 个真缺口：渠道探针
       未包 try/catch——适配器异常/密文损坏曾冒 500，现结构化 ok:false internal。
       ②E2E 通道（e2e-kit 真进程 port 0 + 种子管理员 HTTP 登录唯一凭证入口 +
-      清理台账；复用 client-api-v2 e2e-kit 双 app 共库）：登录全链（改密→旧
+      清理台账；复用 client-api e2e-kit 双 app 共库）：登录全链（改密→旧
       token 401→旧密码死→新密码登）、金钱链（进货凭证回读/调账/超扣 422/幂等
       重放预算只动一次；client 注册→admin 调账+赠送→client 购订阅→admin 续费→
       cancel→流水余额链 105/75/45 newest-first→admin 列表与 client 钱包余额同数字）、
@@ -917,7 +917,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       作废）、跨 app（管理面改密/封禁→用户面旧 token 即刻 401）。E2E 抓出 3 处
       测试侧错（无 body POST 默认 GET、幂等键未复用、cancel 打旧订阅行）——
       均为测试口径修正非产品缺陷。
-    - admin-api-v2 切片三·运维查询 + 前端全量切 v2（2026-08-19，151 例 21 文件
+    - admin-api 切片三·运维查询 + 前端全量切 v2（2026-08-19，151 例 21 文件
       + E2E 23 例 5 文件；v1 22/22 模块全覆盖收官）：①运维查询族——usage-logs
       （estimated 字符串布尔显式解析防 coerce 陷阱、estimated/estimateReason 一等
       字段、恒 status=0、q 命中外部名/真实名/requestId::text）、logs（userName=
@@ -946,7 +946,7 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       statement 字段映射、billing 订单/渠道、dashboard by-model、capability 字段、
       OAuth 按钮 v1 路径+新增 /oauth/callback fragment 落地页、凭证代理 Bearer、
       payment-orders 误用 fetchUserList 修正、notifications/统计 rows??list）；
-      client-api-v2 补公开 /v1/pricing（价格页/操练场读模型）与 me profile 的
+      client-api 补公开 /v1/pricing（价格页/操练场读模型）与 me profile 的
       isEnterprise。⑤浏览器级 UI E2E（真浏览器驱动生产构建前端 + 真 v2 双后端）：
       client 注册→自动登录→dashboard（余额/Key/速率卡片）→登出→重登→创建 Key
       （明文一次性显示+列表回显）；admin 登录（无 2FA 单步）→仪表盘（今日请求/
@@ -964,9 +964,9 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
       接线——SubscriptionSource.probe 消费 memberLimits；Stripe 渠道与
       referrals 邀请返利同日移植完成，见基线待办②③划线条目）。
       trace-receiver 已决策保持 v1（用户确认——无业务
-      逻辑，collector 直对接；admin-api-v2 /v1/tracing 查询侧与 receiver 写侧
-      共享同一 PG 存储，天然兼容）。全栈健康快照：regress 32/32 + client-api-v2
-      108 + admin-api-v2 151 集成 + 23 E2E + 双前端 production build 通过 +
+      逻辑，collector 直对接；admin-api /v1/tracing 查询侧与 receiver 写侧
+      共享同一 PG 存储，天然兼容）。全栈健康快照：regress 32/32 + client-api
+      108 + admin-api 151 集成 + 23 E2E + 双前端 production build 通过 +
       真浏览器 UI 全链。
   - 相邻域用例：subscription 生命周期（购买/续费/换包，进 service/subscription）、渠道充值/调账
     （进 service/channel-budget）、死单复核（admin-api）；

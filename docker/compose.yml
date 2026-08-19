@@ -31,12 +31,12 @@ services:
     entrypoint: sleep infinity # 常驻，由 cron/手动触发 renew
     restart: unless-stopped
 
-  gateway-v2:
+  gateway:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
       args:
-        APP: gateway-v2
+        APP: gateway
     env_file:
       - path: ../.env
         required: true
@@ -50,22 +50,28 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8083/readyz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
-    stop_grace_period: 15s
+    stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
+    # 多副本：docker compose up -d --scale gateway=2
 
-  client-api-v2:
+  client-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
       args:
-        APP: client-api-v2
+        APP: client-api
     env_file:
       - path: ../.env
         required: true
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OAUTH_API_BASE: http://client-api-v2:8081
+      OAUTH_API_BASE: http://client-api:8081
       OTEL_TRACES_MODE: "off"
     depends_on:
       redis:
@@ -75,12 +81,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
-  admin-api-v2:
+  admin-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
       args:
-        APP: admin-api-v2
+        APP: admin-api
     env_file:
       - path: ../.env
         required: true
@@ -96,12 +102,12 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
 
-  worker-v2:
+  worker:
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
       args:
-        APP: worker-v2
+        APP: worker
     env_file:
       - path: ../.env
         required: true
@@ -121,19 +127,6 @@ services:
       retries: 3
     restart: unless-stopped
     stop_grace_period: 30s
-
-  redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8787/readyz']
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-    stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
-    # 多副本：docker compose up -d --scale gateway=2
 
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
   # 各服务通过 OTEL_TRACES_MODE=otlp + endpoint 指向它（见下方 environment 注入）。
@@ -167,10 +160,10 @@ services:
       - path: ../.env
         required: true
     environment:
-      # v2 后端（用户面 8081）
-      CLIENT_API_BASE: http://client-api-v2:8081
+      # 后端（用户面 8081）
+      CLIENT_API_BASE: http://client-api:8081
     depends_on:
-      - client-api-v2
+      - client-api
     restart: unless-stopped
 
   console-admin:
@@ -181,10 +174,10 @@ services:
       - path: ../.env
         required: true
     environment:
-      # v2 后端（管理面 8082）
-      ADMIN_API_BASE: http://admin-api-v2:8082
+      # 后端（管理面 8082）
+      ADMIN_API_BASE: http://admin-api:8082
     depends_on:
-      - admin-api-v2
+      - admin-api
     restart: unless-stopped
 
   migrate:

@@ -8,9 +8,9 @@
  */
 import { cookies } from 'next/headers';
 
-/** 用户面会话 cookie name（BFF 持有 client-api-v2 的 Bearer JWT） */
+/** 用户面会话 cookie name（BFF 持有 client-api 的 Bearer JWT） */
 export const SESSION_COOKIE = 'ag_session';
-/** 管理面会话 cookie name（BFF 持有 admin-api-v2 的 Bearer JWT） */
+/** 管理面会话 cookie name（BFF 持有 admin-api 的 Bearer JWT） */
 export const ADMIN_SESSION_COOKIE = 'ag_admin_session';
 
 const SESSION_TTL_S = Number(process.env.SESSION_TTL_SECONDS ?? 86_400);

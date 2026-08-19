@@ -3,7 +3,7 @@
 > 注：本文是设计期文档，`users.reserved_balance` 列等 v1 冻结模型已被 v2 的
 > wallet 双分录账本（`wallet_accounts/wallet_authorizations/wallet_legs`，
 > 冻结口径 = `in_flight`）取代——生产扣款口径见
-> [`billing-flow-deep-dive-v2.md`](billing-flow-deep-dive-v2.md)。
+> [`billing-flow-deep-dive.md`](billing-flow-deep-dive.md)。
 >
 > 配套文档：`requirements.md`（业务逻辑）、`api-contract.md`（接口契约）
 > 数据库：PostgreSQL。本设计覆盖一期（P0）全部表，二期预留表单独列出。

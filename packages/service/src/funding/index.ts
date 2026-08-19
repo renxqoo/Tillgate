@@ -25,7 +25,7 @@ export { commitFunding } from './commit.js';
 export type { ReleaseAllInput } from './release.js';
 export { createReleaseAllReservations } from './release.js';
 
-/** 默认来源集装配（过渡期冻结为 {subscription, payg}——§4.4，promo 等 worker-v2 后再加入数组） */
+/** 默认来源集装配（过渡期冻结为 {subscription, payg}——§4.4，promo 等 worker 后再加入数组） */
 export function createDefaultFundingRegistry(deps: {
   wallet: WalletApi;
   repos?: Repositories;

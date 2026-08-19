@@ -1,7 +1,7 @@
 # gateway 请求管线全流程剖析
 
 > 注：本文剖析的是 v1 网关（apps/gateway）。生产 v2 管线与扣款口径见
-> [`billing-flow-deep-dive-v2.md`](billing-flow-deep-dive-v2.md)。
+> [`billing-flow-deep-dive.md`](billing-flow-deep-dive.md)。
 
 > 对象：`apps/gateway`（对外推理面）。本文自顶向下拆解一个请求从连接建立到资金结算的
 > 全部细节——每个守卫、每个分支、每条防线都标注实现位置。结构总览见

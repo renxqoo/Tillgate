@@ -1,6 +1,6 @@
 /**
  * 操练场代理（BFF）：浏览器 fetch('/api/playground/chat/completions') → 本路由
- * 取会话 HttpOnly cookie 换 Bearer → client-api-v2 /v1/playground/chat/completions
+ * 取会话 HttpOnly cookie 换 Bearer → client-api /v1/playground/chat/completions
  * → SSE 字节流原样回传（服务端动作不能流式，故走 route handler）。
  */
 import { getSessionToken } from '@ai-gateway/api-client/session';

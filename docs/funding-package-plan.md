@@ -1,8 +1,8 @@
 # 按层分包实现方案（packages/domain + packages/service）
 
 > 版本：2026-08-19 v7 · 状态：P1-P5 全部执行完毕（四门全绿）；v1/v2 共存清理待全部逻辑完成后
-> 前置：gateway-v2 角色裁剪完成（纯网关），81 测试全绿，四门全过。
-> 本方案将 gateway-v2 内的 domain/services 层独立为**按层组织的两个共享包**，
+> 前置：gateway 角色裁剪完成（纯网关），81 测试全绿，四门全过。
+> 本方案将 gateway 内的 domain/services 层独立为**按层组织的两个共享包**，
 > 并引入资金来源策略（FundingSource）与预扣明细表（billing_reservations）。
 >
 > v3 变更：补入 review 发现的 10 条缺口——probe 错误语义（§3.6）、旧 worker 过渡
@@ -85,10 +85,10 @@
 | 资金来源 | 策略接口 + PAYG/订阅实现 | gateway + worker | `service/funding` |
 | 渠道运营资金 | 敞口预留/释放、成本扣减熔断 | gateway + admin + worker | `domain/channel-budget` + `service/channel-budget` |
 | 订阅商品 | proration、eligibility、生命周期动词 | client-api + admin-api | `domain/subscription` + `service/subscription`（将来） |
-| 用户管理 | 注册、资料、API Key | client-api 单端 | `client-api-v2/src/services/user/` |
-| 模型目录 | 映射/渠道/费率卡 CRUD | admin-api 单端 | `admin-api-v2/src/services/models/` |
-| 支付 | 订单、epay 回调 | client-api 单端 | `client-api-v2/src/services/payments/` |
-| 促销 | 赠礼、返佣 | client-api 单端 | `client-api-v2/src/services/promotions/` |
+| 用户管理 | 注册、资料、API Key | client-api 单端 | `client-api/src/services/user/` |
+| 模型目录 | 映射/渠道/费率卡 CRUD | admin-api 单端 | `admin-api/src/services/models/` |
+| 支付 | 订单、epay 回调 | client-api 单端 | `client-api/src/services/payments/` |
+| 促销 | 赠礼、返佣 | client-api 单端 | `client-api/src/services/promotions/` |
 | 鉴权 | JWT、会话 | client-api + admin-api | `packages/identity`（已有） |
 | LLM 传输 | 协议适配 | gateway 单端 | `packages/ai`（已有） |
 
@@ -132,17 +132,17 @@ packages/
       billing/                  authorize / signal / reserve-channel / index
       funding/                  source / payg-source / subscription-source / registry / plan / commit / release / index
       channel-budget/           channel-budget（closeout）
-      settlement/               占位：worker-v2 的 claim / process-claim / recover / inventory（§8）
+      settlement/               占位：worker 的 claim / process-claim / recover / inventory（§8）
       shared/                   operations（幂等）
       __tests__/                集成测试
     package.json（deps: @ai-gateway/domain + @ai-gateway/repository + decimal.js）
     tsup.config.ts / tsconfig.json
 
 apps/
-  gateway-v2/                   纯网关：路由 + 管线 + 装配根
-  worker-v2/                    BullMQ 消费 + 装配根（将来）
-  client-api-v2/                HTTP + 订阅 + 支付 + 促销（将来）
-  admin-api-v2/                 HTTP + 模型管理 + 复核（将来）
+  gateway/                   纯网关：路由 + 管线 + 装配根
+  worker/                    BullMQ 消费 + 装配根（将来）
+  client-api/                HTTP + 订阅 + 支付 + 促销（将来）
+  admin-api/                 HTTP + 模型管理 + 复核（将来）
 ```
 
 **domain 包内依赖方向（边界测试强制）**：按层包没有天然边界，方向不测就会长环。
@@ -156,10 +156,10 @@ wallet 是记账内核（money 金额值对象被 rating 计价公式引用）�
 rating 是合法下行。将来 subscription 域进包时按用例域对待。已由 packages/domain
 的 `__tests__/architecture.test.ts` 机器强制。
 
-### 2.3 gateway-v2 改造后剩什么
+### 2.3 gateway 改造后剩什么
 
 ```
-apps/gateway-v2/src/
+apps/gateway/src/
   routes/                       （将来）HTTP 适配
   pipeline/                     （将来）推理管线编排
   model-router/                 （将来）模型→渠道路由
@@ -173,7 +173,7 @@ apps/gateway-v2/src/
 与 worker 共用）」、被全部 4 个老后端 app（gateway / worker / client-api / admin-api）
 依赖——**共享业务逻辑住包里是仓库既有路线，本方案是对它的严格化（域规则与用例分层）**，
 不是新发明。老 worker 的 `tasks/` 只有 generation-poller 与 notify-referral 两个壳任务，
-结算业务全在 `ledger/settlement`——service 包不建，worker-v2 只能复用旧包或复制代码。
+结算业务全在 `ledger/settlement`——service 包不建，worker 只能复用旧包或复制代码。
 
 | 处置 | 包 |
 |---|---|
@@ -299,7 +299,7 @@ createFundingRegistry([..., createPromoSource({ repos })]);
 
 1. **普通 Key 永不消耗订阅额度**（即使该用户有活跃订阅）。
 2. **套餐 Key 优先消耗订阅额度**。
-3. 订阅额度耗尽后是否自动转 PAYG 扣余额，由开关 **`api_keys.allow_payg_fallback`** 决定（创建 Key 时设置，client-api-v2 职责；gateway 经凭证解析只读）。
+3. 订阅额度耗尽后是否自动转 PAYG 扣余额，由开关 **`api_keys.allow_payg_fallback`** 决定（创建 Key 时设置，client-api 职责；gateway 经凭证解析只读）。
 
 **「排他 vs 可选」不是来源类型的静态属性，而是 SubscriptionSource 按每次请求的开关状态在两种语义间切换**：
 
@@ -367,7 +367,7 @@ async function waterfallReserve(registry, c, input): Promise<SourceReservation[]
 **方案 B：装配时创建，注入到 BillingEnv。**
 
 ```ts
-// gateway-v2 或 worker-v2 的装配根（不可变注册表：一次构造、终身只读）
+// gateway 或 worker 的装配根（不可变注册表：一次构造、终身只读）
 const fundingRegistry = createDefaultFundingRegistry({ wallet, repos });  // {subscription, payg}
 // 将来：createFundingRegistry([..., createPromoSource({ repos })])
 
@@ -446,7 +446,7 @@ ALTER TABLE billing_reservations
 CREATE UNIQUE INDEX billing_reservations_request_source_uq
   ON billing_reservations (billing_request_id, source_type) WHERE status = 'active';
 
--- §3.6 定案：包月额度耗尽自动转按量开关（创建 Key 时设置——client-api-v2 职责；gateway 只读）
+-- §3.6 定案：包月额度耗尽自动转按量开关（创建 Key 时设置——client-api 职责；gateway 只读）
 -- DEFAULT false（已定）：存量套餐 Key 零行为变化（额度不足仍整单拒绝），新 Key 创建时按需打开
 ALTER TABLE api_keys ADD COLUMN allow_payg_fallback BOOLEAN NOT NULL DEFAULT false;
 ```
@@ -459,14 +459,14 @@ ALTER TABLE api_keys ADD COLUMN allow_payg_fallback BOOLEAN NOT NULL DEFAULT fal
 | `plan_reserved_amount` | 继续写（= 订阅来源明细额），旧 worker 释放依赖 |
 | `subscription_id` | 继续写（来源解析依据） |
 
-**新真相在 `billing_reservations`**；旧列是投影，worker-v2 上线后删。**删列前读方必须先切**：
+**新真相在 `billing_reservations`**；旧列是投影，worker 上线后删。**删列前读方必须先切**：
 
 | 读方 | 现状 | 切换 |
 |---|---|---|
 | `sumExposure`（billing-request.repo.ts）——用户/Key 日限、成员限额口径 | 读 `reserved_amount`（按 `subscription_id` 过滤） | 改按明细表 SUM（可分 source 维度），限额口径升级为真来源口径 |
 | authorize 重放校验 | 比对 `existing.reservedAmount` | 金额已含在 `authorization_fingerprint` 里，比对退位给指纹 |
 | signal(failed) 释放 | 读三列驱动 releaseReservations | 本方案 §5.2 已改读明细（findActive） |
-| 旧 worker 结算/释放 | 读三列 | worker-v2 接管（§4.4 / §8） |
+| 旧 worker 结算/释放 | 读三列 | worker 接管（§4.4 / §8） |
 
 ### 4.3 Repository 新增
 
@@ -475,14 +475,14 @@ BillingReservationRepository:
   insertActive(c, reservation) → void
   findActive(c, billingRequestId) → SourceReservation[]
   markReleased(c, id, now) → boolean
-  markSettled(c, id, now) → boolean     // worker-v2 将来调用
+  markSettled(c, id, now) → boolean     // worker 将来调用
 ```
 
 ### 4.4 旧 worker 过渡期（关键）
 
 **旧 worker 不知道 billing_reservations 表存在。** 过渡期行为：
 
-| 事件 | gateway-v2（新代码） | 旧 worker | billing_reservations 行状态 |
+| 事件 | gateway（新代码） | 旧 worker | billing_reservations 行状态 |
 |---|---|---|---|
 | authorize | 瀑布预占 + 写明细行 | — | `active` |
 | signal(failed) | releaseAllReservations + markReleased | — | `released` |
@@ -493,8 +493,8 @@ BillingReservationRepository:
 **孤儿行处理**：旧 worker 的结算/释放不操作明细表，会留 `active` 孤儿行。过渡期方案：
 
 - `findActive` 查询加 `AND billing_requests.status IN ('authorized','in_flight','settlement_pending','processing','retry_wait','dead')` JOIN 条件——**只找账单仍在途的明细行**，已 settled/released 的账单的明细行不会误释放
-- worker-v2 上线后接管 markSettled / markReleased，孤儿行由一次性迁移脚本清理（`UPDATE billing_reservations SET status='settled' WHERE billing_request_id IN (SELECT request_id FROM billing_requests WHERE status='settled')`）
-- **过渡期来源集合冻结**：registry 只允许注册 {payg, subscription}。旧 worker 按三列投影结算，投影只表达两源切分——promo 等新来源必须等 worker-v2 上线后再 register，否则旧 worker 会把新来源份额当 PAYG 结算，账就错了
+- worker 上线后接管 markSettled / markReleased，孤儿行由一次性迁移脚本清理（`UPDATE billing_reservations SET status='settled' WHERE billing_request_id IN (SELECT request_id FROM billing_requests WHERE status='settled')`）
+- **过渡期来源集合冻结**：registry 只允许注册 {payg, subscription}。旧 worker 按三列投影结算，投影只表达两源切分——promo 等新来源必须等 worker 上线后再 register，否则旧 worker 会把新来源份额当 PAYG 结算，账就错了
 
 ---
 
@@ -550,7 +550,7 @@ advisory 锁保证 ①→③ 间同 user 无竞态；waterfallReserve 对外仍�
 
 > 执行状态（2026-08-19）：**P1-P5 全部完成，四门全绿**。
 > P1/P2——packages/domain（55 单测）、packages/service（38 集成测试，真实 PG）建成；
-> gateway-v2 删除 src/domain + src/services，改为消费 @ai-gateway/service；
+> gateway 删除 src/domain + src/services，改为消费 @ai-gateway/service；
 > repository 再导出 Db/DbTx。P3——0060 迁移（billing_reservations + api_keys 开关列）
 > 已入 dev 库 + BillingReservationRepository。P4——funding 策略族（source / payg /
 > subscription / registry / waterfall / release）+ 瀑布单测。P5——authorize 两阶段
@@ -564,7 +564,7 @@ advisory 锁保证 ①→③ 间同 user 无竞态；waterfallReserve 对外仍�
    exports 带 "development": "./src/index.ts" 条件（开发态直连 TS 源码、构建态 dist，
    app 开发态零预构建）；scripts 四件（build=tsup / typecheck / lint / test）；
    tsconfig 继承 tsconfig.base.json；turbo 接线。deps: decimal.js
-2. 从 gateway-v2/src/domain/ 平移全部文件
+2. 从 gateway/src/domain/ 平移全部文件
 3. 建 architecture.test.ts（零 drizzle / 零 repository / 零旧包 + 包内依赖方向 §2.2）
 4. pnpm install + build + typecheck
 ```
@@ -574,7 +574,7 @@ advisory 锁保证 ①→③ 间同 user 无竞态；waterfallReserve 对外仍�
 ```
 1. 建 packages/service/ 包骨架（同 P1 的 exports / scripts / turbo 模式；
    deps: @ai-gateway/domain + @ai-gateway/repository + decimal.js，见 §10）
-2. 从 gateway-v2/src/services/ 平移全部文件
+2. 从 gateway/src/services/ 平移全部文件
 3. import 改为从 @ai-gateway/domain 取；wallet API 统一 RepoContext 单参口径（§3.11）
 4. 建 architecture.test.ts（禁 drizzle / 全仓禁旧包）
 5. 四门验证（现有测试全绿）
@@ -614,12 +614,12 @@ advisory 锁保证 ①→③ 间同 user 无竞态；waterfallReserve 对外仍�
 |---|---|---|
 | **domain 单元测试**（money 攻击面、posting 规则、proration 纯函数、指纹规范化） | `packages/domain/src/__tests__/` | 跟着 domain 包走，不依赖 DB |
 | **service 集成测试**（billing 流程、wallet 八动词、幂等操作——真实 PG） | `packages/service/src/__tests__/` | 跟着 service 包走，依赖 PG |
-| **gateway-v2 端到端测试**（管线全链路） | `apps/gateway-v2/src/__tests__/` | 留在 app，import `@ai-gateway/service` |
+| **gateway 端到端测试**（管线全链路） | `apps/gateway/src/__tests__/` | 留在 app，import `@ai-gateway/service` |
 | **repository 测试**（边界测试 + 仓储正确性） | `packages/repository/src/__tests__/` | 已有 |
 
 P1/P2 平移时：
-- gateway-v2 现有测试按上述归属**拆到对应包**
-- gateway-v2 只留管线端到端测试（authorize→signal→reserveChannel 的编排验证）
+- gateway 现有测试按上述归属**拆到对应包**
+- gateway 只留管线端到端测试（authorize→signal→reserveChannel 的编排验证）
 - 81 个测试按此拆分后各自全绿
 
 测试基建（P1/P2 落地细节）：
@@ -650,14 +650,14 @@ P1/P2 平移时：
 
 ---
 
-## 8. worker-v2 接口预留（settle / recover / claim）
+## 8. worker 接口预留（settle / recover / claim）
 
 老 worker 的全部结算业务在 `ledger/settlement`（claim / process-claim / recover / inventory），
-`tasks/` 只是壳任务。worker-v2 动工时这些用例住 `service/settlement/`（§2.2 占位），
+`tasks/` 只是壳任务。worker 动工时这些用例住 `service/settlement/`（§2.2 占位），
 资金侧依赖两个入口：
 
 ```ts
-// service/funding/settle.ts（本方案只定义接口，worker-v2 动工时实现）
+// service/funding/settle.ts（本方案只定义接口，worker 动工时实现）
 export async function settleReservations(
   registry: FundingRegistry,
   c: RepoContext,
@@ -680,7 +680,7 @@ claim 的多副本安全继续走 billing_requests CAS + SKIP LOCKED，明细行
 findActive 的账单状态 JOIN 过滤保证（§4.4）。
 
 **关键约束**：FundingSource 接口将来需要加 `settle` 方法——P4 实现时在接口注释标注
-`// TODO(worker-v2): settle method`；扩方法不动 probe / reserve / release 现有签名。
+`// TODO(worker): settle method`；扩方法不动 probe / reserve / release 现有签名。
 
 ---
 
@@ -688,7 +688,7 @@ findActive 的账单状态 JOIN 过滤保证（§4.4）。
 
 billing_reservations 表已包含 `source_type + amount`——运营指标（「订阅出款 vs PAYG 出款占比」「促销消耗」）的查询基础已备。
 
-admin-api-v2 将来需要的聚合查询（按来源/时间/模型维度）走 repository 层新增方法，不影响本方案接口。
+admin-api 将来需要的聚合查询（按来源/时间/模型维度）走 repository 层新增方法，不影响本方案接口。
 
 ---
 
@@ -698,11 +698,11 @@ admin-api-v2 将来需要的聚合查询（按来源/时间/模型维度）走 r
 |---|---|---|
 | `packages/domain` | `decimal.js`（仅此一个运行时依赖） | tsup / typescript / vitest |
 | `packages/service` | `@ai-gateway/domain` + `@ai-gateway/repository` + `decimal.js` | `@ai-gateway/db`（测试要 createDb / schema）+ tsup / typescript / vitest |
-| `apps/gateway-v2` | `@ai-gateway/service` + `@ai-gateway/repository`（+ 将来 identity / ai） | — |
+| `apps/gateway` | `@ai-gateway/service` + `@ai-gateway/repository`（+ 将来 identity / ai） | — |
 
 domain 包 **不依赖** repository / db / drizzle / 任何 @ai-gateway/* 包——这由架构边界测试强制。
 
-**service 与 db 的类型关系（v5 修正）**：gateway-v2 的 services 有 7 处
+**service 与 db 的类型关系（v5 修正）**：gateway 的 services 有 7 处
 `import type { Db, DbTx } from '@ai-gateway/db'`（context / authorize / release /
 operations / channel-budget / posting / shared）。处置：**repository 加一行
 `export type { Db, DbTx } from '@ai-gateway/db'`**（它本来就 import），service 改从
@@ -718,9 +718,9 @@ repository 取——运行时依赖箭头保持 service→repository→db，serv
 |---|---|
 | 平移 import 路径错 | P1/P2 独立验收，测试是安全网 |
 | probe→reserve 跨 user 竞态 | advisory 锁覆盖同 user；跨 user 由 tryReserveQuota 守卫 WHERE 兜底；失败→整体回滚 |
-| 旧 worker 留孤儿明细行 | findActive 加账单状态 JOIN 过滤；worker-v2 上线后一次性清理脚本 |
+| 旧 worker 留孤儿明细行 | findActive 加账单状态 JOIN 过滤；worker 上线后一次性清理脚本 |
 | 新旧包并存 | 旧 packages/ledger + wallet 冻结终态；domain/service 是唯一活跃开发面 |
-| 过渡期误注册新来源 | registry 冻结 {payg, subscription}，promo 等 worker-v2 上线后再注册（§4.4） |
+| 过渡期误注册新来源 | registry 冻结 {payg, subscription}，promo 等 worker 上线后再注册（§4.4） |
 
 ---
 
@@ -729,9 +729,9 @@ repository 取——运行时依赖箭头保持 service→repository→db，serv
 | 扩展 | 改动面 |
 |---|---|
 | 加促销来源 | service/funding/ 加 promo-source.ts + 注册，管线零改动 |
-| worker-v2 settleClaim | service/billing/ 加 settle 用例 + FundingSource 加 settle 方法 |
-| client-api-v2 订阅 | service/subscription/ 加生命周期动词 |
-| admin-api-v2 渠道管理 | service/channel-budget/ 加 recharge/adjust |
-| 删旧三列 | worker-v2 上线后 DROP COLUMN；前置条件 = §4.2 读方清单全部切换完成 |
+| worker settleClaim | service/billing/ 加 settle 用例 + FundingSource 加 settle 方法 |
+| client-api 订阅 | service/subscription/ 加生命周期动词 |
+| admin-api 渠道管理 | service/channel-budget/ 加 recharge/adjust |
+| 删旧三列 | worker 上线后 DROP COLUMN；前置条件 = §4.2 读方清单全部切换完成 |
 | 加新计费模型 | domain/rating/ 加规则 + service/billing/ 加用例 |
 | 按来源聚合报表 | repository 加查询方法，admin-api 消费 |

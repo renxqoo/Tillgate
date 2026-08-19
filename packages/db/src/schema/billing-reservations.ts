@@ -16,7 +16,7 @@ import { billingRequests } from './billing-requests.js';
 /**
  * 预扣明细（资金来源瀑布的真相表）：一行 = 一个来源为该请求预占的金额。
  * billing_requests 三列（reserved_amount / plan_reserved_amount / subscription_id）
- * 是本表的投影，worker-v2 上线后删投影列；释放/结算按明细逐笔走对应来源。
+ * 是本表的投影，worker 上线后删投影列；释放/结算按明细逐笔走对应来源。
  */
 export const billingReservations = pgTable(
   'billing_reservations',

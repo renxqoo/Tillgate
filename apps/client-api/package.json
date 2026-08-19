@@ -1,0 +1,38 @@
+{
+  "name": "@ai-gateway/client-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "用户面 app：注册/登录会话、API Key 管理、钱包、兑换码、在线充值——账户域业务在本 app services，资金动词来自 @ai-gateway/service wallet",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_OPTIONS='--conditions=development' tsx watch --env-file=../../.env src/index.ts",
+    "build": "tsup src/index.ts --config ../../tsup.config.base.ts --format esm --dts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
+    "@ai-gateway/identity-core": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "zod": "^4.4.3",
+    "jose": "^6.2.8",
+    "ioredis": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "drizzle-orm": "^0.45.2"
+  }
+}

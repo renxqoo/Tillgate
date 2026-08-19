@@ -28,7 +28,7 @@ function isFetchError(r: Response | { fetchError: string }): r is { fetchError: 
 }
 
 /**
- * 管理员登录（admin-api-v2，Bearer 会话）。
+ * 管理员登录（admin-api，Bearer 会话）。
  *   - 凭证：email + password；2FA 开启时第一步返回 {twoFactorRequired, challengeId}
  *   - 会话：token 由 BFF 持有（ag_admin_session cookie 值即 JWT）
  */

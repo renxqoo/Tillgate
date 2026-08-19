@@ -1,7 +1,7 @@
 # AI Gateway 架构与流程图（总览）
 
 > 注：本文为 v1 总览设计文档（含 uncertain 状态等 v1 语义）。生产 v2 计费/扣款口径
-> （gateway-v2 + wallet 双分录）见 [`billing-flow-deep-dive-v2.md`](billing-flow-deep-dive-v2.md)。
+> （gateway + wallet 双分录）见 [`billing-flow-deep-dive.md`](billing-flow-deep-dive.md)。
 
 > 视觉配套文档，由四份设计文档生成：`requirements.md`（业务）、`data-model.md`（数据）、`api-contract.md`（接口）、`tech-stack.md`（选型）。
 > 本文所有图均为 mermaid，支持在 GitHub / 支持 mermaid 的 Markdown 查看器中渲染。

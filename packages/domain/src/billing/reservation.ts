@@ -1,7 +1,7 @@
 /**
  * 计费状态机（纯函数）：
  * 预扣的真相在 billing_reservations 明细（每来源一行），释放/结算按明细逐笔走；
- * billing_requests 的三列投影仅为旧 worker 过渡期保留（worker-v2 上线后删）。
+ * billing_requests 的三列投影仅为旧 worker 过渡期保留（worker 上线后删）。
  */
 /** billing 在 wallet 侧的幂等键域（refType）：authorize 预扣 / 释放与 guards 白名单共用同一份 */
 export const BILLING_REF_TYPE = 'billing';

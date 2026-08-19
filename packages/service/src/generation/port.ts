@@ -2,7 +2,7 @@
  * 生成任务上游端口（service ↔ 上游传输的接缝，纯类型）：
  * 业务编排（service）只依赖本端口——渠道连接信息进，归一结果出。
  * 生产适配器（packages/ai 的任务操作面 + apiKeyEnc 解密）在各 app 装配
- * （gateway-v2 提交 / worker-v2 轮询共用同一契约）；测试注入 stub 验证资金编排。
+ * （gateway 提交 / worker 轮询共用同一契约）；测试注入 stub 验证资金编排。
  */
 import type { TaskChannelRow } from '@ai-gateway/repository';
 

@@ -1,6 +1,6 @@
 /**
  * settlement 装配出口：claim（认领+保活）/ settleClaim（结算）/ processClaim（管线壳）/
- * finishFailure（失败处置）/ recover（滞留兜底）——worker-v2 的全部资金用例。
+ * finishFailure（失败处置）/ recover（滞留兜底）——worker 的全部资金用例。
  * repo 原语（SKIP LOCKED / CAS）与 domain 规则（分配/失败策略/解码）均已就位，
  * 本域只做事务编排。
  */

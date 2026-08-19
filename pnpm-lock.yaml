@@ -166,7 +166,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/admin-api-v2:
+  apps/admin-api:
     dependencies:
       '@ai-gateway/ai':
         specifier: workspace:*
@@ -363,7 +363,7 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/client-api-v2:
+  apps/client-api:
     dependencies:
       '@ai-gateway/core':
         specifier: workspace:*
@@ -424,7 +424,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
-  apps/gateway-v2:
+  apps/gateway:
     dependencies:
       '@ai-gateway/ai':
         specifier: workspace:*
@@ -522,7 +522,7 @@ importers:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
-  apps/worker-v2:
+  apps/worker:
     dependencies:
       '@ai-gateway/ai':
         specifier: workspace:*

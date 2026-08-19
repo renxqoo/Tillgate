@@ -8,7 +8,7 @@
 | -------------------------------------------- | ----------------------------- |
 | [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版）  |
 | [docs/data-model.md](docs/data-model.md)     | 数据模型（含 billing_requests）  |
-| [docs/billing-flow-deep-dive-v2.md](docs/billing-flow-deep-dive-v2.md) | **v2 扣款全流程**（预扣/实扣公式、刷费用五向量防线） |
+| [docs/billing-flow-deep-dive.md](docs/billing-flow-deep-dive.md) | **v2 扣款全流程**（预扣/实扣公式、刷费用五向量防线） |
 | [docs/api-contract.md](docs/api-contract.md) | API 契约（对外 + 管理端）     |
 | [docs/tech-stack.md](docs/tech-stack.md)     | 技术选型 / 观测 / 运维 / 安全 |
 | [docs/architecture.md](docs/architecture.md) | 架构与流程图                  |

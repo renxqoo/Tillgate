@@ -1,14 +1,14 @@
 /**
- * client-api-v2 / admin-api-v2 调用封装（服务端用）。
+ * client-api / admin-api 调用封装（服务端用）。
  *
  * 控制台是 Next.js 服务端渲染：所有 api 调用在 Server Component / Server Action 里发生。
  * v2 后端是无 Cookie 的 Bearer 会话——JWT 由 BFF 持有（session.ts 的 HttpOnly Cookie），
  * 本层发请求时以 Authorization: Bearer 携带。
  *
  * 双后端物理隔离：
- *   - client-api-v2（用户面，端口 8081）：/v1/me、/v1/keys、/v1/apps、/v1/usage、
+ *   - client-api（用户面，端口 8081）：/v1/me、/v1/keys、/v1/apps、/v1/usage、
  *     /v1/redeem、/v1/auth/*、/v1/wallet/*、/v1/subscriptions、/v1/orgs、/v1/payments
- *   - admin-api-v2（管理面，端口 8082）：/v1/providers、/v1/channels、/v1/models、
+ *   - admin-api（管理面，端口 8082）：/v1/providers、/v1/channels、/v1/models、
  *     /v1/users、/v1/plans、/v1/channel-funds、/v1/billing-operations、/v1/tracing 等
  *
  * 路径兼容：调用方仍写 v1 时代的 '/api/...' / '/api/admin/...' 字面量——本层统一
@@ -16,7 +16,7 @@
  */
 import { getAdminSessionToken, getSessionToken } from './session';
 
-/** client-api-v2（用户面）内网地址 */
+/** client-api（用户面）内网地址 */
 /** API 基地址必配（无默认值：漏配即明确报错，不静默指向 localhost——生产事故源） */
 function requireBase(name: 'CLIENT_API_BASE' | 'ADMIN_API_BASE'): string {
   const value = process.env[name];
@@ -32,7 +32,7 @@ function requireBase(name: 'CLIENT_API_BASE' | 'ADMIN_API_BASE'): string {
 // 模块加载期不因未用到的基地址缺失而炸（Next 构建期 collect page data 会加载模块）
 const getClientBase = () => (CLIENT_API_BASE ??= requireBase('CLIENT_API_BASE'));
 let CLIENT_API_BASE: string | null = null;
-/** admin-api-v2（管理面）内网地址 */
+/** admin-api（管理面）内网地址 */
 const getAdminBase = () => (ADMIN_API_BASE ??= requireBase('ADMIN_API_BASE'));
 let ADMIN_API_BASE: string | null = null;
 
@@ -121,14 +121,14 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
 }
 
 /**
- * 调用 client-api-v2（用户面）。Bearer 自动携带；失败抛 ApiError。
+ * 调用 client-api（用户面）。Bearer 自动携带；失败抛 ApiError。
  */
 export async function apiFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
   return doFetch<T>(getClientBase(), path, opts);
 }
 
 /**
- * 调用 admin-api-v2（管理面）。Bearer 自动携带；失败抛 ApiError。
+ * 调用 admin-api（管理面）。Bearer 自动携带；失败抛 ApiError。
  */
 export async function adminFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
   return doFetch<T>(getAdminBase(), path, opts);

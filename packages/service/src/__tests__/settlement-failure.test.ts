@@ -123,7 +123,7 @@ describe('失败处置：退避与死信', () => {
 
     // 退避到期后重领 → 正常结算（失败不污染资金）
     // 退避到期重领（轮询消除计时脆弱）→ 正常结算（失败不污染资金）。
-    // 开发库可能有活的 worker-v2（1s 一轮）抢先领走并结算——那是合法终态，
+    // 开发库可能有活的 worker（1s 一轮）抢先领走并结算——那是合法终态，
     // 回归点是「退避后可被重领且正常结算」，不是「只有本测试能领」。
     let reclaimed: Awaited<ReturnType<typeof settlement.claim>>[number] | undefined;
     for (let round = 0; round < 5 && reclaimed == null; round++) {

@@ -90,7 +90,7 @@ export class BillingReservationRepository {
     return rows.length > 0;
   }
 
-  /** active → settled（worker-v2 结算路径；接口先行，本仓库暂无调用方） */
+  /** active → settled（worker 结算路径；接口先行，本仓库暂无调用方） */
   async markSettled(c: RepoContext, id: number, now: Date): Promise<boolean> {
     const rows = await tx(c)
       .update(billingReservations)

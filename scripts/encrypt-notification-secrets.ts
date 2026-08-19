@@ -1,7 +1,7 @@
 /**
  * 一次性迁移：notification_channels.config.secret 明文 → enc:v1 密文（幂等可重跑）。
- * 背景：2026-08-20 加固——写入侧已加密（admin-api-v2），本脚本收口存量明文行。
- * 用法：NODE_OPTIONS='--conditions=development' pnpm -C apps/admin-api-v2 exec tsx \
+ * 背景：2026-08-20 加固——写入侧已加密（admin-api），本脚本收口存量明文行。
+ * 用法：NODE_OPTIONS='--conditions=development' pnpm -C apps/admin-api exec tsx \
  *       ../../scripts/encrypt-notification-secrets.ts          # dry-run
  *       ... --apply                                          # 执行
  */
