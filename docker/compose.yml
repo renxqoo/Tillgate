@@ -20,9 +20,14 @@ services:
       - console-admin
     restart: unless-stopped
 
-  # certbot 证书签发与续期（Let's Encrypt）
-  # 首次签发：docker compose run --rm certbot certonly --webroot -w /var/www/certbot -d your.domain.com
-  # 自动续期：cron / compose run certbot renew（90 天到期前 30 天可续）
+  # certbot 证书签发与续期（Let's Encrypt）——本服务 entrypoint 为 sleep 常驻，
+  # 签发/续期须显式指定 --entrypoint certbot（或用 exec）：
+  # 首次签发（standalone——此时 80 端口空闲、nginx 未起；--cert-name gateway 对齐 nginx 挂载路径）：
+  #   docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly \
+  #     --standalone --cert-name gateway -d app.xxx.com -d admin.xxx.com --email you@xxx.com --agree-tos --no-eff-email
+  # 续期（webroot——nginx 已在跑、ACME 路径直出）：
+  #   docker compose -f docker/compose.yml exec certbot certbot renew --webroot -w /var/www/certbot \
+  #     && docker compose -f docker/compose.yml exec nginx nginx -s reload
   certbot:
     image: certbot/certbot:latest
     volumes:
