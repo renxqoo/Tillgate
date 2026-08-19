@@ -1,17 +1,14 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { HttpError, intParam, jsonBody, operationId, type KnownErrorCode } from '@ai-gateway/http';
-import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
-import type { ClientEnv } from '@ai-gateway/identity';
-import type { ClientServices } from '../services/index.js';
-
 /**
- * 用户面板：套餐购买/变更（api-contract §4.9）。
- *   - POST /：用余额购买（扣余额、开订阅期），quantity=席位（默认 1）
- *   - POST /:id/change：升级/加席位（补差价，只能升不能降）
- *   - POST /:id/renew：续费（按原席位扣余额、旧订阅转到期、新订阅顺延）
+ * 套餐/订阅路由：目录（公开）+ 购买/变更/续费/我的订阅（会话）。
+ * 席位上界 1000：防 numeric 溢出与恶意超大值（超此规模走线下）。
  */
-/** 席位上限：防 numeric 溢出与恶意超大值（足够任何企业团队，超此规模走线下） */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { userCtxOf } from './ctx.js';
+import type { SessionEnv } from '../middleware/session.js';
+import type { SubscriptionService } from '../services/subscription.service.js';
+
 const SEATS_MAX = 1000;
 
 const purchaseSchema = z.object({
@@ -24,65 +21,57 @@ const changeSchema = z.object({
   quantity: z.number().int().min(1).max(SEATS_MAX),
 });
 
-function mapError(error: unknown): never {
-  if (error instanceof LedgerError) {
-    const m = LEDGER_HTTP[error.code];
-    throw new HttpError(m.code as KnownErrorCode, error.message || m.message);
-  }
-  throw error;
-}
+const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
-export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
-  return new Hono<ClientEnv>()
-    .post('/', jsonBody(purchaseSchema), async (c) => {
-      const session = c.get('session');
-      const body = c.req.valid('json');
-      try {
-        // 团队套餐（allowSeats）：组织在账本事务内创建（T3）——路由层预建会在失败时
-        // 留孤儿 org，且重放时新 org 改变指纹 → 409，幂等性失效。
-        const result = await s.ledger.subscribePlan({
-          operationId: operationId(c),
-          userId: session.userId,
-          planId: body.planId,
-          quantity: body.quantity ?? 1,
-          ensureOrg: true,
-        });
-        return c.json(result, 201);
-      } catch (error) {
-        mapError(error);
-      }
-    })
+export function subscriptionRoutes(
+  service: SubscriptionService,
+  session: MiddlewareHandler<SessionEnv>,
+) {
+  const app = new Hono<SessionEnv>();
 
-    .post('/:id/change', jsonBody(changeSchema), async (c) => {
-      const session = c.get('session');
-      const id = intParam(c, 'id');
-      const body = c.req.valid('json');
-      try {
-        const result = await s.ledger.changeSubscription({
-          operationId: operationId(c),
-          subscriptionId: id,
-          targetPlanId: body.targetPlanId,
-          quantity: body.quantity,
-          userId: session.userId, // 限定自己的订阅
-        });
-        return c.json(result);
-      } catch (error) {
-        mapError(error);
-      }
-    })
-
-    .post('/:id/renew', async (c) => {
-      const session = c.get('session');
-      const id = intParam(c, 'id');
-      try {
-        const result = await s.ledger.renewSubscription({
-          operationId: operationId(c),
-          subscriptionId: id,
-          userId: session.userId, // 限定自己的订阅
-        });
-        return c.json(result);
-      } catch (error) {
-        mapError(error);
-      }
+  // 目录公开（只读上架套餐，无个人数据）
+  app.get('/v1/plans', async (c) => {
+    const plans = await service.listPlans({
+      requestId: c.get('requestId'),
+      actor: { kind: 'system' },
+      traceParent: null,
     });
+    return c.json({ rows: plans });
+  });
+
+  app.get('/v1/subscriptions', session, async (c) => {
+    const rows = await service.mySubscriptions(userCtxOf(c), c.get('userId'));
+    return c.json({ rows });
+  });
+
+  app.post('/v1/subscriptions', session, async (c) => {
+    const body = purchaseSchema.parse(await c.req.json());
+    const result = await service.purchase(userCtxOf(c), c.get('userId'), {
+      idempotencyKey: c.req.header('idempotency-key'),
+      ...body,
+    });
+    return c.json(result, 201);
+  });
+
+  app.post('/v1/subscriptions/:id/change', session, async (c) => {
+    const { id } = idParamSchema.parse(c.req.param());
+    const body = changeSchema.parse(await c.req.json());
+    const result = await service.change(userCtxOf(c), c.get('userId'), {
+      idempotencyKey: c.req.header('idempotency-key'),
+      subscriptionId: id,
+      ...body,
+    });
+    return c.json(result);
+  });
+
+  app.post('/v1/subscriptions/:id/renew', session, async (c) => {
+    const { id } = idParamSchema.parse(c.req.param());
+    const result = await service.renew(userCtxOf(c), c.get('userId'), {
+      idempotencyKey: c.req.header('idempotency-key'),
+      subscriptionId: id,
+    });
+    return c.json(result);
+  });
+
+  return app;
 }

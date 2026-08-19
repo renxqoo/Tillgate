@@ -1,119 +1,66 @@
+/**
+ * 安全中间件三件套：CORS 预检 / 安全头 / 请求体上限（400 提前拒绝）。
+ * CORS 白名单装配注入（逗号分隔 env）；空表 = 不放行任何跨域。
+ */
+import { bodyLimit as honoBodyLimit } from 'hono/body-limit';
 import type { MiddlewareHandler } from 'hono';
-import { secureHeaders } from 'hono/secure-headers';
-import { HttpError } from '../lib/http.js';
+import type { AuthEnv } from './api-key.js';
+
+const DEFAULT_BODY_LIMIT_BYTES = 10 * 1024 * 1024; // 10 MiB：多模态请求体护栏
 
 /**
- * 安全中间件（S6）：
- *   - bodyLimit：请求体超过上限 → 413（防 OOM）
- *   - secureHeaders：X-Content-Type-Options:nosniff / X-Frame-Options / Referrer-Policy 等
- *   - CORS 预检兜底：OPTIONS 放行（生产主要由 nginx 处理，网关兜底防中间件链阻塞预检）
- *
- * tech-stack §5：请求体 16MB 上限；tech-stack §7：安全头基线。
+ * 请求体上限：按实际流过字节计数（hono bodyLimit）——只查 content-length 头的
+ * 旧形态对 Transfer-Encoding: chunked 完全失效（无长度头的巨型包直接进
+ * c.req.json() 全量缓冲 = 未认证 OOM 面）。
  */
-export const BODY_LIMIT_BYTES = 16 * 1024 * 1024; // 16MB
-
-/**
- * 请求体大小限制中间件（工厂：测试可注入小上限）。
- *
- * 两层防护：
- *   - content-length 预判：超限直接 413，不触碰 body（零开销快路径）
- *   - chunked（无 content-length）：包一层计数流透传 body，超限即中断
- *     （HttpError(413) 从 body 读取处冒出 → onError 统一转错误信封）
- *
- * 不缓冲 body（流式透传），不影响 SSE 响应逐块推送。
- */
-export function bodyParserLimit(maxBytes: number = BODY_LIMIT_BYTES): MiddlewareHandler {
-  return async (c, next) => {
-    const rawContentLength = c.req.header('content-length');
-    if (rawContentLength !== undefined && !/^\d+$/.test(rawContentLength)) {
-      throw new HttpError('invalid_content_length', 'Content-Length 必须是非负整数');
-    }
-    const cl = Number(rawContentLength ?? '0');
-    if (cl > maxBytes) {
+export function bodyParserLimit(maxBytes: number = DEFAULT_BODY_LIMIT_BYTES): MiddlewareHandler<AuthEnv> {
+  const limit = honoBodyLimit({
+    maxSize: maxBytes,
+    onError: (c) =>
+      c.json(
+        { error: { code: 'payload_too_large', message: `request body exceeds ${maxBytes} bytes` } },
+        413,
+      ) as unknown as Response,
+  });
+  return (async (c, next) => {
+    // 快路径：声明的 content-length 超限直接 413（免读流）；流式计数兜底 chunked/谎报
+    const declared = Number(c.req.header('content-length') ?? '0');
+    if (Number.isFinite(declared) && declared > maxBytes) {
       return c.json(
-        {
-          error: {
-            message: '请求体过大（超过 16MB 限制）',
-            type: 'invalid_request_error',
-            code: 'request_too_large',
-          },
-        },
+        { error: { code: 'payload_too_large', message: `request body exceeds ${maxBytes} bytes` } },
         413,
       );
     }
-    // chunked（无 content-length，仅带 body 的写方法）：包计数流，超限中断
-    const method = c.req.method.toUpperCase();
-    const mayHaveBody = method === 'POST' || method === 'PUT' || method === 'PATCH';
-    if (mayHaveBody && c.req.header('content-length') === undefined && c.req.raw.body) {
-      // 显式传 method：new Request 重放 body 必须与写方法配套
-      c.req.raw = new Request(c.req.raw, {
-        method: c.req.method,
-        body: countLimitedBody(c.req.raw.body, maxBytes),
-        duplex: 'half',
-      });
-    }
-    await next();
-  };
+    return limit(c, next);
+  }) as MiddlewareHandler<AuthEnv>;
 }
 
-/**
- * 计数透传流：边读边数，超过 max 即中断（抛 HttpError(413)，
- * 由下游 body 读取处（json validator）冒泡到 app.onError）。
- */
-function countLimitedBody(
-  body: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): ReadableStream<Uint8Array> {
-  let total = 0;
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const reader = body.getReader();
-      try {
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          total += value.byteLength;
-          if (total > maxBytes) {
-            await reader.cancel().catch(() => {});
-            controller.error(
-              new HttpError('request_too_large', '请求体过大（超过 16MB 限制）'),
-            );
-            return;
-          }
-          controller.enqueue(value);
-        }
-        controller.close();
-      } catch (err) {
-        await reader.cancel().catch(() => {});
-        controller.error(err);
-      }
-    },
-  });
-}
+export const securityHeaders: MiddlewareHandler<AuthEnv> = async (c, next) => {
+  await next();
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'no-referrer');
+};
 
-/** 安全响应头中间件 */
-export const securityHeaders = secureHeaders({
-  xContentTypeOptions: 'nosniff',
-  xFrameOptions: 'DENY',
-  referrerPolicy: 'no-referrer',
-});
-
-/** CORS 只回显受信控制台来源；非浏览器 API 调用不受影响。 */
-export function corsPreflight(allowedOrigins: readonly string[] = []): MiddlewareHandler {
+export function corsPreflight(allowedOrigins: readonly string[]): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
     const origin = c.req.header('origin');
-    if (origin && allowedOrigins.includes(origin)) {
-      c.header('access-control-allow-origin', origin);
-      c.header('vary', 'Origin');
-    }
-    if (c.req.method === 'OPTIONS') {
-      if (!origin || !allowedOrigins.includes(origin)) {
-        throw new HttpError('cors_origin_denied', '不允许的浏览器来源');
+    if (origin != null && allowedOrigins.includes(origin)) {
+      if (c.req.method === 'OPTIONS') {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            'Access-Control-Allow-Origin': origin,
+            Vary: 'Origin',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Request-Id',
+            // 预检缓存一天（v1 对位——重复预检往返浪费浏览器首请求时延）
+            'Access-Control-Max-Age': '86400',
+          },
+        });
       }
-      c.header('access-control-allow-methods', 'GET, POST, OPTIONS');
-      c.header('access-control-allow-headers', 'Authorization, Content-Type, X-Request-Id');
-      c.header('access-control-max-age', '86400');
-      return c.body(null, 204);
+      c.header('Access-Control-Allow-Origin', origin);
+      c.header('Vary', 'Origin');
     }
     await next();
   };

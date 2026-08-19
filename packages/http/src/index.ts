@@ -27,7 +27,6 @@ export {
   type KnownErrorCode,
 } from './error-codes.js';
 
-export { csrfProtection, timingSafeTokenEqual, type CsrfOptions } from './csrf.js';
 
 export {
   ValidationError,
@@ -83,16 +82,6 @@ export { recordAudit, type AuditActor, type AuditInput } from './audit.js';
 
 export { createRedis, Redis } from './redis.js';
 
-export {
-  ROUTE_CACHE_VERSION_KEY,
-  authKeyCache,
-  appStatusCache,
-  userProfileCache,
-  balanceCache,
-  rateCardCoefficientsCache,
-  bumpRouteCache,
-  invalidateKeyAuthCache,
-} from './cache.js';
 
 export { operationId } from './idempotency.js';
 

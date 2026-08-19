@@ -1,42 +1,63 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { MONEY_MAX, jsonBody, query, intParam } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
-import { keyListQuerySchema, listApiKeys, updateApiKey } from '../services/keys.js';
-
 /**
- * 管理员 Key 管理（限流配置视角，api-contract §4.x）。
- *
- * 与 client-api 的 keys（用户自助）区别：
- *   - 不限 userId（管理员可看所有用户的 Key）
- *   - 改限流/吊销后主动清 gateway 鉴权缓存（auth:key:{hash}）立即生效
- *
- * 安全：明文 Key 永不回显，只返回 keyPreview（脱敏，由创建时写入）。
+ * API Key 管理面路由（会话）：全量列表（跨用户 q 搜用户邮箱——join 计数）
+ * / 限额与状态补丁（status 枚举 0..1；非法 99 → 400）。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import { KEY_SORTS, type AdminKeysService } from '../services/keys.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-const keyUpdateSchema = z.object({
+const MONEY_MAX = 1e9;
+
+const listQueryExtra = z.object({
+  userId: z.coerce.number().int().positive().optional(),
+  status: z.coerce.number().int().min(0).max(1).optional(),
+});
+
+const patchSchema = z.object({
   name: z.string().min(1).max(64).optional(),
-  /** RPM 限流，null=不限流（继承用户/全局） */
   rpmLimit: z.number().int().min(1).nullable().optional(),
-  /** TPM 限流，null=不限流 */
   tpmLimit: z.number().int().min(1).nullable().optional(),
-  /** Key 级每日花费上限（元，>=0），null=不限。团队团员单 Key 封顶。 */
-  dailySpendLimit: z.number().min(0).max(MONEY_MAX).nullable().optional(),
+  dailySpendLimit: z.number().min(0).finite().max(MONEY_MAX).nullable().optional(),
   status: z.number().int().min(0).max(1).optional(),
 });
 
-export function keyAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>()
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
 
-    // 列表（关联用户，脱敏 preview）
-    .get('/', query(keyListQuerySchema), async (c) =>
-      c.json(await listApiKeys(s, c.req.valid('query'))),
-    )
+export function adminKeysRoutes(service: AdminKeysService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-    // 更新限流（+ name/status），改后清 auth:key 缓存立即生效（见 service）
-    .patch('/:id', jsonBody(keyUpdateSchema), async (c) => {
-      await updateApiKey(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
-      return c.json({ ok: true });
-    });
+  app.get('/v1/admin-keys', session, async (c) => {
+    const extra = listQueryExtra.parse(c.req.query());
+    const query = parseListQuery(c.req.query(), KEY_SORTS, 'createdAt');
+    return c.json(await service.list(adminCtxOf(c), { query, ...extra }));
+  });
+
+  app.patch('/v1/admin-keys/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = patchSchema.parse(await c.req.json());
+    const { dailySpendLimit, ...rest } = body;
+    return c.json(
+      await service.patch(adminCtxOf(c), {
+        adminId: c.get('adminId'),
+        keyId: id,
+        patch: {
+          ...rest,
+          ...(dailySpendLimit !== undefined ? { dailySpendLimit: String(dailySpendLimit) } : {}),
+        },
+      }),
+    );
+  });
+
+  return app;
 }

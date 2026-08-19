@@ -30,7 +30,8 @@
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "pino": "^10.3.1",
     "pino-pretty": "^13.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "ioredis": "^5.8.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

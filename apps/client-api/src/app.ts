@@ -1,118 +1,134 @@
+/**
+ * HTTP app（协议适配层）：错误信封收口 + 请求链 + 路由挂载。
+ * 业务一律来自本 app services 与共享 service 包——本层零业务规则
+ * （错误映射表与会话校验链是协议契约，不是规则）。
+ */
 import { Hono } from 'hono';
-import type { Db } from '@ai-gateway/db';
-import type { Ledger } from '@ai-gateway/ledger';
-import type { Logger } from '@ai-gateway/core';
-import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
-import { bodyLimit } from 'hono/body-limit';
-import { userSessionMiddleware, type Mailer, type CaptchaService, type ClientEnv } from '@ai-gateway/identity';
-import type { ClientApiConfig } from './config.js';
-import type { ClientServices } from './services/index.js';
-import { clientAuthRoutesPublic, clientAuthRoutesProtected } from './routes/auth.js';
-import { oauthRoutes } from './routes/oauth.js';
-import { paymentRoutes, paymentPublicRoutes } from './routes/payments.js';
-import { publicPricingRoutes, pricingRoutes } from './routes/public-pricing.js';
-import { referralRoutes } from './routes/referrals.js';
-import { playgroundRoutes } from './routes/playground.js';
-import { inviteOverview } from './services/referrals.js';
-import { createPaymentServices } from './services/payments/orders.js';
-import { createEpayProvider, createStripeProvider, type PaymentProvider } from './services/payments/providers.js';
-import { keyRoutes } from './routes/keys.js';
-import { appRoutes } from './routes/apps.js';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import type { Db } from '@ai-gateway/repository';
+import { createRepositories } from '@ai-gateway/repository';
+import { AppError, mapErrorToHttp } from './http/error-map.js';
+import { ZodError } from 'zod';
+import { sessionMiddleware, type SessionEnv } from './middleware/session.js';
+import type { SessionRevocationStore } from '@ai-gateway/identity';
+import { requestIdMiddleware } from './middleware/request-id.js';
+import { bodyParserLimit, corsPreflight, securityHeaders } from './middleware/security.js';
+import { authRoutes } from './routes/auth.js';
 import { meRoutes } from './routes/me.js';
-import { usageRoutes } from './routes/usage.js';
+import { keysRoutes } from './routes/keys.js';
+import { walletRoutes } from './routes/wallet.js';
 import { redeemRoutes } from './routes/redeem.js';
-import { planRoutes } from './routes/plans.js';
+import { paymentsRoutes } from './routes/payments.js';
+import { usageRoutes } from './routes/usage.js';
 import { subscriptionRoutes } from './routes/subscriptions.js';
 import { orgRoutes } from './routes/orgs.js';
+import { appsRoutes } from './routes/apps.js';
+import { oauthRoutes } from './routes/oauth.js';
+import { pricingRoutes } from './routes/pricing.js';
+import { referralRoutes } from './routes/referrals.js';
+import { playgroundRoutes } from './routes/playground.js';
+import type { ClientApiAssembly } from './assembly.js';
 
-/**
- * client-api 应用组装（依赖注入唯一入口）。
- *
- * 挂载结构（默认安全）：
- *   - 公开端点显式挂载（login/logout/healthz）
- *   - 其余全部挂在受保护子应用：api.use('*', userSessionMiddleware)
- *     → 新增路由默认被会话守护（fail-closed），无需逐条挂中间件
- */
-
-export interface ClientApiDeps {
+export interface AppDeps {
   db: Db;
-  redis: Redis;
-  ledger: Ledger;
-  logger: Logger;
-  /** 登录验证码发信（null = SMTP 未配置 → 登录 fail-closed） */
-  mailer?: Mailer | null;
-  /** 注册面人机验证（null = 未配置 → 门禁关闭，生产应配置） */
-  captcha?: CaptchaService | null;
-  config: ClientApiConfig;
+  assembly: ClientApiAssembly;
+  /** 会话吊销表（logout 即时下线；缺省 = 无吊销能力的开发形态） */
+  revocationStore?: SessionRevocationStore;
+  jwtSecret: string;
+  trustedProxyHops: number;
+  corsOrigins: readonly string[];
+  bodyLimitBytes: number;
+  secureCookie?: boolean;
 }
 
-export function createApp(deps: ClientApiDeps): Hono {
-  const services: ClientServices = {
-    db: deps.db,
-    redis: deps.redis,
-    mailer: deps.mailer ?? null,
-    captcha: deps.captcha ?? null,
-    ledger: deps.ledger,
-    logger: deps.logger,
-  };
+export function createApp(deps: AppDeps) {
+  const { db } = deps;
+  const app = new Hono<SessionEnv>();
+  const repos = createRepositories();
+  const session = sessionMiddleware(db, deps.jwtSecret, deps.revocationStore);
 
-  const app = new Hono();
-  app.onError(errorHandler(deps.logger));
-  // T5：内部面也设请求体上限（32MB，兼容兑换券图 ≤20MB）——无上限时
-  // /api/auth/login 一个未鉴权大 body 即可打爆堆内存。
-  app.use('*', bodyLimit({ maxSize: 32 * 1024 * 1024 }));
-  app.get('/healthz', (c) => c.json({ status: 'ok' }));
+  app.onError((error, c) => {
+    if (error instanceof ZodError) {
+      return c.json(
+        { error: { code: 'invalid_request', message: '请求参数不合法' } },
+        400,
+      );
+    }
+    const mapped = mapErrorToHttp(error);
+    if (mapped.status >= 500) console.error('[client-api] internal error:', error);
+    // AppError 自带响应头透传（429 Retry-After 等）
+    if (error instanceof AppError && error.headers) {
+      for (const [key, value] of Object.entries(error.headers)) c.header(key, value);
+    }
+    return c.json(
+      { error: { code: mapped.code, message: mapped.message } },
+      mapped.status as ContentfulStatusCode,
+    );
+  });
 
-  // 公开端点（不要求用户会话）
-  app.route('/api/auth', clientAuthRoutesPublic(services, deps.config));
-  // OAuth 社交登录（公开组：authorize/callback 均为浏览器跳转流）
-  app.route('/api/auth/oauth', oauthRoutes(services, deps.config));
+  app.notFound((c) => c.json({ error: { code: 'not_found', message: '路径不存在' } }, 404));
 
-  // 公开定价页（未登录可访问；官方价）
-  app.route('/api/public', publicPricingRoutes(deps.db));
-  // 支付公开回调（签名验证替代会话；渠道服务器直连）
-  const paymentServices = createPaymentServices(deps.db, deps.ledger, buildPaymentProviders(deps.config), deps.logger);
-  app.route('/api/public/payments', paymentPublicRoutes(paymentServices));
+  app.use('*', corsPreflight(deps.corsOrigins));
+  app.use('*', securityHeaders);
+  app.use('*', bodyParserLimit(deps.bodyLimitBytes));
+  app.use('*', requestIdMiddleware());
 
-  // 受保护子应用：默认要求有效用户会话 + 状态变更 Origin 校验（CSRF 纵深防御）
-  const api = new Hono<ClientEnv>();
-  api.use('*', userSessionMiddleware(deps.db, deps.config.jwtSecret));
-  api.use('*', csrfProtection({ trustedOrigins: deps.config.trustedOrigins, internalToken: deps.config.internalApiToken }));
-  api.route('/auth', clientAuthRoutesProtected(services));
-  api.route('/me', meRoutes(services));
-  api.route('/keys', keyRoutes(services));
-  api.route('/apps', appRoutes(services));
-  api.route('/usage', usageRoutes(services));
-  api.route('/redeem', redeemRoutes(services));
-  api.route('/plans', planRoutes(services));
-  api.route('/subscriptions', subscriptionRoutes(services));
-  api.route('/orgs', orgRoutes(services));
-  api.route('/payments', paymentRoutes(paymentServices));
-  api.route('/pricing', pricingRoutes(deps.db));
-  // Playground 操练场代理（成组配置才挂载；未配置 = 404）
-  if (deps.config.playground) {
-    api.route('/playground', playgroundRoutes(deps.db, deps.config.playground));
-  }
-  api.route('/referrals', referralRoutes((userId) =>
-    inviteOverview(deps.db, userId, {
-      frontendUrl: deps.config.oauth.frontendUrl,
-      signupBonus: deps.config.referralSignupBonus,
-      commissionRate: deps.config.referralCommissionRate,
+  app.get('/healthz', async (c) => {
+    await repos.health.ping({
+      db,
+      requestId: c.get('requestId'),
+      actor: { kind: 'system' },
+      traceParent: null,
+    });
+    // Redis readiness（首选组件：不可达 = 不健康——LB/编排器应摘除本副本）
+    try {
+      await deps.assembly.redis.ping();
+    } catch {
+      return c.json({ ok: false, redis: 'down' }, 503);
+    }
+    return c.json({ ok: true });
+  });
+
+  app.route(
+    '/',
+    authRoutes(deps.assembly.auth, {
+      session,
+      trustedProxyHops: deps.trustedProxyHops,
+      revocationStore: deps.revocationStore,
     }),
-  ));
-  app.route('/api', api);
+  );
+  app.route('/', meRoutes(deps.assembly.auth, session));
+  app.route('/', keysRoutes(deps.assembly.keys, session));
+  app.route('/', walletRoutes(deps.assembly.walletRead, session));
+  app.route('/', redeemRoutes(deps.assembly.redeem, session));
+  app.route('/', paymentsRoutes(deps.assembly.payments, session));
+  app.route('/', usageRoutes(deps.assembly.usage, session));
+  app.route('/', subscriptionRoutes(deps.assembly.subscriptionService, session));
+  app.route('/', orgRoutes(deps.assembly.org, session));
+  app.route('/', appsRoutes(deps.assembly.apps, session));
+  app.route('/', referralRoutes(deps.assembly.referralService, session));
+  // 操练场代理（配置成组才挂载；未配时前端入口隐藏）
+  if (deps.assembly.playground) {
+    const pgRepos = createRepositories();
+    app.route(
+      '/',
+      playgroundRoutes(
+        {
+          ...deps.assembly.playground,
+          userStatus: async (userId) => {
+            const account = await pgRepos.userAccount.findById(
+              { db: deps.db, requestId: 'playground', actor: { kind: 'system' }, traceParent: null },
+              userId,
+            );
+            return account != null && account.status === 0;
+          },
+        },
+        session,
+      ),
+    );
+  }
+  app.route('/', oauthRoutes(deps.assembly.oauth, { secureCookie: deps.secureCookie ?? false }));
+  app.route('/', pricingRoutes(db, undefined, session));
 
   return app;
-}
-
-/** 渠道装配（config 驱动；未配置渠道不注册 → 下单 503 payment_unavailable） */
-function buildPaymentProviders(config: ClientApiConfig): { epay?: PaymentProvider; stripe?: PaymentProvider } {
-  const providers: { epay?: PaymentProvider; stripe?: PaymentProvider } = {};
-  if (config.payments.epay) {
-    providers.epay = createEpayProvider(config.payments.epay);
-  }
-  if (config.payments.stripe) {
-    providers.stripe = createStripeProvider(config.payments.stripe);
-  }
-  return providers;
 }

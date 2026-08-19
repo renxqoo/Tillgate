@@ -31,10 +31,10 @@ export function oauthOptionsFromProviders(
 ): OAuthOption[] {
   const options: OAuthOption[] = [];
   if (providers.includes("github")) {
-    options.push({ id: "github", label: "使用 GitHub 登录", url: `${clientApiBase}/api/auth/oauth/github/authorize` });
+    options.push({ id: "github", label: "使用 GitHub 登录", url: `${clientApiBase}/v1/oauth/github/authorize?next=/oauth/callback` });
   }
   if (providers.includes("google")) {
-    options.push({ id: "google", label: "使用 Google 登录", url: `${clientApiBase}/api/auth/oauth/google/authorize` });
+    options.push({ id: "google", label: "使用 Google 登录", url: `${clientApiBase}/v1/oauth/google/authorize?next=/oauth/callback` });
   }
   return options;
 }

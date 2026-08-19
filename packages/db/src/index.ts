@@ -30,3 +30,6 @@ export function createDb(
 }
 
 export type Db = ReturnType<typeof createDb>;
+
+/** drizzle 事务句柄（事务内执行的统一参数类型；service 层持有事务、repo 层接收） */
+export type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];

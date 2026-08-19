@@ -25,13 +25,36 @@ interface PageProps {
 export default async function TransactionsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchUserList<TransactionRow>('/api/me/transactions', {
+  // v2 statement 行（legId/transactionKind/memo）→ 页面 TransactionRow 形状
+  const statement = await fetchUserList<{
+    legId: number;
+    transactionKind: string;
+    amount: string;
+    balanceAfter: string;
+    refType: string;
+    refId: string;
+    memo: string | null;
+    createdAt: string;
+  }>('/api/wallet/statement', {
     page,
     pageSize: PAGE_SIZE,
     sortBy,
     order,
     extra: { q },
   });
+  const rows: TransactionRow[] = statement.rows.map((r) => ({
+    id: r.legId,
+    userId: 0,
+    type: r.transactionKind,
+    amount: r.amount,
+    balanceBefore: '',
+    balanceAfter: r.balanceAfter,
+    refType: r.refType,
+    refId: r.refId,
+    remark: r.memo,
+    createdAt: r.createdAt,
+  }));
+  const { total, error } = statement;
 
   const columns: DataTableColumn<TransactionRow>[] = [
     {

@@ -5,6 +5,7 @@ import {
   smallint,
   timestamp,
   bigint,
+  boolean,
   numeric,
   index,
   uniqueIndex,
@@ -49,6 +50,12 @@ export const apiKeys = pgTable(
      * 管理员可对单个团员 Key 单独设「单日最多消费」；独立于用户级 daily_spend_limit，两者都设时双闸门。
      */
     dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
+    /**
+     * 包月额度耗尽是否自动转 PAYG 扣余额（开关式排他，funding-package-plan §3.6）：
+     * false（默认）= 额度不足整单拒绝（存量行为零变化）；true = 订阅出余量 + 余额补差。
+     * 创建 Key 时设置（client-api 职责）；gateway 经凭证解析只读。App JWT 无此开关（恒 false）。
+     */
+    allowPaygFallback: boolean('allow_payg_fallback').notNull().default(false),
     /** 0 有效 / 1 吊销 */
     status: smallint('status').notNull().default(0),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),

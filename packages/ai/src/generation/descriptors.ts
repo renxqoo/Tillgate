@@ -12,7 +12,7 @@ import type { Endpoint } from '../types';
  *   4. snapshotParams      任务族提交参数白名单（快照进 generation_tasks.params，
  *                  music 代执行时原样作为上游请求体）
  *
- * 计费基座不变：金额恒 = units × unitPrice × 系数（packages/money 双分量公式），
+ * 计费基座不变：金额恒 = units × unitPrice × 系数（wallet/metering 双分量公式），
  * 类型差异只体现在本表的 units 推导，新类型 = 注册一个描述符，零侵入执行层。
  * 新厂商 = packages/ai/adapters/task-kit.ts 配置一份（protocol 键注册）。
  */
@@ -35,7 +35,7 @@ export interface GenerationKindDescriptor {
    * 任务族结算以 generation_tasks.units_snapshot 为准（提交时由
    * unitsUpperBoundOf 定格），此实现作为快照缺失时的兜底口径。
    */
-  unitsOf(reqBody: Record<string, unknown>, resBody?: unknown): number;
+  unitsOf(reqBody: Record<string, unknown>, resBody?: unknown, pricingUnit?: string): number;
   /** 任务族：提交参数快照白名单（music 的快照即 worker 代执行的请求体） */
   snapshotParams?(body: Record<string, unknown>): Record<string, unknown>;
 }
@@ -81,7 +81,7 @@ export const GENERATION_KINDS: Readonly<Record<GenerationKind, GenerationKindDes
     'video',
     'task_poll',
     (body, pricingUnit) => (pricingUnit === 'second' ? clampedDuration(body) : positiveN(body)),
-    (body, _resBody) => clampedDuration(body),
+    (body, _resBody, pricingUnit) => (pricingUnit == null || pricingUnit === 'second' ? clampedDuration(body) : positiveN(body)),
     (body) => ({
       model: body.model,
       prompt: body.prompt ?? '',

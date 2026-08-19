@@ -23,6 +23,7 @@ export default async function PlaygroundPage() {
       title="操练场"
       description="在控制台直接对话调试模型（按正常计费扣余额，流式输出）"
       icon={<FlaskConicalIcon className="size-5 text-muted-foreground" />}
+      unbordered
     >
       <Playground models={models} />
     </ListPage>

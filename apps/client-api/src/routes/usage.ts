@@ -1,22 +1,52 @@
-import { Hono } from 'hono';
-import { query } from '@ai-gateway/http';
-import type { ClientEnv } from '@ai-gateway/identity';
-import type { ClientServices } from '../services/index.js';
-import { getUsageRate, listUsage, rangeQuerySchema, usageByModel, usageQuerySchema, usageSummary } from '../services/usage.js';
-
 /**
- * 用户面板：用量查询（api-contract §4.3）。聚合与明细查询在 services/usage.ts。
+ * 用量路由（会话）：明细（billedBy 拆分）/ 按模型聚合 / 实时速率。
+ * 用户隔离在 repo 层硬绑定（userId 从会话取，不收请求参数）。
  */
-export function usageRoutes(s: ClientServices): Hono<ClientEnv> {
-  return new Hono<ClientEnv>()
-    .get('/rate', async (c) => c.json(await getUsageRate(s, c.get('session').userId)))
-    .get('/', query(usageQuerySchema), async (c) =>
-      c.json(await listUsage(s, c.get('session').userId, c.req.valid('query'))),
-    )
-    .get('/summary', query(rangeQuerySchema), async (c) =>
-      c.json(await usageSummary(s, c.get('session').userId, c.req.valid('query'))),
-    )
-    .get('/by-model', query(rangeQuerySchema), async (c) =>
-      c.json(await usageByModel(s, c.get('session').userId, c.req.valid('query'))),
-    );
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { userCtxOf } from './ctx.js';
+import type { SessionEnv } from '../middleware/session.js';
+import type { UsageService } from '../services/usage.service.js';
+
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  model: z.string().max(64).optional(),
+});
+
+const rangeQuerySchema = z.object({
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+});
+
+export function usageRoutes(service: UsageService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
+
+  app.get('/v1/usage', session, async (c) => {
+    const query = listQuerySchema.parse(c.req.query());
+    const result = await service.list(userCtxOf(c), c.get('userId'), query);
+    return c.json({ rows: result.rows, total: result.total, page: query.page, limit: query.limit });
+  });
+
+  app.get('/v1/usage/by-model', session, async (c) => {
+    const query = rangeQuerySchema.parse(c.req.query());
+    const rows = await service.byModel(userCtxOf(c), c.get('userId'), query);
+    return c.json({ rows });
+  });
+
+  app.get('/v1/usage/summary', session, async (c) => {
+    const query = rangeQuerySchema.parse(c.req.query());
+    const result = await service.summary(userCtxOf(c), c.get('userId'), query);
+    return c.json(result);
+  });
+
+  app.get('/v1/usage/rate', session, async (c) => {
+    const rate = await service.rate(userCtxOf(c), c.get('userId'));
+    return c.json(rate);
+  });
+
+  return app;
 }

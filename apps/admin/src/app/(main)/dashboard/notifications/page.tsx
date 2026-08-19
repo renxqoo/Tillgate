@@ -22,7 +22,7 @@ interface ChannelRow {
 }
 
 export default async function NotificationsPage() {
-  const data = await adminFetch<{ list: ChannelRow[] }>('/api/admin/notifications').catch(() => null);
+  const data = await adminFetch<{ rows?: ChannelRow[]; list?: ChannelRow[] }>('/api/admin/notifications').catch(() => null);
 
   const columns: DataTableColumn<ChannelRow>[] = [
     { key: 'name', header: '名称' },
@@ -62,7 +62,7 @@ export default async function NotificationsPage() {
       icon={<BellIcon className="size-5 text-muted-foreground" />}
     >
       <ChannelForm />
-      <DataTable rowKey={(r) => r.id} rows={data?.list ?? []} columns={columns} empty="暂无通知渠道" />
+      <DataTable rowKey={(r) => r.id} rows={(data?.rows ?? data?.list) ?? []} columns={columns} empty="暂无通知渠道" />
     </ListPage>
   );
 }

@@ -1,61 +1,49 @@
-import { serve } from '@hono/node-server';
-import { loadAdminApiEnv, createLogger, initOtel } from '@ai-gateway/core';
-import { createDb } from '@ai-gateway/db';
-import { createBillingOperations, createLedger } from '@ai-gateway/ledger';
-import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
-import { createApp } from './app.js';
-import { mailerFromEnv, ADMIN_MAIL_BRAND } from '@ai-gateway/identity';
-import { createLocalVoucherStorage } from './services/voucher-storage.js';
-
 /**
  * admin-api 启动入口（仅 bootstrap，无业务逻辑）：
- * 加载环境 → 初始化可观测性 → 组装依赖（db/redis/ledger）→ createApp → serve。
+ * 加载环境 → 基础设施验证（DB/Redis fail-closed：连不上拒绝启动）
+ * → 建连 → 装配 → createApp → serve → 配置快照 → 优雅停机。
  */
+import { serve } from '@hono/node-server';
+import { createDb } from '@ai-gateway/db';
+import { assertRedisReachable, createRedisClient } from '@ai-gateway/core';
+import { loadConfig } from './config.js';
+import { assembleAdminApi } from './assembly.js';
+import { createApp } from './app.js';
+import { createShutdown } from './shutdown.js';
 
-const env = loadAdminApiEnv();
-const logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'admin-api' });
-initOtel({
-  serviceName: 'admin-api',
-  mode: env.OTEL_TRACES_MODE,
-  endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  logger,
-});
-
-const db = createDb(env.DATABASE_URL);
-const redis = createRedis(env.REDIS_URL);
-const ledger = createLedger({
-  db,
-  effects: {
-    balanceChanged: async ({ userId }) => {
-      await redis.del(balanceCache(userId)).catch(() => {});
-    },
-    audit: async (event) => recordAudit(db, { ...event, actor: event.actor ?? 'admin' }),
-  },
-});
-const billingOperations = createBillingOperations({ db });
-
+const config = loadConfig();
+const db = createDb(config.DATABASE_URL, { poolMax: config.DB_POOL_MAX });
+const startupRedis = createRedisClient(config.REDIS_URL, { serviceName: 'admin-api' });
+await assertRedisReachable(startupRedis, 'admin-api', config.REDIS_URL);
+await startupRedis.quit().catch(() => {});
+const assembly = assembleAdminApi(config, db);
 const app = createApp({
   db,
-  redis,
-  ledger,
-  billingOperations,
-  encryptionKey: env.ENCRYPTION_KEY,
-  encryptionKeyOld: env.ENCRYPTION_KEY_OLD,
-  mailer: mailerFromEnv(env, ADMIN_MAIL_BRAND),
-  logger,
-  config: {
-    adminJwtSecret: env.ADMIN_JWT_SECRET,
-    secureCookie: env.NODE_ENV === 'production',
-    trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
-    trustedProxyHops: env.TRUSTED_PROXY_HOPS,
-    internalApiToken: env.INTERNAL_API_TOKEN,
-    voucherStorageDir: env.VOUCHER_STORAGE_DIR,
-    allowLocalUpstream: env.ALLOW_LOCAL_UPSTREAM,
-    voucherMaxBytes: env.VOUCHER_MAX_BYTES,
-  },
-  voucherStorage: createLocalVoucherStorage(env.VOUCHER_STORAGE_DIR),
+  assembly,
+  jwtSecret: config.ADMIN_JWT_SECRET,
+  corsOrigins: config.CORS_ORIGINS ? config.CORS_ORIGINS.split(',').map((s) => s.trim()) : [],
+  bodyLimitBytes: config.BODY_LIMIT_BYTES,
+  trustedProxyHops: config.TRUSTED_PROXY_HOPS,
 });
 
-serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  logger.info({ port: info.port }, 'admin-api listening (internal only)');
+const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+  console.log(`[admin-api] listening on :${info.port}`);
+  // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
+  console.log(`[admin-api] config snapshot: ${JSON.stringify({
+      currency: config.ADMIN_CURRENCY,
+      voucherDir: config.VOUCHER_DIR,
+      allowLocalUpstream: config.ALLOW_LOCAL_UPSTREAM,
+      trustedProxyHops: config.TRUSTED_PROXY_HOPS,
+      otel: config.OTEL_TRACES_MODE,
+  })}`);
 });
+
+const shutdown = createShutdown({
+  server,
+  otel: assembly.otel,
+  redis: assembly.redis,
+  db,
+  graceMs: config.ADMIN_SHUTDOWN_GRACE_MS,
+});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

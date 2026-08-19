@@ -1,5 +1,7 @@
 # 估算结算政策（2026-08-17 拍板留档）
 
+> 状态：政策仍生效；实现落点已迁移——types → `packages/domain/src/rating/types.ts`、管线 → `apps/gateway/src/pipeline/run-chat.ts`（原 packages/ledger 路径为当时落点）。
+
 ## 背景与动机
 
 - **前提**：所有上游厂商均无 usage 补录接口——「缺 usage → 冻结等厂商回执」没有回执可等。
@@ -25,11 +27,11 @@
 
 ## 实现落点
 
-- `packages/ledger/src/types.ts`：`ESTIMATE_ATTRIBUTIONS`（用户取消三态 + `usage_missing_completed`
+- `packages/ledger/src/types.ts`（当时落点，现已迁移）：`ESTIMATE_ATTRIBUTIONS`（用户取消三态 + `usage_missing_completed`
   / `usage_missing_nonstream`）；`isAttributedEstimate`/`validateReceipt` 用新枚举把关。
-- `packages/ledger/src/billing-flow.ts`：signal `request.failed` 的 `upstreamCharge='unknown'`
+- `packages/ledger/src/billing-flow.ts`（当时落点，现已迁移）：signal `request.failed` 的 `upstreamCharge='unknown'`
   不再转 uncertain——统一释放（字段保留仅作观测）。
-- `packages/ledger/src/billing-processor.ts`：recoverOnce 的 in_flight 租约过期（网关崩溃）
+- `packages/ledger/src/billing-processor.ts`（当时落点，现已迁移）：recoverOnce 的 in_flight 租约过期（网关崩溃）
   → released（`gateway_crash_released` 留痕），同事务释放三类预扣投影。
 - auto-release 通道整体删除（uncertain 不再产生；dead 永不自动处置）。
 - `apps/gateway` 收尾三分岔：`recordEstimatedOutcome`（估算结算，billing.estimate span）、
@@ -62,6 +64,6 @@ signal 处理器、状态机枚举、DB CHECK 约束（迁移 0050）、复核�
 
 ## 护栏测试
 
-- `apps/gateway/src/routes/__tests__/estimate-settlement.policy.test.ts`（政策三特征）
-- `tpm-reservation.characterization.test.ts`（TPM 所有权，含 unknown→释放语义）
-- ledger 侧：signal/recoverOnce 翻转后的既有套件
+- `apps/gateway/src/routes/__tests__/estimate-settlement.policy.test.ts`（政策三特征）（当时落点，现已迁移）
+- `tpm-reservation.characterization.test.ts`（TPM 所有权，含 unknown→释放语义）（当时落点，现已迁移）
+- ledger 侧：signal/recoverOnce 翻转后的既有套件（当时落点，现已迁移）

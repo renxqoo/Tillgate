@@ -18,6 +18,7 @@ interface InviteData {
 }
 
 export default async function InvitePage() {
+  // v2：GET /v1/referrals —— 邀请码/链接、已邀名单、累计佣金（后端不可达时空态展示）
   const data = await apiFetch<InviteData>('/api/referrals').catch(() => null);
 
   return (
@@ -25,6 +26,7 @@ export default async function InvitePage() {
       title="邀请返利"
       description="邀请好友注册，双方得奖励；好友每日消费按比例返佣"
       icon={<UsersIcon className="size-5 text-muted-foreground" />}
+      unbordered
     >
       {data ? (
         <div className="space-y-6">

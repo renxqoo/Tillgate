@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hashPassword, verifyPassword } from '../password.js';
+import { hashPassword, verifyPassword } from '../index.js';
 
 async function measure(fn: () => Promise<unknown>): Promise<number> {
   const t0 = process.hrtime.bigint();

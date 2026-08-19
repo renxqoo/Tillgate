@@ -1,72 +1,78 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { intParam, jsonBody, query, listQuerySchema } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
-import {
-  createRateCard, deleteRateCard, fmtCoeff, listRateCards, listRateCardUsers, rateCardHealth, updateRateCard,
-} from '../services/rate-cards.js';
-
 /**
- * 费率卡管理（api-contract §4.9）。
- *
- * 定价模型：用户价 = 官方价（model_mappings）× 费率卡系数。
- *   - 每张卡必有且仅有一行 scope=global 兜底系数（应用层保证，data-model §3.9）
- *   - 系数合法范围 [0, 9.999]（numeric(6,3) 上限；负数/超大拒绝）
- *   - 删除仅当无用户绑定时允许（防孤儿账户）
+ * 费率卡路由（会话）：列表 / 创建 / 更新 / 删除（硬删，绑定守卫）/ 卡内用户 / 健康自检。
+ * 系数 numeric(6,3)：0..9.999，落库与回显恒 3 位小数。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import {
+  RATE_CARD_SORTS,
+  RATE_CARD_USER_SORTS,
+  type RateCardsService,
+} from '../services/rate-cards.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-const rateCardCreateSchema = z.object({
+const coefficient = z.number().min(0).max(9.999);
+
+const createSchema = z.object({
   name: z.string().min(1).max(32),
   description: z.string().max(255).optional(),
-  /** 全局兜底系数，必填，范围 [0, 9.999] */
-  coefficient: z.number().min(0).max(9.999),
+  coefficient,
 });
 
-const rateCardUpdateSchema = z.object({
+const updateSchema = z.object({
   name: z.string().min(1).max(32).optional(),
   description: z.string().max(255).nullable().optional(),
-  /** 0 启用 / 1 停用 */
   status: z.number().int().min(0).max(1).optional(),
-  /** 更新全局系数（可选） */
-  coefficient: z.number().min(0).max(9.999).optional(),
+  coefficient: coefficient.optional(),
 });
 
-export function rateCardAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return (
-    new Hono<AdminEnv>()
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
 
-      // 列表（附 global 系数）
-      .get('/', query(listQuerySchema), async (c) =>
-        c.json(await listRateCards(s, c.req.valid('query'))),
-      )
+export function rateCardsRoutes(service: RateCardsService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-      // 创建（必须带全局系数，事务见 service）
-      .post('/', jsonBody(rateCardCreateSchema), async (c) => {
-        const body = c.req.valid('json');
-        const card = await createRateCard(s, body, c.get('adminId'));
-        return c.json({ ...card, coefficient: fmtCoeff(body.coefficient) }, 201);
-      })
+  app.get('/v1/rate-cards', session, async (c) => {
+    const query = parseListQuery(c.req.query(), RATE_CARD_SORTS, 'createdAt');
+    return c.json(await service.list(adminCtxOf(c), query));
+  });
 
-      // 更新（名称/描述/状态/全局系数）
-      .patch('/:id', jsonBody(rateCardUpdateSchema), async (c) => {
-        const id = intParam(c, 'id');
-        const updated = await updateRateCard(s, id, c.req.valid('json'), c.get('adminId'));
-        return c.json(updated);
-      })
+  app.post('/v1/rate-cards', session, async (c) => {
+    const body = createSchema.parse(await c.req.json());
+    const row = await service.create(adminCtxOf(c), { adminId: c.get('adminId'), ...body });
+    return c.json(row, 201);
+  });
 
-      // 查看绑定该卡的账户（api-contract §4.9）
-      .get('/:id/users', query(listQuerySchema), async (c) =>
-        c.json(await listRateCardUsers(s, intParam(c, 'id'), c.req.valid('query'))),
-      )
+  app.patch('/v1/rate-cards/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const patch = updateSchema.parse(await c.req.json());
+    return c.json(await service.update(adminCtxOf(c), { adminId: c.get('adminId'), rateCardId: id, patch }));
+  });
 
-      // 删除：仅当无用户绑定时允许（防误删导致账户孤儿，见 service）
-      .delete('/:id', async (c) => {
-        await deleteRateCard(s, intParam(c, 'id'), c.get('adminId'));
-        return c.json({ ok: true });
-      })
+  app.delete('/v1/rate-cards/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.remove(adminCtxOf(c), { adminId: c.get('adminId'), rateCardId: id }));
+  });
 
-      // 健康自检：全局系数行是否存在（data-model §3.9 约束校验）
-      .get('/:id/health', async (c) => c.json(await rateCardHealth(s, intParam(c, 'id'))))
-  );
+  app.get('/v1/rate-cards/:id/users', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const query = parseListQuery(c.req.query(), RATE_CARD_USER_SORTS, 'id');
+    return c.json(await service.listUsers(adminCtxOf(c), { rateCardId: id, query }));
+  });
+
+  app.get('/v1/rate-cards/:id/health', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.health(adminCtxOf(c), id));
+  });
+
+  return app;
 }

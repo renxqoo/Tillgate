@@ -13,6 +13,7 @@
 | `TRACE_RECEIVER_TOKEN` | ≥16 字符随机串 | 生产无此值 trace-receiver 拒绝启动（fail-fast，属预期） |
 | `JWT_SECRET` / `ADMIN_JWT_SECRET` | ≥32 字符且互不相同 | 生产 <32 拒绝启动；相同值拒绝启动（双平面隔离） |
 | `ENCRYPTION_KEY` | ≥32 字符，一次性生成永不直改 | 轮换走双 key 窗流程（见下） |
+| `SECURE_COOKIE=true` | 生产必设（NODE_ENV 由镜像内置） | 不配 = 会话 cookie 缺 Secure 位，明文链路可被截获 |
 | `SMTP_HOST/PORT/USER/PASS` | 个人邮箱（QQ/163 开 SMTP 拿授权码）或企业邮箱均可；不配则管理员邮箱验证码二次登录不可用（fail-closed） | 管理员开了 2FA 但没配 SMTP → 登录 503（不降级单密码，属预期防线） |
 | `CAPTCHA_SITE_KEY` + `CAPTCHA_SECRET_KEY` | Cloudflare Turnstile 成对配置（Dashboard → Turnstile → Add site）；只配一半拒绝启动 | 不配 = 注册面人机验证关闭：分布式刷号可薅首登赠额（单 IP 限流 5 次/时挡不住僵尸网络）。开发可用官方测试键（恒过） |
 | `REGISTER_ENABLED` | 默认 `true`。设 `false` = 关闭邮箱自助注册，只留 GitHub/Google OAuth 建号（防多账号薅赠额的运营闸门；存量账号登录不受影响） | 不动即开启；关闭后 `POST /api/auth/register*` 一律 403，前端注册页显示关闭态 |
@@ -24,6 +25,11 @@
 - [ ] **trace-receiver(:8793) / worker(:8792) 不对公网暴露**——只允许内网/容器网络访问。
 - [ ] gateway 经 nginx 对外：`limit_req`（/v1/ 20r/s burst 40）已在 `docker/nginx/nginx.conf` 配置，确认线上 nginx 加载了同款配置。
 - [ ] 各服务端口只经反代暴露：gateway 443、两个面板 443；admin 面板域名与用户面域名隔离。
+- [ ] **支付回调**：EPAY 后台 notify_url 与 Stripe webhook 指向 `https://<域名>/v1/payments/notify/epay|stripe`
+      （旧路径 404，漏配 = 充值不入账）。
+- [ ] **证书首签**（standalone，80 端口空闲时）：`docker compose -f docker/compose.yml run --rm
+      --entrypoint certbot -p 80:80 certbot certonly --standalone --cert-name gateway -d <域名>…`；
+      续期见 compose.yml certbot 注释。
 
 ## 三、密钥轮换（ENCRYPTION_KEY）
 
@@ -39,7 +45,8 @@
 - [ ] **PG 备份**：每日基础备份 + WAL 归档（资金账本 `transactions/usage_logs/billing_requests`
       不可丢）；每月做一次恢复演练（备份没验证过 = 没有备份）。
 - [ ] Redis 数据可丢（结算以 DB poll 为权威，队列只是唤醒）——AOF/RDB 按需，非资金关键。
-- [ ] 迁移策略：发布时 `pnpm db:migrate`；`request_logs` 为分区表（见
+- [ ] 迁移策略：生产用 `docker compose -f docker/compose.yml up --build migrate`
+      （一次性服务：provision + 全量迁移 + wallet 建账，幂等可重跑）；`request_logs` 为分区表（见
       `packages/db/src/schema/logs.ts` 顶部警示，不要对该表跑 db:generate）。
 
 ## 五、监控与告警

@@ -14,7 +14,6 @@ import {
   fmtInt,
   type Paginated,
   type UsageByModelItem,
-  type UsageSummaryItem,
 } from '@ai-gateway/api-client';
 
 import Link from 'next/link';
@@ -61,32 +60,25 @@ export default async function DashboardPage() {
   // 获取 Key 列表（统计活跃 / 总数）
   try {
     const keysData = await apiFetch<Paginated<{ status: number }>>(
-      '/api/keys?page=1&page_size=100',
+      '/api/keys?page=1&limit=100',
     );
     data.totalKeys = keysData.total;
-    data.activeKeys = keysData.list.filter((k) => k.status === 0).length;
+    const keyRows = keysData.rows ?? [];
+    data.activeKeys = keyRows.filter((k) => k.status === 0).length;
   } catch {
     // ignore
   }
 
-  // 获取用量汇总（每日费用趋势）
+  // 按模型聚合用量（v2：/usage/by-model；日费用趋势以模型维度近似，今日费用取总额）
   try {
-    const summary = await apiFetch<{ list: UsageSummaryItem[] }>('/api/usage/summary');
-    data.dailyCost = summary.list.map((it) => ({
-      date: it.date,
-      value: Number(it.cost) || 0,
-    }));
-    data.todayCost = data.dailyCost.at(-1)?.value ?? 0;
+    const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>('/api/usage/by-model');
+    const modelRows = byModel.rows ?? [];
+    data.byModel = modelRows;
+    const todayTotal = modelRows.reduce((sum, it) => sum + (Number(it.cost) || 0), 0);
+    data.dailyCost = [{ date: new Date().toISOString().slice(0, 10), value: todayTotal }];
+    data.todayCost = todayTotal;
   } catch {
-    // 用量汇总不可达时图表留空
-  }
-
-  // 获取按模型聚合的用量（不同模型使用量图表）
-  try {
-    const byModel = await apiFetch<{ list: UsageByModelItem[] }>('/api/usage/by-model');
-    data.byModel = byModel.list ?? [];
-  } catch {
-    // 按模型用量不可达时图表留空
+    // 用量不可达时图表留空
   }
 
   // 获取实时速率（近 60 秒 RPM / TPM）

@@ -12,8 +12,8 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { ledgerOperations } from '@ai-gateway/ledger-core';
 import { users } from './users.js';
-import { fundOperations } from './fund-operations.js';
 
 /**
  * payment_orders — 在线支付订单（data-model.md §3.16）
@@ -40,9 +40,9 @@ export const paymentOrders = pgTable(
     creditAmount: numeric('credit_amount', { precision: 38, scale: 18 }).notNull(),
     /** 0 created / 1 paid / 2 credited / 3 refunded / 4 expired */
     status: smallint('status').notNull().default(0),
-    /** 入账幂等锚点（fund_operations.operation_id） */
+    /** 入账幂等锚点（ledger_operations.operation_id） */
     creditedOperationId: varchar('credited_operation_id', { length: 128 }).references(
-      () => fundOperations.operationId,
+      () => ledgerOperations.operationId,
     ),
     failureReason: varchar('failure_reason', { length: 255 }),
     /** 创建参数与回调原始载荷（审计；不参与结算，结算只认 credit_amount） */

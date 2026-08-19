@@ -1,7 +1,7 @@
 import { CreditCard } from 'lucide-react';
 
 import { fmtDateTime } from '@ai-gateway/api-client/formatters';
-import { fetchUserList } from '@ai-gateway/api-client/list';
+import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { StatusPill } from '@ai-gateway/ui/components/status-pill';
@@ -42,7 +42,7 @@ interface PageProps {
 export default async function PaymentOrdersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const q = typeof sp.q === 'string' ? sp.q : undefined;
-  const { rows, error } = await fetchUserList<PaymentOrderRow>('/api/admin/payment-orders', {
+  const { rows, error } = await fetchAdminList<PaymentOrderRow>('/api/admin/payment-orders', {
     pageSize: 20,
     extra: q ? { q } : undefined,
   });

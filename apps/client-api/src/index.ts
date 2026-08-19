@@ -1,97 +1,58 @@
-import { serve } from '@hono/node-server';
-import { loadClientApiEnv, createLogger, initOtel } from '@ai-gateway/core';
-import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
-import { createDb } from '@ai-gateway/db';
-import { createLedger } from '@ai-gateway/ledger';
-import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
-import { createApp } from './app.js';
-
 /**
  * client-api 启动入口（仅 bootstrap，无业务逻辑）：
- * 加载环境 → 初始化可观测性 → 组装依赖（db/redis/ledger）→ createApp → serve。
+ * 加载环境 → 基础设施验证（DB/Redis fail-closed：连不上拒绝启动）
+ * → 建连 → 装配 → createApp → serve → 配置快照 → 优雅停机。
  */
+import { serve } from '@hono/node-server';
+import { createDb } from '@ai-gateway/db';
+import { assertRedisReachable, createRedisClient } from '@ai-gateway/core';
+import { loadConfig } from './config.js';
+import { assembleClientApi } from './assembly.js';
+import { createApp } from './app.js';
+import { createShutdown } from './shutdown.js';
 
-const env = loadClientApiEnv();
-const logger = createLogger({ level: env.LOG_LEVEL, serviceName: 'client-api' });
-initOtel({
-  serviceName: 'client-api',
-  mode: env.OTEL_TRACES_MODE,
-  endpoint: env.OTEL_EXPORTER_OTLP_ENDPOINT,
-  logger,
-});
-
-const db = createDb(env.DATABASE_URL);
-const redis = createRedis(env.REDIS_URL);
-const ledger = createLedger({
-  db,
-  effects: {
-    balanceChanged: async ({ userId }) => {
-      await redis.del(balanceCache(userId)).catch(() => {});
-    },
-    // client-api 触发的资金变动均为用户自助行为（兑换/首登赠额），actor 记 user
-    audit: async (event) => recordAudit(db, { ...event, actor: 'user', adminId: null }),
-  },
-});
-
+const config = loadConfig();
+const db = createDb(config.DATABASE_URL, { poolMax: config.DB_POOL_MAX });
+const startupRedis = createRedisClient(config.REDIS_URL, { serviceName: 'client-api' });
+await assertRedisReachable(startupRedis, 'client-api', config.REDIS_URL);
+await startupRedis.quit().catch(() => {});
+const assembly = assembleClientApi(config, db);
 const app = createApp({
+    revocationStore: assembly.revocationStore,
   db,
-  redis,
-  ledger,
-  logger,
-  mailer: mailerFromEnv(env, USER_MAIL_BRAND),
-  captcha: captchaFromEnv(env),
-  config: {
-    oauth: {
-      frontendUrl: env.OAUTH_FRONTEND_URL,
-      apiBase: env.OAUTH_API_BASE,
-      github:
-        env.OAUTH_GITHUB_CLIENT_ID && env.OAUTH_GITHUB_CLIENT_SECRET
-          ? { clientId: env.OAUTH_GITHUB_CLIENT_ID, clientSecret: env.OAUTH_GITHUB_CLIENT_SECRET }
-          : null,
-      google:
-        env.OAUTH_GOOGLE_CLIENT_ID && env.OAUTH_GOOGLE_CLIENT_SECRET
-          ? { clientId: env.OAUTH_GOOGLE_CLIENT_ID, clientSecret: env.OAUTH_GOOGLE_CLIENT_SECRET }
-          : null,
-    },
-    jwtSecret: env.JWT_SECRET,
-    secureCookie: env.NODE_ENV === 'production',
-    giftAmount: env.GIFT_AMOUNT,
-    trustedOrigins: env.CSRF_TRUSTED_ORIGINS,
-    trustedProxyHops: env.TRUSTED_PROXY_HOPS,
-    internalApiToken: env.INTERNAL_API_TOKEN,
-    registerEnabled: env.REGISTER_ENABLED,
-    referralSignupBonus: env.REFERRAL_SIGNUP_BONUS,
-    playground:
-      env.GATEWAY_URL && env.GATEWAY_JWT_SECRET
-        ? { gatewayUrl: env.GATEWAY_URL, gatewayJwtSecret: env.GATEWAY_JWT_SECRET }
-        : null,
-    referralCommissionRate: env.REFERRAL_COMMISSION_RATE,
-    payments: {
-      // 渠道成组配置才启用（半配置 = 渠道关闭并告警，不静默半启用）
-      epay:
-        env.EPAY_PID && env.EPAY_KEY && env.EPAY_GATEWAY_URL && env.CLIENT_PUBLIC_ORIGIN
-          ? {
-              pid: env.EPAY_PID,
-              key: env.EPAY_KEY,
-              gatewayUrl: env.EPAY_GATEWAY_URL,
-              notifyUrl: `${env.CLIENT_PUBLIC_ORIGIN}/api/public/payments/epay/notify`,
-              returnUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing`,
-            }
-          : null,
-      stripe:
-        env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.CLIENT_PUBLIC_ORIGIN
-          ? {
-              secretKey: env.STRIPE_SECRET_KEY,
-              webhookSecret: env.STRIPE_WEBHOOK_SECRET,
-              webhookUrl: `${env.CLIENT_PUBLIC_ORIGIN}/api/public/payments/stripe/webhook`,
-              successUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing?paid=1`,
-              cancelUrl: `${env.CLIENT_PUBLIC_ORIGIN}/dashboard/billing?canceled=1`,
-            }
-          : null,
-    },
-  },
+  assembly,
+  jwtSecret: config.JWT_SECRET,
+  trustedProxyHops: config.TRUSTED_PROXY_HOPS,
+  corsOrigins: config.CORS_ORIGINS ? config.CORS_ORIGINS.split(',').map((s) => s.trim()) : [],
+  bodyLimitBytes: config.BODY_LIMIT_BYTES,
 });
 
-serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  logger.info({ port: info.port }, 'client-api listening (internal only)');
+const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+  console.log(`[client-api] listening on :${info.port}`);
+  // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
+  console.log(
+    `[client-api] config snapshot: ${JSON.stringify({
+      registerEnabled: config.REGISTER_ENABLED,
+      emailCodeRequired: config.EMAIL_CODE_REQUIRED,
+      giftAmount: config.GIFT_AMOUNT,
+      topup: `${config.TOPUP_MIN}~${config.TOPUP_MAX} @${config.TOPUP_EXCHANGE_RATE}`,
+      payments: { epay: config.EPAY_PID != null, stripe: config.STRIPE_SECRET_KEY != null },
+      referral: { signupBonus: config.REFERRAL_SIGNUP_BONUS, commissionRate: config.REFERRAL_COMMISSION_RATE },
+      oauth: { github: config.OAUTH_GITHUB_CLIENT_ID != null, google: config.OAUTH_GOOGLE_CLIENT_ID != null },
+      maxKeysPerUser: config.MAX_KEYS_PER_USER,
+      trustedProxyHops: config.TRUSTED_PROXY_HOPS,
+      secureCookie: config.SECURE_COOKIE,
+      otel: config.OTEL_TRACES_MODE,
+    })}`,
+  );
 });
+
+const shutdown = createShutdown({
+  server,
+  otel: assembly.otel,
+  redis: assembly.redis,
+  db,
+  graceMs: config.CLIENT_SHUTDOWN_GRACE_MS,
+});
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

@@ -100,12 +100,12 @@ export function SubscriptionContent({
           </CardHeader>
           <CardContent className="space-y-2">
             {orgs.map((o) => (
-              <div key={o.id} className="rounded-md border p-3 text-sm">
+              <div key={o.orgId} className="rounded-md border p-3 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{o.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {o.subscriptionName ?? "无有效套餐"}
+                      {o.planName ?? "无有效套餐"}
                       {o.quantity != null ? ` · ${o.quantity} 席` : ""}
                     </div>
                   </div>
@@ -230,8 +230,12 @@ function RenewButton({ sub }: { sub: CurrentSubscription }) {
     });
   }
 
-  // 未到期续费：新订阅期从旧 endAt 顺延一个周期（活跃订阅恒 endAt > now）。
-  const newEndAt = new Date(new Date(sub.endAt).getTime() + sub.periodDays * 86_400_000);
+  // 续费预览口径与服务端 renewalStart 一致：未到期从旧 endAt 顺延，已到期从 now 起算。
+  // periodDays/endAt 异常缺失时兜底，绝不让 newEndAt 变 Invalid Date（toISOString 会抛 RangeError）。
+  const oldEndTs = new Date(sub.endAt).getTime();
+  const baseTs = Number.isFinite(oldEndTs) ? Math.max(oldEndTs, Date.now()) : Date.now();
+  const periodMs = Number.isFinite(sub.periodDays) ? sub.periodDays * 86_400_000 : 0;
+  const newEndAt = new Date(baseTs + periodMs);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

@@ -1,54 +1,81 @@
 /**
  * 服务端会话工具（Server Component / Server Action 用）。
  *
- * 双后端（admin-api 拆分后）两个 Cookie 物理隔离：
- *   - 用户面：ag_session（client-api 签发，JWT_SECRET，type='user'）
- *   - 管理面：ag_admin_session（admin-api 签发，ADMIN_JWT_SECRET，type='admin'）
- *
- * 浏览器自动在同域请求中带 HttpOnly Cookie；我们在 server 转发到对应 api 时
- * 手动把 Cookie 头复制过去（getCookieHeader 转发全部 cookie，两个 cookie 都带上，
- * 后端各只认自己的）。
+ * v2 后端是无 Cookie 的 Bearer 会话：JWT 由本 BFF（Next.js 服务端）持有——
+ * 登录/验码动作从响应体取 token，写入自己的 HttpOnly Cookie（沿用 ag_session /
+ * ag_admin_session 名字，浏览器侧行为不变）；发往后端时改以
+ * Authorization: Bearer 头携带（见 index.ts doFetch）。
  */
-import { cookies, headers } from 'next/headers';
+import { cookies } from 'next/headers';
 
-/** 用户面会话 cookie name（client-api） */
+/** 用户面会话 cookie name（BFF 持有 client-api 的 Bearer JWT） */
 export const SESSION_COOKIE = 'ag_session';
-/** 管理面会话 cookie name（admin-api） */
+/** 管理面会话 cookie name（BFF 持有 admin-api 的 Bearer JWT） */
 export const ADMIN_SESSION_COOKIE = 'ag_admin_session';
 
-/** 从 Next.js 的请求中读出原始 Cookie 字符串（用于转发到 client-api/admin-api） */
-export async function getCookieHeader(): Promise<string> {
-  // Next.js 16+：cookies() 自身能拿到当前请求的 cookie
+const SESSION_TTL_S = Number(process.env.SESSION_TTL_SECONDS ?? 86_400);
+
+/** 读用户面 Bearer token（cookie 值即 JWT；无会话返回 null） */
+export async function getSessionToken(): Promise<string | null> {
   const jar = await cookies();
-  const all = jar.getAll();
-  if (all.length > 0) {
-    return all.map((c) => `${c.name}=${c.value}`).join('; ');
-  }
-  // fallback：直接从 headers 读
-  const reqHeaders = await headers();
-  return reqHeaders.get('cookie') ?? '';
+  return jar.get(SESSION_COOKIE)?.value ?? null;
 }
 
-/** 当前是否有用户面会话 cookie（ag_session） */
+/** 读管理面 Bearer token */
+export async function getAdminSessionToken(): Promise<string | null> {
+  const jar = await cookies();
+  return jar.get(ADMIN_SESSION_COOKIE)?.value ?? null;
+}
+
+/** 写用户面会话（登录/验码成功后由 Server Action 调用；token 来自响应体） */
+export async function setSessionToken(token: string): Promise<void> {
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_TTL_S,
+  });
+}
+
+/** 写管理面会话 */
+export async function setAdminSessionToken(token: string): Promise<void> {
+  const jar = await cookies();
+  jar.set(ADMIN_SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: SESSION_TTL_S,
+  });
+}
+
+/** 当前是否有用户面会话 cookie */
 export async function hasSessionCookie(): Promise<boolean> {
   const jar = await cookies();
   return jar.has(SESSION_COOKIE);
 }
 
-/** 当前是否有管理面会话 cookie（ag_admin_session） */
+/** 当前是否有管理面会话 cookie */
 export async function hasAdminSessionCookie(): Promise<boolean> {
   const jar = await cookies();
   return jar.has(ADMIN_SESSION_COOKIE);
 }
 
-/** 清空用户面会话（用于注销，apps/client 用） */
+/** 清空用户面会话（注销；v2 Bearer 无服务端态——清本地即下线） */
 export async function clearSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.delete(SESSION_COOKIE);
 }
 
-/** 清空管理面会话（用于注销，apps/admin 用） */
+/** 清空管理面会话 */
 export async function clearAdminSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.delete(ADMIN_SESSION_COOKIE);
+}
+
+/** 兼容旧调用（转发 cookie 头）——v2 Bearer 模式下不再需要，保留空实现 */
+export async function getCookieHeader(): Promise<string> {
+  return '';
 }

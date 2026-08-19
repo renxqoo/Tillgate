@@ -43,6 +43,8 @@ export type RelayStreamEvent =
       usage: unknown | null;
       errorFrame: StreamError | null;
       bytesRelayed: number;
+      /** 扫描器累计的输出内容文本（usage 缺失/取消时的输出估算源） */
+      outputText?: string;
       /** 终止细节（观测/计费留痕）：[DONE] 哨兵是否到达；终止帧（finish_reason）是否到达 */
       doneSentinel?: boolean;
       terminalFrame?: boolean;
@@ -102,6 +104,7 @@ export function relayStream(
       usage: scanner.getUsage(),
       errorFrame,
       bytesRelayed,
+      outputText: scanner.getOutputText(),
       doneSentinel: normalizedMissingDone ? false : scanner.hasDone(),
       terminalFrame: scanner.hasTerminalFrame(),
       terminated: errorFrame && !normalizedMissingDone ? 'upstream_error' : undefined,
@@ -141,6 +144,7 @@ export function relayStream(
       usage: scanner.getUsage(),
       errorFrame: frame,
       bytesRelayed,
+      outputText: scanner.getOutputText(),
       doneSentinel: scanner.hasDone(),
       terminalFrame: scanner.hasTerminalFrame(),
       terminated: reason,
@@ -232,6 +236,7 @@ export function relayStream(
             usage: scanner.getUsage(),
             errorFrame,
             bytesRelayed,
+            outputText: scanner.getOutputText(),
             doneSentinel: scanner.hasDone(),
             terminalFrame: scanner.hasTerminalFrame(),
             terminated: 'client_disconnect',
@@ -243,6 +248,7 @@ export function relayStream(
             usage: scanner.getUsage(),
             errorFrame,
             bytesRelayed,
+            outputText: scanner.getOutputText(),
             doneSentinel: scanner.hasDone(),
             terminalFrame: scanner.hasTerminalFrame(),
             terminated: errorFrame ? 'upstream_error' : undefined,

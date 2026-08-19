@@ -28,21 +28,10 @@ export const users = pgTable(
     email: varchar('email', { length: 255 }),
     displayName: varchar('display_name', { length: 64 }),
     rateCardId: bigint('rate_card_id', { mode: 'number' }).references(() => rateCards.id),
-    /** 已结算余额（元）；信用模型下可为负，下限 -credit_limit。真实结算/充值/调账才修改。 */
-    balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),
-    /** 所有未终结请求的在途预估敞口（元）。仅用于并发熔断，不冻结余额。 */
-    reservedBalance: numeric('reserved_balance', { precision: 38, scale: 18 })
-      .notNull()
-      .default('0'),
-    /**
-     * 透支上限（元，>=0）。信用模型：balance 允许降到 -credit_limit；
-     * 请求前用 balance + credit_limit - reserved >= 预估 做并发熔断，完成后按实际金额扣费。
-     * 默认 0 = 不透支（与旧模型一致）；管理员可按用户调高。
-     */
-    creditLimit: numeric('credit_limit', { precision: 38, scale: 18 }).notNull().default('0'),
     /**
      * 每日花费上限（元，NULL=不限）。防羊毛党「细水长流」：当日累计消费（已结算 consume）
      * + 在途敞口 + 本次预估不得超过。RPM/TPM 只挡频率，这个挡总量。
+     * （S9：balance/reserved_balance/credit_limit 三列已退役——资金事实唯一在 wallet。）
      */
     dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK users_status_ck 兜底非法值 */
@@ -76,10 +65,7 @@ export const users = pgTable(
       .on(t.email)
       .where(sql`${t.issuer} = 'local' and ${t.email} is not null`),
     index('users_rate_card_id_idx').on(t.rateCardId),
-    // 信用模型：balance 可为负，但不得低于 -credit_limit；在途敞口非负。
-    check('users_reserved_balance_nonnegative_ck', sql`${t.reservedBalance} >= 0`),
     // 集合与 ACCOUNT_STATUS 一致（新增状态须同步常量与本约束）
     check('users_status_ck', sql`${t.status} in (0, 1, 2)`),
-    check('users_balance_credit_floor_ck', sql`${t.balance} >= -${t.creditLimit}`),
   ],
 );

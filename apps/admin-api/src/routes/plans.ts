@@ -1,91 +1,91 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { intParam, jsonBody, operationId, query, listQuerySchema } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
-import { mapSubscriptionError } from '../services/subscriptions.js';
-import { createPlan, deletePlan, listPlans, updatePlan } from '../services/plans.js';
-
 /**
- * 套餐管理（api-contract §4.10）。
- *
- * 定价模型：套餐额度 = 金额（元），按「官方价 × 系数」折算扣减；底层账本全元，
- * 积分仅展示层（前端换算）。包月 Key 只扣套餐额度，普通 Key 只扣余额（Key 类型分流）。
- *
- * 业务规则：
- *   - kind 创建后不可变（subscription/pack 的下游语义完全不同）
- *   - 包月套餐 periodDays ∈ [1, 3650]；加油包固定 0（无周期）
- *   - 删除套餐前须确认无任何关联订阅（含历史，外键约束）
+ * 套餐路由（会话）：列表 / 创建 / 补丁（kind 不可变 = .strict() 拒未知键）/
+ * 删除（含历史订阅引用守卫 409）。
+ * 价格/额度数值域铁三角：coerce + finite + 1e9 上限（防 numeric 溢出 500）。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import { PLAN_SORTS, type PlansService } from '../services/plans.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
 const PLAN_PRICE_MAX = 1e9;
+const priceSchema = z.coerce.number().positive().finite().max(PLAN_PRICE_MAX);
 
-const planCreateSchema = z
-  .object({
-    name: z.string().min(1).max(32),
-    kind: z.enum(['subscription', 'pack']).optional(),
-    sortOrder: z.number().int().positive().nullable().optional(),
-    price: z.number().positive().finite().max(PLAN_PRICE_MAX),
-    /** 包月：1~3650；加油包：0 或省略 */
-    periodDays: z.number().int().min(0).max(3650).optional(),
-    quotaAmount: z.number().positive().finite().max(PLAN_PRICE_MAX),
-    allowSeats: z.boolean().optional(),
-  })
-  .strict();
+const createSchema = z.strictObject({
+  name: z.string().min(1).max(32),
+  kind: z.enum(['subscription', 'pack']).optional(),
+  sortOrder: z.number().int().positive().nullable().optional(),
+  price: priceSchema,
+  periodDays: z.number().int().min(0).max(3650).optional(),
+  quotaAmount: priceSchema,
+  allowSeats: z.boolean().optional(),
+});
 
-const planUpdateSchema = z
-  .object({
-    name: z.string().min(1).max(32).optional(),
-    sortOrder: z.number().int().positive().nullable().optional(),
-    price: z.number().positive().finite().max(PLAN_PRICE_MAX).optional(),
-    periodDays: z.number().int().min(0).max(3650).optional(),
-    quotaAmount: z.number().positive().finite().max(PLAN_PRICE_MAX).optional(),
-    allowSeats: z.boolean().optional(),
-    status: z.number().int().min(0).max(1).optional(),
-  })
-  .strict();
+const updateSchema = z.strictObject({
+  name: z.string().min(1).max(32).optional(),
+  sortOrder: z.number().int().positive().nullable().optional(),
+  price: priceSchema.optional(),
+  periodDays: z.number().int().min(0).max(3650).optional(),
+  quotaAmount: priceSchema.optional(),
+  allowSeats: z.boolean().optional(),
+  status: z.number().int().min(0).max(1).optional(),
+});
 
-export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return (
-    new Hono<AdminEnv>()
-      // 列表
-      .get('/', query(listQuerySchema), async (c) =>
-        c.json(await listPlans(s, c.req.valid('query'))),
-      )
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
 
-      // 创建
-      .post('/', jsonBody(planCreateSchema), async (c) => {
-        const plan = await createPlan(s, c.req.valid('json'), c.get('adminId'));
-        return c.json(plan, 201);
-      })
+export function plansRoutes(service: PlansService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-      // 更新（kind 不可变；periodDays 与现 kind 联合校验）
-      .patch('/:id', jsonBody(planUpdateSchema), async (c) => {
-        const updated = await updatePlan(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
-        return c.json(updated);
-      })
+  app.get('/v1/plans', session, async (c) => {
+    const query = parseListQuery(c.req.query(), PLAN_SORTS, 'id');
+    return c.json(await service.list(adminCtxOf(c), query));
+  });
 
-      // 发放加油包（kind=pack）：扣 pack.price，有效订阅额度 += pack.quota_amount
-      .post('/:id/grant', jsonBody(z.object({ userId: z.number().int().positive() })), async (c) => {
-        const id = intParam(c, 'id');
-        const body = c.req.valid('json');
-        try {
-          const result = await s.ledger.grantPack({
-            operationId: operationId(c),
-            userId: body.userId,
-            packId: id,
-            adminId: c.get('adminId'),
-          });
-          return c.json(result);
-        } catch (error) {
-          throw mapSubscriptionError(error);
-        }
-      })
+  app.post('/v1/plans', session, async (c) => {
+    const body = createSchema.parse(await c.req.json());
+    const row = await service.create(adminCtxOf(c), {
+      adminId: c.get('adminId'),
+      name: body.name,
+      kind: body.kind,
+      sortOrder: body.sortOrder ?? null,
+      price: String(body.price),
+      periodDays: body.periodDays,
+      quotaAmount: String(body.quotaAmount),
+      allowSeats: body.allowSeats,
+    });
+    return c.json(row, 201);
+  });
 
-      // 删除（存在任何关联订阅——含历史——都不允许，见 service）
-      .delete('/:id', async (c) => {
-        await deletePlan(s, intParam(c, 'id'), c.get('adminId'));
-        return c.json({ ok: true });
-      })
-  );
+  app.patch('/v1/plans/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = updateSchema.parse(await c.req.json());
+    const { price, quotaAmount, ...rest } = body;
+    const row = await service.patch(adminCtxOf(c), {
+      adminId: c.get('adminId'),
+      planId: id,
+      patch: {
+        ...rest,
+        ...(price !== undefined ? { price: String(price) } : {}),
+        ...(quotaAmount !== undefined ? { quotaAmount: String(quotaAmount) } : {}),
+      },
+    });
+    return c.json(row);
+  });
+
+  app.delete('/v1/plans/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.remove(adminCtxOf(c), { adminId: c.get('adminId'), planId: id }));
+  });
+
+  return app;
 }

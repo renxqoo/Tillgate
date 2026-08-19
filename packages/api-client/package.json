@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./formatters": "./src/formatters.ts",
     "./list": "./src/list.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./session": "./src/session.ts"
   },
   "scripts": {
     "lint": "oxlint",

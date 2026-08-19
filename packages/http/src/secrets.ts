@@ -12,14 +12,9 @@ import { encrypt } from '@ai-gateway/core';
  * 纯函数、无 I/O，便于单测。
  */
 
-/**
- * 用「当前」加密世代落库（加密版本选择的单一入口）：
- *   - 常态（未设 oldKey）→ v1（v1 即当前 key）
- *   - 密钥轮换窗（oldKey 已设置）→ 新密文一律写 v2（用当前 key）
- * 解密侧由 core.decrypt 按 v1/v2 前缀自动选 key；此处只决定「新写入用哪代」。
- */
-export function encryptCurrent(plaintext: string, encryptionKey: string, oldKey?: string | null): string {
-  return encrypt(plaintext, encryptionKey, oldKey ? 2 : 1);
+/** 用唯一格式 enc:v1 落库（单 key 单格式——core.encrypt 直通） */
+export function encryptCurrent(plaintext: string, encryptionKey: string): string {
+  return encrypt(plaintext, encryptionKey);
 }
 
 /** SHA-256 → 64 位 hex 字符串 */

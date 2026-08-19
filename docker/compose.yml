@@ -20,9 +20,14 @@ services:
       - console-admin
     restart: unless-stopped
 
-  # certbot 证书签发与续期（Let's Encrypt）
-  # 首次签发：docker compose run --rm certbot certonly --webroot -w /var/www/certbot -d your.domain.com
-  # 自动续期：cron / compose run certbot renew（90 天到期前 30 天可续）
+  # certbot 证书签发与续期（Let's Encrypt）——本服务 entrypoint 为 sleep 常驻，
+  # 签发/续期须显式指定 --entrypoint certbot（或用 exec）：
+  # 首次签发（standalone——此时 80 端口空闲、nginx 未起；--cert-name gateway 对齐 nginx 挂载路径）：
+  #   docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot certonly \
+  #     --standalone --cert-name gateway -d app.xxx.com -d admin.xxx.com --email you@xxx.com --agree-tos --no-eff-email
+  # 续期（webroot——nginx 已在跑、ACME 路径直出）：
+  #   docker compose -f docker/compose.yml exec certbot certbot renew --webroot -w /var/www/certbot \
+  #     && docker compose -f docker/compose.yml exec nginx nginx -s reload
   certbot:
     image: certbot/certbot:latest
     volumes:
@@ -41,25 +46,92 @@ services:
       - path: ../.env
         required: true
     environment:
-      # B1 修复：容器内 localhost 指向容器自身，必须显式覆盖为 compose 服务名。
-      # POSTGRES_PASSWORD / POSTGRES_USER / POSTGRES_DB 来自 .env（与 postgres 服务同源）。
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
+      PORT: 8083
+      OTEL_TRACES_MODE: "off"
     depends_on:
       redis:
         condition: service_healthy
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8787/readyz']
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:8083/readyz']
       interval: 10s
       timeout: 3s
       retries: 5
     restart: unless-stopped
     stop_grace_period: 30s # 优雅关停：给 in-flight SSE/请求足够 drain 时间
     # 多副本：docker compose up -d --scale gateway=2
+
+  client-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: client-api
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OAUTH_API_BASE: http://client-api:8081
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  admin-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: admin-api
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: worker
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8792/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 30s
 
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
   # 各服务通过 OTEL_TRACES_MODE=otlp + endpoint 指向它（见下方 environment 注入）。
@@ -85,80 +157,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  worker:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: worker
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 30s
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8792/readyz']
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  admin-api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: admin-api
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 15s
-    # 安全：不发布任何端口，仅 compose 内网可达（console-admin 服务端代理调用）
-
-  # 用户面板 REST（从 admin-api 拆分，处理 /api/me /api/keys /api/apps /api/usage /api/redeem /api/auth/*）
-  client-api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: client-api
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 15s
-    # 安全：不发布任何端口，仅 compose 内网可达（console-client 服务端代理调用）
-
   console-client:
     build:
       context: ..
@@ -167,8 +165,8 @@ services:
       - path: ../.env
         required: true
     environment:
-      # 拆分后：用户前端指向 client-api（用户面，8791）
-      CLIENT_API_BASE: http://client-api:8791
+      # 后端（用户面 8081）
+      CLIENT_API_BASE: http://client-api:8081
     depends_on:
       - client-api
     restart: unless-stopped
@@ -181,8 +179,8 @@ services:
       - path: ../.env
         required: true
     environment:
-      # 管理后台指向 admin-api（管理面，8790）
-      ADMIN_API_BASE: http://admin-api:8790
+      # 后端（管理面 8082）
+      ADMIN_API_BASE: http://admin-api:8082
     depends_on:
       - admin-api
     restart: unless-stopped

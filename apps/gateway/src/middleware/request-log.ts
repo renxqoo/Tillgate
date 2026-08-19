@@ -1,82 +1,72 @@
-import type { MiddlewareHandler } from 'hono';
-import type { Db } from '@ai-gateway/db';
-import type { Logger } from '@ai-gateway/core';
-import { writeRequestLog, truncateSummary } from '../lib/request-log.js';
-import { sourceIp } from './auth-failure-guard.js';
-import type { AuthEnv } from './auth.js';
-
 /**
- * 请求日志中间件：在每个 /v1/* 请求完成后写一条 request_logs（data-model §3.13）。
- *
- *   - await next() 之前缓存请求摘要（model/stream/max_tokens，不含敏感内容）
- *   - await next() 之后读 status / 计算耗时 / 提取错误码
- *   - fire-and-forget：写日志失败不阻塞响应
+ * /v1/* 请求日志（鉴权前挂载：401/429 也入日志——语义是「记录一切 /v1 请求」）。
+ * 非资金事实；写失败只记日志不阻塞请求（观测不能反噬可用性）。
+ * 来源 IP：直连 socket + 信任代理头（客户端可伪造的头一律不采信）。
+ * 响应体嗅探只对 JSON 做——clone() 会把整条 SSE 流在内存里再走一遍（放大）。
  */
-export function requestLogMiddleware(db: Db, logger: Logger, trustedProxyHops = 0): MiddlewareHandler<AuthEnv> {
+import type { MiddlewareHandler } from 'hono';
+import { createRepositories, type Db, type Repositories } from '@ai-gateway/repository';
+import { readOnly, systemContext } from '@ai-gateway/service';
+import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
+import type { AuthEnv } from './api-key.js';
+
+export function requestLogMiddleware(
+  deps: { db: Db; repos?: Repositories; trustedProxyHops?: number },
+): MiddlewareHandler<AuthEnv> {
+  const repos = deps.repos ?? createRepositories();
   return async (c, next) => {
-    const start = Date.now();
-    const requestId = c.var.requestId;
-
-    // next() 之后从已校验的 body 提取摘要（validator 解析后缓存在 c.req.valid）
-    // 这样不重复读 body，不破坏下游路由
-    await next();
-    const durationMs = Date.now() - start;
-
+    const startedAt = Date.now();
+    const requestId = c.get('requestId') ?? crypto.randomUUID(); // 服务端生成（requestId 中间件先挂载）
+    // 请求摘要（v1 对位：截断的 model/stream/max_tokens——运营日志的模型上下文）
     let requestSummary: Record<string, unknown> | null = null;
     if (c.req.method === 'POST') {
       try {
-        // c.req.valid('json') 返回 zod 校验后的 body（validator 缓存）
-        // 中间件层无类型信息，用 unknown 断言
-        const raw = (c.req as { valid: (k: string) => unknown }).valid('json') as Record<
-          string,
-          unknown
-        > | null;
-        if (raw && typeof raw === 'object') {
-          requestSummary = truncateSummary({
-            model: raw.model,
-            stream: raw.stream,
-            max_tokens: raw.max_tokens,
-            temperature: raw.temperature,
-            messageCount: Array.isArray(raw.messages) ? raw.messages.length : undefined,
-            inputLength: raw.input ? String(raw.input).length : undefined,
-          }) as Record<string, unknown>;
+        const cloned = c.req.raw.clone();
+        const body = (await cloned.json()) as { model?: unknown; stream?: unknown; max_tokens?: unknown };
+        if (typeof body.model === 'string') {
+          requestSummary = {
+            model: body.model.slice(0, 64),
+            ...(body.stream === true ? { stream: true } : {}),
+            ...(typeof body.max_tokens === 'number' ? { max_tokens: body.max_tokens } : {}),
+          };
         }
       } catch {
-        // 未走 validator 或非 JSON → 跳过
+        requestSummary = null;
       }
     }
-
-    const path = c.req.path;
-    if (!path.startsWith('/v1/')) return;
-
-    const status = c.res.status;
-    const auth = c.var.auth;
-
-    // 07 修复：来源级鉴权失败限流的 429（无 auth 上下文）不写 request_logs，
-    // 避免攻击者用海量随机 Key 刷 429 打爆日志库。401（前 N 次失败）仍记录以观测爆破。
-    if (status === 429 && !auth) return;
-
-    // 错误码：只用 HTTP 状态码推断（不 clone 读 body）。
-    // c.res.clone() + .json() 会缓冲整个流式 Response（破坏 SSE 逐块推送）。
-    const errorCode = status >= 400 ? `http_${status}` : null;
-
-    void writeRequestLog(
-      db,
-      {
+    await next();
+    const durationMs = Date.now() - startedAt;
+    const auth = c.get('auth');
+    let errorCode: string | null = null;
+    const contentType = c.res.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
+      try {
+        const body = (await c.res.clone().json()) as { error?: { code?: string } };
+        errorCode = body.error?.code ?? null;
+      } catch {
+        errorCode = null;
+      }
+    }
+    const sourceIp = trustedClientIp({
+      headers: c.req.raw.headers,
+      trustedProxyHops: deps.trustedProxyHops ?? 0,
+      socketAddress: socketAddressFromContext(c),
+    });
+    try {
+      await repos.usageLog.insertRequestLog(readOnly(systemContext('request-log'), deps.db), {
         requestId,
         userId: auth?.userId ?? null,
         apiKeyId: auth?.apiKeyId ?? null,
-        sourceIp: sourceIp(c, trustedProxyHops),
         method: c.req.method,
-        path,
-        statusCode: status,
+        path: c.req.path,
+        statusCode: c.res.status,
         errorCode,
         durationMs,
         requestSummary,
-      },
-      logger,
-    );
+        sourceIp,
+      });
+    } catch (error) {
+      console.error('[request-log] write failed:', error);
+    }
   };
 }
-
-export { truncateSummary };

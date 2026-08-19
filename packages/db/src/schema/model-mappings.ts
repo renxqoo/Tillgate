@@ -55,6 +55,23 @@ export const modelMappings = pgTable(
      * 免费判定不再靠 `:free` 命名约定——由管理员在建模时显式声明，是唯一事实源。
      */
     isFree: boolean('is_free').notNull().default(false),
+    /**
+     * 可扩展计费配置（策略选择 + 变体价格表）：
+     *   {"strategy": "flat"}                                    — 缺省，unitPrice 列直接生效
+     *   {"strategy": "variant", "params": {"selector": "size", "prices": {"512x512": "0.02", "1024x1024": "0.04"}}}
+     *   将来：tiered（阶梯）/ hybrid（底价+按量）
+     * 与 pricingUnit 正交：pricingUnit = 计量维度（token/image/second/...）；本列 = 单价怎么选。
+     */
+    billingConfig: jsonb('billing_config').$type<{
+      strategy?: string;
+      params?: {
+        unitPrice?: string;
+        selector?: string;
+        prices?: Record<string, string>;
+      };
+      /** 预扣策略（domain reservation-strategy 通用形状——不在此复刻字段） */
+      reservation?: { strategy?: string; params?: Record<string, unknown> };
+    }>().notNull().default({}),
     /** fallback 模型链（对外模型名数组，配置启用；默认空 = 不降级） */
     fallbackModels: jsonb('fallback_models').$type<string[]>(),
     /**

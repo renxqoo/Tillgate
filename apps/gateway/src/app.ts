@@ -1,163 +1,120 @@
-import { Hono, type Context } from 'hono';
-import type { Db } from '@ai-gateway/db';
-import type { Redis } from 'ioredis';
-import type { Ai } from '@ai-gateway/ai';
-import type { GatewayEnv, Logger } from '@ai-gateway/core';
-import { healthRoutes } from './routes/health.js';
-import { debugTracesRoutes } from './routes/debug-traces.js';
-import { modelsRoutes } from './routes/models.js';
-import { inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
-import { generationTaskRoutes } from './routes/generation-tasks.js';
-import { nativeProtocolRoutes } from './routes/native-protocol.js';
-import { modalityRoutes, modalityEndpointPaths } from './routes/modality-endpoints.js';
-import { oauthTokenRoutes } from './routes/oauth-token.js';
-import { authMiddleware, type AuthEnv } from './middleware/auth.js';
-import { requestIdMiddleware } from './middleware/request-id.js';
-import { requestLogMiddleware } from './middleware/request-log.js';
+/**
+ * HTTP app（协议适配层）：错误信封收口 + 请求链 + 路由挂载。
+ * 业务一律来自 service 包——本层零业务规则（错误映射表是协议契约，不是规则）。
+ */
+import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { createRepositories, type Db } from '@ai-gateway/repository';
+import { mapErrorToHttp } from './http/error-map.js';
+import { systemContext } from '@ai-gateway/service';
+import { apiKeyMiddleware, type AuthEnv, type AuthGuards } from './middleware/api-key.js';
 import { otelMiddleware } from './middleware/otel.js';
-import { corsPreflight, securityHeaders, bodyParserLimit } from './middleware/security.js';
-import { errorEnvelope, renderReject } from './lib/http.js';
-import { translateBoundaryError } from './lib/errors.js';
-import { createAuthService } from './services/auth/auth-service.js';
-import { createOAuthService } from './services/auth/oauth-service.js';
-import type { RateLimiter } from './services/billing/rate-limit-service.js';
-import type { BillingDispatcher } from './services/billing/billing-dispatcher.js';
-import { createModelRouter } from './services/routing/model-router.js';
-import { createCoefficientCache } from './services/auth/coefficient-cache.js';
-import { createPipeline } from './services/pipeline/run.js';
-import type { RequestLifecycle } from './services/runtime/request-lifecycle.js';
-import type { CompletionRegistry } from './services/runtime/completion-registry.js';
-import { createBilling } from '@ai-gateway/ledger';
+import { requestIdMiddleware } from './middleware/request-id.js';
+import { bodyParserLimit, corsPreflight, securityHeaders } from './middleware/security.js';
+import { requestLogMiddleware } from './middleware/request-log.js';
+import { enginesAliasRoutes, inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
+import { geminiNativeRoutes } from './routes/native-protocol.js';
+import { modelsRoutes } from './routes/models.js';
+import { modalityMultipartRoutes } from './routes/modality-multipart.js';
+import { generationRoutes } from './routes/generation.js';
+import { oauthTokenRoutes } from './routes/oauth-token.js';
+import type { createRunChat } from './pipeline/run-chat.js';
+import type { createSubmitGeneration } from './generation/submit.js';
 
-/** gateway 依赖（启动时装配，测试可注入） */
-export interface GatewayDeps {
+export interface AppDeps {
   db: Db;
-  ai: Ai;
-  redis: Redis;
-  env: GatewayEnv;
-  logger: Logger;
-  billingDispatcher: BillingDispatcher;
-  rateLimiter: RateLimiter;
-  lifecycle: RequestLifecycle;
-  completions: CompletionRegistry;
+  runChat?: ReturnType<typeof createRunChat>;
+  /** 生成任务提交编排（video/music 异步族；缺省不挂路由） */
+  submitGeneration?: ReturnType<typeof createSubmitGeneration>;
+  /** 鉴权爆破防护（Redis 装配注入；缺省跳过 = 单副本开发形态） */
+  authGuards?: AuthGuards;
+  /** Redis 就绪探针（/readyz；缺省只探 db） */
+  redisProbe?: { ping(): Promise<unknown> };
+  /** CORS 白名单（逗号分隔 env 装配解析）；空表 = 不放行跨域 */
+  corsOrigins?: readonly string[];
+  /** /oauth/token 与 JWT 凭证验签密钥（必配——JWT 凭证分支依赖） */
+  oauth: { jwtSecret: string; tokenTtlSeconds: number };
 }
 
-/**
- * createApp：组装中间件链 + 路由（可测试，无副作用）。
- *
- * 中间件顺序：
- *   CORS 预检 → 安全头 → body 上限 → OTel → requestId → requestLog（鉴权前：401/429 也入日志）
- *   → 鉴权（推理端点表 + /v1/models）→ 路由
- */
-export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
+export function createApp(deps: AppDeps) {
+  const { db } = deps;
   const app = new Hono<AuthEnv>();
+  const repos = createRepositories();
 
-  const authService = createAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, {
-    authFailureLimit: deps.env.GATEWAY_AUTH_FAILURE_LIMIT,
-    authFailureWindowS: deps.env.GATEWAY_AUTH_FAILURE_WINDOW_S,
+  app.onError((error, c) => {
+    const mapped = mapErrorToHttp(error);
+    if (mapped.status >= 500) console.error('[gateway] internal error:', error);
+    return c.json({ error: { code: mapped.code, message: mapped.message } }, mapped.status as ContentfulStatusCode);
   });
-  const oauthService = createOAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, deps.logger);
-  const billing = createBilling({
-    db: deps.db,
-    admission: {
-      maxPending: deps.env.BILLING_PENDING_MAX,
-      maxOldestAgeMs: deps.env.BILLING_PENDING_MAX_AGE_SECONDS * 1_000,
-      cacheMs: deps.env.BILLING_ADMISSION_CACHE_MS,
-    },
-  });
-  const router = createModelRouter(
-    deps.db,
-    deps.redis,
-    deps.env.ENCRYPTION_KEY,
-    deps.env.ENCRYPTION_KEY_OLD,
-  );
-  const coefficients = createCoefficientCache(deps.db, deps.redis);
-  const runInference = createPipeline({ ...deps, billing, router, coefficients });
 
-  // 统一错误处理（OpenAI 风格错误信封；不用 message 文本启发式）
-  app.onError((err, c) => appErrorHandler(deps.logger, err, c));
-
-  // /v1/* 未匹配路径：OpenAI 风格 404 信封
   app.notFound((c) => {
     if (c.req.path.startsWith('/v1/')) {
-      return errorEnvelope(c, 404, 'not_found', '路径不存在', undefined, readRequestId(c));
+      return c.json({ error: { code: 'not_found', message: '路径不存在' } }, 404);
     }
-    return c.json({ error: { message: 'not found', code: 'not_found' } }, 404);
+    return c.json({ error: { code: 'not_found', message: 'not found' } }, 404);
   });
 
-  // 全局中间件链
-  app.use('*', corsPreflight(deps.env.CORS_ALLOWED_ORIGINS));
+  app.use('*', corsPreflight(deps.corsOrigins ?? []));
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit());
-  // requestId 先于 otel：span 属性 request.id（计费关联锚点）依赖它
   app.use('*', requestIdMiddleware());
+  // requestId 之后挂载：span 属性 request.id 依赖它；off 模式为 no-op
   app.use('*', otelMiddleware());
-  // requestLog 前置到鉴权之前：鉴权失败（401/429）也写入 request_logs。
-  // 刻意按 /v1/* 前缀挂载而非端点表驱动——其语义是「记录一切 /v1 请求」（含未注册路径的 404），
-  // 与推理端点表（只管已注册路径）职责不同。
-  app.use('/v1/*', requestLogMiddleware(deps.db, deps.logger, deps.env.TRUSTED_PROXY_HOPS));
-  // 鉴权：推理端点表驱动 + /v1/models（GET，非推理）
-  for (const endpoint of inferenceEndpoints) {
-    app.use(endpoint.path, authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  }
-  app.use('/v1/models/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  // 异步生成任务查询（video/music 提交后轮询）
-  app.use('/v1/videos/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  app.use('/v1/musics/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  // 原生协议端点（模型名在 URL）：gemini v1beta 族 + 旧版 engines 别名
-  app.use('/v1beta/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  // 模态端点（images/audio/rerank/moderations；multipart 族无 JSON body 校验）
-  for (const path of modalityEndpointPaths) {
-    app.use(path, authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
-  }
-  app.use('/v1/engines/*', authMiddleware(authService, deps.env.TRUSTED_PROXY_HOPS));
 
-  // 路由
-  app.route('/', healthRoutes({ db: deps.db, redis: deps.redis, lifecycle: deps.lifecycle }));
-  app.route('/', generationTaskRoutes(deps.db));
-  // 本地零基建链路查看页：仅 memory 模式暴露（otlp/off 下路由不存在）
-  if (deps.env.OTEL_TRACES_MODE === 'memory') {
-    app.route(
-      '/debug',
-      debugTracesRoutes({
-        token: deps.env.DEBUG_TRACES_TOKEN,
-        dev: deps.env.NODE_ENV === 'development',
-      }),
-    );
+  app.get('/healthz', async (c) => {
+    await repos.health.ping({ ...systemContext('healthz'), db });
+    return c.json({ ok: true });
+  });
+  // /livez（v1 对位——nginx/LB 存活探针路径；轻量不查依赖）
+  app.get('/livez', (c) => c.json({ ok: true }));
+  app.get('/readyz', async (c) => {
+    await repos.health.ping({ ...systemContext('readyz'), db });
+    if (deps.redisProbe) await deps.redisProbe.ping();
+    return c.json({ ok: true });
+  });
+
+  // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 请求」语义）
+  app.use('/v1/*', requestLogMiddleware({ db, trustedProxyHops: deps.authGuards?.trustedProxyHops ?? 0 }));
+  // 鉴权按已注册端点挂载（未注册路径 404 而非 401——老网关语义）
+  app.use('/v1/models', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+  app.use('/v1/models/*', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+
+  app.route('/v1/models', modelsRoutes({ db, ctx: systemContext('models') }));
+  if (deps.runChat) {
+    for (const endpoint of inferenceEndpoints) {
+      app.use(endpoint.path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+      app.route(endpoint.path, inferenceRoutes(deps.runChat, endpoint));
+    }
+    // OpenAI legacy 引擎别名（v1 对位：pre-1.0 SDK 走 /v1/engines/:model/embeddings）
+    const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings')!;
+    app.use('/v1/engines/:model/embeddings', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.route('/v1/engines/:model', enginesAliasRoutes(deps.runChat, embeddings));
+    // Gemini 原生入口（v1 对位：/v1beta/models/:model:generateContent|streamGenerateContent）
+    app.use('/v1beta/models/:modelAction', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.route('/', geminiNativeRoutes(deps.runChat));
+    // 模态 multipart 族（同鉴权）
+    for (const path of ['/v1/images/edits', '/v1/audio/transcriptions', '/v1/audio/translations']) {
+      app.use(path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    }
+    app.route('/', modalityMultipartRoutes(deps.runChat));
   }
-  app.route('/v1/models', modelsRoutes(router));
-  // 推理端点注册表驱动挂载（单一真相：routes/inference-endpoints.ts）
-  for (const endpoint of inferenceEndpoints) {
-    app.route(endpoint.path, inferenceRoutes(runInference, endpoint));
+  // 异步生成任务族（提交 + 查询，同鉴权）
+  if (deps.submitGeneration) {
+    for (const path of ['/v1/video/generations', '/v1/music/generations', '/v1/videos/*', '/v1/musics/*']) {
+      app.use(path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    }
+    app.route('/', generationRoutes({ db, submit: deps.submitGeneration }));
   }
-  app.route('/', nativeProtocolRoutes(runInference));
-  app.route('/', modalityRoutes(runInference));
-  app.route('/oauth/token', oauthTokenRoutes(oauthService, deps.env.TRUSTED_PROXY_HOPS));
+  // /oauth/token（无鉴权——本身是取令牌端点；ipGuard 爆破锁定装配注入）
+  app.route(
+    '/oauth/token',
+    oauthTokenRoutes({
+      db,
+      ...deps.oauth,
+      ipGuard: deps.authGuards?.ipGuard,
+      trustedProxyHops: deps.authGuards?.trustedProxyHops,
+    }),
+  );
 
   return app;
-}
-
-/** 统一错误处理（导出供测试复用）：任何抛出的错误 → 统一翻译 → OpenAI 错误信封。
- *  翻译单一真相在 lib/errors.ts（HttpError/ValidationError/PG 约束/HTTPException/兜底 500），
- *  渲染单一真相在 lib/http.ts renderReject——本函数只补「未知异常记日志」这一件事。 */
-export function appErrorHandler(logger: Logger, err: Error, c: Context): Response {
-  const reject = translateBoundaryError(err);
-  if (reject.status >= 500) {
-    const requestId = readRequestId(c);
-    logger.error(
-      { requestId, errorName: err.name, err: err.message, stack: err.stack, cause: err.cause },
-      'unhandled error',
-    );
-  }
-  return renderReject(c, reject);
-}
-
-/** 安全读取 requestId（onError 可能在 requestId 中间件之前触发） */
-function readRequestId(c: unknown): string | null {
-  try {
-    const v = (c as { var?: { requestId?: unknown } }).var;
-    return typeof v?.requestId === 'string' ? v.requestId : null;
-  } catch {
-    return null;
-  }
 }

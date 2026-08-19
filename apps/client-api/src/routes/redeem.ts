@@ -1,33 +1,34 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { jsonBody, query } from '@ai-gateway/http';
-import type { ClientEnv } from '@ai-gateway/identity';
-import type { ClientServices } from '../services/index.js';
-import { listMyRedeemHistory, redeemCode, redeemHistoryQuerySchema } from '../services/redeem.js';
-
 /**
- * 用户面板：充值码兑换（api-contract §4.1）。
- *
- *   - POST /：兑换充值码（限流 10 次/分钟，ledger 事务幂等；失败分支由
- *     service 抛 FlowError，errorHandler 统一出响应）
- *   - GET /history：我的兑换记录（只展示已兑换的；不含明文码/哈希，安全）
+ * 兑换码路由（会话）：POST /v1/redeem（频率闸在 service）+ GET /v1/redeem/history。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { userCtxOf } from './ctx.js';
+import type { SessionEnv } from '../middleware/session.js';
+import type { RedeemService } from '../services/redeem.service.js';
 
-const redeemSchema = z.object({ code: z.string().min(1).max(64) });
+const redeemSchema = z.object({ code: z.string().trim().min(1).max(128) });
 
-export function redeemRoutes(s: ClientServices): Hono<ClientEnv> {
-  return new Hono<ClientEnv>()
+const historyQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
-    // 兑换充值码
-    .post('/', jsonBody(redeemSchema), async (c) => {
-      const session = c.get('session');
-      const body = c.req.valid('json');
-      const outcome = await redeemCode(s, session.userId, body.code);
-      return c.json({ ok: true, amount: outcome.amount, balanceAfter: outcome.balanceAfter });
-    })
+export function redeemRoutes(service: RedeemService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-    // 我的兑换记录（已兑换的；不含明文码/哈希）
-    .get('/history', query(redeemHistoryQuerySchema), async (c) =>
-      c.json(await listMyRedeemHistory(s, c.get('session').userId, c.req.valid('query'))),
-    );
+  app.post('/v1/redeem', session, async (c) => {
+    const body = redeemSchema.parse(await c.req.json());
+    const result = await service.redeem(userCtxOf(c), c.get('userId'), body);
+    return c.json(result);
+  });
+
+  app.get('/v1/redeem/history', session, async (c) => {
+    const query = historyQuerySchema.parse(c.req.query());
+    const rows = await service.history(userCtxOf(c), c.get('userId'), query);
+    return c.json({ rows });
+  });
+
+  return app;
 }

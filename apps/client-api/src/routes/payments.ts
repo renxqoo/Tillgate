@@ -1,71 +1,80 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import type { ClientEnv } from '@ai-gateway/identity';
-import type { PaymentServices } from '../services/payments/orders.js';
-
 /**
- * 支付路由：
- *   受保护：POST /api/payments（下单 → payUrl）、GET /api/payments（订单列表）、
- *           GET /api/payments/:id（状态轮询）
- *   公开（签名验证替代会话）：GET /api/public/payments/epay/notify（易支付 notify，
- *           query 验签）、POST /api/public/payments/stripe/webhook（HMAC 头验签）
+ * 支付路由：下单 / 订单列表 / 渠道目录（会话）+ 渠道回调（公开——验签是唯一信任源）。
+ * 易支付回调为 urlencoded 表单或 query：两者合并后交 service 验签归一；
+ * Stripe 回调为 POST 原始事件体 + Stripe-Signature 头（非 2xx 应答触发渠道重试）。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { isValidAmountInput } from '../domain/topup.js';
+import { userCtxOf } from './ctx.js';
+import type { SessionEnv } from '../middleware/session.js';
+import type { PaymentsService } from '../services/payments.service.js';
 
 const createOrderSchema = z.object({
-  provider: z.enum(['epay', 'stripe']),
-  /** 实付金额（元；充值汇率 1:1 → creditAmount 同额） */
-  amount: z
-    .string()
-    .regex(/^\d+(\.\d{1,2})?$/, '金额格式非法（最多两位小数）')
-    .refine((v) => Number(v) >= 1 && Number(v) <= 100000, { message: '单笔金额须在 1~100000 元之间' }),
+  amount: z.string().refine(isValidAmountInput, '必须为正金额'),
+  provider: z.enum(['epay', 'stripe']).optional(),
 });
 
-export function paymentRoutes(s: PaymentServices): Hono<ClientEnv> {
-  return new Hono<ClientEnv>()
-    .post('/', async (c) => {
-      const parsed = createOrderSchema.safeParse(await c.req.json().catch(() => null));
-      if (!parsed.success) {
-        return c.json({ error: { code: 'invalid_request', message: parsed.error.issues[0]?.message ?? '参数非法' } }, 400);
-      }
-      const { provider, amount } = parsed.data;
-      const result = await s.createOrder({
-        userId: c.var.session.userId,
-        provider,
-        amount,
-        creditAmount: amount, // 汇率 1:1（充值汇率配置化留待运营需要时扩展）
-      });
-      if (!result.ok) {
-        return c.json({ error: { code: 'payment_unavailable', message: result.error } }, 503);
-      }
-      return c.json({ orderId: result.orderId, payUrl: result.payUrl });
-    })
-    .get('/', async (c) => {
-      const [orders, channels] = await Promise.all([s.listOrders(c.var.session.userId, 50), Promise.resolve(s.channels())]);
-      return c.json({ orders, channels });
-    })
-    .get('/:id', async (c) => {
-      const order = await s.getOrder(c.var.session.userId, c.req.param('id') ?? '');
-      if (!order) return c.json({ error: { code: 'not_found', message: '订单不存在' } }, 404);
-      return c.json({ order });
-    });
-}
+const listQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
-export function paymentPublicRoutes(s: PaymentServices): Hono {
-  return new Hono()
-    .get('/epay/notify', async (c) => {
-      const raw: Record<string, string> = {};
-      for (const [k, v] of Object.entries(c.req.query())) raw[k] = String(v);
-      const outcome = await s.handleCallback('epay', raw);
-      // 易支付协议：成功处理回纯文本 success，其余回 fail（渠道按此重试）
-      return c.text(outcome === 'credited' || outcome === 'replayed' ? 'success' : 'fail');
-    })
-    .post('/stripe/webhook', async (c) => {
+export function paymentsRoutes(service: PaymentsService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
+
+  app.post('/v1/payments/orders', session, async (c) => {
+    const body = createOrderSchema.parse(await c.req.json());
+    const result = await service.createTopupOrder(userCtxOf(c), c.get('userId'), body);
+    return c.json(result, 201);
+  });
+
+  app.get('/v1/payments/orders/:id', session, async (c) => {
+    const id = c.req.param('id');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) {
+      return c.json({ error: { code: 'invalid_request', message: '订单号非法' } }, 400);
+    }
+    return c.json(await service.orderDetail(userCtxOf(c), c.get('userId'), id));
+  });
+
+  app.get('/v1/payments/orders', session, async (c) => {
+    const query = listQuerySchema.parse(c.req.query());
+    const rows = await service.listOrders(userCtxOf(c), c.get('userId'), query);
+    return c.json({ rows });
+  });
+
+  app.get('/v1/payments/channels', session, (c) => c.json({ channels: service.channels() }));
+
+  app.post('/v1/payments/notify/:provider', async (c) => {
+    const provider = c.req.param('provider');
+    if (provider === 'epay') {
+      // 表单体 + query 合并（各 epay 实现放的位置不一；重复键以表单优先）
+      const form = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>);
+      const merged: Record<string, string> = {};
+      for (const [k, v] of Object.entries(c.req.query())) merged[k] = v;
+      for (const [k, v] of Object.entries(form)) if (typeof v === 'string') merged[k] = v;
+      const answer = await service.handleNotify(
+        { requestId: c.get('requestId'), actor: { kind: 'system' }, traceParent: null },
+        'epay',
+        merged,
+      );
+      // 渠道回调应答是裸文本（epay 协议：success/fail）
+      return c.text(answer);
+    }
+    if (provider === 'stripe') {
       const payload = await c.req.text();
-      const raw: Record<string, string> = {
-        payload,
-        'stripe-signature': c.req.header('stripe-signature') ?? '',
-      };
-      const outcome = await s.handleCallback('stripe', raw);
-      return c.json({ received: true, outcome }, outcome === 'invalid' ? 400 : 200);
-    });
+      const raw = { payload, 'stripe-signature': c.req.header('stripe-signature') ?? '' };
+      const answer = await service.handleNotify(
+        { requestId: c.get('requestId'), actor: { kind: 'system' }, traceParent: null },
+        'stripe',
+        raw,
+      );
+      // Stripe 协议：2xx 即确认；非 2xx 渠道按指数退避重试（验签失败重试也无害）
+      return c.json({ received: answer === 'success' }, answer === 'success' ? 200 : 400);
+    }
+    return c.text('fail', 404);
+  });
+
+  return app;
 }

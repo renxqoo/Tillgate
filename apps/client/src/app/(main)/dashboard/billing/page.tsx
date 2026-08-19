@@ -38,7 +38,18 @@ const STATUS: Record<number, { label: string; tone: 'success' | 'warning' | 'neu
 };
 
 export default async function BillingPage() {
-  const data = await apiFetch<ChannelsResponse>('/api/payments').catch(() => null);
+  // v2：订单列表 /v1/payments/orders + 已启用渠道 /v1/payments/channels（渠道端点失败则空——表单自显充值码提示）
+  const [ordersData, channelsData] = await Promise.all([
+    apiFetch<{ rows?: PaymentOrderRow[] }>('/api/payments/orders?page=1&limit=20').catch(() => null),
+    apiFetch<{ channels?: Array<{ id: 'epay' | 'stripe'; label: string }> }>('/api/payments/channels').catch(
+      () => null,
+    ),
+  ]);
+  const orderRows = ordersData?.rows ?? [];
+  const data: ChannelsResponse | null = {
+    channels: channelsData?.channels ?? [],
+    orders: orderRows,
+  };
 
   const columns: DataTableColumn<PaymentOrderRow>[] = [
     { key: 'createdAt', header: '时间', render: (r) => new Date(r.createdAt).toLocaleString('zh-CN') },
@@ -63,6 +74,7 @@ export default async function BillingPage() {
       title="充值与账单"
       description="在线充值、支付订单与充值历史"
       icon={<WalletIcon className="size-5 text-muted-foreground" />}
+      unbordered
     >
       <div className="space-y-6">
         <TopUpForm channels={data?.channels ?? []} />

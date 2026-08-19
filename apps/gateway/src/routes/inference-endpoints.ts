@@ -1,135 +1,129 @@
+/**
+ * 推理端点表 + 端点路由（表项驱动挂载——api-contract 单一真相）。
+ *
+ *   文本族：chat/completions（规范形）+ embeddings（输出恒 0）+ completions/responses/
+ *   messages（外部协议经 codec 在路由边界翻译为规范形——管线内部恒规范形）
+ *   任务族（video/music）：提交即 201 + 任务查询——依赖 generation_tasks 子系统（G5b）。
+ * codec 翻译函数单一真相在 packages/ai/protocol；错误信封恒 OpenAI 风格（SDK 按 HTTP 状态判定）。
+ */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { Endpoint } from '@ai-gateway/ai';
-import type { AuthEnv } from '../middleware/auth.js';
-import { jsonBody } from '../lib/validation.js';
-import type { RunInference } from '../services/pipeline/run.js';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import {
-  claudeMessagesCodec,
-  completionsCodec,
-  encodeResponseForClient,
-  responsesCodec,
-  type InboundCodec,
-} from '../services/protocol-codecs.js';
+  canonicalStreamToClaudeStream,
+  canonicalStreamToCompletionsStream,
+  canonicalStreamToResponsesStream,
+  chatResponseToClaude,
+  chatResponseToCompletions,
+  chatResponseToResponses,
+  claudeRequestToChat,
+  completionsRequestToChat,
+  responsesRequestToChat,
+} from '@ai-gateway/ai';
+import type { AuthEnv } from '../middleware/api-key.js';
+import type { createRunChat } from '../pipeline/run-chat.js';
+import type { ChatCompletionBody, ChatResponse } from '../pipeline/run-chat.js';
 
-/**
- * 推理端点注册表（下游单一真相）：path / kind / schema 一处定义，
- * app.ts 的鉴权挂载与路由注册都由本表驱动——加端点 = 表里加一行 + schema。
- * （例：/v1/responses = 新增一行 + responses↔chat 翻译层，不再改 app.ts 的两串硬编码。）
- *
- * model 字段约束（两 schema 共享）：
- * - ≤64 对齐 external_name varchar(64)：超长/NUL 名不得进路由缓存键
- *   （route:mapping:v*:{name} 16MB 放大）与 404 回显；
- * - messages/input 条数上界防 JSON.parse 内存放大（实测 16MB 结构体 ≈2.5-7 倍瞬时堆）。
- */
-const modelField = z
-  .string()
-  .min(1, 'model 不能为空')
-  .max(64)
-  .refine((v) => !v.includes('\0'), { message: 'model 含非法字符' });
+type RunChat = ReturnType<typeof createRunChat>;
 
-/** chat/completions schema（必需字段校验，未知参数透传） */
-const chatSchema = z
-  .object({
-    model: modelField,
-    messages: z.array(z.unknown()).min(1, 'messages 不能为空').max(1000),
-    stream: z.boolean().optional(),
-    max_tokens: z.number().int().positive().optional(),
-    max_completion_tokens: z.number().int().positive().optional(),
-    n: z.number().int().positive().max(16).optional(),
-  })
-  .passthrough();
+export interface InboundCodec {
+  decodeRequest(body: Record<string, unknown>, model: string): Record<string, unknown>;
+  encodeResponse(body: unknown): unknown;
+  encodeStream(stream: ReadableStream<Uint8Array>, model: string): ReadableStream<Uint8Array>;
+}
 
-/**
- * embeddings schema（BUG-F，new-api #2463/#2443 同类修复后）：
- * - 官方形态全收：string / string[] / number[]（token 数组）/ number[][]（token 批）
- * - 多模态结构化形态（豆包/千问 VL 等 OpenAI 兼容生态）按未知对象透传
- * - 仅保留数量上界（≤2048，对齐 OpenAI 批量上界）防 JSON.parse 内存放大——
- *   结构不做白名单（与未知参数 passthrough 哲学一致）
- */
-const embedInputItem = z.union([
-  z.string(),
-  z.number(),
-  z.array(z.number()),
-  z.record(z.string(), z.unknown()),
-]);
-const embedSchema = z
-  .object({
-    model: modelField,
-    input: z.union([z.string(), z.array(embedInputItem).max(2048)]),
-  })
-  .passthrough();
+export const completionsCodec: InboundCodec = {
+  decodeRequest: (body) => completionsRequestToChat(body) as Record<string, unknown>,
+  encodeResponse: (body) => chatResponseToCompletions(body),
+  encodeStream: (stream) => canonicalStreamToCompletionsStream(stream),
+};
+export const responsesCodec: InboundCodec = {
+  decodeRequest: (body) => responsesRequestToChat(body) as Record<string, unknown>,
+  encodeResponse: (body) => chatResponseToResponses(body),
+  encodeStream: (stream) => canonicalStreamToResponsesStream(stream),
+};
+export const claudeMessagesCodec: InboundCodec = {
+  decodeRequest: (body) => claudeRequestToChat(body) as Record<string, unknown>,
+  encodeResponse: (body) => chatResponseToClaude(body),
+  encodeStream: (stream, model) => canonicalStreamToClaudeStream(stream, model),
+};
 
-/** legacy completions schema（prompt → chat 单向翻译） */
-const completionsSchema = z
-  .object({
-    model: modelField,
-    prompt: z.union([z.string(), z.array(z.union([z.string(), z.array(z.number())]))]),
-    stream: z.boolean().optional(),
-  })
-  .passthrough();
+const modelField = z.string().min(1, 'model 不能为空').max(64).refine((v) => !v.includes('\0'), 'model 含非法字符');
 
-/** responses schema（input/instructions → chat 翻译） */
-const responsesSchema = z
-  .object({
-    model: modelField,
-    input: z.union([z.string(), z.array(z.unknown()).max(1000)]).optional(),
-    instructions: z.string().optional(),
-    stream: z.boolean().optional(),
-    max_output_tokens: z.number().int().positive().optional(),
-  })
-  .passthrough();
+const chatSchema = z.object({
+  model: modelField,
+  messages: z.array(z.unknown()).min(1).max(1000),
+  stream: z.boolean().optional(),
+  /** 输出预算参数校验（负数/非整数不得流向上游与预扣口径） */
+  max_tokens: z.number().int().positive().max(1_000_000).optional(),
+  max_completion_tokens: z.number().int().positive().max(1_000_000).optional(),
+  n: z.number().int().positive().max(16).optional(),
+}).passthrough();
 
-/** claude messages schema（messages 必填；max_tokens 由 codec 默认补齐） */
-const claudeMessagesSchema = z
-  .object({
-    model: modelField,
-    messages: z.array(z.unknown()).min(1).max(1000),
-    max_tokens: z.number().int().positive().optional(),
-    stream: z.boolean().optional(),
-  })
-  .passthrough();
+const embedSchema = z.object({
+  model: modelField,
+  input: z.union([z.string(), z.array(z.unknown()).max(2048)]),
+}).passthrough();
 
-/** 推理端点描述（注册表项） */
+const completionsSchema = z.object({
+  model: modelField,
+  prompt: z.union([z.string(), z.array(z.unknown())]),
+  stream: z.boolean().optional(),
+}).passthrough();
+
+const responsesSchema = z.object({
+  model: modelField,
+  input: z.union([z.string(), z.array(z.unknown()).max(1000)]).optional(),
+  instructions: z.string().optional(),
+  stream: z.boolean().optional(),
+  max_output_tokens: z.number().int().positive().optional(),
+}).passthrough();
+
+const claudeMessagesSchema = z.object({
+  model: modelField,
+  messages: z.array(z.unknown()).min(1).max(1000),
+  max_tokens: z.number().int().positive().optional(),
+  stream: z.boolean().optional(),
+}).passthrough();
+
+export type InferenceKind =
+  | 'chat'
+  | 'embeddings'
+  | 'images'
+  | 'audio_speech'
+  | 'rerank'
+  | 'moderations';
+
 export interface InferenceEndpoint {
-  /** 对外路径（OpenAI 兼容面 + 原生协议端点） */
   path: string;
-  /** 管线端点类型（决定 adapter 上游寻址与流式判定） */
-  kind: Endpoint;
+  kind: InferenceKind;
   schema: z.ZodType<Record<string, unknown>>;
-  /** 外部协议 codec（可选）：缺省 = 请求/响应已是规范形，直接透传 */
   codec?: InboundCodec;
 }
 
-/**
- * 推理端点表（api-contract §2）。顺序即注册顺序；鉴权中间件与路由挂载均遍历本表。
- * 外部协议端点（claude messages / responses / completions）经 codec 在路由边界
- * 翻译为规范形后走 chat 管线（管线内部恒为规范形，单一真相）。
- */
-/** 视频生成提交 schema（new-api 形状：/v1/video/generations） */
-const videoSchema = z
-  .object({
-    model: modelField,
-    prompt: z.string().min(1, 'prompt 不能为空').max(8_000),
-    /** 秒（4-15，缺省 6）——按秒计费口径的结算快照与预扣上界 */
-    duration: z.number().int().min(4).max(15).optional(),
-    /** 尺寸串（"1280x720"）→ MiniMax resolution 档位 */
-    size: z.string().max(32).optional(),
-    /** 首帧图（URL / data URI） */
-    image: z.string().max(1_000_000).optional(),
-    /** 尾帧图（与 image 成对） */
-    last_frame_image: z.string().max(1_000_000).optional(),
-  })
-  .passthrough();
+const imagesSchema = z.object({
+  model: modelField,
+  prompt: z.string().min(1).max(32000),
+  n: z.number().int().positive().max(16).optional(),
+  size: z.string().max(32).optional(),
+}).passthrough();
 
-/** 音乐生成提交 schema（/v1/music/generations） */
-const musicSchema = z
-  .object({
-    model: modelField,
-    prompt: z.string().min(1, 'prompt 不能为空').max(4_000),
-    lyrics: z.string().max(20_000).optional(),
-  })
-  .passthrough();
+const audioSpeechSchema = z.object({
+  model: modelField,
+  input: z.string().min(1).max(8192),
+  voice: z.string().min(1).max(64),
+}).passthrough();
+
+const rerankSchema = z.object({
+  model: modelField,
+  query: z.string().min(1).max(32000),
+  documents: z.array(z.unknown()).min(1).max(2048),
+}).passthrough();
+
+const moderationsSchema = z.object({
+  model: modelField,
+  input: z.union([z.string(), z.array(z.unknown())]),
+}).passthrough();
 
 export const inferenceEndpoints: readonly InferenceEndpoint[] = [
   { path: '/v1/chat/completions', kind: 'chat', schema: chatSchema },
@@ -137,27 +131,101 @@ export const inferenceEndpoints: readonly InferenceEndpoint[] = [
   { path: '/v1/completions', kind: 'chat', schema: completionsSchema, codec: completionsCodec },
   { path: '/v1/responses', kind: 'chat', schema: responsesSchema, codec: responsesCodec },
   { path: '/v1/messages', kind: 'chat', schema: claudeMessagesSchema, codec: claudeMessagesCodec },
-  { path: '/v1/video/generations', kind: 'video', schema: videoSchema },
-  { path: '/v1/music/generations', kind: 'music', schema: musicSchema },
+  { path: '/v1/images/generations', kind: 'images', schema: imagesSchema },
+  { path: '/v1/audio/speech', kind: 'audio_speech', schema: audioSpeechSchema },
+  { path: '/v1/rerank', kind: 'rerank', schema: rerankSchema },
+  { path: '/v1/moderations', kind: 'moderations', schema: moderationsSchema },
 ];
 
+/** 端点路由：schema 校验 →（codec 端点先 decode）→ 管线 → 响应按外部线格式编码 */
 /**
- * 推理路由工厂（表项驱动）：schema 校验 + 委托管线。
- * 管线承载全部业务编排（限流/预扣/候选循环/计量），路由保持薄。
- * codec 端点：外部体 → 规范形 → 管线 → 响应按外部线格式编码。
+ * OpenAI legacy 引擎别名路由（v1 对位：pre-1.0 SDK 的 /v1/engines/:model/embeddings）。
+ * 路径段模型名注入 body.model 后走端点同一管线（鉴权/计费/计量完全一致）。
  */
-export function inferenceRoutes(
-  runInference: RunInference,
-  endpoint: InferenceEndpoint,
-): Hono<AuthEnv> {
-  return new Hono<AuthEnv>().post('/', jsonBody(endpoint.schema), async (c) => {
-    const body = c.req.valid('json') as Record<string, unknown>;
-    if (!endpoint.codec) {
-      return runInference(c, endpoint.kind, body);
+export function enginesAliasRoutes(runChat: RunChat, endpoint: InferenceEndpoint): Hono<AuthEnv> {
+  // 挂载路径已带 :model 参数段（app.route('/v1/engines/:model', …)——param 全程可见）
+  return new Hono<AuthEnv>().post('/embeddings', async (c) => {
+    const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const model = c.req.param('model');
+    const merged = { ...raw, model };
+    const parsed = endpoint.schema.safeParse(merged);
+    if (!parsed.success) {
+      return c.json(
+        { error: { code: 'invalid_body', message: parsed.error.issues[0]?.message ?? 'invalid request body' } },
+        400,
+      );
     }
-    const model = typeof body.model === 'string' ? body.model : '';
-    const canonical = endpoint.codec.decodeRequest(body, model);
-    const response = await runInference(c, endpoint.kind, canonical);
-    return encodeResponseForClient(response, endpoint.codec, canonical.model as string);
+    const auth = c.get('auth');
+    const externalModel = (parsed.data as { model: string }).model;
+    const body = parsed.data as unknown as ChatCompletionBody;
+    body.stream = false;
+    (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
+    return encodeResult(c, result, endpoint, externalModel);
   });
+}
+
+export function inferenceRoutes(runChat: RunChat, endpoint: InferenceEndpoint): Hono<AuthEnv> {
+  return new Hono<AuthEnv>().post('/', async (c) => {
+    const raw = (await c.req.json().catch(() => null)) as unknown;
+    const parsed = endpoint.schema.safeParse(raw);
+    if (!parsed.success) {
+      return c.json(
+        { error: { code: 'invalid_body', message: parsed.error.issues[0]?.message ?? 'invalid request body' } },
+        400,
+      );
+    }
+    const auth = c.get('auth');
+    const externalModel = (parsed.data as { model: string }).model;
+    // codec 端点：外部体 → 规范形（估算/计费/上游全用规范形）
+    const canonical = endpoint.codec
+      ? endpoint.codec.decodeRequest(parsed.data, externalModel)
+      : parsed.data;
+    const body = canonical as unknown as ChatCompletionBody;
+    if (endpoint.kind !== 'chat' && endpoint.codec === undefined) {
+      body.stream = false; // 非规范形 chat 的端点族无流式（embeddings/模态 JSON 族）
+    }
+    (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
+    return encodeResult(c, result, endpoint, externalModel);
+  });
+}
+
+async function encodeResult(
+  c: { json: (body: unknown, status?: ContentfulStatusCode) => Response } & { get: (key: 'requestId') => string | undefined },
+  result: ChatResponse,
+  endpoint: InferenceEndpoint,
+  model: string,
+): Promise<Response> {
+  const codec = endpoint.codec;
+  if ('stream' in result) {
+    const body = codec ? codec.encodeStream(result.stream, model) : result.stream;
+    // x-request-id 显式带上：raw Response 不走 Hono 的 c.header 合并路径，
+    // 缺它则流式客户端无法把账单/日志与本响应对齐（v1 对位；非流式 c.json 自动带）
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+        // nginx 反代默认 proxy_buffering on 会缓冲整条 SSE（首字节到达前攒满缓冲）——
+        // 显式关闭（v1 未设、生产 nginx 前置时的隐形卡流）
+        'x-accel-buffering': 'no',
+        'x-request-id': c.get('requestId') ?? '',
+      },
+    });
+  }
+  if ('rawBody' in result) {
+    return new Response(result.rawBody, {
+      status: 200,
+      headers: {
+        'content-type': result.rawContentType,
+        'x-request-id': c.get('requestId') ?? '',
+      },
+    });
+  }
+  if (codec && result.status === 200) {
+    return c.json(codec.encodeResponse(result.body) as Record<string, unknown>);
+  }
+  return c.json(result.body, result.status as ContentfulStatusCode);
 }

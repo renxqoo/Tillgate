@@ -26,7 +26,7 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 const schema = z
   .object({
     email: z.string().email("请输入有效邮箱"),
-    password: z.string().min(8, "密码至少 8 位").max(128, "密码最多 128 位"),
+    password: z.string().min(8, "密码至少 10 位").max(128, "密码最多 1210 位"),
     confirmPassword: z.string().min(1, "请确认密码"),
   })
   .refine((v) => v.password === v.confirmPassword, {
@@ -68,6 +68,7 @@ export function RegisterForm({
       fd.append("email", values.email);
       fd.append("password", values.password);
       if (captchaSiteKey && captchaToken) fd.append("captchaToken", captchaToken);
+      if (affCode) fd.append("aff", affCode);
       const res = await registerAction(fd);
       if (res?.challengeId) setChallenge(res.challengeId);
       else {
@@ -185,7 +186,7 @@ export function RegisterForm({
                       id="register-password"
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
-                      placeholder="至少 8 位"
+                      placeholder="至少 10 位"
                       {...field}
                     />
                     <InputGroupAddon align="inline-end">

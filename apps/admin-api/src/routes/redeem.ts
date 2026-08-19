@@ -1,78 +1,82 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { intParam, jsonBody, query, listQuerySchema } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
-import {
-  batchCodesQuerySchema, createRedeemBatch, getRedeemBatch, listRedeemBatchCodes, listRedeemBatches, revokeRedeemCode,
-} from '../services/redeem.js';
-import { MONEY_MAX } from '@ai-gateway/http';
-
 /**
- * 充值码管理（api-contract §4.7 / requirements 4.8）。
- *
- *   - POST /：生成批次，明文码只在此响应中下发一次（落库的是哈希）
- *   - GET  /：批次列表（含已用数）
- *   - GET  /:id、/:id/codes：批次详情与码明细（脱敏哈希/状态/兑换人）
- *   - POST /codes/:codeId/revoke：作废单张码
- *
- * 安全（data-model §3.12）：明文永不再现；面额创建后不可修改（改价需新建批次）。
+ * 兑换批次路由（会话）：创建（明文码仅此一次返回）/ 列表 / 详情 /
+ * 批内码列表（哈希脱敏）/ 单码作废。
+ * 金额/数量数值域：coerce + finite + 上限（count ≤ 10000）。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import { BATCH_SORTS, CODE_SORTS, type RedeemService } from '../services/redeem.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-const batchCreateSchema = z.object({
+const MONEY_MAX = 1e9;
+
+const createSchema = z.object({
   name: z.string().min(1).max(64),
   remark: z.string().max(255).optional(),
-  /** 面额（元，正小数）；finite+上限与调账/赠送统一（MONEY_MAX）——'1e999'→Infinity 曾穿透 .positive() */
   amount: z.coerce
     .number()
     .positive()
     .finite()
-    .refine((v) => v <= MONEY_MAX, `面额不得超过 ${MONEY_MAX} 元`),
-  /** 生成数量，1~10000 */
+    .refine((v) => v <= MONEY_MAX, '金额超出上限'),
   count: z.number().int().min(1).max(10_000),
-  /** 过期时间，兼容 datetime-local（YYYY-MM-DDTHH:mm）与完整 ISO 8601 */
   expiresAt: z
     .string()
-    .refine((v) => !Number.isNaN(Date.parse(v)), '无效的过期时间')
+    .refine((v) => !Number.isNaN(Date.parse(v)), '过期时间格式非法')
     .optional(),
 });
 
-export function redeemAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>()
+const codesQueryExtra = z.object({
+  status: z.coerce.number().int().min(0).max(2).optional(),
+});
 
-    // 生成批次（明文一次性下发）
-    .post('/', jsonBody(batchCreateSchema), async (c) => {
-      const body = c.req.valid('json');
-      const result = await createRedeemBatch(
-        s,
-        {
-          name: body.name,
-          remark: body.remark,
-          amount: body.amount,
-          count: body.count,
-          expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
-        },
-        c.get('adminId'),
-      );
-      return c.json(result, 201);
-    })
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
 
-    // 批次列表
-    .get('/', query(listQuerySchema), async (c) =>
-      c.json(await listRedeemBatches(s, c.req.valid('query'))),
-    )
+export function redeemRoutes(service: RedeemService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-    // 批次详情
-    .get('/:id', async (c) => c.json(await getRedeemBatch(s, intParam(c, 'id'))))
-
-    // 批次内码明细（脱敏哈希 + 状态 + 兑换人）
-    .get('/:id/codes', query(batchCodesQuerySchema), async (c) =>
-      c.json(await listRedeemBatchCodes(s, intParam(c, 'id'), c.req.valid('query'))),
-    )
-
-    // 作废单张码（管理员）
-    .post('/codes/:codeId/revoke', async (c) => {
-      await revokeRedeemCode(s, intParam(c, 'codeId'), c.get('adminId'));
-      return c.json({ ok: true });
+  app.post('/v1/redeem-batches', session, async (c) => {
+    const body = createSchema.parse(await c.req.json());
+    const result = await service.createBatch(adminCtxOf(c), {
+      adminId: c.get('adminId'),
+      name: body.name,
+      remark: body.remark ?? null,
+      amount: String(body.amount),
+      count: body.count,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });
+    return c.json(result, 201);
+  });
+
+  app.get('/v1/redeem-batches', session, async (c) => {
+    const query = parseListQuery(c.req.query(), BATCH_SORTS, 'createdAt');
+    return c.json(await service.list(adminCtxOf(c), query));
+  });
+
+  app.get('/v1/redeem-batches/:id', session, async (c) => {
+    return c.json(await service.detail(adminCtxOf(c), idParam(c.req.param('id'))));
+  });
+
+  app.get('/v1/redeem-batches/:id/codes', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const extra = codesQueryExtra.parse(c.req.query());
+    const query = parseListQuery(c.req.query(), CODE_SORTS, 'id');
+    return c.json(await service.listCodes(adminCtxOf(c), { batchId: id, status: extra.status, query }));
+  });
+
+  app.post('/v1/redeem-batches/codes/:codeId/revoke', session, async (c) => {
+    const codeId = idParam(c.req.param('codeId'));
+    return c.json(await service.revokeCode(adminCtxOf(c), { adminId: c.get('adminId'), codeId }));
+  });
+
+  return app;
 }

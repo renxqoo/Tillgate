@@ -1,125 +1,101 @@
-import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
-import { channels, providers } from '@ai-gateway/db/schema';
-import { z } from 'zod';
-import { decrypt } from '@ai-gateway/core';
-import { createAi, defaultAiConfig } from '@ai-gateway/ai';
-import { MONEY_MAX, HttpError, jsonBody, maskUpstreamKey, intParam, query, listQuerySchema } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
-import {
-  channelImportSchema, createChannel, importChannels, listChannels, retireChannel, updateChannel,
-} from '../services/channels.js';
-import { MemoryKvStorage, type BreakerState, type DeadCredentialState } from '@ai-gateway/ai';
-
 /**
- * 渠道管理（api-contract §4.5）。
- *
- * 安全设计：
- *   - 上游 Key 明文只在创建/换 Key 的请求体中出现一次
- *   - DB 存储 AES-256-GCM 密文（api_key_enc）
- *   - 列表/详情响应永不回显明文 Key（只显示脱敏）
- *   - PATCH 换 Key 后自动清除「凭据无效」状态（status 恢复 0 + failCount 重置）
+ * 渠道路由（会话）：列表（富化）/ 创建 / 更新（换 Key 复位运行态）/ 软退役 /
+ * 批量导入（best-effort）/ 连通性探针。
+ * models 白名单契约 = string[]（逗号串 4xx——转换职责在调用方边界）。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import { CHANNEL_SORTS, type ChannelsService } from '../services/channels.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-const channelCreateSchema = z.object({
+const MONEY_MAX = 1e9;
+
+const createSchema = z.object({
   providerId: z.number().int().positive(),
-  name: z.string().min(1).max(64),
+  name: z.string().min(1, 'name 不能为空').max(64),
   apiKey: z.string().min(1, 'apiKey 不能为空').max(512),
   baseUrlOverride: z.string().max(255).nullable().optional(),
   models: z.array(z.string()).nullable().optional(),
   weight: z.number().int().min(0).max(1_000_000).optional(),
   priority: z.number().int().min(0).max(1_000_000).optional(),
-  /** 渠道级限流（保护上游 API key 配额；null=不限流） */
   rpmLimit: z.number().int().positive().nullable().optional(),
   tpmLimit: z.number().int().positive().nullable().optional(),
-}).passthrough();
+});
 
-const channelUpdateSchema = z.object({
-  name: z.string().min(1).max(64).optional(),
-  baseUrlOverride: z.string().max(255).nullable().optional(),
-  models: z.array(z.string()).nullable().optional(),
-  weight: z.number().int().min(0).max(1_000_000).optional(),
-  priority: z.number().int().min(0).max(1_000_000).optional(),
+const updateSchema = createSchema.partial().extend({
+  providerId: z.number().int().positive().optional(),
   status: z.number().int().min(0).max(4).optional(),
-  rpmLimit: z.number().int().positive().nullable().optional(),
-  tpmLimit: z.number().int().positive().nullable().optional(),
-  /** 熔断阈值（元，>=0），null=0（耗尽才熔断） */
-  upstreamThreshold: z.number().min(0).max(MONEY_MAX).nullable().optional(),
-  /** 换 Key：重新加密 + 恢复启用状态 */
-  apiKey: z.string().min(1).optional(),
-}).passthrough();
+  upstreamThreshold: z.number().min(0).finite().max(MONEY_MAX).nullable().optional(),
+});
 
-export function channelAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>()
+const importItemSchema = z.object({
+  provider: z.string().min(1),
+  name: z.string().min(1).max(64),
+  apiKey: z.string().min(1).max(512),
+  models: z.array(z.string()).optional(),
+  weight: z.number().int().min(1).optional(),
+  priority: z.number().int().optional(),
+});
 
-    // ====== 列表（含绑定模型/上游消耗聚合，见 service）======
+const importSchema = z.object({
+  channels: z.array(importItemSchema).min(1).max(1000),
+});
 
-    .get('/', query(listQuerySchema), async (c) =>
-      c.json(await listChannels(s, c.req.valid('query'))),
-    )
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
 
-    // ====== 创建（Key 加密与审计见 service）======
+export function channelsRoutes(service: ChannelsService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
 
-    .post('/', jsonBody(channelCreateSchema), async (c) => {
-      const created = await createChannel(s, c.req.valid('json'), c.get('adminId'));
-      // 响应不含 key（明文或密文都不返回）
-      return c.json(created, 201);
-    })
+  app.get('/v1/channels', session, async (c) => {
+    const query = parseListQuery(c.req.query(), CHANNEL_SORTS, 'createdAt');
+    return c.json(await service.list(adminCtxOf(c), query));
+  });
 
-    // ====== 更新（换 Key 重加密 + 恢复启用见 service）======
+  app.post('/v1/channels', session, async (c) => {
+    const body = createSchema.parse(await c.req.json());
+    const row = await service.create(adminCtxOf(c), { adminId: c.get('adminId'), ...body });
+    return c.json(row, 201);
+  });
 
-    .patch('/:id', jsonBody(channelUpdateSchema), async (c) => {
-      const updated = await updateChannel(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
-      return c.json(updated);
-    })
+  app.patch('/v1/channels/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = updateSchema.parse(await c.req.json());
+    // numeric 列以字符串落库（zod 层已限数值域；null 透传 = 清阈值）
+    const { upstreamThreshold, ...rest } = body;
+    const patch = {
+      ...rest,
+      ...(upstreamThreshold !== undefined
+        ? { upstreamThreshold: upstreamThreshold === null ? null : String(upstreamThreshold) }
+        : {}),
+    };
+    return c.json(await service.update(adminCtxOf(c), { adminId: c.get('adminId'), channelId: id, patch }));
+  });
 
-    .delete('/:id', async (c) => {
-      await retireChannel(s, intParam(c, 'id'), c.get('adminId'));
-      return c.json({ ok: true });
-    })
+  app.delete('/v1/channels/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.retire(adminCtxOf(c), { adminId: c.get('adminId'), channelId: id }));
+  });
 
-    // ====== 连通性测试 ======
+  app.post('/v1/channels/import', session, async (c) => {
+    const body = importSchema.parse(await c.req.json());
+    const result = await service.import(adminCtxOf(c), { adminId: c.get('adminId'), channels: body.channels });
+    return c.json(result, result.success > 0 ? 200 : 400);
+  });
 
-    .post('/:id/test', async (c) => {
-      const id = intParam(c, 'id');
-      const ch = await s.db
-        .select({ apiKeyEnc: channels.apiKeyEnc, baseUrlOverride: channels.baseUrlOverride, providerBaseUrl: providers.baseUrl, providerProtocol: providers.protocol })
-        .from(channels)
-        .innerJoin(providers, eq(channels.providerId, providers.id))
-        .where(eq(channels.id, id))
-        .limit(1);
-      if (ch.length === 0) throw new HttpError('CHANNEL_NOT_FOUND', '渠道不存在');
+  app.post('/v1/channels/:id/test', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.probe(adminCtxOf(c), id));
+  });
 
-      const row = ch[0]!;
-      const apiKey = decrypt(row.apiKeyEnc, s.encryptionKey, s.encryptionKeyOld);
-      const baseUrl = row.baseUrlOverride ?? row.providerBaseUrl;
-      const protocol = row.providerProtocol;
-      const ai = createAi(
-        {
-          ...defaultAiConfig(),
-          // 与网关同源门控：开发放行内网上游（生产即便误配也被 NODE_ENV 拦下）
-          allowLocalUrl: s.allowLocalUpstream,
-        },
-        // 探测是独立诊断面：每次探测全新内存状态（不受网关熔断影响、不污染它）
-        {
-          breakerStorage: new MemoryKvStorage<BreakerState>(),
-          deadCredentialStorage: new MemoryKvStorage<DeadCredentialState>(),
-        },
-      );
-      const result = await ai.probe({ baseUrl, apiKey, protocol });
-      return c.json({
-        ok: result.ok,
-        durationMs: result.durationMs,
-        error: result.error ? { code: result.error.code, message: result.error.message } : undefined,
-        keyPreview: maskUpstreamKey(apiKey),
-      });
-    })
-
-    // ====== 批量导入 ======
-
-    .post('/import', jsonBody(channelImportSchema), async (c) => {
-      const result = await importChannels(s, c.req.valid('json').channels, c.get('adminId'));
-      return c.json(result, result.success > 0 ? 200 : 400);
-    });
+  return app;
 }

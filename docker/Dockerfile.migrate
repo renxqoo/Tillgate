@@ -6,4 +6,5 @@ WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages ./packages
 RUN pnpm install --frozen-lockfile
-CMD ["pnpm", "--filter", "@ai-gateway/db", "db:migrate"]
+RUN pnpm --filter @ai-gateway/wallet build && pnpm --filter @ai-gateway/identity-core build && pnpm --filter @ai-gateway/ledger-core build
+CMD ["sh", "-c", "pnpm --filter @ai-gateway/identity-core provision && pnpm --filter @ai-gateway/ledger-core provision && pnpm --filter @ai-gateway/db db:migrate && pnpm --filter @ai-gateway/wallet migrate"]

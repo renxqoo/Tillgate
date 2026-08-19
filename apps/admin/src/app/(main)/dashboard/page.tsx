@@ -38,8 +38,8 @@ export default async function AdminDashboardPage() {
   }
 
   try {
-    const res = await adminFetch<{ list: StatsUsageItem[] }>("/api/admin/stats/usage");
-    usage = res.list ?? [];
+    const res = await adminFetch<{ rows?: StatsUsageItem[]; list?: StatsUsageItem[] }>("/api/admin/stats/usage");
+    usage = res.rows ?? [];
   } catch {
     // usage 失败不阻塞整页
   }

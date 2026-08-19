@@ -1,57 +1,62 @@
-import { Hono } from 'hono';
-import { z } from 'zod';
-import { intParam, jsonBody, query, listQuerySchema } from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import { SUPPORTED_PROTOCOLS } from '@ai-gateway/ai';
-import type { AdminServices } from '../services/index.js';
-import { createProvider, listProviders, retireProvider, updateProvider } from '../services/providers.js';
-
 /**
- * 供应商管理（api-contract §4.6）。
- * 变更后 bump 路由缓存版本，gateway 检测版本变化后重建路由表。
+ * 供应商路由（会话）：列表 / 创建 / 更新 / 软退役。
+ * 数值域铁三角在 zod 层收口：URL 形状/长度上界；协议词表校验在 service。
  */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import { z } from 'zod';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import { PROVIDER_SORTS, type ProvidersService } from '../services/providers.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-/** 协议词表单一真相：ai 包适配器注册表键。非法值 400（错误语义分级：可预期拒绝 ≠ 异常） */
-const protocolSchema = z
-  .string()
-  .max(32)
-  .refine((v) => (SUPPORTED_PROTOCOLS as readonly string[]).includes(v), {
-    message: `不支持的协议（可选: ${SUPPORTED_PROTOCOLS.join(', ')}）`,
+const createSchema = z.object({
+  name: z.string().min(1).max(32),
+  protocol: z.string().max(32).optional(),
+  baseUrl: z.string().url().max(255),
+  status: z.number().int().min(0).max(1).optional(),
+});
+
+const updateSchema = z.object({
+  name: z.string().min(1).max(32).optional(),
+  protocol: z.string().max(32).optional(),
+  baseUrl: z.string().url().max(255).optional(),
+  status: z.number().int().min(0).max(1).optional(),
+});
+
+const idParam = (raw: string): number => {
+  const id = Number(raw);
+  if (!Number.isInteger(id) || id < 1) {
+    throw new AppError(400, 'invalid_param', '路径参数 id 必须为正整数');
+  }
+  return id;
+};
+
+export function providersRoutes(service: ProvidersService, session: MiddlewareHandler<SessionEnv>) {
+  const app = new Hono<SessionEnv>();
+
+  app.get('/v1/providers', session, async (c) => {
+    const query = parseListQuery(c.req.query(), PROVIDER_SORTS, 'createdAt');
+    return c.json(await service.list(adminCtxOf(c), query));
   });
 
-const providerCreateSchema = z.object({
-  name: z.string().min(1).max(32),
-  baseUrl: z.string().url().max(255),
-  protocol: protocolSchema.optional(),
-  status: z.number().int().min(0).max(1).optional(),
-}).passthrough();
+  app.post('/v1/providers', session, async (c) => {
+    const body = createSchema.parse(await c.req.json());
+    const row = await service.create(adminCtxOf(c), { adminId: c.get('adminId'), ...body });
+    return c.json(row, 201);
+  });
 
-const providerUpdateSchema = z.object({
-  name: z.string().min(1).max(32).optional(),
-  baseUrl: z.string().url().max(255).optional(),
-  protocol: protocolSchema.optional(),
-  status: z.number().int().min(0).max(1).optional(),
-}).passthrough();
+  app.patch('/v1/providers/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const patch = updateSchema.parse(await c.req.json());
+    return c.json(await service.update(adminCtxOf(c), { adminId: c.get('adminId'), providerId: id, patch }));
+  });
 
-export function providerAdminRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>()
+  app.delete('/v1/providers/:id', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await service.retire(adminCtxOf(c), { adminId: c.get('adminId'), providerId: id }));
+  });
 
-    .get('/', query(listQuerySchema), async (c) =>
-      c.json(await listProviders(s, c.req.valid('query'))),
-    )
-
-    .post('/', jsonBody(providerCreateSchema), async (c) => {
-      const created = await createProvider(s, c.req.valid('json'), c.get('adminId'));
-      return c.json(created, 201);
-    })
-
-    .patch('/:id', jsonBody(providerUpdateSchema), async (c) => {
-      const updated = await updateProvider(s, intParam(c, 'id'), c.req.valid('json'), c.get('adminId'));
-      return c.json(updated);
-    })
-
-    .delete('/:id', async (c) => {
-      await retireProvider(s, intParam(c, 'id'), c.get('adminId'));
-      return c.json({ ok: true });
-    });
+  return app;
 }

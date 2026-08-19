@@ -1,80 +1,73 @@
+/**
+ * 死单复核路由（会话）：list（status=dead 专属）+ retry/abandon
+ * （幂等键透传；理由必填；乐观锁 expectedRevision）。
+ */
 import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { BillingOperationError } from '@ai-gateway/ledger';
-import {
-  HttpError, jsonBody, operationId, query,
-  paginateQuery, paginationQuerySchema, buildList,
-  type KnownErrorCode,
-} from '@ai-gateway/http';
-import type { AdminEnv } from '@ai-gateway/identity';
-import type { AdminServices } from '../services/index.js';
+import { operationId } from '@ai-gateway/http';
+import { adminCtxOf } from './ctx.js';
+import { parseListQuery } from '../http/list-query.js';
+import { AppError } from '../http/error-map.js';
+import type { BillingReviewService } from '../services/billing-review.service.js';
+import type { SessionEnv } from '../middleware/session.js';
 
-const listSchema = paginationQuerySchema.extend({
+const listQuery = z.object({
+  /** 死单复核面只看 dead（其余状态走正常结算管线） */
   status: z.literal('dead'),
 });
 
-const decisionBase = z.object({
+const decisionSchema = z.object({
   expectedRevision: z.number().int().nonnegative(),
   reason: z.string().trim().min(1).max(1000),
   evidenceRefs: z.array(z.string().trim().min(1).max(500)).max(20).default([]),
 });
 
-/** BillingOperationError → HTTP（表驱动：状态码/码名由注册表单一真相给出） */
-const BILLING_OP_CODE: Record<BillingOperationError['code'], KnownErrorCode> = {
-  not_found: 'BILLING_NOT_FOUND',
-  state_conflict: 'BILLING_STATE_CONFLICT',
-  idempotency_conflict: 'BILLING_IDEMPOTENCY_CONFLICT',
-  invalid_receipt: 'BILLING_INVALID_RECEIPT',
+const requestIdParam = (raw: string): string => {
+  if (!/^[0-9a-f-]{16,64}$/.test(raw)) {
+    throw new AppError(400, 'invalid_param', 'requestId 必须为 uuid');
+  }
+  return raw;
 };
 
-function mapError(error: unknown): never {
-  if (error instanceof BillingOperationError) {
-    throw new HttpError(BILLING_OP_CODE[error.code], error.message);
-  }
-  throw error;
-}
+export function billingOperationsRoutes(
+  service: BillingReviewService,
+  session: MiddlewareHandler<SessionEnv>,
+) {
+  const app = new Hono<SessionEnv>();
 
-/** 资金异常复核只暴露受审计领域命令，不提供通用 status update。 */
-export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
-  return new Hono<AdminEnv>()
-    .get('/', query(listSchema), async (c) => {
-      const input = c.req.valid('query');
-      const { page, limit, offset } = buildList(input);
-      return c.json(
-        await paginateQuery(
-          page,
-          s.billingOperations.listCases({ status: input.status, limit, offset }),
-          s.billingOperations.countCases(input.status).then((count) => [{ count }]),
-        ),
-      );
-    })
-    .post('/:requestId/retry', jsonBody(decisionBase), async (c) => {
-      try {
-        return c.json(
-          await s.billingOperations.retryDead({
-            operationId: operationId(c),
-            requestId: c.req.param('requestId'),
-            adminId: c.get('adminId'),
-            ...c.req.valid('json'),
-          }),
-        );
-      } catch (error) {
-        return mapError(error);
-      }
-    })
-    // 废弃 dead 单：确认不收费并释放全部预扣（与 retry 二选一的人工处置）
-    .post('/:requestId/abandon', jsonBody(decisionBase), async (c) => {
-      try {
-        return c.json(
-          await s.billingOperations.abandonDead({
-            operationId: operationId(c),
-            requestId: c.req.param('requestId'),
-            adminId: c.get('adminId'),
-            ...c.req.valid('json'),
-          }),
-        );
-      } catch (error) {
-        return mapError(error);
-      }
-    });
+  app.get('/v1/billing-operations', session, async (c) => {
+    const query = listQuery.parse(c.req.query());
+    void query;
+    const parts = parseListQuery(c.req.query(), ['id'], 'id');
+    return c.json(await service.list(adminCtxOf(c), { limit: parts.limit, offset: parts.offset }));
+  });
+
+  app.post('/v1/billing-operations/:requestId/retry', session, async (c) => {
+    const requestId = requestIdParam(c.req.param('requestId'));
+    const body = decisionSchema.parse(await c.req.json());
+    return c.json(
+      await service.retry(adminCtxOf(c), {
+        adminId: c.get('adminId'),
+        operationId: operationId(c),
+        requestId,
+        ...body,
+      }),
+    );
+  });
+
+  app.post('/v1/billing-operations/:requestId/abandon', session, async (c) => {
+    const requestId = requestIdParam(c.req.param('requestId'));
+    const body = decisionSchema.parse(await c.req.json());
+    return c.json(
+      await service.abandon(adminCtxOf(c), {
+        adminId: c.get('adminId'),
+        operationId: operationId(c),
+        requestId,
+        ...body,
+      }),
+    );
+  });
+
+  return app;
 }

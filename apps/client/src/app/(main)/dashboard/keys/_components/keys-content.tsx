@@ -383,7 +383,7 @@ export function CreateKeyDialog({
               const { createKeyAction } = await import("../actions");
               const res = await createKeyAction(values);
               if (!notify(res, "创建失败")) return;
-              setRevealedKey(res.key!.key);
+              setRevealedKey(res.key!.plaintext);
               toast.success("已创建 Key");
             })}
             className="space-y-4"

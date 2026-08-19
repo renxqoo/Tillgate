@@ -14,6 +14,8 @@ export {
   type SessionPayload,
   type SessionSignInput,
 } from './session.js';
+export { createRedisSessionRevocationStore } from './session.js';
+export type { SessionRevocationStore } from './session.js';
 
 // Cookie 容器（双身份）
 export {
@@ -22,39 +24,31 @@ export {
   cookieOptions,
 } from './cookies.js';
 
-// 密码哈希（scrypt，users/admins 共用格式）
+// 密码哈希（scrypt，users/admins 共用格式；实现收敛于 identity-core，存储格式逐字兼容）
+export { hashPassword, verifyPassword } from '@ai-gateway/identity-core';
+
+// 会话吊销锚点（真相收敛于 identity-core 锚点表；realm 区分双身份命名空间）
 export {
-  hashPassword,
-  verifyPassword,
-  SCRYPT_N,
-  SCRYPT_R,
-  SCRYPT_P,
-  HASH_LEN,
-} from './password.js';
+  advanceAnchor,
+  sessionValidAt,
+  DEFAULT_REALM,
+} from '@ai-gateway/identity-core';
 
 // 登录限流（单源硬锁 + identifier-only 分布式信号，namespace 区分用户/管理员）
-export {
-  recordLoginFailure,
-  resetLoginFailures,
-  clientIp,
-  LOGIN_FAIL_THRESHOLD,
-  LOGIN_FAIL_WINDOW_S,
-  LOGIN_LOCK_DURATION_S,
-  LOGIN_DISTRIBUTED_SIGNAL_THRESHOLD,
-  type ThrottleCheck,
-} from './login-throttle.js';
 
-// 登录验证码挑战（client-api 强制邮箱验证 / admin-api 2FA 共用）
+// 登录验证码挑战（client-api 强制邮箱验证 / admin-api 2FA 共用；PG 挑战表实现）
 export {
-  issueLoginCodeChallenge,
-  abortLoginCodeChallenge,
-  verifyLoginCodeChallenge,
+  createLoginCodeChallenger,
   LOGIN_CODE_TTL_S,
   LOGIN_CODE_MAX_TRIES,
   LOGIN_CODE_RESEND_COOLDOWN_S,
+  type LoginCodeChallenger,
   type LoginCodeNamespace,
+  type LoginCodePurpose,
   type LoginCodeVerified,
-} from './login-code.js';
+} from './login-challenge.js';
+// 投递失败（发不出去=流程没发生，挑战已作废可立即重发）——边界层翻译 CODE_SEND_FAILED
+export { DeliveryFailedError } from '@ai-gateway/identity-core';
 
 // 登录验证码发信（SMTP fail-closed；品牌参数化管理后台/用户面板）
 export {

@@ -28,7 +28,7 @@ export default async function OrgsPage({ searchParams }: PageProps) {
         let members: OrgWithMembers["members"] = [];
         let invitations: OrgWithMembers["invitations"] = [];
         try {
-          const detail = await apiFetch<OrgDetail>(`/api/orgs/${org.id}`);
+          const detail = await apiFetch<OrgDetail>(`/api/orgs/${org.orgId}`);
           members = detail.members ?? [];
           invitations = detail.invitations ?? [];
         } catch {
