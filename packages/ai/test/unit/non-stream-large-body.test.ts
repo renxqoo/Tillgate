@@ -43,7 +43,7 @@ describe('非流式大响应（>256KB）不再误判（A7）', () => {
     const result = await ai.chat({
       channel: { baseUrl, apiKey: 'sk-test', protocol: 'openai-compatible' },
       request: { model: 'big-real', messages: [{ role: 'user', content: 'hi' }], max_tokens: 50 },
-      ctx: { requestId: 'a7-big-body', model: 'big-real', providerName: 'test', deadlineMs: 5000, signal: AbortSignal.timeout(5000) },
+      ctx: { requestId: 'a7-big-body', model: 'big-real', providerName: 'test', endpoint: 'chat', deadlineMs: 5000, signal: AbortSignal.timeout(5000) },
     });
     expect(result.status).toBe('success');
     if (result.status === 'success') {

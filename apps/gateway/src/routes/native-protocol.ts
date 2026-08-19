@@ -46,7 +46,7 @@ export function geminiNativeRoutes(runChat: RunChat): Hono<AuthEnv> {
       tpmLimit: auth.tpmLimit,
       userRpmLimit: auth.userRpmLimit,
       userTpmLimit: auth.userTpmLimit,
-    }, canonical);
+    }, canonical, 'chat');
 
     return encodeGemini(result, model);
   });

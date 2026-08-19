@@ -35,7 +35,7 @@ describe('createUpstreamAdapter 绑定层', () => {
       encryptionKey,
       deadlineMs: 5_000,
     });
-    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', body: {} });
+    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', endpoint: 'chat', body: {} });
     expect(result).toMatchObject({ ok: true, usage: { inputTokens: 3 } });
     expect(seen.apiKey).toBe('sk-real');
     expect(seen.baseUrl).toBe('https://up.test');
@@ -50,7 +50,7 @@ describe('createUpstreamAdapter 绑定层', () => {
       })),
       encryptionKey,
     });
-    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', body: {} });
+    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', endpoint: 'chat', body: {} });
     expect(result.ok).toBe(true);
     expect((result as { usage?: unknown }).usage).toBeUndefined();
   });
@@ -60,7 +60,7 @@ describe('createUpstreamAdapter 绑定层', () => {
       ai: stubAi(async () => ({ status: 'error' })),
       encryptionKey,
     });
-    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', body: {} });
+    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', endpoint: 'chat', body: {} });
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_response' } });
   });
 
@@ -75,7 +75,7 @@ describe('createUpstreamAdapter 绑定层', () => {
     });
     await adapter.chat(
       { ...candidate, baseUrlOverride: 'https://override.test' },
-      { requestId: 'r', realModel: 'm', externalModel: 'm', body: {} },
+      { requestId: 'r', realModel: 'm', externalModel: 'm', endpoint: 'chat', body: {} },
     );
     expect(seen.baseUrl).toBe('https://override.test');
   });
@@ -85,7 +85,7 @@ describe('createUpstreamAdapter 绑定层', () => {
       ai: stubAi(async () => ({ status: 'error', error: { code: 'invalid_api_key', message: 'bad', deadCredential: true } })),
       encryptionKey,
     });
-    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', body: {} });
+    const result = await adapter.chat(candidate, { requestId: 'r', realModel: 'm', externalModel: 'm', endpoint: 'chat', body: {} });
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_api_key', message: 'bad', deadCredential: true } });
   });
 });

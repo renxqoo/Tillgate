@@ -154,6 +154,7 @@ function ctx(p: ProviderConfig, tag: string): RequestCtx {
     requestId: `real-${p.name}-${tag}-${Date.now()}`,
     model: p.model,
     providerName: p.providerName,
+    endpoint: 'chat',
   };
 }
 

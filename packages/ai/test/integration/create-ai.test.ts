@@ -37,7 +37,7 @@ function channel(baseUrl: string): ChannelDesc {
 }
 
 function ctx(requestId: string, extra?: Partial<RequestCtx>): RequestCtx {
-  return { requestId, model: 'deepseek-chat', providerName: 'deepseek', ...extra };
+  return { requestId, model: 'deepseek-chat', providerName: 'deepseek', endpoint: 'chat', ...extra };
 }
 
 const OK_JSON = JSON.stringify({
@@ -729,7 +729,7 @@ describe('配置校验（fail fast：空 key/model/baseUrl 直接报错，不发
         protocol: 'openai-compatible',
       },
       request: { messages: [] },
-      ctx: { requestId: 'r-empty-model', model: '', providerName: 'x' },
+      ctx: { requestId: 'r-empty-model', model: '', providerName: 'x', endpoint: 'chat' },
     });
     expect(result.status).toBe('error');
     if (result.status === 'error') expect(result.error?.message).toContain('model');

@@ -50,7 +50,7 @@ describe('baseUrl 版本段拼接（#3133 同类红测）', () => {
       // 业界惯例：baseUrl 带版本段（复制自 OpenAI 文档的形态）
       channel: { baseUrl: `${server.baseUrl}/v1`, apiKey: 'sk-test', protocol: 'openai-compatible' },
       request: { model: 'm', messages: [{ role: 'user', content: 'hi' }] },
-      ctx: { requestId: 'v1-dup-1', model: 'm', providerName: 'test' },
+      ctx: { requestId: 'v1-dup-1', model: 'm', providerName: 'test', endpoint: 'chat' },
     });
     expect(result.status).toBe('success');
     // 请求不得打到 /v1/v1/...（去重或规范化后应命中 /v1/chat/completions）

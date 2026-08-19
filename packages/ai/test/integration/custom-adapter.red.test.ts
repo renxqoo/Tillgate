@@ -74,7 +74,7 @@ const echoChannel = (baseUrl: string): ChannelDesc => ({
   protocol: 'test-echo',
 });
 
-const echoCtx: RequestCtx = { requestId: 'r-echo', model: 'echo-model-x', providerName: 'echo' };
+const echoCtx: RequestCtx = { requestId: 'r-echo', model: 'echo-model-x', providerName: 'echo', endpoint: 'chat' };
 
 describe('自定义协议 adapter 注入（注册即扩展）', () => {
   it('chat:命中 adapter 的自定义路径与认证头,请求体经 finalizeRequestBody 终改', async () => {
@@ -200,7 +200,7 @@ describe('自定义协议 adapter 注入（注册即扩展）', () => {
       const result = await makeAi([testEchoAdapter]).chat({
         channel: { baseUrl: server.baseUrl, apiKey: 'sk', protocol: 'openai-compatible' },
         request: { model: 'm', messages: [] },
-        ctx: { requestId: 'r-un', model: 'm', providerName: 'p' },
+        ctx: { requestId: 'r-un', model: 'm', providerName: 'p', endpoint: 'chat' },
       });
       expect(result.status).toBe('error');
       if (result.status === 'error' && result.error) {

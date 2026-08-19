@@ -40,7 +40,7 @@ describe('createAi.chatStream — 首帧错误放弃 rest 释放连接', () => {
     const result = await ai.chatStream({
       channel: { baseUrl: 'http://localhost:9/v1', apiKey: 'sk-test', protocol: 'openai-compatible' },
       request: { model: 'm', messages: [{ role: 'user', content: 'hi' }] },
-      ctx: { requestId: 'leak-test-1', model: 'm', providerName: 'p', maxRetries: 0, deadlineMs: 5_000 },
+      ctx: { requestId: 'leak-test-1', model: 'm', providerName: 'p', endpoint: 'chat', maxRetries: 0, deadlineMs: 5_000 },
     });
 
     // 首帧错误 → failEarly（终态事件在 onEvent 注册时重放）

@@ -11,7 +11,7 @@
  *
  * Redis 状态共享 / OTel = G4d 运营加固。
  */
-import { estimateInputTokens, estimateOutputTokens, estimateTextTokens } from '@ai-gateway/ai';
+import { estimateInputTokens, estimateOutputTokens, estimateTextTokens, type Endpoint } from '@ai-gateway/ai';
 import { estimateMaxCost, USER_SIDE_CANCELS } from '@ai-gateway/domain';
 import type { UsageReceipt } from '@ai-gateway/domain';
 import { getTracer, SpanStatusCode, withAsyncSpan } from '@ai-gateway/core';
@@ -38,14 +38,11 @@ export interface RunChatConfig {
   output: OutputCapConfig;
 }
 
-/** 端点类型：路由注入 inferenceKind（端点表 kind + multipart 族）；缺省按形状推断。
- *  分类按排除法：chat/embeddings 之外的一切显式 kind 都属模态族
- *  （images/images_edits/audio_speech/audio_transcription/audio_translation/rerank/moderations）。 */
-function kindOf(body: ChatCompletionBody): 'chat' | 'embeddings' | 'modality' {
-  const explicit = (body as { inferenceKind?: string }).inferenceKind;
-  if (explicit === 'chat' || explicit === 'embeddings') return explicit;
-  if (explicit !== undefined) return 'modality';
-  return 'input' in body && !('messages' in body) ? 'embeddings' : 'chat';
+/** 端点分类（显式 endpoint 的纯函数——曾用 body 魔法字段 + 形状推断双轨，
+ *  现单一真相：路由边界声明的端点；chat/embeddings 之外的一切都属模态族）。 */
+function kindOf(endpoint: Endpoint): 'chat' | 'embeddings' | 'modality' {
+  if (endpoint === 'chat' || endpoint === 'embeddings') return endpoint;
+  return 'modality';
 }
 
 export interface ChatCompletionBody {
@@ -165,6 +162,7 @@ export function createRunChat(deps: PipelineDeps) {
     ctx: RunContext,
     auth: Pick<AuthContext, 'userId' | 'apiKeyId' | 'appId' | 'rpmLimit' | 'tpmLimit' | 'userRpmLimit' | 'userTpmLimit' | 'allowedModels'>,
     body: ChatCompletionBody,
+    endpoint: Endpoint,
   ): Promise<ChatResponse> {
     const tracer = getTracer('gateway.pipeline');
     const requestId = ctx.requestId;
@@ -173,7 +171,7 @@ export function createRunChat(deps: PipelineDeps) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
     const estInput = estimateInputTokens(body);
-    const kind = kindOf(body);
+    const kind = kindOf(endpoint);
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
     const stream = body.stream === true;
     const estimatedTokens = estInput + outputCap;
@@ -443,7 +441,7 @@ export function createRunChat(deps: PipelineDeps) {
             'upstream.stream': false,
           }, async (span) => {
             const r = await deps.upstream.chat(channel, {
-              requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
+              requestId, realModel: candidate.realModel, externalModel: body.model, endpoint, body: upstreamBody,
             });
             if (r.ok) {
               span.setAttributes({
@@ -506,7 +504,7 @@ export function createRunChat(deps: PipelineDeps) {
           'upstream.stream': true,
         }, async (span) => {
           const s = await deps.upstream.chatStream(channel, {
-            requestId, realModel: candidate.realModel, externalModel: body.model, body: upstreamBody,
+            requestId, realModel: candidate.realModel, externalModel: body.model, endpoint, body: upstreamBody,
           });
           const d = await new Promise<UpstreamStreamEvent>((resolve) => {
             let settled = false;

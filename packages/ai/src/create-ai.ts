@@ -41,7 +41,6 @@ import type {
   Ai,
   ChannelDesc,
   ChatStreamResult,
-  Endpoint,
   RequestCtx,
   UpstreamError,
   Usage,
@@ -273,7 +272,7 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
       }
 
       // 上游寻址 + 请求体终改：全部由协议适配器决定（路径/认证头/model 重写）
-      const endpoint: Endpoint = input.ctx.endpoint ?? 'chat';
+      const { endpoint } = input.ctx;
       const plan = adapter.planRequest(input.channel, {
         endpoint,
         model: input.ctx.model,
@@ -467,7 +466,7 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
       }
 
       // 上游寻址 + 请求体终改（含 stream_options 强制注入——见 OpenAICompatibleAdapter.finalizeRequestBody）
-      const endpoint: Endpoint = input.ctx.endpoint ?? 'chat';
+      const { endpoint } = input.ctx;
       const plan = adapter.planRequest(input.channel, {
         endpoint,
         model: input.ctx.model,

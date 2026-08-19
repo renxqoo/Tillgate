@@ -12,7 +12,7 @@
 import { Hono } from 'hono';
 import type { createRunChat } from '../pipeline/run-chat.js';
 import type { ChatCompletionBody } from '../pipeline/run-chat.js';
-import { estimateAudioDurationSeconds } from '@ai-gateway/ai';
+import { estimateAudioDurationSeconds, type Endpoint } from '@ai-gateway/ai';
 import type { AuthEnv } from '../middleware/api-key.js';
 
 type RunChat = ReturnType<typeof createRunChat>;
@@ -41,12 +41,11 @@ interface MultipartWrapper {
   n?: number;
   audioSeconds?: number;
   upstreamForm: FormData;
-  inferenceKind: string;
 }
 
 async function buildMultipartWrapper(
   request: Request,
-  opts: { fileField: string; allow: Set<string>; audio: boolean; kind: string },
+  opts: { fileField: string; allow: Set<string>; audio: boolean },
 ): Promise<MultipartWrapper> {
   const form = await request.formData();
   const wrapper: Record<string, unknown> = {};
@@ -81,14 +80,13 @@ async function buildMultipartWrapper(
     }
   }
   wrapper.upstreamForm = upstream;
-  wrapper.inferenceKind = opts.kind;
   return wrapper as unknown as MultipartWrapper;
 }
 
 export function modalityMultipartRoutes(runChat: RunChat): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
-  const handle = (opts: { fileField: string; allow: Set<string>; audio: boolean; kind: string }) =>
+  const handle = (opts: { fileField: string; allow: Set<string>; audio: boolean; kind: Endpoint }) =>
     async (c: { req: { raw: Request }; get: (k: 'auth') => { ctx: Parameters<RunChat>[0]; userId: number; apiKeyId: number; appId?: number | null; allowedModels?: string[] | null; rpmLimit?: number | null; tpmLimit?: number | null; userRpmLimit?: number | null; userTpmLimit?: number | null }; json: (b: unknown, s?: never) => Response }) => {
       // 只有 multipart 解析（缺字段/类型白名单/超限）是 400 invalid_body；
       // 管线错误（402 余额/404 模型/500 配置）必须走统一错误翻译，不得吞成 400。
@@ -104,6 +102,7 @@ export function modalityMultipartRoutes(runChat: RunChat): Hono<AuthEnv> {
         auth.ctx,
         { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit ?? null, tpmLimit: auth.tpmLimit ?? null, userRpmLimit: auth.userRpmLimit ?? null, userTpmLimit: auth.userTpmLimit ?? null },
         wrapper as unknown as ChatCompletionBody,
+        opts.kind,
       );
       if ('stream' in result) return new Response(result.stream);
       if ('rawBody' in result) {

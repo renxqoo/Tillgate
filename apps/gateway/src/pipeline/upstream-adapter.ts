@@ -34,6 +34,7 @@ export function createUpstreamAdapter(deps: {
           requestId: request.requestId,
           model: request.realModel,
           providerName: candidate.providerName,
+          endpoint: request.endpoint,
           ...deadline(),
         },
       });
@@ -89,6 +90,7 @@ export function createUpstreamAdapter(deps: {
           requestId: request.requestId,
           model: request.realModel,
           providerName: candidate.providerName,
+          endpoint: request.endpoint,
           ...deadline(),
         },
       });

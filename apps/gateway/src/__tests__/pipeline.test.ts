@@ -599,9 +599,8 @@ describe('runChat 单位计费（计量注册表接线）', () => {
     const audioCtx = systemContext(randomUUID());
     const result = await runChat(audioCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
-      inferenceKind: 'audio_transcription',
       audioSeconds: 90.4,
-    } as unknown as ChatCompletionBody);
+    } as unknown as ChatCompletionBody, 'audio_transcription');
     expect(result.status).toBe(200);
 
     createdRequests.push(audioCtx.requestId);
@@ -632,11 +631,10 @@ describe('runChat 单位计费（计量注册表接线）', () => {
     const imageCtx = systemContext(randomUUID());
     const result = await runChat(imageCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
-      inferenceKind: 'images',
       prompt: 'a cat',
       n: 2,
       size: '1024x1024',
-    } as unknown as ChatCompletionBody);
+    } as unknown as ChatCompletionBody, 'images');
     expect(result.status).toBe(200);
 
     createdRequests.push(imageCtx.requestId);
@@ -696,7 +694,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
 
     const lowCtx = systemContext(randomUUID());
     const { userId, apiKeyId } = await newUserWithBalance('0.15');
-    const result = await runChat(lowCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model));
+    const result = await runChat(lowCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat');
     expect(result.status).toBe(200);
     createdRequests.push(lowCtx.requestId);
     const row = await billingRow(lowCtx.requestId);
@@ -743,9 +741,8 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     const videoCtx = systemContext(randomUUID());
     const result = await runChat(videoCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, {
       model: seeded.model,
-      inferenceKind: 'video',
       duration: 4,
-    } as unknown as ChatCompletionBody);
+    } as unknown as ChatCompletionBody, 'video');
     expect(result.status).toBe(200);
     createdRequests.push(videoCtx.requestId);
     const row = await billingRow(videoCtx.requestId);
@@ -772,7 +769,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     });
 
     const floorCtx = systemContext(randomUUID());
-    const result = await runChat(floorCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model));
+    const result = await runChat(floorCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat');
     expect(result.status).toBe(200);
     createdRequests.push(floorCtx.requestId);
 
@@ -840,7 +837,7 @@ describe('终审修复回归（限流维度并罚 / 收据归属 / 终态重试�
     const res = await runChat(systemContext(reqId), {
       userId, apiKeyId: null, appId: 7,
       rpmLimit: 1000, tpmLimit: null, userRpmLimit: 2, userTpmLimit: null, allowedModels: null,
-    }, body(seeded.model));
+    }, body(seeded.model), 'chat');
     expect(res.status).toBe(200);
     expect(recorded).toContainEqual({ dimension: 'app:7', max: 1000 }); // scope 限额 → app 维
     expect(recorded).toContainEqual({ dimension: `user:${userId}`, max: 2 }); // 用户帽 → user 维（修复前缺失）
@@ -892,7 +889,7 @@ describe('终审修复回归（限流维度并罚 / 收据归属 / 终态重试�
     const res = await runChat(systemContext(reqId), {
       userId, apiKeyId: null, appId: null,
       rpmLimit: null, tpmLimit: null, userRpmLimit: null, userTpmLimit: null, allowedModels: null,
-    }, streamBody(seeded.model));
+    }, streamBody(seeded.model), 'chat');
     expect(res.status).toBe(200);
     await new Promise((r) => setTimeout(r, 1_300)); // 首败 500ms 退避 → 第二次成功
     expect(calls).toBe(2);

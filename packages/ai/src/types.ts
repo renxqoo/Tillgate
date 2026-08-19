@@ -69,8 +69,13 @@ export interface RequestCtx {
   deadlineMs?: number;
   /** 调用方取消：客户端断开、请求总 deadline 或服务 drain。 */
   signal?: AbortSignal;
-  /** 调用端点：chat（默认）或 embeddings（adapter 据此选上游路径） */
-  endpoint?: Endpoint;
+  /**
+   * 调用端点（必填——adapter 据此决定上游路径）。
+   * 历史教训：曾经可选并兜底 'chat'，导致 embeddings/模态族生产路径全部
+   * 寻址到 /v1/chat/completions（mock 上游不校验路径，测试拦不住）。
+   * 端点知识在路由边界已知，必须显式传递，不留隐式默认。
+   */
+  endpoint: Endpoint;
 }
 
 /** usage 归一化（缓存计费数据源） */
