@@ -207,17 +207,30 @@ export function createRunChat(deps: PipelineDeps) {
 
     let leaseStarted = false;
     let lastError: { code?: string; message?: string; status?: number } | undefined;
-    /** 上游 4xx 透传（OpenAI 兼容语义：客户端问题原码返回——不吞成 502、不空耗 fallback） */
-    const passthrough4xx = (error: { code?: string; message?: string; status?: number }) =>
-      ({
+    /** 上游 4xx 透传（OpenAI 兼容语义：客户端问题原码返回——不吞成 502、不空耗 fallback）。
+     *  透传≠免收尾：TPM 预占归还 + request.failed 三路释放（4xx = 上游确定未计费） */
+    const passthrough4xx = async (error: {
+      code?: string; message?: string; status?: number;
+    }): Promise<ChatResponse> => {
+      if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
+      await deps.billing.signal(ctx, {
+        type: 'request.failed',
+        requestId,
+        reason: (error.code ?? 'upstream_client_error').slice(0, 64),
+      });
+      return {
         status: error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502,
         body: {
           error: {
             code: error.code ?? 'upstream_error',
-            message: sanitizeUpstreamDetail(error.message, { externalModel: body.model, realModels: quote.candidates.map((c) => c.realModel) }),
+            message: sanitizeUpstreamDetail(error.message, {
+              externalModel: body.model,
+              realModels: quote.candidates.map((c) => c.realModel),
+            }),
           },
         },
-      }) satisfies ChatResponse;
+      };
+    };
     const startChannel = async (channelId: number, amount: string): Promise<boolean> => {
       const reservation = await deps.billing.reserveChannel(ctx, { requestId, channelId, amount });
       if (!reservation.allowed) {
@@ -353,7 +366,7 @@ export function createRunChat(deps: PipelineDeps) {
           if (decisive.deadCredential) await markDead(channel.channelId);
           if (!isChannelSwitchable(decisive.code)) {
             if ((decisive.status ?? 0) >= 400 && (decisive.status ?? 0) < 500) {
-              return passthrough4xx(decisive);
+              return await passthrough4xx(decisive);
             }
             break;
           }

@@ -11,7 +11,7 @@
 import type { Ai } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
 import type { Redis } from 'ioredis';
-import { bumpRouteCache, recordAudit } from '@ai-gateway/http';
+import { recordAudit } from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
 import {
   createRepositories,
@@ -108,7 +108,6 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
 
-  const bump = () => (deps.redis ? bumpRouteCache(deps.redis) : Promise.resolve());
 
   return {
     async list(ctx, query) {
@@ -155,7 +154,6 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
           tpmLimit: input.tpmLimit ?? null,
         }),
       );
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -188,7 +186,6 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
         }),
       );
       if (!row) throw new AppError(404, 'model_not_found', '模型不存在');
-      await bump();
       // 价格变更影响计费：全量补丁进审计（历史可解释）
       await recordAudit(db, {
         actor: 'admin',
@@ -204,7 +201,6 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
     async retire(ctx, input) {
       const ok = await repos.modelMapping.retireMapping({ db, ...ctx }, { mappingId: input.mappingId });
       if (!ok) throw new AppError(404, 'model_not_found', '模型不存在');
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -228,7 +224,6 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
           })),
         }),
       );
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,

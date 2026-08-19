@@ -166,70 +166,6 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/admin-api:
-    dependencies:
-      '@ai-gateway/ai':
-        specifier: workspace:*
-        version: link:../../packages/ai
-      '@ai-gateway/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@ai-gateway/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@ai-gateway/identity':
-        specifier: workspace:*
-        version: link:../../packages/identity
-      '@ai-gateway/ledger':
-        specifier: workspace:*
-        version: link:../../packages/ledger
-      '@ai-gateway/ledger-core':
-        specifier: workspace:*
-        version: link:../../packages/ledger-core
-      '@ai-gateway/tracing':
-        specifier: workspace:*
-        version: link:../../packages/tracing
-      '@ai-gateway/wallet':
-        specifier: workspace:*
-        version: link:../../packages/wallet
-      '@hono/node-server':
-        specifier: ^1.19.0
-        version: 1.19.17(hono@4.13.0)
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      hono:
-        specifier: ^4.13.0
-        version: 4.13.0
-      nodemailer:
-        specifier: ^9.0.5
-        version: 9.0.5
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.0.0
-        version: 4.23.5
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.2
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
   apps/admin-api-v2:
     dependencies:
       '@ai-gateway/ai':
@@ -298,7 +234,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
 
   apps/client:
     dependencies:
@@ -427,58 +363,6 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/client-api:
-    dependencies:
-      '@ai-gateway/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@ai-gateway/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@ai-gateway/identity':
-        specifier: workspace:*
-        version: link:../../packages/identity
-      '@ai-gateway/ledger':
-        specifier: workspace:*
-        version: link:../../packages/ledger
-      '@ai-gateway/ledger-core':
-        specifier: workspace:*
-        version: link:../../packages/ledger-core
-      '@ai-gateway/wallet':
-        specifier: workspace:*
-        version: link:../../packages/wallet
-      '@hono/node-server':
-        specifier: ^1.19.0
-        version: 1.19.17(hono@4.13.0)
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      hono:
-        specifier: ^4.13.0
-        version: 4.13.0
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.0.0
-        version: 4.23.5
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
   apps/client-api-v2:
     dependencies:
       '@ai-gateway/core':
@@ -536,70 +420,6 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
-  apps/gateway:
-    dependencies:
-      '@ai-gateway/ai':
-        specifier: workspace:*
-        version: link:../../packages/ai
-      '@ai-gateway/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@ai-gateway/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@ai-gateway/ledger':
-        specifier: workspace:*
-        version: link:../../packages/ledger
-      '@ai-gateway/wallet':
-        specifier: workspace:*
-        version: link:../../packages/wallet
-      '@hono/node-server':
-        specifier: ^1.19.0
-        version: 1.19.17(hono@4.13.0)
-      '@hono/zod-validator':
-        specifier: ^0.9.0
-        version: 0.9.0(hono@4.13.0)(zod@4.4.3)
-      '@opentelemetry/api':
-        specifier: ^1.9.1
-        version: 1.9.1
-      bullmq:
-        specifier: ^6.0.7
-        version: 6.0.7(ioredis@6.0.0)(pg@8.22.0)
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      hono:
-        specifier: ^4.13.0
-        version: 4.13.0
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
-      jose:
-        specifier: ^6.2.8
-        version: 6.2.8
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.0.0
-        version: 4.23.5
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.2
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
@@ -698,64 +518,6 @@ importers:
       typescript:
         specifier: ^5.9.0
         version: 5.9.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
-  apps/worker:
-    dependencies:
-      '@ai-gateway/ai':
-        specifier: workspace:*
-        version: link:../../packages/ai
-      '@ai-gateway/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@ai-gateway/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@ai-gateway/identity':
-        specifier: workspace:*
-        version: link:../../packages/identity
-      '@ai-gateway/ledger':
-        specifier: workspace:*
-        version: link:../../packages/ledger
-      '@ai-gateway/tracing':
-        specifier: workspace:*
-        version: link:../../packages/tracing
-      '@ai-gateway/wallet':
-        specifier: workspace:*
-        version: link:../../packages/wallet
-      bullmq:
-        specifier: ^6.0.7
-        version: 6.0.7(ioredis@6.0.0)(pg@8.22.0)
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
-      '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.3
-      pg:
-        specifier: ^8.22.0
-        version: 8.22.0
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.2)(yaml@2.9.0)
-      tsx:
-        specifier: ^4.0.0
-        version: 4.23.5
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.2
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
@@ -1074,43 +836,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.10
         version: 4.1.10(vitest@4.1.10)
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
-      typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(vite@8.2.0(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.5)(yaml@2.9.0))
-
-  packages/ledger:
-    dependencies:
-      '@ai-gateway/core':
-        specifier: workspace:*
-        version: link:../core
-      '@ai-gateway/db':
-        specifier: workspace:*
-        version: link:../db
-      '@ai-gateway/ledger-core':
-        specifier: workspace:*
-        version: link:../ledger-core
-      '@ai-gateway/wallet':
-        specifier: workspace:*
-        version: link:../wallet
-      drizzle-orm:
-        specifier: ^0.45.2
-        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/pg@8.20.3)(pg@8.22.0)
-      ioredis:
-        specifier: ^6.0.0
-        version: 6.0.0
-    devDependencies:
-      '@ai-gateway/http':
-        specifier: workspace:*
-        version: link:../http
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.1
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.25)(tsx@4.23.5)(typescript@5.9.3)(yaml@2.9.0)
@@ -2224,12 +1949,6 @@ packages:
     engines: {node: '>=18.14.1'}
     peerDependencies:
       hono: ^4
-
-  '@hono/zod-validator@0.9.0':
-    resolution: {integrity: sha512-n0ZSXmCiHVIp4Y5wlOOyZCeTd/rsawA/qW1cipB8QOYKZ9N8Tk0nZUZCXho9cu374AN4JpDNKioNKBJ/W+LBug==}
-    peerDependencies:
-      hono: '>=4.11.2'
-      zod: ^3.25.0 || ^4.0.0
 
   '@hookform/resolvers@5.7.1':
     resolution: {integrity: sha512-8wS/P4UDr5sQDe4nFaV51TVyfDPrWgNIXweqG0Bs9Z5LSuzKLb+RQNPvkN2oHM5SRrJyWrVH/F+LOUcFjUyvwQ==}
@@ -5681,10 +5400,6 @@ packages:
     resolution: {integrity: sha512-Z+iLaBGVaSjbIzQ4pX6XV41HrooLsQ10ZWPUehGmuantvzWoDVBnmsdUcOIDM1t+yPor5pDhVlDESgOMEGxhHA==}
     engines: {node: '>=6.0.0'}
 
-  nodemailer@9.0.5:
-    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
-    engines: {node: '>=6.0.0'}
-
   npm-run-path@4.0.1:
     resolution: {integrity: sha512-S48WzZW777zhNIrn7gxOlISNAqi9ZC/uQFnRdbeIHhZhCA6UqpkOT8T1G7BvfdgP4Er8gF4sUbaS0i7QvIfCWw==}
     engines: {node: '>=8'}
@@ -7385,11 +7100,6 @@ snapshots:
   '@hono/node-server@1.19.17(hono@4.13.0)':
     dependencies:
       hono: 4.13.0
-
-  '@hono/zod-validator@0.9.0(hono@4.13.0)(zod@4.4.3)':
-    dependencies:
-      hono: 4.13.0
-      zod: 4.4.3
 
   '@hookform/resolvers@5.7.1(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.84.0(react@19.2.8))(zod@4.4.3)':
     dependencies:
@@ -9248,17 +8958,6 @@ snapshots:
       ioredis: 5.11.1
       pg: 8.22.0
 
-  bullmq@6.0.7(ioredis@6.0.0)(pg@8.22.0):
-    dependencies:
-      cron-parser: 5.7.0
-      msgpackr: 2.0.5
-      node-abort-controller: 3.1.1
-      semver: 7.8.5
-      tslib: 2.8.1
-    optionalDependencies:
-      ioredis: 6.0.0
-      pg: 8.22.0
-
   bundle-name@4.1.0:
     dependencies:
       run-applescript: 7.1.0
@@ -10355,8 +10054,6 @@ snapshots:
   node-releases@2.0.53: {}
 
   nodemailer@6.10.1: {}
-
-  nodemailer@9.0.5: {}
 
   npm-run-path@4.0.1:
     dependencies:

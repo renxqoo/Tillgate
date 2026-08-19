@@ -14,7 +14,7 @@
  */
 import { encrypt } from '@ai-gateway/core';
 import type { Redis } from 'ioredis';
-import { bumpRouteCache, recordAudit } from '@ai-gateway/http';
+import { recordAudit } from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -245,7 +245,6 @@ export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
         return { providerId: provider.id, channelId, created, updated };
       });
 
-      if (deps.redis) await bumpRouteCache(deps.redis);
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,

@@ -15,7 +15,10 @@ import { E2EKeys, E2E_MODEL, e2eDb, e2ePost, encryptionKeyOf, startE2EGateway, t
 /** 跨 app 测试导入（vitest 运行时解析；tsc 不跨 app rootDir——类型本地声明） */
 type WorkerHandles = { stop(): Promise<void> };
 type WorkerConfig = Record<string, unknown>;
+let workerEntryPath = '';
 async function importStartWorker(): Promise<(config: WorkerConfig) => WorkerHandles> {
+  // 导入前禁用模块级自启动（显式开关——NODE_ENV 守卫在部分运行器形态下不可靠）
+  process.env.WORKER_NO_AUTOSTART = '1';
   // 跨 app 导入：cwd 在不同运行方式下漂移（repo 根/apps/app 根）——候选探测定位
   const { resolve } = await import('node:path');
   const { existsSync } = await import('node:fs');
@@ -24,7 +27,8 @@ async function importStartWorker(): Promise<(config: WorkerConfig) => WorkerHand
     resolve(process.cwd(), '../worker-v2/src/index.ts'),
     resolve(process.cwd(), 'worker-v2/src/index.ts'),
   ];
-  const workerEntry = candidates.find((c) => existsSync(c));
+  workerEntryPath = candidates.find((c) => existsSync(c))!;
+  const workerEntry = workerEntryPath;
   if (!workerEntry) throw new Error(`worker-v2 入口未找到（cwd=${process.cwd()}）`);
   const mod = (await import(/* @vite-ignore */ workerEntry)) as { startWorker(config: WorkerConfig): WorkerHandles };
   return mod.startWorker;
@@ -248,7 +252,7 @@ describe('E2E ⑯ worker-v2 全链', () => {
     expect(bill.rows[0]!.status).toBe('settlement_pending'); // 无人消费
     // 手动结算收尾（避免清理 FK）
     await keys.settleAll(userId);
-  }, 60_000);
+  }, 30_000);
 });
 
 function expectDecimalEq(actual: string, expected: string): void {

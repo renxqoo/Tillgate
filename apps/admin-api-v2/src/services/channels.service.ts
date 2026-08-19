@@ -12,7 +12,7 @@
 import type { Ai } from '@ai-gateway/ai';
 import { encrypt, decrypt } from '@ai-gateway/core';
 import type { Redis } from 'ioredis';
-import { bumpRouteCache, maskUpstreamKey, recordAudit } from '@ai-gateway/http';
+import { maskUpstreamKey, recordAudit} from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -121,7 +121,6 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
 
-  const bump = () => (deps.redis ? bumpRouteCache(deps.redis) : Promise.resolve());
 
   return {
     async list(ctx, query) {
@@ -170,7 +169,6 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
           tpmLimit: input.tpmLimit ?? null,
         }),
       );
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -202,7 +200,6 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
         return repos.channel.updateChannel({ db: tx, ...ctx }, { channelId: input.channelId, patch });
       });
       if (!row) throw new AppError(404, 'channel_not_found', '渠道不存在');
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -217,7 +214,6 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
     async retire(ctx, input) {
       const ok = await repos.channel.retireChannel({ db, ...ctx }, { channelId: input.channelId });
       if (!ok) throw new AppError(404, 'channel_not_found', '渠道不存在');
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -287,7 +283,6 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
         }
       }
 
-      if (success > 0) await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,

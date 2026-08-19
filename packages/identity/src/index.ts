@@ -35,16 +35,6 @@ export {
 } from '@ai-gateway/identity-core';
 
 // 登录限流（单源硬锁 + identifier-only 分布式信号，namespace 区分用户/管理员）
-export {
-  recordLoginFailure,
-  resetLoginFailures,
-  clientIp,
-  LOGIN_FAIL_THRESHOLD,
-  LOGIN_FAIL_WINDOW_S,
-  LOGIN_LOCK_DURATION_S,
-  LOGIN_DISTRIBUTED_SIGNAL_THRESHOLD,
-  type ThrottleCheck,
-} from './login-throttle.js';
 
 // 登录验证码挑战（client-api 强制邮箱验证 / admin-api 2FA 共用；PG 挑战表实现）
 export {

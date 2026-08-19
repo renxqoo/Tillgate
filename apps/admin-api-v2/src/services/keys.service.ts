@@ -4,7 +4,7 @@
  * 预览列外永不回 keyHash（明文在创建时一次性返回，管理面只见预览）。
  */
 import type { Redis } from 'ioredis';
-import { invalidateKeyAuthCache, recordAudit } from '@ai-gateway/http';
+import { recordAudit } from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -70,7 +70,6 @@ export function createAdminKeysService(deps: AdminKeysServiceDeps): AdminKeysSer
       });
       if (!updated) throw new AppError(404, 'api_key_not_found', 'API Key 不存在');
       if (deps.redis) {
-        await invalidateKeyAuthCache(deps.redis, [updated.keyHash]);
       }
       await recordAudit(db, {
         actor: 'admin',

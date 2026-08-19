@@ -33,8 +33,13 @@ import {
 import { startHealthServer } from './health.js';
 import { createSettleWakeupConsumer } from './wakeup.js';
 
+/** 实例登记（排障探针）：进程内活着的 startWorker 实例——多实例即泄漏源 */
+export const liveWorkerInstances: { owner: string; startedAt: number }[] = [];
+
 export interface WorkerHandles {
   stop(): Promise<void>;
+  /** 观测探针（测试）：唤醒 consumer 是否存在（排障 stop 语义用） */
+  hasWakeConsumer(): boolean;
 }
 
 export async function startWorker(
@@ -43,6 +48,7 @@ export async function startWorker(
 ): Promise<WorkerHandles> {
   const ctx = systemContext(config.WORKER_OWNER_ID);
   const repos = createRepositories();
+  liveWorkerInstances.push({ owner: config.WORKER_OWNER_ID, startedAt: Date.now() });
   // Redis 必配（首选组件：ai 状态共享；连不上拒绝启动）
   const redis = createRedisClient(config.REDIS_URL, { serviceName: 'worker-v2' });
   await assertRedisReachable(redis, 'worker-v2', config.REDIS_URL);
@@ -268,7 +274,10 @@ export async function startWorker(
   healthServer?.unref?.();
 
   return {
+    hasWakeConsumer: () => settleWakeup != null,
     async stop() {
+      const idx = liveWorkerInstances.findIndex((i) => i.owner === config.WORKER_OWNER_ID);
+      if (idx >= 0) liveWorkerInstances.splice(idx, 1);
       running = false; // 拒新批次
       for (const timer of timers) clearInterval(timer);
       // 全部在途批次完成（宽限上界内）；账务安全网：认领租约到期由他副本/下轮 recover 接管
@@ -288,7 +297,10 @@ export async function startWorker(
   };
 }
 
-if (process.env.NODE_ENV !== 'test') {
+// 自启动守卫：NODE_ENV 在某些测试运行器形态下不设 'test'（实测全局 vitest 4.1.1），
+// 模块被测试动态导入即幽灵自启——加显式退出开关（测试导入方 opt-out）
+const autostartDisabled = process.env.WORKER_NO_AUTOSTART === '1' || process.env.VITEST === 'true';
+if (process.env.NODE_ENV !== 'test' && !autostartDisabled) {
   const handles = await startWorker(loadConfig());
   const shutdown = (signal: string) => {
     console.log(`[worker] ${signal} received, stopping`);

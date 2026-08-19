@@ -7,7 +7,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { Redis } from 'ioredis';
-import { invalidateKeyAuthCache, recordAudit } from '@ai-gateway/http';
+import { recordAudit } from '@ai-gateway/http';
 import { hashPassword } from '@ai-gateway/identity-core';
 import { advanceAnchor } from '@ai-gateway/identity';
 import type { Db } from '@ai-gateway/repository';
@@ -178,10 +178,7 @@ export function createUsersService(deps: UsersServiceDeps): UsersService {
         patch.tpmLimit !== undefined ||
         patch.dailySpendLimit !== undefined
       ) {
-        if (deps.redis) {
-          const hashes = await repos.user.listKeyHashesByUser({ db, ...ctx }, input.userId);
-          await invalidateKeyAuthCache(deps.redis, hashes);
-        }
+
       }
 
       await recordAudit(db, {

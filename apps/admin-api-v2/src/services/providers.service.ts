@@ -6,7 +6,7 @@
  */
 import { SUPPORTED_PROTOCOLS } from '@ai-gateway/ai';
 import type { Redis } from 'ioredis';
-import { bumpRouteCache, recordAudit } from '@ai-gateway/http';
+import { recordAudit } from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories, type ProviderRow } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -47,7 +47,6 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
 
-  const bump = () => (deps.redis ? bumpRouteCache(deps.redis) : Promise.resolve());
 
   return {
     async list(ctx, query) {
@@ -69,7 +68,6 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
         baseUrl: input.baseUrl,
         status: input.status,
       });
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -88,7 +86,6 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
         patch: input.patch,
       });
       if (!row) throw new AppError(404, 'provider_not_found', '供应商不存在');
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,
@@ -103,7 +100,6 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
     async retire(ctx, input) {
       const ok = await repos.provider.retire({ db, ...ctx }, { providerId: input.providerId });
       if (!ok) throw new AppError(404, 'provider_not_found', '供应商不存在');
-      await bump();
       await recordAudit(db, {
         actor: 'admin',
         adminId: input.adminId,

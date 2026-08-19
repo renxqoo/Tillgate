@@ -324,6 +324,36 @@ subscriptionName/list 删）、redeem 只回 codeId、支付旧回调路径删�
 - **支付回调 URL 迁移（兼容层拆除后成为强制项）**：EPAY 后台 notify_url 与 Stripe
   webhook 端点必须指向 /v1/payments/notify/epay|stripe——旧路径已 404，漏配=充值不入账
 
+## §12 v1 正式退役（2026-08-20，用户拍板）
+
+删除范围（`git rm` 353 文件）：
+- 四应用：apps/gateway、apps/worker、apps/client-api、apps/admin-api
+- v1 账本：packages/ledger（**ledger-core 保留**——db schema/迁移依赖，非 v1 专属）
+- 根脚本清理：dev:client-api/dev:admin-api/start:* v1 六条；regress filter 去除 v1 排除
+- v1 专属共享模块下线：http cache.ts（v1 路由缓存失效——v2 网关直读 DB 无缓存）、
+  http csrf.ts（v2 纯 Bearer 无 Cookie）、identity login-throttle.ts（v1 fail-open 登录
+  限流——v2 用 core fail-closed 守卫）、wallet metering 子导出（v1 计费公式——v2 在 domain rating）
+- admin-api-v2 的 bumpRouteCache/invalidateKeyAuthCache 十二处调用全部拆除（失效的是
+  v1 网关的 60s 缓存——对 v2 是无效操作）
+- compose：v1 四服务块删除；console-client/console-admin 指向 client-api-v2:8081 /
+  admin-api-v2:8082；**nginx upstream 切 gateway-v2:8083**（生产入口正式切换）
+- .env.example：30 行 v1 专属键清理
+- Dockerfile.server 注释更新（v2 五应用）
+
+**保留**：trace-receiver（用户决策）、ledger-core、全部迁移文件。
+
+**过程中抓修两个真 bug**：
+1. 4xx 透传缺收尾（第三轮透传改造引入）：透传路径未归还 TPM 预扣、未发
+   request.failed 三路释放——上游 4xx 后预扣滞留到 TTL。已补齐收尾。
+2. worker 模块级自启动守卫脆弱：`NODE_ENV !== 'test'` 在部分测试运行器形态下不可靠
+   （实测全局 vitest 不设 NODE_ENV）——e2e 动态导入 worker 入口即幽灵自启消费共享库。
+   已加显式 `WORKER_NO_AUTOSTART=1` / `VITEST` 双守卫 + liveWorkerInstances 实例登记
+   探针（排障利器）+ e2e-worker 测试 opt-out。
+
+验证：全仓门禁 31/31（v1 删除后任务数自然下降）+ gateway e2e 7 文件 32 例全绿 +
+双前端 production build 通过。运维注意：**支付回调 URL 必须指向
+/v1/payments/notify/:provider**（EPAY 后台 + Stripe webhook）。
+
 ## §10 生产上线前资金安全大审查（2026-08-19，D 系列刷费用专项）
 
 用户指令：review v2 找 bug/逻辑/安全/性能/扣款资金问题 + 补 E2E 保生产 0 bug 0 资金问题 +

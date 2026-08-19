@@ -31,27 +31,6 @@ services:
     entrypoint: sleep infinity # 常驻，由 cron/手动触发 renew
     restart: unless-stopped
 
-  gateway:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: gateway
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      # B1 修复：容器内 localhost 指向容器自身，必须显式覆盖为 compose 服务名。
-      # POSTGRES_PASSWORD / POSTGRES_USER / POSTGRES_DB 来自 .env（与 postgres 服务同源）。
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-    
-  # ── v2 栈（2026-08-20 审计后加入：与 v1 服务并存，nginx 切流节奏待用户确认）──
-  # 生产入口当前仍指 v1（nginx gateway_upstream → gateway:8787）；
-  # 验证 v2 时将 nginx.conf 上游指向 gateway-v2:8083 并逐项对账后下线 v1。
   gateway-v2:
     build:
       context: ..
@@ -180,80 +159,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  worker:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: worker
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 30s
-    healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://localhost:8792/readyz']
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
-  admin-api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: admin-api
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 15s
-    # 安全：不发布任何端口，仅 compose 内网可达（console-admin 服务端代理调用）
-
-  # 用户面板 REST（从 admin-api 拆分，处理 /api/me /api/keys /api/apps /api/usage /api/redeem /api/auth/*）
-  client-api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.server
-      args:
-        APP: client-api
-    env_file:
-      - path: ../.env
-        required: true
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OTEL_TRACES_MODE: otlp
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    stop_grace_period: 15s
-    # 安全：不发布任何端口，仅 compose 内网可达（console-client 服务端代理调用）
-
   console-client:
     build:
       context: ..
@@ -262,10 +167,10 @@ services:
       - path: ../.env
         required: true
     environment:
-      # 拆分后：用户前端指向 client-api（用户面，8791）
-      CLIENT_API_BASE: http://client-api:8791
+      # v2 后端（用户面 8081）
+      CLIENT_API_BASE: http://client-api-v2:8081
     depends_on:
-      - client-api
+      - client-api-v2
     restart: unless-stopped
 
   console-admin:
@@ -276,10 +181,10 @@ services:
       - path: ../.env
         required: true
     environment:
-      # 管理后台指向 admin-api（管理面，8790）
-      ADMIN_API_BASE: http://admin-api:8790
+      # v2 后端（管理面 8082）
+      ADMIN_API_BASE: http://admin-api-v2:8082
     depends_on:
-      - admin-api
+      - admin-api-v2
     restart: unless-stopped
 
   migrate:
