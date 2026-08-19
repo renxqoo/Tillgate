@@ -14,7 +14,7 @@ const encryptionKey = 'bind-test-key-0123456789abcdef';
 const candidate: RouteCandidateRow = {
   channelId: 1, channelName: 'ch', apiKeyEnc: encrypt('sk-real', encryptionKey),
   baseUrlOverride: null, providerName: 'p', providerBaseUrl: 'https://up.test',
-  providerProtocol: 'openai-compatible', priority: 1, weight: 1,
+  providerProtocol: 'openai-compatible', providerVendor: null, priority: 1, weight: 1,
   rpmLimit: null, tpmLimit: null, upstreamBudget: '1000',
 };
 

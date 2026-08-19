@@ -9,6 +9,8 @@ export interface ProviderInput {
   name: string;
   baseUrl: string;
   protocol?: string;
+  /** 厂商档案（空串 = 不设置/清除——纯透传） */
+  vendor?: string | null;
   status?: number;
 }
 
@@ -22,6 +24,7 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
         name: input.name.trim(),
         baseUrl: input.baseUrl.trim(),
         protocol: input.protocol?.trim() || SUPPORTED_PROTOCOLS[0]!,
+        vendor: input.vendor?.trim() ? input.vendor.trim() : null,
         status: input.status ?? 0,
       },
     });

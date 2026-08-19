@@ -99,3 +99,44 @@ describe('供应商 CRUD 边界', () => {
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('invalid_sort_field');
   });
 });
+
+describe('厂商档案 vendor（词表单一真相 = ai 包 VENDOR_PROFILES）', () => {
+  it('合法档案 openai → 201 入库且列表回显；未知档案 → 400 且不触库', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const bad = await request('/v1/providers', {
+      token,
+      body: { name: uid('p'), vendor: 'nonexistent-vendor', baseUrl: 'https://api.example.com/v1' },
+    });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe('invalid_vendor');
+
+    const name = uid('p');
+    const ok = await request('/v1/providers', {
+      token,
+      body: { name, vendor: 'openai', baseUrl: 'https://api.openai.com/v1' },
+    });
+    expect(ok.status).toBe(201);
+    expect(((await ok.json()) as { vendor: string }).vendor).toBe('openai');
+    const [row] = await db.select().from(providersTable).where(eq(providersTable.name, name));
+    expect(row?.vendor).toBe('openai');
+  });
+
+  it('PATCH vendor=null 清除档案（回退纯透传）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const name = uid('p');
+    const created = await request('/v1/providers', {
+      token,
+      body: { name, vendor: 'openai', baseUrl: 'https://api.openai.com/v1' },
+    });
+    const id = ((await created.json()) as { id: number }).id;
+    const res = await request(`/v1/providers/${id}`, {
+      method: 'PATCH',
+      token,
+      body: { vendor: null },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { vendor: string | null }).vendor).toBeNull();
+  });
+});

@@ -9,6 +9,7 @@ import type { AiConfig } from '../config';
 import type { BreakerStorage, DeadCredentialStorage } from '../config';
 import type { AiEvent } from '../events';
 import type { ChannelDesc, RequestCtx, UpstreamError } from '../types';
+import { mergeParamRules, resolveVendorProfile } from '../registry/vendor-profiles';
 import { assertChannelAndCtx, channelKey } from './context';
 
 export type PreparedRequest =
@@ -50,8 +51,10 @@ export function createPrepare(deps: PrepareDeps) {
     if (cfgErr) return { ok: false, error: cfgErr };
     const adapter = deps.resolveAdapter(input.channel);
     if ('code' in adapter) return { ok: false, error: adapter };
-    // 参数抹平规则唯一来源：DB param_rules（per-model），无 provider 内置默认
-    const rules = input.ctx.paramRules ?? {};
+    // 参数抹平规则：vendor profile（厂商家族怪癖默认）+ per-model 规则（DB，优先），
+    // 编译进单一执行引擎（adapter.normalizeRequest 的 ignore→map→clamp）
+    const profile = resolveVendorProfile(input.channel.vendor);
+    const rules = mergeParamRules(profile?.params, input.ctx.paramRules);
     const { body, adjustments } = adapter.normalizeRequest(input.request, rules);
     // model 重写与 stream_options 注入等协议特定终改由 adapter.finalizeRequestBody
     // 在发往上游前完成（chat/chatStream 入口调用），编排层不再出现协议字面量。

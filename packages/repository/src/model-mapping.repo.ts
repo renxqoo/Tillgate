@@ -300,6 +300,7 @@ export class ModelMappingRepository {
       baseUrlOverride: string | null;
       providerBaseUrl: string;
       providerProtocol: string;
+      providerVendor: string | null;
     }>
   > {
     return c.db
@@ -310,6 +311,7 @@ export class ModelMappingRepository {
         baseUrlOverride: channels.baseUrlOverride,
         providerBaseUrl: providers.baseUrl,
         providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
       })
       .from(modelChannels)
       .innerJoin(channels, eq(modelChannels.channelId, channels.id))

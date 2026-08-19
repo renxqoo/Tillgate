@@ -1,6 +1,6 @@
 import { ServerIcon } from "lucide-react";
 
-import { SUPPORTED_PROTOCOLS } from "@ai-gateway/ai";
+import { SUPPORTED_PROTOCOLS, vendorProfileNames } from "@ai-gateway/ai";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -37,12 +37,12 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
       searchPlaceholder="搜索名称 / baseUrl"
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
-      actions={<CreateProviderDialog protocols={SUPPORTED_PROTOCOLS} />}
+      actions={<CreateProviderDialog protocols={SUPPORTED_PROTOCOLS} vendors={vendorProfileNames()} />}
       error={error}
       page={page}
       pageSize={PAGE_SIZE}
     >
-      <ProvidersTable providers={rows} protocols={SUPPORTED_PROTOCOLS} />
+      <ProvidersTable providers={rows} protocols={SUPPORTED_PROTOCOLS} vendors={vendorProfileNames()} />
     </ListPage>
   );
 }

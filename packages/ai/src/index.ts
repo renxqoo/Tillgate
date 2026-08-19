@@ -16,6 +16,15 @@ export {
   type TaskPortErrorShape,
 } from './generation/task-adapter';
 export { ServerDrainAbort, asServerDrainAbort } from './errors/server-drain';
+// 契约分粒度扩展入口 + 厂商档案（admin 校验/下拉引用 vendorProfileNames 单一真相）
+export { defineAdapter, type DefineAdapterInput } from './registry/define-adapter';
+export {
+  VENDOR_PROFILES,
+  mergeParamRules,
+  resolveVendorProfile,
+  vendorProfileNames,
+  type VendorProfile,
+} from './registry/vendor-profiles';
 export { MemoryKvStorage } from './internal/memory-storage';
 export { defaultAiConfig } from './config';
 export type {
@@ -58,11 +67,16 @@ export * from './protocol/responses-chat';
 export * from './protocol/completions-chat';
 export { estimateAudioDurationSeconds } from './usage/media-duration';
 export type {
+  Addressing,
+  BodyFinalizer,
+  ErrorMapper,
   ParamAdjustment,
   ProbeRequest,
   ProtocolAdapter,
   ProtocolTaskOps,
   UpstreamRequestPlan,
+  UsageExtractor,
+  WireCodec,
 } from './adapters/protocol-adapter';
 export type {
   Ai,

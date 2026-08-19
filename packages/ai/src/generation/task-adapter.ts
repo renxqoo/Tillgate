@@ -15,6 +15,8 @@ export interface TaskChannelDesc {
   providerName: string;
   providerBaseUrl: string;
   providerProtocol: string;
+  /** 厂商档案引用（providers.vendor；null = 无档案纯透传） */
+  providerVendor?: string | null;
 }
 
 export interface TaskPortErrorShape {
@@ -40,6 +42,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
     baseUrl: channel.baseUrlOverride ?? channel.providerBaseUrl,
     apiKey: deps.decrypt(channel.apiKeyEnc, deps.encryptionKey),
     protocol: channel.providerProtocol,
+    ...(channel.providerVendor != null ? { vendor: channel.providerVendor } : {}),
   });
 
   return {

@@ -264,6 +264,8 @@ export interface AdminProviderRow {
   name: string;
   baseUrl: string;
   protocol: string;
+  /** 厂商档案引用（VENDOR_PROFILES 词表键；null = 无档案纯透传） */
+  vendor: string | null;
   status: number;
   createdAt: string;
   /**

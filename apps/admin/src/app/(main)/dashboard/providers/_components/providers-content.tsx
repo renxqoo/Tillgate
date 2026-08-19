@@ -52,18 +52,19 @@ const schema = z.object({
   name: z.string().min(1, "请输入名称"),
   baseUrl: z.string().url("请输入合法的 URL"),
   protocol: z.string().min(1),
+  vendor: z.string(),
   status: z.coerce.number().int(),
 });
 type FormValues = z.infer<typeof schema>;
 
-export function ProvidersTable({ providers, protocols }: { readonly providers: ReadonlyArray<AdminProviderRow>; readonly protocols: ReadonlyArray<string> }) {
+export function ProvidersTable({ providers, protocols, vendors }: { readonly providers: ReadonlyArray<AdminProviderRow>; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>名称</TableHead>
           <TableHead>Base URL</TableHead>
-          <TableHead className="w-32">协议</TableHead>
+          <TableHead className="w-40">协议 / 厂商档案</TableHead>
           <TableHead className="w-24">状态</TableHead>
           <TableHead className="w-44">更新时间</TableHead>
           <TableHead className="w-24 text-right">操作</TableHead>
@@ -77,21 +78,24 @@ export function ProvidersTable({ providers, protocols }: { readonly providers: R
             </TableCell>
           </TableRow>
         ) : (
-          providers.map((p) => <ProviderRowItem key={p.id} provider={p} protocols={protocols} />)
+          providers.map((p) => <ProviderRowItem key={p.id} provider={p} protocols={protocols} vendors={vendors} />)
         )}
       </TableBody>
     </Table>
   );
 }
 
-function ProviderRowItem({ provider, protocols }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string> }) {
+function ProviderRowItem({ provider, protocols, vendors }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
   return (
     <TableRow>
       <TableCell className="font-medium">{provider.name}</TableCell>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{provider.baseUrl}</code>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">{provider.protocol}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {provider.protocol}
+        {provider.vendor ? <span className="ml-1 rounded bg-muted px-1 py-0.5">{provider.vendor}</span> : null}
+      </TableCell>
       <TableCell>
         {provider.status === 0 ? (
           <StatusPill tone="success" label="启用" />
@@ -106,7 +110,7 @@ function ProviderRowItem({ provider, protocols }: { provider: AdminProviderRow; 
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <EditProviderDialog provider={provider} protocols={protocols} />
+          <EditProviderDialog provider={provider} protocols={protocols} vendors={vendors} />
           <ConfirmAction
             confirm={`确定删除供应商 ${provider.name}？关联渠道将不可用。`}
             action={async () => (await import("../actions")).deleteProviderAction(provider.id)}
@@ -130,13 +134,13 @@ function ProviderRowItem({ provider, protocols }: { provider: AdminProviderRow; 
   );
 }
 
-export function CreateProviderDialog({ protocols }: { readonly protocols: ReadonlyArray<string> }) {
+export function CreateProviderDialog({ protocols, vendors }: { readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
-    defaultValues: { name: "", baseUrl: "", protocol: protocols[0] ?? "openai-compatible", status: 0 },
+    defaultValues: { name: "", baseUrl: "", protocol: protocols[0] ?? "openai-compatible", vendor: "", status: 0 },
   });
 
   function onSubmit(values: FormValues) {
@@ -164,7 +168,7 @@ export function CreateProviderDialog({ protocols }: { readonly protocols: Readon
           </DialogTitle>
           <DialogDescription>定义一个 LLM 供应商入口</DialogDescription>
         </DialogHeader>
-        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-form" protocols={protocols} />
+        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-form" protocols={protocols} vendors={vendors} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
@@ -178,7 +182,7 @@ export function CreateProviderDialog({ protocols }: { readonly protocols: Readon
   );
 }
 
-function EditProviderDialog({ provider, protocols }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string> }) {
+function EditProviderDialog({ provider, protocols, vendors }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -188,6 +192,7 @@ function EditProviderDialog({ provider, protocols }: { provider: AdminProviderRo
       name: provider.name,
       baseUrl: provider.baseUrl,
       protocol: provider.protocol,
+      vendor: provider.vendor ?? "",
       status: provider.status,
     },
   });
@@ -214,7 +219,7 @@ function EditProviderDialog({ provider, protocols }: { provider: AdminProviderRo
             <PencilIcon /> 编辑供应商 - {provider.name}
           </DialogTitle>
         </DialogHeader>
-        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-edit-form" protocols={protocols} />
+        <ProviderForm form={form} onSubmit={onSubmit} formId="provider-edit-form" protocols={protocols} vendors={vendors} />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
@@ -229,7 +234,7 @@ function EditProviderDialog({ provider, protocols }: { provider: AdminProviderRo
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ProviderForm({ form, onSubmit, formId, protocols }: { form: any; onSubmit: (v: FormValues) => void; formId: string; protocols: ReadonlyArray<string> }) {
+function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: any; onSubmit: (v: FormValues) => void; formId: string; protocols: ReadonlyArray<string>; vendors: ReadonlyArray<string> }) {
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -268,6 +273,26 @@ function ProviderForm({ form, onSubmit, formId, protocols }: { form: any; onSubm
                 <SelectContent>
                   {protocols.map((p) => (
                     <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+        />
+        <Controller
+          control={form.control}
+          name="vendor"
+          render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
+            <Field>
+              <FieldLabel>厂商档案（参数怪癖预设）</FieldLabel>
+              <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">无（纯透传）</SelectItem>
+                  {vendors.map((v) => (
+                    <SelectItem key={v} value={v}>{v}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

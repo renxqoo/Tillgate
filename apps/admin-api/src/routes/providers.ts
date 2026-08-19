@@ -14,6 +14,8 @@ import type { SessionEnv } from '../middleware/session.js';
 const createSchema = z.object({
   name: z.string().min(1).max(32),
   protocol: z.string().max(32).optional(),
+  /** 厂商档案引用（VENDOR_PROFILES 词表；null/空串 = 清除（纯透传）） */
+  vendor: z.string().max(32).nullable().optional(),
   baseUrl: z.string().url().max(255),
   status: z.number().int().min(0).max(1).optional(),
 });
@@ -21,6 +23,7 @@ const createSchema = z.object({
 const updateSchema = z.object({
   name: z.string().min(1).max(32).optional(),
   protocol: z.string().max(32).optional(),
+  vendor: z.string().max(32).nullable().optional(),
   baseUrl: z.string().url().max(255).optional(),
   status: z.number().int().min(0).max(1).optional(),
 });

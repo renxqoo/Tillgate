@@ -13,6 +13,12 @@ export interface ChannelDesc {
    * （未注册协议显式报错 invalid_config，不静默回退）——词表单一真相见 SUPPORTED_PROTOCOLS。
    */
   protocol: string;
+  /**
+   * 厂商档案引用（providers.vendor，可选）：openai-compatible 协议族的参数怪癖
+   * 预设键（词表单一真相见 registry/vendor-profiles.ts 的 VENDOR_PROFILES）。
+   * 在 prepare 处编译进 ParamRules（与 per-model 规则合并，model 侧优先）。
+   */
+  vendor?: string;
 }
 
 /** 调用端点（决定 adapter 选择的上游路径） */

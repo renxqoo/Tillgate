@@ -55,7 +55,7 @@ const defaultAdapters: ProtocolAdapter[] = [
   new OpenAICompatibleAdapter(),
   new AnthropicAdapter(),
   new GeminiAdapter(),
-  new AzureOpenAIAdapter(),
+  AzureOpenAIAdapter,
   new AwsBedrockAdapter(),
   new VertexAiAdapter(),
   new MiniMaxAdapter(),

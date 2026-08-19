@@ -428,6 +428,13 @@
       "when": 1787476400000,
       "tag": "0061_billing_config",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787563200000,
+      "tag": "0062_providers_vendor",
+      "breakpoints": true
     }
   ]
 }
