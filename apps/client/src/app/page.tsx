@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
+import { getMe } from "@ai-gateway/api-client";
 
 import { APP_CONFIG } from "@/config/app-config";
 import { fetchPublicPricing, PRICING_UNIT_LABEL } from "@/lib/public-pricing";
@@ -144,7 +145,7 @@ const FEATURES = [
 const PROVIDERS = ["DeepSeek", "智谱 GLM", "MiniMax", "OpenRouter", "Ollama"];
 
 export default async function Landing() {
-  const models = await fetchPublicPricing();
+  const [me, models] = await Promise.all([getMe(), fetchPublicPricing()]);
   const showcase = models
     ? models
         .toSorted((a, b) => Number(b.isFree) - Number(a.isFree))
@@ -168,14 +169,24 @@ export default async function Landing() {
             <Link href="/pricing" className="transition-colors hover:text-foreground">模型定价</Link>
           </nav>
           <div className="flex items-center gap-3">
-            <Button asChild variant="outline" size="sm" className="rounded-full">
-              <Link href="/login">登录</Link>
-            </Button>
-            <Button asChild size="sm" className="rounded-full">
-              <Link href="/register">
-                免费开始 <ArrowRight />
-              </Link>
-            </Button>
+            {me ? (
+              <Button asChild size="sm" className="rounded-full">
+                <Link href="/dashboard">
+                  进入控制台 <ArrowRight />
+                </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild variant="outline" size="sm" className="rounded-full">
+                  <Link href="/login">登录</Link>
+                </Button>
+                <Button asChild size="sm" className="rounded-full">
+                  <Link href="/register">
+                    免费开始 <ArrowRight />
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -204,8 +215,8 @@ export default async function Landing() {
               </p>
               <div className="flex flex-wrap items-center gap-4 pt-2">
                 <Button asChild size="lg" className="rounded-full">
-                  <Link href="/register">
-                    免费开始 <ArrowRight />
+                  <Link href={me ? "/dashboard" : "/register"}>
+                    {me ? "进入控制台" : "免费开始"} <ArrowRight />
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="rounded-full">
@@ -317,13 +328,19 @@ export default async function Landing() {
               </p>
               <div className="relative flex flex-wrap items-center justify-center gap-4">
                 <Button asChild size="lg" className="rounded-full">
-                  <Link href="/register">
-                    立即注册 <ArrowRight />
+                  <Link href={me ? "/dashboard" : "/register"}>
+                    {me ? "进入控制台" : "立即注册"} <ArrowRight />
                   </Link>
                 </Button>
-                <Button asChild variant="outline" size="lg" className="rounded-full">
-                  <Link href="/login">已有账号，去登录</Link>
-                </Button>
+                {me ? (
+                  <Button asChild variant="outline" size="lg" className="rounded-full">
+                    <Link href="/dashboard/playground">去操练场试试</Link>
+                  </Button>
+                ) : (
+                  <Button asChild variant="outline" size="lg" className="rounded-full">
+                    <Link href="/login">已有账号，去登录</Link>
+                  </Button>
+                )}
               </div>
             </div>
           </div>
