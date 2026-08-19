@@ -93,13 +93,13 @@ function HeroVisual() {
           </code>
         </pre>
       </div>
-      <div className="absolute -left-8 top-8 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+      <div className="absolute -left-3 top-10 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
         <GaugeIcon className="size-3.5 text-primary" /> 流式输出 · 首 token 秒回
       </div>
-      <div className="absolute -right-4 top-1/2 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+      <div className="absolute -right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
         <RepeatIcon className="size-3.5 text-primary" /> 渠道容灾 · 自动切换
       </div>
-      <div className="absolute -bottom-6 left-10 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+      <div className="absolute -bottom-4 left-8 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
         <ShieldCheckIcon className="size-3.5 text-primary" /> 双分录账本 · 分毫不差
       </div>
     </div>
