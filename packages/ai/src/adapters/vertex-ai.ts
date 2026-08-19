@@ -29,6 +29,9 @@ export class VertexAiAdapter implements ProtocolAdapter {
   readonly protocol = 'vertex-ai';
   private tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
+  /** token 交换的 fetch 注入点（测试替身用；缺省全局 fetch） */
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+
   private parseSa(apiKey: string): ServiceAccountKey | null {
     try {
       const sa = JSON.parse(apiKey) as ServiceAccountKey;
@@ -39,8 +42,8 @@ export class VertexAiAdapter implements ProtocolAdapter {
     }
   }
 
-  /** SA → OAuth2 access token（缓存按 SA 指纹；fetch 可注入便于测试） */
-  private async getAccessToken(sa: ServiceAccountKey, fetchImpl: typeof fetch = fetch): Promise<string> {
+  /** SA → OAuth2 access token（缓存按 SA 指纹；fetch 经构造器注入便于测试） */
+  private async getAccessToken(sa: ServiceAccountKey): Promise<string> {
     const cacheKey = sa.client_email;
     const cached = this.tokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
@@ -58,7 +61,7 @@ export class VertexAiAdapter implements ProtocolAdapter {
     const signature = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key.replace(/\\n/g, '\n'));
     const assertion = `${unsigned}.${signature.toString('base64url')}`;
 
-    const res = await fetchImpl('https://oauth2.googleapis.com/token', {
+    const res = await this.fetchImpl('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),

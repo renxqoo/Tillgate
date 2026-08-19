@@ -1,4 +1,4 @@
-import type { ChannelDesc, UpstreamError, Usage } from '../types';
+import type { ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import {
   chatRequestToClaude,
@@ -39,7 +39,7 @@ export class AnthropicAdapter implements ProtocolAdapter {
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] } {
     // 规范形基底（chat 参数语义）+ claude 特有参数透传
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }

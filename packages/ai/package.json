@@ -19,7 +19,8 @@
     "test": "vitest run --exclude test/real --passWithNoTests",
     "test:real": "vitest run test/real --passWithNoTests",
     "test:watch": "vitest --exclude test/real",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "eventsource-parser": "^3.1.0",

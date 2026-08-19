@@ -1,4 +1,4 @@
-import type { ChannelDesc, UpstreamError, Usage } from '../types';
+import type { ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import {
   chatRequestToGemini,
@@ -35,7 +35,7 @@ export class GeminiAdapter implements ProtocolAdapter {
     return geminiBody;
   }
 
-  normalizeRequest(req: unknown): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] } {
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
 

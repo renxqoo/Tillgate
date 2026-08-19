@@ -1,7 +1,7 @@
 import { classifyHttpError } from '../errors/classify';
 import { asRecord } from '../internal/util';
 import { normalizeUsage } from '../usage/normalize';
-import type { ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
+import type { ChannelDesc, Endpoint, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 
 /**
@@ -49,7 +49,7 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
   /** 上游寻址：endpoint 决定路径；认证头带幂等键（见下方 finalizeRequestBody 上方 C5 注释） */
   planRequest(
     channel: ChannelDesc,
-    input: { endpoint: 'chat' | 'embeddings' | 'images' | 'images_edits' | 'audio_speech' | 'audio_transcription' | 'audio_translation' | 'rerank' | 'moderations'; model: string; requestId: string; stream: boolean },
+    input: { endpoint: Endpoint; model: string; requestId: string; stream: boolean },
   ): { path: string; headers: Record<string, string> } {
     void input.stream;
     const path =
@@ -97,7 +97,7 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
    */
   finalizeRequestBody(
     body: Record<string, unknown>,
-    input: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean },
+    input: { endpoint: Endpoint; model: string; stream: boolean },
   ): Record<string, unknown> {
     const out: Record<string, unknown> = { ...body, model: input.model };
     if (input.stream) {
@@ -114,6 +114,10 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
     req: unknown,
     rules: ParamRules,
   ): { body: unknown; adjustments: ParamAdjustment[] } {
+    // FormData 直通底线：{...form} 展开会把 multipart 字节静默毁成空对象
+    if (typeof FormData !== 'undefined' && req instanceof FormData) {
+      return { body: req, adjustments: [] };
+    }
     const body = asRecord(req);
     if (!body) return { body: req, adjustments: [] }; // 非对象透传底线：不破坏请求
     const adjustments: ParamAdjustment[] = [];

@@ -81,8 +81,8 @@ export interface ResolvedCalibration {
 export function resolveCalibration(
   providerName?: string,
   model?: string,
+  calibration: TokenEstimateCalibration = DEFAULT_TOKEN_ESTIMATE_CALIBRATION,
 ): ResolvedCalibration {
-  const calibration = DEFAULT_TOKEN_ESTIMATE_CALIBRATION;
   let weights: TextTokenWeights = { ...calibration.defaults };
   let templateInputOffset = 0;
   let tokensPerByte = calibration.tokensPerByte;

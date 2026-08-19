@@ -174,11 +174,21 @@ export async function fetchUpstream(
   init: RequestInit,
   opts: FetchUpstreamOptions,
 ): Promise<Response> {
-  await resolveAndPin(url, opts);
+  // 已中止的信号不会再发 abort 事件（addEventListener 不回放）——派发前取消不得发出请求
+  if (opts.signal?.aborted) throw new Error('aborted before dispatch');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('connect timeout')), opts.connectMs);
+  // abort 事件不回放：监听必须在任何 await 之前挂（中止发生在 DNS 解析期间曾会丢失）
   const onExternalAbort = () => controller.abort();
   opts.signal?.addEventListener('abort', onExternalAbort, { once: true });
+  try {
+    // SSRF/协议校验错误原样上抛（具体错误信息是测试与排障契约，不吞成 network）
+    await resolveAndPin(url, opts);
+  } catch (err) {
+    clearTimeout(timer);
+    opts.signal?.removeEventListener('abort', onExternalAbort);
+    throw err;
+  }
   try {
     // 原生 fetch 保持响应体逐块流式传输；生产安全边界是不可由请求方控制的
     // provider host allowlist，加上 DNS 私网地址检查和 HTTPS 证书校验。

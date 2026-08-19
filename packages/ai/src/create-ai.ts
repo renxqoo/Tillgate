@@ -134,9 +134,16 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
 
       const { plan, url } = planUpstream(adapter, input.channel, input.ctx, false);
       const rec = asRecord(body);
-      const finalBody = rec
-        ? adapter.finalizeRequestBody(rec, { endpoint, model: input.ctx.model, stream: false })
-        : body;
+      // multipart 包装契约：路由把重组的完整上游 FormData 放在 body.upstreamForm
+      // （计量字段 model/audioSeconds 等留在 wrapper，不进上游）。此处拆包直传——
+      // 历史缺陷：曾直接 JSON.stringify(wrapper)，FormData 字段序列化为 {}，
+      // 文件字节静默丢失（mock 上游不校验 body 形状，测试拦不住）。
+      const wrappedForm =
+        rec !== null && rec.upstreamForm instanceof FormData ? (rec.upstreamForm as FormData) : null;
+      if (wrappedForm !== null && wrappedForm.has('model')) {
+        wrappedForm.set('model', input.ctx.model); // 对外名 → 真实名（与 JSON 路径同语义）
+      }
+      const finalBody = wrappedForm ?? (rec ? adapter.finalizeRequestBody(rec, { endpoint, model: input.ctx.model, stream: false }) : body);
       const { outcome, attempts } = await withRetry(
         createChatAttempt({
           channel: input.channel, ctx: input.ctx, url, plan, finalBody,
