@@ -93,7 +93,7 @@ function HeroVisual() {
           </code>
         </pre>
       </div>
-      <div className="absolute -bottom-5 left-1/2 flex w-max max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-2">
+      <div className="absolute top-full mt-3 left-1/2 flex w-max max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-2">
         <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
           <GaugeIcon className="size-3.5 text-primary" /> 流式输出 · 首 token 秒回
         </span>
