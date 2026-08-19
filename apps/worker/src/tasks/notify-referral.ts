@@ -2,15 +2,16 @@ import { and, eq, gte, lt, sql } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import type { Db } from '@ai-gateway/db';
 import { notificationChannels, notifyOutbox, referrals, usageLogs } from '@ai-gateway/db/schema';
-import type { Ledger } from '@ai-gateway/ledger';
+import type { Wallet } from '@ai-gateway/wallet';
+import { createDomainOperations } from '@ai-gateway/ledger/platform';
 import type { Logger } from '@ai-gateway/core';
 
 /**
- * worker 定时任务（C3 佣金日结 + C4 告警投递）。
+ * worker 定时任务（C3 佣金日结 + C4 告警投递；S7 重写：佣金走 wallet.credit）。
  *
  * runReferralCommission：昨日 usage_logs（status=0）按邀请人聚合 × 佣金比例 →
- * grantPromotionalCredit（operationId=referral-commission:{inviterId}:{yyyyMMdd}
- * 按日幂等；transactions 部分唯一索引双保险）。
+ * wallet.credit（operationId=referral-commission:{inviterId}:{yyyyMMdd} 按日幂等，
+ * ledger-core 操作行双保险）。
  *
  * runNotifyDispatch：轮询 notify_outbox 未投递行 → 按渠道 events 过滤 →
  * webhook POST + HMAC-SHA256 签名头（时间戳防重放）/ 邮件；指数退避重试 3 次
@@ -19,9 +20,10 @@ import type { Logger } from '@ai-gateway/core';
 
 export async function runReferralCommissionOnce(
   db: Db,
-  ledger: Ledger,
+  wallet: Wallet,
   opts: { commissionRate: number; now?: Date },
 ): Promise<{ credited: number }> {
+  const operations = createDomainOperations(db, ['promo.referral_commission']);
   const now = opts.now ?? new Date();
   const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
@@ -50,14 +52,22 @@ export async function runReferralCommissionOnce(
   for (const row of rows) {
     const amount = Number(row.total) * opts.commissionRate;
     if (amount <= 0) continue;
-    await ledger
-      .grantPromotionalCredit({
+    await operations
+      .run({
         operationId: `referral-commission:${row.inviterId}:${dayKey}`,
-        userId: row.inviterId,
-        amount: amount.toFixed(6),
-        kind: 'referral_commission',
-        refId: `referral-commission:${row.inviterId}:${dayKey}`,
-        remark: `邀请佣金（${dayKey}）+${amount.toFixed(6)}`,
+        kind: 'promo.referral_commission',
+        fingerprint: { kind: 'promo.referral_commission', userId: row.inviterId, dayKey },
+        execute: async (tx) => {
+          await wallet.credit({
+            userId: row.inviterId,
+            amount: amount.toFixed(6),
+            refType: 'promo',
+            refId: `referral-commission:${row.inviterId}:${dayKey}`,
+            memo: `邀请佣金（${dayKey}）+${amount.toFixed(6)}`,
+            tx: tx as unknown as import('@ai-gateway/wallet').DbLike,
+          });
+          return { credited: amount.toFixed(6), inviterId: row.inviterId, dayKey };
+        },
       })
       .then(() => {
         credited += 1;

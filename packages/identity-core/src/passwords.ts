@@ -6,7 +6,7 @@ import { IdentityInternalError, InvalidCredentialsError } from './errors.js';
 import { advisoryLock, credentialSetLockKey, runEffect, runTx } from './internal.js';
 import { identityCredentials, identityPasswords } from './schema.js';
 import { assertPasswordPolicy, hashPassword, verifyPassword } from './password.js';
-import { assertUserId, normalizeIdentifier } from './validation.js';
+import { assertUserId, DEFAULT_REALM, normalizeIdentifier } from './validation.js';
 import { advanceAnchor } from './revocation.js';
 import type { IdentityContext } from './context.js';
 import type {
@@ -87,7 +87,7 @@ export async function changePassword(
     if (updated.length === 0) {
       throw new IdentityInternalError('change_password', 'password row disappeared mid-transaction');
     }
-    return advanceAnchor(tx, userId, ctx.clock());
+    return advanceAnchor(tx, DEFAULT_REALM, userId, ctx.clock());
   });
 
   await runEffect(() =>
@@ -120,7 +120,7 @@ export async function resetPassword(
         target: identityPasswords.userId,
         set: { passwordHash: newHash, updatedAt: sql`now()` },
       });
-    return advanceAnchor(tx, userId, ctx.clock());
+    return advanceAnchor(tx, DEFAULT_REALM, userId, ctx.clock());
   });
 
   await runEffect(() =>

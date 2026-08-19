@@ -179,6 +179,8 @@ export const ERROR_REGISTRY = {
     message: '免费模型计数服务暂不可用，为防滥用已暂停免费模型请求',
   },
   insufficient_balance: { status: 402, message: '可用余额不足' },
+  account_frozen: { status: 403, message: '账户已被冻结' },
+  billing_configuration_error: { status: 503, message: '计费配置错误' },
   daily_spend_limit_exceeded: { status: 402, message: '今日花费已达上限' },
   member_daily_limit: { status: 402, message: '本日花费已达上限' },
   member_quota_exceeded: { status: 402, message: '本月配额已用完' },

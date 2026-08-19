@@ -1,0 +1,31 @@
+{
+  "name": "@ai-gateway/worker-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "结算 worker app：认领/结算/回收循环——业务全部来自 @ai-gateway/service 的 settlement 域，本 app 只是定时驱动壳",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_OPTIONS='--conditions=development' tsx watch --env-file=../../.env src/index.ts",
+    "build": "tsup src/index.ts --config ../../tsup.config.base.ts --format esm",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/ai": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/service": "workspace:*",
+    "bullmq": "^6.0.7",
+    "ioredis": "^5.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

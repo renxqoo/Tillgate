@@ -1,5 +1,5 @@
 /** 装配层：createLedger(db, options) → 3 个动词（run / operation / operations） */
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { AnyPgDatabase } from './internal.js';
 import { InvalidInputError } from './errors.js';
 import { getOperation, listOperations, runOperation } from './operations.js';
 import { buildGuards, KIND_VOCAB_RE } from './validation.js';
@@ -21,7 +21,7 @@ function resolveGuards(options: CreateLedgerOptions) {
   return buildGuards(options.kinds);
 }
 
-export function createLedger(db: NodePgDatabase, options: CreateLedgerOptions): Ledger {
+export function createLedger(db: AnyPgDatabase, options: CreateLedgerOptions): Ledger {
   const guards = resolveGuards(options);
   const effects = options.effects;
   return {

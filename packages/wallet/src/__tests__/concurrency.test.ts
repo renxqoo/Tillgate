@@ -3,7 +3,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { createWallet } from '../wallet';
-import { wallet, nextUser, ref, sameAmount, accountOf } from './helpers';
+import { wallet, nextUser, ref, sameAmount, accountOf, testPoolOptions } from './helpers';
 import { AuthorizationNotActiveError } from '../index';
 import { describe, expect, it } from 'vitest';
 describe('并发：资金安全竞态', () => {
@@ -23,7 +23,12 @@ describe('并发：资金安全竞态', () => {
     await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 't') });
     const results = await Promise.allSettled(
       Array.from({ length: 11 }, (_, i) =>
-        wallet.authorize({ userId: user, amount: '1', refType: 'order', refId: `${ref(user, 'sell')}-${i}` }),
+        wallet.authorize({
+          userId: user,
+          amount: '1',
+          refType: 'order',
+          refId: `${ref(user, 'sell')}-${i}`,
+        }),
       ),
     );
     const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
@@ -36,14 +41,21 @@ describe('并发：资金安全竞态', () => {
   it('并发 settle vs release 同一冻结单：恰好一方终态化，资金与状态一致', async () => {
     const user = nextUser();
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
-    await wallet.authorize({ userId: user, amount: '40', refType: 'order', refId: ref(user, 'duel') });
+    await wallet.authorize({
+      userId: user,
+      amount: '40',
+      refType: 'order',
+      refId: ref(user, 'duel'),
+    });
     const [settleRes, releaseRes] = await Promise.allSettled([
       wallet.settle({ refType: 'order', refId: ref(user, 'duel'), amount: '40' }),
       wallet.release({ refType: 'order', refId: ref(user, 'duel') }),
     ]);
     const settledWon = settleRes.status === 'fulfilled';
     if (settledWon) {
-      expect(releaseRes.status === 'rejected' || (releaseRes.value as { replayed: boolean }).replayed).toBeTruthy();
+      expect(
+        releaseRes.status === 'rejected' || (releaseRes.value as { replayed: boolean }).replayed,
+      ).toBeTruthy();
       expect(sameAmount(await wallet.balance(user), '60')).toBe(true);
     } else {
       expect(settleRes.reason).toBeInstanceOf(AuthorizationNotActiveError);
@@ -60,8 +72,20 @@ describe('并发：资金安全竞态', () => {
     await wallet.credit({ userId: b, amount: '10', refType: 'topup', refId: ref(b, 't') });
     // 若有死锁，vitest 默认 10s 超时即失败
     await Promise.all([
-      wallet.transfer({ from: { userId: a }, to: { userId: b }, amount: '5', refType: 'p2p', refId: ref(a, 'ab') }),
-      wallet.transfer({ from: { userId: b }, to: { userId: a }, amount: '5', refType: 'p2p', refId: ref(b, 'ba') }),
+      wallet.transfer({
+        from: { userId: a },
+        to: { userId: b },
+        amount: '5',
+        refType: 'p2p',
+        refId: ref(a, 'ab'),
+      }),
+      wallet.transfer({
+        from: { userId: b },
+        to: { userId: a },
+        amount: '5',
+        refType: 'p2p',
+        refId: ref(b, 'ba'),
+      }),
     ]);
     expect(sameAmount(await wallet.balance(a), '10')).toBe(true);
     expect(sameAmount(await wallet.balance(b), '10')).toBe(true);
@@ -73,7 +97,13 @@ describe('并发：资金安全竞态', () => {
     await wallet.credit({ userId: a, amount: '10', refType: 'topup', refId: ref(a, 't') });
     const results = await Promise.all(
       Array.from({ length: 5 }, () =>
-        wallet.transfer({ from: { userId: a }, to: { userId: b }, amount: '4', refType: 'p2p', refId: ref(a, 'tr5') }),
+        wallet.transfer({
+          from: { userId: a },
+          to: { userId: b },
+          amount: '4',
+          refType: 'p2p',
+          refId: ref(a, 'tr5'),
+        }),
       ),
     );
     expect(results.filter((r) => !r.replayed)).toHaveLength(1);
@@ -81,22 +111,30 @@ describe('并发：资金安全竞态', () => {
     expect(sameAmount(await wallet.balance(b), '4')).toBe(true);
   });
 
-
   it('8 路真并发同键 authorize：恰好一张冻结单（含唯一索引竞态兜底路径）', async () => {
     const user = nextUser();
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
     // 独立大池制造真并发窗口（共享池 max 3 会把竞态串行化成快速路径）
     const racePool = new Pool({
-      connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+      connectionString:
+        process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+      options: testPoolOptions,
       max: 8,
     });
     const raceWallet = createWallet(drizzle(racePool), {
-      accounts: [], refTypes: ['topup', 'order'], currencies: ['CNY'],
+      accounts: [],
+      refTypes: ['topup', 'order'],
+      currencies: ['CNY'],
     });
     try {
       const results = await Promise.all(
         Array.from({ length: 8 }, () =>
-          raceWallet.authorize({ userId: user, amount: '5', refType: 'order', refId: ref(user, 'race8') }),
+          raceWallet.authorize({
+            userId: user,
+            amount: '5',
+            refType: 'order',
+            refId: ref(user, 'race8'),
+          }),
         ),
       );
       expect(results.filter((r) => !r.replayed)).toHaveLength(1);
@@ -112,7 +150,12 @@ describe('并发：资金安全竞态', () => {
     const user = nextUser();
     await Promise.all(
       Array.from({ length: 20 }, (_, i) =>
-        wallet.credit({ userId: user, amount: '0.15', refType: 'topup', refId: `${ref(user, 'sum')}-${i}` }),
+        wallet.credit({
+          userId: user,
+          amount: '0.15',
+          refType: 'topup',
+          refId: `${ref(user, 'sum')}-${i}`,
+        }),
       ),
     );
     expect(sameAmount(await wallet.balance(user), '3')).toBe(true); // 20 × 0.15
@@ -123,7 +166,12 @@ describe('并发：资金安全竞态', () => {
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
     const results = await Promise.all(
       Array.from({ length: 5 }, () =>
-        wallet.refund({ userId: user, amount: '30', refType: 'topup_refund', refId: ref(user, 'rf5') }),
+        wallet.refund({
+          userId: user,
+          amount: '30',
+          refType: 'topup_refund',
+          refId: ref(user, 'rf5'),
+        }),
       ),
     );
     expect(results.filter((r) => !r.replayed)).toHaveLength(1);

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { HttpError, intParam, jsonBody, operationId, type KnownErrorCode } from '@ai-gateway/http';
 import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
+import { InsufficientCashError } from '@ai-gateway/wallet';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 
@@ -25,6 +26,10 @@ const changeSchema = z.object({
 });
 
 function mapError(error: unknown): never {
+  // 现金不足（订阅购买禁透支）：wallet InsufficientCashError → 402
+  if (error instanceof InsufficientCashError) {
+    throw new HttpError('INSUFFICIENT_BALANCE', error.message);
+  }
   if (error instanceof LedgerError) {
     const m = LEDGER_HTTP[error.code];
     throw new HttpError(m.code as KnownErrorCode, error.message || m.message);
@@ -40,7 +45,7 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
       try {
         // 团队套餐（allowSeats）：组织在账本事务内创建（T3）——路由层预建会在失败时
         // 留孤儿 org，且重放时新 org 改变指纹 → 409，幂等性失效。
-        const result = await s.ledger.subscribePlan({
+        const result = await s.subscription.purchase({
           operationId: operationId(c),
           userId: session.userId,
           planId: body.planId,
@@ -58,7 +63,7 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
       const id = intParam(c, 'id');
       const body = c.req.valid('json');
       try {
-        const result = await s.ledger.changeSubscription({
+        const result = await s.subscription.change({
           operationId: operationId(c),
           subscriptionId: id,
           targetPlanId: body.targetPlanId,
@@ -75,7 +80,7 @@ export function subscriptionRoutes(s: ClientServices): Hono<ClientEnv> {
       const session = c.get('session');
       const id = intParam(c, 'id');
       try {
-        const result = await s.ledger.renewSubscription({
+        const result = await s.subscription.renew({
           operationId: operationId(c),
           subscriptionId: id,
           userId: session.userId, // 限定自己的订阅

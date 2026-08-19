@@ -11,6 +11,36 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./rating": {
+      "development": "./src/rating/index.ts",
+      "types": "./dist/rating.d.ts",
+      "import": "./dist/rating.js"
+    },
+    "./subscription": {
+      "development": "./src/subscription/index.ts",
+      "types": "./dist/subscription.d.ts",
+      "import": "./dist/subscription.js"
+    },
+    "./channel-budget": {
+      "development": "./src/channel-budget/index.ts",
+      "types": "./dist/channel-budget.d.ts",
+      "import": "./dist/channel-budget.js"
+    },
+    "./billing": {
+      "development": "./src/billing/domain.ts",
+      "types": "./dist/billing.d.ts",
+      "import": "./dist/billing.js"
+    },
+    "./settlement": {
+      "development": "./src/settlement/index.ts",
+      "types": "./dist/settlement.d.ts",
+      "import": "./dist/settlement.js"
+    },
+    "./platform": {
+      "development": "./src/platform/index.ts",
+      "types": "./dist/platform.d.ts",
+      "import": "./dist/platform.js"
     }
   },
   "scripts": {
@@ -22,7 +52,8 @@
   "dependencies": {
     "@ai-gateway/core": "workspace:*",
     "@ai-gateway/db": "workspace:*",
-    "@ai-gateway/money": "workspace:*",
+    "@ai-gateway/ledger-core": "workspace:*",
+    "@ai-gateway/wallet": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^6.0.0"
   },

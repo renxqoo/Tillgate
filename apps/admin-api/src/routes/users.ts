@@ -5,9 +5,10 @@ import { MONEY_MAX, intParam, jsonBody, operationId, query, listQuerySchema } fr
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import {
-  getUserProfile, listUserAuditLogs, listUsers, listUserTransactions, mapLedgerError, setUserPassword,
+  getUserProfile, listUserAuditLogs, listUsers, listUserTransactions, setUserPassword,
   updateUser, userListQuerySchema, userTransactionsQuerySchema,
 } from '../services/users.js';
+import { mapMoneyError } from '../services/funds.js';
 
 /**
  * 用户管理（api-contract §4.4）。
@@ -99,31 +100,30 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       return c.json({ ok: true });
     })
 
-    // 手动调账（正负皆可，扣减拒绝透支）
+    // 手动调账（正负皆可，扣减受信用地板守卫——wallet transfer allowCredit）
     .post('/:id/adjust', jsonBody(userAdjustSchema), async (c) => {
       const id = intParam(c, 'id');
       const body = c.req.valid('json');
-      const amountStr = String(body.amount);
       try {
-        const result = await s.ledger.adminAdjust({
+        const result = await s.funds.adjust({
           operationId: operationId(c),
           userId: id,
-          amount: amountStr,
+          amount: String(body.amount),
           adminId: c.get('adminId'),
-          remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${amountStr}`,
+          remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${body.amount}`,
         });
         return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
       } catch (error) {
-        throw mapLedgerError(error);
+        throw mapMoneyError(error);
       }
     })
 
-    // 手动赠送（type=gift）
+    // 手动赠送（wallet.credit，counter-leg = outside 镜像）
     .post('/:id/gift', jsonBody(userGiftSchema), async (c) => {
       const id = intParam(c, 'id');
       const body = c.req.valid('json');
       try {
-        const result = await s.ledger.adminGift({
+        const result = await s.funds.gift({
           operationId: operationId(c),
           userId: id,
           amount: String(body.amount),
@@ -132,7 +132,7 @@ export function userAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         });
         return c.json({ ok: true, balanceBefore: result.balanceBefore, balanceAfter: result.balanceAfter });
       } catch (error) {
-        throw mapLedgerError(error);
+        throw mapMoneyError(error);
       }
     })
 

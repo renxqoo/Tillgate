@@ -99,6 +99,11 @@ export {
   identitySessionAnchors,
 } from './schema.js';
 
+// 会话吊销（独立工具：中间件校验链 / 业务事务内推进锚点直接复用）
+export { advanceAnchor, sessionValidAt } from './revocation.js';
+export { DEFAULT_REALM } from './validation.js';
+export type { AnyPgDatabase, DbLike, Tx } from './internal.js';
+
 // 密码工具（registerCredential 入参需要 hashPassword 产物；策略校验供业务注册前自查）
 export {
   hashPassword,

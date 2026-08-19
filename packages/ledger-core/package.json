@@ -17,7 +17,8 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "provision": "node ./dist/migrate-cli.js"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

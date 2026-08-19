@@ -10,7 +10,8 @@ import {
   type GenerationArtifact,
   type GenerationKind,
 } from '@ai-gateway/ai';
-import type { Billing, UsageReceipt } from '@ai-gateway/ledger';
+import type { UsageReceipt } from '@ai-gateway/ledger';
+import type { BillingDomain } from '@ai-gateway/ledger/billing';
 
 /**
  * 异步生成任务轮询（video/music，任务生命周期的 worker 侧驱动）：
@@ -31,7 +32,7 @@ import type { Billing, UsageReceipt } from '@ai-gateway/ledger';
 export interface GenerationPollerDeps {
   db: Db;
   ai: Ai;
-  billing: Billing;
+  billing: BillingDomain;
   logger: Logger;
   /** 单轮各段（超时/轮询/执行）的批量上界 */
   batch: number;

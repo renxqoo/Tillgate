@@ -23,8 +23,8 @@ export const PRICING_UNIT_LABEL: Record<string, string> = {
 };
 
 export async function fetchPublicPricing(): Promise<PricingModel[] | null> {
-  const base = process.env.CLIENT_API_BASE ?? 'http://127.0.0.1:8791';
-  const res = await fetch(`${base}/api/public/pricing`, { cache: 'no-store' }).catch(() => null);
+  const base = process.env.CLIENT_API_BASE!;
+  const res = await fetch(`${base}/v1/pricing`, { cache: 'no-store' }).catch(() => null);
   if (!res || !res.ok) return null;
   const data = (await res.json()) as { models?: PricingModel[] };
   return data.models ?? null;

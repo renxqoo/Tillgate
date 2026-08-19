@@ -2,13 +2,13 @@ import { serve } from '@hono/node-server';
 import { loadClientApiEnv, createLogger, initOtel } from '@ai-gateway/core';
 import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND } from '@ai-gateway/identity';
 import { createDb } from '@ai-gateway/db';
-import { createLedger } from '@ai-gateway/ledger';
-import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
+import { createWallet } from '@ai-gateway/wallet';
+import { createRedis } from '@ai-gateway/http';
 import { createApp } from './app.js';
 
 /**
  * client-api 启动入口（仅 bootstrap，无业务逻辑）：
- * 加载环境 → 初始化可观测性 → 组装依赖（db/redis/ledger）→ createApp → serve。
+ * 加载环境 → 初始化可观测性 → 组装依赖（db/redis/wallet）→ createApp → serve。
  */
 
 const env = loadClientApiEnv();
@@ -22,21 +22,17 @@ initOtel({
 
 const db = createDb(env.DATABASE_URL);
 const redis = createRedis(env.REDIS_URL);
-const ledger = createLedger({
-  db,
-  effects: {
-    balanceChanged: async ({ userId }) => {
-      await redis.del(balanceCache(userId)).catch(() => {});
-    },
-    // client-api 触发的资金变动均为用户自助行为（兑换/首登赠额），actor 记 user
-    audit: async (event) => recordAudit(db, { ...event, actor: 'user', adminId: null }),
-  },
+// S7：资金事实在 wallet（client-api 资金动词域：订阅/兑换/支付/营销）
+const wallet = createWallet(db, {
+  accounts: [],
+  refTypes: ['subscription', 'pack', 'redeem', 'payment', 'promo'],
+  currencies: ['CNY'],
 });
 
 const app = createApp({
   db,
   redis,
-  ledger,
+  wallet,
   logger,
   mailer: mailerFromEnv(env, USER_MAIL_BRAND),
   captcha: captchaFromEnv(env),

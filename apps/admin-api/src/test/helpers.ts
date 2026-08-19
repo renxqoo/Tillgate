@@ -1,5 +1,8 @@
 import { Hono } from 'hono';
-import { createBillingOperations, createLedger } from '@ai-gateway/ledger';
+import { createWallet } from '@ai-gateway/wallet';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
+import { createChannelBudget } from '@ai-gateway/ledger/channel-budget';
+import { createBillingDomain } from '@ai-gateway/ledger/billing';
 import { createPgTraceStore } from '@ai-gateway/tracing';
 import type { Db } from '@ai-gateway/db';
 import type { Logger } from '@ai-gateway/core';
@@ -7,6 +10,7 @@ import { errorHandler, type Redis } from '@ai-gateway/http';
 import type { AdminEnv } from '@ai-gateway/identity';
 import type { AdminServices } from '../services/index.js';
 import type { VoucherStorage } from '../services/voucher-storage.js';
+import { createAdminFunds } from '../services/funds.js';
 
 /**
  * admin-api 测试辅助：组装 stub 依赖与测试用 app。
@@ -55,11 +59,19 @@ export function stubVoucherStorage(): VoucherStorage {
 }
 
 export function makeServices(db: Db, overrides: Partial<AdminServices> = {}): AdminServices {
+  const wallet = createWallet(db, {
+    accounts: [],
+    refTypes: ['admin', 'subscription', 'pack'],
+    currencies: ['CNY'],
+  });
   return {
     db,
     redis: stubRedis(),
-    ledger: createLedger({ db }),
-    billingOperations: createBillingOperations({ db }),
+    wallet,
+    funds: createAdminFunds(db, wallet),
+    subscription: createSubscriptionDomain({ db, wallet }),
+    channelBudget: createChannelBudget({ db }),
+    billingReview: createBillingDomain({ db, wallet }).review(),
     tracingStore: createPgTraceStore(db),
     encryptionKey: TEST_ENCRYPTION_KEY,
     mailer: null,

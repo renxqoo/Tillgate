@@ -42,10 +42,14 @@ export interface AdminMeInfo {
  * 配套 ?page=&page_size=&q=&sort_by=&order= 查询参数）。
  */
 export interface Paginated<T> {
-  list: T[];
+  /** v2 信封 rows；v1 兼容 list（适配层统一读 rows ?? list） */
+  rows?: T[];
+  list?: T[];
   total: number;
   page: number;
-  page_size: number;
+  page_size?: number;
+  pageSize?: number;
+  limit?: number;
 }
 
 // ── Key (GET/POST /api/keys) ────────────────────────────────────────────────

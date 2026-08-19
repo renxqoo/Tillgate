@@ -1,13 +1,14 @@
-import { eq, and, sql, gte, lte, desc, gt, isNull } from 'drizzle-orm';
-import { users, rateCards, transactions, userSubscriptions, plans } from '@ai-gateway/db/schema';
+import { eq, and, sql, desc, gt, isNull } from 'drizzle-orm';
+import { users, rateCards, userSubscriptions, plans } from '@ai-gateway/db/schema';
 import { z } from 'zod';
 import {
-  HttpError, recordAudit, paginateQuery,
-  listQuerySchema, buildList, countAll } from '@ai-gateway/http';
+  HttpError, recordAudit,
+  listQuerySchema } from '@ai-gateway/http';
 import type { ClientServices } from './index.js';
 
 /**
- * 用户面板：当前用户信息与资金流水（api-contract §4.1 / §4.3）。
+ * 用户面板：当前用户信息与资金流水（api-contract §4.1 / §4.3；S7 重写：
+ * 余额读 wallet（单一资金事实），流水 = wallet statement 游标）。
  * 写操作（改显示名）与读查询同层；路由只做入参校验与响应。
  */
 
@@ -25,7 +26,6 @@ export async function getMe(s: ClientServices, userId: number) {
       displayName: users.displayName,
       rateCardId: users.rateCardId,
       rateCardName: rateCards.name,
-      balance: users.balance,
       status: users.status,
       isEnterprise: users.isEnterprise,
       rpmLimit: users.rpmLimit,
@@ -38,7 +38,8 @@ export async function getMe(s: ClientServices, userId: number) {
     .where(eq(users.id, userId))
     .limit(1);
   if (rows.length === 0) throw new HttpError('USER_NOT_FOUND', '用户不存在');
-  return rows[0];
+  const account = (await s.wallet.accounts(userId))[0];
+  return { ...rows[0], balance: account?.balance ?? '0' };
 }
 
 /** 修改显示名称（自助，1-32 字符去空白） */
@@ -101,35 +102,22 @@ export async function getCurrentSubscription(s: ClientServices, userId: number) 
 }
 
 export async function listMyTransactions(s: ClientServices, userId: number, q: z.infer<typeof txQuerySchema>) {
-  const { page, limit, offset, where, orderBy } = buildList(q, {
-    search: [transactions.remark, transactions.refId, transactions.type],
-    conditions: [
-      eq(transactions.userId, userId),
-      q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
-      q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
-    ],
-    sort: {
-      by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
-      fallback: 'createdAt',
-      tiebreaker: transactions.id,
-    },
-  });
-  // 显式列（T6）：select() 全列会把 transactions.created_by（操作管理员 id）泄给终端用户
-  const txColumns = {
-    id: transactions.id,
-    userId: transactions.userId,
-    type: transactions.type,
-    amount: transactions.amount,
-    balanceBefore: transactions.balanceBefore,
-    balanceAfter: transactions.balanceAfter,
-    refType: transactions.refType,
-    refId: transactions.refId,
-    remark: transactions.remark,
-    createdAt: transactions.createdAt,
+  // S7：资金流水 = wallet statement（newest-first 游标；余额链由内核保证恒等）
+  void q;
+  const limit = 20;
+  const result = await s.wallet.statement({ userId, limit });
+  return {
+    list: result.items.map((item) => ({
+      id: item.transactionId,
+      userId,
+      type: item.kind,
+      amount: item.amount,
+      balanceAfter: item.balanceAfter,
+      refType: item.refType,
+      refId: item.refId,
+      remark: item.memo,
+      createdAt: item.createdAt,
+    })),
+    nextCursor: result.nextCursor,
   };
-  return paginateQuery(
-    page,
-    s.db.select(txColumns).from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-    countAll(s.db, transactions, where),
-  );
 }

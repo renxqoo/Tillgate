@@ -1,8 +1,8 @@
-import { eq, and, sql, gte, lte } from 'drizzle-orm';
-import { users, rateCards, rateCardCoefficients, apiKeys, transactions, auditLogs } from '@ai-gateway/db/schema';
-import { hashPassword } from '@ai-gateway/identity';
-import { LedgerError, LEDGER_HTTP } from '@ai-gateway/ledger';
-import { HttpError, invalidateKeyAuthCache, recordAudit, buildList, countAll, listQuerySchema, paginateQuery, type KnownErrorCode } from '@ai-gateway/http';
+import { eq, and } from 'drizzle-orm';
+import { users, rateCards, rateCardCoefficients, apiKeys, auditLogs } from '@ai-gateway/db/schema';
+import { hashPassword, advanceAnchor } from '@ai-gateway/identity';
+import { toDecimal } from '@ai-gateway/wallet/metering';
+import { HttpError, invalidateKeyAuthCache, recordAudit, buildList, countAll, listQuerySchema, paginateQuery } from '@ai-gateway/http';
 import { z } from 'zod';
 import type { AdminServices } from './index.js';
 
@@ -11,8 +11,7 @@ import type { AdminServices } from './index.js';
  *
  * 安全：userProfileColumns 是显式列白名单（不含 passwordHash），
  *       所有返回用户数据的查询必须走它——防止 .returning() 无参整行泄露凭据。
- *       注意：userProfileColumns 含联表列（rateCards.name），只能用于 SELECT；
- *       update 的 returning 用 userColumns（仅 users 表自身列）。
+ * S7：余额/在途/授信不在 users 列——资金读数经 wallet 契约富集（单一事实源）。
  */
 export const userColumns = {
   id: users.id,
@@ -22,9 +21,6 @@ export const userColumns = {
   email: users.email,
   displayName: users.displayName,
   rateCardId: users.rateCardId,
-  balance: users.balance,
-  reservedBalance: users.reservedBalance,
-  creditLimit: users.creditLimit,
   dailySpendLimit: users.dailySpendLimit,
   status: users.status,
   isEnterprise: users.isEnterprise,
@@ -36,12 +32,9 @@ export const userColumns = {
   updatedAt: users.updatedAt,
 };
 
-/** 列表/详情展示列：userColumns + 费率卡名（联表）。
- *  availableBalance = 可用余额口径：普通 Key 扣费 + 购买套餐/加油包都用余额，
- *  判定是 balance - reserved，不含 creditLimit（透支额度不构成购买力/可用余额展示）。 */
+/** 列表/详情展示列：userColumns + 费率卡名（联表）。 */
 export const userProfileColumns = {
   ...userColumns,
-  availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,
   rateCardName: rateCards.name,
 };
 
@@ -65,15 +58,25 @@ export type UserPatch = {
 /** 用户不存在（供调整错误分支复用） */
 export const USER_NOT_FOUND = new HttpError('USER_NOT_FOUND', '用户不存在');
 
-/**
- * ledger 业务错误 → HTTP（映射表单一真相：packages/ledger error-catalog）。
- */
-export function mapLedgerError(error: unknown): HttpError {
-  if (error instanceof LedgerError) {
-    const m = LEDGER_HTTP[error.code];
-    return new HttpError(m.code as KnownErrorCode, error.message || m.message);
+/** wallet 账户摘要富集（balance/inFlight/creditLimit/availableBalance，单一资金事实） */
+export async function enrichWithWallet(
+  s: AdminServices,
+  rows: Array<Record<string, unknown> & { id: number }>,
+): Promise<void> {
+  for (const row of rows) {
+    const summaries = await s.wallet.accounts(row.id);
+    const a = summaries[0];
+    row.balance = a?.balance ?? '0';
+    row.reservedBalance = a?.inFlight ?? '0';
+    row.creditLimit = a?.creditLimit ?? '0';
+    row.availableBalance = a
+      ? String(
+          toDecimal(a.balance)
+            .plus(toDecimal(a.creditLimit))
+            .minus(toDecimal(a.inFlight)),
+        )
+      : '0';
   }
-  throw error;
 }
 
 /**
@@ -105,25 +108,38 @@ export async function updateUser(
   if (patch.rateCardId !== undefined) update.rateCardId = patch.rateCardId;
   if (patch.rpmLimit !== undefined) update.rpmLimit = patch.rpmLimit;
   if (patch.tpmLimit !== undefined) update.tpmLimit = patch.tpmLimit;
-  if (patch.creditLimit !== undefined) update.creditLimit = patch.creditLimit;
   if (patch.dailySpendLimit !== undefined) update.dailySpendLimit = patch.dailySpendLimit;
   if (patch.displayName !== undefined) update.displayName = patch.displayName;
   if (patch.email !== undefined) {
     update.email = patch.email;
-    // email 是 org 邀请匹配键且关联登录身份——变更视同敏感操作，吊销既有会话
-    update.sessionInvalidBefore = new Date();
   }
   if (patch.isEnterprise !== undefined) update.isEnterprise = patch.isEnterprise;
   // 封禁时记原因；解封清空原因
   if (patch.status === 1) update.freezeReason = patch.freezeReason ?? '管理员封禁';
   if (patch.status === 0) update.freezeReason = null;
 
-  const [updated] = await s.db
-    .update(users)
-    .set(update)
-    .where(eq(users.id, id))
-    .returning(userColumns);
+  const [updated] = await s.db.transaction(async (tx) => {
+    const rows = await tx
+      .update(users)
+      .set(update)
+      .where(eq(users.id, id))
+      .returning(userColumns);
+    if (rows.length > 0 && patch.email !== undefined) {
+      // email 是 org 邀请匹配键且关联登录身份——变更视同敏感操作，吊销既有会话
+      await advanceAnchor(tx, 'user', id, new Date());
+    }
+    return rows;
+  });
   if (!updated) throw USER_NOT_FOUND;
+
+  // 授信地板归 wallet（users.credit_limit 退役）；PATCH 语义无幂等键，refId 唯一
+  if (patch.creditLimit !== undefined) {
+    await s.funds.setCreditLimit({
+      userId: id,
+      amount: String(patch.creditLimit),
+      refId: `admin-credit-line-${id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+  }
 
   // 封禁/解封/限流变更 → 清 gateway auth cache（auth:key:{hash} TTL 60s，不主动清则延迟生效）
   if (patch.status !== undefined || patch.rpmLimit !== undefined || patch.tpmLimit !== undefined) {
@@ -170,8 +186,7 @@ export async function setUserPassword(
   }
 
   const hash = await hashPassword(password);
-  // R5-2：重置密码即吊销该用户全部既有会话
-  const update: Record<string, unknown> = { passwordHash: hash, sessionInvalidBefore: new Date(), updatedAt: new Date() };
+  const update: Record<string, unknown> = { passwordHash: hash, updatedAt: new Date() };
   if (cur[0]!.rateCardId === null) {
     const card = await s.db
       .select({ id: rateCards.id })
@@ -183,7 +198,11 @@ export async function setUserPassword(
       await ensureGlobalCoefficient(s, card[0]!.id);
     }
   }
-  await s.db.update(users).set(update).where(eq(users.id, id));
+  await s.db.transaction(async (tx) => {
+    await tx.update(users).set(update).where(eq(users.id, id));
+    // R5-2：重置密码即吊销该用户全部既有会话
+    await advanceAnchor(tx, 'user', id, new Date());
+  });
 
   await recordAudit(s.db, {
     actor: 'admin',
@@ -237,7 +256,6 @@ export async function listUsers(s: AdminServices, q: z.infer<typeof userListQuer
       by: {
         id: users.id,
         subject: users.subject,
-        balance: users.balance,
         createdAt: users.createdAt,
         lastLoginAt: users.lastLoginAt,
       },
@@ -245,7 +263,7 @@ export async function listUsers(s: AdminServices, q: z.infer<typeof userListQuer
       tiebreaker: users.id,
     },
   });
-  return paginateQuery(
+  const result = await paginateQuery(
     page,
     s.db
       .select(userProfileColumns)
@@ -257,6 +275,9 @@ export async function listUsers(s: AdminServices, q: z.infer<typeof userListQuer
       .offset(offset),
     countAll(s.db, users, where),
   );
+  // 资金读数富集（wallet 单一事实源）
+  await enrichWithWallet(s, result.list as Array<Record<string, unknown> & { id: number }>);
+  return result;
 }
 
 export async function getUserProfile(s: AdminServices, id: number) {
@@ -267,29 +288,29 @@ export async function getUserProfile(s: AdminServices, id: number) {
     .where(eq(users.id, id))
     .limit(1);
   if (rows.length === 0) throw USER_NOT_FOUND;
+  await enrichWithWallet(s, rows as unknown as Array<Record<string, unknown> & { id: number }>);
   return rows[0];
 }
 
-export async function listUserTransactions(s: AdminServices, id: number, q: z.infer<typeof userTransactionsQuerySchema>) {
-  // from/to 时间范围（与用户面 /api/me/transactions 同语义）
-  const { page, limit, offset, where, orderBy } = buildList(q, {
-    search: [transactions.remark, transactions.refId, transactions.type],
-    conditions: [
-      eq(transactions.userId, id),
-      q.from ? gte(transactions.createdAt, new Date(q.from)) : undefined,
-      q.to ? lte(transactions.createdAt, new Date(q.to)) : undefined,
-    ],
-    sort: {
-      by: { id: transactions.id, amount: transactions.amount, createdAt: transactions.createdAt },
-      fallback: 'createdAt',
-      tiebreaker: transactions.id,
-    },
-  });
-  return paginateQuery(
-    page,
-    s.db.select().from(transactions).where(where).orderBy(...orderBy).limit(limit).offset(offset),
-    countAll(s.db, transactions, where),
-  );
+export async function listUserTransactions(s: AdminServices, id: number, _q: z.infer<typeof userTransactionsQuerySchema>) {
+  // S7：资金流水 = wallet statement（游标 newest-first；旧 transactions 表封存退役）
+  const limit = Math.min(100, Math.max(1, _q.page_size ?? 20));
+  const result = await s.wallet.statement({ userId: id, limit });
+  return {
+    items: result.items.map((item) => ({
+      id: item.transactionId,
+      userId: id,
+      type: item.kind,
+      amount: item.amount,
+      balanceAfter: item.balanceAfter,
+      refType: item.refType,
+      refId: item.refId,
+      remark: item.memo,
+      createdAt: item.createdAt,
+      counterparties: item.counterparties,
+    })),
+    nextCursor: result.nextCursor,
+  };
 }
 
 export async function listUserAuditLogs(s: AdminServices, id: number, input: z.infer<typeof listQuerySchema>) {

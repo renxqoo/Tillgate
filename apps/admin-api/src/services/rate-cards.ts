@@ -4,6 +4,7 @@ import { buildList, countAll, HttpError, listQuerySchema, paginateQuery, recordA
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { AdminServices } from './index.js';
+import { enrichWithWallet } from './users.js';
 
 /**
  * 费率卡服务（api-contract §4.9）。
@@ -174,18 +175,18 @@ export async function listRateCards(s: AdminServices, input: z.infer<typeof list
   return { ...result, list };
 }
 
-/** 查看绑定该卡的账户（api-contract §4.9） */
+/** 查看绑定该卡的账户（api-contract §4.9；S7：资金读数走 wallet 契约） */
 export async function listRateCardUsers(s: AdminServices, id: number, input: z.infer<typeof listQuerySchema>) {
   const { page, limit, offset, where, orderBy } = buildList(input, {
     search: [users.subject, users.displayName, users.email],
     conditions: [eq(users.rateCardId, id)],
     sort: {
-      by: { id: users.id, subject: users.subject, balance: users.balance, createdAt: users.createdAt },
+      by: { id: users.id, subject: users.subject, createdAt: users.createdAt },
       fallback: 'createdAt',
       tiebreaker: users.id,
     },
   });
-  return paginateQuery(
+  const result = await paginateQuery(
     page,
     s.db
       .select({
@@ -194,9 +195,6 @@ export async function listRateCardUsers(s: AdminServices, id: number, input: z.i
         displayName: users.displayName,
         email: users.email,
         status: users.status,
-        balance: users.balance,
-        reservedBalance: users.reservedBalance,
-        availableBalance: sql<string>`${users.balance} - ${users.reservedBalance}`,
       })
       .from(users)
       .where(where)
@@ -205,6 +203,9 @@ export async function listRateCardUsers(s: AdminServices, id: number, input: z.i
       .offset(offset),
     countAll(s.db, users, where),
   );
+  // 资金读数富集（wallet 单一事实源）
+  await enrichWithWallet(s, result.list as Array<Record<string, unknown> & { id: number }>);
+  return result;
 }
 
 /** 健康自检：全局系数行是否存在（data-model §3.9 约束校验） */

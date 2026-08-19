@@ -14,6 +14,11 @@ import {
   SubscriptionQuotaExhaustedError,
   SubscriptionRequiredError,
 } from '@ai-gateway/ledger';
+import {
+  FrozenAccountError as WalletFrozenAccountError,
+  InsufficientBalanceError as WalletInsufficientBalanceError,
+  UnknownRefTypeError as WalletUnknownRefTypeError,
+} from '@ai-gateway/wallet';
 
 /**
  * 网关统一错误体系（2026-08 异常风格，单一真相三层结构）：
@@ -167,6 +172,24 @@ export function translateAuthorizeError(
   error: unknown,
   ctx: AuthorizeRejectionContext,
 ): void {
+  // wallet 内核错误（S7：资金事实在 wallet；先于平台同名错误判定）
+  if (error instanceof WalletInsufficientBalanceError) {
+    throw gatewayError('insufficient_balance', {
+      message: `可用余额不足（当前可用 ${error.available} 元，需要预扣 ${ctx.maxEstimate} 元）`,
+      suggestion: '请充值后再试',
+    });
+  }
+  if (error instanceof WalletFrozenAccountError) {
+    throw gatewayError('account_frozen', {
+      message: '账户已被冻结，请联系客服',
+      suggestion: '账户风控冻结期间无法发起请求',
+    });
+  }
+  if (error instanceof WalletUnknownRefTypeError) {
+    throw gatewayError('billing_configuration_error', {
+      suggestion: '请联系管理员检查计费域配置',
+    });
+  }
   if (error instanceof InsufficientBalanceError) {
     throw gatewayError('insufficient_balance', {
       message: `可用余额不足（当前余额 ${error.balance} 元，需要预扣 ${ctx.maxEstimate} 元）`,

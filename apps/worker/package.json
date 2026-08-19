@@ -20,7 +20,7 @@
     "@ai-gateway/http": "workspace:*",
     "@ai-gateway/identity": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
-    "@ai-gateway/money": "workspace:*",
+    "@ai-gateway/wallet": "workspace:*",
     "@ai-gateway/tracing": "workspace:*",
     "bullmq": "^6.0.7",
     "drizzle-orm": "^0.45.2",

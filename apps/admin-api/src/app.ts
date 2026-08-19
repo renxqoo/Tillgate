@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { Db } from '@ai-gateway/db';
-import type { BillingOperations, Ledger } from '@ai-gateway/ledger';
+import type { Wallet } from '@ai-gateway/wallet';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { adminAuthMiddleware, type AdminEnv } from '@ai-gateway/identity';
@@ -36,6 +36,10 @@ import { generationTaskAdminRoutes } from './routes/generation-tasks.js';
 import { tracingAdminRoutes } from './routes/tracing.js';
 import type { Mailer } from '@ai-gateway/identity';
 import { createPgTraceStore, type TraceStore } from '@ai-gateway/tracing';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
+import { createChannelBudget } from '@ai-gateway/ledger/channel-budget';
+import { createBillingDomain } from '@ai-gateway/ledger/billing';
+import { createAdminFunds } from './services/funds.js';
 
 /**
  * admin-api 应用组装（依赖注入唯一入口）。
@@ -52,8 +56,8 @@ import { createPgTraceStore, type TraceStore } from '@ai-gateway/tracing';
 export interface AdminApiDeps {
   db: Db;
   redis: Redis;
-  ledger: Ledger;
-  billingOperations: BillingOperations;
+  /** 资金动作（refTypes 白名单：admin/subscription/pack） */
+  wallet: Wallet;
   /** 链路存储（缺省由 db 构造 PG 实现） */
   tracingStore?: TraceStore;
   /** 邮箱验证码发信（未配置 = null） */
@@ -72,8 +76,11 @@ export function createApp(deps: AdminApiDeps): Hono {
   const services: AdminServices = {
     db: deps.db,
     redis: deps.redis,
-    ledger: deps.ledger,
-    billingOperations: deps.billingOperations,
+    wallet: deps.wallet,
+    funds: createAdminFunds(deps.db, deps.wallet),
+    subscription: createSubscriptionDomain({ db: deps.db, wallet: deps.wallet }),
+    channelBudget: createChannelBudget({ db: deps.db }),
+    billingReview: createBillingDomain({ db: deps.db, wallet: deps.wallet }).review(),
     tracingStore: deps.tracingStore ?? createPgTraceStore(deps.db),
     mailer: deps.mailer ?? null,
     encryptionKey: deps.encryptionKey,

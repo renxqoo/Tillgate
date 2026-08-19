@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { createDb, type Db } from '@ai-gateway/db';
@@ -75,7 +75,6 @@ async function createUser(): Promise<{ uid: number; email: string }> {
       identityProvider: 'local',
       email,
       displayName: 'eml 测试用户',
-      balance: '0',
       passwordHash: hash,
     })
     .returning({ id: users.id });
@@ -165,8 +164,10 @@ describe('C 端邮箱登录 + 强制邮箱验证码', () => {
       const fifth = await verifyReq(app, b1.challengeId, '000000');
       expect(fifth.status).toBe(400);
 
-      // 重新登录（清冷却）→ 正确码 → 会话 + 赠额
-      await redis.del(`logincode:cool:user:${uid}`);
+      // 重新登录（模拟冷却窗口滚动：挑战 issued_at 回拨 61s）→ 正确码 → 会话 + 赠额
+      await db.execute(
+        sql`update identity_challenges set issued_at = clock_timestamp() - interval '61 seconds' where id = ${b1.challengeId}`,
+      );
       const step2 = await loginReq(app, email, 'RightPass1');
       const b2 = (await step2.json()) as { challengeId: string };
       const ok = await verifyReq(app, b2.challengeId, mailer.sent[1]!.code);

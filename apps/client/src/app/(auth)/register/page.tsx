@@ -20,12 +20,12 @@ export default async function RegisterPage({
   const aff = typeof affParam === 'string' && /^u[0-9a-z]+$/i.test(affParam) ? affParam : null;
   const clean = stripAuthParams("/register", sp, ["aff"]);
   if (clean) redirect(clean);
-  const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
+  const base = process.env.CLIENT_API_BASE!;
   let oauthOptions: OAuthOption[] = [];
   let registerEnabled = true;
   let captchaSiteKey: string | null = null;
   try {
-    const res = await fetch(`${base}/api/auth/oauth/providers`, {
+    const res = await fetch(`${base}/v1/oauth/providers`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });
@@ -37,12 +37,12 @@ export default async function RegisterPage({
   // 注册能力发现（开关 + 人机验证）：后端配置是单一真相。探测失败按开启渲染，
   // 由提交时的 403 兜底（不因网络抖动误显「注册已关闭」）。
   try {
-    const res = await fetch(`${base}/api/auth/register/capabilities`, {
+    const res = await fetch(`${base}/v1/auth/capabilities`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });
-    const body = (await res.json()) as { enabled?: boolean; captchaSiteKey?: string | null };
-    registerEnabled = body.enabled !== false;
+    const body = (await res.json()) as { registerEnabled?: boolean; captchaSiteKey?: string | null };
+    registerEnabled = body.registerEnabled !== false;
     captchaSiteKey = registerEnabled ? (body.captchaSiteKey ?? null) : null;
   } catch {
     registerEnabled = true;

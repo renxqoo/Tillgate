@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { Decimal } from '@ai-gateway/money';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import { computeAmounts } from '@ai-gateway/ledger';
 import {
   loadEnvFileIntoProcess,

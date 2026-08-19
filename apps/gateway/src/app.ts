@@ -27,7 +27,8 @@ import { createCoefficientCache } from './services/auth/coefficient-cache.js';
 import { createPipeline } from './services/pipeline/run.js';
 import type { RequestLifecycle } from './services/runtime/request-lifecycle.js';
 import type { CompletionRegistry } from './services/runtime/completion-registry.js';
-import { createBilling } from '@ai-gateway/ledger';
+import { createBillingDomain } from '@ai-gateway/ledger/billing';
+import { createWallet } from '@ai-gateway/wallet';
 
 /** gateway 依赖（启动时装配，测试可注入） */
 export interface GatewayDeps {
@@ -57,8 +58,15 @@ export function createApp(deps: GatewayDeps): Hono<AuthEnv> {
     authFailureWindowS: deps.env.GATEWAY_AUTH_FAILURE_WINDOW_S,
   });
   const oauthService = createOAuthService(deps.db, deps.redis, deps.env.JWT_SECRET, deps.logger);
-  const billing = createBilling({
+  // S7：资金事实在 wallet（refTypes 白名单 fail-closed）；billing 域在其上编排
+  const wallet = createWallet(deps.db, {
+    accounts: [],
+    refTypes: ['billing'],
+    currencies: ['CNY'],
+  });
+  const billing = createBillingDomain({
     db: deps.db,
+    wallet,
     admission: {
       maxPending: deps.env.BILLING_PENDING_MAX,
       maxOldestAgeMs: deps.env.BILLING_PENDING_MAX_AGE_SECONDS * 1_000,

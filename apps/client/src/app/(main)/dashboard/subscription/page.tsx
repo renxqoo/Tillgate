@@ -32,7 +32,8 @@ export default async function SubscriptionPage() {
   }
 
   try {
-    const data = await apiFetch<CurrentSubscription | null>("/api/me/subscription");
+    const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/api/subscriptions");
+    const data: CurrentSubscription | null = subResult.rows?.[0] ?? null;
     subscription = data;
   } catch (e) {
     subError = e instanceof ApiError ? e.message : "加载失败";
@@ -41,7 +42,7 @@ export default async function SubscriptionPage() {
   try {
     const data = await apiFetch<Paginated<PlanRow>>("/api/plans?sort_by=sortOrder&order=asc&page_size=100");
     // 个人用户只看到个人套餐（allowSeats=false）；企业用户只看到企业套餐（allowSeats=true，支持席位）
-    plans = (data.list ?? []).filter((p) => (isEnterprise ? p.allowSeats : !p.allowSeats));
+    plans = (data.rows ?? data.list ?? []).filter((p) => (isEnterprise ? p.allowSeats : !p.allowSeats));
   } catch (e) {
     plansError = e instanceof ApiError ? e.message : "加载失败";
   }
@@ -49,7 +50,7 @@ export default async function SubscriptionPage() {
   try {
     const data = await apiFetch<Paginated<OrgRow>>("/api/orgs");
     // 只展示有有效套餐的组织；无套餐组织在 /dashboard/orgs 管理，不在此展示。
-    orgs = (data.list ?? []).filter((o) => o.subscriptionId != null);
+    orgs = (data.rows ?? data.list ?? []).filter((o) => o.subscriptionId != null);
   } catch {
     orgs = [];
   }

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Db } from '@ai-gateway/db';
-import type { Ledger } from '@ai-gateway/ledger';
+import type { Wallet } from '@ai-gateway/wallet';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, csrfProtection, type Redis } from '@ai-gateway/http';
 import { bodyLimit } from 'hono/body-limit';
@@ -14,6 +14,8 @@ import { publicPricingRoutes, pricingRoutes } from './routes/public-pricing.js';
 import { referralRoutes } from './routes/referrals.js';
 import { playgroundRoutes } from './routes/playground.js';
 import { inviteOverview } from './services/referrals.js';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
+import { createPromotions } from './services/promotions.js';
 import { createPaymentServices } from './services/payments/orders.js';
 import { createEpayProvider, createStripeProvider, type PaymentProvider } from './services/payments/providers.js';
 import { keyRoutes } from './routes/keys.js';
@@ -37,7 +39,8 @@ import { orgRoutes } from './routes/orgs.js';
 export interface ClientApiDeps {
   db: Db;
   redis: Redis;
-  ledger: Ledger;
+  /** 资金动作（refTypes 白名单：subscription/pack/redeem/payment/promo） */
+  wallet: Wallet;
   logger: Logger;
   /** 登录验证码发信（null = SMTP 未配置 → 登录 fail-closed） */
   mailer?: Mailer | null;
@@ -50,9 +53,11 @@ export function createApp(deps: ClientApiDeps): Hono {
   const services: ClientServices = {
     db: deps.db,
     redis: deps.redis,
+    wallet: deps.wallet,
+    subscription: createSubscriptionDomain({ db: deps.db, wallet: deps.wallet }),
+    promotions: createPromotions(deps.db, deps.wallet),
     mailer: deps.mailer ?? null,
     captcha: deps.captcha ?? null,
-    ledger: deps.ledger,
     logger: deps.logger,
   };
 
@@ -71,7 +76,7 @@ export function createApp(deps: ClientApiDeps): Hono {
   // 公开定价页（未登录可访问；官方价）
   app.route('/api/public', publicPricingRoutes(deps.db));
   // 支付公开回调（签名验证替代会话；渠道服务器直连）
-  const paymentServices = createPaymentServices(deps.db, deps.ledger, buildPaymentProviders(deps.config), deps.logger);
+  const paymentServices = createPaymentServices(deps.db, deps.wallet, buildPaymentProviders(deps.config), deps.logger);
   app.route('/api/public/payments', paymentPublicRoutes(paymentServices));
 
   // 受保护子应用：默认要求有效用户会话 + 状态变更 Origin 校验（CSRF 纵深防御）
@@ -94,7 +99,7 @@ export function createApp(deps: ClientApiDeps): Hono {
     api.route('/playground', playgroundRoutes(deps.db, deps.config.playground));
   }
   api.route('/referrals', referralRoutes((userId) =>
-    inviteOverview(deps.db, userId, {
+    inviteOverview(deps.db, deps.wallet, userId, {
       frontendUrl: deps.config.oauth.frontendUrl,
       signupBonus: deps.config.referralSignupBonus,
       commissionRate: deps.config.referralCommissionRate,

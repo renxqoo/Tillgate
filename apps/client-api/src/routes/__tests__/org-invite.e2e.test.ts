@@ -12,7 +12,10 @@ import {
   usageLogs,
   users,
 } from '@ai-gateway/db/schema';
-import { createBillingProcessor, createLedger } from '@ai-gateway/ledger';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
+import { createPromotions } from '../../services/promotions.js';
 import { errorHandler, type Redis } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../../services/index.js';
@@ -65,10 +68,13 @@ function noopLogger() {
   return { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {} };
 }
 
+const testWallet = createWallet(db, { accounts: [], refTypes: ['topup', 'subscription', 'pack', 'payment', 'promo'], currencies: ['CNY'] });
 const services: ClientServices = {
   db,
   redis: redis as unknown as Redis,
-  ledger: createLedger({ db }),
+  wallet: testWallet,
+  subscription: createSubscriptionDomain({ db, wallet: testWallet }),
+  promotions: createPromotions(db, testWallet),
   logger: noopLogger() as unknown as ClientServices['logger'],
   mailer: null,
   captcha: null,
@@ -118,7 +124,6 @@ async function createUser(email: string, enterprise: boolean): Promise<{ id: num
       identityProvider: 'local',
       email,
       displayName: email,
-      balance: '0',
       isEnterprise: enterprise,
     })
     .returning({ id: users.id, email: users.email });
@@ -126,12 +131,11 @@ async function createUser(email: string, enterprise: boolean): Promise<{ id: num
 }
 
 async function topUp(userId: number, amount: string) {
-  return services.ledger.adminGift({
-    operationId: `e2e-org-gift-${runTag}-${userId}`,
+  return testWallet.credit({
     userId,
     amount,
-    adminId: null,
-    remark: 'e2e 组织流程测试充值',
+    refType: 'topup',
+    refId: `e2e-org-gift-${runTag}-${userId}-${amount}`,
   });
 }
 
@@ -245,10 +249,11 @@ describe('组织/成员端到端（企业套餐 → 邀请 → 成员 Key 扣组
     });
     expect(chat.status).toBe(200);
     const requestId = chat.headers.get('x-request-id')!;
-    await createBillingProcessor({
+    await createSettlementProcessor({
       db,
+      wallet: testWallet,
       options: {
-        ownerId: `e2e-org-${runTag}`,
+        ownerId: `e2e-org-`,
         batchSize: 5,
         claimLeaseMs: 60_000,
         retryBaseMs: 10,

@@ -5,7 +5,11 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 /** 事务句柄（drizzle tx 与 db 同构子集） */
 export type Tx = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0];
 
-export type DbLike = NodePgDatabase | Tx;
+/** 库侧宽容数据库类型：消费方传入业务 schema 绑定的 Db/Tx 也可（drizzle 泛型不变性兼容） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- lib 边界：接受任意 schema 绑定
+export type AnyPgDatabase = NodePgDatabase<any>;
+
+export type DbLike = AnyPgDatabase | Tx;
 
 /**
  * PG 唯一约束冲突的约束名（并发路径的兜底信号）——drizzle 会包一层 cause，逐层探查。

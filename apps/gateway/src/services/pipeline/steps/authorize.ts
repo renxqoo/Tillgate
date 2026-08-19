@@ -1,4 +1,4 @@
-import { Decimal } from '@ai-gateway/money';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import { context as otelContext, trace as otelTrace } from '@opentelemetry/api';
 import { SpanStatusCode, formatTraceParent } from '@ai-gateway/core';
 import { GatewayError, translateAuthorizeError } from '../../../lib/errors.js';

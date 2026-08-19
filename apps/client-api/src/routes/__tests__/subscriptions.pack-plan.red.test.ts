@@ -32,7 +32,7 @@ describe('RED C3: POST /api/subscriptions 传加油包 planId → 400（不得 5
     const s = `${Date.now()}`;
     const [u] = await db
       .insert(users)
-      .values({ issuer: 'local', subject: `__c3u_${s}`, identityProvider: 'local', balance: '100' })
+      .values({ issuer: 'local', subject: `__c3u_${s}`, identityProvider: 'local' })
       .returning({ id: users.id });
     const [pack] = await db
       .insert(plans)

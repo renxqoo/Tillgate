@@ -1,17 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import type { Context, Next } from 'hono';
 import {
   billingRequests,
-  transactions,
+
   usageLogs,
   users,
   plans as plansTable,
   userSubscriptions,
 } from '@ai-gateway/db/schema';
-import { createBillingProcessor, createLedger } from '@ai-gateway/ledger';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
+import { createPromotions } from '../../services/promotions.js';
 import { errorHandler, type Redis } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import { subscriptionRoutes } from '../subscriptions.js';
@@ -79,10 +82,13 @@ function noopLogger() {
   return { trace() {}, debug() {}, info() {}, warn() {}, error() {}, fatal() {} };
 }
 
+const testWallet = createWallet(db, { accounts: [], refTypes: ['topup', 'subscription', 'pack', 'payment', 'promo'], currencies: ['CNY'] });
 const services: ClientServices = {
   db,
   redis: redis as unknown as Redis,
-  ledger: createLedger({ db }),
+  wallet: testWallet,
+  subscription: createSubscriptionDomain({ db, wallet: testWallet }),
+  promotions: createPromotions(db, testWallet),
   logger: noopLogger() as unknown as ClientServices['logger'],
   mailer: null,
   captcha: null,
@@ -136,7 +142,6 @@ async function createE2eUser(opts: { enterprise?: boolean } = {}) {
       subject,
       identityProvider: 'local',
       displayName: subject,
-      balance: '0',
       isEnterprise: opts.enterprise ?? false,
     })
     .returning({ id: users.id });
@@ -144,12 +149,11 @@ async function createE2eUser(opts: { enterprise?: boolean } = {}) {
 }
 
 async function topUp(userId: number, amount: string) {
-  return services.ledger.adminGift({
-    operationId: `e2e-sub-gift-${runTag}-${userId}`,
+  return testWallet.credit({
     userId,
     amount,
-    adminId: null,
-    remark: 'e2e 套餐流程测试充值',
+    refType: 'topup',
+    refId: `e2e-sub-gift-${runTag}-${userId}-${amount}`,
   });
 }
 
@@ -211,8 +215,9 @@ function successAi() {
 
 /** 用 worker 同款 processor 结算指定请求并等待 settled */
 async function settleAndWait(requestId: string) {
-  await createBillingProcessor({
+  await createSettlementProcessor({
     db,
+    wallet: testWallet,
     options: {
       ownerId: `e2e-sub-${runTag}`,
       batchSize: 5,
@@ -234,11 +239,8 @@ async function settleAndWait(requestId: string) {
 }
 
 async function getBalance(userId: number): Promise<string> {
-  const u = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { balance: true },
-  });
-  return u!.balance;
+  // S7：资金事实在 wallet（users.balance 退役）
+  return testWallet.balance(userId);
 }
 
 // ---------- 用例 ----------
@@ -272,11 +274,10 @@ describe('套餐完整流程 E2E（个人）', () => {
     expect(subscriptionId).toBeGreaterThan(0);
     // 余额 100 - 20 = 80
     expect(numEq(await getBalance(user.id), '80')).toBe(true);
-    // 流水：type=subscribe，金额 -20
-    const tx = await db.query.transactions.findFirst({
-      where: and(eq(transactions.userId, user.id), eq(transactions.type, 'subscribe')),
-    });
-    expect(numEq(tx!.amount, '-20')).toBe(true);
+    // 流水（S7：资金流水 = wallet statement；订阅购买 refType 'subscription'，出账 -20）
+    const statement = await testWallet.statement({ userId: user.id, limit: 5 });
+    const subLeg = statement.items.find((item) => item.refType === 'subscription');
+    expect(numEq(subLeg!.amount, '-20')).toBe(true);
 
     // 3b. 同幂等键重放：不重复扣款
     const replay = await clientJson(client, '/api/subscriptions', {

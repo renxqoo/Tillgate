@@ -18,6 +18,7 @@ interface InviteData {
 }
 
 export default async function InvitePage() {
+  // v2：GET /v1/referrals —— 邀请码/链接、已邀名单、累计佣金（后端不可达时空态展示）
   const data = await apiFetch<InviteData>('/api/referrals').catch(() => null);
 
   return (

@@ -1,0 +1,149 @@
+/**
+ * reserveChannel 用例：渠道「进货额度」精确硬闸（路由选渠前预留在途上游成本敞口）。
+ *
+ * 变更顺序不变量（换渠道路径）：先守卫预留新渠道 → 再释放旧渠道 → 最后 CAS 认领账单行。
+ * 任何早退（拒绝）都发生在零变更状态；CAS（channel 投影等于读到的旧值）让并发同请求
+ * 双切换在结构上不可能产生孤儿敞口——输家 CAS 落空 → 整体回滚。
+ * 同渠道重复预留：金额更大按差额补足（fallback 模型预估更高路由回同一渠道）。
+ */
+import { createRepositories } from '@ai-gateway/repository';
+import type { RunContext } from '../context.js';
+import { inTx } from '../context.js';
+import { BillingStateConflictError, budgetRemaining, reserveDecision } from '@ai-gateway/domain';
+import { ChannelExposureInvariantError } from '@ai-gateway/domain';
+import { Decimal } from '@ai-gateway/domain';
+import type { BillingEnv } from './authorize.js';
+
+export interface ReserveChannelInput {
+  requestId: string;
+  channelId: number;
+  /** 本次上游成本预估（官方价口径，系数=1） */
+  amount: string;
+}
+
+export interface ChannelReservationResult {
+  allowed: boolean;
+  /** 拒绝时的剩余可用额度；放行时为本次预留后剩余 */
+  remaining: string;
+  /** 是否为本请求切换了渠道（释放了旧渠道敞口） */
+  switched: boolean;
+}
+
+export function createReserveChannelUseCase(env: BillingEnv) {
+  const { db, clock = () => new Date() } = env;
+  const repos = env.repos ?? createRepositories();
+  return async function reserveChannel(
+    ctx: RunContext,
+    input: ReserveChannelInput,
+  ): Promise<ChannelReservationResult> {
+    const amount = new Decimal(input.amount);
+    if (!amount.isFinite() || amount.lt(0)) {
+      throw new BillingStateConflictError(input.requestId, 'invalid channel exposure amount');
+    }
+    const now = clock();
+    return db.transaction(async (tx) => {
+      const c = inTx(ctx, tx);
+      const br = await repos.billingRequest.findByRequestId(c, input.requestId);
+      if (!br) throw new BillingStateConflictError(input.requestId, 'billing request missing');
+      if (!['authorized', 'in_flight'].includes(br.status)) {
+        return { allowed: false, remaining: '0', switched: false };
+      }
+
+      // 决策（domain 纯函数）：covered / topup / switch 三模式
+      const decision = reserveDecision({
+        currentChannelId: br.channelId,
+        currentReserved: br.channelReservedAmount,
+        channelId: input.channelId,
+        amount,
+      });
+
+      // 同渠道已覆盖：无需任何变更
+      if (decision.mode === 'covered') {
+        return { allowed: true, remaining: '0', switched: false };
+      }
+      // 同渠道补足（F3）：预估更高路由回同一渠道，敞口必须补差否则预算闸门被弱化
+      if (decision.mode === 'topup') {
+        const topped = await repos.channel.tryIncreaseReserved(c, {
+          channelId: input.channelId,
+          delta: decision.delta,
+          now,
+        });
+        if (!topped) {
+          const ch = await repos.channel.findChannel(c, input.channelId);
+          return {
+            allowed: false,
+            remaining: ch ? budgetRemaining(ch.upstreamBudget, ch.upstreamReserved) : '0',
+            switched: false,
+          };
+        }
+        const claimed = await repos.billingRequest.casClaimChannel(c, {
+          requestId: input.requestId,
+          fromStatus: ['authorized', 'in_flight'],
+          expectedChannelId: br.channelId,
+          expectedReserved: br.channelReservedAmount,
+          channelId: input.channelId,
+          channelReservedAmount: amount.toString(),
+          now,
+        });
+        if (!claimed) {
+          throw new BillingStateConflictError(input.requestId, 'reserve target not reservable');
+        }
+        return {
+          allowed: true,
+          remaining: budgetRemaining(topped.budget, topped.reserved),
+          switched: false,
+        };
+      }
+
+      // switch：守卫预留新渠道（原子 UPDATE WHERE 余额守卫；0 行 = 并发对手占走余额 → 零变更拒绝）
+      const reserved = await repos.channel.tryIncreaseReserved(c, {
+        channelId: input.channelId,
+        delta: amount.toString(),
+        now,
+      });
+      if (!reserved) {
+        const ch = await repos.channel.findChannel(c, input.channelId);
+        return {
+          allowed: false,
+          remaining: ch ? budgetRemaining(ch.upstreamBudget, ch.upstreamReserved) : '0',
+          switched: false,
+        };
+      }
+
+      // 换渠道：预留成功后才释放旧渠道敞口（守卫失败 → 抛错回滚新预留）
+      let switched = false;
+      if (br.channelId != null && br.channelReservedAmount != null) {
+        const released = await repos.channel.tryDecreaseReserved(c, {
+          channelId: br.channelId,
+          amount: br.channelReservedAmount,
+          now,
+        });
+        if (!released) {
+          throw new ChannelExposureInvariantError(
+            `switch release ${br.channelReservedAmount} on channel ${br.channelId}`,
+          );
+        }
+        switched = true;
+      }
+
+      // 认领账单行（最后一个变更）：与过期回收/并发同请求预留竞态时 0 行 → 整体回滚
+      const claimed = await repos.billingRequest.casClaimChannel(c, {
+        requestId: input.requestId,
+        fromStatus: ['authorized', 'in_flight'],
+        expectedChannelId: br.channelId,
+        expectedReserved: br.channelReservedAmount,
+        channelId: input.channelId,
+        channelReservedAmount: amount.toString(),
+        now,
+      });
+      if (!claimed) {
+        throw new BillingStateConflictError(input.requestId, 'reserve target not reservable');
+      }
+      return {
+        allowed: true,
+        remaining: budgetRemaining(reserved.budget, reserved.reserved),
+        switched,
+      };
+    });
+  };
+}

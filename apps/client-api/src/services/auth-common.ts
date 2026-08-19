@@ -69,7 +69,8 @@ export async function issueSession(
 ): Promise<{ token: string; gifted: boolean }> {
   let gifted = false;
   if (config.giftAmount > 0) {
-    const result = await s.ledger.grantSignupGift({
+    const result = await s.promotions.grantSignupGift({
+      operationId: `signup-gift:${userId}`,
       userId,
       amount: String(config.giftAmount),
     });

@@ -1,20 +1,22 @@
 /** transfer：原子转账（分账/P2P/手续费）——双腿 [from −a, to +a] 守恒；
- *  from/to 可为用户账户或内部科目；同币种限定（换汇 = 两笔独立转账）。 */
+ *  from/to 可为用户账户或内部科目；同币种限定（换汇 = 两笔独立转账）；
+ *  from 为用户账户时 allowCredit:false 走现金口径；tx 注入加入调用方事务。 */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { Decimal, normalizeAmount, toStorage } from './money';
-import {
-  CurrencyMismatchError,
-  InsufficientBalanceError,
-  SameAccountTransferError,
-} from './errors';
-import { WalletInternalError } from './errors';
-import { walletTransactions } from './schema';
-import { lockAccounts, resolveAccount } from './account';
-import { applyLeg } from './legs';
-import { isUniqueViolation, runTx } from './internal';
+import { normalizeAmount } from './money';
+import { CurrencyMismatchError } from './errors';
+import { lockAccounts } from './account';
+import { postTransaction } from './posting';
+import { isUniqueViolation, runTx, type DbLike } from './internal';
 import { hasTransaction, replayTransfer } from './replay';
 import { parseAccountRef, parseAmount, parseRef, type ValidationGuards } from './validation';
 import type { TransferInput, TransferResult } from './types';
+import { commandFingerprint } from './idempotency';
+import { DEFAULT_INTERNAL_ACCOUNT_SHARDS, selectInternalShard } from './sharding';
+import {
+  assertDistinctTransferSides,
+  buildTransferPosting,
+  resolveTransferSide,
+} from './transfer-accounts';
 
 export async function transfer(
   db: NodePgDatabase,
@@ -25,64 +27,89 @@ export async function transfer(
   const amount = parseAmount(input.amount);
   const fromCurrency = parseAccountRef(input.from, guards);
   const toCurrency = parseAccountRef(input.to, guards);
+  const fingerprint = commandFingerprint('transfer', {
+    from: { userId: input.from.userId, code: input.from.code, currency: fromCurrency },
+    to: { userId: input.to.userId, code: input.to.code, currency: toCurrency },
+    amount: normalizeAmount(input.amount),
+    // 只在显式 false 时进指纹（与 authorize 同理：缺省调用零漂移）
+    allowCredit: input.allowCredit === false ? false : undefined,
+    memo: input.memo ?? null,
+  });
+  assertDistinctTransferSides(input.from, fromCurrency, input.to, toCurrency);
+  const shardCount = guards?.internalAccountShards ?? DEFAULT_INTERNAL_ACCOUNT_SHARDS;
+  const preferredShard = selectInternalShard(input.refType, input.refId, shardCount);
+  // tx 注入时所有读写走调用方事务
+  const conn: DbLike = input.tx ?? db;
 
   // 幂等快速路径：守卫之前先查已存在（首笔可能已把余额转走，重放不该再过守卫）
-  if (await hasTransaction(db, input.refType, input.refId, 'transfer')) {
-    return replayTransfer(db, input.refType, input.refId, input.from, input.to);
+  if (await hasTransaction(conn, input.refType, input.refId, 'transfer')) {
+    return replayTransfer(
+      conn,
+      input.refType,
+      input.refId,
+      input.from,
+      input.to,
+      fromCurrency,
+      toCurrency,
+      fingerprint,
+    );
   }
 
   try {
-    return await runTx(db, async (tx) => {
-      const fromId = await resolveAccount(tx, input.from, fromCurrency);
-      const toId = await resolveAccount(tx, input.to, toCurrency);
-      if (fromId === toId) throw new SameAccountTransferError(fromId);
-      const accounts = await lockAccounts(tx, [fromId, toId]);
-      const from = accounts.get(fromId)!;
-      const to = accounts.get(toId)!;
-      if (from.currency !== to.currency) {
-        throw new CurrencyMismatchError(from.currency, to.currency);
-      }
-
-      // 出账守卫：用户账户按授信地板（balance ≥ −credit_limit）；
-      // 内部科目无地板，按不得透支（balance ≥ amount）——守恒由 Σ腿=0 保证
-      const fromBalance = new Decimal(from.balance);
-      const limit = from.kind === 'internal' ? new Decimal(0) : new Decimal(from.creditLimit);
-      const floor = limit.neg();
-      if (fromBalance.minus(amount).lt(floor)) {
-        throw new InsufficientBalanceError(
+    return await runTx(
+      conn,
+      async (tx) => {
+        const from = await resolveTransferSide(tx, input.from, fromCurrency, shardCount);
+        const to = await resolveTransferSide(tx, input.to, toCurrency, shardCount);
+        if (from.currency !== to.currency) {
+          throw new CurrencyMismatchError(from.currency, to.currency);
+        }
+        const accounts = await lockAccounts(tx, [...from.accountIds, ...to.accountIds]);
+        const transferPosting = buildTransferPosting(
+          from,
+          to,
+          accounts,
+          amount,
+          preferredShard,
           input.from.userId ?? 0,
-          toStorage(fromBalance.minus(floor)),
-          toStorage(amount),
-          from.currency,
+          input.allowCredit ?? true,
         );
-      }
 
-      const [header] = await tx
-        .insert(walletTransactions)
-        .values({
-          kind: 'transfer',
-          refType: input.refType,
-          refId: input.refId,
-          memo: input.memo,
-        })
-        .returning({ id: walletTransactions.id });
-      if (!header) throw new WalletInternalError('transfer.insert');
-
-      const fromAfter = await applyLeg(
-        tx, header.id, fromId, from.currency, amount.neg(), from.balance,
-      );
-      const toAfter = await applyLeg(tx, header.id, toId, to.currency, amount, to.balance);
-      return {
-        transactionId: header.id,
-        amount: normalizeAmount(input.amount),
-        fromBalanceAfter: fromAfter,
-        toBalanceAfter: toAfter,
-        replayed: false,
-      };
-    });
+        const posted = await postTransaction(
+          tx,
+          {
+            kind: 'transfer',
+            refType: input.refType,
+            refId: input.refId,
+            memo: input.memo,
+            commandFingerprint: fingerprint,
+            legs: transferPosting.legs,
+          },
+          accounts,
+        );
+        return {
+          transactionId: posted.transactionId,
+          amount: normalizeAmount(input.amount),
+          fromBalanceAfter: transferPosting.fromBalanceAfter,
+          toBalanceAfter: transferPosting.toBalanceAfter,
+          replayed: false,
+        };
+      },
+      guards?.telemetry,
+      'transfer',
+    );
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return replayTransfer(db, input.refType, input.refId, input.from, input.to);
+      return replayTransfer(
+        conn,
+        input.refType,
+        input.refId,
+        input.from,
+        input.to,
+        fromCurrency,
+        toCurrency,
+        fingerprint,
+      );
     }
     throw error;
   }

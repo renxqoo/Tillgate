@@ -1,14 +1,13 @@
 import { eq } from 'drizzle-orm';
-import { randomInt } from 'node:crypto';
 import {
   signSession,
   verifyPassword,
   hashPassword,
   recordLoginFailure,
   resetLoginFailures,
-  issueLoginCodeChallenge,
-  abortLoginCodeChallenge,
-  verifyLoginCodeChallenge,
+  advanceAnchor,
+  createLoginCodeChallenger,
+  DeliveryFailedError,
   LoginCodeCooldownError,
   CodeVerifyError,
   type LoginCodeVerified,
@@ -118,11 +117,11 @@ export async function adminLogin(
         message: '已开启邮箱验证码登录，但服务端未配置 SMTP——请联系运维（不降级为单密码）',
       });
     }
-    // 限发：每管理员 60s 一条（防邮件轰炸）；挑战签发/验证统一走 identity login-code
-    const code = String(randomInt(100000, 1000000));
+    // 限发：每管理员 60s 一条（防邮件轰炸）；签发/投递/验证统一走 identity-core 挑战表
+    const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
     let challengeId: string;
     try {
-      challengeId = await issueLoginCodeChallenge(s.redis, 'admin', String(admin.id), code);
+      challengeId = await loginCodes.issue('admin', { email: admin.email, ip: input.ip });
     } catch (e) {
       if (e instanceof LoginCodeCooldownError) {
         throw new FlowError('code_rate_limited', {
@@ -130,22 +129,20 @@ export async function adminLogin(
           message: '验证码发送过于频繁，请 1 分钟后再试',
         });
       }
+      if (e instanceof DeliveryFailedError) {
+        // core 已自动作废挑战（冷却让位，可立即重发）；这里只落审计与 HTTP 语义
+        audit(s, {
+          adminId: admin.id,
+          action: 'auth.login.2fa_send_failed',
+          targetId: admin.id,
+          detail: { email: input.email, ip: input.ip },
+        });
+        throw new FlowError('code_send_failed', {
+          code: 'CODE_SEND_FAILED',
+          message: '验证码邮件发送失败，请稍后重试或联系运维',
+        });
+      }
       throw e;
-    }
-    try {
-      await s.mailer.sendLoginCode(admin.email, code, { ip: input.ip });
-    } catch (e) {
-      await abortLoginCodeChallenge(s.redis, 'admin', String(admin.id), challengeId);
-      audit(s, {
-        adminId: admin.id,
-        action: 'auth.login.2fa_send_failed',
-        targetId: admin.id,
-        detail: { email: input.email, err: (e as Error).message.slice(0, 120) },
-      });
-      throw new FlowError('code_send_failed', {
-        code: 'CODE_SEND_FAILED',
-        message: '验证码邮件发送失败，请稍后重试或联系运维',
-      });
     }
     audit(s, {
       adminId: admin.id,
@@ -175,7 +172,11 @@ export async function verifyAdminLoginCode(
 ): Promise<{ token: string; adminId: number; email: string }> {
   let verified: LoginCodeVerified;
   try {
-    verified = await verifyLoginCodeChallenge(s.redis, 'admin', input.challengeId, input.code);
+    const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
+    verified = await loginCodes.verify('admin', {
+      challengeId: input.challengeId,
+      code: input.code,
+    });
   } catch (e) {
     if (e instanceof CodeVerifyError) {
       if (e.reason === 'CODE_INVALID') {
@@ -188,10 +189,10 @@ export async function verifyAdminLoginCode(
     }
     throw e;
   }
-  const adminId = Number(verified.subjectId);
+  // 挑战目标=投递邮箱 → 按邮箱绑定管理员（跨面/跨主体重放在此消解）
   const admin = await s.db.query.admins.findFirst({
-    where: eq(admins.id, adminId),
-    columns: { id: true, email: true, status: true, sessionInvalidBefore: true },
+    where: eq(admins.email, verified.subjectId),
+    columns: { id: true, email: true, status: true },
   });
   if (!admin || !isAccountUsable(admin.status)) {
     throw new FlowError('account_unavailable', { code: 'ACCOUNT_UNAVAILABLE', message: '账号不可用' });
@@ -242,10 +243,14 @@ export async function changeAdminPassword(
   if (!ok) throw new HttpError('INVALID_CREDENTIALS', '原密码错误');
 
   const newHash = await hashPassword(input.newPassword);
-  await s.db
-    .update(admins)
-    .set({ passwordHash: newHash, sessionInvalidBefore: new Date(), updatedAt: new Date() })
-    .where(eq(admins.id, rows[0]!.id));
+  // R5-2：改密即吊销全部管理会话（换哈希 + 推进 'admin' 域锚点同事务）
+  await s.db.transaction(async (tx) => {
+    await tx
+      .update(admins)
+      .set({ passwordHash: newHash, updatedAt: new Date() })
+      .where(eq(admins.id, rows[0]!.id));
+    await advanceAnchor(tx, 'admin', rows[0]!.id, new Date());
+  });
   audit(s, { adminId, action: 'admin.password_change', targetId: adminId });
 }
 

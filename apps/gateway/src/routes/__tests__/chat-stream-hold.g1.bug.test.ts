@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { billingRequests, usageLogs } from '@ai-gateway/db/schema';
-import { createBillingProcessor } from '@ai-gateway/ledger';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
 import type { AiEvent, ChatStreamResult } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,
@@ -220,8 +221,9 @@ describe('G1（2026-08-17 修订）— 流式完成无 usage → 估算结算；
         });
         // 结算泵（幂等）：不依赖本地 dev worker 的 ambient 结算——用例自足
         if (rows[0] && rows[0].status === 'settlement_pending') {
-          await createBillingProcessor({
-            db,
+          await createSettlementProcessor({
+              db,
+              wallet: createWallet(db, { accounts: [], refTypes: ['topup', 'billing'], currencies: ['CNY'] }),
             options: {
               ownerId: 'e2e-settle',
               batchSize: 5,

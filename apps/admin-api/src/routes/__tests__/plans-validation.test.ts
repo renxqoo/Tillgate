@@ -193,7 +193,7 @@ describe('套餐参数校验', () => {
     });
     const [u] = await db
       .insert(users)
-      .values({ issuer: 'test', subject: `valadj-${Date.now()}`, identityProvider: 'local', balance: '100' })
+      .values({ issuer: 'test', subject: `valadj-${Date.now()}`, identityProvider: 'local' })
       .returning({ id: users.id });
     try {
       // 字符串 "1e309" 经 z.coerce.number() 变 Infinity → finite() 拦下

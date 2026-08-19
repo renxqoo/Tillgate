@@ -1,7 +1,14 @@
-# 扣款全流程深度解析（gateway / ai / worker）
+# 扣款全流程深度解析 · v1（历史文档）
 
+> ⚠️ **本文描述的是 v1 管线**（apps/gateway + packages/ledger + `users.reserved_balance`
+> 列 + uncertain 状态），v1 处于待退役状态。**生产 v2 链路（gateway-v2 / worker-v2 /
+> wallet 双分录账本 / 2026-08-19 刷费用五向量封堵）请以
+> [`billing-flow-deep-dive-v2.md`](billing-flow-deep-dive-v2.md) 为准**——v2 的预扣
+> 不足语义（balanceFloor 足额 fail-closed）、超预扣落账（#over 补充授权 + 收满预留
+> 降级）、估算口径（输出内容累计而非 bytesRelayed×系数）与本文均有实质差异。
+>
 > 覆盖范围：`apps/gateway`（热路径）、`packages/ai`（上游传输）、`apps/worker`（结算）、
-> 以及背后的账本核心 `packages/ledger` 与 `packages/money`。
+> 以及背后的账本核心 `packages/ledger` 与 `packages/wallet`（metering 计费公式）。
 > 所有公式与流程均以源码为准，文末附文件索引。
 
 ---
@@ -561,6 +568,6 @@ BullMQ 唤醒 / DB轮询扫到 settlement_pending
 | ledger | `packages/ledger/src/billing-operations.ts` | 人工复核命令（幂等 + 审计） |
 | ledger | `packages/ledger/src/auto-release.ts` | uncertain 小额/超时自动放行 |
 | ledger | `packages/ledger/src/reconcile.ts` | 对账作业 |
-| money | `packages/money/src/reservation.ts` | estimateMaxCost / requiredReservation |
-| money | `packages/money/src/amount.ts` | calcAmount 实扣公式（全精度） |
+| wallet | `packages/wallet/src/metering.ts` | estimateMaxCost / requiredReservation |
+| wallet | `packages/wallet/src/metering.ts` | calcAmount 实扣公式（全精度） |
 | worker | `apps/worker/src/worker-application.ts` | 结算/恢复/对账/分区维护编排 + 健康门面 |

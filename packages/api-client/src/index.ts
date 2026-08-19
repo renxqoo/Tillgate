@@ -1,27 +1,43 @@
 /**
- * client-api / admin-api 调用封装（服务端用）。
+ * client-api-v2 / admin-api-v2 调用封装（服务端用）。
  *
  * 控制台是 Next.js 服务端渲染：所有 api 调用在 Server Component / Server Action 里发生。
- * 会话通过 HttpOnly Cookie 自动携带（同域，Next.js 用 cookies() 转发到 fetch 的 cookie 头）。
+ * v2 后端是无 Cookie 的 Bearer 会话——JWT 由 BFF 持有（session.ts 的 HttpOnly Cookie），
+ * 本层发请求时以 Authorization: Bearer 携带。
  *
- * 双后端（admin-api 拆分后）：
- *   - client-api（用户面，端口 8791）：/api/me、/api/keys、/api/apps、/api/usage、/api/redeem、/api/auth/*
- *     会话 Cookie：ag_session（JWT_SECRET 签发，type='user'）
- *   - admin-api（管理面，端口 8790）：/api/admin/*（含 /api/admin/auth/*、/api/admin/me）
- *     会话 Cookie：ag_admin_session（ADMIN_JWT_SECRET 签发，type='admin'）
+ * 双后端物理隔离：
+ *   - client-api-v2（用户面，端口 8081）：/v1/me、/v1/keys、/v1/apps、/v1/usage、
+ *     /v1/redeem、/v1/auth/*、/v1/wallet/*、/v1/subscriptions、/v1/orgs、/v1/payments
+ *   - admin-api-v2（管理面，端口 8082）：/v1/providers、/v1/channels、/v1/models、
+ *     /v1/users、/v1/plans、/v1/channel-funds、/v1/billing-operations、/v1/tracing 等
  *
- * 两个 base + 两个 cookie，物理隔离。apps/client 用 apiFetch（client base），
- * apps/admin 用 adminFetch（admin base）。
+ * 路径兼容：调用方仍写 v1 时代的 '/api/...' / '/api/admin/...' 字面量——本层统一
+ * 映射到 v2 的 /v1/*（见 mapPath），前端页面代码零路径散改。
  */
-import { getCookieHeader as _readCookieHeader } from './session';
+import { getAdminSessionToken, getSessionToken } from './session';
 
-/** client-api（用户面）内网地址 */
-const CLIENT_API_BASE = process.env.CLIENT_API_BASE ?? 'http://localhost:8791';
-/** admin-api（管理面）内网地址 */
-const ADMIN_API_BASE = process.env.ADMIN_API_BASE ?? 'http://localhost:8790';
+/** client-api-v2（用户面）内网地址 */
+/** API 基地址必配（无默认值：漏配即明确报错，不静默指向 localhost——生产事故源） */
+function requireBase(name: 'CLIENT_API_BASE' | 'ADMIN_API_BASE'): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `[api-client] 环境变量 ${name} 未配置——前端 API 基地址必配（dev: http://localhost:8081 / :8082；` +
+        '生产填对外可达地址）。请在 apps/<fe>/.env.local 或部署环境注入',
+    );
+  }
+  return value;
+}
+// 惰性解析（首次调用时才要求配置）：用户面前端不引用 ADMIN_API_BASE（反之亦然），
+// 模块加载期不因未用到的基地址缺失而炸（Next 构建期 collect page data 会加载模块）
+const getClientBase = () => (CLIENT_API_BASE ??= requireBase('CLIENT_API_BASE'));
+let CLIENT_API_BASE: string | null = null;
+/** admin-api-v2（管理面）内网地址 */
+const getAdminBase = () => (ADMIN_API_BASE ??= requireBase('ADMIN_API_BASE'));
+let ADMIN_API_BASE: string | null = null;
 
-export const ADMIN_API_BASE_URL = ADMIN_API_BASE;
-export const CLIENT_API_BASE_URL = CLIENT_API_BASE;
+export const ADMIN_API_BASE_URL = { valueOf: () => getAdminBase(), toString: () => getAdminBase() } as unknown as string;
+export const CLIENT_API_BASE_URL = { valueOf: () => getClientBase(), toString: () => getClientBase() } as unknown as string;
 
 export class ApiError extends Error {
   public readonly status: number;
@@ -36,32 +52,43 @@ export class ApiError extends Error {
   }
 }
 
+/** v1 路径字面量 → v2 路径（页面代码沿用旧写法，本层归一） */
+export function mapPath(path: string): string {
+  // v2 改名特例（管理面 Key 域独立命名，避免与用户面 /v1/keys 相撞）
+  if (path === '/api/admin/keys' || path.startsWith('/api/admin/keys/')) {
+    return `/v1/admin-keys${path.slice('/api/admin/keys'.length)}`;
+  }
+  if (path.startsWith('/api/admin/')) return `/v1/${path.slice('/api/admin/'.length)}`;
+  if (path === '/api/admin') return '/v1';
+  if (path.startsWith('/api/')) return `/v1/${path.slice('/api/'.length)}`;
+  return path;
+}
+
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
   body?: unknown;
-  /** 不传就自动从 next/headers 读 cookie */
-  cookieHeader?: string | null;
+  /** 显式指定 Bearer token（缺省自动读会话 cookie） */
+  bearerToken?: string | null;
   /** Next.js 缓存提示 */
   revalidate?: number | false;
 }
 
 /**
- * 内部通用 fetch：注入 base，转发 cookie。
+ * 内部通用 fetch：注入 base + v2 路径映射 + Bearer 会话头。
  */
-async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}): Promise<T> {
-  const { method = 'GET', body, cookieHeader, revalidate, headers: extraHeaders, ...rest } = opts;
-  const cookie = cookieHeader ?? (await _readCookieHeader());
+const isAdminBase = (base: string): boolean => base === (ADMIN_API_BASE ?? undefined);
 
-  // BFF 服务间令牌：Next.js 服务端调用无 Origin/Referer 头，凭此令牌通过 CSRF
-  // fail-closed 校验（令牌只在服务端 env，永不下发浏览器）。未配置时不注入（兼容期）。
-  const internalToken = process.env.INTERNAL_API_TOKEN;
-  const res = await fetch(`${base}${path}`, {
+async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}): Promise<T> {
+  const { method = 'GET', body, bearerToken, revalidate, headers: extraHeaders, ...rest } = opts;
+  const token =
+    bearerToken !== undefined ? bearerToken : isAdminBase(base) ? await getAdminSessionToken() : await getSessionToken();
+
+  const res = await fetch(`${base}${mapPath(path)}`, {
     method,
     ...rest,
     headers: {
       'content-type': 'application/json',
-      ...(internalToken ? { 'x-internal-token': internalToken } : {}),
-      ...(cookie ? { cookie } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...extraHeaders,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -94,21 +121,17 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
 }
 
 /**
- * 调用 client-api（用户面）。apps/client 用。
- *   - cookieHeader: 透传浏览器 Cookie（ag_session 会话 JWT 在 HttpOnly Cookie 中）
- *   - 失败抛 ApiError，调用方 try-catch
+ * 调用 client-api-v2（用户面）。Bearer 自动携带；失败抛 ApiError。
  */
 export async function apiFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
-  return doFetch<T>(CLIENT_API_BASE, path, opts);
+  return doFetch<T>(getClientBase(), path, opts);
 }
 
 /**
- * 调用 admin-api（管理面）。apps/admin 用。
- *   - cookieHeader: 透传浏览器 Cookie（ag_admin_session 会话 JWT 在 HttpOnly Cookie 中）
- *   - 失败抛 ApiError，调用方 try-catch
+ * 调用 admin-api-v2（管理面）。Bearer 自动携带；失败抛 ApiError。
  */
 export async function adminFetch<T>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
-  return doFetch<T>(ADMIN_API_BASE, path, opts);
+  return doFetch<T>(getAdminBase(), path, opts);
 }
 
 // 重新导出
@@ -118,21 +141,38 @@ export * from './session';
 
 // session cookie（双面）
 export {
-  getCookieHeader,
   hasSessionCookie,
   clearSessionCookie,
   SESSION_COOKIE,
   hasAdminSessionCookie,
   clearAdminSessionCookie,
   ADMIN_SESSION_COOKIE,
+  getSessionToken,
+  setSessionToken,
+  getAdminSessionToken,
+  setAdminSessionToken,
 } from './session';
 
 /**
  * 调用 client-api 的 /api/me，失败返回 null（用于 apps/client 的 layout 守卫）。
+ * 形状归一：v2 /v1/me 返回 accounts 数组（余额在 accounts[0]），v1 顶层平铺——
+ * 两种形态都归一到 MeInfo（余额/在途/币种从首个账户取；缺失字段 null）。
  */
 export async function getMe(): Promise<import('./types').MeInfo | null> {
+  type RawMe = import('./types').MeInfo & {
+    accounts?: Array<{ currency: string; balance: string; inFlight: string; creditLimit: string; status: string }>;
+    createdAt?: string;
+  };
   try {
-    return await apiFetch<import('./types').MeInfo>('/api/me');
+    const raw = await apiFetch<RawMe>('/api/me');
+    const account = raw.accounts?.[0];
+    if (!account) return raw as import('./types').MeInfo;
+    return {
+      ...raw,
+      balance: account.balance,
+      status: account.status === 'active' ? 0 : 1,
+      createdAt: raw.createdAt ?? new Date().toISOString(),
+    } as import('./types').MeInfo;
   } catch {
     return null;
   }

@@ -1,9 +1,9 @@
 import type { ParamRules } from '@ai-gateway/ai';
-import type { Decimal } from '@ai-gateway/money';
+import type { Decimal } from '@ai-gateway/wallet/metering';
 import type { Db } from '@ai-gateway/db';
 import type { Redis } from 'ioredis';
 import type { Ai, Endpoint } from '@ai-gateway/ai';
-import type { Billing } from '@ai-gateway/ledger';
+import type { BillingDomain } from '@ai-gateway/ledger/billing';
 import type { GatewayEnv, Logger } from '@ai-gateway/core';
 import type { Tracer, Context as OtelContext, Span as OtelSpan } from '@opentelemetry/api';
 import type { AuthContext } from '../../middleware/auth.js';
@@ -40,7 +40,7 @@ export interface PipelineDeps {
   logger: Logger;
   billingDispatcher: BillingDispatcher;
   rateLimiter: RateLimiter;
-  billing: Billing;
+  billing: BillingDomain;
   router: ModelRouter;
   lifecycle: RequestLifecycle;
   completions: CompletionRegistry;

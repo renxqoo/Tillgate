@@ -13,9 +13,12 @@ import {
 } from '@ai-gateway/db/schema';
 import { encrypt } from '@ai-gateway/core';
 import { createLogger } from '@ai-gateway/core';
-import { Decimal } from '@ai-gateway/money';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import type { Ai } from '@ai-gateway/ai';
-import { createBilling, createBillingProcessor, type BillingQuote, type UsageReceipt } from '@ai-gateway/ledger';
+import type { BillingQuote, UsageReceipt } from '@ai-gateway/ledger';
+import { createBillingDomain } from '@ai-gateway/ledger/billing';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
 import { runGenerationPollOnce } from '../tasks/generation-poller.js';
 
 /**
@@ -46,6 +49,8 @@ afterAll(async () => {
 });
 
 const PREFIX = 'genpoll';
+/** S7：PAYG 资金事实在 wallet——测试入金/余额断言共用实例 */
+const testWallet = createWallet(db, { accounts: [], refTypes: ['topup', 'billing'], currencies: ['CNY'] });
 
 /** 种子：用户 + minimax 渠道 + 账单（authorize→in_flight）+ 任务行（模拟网关提交后的状态） */
 async function seedTask(kind: 'video' | 'music', opts: { unitPrice?: string; units?: string; expiresInMs?: number; status?: 'queued' | 'running' } = {}) {
@@ -55,9 +60,16 @@ async function seedTask(kind: 'video' | 'music', opts: { unitPrice?: string; uni
   const requestId = randomUUID();
   const [user] = await db
     .insert(users)
-    .values({ issuer: 'test', subject: `${PREFIX}-u-${suffix}`, identityProvider: 'local', balance: '10' })
+    .values({ issuer: 'test', subject: `${PREFIX}-u-${suffix}`, identityProvider: 'local' })
     .returning({ id: users.id });
   const userId = user!.id;
+  // S7：PAYG 资金事实在 wallet——测试入金同额走 wallet.credit
+  await testWallet.credit({
+    userId,
+    amount: '10',
+    refType: 'topup',
+    refId: `${PREFIX}-fund-${userId}`,
+  });
   const [prov] = await db
     .insert(providers)
     .values({ name: `${PREFIX}-p-${suffix}`.slice(0, 32), protocol: 'minimax', baseUrl: 'http://localhost:9998', status: 0 })
@@ -85,7 +97,7 @@ async function seedTask(kind: 'video' | 'music', opts: { unitPrice?: string; uni
       },
     ],
   };
-  const billing = createBilling({ db });
+  const billing = createBillingDomain({ db, wallet: createWallet(db, { accounts: [], refTypes: ['billing'], currencies: ['CNY'] }) });
   await billing.authorize({
     requestId,
     userId,
@@ -149,7 +161,7 @@ async function cleanup(userId: number, channelId: number, providerId: number) {
   await db.delete(users).where(eq(users.id, userId));
 }
 
-function pollerDeps(ai: Ai, billing: ReturnType<typeof createBilling>) {
+function pollerDeps(ai: Ai, billing: ReturnType<typeof createBillingDomain>) {
   return {
     deps: { db, ai, billing, logger, batch: 10, leaseMs: 60_000 },
     opts: { encryptionKey },
@@ -158,15 +170,17 @@ function pollerDeps(ai: Ai, billing: ReturnType<typeof createBilling>) {
 
 /** 结算泵（signal succeeded 后跑一次 processor → settled） */
 async function settleOnce(requestId: string) {
-  await createBillingProcessor({
+  await createSettlementProcessor({
     db,
+    wallet: createWallet(db, { accounts: [], refTypes: ['billing'], currencies: ['CNY'] }),
     options: { ownerId: 'poller-test', batchSize: 10, claimLeaseMs: 60_000, retryBaseMs: 10, retryMaxMs: 100, maxAttempts: 3 },
   }).runOnce([requestId]);
 }
 
 async function money(userId: number) {
-  const u = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { balance: true, reservedBalance: true } });
-  return { balance: u!.balance, reserved: u!.reservedBalance };
+  // S7：余额/在途读 wallet（单一资金事实源）
+  const summary = (await testWallet.accounts(userId))[0];
+  return { balance: summary?.balance ?? '0', reserved: summary?.inFlight ?? '0' };
 }
 
 function fakeAi(script: {

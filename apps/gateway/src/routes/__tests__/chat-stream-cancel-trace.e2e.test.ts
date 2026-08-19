@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_TOKEN_ESTIMATE_CALIBRATION, type AiEvent, type ChatStreamResult } from '@ai-gateway/ai';
 import { eq } from 'drizzle-orm';
 import { billingRequests, usageLogs } from '@ai-gateway/db/schema';
-import { createBillingProcessor } from '@ai-gateway/ledger';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
 import { initOtel, clearRecentTraces, getRecentTraces } from '@ai-gateway/core';
 import {
   loadEnvFileIntoProcess,
@@ -142,8 +143,9 @@ describe('链路追踪 + 估算结算：客户端断流取消', () => {
           where: eq(billingRequests.userId, userId),
         });
         if (bill && bill.status === 'settlement_pending') {
-          await createBillingProcessor({
-            db,
+          await createSettlementProcessor({
+              db,
+              wallet: createWallet(db, { accounts: [], refTypes: ['topup', 'billing'], currencies: ['CNY'] }),
             options: {
               ownerId: 'e2e-settle',
               batchSize: 5,

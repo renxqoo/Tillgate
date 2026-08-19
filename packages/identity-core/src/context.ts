@@ -1,7 +1,7 @@
 /** 运行期上下文：三张白名单守卫 + 解析后的配置（createIdentity 时一次性校验，fail fast） */
 import { InvalidInputError } from './errors.js';
 import { resolvePasswordPolicy } from './password.js';
-import { buildGuards, VOCAB_RE, type ValidationGuards } from './validation.js';
+import { buildGuards, DEFAULT_REALM, VOCAB_RE, type ValidationGuards } from './validation.js';
 import type {
   ChallengeConfig,
   CreateIdentityOptions,
@@ -74,6 +74,10 @@ export function resolveContext(options: CreateIdentityOptions): IdentityContext 
   }
   const providers = resolveVocabList('providers', options.providers);
   const challenges = resolveVocabList('challenges', options.challenges);
+  const realms = resolveVocabList('realms', options.realms ?? [DEFAULT_REALM]);
+  if (realms.length === 0) {
+    throw new InvalidInputError('realms', 'must be a non-empty array (fail-closed whitelist)');
+  }
 
   const challenge = { ...DEFAULT_CHALLENGE_CONFIG, ...options.challenge };
   boundedInt('challenge.digits', challenge.digits, 4, 10);
@@ -89,7 +93,7 @@ export function resolveContext(options: CreateIdentityOptions): IdentityContext 
   boundedInt('totp.windowStep', totp.windowStep, 0, 5);
   boundedInt('totp.recoveryCodeCount', totp.recoveryCodeCount, 1, 50);
 
-  const guards = buildGuards({ identifiers: options.identifiers, providers, challenges });
+  const guards = buildGuards({ identifiers: options.identifiers, providers, challenges, realms });
   return {
     guards,
     config: {

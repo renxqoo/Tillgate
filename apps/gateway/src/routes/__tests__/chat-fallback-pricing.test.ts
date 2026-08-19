@@ -7,7 +7,7 @@ import {
   modelMappings,
   providers,
 } from '@ai-gateway/db/schema';
-import { Decimal, estimateMaxCost } from '@ai-gateway/money';
+import { Decimal, estimateMaxCost } from '@ai-gateway/wallet/metering';
 import { estimateInputTokens, type UpstreamError } from '@ai-gateway/ai';
 import {
   loadEnvFileIntoProcess,

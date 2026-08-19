@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, desc, eq } from 'drizzle-orm';
 import { billingRequests, generationTasks } from '@ai-gateway/db/schema';
-import { Decimal } from '@ai-gateway/money';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import {
   loadEnvFileIntoProcess,
   ensureTestSecrets,

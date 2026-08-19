@@ -15,9 +15,9 @@ interface PageProps {
 
 /** client-api 已配置的第三方登录（不可达/未配置 = 无按钮） */
 async function fetchOAuthOptions(next: string | null): Promise<OAuthOption[]> {
-  const base = process.env.CLIENT_API_BASE ?? "http://localhost:8791";
+  const base = process.env.CLIENT_API_BASE!;
   try {
-    const res = await fetch(`${base}/api/auth/oauth/providers`, {
+    const res = await fetch(`${base}/v1/oauth/providers`, {
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });

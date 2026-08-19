@@ -8,10 +8,27 @@ describe('多币种 currency（缺省 CNY，一币一账互不净额）', () => 
     const user = nextUser();
     // outside/USD 科目被并行文件共享——隔离断言用专属币种 CUX
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 'cny') });
-    await wallet.credit({ userId: user, currency: 'CUX', amount: '20', refType: 'topup', refId: ref(user, 'usd') });
+    await wallet.credit({
+      userId: user,
+      currency: 'CUX',
+      amount: '20',
+      refType: 'topup',
+      refId: ref(user, 'usd'),
+    });
 
-    await wallet.authorize({ userId: user, currency: 'CUX', amount: '15', refType: 'order', refId: ref(user, 'uh') });
-    await wallet.authorize({ userId: user, amount: '100', refType: 'order', refId: ref(user, 'ch') });
+    await wallet.authorize({
+      userId: user,
+      currency: 'CUX',
+      amount: '15',
+      refType: 'order',
+      refId: ref(user, 'uh'),
+    });
+    await wallet.authorize({
+      userId: user,
+      amount: '100',
+      refType: 'order',
+      refId: ref(user, 'ch'),
+    });
 
     const summaries = await wallet.accounts(user);
     expect(summaries.map((s) => s.currency).toSorted()).toEqual(['CNY', 'CUX']);
@@ -23,7 +40,13 @@ describe('多币种 currency（缺省 CNY，一币一账互不净额）', () => 
 
   it('幂等键与币种无关：同键跨币种顶撞即 RefKeyConflictError', async () => {
     const user = nextUser();
-    await wallet.credit({ userId: user, currency: 'USD', amount: '5', refType: 'topup', refId: ref(user, 'k') });
+    await wallet.credit({
+      userId: user,
+      currency: 'USD',
+      amount: '5',
+      refType: 'topup',
+      refId: ref(user, 'k'),
+    });
     await expect(
       wallet.credit({ userId: user, amount: '5', refType: 'topup', refId: ref(user, 'k') }),
     ).rejects.toBeInstanceOf(RefKeyConflictError);

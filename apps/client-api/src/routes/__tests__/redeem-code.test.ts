@@ -8,8 +8,8 @@ import {
   users,
   admins,
   transactions,
-  fundOperations,
 } from '@ai-gateway/db/schema';
+import { ledgerOperations } from '@ai-gateway/ledger-core';
 import { createEphemeralRedis, loadRootEnvFile, type EphemeralRedis } from '@ai-gateway/http';
 
 import { redeemRoutes } from '../redeem.js';
@@ -50,7 +50,7 @@ const ts = `${Date.now()}`;
 async function setupUser(): Promise<number> {
   const [u] = await db
     .insert(users)
-    .values({ issuer: 'local', subject: `rdfl-u-${ts}-${randomUUID().slice(0, 8)}`, identityProvider: 'local', balance: '0' })
+    .values({ issuer: 'local', subject: `rdfl-u-${ts}-${randomUUID().slice(0, 8)}`, identityProvider: 'local' })
     .returning({ id: users.id });
   return u!.id;
 }
@@ -104,7 +104,7 @@ async function cleanupUser(uid: number, codes: string[] = []): Promise<void> {
   await db.delete(transactions).where(eq(transactions.userId, uid)).catch(() => {});
   for (const c of codes) {
     const operationId = `redeem:${createHash('sha256').update(c).digest('hex')}:${uid}`;
-    await db.delete(fundOperations).where(eq(fundOperations.operationId, operationId)).catch(() => {});
+    await db.delete(ledgerOperations).where(eq(ledgerOperations.operationId, operationId)).catch(() => {});
   }
   await db.delete(users).where(eq(users.id, uid)).catch(() => {});
   await redis.del(`redeem:rl:${uid}`).catch(() => {});

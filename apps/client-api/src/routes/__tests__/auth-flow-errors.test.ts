@@ -82,7 +82,6 @@ async function createUser(status = 0): Promise<{ uid: number; email: string }> {
       identityProvider: 'local',
       email,
       displayName: 'flw 测试用户',
-      balance: '0',
       passwordHash: hash,
       status,
     })

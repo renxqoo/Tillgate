@@ -1,5 +1,10 @@
 # AI Gateway 数据模型设计（v0.1）
 
+> 注：本文是设计期文档，`users.reserved_balance` 列等 v1 冻结模型已被 v2 的
+> wallet 双分录账本（`wallet_accounts/wallet_authorizations/wallet_legs`，
+> 冻结口径 = `in_flight`）取代——生产扣款口径见
+> [`billing-flow-deep-dive-v2.md`](billing-flow-deep-dive-v2.md)。
+>
 > 配套文档：`requirements.md`（业务逻辑）、`api-contract.md`（接口契约）
 > 数据库：PostgreSQL。本设计覆盖一期（P0）全部表，二期预留表单独列出。
 
@@ -17,7 +22,7 @@
 
 ---
 
-## 2. 计算规范（金额/费用，落地于 packages/money）
+## 2. 计算规范（金额/费用，落地于 packages/wallet 的 metering 子导出）
 
 > 结论：**使用 decimal.js 任意精度十进制库**——账本全程 Decimal 运算、永不 round，杜绝浮点误差（IEEE754）与舍入资损。DB 存 `numeric(38,18)`（精度到 1e-18 元），JS 侧用 Decimal。实现集中在一个包 + 单测锁死，禁止在业务代码里散落计算。
 
@@ -34,7 +39,7 @@ base     = uncached×输入价 + cached×缓存价 + 输出×输出价
 amount   = base / 1_000_000 × 系数               // 元，Decimal 全精度（不 round）
 ```
 
-**防错清单**（`packages/money` 单测覆盖）：
+**防错清单**（`packages/wallet/src/__tests__/metering.test.ts` 单测覆盖）：
 1. 金额一律元 + Decimal，浮点（JS number）禁止参与运算（0.1+0.2 问题）
 2. 账本永不 round：单次请求 1e-8 元也精确计费、入账（杜绝「真实消耗却计费 0」资损）
 3. 系数为小数直接参与 Decimal 运算
@@ -43,7 +48,7 @@ amount   = base / 1_000_000 × 系数               // 元，Decimal 全精度�
 6. 异常输入（负/NaN/Infinity）→ safe() 夹到 0（绝不反向收费）
 7. 对外结算边界用银行家舍入（half-even）到分，尾差入科目；账本内部零 round
 
-**模块**：`amount.ts`（费用公式，返回 Decimal）/ `reservation.ts`（足额授权上界）/ `units.ts`（Decimal 工具）——gateway 与 worker 共用（packages/money）。
+**模块**：`packages/wallet/src/metering.ts` 单文件（费用公式 calcAmount / 足额授权上界 estimateMaxCost·requiredReservation / Decimal 工具）——gateway 与 worker 共用（`@ai-gateway/wallet/metering`）。
 
 **统一资金入口**：普通资金操作使用 `createLedger()`；请求扣费只允许走 `createBilling()` 的 `authorize / signal / drain`，调用方不能直接释放预扣或提交扣费金额。
 

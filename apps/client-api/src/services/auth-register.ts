@@ -1,10 +1,8 @@
 import { and, eq } from 'drizzle-orm';
-import { randomInt } from 'node:crypto';
 import {
   hashPassword,
-  issueLoginCodeChallenge,
-  abortLoginCodeChallenge,
-  verifyLoginCodeChallenge,
+  createLoginCodeChallenger,
+  DeliveryFailedError,
   LoginCodeCooldownError,
   CodeVerifyError,
   type LoginCodeVerified,
@@ -111,12 +109,17 @@ export async function register(
         });
       }
 
-      // 密码哈希在签发时计算并存入挑战（Redis 不落明文；验证通过直接用于建号）
-      const code = String(randomInt(100000, 1000000));
+      // 密码哈希在签发时计算并存入挑战 payload（不落明文；验证通过直接用于建号）
       const passwordHash = await hashPassword(input.password);
+      const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
       let challengeId: string;
       try {
-        challengeId = await issueLoginCodeChallenge(s.redis, 'user', email, code, { passwordHash });
+        challengeId = await loginCodes.issue('user', {
+          email,
+          purpose: 'register',
+          payload: { passwordHash },
+          ip: input.ip,
+        });
       } catch (e) {
         if (e instanceof LoginCodeCooldownError) {
           throw new FlowError('code_rate_limited', {
@@ -125,13 +128,10 @@ export async function register(
             headers: { 'retry-after': '60' },
           });
         }
+        if (e instanceof DeliveryFailedError) {
+          throw new FlowError('code_send_failed', { code: 'CODE_SEND_FAILED' });
+        }
         throw e;
-      }
-      try {
-        await s.mailer.sendLoginCode(email, code, { ip: input.ip });
-      } catch {
-        await abortLoginCodeChallenge(s.redis, 'user', email, challengeId);
-        throw new FlowError('code_send_failed', { code: 'CODE_SEND_FAILED' });
       }
 
       return { kind: 'code_required', challengeId };
@@ -158,7 +158,11 @@ export async function verifyRegistration(
 
       let verified: LoginCodeVerified;
       try {
-        verified = await verifyLoginCodeChallenge(s.redis, 'user', input.challengeId, input.code);
+        const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
+        verified = await loginCodes.verify('user', {
+          challengeId: input.challengeId,
+          code: input.code,
+        });
       } catch (e) {
         if (e instanceof CodeVerifyError) {
           if (e.reason === 'CODE_INVALID') {
@@ -194,7 +198,7 @@ export async function verifyRegistration(
           .returning({ id: users.id, email: users.email });
         // 邀请归因（自声明 aff 码；建号成功后尽力而为，不影响注册结果）
         if (input.aff) {
-          await applyReferral(s.db, s.ledger, {
+          await applyReferral(s.db, s.promotions, {
             inviteeId: created!.id,
             affCode: input.aff,
             signupBonus: config.referralSignupBonus,

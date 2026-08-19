@@ -1,6 +1,6 @@
 /** 会话吊销锚点：无锚点全有效/线前失效线后有效/单调不后退/iat 双形态 */
 import { describe, expect, it } from 'vitest';
-import { InvalidUserIdError } from '../errors';
+import { InvalidInputError, InvalidUserIdError } from '../errors';
 import { buildFixture, nextUserId } from './helpers';
 
 describe('revokeSessions / sessionValidAt', () => {
@@ -46,5 +46,37 @@ describe('revokeSessions / sessionValidAt', () => {
     expect(await identity.sessionValidAt({ userId, iat: staleIat })).toBe(true);
     await identity.resetPassword({ userId, newPassword: 'fresh-password-1' });
     expect(await identity.sessionValidAt({ userId, iat: staleIat })).toBe(false);
+  });
+
+  it('realm 隔离：同 numeric id 的 user/admin 锚点互不相干（双身份不串号）', async () => {
+    const { identity } = buildFixture({ realms: ['user', 'admin'] });
+    const id = nextUserId(); // user.id 与 admin.id 可能同值——realm 是唯一隔离维度
+    const t0 = Date.now();
+    // user 域吊销 → user 域线前失效，admin 域不受影响
+    await identity.revokeSessions({ userId: id, realm: 'user', at: new Date(t0 + 1_000) });
+    expect(await identity.sessionValidAt({ userId: id, realm: 'user', iat: t0 })).toBe(false);
+    expect(await identity.sessionValidAt({ userId: id, realm: 'admin', iat: t0 })).toBe(true);
+    // admin 域吊销到更晚 → 两域各自单调，互不覆盖
+    const t1 = t0 + 60_000;
+    await identity.revokeSessions({ userId: id, realm: 'admin', at: new Date(t1) });
+    expect(await identity.sessionValidAt({ userId: id, realm: 'admin', iat: t1 - 1 })).toBe(false);
+    expect(await identity.sessionValidAt({ userId: id, realm: 'user', iat: t0 + 2_000 })).toBe(true);
+  });
+
+  it('未声明的 realm → 拒绝（fail-closed）；缺省 realm=user 无需声明', async () => {
+    const { identity } = buildFixture(); // 默认 realms=['user']
+    const userId = nextUserId();
+    await expect(identity.revokeSessions({ userId, realm: 'admin' })).rejects.toThrow(
+      InvalidInputError,
+    );
+    await expect(identity.sessionValidAt({ userId, realm: 'Bad_Realm', iat: Date.now() })).rejects.toThrow(
+      InvalidInputError,
+    );
+    await expect(
+      identity.revokeSessions({ userId, realm: 'admin', at: new Date() } as never),
+    ).rejects.toThrow(/unknown realm 'admin'/);
+    // 缺省 realm 走 user 域，正常工作
+    const { invalidBefore } = await identity.revokeSessions({ userId });
+    expect(typeof invalidBefore).toBe('string');
   });
 });

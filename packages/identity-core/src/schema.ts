@@ -8,7 +8,8 @@
  *                             XOR 目标 CHECK + 部分唯一索引「同 kind 同目标至多一条活挑战」
  *   identity_totp             MFA 注册（pending→confirmed 在列上）+ 单调步进防重放
  *   identity_recovery_codes   恢复码（只存哈希，单次消费）
- *   identity_session_anchors  会话吊销锚点（每用户一行，GREATEST 单调推进）
+ *   identity_session_anchors  会话吊销锚点（每 (realm, userId) 一行，GREATEST 单调推进）——
+ *                             realm 隔离双身份命名空间（user/admin 同 numeric id 互不串号）
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -19,6 +20,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -136,11 +138,23 @@ export const identityRecoveryCodes = pgTable(
   ],
 );
 
-export const identitySessionAnchors = pgTable('identity_session_anchors', {
-  userId: bigint('user_id', { mode: 'number' }).primaryKey(),
-  invalidBefore: timestamp('invalid_before', { withTimezone: true }).notNull(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const identitySessionAnchors = pgTable(
+  'identity_session_anchors',
+  {
+    /** 身份域（默认 'user'；'admin' 等由消费方在 realms 白名单声明） */
+    realm: varchar('realm', { length: 32 }).notNull().default('user'),
+    userId: bigint('user_id', { mode: 'number' }).notNull(),
+    invalidBefore: timestamp('invalid_before', { withTimezone: true }).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'identity_session_anchors_realm_ck',
+      sql`${t.realm} ~ '^[a-z][a-z0-9_-]{1,31}$'`,
+    ),
+    primaryKey({ columns: [t.realm, t.userId] }),
+  ],
+);
 
 const IDENTITY_DDL: readonly string[] = [
   `
@@ -226,9 +240,12 @@ const IDENTITY_DDL: readonly string[] = [
   `create index if not exists identity_recovery_codes_user_idx on identity_recovery_codes (user_id)`,
   `
     create table if not exists identity_session_anchors (
-      user_id bigint primary key,
+      realm varchar(32) not null default 'user',
+      user_id bigint not null,
       invalid_before timestamptz not null,
-      updated_at timestamptz not null default now()
+      updated_at timestamptz not null default now(),
+      constraint identity_session_anchors_realm_ck check (realm ~ '^[a-z][a-z0-9_-]{1,31}$'),
+      primary key (realm, user_id)
     )`,
 ];
 

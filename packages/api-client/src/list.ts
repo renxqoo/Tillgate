@@ -42,7 +42,9 @@ export function buildListQuery(opts: ListFetchOptions): string {
 async function run<T>(fetcher: typeof adminFetch, path: string, opts: ListFetchOptions): Promise<ListFetchResult<T>> {
   try {
     const data = await fetcher<Paginated<T>>(`${path}?${buildListQuery(opts)}`);
-    return { rows: data.list ?? [], total: data.total ?? 0, error: null };
+    // v2 信封 {rows,...}；v1 兼容 {list,...}
+    const rows = (data.rows ?? data.list ?? []) as T[];
+    return { rows, total: data.total ?? 0, error: null };
   } catch (e) {
     return {
       rows: [],

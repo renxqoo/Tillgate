@@ -300,7 +300,7 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 - 异步生成任务（video/music）：提交即预留（两阶段账本 authorize），worker 轮询驱动终态——succeeded 按收据实扣（units=1 或 duration 快照）、failed/expired 释放不扣（对齐 new-api 任务计费语义，无「真扣+退款」双轨）。管理端任务列表 GET /api/admin/generation-tasks。
 
 ### 计费扩展
-- 计费单位：model_mappings.pricing_unit ∈ token/request/image/second/char + unit_price；金额 = (token 部分 + units×unit_price)×系数（packages/money 单一真相）。
+- 计费单位：model_mappings.pricing_unit ∈ token/request/image/second/char + unit_price；金额 = (token 部分 + units×unit_price)×系数（packages/wallet metering 单一真相）。
 - 费率卡系数：model > group（pricing_group 匹配）> global 优先级解析（packages/ledger coefficient.ts）；停用卡拒绝新请求（403 rate_card_disabled）。
 
 ### client-api 新端点

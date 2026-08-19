@@ -31,6 +31,7 @@ import {
   type Logger,
 } from '@ai-gateway/core';
 import type { Ai } from '@ai-gateway/ai';
+import { createWallet, type Wallet } from '@ai-gateway/wallet';
 import { createApp } from '../app.js';
 import { createRateLimiter } from '../services/billing/rate-limit-service.js';
 import { createBillingDispatcher, type BillingDispatcher } from '../services/billing/billing-dispatcher.js';
@@ -110,6 +111,24 @@ export interface TestModelIds {
 }
 
 /**
+ * 测试钱包实例（PAYG 入金/断言用；refTypes 覆盖 billing 域 + 测试入金）。
+ * 每 db 一个（幂等键按用户唯一，跨文件安全）。
+ */
+const testWallets = new WeakMap<Db, Wallet>();
+export function walletForTests(db: Db): Wallet {
+  let instance = testWallets.get(db);
+  if (!instance) {
+    instance = createWallet(db, {
+      accounts: [],
+      refTypes: ['topup', 'billing'],
+      currencies: ['CNY'],
+    });
+    testWallets.set(db, instance);
+  }
+  return instance;
+}
+
+/**
  * 创建测试用户。默认同时建一条大额度有效订阅（供 subscription Key 走套餐额度分支）；
  * 测无订阅路径传 { withSubscription: false }。普通 Key/无 Key 则走余额（payg）分支。
  */
@@ -127,9 +146,17 @@ export async function createTestUser(
       subject,
       identityProvider: 'local',
       displayName: prefix,
-      balance,
     })
     .returning();
+  // S7：PAYG 资金事实在 wallet——测试入金走 wallet.credit（幂等键按用户唯一）
+  if (balance !== '0') {
+    await walletForTests(db).credit({
+      userId: u!.id,
+      amount: balance,
+      refType: 'topup',
+      refId: `test-topup-${u!.id}`,
+    });
+  }
   if (opts.withSubscription !== false) {
     const [p] = await db
       .insert(plans)
@@ -303,13 +330,8 @@ export async function cleanupTestData(
         .where(eq(channels.id, exp.channelId))
         .catch(() => {});
     }
-    // 测试清理会绕过账务状态机直接删除预留明细，必须同步清理投影。
-    // 生产代码禁止这种写法，只能通过 billing signal/settlement 转移状态。
-    await db
-      .update(users)
-      .set({ reservedBalance: '0' })
-      .where(eq(users.id, userId))
-      .catch(() => {});
+    // 测试清理会绕过账务状态机直接删除预留明细；在途投影已在 wallet（S7），
+    // 测试用户行随用随删，无需再清 users 侧投影（旧列已退役）。
     await db
       .delete(requestLogs)
       .where(eq(requestLogs.userId, userId))

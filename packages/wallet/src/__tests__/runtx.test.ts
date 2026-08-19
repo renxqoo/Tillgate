@@ -32,9 +32,33 @@ describe('runTx 瞬态重试壳', () => {
   it('死锁两次后成功：共调用 3 次，返回业务结果', async () => {
     const tx = { marker: 'tx' };
     const db = fakeDb([deadlock(), wrapped(deadlock()), tx]);
-    const result = await runTx(db, async (t) => `done:${(t as unknown as { marker: string }).marker}`);
+    const result = await runTx(
+      db,
+      async (t) => `done:${(t as unknown as { marker: string }).marker}`,
+    );
     expect(result).toBe('done:tx');
     expect(db.transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('每次瞬态重试都发出可观测事件，且观测器异常不影响资金事务', async () => {
+    const db = fakeDb([deadlock(), wrapped(deadlock()), 'ok']);
+    const retries: Array<{ operation: string; attempt: number; code: string }> = [];
+    const result = await runTx(
+      db,
+      async () => 'done',
+      {
+        onTransactionRetry(event) {
+          retries.push(event);
+          if (event.attempt === 1) throw new Error('telemetry backend down');
+        },
+      },
+      'credit',
+    );
+    expect(result).toBe('done');
+    expect(retries).toEqual([
+      { operation: 'credit', attempt: 1, code: '40P01' },
+      { operation: 'credit', attempt: 2, code: '40P01' },
+    ]);
   });
 
   it('串行化失败（40001）同样重试；drizzle cause 包装可穿透', async () => {

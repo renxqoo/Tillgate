@@ -1,4 +1,8 @@
-import type { Redis } from './redis.js';
+/** 缓存失效操作所需的最小 Redis 面（结构化——跨 ioredis 版本实例可互换） */
+interface RedisLike {
+  incr(key: string): Promise<number>;
+  del(key: string): Promise<number>;
+}
 
 /**
  * 网关共享缓存键与失效操作（单一来源，防键格式漂移）。
@@ -42,7 +46,7 @@ export function rateCardCoefficientsCache(rateCardId: number): string {
  * 路由缓存失效：bump 版本计数，网关检测到版本变化后重建路由缓存。
  * Redis 不可用时静默降级（网关侧有自身的缓存 TTL 兜底）。
  */
-export async function bumpRouteCache(redis: Redis): Promise<void> {
+export async function bumpRouteCache(redis: RedisLike): Promise<void> {
   await redis.incr(ROUTE_CACHE_VERSION_KEY).catch(() => {});
 }
 
@@ -50,7 +54,7 @@ export async function bumpRouteCache(redis: Redis): Promise<void> {
  * 清 Key 鉴权缓存：吊销/限流变更立即生效，无需等网关 60s TTL。
  * 单条失败不影响其余（fail-open，TTL 兜底）。
  */
-export async function invalidateKeyAuthCache(redis: Redis, keyHashes: string[]): Promise<void> {
+export async function invalidateKeyAuthCache(redis: RedisLike, keyHashes: string[]): Promise<void> {
   if (keyHashes.length === 0) return;
   await Promise.all(keyHashes.map((h) => redis.del(authKeyCache(h)).catch(() => {})));
 }

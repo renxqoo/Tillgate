@@ -71,6 +71,12 @@ export type AiEvent =
        * （见 usage-estimator.ts）；input tokens 用 estimateInputTokens（CJK 感知，与预扣同源）。
        */
       bytesRelayed?: number;
+      /**
+       * 扫描器累计的输出内容文本（规范形 delta 累积；仅流式有意义）。
+       * usage 缺失或用户中途取消时，gateway 用校准估算器从该文本估算 output tokens
+       * （输出按 0 计费 = 系统性漏收——取消刷输出是真实攻击面）。
+       */
+      outputText?: string;
       /** [DONE] 哨兵是否到达（观测/计费留痕：区分自然完成与终止后断开） */
       doneSentinel?: boolean;
       /** 终止帧（finish_reason）是否到达 */

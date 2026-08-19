@@ -8,6 +8,7 @@
 | -------------------------------------------- | ----------------------------- |
 | [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版）  |
 | [docs/data-model.md](docs/data-model.md)     | 数据模型（含 billing_requests）  |
+| [docs/billing-flow-deep-dive-v2.md](docs/billing-flow-deep-dive-v2.md) | **v2 扣款全流程**（预扣/实扣公式、刷费用五向量防线） |
 | [docs/api-contract.md](docs/api-contract.md) | API 契约（对外 + 管理端）     |
 | [docs/tech-stack.md](docs/tech-stack.md)     | 技术选型 / 观测 / 运维 / 安全 |
 | [docs/architecture.md](docs/architecture.md) | 架构与流程图                  |
@@ -25,14 +26,18 @@ apps/
   admin/           # 运营后台（Next.js，端口 3002）—— 见 apps/admin/README.md
 packages/
   core/            # 共享基础设施：环境变量校验 + 日志 + OTel + 对称加密
-  ledger/          # 资金账本领域：请求计费状态机 + durable receipt + 结算与对账
-  money/           # 金额计算（元 + decimal 全精度，账本永不 round，见 docs/data-model.md §2）
+  wallet/          # 资金钱包内核（唯一资金事实源：复式账本 + 两阶段冻结 + tx 注入 +
+  #                 allowCredit 现金口径）+ metering 计费公式（元 + decimal 全精度，永不 round）
+  ledger/          # 账本领域（单包六域 + platform）：rating 计价 / subscription 套餐与额度 /
+  #                 channel-budget 渠道运营资金 / billing 计费状态机（钱包之上） /
+  #                 settlement worker 编排 / migration 开账迁移 —— 见 docs/plan-ledger-rewrite.md
+  ledger-core/     # 通用幂等操作内核（operationId + canonical 指纹 + 回执重放）
   db/              # Drizzle schema + migrations + seed 脚本
   ai/              # 上游 LLM 传输层（自研，见 docs/ai-package.md）
   ui/              # 共享 shadcn 原语 + 主题 + 字体注册（前端用）
   api-client/      # 共享 REST 调用封装（apiFetch / ApiError / formatters，前端用）
-  ledger/          # 统一资金账本（余额/流水/预扣/结算/对账）
   identity/        # 会话/JWT/鉴权（admin-api/client-api 共用，双身份物理隔离）
+  identity-core/   # 身份内核（会话锚点 + 验证码挑战）
 docker/            # compose.yml（生产）+ compose.dev.yml + nginx
 docs/              # 设计文档
 ```

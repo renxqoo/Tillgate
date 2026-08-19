@@ -1,11 +1,13 @@
 import { Hono } from 'hono';
-import { createLedger } from '@ai-gateway/ledger';
+import { createWallet } from '@ai-gateway/wallet';
+import { createSubscriptionDomain } from '@ai-gateway/ledger/subscription';
 import type { Db } from '@ai-gateway/db';
 import type { Logger } from '@ai-gateway/core';
 import { errorHandler, type Redis } from '@ai-gateway/http';
 import type { ClientEnv } from '@ai-gateway/identity';
 import type { ClientServices } from '../services/index.js';
 import type { ClientApiConfig } from '../config.js';
+import { createPromotions } from '../services/promotions.js';
 
 /**
  * client-api 测试辅助：组装 stub 依赖与测试用 app。
@@ -40,10 +42,17 @@ export function stubRedis(): Redis {
 }
 
 export function makeServices(db: Db, overrides: Partial<ClientServices> = {}): ClientServices {
+  const wallet = createWallet(db, {
+    accounts: [],
+    refTypes: ['subscription', 'pack', 'redeem', 'payment', 'promo'],
+    currencies: ['CNY'],
+  });
   return {
     db,
     redis: stubRedis(),
-    ledger: createLedger({ db }),
+    wallet,
+    subscription: createSubscriptionDomain({ db, wallet }),
+    promotions: createPromotions(db, wallet),
     logger: noopLogger(),
     mailer: null,
     captcha: null,

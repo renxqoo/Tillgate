@@ -1,22 +1,25 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
 import { redeemBatches, redeemCodes } from '@ai-gateway/db/schema';
+import { createDomainOperations } from '@ai-gateway/ledger/platform';
 import { buildList, countAll, paginateQuery, paginationQuerySchema, FlowError, sortQuerySchema, type KnownErrorCode } from '@ai-gateway/http';
 import { z } from 'zod';
 
 import type { ClientServices } from './index.js';
 
 /**
- * 充值码兑换组件（限流 + ledger 兑换）。
+ * 充值码兑换组件（S7 重写：app 自有状态机 + wallet 入账）。
  *
- * 限流：10 次/分钟（P-1 修复：防脚本爆破充值码），键 redeem:rl:{userId}。
- * 兑换本身由 ledger.redeemCode 事务完成（幂等 + 冲正安全）。
+ * 限流：10 次/分钟（防脚本爆破充值码），键 redeem:rl:{userId}。
+ * 兑换 = ledger-core 幂等事务（kind 'redeem'）：码 CAS（status 0→1 +
+ * 未过期）→ batch usedCount++ → wallet.credit（counter-leg = outside）。
  * 失败分支在判定处直接 throw FlowError，errorHandler 统一出响应。
  */
 
 export const REDEEM_RATE_LIMIT_PER_MIN = 10;
 const RATE_LIMIT_WINDOW_S = 60;
 
-/** ledger 拒绝 reason（运行时值）→ 注册表错误码；状态码/文案从注册表单一真相推导 */
+/** 兑换拒绝 reason → 注册表错误码；状态码/文案从注册表单一真相推导 */
 const REJECT_CODE: Record<'invalid_code' | 'code_already_used' | 'code_revoked' | 'code_expired', KnownErrorCode> = {
   invalid_code: 'REDEEM_INVALID_CODE',
   code_already_used: 'REDEEM_CODE_ALREADY_USED',
@@ -25,6 +28,10 @@ const REJECT_CODE: Record<'invalid_code' | 'code_already_used' | 'code_revoked' 
 };
 
 export type RedeemSuccess = { kind: 'success'; amount: string; balanceAfter: string };
+
+type RedeemOutcome =
+  | { ok: true; amount: string; balanceAfter: string }
+  | { ok: false; reason: keyof typeof REJECT_CODE };
 
 export async function redeemCode(
   s: ClientServices,
@@ -35,7 +42,7 @@ export async function redeemCode(
   // 原子 INCR+EXPIRE（Lua）：incr/expire 两步在崩溃间隙会留下无 TTL 键 → 用户永久 429
   const n = (await s.redis.eval(
     'local v = redis.call("INCR", KEYS[1]) ' +
-      'if v == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end return v',
+    'if v == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end return v',
     1,
     key,
     RATE_LIMIT_WINDOW_S,
@@ -49,9 +56,59 @@ export async function redeemCode(
     });
   }
 
-  const r = await s.ledger.redeemCode({ userId, code });
-  if (!r.ok) throw new FlowError('rejected', { code: REJECT_CODE[r.reason] });
-  return { kind: 'success', amount: r.amount, balanceAfter: r.balanceAfter };
+  const codeHash = createHash('sha256').update(code).digest('hex');
+  const operationId = `redeem:${codeHash}:${userId}`;
+  const operations = createDomainOperations(s.db, ['redeem']);
+  const { receipt } = await operations.run<RedeemOutcome>({
+    operationId,
+    kind: 'redeem',
+    fingerprint: { kind: 'redeem', userId, codeHash },
+    execute: async (tx) => {
+      const now = new Date();
+      const claimed = await tx
+        .update(redeemCodes)
+        .set({ status: 1, usedBy: userId, usedAt: now })
+        .where(
+          and(
+            eq(redeemCodes.codeHash, codeHash),
+            eq(redeemCodes.status, 0),
+            // OR 必须整体加括号：and() 不给裸 SQL 片段加括号，AND 优先级高于 OR
+            sql`(${redeemCodes.expiresAt} is null or ${redeemCodes.expiresAt} > ${now})`,
+          ),
+        )
+        .returning({ id: redeemCodes.id, batchId: redeemCodes.batchId });
+      if (claimed.length === 0) {
+        const row = await tx.query.redeemCodes.findFirst({
+          where: eq(redeemCodes.codeHash, codeHash),
+        });
+        const reason = !row
+          ? 'invalid_code'
+          : row.status === 1
+            ? 'code_already_used'
+            : row.status === 2
+              ? 'code_revoked'
+              : 'code_expired';
+        return { ok: false as const, reason: reason as keyof typeof REJECT_CODE };
+      }
+      const [batch] = await tx
+        .update(redeemBatches)
+        .set({ usedCount: sql`${redeemBatches.usedCount} + 1` })
+        .where(eq(redeemBatches.id, claimed[0]!.batchId))
+        .returning({ amount: redeemBatches.amount });
+      if (!batch) throw new Error(`batch_not_found:${claimed[0]!.batchId}`);
+      const posted = await s.wallet.credit({
+        userId,
+        amount: batch.amount,
+        refType: 'redeem',
+        refId: operationId,
+        memo: '兑换码入账',
+        tx: tx as unknown as import('@ai-gateway/wallet').DbLike,
+      });
+      return { ok: true as const, amount: batch.amount, balanceAfter: posted.balanceAfter };
+    },
+  });
+  if (!receipt.ok) throw new FlowError('rejected', { code: REJECT_CODE[receipt.reason] });
+  return { kind: 'success', amount: receipt.amount, balanceAfter: receipt.balanceAfter };
 }
 
 /** 我的兑换记录（已兑换的；不含明文码/哈希，安全） */

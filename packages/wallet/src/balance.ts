@@ -1,11 +1,15 @@
 /** balance / accounts：查询（无户返回 '0'；accounts 列出用户全部币种摘要） */
 import { and, asc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { z } from 'zod';
 import { UnknownCurrencyError } from './errors';
 import { normalizeAmount } from './money';
 import { walletAccounts } from './schema';
-import { currencySchema, userIdSchema, type ValidationGuards } from './validation';
+import {
+  currencySchema,
+  parseWithWalletError,
+  userIdSchema,
+  type ValidationGuards,
+} from './validation';
 import { DEFAULT_CURRENCY } from './types';
 import type { AccountSummary } from './types';
 
@@ -15,8 +19,8 @@ export async function balance(
   currency: string = DEFAULT_CURRENCY,
   guards?: ValidationGuards,
 ): Promise<string> {
-  z.object({ userId: userIdSchema }).parse({ userId });
-  currencySchema.parse(currency);
+  parseWithWalletError(userIdSchema, userId, 'userId');
+  parseWithWalletError(currencySchema, currency, 'currency');
   if (guards?.currencies && !guards.currencies.has(currency)) {
     throw new UnknownCurrencyError(currency, [...guards.currencies]);
   }
@@ -33,8 +37,12 @@ export async function balance(
   return row ? normalizeAmount(row.balance) : '0';
 }
 
-export async function accounts(db: NodePgDatabase, userId: number): Promise<AccountSummary[]> {
-  z.object({ userId: userIdSchema }).parse({ userId });
+export async function accounts(
+  db: NodePgDatabase,
+  userId: number,
+  guards?: ValidationGuards,
+): Promise<AccountSummary[]> {
+  parseWithWalletError(userIdSchema, userId, 'userId');
   const rows = await db
     .select({
       currency: walletAccounts.currency,
@@ -45,10 +53,12 @@ export async function accounts(db: NodePgDatabase, userId: number): Promise<Acco
     .from(walletAccounts)
     .where(and(eq(walletAccounts.kind, 'user'), eq(walletAccounts.userId, userId)))
     .orderBy(asc(walletAccounts.currency));
-  return rows.map((row) => ({
-    currency: row.currency,
-    balance: normalizeAmount(row.balance),
-    inFlight: normalizeAmount(row.inFlight),
-    creditLimit: normalizeAmount(row.creditLimit),
-  }));
+  return rows
+    .filter((row) => !guards?.currencies || guards.currencies.has(row.currency))
+    .map((row) => ({
+      currency: row.currency,
+      balance: normalizeAmount(row.balance),
+      inFlight: normalizeAmount(row.inFlight),
+      creditLimit: normalizeAmount(row.creditLimit),
+    }));
 }

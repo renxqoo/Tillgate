@@ -52,7 +52,7 @@ async function createUser(subject: string, password: string): Promise<{ uid: num
   const hash = await hashPassword(password);
   const [u] = await db.insert(users).values({
     issuer: 'local', subject, identityProvider: 'local', email: `${subject}@test.local`, displayName: subject,
-    balance: '0', passwordHash: hash,
+      passwordHash: hash,
   }).returning();
   return { uid: u!.id, email: `${subject}@test.local` };
 }

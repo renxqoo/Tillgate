@@ -86,6 +86,8 @@ export interface CreateIdentityOptions {
   providers: readonly string[];
   /** 允许的挑战类型（如 ['email_code', 'password_reset']；业务自定义字符串） */
   challenges: readonly string[];
+  /** 允许的会话吊销 realm（默认 ['user']；双身份系统声明 ['user', 'admin']）——fail-closed */
+  realms?: readonly string[];
   password?: Partial<Omit<PasswordPolicy, 'validate'>>;
   passwordValidate?: PasswordPolicy['validate'];
   challenge?: Partial<ChallengeConfig>;
@@ -251,6 +253,8 @@ export interface DisableTotpInput {
 
 export interface RevokeSessionsInput {
   userId: number;
+  /** 身份域（缺省 'user'；必须在 createIdentity 的 realms 白名单内——fail-closed） */
+  realm?: string;
   /** 覆盖吊销时刻（测试/管理回填用；缺省 clock()） */
   at?: Date;
 }
@@ -261,6 +265,8 @@ export interface RevokeSessionsResult {
 
 export interface SessionValidAtInput {
   userId: number;
+  /** 身份域（缺省 'user'；未声明的 realm 读=无锚点=全有效，安全缺省） */
+  realm?: string;
   /** 会话签发时刻：Date 或 epoch 毫秒数（JWT iat 秒 × 1000 由调用方换算） */
   iat: Date | number;
 }

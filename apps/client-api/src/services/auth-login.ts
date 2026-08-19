@@ -1,13 +1,12 @@
 import { and, eq } from 'drizzle-orm';
-import { randomInt } from 'node:crypto';
 import {
   hashPassword,
   recordLoginFailure,
   resetLoginFailures,
   verifyPassword,
-  issueLoginCodeChallenge,
-  abortLoginCodeChallenge,
-  verifyLoginCodeChallenge,
+  advanceAnchor,
+  createLoginCodeChallenger,
+  DeliveryFailedError,
   LoginCodeCooldownError,
   CodeVerifyError,
   type LoginCodeVerified,
@@ -98,10 +97,14 @@ export async function login(
         });
       }
 
-      const code = String(randomInt(100000, 1000000));
+      // 签发/投递/验证统一走 identity-core 挑战表（投递失败 core 自动作废，可立即重试）
+      const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
       let challengeId: string;
       try {
-        challengeId = await issueLoginCodeChallenge(s.redis, 'user', String(user.id), code);
+        challengeId = await loginCodes.issue('user', {
+          email: user.email ?? email,
+          ip: input.ip,
+        });
       } catch (e) {
         if (e instanceof LoginCodeCooldownError) {
           throw new FlowError('code_rate_limited', {
@@ -110,14 +113,10 @@ export async function login(
             headers: { 'retry-after': '60' },
           });
         }
+        if (e instanceof DeliveryFailedError) {
+          throw new FlowError('code_send_failed', { code: 'CODE_SEND_FAILED' });
+        }
         throw e;
-      }
-      try {
-        await s.mailer.sendLoginCode(user.email ?? email, code, { ip: input.ip });
-      } catch {
-        // 投递失败回滚挑战（冷却一并清除，用户可立即重试）
-        await abortLoginCodeChallenge(s.redis, 'user', String(user.id), challengeId);
-        throw new FlowError('code_send_failed', { code: 'CODE_SEND_FAILED' });
       }
 
       return { kind: 'code_required', challengeId };
@@ -140,7 +139,11 @@ export async function verifyLoginCode(
     async () => {
       let verified: LoginCodeVerified;
       try {
-        verified = await verifyLoginCodeChallenge(s.redis, 'user', input.challengeId, input.code);
+        const loginCodes = createLoginCodeChallenger(s.db, { mailer: s.mailer });
+        verified = await loginCodes.verify('user', {
+          challengeId: input.challengeId,
+          code: input.code,
+        });
       } catch (e) {
         if (e instanceof CodeVerifyError) {
           if (e.reason === 'CODE_INVALID') {
@@ -153,8 +156,7 @@ export async function verifyLoginCode(
         }
         throw e;
       }
-      const userId = Number(verified.subjectId);
-
+      // 挑战目标=投递邮箱 → 按邮箱绑定本地账号（唯一索引 users_local_email_uq 兜底）
       const rows = await s.db
         .select({
           id: users.id,
@@ -162,7 +164,7 @@ export async function verifyLoginCode(
           status: users.status,
         })
         .from(users)
-        .where(eq(users.id, userId))
+        .where(and(eq(users.issuer, 'local'), eq(users.email, verified.subjectId)))
         .limit(1);
       const user = rows[0];
       if (!user || !isAccountUsable(user.status)) {
@@ -198,10 +200,14 @@ export async function changeMyPassword(
   if (!ok) throw new FlowError('invalid_credentials', { code: 'INVALID_CREDENTIALS', message: '原密码错误' });
 
   const newHash = await hashPassword(input.newPassword);
-  await s.db
-    .update(users)
-    .set({ passwordHash: newHash, sessionInvalidBefore: new Date(), updatedAt: new Date() })
-    .where(eq(users.id, rows[0]!.id));
+  // R5-2：改密即吊销全部既有会话（换哈希 + 推进锚点同事务）
+  await s.db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ passwordHash: newHash, updatedAt: new Date() })
+      .where(eq(users.id, rows[0]!.id));
+    await advanceAnchor(tx, 'user', rows[0]!.id, new Date());
+  });
   void recordAudit(s.db, {
     actor: 'user',
     action: 'user.password_change',

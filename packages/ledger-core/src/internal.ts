@@ -1,10 +1,14 @@
 /** 内部共享：事务句柄类型与瞬态重试壳（不对外导出语义） */
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
-/** 事务句柄（drizzle tx 与 db 同构子集） */
-export type Tx = Parameters<Parameters<NodePgDatabase['transaction']>[0]>[0];
+/** 库侧宽容数据库类型：消费方传入业务 schema 绑定的 Db 也可（drizzle 泛型不变性兼容） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- lib 边界：接受任意 schema 绑定
+export type AnyPgDatabase = NodePgDatabase<any>;
 
-export type DbLike = NodePgDatabase | Tx;
+/** 事务句柄（drizzle tx 与 db 同构子集） */
+export type Tx = Parameters<Parameters<AnyPgDatabase['transaction']>[0]>[0];
+
+export type DbLike = AnyPgDatabase | Tx;
 
 /** 瞬态事务错误（PG 死锁 40P01 / 串行化失败 40001）——幂等动词可安全重试 */
 function transientTxCode(error: unknown): '40P01' | '40001' | undefined {

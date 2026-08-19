@@ -3,8 +3,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { apps, billingRequests, userSubscriptions } from '@ai-gateway/db/schema';
 import type { UpstreamError } from '@ai-gateway/ai';
-import { createBillingProcessor } from '@ai-gateway/ledger';
-import { Decimal } from '@ai-gateway/money';
+import { createSettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createWallet } from '@ai-gateway/wallet';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import { signJwt } from '../../services/auth/jwt.js';
 import {
   loadEnvFileIntoProcess,
@@ -19,6 +20,7 @@ import {
   cleanupTestData,
   buildTestApp,
   makeMockAi,
+  walletForTests,
 } from '../../testing/helpers.js';
 
 /**
@@ -166,8 +168,9 @@ describe('管线失败路径', () => {
           ?.billingPolicyFingerprint,
       ).toMatch(/^[a-f0-9]{64}$/);
 
-      await createBillingProcessor({
-        db,
+      await createSettlementProcessor({
+          db,
+          wallet: createWallet(db, { accounts: [], refTypes: ['topup', 'billing'], currencies: ['CNY'] }),
         options: {
           ownerId: `multimodal-test-${randomUUID()}`,
           batchSize: 1,
@@ -188,11 +191,11 @@ describe('管线失败路径', () => {
         },
         { timeout: 10_000, interval: 50 }, // 全量并行时真实 Worker 的结算可能 >3s
       );
-      const settledUser = await db.query.users.findFirst({
+      await db.query.users.findFirst({
         where: (table, { eq: equals }) => equals(table.id, userId),
       });
-      // 包月 Key：结算扣订阅额度（(500×1000+20×2000)/1M = 0.54 元），余额不动
-      expect(new Decimal(settledUser!.balance).eq('1000')).toBe(true);
+      // 包月 Key：结算扣订阅额度（(500×1000+20×2000)/1M = 0.54 元），余额不动（S7：读 wallet）
+      expect(new Decimal(await walletForTests(db).balance(userId)).eq('1000')).toBe(true);
       const settledSub = await db.query.userSubscriptions.findFirst({
         where: eq(userSubscriptions.userId, userId),
       });

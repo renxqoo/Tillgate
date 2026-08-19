@@ -1,6 +1,5 @@
 /** statement 流水查询：分页正确性、币种隔离、种类过滤、对手方信息、只读零副作用 */
 import { describe, expect, it } from 'vitest';
-import { provisionSql } from '../schema';
 import { db, nextUser, ref, sameAmount, wallet } from './helpers';
 import { walletAccounts } from '../schema';
 import { eq } from 'drizzle-orm';
@@ -9,9 +8,19 @@ describe('statement 流水查询', () => {
   it('按时间倒序返回本方腿：金额有符号、balanceAfter 逐条衔接成余额历史', async () => {
     const user = nextUser();
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't1') });
-    await wallet.authorize({ userId: user, amount: '30', refType: 'order', refId: ref(user, 'o1') });
+    await wallet.authorize({
+      userId: user,
+      amount: '30',
+      refType: 'order',
+      refId: ref(user, 'o1'),
+    });
     await wallet.settle({ refType: 'order', refId: ref(user, 'o1'), amount: '25' });
-    await wallet.refund({ userId: user, amount: '5', refType: 'topup_refund', refId: ref(user, 'r1') });
+    await wallet.refund({
+      userId: user,
+      amount: '5',
+      refType: 'topup_refund',
+      refId: ref(user, 'r1'),
+    });
 
     const { items, nextCursor } = await wallet.statement({ userId: user });
     expect(nextCursor).toBeNull();
@@ -27,7 +36,12 @@ describe('statement 流水查询', () => {
   it('游标分页：limit 翻页不重不漏直到 nextCursor=null', async () => {
     const user = nextUser();
     for (let i = 0; i < 5; i += 1) {
-      await wallet.credit({ userId: user, amount: '1', refType: 'topup', refId: `${ref(user, 'p')}-${i}` });
+      await wallet.credit({
+        userId: user,
+        amount: '1',
+        refType: 'topup',
+        refId: `${ref(user, 'p')}-${i}`,
+      });
     }
     const seen: number[] = [];
     let cursor: number | undefined;
@@ -45,7 +59,13 @@ describe('statement 流水查询', () => {
   it('kinds 过滤与 currency 隔离', async () => {
     const user = nextUser();
     await wallet.credit({ userId: user, amount: '10', refType: 'topup', refId: ref(user, 'c') });
-    await wallet.credit({ userId: user, currency: 'USD', amount: '5', refType: 'topup', refId: ref(user, 'u') });
+    await wallet.credit({
+      userId: user,
+      currency: 'USD',
+      amount: '5',
+      refType: 'topup',
+      refId: ref(user, 'u'),
+    });
     await wallet.authorize({ userId: user, amount: '4', refType: 'order', refId: ref(user, 'o') });
     await wallet.settle({ refType: 'order', refId: ref(user, 'o'), amount: '4' });
 
@@ -61,8 +81,20 @@ describe('statement 流水查询', () => {
     const a = nextUser();
     const b = nextUser();
     const fresh = nextUser();
-    await wallet.credit({ userId: a, amount: '10', currency: 'ZBF', refType: 'topup', refId: ref(a, 't') });
-    await wallet.transfer({ from: { userId: a, currency: 'ZBF' }, to: { userId: b, currency: 'ZBF' }, amount: '3', refType: 'p2p', refId: ref(a, 'tv') });
+    await wallet.credit({
+      userId: a,
+      amount: '10',
+      currency: 'ZBF',
+      refType: 'topup',
+      refId: ref(a, 't'),
+    });
+    await wallet.transfer({
+      from: { userId: a, currency: 'ZBF' },
+      to: { userId: b, currency: 'ZBF' },
+      amount: '3',
+      refType: 'p2p',
+      refId: ref(a, 'tv'),
+    });
 
     const from = await wallet.statement({ userId: a, currency: 'ZBF' });
     expect(from.items[0]!.amount).toBe('-3');
@@ -75,7 +107,9 @@ describe('statement 流水查询', () => {
     const empty = await wallet.statement({ userId: fresh });
     expect(empty.items).toEqual([]);
     expect(empty.nextCursor).toBeNull();
-    expect(await db.select().from(walletAccounts).where(eq(walletAccounts.userId, fresh))).toHaveLength(0);
+    expect(
+      await db.select().from(walletAccounts).where(eq(walletAccounts.userId, fresh)),
+    ).toHaveLength(0);
   });
 
   it('入参校验：limit 越界 / 非法 kinds / 非法币种拒绝', async () => {
@@ -85,12 +119,5 @@ describe('statement 流水查询', () => {
     await expect(wallet.statement({ userId: user, kinds: [] })).rejects.toThrow();
     await expect(wallet.statement({ userId: user, kinds: ['hack' as 'credit'] })).rejects.toThrow();
     await expect(wallet.statement({ userId: user, currency: 'usd' })).rejects.toThrow();
-  });
-
-  it('provisionSql 导出建表 DDL：可贴入消费方版本化迁移', () => {
-    const ddl = provisionSql();
-    expect(ddl.length).toBeGreaterThanOrEqual(10);
-    expect(ddl.filter((s) => s.includes('create table if not exists'))).toHaveLength(4);
-    expect(ddl.every((s) => !s.includes('drop'))).toBe(true);
   });
 });

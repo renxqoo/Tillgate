@@ -5,17 +5,16 @@
  *   3. 禁科学计数法落库（PG numeric 不接受 1e-18）：toExpNeg 放宽到 -20
  *   4. precision 40：覆盖 38,18 全尺度加减不丢位
  */
-import Decimal from 'decimal.js';
+import DecimalJs from 'decimal.js';
 
-Decimal.set({ precision: 40, toExpNeg: -20, toExpPos: 40 });
-
-export { Decimal };
+/** 独立构造器，避免修改宿主进程共享的 decimal.js 全局配置。 */
+export const Decimal = DecimalJs.clone({ precision: 40, toExpNeg: -20, toExpPos: 40 });
+export type Decimal = DecimalJs;
 
 /** DB 可存字符串（不 round、不科学计数法） */
 export function toStorage(amount: Decimal): string {
   return amount.toString();
 }
-
 
 /** 合法金额字符串：非负十进制、≤18 位小数、≤20 位整数（numeric(38,18) 落库前防御） */
 const AMOUNT_PATTERN = /^\d{1,20}(\.\d{1,18})?$/;

@@ -33,7 +33,9 @@ export async function recordAudit(db: Db, input: AuditInput): Promise<void> {
       targetId: input.targetId == null ? null : String(input.targetId),
       detail: input.detail ?? null,
     });
-  } catch {
-    // 审计是旁路记录，不阻塞已经提交的业务操作。
+  } catch (error) {
+    // 审计是旁路记录，不阻塞已经提交的业务操作——但静默吞掉会让「该有审计的操作
+    // 实际没写进去」长期不可见；至少留下服务端日志
+    console.error('[audit] write failed:', input.action, error);
   }
 }

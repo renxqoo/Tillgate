@@ -39,7 +39,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
     if (status === "0" || status === "1") query.set("status", status);
     if (enterprise === "0" || enterprise === "1") query.set("enterprise", enterprise);
     const data = await adminFetch<Paginated<AdminUserRow>>(`/api/admin/users?${query.toString()}`);
-    rows = data.list ?? [];
+    rows = data.rows ?? data.list ?? [];
     total = data.total ?? 0;
   } catch (e) {
     error = e instanceof ApiError ? e.message : "加载失败";
@@ -47,7 +47,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
 
   try {
     const rc = await adminFetch<Paginated<AdminRateCardRow>>("/api/admin/rate-cards");
-    rateCards = (rc.list ?? []).map((r) => ({
+    rateCards = (rc.rows ?? rc.rows ?? rc.list ?? []).map((r) => ({
       id: r.id,
       name: r.name,
       coefficient: r.coefficient,

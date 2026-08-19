@@ -6,7 +6,13 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { z } from 'zod';
 import { normalizeAmount } from './money';
 import { walletAccounts, walletLegs, walletTransactions } from './schema';
-import { currencySchema, userIdSchema } from './validation';
+import {
+  currencySchema,
+  parseWithWalletError,
+  userIdSchema,
+  type ValidationGuards,
+} from './validation';
+import { UnknownCurrencyError } from './errors';
 import { DEFAULT_CURRENCY } from './types';
 import type { StatementInput, StatementItem, StatementResult } from './types';
 
@@ -16,9 +22,10 @@ const kindSchema = z.enum(KINDS);
 export async function statement(
   db: NodePgDatabase,
   input: StatementInput,
+  guards?: ValidationGuards,
 ): Promise<StatementResult> {
-  const parsed = z
-    .object({
+  const parsed = parseWithWalletError(
+    z.object({
       userId: userIdSchema,
       currency: currencySchema.optional(),
       kinds: z.array(kindSchema).min(1).optional(),
@@ -26,9 +33,14 @@ export async function statement(
       before: z.number().int().positive().optional(),
       /** 页大小 1–100，缺省 20 */
       limit: z.number().int().min(1).max(100).default(20),
-    })
-    .parse(input);
-  const currency = parsed.currency ?? DEFAULT_CURRENCY;
+    }),
+    input,
+    'statement',
+  );
+  const currency = parsed.currency ?? guards?.defaultCurrency ?? DEFAULT_CURRENCY;
+  if (guards?.currencies && !guards.currencies.has(currency)) {
+    throw new UnknownCurrencyError(currency, [...guards.currencies]);
+  }
 
   // 定位用户账户（只读：无户即空账单，不建户）
   const [account] = await db
@@ -91,14 +103,21 @@ export async function statement(
     balanceAfter: normalizeAmount(row.balanceAfter),
     memo: row.memo,
     createdAt: row.createdAt.toISOString(),
-    counterparties: siblingLegs
-      .filter((leg) => leg.transactionId === row.transactionId && leg.accountKind !== null)
-      .filter((leg) => !(leg.userId === parsed.userId && leg.code === null))
-      .map((leg) => ({
-        kind: leg.accountKind as 'user' | 'internal',
-        userId: leg.userId,
-        code: leg.code,
-      })),
+    counterparties: [
+      ...new Map(
+        siblingLegs
+          .filter((leg) => leg.transactionId === row.transactionId && leg.accountKind !== null)
+          .filter((leg) => !(leg.userId === parsed.userId && leg.code === null))
+          .map((leg) => [
+            `${leg.accountKind}:${leg.userId ?? ''}:${leg.code ?? ''}`,
+            {
+              kind: leg.accountKind as 'user' | 'internal',
+              userId: leg.userId,
+              code: leg.code,
+            },
+          ]),
+      ).values(),
+    ],
   }));
 
   return {

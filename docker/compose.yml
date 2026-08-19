@@ -48,7 +48,97 @@ services:
       OTEL_TRACES_MODE: otlp
       OTEL_EXPORTER_OTLP_ENDPOINT: http://trace-receiver:8793
     depends_on:
+    
+  # ── v2 栈（2026-08-20 审计后加入：与 v1 服务并存，nginx 切流节奏待用户确认）──
+  # 生产入口当前仍指 v1（nginx gateway_upstream → gateway:8787）；
+  # 验证 v2 时将 nginx.conf 上游指向 gateway-v2:8083 并逐项对账后下线 v1。
+  gateway-v2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: gateway-v2
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      PORT: 8083
+      OTEL_TRACES_MODE: "off"
+    depends_on:
       redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  client-api-v2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: client-api-v2
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OAUTH_API_BASE: http://client-api-v2:8081
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  admin-api-v2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: admin-api-v2
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+  worker-v2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+      args:
+        APP: worker-v2
+    env_file:
+      - path: ../.env
+        required: true
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
+      OTEL_TRACES_MODE: "off"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  redis:
         condition: service_healthy
       postgres:
         condition: service_healthy

@@ -64,7 +64,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     const data = await adminFetch<Paginated<AdminUsageRow>>(
       `/api/admin/usage-logs?${query.toString()}`,
     );
-    rows = data.list ?? [];
+    rows = data.rows ?? data.list ?? [];
     total = data.total ?? 0;
   } catch (e) {
     error = e instanceof ApiError ? e.message : "加载失败";

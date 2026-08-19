@@ -3,6 +3,14 @@
  * 复式模型：每笔资金交易 = 批头（幂等键）+ ≥2 条腿（Σ=0，有借必有贷）。
  * credit/settle/refund 自动生成对手腿（counterparty 可选，默认内部科目）。
  */
+import type { DbLike } from './internal';
+
+/** 事务注入：缺省动词自开事务；传入 tx 则加入调用方事务（SAVEPOINT 语义，
+ *  提交/回滚权归调用方）——「业务行 + 资金变动」同生共死的组合手段。
+ *  tx 不参与命令指纹（连接句柄非业务数据）。 */
+export interface TxInput {
+  tx?: DbLike;
+}
 
 /** 缺省币种——单币种业务的隐式维度 */
 export const DEFAULT_CURRENCY = 'CNY';
@@ -19,7 +27,7 @@ export interface AccountRef {
   currency?: string;
 }
 
-export interface CreditInput {
+export interface CreditInput extends TxInput {
   userId: number;
   amount: string;
   refType: string;
@@ -30,7 +38,7 @@ export interface CreditInput {
   memo?: string;
 }
 
-export interface AuthorizeInput {
+export interface AuthorizeInput extends TxInput {
   userId: number;
   amount: string;
   refType: string;
@@ -38,27 +46,30 @@ export interface AuthorizeInput {
   /** 冻结时限；到点由 releaseExpired 释放（worker 周期调用） */
   expiresAt?: Date;
   currency?: string;
+  /** 允许动用授信（缺省 true）。false = 现金口径守卫 balance − in_flight ≥ amount
+   *  （禁透支场景：订阅购买等），拒绝抛 InsufficientCashError。 */
+  allowCredit?: boolean;
   memo?: string;
 }
 
-export interface SettleInput {
+export interface SettleInput extends TxInput {
   /** 按业务键结算（与 authorize 同 refType/refId） */
   refType: string;
   refId: string;
-  /** 实扣金额（可少于冻结额，余量自动归还）；重放时忽略 */
+  /** 实扣金额（可少于冻结额，余量自动归还）；同键异参会拒绝 */
   amount: string;
   /** 结算收入确认科目（缺省 platform_revenue） */
   counterparty?: string;
   memo?: string;
 }
 
-export interface ReleaseInput {
+export interface ReleaseInput extends TxInput {
   refType: string;
   refId: string;
   reason?: string;
 }
 
-export interface RefundInput {
+export interface RefundInput extends TxInput {
   userId: number;
   amount: string;
   refType: string;
@@ -69,17 +80,19 @@ export interface RefundInput {
   memo?: string;
 }
 
-export interface TransferInput {
+export interface TransferInput extends TxInput {
   from: AccountRef;
   to: AccountRef;
   amount: string;
   refType: string;
   refId: string;
+  /** from 为用户账户时的现金口径开关（同 AuthorizeInput.allowCredit） */
+  allowCredit?: boolean;
   memo?: string;
 }
 
 /** 授信调整：amount 为新授信额（≥0，0 = 收回授信）；幂等键同其他动词 */
-export interface CreditLineInput {
+export interface CreditLineInput extends TxInput {
   userId: number;
   amount: string;
   refType: string;
@@ -89,7 +102,7 @@ export interface CreditLineInput {
 }
 
 /** 账户冻结/解冻（风控）：零额审计交易，幂等 */
-export interface FreezeInput {
+export interface FreezeInput extends TxInput {
   target: AccountRef;
   frozen: boolean;
   refType: string;
@@ -210,6 +223,34 @@ export interface CreateWalletOptions {
   refTypes: readonly string[];
   /** 允许的币种白名单（如 ['CNY', 'USD']） */
   currencies: readonly string[];
+  /** 缺省币种；必须包含在 currencies，默认 CNY。 */
+  defaultCurrency?: string;
+  /** 内部科目物理分片数，降低全局收入/外部科目热点；默认 16，范围 1–256。 */
+  internalAccountShards?: number;
+  /** 可选观测钩子；异常会被吞掉，绝不影响资金事务。 */
+  telemetry?: WalletTelemetry;
+}
+
+export type WalletOperation = keyof Wallet;
+
+export interface WalletOperationEvent {
+  operation: WalletOperation;
+  outcome: 'success' | 'error';
+  durationMs: number;
+  replayed?: boolean;
+  errorCode?: string;
+}
+
+export interface WalletTransactionRetryEvent {
+  operation: string;
+  /** 从 1 开始的重试序号。 */
+  attempt: number;
+  code: '40P01' | '40001';
+}
+
+export interface WalletTelemetry {
+  onOperation?(event: WalletOperationEvent): void;
+  onTransactionRetry?(event: WalletTransactionRetryEvent): void;
 }
 
 export interface Wallet {
@@ -229,6 +270,4 @@ export interface Wallet {
   accounts(userId: number): Promise<AccountSummary[]>;
   /** 流水查询（账单页/对账导出）：游标分页 newest-first，只读零副作用 */
   statement(input: StatementInput): Promise<StatementResult>;
-  /** 超时释放扫描（worker 周期调用）；返回本次释放条数 */
-  releaseExpired(now?: Date, limit?: number): Promise<{ released: number }>;
 }

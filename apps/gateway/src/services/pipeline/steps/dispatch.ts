@@ -3,7 +3,7 @@ import type { AuthContext, AuthEnv } from '../../../middleware/auth.js';
 import type { Context } from 'hono';
 import { estimateInputTokens } from '@ai-gateway/ai';
 import { reserveFallbackDims } from './rate-limit.js';
-import { attemptChannel } from './attempt.js';
+import { attemptChannel } from './attempt/index.js';
 import { recordEstimatedOutcome } from './finalize.js';
 import {
   channelError,

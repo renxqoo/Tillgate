@@ -1,6 +1,6 @@
 "use server";
 
-import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { apiFetch, ApiError, setSessionToken } from "@ai-gateway/api-client";
 
 export async function changePasswordAction(input: {
   oldPassword: string;
@@ -10,10 +10,12 @@ export async function changePasswordAction(input: {
   if (input.newPassword.length < 8) return { error: "新密码至少 8 位" };
   if (input.newPassword.length > 128) return { error: "新密码最多 128 位" };
   try {
-    await apiFetch("/api/auth/password", {
+    const res = await apiFetch<{ token: string }>("/api/auth/password", {
       method: "POST",
       body: { oldPassword: input.oldPassword, newPassword: input.newPassword },
     });
+    // v2：改密作废全部旧会话并同拍签发新 token——BFF 轮换持有
+    if (res.token) await setSessionToken(res.token);
     return {};
   } catch (e) {
     if (e instanceof ApiError) {

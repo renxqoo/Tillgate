@@ -1,18 +1,9 @@
-/** @ai-gateway/wallet 出口：装配层 createWallet + 各动词（可自带 db 单独用）+ 契约类型 */
+/** 生产安全出口：configured Wallet Facade + 契约类型/错误。 */
 export { createWallet } from './wallet';
-export { credit } from './credit';
-export { authorize } from './authorize';
-export { settle } from './settle';
-export { release, releaseExpired } from './release';
-export { refund } from './refund';
-export { transfer } from './transfer';
-export { setCreditLimit } from './credit-line';
-export { freeze } from './freeze';
-export { accounts, balance } from './balance';
-export { statement } from './statement';
 export type {
   Wallet,
   AccountRef,
+  TxInput,
   CreditInput,
   AuthorizeInput,
   SettleInput,
@@ -34,29 +25,30 @@ export type {
   StatementItem,
   StatementResult,
   StatementCounterparty,
+  WalletTelemetry,
+  WalletOperationEvent,
+  WalletTransactionRetryEvent,
 } from './types';
-export {
-  DEFAULT_CURRENCY,
-  OUTSIDE_ACCOUNT,
-  REVENUE_ACCOUNT,
-} from './types';
-export { provision, deprovision } from './schema';
-export {
-  walletAccounts,
-  walletAuthorizations,
-  walletTransactions,
-  walletLegs,
-} from './schema';
+export { DEFAULT_CURRENCY, OUTSIDE_ACCOUNT, REVENUE_ACCOUNT } from './types';
+/** 事务注入句柄类型（input.tx 的形状；消费方在自己的事务里传给动词） */
+export type { DbLike } from './internal';
+/** 任意 schema 绑定的库句柄（createWallet 入参；消费方持 schema-bound Db 直传） */
+export type { AnyPgDatabase } from './internal';
 export {
   WalletError,
   WalletInternalError,
   InvalidAmountError,
+  InvalidInputError,
   InvalidAccountRefError,
   InsufficientBalanceError,
+  InsufficientCashError,
   AuthorizationNotFoundError,
   AuthorizationNotActiveError,
   SettleExceedsHoldError,
   RefKeyConflictError,
+  IdempotencyConflictError,
+  ReservationError,
+  type ReservationErrorCode,
   CreditLimitConflictError,
   UnknownAccountCodeError,
   UnknownRefTypeError,
@@ -65,4 +57,3 @@ export {
   SameAccountTransferError,
   CurrencyMismatchError,
 } from './errors';
-export { Decimal, normalizeAmount, toStorage } from './money';

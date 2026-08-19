@@ -101,7 +101,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     .post('/:id/renew', async (c) => {
       const id = intParam(c, 'id');
       try {
-        const result = await s.ledger.renewSubscription({
+        const result = await s.subscription.renew({
           operationId: operationId(c),
           subscriptionId: id,
           adminId: c.get('adminId'),
@@ -116,7 +116,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
       const id = intParam(c, 'id');
       const body = c.req.valid('json');
       try {
-        const result = await s.ledger.changeSubscription({
+        const result = await s.subscription.change({
           operationId: operationId(c),
           subscriptionId: id,
           targetPlanId: body.targetPlanId,
@@ -132,7 +132,7 @@ export function subscriptionAdminRoutes(s: AdminServices): Hono<AdminEnv> {
     .post('/:id/cancel', async (c) => {
       const id = intParam(c, 'id');
       try {
-        const result = await s.ledger.cancelSubscription({
+        const result = await s.subscription.cancel({
           operationId: operationId(c),
           subscriptionId: id,
           adminId: c.get('adminId'),

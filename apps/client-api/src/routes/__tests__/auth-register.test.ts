@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { createDb, type Db } from '@ai-gateway/db';
@@ -140,7 +140,10 @@ describe('C 端邮箱自助注册', () => {
         const wrong = await verifyReq(app, body.challengeId, '000000');
         expect(wrong.status).toBe(401);
 
-        await redis.del(`logincode:cool:user:${email}`);
+        // 模拟冷却窗口滚动（挑战 issued_at 回拨 61s）后重新发码
+        await db.execute(
+          sql`update identity_challenges set issued_at = clock_timestamp() - interval '61 seconds' where id = ${body.challengeId}`,
+        );
         const res2 = await registerReq(app, email, 'GoodPass123', '203.0.113.30');
         const body2 = (await res2.json()) as { challengeId: string };
         const ok = await verifyReq(app, body2.challengeId, mailer.sent[1]!.code);

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { BillingOperationError } from '@ai-gateway/ledger';
+import { BillingOperationError } from '@ai-gateway/ledger/billing';
 import {
   HttpError, jsonBody, operationId, query,
   paginateQuery, paginationQuerySchema, buildList,
@@ -43,15 +43,15 @@ export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
       return c.json(
         await paginateQuery(
           page,
-          s.billingOperations.listCases({ status: input.status, limit, offset }),
-          s.billingOperations.countCases(input.status).then((count) => [{ count }]),
+          s.billingReview.listCases({ status: input.status, limit, offset }),
+          s.billingReview.countCases(input.status).then((count) => [{ count }]),
         ),
       );
     })
     .post('/:requestId/retry', jsonBody(decisionBase), async (c) => {
       try {
         return c.json(
-          await s.billingOperations.retryDead({
+          await s.billingReview.retryDead({
             operationId: operationId(c),
             requestId: c.req.param('requestId'),
             adminId: c.get('adminId'),
@@ -66,7 +66,7 @@ export function billingOperationsRoutes(s: AdminServices): Hono<AdminEnv> {
     .post('/:requestId/abandon', jsonBody(decisionBase), async (c) => {
       try {
         return c.json(
-          await s.billingOperations.abandonDead({
+          await s.billingReview.abandonDead({
             operationId: operationId(c),
             requestId: c.req.param('requestId'),
             adminId: c.get('adminId'),

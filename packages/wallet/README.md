@@ -1,7 +1,11 @@
 # @ai-gateway/wallet
 
-通用企业级钱包：**复式账本** + 业务无关两阶段扣费。零 workspace 依赖（仅
+生产导向的通用钱包内核：**复式账本** + 业务无关两阶段扣费。零 workspace 依赖（仅
 decimal.js / drizzle-orm / zod），可整目录拎出独立仓——电商/AI/订阅同构复用。
+
+计费公式与预扣估算（calcAmount / estimateMaxCost / requiredReservation / Decimal 工具）
+经 `@ai-gateway/wallet/metering` 子导出提供（`src/metering.ts`，全精度 Decimal，账本永不
+round）——不进根导出，内核契约不变。
 
 下面按「跟着钱走一遍」的方式讲清楚全部业务逻辑，不需要会计背景。
 
@@ -46,13 +50,13 @@ decimal.js / drizzle-orm / zod），可整目录拎出独立仓——电商/AI/�
 
 ### 每个动词都是一句话
 
-| 业务动作 | 账本上的那句话 | 门外动不动 |
-|---|---|---|
-| 充值 99 | 门外 ──99──→ 张三 | 动（钱进屋） |
-| 消费 30（settle） | 张三 ──30──→ 平台收入 | 不动（屋内挪） |
-| 分账 80（transfer） | 平台收入 ──80──→ 商家 | 不动 |
-| 退款 5（refund） | 张三 ──5──→ 门外 | 动（钱出屋） |
-| 张三转商家 30 | 张三 ──30──→ 商家 | 不动 |
+| 业务动作            | 账本上的那句话        | 门外动不动     |
+| ------------------- | --------------------- | -------------- |
+| 充值 99             | 门外 ──99──→ 张三     | 动（钱进屋）   |
+| 消费 30（settle）   | 张三 ──30──→ 平台收入 | 不动（屋内挪） |
+| 分账 80（transfer） | 平台收入 ──80──→ 商家 | 不动           |
+| 退款 5（refund）    | 张三 ──5──→ 门外      | 动（钱出屋）   |
+| 张三转商家 30       | 张三 ──30──→ 商家     | 不动           |
 
 **一句话在数据库里拆成三行**（以充值 99 为例）：
 
@@ -107,13 +111,13 @@ wallet_legs 第 2 条：门外 −99 = 句子的前半段（从哪来）
 
 跟着账本数字走一遍（先充值 300）：
 
-| 步骤 | 动作 | 余额 | 在途 | 还能花 | 平台收入 |
-|---|---|---|---|---|---|
-| 充值 | credit 300 | **300** | 0 | 300 | — |
-| 下单 | authorize 259 | 300 | **259** | 41 | — |
-| 支付成功 | settle 259 | **41** | 0 | 41 | **+259** |
-| *改价只付 249* | *settle 249* | *51* | *0* | *51* | *+249（差额 10 自动归还）* |
-| *用户取消* | *release* | *300* | *0* | *300* | *0（分文未动）* |
+| 步骤           | 动作          | 余额    | 在途    | 还能花 | 平台收入                   |
+| -------------- | ------------- | ------- | ------- | ------ | -------------------------- |
+| 充值           | credit 300    | **300** | 0       | 300    | —                          |
+| 下单           | authorize 259 | 300     | **259** | 41     | —                          |
+| 支付成功       | settle 259    | **41**  | 0       | 41     | **+259**                   |
+| _改价只付 249_ | _settle 249_  | _51_    | _0_     | _51_   | _+249（差额 10 自动归还）_ |
+| _用户取消_     | _release_     | _300_   | _0_     | _300_  | _0（分文未动）_            |
 
 ### 流程 2：AI 按量计费（预估多押、实际少扣）
 
@@ -200,48 +204,88 @@ authorize 时带上 expiresAt（如 15 分钟后）
 ## 五、API 速查
 
 ```ts
-import { createWallet, provision } from '@ai-gateway/wallet';
-await provision(db);
+import { createWallet } from '@ai-gateway/wallet';
+import { migrateWallet } from '@ai-gateway/wallet/migrations';
+import { createWalletMaintenance } from '@ai-gateway/wallet/maintenance';
+
+// 部署阶段执行：advisory lock 串行化、版本 journal + checksum 防漂移
+await migrateWallet(db);
 
 // 三张白名单【必填】（fail-closed：未声明的科目/业务域/币种一律拒绝）
 const wallet = createWallet(db, {
   accounts: ['channel_cost', 'marketing_expense'], // 自定义科目（内置 outside/platform_revenue 免声明）
-  refTypes: ['topup', 'order', 'payout'],          // 业务域——防拼错导致幂等域分裂双入账
-  currencies: ['CNY', 'USD'],                       // 币种——防拼错导致余额"隐身"
+  refTypes: ['topup', 'order', 'payout'], // 业务域——防拼错导致幂等域分裂双入账
+  currencies: ['CNY', 'USD'], // 币种——防拼错导致余额"隐身"
+  defaultCurrency: 'CNY', // 可选；必须位于 currencies
+  internalAccountShards: 16, // 可选；默认 16，分散 outside/revenue 热点
+  telemetry: {
+    // 可选；观测器异常不影响资金事务
+    onOperation: (event) => metrics.record(event),
+    onTransactionRetry: (event) => metrics.record(event),
+  },
 });
 // 越界即抛 UnknownAccountCodeError / UnknownRefTypeError / UnknownCurrencyError（错误消息附可用清单）
 
-await wallet.credit({ userId, amount: '99.00', refType: 'topup', refId: tradeNo });            // 充值
-await wallet.authorize({ userId, amount: '259', refType: 'order', refId: orderId, expiresAt });// 冻结
-await wallet.settle({ refType: 'order', refId: orderId, amount: '249' });                      // 实扣(可少于冻结)
-await wallet.release({ refType: 'order', refId: orderId, reason: 'user_cancel' });             // 解押
-await wallet.refund({ userId, amount: '59', refType: 'topup_refund', refId: tradeNo });        // 退款
-await wallet.transfer({ from: { code: 'platform_revenue' }, to: { userId: merchantId },
-  amount: '80', refType: 'payout', refId: settlementId });                                     // 分账/P2P
-await wallet.credit({ userId, currency: 'USD', amount: '14.99', refType: 'topup', refId: id });// 多币种(缺省CNY)
+await wallet.credit({ userId, amount: '99.00', refType: 'topup', refId: tradeNo }); // 充值
+await wallet.authorize({ userId, amount: '259', refType: 'order', refId: orderId, expiresAt }); // 冻结
+await wallet.settle({ refType: 'order', refId: orderId, amount: '249' }); // 实扣(可少于冻结)
+await wallet.release({ refType: 'order', refId: orderId, reason: 'user_cancel' }); // 解押
+await wallet.refund({ userId, amount: '59', refType: 'topup_refund', refId: tradeNo }); // 退款
+await wallet.transfer({
+  from: { code: 'platform_revenue' },
+  to: { userId: merchantId },
+  amount: '80',
+  refType: 'payout',
+  refId: settlementId,
+}); // 分账/P2P
+await wallet.credit({ userId, currency: 'USD', amount: '14.99', refType: 'topup', refId: id }); // 多币种(缺省CNY)
 await wallet.setCreditLimit({ userId, amount: '50', refType: 'credit_line', refId: grantId }); // 授信
-await wallet.freeze({ target: { userId }, frozen: true, refType: 'risk_control', refId });     // 风控冻结
-const summaries = await wallet.accounts(userId);                                               // 账户摘要
-await wallet.releaseExpired(new Date(), 100);                                                  // 超时扫描(worker)
+await wallet.freeze({ target: { userId }, frozen: true, refType: 'risk_control', refId }); // 风控冻结
+
+// 事务注入（全部写动词）：动词加入调用方事务（SAVEPOINT 语义，提交/回滚权归调用方）
+// ——「业务行 + 资金变动」同生共死；锁/守卫/幂等随 tx 走，并发同键语义与独立调用完全一致
+await db.transaction(async (tx) => {
+  await wallet.authorize({ userId, amount: '5', refType: 'order', refId: `${orderId}#over`, tx });
+  await wallet.settle({ refType: 'order', refId: `${orderId}#over`, amount: '5', tx });
+  await wallet.settle({ refType: 'order', refId: orderId, amount: '10', tx });
+}); // 实扣 > 预估（AI 计费特性）：同事务「补充授权 + 结算」三步原子完成
+
+// 现金口径（authorize/transfer；禁透支场景如订阅购买）：守卫改为 balance − in_flight ≥ amount
+await wallet.transfer({
+  from: { userId }, to: { code: 'platform_revenue' }, amount: '99',
+  refType: 'order', refId, allowCredit: false,
+}); // 现金不足抛 InsufficientCashError（code 'insufficient_cash'，与 insufficient_balance 可分流）
+
+const summaries = await wallet.accounts(userId); // 账户摘要
+const maintenance = createWalletMaintenance(db);
+await maintenance.releaseExpired(100); // DB 时钟 + ORDER BY + FOR UPDATE SKIP LOCKED
+await maintenance.verifyInvariants(); // 周期对账/告警
 ```
 
 ## 六、不变量（钱包的安全承诺）
 
 - 每笔交易 Σ 腿 = 0（有借必有贷）；每账户腿链恒等且连续；余额 = 腿的代数和
 - 每笔冻结必达终态，settle 与 release 经数据库原子迁移互斥（并发恰好一次）
-- 用户余额 ≥ −授信；settle ≤ 冻结额；同一业务键同一动作至多一笔交易（回调重放安全）
-- 冻结账户拒绝一切资金变动
+- 可用额 `balance + credit_limit − in_flight ≥ 0`；active 冻结不能被 refund/transfer/降授信绕过
+  （`allowCredit: false` 时 authorize/transfer 守卫为现金口径 `balance − in_flight ≥ amount`，
+  授信在场也不可动用——策略在内核锁内判定，杜绝调用方预读余额的 TOCTOU 竞态）
+- settle ≤ 冻结额且不得晚于 expiresAt；同一业务键同一动作至多一笔交易（回调重放安全）
+- 冻结账户拒绝资金移动；release/expiry 允许降低在途风险敞口
 
-以上全部有 DB 约束兜底 + 32 组测试机械化验收（含全账本对账器）。
+以上由三层共同保证：Posting Kernel 的锁内校验、PostgreSQL deferred constraint trigger、
+以及 157 个真实 PG 契约测试和可运行的全账本核验器。根入口不导出原始动词、表、
+Decimal 或清场方法，避免绕过 fail-closed Facade。
 
 ## 七、设计边界
 
 1. **多币种**：一币一账互不净额；跨币换汇 = 两笔独立转账（汇率是业务策略）
 2. **授信地板**：覆盖「先花后充、封顶欠款」；真账期（发票/催收）是单据系统不属钱包
 3. **一个冻结单次结算**：分次扣款 = 多次独立 authorize（installment 维度已设计、挂起）
-4. **幂等键全局唯一**：不含用户/币种维度；顶撞抛 `RefKeyConflictError`（键设计责任在调用方）
-5. **守卫前重放**：transfer/refund/authorize 先查重放再过余额守卫——首笔花掉余额后重放不被误伤
-6. **三张白名单（必填）**：accounts/refTypes/currencies 声明后方可使用——分别堵「科目拼错静默建抽屉（Σ=0 抓不到）」「refType 拼错幂等域分裂双入账」「币种拼错余额隐身」三类静默错误；未声明即拒绝（fail-closed）
+4. **幂等键全局唯一**：不含用户/币种维度；跨账户顶撞抛 `RefKeyConflictError`，同键异参抛 `IdempotencyConflictError`
+5. **守卫前重放**：所有资金命令先按稳定指纹读回首次回执，再执行当前余额/冻结守卫；账户后续变化不破坏重放
+6. **内部科目分片**：`outside`/`platform_revenue` 等逻辑名称不变，默认拆成 16 个物理余额分片；普通入账只锁一个分片，转出与冻结由内核聚合全部分片
+7. **三张白名单（必填）**：accounts/refTypes/currencies 声明后方可使用——分别堵「科目拼错静默建抽屉（Σ=0 抓不到）」「refType 拼错幂等域分裂双入账」「币种拼错余额隐身」三类静默错误；未声明即拒绝（fail-closed）
+8. **tx 注入**：写动词可选 `tx`（drizzle 事务句柄）；注入后动词在调用方事务内以 SAVEPOINT 执行，唯一冲突只回滚到 savepoint 再走重放读回——注入与否并发语义一致。`tx` 不参与命令指纹（连接句柄非业务数据，缺省调用指纹与历史字节一致）；`allowCredit` 仅在显式 `false` 时进指纹
 
 ## 八、数据模型：四张表逐字段讲清
 
@@ -266,71 +310,74 @@ await wallet.releaseExpired(new Date(), 100);                                   
 
 四条关系（三条外键 + 一条逻辑关联）：
 
-| 关系 | 类型 | 说明 |
-|---|---|---|
-| `legs.transaction_id → transactions.id` | FK | 一笔交易 ≥2 条腿（credit_line/freeze 零额审计单腿） |
-| `legs.account_id → accounts.id` | FK | 每条腿记在且仅记在一个账户上 |
-| `authorizations.account_id → accounts.id` | FK | 冻结单押的是哪个账户（在途记在该账户上） |
-| `authorizations ↔ transactions` | **逻辑关联**（同业务键） | 无外键：authorize 建冻结单、settle 按**同一个** `(ref_type, ref_id)` 落交易——两表靠业务键对上，这也是 settle 寻址冻结单的方式 |
+| 关系                                      | 类型                     | 说明                                                                                                                          |
+| ----------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `legs.transaction_id → transactions.id`   | FK                       | 一笔交易 ≥2 条腿（credit_line/freeze 零额审计单腿）                                                                           |
+| `legs.account_id → accounts.id`           | FK                       | 每条腿记在且仅记在一个账户上                                                                                                  |
+| `authorizations.account_id → accounts.id` | FK                       | 冻结单押的是哪个账户（在途记在该账户上）                                                                                      |
+| `authorizations ↔ transactions`           | **逻辑关联**（同业务键） | 无外键：authorize 建冻结单、settle 按**同一个** `(ref_type, ref_id)` 落交易——两表靠业务键对上，这也是 settle 寻址冻结单的方式 |
 
 ### wallet_accounts —— 账户表（钱的「家」）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` | uuid PK | 账户全局标识；腿和冻结单都引用它 |
-| `kind` | `user`/`internal` | 用户账户 或 内部科目（二选一，与下两列互斥校验） |
-| `user_id` | bigint，可空 | `kind=user` 时必填：业务侧用户 ID |
-| `code` | varchar(64)，可空 | `kind=internal` 时必填：科目代码（`outside`/`platform_revenue`/自定义） |
-| `currency` | varchar(3) | 币种（缺省 CNY）。**一币一账**：唯一键 `(user_id, currency)` / `(code, currency)` |
-| `balance` | numeric(38,18) | 余额。用户账户 ≥ −credit_limit；内部科目按语义可负（outside 镜像恒负） |
-| `in_flight` | numeric(38,18) | 在途：本账户所有 **active** 冻结单押住的总额 |
-| `credit_limit` | numeric(38,18) | 授信地板（仅约束用户账户；0 = 纯预付不许欠款） |
-| `status` | `active`/`frozen` | 风控冻结：frozen 拒绝一切资金变动（查余额不受限） |
-| `updated_at` | timestamptz | 最后变动时间 |
+| 字段           | 类型              | 说明                                                                              |
+| -------------- | ----------------- | --------------------------------------------------------------------------------- |
+| `id`           | uuid PK           | 账户全局标识；腿和冻结单都引用它                                                  |
+| `kind`         | `user`/`internal` | 用户账户 或 内部科目（二选一，与下两列互斥校验）                                  |
+| `user_id`      | bigint，可空      | `kind=user` 时必填：业务侧用户 ID                                                 |
+| `code`         | varchar(64)，可空 | `kind=internal` 时必填：科目代码（`outside`/`platform_revenue`/自定义）           |
+| `currency`     | varchar(3)        | 币种（缺省 CNY）。用户唯一键 `(user_id, currency)`                              |
+| `shard`        | integer           | 用户恒为 0；内部科目物理分片 0–255，逻辑唯一键 `(code, currency, shard)`         |
+| `balance`      | numeric(38,18)    | 余额。用户账户 ≥ −credit_limit；内部科目按语义可负（outside 镜像恒负）            |
+| `in_flight`    | numeric(38,18)    | 在途：本账户所有 **active** 冻结单押住的总额                                      |
+| `credit_limit` | numeric(38,18)    | 授信地板（仅约束用户账户；0 = 纯预付不许欠款）                                    |
+| `status`       | `active`/`frozen` | 风控冻结：frozen 拒绝一切资金变动（查余额不受限）                                 |
+| `updated_at`   | timestamptz       | 最后变动时间                                                                      |
 
 业务逻辑：**用户账户的可用额度 = balance + credit_limit − in_flight**（ authorize 的守卫就用它）；DB 层三条 check 兜底：身份互斥（kind 与 user_id/code 匹配）、非负（in_flight、credit_limit）、地板（`kind='internal' or balance >= -credit_limit`——内部科目豁免地板，守恒由 Σ腿=0 保证）。
 
 ### wallet_transactions —— 交易批头（「谁做了什么」）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` | bigserial PK | 交易号（单调递增，天然时间序） |
-| `kind` | 词表 | `credit`/`settle`/`refund`/`transfer`/`credit_line`/`freeze` |
-| `ref_type` | varchar(32) | 业务域（order/topup/inference…，snake_case） |
-| `ref_id` | varchar(128) | 业务单号——**与 ref_type 组成幂等键** |
-| `memo` | varchar(255) | 备注（≤255，入口校验） |
-| `credit_limit_after` | numeric，可空 | 仅 `credit_line` 行填：本笔生效后的授信额（重放读回依据） |
-| `created_at` | timestamptz | |
+| 字段                 | 类型          | 说明                                                         |
+| -------------------- | ------------- | ------------------------------------------------------------ |
+| `id`                 | bigserial PK  | 交易号（单调递增，天然时间序）                               |
+| `kind`               | 词表          | `credit`/`settle`/`refund`/`transfer`/`credit_line`/`freeze` |
+| `ref_type`           | varchar(32)   | 业务域（order/topup/inference…，snake_case）                 |
+| `ref_id`             | varchar(128)  | 业务单号——**与 ref_type 组成幂等键**                         |
+| `memo`               | varchar(255)  | 备注（≤255，入口校验）                                       |
+| `credit_limit_after` | numeric，可空 | 仅 `credit_line` 行填：本笔生效后的授信额（重放读回依据）    |
+| `command_fingerprint` | varchar(64)  | 规范化命令 SHA-256；同键异参冲突依据                         |
+| `created_at`         | timestamptz   |                                                              |
 
 业务逻辑：**这张表不存金额**——金额在腿上。批头只回答「哪个业务键做了哪种动作」，唯一索引 `(ref_type, ref_id, kind)` 即幂等承诺：同一业务键同一动作全系统至多一笔（回调重放/并发/重试全部被它拦下）。注意幂等键**不含币种和用户**——键即业务身份，顶撞立即报错。
 
 ### wallet_legs —— 腿（复式的核心）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` | bigserial PK | 腿号；同账户按 id 排序 = 该账户完整余额历史 |
-| `transaction_id` | bigint FK | 所属交易 |
-| `account_id` | uuid FK | 记在哪本账上 |
-| `currency` | varchar(3) | 冗余币种（审计维度，随交易落） |
-| `amount` | numeric(38,18) | **有符号**：正=入（贷），负=出（借） |
-| `balance_before` | numeric(38,18) | 本腿落账前余额 |
-| `balance_after` | numeric(38,18) | 本腿落账后余额 |
+| 字段             | 类型           | 说明                                        |
+| ---------------- | -------------- | ------------------------------------------- |
+| `id`             | bigserial PK   | 腿号；同账户按 id 排序 = 该账户完整余额历史 |
+| `transaction_id` | bigint FK      | 所属交易                                    |
+| `account_id`     | uuid FK        | 记在哪本账上                                |
+| `currency`       | varchar(3)     | 冗余币种（审计维度，随交易落）              |
+| `amount`         | numeric(38,18) | **有符号**：正=入（贷），负=出（借）        |
+| `balance_before` | numeric(38,18) | 本腿落账前余额                              |
+| `balance_after`  | numeric(38,18) | 本腿落账后余额                              |
 
 业务逻辑：两条铁律——① **同交易各腿合计恒为 0**（有借必有贷，钱不凭空生灭；credit_line/freeze 的零额审计单腿 amount=0 平凡成立）；② **每腿 `after = before + amount`**（DB check）。推论：任一账户按腿序折叠即可复算任意时点余额，任一交易的腿一眼看出钱的来处与去处。
 
 ### wallet_authorizations —— 冻结单（押注状态机）
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `id` | uuid PK | 冻结单号 |
-| `account_id` | uuid FK | 押的哪个账户（在途累计在该账户） |
-| `ref_type` / `ref_id` | varchar | 业务键（唯一——同键至多一张冻结单） |
-| `amount` | numeric | 押注金额（>0） |
-| `status` | 词表 | `active` → `settled` / `released` / `expired` |
-| `settled_amount` | numeric，可空 | 实扣额（≤amount；与 amount 之差即结算时自动归还的余量） |
-| `release_reason` | varchar(64)，可空 | released/expired 的原因（user_cancel/expired…审计在此，不落交易） |
-| `expires_at` | timestamptz，可空 | 超时权威时间：到点由 releaseExpired 扫描转 expired |
-| `created_at` / `updated_at` | timestamptz | |
+| 字段                        | 类型               | 说明                                                              |
+| --------------------------- | ------------------ | ----------------------------------------------------------------- |
+| `id`                        | uuid PK            | 冻结单号                                                          |
+| `account_id`                | uuid FK            | 押的哪个账户（在途累计在该账户）                                  |
+| `ref_type` / `ref_id`       | varchar            | 业务键（唯一——同键至多一张冻结单）                                |
+| `amount`                    | numeric            | 押注金额（>0）                                                    |
+| `status`                    | 词表               | `active` → `settled` / `released` / `expired`                     |
+| `settled_amount`            | numeric，可空      | 实扣额（≤amount；与 amount 之差即结算时自动归还的余量）           |
+| `release_reason`            | varchar(64)，可空  | released/expired 的原因（user_cancel/expired…审计在此，不落交易） |
+| `memo`                      | varchar(255)，可空 | authorize 时的审计备注                                            |
+| `expires_at`                | timestamptz，可空  | 超时权威时间：到点由 releaseExpired 扫描转 expired                |
+| `created_at` / `updated_at` | timestamptz        |                                                                   |
 
 业务逻辑：**CAS 互斥终态迁移**（`UPDATE ... WHERE status='active'`，并发恰好一方成功）；settled 与 released/expired 互斥不可逆；押注不动余额（不产生交易/腿），只加 in_flight；每张单必达终态（业务方 settle/release 或超时扫描兜底）。
 
@@ -357,6 +404,17 @@ authorizations 那张 active 单 CAS 成 settled(30)、账户 A 在途归还；t
 
 ## 九、测试
 
-32 组契约测试打真 PG：`pnpm --filter @ai-gateway/wallet test`。
+23 个测试文件、111 个契约测试打真 PG；每轮创建随机隔离 schema，不触碰 public 开发表：
+`pnpm --filter @ai-gateway/wallet test`。
 覆盖复式守恒与对账、科目累积、两阶段全场景、并发竞态（双结算/双入账恰好一次）、
-授信地板、多币种隔离、transfer 全家（分账/同账户/跨币/守卫/重放）、freeze、1e-18 精度。
+授信地板、多币种隔离、稳定重放、多 Worker `SKIP LOCKED`、版本迁移、DB deferred 约束、
+安全导出边界、严格幂等指纹、内部科目分片与聚合转账、观测钩子、transfer 全家、freeze 和 1e-18 精度。
+
+发布前统一验证：
+
+```bash
+pnpm --filter @ai-gateway/wallet typecheck
+pnpm --filter @ai-gateway/wallet lint
+pnpm --filter @ai-gateway/wallet test
+pnpm --filter @ai-gateway/wallet build
+```

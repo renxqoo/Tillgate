@@ -9,11 +9,12 @@ import {
 } from './errors.js';
 import type { Identifier, IdentifierKind, NormalizedIdentifier } from './types.js';
 
-/** 三张白名单（createIdentity 时从必填选项构建，运行期只读） */
+/** 三张白名单 + realm 白名单（createIdentity 时从必填选项构建，运行期只读） */
 export interface ValidationGuards {
   identifierKinds: ReadonlySet<string>;
   providers: ReadonlySet<string>;
   challengeKinds: ReadonlySet<string>;
+  realms: ReadonlySet<string>;
 }
 
 const IDENTIFIER_KINDS: readonly IdentifierKind[] = ['email', 'phone', 'username'];
@@ -22,12 +23,25 @@ export function buildGuards(input: {
   identifiers: readonly string[];
   providers: readonly string[];
   challenges: readonly string[];
+  realms: readonly string[];
 }): ValidationGuards {
   return {
     identifierKinds: new Set(input.identifiers),
     providers: new Set(input.providers),
     challengeKinds: new Set(input.challenges),
+    realms: new Set(input.realms),
   };
+}
+
+/** 缺省身份域（单一用户面的系统无需声明 realms） */
+export const DEFAULT_REALM = 'user';
+
+/** realm 格式校验（词表符号同款）；白名单命中在动词层判定 */
+export function assertRealm(realm: string): string {
+  if (!VOCAB_RE.test(realm)) {
+    throw new InvalidInputError('realm', `must match ${VOCAB_RE.source}`);
+  }
+  return realm;
 }
 
 function allowedList(values: ReadonlySet<string>): string[] {

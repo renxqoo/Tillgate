@@ -19,8 +19,18 @@ describe('authorize：冻结/预占——可用口径与幂等', () => {
   it('authorize 幂等：同键重放返回既有冻结，在途不重复累计', async () => {
     const user = nextUser();
     await wallet.credit({ userId: user, amount: '100', refType: 'topup', refId: ref(user, 't') });
-    const first = await wallet.authorize({ userId: user, amount: '20', refType: 'order', refId: ref(user, 'idem') });
-    const replay = await wallet.authorize({ userId: user, amount: '20', refType: 'order', refId: ref(user, 'idem') });
+    const first = await wallet.authorize({
+      userId: user,
+      amount: '20',
+      refType: 'order',
+      refId: ref(user, 'idem'),
+    });
+    const replay = await wallet.authorize({
+      userId: user,
+      amount: '20',
+      refType: 'order',
+      refId: ref(user, 'idem'),
+    });
     expect(replay.replayed).toBe(true);
     expect(replay.authorizationId).toBe(first.authorizationId);
     const account = await accountOf(user);

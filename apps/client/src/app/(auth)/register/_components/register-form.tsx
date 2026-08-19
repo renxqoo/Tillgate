@@ -68,6 +68,7 @@ export function RegisterForm({
       fd.append("email", values.email);
       fd.append("password", values.password);
       if (captchaSiteKey && captchaToken) fd.append("captchaToken", captchaToken);
+      if (affCode) fd.append("aff", affCode);
       const res = await registerAction(fd);
       if (res?.challengeId) setChallenge(res.challengeId);
       else {

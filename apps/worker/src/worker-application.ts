@@ -2,28 +2,29 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { Logger, WorkerEnv } from '@ai-gateway/core';
 import { getTracer } from '@ai-gateway/core';
 import { createDb, type Db } from '@ai-gateway/db';
 import { bumpRouteCache } from '@ai-gateway/http';
-import { notifyOutbox, users } from '@ai-gateway/db/schema';
+import { notifyOutbox } from '@ai-gateway/db/schema';
 import { maintainPartitions } from '@ai-gateway/tracing';
 import { maintainRequestLogPartitions } from './request-log-partitions.js';
 import { isDeepHealthAuthorized } from './health-gate.js';
 import { settleTelemetry } from './settle-telemetry.js';
 import {
-  createBillingProcessor,
-  createLedger,
-  createRedisLedgerEffects,
-  type BillingInventory,
-  type BillingProcessor,
+  createRedisBillingEffects,
   BILLING_SETTLEMENT_QUEUE,
+  type BillingInventory,
   type BillingSettlementWakeup,
 } from '@ai-gateway/ledger';
+import { createSettlementProcessor, type SettlementProcessor } from '@ai-gateway/ledger/settlement';
+import { createBillingDomain, type BillingDomain } from '@ai-gateway/ledger/billing';
+import { createWalletMaintenance } from '@ai-gateway/wallet/maintenance';
+import { createWallet } from '@ai-gateway/wallet';
 import { runReferralCommissionOnce, runNotifyDispatchOnce } from './tasks/notify-referral.js';
 import { runGenerationPollOnce } from './tasks/generation-poller.js';
-import { createBilling, type Billing } from '@ai-gateway/ledger';
+
 import {
   createAi,
   defaultAiConfig,
@@ -61,7 +62,7 @@ interface RuntimeDeps {
   logger: Logger;
   db?: Db;
   redis?: IORedis;
-  processor?: BillingProcessor;
+  processor?: SettlementProcessor;
   telemetryShutdown?: () => Promise<void>;
 }
 
@@ -101,16 +102,24 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
       maxRetriesPerRequest: null,
       retryStrategy: (attempt) => Math.min(5_000, attempt * 250),
     });
-  const redisEffects = createRedisLedgerEffects(redis);
+  const redisEffects = createRedisBillingEffects(redis);
+  // S7：资金事实在 wallet（结算补充授权/结算/释放都走内核）；refTypes 白名单 fail-closed
+  const wallet = createWallet(db, {
+    accounts: [],
+    refTypes: ['billing'],
+    currencies: ['CNY'],
+  });
   const processor =
     deps.processor ??
-    createBillingProcessor({
+    createSettlementProcessor({
       db,
+      wallet,
       effects: {
         balanceChanged: redisEffects.balanceChanged?.bind(redisEffects),
-        // 结算成功 → TPM 回填 + 渠道进货额度熔断时清路由缓存（软闸立即生效）
+        // 结算成功 → TPM 回填 + 余额预警 + 渠道进货额度熔断时清路由缓存（软闸立即生效）
         async usageSettled({ data, result }) {
           await redisEffects.usageSettled?.({ data, result });
+          await balanceLowGuard(data, result.amount).catch(() => undefined);
           if (result.channelCircuitBroken && data.channelId != null) {
             await bumpRouteCache(redis).catch(() => {});
             logger.warn(
@@ -166,33 +175,29 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
     });
   const notifyMailer = mailerFromEnv(env, { brand: 'AI Gateway 运维告警', brandSub: 'AI GATEWAY · OPS' }) ?? undefined;
   const BALANCE_LOW_THRESHOLD = '5';
-  const ledger = createLedger({
-    db,
-    effects: {
-      ...createRedisLedgerEffects(redis),
-      // 余额预警（按用户×日幂等入箱）：结算后余额低于阈值即提醒充值
-      usageSettled: async ({ data, result }) => {
-        if (Number(result.amount) <= 0) return;
-        const [user] = await db
-          .select({ balance: users.balance })
-          .from(users)
-          .where(eq(users.id, data.userId))
-          .limit(1);
-        const balance = Number(user?.balance ?? '0');
-        if (balance < Number(BALANCE_LOW_THRESHOLD)) {
-          await db
-            .insert(notifyOutbox)
-            .values({
-              event: 'balance_low',
-              payload: { userId: data.userId, balance: user?.balance ?? '0', requestId: data.requestId },
-              dedupeKey: `balance-low:${data.userId}:${new Date().toISOString().slice(0, 10)}`,
-            })
-            .onConflictDoNothing()
-            .catch(() => undefined);
-        }
-      },
-    },
+  // worker 资金动作钱包（返佣/支付；refTypes 白名单 fail-closed）
+  const workerWallet = createWallet(db, {
+    accounts: [],
+    refTypes: ['promo', 'payment'],
+    currencies: ['CNY'],
   });
+  // 余额预警（按用户×日幂等入箱）：结算后余额低于阈值即提醒充值（读 wallet 单一资金事实）
+  const balanceLowGuard = async (data: { userId: number; requestId?: string }, amount: string): Promise<void> => {
+    if (Number(amount) <= 0) return;
+    const summary = (await workerWallet.accounts(data.userId))[0];
+    const balance = Number(summary?.balance ?? '0');
+    if (balance < Number(BALANCE_LOW_THRESHOLD)) {
+      await db
+        .insert(notifyOutbox)
+        .values({
+          event: 'balance_low',
+          payload: { userId: data.userId, balance: summary?.balance ?? '0', requestId: data.requestId ?? null },
+          dedupeKey: `balance-low:${data.userId}:${new Date().toISOString().slice(0, 10)}`,
+        })
+        .onConflictDoNothing()
+        .catch(() => undefined);
+    }
+  };
 
   let queueWorker: Worker<BillingSettlementWakeup> | null = null;
   let healthServer: Server | null = null;
@@ -280,7 +285,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         );
         if (!lock.rows[0]?.acquired) return;
         try {
-          const result = await runReferralCommissionOnce(db, ledger, {
+          const result = await runReferralCommissionOnce(db, workerWallet, {
             commissionRate: env.REFERRAL_COMMISSION_RATE,
           });
           if (result.credited > 0) logger.info({ credited: result.credited }, 'referral commission settled');
@@ -322,7 +327,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
    * ai 实例按需构造（Redis 可用时共享熔断存储，降级用内存存储——轮询量级低）。
    */
   let generationAi: Ai | null = null;
-  let generationBilling: Billing | null = null;
+  let generationBilling: BillingDomain | null = null;
   const runGenerationPoll = async (): Promise<void> => {
     if (!accepting) return;
     await track(async () => {
@@ -346,7 +351,7 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
               deadCredentialStorage: new MemoryKvStorage<DeadCredentialState>(),
             },
           );
-          generationBilling ??= createBilling({ db });
+          generationBilling ??= createBillingDomain({ db, wallet });
           const result = await runGenerationPollOnce(
             { db, ai: generationAi, billing: generationBilling, logger, batch: env.WORKER_GENERATION_BATCH,
               leaseMs: Math.max(env.WORKER_GENERATION_POLL_INTERVAL_MS * 3, 30_000) },
@@ -374,7 +379,9 @@ export function createBillingWorkerApplication(deps: RuntimeDeps): BillingWorker
         );
         if (!lock.rows[0]?.acquired) return;
         try {
-          const result = await ledger.reconcile({ scope: 'all' });
+          /* S7：资金一致性 = wallet 复式账本核验（旧余额↔流水等式随模型退役） */
+          const report = await createWalletMaintenance(db as never).verifyInvariants();
+          const result = { checkedUsers: 0, checkedChannels: 0, discrepancies: report.violations.length };
           if (result.discrepancies > 0) {
             logger.error({ result }, 'reconciliation discrepancies');
             await db

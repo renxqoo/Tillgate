@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
-import { fundOperations, paymentOrders, transactions, users } from '@ai-gateway/db/schema';
-import { createLedger } from '@ai-gateway/ledger';
-import { Decimal } from '@ai-gateway/money';
+import { paymentOrders, transactions, users } from '@ai-gateway/db/schema';
+import { ledgerOperations } from '@ai-gateway/ledger-core';
+import { createWallet } from '@ai-gateway/wallet';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import { randomUUID } from 'node:crypto';
 import { createEpayProvider, epaySign } from '../../services/payments/providers.js';
 import { createPaymentServices } from '../../services/payments/orders.js';
@@ -33,7 +34,7 @@ afterAll(async () => db.$client.end().catch(() => {}));
 describe('易支付回调 e2e（签名验证 + 幂等入账）', () => {
   it('合法签名回调 → credited + 余额入账；重复回调 → success 但不双扣；篡改签名 → fail', async () => {
     if (!connected) return it.skip('no DB');
-    const ledger = createLedger({ db });
+    const wallet = createWallet(db, { accounts: [], refTypes: ['payment'], currencies: ['CNY'] });
     const provider = createEpayProvider({
       pid: '1001',
       key: EPAY_KEY,
@@ -41,12 +42,12 @@ describe('易支付回调 e2e（签名验证 + 幂等入账）', () => {
       notifyUrl: 'https://api.test/notify',
       returnUrl: 'https://app.test/billing',
     });
-    const services = createPaymentServices(db, ledger, { epay: provider });
+    const services = createPaymentServices(db, wallet, { epay: provider });
 
     // 测试用户 + created 订单（模拟 createOrder 已落库）
     const [u] = await db
       .insert(users)
-      .values({ issuer: 'test', subject: `pay-e2e-${randomUUID()}`, identityProvider: 'local', balance: '0' })
+      .values({ issuer: 'test', subject: `pay-e2e-${randomUUID()}`, identityProvider: 'local' })
       .returning();
     const userId = u!.id;
     const [order] = await db
@@ -88,24 +89,22 @@ describe('易支付回调 e2e（签名验证 + 幂等入账）', () => {
     const bad = await callback({ sign: '0'.repeat(32) });
     expect(await bad.text()).toBe('fail');
 
-    // 合法回调 → success + 入账
+    // 合法回调 → success + 入账（S7：资金事实在 wallet）
     const ok = await callback();
     expect(await ok.text()).toBe('success');
-    const [u1] = await db.select().from(users).where(eq(users.id, userId));
-    expect(new Decimal(u1!.balance).eq(20)).toBe(true);
+    expect(new Decimal(await wallet.balance(userId)).eq(20)).toBe(true);
     const [o1] = await db.select().from(paymentOrders).where(eq(paymentOrders.id, orderId));
     expect(o1!.status).toBe(2);
 
     // 重复回调 → success（幂等重放）但余额不变
     const dup = await callback();
     expect(await dup.text()).toBe('success');
-    const [u2] = await db.select().from(users).where(eq(users.id, userId));
-    expect(new Decimal(u2!.balance).eq(20)).toBe(true);
+    expect(new Decimal(await wallet.balance(userId)).eq(20)).toBe(true);
 
     // 测试数据纪律：同步清理衍生投影（流水/幂等键）再删主体
     await db.delete(transactions).where(eq(transactions.userId, userId));
     await db.delete(paymentOrders).where(eq(paymentOrders.id, orderId));
-    await db.delete(fundOperations).where(eq(fundOperations.operationId, `payment-credit:epay:${order!.providerOrderId}`));
+    await db.delete(ledgerOperations).where(eq(ledgerOperations.operationId, `payment-credit:epay:${order!.providerOrderId}`));
     await db.delete(users).where(eq(users.id, userId));
   });
 });

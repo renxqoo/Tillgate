@@ -11,10 +11,31 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./metering": {
+      "development": "./src/metering.ts",
+      "types": "./dist/metering.d.ts",
+      "import": "./dist/metering.js"
+    },
+    "./migrations": {
+      "development": "./src/migrations.ts",
+      "types": "./dist/migrations.d.ts",
+      "import": "./dist/migrations.js"
+    },
+    "./maintenance": {
+      "development": "./src/maintenance.ts",
+      "types": "./dist/maintenance.d.ts",
+      "import": "./dist/maintenance.js"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
     }
   },
   "scripts": {
     "build": "tsup",
+    "migrate": "node ./dist/migrate-cli.js",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
     "test": "vitest run"
@@ -22,13 +43,13 @@
   "dependencies": {
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.0",
     "@vitest/coverage-v8": "^4.1.10",
-    "pg": "^8.13.0",
     "tsup": "^8.0.0",
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"

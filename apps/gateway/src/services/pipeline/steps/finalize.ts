@@ -388,9 +388,9 @@ export function withBillingLifecycle(
       async flush() {
         clear();
         // 收据落库失败时内容已全部交付——把连接炸掉会让 SDK 重试、重复生成
-        // （非流式同场景是 503 billing_receipt_unavailable；流式无法收回已交付
-        // 内容，正确降级是照常 EOF：预扣留在 in_flight，租约过期后由恢复链
-        // 由租约恢复链按崩溃口径释放，责任可追溯）。
+        //（非流式同场景是 503 billing_receipt_unavailable；流式无法收回已交付
+        // 内容，正确降级是照常 EOF：预扣留在 in_flight，租约过期后由租约
+        // 恢复链按崩溃口径释放，责任可追溯）。
         try {
           await completion;
         } catch (err) {

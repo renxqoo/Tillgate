@@ -12,7 +12,7 @@
  * 回滚则接棒执行。不存在「读到未提交半成品」的窗口。
  */
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { AnyPgDatabase } from './internal.js';
 import { InvalidInputError, LedgerInternalError, OperationConflictError } from './errors.js';
 import { canonicalJson, fingerprintOf } from './fingerprint.js';
 import { runEffect, runTx, type DbLike, type Tx } from './internal.js';
@@ -71,7 +71,7 @@ function toView(row: StoredRow): OperationView {
 }
 
 export async function runOperation<T extends OperationReceipt | null>(
-  db: NodePgDatabase,
+  db: AnyPgDatabase,
   input: RunOperationInput<T>,
   guards: ValidationGuards,
   effects: LedgerEffects | undefined,
@@ -167,7 +167,7 @@ export async function runOperation<T extends OperationReceipt | null>(
 }
 
 export async function getOperation(
-  db: NodePgDatabase,
+  db: AnyPgDatabase,
   input: { operationId: string },
 ): Promise<OperationView | null> {
   const operationId = assertOperationId(input?.operationId);
@@ -181,7 +181,7 @@ export async function getOperation(
 }
 
 export async function listOperations(
-  db: NodePgDatabase,
+  db: AnyPgDatabase,
   input: ListOperationsInput = {},
 ): Promise<ListOperationsResult> {
   const limit = input.limit ?? 50;

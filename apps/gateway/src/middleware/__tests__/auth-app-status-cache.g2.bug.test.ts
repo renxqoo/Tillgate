@@ -83,7 +83,6 @@ async function createUser(): Promise<number> {
       subject: 'g2-app-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       identityProvider: 'local',
       displayName: 'G2',
-      balance: '1000',
     })
     .returning();
   return u!.id;

@@ -10,12 +10,12 @@ export async function inviteMemberAction(
 ): Promise<{ error?: string; link?: string }> {
   if (!email.trim()) return { error: "请输入邮箱" };
   try {
-    const res = await apiFetch<{ invitation: { token: string } }>(`/api/orgs/${orgId}/invitations`, {
+    const res = await apiFetch<{ invitationId: number; token: string }>(`/api/orgs/${orgId}/invitations`, {
       method: "POST",
       body: { email: email.trim() },
     });
     revalidatePath("/dashboard/orgs");
-    return { link: `/dashboard/orgs/accept?token=${res.invitation.token}` };
+    return { link: `/dashboard/orgs/accept?token=${res.token}` };
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : "邀请失败" };
   }

@@ -38,3 +38,4 @@ export {
 
 // schema 与建表
 export { provision, provisionSql, deprovision, ledgerOperations } from './schema.js';
+export type { AnyPgDatabase, DbLike, Tx } from './internal.js';

@@ -19,7 +19,7 @@
     "@ai-gateway/db": "workspace:*",
     "@ai-gateway/http": "workspace:*",
     "@ai-gateway/ledger": "workspace:*",
-    "@ai-gateway/money": "workspace:*",
+    "@ai-gateway/wallet": "workspace:*",
     "@hono/node-server": "^1.19.0",
     "@hono/zod-validator": "^0.9.0",
     "@opentelemetry/api": "^1.9.1",

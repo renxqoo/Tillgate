@@ -18,6 +18,17 @@ export class InvalidAmountError extends WalletError {
   }
 }
 
+/** 其余运行时输入/配置非法；公共入口不泄漏 ZodError 或 TypeError。 */
+export class InvalidInputError extends WalletError {
+  constructor(
+    readonly field: string,
+    detail: string,
+  ) {
+    super(`invalid ${field}: ${detail}`, 'invalid_input');
+    this.name = 'InvalidInputError';
+  }
+}
+
 /** 可用余额不足（balance - in_flight < required）——业务拒绝，不重试 */
 export class InsufficientBalanceError extends WalletError {
   constructor(
@@ -31,6 +42,23 @@ export class InsufficientBalanceError extends WalletError {
       'insufficient_balance',
     );
     this.name = 'InsufficientBalanceError';
+  }
+}
+
+/** 现金口径不足（allowCredit:false 时 balance − in_flight < required）——
+ *  授信在场也不可动用（禁透支场景：订阅购买等）；与 insufficient_balance 可分流。 */
+export class InsufficientCashError extends WalletError {
+  constructor(
+    readonly userId: number,
+    readonly cashAvailable: string,
+    readonly required: string,
+    readonly currency: string = 'CNY',
+  ) {
+    super(
+      `insufficient ${currency} cash for user ${userId}: cash available ${cashAvailable} (credit excluded), required ${required}`,
+      'insufficient_cash',
+    );
+    this.name = 'InsufficientCashError';
   }
 }
 
@@ -68,8 +96,14 @@ export class SameAccountTransferError extends WalletError {
 
 /** 跨币种转账：换汇是业务的两腿操作，单笔 transfer 不做币种转换 */
 export class CurrencyMismatchError extends WalletError {
-  constructor(readonly from: string, readonly to: string) {
-    super(`transfer currency mismatch: ${from} vs ${to}（换汇应为两笔独立转账）`, 'currency_mismatch');
+  constructor(
+    readonly from: string,
+    readonly to: string,
+  ) {
+    super(
+      `transfer currency mismatch: ${from} vs ${to} (FX conversion must be two separate transfers)`,
+      'currency_mismatch',
+    );
     this.name = 'CurrencyMismatchError';
   }
 }
@@ -84,10 +118,7 @@ export class WalletInternalError extends WalletError {
     readonly operation: string,
     detail?: string,
   ) {
-    super(
-      `wallet internal error at ${operation}${detail ? `: ${detail}` : ''}`,
-      'internal_error',
-    );
+    super(`wallet internal error at ${operation}${detail ? `: ${detail}` : ''}`, 'internal_error');
     this.name = 'WalletInternalError';
   }
 }
@@ -105,10 +136,13 @@ export class InvalidAccountRefError extends WalletError {
  *  生产应显式声明科目表（createWallet({ accounts: [...] })）。 */
 export class UnknownAccountCodeError extends WalletError {
   constructor(
-    readonly code: string,
+    readonly accountCode: string,
     readonly allowed: readonly string[],
   ) {
-    super(`unknown account code '${code}' (allowed: ${allowed.join(', ')})`, 'unknown_account_code');
+    super(
+      `unknown account code '${accountCode}' (allowed: ${allowed.join(', ')})`,
+      'unknown_account_code',
+    );
     this.name = 'UnknownAccountCodeError';
   }
 }
@@ -177,10 +211,35 @@ export class RefKeyConflictError extends WalletError {
     readonly refId: string,
     readonly ownerUserId: number,
   ) {
-    super(
-      `ref key ${refType}/${refId} already belongs to user ${ownerUserId}`,
-      'ref_key_conflict',
-    );
+    super(`ref key ${refType}/${refId} already belongs to user ${ownerUserId}`, 'ref_key_conflict');
     this.name = 'RefKeyConflictError';
+  }
+}
+
+/** 同一幂等键被不同命令载荷复用；调用方必须换键或修正重试参数。 */
+export class IdempotencyConflictError extends WalletError {
+  constructor(
+    readonly refType: string,
+    readonly refId: string,
+    readonly kind: string,
+  ) {
+    super(`idempotency key ${refType}/${refId} for ${kind} was reused with different input`, 'idempotency_conflict');
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+/** 预扣估算拒绝的三个 code（metering 计费策略面） */
+export type ReservationErrorCode =
+  | 'invalid_reservation_estimate'
+  | 'invalid_reservation_limit'
+  | 'reservation_limit_exceeded';
+
+/** 预扣估算拒绝（类型化跨包契约：消费方 instanceof 判定）：估算/上限非法或超风险
+ *  上限——余额由账本事务足额判断，风险上限只用于拒绝，绝不截断。 */
+export class ReservationError extends WalletError {
+  declare readonly code: ReservationErrorCode;
+  constructor(code: ReservationErrorCode) {
+    super(code, code);
+    this.name = 'ReservationError';
   }
 }

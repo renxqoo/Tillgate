@@ -88,7 +88,6 @@ async function createUser(): Promise<number> {
       subject: 'expires-bug-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
       identityProvider: 'local',
       displayName: 'Expires Test',
-      balance: '1000',
     })
     .returning();
   return u!.id;

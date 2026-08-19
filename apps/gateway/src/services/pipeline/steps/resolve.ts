@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { estimateInputTokens, generationKindDescriptor } from '@ai-gateway/ai';
-import { estimateMaxCost, toDecimal } from '@ai-gateway/money';
+import { estimateMaxCost, toDecimal } from '@ai-gateway/wallet/metering';
 import { pickCoefficient } from '@ai-gateway/ledger';
 import { gatewayError } from '../../../lib/errors.js';
 import {

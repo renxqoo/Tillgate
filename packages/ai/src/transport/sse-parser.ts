@@ -16,6 +16,9 @@ export interface SseScannerCallbacks {
   onErrorFrame?: (frame: StreamError) => void;
 }
 
+/** 累计输出文本的内存上界（超出即停止累计——估算口径足够，防超长流撑爆内存） */
+const OUTPUT_TEXT_CAP = 4 * 1024 * 1024;
+
 export class SseScanner {
   private usage: unknown | null = null;
   private errorFrame: StreamError | null = null;
@@ -23,6 +26,12 @@ export class SseScanner {
   private terminalFrameReceived = false;
   private eventsCompleted = 0;
   private lastEventAt = 0;
+  /**
+   * 输出内容累计（规范形 delta.content / reasoning_content / text / tool_calls 参数）：
+   * usage 缺失或用户中途取消时的输出 token 估算源——否则输出按 0 计费 = 漏收。
+   */
+  private outputText = '';
+
   /** stream 模式：跨 chunk 的多字节 UTF-8 安全解码（feed 需 string） */
   private decoder = new TextDecoder('utf-8');
 
@@ -57,6 +66,7 @@ export class SseScanner {
         // 最后 usage 帧胜出；忽略 usage:null（部分供应商中间/尾帧带 null，避免覆盖真实 usage）
         this.usage = parsed.usage;
       }
+      this.accumulateOutput(parsed);
       if (this.errorFrame === null && parsed.error !== undefined) {
         this.errorFrame = this.toErrorFrame(parsed.error);
         this.callbacks?.onErrorFrame?.(this.errorFrame);
@@ -128,6 +138,14 @@ export class SseScanner {
     return this.lastEventAt;
   }
 
+  /**
+   * 累计的输出内容文本（规范形帧的 delta 累积；上界 OUTPUT_TEXT_CAP）。
+   * 供 usage 缺失/用户取消时估算输出 token——计量兜底，非精确值。
+   */
+  getOutputText(): string {
+    return this.outputText;
+  }
+
   reset(): void {
     this.usage = null;
     this.errorFrame = null;
@@ -135,10 +153,51 @@ export class SseScanner {
     this.terminalFrameReceived = false;
     this.eventsCompleted = 0;
     this.lastEventAt = 0;
+    this.outputText = '';
     this.lastLineEnded = false;
     this.lastLineWasBlank = false;
     this.lineHasContent = false;
     this.parser.reset();
+  }
+
+  /**
+   * 规范形帧 → 输出内容文本累计（只读不消费流）：
+   *   choices[].delta.content / delta.reasoning_content（流式 chat）
+   *   choices[].text（补全类）
+   *   delta.tool_calls[].function.name+arguments（工具调用输出）
+   * usage 帧到达时清零重计（估算只在 usage 缺失路径消费——保持口径纯净）。
+   */
+  private accumulateOutput(frame: Record<string, unknown>): void {
+    if (this.outputText.length >= OUTPUT_TEXT_CAP) return;
+    const choices = frame.choices;
+    if (!Array.isArray(choices)) return;
+    const piece: string[] = [];
+    for (const choice of choices) {
+      if (typeof choice !== 'object' || choice === null) continue;
+      const delta = (choice as Record<string, unknown>).delta;
+      if (typeof delta !== 'object' || delta === null) continue;
+      const d = delta as Record<string, unknown>;
+      if (typeof d.content === 'string') piece.push(d.content);
+      if (typeof d.reasoning_content === 'string') piece.push(d.reasoning_content);
+      const text = (choice as Record<string, unknown>).text;
+      if (typeof text === 'string') piece.push(text);
+      const toolCalls = d.tool_calls;
+      if (Array.isArray(toolCalls)) {
+        for (const tc of toolCalls) {
+          if (typeof tc !== 'object' || tc === null) continue;
+          const fn = (tc as Record<string, unknown>).function;
+          if (typeof fn !== 'object' || fn === null) continue;
+          const f = fn as Record<string, unknown>;
+          if (typeof f.name === 'string') piece.push(f.name);
+          if (typeof f.arguments === 'string') piece.push(f.arguments);
+        }
+      }
+    }
+    if (piece.length === 0) return;
+    this.outputText += piece.join('');
+    if (this.outputText.length > OUTPUT_TEXT_CAP) {
+      this.outputText = this.outputText.slice(0, OUTPUT_TEXT_CAP);
+    }
   }
 
   private tryParse(data: string): Record<string, unknown> | null {

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 
 import { createDb, type Db } from '@ai-gateway/db';
@@ -110,7 +110,7 @@ describe('管理员邮箱验证码二次登录', () => {
       expect(mailer.sent.length).toBe(1);
       expect(mailer.sent[0]!.to).toBe(email);
 
-      // 统一口径（identity login-code）：前 4 次错 401，第 5 次错即作废 400
+      // 统一口径（identity-core 挑战）：前 4 次错 401，第 5 次错即作废 400
       for (let i = 0; i < 4; i++) {
         const wrong = await verify(app, b1.challengeId, '000000');
         expect(wrong.status).toBe(401);
@@ -121,8 +121,10 @@ describe('管理员邮箱验证码二次登录', () => {
       const dead = await verify(app, b1.challengeId, mailer.sent[0]!.code);
       expect(dead.status).toBe(400);
 
-      // 限发 60s：模拟窗口滚动后重新登录
-      await redis.del(`logincode:cool:admin:${a!.id}`);
+      // 限发 60s：模拟冷却窗口滚动（挑战表 issued_at 回拨 61s，等价于时间过去）后重新登录
+      await db.execute(
+        sql`update identity_challenges set issued_at = clock_timestamp() - interval '61 seconds' where id = ${b1.challengeId}`,
+      );
       const step1b = await login(app, email, 'RightPass1');
       const b1b = (await step1b.json()) as { challengeId: string };
       const ok = await verify(app, b1b.challengeId, mailer.sent[1]!.code);

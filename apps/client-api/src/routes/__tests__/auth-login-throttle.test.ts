@@ -56,7 +56,7 @@ async function createLocalUser(subject: string, password: string): Promise<{ uid
   const email = `${subject}@test.local`;
   const [u] = await db.insert(users).values({
     issuer: 'local', subject, identityProvider: 'local', email, displayName: subject,
-    balance: '0', passwordHash: hash,
+      passwordHash: hash,
   }).returning();
   return { uid: u!.id, email };
 }

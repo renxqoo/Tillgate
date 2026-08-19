@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { modelMappings, users } from '@ai-gateway/db/schema';
 import { loadRateCardCoefficients, pickCoefficient } from '@ai-gateway/ledger';
-import { Decimal } from '@ai-gateway/money';
+import { Decimal } from '@ai-gateway/wallet/metering';
 import type { ClientEnv } from '@ai-gateway/identity';
 
 /**

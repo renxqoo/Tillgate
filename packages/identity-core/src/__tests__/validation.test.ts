@@ -21,11 +21,13 @@ const guards = buildGuards({
   identifiers: ['email'],
   providers: ['github'],
   challenges: ['email_code'],
+  realms: ['user'],
 });
 const wideGuards = buildGuards({
   identifiers: ['email', 'phone', 'username'],
   providers: ['github', 'google'],
   challenges: ['email_code', 'password_reset'],
+  realms: ['user', 'admin'],
 });
 
 describe('guardIdentifierKind（fail-closed 白名单）', () => {

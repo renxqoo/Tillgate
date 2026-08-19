@@ -1,15 +1,18 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '@ai-gateway/db';
 import { paymentOrders } from '@ai-gateway/db/schema';
-import type { Ledger } from '@ai-gateway/ledger';
+import type { Wallet } from '@ai-gateway/wallet';
+import { toDecimal, toStorage } from '@ai-gateway/wallet/metering';
+import { createDomainOperations } from '@ai-gateway/ledger/platform';
 import { createLogger, type Logger } from '@ai-gateway/core';
 import type { PaymentProvider } from './providers.js';
 
 /**
- * 支付订单服务：下单（DB 订单 + 渠道下单同事务边界内尽力一致）与回调入账。
+ * 支付订单服务（S7 重写）：下单（DB 订单 + 渠道下单同事务边界内尽力一致）与回调入账。
  *
- * 订单生命周期：0 created →（回调验签）→ ledger.paymentCredit → 2 credited
- * 入账幂等由 ledger 三件套保证（fund_operations + 订单状态机条件 UPDATE + 流水部分唯一索引）。
+ * 订单生命周期：0 created →（回调验签）→ wallet.credit → 2 credited。
+ * 入账幂等 = ledger-core 操作行（kind 'payment.credit'）+ 订单状态机条件 UPDATE；
+ * 资金入账 = wallet.credit（counter-leg = outside 镜像）。
  * 渠道下单失败 → 订单落库后置 failed 原因并保持 created（用户可重新下单）。
  */
 
@@ -28,10 +31,11 @@ export interface PaymentServices {
 
 export function createPaymentServices(
   db: Db,
-  ledger: Ledger,
+  wallet: Wallet,
   providers: { epay?: PaymentProvider; stripe?: PaymentProvider },
   logger: Logger = createLogger({ level: 'info' }),
 ): PaymentServices {
+  const operations = createDomainOperations(db, ['payment.credit']);
   return {
     async createOrder(input) {
       const provider = providers[input.provider];
@@ -82,14 +86,46 @@ export function createPaymentServices(
       if (order.status === 2) return 'replayed';
       if (order.status !== 0) return 'ignored';
 
-      const result = await ledger.paymentCredit({
-        provider: providerName,
-        providerOrderId: order.providerOrderId,
-        paymentOrderId: order.id,
-        userId: order.userId,
-        amount: order.amount,
-        creditAmount: order.creditAmount,
-      });
+      const result = await operations
+        .run<{ ok: true; amount: string; balanceAfter: string } | { ok: false }>({
+          operationId: `payment-credit:${providerName}:${order.providerOrderId}`,
+          kind: 'payment.credit',
+          fingerprint: {
+            kind: 'payment.credit', provider: providerName, providerOrderId: order.providerOrderId,
+            userId: order.userId, creditAmount: order.creditAmount,
+          },
+          execute: async (tx) => {
+            // 订单状态机：created(0) → credited(2)；重复回调（0 行）幂等拒绝
+            const credited = await tx
+              .update(paymentOrders)
+              .set({
+                status: 2,
+                updatedAt: new Date(),
+                creditedAt: new Date(),
+                creditedOperationId: `payment-credit:${providerName}:${order.providerOrderId}`,
+              })
+              .where(
+                and(
+                  eq(paymentOrders.id, order.id),
+                  eq(paymentOrders.status, 0),
+                  eq(paymentOrders.userId, order.userId),
+                ),
+              )
+              .returning({ id: paymentOrders.id });
+            if (credited.length === 0) return { ok: false as const };
+            const amount = toStorage(toDecimal(order.creditAmount));
+            const posted = await wallet.credit({
+              userId: order.userId,
+              amount,
+              refType: 'payment',
+              refId: `payment-credit:${providerName}:${order.providerOrderId}`,
+              memo: `在线支付入账（${providerName}）+${amount}`,
+              tx: tx as unknown as import('@ai-gateway/wallet').DbLike,
+            });
+            return { ok: true as const, amount, balanceAfter: posted.balanceAfter };
+          },
+        })
+        .then(({ receipt, replayed }) => ({ ...receipt, replayed }));
       if (result.ok) {
         await db
           .update(paymentOrders)

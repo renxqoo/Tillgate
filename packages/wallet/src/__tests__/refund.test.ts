@@ -11,8 +11,18 @@ describe('退款 refund', () => {
     await expect(
       wallet.refund({ userId: user, amount: '11', refType: 'topup_refund', refId: ref(user, 'r') }),
     ).rejects.toBeInstanceOf(InsufficientBalanceError);
-    const first = await wallet.refund({ userId: user, amount: '4', refType: 'topup_refund', refId: ref(user, 'r') });
-    const replay = await wallet.refund({ userId: user, amount: '4', refType: 'topup_refund', refId: ref(user, 'r') });
+    const first = await wallet.refund({
+      userId: user,
+      amount: '4',
+      refType: 'topup_refund',
+      refId: ref(user, 'r'),
+    });
+    const replay = await wallet.refund({
+      userId: user,
+      amount: '4',
+      refType: 'topup_refund',
+      refId: ref(user, 'r'),
+    });
     expect(first.replayed).toBe(false);
     expect(replay.replayed).toBe(true);
     expect(sameAmount(await wallet.balance(user), '6')).toBe(true);

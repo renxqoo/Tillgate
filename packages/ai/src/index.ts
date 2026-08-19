@@ -7,6 +7,12 @@ export {
   type GenerationKindDescriptor,
 } from './generation/descriptors';
 export { createRestTaskOps, type RestTaskKitConfig } from './adapters/task-kit';
+export {
+  createGenerationTaskAdapter,
+  type AiTaskAdapterDeps,
+  type TaskChannelDesc,
+  type TaskPortErrorShape,
+} from './generation/task-adapter';
 export { ServerDrainAbort, asServerDrainAbort } from './errors/server-drain';
 export { MemoryKvStorage } from './internal/memory-storage';
 export { defaultAiConfig } from './config';

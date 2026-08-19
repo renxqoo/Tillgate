@@ -78,7 +78,6 @@ async function setup(): Promise<{ userId: number; appId: number; clientId: strin
       subject: 'g3-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       identityProvider: 'local',
       displayName: 'G3',
-      balance: '1000',
     })
     .returning();
   const clientId = 'g3cli-' + Math.random().toString(36).slice(2, 10);

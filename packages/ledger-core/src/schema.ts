@@ -10,7 +10,7 @@
  */
 import { sql } from 'drizzle-orm';
 import { bigserial, index, jsonb, pgTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type { AnyPgDatabase } from './internal.js';
 
 export const ledgerOperations = pgTable(
   'ledger_operations',
@@ -48,7 +48,7 @@ const LEDGER_DDL: readonly string[] = [
 ];
 
 /** 一次性建表（幂等；独立 schema/独立库均可） */
-export async function provision(db: NodePgDatabase): Promise<void> {
+export async function provision(db: AnyPgDatabase): Promise<void> {
   for (const statement of LEDGER_DDL) {
     await db.execute(sql.raw(statement));
   }
@@ -60,6 +60,6 @@ export function provisionSql(): readonly string[] {
 }
 
 /** 测试清场：drop 表（业务环境勿用；操作档案是 append-only 审计物，生产不删） */
-export async function deprovision(db: NodePgDatabase): Promise<void> {
+export async function deprovision(db: AnyPgDatabase): Promise<void> {
   await db.execute(sql`drop table if exists ledger_operations`);
 }

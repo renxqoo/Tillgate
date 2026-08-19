@@ -1,8 +1,8 @@
 import { serve } from '@hono/node-server';
 import { loadAdminApiEnv, createLogger, initOtel } from '@ai-gateway/core';
 import { createDb } from '@ai-gateway/db';
-import { createBillingOperations, createLedger } from '@ai-gateway/ledger';
-import { balanceCache, createRedis, recordAudit } from '@ai-gateway/http';
+import { createWallet } from '@ai-gateway/wallet';
+import { createRedis } from '@ai-gateway/http';
 import { createApp } from './app.js';
 import { mailerFromEnv, ADMIN_MAIL_BRAND } from '@ai-gateway/identity';
 import { createLocalVoucherStorage } from './services/voucher-storage.js';
@@ -23,22 +23,17 @@ initOtel({
 
 const db = createDb(env.DATABASE_URL);
 const redis = createRedis(env.REDIS_URL);
-const ledger = createLedger({
-  db,
-  effects: {
-    balanceChanged: async ({ userId }) => {
-      await redis.del(balanceCache(userId)).catch(() => {});
-    },
-    audit: async (event) => recordAudit(db, { ...event, actor: event.actor ?? 'admin' }),
-  },
+// S7：资金事实在 wallet（管理端资金动词域：调账/赠送/订阅/加油包）
+const wallet = createWallet(db, {
+  accounts: [],
+  refTypes: ['admin', 'subscription', 'pack'],
+  currencies: ['CNY'],
 });
-const billingOperations = createBillingOperations({ db });
 
 const app = createApp({
   db,
   redis,
-  ledger,
-  billingOperations,
+  wallet,
   encryptionKey: env.ENCRYPTION_KEY,
   encryptionKeyOld: env.ENCRYPTION_KEY_OLD,
   mailer: mailerFromEnv(env, ADMIN_MAIL_BRAND),

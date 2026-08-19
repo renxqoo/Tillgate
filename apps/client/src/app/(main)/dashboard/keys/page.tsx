@@ -42,7 +42,8 @@ export default async function KeysPage({ searchParams }: PageProps) {
     error = result.error;
     // 计费来源下拉：个人订阅 + 所属组织订阅（含余额选项，由弹窗固定渲染）。
     try {
-      const sub = await apiFetch<CurrentSubscription | null>("/api/me/subscription");
+      const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/api/subscriptions");
+      const sub: CurrentSubscription | null = subResult.rows?.[0] ?? null;
       if (sub) subscriptions.push({ id: sub.id, label: sub.planName });
     } catch {
       // 拿不到个人订阅不影响创建

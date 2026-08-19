@@ -70,7 +70,7 @@ export function planAdminRoutes(s: AdminServices): Hono<AdminEnv> {
         const id = intParam(c, 'id');
         const body = c.req.valid('json');
         try {
-          const result = await s.ledger.grantPack({
+          const result = await s.subscription.grantPack({
             operationId: operationId(c),
             userId: body.userId,
             packId: id,

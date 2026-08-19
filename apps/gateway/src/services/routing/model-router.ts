@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { channels, modelChannels, modelMappings, providers, usageLogs } from '@ai-gateway/db/schema';
 import type { ParamRules } from '@ai-gateway/ai';
 import { decrypt } from '@ai-gateway/core';
-import { toDecimal } from '@ai-gateway/money';
+import { toDecimal } from '@ai-gateway/wallet/metering';
 
 /**
  * 路由缓存（模型映射 + 渠道解析）—— 消除热路径每请求查 DB。
