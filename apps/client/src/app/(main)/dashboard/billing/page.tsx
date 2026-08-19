@@ -74,6 +74,7 @@ export default async function BillingPage() {
       title="充值与账单"
       description="在线充值、支付订单与充值历史"
       icon={<WalletIcon className="size-5 text-muted-foreground" />}
+      unbordered
     >
       <div className="space-y-6">
         <TopUpForm channels={data?.channels ?? []} />

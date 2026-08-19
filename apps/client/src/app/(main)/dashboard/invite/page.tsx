@@ -26,6 +26,7 @@ export default async function InvitePage() {
       title="邀请返利"
       description="邀请好友注册，双方得奖励；好友每日消费按比例返佣"
       icon={<UsersIcon className="size-5 text-muted-foreground" />}
+      unbordered
     >
       {data ? (
         <div className="space-y-6">

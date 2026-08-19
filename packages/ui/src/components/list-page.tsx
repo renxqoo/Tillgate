@@ -36,6 +36,7 @@ export function ListPage({
   children,
   page,
   pageSize,
+  unbordered,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -61,6 +62,8 @@ export function ListPage({
   /** 传 page/pageSize 且 total 超过一页（total > pageSize）时渲染分页条 */
   page?: number;
   pageSize?: number;
+  /** 去掉内容 Card 的外描边（ring）——非列表形态的页面（操练场/邀请/账单等）用 */
+  unbordered?: boolean;
 }) {
   const hiddenParams = Object.entries(searchParams).filter(
     ([key]) => key !== 'q' && key !== 'page',
@@ -91,7 +94,7 @@ export function ListPage({
       {aboveList}
 
       {error || children ? (
-        <Card>
+        <Card className={unbordered ? 'ring-0' : undefined}>
           {(searchPlaceholder || filters) && (
             <CardHeader className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
