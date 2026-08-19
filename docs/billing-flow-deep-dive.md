@@ -52,7 +52,7 @@ apps/worker（结算：BullMQ 唤醒 + 认领→实扣→对账→恢复）─�
 | 超预扣 | DB check 约束 `balance ≥ −credit_limit`，触底 23514 → dead | `#over` 同事务补充授权；**余额不足时降级收满预留**（不再死信，见 §7d） |
 | uncertain 状态 | 存在（冻结待人工） | 不存在：完成缺 usage / 用户取消 → 估算结算；上游异常 / 崩溃 → 即时释放 |
 | 预扣不足 | 信用模型吸收 | 未声明 `balanceFloor` 的模型**足额 fail-closed**（402 整单拒绝，上游零调用） |
-| 应用 | apps/gateway、apps/worker | apps/gateway、apps/worker（v1 待退役） |
+| 应用 | apps/gateway、apps/worker | apps/gateway、apps/worker（v1 已于 2026-08-20 退役删除） |
 
 ---
 
@@ -68,13 +68,17 @@ Authorization: Bearer <token>
    │     2. 双层爆破锁：per-keyHash（同 Key 撞库）+ per-IP（随机 Key 扫射）——均 fail-closed
    │     3. DB 单语句守卫：api_keys.status=0 且未过期 且 JOIN users.status=0
    │        （封禁用户的存量 Key 立即失效——2026-08-19 补 join）
-   │     4. 限流维度 = key:{apiKeyId}
+   │     4. 限流维度 = key:{apiKeyId} + user:{userId}（并罚）
    │
-   └─ 否则 ──▶ 【JWT】（jose HS256，iss=ai-gateway / aud=ai-gateway-api 强制）
+   └─ 否则 ──▶ 【JWT】（jose HS256，iss=ai-gateway / aud=ai-gateway-api 强制；
+         per-IP 爆破锁与静态 Key 分支同口径——验签失败计数、达阈锁定、
+         Redis 故障 fail-closed 503；2026-08-19 终审补齐，原缺口=伪造 JWT 无限 401）
          ├─ typ=app_jwt：app_id 必须是 apps 数字主键 → findActiveAppById（app+user 双活）
-         │    限流维度 = user:{userId}，scope.rpm/tpm 可选
+         │    限流维度 = app:{appId}（scope 限额）+ user:{userId}（管理端用户帽）并罚
          └─ typ=playground：client-api 每请求现签（TTL 300s，rpm 10 / tpm 200k）
-              限流维度 = user:{userId}（换 JWT 不重置计数器）
+              限流维度 = pg:{userId}（scope 限额）+ user:{userId}（用户帽）并罚
+        （用户维对全部凭证形态无条件在列——用户自建 App 声明大 scope
+          不得绕过管理端用户帽；2026-08-19 终审修复，原缺口=JWT 路径用户帽整族失效）
 ```
 
 要点：限流维度串只由服务端从 DB/令牌载荷推导，客户端不可选；来源 IP 取真实
@@ -87,7 +91,7 @@ socket 地址 + 信任代理头（`TRUSTED_PROXY_HOPS` 模型），不可伪造�
 > 代码：`apps/gateway/src/rate-limit/gate.ts`、`packages/core/src/rate-limiter.ts`
 
 ```
-1. admitKey（RPM 原子判定 + TPM 预占）
+1. admitKey（RPM 原子判定 + TPM 预占；维度 = 凭证（key:/app:/pg:）+ 用户 + global 并罚，任一超限即拒）
    预估总量 = estimateInputTokens(body) + outputCap        ← 与预扣同源（§4）
    超限 → 429；Redis 故障 → 503 fail-closed
 2. buildQuote（模型解析 + 价格快照）失败（404/403）→ 归还 TPM 预占
@@ -243,6 +247,11 @@ validateReceipt 验收（毒收据家族 → 结算侧 dead）：
 `settlement_pending`（CAS + 指纹幂等，竞态输家按指纹判幂等/冲突），随后 BullMQ
 best-effort 唤醒 worker（失败不阻断——30s 兜底扫描会捡到）。
 
+signal 落库失败按退避重试（5 次 / 500ms 起，`signalSucceededWithRetry`）——重试期间
+续租定时器不停，一次 DB 抖动不再把已交付请求漏收成 recover 释放；重试耗尽才停租约
+交 recover 兜底（有界损失 + 响亮日志）。非流式同款重试，耗尽 503 不交付
+（先落账后交付纪律）。2026-08-19 终审修复。
+
 ---
 
 ## 7. 分图⑥：结算实扣
@@ -299,7 +308,14 @@ over > 0 时：
      → 损失有界：上界 = 用户充值总额（日志留痕 "[payg] over-collect unavailable"）
 
 consume ≤ hold：wallet.settle 原单（双腿 [持有人 −a, 平台收入 +a]，余量随结算释放）
-套餐来源：consume(+over) 计入套餐消耗（§org 成员子配额在 probe 侧）
+consume = 0（缓存免费模型 / 上游全 0 usage）：settle 动词拒绝零额——改走
+  wallet.release 全额释放（2026-08-19 终审修复；原路径 InvalidAmountError
+  不属死信家族 → 10 轮重试全败 dead + 预扣永久冻结）
+套餐来源：consume(+over) 计入套餐消耗（§org 成员子配额在 probe 侧）；
+  实际用量超池容量（未声明 max_tokens 的请求不注入输出钳制、上游 usage 与
+  估算口径差）→ settleQuotaBounded 降级核销：FOR UPDATE 锁行后钳到
+  「quota − used − 其他在途」，差额记损日志——不再红砬死信冻结预占
+  （PAYG D3 的订阅对称，2026-08-19 终审修复）
 不变量：Σ在途明细 == 账单 reserved_amount（不符 = 投影脱节红灯 → dead）
 ```
 
@@ -309,7 +325,8 @@ consume ≤ hold：wallet.settle 原单（双腿 [持有人 −a, 平台收入 +
 usage_logs 落库（requestId 唯一幂等；amount = calculatedAmount 全额——
   即使 7d 走了降级也记真实消费额，差额=有界损失可对账）
 渠道敞口归还 → CAS settled（五元组复验）→ 渠道进货真扣 upstreamCost
-（余额 ≤ 阈值 → 渠道熔断 status=3 + 路由缓存 bump）
+（余额 ≤ 阈值 → 渠道熔断 status=3；判定在 SQL 侧 numeric 精确比较——drizzle
+  returning 的 numeric 是 string，JS 侧比较是字典序，2026-08-19 终审修复）
 ```
 
 ---

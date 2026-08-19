@@ -166,28 +166,31 @@ packages/ai/
 │   ├── types.ts               # ChannelDesc / RequestCtx / Usage / UpstreamError / Result / Ai
 │   ├── internal/              # 包内私有（不进公共出口，可随时变更）
 │   │   ├── util.ts            # asRecord / asArray / tryParseJson（消除多处重复）
+│   │   ├── memory-storage.ts  # 内存状态存储（breaker 与 dead-credential 共用：单测 + 单机兜底）
 │   │   └── stream.ts          # peekFirstChunk（流式空完成首帧探测，D3）
 │   ├── transport/
 │   │   ├── http-client.ts     # fetch 封装：connect 超时 / abort 信号 / URL 校验 / readBody(signal) / BodyTooLargeError
 │   │   ├── sse-parser.ts      # eventsource-parser 薄封装：增量解析 + usage 最后帧 + 错误帧捕获
 │   │   └── relay-stream.ts    # 透传管道：心跳注入 / abort 传播 / 错误帧转换 / bytesRelayed 计数
+│   ├── protocol/              # 出站协议表面转换：claude-chat / completions-chat / gemini-chat / responses-chat / stream-convert
 │   ├── adapters/
 │   │   ├── protocol-adapter.ts    # ProtocolAdapter 接口（寻址/终改/抹平/计量/错误/探测 契约）
 │   │   └── openai-compatible.ts   # 默认实现（寻址 + 终改 + 规则抹平 + usage 归一化 + 错误映射）
+│   ├── generation/            # 生成式任务适配（descriptors 生成类型描述符 / task-adapter 任务端口生产适配）
 │   ├── usage/
-│   │   └── normalize.ts       # 缓存字段归一化（OpenAI cached_tokens / DeepSeek cache_hit+miss）
+│   │   ├── normalize.ts       # 缓存字段归一化（OpenAI cached_tokens / DeepSeek cache_hit+miss）
+│   │   └── media-duration.ts  # 音视频时长估算（audio_transcription/translation 按秒计费的计量源）
 │   ├── errors/
 │   │   ├── classify.ts        # 错误分类矩阵 + 死凭据文本特征
-│   │   └── internal.ts        # 包内策略性错误（空完成/响应非法/deadline/熔断打开）
+│   │   ├── internal.ts        # 包内策略性错误（空完成/响应非法/deadline/熔断打开）
+│   │   └── server-drain.ts    # 服务端排空标记（server_draining 计费归属：释放不扣）
 │   ├── retry/
 │   │   └── with-retry.ts      # 指数退避 + full jitter + deadline；空完成重试（≤2）
 │   ├── dead-credential/        # 死凭据计数（5.16：连续 401/403 → invalid + 停止路由）
-│   │   ├── tracker.ts          # CAS 状态机原语（valid/invalid + 连续计数 + 窗口）
-│   │   └── memory-storage.ts   # 内存实现（单测 + 单机兜底）
+│   │   └── tracker.ts          # CAS 状态机原语（valid/invalid + 连续计数 + 窗口；内存实现共用 internal/memory-storage.ts）
 │   └── breaker/
 │       ├── breaker.ts         # 状态机原语（CAS 并发安全：closed/open/half-open + 滚动窗口）
-│       ├── storage.ts         # BreakerStorage 接口 re-export
-│       └── memory-storage.ts  # 内存实现（单测 + 单机兜底；compareAndSet 在 Node 单线程内原子）
+│       └── storage.ts         # BreakerStorage 接口 re-export（内存实现共用 internal/memory-storage.ts）
 └── test/
     ├── unit/                  # sse-parser / classify / with-retry / normalize / breaker / stream / ...
     └── integration/           # mock 上游（本地 HTTP 服务）：正常 SSE / 断流 / 空完成重试 / 429 / 401 / 熔断联动 / 事件序列
@@ -274,8 +277,9 @@ abort：客户端断 → 断上游 reader（停止生成）；静默 ≥5min →
 **流式中断计费语义（requirements 5.11）**：
 - `done` 事件携带 `terminated`（中断原因）+ `bytesRelayed`（已透字节量）
 - create-ai 桥接为 `success` 事件：`terminated=undefined` 正常结束；`terminated='upstream_disconnected'|'inactivity'` 流内中断
-- gateway 消费侧：`success.terminated !== undefined` → 标 `stream_aborted=true`；`usage` 为空或非法时进入 uncertain，`bytesRelayed` 只用于诊断/容量规划，不用于资金结算
-- `client_disconnect`（用户主动断开）：不计熔断；有可信 usage 才结算，否则进入 uncertain
+- gateway 消费侧：`success.terminated !== undefined` → 标 `stream_aborted=true`；`usage` 为空或非法时
+  走估算结算（扫描器累计输出内容 × 校准估算器，归属白名单见 §7.4 政策；uncertain 状态已删）
+- `client_disconnect`（用户主动断开）：不计熔断；有可信 usage 按精确结算，否则按估算结算（estimatedFor=client_disconnect）
 
 ### 7.5 usage 归一化（usage/normalize.ts）
 
@@ -289,8 +293,9 @@ usage 缺失时的字符估算兜底在 `usage/token-estimate.ts`（单一真相
 `estimateTextTokens`（特征向量 × 权重，权重为 `usage/calibration.ts` 代码内固定配置：
 CJK ~0.7 token/字、拉丁词段 ~1.1 token/段，按 provider/model 覆盖）、
 `estimateInputTokens` / `estimateOutputTokens`（结构提取）、`estimateUsage`（组合，`estimated=true`）。
-`estimated=true` 供容量规划，但 Gateway 禁止用估算值做资金结算（仅用户侧取消的 `bytesRelayed × K`
-估算可计费，见 gateway usage-estimator.ts）。
+`estimated=true` 的估算可计费，但必须归属白名单（client_disconnect / usage_missing_completed /
+usage_missing_nonstream——完整清单见 `ESTIMATE_ATTRIBUTIONS`，定义在 `packages/domain/src/rating/types.ts`）；
+网关侧装配在 `apps/gateway/src/pipeline/run-chat.ts`（原 gateway `usage-estimator.ts` 已不存在）。
 
 ### 7.6 参数抹平策略（透传为基底，规则驱动）
 
@@ -365,11 +370,11 @@ usage 提取、错误映射、探测请求）都收敛在 ProtocolAdapter；编�
 
 ## 10. 二期扩展
 
-- `AnthropicAdapter` / `GeminiAdapter`：实现 `ProtocolAdapter` 接口（格式转换发生在 `normalizeRequest`/`finalizeRequestBody`，寻址/认证在 `planRequest`），注册进 `createAi({ adapters })` 即生效，届时评估是否局部引 SDK provider 包（仅转换、不透传，见 tech-stack §9）
-- ~~`BreakerStorage` 的 Redis 实现~~ ✅ 已由 gateway 提供（`apps/gateway/src/infrastructure/ai-storage.ts`）：
-  - 泛型 `RedisKvStorage<T extends {version}>` 用 Lua 脚本实现原子 CAS（`script LOAD` 预加载 + `evalsha` 调用）
-  - `createRedisBreakerStorage(redis)` / `createRedisDeadCredentialStorage(redis)` 两个工厂，key 前缀隔离（`ai:breaker:` / `ai:credential:`）
-  - gateway 启动时注入：`createAi(cfg, { breakerStorage: createRedisBreakerStorage(redis), deadCredentialStorage: createRedisDeadCredentialStorage(redis) })`
+- ~~`AnthropicAdapter` / `GeminiAdapter` 评估点~~ ✅ 已全部落地：`adapters/` 下已有 anthropic / gemini / aws-bedrock / azure-openai / minimax / vertex-ai（均实现 `ProtocolAdapter` 接口，格式转换发生在 `normalizeRequest`/`finalizeRequestBody`，寻址/认证在 `planRequest`，注册进 `createAi({ adapters })` 即生效）
+- ~~`BreakerStorage` 的 Redis 实现~~ ✅ 已由 gateway 提供（`apps/gateway/src/pipeline/ai-storages.ts` + `assembly.ts` 的 `createRedisStateStorage`）：
+  - `apps/gateway/src/pipeline/ai-storages.ts`：进程内存实现（单副本开发形态）
+  - `createRedisStateStorage`（泛型 `<T extends {version}>`，来自 `@ai-gateway/core`，Lua 脚本原子 CAS——`script LOAD` 预加载 + `evalsha` 调用）在 `assembly.ts` 装配，按 `AI_STORAGE_PREFIXES` 前缀隔离 breaker / deadCredential 两类状态（`ai:breaker:` / `ai:credential:`）
+  - gateway 启动时注入：`createAi(cfg, { breakerStorage: createRedisStateStorage<BreakerState>(redis, ...), deadCredentialStorage: createRedisStateStorage<DeadCredentialState>(redis, ...) })`
   - Lua 脚本（CAS 原子语义，不可拆成 GET+SET 两次 RTT）：
   ```lua
   local cur = redis.call('GET', KEYS[1])

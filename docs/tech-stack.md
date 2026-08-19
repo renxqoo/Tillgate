@@ -15,7 +15,7 @@
 | ORM | **Drizzle** + drizzle-kit | 类型安全，迁移版本化 |
 | 校验 | Zod + @hono/zod-validator | 契约即类型 |
 | Redis | ioredis | 限流计数 / 余额缓存 / JWT 黑名单 / 锁 |
-| 队列 | **BullMQ**（Redis） | 计量队列：重试、背压、并发控制开箱即用 |
+| 队列 | **BullMQ**（Redis） | 仅做唤醒；结算以 DB poll 为权威 |
 | JWT | jose | 签发 / 验签（网关自签，HS256 起步，可换 RS256） |
 | 加密 | node:crypto AES-256-GCM | 渠道上游 Key（密钥走环境变量） |
 | 密码哈希 | argon2 | 本地账号兜底登录 |
@@ -33,15 +33,23 @@
 ai-getway/
 ├── apps/
 │   ├── gateway/        # 对外代理（/v1/* + /oauth/token + /livez + /readyz），无状态，可多副本
-│   ├── worker/         # BullMQ 消费编排（结算/对账领域逻辑在 packages/ledger）
+│   ├── worker/         # 后台循环消费者：结算/回收/生成轮询/对账哨兵/告警投递/分区维护（领域逻辑在 packages/service；BullMQ 仅做唤醒）
 │   ├── admin-api/      # 管理端 REST（/api/*，仅内网）
-│   ├── client-api/     # 用户面 REST（/api/*，仅内网）
+│   ├── client-api/     # 用户面 REST（/api/*，仅内网；含 /v1/payments/* 支付回调）
 │   ├── client/         # 端用户面板（Next.js，3001）
-│   └── admin/          # 运营后台（Next.js，3002）
+│   ├── admin/          # 运营后台（Next.js，3002）
+│   └── trace-receiver/ # OTLP span 接收端（PG 存储，管理台链路追踪页）
 ├── packages/
 │   ├── ai/             # 上游 LLM 传输层（自研，详见 docs/ai-package.md）
-│   ├── ledger/         # 统一资金账本：余额/流水/预扣生命周期 + 结算 + 对账
-│   ├── money/          # 金额计算（元 + Decimal 全精度，公式/单测锁死，详见 data-model.md §2）
+│   ├── domain/         # 全部业务规则纯函数（rating 计价/结算分配/订阅规则等域目录）
+│   ├── service/        # 全部用例编排（billing/settlement/funding/channel-budget 等域目录）
+│   ├── repository/     # 全部 SQL（唯一允许 SQL 的包）
+│   ├── wallet/         # 资金钱包内核（复式账本 + 两阶段冻结，长期资金内核）
+│   ├── ledger-core/    # 通用幂等操作内核（operationId + canonical 指纹 + 回执重放）
+│   ├── identity-core/  # 身份内核（会话锚点 + 验证码挑战）
+│   ├── tracing/        # OTel/OTLP 封装（span 解码、分区存储、链路图）
+│   ├── http/           # 共享 HTTP 基建（分页/参数校验/错误信封/幂等/审计）
+│   ├── money/          # 已退役空壳（待清）；计价在 packages/domain/src/rating
 │   ├── db/             # Drizzle schema + migrations（各服务共用）
 │   ├── core/           # 共享基础设施：env zod 校验 + pino 日志 + OTel + AES-256-GCM
 │   ├── identity/       # 会话/JWT/鉴权（admin-api/client-api 共用，双身份物理隔离）
@@ -54,7 +62,7 @@ ai-getway/
 └── package.json
 ```
 
-**依赖方向**：`apps/* → packages/*`，packages 之间不互相依赖（db 被三端引用）。
+**依赖方向**：`apps/* → packages/*`；包间为分层依赖——service→domain、service→repository→db（无环）。
 
 ---
 
@@ -67,6 +75,8 @@ admin-api─┤                                             └─▶ Tempo（�
 client-api┘
 日志：pino → stdout（Docker json-file 驱动统一收集，Grafana 直接查 Loki 可选后期加）
 ```
+
+**默认路径**：内置 trace-receiver（OTLP span 接收，PG 存储 + 管理台链路追踪页），各服务默认 `OTEL_TRACES_MODE=off`；collector / tempo / grafana 是 compose profile `obs` 的可选增强（见第 4 节）。
 
 **Docker 观测栈服务**：`otel-collector` / `prometheus` / `tempo` / `grafana`。
 
@@ -90,13 +100,6 @@ client-api┘
 - `worker_queue_depth` / `worker_processing_duration_ms` — 计量队列
 - `billing_bad_debt_total` / `billing_amount_total` — 计费健康
 
-### 3.3 关键业务指标面板（Grafana）
-
-1. 总览：QPS、P50/P95 延迟、错误率、今日费用
-2. 渠道健康：各渠道失败率、熔断状态、平均耗时
-3. 计费：坏账计数、队列积压、扣费吞吐
-4. 成本：按模型/用户的 token 与费用趋势
-
 ---
 
 ## 4. Docker Compose 服务清单
@@ -106,10 +109,12 @@ client-api┘
 | 服务 | 镜像 | 说明 |
 |---|---|---|
 | nginx | nginx:alpine | TLS 终止、静态资源、反代 gateway / client / admin |
+| certbot | certbot/certbot | TLS 证书签发/续期（entrypoint 常驻 sleep，renew 由 cron/手动触发） |
 | gateway | node:lts-alpine 构建 | 对外代理，`replicas` 可扩 |
 | worker | 同构建 | 计量消费，与 gateway 同镜像不同 command |
 | admin-api | 同构建 | 管理端 REST（不暴露公网，仅内网） |
 | client-api | 同构建 | 用户面 REST（不暴露公网，仅内网） |
+| trace-receiver | 同构建 | 内置 OTLP span 接收（PG 存储，管理台链路追踪页） |
 | console-client | 前端构建 | 端用户面板（Next.js standalone，3001） |
 | console-admin | 前端构建 | 运营后台（Next.js standalone，3002） |
 | redis | redis:7-alpine | 限流/缓存/队列（AOF 持久化） |
@@ -118,15 +123,15 @@ client-api┘
 | otel-collector | otel/opentelemetry-collector-contrib | OTLP 接收 + 路由 |
 | prometheus | prom/prometheus | 指标存储 |
 | tempo | grafana/tempo | 链路存储 |
-| grafana | grafana/grafana | 面板（预置 dashboard JSON） |
+| grafana | grafana/grafana | 面板（provisioning 仅含 datasources.yml 数据源，dashboard 需自建） |
 
-> **观测栈开关**：otel-collector / prometheus / tempo / grafana 使用 compose **profile `obs`**——默认不启动，需要时 `docker compose --profile obs up -d`。起步单机不背 5 个观测容器，但 OTel 埋点始终生效（collector 缺席时数据丢弃不阻塞业务）。
+> **观测栈开关**：otel-collector / prometheus / tempo / grafana 使用 compose **profile `obs`**——默认不启动，需要时 `docker compose --profile obs up -d`。起步单机不背 5 个观测容器；各服务默认 `OTEL_TRACES_MODE=off`，显式开启（`otlp`）才导出（collector 缺席时数据丢弃不阻塞业务）。
 
 **启动流程**：postgres 就绪 → `drizzle-kit migrate`（一次性 init 容器）→ gateway/worker/admin-api 启动 → 观测栈。
 
 **迁移方式**：`drizzle-kit migrate` 作为 compose 中独立的 `migrate` 服务执行，不混入应用启动。
 
-> **billing_requests 迁移注意**：0011 删除旧 billing_holds；停流量并确认无 held 后迁移，
+> **billing_requests 迁移注意（历史注记：一次性迁移事件，已执行完毕，仅留档）**：0011 删除旧 billing_holds；停流量并确认无 held 后迁移，
 > 新旧版本不可混合运行（新 gateway/worker 只认 `billing_requests` DB 状态机，旧进程仍使用已删除的 hold/Redis 语义）。
 > 发布顺序：先跑 migrate → 停旧 gateway+worker 排空在途请求 → 起新 worker → 起新 gateway。
 
@@ -136,7 +141,6 @@ client-api┘
 - **备份策略（必做）**：PostgreSQL 每日 `pg_dump`（压缩 + 加密）至独立存储（对象存储/异机），保留 30 天；每周一次恢复演练；Redis 开启 `appendonly yes`（AOF，Redis 仅缓存/队列，不作为主账本）。
 - **日志滚动**：Docker json-file 驱动 `max-size: 50m`、`max-file: 5`。
 - **健康检查**：gateway `/livez` 只检查进程，`/readyz` 检查 PostgreSQL、Redis、账务 schema 与 drain 状态；worker 暴露 `/livez`、`/readyz`、`/health`，Redis 队列故障为 degraded、DB 故障为 not-ready。
-- **时区**：各容器 `TZ=Asia/Shanghai`（日志时间戳与报表展示一致，存储仍 UTC）。
 
 ---
 
@@ -191,7 +195,7 @@ client-api┘
 
 | 项 | 措施 |
 |---|---|
-| TLS | nginx 终止 HTTPS（Let's Encrypt 证书 + certbot 自动续期容器）；管理端接口不暴露公网 |
+| TLS | nginx 终止 HTTPS（Let's Encrypt 证书；certbot 容器 entrypoint 为 sleep 常驻，续期须 `docker compose exec certbot certbot renew --webroot -w /var/www/certbot && docker compose exec nginx nginx -s reload`，cron 驱动）；管理端接口不暴露公网 |
 | 上游 Key | AES-256-GCM 加密落库，密钥在环境变量；管理端编辑不回显 |
 | 虚拟 Key / 充值码 / client_secret | 只存 SHA-256 哈希，明文仅创建时展示一次 |
 | SSRF 防护 | 管理端配置渠道 base_url 时校验协议（仅 https）+ 域名（禁止内网/回环地址） |

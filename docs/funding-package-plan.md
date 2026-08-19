@@ -1,6 +1,6 @@
 # 按层分包实现方案（packages/domain + packages/service）
 
-> 版本：2026-08-19 v7 · 状态：P1-P5 全部执行完毕（四门全绿）；v1/v2 共存清理待全部逻辑完成后
+> 版本：2026-08-20 v10（v1 共存清理完成）· 状态：P1-P5 全部执行完毕（四门全绿）；已完成：v1 于 2026-08-20 退役删除
 > 前置：gateway 角色裁剪完成（纯网关），81 测试全绿，四门全过。
 > 本方案将 gateway 内的 domain/services 层独立为**按层组织的两个共享包**，
 > 并引入资金来源策略（FundingSource）与预扣明细表（billing_reservations）。
@@ -38,11 +38,15 @@
 > 调用方覆写（释放路径并入 released）。收尾清理：v2 包内被替代代码已删
 > （gateSubscription / 三路投影释放 release.ts / paygPart）；**v1 业务包
 > （ledger / wallet / ledger-core）一律未动**，待全部逻辑完成后统一清理共存。
+> （后续执行：ledger 已删；wallet/ledger-core 保留为长期内核）
 >
 > v8 变更：可变值不再写死——币种改为装配注入（WalletEnv.currency /
 > BillingDomainDeps.currency 必填，流入 guards 白名单与 FundingSourceContext，
 > createWallet 装配期校验白名单含币种）；'billing' refType 收敛为 domain 单一导出
 > BILLING_REF_TYPE；顺带修复 PaygSource.probe 多币种下任意挑账户的隐患（按计费币种过滤）。
+>
+> v10 变更（2026-08-20）：v1 共存清理完成——v1（ledger）已整体删除；四应用去除
+> -v2 后缀；wallet / ledger-core 确立为长期内核。
 
 ---
 
@@ -167,7 +171,7 @@ apps/gateway/src/
   package.json                  deps: @ai-gateway/service + @ai-gateway/repository
 ```
 
-### 2.4 终态包全景（15 → 14 个包）
+### 2.4 终态包全景（现 15 包，money 空壳待清）
 
 对照全仓真实结构（8 app / 15 包）。旧 `packages/ledger` 自述即「资金账本领域（gateway
 与 worker 共用）」、被全部 4 个老后端 app（gateway / worker / client-api / admin-api）
@@ -177,8 +181,9 @@ apps/gateway/src/
 
 | 处置 | 包 |
 |---|---|
-| ★ 新建 | `domain`、`service` |
-| ✖ 删除（四个 v2 app 全部切完后） | `ledger`、`ledger-core`、`wallet` |
+| ★ 新建（已建成） | `domain`、`service` |
+| ✖ 已删除（四应用——已去 -v2 后缀——全部切换后执行） | `ledger` |
+| 保留为长期内核（原计划删除，实况保留） | `ledger-core`、`wallet` |
 | 不动 | `db`、`repository`、`identity`、`identity-core`、`ai`、`core`、`http`、`tracing`、`ui`、`api-client` |
 
 前端（client / admin）与 trace-receiver 不受影响。
@@ -555,7 +560,8 @@ advisory 锁保证 ①→③ 间同 user 无竞态；waterfallReserve 对外仍�
 > 已入 dev 库 + BillingReservationRepository。P4——funding 策略族（source / payg /
 > subscription / registry / waterfall / release）+ 瀑布单测。P5——authorize 两阶段
 > 瀑布接管（gateSubscription 消失）、signal(failed) 走 releaseAllReservations、
-> 订阅切分五场景集成测试。v1 业务包未动，共存清理待全部逻辑完成。
+> 订阅切分五场景集成测试。v1 共存清理已完成：v1（ledger）于 2026-08-20 退役删除，
+> 四应用去除 -v2 后缀，wallet / ledger-core 保留为长期内核。
 
 ### 阶段 P1：建 domain 包
 
@@ -719,7 +725,7 @@ repository 取——运行时依赖箭头保持 service→repository→db，serv
 | 平移 import 路径错 | P1/P2 独立验收，测试是安全网 |
 | probe→reserve 跨 user 竞态 | advisory 锁覆盖同 user；跨 user 由 tryReserveQuota 守卫 WHERE 兜底；失败→整体回滚 |
 | 旧 worker 留孤儿明细行 | findActive 加账单状态 JOIN 过滤；worker 上线后一次性清理脚本 |
-| 新旧包并存 | 旧 packages/ledger + wallet 冻结终态；domain/service 是唯一活跃开发面 |
+| 新旧包并存 | 已收口：ledger 已删除；wallet 为长期内核；domain/service 是唯一活跃开发面 |
 | 过渡期误注册新来源 | registry 冻结 {payg, subscription}，promo 等 worker 上线后再注册（§4.4） |
 
 ---

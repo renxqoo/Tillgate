@@ -1,5 +1,7 @@
 # AI Gateway API 契约（v0.1）
 
+> 2026-08-20 修订：管理端契约已对齐 v2 路由（/v1 前缀）；推理端点矩阵自 2026-08 起即为实况。
+
 > 配套文档：`requirements.md`（业务逻辑）、`data-model.md`（数据模型）
 > 覆盖一期（P0）。接口分两层：**对外接口**（网关，供客户端/企业 Agent 调用）与**管理端接口**（供 Next.js 控制台调用）。
 
@@ -12,8 +14,8 @@
   - 静态虚拟 Key：`ag_` 前缀
   - 网关签发 JWT（企业 Agent，经 `/oauth/token` 换取）
 - 时间：UTC，ISO 8601。
-- 金额对外展示为元（小数），内部存储厘（本契约不含金额字段，管理端接口按需）。
-- 所有对外错误响应统一 OpenAI 风格信封：`{"error": {"message", "type", "code", "param", "request_id", "suggestion"}}`——`request_id` 供客户端凭 ID 查日志排障，`suggestion` 给可操作建议（如「渠道维护中，请稍后重试」）。
+- 金额对外展示为元（小数），内部 `numeric(38,18)` 元 + Decimal 全精度（本契约不含金额字段，管理端接口按需）。
+- 所有对外错误响应统一信封：`{"error": {"code", "message"}}`。
 - 上游响应透传时**剥离上游敏感信息**（不暴露渠道内部错误细节给客户端，管理端日志可见完整原因）。
 
 ---
@@ -38,16 +40,16 @@
 ```
 
 - `usage` 透传供应商原值（含各家缓存字段：OpenAI 风格 `prompt_tokens_details.cached_tokens`、DeepSeek 风格 `prompt_cache_hit_tokens` 等）；网关内部按标准化字段（未缓存输入/缓存输入/输出）计量计费（官方价 × 费率卡系数）。
-- `usage` 缺失或校验失败时不得估算扣费：该请求的授权转 `uncertain`，等待供应商证据恢复或人工审计。
+- `usage` 缺失或校验失败时按估算结算并留 `estimated`/`estimateReason` 留痕（2026-08-17 政策；`uncertain` 状态已删除）。
 - `model` 返回**真实模型名**（映射后）。
 
-**流式响应**（`stream: true`）：`Content-Type: text/event-stream`，逐帧透传 OpenAI chunk 格式（`choices[].delta`），流尾 `data: [DONE]`。计量在流结束后从可信 usage 捕获；缺失则进入 uncertain。
+**流式响应**（`stream: true`）：`Content-Type: text/event-stream`，逐帧透传 OpenAI chunk 格式（`choices[].delta`），流尾 `data: [DONE]`。计量在流结束后从可信 usage 捕获；缺失则按估算结算并留 `estimated`/`estimateReason` 留痕。
 
 **流式错误与中断语义**：
 - 流开始前（首帧前）出错 → 返回正常 JSON 错误响应（错误码表格式）。
 - 流开始后上游/网关出错 → 发送 OpenAI 风格错误 chunk：`data: {"error": {"message", "type", "code"}}` 后结束（不再发 `[DONE]`；客户端以 error chunk 为准）。
-- 客户端中途断开 → 网关内部主动断开上游连接（停止生成、节省成本）；有可信 usage 才精确结算，否则冻结预扣进入 uncertain，禁止估算扣费。
-- chunk 中 `model`/`id` 默认**不改写**（透传上游真实值）；"改写为对外模型名"为可配置开关。
+- 客户端中途断开 → 网关内部主动断开上游连接（停止生成、节省成本）；有可信 usage 精确结算，完成缺 usage / 用户取消则按估算结算并留 `estimated`/`estimateReason` 留痕（2026-08-17 政策）。
+- chunk 中 `model`/`id`：错误脱敏层会把候选链真实模型名替换为对外模型名（`http/sanitize.ts`）。
 
 ### 2.2 GET /v1/models — 模型列表
 
@@ -70,7 +72,7 @@ client_secret=<app.client_secret>
 **成功**：
 
 ```json
-{ "access_token": "<JWT>", "token_type": "Bearer", "expires_in": 7200 }
+{ "access_token": "<JWT>", "token_type": "Bearer", "expires_in": 3600 }
 ```
 
 **失败**：`400 invalid_request`（参数缺失）/ `401 invalid_client`（凭证错误或 App 已禁用）。
@@ -82,7 +84,7 @@ client_secret=<app.client_secret>
 
 ### 2.4 GET /livez、GET /readyz — 存活与就绪探针（无鉴权）
 
-返回 `{"status":"ok"}`；K8s/Docker healthcheck 用。
+返回 `{"ok":true}`（另有 `/healthz`）；K8s/Docker healthcheck 用。
 
 ### 2.5 POST /v1/embeddings — 向量化（一期）
 
@@ -99,8 +101,7 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | 402 | insufficient_balance | 可用余额不足，**预扣失败**（请求前拦截，不产生上游调用） |
 | 404 | model_not_found | 模型不存在或未上架 |
 | 413 | payload_too_large | 请求体超过上限（默认 16MB） |
-| 429 | rate_limit_exceeded | 网关限流（RPM/TPM/QPS 超限），响应带 `Retry-After`（可选附 `X-RateLimit-*` 头） |
-| 429 | upstream_rate_limited | 上游 429 透传（渠道级，网关会尝试换渠道） |
+| 429 | rate_limit_exceeded | 网关限流（RPM/TPM/QPS 超限），响应带 `Retry-After`（可选附 `X-RateLimit-*` 头）；渠道限流复用本码 |
 | 500 | upstream_error | 上游异常（错误信息脱敏后透传） |
 | 503 | no_available_channel | 模型映射的所有渠道不可用（禁用/熔断中） |
 | 503 | server_draining | 网关滚动发布停机窗口（拒新请求；在途请求在宽限期结束前由服务端中止，全额释放不计费） |
@@ -108,7 +109,7 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 
 ---
 
-## 4. 管理端接口（控制台后端 REST，前缀 `/api`）
+## 4. 管理端接口（控制台后端 REST，前缀 `/v1`）
 
 > 调用方：Next.js 控制台（服务端调用，不直接暴露公网）。会话鉴权：HttpOnly Cookie 中的面板 JWT（24h），管理端接口校验 `role=admin`。
 
@@ -130,124 +131,122 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET /api/me` | 当前用户信息（含余额、订阅摘要、状态） |
-| `POST /api/auth/login` | 登录第一步：邮箱+密码 → 发 6 位邮箱验证码（强制两步）→ `200 {ok,twoFactorRequired:true,challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发/账号） |
-| `POST /api/auth/login/verify` `{challengeId, code}` | 第二步：验 6 位邮箱码（5 分钟有效，错 5 次作废，一次性消费）→ 签发 ag_session；首登赠额/lastLogin 在此步 |
-| `POST /api/auth/register` `{email, password}` | 邮箱自助注册第一步 → 发验证码 → `200 {ok,challengeId}`（邮箱占用 409；同 IP >5 次/小时 429；SMTP 未配置 503） |
-| `POST /api/auth/register/verify` `{challengeId, code}` | 第二步：验码通过建号（subject=email）+ 签发 ag_session + 首登赠额（并发撞邮箱由唯一索引兜底 → 409） |
-| `GET /api/auth/oauth/providers` | 已配置的第三方登录方式 `{providers:[github?,google?]}`（前端显隐按钮的单一真相） |
-| `GET /api/auth/oauth/:provider/authorize?next=` | 302 到 GitHub/Google 授权页（state 双提交：HttpOnly cookie + Redis 单次 10 分钟；未配置 404） |
-| `PATCH /api/me/display-name` `{displayName}` | 自助修改显示名称（1-32 字符去空白；审计 user.display_name_change） |
-| `GET /api/auth/oauth/:provider/callback?code&state` | 验 state（不符 403）→ 换码取 profile → find-or-create（issuer=provider, subject=平台 id；邮箱不与本地账号合并）→ ag_session → 302 前端（next 仅站内） |
-| `POST /api/auth/oidc-login` `{id_token}` | OIDC 建会话（P1）：**OIDC 重定向流程由 Next.js 服务端执行**（code 换 token、校验 IdP 签名），再调本接口由 admin-api 建立会话——admin-api 不直接对接 IdP |
-| `POST /api/auth/logout` | 注销 |
+| `GET /v1/me` | 当前用户信息（含余额、订阅摘要、状态） |
+| `POST /v1/auth/login` | 登录第一步：邮箱+密码 → 发 6 位邮箱验证码（强制两步）→ `200 {ok,twoFactorRequired:true,challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发/账号） |
+| `POST /v1/auth/login/verify` `{challengeId, code}` | 第二步：验 6 位邮箱码（5 分钟有效，错 5 次作废，一次性消费）→ 签发 ag_session；首登赠额/lastLogin 在此步 |
+| `POST /v1/auth/register` `{email, password}` | 邮箱自助注册第一步 → 发验证码 → `200 {ok,challengeId}`（邮箱占用 409；同 IP >5 次/小时 429；SMTP 未配置 503） |
+| `POST /v1/auth/register/verify` `{challengeId, code}` | 第二步：验码通过建号（subject=email）+ 签发 ag_session + 首登赠额（并发撞邮箱由唯一索引兜底 → 409） |
+| `GET /v1/oauth/providers` | 已配置的第三方登录方式 `{providers:[github?,google?]}`（前端显隐按钮的单一真相） |
+| `GET /v1/oauth/:provider/authorize?next=` | 302 到 GitHub/Google 授权页（state 双提交：HttpOnly cookie + Redis 单次 10 分钟；未配置 404） |
+| `PATCH /v1/me/display-name` `{displayName}` | 自助修改显示名称（1-32 字符去空白；审计 user.display_name_change） |
+| `GET /v1/oauth/:provider/callback?code&state` | 验 state（不符 403）→ 换码取 profile → find-or-create（issuer=provider, subject=平台 id；邮箱不与本地账号合并）→ ag_session → 302 前端（next 仅站内） |
+| `POST /v1/auth/logout` | 注销 |
 
 ### 管理员二次登录（R8，默认关闭）
 
 | 接口 | 说明 |
 |---|---|
-| `POST /api/admin/auth/login`（开启 2FA 时） | 密码正确 → `200 {twoFactorRequired:true, challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发） |
-| `POST /api/admin/auth/login/verify` `{challengeId, code}` | 验 6 位邮箱码（5 分钟有效，错 5 次作废）→ 签发 ag_admin_session |
-| `POST /api/admin/auth/two-factor` `{enabled}` | 自助开关（需管理员会话；开启要求 SMTP 已配置） |
+| `POST /v1/auth/login`（开启 2FA 时） | 密码正确 → `200 {twoFactorRequired:true, challengeId}`（不签会话；SMTP 未配置 → 503 fail-closed；60s 限发） |
+| `POST /v1/auth/login/verify` `{challengeId, code}` | 验 6 位邮箱码（5 分钟有效，错 5 次作废）→ 签发 ag_admin_session |
+| `POST /v1/me/two-factor` `{enabled}` | 自助开关（需管理员会话；开启要求 SMTP 已配置） |
 
 ### 用量列表计费来源拆分（R9）
 
-`GET /api/usage` 行新增 `billedBy`（`plan` | `payg`）、`planAmount`、`paygAmount`——
+`GET /v1/usage` 行新增 `billedBy`（`plan` | `payg`）、`planAmount`、`paygAmount`——
 前端区分展示：套餐消耗显示积分（planAmount），余额消耗显示金额（paygAmount，¥）。
 
 ### org 邀请撤销（R7）
 
 | 接口 | 说明 |
 |---|---|
-| `POST /api/orgs/:id/invitations/:invitationId/revoke` | owner 撤销待接受邀请（0→2 revoked；幂等 404） |
-| `GET /api/orgs/:id` 变更 | owner 附带 `invitations[]`（pending 列表，不含 token） |
-| `GET /api/me/transactions?from&to&page` | 自己的资金流水 |
-| `POST /api/redeem` `{code}` | 兑换充值码（成功 → 余额增加并返回新余额）；失败：`400 invalid_code`（不存在）/ `400 code_expired`（已过期）/ `409 code_already_used`（已使用） |
-| `GET /api/me/subscription` | 当前订阅信息（套餐/生效期/剩余额度），无订阅返回 null |
-| `POST /api/subscriptions` `{plan_id}` | 用余额购买套餐（扣余额，写 transactions type=subscribe；余额不足 402） |
+| `POST /v1/orgs/:id/invitations/:invitationId/revoke` | owner 撤销待接受邀请（0→2 revoked；幂等 404） |
+| `GET /v1/orgs/:id` 变更 | owner 附带 `invitations[]`（pending 列表，不含 token） |
+| `GET /v1/wallet/statement?from&to&page` | 自己的资金流水 |
+| `POST /v1/redeem` `{code}` | 兑换充值码（成功 → 余额增加并返回新余额）；失败：`400 invalid_code`（不存在）/ `400 code_expired`（已过期）/ `409 code_already_used`（已使用） |
+| `GET /v1/subscriptions` | 当前订阅信息（套餐/生效期/剩余额度），无订阅返回 null |
+| `POST /v1/subscriptions` `{plan_id}` | 用余额购买套餐（扣余额，写 transactions type=subscribe；余额不足 402） |
 
 ### 4.2 用户侧：Key 与应用
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET /api/keys` | 自己的 Key 列表 |
-| `POST /api/keys` `{name, remark?, expires_at?, rpm_limit?, tpm_limit?}` | 创建，**明文 Key 仅在响应中出现一次** |
-| `PATCH /api/keys/:id` | 改名/限流/过期调整（不可修改 Key 本身） |
-| `DELETE /api/keys/:id` | 吊销（立即失效） |
-| `GET /api/apps` / `POST /api/apps` | 应用列表 / 创建（返回 `client_id` + `client_secret`，**secret 仅此一次**） |
-| `DELETE /api/apps/:id` | 禁用应用（清 App 状态缓存，所有已签发 JWT 立即失效） |
-| `POST /api/apps/:id/rotate-secret` | 轮换 secret（旧 secret 不能再换新 JWT；**不影响已签发 JWT**） |
+| `GET /v1/keys` | 自己的 Key 列表 |
+| `POST /v1/keys` `{name, remark?, expires_at?, rpm_limit?, tpm_limit?}` | 创建，**明文 Key 仅在响应中出现一次** |
+| `PATCH /v1/keys/:id` | 改名/限流/过期调整（不可修改 Key 本身） |
+| `DELETE /v1/keys/:id` | 吊销（立即失效） |
+| `GET /v1/apps` / `POST /v1/apps` | 应用列表 / 创建（返回 `client_id` + `client_secret`，**secret 仅此一次**） |
+| `POST /v1/apps/:id/disable` | 禁用应用（禁用即时生效，所有已签发 JWT 立即失效） |
+| `POST /v1/apps/:id/rotate` | 轮换 secret（旧 secret 不能再换新 JWT；**不影响已签发 JWT**） |
 
 ### 4.3 用户侧：用量
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET /api/usage?from&to&model&page` | 自己的用量明细（tokens、费用、模型、时间；含 billed_by/plan_amount/payg_amount） |
-| `GET /api/usage/summary?from&to` | 按日聚合（图表用） |
+| `GET /v1/usage?from&to&model&page` | 自己的用量明细（tokens、费用、模型、时间；含 billed_by/plan_amount/payg_amount） |
+| `GET /v1/usage/summary?from&to` | 按日聚合（图表用） |
 
 ### 4.4 管理端：用户
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET /api/admin/users?q&status&page` | 用户列表（搜索/筛选） |
-| `PATCH /api/admin/users/:id` `{status?, rate_card_id?}` | 封禁/解封、绑定费率卡 |
-| `POST /api/admin/users/:id/adjust` `{amount, remark}` | 手动调额（正负皆可，写 transactions + audit） |
+| `GET /v1/users?q&status&page` | 用户列表（搜索/筛选） |
+| `PATCH /v1/users/:id` `{status?, rate_card_id?}` | 封禁/解封、绑定费率卡 |
+| `POST /v1/users/:id/adjust` `{amount, remark}` | 手动调额（正负皆可，写 transactions + audit） |
 
 ### 4.5 管理端：供应商 / 渠道
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET/POST/PATCH/DELETE /api/admin/providers` | 供应商 CRUD（base_url、协议类型） |
-| `GET/POST/PATCH/DELETE /api/admin/channels` | 渠道 CRUD（上游 Key 加密存储，编辑不回显；**PATCH 更换上游 Key 后自动清除「凭据无效」状态**） |
-| `POST /api/admin/channels/:id/test` | 连通性测试：优先 `GET /v1/models`（快），失败回退最小补全请求（max_tokens=1）；返回耗时/结果/错误原因 |
-| `POST /api/admin/channels/:id/cooldown-clear` | 手动解除熔断 |
-| `POST /api/admin/channels/import` | 批量导入渠道（JSON 数组：provider/name/api_key/models/weight/priority），返回成功/失败逐条明细 |
+| `GET/POST/PATCH/DELETE /v1/providers` | 供应商 CRUD（base_url、协议类型） |
+| `GET/POST/PATCH/DELETE /v1/channels` | 渠道 CRUD（上游 Key 加密存储，编辑不回显；**PATCH 更换上游 Key 后自动清除「凭据无效」状态**） |
+| `POST /v1/channels/:id/test` | 连通性测试：优先 `GET /v1/models`（快），失败回退最小补全请求（max_tokens=1）；返回耗时/结果/错误原因 |
+| `POST /v1/channels/import` | 批量导入渠道（JSON 数组：provider/name/api_key/models/weight/priority），返回成功/失败逐条明细 |
 
 ### 4.6 管理端：模型映射
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET/POST/PATCH/DELETE /api/admin/models` | 映射 CRUD（external_name、real_model、官方单价：输入/输出/缓存输入、fallback 模型链、参数规则、上下架） |
-| `PATCH /api/admin/models/:id/channels` | 绑定/调整该模型可用渠道与权重（关联表维护） |
+| `GET/POST/PATCH/DELETE /v1/models` | 映射 CRUD（external_name、real_model、官方单价：输入/输出/缓存输入、fallback 模型链、参数规则、上下架） |
+| `POST /v1/models/:id/channels` | 绑定/调整该模型可用渠道与权重（关联表维护） |
 
 ### 4.7 管理端：充值码
 
 | 方法/路径 | 说明 |
 |---|---|
-| `POST /api/admin/redeem-batches` `{count, amount, expires_at?}` | 生成批次（返回该批码明文，一次性） |
-| `GET /api/admin/redeem-batches` | 批次列表（含已用数） |
-| `GET /api/admin/redeem-batches/:id/codes?status&page` | 批次内码明细（脱敏哈希/状态/兑换人） |
+| `POST /v1/redeem-batches` `{count, amount, expires_at?}` | 生成批次（返回该批码明文，一次性） |
+| `GET /v1/redeem-batches` | 批次列表（含已用数） |
+| `GET /v1/redeem-batches/:id/codes?status&page` | 批次内码明细（脱敏哈希/状态/兑换人） |
 
 ### 4.8 管理端：报表与日志
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET /api/admin/stats/overview` | 仪表盘：今日请求量/tokens/费用/成功率/各渠道健康状态 |
-| `GET /api/admin/stats/usage?from&to&group=user\|model\|channel` | 多维度用量与费用聚合 |
-| `GET /api/admin/logs?from&to&user_id&status_code&model&page` | 请求日志查询（30 天） |
-| `GET /api/admin/usage-logs?from&to&user_id&model&estimated&page` | 用量明细（含 estimated/estimateReason 估算扣款标记，2026-08-17 政策；仅管理端） |
-| `GET /api/admin/audit-logs?page` | 管理操作审计 |
+| `GET /v1/stats/overview` | 仪表盘：今日请求量/tokens/费用/成功率/各渠道健康状态 |
+| `GET /v1/stats/usage?from&to&group=user\|model\|channel` | 多维度用量与费用聚合 |
+| `GET /v1/logs?from&to&user_id&status_code&model&page` | 请求日志查询（30 天） |
+| `GET /v1/usage-logs?from&to&user_id&model&estimated&page` | 用量明细（含 estimated/estimateReason 估算扣款标记，2026-08-17 政策；仅管理端） |
+| `GET /v1/audit-logs?page` | 管理操作审计 |
 
 ### 4.9 管理端：费率卡（定价档位）
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET/POST/PATCH /api/admin/rate-cards` | 费率卡 CRUD（名称、状态、系数；一期全局系数，按模型覆盖二期） |
-| `GET /api/admin/rate-cards/:id/users` | 查看绑定该卡的账户 |
+| `GET/POST/PATCH /v1/rate-cards` | 费率卡 CRUD（名称、状态、系数；一期全局系数，按模型覆盖二期） |
+| `GET /v1/rate-cards/:id/users` | 查看绑定该卡的账户 |
 
 ### 4.10 管理端：套餐与订阅（二期）
 
 | 方法/路径 | 说明 |
 |---|---|
-| `GET/POST/PATCH /api/admin/plans` | 套餐 CRUD（价格、周期、金额额度、席位模式、状态）；kind 创建后不可变 |
-| `GET /api/admin/tracing/recent` | 最近 traces（24h；service/errorsOnly/minDurationMs/requestId/limit/beforeMs 过滤） |
-| `GET /api/admin/tracing/traces/:traceId` | 单 trace 全部 span（瀑布图数据） |
-| `GET /api/admin/tracing/by-request/:requestId` | 按 request_id 关联（计费复核「查链路」入口） |
-| `GET /api/admin/tracing/stats` | trace 存储统计（分区列表、保留水位） |
-| `GET /api/admin/tracing/topology?hours=24` | 渠道健康拓扑（尝试/错误/均延迟/最近错误聚合） |
-| `GET /api/admin/subscriptions?plan_id&status&page` | 订阅列表 |
-| `POST /api/admin/subscriptions/:id/renew` | 续费（开启新订阅期） |
-| `POST /api/admin/subscriptions/:id/cancel` | 取消（剩余额度作废） |
+| `GET/POST/PATCH /v1/plans` | 套餐 CRUD（价格、周期、金额额度、席位模式、状态）；kind 创建后不可变 |
+| `GET /v1/tracing/recent` | 最近 traces（24h；service/errorsOnly/minDurationMs/requestId/limit/beforeMs 过滤） |
+| `GET /v1/tracing/traces/:traceId` | 单 trace 全部 span（瀑布图数据） |
+| `GET /v1/tracing/by-request/:requestId` | 按 request_id 关联（计费复核「查链路」入口） |
+| `GET /v1/tracing/stats` | trace 存储统计（分区列表、保留水位） |
+| `GET /v1/tracing/topology?hours=24` | 渠道健康拓扑（尝试/错误/均延迟/最近错误聚合） |
+| `GET /v1/subscriptions?plan_id&status&page` | 订阅列表 |
+| `POST /v1/subscriptions/:id/renew` | 续费（开启新订阅期） |
+| `POST /v1/subscriptions/:id/cancel` | 取消（剩余额度作废） |
 
 ---
 
@@ -296,20 +295,20 @@ OpenAI 标准格式（`model` / `input` / `encoding_format`），透传 + usage 
 | GET /v1/videos/{id}、/v1/musics/{id} | 任务查询（status/video_url/audio_url/尺寸/失败原因；归属校验） |
 
 - 管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（packages/ai protocol/codec 单一真相）。
-- 上游协议族：openai-compatible / anthropic / gemini / azure-openai / aws-bedrock(SigV4+eventstream) / vertex-ai(SA JWT)。厂商 baseUrl 预设见 admin-api GET /api/admin/vendor-catalog。
-- 异步生成任务（video/music）：提交即预留（两阶段账本 authorize），worker 轮询驱动终态——succeeded 按收据实扣（units=1 或 duration 快照）、failed/expired 释放不扣（对齐 new-api 任务计费语义，无「真扣+退款」双轨）。管理端任务列表 GET /api/admin/generation-tasks。
+- 上游协议族：openai-compatible / anthropic / gemini / azure-openai / aws-bedrock(SigV4+eventstream) / vertex-ai(SA JWT)。厂商 baseUrl 预设见 admin-api GET /v1/vendor-catalog。
+- 异步生成任务（video/music）：提交即预留（两阶段账本 authorize），worker 轮询驱动终态——succeeded 按收据实扣（units=1 或 duration 快照）、failed/expired 释放不扣（对齐 new-api 任务计费语义，无「真扣+退款」双轨）。管理端任务列表 GET /v1/generation-tasks。
 
 ### 计费扩展
-- 计费单位：model_mappings.pricing_unit ∈ token/request/image/second/char + unit_price；金额 = (token 部分 + units×unit_price)×系数（packages/wallet metering 单一真相）。
-- 费率卡系数：model > group（pricing_group 匹配）> global 优先级解析（packages/ledger coefficient.ts）；停用卡拒绝新请求（403 rate_card_disabled）。
+- 计费单位：model_mappings.pricing_unit ∈ token/request/image/second/char + unit_price；金额 = (token 部分 + units×unit_price)×系数（packages/domain/src/rating 单一真相）。
+- 费率卡系数：model > group（pricing_group 匹配）> global 优先级解析（packages/domain/src/rating/coefficient.ts）；停用卡拒绝新请求（403 rate_card_disabled）。
 
 ### client-api 新端点
-- POST /api/payments（下单）、GET /api/payments、GET /api/payments/:id —— 受会话保护
-- GET /api/public/payments/epay/notify（MD5 验签，回 success/fail）、POST /api/public/payments/stripe/webhook（HMAC t/v1 验签）—— 公开回调
-- GET /api/public/pricing（公开官方价）、GET /api/pricing（会话个性化到手价）
-- GET /api/referrals —— 邀请概览；注册 POST /api/auth/register/verify 增可选 aff 字段
-- POST /api/playground/chat/completions —— 操练场代理（会话→短期网关 JWT 桥，SSE 透传）
+- POST|GET /v1/payments/orders（下单/列表）、GET /v1/payments/orders/:id —— 受会话保护
+- POST /v1/payments/notify/:provider —— 公开回调（POST，按 provider 验签，回 success/fail）
+- GET /v1/pricing（公开官方价）、GET /v1/pricing/personal（会话个性化到手价）
+- GET /v1/referrals —— 邀请概览；注册 POST /v1/auth/register/verify 增可选 aff 字段
+- POST /v1/playground/chat/completions —— 操练场代理（会话→短期网关 JWT 桥，SSE 透传）
 
 ### admin-api 新端点
-- GET /api/admin/vendor-catalog、GET /api/admin/payment-orders、POST /api/admin/payment-orders/{id}/close
-- /api/admin/notifications（GET/POST/PATCH/DELETE + POST {id}/test）—— 告警渠道 CRUD 与测试
+- GET /v1/vendor-catalog、GET /v1/payment-orders、POST /v1/payment-orders/{id}/close
+- /v1/notifications（GET/POST/PATCH/DELETE + POST {id}/test）—— 告警渠道 CRUD 与测试

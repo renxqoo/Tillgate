@@ -4,6 +4,7 @@
 > wallet 双分录账本（`wallet_accounts/wallet_authorizations/wallet_legs`，
 > 冻结口径 = `in_flight`）取代——生产扣款口径见
 > [`billing-flow-deep-dive.md`](billing-flow-deep-dive.md)。
+> 2026-08-20 修订：uncertain 状态、fund_operations、users 资金三列、Redis 键表均已按现行 schema 更新。
 >
 > 配套文档：`requirements.md`（业务逻辑）、`api-contract.md`（接口契约）
 > 数据库：PostgreSQL。本设计覆盖一期（P0）全部表，二期预留表单独列出。
@@ -22,7 +23,7 @@
 
 ---
 
-## 2. 计算规范（金额/费用，落地于 packages/wallet 的 metering 子导出）
+## 2. 计算规范（金额/费用，落地于 packages/domain/src/rating/）
 
 > 结论：**使用 decimal.js 任意精度十进制库**——账本全程 Decimal 运算、永不 round，杜绝浮点误差（IEEE754）与舍入资损。DB 存 `numeric(38,18)`（精度到 1e-18 元），JS 侧用 Decimal。实现集中在一个包 + 单测锁死，禁止在业务代码里散落计算。
 
@@ -39,7 +40,7 @@ base     = uncached×输入价 + cached×缓存价 + 输出×输出价
 amount   = base / 1_000_000 × 系数               // 元，Decimal 全精度（不 round）
 ```
 
-**防错清单**（`packages/wallet/src/__tests__/metering.test.ts` 单测覆盖）：
+**防错清单**（`packages/domain/src/rating/__tests__/` 单测覆盖）：
 1. 金额一律元 + Decimal，浮点（JS number）禁止参与运算（0.1+0.2 问题）
 2. 账本永不 round：单次请求 1e-8 元也精确计费、入账（杜绝「真实消耗却计费 0」资损）
 3. 系数为小数直接参与 Decimal 运算
@@ -48,9 +49,9 @@ amount   = base / 1_000_000 × 系数               // 元，Decimal 全精度�
 6. 异常输入（负/NaN/Infinity）→ safe() 夹到 0（绝不反向收费）
 7. 对外结算边界用银行家舍入（half-even）到分，尾差入科目；账本内部零 round
 
-**模块**：`packages/wallet/src/metering.ts` 单文件（费用公式 calcAmount / 足额授权上界 estimateMaxCost·requiredReservation / Decimal 工具）——gateway 与 worker 共用（`@ai-gateway/wallet/metering`）。
+**模块**：`packages/domain/src/rating/`（费用公式 calculate.ts / 足额授权上界 pricing.ts 的 estimateMaxCost·requiredReservation / Decimal 工具）——gateway 与 worker 共用（`@ai-gateway/domain/rating`；wallet 包无 metering 模块、money 为空壳）。
 
-**统一资金入口**：普通资金操作使用 `createLedger()`；请求扣费只允许走 `createBilling()` 的 `authorize / signal / drain`，调用方不能直接释放预扣或提交扣费金额。
+**统一资金入口**：普通资金操作使用 `createLedger()`；请求扣费只允许走 `createBillingDomain`（`packages/service/src/billing/index.ts`）的 `authorize / signal / drain`，调用方不能直接释放预扣或提交扣费金额。
 
 ---
 
@@ -61,7 +62,7 @@ users (账户=用户/企业)
  ├── apps (应用: client_id/secret, 换 JWT)
  ├── api_keys (虚拟 Key)
  ├── transactions (资金流水: 充值/扣费/调账)
- ├── fund_operations (跨入口幂等收据)
+ ├── ledger_operations (跨入口幂等收据)
  ├── usage_logs (用量明细, 计量计费)
  ├── request_logs (请求日志, 30天滚动)
  └── redeem_batches ── redeem_codes (充值码)
@@ -87,9 +88,7 @@ providers (供应商: base_url/协议)
 | email | varchar(255) | |
 | display_name | varchar(64) | |
 | role | smallint | 0 普通用户 / 1 管理员（控制台权限判定） |
-| balance | numeric(38,18) | 已结算余额（元）；授权期间不变，仅真实结算、充值、赠送和调账修改 |
-| credit_limit | numeric(38,18) ≥0 | 透支上限（信用模型）：授权校验「balance + credit_limit − reserved_balance ≥ 预估」，结算实扣允许短暂透支至 −credit_limit（DB CHECK `balance >= -credit_limit` 兜底） |
-| reserved_balance | numeric(38,18) | 所有未终结请求的处理中预留总额；可用额度 = balance + credit_limit - reserved_balance |
+| （已退役） | — | `balance` / `credit_limit` / `reserved_balance` 三列已全部退役：资金事实唯一在 wallet 双分录（`wallet_accounts`/`wallet_authorizations`/`wallet_legs`，冻结口径 = `in_flight`）；信用额度由 `packages/wallet/src/credit-line.ts` 承载 |
 | rate_card_id | FK → rate_cards | 绑定费率卡（一期默认「标准」卡，全局系数 1.0；替换原单一倍率字段，见 3.8） |
 | rpm_limit / tpm_limit | int NULL | 用户级限流，NULL=继承全局默认（tech-stack §5：默认 60 RPM / 1M TPM） |
 | status | smallint | 0 正常 / 1 封禁 / 2 注销 |
@@ -112,8 +111,8 @@ providers (供应商: base_url/协议)
 
 **JWT 即时失效机制**（关键）：
 - JWT 由**网关密钥**签发，与 client_secret 无关——**轮换 client_secret 只阻止旧密钥再换新 JWT，不撤销已签发的 JWT**。
-- **禁用 App**：清 Redis App 状态缓存（`app:{appId}`）→ 网关每次验签时检查该缓存 → 已签发 JWT **立即全部失效**（无需枚举 jti）。
-- **单令牌紧急吊销**：jti 黑名单（Redis，TTL = 原过期时间）。
+- **禁用 App**：无 Redis 状态缓存——网关每次验签直查 DB（`findActiveAppById`），禁用**即时生效**，已签发 JWT 立即全部失效。
+- jti 黑名单机制不存在（未实现单令牌吊销）。
 
 ### 3.3 api_keys — 虚拟 Key
 
@@ -267,7 +266,7 @@ providers (供应商: base_url/协议)
 | request_id | uuid PK | 幂等键 = gateway 请求 ID（= usage_logs.request_id） |
 | user_id | FK → users | |
 | reserved_amount | numeric(38,18) | 足额授权金额（元，全精度） |
-| status | varchar(32) | `authorized / in_flight / settlement_pending / processing / retry_wait / settled / released / uncertain / dead` |
+| status | varchar(32) | `authorized / in_flight / settlement_pending / processing / retry_wait / settled / released / dead` |
 | quote / receipt | jsonb | 授权报价快照 / 不可变成功收据（同时作为 durable outbox） |
 | lease_owner / lease_expires_at | varchar / timestamptz | 上游在途租约；过期不等于可退款 |
 | created_at / updated_at | timestamptz | |
@@ -278,7 +277,7 @@ providers (供应商: base_url/协议)
 authorized ──upstream.started──▶ in_flight ──receipt──▶ settlement_pending ──claim──▶ processing ──commit──▶ settled
                                                                                 └─失败──▶ retry_wait / dead
 authorized ──确认未调用上游/未交付──▶ released
-in_flight ──lease 过期──▶ uncertain（可能已产生成本，绝不自动退款）
+in_flight ──lease 过期──▶ 估算结算（estimated/estimateReason 留痕；uncertain 状态已删，2026-08-17 政策）
 ```
 
 **为什么需要这张表**：旧实现把在途标记放 Redis（带 TTL），gateway 崩溃后标记过期但 DB 扣款
@@ -287,16 +286,16 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 
 **索引**：`(user_id,status)`、`(status,next_settlement_at)`、`(status,lease_expires_at)`。
 
-### 3.11c fund_operations — 资金操作幂等收据
+### 3.11c ledger_operations — 资金操作幂等收据（迁移 0059）
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| operation_id | varchar(128) PK | HTTP Idempotency-Key、request_id 或稳定自然键 |
+| id | bigserial PK | |
+| operation_id | varchar(128) UNIQUE | HTTP Idempotency-Key、request_id 或稳定自然键 |
 | kind | varchar(32) | `admin.adjust` / `admin.gift` / `signup.gift` / `redeem` |
 | fingerprint | varchar(64) | 业务动作与规范化 payload 的 SHA-256 指纹 |
-| transaction_id | bigint NULL | 首次成功写入的资金流水 ID |
-| result | jsonb NULL | 首次提交的领域收据（金额、前后余额、流水 ID） |
-| created_at | timestamptz | |
+| receipt | jsonb NULL | 首次提交的领域收据 |
+| created_at / updated_at | timestamptz | |
 
 事务开始先插入收据占位：同 `operation_id` 且同 `kind + fingerprint` 返回首次结果，
 不同 payload 返回 `idempotency_conflict`；余额和流水任一步失败时占位随事务回滚。
@@ -326,7 +325,7 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 | used_by / used_at | FK / timestamptz NULL | |
 | expires_at | timestamptz NULL | NULL=永久有效 |
 
-兑换流程（单事务）：claim `fund_operations` → 条件更新兑换码 → 增加批次 `used_count` → 增加余额 → 写 `transactions(redeem)` → 解除 `bad_debt` 冻结 → 保存幂等收据；任一步失败全部回滚。
+兑换流程（单事务）：claim `ledger_operations` → 条件更新兑换码 → 增加批次 `used_count` → 增加余额 → 写 `transactions(redeem)` → 解除 `bad_debt` 冻结 → 保存幂等收据；任一步失败全部回滚。
 
 ### 3.13 request_logs — 请求日志（30 天滚动）
 
@@ -410,13 +409,10 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
 | Key | 类型 | 用途 | TTL |
 |---|---|---|---|
 | （无余额缓存） | — | 余额与 billing_requests 权威在 DB，Redis 不参与资金正确性 | — |
-| `quota:{subId}` | string | 套餐剩余额度缓存（原子扣减，同 bal 模式） | 订阅有效期 |
-| `sub:{userId}` | string | 有效订阅缓存（鉴权阶段判定有无套餐） | 订阅有效期 |
-| `auth:{keyHash|jti}` | string | 凭证→用户上下文缓存（降低 DB 查询） | 与凭证有效期一致 |
+| `auth:fails:*` / `auth:lock:*` | string | 爆破防护失败计数与临时锁定（auth: 前缀仅此两类；无 quota:/sub:/凭证上下文缓存） | 窗口/锁定时长 |
 | `rl:user:{id}:rpm:{win}` 等 | zset/string | 限流计数（维度：user/key/model/channel/global） | 窗口长度 |
 | `cooldown:{channelId}` | string | 熔断截止时间戳 | 熔断时长 |
-| `jti:{jti}` | string | JWT 吊销黑名单 | exp - now |
-| `billing-settlement` | BullMQ 队列 | 只携带 requestId 的结算唤醒；DB sweeper 是可靠恢复路径 | 失败任务保留 |
+| `settle-wake` | BullMQ 队列 | 只携带 requestId 的结算唤醒（SETTLE_WAKE_QUEUE）；DB sweeper 是可靠恢复路径 | 失败任务保留 |
 | `lock:*` | string | 分布式锁（充值码兑换防重等） | 秒级 |
 
 ---
@@ -431,10 +427,10 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
   required > BILLING_RESERVATION_MAX ──▶ 拒绝并要求降低输出上限
       │
       ▼
-  事务：INSERT billing_requests(authorized) +
-        UPDATE users SET reserved_balance=reserved_balance+required
-        WHERE balance-reserved_balance >= required（不足原子回滚 → 402）
-  授权不修改已结算 balance；用户端余额不随预留上下跳动
+  事务：INSERT billing_requests(authorized) + wallet 双分录授权
+        （wallet_authorizations 记 hold，冻结口径 = in_flight；
+        可用额度不足原子回滚 → 402）
+  授权不写 wallet_legs 结算腿；用户端余额不随预留上下跳动
   调用上游前转 in_flight；长流定时续 lease；单渠道失败不释放请求级授权
       │
       ▼
@@ -444,13 +440,13 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
   BullMQ 只发送 requestId，失败时 DB sweeper 扫描恢复。结算事务：
     INSERT usage_logs ON CONFLICT(request_id) DO NOTHING → 冲突 = 已结算，幂等跳过
     actual <= reserved_amount 才允许精确结算；actual > reserved_amount 进入 dead 审核并触发配置止损，禁止静默封顶少扣
-    原子结算：balance = balance - charged；reserved_balance -= reserved_amount；状态转 settled
+    原子结算：wallet 双分录复式腿（wallet_legs 成对写结算腿并释放 wallet_authorizations 冻结）；状态转 settled
     写 transactions(consume, -amount, 快照前后余额)
   事务外（best-effort）：TPM 分钟桶回填（未缓存输入 + 输出，仅首次结算）
       │
       ▼
 失败与恢复：只有确认整个请求未交付时才能 released；authorized 过期且从未调用上游可退款；
-in_flight 过期只能转 uncertain 并告警/人工复核。
+in_flight 过期按估算结算并留 estimated/estimateReason 留痕（uncertain 已删，2026-08-17 政策）。
       │
       ▼
 对账任务（每小时，ledger.reconcileAll）：
@@ -459,8 +455,8 @@ in_flight 过期只能转 uncertain 并告警/人工复核。
   Σ usage_logs.upstream_cost ↔ 供应商账单核对（对账数据基础）
   不一致 → 写 reconcile_discrepancies + 告警
 
-  对账口径：balance == Σ transactions 净额；
-  reserved_balance == sum(billing_requests 未终态 reserved_amount)；两者分别核对
+  对账口径：wallet 账户余额 == Σ 该账户 wallet_legs 净额（双分录链式恒等）；
+  in_flight 冻结 == sum(billing_requests 未终态 reserved_amount)；两者分别核对
 
 **性能注意**：单用户余额行是热点——worker 按 user 聚合批量结算可降低行锁竞争（当前实现
 逐条结算，聚合为后续优化项）。
@@ -482,7 +478,7 @@ in_flight 过期只能转 uncertain 并告警/人工复核。
 | attributes / events | jsonb | 完整原始属性与事件 |
 
 数据等级：诊断数据（非资金）——接收端过载即丢、绝不反压业务；默认保留 7 天（TRACE_RETENTION_DAYS，worker 分区维护）。
-写入方：trace-receiver（OTLP/HTTP JSON → 批量 INSERT，主键冲突忽略）；读取方：admin-api `/api/admin/tracing/*`。
+写入方：trace-receiver（OTLP/HTTP JSON → 批量 INSERT，主键冲突忽略）；读取方：admin-api `/v1/tracing/*`。
 
 
 ## 2026-08 扩展表（迁移 0051/0052）

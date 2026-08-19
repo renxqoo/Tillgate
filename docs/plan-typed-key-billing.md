@@ -1,6 +1,6 @@
 # 计划：Key 类型分流计费（包月 Key / 普通 Key）
 
-> 状态：已确认，实施中（TDD）
+> 状态：已实施；后被 plan-org-member-billing 成员模型取代（api_keys.kind 列已删）
 > 原则：治本不治标 / 删除优于兼容 / TDD 红绿 / 组件化下沉 / 破坏性变更一次做完整 / 错误语义分级 / 测试数据纪律 / 回归即验收
 
 ## 1. 背景与根因
@@ -97,9 +97,9 @@ ALTER TABLE "usage_logs" ADD CONSTRAINT "usage_logs_billed_by_ck" CHECK ("billed
 | db | `packages/db/src/schema/api-keys.ts` | kind 列（varchar(16) + `$type<ApiKeyKind>()` + default 'payg' + CHECK） |
 | db | `packages/db/src/schema/usage.ts` | billed_by CHECK |
 | db | 迁移 0031 | 上表 |
-| ledger | `packages/ledger/src/billing-flow.ts` | authorize 按 kind 分流：payg 原子预留 + InsufficientBalanceError |
-| ledger | `packages/ledger/src/settle.ts` | payg 结算（释放/扣款/consume 流水/usage_logs）；删 `billing_invariant_no_subscription` |
-| ledger | `packages/ledger/src/billing-operations.ts` / `billing-processor.ts` | 零改动（释放双轨已在）；测试补 payg 释放覆盖 |
+| ledger（历史落点，现已迁移） | `packages/ledger/src/billing-flow.ts` | authorize 按 kind 分流：payg 原子预留 + InsufficientBalanceError |
+| ledger（历史落点，现已迁移） | `packages/ledger/src/settle.ts` | payg 结算（释放/扣款/consume 流水/usage_logs）；删 `billing_invariant_no_subscription` |
+| ledger（历史落点，现已迁移） | `packages/ledger/src/billing-operations.ts` / `billing-processor.ts` | 零改动（释放双轨已在）；测试补 payg 释放覆盖 |
 | gateway | `apps/gateway/src/services/auth/auth-service.ts` | AuthContext.billingKind（静态 Key 读 kind / JWT 恒 payg） |
 | gateway | `apps/gateway/src/services/pipeline/llm-pipeline.ts` | `billing.authorize` span 加 `billing.kind` 属性 |
 | client-api | `apps/client-api/src/routes/keys.ts` | 创建/轮换/列表带 kind；包月创建需有效订阅（无席位闸） |

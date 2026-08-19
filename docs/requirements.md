@@ -2,6 +2,7 @@
 
 > 版本：v0.1（讨论稿） · 日期：2026-08-04 · 状态：待确认
 > 本文档只描述业务逻辑与需求，不含代码实现。
+> 2026-08-20 修订注：状态机与估算政策已于 2026-08-17 更新（uncertain 删除、缺 usage 估算结算）；资金列已退役至 wallet 双分录。本文其余业务规则仍为现行框架。
 
 ---
 
@@ -26,10 +27,9 @@
 | 第三方登录 | GitHub / Google OAuth（Authorization Code + state 双提交；find-or-create 按平台 id，不与本地邮箱账号自动合并；未配置即隐藏入口） |
 | 显示名称 | 邮箱注册默认 `rx` + 6 位随机；GitHub/Google 直接用平台用户名（姓名 → login/邮箱前缀）；用户可自助修改（1-32 字符） |
 | 免费模型限额 | 每用户每日 500 次（FREE_MODEL_DAILY_LIMIT 可配；0=不限） |
-| 欠费策略 | 信用模型：可用额度 = 余额 + credit_limit − 在途预留；授权时原子校验，不足拒绝（402）。结算实扣可能短暂透支至 -credit_limit（DB CHECK `balance >= -credit_limit` 兜底），不会无限负余额 |
-| 供应商（一期） | DeepSeek、OpenAI、MiniMax、GLM（智谱）、Qwen（通义）——全部 OpenAI 兼容 |
+| 欠费策略 | 信用模型：可用额度 = 余额 + credit_limit − 在途预留；授权时原子校验，不足拒绝（402）。结算实扣可能短暂透支至 -credit_limit，不会无限负余额（信用额度由 wallet credit-line 承载，`packages/wallet/src/credit-line.ts`） |
+| 供应商（一期） | DeepSeek、OpenAI、MiniMax、GLM（智谱）、Qwen（通义）；协议族已支持 openai-compatible / anthropic / gemini / azure / bedrock / vertex（见 4.3） |
 | 前端 | Next.js 最新稳定版（App Router + React 19 + TypeScript + shadcn/ui）统一控制台 |
-| 部署 | 云服务器 Docker 部署（起步：Docker Compose + Redis + 关系型数据库） |
 | 部署 | 云服务器 Docker 部署（起步：Docker Compose + Redis + 关系型数据库） |
 
 ---
@@ -82,7 +82,7 @@
   ▼
 ⑦ 响应转换：目标供应商格式 → OpenAI 格式（流式则逐帧转换）
   ▼
-⑧ 计量：严格解析供应商 usage（流式从流尾 usage 捕获）；缺失/非法则进入 uncertain，禁止估算扣费
+⑧ 计量：严格解析供应商 usage（流式从流尾 usage 捕获）；缺失/非法按估算结算并留 estimated/estimateReason 留痕（2026-08-17 政策，uncertain 状态已删）
   │
   ▼
  ⑨ durable receipt → Worker：计算实际费用（官方价×系数快照）→ 与请求前授权 **对账结算**（扣除实际费用并释放未使用预留，见 4.7）
@@ -93,7 +93,7 @@
 
 **要点**：
 - 计费走**足额预留模式**：请求前（①.5）按可证明上界原子占用额度，完成后（⑨）按可信 usage 扣除实际费用并释放未使用预留；可用额度不足在请求前即拦截（402），不产生上游调用。
-- 账户资金口径分离：`balance` 仅表示已结算余额，授权只增加 `reserved_balance`；用户端只展示已结算余额并允许结算后延迟刷新，管理端展示已结算、处理中预留和可用额度三项。
+- 账户资金口径分离（wallet 双分录）：授权只记 wallet_authorizations 冻结（冻结口径 = in_flight），不产生结算腿；用户端只展示已结算余额并允许结算后延迟刷新，管理端展示已结算、处理中冻结和可用额度三项。
 - 转发失败的重试发生在渠道层（换渠道），重试本身**不重复计费**——只有最终成功的调用计费，失败渠道仅记录渠道日志。
 - 流式响应必须**完整透传完**才能拿到流尾 usage，结算事件在流结束后才产生。
 
@@ -111,16 +111,16 @@
 面向两种消费方提供两套凭证，**共用同一套限流/计量/计费链路**：
 
 **凭证 A：静态虚拟 Key**
-- 控制台手动创建，`Authorization: Bearer ag-xxx` 直接调用，适合脚本/个人/轻量接入。
+- 控制台手动创建，`Authorization: Bearer ag_xxx` 直接调用，适合脚本/个人/轻量接入。
 - 属性：名称、过期时间（可选）、独立限流上限（可选，默认继承用户级/全局）、备注。
 - 可吊销（吊销后立即失效——吊销/封禁/改限流时同步清理 Redis 鉴权缓存，保证即时生效），永不暴露上游供应商真实 Key。
 
 **凭证 B：网关签发的短期 Token（企业 Agent 推荐）**
 - 企业用户在控制台创建应用（App），获得 `client_id / client_secret`（secret 仅首次下发时展示，可轮换）。
-- 调用 `POST /oauth/token`（OAuth2 client_credentials 两腿流程）换取 `access_token`（JWT，默认有效期 2h，可配 15min~24h）。
+- 调用 `POST /oauth/token`（OAuth2 client_credentials 两腿流程）换取 `access_token`（JWT，默认有效期 3600s，`JWT_TOKEN_TTL_SECONDS` 可配）。
 - 调用 API 用 `Authorization: Bearer <JWT>`；网关本地验签，**无需回调企业 IdP**——企业服务登录接入一次后，后续调用由网关直接验证。
-- JWT 载荷：`sub`(账户)、`app_id`、`scope`（限定能力/模型，可选）、限额（可选）、`coefficient`（费率卡系数快照）、`exp`、`jti`（吊销与审计）。
-- 撤销方式：① **禁用 App** → 清 Redis App 状态缓存，已签发 JWT 立即全部失效；② 单令牌紧急吊销 → jti 黑名单（Redis，TTL=原过期时间）；③ **轮换 client_secret 只防密钥泄漏，不撤销已签发 JWT**（JWT 由网关密钥签发，与 client_secret 无关）。
+- JWT 载荷：`typ`、`sub`(账户)、`app_id`、`scope`（限定能力/模型，可选）、`iat`/`exp`（无 coefficient/jti）。
+- 撤销方式：① **禁用 App** → 网关验签直查 DB，禁用即时生效，已签发 JWT 立即全部失效；② **轮换 client_secret 只防密钥泄漏，不撤销已签发 JWT**（JWT 由网关密钥签发，与 client_secret 无关）。
 - 一期不做 refresh_token（client_credentials 可随时再换，无刷新必要）。
 
 **统一鉴权链**：网关收到 Bearer → 按前缀区分（`ag_`=静态 Key 查库 / JWT=本地验签）→ 统一得到调用上下文 {账户、App、费率卡系数、限流维度} → 进入同一套 限流→路由→转发→计量→结算 链路。
@@ -161,7 +161,7 @@
 - **tools / tool_choice 透传支持**（企业 Agent 工具调用刚需，不在"未知参数忽略"范围内）。
 
 ### 4.6 限流
-- 维度：全局 / 用户 / 虚拟 Key / 模型。
+- 维度：凭证维（key:/app:/pg:）+ 用户维并罚；另有全局、模型维 TPM 与渠道维限流（渠道并罚）。
 - 单位：RPM（请求数/分钟）、TPM（token 数/分钟）、QPS。
 - **TPM 计量口径**：以历史已完成请求的可信供应商 usage + 本次请求输入/输出上限原子预占计算；完成后按可信实际 usage 修正。
 - 实现：Redis 计数器（滑动窗口或令牌桶），超限返回 429。
@@ -178,10 +178,10 @@
   - 缓存输入价默认取官方价（DeepSeek = 输入价 10%、OpenAI = 25%，按官方配置）；缓存输出计价暂未启用（字段已预留）。
 - **tokens 来源**：只接受供应商响应中的可信 usage（OpenAI `prompt/input_tokens`、DeepSeek `cache_hit+cache_miss` 等经严格归一化）。负数、小数、超安全整数、字段冲突、cached 大于 input、总量不一致或 usage 缺失都不得进入正常结算；字符估算只用于容量规划/TPM，不用于资金扣费。
 - **计费时机（billing_requests 状态机）**：
-  1. **请求前足额授权**：文本/JSON 输入按 UTF-8 请求字节计算 tokenizer 无关的保守 token 上界，输出按主模型与 fallback 最贵候选及完整输出上限计算；余额不足原子 402，超过 BILLING_RESERVATION_MAX 则要求降低输出上限，绝不按余额或上限裁剪预扣；无法证明上界的多模态输入必须使用 provider 专用报价策略或拒绝；
+  1. **请求前足额授权**：文本/JSON 输入按校准估算（estimateInputTokens + CJK 权重）计算 tokenizer 无关的保守 token 上界，输出按主模型与 fallback 最贵候选及完整输出上限计算；余额不足原子 402，超过 BILLING_RESERVATION_MAX 则要求降低输出上限，绝不按余额或上限裁剪预扣；无法证明上界的多模态输入必须使用 provider 专用报价策略或拒绝；
   2. **结算对账**：请求完成后按报价内价格/系数快照和可信 usage 计算实际费用；`actual <= reserved` 才写 usage_logs + transactions，同时从已结算余额扣 actual 并释放完整预留；
   3. **越界结算**：有可信 usage 的越界按实际金额结算（信用模型允许短暂透支，地板为 -credit_limit）；无可信收据才转 `dead` 冻结预扣等待审计，禁止静默少扣；
-  4. **故障恢复**：只有仍为 authorized、从未触达上游且授权过期的请求可 CAS 退款；in_flight 过期转 uncertain。Worker 通过 DB claim/fence/heartbeat 重放，BullMQ 只负责低延迟唤醒。
+  4. **故障恢复**：只有仍为 authorized、从未触达上游且授权过期的请求可 CAS 退款；in_flight 过期按估算结算留痕（uncertain 已删，2026-08-17 政策）。Worker 通过 DB claim/fence/heartbeat 重放，BullMQ 只负责低延迟唤醒。
   - 套餐用户（二期）：请求前优先预扣套餐额度（quota 同模式），不足且 fallback 开 → 预扣余额；结算按 4.9 判定。
 - **结算告警（防静默亏钱）**：可计费但费用 = 0 且有 tokens → 「缺价格配置」告警；可计费但零用量且无错误 → 「usage 提取异常」告警；均进 OTel 指标 + 面板。
 - **计量记录**：每次调用一条明细（用户、Key、模型、渠道、输入/缓存输入/输出 tokens、官方价与系数快照、**上游成本 upstream_cost（供应商对账数据基础）**、用户费用、耗时、状态、时间戳），长期保留用于对账与审计。
@@ -233,10 +233,10 @@
 |---|---|---|---|
 | 5.1 | 计费时机 | 足额预留：请求前按上界原子占用额度，请求完成后按可信 usage 扣除实际费用并释放未使用预留 | durable receipt 先落 DB，Worker 异步结算 |
 | 5.2 | 计费并发与坏账 | ✅ 足额授权 + durable receipt | 余额不足不上游；预付费实扣不超过授权，超额单独告警 |
-| 5.3 | 余额不足 | 请求前按「余额+信用−在途」原子校验，不足拒绝（402） | 实扣可短暂透支至 -credit_limit（DB CHECK 兜底），不无限负余额 |
+| 5.3 | 余额不足 | 请求前按「余额+信用−在途」原子校验，不足拒绝（402） | 实扣可短暂透支至 -credit_limit（信用额度由 wallet credit-line 承载），不无限负余额 |
 | 5.4 | 渠道重试计费 | 仅成功调用计费，失败渠道不计费 | 重试换渠道属于内部行为，用户无感 |
-| 5.5 | 流式计量 | 从流尾 usage 捕获 | 无可信 usage 转 uncertain，不估算扣费 |
-| 5.6 | 估算策略 | ✅ 1 token ≈ 3.5 字符起步 | 估算只用于请求前足额授权和 TPM 预占；最终资金结算必须使用供应商可信 usage |
+| 5.5 | 流式计量 | 从流尾 usage 捕获 | 无可信 usage 按估算结算留痕（estimated/estimateReason） |
+| 5.6 | 估算策略 | ✅ 1 token ≈ 3.5 字符起步 | 估算用于请求前足额授权、TPM 预占，以及缺 usage 时的估算结算（estimated/estimateReason 留痕，2026-08-17 政策） |
 | 5.7 | 货币与定价精度 | ✅ 元（人民币），内部 Decimal(38,18) | 前端统一截断展示 4 位，不四舍五入 |
 | 5.8 | 请求日志保留 | ✅ 明细永久，请求体 30 天 | 按月分区滚动 |
 | 5.12 | 缓存 token 计价 | 缓存命中输入按缓存价计（官方缓存价 × 费率卡系数） | usage 多格式归一化（见 4.7）；缓存输出计价未启用，字段已预留 |
@@ -249,8 +249,8 @@
 | 5.11 | 流式中断计费 | 见下方「流式中断规则」 | 客户端断开与上游中断分别定义 |
 
 **流式中断规则（5.11 展开）**：
-- **客户端断开**（关页面/断网等）：网关主动断开上游连接；有供应商可信 usage 才精确结算，否则转 uncertain 并冻结预扣等待审计。
-- **上游流中途失败**：若供应商返回可信 usage 则精确结算并标记 stream_aborted；缺少可信 usage 时转 uncertain、冻结预扣等待对账，禁止估算扣费。
+- **客户端断开**（关页面/断网等）：网关主动断开上游连接；有供应商可信 usage 精确结算，否则按估算结算并留 estimated/estimateReason 留痕。
+- **上游流中途失败**：若供应商返回可信 usage 则精确结算并标记 stream_aborted；缺少可信 usage 时按估算结算并留痕。
 - **全程无输出**（首帧前失败）：不计费（status=1）。
 - 字段定义见 data-model.md 3.10（usage_logs.stream_aborted）。
 
@@ -321,10 +321,10 @@
 > 更新（2026-08-04）：除 #1 外均已按建议默认值执行，详见下方标注，可随时调整。
 
 1. **具体 IdP**：企业已有账号系统具体是哪种（企业微信/飞书/钉钉/LDAP/自建）？一期先 OIDC 标准 + 本地账号兜底，具体 IdP 后续只加适配器。**← 唯一仍待确认项**
-2. **JWT 有效期**：默认 2h（可配 15min~24h），一期不做 refresh_token。✅ 已按此执行
-3. **计费并发（5.2）**：✅ 使用 `billing_requests` 足额原子授权、成功收据持久化、DB sweeper 恢复与 lease-aware uncertain 状态。
+2. **JWT 有效期**：默认 3600s（`JWT_TOKEN_TTL_SECONDS` 可配），一期不做 refresh_token。✅ 已按此执行
+3. **计费并发（5.2）**：✅ 使用 `billing_requests` 足额原子授权、成功收据持久化、DB sweeper 恢复；缺 usage 按估算结算留痕（uncertain 状态已删，2026-08-17 政策）。
 4. **估算策略（5.6）**：✅ 1 token ≈ 3.5 字符起步，按模型校准
-5. **货币（5.7）**：✅ 元（人民币），内部按厘存储
+5. **货币（5.7）**：✅ 元（人民币）
 6. **日志保留（5.8）**：✅ 明细/账单永久，请求体日志 30 天滚动（按月分区）
 7. **App 审批制**：✅ 一期自助创建，企业级接入后续再加审批
 8. **数据库选型**：✅ PostgreSQL

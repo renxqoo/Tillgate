@@ -3,9 +3,9 @@
 生产导向的通用钱包内核：**复式账本** + 业务无关两阶段扣费。零 workspace 依赖（仅
 decimal.js / drizzle-orm / zod），可整目录拎出独立仓——电商/AI/订阅同构复用。
 
-计费公式与预扣估算（calcAmount / estimateMaxCost / requiredReservation / Decimal 工具）
-经 `@ai-gateway/wallet/metering` 子导出提供（`src/metering.ts`，全精度 Decimal，账本永不
-round）——不进根导出，内核契约不变。
+计价公式与预扣估算（calcAmount / estimateMaxCost / requiredReservation 等）不在本包——
+在 `packages/domain/src/rating`（`@ai-gateway/wallet/metering` 子导出已删除；本包
+package.json exports 仅 `.` / `./migrations` / `./maintenance` / `./testing`）。
 
 下面按「跟着钱走一遍」的方式讲清楚全部业务逻辑，不需要会计背景。
 

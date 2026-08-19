@@ -1,6 +1,6 @@
 # 计划：组织/成员计费（席位=成员名额 + 凭证绑定计费账户）
 
-> 状态：已确认，TDD 实施中
+> 状态：已完成（organizations/org_members/org_invitations、api_keys.subscription_id、allow_payg_fallback 均已落地）
 > 原则：治本不治标 / 删除优于兼容 / TDD 红绿 / 组件化下沉 / 破坏性变更一次做完整 / 错误语义分级 / 测试数据纪律 / 回归即验收
 
 ## 1. 背景与目标
@@ -116,9 +116,9 @@ UNIQUE(org_id)  WHERE status=0 AND org_id IS NOT NULL
 | db | `schema/api-keys.ts` | 删 kind + 加 subscription_id |
 | db | `schema/apps.ts` | 加 subscription_id |
 | db | 迁移 0032 | 上表 + 删 kind（0031 已落地 kind，本迁移收编） |
-| ledger | `types.ts` | `AuthorizeBillingCommand.appId`；删 billingKind 相关 |
-| ledger | `billing-flow.ts` | authorize 读 subscription_id 分流；防御校验；成员 a/b 上限 |
-| ledger | `settle.ts` | 零改（subscription_id 已分流） |
+| ledger（历史落点，现已迁移） | `types.ts` | `AuthorizeBillingCommand.appId`；删 billingKind 相关 |
+| ledger（历史落点，现已迁移） | `billing-flow.ts` | authorize 读 subscription_id 分流；防御校验；成员 a/b 上限 |
+| ledger（历史落点，现已迁移） | `settle.ts` | 零改（subscription_id 已分流） |
 | client-api | `routes/orgs.ts`（新） | 建 org / 邀请 / 成员列表 / 设成员配额 / 移除成员 / 接受邀请 |
 | client-api | `routes/keys.ts` | 创建/轮换带 subscription_id（选来源）；删 kind |
 | client-api | `routes/apps.ts` | 创建带 subscription_id |
