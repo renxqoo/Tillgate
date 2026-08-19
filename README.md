@@ -1,11 +1,13 @@
 # AI Gateway
 
-多供应商 LLM API 中转站（对外售卖）：统一 OpenAI 兼容入口，双凭证鉴权（静态 Key / 网关签发 JWT），官方价 × 费率卡定价，缓存 token 计价，预扣模式计费（DB 权威账本）。
+多供应商 LLM API 中转站：统一 OpenAI 兼容入口，双凭证鉴权（静态 Key / 网关签发 JWT），官方价 × 费率卡定价，缓存 token 计价，预扣模式计费（DB 权威账本）。
 
 ## 文档（设计已定稿）
 
 | 文档                                         | 内容                          |
 | -------------------------------------------- | ----------------------------- |
+| [AGENT.md](AGENT.md)                         | **工作规则**（AI 协作铁律、分层/资金域规范） |
+| [CHANGELOG.md](CHANGELOG.md)                 | **修复与演进日志**（审计历史、施工留痕） |
 | [docs/requirements.md](docs/requirements.md) | 业务逻辑与需求（最终评审版）  |
 | [docs/data-model.md](docs/data-model.md)     | 数据模型（含 billing_requests）  |
 | [docs/billing-flow-deep-dive.md](docs/billing-flow-deep-dive.md) | **v2 扣款全流程**（预扣/实扣公式、刷费用五向量防线） |
