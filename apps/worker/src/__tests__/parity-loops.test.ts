@@ -80,7 +80,7 @@ describe('① 告警投递（notify_outbox 消费者）', () => {
       dedupeKey: `test-billing-dead-${randomUUID().slice(0, 8)}`,
     });
     webhookCalls = [];
-    const result = await runNotifyDispatchOnce(db, logger);
+    const result = await runNotifyDispatchOnce(db, logger, undefined, { webhookAllowLocalUrl: true }); // 本地 stub URL——dev 逃生门（生产 env 双门恒 false）
     expect(result.sent).toBeGreaterThanOrEqual(1);
     expect(webhookCalls.length).toBeGreaterThanOrEqual(1);
     const call = webhookCalls.at(-1)!;

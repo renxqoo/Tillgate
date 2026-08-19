@@ -102,57 +102,70 @@ export function apiKeyMiddleware(
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
 
     // ---- JWT 凭证分支（App JWT / 操练场）：计费与限流走同一管线，维度退到 user ----
+    // 爆破锁与静态 Key 分支同口径：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点；
+    // per-IP 锁前置 + 验签失败计数（Redis 故障 fail-closed 503——与 Key 分支一致）
     if (!token.startsWith(KEY_PREFIX)) {
       if (!token) throw new UnauthorizedError('missing or malformed api key');
-      const payload = await verifyJwt(token);
-      const requestId = c.get('requestId') ?? randomUUID();
-      if (payload.typ === 'app_jwt' && payload.app_id != null && payload.sub != null) {
-        const app = await repos.credential.findActiveAppById(
-          { ...systemContext('gateway-auth'), db },
-          payload.app_id,
-        );
-        if (!app || app.userId !== Number(payload.sub)) throw new UnauthorizedError('app credential inactive');
-        c.set('auth', {
-          userId: app.userId,
-          apiKeyId: null,
-          appId: app.id,
-          subscriptionId: app.subscriptionId,
-          allowPaygFallback: false, // App JWT 恒 false（与 resolveSourceAndLimits 同口径）
-          rpmLimit: positive(payload.scope?.rpm),
-          tpmLimit: positive(payload.scope?.tpm),
-          userRpmLimit: positive(app.userRpmLimit) ?? positive(guards?.defaultUserRpm),
-          userTpmLimit: positive(app.userTpmLimit) ?? positive(guards?.defaultUserTpm),
-          allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
-          ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: null },
-        });
-        await next();
-        return;
+      if (guards) {
+        const ipLock = await guards.ipGuard.isLocked(sourceIpOf(c));
+        if (ipLock.locked) throw new UnauthorizedError(`source locked, retry after ${ipLock.retryAfterSec}s`);
       }
-      if (payload.typ === 'playground' && payload.sub != null) {
-        const userId = Number(payload.sub);
-        // 属主状态核验（v1 对位）：封禁/删除用户的存量 playground JWT 不得在 TTL 窗口内继续放行
-        const active = await repos.credential.findActiveUserById(
-          { ...systemContext('gateway-auth'), db },
-          userId,
-        );
-        if (!active) throw new UnauthorizedError('account unavailable');
-        c.set('auth', {
-          userId,
-          apiKeyId: null,
-          appId: null,
-          subscriptionId: null,
-          allowPaygFallback: false,
-          rpmLimit: positive(payload.scope?.rpm),
-          tpmLimit: positive(payload.scope?.tpm),
-          userRpmLimit: positive(active.rpmLimit) ?? positive(guards?.defaultUserRpm),
-          userTpmLimit: positive(active.tpmLimit) ?? positive(guards?.defaultUserTpm),
-          allowedModels: null,
-          ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: null },
-        });
-        await next();
-        return;
+      try {
+        const payload = await verifyJwt(token);
+        const requestId = c.get('requestId') ?? randomUUID();
+        if (payload.typ === 'app_jwt' && payload.app_id != null && payload.sub != null) {
+          const app = await repos.credential.findActiveAppById(
+            { ...systemContext('gateway-auth'), db },
+            payload.app_id,
+          );
+          if (!app || app.userId !== Number(payload.sub)) throw new UnauthorizedError('app credential inactive');
+          c.set('auth', {
+            userId: app.userId,
+            apiKeyId: null,
+            appId: app.id,
+            subscriptionId: app.subscriptionId,
+            allowPaygFallback: false, // App JWT 恒 false（与 resolveSourceAndLimits 同口径）
+            rpmLimit: positive(payload.scope?.rpm),
+            tpmLimit: positive(payload.scope?.tpm),
+            userRpmLimit: positive(app.userRpmLimit) ?? positive(guards?.defaultUserRpm),
+            userTpmLimit: positive(app.userTpmLimit) ?? positive(guards?.defaultUserTpm),
+            allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
+            ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: null },
+          });
+          await next();
+          return;
+        }
+        if (payload.typ === 'playground' && payload.sub != null) {
+          const userId = Number(payload.sub);
+          // 属主状态核验（v1 对位）：封禁/删除用户的存量 playground JWT 不得在 TTL 窗口内继续放行
+          const active = await repos.credential.findActiveUserById(
+            { ...systemContext('gateway-auth'), db },
+            userId,
+          );
+          if (!active) throw new UnauthorizedError('account unavailable');
+          c.set('auth', {
+            userId,
+            apiKeyId: null,
+            appId: null,
+            subscriptionId: null,
+            allowPaygFallback: false,
+            rpmLimit: positive(payload.scope?.rpm),
+            tpmLimit: positive(payload.scope?.tpm),
+            userRpmLimit: positive(active.rpmLimit) ?? positive(guards?.defaultUserRpm),
+            userTpmLimit: positive(active.tpmLimit) ?? positive(guards?.defaultUserTpm),
+            allowedModels: null,
+            ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: null },
+          });
+          await next();
+          return;
+        }
+        throw new UnauthorizedError('unsupported jwt credential type');
+      } catch (error) {
+        if (guards && error instanceof UnauthorizedError) {
+          await guards.ipGuard.recordFailure(sourceIpOf(c));
+        }
+        throw error;
       }
-      throw new UnauthorizedError('unsupported jwt credential type');
     }
 
     const keyHash = createHash('sha256').update(token).digest('hex');

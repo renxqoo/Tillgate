@@ -223,11 +223,14 @@ export class ChannelRepository {
       .update(channels)
       .set({ upstreamBudget: sql`${channels.upstreamBudget} - ${input.upstreamCost}::numeric`, updatedAt: input.now })
       .where(eq(channels.id, input.channelId))
-      .returning({ budget: channels.upstreamBudget, threshold: channels.upstreamThreshold });
+      // 熔断判定放 SQL 侧（numeric 精确比较）——drizzle returning 的 numeric 是 string，
+      // JS 侧 `<=` 为字典序（'9' <= '10' 为 false——10~99 元区间熔断失灵）
+      .returning({
+        broken: sql<boolean>`(${channels.upstreamBudget} <= coalesce(${channels.upstreamThreshold}, 0))`,
+      });
     const row = rows[0];
     if (!row) return false;
-    const threshold = row.threshold ?? '0';
-    if (row.budget <= threshold) {
+    if (row.broken) {
       await tx(c)
         .update(channels)
         .set({ status: 3, updatedAt: input.now })

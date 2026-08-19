@@ -109,6 +109,36 @@ function streamReceiptUsage(
   };
 }
 
+/** 终态 signal 退避重试：结算落账的瞬时 DB 抖动不再把已交付请求漏收——
+ *  流式路径重试期间续租定时器不停（调用方约定），recover 不会中途误释放；
+ *  耗尽返回 false 由调用方兜底（流式 = 停租约交 recover 释放记损；非流式 = 上抛 500）。 */
+export const SIGNAL_FINALIZE_ATTEMPTS = 5;
+const SIGNAL_FINALIZE_BASE_DELAY_MS = 500;
+
+export async function signalSucceededWithRetry(
+  billing: BillingDomain,
+  ctx: RunContext,
+  requestId: string,
+  receipt: UsageReceipt,
+  onError: (error: unknown, context: string) => void,
+  opts: { attempts?: number; baseDelayMs?: number } = {},
+): Promise<boolean> {
+  const attempts = opts.attempts ?? SIGNAL_FINALIZE_ATTEMPTS;
+  const baseDelayMs = opts.baseDelayMs ?? SIGNAL_FINALIZE_BASE_DELAY_MS;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await billing.signal(ctx, { type: 'request.succeeded', requestId, receipt });
+      return true;
+    } catch (error) {
+      onError(error, `signal request.succeeded request=${requestId} attempt=${attempt}/${attempts}`);
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, baseDelayMs * 2 ** (attempt - 1))));
+      }
+    }
+  }
+  return false;
+}
+
 export function createRunChat(deps: PipelineDeps) {
   const repos = deps.repos ?? createRepositories();
   const noteError = deps.onError ?? ((error, context) => console.error(`[pipeline] ${context}:`, error));
@@ -131,20 +161,26 @@ export function createRunChat(deps: PipelineDeps) {
     const upstreamBody = clampForwardedOutputLimit(body as Record<string, unknown>, outputCap);
 
     // 准入并罚（v1 五维语义的 v2 形态）：凭证维 + 用户维各自生效——
-    // 高限额 Key 不得越过用户帽；未装配限流闸时全放行（单副本开发形态）
+    // 高限额 Key 不得越过用户帽；用户维无条件在列（App-JWT 的 scope 限额
+    // 只约束 app 维——用户自建 App 声明大 scope 不得绕过管理端用户帽）；
+    // 未装配限流闸时全放行（单副本开发形态）
     if (deps.rateLimit) {
+      const credentialDimension =
+        auth.apiKeyId != null ? `key:${auth.apiKeyId}` : auth.appId != null ? `app:${auth.appId}` : `pg:${auth.userId}`;
       await admitKey(deps.rateLimit, {
         requestId,
         estimatedTokens,
         dims: [
           {
-            dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
+            dimension: credentialDimension,
             rpmLimit: auth.rpmLimit ?? null,
             tpmLimit: auth.tpmLimit ?? null,
           },
-          ...(auth.apiKeyId != null
-            ? [{ dimension: `user:${auth.userId}`, rpmLimit: auth.userRpmLimit ?? null, tpmLimit: auth.userTpmLimit ?? null }]
-            : []),
+          {
+            dimension: `user:${auth.userId}`,
+            rpmLimit: auth.userRpmLimit ?? null,
+            tpmLimit: auth.userTpmLimit ?? null,
+          },
         ],
       });
     }
@@ -164,7 +200,11 @@ export function createRunChat(deps: PipelineDeps) {
       if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
       throw error;
     }
-    if (quote.candidates.length === 0) throw new AppError(404, 'model_not_found', '模型不存在或已下架');
+    if (quote.candidates.length === 0) {
+      // TPM 已预占（admitKey）——404 拒绝同样归还，防 600s 预占泄漏
+      if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
+      throw new AppError(404, 'model_not_found', '模型不存在或已下架');
+    }
     // 模型维 TPM 预占（主 + fallback 候选 mappingId 一并占住——v1 reserveFallbackDims 语义）
     if (deps.rateLimit) {
       await reserveModelDims(deps.rateLimit, {
@@ -315,20 +355,20 @@ export function createRunChat(deps: PipelineDeps) {
           });
           const durationMs = Date.now() - startedAt;
           if (result.ok) {
-            await deps.billing.signal(ctx, {
-              type: 'request.succeeded',
-              requestId,
-              receipt: buildReceipt({
-                requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, candidate,
-                externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-                durationMs,
-                body: body as Record<string, unknown>,
-                responseBody: result.body,
-                usage: result.usage
-                  ? { estimated: false, inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens }
-                  : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body) },
-              }),
+            // 结算 signal 退避重试：瞬时 DB 抖动自愈；耗尽上抛 500（未交付不结算——
+            // 与「先落账后交付」纪律一致，宁可让用户重试也不白送）
+            const receipt = buildReceipt({
+              requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
+              externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
+              durationMs,
+              body: body as Record<string, unknown>,
+              responseBody: result.body,
+              usage: result.usage
+                ? { estimated: false, inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens }
+                : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body) },
             });
+            const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
+            if (!finalized) throw new AppError(503, 'finalize_unavailable', '请求已完成但结算暂时不可用，请重试');
             if (result.rawBody) {
               return { status: 200, rawBody: result.rawBody, rawContentType: result.rawContentType ?? 'application/octet-stream' };
             }
@@ -392,33 +432,32 @@ export function createRunChat(deps: PipelineDeps) {
         renewTimer.unref?.();
         streamResult.onEvent(async (event) => {
           if (event.type !== 'success') return;
-          streamAlive = false;
-          clearInterval(renewTimer);
           const durationMs = Date.now() - startedAt;
           const finality = streamReceiptUsage(event, estInput);
-          try {
-            await deps.billing.signal(ctx, {
-              type: 'request.succeeded',
-              requestId,
-              receipt: {
-                ...buildReceipt({
-                  requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, candidate,
-                  externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-                  durationMs,
-                  body: body as Record<string, unknown>,
-                  usage: finality.usage.estimated
-                    ? { estimated: true, inputTokens: finality.usage.inputTokens, outputTokens: finality.usage.outputTokens }
-                    : { estimated: false, inputTokens: finality.usage.inputTokens, cachedInputTokens: finality.usage.cachedInputTokens, outputTokens: finality.usage.outputTokens },
-                }),
-                ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
-                ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
-                stream: true,
-                streamAborted: finality.streamAborted,
-              },
-            });
-          } catch (error) {
-            noteError(error, `stream finalize request=${requestId}`);
+          const receipt: UsageReceipt = {
+            ...buildReceipt({
+              requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
+              externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
+              durationMs,
+              body: body as Record<string, unknown>,
+              usage: finality.usage.estimated
+                ? { estimated: true, inputTokens: finality.usage.inputTokens, outputTokens: finality.usage.outputTokens }
+                : { estimated: false, inputTokens: finality.usage.inputTokens, cachedInputTokens: finality.usage.cachedInputTokens, outputTokens: finality.usage.outputTokens },
+            }),
+            ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
+            ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
+            stream: true,
+            streamAborted: finality.streamAborted,
+          };
+          // 结算 signal 退避重试：重试期间续租不停（streamAlive 保持 true）——
+          // 200 已交付的请求不再因一次 DB 抖动被 recover 误释放成免费单；
+          // 耗尽才停租约交 recover 兜底（有界损失 + 响亮日志）。
+          const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
+          if (!finalized) {
+            noteError(new Error('signal retries exhausted'), `stream finalize giveup request=${requestId}`);
           }
+          streamAlive = false;
+          clearInterval(renewTimer);
         });
         return { status: 200, stream: streamResult.stream, contentType: 'text/event-stream' };
       }

@@ -160,7 +160,10 @@ export function createAuthorizeUseCase(env: BillingEnv) {
           !existing ||
           existing.authorizationFingerprint !== fp ||
           existing.userId !== input.userId ||
-          !new Decimal(existing.reservedAmount).eq(fundedAmount)
+          !new Decimal(existing.reservedAmount).eq(fundedAmount) ||
+          // 重放只对未终态合法：已 settled/released/dead 的单据不得以 replayed 放行
+          // （上游照调 → 结算必冲突 → 平台白付——未来任何重试编排接入前的防御位）
+          (existing.status !== 'authorized' && existing.status !== 'in_flight')
         ) {
           throw new BillingStateConflictError(input.requestId, 'authorization replay conflict');
         }

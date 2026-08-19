@@ -45,7 +45,10 @@ export function usageLogProjection(input: UsageProjectionInput): Record<string, 
     upstreamCost: input.upstreamCost,
     planAmount,
     paygAmount: new Decimal(input.calculatedAmount).minus(planAmount).toString(),
-    billedBy: input.billing.subscriptionId != null ? 'plan' : 'payg',
+    // billedBy 跟随 planAmount（订阅实际吸收额）：绑定订阅但全走 PAYG 的混合单
+    // 记 payg——否则出现 billedBy='plan' && subscriptionId=null 的矛盾行，
+    // 日限/成员限额按 subscription_id 过滤会漏算
+    billedBy: new Decimal(planAmount).gt(0) ? 'plan' : 'payg',
     subscriptionId:
       input.billing.subscriptionId != null && new Decimal(planAmount).gt(0)
         ? input.billing.subscriptionId

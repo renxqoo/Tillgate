@@ -971,3 +971,33 @@ video 计量描述符 unitsOf 尊重 pricingUnit / already_settled 指标不再�
   - 相邻域用例：subscription 生命周期（购买/续费/换包，进 service/subscription）、渠道充值/调账
     （进 service/channel-budget）、死单复核（admin-api）；
   - v1/v2 共存清理：**需用户逐项确认后执行**。
+
+## §13 生产终审修复：3 资金 HIGH + 2 安全 HIGH + 6 MEDIUM（2026-08-19，全库 DB 对账 + 三路审查）
+
+三轮独立审查（资金数学/安全面/测试体系）+ 全库 13k 授权对账（双分录平衡、
+余额链、in_flight=Σactive、无悬挂/超结——全部零违例）后修复：
+
+- **H1 0 元结算死信**：payg settle(consume=0) → InvalidAmountError 不属死信家族
+  → 10 轮重试全败 dead + 预扣冻结。修复：consume≤0 改走 wallet.release 全额释放。
+- **H2 流式终态漏收**：signal(succeeded) 瞬时失败被吞且续租已停 → recover 释放
+  = 200 已交付免费单。修复：signalSucceededWithRetry 退避重试（5 次/500ms 起），
+  重试期间续租不停；非流式同用（耗尽 503 不交付）。
+- **H3 订阅超池死信**：实际用量超预扣上界 → trySettleQuota 红灯 → 冲突重试耗尽
+  dead + 预占冻结（PAYG 有 D3 降级、订阅无对称）。修复：settleQuotaBounded
+  （FOR UPDATE 锁行 + SQL least/greatest 钳制核销到池容量），差额记损不红灯。
+- **S1 JWT 分支无爆破锁**：伪造 JWT 无限 401 不计失败 + request_logs 未认证写
+  放大。修复：JWT 分支前置 ipGuard.isLocked + UnauthorizedError 计失败
+  （Redis 故障 fail-closed 503 同口径）。
+- **S2 App-JWT 绕过用户帽**：dims 里 user 维仅静态 Key 在列，JWT 挂的是用户
+  自建 scope（上限 100 万 RPM）。修复：凭证维（key:/app:/pg:）+ 用户维无条件
+  并罚；generation/submit 同口径。
+- M：渠道预算熔断 JS 字符串比较（'9'<='10' false）→ SQL 侧 numeric 比较；
+  三处 buildReceipt 补 appId（usage_logs 归属失真）；authorize 重放校验
+  existing.status；billedBy 改随 planAmount（消灭 plan&&subId=null 矛盾行）；
+  webhook 投递接 assertSafeUrl 硬门（WORKER_WEBHOOK_ALLOW_LOCAL_URL dev 双门）；
+  404 candidates 路径补 releaseTpm。
+
+回归钉死：settlement +3（0 元/超池/billedBy）、pipeline +3（dims 并罚/重试纯编排/
+流式抖动自愈）、app +2（JWT 锁）、worker notify-ssrf +3。regress 31/31 + gateway
+E2E 32/32 绿。已知未修（记录在案）：无 CI 流水线、资金包无覆盖率门禁、
+worker reconcile 哨兵零测试——上线后第一迭代。

@@ -14,6 +14,7 @@ import {
   InvalidRefError,
   WalletInvariantError,
 } from '@ai-gateway/domain';
+import { SignJWT } from 'jose';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createApp } from '../app.js';
@@ -138,5 +139,76 @@ describe('API Key 鉴权', () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('not_found');
+  });
+});
+
+describe('JWT 凭证爆破锁（终审修复：修复前 JWT 分支不查锁不计失败 = 未认证无限打点）', () => {
+  const probeWith = (ipGuard: { isLocked: (ip: string) => Promise<{ locked: boolean; retryAfterSec: number }>; recordFailure: (ip: string) => Promise<{ locked: boolean; retryAfterSec: number }> }) => {
+    const probe = new Hono<AuthEnv>();
+    probe.onError((error, c) => {
+      const mapped = mapErrorToHttp(error);
+      return c.json({ error: { code: mapped.code, message: mapped.message } }, mapped.status as ContentfulStatusCode);
+    });
+    probe.use('*', apiKeyMiddleware(db, {
+      keyGuard: {
+        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordSuccess: async () => {},
+      },
+      ipGuard,
+      trustedProxyHops: 0,
+    }, 'gw-test-secret-0123456789abcdef'));
+    probe.get('/whoami', (c) => c.json({ userId: c.get('auth')?.userId }));
+    return probe;
+  };
+
+  it('伪造 JWT 连续失败计数 → 达阈锁定；锁定后合法 JWT 也先被锁拒绝', async () => {
+    let failures = 0;
+    let locked = false;
+    const probe = probeWith({
+      isLocked: async () => ({ locked, retryAfterSec: 42 }),
+      recordFailure: async () => {
+        failures += 1;
+        if (failures >= 3) locked = true;
+        return { locked, retryAfterSec: 42 };
+      },
+    });
+    const badJwt = () => probe.request('/whoami', { headers: { authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.bad.bad' } });
+    expect((await badJwt()).status).toBe(401);
+    expect((await badJwt()).status).toBe(401);
+    expect((await badJwt()).status).toBe(401);
+    expect(failures).toBe(3); // 修复前：JWT 分支失败不计数（failures 恒 0）
+    // 锁定后：签名完全合法的 JWT 也在验签前被锁拒绝（不再触达 DB）
+    const user = await newUser();
+    const good = await new SignJWT({ typ: 'playground', sub: String(user) })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer('ai-gateway')
+      .setAudience('ai-gateway-api')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode('gw-test-secret-0123456789abcdef'));
+    const res = await probe.request('/whoami', { headers: { authorization: `Bearer ${good}` } });
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain('source locked');
+  });
+
+  it('合法 JWT 鉴权成功 → 不计失败（爆破锁不误伤正常流量）', async () => {
+    let failures = 0;
+    const probe = probeWith({
+      isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+      recordFailure: async () => { failures += 1; return { locked: false, retryAfterSec: 0 }; },
+    });
+    const user = await newUser();
+    const good = await new SignJWT({ typ: 'playground', sub: String(user) })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer('ai-gateway')
+      .setAudience('ai-gateway-api')
+      .setIssuedAt()
+      .setExpirationTime('1h')
+      .sign(new TextEncoder().encode('gw-test-secret-0123456789abcdef'));
+    const res = await probe.request('/whoami', { headers: { authorization: `Bearer ${good}` } });
+    expect(res.status).toBe(200);
+    expect(failures).toBe(0);
   });
 });

@@ -129,15 +129,34 @@ export function createSubscriptionSource(deps: { repos: Repositories }): Funding
 
     async settle(c: RepoContext, input: SourceSettleInput): Promise<void> {
       // 额度池无 hold 概念：核销额可超预留（over 已由分配规则并入/单独表达）；
-      // 守卫 = 在途足额核销 + 核销后不超总额度（0 行 = 事实脱节红灯）
+      // 守卫 = 在途足额核销 + 核销后不超总额度
       const consumed = new Decimal(input.consume).plus(input.over).toString();
       const ok = await deps.repos.subscription.trySettleQuota(c, {
         subscriptionId: input.reservation.sourceRefId!,
         reserved: input.reservation.amount,
         consumed,
       });
-      if (!ok) {
+      if (ok) return;
+      // 超池降级（PAYG「收满预留」D3 的订阅对称）：实际用量可超预扣上界
+      // （未声明 max_tokens 的请求不注入输出钳制、上游 usage 与估算口径差），
+      // 池容量不足时核销到剩余容量、差额记损——冲突异常不属死信家族，
+      // 原路径 10 轮重试全败 → dead + 预扣冻结。预占脱节仍抛真红灯。
+      const bounded = await deps.repos.subscription.settleQuotaBounded(c, {
+        subscriptionId: input.reservation.sourceRefId!,
+        reserved: input.reservation.amount,
+        consumed,
+      });
+      if (!bounded) {
         throw new BillingStateConflictError(input.requestId, 'quota settle guard missed');
+      }
+      const effective = new Decimal(bounded.usedAfter).minus(bounded.usedBefore);
+      const shortfall = new Decimal(consumed).minus(effective);
+      if (shortfall.gt(0)) {
+        console.warn(
+          `[subscription] over-quota degrade request=${input.requestId} ` +
+            `consumed=${consumed} effective=${effective.toString()} ` +
+            `loss=${shortfall.toString()} (bounded loss, no dead letter)`,
+        );
       }
     },
   };

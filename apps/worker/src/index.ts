@@ -235,7 +235,14 @@ export async function startWorker(
     // 告警投递：notify_outbox 消费者（缺位 = channel_disabled/billing_dead/…全静默）
     loop(
       config.WORKER_NOTIFY_INTERVAL_MS,
-      () => runNotifyDispatchOnce(db, logger, notifyMailer, { encryptionKey: config.CHANNEL_API_KEY_ENCRYPTION }),
+      () =>
+        runNotifyDispatchOnce(db, logger, notifyMailer, {
+          encryptionKey: config.CHANNEL_API_KEY_ENCRYPTION,
+          // SSRF 双门（与 AI 上游同口径）：env 允许且非生产才放行回环/私网 webhook
+          ...(config.WORKER_WEBHOOK_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production'
+            ? { webhookAllowLocalUrl: true }
+            : {}),
+        }),
       'notify',
     ),
     // 周期对账哨兵：wallet 复式不变量（资损最后防线）

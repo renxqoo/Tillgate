@@ -413,3 +413,60 @@ describe('回收：滞留单兜底', () => {
     expect((await balanceOf(user)).balance).toBe('9.4');
   });
 });
+
+describe('终审修复回归（2026-08-19：0 元结算 / 订阅超池 / billedBy 口径）', () => {
+  it('0 元结算（可信 usage 全 0）：预扣全额释放 → settled（修复前 InvalidAmountError 不属死信家族 → 10 轮重试全败 dead + 预扣冻结）', async () => {
+    const user = await newUser();
+    await fund(user, '10');
+    const claim = await authorizeAndClaim({ userId: user, inputTokens: 0 });
+
+    expect(await settlement.processClaim(ctx, claim)).toBe('settled');
+    const wallet = await balanceOf(user);
+    expect(wallet.balance).toBe('10'); // 分文不扣
+    expect(wallet.inFlight).toBe('0'); // 预扣全释放（修复前永久冻结）
+    const [usage] = await db
+      .select({ amount: usageLogs.amount, billedBy: usageLogs.billedBy })
+      .from(usageLogs)
+      .where(eq(usageLogs.requestId, claim.requestId));
+    expect(new Decimal(usage!.amount).isZero()).toBe(true);
+    expect(usage!.billedBy).toBe('payg');
+  });
+
+  it('订阅超池（实际用量超预扣上界）：降级核销到池容量 → settled（修复前 quota 守卫红灯 → 重试耗尽 dead + 预扣冻结）', async () => {
+    const user = await newUser();
+    // 池 2 元；预扣保守上界 2（quote 1M × 2/M）；实际用量 1.5M × 2/M = 3 > 池容量
+    const subId = await newSubscription(user, '2');
+    const keyId = await newSubscriptionKey(user, subId, false);
+    const claim = await authorizeAndClaim({ userId: user, apiKeyId: keyId, inputTokens: 1_500_000 });
+
+    expect(await settlement.processClaim(ctx, claim)).toBe('settled');
+    const quota = await quotaOf(subId);
+    expect(new Decimal(quota.used).eq('2')).toBe(true); // 钳到池容量（超额 1 元平台吸收记损）
+    expect(new Decimal(quota.reserved).eq('0')).toBe(true); // 预占全归还（修复前永久在途）
+  });
+
+  it('billedBy 口径（纯函数）：绑定订阅但订阅未吸收（planConsume=0）→ payg，不再出现 billedBy=plan && subscriptionId=null 矛盾行', async () => {
+    const { usageLogProjection } = await import('../settlement/usage-projection.js');
+    const receiptLike = receipt(1, 'v2s-billed-by-probe', 100);
+    const mixed = usageLogProjection({
+      receipt: receiptLike,
+      billing: { userId: 1, subscriptionId: 5, channelId: null },
+      calculatedAmount: '0.3',
+      upstreamCost: '0',
+      planConsume: '0',
+    }) as { billedBy: string; subscriptionId: number | null; paygAmount: string };
+    expect(mixed.billedBy).toBe('payg'); // 修复前：绑定订阅即记 plan
+    expect(mixed.subscriptionId).toBeNull();
+    expect(new Decimal(mixed.paygAmount).eq('0.3')).toBe(true);
+
+    const planAbsorbed = usageLogProjection({
+      receipt: receiptLike,
+      billing: { userId: 1, subscriptionId: 5, channelId: null },
+      calculatedAmount: '1',
+      upstreamCost: '0',
+      planConsume: '1',
+    }) as { billedBy: string; subscriptionId: number | null };
+    expect(planAbsorbed.billedBy).toBe('plan');
+    expect(planAbsorbed.subscriptionId).toBe(5);
+  });
+});

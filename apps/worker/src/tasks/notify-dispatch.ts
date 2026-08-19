@@ -11,6 +11,7 @@ import { createHmac } from 'node:crypto';
 import type { Db } from '@ai-gateway/repository';
 import { notificationChannels, notifyOutbox } from '@ai-gateway/db';
 import { decrypt } from '@ai-gateway/core';
+import { assertSafeUrl } from '@ai-gateway/ai';
 
 export interface NotifyMailer {
   send(to: string, subject: string, text: string): Promise<void>;
@@ -20,7 +21,7 @@ export async function runNotifyDispatchOnce(
   db: Db,
   logger: { warn(obj: unknown, msg: string): void },
   mailer?: NotifyMailer,
-  options: { encryptionKey?: string } = {},
+  options: { encryptionKey?: string; webhookAllowLocalUrl?: boolean } = {},
 ): Promise<{ sent: number; failed: number }> {
   const channels = await db.query.notificationChannels.findMany({
     where: eq(notificationChannels.status, 0),
@@ -78,19 +79,29 @@ export async function runNotifyDispatchOnce(
   return { sent, failed };
 }
 
-async function deliver(
+/** 单渠道投递（导出供 SSRF 硬门回归测试直击） */
+export async function deliver(
   type: string,
   config: Record<string, unknown>,
   event: string,
   payload: Record<string, unknown>,
   logger: { warn(obj: unknown, msg: string): void },
   mailer?: NotifyMailer,
-  options: { encryptionKey?: string } = {},
+  options: { encryptionKey?: string; webhookAllowLocalUrl?: boolean } = {},
 ): Promise<boolean> {
   if (type === 'webhook') {
     const url = typeof config.url === 'string' ? config.url : '';
     let secret = typeof config.secret === 'string' ? config.secret : '';
     if (!url) return false;
+    // SSRF 硬门（与 AI 上游 fetch 同一原语）：https-only + 私网/回环/metadata 段
+    // 全拒 + DNS 逐地址判定防 rebinding——管理员配置的 webhook URL 不得成为
+    // 内网探测跳板；dev/test 逃生门由装配层双门控制（生产恒 false）
+    try {
+      await assertSafeUrl(url, { allowLocal: options.webhookAllowLocalUrl === true });
+    } catch (error) {
+      logger.warn({ url, error: (error as Error).message }, 'webhook url blocked by ssrf guard');
+      return false;
+    }
     // 落库密文解密（enc:v1 前缀；存量明文原样用——懒兼容，迁移脚本收口）
     if (secret.startsWith('enc:') && options.encryptionKey) {
       try {

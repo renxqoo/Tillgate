@@ -100,7 +100,18 @@ export function createPaygSource(deps: { wallet: WalletApi; repos: Repositories 
           );
         }
       }
-      // consume ≤ hold；未用完的预留余量由 wallet.settle 隐式归还
+      // consume ≤ hold；未用完的预留余量由 wallet.settle 隐式归还。
+      // 0 元结算（缓存免费/上游全 0 usage）：settle 动词拒绝零额——改走全额释放，
+      // 否则 InvalidAmountError 不属死信家族 → 10 轮重试全败 → dead + 预扣永久冻结。
+      if (new Decimal(input.consume).lte(0)) {
+        await deps.wallet.release(ctx as RunContext, {
+          refType: BILLING_REF_TYPE,
+          refId: input.requestId,
+          reason: 'billing_settled_zero',
+          tx: tx as DbTx,
+        });
+        return;
+      }
       await deps.wallet.settle(ctx as RunContext, {
         refType: BILLING_REF_TYPE,
         refId: input.requestId,

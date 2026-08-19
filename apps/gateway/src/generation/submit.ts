@@ -91,20 +91,25 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
       }
     }
 
-    // key 维 RPM 准入（低频任务族不做 TPM 预占——单位计费无 token 量）
+    // key 维 RPM 准入（低频任务族不做 TPM 预占——单位计费无 token 量）；
+    // 用户维无条件在列——App-JWT 大 scope 不得绕过管理端用户帽（与 run-chat 同口径）
     if (deps.rateLimit) {
+      const credentialDimension =
+        auth.apiKeyId != null ? `key:${auth.apiKeyId}` : auth.appId != null ? `app:${auth.appId}` : `pg:${auth.userId}`;
       await admitKey(deps.rateLimit, {
         requestId,
         estimatedTokens: 0,
         dims: [
           {
-            dimension: auth.apiKeyId != null ? `key:${auth.apiKeyId}` : `user:${auth.userId}`,
+            dimension: credentialDimension,
             rpmLimit: auth.rpmLimit ?? null,
             tpmLimit: null,
           },
-          ...(auth.apiKeyId != null
-            ? [{ dimension: `user:${auth.userId}`, rpmLimit: auth.userRpmLimit ?? null, tpmLimit: null }]
-            : []),
+          {
+            dimension: `user:${auth.userId}`,
+            rpmLimit: auth.userRpmLimit ?? null,
+            tpmLimit: null,
+          },
         ],
       });
     }
@@ -150,7 +155,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
     ): Promise<SubmitGenerationResult> => {
       const snapshot = descriptor.snapshotParams(body);
       const receipt = buildReceipt({
-        requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, candidate,
+        requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
         externalModel, channelId, channelKey: channelName,
         durationMs: Date.now() - startedAt,
         body,

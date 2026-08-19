@@ -8,13 +8,14 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { createDb } from '@ai-gateway/db';
 import { users } from '@ai-gateway/db';
 import type { Db } from '@ai-gateway/repository';
-import { Decimal } from '@ai-gateway/domain';
-import { createBillingDomain, createSettlementDomain, createWallet } from '@ai-gateway/service';
+import { Decimal, type UsageReceipt } from '@ai-gateway/domain';
+import { createBillingDomain, createSettlementDomain, createWallet, type BillingDomain } from '@ai-gateway/service';
 import { systemContext, type RunContext } from '@ai-gateway/service';
 import { createApp } from '../app.js';
 import { createBuildQuote } from '../quote/build-quote.js';
 import { createResolveChannels } from '../routing/resolve-channels.js';
-import { createRunChat, type ChatCompletionBody } from '../pipeline/run-chat.js';
+import type { RateLimitGate } from '../rate-limit/gate.js';
+import { createRunChat, signalSucceededWithRetry, SIGNAL_FINALIZE_ATTEMPTS, type ChatCompletionBody } from '../pipeline/run-chat.js';
 import type { UpstreamPort, UpstreamResult, UpstreamStreamEvent } from '../pipeline/upstream-port.js';
 
 const db: Db = createDb(
@@ -803,5 +804,99 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     expect(res.status).toBe(402);
     const count = await db.$client.query<{ n: string }>('select count(*)::text as n from billing_requests where user_id = $1', [userId]);
     expect(count.rows[0]!.n).toBe('0');
+  });
+});
+
+describe('终审修复回归（限流维度并罚 / 收据归属 / 终态重试）', () => {
+  it('App-JWT 并罚维度：scope 挂 app 维、管理端用户帽挂 user 维（修复前 JWT 路径用户帽整族失效）', async () => {
+    const seeded = await seedModelWithChannels([{}]);
+    const { userId } = await newFundedKey();
+    const recorded: Array<{ dimension: string; max: number }> = [];
+    const succeeded: UsageReceipt[] = [];
+    const realSignal = billing.signal.bind(billing);
+    const billingProbe = {
+      ...billing,
+      signal: (c: Parameters<typeof billing.signal>[0], event: Parameters<typeof billing.signal>[1]) => {
+        if (event.type === 'request.succeeded') succeeded.push(event.receipt);
+        return realSignal(c, event);
+      },
+    } as typeof billing;
+    const gate = {
+      limiter: {
+        checkAll: async (dims: Array<{ dimension: string; max: number }>) => { recorded.push(...dims); return { allowed: true }; },
+        reserveTpmAll: async (dims: Array<{ dimension: string; max: number }>) => { recorded.push(...dims); return { allowed: true }; },
+        releaseTpm: async () => {},
+      },
+      freeDaily: { check: async () => ({ ok: true }) },
+      globalRpm: null,
+    } as unknown as RateLimitGate;
+    const reqId = randomUUID();
+    createdRequests.push(reqId);
+    const runChat = createRunChat({
+      db, billing: billingProbe, buildQuote, resolveChannels,
+      upstream: stubUpstream({ [seeded.channelNames[0]!]: { usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 5 } } }),
+      config, rateLimit: gate,
+    });
+    const res = await runChat(systemContext(reqId), {
+      userId, apiKeyId: null, appId: 7,
+      rpmLimit: 1000, tpmLimit: null, userRpmLimit: 2, userTpmLimit: null, allowedModels: null,
+    }, body(seeded.model));
+    expect(res.status).toBe(200);
+    expect(recorded).toContainEqual({ dimension: 'app:7', max: 1000 }); // scope 限额 → app 维
+    expect(recorded).toContainEqual({ dimension: `user:${userId}`, max: 2 }); // 用户帽 → user 维（修复前缺失）
+    expect(recorded.some((d) => d.dimension.startsWith('key:'))).toBe(false);
+    // 收据归属（修复前 appId 漏传 → usage_logs.appId 恒 null、credentialType 恒 key）
+    expect(succeeded[0]!.appId).toBe(7);
+    expect(succeeded[0]!.credentialType).toBe('jwt');
+  });
+
+  it('终态 signal 退避重试（纯编排）：两败一成自愈；全败返回 false 交兜底', async () => {
+    let calls = 0;
+    const flaky = { signal: async () => {
+      calls += 1;
+      if (calls <= 2) throw new Error('db blip');
+      return { changed: true, status: 'settlement_pending', replayed: false };
+    } } as unknown as BillingDomain;
+    expect(await signalSucceededWithRetry(flaky, ctx, 'req-x', {} as UsageReceipt, () => {}, { attempts: 3, baseDelayMs: 1 })).toBe(true);
+    expect(calls).toBe(3);
+    let deadCalls = 0;
+    const down = { signal: async () => { deadCalls += 1; throw new Error('down'); } } as unknown as BillingDomain;
+    expect(await signalSucceededWithRetry(down, ctx, 'req-x', {} as UsageReceipt, () => {}, { attempts: SIGNAL_FINALIZE_ATTEMPTS, baseDelayMs: 1 })).toBe(false);
+    expect(deadCalls).toBe(SIGNAL_FINALIZE_ATTEMPTS);
+  });
+
+  it('流式终态 signal 瞬时失败：重试期间租约保持、二度落账成功（修复前一次 DB 抖动 → recover 释放 = 免费单）', async () => {
+    const seeded = await seedModelWithChannels([{}]);
+    const { userId } = await newFundedKey();
+    let calls = 0;
+    const realSignal = billing.signal.bind(billing);
+    const flaky = {
+      ...billing,
+      signal: (c: Parameters<typeof billing.signal>[0], event: Parameters<typeof billing.signal>[1]) => {
+        if (event.type === 'request.succeeded') {
+          calls += 1;
+          if (calls === 1) return Promise.reject(new Error('db blip'));
+        }
+        return realSignal(c, event);
+      },
+    } as typeof billing;
+    const reqId = randomUUID();
+    createdRequests.push(reqId);
+    const runChat = createRunChat({
+      db, billing: flaky, buildQuote, resolveChannels,
+      upstream: stubUpstream({
+        [seeded.channelNames[0]!]: { stream: { frames: ['data: {"delta":"hi"}\n\n'], usage: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 10 } } },
+      }),
+      config,
+    });
+    const res = await runChat(systemContext(reqId), {
+      userId, apiKeyId: null, appId: null,
+      rpmLimit: null, tpmLimit: null, userRpmLimit: null, userTpmLimit: null, allowedModels: null,
+    }, streamBody(seeded.model));
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 1_300)); // 首败 500ms 退避 → 第二次成功
+    expect(calls).toBe(2);
+    const row = await billingRow(reqId);
+    expect(row!.status).toBe('settlement_pending'); // 落账成功（修复前停留 in_flight）
   });
 });

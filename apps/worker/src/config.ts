@@ -56,6 +56,8 @@ const schema = z.object({
   CHANNEL_API_KEY_ENCRYPTION: z.string().min(1),
   /** 允许上游寻址回环/私网（SSRF 防护 dev/test 逃生门——生产恒为 false） */
   WORKER_AI_ALLOW_LOCAL_URL: z.coerce.boolean().default(false),
+  /** 允许 webhook 投递寻址回环/私网（同上——生产恒为 false；webhook 仍要求 https） */
+  WORKER_WEBHOOK_ALLOW_LOCAL_URL: z.coerce.boolean().default(false),
   /** 优雅停机：等待在途批次完成的上界（ms） */
   WORKER_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(15_000),
 });
