@@ -897,3 +897,19 @@ describe('终审修复回归（限流维度并罚 / 收据归属 / 终态重试�
     expect(row!.status).toBe('settlement_pending'); // 落账成功（修复前停留 in_flight）
   });
 });
+
+describe('任务词表一致性（ai ProtocolTaskKind ↔ domain GENERATION_KINDS）', () => {
+  it('两表任务族词表与执行模型一致（跨包单一真相锁死）', async () => {
+    const { GENERATION_KINDS: domainKinds, isGenerationTaskKind } = await import('@ai-gateway/domain');
+    const domainTaskKinds = Object.entries(domainKinds)
+      .filter(([, d]) => d.execution !== undefined)
+      .map(([k]) => k);
+    // ai 侧任务面词表：video/music（ProtocolTaskKind），执行模型语义与 domain 对齐
+    const protocolTaskKinds: Array<'video' | 'music'> = ['video', 'music'];
+    for (const kind of protocolTaskKinds) {
+      expect(isGenerationTaskKind(kind), `${kind} 必须在 domain 词表中`).toBe(true);
+      expect(domainKinds[kind as keyof typeof domainKinds]).toBeDefined();
+    }
+    expect(domainTaskKinds.toSorted()).toEqual([...protocolTaskKinds].toSorted());
+  });
+});

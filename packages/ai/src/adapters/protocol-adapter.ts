@@ -102,10 +102,13 @@ export interface ProtocolAdapter
   tasks?: ProtocolTaskOps;
 }
 
+/** 任务操作面的 kind 词表（Endpoint 的任务族子集；业务词表单一真相在 domain GENERATION_KINDS，两表一致性由 gateway 测试锁死） */
+export type ProtocolTaskKind = Extract<Endpoint, 'video' | 'music'>;
+
 /** 任务型协议的任务操作面（寻址复用 ProbeRequest 形：GET + headers） */
 export interface ProtocolTaskOps {
-  /** 提交（video）/执行（music 同步完成）响应解析：base_resp 错误信封 → error */
-  parseResponse(endpoint: 'video' | 'music', body: unknown): GenerationParsedResponse;
+  /** 提交/执行响应解析（厂商信封错误 → error；kind 决定字段映射） */
+  parseResponse(kind: ProtocolTaskKind, body: unknown): GenerationParsedResponse;
   /** 任务状态查询寻址（GET，taskId 进 query） */
   planTaskQuery(channel: ChannelDesc, taskId: string): ProbeRequest;
   /** 状态响应解析（协议状态枚举 → 归一三态） */

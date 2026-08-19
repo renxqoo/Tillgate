@@ -4,6 +4,7 @@
  * 生产适配器（packages/ai 的任务操作面 + apiKeyEnc 解密）在各 app 装配
  * （gateway 提交 / worker 轮询共用同一契约）；测试注入 stub 验证资金编排。
  */
+import type { GenerationTaskKind } from '@ai-gateway/domain';
 import type { TaskChannelRow } from '@ai-gateway/repository';
 
 export interface TaskSubmitRequest {
@@ -11,7 +12,7 @@ export interface TaskSubmitRequest {
   realModel: string;
   externalModel: string;
   /** 任务类型（domain 词表键——适配器据此选上游端点） */
-  kind: string;
+  kind: GenerationTaskKind;
   /** 快照后的请求体（task_poll 族提交上游） */
   body: Record<string, unknown>;
 }
@@ -20,7 +21,7 @@ export interface TaskExecuteRequest {
   /** generation_tasks.id（代执行的上游 ctx 锚点） */
   taskId: string;
   realModel: string;
-  kind: string;
+  kind: GenerationTaskKind;
   /** 快照参数即代执行请求体 */
   params: Record<string, unknown>;
 }

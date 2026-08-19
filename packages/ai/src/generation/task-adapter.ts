@@ -5,6 +5,7 @@
  * url 需 files/retrieve 二次换取的协议在此补齐——编排层不见协议差异。
  * 渠道密钥解密由调用方注入（core.decrypt——本包零加密依赖）。
  */
+import type { ProtocolTaskKind } from '../adapters/protocol-adapter';
 import type { Ai, GenerationArtifact } from '../types';
 
 /** 渠道连接信息（结构化兼容 repository TaskChannelRow——本包不依赖 repository） */
@@ -48,7 +49,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
   return {
     /** task_poll 族：向上游提交任务 → 上游任务号 */
     async submitTask(channel: TaskChannelDesc, request: {
-      requestId: string; realModel: string; externalModel: string; kind: string; body: Record<string, unknown>;
+      requestId: string; realModel: string; externalModel: string; kind: ProtocolTaskKind; body: Record<string, unknown>;
     }): Promise<
       { ok: true; upstreamTaskId: string } | { ok: false; error: TaskPortErrorShape }
     > {
@@ -60,7 +61,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
           requestId: request.requestId,
           model: request.realModel,
           providerName: channel.providerName,
-          endpoint: request.kind as 'video',
+          endpoint: request.kind,
         },
       });
       if (result.status !== 'success') {
@@ -68,7 +69,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
       }
       const parsed = deps.ai.parseGenerationResponse?.({
         channel: channelDesc,
-        endpoint: request.kind as 'video' | 'music',
+        kind: request.kind,
         body: result.body as Record<string, unknown>,
       });
       if (parsed?.kind === 'task_submitted') return { ok: true, upstreamTaskId: parsed.taskId };
@@ -82,7 +83,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
 
     /** task_execute 族：同步阻塞型上游调用（worker 代执行）→ 归一产物 */
     async executeTask(channel: TaskChannelDesc, request: {
-      taskId: string; realModel: string; kind: string; params: Record<string, unknown>;
+      taskId: string; realModel: string; kind: ProtocolTaskKind; params: Record<string, unknown>;
     }): Promise<
       { ok: true; artifact: Record<string, unknown> } | { ok: false; error: TaskPortErrorShape }
     > {
@@ -94,7 +95,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
           requestId: request.taskId,
           model: request.realModel,
           providerName: channel.providerName,
-          endpoint: request.kind as 'music',
+          endpoint: request.kind,
           maxRetries: 2,
         },
       });
@@ -103,7 +104,7 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
       }
       const parsed = deps.ai.parseGenerationResponse?.({
         channel: channelDesc,
-        endpoint: request.kind as 'video' | 'music',
+        kind: request.kind,
         body: result.body as Record<string, unknown>,
       });
       if (parsed?.kind === 'task_completed') {

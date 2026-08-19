@@ -1,13 +1,6 @@
 export { createAi, SUPPORTED_PROTOCOLS } from './create-ai';
 // SSRF 硬门原语（AI 上游 fetch 与 webhook 投递共用——DNS 逐地址判定防 rebinding）
 export { assertSafeUrl, assertSafeUrlSync } from './transport/http-client';
-export {
-  GENERATION_KINDS,
-  generationKindDescriptor,
-  isTaskKind,
-  type GenerationKind,
-  type GenerationKindDescriptor,
-} from './generation/descriptors';
 export { createRestTaskOps, type RestTaskKitConfig } from './adapters/task-kit';
 export {
   createGenerationTaskAdapter,

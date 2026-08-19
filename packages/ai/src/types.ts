@@ -178,7 +178,7 @@ export interface Ai {
   /** 任务型端点提交/执行响应解析（video 提交→taskId；music 同步完成→产物 URL） */
   parseGenerationResponse?(input: {
     channel: ChannelDesc;
-    endpoint: 'video' | 'music';
+    kind: import('./adapters/protocol-adapter').ProtocolTaskKind;
     body: unknown;
   }): GenerationParsedResponse;
   /** 上游任务状态查询（video 轮询用；瞬时网络错误返回 error，调用方下轮再查） */

@@ -2,7 +2,7 @@
  * 异步生成任务操作面（从 create-ai 拆出；仅 tasks 适配器提供）。
  * 轮询为周期性只读，不进重试/熔断——瞬时网络错误归 error，调用方下轮再查。
  */
-import type { ProtocolAdapter } from '../adapters/protocol-adapter';
+import type { ProtocolAdapter, ProtocolTaskKind } from '../adapters/protocol-adapter';
 import { classifyTransportError } from '../errors/classify';
 import { unsupportedProtocolError } from '../errors/internal';
 import { tryParseJson } from '../internal/util';
@@ -40,12 +40,12 @@ function taskOpsOf(
 export function makeParseGenerationResponse(deps: GenerationOpsDeps) {
   return (input: {
     channel: ChannelDesc;
-    endpoint: 'video' | 'music';
+    kind: ProtocolTaskKind;
     body: unknown;
   }): GenerationParsedResponse => {
     const ops = taskOpsOf(deps, input.channel);
     if (!ops.ok) return { kind: 'error', error: ops.error };
-    return ops.tasks.parseResponse(input.endpoint, input.body);
+    return ops.tasks.parseResponse(input.kind, input.body);
   };
 }
 

@@ -54,12 +54,12 @@ function bearerAuth(channel: ChannelDesc): Record<string, string> {
 export function createRestTaskOps(cfg: RestTaskKitConfig): ProtocolTaskOps {
   const auth = cfg.auth ?? bearerAuth;
   return {
-    parseResponse: (endpoint, body): GenerationParsedResponse => {
+    parseResponse: (kind, body): GenerationParsedResponse => {
       const envelopeError = cfg.envelopeError(body);
       if (envelopeError) return { kind: 'error', error: envelopeError };
       const rec = body as Record<string, unknown> | null;
       if (!rec || typeof rec !== 'object') return { kind: 'error', error: cfg.invalidBodyError() };
-      if (endpoint === 'video') {
+      if (kind === 'video') {
         const taskId = cfg.extractSubmissionTaskId(rec);
         if (taskId === undefined || taskId === '') return { kind: 'error', error: cfg.invalidBodyError() };
         return { kind: 'task_submitted', taskId };
