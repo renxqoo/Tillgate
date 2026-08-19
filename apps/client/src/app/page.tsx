@@ -93,14 +93,16 @@ function HeroVisual() {
           </code>
         </pre>
       </div>
-      <div className="absolute -left-3 top-10 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-        <GaugeIcon className="size-3.5 text-primary" /> 流式输出 · 首 token 秒回
-      </div>
-      <div className="absolute -right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-        <RepeatIcon className="size-3.5 text-primary" /> 渠道容灾 · 自动切换
-      </div>
-      <div className="absolute -bottom-4 left-8 flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-        <ShieldCheckIcon className="size-3.5 text-primary" /> 双分录账本 · 分毫不差
+      <div className="absolute -bottom-5 left-1/2 flex w-max max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-2">
+        <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+          <GaugeIcon className="size-3.5 text-primary" /> 流式输出 · 首 token 秒回
+        </span>
+        <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+          <RepeatIcon className="size-3.5 text-primary" /> 渠道容灾 · 自动切换
+        </span>
+        <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
+          <ShieldCheckIcon className="size-3.5 text-primary" /> 双分录账本 · 分毫不差
+        </span>
       </div>
     </div>
   );
