@@ -327,7 +327,8 @@ export class SubscriptionRepository {
   /** 用户订阅列表（v1 /api/me/subscription 语义合并）：
    *  「生效中的个人订阅」置顶（前端取 rows[0] 当当前订阅——不置顶会把过期/组织
    *  订阅当生效中展示），其余按 id 倒序；行内带 v1 消费的计算字段
-   *  （remainingAmount/renewPrice/planPrice/remainingValue）。 */
+   *  （remainingAmount/renewPrice/planPrice/remainingValue）与套餐投影字段
+   *  （periodDays/allowSeats/planSortOrder——前端续费预览与升级过滤依赖）。 */
   async listByUser(
     c: RepoContext,
     userId: number,
@@ -336,6 +337,9 @@ export class SubscriptionRepository {
       id: number;
       planId: number;
       planName: string | null;
+      planSortOrder: number | null;
+      allowSeats: boolean;
+      periodDays: number;
       status: number;
       orgId: number | null;
       quantity: number;
@@ -343,6 +347,7 @@ export class SubscriptionRepository {
       usedAmount: string;
       reservedAmount: string;
       remainingAmount: string;
+      price: string;
       renewPrice: string;
       planPrice: string;
       remainingValue: string;
@@ -355,6 +360,10 @@ export class SubscriptionRepository {
         id: userSubscriptions.id,
         planId: userSubscriptions.planId,
         planName: plans.name,
+        planSortOrder: plans.sortOrder,
+        // left join 下套餐可能缺席；periodDays/allowSeats 客户端按非空消费（续费预览/席位 UI），coalesce 兜底
+        allowSeats: sql<boolean>`coalesce(${plans.allowSeats}, false)`,
+        periodDays: sql<number>`coalesce(${plans.periodDays}, 0)::int`,
         status: userSubscriptions.status,
         orgId: userSubscriptions.orgId,
         quantity: userSubscriptions.quantity,
@@ -362,6 +371,7 @@ export class SubscriptionRepository {
         usedAmount: userSubscriptions.usedAmount,
         reservedAmount: userSubscriptions.reservedAmount,
         remainingAmount: sql<string>`greatest(${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}, 0)::text`,
+        price: userSubscriptions.price,
         renewPrice: sql<string>`coalesce(${plans.price} * ${userSubscriptions.quantity}::numeric, 0)::text`,
         planPrice: sql<string>`coalesce(${plans.price}, 0)::text`,
         remainingValue: sql<string>`(CASE WHEN ${userSubscriptions.quotaAmount} > 0 THEN ${userSubscriptions.price} * (${userSubscriptions.quotaAmount} - ${userSubscriptions.usedAmount} - ${userSubscriptions.reservedAmount}) / ${userSubscriptions.quotaAmount} ELSE 0 END)::text`,
@@ -381,6 +391,9 @@ export class SubscriptionRepository {
       id: number;
       planId: number;
       planName: string | null;
+      planSortOrder: number | null;
+      allowSeats: boolean;
+      periodDays: number;
       status: number;
       orgId: number | null;
       quantity: number;
@@ -388,6 +401,7 @@ export class SubscriptionRepository {
       usedAmount: string;
       reservedAmount: string;
       remainingAmount: string;
+      price: string;
       renewPrice: string;
       planPrice: string;
       remainingValue: string;
