@@ -2,6 +2,7 @@
 
 > 定位：自研 LLM 上游传输层（不依赖 Vercel AI SDK，选型理由见 tech-stack.md §9）。
 > 配套文档：`tech-stack.md`（选型）、`requirements.md`（业务）、`architecture.md`（图）。
+> v2 重构施工合同：`plan-ai-package-v2.md`（机制链拆解 + 组合契约 + 厂商档案，2026-08-20 定稿待施工）。
 
 ---
 

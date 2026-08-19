@@ -6,6 +6,24 @@
 
 ---
 
+## §14 竞品深度对比 + packages/ai v2 重构方案定稿（2026-08-20，docs/plan-ai-package-v2.md）
+
+与 new-api（本地全量代码）及 @earendil-works/pi-ai 深度对比后定稿（留痕）：
+
+- **结论**：传输引擎保留自研，不引入 pi-ai/官方 SDK 运行时依赖（pi-ai 是 agent 客户端
+  抽象——统一 Context/SSE 全量解析/请求体重构造，与透明中继正交）；定向吸收资产：
+  overflow 错误模式库、usage 方言、models.dev 元数据上游、vendor profile 词汇表。
+- **定稿**：docs/plan-ai-package-v2.md（P0–P5，约 4 周）——机制链拆解 create-ai.ts(768 行)、
+  契约分粒度（5 能力件 + defineAdapter 组合器）、Vendor Profile 体系（新厂商零代码接入）、
+  任务族词表泛化；P1 先修正确性欠账。
+- **施工中发现的生产欠账（P1 待修）**：① gateway upstream-adapter 不传 ctx.endpoint，
+  模态族（embeddings/images/audio/rerank/moderations）上游寻址生产兜底成 'chat'；
+  ② 上下文溢出错误未分类（可重试/换渠语义错误）；③ usage 方言缺口（Anthropic 1h
+  缓存/Mistral/Google thoughtsToken）；④ Usage 无 cache_write 维度——决策门：先核查
+  真实 Claude 渠道流水 usage.raw，若漏计则开独立资金工单。
+
+---
+
 ## §13 生产终审修复：3 资金 HIGH + 2 安全 HIGH + 6 MEDIUM（2026-08-19，全库 DB 对账 + 三路审查）
 
 三轮独立审查（资金数学/安全面/测试体系）+ 全库 13k 授权对账（双分录平衡、
