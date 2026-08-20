@@ -11,6 +11,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./network": {
+      "development": "./src/network.ts",
+      "types": "./dist/network.d.ts",
+      "import": "./dist/network.js"
     }
   },
   "scripts": {

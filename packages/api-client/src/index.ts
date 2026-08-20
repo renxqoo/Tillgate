@@ -16,7 +16,7 @@
  */
 import { headers } from 'next/headers';
 
-import { trustedClientIp } from '@ai-gateway/http';
+import { trustedClientIp } from '@ai-gateway/http/network';
 
 import { getAdminSessionToken, getSessionToken } from './session';
 
