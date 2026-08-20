@@ -194,7 +194,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     {
       key: 'adminSubject',
       header: '管理员',
-      render: (a) => <span className="text-xs">{a.adminSubject ?? '—'}</span>,
+      render: (a) => <span className="text-xs">{a.adminSubject ?? (a.actor === 'user' ? '用户本人' : '—')}</span>,
     },
     {
       key: 'action',

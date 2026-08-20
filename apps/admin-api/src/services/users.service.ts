@@ -66,21 +66,24 @@ export interface UsersService {
   transactions(
     ctx: RunContext,
     input: { userId: number; limit: number },
-  ): Promise<Array<{
-    id: number;
-    userId: number;
-    type: string;
-    amount: string;
-    balanceAfter: string;
-    refType: string;
-    refId: string;
-    remark: string | null;
-    createdAt: Date;
-  }>>;
+  ): Promise<{
+    rows: Array<{
+      id: number;
+      userId: number;
+      type: string;
+      amount: string;
+      balanceAfter: string;
+      refType: string;
+      refId: string;
+      remark: string | null;
+      createdAt: Date;
+    }>;
+    total: number;
+  }>;
   auditLogs(
     ctx: RunContext,
     input: { userId: number; query: ListQueryParts },
-  ): Promise<{ rows: Array<{ id: number; actor: string; action: string; detail: unknown; createdAt: Date }>; total: number; page: number; pageSize: number }>;
+  ): Promise<{ rows: Array<{ id: number; adminId: number | null; actor: string; action: string; targetType: string; targetId: string | null; adminSubject: string | null; detail: unknown; createdAt: Date }>; total: number; page: number; pageSize: number }>;
 }
 
 export function createUsersService(deps: UsersServiceDeps): UsersService {
@@ -133,7 +136,15 @@ export function createUsersService(deps: UsersServiceDeps): UsersService {
     async profile(ctx, userId) {
       const user = await repos.user.findAdminUser({ db, ...ctx }, userId);
       if (!user) throw new AppError(404, 'user_not_found', '用户不存在');
-      return { ...user, rateCardName: null };
+      // 详情页与列表页同口径：钱包四字段富化 + 真实费率卡名
+      // （曾缺失——findAdminUser 不含钱包列且不 enrich，详情页余额/可用额度恒空）
+      const walletFields = await enrich(userId);
+      let rateCardName: string | null = null;
+      if (user.rateCardId != null) {
+        const card = await repos.rateCard.findById({ db, ...ctx }, user.rateCardId);
+        rateCardName = card?.name ?? null;
+      }
+      return { ...user, ...walletFields, rateCardName };
     },
 
     async patch(ctx, input) {
@@ -236,7 +247,7 @@ export function createUsersService(deps: UsersServiceDeps): UsersService {
       if (!exists) throw new AppError(404, 'user_not_found', '用户不存在');
       // wallet statement：newest-first + 余额链不变量（资金单一真相）
       const items = await wallet.statement(ctx, { userId: input.userId, limit: input.limit });
-      return items.map((item) => ({
+      const rows = items.map((item) => ({
         id: item.legId,
         userId: input.userId,
         type: item.transactionKind,
@@ -247,6 +258,21 @@ export function createUsersService(deps: UsersServiceDeps): UsersService {
         remark: item.memo,
         createdAt: item.createdAt,
       }));
+      // 游标分页无总数——单独计数供前端分页器（v2 信封 total）
+      const { and, eq, sql } = await import('drizzle-orm');
+      const { walletAccounts, walletLegs } = await import('@ai-gateway/db');
+      const [counted] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(walletLegs)
+        .innerJoin(walletAccounts, eq(walletLegs.accountId, walletAccounts.id))
+        .where(
+          and(
+            eq(walletAccounts.userId, input.userId),
+            eq(walletAccounts.kind, 'user'),
+            eq(walletAccounts.currency, 'CNY'),
+          ),
+        );
+      return { rows, total: counted?.count ?? rows.length };
     },
 
     async auditLogs(ctx, input) {

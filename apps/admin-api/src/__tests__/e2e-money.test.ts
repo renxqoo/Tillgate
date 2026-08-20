@@ -17,7 +17,7 @@ import {
   trackE2E,
   type E2EAdminApi,
 } from './e2e-kit.js';
-import { startClientApi, type E2EClientApi } from '../../../client-api/src/__tests__/e2e-kit.js';
+import { registerTwoStep, startClientApi, type E2EClientApi } from '../../../client-api/src/__tests__/e2e-kit.js';
 
 const PNG_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -128,12 +128,14 @@ describe('E2E 用户资金 + 订阅金钱链（双 app 共库）', () => {
   it('client 注册 → admin 调账入金 → client 购订阅 → admin 续费 → admin 取消 → 双面余额对账', async () => {
     // 1) 用户在 client-api 注册（拿用户 token）
     const email = `${e2eUid('u')}@example.com`;
-    const reg = await http(client.baseUrl, '/v1/auth/register', {
-      body: { email, password: 'client-e2e-password-1' },
-    });
-    expect(reg.status).toBe(201);
-    const userToken = reg.body.token as string;
-    const userId = reg.body.userId as number;
+    // 注册恒两步（邮箱验证码经 client-api e2e capture mailer 截获）
+    const reg = await registerTwoStep(
+      (path, body) => http(client.baseUrl, path, { body }),
+      email,
+      'client-e2e-password-1',
+    );
+    const userToken = reg.token;
+    const userId = reg.userId;
     trackE2E.user(userId);
 
     // 2) 管理面建套餐（30 元 / 30 额度 / 30 天）
@@ -191,7 +193,7 @@ describe('E2E 用户资金 + 订阅金钱链（双 app 共库）', () => {
     // 7) 管理面流水：余额链 newest-first（105 → 75 → 45）
     const txs = await http(admin.baseUrl, `/v1/users/${userId}/transactions?page_size=10`, { token });
     expect(txs.status).toBe(200);
-    const balances = (txs.body.items as Array<{ balanceAfter: string }>).map((i) => new Decimal(i.balanceAfter));
+    const balances = (txs.body.rows as Array<{ balanceAfter: string }>).map((i) => new Decimal(i.balanceAfter));
     expect(balances[0]!.eq(45)).toBe(true);
     expect(balances[1]!.eq(75)).toBe(true);
     expect(balances[2]!.eq(105)).toBe(true);

@@ -3,7 +3,7 @@
  * 列白名单永不包含 passwordHash（改密走 userAccount.updatePassword 的哈希入口）。
  */
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
-import { apiKeys, auditLogs, rateCards, users } from '@ai-gateway/db';
+import { admins, apiKeys, auditLogs, rateCards, users } from '@ai-gateway/db';
 import type { RepoContext } from './context.js';
 import { escapeLikePattern } from './search.js';
 
@@ -95,6 +95,7 @@ export class UserRepository {
         id: users.id,
         issuer: users.issuer,
         subject: users.subject,
+        identityProvider: users.identityProvider,
         email: users.email,
         displayName: users.displayName,
         rateCardId: users.rateCardId,
@@ -230,7 +231,7 @@ export class UserRepository {
       offset: number;
     },
   ): Promise<{
-    rows: Array<{ id: number; actor: string; action: string; detail: unknown; createdAt: Date }>;
+    rows: Array<{ id: number; adminId: number | null; actor: string; action: string; targetType: string; targetId: string | null; adminSubject: string | null; detail: unknown; createdAt: Date }>;
     total: number;
   }> {
     const conditions = [eq(auditLogs.targetType, 'user'), eq(auditLogs.targetId, String(input.userId))];
@@ -246,12 +247,18 @@ export class UserRepository {
       c.db
         .select({
           id: auditLogs.id,
+          adminId: auditLogs.adminId,
           actor: auditLogs.actor,
           action: auditLogs.action,
+          targetType: auditLogs.targetType,
+          targetId: auditLogs.targetId,
+          // 管理员操作行的操作人（displayName 优先；用户自操作行 null——前端显示「用户本人」）
+          adminSubject: sql<string | null>`coalesce(${admins.displayName}, ${admins.email})`,
           detail: auditLogs.detail,
           createdAt: auditLogs.createdAt,
         })
         .from(auditLogs)
+        .leftJoin(admins, eq(admins.id, auditLogs.adminId))
         .where(where)
         .orderBy(...orderBy)
         .limit(input.limit)

@@ -133,7 +133,7 @@ describe('set-password（管理员重置用户密码）', () => {
 });
 
 describe('流水（wallet statement 单一真相）', () => {
-  it('三条入金 newest-first + 余额链；非法日期仍 400', async () => {
+  it('三条入金 newest-first + 余额链；v2 信封 {rows,total}（items 契约曾使前端流水恒空）', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
     const userId = await newUserRow();
@@ -143,14 +143,76 @@ describe('流水（wallet statement 单一真相）', () => {
     const res = await request(`/v1/users/${userId}/transactions?page=1&page_size=50`, { token });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      items: Array<{ amount: string; balanceAfter: string }>;
+      rows: Array<{ amount: string; balanceAfter: string }>;
+      total: number;
     };
-    expect(body.items).toHaveLength(3);
-    expect(new Decimal(body.items[0]!.balanceAfter).eq(30)).toBe(true);
-    expect(new Decimal(body.items[2]!.balanceAfter).eq(10)).toBe(true);
+    // v2 信封：前端 fetchAdminList 只读 data.rows/data.total——返回 items = 列表恒空
+    expect(body.rows).toHaveLength(3);
+    expect(body.total).toBe(3);
+    expect(new Decimal(body.rows[0]!.balanceAfter).eq(30)).toBe(true);
+    expect(new Decimal(body.rows[2]!.balanceAfter).eq(10)).toBe(true);
 
     const bad = await request(`/v1/users/${userId}/transactions?from=notadate`, { token });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe('用户维度审计（AuditLogRow 完整形状——曾缺 adminSubject/targetType 致详情页两列空白）', () => {
+  it('返回 targetType/targetId 与 admin 操作行的 adminSubject（join admins）', async () => {
+    const { request } = buildTestApp();
+    const { token, id: adminId } = await newAdmin();
+    const userId = await newUserRow();
+    // 管理员审计行（复刻 recordAudit 落库形状：adminId + targetType/targetId）
+    const { auditLogs } = await import('@ai-gateway/db');
+    await db.insert(auditLogs).values({
+      adminId,
+      actor: 'admin',
+      action: 'user.gift',
+      targetType: 'user',
+      targetId: String(userId),
+      detail: { amount: '1' },
+    });
+    const res = await request(`/v1/users/${userId}/audit-logs?page=1&page_size=20`, { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      rows: Array<{ action: string; targetType: string; targetId: string; actor: string; adminSubject: string | null }>;
+      total: number;
+    };
+    expect(body.total).toBeGreaterThan(0);
+    const giftRow = body.rows.find((r) => r.action === 'user.gift');
+    expect(giftRow).toBeDefined();
+    expect(giftRow!.targetType).toBe('user');
+    expect(giftRow!.targetId).toBe(String(userId));
+    expect(giftRow!.actor).toBe('admin');
+    expect(giftRow!.adminSubject).toBe('test-admin'); // displayName 优先于 email
+  });
+});
+
+describe('用户详情（profile 钱包富化——曾缺失致详情页余额/可用额度全空）', () => {
+  it('详情返回完整钱包四字段与真实费率卡名（与列表页同口径）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const userId = await newUserRow();
+    await fundUser(userId, '25.5');
+    const [card] = await db.select({ id: rateCards.id, name: rateCards.name }).from(rateCards).limit(1);
+    if (card) {
+      await db.update(usersTable).set({ rateCardId: card.id }).where(eq(usersTable.id, userId));
+    }
+    const res = await request(`/v1/users/${userId}`, { token });
+    expect(res.status).toBe(200);
+    const profile = (await res.json()) as {
+      balance: string;
+      reservedBalance: string;
+      availableBalance: string;
+      creditLimit: string;
+      rateCardName: string | null;
+      identityProvider: string | null;
+    };
+    expect(new Decimal(profile.balance).eq('25.5')).toBe(true);
+    expect(new Decimal(profile.availableBalance).eq('25.5')).toBe(true);
+    expect(new Decimal(profile.reservedBalance).eq(0)).toBe(true);
+    expect(typeof profile.identityProvider).toBe('string');
+    if (card) expect(profile.rateCardName).toBe(card.name);
   });
 });
 

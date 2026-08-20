@@ -143,8 +143,9 @@ export function usersRoutes(
     void extra;
     // 有效上限 = page_size（1..100 钳制）；wallet statement newest-first
     const query = parseListQuery(c.req.query(), ['id'], 'id');
-    const items = await service.transactions(adminCtxOf(c), { userId: id, limit: query.limit });
-    return c.json({ items, page: query.page, pageSize: query.pageSize });
+    const { rows, total } = await service.transactions(adminCtxOf(c), { userId: id, limit: query.limit });
+    // v2 信封：前端 fetchAdminList 只读 data.rows/data.total（items 会让列表恒空）
+    return c.json({ rows, total, page: query.page, pageSize: query.pageSize });
   });
 
   app.get('/v1/users/:id/audit-logs', session, async (c) => {
