@@ -10,6 +10,7 @@ import { getPreference } from "@ai-gateway/ui/server/server-actions";
 import { AccountSwitcher } from "@ai-gateway/ui/components/shell/header/account-switcher";
 import { LayoutControls } from "@ai-gateway/ui/components/shell/header/layout-controls";
 import { ThemeSwitcher } from "@ai-gateway/ui/components/shell/header/theme-switcher";
+import { apiFetch } from '@ai-gateway/api-client';
 import { AppSidebar } from "@/components/shell/sidebar/app-sidebar";
 import { logoutAction } from "@/lib/server-actions/auth";
 import { requireMe, userFromMe } from "@/lib/server/get-user";
@@ -17,6 +18,10 @@ import { requireMe, userFromMe } from "@/lib/server/get-user";
 export const dynamic = "force-dynamic";
 
 export default async function MainLayout({ children }: Readonly<{ children: ReactNode }>) {
+  // 邀请功能开关（营销参数 DB 化）：两项激励全 0 时隐藏入口；查询失败保守显示（页面空态兜底）
+  const referralConfig = await apiFetch<{ enabled: boolean }>('/v1/referrals/config').catch(() => null);
+  const referralEnabled = referralConfig?.enabled ?? true;
+
   const me = await requireMe();
   const user = userFromMe(me);
 
@@ -36,7 +41,7 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
         } as React.CSSProperties
       }
     >
-      <AppSidebar user={user} variant={variant} collapsible={collapsible} />
+      <AppSidebar user={user} referralEnabled={referralEnabled} variant={variant} collapsible={collapsible} />
       <SidebarInset
         className={cn(
           "[html[data-content-layout=centered]_&>*]:mx-auto",

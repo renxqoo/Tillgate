@@ -213,3 +213,34 @@ describe('邀请概览（overview）', () => {
     expectAmountEq(view.totalCommission, '0');
   });
 });
+
+describe('邀请功能开关（marketing_settings 联动——2026-08-21 DB 化）', () => {
+  it('config 返回现值与 enabled（两项激励任一 > 0 即开启；全 0 = C 端隐藏）', async () => {
+    const { marketingSettings } = await import('@ai-gateway/db');
+    const snapshot = await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1));
+    const snap = snapshot[0]!;
+    const read = async (key: 'referralSignupBonus' | 'referralCommissionRate') =>
+      (await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1)))[0]![key];
+    const service = createReferralService({
+      db,
+      wallet,
+      signupBonus: () => read('referralSignupBonus'),
+      commissionRate: () => read('referralCommissionRate'),
+      frontendUrl: 'https://console.example.com',
+    });
+
+    // 两项全 0 → enabled=false
+    await db.update(marketingSettings).set({ referralSignupBonus: '0', referralCommissionRate: '0' }).where(eq(marketingSettings.id, 1));
+    const off = await service.config(ctx, 1);
+    expect(off.enabled).toBe(false);
+
+    // 佣金比例单项 > 0 → enabled=true（单项为 0 不整体隐藏）
+    await db.update(marketingSettings).set({ referralCommissionRate: '0.1' }).where(eq(marketingSettings.id, 1));
+    const on = await service.config(ctx, 1);
+    expect(on.enabled).toBe(true);
+    expect(on.commissionRate).not.toBeNull();
+
+    // 恢复共享库快照
+    await db.update(marketingSettings).set({ referralSignupBonus: snap.referralSignupBonus, referralCommissionRate: snap.referralCommissionRate }).where(eq(marketingSettings.id, 1));
+  });
+});

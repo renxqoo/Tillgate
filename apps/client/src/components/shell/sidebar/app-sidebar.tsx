@@ -22,8 +22,9 @@ export interface SidebarUser {
 
 export function AppSidebar({
   user,
+  referralEnabled,
   ...props
-}: React.ComponentProps<typeof Sidebar> & { readonly user: SidebarUser }) {
+}: React.ComponentProps<typeof Sidebar> & { readonly user: SidebarUser; readonly referralEnabled?: boolean }) {
   const { sidebarVariant, sidebarCollapsible, isSynced } = usePreferencesStore(
     useShallow((s) => ({
       sidebarVariant: s.values.sidebar_variant,
@@ -35,7 +36,7 @@ export function AppSidebar({
   const variant = isSynced ? sidebarVariant : props.variant;
   const collapsible = isSynced ? sidebarCollapsible : props.collapsible;
 
-  const items = buildSidebarItems();
+  const items = buildSidebarItems({ referralEnabled });
 
   return (
     <Sidebar {...props} variant={variant} collapsible={collapsible}>

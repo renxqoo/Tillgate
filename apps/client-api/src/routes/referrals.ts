@@ -13,6 +13,10 @@ export function referralRoutes(
   session: MiddlewareHandler<SessionEnv>,
 ) {
   const app = new Hono<SessionEnv>();
+  app.get('/v1/referrals/config', session, async (c) => {
+    return c.json(await service.config(userCtxOf(c), c.get('userId')));
+  });
+
   app.get('/v1/referrals', session, async (c) => {
     const data = await service.overview(userCtxOf(c), c.get('userId'));
     return c.json(data);

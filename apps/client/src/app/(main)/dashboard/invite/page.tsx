@@ -19,7 +19,23 @@ interface InviteData {
 
 export default async function InvitePage() {
   // v2：GET /v1/referrals —— 邀请码/链接、已邀名单、累计佣金（后端不可达时空态展示）
-  const data = await apiFetch<InviteData>('/v1/referrals').catch(() => null);
+  const [data, config] = await Promise.all([
+    apiFetch<InviteData>('/v1/referrals').catch(() => null),
+    apiFetch<{ enabled: boolean }>('/v1/referrals/config').catch(() => null),
+  ]);
+  // 营销参数全 0 = 功能关闭：直达 URL 也给空态（入口已由 sidebar 隐藏）
+  if (config && !config.enabled) {
+    return (
+      <ListPage
+        title="邀请返利"
+        description="邀请好友注册，双方得奖励；好友每日消费按比例返佣"
+        icon={<UsersIcon className="size-5 text-muted-foreground" />}
+        unbordered
+      >
+        <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">邀请功能暂未开放</div>
+      </ListPage>
+    );
+  }
 
   return (
     <ListPage

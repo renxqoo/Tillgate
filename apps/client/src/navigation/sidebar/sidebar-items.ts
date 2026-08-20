@@ -17,8 +17,13 @@ import type { NavGroup } from "@ai-gateway/ui/components/shell/sidebar/nav-main"
 
 
 /** 用户面板 sidebar 数据。拆分后用户面板无管理入口（管理后台在 apps/admin 独立部署）。 */
-export function buildSidebarItems(): NavGroup[] {
-  return [
+export interface SidebarOptions {
+  /** 邀请功能开关（marketing_settings 两项激励任一 > 0）；缺省 true（保守：入口在，页面空态兜底） */
+  referralEnabled?: boolean;
+}
+
+export function buildSidebarItems(opts: SidebarOptions = {}): NavGroup[] {
+  const groups: NavGroup[] = [
     {
       id: 1,
       label: "用户面板",
@@ -98,4 +103,7 @@ export function buildSidebarItems(): NavGroup[] {
       ],
     },
   ];
+  return opts.referralEnabled === false
+    ? groups.map((g) => ({ ...g, items: g.items.filter((i) => i.id !== "invite") }))
+    : groups;
 }

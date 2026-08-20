@@ -107,6 +107,16 @@ export function createReferralService(deps: ReferralServiceDeps) {
     });
   }
 
+  /** 功能开关（marketing_settings 现值）：两项激励任一 > 0 即开启——全 0 时 C 端隐藏入口与页面 */
+  async function config(_ctx: import('@ai-gateway/service').RunContext, _userId: number): Promise<{ enabled: boolean; signupBonus: string; commissionRate: string }> {
+    const [bonus, rate] = [await resolveParam(deps.signupBonus), await resolveParam(deps.commissionRate)];
+    return {
+      enabled: new Decimal(bonus).greaterThan(0) || new Decimal(rate).greaterThan(0),
+      signupBonus: bonus,
+      commissionRate: rate,
+    };
+  }
+
   async function overview(ctx: RunContext, userId: number): Promise<InviteOverview> {
     const rows = await repos.referral.listInviteesByInviter(repo(ctx), userId);
     const affCode = encodeAffCode(userId);
@@ -125,7 +135,7 @@ export function createReferralService(deps: ReferralServiceDeps) {
     };
   }
 
-  return { applyReferral, overview };
+  return { applyReferral, overview, config };
 }
 
 export type ReferralService = ReturnType<typeof createReferralService>;
