@@ -152,6 +152,80 @@ describe('单位计价（图片/音频族——unitPrice+pricingUnit 管理面�
   });
 });
 
+describe('变体价格（分辨率差价——billingConfig 管理面通道，编辑表单依赖 null=清除语义）', () => {
+  it('创建图片模型带 variant 差价 → 201 回显 selector 与价格表', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const res = await request('/v1/models', {
+      token,
+      body: {
+        externalName: uid('var'),
+        realModel: 'qwen-image-3.0',
+        inputPrice: '0', outputPrice: '0', cacheInputPrice: '0',
+        pricingUnit: 'image', unitPrice: '0.2',
+        billingConfig: {
+          strategy: 'variant',
+          params: { selector: 'size', prices: { '1024*1024': '0.2', '2048*2048': '0.5' } },
+        },
+      },
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      billingConfig: { strategy: string; params: { selector: string; prices: Record<string, string> } };
+    };
+    expect(body.billingConfig.strategy).toBe('variant');
+    expect(body.billingConfig.params.selector).toBe('size');
+    expect(new Decimal(body.billingConfig.params.prices['2048*2048']!).eq('0.5')).toBe(true);
+  });
+
+  it('PATCH billingConfig: null → 清除差价回到统一单价（库中不残留 variant）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const { body } = await createModel(request, token, {
+      inputPrice: '0', outputPrice: '0', cacheInputPrice: '0',
+      pricingUnit: 'image', unitPrice: '0.3',
+      billingConfig: {
+        strategy: 'variant',
+        params: { selector: 'size', prices: { '1024*1024': '0.3' } },
+      },
+    });
+    const patch = await request(`/v1/models/${body.id}`, {
+      method: 'PATCH',
+      token,
+      body: { billingConfig: null },
+    });
+    expect(patch.status).toBe(200);
+    const [row] = await db.select().from(modelMappings).where(eq(modelMappings.id, body.id));
+    expect(row!.billingConfig).toEqual({}); // 清除 = 空对象，不是残留 variant
+  });
+
+  it('variant 缺 prices 或缺 selector → 400 不触库', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const noPrices = await request('/v1/models', {
+      token,
+      body: {
+        externalName: uid('np'), realModel: 'x',
+        inputPrice: '0', outputPrice: '0', cacheInputPrice: '0',
+        pricingUnit: 'image', unitPrice: '0.2',
+        billingConfig: { strategy: 'variant', params: { selector: 'size' } },
+      },
+    });
+    expect(noPrices.status).toBe(400);
+
+    const noSelector = await request('/v1/models', {
+      token,
+      body: {
+        externalName: uid('ns'), realModel: 'x',
+        inputPrice: '0', outputPrice: '0', cacheInputPrice: '0',
+        pricingUnit: 'image', unitPrice: '0.2',
+        billingConfig: { strategy: 'variant', params: { prices: { '1024*1024': '0.2' } } },
+      },
+    });
+    expect(noSelector.status).toBe(400);
+  });
+});
+
 describe('重名创建 → 409 精确文案（曾折叠成「重名/引用/数值域」盲猜）', () => {
   it('重复 externalName → 409 model_exists，报已存在 id 与状态', async () => {
     const { request } = buildTestApp();

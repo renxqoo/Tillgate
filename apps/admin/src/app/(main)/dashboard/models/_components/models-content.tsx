@@ -41,7 +41,7 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
-import { moneyText, numericText } from '@ai-gateway/ui/lib/forms';
+import { numericText } from '@ai-gateway/ui/lib/forms';
 import { fmtPrice, unitWord } from '@ai-gateway/api-client/formatters';
 
 /** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
@@ -57,21 +57,76 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const createSchema = z.object({
-  externalName: z.string().min(1),
-  realModel: z.string().min(1),
-  inputPrice: moneyText({ message: '请输入有效价格' }),
-  outputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheInputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
-  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']),
-  unitPrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
-  isFree: z.boolean().optional(),
-  contextLength: numericText({ message: '请输入有效 token 数' }).refine(
-    (v) => v === 0 || Number.isInteger(v),
-    '需为整数',
-  ),
-});
+const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
+type PricingUnit = (typeof PRICING_UNITS)[number];
+
+const PRICING_UNIT_OPTIONS: ReadonlyArray<{ value: PricingUnit; label: string }> = [
+  { value: 'token', label: '文本模型 · 按 token 计价（输入 / 输出 / 缓存三价）' },
+  { value: 'image', label: '图片模型 · 按张计价' },
+  { value: 'second', label: '视频 / 音频 · 按秒计价' },
+  { value: 'char', label: '语音合成 · 按字符计价' },
+  { value: 'request', label: '按次计价（与用量无关）' },
+];
+
+/** 选价参数预设（datalist：可选可手输——服务商字段名不统一） */
+const SELECTOR_PRESETS = ['size', 'resolution', 'size:quality', 'quality', 'duration', 'level'];
+
+/** 差价参数值预设（datalist）：图片分辨率 / 视频清晰度——各家格式不一（* 与 x、1k/2k），故保留手输 */
+const VARIANT_VALUE_PRESETS: Partial<Record<PricingUnit, readonly string[]>> = {
+  image: ['1024*1024', '1024x1024', '1024*1536', '1024x1536', '1536*1024', '1536x1024', '1792*1024', '1792x1024', '2048*2048', '2048x2048', '832*1248', '1248*832'],
+  second: ['480p', '720p', '1080p', '2k', '4k'],
+};
+
+/** 金额格式（与 moneyText 同口径）——分支校验挂到具体字段用 */
+const MONEY_PATTERN = /^\d{1,20}(?:\.\d{1,18})?$/;
+
+/**
+ * 价格分支校验：只校验当前计价方式下可见的字段。
+ * 隐藏字段不参与校验——否则切到单位计价后隐藏的 token 三价仍必填，提交必挂。
+ */
+function refinePricing(
+  v: {
+    pricingUnit: string;
+    inputPrice: string;
+    outputPrice: string;
+    cacheInputPrice: string;
+    cacheWritePrice?: string;
+    unitPrice?: string;
+  },
+  ctx: z.RefinementCtx,
+) {
+  const bad = (path: string, message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  if (v.pricingUnit === 'token') {
+    if (!MONEY_PATTERN.test(v.inputPrice ?? '')) bad('inputPrice', '请输入有效价格');
+    if (!MONEY_PATTERN.test(v.outputPrice ?? '')) bad('outputPrice', '请输入有效价格');
+    if (!MONEY_PATTERN.test(v.cacheInputPrice ?? '')) bad('cacheInputPrice', '请输入有效价格');
+    if (v.cacheWritePrice != null && v.cacheWritePrice !== '' && !MONEY_PATTERN.test(v.cacheWritePrice))
+      bad('cacheWritePrice', '请输入有效价格');
+  } else if (v.pricingUnit !== '') {
+    if (!MONEY_PATTERN.test(v.unitPrice ?? '')) bad('unitPrice', '请输入有效价格');
+  }
+}
+
+const createSchema = z
+  .object({
+    externalName: z.string().min(1),
+    realModel: z.string().min(1),
+    inputPrice: z.string(),
+    outputPrice: z.string(),
+    cacheInputPrice: z.string(),
+    cacheWritePrice: z.string(),
+    pricingUnit: z
+      .string()
+      .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
+    unitPrice: z.string(),
+    isFree: z.boolean().optional(),
+    contextLength: numericText({ message: '请输入有效 token 数' }).refine(
+      (v) => v === 0 || Number.isInteger(v),
+      '需为整数',
+    ),
+  })
+  .superRefine(refinePricing);
 
 export function ModelsTable({
   models,
@@ -209,25 +264,37 @@ export function CreateModelDialog() {
       outputPrice: '',
       cacheInputPrice: '',
       cacheWritePrice: '',
-      pricingUnit: 'token',
+      pricingUnit: '',
       unitPrice: '',
       isFree: false,
       contextLength: '',
     },
   });
 
-  function onSubmit(values: FormValues) {
+  function onSubmit(values: WithBillingConfig<FormValues>) {
     startTransition(async () => {
       const { createModelAction } = await import('../actions');
+      const tokenMode = values.pricingUnit === 'token';
       const res = await createModelAction({
         externalName: values.externalName,
         realModel: values.realModel,
-        inputPrice: values.inputPrice,
-        outputPrice: values.outputPrice,
-        cacheInputPrice: values.cacheInputPrice,
-        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
         pricingUnit: values.pricingUnit,
-        ...(values.unitPrice !== '' ? { unitPrice: values.unitPrice } : {}),
+        // 只提交当前计价方式下的价格：token 三价 / 单位单价（另一侧字段对 API 无意义，补 0 占位）
+        ...(tokenMode
+          ? {
+              inputPrice: values.inputPrice,
+              outputPrice: values.outputPrice,
+              cacheInputPrice: values.cacheInputPrice,
+              ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+            }
+          : {
+              inputPrice: '0',
+              outputPrice: '0',
+              cacheInputPrice: '0',
+              unitPrice: values.unitPrice,
+            }),
+        // billingConfig 由 ModelForm 差价编辑器并入（单位计价 + 按参数差价时存在）
+        ...(values.billingConfig != null ? { billingConfig: values.billingConfig } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
@@ -266,38 +333,47 @@ export function CreateModelDialog() {
   );
 }
 
-const editSchema = z.object({
-  externalName: z.string().min(1),
-  realModel: z.string().min(1),
-  inputPrice: moneyText({ message: '请输入有效价格' }),
-  outputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheInputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
-  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']),
-  unitPrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
-  isFree: z.boolean().optional(),
-  contextLength: numericText({ message: '请输入有效 token 数' }).refine(
-    (v) => v === 0 || Number.isInteger(v),
-    '需为整数',
-  ),
-  fallbackModels: z.string().optional(),
-  paramRules: z.string().optional(),
-  billingPolicy: z
-    .string()
-    .optional()
-    .refine((value) => {
-      if (!value?.trim()) return true;
-      try {
-        JSON.parse(value);
-        return true;
-      } catch {
-        return false;
-      }
-    }, '请输入合法 JSON'),
-  rpmLimit: z.string().optional(),
-  tpmLimit: z.string().optional(),
-  status: numericText({ message: '请输入整数' }).refine((v) => Number.isInteger(v), '请输入整数'),
-});
+const editSchema = z
+  .object({
+    externalName: z.string().min(1),
+    realModel: z.string().min(1),
+    inputPrice: z.string(),
+    outputPrice: z.string(),
+    cacheInputPrice: z.string(),
+    cacheWritePrice: z.string(),
+    pricingUnit: z
+      .string()
+      .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
+    unitPrice: z.string(),
+    isFree: z.boolean().optional(),
+    contextLength: numericText({ message: '请输入有效 token 数' }).refine(
+      (v) => v === 0 || Number.isInteger(v),
+      '需为整数',
+    ),
+    fallbackModels: z.string().optional(),
+    paramRules: z.string().optional(),
+    billingPolicy: z
+      .string()
+      .optional()
+      .refine((value) => {
+        if (!value?.trim()) return true;
+        try {
+          JSON.parse(value);
+          return true;
+        } catch {
+          return false;
+        }
+      }, '请输入合法 JSON'),
+    rpmLimit: z.string().optional(),
+    tpmLimit: z.string().optional(),
+    status: numericText({ message: '请输入整数' }).refine((v) => Number.isInteger(v), '请输入整数'),
+  })
+  .superRefine(refinePricing);
+
+/** ModelForm 差价编辑器并入的提交载荷扩展（billingConfig 不走 RHF 字段） */
+type WithBillingConfig<V> = V & {
+  billingConfig?: { strategy?: string; params?: { selector?: string; prices?: Record<string, string> } };
+};
 
 function EditModelDialog({ model }: { model: AdminModelRow }) {
   const notify = useActionResult();
@@ -313,7 +389,7 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
       outputPrice: model.outputPrice ?? '',
       cacheInputPrice: model.cacheInputPrice ?? '',
       cacheWritePrice: model.cacheWritePrice ?? '',
-      pricingUnit: (model.pricingUnit as 'token') ?? 'token',
+      pricingUnit: model.pricingUnit ?? 'token',
       unitPrice: model.unitPrice ? String(Number(model.unitPrice)) : '',
       isFree: model.isFree ?? false,
       contextLength: model.contextLength == null ? '' : String(model.contextLength),
@@ -326,18 +402,27 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
     },
   });
 
-  function onSubmit(values: FormValues) {
+  function onSubmit(values: WithBillingConfig<FormValues>) {
     startTransition(async () => {
       const { updateModelAction } = await import('../actions');
+      const tokenMode = values.pricingUnit === 'token';
       const res = await updateModelAction(model.id, {
         externalName: values.externalName,
         realModel: values.realModel,
-        inputPrice: values.inputPrice,
-        outputPrice: values.outputPrice,
-        cacheInputPrice: values.cacheInputPrice,
-        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
         pricingUnit: values.pricingUnit,
-        ...(values.unitPrice !== '' ? { unitPrice: values.unitPrice } : {}),
+        // 只提交当前计价方式下的价格（另一侧保留 DB 旧值，计费按 pricingUnit 分流不受影响）
+        ...(tokenMode
+          ? {
+              inputPrice: values.inputPrice,
+              outputPrice: values.outputPrice,
+              cacheInputPrice: values.cacheInputPrice,
+              ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+            }
+          : { unitPrice: values.unitPrice }),
+        // 差价配置显式管理：勾选差价提交 variant，否则 null 清除（避免 DB 残留与界面不一致）
+        ...(tokenMode || values.billingConfig == null
+          ? { billingConfig: null }
+          : { billingConfig: values.billingConfig }),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
@@ -367,7 +452,13 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
             <PencilIcon /> 编辑模型 - {model.externalName}
           </DialogTitle>
         </DialogHeader>
-        <ModelForm form={form} onSubmit={onSubmit} formId="model-edit-form" isEdit />
+        <ModelForm
+          form={form}
+          onSubmit={onSubmit}
+          formId="model-edit-form"
+          isEdit
+          initialBillingConfig={model.billingConfig ?? undefined}
+        />
         <DialogFooter>
           <DialogClose asChild>
             <Button variant="outline">取消</Button>
@@ -397,10 +488,11 @@ function ModelForm({
   /** 差价编辑器初始值（编辑回显——billingConfig 不走 RHF 字段） */
   initialBillingConfig?: { params?: { selector?: string; prices?: Record<string, string> } };
 }) {
-  // 计价方式联动：token 模式显三价+缓存写价；单位模式（图片/音频/语音/按次）只显单位单价。
+  // 计价方式优先：未选择时隐藏全部价格输入；token 显三价+缓存写价；单位模式（图片/视频/语音/按次）显单位单价+可选差价。
   // useWatch（而非 form.watch）确保 Controller 外的订阅重渲染稳定。
-  const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? 'token';
-  const unitMode = pricingUnit !== 'token';
+  const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? '';
+  const chosen = pricingUnit !== '';
+  const unitMode = chosen && pricingUnit !== 'token';
   // 分辨率差价编辑器（variant 策略）：selector=请求参数名；rows=参数值→单价（本地 state，提交时并入 billingConfig）
   const initialConfig = initialBillingConfig;
   const [variantMode, setVariantMode] = useState<boolean>(Boolean(initialConfig?.params?.prices));
@@ -411,28 +503,60 @@ function ModelForm({
   return (
     <form
       id={formId}
-      onSubmit={form.handleSubmit((values: any) =>
+      onSubmit={form.handleSubmit((values: any) => {
+        // 分辨率差价：variant 策略 + selector + 价格表（空行过滤；预扣取最高价由计费域保证）
+        const validRows = rows.filter((r) => r.key.trim() !== '' && r.price.trim() !== '');
+        if (unitMode && variantMode && validRows.length === 0) {
+          form.setError('root', {
+            type: 'manual',
+            message: '按参数差价至少填写一行「参数值 + 单价」（空行不会保存）',
+          });
+          return;
+        }
         onSubmit({
           ...values,
-          // 分辨率差价：variant 策略 + selector + 价格表（空键行过滤；预扣取最高价由计费域保证）
           ...(unitMode && variantMode
             ? {
                 billingConfig: {
                   strategy: 'variant',
                   params: {
                     selector: selector.trim() || 'size',
-                    prices: Object.fromEntries(
-                      rows.filter((r) => r.key.trim() !== '' && r.price.trim() !== '').map((r) => [r.key.trim(), r.price.trim()]),
-                    ),
+                    prices: Object.fromEntries(validRows.map((r) => [r.key.trim(), r.price.trim()])),
                   },
                 },
               }
             : {}),
-        }),
-      )}
+        });
+      })}
       className="space-y-4"
     >
       <FieldGroup>
+        {/* 计价方式第一位：决定下方出现哪些价格输入（未选择时价格区整体隐藏） */}
+        <Controller
+          control={form.control}
+          name="pricingUnit"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="m-unit">计价方式</FieldLabel>
+              <select
+                id="m-unit"
+                value={field.value}
+                onChange={field.onChange}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="" disabled>
+                  请先选择计价方式…
+                </option>
+                {PRICING_UNIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
         <div className="grid grid-cols-2 gap-3">
           <Controller
             control={form.control}
@@ -469,64 +593,48 @@ function ModelForm({
             )}
           />
         </div>
-        {unitMode ? null : (
-        <div className="grid grid-cols-3 gap-3">
-          <NumberField
-            control={form.control}
-            name="inputPrice"
-            label="输入价"
-            id="m-in"
-            step="0.0001"
-          />
-          <NumberField
-            control={form.control}
-            name="outputPrice"
-            label="输出价"
-            id="m-out"
-            step="0.0001"
-          />
-          <NumberField
-            control={form.control}
-            name="cacheInputPrice"
-            label="缓存价"
-            id="m-cache"
-            step="0.0001"
-          />
-          <NumberField
-            control={form.control}
-            name="cacheWritePrice"
-            label="缓存写价"
-            id="m-cache-w"
-            step="0.0001"
-          />
-        </div>
-        )}
-          <Controller
-            control={form.control}
-            name="pricingUnit"
-            render={({ field }) => (
-              <div className="grid gap-2">
-                <label className="text-sm font-medium" htmlFor="m-unit">计价单位</label>
-                <select
-                  id="m-unit"
-                  value={field.value}
-                  onChange={field.onChange}
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="token">token（按 token 三价）</option>
-                  <option value="image">image（图片 / 张）</option>
-                  <option value="second">second（音频 / 秒）</option>
-                  <option value="char">char（语音 / 字符）</option>
-                  <option value="request">request（按次）</option>
-                </select>
-              </div>
-            )}
-          />
+        {!chosen ? (
+          <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
+            请先选择计价方式，价格输入项将按所选计价方式显示。
+          </p>
+        ) : null}
+        {pricingUnit === 'token' ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <NumberField
+              control={form.control}
+              name="inputPrice"
+              label="输入价"
+              id="m-in"
+              step="0.0001"
+            />
+            <NumberField
+              control={form.control}
+              name="outputPrice"
+              label="输出价"
+              id="m-out"
+              step="0.0001"
+            />
+            <NumberField
+              control={form.control}
+              name="cacheInputPrice"
+              label="缓存价"
+              id="m-cache"
+              step="0.0001"
+            />
+            <NumberField
+              control={form.control}
+              name="cacheWritePrice"
+              label="缓存写价（可空）"
+              id="m-cache-w"
+              step="0.0001"
+            />
+          </div>
+        ) : null}
           {unitMode ? (
           <NumberField
             control={form.control}
             name="unitPrice"
-            label={`单位单价（元/${pricingUnit === 'image' ? '张' : pricingUnit === 'second' ? '秒' : pricingUnit === 'char' ? '字符' : '次'}；统一价/差价未命中回落）`}
+            label={`统一单价（元/${unitWord(pricingUnit)}）`}
             id="m-unit-price"
             step="0.0001"
           />
@@ -536,24 +644,43 @@ function ModelForm({
               <label className="flex items-center gap-2 text-sm font-medium">
                 <Checkbox
                   checked={variantMode}
-                  onCheckedChange={(v) => setVariantMode(v === true)}
+                  onCheckedChange={(v) => {
+                    setVariantMode(v === true);
+                    form.clearErrors('root');
+                  }}
                 />
                 按参数差价（如图片 1K/2K、视频分辨率不同价）
               </label>
+              {form.formState.errors.root ? (
+                <p className="text-sm text-destructive">
+                  {(form.formState.errors.root as { message?: string }).message ?? '差价配置不完整'}
+                </p>
+              ) : null}
               {variantMode ? (
                 <div className="space-y-2">
-                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-                    <div className="grid gap-1">
-                      <label className="text-xs text-muted-foreground" htmlFor="m-selector">选价参数（请求体字段名）</label>
-                      <Input id="m-selector" value={selector} onChange={(e) => setSelector(e.target.value)} placeholder="size" className="h-8" />
-                    </div>
+                  <div className="grid gap-1">
+                    <label className="text-xs text-muted-foreground" htmlFor="m-selector">选价参数（请求体字段名，多字段用 : 组合）</label>
+                    <Input
+                      id="m-selector"
+                      list="m-selector-presets"
+                      value={selector}
+                      onChange={(e) => setSelector(e.target.value)}
+                      placeholder="size"
+                      className="h-8"
+                    />
+                    <datalist id="m-selector-presets">
+                      {SELECTOR_PRESETS.map((s) => (
+                        <option key={s} value={s} />
+                      ))}
+                    </datalist>
                   </div>
                   {rows.map((row, i) => (
                     <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
                       <Input
+                        list="m-variant-presets"
                         value={row.key}
                         onChange={(e) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
-                        placeholder="参数值（如 1024*1024）"
+                        placeholder={pricingUnit === 'image' ? '分辨率（如 1024*1024）' : '参数值（如 720p）'}
                         className="h-8"
                       />
                       <Input
@@ -568,11 +695,16 @@ function ModelForm({
                       </Button>
                     </div>
                   ))}
+                  <datalist id="m-variant-presets">
+                    {(VARIANT_VALUE_PRESETS[pricingUnit as PricingUnit] ?? []).map((v) => (
+                      <option key={v} value={v} />
+                    ))}
+                  </datalist>
                   <Button type="button" size="sm" variant="outline" onClick={() => setRows((cur) => [...cur, { key: '', price: '' }])}>
                     + 添加价格行
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    预扣按表中最高价保守收取，结算按请求实际参数取价，未命中回落统一单价；计费公式与计量不变。
+                    参数值可选预设或手输，需与请求参数完全一致；预扣按表中最高价保守收取，结算按请求实际参数取价，未命中回落统一单价。
                   </p>
                 </div>
               ) : null}
@@ -585,9 +717,13 @@ function ModelForm({
             id="m-ctx"
             step="1"
           />
-        <p className="text-xs text-muted-foreground">
-          {unitMode ? '单位单价（元/单位）；token 三价不参与计费' : '单位：元 / 百万 token'}
-        </p>
+        {chosen ? (
+          <p className="text-xs text-muted-foreground">
+            {unitMode
+              ? `单位：元 / ${unitWord(pricingUnit)}；差价未命中时按统一单价计费`
+              : '单位：元 / 百万 token；缓存写价留空 = 不收缓存写费'}
+          </p>
+        ) : null}
         <Controller
           control={form.control}
           name="isFree"

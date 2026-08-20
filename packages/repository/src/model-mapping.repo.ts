@@ -65,6 +65,8 @@ export interface MappingAdminRow {
   cacheWritePrice: string;
   pricingUnit: string;
   unitPrice: string;
+  /** 变体价格配置（分辨率差价）——管理面编辑回显依赖此列（列 notNull default {}） */
+  billingConfig: BillingConfigJson;
   isFree: boolean;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -104,6 +106,7 @@ const MAPPING_ADMIN_COLUMNS = {
   cacheWritePrice: modelMappings.cacheWritePrice,
   pricingUnit: modelMappings.pricingUnit,
   unitPrice: modelMappings.unitPrice,
+  billingConfig: modelMappings.billingConfig,
   isFree: modelMappings.isFree,
   billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,

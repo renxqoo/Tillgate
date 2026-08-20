@@ -62,8 +62,8 @@ export interface ModelUpdateInput {
   /** 计价单位（token/image/second/char/request）；单位计价模型配 unitPrice */
   pricingUnit?: string;
   unitPrice?: string;
-  /** 变体价格（分辨率差价）：strategy=variant + selector + prices */
-  billingConfig?: { strategy?: string; params?: { selector?: string; prices?: Record<string, string> } };
+  /** 变体价格（分辨率差价）：strategy=variant + selector + prices；null = 清除（回到统一单价） */
+  billingConfig?: { strategy?: string; params?: { selector?: string; prices?: Record<string, string> } } | null;
   isFree?: boolean;
   contextLength?: number | null;
   fallbackModels?: string;
