@@ -11,7 +11,8 @@
     "test": "vitest run",
     "lint": "oxlint",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "models-dev:refresh": "tsx scripts/fetch-models-dev.mts"
   },
   "dependencies": {
     "@ai-gateway/ai": "workspace:*",
@@ -28,7 +29,6 @@
     "hono": "^4.13.0",
     "ioredis": "^5.8.0",
     "jose": "^6.2.8",
-    "undici": "^8.10.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -38,6 +38,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "undici": "^7.18.0"
   }
 }

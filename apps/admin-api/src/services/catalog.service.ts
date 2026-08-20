@@ -20,7 +20,6 @@
  */
 import { encrypt } from '@ai-gateway/core';
 import type { Redis } from 'ioredis';
-import { ProxyAgent, fetch as undiciFetch, type Dispatcher } from 'undici';
 import { recordAudit } from '@ai-gateway/http';
 import { createRepositories, type Db, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -37,21 +36,12 @@ import {
 } from '../domain/catalog.js';
 import { isFreeByPrice } from '../domain/model-pricing.js';
 import type { FxService, FxState } from './fx.service.js';
+import { MODELS_DEV_SNAPSHOT } from './models-dev.snapshot.generated.js';
 
 /** 目录源 adapter：拉取 + 自带映射（新增源 = 在装配注册一个 adapter） */
-/** 字典/目录源出网代理：显式配置 CATALOG_PROXY_URL（或通用 HTTPS_PROXY）才启用。
- *  背景：Node fetch 不读系统代理——本机 Clash(127.0.0.1:7897) 只被浏览器使用，
- *  models.dev 这类被墙源需要显式走代理；生产留空 = 直连，行为不变。 */
-const catalogProxyUrl = process.env.CATALOG_PROXY_URL ?? process.env.HTTPS_PROXY ?? null;
-const catalogDispatcher: Dispatcher | undefined = catalogProxyUrl
-  ? new ProxyAgent({ uri: catalogProxyUrl, connectTimeout: 10_000 })
-  : undefined;
-
+/** 在线目录源统一拉取（超时 + 状态码报错可排障）；models.dev 已本地快照化不在此列 */
 async function fetchCatalogJson(url: string): Promise<unknown> {
-  const res = await undiciFetch(url, {
-    signal: AbortSignal.timeout(15_000),
-    ...(catalogDispatcher ? { dispatcher: catalogDispatcher } : {}),
-  });
+  const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`catalog fetch failed (${url}): ${res.status}`);
   return res.json();
 }
@@ -95,13 +85,14 @@ export const OPENROUTER_SOURCE: CatalogSource = {
   mapModels: (raw) => mapOpenAiCompatibleCatalog(raw, { currency: 'USD' }),
 };
 
-/** 字典型源：models.dev 全行业目录（导入落草稿，不建渠道；价格 $/1M） */
+/** 字典型源：models.dev 本地快照（零网络——在线源被墙/不可达不影响货架；
+ *  更新重跑 pnpm --filter admin-api models-dev:refresh，价格 $/1M） */
 export const MODELS_DEV_SOURCE: CatalogSource = {
   id: 'models-dev',
   name: 'models.dev（参考字典）',
   kind: 'reference',
   priceCurrency: 'USD',
-  fetchModels: async () => fetchCatalogJson('https://models.dev/api.json'),
+  fetchModels: async () => MODELS_DEV_SNAPSHOT,
   mapModels: (raw) => mapModelsDevCatalog(raw),
 };
 
