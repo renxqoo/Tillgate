@@ -14,6 +14,7 @@ import { AzureOpenAIAdapter } from './adapters/azure-openai';
 import { AwsBedrockAdapter } from './adapters/aws-bedrock';
 import { VertexAiAdapter } from './adapters/vertex-ai';
 import { MiniMaxAdapter } from './adapters/minimax';
+import { DashScopeAdapter } from './adapters/dashscope';
 import type { ProtocolAdapter, UpstreamRequestPlan } from './adapters/protocol-adapter';
 import { unsupportedProtocolError } from './errors/internal';
 import { detectSilentOverflow } from './errors/overflow';
@@ -49,8 +50,9 @@ const noop = (): void => {};
 
 /**
  * 默认协议注册表（不注入 adapters 时的注册项）。
- * 七个协议族：openai-compatible（含全部 OpenAI 兼容厂商）+ 五个原生协议
- * + minimax（任务族 video/music + MiniMax chat 兼容）。
+ * 八个协议族：openai-compatible（含全部 OpenAI 兼容厂商）+ 五个原生协议
+ * + minimax（任务族 video/music + MiniMax chat 兼容）
+ * + dashscope（百炼原生 images + compatible-mode chat/embeddings）。
  */
 const defaultAdapters: ProtocolAdapter[] = [
   new OpenAICompatibleAdapter(),
@@ -60,6 +62,7 @@ const defaultAdapters: ProtocolAdapter[] = [
   new AwsBedrockAdapter(),
   new VertexAiAdapter(),
   new MiniMaxAdapter(),
+  new DashScopeAdapter(),
 ];
 
 /** 默认注册表键——协议词表的单一真相（admin 配置面校验引用此处，不再各自枚举） */
