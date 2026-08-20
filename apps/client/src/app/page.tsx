@@ -145,12 +145,12 @@ const FEATURES = [
 const PROVIDERS = ["DeepSeek", "智谱 GLM", "MiniMax", "OpenRouter", "Ollama"];
 
 export default async function Landing() {
-  const [me, models] = await Promise.all([getMe(), fetchPublicPricing()]);
-  const showcase = models
-    ? models
-        .toSorted((a, b) => Number(b.isFree) - Number(a.isFree))
-        .slice(0, 9)
-    : [];
+  // 模型广场：服务端只要免费前 9（免费徽章置前排；目录可达数千——不拉全量）
+  const [me, freePage] = await Promise.all([
+    getMe(),
+    fetchPublicPricing({ free: true, pageSize: 9 }),
+  ]);
+  const showcase = freePage?.models ?? [];
 
   return (
     <div className="flex min-h-screen flex-col">

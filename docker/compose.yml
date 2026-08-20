@@ -50,6 +50,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
       PORT: 8083
       OTEL_TRACES_MODE: "off"
+      TRUSTED_PROXY_HOPS: "1"  # nginx 单层代理：XFF 右数第 1 跳 = 真实客户端
     depends_on:
       redis:
         condition: service_healthy
@@ -75,6 +76,7 @@ services:
         required: true
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      TRUSTED_PROXY_HOPS: "1"  # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
       OAUTH_API_BASE: http://client-api:8081
       OTEL_TRACES_MODE: "off"
@@ -97,6 +99,7 @@ services:
         required: true
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
+      TRUSTED_PROXY_HOPS: "1"  # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
       OTEL_TRACES_MODE: "off"
     depends_on:
@@ -167,6 +170,7 @@ services:
     environment:
       # 后端（用户面 8081）
       CLIENT_API_BASE: http://client-api:8081
+      TRUSTED_PROXY_HOPS: "1"  # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
     depends_on:
       - client-api
     restart: unless-stopped
@@ -181,6 +185,7 @@ services:
     environment:
       # 后端（管理面 8082）
       ADMIN_API_BASE: http://admin-api:8082
+      TRUSTED_PROXY_HOPS: "1"  # FE 在 nginx 后：解入站 XFF 供 BFF 透传给 API
     depends_on:
       - admin-api
     restart: unless-stopped

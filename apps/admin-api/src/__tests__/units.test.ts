@@ -9,8 +9,10 @@ import { Decimal } from '@ai-gateway/domain';
 import type { Ai } from '@ai-gateway/ai';
 import { createAdminAuthService } from '../services/auth.service.js';
 import { createCatalogService, type CatalogSource } from '../services/catalog.service.js';
+import { mapOpenAiCompatibleCatalog } from '../domain/catalog.js';
+import { createFxService } from '../services/fx.service.js';
 import { createFundsService } from '../services/funds.service.js';
-import { createLocalVoucherStorage, parseVoucherDataUrl } from '../services/voucher-storage.js';
+import { createDbVoucherStorage, parseVoucherDataUrl } from '../services/voucher-storage.js';
 import {
   buildTestApp,
   capturingMailer,
@@ -32,7 +34,7 @@ const runCtx = { requestId: 'units', actor: { kind: 'system' } as const, tracePa
 
 describe('凭证存储边界', () => {
   it('save 白名单外 MIME → 400；load 未知扩展/不存在 → null', async () => {
-    const storage = createLocalVoucherStorage('/tmp/aav2-voucher-unit');
+    const storage = createDbVoucherStorage(db);
     await expect(storage.save(Buffer.from('x'), 'text/html')).rejects.toMatchObject({
       status: 400,
       code: 'invalid_voucher',
@@ -53,15 +55,20 @@ describe('目录源缓存与空目录', () => {
     const source: CatalogSource = {
       id: 'cache-src',
       name: 'CacheSrc',
-      providerName: uid('cs-prov'),
-      providerBaseUrl: 'https://cache.example.com/v1',
-      providerProtocol: 'openai-compatible',
-      channelName: uid('cs-ch'),
-      needsKey: false,
+      kind: 'channel',
+      priceCurrency: 'USD',
+      channel: {
+        providerName: uid('cs-prov'),
+        providerBaseUrl: 'https://cache.example.com/v1',
+        providerProtocol: 'openai-compatible',
+        channelName: uid('cs-ch'),
+        needsKey: false,
+      },
       fetchModels: async () => {
         hits.count += 1;
         return { data: [] };
       },
+      mapModels: (raw) => mapOpenAiCompatibleCatalog(raw, { currency: 'USD' }),
     };
     const catalog = createCatalogService({
       db,
@@ -71,6 +78,7 @@ describe('目录源缓存与空目录', () => {
       freeChannelRpm: 20,
       freeChannelBudget: '1000000',
       encryptionKey: 'a'.repeat(32),
+      fx: createFxService({ db, fetchImpl: async () => new Response('{"rates":{"CNY":7.2}}', { status: 200 }) }),
     });
     const first = await catalog.comparison(runCtx, source.id);
     await catalog.comparison(runCtx, source.id); // 二次比对命中缓存

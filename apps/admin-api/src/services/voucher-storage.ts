@@ -1,11 +1,12 @@
 /**
- * 渠道进货凭证存储（本地磁盘实现；接口注入——可换 OSS 而不动服务层）。
+ * 渠道进货凭证存储（DB 实现——多副本安全）。
  * 只服务进货凭证截图的回读：上传内联在 recharge 的 voucherDataUrl 里。
- * 键格式 `${uuid}.${ext}`；读取前键白名单校验（防路径穿越）。
+ * 键格式 `${uuid}.${ext}`；读取前键白名单校验（防注入/越权键）。
+ * 背景：原本地磁盘实现（./data/vouchers）第二副本起互不可见、容器重建即丢——
+ * 0066 迁移入 voucher_blobs（bytea，≤2MB 白名单小图，低频回看不引入对象存储）。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import type { Db } from '@ai-gateway/repository';
 import { AppError } from '../http/error-map.js';
 
 export interface VoucherStorage {
@@ -44,16 +45,18 @@ export function parseVoucherDataUrl(
   return { data, mimeType: match[1]! };
 }
 
-export function createLocalVoucherStorage(dir: string): VoucherStorage {
+export function createDbVoucherStorage(db: Db): VoucherStorage {
   return {
     async save(data, mimeType) {
       const ext = MIME_EXT[mimeType];
       if (!ext) {
         throw new AppError(400, 'invalid_voucher', `不支持的凭证类型：${mimeType}`);
       }
-      await mkdir(dir, { recursive: true });
       const key = `${randomUUID()}.${ext}`;
-      await writeFile(join(dir, key), data);
+      await db.$client.query(
+        'insert into voucher_blobs ("key", mime, "data") values ($1, $2, $3)',
+        [key, mimeType, data],
+      );
       return key;
     },
     async load(key) {
@@ -61,12 +64,13 @@ export function createLocalVoucherStorage(dir: string): VoucherStorage {
       const ext = key.split('.')[1]!;
       const mimeType = EXT_MIME[ext];
       if (!mimeType) return null;
-      try {
-        const data = await readFile(join(dir, key));
-        return { data, mimeType };
-      } catch {
-        return null;
-      }
+      // 键与落库 MIME 双校验（防扩展名改写型伪造键）
+      const r = await db.$client.query<{ mime: string; data: Buffer }>(
+        'select mime, "data" from voucher_blobs where "key" = $1 and mime = $2',
+        [key, mimeType],
+      );
+      const row = r.rows[0];
+      return row ? { data: Buffer.from(row.data), mimeType: row.mime } : null;
     },
   };
 }

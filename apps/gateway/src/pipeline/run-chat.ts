@@ -87,6 +87,9 @@ function streamReceiptUsage(
         cachedInputTokens: usage.cachedInputTokens,
         outputTokens: usage.outputTokens,
         estimated: false,
+        ...(((usage as { cacheWriteTokens?: number }).cacheWriteTokens ?? 0) > 0
+          ? { cacheWriteTokens: (usage as { cacheWriteTokens?: number }).cacheWriteTokens }
+          : {}),
       },
       streamAborted: false,
     };
@@ -172,6 +175,9 @@ export function createRunChat(deps: PipelineDeps) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
     const estInput = estimateInputTokens(body, { model: body.model });
+  // 请求时点汇率快照（60s 进程缓存）：预取不阻塞授权关键路径（CI 慢机上多一次
+  // DB 往返会挤占流租约续租时序）——装配收据时才 await；查询失败降级 null
+  const fxPromise = repos.fx.current({ ...ctx, db: deps.db }).catch(() => null);
     const kind = kindOf(endpoint);
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
     const stream = body.stream === true;
@@ -360,9 +366,14 @@ export function createRunChat(deps: PipelineDeps) {
         'error.code': lastError?.code ?? 'no_available_channel',
       }, async () => {
         if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
-        // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel
+        // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel。
+        // rate_limited = 上游 429 归一码（如 OpenRouter 免费池共享限流）——同属渠道面
+        // 竭尽而非上游故障，漏列会误报 502 upstream_failed 误导排障
         const channelExhausted =
-          lastError == null || lastError.code === 'channel_budget_exhausted' || lastError.code === 'rate_limit_exceeded';
+          lastError == null ||
+          lastError.code === 'channel_budget_exhausted' ||
+          lastError.code === 'rate_limit_exceeded' ||
+          lastError.code === 'rate_limited';
         await deps.billing.signal(ctx, {
           type: 'request.failed',
           requestId,
@@ -402,6 +413,7 @@ export function createRunChat(deps: PipelineDeps) {
         maxOutputTokens: outputCap,
         inputPrice: candidate.inputPrice,
         cacheInputPrice: candidate.cacheInputPrice,
+        cacheWritePrice: candidate.cacheWritePrice,
         outputPrice: candidate.outputPrice,
         unitPrice: candidate.unitPrice ?? 0,
         unitUpperBound: candidate.unitUpperBound ?? 0,
@@ -468,11 +480,17 @@ export function createRunChat(deps: PipelineDeps) {
             const receipt = buildReceipt({
               requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
               externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs,
+              durationMs, fx: await fxPromise,
               body: body as Record<string, unknown>,
               responseBody: result.body,
               usage: result.usage
-                ? { estimated: false, inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens }
+                ? {
+                    estimated: false,
+                    inputTokens: result.usage.inputTokens,
+                    cachedInputTokens: result.usage.cachedInputTokens,
+                    outputTokens: result.usage.outputTokens,
+                    ...((result.usage.cacheWriteTokens ?? 0) > 0 ? { cacheWriteTokens: result.usage.cacheWriteTokens } : {}),
+                  }
                 : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body, { model: body.model }) },
             });
             const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
@@ -571,7 +589,7 @@ export function createRunChat(deps: PipelineDeps) {
             ...buildReceipt({
               requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
               externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs,
+              durationMs, fx: await fxPromise,
               body: body as Record<string, unknown>,
               usage: finality.usage.estimated
                 ? { estimated: true, inputTokens: finality.usage.inputTokens, outputTokens: finality.usage.outputTokens }

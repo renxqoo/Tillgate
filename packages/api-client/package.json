@@ -18,6 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-gateway/http": "workspace:*",
     "next": "^16.3.0",
     "zod": "^4.4.3"
   },

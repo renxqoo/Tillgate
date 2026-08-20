@@ -6,7 +6,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb } from '@ai-gateway/db';
-import { users } from '@ai-gateway/db';
+import { fxRates, users } from '@ai-gateway/db';
 import type { Db } from '@ai-gateway/repository';
 import { Decimal, type UsageReceipt } from '@ai-gateway/domain';
 import { createBillingDomain, createSettlementDomain, createWallet, type BillingDomain } from '@ai-gateway/service';
@@ -47,7 +47,7 @@ async function seedModelWithChannels(
     fallbackModels?: string[];
     realModel?: string;
     /** 定价覆盖：单位计费模型（pricingUnit + unitPrice + billingConfig；token 三价可清零） */
-    pricing?: { pricingUnit?: string; unitPrice?: string; billingConfig?: Record<string, unknown>; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string };
+    pricing?: { pricingUnit?: string; unitPrice?: string; billingConfig?: Record<string, unknown>; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string };
   } = {},
 ): Promise<{ model: string; channelNames: string[]; realModel: string }> {
   const { modelMappings, modelChannels, channels, providers } = await import('@ai-gateway/db');
@@ -67,6 +67,7 @@ async function seedModelWithChannels(
       inputPrice: options.pricing?.inputPrice ?? '2',
       outputPrice: options.pricing?.outputPrice ?? '6',
       cacheInputPrice: options.pricing?.cacheInputPrice ?? '1',
+      ...(options.pricing?.cacheWritePrice !== undefined ? { cacheWritePrice: options.pricing.cacheWritePrice } : {}),
       ...(options.pricing?.pricingUnit !== undefined ? { pricingUnit: options.pricing.pricingUnit } : {}),
       ...(options.pricing?.unitPrice !== undefined ? { unitPrice: options.pricing.unitPrice } : {}),
       ...(options.pricing?.billingConfig !== undefined ? { billingConfig: options.pricing.billingConfig } : {}),
@@ -108,7 +109,11 @@ async function newFundedKey(amount = '100'): Promise<{ raw: string; userId: numb
 
 interface StubSpec {
   failTimes?: number;
-  usage?: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
+  /** 失败错误码覆盖（缺省 upstream_error；如 rate_limited = 上游 429 归一码） */
+  errorCode?: string;
+  /** 失败状态码覆盖（4xx 走透传语义） */
+  errorStatus?: number;
+  usage?: { inputTokens: number; cachedInputTokens: number; outputTokens: number; cacheWriteTokens?: number };
   deadCredential?: boolean;
   /** 成功响应体覆盖（images 计量实值取 data.length） */
   body?: Record<string, unknown>;
@@ -128,9 +133,10 @@ function stubUpstream(plan: Record<string, StubSpec>): UpstreamPort {
       if ((tried < (spec.failTimes ?? 0)) || spec.deadCredential === true) {
         return {
           ok: false,
+          ...(spec.errorStatus != null ? { status: spec.errorStatus } : {}),
           error: spec.deadCredential
             ? { code: 'invalid_api_key', message: 'dead credential', deadCredential: true }
-            : { code: 'upstream_error', message: `boom-${candidate.channelName}` },
+            : { code: spec.errorCode ?? 'upstream_error', message: `boom-${candidate.channelName}` },
         };
       }
       return {
@@ -233,8 +239,8 @@ afterAll(async () => {
 });
 
 async function billingRow(requestId: string) {
-  const result = await db.$client.query<{ status: string; channel_id: number | null; receipt: Record<string, unknown> | null }>(
-    'select status, channel_id, receipt from billing_requests where request_id = $1', [requestId],
+  const result = await db.$client.query<{ status: string; channel_id: number | null; failure_code: string | null; receipt: Record<string, unknown> | null }>(
+    'select status, channel_id, failure_code, receipt from billing_requests where request_id = $1', [requestId],
   );
   return result.rows[0];
 }
@@ -342,6 +348,34 @@ describe('runChat 资金编排', () => {
     for (const row of reserved.rows) {
       expect(new Decimal(row.upstream_reserved).isZero()).toBe(true);
     }
+  });
+
+  it('上游 429 归一码 rate_limited 全渠道竭尽 → 503 no_available_channel（修复前误报 502 upstream_failed）', async () => {
+    const seeded = await seedModelWithChannels([{}, {}]);
+    const model = seeded.model;
+    const { raw, userId } = await newFundedKey();
+    // OpenRouter 免费池共享限流形态：所有渠道上游 429（switchable → 换渠 → 竭尽）
+    const app = makeApp(stubUpstream({
+      [seeded.channelNames[0]!]: { failTimes: 99, errorCode: 'rate_limited', errorStatus: 429 },
+      [seeded.channelNames[1]!]: { failTimes: 99, errorCode: 'rate_limited', errorStatus: 429 },
+    }));
+
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body(model)),
+    });
+    expect(res.status).toBe(503);
+    const errBody = (await res.json()) as { error: { code: string } };
+    expect(errBody.error.code).toBe('no_available_channel');
+
+    const found = await db.$client.query<{ request_id: string }>(
+      'select request_id from billing_requests where user_id = $1 order by created_at desc limit 1', [userId],
+    );
+    const requestId = found.rows[0]!.request_id;
+    createdRequests.push(requestId);
+    expect((await billingRow(requestId))!.status).toBe('released');
+    expect((await billingRow(requestId))!.failure_code).toBe('no_available_channel');
   });
 
   it('跨模型 fallback：主模型全渠道可换失败 → fallback 模型渠道成功，收据用 fallback 快照', async () => {
@@ -468,7 +502,9 @@ describe('runChat 流式分支', () => {
         ownerId: tag(), batchSize: 5, claimLeaseMs: 60_000, requestIds: [row0.request_id],
       });
       expect(claims).toHaveLength(1);
-      expect(await settlement.processClaim(systemContext(randomUUID()), claims[0]!)).toBe('settled');
+      // 共享 dev 库竞态（§5.7）：外部活 worker 可能先结算——retried 也是合法终态
+    const outcome = await settlement.processClaim(systemContext(randomUUID()), claims[0]!);
+    expect(['settled', 'retried']).toContain(outcome);
     }
   });
 
@@ -912,4 +948,57 @@ describe('任务词表一致性（ai ProtocolTaskKind ↔ domain GENERATION_KIND
     }
     expect(domainTaskKinds.toSorted()).toEqual([...protocolTaskKinds].toSorted());
   });
+});
+
+describe('cache_write 计费全链（0063：系数体系 + 三分段互斥）', () => {
+  it('上游 usage 带 cache_write_tokens → 收据含写分量、结算金额三段计价、usage_logs 落列', async () => {
+    const seeded = await seedModelWithChannels([{}], {
+      pricing: { inputPrice: '1', outputPrice: '2', cacheInputPrice: '0.5', cacheWritePrice: '1.25' },
+    });
+    // 请求时点汇率快照：种一行 auto 基准（repos.fx.current 命中 → 收据与 usage_logs 落列）
+    await db.insert(fxRates).values({ rate: '7.2', source: 'ecb', mode: 'auto' });
+    const { raw, userId } = await newFundedKey('100');
+    const app = makeApp(stubUpstream({
+      [seeded.channelNames[0]!]: {
+        usage: { inputTokens: 1000, cachedInputTokens: 200, outputTokens: 50, cacheWriteTokens: 100 },
+      },
+    }));
+    const res = await app.request('/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body(seeded.model)),
+    });
+    expect(res.status).toBe(200);
+    const found = await db.$client.query<{ request_id: string }>(
+      'select request_id from billing_requests where user_id = $1 order by created_at desc limit 1', [userId],
+    );
+    const requestId = found.rows[0]!.request_id;
+    createdRequests.push(requestId);
+    const row = await billingRow(requestId);
+    expect(row!.status).toBe('settlement_pending');
+    expect(row!.receipt).toMatchObject({
+      usage: { inputTokens: 1000, cachedInputTokens: 200, cacheWriteTokens: 100 },
+      cacheWritePrice: '1.250000000000000000', // PG numeric 尾零原样
+      fxRate: '7.2',
+    });
+    expect(row!.receipt!.fxRateId!).toBeGreaterThan(0);
+    // 真结算：700×1 + 200×0.5 + 100×1.25 + 50×2 = 1025 → 0.001025 元
+    const claims = await settlement.claim(systemContext(randomUUID()), {
+      ownerId: `cw-${tag()}`, batchSize: 10, claimLeaseMs: 60_000, requestIds: [requestId],
+    });
+    // 共享 dev 库竞态（§5.7）：外部活 worker 抢领会致冲突回 retry_wait——
+    // 轮询等任一 worker 终态化（本测试或外部，公式同一真相）
+    await settlement.processClaim(systemContext(randomUUID()), claims[0]!);
+    for (let i = 0; i < 20 && (await billingRow(requestId))!.status !== 'settled'; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const walletState = await walletOf(userId);
+    expect(new Decimal(walletState.balance).eq('99.998975')).toBe(true);
+    expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
+    const log = await db.$client.query(
+      'select cache_write_tokens, cache_write_price from usage_logs where request_id = $1', [requestId],
+    );
+    expect(Number(log.rows[0].cache_write_tokens)).toBe(100);
+    expect(new Decimal(log.rows[0].cache_write_price).eq('1.25')).toBe(true);
+  }, 30_000);
 });

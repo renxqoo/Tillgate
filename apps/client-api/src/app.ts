@@ -128,7 +128,8 @@ export function createApp(deps: AppDeps) {
     );
   }
   app.route('/', oauthRoutes(deps.assembly.oauth, { secureCookie: deps.secureCookie ?? false }));
-  app.route('/', pricingRoutes(db, undefined, session));
+  // 基础目录 Redis 共享缓存（多副本一份；Redis 故障 fail-open 直查 DB）
+  app.route('/', pricingRoutes(db, undefined, session, { redis: deps.assembly.redis }));
 
   return app;
 }

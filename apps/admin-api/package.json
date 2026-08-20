@@ -11,7 +11,8 @@
     "test": "vitest run",
     "lint": "oxlint",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "models-dev:refresh": "tsx scripts/fetch-models-dev.mts"
   },
   "dependencies": {
     "@ai-gateway/ai": "workspace:*",
@@ -23,12 +24,12 @@
     "@ai-gateway/identity-core": "workspace:*",
     "@ai-gateway/repository": "workspace:*",
     "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
     "@hono/node-server": "^1.19.0",
     "hono": "^4.13.0",
     "ioredis": "^5.8.0",
     "jose": "^6.2.8",
-    "zod": "^4.4.3",
-    "@ai-gateway/tracing": "workspace:*"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -37,6 +38,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "undici": "^7.18.0"
   }
 }

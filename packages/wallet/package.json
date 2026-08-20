@@ -33,7 +33,8 @@
     "migrate": "node ./dist/migrate-cli.js",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "decimal.js": "^10.6.0",
