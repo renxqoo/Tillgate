@@ -73,10 +73,12 @@ jobs:
       - name: 四门（typecheck / lint / build / test）
         run: pnpm exec turbo run typecheck lint build test
 
-      - name: 覆盖率门禁（ai 包 90/85 + admin-api 90/85）
+      - name: 覆盖率门禁（ai/admin-api 90/85；资金包 wallet 90/80、service 74/61 棘轮起步）
         run: |
           pnpm --filter @ai-gateway/ai test:coverage
           pnpm --filter @ai-gateway/admin-api test:coverage
+          pnpm --filter @ai-gateway/wallet test:coverage
+          pnpm --filter @ai-gateway/service test:coverage
 
       - name: 上传覆盖率报告
         if: always()
@@ -86,4 +88,6 @@ jobs:
           path: |
             packages/ai/coverage
             apps/admin-api/coverage
+            packages/wallet/coverage
+            packages/service/coverage
           retention-days: 7
