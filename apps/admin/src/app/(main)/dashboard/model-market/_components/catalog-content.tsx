@@ -1,10 +1,12 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   HistoryIcon,
   Loader2Icon,
   RefreshCwIcon,
@@ -120,6 +122,11 @@ export function CatalogContent({
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
 
+  // 分页：大目录（models.dev 快照 6800+）整表渲染数万 DOM 节点直接卡死——
+  // 每页 50 条；勾选草稿按 realModel 键存，跨页/筛选不丢
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+
   // 汇率条编辑态
   const [fxEditing, setFxEditing] = useState(false);
   const [overrideRate, setOverrideRate] = useState('');
@@ -143,6 +150,15 @@ export function CatalogContent({
       return true;
     });
   }, [items, query, priceFilter, stateFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
+  // 筛选/搜索/切源后回第 1 页（结果集变了，旧页码无意义）
+  useEffect(() => setPage(1), [query, priceFilter, stateFilter, sourceId]);
 
   function draftOf(item: CatalogItem): Draft {
     return (
@@ -172,8 +188,10 @@ export function CatalogContent({
   }
 
   function selectAll(selected: boolean): void {
+    // 只作用于当前页（导入单批上限 200——跨页全选既危险也会被服务端拒绝；
+    // 跨页累计用行勾选，导入按钮计数始终是全部已选）
     const next: Record<string, Draft> = { ...drafts };
-    for (const i of filtered) next[i.realModel] = { ...draftOf(i), selected };
+    for (const i of paged) next[i.realModel] = { ...draftOf(i), selected };
     setDrafts(next);
   }
 
@@ -373,8 +391,9 @@ export function CatalogContent({
             <TableRow>
               <TableHead className="w-10">
                 <Checkbox
-                  checked={filtered.length > 0 && selectedItems.length === filtered.length}
+                  checked={paged.length > 0 && paged.every((i) => draftOf(i).selected)}
                   onCheckedChange={(v) => selectAll(v === true)}
+                  title="全选本页（跨页累计勾选，导入单批上限 200）"
                 />
               </TableHead>
               <TableHead>上游模型</TableHead>
@@ -389,7 +408,7 @@ export function CatalogContent({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((item) => {
+            {paged.map((item) => {
               const d = draftOf(item);
               const badge = DIFF_BADGES[item.diff];
               return (
@@ -491,6 +510,33 @@ export function CatalogContent({
           </TableBody>
         </Table>
       </div>
+
+      {/* 分页条：勾选跨页累计（导入按钮计数即全部已选） */}
+      {filtered.length > PAGE_SIZE ? (
+        <div className="flex items-center justify-center gap-3 py-1 text-xs text-muted-foreground">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={safePage <= 1}
+            onClick={() => setPage(safePage - 1)}
+          >
+            <ChevronLeftIcon className="size-3" /> 上一页
+          </Button>
+          <span>
+            第 {safePage} / {totalPages} 页 · 共 {filtered.length.toLocaleString()} 条 · 每页 {PAGE_SIZE}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage(safePage + 1)}
+          >
+            下一页 <ChevronRightIcon className="size-3" />
+          </Button>
+        </div>
+      ) : null}
 
       {/* 上游消失（channel 源）：绑定到本源渠道但目录已无——复核下架 */}
       {sourceKind === 'channel' && gone.length > 0 ? (
