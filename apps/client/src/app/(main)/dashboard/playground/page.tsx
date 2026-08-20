@@ -15,7 +15,8 @@ interface PricingModel {
 }
 
 export default async function PlaygroundPage() {
-  const data = await apiFetch<{ models: PricingModel[] }>('/v1/pricing').catch(() => null);
+  // pageSize=目录单页上限：缺省 100 会截断下拉（目录 134+，新模型 id 靠后排后段——曾致新模型「无法获取」）
+  const data = await apiFetch<{ models: PricingModel[] }>('/v1/pricing?pageSize=500').catch(() => null);
   const models = (data?.models ?? []).map((m) => m.externalName);
 
   return (
