@@ -6,6 +6,7 @@ import { SendIcon } from 'lucide-react';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ai-gateway/ui/components/ui/select';
+import { Input } from '@ai-gateway/ui/components/ui/input';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 
 interface Msg {
@@ -13,17 +14,33 @@ interface Msg {
   content: string;
 }
 
+/** 操练场 BYOK：用户自持 API Key 直连同域网关（Key 仅存本会话，不经服务端保存） */
+const KEY_STORAGE = 'pg:api-key';
+
 export function Playground({ models }: { models: string[] }) {
   const [model, setModel] = useState(models[0] ?? '');
+  const [apiKey, setApiKey] = useState<string>(() => {
+    try { return sessionStorage.getItem(KEY_STORAGE) ?? ''; } catch { return ''; }
+  });
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  function onKeyChange(value: string): void {
+    setApiKey(value);
+    try { sessionStorage.setItem(KEY_STORAGE, value); } catch { /* 隐私模式等场景静默 */ }
+  }
+
   async function send() {
     const text = input.trim();
+    const key = apiKey.trim();
     if (!text || !model || pending) return;
+    if (!key.startsWith('ag_')) {
+      setError('请先粘贴 API Key（ag_ 开头，在「API Key」页创建并复制）');
+      return;
+    }
     setError(null);
     const next: Msg[] = [...messages, { role: 'user', content: text }, { role: 'assistant', content: '' }];
     setMessages(next);
@@ -32,10 +49,9 @@ export function Playground({ models }: { models: string[] }) {
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const res = await fetch('/api/playground/chat/completions', {
+      const res = await fetch('/v1/chat/completions', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
+        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
         body: JSON.stringify({ model, stream: true, messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })) }),
         signal: controller.signal,
       });
@@ -83,7 +99,15 @@ export function Playground({ models }: { models: string[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          type="password"
+          value={apiKey}
+          onChange={(e) => onKeyChange(e.target.value)}
+          placeholder="API Key（ag_ 开头，仅本会话使用）"
+          className="w-72"
+          autoComplete="off"
+        />
         <Select value={model} onValueChange={setModel}>
           <SelectTrigger className="w-64">
             <SelectValue placeholder="选择模型" />

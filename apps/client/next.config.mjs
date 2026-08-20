@@ -46,6 +46,12 @@ const nextConfig = {
     'localhost:3444',
   ],
   transpilePackages: ['@ai-gateway/ui', '@ai-gateway/api-client'],
+  // 操练场 BYOK 直连网关（同域 /v1）：生产由 nginx 把 /v1 分流到 gateway
+  // （请求不达 Next，此规则不生效）；dev 无 nginx 时兜底转发本地网关
+  async rewrites() {
+    const gateway = process.env.GATEWAY_BASE ?? 'http://localhost:8083';
+    return [{ source: '/v1/:path*', destination: `${gateway}/v1/:path*` }];
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

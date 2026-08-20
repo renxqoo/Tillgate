@@ -1,6 +1,6 @@
 /**
  * 终审加固测试（2026-08-20 删 v1 前最后一轮）：
- *   ① 限额合成口径：凭证级 > 用户级 > 全局兜底（v1 DEFAULT_USER_RPM 语义恢复）
+ *   ① 限流并罚语义：凭证维与用户维各自生效（DEFAULT_USER_* 兜底已删——未设置=不限）
  *   ② playground JWT 属主状态核验（封禁用户的存量 JWT 不得在 TTL 窗口内放行）
  */
 import { randomUUID } from 'node:crypto';
@@ -54,8 +54,8 @@ describe('① 限流并罚制（凭证维与用户维各自生效）', () => {
   }, 30_000);
 });
 
-describe('② playground JWT 属主核验', () => {
-  it('封禁用户（status=1）的存量 playground JWT → 401', async () => {
+describe('② playground JWT 退役锁（BYOK 改造 2026-08-21）', () => {
+  it('签名完全合法的 playground 形态 JWT → 401（形态已删，防误恢复）', async () => {
     const [user] = await db
       .insert(users)
       .values({ issuer: 'fh', subject: `fh-${randomUUID().slice(0, 8)}`, identityProvider: 'local' })
@@ -72,13 +72,9 @@ describe('② playground JWT 属主核验', () => {
 
     const app = createApp({ db, oauth: { jwtSecret: JWT_SECRET, tokenTtlSeconds: 3_600 } });
 
-    // 正常用户 → 通过鉴权（404 即代表鉴权通过后的未知路径）
-    const ok = await app.request('/v1/models', { headers: { authorization: `Bearer ${token}` } });
-    expect(ok.status).not.toBe(401);
-
-    // 封禁后同一 token → 401（存量 JWT 不得在 TTL 窗口内继续放行）
-    await db.update(users).set({ status: 1 }).where(eq(users.id, user!.id));
-    const banned = await app.request('/v1/models', { headers: { authorization: `Bearer ${token}` } });
-    expect(banned.status).toBe(401);
+    // 操练场改为用户自持 API Key 直连（client-api 不再持有网关签名密钥）——
+    // 即使签名合法，playground 形态一律 401：不存在的凭证形态必须被拒绝
+    const res = await app.request('/v1/models', { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(401);
   }, 30_000);
 });

@@ -57,9 +57,6 @@ export interface AuthGuards {
   ipGuard: AuthFailureGuard;
   /** 可信代理跳数（来源 IP 提取语义） */
   trustedProxyHops: number;
-  /** 用户级限流兜底（凭证/Scope 未声明时生效；0 = 不限——v1 DEFAULT_USER_RPM 语义） */
-  defaultUserRpm?: number;
-  defaultUserTpm?: number;
 }
 
 /** 限额有效性（0/null/undefined = 不限维） */
@@ -69,7 +66,7 @@ function positive(v: number | null | undefined): number | null {
 
 const KEY_PREFIX = 'ag_';
 
-/** JWT 凭证载荷（/oauth/token 的 app_jwt 与控制台操练场的 playground 两形态） */
+/** JWT 凭证载荷（/oauth/token 的 app_jwt 形态；playground 已随 BYOK 改造退役） */
 interface GatewayJwtPayload {
   typ?: string;
   sub?: string;
@@ -134,38 +131,16 @@ export function apiKeyMiddleware(
             allowPaygFallback: false, // App JWT 恒 false（与 resolveSourceAndLimits 同口径）
             rpmLimit: positive(payload.scope?.rpm),
             tpmLimit: positive(payload.scope?.tpm),
-            userRpmLimit: positive(app.userRpmLimit) ?? positive(guards?.defaultUserRpm),
-            userTpmLimit: positive(app.userTpmLimit) ?? positive(guards?.defaultUserTpm),
+            userRpmLimit: positive(app.userRpmLimit),
+            userTpmLimit: positive(app.userTpmLimit),
             allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
             ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: activeTraceParent() },
           });
           await next();
           return;
         }
-        if (payload.typ === 'playground' && payload.sub != null) {
-          const userId = Number(payload.sub);
-          // 属主状态核验（v1 对位）：封禁/删除用户的存量 playground JWT 不得在 TTL 窗口内继续放行
-          const active = await repos.credential.findActiveUserById(
-            { ...systemContext('gateway-auth'), db },
-            userId,
-          );
-          if (!active) throw new UnauthorizedError('account unavailable');
-          c.set('auth', {
-            userId,
-            apiKeyId: null,
-            appId: null,
-            subscriptionId: null,
-            allowPaygFallback: false,
-            rpmLimit: positive(payload.scope?.rpm),
-            tpmLimit: positive(payload.scope?.tpm),
-            userRpmLimit: positive(active.rpmLimit) ?? positive(guards?.defaultUserRpm),
-            userTpmLimit: positive(active.tpmLimit) ?? positive(guards?.defaultUserTpm),
-            allowedModels: null,
-            ctx: { requestId, actor: { kind: 'user', id: userId }, traceParent: activeTraceParent() },
-          });
-          await next();
-          return;
-        }
+        // playground 形态已退役（2026-08-21 BYOK 改造）：操练场改为用户自持
+        // API Key 直连（client-api 不再持有网关签名密钥——信任根分离）
         throw new UnauthorizedError('unsupported jwt credential type');
       } catch (error) {
         if (guards && error instanceof UnauthorizedError) {
@@ -203,8 +178,8 @@ export function apiKeyMiddleware(
       allowPaygFallback: key.allowPaygFallback,
       rpmLimit: positive(key.rpmLimit),
       tpmLimit: positive(key.tpmLimit),
-      userRpmLimit: positive(key.userRpmLimit) ?? positive(guards?.defaultUserRpm),
-      userTpmLimit: positive(key.userTpmLimit) ?? positive(guards?.defaultUserTpm),
+      userRpmLimit: positive(key.userRpmLimit),
+      userTpmLimit: positive(key.userTpmLimit),
       allowedModels: null,
       ctx: { requestId, actor: { kind: 'user', id: key.userId }, traceParent: activeTraceParent() },
     });

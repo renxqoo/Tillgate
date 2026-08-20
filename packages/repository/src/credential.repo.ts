@@ -89,18 +89,6 @@ export class CredentialRepository {
     };
   }
 
-  /** 按用户 id 查有效用户（playground JWT 分支：存在性 + status=0 + 用户级限额） */
-  async findActiveUserById(
-    c: RepoContext,
-    userId: number,
-  ): Promise<{ rpmLimit: number | null; tpmLimit: number | null } | null> {
-    const [row] = await c.db
-      .select({ rpmLimit: users.rpmLimit, tpmLimit: users.tpmLimit })
-      .from(users)
-      .where(and(eq(users.id, userId), eq(users.status, 0)));
-    return row ?? null;
-  }
-
   /** 按哈希查有效静态 Key（鉴权路径：status=0 且未过期且属主用户正常；返回鉴权与来源解析所需全集）
    *  属主 join 不可省：封禁用户（users.status≠0）的存量 Key 必须立即失效——
    *  否则封禁只挡控制台登录，网关推理照常放行。

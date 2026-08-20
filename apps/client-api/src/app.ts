@@ -26,7 +26,6 @@ import { appsRoutes } from './routes/apps.js';
 import { oauthRoutes } from './routes/oauth.js';
 import { pricingRoutes } from './routes/pricing.js';
 import { referralRoutes } from './routes/referrals.js';
-import { playgroundRoutes } from './routes/playground.js';
 import type { ClientApiAssembly } from './assembly.js';
 
 export interface AppDeps {
@@ -107,26 +106,6 @@ export function createApp(deps: AppDeps) {
   app.route('/', orgRoutes(deps.assembly.org, session));
   app.route('/', appsRoutes(deps.assembly.apps, session));
   app.route('/', referralRoutes(deps.assembly.referralService, session));
-  // 操练场代理（配置成组才挂载；未配时前端入口隐藏）
-  if (deps.assembly.playground) {
-    const pgRepos = createRepositories();
-    app.route(
-      '/',
-      playgroundRoutes(
-        {
-          ...deps.assembly.playground,
-          userStatus: async (userId) => {
-            const account = await pgRepos.userAccount.findById(
-              { db: deps.db, requestId: 'playground', actor: { kind: 'system' }, traceParent: null },
-              userId,
-            );
-            return account != null && account.status === 0;
-          },
-        },
-        session,
-      ),
-    );
-  }
   app.route('/', oauthRoutes(deps.assembly.oauth, { secureCookie: deps.secureCookie ?? false }));
   // 基础目录 Redis 共享缓存（多副本一份；Redis 故障 fail-open 直查 DB）
   app.route('/', pricingRoutes(db, undefined, session, { redis: deps.assembly.redis }));

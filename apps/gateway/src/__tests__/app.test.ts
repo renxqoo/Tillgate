@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb } from '@ai-gateway/db';
-import { apiKeys, users } from '@ai-gateway/db';
+import { apiKeys, apps, users } from '@ai-gateway/db';
 import type { Db } from '@ai-gateway/repository';
 import { createHash } from 'node:crypto';
 import {
@@ -28,6 +28,30 @@ const db: Db = createDb(
 const app = createApp({ db, oauth: { jwtSecret: 'gw-test-secret-0123456789abcdef', tokenTtlSeconds: 3_600 } });
 const createdUsers: number[] = [];
 const createdKeys: number[] = [];
+
+const createdApps: number[] = [];
+
+/** 造真实 app 行 + 签合法 app_jwt（playground 形态已退役——爆破锁用例的合法 JWT 样本） */
+async function newAppJwt(userId: number): Promise<string> {
+  const [row] = await db
+    .insert(apps)
+    .values({
+      appId: `app-${randomUUID().slice(0, 12)}`,
+      userId,
+      clientId: `cid-${randomUUID().slice(0, 16)}`,
+      clientSecretHash: createHash('sha256').update(randomUUID()).digest('hex'),
+      name: 'v2ga-test',
+    })
+    .returning({ id: apps.id });
+  createdApps.push(row!.id);
+  return new SignJWT({ typ: 'app_jwt', app_id: row!.id, sub: String(userId) })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer('ai-gateway')
+    .setAudience('ai-gateway-api')
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode('gw-test-secret-0123456789abcdef'));
+}
 
 async function newUser(): Promise<number> {
   const [row] = await db
@@ -57,6 +81,7 @@ async function newKey(userId: number, overrides: Record<string, unknown> = {}): 
 afterAll(async () => {
   // 原生参数化清理（app 层零 drizzle import——SQL 归 repository 的边界同样适用于测试）
   if (createdKeys.length) await db.$client.query('delete from api_keys where id = any($1)', [createdKeys]);
+  if (createdApps.length) await db.$client.query('delete from apps where id = any($1)', [createdApps]);
   if (createdUsers.length) await db.$client.query('delete from users where id = any($1)', [createdUsers]);
   await db.$client.end().catch(() => {});
 });
@@ -180,13 +205,7 @@ describe('JWT 凭证爆破锁（终审修复：修复前 JWT 分支不查锁不�
     expect(failures).toBe(3); // 修复前：JWT 分支失败不计数（failures 恒 0）
     // 锁定后：签名完全合法的 JWT 也在验签前被锁拒绝（不再触达 DB）
     const user = await newUser();
-    const good = await new SignJWT({ typ: 'playground', sub: String(user) })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuer('ai-gateway')
-      .setAudience('ai-gateway-api')
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(new TextEncoder().encode('gw-test-secret-0123456789abcdef'));
+    const good = await newAppJwt(user);
     const res = await probe.request('/whoami', { headers: { authorization: `Bearer ${good}` } });
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { message: string } };
@@ -200,13 +219,7 @@ describe('JWT 凭证爆破锁（终审修复：修复前 JWT 分支不查锁不�
       recordFailure: async () => { failures += 1; return { locked: false, retryAfterSec: 0 }; },
     });
     const user = await newUser();
-    const good = await new SignJWT({ typ: 'playground', sub: String(user) })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuer('ai-gateway')
-      .setAudience('ai-gateway-api')
-      .setIssuedAt()
-      .setExpirationTime('1h')
-      .sign(new TextEncoder().encode('gw-test-secret-0123456789abcdef'));
+    const good = await newAppJwt(user);
     const res = await probe.request('/whoami', { headers: { authorization: `Bearer ${good}` } });
     expect(res.status).toBe(200);
     expect(failures).toBe(0);
