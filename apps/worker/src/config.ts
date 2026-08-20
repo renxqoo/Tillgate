@@ -33,8 +33,7 @@ const schema = z.object({
   WORKER_GENERATION_BATCH_SIZE: z.coerce.number().int().positive().default(20),
   WORKER_GENERATION_LEASE_MS: z.coerce.number().int().positive().default(30_000),
   WORKER_GENERATION_EXPIRE_REASON: z.string().default('任务超时（TTL 到期）'),
-  /** 邀请返利：佣金比例（0–1；0 = 关闭）与日结节奏 */
-  REFERRAL_COMMISSION_RATE: z.string().regex(/^(?:0(?:\.\d{1,18})?|1(?:\.0{1,18})?)$/).default('0'),
+  /** 邀请返利日结节奏（佣金比例已 DB 化——marketing_settings 每.tick 读现值） */
   WORKER_REFERRAL_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
   /** 告警投递（notify_outbox 消费者——webhook/邮件；v1 对位循环） */
   WORKER_NOTIFY_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
@@ -87,4 +86,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     throw new Error('OTEL_TRACES_MODE=otlp 时必须配置 OTEL_EXPORTER_OTLP_ENDPOINT');
   }
   return config;
+}
+
+/**
+ * startWorker 内联配置归一化（与 loadConfig 同一 schema 事实源）：
+ * 嵌入式调用（e2e/测试直收对象）绕过 env 加载时，缺字段不再静默 undefined——
+ * 2026-08-21 事故：e2e 配置缺 REFERRAL_COMMISSION_RATE，undefined 直达
+ * Decimal 构造，佣金 tick 每轮崩溃（单轮 e2e 刷 362 次错误日志）。
+ * 语义：缺字段填 schema 默认 / 非法值 fail-closed 抛错 / 多余字段剥离。
+ */
+export function resolveWorkerConfig(input: Record<string, unknown>): WorkerConfig {
+  return loadConfig(input as unknown as NodeJS.ProcessEnv);
 }

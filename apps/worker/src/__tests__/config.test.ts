@@ -18,9 +18,8 @@ describe('Worker 配置 fail-closed', () => {
     expect(config.WORKER_SETTLE_WAKEUP).toBe(false);
   });
 
-  it('拒绝含糊布尔值、弱密钥与非十进制佣金比例', () => {
+  it('拒绝含糊布尔值与弱密钥（佣金比例域校验已随 DB 化移至 marketing_settings CHECK）', () => {
     expect(() => loadConfig({ ...base, WORKER_NOTIFY_ENABLED: '0' })).toThrow();
     expect(() => loadConfig({ ...base, ENCRYPTION_KEY: 'short' })).toThrow();
-    expect(() => loadConfig({ ...base, REFERRAL_COMMISSION_RATE: '1e-1' })).toThrow();
   });
 });
