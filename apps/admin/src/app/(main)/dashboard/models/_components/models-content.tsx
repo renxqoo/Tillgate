@@ -181,9 +181,9 @@ export function ModelsTable({
         <TableRow>
           <TableHead>外部名称</TableHead>
           <TableHead>真实模型</TableHead>
-          <TableHead className="text-right">输入 / 百万 token</TableHead>
-          <TableHead className="text-right">输出 / 百万 token</TableHead>
-          <TableHead className="text-right">缓存 / 百万 token</TableHead>
+          <TableHead className="text-right">输入价</TableHead>
+          <TableHead className="text-right">输出价</TableHead>
+          <TableHead className="text-right">缓存价</TableHead>
           <TableHead>兜底模型</TableHead>
           <TableHead className="w-44">状态</TableHead>
           <TableHead className="text-right">上下文</TableHead>
@@ -221,15 +221,25 @@ function ModelRowItem({
       <TableCell className="font-medium">{model.realModel}</TableCell>
       <TableCell className="text-right tabular-nums">
         {model.pricingUnit && model.pricingUnit !== 'token' ? (
-          <span>¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit)}</span>
+          <span className="text-muted-foreground">—</span>
         ) : (
           <span>¥{fmtPrice(model.inputPrice)}/M</span>
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">
-        {model.pricingUnit && model.pricingUnit !== 'token' ? <span className="text-muted-foreground">—</span> : <span>¥{fmtPrice(model.outputPrice)}/M</span>}
+        {model.pricingUnit && model.pricingUnit !== 'token' ? (
+          <span>¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit)}</span>
+        ) : (
+          <span>¥{fmtPrice(model.outputPrice)}/M</span>
+        )}
       </TableCell>
-      <TableCell className="text-right tabular-nums">¥{fmtPrice(model.cacheInputPrice)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {model.pricingUnit && model.pricingUnit !== 'token' ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <span>¥{fmtPrice(model.cacheInputPrice)}/M</span>
+        )}
+      </TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
       </TableCell>
