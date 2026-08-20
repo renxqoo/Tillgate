@@ -12,7 +12,7 @@ import {
   Trash2Icon,
   RotateCcwIcon,
 } from 'lucide-react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
@@ -42,7 +42,7 @@ import {
 } from '@ai-gateway/ui/components/ui/table';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
 import { moneyText, numericText } from '@ai-gateway/ui/lib/forms';
-import { fmtPrice } from '@ai-gateway/api-client/formatters';
+import { fmtPrice, unitWord } from '@ai-gateway/api-client/formatters';
 
 /** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
 function fmtContext(tokens: number | null): string {
@@ -124,8 +124,16 @@ function ModelRowItem({
         {model.isFree && <StatusPill className="ml-2" tone="info" label="免费" />}
       </TableCell>
       <TableCell className="font-medium">{model.realModel}</TableCell>
-      <TableCell className="text-right tabular-nums">¥{fmtPrice(model.inputPrice)}</TableCell>
-      <TableCell className="text-right tabular-nums">¥{fmtPrice(model.outputPrice)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {model.pricingUnit && model.pricingUnit !== 'token' ? (
+          <span>¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit)}</span>
+        ) : (
+          <span>¥{fmtPrice(model.inputPrice)}/M</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {model.pricingUnit && model.pricingUnit !== 'token' ? <span className="text-muted-foreground">—</span> : <span>¥{fmtPrice(model.outputPrice)}/M</span>}
+      </TableCell>
       <TableCell className="text-right tabular-nums">¥{fmtPrice(model.cacheInputPrice)}</TableCell>
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
@@ -379,17 +387,51 @@ function ModelForm({
   onSubmit,
   formId,
   isEdit = false,
+  initialBillingConfig,
 }: {
   form: any;
-  onSubmit: (v: never) => void;
+  // biome-ignore lint: 表单值形状由两个调用方的 zod 推断，此处宽收（差价编辑器在内部并入 billingConfig）
+  onSubmit: (v: any) => void;
   formId: string;
   isEdit?: boolean;
+  /** 差价编辑器初始值（编辑回显——billingConfig 不走 RHF 字段） */
+  initialBillingConfig?: { params?: { selector?: string; prices?: Record<string, string> } };
 }) {
-  // 计价方式联动：token 模式显三价+缓存写价；单位模式（图片/音频/语音/按次）只显单位单价
-  const pricingUnit: string = form.watch('pricingUnit') ?? 'token';
+  // 计价方式联动：token 模式显三价+缓存写价；单位模式（图片/音频/语音/按次）只显单位单价。
+  // useWatch（而非 form.watch）确保 Controller 外的订阅重渲染稳定。
+  const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? 'token';
   const unitMode = pricingUnit !== 'token';
+  // 分辨率差价编辑器（variant 策略）：selector=请求参数名；rows=参数值→单价（本地 state，提交时并入 billingConfig）
+  const initialConfig = initialBillingConfig;
+  const [variantMode, setVariantMode] = useState<boolean>(Boolean(initialConfig?.params?.prices));
+  const [selector, setSelector] = useState<string>(initialConfig?.params?.selector ?? 'size');
+  const [rows, setRows] = useState<Array<{ key: string; price: string }>>(
+    Object.entries(initialConfig?.params?.prices ?? {}).map(([key, price]) => ({ key, price })),
+  );
   return (
-    <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      id={formId}
+      onSubmit={form.handleSubmit((values: any) =>
+        onSubmit({
+          ...values,
+          // 分辨率差价：variant 策略 + selector + 价格表（空键行过滤；预扣取最高价由计费域保证）
+          ...(unitMode && variantMode
+            ? {
+                billingConfig: {
+                  strategy: 'variant',
+                  params: {
+                    selector: selector.trim() || 'size',
+                    prices: Object.fromEntries(
+                      rows.filter((r) => r.key.trim() !== '' && r.price.trim() !== '').map((r) => [r.key.trim(), r.price.trim()]),
+                    ),
+                  },
+                },
+              }
+            : {}),
+        }),
+      )}
+      className="space-y-4"
+    >
       <FieldGroup>
         <div className="grid grid-cols-2 gap-3">
           <Controller
@@ -484,10 +526,57 @@ function ModelForm({
           <NumberField
             control={form.control}
             name="unitPrice"
-            label={`单位单价（元/${pricingUnit === 'image' ? '张' : pricingUnit === 'second' ? '秒' : pricingUnit === 'char' ? '字符' : '次'}）`}
+            label={`单位单价（元/${pricingUnit === 'image' ? '张' : pricingUnit === 'second' ? '秒' : pricingUnit === 'char' ? '字符' : '次'}；统一价/差价未命中回落）`}
             id="m-unit-price"
             step="0.0001"
           />
+          ) : null}
+          {unitMode ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={variantMode}
+                  onCheckedChange={(v) => setVariantMode(v === true)}
+                />
+                按参数差价（如图片 1K/2K、视频分辨率不同价）
+              </label>
+              {variantMode ? (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <div className="grid gap-1">
+                      <label className="text-xs text-muted-foreground" htmlFor="m-selector">选价参数（请求体字段名）</label>
+                      <Input id="m-selector" value={selector} onChange={(e) => setSelector(e.target.value)} placeholder="size" className="h-8" />
+                    </div>
+                  </div>
+                  {rows.map((row, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                      <Input
+                        value={row.key}
+                        onChange={(e) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
+                        placeholder="参数值（如 1024*1024）"
+                        className="h-8"
+                      />
+                      <Input
+                        value={row.price}
+                        onChange={(e) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, price: e.target.value } : r)))}
+                        placeholder="单价（元）"
+                        className="h-8"
+                        inputMode="decimal"
+                      />
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}>
+                        移除
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" size="sm" variant="outline" onClick={() => setRows((cur) => [...cur, { key: '', price: '' }])}>
+                    + 添加价格行
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    预扣按表中最高价保守收取，结算按请求实际参数取价，未命中回落统一单价；计费公式与计量不变。
+                  </p>
+                </div>
+              ) : null}
+            </div>
           ) : null}
           <NumberField
             control={form.control}

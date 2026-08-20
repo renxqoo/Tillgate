@@ -59,6 +59,8 @@ export interface ModelsService {
       prices: ModelPricesInput;
       /** 计价单位（token 缺省；图片=image/音频=second/语音=char/按次=request） */
       pricingUnit?: string;
+      /** 变体价格配置（分辨率差价——网关 quote/结算已消费该 JSONB） */
+      billingConfig?: import('@ai-gateway/db').BillingConfigJson;
       isFree?: boolean;
       billingPolicy?: Record<string, unknown> | null;
       rpmLimit?: number | null;
@@ -77,6 +79,7 @@ export interface ModelsService {
         status?: number;
         prices?: Partial<ModelPricesInput>;
         pricingUnit?: string;
+        billingConfig?: import('@ai-gateway/db').BillingConfigJson;
         isFree?: boolean;
         billingPolicy?: Record<string, unknown> | null;
         rpmLimit?: number | null;
@@ -163,6 +166,7 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
           cacheWritePrice: input.prices.cacheWritePrice ?? '0',
           unitPrice: input.prices.unitPrice ?? '0',
           pricingUnit: input.pricingUnit ?? 'token',
+          billingConfig: input.billingConfig ?? {},
           isFree,
           billingPolicy: (input.billingPolicy ?? null) as Record<string, unknown> | null,
           rpmLimit: input.rpmLimit ?? null,
@@ -195,11 +199,13 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
       const mergedFree = input.patch.isFree ?? existing.isFree;
       assertFreeConsistency(mergedFree, mergedPrices);
 
-      const { prices, ...rest } = input.patch;
+      const { prices, billingConfig, ...rest } = input.patch;
+      // null=清除变体配置（列 notNull：清成 {}）；undefined=不改
+      const patchRest = billingConfig === undefined ? rest : { ...rest, billingConfig: billingConfig ?? {} };
       const row = await db.transaction(async (tx) =>
         repos.modelMapping.updateMapping({ db: tx, ...ctx }, {
           mappingId: input.mappingId,
-          patch: { ...rest, ...prices },
+          patch: { ...patchRest, ...prices },
         }),
       );
       if (!row) throw new AppError(404, 'model_not_found', '模型不存在');

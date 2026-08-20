@@ -118,7 +118,9 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
       align: "right",
       render: (r) =>
         r.units && r.units > 0 ? (
-          <span className="text-right text-xs tabular-nums text-muted-foreground">—</span>
+          <span className="text-right text-xs tabular-nums text-muted-foreground">
+            {r.unitPrice ? `¥${Number(r.unitPrice).toFixed(2)}/${unitWord(r.pricingUnit)}` : '—'}
+          </span>
         ) : (
           <span className="text-right text-xs tabular-nums">{r.outputTokens.toLocaleString()}</span>
         ),

@@ -30,6 +30,28 @@ const billingPolicySchema = z.object({
     })
     .strict(),
 });
+
+/** 变体价格配置（分辨率差价）：selector=请求参数名（如 size），prices=参数值→单价 */
+const billingConfigSchema = z
+  .object({
+    strategy: z.enum(['flat', 'variant']),
+    params: z
+      .object({
+        unitPrice: price.optional(),
+        selector: z.string().min(1).max(64).optional(),
+        prices: z.record(z.string().min(1).max(128), price).optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (c) => c.strategy !== 'variant' || (c.params?.prices != null && Object.keys(c.params.prices).length > 0),
+    'variant 策略必须提供 prices 价格表',
+  )
+  .refine(
+    (c) => c.strategy !== 'variant' || c.params?.selector != null,
+    'variant 策略必须提供 selector（请求参数名，如 size）',
+  );
+
 const createSchema = z.object({
   externalName: z.string().min(1).max(64),
   realModel: z.string().min(1).max(128),
@@ -43,6 +65,8 @@ const createSchema = z.object({
   pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']).default('token'),
   /** 单位单价（元/单位；单位计价模型必填，token 模型留空=0） */
   unitPrice: z.union([price, z.coerce.number().min(0).finite().max(1e12).transform((v) => String(v))]).optional(),
+  /** 变体价格（分辨率差价）：strategy=variant + selector + prices；null=清除 */
+  billingConfig: billingConfigSchema.nullable().optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
@@ -60,6 +84,7 @@ const updateSchema = z.object({
   cacheWritePrice: price.optional(),
   pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']).optional(),
   unitPrice: z.union([price, z.coerce.number().min(0).finite().max(1e12).transform((v) => String(v))]).optional(),
+  billingConfig: billingConfigSchema.nullable().optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().nullable().optional(),
@@ -111,6 +136,7 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         unitPrice: body.unitPrice ?? '0',
       },
       pricingUnit: body.pricingUnit,
+      billingConfig: body.billingConfig ?? undefined,
       isFree: body.isFree,
       rpmLimit: body.rpmLimit ?? null,
       tpmLimit: body.tpmLimit ?? null,
@@ -135,6 +161,7 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         ...(body.rpmLimit !== undefined ? { rpmLimit: body.rpmLimit } : {}),
         ...(body.tpmLimit !== undefined ? { tpmLimit: body.tpmLimit } : {}),
         ...(body.pricingUnit !== undefined ? { pricingUnit: body.pricingUnit } : {}),
+        ...(body.billingConfig !== undefined ? { billingConfig: body.billingConfig ?? {} } : {}),
         ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined || body.cacheWritePrice !== undefined || body.unitPrice !== undefined
           ? {
               prices: {

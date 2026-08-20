@@ -87,7 +87,11 @@ export default async function UsagePage({ searchParams }: PageProps) {
         </span>
       ),
     },
-    { key: "outputTokens", header: "输出", align: "right", render: (r) => <span className="text-right tabular-nums">{fmtInt(r.outputTokens)}</span> },
+    { key: "outputTokens", header: "输出", align: "right", render: (r) => r.units && r.units > 0 ? (
+          <span className="text-right tabular-nums text-muted-foreground">{r.unitPrice ? `¥${Number(r.unitPrice).toFixed(2)}/${unitWord(r.pricingUnit)}` : "—"}</span>
+        ) : (
+          <span className="text-right tabular-nums">{fmtInt(r.outputTokens)}</span>
+        ) },
     {
       key: "amount",
       header: "消耗",

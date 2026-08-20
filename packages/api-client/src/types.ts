@@ -306,6 +306,11 @@ export interface AdminModelRow {
   pricingUnit?: string;
   /** 单位单价（元/张·秒·字符·次；token 模型 0） */
   unitPrice?: string;
+  /** 变体价格配置（分辨率差价）：strategy=variant + params.{selector, prices} */
+  billingConfig?: {
+    strategy?: string;
+    params?: { unitPrice?: string; selector?: string; prices?: Record<string, string> };
+  } | null;
   isFree: boolean;
   contextLength: number | null;
   fallbackModels: string | null;

@@ -4,7 +4,8 @@
  * 渠道选择不在此（channels.models 匹配属路由域）；定价为官方价，用户价=×费率卡系数。
  */
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
-import { channels, modelChannels, modelMappings, providers } from '@ai-gateway/db';
+import { channels, modelChannels, modelMappings, providers,
+  type BillingConfigJson,} from '@ai-gateway/db';
 import type { RepoContext } from './context.js';
 import { escapeLikePattern } from './search.js';
 
@@ -84,6 +85,8 @@ export interface MappingAdminPatch {
   unitPrice?: string;
   /** 计价单位（token/image/second/char/request） */
   pricingUnit?: string;
+  /** 变体价格配置（分辨率差价）；undefined=不改，{}=清除 */
+  billingConfig?: BillingConfigJson;
   isFree?: boolean;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
@@ -175,6 +178,8 @@ export class ModelMappingRepository {
       /** 单位单价与计价单位（图片/张 等——2026-08-21 管理面通道补齐） */
       unitPrice?: string;
       pricingUnit?: string;
+      /** 变体价格配置（分辨率差价）——网关 quote/结算消费；缺省 {}（列 notNull default） */
+      billingConfig?: BillingConfigJson;
       isFree: boolean;
       /** 0 上架 / 1 下架（目录导入用 1 = 草稿态） */
       status?: number;
@@ -196,6 +201,7 @@ export class ModelMappingRepository {
         cacheWritePrice: input.cacheWritePrice ?? '0',
         pricingUnit: input.pricingUnit ?? 'token',
         unitPrice: input.unitPrice ?? '0',
+        billingConfig: input.billingConfig ?? {},
         isFree: input.isFree,
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,
