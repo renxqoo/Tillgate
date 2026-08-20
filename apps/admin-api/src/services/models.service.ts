@@ -40,6 +40,8 @@ export interface ModelPricesInput {
   outputPrice: string;
   cacheInputPrice: string;
   cacheWritePrice: string;
+  /** 单位计价（图片/张、音频/秒、语音/字符；token 模型 0）——2026-08-21 管理面通道补齐 */
+  unitPrice?: string;
 }
 
 export interface ModelsService {
@@ -55,6 +57,8 @@ export interface ModelsService {
       realModel: string;
       contextLength?: number | null;
       prices: ModelPricesInput;
+      /** 计价单位（token 缺省；图片=image/音频=second/语音=char/按次=request） */
+      pricingUnit?: string;
       isFree?: boolean;
       billingPolicy?: Record<string, unknown> | null;
       rpmLimit?: number | null;
@@ -72,6 +76,7 @@ export interface ModelsService {
         contextLength?: number | null;
         status?: number;
         prices?: Partial<ModelPricesInput>;
+        pricingUnit?: string;
         isFree?: boolean;
         billingPolicy?: Record<string, unknown> | null;
         rpmLimit?: number | null;
@@ -101,7 +106,7 @@ export interface ModelsService {
 /** R6 校验：isFree=true 必须全零价（矛盾态在服务边界拒绝） */
 function assertFreeConsistency(isFree: boolean, prices: ModelPricesInput): void {
   if (!freePriceConsistent(isFree, prices)) {
-    throw new AppError(400, 'free_model_price_conflict', '显式免费模型必须全零价（input/output/cache 三价均为 0）');
+    throw new AppError(400, 'free_model_price_conflict', '显式免费模型必须全零价（token 三价 + 缓存写价 + 单位价均为 0）');
   }
 }
 
@@ -156,6 +161,8 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
           outputPrice: input.prices.outputPrice,
           cacheInputPrice: input.prices.cacheInputPrice,
           cacheWritePrice: input.prices.cacheWritePrice ?? '0',
+          unitPrice: input.prices.unitPrice ?? '0',
+          pricingUnit: input.pricingUnit ?? 'token',
           isFree,
           billingPolicy: (input.billingPolicy ?? null) as Record<string, unknown> | null,
           rpmLimit: input.rpmLimit ?? null,
@@ -183,6 +190,7 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
         outputPrice: input.patch.prices?.outputPrice ?? existing.outputPrice,
         cacheInputPrice: input.patch.prices?.cacheInputPrice ?? existing.cacheInputPrice,
         cacheWritePrice: input.patch.prices?.cacheWritePrice ?? existing.cacheWritePrice,
+        unitPrice: input.patch.prices?.unitPrice ?? existing.unitPrice ?? '0',
       };
       const mergedFree = input.patch.isFree ?? existing.isFree;
       assertFreeConsistency(mergedFree, mergedPrices);

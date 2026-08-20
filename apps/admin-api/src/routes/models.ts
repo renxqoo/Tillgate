@@ -39,6 +39,10 @@ const createSchema = z.object({
   cacheInputPrice: price,
   /** 缓存写单价（元/百万 token；缺省 0 = 不收缓存写费） */
   cacheWritePrice: price.optional(),
+  /** 计价单位（token 缺省；图片=image/音频=second/语音=char/按次=request） */
+  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']).default('token'),
+  /** 单位单价（元/单位；单位计价模型必填，token 模型留空=0） */
+  unitPrice: z.union([price, z.coerce.number().min(0).finite().max(1e12).transform((v) => String(v))]).optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
@@ -54,6 +58,8 @@ const updateSchema = z.object({
   outputPrice: price.optional(),
   cacheInputPrice: price.optional(),
   cacheWritePrice: price.optional(),
+  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']).optional(),
+  unitPrice: z.union([price, z.coerce.number().min(0).finite().max(1e12).transform((v) => String(v))]).optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().nullable().optional(),
@@ -102,7 +108,9 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         outputPrice: body.outputPrice,
         cacheInputPrice: body.cacheInputPrice,
         cacheWritePrice: body.cacheWritePrice ?? '0',
+        unitPrice: body.unitPrice ?? '0',
       },
+      pricingUnit: body.pricingUnit,
       isFree: body.isFree,
       rpmLimit: body.rpmLimit ?? null,
       tpmLimit: body.tpmLimit ?? null,
@@ -126,13 +134,15 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         ...(body.billingPolicy !== undefined ? { billingPolicy: body.billingPolicy } : {}),
         ...(body.rpmLimit !== undefined ? { rpmLimit: body.rpmLimit } : {}),
         ...(body.tpmLimit !== undefined ? { tpmLimit: body.tpmLimit } : {}),
-        ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined || body.cacheWritePrice !== undefined
+        ...(body.pricingUnit !== undefined ? { pricingUnit: body.pricingUnit } : {}),
+        ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined || body.cacheWritePrice !== undefined || body.unitPrice !== undefined
           ? {
               prices: {
                 ...(body.inputPrice !== undefined ? { inputPrice: body.inputPrice } : {}),
                 ...(body.outputPrice !== undefined ? { outputPrice: body.outputPrice } : {}),
                 ...(body.cacheInputPrice !== undefined ? { cacheInputPrice: body.cacheInputPrice } : {}),
                 ...(body.cacheWritePrice !== undefined ? { cacheWritePrice: body.cacheWritePrice } : {}),
+                ...(body.unitPrice !== undefined ? { unitPrice: body.unitPrice } : {}),
               },
             }
           : {}),

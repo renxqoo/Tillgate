@@ -17,7 +17,18 @@ export function isFreeByPrice(p: PriceTriple): boolean {
   return isZero(p.inputPrice) && isZero(p.outputPrice) && isZero(p.cacheInputPrice);
 }
 
-/** 显式免费与价格相容（isFree=true → 三价全零）；合并口径由调用方组好 triple 再判 */
-export function freePriceConsistent(isFree: boolean, p: PriceTriple): boolean {
-  return !isFree || (isZero(p.inputPrice) && isZero(p.outputPrice) && isZero(p.cacheInputPrice));
+/** 显式免费与价格相容（isFree=true → 全部价格分量归零）；合并口径由调用方组好再判。
+ *  2026-08-21 扩域：缓存写价与单位价纳入（图片模型 unitPrice>0 + isFree 曾可穿过）。 */
+export function freePriceConsistent(
+  isFree: boolean,
+  p: PriceTriple & { cacheWritePrice?: string; unitPrice?: string },
+): boolean {
+  return (
+    !isFree ||
+    (isZero(p.inputPrice) &&
+      isZero(p.outputPrice) &&
+      isZero(p.cacheInputPrice) &&
+      isZero(p.cacheWritePrice ?? '0') &&
+      isZero(p.unitPrice ?? '0'))
+  );
 }

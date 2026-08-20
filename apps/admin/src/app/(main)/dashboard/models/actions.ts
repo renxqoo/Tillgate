@@ -12,6 +12,9 @@ export interface ModelCreateInput {
   outputPrice: string;
   cacheInputPrice?: string;
   cacheWritePrice?: string;
+  /** 计价单位（token/image/second/char/request）；单位计价模型配 unitPrice */
+  pricingUnit?: string;
+  unitPrice?: string;
   isFree?: boolean;
   contextLength?: number | null;
   billingPolicy?: Record<string, unknown> | null;
@@ -31,6 +34,8 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
         outputPrice: input.outputPrice,
         cacheInputPrice: input.cacheInputPrice ?? '0',
         ...(input.cacheWritePrice != null ? { cacheWritePrice: input.cacheWritePrice } : {}),
+        pricingUnit: input.pricingUnit ?? 'token',
+        ...(input.unitPrice != null ? { unitPrice: input.unitPrice } : {}),
         isFree: input.isFree ?? false,
         ...(input.contextLength != null ? { contextLength: input.contextLength } : {}),
         billingPolicy: input.billingPolicy ?? null,
@@ -51,6 +56,9 @@ export interface ModelUpdateInput {
   outputPrice?: string;
   cacheInputPrice?: string;
   cacheWritePrice?: string;
+  /** 计价单位（token/image/second/char/request）；单位计价模型配 unitPrice */
+  pricingUnit?: string;
+  unitPrice?: string;
   isFree?: boolean;
   contextLength?: number | null;
   fallbackModels?: string;

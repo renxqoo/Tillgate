@@ -100,6 +100,58 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
   });
 });
 
+describe('单位计价（图片/音频族——unitPrice+pricingUnit 管理面通道，2026-08-21 补齐）', () => {
+  it('创建图片模型：pricingUnit=image + unitPrice + token 三价 0 → 201 落库', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const res = await request('/v1/models', {
+      token,
+      body: {
+        externalName: uid('img'),
+        realModel: 'qwen-image-3.0',
+        inputPrice: '0', outputPrice: '0', cacheInputPrice: '0',
+        pricingUnit: 'image',
+        unitPrice: '0.2',
+      },
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { pricingUnit: string; unitPrice: string };
+    expect(body.pricingUnit).toBe('image');
+    expect(new Decimal(body.unitPrice).eq('0.2')).toBe(true); // numeric 全精度串
+  });
+
+  it('编辑改单价生效；非法单位 → 400', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const { body } = await createModel(request, token);
+    const patch = await request(`/v1/models/${body.id}`, {
+      method: 'PATCH',
+      token,
+      body: { pricingUnit: 'second', unitPrice: '1.5' },
+    });
+    expect(patch.status).toBe(200);
+    const patched = (await patch.json()) as { pricingUnit: string; unitPrice: string };
+    expect(patched.pricingUnit).toBe('second');
+    expect(new Decimal(patched.unitPrice).eq('1.5')).toBe(true);
+
+    const bad = await request('/v1/models', {
+      token,
+      body: { externalName: uid('u'), realModel: 'x', inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', pricingUnit: 'banana', unitPrice: '1' },
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it('isFree + unitPrice>0 → 400（免费一致性含单价）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const res = await request('/v1/models', {
+      token,
+      body: { externalName: uid('f'), realModel: 'x', inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', isFree: true, pricingUnit: 'image', unitPrice: '0.1' },
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('重名创建 → 409 精确文案（曾折叠成「重名/引用/数值域」盲猜）', () => {
   it('重复 externalName → 409 model_exists，报已存在 id 与状态', async () => {
     const { request } = buildTestApp();

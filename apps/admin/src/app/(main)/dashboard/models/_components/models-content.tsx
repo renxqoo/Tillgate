@@ -64,6 +64,8 @@ const createSchema = z.object({
   outputPrice: moneyText({ message: '请输入有效价格' }),
   cacheInputPrice: moneyText({ message: '请输入有效价格' }),
   cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
+  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']),
+  unitPrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
@@ -199,6 +201,8 @@ export function CreateModelDialog() {
       outputPrice: '',
       cacheInputPrice: '',
       cacheWritePrice: '',
+      pricingUnit: 'token',
+      unitPrice: '',
       isFree: false,
       contextLength: '',
     },
@@ -214,6 +218,8 @@ export function CreateModelDialog() {
         outputPrice: values.outputPrice,
         cacheInputPrice: values.cacheInputPrice,
         ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+        pricingUnit: values.pricingUnit,
+        ...(values.unitPrice !== '' ? { unitPrice: values.unitPrice } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
@@ -259,6 +265,8 @@ const editSchema = z.object({
   outputPrice: moneyText({ message: '请输入有效价格' }),
   cacheInputPrice: moneyText({ message: '请输入有效价格' }),
   cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
+  pricingUnit: z.enum(['token', 'request', 'image', 'second', 'char']),
+  unitPrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
@@ -297,6 +305,8 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
       outputPrice: model.outputPrice ?? '',
       cacheInputPrice: model.cacheInputPrice ?? '',
       cacheWritePrice: model.cacheWritePrice ?? '',
+      pricingUnit: (model.pricingUnit as 'token') ?? 'token',
+      unitPrice: model.unitPrice ? String(Number(model.unitPrice)) : '',
       isFree: model.isFree ?? false,
       contextLength: model.contextLength == null ? '' : String(model.contextLength),
       fallbackModels: model.fallbackModels ?? '',
@@ -318,6 +328,8 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
         outputPrice: values.outputPrice,
         cacheInputPrice: values.cacheInputPrice,
         ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
+        pricingUnit: values.pricingUnit,
+        ...(values.unitPrice !== '' ? { unitPrice: values.unitPrice } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
@@ -439,6 +451,34 @@ function ModelForm({
             name="cacheWritePrice"
             label="缓存写价"
             id="m-cache-w"
+            step="0.0001"
+          />
+          <Controller
+            control={form.control}
+            name="pricingUnit"
+            render={({ field }) => (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium" htmlFor="m-unit">计价单位</label>
+                <select
+                  id="m-unit"
+                  value={field.value}
+                  onChange={field.onChange}
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="token">token（按 token 三价）</option>
+                  <option value="image">image（图片 / 张）</option>
+                  <option value="second">second（音频 / 秒）</option>
+                  <option value="char">char（语音 / 字符）</option>
+                  <option value="request">request（按次）</option>
+                </select>
+              </div>
+            )}
+          />
+          <NumberField
+            control={form.control}
+            name="unitPrice"
+            label="单位单价（元/张·秒·字符·次；token 模型留空）"
+            id="m-unit-price"
             step="0.0001"
           />
           <NumberField

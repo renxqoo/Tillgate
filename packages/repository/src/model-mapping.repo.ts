@@ -62,6 +62,8 @@ export interface MappingAdminRow {
   outputPrice: string;
   cacheInputPrice: string;
   cacheWritePrice: string;
+  pricingUnit: string;
+  unitPrice: string;
   isFree: boolean;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -78,6 +80,10 @@ export interface MappingAdminPatch {
   outputPrice?: string;
   cacheInputPrice?: string;
   cacheWritePrice?: string;
+  /** 单位单价（图片/张 等）——2026-08-21 管理面通道补齐 */
+  unitPrice?: string;
+  /** 计价单位（token/image/second/char/request） */
+  pricingUnit?: string;
   isFree?: boolean;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
@@ -93,6 +99,8 @@ const MAPPING_ADMIN_COLUMNS = {
   outputPrice: modelMappings.outputPrice,
   cacheInputPrice: modelMappings.cacheInputPrice,
   cacheWritePrice: modelMappings.cacheWritePrice,
+  pricingUnit: modelMappings.pricingUnit,
+  unitPrice: modelMappings.unitPrice,
   isFree: modelMappings.isFree,
   billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,
@@ -164,6 +172,9 @@ export class ModelMappingRepository {
       outputPrice: string;
       cacheInputPrice: string;
       cacheWritePrice?: string;
+      /** 单位单价与计价单位（图片/张 等——2026-08-21 管理面通道补齐） */
+      unitPrice?: string;
+      pricingUnit?: string;
       isFree: boolean;
       /** 0 上架 / 1 下架（目录导入用 1 = 草稿态） */
       status?: number;
@@ -183,6 +194,8 @@ export class ModelMappingRepository {
         outputPrice: input.outputPrice,
         cacheInputPrice: input.cacheInputPrice,
         cacheWritePrice: input.cacheWritePrice ?? '0',
+        pricingUnit: input.pricingUnit ?? 'token',
+        unitPrice: input.unitPrice ?? '0',
         isFree: input.isFree,
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,

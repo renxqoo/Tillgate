@@ -299,6 +299,10 @@ export interface AdminModelRow {
   outputPrice: string;
   cacheInputPrice: string;
   cacheWritePrice: string;
+  /** 计价单位（token/image/second/char/request）——单位计价模型 2026-08-21 管理面通道 */
+  pricingUnit?: string;
+  /** 单位单价（元/张·秒·字符·次；token 模型 0） */
+  unitPrice?: string;
   isFree: boolean;
   contextLength: number | null;
   fallbackModels: string | null;
