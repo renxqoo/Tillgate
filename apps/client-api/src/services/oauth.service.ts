@@ -86,7 +86,7 @@ export interface OAuthServiceDeps {
   /** state 单次存储（Redis——多副本共享 + 重启不丢；内存实现已按「Redis 必配」决策删除） */
   stateStore: OAuthStateStore;
   /** 注册赠送（OAuth 建号与本地注册同待遇；'0' = 关闭） */
-  giftAmount: string;
+  giftAmount: string | (() => Promise<string>);
   /** fetch 注入（测试替身；缺省全局 fetch） */
   fetchImpl?: typeof fetch;
   clock?: () => Date;
@@ -288,11 +288,12 @@ export function createOAuthService(deps: OAuthServiceDeps): OAuthService {
       }
 
       // 建号赠送：与本地注册同 refKey 口径（幂等，可补发）
-      if (created && deps.giftAmount !== '0') {
+      const giftAmount = await resolveParam(deps.giftAmount);
+      if (created && giftAmount !== '0') {
         try {
           await wallet.credit(ctx, {
             userId: user.id,
-            amount: deps.giftAmount,
+            amount: giftAmount,
             refType: 'gift',
             refId: `signup:${user.id}`,
             memo: '注册赠送（OAuth）',
@@ -311,4 +312,9 @@ export function createOAuthService(deps: OAuthServiceDeps): OAuthService {
       return { redirectUrl, userId: user.id, created };
     },
   };
+}
+
+/** 营销参数解析（2026-08-21 DB 化）：string=测试固定值 / fn=每动作读 marketing_settings 现值 */
+async function resolveParam(source: string | (() => Promise<string>)): Promise<string> {
+  return typeof source === 'function' ? source() : source;
 }

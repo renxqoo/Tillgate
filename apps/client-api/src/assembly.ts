@@ -16,8 +16,9 @@ import {
   initOtel,
 } from '@ai-gateway/core';
 import { createWallet, createSubscriptionDomain, type WalletApi, type SubscriptionDomain } from '@ai-gateway/service';
-import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND, createRedisSessionRevocationStore } from '@ai-gateway/identity';
+import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND, createRedisSessionRevocationStore, type Mailer } from '@ai-gateway/identity';
 import { createAuthService } from './services/auth.service.js';
+import { createRepositories } from '@ai-gateway/repository';
 import { createKeysService } from './services/keys.service.js';
 import { createWalletService } from './services/wallet.service.js';
 import { createRedeemService } from './services/redeem.service.js';
@@ -55,7 +56,6 @@ export interface ClientApiAssembly {
   /** 已配置支付渠道（空 = 在线充值关闭） */
   paymentProviders: readonly PaymentProviderPort[];
   /** 操练场代理配置（null = 未启用） */
-  playground: { gatewayUrl: string; gatewayJwtSecret: string } | null;
   redis: Redis;
   otel: { shutdown(): Promise<void> };
 }
@@ -117,6 +117,8 @@ const parseEndpoints = (json: string | undefined, provider: string) => {
 export function assembleClientApi(
   config: ClientApiConfig,
   db: Db = createDb(config.DATABASE_URL, { poolMax: config.DB_POOL_MAX }),
+  /** 测试注入（缺省 undefined = 按环境构造；null = 强制无 mailer） */
+  overrides: { mailer?: Mailer | null } = {},
 ): ClientApiAssembly {
   // Redis 必配（首选组件：爆破防护/限流/OAuth state/缓存——启动入口已做连通性验证）
   const redis = createRedisClient(config.REDIS_URL, { serviceName: 'client-api' });
@@ -146,7 +148,7 @@ export function assembleClientApi(
   const redeemLimiter = createRedisFixedWindowCounter(redis, 'redeem-min');
   const topupOrderLimiter = createRedisFixedWindowCounter(redis, 'topup-order-min');
 
-  const mailer = mailerFromEnv(config, USER_MAIL_BRAND);
+  const mailer = overrides.mailer !== undefined ? overrides.mailer : mailerFromEnv(config, USER_MAIL_BRAND);
   const captcha = captchaFromEnv(config);
   const emailCodeRequired =
     config.EMAIL_CODE_REQUIRED === 'on'
@@ -158,8 +160,9 @@ export function assembleClientApi(
   const referralService = createReferralService({
     db,
     wallet,
-    signupBonus: config.REFERRAL_SIGNUP_BONUS,
-    commissionRate: config.REFERRAL_COMMISSION_RATE,
+    // 营销参数 DB 化（2026-08-21）：每动作读 marketing_settings 现值——管理面改值即时生效
+    signupBonus: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).referralSignupBonus,
+    commissionRate: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).referralCommissionRate,
     frontendUrl: config.OAUTH_FRONTEND_URL ?? 'http://localhost:3000',
   });
   const auth = createAuthService({
@@ -168,7 +171,7 @@ export function assembleClientApi(
     jwtSecret: config.JWT_SECRET,
     sessionTtlSeconds: config.SESSION_TTL_SECONDS,
     registerEnabled: config.REGISTER_ENABLED,
-    giftAmount: config.GIFT_AMOUNT,
+    giftAmount: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).signupGiftAmount,
     loginGuard,
     ipGuard,
     registerLimiter,
@@ -181,7 +184,7 @@ export function assembleClientApi(
         referralService.applyReferral(ctx, { inviteeId, affCode }),
     },
   });
-  const keys = createKeysService({ db, maxKeysPerUser: config.MAX_KEYS_PER_USER });
+  const keys = createKeysService({ db });
   const walletRead = createWalletService(wallet);
   const redeem = createRedeemService({
     db,
@@ -192,7 +195,7 @@ export function assembleClientApi(
   const usage = createUsageService({ db });
   const subscriptionService = createSubscriptionService({ db, domain: subscriptions });
   const org = createOrgService({ db });
-  const apps = createAppsService({ db, maxAppsPerUser: config.MAX_APPS_PER_USER });
+  const apps = createAppsService({ db });
 
   // OAuth：前后端基地址与凭证成组配置才可用（frontend/api 缺一 = 启动失败——半配 = 静默坏流）
   const oauthConfigured =
@@ -241,7 +244,7 @@ export function assembleClientApi(
     },
     // state 单次存储：Redis 多副本共享；单副本开发形态用进程内存（语义不降级）
     stateStore: createRedisStateStore(redis),
-    giftAmount: config.GIFT_AMOUNT,
+    giftAmount: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).signupGiftAmount,
   });
   const epay = buildEpay(config);
   const stripe = buildStripe(config);
@@ -257,20 +260,6 @@ export function assembleClientApi(
     orderTtlMs: config.PAYMENT_ORDER_TTL_MS,
     orderLimiter: topupOrderLimiter,
   });
-
-  // 操练场：网关地址 + 网关 JWT 密钥成组才启用（部分配置 = 启动失败——fail-closed）
-  const pgGroup = [config.PLAYGROUND_GATEWAY_URL, config.PLAYGROUND_GATEWAY_JWT_SECRET];
-  const playground =
-    pgGroup.every((v) => !v)
-      ? null
-      : pgGroup.some((v) => !v)
-        ? (() => {
-            throw new Error('PLAYGROUND_GATEWAY_URL 与 PLAYGROUND_GATEWAY_JWT_SECRET 须成组配置');
-          })()
-        : {
-            gatewayUrl: config.PLAYGROUND_GATEWAY_URL!,
-            gatewayJwtSecret: config.PLAYGROUND_GATEWAY_JWT_SECRET!,
-          };
 
   const otel = initOtel({
     serviceName: 'client-api',
@@ -299,7 +288,6 @@ export function assembleClientApi(
     oauth,
     payments,
     paymentProviders,
-    playground,
     redis,
     otel,
   };

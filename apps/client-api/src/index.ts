@@ -34,12 +34,9 @@ const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
     `[client-api] config snapshot: ${JSON.stringify({
       registerEnabled: config.REGISTER_ENABLED,
       emailCodeRequired: config.EMAIL_CODE_REQUIRED,
-      giftAmount: config.GIFT_AMOUNT,
       topup: `${config.TOPUP_MIN}~${config.TOPUP_MAX} @${config.TOPUP_EXCHANGE_RATE}`,
       payments: { epay: config.EPAY_PID != null, stripe: config.STRIPE_SECRET_KEY != null },
-      referral: { signupBonus: config.REFERRAL_SIGNUP_BONUS, commissionRate: config.REFERRAL_COMMISSION_RATE },
       oauth: { github: config.OAUTH_GITHUB_CLIENT_ID != null, google: config.OAUTH_GOOGLE_CLIENT_ID != null },
-      maxKeysPerUser: config.MAX_KEYS_PER_USER,
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       secureCookie: config.SECURE_COOKIE,
       otel: config.OTEL_TRACES_MODE,

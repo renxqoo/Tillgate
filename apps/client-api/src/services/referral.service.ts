@@ -23,9 +23,9 @@ export interface ReferralServiceDeps {
   wallet: WalletApi;
   repos?: Repositories;
   /** 双方注册奖励（元，字符串；'0' = 关闭） */
-  signupBonus: string;
+  signupBonus: string | (() => Promise<string>);
   /** 佣金比例（0–1；worker 日结同值） */
-  commissionRate: string;
+  commissionRate: string | (() => Promise<string>);
   /** 前端基地址（拼邀请链接） */
   frontendUrl: string;
 }
@@ -37,8 +37,8 @@ export type ApplyReferralResult =
 export interface InviteOverview {
   affCode: string;
   inviteUrl: string;
-  signupBonus: string;
-  commissionRate: string;
+  signupBonus: string | (() => Promise<string>);
+  commissionRate: string | (() => Promise<string>);
   invited: Array<{ inviteeId: number; inviteeName: string | null; createdAt: string; status: number }>;
   totalCommission: string;
 }
@@ -52,7 +52,6 @@ export function createReferralService(deps: ReferralServiceDeps) {
   const { db, wallet } = deps;
   const repos = deps.repos ?? createRepositories();
   const repo = (ctx: RunContext) => ({ db, ...sys(ctx) });
-  const signupBonus = new Decimal(deps.signupBonus);
 
   async function applyReferral(
     ctx: RunContext,
@@ -61,6 +60,9 @@ export function createReferralService(deps: ReferralServiceDeps) {
     const inviterId = decodeAffCode(input.affCode.trim());
     if (inviterId === null) return { applied: false, reason: 'invalid_code' };
     if (inviterId === input.inviteeId) return { applied: false, reason: 'self_invite' };
+    // 营销参数每动作读现值（DB 化）：同一注册周期内改值不影响已开始的事务
+    const signupBonusRaw = await resolveParam(deps.signupBonus);
+    const signupBonus = new Decimal(signupBonusRaw);
 
     return db.transaction(async (tx) => {
       const txRepo = { db: tx, ...sys(ctx) };
@@ -77,18 +79,18 @@ export function createReferralService(deps: ReferralServiceDeps) {
         const base = sys(ctx);
         await wallet.credit(base, {
           userId: inviterId,
-          amount: deps.signupBonus,
+          amount: signupBonusRaw,
           refType: 'referral',
           refId: signupBonusRefId(input.inviteeId, 'inviter'),
-          memo: `邀请注册奖励（邀请人）+${deps.signupBonus}`,
+          memo: `邀请注册奖励（邀请人）+${signupBonusRaw}`,
           tx,
         });
         await wallet.credit(base, {
           userId: input.inviteeId,
-          amount: deps.signupBonus,
+          amount: signupBonusRaw,
           refType: 'referral',
           refId: signupBonusRefId(input.inviteeId, 'invitee'),
-          memo: `受邀注册奖励 +${deps.signupBonus}`,
+          memo: `受邀注册奖励 +${signupBonusRaw}`,
           tx,
         });
       }
@@ -111,8 +113,8 @@ export function createReferralService(deps: ReferralServiceDeps) {
     return {
       affCode,
       inviteUrl: `${deps.frontendUrl}/register?aff=${affCode}`,
-      signupBonus: signupBonus.toString(),
-      commissionRate: deps.commissionRate,
+      signupBonus: await resolveParam(deps.signupBonus),
+      commissionRate: await resolveParam(deps.commissionRate),
       invited: rows.map((r) => ({
         inviteeId: r.inviteeUserId,
         inviteeName: r.inviteeName ?? null,
@@ -127,3 +129,8 @@ export function createReferralService(deps: ReferralServiceDeps) {
 }
 
 export type ReferralService = ReturnType<typeof createReferralService>;
+
+/** 营销参数解析（2026-08-21 DB 化）：string=测试固定值 / fn=每动作读 marketing_settings 现值 */
+async function resolveParam(source: string | (() => Promise<string>)): Promise<string> {
+  return typeof source === 'function' ? source() : source;
+}

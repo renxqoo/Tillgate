@@ -45,7 +45,7 @@ export interface AuthServiceDeps {
   sessionTtlSeconds: number;
   registerEnabled: boolean;
   /** 注册赠送额度（'0' = 关闭） */
-  giftAmount: string;
+  giftAmount: string | (() => Promise<string>);
   /** per-邮箱爆破锁（Redis；不可达时登录 fail-closed 503） */
   loginGuard: KeyBruteForceGuard;
   /** per-IP 鉴权失败锁（同上） */
@@ -192,11 +192,12 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
     }
     // 注册赠送：幂等键 gift:signup:{userId}；失败不回滚建号（键可补发，账不受损）
     let gifted = false;
-    if (deps.giftAmount !== '0') {
+    const giftAmount = await resolveParam(deps.giftAmount);
+    if (giftAmount !== '0') {
       try {
         await wallet.credit(sys(ctx), {
           userId: created.id,
-          amount: deps.giftAmount,
+          amount: giftAmount,
           refType: 'gift',
           refId: `signup:${created.id}`,
           memo: '注册赠送',
@@ -456,4 +457,9 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
       };
     },
   };
+}
+
+/** 营销参数解析（2026-08-21 DB 化）：string=测试固定值 / fn=每动作读 marketing_settings 现值 */
+async function resolveParam(source: string | (() => Promise<string>)): Promise<string> {
+  return typeof source === 'function' ? source() : source;
 }

@@ -18,6 +18,8 @@ import {
   Wallet,
   CreditCard,
   Bell,
+  Megaphone,
+  UserPlus,
 } from 'lucide-react';
 
 import type { NavGroup } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
@@ -50,6 +52,8 @@ export function buildSidebarItems(): NavGroup[] {
           icon: CalendarClock,
         },
         { id: 'channel-funds', title: '渠道资金', url: '/dashboard/channel-funds', icon: Wallet },
+        { id: 'marketing', title: '营销配置', url: '/dashboard/marketing', icon: Megaphone },
+        { id: 'referrals', title: '邀请管理', url: '/dashboard/referrals', icon: UserPlus },
         { id: 'payment-orders', title: '支付订单', url: '/dashboard/payment-orders', icon: CreditCard },
       ],
     },

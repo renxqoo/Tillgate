@@ -25,6 +25,7 @@ export * from './relations.js';
 export * from './tracing.js';
 export * from './payments.js';
 export * from './referrals.js';
+export * from './marketing.js';
 export * from './notifications.js';
 export * from './generation-tasks.js';
 export * from './wallet.js';

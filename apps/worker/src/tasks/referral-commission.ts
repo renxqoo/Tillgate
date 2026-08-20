@@ -20,8 +20,12 @@ const BACKFILL_DAYS = 7;
 export interface ReferralCommissionDeps {
   db: Db;
   wallet: WalletApi;
-  /** 佣金比例（0–1；≤0 = 功能关闭直接返回） */
-  commissionRate: string;
+  /**
+   * 佣金比例（0–1；≤0 = 功能关闭直接返回）——每 tick 从 marketing_settings 读现值
+   * （2026-08-21 env→DB 迁移：管理面改值下一 tick 生效，历史日不重算）。
+   * 传 string 形态保留给测试注入固定值。
+   */
+  commissionRate: string | (() => Promise<string>);
   repos?: Repositories;
   ctx?: RunContext;
   now?: () => Date;
@@ -33,7 +37,16 @@ export async function runReferralCommissionOnce(
   const repos = deps.repos ?? createRepositories();
   const ctx = deps.ctx ?? systemContext('worker-referral');
   const now = deps.now ?? (() => new Date());
-  const commissionRate = new Decimal(deps.commissionRate);
+  // 每 tick 读现值（DB 回调形态）；string 形态为测试固定值
+  const rawRate = typeof deps.commissionRate === 'function' ? await deps.commissionRate() : deps.commissionRate;
+  // 费率防御：非法值崩的是整个佣金 loop 的 tick——记清晰错误后跳过本轮，下一 tick 仍可自愈
+  let commissionRate: Decimal;
+  try {
+    commissionRate = new Decimal(rawRate);
+  } catch (error) {
+    console.error(`[referral] invalid commission rate (${String(rawRate)}), skip this tick:`, error);
+    return { credited: 0 };
+  }
   if (!commissionRate.greaterThan(0)) return { credited: 0 };
 
   // 窗口 = 最近 BACKFILL_DAYS 个「已完整结束的 UTC 自然日」（不含今天）

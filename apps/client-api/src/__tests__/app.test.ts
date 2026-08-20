@@ -3,6 +3,7 @@
  * 的用户闭环 + 会话中间件安全语义（失效线/封禁/类型隔离）+ 协议信封（400/404/healthz）。
  */
 import { describe, expect, it } from 'vitest';
+import { Decimal } from '@ai-gateway/domain';
 import { eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
 import { users } from '@ai-gateway/db';
@@ -282,7 +283,11 @@ describe('邀请返利（注册归因全链 HTTP）', () => {
   it('aff 归因（建号后 apply）→ 双方奖励入账 → 邀请人概览可见被邀人', async () => {
     // HTTP 注册已恒两步（无 SMTP → 503）；aff 归因链路 = verifyRegistration 建号后
     // referral.apply（两步 HTTP 形态在 auth-code.test 全覆盖，此处钉归因与奖励闭环）
-    const { app, assembly } = await buildApp(buildConfig({ REFERRAL_SIGNUP_BONUS: '5' }));
+    const { app, assembly } = await buildApp(buildConfig({}));
+    // 营销参数 DB 化：邀请奖励经 marketing_settings 注入（原 env 形态已删除）
+    const { marketingSettings } = await import('@ai-gateway/db');
+    const helpers = await import('./helpers.js');
+    await helpers.db.update(marketingSettings).set({ referralSignupBonus: '5' }).where(eq(marketingSettings.id, 1));
     const inviter = await newUser();
     const invitee = await newUser();
     const aff = `u${inviter.id.toString(36)}`;
@@ -316,7 +321,7 @@ describe('邀请返利（注册归因全链 HTTP）', () => {
     };
     expect(overview.affCode).toBe(aff);
     expect(overview.inviteUrl).toContain(`/register?aff=${aff}`);
-    expect(overview.signupBonus).toBe('5');
+    expect(new Decimal(overview.signupBonus).eq('5')).toBe(true); // DB numeric 全精度串
     expect(overview.invited.map((r) => r.inviteeId)).toContain(invitee.id);
     expectAmountEq(overview.totalCommission, '0');
 

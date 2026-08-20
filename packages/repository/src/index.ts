@@ -26,6 +26,8 @@ import { UserRepository } from './user.repo.js';
 import { PlanRepository } from './plan.repo.js';
 import { OrgMemberRepository } from './org-member.repo.js';
 import { ReferralRepository } from './referral.repo.js';
+import { MarketingRepository } from './marketing.repo.js';
+export type { MarketingSettings } from './marketing.repo.js';
 import { SubscriptionRepository } from './subscription.repo.js';
 import { ChannelRepository } from './channel.repo.js';
 import { OperationsRepository } from './operations.repo.js';
@@ -118,6 +120,7 @@ export interface Repositories {
   plan: PlanRepository;
   orgMember: OrgMemberRepository;
   referral: ReferralRepository;
+  marketing: MarketingRepository;
   subscription: SubscriptionRepository;
   channel: ChannelRepository;
   operations: OperationsRepository;
@@ -152,6 +155,7 @@ export function createRepositories(): Repositories {
     plan: new PlanRepository(),
     orgMember: new OrgMemberRepository(),
     referral: new ReferralRepository(),
+    marketing: new MarketingRepository(),
     subscription: new SubscriptionRepository(),
     channel: new ChannelRepository(),
     operations: new OperationsRepository(),

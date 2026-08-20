@@ -22,7 +22,7 @@ import {
   createWallet,
   systemContext,
 } from '@ai-gateway/service';
-import { loadConfig, type WorkerConfig } from './config.js';
+import { loadConfig, resolveWorkerConfig, type WorkerConfig } from './config.js';
 import { createRunOnce } from './run-once.js';
 import { createTaskAdapter } from './generation-adapter.js';
 import { runReferralCommissionOnce } from './tasks/referral-commission.js';
@@ -45,9 +45,13 @@ export interface WorkerHandles {
 }
 
 export async function startWorker(
-  config: WorkerConfig,
-  db: Db = createDb(config.DATABASE_URL, { poolMax: config.WORKER_BATCH_SIZE + 5 }),
+  rawConfig: WorkerConfig | Record<string, unknown>,
+  dbInput?: Db,
 ): Promise<WorkerHandles> {
+  // 入口归一化：内联配置（e2e/嵌入）与 env 加载同一 schema 事实源——
+  // 缺字段填默认、非法值 fail-closed，杜绝 undefined 静默落进定时器
+  const config = resolveWorkerConfig(rawConfig as Record<string, unknown>);
+  const db = dbInput ?? createDb(config.DATABASE_URL, { poolMax: config.WORKER_BATCH_SIZE + 5 });
   const ctx = systemContext(config.WORKER_OWNER_ID);
   const repos = createRepositories();
   liveWorkerInstances.push({ owner: config.WORKER_OWNER_ID, startedAt: Date.now() });
@@ -64,7 +68,6 @@ export async function startWorker(
   console.log(
     `[worker] config snapshot: ${JSON.stringify({
       currency: config.WORKER_CURRENCY,
-      referralCommissionRate: config.REFERRAL_COMMISSION_RATE,
       settleIntervalMs: config.WORKER_SETTLE_INTERVAL_MS,
       referralIntervalMs: config.WORKER_REFERRAL_INTERVAL_MS,
       batchSize: config.WORKER_BATCH_SIZE,
@@ -234,7 +237,8 @@ export async function startWorker(
         runReferralCommissionOnce({
           db,
           wallet: referralWallet,
-          commissionRate: config.REFERRAL_COMMISSION_RATE,
+          // 营销参数 DB 化（2026-08-21）：每 tick 读现值——管理面改比例下一轮生效
+          commissionRate: async () => (await repos.marketing.getSettings({ db, ...ctx })).referralCommissionRate,
           ctx,
         }),
       'referral',
