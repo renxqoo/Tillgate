@@ -366,9 +366,14 @@ export function createRunChat(deps: PipelineDeps) {
         'error.code': lastError?.code ?? 'no_available_channel',
       }, async () => {
         if (deps.rateLimit) await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
-        // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel
+        // v1 语义：从未得到上游响应、纯渠道面拒绝（限流/预算耗尽）= 503 no_available_channel。
+        // rate_limited = 上游 429 归一码（如 OpenRouter 免费池共享限流）——同属渠道面
+        // 竭尽而非上游故障，漏列会误报 502 upstream_failed 误导排障
         const channelExhausted =
-          lastError == null || lastError.code === 'channel_budget_exhausted' || lastError.code === 'rate_limit_exceeded';
+          lastError == null ||
+          lastError.code === 'channel_budget_exhausted' ||
+          lastError.code === 'rate_limit_exceeded' ||
+          lastError.code === 'rate_limited';
         await deps.billing.signal(ctx, {
           type: 'request.failed',
           requestId,
