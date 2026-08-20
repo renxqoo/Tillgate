@@ -105,8 +105,14 @@ export function extractTextFeatures(text: string): TextTokenFeatures {
   return f;
 }
 
-/** 文本 → token 估算（特征向量 × 权重）。空文本返回 0。 */
-export function estimateTextTokens(text: string, weights?: TextTokenWeights): number {
+/** 文本 → token 估算（特征向量 × 权重；传 model 时优先 BPE 真分词器）。
+ *  空文本返回 0。model 仅供计费实扣口径（与输入侧 countText 同一分流点）；
+ *  未传 model / 编码器不可用时保持启发式兜底（历史调用方行为不变）。 */
+export function estimateTextTokens(text: string, weights?: TextTokenWeights, model?: string): number {
+  if (model !== undefined && text) {
+    const exact = tokenCountOf(text, model);
+    if (exact !== null) return exact;
+  }
   const w = weights ?? resolveCalibration().weights;
   const f = extractTextFeatures(text);
   const raw =
@@ -225,7 +231,9 @@ export function estimateOutputTokens(json: unknown, opts: EstimateOptions = {}):
     if (!c) continue;
     const message = asRecord(c.message);
     if (message) {
-      n += estimateContent(message.content, weights);
+      // model 必须透传：输出估算与输入侧同一 BPE 分流点（漏传 = 恒走启发式，
+      // 同一文本两侧口径分裂，估算结算金额随文本构成漂移）
+      n += estimateContent(message.content, weights, opts.model);
       for (const key of ['reasoning_content', 'reasoning', 'thinking']) {
         if (typeof message[key] === 'string') n += estimateTextTokens(message[key], weights);
       }

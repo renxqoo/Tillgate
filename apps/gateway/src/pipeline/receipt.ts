@@ -15,7 +15,7 @@ export interface ReceiptParams {
   requestId: string;
   userId: number;
   apiKeyId: number | null;
-  /** App-JWT 凭证（null = 静态 Key/playground）——usage_logs 归属与订阅结算维度 */
+  /** App-JWT 凭证（null = 静态 Key）——usage_logs 归属与订阅结算维度 */
   appId?: number | null;
   candidate: BillingQuoteCandidate;
   externalModel: string;

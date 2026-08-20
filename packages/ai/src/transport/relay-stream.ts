@@ -271,7 +271,8 @@ export function relayStream(
       // 上游读取错误 → 注入错误帧（通过 controller，pipeTo 已结束但 writable 未 abort）
       if (!finished && tCtrl) {
         // 服务端 drain 中止（宽限期后的 ServerDrainAbort 标记）是服务端责任：
-        // 归类 server_draining（计费侧全额释放），不得混入用户取消（估算结算）
+        // 归类 server_draining——部分交付即计费（2026-08-21 拍板：估算结算，
+        // 归属 server_draining 分标签，报表可查、可接运营补偿），不得混入用户取消
         const drain = options.signal ? asServerDrainAbort(options.signal.reason) : null;
         const reason = drain
           ? 'server_draining'

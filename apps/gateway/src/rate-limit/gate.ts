@@ -8,12 +8,10 @@
  *     与付费链路 fail-open 语义相反：免费不走资金闸门，无上限 = 印刷机）
  */
 import type { SlidingWindowLimiter } from '@ai-gateway/core';
-import type { Redis } from 'ioredis';
 import { AppError } from '../http/error-map.js';
 
 export interface RateLimitGate {
   limiter: SlidingWindowLimiter;
-  freeDaily: FreeDailyGate;
   /** 全局 RPM 闸（v1 GLOBAL_RPM 对位：所有请求并罚 global 维——整站吞吐护栏；0/null = 关） */
   globalRpm?: number | null;
 }
@@ -21,44 +19,6 @@ export interface RateLimitGate {
 export interface AdmissionCheck {
   dimension: string;
   max: number;
-}
-
-/** 免费模型日限判定（fail-closed——见模块头）：超限（429）与计数器不可用（503）分口径 */
-export interface FreeDailyGate {
-  check(userId: number): Promise<{ ok: true } | { ok: false; code: 'limit' | 'counter'; retryAfterSec: number }>;
-}
-
-/** 本地时区计费日键（免费日计数的窗口锚点） */
-function localDayKey(now: Date): string {
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-export function createFreeDailyGate(redis: Redis, limit: number): FreeDailyGate {
-  return {
-    async check(userId) {
-      const key = `free:req:${userId}:${localDayKey(new Date())}`;
-      try {
-        const n = (await redis.eval(
-          'local v = redis.call("INCR", KEYS[1]) if v == 1 then redis.call("EXPIRE", KEYS[1], 90000) end return v',
-          1,
-          key,
-        )) as number;
-        if (n > limit) {
-          // 到本地次日零点的秒数（窗口重置提示）
-          const now = new Date();
-          const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-          return { ok: false, code: 'limit', retryAfterSec: Math.max(1, Math.ceil((next.getTime() - now.getTime()) / 1000)) };
-        }
-        return { ok: true };
-      } catch {
-        // F7 fail-closed：免费链路唯一防线，计数器不可用时拒绝（付费链路不受影响）
-        return { ok: false, code: 'counter', retryAfterSec: 60 };
-      }
-    },
-  };
 }
 
 function reject429(_dimension: string, retryAfterSec: number): AppError {
@@ -143,12 +103,3 @@ export async function tryChannel(gate: RateLimitGate, input: {
   return true;
 }
 
-/** 免费模型日限（fail-closed）：超限 429 / 计数器不可用 503（拒绝放行——唯一防线） */
-export async function admitFreeDaily(gate: RateLimitGate, userId: number): Promise<void> {
-  const result = await gate.freeDaily.check(userId);
-  if (result.ok) return;
-  if (result.code === 'counter') {
-    throw new AppError(503, 'free_model_counter_unavailable', '免费模型计数器不可用，暂拒绝放行');
-  }
-  throw reject429('free_daily', result.retryAfterSec);
-}

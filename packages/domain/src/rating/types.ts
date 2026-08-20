@@ -69,15 +69,38 @@ export const USER_SIDE_CANCELS = ['client_disconnect', 'request_cancelled', 'abo
 export type UserSideCancel = (typeof USER_SIDE_CANCELS)[number];
 
 /**
- * 允许估算结算的全部归属：用户取消三态 + 完成缺 usage 两态。
- * 上游故障中断（超时/5xx/截断）不在此列——那类走释放不扣。
+ * 允许估算结算的全部归属：用户取消三态归一 + 缺 usage / 部分交付细分。
+ *
+ * 计费政策（2026-08-21 拍板）：**部分交付即计费**——上游已处理即扣 input、
+ * 已交付输出按文本加扣（含上游故障截断的流：渠道成本已发生，网关不吸收损失）；
+ * 零交付（first_chunk 前失败）不扣，走换渠/释放。估算实扣口径向精确收敛：
+ * input/output 均走 BPE 估算；JSON 字节保守上界只作预扣敞口，不作实扣。
+ *
+ * 归属细分（同日决策）：故障截断 / 闲置超时 / 网关停机与「正常完成缺 usage」
+ * 分标签——供应商质量报表、故障率统计、停机补偿三类消费方各取所需。
  */
 export const ESTIMATE_ATTRIBUTIONS = [
   ...USER_SIDE_CANCELS,
   'usage_missing_completed',
   'usage_missing_nonstream',
+  'upstream_error_partial',
+  'inactivity_timeout',
+  'server_draining',
 ] as const;
 export type EstimateAttribution = (typeof ESTIMATE_ATTRIBUTIONS)[number];
+
+/**
+ * 流式 terminated → 估算归属的单一真相（gateway 收据装配与验收共用）。
+ * 防御性兜底：任何非用户侧终止值都不是「完成」，未知值归 upstream_error_partial
+ * ——绝不回落 usage_missing_completed（否则细分口径被未来新增的终止原因稀释）。
+ */
+export function streamEstimateAttribution(terminated: string | undefined): EstimateAttribution {
+  if (terminated === undefined) return 'usage_missing_completed';
+  if ((USER_SIDE_CANCELS as readonly string[]).includes(terminated)) return 'client_disconnect';
+  if (terminated === 'server_draining') return 'server_draining';
+  if (terminated === 'inactivity') return 'inactivity_timeout';
+  return 'upstream_error_partial';
+}
 
 /**
  * 估算归属判定（验收与结算共用单一真相）：无归属/白名单外的估算收据一律拒绝，

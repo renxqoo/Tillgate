@@ -15,7 +15,8 @@ import { createApp } from '../app.js';
 import { createBuildQuote } from '../quote/build-quote.js';
 import { createResolveChannels } from '../routing/resolve-channels.js';
 import type { RateLimitGate } from '../rate-limit/gate.js';
-import { createRunChat, signalSucceededWithRetry, SIGNAL_FINALIZE_ATTEMPTS, type ChatCompletionBody } from '../pipeline/run-chat.js';
+import { createRunChat, type ChatCompletionBody } from '../pipeline/run-chat.js';
+import { SIGNAL_FINALIZE_ATTEMPTS, signalSucceededWithRetry } from '../pipeline/settle-retry.js';
 import type { UpstreamPort, UpstreamResult, UpstreamStreamEvent } from '../pipeline/upstream-port.js';
 
 const db: Db = createDb(

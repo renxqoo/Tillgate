@@ -10,25 +10,29 @@
  *   死凭据 → 渠道落库 status=4 后继续
  *
  * Redis 状态共享 / OTel = G4d 运营加固。
+ *
+ * 单次尝试执行层在 ./attempt-nonstream.ts 与 ./attempt-stream.ts（共享契约
+ * ./attempt-contract.ts；结算重试 ./settle-retry.ts）。
  */
-import { estimateInputTokens, estimateOutputTokens, estimateTextTokens, type Endpoint } from '@ai-gateway/ai';
-import { estimateMaxCost, USER_SIDE_CANCELS } from '@ai-gateway/domain';
+import { estimateInputTokens, type Endpoint } from '@ai-gateway/ai';
+import { estimateMaxCost } from '@ai-gateway/domain';
 import type { FundingReservationPolicy } from '@ai-gateway/domain';
-import type { UsageReceipt } from '@ai-gateway/domain';
 import { getTracer, SpanStatusCode, withAsyncSpan } from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
-import type { Db, Repositories } from '@ai-gateway/repository';
+import type { Db, Repositories, RouteCandidateRow } from '@ai-gateway/repository';
 import type { BillingDomain, RunContext } from '@ai-gateway/service';
 import { AppError } from '../http/error-map.js';
 import type { AuthContext } from '../middleware/api-key.js';
 import { createBuildQuote } from '../quote/build-quote.js';
 import { createResolveChannels } from '../routing/resolve-channels.js';
 import { isChannelSwitchable } from '../routing/switchable.js';
+import type { AttemptInput, AttemptOutcome, UpstreamFailure } from './attempt-contract.js';
+import { attemptNonStream } from './attempt-nonstream.js';
+import { attemptStream } from './attempt-stream.js';
 import { clampForwardedOutputLimit, conservativeInputTokenUpperBound, maxOutputTokensFor, type OutputCapConfig } from './output-cap.js';
-import { buildReceipt } from './receipt.js';
-import { admitFreeDaily, admitKey, reserveModelDims, tryChannel, type RateLimitGate } from '../rate-limit/gate.js';
+import { admitKey, reserveModelDims, tryChannel, type RateLimitGate } from '../rate-limit/gate.js';
 import { sanitizeUpstreamDetail } from '../http/sanitize.js';
-import type { UpstreamPort, UpstreamStreamEvent } from './upstream-port.js';
+import type { UpstreamPort } from './upstream-port.js';
 
 type BuildQuote = ReturnType<typeof createBuildQuote>;
 type ResolveChannels = ReturnType<typeof createResolveChannels>;
@@ -74,93 +78,6 @@ export type ChatResponse =
   /** 二进制成功（音频等）：字节体 + 上游 content-type（v1 对位——JSON 信封会毁掉字节流） */
   | { status: 200; rawBody: Uint8Array; rawContentType: string };
 
-/** 流式终态（success 事件）→ 收据 usage 形态（估算归属政策单一真相在 domain）。
- *  usage 缺失/不可信时输出 token 从扫描器累计的输出文本校准估算（与输入同一估算器）
- *  ——输出按 0 计费 = 「取消刷输出」「无 usage 供应商白嫖」两个真实漏收面。 */
-function streamReceiptUsage(
-  event: Extract<UpstreamStreamEvent, { type: 'success' }>,
-  estInput: number,
-): Pick<UsageReceipt, 'usage' | 'estimatedFor' | 'bytesRelayed' | 'streamAborted'> {
-  const usage = event.usage;
-  if (usage && !usage.estimated) {
-    return {
-      usage: {
-        inputTokens: usage.inputTokens,
-        cachedInputTokens: usage.cachedInputTokens,
-        outputTokens: usage.outputTokens,
-        estimated: false,
-        ...(((usage as { cacheWriteTokens?: number }).cacheWriteTokens ?? 0) > 0
-          ? { cacheWriteTokens: (usage as { cacheWriteTokens?: number }).cacheWriteTokens }
-          : {}),
-      },
-      streamAborted: false,
-    };
-  }
-  const terminated = event.terminated;
-  const userCancelled = terminated != null && (USER_SIDE_CANCELS as readonly string[]).includes(terminated);
-  // 模型族解析编码器（BPE 主路径，编码器不可用回落启发式）
-  const estOutput = estimateTextTokens(event.outputText ?? '');
-  return {
-    usage: {
-      inputTokens: usage?.inputTokens ?? estInput,
-      cachedInputTokens: 0,
-      outputTokens: estOutput,
-      estimated: true,
-    },
-    estimatedFor: userCancelled ? 'client_disconnect' : 'usage_missing_completed',
-    bytesRelayed: event.bytesRelayed ?? 0,
-    streamAborted: terminated != null,
-  };
-}
-
-/** 终态 signal 退避重试：结算落账的瞬时 DB 抖动不再把已交付请求漏收——
- *  流式路径重试期间续租定时器不停（调用方约定），recover 不会中途误释放；
- *  耗尽返回 false 由调用方兜底（流式 = 停租约交 recover 释放记损；非流式 = 上抛 500）。 */
-export const SIGNAL_FINALIZE_ATTEMPTS = 5;
-const SIGNAL_FINALIZE_BASE_DELAY_MS = 500;
-
-export async function signalSucceededWithRetry(
-  billing: BillingDomain,
-  ctx: RunContext,
-  requestId: string,
-  receipt: UsageReceipt,
-  onError: (error: unknown, context: string) => void,
-  opts: { attempts?: number; baseDelayMs?: number } = {},
-): Promise<boolean> {
-  const attempts = opts.attempts ?? SIGNAL_FINALIZE_ATTEMPTS;
-  const baseDelayMs = opts.baseDelayMs ?? SIGNAL_FINALIZE_BASE_DELAY_MS;
-  // 结算信号 span：流式/非流式共用；重试逐次 addEvent，耗尽置 ERROR（漏收可见）
-  return withAsyncSpan(getTracer('gateway.pipeline'), 'billing.settle_signal', {
-    'request.id': requestId,
-    ...(receipt.userId != null ? { 'user.id': receipt.userId } : {}),
-    ...(receipt.externalModel != null ? { 'ai.model': receipt.externalModel } : {}),
-    ...(receipt.channelKey != null ? { 'channel.key': receipt.channelKey } : {}),
-    ...(receipt.usage
-      ? {
-          'usage.estimated': receipt.usage.estimated,
-          'tokens.input': receipt.usage.inputTokens,
-          'tokens.output': receipt.usage.outputTokens,
-        }
-      : {}),
-    'billing.stream': receipt.stream,
-  }, async (span) => {
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      try {
-        await billing.signal(ctx, { type: 'request.succeeded', requestId, receipt });
-        return true;
-      } catch (error) {
-        onError(error, `signal request.succeeded request=${requestId} attempt=${attempt}/${attempts}`);
-        if (attempt < attempts) {
-          span.addEvent('signal.retry', { attempt });
-          await new Promise((resolve) => setTimeout(resolve, Math.min(8_000, baseDelayMs * 2 ** (attempt - 1))));
-        }
-      }
-    }
-    span.setStatus({ code: SpanStatusCode.ERROR, message: 'signal retries exhausted' });
-    return false;
-  });
-}
-
 export function createRunChat(deps: PipelineDeps) {
   const repos = deps.repos ?? createRepositories();
   const noteError = deps.onError ?? ((error, context) => console.error(`[pipeline] ${context}:`, error));
@@ -176,10 +93,11 @@ export function createRunChat(deps: PipelineDeps) {
     if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
-    const estInput = conservativeInputTokenUpperBound(
-      body as Record<string, unknown>,
-      estimateInputTokens(body, { model: body.model }),
-    );
+    // 双口径输入估算：bpeInput 供缺 usage 的实扣（向精确收敛）；字节保守上界
+    // estInput 只作预扣敞口/TPM（宁可多押）——上界入实扣会让故障/缺 usage 流的
+    // input 多收 3-6×，出现「残缺交付贵于完整交付」的反直觉账单
+    const bpeInput = estimateInputTokens(body, { model: body.model });
+    const estInput = conservativeInputTokenUpperBound(body as Record<string, unknown>, bpeInput);
   // 请求时点汇率快照（60s 进程缓存）：预取不阻塞授权关键路径（CI 慢机上多一次
   // DB 往返会挤占流租约续租时序）——装配收据时才 await；查询失败降级 null
   const fxPromise = repos.fx.current({ ...ctx, db: deps.db }).catch(() => null);
@@ -266,19 +184,6 @@ export function createRunChat(deps: PipelineDeps) {
       );
     }
 
-    // 免费模型日限（唯一防线——fail-closed，与付费限流的 fail-open 语义相反）
-    if (deps.rateLimit && quote.explicitlyFree) {
-      try {
-        await withAsyncSpan(tracer, 'rate_limit.free_daily', {
-          'request.id': requestId,
-          'user.id': auth.userId,
-        }, () => admitFreeDaily(deps.rateLimit!, auth.userId));
-      } catch (error) {
-        await deps.rateLimit.limiter.releaseTpm(requestId).catch(() => {});
-        throw error;
-      }
-    }
-
     // 授权可能拒绝（402/限额/配置）
     let authorization;
     try {
@@ -312,7 +217,7 @@ export function createRunChat(deps: PipelineDeps) {
     void authorization;
 
     let leaseStarted = false;
-    let lastError: { code?: string; message?: string; status?: number } | undefined;
+    let lastError: UpstreamFailure | undefined;
     /** 上游 4xx 透传（OpenAI 兼容语义：客户端问题原码返回——不吞成 502、不空耗 fallback）。
      *  透传≠免收尾：TPM 预占归还 + request.failed 三路释放（4xx = 上游确定未计费） */
     const passthrough4xx = async (error: {
@@ -406,6 +311,22 @@ export function createRunChat(deps: PipelineDeps) {
         noteError(error, `mark dead credential channel=${channelId}`);
       }
     };
+    /** 上游失败分派（非流式 / 流式 first_chunk 前共用——原先两段逐字重复的孪生逻辑）：
+     *  死凭据拉黑 → 可换性判定 → 4xx 透传终局 / 换候选。控制流编码为 AttemptOutcome
+     *  交还循环体翻译（attempt 函数内无法 break/continue 外层循环）。 */
+    const dispatchFailure = async (
+      channel: RouteCandidateRow,
+      error: UpstreamFailure,
+      status?: number,
+    ): Promise<AttemptOutcome> => {
+      if (error.deadCredential) await markDead(channel.channelId);
+      if (isChannelSwitchable(error.code)) return { kind: 'switch_channel', error };
+      // 4xx 客户端错误：退出全部候选（fallback 救不了参数错误——白耗上游调用与预占）
+      if ((status ?? 0) >= 400 && (status ?? 0) < 500) {
+        return { kind: 'respond', response: await passthrough4xx({ ...error, status }) };
+      }
+      return { kind: 'next_candidate', error };
+    };
 
     for (const candidate of quote.candidates) {
       const channels = await withAsyncSpan(tracer, 'routing.resolve', {
@@ -450,175 +371,18 @@ export function createRunChat(deps: PipelineDeps) {
         }
         if (!(await startChannel(channel.channelId, upstreamEstimate, channel.channelName))) continue;
 
-        if (!stream) {
-          // ---- 非流式：同步结果 ----
-          const startedAt = Date.now();
-          const result = await withAsyncSpan(tracer, 'upstream.attempt', {
-            'request.id': requestId,
-            'user.id': auth.userId,
-            'channel.key': channel.channelName,
-            'channel.attempt': channelAttempt,
-            'ai.model': candidate.realModel,
-            'upstream.stream': false,
-          }, async (span) => {
-            const r = await deps.upstream.chat(channel, {
-              requestId, realModel: candidate.realModel, externalModel: body.model, endpoint, body: upstreamBody,
-            });
-            if (r.ok) {
-              span.setAttributes({
-                'upstream.ok': true,
-                'upstream.duration_ms': Date.now() - startedAt,
-                ...(r.usage ? { 'tokens.input': r.usage.inputTokens, 'tokens.output': r.usage.outputTokens } : {}),
-              });
-            } else {
-              span.setAttributes({
-                'upstream.ok': false,
-                'upstream.error_code': r.error.code ?? 'upstream_error',
-                ...(r.status != null ? { 'http.status_code': r.status } : {}),
-                ...(r.error.deadCredential ? { 'upstream.dead_credential': true } : {}),
-              });
-              span.setStatus({ code: SpanStatusCode.ERROR, message: r.error.code ?? 'upstream_error' });
-            }
-            return r;
-          });
-          const durationMs = Date.now() - startedAt;
-          if (result.ok) {
-            // 结算 signal 退避重试：瞬时 DB 抖动自愈；耗尽上抛 500（未交付不结算——
-            // 与「先落账后交付」纪律一致，宁可让用户重试也不白送）
-            const receipt = buildReceipt({
-              requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
-              externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs, fx: await fxPromise,
-              body: body as Record<string, unknown>,
-              responseBody: result.body,
-              usage: result.usage
-                ? {
-                    estimated: false,
-                    inputTokens: result.usage.inputTokens,
-                    cachedInputTokens: result.usage.cachedInputTokens,
-                    outputTokens: result.usage.outputTokens,
-                    ...((result.usage.cacheWriteTokens ?? 0) > 0 ? { cacheWriteTokens: result.usage.cacheWriteTokens } : {}),
-                  }
-                : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body, { model: body.model }) },
-            });
-            const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
-            if (!finalized) throw new AppError(503, 'finalize_unavailable', '请求已完成但结算暂时不可用，请重试');
-            if (result.rawBody) {
-              return { status: 200, rawBody: result.rawBody, rawContentType: result.rawContentType ?? 'application/octet-stream' };
-            }
-            return { status: 200, body: result.body };
-          }
-          lastError = result.error;
-          if (result.error.deadCredential) await markDead(channel.channelId);
-          if (!isChannelSwitchable(result.error.code)) {
-            // 4xx 客户端错误：退出全部候选（fallback 救不了参数错误——白耗上游调用与预占）
-            if ((result.status ?? 0) >= 400 && (result.status ?? 0) < 500) {
-              return passthrough4xx({ ...result.error, status: result.status });
-            }
-            break;
-          }
-          continue;
-        }
-
-        // ---- 流式：first_chunk 前可换渠，上线后终态由事件锚定 ----
-        const startedAt = Date.now();
-        const { streamResult, decisive } = await withAsyncSpan(tracer, 'upstream.attempt', {
-          'request.id': requestId,
-          'user.id': auth.userId,
-          'channel.key': channel.channelName,
-          'channel.attempt': channelAttempt,
-          'ai.model': candidate.realModel,
-          'upstream.stream': true,
-        }, async (span) => {
-          const s = await deps.upstream.chatStream(channel, {
-            requestId, realModel: candidate.realModel, externalModel: body.model, endpoint, body: upstreamBody,
-          });
-          const d = await new Promise<UpstreamStreamEvent>((resolve) => {
-            let settled = false;
-            s.onEvent((event) => {
-              if (settled) return;
-              if (event.type === 'first_chunk' || event.type === 'failed' || event.type === 'success') {
-                settled = true;
-                resolve(event);
-              }
-            });
-          });
-          span.setAttributes({
-            'upstream.event': d.type,
-            'upstream.duration_ms': Date.now() - startedAt,
-            ...(d.type === 'failed'
-              ? {
-                  'upstream.ok': false,
-                  'upstream.error_code': d.code ?? 'upstream_error',
-                  ...(d.status != null ? { 'http.status_code': d.status } : {}),
-                  ...(d.deadCredential ? { 'upstream.dead_credential': true } : {}),
-                }
-              : { 'upstream.ok': true }),
-          });
-          if (d.type === 'failed') {
-            span.setStatus({ code: SpanStatusCode.ERROR, message: d.code ?? 'upstream_error' });
-          }
-          return { streamResult: s, decisive: d };
-        });
-        if (decisive.type === 'failed') {
-          lastError = decisive;
-          if (decisive.deadCredential) await markDead(channel.channelId);
-          if (!isChannelSwitchable(decisive.code)) {
-            if ((decisive.status ?? 0) >= 400 && (decisive.status ?? 0) < 500) {
-              return await passthrough4xx(decisive);
-            }
-            break;
-          }
-          continue;
-        }
-        // 上线（first_chunk 或零块完成）：终态监听收尾，立即把管道交还路由
-        // 长流续租（v1 withBillingLifecycle 语义）：租约 = authorizationTtlMs，每 1/3
-        // 续一次——超过 TTL 的长流否则会被 recover 按滞留误释放 → 终态冲突 → 漏收。
-        // 终态即停；续租次数上限防「终态永不到达」的协议违约泄漏（停后由 recover 兜底回收）。
-        let streamAlive = true;
-        const renewIntervalMs = Math.max(1_000, Math.floor(deps.config.authorizationTtlMs / 3));
-        let renewCount = 0;
-        const renewTimer = setInterval(() => {
-          if (!streamAlive || renewCount >= 100) return;
-          renewCount += 1;
-          void deps.billing.signal(ctx, {
-            type: 'lease.renewed',
-            requestId,
-            leaseOwner: 'gateway',
-            leaseMs: deps.config.authorizationTtlMs,
-          }).catch((error) => noteError(error, `stream lease renew request=${requestId}`));
-        }, renewIntervalMs);
-        renewTimer.unref?.();
-        streamResult.onEvent(async (event) => {
-          if (event.type !== 'success') return;
-          const durationMs = Date.now() - startedAt;
-          const finality = streamReceiptUsage(event, estInput);
-          const receipt: UsageReceipt = {
-            ...buildReceipt({
-              requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
-              externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs, fx: await fxPromise,
-              body: body as Record<string, unknown>,
-              usage: finality.usage.estimated
-                ? { estimated: true, inputTokens: finality.usage.inputTokens, outputTokens: finality.usage.outputTokens }
-                : { estimated: false, inputTokens: finality.usage.inputTokens, cachedInputTokens: finality.usage.cachedInputTokens, outputTokens: finality.usage.outputTokens },
-            }),
-            ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
-            ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
-            stream: true,
-            streamAborted: finality.streamAborted,
-          };
-          // 结算 signal 退避重试：重试期间续租不停（streamAlive 保持 true）——
-          // 200 已交付的请求不再因一次 DB 抖动被 recover 误释放成免费单；
-          // 耗尽才停租约交 recover 兜底（有界损失 + 响亮日志）。
-          const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
-          if (!finalized) {
-            noteError(new Error('signal retries exhausted'), `stream finalize giveup request=${requestId}`);
-          }
-          streamAlive = false;
-          clearInterval(renewTimer);
-        });
-        return { status: 200, stream: streamResult.stream, contentType: 'text/event-stream' };
+        // 单次尝试（流式/非流式仅执行形态与结算纪律分叉，准入与 fallback 决策共用）：
+        // 结局编码为 AttemptOutcome，由本循环翻译回 continue（换渠道）/ break（换候选）
+        const attempt: AttemptInput = {
+          tracer, ctx, requestId, auth, body, upstreamBody, endpoint,
+          candidate, channel, channelAttempt, estInput, bpeInput, fxPromise,
+          deps, noteError, dispatchFailure,
+        };
+        const outcome = stream ? await attemptStream(attempt) : await attemptNonStream(attempt);
+        if (outcome.kind !== 'respond') lastError = outcome.error;
+        if (outcome.kind === 'switch_channel') continue;
+        if (outcome.kind === 'next_candidate') break;
+        return outcome.response;
       }
     }
 
