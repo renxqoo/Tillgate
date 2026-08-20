@@ -351,6 +351,8 @@ export class UsageLogRepository {
           errorCode: requestLogs.errorCode,
           sourceIp: requestLogs.sourceIp,
           durationMs: requestLogs.durationMs,
+          // 请求摘要（model/stream/max_tokens 截断快照）——列表「模型」列的数据源
+          requestSummary: requestLogs.requestSummary,
           createdAt: requestLogs.createdAt,
         })
         .from(requestLogs)
