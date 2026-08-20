@@ -68,14 +68,47 @@ const PRICING_UNIT_OPTIONS: ReadonlyArray<{ value: PricingUnit; label: string }>
   { value: 'request', label: '按次计价（与用量无关）' },
 ];
 
-/** 选价参数预设（datalist：可选可手输——服务商字段名不统一） */
-const SELECTOR_PRESETS = ['size', 'resolution', 'size:quality', 'quality', 'duration', 'level'];
-
-/** 差价参数值预设（datalist）：图片分辨率 / 视频清晰度——各家格式不一（* 与 x、1k/2k），故保留手输 */
-const VARIANT_VALUE_PRESETS: Partial<Record<PricingUnit, readonly string[]>> = {
-  image: ['1024*1024', '1024x1024', '1024*1536', '1024x1536', '1536*1024', '1536x1024', '1792*1024', '1792x1024', '2048*2048', '2048x2048', '832*1248', '1248*832'],
-  second: ['480p', '720p', '1080p', '2k', '4k'],
+/** 差价档位（勾选制）：label=界面档位名，value=预填参数值（需与请求参数完全一致，可改） */
+const TIER_PRESETS: Partial<Record<PricingUnit, ReadonlyArray<{ label: string; value: string }>>> = {
+  image: [
+    { label: '1K', value: '1024*1024' },
+    { label: '2K', value: '2048*2048' },
+  ],
+  second: [
+    { label: '480p', value: '480p' },
+    { label: '720p', value: '720p' },
+    { label: '1080p', value: '1080p' },
+  ],
 };
+
+type TierRow = {
+  /** 档位名（预设档位显示用；自定义档位 = 参数值本身） */
+  label: string;
+  /** 计费匹配用的请求参数值 */
+  value: string;
+  price: string;
+  /** 预设档位是否启用（勾选）；自定义档位恒开 */
+  on: boolean;
+  custom: boolean;
+};
+
+/** 由计价单位 + 既有 billingConfig 构造档位行：参数值（或档位名）精确匹配预设归位，其余进自定义行 */
+function buildTiers(
+  unit: string,
+  cfg?: { params?: { selector?: string; prices?: Record<string, string> } },
+): TierRow[] {
+  const presets = TIER_PRESETS[unit as PricingUnit] ?? [];
+  const prices = cfg?.params?.prices ?? {};
+  const rows: TierRow[] = presets.map((p) => {
+    const price = prices[p.value] ?? prices[p.label];
+    return { label: p.label, value: p.value, price: price ?? '', on: price != null, custom: false };
+  });
+  const known = new Set([...presets.map((p) => p.value), ...presets.map((p) => p.label)]);
+  for (const [key, price] of Object.entries(prices)) {
+    if (!known.has(key)) rows.push({ label: key, value: key, price, on: true, custom: true });
+  }
+  return rows;
+}
 
 /** 金额格式（与 moneyText 同口径）——分支校验挂到具体字段用 */
 const MONEY_PATTERN = /^\d{1,20}(?:\.\d{1,18})?$/;
@@ -493,35 +526,36 @@ function ModelForm({
   const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? '';
   const chosen = pricingUnit !== '';
   const unitMode = chosen && pricingUnit !== 'token';
-  // 分辨率差价编辑器（variant 策略）：selector=请求参数名；rows=参数值→单价（本地 state，提交时并入 billingConfig）
+  // 差价档位编辑器（variant 策略）：直接勾选预设档位（1K/2K/720p…）出价格框；selector=取价参数名。
+  // 切换计价方式时档位按新单位重建（已填价格不跨单位保留）。
   const initialConfig = initialBillingConfig;
-  const [variantMode, setVariantMode] = useState<boolean>(Boolean(initialConfig?.params?.prices));
   const [selector, setSelector] = useState<string>(initialConfig?.params?.selector ?? 'size');
-  const [rows, setRows] = useState<Array<{ key: string; price: string }>>(
-    Object.entries(initialConfig?.params?.prices ?? {}).map(([key, price]) => ({ key, price })),
+  const [tiers, setTiers] = useState<TierRow[]>(() =>
+    buildTiers(form.getValues('pricingUnit') ?? '', initialConfig),
   );
   return (
     <form
       id={formId}
       onSubmit={form.handleSubmit((values: any) => {
-        // 分辨率差价：variant 策略 + selector + 价格表（空行过滤；预扣取最高价由计费域保证）
-        const validRows = rows.filter((r) => r.key.trim() !== '' && r.price.trim() !== '');
-        if (unitMode && variantMode && validRows.length === 0) {
+        // 差价档位 → variant billingConfig：勾选且填写完整的档位进价格表（预扣取最高价由计费域保证）
+        const enabled = tiers.filter((t) => t.on);
+        const active = enabled.filter((t) => t.value.trim() !== '' && t.price.trim() !== '');
+        if (unitMode && active.length !== enabled.length) {
           form.setError('root', {
             type: 'manual',
-            message: '按参数差价至少填写一行「参数值 + 单价」（空行不会保存）',
+            message: '已勾选/添加的差价档位需填写参数值与单价（或取消勾选）',
           });
           return;
         }
         onSubmit({
           ...values,
-          ...(unitMode && variantMode
+          ...(unitMode && active.length > 0
             ? {
                 billingConfig: {
                   strategy: 'variant',
                   params: {
                     selector: selector.trim() || 'size',
-                    prices: Object.fromEntries(validRows.map((r) => [r.key.trim(), r.price.trim()])),
+                    prices: Object.fromEntries(active.map((t) => [t.value.trim(), t.price.trim()])),
                   },
                 },
               }
@@ -531,32 +565,6 @@ function ModelForm({
       className="space-y-4"
     >
       <FieldGroup>
-        {/* 计价方式第一位：决定下方出现哪些价格输入（未选择时价格区整体隐藏） */}
-        <Controller
-          control={form.control}
-          name="pricingUnit"
-          render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="m-unit">计价方式</FieldLabel>
-              <select
-                id="m-unit"
-                value={field.value}
-                onChange={field.onChange}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="" disabled>
-                  请先选择计价方式…
-                </option>
-                {PRICING_UNIT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
-          )}
-        />
         <div className="grid grid-cols-2 gap-3">
           <Controller
             control={form.control}
@@ -593,6 +601,35 @@ function ModelForm({
             )}
           />
         </div>
+        {/* 计价方式：决定下方出现哪些价格输入（未选择时价格区整体隐藏）；切换时差价档位按新单位重建 */}
+        <Controller
+          control={form.control}
+          name="pricingUnit"
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="m-unit">计价方式</FieldLabel>
+              <select
+                id="m-unit"
+                value={field.value}
+                onChange={(e) => {
+                  field.onChange(e);
+                  setTiers(buildTiers(e.target.value, undefined));
+                }}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="" disabled>
+                  请先选择计价方式…
+                </option>
+                {PRICING_UNIT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
         {!chosen ? (
           <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
             请先选择计价方式，价格输入项将按所选计价方式显示。
@@ -639,75 +676,100 @@ function ModelForm({
             step="0.0001"
           />
           ) : null}
-          {unitMode ? (
+          {unitMode && tiers.length > 0 ? (
             <div className="space-y-2 rounded-md border p-3">
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <Checkbox
-                  checked={variantMode}
-                  onCheckedChange={(v) => {
-                    setVariantMode(v === true);
-                    form.clearErrors('root');
-                  }}
+              <p className="text-sm font-medium">差价档位（勾选后按该档位参数值单独定价；都不勾 = 统一单价）</p>
+              <div className="grid gap-1">
+                <label className="text-xs text-muted-foreground" htmlFor="m-selector">取价参数名（请求体字段）</label>
+                <Input
+                  id="m-selector"
+                  value={selector}
+                  onChange={(e) => setSelector(e.target.value)}
+                  placeholder="size"
+                  className="h-8"
                 />
-                按参数差价（如图片 1K/2K、视频分辨率不同价）
-              </label>
+              </div>
+              {tiers.map((tier, i) => {
+                const patch = (next: Partial<TierRow>) =>
+                  setTiers((cur) => cur.map((r, j) => (j === i ? { ...r, ...next } : r)));
+                return (
+                  <div key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2">
+                    {tier.custom ? (
+                      <>
+                        <span className="text-xs text-muted-foreground">自定义</span>
+                        <Input
+                          value={tier.value}
+                          onChange={(e) => patch({ value: e.target.value, label: e.target.value })}
+                          placeholder="参数值（如 832*1248）"
+                          className="h-8"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={tier.on}
+                            onCheckedChange={(v) => {
+                              patch({ on: v === true });
+                              form.clearErrors('root');
+                            }}
+                          />
+                          {tier.label}
+                        </label>
+                        {tier.on ? (
+                          <Input
+                            value={tier.value}
+                            onChange={(e) => patch({ value: e.target.value })}
+                            title="计费匹配的请求参数值（需完全一致）"
+                            className="h-8"
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">{tier.value}</span>
+                        )}
+                      </>
+                    )}
+                    {tier.custom || tier.on ? (
+                      <Input
+                        value={tier.price}
+                        onChange={(e) => patch({ price: e.target.value })}
+                        placeholder="单价（元）"
+                        className="h-8"
+                        inputMode="decimal"
+                      />
+                    ) : (
+                      <span />
+                    )}
+                    {tier.custom ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setTiers((cur) => cur.filter((_, j) => j !== i))}
+                      >
+                        移除
+                      </Button>
+                    ) : (
+                      <span />
+                    )}
+                  </div>
+                );
+              })}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setTiers((cur) => [...cur, { label: '', value: '', price: '', on: true, custom: true }])}
+              >
+                + 自定义档位
+              </Button>
               {form.formState.errors.root ? (
                 <p className="text-sm text-destructive">
                   {(form.formState.errors.root as { message?: string }).message ?? '差价配置不完整'}
                 </p>
               ) : null}
-              {variantMode ? (
-                <div className="space-y-2">
-                  <div className="grid gap-1">
-                    <label className="text-xs text-muted-foreground" htmlFor="m-selector">选价参数（请求体字段名，多字段用 : 组合）</label>
-                    <Input
-                      id="m-selector"
-                      list="m-selector-presets"
-                      value={selector}
-                      onChange={(e) => setSelector(e.target.value)}
-                      placeholder="size"
-                      className="h-8"
-                    />
-                    <datalist id="m-selector-presets">
-                      {SELECTOR_PRESETS.map((s) => (
-                        <option key={s} value={s} />
-                      ))}
-                    </datalist>
-                  </div>
-                  {rows.map((row, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
-                      <Input
-                        list="m-variant-presets"
-                        value={row.key}
-                        onChange={(e) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))}
-                        placeholder={pricingUnit === 'image' ? '分辨率（如 1024*1024）' : '参数值（如 720p）'}
-                        className="h-8"
-                      />
-                      <Input
-                        value={row.price}
-                        onChange={(e) => setRows((cur) => cur.map((r, j) => (j === i ? { ...r, price: e.target.value } : r)))}
-                        placeholder="单价（元）"
-                        className="h-8"
-                        inputMode="decimal"
-                      />
-                      <Button type="button" size="sm" variant="ghost" onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}>
-                        移除
-                      </Button>
-                    </div>
-                  ))}
-                  <datalist id="m-variant-presets">
-                    {(VARIANT_VALUE_PRESETS[pricingUnit as PricingUnit] ?? []).map((v) => (
-                      <option key={v} value={v} />
-                    ))}
-                  </datalist>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setRows((cur) => [...cur, { key: '', price: '' }])}>
-                    + 添加价格行
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    参数值可选预设或手输，需与请求参数完全一致；预扣按表中最高价保守收取，结算按请求实际参数取价，未命中回落统一单价。
-                  </p>
-                </div>
-              ) : null}
+              <p className="text-xs text-muted-foreground">
+                参数值需与请求参数完全一致；预扣按档位最高价保守收取，结算按请求实际参数取价，未命中回落统一单价。
+              </p>
             </div>
           ) : null}
           <NumberField
