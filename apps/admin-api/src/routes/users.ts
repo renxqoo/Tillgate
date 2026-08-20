@@ -13,8 +13,7 @@ import { AppError } from '../http/error-map.js';
 import { USER_SORTS, USER_AUDIT_SORTS, type UsersService } from '../services/users.service.js';
 import type { FundsService } from '../services/funds.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { nonNegativeMoneyString, positiveMoneyString, signedNonZeroMoneyString } from '../http/money-schema.js';
 
 const idParam = (raw: string): number => {
   const id = Number(raw);
@@ -37,12 +36,12 @@ const patchSchema = z
     rateCardId: z.number().int().positive().nullable().optional(),
     rpmLimit: z.number().int().min(1).nullable().optional(),
     tpmLimit: z.number().int().min(1).nullable().optional(),
-    dailySpendLimit: z.number().min(0).finite().max(MONEY_MAX).nullable().optional(),
+    dailySpendLimit: nonNegativeMoneyString.nullable().optional(),
     displayName: z.string().max(64).nullable().optional(),
     email: z.string().email().max(255).nullable().optional(),
     isEnterprise: z.boolean().optional(),
     freezeReason: z.string().max(128).nullable().optional(),
-    creditLimit: z.number().min(0).finite().max(MONEY_MAX).optional(),
+    creditLimit: nonNegativeMoneyString.optional(),
   })
   .superRefine((value, ctx) => {
     // freezeReason 只能随封禁一并设置（状态语义不二义）
@@ -54,16 +53,12 @@ const patchSchema = z
 const setPasswordSchema = z.object({ password: z.string().min(8).max(128) });
 
 const adjustSchema = z.object({
-  amount: z.coerce
-    .number()
-    .finite()
-    .refine((v) => v !== 0, '调账金额不能为 0')
-    .refine((v) => Math.abs(v) <= MONEY_MAX, '调账金额超出上限'),
+  amount: signedNonZeroMoneyString,
   remark: z.string().max(255).optional(),
 });
 
 const giftSchema = z.object({
-  amount: z.coerce.number().positive().finite().max(MONEY_MAX),
+  amount: positiveMoneyString,
   remark: z.string().max(255).optional(),
 });
 
@@ -101,8 +96,8 @@ export function usersRoutes(
         userId: id,
         patch: {
           ...rest,
-          ...(dailySpendLimit !== undefined ? { dailySpendLimit: String(dailySpendLimit) } : {}),
-          ...(creditLimit !== undefined ? { creditLimit: String(creditLimit) } : {}),
+          ...(dailySpendLimit !== undefined ? { dailySpendLimit } : {}),
+          ...(creditLimit !== undefined ? { creditLimit } : {}),
         },
       }),
     );
@@ -122,8 +117,8 @@ export function usersRoutes(
     const result = await funds.adjust(adminCtxOf(c), {
       adminId: c.get('adminId'),
       userId: id,
-      amount: String(body.amount),
-      remark: body.remark ?? `管理员调账 ${body.amount > 0 ? '+' : ''}${body.amount}`,
+      amount: body.amount,
+      remark: body.remark ?? `管理员调账 ${body.amount.startsWith('-') ? '' : '+'}${body.amount}`,
       operationId: operationId(c),
     });
     return c.json(result);
@@ -135,7 +130,7 @@ export function usersRoutes(
     const result = await funds.gift(adminCtxOf(c), {
       adminId: c.get('adminId'),
       userId: id,
-      amount: String(body.amount),
+      amount: body.amount,
       remark: body.remark,
       operationId: operationId(c),
     });

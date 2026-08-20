@@ -116,12 +116,14 @@ async function authorizeAndClaim(input: {
   apiKeyId?: number;
   ttlMs?: number;
   inputTokens: number;
+  reservationPolicy?: { mode: 'full' | 'fixed'; amount?: string };
 }): Promise<SettlementClaim> {
   const requestId = randomUUID();
   createdRequests.push(requestId);
   await billing.authorize(ctx, {
     requestId, userId: input.userId, apiKeyId: input.apiKeyId ?? null, stream: false, quote: q,
     reservationLimit: '100', authorizationTtlMs: input.ttlMs ?? 300_000,
+    ...(input.reservationPolicy != null ? { reservationPolicy: input.reservationPolicy } : {}),
   });
   await billing.signal(ctx, {
     type: 'request.succeeded',
@@ -266,6 +268,43 @@ describe('结算：认领 → 落账', () => {
     const wallet = await balanceOf(user);
     expect(wallet.balance).toBe('6'); // 10 − 4（hold 2 + over 2）
     expect(wallet.inFlight).toBe('0');
+  });
+
+  it('PAYG 超额且余额已被预留耗尽：全额补扣并形成负余额，不得少收', async () => {
+    const user = await newUser();
+    await fund(user, '2');
+    const claim = await authorizeAndClaim({ userId: user, inputTokens: 2_000_000 });
+
+    expect(await settlement.processClaim(ctx, claim)).toBe('settled');
+    const account = await balanceOf(user);
+    expect(account.balance).toBe('-2'); // 实际 4，已有余额 2，超额 2 形成应收负余额
+    expect(account.inFlight).toBe('0');
+    const [usage] = await db
+      .select({ amount: usageLogs.amount })
+      .from(usageLogs)
+      .where(eq(usageLogs.requestId, claim.requestId));
+    expect(new Decimal(usage!.amount).eq('4')).toBe(true);
+  });
+
+  it('fixed 预扣 0.01：实际 2 元仍全额补扣，最终余额 -1.99', async () => {
+    const user = await newUser();
+    await fund(user, '0.01');
+    const claim = await authorizeAndClaim({
+      userId: user,
+      inputTokens: 1_000_000,
+      reservationPolicy: { mode: 'fixed', amount: '0.01' },
+    });
+
+    expect((await balanceOf(user)).inFlight).toBe('0.01');
+    expect(await settlement.processClaim(ctx, claim)).toBe('settled');
+    const account = await balanceOf(user);
+    expect(account.balance).toBe('-1.99');
+    expect(account.inFlight).toBe('0');
+    const [usage] = await db
+      .select({ amount: usageLogs.amount })
+      .from(usageLogs)
+      .where(eq(usageLogs.requestId, claim.requestId));
+    expect(new Decimal(usage!.amount).eq('2')).toBe(true);
   });
 
   it('纯订阅：额度核销 0.6、在途归零，钱包全程不动', async () => {
@@ -432,7 +471,7 @@ describe('终审修复回归（2026-08-19：0 元结算 / 订阅超池 / billedB
     expect(usage!.billedBy).toBe('payg');
   });
 
-  it('订阅超池（实际用量超预扣上界）：降级核销到池容量 → settled（修复前 quota 守卫红灯 → 重试耗尽 dead + 预扣冻结）', async () => {
+  it('订阅超池（遗留低估单）：套餐核销到预留额，超额全量计入负余额', async () => {
     const user = await newUser();
     // 池 2 元；预扣保守上界 2（quote 1M × 2/M）；实际用量 1.5M × 2/M = 3 > 池容量
     const subId = await newSubscription(user, '2');
@@ -441,8 +480,16 @@ describe('终审修复回归（2026-08-19：0 元结算 / 订阅超池 / billedB
 
     expect(await settlement.processClaim(ctx, claim)).toBe('settled');
     const quota = await quotaOf(subId);
-    expect(new Decimal(quota.used).eq('2')).toBe(true); // 钳到池容量（超额 1 元平台吸收记损）
-    expect(new Decimal(quota.reserved).eq('0')).toBe(true); // 预占全归还（修复前永久在途）
+    expect(new Decimal(quota.used).eq('2')).toBe(true);
+    expect(new Decimal(quota.reserved).eq('0')).toBe(true);
+    expect((await balanceOf(user)).balance).toBe('-1');
+    const [usage] = await db
+      .select({ amount: usageLogs.amount, planAmount: usageLogs.planAmount, paygAmount: usageLogs.paygAmount })
+      .from(usageLogs)
+      .where(eq(usageLogs.requestId, claim.requestId));
+    expect(new Decimal(usage!.amount).eq('3')).toBe(true);
+    expect(new Decimal(usage!.planAmount).eq('2')).toBe(true);
+    expect(new Decimal(usage!.paygAmount).eq('1')).toBe(true);
   });
 
   it('billedBy 口径（纯函数）：绑定订阅但订阅未吸收（planConsume=0）→ payg，不再出现 billedBy=plan && subscriptionId=null 矛盾行', async () => {

@@ -59,7 +59,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
   let user: AdminUserRow | null = null;
   let error: string | null = null;
   try {
-    user = await adminFetch<AdminUserRow>(`/api/admin/users/${userId}`);
+    user = await adminFetch<AdminUserRow>(`/v1/users/${userId}`);
   } catch (e) {
     error = e instanceof ApiError ? e.message : '加载失败';
   }
@@ -67,7 +67,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
   // 并行拉取流水和该用户的审计（专用接口 targetType=user——此前误用全局列表，
   // targetId 不在全局 schema 里被剥掉，展示的是全站日志，R10 一并根治）
   const [txResult, auditResult] = await Promise.allSettled([
-    fetchAdminList<AdminTransactionRow>(`/api/admin/users/${userId}/transactions`, {
+    fetchAdminList<AdminTransactionRow>(`/v1/users/${userId}/transactions`, {
       page: txPage,
       pageSize: PAGE_SIZE,
       sortBy,
@@ -78,7 +78,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         q: firstParam(sp.q),
       },
     }),
-    fetchAdminList<AuditLogRow>(`/api/admin/users/${userId}/audit-logs`, {
+    fetchAdminList<AuditLogRow>(`/v1/users/${userId}/audit-logs`, {
       page: auditPage,
       pageSize: PAGE_SIZE,
       sortBy,

@@ -286,7 +286,7 @@ describe('channel 导入（mock 源，真 PG）', () => {
         sourceId: source.id,
         apiKey: 'sk-or-v1-test',
         models: [
-          { externalName, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, cacheWritePrice: 0, contextLength: 65536 },
+          { externalName, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', cacheWritePrice: '0', contextLength: 65536 },
         ],
       },
     });
@@ -322,7 +322,7 @@ describe('channel 导入（mock 源，真 PG）', () => {
       body: {
         sourceId: source.id,
         models: [
-          { externalName, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: 5, outputPrice: 5, cacheInputPrice: 5, cacheWritePrice: 0 },
+          { externalName, realModel: 'meta-llama/llama-3.3-70b-instruct:free', inputPrice: '5', outputPrice: '5', cacheInputPrice: '5', cacheWritePrice: '0' },
         ],
       },
     });
@@ -342,7 +342,7 @@ describe('channel 导入（mock 源，真 PG）', () => {
       token,
       body: {
         sourceId: source.id,
-        models: [{ externalName: 'x', realModel: 'y', inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, cacheWritePrice: 0 }],
+        models: [{ externalName: 'x', realModel: 'y', inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', cacheWritePrice: '0' }],
       },
     });
     expect(res.status).toBe(400);
@@ -365,8 +365,8 @@ describe('channel 导入（mock 源，真 PG）', () => {
         sourceId: source.id,
         apiKey: 'sk-x',
         models: [
-          { externalName: newExt, realModel: uid('r1'), inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, cacheWritePrice: 0 },
-          { externalName: conflictExt, realModel: uid('r2'), inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, cacheWritePrice: 0 },
+          { externalName: newExt, realModel: uid('r1'), inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', cacheWritePrice: '0' },
+          { externalName: conflictExt, realModel: uid('r2'), inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', cacheWritePrice: '0' },
         ],
       },
     });
@@ -392,7 +392,7 @@ describe('reference 导入（models.dev 形状，草稿审批制）', () => {
       body: {
         sourceId: source.id,
         models: [
-          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: 21.6, outputPrice: 108, cacheInputPrice: 2.16, cacheWritePrice: 27, contextLength: 200_000 },
+          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: '21.6', outputPrice: '108', cacheInputPrice: '2.16', cacheWritePrice: '27', contextLength: 200_000 },
         ],
       },
     });
@@ -418,7 +418,7 @@ describe('reference 导入（models.dev 形状，草稿审批制）', () => {
       body: {
         sourceId: source.id,
         models: [
-          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: 99, outputPrice: 99, cacheInputPrice: 99, cacheWritePrice: 99 },
+          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: '99', outputPrice: '99', cacheInputPrice: '99', cacheWritePrice: '99' },
         ],
       },
     });
@@ -441,7 +441,7 @@ describe('比对接口（三态 diff + fx 快照 + 消失检测）', () => {
       body: {
         sourceId: source.id,
         apiKey: 'sk-x',
-        models: [{ externalName, realModel: 'openai/gpt-4o', inputPrice: 14.4, outputPrice: 57.6, cacheInputPrice: 0, cacheWritePrice: 0 }],
+        models: [{ externalName, realModel: 'openai/gpt-4o', inputPrice: '14.4', outputPrice: '57.6', cacheInputPrice: '0', cacheWritePrice: '0' }],
       },
     });
     await trackImported(source, [externalName]);
@@ -475,7 +475,7 @@ describe('比对接口（三态 diff + fx 快照 + 消失检测）', () => {
       body: {
         sourceId: source.id,
         models: [
-          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: 22, outputPrice: 108, cacheInputPrice: 2.16, cacheWritePrice: 27, contextLength: 200_000 },
+          { externalName, realModel: 'anthropic/claude-sonnet-4', inputPrice: '22', outputPrice: '108', cacheInputPrice: '2.16', cacheWritePrice: '27', contextLength: 200_000 },
         ],
       },
     });

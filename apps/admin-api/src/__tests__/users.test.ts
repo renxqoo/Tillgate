@@ -197,13 +197,13 @@ describe('调账与赠送（幂等 + 数值域）', () => {
     // 超业务上限 → 400
     const over = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 1e10 },
+      body: { amount: '1e10' },
     });
     expect(over.status).toBe(400);
 
     const plus = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 1 },
+      body: { amount: '1' },
       headers: { 'idempotency-key': uid('adj') },
     });
     expect(plus.status).toBe(200);
@@ -211,7 +211,7 @@ describe('调账与赠送（幂等 + 数值域）', () => {
 
     const minus = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: -0.5 },
+      body: { amount: '-0.5' },
       headers: { 'idempotency-key': uid('adj') },
     });
     expect(minus.status).toBe(200);
@@ -226,7 +226,7 @@ describe('调账与赠送（幂等 + 数值域）', () => {
 
     const first = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 5 },
+      body: { amount: '5' },
       headers: { 'idempotency-key': key },
     });
     expect(first.status).toBe(200);
@@ -234,7 +234,7 @@ describe('调账与赠送（幂等 + 数值域）', () => {
 
     const replay = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 5 },
+      body: { amount: '5' },
       headers: { 'idempotency-key': key },
     });
     expect(replay.status).toBe(200);
@@ -242,7 +242,7 @@ describe('调账与赠送（幂等 + 数值域）', () => {
 
     const conflict = await request(`/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 6 },
+      body: { amount: '6' },
       headers: { 'idempotency-key': key },
     });
     expect(conflict.status).toBe(409);

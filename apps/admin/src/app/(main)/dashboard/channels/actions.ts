@@ -32,7 +32,7 @@ interface ChannelFormUpdateInput {
   status?: number;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
-  upstreamThreshold?: number | null;
+  upstreamThreshold?: string | null;
 }
 
 /** 逗号/空白/中文逗号分隔的白名单文本 → 数组；空文本 → undefined（创建=不限，编辑=不变） */
@@ -52,7 +52,7 @@ export async function createChannelAction(
   if (!input.name?.trim()) return { error: "请输入渠道名称" };
   if (!input.apiKey?.trim()) return { error: "请输入 API Key" };
   try {
-    await adminFetch("/api/admin/channels", {
+    await adminFetch("/v1/channels", {
       method: "POST",
       body: {
         providerId: input.providerId,
@@ -77,7 +77,7 @@ export async function updateChannelAction(
   input: ChannelFormUpdateInput,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/channels/${id}`, {
+    await adminFetch(`/v1/channels/${id}`, {
       method: "PATCH",
       body: {
         name: input.name,
@@ -102,7 +102,7 @@ export async function updateChannelAction(
 // ── 删除渠道 ────────────────────────────────────────────────────────────────
 export async function deleteChannelAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/channels/${id}`, { method: "DELETE" });
+    await adminFetch(`/v1/channels/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
@@ -121,7 +121,7 @@ export interface ChannelTestOutcome {
 
 export async function testChannelAction(id: number): Promise<ChannelTestOutcome> {
   try {
-    const res = await adminFetch<ChannelTestResult>(`/api/admin/channels/${id}/test`, {
+    const res = await adminFetch<ChannelTestResult>(`/v1/channels/${id}/test`, {
       method: "POST",
     });
 
@@ -162,7 +162,7 @@ export async function importChannelsAction(
   if (!channels.length) return { error: "请输入至少一条渠道" };
   try {
     const res = await adminFetch<{ created: number } | { list?: unknown[] } | unknown>(
-      "/api/admin/channels/import",
+      "/v1/channels/import",
       {
         method: "POST",
         body: {

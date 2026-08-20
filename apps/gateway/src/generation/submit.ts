@@ -8,7 +8,7 @@
  * 上游任务可能已提交）；资金不足/模型缺失沿用 authorize/quote 的错误翻译。
  */
 import { createRepositories, type Db, type Repositories } from '@ai-gateway/repository';
-import { estimateMaxCost, generationKindDescriptor, type GenerationTaskKind } from '@ai-gateway/domain';
+import { estimateMaxCost, generationKindDescriptor, type FundingReservationPolicy, type GenerationTaskKind } from '@ai-gateway/domain';
 import type { BillingDomain } from '@ai-gateway/service';
 import type { RunContext } from '@ai-gateway/service';
 import { buildReceipt } from '../pipeline/receipt.js';
@@ -29,8 +29,9 @@ export interface SubmitGenerationConfig {
   taskTtlMs: number;
   /** 租约宽限（TTL 之外的安全垫——轮询续租同锚点） */
   leaseGraceMs: number;
-  /** 单请求预扣上限（authorize 上限闸——任务族金额=单价×秒，无 token 未知量） */
+  /** 单请求风险敞口上限（authorize 上限闸——任务族金额=单价×秒，无 token 未知量） */
   reservationLimit: string;
+  reservationPolicy?: FundingReservationPolicy;
   /** 每用户在途任务上限（预扣+轮询批次的资源闸；缺省不设限——兼容旧行为） */
   maxActivePerUser?: number;
 }
@@ -130,6 +131,9 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
       stream: false,
       quote,
       reservationLimit: deps.config.reservationLimit,
+      ...(deps.config.reservationPolicy != null
+        ? { reservationPolicy: deps.config.reservationPolicy }
+        : {}),
       authorizationTtlMs: deps.config.taskTtlMs + deps.config.leaseGraceMs,
     });
 
@@ -205,7 +209,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
         cacheInputPrice: candidate.cacheInputPrice,
         cacheWritePrice: candidate.cacheWritePrice,
         outputPrice: candidate.outputPrice,
-        unitPrice: candidate.unitPrice ?? 0,
+        unitPrice: candidate.unitPrice ?? '0',
         unitUpperBound: candidate.unitUpperBound ?? 0,
         coefficient: '1',
       }).toString();

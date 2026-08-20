@@ -29,7 +29,10 @@ export async function requireMe(): Promise<MeInfo> {
       displayName: "演示账号",
       rateCardId: 1,
       rateCardName: "标准版 ×1.0",
-      balance: "4321.50",
+      accounts: [{
+        id: 'demo-cny', kind: 'user', code: null, currency: 'CNY', balance: '4321.50',
+        inFlight: '0', creditLimit: '0', status: 'active',
+      }],
       status: 0,
       isEnterprise: false,
       rpmLimit: 2000,

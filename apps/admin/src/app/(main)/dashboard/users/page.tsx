@@ -38,7 +38,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
     if (q) query.set("q", q);
     if (status === "0" || status === "1") query.set("status", status);
     if (enterprise === "0" || enterprise === "1") query.set("enterprise", enterprise);
-    const data = await adminFetch<Paginated<AdminUserRow>>(`/api/admin/users?${query.toString()}`);
+    const data = await adminFetch<Paginated<AdminUserRow>>(`/v1/users?${query.toString()}`);
     rows = data.rows ?? [];
     total = data.total ?? 0;
   } catch (e) {
@@ -46,7 +46,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
   }
 
   try {
-    const rc = await adminFetch<Paginated<AdminRateCardRow>>("/api/admin/rate-cards");
+    const rc = await adminFetch<Paginated<AdminRateCardRow>>("/v1/rate-cards");
     rateCards = (rc.rows ?? rc.rows ?? []).map((r) => ({
       id: r.id,
       name: r.name,

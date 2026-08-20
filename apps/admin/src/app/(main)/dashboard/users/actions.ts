@@ -7,13 +7,13 @@ import { adminFetch, ApiError } from "@ai-gateway/api-client";
 // ── 用户调账 ────────────────────────────────────────────────────────────────
 export async function adjustBalanceAction(
   id: number,
-  input: { amount: number; remark: string },
+  input: { amount: string; remark: string },
 ): Promise<{ error?: string }> {
-  if (!Number.isFinite(input.amount) || input.amount === 0) {
+  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) {
     return { error: "调账金额必须为非零数字" };
   }
   try {
-    await adminFetch(`/api/admin/users/${id}/adjust`, {
+    await adminFetch(`/v1/users/${id}/adjust`, {
       method: "POST",
       body: { amount: input.amount, remark: input.remark?.trim() || undefined },
     });
@@ -34,7 +34,7 @@ export async function setPasswordAction(
     return { error: "密码至少 6 位" };
   }
   try {
-    await adminFetch(`/api/admin/users/${id}/set-password`, {
+    await adminFetch(`/v1/users/${id}/set-password`, {
       method: "POST",
       body: { password: input.password },
     });
@@ -47,13 +47,13 @@ export async function setPasswordAction(
 // ── 赠送余额 ────────────────────────────────────────────────────────────────
 export async function giftUserAction(
   id: number,
-  input: { amount: number; remark: string },
+  input: { amount: string; remark: string },
 ): Promise<{ error?: string }> {
-  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) {
     return { error: "赠送金额必须 > 0" };
   }
   try {
-    await adminFetch(`/api/admin/users/${id}/gift`, {
+    await adminFetch(`/v1/users/${id}/gift`, {
       method: "POST",
       body: { amount: input.amount, remark: input.remark?.trim() || undefined },
     });
@@ -71,7 +71,7 @@ export async function setUserStatusAction(
   input: { status: number; freezeReason?: string },
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/users/${id}`, {
+    await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
       body: {
         status: input.status,
@@ -92,7 +92,7 @@ export async function setUserEnterpriseAction(
   isEnterprise: boolean,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/users/${id}`, {
+    await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
       body: { isEnterprise },
     });
@@ -110,7 +110,7 @@ export async function bindRateCardAction(
   rateCardId: number | null,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/users/${id}`, {
+    await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
       body: rateCardId === null ? { rateCardId: null } : { rateCardId },
     });

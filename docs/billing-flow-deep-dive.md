@@ -149,6 +149,10 @@ outputCap = min( (max_completion_tokens ?? max_tokens ?? 4096) × n, 32768 )
 预估(最终) = max(主模型, fallback₁, …)          ← 候选链取最贵
            → requiredReservation(预估, ¥1000)   ← 单请求预扣上限（BILLING_RESERVATION_MAX）
 
+实际冻结额 = full  ? 预估
+           : fixed ? BILLING_FIXED_RESERVATION_AMOUNT（仅纯 PAYG；免费请求仍为 0）
+日限额/在途风险始终使用完整预估，不使用 fixed 冻结额
+
 上游成本预估 = 同公式但 coefficient = 1（官方价口径）→ 渠道「进货额度」敞口闸用
 防御：负数/NaN/Infinity 一律 safe()→0；负单价钳 0；cached 夹到 ≤input —— 任何异常
 上游响应或配置错误都算不出负金额
@@ -162,11 +166,13 @@ outputCap = min( (max_completion_tokens ?? max_tokens ?? 4096) × n, 32768 )
 每个资金源 take = min(该源可用额, 尚缺金额)
   PAYG 可用额 = balance + credit_limit − in_flight （assertCanDebit 唯一口径）
 
-放行门 admitsReservation(balanceFloor, Σtake, 预估):
-  ├─ 模型未声明 billing_config.reservation → 足额 fail-closed：
-  │    Σtake 必须 == 预估，差一分 → 402 拒绝（上游零调用，平台损失严格为零）
-  └─ 声明 balanceFloor=¥X（文本模型「余额几毛也能跑」运营选项）：
-       Σtake ≥ X 即放行，hold = 实筹额（封顶用户余额）
+放行门：
+  ├─ BILLING_RESERVATION_MODE=full（缺省）→ Σtake 必须等于完整预估
+  └─ BILLING_RESERVATION_MODE=fixed（纯 PAYG）→ 可用额必须 ≥ 固定冻结额，
+       hold = BILLING_FIXED_RESERVATION_AMOUNT；最终超出部分走 #over 全额补扣
+
+模型 billing_config.reservation.params.balance 是退役字段，不得降低资金准入线；
+reservation.params.units 只用于视频/图片等计量单位保底。
 ```
 
 ### 4e. 落账（单 DB 事务）

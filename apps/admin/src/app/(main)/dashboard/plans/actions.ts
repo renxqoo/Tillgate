@@ -9,17 +9,17 @@ export interface PlanCreateInput {
   name: string;
   kind?: "subscription" | "pack";
   sortOrder?: number | null;
-  price: number;
+  price: string;
   /** 包月 1~3650；加油包 0 */
   periodDays: number;
-  quotaAmount: number;
+  quotaAmount: string;
   allowSeats?: boolean;
 }
 
 export async function createPlanAction(input: PlanCreateInput): Promise<{ error?: string }> {
   if (!input.name.trim()) return { error: "请输入套餐名称" };
   try {
-    await adminFetch("/api/admin/plans", {
+    await adminFetch("/v1/plans", {
       method: "POST",
       body: {
         name: input.name.trim(),
@@ -42,9 +42,9 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
 export interface PlanUpdateInput {
   name?: string;
   sortOrder?: number | null;
-  price?: number;
+  price?: string;
   periodDays?: number;
-  quotaAmount?: number;
+  quotaAmount?: string;
   allowSeats?: boolean;
   status?: number;
 }
@@ -54,7 +54,7 @@ export async function updatePlanAction(
   input: PlanUpdateInput,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/plans/${id}`, { method: "PATCH", body: input });
+    await adminFetch(`/v1/plans/${id}`, { method: "PATCH", body: input });
     revalidatePath("/dashboard/plans");
     return {};
   } catch (e) {
@@ -65,7 +65,7 @@ export async function updatePlanAction(
 // ── 删除套餐 ─────────────────────────────────────────────────────────────────
 export async function deletePlanAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/plans/${id}`, { method: "DELETE" });
+    await adminFetch(`/v1/plans/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/plans");
     return {};
   } catch (e) {
@@ -80,7 +80,7 @@ export async function grantPackAction(
 ): Promise<{ error?: string }> {
   if (!Number.isInteger(userId) || userId <= 0) return { error: "请输入有效用户 ID" };
   try {
-    await adminFetch(`/api/admin/subscriptions/${planId}/grant`, { method: "POST", body: { userId } });
+    await adminFetch(`/v1/subscriptions/${planId}/grant`, { method: "POST", body: { userId } });
     revalidatePath("/dashboard/plans");
     return {};
   } catch (e) {

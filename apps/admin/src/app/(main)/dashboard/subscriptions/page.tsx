@@ -25,7 +25,7 @@ export default async function SubscriptionsPage({ searchParams }: PageProps) {
   const userId = (firstParam(sp.userId) ?? "").trim();
   const status = firstParam(sp.status) ?? "all";
   const { rows, total, error } = await fetchAdminList<AdminSubscriptionRow>(
-    "/api/admin/subscriptions",
+    "/v1/subscriptions",
     {
       page,
       pageSize: PAGE_SIZE,
@@ -43,7 +43,7 @@ export default async function SubscriptionsPage({ searchParams }: PageProps) {
   // 变更弹窗需要套餐列表（按 planId 找当前层级、筛选可升目标）
   let plans: PlanOption[] = [];
   try {
-    const data = await fetchAdminList<ApiPlanRow>("/api/admin/plans", { page: 1, pageSize: 100 });
+    const data = await fetchAdminList<ApiPlanRow>("/v1/plans", { page: 1, pageSize: 100 });
     plans = data.rows.map((p) => ({
       id: p.id,
       name: p.name,

@@ -1,8 +1,7 @@
 /**
  * 模型映射路由（会话）：列表（channelIds 回显）/ 创建 / 更新 / 软下架 /
  * 绑定全量替换 / 逐渠道探针。
- * 数值域铁三角（v1 red test 语义原样）：z.coerce + .finite() + MONEY_MAX——
- * '1e999'(Infinity) / 1e21 / contextLength 1e30 一律 400，绝不溢出到 PG 500。
+ * 金额仅接收精确十进制字符串；token/限流等非资金数值仍走有界 number。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -12,11 +11,10 @@ import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { MODEL_SORTS, type ModelsService } from '../services/models.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { nonNegativeMoneyString } from '../http/money-schema.js';
 const CONTEXT_LENGTH_MAX = 2_000_000_000;
 
-const price = z.coerce.number().min(0).finite().max(MONEY_MAX);
+const price = nonNegativeMoneyString;
 
 
 /** 多模态统一输入计费策略（v1 对位：billingConfig 消费方在网关 build-quote/receipt） */
@@ -100,10 +98,10 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
       realModel: body.realModel,
       contextLength: body.contextLength ?? null,
       prices: {
-        inputPrice: String(body.inputPrice),
-        outputPrice: String(body.outputPrice),
-        cacheInputPrice: String(body.cacheInputPrice),
-        cacheWritePrice: String(body.cacheWritePrice ?? 0),
+        inputPrice: body.inputPrice,
+        outputPrice: body.outputPrice,
+        cacheInputPrice: body.cacheInputPrice,
+        cacheWritePrice: body.cacheWritePrice ?? '0',
       },
       isFree: body.isFree,
       rpmLimit: body.rpmLimit ?? null,
@@ -131,10 +129,10 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined || body.cacheWritePrice !== undefined
           ? {
               prices: {
-                ...(body.inputPrice !== undefined ? { inputPrice: String(body.inputPrice) } : {}),
-                ...(body.outputPrice !== undefined ? { outputPrice: String(body.outputPrice) } : {}),
-                ...(body.cacheInputPrice !== undefined ? { cacheInputPrice: String(body.cacheInputPrice) } : {}),
-                ...(body.cacheWritePrice !== undefined ? { cacheWritePrice: String(body.cacheWritePrice) } : {}),
+                ...(body.inputPrice !== undefined ? { inputPrice: body.inputPrice } : {}),
+                ...(body.outputPrice !== undefined ? { outputPrice: body.outputPrice } : {}),
+                ...(body.cacheInputPrice !== undefined ? { cacheInputPrice: body.cacheInputPrice } : {}),
+                ...(body.cacheWritePrice !== undefined ? { cacheWritePrice: body.cacheWritePrice } : {}),
               },
             }
           : {}),

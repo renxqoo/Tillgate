@@ -44,7 +44,6 @@ import {
   TableHeader,
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
-import { numericText } from '@ai-gateway/ui/lib/forms';
 
 import type { AdminRateCardRow } from '@ai-gateway/api-client/types';
 import { fmtDateTime } from "@ai-gateway/api-client/formatters";
@@ -54,10 +53,8 @@ import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
 const createSchema = z.object({
   name: z.string().min(1),
-  coefficient: numericText({ message: '请输入有效系数' }).refine(
-    (v) => v >= 0 && v <= 10,
-    '系数范围 0-10',
-  ),
+  coefficient: z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/, '系数范围 0.001-9.999，最多 3 位小数')
+    .refine((v) => v !== '0' && !/^0\.0+$/.test(v), '系数必须大于 0'),
   description: z.string().optional(),
 });
 
@@ -155,7 +152,7 @@ export function CreateRateCardDialog() {
       const { createRateCardAction } = await import('../actions');
       const res = await createRateCardAction({
         name: values.name,
-        coefficient: Number(values.coefficient),
+        coefficient: values.coefficient,
         description: values.description?.trim() || undefined,
       });
       if (!notify(res, '创建失败', '已创建')) return;
@@ -195,10 +192,8 @@ export function CreateRateCardDialog() {
 
 const editSchema = z.object({
   name: z.string().min(1),
-  coefficient: numericText({ message: '请输入有效系数' }).refine(
-    (v) => v >= 0 && v <= 10,
-    '系数范围 0-10',
-  ),
+  coefficient: z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/, '系数范围 0.001-9.999，最多 3 位小数')
+    .refine((v) => v !== '0' && !/^0\.0+$/.test(v), '系数必须大于 0'),
   description: z.string().optional(),
   status: z.coerce.number().int(),
 });
@@ -223,7 +218,7 @@ function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
       const { updateRateCardAction } = await import('../actions');
       const res = await updateRateCardAction(card.id, {
         name: values.name,
-        coefficient: Number(values.coefficient),
+        coefficient: values.coefficient,
         description: values.description?.trim() || undefined,
         status: Number(values.status),
       });
@@ -294,10 +289,10 @@ function RateCardForm({
         <NumberField
           control={form.control}
           name="coefficient"
-          label="系数（0-10，1 = 原价）"
+          label="系数（0.001-9.999，1 = 原价）"
           id="rc-coef"
           step="0.05"
-          min={0}
+          min={0.001}
         />
         <Controller
           control={form.control}

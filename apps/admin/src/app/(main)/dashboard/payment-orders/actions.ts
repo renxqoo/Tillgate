@@ -5,7 +5,7 @@ import { ApiError, adminFetch } from '@ai-gateway/api-client';
 
 export async function closePaymentOrderAction(orderId: string): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/payment-orders/${orderId}/close`, { method: 'POST' });
+    await adminFetch(`/v1/payment-orders/${orderId}/close`, { method: 'POST' });
     revalidatePath('/dashboard/payment-orders');
     return {};
   } catch (error) {

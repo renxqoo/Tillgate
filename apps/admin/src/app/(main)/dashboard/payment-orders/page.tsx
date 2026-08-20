@@ -42,7 +42,7 @@ interface PageProps {
 export default async function PaymentOrdersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const q = typeof sp.q === 'string' ? sp.q : undefined;
-  const { rows, error } = await fetchAdminList<PaymentOrderRow>('/api/admin/payment-orders', {
+  const { rows, error } = await fetchAdminList<PaymentOrderRow>('/v1/payment-orders', {
     pageSize: 20,
     extra: q ? { q } : undefined,
   });

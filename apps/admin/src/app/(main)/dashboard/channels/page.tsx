@@ -24,12 +24,12 @@ export default async function ChannelsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows: channels, total, error } = await fetchAdminList<AdminChannelRow>(
-    "/api/admin/channels",
+    "/v1/channels",
     { page, pageSize: PAGE_SIZE, sortBy, order, extra: { q } },
   );
   const providers: ProviderOption[] = [];
   try {
-    const p = await fetchAdminList<AdminProviderRow>("/api/admin/providers", {
+    const p = await fetchAdminList<AdminProviderRow>("/v1/providers", {
       page: 1,
       pageSize: 100,
     });

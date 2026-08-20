@@ -20,7 +20,7 @@ export default async function TopologyPage({
   let error: string | null = null;
   try {
     const response = await adminFetch<{ channels: ChannelHealth[] }>(
-      `/api/admin/tracing/topology?hours=${hours}`,
+      `/v1/tracing/topology?hours=${hours}`,
     );
     channels = response.channels;
   } catch (caught) {

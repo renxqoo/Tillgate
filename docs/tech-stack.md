@@ -154,7 +154,7 @@ client-api┘
 | 流式心跳 | 静默 >30s 注入 `: keep-alive` 帧（仅 SSE 事件边界，防拆半截事件）；nginx `proxy_read_timeout` 调至 >5min | 防代理/LB 掐断长流 |
 | 重试退避 | 指数退避 250ms 起 ×2 + jitter；总 deadline 240s；仅 5xx/429/网络/超时重试 | |
 | 空完成重试 | 200 但无内容 → 同渠道退避重试 ≤2 次，仍空换渠道 | 非流式在完整 body 收到后判定 |
-| 计费授权 | 默认输出上限 4096；BILLING_RESERVATION_MAX 默认 ¥50；lease 默认 60s | 足额授权 + durable receipt |
+| 计费授权 | 默认输出上限 4096；BILLING_RESERVATION_MAX 默认 ¥1000；full 完整冻结 / fixed 纯 PAYG 固定冻结；lease 默认 300s | 风险敞口与冻结额分列 + durable receipt |
 | 流式总时长上限 | 10 分钟（可配），超限主动断流 | agent 长任务场景按需调大 |
 | 性能目标 | 单实例 ≥300 QPS 非流式转发、流式并发 ≥200 | 脚手架完成后 k6/autocannon 压测验证，结果决定副本数与 K8s 化时机 |
 | 请求体上限 | 16MB | 超出返回 413 |

@@ -20,6 +20,13 @@ import { createPaymentAction } from '../actions';
 
 const PRESETS = ['10', '50', '100', '500'];
 
+function validTopupAmount(raw: string): boolean {
+  if (!/^\d{1,6}(?:\.\d{1,2})?$/.test(raw)) return false;
+  const [yuan = '0', fraction = ''] = raw.split('.');
+  const cents = BigInt(yuan) * 100n + BigInt(fraction.padEnd(2, '0'));
+  return cents >= 100n && cents <= 10_000_000n;
+}
+
 export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe'; label: string }> }) {
   const [amount, setAmount] = useState('50');
   const [provider, setProvider] = useState<'epay' | 'stripe' | ''>('');
@@ -32,13 +39,12 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
       setError('请选择支付渠道');
       return;
     }
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value < 1 || value > 100000) {
+    if (!validTopupAmount(amount)) {
       setError('金额须在 1~100000 元之间');
       return;
     }
     setPending(true);
-    const res = await createPaymentAction(provider, value.toFixed(2));
+    const res = await createPaymentAction(provider, amount);
     setPending(false);
     if (res.error) {
       setError(res.error);

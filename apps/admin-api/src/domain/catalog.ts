@@ -5,6 +5,8 @@
  * provider/channel/model_mappings，无新概念。
  * 币种：目录价随源自带（USD/CNY）；跨币比价与预填换算由调用方传入生效汇率。
  */
+import { Decimal } from '@ai-gateway/domain';
+
 export type CatalogCurrency = 'USD' | 'CNY';
 
 /** 目录价与库内卖价的差异态（换算同币后比较，5% 带宽抗汇率噪声） */
@@ -45,30 +47,35 @@ export function suggestExternalName(id: string): string {
 }
 
 function asPrice(v: unknown): string {
-  return typeof v === 'string' && v.length > 0 ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : '0';
+  if (!((typeof v === 'string' && v.length > 0) || (typeof v === 'number' && Number.isFinite(v)))) return '0';
+  try {
+    const value = new Decimal(v);
+    return value.isFinite() ? value.toString() : '0';
+  } catch {
+    return '0';
+  }
 }
 
 function asOptionalPrice(v: unknown): string | null {
   if (typeof v !== 'string' && typeof v !== 'number') return null;
   const s = asPrice(v);
-  return Number(s) > 0 ? s : null;
+  return new Decimal(s).gt(0) ? s : null;
 }
 
-/** 换算价的浮点噪声清理：4.5e-7×1e6 = 0.44999…96 → 0.45（12 位有效数字覆盖一切报价精度） */
-function cleanPrice(n: number): string {
-  return String(Number(n.toPrecision(12)));
+/** 目录展示保留 12 位有效数字；运算始终走 Decimal，不引入 IEEE-754 尾差。 */
+function cleanPrice(n: string | number | Decimal): string {
+  return new Decimal(n).toSignificantDigits(12).toString();
 }
 
 /** 上游「不可定价」哨兵（OpenRouter auto-* 与 models.dev 均用负值/-1）：缺省/0 不是哨兵 */
 function isUnpriceableSentinel(v: unknown): boolean {
-  const n = typeof v === 'number' ? v : typeof v === 'string' && v.length > 0 ? Number(v) : 0;
-  return Number.isFinite(n) && n < 0;
+  return new Decimal(asPrice(v)).lt(0);
 }
 
 /** 每 token 价 → 每百万价（0/缺省保持 null——免费无缓存价语义） */
 function scalePerMillion(v: unknown): string | null {
   const s = asOptionalPrice(v);
-  return s == null ? null : cleanPrice(Number(s) * USD_PER_TOKEN_TO_PER_MILLION);
+  return s == null ? null : cleanPrice(new Decimal(s).times(USD_PER_TOKEN_TO_PER_MILLION));
 }
 
 /**
@@ -77,7 +84,7 @@ function scalePerMillion(v: unknown): string | null {
  * 价格口径归一：OpenRouter /v1/models 的 pricing 为「每 token 美元」，统一换算成
  * 「每百万 token」（×1e6）——与 models.dev 的 cost 口径一致，预填/比价不再有量纲差。
  */
-const USD_PER_TOKEN_TO_PER_MILLION = 1_000_000;
+const USD_PER_TOKEN_TO_PER_MILLION = '1000000';
 export function mapOpenAiCompatibleCatalog(
   raw: unknown,
   opts: { currency: CatalogCurrency; realModelPrefix?: string },
@@ -96,16 +103,16 @@ export function mapOpenAiCompatibleCatalog(
     // 不可定价哨兵（pricing 为 -1，如 openrouter/auto-beta 动态定价）：预填无依据、
     // 且负价会在换算/比价里疯走（-1×1e6×汇率）——不入货架，导入需运营自行配价
     if (isUnpriceableSentinel(row.pricing?.prompt) || isUnpriceableSentinel(row.pricing?.completion)) continue;
-    const prompt = Number(asPrice(row.pricing?.prompt));
-    const completion = Number(asPrice(row.pricing?.completion));
+    const prompt = new Decimal(asPrice(row.pricing?.prompt));
+    const completion = new Decimal(asPrice(row.pricing?.completion));
     const realModel = opts.realModelPrefix ? `${opts.realModelPrefix}${row.id}` : row.id;
     items.push({
       realModel,
       displayName: typeof row.name === 'string' ? row.name : row.id,
       contextLength: typeof row.context_length === 'number' ? row.context_length : null,
       currency: opts.currency,
-      catalogPrompt: cleanPrice(prompt * USD_PER_TOKEN_TO_PER_MILLION),
-      catalogCompletion: cleanPrice(completion * USD_PER_TOKEN_TO_PER_MILLION),
+      catalogPrompt: cleanPrice(prompt.times(USD_PER_TOKEN_TO_PER_MILLION)),
+      catalogCompletion: cleanPrice(completion.times(USD_PER_TOKEN_TO_PER_MILLION)),
       catalogCacheRead: scalePerMillion((row.pricing as { cache_read?: unknown } | undefined)?.cache_read),
       catalogCacheWrite: scalePerMillion((row.pricing as { cache_write?: unknown } | undefined)?.cache_write),
       suggestedName: suggestExternalName(row.id),
@@ -135,8 +142,8 @@ export function mapModelsDevCatalog(raw: unknown): CatalogItem[] {
         displayName: typeof m.name === 'string' && m.name ? m.name : id,
         contextLength: typeof limit.context === 'number' && limit.context > 0 ? limit.context : null,
         currency: 'USD',
-        catalogPrompt: cleanPrice(Number(asPrice(cost.input))),
-        catalogCompletion: cleanPrice(Number(asPrice(cost.output))),
+        catalogPrompt: cleanPrice(asPrice(cost.input)),
+        catalogCompletion: cleanPrice(asPrice(cost.output)),
         catalogCacheRead: asOptionalPrice(cost.cache_read),
         catalogCacheWrite: asOptionalPrice(cost.cache_write),
         suggestedName: suggestExternalName(id),
@@ -150,11 +157,11 @@ export function mapModelsDevCatalog(raw: unknown): CatalogItem[] {
 export function toCny(price: string, currency: CatalogCurrency, effectiveRate: string | null): string | null {
   if (currency === 'CNY') return price;
   if (effectiveRate == null) return null;
-  return cleanPrice(Number(price) * Number(effectiveRate));
+  return cleanPrice(new Decimal(price).times(effectiveRate));
 }
 
 /** 比价带宽：±5% 内视为 same（汇率与目录价的日常波动不产生噪声 diff） */
-const DRIFT_BAND = 0.05;
+const DRIFT_BAND = new Decimal('0.05');
 
 /**
  * 目录 × 库内映射 → 三态 diff + 回填 + 漂移警告（纯函数）。
@@ -176,19 +183,21 @@ export function compareCatalog(
     const catalogPromptCny = toCny(item.catalogPrompt, item.currency, fx.effectiveRate);
     const catalogCompletionCny = toCny(item.catalogCompletion, item.currency, fx.effectiveRate);
     const catalogCharged =
-      Number(item.catalogPrompt) > 0 || Number(item.catalogCompletion) > 0;
+      new Decimal(item.catalogPrompt).gt(0) || new Decimal(item.catalogCompletion).gt(0);
     const weSellFree =
-      ours != null && Number(ours.inputPrice) === 0 && Number(ours.outputPrice) === 0;
+      ours != null && new Decimal(ours.inputPrice).isZero() && new Decimal(ours.outputPrice).isZero();
 
     let diff: CatalogDiffState = 'new';
     let driftPct: number | null = null;
     if (ours != null && catalogPromptCny != null && catalogCompletionCny != null && catalogCharged && !weSellFree) {
-      const oursAvg = (Number(ours.inputPrice) + Number(ours.outputPrice)) / 2;
-      const catalogAvg = (Number(catalogPromptCny) + Number(catalogCompletionCny)) / 2;
-      if (oursAvg > 0) {
-        const ratio = catalogAvg / oursAvg;
-        driftPct = Math.round((ratio - 1) * 1000) / 10;
-        diff = ratio > 1 + DRIFT_BAND ? 'price_up' : ratio < 1 - DRIFT_BAND ? 'price_down' : 'same';
+      const oursAvg = new Decimal(ours.inputPrice).plus(ours.outputPrice).div(2);
+      const catalogAvg = new Decimal(catalogPromptCny).plus(catalogCompletionCny).div(2);
+      if (oursAvg.gt(0)) {
+        const ratio = catalogAvg.div(oursAvg);
+        driftPct = ratio.minus(1).times(100).toDecimalPlaces(1).toNumber();
+        diff = ratio.gt(new Decimal(1).plus(DRIFT_BAND))
+          ? 'price_up'
+          : ratio.lt(new Decimal(1).minus(DRIFT_BAND)) ? 'price_down' : 'same';
       }
     } else if (ours != null) {
       diff = 'same';

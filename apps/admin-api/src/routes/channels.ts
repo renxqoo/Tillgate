@@ -11,8 +11,7 @@ import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { CHANNEL_SORTS, type ChannelsService } from '../services/channels.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { nonNegativeMoneyString } from '../http/money-schema.js';
 
 const createSchema = z.object({
   providerId: z.number().int().positive(),
@@ -29,7 +28,7 @@ const createSchema = z.object({
 const updateSchema = createSchema.partial().extend({
   providerId: z.number().int().positive().optional(),
   status: z.number().int().min(0).max(4).optional(),
-  upstreamThreshold: z.number().min(0).finite().max(MONEY_MAX).nullable().optional(),
+  upstreamThreshold: nonNegativeMoneyString.nullable().optional(),
 });
 
 const importItemSchema = z.object({
@@ -70,12 +69,12 @@ export function channelsRoutes(service: ChannelsService, session: MiddlewareHand
   app.patch('/v1/channels/:id', session, async (c) => {
     const id = idParam(c.req.param('id'));
     const body = updateSchema.parse(await c.req.json());
-    // numeric 列以字符串落库（zod 层已限数值域；null 透传 = 清阈值）
+    // numeric 列以字符串落库（null 透传 = 清阈值）；资金值禁止经过 IEEE-754。
     const { upstreamThreshold, ...rest } = body;
     const patch = {
       ...rest,
       ...(upstreamThreshold !== undefined
-        ? { upstreamThreshold: upstreamThreshold === null ? null : String(upstreamThreshold) }
+        ? { upstreamThreshold }
         : {}),
     };
     return c.json(await service.update(adminCtxOf(c), { adminId: c.get('adminId'), channelId: id, patch }));

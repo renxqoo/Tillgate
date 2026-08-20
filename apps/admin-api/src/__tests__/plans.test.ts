@@ -30,14 +30,14 @@ describe('套餐校验（TDD 参数边界）', () => {
     const { token } = await newAdmin();
     const zero = await request('/v1/plans', {
       token,
-      body: { name: uid('p'), price: 30, quotaAmount: 30, periodDays: 0 },
+      body: { name: uid('p'), price: '30', quotaAmount: '30', periodDays: 0 },
     });
     expect(zero.status).toBe(400);
     expect(((await zero.json()) as { error: { code: string } }).error.code).toBe('invalid_period_days');
 
     const missing = await request('/v1/plans', {
       token,
-      body: { name: uid('p'), price: 30, quotaAmount: 30 },
+      body: { name: uid('p'), price: '30', quotaAmount: '30' },
     });
     expect(missing.status).toBe(400);
     expect(((await missing.json()) as { error: { code: string } }).error.code).toBe('invalid_period_days');
@@ -48,14 +48,14 @@ describe('套餐校验（TDD 参数边界）', () => {
     const { token } = await newAdmin();
     const bad = await request('/v1/plans', {
       token,
-      body: { name: uid('p'), kind: 'pack', price: 5, quotaAmount: 5, periodDays: 30 },
+      body: { name: uid('p'), kind: 'pack', price: '5', quotaAmount: '5', periodDays: 30 },
     });
     expect(bad.status).toBe(400);
 
     const name = uid('pack');
     const ok = await request('/v1/plans', {
       token,
-      body: { name, kind: 'pack', price: 5, quotaAmount: 5 },
+      body: { name, kind: 'pack', price: '5', quotaAmount: '5' },
     });
     expect(ok.status).toBe(201);
     const [row] = await db.select().from(plans).where(eq(plans.name, name));
@@ -73,7 +73,7 @@ describe('套餐校验（TDD 参数边界）', () => {
     // 直接注入 Infinity（等价于 raw JSON 里 1e999 的解析结果）——zod finite() 收口
     const overflow = await request('/v1/plans', {
       token,
-      body: { name: uid('p'), price: Number('1e999'), quotaAmount: 30, periodDays: 30 },
+      body: { name: uid('p'), price: Number('1e999'), quotaAmount: '30', periodDays: 30 },
     });
     expect(overflow.status).toBe(400);
   });

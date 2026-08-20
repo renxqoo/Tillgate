@@ -13,6 +13,7 @@
  */
 import { estimateInputTokens, estimateOutputTokens, estimateTextTokens, type Endpoint } from '@ai-gateway/ai';
 import { estimateMaxCost, USER_SIDE_CANCELS } from '@ai-gateway/domain';
+import type { FundingReservationPolicy } from '@ai-gateway/domain';
 import type { UsageReceipt } from '@ai-gateway/domain';
 import { getTracer, SpanStatusCode, withAsyncSpan } from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
@@ -23,7 +24,7 @@ import type { AuthContext } from '../middleware/api-key.js';
 import { createBuildQuote } from '../quote/build-quote.js';
 import { createResolveChannels } from '../routing/resolve-channels.js';
 import { isChannelSwitchable } from '../routing/switchable.js';
-import { clampForwardedOutputLimit, maxOutputTokensFor, type OutputCapConfig } from './output-cap.js';
+import { clampForwardedOutputLimit, conservativeInputTokenUpperBound, maxOutputTokensFor, type OutputCapConfig } from './output-cap.js';
 import { buildReceipt } from './receipt.js';
 import { admitFreeDaily, admitKey, reserveModelDims, tryChannel, type RateLimitGate } from '../rate-limit/gate.js';
 import { sanitizeUpstreamDetail } from '../http/sanitize.js';
@@ -34,6 +35,7 @@ type ResolveChannels = ReturnType<typeof createResolveChannels>;
 
 export interface RunChatConfig {
   reservationLimit: string;
+  reservationPolicy?: FundingReservationPolicy;
   authorizationTtlMs: number;
   output: OutputCapConfig;
 }
@@ -174,7 +176,10 @@ export function createRunChat(deps: PipelineDeps) {
     if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
-    const estInput = estimateInputTokens(body, { model: body.model });
+    const estInput = conservativeInputTokenUpperBound(
+      body as Record<string, unknown>,
+      estimateInputTokens(body, { model: body.model }),
+    );
   // 请求时点汇率快照（60s 进程缓存）：预取不阻塞授权关键路径（CI 慢机上多一次
   // DB 往返会挤占流租约续租时序）——装配收据时才 await；查询失败降级 null
   const fxPromise = repos.fx.current({ ...ctx, db: deps.db }).catch(() => null);
@@ -182,7 +187,7 @@ export function createRunChat(deps: PipelineDeps) {
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
     const stream = body.stream === true;
     const estimatedTokens = estInput + outputCap;
-    // 预扣口径与上游实许输出对齐：声明超口径的输出上限压回口径内（不注入——兼容优先）
+    // 预扣口径与上游实许输出对齐：超上限钳制，未声明则注入硬上限。
     const upstreamBody = clampForwardedOutputLimit(body as Record<string, unknown>, outputCap);
 
     // 准入并罚（v1 五维语义的 v2 形态）：凭证维 + 用户维各自生效——
@@ -292,6 +297,9 @@ export function createRunChat(deps: PipelineDeps) {
           stream,
           quote,
           reservationLimit: deps.config.reservationLimit,
+          ...(deps.config.reservationPolicy != null
+            ? { reservationPolicy: deps.config.reservationPolicy }
+            : {}),
           authorizationTtlMs: deps.config.authorizationTtlMs,
           // 请求根 span 的 traceparent 落列——worker 结算按它挂回同一 trace
           traceParent: ctx.traceParent,
@@ -415,7 +423,7 @@ export function createRunChat(deps: PipelineDeps) {
         cacheInputPrice: candidate.cacheInputPrice,
         cacheWritePrice: candidate.cacheWritePrice,
         outputPrice: candidate.outputPrice,
-        unitPrice: candidate.unitPrice ?? 0,
+        unitPrice: candidate.unitPrice ?? '0',
         unitUpperBound: candidate.unitUpperBound ?? 0,
         coefficient: '1',
       }).toString();

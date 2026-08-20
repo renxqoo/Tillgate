@@ -40,7 +40,7 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
-import { numericText } from '@ai-gateway/ui/lib/forms';
+import { moneyText, numericText } from '@ai-gateway/ui/lib/forms';
 import { fmtPrice } from '@ai-gateway/api-client/formatters';
 
 /** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
@@ -59,10 +59,10 @@ import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 const createSchema = z.object({
   externalName: z.string().min(1),
   realModel: z.string().min(1),
-  inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  cacheWritePrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  inputPrice: moneyText({ message: '请输入有效价格' }),
+  outputPrice: moneyText({ message: '请输入有效价格' }),
+  cacheInputPrice: moneyText({ message: '请输入有效价格' }),
+  cacheWritePrice: moneyText({ message: '请输入有效价格' }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
@@ -188,10 +188,10 @@ export function CreateModelDialog() {
       const res = await createModelAction({
         externalName: values.externalName,
         realModel: values.realModel,
-        inputPrice: Number(values.inputPrice),
-        outputPrice: Number(values.outputPrice),
-        cacheInputPrice: Number(values.cacheInputPrice),
-        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: Number(values.cacheWritePrice) } : {}),
+        inputPrice: values.inputPrice,
+        outputPrice: values.outputPrice,
+        cacheInputPrice: values.cacheInputPrice,
+        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
       });
@@ -233,10 +233,10 @@ export function CreateModelDialog() {
 const editSchema = z.object({
   externalName: z.string().min(1),
   realModel: z.string().min(1),
-  inputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  outputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  cacheInputPrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
-  cacheWritePrice: numericText({ message: '请输入有效价格' }).refine((v) => v >= 0, '价格不能为负'),
+  inputPrice: moneyText({ message: '请输入有效价格' }),
+  outputPrice: moneyText({ message: '请输入有效价格' }),
+  cacheInputPrice: moneyText({ message: '请输入有效价格' }),
+  cacheWritePrice: moneyText({ message: '请输入有效价格' }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
@@ -292,10 +292,10 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
       const res = await updateModelAction(model.id, {
         externalName: values.externalName,
         realModel: values.realModel,
-        inputPrice: Number(values.inputPrice),
-        outputPrice: Number(values.outputPrice),
-        cacheInputPrice: Number(values.cacheInputPrice),
-        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: Number(values.cacheWritePrice) } : {}),
+        inputPrice: values.inputPrice,
+        outputPrice: values.outputPrice,
+        cacheInputPrice: values.cacheInputPrice,
+        ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,

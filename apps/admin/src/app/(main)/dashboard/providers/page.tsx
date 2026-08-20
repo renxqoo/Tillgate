@@ -20,7 +20,7 @@ interface PageProps {
 export default async function ProvidersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchAdminList<AdminProviderRow>("/api/admin/providers", {
+  const { rows, total, error } = await fetchAdminList<AdminProviderRow>("/v1/providers", {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

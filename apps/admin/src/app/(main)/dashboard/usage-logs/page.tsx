@@ -62,7 +62,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
   let error: string | null = null;
   try {
     const data = await adminFetch<Paginated<AdminUsageRow>>(
-      `/api/admin/usage-logs?${query.toString()}`,
+      `/v1/usage-logs?${query.toString()}`,
     );
     rows = data.rows ?? [];
     total = data.total ?? 0;

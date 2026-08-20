@@ -3,7 +3,7 @@
  *
  *   wallet_accounts        账户：kind ∈ {user, internal}——用户账户 (user_id, currency)、
  *                          内部科目账户 (code, currency)（platform_revenue 平台收入 /
- *                          outside 外部世界 / 业务自定义科目）；balance ≥ −credit_limit；
+ *                          outside 外部世界 / 业务自定义科目）；已发生消费允许形成负余额；
  *                          status ∈ {active, frozen}（风控冻结）
  *   wallet_transactions    交易批头：幂等键 (ref_type, ref_id, kind)；金额不在批头
  *   wallet_legs            腿：每笔交易 ≥2 腿、Σ 腿 = 0（有借必有贷，代码构造 +
@@ -46,7 +46,7 @@ export const walletAccounts = pgTable(
     /** 可用口径 = balance + credit_limit − in_flight */
     balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),
     inFlight: numeric('in_flight', { precision: 38, scale: 18 }).notNull().default('0'),
-    /** 授信地板（≥0；balance 不得低于 −credit_limit。0 = 纯预付） */
+    /** 新请求的授信额度（≥0）；不限制已发生消费结算形成的负余额。 */
     creditLimit: numeric('credit_limit', { precision: 38, scale: 18 }).notNull().default('0'),
     /** active / frozen（风控冻结：冻结账户拒绝一切资金变动） */
     status: varchar('status', { length: 8 }).notNull().default('active'),
@@ -59,11 +59,6 @@ export const walletAccounts = pgTable(
           or (${t.kind} = 'internal' and ${t.code} is not null and ${t.userId} is null)`,
     ),
     check('wallet_accounts_floor_ck', sql`${t.creditLimit} >= 0 and ${t.inFlight} >= 0`),
-    // 地板只约束用户账户：内部科目（outside 镜像等）语义上可负，守恒由 Σ腿=0 保证
-    check(
-      'wallet_accounts_balance_floor_ck',
-      sql`${t.kind} = 'internal' or ${t.balance} >= -${t.creditLimit}`,
-    ),
     check('wallet_accounts_status_ck', sql`${t.status} in ('active', 'frozen')`),
     check(
       'wallet_accounts_shard_ck',
@@ -431,6 +426,36 @@ const WALLET_INTERNAL_SHARDING_DDL: readonly string[] = [
      on wallet_accounts (code, currency, shard) where kind = 'internal'`,
 ];
 
+/** v5：已发生消费必须全额结算；负余额合法，但账腿与在途投影仍须严格一致。 */
+const WALLET_NEGATIVE_SETTLEMENT_DDL: readonly string[] = [
+  `alter table wallet_accounts drop constraint if exists wallet_accounts_balance_floor_ck`,
+  `create or replace function wallet_assert_account_coherent() returns trigger language plpgsql as $$
+   declare target_id uuid; stored_balance numeric(38,18); stored_in_flight numeric(38,18);
+           last_balance numeric(38,18); active_total numeric(38,18);
+   begin
+     if tg_table_name = 'wallet_accounts' then
+       target_id := case when tg_op = 'DELETE' then old.id else new.id end;
+     else
+       target_id := case when tg_op = 'DELETE' then old.account_id else new.account_id end;
+     end if;
+     select balance, in_flight into stored_balance, stored_in_flight
+       from wallet_accounts where id = target_id;
+     if not found then return null; end if;
+     select balance_after into last_balance from wallet_legs
+       where account_id = target_id order by id desc limit 1;
+     last_balance := coalesce(last_balance, 0);
+     select coalesce(sum(amount), 0) into active_total from wallet_authorizations
+       where account_id = target_id and status = 'active';
+     if stored_balance <> last_balance then
+       raise exception 'wallet account % balance differs from final leg', target_id using errcode = '23514';
+     end if;
+     if stored_in_flight <> active_total then
+       raise exception 'wallet account % in_flight differs from active authorizations', target_id using errcode = '23514';
+     end if;
+     return null;
+   end $$`,
+];
+
 export interface WalletSchemaMigration {
   version: number;
   name: string;
@@ -457,6 +482,7 @@ export const walletSchemaMigrations: readonly WalletSchemaMigration[] = [
   migration(2, 'deferred_invariants_and_stable_receipts', WALLET_INVARIANT_DDL),
   migration(3, 'stable_command_fingerprints', WALLET_IDEMPOTENCY_DDL),
   migration(4, 'sharded_internal_accounts', WALLET_INTERNAL_SHARDING_DDL),
+  migration(5, 'allow_negative_settlement_balance', WALLET_NEGATIVE_SETTLEMENT_DDL),
 ];
 
 /** 串行、校验 checksum 的生产迁移入口。 */

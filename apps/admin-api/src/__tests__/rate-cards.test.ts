@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 import { rateCardCoefficients, rateCards } from '@ai-gateway/db';
 import { buildTestApp, db, newAdmin, newMappingRow, newUserBoundToCard, trackCard, uid } from './helpers.js';
 
-async function createCard(request: ReturnType<typeof buildTestApp>['request'], token: string, coefficient = 1.5) {
+async function createCard(request: ReturnType<typeof buildTestApp>['request'], token: string, coefficient = '1.5') {
   const name = uid('card');
   const res = await request('/v1/rate-cards', { token, body: { name, coefficient } });
   const body = (await res.json()) as { id: number; coefficient: string };
@@ -19,11 +19,23 @@ async function createCard(request: ReturnType<typeof buildTestApp>['request'], t
 }
 
 describe('费率卡全流程', () => {
+  it('资金系数只接受精确十进制字符串，拒绝 number、零值和超精度', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    for (const coefficient of [1.5, '0', '1.0001']) {
+      const res = await request('/v1/rate-cards', {
+        token,
+        body: { name: uid('invalid-card'), coefficient },
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
   it('创建 → 列表 → 健康 → 更新 → 删除', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
 
-    const { res, body, name } = await createCard(request, token, 1.5);
+    const { res, body, name } = await createCard(request, token, '1.5');
     expect(res.status).toBe(201);
     expect(body.coefficient).toBe('1.500');
 
@@ -41,7 +53,7 @@ describe('费率卡全流程', () => {
     const patched = await request(`/v1/rate-cards/${body.id}`, {
       method: 'PATCH',
       token,
-      body: { coefficient: 0.8 },
+      body: { coefficient: '0.8' },
     });
     expect(patched.status).toBe(200);
     expect(((await patched.json()) as { coefficient: string }).coefficient).toBe('0.800');
@@ -78,7 +90,7 @@ describe('M1 red：全局系数更新不得抹平 model 覆写行', () => {
   it('PATCH coefficient：global 行更新，scope=model 行保持原系数', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
-    const { body } = await createCard(request, token, 1.5);
+    const { body } = await createCard(request, token, '1.5');
 
     // 手工插一行 model 覆写系数（schema 允许：scope='model' + modelMappingId）
     const mappingId = await newMappingRow();
@@ -92,7 +104,7 @@ describe('M1 red：全局系数更新不得抹平 model 覆写行', () => {
     const res = await request(`/v1/rate-cards/${body.id}`, {
       method: 'PATCH',
       token,
-      body: { coefficient: 0.8 },
+      body: { coefficient: '0.8' },
     });
     expect(res.status).toBe(200);
 

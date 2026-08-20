@@ -1,7 +1,7 @@
 /**
  * 输出 token 上界（app 纯规则——预扣/敞口共用口径）：
  * max_completion_tokens > max_tokens > 装配缺省；× n 倍数；封顶 exposureCap。
- * 信用模型：cap 外部分由 credit_limit 透支缓冲 + 结算实扣兜底——长输出上限不虚抬在途。
+ * cap 同时是实际转发硬上限，预扣敞口不会小于允许的实际输出。
  */
 export interface OutputCapConfig {
   defaultMax: number;
@@ -35,8 +35,7 @@ export function maxOutputTokens(
 /**
  * 转发体输出上限钳制：客户端声明的 max_tokens/max_completion_tokens 超出预扣口径
  * （outputCap 已含 n 倍数）时压到口径内——「预估敞口 ≥ 实际输出」的结构性保证。
- * 不高估不注入：未声明输出上限的请求不强行注入（o 系列拒收 max_tokens 等兼容坑），
- * 其超出敞口的部分由结算 §4 补充授权 + 余额兜底（企业通行口径）。
+ * 未声明输出上限时注入 max_completion_tokens，禁止无限输出越过预扣敞口。
  * 返回原对象引用（无改动时）避免无谓拷贝。
  */
 export function clampForwardedOutputLimit(
@@ -58,5 +57,26 @@ export function clampForwardedOutputLimit(
     out.max_tokens = perCompletion;
     touched = true;
   }
+  if (mct === undefined && mt === undefined) {
+    out.max_completion_tokens = perCompletion;
+    touched = true;
+  }
   return touched ? out : body;
+}
+
+/**
+ * JSON UTF-8 字节数是文本 token 数的保守上界；与分词估算取最大值，覆盖未知模型、
+ * chat template 和工具定义低估。多模态会更保守，但只增加临时预留，不增加实扣。
+ */
+export function conservativeInputTokenUpperBound(
+  body: Record<string, unknown>,
+  estimated: number,
+): number {
+  let bytes = 0;
+  try {
+    bytes = Buffer.byteLength(JSON.stringify(body), 'utf8');
+  } catch {
+    return estimated;
+  }
+  return Math.max(estimated, bytes);
 }

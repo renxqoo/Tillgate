@@ -8,7 +8,7 @@ import { createRepositories, type Repositories } from '@ai-gateway/repository';
 import type { RunContext } from '../context.js';
 import { inTx, readOnly } from '../context.js';
 import { assertCanDebit } from '@ai-gateway/domain';
-import { RefKeyConflictError, WalletInvariantError } from '@ai-gateway/domain';
+import { BILLING_REF_TYPE, RefKeyConflictError, WalletInvariantError } from '@ai-gateway/domain';
 import { assertCommandFingerprint, commandFingerprint } from '@ai-gateway/domain';
 import { Decimal, normalizeAmount, parsePositiveAmount, toStorage } from '@ai-gateway/domain';
 import { lockActiveAccounts, withTx } from './posting.js';
@@ -27,6 +27,11 @@ export interface AuthorizeInput extends TxInjection {
   memo?: string;
   /** false = 现金口径守卫（授信不参与可用额）；缺省 = 信用口径 */
   allowCredit?: boolean;
+  /**
+   * 仅结算补扣内部使用：允许形成负余额。必须同时满足 billing refType 与 #over 自然键，
+   * 普通授权调用无法借此绕过余额守卫。
+   */
+  collectOverage?: boolean;
 }
 
 export interface AuthorizeResult {
@@ -76,6 +81,12 @@ export function createAuthorizeUseCase(env: WalletEnv) {
     if (input.expiresAt && !(input.expiresAt instanceof Date)) {
       throw new WalletInvariantError('authorize.expiresAt');
     }
+    if (
+      input.collectOverage === true &&
+      (input.refType !== BILLING_REF_TYPE || !input.refId.endsWith('#over'))
+    ) {
+      throw new WalletInvariantError('authorize.collectOverage_scope');
+    }
     const fingerprint = commandFingerprint('authorize', {
       userId: input.userId,
       currency,
@@ -83,6 +94,7 @@ export function createAuthorizeUseCase(env: WalletEnv) {
       expiresAt: input.expiresAt?.toISOString() ?? null,
       // 只在显式 false 时进指纹：缺省与 true 语义等价
       allowCredit: input.allowCredit === false ? false : undefined,
+      collectOverage: input.collectOverage === true ? true : undefined,
       memo: input.memo ?? null,
     });
 
@@ -101,7 +113,9 @@ export function createAuthorizeUseCase(env: WalletEnv) {
         const accountId = await repos.wallet.ensureUserAccount(c, input.userId, currency);
         const locked = await lockActiveAccounts(repos, c, [accountId]);
         const account = locked.get(accountId)!;
-        assertCanDebit(account, amount, input.userId, { allowCredit: input.allowCredit });
+        if (input.collectOverage !== true) {
+          assertCanDebit(account, amount, input.userId, { allowCredit: input.allowCredit });
+        }
         const authorizationId = await repos.wallet.insertAuthorization(c, {
           accountId,
           refType: input.refType,

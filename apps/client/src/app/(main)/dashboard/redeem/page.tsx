@@ -25,7 +25,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
     rows: history,
     total,
     error,
-  } = await fetchUserList<RedeemHistoryItem>('/api/redeem/history', {
+  } = await fetchUserList<RedeemHistoryItem>('/v1/redeem/history', {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

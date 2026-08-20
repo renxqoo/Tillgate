@@ -113,7 +113,7 @@ describe('E2E 计费三轴资源全扫', () => {
     const externalName = e2eUid('model');
     const created = await http(api.baseUrl, '/v1/models', {
       token,
-      body: { externalName, realModel: e2eUid('real'), inputPrice: 1, outputPrice: 2, cacheInputPrice: 0.5 },
+      body: { externalName, realModel: e2eUid('real'), inputPrice: '1', outputPrice: '2', cacheInputPrice: '0.5' },
     });
     expect(created.status).toBe(201);
     const mappingId = created.body.id as number;
@@ -132,7 +132,7 @@ describe('E2E 计费三轴资源全扫', () => {
     const repriced = await http(api.baseUrl, `/v1/models/${mappingId}`, {
       method: 'PATCH',
       token,
-      body: { inputPrice: 3 },
+      body: { inputPrice: '3' },
     });
     expect(repriced.status).toBe(200);
     expect((await http(api.baseUrl, `/v1/models/${mappingId}`, { method: 'DELETE', token })).status).toBe(200);
@@ -141,7 +141,7 @@ describe('E2E 计费三轴资源全扫', () => {
   it('rate-cards：创建 → 改系数 → health → 绑用户 → 删除被拒 → 解绑 → 删除', async () => {
     const created = await http(api.baseUrl, '/v1/rate-cards', {
       token,
-      body: { name: e2eUid('card'), coefficient: 1.5 },
+      body: { name: e2eUid('card'), coefficient: '1.5' },
     });
     expect(created.status).toBe(201);
     expect(created.body.coefficient).toBe('1.500');
@@ -151,7 +151,7 @@ describe('E2E 计费三轴资源全扫', () => {
     const patched = await http(api.baseUrl, `/v1/rate-cards/${cardId}`, {
       method: 'PATCH',
       token,
-      body: { coefficient: 0.8 },
+      body: { coefficient: '0.8' },
     });
     expect(patched.status).toBe(200);
     expect(patched.body.coefficient).toBe('0.800');
@@ -221,7 +221,7 @@ describe('E2E 用户资产资源全扫', () => {
   it('plans：创建 → 改价 → 删除（无引用 → 200）', async () => {
     const created = await http(api.baseUrl, '/v1/plans', {
       token,
-      body: { name: e2eUid('plan'), price: 9, quotaAmount: 9, periodDays: 7 },
+      body: { name: e2eUid('plan'), price: '9', quotaAmount: '9', periodDays: 7 },
     });
     expect(created.status).toBe(201);
     const planId = created.body.id as number;
@@ -229,7 +229,7 @@ describe('E2E 用户资产资源全扫', () => {
     const patched = await http(api.baseUrl, `/v1/plans/${planId}`, {
       method: 'PATCH',
       token,
-      body: { price: 12, status: 0 },
+      body: { price: '12', status: 0 },
     });
     expect(patched.status).toBe(200);
     expect((await http(api.baseUrl, `/v1/plans/${planId}`, { method: 'DELETE', token })).status).toBe(200);
@@ -238,7 +238,7 @@ describe('E2E 用户资产资源全扫', () => {
   it('redeem：批次 → 码列表 → 作废一枚（状态 0→2）', async () => {
     const created = await http(api.baseUrl, '/v1/redeem-batches', {
       token,
-      body: { name: e2eUid('batch'), amount: 5, count: 2 },
+      body: { name: e2eUid('batch'), amount: '5', count: 2 },
     });
     expect(created.status).toBe(201);
     const batchId = (created.body.batch as { id: number }).id;

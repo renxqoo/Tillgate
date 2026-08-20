@@ -8,11 +8,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { createDb, type Db } from '@ai-gateway/db';
-import { apiKeys, billingRequests, billingReservations, plans, usageLogs, userSubscriptions, users } from '@ai-gateway/db';
+import { apiKeys, apps, billingRequests, billingReservations, plans, usageLogs, userSubscriptions, users } from '@ai-gateway/db';
 import { createBillingDomain } from '../billing/index.js';
 import { systemContext, type RunContext } from '../context.js';
 import type { BillingQuote, UsageReceipt } from '@ai-gateway/domain';
-import { Decimal, normalizeAmount, SubscriptionQuotaExhaustedError } from '@ai-gateway/domain';
+import { Decimal, InsufficientBalanceError, normalizeAmount, SubscriptionQuotaExhaustedError } from '@ai-gateway/domain';
 
 const db: Db = createDb(
   process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
@@ -23,6 +23,7 @@ const billing = createBillingDomain({ db, currency: 'CNY' });
 const createdUsers: number[] = [];
 const createdRequests: string[] = [];
 const createdKeys: number[] = [];
+const createdApps: number[] = [];
 const createdSubscriptions: number[] = [];
 const createdPlans: number[] = [];
 
@@ -77,6 +78,7 @@ afterAll(async () => {
     await db.delete(billingRequests).where(inArray(billingRequests.requestId, requestIds));
   }
   if (createdKeys.length) await db.delete(apiKeys).where(inArray(apiKeys.id, createdKeys));
+  if (createdApps.length) await db.delete(apps).where(inArray(apps.id, createdApps));
   if (createdSubscriptions.length) {
     await db.delete(userSubscriptions).where(inArray(userSubscriptions.id, createdSubscriptions));
   }
@@ -139,6 +141,97 @@ async function quotaReservedOf(subscriptionId: number): Promise<string> {
 }
 
 describe('网关侧资金触点', () => {
+  it('fixed：可用余额恰好等于门槛也放行，只冻结固定金额并保留完整风险敞口', async () => {
+    const user = await newUser();
+    await fund(user, '0.01');
+    const requestId = randomUUID();
+    createdRequests.push(requestId);
+
+    const authorized = await billing.authorize(ctx, {
+      requestId,
+      userId: user,
+      stream: false,
+      quote: q,
+      reservationLimit: '10',
+      reservationPolicy: { mode: 'fixed', amount: '0.01' },
+      authorizationTtlMs: 300_000,
+    });
+    expect(authorized.reservedAmount).toBe('0.01');
+    expect(authorized.reservedBalance).toBe('0.01');
+    expect(authorized.availableBalance).toBe('0');
+
+    const exposure = await db.$client.query<{ estimated_exposure_amount: string }>(
+      'select estimated_exposure_amount::text from billing_requests where request_id = $1',
+      [requestId],
+    );
+    expect(new Decimal(exposure.rows[0]!.estimated_exposure_amount).eq('2')).toBe(true);
+  });
+
+  it('fixed：可用余额低于门槛拒绝且零账单', async () => {
+    const user = await newUser();
+    await fund(user, '0.009');
+    const requestId = randomUUID();
+    await expect(
+      billing.authorize(ctx, {
+        requestId,
+        userId: user,
+        stream: false,
+        quote: q,
+        reservationLimit: '10',
+        reservationPolicy: { mode: 'fixed', amount: '0.01' },
+        authorizationTtlMs: 300_000,
+      }),
+    ).rejects.toThrow(InsufficientBalanceError);
+    const [row] = await db
+      .select({ id: billingRequests.requestId })
+      .from(billingRequests)
+      .where(eq(billingRequests.requestId, requestId));
+    expect(row).toBeUndefined();
+  });
+
+  it('fixed 并发：余额 0.02 最多允许两笔 0.01 预扣', async () => {
+    const user = await newUser();
+    await fund(user, '0.02');
+    const requestIds = Array.from({ length: 4 }, () => randomUUID());
+    createdRequests.push(...requestIds);
+    const results = await Promise.allSettled(
+      requestIds.map((requestId) =>
+        billing.authorize(ctx, {
+          requestId,
+          userId: user,
+          stream: false,
+          quote: q,
+          reservationLimit: '10',
+          reservationPolicy: { mode: 'fixed', amount: '0.01' },
+          authorizationTtlMs: 300_000,
+        }),
+      ),
+    );
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(2);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(2);
+  });
+
+  it('fixed 不改变套餐语义：绑定订阅仍完整预留套餐额度', async () => {
+    const user = await newUser();
+    const subscriptionId = await newSubscription(user, '5');
+    const apiKeyId = await newSubscriptionKey(user, subscriptionId, false);
+    const requestId = randomUUID();
+    createdRequests.push(requestId);
+
+    const authorized = await billing.authorize(ctx, {
+      requestId,
+      userId: user,
+      apiKeyId,
+      stream: false,
+      quote: q,
+      reservationLimit: '10',
+      reservationPolicy: { mode: 'fixed', amount: '0.01' },
+      authorizationTtlMs: 300_000,
+    });
+    expect(authorized.reservedAmount).toBe('2');
+    expect(new Decimal(await quotaReservedOf(subscriptionId)).eq('2')).toBe(true);
+  });
+
   it('授权冻结 → 起租 → 收据验收 → settlement_pending（结算权移交 worker）', async () => {
     const user = await newUser();
     await fund(user, '10');
@@ -216,6 +309,57 @@ describe('网关侧资金触点', () => {
       guards: { refTypes: ['billing', 'topup'], currencies: ['CNY'], internalAccounts: ['platform_revenue', 'outside'] },
     });
     expect((await wallet.accounts(ctx, user))[0]!.inFlight).toBe('2'); // 只冻一次
+  });
+
+  it('同 requestId 换 App 凭证不是重放，必须按异命令冲突拒绝', async () => {
+    const user = await newUser();
+    await fund(user, '10');
+    const makeApp = async () => {
+      const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
+      const [row] = await db.insert(apps).values({
+        appId: `app_${suffix}`,
+        clientId: `client_${suffix}`,
+        clientSecretHash: 'a'.repeat(64),
+        userId: user,
+        name: `app-${suffix}`,
+      }).returning({ id: apps.id });
+      createdApps.push(row!.id);
+      return row!.id;
+    };
+    const app1 = await makeApp();
+    const app2 = await makeApp();
+    const requestId = randomUUID();
+    createdRequests.push(requestId);
+    await billing.authorize(ctx, {
+      requestId, userId: user, appId: app1, stream: false, quote: q,
+      reservationLimit: '10', authorizationTtlMs: 300_000,
+    });
+    await expect(billing.authorize(ctx, {
+      requestId, userId: user, appId: app2, stream: false, quote: q,
+      reservationLimit: '10', authorizationTtlMs: 300_000,
+    })).rejects.toThrow();
+  });
+
+  it('已授权请求重放不受后来结算积压闸影响', async () => {
+    const user = await newUser();
+    await fund(user, '10');
+    let blocked = false;
+    const guarded = createBillingDomain({
+      db,
+      currency: 'CNY',
+      admission: { assertCapacity: async () => { if (blocked) throw new Error('backlog'); } },
+    });
+    const requestId = randomUUID();
+    createdRequests.push(requestId);
+    await guarded.authorize(ctx, {
+      requestId, userId: user, stream: false, quote: q,
+      reservationLimit: '10', authorizationTtlMs: 300_000,
+    });
+    blocked = true;
+    await expect(guarded.authorize(ctx, {
+      requestId, userId: user, stream: false, quote: q,
+      reservationLimit: '10', authorizationTtlMs: 300_000,
+    })).resolves.toMatchObject({ replayed: true });
   });
 
   it('免费快路径：0 元授权不冻结钱包', async () => {

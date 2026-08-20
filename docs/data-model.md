@@ -265,7 +265,8 @@ providers (供应商: base_url/协议)
 |---|---|---|
 | request_id | uuid PK | 幂等键 = gateway 请求 ID（= usage_logs.request_id） |
 | user_id | FK → users | |
-| reserved_amount | numeric(38,18) | 足额授权金额（元，全精度） |
+| estimated_exposure_amount | numeric(38,18) | 完整保守风险预估；日限额与在途敞口口径 |
+| reserved_amount | numeric(38,18) | 实际冻结金额；full 等于风险预估，fixed 为纯 PAYG 固定门槛 |
 | status | varchar(32) | `authorized / in_flight / settlement_pending / processing / retry_wait / settled / released / dead` |
 | quote / receipt | jsonb | 授权报价快照 / 不可变成功收据（同时作为 durable outbox） |
 | lease_owner / lease_expires_at | varchar / timestamptz | 上游在途租约；过期不等于可退款 |
@@ -427,6 +428,7 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
   required > BILLING_RESERVATION_MAX ──▶ 拒绝并要求降低输出上限
       │
       ▼
+  冻结额 = full ? required : BILLING_FIXED_RESERVATION_AMOUNT（fixed 仅纯 PAYG）
   事务：INSERT billing_requests(authorized) + wallet 双分录授权
         （wallet_authorizations 记 hold，冻结口径 = in_flight；
         可用额度不足原子回滚 → 402）
@@ -439,8 +441,8 @@ DB 条件 UPDATE（防重复退还/重复扣费），任何故障窗口都能确
   gateway 先提交 receipt 并转 settlement_pending，之后才返回非流 2xx/关闭 SSE；
   BullMQ 只发送 requestId，失败时 DB sweeper 扫描恢复。结算事务：
     INSERT usage_logs ON CONFLICT(request_id) DO NOTHING → 冲突 = 已结算，幂等跳过
-    actual <= reserved_amount 才允许精确结算；actual > reserved_amount 进入 dead 审核并触发配置止损，禁止静默封顶少扣
-    原子结算：wallet 双分录复式腿（wallet_legs 成对写结算腿并释放 wallet_authorizations 冻结）；状态转 settled
+    actual <= reserved_amount：按实扣并释放未用冻结；actual > reserved_amount：#over 补充授权并全额扣款，可形成负余额
+    原子结算：原冻结结算 + #over 补扣 + wallet 双分录复式腿 + 状态转 settled
     写 transactions(consume, -amount, 快照前后余额)
   事务外（best-effort）：TPM 分钟桶回填（未缓存输入 + 输出，仅首次结算）
       │

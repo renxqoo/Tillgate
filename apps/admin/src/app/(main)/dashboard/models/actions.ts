@@ -8,10 +8,10 @@ import { adminFetch, ApiError } from '@ai-gateway/api-client';
 export interface ModelCreateInput {
   externalName: string;
   realModel: string;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice?: number;
-  cacheWritePrice?: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice?: string;
+  cacheWritePrice?: string;
   isFree?: boolean;
   contextLength?: number | null;
   billingPolicy?: Record<string, unknown> | null;
@@ -22,14 +22,14 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
     return { error: '名称不能为空' };
   }
   try {
-    await adminFetch('/api/admin/models', {
+    await adminFetch('/v1/models', {
       method: 'POST',
       body: {
         externalName: input.externalName.trim(),
         realModel: input.realModel.trim(),
         inputPrice: input.inputPrice,
         outputPrice: input.outputPrice,
-        cacheInputPrice: input.cacheInputPrice ?? 0,
+        cacheInputPrice: input.cacheInputPrice ?? '0',
         ...(input.cacheWritePrice != null ? { cacheWritePrice: input.cacheWritePrice } : {}),
         isFree: input.isFree ?? false,
         ...(input.contextLength != null ? { contextLength: input.contextLength } : {}),
@@ -47,10 +47,10 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
 export interface ModelUpdateInput {
   externalName?: string;
   realModel?: string;
-  inputPrice?: number;
-  outputPrice?: number;
-  cacheInputPrice?: number;
-  cacheWritePrice?: number;
+  inputPrice?: string;
+  outputPrice?: string;
+  cacheInputPrice?: string;
+  cacheWritePrice?: string;
   isFree?: boolean;
   contextLength?: number | null;
   fallbackModels?: string;
@@ -66,7 +66,7 @@ export async function updateModelAction(
   input: ModelUpdateInput,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/models/${id}`, { method: 'PATCH', body: input });
+    await adminFetch(`/v1/models/${id}`, { method: 'PATCH', body: input });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
@@ -77,7 +77,7 @@ export async function updateModelAction(
 // ── 删除模型映射 ────────────────────────────────────────────────────────────
 export async function deleteModelAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/models/${id}`, { method: 'DELETE' });
+    await adminFetch(`/v1/models/${id}`, { method: 'DELETE' });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
@@ -91,7 +91,7 @@ export async function bindChannelsAction(
   channelIds: number[],
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/models/${id}/channels`, {
+    await adminFetch(`/v1/models/${id}/channels`, {
       method: 'POST',
       // 标准契约（与 admin-api models.ts 的 bindChannelsSchema 一致）：
       // { channels: [{channelId, weight?, priority?}] }，全量替换语义
@@ -119,7 +119,7 @@ export async function testModelAction(id: number): Promise<
 > {
   try {
     const data = await adminFetch<{ results: ModelTestResult[] }>(
-      `/api/admin/models/${id}/test`,
+      `/v1/models/${id}/test`,
       { method: 'POST' },
     );
     return { results: data.results };

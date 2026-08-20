@@ -32,7 +32,7 @@ export default async function BillingOperationsPage({
   const { page } = parseListSearchParams(sp);
   const status = 'dead' as const; // uncertain 队列已随 2026-08-17 估算结算政策删除
   const { rows: items, total, error } = await fetchAdminList<BillingCase>(
-    '/api/admin/billing-operations',
+    '/v1/billing-operations',
     { page, pageSize: PAGE_SIZE, extra: { status } },
   );
 

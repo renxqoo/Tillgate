@@ -30,7 +30,7 @@ export default async function RegisterPage({
       signal: AbortSignal.timeout(1500),
     });
     const body = (await res.json()) as { providers?: string[] };
-    oauthOptions = oauthOptionsFromProviders(body.providers ?? [], base);
+    oauthOptions = oauthOptionsFromProviders(body.providers ?? []);
   } catch {
     oauthOptions = [];
   }

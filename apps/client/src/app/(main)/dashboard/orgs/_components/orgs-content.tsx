@@ -57,8 +57,11 @@ function usagePercent(used: string, quota: string): number {
   return Math.min(100, Math.max(0, (u / q) * 100));
 }
 
-function parseNullableNumber(v: string): number | null {
-  return v.trim() === '' ? null : Number(v);
+function parseNullableMoney(v: string): string | null {
+  const value = v.trim();
+  if (value === '') return null;
+  if (!/^\d+(?:\.\d+)?$/.test(value)) throw new Error('金额格式不正确');
+  return value;
 }
 
 /** 邀请到期剩余描述；3 天内到期给警示色。 */
@@ -345,8 +348,8 @@ function QuotaCell({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
                 startTransition(async () => {
                   const { setMemberQuotaAction } = await import('../actions');
                   const res = await setMemberQuotaAction(org.orgId, member.userId, {
-                    dailySpendLimit: parseNullableNumber(daily),
-                    monthlyQuota: parseNullableNumber(monthly),
+                    dailySpendLimit: parseNullableMoney(daily),
+                    monthlyQuota: parseNullableMoney(monthly),
                   });
                   if (notify(res, '保存失败', '已保存')) setOpen(false);
                 })

@@ -13,6 +13,7 @@ import {
   initOtel,
 } from '@ai-gateway/core';
 import { createRepositories } from '@ai-gateway/repository';
+import { Decimal } from '@ai-gateway/domain';
 import { mailerFromEnv } from '@ai-gateway/identity';
 import {
   createBillingDomain,
@@ -110,7 +111,7 @@ export async function startWorker(
         .userAccountSummaries({ ...ctx, db }, data.userId)
         .then((rows) => {
           const account = rows.find((r) => r.kind === 'user');
-          if (account && Number(account.balance) < Number(balanceLowThreshold)) {
+          if (account && new Decimal(account.balance).lessThan(balanceLowThreshold)) {
             return db
               .insert(notifyOutbox)
               .values({
@@ -239,19 +240,22 @@ export async function startWorker(
       'referral',
     ),
     // ---- v1 对位循环（2026-08-19 退役审计补齐）----
-    // 告警投递：notify_outbox 消费者（缺位 = channel_disabled/billing_dead/…全静默）
-    loop(
+    // 告警投递：notify_outbox 消费者（缺位 = channel_disabled/billing_dead/…全静默）；
+    // WORKER_NOTIFY_ENABLED=false 静音（dev 测试噪音不打扰真实渠道——事件仍入箱可查）
+    ...(config.WORKER_NOTIFY_ENABLED ? [loop(
       config.WORKER_NOTIFY_INTERVAL_MS,
       () =>
         runNotifyDispatchOnce(db, logger, notifyMailer, {
           encryptionKey: config.CHANNEL_API_KEY_ENCRYPTION,
+          ownerId: config.WORKER_OWNER_ID,
+          claimLeaseMs: config.WORKER_NOTIFY_CLAIM_LEASE_MS,
           // SSRF 双门（与 AI 上游同口径）：env 允许且非生产才放行回环/私网 webhook
           ...(config.WORKER_WEBHOOK_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production'
             ? { webhookAllowLocalUrl: true }
             : {}),
         }),
       'notify',
-    ),
+    )] : []),
     // 周期对账哨兵：wallet 复式不变量（资损最后防线）
     loop(config.WORKER_RECONCILE_INTERVAL_MS, () => runReconcileOnce(db, logger), 'reconcile'),
     // 分区维护：trace_spans / request_logs（缺位 = 窗口过后插入失败）

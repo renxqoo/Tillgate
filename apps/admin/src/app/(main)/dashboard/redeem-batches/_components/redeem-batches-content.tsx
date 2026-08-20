@@ -35,11 +35,12 @@ import { CopyButton } from '@ai-gateway/ui/components/shell/copy-button';
 import { fmtDateTime, formatMoney } from '@ai-gateway/api-client/formatters';
 import type { AdminBatchRow } from '@ai-gateway/api-client/types';
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
+import { moneyText } from '@ai-gateway/ui/lib/forms';
 
 const schema = z.object({
   name: z.string().min(1, '请输入批次名称'),
-  amount: z.coerce.number().positive('金额必须 > 0'),
-  count: z.coerce.number().int().min(1).max(1000, '最多 1000 张'),
+  amount: moneyText({ message: '请输入有效金额', allowZero: false }),
+  count: z.number().int().min(1).max(1000, '最多 1000 张'),
   remark: z.string().optional(),
   expiresAt: z.string().optional(),
 });
@@ -121,10 +122,10 @@ export function GenerateBatchDialog() {
   const [pending, startTransition] = useTransition();
   const [revealedCodes, setRevealedCodes] = useState<string[] | null>(null);
 
-  type FormValues = z.infer<typeof schema>;
+  type FormValues = z.input<typeof schema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
-    defaultValues: { name: '', amount: 100, count: 10, remark: '', expiresAt: '' },
+    defaultValues: { name: '', amount: '100', count: 10, remark: '', expiresAt: '' },
   });
 
   function onSubmit(values: FormValues) {
@@ -201,8 +202,8 @@ export function GenerateBatchDialog() {
                         type="number"
                         step="0.01"
                         {...field}
-                        value={field.value ?? 0}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value)}
                       />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                     </Field>

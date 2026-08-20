@@ -28,6 +28,7 @@ function InfoRow({ label, value }: { readonly label: string; readonly value: str
 
 export default async function SettingsPage() {
   const me = await requireMe();
+  const balance = me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0';
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
@@ -50,7 +51,7 @@ export default async function SettingsPage() {
         <CardContent>
           <InfoRow label="显示名称" value={me.displayName || me.subject} />
           <InfoRow label="邮箱" value={me.email ?? "—"} />
-          <InfoRow label="账户余额" value={`¥${formatMoney(me.balance)}`} />
+          <InfoRow label="账户余额" value={`¥${formatMoney(balance)}`} />
           <InfoRow label="费率卡" value={me.rateCardName ?? "—"} />
           <InfoRow label="账户类型" value={me.isEnterprise ? "企业账户" : "个人账户"} />
           <InfoRow

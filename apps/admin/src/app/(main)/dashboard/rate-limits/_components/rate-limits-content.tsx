@@ -40,7 +40,7 @@ function fmtLimit(v: number | null): string {
 }
 
 /** 元金额：NULL=不限；数值保留 2 位小数。 */
-function fmtMoney(v: number | null | undefined): string {
+function fmtMoney(v: string | null | undefined): string {
   if (v === null || v === undefined) return "不限";
   return formatMoney(v);
 }
@@ -156,23 +156,23 @@ export function RateLimitsClient({
     }
 
     // 信用模型字段仅 user/key 实体校验/提交
-    let creditVal: number | undefined;
-    let dailySpendVal: number | null | undefined;
+    let creditVal: string | undefined;
+    let dailySpendVal: string | null | undefined;
     if (editing.kind === "user") {
       // creditLimit 不可为 null：留空 = 0（不透支）
-      creditVal = credit.trim() === "" ? 0 : Number(credit);
-      dailySpendVal = dailySpend.trim() === "" ? null : Number(dailySpend);
-      if (!Number.isFinite(creditVal) || creditVal < 0) {
+      creditVal = credit.trim() === "" ? "0" : credit.trim();
+      dailySpendVal = dailySpend.trim() === "" ? null : dailySpend.trim();
+      if (!/^\d+(?:\.\d+)?$/.test(creditVal)) {
         toast.error("透支上限须为 >= 0 的金额");
         return;
       }
-      if (dailySpendVal !== null && (!Number.isFinite(dailySpendVal) || dailySpendVal < 0)) {
+      if (dailySpendVal !== null && !/^\d+(?:\.\d+)?$/.test(dailySpendVal)) {
         toast.error("每日花费上限须为 >= 0 的金额");
         return;
       }
     } else if (editing.kind === "key") {
-      dailySpendVal = dailySpend.trim() === "" ? null : Number(dailySpend);
-      if (dailySpendVal !== null && (!Number.isFinite(dailySpendVal) || dailySpendVal < 0)) {
+      dailySpendVal = dailySpend.trim() === "" ? null : dailySpend.trim();
+      if (dailySpendVal !== null && !/^\d+(?:\.\d+)?$/.test(dailySpendVal)) {
         toast.error("每日花费上限须为 >= 0 的金额");
         return;
       }

@@ -47,8 +47,8 @@ export interface OpsLogsService {
     input: { kind?: 'video' | 'music'; status?: string; limit: number; offset: number },
   ): Promise<{ items: unknown[]; total: number }>;
   statsOverview(ctx: RunContext): Promise<{
-    today: { requests: number; inputTokens: number; outputTokens: number; cost: number; successCount: number; failedCount: number; successRate: number };
-    total: { cost: number; requests: number };
+    today: { requests: number; inputTokens: number; outputTokens: number; cost: string; successCount: number; failedCount: number; successRate: number };
+    total: { cost: string; requests: number };
     channelHealth: Array<{ status: number; count: number }>;
   }>;
   statsUsage(
@@ -165,12 +165,12 @@ export function createOpsLogsService(deps: OpsLogsServiceDeps): OpsLogsService {
           requests: today.requests,
           inputTokens: Number(today.inputTokens),
           outputTokens: Number(today.outputTokens),
-          cost: Number(today.cost),
+          cost: today.cost,
           successCount: today.successCount,
           failedCount,
           successRate,
         },
-        total: { cost: Number(totals.cost), requests: totals.requests },
+        total: { cost: totals.cost, requests: totals.requests },
         channelHealth,
       };
     },

@@ -73,7 +73,7 @@ export function e2eBaseConfig(): ClientApiConfig {
     TOPUP_EXCHANGE_RATE: '1',
     PAYMENT_ORDER_TTL_MS: 1_800_000,
     REFERRAL_SIGNUP_BONUS: '0',
-    REFERRAL_COMMISSION_RATE: 0,
+    REFERRAL_COMMISSION_RATE: '0',
     SMTP_PORT: 465,
     SECURE_COOKIE: false,
     EPAY_PID: EPAY_TEST.pid,

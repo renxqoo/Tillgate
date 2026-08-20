@@ -17,3 +17,24 @@ export function numericText(options: { message?: string } = {}) {
     .refine((v) => Number.isFinite(Number(v)), message)
     .transform((v) => Number(v));
 }
+
+/**
+ * 精确十进制金额字段。返回原始字符串，避免金额在提交前经过 IEEE-754 number。
+ * 最终上限与小数位约束仍由 API 的资金 schema 负责。
+ */
+export function moneyText(options: {
+  message?: string;
+  allowNegative?: boolean;
+  allowZero?: boolean;
+} = {}) {
+  const {
+    message = "请输入有效金额",
+    allowNegative = false,
+    allowZero = true,
+  } = options;
+  const pattern = allowNegative ? /^-?\d{1,20}(?:\.\d{1,18})?$/ : /^\d{1,20}(?:\.\d{1,18})?$/;
+  return z
+    .string()
+    .refine((v) => pattern.test(v), message)
+    .refine((v) => allowZero || !/^-?0+(?:\.0+)?$/.test(v), "金额必须非零");
+}

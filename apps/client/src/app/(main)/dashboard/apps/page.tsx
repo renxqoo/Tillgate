@@ -18,7 +18,7 @@ interface PageProps {
 export default async function AppsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchUserList<AppRow>("/api/apps", {
+  const { rows, total, error } = await fetchUserList<AppRow>("/v1/apps", {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

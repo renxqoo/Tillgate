@@ -19,10 +19,10 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
   const q = firstParam(sp.q) ?? "";
   // 并发拉取 4 类实体（统一分页接口 + q 搜索）；任一失败不阻塞整页
   const [usersRes, modelsRes, channelsRes, keysRes] = await Promise.allSettled([
-    fetchAdminList<AdminUserRow>("/api/admin/users", { pageSize: 100, extra: { q } }),
-    fetchAdminList<AdminModelRow>("/api/admin/models", { pageSize: 100, extra: { q } }),
-    fetchAdminList<AdminChannelRow>("/api/admin/channels", { pageSize: 100, extra: { q } }),
-    fetchAdminList<AdminKeyRow>("/api/admin/keys", { pageSize: 100, extra: { q } }),
+    fetchAdminList<AdminUserRow>("/v1/users", { pageSize: 100, extra: { q } }),
+    fetchAdminList<AdminModelRow>("/v1/models", { pageSize: 100, extra: { q } }),
+    fetchAdminList<AdminChannelRow>("/v1/channels", { pageSize: 100, extra: { q } }),
+    fetchAdminList<AdminKeyRow>("/v1/admin-keys", { pageSize: 100, extra: { q } }),
   ]);
 
   const users: RateLimitItem[] =
@@ -33,8 +33,8 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
           sublabel: u.displayName,
           rpmLimit: u.rpmLimit,
           tpmLimit: u.tpmLimit,
-          creditLimit: u.creditLimit === null ? null : Number(u.creditLimit),
-          dailySpendLimit: u.dailySpendLimit === null ? null : Number(u.dailySpendLimit),
+          creditLimit: u.creditLimit,
+          dailySpendLimit: u.dailySpendLimit,
           status: u.status,
         }))
       : [];
@@ -68,7 +68,7 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
           sublabel: `${k.subscriptionId != null ? "套餐" : "余额"} · ${k.keyPreview}`,
           rpmLimit: k.rpmLimit,
           tpmLimit: k.tpmLimit,
-          dailySpendLimit: k.dailySpendLimit === null ? null : Number(k.dailySpendLimit),
+          dailySpendLimit: k.dailySpendLimit,
           status: k.status,
         }))
       : [];

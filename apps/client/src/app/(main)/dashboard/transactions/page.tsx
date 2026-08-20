@@ -35,7 +35,7 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
     refId: string;
     memo: string | null;
     createdAt: string;
-  }>('/api/wallet/statement', {
+  }>('/v1/wallet/statement', {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

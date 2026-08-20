@@ -224,10 +224,10 @@ export function CatalogContent({
           return {
             externalName: d.externalName,
             realModel: i.realModel,
-            inputPrice: Number(d.inputPrice) || 0,
-            outputPrice: Number(d.outputPrice) || 0,
-            cacheInputPrice: Number(d.cacheInputPrice) || 0,
-            cacheWritePrice: Number(d.cacheWritePrice) || 0,
+            inputPrice: d.inputPrice || '0',
+            outputPrice: d.outputPrice || '0',
+            cacheInputPrice: d.cacheInputPrice || '0',
+            cacheWritePrice: d.cacheWritePrice || '0',
             ...(d.contextLength.trim() !== '' && Number.isInteger(Number(d.contextLength))
               ? { contextLength: Number(d.contextLength) }
               : {}),

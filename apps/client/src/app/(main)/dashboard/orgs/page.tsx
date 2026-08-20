@@ -18,7 +18,7 @@ interface PageProps {
 export default async function OrgsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchUserList<OrgRow>("/api/orgs", {
+  const { rows, total, error } = await fetchUserList<OrgRow>("/v1/orgs", {
     page,
     pageSize: PAGE_SIZE,
     extra: { q },
@@ -28,7 +28,7 @@ export default async function OrgsPage({ searchParams }: PageProps) {
         let members: OrgWithMembers["members"] = [];
         let invitations: OrgWithMembers["invitations"] = [];
         try {
-          const detail = await apiFetch<OrgDetail>(`/api/orgs/${org.orgId}`);
+          const detail = await apiFetch<OrgDetail>(`/v1/orgs/${org.orgId}`);
           members = detail.members ?? [];
           invitations = detail.invitations ?? [];
         } catch {

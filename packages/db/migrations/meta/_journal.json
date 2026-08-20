@@ -456,6 +456,55 @@
       "when": 1787739600000,
       "tag": "0065_fx_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1787743200000,
+      "tag": "0066_voucher_blobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787746800000,
+      "tag": "0067_notify_outbox_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787750400000,
+      "tag": "0068_wallet_negative_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1787754000000,
+      "tag": "0069_wallet_negative_coherence",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787757600000,
+      "tag": "0070_notify_channel_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787761200000,
+      "tag": "0071_billing_estimated_exposure",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1787764800000,
+      "tag": "0072_billing_exposure_expand_compat",
+      "breakpoints": true
     }
   ]
 }

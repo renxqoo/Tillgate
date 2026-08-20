@@ -24,7 +24,7 @@ export default async function SubscriptionPage() {
   let isEnterprise = false;
 
   try {
-    const me = await apiFetch<MeInfo>("/api/me");
+    const me = await apiFetch<MeInfo>("/v1/me");
     isEnterprise = me.isEnterprise === true;
   } catch {
     // 拿不到用户信息时按非企业处理（团队套餐会被隐藏）
@@ -32,7 +32,7 @@ export default async function SubscriptionPage() {
   }
 
   try {
-    const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/api/subscriptions");
+    const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/v1/subscriptions");
     const data: CurrentSubscription | null = subResult.rows?.[0] ?? null;
     subscription = data;
   } catch (e) {
@@ -40,7 +40,7 @@ export default async function SubscriptionPage() {
   }
 
   try {
-    const data = await apiFetch<Paginated<PlanRow>>("/api/plans?sort_by=sortOrder&order=asc&page_size=100");
+    const data = await apiFetch<Paginated<PlanRow>>("/v1/plans?sort_by=sortOrder&order=asc&page_size=100");
     // 个人用户只看到个人套餐（allowSeats=false）；企业用户只看到企业套餐（allowSeats=true，支持席位）
     plans = (data.rows ?? []).filter((p) => (isEnterprise ? p.allowSeats : !p.allowSeats));
   } catch (e) {
@@ -48,7 +48,7 @@ export default async function SubscriptionPage() {
   }
 
   try {
-    const data = await apiFetch<Paginated<OrgRow>>("/api/orgs");
+    const data = await apiFetch<Paginated<OrgRow>>("/v1/orgs");
     // 只展示有有效套餐的组织；无套餐组织在 /dashboard/orgs 管理，不在此展示。
     orgs = (data.rows ?? []).filter((o) => o.subscriptionId != null);
   } catch {

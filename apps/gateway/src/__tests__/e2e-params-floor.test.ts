@@ -1,5 +1,5 @@
 /**
- * E2E ⑬ 用户参数异常值全家族 + ⑭ balanceFloor 预扣策略并发击穿：
+ * E2E ⑬ 用户参数异常值全家族 + ⑭ fixed 预扣策略并发击穿：
  *   ⑬ 计费预算参数（超大/负/非整数/Infinity 形态的 max_tokens、n 越界）、
  *      结构数量上界（空/超多 messages、embed 批 2049）、边界内超大内容
  *      （9MiB prompt、1e308 采样参数透传）——要么 400 拒绝，要么安全放行且资金一致。
@@ -15,12 +15,15 @@ const db = e2eDb();
 const keys = new E2EKeys(db);
 let gateway: E2EGateway;
 let restoreBudget: () => Promise<void>;
-/** floor 策略模型（绑定同一真上游渠道；测后清理） */
+/** fixed 策略测试模型（绑定同一真上游渠道；测后清理） */
 let floorModel = '';
 let floorMappingId = 0;
 
 beforeAll(async () => {
-  gateway = await startE2EGateway(db);
+  gateway = await startE2EGateway(db, {
+    BILLING_RESERVATION_MODE: 'fixed',
+    BILLING_FIXED_RESERVATION_AMOUNT: '0.1',
+  });
   restoreBudget = await keys.snapshotChannelBudget(2);
 
   const { modelMappings, modelChannels } = await import('@ai-gateway/db');
@@ -28,7 +31,6 @@ beforeAll(async () => {
     externalName: `v2e2e-floor-${randomUUID().slice(0, 8)}`,
     realModel: 'MiniMax-M3', status: 0,
     inputPrice: '2.1', outputPrice: '8.4', cacheInputPrice: '0.42',
-    billingConfig: { reservation: { strategy: 'floor', params: { balance: '0.1' } } },
   }).returning({ id: modelMappings.id, externalName: modelMappings.externalName });
   floorMappingId = mapping!.id;
   floorModel = mapping!.externalName;
@@ -99,14 +101,14 @@ describe('E2E ⑬ 用户参数异常值全家族', () => {
   }, 180_000);
 });
 
-describe('E2E ⑭ balanceFloor=0.1 并发击穿验证', () => {
+describe('E2E ⑭ fixed=0.1 并发击穿验证', () => {
   it('余额 0.15 并发 8 路：至多 1-2 路放行（首路押尽可用额），其余 402；零击穿', async () => {
     const FUND = '0.15';
     const { raw, userId } = await keys.issue(FUND);
     const results = await Promise.allSettled(
       Array.from({ length: 8 }, () =>
         e2ePost(gateway.baseUrl, raw, {
-          // 大 max_tokens：保守估价 ≈0.168 > 余额 0.15 → 触发 floor 放行门（hold 封顶实筹）
+          // 大 max_tokens：保守估价 ≈0.168 > 余额 0.15，但 fixed 只冻结 0.1。
           model: floorModel, max_tokens: 20_000, messages: [{ role: 'user', content: '只回复：好' }],
         }).then((r) => r.status),
       ),
@@ -114,8 +116,8 @@ describe('E2E ⑭ balanceFloor=0.1 并发击穿验证', () => {
     const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value : 'network-error'));
     const ok = statuses.filter((s) => s === 200).length;
     const rejected = statuses.filter((s) => s === 402).length;
-    console.log(`⑭ 并发 8 路 → 放行 ${ok} / 402 ${rejected}（floor 0.1，余额 ${FUND}）`);
-    expect(ok).toBeLessThanOrEqual(1); // 串行授权 + hold 封顶实筹：首路押尽可用额后余路必拒（防击穿）
+    console.log(`⑭ 并发 8 路 → 放行 ${ok} / 402 ${rejected}（fixed 0.1，余额 ${FUND}）`);
+    expect(ok).toBeLessThanOrEqual(1); // 串行授权 + 固定冻结：首路后可用 0.05，余路拒绝
     expect(ok + rejected).toBe(8);
 
     await keys.settleAll(userId);
@@ -147,7 +149,7 @@ describe('E2E ⑭ balanceFloor=0.1 并发击穿验证', () => {
     expect(['settled', 'released']).toContain(bills14[0]!.status);
   }, 240_000);
 
-  it('结算后连环放行：余额回升到 ≥ floor 即可再来——累积亏损恒等于真实用量', async () => {
+  it('结算后连环放行：可用余额仍 ≥ fixed 即可再来——累计扣款恒等于真实用量', async () => {
     const FUND = '0.12';
     const { raw, userId } = await keys.issue(FUND);
     for (let round = 0; round < 3; round++) {

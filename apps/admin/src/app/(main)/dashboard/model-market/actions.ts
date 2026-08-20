@@ -6,10 +6,10 @@ import { adminFetch, ApiError } from '@ai-gateway/api-client';
 export interface CatalogImportModel {
   externalName: string;
   realModel: string;
-  inputPrice: number;
-  outputPrice: number;
-  cacheInputPrice: number;
-  cacheWritePrice: number;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  cacheWritePrice: string;
   contextLength?: number | null;
 }
 
@@ -27,7 +27,7 @@ export async function importCatalogAction(input: {
     }
   }
   try {
-    await adminFetch('/api/admin/model-catalog/import', {
+    await adminFetch('/v1/model-catalog/import', {
       method: 'POST',
       body: {
         sourceId: input.sourceId,
@@ -54,7 +54,7 @@ export async function importCatalogAction(input: {
 /** 手动覆盖汇率（冻结基准直到清除；审计 fx.override） */
 export async function setFxOverrideAction(rate: string): Promise<{ error?: string }> {
   try {
-    await adminFetch('/api/admin/fx/catalog/override', {
+    await adminFetch('/v1/fx/catalog/override', {
       method: 'PUT',
       body: { rate },
     });
@@ -68,7 +68,7 @@ export async function setFxOverrideAction(rate: string): Promise<{ error?: strin
 /** 清除覆盖：回落自动拉取（立即补拉一次） */
 export async function clearFxOverrideAction(): Promise<{ error?: string }> {
   try {
-    await adminFetch('/api/admin/fx/catalog/override', { method: 'DELETE' });
+    await adminFetch('/v1/fx/catalog/override', { method: 'DELETE' });
     revalidatePath('/dashboard/model-market');
     return {};
   } catch (e) {
@@ -79,7 +79,7 @@ export async function clearFxOverrideAction(): Promise<{ error?: string }> {
 /** 点差（%）：生效预填汇率 = 基准 ×(1+点差)；覆盖态不叠加 */
 export async function setFxBufferAction(bufferPct: string): Promise<{ error?: string }> {
   try {
-    await adminFetch('/api/admin/fx/catalog/buffer', {
+    await adminFetch('/v1/fx/catalog/buffer', {
       method: 'PUT',
       body: { bufferPct },
     });
@@ -93,7 +93,7 @@ export async function setFxBufferAction(bufferPct: string): Promise<{ error?: st
 /** 强制刷新汇率（绕过 TTL 直拉 ECB） */
 export async function refreshFxAction(force: boolean): Promise<{ error?: string }> {
   try {
-    await adminFetch('/api/admin/fx/catalog/refresh', {
+    await adminFetch('/v1/fx/catalog/refresh', {
       method: 'POST',
       body: { force },
     });
@@ -121,7 +121,7 @@ export async function priceHistoryAction(externalName: string): Promise<{ entrie
   if (!externalName.trim()) return { error: '对外名不能为空' };
   try {
     const data = await adminFetch<{ entries: PriceHistoryEntry[] }>(
-      `/api/admin/model-catalog/price-history?externalName=${encodeURIComponent(externalName.trim())}`,
+      `/v1/model-catalog/price-history?externalName=${encodeURIComponent(externalName.trim())}`,
     );
     return { entries: data.entries };
   } catch (e) {

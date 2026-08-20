@@ -42,7 +42,7 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
-import { numericText } from '@ai-gateway/ui/lib/forms';
+import { moneyText, numericText } from '@ai-gateway/ui/lib/forms';
 
 import type { AdminChannelRow, ProviderOption } from '@ai-gateway/api-client/types';
 
@@ -275,7 +275,7 @@ function EditChannelDialog({
     status: z.coerce.number().int(),
     rpmLimit: z.string().optional(),
     tpmLimit: z.string().optional(),
-    upstreamThreshold: z.string().optional(),
+    upstreamThreshold: z.union([z.literal(''), moneyText({ message: '请输入有效非负金额' })]).optional(),
   });
   type FormValues = z.input<typeof editSchema>;
 
@@ -329,8 +329,7 @@ function EditChannelDialog({
                 status: Number(values.status),
                 rpmLimit: values.rpmLimit === '' ? null : Number(values.rpmLimit),
                 tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
-                upstreamThreshold:
-                  values.upstreamThreshold === '' ? null : Number(values.upstreamThreshold),
+                upstreamThreshold: values.upstreamThreshold === '' ? null : values.upstreamThreshold,
               });
               return notify(res, '保存失败', '已保存');
             })

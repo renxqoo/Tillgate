@@ -15,7 +15,7 @@ export function userFromAdminMe(me: AdminMeInfo): SidebarUser {
 /**
  * 后台守卫：必须有有效管理员会话。
  *
- * 拆分后不再依赖 role 字段：能从 admin-api 的 /api/admin/me 拿到管理员信息，
+ * 拆分后不再依赖 role 字段：能从 admin-api 的 /v1/me 拿到管理员信息，
  * 即证明持有有效管理员会话（admin-api 已用 adminAuthMiddleware 守护，仅 ag_admin_session
  * + ADMIN_JWT_SECRET 签发的 type='admin' token 能通过）。拿不到 → 重定向登录。
  */

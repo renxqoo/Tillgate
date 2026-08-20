@@ -71,7 +71,7 @@ describe('E2E 渠道资金链', () => {
     // 进货 100（带凭证 + 订单号）
     const recharge = await http(admin.baseUrl, '/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 100, orderNo: `PAY-${e2eUid('x')}`, voucherDataUrl: PNG_DATA_URL, remark: 'E2E 进货' },
+      body: { channelId, amount: '100', orderNo: `PAY-${e2eUid('x')}`, voucherDataUrl: PNG_DATA_URL, remark: 'E2E 进货' },
       headers: { 'idempotency-key': e2eUid('rc') },
     });
     expect(recharge.status).toBe(200);
@@ -81,7 +81,7 @@ describe('E2E 渠道资金链', () => {
     const adjKey = e2eUid('adj');
     const adjust = await http(admin.baseUrl, '/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -30 },
+      body: { channelId, amount: '-30' },
       headers: { 'idempotency-key': adjKey },
     });
     expect(adjust.status).toBe(200);
@@ -90,7 +90,7 @@ describe('E2E 渠道资金链', () => {
     // 超扣 → 422
     const over = await http(admin.baseUrl, '/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -999 },
+      body: { channelId, amount: '-999' },
       headers: { 'idempotency-key': e2eUid('adj') },
     });
     expect(over.status).toBe(422);
@@ -98,7 +98,7 @@ describe('E2E 渠道资金链', () => {
     // 幂等重放：同键同参 → replayed、预算不动
     const replay = await http(admin.baseUrl, '/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -30 },
+      body: { channelId, amount: '-30' },
       headers: { 'idempotency-key': adjKey },
     });
     expect(replay.status).toBe(200);
@@ -139,7 +139,7 @@ describe('E2E 用户资金 + 订阅金钱链（双 app 共库）', () => {
     // 2) 管理面建套餐（30 元 / 30 额度 / 30 天）
     const plan = await http(admin.baseUrl, '/v1/plans', {
       token,
-      body: { name: e2eUid('plan'), price: 30, quotaAmount: 30, periodDays: 30 },
+      body: { name: e2eUid('plan'), price: '30', quotaAmount: '30', periodDays: 30 },
     });
     expect(plan.status).toBe(201);
     const planId = plan.body.id as number;
@@ -149,13 +149,13 @@ describe('E2E 用户资金 + 订阅金钱链（双 app 共库）', () => {
     const adjustKey = e2eUid('adj');
     const first = await http(admin.baseUrl, `/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 100 },
+      body: { amount: '100' },
       headers: { 'idempotency-key': adjustKey },
     });
     expect(first.status).toBe(200);
     const replay = await http(admin.baseUrl, `/v1/users/${userId}/adjust`, {
       token,
-      body: { amount: 100 },
+      body: { amount: '100' },
       headers: { 'idempotency-key': adjustKey },
     });
     expect(replay.body.replayed).toBe(true);
@@ -163,7 +163,7 @@ describe('E2E 用户资金 + 订阅金钱链（双 app 共库）', () => {
     // 4) 管理面赠送 +5 → 105
     const gift = await http(admin.baseUrl, `/v1/users/${userId}/gift`, {
       token,
-      body: { amount: 5 },
+      body: { amount: '5' },
       headers: { 'idempotency-key': e2eUid('gift') },
     });
     expect(gift.status).toBe(200);

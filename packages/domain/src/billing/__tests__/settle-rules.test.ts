@@ -42,13 +42,13 @@ describe('allocateSettlement', () => {
     ]);
   });
 
-  it('纯订阅链 over：额度池直接吸收（consume 超预留）', () => {
+  it('纯订阅链 over：套餐不超核，超额单独交余额补扣', () => {
     const [share] = allocateSettlement(
       [{ sourceType: 'subscription', amount: '2' }],
       new Decimal('3'),
     );
-    expect(share!.consume).toBe('3');
-    expect(share!.over).toBe('0');
+    expect(share!.consume).toBe('2');
+    expect(share!.over).toBe('1');
   });
 
   it('零源 + 正金额 = 不变量（不应可达的防御）', () => {

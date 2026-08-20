@@ -74,8 +74,3 @@ export async function clearAdminSessionCookie(): Promise<void> {
   const jar = await cookies();
   jar.delete(ADMIN_SESSION_COOKIE);
 }
-
-/** 兼容旧调用（转发 cookie 头）——v2 Bearer 模式下不再需要，保留空实现 */
-export async function getCookieHeader(): Promise<string> {
-  return '';
-}

@@ -5,8 +5,11 @@
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { deliver } from '../tasks/notify-dispatch.js';
+import { encrypt } from '@ai-gateway/core';
 
 const logger = { warn: (_obj: unknown, _msg: string) => {} };
+const encryptionKey = 'notify-test-encryption-key-32chars!';
+const encryptedSecret = encrypt('x', encryptionKey);
 
 const realFetch = globalThis.fetch;
 afterAll(() => {
@@ -25,7 +28,7 @@ describe('webhook SSRF 硬门', () => {
       'http://127.0.0.1:8080/hook', // 回环地址
     ];
     for (const url of blocked) {
-      const ok = await deliver('webhook', { url, secret: 'x' }, 'balance_low', {}, logger);
+      const ok = await deliver(1, 'webhook', { url, secret: 'x' }, 'balance_low', {}, logger);
       expect(ok, url).toBe(false);
     }
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -34,7 +37,10 @@ describe('webhook SSRF 硬门', () => {
   it('https 公网地址 → 放行到 fetch（正常投递不受影响）', async () => {
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    const ok = await deliver('webhook', { url: 'https://example.com/hook', secret: 'x' }, 'balance_low', {}, logger);
+    const ok = await deliver(
+      1, 'webhook', { url: 'https://example.com/hook', secret: encryptedSecret }, 'balance_low', {}, logger,
+      undefined, { encryptionKey },
+    );
     expect(ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -43,10 +49,21 @@ describe('webhook SSRF 硬门', () => {
     const fetchSpy = vi.fn().mockResolvedValue({ ok: true });
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const ok = await deliver(
-      'webhook', { url: 'http://localhost:9000/hook', secret: 'x' }, 'evt', {}, logger,
-      undefined, { webhookAllowLocalUrl: true },
+      1, 'webhook', { url: 'http://localhost:9000/hook', secret: encryptedSecret }, 'evt', {}, logger,
+      undefined, { webhookAllowLocalUrl: true, encryptionKey },
     );
     expect(ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('公网 webhook 的明文 secret 也拒绝投递', async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const ok = await deliver(
+      1, 'webhook', { url: 'https://example.com/hook', secret: 'plaintext' }, 'evt', {}, logger,
+      undefined, { encryptionKey },
+    );
+    expect(ok).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

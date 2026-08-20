@@ -13,7 +13,7 @@ import { eq, inArray } from 'drizzle-orm';
 import { and } from 'drizzle-orm';
 import { notificationChannels, notifyOutbox, users } from '@ai-gateway/db';
 import { createDb, type Db } from '@ai-gateway/db';
-import { createRedisClient, waitForRedisReady } from '@ai-gateway/core';
+import { createRedisClient, encrypt, waitForRedisReady } from '@ai-gateway/core';
 import { createSlidingWindowLimiter } from '@ai-gateway/core';
 import { runNotifyDispatchOnce } from '../tasks/notify-dispatch.js';
 import { startHealthServer } from '../health.js';
@@ -24,9 +24,11 @@ const db: Db = createDb(
 );
 const createdUsers: number[] = [];
 const createdChannels: number[] = [];
+const createdOutboxRows: number[] = [];
 let webhookServer: Server;
 let webhookUrl = '';
 let webhookCalls: Array<{ body: string; signature: string; timestamp: string; event: string }> = [];
+const encryptionKey = 'parity-notify-encryption-key-32ch';
 
 beforeAll(async () => {
   webhookServer = createServer((req, res) => {
@@ -49,6 +51,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((r) => webhookServer.close(() => r()));
+  if (createdOutboxRows.length) {
+    await db.delete(notifyOutbox).where(inArray(notifyOutbox.id, createdOutboxRows));
+  }
   if (createdChannels.length) {
     await db.delete(notificationChannels).where(inArray(notificationChannels.id, createdChannels));
   }
@@ -62,7 +67,7 @@ const logger = {
   info: () => undefined,
 };
 
-async function seedChannel(events: string[], config: Record<string, unknown> = { url: webhookUrl, secret: 'whsec-test' }) {
+async function seedChannel(events: string[], config: Record<string, unknown> = { url: webhookUrl, secret: encrypt('whsec-test', encryptionKey) }) {
   const [row] = await db
     .insert(notificationChannels)
     .values({ name: `t-${randomUUID().slice(0, 8)}`, type: 'webhook', config, events, status: 0 })
@@ -72,34 +77,38 @@ async function seedChannel(events: string[], config: Record<string, unknown> = {
 }
 
 describe('① 告警投递（notify_outbox 消费者）', () => {
+  // 隔离纪律：合成事件名（仅测试自播渠道订阅）——共享 dev 库里运营可能配置订阅
+  // billing_dead 等真实事件的真实渠道（如邮箱），mailer=undefined 的测试投递必然
+  // false 会把整行拖成 failed；真实事件名会与 ambient 渠道匹配导致断言漂移
   it('webhook 投递带 HMAC-SHA256 签名（timestamp.body 口径）→ 行终态化', async () => {
-    await seedChannel(['billing_dead']);
-    await db.insert(notifyOutbox).values({
-      event: 'billing_dead',
+    await seedChannel(['parity_probe_webhook']);
+    const [outbox] = await db.insert(notifyOutbox).values({
+      event: 'parity_probe_webhook',
       payload: { requestId: `t-${randomUUID().slice(0, 8)}` },
-      dedupeKey: `test-billing-dead-${randomUUID().slice(0, 8)}`,
-    });
+      dedupeKey: `test-parity-webhook-${randomUUID().slice(0, 8)}`,
+    }).returning({ id: notifyOutbox.id });
+    createdOutboxRows.push(outbox!.id);
     webhookCalls = [];
-    const result = await runNotifyDispatchOnce(db, logger, undefined, { webhookAllowLocalUrl: true }); // 本地 stub URL——dev 逃生门（生产 env 双门恒 false）
+    const result = await runNotifyDispatchOnce(db, logger, undefined, { webhookAllowLocalUrl: true, encryptionKey }); // 本地 stub URL——dev 逃生门（生产 env 双门恒 false）
     expect(result.sent).toBeGreaterThanOrEqual(1);
     expect(webhookCalls.length).toBeGreaterThanOrEqual(1);
     const call = webhookCalls.at(-1)!;
     // 验签口径与投递端一致
     const expected = createHmac('sha256', 'whsec-test').update(`${call.timestamp}.${call.body}`).digest('hex');
     expect(call.signature).toBe(expected);
-    expect(call.event).toBe('billing_dead');
+    expect(call.event).toBe('parity_probe_webhook');
   });
 
   it('无订阅渠道的事件终态化（不重扫）', async () => {
     const ins = await db.insert(notifyOutbox).values({
-      event: 'reconcile_discrepancy',
+      event: 'parity_probe_unsubscribed',
       payload: { discrepancies: 1 },
-      dedupeKey: `test-reconcile-${randomUUID().slice(0, 8)}`,
+      dedupeKey: `test-parity-unsub-${randomUUID().slice(0, 8)}`,
     }).returning({ id: notifyOutbox.id });
+    createdOutboxRows.push(ins[0]!.id);
     await runNotifyDispatchOnce(db, logger);
     const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, ins[0]!.id));
     expect(row!.sentAt).not.toBeNull();
-    await db.delete(notifyOutbox).where(eq(notifyOutbox.id, ins[0]!.id));
   });
 });
 

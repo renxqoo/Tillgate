@@ -32,7 +32,7 @@ export function createDefaultFundingRegistry(deps: {
 }): FundingRegistry {
   const repos = deps.repos ?? createRepositories();
   return createFundingRegistry([
-    createSubscriptionSource({ repos }),
+    createSubscriptionSource({ repos, wallet: deps.wallet }),
     createPaygSource({ wallet: deps.wallet, repos }),
   ]);
 }

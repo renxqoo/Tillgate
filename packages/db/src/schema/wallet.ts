@@ -3,7 +3,7 @@
  *
  *   wallet_accounts        账户：kind ∈ {user, internal}——用户账户 (user_id, currency)、
  *                          内部科目账户 (code, currency, shard)（platform_revenue 平台收入 /
- *                          outside 外部世界 / 业务自定义科目）；balance ≥ −credit_limit；
+ *                          outside 外部世界 / 业务自定义科目）；结算补扣可形成负 balance；
  *                          status ∈ {active, frozen}（风控冻结）
  *   wallet_transactions    交易批头：幂等键 (ref_type, ref_id, kind)；金额不在批头
  *   wallet_legs            腿：每笔交易 ≥2 腿、Σ 腿 = 0（有借必有贷）；每腿独立链式
@@ -45,7 +45,7 @@ export const walletAccounts = pgTable(
     /** 可用口径 = balance + credit_limit − in_flight */
     balance: numeric('balance', { precision: 38, scale: 18 }).notNull().default('0'),
     inFlight: numeric('in_flight', { precision: 38, scale: 18 }).notNull().default('0'),
-    /** 授信地板（≥0；balance 不得低于 −credit_limit。0 = 纯预付） */
+    /** 新请求准入授信额度（≥0）；不限制已发生消费的结算补扣负余额。 */
     creditLimit: numeric('credit_limit', { precision: 38, scale: 18 }).notNull().default('0'),
     /** active / frozen（风控冻结：冻结账户拒绝一切资金变动） */
     status: varchar('status', { length: 8 }).notNull().default('active'),
@@ -58,11 +58,6 @@ export const walletAccounts = pgTable(
           or (${t.kind} = 'internal' and ${t.code} is not null and ${t.userId} is null)`,
     ),
     check('wallet_accounts_floor_ck', sql`${t.creditLimit} >= 0 and ${t.inFlight} >= 0`),
-    // 地板只约束用户账户：内部科目（outside 镜像等）语义上可负，守恒由 Σ腿=0 保证
-    check(
-      'wallet_accounts_balance_floor_ck',
-      sql`${t.kind} = 'internal' or ${t.balance} >= -${t.creditLimit}`,
-    ),
     check('wallet_accounts_status_ck', sql`${t.status} in ('active', 'frozen')`),
     check(
       'wallet_accounts_shard_ck',

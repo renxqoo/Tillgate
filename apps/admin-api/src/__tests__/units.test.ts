@@ -106,7 +106,7 @@ describe('models 更新可选字段分支', () => {
     const prices = await request(`/v1/models/${mappingId}`, {
       method: 'PATCH',
       token,
-      body: { inputPrice: 1.5, outputPrice: 2.5, cacheInputPrice: 0.5 },
+      body: { inputPrice: '1.5', outputPrice: '2.5', cacheInputPrice: '0.5' },
     });
     expect(prices.status).toBe(200);
     const [row] = await db.select().from(modelMappings).where(eq(modelMappings.id, mappingId));
@@ -226,7 +226,7 @@ describe('路由可选字段与非法路径分支', () => {
       })).status,
     ).toBe(201);
     expect(
-      (await request('/v1/rate-cards', { token, body: { name: uid('desc'), coefficient: 1, description: '扫尾' } })).status,
+      (await request('/v1/rate-cards', { token, body: { name: uid('desc'), coefficient: '1', description: '扫尾' } })).status,
     ).toBe(201);
 
     const { email } = await newAdmin();
@@ -292,7 +292,7 @@ describe('过滤组合与单字段 PATCH 收尾', () => {
     const { trackCard } = await import('./helpers.js');
 
     const card = (await (
-      await request('/v1/rate-cards', { token, body: { name: uid('c'), coefficient: 1 } })
+      await request('/v1/rate-cards', { token, body: { name: uid('c'), coefficient: '1' } })
     ).json()) as { id: number };
     trackCard(card.id);
     expect(
@@ -307,7 +307,7 @@ describe('过滤组合与单字段 PATCH 收尾', () => {
     const channelId = await newChannelRow(providerId);
     await request('/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: 5, remark: '带备注调账' },
+      body: { channelId, amount: '5', remark: '带备注调账' },
       headers: { 'idempotency-key': uid('adj') },
     });
     const typed = (await (
@@ -323,7 +323,7 @@ describe('过滤组合与单字段 PATCH 收尾', () => {
     const created = (await (
       await request('/v1/models', {
         token,
-        body: { externalName: uid('free'), realModel: uid('r'), inputPrice: 0, outputPrice: 0, cacheInputPrice: 0, contextLength: 1000 },
+        body: { externalName: uid('free'), realModel: uid('r'), inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', contextLength: 1000 },
       })
     ).json()) as { id: number };
     expect(

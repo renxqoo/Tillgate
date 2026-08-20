@@ -24,7 +24,7 @@ export default async function ChannelFundsPage({
   const type = typeRaw === "adjust" || typeRaw === "recharge" ? typeRaw : undefined;
 
   const { rows, total, error } = await fetchAdminList<AdminChannelFundRow>(
-    "/api/admin/channel-funds",
+    "/v1/channel-funds",
     {
       page,
       pageSize: PAGE_SIZE,
@@ -34,7 +34,7 @@ export default async function ChannelFundsPage({
 
   let channels: ChannelOption[] = [];
   try {
-    const c = await fetchAdminList<AdminChannelRow>("/api/admin/channels", { pageSize: 100 });
+    const c = await fetchAdminList<AdminChannelRow>("/v1/channels", { pageSize: 100 });
     channels = c.rows.map((x) => ({ id: x.id, name: x.name }));
   } catch {
     // 渠道加载失败不阻塞

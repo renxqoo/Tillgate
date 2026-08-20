@@ -5,7 +5,8 @@
  * 资损不变量：
  *   - 一人只能被邀一次（referrals.invitee_uq 唯一索引兜底并发）
  *   - 奖励/佣金入账幂等 = wallet 自然键（refType 'referral' + refId + kind credit 唯一）
- *   - 邀请人封禁/不存在 → 建关系不派奖（关系可追溯，钱不落坏人账）
+ *   - 关系与双方注册奖励共用一个数据库事务，禁止只发一边或只落关系
+ *   - 邀请人封禁/不存在 → 不建关系、不派奖
  */
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
@@ -24,7 +25,7 @@ export interface ReferralServiceDeps {
   /** 双方注册奖励（元，字符串；'0' = 关闭） */
   signupBonus: string;
   /** 佣金比例（0–1；worker 日结同值） */
-  commissionRate: number;
+  commissionRate: string;
   /** 前端基地址（拼邀请链接） */
   frontendUrl: string;
 }
@@ -36,8 +37,8 @@ export type ApplyReferralResult =
 export interface InviteOverview {
   affCode: string;
   inviteUrl: string;
-  signupBonus: number;
-  commissionRate: number;
+  signupBonus: string;
+  commissionRate: string;
   invited: Array<{ inviteeId: number; inviteeName: string | null; createdAt: string; status: number }>;
   totalCommission: string;
 }
@@ -61,38 +62,38 @@ export function createReferralService(deps: ReferralServiceDeps) {
     if (inviterId === null) return { applied: false, reason: 'invalid_code' };
     if (inviterId === input.inviteeId) return { applied: false, reason: 'self_invite' };
 
-    const inserted = await repos.referral.insertReferral(repo(ctx), {
-      inviterUserId: inviterId,
-      inviteeUserId: input.inviteeId,
-    });
-    if (!inserted) return { applied: false, reason: 'already_referred' };
-    if (!(await repos.referral.inviterActive(repo(ctx), inviterId))) {
-      return { applied: false, reason: 'inviter_not_found' };
-    }
+    return db.transaction(async (tx) => {
+      const txRepo = { db: tx, ...sys(ctx) };
+      if (!(await repos.referral.inviterActive(txRepo, inviterId))) {
+        return { applied: false, reason: 'inviter_not_found' } as const;
+      }
+      const inserted = await repos.referral.insertReferral(txRepo, {
+        inviterUserId: inviterId,
+        inviteeUserId: input.inviteeId,
+      });
+      if (!inserted) return { applied: false, reason: 'already_referred' } as const;
 
-    if (signupBonus.greaterThan(0)) {
-      // 双方奖励：wallet 自然键幂等；失败不回滚注册（键可补发，账不受损）
-      const base = sys(ctx);
-      await wallet
-        .credit(base, {
+      if (signupBonus.greaterThan(0)) {
+        const base = sys(ctx);
+        await wallet.credit(base, {
           userId: inviterId,
           amount: deps.signupBonus,
           refType: 'referral',
           refId: signupBonusRefId(input.inviteeId, 'inviter'),
           memo: `邀请注册奖励（邀请人）+${deps.signupBonus}`,
-        })
-        .catch(() => undefined);
-      await wallet
-        .credit(base, {
+          tx,
+        });
+        await wallet.credit(base, {
           userId: input.inviteeId,
           amount: deps.signupBonus,
           refType: 'referral',
           refId: signupBonusRefId(input.inviteeId, 'invitee'),
           memo: `受邀注册奖励 +${deps.signupBonus}`,
-        })
-        .catch(() => undefined);
-    }
-    return { applied: true };
+          tx,
+        });
+      }
+      return { applied: true } as const;
+    });
   }
 
   /** 累计佣金：wallet 仓储聚合读（refType 'referral' + 佣金 refId 前缀的正向腿求和） */
@@ -110,7 +111,7 @@ export function createReferralService(deps: ReferralServiceDeps) {
     return {
       affCode,
       inviteUrl: `${deps.frontendUrl}/register?aff=${affCode}`,
-      signupBonus: signupBonus.toNumber(),
+      signupBonus: signupBonus.toString(),
       commissionRate: deps.commissionRate,
       invited: rows.map((r) => ({
         inviteeId: r.inviteeUserId,

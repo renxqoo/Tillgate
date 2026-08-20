@@ -32,6 +32,8 @@ const server: ServerType = serve({ fetch: app.fetch, port: config.PORT }, ({ por
       currency: config.GATEWAY_CURRENCY,
       freeModelDailyLimit: config.FREE_MODEL_DAILY_LIMIT,
       reservationMax: config.BILLING_RESERVATION_MAX,
+      reservationMode: config.BILLING_RESERVATION_MODE,
+      fixedReservationAmount: config.BILLING_FIXED_RESERVATION_AMOUNT ?? null,
       authTtlMs: config.BILLING_AUTHORIZATION_TTL_MS,
       admission: { maxPending: config.ADMISSION_MAX_PENDING, maxOldestMs: config.ADMISSION_MAX_OLDEST_MS },
       authGuards: { keyThreshold: config.AUTH_KEY_FAILURE_THRESHOLD, ipLimit: config.AUTH_IP_FAILURE_LIMIT },

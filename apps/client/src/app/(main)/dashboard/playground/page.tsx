@@ -15,7 +15,7 @@ interface PricingModel {
 }
 
 export default async function PlaygroundPage() {
-  const data = await apiFetch<{ models: PricingModel[] }>('/api/pricing').catch(() => null);
+  const data = await apiFetch<{ models: PricingModel[] }>('/v1/pricing').catch(() => null);
   const models = (data?.models ?? []).map((m) => m.externalName);
 
   return (

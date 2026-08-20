@@ -10,17 +10,17 @@ import { adminCtxOf } from './ctx.js';
 import { AppError } from '../http/error-map.js';
 import type { CatalogService } from '../services/catalog.service.js';
 import type { SessionEnv } from '../middleware/session.js';
+import { nonNegativeMoneyString } from '../http/money-schema.js';
 
-const MONEY_MAX = 1e9;
 const CONTEXT_LENGTH_MAX = 2_000_000_000;
 
 const importModelSchema = z.object({
   externalName: z.string().min(1).max(64),
   realModel: z.string().min(1).max(128),
-  inputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
-  outputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
-  cacheInputPrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
-  cacheWritePrice: z.coerce.number().min(0).finite().max(MONEY_MAX),
+  inputPrice: nonNegativeMoneyString,
+  outputPrice: nonNegativeMoneyString,
+  cacheInputPrice: nonNegativeMoneyString,
+  cacheWritePrice: nonNegativeMoneyString,
   contextLength: z.coerce.number().int().positive().finite().max(CONTEXT_LENGTH_MAX).nullable().optional(),
 });
 
@@ -108,10 +108,10 @@ export function catalogRoutes(service: CatalogService, session: MiddlewareHandle
       models: body.models.map((m) => ({
         externalName: m.externalName,
         realModel: m.realModel,
-        inputPrice: String(m.inputPrice),
-        outputPrice: String(m.outputPrice),
-        cacheInputPrice: String(m.cacheInputPrice),
-        cacheWritePrice: String(m.cacheWritePrice),
+        inputPrice: m.inputPrice,
+        outputPrice: m.outputPrice,
+        cacheInputPrice: m.cacheInputPrice,
+        cacheWritePrice: m.cacheWritePrice,
         contextLength: m.contextLength ?? null,
       })),
     });

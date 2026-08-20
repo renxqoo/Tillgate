@@ -10,6 +10,31 @@ import { BillingConfigurationError } from './errors.js';
 import { estimateMaxCost, requiredReservation, ReservationError } from './pricing.js';
 import type { BillingQuote } from './types.js';
 
+export interface FundingReservationPolicy {
+  mode?: 'full' | 'fixed';
+  amount?: string;
+}
+
+/**
+ * 风险预估与实际冻结解耦：full 冻结完整预估；fixed 只冻结显式门槛。
+ * 最终收费仍由收据实际金额决定，fixed 不是封顶或折扣。
+ */
+export function calculateFundingReservation(
+  estimatedAmount: string,
+  policy: FundingReservationPolicy = { mode: 'full' },
+): Decimal {
+  const estimated = new Decimal(estimatedAmount);
+  if (!estimated.isFinite() || estimated.lt(0)) {
+    throw new BillingConfigurationError('invalid_quote');
+  }
+  if ((policy.mode ?? 'full') === 'full') return estimated;
+  const fixed = new Decimal(policy.amount ?? Number.NaN);
+  if (!fixed.isFinite() || fixed.lte(0)) {
+    throw new BillingConfigurationError('invalid_reservation_balance');
+  }
+  return estimated.isZero() ? estimated : fixed;
+}
+
 export function calculateRequired(quote: BillingQuote, reservationLimit: string): Decimal {
   if (quote.candidates.length === 0) throw new BillingConfigurationError('invalid_quote');
   if (quote.explicitlyFree) {
@@ -47,7 +72,7 @@ export function calculateRequired(quote: BillingQuote, reservationLimit: string)
       inputPrice: candidate.inputPrice,
       cacheInputPrice: candidate.cacheInputPrice,
       outputPrice: candidate.outputPrice,
-      unitPrice: candidate.unitPrice ?? 0,
+      unitPrice: candidate.unitPrice ?? '0',
       unitUpperBound: candidate.unitUpperBound ?? 0,
       coefficient,
     });

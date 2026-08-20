@@ -18,7 +18,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const model = firstParam(sp.model) ?? "";
-  const { rows, total, error } = await fetchUserList<UsageRow>("/api/usage", {
+  const { rows, total, error } = await fetchUserList<UsageRow>("/v1/usage", {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

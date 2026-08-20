@@ -32,7 +32,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
     keys = MOCK_KEYS;
     total = MOCK_KEYS.length;
   } else {
-    const result = await fetchUserList<KeyRow>("/api/keys", {
+    const result = await fetchUserList<KeyRow>("/v1/keys", {
       page,
       pageSize: PAGE_SIZE,
       extra: { q },
@@ -42,7 +42,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
     error = result.error;
     // 计费来源下拉：个人订阅 + 所属组织订阅（含余额选项，由弹窗固定渲染）。
     try {
-      const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/api/subscriptions");
+      const subResult = await apiFetch<{ rows?: CurrentSubscription[] }>("/v1/subscriptions");
       const sub: CurrentSubscription | null = subResult.rows?.[0] ?? null;
       if (sub) subscriptions.push({ id: sub.id, label: sub.planName });
     } catch {
@@ -51,7 +51,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
     try {
       const orgs = await apiFetch<{
         rows: Array<{ name: string; subscriptionId: number | null; planName: string | null }>;
-      }>("/api/orgs");
+      }>("/v1/orgs");
       for (const o of orgs.rows) {
         if (o.subscriptionId != null) {
           subscriptions.push({ id: o.subscriptionId, label: `${o.name} · ${o.planName ?? "套餐"}` });

@@ -38,9 +38,9 @@ async function createModel(
     body: {
       externalName,
       realModel: uid('real'),
-      inputPrice: 1,
-      outputPrice: 2,
-      cacheInputPrice: 0.5,
+      inputPrice: '1',
+      outputPrice: '2',
+      cacheInputPrice: '0.5',
       ...overrides,
     },
   });
@@ -54,7 +54,7 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
   it('创建 isFree=true + 非零价 → 400 free_model_price_conflict', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
-    const { res, json } = await createModel(request, token, { isFree: true, inputPrice: 1 });
+    const { res, json } = await createModel(request, token, { isFree: true, inputPrice: '1' });
     expect(res.status).toBe(400);
     expect((json.error as { code: string }).code).toBe('free_model_price_conflict');
   });
@@ -64,9 +64,9 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
     const { token } = await newAdmin();
     const { res } = await createModel(request, token, {
       isFree: true,
-      inputPrice: 0,
-      outputPrice: 0,
-      cacheInputPrice: 0,
+      inputPrice: '0',
+      outputPrice: '0',
+      cacheInputPrice: '0',
     });
     expect(res.status).toBe(201);
   });
@@ -76,14 +76,14 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
     const { token } = await newAdmin();
     const { body } = await createModel(request, token, {
       isFree: true,
-      inputPrice: 0,
-      outputPrice: 0,
-      cacheInputPrice: 0,
+      inputPrice: '0',
+      outputPrice: '0',
+      cacheInputPrice: '0',
     });
     const res = await request(`/v1/models/${body.id}`, {
       method: 'PATCH',
       token,
-      body: { outputPrice: 3 },
+      body: { outputPrice: '3' },
     });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe('free_model_price_conflict');
@@ -103,7 +103,7 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
 describe('数值域铁三角（red：zod 层收口，绝不溢出到 PG 500）', () => {
   it.each([
     { body: { inputPrice: '1e999' }, why: '字符串 Infinity' },
-    { body: { inputPrice: 1e21 }, why: '超 MONEY_MAX' },
+    { body: { inputPrice: '1e21' }, why: '超 MONEY_MAX' },
     { body: { contextLength: 1e30 }, why: '超上下文上限' },
   ])('$why → 400 且不触库', async ({ body }) => {
     const { request } = buildTestApp();

@@ -10,7 +10,7 @@ export async function retryDeadBillingRequest(input: {
   evidenceRefs?: string[];
 }): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/billing-operations/${input.requestId}/retry`, {
+    await adminFetch(`/v1/billing-operations/${input.requestId}/retry`, {
       method: 'POST',
       body: {
         expectedRevision: input.expectedRevision,
@@ -34,7 +34,7 @@ export async function abandonDeadBillingRequest(input: {
   evidenceRefs?: string[];
 }): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/billing-operations/${input.requestId}/abandon`, {
+    await adminFetch(`/v1/billing-operations/${input.requestId}/abandon`, {
       method: 'POST',
       body: {
         expectedRevision: input.expectedRevision,

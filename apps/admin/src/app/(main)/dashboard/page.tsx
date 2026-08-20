@@ -32,13 +32,13 @@ export default async function AdminDashboardPage() {
   let error: string | null = null;
 
   try {
-    stats = await adminFetch<StatsOverview>("/api/admin/stats/overview");
+    stats = await adminFetch<StatsOverview>("/v1/stats/overview");
   } catch (e) {
     error = e instanceof ApiError ? e.message : "加载统计失败";
   }
 
   try {
-    const res = await adminFetch<{ rows?: StatsUsageItem[]; list?: StatsUsageItem[] }>("/api/admin/stats/usage");
+    const res = await adminFetch<{ rows?: StatsUsageItem[]; list?: StatsUsageItem[] }>("/v1/stats/usage");
     usage = res.rows ?? [];
   } catch {
     // usage 失败不阻塞整页

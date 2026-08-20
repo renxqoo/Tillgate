@@ -63,13 +63,13 @@ function parsePositiveInt(raw: string | undefined, field: string): number | null
 }
 
 /** 每日花费上限：留空=不限；填值须 >= 0。 */
-function parseDailySpend(raw: string | undefined): number | null {
+function parseDailySpend(raw: string | undefined): string | null {
   if (raw === undefined || raw.trim() === "") return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
+  const value = raw.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(value)) {
     throw new Error("每日花费上限须为 >= 0 的金额");
   }
-  return n;
+  return value;
 }
 
 function fmtLimit(v: number | null): string {
@@ -248,7 +248,7 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
           onSubmit={form.handleSubmit(async (values) => {
             let rpmLimit: number | null;
             let tpmLimit: number | null;
-            let dailySpendLimit: number | null;
+            let dailySpendLimit: string | null;
             try {
               rpmLimit = parsePositiveInt(values.rpmLimit, "RPM");
               tpmLimit = parsePositiveInt(values.tpmLimit, "TPM");

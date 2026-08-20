@@ -44,6 +44,12 @@ export const billingRequests = pgTable(
     subscriptionId: bigint('subscription_id', { mode: 'number' }).references(
       () => userSubscriptions.id,
     ),
+    /** 保守风险预估：日限额/在途敞口使用；fixed 模式下可大于实际冻结额。 */
+    estimatedExposureAmount: numeric('estimated_exposure_amount', {
+      precision: 38,
+      scale: 18,
+    }),
+    /** 实际冻结金额：full=风险预估，fixed=显式门槛。 */
     reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull(),
     /** authorized/in_flight/settlement_pending/processing/retry_wait/settled/released/dead（2026-08-17 政策：uncertain 删除） */
     status: varchar('status', { length: 32 }).notNull().default('authorized'),
@@ -96,6 +102,10 @@ export const billingRequests = pgTable(
     check(
       'billing_requests_claim_state_ck',
       sql`(${t.status} = 'processing') = (${t.claimToken} is not null and ${t.claimOwner} is not null and ${t.claimUntil} is not null)`,
+    ),
+    check(
+      'billing_requests_amounts_nonnegative_ck',
+      sql`${t.estimatedExposureAmount} >= 0 and ${t.reservedAmount} >= 0`,
     ),
   ],
 );

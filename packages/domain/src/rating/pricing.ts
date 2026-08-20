@@ -28,17 +28,17 @@ export interface AmountInput {
    */
   cacheWriteTokens?: number;
   /** 输入价（元/百万 token） */
-  inputPrice: Decimal | string | number;
-  cacheInputPrice: Decimal | string | number;
+  inputPrice: Decimal | string;
+  cacheInputPrice: Decimal | string;
   /** 缓存写单价（0/缺省 = 不收缓存写费） */
-  cacheWritePrice?: Decimal | string | number;
-  outputPrice: Decimal | string | number;
+  cacheWritePrice?: Decimal | string;
+  outputPrice: Decimal | string;
   /** 单位计量（次数/张数/秒数/字符数；token 模型传 0） */
   units?: number;
   /** 单位单价（元/单位；token 模型传 '0'） */
-  unitPrice?: Decimal | string | number;
+  unitPrice?: Decimal | string;
   /** 费率卡系数（用户侧口径；渠道成本恒 1） */
-  coefficient: Decimal | string | number;
+  coefficient: Decimal | string;
 }
 
 /**
@@ -60,7 +60,7 @@ export function calcAmount(input: AmountInput): Decimal {
   const uncached = inputTokens - cached - cacheWrite;
   // 写价 0/缺省 = 未配置 → 与输入价同值（cacheInputPrice 同款约定：
   // 未配置不得让写 token 逃逸计费——按普通输入计）
-  const configuredWritePrice = new Decimal((input.cacheWritePrice ?? 0) as string);
+  const configuredWritePrice = new Decimal((input.cacheWritePrice ?? '0') as string);
   const effectiveWritePrice = configuredWritePrice.gt(0)
     ? configuredWritePrice
     : new Decimal(input.inputPrice as string);
@@ -69,7 +69,7 @@ export function calcAmount(input: AmountInput): Decimal {
     .plus(new Decimal(input.cacheInputPrice as string).times(cached))
     .plus(effectiveWritePrice.times(cacheWrite))
     .plus(new Decimal(input.outputPrice as string).times(outputTokens));
-  const unitPrice = new Decimal((input.unitPrice ?? 0) as string);
+  const unitPrice = new Decimal((input.unitPrice ?? '0') as string);
   const unitBase = unitPrice.lt(0) ? new Decimal(0) : unitPrice.times(safe(input.units ?? 0));
   const amount = tokenBase.div(PRICE_PER_MILLION).plus(unitBase).times(coeff);
   return amount.lt(0) ? new Decimal(0) : amount;
@@ -78,15 +78,15 @@ export function calcAmount(input: AmountInput): Decimal {
 export interface ReservationEstimateInput {
   estimatedInputTokens: number;
   maxOutputTokens: number;
-  inputPrice: Decimal | string | number;
+  inputPrice: Decimal | string;
   /** 授权时无法预知缓存命中/写入量——输入按各单价中最高者覆盖（cacheWrite 可超输入价：Anthropic 1.25×/2×） */
-  cacheInputPrice?: Decimal | string | number;
-  cacheWritePrice?: Decimal | string | number;
-  outputPrice: Decimal | string | number;
+  cacheInputPrice?: Decimal | string;
+  cacheWritePrice?: Decimal | string;
+  outputPrice: Decimal | string;
   /** 单位计量上界（如 images 的 n；token 模型 0） */
   unitUpperBound?: number;
-  unitPrice?: Decimal | string | number;
-  coefficient: Decimal | string | number;
+  unitPrice?: Decimal | string;
+  coefficient: Decimal | string;
 }
 
 /**
@@ -104,7 +104,7 @@ export function estimateMaxCost(input: ReservationEstimateInput): Decimal {
   const tokenBase = conservativeInputPrice
     .times(safe(input.estimatedInputTokens))
     .plus(new Decimal(input.outputPrice as string).times(safe(input.maxOutputTokens)));
-  const unitPrice = new Decimal((input.unitPrice ?? 0) as string);
+  const unitPrice = new Decimal((input.unitPrice ?? '0') as string);
   const unitBase = unitPrice.lt(0) ? new Decimal(0) : unitPrice.times(safe(input.unitUpperBound ?? 0));
   const cost = tokenBase.div(PRICE_PER_MILLION).plus(unitBase).times(coefficient);
   return cost.isFinite() && cost.gte(0) ? cost : new Decimal(0);
@@ -124,8 +124,8 @@ export class ReservationError extends Error {
  * （截断 = 静默少押 = 把配置问题伪装成正常放行）。
  */
 export function requiredReservation(
-  estimate: Decimal | string | number,
-  reservationLimit: Decimal | string | number,
+  estimate: Decimal | string,
+  reservationLimit: Decimal | string,
 ): Decimal {
   const required = new Decimal(estimate as string);
   const limit = new Decimal(reservationLimit as string);

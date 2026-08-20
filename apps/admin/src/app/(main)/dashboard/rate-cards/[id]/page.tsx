@@ -34,7 +34,7 @@ export default async function RateCardDetailPage({ params, searchParams }: PageP
   let error: string | null = null;
   try {
     // 后端没有单条 GET /:id，从列表里找
-    const list = await fetchAdminList<AdminRateCardRow>('/api/admin/rate-cards', { pageSize: 100 });
+    const list = await fetchAdminList<AdminRateCardRow>('/v1/rate-cards', { pageSize: 100 });
     card = list.rows.find((c) => c.id === rcId) ?? null;
     if (!card) notFound();
   } catch (e) {
@@ -44,7 +44,7 @@ export default async function RateCardDetailPage({ params, searchParams }: PageP
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows: users, total, error: usersError } = await fetchAdminList<AdminUserRow>(
-    `/api/admin/rate-cards/${rcId}/users`,
+    `/v1/rate-cards/${rcId}/users`,
     { page, pageSize: PAGE_SIZE, sortBy, order, extra: { q } },
   );
 

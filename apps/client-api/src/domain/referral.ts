@@ -23,7 +23,7 @@ export const signupBonusRefId = (inviteeId: number, side: 'inviter' | 'invitee')
   `referral-signup:${inviteeId}:${side}`;
 
 /** 佣金金额：被邀人消费合计 × 比例（全精度 Decimal；≤0 由调用方跳过） */
-export function commissionAmount(total: string, rate: number): string {
+export function commissionAmount(total: string, rate: string): string {
   return parsePositiveAmount(total).times(rate).toString();
 }
 

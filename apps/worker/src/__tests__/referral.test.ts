@@ -93,12 +93,12 @@ describe('佣金日结', () => {
     await settledUsage(invitee, '10', YESTERDAY(6));
     await settledUsage(invitee, '5.5', YESTERDAY(20));
 
-    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: 0.1, now: () => NOW });
+    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: '0.1', now: () => NOW });
     expect(once.credited).toBe(1);
     expect(new Decimal(await balanceOf(inviter)).eq('1.55')).toBe(true);
 
     // 重跑（补跑/并发副本落败路径）：wallet 自然键幂等
-    const again = await runReferralCommissionOnce({ db, wallet, commissionRate: 0.1, now: () => NOW });
+    const again = await runReferralCommissionOnce({ db, wallet, commissionRate: '0.1', now: () => NOW });
     expect(again.credited).toBe(0);
     expect(new Decimal(await balanceOf(inviter)).eq('1.55')).toBe(true);
   });
@@ -109,7 +109,7 @@ describe('佣金日结', () => {
     await newReferral(inviter, invitee);
     await settledUsage(invitee, '100', TODAY);
 
-    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: 0.1, now: () => NOW });
+    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: '0.1', now: () => NOW });
     expect(once.credited).toBe(0);
     expect(new Decimal(await balanceOf(inviter)).eq('0')).toBe(true);
   });
@@ -125,14 +125,14 @@ describe('佣金日结', () => {
     await newReferral(inviter2, invitee2);
     await settledUsage(invitee2, '10', YESTERDAY(12), 1); // 未结算
 
-    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: 0.1, now: () => NOW });
+    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: '0.1', now: () => NOW });
     expect(once.credited).toBe(0);
     expect(new Decimal(await balanceOf(inviter)).eq('0')).toBe(true);
     expect(new Decimal(await balanceOf(inviter2)).eq('0')).toBe(true);
   });
 
   it('比例关闭（rate=0）：零查询零入账', async () => {
-    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: 0, now: () => NOW });
+    const once = await runReferralCommissionOnce({ db, wallet, commissionRate: '0', now: () => NOW });
     expect(once).toEqual({ credited: 0 });
   });
 });

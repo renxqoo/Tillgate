@@ -10,7 +10,7 @@ import {
   apiKeys, billingRequests, billingReservations, organizations, orgMembers,
   plans, usageLogs, userSubscriptions, users,
 } from '@ai-gateway/db';
-import type { Db } from '@ai-gateway/repository';
+import { createRepositories, type Db } from '@ai-gateway/repository';
 import {
   BillingBacklogError,
   DailySpendLimitExceededError,
@@ -109,11 +109,19 @@ async function fund(userId: number, amount: string): Promise<void> {
   await wallet.credit(ctx, { userId, amount, refType: 'topup', refId: `v2bl-fund-${userId}-${randomUUID().slice(0, 6)}` });
 }
 
-async function authorize(input: { userId: number; apiKeyId?: number }, expectThrow?: new (...a: never[]) => Error) {
+async function authorize(
+  input: {
+    userId: number;
+    apiKeyId?: number;
+    reservationPolicy?: { mode: 'full' | 'fixed'; amount?: string };
+  },
+  expectThrow?: new (...a: never[]) => Error,
+) {
   const requestId = randomUUID();
   const run = billing.authorize(ctx, {
     requestId, userId: input.userId, apiKeyId: input.apiKeyId ?? null, stream: false, quote: q,
     reservationLimit: '100', authorizationTtlMs: 300_000,
+    ...(input.reservationPolicy != null ? { reservationPolicy: input.reservationPolicy } : {}),
   });
   if (expectThrow) {
     await expect(run).rejects.toThrow(expectThrow);
@@ -143,6 +151,36 @@ afterAll(async () => {
 });
 
 describe('用户级 / Key 级每日限额', () => {
+  it('滚动发布兼容：旧副本未写 estimated_exposure_amount 时按 reserved_amount 计风险', async () => {
+    const user = await newUser();
+    const requestId = randomUUID();
+    createdRequests.push(requestId);
+    await db.insert(billingRequests).values({
+      requestId,
+      userId: user,
+      reservedAmount: '2',
+      status: 'authorized',
+      quote: {},
+      authorizationFingerprint: 'x'.repeat(64),
+    });
+    const exposure = await createRepositories().billingRequest.sumExposure(
+      { ...ctx, db },
+      { userId: user },
+    );
+    expect(new Decimal(exposure).eq('2')).toBe(true);
+  });
+
+  it('fixed 只降低冻结额：第二笔仍按完整风险敞口触发每日限额', async () => {
+    const user = await newUser('3');
+    await fund(user, '0.02');
+    const policy = { mode: 'fixed' as const, amount: '0.01' };
+    await authorize({ userId: user, reservationPolicy: policy }); // 风险 2，冻结 0.01
+    await authorize(
+      { userId: user, reservationPolicy: policy },
+      DailySpendLimitExceededError,
+    ); // 风险 2 + 2 > 3
+  });
+
   it('恰好等于限额放行（projected == limit 不是超限）', async () => {
     const user = await newUser('2');
     await fund(user, '10');

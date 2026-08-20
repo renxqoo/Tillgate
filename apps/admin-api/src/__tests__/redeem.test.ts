@@ -20,18 +20,18 @@ describe('兑换批次', () => {
     const { token } = await newAdmin();
 
     expect(
-      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: 0, count: 1 } })).status,
+      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: '0', count: 1 } })).status,
     ).toBe(400);
     expect(
-      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: -1, count: 1 } })).status,
+      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: '-1', count: 1 } })).status,
     ).toBe(400);
     expect(
-      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: 1, count: 10001 } })).status,
+      (await request('/v1/redeem-batches', { token, body: { name: uid('b'), amount: '1', count: 10001 } })).status,
     ).toBe(400);
 
     const res = await request('/v1/redeem-batches', {
       token,
-      body: { name: uid('batch'), amount: 1, count: 2 },
+      body: { name: uid('batch'), amount: '1', count: 2 },
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
@@ -59,7 +59,7 @@ describe('兑换批次', () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
     const created = (await (
-      await request('/v1/redeem-batches', { token, body: { name: uid('batch'), amount: 1, count: 1 } })
+      await request('/v1/redeem-batches', { token, body: { name: uid('batch'), amount: '1', count: 1 } })
     ).json()) as { batch: { id: number }; codes: string[] };
     trackBatch(created.batch.id);
 

@@ -45,7 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
-import { numericText } from '@ai-gateway/ui/lib/forms';
+import { moneyText } from '@ai-gateway/ui/lib/forms';
 
 import type { PlanRow } from '@ai-gateway/api-client/types';
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
@@ -256,9 +256,9 @@ const createSchema = z.object({
       (v) => v.trim() === '' || (Number.isFinite(Number(v)) && Number.isInteger(Number(v))),
       '层级须为整数',
     ),
-  price: numericText({ message: '请输入有效价格' }).refine((v) => v > 0, '价格须 > 0'),
+  price: moneyText({ message: '请输入有效价格', allowZero: false }),
   periodDays: z.string(),
-  quotaAmount: numericText({ message: '请输入有效额度' }).refine((v) => v > 0, '额度须 > 0'),
+  quotaAmount: moneyText({ message: '请输入有效额度', allowZero: false }),
   allowSeats: z.boolean(),
 });
 
@@ -291,9 +291,9 @@ export function CreatePlanDialog() {
         name: values.name,
         kind: values.kind,
         sortOrder: values.sortOrder.trim() === '' ? null : Number(values.sortOrder),
-        price: Number(values.price),
+        price: values.price,
         periodDays: values.kind === 'pack' ? 0 : Number(values.periodDays),
-        quotaAmount: Number(values.quotaAmount),
+        quotaAmount: values.quotaAmount,
         allowSeats: values.allowSeats,
       });
       if (!notify(res, '创建失败', '已创建')) return;
@@ -356,9 +356,9 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
       const res = await updatePlanAction(plan.id, {
         name: values.name,
         sortOrder: values.sortOrder.trim() === '' ? null : Number(values.sortOrder),
-        price: Number(values.price),
+        price: values.price,
         periodDays: values.kind === 'pack' ? 0 : Number(values.periodDays),
-        quotaAmount: Number(values.quotaAmount),
+        quotaAmount: values.quotaAmount,
         allowSeats: values.allowSeats,
         status: Number(values.status),
       });

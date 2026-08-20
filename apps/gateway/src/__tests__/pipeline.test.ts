@@ -714,7 +714,7 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     return { userId: user!.id, apiKeyId: key!.id, raw };
   }
 
-  it('文本模型 balanceFloor：余额 0.15 ≥ 阈值 0.1 即放行（预估 24 元不再 402），hold 封顶实筹', async () => {
+  it('遗留 balance 参数不能降低准入线：余额不足仍拒绝且不建账单', async () => {
     // 输出价 6000 元/M × 上界 4096 token ≈ 24.6 元保守预估 ≫ 余额
     const seeded = await seedModelWithChannels([{}], {
       pricing: {
@@ -730,14 +730,11 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
 
     const lowCtx = systemContext(randomUUID());
     const { userId, apiKeyId } = await newUserWithBalance('0.15');
-    const result = await runChat(lowCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat');
-    expect(result.status).toBe(200);
-    createdRequests.push(lowCtx.requestId);
-    const row = await billingRow(lowCtx.requestId);
-    expect(row!.status).toBe('settlement_pending');
+    await expect(runChat(lowCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat')).rejects.toMatchObject({ code: 'insufficient_balance' });
+    expect(await billingRow(lowCtx.requestId)).toBeUndefined();
     const walletState = await walletOf(userId);
-    expect(walletState.balance).toBe('0.15'); // 冻结非实扣
-    expect(new Decimal(walletState.inFlight).eq('0.15')).toBe(true); // hold = 实筹封顶，敞口结算兜底
+    expect(walletState.balance).toBe('0.15');
+    expect(new Decimal(walletState.inFlight).isZero()).toBe(true);
   });
 
   it('文本模型 balanceFloor：余额 0.05 < 阈值 0.1 → 402 拒绝（不免费放行）', async () => {
@@ -788,39 +785,37 @@ describe('runChat 预扣策略（billing_config.reservation 数据驱动）', ()
     expect(new Decimal(walletState.inFlight).eq('2.5')).toBe(true); // 保底 5s × 0.5 元/s
   });
 
-  it('balanceFloor 封顶单经真结算：投影==Σ明细（修复前必死信冻结押金）', async () => {
-    // 估价 24.6 元 ≫ 余额 0.15 → floor 0.1 放行、hold 封顶 0.15；
-    // 结算不变量 Σ明细==reserved_amount 要求投影同封顶（E2E ⑭ 抓获的真 bug 回归）
+  it('足额预留单经真结算：只实扣实际金额并释放剩余预留', async () => {
     const seeded = await seedModelWithChannels([{}], {
       pricing: {
         inputPrice: '0', outputPrice: '6000', cacheInputPrice: '0',
         billingConfig: { reservation: { strategy: 'floor', params: { balance: '0.1' } } },
       },
     });
-    const { userId, apiKeyId } = await newFundedKey('0.15');
+    const { userId, apiKeyId } = await newFundedKey('25');
     const runChat = createRunChat({
       db, billing, buildQuote, resolveChannels,
       upstream: stubUpstream({ [seeded.channelNames[0]!]: { usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 5 } } }),
       config,
     });
 
-    const floorCtx = systemContext(randomUUID());
-    const result = await runChat(floorCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat');
+    const fullCtx = systemContext(randomUUID());
+    const result = await runChat(fullCtx, { userId, apiKeyId, appId: null, allowedModels: null, userRpmLimit: null, userTpmLimit: null, rpmLimit: null, tpmLimit: null  }, body(seeded.model), 'chat');
     expect(result.status).toBe(200);
-    createdRequests.push(floorCtx.requestId);
+    createdRequests.push(fullCtx.requestId);
 
     const scopedSettlement = createSettlementDomain({
       db, currency: 'CNY', wallet,
       policy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     });
     const claims = await scopedSettlement.claim(systemContext(randomUUID()), {
-      ownerId: tag(), batchSize: 5, claimLeaseMs: 60_000, requestIds: [floorCtx.requestId],
+      ownerId: tag(), batchSize: 5, claimLeaseMs: 60_000, requestIds: [fullCtx.requestId],
     });
     expect(claims).toHaveLength(1);
     expect(await scopedSettlement.processClaim(systemContext(randomUUID()), claims[0]!)).toBe('settled'); // 不再 dead
     const walletState = await walletOf(userId);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true); // 押金解冻
-    expect(new Decimal(walletState.balance).eq('0.12')).toBe(true); // 0.15 − 5 token × 6000/1M = 0.03 实扣
+    expect(new Decimal(walletState.balance).eq('24.97')).toBe(true); // 25 − 5 token × 6000/1M = 0.03
   });
 
   it('未声明 reservation（缺省 full）：余额不足保守预估仍 402——现行语义零变更', async () => {

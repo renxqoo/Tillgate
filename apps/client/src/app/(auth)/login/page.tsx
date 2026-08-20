@@ -22,7 +22,7 @@ async function fetchOAuthOptions(next: string | null): Promise<OAuthOption[]> {
       signal: AbortSignal.timeout(1500),
     });
     const body = (await res.json()) as { providers?: string[] };
-    const options = oauthOptionsFromProviders(body.providers ?? [], base);
+    const options = oauthOptionsFromProviders(body.providers ?? []);
     return next ? options.map((o) => ({ ...o, url: `${o.url}?next=${encodeURIComponent(next)}` })) : options;
   } catch {
     return [];

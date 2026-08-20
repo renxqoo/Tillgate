@@ -23,7 +23,7 @@ import { Field, FieldGroup, FieldLabel } from '@ai-gateway/ui/components/ui/fiel
 import { Input } from '@ai-gateway/ui/components/ui/input';
 import { NumberField } from '@ai-gateway/ui/components/ui/number-field';
 import { Textarea } from '@ai-gateway/ui/components/ui/textarea';
-import { numericText } from '@ai-gateway/ui/lib/forms';
+import { moneyText } from '@ai-gateway/ui/lib/forms';
 import { formatMoney } from '@ai-gateway/api-client/formatters';
 
 import type { AdminUserRow } from '@ai-gateway/api-client/types';
@@ -36,12 +36,12 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
  */
 
 const adjustSchema = z.object({
-  amount: numericText({ message: '请输入有效金额' }).refine((v) => v !== 0, '金额必须非零'),
+  amount: moneyText({ message: '请输入有效金额', allowNegative: true, allowZero: false }),
   remark: z.string().optional(),
 });
 
 const giftSchema = z.object({
-  amount: numericText({ message: '请输入有效金额' }).refine((v) => v > 0, '金额必须 > 0'),
+  amount: moneyText({ message: '请输入有效金额', allowZero: false }),
   remark: z.string().optional(),
 });
 
@@ -74,7 +74,7 @@ export function AdjustDialog({
     startTransition(async () => {
       const { adjustBalanceAction } = await import('../actions');
       const res = await adjustBalanceAction(user.id, {
-        amount: Number(values.amount),
+        amount: values.amount,
         remark: values.remark,
       });
       if (!notify(res, '调账失败', '已调账')) return;
@@ -140,7 +140,7 @@ export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: Re
     startTransition(async () => {
       const { giftUserAction } = await import('../actions');
       const res = await giftUserAction(user.id, {
-        amount: Number(values.amount),
+        amount: values.amount,
         remark: values.remark,
       });
       if (!notify(res, '赠送失败', '已赠送')) return;

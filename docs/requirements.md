@@ -178,7 +178,7 @@
   - 缓存输入价默认取官方价（DeepSeek = 输入价 10%、OpenAI = 25%，按官方配置）；缓存输出计价暂未启用（字段已预留）。
 - **tokens 来源**：只接受供应商响应中的可信 usage（OpenAI `prompt/input_tokens`、DeepSeek `cache_hit+cache_miss` 等经严格归一化）。负数、小数、超安全整数、字段冲突、cached 大于 input、总量不一致或 usage 缺失都不得进入正常结算；字符估算只用于容量规划/TPM，不用于资金扣费。
 - **计费时机（billing_requests 状态机）**：
-  1. **请求前足额授权**：文本/JSON 输入按校准估算（estimateInputTokens + CJK 权重）计算 tokenizer 无关的保守 token 上界，输出按主模型与 fallback 最贵候选及完整输出上限计算；余额不足原子 402，超过 BILLING_RESERVATION_MAX 则要求降低输出上限，绝不按余额或上限裁剪预扣；无法证明上界的多模态输入必须使用 provider 专用报价策略或拒绝；
+  1. **请求前授权**：文本/JSON 输入按校准估算（estimateInputTokens + CJK 权重）计算 tokenizer 无关的保守 token 上界，输出按主模型与 fallback 最贵候选及完整输出上限计算；超过 BILLING_RESERVATION_MAX 则要求降低输出上限。默认 full 模式按完整风险预估冻结；显式 fixed 模式仅对纯 PAYG 冻结 BILLING_FIXED_RESERVATION_AMOUNT，但日限额仍按完整风险预估，最终实际用量全额结算并允许形成负余额；无法证明上界的多模态输入必须使用 provider 专用报价策略或拒绝；
   2. **结算对账**：请求完成后按报价内价格/系数快照和可信 usage 计算实际费用；`actual <= reserved` 才写 usage_logs + transactions，同时从已结算余额扣 actual 并释放完整预留；
   3. **越界结算**：有可信 usage 的越界按实际金额结算（信用模型允许短暂透支，地板为 -credit_limit）；无可信收据才转 `dead` 冻结预扣等待审计，禁止静默少扣；
   4. **故障恢复**：只有仍为 authorized、从未触达上游且授权过期的请求可 CAS 退款；in_flight 过期按估算结算留痕（uncertain 已删，2026-08-17 政策）。Worker 通过 DB claim/fence/heartbeat 重放，BullMQ 只负责低延迟唤醒。

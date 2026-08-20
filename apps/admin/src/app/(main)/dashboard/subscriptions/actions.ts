@@ -7,7 +7,7 @@ import { adminFetch, ApiError } from "@ai-gateway/api-client";
 // ── 续费 ─────────────────────────────────────────────────────────────────────
 export async function renewSubscriptionAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/subscriptions/${id}/renew`, { method: "POST" });
+    await adminFetch(`/v1/subscriptions/${id}/renew`, { method: "POST" });
     revalidatePath("/dashboard/subscriptions");
     return {};
   } catch (e) {
@@ -18,7 +18,7 @@ export async function renewSubscriptionAction(id: number): Promise<{ error?: str
 // ── 取消 ─────────────────────────────────────────────────────────────────────
 export async function cancelSubscriptionAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/subscriptions/${id}/cancel`, { method: "POST" });
+    await adminFetch(`/v1/subscriptions/${id}/cancel`, { method: "POST" });
     revalidatePath("/dashboard/subscriptions");
     return {};
   } catch (e) {
@@ -37,7 +37,7 @@ export async function changeSubscriptionAction(
   input: SubscriptionChangeInput,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/subscriptions/${id}/change`, { method: "POST", body: input });
+    await adminFetch(`/v1/subscriptions/${id}/change`, { method: "POST", body: input });
     revalidatePath("/dashboard/subscriptions");
     return {};
   } catch (e) {

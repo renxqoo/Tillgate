@@ -36,7 +36,7 @@ export default async function TracingPage({
     errorsOnly: firstParam(sp.errorsOnly),
   };
   const { rows: items, total, error } = await fetchAdminList<TraceSummary>(
-    '/api/admin/tracing/recent',
+    '/v1/tracing/recent',
     {
       page,
       pageSize: PAGE_SIZE,

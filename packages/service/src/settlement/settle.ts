@@ -141,7 +141,7 @@ export function createSettleClaimUseCase(env: SettleEnv) {
           throw new BillingInvariantError('settle_reservation_already_finalized');
         }
         if (share.sourceType === 'subscription') {
-          planConsume = planConsume.plus(share.consume).plus(share.over);
+          planConsume = planConsume.plus(share.consume);
         }
       }
 

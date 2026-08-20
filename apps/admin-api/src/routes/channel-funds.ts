@@ -10,8 +10,7 @@ import { adminCtxOf } from './ctx.js';
 import { parseListQuery } from '../http/list-query.js';
 import { CHANNEL_FUNDS_SORTS, type ChannelFundsService } from '../services/channel-funds.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { positiveMoneyString, signedNonZeroMoneyString } from '../http/money-schema.js';
 
 const listQueryExtra = z.object({
   channelId: z.coerce.number().int().positive().optional(),
@@ -20,7 +19,7 @@ const listQueryExtra = z.object({
 
 const rechargeSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.number().positive().finite().max(MONEY_MAX),
+  amount: positiveMoneyString,
   orderNo: z.string().max(128).optional(),
   voucherDataUrl: z.string().max(20_000_000).optional(),
   remark: z.string().max(255).optional(),
@@ -28,11 +27,7 @@ const rechargeSchema = z.object({
 
 const adjustSchema = z.object({
   channelId: z.number().int().positive(),
-  amount: z.coerce
-    .number()
-    .finite()
-    .max(MONEY_MAX)
-    .refine((v) => v !== 0, '调账金额不能为 0'),
+  amount: signedNonZeroMoneyString,
   remark: z.string().max(255).optional(),
 });
 
@@ -53,7 +48,7 @@ export function channelFundsRoutes(
     const result = await service.recharge(adminCtxOf(c), {
       adminId: c.get('adminId'),
       channelId: body.channelId,
-      amount: String(body.amount),
+      amount: body.amount,
       orderNo: body.orderNo ?? null,
       voucherDataUrl: body.voucherDataUrl ?? null,
       remark: body.remark ?? null,
@@ -67,7 +62,7 @@ export function channelFundsRoutes(
     const result = await service.adjust(adminCtxOf(c), {
       adminId: c.get('adminId'),
       channelId: body.channelId,
-      amount: String(body.amount),
+      amount: body.amount,
       remark: body.remark ?? null,
       operationId: operationId(c),
     });

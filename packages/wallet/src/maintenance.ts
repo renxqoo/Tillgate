@@ -6,7 +6,7 @@ import { InvalidInputError } from './errors';
 import type { WalletTelemetry } from './types';
 
 export interface WalletInvariantViolation {
-  type: 'transaction_balance' | 'account_balance' | 'in_flight' | 'negative_exposure';
+  type: 'transaction_balance' | 'account_balance' | 'in_flight';
   entityId: string;
   expected: string;
   actual: string;
@@ -45,7 +45,7 @@ export function createWalletMaintenance(
              or (t.kind in ('credit_line', 'freeze') and count(l.id) <> 1)
              or (t.kind not in ('credit_line', 'freeze') and count(l.id) < 2)
         ), account_snapshot as (
-          select a.id, a.kind, a.balance, a.in_flight, a.credit_limit,
+          select a.id, a.balance, a.in_flight,
                  coalesce(last_leg.balance_after, 0) as derived_balance,
                  coalesce(active.total, 0) as derived_in_flight
           from wallet_accounts a
@@ -64,10 +64,6 @@ export function createWalletMaintenance(
           union all
           select 'in_flight', id::text, derived_in_flight::text, in_flight::text
           from account_snapshot where in_flight <> derived_in_flight
-          union all
-          select 'negative_exposure', id::text, '>=0', (balance + credit_limit - in_flight)::text
-          from account_snapshot
-          where kind = 'user' and balance + credit_limit - in_flight < 0
         )
         select * from transaction_drift
         union all

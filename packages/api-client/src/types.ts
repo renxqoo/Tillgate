@@ -10,7 +10,7 @@ export interface ApiErrorBody {
   details?: unknown;
 }
 
-/** 当前登录用户 (GET /api/me，client-api 用户面) */
+/** 当前登录用户 (GET /v1/me，client-api 用户面) */
 export interface MeInfo {
   id: number;
   subject: string;
@@ -18,16 +18,25 @@ export interface MeInfo {
   displayName: string | null;
   rateCardId: number | null;
   rateCardName: string | null;
-  balance: string;
   status: number;
   isEnterprise: boolean;
   rpmLimit: number | null;
   tpmLimit: number | null;
   lastLoginAt: string | null;
   createdAt: string;
+  accounts: Array<{
+    id: string;
+    kind: string;
+    code: string | null;
+    currency: string;
+    balance: string;
+    inFlight: string;
+    creditLimit: string;
+    status: string;
+  }>;
 }
 
-/** 当前登录管理员 (GET /api/admin/me，admin-api 管理面) */
+/** 当前登录管理员 (GET /v1/me，admin-api 管理面) */
 export interface AdminMeInfo {
   id: number;
   email: string;
@@ -393,7 +402,7 @@ export interface AdminKeyUpdateBody {
   rpmLimit?: number | null;
   tpmLimit?: number | null;
   /** Key 级每日花费上限（元，NULL=不限）。 */
-  dailySpendLimit?: number | null;
+  dailySpendLimit?: string | null;
   status?: number;
 }
 
@@ -432,13 +441,13 @@ export interface AdminRateCardRow {
 export interface RateCardCreateBody {
   name: string;
   description?: string;
-  coefficient: number | string;
+  coefficient: string;
 }
 export interface RateCardUpdateBody {
   name?: string;
   description?: string;
   status?: number;
-  coefficient?: number | string;
+  coefficient?: string;
 }
 
 // ── Admin: Redeem Batches (GET/POST /api/admin/redeem-batches) ──────────────
@@ -455,7 +464,7 @@ export interface AdminBatchRow {
 export interface BatchCreateBody {
   name: string;
   remark?: string;
-  amount: number;
+  amount: string;
   count: number;
   expiresAt?: string;
 }
@@ -478,12 +487,12 @@ export interface StatsOverview {
     requests: number;
     inputTokens: number;
     outputTokens: number;
-    cost: string | number;
+    cost: string;
     successCount: number;
     failedCount: number;
     successRate: number;
   };
-  total: { cost: string | number; requests: number };
+  total: { cost: string; requests: number };
   channelHealth: Array<{ status: number; count: number }>;
 }
 export interface StatsUsageItem {
@@ -492,8 +501,8 @@ export interface StatsUsageItem {
   inputTokens: number;
   outputTokens: number;
   cachedInputTokens: number;
-  cost: string | number;
-  upstreamCost: string | number;
+  cost: string;
+  upstreamCost: string;
 }
 export interface LogRow {
   id: number;

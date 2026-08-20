@@ -99,6 +99,7 @@ describe('billing 死单复核正路径', () => {
     await db.insert(billingRequests).values({
       requestId,
       userId,
+      estimatedExposureAmount: '0',
       reservedAmount: '0',
       status: 'dead',
       revision: 3,
@@ -139,6 +140,7 @@ describe('billing 死单复核正路径', () => {
     await db.insert(billingRequests).values({
       requestId,
       userId,
+      estimatedExposureAmount: '0',
       reservedAmount: '0',
       status: 'dead',
       revision: 1,
@@ -220,6 +222,7 @@ describe('通知 email 渠道 + ops 收尾', () => {
     await db.insert(billingRequests).values({
       requestId: taskId,
       userId,
+      estimatedExposureAmount: '0',
       reservedAmount: '0',
       status: 'settled',
       quote: {},
@@ -285,4 +288,3 @@ describe('通知 email 渠道 + ops 收尾', () => {
     expect((await request('/v1/generation-tasks?kind=music&limit=1&offset=0', { token })).status).toBe(200);
   });
 });
-

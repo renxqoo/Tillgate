@@ -71,7 +71,7 @@ beforeAll(async () => {
       TOPUP_EXCHANGE_RATE: '1',
       PAYMENT_ORDER_TTL_MS: 1_800_000,
       REFERRAL_SIGNUP_BONUS: '0',
-      REFERRAL_COMMISSION_RATE: 0,
+      REFERRAL_COMMISSION_RATE: '0',
       EPAY_PID: '1001',
       EPAY_KEY: 'test-epay-key',
       EPAY_GATEWAY_URL: 'https://pay.example.com/submit.php',
@@ -224,8 +224,8 @@ describe('前端契约 · 订阅语义', () => {
   });
 });
 
-describe('前端契约 · 金额 number 直传与分页别名', () => {
-  it('PATCH key 的 dailySpendLimit 传 number 不再 400', async () => {
+describe('前端契约 · 精确金额字符串与分页参数', () => {
+  it('PATCH key 拒绝 JSON number，只接受精确十进制字符串', async () => {
     const create = await app.request('/v1/keys', {
       method: 'POST',
       headers: auth(token),
@@ -233,12 +233,18 @@ describe('前端契约 · 金额 number 直传与分页别名', () => {
     });
     if (create.status === 404) return; // 路径名差异由上组覆盖
     const { id } = (await create.json()) as { id: number };
-    const patch = await app.request(`/v1/keys/${id}`, {
+    const imprecise = await app.request(`/v1/keys/${id}`, {
       method: 'PATCH',
       headers: auth(token),
       body: JSON.stringify({ dailySpendLimit: 50 }),
     });
-    expect(patch.status).toBe(200);
+    expect(imprecise.status).toBe(400);
+    const exact = await app.request(`/v1/keys/${id}`, {
+      method: 'PATCH',
+      headers: auth(token),
+      body: JSON.stringify({ dailySpendLimit: '50' }),
+    });
+    expect(exact.status).toBe(200);
     await db.delete(apiKeys).where(eq(apiKeys.id, id));
   });
 

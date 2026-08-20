@@ -18,7 +18,7 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
   if (!input.name?.trim()) return { error: "请输入名称" };
   if (!input.baseUrl?.trim()) return { error: "请输入 Base URL" };
   try {
-    await adminFetch("/api/admin/providers", {
+    await adminFetch("/v1/providers", {
       method: "POST",
       body: {
         name: input.name.trim(),
@@ -41,7 +41,7 @@ export async function updateProviderAction(
   input: Partial<ProviderInput>,
 ): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/providers/${id}`, { method: "PATCH", body: input });
+    await adminFetch(`/v1/providers/${id}`, { method: "PATCH", body: input });
     revalidatePath("/dashboard/providers");
     revalidatePath("/dashboard/channels");
     return {};
@@ -52,7 +52,7 @@ export async function updateProviderAction(
 
 export async function deleteProviderAction(id: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/providers/${id}`, { method: "DELETE" });
+    await adminFetch(`/v1/providers/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/providers");
     revalidatePath("/dashboard/channels");
     return {};

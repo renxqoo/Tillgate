@@ -10,8 +10,7 @@ import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { KEY_SORTS, type AdminKeysService } from '../services/keys.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { nonNegativeMoneyString } from '../http/money-schema.js';
 
 const listQueryExtra = z.object({
   userId: z.coerce.number().int().positive().optional(),
@@ -22,7 +21,7 @@ const patchSchema = z.object({
   name: z.string().min(1).max(64).optional(),
   rpmLimit: z.number().int().min(1).nullable().optional(),
   tpmLimit: z.number().int().min(1).nullable().optional(),
-  dailySpendLimit: z.number().min(0).finite().max(MONEY_MAX).nullable().optional(),
+  dailySpendLimit: nonNegativeMoneyString.nullable().optional(),
   status: z.number().int().min(0).max(1).optional(),
 });
 
@@ -53,7 +52,7 @@ export function adminKeysRoutes(service: AdminKeysService, session: MiddlewareHa
         keyId: id,
         patch: {
           ...rest,
-          ...(dailySpendLimit !== undefined ? { dailySpendLimit: String(dailySpendLimit) } : {}),
+          ...(dailySpendLimit !== undefined ? { dailySpendLimit } : {}),
         },
       }),
     );

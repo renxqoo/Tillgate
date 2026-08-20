@@ -1,14 +1,11 @@
 /**
  * 瀑布① 规划（不动账）：probe 循环定各源份额——authorize 在 INSERT 前调用，
  * 投影三列（reserved / plan_reserved / subscription_id）全部从 plan 算出。
- * 零金额返回空计划（免费快路径）；全链加总不足 → 放行门（admission）：
- *   未配阈值（缺省 fail-closed）→ InsufficientBalanceError；
- *   配置 balanceFloor（预扣策略，billing_config.reservation）→ 实筹 ≥ 阈值即放行，
- *   hold = 实筹份额（敞口由结算 §4 补充授权兜底）。
+ * 零金额返回空计划（免费快路径）；全链加总不足一律 fail-closed。
  * probe 抛错（结构性非法 / 开关 OFF 覆盖不足）原样上抛中断整个授权。
  * ② 提交在 commit.ts——两阶段之间由 authorize 的 advisory 锁保证同 user 无竞态。
  */
-import { admitsReservation, Decimal, InsufficientBalanceError } from '@ai-gateway/domain';
+import { Decimal, InsufficientBalanceError } from '@ai-gateway/domain';
 import type { RepoContext } from '@ai-gateway/repository';
 import type { FundingRegistry } from './registry.js';
 import type { FundingSource, FundingSourceContext } from './source.js';
@@ -36,8 +33,6 @@ export interface PlanFundingInput {
   resolved: { subscriptionId: number | null; allowPaygFallback: boolean };
   amount: string;
   now: Date;
-  /** 放行阈值（候选链最严 balanceFloor；null = 足额 fail-closed）——预扣策略注入 */
-  balanceFloor?: string | null;
 }
 
 export async function planFunding(
@@ -72,11 +67,8 @@ export async function planFunding(
     remaining = remaining.minus(take);
   }
   if (remaining.gt(0)) {
-    // 放行门：实筹份额（Σ entries.take）是否可接受——策略阈值或缺省足额
     const planned = entries.reduce<Decimal>((sum, e) => sum.plus(e.take), new Decimal(0));
-    if (!admitsReservation(input.balanceFloor ?? null, planned, new Decimal(input.amount))) {
-      throw new InsufficientBalanceError(input.userId, planned.toString(), input.amount, input.currency);
-    }
+    throw new InsufficientBalanceError(input.userId, planned.toString(), input.amount, input.currency);
   }
 
   const subscriptionEntry = entries.find((entry) => entry.source.type === 'subscription');

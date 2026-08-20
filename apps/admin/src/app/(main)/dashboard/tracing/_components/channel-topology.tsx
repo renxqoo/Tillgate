@@ -15,7 +15,7 @@ import '@xyflow/react/dist/style.css';
 
 /**
  * 渠道健康拓扑（跨 trace 聚合）：网关 → 各渠道，按成功率着色，边标尝试数。
- * 数据来自 /api/admin/tracing/topology（trace_spans 聚合，24h 窗口）。
+ * 数据来自 /v1/tracing/topology（trace_spans 聚合，24h 窗口）。
  * 节点高度按容器实测高度自适应分配（ResizeObserver），画布变高图一起变大。
  */
 

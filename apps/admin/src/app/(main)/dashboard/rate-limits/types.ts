@@ -10,8 +10,8 @@ export interface RateLimitItem {
   rpmLimit: number | null;
   tpmLimit: number | null;
   /** 仅 user 实体有：透支上限（元，>=0）。 */
-  creditLimit?: number | null;
+  creditLimit?: string | null;
   /** 仅 user 实体有：每日花费上限（元，NULL=不限）。 */
-  dailySpendLimit?: number | null;
+  dailySpendLimit?: string | null;
   status: number;
 }

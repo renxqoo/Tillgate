@@ -9,7 +9,7 @@ export async function createPaymentAction(
   amount: string,
 ): Promise<{ ok?: boolean; payUrl?: string; error?: string }> {
   try {
-    const res = await apiFetch<{ orderId: string; payUrl: string }>("/api/payments/orders", {
+    const res = await apiFetch<{ orderId: string; payUrl: string }>("/v1/payments/orders", {
       method: "POST",
       body: { provider, amount },
     });

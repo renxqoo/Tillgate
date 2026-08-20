@@ -101,39 +101,6 @@ export class SubscriptionRepository {
     return rows.length > 0;
   }
 
-  /** 结算降级核销（订阅侧 D3 对称——PAYG 收满预留降级的镜像）：
-   *  trySettleQuota 守卫红灯（实际用量超池容量）时改走本方法：锁行后核销
-   *  min(consumed, quota − used − 其他在途)，预占全归还——差额由平台吸收记损，
-   *  不再走「冲突异常 → 10 轮重试 → dead + 预扣冻结」。
-   *  返回 null = 预占脱节（reserved < 参数——真红灯，调用方仍抛冲突）；
-   *  否则返回核销前/后 used（差额日志的计数源）。 */
-  async settleQuotaBounded(
-    c: RepoContext,
-    input: { subscriptionId: number; reserved: string; consumed: string },
-  ): Promise<{ usedBefore: string; usedAfter: string } | null> {
-    const result = await tx(c).execute(sql`
-      update user_subscriptions u
-      set reserved_amount = s.reserved_amount - ${input.reserved}::numeric,
-          used_amount = s.used_amount + least(
-            ${input.consumed}::numeric,
-            greatest(
-              s.quota_amount - s.used_amount - (s.reserved_amount - ${input.reserved}::numeric),
-              0
-            )
-          )
-      from (
-        select id, quota_amount, used_amount, reserved_amount
-        from user_subscriptions
-        where id = ${input.subscriptionId} and reserved_amount >= ${input.reserved}::numeric
-        for update
-      ) s
-      where u.id = s.id
-      returning s.used_amount as used_before, u.used_amount as used_after
-    `);
-    const row = result.rows[0] as { used_before: string; used_after: string } | undefined;
-    return row ? { usedBefore: row.used_before, usedAfter: row.used_after } : null;
-  }
-
   /** 释放预占：reserved −= reserved（失败/取消/回收路径）；0 行 = 在途事实脱节 */
   async tryReleaseQuota(
     c: RepoContext,

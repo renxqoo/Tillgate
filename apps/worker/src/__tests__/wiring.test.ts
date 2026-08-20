@@ -31,7 +31,7 @@ function testConfig(overrides: Partial<WorkerConfig> = {}): WorkerConfig {
   return loadConfig({
     DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
-    CHANNEL_API_KEY_ENCRYPTION: 'w-test-key-0123456789abcdef',
+    CHANNEL_API_KEY_ENCRYPTION: 'w-test-key-0123456789abcdef-strong',
     ...(overrides as Record<string, string>),
   } as NodeJS.ProcessEnv);
 }
@@ -48,7 +48,7 @@ describe('config 解析', () => {
     expect(config.WORKER_GENERATION_INTERVAL_MS).toBe(5_000);
     expect(config.WORKER_SHUTDOWN_GRACE_MS).toBe(15_000);
     expect(config.REDIS_URL).toContain('redis://');
-    expect(config.CHANNEL_API_KEY_ENCRYPTION).toBe('w-test-key-0123456789abcdef');
+    expect(config.CHANNEL_API_KEY_ENCRYPTION).toBe('w-test-key-0123456789abcdef-strong');
   });
 
   it('缺 CHANNEL_API_KEY_ENCRYPTION → 拒绝（fail-closed，不留隐式缺省）', () => {

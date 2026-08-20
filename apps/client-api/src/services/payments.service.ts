@@ -83,6 +83,7 @@ export function createEpayProvider(config: {
     },
     parseNotify(query) {
       if (!epayVerify(query, config.key)) return null;
+      if (query.pid !== config.pid) return null;
       const payload = parseEpayNotify(query);
       if (!payload || payload.tradeStatus !== 'TRADE_SUCCESS') return null;
       return { providerOrderId: payload.providerOrderId, paidAmount: payload.amount };
@@ -297,7 +298,13 @@ export function createPaymentsService(deps: PaymentsServiceDeps): PaymentsServic
         // 回退锚：渠道会话号回填失败/竞态未达时按商户订单号定位（v1 同语义——
         // 没有它 Stripe webhook 在 attach 缺席时永远找不到订单 = 已付款搁浅）
         const byMerchant = await repos.paymentOrder.findById({ db, ...sys }, parsed.merchantOrderId);
-        if (byMerchant?.provider === providerName) order = byMerchant;
+        if (
+          byMerchant?.provider === providerName &&
+          // 仅允许“真实渠道单号尚未回填”的占位订单走商户单号回退。
+          // 已绑定另一个 session 时继续回退会把一笔合法 Stripe 付款错记到别人的订单。
+          (byMerchant.providerOrderId === byMerchant.id ||
+            byMerchant.providerOrderId === parsed.providerOrderId)
+        ) order = byMerchant;
       }
       if (!order) return 'fail';
       // 金额核对：签名只证来源，金额才防「少付多得」（按订单实付比对，全精度）

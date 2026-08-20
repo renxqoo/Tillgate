@@ -118,6 +118,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     ...(rateLimit ? { rateLimit } : {}),
     config: {
       reservationLimit: config.BILLING_RESERVATION_MAX,
+      reservationPolicy: config.BILLING_RESERVATION_MODE === 'fixed'
+        ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
+        : { mode: 'full' },
       authorizationTtlMs: config.BILLING_AUTHORIZATION_TTL_MS,
       output: {
         defaultMax: config.DEFAULT_MAX_OUTPUT_TOKENS,
@@ -136,6 +139,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       taskTtlMs: config.GENERATION_TASK_TTL_MS,
       leaseGraceMs: config.GENERATION_LEASE_GRACE_MS,
       reservationLimit: config.BILLING_RESERVATION_MAX,
+      reservationPolicy: config.BILLING_RESERVATION_MODE === 'fixed'
+        ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
+        : { mode: 'full' },
       maxActivePerUser: config.GENERATION_MAX_ACTIVE_PER_USER,
     },
   });

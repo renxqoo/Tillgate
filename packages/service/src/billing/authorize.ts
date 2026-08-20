@@ -23,9 +23,10 @@ import {
   assertDailySpendLimit,
   billingDayStart,
 } from '@ai-gateway/domain';
-import { calculateRequired } from '@ai-gateway/domain';
+import { calculateFundingReservation, calculateRequired } from '@ai-gateway/domain';
 import type { BillingQuote } from '@ai-gateway/domain';
-import { commandFingerprint, strictestBalanceFloor } from '@ai-gateway/domain';
+import type { FundingReservationPolicy } from '@ai-gateway/domain';
+import { commandFingerprint } from '@ai-gateway/domain';
 import { Decimal, normalizeAmount } from '@ai-gateway/domain';
 import type { FundingRegistry } from '../funding/registry.js';
 import { commitFunding } from '../funding/commit.js';
@@ -59,6 +60,8 @@ export interface AuthorizeBillingInput {
   stream: boolean;
   quote: BillingQuote;
   reservationLimit: string;
+  /** full=完整冻结；fixed=纯 PAYG 只冻结显式门槛，最终仍按实际全额收费。 */
+  reservationPolicy?: FundingReservationPolicy;
   authorizationTtlMs: number;
   traceParent?: string | null;
 }
@@ -80,24 +83,52 @@ export function createAuthorizeUseCase(env: BillingEnv) {
     ctx: RunContext,
     input: AuthorizeBillingInput,
   ): Promise<BillingAuthorization> {
-    await env.assertCapacity?.();
     // 金额推导（保守预估）：每日限额与资金规划的输入口径；落账投影以 plan 实筹为准
-    const amount = calculateRequired(input.quote, input.reservationLimit).toString();
+    const estimatedAmount = calculateRequired(input.quote, input.reservationLimit).toString();
+    const reservationPolicy = input.reservationPolicy ?? { mode: 'full' as const };
     const fp = commandFingerprint('billing.authorize', {
       requestId: input.requestId,
       userId: input.userId,
       apiKeyId: input.apiKeyId ?? null,
+      appId: input.appId ?? null,
       stream: input.stream,
       quote: input.quote,
-      amount,
+      estimatedAmount,
+      reservationPolicy,
     } as unknown as Parameters<typeof commandFingerprint>[1]);
     const now = clock();
-    let fundedAmount = amount; // 全额路径缺省；floor 封顶路径在事务内覆写
+    let fundedAmount = estimatedAmount;
 
-    const replayed = await db.transaction(async (tx) => {
+    /** 已存在请求的快速路径：重放不应被新的积压、限额、余额或订阅状态误伤。 */
+    const replayOf = (existing: Awaited<ReturnType<typeof repos.billingRequest.findByRequestId>>) => {
+      if (!existing) return null;
+      if (
+        existing.authorizationFingerprint !== fp ||
+        existing.userId !== input.userId ||
+        (existing.status !== 'authorized' && existing.status !== 'in_flight')
+      ) {
+        throw new BillingStateConflictError(input.requestId, 'authorization replay conflict');
+      }
+      fundedAmount = existing.reservedAmount;
+      return true;
+    };
+
+    const fastExisting = await repos.billingRequest.findByRequestId(
+      { db, ...ctx },
+      input.requestId,
+    );
+    let replayed = replayOf(fastExisting);
+
+    if (!replayed) await env.assertCapacity?.();
+    replayed ??= await db.transaction(async (tx) => {
       const c = inTx(ctx, tx);
       // F4：每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化
       await repos.billingRequest.advisoryLockAuthorizeUser(c, input.userId);
+
+      // 与并发首请求在 advisory lock 汇合后的唯一冲突兜底重放。
+      const concurrentExisting = await repos.billingRequest.findByRequestId(c, input.requestId);
+      const concurrentReplay = replayOf(concurrentExisting);
+      if (concurrentReplay) return true;
 
       const source = await repos.credential.resolveSourceAndLimits(c, {
         userId: input.userId,
@@ -112,13 +143,17 @@ export function createAuthorizeUseCase(env: BillingEnv) {
         apiKeyId: input.apiKeyId ?? null,
         userDailyLimit: source.userDailyLimit,
         keyDailyLimit: source.keyDailyLimit,
-        amount,
+        amount: estimatedAmount,
         now,
       });
 
+      // fixed 首版只作用纯 PAYG。套餐仍完整预留，否则实际超出固定额的部分会被
+      // 错误转扣钱包，而不是核销套餐额度。
+      const fundingTarget = source.subscriptionId == null
+        ? calculateFundingReservation(estimatedAmount, reservationPolicy).toString()
+        : estimatedAmount;
+
       // ---- 资金规划（两阶段①）：probe 循环定各源份额（不动账）----
-      // 放行阈值 = 候选链最严 balanceFloor（预扣策略 billing_config.reservation；
-      // 未声明 = null → 足额 fail-closed，现行语义）
       const plan = await planFunding(env.fundingRegistry, c, {
         userId: input.userId,
         requestId: input.requestId,
@@ -128,21 +163,19 @@ export function createAuthorizeUseCase(env: BillingEnv) {
           subscriptionId: source.subscriptionId,
           allowPaygFallback: source.allowPaygFallback,
         },
-        amount,
+        amount: fundingTarget,
         now,
-        balanceFloor: strictestBalanceFloor(input.quote.candidates),
       });
 
-      // ---- 落账（幂等重放）——投影三列从 plan 算出 ----
-      // reserved_amount = 实际预占合计（Σ明细）。全额路径 == 保守预估；
-      // balanceFloor 放行门封顶时 = 封顶实筹额——结算不变量「Σ明细==投影」
-      // 结构性成立（否则 floor 单必死信、押金冻结——E2E ⑭ 抓获的真 bug）。
+      // ---- 落账（幂等重放）——风险预估与实际冻结分列 ----
+      // reserved_amount = 实际预占合计（Σ明细）；estimated_exposure_amount = 完整保守预估。
       fundedAmount = plan.entries.reduce((sum, entry) => sum.plus(entry.take), new Decimal(0)).toString();
       const inserted = await repos.billingRequest.insertAuthorized(c, {
         requestId: input.requestId,
         userId: input.userId,
         apiKeyId: input.apiKeyId ?? null,
         appId: input.appId ?? null,
+        estimatedExposureAmount: estimatedAmount,
         reservedAmount: fundedAmount,
         planReservedAmount: plan.planReservedAmount,
         subscriptionId: source.subscriptionId,
@@ -156,15 +189,8 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       });
       if (!inserted) {
         const existing = await repos.billingRequest.findByRequestId(c, input.requestId);
-        if (
-          !existing ||
-          existing.authorizationFingerprint !== fp ||
-          existing.userId !== input.userId ||
-          !new Decimal(existing.reservedAmount).eq(fundedAmount) ||
-          // 重放只对未终态合法：已 settled/released/dead 的单据不得以 replayed 放行
-          // （上游照调 → 结算必冲突 → 平台白付——未来任何重试编排接入前的防御位）
-          (existing.status !== 'authorized' && existing.status !== 'in_flight')
-        ) {
+        replayOf(existing);
+        if (!new Decimal(existing!.reservedAmount).eq(fundedAmount)) {
           throw new BillingStateConflictError(input.requestId, 'authorization replay conflict');
         }
         return true;
@@ -176,7 +202,7 @@ export function createAuthorizeUseCase(env: BillingEnv) {
     });
 
     const summaries = await wallet.accounts(ctx, input.userId);
-    const account = summaries[0];
+    const account = summaries.find((item) => item.currency === env.currency);
     const settledBalance = account?.balance ?? '0';
     const reservedBalance = account?.inFlight ?? '0';
     const availableBalance = account

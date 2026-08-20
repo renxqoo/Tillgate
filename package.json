@@ -15,7 +15,7 @@
     "dev:worker": "turbo run dev --filter @ai-gateway/worker",
     "build": "turbo build",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "turbo test --concurrency=1",
     "test:real": "pnpm --filter @ai-gateway/ai test:real",
     "lint": "turbo lint",
     "format": "oxfmt --write .",

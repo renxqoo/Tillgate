@@ -66,7 +66,8 @@ export interface StripeCheckoutEvent {
 }
 
 /**
- * webhook 事件体 → 归一载荷（只认 checkout.session.completed；其余事件 null）。
+ * webhook 事件体 → 归一载荷。completed 对延迟支付方式不等于已到账，必须同时
+ * 验 payment_status=paid、mode=payment、currency=cny；否则提前赠送余额会形成资损。
  * 只提取不判定：金额核对在 service（需要订单真相）。
  */
 export function parseStripeEvent(payload: string): StripeCheckoutEvent | null {
@@ -77,6 +78,9 @@ export function parseStripeEvent(payload: string): StripeCheckoutEvent | null {
         id?: string;
         client_reference_id?: string;
         amount_total?: number;
+        payment_status?: string;
+        mode?: string;
+        currency?: string;
         metadata?: Record<string, string>;
       };
     };
@@ -86,13 +90,26 @@ export function parseStripeEvent(payload: string): StripeCheckoutEvent | null {
   } catch {
     return null;
   }
-  if (event.type !== 'checkout.session.completed') return null;
+  if (
+    event.type !== 'checkout.session.completed' &&
+    event.type !== 'checkout.session.async_payment_succeeded'
+  ) return null;
   const obj = event.data?.object ?? {};
   const orderId = obj.client_reference_id ?? obj.metadata?.order_id;
-  if (!obj.id || !orderId || typeof obj.amount_total !== 'number') return null;
+  const amountTotal = obj.amount_total;
+  if (
+    !obj.id ||
+    !orderId ||
+    typeof amountTotal !== 'number' ||
+    !Number.isSafeInteger(amountTotal) ||
+    amountTotal <= 0 ||
+    obj.payment_status !== 'paid' ||
+    obj.mode !== 'payment' ||
+    obj.currency?.toLowerCase() !== 'cny'
+  ) return null;
   return {
     sessionId: obj.id,
     orderId,
-    paidAmount: stripeAmountFromCents(obj.amount_total),
+    paidAmount: stripeAmountFromCents(amountTotal),
   };
 }

@@ -10,7 +10,7 @@ export async function changePasswordAction(input: {
   if (input.newPassword.length < 8) return { error: "新密码至少 8 位" };
   if (input.newPassword.length > 128) return { error: "新密码最多 128 位" };
   try {
-    const res = await apiFetch<{ token: string }>("/api/auth/password", {
+    const res = await apiFetch<{ token: string }>("/v1/auth/password", {
       method: "POST",
       body: { oldPassword: input.oldPassword, newPassword: input.newPassword },
     });
@@ -33,7 +33,7 @@ export async function updateDisplayNameAction(input: {
   if (!name) return { error: "请输入显示名称" };
   if (name.length > 32) return { error: "最多 32 个字符" };
   try {
-    const res = await apiFetch("/api/me/display-name", {
+    const res = await apiFetch("/v1/me/display-name", {
       method: "PATCH",
       body: { displayName: name },
     });

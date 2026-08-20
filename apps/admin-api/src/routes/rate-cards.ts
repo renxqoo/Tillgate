@@ -1,6 +1,6 @@
 /**
  * 费率卡路由（会话）：列表 / 创建 / 更新 / 删除（硬删，绑定守卫）/ 卡内用户 / 健康自检。
- * 系数 numeric(6,3)：0..9.999，落库与回显恒 3 位小数。
+ * 系数 numeric(6,3)：0.001..9.999，API 只收十进制字符串，落库与回显恒 3 位小数。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -15,7 +15,7 @@ import {
 } from '../services/rate-cards.service.js';
 import type { SessionEnv } from '../middleware/session.js';
 
-const coefficient = z.number().min(0).max(9.999);
+const coefficient = z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/).refine((value) => value !== '0' && !/^0\.0+$/.test(value), '系数必须大于 0');
 
 const createSchema = z.object({
   name: z.string().min(1).max(32),

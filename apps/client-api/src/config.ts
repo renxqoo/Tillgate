@@ -3,8 +3,14 @@
  * 业务参数（开关/阈值/密钥）必填或显式默认，代码零写死。
  */
 import { z } from 'zod';
+import { secretSchema, strictBooleanSchema } from '@ai-gateway/core';
+import { Decimal } from '@ai-gateway/domain';
 
-const schema = z.object({
+const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
+const positiveDecimal = nonNegativeDecimal.refine((value) => !/^0+(?:\.0+)?$/.test(value));
+
+function createSchema(production: boolean) {
+  return z.object({
   /** 基础设施必配（fail-closed：连错库/忘配 = 拒绝启动，不落默认值跑偏） */
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -14,13 +20,13 @@ const schema = z.object({
   /** 记账币种（wallet 装配注入；充值/赠送同一口径） */
   CLIENT_CURRENCY: z.string().default('CNY'),
   /** 用户面会话 JWT 密钥（与网关 App JWT、管理面密钥物理隔离） */
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
   /** 会话有效期（秒） */
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   /** 邮箱自助注册开关（关闭只留既有账号登录） */
-  REGISTER_ENABLED: z.coerce.boolean().default(true),
+  REGISTER_ENABLED: strictBooleanSchema(true),
   /** 新用户赠送额度（元，字符串金额；'0' = 关闭——开源注册无赠送即无薅羊毛收益） */
-  GIFT_AMOUNT: z.string().default('0'),
+  GIFT_AMOUNT: nonNegativeDecimal.default('0'),
   /** 单用户在用 Key 上限（配额闸） */
   MAX_KEYS_PER_USER: z.coerce.number().int().positive().default(100),
   /** 每用户 App 数上限（v1 对位——无闸可无限建 App 蹭免费额度语义位） */
@@ -42,17 +48,20 @@ const schema = z.object({
   /** 请求体上限（字节） */
   BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(8 * 1024 * 1024),
   /** 充值面额闸：单笔下限/上限（元）与入账汇率（creditAmount = amount × 汇率） */
-  TOPUP_MIN: z.string().default('1'),
-  TOPUP_MAX: z.string().default('100000'),
-  TOPUP_EXCHANGE_RATE: z.string().default('1'),
+  TOPUP_MIN: positiveDecimal.default('1'),
+  TOPUP_MAX: positiveDecimal.default('100000'),
+  TOPUP_EXCHANGE_RATE: positiveDecimal.default('1'),
   /** 未支付订单超时关单（ms） */
   PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
   /** 操练场（控制台对话调试）：网关地址 + 网关 JWT 密钥成组配置才启用；未配 = 503 */
   PLAYGROUND_GATEWAY_URL: z.string().url().optional(),
-  PLAYGROUND_GATEWAY_JWT_SECRET: z.string().min(16).optional(),
+  PLAYGROUND_GATEWAY_JWT_SECRET: secretSchema(
+    'PLAYGROUND_GATEWAY_JWT_SECRET',
+    production ? 32 : 16,
+  ).optional(),
   /** 邀请返利：注册双方奖励（元，字符串；'0' = 关闭）；佣金比例（0–1，worker 日结同值） */
-  REFERRAL_SIGNUP_BONUS: z.string().default('0'),
-  REFERRAL_COMMISSION_RATE: z.coerce.number().min(0).max(1).default(0),
+  REFERRAL_SIGNUP_BONUS: nonNegativeDecimal.default('0'),
+  REFERRAL_COMMISSION_RATE: z.string().regex(/^(?:0(?:\.\d{1,18})?|1(?:\.0{1,18})?)$/).default('0'),
   /** 易支付（epay）四件套全配才启用该渠道；未配置 = 在线充值关闭 */
   EPAY_PID: z.string().optional(),
   EPAY_KEY: z.string().optional(),
@@ -88,16 +97,25 @@ const schema = z.object({
   OAUTH_GITHUB_ENDPOINTS_JSON: z.string().optional(),
   OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
   /** 生产 Cookie 加 Secure（OAuth state cookie） */
-  SECURE_COOKIE: z.coerce.boolean().default(false),
+  SECURE_COOKIE: strictBooleanSchema(production),
   /** 优雅停机：停收新请求后等待在途完成的上界（ms） */
   CLIENT_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(10_000),
   /** OTel：off 完全 no-op / otlp 走 collector */
   OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
-});
+  });
+}
 
-export type ClientApiConfig = z.infer<typeof schema>;
+export type ClientApiConfig = z.infer<ReturnType<typeof createSchema>>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ClientApiConfig {
-  return schema.parse(env);
+  const production = env.NODE_ENV === 'production';
+  const parsed = createSchema(production).parse(env);
+  if (new Decimal(parsed.TOPUP_MIN).gt(parsed.TOPUP_MAX)) {
+    throw new Error('TOPUP_MIN 不得大于 TOPUP_MAX');
+  }
+  if (production && !parsed.SECURE_COOKIE) {
+    throw new Error('production 环境必须启用 SECURE_COOKIE');
+  }
+  return parsed;
 }

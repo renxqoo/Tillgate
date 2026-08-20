@@ -30,7 +30,7 @@ function buildService(opts: { signupBonus?: string; frontendUrl?: string } = {})
     db,
     wallet,
     signupBonus: opts.signupBonus ?? '0',
-    commissionRate: 0.1,
+    commissionRate: '0.1',
     frontendUrl: opts.frontendUrl ?? 'https://console.example.com',
   });
 }
@@ -56,8 +56,8 @@ describe('aff 码纯规则', () => {
 
   it('自然键与金额规则', () => {
     expect(signupBonusRefId(7, 'inviter')).toBe('referral-signup:7:inviter');
-    expect(commissionAmount('10', 0.1)).toBe('1');
-    expect(commissionAmount('10.5', 0.05)).toBe('0.525');
+    expect(commissionAmount('10', '0.1')).toBe('1');
+    expect(commissionAmount('10.5', '0.05')).toBe('0.525');
     expect(isPositiveAmount('0.001')).toBe(true);
     expect(isPositiveAmount('0')).toBe(false);
     expect(isPositiveAmount('-1')).toBe(false);
@@ -137,29 +137,35 @@ describe('注册归因（applyReferral）', () => {
     expectAmountEq(await balanceOf(invitee.id), '0');
   });
 
-  it('奖励入账失败不阻断归因（wallet 注入桩：credit 恒拒，关系仍建立）', async () => {
+  it('任一侧奖励失败时，关系与已发出的另一侧奖励一并回滚', async () => {
     const inviter = await newUser();
     const invitee = await newUser();
+    let calls = 0;
     const brokenWallet = {
-      credit: async () => {
-        throw new Error('wallet down');
+      ...wallet,
+      credit: async (...args: Parameters<typeof wallet.credit>) => {
+        calls += 1;
+        if (calls === 2) throw new Error('wallet down');
+        return wallet.credit(...args);
       },
     } as unknown as typeof wallet;
     const service = createReferralService({
       db,
       wallet: brokenWallet,
       signupBonus: '3',
-      commissionRate: 0.1,
+      commissionRate: '0.1',
       frontendUrl: 'https://console.example.com',
     });
-    expect(
-      await service.applyReferral(ctx, { inviteeId: invitee.id, affCode: encodeAffCode(inviter.id) }),
-    ).toEqual({ applied: true });
+    await expect(
+      service.applyReferral(ctx, { inviteeId: invitee.id, affCode: encodeAffCode(inviter.id) }),
+    ).rejects.toThrow('wallet down');
     const [row] = await db
       .select()
       .from(referralsTable)
       .where(eq(referralsTable.inviteeUserId, invitee.id));
-    expect(row?.inviterUserId).toBe(inviter.id);
+    expect(row).toBeUndefined();
+    expectAmountEq(await balanceOf(inviter.id), '0');
+    expectAmountEq(await balanceOf(invitee.id), '0');
   });
 });
 
@@ -191,8 +197,8 @@ describe('邀请概览（overview）', () => {
     const view = await service.overview(ctx, inviter.id);
     expect(view.affCode).toBe(encodeAffCode(inviter.id));
     expect(view.inviteUrl).toBe(`https://console.example.com/register?aff=${view.affCode}`);
-    expect(view.signupBonus).toBe(3);
-    expect(view.commissionRate).toBe(0.1);
+    expect(view.signupBonus).toBe('3');
+    expect(view.commissionRate).toBe('0.1');
     expect(view.invited.map((r) => r.inviteeId).toSorted((x, y) => x - y)).toEqual(
       [a.id, b.id].toSorted((x, y) => x - y),
     );

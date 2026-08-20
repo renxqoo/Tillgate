@@ -32,7 +32,7 @@ export default async function ModelMarketPage({
   }> = [];
   try {
     const data = await adminFetch<{ sources: typeof sources }>(
-      '/api/admin/model-catalog/sources',
+      '/v1/model-catalog/sources',
     );
     sources = data.sources;
   } catch {
@@ -54,7 +54,7 @@ export default async function ModelMarketPage({
         fetchedAt: string;
         channelReady: boolean;
         fx: FxState;
-      }>(`/api/admin/model-catalog/${active.id}`);
+      }>(`/v1/model-catalog/${active.id}`);
       items = data.items;
       gone = data.gone ?? [];
       fetchedAt = data.fetchedAt;

@@ -11,8 +11,7 @@
  *   - admin-api（管理面，端口 8082）：/v1/providers、/v1/channels、/v1/models、
  *     /v1/users、/v1/plans、/v1/channel-funds、/v1/billing-operations、/v1/tracing 等
  *
- * 路径兼容：调用方仍写 v1 时代的 '/api/...' / '/api/admin/...' 字面量——本层统一
- * 映射到 v2 的 /v1/*（见 mapPath），前端页面代码零路径散改。
+ * 调用方必须传后端唯一正式路径 /v1/*；本层不维护旧路径翻译。
  */
 import { headers } from 'next/headers';
 
@@ -76,18 +75,6 @@ export class ApiError extends Error {
   }
 }
 
-/** v1 路径字面量 → v2 路径（页面代码沿用旧写法，本层归一） */
-export function mapPath(path: string): string {
-  // v2 改名特例（管理面 Key 域独立命名，避免与用户面 /v1/keys 相撞）
-  if (path === '/api/admin/keys' || path.startsWith('/api/admin/keys/')) {
-    return `/v1/admin-keys${path.slice('/api/admin/keys'.length)}`;
-  }
-  if (path.startsWith('/api/admin/')) return `/v1/${path.slice('/api/admin/'.length)}`;
-  if (path === '/api/admin') return '/v1';
-  if (path.startsWith('/api/')) return `/v1/${path.slice('/api/'.length)}`;
-  return path;
-}
-
 export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'PUT';
   body?: unknown;
@@ -98,7 +85,7 @@ export interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
 }
 
 /**
- * 内部通用 fetch：注入 base + v2 路径映射 + Bearer 会话头。
+ * 内部通用 fetch：注入 base + Bearer 会话头。
  */
 const isAdminBase = (base: string): boolean => base === (ADMIN_API_BASE ?? undefined);
 
@@ -107,7 +94,10 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
   const token =
     bearerToken !== undefined ? bearerToken : isAdminBase(base) ? await getAdminSessionToken() : await getSessionToken();
 
-  const res = await fetch(`${base}${mapPath(path)}`, {
+  if (!path.startsWith('/v1/')) {
+    throw new Error(`[api-client] 非法 API 路径 ${path}；仅允许 /v1/*`);
+  }
+  const res = await fetch(`${base}${path}`, {
     method,
     ...rest,
     headers: {
@@ -179,37 +169,23 @@ export {
 } from './session';
 
 /**
- * 调用 client-api 的 /api/me，失败返回 null（用于 apps/client 的 layout 守卫）。
- * 形状归一：v2 /v1/me 返回 accounts 数组（余额在 accounts[0]），v1 顶层平铺——
- * 两种形态都归一到 MeInfo（余额/在途/币种从首个账户取；缺失字段 null）。
+ * 调用 client-api 的 /v1/me，失败返回 null（用于 apps/client 的 layout 守卫）。
  */
 export async function getMe(): Promise<import('./types').MeInfo | null> {
-  type RawMe = import('./types').MeInfo & {
-    accounts?: Array<{ currency: string; balance: string; inFlight: string; creditLimit: string; status: string }>;
-    createdAt?: string;
-  };
   try {
-    const raw = await apiFetch<RawMe>('/api/me');
-    const account = raw.accounts?.[0];
-    if (!account) return raw as import('./types').MeInfo;
-    return {
-      ...raw,
-      balance: account.balance,
-      status: account.status === 'active' ? 0 : 1,
-      createdAt: raw.createdAt ?? new Date().toISOString(),
-    } as import('./types').MeInfo;
+    return await apiFetch<import('./types').MeInfo>('/v1/me');
   } catch {
     return null;
   }
 }
 
 /**
- * 调用 admin-api 的 /api/admin/me，失败返回 null（用于 apps/admin 的 layout 守卫）。
+ * 调用 admin-api 的 /v1/me，失败返回 null（用于 apps/admin 的 layout 守卫）。
  * 能拿到即证明持有效管理员会话（admin-api 已用 adminAuthMiddleware 守护）。
  */
 export async function getAdminMe(): Promise<import('./types').AdminMeInfo | null> {
   try {
-    return await adminFetch<import('./types').AdminMeInfo>('/api/admin/me');
+    return await adminFetch<import('./types').AdminMeInfo>('/v1/me');
   } catch {
     return null;
   }

@@ -55,7 +55,7 @@ describe('幂等键命名空间攻击', () => {
     const providerId = await newProviderRow();
     const res = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId: providerId, amount: 1 },
+      body: { channelId: providerId, amount: '1' },
       headers: { 'idempotency-key': 'signup-gift:1' },
     });
     expect(res.status).toBe(400);

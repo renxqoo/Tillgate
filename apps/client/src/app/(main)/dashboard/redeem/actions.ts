@@ -8,7 +8,7 @@ export async function redeemAction(code: string): Promise<{ ok?: boolean; amount
   const trimmed = code.trim();
   if (!trimmed) return { error: "请输入充值码" };
   try {
-    const res = await apiFetch<{ ok: boolean; amount: string; balanceAfter: string }>("/api/redeem", {
+    const res = await apiFetch<{ ok: boolean; amount: string; balanceAfter: string }>("/v1/redeem", {
       method: "POST",
       body: { code: trimmed },
     });

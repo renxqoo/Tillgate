@@ -104,7 +104,7 @@ export async function setTwoFactorAction(enabled: boolean): Promise<{ error?: st
 export async function logoutAction(): Promise<void> {
   try {
     const token = await getAdminSessionToken();
-    if (token) await adminFetch("/api/admin/auth/logout", { method: "POST" });
+    if (token) await adminFetch("/v1/auth/logout", { method: "POST" });
   } catch {
     // 吊销失败不阻塞登出
   }

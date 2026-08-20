@@ -48,7 +48,7 @@ describe('users.patch 分支', () => {
     // 建卡后停用 → 400 rate_card_disabled
     const cardName = uid('card');
     const created = (await (
-      await request('/v1/rate-cards', { token, body: { name: cardName, coefficient: 1 } })
+      await request('/v1/rate-cards', { token, body: { name: cardName, coefficient: '1' } })
     ).json()) as { id: number };
     const { trackCard } = await import('./helpers.js');
     trackCard(created.id);
@@ -71,7 +71,7 @@ describe('users.patch 分支', () => {
     const res = await request(`/v1/users/${userId}`, {
       method: 'PATCH',
       token,
-      body: { email: mail, creditLimit: 50 },
+      body: { email: mail, creditLimit: '50' },
     });
     expect(res.status).toBe(200);
     // 邮箱落库
@@ -107,14 +107,14 @@ describe('users.patch 分支', () => {
     const key = uid('gift');
     const first = await request(`/v1/users/${userId}/gift`, {
       token,
-      body: { amount: 3 },
+      body: { amount: '3' },
       headers: { 'idempotency-key': key },
     });
     expect(first.status).toBe(200);
     const replay = (await (
       await request(`/v1/users/${userId}/gift`, {
         token,
-        body: { amount: 3 },
+        body: { amount: '3' },
         headers: { 'idempotency-key': key },
       })
     ).json()) as { replayed: boolean };
@@ -200,7 +200,7 @@ describe('plans/redeem/channels/models 补充分支', () => {
     const { token } = await newAdmin();
     const name = uid('free');
     const created = (await (
-      await request('/v1/plans', { token, body: { name, price: 1, quotaAmount: 1, periodDays: 1 } })
+      await request('/v1/plans', { token, body: { name, price: '1', quotaAmount: '1', periodDays: 1 } })
     ).json()) as { id: number };
     const removed = await request(`/v1/plans/${created.id}`, { method: 'DELETE', token });
     expect(removed.status).toBe(200);
@@ -213,7 +213,7 @@ describe('plans/redeem/channels/models 补充分支', () => {
     const created = (await (
       await request('/v1/redeem-batches', {
         token,
-        body: { name: uid('b'), amount: 2, count: 2, expiresAt: '2030-01-01T00:00' },
+        body: { name: uid('b'), amount: '2', count: 2, expiresAt: '2030-01-01T00:00' },
       })
     ).json()) as { batch: { id: number } };
     const { trackBatch } = await import('./helpers.js');
@@ -241,7 +241,7 @@ describe('plans/redeem/channels/models 补充分支', () => {
     const patched = await request(`/v1/channels/${channelId}`, {
       method: 'PATCH',
       token,
-      body: { upstreamThreshold: 5 },
+      body: { upstreamThreshold: '5' },
     });
     expect(patched.status).toBe(200);
     const [row] = await db.select().from(channelsTable).where(eq(channelsTable.id, channelId));
@@ -324,13 +324,13 @@ describe('plans grant（正位）+ billingPolicy', () => {
     const { token } = await newAdmin();
     const name = uid('grant');
     const plan = (await (
-      await request('/v1/plans', { token, body: { name, kind: 'pack', price: 1, quotaAmount: 1 } })
+      await request('/v1/plans', { token, body: { name, kind: 'pack', price: '1', quotaAmount: '1' } })
     ).json()) as { id: number };
     const user = await newUserRow();
     // grantPack 语义：加油包挂靠有效订阅（现金口径发放）——先给用户造一条生效订阅
     const { userSubscriptions } = await import('@ai-gateway/db');
     const subPlan = (await (
-      await request('/v1/plans', { token, body: { name: uid('sub'), kind: 'subscription', price: 10, quotaAmount: 100, periodDays: 30 } })
+      await request('/v1/plans', { token, body: { name: uid('sub'), kind: 'subscription', price: '10', quotaAmount: '100', periodDays: 30 } })
     ).json()) as { id: number };
     await db.insert(userSubscriptions).values({
       userId: user,
@@ -365,9 +365,9 @@ describe('plans grant（正位）+ billingPolicy', () => {
       body: {
         externalName: external,
         realModel: `${external}-real`,
-        inputPrice: 0,
-        outputPrice: 0,
-        cacheInputPrice: 0,
+        inputPrice: '0',
+        outputPrice: '0',
+        cacheInputPrice: '0',
         isFree: true,
         unitPrice: 0,
         billingPolicy: {

@@ -11,17 +11,12 @@ import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { BATCH_SORTS, CODE_SORTS, type RedeemService } from '../services/redeem.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const MONEY_MAX = 1e9;
+import { positiveMoneyString } from '../http/money-schema.js';
 
 const createSchema = z.object({
   name: z.string().min(1).max(64),
   remark: z.string().max(255).optional(),
-  amount: z.coerce
-    .number()
-    .positive()
-    .finite()
-    .refine((v) => v <= MONEY_MAX, '金额超出上限'),
+  amount: positiveMoneyString,
   count: z.number().int().min(1).max(10_000),
   expiresAt: z
     .string()
@@ -50,7 +45,7 @@ export function redeemRoutes(service: RedeemService, session: MiddlewareHandler<
       adminId: c.get('adminId'),
       name: body.name,
       remark: body.remark ?? null,
-      amount: String(body.amount),
+      amount: body.amount,
       count: body.count,
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });

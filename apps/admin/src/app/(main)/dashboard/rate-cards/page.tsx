@@ -18,7 +18,7 @@ interface PageProps {
 export default async function RateCardsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchAdminList<AdminRateCardRow>("/api/admin/rate-cards", {
+  const { rows, total, error } = await fetchAdminList<AdminRateCardRow>("/v1/rate-cards", {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

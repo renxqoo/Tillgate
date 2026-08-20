@@ -7,7 +7,7 @@ import { adminFetch, ApiError } from "@ai-gateway/api-client";
 // ── 生成批次 ────────────────────────────────────────────────────────────────
 export interface BatchGenerateInput {
   name: string;
-  amount: number;
+  amount: string;
   count: number;
   remark?: string;
   expiresAt?: string;
@@ -21,11 +21,13 @@ export interface BatchGenerated {
 export async function generateBatchAction(
   input: BatchGenerateInput,
 ): Promise<{ error?: string; batch?: BatchGenerated }> {
-  if (input.amount <= 0) return { error: "金额必须 > 0" };
+  if (!/^\d{1,20}(?:\.\d{1,18})?$/.test(input.amount) || /^0+(?:\.0+)?$/.test(input.amount)) {
+    return { error: "金额必须 > 0" };
+  }
   if (input.count <= 0 || input.count > 1000) return { error: "数量必须在 1-1000" };
   if (!input.name?.trim()) return { error: "请输入批次名称" };
   try {
-    const res = await adminFetch<BatchGenerated>("/api/admin/redeem-batches", {
+    const res = await adminFetch<BatchGenerated>("/v1/redeem-batches", {
       method: "POST",
       body: {
         name: input.name.trim(),
@@ -45,7 +47,7 @@ export async function generateBatchAction(
 // ── 撤销充值码 ──────────────────────────────────────────────────────────────
 export async function revokeCodeAction(codeId: number): Promise<{ error?: string }> {
   try {
-    await adminFetch(`/api/admin/redeem-batches/codes/${codeId}/revoke`, { method: "POST" });
+    await adminFetch(`/v1/redeem-batches/codes/${codeId}/revoke`, { method: "POST" });
     revalidatePath("/dashboard/redeem-batches");
     return {};
   } catch (e) {

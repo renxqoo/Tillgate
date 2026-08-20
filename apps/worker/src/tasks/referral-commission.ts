@@ -21,7 +21,7 @@ export interface ReferralCommissionDeps {
   db: Db;
   wallet: WalletApi;
   /** 佣金比例（0–1；≤0 = 功能关闭直接返回） */
-  commissionRate: number;
+  commissionRate: string;
   repos?: Repositories;
   ctx?: RunContext;
   now?: () => Date;
@@ -33,7 +33,8 @@ export async function runReferralCommissionOnce(
   const repos = deps.repos ?? createRepositories();
   const ctx = deps.ctx ?? systemContext('worker-referral');
   const now = deps.now ?? (() => new Date());
-  if (deps.commissionRate <= 0) return { credited: 0 };
+  const commissionRate = new Decimal(deps.commissionRate);
+  if (!commissionRate.greaterThan(0)) return { credited: 0 };
 
   // 窗口 = 最近 BACKFILL_DAYS 个「已完整结束的 UTC 自然日」（不含今天）
   const current = now();
@@ -53,7 +54,7 @@ export async function runReferralCommissionOnce(
     );
 
     for (const row of rows) {
-      const amount = new Decimal(row.total).times(deps.commissionRate);
+      const amount = new Decimal(row.total).times(commissionRate);
       if (!amount.greaterThan(0)) continue;
       try {
         // 封禁/异常邀请人停发（漏一天可由重跑补——封禁解除后窗口内的份额自动补齐）

@@ -11,15 +11,15 @@ export const dynamic = 'force-dynamic';
 interface InviteData {
   affCode: string;
   inviteUrl: string;
-  signupBonus: number;
-  commissionRate: number;
+  signupBonus: string;
+  commissionRate: string;
   invited: Array<{ inviteeId: number; inviteeName: string | null; createdAt: string; status: number }>;
   totalCommission: string;
 }
 
 export default async function InvitePage() {
   // v2：GET /v1/referrals —— 邀请码/链接、已邀名单、累计佣金（后端不可达时空态展示）
-  const data = await apiFetch<InviteData>('/api/referrals').catch(() => null);
+  const data = await apiFetch<InviteData>('/v1/referrals').catch(() => null);
 
   return (
     <ListPage
@@ -36,7 +36,7 @@ export default async function InvitePage() {
             <KpiCard
               icon={<PercentIcon className="size-4" />}
               title="佣金比例"
-              value={`${(data.commissionRate * 100).toFixed(1)}%`}
+              value={`${(Number(data.commissionRate) * 100).toFixed(1)}%`}
               sub="按被邀请人每日实际消费日结"
             />
           </div>
@@ -46,7 +46,7 @@ export default async function InvitePage() {
               <code className="flex-1 truncate rounded bg-muted px-3 py-2 text-xs">{data.inviteUrl}</code>
               <CopyButton text={data.inviteUrl} />
             </div>
-            {data.signupBonus > 0 ? (
+            {Number(data.signupBonus) > 0 ? (
               <p className="mt-2 text-xs text-muted-foreground">
                 好友通过链接注册，双方各得 ¥{data.signupBonus} 奖励
               </p>

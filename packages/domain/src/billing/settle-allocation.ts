@@ -5,7 +5,7 @@
  *   每源 consume = min(预留额, 剩余待扣)；未用完的预留余量由各源结算原语隐式归还
  *   （wallet.settle ≤ hold 自动还差、trySettleQuota 全额核销）。
  *   超额（actual > Σ预留）：兜底源 PAYG 以 over 表达（走 §4 补充授权）；
- *   纯订阅链无兜底源——订阅额度池直接吸收（over 并入 consume）。
+ *   纯订阅链超额也以 over 表达，由订阅来源把预留内份额核销到套餐、超额补扣余额。
  */
 import { BillingInvariantError } from './errors.js';
 import { Decimal } from '../wallet/money.js';
@@ -19,7 +19,7 @@ export interface SettleShare {
   sourceType: string;
   /** 本源结算消耗（≤ 该源预留额；预留余量随结算原语归还） */
   consume: string;
-  /** 超额部分：PAYG 走 §4 补充授权（authorize#over + settle#over）；订阅链为 0 */
+  /** 超额部分：由兜底来源走补充授权（authorize#over + settle#over），可形成负余额 */
   over: string;
 }
 
@@ -47,9 +47,9 @@ export function allocateSettlement(
     if (fallback != null) {
       fallback.over = remaining.toString();
     } else {
-      // 纯订阅链：额度池直接吸收超额（quota 无 hold 概念，核销不受预留额上限）
+      // 纯订阅链：预留内核销套餐，超额转余额补扣（可形成负余额）。
       const last = out[out.length - 1]!;
-      last.consume = new Decimal(last.consume).plus(remaining).toString();
+      last.over = remaining.toString();
     }
   }
   return out;

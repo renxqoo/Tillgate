@@ -154,7 +154,7 @@ async function revokeSessionServerSide(): Promise<void> {
   try {
     const token = await getSessionToken();
     if (!token) return;
-    await apiFetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/v1/auth/logout", { method: "POST" });
   } catch {
     // 吊销失败不阻塞登出（本地 cookie 已清；服务端令牌最迟 TTL 自然过期）
   }

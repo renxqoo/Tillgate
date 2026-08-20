@@ -175,7 +175,7 @@ export function ChannelFundsClient({
                 <TableCell className="text-xs text-muted-foreground">{r.orderNo ?? "—"}</TableCell>
                 <TableCell>
                   {r.voucher ? (
-                    <a href={`/api/admin/vouchers/${r.voucher}`} target="_blank" rel="noreferrer">
+                    <a href={`/v1/vouchers/${r.voucher}`} target="_blank" rel="noreferrer">
                       <ImageIcon className="size-4 text-muted-foreground hover:text-foreground" />
                     </a>
                   ) : (
@@ -265,7 +265,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
       const { rechargeChannelAction } = await import("../actions");
       const res = await rechargeChannelAction({
         channelId: Number(channelId),
-        amount: amt,
+        amount,
         orderNo,
         remark,
         voucherDataUrl: voucher ?? undefined,
@@ -372,7 +372,7 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
       const { adjustChannelAction } = await import("../actions");
       const res = await adjustChannelAction({
         channelId: Number(channelId),
-        amount: amt,
+        amount,
         remark,
       });
       if (!notify(res, "调账失败", "已调账")) return;

@@ -4,6 +4,7 @@
  * Redis 单次消费；封禁 403 不被兜底吞成 502；token 经 URL fragment 回传。
  */
 import { describe, expect, it } from 'vitest';
+import { randomInt } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { users } from '@ai-gateway/db';
 import { systemContext } from '@ai-gateway/service';
@@ -41,7 +42,7 @@ function memoryStateStore(): OAuthStateStore {
 }
 
 /** fetch 替身：token → github profile → emails 三段式 */
-function fakeFetch(subjectId = 'gh-42', opts: { email?: string; name?: string } = {}) {
+function fakeFetch(subjectId = `gh-${randomInt(1, 2_000_000_000)}`, opts: { email?: string; name?: string } = {}) {
   const calls: string[] = [];
   const fetchImpl = (async (url: string | URL | Request) => {
     const href = typeof url === 'string' ? url : url instanceof URL ? url.href : url.url;

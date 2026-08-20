@@ -44,7 +44,7 @@ export default async function DashboardPage() {
   const me = await requireMe();
 
   let data: DashboardData = {
-    balance: me.balance,
+    balance: me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0',
     rateCardName: me.rateCardName,
     rpmLimit: me.rpmLimit,
     tpmLimit: me.tpmLimit,
@@ -60,7 +60,7 @@ export default async function DashboardPage() {
   // 获取 Key 列表（统计活跃 / 总数）
   try {
     const keysData = await apiFetch<Paginated<{ status: number }>>(
-      '/api/keys?page=1&limit=100',
+      '/v1/keys?page=1&limit=100',
     );
     data.totalKeys = keysData.total;
     const keyRows = keysData.rows ?? [];
@@ -71,7 +71,7 @@ export default async function DashboardPage() {
 
   // 按模型聚合用量（v2：/usage/by-model；日费用趋势以模型维度近似，今日费用取总额）
   try {
-    const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>('/api/usage/by-model');
+    const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>('/v1/usage/by-model');
     const modelRows = byModel.rows ?? [];
     data.byModel = modelRows;
     const todayTotal = modelRows.reduce((sum, it) => sum + (Number(it.cost) || 0), 0);
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
 
   // 获取实时速率（近 60 秒 RPM / TPM）
   try {
-    const rate = await apiFetch<{ rpm: number; tpm: number }>('/api/usage/rate');
+    const rate = await apiFetch<{ rpm: number; tpm: number }>('/v1/usage/rate');
     data.rpm = rate.rpm;
     data.tpm = rate.tpm;
   } catch {

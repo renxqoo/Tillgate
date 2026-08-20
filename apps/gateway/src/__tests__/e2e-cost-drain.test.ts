@@ -7,9 +7,8 @@
  *      输出恒 0 = 「拉满输出再掐线」白嫖面）
  *   ③ 流式完成但上游不给 usage（忽略 include_usage 的供应商）→ 输出估算收费
  *   ④ 逐帧累计 usage 后取消 → 用最后一帧 usage 精确收费（不估算）
- *   ⑤ 余额不足且未声明 balanceFloor → 402 整单拒绝（无预扣无上游调用——零损失）
- *   ⑥ 声明 balanceFloor 的低价放行 + 实际用量远超余额 → 结算收满预留不死信、
- *      不搁浅（差额=有界损失，钱包清零在途清零）
+ *   ⑤ full 模式余额不足 → 402 整单拒绝（无预扣无上游调用）
+ *   ⑥ fixed 低门槛放行 + 实际用量远超余额 → 实际全额补扣、形成负余额且不搁浅
  *   ⑦ 上游重试幂等键（Idempotency-Key = requestId）注入——防响应丢失重试双花上游
  */
 import { createServer, type Server } from 'node:http';
@@ -152,8 +151,8 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-/** 高价映射（放大金额向量）+ 可选预扣策略；返回外部模型名 */
-async function seedMapping(opts: { balanceFloor?: string } = {}): Promise<string> {
+/** 高价映射（放大金额向量）；返回外部模型名。预扣策略由网关全局配置决定。 */
+async function seedMapping(): Promise<string> {
   const [provider] = await db.insert(providers)
     .values({ name: tag(), baseUrl: upstreamBaseUrl, protocol: 'openai-compatible', status: 0 })
     .returning({ id: providers.id });
@@ -167,9 +166,6 @@ async function seedMapping(opts: { balanceFloor?: string } = {}): Promise<string
       inputPrice: '60',
       outputPrice: '600',
       cacheInputPrice: '1',
-      ...(opts.balanceFloor != null
-        ? { billingConfig: { reservation: { strategy: 'floor', params: { balance: opts.balanceFloor } } } }
-        : {}),
     })
     .returning({ id: modelMappings.id });
   createdMappings.push(mapping!.id);
@@ -197,7 +193,7 @@ async function seedUser(amount: string): Promise<{ raw: string; userId: number }
   return { raw, userId: user!.id };
 }
 
-function buildApp() {
+function buildApp(reservationPolicy?: { mode: 'full' | 'fixed'; amount?: string }) {
   const ai = createAi({ allowLocalUrl: true }, { ...createMemoryAiStorages() });
   const runChat = createRunChat({
     db,
@@ -205,7 +201,12 @@ function buildApp() {
     buildQuote: createBuildQuote({ db }),
     resolveChannels: createResolveChannels({ db }),
     upstream: createUpstreamAdapter({ ai, encryptionKey, deadlineMs: 8_000 }),
-    config: { reservationLimit: '1000', authorizationTtlMs: 300_000, output: { defaultMax: 4_096, exposureCap: 32_768 } },
+    config: {
+      reservationLimit: '1000',
+      ...(reservationPolicy != null ? { reservationPolicy } : {}),
+      authorizationTtlMs: 300_000,
+      output: { defaultMax: 4_096, exposureCap: 32_768 },
+    },
   });
   return createApp({ db, runChat, oauth: { jwtSecret: 'drain-test-secret-0123456789ab', tokenTtlSeconds: 3_600 } });
 }
@@ -286,7 +287,7 @@ describe('E2E 刷费用专项 · 上游对接硬边界', () => {
     expect(typeof recorded.at(-1)!.headers['idempotency-key']).toBe('string');
   }, 30_000);
 
-  it('⑤ 余额不足且未声明 balanceFloor → 402 整单拒绝、零账单零上游调用', async () => {
+  it('⑤ full 模式余额不足 → 402 整单拒绝、零账单零上游调用', async () => {
     const app = buildApp();
     const external = await seedMapping();
     const { raw, userId } = await seedUser('0.5');
@@ -300,9 +301,9 @@ describe('E2E 刷费用专项 · 上游对接硬边界', () => {
     expect(recorded.length).toBe(0); // 上游一次都没被调——平台零损失
   }, 30_000);
 
-  it('⑥ balanceFloor 低价放行 + 实际用量远超余额 → 收满预留、不死信不搁浅', async () => {
-    const app = buildApp();
-    const external = await seedMapping({ balanceFloor: '0.1' });
+  it('⑥ fixed=0.1 低门槛放行 + 实际用量远超余额 → 全额补扣负余额', async () => {
+    const app = buildApp({ mode: 'fixed', amount: '0.1' });
+    const external = await seedMapping();
     const { raw, userId } = await seedUser('0.5');
     script = 'nonstream-huge-usage'; // 实际 100k 输出 token × ¥600/M = ¥60 >> 预留 0.5
 
@@ -312,13 +313,14 @@ describe('E2E 刷费用专项 · 上游对接硬边界', () => {
 
     const bill = await latestReceipt(userId);
     expect(bill.status).toBe('settled'); // 不是 dead / 不是 settlement_pending 滞留
-    // 实扣口径按真实 usage（60 元级）落 usage_logs；钱包只收得进预留（0.5）
+    // 实扣口径按真实 usage（60 元级）落 usage_logs；超出 0.1 的部分全部 #over 补扣。
     const usage = await db.$client.query<{ amount: string }>(
       'select amount::text from usage_logs where user_id = $1', [userId],
     );
     expect(new Decimal(usage.rows[0]!.amount).gt(50)).toBe(true);
     const w = await walletOf(userId);
-    expect(new Decimal(w.balance).lte('0.01')).toBe(true); // 收满预留（≈全余额）
+    expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(usage.rows[0]!.amount))).toBe(true);
+    expect(new Decimal(w.balance).lt(0)).toBe(true);
     expect(w.inFlight).toBe('0'); // 在途清零——无资金搁浅
   }, 60_000);
 });
@@ -326,7 +328,7 @@ describe('E2E 刷费用专项 · 上游对接硬边界', () => {
 describe('E2E 刷费用专项 · 流式计量闭环', () => {
   it('② 流式中途取消 + 上游无逐帧 usage → 输出按累计内容估算收费（≠0）', async () => {
     const app = buildApp();
-    const external = await seedMapping({ balanceFloor: '0.1' });
+    const external = await seedMapping();
     const { raw, userId } = await seedUser('100');
     script = 'stream-no-usage-hold';
 
@@ -357,7 +359,7 @@ describe('E2E 刷费用专项 · 流式计量闭环', () => {
 
   it('③ 流式完成但上游不给 usage → 输出估算收费（usage_missing_completed ≠ 免单）', async () => {
     const app = buildApp();
-    const external = await seedMapping({ balanceFloor: '0.1' });
+    const external = await seedMapping();
     const { raw, userId } = await seedUser('100');
     script = 'stream-done-no-usage';
 
@@ -380,7 +382,7 @@ describe('E2E 刷费用专项 · 流式计量闭环', () => {
 
   it('④ 逐帧累计 usage 后取消 → 最后一帧 usage 精确收费（不估算不白嫖）', async () => {
     const app = buildApp();
-    const external = await seedMapping({ balanceFloor: '0.1' });
+    const external = await seedMapping();
     const { raw, userId } = await seedUser('100');
     script = 'stream-cumulative-usage-hold';
 

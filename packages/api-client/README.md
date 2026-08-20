@@ -10,17 +10,17 @@
 import { apiFetch, getMe, ApiError } from "@ai-gateway/api-client";
 
 // GET
-const me = await apiFetch<MeInfo>("/api/me");
+const me = await apiFetch<MeInfo>("/v1/me");
 
 // POST
-const newKey = await apiFetch<{ key: string }>("/api/keys", {
+const newKey = await apiFetch<{ key: string }>("/v1/keys", {
   method: "POST",
   body: { name: "prod" },
 });
 
 // 错误处理
 try {
-  await apiFetch("/api/admin/users/1", { method: "PATCH", body: { status: 1 } });
+  await adminFetch("/v1/users/1", { method: "PATCH", body: { status: 1 } });
 } catch (e) {
   if (e instanceof ApiError) {
     console.log(e.code, e.message);
@@ -53,7 +53,6 @@ DB 现存「元」numeric 字符串（如 `"49.999990000000000000"`），formatt
 
 ```ts
 import {
-  getCookieHeader,
   hasSessionCookie,
   clearSessionCookie,
   SESSION_COOKIE,

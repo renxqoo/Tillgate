@@ -19,6 +19,7 @@ export interface NewBillingRequest {
   userId: number;
   apiKeyId: number | null;
   appId: number | null;
+  estimatedExposureAmount: string;
   reservedAmount: string;
   planReservedAmount: string | null;
   subscriptionId: number | null;
@@ -35,6 +36,7 @@ export interface BillingRow {
   requestId: string;
   userId: number;
   apiKeyId: number | null;
+  estimatedExposureAmount: string | null;
   reservedAmount: string;
   planReservedAmount: string | null;
   subscriptionId: number | null;
@@ -119,6 +121,7 @@ export class BillingRequestRepository {
         requestId: billingRequests.requestId,
         userId: billingRequests.userId,
         apiKeyId: billingRequests.apiKeyId,
+        estimatedExposureAmount: billingRequests.estimatedExposureAmount,
         reservedAmount: billingRequests.reservedAmount,
         planReservedAmount: billingRequests.planReservedAmount,
         subscriptionId: billingRequests.subscriptionId,
@@ -381,6 +384,7 @@ export class BillingRequestRepository {
         requestId: billingRequests.requestId,
         userId: billingRequests.userId,
         apiKeyId: billingRequests.apiKeyId,
+        estimatedExposureAmount: billingRequests.estimatedExposureAmount,
         reservedAmount: billingRequests.reservedAmount,
         planReservedAmount: billingRequests.planReservedAmount,
         subscriptionId: billingRequests.subscriptionId,
@@ -529,7 +533,7 @@ export class BillingRequestRepository {
 
   // ---------- 限额读模型（在途敞口 SUM；已结算侧在 UsageLogRepository） ----------
 
-  /** 在途敞口：未终结 billing_requests 的 reserved_amount 之和（不按时间过滤——跨窗口对称性） */
+  /** 在途风险：未终结 billing_requests 的保守预估之和（fixed 冻结额不得绕过日限额）。 */
   async sumExposure(
     c: RepoContext,
     dims: {
@@ -548,7 +552,7 @@ export class BillingRequestRepository {
       conditions.push(sql`request_id <> ${dims.excludeRequestId}`);
     }
     const result = await c.db.execute<{ total: string }>(sql`
-      select coalesce(sum(reserved_amount), 0)::text as total from billing_requests
+      select coalesce(sum(coalesce(estimated_exposure_amount, reserved_amount)), 0)::text as total from billing_requests
       where ${sql.join(conditions, sql` and `)}
     `);
     return result.rows[0]?.total ?? '0';

@@ -1,7 +1,7 @@
 /**
  * 套餐路由（会话）：列表 / 创建 / 补丁（kind 不可变 = .strict() 拒未知键）/
  * 删除（含历史订阅引用守卫 409）。
- * 价格/额度数值域铁三角：coerce + finite + 1e9 上限（防 numeric 溢出 500）。
+ * 价格/额度仅接收精确十进制字符串，避免 JSON number 的 IEEE-754 精度损失。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -11,26 +11,24 @@ import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { PLAN_SORTS, type PlansService } from '../services/plans.service.js';
 import type { SessionEnv } from '../middleware/session.js';
-
-const PLAN_PRICE_MAX = 1e9;
-const priceSchema = z.coerce.number().positive().finite().max(PLAN_PRICE_MAX);
+import { positiveMoneyString } from '../http/money-schema.js';
 
 const createSchema = z.strictObject({
   name: z.string().min(1).max(32),
   kind: z.enum(['subscription', 'pack']).optional(),
   sortOrder: z.number().int().positive().nullable().optional(),
-  price: priceSchema,
+  price: positiveMoneyString,
   periodDays: z.number().int().min(0).max(3650).optional(),
-  quotaAmount: priceSchema,
+  quotaAmount: positiveMoneyString,
   allowSeats: z.boolean().optional(),
 });
 
 const updateSchema = z.strictObject({
   name: z.string().min(1).max(32).optional(),
   sortOrder: z.number().int().positive().nullable().optional(),
-  price: priceSchema.optional(),
+  price: positiveMoneyString.optional(),
   periodDays: z.number().int().min(0).max(3650).optional(),
-  quotaAmount: priceSchema.optional(),
+  quotaAmount: positiveMoneyString.optional(),
   allowSeats: z.boolean().optional(),
   status: z.number().int().min(0).max(1).optional(),
 });
@@ -58,9 +56,9 @@ export function plansRoutes(service: PlansService, session: MiddlewareHandler<Se
       name: body.name,
       kind: body.kind,
       sortOrder: body.sortOrder ?? null,
-      price: String(body.price),
+      price: body.price,
       periodDays: body.periodDays,
-      quotaAmount: String(body.quotaAmount),
+      quotaAmount: body.quotaAmount,
       allowSeats: body.allowSeats,
     });
     return c.json(row, 201);
@@ -75,8 +73,8 @@ export function plansRoutes(service: PlansService, session: MiddlewareHandler<Se
       planId: id,
       patch: {
         ...rest,
-        ...(price !== undefined ? { price: String(price) } : {}),
-        ...(quotaAmount !== undefined ? { quotaAmount: String(quotaAmount) } : {}),
+        ...(price !== undefined ? { price } : {}),
+        ...(quotaAmount !== undefined ? { quotaAmount } : {}),
       },
     });
     return c.json(row);

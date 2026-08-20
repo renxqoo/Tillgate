@@ -8,6 +8,7 @@ import {
   smallint,
   timestamp,
   uniqueIndex,
+  uuid,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -55,6 +56,14 @@ export const notifyOutbox = pgTable(
     dedupeKey: varchar('dedupe_key', { length: 128 }).notNull(),
     attempts: smallint('attempts').notNull().default(0),
     lastError: varchar('last_error', { length: 255 }),
+    /** 已成功投递的渠道 id；部分失败重试时跳过，避免重复轰炸已成功渠道。 */
+    deliveredChannelIds: jsonb('delivered_channel_ids').$type<number[]>().notNull().default(sql`'[]'::jsonb`),
+    /** 失败退避截止；避免同一轮循环立即重试三次并饿死后续事件。 */
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    /** 多副本消费 fencing：三列同时为空或同时非空；租约过期后可安全重领。 */
+    claimOwner: varchar('claim_owner', { length: 128 }),
+    claimToken: uuid('claim_token'),
+    claimUntil: timestamp('claim_until', { withTimezone: true }),
     /** NULL = 待投递；非 NULL = 已投递或已放弃（时间即终态时间） */
     sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -63,7 +72,13 @@ export const notifyOutbox = pgTable(
     uniqueIndex('notify_outbox_dedupe_uq').on(t.dedupeKey),
     // 待投递扫描队列（worker runNotifyDispatch 轮询 WHERE sent_at IS NULL ORDER BY id）
     index('notify_outbox_pending_idx')
-      .on(t.id)
+      .on(t.nextAttemptAt, t.claimUntil, t.id)
       .where(sql`sent_at is null`),
+    check('notify_outbox_delivered_channels_ck', sql`jsonb_typeof(${t.deliveredChannelIds}) = 'array'`),
+    check(
+      'notify_outbox_claim_ck',
+      sql`(${t.claimOwner} is null and ${t.claimToken} is null and ${t.claimUntil} is null)
+          or (${t.sentAt} is null and ${t.claimOwner} is not null and ${t.claimToken} is not null and ${t.claimUntil} is not null)`,
+    ),
   ],
 );

@@ -8,6 +8,7 @@
  *   - 系数恒 3 位小数（numeric(6,3)，上限 9.999）
  */
 import { recordAudit } from '@ai-gateway/http';
+import { Decimal } from '@ai-gateway/domain';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories, type RateCardRow } from '@ai-gateway/repository';
 import type { RunContext } from '@ai-gateway/service';
@@ -18,7 +19,7 @@ export const RATE_CARD_SORTS = ['id', 'name', 'status', 'createdAt'] as const;
 export const RATE_CARD_USER_SORTS = ['id', 'subject', 'createdAt'] as const;
 
 /** 系数落库/回显口径：3 位小数字符串（numeric(6,3)） */
-export const formatCoefficient = (v: number): string => v.toFixed(3);
+export const formatCoefficient = (v: string): string => new Decimal(v).toFixed(3);
 
 export interface RateCardsServiceDeps {
   db: Db;
@@ -32,11 +33,11 @@ export interface RateCardsService {
   ): Promise<{ rows: Array<RateCardRow & { coefficient: string }>; total: number; page: number; pageSize: number }>;
   create(
     ctx: RunContext,
-    input: { adminId: number; name: string; description?: string; coefficient: number },
+    input: { adminId: number; name: string; description?: string; coefficient: string },
   ): Promise<{ id: number; name: string; coefficient: string }>;
   update(
     ctx: RunContext,
-    input: { adminId: number; rateCardId: number; patch: { name?: string; description?: string | null; status?: number; coefficient?: number } },
+    input: { adminId: number; rateCardId: number; patch: { name?: string; description?: string | null; status?: number; coefficient?: string } },
   ): Promise<{ id: number; name: string; coefficient?: string }>;
   remove(ctx: RunContext, input: { adminId: number; rateCardId: number }): Promise<{ ok: true }>;
   listUsers(

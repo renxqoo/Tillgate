@@ -78,7 +78,6 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
       TRUSTED_PROXY_HOPS: "1"  # 经 FE BFF 透传的 XFF（右数第 1 跳 = 真实用户 IP）
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      OAUTH_API_BASE: http://client-api:8081
       OTEL_TRACES_MODE: "off"
     depends_on:
       redis:

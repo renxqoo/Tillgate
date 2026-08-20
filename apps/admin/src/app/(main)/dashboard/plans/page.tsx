@@ -18,7 +18,7 @@ interface PageProps {
 export default async function PlansPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const { rows, total, error } = await fetchAdminList<PlanRow>("/api/admin/plans", {
+  const { rows, total, error } = await fetchAdminList<PlanRow>("/v1/plans", {
     page,
     pageSize: PAGE_SIZE,
     sortBy,

@@ -262,6 +262,17 @@ describe('transfer / setCreditLimit', () => {
 });
 
 describe('跨动词共享事务（§4 补充授权的地基）', () => {
+  it('collectOverage 只能用于 billing 的 #over 内部自然键', async () => {
+    const user = await newUser();
+    await expect(wallet.authorize(ctx, {
+      userId: user,
+      amount: '1',
+      refType: REF_TYPE,
+      refId: rid('forged-over'),
+      collectOverage: true,
+    })).rejects.toThrow('authorize.collectOverage_scope');
+  });
+
   it('authorize#over + settle#over + settle 原单在同一事务：全成或全不成', async () => {
     const user = await newUser();
     await wallet.credit(ctx, { userId: user, amount: '2', refType: REF_TYPE, refId: rid('f') });

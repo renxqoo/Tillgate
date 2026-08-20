@@ -40,8 +40,8 @@ const STATUS: Record<number, { label: string; tone: 'success' | 'warning' | 'neu
 export default async function BillingPage() {
   // v2：订单列表 /v1/payments/orders + 已启用渠道 /v1/payments/channels（渠道端点失败则空——表单自显充值码提示）
   const [ordersData, channelsData] = await Promise.all([
-    apiFetch<{ rows?: PaymentOrderRow[] }>('/api/payments/orders?page=1&limit=20').catch(() => null),
-    apiFetch<{ channels?: Array<{ id: 'epay' | 'stripe'; label: string }> }>('/api/payments/channels').catch(
+    apiFetch<{ rows?: PaymentOrderRow[] }>('/v1/payments/orders?page=1&limit=20').catch(() => null),
+    apiFetch<{ channels?: Array<{ id: 'epay' | 'stripe'; label: string }> }>('/v1/payments/channels').catch(
       () => null,
     ),
   ]);

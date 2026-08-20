@@ -46,13 +46,12 @@ function maskSecret(secret: string): string {
   return `****${secret.slice(-4)}`;
 }
 
-/** 写入侧加密（v2 加固）：config.secret 落库为 enc:v1 密文（与渠道 apiKeyEnc 同口径）。
- *  读取侧掩码不变；worker 派发时按前缀解密——存量明文兼容（读取时非 enc: 前缀原样用）。 */
+/** 写入侧加密：客户端提交值始终当作明文加密，禁止伪装成内部 enc:* 密文。 */
 function encryptNotificationConfig(
   config: Record<string, unknown> | undefined,
   encryptionKey: string,
 ): Record<string, unknown> | undefined {
-  if (config == null || typeof config.secret !== 'string' || config.secret === '' || config.secret.startsWith('enc:')) {
+  if (config == null || typeof config.secret !== 'string' || config.secret === '') {
     return config;
   }
   return { ...config, secret: encrypt(config.secret, encryptionKey) };

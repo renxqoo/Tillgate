@@ -7,19 +7,19 @@ import { ApiError, adminFetch } from "@ai-gateway/api-client";
 import type { RateLimitKind } from "./types";
 
 const PATH_BY_KIND: Record<RateLimitKind, (id: number) => string> = {
-  user: (id) => `/api/admin/users/${id}`,
-  model: (id) => `/api/admin/models/${id}`,
-  channel: (id) => `/api/admin/channels/${id}`,
-  key: (id) => `/api/admin/keys/${id}`,
+  user: (id) => `/v1/users/${id}`,
+  model: (id) => `/v1/models/${id}`,
+  channel: (id) => `/v1/channels/${id}`,
+  key: (id) => `/v1/admin-keys/${id}`,
 };
 
 export interface RateLimitPatch {
   rpmLimit: number | null;
   tpmLimit: number | null;
   /** 仅 user：透支上限（元，>=0）。必填数值，不可为 null（DB notNull default 0）。 */
-  creditLimit?: number;
+  creditLimit?: string;
   /** user/key：每日花费上限（元，NULL=不限）。 */
-  dailySpendLimit?: number | null;
+  dailySpendLimit?: string | null;
 }
 
 /**
@@ -32,7 +32,7 @@ export async function updateRateLimitAction(
   patch: RateLimitPatch,
 ): Promise<{ error?: string }> {
   try {
-    const body: Record<string, number | null> = {
+    const body: Record<string, number | string | null> = {
       rpmLimit: patch.rpmLimit,
       tpmLimit: patch.tpmLimit,
     };

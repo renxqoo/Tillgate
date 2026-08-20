@@ -42,7 +42,7 @@ describe('进货/调账 happy path', () => {
 
     const recharge = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 100, orderNo: `PAY-${uid('x')}`, voucherDataUrl: PNG_DATA_URL, remark: '测试入货' },
+      body: { channelId, amount: '100', orderNo: `PAY-${uid('x')}`, voucherDataUrl: PNG_DATA_URL, remark: '测试入货' },
       headers: { 'idempotency-key': uid('rc') },
     });
     expect(recharge.status).toBe(200);
@@ -50,7 +50,7 @@ describe('进货/调账 happy path', () => {
 
     const adjustDown = await request('/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -30 },
+      body: { channelId, amount: '-30' },
       headers: { 'idempotency-key': uid('adj') },
     });
     expect(adjustDown.status).toBe(200);
@@ -59,7 +59,7 @@ describe('进货/调账 happy path', () => {
     // 超扣（调后为负）→ 422 insufficient_budget
     const overDraw = await request('/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -999 },
+      body: { channelId, amount: '-999' },
       headers: { 'idempotency-key': uid('adj') },
     });
     expect(overDraw.status).toBe(422);
@@ -97,7 +97,7 @@ describe('进货/调账 happy path', () => {
 
     const res = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 10 },
+      body: { channelId, amount: '10' },
       headers: { 'idempotency-key': uid('rc') },
     });
     expect(res.status).toBe(200);
@@ -117,7 +117,7 @@ describe('幂等 red：同键重放只动一次钱', () => {
     const first = (await (
       await request('/v1/channel-funds/recharge', {
         token,
-        body: { channelId, amount: 100 },
+        body: { channelId, amount: '100' },
         headers: { 'idempotency-key': key },
       })
     ).json()) as { rechargeId: number; balanceAfter: string; replayed: boolean };
@@ -127,7 +127,7 @@ describe('幂等 red：同键重放只动一次钱', () => {
     const replay = (await (
       await request('/v1/channel-funds/recharge', {
         token,
-        body: { channelId, amount: 100 },
+        body: { channelId, amount: '100' },
         headers: { 'idempotency-key': key },
       })
     ).json()) as { rechargeId: number; balanceAfter: string; replayed: boolean };
@@ -137,7 +137,7 @@ describe('幂等 red：同键重放只动一次钱', () => {
 
     const conflict = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 200 },
+      body: { channelId, amount: '200' },
       headers: { 'idempotency-key': key },
     });
     expect(conflict.status).toBe(409);
@@ -147,14 +147,14 @@ describe('幂等 red：同键重放只动一次钱', () => {
     const adjKey = uid('adj');
     const adj1 = await request('/v1/channel-funds/adjust', {
       token,
-      body: { channelId, amount: -30 },
+      body: { channelId, amount: '-30' },
       headers: { 'idempotency-key': adjKey },
     });
     expect(adj1.status).toBe(200);
     const adj2 = (await (
       await request('/v1/channel-funds/adjust', {
         token,
-        body: { channelId, amount: -30 },
+        body: { channelId, amount: '-30' },
         headers: { 'idempotency-key': adjKey },
       })
     ).json()) as { replayed: boolean };
@@ -174,7 +174,7 @@ describe('red：amount 超 MONEY_MAX → 400 且不触库', () => {
 
     const res = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 1e21 },
+      body: { channelId, amount: '1e21' },
       headers: { 'idempotency-key': uid('rc') },
     });
     expect(res.status).toBe(400);
@@ -192,7 +192,7 @@ describe('凭证边界', () => {
 
     const badMime = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 10, voucherDataUrl: 'data:text/plain;base64,aGk=' },
+      body: { channelId, amount: '10', voucherDataUrl: 'data:text/plain;base64,aGk=' },
       headers: { 'idempotency-key': uid('rc') },
     });
     expect(badMime.status).toBe(400);
@@ -201,7 +201,7 @@ describe('凭证边界', () => {
     // 凭证可回读（生产存储键换读）
     const ok = await request('/v1/channel-funds/recharge', {
       token,
-      body: { channelId, amount: 10, voucherDataUrl: PNG_DATA_URL },
+      body: { channelId, amount: '10', voucherDataUrl: PNG_DATA_URL },
       headers: { 'idempotency-key': uid('rc') },
     });
     expect(ok.status).toBe(200);

@@ -57,7 +57,7 @@ function buildConfig(overrides: Partial<ClientApiConfig> = {}): ClientApiConfig 
     TOPUP_EXCHANGE_RATE: '1',
     PAYMENT_ORDER_TTL_MS: 1_800_000,
     REFERRAL_SIGNUP_BONUS: '0',
-    REFERRAL_COMMISSION_RATE: 0,
+    REFERRAL_COMMISSION_RATE: '0',
     EPAY_PID: EPAY.pid,
     EPAY_KEY: EPAY.key,
     EPAY_GATEWAY_URL: EPAY.gatewayUrl,
@@ -316,7 +316,7 @@ describe('邀请返利（注册归因全链 HTTP）', () => {
     };
     expect(overview.affCode).toBe(aff);
     expect(overview.inviteUrl).toContain(`/register?aff=${aff}`);
-    expect(overview.signupBonus).toBe(5);
+    expect(overview.signupBonus).toBe('5');
     expect(overview.invited.map((r) => r.inviteeId)).toContain(invitee.id);
     expectAmountEq(overview.totalCommission, '0');
 

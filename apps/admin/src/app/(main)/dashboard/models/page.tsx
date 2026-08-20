@@ -20,12 +20,12 @@ export default async function ModelsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows: models, total, error } = await fetchAdminList<AdminModelRow>(
-    "/api/admin/models",
+    "/v1/models",
     { page, pageSize: PAGE_SIZE, sortBy, order, extra: { q } },
   );
   let channels: ChannelOption[] = [];
   try {
-    const c = await fetchAdminList<AdminChannelRow>("/api/admin/channels", {
+    const c = await fetchAdminList<AdminChannelRow>("/v1/channels", {
       page: 1,
       pageSize: 100,
     });

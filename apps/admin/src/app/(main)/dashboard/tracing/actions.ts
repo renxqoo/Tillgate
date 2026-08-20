@@ -28,7 +28,7 @@ export interface TraceDetail {
 export async function fetchTraceDetail(traceId: string): Promise<TraceDetail | { error: string }> {
   if (!/^[0-9a-f]{1,32}$/i.test(traceId)) return { error: 'traceId 格式非法' };
   try {
-    return await adminFetch<TraceDetail>(`/api/admin/tracing/traces/${traceId}`);
+    return await adminFetch<TraceDetail>(`/v1/tracing/traces/${traceId}`);
   } catch (caught) {
     return { error: caught instanceof ApiError ? caught.message : '加载失败' };
   }
@@ -40,7 +40,7 @@ export async function fetchTraceDetailByRequestId(
 ): Promise<TraceDetail | { error: string }> {
   if (!/^[0-9a-zA-Z-]{1,64}$/.test(requestId)) return { error: 'requestId 格式非法' };
   try {
-    return await adminFetch<TraceDetail>(`/api/admin/tracing/by-request/${requestId}`);
+    return await adminFetch<TraceDetail>(`/v1/tracing/by-request/${requestId}`);
   } catch (caught) {
     return { error: caught instanceof ApiError ? caught.message : '加载失败' };
   }

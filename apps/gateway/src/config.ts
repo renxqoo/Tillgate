@@ -3,8 +3,16 @@
  * 业务参数（币种/阈值）必填或显式默认，代码零写死。
  */
 import { z } from 'zod';
+import { secretSchema, strictBooleanSchema } from '@ai-gateway/core';
+import { Decimal } from '@ai-gateway/domain';
 
-const schema = z.object({
+const positiveDecimal = z
+  .string()
+  .regex(/^\d{1,20}(?:\.\d{1,18})?$/)
+  .refine((value) => !/^0+(?:\.0+)?$/.test(value));
+
+function createSchema(production: boolean) {
+  return z.object({
   /** 基础设施必配（fail-closed：连错库/忘配 = 拒绝启动，不落默认值跑偏） */
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -16,8 +24,10 @@ const schema = z.object({
   /** 结算积压准入阈值（张数 / 最老账龄 ms） */
   ADMISSION_MAX_PENDING: z.coerce.number().int().positive().default(10_000),
   ADMISSION_MAX_OLDEST_MS: z.coerce.number().int().positive().default(300_000),
-  /** 单请求预扣上限（元）与授权租约（ms） */
-  BILLING_RESERVATION_MAX: z.string().default('1000'),
+  /** 单请求风险敞口上限（只拒绝不截断）与实际冻结策略。 */
+  BILLING_RESERVATION_MAX: positiveDecimal.default('1000'),
+  BILLING_RESERVATION_MODE: z.enum(['full', 'fixed']).default('full'),
+  BILLING_FIXED_RESERVATION_AMOUNT: positiveDecimal.optional(),
   BILLING_AUTHORIZATION_TTL_MS: z.coerce.number().int().positive().default(300_000),
   /** 生成任务族：任务 TTL（超时上界）与租约宽限（轮询续租安全垫） */
   GENERATION_TASK_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
@@ -45,7 +55,7 @@ const schema = z.object({
   /** 上游连接+响应头（TTFB）预算（ms——慢上游的非流式长生成需放宽；默认 10s 同 v1） */
   GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   /** 允许上游寻址回环/私网（SSRF 防护的 dev/test 逃生门——生产恒为 false） */
-  GATEWAY_AI_ALLOW_LOCAL_URL: z.coerce.boolean().default(false),
+  GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
   /** 优雅停机：停收新请求后等待在途完成的上界（ms） */
   GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(15_000),
   /** OTel：off 完全 no-op / otlp 走 collector（须配 endpoint） */
@@ -55,23 +65,42 @@ const schema = z.object({
   DEFAULT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(4_096),
   GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().positive().default(32_768),
   /** 渠道 apiKeyEnc 解密密钥（单 key 单格式 enc:v1——core.encrypt/decrypt 唯一口径） */
-  CHANNEL_API_KEY_ENCRYPTION: z.string().min(1),
+  CHANNEL_API_KEY_ENCRYPTION: secretSchema('CHANNEL_API_KEY_ENCRYPTION', 32),
   /** App JWT 签发密钥与有效期（/oauth/token） */
-  JWT_SECRET: z.string().min(16),
+  JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
   JWT_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(3_600),
-})
+  }).superRefine((config, ctx) => {
+    if (config.BILLING_RESERVATION_MODE === 'fixed' && config.BILLING_FIXED_RESERVATION_AMOUNT == null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BILLING_FIXED_RESERVATION_AMOUNT'],
+        message: 'fixed 预扣模式必须配置 BILLING_FIXED_RESERVATION_AMOUNT',
+      });
+    }
+    if (
+      config.BILLING_FIXED_RESERVATION_AMOUNT != null &&
+      new Decimal(config.BILLING_FIXED_RESERVATION_AMOUNT).gt(config.BILLING_RESERVATION_MAX)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['BILLING_FIXED_RESERVATION_AMOUNT'],
+        message: '固定预扣金额不能超过单请求风险敞口上限',
+      });
+    }
+  });
+}
 
-export type GatewayConfig = z.infer<typeof schema>;
+export type GatewayConfig = z.infer<ReturnType<typeof createSchema>>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
-  const parsed = schema.parse({
+  const parsed = createSchema(env.NODE_ENV === 'production').parse({
     ...env,
     // 渠道密钥：专用名优先，缺省回落 .env 规范键 ENCRYPTION_KEY（两处都未配置 =
     // 启动即失败——fail-closed，不带默认值）
     CHANNEL_API_KEY_ENCRYPTION: env.CHANNEL_API_KEY_ENCRYPTION ?? env.ENCRYPTION_KEY,
   });
   // 生产硬顶（v1 对位）：全局闸是护栏不是配额误配的放大器
-  if (process.env.NODE_ENV === 'production' && parsed.GLOBAL_RPM > 5_000) {
+  if (env.NODE_ENV === 'production' && parsed.GLOBAL_RPM > 5_000) {
     return { ...parsed, GLOBAL_RPM: 5_000 };
   }
   return parsed;

@@ -106,6 +106,9 @@ function signedWebhook(input: {
         id: input.sessionId ?? 'cs_test_session',
         client_reference_id: input.orderId,
         amount_total: input.amountCents,
+        payment_status: 'paid',
+        mode: 'payment',
+        currency: 'cny',
         metadata: { order_id: input.orderId },
       },
     },
@@ -231,6 +234,16 @@ describe('回调入账（资损不变量主战场）', () => {
       order.orderId,
     );
     expect(row!.status).toBe(0);
+  });
+
+  it('易支付 pid 不属于本商户，即使共享密钥签名合法也拒绝', async () => {
+    const account = await newUser();
+    const service = buildService();
+    const order = await service.createTopupOrder(ctx, account.id, { amount: '5' });
+    expect(
+      await service.handleNotify(ctx, 'epay', signedNotify(order.orderId, '5', { pid: 'other-merchant' })),
+    ).toBe('fail');
+    expectAmountEq(await balanceOf(account.id), '0');
   });
 
   it('金额篡改（签名合法但 money 少于订单）→ fail，零入账', async () => {

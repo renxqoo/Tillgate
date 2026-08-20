@@ -11,7 +11,7 @@ export async function purchaseSubscriptionAction(
   if (!planId) return { error: "请选择套餐" };
   if (!Number.isInteger(quantity) || quantity < 1) return { error: "席位至少为 1" };
   try {
-    await apiFetch("/api/subscriptions", {
+    await apiFetch("/v1/subscriptions", {
       method: "POST",
       body: { planId, quantity },
     });
@@ -28,7 +28,7 @@ export async function changeSubscriptionAction(
   input: { targetPlanId: number; quantity: number },
 ): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/subscriptions/${id}/change`, { method: "POST", body: input });
+    await apiFetch(`/v1/subscriptions/${id}/change`, { method: "POST", body: input });
     revalidatePath("/dashboard/subscription");
     return {};
   } catch (e) {
@@ -39,7 +39,7 @@ export async function changeSubscriptionAction(
 // ── 续费（按原席位扣余额、顺延订阅期）──────────────────────────────────────
 export async function renewSubscriptionAction(id: number): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/subscriptions/${id}/renew`, { method: "POST" });
+    await apiFetch(`/v1/subscriptions/${id}/renew`, { method: "POST" });
     revalidatePath("/dashboard/subscription");
     return {};
   } catch (e) {

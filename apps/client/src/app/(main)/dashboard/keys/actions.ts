@@ -13,7 +13,7 @@ export async function createKeyAction(input: {
 }): Promise<{ error?: string; key?: KeyCreated }> {
   if (!input.name.trim()) return { error: "请输入名称" };
   try {
-    const res = await apiFetch<KeyCreated>("/api/keys", {
+    const res = await apiFetch<KeyCreated>("/v1/keys", {
       method: "POST",
       body: {
         name: input.name.trim(),
@@ -35,7 +35,7 @@ export async function updateKeyAction(
     remark?: string;
     rpmLimit?: number | null;
     tpmLimit?: number | null;
-    dailySpendLimit?: number | null;
+    dailySpendLimit?: string | null;
   },
 ): Promise<{ error?: string }> {
   try {
@@ -45,7 +45,7 @@ export async function updateKeyAction(
     if (input.rpmLimit !== undefined) body.rpmLimit = input.rpmLimit;
     if (input.tpmLimit !== undefined) body.tpmLimit = input.tpmLimit;
     if (input.dailySpendLimit !== undefined) body.dailySpendLimit = input.dailySpendLimit;
-    await apiFetch<KeyRow>(`/api/keys/${id}`, { method: "PATCH", body });
+    await apiFetch<KeyRow>(`/v1/keys/${id}`, { method: "PATCH", body });
     revalidatePath("/dashboard/keys");
     return {};
   } catch (e) {
@@ -55,7 +55,7 @@ export async function updateKeyAction(
 
 export async function revokeKeyAction(id: number): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/keys/${id}`, { method: "DELETE" });
+    await apiFetch(`/v1/keys/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/keys");
     return {};
   } catch (e) {

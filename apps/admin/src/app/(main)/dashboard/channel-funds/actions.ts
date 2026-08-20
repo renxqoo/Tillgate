@@ -7,7 +7,7 @@ import { adminFetch, ApiError } from "@ai-gateway/api-client";
 // ── 入货 ─────────────────────────────────────────────────────────────────────
 export interface RechargeInput {
   channelId: number;
-  amount: number;
+  amount: string;
   orderNo?: string;
   /** 凭证截图 base64 data URL */
   voucherDataUrl?: string;
@@ -18,9 +18,9 @@ export async function rechargeChannelAction(
   input: RechargeInput,
 ): Promise<{ error?: string }> {
   if (!input.channelId) return { error: "请选择渠道" };
-  if (!input.amount || input.amount <= 0) return { error: "入货金额须 > 0" };
+  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) return { error: "入货金额须 > 0" };
   try {
-    await adminFetch("/api/admin/channel-funds/recharge", {
+    await adminFetch("/v1/channel-funds/recharge", {
       method: "POST",
       body: {
         channelId: input.channelId,
@@ -40,7 +40,7 @@ export async function rechargeChannelAction(
 // ── 调账 ─────────────────────────────────────────────────────────────────────
 export interface AdjustInput {
   channelId: number;
-  amount: number;
+  amount: string;
   remark?: string;
 }
 
@@ -48,9 +48,9 @@ export async function adjustChannelAction(
   input: AdjustInput,
 ): Promise<{ error?: string }> {
   if (!input.channelId) return { error: "请选择渠道" };
-  if (!input.amount || input.amount === 0) return { error: "调账金额不能为 0" };
+  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) return { error: "调账金额不能为 0" };
   try {
-    await adminFetch("/api/admin/channel-funds/adjust", {
+    await adminFetch("/v1/channel-funds/adjust", {
       method: "POST",
       body: {
         channelId: input.channelId,

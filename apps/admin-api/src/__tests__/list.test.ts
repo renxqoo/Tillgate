@@ -80,7 +80,7 @@ describe('R10: 统一列表契约', () => {
     const externalName = uid('l10-model');
     await request('/v1/models', {
       token,
-      body: { externalName, realModel: uid('real'), inputPrice: 1, outputPrice: 1, cacheInputPrice: 1 },
+      body: { externalName, realModel: uid('real'), inputPrice: '1', outputPrice: '1', cacheInputPrice: '1' },
     });
     const list = (await (
       await request(`/v1/models?q=${externalName}`, { token })
@@ -95,7 +95,7 @@ describe('R10: 统一列表契约', () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
     const name = uid('l10-card');
-    await request('/v1/rate-cards', { token, body: { name, coefficient: 1.5 } });
+    await request('/v1/rate-cards', { token, body: { name, coefficient: '1.5' } });
 
     const list = (await (
       await request(`/v1/rate-cards?q=${name}&page_size=99999&page=0`, { token })

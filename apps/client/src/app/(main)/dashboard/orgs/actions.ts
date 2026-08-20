@@ -10,7 +10,7 @@ export async function inviteMemberAction(
 ): Promise<{ error?: string; link?: string }> {
   if (!email.trim()) return { error: "请输入邮箱" };
   try {
-    const res = await apiFetch<{ invitationId: number; token: string }>(`/api/orgs/${orgId}/invitations`, {
+    const res = await apiFetch<{ invitationId: number; token: string }>(`/v1/orgs/${orgId}/invitations`, {
       method: "POST",
       body: { email: email.trim() },
     });
@@ -23,7 +23,7 @@ export async function inviteMemberAction(
 
 export async function acceptInviteAction(token: string): Promise<{ error?: string }> {
   try {
-    await apiFetch("/api/orgs/invitations/accept", { method: "POST", body: { token } });
+    await apiFetch("/v1/orgs/invitations/accept", { method: "POST", body: { token } });
     revalidatePath("/dashboard/orgs");
     revalidatePath("/dashboard/keys");
     return {};
@@ -35,10 +35,10 @@ export async function acceptInviteAction(token: string): Promise<{ error?: strin
 export async function setMemberQuotaAction(
   orgId: number,
   userId: number,
-  input: { dailySpendLimit?: number | null; monthlyQuota?: number | null },
+  input: { dailySpendLimit?: string | null; monthlyQuota?: string | null },
 ): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/orgs/${orgId}/members/${userId}`, { method: "PATCH", body: input });
+    await apiFetch(`/v1/orgs/${orgId}/members/${userId}`, { method: "PATCH", body: input });
     revalidatePath("/dashboard/orgs");
     return {};
   } catch (e) {
@@ -48,7 +48,7 @@ export async function setMemberQuotaAction(
 
 export async function revokeInvitationAction(orgId: number, invitationId: number): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/orgs/${orgId}/invitations/${invitationId}/revoke`, { method: "POST" });
+    await apiFetch(`/v1/orgs/${orgId}/invitations/${invitationId}/revoke`, { method: "POST" });
     revalidatePath("/dashboard/orgs");
     return {};
   } catch (e) {
@@ -58,7 +58,7 @@ export async function revokeInvitationAction(orgId: number, invitationId: number
 
 export async function removeMemberAction(orgId: number, userId: number): Promise<{ error?: string }> {
   try {
-    await apiFetch(`/api/orgs/${orgId}/members/${userId}`, { method: "DELETE" });
+    await apiFetch(`/v1/orgs/${orgId}/members/${userId}`, { method: "DELETE" });
     revalidatePath("/dashboard/orgs");
     return {};
   } catch (e) {

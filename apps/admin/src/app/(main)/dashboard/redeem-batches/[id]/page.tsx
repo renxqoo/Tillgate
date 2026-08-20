@@ -35,7 +35,7 @@ export default async function BatchDetailPage({ params, searchParams }: PageProp
   let batch: AdminBatchRow | null = null;
   let error: string | null = null;
   try {
-    batch = await adminFetch<AdminBatchRow>(`/api/admin/redeem-batches/${batchId}`);
+    batch = await adminFetch<AdminBatchRow>(`/v1/redeem-batches/${batchId}`);
   } catch (e) {
     error = e instanceof ApiError ? e.message : '加载失败';
   }
@@ -43,7 +43,7 @@ export default async function BatchDetailPage({ params, searchParams }: PageProp
   const sp = await searchParams;
   const { page, sortBy, order } = parseListSearchParams(sp);
   const codesResult = await fetchAdminList<ApiRedeemCodeRow>(
-    `/api/admin/redeem-batches/${batchId}/codes`,
+    `/v1/redeem-batches/${batchId}/codes`,
     { page, pageSize: PAGE_SIZE, sortBy, order },
   );
   const codes: RedeemCodeRow[] = codesResult.rows;

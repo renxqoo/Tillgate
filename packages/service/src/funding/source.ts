@@ -65,7 +65,7 @@ export interface SourceSettleInput {
   reservation: SourceReservation;
   /** 本源消耗（≤ 预留额；余量随结算原语隐式归还） */
   consume: string;
-  /** 超额（actual > Σ预留）：PAYG 以 §4 补充授权模式吸收；订阅链恒 0 */
+  /** 超额（actual > Σ预留）：由最后一个资金源补充入账；余额不足也必须形成全额应收 */
   over: string;
   now: Date;
 }

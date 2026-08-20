@@ -1,6 +1,6 @@
 /**
  * Stripe 协议纯规则单元套件（无 IO 无 PG）：分转换 / 签名头解析 /
- * HMAC 验签（恒定时间 + 重放窗）/ 事件归一（只认 checkout.session.completed）。
+ * HMAC 验签（恒定时间 + 重放窗）/ 事件归一（只认已实际到账的 CNY payment）。
  */
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -90,7 +90,10 @@ describe('webhook 验签', () => {
 });
 
 const buildEvent = (obj: Record<string, unknown>, type = 'checkout.session.completed') =>
-  JSON.stringify({ type, data: { object: obj } });
+  JSON.stringify({
+    type,
+    data: { object: { payment_status: 'paid', mode: 'payment', currency: 'cny', ...obj } },
+  });
 
 describe('事件归一', () => {
   const event = buildEvent;
@@ -107,6 +110,13 @@ describe('事件归一', () => {
       event({ id: 'cs_2', amount_total: 500, metadata: { order_id: 'order-2' } }),
     );
     expect(parsed!.orderId).toBe('order-2');
+  });
+
+  it('completed 但未到账/币种或模式不符 → 拒绝入账', () => {
+    const base = { id: 'cs_3', client_reference_id: 'order-3', amount_total: 500 };
+    expect(parseStripeEvent(event({ ...base, payment_status: 'unpaid' }))).toBeNull();
+    expect(parseStripeEvent(event({ ...base, currency: 'usd' }))).toBeNull();
+    expect(parseStripeEvent(event({ ...base, mode: 'subscription' }))).toBeNull();
   });
 
   it('非目标事件类型 / 缺字段 / 坏 JSON → null', () => {
