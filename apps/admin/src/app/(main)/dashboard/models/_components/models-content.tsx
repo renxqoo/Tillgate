@@ -141,6 +141,11 @@ function refinePricing(
   }
 }
 
+/** 可空整数文本（上下文窗口）：空 = 不填（提交 null，与 API nullable 对齐）；非空需为正整数 */
+const optionalIntText = z
+  .string()
+  .refine((v) => v.trim() === '' || (Number.isInteger(Number(v)) && Number(v) > 0), '需为正整数（留空 = 不限）');
+
 const createSchema = z
   .object({
     externalName: z.string().min(1),
@@ -154,10 +159,7 @@ const createSchema = z
       .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
     unitPrice: z.string(),
     isFree: z.boolean().optional(),
-    contextLength: numericText({ message: '请输入有效 token 数' }).refine(
-      (v) => v === 0 || Number.isInteger(v),
-      '需为整数',
-    ),
+    contextLength: optionalIntText,
   })
   .superRefine(refinePricing);
 
@@ -329,7 +331,7 @@ export function CreateModelDialog() {
         // billingConfig 由 ModelForm 差价编辑器并入（单位计价 + 按参数差价时存在）
         ...(values.billingConfig != null ? { billingConfig: values.billingConfig } : {}),
         isFree: values.isFree ?? false,
-        contextLength: values.contextLength === '' ? null : Number(values.contextLength),
+        contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
       });
       if (!notify(res, '创建失败', '已创建')) return;
       form.reset();
@@ -379,10 +381,7 @@ const editSchema = z
       .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
     unitPrice: z.string(),
     isFree: z.boolean().optional(),
-    contextLength: numericText({ message: '请输入有效 token 数' }).refine(
-      (v) => v === 0 || Number.isInteger(v),
-      '需为整数',
-    ),
+    contextLength: optionalIntText,
     fallbackModels: z.string().optional(),
     paramRules: z.string().optional(),
     billingPolicy: z
@@ -457,7 +456,7 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
           ? { billingConfig: null }
           : { billingConfig: values.billingConfig }),
         isFree: values.isFree ?? false,
-        contextLength: values.contextLength === '' ? null : Number(values.contextLength),
+        contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
         paramRules: values.paramRules?.trim() || undefined,
         billingPolicy: values.billingPolicy?.trim()
@@ -775,7 +774,7 @@ function ModelForm({
           <NumberField
             control={form.control}
             name="contextLength"
-            label="上下文（token）"
+            label="上下文（token，可空）"
             id="m-ctx"
             step="1"
           />
