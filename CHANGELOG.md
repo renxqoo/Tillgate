@@ -4,6 +4,45 @@
 > 工作规则见 [AGENT.md](./AGENT.md)；扣款链路唯一真相见 [docs/billing-flow-deep-dive.md](./docs/billing-flow-deep-dive.md)。
 > 条目按时间倒序、保留原始记录不重写。
 
+
+---
+
+## §15 packages/ai v2 重构完成（2026-08-20，分支 refactor/ai-package-v2，方案见 docs/plan-ai-package-v2.md）
+
+P0–P5 全部落地：机制链拆解（create-ai 768→273 行，pipeline 八模块各 ≤128 行）、
+契约分粒度（五能力件 + defineAdapter 组合器，Azure 改组合式）、vendor 全链
+（providers.vendor 迁移 0062 + 档案库 + mergeParamRules + admin 下拉）、任务词表
+收敛（删 ai 死模块 descriptors，domain GENERATION_KINDS 唯一真相 + 跨包一致性
+测试）、覆盖率门禁 90/85（实测 94.8/85.1/93.2/96.8，449 单测 + gateway e2e 32/32）。
+
+**施工中发现并修复的 4 处生产缺陷**（特征化测试暴露；均属「mock 上游不校验
+形状所以一直没拦住」家族）：
+1. **模态族寻址错路**：gateway 从不传 ctx.endpoint，create-ai 兜底 'chat'——
+   embeddings/images/audio/rerank/moderations 生产路径全被发往 /v1/chat/completions。
+   修复：RequestCtx.endpoint 必填 + 全链显式传递 + 删 body.inferenceKind 双轨。
+2. **multipart 文件丢失**：body.upstreamForm 从未拆包，JSON.stringify(wrapper)
+   把 FormData 静默序列化成 {}——images/edits、audio/transcriptions、
+   audio/translations 的文件字节到不了上游。修复：chat 路径拆包直传 + model
+   重写进表单 + normalizeRequest FormData 直通底线。
+3. **取消丢失**：fetchUpstream 对已中止信号只挂 addEventListener（abort 事件
+   不回放）——DNS 解析期间/派发前的取消被丢失、请求照发。修复：入口显式拒绝
+   + 监听前置（SSRF 校验错误仍原样上抛）。
+4. **契约形状不齐**：openai-compatible planRequest 内联类型把 Endpoint 窄化缺
+   video/music；anthropic/gemini/bedrock normalizeRequest 缺 rules 参。
+
+**其他**：overflow 错误库（新码 context_overflow：不重试/不跳闸/不换渠/原码
+透传）；usage Mistral 方言 + 修复嵌套 compatible 吞冲突信号隐患；vertex-ai
+fetch 注入点提构造器（原注释声称可注入但生产不可达）；e2e-kit.settleAll 竞态
+容忍（§5.7）；e2e-worker OTEL 配置缺失修复。
+
+**决策门结论（cache_write）**：Anthropic cache_creation_input_tokens（含 1h 档）
+当前完全未计量未计费——cache read 已正确归一。属跨域资金工单（db 费率卡 +
+rating 公式 + wallet 联动），未混入本次重构，挂独立待办。
+
+**实施偏差**：vendor profile 首批仅含已验证条目（openai: max_tokens→
+max_completion_tokens，basis 必填防自造规则）——计划原定 8 家在 new-api/pi-ai
+中均无内置参数删除实证，编造规则的风险大于收益，机制完整、内容待实测补充。
+
 ---
 
 ## §14 竞品深度对比 + packages/ai v2 重构方案定稿（2026-08-20，docs/plan-ai-package-v2.md）

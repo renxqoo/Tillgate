@@ -160,41 +160,51 @@ interface Ai {
 packages/ai/
 ├── package.json               # deps: eventsource-parser, zod；dev: vitest, typescript
 ├── src/
-│   ├── index.ts               # 公共出口（createAi + 类型）
-│   ├── create-ai.ts           # 组装：适配器注册表（protocol→adapter）+ withRetry + breaker 绑定 + 事件总线
+│   ├── index.ts               # 公共出口（createAi + codec 全量 + defineAdapter + 厂商档案 + 类型）
+│   ├── create-ai.ts           # 装配壳（注册表 + chat/chatStream 编排委托机制链；multipart 拆包在此）
+│   ├── join-url.ts            # baseUrl 版本段去重纯函数（BUG-E）
 │   ├── config.ts              # zod schema（AiConfig 校验，默认值）+ BreakerState/BreakerStorage 接口
 │   ├── events.ts              # AiEvent / StreamError（含流式中断语义 terminated/bytesRelayed）
-│   ├── types.ts               # ChannelDesc / RequestCtx / Usage / UpstreamError / Result / Ai
-│   ├── internal/              # 包内私有（不进公共出口，可随时变更）
-│   │   ├── util.ts            # asRecord / asArray / tryParseJson（消除多处重复）
-│   │   ├── memory-storage.ts  # 内存状态存储（breaker 与 dead-credential 共用：单测 + 单机兜底）
-│   │   └── stream.ts          # peekFirstChunk（流式空完成首帧探测，D3）
+│   ├── types.ts               # ChannelDesc(含 vendor) / RequestCtx(endpoint 必填) / Usage / UpstreamError / Result / Ai
+│   ├── pipeline/              # v2 机制链（从 create-ai 拆解，各 ≤128 行）
+│   │   ├── context.ts         # channelKey / 前置校验 / 事件分发 / fireAndForget / 重试参数
+│   │   ├── prepare.ts         # 参数抹平（vendor profile + per-model 规则合并）+ 准入对象
+│   │   ├── admission.ts       # 熔断 + 死凭据准入判定（chat/chatStream 去重）
+│   │   ├── chat.ts            # 非流式尝试体（withRetry 回调：fetch/翻译/分类/计量）
+│   │   ├── chat-stream.ts     # 流式尝试体（fetch/原生归一/peek 首帧判定）
+│   │   ├── stream-report.ts   # per-call 事件总线 + failEarly 错误帧流 + relay 事件翻译
+│   │   ├── probe.ts           # 连通性探测（死凭据优先语义）
+│   │   └── generation-ops.ts  # 任务三动词（parse/query/retrieve）
+│   ├── registry/              # v2 扩展点
+│   │   ├── define-adapter.ts  # 五能力件组合器（未覆写件落 openai-compatible 默认，委托非复制）
+│   │   └── vendor-profiles.ts # 厂商参数怪癖预设库（basis 必填）+ mergeParamRules（model 侧逐键优先）
 │   ├── transport/
-│   │   ├── http-client.ts     # fetch 封装：connect 超时 / abort 信号 / URL 校验 / readBody(signal) / BodyTooLargeError
+│   │   ├── http-client.ts     # fetch 封装：connect 超时 / abort（入口显式拒绝已中止信号）/ SSRF 硬门 / readBody(signal)
 │   │   ├── sse-parser.ts      # eventsource-parser 薄封装：增量解析 + usage 最后帧 + 错误帧捕获
 │   │   └── relay-stream.ts    # 透传管道：心跳注入 / abort 传播 / 错误帧转换 / bytesRelayed 计数
 │   ├── protocol/              # 出站协议表面转换：claude-chat / completions-chat / gemini-chat / responses-chat / stream-convert
 │   ├── adapters/
-│   │   ├── protocol-adapter.ts    # ProtocolAdapter 接口（寻址/终改/抹平/计量/错误/探测 契约）
-│   │   └── openai-compatible.ts   # 默认实现（寻址 + 终改 + 规则抹平 + usage 归一化 + 错误映射）
-│   ├── generation/            # 生成式任务适配（descriptors 生成类型描述符 / task-adapter 任务端口生产适配）
+│   │   ├── protocol-adapter.ts    # 契约：五能力件（Addressing/BodyFinalizer/UsageExtractor/ErrorMapper/WireCodec）+ 聚合 ProtocolAdapter
+│   │   ├── openai-compatible.ts   # 默认实现（寻址全端点 + 终改 + 规则抹平 + FormData 直通 + usage + 错误映射）
+│   │   ├── azure-openai.ts        # defineAdapter 组合式样板（只覆写寻址）
+│   │   └── anthropic/gemini/azure/aws-bedrock/vertex-ai/minimax.ts
+│   ├── generation/
+│   │   └── task-adapter.ts    # 任务端口生产适配（词表 = ProtocolTaskKind，与 domain GENERATION_KINDS 一致性由 gateway 测试锁死）
 │   ├── usage/
-│   │   ├── normalize.ts       # 缓存字段归一化（OpenAI cached_tokens / DeepSeek cache_hit+miss）
-│   │   └── media-duration.ts  # 音视频时长估算（audio_transcription/translation 按秒计费的计量源）
+│   │   ├── normalize.ts       # 缓存字段归一化（OpenAI/DeepSeek/Mistral 方言 + 一致性校验）
+│   │   ├── token-estimate.ts  # CJK 感知估算器 + 三层校准（defaults←provider←model）
+│   │   └── media-duration.ts  # 音视频时长估算（WAV/MP3 帧解析 + 16KB/s 兜底）
 │   ├── errors/
-│   │   ├── classify.ts        # 错误分类矩阵 + 死凭据文本特征
+│   │   ├── classify.ts        # 错误分类矩阵 + 死凭据/额度/限流特征 + 溢出识别
+│   │   ├── overflow.ts        # 上下文溢出模式库（23 供应商模式 + 排除表，移植自 pi-ai MIT）
 │   │   ├── internal.ts        # 包内策略性错误（空完成/响应非法/deadline/熔断打开）
 │   │   └── server-drain.ts    # 服务端排空标记（server_draining 计费归属：释放不扣）
-│   ├── retry/
-│   │   └── with-retry.ts      # 指数退避 + full jitter + deadline；空完成重试（≤2）
-│   ├── dead-credential/        # 死凭据计数（5.16：连续 401/403 → invalid + 停止路由）
-│   │   └── tracker.ts          # CAS 状态机原语（valid/invalid + 连续计数 + 窗口；内存实现共用 internal/memory-storage.ts）
-│   └── breaker/
-│       ├── breaker.ts         # 状态机原语（CAS 并发安全：closed/open/half-open + 滚动窗口）
-│       └── storage.ts         # BreakerStorage 接口 re-export（内存实现共用 internal/memory-storage.ts）
+│   ├── retry/ dead-credential/ breaker/   # 机制不动（CAS 并发安全原语）
+│   └── internal/              # 包内私有（util / memory-storage / stream.peekFirstChunk）
 └── test/
-    ├── unit/                  # sse-parser / classify / with-retry / normalize / breaker / stream / ...
-    └── integration/           # mock 上游（本地 HTTP 服务）：正常 SSE / 断流 / 空完成重试 / 429 / 401 / 熔断联动 / 事件序列
+    ├── unit/ + protocol/      # 449 用例：机制/契约/防御矩阵/特性臂/估算器/任务面
+    ├── integration/           # mock 上游（本地 HTTP）：尝试体 catch 家族 / vendor 端到端 / 生成任务
+    └── real/                  # 真实供应商（无 key 自动 skip）：chat/stream/分类矩阵/embeddings 寻址
 ```
 
 ## 7. 关键机制设计
