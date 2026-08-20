@@ -28,20 +28,38 @@ export interface PublicPricingModel {
   rateCardStatus?: number | null;
 }
 
+/** 公开目录基础数据（模型清单 + 价格富化）的进程内 TTL 缓存：
+ *  价格目录是公共信息、变更由运营驱动——30s 传播延迟无感，而每次命中省两查 DB
+ *  （公开无会话端点，爬虫/价格页刷屏不再直压数据库）。多副本各自缓存，短 TTL 天然收敛。 */
+const BASE_CATALOG_TTL_MS = 30_000;
+
 export function pricingRoutes(
   db: Db,
   repos: Repositories = createRepositories(),
   session?: MiddlewareHandler<SessionEnv>,
+  opts: { cacheTtlMs?: number } = {},
 ) {
   const app = new Hono();
   const ctx = { requestId: 'pricing', actor: { kind: 'system' } as const, traceParent: null };
+  const ttlMs = opts.cacheTtlMs ?? BASE_CATALOG_TTL_MS;
 
-  const buildRows = async () => {
+  type CatalogModels = Awaited<ReturnType<typeof repos.modelMapping.listEnabledModels>>;
+  type CatalogEnriched = Awaited<ReturnType<typeof repos.modelMapping.findActiveByExternalNames>>;
+  let baseCache: { at: number; models: CatalogModels; enriched: CatalogEnriched } | null = null;
+
+  async function loadBaseCatalog(): Promise<{ models: CatalogModels; enriched: CatalogEnriched }> {
+    if (baseCache && Date.now() - baseCache.at < ttlMs) return baseCache;
     const models = await repos.modelMapping.listEnabledModels({ db, ...ctx });
     const enriched = await repos.modelMapping.findActiveByExternalNames(
       { db, ...ctx },
       models.map((m) => m.externalName),
     );
+    baseCache = { at: Date.now(), models, enriched };
+    return baseCache;
+  }
+
+  const buildRows = async () => {
+    const { models, enriched } = await loadBaseCatalog();
     const rows: PublicPricingModel[] = models.map((m) => {
       const full = enriched.get(m.externalName);
       return {
@@ -71,11 +89,8 @@ export function pricingRoutes(
         rateCardId != null
           ? await repos.rating.loadRateCardCoefficients({ db, ...userCtx }, rateCardId)
           : null;
-      const models = await repos.modelMapping.listEnabledModels({ db, ...ctx });
-      const enriched = await repos.modelMapping.findActiveByExternalNames(
-        { db, ...ctx },
-        models.map((m) => m.externalName),
-      );
+      // 基础目录走共享缓存；仅费率卡按用户每请求解析
+      const { models, enriched } = await loadBaseCatalog();
       const rows = models.map((m) => {
         const full = enriched.get(m.externalName);
         const coefficient =
