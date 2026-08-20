@@ -219,3 +219,19 @@ afterAll(async () => {
   if (createdPlans.length) await db.delete(plans).where(inArray(plans.id, createdPlans));
   await db.$client.end().catch(() => {});
 });
+
+
+/** 营销参数测试基线（= 迁移 0073 seed 值）：测试触碰 marketing_settings 必须
+ *  进基线、出基线——「快照恢复」会沿套件链传递污染（app.test 改 5 未恢复、
+ *  下一套件把 5 当原值恢复的级联事故，2026-08-21） */
+export const MARKETING_BASELINE = {
+  signupGiftAmount: '0',
+  referralSignupBonus: '1',
+  referralCommissionRate: '0.1',
+} as const;
+
+export async function resetMarketingSettings(): Promise<void> {
+  const { eq } = await import('drizzle-orm');
+  const { marketingSettings } = await import('@ai-gateway/db');
+  await db.update(marketingSettings).set({ ...MARKETING_BASELINE, updatedBy: null }).where(eq(marketingSettings.id, 1));
+}

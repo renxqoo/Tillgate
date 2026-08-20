@@ -9,31 +9,22 @@ import { describe, expect, it } from 'vitest';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { auditLogs, referrals, users as usersTable } from '@ai-gateway/db';
 import { Decimal } from '@ai-gateway/domain';
-import { buildTestApp, db, newAdmin, newUserRow, uid } from './helpers.js';
+import { buildTestApp, db, newAdmin, newUserRow, resetMarketingSettings, uid } from './helpers.js';
 
 const createdRelations: number[] = [];
 import { afterAll, beforeAll } from 'vitest';
 import { referrals as referralsTable } from '@ai-gateway/db';
 
-let settingsSnapshot: { signupGiftAmount: string; referralSignupBonus: string; referralCommissionRate: string } | null = null;
 beforeAll(async () => {
-  // 共享库配置快照：PUT 测试改值必须恢复——否则污染其他套件（e2e 注册会多领赠送）
-  const { marketingSettings } = await import('@ai-gateway/db');
-  const [row] = await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1));
-  settingsSnapshot = row
-    ? { signupGiftAmount: row.signupGiftAmount, referralSignupBonus: row.referralSignupBonus, referralCommissionRate: row.referralCommissionRate }
-    : null;
+  // 进基线：已知态起测（快照恢复会传递上游套件的污染）
+  await resetMarketingSettings();
 });
 
 afterAll(async () => {
-  // 依赖 admins 的 FK 先解（审计行 + marketing_settings.updated_by），否则阻塞全局清理；
-  // 配置恢复快照（共享库纪律：本套件造成的全局副作用必须清零）
+  // 出基线：依赖 admins 的 FK 先解（审计行 + updated_by → reset 内置置 null），
+  // 再恢复基线并清理本套件的邀请关系行
   await db.delete(auditLogs).where(inArray(auditLogs.action, ['marketing.settings.update', 'referral.relation.update']));
-  const { marketingSettings } = await import('@ai-gateway/db');
-  await db
-    .update(marketingSettings)
-    .set({ ...settingsSnapshot, updatedBy: null })
-    .where(eq(marketingSettings.id, 1));
+  await resetMarketingSettings();
   if (createdRelations.length) {
     await db.delete(referralsTable).where(inArray(referralsTable.id, createdRelations));
   }

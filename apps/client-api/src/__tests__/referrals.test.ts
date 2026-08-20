@@ -3,11 +3,12 @@
  * 概览读数（邀请链接、已邀名单、累计佣金只计佣金流水）。
  * 资损不变量：重复归因不二次入账（invitee 唯一 + wallet 自然键双保险）。
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { referrals as referralsTable, users } from '@ai-gateway/db';
 import { systemContext } from '@ai-gateway/service';
 import { createReferralService } from '../services/referral.service.js';
+import { resetMarketingSettings } from './helpers.js';
 import {
   commissionAmount,
   decodeAffCode,
@@ -215,10 +216,15 @@ describe('邀请概览（overview）', () => {
 });
 
 describe('邀请功能开关（marketing_settings 联动——2026-08-21 DB 化）', () => {
+  beforeAll(async () => {
+    await resetMarketingSettings();
+  });
+  afterAll(async () => {
+    await resetMarketingSettings();
+  });
+
   it('config 返回现值与 enabled（两项激励任一 > 0 即开启；全 0 = C 端隐藏）', async () => {
     const { marketingSettings } = await import('@ai-gateway/db');
-    const snapshot = await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1));
-    const snap = snapshot[0]!;
     const read = async (key: 'referralSignupBonus' | 'referralCommissionRate') =>
       (await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1)))[0]![key];
     const service = createReferralService({
@@ -239,8 +245,5 @@ describe('邀请功能开关（marketing_settings 联动——2026-08-21 DB 化�
     const on = await service.config(ctx, 1);
     expect(on.enabled).toBe(true);
     expect(on.commissionRate).not.toBeNull();
-
-    // 恢复共享库快照
-    await db.update(marketingSettings).set({ referralSignupBonus: snap.referralSignupBonus, referralCommissionRate: snap.referralCommissionRate }).where(eq(marketingSettings.id, 1));
   });
 });

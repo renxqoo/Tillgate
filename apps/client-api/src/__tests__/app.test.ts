@@ -2,7 +2,13 @@
  * 全链 HTTP 套件（真 PG + app.fetch）：注册→登录→me→Key→兑换→充值→回调→流水
  * 的用户闭环 + 会话中间件安全语义（失效线/封禁/类型隔离）+ 协议信封（400/404/healthz）。
  */
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { resetMarketingSettings } from './helpers.js';
+
+afterAll(async () => {
+  // 共享配置卫生：本套件改动 marketing_settings，跑完恢复基线（快照恢复会传递污染）
+  await resetMarketingSettings();
+});
 import { Decimal } from '@ai-gateway/domain';
 import { eq } from 'drizzle-orm';
 import { createHmac } from 'node:crypto';
@@ -285,8 +291,8 @@ describe('邀请返利（注册归因全链 HTTP）', () => {
     // referral.apply（两步 HTTP 形态在 auth-code.test 全覆盖，此处钉归因与奖励闭环）
     const { app, assembly } = await buildApp(buildConfig({}));
     // 营销参数 DB 化：邀请奖励经 marketing_settings 注入（原 env 形态已删除）
-    const { marketingSettings } = await import('@ai-gateway/db');
     const helpers = await import('./helpers.js');
+    const { marketingSettings } = await import('@ai-gateway/db');
     await helpers.db.update(marketingSettings).set({ referralSignupBonus: '5' }).where(eq(marketingSettings.id, 1));
     const inviter = await newUser();
     const invitee = await newUser();
