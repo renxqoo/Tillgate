@@ -112,6 +112,9 @@ beforeAll(async () => {
     WORKER_SHUTDOWN_GRACE_MS: 5_000,
     CHANNEL_API_KEY_ENCRYPTION: encryptionKeyOf(),
     WORKER_AI_ALLOW_LOCAL_URL: true, // mock 上游在回环——dev 逃生门
+    // 内联配置绕过 zod 默认值——OTEL 字段缺省会让 initOtel 落进 OTLP 分支
+    // （mode=undefined≠'off'，endpoint undefined 直接炸导出器构造）
+    OTEL_TRACES_MODE: 'off',
   } as unknown as WorkerConfig;
   worker = await (await importStartWorker())(workerConfig);
 }, 30_000);
@@ -249,8 +252,10 @@ describe('E2E ⑯ worker 全链', () => {
     const bill = await db.$client.query<{ status: string }>(
       'select status from billing_requests where user_id = $1', [userId],
     );
-    expect(bill.rows[0]!.status).toBe('settlement_pending'); // 无人消费
-    // 手动结算收尾（避免清理 FK）
+    // 共享 dev 库竞态（AGENT.md §5.7）：本测试的 worker 已停，但本机可能挂着
+    // 活 dev worker（1s 一轮）合法抢领——settled 是合法终态；released/dead 才是回归
+    expect(['settlement_pending', 'settled']).toContain(bill.rows[0]!.status);
+    // 手动结算收尾（避免清理 FK；外部 worker 已结算时为幂等空转）
     await keys.settleAll(userId);
   }, 30_000);
 });
