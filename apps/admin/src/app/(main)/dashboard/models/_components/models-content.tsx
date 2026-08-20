@@ -20,6 +20,11 @@ import type { ModelTestResult } from '../actions';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Checkbox } from '@ai-gateway/ui/components/ui/checkbox';
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@ai-gateway/ui/components/ui/collapsible';
+import {
   Dialog,
   DialogClose,
   DialogContent,
@@ -347,7 +352,7 @@ export function CreateModelDialog() {
           新建模型映射
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CpuIcon /> 新建模型映射
@@ -478,7 +483,7 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
           <PencilIcon />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PencilIcon /> 编辑模型 - {model.externalName}
@@ -561,7 +566,7 @@ function ModelForm({
             : {}),
         });
       })}
-      className="space-y-4"
+      className="min-h-0 flex-1 space-y-4 overflow-y-auto"
     >
       <FieldGroup>
         <div className="grid grid-cols-2 gap-3">
@@ -799,7 +804,13 @@ function ModelForm({
           )}
         />
         {isEdit && (
-          <>
+          <Collapsible className="rounded-md border p-3">
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
+                高级设置（兜底模型 / 参数规则 / 计费策略 / 限流 / 状态）
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-3">
             <Controller
               control={form.control}
               name="fallbackModels"
@@ -868,7 +879,8 @@ function ModelForm({
                 min={0}
               />
             </div>
-          </>
+            </CollapsibleContent>
+          </Collapsible>
         )}
       </FieldGroup>
     </form>
