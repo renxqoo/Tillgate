@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   HistoryIcon,
   Loader2Icon,
   RefreshCwIcon,
@@ -26,6 +24,7 @@ import {
   TableRow,
 } from '@ai-gateway/ui/components/ui/table';
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
+import { Pager } from '@ai-gateway/ui/components/ui/pager';
 import { fmtDateTime } from '@ai-gateway/api-client/formatters';
 import { useActionResult } from '@ai-gateway/ui/components/action-toast';
 import {
@@ -511,32 +510,8 @@ export function CatalogContent({
         </Table>
       </div>
 
-      {/* 分页条：勾选跨页累计（导入按钮计数即全部已选） */}
-      {filtered.length > PAGE_SIZE ? (
-        <div className="flex items-center justify-center gap-3 py-1 text-xs text-muted-foreground">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7"
-            disabled={safePage <= 1}
-            onClick={() => setPage(safePage - 1)}
-          >
-            <ChevronLeftIcon className="size-3" /> 上一页
-          </Button>
-          <span>
-            第 {safePage} / {totalPages} 页 · 共 {filtered.length.toLocaleString()} 条 · 每页 {PAGE_SIZE}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7"
-            disabled={safePage >= totalPages}
-            onClick={() => setPage(safePage + 1)}
-          >
-            下一页 <ChevronRightIcon className="size-3" />
-          </Button>
-        </div>
-      ) : null}
+      {/* 分页（共享 Pager 受控模式）：勾选跨页累计——导入按钮计数即全部已选 */}
+      <Pager page={safePage} totalPages={totalPages} total={filtered.length} onPageChange={setPage} />
 
       {/* 上游消失（channel 源）：绑定到本源渠道但目录已无——复核下架 */}
       {sourceKind === 'channel' && gone.length > 0 ? (
