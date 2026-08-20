@@ -60,11 +60,11 @@ function RelationActions({ row }: { row: ReferralRelationRow }) {
 export function RelationsTable({ rows }: { rows: ReferralRelationRow[] }) {
   const columns: DataTableColumn<ReferralRelationRow>[] = [
     { key: 'id', header: 'ID', render: (r) => <span className="text-xs tabular-nums text-muted-foreground">#{r.id}</span> },
-    { key: 'inviter', header: '邀请人', render: (r) => <span className="text-xs">{r.inviterEmail ?? `用户#${r.inviterUserId}`}</span> },
-    { key: 'invitee', header: '被邀人', render: (r) => <span className="text-xs">{r.inviteeEmail ?? `用户#${r.inviteeUserId}`}</span> },
-    { key: 'commissionTotal', header: '累计佣金', render: (r) => <span className="text-xs tabular-nums">{formatMoney(r.commissionTotal)}</span> },
+    { key: 'inviter', header: '邀请人', render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviterEmail ?? `用户#${r.inviterUserId}`}</span> },
+    { key: 'invitee', header: '被邀人', render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviteeEmail ?? `用户#${r.inviteeUserId}`}</span> },
+    { key: 'commissionTotal', header: '累计佣金', render: (r) => <span className="whitespace-nowrap text-xs tabular-nums">{formatMoney(r.commissionTotal, 2)}</span> },
     { key: 'status', header: '状态', render: (r) => <span className={r.status === 1 ? 'text-xs text-destructive' : 'text-xs text-emerald-600'}>{r.status === 1 ? '已封禁' : '有效'}</span> },
-    { key: 'createdAt', header: '绑定时间', render: (r) => <span className="text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
+    { key: 'createdAt', header: '绑定时间', render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
     { key: 'actions', header: '', render: (r) => <RelationActions row={r} /> },
   ];
   return <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />;
@@ -73,10 +73,10 @@ export function RelationsTable({ rows }: { rows: ReferralRelationRow[] }) {
 export function PayoutsTable({ rows }: { rows: PayoutRow[] }) {
   const columns: DataTableColumn<PayoutRow>[] = [
     { key: 'id', header: 'ID', render: (r) => <span className="text-xs tabular-nums text-muted-foreground">#{r.id}</span> },
-    { key: 'kind', header: '类型', render: (r) => <span className="text-xs">{r.kind}</span> },
-    { key: 'refId', header: '幂等锚', render: (r) => <span className="text-xs font-mono">{r.refId}</span> },
-    { key: 'memo', header: '备注', render: (r) => <span className="text-xs text-muted-foreground">{r.memo ?? '—'}</span> },
-    { key: 'createdAt', header: '时间', render: (r) => <span className="text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
+    { key: 'kind', header: '类型', render: (r) => <span className="whitespace-nowrap text-xs">{r.kind}</span> },
+    { key: 'refId', header: '幂等锚', render: (r) => <span className="block max-w-64 truncate text-xs font-mono" title={r.refId}>{r.refId}</span> },
+    { key: 'memo', header: '备注', render: (r) => <span className="block max-w-48 truncate text-xs text-muted-foreground" title={r.memo ?? undefined}>{r.memo ?? '—'}</span> },
+    { key: 'createdAt', header: '时间', render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
   ];
   return <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />;
 }
