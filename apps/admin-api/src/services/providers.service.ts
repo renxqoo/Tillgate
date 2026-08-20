@@ -4,7 +4,7 @@
  * 重名交给 PG 唯一索引（23505 由 error-map 翻译 409）；删除 = 软退役。
  * 每次变更推进路由缓存版本（网关重建路由；Redis 缺席时网关 TTL 兜底）。
  */
-import { SUPPORTED_PROTOCOLS } from '@ai-gateway/ai';
+import { SUPPORTED_PROTOCOLS, vendorProfileNames } from '@ai-gateway/ai';
 import type { Redis } from 'ioredis';
 import { recordAudit } from '@ai-gateway/http';
 import type { Db } from '@ai-gateway/repository';
@@ -25,11 +25,11 @@ export interface ProvidersService {
   list(ctx: RunContext, query: ListQueryParts): Promise<{ rows: ProviderRow[]; total: number; page: number; pageSize: number }>;
   create(
     ctx: RunContext,
-    input: { adminId: number; name: string; protocol?: string; baseUrl: string; status?: number },
+    input: { adminId: number; name: string; protocol?: string; vendor?: string | null; baseUrl: string; status?: number },
   ): Promise<ProviderRow>;
   update(
     ctx: RunContext,
-    input: { adminId: number; providerId: number; patch: { name?: string; protocol?: string; baseUrl?: string; status?: number } },
+    input: { adminId: number; providerId: number; patch: { name?: string; protocol?: string; vendor?: string | null; baseUrl?: string; status?: number } },
   ): Promise<ProviderRow>;
   retire(ctx: RunContext, input: { adminId: number; providerId: number }): Promise<{ ok: true }>;
 }
@@ -41,6 +41,16 @@ function assertProtocol(protocol: string | undefined): string | undefined {
     throw new AppError(400, 'invalid_protocol', `不支持的协议（可选: ${SUPPORTED_PROTOCOLS.join(', ')}）`);
   }
   return protocol;
+}
+
+/** 厂商档案词表校验（ai 包 VENDOR_PROFILES 单一真相；null = 清除档案走纯透传） */
+function assertVendor(vendor: string | null | undefined): string | null | undefined {
+  if (vendor === undefined) return undefined;
+  if (vendor === null || vendor === '') return null;
+  if (!vendorProfileNames().includes(vendor)) {
+    throw new AppError(400, 'invalid_vendor', `未知厂商档案（可选: ${vendorProfileNames().join(', ') || '无'}）`);
+  }
+  return vendor;
 }
 
 export function createProvidersService(deps: ProvidersServiceDeps): ProvidersService {
@@ -62,9 +72,11 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
 
     async create(ctx, input) {
       const protocol = assertProtocol(input.protocol) ?? 'openai-compatible';
+      const vendor = assertVendor(input.vendor) ?? null;
       const row = await repos.provider.insert({ db, ...ctx }, {
         name: input.name,
         protocol,
+        vendor,
         baseUrl: input.baseUrl,
         status: input.status,
       });
@@ -81,6 +93,7 @@ export function createProvidersService(deps: ProvidersServiceDeps): ProvidersSer
 
     async update(ctx, input) {
       assertProtocol(input.patch.protocol);
+      assertVendor(input.patch.vendor);
       const row = await repos.provider.update({ db, ...ctx }, {
         providerId: input.providerId,
         patch: input.patch,

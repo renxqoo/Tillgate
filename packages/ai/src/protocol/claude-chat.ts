@@ -231,14 +231,28 @@ const STOP_REASON_MAP: Record<string, string> = {
   refusal: 'content_filter',
 };
 
-export function claudeUsageToUsage(u: unknown): { promptTokens: number; completionTokens: number; cachedTokens: number } | null {
+export function claudeUsageToUsage(u: unknown): {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  /** 缓存写入（5m + 1h 两档合计——1h 档在 cache_creation.ephemeral_1h_input_tokens） */
+  cacheCreationTokens: number;
+} | null {
   const j = asJson(u);
   if (!j) return null;
   const input = typeof j.input_tokens === 'number' ? j.input_tokens : NaN;
   const output = typeof j.output_tokens === 'number' ? j.output_tokens : NaN;
   if (!Number.isFinite(input) || !Number.isFinite(output)) return null;
   const cacheRead = typeof j.cache_read_input_tokens === 'number' ? j.cache_read_input_tokens : 0;
-  return { promptTokens: input, completionTokens: output, cachedTokens: Math.min(cacheRead, input) };
+  const cacheCreate = typeof j.cache_creation_input_tokens === 'number' ? j.cache_creation_input_tokens : 0;
+  const oneHour = asJson(j.cache_creation)?.ephemeral_1h_input_tokens;
+  const cacheCreate1h = typeof oneHour === 'number' ? oneHour : 0;
+  return {
+    promptTokens: input,
+    completionTokens: output,
+    cachedTokens: Math.min(cacheRead, input),
+    cacheCreationTokens: cacheCreate + cacheCreate1h,
+  };
 }
 
 export function claudeResponseToChat(res: unknown): Json {
@@ -281,6 +295,8 @@ export function claudeResponseToChat(res: unknown): Json {
             completion_tokens: usage.completionTokens,
             total_tokens: usage.promptTokens + usage.completionTokens,
             prompt_tokens_details: { cached_tokens: usage.cachedTokens },
+            // 非标准扩展字段：缓存写入 token（OpenAI SDK 容忍未知子字段；消费方=本包 usage 归一）
+            cache_write_tokens: usage.cacheCreationTokens,
           },
         }
       : {}),
@@ -302,6 +318,8 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
   let toolCallIndex = 0;
   let inputTokens = 0;
   let lastCompletionTokens: number | null = null;
+  let cachedTokens = 0;
+  let cacheWriteTokens = 0;
   let emitUsage = false;
 
   return sseToSseStream(
@@ -318,7 +336,11 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
         model = str(msg.model) ?? model;
         id = str(msg.id) ?? id;
         const usage = claudeUsageToUsage(msg.usage);
-        if (usage) inputTokens = usage.promptTokens;
+        if (usage) {
+          inputTokens = usage.promptTokens;
+          cachedTokens = usage.cachedTokens;
+          cacheWriteTokens = usage.cacheCreationTokens;
+        }
         emit(openaiFrame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }));
         return;
       }
@@ -350,8 +372,19 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
       }
       if (data.type === 'message_delta') {
         const delta = asJson(data.delta) ?? {};
-        const usage = claudeUsageToUsage(data.usage);
-        if (usage) lastCompletionTokens = usage.completionTokens;
+        // Anthropic 语义：message_delta.usage 只带 output_tokens（input 侧在 message_start）——
+        // 严格双字段解析会永远拒绝它（存量缺陷：流式 usage 因此从未发出，计费全走估算）。
+        // 宽松读取：output 侧直接取；完整形态出现时才覆盖 input/缓存侧。
+        const du = asJson(data.usage);
+        if (du !== null && typeof du.output_tokens === 'number') {
+          lastCompletionTokens = du.output_tokens;
+        }
+        const usage = du !== null ? claudeUsageToUsage(du) : null;
+        if (usage) {
+          inputTokens = usage.promptTokens;
+          cachedTokens = usage.cachedTokens;
+          cacheWriteTokens = usage.cacheCreationTokens;
+        }
         const stopReason = str(delta.stop_reason);
         if (stopReason !== undefined) {
           emitUsage = true;
@@ -362,7 +395,15 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
             model,
             choices: [{ index: 0, delta: {}, finish_reason: STOP_REASON_MAP[stopReason] ?? 'stop' }],
             ...(lastCompletionTokens !== null && inputTokens > 0
-              ? { usage: { prompt_tokens: inputTokens, completion_tokens: lastCompletionTokens, total_tokens: inputTokens + lastCompletionTokens } }
+              ? {
+                  usage: {
+                    prompt_tokens: inputTokens,
+                    completion_tokens: lastCompletionTokens,
+                    total_tokens: inputTokens + lastCompletionTokens,
+                    ...(cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: cachedTokens } } : {}),
+                    ...(cacheWriteTokens > 0 ? { cache_write_tokens: cacheWriteTokens } : {}),
+                  },
+                }
               : {}),
           }));
         }
@@ -381,7 +422,17 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
     (emit) => {
       // 兜底：上游没有 message_delta（异常断流）也保证 usage 帧与 [DONE] 尽力补齐
       if (emitUsage === false && inputTokens > 0 && lastCompletionTokens !== null) {
-        emit(openaiFrame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: inputTokens, completion_tokens: lastCompletionTokens, total_tokens: inputTokens + lastCompletionTokens } }));
+        emit(openaiFrame({
+          id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model,
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          usage: {
+            prompt_tokens: inputTokens,
+            completion_tokens: lastCompletionTokens,
+            total_tokens: inputTokens + lastCompletionTokens,
+            ...(cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: cachedTokens } } : {}),
+            ...(cacheWriteTokens > 0 ? { cache_write_tokens: cacheWriteTokens } : {}),
+          },
+        }));
       }
       emit(openaiDone());
     },
@@ -404,6 +455,8 @@ export function canonicalStreamToClaudeStream(
   const tools: Map<number, { id: string; name: string; args: string }> = new Map();
   let inputTokens = 0;
   let outputTokens = 0;
+  let cachedTokens = 0;
+  let cacheWriteTokens = 0;
   let finishReason: string | null = null;
   let messageId = 'msg_' + Math.random().toString(36).slice(2, 14);
 
@@ -414,7 +467,17 @@ export function canonicalStreamToClaudeStream(
       if (ev.data === '[DONE]') {
         // [DONE] → message_delta(stop_reason) + message_stop
         if (!finishReason) finishReason = 'end_turn';
-        emit(frame('message_delta', { type: 'message_delta', delta: { stop_reason: claudeStopOf(finishReason) ?? 'end_turn' }, usage: { input_tokens: inputTokens, output_tokens: outputTokens } }));
+        emit(frame('message_delta', {
+          type: 'message_delta',
+          delta: { stop_reason: claudeStopOf(finishReason) ?? 'end_turn' },
+          usage: {
+            input_tokens: inputTokens,
+            output_tokens: outputTokens,
+            // 缓存字段还原为 claude 原生名（客户端 /v1/messages 面的保真）
+            ...(cachedTokens > 0 ? { cache_read_input_tokens: cachedTokens } : {}),
+            ...(cacheWriteTokens > 0 ? { cache_creation_input_tokens: cacheWriteTokens } : {}),
+          },
+        }));
         if (textOpen) emit(frame('content_block_stop', { type: 'content_block_stop', index: 0 }));
         for (const idx of tools.keys()) {
           emit(frame('content_block_stop', { type: 'content_block_stop', index: idx + 1 }));
@@ -445,6 +508,9 @@ export function canonicalStreamToClaudeStream(
       if (usage) {
         inputTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : inputTokens;
         outputTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : outputTokens;
+        const details = asJson(usage.prompt_tokens_details);
+        if (details !== null && typeof details.cached_tokens === 'number') cachedTokens = details.cached_tokens;
+        if (typeof usage.cache_write_tokens === 'number') cacheWriteTokens = usage.cache_write_tokens;
       }
       if (typeof delta.role === 'string' && !textOpen) {
         // role 帧 → 开文本块（claude 客户端兼容）

@@ -78,7 +78,7 @@ describe('anthropic 适配器端到端（上游翻译为规范形）', () => {
     const { stream, onEvent } = await ai.chatStream({
       channel: { baseUrl: upstream.baseUrl, apiKey: 'sk-anthropic', protocol: 'anthropic' },
       request: { model: 'claude-sonnet-4-5', messages: [{ role: 'user', content: 'hi' }], stream: true },
-      ctx: { requestId: 'req-anthropic-1', model: 'claude-sonnet-4-5', providerName: 'anthropic', deadlineMs: 10000 },
+      ctx: { requestId: 'req-anthropic-1', model: 'claude-sonnet-4-5', providerName: 'anthropic', endpoint: 'chat', deadlineMs: 10000 },
     });
     const events: unknown[] = [];
     onEvent((e) => events.push(e));
@@ -98,7 +98,7 @@ describe('anthropic 适配器端到端（上游翻译为规范形）', () => {
     const result = await ai.chat({
       channel: { baseUrl: upstream.baseUrl, apiKey: 'sk-anthropic', protocol: 'anthropic' },
       request: { model: 'claude-sonnet-4-5', messages: [{ role: 'user', content: 'hi' }] },
-      ctx: { requestId: 'req-anthropic-2', model: 'claude-sonnet-4-5', providerName: 'anthropic', deadlineMs: 10000 },
+      ctx: { requestId: 'req-anthropic-2', model: 'claude-sonnet-4-5', providerName: 'anthropic', endpoint: 'chat', deadlineMs: 10000 },
     });
     // 上游对非流式请求也回了 SSE——体不是 JSON 时归类失败而非崩溃（翻译只对 JSON 生效）
     expect(['success', 'error', 'empty']).toContain(result.status);
@@ -109,7 +109,7 @@ describe('anthropic 适配器端到端（上游翻译为规范形）', () => {
     const result = await ai.chat({
       channel: { baseUrl: upstream.baseUrl, apiKey: 'wrong', protocol: 'anthropic' },
       request: { model: 'claude-sonnet-4-5', messages: [{ role: 'user', content: 'hi' }] },
-      ctx: { requestId: 'req-anthropic-3', model: 'claude-sonnet-4-5', providerName: 'anthropic', deadlineMs: 10000 },
+      ctx: { requestId: 'req-anthropic-3', model: 'claude-sonnet-4-5', providerName: 'anthropic', endpoint: 'chat', deadlineMs: 10000 },
     });
     expect(result.status).toBe('error');
     if (result.status === 'error') {
@@ -125,7 +125,7 @@ describe('gemini 适配器端到端', () => {
     const { stream, onEvent } = await ai.chatStream({
       channel: { baseUrl: upstream.baseUrl, apiKey: 'sk-gemini', protocol: 'gemini' },
       request: { model: 'gemini-2.5-pro', messages: [{ role: 'user', content: 'hi' }], stream: true },
-      ctx: { requestId: 'req-gemini-1', model: 'gemini-2.5-pro', providerName: 'google', deadlineMs: 10000 },
+      ctx: { requestId: 'req-gemini-1', model: 'gemini-2.5-pro', providerName: 'google', endpoint: 'chat', deadlineMs: 10000 },
     });
     const events: unknown[] = [];
     onEvent((e) => events.push(e));

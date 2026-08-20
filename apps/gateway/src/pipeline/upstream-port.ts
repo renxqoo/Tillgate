@@ -3,12 +3,15 @@
  * 归一化结果出。生产适配器（packages/ai createAi + apiKeyEnc 解密 + SSE）是 G4b；
  * 测试注入 stub 验证资金编排。死凭据判定信 ai 包 classify 的 deadCredential 标志。
  */
+import type { Endpoint } from '@ai-gateway/ai';
 import type { RouteCandidateRow } from '@ai-gateway/repository';
 
 export interface UpstreamChatRequest {
   requestId: string;
   realModel: string;
   externalModel: string;
+  /** 调用端点（ai 包 RequestCtx.endpoint 的端口形态——路由边界已知，必填显式传递） */
+  endpoint: Endpoint;
   body: Record<string, unknown>;
 }
 

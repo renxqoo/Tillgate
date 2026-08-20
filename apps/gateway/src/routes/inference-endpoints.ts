@@ -19,6 +19,7 @@ import {
   claudeRequestToChat,
   completionsRequestToChat,
   responsesRequestToChat,
+  type Endpoint,
 } from '@ai-gateway/ai';
 import type { AuthEnv } from '../middleware/api-key.js';
 import type { createRunChat } from '../pipeline/run-chat.js';
@@ -86,20 +87,13 @@ const claudeMessagesSchema = z.object({
   stream: z.boolean().optional(),
 }).passthrough();
 
-export type InferenceKind =
-  | 'chat'
-  | 'embeddings'
-  | 'images'
-  | 'audio_speech'
-  | 'rerank'
-  | 'moderations';
-
-export interface InferenceEndpoint {
+export type InferenceEndpoint = {
   path: string;
-  kind: InferenceKind;
+  /** 调用端点（ai 包 Endpoint 词表——单一真相，路由边界显式声明进管线） */
+  kind: Endpoint;
   schema: z.ZodType<Record<string, unknown>>;
   codec?: InboundCodec;
-}
+};
 
 const imagesSchema = z.object({
   model: modelField,
@@ -159,8 +153,7 @@ export function enginesAliasRoutes(runChat: RunChat, endpoint: InferenceEndpoint
     const externalModel = (parsed.data as { model: string }).model;
     const body = parsed.data as unknown as ChatCompletionBody;
     body.stream = false;
-    (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
-    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body, endpoint.kind);
     return encodeResult(c, result, endpoint, externalModel);
   });
 }
@@ -185,8 +178,7 @@ export function inferenceRoutes(runChat: RunChat, endpoint: InferenceEndpoint): 
     if (endpoint.kind !== 'chat' && endpoint.codec === undefined) {
       body.stream = false; // 非规范形 chat 的端点族无流式（embeddings/模态 JSON 族）
     }
-    (body as { inferenceKind?: string }).inferenceKind = endpoint.kind;
-    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body);
+    const result = await runChat(auth.ctx, { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit, tpmLimit: auth.tpmLimit, userRpmLimit: auth.userRpmLimit, userTpmLimit: auth.userTpmLimit }, body, endpoint.kind);
     return encodeResult(c, result, endpoint, externalModel);
   });
 }

@@ -68,6 +68,29 @@ describe('normalizeUsage', () => {
     ).toMatchObject({ inputTokens: 12, cachedInputTokens: 2, outputTokens: 3 });
   });
 
+  it('Mistral 方言：camel 变体（promptTokensDetails/promptTokenDetails/numCachedTokens）可归一', () => {
+    const cases: Array<Record<string, unknown>> = [
+      { prompt_tokens: 10, completion_tokens: 2, promptTokensDetails: { cachedTokens: 6 } },
+      { prompt_tokens: 10, completion_tokens: 2, promptTokenDetails: { cachedTokens: 6 } },
+      { prompt_tokens: 10, completion_tokens: 2, numCachedTokens: 6 },
+      { prompt_tokens: 10, completion_tokens: 2, num_cached_tokens: '6' },
+    ];
+    for (const usage of cases) {
+      expect(normalizeUsage(usage)).toMatchObject({ inputTokens: 10, cachedInputTokens: 6, outputTokens: 2 });
+    }
+  });
+
+  it('Mistral 方言：camel 变体间冲突 → 不可信 null', () => {
+    expect(
+      normalizeUsage({
+        prompt_tokens: 10,
+        completion_tokens: 2,
+        promptTokensDetails: { cachedTokens: 6 },
+        promptTokenDetails: { cachedTokens: 7 },
+      }),
+    ).toBeNull();
+  });
+
   it('冲突、负数、小数、超安全整数、cached 超界和零 usage 均不可信', () => {
     const invalid = [
       { prompt_tokens: 10, input_tokens: 11, completion_tokens: 1 },

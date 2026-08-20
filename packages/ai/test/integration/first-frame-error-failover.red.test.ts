@@ -68,7 +68,7 @@ describe('ai.chatStream：200 + 首帧即错误（#6643 同类红测）', () => 
     const handle = await ai.chatStream({
       channel: { baseUrl: server.baseUrl, apiKey: 'sk-test', protocol: 'openai-compatible' },
       request: { model: 'test-model', stream: true, messages: [{ role: 'user', content: 'hi' }] },
-      ctx: { requestId: 'ff-err-1', model: 'test-model', providerName: 'test' },
+      ctx: { requestId: 'ff-err-1', model: 'test-model', providerName: 'test', endpoint: 'chat' },
     });
 
     // 消费完返回的流（错误帧会被透传给客户端）
@@ -100,7 +100,7 @@ describe('ai.chatStream：200 + 首帧即错误（#6643 同类红测）', () => 
       const result = await ai.chat({
         channel: { baseUrl: bodyServer.baseUrl, apiKey: 'sk-test', protocol: 'openai-compatible' },
         request: { model: 'test-model', messages: [{ role: 'user', content: 'hi' }] },
-        ctx: { requestId: 'ff-err-2', model: 'test-model', providerName: 'test' },
+        ctx: { requestId: 'ff-err-2', model: 'test-model', providerName: 'test', endpoint: 'chat' },
       });
       // 期望：失败分支（quota_exhausted 语义）。现状：success + 估算 usage → 红。
       expect(result.status).not.toBe('success');

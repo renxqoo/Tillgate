@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../../src/create-ai.js';
-import type { Ai, ChannelDesc } from '../../src/types.js';
+import type { Ai, ChannelDesc, RequestCtx } from '../../src/types.js';
 import { startServer } from './helpers.js';
 import { memoryDeps } from '../helpers/memory-deps.js';
 
@@ -94,7 +94,7 @@ const okSse = (_req: CapturedRequest, res: import('node:http').ServerResponse) =
   res.end(OK_SSE);
 };
 
-const baseCtx = { requestId: 'r-wire', model: 'deepseek-chat', providerName: 'deepseek' };
+const baseCtx: RequestCtx = { requestId: 'r-wire', model: 'deepseek-chat', providerName: 'deepseek', endpoint: 'chat' };
 
 describe('上游线上行为特征化（openai-compatible）', () => {
   it('chat 非流式:POST /v1/chat/completions + Bearer + content-type + idempotency-key + model 重写', async () => {

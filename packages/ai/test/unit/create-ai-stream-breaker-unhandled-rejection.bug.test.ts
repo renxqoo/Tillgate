@@ -105,7 +105,7 @@ describe('流式熔断器 void 调用：存储不可用时不应产生 unhandled
       const handle = await ai.chatStream({
         channel: { baseUrl: upstream.baseUrl, apiKey: 'sk-test', protocol: 'openai-compatible' },
         request: { model: 'm', messages: [{ role: 'user', content: 'hi' }], stream: true },
-        ctx: { requestId: 'req-bug-stream-breaker', model: 'm', providerName: 'mock' },
+        ctx: { requestId: 'req-bug-stream-breaker', model: 'm', providerName: 'mock', endpoint: 'chat' },
       });
       // 消费流以触发 success 事件 → recordSuccess（雷区）
       const reader = handle.stream.getReader();

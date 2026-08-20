@@ -33,6 +33,7 @@ export interface RouteCandidateRow {
   providerName: string;
   providerBaseUrl: string;
   providerProtocol: string;
+  providerVendor: string | null;
   priority: number;
   weight: number;
   rpmLimit: number | null;
@@ -57,6 +58,7 @@ export interface TaskChannelRow {
   providerName: string;
   providerBaseUrl: string;
   providerProtocol: string;
+  providerVendor: string | null;
 }
 
 const CHANNEL_COLUMNS = {
@@ -80,6 +82,7 @@ export class ChannelRepository {
         providerName: providers.name,
         providerBaseUrl: providers.baseUrl,
         providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
         priority: modelChannels.priority,
         weight: modelChannels.weight,
         rpmLimit: channels.rpmLimit,
@@ -131,6 +134,7 @@ export class ChannelRepository {
         providerName: providers.name,
         providerBaseUrl: providers.baseUrl,
         providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
       })
       .from(channels)
       .innerJoin(providers, eq(channels.providerId, providers.id))
@@ -372,6 +376,7 @@ export class ChannelRepository {
         baseUrlOverride: channels.baseUrlOverride,
         providerBaseUrl: providers.baseUrl,
         providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
       })
       .from(channels)
       .innerJoin(providers, eq(channels.providerId, providers.id))

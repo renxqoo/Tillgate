@@ -48,3 +48,8 @@ export const GENERATION_KINDS: Readonly<Record<GenerationTaskKind, GenerationKin
 export function generationKindDescriptor(kind: string): GenerationKindDescriptor | undefined {
   return (GENERATION_KINDS as Record<string, GenerationKindDescriptor | undefined>)[kind];
 }
+
+/** 词表守卫（注册表驱动，无字面量）：DB 行的 kind 列收窄回词表类型 */
+export function isGenerationTaskKind(kind: string): kind is GenerationTaskKind {
+  return generationKindDescriptor(kind) !== undefined;
+}

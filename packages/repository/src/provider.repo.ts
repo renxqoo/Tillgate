@@ -12,6 +12,7 @@ export interface ProviderRow {
   id: number;
   name: string;
   protocol: string;
+  vendor: string | null;
   baseUrl: string;
   status: number;
   createdAt: Date;
@@ -29,6 +30,7 @@ const PROVIDER_COLUMNS = {
   id: providers.id,
   name: providers.name,
   protocol: providers.protocol,
+  vendor: providers.vendor,
   baseUrl: providers.baseUrl,
   status: providers.status,
   createdAt: providers.createdAt,
@@ -45,13 +47,14 @@ const PROVIDER_SORTS = {
 export class ProviderRepository {
   async insert(
     c: RepoContext,
-    input: { name: string; protocol: string; baseUrl: string; status?: number },
+    input: { name: string; protocol: string; vendor?: string | null; baseUrl: string; status?: number },
   ): Promise<ProviderRow> {
     const [row] = await c.db
       .insert(providers)
       .values({
         name: input.name,
         protocol: input.protocol,
+        vendor: input.vendor ?? null,
         baseUrl: input.baseUrl,
         status: input.status ?? 0,
       })
@@ -82,7 +85,7 @@ export class ProviderRepository {
     c: RepoContext,
     input: {
       providerId: number;
-      patch: { name?: string; protocol?: string; baseUrl?: string; status?: number };
+      patch: { name?: string; protocol?: string; vendor?: string | null; baseUrl?: string; status?: number };
     },
   ): Promise<ProviderRow | null> {
     const rows = await c.db

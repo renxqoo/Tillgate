@@ -261,6 +261,7 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
               requestId: `model-test-${mappingId}-${channel.channelId}`,
               model: existing.realModel,
               providerName: channel.providerProtocol,
+              endpoint: 'chat',
               maxRetries: 0,
             },
           });

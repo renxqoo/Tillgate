@@ -5,6 +5,8 @@ import type { Usage } from '../types';
  * usage 归一化（ai-package.md §7.5）：
  *   - OpenAI 风格: prompt_tokens_details.cached_tokens → cachedInputTokens
  *   - DeepSeek: prompt_cache_hit_tokens / prompt_cache_miss_tokens
+ *   - Mistral: prompt_tokens_details.cached_tokens 及其 camel 变体（promptTokensDetails.
+ *     cachedTokens / promptTokenDetails.cachedTokens / numCachedTokens——参考 pi-ai mistral 方言）
  *   - 无缓存字段 → cachedInputTokens = 0
  *   - usage 缺失 → 返回 null，由调用方按字符估算（estimated=true，见 token-estimate.ts）
  */
@@ -45,7 +47,21 @@ export function normalizeUsage(usageRaw: unknown): Usage | null {
       inputDetails ? num(inputDetails.cached_tokens) : undefined,
     );
     if (detailCached === null) return null;
-    cached = detailCached ?? 0;
+    if (detailCached !== undefined) {
+      cached = detailCached;
+    } else {
+      // Mistral 原生 API 的 camel 变体（与 snake 变体同值时才采信——一致性校验同 OpenAI 风格）。
+      // compatible 的 null 是冲突信号不是值，嵌套组合必须逐层显式判 null（?? 会吞掉冲突）。
+      const camelDetails = compatible(
+        num(asRecord(u.promptTokensDetails)?.cachedTokens),
+        num(asRecord(u.promptTokenDetails)?.cachedTokens),
+      );
+      const camelNums = compatible(num(u.numCachedTokens), num(u.num_cached_tokens));
+      if (camelDetails === null || camelNums === null) return null;
+      const mistralCamel = compatible(camelDetails, camelNums);
+      if (mistralCamel === null) return null;
+      cached = mistralCamel ?? 0;
+    }
   }
 
   const reconstructedInput =
@@ -57,11 +73,15 @@ export function normalizeUsage(usageRaw: unknown): Usage | null {
   const total = num(u.total_tokens);
   if (total !== undefined && total !== inputTokens + outputTokens) return null;
   if (inputTokens === 0 && outputTokens === 0) return null;
+  // 缓存写入方言（OpenAI 风格顶层 cache_write_tokens——pi-ai 同名字段；
+  // Anthropic 经 claude 翻译层以同名字段携带进规范形 usage）
+  const cacheWrite = num(u.cache_write_tokens);
   return {
     inputTokens,
     cachedInputTokens: cached,
     outputTokens,
     estimated: false,
+    ...(cacheWrite !== undefined && cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {}),
     raw: usageRaw,
   };
 }

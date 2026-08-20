@@ -80,6 +80,7 @@ describe('model 重写复现', () => {
           requestId: 'r-rewrite',
           model: 'deepseek-chat',
           providerName: 'deepseek',
+          endpoint: 'chat',
         } as RequestCtx,
       });
       // eslint-disable-next-line no-console
@@ -101,6 +102,7 @@ describe('model 重写复现', () => {
           requestId: 'r-same',
           model: 'deepseek-v4-pro',
           providerName: 'deepseek',
+          endpoint: 'chat',
         } as RequestCtx,
       });
       // eslint-disable-next-line no-console
@@ -125,6 +127,7 @@ describe('model 重写复现', () => {
           requestId: 'r-rewrite-stream',
           model: 'deepseek-chat',
           providerName: 'deepseek',
+          endpoint: 'chat',
         } as RequestCtx,
       });
       const reader = handle.stream.getReader();

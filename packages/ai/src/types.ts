@@ -13,6 +13,12 @@ export interface ChannelDesc {
    * （未注册协议显式报错 invalid_config，不静默回退）——词表单一真相见 SUPPORTED_PROTOCOLS。
    */
   protocol: string;
+  /**
+   * 厂商档案引用（providers.vendor，可选）：openai-compatible 协议族的参数怪癖
+   * 预设键（词表单一真相见 registry/vendor-profiles.ts 的 VENDOR_PROFILES）。
+   * 在 prepare 处编译进 ParamRules（与 per-model 规则合并，model 侧优先）。
+   */
+  vendor?: string;
 }
 
 /** 调用端点（决定 adapter 选择的上游路径） */
@@ -69,8 +75,13 @@ export interface RequestCtx {
   deadlineMs?: number;
   /** 调用方取消：客户端断开、请求总 deadline 或服务 drain。 */
   signal?: AbortSignal;
-  /** 调用端点：chat（默认）或 embeddings（adapter 据此选上游路径） */
-  endpoint?: Endpoint;
+  /**
+   * 调用端点（必填——adapter 据此决定上游路径）。
+   * 历史教训：曾经可选并兜底 'chat'，导致 embeddings/模态族生产路径全部
+   * 寻址到 /v1/chat/completions（mock 上游不校验路径，测试拦不住）。
+   * 端点知识在路由边界已知，必须显式传递，不留隐式默认。
+   */
+  endpoint: Endpoint;
 }
 
 /** usage 归一化（缓存计费数据源） */
@@ -78,6 +89,11 @@ export interface Usage {
   inputTokens: number;
   /** 缓存命中输入（OpenAI cached_tokens / DeepSeek cache_hit 归一化） */
   cachedInputTokens: number;
+  /**
+   * 缓存写入输入（Anthropic cache_creation_input_tokens / cache_write_tokens 方言归一）。
+   * 数据捕获面：计费消费（费率卡 cache_write 价位）属独立资金工单，当前仅事件/日志可见。
+   */
+  cacheWriteTokens?: number;
   outputTokens: number;
   /** usage 缺失，按字符估算 */
   estimated: boolean;
@@ -167,7 +183,7 @@ export interface Ai {
   /** 任务型端点提交/执行响应解析（video 提交→taskId；music 同步完成→产物 URL） */
   parseGenerationResponse?(input: {
     channel: ChannelDesc;
-    endpoint: 'video' | 'music';
+    kind: import('./adapters/protocol-adapter').ProtocolTaskKind;
     body: unknown;
   }): GenerationParsedResponse;
   /** 上游任务状态查询（video 轮询用；瞬时网络错误返回 error，调用方下轮再查） */

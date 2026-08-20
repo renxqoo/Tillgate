@@ -4,6 +4,99 @@
 > 工作规则见 [AGENT.md](./AGENT.md)；扣款链路唯一真相见 [docs/billing-flow-deep-dive.md](./docs/billing-flow-deep-dive.md)。
 > 条目按时间倒序、保留原始记录不重写。
 
+
+
+---
+
+## §16 pi-ai 资产吸收收口（2026-08-20，分支 refactor/ai-package-v2 第二批）
+
+调研清单「尚未吸收项」全部落地（覆盖率门禁复测 94.9/85.1/93.3/96.8，459 单测全绿）：
+
+1. **模型元数据同步**（models.dev 单一上游，离线回落 pi-ai 快照）：
+   `pnpm --filter @ai-gateway/ai model-meta` 生成 (a) model-meta.generated.ts——
+   1689 条 provider:model/裸名 → contextWindow（静默溢出判定数据源，入包发版）；
+   (b) scripts/output/model-catalog-seed.json——981 模型四维成本/能力位目录种子
+   （admin 导入审批制：价格属资金语义禁止自动生效，接入面挂模型目录工单）。
+2. **BPE 真分词器**（js-tiktoken 纯 JS）：估算器主路径（模型族解析 o200k/cl100k，
+   pi-ai 同款策略），启发式兜底（无模型名/超长降级 20 万字符/编码异常）；
+   gateway 预扣与收据估算调用点已带 model 走精确路径。CJK 约 1 token/字
+   （旧启发式 0.7）——预扣口径更保守（高估安全方向）。
+3. **vendor 档案扩充**（1→7 家）：deepseek/moonshot/together/nvidia/xai/zai
+   全部以 pi-ai detectCompat 生产兼容矩阵为 basis（ignore=供应商拒收参数、
+   map=供应商要求参数名；moonshot/together/nvidia 把 max_completion_tokens
+   映射回 max_tokens）。
+4. **静默溢出兜底**：detectSilentOverflow（usage.input > contextWindow，窗口
+   来自 models.dev 快照）→ success 事件 contextOverflow 旗标 + 告警日志。
+   语义定位=可观测不翻转成功（计费按供应商 usage 是正确口径；窗口元数据可能
+   滞后，误杀好响应代价高于漏报）。
+5. **cache_write 数据捕获面**：Usage.cacheWriteTokens（Anthropic 5m+1h 两档
+   合计、cache_write_tokens 方言归一、claude 双向流/非流式携带、编码方向还原
+   claude 原生字段名）。计费消费（费率卡 cache_write 价位+rating 公式）仍属
+   独立资金工单——本批只让数据可见。
+6. **修复存量缺陷（特征化再暴露）**：Anthropic 流式 usage 从未发出——
+   message_delta.usage 按 Claude 语义只带 output_tokens（input 在 message_start），
+   claudeUsageToUsage 严格双字段解析永远拒绝它 → 流式计费全走估算。改为宽松
+   读取（output 直取，完整形态才覆盖 input/缓存侧）。
+
+**仍未做（明确留白）**：协议覆盖广度（pi-ai 9 传输/35 provider 预置元数据）——
+特性而非缺陷，按需另立；模型目录 admin 导入端点——种子文件已就绪，接线挂工单。
+
+---
+
+## §15 packages/ai v2 重构完成（2026-08-20，分支 refactor/ai-package-v2，方案见 docs/plan-ai-package-v2.md）
+
+P0–P5 全部落地：机制链拆解（create-ai 768→273 行，pipeline 八模块各 ≤128 行）、
+契约分粒度（五能力件 + defineAdapter 组合器，Azure 改组合式）、vendor 全链
+（providers.vendor 迁移 0062 + 档案库 + mergeParamRules + admin 下拉）、任务词表
+收敛（删 ai 死模块 descriptors，domain GENERATION_KINDS 唯一真相 + 跨包一致性
+测试）、覆盖率门禁 90/85（实测 94.8/85.1/93.2/96.8，449 单测 + gateway e2e 32/32）。
+
+**施工中发现并修复的 4 处生产缺陷**（特征化测试暴露；均属「mock 上游不校验
+形状所以一直没拦住」家族）：
+1. **模态族寻址错路**：gateway 从不传 ctx.endpoint，create-ai 兜底 'chat'——
+   embeddings/images/audio/rerank/moderations 生产路径全被发往 /v1/chat/completions。
+   修复：RequestCtx.endpoint 必填 + 全链显式传递 + 删 body.inferenceKind 双轨。
+2. **multipart 文件丢失**：body.upstreamForm 从未拆包，JSON.stringify(wrapper)
+   把 FormData 静默序列化成 {}——images/edits、audio/transcriptions、
+   audio/translations 的文件字节到不了上游。修复：chat 路径拆包直传 + model
+   重写进表单 + normalizeRequest FormData 直通底线。
+3. **取消丢失**：fetchUpstream 对已中止信号只挂 addEventListener（abort 事件
+   不回放）——DNS 解析期间/派发前的取消被丢失、请求照发。修复：入口显式拒绝
+   + 监听前置（SSRF 校验错误仍原样上抛）。
+4. **契约形状不齐**：openai-compatible planRequest 内联类型把 Endpoint 窄化缺
+   video/music；anthropic/gemini/bedrock normalizeRequest 缺 rules 参。
+
+**其他**：overflow 错误库（新码 context_overflow：不重试/不跳闸/不换渠/原码
+透传）；usage Mistral 方言 + 修复嵌套 compatible 吞冲突信号隐患；vertex-ai
+fetch 注入点提构造器（原注释声称可注入但生产不可达）；e2e-kit.settleAll 竞态
+容忍（§5.7）；e2e-worker OTEL 配置缺失修复。
+
+**决策门结论（cache_write）**：Anthropic cache_creation_input_tokens（含 1h 档）
+当前完全未计量未计费——cache read 已正确归一。属跨域资金工单（db 费率卡 +
+rating 公式 + wallet 联动），未混入本次重构，挂独立待办。
+
+**实施偏差**：vendor profile 首批仅含已验证条目（openai: max_tokens→
+max_completion_tokens，basis 必填防自造规则）——计划原定 8 家在 new-api/pi-ai
+中均无内置参数删除实证，编造规则的风险大于收益，机制完整、内容待实测补充。
+
+---
+
+## §14 竞品深度对比 + packages/ai v2 重构方案定稿（2026-08-20，docs/plan-ai-package-v2.md）
+
+与 new-api（本地全量代码）及 @earendil-works/pi-ai 深度对比后定稿（留痕）：
+
+- **结论**：传输引擎保留自研，不引入 pi-ai/官方 SDK 运行时依赖（pi-ai 是 agent 客户端
+  抽象——统一 Context/SSE 全量解析/请求体重构造，与透明中继正交）；定向吸收资产：
+  overflow 错误模式库、usage 方言、models.dev 元数据上游、vendor profile 词汇表。
+- **定稿**：docs/plan-ai-package-v2.md（P0–P5，约 4 周）——机制链拆解 create-ai.ts(768 行)、
+  契约分粒度（5 能力件 + defineAdapter 组合器）、Vendor Profile 体系（新厂商零代码接入）、
+  任务族词表泛化；P1 先修正确性欠账。
+- **施工中发现的生产欠账（P1 待修）**：① gateway upstream-adapter 不传 ctx.endpoint，
+  模态族（embeddings/images/audio/rerank/moderations）上游寻址生产兜底成 'chat'；
+  ② 上下文溢出错误未分类（可重试/换渠语义错误）；③ usage 方言缺口（Anthropic 1h
+  缓存/Mistral/Google thoughtsToken）；④ Usage 无 cache_write 维度——决策门：先核查
+  真实 Claude 渠道流水 usage.raw，若漏计则开独立资金工单。
+
 ---
 
 ## §13 生产终审修复：3 资金 HIGH + 2 安全 HIGH + 6 MEDIUM（2026-08-19，全库 DB 对账 + 三路审查）

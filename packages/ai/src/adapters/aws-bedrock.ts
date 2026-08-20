@@ -1,5 +1,5 @@
 import { createHash, createHmac } from 'node:crypto';
-import type { ChannelDesc, UpstreamError, Usage } from '../types';
+import type { ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import { chatRequestToClaude, claudeResponseToChat, claudeUpstreamToCanonicalStream, claudeUsageToUsage } from '../protocol/claude-chat';
 import { classifyHttpError } from '../errors/classify';
@@ -193,7 +193,7 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] } {
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
 

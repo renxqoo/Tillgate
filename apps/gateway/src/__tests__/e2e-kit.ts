@@ -136,13 +136,28 @@ export class E2EKeys {
     return rows.rows;
   }
 
-  /** 驱动结算（定向认领）直到该用户无 settlement_pending */
+  /**
+   * 驱动结算（定向认领）直到该用户无 settlement_pending。
+   * 共享 dev 库竞态（AGENT.md §5.7）：外部活 worker 可能先 SKIP LOCKED 抢领——
+   * 此时行进入 processing（租约内），本方法的 pending 查询为空但尚未 settled。
+   * 容忍策略：pending 空后再等 processing 清零（外部 worker 在租约内会完成；
+   * 上限 30s 防崩驻 worker 卡死测试）。
+   */
   async settleAll(userId: number): Promise<void> {
-    for (let i = 0; i < 30; i++) {
+    const deadline = Date.now() + 30_000;
+    for (;;) {
       const pending = await this.db.$client.query<{ request_id: string }>(
         "select request_id from billing_requests where user_id = $1 and status = 'settlement_pending' limit 50", [userId],
       );
-      if (pending.rows.length === 0) return;
+      if (pending.rows.length === 0) {
+        const busy = await this.db.$client.query<{ n: number }>(
+          "select count(*)::int as n from billing_requests where user_id = $1 and status = 'processing'", [userId],
+        );
+        if (busy.rows[0]!.n === 0 || Date.now() > deadline) return;
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
+      if (Date.now() > deadline) return;
       const claims = await this.settlement.claim(systemContext(randomUUID()), {
         ownerId: `v2e2e-${randomUUID().slice(0, 8)}`, batchSize: 50, claimLeaseMs: 60_000,
         requestIds: pending.rows.map((r) => r.request_id),

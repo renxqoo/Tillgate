@@ -15,7 +15,7 @@
  */
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories, type Repositories } from '@ai-gateway/repository';
-import { GENERATION_KINDS, type UsageReceipt } from '@ai-gateway/domain';
+import { GENERATION_KINDS, isGenerationTaskKind, type UsageReceipt } from '@ai-gateway/domain';
 import type { BillingEvent, BillingSignalResult } from '../billing/signal.js';
 import type { RunContext } from '../context.js';
 import { readOnly } from '../context.js';
@@ -186,6 +186,10 @@ export function createGenerationPollUseCase(deps: GenerationPollDeps) {
       const template = task.receiptTemplate as unknown as UsageReceipt;
       let outcome: TaskExecuteResult;
       try {
+        if (!isGenerationTaskKind(task.kind)) {
+          // 插入路径经 descriptor 校验，未知 kind = 数据腐化——响亮失败优于静默错配
+          throw new Error(`unknown generation task kind: ${task.kind}`);
+        }
         outcome = await deps.taskPort.executeTask(channel, {
           taskId: task.id,
           realModel: template.realModel,

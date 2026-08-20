@@ -1,16 +1,23 @@
 import { asArray, asRecord } from '../internal/util';
 import type { Usage } from '../types';
 import { resolveCalibration, type TextTokenWeights } from './calibration';
+import { tokenCountOf } from './tokenizer';
+
+/** 文本 → token：分词器主路径 + 启发式兜底（单一分流点）。 */
+function countText(text: string, weights: TextTokenWeights, model?: string): number {
+  const exact = tokenCountOf(text, model);
+  if (exact !== null) return exact;
+  return estimateTextTokens(text, weights);
+}
 
 /**
  * token 估算单一真相（usage 缺失时的兜底，非精确计量——精确值以供应商 usage 为准）。
  *
- * 文本 token 估算 = 特征向量 × 权重（权重来自固定配置 calibration，CJK/单词/数字/符号分权）：
- *   - CJK（Han/假名/谚文）→ cjk 权重/字（默认 0.7）
- *   - 拉丁字母连续段（单词）→ word 权重/段（默认 1.1）
- *   - 数字连续段 → number 权重/段（默认 1.0）
- *   - 其他非空白（标点/符号/emoji）→ symbol 权重/个（默认 1.0）
- *   - 空白 0；遍历按 code point（emoji/astral 不因 UTF-16 双计）
+ * 分层估算（v2）：
+ *   1. BPE 真分词器（js-tiktoken，模型族解析编码器——pi-ai 同款策略）：
+ *      有模型名时主路径，精确度高（CJK 约 1 token/字，高于旧启发式 → 预扣更保守）
+ *   2. 特征向量启发式兜底（编码器不可用 / 超长降级 / 无模型名）：
+ *      CJK/单词/数字/符号分权 × calibration 权重（默认 0.7/1.1/1.0/1.0）
  *
  * 结构提取口径：
  *   - 输入：messages.content + 历史 tool_calls + tools 定义体 + embeddings input + 媒体非零下限
@@ -129,14 +136,14 @@ function isMediaPart(p: Record<string, unknown>): boolean {
 }
 
 /** content（string 或 OpenAI 多模态 part 数组）→ token 估算。 */
-function estimateContent(content: unknown, weights: TextTokenWeights): number {
-  if (typeof content === 'string') return estimateTextTokens(content, weights);
+function estimateContent(content: unknown, weights: TextTokenWeights, model?: string): number {
+  if (typeof content === 'string') return countText(content, weights, model);
   if (Array.isArray(content)) {
     let n = 0;
     for (const part of content) {
       const p = asRecord(part);
       if (!p) continue;
-      if (typeof p.text === 'string') n += estimateTextTokens(p.text, weights);
+      if (typeof p.text === 'string') n += countText(p.text, weights, model);
       else if (isMediaPart(p)) n += MEDIA_PART_TOKEN_FLOOR;
     }
     return n;
@@ -145,13 +152,13 @@ function estimateContent(content: unknown, weights: TextTokenWeights): number {
 }
 
 /** tool_calls 数组 → token 估算（function.name + arguments 是函数调用主要 token 源）。 */
-function estimateToolCalls(toolCalls: unknown, weights: TextTokenWeights): number {
+function estimateToolCalls(toolCalls: unknown, weights: TextTokenWeights, model?: string): number {
   const list = asArray(toolCalls);
   if (!list) return 0;
   let n = 0;
   for (const tc of list) {
     const fn = asRecord(asRecord(tc)?.function);
-    if (fn) n += estimateTextTokens(`${fn.name ?? ''}${fn.arguments ?? ''}`, weights);
+    if (fn) n += countText(`${fn.name ?? ''}${fn.arguments ?? ''}`, weights, model);
   }
   return n;
 }
@@ -171,25 +178,25 @@ export function estimateInputTokens(body: unknown, opts: EstimateOptions = {}): 
     for (const m of messages) {
       const msg = asRecord(m);
       if (!msg) continue;
-      n += estimateContent(msg.content, weights);
-      n += estimateToolCalls(msg.tool_calls, weights);
+      n += estimateContent(msg.content, weights, opts.model);
+      n += estimateToolCalls(msg.tool_calls, weights, opts.model);
     }
   }
   // tools 定义体：企业 Agent 工具调用的主要输入 token 消耗源
   const tools = asArray(rec.tools);
   if (tools && tools.length > 0) {
     try {
-      n += estimateTextTokens(JSON.stringify(tools), weights);
+      n += countText(JSON.stringify(tools), weights, opts.model);
     } catch {
       /* 循环引用等异常 → 跳过，不破坏估算 */
     }
   }
   // embeddings：input 为 string / string[] / token-id 数组（number[] / number[][]）
   if (typeof rec.input === 'string') {
-    n += estimateTextTokens(rec.input, weights);
+    n += countText(rec.input, weights, opts.model);
   } else if (Array.isArray(rec.input)) {
     for (const item of rec.input) {
-      if (typeof item === 'string') n += estimateTextTokens(item, weights);
+      if (typeof item === 'string') n += countText(item, weights, opts.model);
       // token-id 数组：每 id 即一个 token（OpenAI 官方形态，跳过会低估预扣）
       else if (typeof item === 'number') n += 1;
       else if (Array.isArray(item)) n += item.length;
@@ -197,8 +204,8 @@ export function estimateInputTokens(body: unknown, opts: EstimateOptions = {}): 
   }
   // 生成类端点（images/video/music）与 rerank 的顶层 prompt/query：
   // 混合计价（token 价 + 单位价并存）时 token 分量的预扣来源
-  if (typeof rec.prompt === 'string') n += estimateTextTokens(rec.prompt, weights);
-  if (typeof rec.query === 'string') n += estimateTextTokens(rec.query, weights);
+  if (typeof rec.prompt === 'string') n += countText(rec.prompt, weights, opts.model);
+  if (typeof rec.query === 'string') n += countText(rec.query, weights, opts.model);
   return n + templateInputOffset;
 }
 

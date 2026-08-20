@@ -154,6 +154,7 @@ function ctx(p: ProviderConfig, tag: string): RequestCtx {
     requestId: `real-${p.name}-${tag}-${Date.now()}`,
     model: p.model,
     providerName: p.providerName,
+    endpoint: 'chat',
   };
 }
 
@@ -387,6 +388,84 @@ describeOrSkip('真实供应商集成', () => {
         }
         expect(['success', 'empty', 'error']).toContain(result.status);
       }, 60_000);
+    });
+  }
+});
+
+// ─────────────── v2 扩展场景：流式/错误分类/多事件总线（有 key 即跑） ───────────────
+
+describeOrSkip('真实供应商集成 · v2 扩展', () => {
+  for (const p of PROVIDERS) {
+    describe(`${p.name} (${p.model}) · v2`, () => {
+      it('chatStream：全链流式——首帧/usage/terminated 语义齐全', async () => {
+        const ai = makeAi();
+        const handle = await ai.chatStream({
+          channel: channel(p),
+          request: {
+            model: p.model,
+            messages: [{ role: 'user', content: '数到三' }],
+            max_tokens: 16,
+            stream: true,
+            temperature: 0,
+          },
+          ctx: ctx(p, 'v2-stream'),
+        });
+        const events: AiEvent[] = [];
+        handle.onEvent((e) => events.push(e));
+        const text = await new Response(handle.stream).text();
+        expect(text.length).toBeGreaterThan(0);
+
+        const success = events.find((e) => e.type === 'success');
+        if (success !== undefined && success.type === 'success') {
+          // 正常完成：usage 可信（供应商真实返回，含 stream_options 注入效果）
+          if (success.usage) {
+            expect(success.usage.estimated).toBe(false);
+            expect(success.usage.inputTokens).toBeGreaterThan(0);
+            expect(success.usage.outputTokens).toBeGreaterThan(0);
+            console.log(`[${p.name}] stream usage:`, JSON.stringify(success.usage));
+          }
+          // 自然完成：terminated 缺省或非客户端断开；字节确实送达
+          expect(success.terminated === undefined || success.terminated !== 'client_disconnect').toBe(true);
+          expect((success.bytesRelayed ?? 0)).toBeGreaterThan(0);
+        }
+        const firstChunk = events.find((e) => e.type === 'first_chunk');
+        expect(firstChunk).toBeDefined();
+      }, 45_000);
+
+      it('无效密钥 → invalid_api_key + deadCredential（分类矩阵真实验证）', async () => {
+        const ai = makeAi();
+        const bad: ChannelDesc = { ...channel(p), apiKey: 'sk-invalid-key-for-classification-test' };
+        const result = await ai.chat({
+          channel: bad,
+          request: { model: p.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 },
+          ctx: ctx(p, 'v2-badkey'),
+        });
+        expect(result.status).toBe('error');
+        if (result.status === 'error') {
+          // 供应商应返回 401（或 403/带特征的 400）——死凭据标志是路由停用依据
+          expect(result.error?.code).toBe('invalid_api_key');
+          expect(result.error?.deadCredential).toBe(true);
+          expect(result.error?.retryable).toBe(false);
+        }
+      }, 45_000);
+
+      it('endpoint 寻址真实验证：embeddings 路径（供应商不支持时断言错误可分类）', async () => {
+        const ai = makeAi();
+        const result = await ai.chat({
+          channel: channel(p),
+          request: { model: p.model, input: '嵌入测试' },
+          ctx: { ...ctx(p, 'v2-embed'), endpoint: 'embeddings' },
+        });
+        if (result.status === 'success') {
+          // DeepSeek/MiniMax 若支持 embeddings：usage 必须可信
+          expect(result.usage?.estimated ?? true).toBe(false);
+          console.log(`[${p.name}] embeddings usage:`, JSON.stringify(result.usage));
+        } else {
+          // 不支持时：可分类错误（model_not_found/invalid_request），不是 network（寻址正确性证明）
+          expect(result.error?.code).not.toBe('network');
+          console.log(`[${p.name}] embeddings unsupported → ${result.error?.code}`);
+        }
+      }, 45_000);
     });
   }
 });

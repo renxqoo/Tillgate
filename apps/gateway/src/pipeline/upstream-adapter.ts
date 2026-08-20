@@ -28,12 +28,14 @@ export function createUpstreamAdapter(deps: {
           baseUrl: candidate.baseUrlOverride ?? candidate.providerBaseUrl,
           apiKey: decrypt(candidate.apiKeyEnc, deps.encryptionKey),
           protocol: candidate.providerProtocol,
+          ...(candidate.providerVendor != null ? { vendor: candidate.providerVendor } : {}),
         },
         request: request.body,
         ctx: {
           requestId: request.requestId,
           model: request.realModel,
           providerName: candidate.providerName,
+          endpoint: request.endpoint,
           ...deadline(),
         },
       });
@@ -83,12 +85,14 @@ export function createUpstreamAdapter(deps: {
           baseUrl: candidate.baseUrlOverride ?? candidate.providerBaseUrl,
           apiKey: decrypt(candidate.apiKeyEnc, deps.encryptionKey),
           protocol: candidate.providerProtocol,
+          ...(candidate.providerVendor != null ? { vendor: candidate.providerVendor } : {}),
         },
         request: request.body,
         ctx: {
           requestId: request.requestId,
           model: request.realModel,
           providerName: candidate.providerName,
+          endpoint: request.endpoint,
           ...deadline(),
         },
       });

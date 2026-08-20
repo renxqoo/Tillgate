@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyBodyOnlyError,
   classifyHttpError,
   classifyTransportError,
   DEFAULT_DEAD_CREDENTIAL_PATTERNS,
@@ -142,5 +143,52 @@ describe('classifyTransportError', () => {
     expect(err.code).toBe('network');
     expect(err.retryable).toBe(true);
     expect(err.circuitTrip).toBe(true);
+  });
+});
+
+describe('上下文溢出分类（errors/overflow 模式库）', () => {
+  it('各供应商溢出报错 400 → context_overflow（不可重试/不跳闸/保持原码）', () => {
+    const cases: Array<[number, unknown]> = [
+      [400, { error: { message: 'prompt is too long: 210000 tokens > 200000 maximum' } }], // Anthropic
+      [400, { error: { message: 'input is too long for requested model' } }], // Bedrock
+      [400, { error: { message: "This model's maximum context length is 8192 tokens" } }], // OpenAI 系
+      [413, { error: { message: 'request_too_large' } }], // Anthropic 413
+      [400, { message: 'context window exceeds limit' }], // MiniMax
+    ];
+    for (const [status, body] of cases) {
+      const err = classifyHttpError(status, body);
+      expect(err.code).toBe('context_overflow');
+      expect(err.retryable).toBe(false);
+      expect(err.circuitTrip).toBe(false);
+      expect(err.status).toBe(status);
+    }
+  });
+
+  it('限流文案不得误判为溢出（排除表）', () => {
+    const throttling = classifyHttpError(400, { error: { message: 'Throttling error: too many tokens per second' } });
+    expect(throttling.code).not.toBe('context_overflow');
+    const rateLimit = classifyHttpError(400, { error: { message: 'rate limit: too many tokens' } });
+    expect(rateLimit.code).not.toBe('context_overflow');
+  });
+
+  it('429/401/408 语义优先——溢出模式不抢占', () => {
+    const tooMany = classifyHttpError(429, { error: { message: 'too many tokens per minute' } });
+    expect(tooMany.code).toBe('rate_limited');
+    const auth = classifyHttpError(401, { error: { message: 'prompt is too long' } });
+    expect(auth.code).toBe('invalid_api_key');
+    const timeout = classifyHttpError(408, { error: { message: 'exceeds the context window' } });
+    expect(timeout.code).toBe('timeout');
+  });
+
+  it('5xx 不判溢出（保持 upstream_error 可重试）', () => {
+    const err = classifyHttpError(500, { error: { message: 'prompt is too long' } });
+    expect(err.code).toBe('upstream_error');
+    expect(err.retryable).toBe(true);
+  });
+
+  it('200 body 包溢出错误 → context_overflow', () => {
+    const err = classifyBodyOnlyError({ error: { message: 'prompt is too long' } });
+    expect(err?.code).toBe('context_overflow');
+    expect(err?.retryable).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { asRecord } from '../internal/util';
 import type { UpstreamError } from '../types';
+import { isContextOverflowMessage } from './overflow';
 
 /**
  * 错误分类矩阵（ai-package.md §7.1）：一次分类同时驱动重试/熔断/死凭据三种机制
@@ -181,6 +182,26 @@ export function classifyHttpError(
       rawBody,
     });
   }
+  // 上下文溢出（400/413 及其它 4xx 面，401/403/408/429 语义优先不参与）：
+  // 请求侧问题——不重试、不跳闸、不换渠道，4xx 原码透传（模式库见 errors/overflow.ts）
+  if (
+    status >= 400 &&
+    status < 500 &&
+    status !== 401 &&
+    status !== 403 &&
+    status !== 408 &&
+    isContextOverflowMessage(message)
+  ) {
+    return createUpstreamError({
+      status,
+      code: 'context_overflow',
+      message,
+      retryable: false,
+      circuitTrip: false,
+      suggestion: '输入超出模型上下文窗口，请缩短输入或更换长窗口模型',
+      rawBody,
+    });
+  }
   if (status === 401 || status === 403) {
     // 鉴权失败：code 归一为 invalid_api_key/forbidden（不用供应商 bodyCode——
     // DeepSeek 401 返回 invalid_request_error，但语义是 key 问题，应归一便于路由/换渠道判断）
@@ -304,6 +325,17 @@ export function classifyBodyOnlyError(body: unknown, opts: ClassifyOptions = {})
       circuitTrip: false,
       deadCredential: true,
       suggestion: '请检查渠道上游 API Key',
+      rawBody,
+    });
+  }
+  // 200 包溢出错误（罕见形态）：同 4xx 溢出语义——不可重试不跳闸
+  if (isContextOverflowMessage(message)) {
+    return createUpstreamError({
+      code: 'context_overflow',
+      message,
+      retryable: false,
+      circuitTrip: false,
+      suggestion: '输入超出模型上下文窗口，请缩短输入或更换长窗口模型',
       rawBody,
     });
   }

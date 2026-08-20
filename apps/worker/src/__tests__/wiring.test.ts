@@ -73,7 +73,7 @@ describe('任务适配器绑定', () => {
       {
         channelId: 1,
         channelName: 'ch', apiKeyEnc: encrypt('sk-secret', encryptionKey), baseUrlOverride: null,
-        providerName: 'p', providerBaseUrl: 'https://x.test', providerProtocol: 'openai-compatible',
+        providerName: 'p', providerBaseUrl: 'https://x.test', providerProtocol: 'openai-compatible', providerVendor: null,
       },
       { requestId: 'r1', realModel: 'm', externalModel: 'm', kind: 'video', body: {} },
     );
