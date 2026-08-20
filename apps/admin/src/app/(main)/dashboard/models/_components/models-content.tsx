@@ -10,6 +10,7 @@ import {
   PencilIcon,
   PlusCircleIcon,
   Trash2Icon,
+  RotateCcwIcon,
 } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -131,7 +132,7 @@ function ModelRowItem({
         {model.status === 0 ? (
           <StatusPill tone="success" label="启用" />
         ) : (
-          <StatusPill tone="neutral" label="禁用" />
+          <StatusPill tone="neutral" label="已下架" />
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
@@ -140,23 +141,44 @@ function ModelRowItem({
           <BindChannelsDialog model={model} channels={channels} />
           <EditModelDialog model={model} />
           <TestModelDialog model={model} />
-          <ConfirmAction
-            confirm={`确定删除模型映射 ${model.externalName}？`}
-            action={async () => (await import('../actions')).deleteModelAction(model.id)}
-            success='已删除'
-          >
-            {({ pending, onClick }) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={onClick}
-                className="text-destructive hover:text-destructive"
-              >
-                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-              </Button>
-            )}
-          </ConfirmAction>
+          {model.status === 0 ? (
+            <ConfirmAction
+              confirm={`确定下架模型映射 ${model.externalName}？下架后不再对外提供（历史计费与渠道绑定保留，可随时恢复）`}
+              action={async () => (await import('../actions')).deleteModelAction(model.id)}
+              success='已下架（列表中状态变为「已下架」，可恢复）'
+            >
+              {({ pending, onClick }) => (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={onClick}
+                  className="text-destructive hover:text-destructive"
+                  title="下架"
+                >
+                  {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
+                </Button>
+              )}
+            </ConfirmAction>
+          ) : (
+            <ConfirmAction
+              confirm={`恢复上架模型映射 ${model.externalName}？`}
+              action={async () => (await import('../actions')).restoreModelAction(model.id)}
+              success='已恢复上架'
+            >
+              {({ pending, onClick }) => (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={onClick}
+                  title="恢复上架"
+                >
+                  {pending ? <Loader2Icon className="animate-spin" /> : <RotateCcwIcon className="size-4" />}
+                </Button>
+              )}
+            </ConfirmAction>
+          )}
         </div>
       </TableCell>
     </TableRow>

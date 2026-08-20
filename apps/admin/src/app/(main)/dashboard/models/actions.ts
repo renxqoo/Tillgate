@@ -75,13 +75,25 @@ export async function updateModelAction(
 }
 
 // ── 删除模型映射 ────────────────────────────────────────────────────────────
+/** 下架（软删除）：status→1，不再对外提供；历史计费/渠道绑定保留——非物理删除 */
 export async function deleteModelAction(id: number): Promise<{ error?: string }> {
   try {
     await adminFetch(`/v1/models/${id}`, { method: 'DELETE' });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '删除失败' };
+    return { error: e instanceof ApiError ? e.message : '下架失败' };
+  }
+}
+
+/** 恢复上架：status→0（走编辑表单同款 PATCH） */
+export async function restoreModelAction(id: number): Promise<{ error?: string }> {
+  try {
+    await adminFetch(`/v1/models/${id}`, { method: 'PATCH', body: { status: 0 } });
+    revalidatePath('/dashboard/models');
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : '恢复失败' };
   }
 }
 
