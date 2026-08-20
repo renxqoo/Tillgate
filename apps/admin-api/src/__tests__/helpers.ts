@@ -469,6 +469,8 @@ afterAll(async () => {
     if (refs.length) {
       const refIds = refs.map((r) => r.id);
       await db.delete(modelChannels).where(inArray(modelChannels.channelId, refIds));
+      // 进货流水先于渠道删（FK；套件中断残留不再卡死整个清理链）
+      await db.delete(channelRecharges).where(inArray(channelRecharges.channelId, refIds));
       await db.delete(channels).where(inArray(channels.id, refIds));
     }
     await db.delete(providers).where(inArray(providers.id, createdProviders));

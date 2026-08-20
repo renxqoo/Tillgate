@@ -9,6 +9,17 @@
 
 ---
 
+## §19 静默溢出告警接线（P1#4 收口，2026-08-20）
+
+ai 包 success 事件的 contextOverflow 旗标此前无人消费——现三段接通：
+①事件补 `model`（仅溢出时携带，告警定位用）；②网关 `wireContextOverflowAlert`
+订阅 onEvent → notify_outbox 入箱（事件即事实；dedupe `context-overflow:{requestId}`
+幂等；入箱失败静默——告警旁路不反噬请求路径）；③NOTIFY_EVENTS 词表 + 通知渠道
+UI 下拉加 `context_overflow`（静默溢出），运营订阅后经 worker 既有 webhook/email
+通道投递。语义不变：溢出不翻转成功、不影响计费（计费按供应商 usage 是正确口径）。
+顺带加固：admin-api 测试清理链在 provider 级联删渠道前先删 channel_recharges
+（共享库残留曾卡死 21 个套件的 teardown）。
+
 ## §18 模型市场统一 + 汇率追溯全链（2026-08-20，分支 feat/cache-write-and-catalog）
 
 **用户拍板的四项设计决策**：① 账本恒单币种（CNY），换算只发生在导入边界；
