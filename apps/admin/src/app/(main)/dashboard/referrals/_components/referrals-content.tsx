@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { BanIcon, CheckCircle2Icon, Loader2Icon } from 'lucide-react';
 
@@ -78,4 +79,50 @@ export function PayoutsTable({ rows }: { rows: PayoutRow[] }) {
     { key: 'createdAt', header: '时间', render: (r) => <span className="text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
   ];
   return <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />;
+}
+
+/** 视图/类型切换（select 形态——Radix Tabs 需容器且与 SSR 导航不搭，链接筛选是项目既有模式） */
+export function ReferralsViewSelect({ view, kind }: { view: string; kind: string }) {
+  const router = useRouter();
+  const sp = useSearchParams();
+
+  function change(key: 'view' | 'kind', value: string) {
+    const next = new URLSearchParams(sp.toString());
+    if (key === 'view') {
+      next.set('view', value);
+      if (value !== 'payouts') next.delete('kind');
+      else if (!next.get('kind')) next.set('kind', 'commission');
+    } else {
+      next.set('view', 'payouts');
+      next.set('kind', value);
+    }
+    next.delete('page');
+    router.push(`/dashboard/referrals?${next.toString()}`);
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <select
+        onChange={(e) => change('view', e.target.value)}
+        defaultValue={view}
+        className="h-9 rounded-md border border-input bg-transparent px-3 shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+        aria-label="视图"
+      >
+        <option value="relations">邀请关系</option>
+        <option value="payouts">返利流水</option>
+      </select>
+      {view === 'payouts' ? (
+        <select
+          onChange={(e) => change('kind', e.target.value)}
+          defaultValue={kind}
+          className="h-9 rounded-md border border-input bg-transparent px-3 shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label="流水类型"
+        >
+          <option value="commission">日结佣金</option>
+          <option value="referral_signup">邀请注册奖励</option>
+          <option value="gift">注册赠送</option>
+        </select>
+      ) : null}
+    </div>
+  );
 }

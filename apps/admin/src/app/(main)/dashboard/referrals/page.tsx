@@ -3,20 +3,12 @@ import { UserPlusIcon } from 'lucide-react';
 import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { parseListSearchParams } from '@ai-gateway/ui/lib/list-query';
-import { TabsList, TabsTrigger } from '@ai-gateway/ui/components/ui/tabs';
-import Link from 'next/link';
 
-import { PayoutsTable, RelationsTable, type PayoutRow, type ReferralRelationRow } from './_components/referrals-content';
+import { PayoutsTable, ReferralsViewSelect, RelationsTable, type PayoutRow, type ReferralRelationRow } from './_components/referrals-content';
 
 export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
-const PAYOUT_KINDS = [
-  { key: 'commission', label: '日结佣金' },
-  { key: 'referral_signup', label: '邀请注册奖励' },
-  { key: 'gift', label: '注册赠送' },
-] as const;
-
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -41,13 +33,7 @@ export default async function ReferralsPage({ searchParams }: PageProps) {
     error = result.error;
     content = (
       <div className="space-y-3">
-        <TabsList className="flex-wrap">
-          {PAYOUT_KINDS.map((k) => (
-            <TabsTrigger key={k.key} value={k.key} data-state={payoutKind === k.key ? 'active' : 'inactive'} asChild>
-              <Link href={`/dashboard/referrals?view=payouts&kind=${k.key}`}>{k.label}</Link>
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <ReferralsViewSelect view={view} kind={payoutKind} />
         <PayoutsTable rows={result.rows} />
       </div>
     );
@@ -61,14 +47,7 @@ export default async function ReferralsPage({ searchParams }: PageProps) {
     error = result.error;
     content = (
       <div className="space-y-3">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="relations" data-state="active" asChild>
-            <Link href="/dashboard/referrals">邀请关系</Link>
-          </TabsTrigger>
-          <TabsTrigger value="payouts" data-state="inactive" asChild>
-            <Link href="/dashboard/referrals?view=payouts&kind=commission">返利流水</Link>
-          </TabsTrigger>
-        </TabsList>
+        <ReferralsViewSelect view={view} kind={payoutKind} />
         <RelationsTable rows={result.rows} />
       </div>
     );
