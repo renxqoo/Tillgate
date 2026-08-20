@@ -81,7 +81,6 @@ export function testConfig(overrides: Partial<AdminApiConfig> = {}): AdminApiCon
     SMTP_PORT: 465,
     ADMIN_CURRENCY: 'CNY',
     VOUCHER_MAX_BYTES: 2_097_152,
-    VOUCHER_DIR: '/tmp/aav2-test-vouchers',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     CORS_ORIGINS: '',
     BODY_LIMIT_BYTES: 1_048_576,

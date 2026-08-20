@@ -31,7 +31,6 @@ const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
   console.log(`[admin-api] config snapshot: ${JSON.stringify({
       currency: config.ADMIN_CURRENCY,
-      voucherDir: config.VOUCHER_DIR,
       allowLocalUpstream: config.ALLOW_LOCAL_UPSTREAM,
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       otel: config.OTEL_TRACES_MODE,

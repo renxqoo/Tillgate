@@ -43,7 +43,6 @@ const schema = z.object({
   ADMIN_CURRENCY: z.string().default('CNY'),
   /** 渠道进货凭证：上传上限（字节）与本地存储目录（可换 OSS 实现——接口注入） */
   VOUCHER_MAX_BYTES: z.coerce.number().int().positive().default(2_097_152),
-  VOUCHER_DIR: z.string().default('./data/vouchers'),
   /** Redis（缺省 = 单副本开发形态：登录爆破防护降级关闭；路由缓存失效靠网关 TTL 兜底） */
   /** 可信代理跳数（来源 IP 提取语义：0 = 不信 XFF） */
   TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),

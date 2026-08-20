@@ -48,7 +48,7 @@ import { createAdminSubscriptionsService } from './services/subscriptions.servic
 import { createPlansService } from './services/plans.service.js';
 import { createRedeemService } from './services/redeem.service.js';
 import { createChannelFundsService } from './services/channel-funds.service.js';
-import { createLocalVoucherStorage, type VoucherStorage } from './services/voucher-storage.js';
+import { createDbVoucherStorage, type VoucherStorage } from './services/voucher-storage.js';
 import { createOpsLogsService } from './services/ops-logs.service.js';
 import { createBillingReviewService } from './services/billing-review.service.js';
 import { createTracingService } from './services/tracing.service.js';
@@ -166,7 +166,7 @@ export function assembleAdminApi(
   const adminSubscriptions = createAdminSubscriptionsService({ db, domain: subscriptions });
   const plans = createPlansService({ db });
   const redeem = createRedeemService({ db });
-  const voucherStorage = createLocalVoucherStorage(config.VOUCHER_DIR);
+  const voucherStorage = createDbVoucherStorage(db);
   const channelFunds = createChannelFundsService({
     db,
     voucherStorage,

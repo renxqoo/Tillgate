@@ -12,7 +12,7 @@ import { createCatalogService, type CatalogSource } from '../services/catalog.se
 import { mapOpenAiCompatibleCatalog } from '../domain/catalog.js';
 import { createFxService } from '../services/fx.service.js';
 import { createFundsService } from '../services/funds.service.js';
-import { createLocalVoucherStorage, parseVoucherDataUrl } from '../services/voucher-storage.js';
+import { createDbVoucherStorage, parseVoucherDataUrl } from '../services/voucher-storage.js';
 import {
   buildTestApp,
   capturingMailer,
@@ -34,7 +34,7 @@ const runCtx = { requestId: 'units', actor: { kind: 'system' } as const, tracePa
 
 describe('凭证存储边界', () => {
   it('save 白名单外 MIME → 400；load 未知扩展/不存在 → null', async () => {
-    const storage = createLocalVoucherStorage('/tmp/aav2-voucher-unit');
+    const storage = createDbVoucherStorage(db);
     await expect(storage.save(Buffer.from('x'), 'text/html')).rejects.toMatchObject({
       status: 400,
       code: 'invalid_voucher',
