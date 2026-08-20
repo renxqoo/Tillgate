@@ -23,12 +23,13 @@
     "@ai-gateway/identity-core": "workspace:*",
     "@ai-gateway/repository": "workspace:*",
     "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
     "@hono/node-server": "^1.19.0",
     "hono": "^4.13.0",
     "ioredis": "^5.8.0",
     "jose": "^6.2.8",
-    "zod": "^4.4.3",
-    "@ai-gateway/tracing": "workspace:*"
+    "undici": "^8.10.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
