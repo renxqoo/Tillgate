@@ -26,15 +26,18 @@ export function moneyText(options: {
   message?: string;
   allowNegative?: boolean;
   allowZero?: boolean;
+  /** 允许空串（可空字段：空 = 不提交，由调用方决定语义——如缓存写价留空回落输入价） */
+  allowEmpty?: boolean;
 } = {}) {
   const {
     message = "请输入有效金额",
     allowNegative = false,
     allowZero = true,
+    allowEmpty = false,
   } = options;
   const pattern = allowNegative ? /^-?\d{1,20}(?:\.\d{1,18})?$/ : /^\d{1,20}(?:\.\d{1,18})?$/;
   return z
     .string()
-    .refine((v) => pattern.test(v), message)
+    .refine((v) => (allowEmpty ? v === "" || pattern.test(v) : pattern.test(v)), message)
     .refine((v) => allowZero || !/^-?0+(?:\.0+)?$/.test(v), "金额必须非零");
 }

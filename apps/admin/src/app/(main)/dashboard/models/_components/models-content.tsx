@@ -62,7 +62,7 @@ const createSchema = z.object({
   inputPrice: moneyText({ message: '请输入有效价格' }),
   outputPrice: moneyText({ message: '请输入有效价格' }),
   cacheInputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheWritePrice: moneyText({ message: '请输入有效价格' }),
+  cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
@@ -236,7 +236,7 @@ const editSchema = z.object({
   inputPrice: moneyText({ message: '请输入有效价格' }),
   outputPrice: moneyText({ message: '请输入有效价格' }),
   cacheInputPrice: moneyText({ message: '请输入有效价格' }),
-  cacheWritePrice: moneyText({ message: '请输入有效价格' }),
+  cacheWritePrice: moneyText({ message: '请输入有效价格', allowEmpty: true }),
   isFree: z.boolean().optional(),
   contextLength: numericText({ message: '请输入有效 token 数' }).refine(
     (v) => v === 0 || Number.isInteger(v),
