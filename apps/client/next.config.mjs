@@ -46,11 +46,18 @@ const nextConfig = {
     'localhost:3444',
   ],
   transpilePackages: ['@ai-gateway/ui', '@ai-gateway/api-client'],
-  // 操练场 BYOK 直连网关（同域 /v1）：生产由 nginx 把 /v1 分流到 gateway
-  // （请求不达 Next，此规则不生效）；dev 无 nginx 时兜底转发本地网关
+  // 操练场 BYOK 直连网关（同域推理端点）：生产由 nginx 分流（请求不达 Next，
+  // 此规则不生效）；dev 无 nginx 时兜底转发本地网关。
+  // ！！只转发推理端点——/v1/pricing 等属 client-api（server 侧走 CLIENT_API_BASE
+  // 直连），通配整个 /v1 会劫持它们且网关未启动时全部 500（曾发生）
   async rewrites() {
     const gateway = process.env.GATEWAY_BASE ?? 'http://localhost:8083';
-    return [{ source: '/v1/:path*', destination: `${gateway}/v1/:path*` }];
+    return [
+      { source: '/v1/chat/completions', destination: `${gateway}/v1/chat/completions` },
+      { source: '/v1/completions', destination: `${gateway}/v1/completions` },
+      { source: '/v1/embeddings', destination: `${gateway}/v1/embeddings` },
+      { source: '/v1/models', destination: `${gateway}/v1/models` },
+    ];
   },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
