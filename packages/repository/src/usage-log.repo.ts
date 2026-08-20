@@ -4,7 +4,8 @@
  */
 import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import type { DbTx } from '@ai-gateway/db';
-import { apiKeys, apps, channels, requestLogs, usageLogs, users } from '@ai-gateway/db';
+import { apiKeys, apps, channels, requestLogs, usageLogs, users,
+  modelMappings,} from '@ai-gateway/db';
 import type { RepoContext } from './context.js';
 import { escapeLikePattern } from './search.js';
 
@@ -22,6 +23,10 @@ export interface UsageRow {
   cachedInputTokens: number;
   outputTokens: number;
   units: number;
+  /** 单位计价行（图片张/音频秒/语音字符/按次）；token 行 0 */
+  unitPrice: string | null;
+  /** 计价单位（token 模型 null——按 model_mappings 现值关联） */
+  pricingUnit: string | null;
   amount: string;
   billedBy: string;
   planAmount: string;
@@ -126,6 +131,8 @@ export class UsageLogRepository {
         cachedInputTokens: usageLogs.cachedInputTokens,
         outputTokens: usageLogs.outputTokens,
         units: usageLogs.units,
+        unitPrice: usageLogs.unitPrice,
+        pricingUnit: modelMappings.pricingUnit,
         amount: usageLogs.amount,
         billedBy: usageLogs.billedBy,
         planAmount: usageLogs.planAmount,
@@ -138,6 +145,7 @@ export class UsageLogRepository {
         appName: apps.name,
       })
       .from(usageLogs)
+      .leftJoin(modelMappings, eq(usageLogs.externalModel, modelMappings.externalName))
       .leftJoin(apiKeys, eq(usageLogs.apiKeyId, apiKeys.id))
       .leftJoin(apps, eq(usageLogs.appId, apps.id))
       .where(where)
@@ -266,6 +274,9 @@ export class UsageLogRepository {
           inputTokens: usageLogs.inputTokens,
           cachedInputTokens: usageLogs.cachedInputTokens,
           outputTokens: usageLogs.outputTokens,
+          units: usageLogs.units,
+          unitPrice: usageLogs.unitPrice,
+          pricingUnit: modelMappings.pricingUnit,
           amount: usageLogs.amount,
           calculatedAmount: usageLogs.calculatedAmount,
           planAmount: usageLogs.planAmount,
@@ -281,6 +292,7 @@ export class UsageLogRepository {
         })
         .from(usageLogs)
         .leftJoin(users, eq(usageLogs.userId, users.id))
+        .leftJoin(modelMappings, eq(usageLogs.externalModel, modelMappings.externalName))
         .where(where)
         .orderBy(...orderBy)
         .limit(input.limit)

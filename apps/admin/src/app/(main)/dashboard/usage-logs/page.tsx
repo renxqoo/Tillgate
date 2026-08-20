@@ -1,5 +1,6 @@
 import { CoinsIcon } from "lucide-react";
 
+import { unitWord } from "@ai-gateway/api-client/formatters";
 import {
   ApiError,
   adminFetch,
@@ -95,21 +96,32 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
       header: "输入",
       sortable: true,
       align: "right",
-      render: (r) => (
-        <span className="text-right text-xs tabular-nums">
-          {r.inputTokens.toLocaleString()}
-          {r.cachedInputTokens > 0 ? (
-            <span className="ml-1 text-muted-foreground">(缓存 {r.cachedInputTokens.toLocaleString()})</span>
-          ) : null}
-        </span>
-      ),
+      render: (r) =>
+        r.units && r.units > 0 ? (
+          <span className="text-right text-xs tabular-nums">
+            {r.units.toLocaleString()} {unitWord(r.pricingUnit)}
+            <span className="ml-1 text-muted-foreground">(单位计价)</span>
+          </span>
+        ) : (
+          <span className="text-right text-xs tabular-nums">
+            {r.inputTokens.toLocaleString()}
+            {r.cachedInputTokens > 0 ? (
+              <span className="ml-1 text-muted-foreground">(缓存 {r.cachedInputTokens.toLocaleString()})</span>
+            ) : null}
+          </span>
+        ),
     },
     {
       key: "outputTokens",
       header: "输出",
       sortable: true,
       align: "right",
-      render: (r) => <span className="text-right text-xs tabular-nums">{r.outputTokens.toLocaleString()}</span>,
+      render: (r) =>
+        r.units && r.units > 0 ? (
+          <span className="text-right text-xs tabular-nums text-muted-foreground">—</span>
+        ) : (
+          <span className="text-right text-xs tabular-nums">{r.outputTokens.toLocaleString()}</span>
+        ),
     },
     {
       key: "amount",

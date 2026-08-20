@@ -142,6 +142,9 @@ export interface UsageRow {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
+  units?: number;
+  unitPrice?: string | null;
+  pricingUnit?: string | null;
   amount: string;
   /** 计费来源：plan=套餐额度（展示积分）/ payg=余额（展示金额） */
   billedBy: 'plan' | 'payg';
@@ -543,6 +546,10 @@ export interface AdminUsageRow {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
+  /** 单位计价行（>0 时输入/输出 token 无意义，展示单位用量） */
+  units?: number;
+  unitPrice?: string | null;
+  pricingUnit?: string | null;
   amount: string;
   calculatedAmount: string;
   planAmount: string;

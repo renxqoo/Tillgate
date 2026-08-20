@@ -385,6 +385,9 @@ function ModelForm({
   formId: string;
   isEdit?: boolean;
 }) {
+  // 计价方式联动：token 模式显三价+缓存写价；单位模式（图片/音频/语音/按次）只显单位单价
+  const pricingUnit: string = form.watch('pricingUnit') ?? 'token';
+  const unitMode = pricingUnit !== 'token';
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -424,6 +427,7 @@ function ModelForm({
             )}
           />
         </div>
+        {unitMode ? null : (
         <div className="grid grid-cols-3 gap-3">
           <NumberField
             control={form.control}
@@ -453,6 +457,8 @@ function ModelForm({
             id="m-cache-w"
             step="0.0001"
           />
+        </div>
+        )}
           <Controller
             control={form.control}
             name="pricingUnit"
@@ -474,13 +480,15 @@ function ModelForm({
               </div>
             )}
           />
+          {unitMode ? (
           <NumberField
             control={form.control}
             name="unitPrice"
-            label="单位单价（元/张·秒·字符·次；token 模型留空）"
+            label={`单位单价（元/${pricingUnit === 'image' ? '张' : pricingUnit === 'second' ? '秒' : pricingUnit === 'char' ? '字符' : '次'}）`}
             id="m-unit-price"
             step="0.0001"
           />
+          ) : null}
           <NumberField
             control={form.control}
             name="contextLength"
@@ -488,8 +496,9 @@ function ModelForm({
             id="m-ctx"
             step="1"
           />
-        </div>
-        <p className="text-xs text-muted-foreground">单位：元 / 百万 token</p>
+        <p className="text-xs text-muted-foreground">
+          {unitMode ? '单位单价（元/单位）；token 三价不参与计费' : '单位：元 / 百万 token'}
+        </p>
         <Controller
           control={form.control}
           name="isFree"

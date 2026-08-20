@@ -133,3 +133,19 @@ export function toPoints(value: MoneyValue): number {
 export function formatPoints(value: MoneyValue): string {
   return formatMoney(toFiniteNumber(value) * POINTS_PER_YUAN, 2);
 }
+
+/** 计价单位中文词（用量列表展示：图片张/音频秒/语音字符/按次） */
+export function unitWord(pricingUnit: string | null | undefined): string {
+  switch (pricingUnit) {
+    case 'image':
+      return '张';
+    case 'second':
+      return '秒';
+    case 'char':
+      return '字符';
+    case 'request':
+      return '次';
+    default:
+      return '单位';
+  }
+}

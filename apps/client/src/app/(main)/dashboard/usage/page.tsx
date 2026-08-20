@@ -1,5 +1,6 @@
 import { LineChartIcon } from "lucide-react";
 
+import { unitWord } from "@ai-gateway/api-client/formatters";
 import { fmtDateTime, fmtCost, formatPoints, fmtInt, msToHuman, type UsageRow } from "@ai-gateway/api-client";
 import { fetchUserList } from "@ai-gateway/api-client/list";
 import { DataTable, type DataTableColumn } from "@ai-gateway/ui/components/data-table";
@@ -53,14 +54,26 @@ export default async function UsagePage({ searchParams }: PageProps) {
         </span>
       ),
     },
-    { key: "inputTokens", header: "输入", align: "right", render: (r) => <span className="text-right tabular-nums">{fmtInt(r.inputTokens)}</span> },
+    {
+      key: "inputTokens",
+      header: "用量",
+      align: "right",
+      render: (r) =>
+        r.units && r.units > 0 ? (
+          <span className="text-right tabular-nums">
+            {fmtInt(r.units)} {unitWord(r.pricingUnit)}
+          </span>
+        ) : (
+          <span className="text-right tabular-nums">{fmtInt(r.inputTokens)}</span>
+        ),
+    },
     {
       key: "cachedInputTokens",
       header: "缓存",
       align: "right",
       render: (r) => (
         <span className="text-right tabular-nums text-muted-foreground">
-          {r.cachedInputTokens > 0 ? fmtInt(r.cachedInputTokens) : "—"}
+          {r.units && r.units > 0 ? "—" : r.cachedInputTokens > 0 ? fmtInt(r.cachedInputTokens) : "—"}
         </span>
       ),
     },
@@ -70,7 +83,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
       align: "right",
       render: (r) => (
         <span className="text-right tabular-nums text-muted-foreground">
-          {r.inputTokens > 0 ? `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%` : "—"}
+          {r.units && r.units > 0 ? "—" : r.inputTokens > 0 ? `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%` : "—"}
         </span>
       ),
     },
