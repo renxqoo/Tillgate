@@ -14,7 +14,31 @@
  * 路径兼容：调用方仍写 v1 时代的 '/api/...' / '/api/admin/...' 字面量——本层统一
  * 映射到 v2 的 /v1/*（见 mapPath），前端页面代码零路径散改。
  */
+import { headers } from 'next/headers';
+
+import { trustedClientIp } from '@ai-gateway/http';
+
 import { getAdminSessionToken, getSessionToken } from './session';
+
+/**
+ * BFF 透传真实用户 IP：client-api / admin-api 不在 nginx 后（Next 服务端直连），
+ * 没有 XFF 转发时它们的按 IP 爆破锁会把所有用户记成同一个 Next 容器 IP。
+ * 链路：浏览器 → nginx(XFF 追加真实 IP) → Next（本层按 TRUSTED_PROXY_HOPS 解出）
+ *      → API（XFF: <用户 IP>，API 侧同样 hops=1 采信右数第 1 跳）。
+ * 解不出（dev 直连 hops=0 / 非请求上下文如构建期）→ 不带该头，API 回落 socket。
+ */
+async function outgoingUserIpHeader(): Promise<Record<string, string>> {
+  try {
+    const ip = trustedClientIp({
+      headers: await headers(),
+      trustedProxyHops: Number(process.env.TRUSTED_PROXY_HOPS ?? 0) || 0,
+      socketAddress: null,
+    });
+    return ip.startsWith('unknown-') ? {} : { 'x-forwarded-for': ip };
+  } catch {
+    return {}; // 非请求上下文（SSG 构建等）：无入站请求头可解
+  }
+}
 
 /** client-api（用户面）内网地址 */
 /** API 基地址必配（无默认值：漏配即明确报错，不静默指向 localhost——生产事故源） */
@@ -89,6 +113,7 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(await outgoingUserIpHeader()),
       ...extraHeaders,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
