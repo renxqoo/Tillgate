@@ -61,7 +61,7 @@ export function e2eAdminConfig(overrides: Partial<AdminApiConfig> = {}): AdminAp
     SMTP_PORT: 465,
     ADMIN_CURRENCY: 'CNY',
     VOUCHER_MAX_BYTES: 2_097_152,
-      REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+      REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
     CORS_ORIGINS: '',
     BODY_LIMIT_BYTES: 4_194_304,
     ADMIN_SHUTDOWN_GRACE_MS: 1_000,

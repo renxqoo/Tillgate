@@ -7,9 +7,9 @@
  *      实筹 → 击穿不可能；单请求大输出验证最多负债 ≤ 单笔真实用量（§4 上界）。
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Decimal } from '@ai-gateway/domain';
-import { E2EKeys, E2E_MODEL, e2eDb, e2ePost, startE2EGateway, type E2EGateway } from './e2e-kit.js';
+import { E2EKeys, E2E_MODEL, e2eDb, e2ePost, resetChannelBreakers, startE2EGateway, type E2EGateway } from './e2e-kit.js';
 
 const db = e2eDb();
 const keys = new E2EKeys(db);
@@ -98,10 +98,18 @@ describe('E2E ⑬ 用户参数异常值全家族', () => {
     await new Promise((r) => setTimeout(r, 2_000));
     await keys.settleAll(userId);
     await keys.assertReconciled(userId, '1'); // 放行的都正确计费，拒绝的零扣
+    // 9MiB 真上游 5xx 会打开渠道熔断（5 分钟冷却）——不清掉会连坐 ⑭ 的放行用例
+    await resetChannelBreakers();
   }, 180_000);
 });
 
 describe('E2E ⑭ fixed=0.1 并发击穿验证', () => {
+  // 真上游的长生成/重试失败会打开渠道熔断（全局状态，5 分钟冷却）——
+  // ⑭ 验证的是计费放行语义而非渠道韧性，每例前复位熔断保证起点干净
+  beforeEach(async () => {
+    await resetChannelBreakers();
+  });
+
   it('余额 0.15 并发 8 路：至多 1-2 路放行（首路押尽可用额），其余 402；零击穿', async () => {
     const FUND = '0.15';
     const { raw, userId } = await keys.issue(FUND);

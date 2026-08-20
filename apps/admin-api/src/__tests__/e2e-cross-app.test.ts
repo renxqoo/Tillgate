@@ -15,7 +15,7 @@ import {
   trackE2E,
   type E2EAdminApi,
 } from './e2e-kit.js';
-import { startClientApi, type E2EClientApi } from '../../../client-api/src/__tests__/e2e-kit.js';
+import { registerTwoStep, startClientApi, type E2EClientApi } from '../../../client-api/src/__tests__/e2e-kit.js';
 
 let admin: E2EAdminApi;
 let client: E2EClientApi;
@@ -38,12 +38,13 @@ afterAll(async () => {
 describe('E2E 跨 app：管理动作 → 用户面即时生效', () => {
   it('管理员重置密码 → client 旧 token 失效 + 新密码可登', async () => {
     const email = `${e2eUid('x')}@example.com`;
-    const reg = await http(client.baseUrl, '/v1/auth/register', {
-      body: { email, password: 'cross-app-pass-1' },
-    });
-    expect(reg.status).toBe(201);
-    const userToken = reg.body.token as string;
-    const userId = reg.body.userId as number;
+    const reg = await registerTwoStep(
+      (path, body) => http(client.baseUrl, path, { body }),
+      email,
+      'cross-app-pass-1',
+    );
+    const userToken = reg.token;
+    const userId = reg.userId;
     trackE2E.user(userId);
     expect((await http(client.baseUrl, '/v1/me', { token: userToken })).status).toBe(200);
 
@@ -67,11 +68,13 @@ describe('E2E 跨 app：管理动作 → 用户面即时生效', () => {
 
   it('管理员封禁 → client 既有 token 即刻 401', async () => {
     const email = `${e2eUid('x')}@example.com`;
-    const reg = await http(client.baseUrl, '/v1/auth/register', {
-      body: { email, password: 'cross-app-pass-1' },
-    });
-    const userToken = reg.body.token as string;
-    const userId = reg.body.userId as number;
+    const reg = await registerTwoStep(
+      (path, body) => http(client.baseUrl, path, { body }),
+      email,
+      'cross-app-pass-1',
+    );
+    const userToken = reg.token;
+    const userId = reg.userId;
     trackE2E.user(userId);
     expect((await http(client.baseUrl, '/v1/me', { token: userToken })).status).toBe(200);
 

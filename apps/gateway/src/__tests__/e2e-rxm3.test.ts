@@ -116,6 +116,10 @@ beforeAll(async () => {
 
   assembly = assembleGateway({
     DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
+    // Redis 必配：漏传 = ioredis(undefined) 无密码连默认端口——NOAUTH 刷屏且
+    // 限流/爆破防护/熔断状态共享全部 fail-open 降级（assembleGateway 收的是
+    // 已解析对象，不走 loadConfig 的必填校验，as never 绕过了类型保护）
+    REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
     PORT: 0,
     DB_POOL_MAX: 40,
     GATEWAY_CURRENCY: 'CNY',

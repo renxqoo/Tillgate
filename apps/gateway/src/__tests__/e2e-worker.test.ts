@@ -110,6 +110,13 @@ beforeAll(async () => {
     WORKER_GENERATION_LEASE_MS: 30_000,
     WORKER_GENERATION_EXPIRE_REASON: '任务超时（TTL 到期）',
     WORKER_SHUTDOWN_GRACE_MS: 5_000,
+    // startWorker 已入口归一化（缺字段填默认）——以下显式值防默认副作用：
+    // 佣金默认关（e2e 不测返利）；notify 默认开会向 dev 库真实投递告警（静音）；
+    // health 默认 8792 会与 dev worker 端口冲突（0 = 关闭）
+    WORKER_REFERRAL_INTERVAL_MS: 300_000,
+    REFERRAL_COMMISSION_RATE: '0',
+    WORKER_NOTIFY_ENABLED: false,
+    WORKER_HEALTH_PORT: 0,
     CHANNEL_API_KEY_ENCRYPTION: encryptionKeyOf(),
     WORKER_AI_ALLOW_LOCAL_URL: true, // mock 上游在回环——dev 逃生门
     // 内联配置绕过 zod 默认值——OTEL 字段缺省会让 initOtel 落进 OTLP 分支

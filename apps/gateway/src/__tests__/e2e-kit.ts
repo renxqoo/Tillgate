@@ -218,6 +218,25 @@ function expectDecimalEq(actual: string, expected: string): void {
   }
 }
 
+/** 清渠道熔断状态：畸形大请求（如 9MiB prompt）打真上游触发连续 5xx 后，
+ *  熔断 open 的冷却期（5 分钟）会连坐后续正常放行用例——测试间需显式复位。
+ *  熔断 key 在 Redis（ai:breaker: 前缀，SSRF/状态共享装配），非网关进程内存。 */
+export async function resetChannelBreakers(): Promise<void> {
+  const { createRedisClient, waitForRedisReady } = await import('@ai-gateway/core');
+  const redis = createRedisClient(process.env.REDIS_URL ?? 'redis://:root123@localhost:6379', {
+    serviceName: 'e2e-reset',
+  });
+  if (!(await waitForRedisReady(redis))) throw new Error('e2e-reset: redis not ready');
+  try {
+    const stream = redis.scanStream({ match: 'ai:breaker:*', count: 100 });
+    const keys: string[] = [];
+    for await (const batch of stream) keys.push(...(batch as string[]));
+    if (keys.length > 0) await redis.del(...keys);
+  } finally {
+    redis.disconnect();
+  }
+}
+
 export const e2ePost = (baseUrl: string, raw: string, body: Record<string, unknown>, signal?: AbortSignal) =>
   fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
