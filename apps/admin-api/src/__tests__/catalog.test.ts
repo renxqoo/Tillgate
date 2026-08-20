@@ -167,6 +167,37 @@ describe('目录纯函数', () => {
     expect(items[0]).toMatchObject({ displayName: 'ok', contextLength: null });
   });
 
+  it('负价哨兵不入货架：OpenRouter auto-*（pricing=-1）与 models.dev 负 cost 均跳过', () => {
+    const or = mapOpenAiCompatibleCatalog(
+      {
+        data: [
+          { id: 'openrouter/auto-beta', pricing: { prompt: -1, completion: -1 } },
+          { id: 'openai/gpt-4o', pricing: { prompt: 0.0000025, completion: 0.00001 } },
+        ],
+      },
+      { currency: 'USD' },
+    );
+    expect(or.map((i) => i.realModel)).toEqual(['openai/gpt-4o']);
+
+    const md = mapModelsDevCatalog({
+      openrouter: { models: { 'auto-beta': { cost: { input: -1, output: -1 } } } },
+      qwen: { models: { 'qwen3.8-27b': { cost: { input: 0.45, output: 3.2 } } } },
+    });
+    expect(md.map((i) => i.realModel)).toEqual(['qwen/qwen3.8-27b']);
+  });
+
+  it('换算浮点噪声清理：per-token×1e6 与 ×汇率均无 0.44999…96 尾巴', () => {
+    const items = mapOpenAiCompatibleCatalog(
+      { data: [{ id: 'qwen/qwen3.8-27b', pricing: { prompt: 4.5e-7, completion: 3.2e-6 } }] },
+      { currency: 'USD' },
+    );
+    const item = items[0]!;
+    expect(item.catalogPrompt).toBe('0.45');
+    expect(item.catalogCompletion).toBe('3.2');
+    expect(toCny('0.45', 'USD', '6.7382')).toBe('3.03219');
+    expect(toCny('3.2', 'USD', '6.7382')).toBe('21.56224');
+  });
+
   it('compareCatalog：带内波动（±5%）判 same 且记小幅 driftPct；CNY 源直比', () => {
     const inBand = compareCatalog(
       [{ realModel: 'x', displayName: 'x', contextLength: null, currency: 'CNY', catalogPrompt: '10.2', catalogCompletion: '10.2', catalogCacheRead: null, catalogCacheWrite: null, suggestedName: 'x' }],

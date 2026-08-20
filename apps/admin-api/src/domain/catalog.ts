@@ -54,10 +54,21 @@ function asOptionalPrice(v: unknown): string | null {
   return Number(s) > 0 ? s : null;
 }
 
+/** 换算价的浮点噪声清理：4.5e-7×1e6 = 0.44999…96 → 0.45（12 位有效数字覆盖一切报价精度） */
+function cleanPrice(n: number): string {
+  return String(Number(n.toPrecision(12)));
+}
+
+/** 上游「不可定价」哨兵（OpenRouter auto-* 与 models.dev 均用负值/-1）：缺省/0 不是哨兵 */
+function isUnpriceableSentinel(v: unknown): boolean {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.length > 0 ? Number(v) : 0;
+  return Number.isFinite(n) && n < 0;
+}
+
 /** 每 token 价 → 每百万价（0/缺省保持 null——免费无缓存价语义） */
 function scalePerMillion(v: unknown): string | null {
   const s = asOptionalPrice(v);
-  return s == null ? null : String(Number(s) * USD_PER_TOKEN_TO_PER_MILLION);
+  return s == null ? null : cleanPrice(Number(s) * USD_PER_TOKEN_TO_PER_MILLION);
 }
 
 /**
@@ -82,14 +93,19 @@ export function mapOpenAiCompatibleCatalog(
       pricing?: { prompt?: unknown; completion?: unknown };
     };
     if (typeof row.id !== 'string' || row.id.length === 0) continue;
+    // 不可定价哨兵（pricing 为 -1，如 openrouter/auto-beta 动态定价）：预填无依据、
+    // 且负价会在换算/比价里疯走（-1×1e6×汇率）——不入货架，导入需运营自行配价
+    if (isUnpriceableSentinel(row.pricing?.prompt) || isUnpriceableSentinel(row.pricing?.completion)) continue;
+    const prompt = Number(asPrice(row.pricing?.prompt));
+    const completion = Number(asPrice(row.pricing?.completion));
     const realModel = opts.realModelPrefix ? `${opts.realModelPrefix}${row.id}` : row.id;
     items.push({
       realModel,
       displayName: typeof row.name === 'string' ? row.name : row.id,
       contextLength: typeof row.context_length === 'number' ? row.context_length : null,
       currency: opts.currency,
-      catalogPrompt: String(Number(asPrice(row.pricing?.prompt)) * USD_PER_TOKEN_TO_PER_MILLION),
-      catalogCompletion: String(Number(asPrice(row.pricing?.completion)) * USD_PER_TOKEN_TO_PER_MILLION),
+      catalogPrompt: cleanPrice(prompt * USD_PER_TOKEN_TO_PER_MILLION),
+      catalogCompletion: cleanPrice(completion * USD_PER_TOKEN_TO_PER_MILLION),
       catalogCacheRead: scalePerMillion((row.pricing as { cache_read?: unknown } | undefined)?.cache_read),
       catalogCacheWrite: scalePerMillion((row.pricing as { cache_write?: unknown } | undefined)?.cache_write),
       suggestedName: suggestExternalName(row.id),
@@ -112,13 +128,15 @@ export function mapModelsDevCatalog(raw: unknown): CatalogItem[] {
       if (typeof id !== 'string' || id.length === 0) continue;
       const limit = (m.limit ?? {}) as { context?: unknown };
       const cost = (m.cost ?? {}) as Record<string, unknown>;
+      // 负价哨兵（不可定价）不入货架——与 OpenAI 兼容源同语义；缺 cost 保持 0（免费口径不变）
+      if (isUnpriceableSentinel(cost.input) || isUnpriceableSentinel(cost.output)) continue;
       items.push({
         realModel: `${provider}/${id}`,
         displayName: typeof m.name === 'string' && m.name ? m.name : id,
         contextLength: typeof limit.context === 'number' && limit.context > 0 ? limit.context : null,
         currency: 'USD',
-        catalogPrompt: asPrice(cost.input),
-        catalogCompletion: asPrice(cost.output),
+        catalogPrompt: cleanPrice(Number(asPrice(cost.input))),
+        catalogCompletion: cleanPrice(Number(asPrice(cost.output))),
         catalogCacheRead: asOptionalPrice(cost.cache_read),
         catalogCacheWrite: asOptionalPrice(cost.cache_write),
         suggestedName: suggestExternalName(id),
@@ -132,7 +150,7 @@ export function mapModelsDevCatalog(raw: unknown): CatalogItem[] {
 export function toCny(price: string, currency: CatalogCurrency, effectiveRate: string | null): string | null {
   if (currency === 'CNY') return price;
   if (effectiveRate == null) return null;
-  return String(Number(price) * Number(effectiveRate));
+  return cleanPrice(Number(price) * Number(effectiveRate));
 }
 
 /** 比价带宽：±5% 内视为 same（汇率与目录价的日常波动不产生噪声 diff） */

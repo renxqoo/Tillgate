@@ -221,7 +221,19 @@ export function createCatalogService(deps: CatalogServiceDeps): CatalogService {
 
     async comparison(ctx, sourceId) {
       const source = getSource(sourceId);
-      const { fetchedAt, raw } = await fetchSourceModels(source);
+      let fetchedAt: number;
+      let raw: unknown;
+      try {
+        ({ fetchedAt, raw } = await fetchSourceModels(source));
+      } catch (error) {
+        // 源不可达要可读可排障（如 models.dev 本机网络不可达）——
+        // 不包成 500 internal error，502 + 源名 + 底层原因直达前端提示条
+        throw new AppError(
+          502,
+          'catalog_source_unreachable',
+          `目录源「${source.name}」拉取失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       const items = source.mapModels(raw);
       const fxState = await deps.fx.state(ctx);
       const existing = await repos.modelMapping.listEnabledByRealModels(
