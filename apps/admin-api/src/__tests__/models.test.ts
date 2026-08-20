@@ -100,6 +100,27 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
   });
 });
 
+describe('重名创建 → 409 精确文案（曾折叠成「重名/引用/数值域」盲猜）', () => {
+  it('重复 externalName → 409 model_exists，报已存在 id 与状态', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const { body } = await createModel(request, token);
+    const dup = await request('/v1/models', {
+      token,
+      body: {
+        externalName: body.externalName,
+        realModel: uid('rm'),
+        inputPrice: '1', outputPrice: '2', cacheInputPrice: '1',
+      },
+    });
+    expect(dup.status).toBe(409);
+    const err = (await dup.json()) as { error: { code: string; message: string } };
+    expect(err.error.code).toBe('model_exists');
+    expect(err.error.message).toContain(body.externalName);
+    expect(err.error.message).toContain(String(body.id));
+  });
+});
+
 describe('数值域铁三角（red：zod 层收口，绝不溢出到 PG 500）', () => {
   it.each([
     { body: { inputPrice: '1e999' }, why: '字符串 Infinity' },

@@ -141,6 +141,12 @@ export function createModelsService(deps: ModelsServiceDeps): ModelsService {
     async create(ctx, input) {
       const isFree = input.isFree ?? false;
       assertFreeConsistency(isFree, input.prices);
+      // 重名前置检查：唯一索引兜底仍在，但错误要说人话（原 23505 被折叠成
+      // 「重名/引用/数值域」三合一盲猜，管理员无从定位）
+      const existing = await repos.modelMapping.findByExternalName({ db, ...ctx }, input.externalName);
+      if (existing) {
+        throw new AppError(409, 'model_exists', `模型映射「${input.externalName}」已存在（id=${existing.id}，状态 ${existing.status === 0 ? '启用' : '停用'}）——重名请改用编辑`);
+      }
       const row = await db.transaction(async (tx) =>
         repos.modelMapping.insertMapping({ db: tx, ...ctx }, {
           externalName: input.externalName,
