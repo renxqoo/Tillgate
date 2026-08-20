@@ -9,6 +9,55 @@
 
 ---
 
+## §18 模型市场统一 + 汇率追溯全链（2026-08-20，分支 feat/cache-write-and-catalog）
+
+**用户拍板的四项设计决策**：① 账本恒单币种（CNY），换算只发生在导入边界；
+② 汇率自动拉取为主（ECB/frankfurter 无 key 源）+ 手动覆盖 + 点差（覆盖值不叠
+点差——手动值自带运营判断）；③ models.dev 活拉（api.json），快照只做兜底；
+④ 追溯要到请求级——任何一笔账可答「用了什么价、当时汇率多少」。
+
+**多币种口径（资金正确性）**：计费核心零改动（GATEWAY_CURRENCY=CNY →
+assertCurrency 守卫 → pricing 全元/百万 token）；USD 只是目录参考币。
+OpenRouter 目录价为**每 token 美元**——映射层归一 ×1e6 到每百万（与 models.dev
+同口径），否则预填差 1e6 倍（实现中发现并修正的真 bug）。顺带修掉 §17 WS2 的
+单位漏洞：裸种子导入曾把美元价当人民币存（7× 贱卖风险，草稿态缓解）——该通道
+整体退役（铁律 8），统一走换算预填 + 人工确认。
+
+**汇率三层结构（对账三问各有归属）**：
+- `fx_rates` 追加表（0065 迁移，只增不改）：auto 行（ecb 拉取）与 manual 行
+  （覆盖，含操作人）——「当时什么汇率、从哪来、谁改的」查表即答
+- `system_configs`（catalog_fx）：运行态缓存（mode/buffer/override/当前值）；
+  懒拉信任表而非缓存（表无行即触发拉取——配置缓存可能失真）
+- 定价审计 provenance：每次导入记「目录原价 × fx（rateId/base/effective/来源/
+  时间）→ 预填 → 提交」，预填由服务端重算（前端不传），人工改过预填一目了然
+
+**请求级追溯**：usage_logs 新增 fx_rate/fx_rate_id（0065）——网关报价时点经
+repos.fx.current()（60s 进程缓存）快照进收据（ReceiptParams.fx），结算投影落列。
+这笔账 = tokens × 价格快照 × 系数 + 当时基准汇率，一查全有。历史行 NULL = 上线
+前无此口径。
+
+**模型市场重构（多源货架）**：CatalogSource 分两类——channel（OpenRouter：真实
+上游，导入建 provider/渠道/绑定并上架）与 reference（models.dev：行业字典，
+导入落草稿 status=1 审批制，不建渠道）。免费过滤从代码硬过滤降为 UI 筛选；
+三态 diff（new/same/price_up/price_down，换算同币比价 ±5% 带宽抗噪声）+ 漂移
+百分比 + 「跟进涨价（防亏）/跟进降价（让利）」批量勾选 + 上游消失检测（绑定到
+本源渠道且目录已无）。UI：动态源 Tab、汇率条（改覆盖/点差/强刷）、双币展示
+（目录 $ + 预填 ¥）、写价列、价格溯源时间线弹窗（GET /v1/model-catalog/
+price-history?externalName=）。
+
+**分层纪律**：admin-api 零 SQL 铁律全程维持——fx 读写与溯源查询下沉 repository
+（FxRepository.insertRate/readConfig/upsertConfig + AuditLogRepository.
+listCatalogPriceHistory jsonb 包含查询）；路由注册顺序陷阱：字面段
+price-history 必须先于 :sourceId 注册。
+
+---
+
+
+
+
+
+---
+
 ## §17 三工单落地：cache_write 计费（系数体系）+ 目录导入 + CI 流水线（2026-08-20，分支 feat/cache-write-and-catalog）
 
 **WS1 cache_write 计费接入（用户决策：走系数体系加成）**：

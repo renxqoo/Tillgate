@@ -6,7 +6,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb } from '@ai-gateway/db';
-import { users } from '@ai-gateway/db';
+import { fxRates, users } from '@ai-gateway/db';
 import type { Db } from '@ai-gateway/repository';
 import { Decimal, type UsageReceipt } from '@ai-gateway/domain';
 import { createBillingDomain, createSettlementDomain, createWallet, type BillingDomain } from '@ai-gateway/service';
@@ -922,6 +922,8 @@ describe('cache_write 计费全链（0063：系数体系 + 三分段互斥）', 
     const seeded = await seedModelWithChannels([{}], {
       pricing: { inputPrice: '1', outputPrice: '2', cacheInputPrice: '0.5', cacheWritePrice: '1.25' },
     });
+    // 请求时点汇率快照：种一行 auto 基准（repos.fx.current 命中 → 收据与 usage_logs 落列）
+    await db.insert(fxRates).values({ rate: '7.2', source: 'ecb', mode: 'auto' });
     const { raw, userId } = await newFundedKey('100');
     const app = makeApp(stubUpstream({
       [seeded.channelNames[0]!]: {
@@ -944,7 +946,9 @@ describe('cache_write 计费全链（0063：系数体系 + 三分段互斥）', 
     expect(row!.receipt).toMatchObject({
       usage: { inputTokens: 1000, cachedInputTokens: 200, cacheWriteTokens: 100 },
       cacheWritePrice: '1.250000000000000000', // PG numeric 尾零原样
+      fxRate: '7.2',
     });
+    expect(row!.receipt!.fxRateId!).toBeGreaterThan(0);
     // 真结算：700×1 + 200×0.5 + 100×1.25 + 50×2 = 1025 → 0.001025 元
     const claims = await settlement.claim(systemContext(randomUUID()), {
       ownerId: `cw-${tag()}`, batchSize: 10, claimLeaseMs: 60_000, requestIds: [requestId],

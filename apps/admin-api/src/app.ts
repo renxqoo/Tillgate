@@ -21,9 +21,9 @@ import { meRoutes } from './routes/me.js';
 import { providersRoutes } from './routes/providers.js';
 import { channelsRoutes } from './routes/channels.js';
 import { modelsRoutes } from './routes/models.js';
-import { createModelImportService } from './services/model-import.service.js';
 import { rateCardsRoutes } from './routes/rate-cards.js';
 import { catalogRoutes } from './routes/catalog.js';
+import { fxCatalogRoutes } from './routes/fx.js';
 import { usersRoutes } from './routes/users.js';
 import { adminKeysRoutes } from './routes/keys.js';
 import { adminSubscriptionsRoutes } from './routes/subscriptions.js';
@@ -101,13 +101,10 @@ export function createApp(deps: AppDeps) {
   app.route('/', meRoutes(deps.assembly.auth, session));
   app.route('/', providersRoutes(deps.assembly.providers, session));
   app.route('/', channelsRoutes(deps.assembly.channels, session));
-  app.route('/', modelsRoutes(
-    deps.assembly.models,
-    session,
-    createModelImportService({ db }),
-  ));
+  app.route('/', modelsRoutes(deps.assembly.models, session));
   app.route('/', rateCardsRoutes(deps.assembly.rateCards, session));
   app.route('/', catalogRoutes(deps.assembly.catalog, session));
+  app.route('/', fxCatalogRoutes(deps.assembly.fx, session));
   app.route('/', usersRoutes(deps.assembly.users, deps.assembly.funds, session));
   app.route('/', adminKeysRoutes(deps.assembly.adminKeys, session));
   app.route('/', adminSubscriptionsRoutes(deps.assembly.adminSubscriptions, session));

@@ -50,6 +50,12 @@ export interface UsageReceipt {
   /** 多模态策略快照指纹；纯文本为 null */
   billingPolicyFingerprint: string | null;
   /**
+   * 请求时点生效基准汇率（1 USD = ? CNY）与 fx_rates 行 id——账单级追溯：
+   * 这笔账的价格快照从哪个汇率环境产生一查便知；缺省 = fx 机制上线前的历史口径。
+   */
+  fxRate?: string | null;
+  fxRateId?: number | null;
+  /**
    * 估算结算归属（政策拍板）：用户侧取消 ∪ 完成缺 usage。
    * usage.estimated=true 时必填且必须属于 ESTIMATE_ATTRIBUTIONS（验收结构性把关）。
    */
@@ -107,6 +113,12 @@ export interface BillingQuoteCandidate {
   reservation?: ReservationPolicyConfig;
   /** 多模态策略快照指纹；纯文本为 null */
   billingPolicyFingerprint: string | null;
+  /**
+   * 请求时点生效基准汇率（1 USD = ? CNY）与 fx_rates 行 id——账单级追溯：
+   * 这笔账的价格快照从哪个汇率环境产生一查便知；缺省 = fx 机制上线前的历史口径。
+   */
+  fxRate?: string | null;
+  fxRateId?: number | null;
 }
 
 /** 已按供应商参数规则归一化后的可信报价输入 */

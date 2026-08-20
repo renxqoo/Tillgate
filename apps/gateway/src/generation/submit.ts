@@ -158,6 +158,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
         requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
         externalModel, channelId, channelKey: channelName,
         durationMs: Date.now() - startedAt,
+        fx: await repos.fx.current({ ...ctx, db: deps.db }),
         body,
         usage: { estimated: false, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
       });

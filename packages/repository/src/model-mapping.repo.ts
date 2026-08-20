@@ -270,6 +270,22 @@ export class ModelMappingRepository {
   }
 
   /** 页内映射的绑定渠道 id（列表回显 channelIds；未绑定 = 缺席，服务层补 []） */
+  /** 按渠道查绑定映射（目录「上游消失」检测：绑定到本源渠道且不在目录里的行） */
+  async listMappingRowsByChannelId(
+    c: RepoContext,
+    channelId: number,
+  ): Promise<Array<{ mappingId: number; externalName: string; realModel: string }>> {
+    return c.db
+      .select({
+        mappingId: modelChannels.mappingId,
+        externalName: modelMappings.externalName,
+        realModel: modelMappings.realModel,
+      })
+      .from(modelChannels)
+      .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
+      .where(eq(modelChannels.channelId, channelId));
+  }
+
   async listChannelIdsByMappingIds(
     c: RepoContext,
     mappingIds: readonly number[],

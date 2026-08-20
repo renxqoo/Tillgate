@@ -55,6 +55,8 @@ export function usageLogProjection(input: UsageProjectionInput): Record<string, 
       input.billing.subscriptionId != null && new Decimal(planAmount).gt(0)
         ? input.billing.subscriptionId
         : null,
+    fxRate: receipt.fxRate ?? null,
+    fxRateId: receipt.fxRateId ?? null,
     durationMs: receipt.durationMs,
     status: 0,
     stream: receipt.stream,

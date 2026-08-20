@@ -11,7 +11,6 @@ import { adminCtxOf } from './ctx.js';
 import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { MODEL_SORTS, type ModelsService } from '../services/models.service.js';
-import type { createModelImportService } from '../services/model-import.service.js';
 import type { SessionEnv } from '../middleware/session.js';
 
 const MONEY_MAX = 1e9;
@@ -84,29 +83,8 @@ const idParam = (raw: string): number => {
   return id;
 };
 
-type ModelImportService = ReturnType<typeof createModelImportService>;
 
-const seedEntrySchema = z.object({
-  provider: z.string().min(1).max(64),
-  id: z.string().min(1).max(160),
-  name: z.string().max(160).optional(),
-  contextWindow: z.number().int().nonnegative().max(100_000_000).optional(),
-  reasoning: z.boolean().optional(),
-  inputs: z.array(z.string().max(16)).optional(),
-  cost: z.object({
-    input: z.number().nonnegative().optional(),
-    output: z.number().nonnegative().optional(),
-    cacheRead: z.number().nonnegative().optional(),
-    cacheWrite: z.number().nonnegative().optional(),
-  }).optional(),
-});
-
-const importSchema = z.object({
-  models: z.array(seedEntrySchema).min(1).max(100),
-  dryRun: z.boolean().optional(),
-});
-
-export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<SessionEnv>, importService?: ModelImportService) {
+export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
 
   app.get('/v1/models', session, async (c) => {
@@ -186,19 +164,6 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
     return c.json(await service.probe(adminCtxOf(c), id));
   });
 
-  // 模型目录种子导入（审批制：草稿态入库，价格复核后手动上架；dryRun 预览）
-  app.post('/v1/models/import', session, async (c) => {
-    if (importService === undefined) {
-      throw new AppError(501, 'not_configured', '导入服务未装配');
-    }
-    const body = importSchema.parse(await c.req.json());
-    const result = await importService.importSeed(adminCtxOf(c), {
-      adminId: c.get('adminId'),
-      models: body.models as never,
-      dryRun: body.dryRun ?? false,
-    });
-    return c.json(result);
-  });
 
   return app;
 }
