@@ -62,8 +62,13 @@ jobs:
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 迁移（PG 就绪后建表）
-        run: pnpm --filter @ai-gateway/db db:migrate
+      - name: 构建（provision/migrate 走 dist/migrate-cli.js，须先出产物）
+        run: pnpm exec turbo run build --filter=@ai-gateway/identity-core --filter=@ai-gateway/ledger-core --filter=@ai-gateway/wallet
+
+      # 根四段链：identity-core/ledger-core provision → db migrate → wallet migrate。
+      # 只跑 db 段会在全新库上踩 0055（回填 identity_session_anchors，表由 provision 建）。
+      - name: 迁移（先 provision 后 migrate，全新库建表）
+        run: pnpm db:migrate
 
       - name: 四门（typecheck / lint / build / test）
         run: pnpm exec turbo run typecheck lint build test
