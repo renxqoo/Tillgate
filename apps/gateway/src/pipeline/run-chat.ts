@@ -175,8 +175,9 @@ export function createRunChat(deps: PipelineDeps) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
     const estInput = estimateInputTokens(body, { model: body.model });
-  // 请求时点汇率快照（60s 进程缓存）：收据落 fxRate/fxRateId 供账单级追溯；失败降级 null
-  const fx = await repos.fx.current({ ...ctx, db: deps.db });
+  // 请求时点汇率快照（60s 进程缓存）：预取不阻塞授权关键路径（CI 慢机上多一次
+  // DB 往返会挤占流租约续租时序）——装配收据时才 await；查询失败降级 null
+  const fxPromise = repos.fx.current({ ...ctx, db: deps.db }).catch(() => null);
     const kind = kindOf(endpoint);
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
     const stream = body.stream === true;
@@ -474,7 +475,7 @@ export function createRunChat(deps: PipelineDeps) {
             const receipt = buildReceipt({
               requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
               externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs, fx,
+              durationMs, fx: await fxPromise,
               body: body as Record<string, unknown>,
               responseBody: result.body,
               usage: result.usage
@@ -583,7 +584,7 @@ export function createRunChat(deps: PipelineDeps) {
             ...buildReceipt({
               requestId, userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, candidate,
               externalModel: body.model, channelId: channel.channelId, channelKey: channel.channelName,
-              durationMs, fx,
+              durationMs, fx: await fxPromise,
               body: body as Record<string, unknown>,
               usage: finality.usage.estimated
                 ? { estimated: true, inputTokens: finality.usage.inputTokens, outputTokens: finality.usage.outputTokens }
