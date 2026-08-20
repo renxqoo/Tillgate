@@ -93,6 +93,7 @@ function streamReceiptUsage(
   }
   const terminated = event.terminated;
   const userCancelled = terminated != null && (USER_SIDE_CANCELS as readonly string[]).includes(terminated);
+  // 模型族解析编码器（BPE 主路径，编码器不可用回落启发式）
   const estOutput = estimateTextTokens(event.outputText ?? '');
   return {
     usage: {
@@ -170,7 +171,7 @@ export function createRunChat(deps: PipelineDeps) {
     if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
       throw new AppError(403, 'model_not_allowed', `模型 ${body.model} 不在该凭证的授权范围内`);
     }
-    const estInput = estimateInputTokens(body);
+    const estInput = estimateInputTokens(body, { model: body.model });
     const kind = kindOf(endpoint);
     const outputCap = maxOutputTokensFor(kind === 'modality' ? 'embeddings' : kind, body, deps.config.output);
     const stream = body.stream === true;
@@ -472,7 +473,7 @@ export function createRunChat(deps: PipelineDeps) {
               responseBody: result.body,
               usage: result.usage
                 ? { estimated: false, inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens }
-                : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body) },
+                : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body, { model: body.model }) },
             });
             const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);
             if (!finalized) throw new AppError(503, 'finalize_unavailable', '请求已完成但结算暂时不可用，请重试');

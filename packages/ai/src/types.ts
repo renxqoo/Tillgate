@@ -89,6 +89,11 @@ export interface Usage {
   inputTokens: number;
   /** 缓存命中输入（OpenAI cached_tokens / DeepSeek cache_hit 归一化） */
   cachedInputTokens: number;
+  /**
+   * 缓存写入输入（Anthropic cache_creation_input_tokens / cache_write_tokens 方言归一）。
+   * 数据捕获面：计费消费（费率卡 cache_write 价位）属独立资金工单，当前仅事件/日志可见。
+   */
+  cacheWriteTokens?: number;
   outputTokens: number;
   /** usage 缺失，按字符估算 */
   estimated: boolean;

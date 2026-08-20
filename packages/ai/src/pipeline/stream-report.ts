@@ -9,9 +9,13 @@ import type { RelayStreamHandle, RelayStreamEvent } from '../transport/relay-str
 import { normalizeUsage } from '../usage/normalize';
 import type { AiEvent } from '../events';
 import type { ChatStreamResult, UpstreamError } from '../types';
+import { detectSilentOverflow } from '../errors/overflow';
 import { emitTo, fireAndForget } from './context';
 
 export interface StreamEventBus {
+  /** 溢出判定用的供应商标识（ctx 投影） */
+  providerName?: string;
+  model?: string;
   /** 全局 + per-call 双发（流开始后的常规事件） */
   emitStream: (e: AiEvent) => void;
   /** 终态事件（同步确定，早于 handle 返回）：推全局 + 缓冲供 onEvent 重放 */
@@ -21,10 +25,15 @@ export interface StreamEventBus {
 }
 
 /** per-call 事件总线（ChatStreamResult.onEvent 的背衬；与全局 emit 同时通知） */
-export function createStreamEventBus(emit: (e: AiEvent) => void): StreamEventBus {
+export function createStreamEventBus(
+  emit: (e: AiEvent) => void,
+  meta: { providerName?: string; model?: string } = {},
+): StreamEventBus {
   const perCallListeners: Array<(e: AiEvent) => void> = [];
   const lateEvents: AiEvent[] = [];
   return {
+    providerName: meta.providerName,
+    model: meta.model,
     emitStream: (e) => {
       emit(e); // 全局总线（gateway 计量/排障）
       emitTo(perCallListeners, e); // 本次流专用回调
@@ -97,6 +106,13 @@ export function attachRelayReporting(
         break;
       case 'done': {
         const usage = ev.usage !== null ? normalizeUsage(ev.usage) : null;
+        // 静默溢出可观测（流式：已交付不翻转，旗标进 success 事件）
+        const contextOverflow = usage
+          ? detectSilentOverflow(usage.inputTokens, bus.providerName, bus.model)
+          : false;
+        if (contextOverflow) {
+          log.warn(`[ai] ${requestId} silent context overflow: input=${usage?.inputTokens} model=${bus.model}`);
+        }
         if (usage) {
           bus.emitStream({
             type: 'usage',
@@ -119,6 +135,7 @@ export function attachRelayReporting(
           outputText: ev.outputText,
           doneSentinel: ev.doneSentinel,
           terminalFrame: ev.terminalFrame,
+          ...(contextOverflow ? { contextOverflow: true } : {}),
         });
         break;
       }

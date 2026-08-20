@@ -73,11 +73,15 @@ export function normalizeUsage(usageRaw: unknown): Usage | null {
   const total = num(u.total_tokens);
   if (total !== undefined && total !== inputTokens + outputTokens) return null;
   if (inputTokens === 0 && outputTokens === 0) return null;
+  // 缓存写入方言（OpenAI 风格顶层 cache_write_tokens——pi-ai 同名字段；
+  // Anthropic 经 claude 翻译层以同名字段携带进规范形 usage）
+  const cacheWrite = num(u.cache_write_tokens);
   return {
     inputTokens,
     cachedInputTokens: cached,
     outputTokens,
     estimated: false,
+    ...(cacheWrite !== undefined && cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {}),
     raw: usageRaw,
   };
 }

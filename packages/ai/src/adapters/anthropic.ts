@@ -58,7 +58,15 @@ export class AnthropicAdapter implements ProtocolAdapter {
     if (usage) return usage;
     const u = claudeUsageToUsage((res as Record<string, unknown>)?.usage);
     return u
-      ? { inputTokens: u.promptTokens, cachedInputTokens: u.cachedTokens, outputTokens: u.completionTokens, estimated: false, raw: (res as Record<string, unknown>)?.usage }
+      ? {
+          inputTokens: u.promptTokens,
+          cachedInputTokens: u.cachedTokens,
+          outputTokens: u.completionTokens,
+          estimated: false,
+          // 缓存写入 token（5m+1h 合计）——计费消费属独立资金工单，先捕获
+          ...(u.cacheCreationTokens > 0 ? { cacheWriteTokens: u.cacheCreationTokens } : {}),
+          raw: (res as Record<string, unknown>)?.usage,
+        }
       : null;
   }
 
@@ -97,9 +105,11 @@ function extractOpenAiUsage(res: unknown): Usage | null {
     return null;
   }
   const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;
+  const cacheWrite = usage.cache_write_tokens;
   return {
     inputTokens: usage.prompt_tokens,
     cachedInputTokens: typeof details?.cached_tokens === 'number' ? details.cached_tokens : 0,
+    ...(typeof cacheWrite === 'number' && cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {}),
     outputTokens: usage.completion_tokens,
     estimated: false,
     raw: usage,

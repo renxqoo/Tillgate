@@ -5,6 +5,42 @@
 > 条目按时间倒序、保留原始记录不重写。
 
 
+
+---
+
+## §16 pi-ai 资产吸收收口（2026-08-20，分支 refactor/ai-package-v2 第二批）
+
+调研清单「尚未吸收项」全部落地（覆盖率门禁复测 94.9/85.1/93.3/96.8，459 单测全绿）：
+
+1. **模型元数据同步**（models.dev 单一上游，离线回落 pi-ai 快照）：
+   `pnpm --filter @ai-gateway/ai model-meta` 生成 (a) model-meta.generated.ts——
+   1689 条 provider:model/裸名 → contextWindow（静默溢出判定数据源，入包发版）；
+   (b) scripts/output/model-catalog-seed.json——981 模型四维成本/能力位目录种子
+   （admin 导入审批制：价格属资金语义禁止自动生效，接入面挂模型目录工单）。
+2. **BPE 真分词器**（js-tiktoken 纯 JS）：估算器主路径（模型族解析 o200k/cl100k，
+   pi-ai 同款策略），启发式兜底（无模型名/超长降级 20 万字符/编码异常）；
+   gateway 预扣与收据估算调用点已带 model 走精确路径。CJK 约 1 token/字
+   （旧启发式 0.7）——预扣口径更保守（高估安全方向）。
+3. **vendor 档案扩充**（1→7 家）：deepseek/moonshot/together/nvidia/xai/zai
+   全部以 pi-ai detectCompat 生产兼容矩阵为 basis（ignore=供应商拒收参数、
+   map=供应商要求参数名；moonshot/together/nvidia 把 max_completion_tokens
+   映射回 max_tokens）。
+4. **静默溢出兜底**：detectSilentOverflow（usage.input > contextWindow，窗口
+   来自 models.dev 快照）→ success 事件 contextOverflow 旗标 + 告警日志。
+   语义定位=可观测不翻转成功（计费按供应商 usage 是正确口径；窗口元数据可能
+   滞后，误杀好响应代价高于漏报）。
+5. **cache_write 数据捕获面**：Usage.cacheWriteTokens（Anthropic 5m+1h 两档
+   合计、cache_write_tokens 方言归一、claude 双向流/非流式携带、编码方向还原
+   claude 原生字段名）。计费消费（费率卡 cache_write 价位+rating 公式）仍属
+   独立资金工单——本批只让数据可见。
+6. **修复存量缺陷（特征化再暴露）**：Anthropic 流式 usage 从未发出——
+   message_delta.usage 按 Claude 语义只带 output_tokens（input 在 message_start），
+   claudeUsageToUsage 严格双字段解析永远拒绝它 → 流式计费全走估算。改为宽松
+   读取（output 直取，完整形态才覆盖 input/缓存侧）。
+
+**仍未做（明确留白）**：协议覆盖广度（pi-ai 9 传输/35 provider 预置元数据）——
+特性而非缺陷，按需另立；模型目录 admin 导入端点——种子文件已就绪，接线挂工单。
+
 ---
 
 ## §15 packages/ai v2 重构完成（2026-08-20，分支 refactor/ai-package-v2，方案见 docs/plan-ai-package-v2.md）

@@ -1,6 +1,8 @@
 # 计划:packages/ai v2 重构(机制链拆解 + 组合契约 + 厂商档案)
 
-> 状态:**P0–P5 全部完成(2026-08-20,分支 refactor/ai-package-v2)**。覆盖率门禁
+> 状态:**P0–P5 全部完成 + 第二批 pi-ai 资产吸收收口(2026-08-20,分支 refactor/ai-package-v2)**。
+> 第二批:模型元数据同步(models.dev)/BPE 真分词器/档案扩充 7 家/静默溢出兜底/
+> cache_write 数据捕获,详见 CHANGELOG §16。覆盖率门禁
 > 90/85 上线(实测 94.8/85.1/93.2/96.8);gateway e2e 32/32;施工中发现并修复
 > 4 处生产缺陷(endpoint 寻址/multipart 拆包/abort 丢失/契约窄化),详见 CHANGELOG §15。
 > 实施偏差:vendor profile 首批仅含已验证条目(openai),原定 8 家因无实证来源修订

@@ -24,15 +24,55 @@ export interface VendorProfile {
 }
 
 /**
- * 内置档案库（首批：仅含已验证怪癖）。
- * 计划原定首批 8 家——实施时修订：new-api/pi-ai 均无内置参数删除实证，
- * 自造规则破坏真实请求的风险大于收益，故只收有把握的条目，其余待实测补充。
+ * 内置档案库：全部条目带可验证依据（厂商文档或 pi-ai detectCompat 生产兼容矩阵
+ * ——本地 /Users/wrr/work/pi packages/ai/src/providers/openai-completions.ts，
+ * 其规则源自真实供应商行为）。规则语义仅限 ignore（删供应商拒收的参数）与
+ * map（供应商要求的参数名），不做语义改写。
  */
 export const VENDOR_PROFILES: Readonly<Record<string, VendorProfile>> = {
   openai: {
     basis: 'OpenAI 文档：o 系列推理模型拒收 max_tokens（400 Unsupported parameter）；max_completion_tokens 为全系列通用现代名',
     params: {
       map: { max_tokens: { to: 'max_completion_tokens' } },
+    },
+  },
+  deepseek: {
+    basis: 'pi-ai detectCompat：deepseek 属 isNonStandard（不收 store）且不支持 reasoning_effort',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
+    },
+  },
+  moonshot: {
+    basis: 'pi-ai detectCompat：isNonStandard（不收 store）+ useMaxTokens（只认 max_tokens）+ 不支持 reasoning_effort',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
+      map: { max_completion_tokens: { to: 'max_tokens' } },
+    },
+  },
+  together: {
+    basis: 'pi-ai detectCompat：isNonStandard + useMaxTokens + 不支持 reasoning_effort',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
+      map: { max_completion_tokens: { to: 'max_tokens' } },
+    },
+  },
+  nvidia: {
+    basis: 'pi-ai detectCompat：isNonStandard + useMaxTokens + 不支持 reasoning_effort',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
+      map: { max_completion_tokens: { to: 'max_tokens' } },
+    },
+  },
+  xai: {
+    basis: 'pi-ai detectCompat：isNonStandard（不收 store）+ isGrok（不支持 reasoning_effort）',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
+    },
+  },
+  zai: {
+    basis: 'pi-ai detectCompat：isNonStandard（含 open.bigmodel.cn 域，不收 store）+ isZai（不支持 reasoning_effort）',
+    params: {
+      ignore: ['store', 'reasoning_effort'],
     },
   },
 };

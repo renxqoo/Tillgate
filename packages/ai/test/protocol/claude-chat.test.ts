@@ -94,7 +94,7 @@ describe('claude ⇄ chat codec', () => {
     expect(claudeUsageToUsage(CLAUDE_RESPONSE.usage)).toEqual({
       promptTokens: 25,
       completionTokens: 150,
-      cachedTokens: 10,
+      cachedTokens: 10, cacheCreationTokens: 5,
     });
   });
 

@@ -191,8 +191,10 @@ packages/ai/
 │   ├── generation/
 │   │   └── task-adapter.ts    # 任务端口生产适配（词表 = ProtocolTaskKind，与 domain GENERATION_KINDS 一致性由 gateway 测试锁死）
 │   ├── usage/
-│   │   ├── normalize.ts       # 缓存字段归一化（OpenAI/DeepSeek/Mistral 方言 + 一致性校验）
-│   │   ├── token-estimate.ts  # CJK 感知估算器 + 三层校准（defaults←provider←model）
+│   │   ├── normalize.ts       # 缓存字段归一化（OpenAI/DeepSeek/Mistral 方言 + cache_write + 一致性校验）
+│   │   ├── tokenizer.ts       # BPE 真分词器（js-tiktoken：模型族 o200k/cl100k，超长降级启发式）
+│   │   ├── model-meta.ts(+.generated)  # contextWindow 快照（models.dev 上游，pnpm model-meta 重跑）
+│   │   ├── token-estimate.ts  # 估算器（分词器主路径 + 启发式兜底 + 三层校准）
 │   │   └── media-duration.ts  # 音视频时长估算（WAV/MP3 帧解析 + 16KB/s 兜底）
 │   ├── errors/
 │   │   ├── classify.ts        # 错误分类矩阵 + 死凭据/额度/限流特征 + 溢出识别

@@ -12,6 +12,8 @@
  * 通用限流文案）——先排再匹配，误分类会把限流错当溢出吞掉重试。
  */
 
+import { contextWindowOf } from '../usage/model-meta';
+
 /** 溢出模式（供应商注释 = 实测报错样例来源） */
 export const OVERFLOW_PATTERNS: readonly RegExp[] = [
   /prompt is too long/i, // Anthropic token 溢出
@@ -50,4 +52,24 @@ export const NON_OVERFLOW_PATTERNS: readonly RegExp[] = [
 export function isContextOverflowMessage(message: string): boolean {
   if (NON_OVERFLOW_PATTERNS.some((p) => p.test(message))) return false;
   return OVERFLOW_PATTERNS.some((p) => p.test(message));
+}
+
+/**
+ * 静默溢出判定（pi-ai overflow.ts 策略二）：部分供应商对超窗输入不报错、
+ * 静默截断后正常返回——唯一线索是 usage.inputTokens 超过模型上下文窗口
+ * （窗口数据：usage/model-meta.generated.ts，models.dev 快照）。
+ *
+ * 语义定位 = 可观测信号（日志 + success 事件 contextOverflow 旗标），
+ * 不翻转成功/失败：已按供应商 usage 计费是正确口径，且窗口元数据可能滞后——
+ * 误杀好响应的代价高于漏报。
+ */
+export function detectSilentOverflow(
+  inputTokens: number,
+  providerName?: string,
+  model?: string,
+): boolean {
+  if (!Number.isFinite(inputTokens) || inputTokens <= 0) return false;
+  const window = contextWindowOf(providerName, model);
+  if (window === null) return false;
+  return inputTokens > window;
 }

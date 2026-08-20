@@ -81,4 +81,10 @@ export type AiEvent =
       doneSentinel?: boolean;
       /** 终止帧（finish_reason）是否到达 */
       terminalFrame?: boolean;
+      /**
+       * 静默溢出旗标（可观测信号，不翻转成功语义）：usage.inputTokens 超过
+       * 模型上下文窗口（models.dev 快照）——部分供应商对超窗输入静默截断。
+       * 计费仍按供应商 usage（正确口径）；旗标供网关日志/告警消费。
+       */
+      contextOverflow?: boolean;
     };

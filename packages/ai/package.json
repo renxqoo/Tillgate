@@ -20,10 +20,12 @@
     "test:real": "vitest run test/real --passWithNoTests",
     "test:watch": "vitest --exclude test/real",
     "lint": "oxlint",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "model-meta": "tsx scripts/generate-model-meta.mts"
   },
   "dependencies": {
     "eventsource-parser": "^3.1.0",
+    "js-tiktoken": "^1.0.21",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -16,6 +16,7 @@ import { VertexAiAdapter } from './adapters/vertex-ai';
 import { MiniMaxAdapter } from './adapters/minimax';
 import type { ProtocolAdapter, UpstreamRequestPlan } from './adapters/protocol-adapter';
 import { unsupportedProtocolError } from './errors/internal';
+import { detectSilentOverflow } from './errors/overflow';
 import { asRecord } from './internal/util';
 import { relayStream } from './transport/relay-stream';
 import { withRetry } from './retry/with-retry';
@@ -161,12 +162,20 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
         await breaker.recordSuccess();
         await credential.recordSuccess();
         log.info(`[ai] ${requestId} success attempts=${attempts} usage=`, outcome.value.usage);
+        // 静默溢出可观测：usage 输入超窗（供应商静默截断的信号，不翻转成功语义）
+        const contextOverflow = outcome.value.usage
+          ? detectSilentOverflow(outcome.value.usage.inputTokens, input.ctx.providerName, input.ctx.model)
+          : false;
+        if (contextOverflow) {
+          log.warn(`[ai] ${requestId} silent context overflow: input=${outcome.value.usage?.inputTokens} model=${input.ctx.model}`);
+        }
         emit({
           type: 'success',
           requestId,
           channelKey: key,
           usage: outcome.value.usage,
           durationMs,
+          ...(contextOverflow ? { contextOverflow: true } : {}),
         });
         return {
           status: 'success',
@@ -194,7 +203,7 @@ export function createAi(config: AiConfigInput, deps: AiDeps, options?: AiOption
       const { requestId, endpoint } = input.ctx;
       const key = prepared.ok ? prepared.key : 'unknown';
       // per-call 事件总线（终态缓冲 + 晚订阅重放语义见 stream-report.ts）
-      const bus = createStreamEventBus(emit);
+      const bus = createStreamEventBus(emit, { providerName: input.ctx.providerName, model: input.ctx.model });
 
       if (!prepared.ok) return failEarlyStream(bus, prepared.error, requestId, key);
       const { body, breaker, credential, adapter } = prepared;
