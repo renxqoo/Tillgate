@@ -6,7 +6,7 @@ import { BanIcon, CheckCircle2Icon, Loader2Icon } from 'lucide-react';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { useActionResult } from '@ai-gateway/ui/components/action-toast';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
-import { fmtDateTime, formatMoney } from '@ai-gateway/api-client';
+import { fmtDateTime, formatMoney } from '@ai-gateway/api-client/formatters';
 
 import { setRelationStatusAction } from '../actions';
 
