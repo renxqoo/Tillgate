@@ -25,12 +25,6 @@ function createSchema(production: boolean) {
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),
   /** 邮箱自助注册开关（关闭只留既有账号登录） */
   REGISTER_ENABLED: strictBooleanSchema(true),
-  /** 新用户赠送额度（元，字符串金额；'0' = 关闭——开源注册无赠送即无薅羊毛收益） */
-  GIFT_AMOUNT: nonNegativeDecimal.default('0'),
-  /** 单用户在用 Key 上限（配额闸） */
-  MAX_KEYS_PER_USER: z.coerce.number().int().positive().default(100),
-  /** 每用户 App 数上限（v1 对位——无闸可无限建 App 蹭免费额度语义位） */
-  MAX_APPS_PER_USER: z.coerce.number().int().positive().default(100),
   /** 同 IP 注册请求上限/小时（防批量刷号；Redis 形态生效，缺省开发形态不限） */
   REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(5),
   /** 兑换频率闸：每用户每分钟兑换尝试上限（防暴力猜码） */
@@ -53,15 +47,6 @@ function createSchema(production: boolean) {
   TOPUP_EXCHANGE_RATE: positiveDecimal.default('1'),
   /** 未支付订单超时关单（ms） */
   PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
-  /** 操练场（控制台对话调试）：网关地址 + 网关 JWT 密钥成组配置才启用；未配 = 503 */
-  PLAYGROUND_GATEWAY_URL: z.string().url().optional(),
-  PLAYGROUND_GATEWAY_JWT_SECRET: secretSchema(
-    'PLAYGROUND_GATEWAY_JWT_SECRET',
-    production ? 32 : 16,
-  ).optional(),
-  /** 邀请返利：注册双方奖励（元，字符串；'0' = 关闭）；佣金比例（0–1，worker 日结同值） */
-  REFERRAL_SIGNUP_BONUS: nonNegativeDecimal.default('0'),
-  REFERRAL_COMMISSION_RATE: z.string().regex(/^(?:0(?:\.\d{1,18})?|1(?:\.0{1,18})?)$/).default('0'),
   /** 易支付（epay）四件套全配才启用该渠道；未配置 = 在线充值关闭 */
   EPAY_PID: z.string().optional(),
   EPAY_KEY: z.string().optional(),
@@ -116,6 +101,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ClientApiConfi
   }
   if (production && !parsed.SECURE_COOKIE) {
     throw new Error('production 环境必须启用 SECURE_COOKIE');
+  }
+  // 废弃键检测（2026-08-21 黑盒子清除）：残留配置静默失效变显式告警
+  for (const deprecated of ['MAX_KEYS_PER_USER', 'MAX_APPS_PER_USER']) {
+    if (env[deprecated] != null && env[deprecated] !== '') {
+      console.warn(`[client-api] 配置项 ${deprecated} 已废弃（数量上限无隐藏默认——需要限制时在服务层显式实现），当前值被忽略`);
+    }
   }
   return parsed;
 }

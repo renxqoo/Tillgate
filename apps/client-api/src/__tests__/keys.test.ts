@@ -1,5 +1,5 @@
 /**
- * Key 管理集成套件（真 PG）：明文一次出库 / 哈希真相 / 配额闸 / 吊销 CAS /
+ * Key 管理集成套件（真 PG）：明文一次出库 / 哈希真相 / 吊销 CAS /
  * 越权不可见。不变量：列表与详情永不携带 keyHash；吊销后网关侧即失效（status=1）。
  */
 import { describe, expect, it } from 'vitest';
@@ -13,8 +13,8 @@ import { db, newUser } from './helpers.js';
 const ctx = systemContext('cav2-keys');
 const repos = createRepositories();
 
-function buildService(maxKeysPerUser = 20) {
-  return createKeysService({ db, maxKeysPerUser });
+function buildService() {
+  return createKeysService({ db });
 }
 
 describe('Key 生命周期', () => {
@@ -72,17 +72,6 @@ describe('Key 生命周期', () => {
     });
     const attackerList = await service.list(ctx, attacker.id, { page: 1, limit: 10 });
     expect(attackerList.total).toBe(0);
-  });
-
-  it('配额闸：在用 Key 达上限后拒绝新建（吊销后可再建）', async () => {
-    const account = await newUser();
-    const service = buildService(1);
-    const first = await service.create(ctx, account.id, { name: 'one' });
-    await expect(service.create(ctx, account.id, { name: 'two' })).rejects.toMatchObject({
-      code: 'key_limit_reached',
-    });
-    await service.revoke(ctx, account.id, first.id);
-    await expect(service.create(ctx, account.id, { name: 'two' })).resolves.toBeTruthy();
   });
 
   it('限流/限额字段透传落库（rpm/tpm/每日上限/过期时间）', async () => {

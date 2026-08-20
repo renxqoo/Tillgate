@@ -22,7 +22,7 @@ import {
 
 const ctx = systemContext('cav2-apps');
 const apps = createAppsService({ db });
-const keys = createKeysService({ db, maxKeysPerUser: 20 });
+const keys = createKeysService({ db });
 const subscriptionDomain = createSubscriptionDomain({ db, wallet });
 
 describe('Apps 凭证（W1 归属守卫）', () => {

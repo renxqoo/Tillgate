@@ -20,7 +20,7 @@ import {
 
 const ctx = systemContext('cav2-org');
 const org = createOrgService({ db });
-const keys = createKeysService({ db, maxKeysPerUser: 20 });
+const keys = createKeysService({ db });
 const subscriptionDomain = createSubscriptionDomain({ db, wallet });
 
 interface OrgFixture {

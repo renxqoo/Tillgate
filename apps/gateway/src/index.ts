@@ -30,7 +30,6 @@ const server: ServerType = serve({ fetch: app.fetch, port: config.PORT }, ({ por
   console.log(
     `[gateway] config snapshot: ${JSON.stringify({
       currency: config.GATEWAY_CURRENCY,
-      freeModelDailyLimit: config.FREE_MODEL_DAILY_LIMIT,
       reservationMax: config.BILLING_RESERVATION_MAX,
       reservationMode: config.BILLING_RESERVATION_MODE,
       fixedReservationAmount: config.BILLING_FIXED_RESERVATION_AMOUNT ?? null,

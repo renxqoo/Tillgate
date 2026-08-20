@@ -39,7 +39,7 @@ export interface AppsService {
   ): Promise<{ id: number; clientSecret: string }>;
 }
 
-export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: () => Date; maxAppsPerUser?: number }): AppsService {
+export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: () => Date }): AppsService {
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
   const clock = deps.clock ?? (() => new Date());
@@ -61,14 +61,6 @@ export function createAppsService(deps: { db: Db; repos?: Repositories; clock?: 
       const clientSecret = generateClientSecret();
       const row = await db.transaction(async (tx) => {
         // App 配额闸（v1 对位：无闸可无限建 App）——advisory lock 防双击竞态
-        if (deps.maxAppsPerUser != null) {
-          const c = { db: tx, ...runCtx };
-          await repos.apps.advisoryLockAppQuota(c, userId);
-          const active = await repos.apps.countActiveByUser(c, userId);
-          if (active >= deps.maxAppsPerUser) {
-            throw new AppError(409, 'app_limit_reached', `在用 App 数已达上限 ${deps.maxAppsPerUser}`);
-          }
-        }
         return repos.apps.insertApp({ db: tx, ...runCtx }, {
           appId: randomUUID().replace(/-/g, '').slice(0, 32),
           userId,

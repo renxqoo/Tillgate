@@ -14,7 +14,6 @@ export interface KeysServiceDeps {
   db: Db;
   repos?: Repositories;
   /** 在用 Key 数量上限 */
-  maxKeysPerUser: number;
   clock?: () => Date;
 }
 
@@ -92,14 +91,7 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
       }
       const plaintext = generateApiKey();
       const row = await db.transaction(async (tx) => {
-        // 配额闸进事务 + advisory lock（v1 对位）：事务外的 count→insert 双击竞态可超限
-        const c = { db: tx, ...runCtx };
-        await repos.apiKey.advisoryLockKeyQuota(c, userId);
-        const active = await repos.apiKey.countActiveByUser(c, userId);
-        if (active >= deps.maxKeysPerUser) {
-          throw new AppError(409, 'key_limit_reached', `在用 Key 数已达上限 ${deps.maxKeysPerUser}`);
-        }
-        return repos.apiKey.insertKey(c, {
+        return repos.apiKey.insertKey({ db: tx, ...runCtx }, {
           keyHash: sha256Hex(plaintext),
           keyPreview: maskKey(plaintext),
           userId,

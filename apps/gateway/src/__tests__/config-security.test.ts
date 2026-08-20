@@ -65,4 +65,22 @@ describe('网关配置安全契约', () => {
       }),
     ).toThrow();
   });
+
+  it('DEFAULT_USER_RPM/TPM 已删除：解析结果不含隐藏限额键（2026-08-21 黑盒子清除）', () => {
+    const config = loadConfig(minimumEnv) as Record<string, unknown>;
+    expect('DEFAULT_USER_RPM' in config).toBe(false);
+    expect('DEFAULT_USER_TPM' in config).toBe(false);
+  });
+
+  it('残留 DEFAULT_USER_* 配置触发废弃告警（防静默失效——以为限着实则不限）', () => {
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.join(' ')); };
+    try {
+      loadConfig({ ...minimumEnv, DEFAULT_USER_RPM: '600', DEFAULT_USER_TPM: '100' });
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings.some((w) => w.includes('DEFAULT_USER_RPM'))).toBe(true);
+  });
 });

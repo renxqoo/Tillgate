@@ -32,8 +32,6 @@ export interface SubmitGenerationConfig {
   /** 单请求风险敞口上限（authorize 上限闸——任务族金额=单价×秒，无 token 未知量） */
   reservationLimit: string;
   reservationPolicy?: FundingReservationPolicy;
-  /** 每用户在途任务上限（预扣+轮询批次的资源闸；缺省不设限——兼容旧行为） */
-  maxActivePerUser?: number;
 }
 
 export interface SubmitGenerationDeps {
@@ -80,17 +78,6 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
       throw new AppError(403, 'model_not_allowed', `模型 ${externalModel} 不在该凭证的授权范围内`);
     }
     const startedAt = Date.now();
-
-    // 每用户在途任务上限（TTL 长达小时级——无闸用户可无限堆任务占满预扣与轮询容量）
-    if (deps.config.maxActivePerUser != null) {
-      const active = await repos.generationTask.countActiveByUser(
-        { ...ctx, db: deps.db },
-        auth.userId,
-      );
-      if (active >= deps.config.maxActivePerUser) {
-        throw new AppError(429, 'generation_task_limit', '在途生成任务过多，请等待完成后再提交');
-      }
-    }
 
     // key 维 RPM 准入（低频任务族不做 TPM 预占——单位计费无 token 量）；
     // 用户维无条件在列——App-JWT 大 scope 不得绕过管理端用户帽（与 run-chat 同口径）

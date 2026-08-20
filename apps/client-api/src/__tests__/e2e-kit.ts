@@ -49,7 +49,7 @@ export function e2eDb(): Db {
 export function e2eBaseConfig(): ClientApiConfig {
   return {
     DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
-    REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
+    REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
     PORT: 0,
     DB_POOL_MAX: 12,
     CLIENT_CURRENCY: 'CNY',
@@ -57,8 +57,7 @@ export function e2eBaseConfig(): ClientApiConfig {
     SESSION_TTL_SECONDS: 3_600,
     REGISTER_ENABLED: true,
     GIFT_AMOUNT: '0',
-    MAX_KEYS_PER_USER: 20,
-    REGISTER_IP_LIMIT_PER_HOUR: 5,
+    REGISTER_IP_LIMIT_PER_HOUR: 500, // e2e 全套注册 ~20+ 次/轮；5/时是生产防刷值
     REDEEM_PER_MINUTE_LIMIT: 10,
     LOGIN_FAILURE_THRESHOLD: 5,
     LOGIN_FAILURE_WINDOW_S: 600,
@@ -72,8 +71,6 @@ export function e2eBaseConfig(): ClientApiConfig {
     TOPUP_MAX: '10000',
     TOPUP_EXCHANGE_RATE: '1',
     PAYMENT_ORDER_TTL_MS: 1_800_000,
-    REFERRAL_SIGNUP_BONUS: '0',
-    REFERRAL_COMMISSION_RATE: '0',
     SMTP_PORT: 465,
     SECURE_COOKIE: false,
     EPAY_PID: EPAY_TEST.pid,
@@ -93,13 +90,42 @@ export interface E2EClientApi {
   stop(): Promise<void>;
 }
 
+/** 验证码截获（注册恒两步的 e2e 通道）：capture mailer 记录最近一次发码 */
+const captureCodes = new Map<string, string>();
+const captureMailer = {
+  async sendLoginCode(to: string, code: string): Promise<void> {
+    captureCodes.set(to, code);
+  },
+  async send(): Promise<void> {
+    /* 通用邮件与 e2e 无关 */
+  },
+} satisfies import('@ai-gateway/identity').Mailer;
+
+/** 恒两步注册（跨 app e2e 复用）：register → capture 验码 → verify 建号拿 token */
+export async function registerTwoStep(
+  httpPost: (path: string, body: Record<string, unknown>) => Promise<{ status: number; body: Record<string, unknown>; text: string }>,
+  email: string,
+  password: string,
+): Promise<{ token: string; userId: number }> {
+  const res = await httpPost('/v1/auth/register', { email, password });
+  const challenge = res.body as { kind?: string; challengeId?: string };
+  if (challenge.kind !== 'code_required' || challenge.challengeId == null) {
+    throw new Error(`register failed: \${res.status} \${res.text}`);
+  }
+  const code = captureCodes.get(email);
+  if (code == null) throw new Error(`register: no captured code for \${email}`);
+  const verify = await httpPost('/v1/auth/register/verify', { challengeId: challenge.challengeId, code });
+  if (verify.status !== 201) throw new Error(`register verify failed: \${verify.status} \${verify.text}`);
+  return verify.body as { token: string; userId: number };
+}
+
 /** 起真 client-api（全真装配；extra 覆盖配置——OAuth mock 场景用） */
 export async function startClientApi(
   db: Db,
   extra: Partial<ClientApiConfig> = {},
 ): Promise<E2EClientApi> {
   const config = { ...e2eBaseConfig(), ...extra } as ClientApiConfig;
-  const assembly = assembleClientApi(config, db);
+  const assembly = assembleClientApi(config, db, { mailer: captureMailer });
   const app = createApp({
     db,
     assembly,
@@ -111,6 +137,12 @@ export async function startClientApi(
   });
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
   await new Promise<void>((resolve) => server.once('listening', resolve));
+  // Redis 冷连接就绪等待：限流计数器 fail-closed（不可用 = 注册/登录 503），
+  // offline queue 关闭时服务刚起的第一个请求会吃连接未建立的拒绝
+  const { waitForRedisReady } = await import('@ai-gateway/core');
+  if (!(await waitForRedisReady(assembly.redis, 5_000))) {
+    throw new Error(`client-api e2e redis not ready: ${config.REDIS_URL}`);
+  }
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
   return {
@@ -243,17 +275,17 @@ export class E2EFixtures {
     return plaintext;
   }
 
-  /** HTTP 注册并跟踪（E2E 主路径全走真注册端点） */
+  /** HTTP 注册并跟踪（E2E 主路径全走真注册端点——恒两步：register → 验码建号） */
   async registerViaHttp(baseUrl: string): Promise<{ userId: number; token: string; email: string; password: string }> {
     const mail = this.email();
     const password = 'e2e-correct-horse-battery';
-    const res = await http(baseUrl, 'POST', '/v1/auth/register', {
-      body: { email: mail, password },
-    });
-    if (res.status !== 201) throw new Error(`register failed: ${res.status} ${res.text}`);
-    const body = res.body as { token: string; userId: number };
-    this.userIds.push(body.userId);
-    return { userId: body.userId, token: body.token, email: mail, password };
+    const registered = await registerTwoStep(
+      (path, body) => http(baseUrl, 'POST', path, { body }),
+      mail,
+      password,
+    );
+    this.userIds.push(registered.userId);
+    return { userId: registered.userId, token: registered.token, email: mail, password };
   }
 
   /** 余额（CNY 已结算口径） */

@@ -26,7 +26,7 @@ import { wireContextOverflowAlert } from './ai/overflow-alert.js';
 import { createUpstreamAdapter } from './pipeline/upstream-adapter.js';
 import { createTaskAdapter } from './generation/task-adapter.js';
 import { createSubmitGeneration } from './generation/submit.js';
-import { createFreeDailyGate, type RateLimitGate } from './rate-limit/gate.js';
+import { type RateLimitGate } from './rate-limit/gate.js';
 import { createSettleWakeupProducer } from './billing/wakeup.js';
 import type { AuthGuards } from './middleware/api-key.js';
 import type { GatewayConfig } from './config.js';
@@ -87,7 +87,6 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const limiter = createSlidingWindowLimiter(redis);
   const rateLimit: RateLimitGate = {
     limiter,
-    freeDaily: createFreeDailyGate(redis, config.FREE_MODEL_DAILY_LIMIT),
     globalRpm: config.GLOBAL_RPM,
   };
   const authGuards: AuthGuards = {
@@ -100,9 +99,6 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       limit: config.AUTH_IP_FAILURE_LIMIT,
       windowS: config.AUTH_IP_FAILURE_WINDOW_S,
     }),
-    // 用户级限流兜底（凭证/Scope 未声明时生效——v1 DEFAULT_USER_RPM 对位）
-    defaultUserRpm: config.DEFAULT_USER_RPM,
-    defaultUserTpm: config.DEFAULT_USER_TPM,
     trustedProxyHops: config.TRUSTED_PROXY_HOPS,
   };
 
@@ -142,7 +138,6 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       reservationPolicy: config.BILLING_RESERVATION_MODE === 'fixed'
         ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
         : { mode: 'full' },
-      maxActivePerUser: config.GENERATION_MAX_ACTIVE_PER_USER,
     },
   });
 

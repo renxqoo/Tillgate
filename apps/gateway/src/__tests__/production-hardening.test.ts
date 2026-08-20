@@ -1,6 +1,6 @@
 /**
  * 生产加固集成测试（内存假件注入——编排正确性；Redis 实现的原子性由 core 单测覆盖）：
- *   key 维 RPM/TPM 429、渠道维超限换渠、TPM 全败归还、免费模型日限两口径
+ *   key 维 RPM/TPM 429、渠道维超限换渠、TPM 全败归还（免费日限已随 2026-08-21 黑盒子清除删除）
  *  （超限 429 / 计数器不可用 503 fail-closed）、鉴权爆破防护两层语义。
  */
 import { createHash, randomUUID } from 'node:crypto';
@@ -15,7 +15,7 @@ import { createBuildQuote } from '../quote/build-quote.js';
 import { createResolveChannels } from '../routing/resolve-channels.js';
 import { createRunChat } from '../pipeline/run-chat.js';
 import type { UpstreamPort, UpstreamResult } from '../pipeline/upstream-port.js';
-import type { FreeDailyGate, RateLimitGate } from '../rate-limit/gate.js';
+import type { RateLimitGate } from '../rate-limit/gate.js';
 import type { AuthFailureGuard, GuardCheck, KeyBruteForceGuard } from '@ai-gateway/core';
 import { AppError } from '../http/error-map.js';
 
@@ -52,11 +52,10 @@ function fakeLimiter(plan: Record<string, () => RateLimitResult>): SlidingWindow
   };
 }
 
-function fakeGate(limiter: SlidingWindowLimiter, freeDaily: FreeDailyGate): RateLimitGate {
-  return { limiter, freeDaily };
+function fakeGate(limiter: SlidingWindowLimiter): RateLimitGate {
+  return { limiter };
 }
 
-const alwaysOkFree: FreeDailyGate = { async check() { return { ok: true }; } };
 
 async function seedModelWithChannels(opts: { free?: boolean; channels?: number } = {}): Promise<{ model: string; channelNames: string[] }> {
   const { modelMappings, modelChannels, channels, providers } = await import('@ai-gateway/db');
@@ -167,7 +166,7 @@ describe('限流闸（key 维准入）', () => {
     const seeded = await seedModelWithChannels();
     const { raw } = await newFundedKey({ rpmLimit: 1 });
     const limiter = fakeLimiter({ [`key:${await keyIdOf(raw)}`]: () => ({ allowed: false, retryAfterSec: 30, dimension: 'key' }) });
-    const app = makeApp(fakeGate(limiter, alwaysOkFree), { rpmLimit: 1 });
+    const app = makeApp(fakeGate(limiter), { rpmLimit: 1 });
 
     const res = await post(app, raw, seeded.model);
     expect(res.status).toBe(429);
@@ -179,25 +178,10 @@ describe('限流闸（key 维准入）', () => {
     const { raw } = await newFundedKey({ tpmLimit: 10 });
     const keyId = await keyIdOf(raw);
     const limiter = fakeLimiter({ [`key:${keyId}`]: () => ({ allowed: false, retryAfterSec: 45, dimension: 'key' }) });
-    const app = makeApp(fakeGate(limiter, alwaysOkFree), { tpmLimit: 10 });
+    const app = makeApp(fakeGate(limiter), { tpmLimit: 10 });
 
     const res = await post(app, raw, seeded.model);
     expect(res.status).toBe(429);
-  });
-
-  it('免费模型：日限超限 429 / 计数器不可用 503（fail-closed）', async () => {
-    const freeModel = await seedModelWithChannels({ free: true });
-    const { raw } = await newFundedKey();
-
-    const limited: FreeDailyGate = { async check() { return { ok: false, code: 'limit', retryAfterSec: 3600 }; } };
-    const res1 = await post(makeApp(fakeGate(fakeLimiter({}), limited), undefined), raw, freeModel.model);
-    expect(res1.status).toBe(429);
-    expect(((await res1.json()) as { error: { code: string } }).error.code).toBe('rate_limit_exceeded');
-
-    const broken: FreeDailyGate = { async check() { return { ok: false, code: 'counter', retryAfterSec: 60 }; } };
-    const res2 = await post(makeApp(fakeGate(fakeLimiter({}), broken), undefined), raw, freeModel.model);
-    expect(res2.status).toBe(503);
-    expect(((await res2.json()) as { error: { code: string } }).error.code).toBe('free_model_counter_unavailable');
   });
 
   it('渠道 RPM 超限 → 换渠成功（超限视同可换渠）', async () => {
@@ -205,7 +189,7 @@ describe('限流闸（key 维准入）', () => {
     const { raw } = await newFundedKey();
     const firstChannelId = createdChannels.at(-2)!;
     const limiter = fakeLimiter({ [`channel:${firstChannelId}`]: () => ({ allowed: false, retryAfterSec: 30 }) });
-    const app = makeApp(fakeGate(limiter, alwaysOkFree));
+    const app = makeApp(fakeGate(limiter));
 
     const res = await post(app, raw, seeded.model);
     expect(res.status).toBe(200);
@@ -224,7 +208,7 @@ describe('限流闸（key 维准入）', () => {
       buildQuote: createBuildQuote({ db }),
       resolveChannels: createResolveChannels({ db, rng: () => 0 }),
       upstream: failingUpstream,
-      rateLimit: fakeGate(limiter, alwaysOkFree),
+      rateLimit: fakeGate(limiter),
       config,
     });
     const app = createApp({ db, runChat, oauth: { jwtSecret: 'gw-test-secret-0123456789abcdef', tokenTtlSeconds: 3_600 } });
