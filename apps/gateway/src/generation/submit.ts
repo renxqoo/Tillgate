@@ -202,6 +202,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
         maxOutputTokens: 0,
         inputPrice: candidate.inputPrice,
         cacheInputPrice: candidate.cacheInputPrice,
+        cacheWritePrice: candidate.cacheWritePrice,
         outputPrice: candidate.outputPrice,
         unitPrice: candidate.unitPrice ?? 0,
         unitUpperBound: candidate.unitUpperBound ?? 0,

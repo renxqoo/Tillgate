@@ -17,6 +17,7 @@ export interface QuoteMappingRow {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  cacheWritePrice: string;
   pricingUnit: string;
   unitPrice: string;
   pricingGroup: string | null;
@@ -40,6 +41,7 @@ const QUOTE_COLUMNS = {
   inputPrice: modelMappings.inputPrice,
   outputPrice: modelMappings.outputPrice,
   cacheInputPrice: modelMappings.cacheInputPrice,
+  cacheWritePrice: modelMappings.cacheWritePrice,
   pricingUnit: modelMappings.pricingUnit,
   unitPrice: modelMappings.unitPrice,
   pricingGroup: modelMappings.pricingGroup,
@@ -59,6 +61,7 @@ export interface MappingAdminRow {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  cacheWritePrice: string;
   isFree: boolean;
   rpmLimit: number | null;
   tpmLimit: number | null;
@@ -74,6 +77,7 @@ export interface MappingAdminPatch {
   inputPrice?: string;
   outputPrice?: string;
   cacheInputPrice?: string;
+  cacheWritePrice?: string;
   isFree?: boolean;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
@@ -88,6 +92,7 @@ const MAPPING_ADMIN_COLUMNS = {
   inputPrice: modelMappings.inputPrice,
   outputPrice: modelMappings.outputPrice,
   cacheInputPrice: modelMappings.cacheInputPrice,
+  cacheWritePrice: modelMappings.cacheWritePrice,
   isFree: modelMappings.isFree,
   billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,
@@ -158,7 +163,10 @@ export class ModelMappingRepository {
       inputPrice: string;
       outputPrice: string;
       cacheInputPrice: string;
+      cacheWritePrice?: string;
       isFree: boolean;
+      /** 0 上架 / 1 下架（目录导入用 1 = 草稿态） */
+      status?: number;
       billingPolicy?: Record<string, unknown> | null;
       rpmLimit?: number | null;
       tpmLimit?: number | null;
@@ -170,10 +178,11 @@ export class ModelMappingRepository {
         externalName: input.externalName,
         realModel: input.realModel,
         contextLength: input.contextLength ?? null,
-        status: 0,
+        status: input.status ?? 0,
         inputPrice: input.inputPrice,
         outputPrice: input.outputPrice,
         cacheInputPrice: input.cacheInputPrice,
+        cacheWritePrice: input.cacheWritePrice ?? '0',
         isFree: input.isFree,
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,

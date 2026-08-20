@@ -6,6 +6,36 @@
 
 
 
+
+---
+
+## §17 三工单落地：cache_write 计费（系数体系）+ 目录导入 + CI 流水线（2026-08-20，分支 feat/cache-write-and-catalog）
+
+**WS1 cache_write 计费接入（用户决策：走系数体系加成）**：
+- 迁移 0063/0064：model_mappings.cache_write_price + usage_logs.cache_write_tokens/
+  cache_write_price（0/缺省 = 与输入价同值——cacheInputPrice 同款约定，未配置
+  不得让写 token 逃逸计费）
+- rating 公式：三分段互斥（uncached = input − cached − write，夹非负）、
+  写分量 × cacheWritePrice × 系数；预扣贵价 = max(input, cacheInput, cacheWrite)
+  ——Anthropic 写价（1.25×/2×）可超输入价，不上贵价会少押
+- 全链透传：报价候选/收据/结算/usage_logs 四处快照 + admin 价格字段（表单/
+  路由/服务）+ gateway 端口。pipeline 真结算断言：1000 输入（200 读 + 100 写）
+  → 钱包实扣 0.001025 元分毫不差
+- **顺带修复存量口径缺陷**：Anthropic input_tokens 不含缓存部分（OpenAI 口径含）
+  ——claudeUsageToUsage 补齐为总输入；旧口径在缓存价 < 输入价时少收缓存命中的
+  未缓存分量
+
+**WS2 模型目录导入（审批制）**：POST /v1/models/import——种子条目校验（单批
+≤100）、externalName 重复跳过不覆盖定价、**一律 status=1 草稿态**（价格属资金
+语义，复核后人工上架）、dryRun 预览、审计落档。配套用例 5 组（幂等/边界/防御）。
+
+**WS3 CI 流水线**：.github/workflows/ci.yml——push/PR 触发，PG16+Redis7 服务
+容器（每 PR 独享库，无共享竞态），四门（turbo typecheck/lint/build/test）+
+双包覆盖率门禁（ai 90/85、admin-api 90/85）+ 报告归档。E2E 独立通道不进 CI
+（与本地约定一致）。
+
+**运维注记**：本机磁盘满（.turbo 缓存 13G）已清理——turbo 缓存可随时删。
+
 ---
 
 ## §16 pi-ai 资产吸收收口（2026-08-20，分支 refactor/ai-package-v2 第二批）

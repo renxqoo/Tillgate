@@ -87,6 +87,9 @@ function streamReceiptUsage(
         cachedInputTokens: usage.cachedInputTokens,
         outputTokens: usage.outputTokens,
         estimated: false,
+        ...(((usage as { cacheWriteTokens?: number }).cacheWriteTokens ?? 0) > 0
+          ? { cacheWriteTokens: (usage as { cacheWriteTokens?: number }).cacheWriteTokens }
+          : {}),
       },
       streamAborted: false,
     };
@@ -402,6 +405,7 @@ export function createRunChat(deps: PipelineDeps) {
         maxOutputTokens: outputCap,
         inputPrice: candidate.inputPrice,
         cacheInputPrice: candidate.cacheInputPrice,
+        cacheWritePrice: candidate.cacheWritePrice,
         outputPrice: candidate.outputPrice,
         unitPrice: candidate.unitPrice ?? 0,
         unitUpperBound: candidate.unitUpperBound ?? 0,
@@ -472,7 +476,13 @@ export function createRunChat(deps: PipelineDeps) {
               body: body as Record<string, unknown>,
               responseBody: result.body,
               usage: result.usage
-                ? { estimated: false, inputTokens: result.usage.inputTokens, cachedInputTokens: result.usage.cachedInputTokens, outputTokens: result.usage.outputTokens }
+                ? {
+                    estimated: false,
+                    inputTokens: result.usage.inputTokens,
+                    cachedInputTokens: result.usage.cachedInputTokens,
+                    outputTokens: result.usage.outputTokens,
+                    ...((result.usage.cacheWriteTokens ?? 0) > 0 ? { cacheWriteTokens: result.usage.cacheWriteTokens } : {}),
+                  }
                 : { estimated: true, inputTokens: estInput, outputTokens: estimateOutputTokens(result.body, { model: body.model }) },
             });
             const finalized = await signalSucceededWithRetry(deps.billing, ctx, requestId, receipt, noteError);

@@ -49,6 +49,10 @@ export const usageLogs = pgTable(
     inputTokens: bigint('input_tokens', { mode: 'number' }).notNull().default(0),
     /** 缓存命中输入（usage 无缓存字段时为 0） */
     cachedInputTokens: bigint('cached_input_tokens', { mode: 'number' }).notNull().default(0),
+    /** 缓存写入 token（Anthropic cache_creation 5m+1h 合计；计量与审计列） */
+    cacheWriteTokens: bigint('cache_write_tokens', { mode: 'number' }).notNull().default(0),
+    /** 缓存写单价快照（元/百万 token） */
+    cacheWritePrice: numeric('cache_write_price', { precision: 38, scale: 18 }).notNull().default('0'),
     outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
     /**
      * 单位计费计量（2026-08 扩展）：按次=次数 / 按张=张数 / 按秒=音频秒数 / 按字符=字符数。

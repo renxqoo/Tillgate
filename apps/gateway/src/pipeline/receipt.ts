@@ -27,7 +27,7 @@ export interface ReceiptParams {
   /** 上游响应体——计量描述符的实值源（images 的 data.length）；估算分支可缺 */
   responseBody?: unknown;
   usage:
-    | { estimated: false; inputTokens: number; cachedInputTokens: number; outputTokens: number }
+    | { estimated: false; inputTokens: number; cachedInputTokens: number; outputTokens: number; cacheWriteTokens?: number }
     | { estimated: true; inputTokens: number; outputTokens?: number };
 }
 
@@ -57,11 +57,13 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
           cachedInputTokens: params.usage.cachedInputTokens,
           outputTokens: params.usage.outputTokens,
           estimated: false,
+          ...((params.usage.cacheWriteTokens ?? 0) > 0 ? { cacheWriteTokens: params.usage.cacheWriteTokens } : {}),
           ...(units > 0 ? { units } : {}),
         },
     inputPrice: candidate.inputPrice,
     outputPrice: candidate.outputPrice,
     cacheInputPrice: candidate.cacheInputPrice,
+    cacheWritePrice: candidate.cacheWritePrice ?? '0',
     unitPrice: candidate.unitPrice ?? '0',
     coefficient: candidate.coefficient,
     durationMs: params.durationMs,

@@ -26,6 +26,8 @@ export interface UsageReceipt {
     cachedInputTokens: number;
     outputTokens: number;
     estimated: boolean;
+    /** 缓存写入 token（Anthropic cache_creation 5m+1h 合计归一；0/缺省 = 无） */
+    cacheWriteTokens?: number;
     /** 单位计量（按次/张/秒/字符；token 模型为 0）——与 unitPrice 快照配对结算 */
     units?: number;
   };
@@ -33,6 +35,8 @@ export interface UsageReceipt {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 缓存写单价快照（0/缺省 = 不收缓存写费） */
+  cacheWritePrice?: string;
   /** 单位单价快照（元/单位；token 模型为 '0'） */
   unitPrice?: string;
   /** 费率卡系数（小数，如 1.0） */
@@ -88,6 +92,8 @@ export interface BillingQuoteCandidate {
   inputPrice: string;
   outputPrice: string;
   cacheInputPrice: string;
+  /** 缓存写单价（0/缺省 = 不收） */
+  cacheWritePrice?: string;
   /** 单位单价（元/单位；token 模型为 '0'）——预扣与结算共用 */
   unitPrice?: string;
   coefficient: string;

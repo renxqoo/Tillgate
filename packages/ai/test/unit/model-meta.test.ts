@@ -118,9 +118,9 @@ describe('cache_write 数据捕获（计费消费属独立资金工单）', () =
         ctx: { requestId: 'cw-1', model: 'claude-x', providerName: 'anthropic', endpoint: 'chat' },
       });
       expect(result.status).toBe('success');
-      // 5m 档 6 + 1h 档 2 = 8；cache read 4 照旧
+      // 总输入 = 10(未缓存) + 4(读) + 8(写) = 22；写 = 5m 档 6 + 1h 档 2
       if (result.status === 'success') {
-        expect(result.usage).toMatchObject({ inputTokens: 10, cachedInputTokens: 4, outputTokens: 3, cacheWriteTokens: 8 });
+        expect(result.usage).toMatchObject({ inputTokens: 22, cachedInputTokens: 4, outputTokens: 3, cacheWriteTokens: 8 });
       }
       const success = events.find((e) => e.type === 'success');
       expect(success).toMatchObject({ type: 'success' });
@@ -154,7 +154,7 @@ describe('cache_write 数据捕获（计费消费属独立资金工单）', () =
       const success = events.find((e) => e.type === 'success');
       expect(success).toMatchObject({
         type: 'success',
-        usage: { inputTokens: 7, cachedInputTokens: 2, outputTokens: 2, cacheWriteTokens: 5 },
+        usage: { inputTokens: 14, cachedInputTokens: 2, outputTokens: 2, cacheWriteTokens: 5 },
       });
     } finally {
       await upstream.close();

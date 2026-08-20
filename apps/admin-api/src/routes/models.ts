@@ -11,6 +11,7 @@ import { adminCtxOf } from './ctx.js';
 import { parseListQuery } from '../http/list-query.js';
 import { AppError } from '../http/error-map.js';
 import { MODEL_SORTS, type ModelsService } from '../services/models.service.js';
+import type { createModelImportService } from '../services/model-import.service.js';
 import type { SessionEnv } from '../middleware/session.js';
 
 const MONEY_MAX = 1e9;
@@ -39,6 +40,8 @@ const createSchema = z.object({
   inputPrice: price,
   outputPrice: price,
   cacheInputPrice: price,
+  /** 缓存写单价（元/百万 token；缺省 0 = 不收缓存写费） */
+  cacheWritePrice: price.optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().max(1e9).nullable().optional(),
@@ -53,6 +56,7 @@ const updateSchema = z.object({
   inputPrice: price.optional(),
   outputPrice: price.optional(),
   cacheInputPrice: price.optional(),
+  cacheWritePrice: price.optional(),
   isFree: z.boolean().optional(),
   billingPolicy: billingPolicySchema.nullable().optional(),
   rpmLimit: z.coerce.number().int().positive().nullable().optional(),
@@ -80,7 +84,29 @@ const idParam = (raw: string): number => {
   return id;
 };
 
-export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<SessionEnv>) {
+type ModelImportService = ReturnType<typeof createModelImportService>;
+
+const seedEntrySchema = z.object({
+  provider: z.string().min(1).max(64),
+  id: z.string().min(1).max(160),
+  name: z.string().max(160).optional(),
+  contextWindow: z.number().int().nonnegative().max(100_000_000).optional(),
+  reasoning: z.boolean().optional(),
+  inputs: z.array(z.string().max(16)).optional(),
+  cost: z.object({
+    input: z.number().nonnegative().optional(),
+    output: z.number().nonnegative().optional(),
+    cacheRead: z.number().nonnegative().optional(),
+    cacheWrite: z.number().nonnegative().optional(),
+  }).optional(),
+});
+
+const importSchema = z.object({
+  models: z.array(seedEntrySchema).min(1).max(100),
+  dryRun: z.boolean().optional(),
+});
+
+export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<SessionEnv>, importService?: ModelImportService) {
   const app = new Hono<SessionEnv>();
 
   app.get('/v1/models', session, async (c) => {
@@ -99,6 +125,7 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         inputPrice: String(body.inputPrice),
         outputPrice: String(body.outputPrice),
         cacheInputPrice: String(body.cacheInputPrice),
+        cacheWritePrice: String(body.cacheWritePrice ?? 0),
       },
       isFree: body.isFree,
       rpmLimit: body.rpmLimit ?? null,
@@ -123,12 +150,13 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
         ...(body.billingPolicy !== undefined ? { billingPolicy: body.billingPolicy } : {}),
         ...(body.rpmLimit !== undefined ? { rpmLimit: body.rpmLimit } : {}),
         ...(body.tpmLimit !== undefined ? { tpmLimit: body.tpmLimit } : {}),
-        ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined
+        ...(body.inputPrice !== undefined || body.outputPrice !== undefined || body.cacheInputPrice !== undefined || body.cacheWritePrice !== undefined
           ? {
               prices: {
                 ...(body.inputPrice !== undefined ? { inputPrice: String(body.inputPrice) } : {}),
                 ...(body.outputPrice !== undefined ? { outputPrice: String(body.outputPrice) } : {}),
                 ...(body.cacheInputPrice !== undefined ? { cacheInputPrice: String(body.cacheInputPrice) } : {}),
+                ...(body.cacheWritePrice !== undefined ? { cacheWritePrice: String(body.cacheWritePrice) } : {}),
               },
             }
           : {}),
@@ -156,6 +184,20 @@ export function modelsRoutes(service: ModelsService, session: MiddlewareHandler<
   app.post('/v1/models/:id/test', session, async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await service.probe(adminCtxOf(c), id));
+  });
+
+  // 模型目录种子导入（审批制：草稿态入库，价格复核后手动上架；dryRun 预览）
+  app.post('/v1/models/import', session, async (c) => {
+    if (importService === undefined) {
+      throw new AppError(501, 'not_configured', '导入服务未装配');
+    }
+    const body = importSchema.parse(await c.req.json());
+    const result = await importService.importSeed(adminCtxOf(c), {
+      adminId: c.get('adminId'),
+      models: body.models as never,
+      dryRun: body.dryRun ?? false,
+    });
+    return c.json(result);
   });
 
   return app;
