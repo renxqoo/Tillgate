@@ -6,6 +6,14 @@ describe('AnthropicAdapter', () => {
   const adapter = new AnthropicAdapter();
   const channel = { baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant', protocol: 'anthropic' };
 
+  it('wire body 必含 model（DashScope anthropic 兼容端点实测：缺 model → 400 InvalidParameter）', () => {
+    const body = adapter.finalizeRequestBody(
+      { messages: [{ role: 'user', content: 'hi' }], max_completion_tokens: 64 },
+      { endpoint: 'chat', model: 'qwen3.8-max', stream: false },
+    );
+    expect(body.model).toBe('qwen3.8-max');
+  });
+
   it('寻址：/v1/messages + x-api-key + anthropic-version；流式同路径（stream 在体里）', () => {
     for (const stream of [false, true]) {
       const plan = adapter.planRequest(channel, {

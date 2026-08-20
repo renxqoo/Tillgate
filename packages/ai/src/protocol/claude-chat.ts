@@ -190,6 +190,9 @@ export function chatRequestToClaude(req: unknown): Json {
     messages.push({ role: 'user', content: chatContentToClaude(msg.content) });
   }
   if (systemText) out.system = systemText;
+  // model 必填：Anthropic /v1/messages 协议要求 body 携带模型名——缺失即 400
+  // （DashScope anthropic 兼容端点实测：InvalidParameter Request body format invalid）
+  out.model = str(r.model) ?? '';
   out.messages = messages;
   out.max_tokens =
     typeof r.max_tokens === 'number' && r.max_tokens > 0
