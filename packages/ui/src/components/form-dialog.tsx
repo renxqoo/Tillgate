@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 
+import { useTranslations } from "next-intl";
 import { Loader2Icon } from "lucide-react";
 
 import { Button } from "./ui/button";
@@ -105,17 +106,19 @@ interface FormDialogClickProps extends FormDialogBaseProps {
 export type FormDialogProps = FormDialogFormProps | FormDialogClickProps;
 
 export function FormDialog(props: FormDialogProps) {
+  const t = useTranslations("ui");
   const {
     trigger,
     title,
     description,
     submitLabel,
-    cancelLabel = "取消",
+    cancelLabel: cancelLabelOverride,
     contentClassName,
     titleClassName,
     onOpenChange,
     children,
   } = props;
+  const cancelLabel = cancelLabelOverride ?? t("cancel");
   const formId = props.formId ?? undefined;
   const onSubmitClick = props.onSubmitClick ?? undefined;
   const [open, setOpen] = useState(false);

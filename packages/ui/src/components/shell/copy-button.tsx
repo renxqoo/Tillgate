@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useTranslations } from "next-intl";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -14,6 +15,7 @@ export interface CopyButtonProps {
 
 export function CopyButton({ text, label, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const t = useTranslations("ui");
   return (
     <Button
       type="button"
@@ -37,7 +39,7 @@ export function CopyButton({ text, label, className }: CopyButtonProps) {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}
-      aria-label="复制"
+      aria-label={t("copy")}
     >
       {copied ? <CheckIcon className="text-emerald-500" /> : <CopyIcon />}
       {label ? <span>{label}</span> : null}

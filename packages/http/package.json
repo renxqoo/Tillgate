@@ -17,10 +17,15 @@
       "development": "./src/network.ts",
       "types": "./src/network.ts",
       "import": "./dist/network.js"
+    },
+    "./locale": {
+      "development": "./src/locale.ts",
+      "types": "./src/locale.ts",
+      "import": "./dist/locale.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/network.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "build": "rm -rf dist && bun build src/index.ts src/network.ts src/locale.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "test": "bun x vitest run --passWithNoTests",
     "lint": "bun x oxlint"

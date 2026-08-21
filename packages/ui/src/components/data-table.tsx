@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { cn } from '../lib/utils';
@@ -81,7 +82,7 @@ export function DataTable<Row>({
   rowKey,
   sort,
   searchParams,
-  empty = '暂无数据',
+  empty,
   className,
 }: {
   columns: DataTableColumn<Row>[];
@@ -91,9 +92,11 @@ export function DataTable<Row>({
   sort?: DataTableSort;
   /** 当前页完整 query 参数（排序链接保留其余筛选） */
   searchParams?: SearchParamsInput;
+  /** 空态文案；缺省用 ui.empty 目录文案 */
   empty?: ReactNode;
   className?: string;
 }) {
+  const t = useTranslations('ui');
   /** dev-only：行 key 重复自诊断（React 只给通用警告，这里指出具体重复值与索引） */
   const dupKeys =
     process.env.NODE_ENV !== 'production'
@@ -113,7 +116,7 @@ export function DataTable<Row>({
     <Table className={className}>
       {dupKeys.size > 0 && (
         <caption className="mt-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-left text-xs text-destructive">
-          DataTable 诊断：行 key 重复 {JSON.stringify([...dupKeys])}（rowKey 需返回唯一值）
+          DataTable diagnostics: duplicate row keys {JSON.stringify([...dupKeys])} (rowKey must return unique values)
         </caption>
       )}
       <TableHeader>
@@ -136,7 +139,7 @@ export function DataTable<Row>({
         {rows.length === 0 ? (
           <TableRow>
             <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
-              {empty}
+              {empty ?? t('empty')}
             </TableCell>
           </TableRow>
         ) : (

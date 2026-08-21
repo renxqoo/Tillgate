@@ -1,3 +1,5 @@
+import createNextIntlPlugin from 'next-intl/plugin';
+
 /** @type {import('next').NextConfig} */
 
 /**
@@ -58,4 +60,6 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+
+// next-intl 插件：默认加载 ./src/i18n/request.ts（无路由模式，语言走 cookie）
+export default createNextIntlPlugin()(nextConfig);

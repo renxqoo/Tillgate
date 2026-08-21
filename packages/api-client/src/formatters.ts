@@ -134,18 +134,32 @@ export function formatPoints(value: MoneyValue): string {
   return formatMoney(toFiniteNumber(value) * POINTS_PER_YUAN, 2);
 }
 
-/** 计价单位中文词（用量列表展示：图片张/音频秒/语音字符/按次） */
-export function unitWord(pricingUnit: string | null | undefined): string {
+/** 计价单位词（用量列表展示：图片张/音频秒/语音字符/按次；en 用拉丁词） */
+export function unitWord(pricingUnit: string | null | undefined, locale: 'en' | 'zh' = 'en'): string {
+  if (locale === 'zh') {
+    switch (pricingUnit) {
+      case 'image':
+        return '张';
+      case 'second':
+        return '秒';
+      case 'char':
+        return '字符';
+      case 'request':
+        return '次';
+      default:
+        return '单位';
+    }
+  }
   switch (pricingUnit) {
     case 'image':
-      return '张';
+      return 'image';
     case 'second':
-      return '秒';
+      return 'sec';
     case 'char':
-      return '字符';
+      return 'char';
     case 'request':
-      return '次';
+      return 'request';
     default:
-      return '单位';
+      return 'unit';
   }
 }

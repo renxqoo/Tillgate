@@ -13,10 +13,11 @@
  *
  * 调用方必须传后端唯一正式路径 /v1/*；本层不做路径翻译。
  */
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 import { trustedClientIp } from '@ai-gateway/http/network';
 
+import { LOCALE_COOKIE, resolveLocale, type Locale } from './i18n';
 import { getAdminSessionToken, getSessionToken } from './session';
 
 /**
@@ -36,6 +37,20 @@ async function outgoingUserIpHeader(): Promise<Record<string, string>> {
     return ip.startsWith('unknown-') ? {} : { 'x-forwarded-for': ip };
   } catch {
     return {}; // 非请求上下文（SSG 构建等）：无入站请求头可解
+  }
+}
+
+/**
+ * BFF 出口语言：与 UI 同源（cookie NEXT_LOCALE → 浏览器 Accept-Language → 默认英文），
+ * 注入 accept-language 让 API 错误 message 语言与界面一致。非请求上下文回落英文。
+ */
+/** UI 生效语言（cookie → 浏览器头 → en）；list.ts 等服务端兜底文案复用 */
+export async function outgoingLocale(): Promise<Locale> {
+  try {
+    const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
+    return resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'));
+  } catch {
+    return 'en'; // 非请求上下文（SSG 构建等）
   }
 }
 
@@ -90,15 +105,17 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
   const { method = 'GET', body, bearerToken, revalidate, headers: extraHeaders, ...rest } = opts;
   const token =
     bearerToken !== undefined ? bearerToken : isAdminBase(base) ? await getAdminSessionToken() : await getSessionToken();
+  const locale = await outgoingLocale();
 
   if (!path.startsWith('/v1/')) {
-    throw new Error(`[api-client] 非法 API 路径 ${path}；仅允许 /v1/*`);
+    throw new Error(`[api-client] Invalid API path ${path}; only /v1/* is allowed`);
   }
   const res = await fetch(`${base}${path}`, {
     method,
     ...rest,
     headers: {
       'content-type': 'application/json',
+      'accept-language': locale,
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(await outgoingUserIpHeader()),
       ...extraHeaders,
@@ -125,7 +142,7 @@ async function doFetch<T>(base: string, path: string, opts: ApiFetchOptions = {}
     throw new ApiError(
       res.status,
       err?.code,
-      err?.message ?? `请求失败 (${res.status})`,
+      err?.message ?? (locale === 'zh' ? `请求失败 (${res.status})` : `Request failed (${res.status})`),
       err?.details,
     );
   }

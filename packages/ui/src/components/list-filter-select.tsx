@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { FilterIcon } from "lucide-react";
 
@@ -18,7 +19,7 @@ export function ListFilterSelect({
   param,
   value,
   options,
-  allLabel = "全部",
+  allLabel,
   allValue = "all",
   resetPage = true,
   className,
@@ -29,7 +30,7 @@ export function ListFilterSelect({
   value: string;
   /** 选项（不含 all 项） */
   options: ReadonlyArray<{ value: string; label: string }>;
-  /** all 项文案 */
+  /** all 项文案（缺省用 ui.all 目录文案） */
   allLabel?: string;
   /** 「全部」对应的值（选中即删除参数）；空串表示没有 all 项 */
   allValue?: string;
@@ -39,6 +40,8 @@ export function ListFilterSelect({
 }) {
   const router = useRouter();
   const sp = useSearchParams();
+  const t = useTranslations("ui");
+  const all = allLabel ?? t("all");
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = new URLSearchParams(sp.toString());
@@ -59,7 +62,7 @@ export function ListFilterSelect({
           className,
         )}
       >
-        {allValue !== "" ? <option value={allValue}>{allLabel}</option> : null}
+        {allValue !== "" ? <option value={allValue}>{all}</option> : null}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
