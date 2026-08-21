@@ -48,7 +48,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_gateway}
       REDIS_URL: redis://:${REDIS_PASSWORD:-root123}@redis:6379
-      PORT: 8083
+      GATEWAY_PORT: 8083
       OTEL_TRACES_MODE: "off"
       TRUSTED_PROXY_HOPS: "1"  # nginx 单层代理：XFF 右数第 1 跳 = 真实客户端
     depends_on:

@@ -43,7 +43,7 @@ export function e2eDb(): Db {
 export function e2eAdminConfig(overrides: Partial<AdminApiConfig> = {}): AdminApiConfig {
   return {
     DATABASE_URL: 'postgres://unused',
-    PORT: 0,
+    ADMIN_API_PORT: 0,
     DB_POOL_MAX: 5,
     ADMIN_JWT_SECRET: E2E_ADMIN_JWT,
     SESSION_TTL_SECONDS: 3_600,
@@ -63,7 +63,7 @@ export function e2eAdminConfig(overrides: Partial<AdminApiConfig> = {}): AdminAp
     VOUCHER_MAX_BYTES: 2_097_152,
       REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
     CORS_ORIGINS: '',
-    BODY_LIMIT_BYTES: 4_194_304,
+    ADMIN_BODY_LIMIT_BYTES: 4_194_304,
     ADMIN_SHUTDOWN_GRACE_MS: 1_000,
     OTEL_TRACES_MODE: 'off' as const,
     OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
@@ -87,7 +87,7 @@ export async function startAdminApi(db: Db, extra: Partial<AdminApiConfig> = {})
     assembly,
     jwtSecret: config.ADMIN_JWT_SECRET,
     corsOrigins: [],
-    bodyLimitBytes: config.BODY_LIMIT_BYTES,
+    bodyLimitBytes: config.ADMIN_BODY_LIMIT_BYTES,
     trustedProxyHops: config.TRUSTED_PROXY_HOPS,
   });
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });

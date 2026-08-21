@@ -29,7 +29,7 @@ const batcher = new SpanBatcher(store, {
 });
 const app = createReceiverApp({ db, store, token: env.TRACE_RECEIVER_TOKEN, batcher });
 
-const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: env.TRACE_RECEIVER_PORT }, (info) => {
   batcher.start();
   logger.info(
     {

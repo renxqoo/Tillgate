@@ -63,7 +63,7 @@ export const TEST_PASSWORD = 'correct-horse-battery';
 export function testConfig(overrides: Partial<AdminApiConfig> = {}): AdminApiConfig {
   return {
     DATABASE_URL: 'postgres://unused',
-    PORT: 0,
+    ADMIN_API_PORT: 0,
     DB_POOL_MAX: 5,
     ADMIN_JWT_SECRET: TEST_JWT_SECRET,
     SESSION_TTL_SECONDS: 3_600,
@@ -83,7 +83,7 @@ export function testConfig(overrides: Partial<AdminApiConfig> = {}): AdminApiCon
     VOUCHER_MAX_BYTES: 2_097_152,
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
     CORS_ORIGINS: '',
-    BODY_LIMIT_BYTES: 1_048_576,
+    ADMIN_BODY_LIMIT_BYTES: 1_048_576,
     ADMIN_SHUTDOWN_GRACE_MS: 1_000,
     OTEL_TRACES_MODE: 'off',
     OTEL_EXPORTER_OTLP_ENDPOINT: undefined,
@@ -184,7 +184,7 @@ export function buildTestApp(
     assembly,
     jwtSecret: config.ADMIN_JWT_SECRET,
     corsOrigins: opts.corsOrigins ?? [],
-    bodyLimitBytes: config.BODY_LIMIT_BYTES,
+    bodyLimitBytes: config.ADMIN_BODY_LIMIT_BYTES,
     trustedProxyHops: config.TRUSTED_PROXY_HOPS,
   });
   const request: TestRequest = async (path, init = {}) => {

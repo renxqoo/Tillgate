@@ -22,11 +22,11 @@ const app = createApp({
   assembly,
   jwtSecret: config.ADMIN_JWT_SECRET,
   corsOrigins: config.CORS_ORIGINS ? config.CORS_ORIGINS.split(',').map((s) => s.trim()) : [],
-  bodyLimitBytes: config.BODY_LIMIT_BYTES,
+  bodyLimitBytes: config.ADMIN_BODY_LIMIT_BYTES,
   trustedProxyHops: config.TRUSTED_PROXY_HOPS,
 });
 
-const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: config.ADMIN_API_PORT }, (info) => {
   console.log(`[admin-api] listening on :${info.port}`);
   // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
   console.log(`[admin-api] config snapshot: ${JSON.stringify({
