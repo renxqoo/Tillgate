@@ -12,7 +12,11 @@ import { otelMiddleware } from './middleware/otel.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import { bodyParserLimit, corsPreflight, securityHeaders } from './middleware/security.js';
 import { requestLogMiddleware } from './middleware/request-log.js';
-import { enginesAliasRoutes, inferenceEndpoints, inferenceRoutes } from './routes/inference-endpoints.js';
+import {
+  enginesAliasRoutes,
+  inferenceEndpoints,
+  inferenceRoutes,
+} from './routes/inference-endpoints.js';
 import { geminiNativeRoutes } from './routes/native-protocol.js';
 import { modelsRoutes } from './routes/models.js';
 import { modalityMultipartRoutes } from './routes/modality-multipart.js';
@@ -33,7 +37,17 @@ export interface AppDeps {
   /** CORS 白名单（逗号分隔 env 装配解析）；空表 = 不放行跨域 */
   corsOrigins?: readonly string[];
   /** /oauth/token 与 JWT 凭证验签密钥（必配——JWT 凭证分支依赖） */
-  oauth: { jwtSecret: string; tokenTtlSeconds: number };
+  oauth: { jwtSecret: string; tokenTtlSeconds: number; issuer?: string; audience?: string };
+  /** 虚拟 Key 前缀（识别凭证形态；缺省 ag_） */
+  keyPrefix?: string;
+  /** 请求体护栏（字节；缺省 10 MiB） */
+  bodyLimitBytes?: number;
+  /** multipart 上传白名单与单文件上界（缺省模块默认） */
+  uploadLimits?: {
+    imageMime: ReadonlySet<string>;
+    audioMime: ReadonlySet<string>;
+    maxFileBytes: number;
+  };
 }
 
 export function createApp(deps: AppDeps) {
@@ -44,7 +58,10 @@ export function createApp(deps: AppDeps) {
   app.onError((error, c) => {
     const mapped = mapErrorToHttp(error);
     if (mapped.status >= 500) console.error('[gateway] internal error:', error);
-    return c.json({ error: { code: mapped.code, message: mapped.message } }, mapped.status as ContentfulStatusCode);
+    return c.json(
+      { error: { code: mapped.code, message: mapped.message } },
+      mapped.status as ContentfulStatusCode,
+    );
   });
 
   app.notFound((c) => {
@@ -56,7 +73,7 @@ export function createApp(deps: AppDeps) {
 
   app.use('*', corsPreflight(deps.corsOrigins ?? []));
   app.use('*', securityHeaders);
-  app.use('*', bodyParserLimit());
+  app.use('*', bodyParserLimit(deps.bodyLimitBytes));
   app.use('*', requestIdMiddleware());
   // requestId 之后挂载：span 属性 request.id 依赖它；off 模式为 no-op
   app.use('*', otelMiddleware());
@@ -74,34 +91,97 @@ export function createApp(deps: AppDeps) {
   });
 
   // requestLog 前置到鉴权之前：401/429 也入日志（「记录一切 /v1 请求」语义）
-  app.use('/v1/*', requestLogMiddleware({ db, trustedProxyHops: deps.authGuards?.trustedProxyHops ?? 0 }));
+  app.use(
+    '/v1/*',
+    requestLogMiddleware({ db, trustedProxyHops: deps.authGuards?.trustedProxyHops ?? 0 }),
+  );
   // 鉴权按已注册端点挂载（未注册路径 404 而非 401）
-  app.use('/v1/models', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
-  app.use('/v1/models/*', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+  app.use(
+    '/v1/models',
+    apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+      keyPrefix: deps.keyPrefix,
+      jwtIssuer: deps.oauth.issuer,
+      jwtAudience: deps.oauth.audience,
+    }),
+  );
+  app.use(
+    '/v1/models/*',
+    apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+      keyPrefix: deps.keyPrefix,
+      jwtIssuer: deps.oauth.issuer,
+      jwtAudience: deps.oauth.audience,
+    }),
+  );
 
   app.route('/v1/models', modelsRoutes({ db, ctx: systemContext('models') }));
   if (deps.runChat) {
     for (const endpoint of inferenceEndpoints) {
-      app.use(endpoint.path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+      app.use(
+        endpoint.path,
+        apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+          keyPrefix: deps.keyPrefix,
+          jwtIssuer: deps.oauth.issuer,
+          jwtAudience: deps.oauth.audience,
+        }),
+      );
       app.route(endpoint.path, inferenceRoutes(deps.runChat, endpoint));
     }
     // OpenAI legacy 引擎别名（pre-1.0 SDK 走 /v1/engines/:model/embeddings）
     const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings')!;
-    app.use('/v1/engines/:model/embeddings', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.use(
+      '/v1/engines/:model/embeddings',
+      apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+        keyPrefix: deps.keyPrefix,
+        jwtIssuer: deps.oauth.issuer,
+        jwtAudience: deps.oauth.audience,
+      }),
+    );
     app.route('/v1/engines/:model', enginesAliasRoutes(deps.runChat, embeddings));
     // Gemini 原生入口（/v1beta/models/:model:generateContent|streamGenerateContent）
-    app.use('/v1beta/models/:modelAction', apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    app.use(
+      '/v1beta/models/:modelAction',
+      apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+        keyPrefix: deps.keyPrefix,
+        jwtIssuer: deps.oauth.issuer,
+        jwtAudience: deps.oauth.audience,
+      }),
+    );
     app.route('/', geminiNativeRoutes(deps.runChat));
     // 模态 multipart 族（同鉴权）
     for (const path of ['/v1/images/edits', '/v1/audio/transcriptions', '/v1/audio/translations']) {
-      app.use(path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+      app.use(
+        path,
+        apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+          keyPrefix: deps.keyPrefix,
+          jwtIssuer: deps.oauth.issuer,
+          jwtAudience: deps.oauth.audience,
+        }),
+      );
     }
-    app.route('/', modalityMultipartRoutes(deps.runChat));
+    app.route(
+      '/',
+      modalityMultipartRoutes(deps.runChat, {
+        ...deps.uploadLimits,
+        bodyLimitBytes: deps.bodyLimitBytes,
+      }),
+    );
   }
   // 异步生成任务族（提交 + 查询，同鉴权）
   if (deps.submitGeneration) {
-    for (const path of ['/v1/video/generations', '/v1/music/generations', '/v1/videos/*', '/v1/musics/*']) {
-      app.use(path, apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret));
+    for (const path of [
+      '/v1/video/generations',
+      '/v1/music/generations',
+      '/v1/videos/*',
+      '/v1/musics/*',
+    ]) {
+      app.use(
+        path,
+        apiKeyMiddleware(db, deps.authGuards, deps.oauth.jwtSecret, {
+          keyPrefix: deps.keyPrefix,
+          jwtIssuer: deps.oauth.issuer,
+          jwtAudience: deps.oauth.audience,
+        }),
+      );
     }
     app.route('/', generationRoutes({ db, submit: deps.submitGeneration }));
   }

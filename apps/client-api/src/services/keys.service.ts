@@ -15,6 +15,8 @@ export interface KeysServiceDeps {
   repos?: Repositories;
   /** 在用 Key 数量上限 */
   clock?: () => Date;
+  /** 虚拟 Key 前缀（与网关识别端同源注入） */
+  keyPrefix?: string;
 }
 
 export interface CreateKeyInput {
@@ -74,6 +76,7 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
   const { db } = deps;
   const repos = deps.repos ?? createRepositories();
   const clock = deps.clock ?? (() => new Date());
+  const keyPrefix = deps.keyPrefix ?? 'ag_';
 
   return {
     async create(ctx, userId, input) {
@@ -86,23 +89,30 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
           { userId, subscriptionId, now: clock() },
         );
         if (!usable) {
-          throw new AppError(404, 'subscription_not_usable', 'Subscription not found, expired, or not usable');
+          throw new AppError(
+            404,
+            'subscription_not_usable',
+            'Subscription not found, expired, or not usable',
+          );
         }
       }
-      const plaintext = generateApiKey();
+      const plaintext = generateApiKey(keyPrefix);
       const row = await db.transaction(async (tx) => {
-        return repos.apiKey.insertKey({ db: tx, ...runCtx }, {
-          keyHash: sha256Hex(plaintext),
-          keyPreview: maskKey(plaintext),
-          userId,
-          name: input.name,
-          remark: input.remark ?? null,
-          rpmLimit: input.rpmLimit ?? null,
-          tpmLimit: input.tpmLimit ?? null,
-          dailySpendLimit: input.dailySpendLimit ?? null,
-          expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
-          subscriptionId,
-        });
+        return repos.apiKey.insertKey(
+          { db: tx, ...runCtx },
+          {
+            keyHash: sha256Hex(plaintext),
+            keyPreview: maskKey(plaintext),
+            userId,
+            name: input.name,
+            remark: input.remark ?? null,
+            rpmLimit: input.rpmLimit ?? null,
+            tpmLimit: input.tpmLimit ?? null,
+            dailySpendLimit: input.dailySpendLimit ?? null,
+            expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+            subscriptionId,
+          },
+        );
       });
       // 用户面审计：凭证操作可追溯
       await recordAudit(deps.db, {
@@ -118,11 +128,14 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
 
     async list(ctx, userId, input) {
       const runCtx = asUser(ctx, userId);
-      return repos.apiKey.listByUser({ db, ...runCtx }, {
-        userId,
-        limit: input.limit,
-        offset: (input.page - 1) * input.limit,
-      });
+      return repos.apiKey.listByUser(
+        { db, ...runCtx },
+        {
+          userId,
+          limit: input.limit,
+          offset: (input.page - 1) * input.limit,
+        },
+      );
     },
 
     async revoke(ctx, userId, keyId) {
@@ -130,7 +143,8 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
       const owned = await repos.apiKey.findOwned({ db, ...runCtx }, { userId, keyId });
       // 不存在与越权同响应（不泄漏他人 Key 的存在性）
       if (!owned) throw new AppError(404, 'key_not_found', 'API key not found');
-      if (owned.status !== 0) throw new AppError(409, 'key_already_revoked', 'API key already revoked');
+      if (owned.status !== 0)
+        throw new AppError(409, 'key_already_revoked', 'API key already revoked');
       const revoked = await db.transaction(async (tx) =>
         repos.apiKey.revokeKey({ db: tx, ...runCtx }, { userId, keyId, now: clock() }),
       );
@@ -148,7 +162,8 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
       const runCtx = asUser(ctx, userId);
       const owned = await repos.apiKey.findOwned({ db, ...runCtx }, { userId, keyId });
       if (!owned) throw new AppError(404, 'key_not_found', 'API key not found');
-      if (owned.status !== 0) throw new AppError(409, 'key_already_revoked', 'API key already revoked');
+      if (owned.status !== 0)
+        throw new AppError(409, 'key_already_revoked', 'API key already revoked');
       const updated = await db.transaction(async (tx) =>
         repos.apiKey.patchKey({ db: tx, ...runCtx }, { userId, keyId, patch }),
       );
@@ -161,7 +176,8 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
       const runCtx = asUser(ctx, userId);
       const owned = await repos.apiKey.findOwned({ db, ...runCtx }, { userId, keyId });
       if (!owned) throw new AppError(404, 'key_not_found', 'API key not found');
-      if (owned.status !== 0) throw new AppError(409, 'key_already_revoked', 'API key already revoked');
+      if (owned.status !== 0)
+        throw new AppError(409, 'key_already_revoked', 'API key already revoked');
 
       // 计费来源重新校验：过期/失格 → 新 Key 降级为个人余额
       let subscriptionId = owned.subscriptionId;
@@ -173,7 +189,7 @@ export function createKeysService(deps: KeysServiceDeps): KeysService {
         if (!usable) subscriptionId = null;
       }
 
-      const plaintext = generateApiKey();
+      const plaintext = generateApiKey(keyPrefix);
       const created = await db.transaction(async (tx) => {
         const c = { db: tx, ...runCtx };
         // 新 Key 继承设置（过期时间原样沿用旧 Key）；quota 闸按「替换」口径不计增量

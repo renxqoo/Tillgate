@@ -48,7 +48,16 @@ export interface GatewayAssembly {
 export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const db = createDb(config.DATABASE_URL, { poolMax: config.DB_POOL_MAX });
   // Redis 必配（首选组件：限流/爆破防护/熔断状态共享；启动入口已做连通性验证）
-  const redis = createRedisClient(config.REDIS_URL, { serviceName: 'gateway', ...process.env.REDIS_SENTINELS ? { sentinels: process.env.REDIS_SENTINELS, sentinelName: process.env.REDIS_SENTINEL_NAME, sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD } : {} });
+  const redis = createRedisClient(config.REDIS_URL, {
+    serviceName: 'gateway',
+    ...(process.env.REDIS_SENTINELS
+      ? {
+          sentinels: process.env.REDIS_SENTINELS,
+          sentinelName: process.env.REDIS_SENTINEL_NAME,
+          sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD,
+        }
+      : {}),
+  });
 
   const admission = createBacklogAdmission({
     db,
@@ -69,13 +78,18 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   // ai 状态存储：Redis 多副本共享（熔断/死凭据全副本一致）
   const storages = {
     breakerStorage: createRedisStateStorage<BreakerState>(redis, AI_STORAGE_PREFIXES.breaker),
-    deadCredentialStorage: createRedisStateStorage<DeadCredentialState>(redis, AI_STORAGE_PREFIXES.credential),
+    deadCredentialStorage: createRedisStateStorage<DeadCredentialState>(
+      redis,
+      AI_STORAGE_PREFIXES.credential,
+    ),
   };
   const ai = createAi(
     {
       timeout: { connectMs: config.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS },
       // SSRF 双门（与 admin-api 同口径）：逃生门仅非生产可用——生产误配 env 也恒关
-      ...(config.GATEWAY_AI_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production' ? { allowLocalUrl: true } : {}),
+      ...(config.GATEWAY_AI_ALLOW_LOCAL_URL && process.env.NODE_ENV !== 'production'
+        ? { allowLocalUrl: true }
+        : {}),
     },
     { ...storages },
   );
@@ -110,14 +124,23 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     billing,
     buildQuote,
     resolveChannels,
-    upstream: createUpstreamAdapter({ ai, ...encryption, deadlineMs: config.GATEWAY_UPSTREAM_DEADLINE_MS }),
+    upstream: createUpstreamAdapter({
+      ai,
+      ...encryption,
+      deadlineMs: config.GATEWAY_UPSTREAM_DEADLINE_MS,
+    }),
     ...(rateLimit ? { rateLimit } : {}),
     config: {
       reservationLimit: config.BILLING_RESERVATION_MAX,
-      reservationPolicy: config.BILLING_RESERVATION_MODE === 'fixed'
-        ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
-        : { mode: 'full' },
+      reservationPolicy:
+        config.BILLING_RESERVATION_MODE === 'fixed'
+          ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
+          : { mode: 'full' },
       authorizationTtlMs: config.BILLING_AUTHORIZATION_TTL_MS,
+      signalFinalize: {
+        attempts: config.SIGNAL_FINALIZE_ATTEMPTS,
+        baseDelayMs: config.SIGNAL_FINALIZE_BASE_DELAY_MS,
+      },
       output: {
         defaultMax: config.DEFAULT_MAX_OUTPUT_TOKENS,
         exposureCap: config.GATEWAY_OUTPUT_EXPOSURE_CAP,
@@ -135,9 +158,10 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       taskTtlMs: config.GENERATION_TASK_TTL_MS,
       leaseGraceMs: config.GENERATION_LEASE_GRACE_MS,
       reservationLimit: config.BILLING_RESERVATION_MAX,
-      reservationPolicy: config.BILLING_RESERVATION_MODE === 'fixed'
-        ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
-        : { mode: 'full' },
+      reservationPolicy:
+        config.BILLING_RESERVATION_MODE === 'fixed'
+          ? { mode: 'fixed', amount: config.BILLING_FIXED_RESERVATION_AMOUNT! }
+          : { mode: 'full' },
     },
   });
 

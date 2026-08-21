@@ -45,9 +45,10 @@ export function generateRedeemCode(): string {
   return 'RC-' + out.slice(0, 32);
 }
 
-/** 生成虚拟 Key 明文：ag_<40 hex>（160 bit 熵，requirements 4.2 / api-contract §1） */
-export function generateApiKey(): string {
-  return 'ag_' + randomBytes(20).toString('hex');
+/** 生成虚拟 Key 明文：<prefix><40 hex>（160 bit 熵，requirements 4.2 / api-contract §1）；
+ *  前缀由部署实例自定义（默认 ag_——须与网关识别端同一 env 值） */
+export function generateApiKey(prefix = 'ag_'): string {
+  return prefix + randomBytes(20).toString('hex');
 }
 
 /**

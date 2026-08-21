@@ -15,16 +15,30 @@ import { createShutdown } from './shutdown.js';
 const config = loadConfig();
 const assembly = assembleGateway(config);
 await assertRedisReachable(assembly.redis, 'gateway', config.REDIS_URL);
+const csvSet = (raw: string): ReadonlySet<string> =>
+  new Set(
+    raw
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
 const app = createApp({
   db: assembly.db,
   runChat: assembly.runChat,
   submitGeneration: assembly.submitGeneration,
   authGuards: assembly.authGuards,
   redisProbe: assembly.redis,
-  oauth: assembly.oauth,
+  oauth: { ...assembly.oauth, issuer: config.JWT_ISSUER, audience: config.JWT_AUDIENCE },
+  keyPrefix: config.KEY_PREFIX,
+  bodyLimitBytes: config.GATEWAY_BODY_LIMIT_BYTES,
+  uploadLimits: {
+    imageMime: csvSet(config.GATEWAY_UPLOAD_IMAGE_MIME),
+    audioMime: csvSet(config.GATEWAY_UPLOAD_AUDIO_MIME),
+    maxFileBytes: config.GATEWAY_UPLOAD_MAX_FILE_BYTES,
+  },
 });
 
-const server: ServerType = serve({ fetch: app.fetch, port: config.PORT }, ({ port }) => {
+const server: ServerType = serve({ fetch: app.fetch, port: config.GATEWAY_PORT }, ({ port }) => {
   console.log(`[gateway] listening on :${port}`);
   // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
   console.log(
@@ -34,9 +48,26 @@ const server: ServerType = serve({ fetch: app.fetch, port: config.PORT }, ({ por
       reservationMode: config.BILLING_RESERVATION_MODE,
       fixedReservationAmount: config.BILLING_FIXED_RESERVATION_AMOUNT ?? null,
       authTtlMs: config.BILLING_AUTHORIZATION_TTL_MS,
-      admission: { maxPending: config.ADMISSION_MAX_PENDING, maxOldestMs: config.ADMISSION_MAX_OLDEST_MS },
-      authGuards: { keyThreshold: config.AUTH_KEY_FAILURE_THRESHOLD, ipLimit: config.AUTH_IP_FAILURE_LIMIT },
+      admission: {
+        maxPending: config.ADMISSION_MAX_PENDING,
+        maxOldestMs: config.ADMISSION_MAX_OLDEST_MS,
+      },
+      authGuards: {
+        keyThreshold: config.AUTH_KEY_FAILURE_THRESHOLD,
+        ipLimit: config.AUTH_IP_FAILURE_LIMIT,
+      },
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
+      keyPrefix: config.KEY_PREFIX,
+      jwt: { issuer: config.JWT_ISSUER, audience: config.JWT_AUDIENCE },
+      bodyLimitBytes: config.GATEWAY_BODY_LIMIT_BYTES,
+      uploadMaxFileBytes: Math.min(
+        config.GATEWAY_UPLOAD_MAX_FILE_BYTES,
+        config.GATEWAY_BODY_LIMIT_BYTES,
+      ),
+      signalFinalize: {
+        attempts: config.SIGNAL_FINALIZE_ATTEMPTS,
+        baseDelayMs: config.SIGNAL_FINALIZE_BASE_DELAY_MS,
+      },
       allowLocalUpstream: config.GATEWAY_AI_ALLOW_LOCAL_URL,
       otel: config.OTEL_TRACES_MODE,
     })}`,

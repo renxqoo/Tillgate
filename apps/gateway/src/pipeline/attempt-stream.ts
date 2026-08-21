@@ -204,6 +204,7 @@ export async function attemptStream(input: AttemptInput): Promise<AttemptOutcome
       requestId,
       receipt,
       input.noteError,
+      deps.config.signalFinalize,
     );
     if (!finalized) {
       input.noteError(

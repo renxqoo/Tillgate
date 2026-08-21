@@ -17,22 +17,45 @@ import type { AuthEnv } from '../middleware/api-key.js';
 
 type RunChat = ReturnType<typeof createRunChat>;
 
-const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const AUDIO_MIME = new Set(['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/webm', 'audio/mp4', 'audio/x-m4a', 'audio/m4a']);
-// 单文件上界取「全局 bodyLimit 与本路由声明」的较小值（bodyLimit 先拦 413——
-// 声明 16MB 而全局 10MiB 时，本检查永远不可达即是死代码）
-const MAX_FILE_BYTES = Math.min(16 * 1024 * 1024, Number(process.env.GATEWAY_BODY_LIMIT_BYTES ?? 10 * 1024 * 1024));
+const DEFAULT_IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const DEFAULT_AUDIO_MIME = new Set([
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/webm',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/m4a',
+]);
+const DEFAULT_MAX_FILE_BYTES = 16 * 1024 * 1024;
 
-function checkFile(file: File, allow: Set<string>): void {
+/** multipart 上传约束（装配注入；缺省取模块默认——单文件上界取与 bodyLimit 的较小值） */
+export interface ModalityLimits {
+  imageMime?: ReadonlySet<string>;
+  audioMime?: ReadonlySet<string>;
+  maxFileBytes?: number;
+  bodyLimitBytes?: number;
+}
+
+function checkFile(
+  file: File,
+  allow: ReadonlySet<string>,
+  audio: boolean,
+  maxFileBytes: number,
+): void {
   const mime = file.type || 'application/octet-stream';
-  if (!allow.has(mime) && !(
-    (allow === IMAGE_MIME && /\.(png|jpe?g|webp)$/.test(file.name)) ||
-    (allow === AUDIO_MIME && /\.(mp3|wav|webm|m4a|mp4)$/.test(file.name))
-  )) {
+  // MIME 白名单外的常见扩展名回退（浏览器无 type 时仍可用；集合可注入而回退按 image/audio 固定）
+  const extOk = audio
+    ? /\.(mp3|wav|webm|m4a|mp4)$/.test(file.name)
+    : /\.(png|jpe?g|webp)$/.test(file.name);
+  if (!allow.has(mime) && !extOk) {
     throw new Error(`Unsupported file type: ${file.name} (${mime})`);
   }
-  if (file.size > MAX_FILE_BYTES) {
-    throw new Error(`File exceeds size limit (16MB): ${file.name}`);
+  if (file.size > maxFileBytes) {
+    throw new Error(
+      `File exceeds size limit (${Math.floor(maxFileBytes / 1024 / 1024)}MB): ${file.name}`,
+    );
   }
 }
 
@@ -45,7 +68,7 @@ interface MultipartWrapper {
 
 async function buildMultipartWrapper(
   request: Request,
-  opts: { fileField: string; allow: Set<string>; audio: boolean },
+  opts: { fileField: string; allow: ReadonlySet<string>; audio: boolean; maxFileBytes: number },
 ): Promise<MultipartWrapper> {
   const form = await request.formData();
   const wrapper: Record<string, unknown> = {};
@@ -55,7 +78,7 @@ async function buildMultipartWrapper(
 
   for (const [key, value] of form.entries()) {
     if (value instanceof File) {
-      checkFile(value, opts.allow);
+      checkFile(value, opts.allow, opts.audio, opts.maxFileBytes);
       upstream.append(key, value, value.name);
       if (key === opts.fileField) primaryFile = value;
       continue;
@@ -83,16 +106,42 @@ async function buildMultipartWrapper(
   return wrapper as unknown as MultipartWrapper;
 }
 
-export function modalityMultipartRoutes(runChat: RunChat): Hono<AuthEnv> {
+export function modalityMultipartRoutes(
+  runChat: RunChat,
+  limits: ModalityLimits = {},
+): Hono<AuthEnv> {
+  const imageMime = limits.imageMime ?? DEFAULT_IMAGE_MIME;
+  const audioMime = limits.audioMime ?? DEFAULT_AUDIO_MIME;
+  // 单文件上界取「本路由声明与全局 bodyLimit」的较小值（bodyLimit 先拦 413——
+  // 声明 16MB 而全局 10MiB 时，本检查不可达即是死代码）
+  const maxFileBytes = Math.min(
+    limits.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+    limits.bodyLimitBytes ?? 10 * 1024 * 1024,
+  );
   const app = new Hono<AuthEnv>();
 
-  const handle = (opts: { fileField: string; allow: Set<string>; audio: boolean; kind: Endpoint }) =>
-    async (c: { req: { raw: Request }; get: (k: 'auth') => { ctx: Parameters<RunChat>[0]; userId: number; apiKeyId: number; appId?: number | null; allowedModels?: string[] | null; rpmLimit?: number | null; tpmLimit?: number | null; userRpmLimit?: number | null; userTpmLimit?: number | null }; json: (b: unknown, s?: never) => Response }) => {
+  const handle =
+    (opts: { fileField: string; allow: ReadonlySet<string>; audio: boolean; kind: Endpoint }) =>
+    async (c: {
+      req: { raw: Request };
+      get: (k: 'auth') => {
+        ctx: Parameters<RunChat>[0];
+        userId: number;
+        apiKeyId: number;
+        appId?: number | null;
+        allowedModels?: string[] | null;
+        rpmLimit?: number | null;
+        tpmLimit?: number | null;
+        userRpmLimit?: number | null;
+        userTpmLimit?: number | null;
+      };
+      json: (b: unknown, s?: never) => Response;
+    }) => {
       // 只有 multipart 解析（缺字段/类型白名单/超限）是 400 invalid_body；
       // 管线错误（402 余额/404 模型/500 配置）必须走统一错误翻译，不得吞成 400。
       let wrapper: MultipartWrapper;
       try {
-        wrapper = await buildMultipartWrapper(c.req.raw, opts);
+        wrapper = await buildMultipartWrapper(c.req.raw, { ...opts, maxFileBytes });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to parse multipart body';
         return c.json({ error: { code: 'invalid_body', message } }, 400 as never);
@@ -100,7 +149,16 @@ export function modalityMultipartRoutes(runChat: RunChat): Hono<AuthEnv> {
       const auth = c.get('auth');
       const result = await runChat(
         auth.ctx,
-        { userId: auth.userId, apiKeyId: auth.apiKeyId, appId: auth.appId ?? null, allowedModels: auth.allowedModels ?? null, rpmLimit: auth.rpmLimit ?? null, tpmLimit: auth.tpmLimit ?? null, userRpmLimit: auth.userRpmLimit ?? null, userTpmLimit: auth.userTpmLimit ?? null },
+        {
+          userId: auth.userId,
+          apiKeyId: auth.apiKeyId,
+          appId: auth.appId ?? null,
+          allowedModels: auth.allowedModels ?? null,
+          rpmLimit: auth.rpmLimit ?? null,
+          tpmLimit: auth.tpmLimit ?? null,
+          userRpmLimit: auth.userRpmLimit ?? null,
+          userTpmLimit: auth.userTpmLimit ?? null,
+        },
         wrapper as unknown as ChatCompletionBody,
         opts.kind,
       );
@@ -114,9 +172,18 @@ export function modalityMultipartRoutes(runChat: RunChat): Hono<AuthEnv> {
       return c.json(result.body, result.status as never);
     };
 
-  app.post('/v1/images/edits', handle({ fileField: 'image', allow: IMAGE_MIME, audio: false, kind: 'images_edits' }));
-  app.post('/v1/audio/transcriptions', handle({ fileField: 'file', allow: AUDIO_MIME, audio: true, kind: 'audio_transcription' }));
-  app.post('/v1/audio/translations', handle({ fileField: 'file', allow: AUDIO_MIME, audio: true, kind: 'audio_translation' }));
+  app.post(
+    '/v1/images/edits',
+    handle({ fileField: 'image', allow: imageMime, audio: false, kind: 'images_edits' }),
+  );
+  app.post(
+    '/v1/audio/transcriptions',
+    handle({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_transcription' }),
+  );
+  app.post(
+    '/v1/audio/translations',
+    handle({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_translation' }),
+  );
 
   return app;
 }

@@ -47,7 +47,7 @@ export async function startE2EGateway(db: Db, extra: Record<string, unknown> = {
   const assembly = assembleGateway({
     DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
-    PORT: 0,
+    GATEWAY_PORT: 0,
     DB_POOL_MAX: 40,
     GATEWAY_CURRENCY: 'CNY',
     ADMISSION_MAX_PENDING: 10_000,

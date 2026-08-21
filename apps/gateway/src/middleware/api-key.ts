@@ -15,7 +15,13 @@ import type { MiddlewareHandler } from 'hono';
 import { createRepositories } from '@ai-gateway/repository';
 import type { Db } from '@ai-gateway/repository';
 import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
-import { context, formatTraceParent, trace, type AuthFailureGuard, type KeyBruteForceGuard } from '@ai-gateway/core';
+import {
+  context,
+  formatTraceParent,
+  trace,
+  type AuthFailureGuard,
+  type KeyBruteForceGuard,
+} from '@ai-gateway/core';
 import { systemContext, type RunContext } from '@ai-gateway/service';
 import { UnauthorizedError } from '../http/error-map.js';
 
@@ -64,8 +70,6 @@ function positive(v: number | null | undefined): number | null {
   return v != null && v > 0 ? v : null;
 }
 
-const KEY_PREFIX = 'ag_';
-
 /** JWT 凭证载荷（/oauth/token 签发的 app_jwt 形态） */
 interface GatewayJwtPayload {
   typ?: string;
@@ -78,7 +82,11 @@ export function apiKeyMiddleware(
   db: Db,
   guards: AuthGuards | undefined,
   jwtSecret: string,
+  opts: { keyPrefix?: string; jwtIssuer?: string; jwtAudience?: string } = {},
 ): MiddlewareHandler<AuthEnv> {
+  const keyPrefix = opts.keyPrefix ?? 'ag_';
+  const jwtIssuer = opts.jwtIssuer ?? 'ai-gateway';
+  const jwtAudience = opts.jwtAudience ?? 'ai-gateway-api';
   const repos = createRepositories();
   // 真实 socket 对端地址必须注入：置 null 时 trustedClientIp 落到进程级常量，
   // 全部客户端共享同一个 IP 桶——per-IP 爆破锁退化为「一人刷失败、全员被锁」的
@@ -92,8 +100,8 @@ export function apiKeyMiddleware(
 
   const verifyJwt = async (token: string): Promise<GatewayJwtPayload> => {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(jwtSecret), {
-      issuer: 'ai-gateway',
-      audience: 'ai-gateway-api',
+      issuer: jwtIssuer,
+      audience: jwtAudience,
       algorithms: ['HS256'], // 算法族白名单（防混淆攻击）
     }).catch(() => {
       throw new UnauthorizedError('invalid or expired jwt credential');
@@ -108,11 +116,12 @@ export function apiKeyMiddleware(
     // ---- JWT 凭证分支（App JWT / 操练场）：计费与限流走同一管线，维度退到 user ----
     // 爆破锁与静态 Key 分支同口径：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点；
     // per-IP 锁前置 + 验签失败计数（Redis 故障 fail-closed 503——与 Key 分支一致）
-    if (!token.startsWith(KEY_PREFIX)) {
+    if (!token.startsWith(keyPrefix)) {
       if (!token) throw new UnauthorizedError('missing or malformed api key');
       if (guards) {
         const ipLock = await guards.ipGuard.isLocked(sourceIpOf(c));
-        if (ipLock.locked) throw new UnauthorizedError(`source locked, retry after ${ipLock.retryAfterSec}s`);
+        if (ipLock.locked)
+          throw new UnauthorizedError(`source locked, retry after ${ipLock.retryAfterSec}s`);
       }
       try {
         const payload = await verifyJwt(token);
@@ -122,7 +131,8 @@ export function apiKeyMiddleware(
             { ...systemContext('gateway-auth'), db },
             payload.app_id,
           );
-          if (!app || app.userId !== Number(payload.sub)) throw new UnauthorizedError('app credential inactive');
+          if (!app || app.userId !== Number(payload.sub))
+            throw new UnauthorizedError('app credential inactive');
           c.set('auth', {
             userId: app.userId,
             apiKeyId: null,
@@ -133,8 +143,15 @@ export function apiKeyMiddleware(
             tpmLimit: positive(payload.scope?.tpm),
             userRpmLimit: positive(app.userRpmLimit),
             userTpmLimit: positive(app.userTpmLimit),
-            allowedModels: Array.isArray(payload.scope?.models) && payload.scope.models.length > 0 ? payload.scope.models : null,
-            ctx: { requestId, actor: { kind: 'user', id: app.userId }, traceParent: activeTraceParent() },
+            allowedModels:
+              Array.isArray(payload.scope?.models) && payload.scope.models.length > 0
+                ? payload.scope.models
+                : null,
+            ctx: {
+              requestId,
+              actor: { kind: 'user', id: app.userId },
+              traceParent: activeTraceParent(),
+            },
           });
           await next();
           return;
@@ -154,12 +171,17 @@ export function apiKeyMiddleware(
 
     if (guards) {
       const keyLock = await guards.keyGuard.isLocked(keyHash);
-      if (keyLock.locked) throw new UnauthorizedError(`api key locked, retry after ${keyLock.retryAfterSec}s`);
+      if (keyLock.locked)
+        throw new UnauthorizedError(`api key locked, retry after ${keyLock.retryAfterSec}s`);
       const ipLock = await guards.ipGuard.isLocked(sourceIpOf(c));
-      if (ipLock.locked) throw new UnauthorizedError(`source locked, retry after ${ipLock.retryAfterSec}s`);
+      if (ipLock.locked)
+        throw new UnauthorizedError(`source locked, retry after ${ipLock.retryAfterSec}s`);
     }
 
-    const key = await repos.credential.findActiveKeyByKeyHash({ ...systemContext('gateway-auth'), db }, keyHash);
+    const key = await repos.credential.findActiveKeyByKeyHash(
+      { ...systemContext('gateway-auth'), db },
+      keyHash,
+    );
     if (!key) {
       if (guards) {
         await guards.keyGuard.recordFailure(keyHash);
