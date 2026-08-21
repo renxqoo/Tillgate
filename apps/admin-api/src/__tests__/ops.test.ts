@@ -11,13 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { notificationChannels, notifyOutbox, paymentOrders, requestLogs } from '@ai-gateway/db';
-import {
-  buildTestApp,
-  db,
-  newAdmin,
-  newUserRow,
-  uid,
-} from './helpers.js';
+import { buildTestApp, db, newAdmin, newUserRow, uid } from './helpers.js';
 
 describe('usage-logs', () => {
   it('estimated 字符串布尔过滤不误吞（"false" 不被 coerce 成 true）', async () => {
@@ -28,12 +22,46 @@ describe('usage-logs', () => {
     const model = `ul-${uid('m')}`;
     const { usageLogs } = await import('@ai-gateway/db');
     await db.insert(usageLogs).values([
-      { requestId: randomUUID(), userId, channelId: null, credentialType: 'api_key', externalModel: model, realModel: `${model}-real`, inputTokens: 1, outputTokens: 1, amount: '0.1', paygAmount: '0.1', coefficient: '1.000', estimated: true, estimateReason: 'usage_missing_completed', billedBy: 'payg', status: 0 },
-      { requestId: randomUUID(), userId, channelId: null, credentialType: 'api_key', externalModel: model, realModel: `${model}-real`, inputTokens: 1, outputTokens: 1, amount: '0.2', paygAmount: '0.2', coefficient: '1.000', estimated: false, billedBy: 'payg', status: 0 },
+      {
+        requestId: randomUUID(),
+        userId,
+        channelId: null,
+        credentialType: 'api_key',
+        externalModel: model,
+        realModel: `${model}-real`,
+        inputTokens: 1,
+        outputTokens: 1,
+        amount: '0.1',
+        paygAmount: '0.1',
+        coefficient: '1.000',
+        estimated: true,
+        estimateReason: 'usage_missing_completed',
+        billedBy: 'payg',
+        status: 0,
+      },
+      {
+        requestId: randomUUID(),
+        userId,
+        channelId: null,
+        credentialType: 'api_key',
+        externalModel: model,
+        realModel: `${model}-real`,
+        inputTokens: 1,
+        outputTokens: 1,
+        amount: '0.2',
+        paygAmount: '0.2',
+        coefficient: '1.000',
+        estimated: false,
+        billedBy: 'payg',
+        status: 0,
+      },
     ]);
     const all = (await (
       await request(`/v1/usage-logs?q=${model}&page_size=50`, { token })
-    ).json()) as { total: number; rows: Array<{ estimated: boolean; estimateReason: string | null }> };
+    ).json()) as {
+      total: number;
+      rows: Array<{ estimated: boolean; estimateReason: string | null }>;
+    };
     expect(all.total).toBe(2);
     const estimatedRow = all.rows.find((r) => r.estimated);
     expect(estimatedRow!.estimateReason).toBe('usage_missing_completed');
@@ -59,28 +87,52 @@ describe('logs（请求日志）', () => {
     const named = await newUserRow({ displayName: '日志测试-有名' });
     const anonymous = await newUserRow({ displayName: null });
     const { users } = await import('@ai-gateway/db');
-    await db.update(users).set({ email: `${uid('anon')}@example.com` }).where(eq(users.id, anonymous));
+    await db
+      .update(users)
+      .set({ email: `${uid('anon')}@example.com` })
+      .where(eq(users.id, anonymous));
     const reqId = randomUUID();
     await db.insert(requestLogs).values([
-      { requestId: reqId, userId: named, method: 'POST', path: '/v1/chat/completions', statusCode: 200, sourceIp: '1.2.3.4', durationMs: 10 },
-      { requestId: randomUUID(), userId: anonymous, method: 'POST', path: '/v1/chat/completions', statusCode: 500, errorCode: 'internal_error', sourceIp: '1.2.3.4', durationMs: 20 },
+      {
+        requestId: reqId,
+        userId: named,
+        method: 'POST',
+        path: '/v1/chat/completions',
+        statusCode: 200,
+        sourceIp: '1.2.3.4',
+        durationMs: 10,
+      },
+      {
+        requestId: randomUUID(),
+        userId: anonymous,
+        method: 'POST',
+        path: '/v1/chat/completions',
+        statusCode: 500,
+        errorCode: 'internal_error',
+        sourceIp: '1.2.3.4',
+        durationMs: 20,
+      },
     ]);
     // q 命中 path（搜索列是 path/errorCode/sourceIp/requestId——用户名只随行回显）
     const withName = (await (
-      await request(`/v1/logs?q=${encodeURIComponent('/v1/chat/completions')}&statusCode=2xx`, { token })
+      await request(`/v1/logs?q=${encodeURIComponent('/v1/chat/completions')}&statusCode=2xx`, {
+        token,
+      })
     ).json()) as { rows: Array<{ userName: string | null; statusCode: number }> };
     const namedRow = withName.rows.find((r) => r.userName === '日志测试-有名');
     expect(namedRow).toBeTruthy();
     // 无名回退 email（5xx 分组过滤 + path 命中当前行）
     const withEmail = (await (
-      await request(`/v1/logs?statusCode=5xx&q=${encodeURIComponent('/v1/chat/completions')}`, { token })
+      await request(`/v1/logs?statusCode=5xx&q=${encodeURIComponent('/v1/chat/completions')}`, {
+        token,
+      })
     ).json()) as { rows: Array<{ userName: string | null; statusCode: number }> };
     const anonRow = withEmail.rows.find((r) => r.userName?.includes('@example.com'));
     expect(anonRow).toBeTruthy();
     // requestId 精确命中（复核下钻路径）
-    const byRequest = (await (
-      await request(`/v1/logs?q=${reqId}`, { token })
-    ).json()) as { total: number };
+    const byRequest = (await (await request(`/v1/logs?q=${reqId}`, { token })).json()) as {
+      total: number;
+    };
     expect(byRequest.total).toBe(1);
   });
 });
@@ -89,9 +141,7 @@ describe('stats', () => {
   it('overview 结构完整 + usage 三轴分组', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();
-    const overview = (await (
-      await request('/v1/stats/overview', { token })
-    ).json()) as {
+    const overview = (await (await request('/v1/stats/overview', { token })).json()) as {
       today: { requests: number; successRate: number; failedCount: number };
       total: { requests: number };
       channelHealth: Array<{ status: number; count: number }>;
@@ -100,15 +150,31 @@ describe('stats', () => {
     expect(typeof overview.today.successRate).toBe('number');
     expect(Array.isArray(overview.channelHealth)).toBe(true);
 
-    const usage = (await (
-      await request('/v1/stats/usage?group=model', { token })
-    ).json()) as { list: Array<{ key: string | null; requests: number }> };
+    const usage = (await (await request('/v1/stats/usage?group=model', { token })).json()) as {
+      list: Array<{ key: string | null; requests: number }>;
+    };
     expect(Array.isArray(usage.list)).toBe(true);
 
     const byChannel = (await (
       await request('/v1/stats/usage?group=channel', { token })
     ).json()) as { list: unknown[] };
     expect(Array.isArray(byChannel.list)).toBe(true);
+  });
+
+  it('trends：按日行结构完整', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const trends = (await (await request('/v1/stats/trends?days=7', { token })).json()) as {
+      days: number;
+      rows: Array<{ date: string; requests: number; cost: string }>;
+    };
+    expect(trends.days).toBe(7);
+    expect(Array.isArray(trends.rows)).toBe(true);
+    for (const row of trends.rows) {
+      expect(row.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(typeof row.requests).toBe('number');
+      expect(typeof row.cost).toBe('string');
+    }
   });
 });
 
@@ -167,8 +233,13 @@ describe('notifications', () => {
     });
     expect(dup.status).toBe(409);
 
-    expect((await request(`/v1/notifications/${channelId}`, { method: 'DELETE', token })).status).toBe(200);
-    const [row] = await db.select().from(notificationChannels).where(eq(notificationChannels.id, channelId));
+    expect(
+      (await request(`/v1/notifications/${channelId}`, { method: 'DELETE', token })).status,
+    ).toBe(200);
+    const [row] = await db
+      .select()
+      .from(notificationChannels)
+      .where(eq(notificationChannels.id, channelId));
     expect(row).toBeUndefined();
     // 出箱测试行清理
     await db.delete(notifyOutbox).where(like(notifyOutbox.dedupeKey, `test:${channelId}:%`));
@@ -204,9 +275,10 @@ describe('payment-orders', () => {
     });
 
     // 列表：uuid 精确命中
-    const list = (await (
-      await request(`/v1/payment-orders?q=${orderId}`, { token })
-    ).json()) as { total: number; rows: Array<{ userDisplayName: string | null }> };
+    const list = (await (await request(`/v1/payment-orders?q=${orderId}`, { token })).json()) as {
+      total: number;
+      rows: Array<{ userDisplayName: string | null }>;
+    };
     expect(list.total).toBe(1);
 
     // created → 手动关闭成功
@@ -231,18 +303,22 @@ describe('billing-operations（死单复核）', () => {
     const { token } = await newAdmin();
     expect((await request('/v1/billing-operations', { token })).status).toBe(400);
     expect(
-      (await request('/v1/billing-operations/not-a-uuid/retry', {
-        method: 'POST',
-        token,
-        body: { expectedRevision: 0, reason: 'x' },
-      })).status,
+      (
+        await request('/v1/billing-operations/not-a-uuid/retry', {
+          method: 'POST',
+          token,
+          body: { expectedRevision: 0, reason: 'x' },
+        })
+      ).status,
     ).toBe(400);
     expect(
-      (await request('/v1/billing-operations/00000000-0000-4000-8000-000000000000/retry', {
-        method: 'POST',
-        token,
-        body: { expectedRevision: 0, reason: '   ' },
-      })).status,
+      (
+        await request('/v1/billing-operations/00000000-0000-4000-8000-000000000000/retry', {
+          method: 'POST',
+          token,
+          body: { expectedRevision: 0, reason: '   ' },
+        })
+      ).status,
     ).toBe(400);
 
     // 列表信封（空库也是 200）
@@ -252,13 +328,18 @@ describe('billing-operations（死单复核）', () => {
     expect(Array.isArray(list.rows)).toBe(true);
 
     // 不存在的死单 retry → 409 state_conflict
-    const retry = await request('/v1/billing-operations/00000000-0000-4000-8000-000000000001/retry', {
-      method: 'POST',
-      token,
-      body: { expectedRevision: 0, reason: '复核重试' },
-      headers: { 'idempotency-key': uid('br') },
-    });
+    const retry = await request(
+      '/v1/billing-operations/00000000-0000-4000-8000-000000000001/retry',
+      {
+        method: 'POST',
+        token,
+        body: { expectedRevision: 0, reason: '复核重试' },
+        headers: { 'idempotency-key': uid('br') },
+      },
+    );
     expect(retry.status).toBe(409);
-    expect(((await retry.json()) as { error: { code: string } }).error.code).toBe('billing_state_conflict');
+    expect(((await retry.json()) as { error: { code: string } }).error.code).toBe(
+      'billing_state_conflict',
+    );
   });
 });
