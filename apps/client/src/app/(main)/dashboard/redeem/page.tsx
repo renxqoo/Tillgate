@@ -81,7 +81,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
           <DataTable
             columns={columns}
             rows={history}
-            rowKey={(r) => r.id}
+            rowKey={(r) => r.codeId}
             sort={{ sortBy, order }}
             searchParams={{ sort_by: sortBy, order: sortBy ? order : undefined }}
             empty={t('empty')}

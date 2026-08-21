@@ -120,7 +120,8 @@ export interface AdminTransactionRow extends TransactionRow {
 
 /** 我的充值码兑换记录（GET /api/redeem/history；不含明文码/哈希） */
 export interface RedeemHistoryItem {
-  id: number;
+  /** 兑换的码 id（一码一兑——历史行唯一键） */
+  codeId: number;
   /** 面值（元） */
   amount: string;
   /** 批次名 */
