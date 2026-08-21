@@ -12,7 +12,7 @@ import {
   fmtBalance,
   fmtInt,
   type StatsOverview,
-  type StatsUsageItem,
+  type StatsTrendRow,
 } from "@ai-gateway/api-client";
 import {
   Card,
@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
   let stats: StatsOverview | null = null;
-  let usage: StatsUsageItem[] = [];
+  let trends: StatsTrendRow[] = [];
   let error: string | null = null;
 
   try {
@@ -38,10 +38,10 @@ export default async function AdminDashboardPage() {
   }
 
   try {
-    const res = await adminFetch<{ rows?: StatsUsageItem[]; list?: StatsUsageItem[] }>("/v1/stats/usage");
-    usage = res.rows ?? [];
+    const res = await adminFetch<{ rows?: StatsTrendRow[] }>("/v1/stats/trends?days=14");
+    trends = res.rows ?? [];
   } catch {
-    // usage 失败不阻塞整页
+    // 趋势失败不阻塞整页
   }
 
   const healthyCount =
@@ -54,11 +54,11 @@ export default async function AdminDashboardPage() {
       .reduce((sum, c) => sum + c.count, 0) ?? 0;
   const totalChannels = healthyCount + degradedCount + downCount;
 
-  // 按维度（key，通常是日期）转成图表数据
-  const requestsSeries = usage.map((u) => ({ date: u.key, value: u.requests }));
-  const costSeries = usage.map((u) => ({
-    date: u.key,
-    value: Number(u.cost ?? 0),
+  // 趋势序列（近 14 天，含今日；无量的日子由后端缺行表示，图表自然断点）
+  const requestsSeries = trends.map((t) => ({ date: t.date, value: t.requests }));
+  const costSeries = trends.map((t) => ({
+    date: t.date,
+    value: Number(t.cost ?? 0),
   }));
 
   return (
@@ -85,7 +85,7 @@ export default async function AdminDashboardPage() {
           sub={`成功 ${fmtInt(stats?.today?.successCount ?? 0)} · 失败 ${fmtInt(stats?.today?.failedCount ?? 0)}`}
           hint={
             typeof stats?.today?.successRate === "number"
-              ? `成功率 ${(stats.today.successRate * 100).toFixed(1)}%`
+              ? `成功率 ${stats.today.successRate.toFixed(1)}%`
               : undefined
           }
         />
@@ -128,7 +128,7 @@ export default async function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">请求量趋势</CardTitle>
-            <CardDescription>按维度（通常为日期）聚合的请求数</CardDescription>
+            <CardDescription>近 14 天按日聚合（北京时间）的请求数</CardDescription>
           </CardHeader>
           <CardContent>
             {requestsSeries.length === 0 ? (
@@ -142,7 +142,7 @@ export default async function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">消耗（元）</CardTitle>
-            <CardDescription>按维度聚合的消耗金额</CardDescription>
+            <CardDescription>近 14 天按日聚合的消耗金额</CardDescription>
           </CardHeader>
           <CardContent>
             {costSeries.length === 0 ? (

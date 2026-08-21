@@ -493,6 +493,40 @@ export class UsageLogRepository {
       .orderBy(asc(channels.status));
   }
 
+  /**
+   * 概览·按日趋势（管理台仪表盘折线图数据源）。
+   * 日界用北京时间（面板/计价面向中国时区）——UTC 日界会把早 8 点前的量切进昨日。
+   * 只带 from 下界（今日子集随时间自然增长，无上界竞态）。
+   */
+  async statsDailyTrends(
+    c: RepoContext,
+    from: Date,
+  ): Promise<
+    Array<{
+      date: string;
+      requests: number;
+      successCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      cost: string;
+    }>
+  > {
+    const day = sql`to_char(${usageLogs.createdAt} at time zone 'Asia/Shanghai', 'YYYY-MM-DD')`;
+    return c.db
+      .select({
+        date: sql<string>`${day}`,
+        requests: sql<number>`count(*)::int`,
+        successCount: sql<number>`count(*) filter (where ${usageLogs.status} = 0)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageLogs.inputTokens}), 0)::bigint`,
+        outputTokens: sql<number>`coalesce(sum(${usageLogs.outputTokens}), 0)::bigint`,
+        cost: sql<string>`coalesce(sum(${usageLogs.amount}), 0)::numeric::text`,
+      })
+      .from(usageLogs)
+      .where(gte(usageLogs.createdAt, from))
+      .groupBy(day)
+      .orderBy(day);
+  }
+
   /** 用量分组聚合（user/model/channel 三轴；按消费降序） */
   async statsUsageGroups(
     c: RepoContext,

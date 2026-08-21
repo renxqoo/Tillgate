@@ -52,6 +52,10 @@ const statsUsageQuery = z.object({
   group: z.enum(['user', 'model', 'channel']).default('model'),
 });
 
+const statsTrendsQuery = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(14),
+});
+
 const orderParam = (raw: string): string => {
   if (!/^[0-9a-f-]{16,64}$/.test(raw)) {
     throw new AppError(400, 'invalid_param', 'Order id must be a uuid');
@@ -114,6 +118,11 @@ export function opsRoutes(service: OpsLogsService, session: MiddlewareHandler<Se
   app.get('/v1/stats/usage', session, async (c) => {
     const query = statsUsageQuery.parse(c.req.query());
     return c.json(await service.statsUsage(adminCtxOf(c), query));
+  });
+
+  app.get('/v1/stats/trends', session, async (c) => {
+    const query = statsTrendsQuery.parse(c.req.query());
+    return c.json(await service.statsTrends(adminCtxOf(c), query));
   });
 
   return app;

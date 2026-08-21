@@ -89,6 +89,21 @@ export interface OpsLogsService {
     ctx: RunContext,
     input: { group: 'user' | 'model' | 'channel'; from?: Date; to?: Date },
   ): Promise<{ list: unknown[] }>;
+  /** 按日趋势（仪表盘折线图）：近 N 天（北京时间日界）的请求/成功/token/消耗 */
+  statsTrends(
+    ctx: RunContext,
+    input: { days: number },
+  ): Promise<{
+    days: number;
+    rows: Array<{
+      date: string;
+      requests: number;
+      successCount: number;
+      inputTokens: number;
+      outputTokens: number;
+      cost: string;
+    }>;
+  }>;
   /** 渠道首字延迟 P50/P95（双向；拓扑页/选渠道排障数据源） */
   channelTtft(ctx: RunContext, input: { hours: number }): Promise<{ rows: unknown[] }>;
 }
@@ -222,7 +237,11 @@ export function createOpsLogsService(deps: OpsLogsServiceDeps): OpsLogsService {
 
     async statsOverview(ctx) {
       const now = clock();
-      const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      // 「今日」按北京时间零点切日（面板/计价面向中国时区；UTC 零点会把早 8 点前的量算进昨日）
+      const bj = new Date(now.getTime() + 8 * 3_600_000);
+      const since = new Date(
+        Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate()) - 8 * 3_600_000,
+      );
       const [today, totals, channelHealth] = await Promise.all([
         repos.usageLog.statsOverviewToday({ db, ...ctx }, since),
         repos.usageLog.statsTotals({ db, ...ctx }),
@@ -254,6 +273,23 @@ export function createOpsLogsService(deps: OpsLogsServiceDeps): OpsLogsService {
           inputTokens: Number(row.inputTokens),
           outputTokens: Number(row.outputTokens),
           cachedInputTokens: Number(row.cachedInputTokens),
+        })),
+      };
+    },
+
+    async statsTrends(ctx, input) {
+      // 近 N 天（含今日），日界与 statsOverview 同为北京时间零点
+      const bj = new Date(clock().getTime() + 8 * 3_600_000);
+      const todayZeroUtc =
+        Date.UTC(bj.getUTCFullYear(), bj.getUTCMonth(), bj.getUTCDate()) - 8 * 3_600_000;
+      const from = new Date(todayZeroUtc - (input.days - 1) * 86_400_000);
+      const rows = await repos.usageLog.statsDailyTrends({ db, ...ctx }, from);
+      return {
+        days: input.days,
+        rows: rows.map((row) => ({
+          ...row,
+          inputTokens: Number(row.inputTokens),
+          outputTokens: Number(row.outputTokens),
         })),
       };
     },

@@ -517,6 +517,19 @@ export interface StatsUsageItem {
   cost: string;
   upstreamCost: string;
 }
+/** 按日趋势行（GET /v1/stats/trends；日界为北京时间） */
+export interface StatsTrendRow {
+  date: string;
+  requests: number;
+  successCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cost: string;
+}
+export interface StatsTrends {
+  days: number;
+  rows: StatsTrendRow[];
+}
 export interface LogRow {
   id: number;
   requestId: string;
