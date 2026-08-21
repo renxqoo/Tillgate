@@ -9,22 +9,24 @@ import { describe, expect, it } from 'vitest';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { auditLogs, referrals, users as usersTable } from '@ai-gateway/db';
 import { Decimal } from '@ai-gateway/domain';
-import { buildTestApp, db, newAdmin, newUserRow, resetMarketingSettings, uid } from './helpers.js';
+import { buildTestApp, db, newAdmin, newUserRow, restoreMarketingSettings, snapshotMarketingSettings, uid } from './helpers.js';
 
 const createdRelations: number[] = [];
 import { afterAll, beforeAll } from 'vitest';
 import { referrals as referralsTable } from '@ai-gateway/db';
 
+let marketingSnapshot: Awaited<ReturnType<typeof snapshotMarketingSettings>>;
+
 beforeAll(async () => {
-  // 进基线：已知态起测（快照恢复会传递上游套件的污染）
-  await resetMarketingSettings();
+  // 进快照：用例为 PUT→GET 自洽回环（不依赖初始值），无需进基线；
+  // 结束时恢复运营实配——共享 dev 库上不得把真实设置打回默认
+  marketingSnapshot = await snapshotMarketingSettings();
 });
 
 afterAll(async () => {
-  // 出基线：依赖 admins 的 FK 先解（审计行 + updated_by → reset 内置置 null），
-  // 再恢复基线并清理本套件的邀请关系行
+  // 出快照：依赖 admins 的 FK 先解（审计行），再恢复运营实配并清理本套件的邀请关系行
   await db.delete(auditLogs).where(inArray(auditLogs.action, ['marketing.settings.update', 'referral.relation.update']));
-  await resetMarketingSettings();
+  await restoreMarketingSettings(marketingSnapshot);
   if (createdRelations.length) {
     await db.delete(referralsTable).where(inArray(referralsTable.id, createdRelations));
   }
