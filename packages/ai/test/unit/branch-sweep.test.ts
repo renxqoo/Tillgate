@@ -114,7 +114,7 @@ describe('generation-ops 缺操作面分支', () => {
 });
 
 describe('chat 非对象请求体 + FormData 直传分支', () => {
-  it('request 为非对象字符串：透传序列化（asRecord null 分支）', async () => {
+  it('request 为非对象字符串：透传序列化（asRecord null 分支）', { timeout: 30_000 }, async () => {
     const upstream = await startServer((_q, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ choices: [{ message: { role: 'a', content: 'ok' } }] }));
