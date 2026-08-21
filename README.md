@@ -15,20 +15,62 @@ client / agent ──> gateway (/v1, OpenAI-compatible)
 
 ## Quick Start
 
-### Installation
+### Installation — Option 1: Local development
 
-Prerequisites: [Bun](https://bun.com) ≥ 1.4 and Docker (for PostgreSQL + Redis).
+Run from source with hot reload (for development and contribution).
+Prerequisites: [Bun](https://bun.com) ≥ 1.4 and Docker (for PostgreSQL + Redis only).
 
 ```bash
 git clone https://github.com/renxqoo/TokenLens.git && cd TokenLens
 bun install                        # dependencies (bun.lock)
-cp .env.example .env               # local defaults work out of the box
+cp .env.example .env               # required keys only; everything else has safe defaults
 docker compose -f docker/compose.dev.yml up -d   # postgres + redis
 bun run db:migrate                 # schema + identity/ledger provision + wallet opening
 bun scripts/seed-admin.ts --password=YourStrongPass1   # first admin account
 bun dev                            # gateway + worker + client-api + admin-api
 bun dev:all                        # … plus the two Next.js consoles (3001 / 3002)
 ```
+
+### Installation — Option 2: Docker deployment
+
+Full production stack behind nginx with TLS (all services containerized).
+Prerequisites: Docker 24+ with the compose plugin; DNS A records for two domains
+(e.g. `app.example.com` / `admin.example.com`) pointing at the server; ports 80/443 open.
+
+```bash
+# 1) Get the code
+git clone https://github.com/renxqoo/TokenLens.git && cd TokenLens
+
+# 2) Production .env — the ONLY config surface
+cp .env.example .env && vim .env
+#   Must change: JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY (strong random),
+#   POSTGRES_PASSWORD / REDIS_PASSWORD; NODE_ENV=production; SECURE_COOKIE=true
+#   DATABASE_URL / REDIS_URL / ports are injected by compose automatically
+
+# 3) Start infrastructure + run one-time migration
+docker compose -f docker/compose.yml up -d postgres redis
+docker compose -f docker/compose.yml up --build migrate   # idempotent; exits when done
+
+# 4) First TLS certificate (standalone; nginx not up yet)
+docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
+  certonly --standalone --cert-name gateway \
+  -d app.example.com -d admin.example.com \
+  --email you@example.com --agree-tos --no-eff-email
+
+# 5) Bring up the full stack (first build takes ~10 min)
+docker compose -f docker/compose.yml up -d --build
+
+# 6) Verify
+curl -s http://localhost/livez          # {"ok":true}
+docker compose -f docker/compose.yml ps # all Up (migrate Exited(0) is expected)
+```
+
+Post-deploy musts: point payment webhooks at
+`https://app.example.com/v1/payments/notify/epay|stripe` (missing = top-ups never credited);
+renew certs before expiry (certbot renew + nginx reload, cron recommended);
+optional observability stack with `--profile obs`.
+Full checklist: [docs/deployment-checklist.md](docs/deployment-checklist.md) ·
+HA topology: [docs/ha-deployment.md](docs/ha-deployment.md).
 
 ### Usage
 
