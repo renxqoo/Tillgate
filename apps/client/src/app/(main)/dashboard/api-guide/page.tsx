@@ -1,4 +1,5 @@
 import { BookOpenTextIcon } from 'lucide-react';
+import { headers } from 'next/headers';
 
 import {
   Card,
@@ -18,125 +19,9 @@ import {
 
 import { BaseUrlBadge } from './_components/base-url-badge';
 import { CodeBlock } from './_components/code-block';
+import { highlight } from './_components/highlight';
 
 export const dynamic = 'force-dynamic';
-
-/** 示例统一占位：部署域名与 Key（用户替换成自己的） */
-const BASE = 'https://app.example.com/v1';
-const KEY = 'sk-你的Key';
-
-const QUICK_PY = `from openai import OpenAI
-
-client = OpenAI(
-    base_url="${BASE}",
-    api_key="${KEY}",  # 在「API Key」页创建
-)
-
-resp = client.chat.completions.create(
-    model="gpt-4o-mini",  # 可用模型见下方「模型列表」
-    messages=[{"role": "user", "content": "你好"}],
-)
-print(resp.choices[0].message.content)`;
-
-const QUICK_CURL = `curl ${BASE}/chat/completions \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'`;
-
-const STREAM_JS = `import OpenAI from 'openai';
-
-const client = new OpenAI({ baseURL: '${BASE}', apiKey: '${KEY}' });
-
-const stream = await client.chat.completions.create({
-  model: 'gpt-4o-mini',
-  messages: [{ role: 'user', content: '讲个笑话' }],
-  stream: true, // SSE 流式：逐 token 返回
-});
-for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content ?? '');
-}`;
-
-const VISION_CURL = `curl ${BASE}/chat/completions \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "gpt-4o-mini",
-    "messages": [{
-      "role": "user",
-      "content": [
-        {"type": "text", "text": "这张图里有什么？"},
-        {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
-      ]
-    }]
-  }'`;
-
-const IMAGES_CURL = `curl ${BASE}/images/generations \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "qwen-image", "prompt": "一只戴墨镜的橘猫", "n": 1, "size": "1024x1024"}'`;
-
-const TTS_CURL = `curl ${BASE}/audio/speech \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "tts-1", "input": "今天天气不错", "voice": "alloy"}' \\
-  --output speech.mp3`;
-
-const STT_CURL = `curl ${BASE}/audio/transcriptions \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -F file=@ recording.mp3 \\
-  -F model=whisper-1`;
-
-const EMBED_CURL = `curl ${BASE}/embeddings \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "text-embedding-3-small", "input": "向量化这段文本"}'`;
-
-const VIDEO_CURL = `# 1) 提交任务 → 201 返回任务 id
-curl ${BASE}/video/generations \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "video-01", "prompt": "一段海浪拍打沙滩的镜头"}'
-
-# 2) 轮询任务状态（status: pending → processing → succeeded）
-curl ${BASE}/videos/<任务id> -H "Authorization: Bearer ${KEY}"`;
-
-const MUSIC_CURL = `curl ${BASE}/music/generations \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"model": "music-01", "prompt": "轻快的钢琴曲", "duration": 30}'`;
-
-const CLAUDE_PY = `from anthropic import Anthropic
-
-# Anthropic SDK 直连：网关兼容 /v1/messages 协议
-client = Anthropic(base_url="${BASE}", api_key="${KEY}")
-
-msg = client.messages.create(
-    model="claude-sonnet-4-5",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "你好"}],
-)
-print(msg.content[0].text)`;
-
-const GEMINI_CURL = `curl "https://app.example.com/v1beta/models/gemini-2.5-flash:generateContent" \\
-  -H "Authorization: Bearer ${KEY}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"contents": [{"parts": [{"text": "你好"}]}]}'
-# 流式：把 :generateContent 换成 :streamGenerateContent`;
-
-const OAUTH_TOKEN = `curl -X POST ${BASE.replace('/v1', '')}/oauth/token \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "grant_type": "client_credentials",
-    "client_id": "你的应用ID",
-    "client_secret": "你的应用Secret"
-  }'
-# → {"access_token": "<JWT>", "expires_in": ...}
-# 调推理接口时改用：Authorization: Bearer <JWT>`;
-
-const MODELS_CURL = `curl ${BASE}/models -H "Authorization: Bearer ${KEY}"`;
 
 const ENDPOINTS: Array<{ method: string; path: string; kind: string; note: string }> = [
   {
@@ -197,6 +82,21 @@ const ENDPOINTS: Array<{ method: string; path: string; kind: string; note: strin
   { method: 'POST', path: '/oauth/token', kind: '应用凭证', note: '企业 Agent 换短期 JWT' },
 ];
 
+/** 服务端高亮包装：原始 code 供复制，shiki html 供展示 */
+async function CodeSample({ code, lang }: { code: string; lang?: string }) {
+  const html = await highlight(code, lang);
+  return <CodeBlock lang={lang} html={html} text={code} />;
+}
+
+/** 当前部署的站点地址（示例与徽章同源，复制即用）：反代场景取 x-forwarded-host */
+function siteOrigin(h: Headers): string {
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3001';
+  const proto =
+    h.get('x-forwarded-proto') ??
+    (/^(localhost|127\.|192\.168\.|10\.)/.test(host) ? 'http' : 'https');
+  return `${proto}://${host}`;
+}
+
 function Section({
   title,
   desc,
@@ -217,7 +117,125 @@ function Section({
   );
 }
 
-export default function ApiGuidePage() {
+export default async function ApiGuidePage() {
+  // 示例统一使用当前部署的真实地址（与 BaseUrlBadge 同源）——复制即可用，无需改域名
+  const origin = siteOrigin(await headers());
+  const BASE = `${origin}/v1`;
+  const KEY = 'sk-你的Key';
+
+  const QUICK_PY = `from openai import OpenAI
+
+client = OpenAI(
+    base_url="${BASE}",
+    api_key="${KEY}",  # 在「API Key」页创建
+)
+
+resp = client.chat.completions.create(
+    model="gpt-4o-mini",  # 可用模型见下方「模型列表」
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(resp.choices[0].message.content)`;
+
+  const QUICK_CURL = `curl ${BASE}/chat/completions \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'`;
+
+  const STREAM_JS = `import OpenAI from 'openai';
+
+const client = new OpenAI({ baseURL: '${BASE}', apiKey: '${KEY}' });
+
+const stream = await client.chat.completions.create({
+  model: 'gpt-4o-mini',
+  messages: [{ role: 'user', content: '讲个笑话' }],
+  stream: true, // SSE 流式：逐 token 返回
+});
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? '');
+}`;
+
+  const VISION_CURL = `curl ${BASE}/chat/completions \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "这张图里有什么？"},
+        {"type": "image_url", "image_url": {"url": "https://example.com/cat.png"}}
+      ]
+    }]
+  }'`;
+
+  const IMAGES_CURL = `curl ${BASE}/images/generations \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "qwen-image", "prompt": "一只戴墨镜的橘猫", "n": 1, "size": "1024x1024"}'`;
+
+  const TTS_CURL = `curl ${BASE}/audio/speech \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "tts-1", "input": "今天天气不错", "voice": "alloy"}' \\
+  --output speech.mp3`;
+
+  const STT_CURL = `curl ${BASE}/audio/transcriptions \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -F file=@ recording.mp3 \\
+  -F model=whisper-1`;
+
+  const EMBED_CURL = `curl ${BASE}/embeddings \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "text-embedding-3-small", "input": "向量化这段文本"}'`;
+
+  const VIDEO_CURL = `# 1) 提交任务 → 201 返回任务 id
+curl ${BASE}/video/generations \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "video-01", "prompt": "一段海浪拍打沙滩的镜头"}'
+
+# 2) 轮询任务状态（status: pending → processing → succeeded）
+curl ${BASE}/videos/<任务id> -H "Authorization: Bearer ${KEY}"`;
+
+  const MUSIC_CURL = `curl ${BASE}/music/generations \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"model": "music-01", "prompt": "轻快的钢琴曲", "duration": 30}'`;
+
+  const CLAUDE_PY = `from anthropic import Anthropic
+
+# Anthropic SDK 直连：网关兼容 /v1/messages 协议
+client = Anthropic(base_url="${BASE}", api_key="${KEY}")
+
+msg = client.messages.create(
+    model="claude-sonnet-4-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "你好"}],
+)
+print(msg.content[0].text)`;
+
+  const GEMINI_CURL = `curl "${origin}/v1beta/models/gemini-2.5-flash:generateContent" \\
+  -H "Authorization: Bearer ${KEY}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"contents": [{"parts": [{"text": "你好"}]}]}'
+# 流式：把 :generateContent 换成 :streamGenerateContent`;
+
+  const OAUTH_TOKEN = `curl -X POST ${origin}/oauth/token \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "grant_type": "client_credentials",
+    "client_id": "你的应用ID",
+    "client_secret": "你的应用Secret"
+  }'
+# → {"access_token": "<JWT>", "expires_in": ...}
+# 调推理接口时改用：Authorization: Bearer <JWT>`;
+
+  const MODELS_CURL = `curl ${BASE}/models -H "Authorization: Bearer ${KEY}"`;
+
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <div className="space-y-1">
@@ -229,60 +247,67 @@ export default function ApiGuidePage() {
           网关完全兼容 OpenAI 接口——现有 SDK 与代码只需改 Base URL 和 API Key。
         </p>
         <div className="pt-1">
-          <BaseUrlBadge />
+          <BaseUrlBadge base={BASE} />
         </div>
       </div>
 
       <Section title="快速开始" desc="三步：创建 API Key → 替换 Base URL → 照常调用。">
-        <CodeBlock code={QUICK_PY} lang="python (openai SDK)" />
-        <CodeBlock code={QUICK_CURL} lang="curl" />
+        <CodeSample code={QUICK_PY} lang="python (openai SDK)" />
+        <CodeSample code={QUICK_CURL} lang="curl" />
       </Section>
 
       <Section title="流式输出" desc="请求体加 stream: true，响应为 SSE——SDK 自动处理。">
-        <CodeBlock code={STREAM_JS} lang="javascript (openai SDK)" />
+        <CodeSample code={STREAM_JS} lang="javascript (openai SDK)" />
       </Section>
 
       <Section
         title="多模态（图片输入）"
         desc="content 传数组，text 与 image_url 混排；本地图片可转 base64 data URL。"
       >
-        <CodeBlock code={VISION_CURL} lang="curl" />
+        <CodeSample code={VISION_CURL} lang="curl" />
       </Section>
 
       <Section title="图像生成" desc="文生图；按产出张数计费，n 控制数量。">
-        <CodeBlock code={IMAGES_CURL} lang="curl" />
+        <CodeSample code={IMAGES_CURL} lang="curl" />
       </Section>
 
       <Section title="音频" desc="语音合成（TTS）返回音频二进制；转写/翻译用 multipart 上传文件。">
-        <CodeBlock code={TTS_CURL} lang="curl · 语音合成" />
-        <CodeBlock code={STT_CURL} lang="curl · 语音转写" />
+        <CodeSample code={TTS_CURL} lang="curl · 语音合成" />
+        <CodeSample code={STT_CURL} lang="curl · 语音转写" />
       </Section>
 
       <Section title="向量化（Embeddings）">
-        <CodeBlock code={EMBED_CURL} lang="curl" />
+        <CodeSample code={EMBED_CURL} lang="curl" />
       </Section>
 
       <Section
         title="视频 / 音乐生成"
         desc="异步任务：提交后拿任务 id，轮询到 succeeded 取产物；按秒/按件计费。"
       >
-        <CodeBlock code={VIDEO_CURL} lang="curl · 视频" />
-        <CodeBlock code={MUSIC_CURL} lang="curl · 音乐" />
+        <CodeSample code={VIDEO_CURL} lang="curl · 视频" />
+        <CodeSample code={MUSIC_CURL} lang="curl · 音乐" />
       </Section>
 
       <Section
         title="Anthropic / Gemini 协议直连"
         desc="无需改代码结构——Anthropic SDK 直接指过来；Gemini 走原生路径。"
       >
-        <CodeBlock code={CLAUDE_PY} lang="python (anthropic SDK)" />
-        <CodeBlock code={GEMINI_CURL} lang="curl · gemini 原生" />
+        <CodeSample code={CLAUDE_PY} lang="python (anthropic SDK)" />
+        <CodeSample code={GEMINI_CURL} lang="curl · gemini 原生" />
       </Section>
 
       <Section
         title="企业 Agent（应用凭证）"
         desc="在「应用」页创建应用获得 client_id/secret，换短期 JWT 调用——适合服务器端免存长期 Key。"
       >
-        <CodeBlock code={OAUTH_TOKEN} lang="curl" />
+        <CodeSample code={OAUTH_TOKEN} lang="curl" />
+      </Section>
+
+      <Section
+        title="查看可用模型"
+        desc="你当前 Key 可调用的全部模型（含模型映射后的对外名），先查这个再挑模型。"
+      >
+        <CodeSample code={MODELS_CURL} lang="curl" />
       </Section>
 
       <Section
@@ -311,7 +336,6 @@ export default function ApiGuidePage() {
             ))}
           </TableBody>
         </Table>
-        <CodeBlock code={MODELS_CURL} lang="curl · 查看可用模型" />
       </Section>
     </div>
   );

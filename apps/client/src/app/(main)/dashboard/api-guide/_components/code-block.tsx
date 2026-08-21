@@ -2,19 +2,31 @@
 
 import { CopyButton } from '@ai-gateway/ui/components/shell/copy-button';
 
-/** 代码示例块：右上角复制按钮，长代码横向滚动 */
-export function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+/**
+ * GitHub 风格代码框：顶栏（语言标签 + 复制按钮）+ shiki 双主题高亮体。
+ * html 由服务端 highlight() 生成；亮暗切换靠 globals.css 的 .shiki 变量规则。
+ */
+export function CodeBlock({
+  lang,
+  html,
+  text,
+}: {
+  lang?: string;
+  html: string;
+  text: string;
+}) {
   return (
-    <div className="relative rounded-md border bg-muted/40">
-      <div className="flex items-center justify-between border-b px-3 py-1.5">
+    <div className="overflow-hidden rounded-lg border">
+      <div className="flex items-center justify-between border-b bg-muted/60 px-3 py-1.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          {lang ?? 'bash'}
+          {lang ?? 'shell'}
         </span>
-        <CopyButton text={code} label="复制" className="h-6 px-2 text-xs" />
+        <CopyButton text={text} label="复制" className="h-6 px-2 text-xs" />
       </div>
-      <pre className="overflow-x-auto p-3 text-xs leading-relaxed">
-        <code>{code}</code>
-      </pre>
+      <div
+        className="code-block-body overflow-x-auto text-xs"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </div>
   );
 }
