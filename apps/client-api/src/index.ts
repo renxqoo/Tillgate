@@ -24,10 +24,10 @@ const app = createApp({
   jwtSecret: config.JWT_SECRET,
   trustedProxyHops: config.TRUSTED_PROXY_HOPS,
   corsOrigins: config.CORS_ORIGINS ? config.CORS_ORIGINS.split(',').map((s) => s.trim()) : [],
-  bodyLimitBytes: config.BODY_LIMIT_BYTES,
+  bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
 });
 
-const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: config.CLIENT_API_PORT }, (info) => {
   console.log(`[client-api] listening on :${info.port}`);
   // 配置快照：关键业务参数生效值一处可查（排查「以为配了其实默认」类问题）
   console.log(

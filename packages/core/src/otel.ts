@@ -49,6 +49,9 @@ export interface InitOtelOptions {
   endpoint?: string;
   /** mode=console 时的日志出口 */
   logger?: Logger;
+  /** OTLP 推送鉴权（Bearer）：缺省回落 env TRACE_RECEIVER_TOKEN——与接收端同键同值，
+   *  .env 一处配置两端自动对齐；接收端生产强制验令牌，推送端缺此值 = span 全部 401 拒收 */
+  authToken?: string;
 }
 
 // ---------- 内存环形缓冲（mode=memory）：最近 N 条 trace，供内置查看页 ----------
@@ -208,13 +211,8 @@ export class LogSpanProcessor implements SpanProcessor {
  *   - console：LogSpanProcessor（一行结构化日志）
  *   - otlp：BatchSpanProcessor → OTLP collector（traces + metrics）
  */
-export function initOtel({
-  serviceName,
-  serviceVersion = '0.1.0',
-  mode,
-  endpoint,
-  logger,
-}: InitOtelOptions) {
+export function initOtel(initOtelOptions: InitOtelOptions) {
+  const { serviceName, serviceVersion = '0.1.0', mode, endpoint, logger } = initOtelOptions;
   if (mode === 'off') {
     return { shutdown: async () => {}, mode } as const;
   }
@@ -227,18 +225,31 @@ export function initOtel({
     [ATTR_SERVICE_VERSION]: serviceVersion,
   });
 
+  // 推送令牌解析：显式参数优先，缺省回落共享 env 键（与接收端 TRACE_RECEIVER_TOKEN 同源）
+  const authToken = initOtelOptions.authToken ?? process.env.TRACE_RECEIVER_TOKEN;
+
   const sdk = new NodeSDK({
     resource,
     spanProcessors:
       mode === 'memory'
         ? [new InMemorySpanProcessor()]
         : mode === 'console'
-          ? [new LogSpanProcessor(logger ?? console as unknown as Logger)]
-          : [new BatchSpanProcessor(new OTLPTraceExporter({ url: `${endpoint}/v1/traces` }))],
+          ? [new LogSpanProcessor(logger ?? (console as unknown as Logger))]
+          : [
+              new BatchSpanProcessor(
+                new OTLPTraceExporter({
+                  url: `${endpoint}/v1/traces`,
+                  ...(authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}),
+                }),
+              ),
+            ],
     ...(mode === 'otlp'
       ? {
           metricReader: new PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({ url: `${endpoint}/v1/metrics` }),
+            exporter: new OTLPMetricExporter({
+              url: `${endpoint}/v1/metrics`,
+              ...(authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {}),
+            }),
             exportIntervalMillis: 10_000,
           }),
         }

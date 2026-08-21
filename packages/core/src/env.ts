@@ -35,7 +35,7 @@ const traceReceiverEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   DATABASE_URL: z.string().default('postgres://postgres:postgres@localhost:5432/ai_gateway'),
-  PORT: z.coerce.number().int().min(1).default(8793),
+  TRACE_RECEIVER_PORT: z.coerce.number().int().min(1).default(8793),
   TRACE_RECEIVER_TOKEN: z.string().min(16).optional(),
   TRACE_BATCH_MAX: z.coerce.number().int().min(1).default(500),
   TRACE_FLUSH_INTERVAL_MS: z.coerce.number().int().min(100).default(2_000),

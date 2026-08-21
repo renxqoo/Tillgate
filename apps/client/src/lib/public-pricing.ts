@@ -39,7 +39,7 @@ export const PRICING_UNIT_LABEL: Record<string, string> = {
 };
 
 export async function fetchPublicPricing(query: PricingQuery = {}): Promise<PricingPage | null> {
-  const base = process.env.CLIENT_API_BASE!;
+  const base = process.env.CLIENT_API_BASE || 'http://localhost:8081';
   const params = new URLSearchParams();
   if (query.q) params.set('q', query.q);
   if (query.free != null) params.set('free', String(query.free));

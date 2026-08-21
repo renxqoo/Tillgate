@@ -39,24 +39,21 @@ async function outgoingUserIpHeader(): Promise<Record<string, string>> {
   }
 }
 
-/** client-api（用户面）内网地址 */
-/** API 基地址必配（无默认值：漏配即明确报错，不静默指向 localhost——生产事故源） */
-function requireBase(name: 'CLIENT_API_BASE' | 'ADMIN_API_BASE'): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(
-      `[api-client] 环境变量 ${name} 未配置——前端 API 基地址必配（dev: http://localhost:8081 / :8082；` +
-        '生产填对外可达地址）。请在 apps/<fe>/.env.local 或部署环境注入',
-    );
-  }
-  return value;
+/**
+ * API 基地址解析：显式 env 优先，缺省回落本地 dev 端口（bun dev 直跑开箱即用）。
+ * 生产安全不依赖兜底——compose 部署由 console 容器 environment 段显式注入
+ * 容器网络地址；仅当「生产既未注入又直跑前端」时才会指到 localhost 并以
+ * 连接失败显式暴露，不会静默串数据。
+ */
+function baseOrDefault(name: 'CLIENT_API_BASE' | 'ADMIN_API_BASE', devBase: string): string {
+  return process.env[name] || devBase;
 }
 // 惰性解析（首次调用时才要求配置）：用户面前端不引用 ADMIN_API_BASE（反之亦然），
 // 模块加载期不因未用到的基地址缺失而炸（Next 构建期 collect page data 会加载模块）
-const getClientBase = () => (CLIENT_API_BASE ??= requireBase('CLIENT_API_BASE'));
+const getClientBase = () => (CLIENT_API_BASE ??= baseOrDefault('CLIENT_API_BASE', 'http://localhost:8081'));
 let CLIENT_API_BASE: string | null = null;
 /** admin-api（管理面）内网地址 */
-const getAdminBase = () => (ADMIN_API_BASE ??= requireBase('ADMIN_API_BASE'));
+const getAdminBase = () => (ADMIN_API_BASE ??= baseOrDefault('ADMIN_API_BASE', 'http://localhost:8082'));
 let ADMIN_API_BASE: string | null = null;
 
 export const ADMIN_API_BASE_URL = { valueOf: () => getAdminBase(), toString: () => getAdminBase() } as unknown as string;

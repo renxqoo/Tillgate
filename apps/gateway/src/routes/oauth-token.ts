@@ -22,14 +22,14 @@ export interface OAuthTokenDeps {
   jwtSecret: string;
   /** JWT 有效期（秒） */
   tokenTtlSeconds: number;
+  /** 签发主体（缺省 ai-gateway——须与识别端验签一致） */
+  issuer?: string;
+  audience?: string;
   /** 爆破防护（装配注入；未装配 = 单副本开发形态） */
   ipGuard?: AuthFailureGuard;
   /** 可信代理跳数（来源 IP 提取语义） */
   trustedProxyHops?: number;
 }
-
-const JWT_ISSUER = 'ai-gateway';
-const JWT_AUDIENCE = 'ai-gateway-api';
 
 export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
   const sourceIp = (c: Context): string =>
@@ -45,7 +45,13 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
         await deps.ipGuard.recordFailure(ip).catch(() => undefined);
         await deps.ipGuard.recordFailure(guardKey).catch(() => undefined);
       }
-      return c.json({ error: 'invalid_client', error_description: 'invalid credentials or application disabled' }, 401);
+      return c.json(
+        {
+          error: 'invalid_client',
+          error_description: 'invalid credentials or application disabled',
+        },
+        401,
+      );
     };
     // 支持 form / JSON / Basic Auth 三种凭证传递
     let clientId: string | undefined;
@@ -74,14 +80,25 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
             clientId = decoded.slice(0, idx);
             clientSecret = decoded.slice(idx + 1);
           }
-        } catch { /* fall through */ }
+        } catch {
+          /* fall through */
+        }
       }
     }
     if (grantType !== 'client_credentials') {
-      return c.json({ error: 'unsupported_grant_type', error_description: 'only client_credentials is supported' }, 400);
+      return c.json(
+        {
+          error: 'unsupported_grant_type',
+          error_description: 'only client_credentials is supported',
+        },
+        400,
+      );
     }
     if (!clientId || !clientSecret) {
-      return c.json({ error: 'invalid_client', error_description: 'missing client_id / client_secret' }, 401);
+      return c.json(
+        { error: 'invalid_client', error_description: 'missing client_id / client_secret' },
+        401,
+      );
     }
 
     // per-clientId 爆破锁：IP 可轮换——按 clientId 锁定才能挡住撞 client_secret
@@ -92,7 +109,10 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
         deps.ipGuard.isLocked(guardKey),
       ]);
       if (ipLock.locked || keyLock.locked) {
-        return c.json({ error: 'invalid_client', error_description: 'source locked, try again later' }, 401);
+        return c.json(
+          { error: 'invalid_client', error_description: 'source locked, try again later' },
+          401,
+        );
       }
     }
 
@@ -116,8 +136,8 @@ export function oauthTokenRoutes(deps: OAuthTokenDeps): Hono {
     })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setIssuer(JWT_ISSUER)
-      .setAudience(JWT_AUDIENCE)
+      .setIssuer(deps.issuer ?? 'ai-gateway')
+      .setAudience(deps.audience ?? 'ai-gateway-api')
       .setExpirationTime(`${deps.tokenTtlSeconds}s`)
       .sign(secret);
 

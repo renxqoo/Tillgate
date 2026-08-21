@@ -46,6 +46,8 @@ export interface RunChatConfig {
   reservationLimit: string;
   reservationPolicy?: FundingReservationPolicy;
   authorizationTtlMs: number;
+  /** 终态落账重试参数（缺省用 settle-retry 模块默认 5 次 / 500ms） */
+  signalFinalize?: { attempts: number; baseDelayMs: number };
   output: OutputCapConfig;
 }
 
@@ -109,7 +111,11 @@ export function createRunChat(deps: PipelineDeps) {
     const requestStartedAt = Date.now();
     // 模型白名单（App JWT scope.models）：预扣前拒绝——受限凭证调未授权模型的越权计费
     if (auth.allowedModels != null && !auth.allowedModels.includes(body.model)) {
-      throw new AppError(403, 'model_not_allowed', `Model ${body.model} is not allowed for this credential`);
+      throw new AppError(
+        403,
+        'model_not_allowed',
+        `Model ${body.model} is not allowed for this credential`,
+      );
     }
     // 双口径输入估算：bpeInput 供缺 usage 的实扣（向精确收敛）；字节保守上界
     // estInput 只作预扣敞口/TPM（宁可多押）——上界入实扣会让故障/缺 usage 流的
@@ -368,7 +374,11 @@ export function createRunChat(deps: PipelineDeps) {
             ).slice(0, 64),
           });
           if (channelExhausted) {
-            throw new AppError(503, 'no_available_channel', 'No channel available for this model, please retry later');
+            throw new AppError(
+              503,
+              'no_available_channel',
+              'No channel available for this model, please retry later',
+            );
           }
           throw new AppError(
             502,

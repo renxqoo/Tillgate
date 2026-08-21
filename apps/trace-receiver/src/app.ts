@@ -36,6 +36,9 @@ export function createReceiverApp({ db, store, token, batcher }: ReceiverAppDeps
   app.use('/v1/traces', bodyLimit({ maxSize: 8 * 1024 * 1024 }));
 
   app.use('*', async (c, next) => {
+    // 健康探针豁免鉴权：/readyz /livez 只返回探活状态、无敏感数据——
+    // 若一并挡 401，compose/K8s healthcheck（不带 Bearer）会让容器永久 unhealthy
+    if (c.req.path === '/readyz' || c.req.path === '/livez') return next();
     if (!token) return next();
     const auth = c.req.header('authorization') ?? '';
     if (!timingSafeEqual(auth, `Bearer ${token}`)) {

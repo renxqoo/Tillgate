@@ -1,18 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-
 import { CopyButton } from '@ai-gateway/ui/components/shell/copy-button';
 
 /**
- * 当前部署的推理 Base URL（面板与网关同域：生产由 nginx 分流 /v1，
- * dev 由 Next rewrites 转发）——用户照这个地址 + 自己的 Key 调用。
+ * 推理 Base URL 徽章：值由服务端从请求 Host 推导后传入（与页内全部示例同源，
+ * 用户复制任何示例都不需要再改域名）。
  */
-export function BaseUrlBadge() {
-  const [base, setBase] = useState('https://<你的域名>/v1');
-  useEffect(() => {
-    setBase(`${window.location.origin}/v1`);
-  }, []);
+export function BaseUrlBadge({ base }: { base: string }) {
   return (
     <div className="inline-flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-1.5">
       <span className="text-xs text-muted-foreground">Base URL</span>

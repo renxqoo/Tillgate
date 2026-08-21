@@ -8,7 +8,11 @@ import { eq } from 'drizzle-orm';
 import { referrals as referralsTable, users } from '@ai-gateway/db';
 import { systemContext } from '@ai-gateway/service';
 import { createReferralService } from '../services/referral.service.js';
-import { resetMarketingSettings } from './helpers.js';
+import {
+  resetMarketingSettings,
+  restoreMarketingSettings,
+  snapshotMarketingSettings,
+} from './helpers.js';
 import {
   commissionAmount,
   decodeAffCode,
@@ -16,13 +20,7 @@ import {
   isPositiveAmount,
   signupBonusRefId,
 } from '../domain/referral.js';
-import {
-  balanceOf,
-  db,
-  expectAmountEq,
-  newUser,
-  wallet,
-} from './helpers.js';
+import { balanceOf, db, expectAmountEq, newUser, wallet } from './helpers.js';
 
 const ctx = systemContext('cav2-ref');
 
@@ -35,6 +33,12 @@ function buildService(opts: { signupBonus?: string; frontendUrl?: string } = {})
     frontendUrl: opts.frontendUrl ?? 'https://console.example.com',
   });
 }
+
+// 单行全局配置：文件级快照，任何用例改动 marketing_settings 后跑完全量恢复真实值
+const marketingSnapshot = await snapshotMarketingSettings();
+afterAll(async () => {
+  await restoreMarketingSettings(marketingSnapshot);
+});
 
 describe('aff 码纯规则', () => {
   it('userId ↔ aff 码往返', () => {
@@ -110,7 +114,10 @@ describe('注册归因（applyReferral）', () => {
       reason: 'invalid_code',
     });
     expect(
-      await service.applyReferral(ctx, { inviteeId: invitee.id, affCode: encodeAffCode(invitee.id) }),
+      await service.applyReferral(ctx, {
+        inviteeId: invitee.id,
+        affCode: encodeAffCode(invitee.id),
+      }),
     ).toEqual({ applied: false, reason: 'self_invite' });
 
     const banned = await newUser();
@@ -133,7 +140,10 @@ describe('注册归因（applyReferral）', () => {
     const invitee = await newUser();
     const service = buildService();
     expect(
-      await service.applyReferral(ctx, { inviteeId: invitee.id, affCode: encodeAffCode(inviter.id) }),
+      await service.applyReferral(ctx, {
+        inviteeId: invitee.id,
+        affCode: encodeAffCode(inviter.id),
+      }),
     ).toEqual({ applied: true });
     expectAmountEq(await balanceOf(invitee.id), '0');
   });
@@ -236,12 +246,18 @@ describe('邀请功能开关（marketing_settings 联动——2026-08-21 DB 化�
     });
 
     // 两项全 0 → enabled=false
-    await db.update(marketingSettings).set({ referralSignupBonus: '0', referralCommissionRate: '0' }).where(eq(marketingSettings.id, 1));
+    await db
+      .update(marketingSettings)
+      .set({ referralSignupBonus: '0', referralCommissionRate: '0' })
+      .where(eq(marketingSettings.id, 1));
     const off = await service.config(ctx, 1);
     expect(off.enabled).toBe(false);
 
     // 佣金比例单项 > 0 → enabled=true（单项为 0 不整体隐藏）
-    await db.update(marketingSettings).set({ referralCommissionRate: '0.1' }).where(eq(marketingSettings.id, 1));
+    await db
+      .update(marketingSettings)
+      .set({ referralCommissionRate: '0.1' })
+      .where(eq(marketingSettings.id, 1));
     const on = await service.config(ctx, 1);
     expect(on.enabled).toBe(true);
     expect(on.commissionRate).not.toBeNull();

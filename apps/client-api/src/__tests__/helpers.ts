@@ -103,7 +103,10 @@ export async function trackUser(id: number): Promise<void> {
 /** 企业用户（团队套餐闸门要求 isEnterprise） */
 export async function newEnterpriseUser(): Promise<{ id: number; email: string }> {
   const account = await newUser();
-  await db.update(users).set({ isEnterprise: true }).where(inArray(users.id, [account.id]));
+  await db
+    .update(users)
+    .set({ isEnterprise: true })
+    .where(inArray(users.id, [account.id]));
   return { id: account.id, email: account.email };
 }
 
@@ -199,7 +202,10 @@ afterAll(async () => {
     await db.delete(apps).where(inArray(apps.userId, createdUsers));
     await db.delete(userSubscriptions).where(inArray(userSubscriptions.userId, createdUsers));
     // 兑换历史引用解绑（记录保留，归属清空）
-    await db.update(redeemCodes).set({ usedBy: null }).where(inArray(redeemCodes.usedBy, createdUsers));
+    await db
+      .update(redeemCodes)
+      .set({ usedBy: null })
+      .where(inArray(redeemCodes.usedBy, createdUsers));
   }
   if (orgIds.length) {
     await db.delete(orgInvitations).where(inArray(orgInvitations.orgId, orgIds));
@@ -220,7 +226,6 @@ afterAll(async () => {
   await db.$client.end().catch(() => {});
 });
 
-
 /** 营销参数测试基线（= 迁移 0073 seed 值）：测试触碰 marketing_settings 必须
  *  进基线、出基线——「快照恢复」会沿套件链传递污染（前一套件改值未恢复，
  *  后一套件会把脏值当原值恢复） */
@@ -230,8 +235,52 @@ export const MARKETING_BASELINE = {
   referralCommissionRate: '0.1',
 } as const;
 
+export interface MarketingSnapshot {
+  signupGiftAmount: string;
+  referralSignupBonus: string;
+  referralCommissionRate: string;
+  updatedBy: number | null;
+}
+
+/**
+ * 快照当前真实配置（含修改人/时间）：测试套件 beforeAll 取、afterAll 原样恢复。
+ * 固定基线只做测试期间的稳定初值；出基线必须回真实值——marketing_settings 是
+ * 单行全局表，测试若以基线收尾会把共享库上的运营配置覆盖掉（含 updated_by 抹 null）。
+ */
+export async function snapshotMarketingSettings(): Promise<MarketingSnapshot> {
+  const { eq } = await import('drizzle-orm');
+  const { marketingSettings } = await import('@ai-gateway/db');
+  const [row] = await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1));
+  return (
+    row ?? {
+      signupGiftAmount: MARKETING_BASELINE.signupGiftAmount,
+      referralSignupBonus: MARKETING_BASELINE.referralSignupBonus,
+      referralCommissionRate: MARKETING_BASELINE.referralCommissionRate,
+      updatedBy: null,
+    }
+  );
+}
+
+/** 恢复快照（updatedBy 原样回填，运营侧「最后修改人」不被测试抹掉） */
+export async function restoreMarketingSettings(snapshot: MarketingSnapshot): Promise<void> {
+  const { eq } = await import('drizzle-orm');
+  const { marketingSettings } = await import('@ai-gateway/db');
+  await db
+    .update(marketingSettings)
+    .set({
+      signupGiftAmount: snapshot.signupGiftAmount,
+      referralSignupBonus: snapshot.referralSignupBonus,
+      referralCommissionRate: snapshot.referralCommissionRate,
+      updatedBy: snapshot.updatedBy,
+    })
+    .where(eq(marketingSettings.id, 1));
+}
+
 export async function resetMarketingSettings(): Promise<void> {
   const { eq } = await import('drizzle-orm');
   const { marketingSettings } = await import('@ai-gateway/db');
-  await db.update(marketingSettings).set({ ...MARKETING_BASELINE, updatedBy: null }).where(eq(marketingSettings.id, 1));
+  await db
+    .update(marketingSettings)
+    .set({ ...MARKETING_BASELINE, updatedBy: null })
+    .where(eq(marketingSettings.id, 1));
 }

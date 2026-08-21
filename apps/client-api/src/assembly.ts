@@ -15,8 +15,19 @@ import {
   createRedisClient,
   initOtel,
 } from '@ai-gateway/core';
-import { createWallet, createSubscriptionDomain, type WalletApi, type SubscriptionDomain } from '@ai-gateway/service';
-import { mailerFromEnv, captchaFromEnv, USER_MAIL_BRAND, createRedisSessionRevocationStore, type Mailer } from '@ai-gateway/identity';
+import {
+  createWallet,
+  createSubscriptionDomain,
+  type WalletApi,
+  type SubscriptionDomain,
+} from '@ai-gateway/service';
+import {
+  mailerFromEnv,
+  captchaFromEnv,
+  USER_MAIL_BRAND,
+  createRedisSessionRevocationStore,
+  type Mailer,
+} from '@ai-gateway/identity';
 import { createAuthService } from './services/auth.service.js';
 import { createRepositories } from '@ai-gateway/repository';
 import { createKeysService } from './services/keys.service.js';
@@ -62,7 +73,13 @@ export interface ClientApiAssembly {
 
 /** 易支付五件套全配才启用（部分配置 = 配置错误，直接抛——fail-closed） */
 function buildEpay(config: ClientApiConfig): PaymentProviderPort | null {
-  if (!config.EPAY_PID && !config.EPAY_KEY && !config.EPAY_GATEWAY_URL && !config.EPAY_NOTIFY_URL && !config.EPAY_RETURN_URL) {
+  if (
+    !config.EPAY_PID &&
+    !config.EPAY_KEY &&
+    !config.EPAY_GATEWAY_URL &&
+    !config.EPAY_NOTIFY_URL &&
+    !config.EPAY_RETURN_URL
+  ) {
     return null;
   }
   if (
@@ -93,7 +110,9 @@ function buildStripe(config: ClientApiConfig): PaymentProviderPort | null {
   ];
   if (group.every((v) => !v)) return null;
   if (group.some((v) => !v)) {
-    throw new Error('STRIPE_* options must be configured as a group (secretKey/webhookSecret/successUrl/cancelUrl)');
+    throw new Error(
+      'STRIPE_* options must be configured as a group (secretKey/webhookSecret/successUrl/cancelUrl)',
+    );
   }
   return createStripeProvider({
     secretKey: config.STRIPE_SECRET_KEY!,
@@ -108,7 +127,12 @@ function buildStripe(config: ClientApiConfig): PaymentProviderPort | null {
 const parseEndpoints = (json: string | undefined, provider: string) => {
   if (!json) return undefined;
   try {
-    return JSON.parse(json) as { authorizeUrl?: string; tokenUrl?: string; profileUrl?: string; emailsUrl?: string };
+    return JSON.parse(json) as {
+      authorizeUrl?: string;
+      tokenUrl?: string;
+      profileUrl?: string;
+      emailsUrl?: string;
+    };
   } catch {
     throw new Error(`OAUTH_${provider.toUpperCase()}_ENDPOINTS_JSON is not valid JSON`);
   }
@@ -121,7 +145,16 @@ export function assembleClientApi(
   overrides: { mailer?: Mailer | null } = {},
 ): ClientApiAssembly {
   // Redis 必配（首选组件：爆破防护/限流/OAuth state/缓存——启动入口已做连通性验证）
-  const redis = createRedisClient(config.REDIS_URL, { serviceName: 'client-api', ...process.env.REDIS_SENTINELS ? { sentinels: process.env.REDIS_SENTINELS, sentinelName: process.env.REDIS_SENTINEL_NAME, sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD } : {} });
+  const redis = createRedisClient(config.REDIS_URL, {
+    serviceName: 'client-api',
+    ...(process.env.REDIS_SENTINELS
+      ? {
+          sentinels: process.env.REDIS_SENTINELS,
+          sentinelName: process.env.REDIS_SENTINEL_NAME,
+          sentinelPassword: process.env.REDIS_SENTINEL_PASSWORD,
+        }
+      : {}),
+  });
 
   const wallet = createWallet({
     db,
@@ -148,7 +181,8 @@ export function assembleClientApi(
   const redeemLimiter = createRedisFixedWindowCounter(redis, 'redeem-min');
   const topupOrderLimiter = createRedisFixedWindowCounter(redis, 'topup-order-min');
 
-  const mailer = overrides.mailer !== undefined ? overrides.mailer : mailerFromEnv(config, USER_MAIL_BRAND);
+  const mailer =
+    overrides.mailer !== undefined ? overrides.mailer : mailerFromEnv(config, USER_MAIL_BRAND);
   const captcha = captchaFromEnv(config);
   const emailCodeRequired =
     config.EMAIL_CODE_REQUIRED === 'on'
@@ -161,8 +195,24 @@ export function assembleClientApi(
     db,
     wallet,
     // 营销参数 DB 化（2026-08-21）：每动作读 marketing_settings 现值——管理面改值即时生效
-    signupBonus: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).referralSignupBonus,
-    commissionRate: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).referralCommissionRate,
+    signupBonus: async () =>
+      (
+        await createRepositories().marketing.getSettings({
+          db,
+          requestId: 'marketing',
+          actor: { kind: 'system' },
+          traceParent: null,
+        })
+      ).referralSignupBonus,
+    commissionRate: async () =>
+      (
+        await createRepositories().marketing.getSettings({
+          db,
+          requestId: 'marketing',
+          actor: { kind: 'system' },
+          traceParent: null,
+        })
+      ).referralCommissionRate,
     frontendUrl: config.OAUTH_FRONTEND_URL ?? 'http://localhost:3000',
   });
   const auth = createAuthService({
@@ -171,7 +221,15 @@ export function assembleClientApi(
     jwtSecret: config.JWT_SECRET,
     sessionTtlSeconds: config.SESSION_TTL_SECONDS,
     registerEnabled: config.REGISTER_ENABLED,
-    giftAmount: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).signupGiftAmount,
+    giftAmount: async () =>
+      (
+        await createRepositories().marketing.getSettings({
+          db,
+          requestId: 'marketing',
+          actor: { kind: 'system' },
+          traceParent: null,
+        })
+      ).signupGiftAmount,
     loginGuard,
     ipGuard,
     registerLimiter,
@@ -184,7 +242,7 @@ export function assembleClientApi(
         referralService.applyReferral(ctx, { inviteeId, affCode }),
     },
   });
-  const keys = createKeysService({ db });
+  const keys = createKeysService({ db, keyPrefix: config.KEY_PREFIX });
   const walletRead = createWalletService(wallet);
   const redeem = createRedeemService({
     db,
@@ -208,7 +266,9 @@ export function assembleClientApi(
       ? { frontendUrl: config.OAUTH_FRONTEND_URL, apiBase: config.OAUTH_API_BASE }
       : oauthConfigured
         ? (() => {
-            throw new Error('OAUTH_FRONTEND_URL and OAUTH_API_BASE must be configured together with OAuth credentials');
+            throw new Error(
+              'OAUTH_FRONTEND_URL and OAUTH_API_BASE must be configured together with OAuth credentials',
+            );
           })()
         : null;
   const oauth = createOAuthService({
@@ -244,7 +304,15 @@ export function assembleClientApi(
     },
     // state 单次存储：Redis 多副本共享；单副本开发形态用进程内存（语义不降级）
     stateStore: createRedisStateStore(redis),
-    giftAmount: async () => (await createRepositories().marketing.getSettings({ db, requestId: 'marketing', actor: { kind: 'system' }, traceParent: null })).signupGiftAmount,
+    giftAmount: async () =>
+      (
+        await createRepositories().marketing.getSettings({
+          db,
+          requestId: 'marketing',
+          actor: { kind: 'system' },
+          traceParent: null,
+        })
+      ).signupGiftAmount,
   });
   const epay = buildEpay(config);
   const stripe = buildStripe(config);

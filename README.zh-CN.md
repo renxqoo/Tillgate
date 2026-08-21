@@ -13,20 +13,60 @@ TokenLens 是一个可自托管的生产级 **LLM API 网关**：用统一的 Op
 
 ## 快速开始
 
-### 安装
+### 安装 —— 方式一：本地运行
 
-前置条件：[Bun](https://bun.com) ≥ 1.4 与 Docker（跑 PostgreSQL + Redis）。
+源码直跑 + 热重载（开发/贡献用）。前置条件：[Bun](https://bun.com) ≥ 1.4 与 Docker
+（仅用来跑 PostgreSQL + Redis）。
 
 ```bash
 git clone https://github.com/renxqoo/TokenLens.git && cd TokenLens
 bun install                        # 安装依赖（bun.lock）
-cp .env.example .env               # 本地默认值即可启动
+cp .env.example .env               # 只含必填键；其余配置全部有安全默认值
 docker compose -f docker/compose.dev.yml up -d   # 起 postgres + redis
 bun run db:migrate                 # 建表 + identity/ledger 初始化 + 钱包开户
 bun scripts/seed-admin.ts --password=YourStrongPass1   # 创建首个管理员
 bun dev                            # 启动 gateway + worker + client-api + admin-api
 bun dev:all                        # 再加两个 Next.js 控制台（3001 / 3002）
 ```
+
+### 安装 —— 方式二：Docker 部署
+
+生产全套：所有服务容器化，nginx 前门 + TLS。前置条件：Docker 24+ 与 compose 插件；
+两个域名的 A 记录（如 `app.example.com` / `admin.example.com`）已指向服务器；
+防火墙放行 80/443。
+
+```bash
+# 1) 获取代码
+git clone https://github.com/renxqoo/TokenLens.git && cd TokenLens
+
+# 2) 生产 .env —— 唯一配置面
+cp .env.example .env && vim .env
+#   必改：JWT_SECRET / ADMIN_JWT_SECRET / ENCRYPTION_KEY（强随机）、
+#   POSTGRES_PASSWORD / REDIS_PASSWORD；NODE_ENV=production；SECURE_COOKIE=true
+#   DATABASE_URL / REDIS_URL / 端口由 compose 自动注入，无需手填
+
+# 3) 起基础设施 + 一次性迁移
+docker compose -f docker/compose.yml up -d postgres redis
+docker compose -f docker/compose.yml up --build migrate   # 幂等，跑完自动退出
+
+# 4) 首次 TLS 证书（standalone 模式——此刻 nginx 还没起）
+docker compose -f docker/compose.yml run --rm --entrypoint certbot -p 80:80 certbot \
+  certonly --standalone --cert-name gateway \
+  -d app.example.com -d admin.example.com \
+  --email you@example.com --agree-tos --no-eff-email
+
+# 5) 全量启动（首次构建 6 个镜像，约 10 分钟）
+docker compose -f docker/compose.yml up -d --build
+
+# 6) 验证
+curl -s http://localhost/livez          # {"ok":true}
+docker compose -f docker/compose.yml ps # 全部 Up（migrate 为 Exited(0) 属正常）
+```
+
+上线后必做：支付回调地址指向 `https://app.example.com/v1/payments/notify/epay|stripe`
+（漏配 = 充值不入账）；证书到期前续期（certbot renew + nginx reload，建议 cron）；
+可选观测栈 `--profile obs`。完整清单见[部署清单](docs/deployment-checklist.md)，
+高可用拓扑见[高可用部署手册](docs/ha-deployment.md)。
 
 ### 如何使用
 

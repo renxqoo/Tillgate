@@ -50,7 +50,7 @@ export function e2eBaseConfig(): ClientApiConfig {
   return {
     DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://:root123@localhost:6379',
-    PORT: 0,
+    CLIENT_API_PORT: 0,
     DB_POOL_MAX: 12,
     CLIENT_CURRENCY: 'CNY',
     JWT_SECRET: E2E_JWT,
@@ -66,7 +66,7 @@ export function e2eBaseConfig(): ClientApiConfig {
     LOGIN_IP_FAILURE_WINDOW_S: 300,
     TRUSTED_PROXY_HOPS: 0,
     CORS_ORIGINS: '',
-    BODY_LIMIT_BYTES: 65_536,
+    CLIENT_BODY_LIMIT_BYTES: 65_536,
     TOPUP_MIN: '1',
     TOPUP_MAX: '10000',
     TOPUP_EXCHANGE_RATE: '1',
@@ -80,6 +80,7 @@ export function e2eBaseConfig(): ClientApiConfig {
     EPAY_RETURN_URL: EPAY_TEST.returnUrl,
     EMAIL_CODE_REQUIRED: 'off',
     CLIENT_SHUTDOWN_GRACE_MS: 1_000,
+    KEY_PREFIX: 'ag_',
     OTEL_TRACES_MODE: 'off',
   } as ClientApiConfig;
 }
@@ -132,7 +133,7 @@ export async function startClientApi(
     jwtSecret: config.JWT_SECRET,
     trustedProxyHops: config.TRUSTED_PROXY_HOPS,
     corsOrigins: [],
-    bodyLimitBytes: config.BODY_LIMIT_BYTES,
+    bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
     secureCookie: false,
   });
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });

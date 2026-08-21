@@ -248,3 +248,22 @@ html {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ── api-guide 代码块：shiki 双主题（跟随 .dark 切换） ── */
+.code-block-body pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  font-size: inherit;
+  line-height: 1.7;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.code-block-body pre,
+.code-block-body pre span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+.dark .code-block-body pre,
+.dark .code-block-body pre span {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
+}

@@ -12,7 +12,6 @@ import { usePreferencesStore } from "@ai-gateway/ui/stores/preferences/preferenc
 
 import { NavMain } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
 import { NavUser } from "./nav-user";
-import { SupportCard } from "./support-card";
 
 export interface SidebarUser {
   readonly name: string;
@@ -63,7 +62,6 @@ export function AppSidebar({
         <NavMain items={items} />
       </SidebarContent>
       <SidebarFooter>
-        <SupportCard />
         <NavUser
           user={{
             name: user.name,
