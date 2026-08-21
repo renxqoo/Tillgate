@@ -3,9 +3,10 @@ import { CoinsIcon } from 'lucide-react';
 import { fmtBalance, fmtDateTime, formatMoney, type TransactionRow } from '@ai-gateway/api-client';
 import { fetchUserList } from '@ai-gateway/api-client/list';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
+import { signedAmountTone } from '@ai-gateway/ui/lib/money-tone';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,7 @@ interface PageProps {
 
 export default async function TransactionsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const locale = await getLocale();
   const t = await getTranslations('transactions');
   const tCommon = await getTranslations('common');
   const { q, page, sortBy, order } = parseListSearchParams(sp);
@@ -88,8 +90,7 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
       render: (row) => (
         <span
           className={
-            'text-right font-medium tabular-nums ' +
-            (row.amount.startsWith('-') ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400')
+            'text-right font-medium tabular-nums ' + signedAmountTone(row.amount, locale)
           }
         >
           {row.amount.startsWith('-') ? formatMoney(row.amount) : `+${formatMoney(row.amount)}`}

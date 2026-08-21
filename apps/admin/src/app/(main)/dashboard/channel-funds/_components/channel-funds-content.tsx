@@ -8,11 +8,12 @@ import {
   Loader2Icon,
   ScaleIcon,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
+import { signedAmountTone } from "@ai-gateway/ui/lib/money-tone";
 import {
   Dialog,
   DialogClose,
@@ -64,6 +65,7 @@ export function ChannelFundsClient({
 }) {
   const t = useTranslations("channelFunds");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [channelFilter, setChannelFilter] = useState<string>(
     initialChannelId ? String(initialChannelId) : "all",
   );
@@ -167,7 +169,7 @@ export function ChannelFundsClient({
                 <TableCell
                   className={
                     "text-right font-medium tabular-nums " +
-                    (Number(r.amount) >= 0 ? "text-emerald-600" : "text-destructive")
+                    signedAmountTone(r.amount, locale)
                   }
                 >
                   {fmtSigned(r.amount)}

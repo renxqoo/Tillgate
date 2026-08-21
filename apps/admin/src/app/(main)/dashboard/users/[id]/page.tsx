@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from 'lucide-react';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 
 import {
   ApiError,
@@ -13,6 +13,7 @@ import {
   type AdminTransactionRow,
 } from '@ai-gateway/api-client';
 import { fetchAdminList } from '@ai-gateway/api-client/list';
+import { signedAmountTone } from '@ai-gateway/ui/lib/money-tone';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
   Card,
@@ -45,6 +46,7 @@ function isoDateParam(v: string | undefined): string | null {
 
 export default async function UserDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const locale = await getLocale();
   const t = await getTranslations('users');
   const tc = await getTranslations('common');
   const userId = Number(id);
@@ -133,12 +135,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
       align: 'right',
       render: (tr) => {
         const amount = Number(tr.amount);
-        const tone =
-          amount > 0
-            ? 'text-emerald-700 dark:text-emerald-300'
-            : amount < 0
-              ? 'text-destructive'
-              : '';
+        const tone = signedAmountTone(amount, locale);
         return (
           <span className={'text-right font-medium tabular-nums ' + tone}>
             {amount >= 0 ? '+' : ''}
