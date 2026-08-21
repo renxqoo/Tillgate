@@ -5,8 +5,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- **全栈中英文国际化（i18n）**：默认英文，支持中英文切换。
+  - 前端：next-intl 4（无路由 cookie 模式，`NEXT_LOCALE`），语言解析链 cookie → 浏览器
+    Accept-Language → 默认英文；两控制台顶栏新增语言切换器；`<html lang>`、页面标题与
+    全部界面文案按语言 SSR 渲染。
+  - 后端：错误码注册表全量双语（`zh` 字段），错误出口按请求 `Accept-Language` 协商——
+    与注册表默认文案一致的静态文案出对应语言，调用点自定义/动态文案保持原文（英文行为零变化）；
+    会话 401 文案统一（防账号枚举口径）并双语；登录验证码邮件按触发请求语言双语渲染。
+  - BFF：`apiFetch`/`adminFetch` 注入与 UI 同源的 `Accept-Language`，toast 错误语言与界面一致。
+  - 门禁：`bun run check:i18n`（AST 扫描零 CJK 字面量残留 + en/zh 目录键完备 + 共享 ui 段同源），
+    已接入 CI。
+- 用户面板「接口调用」指南页：端点速查表、curl/Python/JS 示例（真实 Base URL、GitHub 风格
+  shiki 双主题代码框、一键复制）。
+- 配置体系重构：`.env.example` 收敛为必填 6 键模板，其余键在 `config.ts` 带最优默认值；
+  `PORT`/`BODY_LIMIT_BYTES` 按服务消歧（`GATEWAY_`/`CLIENT_`/`ADMIN_` 前缀）；新增
+  `docs/configuration.md` 全键参考；网关护栏与实例标识键（`KEY_PREFIX`、`JWT_ISSUER` 等）env 化。
+
 ### Fixed
 
+- 网关请求护栏与实例标识硬编码：body 上限、上传白名单/大小、结算信号重试、Key 前缀、
+  JWT issuer/audience 全部可 env 覆盖（带安全默认值）。
+- trace 接收端令牌闭环：健康探针（`/readyz` `/livez`）豁免令牌校验（生产 healthcheck 曾
+  永久 401）；OTLP 推送端自动携带 `TRACE_RECEIVER_TOKEN`（启用令牌后 span 曾被静默 401 丢弃）。
+- 营销配置（邀请奖励/佣金比例）测试期间被重置为基线——共享 dev 库单行表改快照/恢复模式。
 - 管理台仪表盘：每日费用/请求量趋势图无数据——前端误用 `/v1/stats/usage`（按用户/模型/渠道
   维度聚合）且字段名不匹配；新增 `/v1/stats/trends` 按日聚合端点（北京时间日界）。
 - 管理台仪表盘：今日请求成功率显示 10000.0%——后端已返回百分数，前端重复乘 100。
