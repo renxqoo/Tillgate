@@ -173,7 +173,16 @@ export interface UsageSummaryItem {
   cost: string;
 }
 
-/** 用量按模型聚合（GET /api/usage/by-model） */
+/** 按日用量行（GET /v1/usage/summary；日界为北京时间） */
+export interface UsageDayRow {
+  date: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  /** 金额字符串（numeric 全精度；图表端按需 Number() 展示） */
+  cost: string;
+}
 export interface UsageByModelItem {
   model: string;
   requests: number;

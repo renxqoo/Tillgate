@@ -44,7 +44,10 @@ export interface UsageService {
   rate(ctx: RunContext, userId: number): Promise<{ rpm: number; tpm: number }>;
 }
 
-const asUser = (ctx: RunContext, userId: number) => ({ ...ctx, actor: { kind: 'user' as const, id: userId } });
+const asUser = (ctx: RunContext, userId: number) => ({
+  ...ctx,
+  actor: { kind: 'user' as const, id: userId },
+});
 
 export function createUsageService(deps: { db: Db; repos?: Repositories }): UsageService {
   const { db } = deps;
@@ -60,26 +63,40 @@ export function createUsageService(deps: { db: Db; repos?: Repositories }): Usag
           ...(input.to ? { to: new Date(input.to) } : {}),
         },
       );
-      return { list: rows };
+      // pg int8 聚合回传字符串——映射为 number（前端图表数学）
+      return {
+        list: rows.map((row) => ({
+          ...row,
+          inputTokens: Number(row.inputTokens),
+          outputTokens: Number(row.outputTokens),
+          cachedInputTokens: Number(row.cachedInputTokens),
+        })),
+      };
     },
     async list(ctx, userId, input) {
-      return repos.usageLog.listForUser({ db, ...asUser(ctx, userId) }, {
-        userId,
-        limit: input.limit,
-        offset: (input.page - 1) * input.limit,
-        from: input.from ? new Date(input.from) : undefined,
-        to: input.to ? new Date(input.to) : undefined,
-        model: input.model,
-      });
+      return repos.usageLog.listForUser(
+        { db, ...asUser(ctx, userId) },
+        {
+          userId,
+          limit: input.limit,
+          offset: (input.page - 1) * input.limit,
+          from: input.from ? new Date(input.from) : undefined,
+          to: input.to ? new Date(input.to) : undefined,
+          model: input.model,
+        },
+      );
     },
     async byModel(ctx, userId, input) {
       // 默认近 30 天（避免全表聚合）
       const from = input.from ? new Date(input.from) : new Date(Date.now() - 30 * 86_400_000);
-      return repos.usageLog.aggregateByModel({ db, ...asUser(ctx, userId) }, {
-        userId,
-        from,
-        to: input.to ? new Date(input.to) : undefined,
-      });
+      return repos.usageLog.aggregateByModel(
+        { db, ...asUser(ctx, userId) },
+        {
+          userId,
+          from,
+          to: input.to ? new Date(input.to) : undefined,
+        },
+      );
     },
     rate(ctx, userId) {
       return repos.usageLog.rateLastMinute({ db, ...asUser(ctx, userId) }, userId);

@@ -14,6 +14,7 @@ import {
   fmtInt,
   type Paginated,
   type UsageByModelItem,
+  type UsageDayRow,
 } from '@ai-gateway/api-client';
 
 import Link from 'next/link';
@@ -59,9 +60,7 @@ export default async function DashboardPage() {
 
   // 获取 Key 列表（统计活跃 / 总数）
   try {
-    const keysData = await apiFetch<Paginated<{ status: number }>>(
-      '/v1/keys?page=1&limit=100',
-    );
+    const keysData = await apiFetch<Paginated<{ status: number }>>('/v1/keys?page=1&limit=100');
     data.totalKeys = keysData.total;
     const keyRows = keysData.rows ?? [];
     data.activeKeys = keyRows.filter((k) => k.status === 0).length;
@@ -69,16 +68,29 @@ export default async function DashboardPage() {
     // ignore
   }
 
-  // 按模型聚合用量（/usage/by-model；日费用趋势以模型维度近似，今日费用取总额）
+  // 近 14 天按日费用（/v1/usage/summary 按日聚合，日界北京时间）
   try {
-    const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>('/v1/usage/by-model');
-    const modelRows = byModel.rows ?? [];
-    data.byModel = modelRows;
-    const todayTotal = modelRows.reduce((sum, it) => sum + (Number(it.cost) || 0), 0);
-    data.dailyCost = [{ date: new Date().toISOString().slice(0, 10), value: todayTotal }];
-    data.todayCost = todayTotal;
+    const from = new Date(Date.now() - 13 * 86_400_000);
+    const summary = await apiFetch<{ list?: UsageDayRow[] }>(
+      `/v1/usage/summary?from=${from.toISOString()}`,
+    );
+    const dayRows = summary.list ?? [];
+    data.dailyCost = dayRows.map((row) => ({ date: row.date, value: Number(row.cost) || 0 }));
+    // 今日（北京时间，与后端日界一致）那一行的费用
+    const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+    data.todayCost = Number(dayRows.find((row) => row.date === today)?.cost ?? 0);
   } catch {
     // 用量不可达时图表留空
+  }
+
+  // 按模型聚合（模型分布卡片）
+  try {
+    const byModel = await apiFetch<{ rows?: UsageByModelItem[]; list?: UsageByModelItem[] }>(
+      '/v1/usage/by-model',
+    );
+    data.byModel = byModel.rows ?? [];
+  } catch {
+    // ignore
   }
 
   // 获取实时速率（近 60 秒 RPM / TPM）
