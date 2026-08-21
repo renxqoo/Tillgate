@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
 import type { ChannelTestResult } from "@ai-gateway/api-client/types";
@@ -49,8 +50,10 @@ function splitModels(value?: string): string[] | undefined {
 export async function createChannelAction(
   input: ChannelFormCreateInput,
 ): Promise<{ error?: string }> {
-  if (!input.name?.trim()) return { error: "请输入渠道名称" };
-  if (!input.apiKey?.trim()) return { error: "请输入 API Key" };
+  const t = await getTranslations("channels");
+  const tc = await getTranslations("common");
+  if (!input.name?.trim()) return { error: t("channelNameRequired") };
+  if (!input.apiKey?.trim()) return { error: t("apiKeyRequired") };
   try {
     await adminFetch("/v1/channels", {
       method: "POST",
@@ -67,7 +70,7 @@ export async function createChannelAction(
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "创建失败" };
+    return { error: e instanceof ApiError ? e.message : tc("createFailed") };
   }
 }
 
@@ -76,6 +79,7 @@ export async function updateChannelAction(
   id: number,
   input: ChannelFormUpdateInput,
 ): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/channels/${id}`, {
       method: "PATCH",
@@ -95,18 +99,19 @@ export async function updateChannelAction(
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "保存失败" };
+    return { error: e instanceof ApiError ? e.message : tc("saveFailed") };
   }
 }
 
 // ── 删除渠道 ────────────────────────────────────────────────────────────────
 export async function deleteChannelAction(id: number): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/channels/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "删除失败" };
+    return { error: e instanceof ApiError ? e.message : tc("deleteFailed") };
   }
 }
 
@@ -120,6 +125,7 @@ export interface ChannelTestOutcome {
 }
 
 export async function testChannelAction(id: number): Promise<ChannelTestOutcome> {
+  const t = await getTranslations("channels");
   try {
     const res = await adminFetch<ChannelTestResult>(`/v1/channels/${id}/test`, {
       method: "POST",
@@ -131,9 +137,9 @@ export async function testChannelAction(id: number): Promise<ChannelTestOutcome>
       if (typeof res.error === "string") {
         errMsg = res.error;
       } else if (res.error && typeof res.error === "object") {
-        errMsg = res.error.message ?? res.error.code ?? "测试失败";
+        errMsg = res.error.message ?? res.error.code ?? t("testFailed");
       } else {
-        errMsg = "测试失败";
+        errMsg = t("testFailed");
       }
       return { ok: false, durationMs: res.durationMs, error: errMsg };
     }
@@ -141,7 +147,7 @@ export async function testChannelAction(id: number): Promise<ChannelTestOutcome>
   } catch (e) {
     const msg = e instanceof ApiError
       ? (typeof e.message === "string" ? e.message : JSON.stringify(e.message))
-      : "测试失败";
+      : t("testFailed");
     return { error: msg };
   }
 }
@@ -159,7 +165,8 @@ export interface ChannelImportItem {
 export async function importChannelsAction(
   channels: ChannelImportItem[],
 ): Promise<{ error?: string; created?: number }> {
-  if (!channels.length) return { error: "请输入至少一条渠道" };
+  const t = await getTranslations("channels");
+  if (!channels.length) return { error: t("importEmpty") };
   try {
     const res = await adminFetch<{ created: number } | { list?: unknown[] } | unknown>(
       "/v1/channels/import",
@@ -177,6 +184,6 @@ export async function importChannelsAction(
       channels.length;
     return { created };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "导入失败" };
+    return { error: e instanceof ApiError ? e.message : t("importFailed") };
   }
 }

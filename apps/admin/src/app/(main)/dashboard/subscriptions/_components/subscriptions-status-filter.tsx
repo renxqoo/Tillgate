@@ -1,11 +1,14 @@
 "use client";
 
 import { FilterIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export function SubscriptionsStatusFilter({ value }: { value: string }) {
   const router = useRouter();
   const sp = useSearchParams();
+  const tc = useTranslations("common");
+  const t = useTranslations("subscriptions");
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = new URLSearchParams(sp.toString());
@@ -23,10 +26,10 @@ export function SubscriptionsStatusFilter({ value }: { value: string }) {
         defaultValue={value}
         className="h-9 w-32 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <option value="all">全部状态</option>
-        <option value="0">有效</option>
-        <option value="1">到期</option>
-        <option value="2">取消</option>
+        <option value="all">{tc("allStatuses")}</option>
+        <option value="0">{t("statusActive")}</option>
+        <option value="1">{t("statusExpired")}</option>
+        <option value="2">{t("statusCancelled")}</option>
       </select>
     </div>
   );

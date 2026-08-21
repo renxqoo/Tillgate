@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { BanIcon, CheckCircle2Icon, Loader2Icon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { useActionResult } from '@ai-gateway/ui/components/action-toast';
@@ -32,6 +33,8 @@ export interface PayoutRow {
 }
 
 function RelationActions({ row }: { row: ReferralRelationRow }) {
+  const t = useTranslations('referrals');
+  const tc = useTranslations('common');
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const banned = row.status === 1;
@@ -44,45 +47,50 @@ function RelationActions({ row }: { row: ReferralRelationRow }) {
         startTransition(async () => {
           try {
             await setRelationStatusAction(row.id, banned ? 0 : 1);
-            notify({} as { error?: string }, '操作失败', banned ? '已恢复派奖' : '已封禁（停止后续佣金，历史入账不动）');
+            notify({} as { error?: string }, tc('actionFailed'), banned ? t('payoutResumed') : t('bannedToast'));
           } catch (e) {
-            notify({ error: e instanceof Error ? e.message : '操作失败' });
+            notify({ error: e instanceof Error ? e.message : tc('actionFailed') });
           }
         })
       }
     >
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : banned ? <CheckCircle2Icon className="size-4" /> : <BanIcon className="size-4" />}
-      {banned ? '恢复' : '封禁'}
+      {banned ? t('resume') : t('ban')}
     </Button>
   );
 }
 
 export function RelationsTable({ rows }: { rows: ReferralRelationRow[] }) {
+  const t = useTranslations('referrals');
+  const tc = useTranslations('common');
   const columns: DataTableColumn<ReferralRelationRow>[] = [
     { key: 'id', header: 'ID', render: (r) => <span className="text-xs tabular-nums text-muted-foreground">#{r.id}</span> },
-    { key: 'inviter', header: '邀请人', render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviterEmail ?? `用户#${r.inviterUserId}`}</span> },
-    { key: 'invitee', header: '被邀人', render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviteeEmail ?? `用户#${r.inviteeUserId}`}</span> },
-    { key: 'commissionTotal', header: '累计佣金', render: (r) => <span className="whitespace-nowrap text-xs tabular-nums">{formatMoney(r.commissionTotal, 2)}</span> },
-    { key: 'status', header: '状态', render: (r) => <span className={r.status === 1 ? 'text-xs text-destructive' : 'text-xs text-emerald-600'}>{r.status === 1 ? '已封禁' : '有效'}</span> },
-    { key: 'createdAt', header: '绑定时间', render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
+    { key: 'inviter', header: t('inviter'), render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviterEmail ?? t('userLabel', { id: r.inviterUserId })}</span> },
+    { key: 'invitee', header: t('invitee'), render: (r) => <span className="block max-w-56 truncate text-xs">{r.inviteeEmail ?? t('userLabel', { id: r.inviteeUserId })}</span> },
+    { key: 'commissionTotal', header: t('commissionTotal'), render: (r) => <span className="whitespace-nowrap text-xs tabular-nums">{formatMoney(r.commissionTotal, 2)}</span> },
+    { key: 'status', header: tc('status'), render: (r) => <span className={r.status === 1 ? 'text-xs text-destructive' : 'text-xs text-emerald-600'}>{r.status === 1 ? t('bannedShort') : tc('active')}</span> },
+    { key: 'createdAt', header: t('boundAt'), render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
     { key: 'actions', header: '', render: (r) => <RelationActions row={r} /> },
   ];
   return <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />;
 }
 
 export function PayoutsTable({ rows }: { rows: PayoutRow[] }) {
+  const t = useTranslations('referrals');
+  const tc = useTranslations('common');
   const columns: DataTableColumn<PayoutRow>[] = [
     { key: 'id', header: 'ID', render: (r) => <span className="text-xs tabular-nums text-muted-foreground">#{r.id}</span> },
-    { key: 'kind', header: '类型', render: (r) => <span className="whitespace-nowrap text-xs">{r.kind}</span> },
-    { key: 'refId', header: '幂等锚', render: (r) => <span className="block max-w-64 truncate text-xs font-mono" title={r.refId}>{r.refId}</span> },
-    { key: 'memo', header: '备注', render: (r) => <span className="block max-w-48 truncate text-xs text-muted-foreground" title={r.memo ?? undefined}>{r.memo ?? '—'}</span> },
-    { key: 'createdAt', header: '时间', render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
+    { key: 'kind', header: tc('type'), render: (r) => <span className="whitespace-nowrap text-xs">{r.kind}</span> },
+    { key: 'refId', header: t('idempotencyKey'), render: (r) => <span className="block max-w-64 truncate text-xs font-mono" title={r.refId}>{r.refId}</span> },
+    { key: 'memo', header: tc('remark'), render: (r) => <span className="block max-w-48 truncate text-xs text-muted-foreground" title={r.memo ?? undefined}>{r.memo ?? '—'}</span> },
+    { key: 'createdAt', header: tc('time'), render: (r) => <span className="whitespace-nowrap text-xs text-muted-foreground">{fmtDateTime(String(r.createdAt))}</span> },
   ];
   return <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />;
 }
 
 /** 视图/类型切换（select 形态——Radix Tabs 需容器且与 SSR 导航不搭，链接筛选是项目既有模式） */
 export function ReferralsViewSelect({ view, kind }: { view: string; kind: string }) {
+  const t = useTranslations('referrals');
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -106,21 +114,21 @@ export function ReferralsViewSelect({ view, kind }: { view: string; kind: string
         onChange={(e) => change('view', e.target.value)}
         defaultValue={view}
         className="h-9 rounded-md border border-input bg-transparent px-3 shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-        aria-label="视图"
+        aria-label={t('view')}
       >
-        <option value="relations">邀请关系</option>
-        <option value="payouts">返利流水</option>
+        <option value="relations">{t('relations')}</option>
+        <option value="payouts">{t('payouts')}</option>
       </select>
       {view === 'payouts' ? (
         <select
           onChange={(e) => change('kind', e.target.value)}
           defaultValue={kind}
           className="h-9 rounded-md border border-input bg-transparent px-3 shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-          aria-label="流水类型"
+          aria-label={t('payoutKind')}
         >
-          <option value="commission">日结佣金</option>
-          <option value="referral_signup">邀请注册奖励</option>
-          <option value="gift">注册赠送</option>
+          <option value="commission">{t('dailyCommission')}</option>
+          <option value="referral_signup">{t('referralSignup')}</option>
+          <option value="gift">{t('signupGift')}</option>
         </select>
       ) : null}
     </div>

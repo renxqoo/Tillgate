@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Loader2Icon, MegaphoneIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@ai-gateway/ui/components/ui/card';
@@ -25,6 +26,8 @@ function trimNumeric(value: string): string {
 }
 
 export function MarketingContent({ settings, error }: { settings: MarketingSettingsView | null; error: string | null }) {
+  const t = useTranslations('marketing');
+  const tc = useTranslations('common');
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [form, setForm] = useState<MarketingSettingsForm | null>(
@@ -40,7 +43,7 @@ export function MarketingContent({ settings, error }: { settings: MarketingSetti
   if (error || !form) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">{error ?? '暂无配置'}</CardContent>
+        <CardContent className="p-6 text-sm text-muted-foreground">{error ?? t('noSettings')}</CardContent>
       </Card>
     );
   }
@@ -52,9 +55,9 @@ export function MarketingContent({ settings, error }: { settings: MarketingSetti
     startTransition(async () => {
       try {
         await saveMarketingSettingsAction(form);
-        notify({} as { error?: string }, '保存失败', '营销参数已保存（下一动作起生效，历史不重算）');
+        notify({} as { error?: string }, tc('saveFailed'), t('saved'));
       } catch (e) {
-        notify({ error: e instanceof Error ? e.message : '保存失败' });
+        notify({ error: e instanceof Error ? e.message : tc('saveFailed') });
       }
     });
   };
@@ -66,34 +69,34 @@ export function MarketingContent({ settings, error }: { settings: MarketingSetti
     <Card className="max-w-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <MegaphoneIcon className="size-4" /> 拉新资金参数
+          <MegaphoneIcon className="size-4" /> {t('formTitle')}
         </CardTitle>
         <CardDescription>
-          改值即时生效：注册赠送/邀请奖励对下一次注册生效，佣金比例对下一轮日结生效；已入账部分按当时参数不重算。
-          {settings?.updatedBy != null ? ` 最后修改：管理员 #${settings.updatedBy}（${new Date(settings.updatedAt).toLocaleString()}）` : ''}
+          {t('formDescription')}
+          {settings?.updatedBy != null ? t('lastModified', { id: settings.updatedBy, date: new Date(settings.updatedAt).toLocaleString('en-US') }) : ''}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="gift">注册赠送（元/人，0 = 关闭）</label>
+          <label className="text-sm font-medium" htmlFor="gift">{t('signupGift')}</label>
           <Input id="gift" value={form.signupGiftAmount} onChange={set('signupGiftAmount')} inputMode="decimal" />
         </div>
         <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="bonus">邀请注册奖励（元/人，双方各得，0 = 关闭）</label>
+          <label className="text-sm font-medium" htmlFor="bonus">{t('referralBonus')}</label>
           <Input id="bonus" value={form.referralSignupBonus} onChange={set('referralSignupBonus')} inputMode="decimal" />
         </div>
         <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="rate">邀请人佣金比例（被邀请人日消费 × 比例，0–1，0 = 关闭）</label>
+          <label className="text-sm font-medium" htmlFor="rate">{t('commissionRate')}</label>
           <Input id="rate" value={form.referralCommissionRate} onChange={set('referralCommissionRate')} inputMode="decimal" />
         </div>
         {gifted ? (
           <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-            注册赠送已开启——请确认已配置 Turnstile 人机验证，否则存在批量刷号薅羊毛风险。
+            {t('giftWarning')}
           </p>
         ) : null}
         <div className="flex items-center gap-2">
           <Button onClick={save} disabled={pending}>
-            {pending ? <Loader2Icon className="size-4 animate-spin" /> : null} 保存
+            {pending ? <Loader2Icon className="size-4 animate-spin" /> : null} {tc('save')}
           </Button>
         </div>
       </CardContent>

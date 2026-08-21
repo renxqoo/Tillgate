@@ -8,6 +8,7 @@ import {
   Loader2Icon,
   ScaleIcon,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
@@ -61,6 +62,8 @@ export function ChannelFundsClient({
   readonly initialChannelId?: number;
   readonly initialType?: "recharge" | "adjust";
 }) {
+  const t = useTranslations("channelFunds");
+  const tc = useTranslations("common");
   const [channelFilter, setChannelFilter] = useState<string>(
     initialChannelId ? String(initialChannelId) : "all",
   );
@@ -87,10 +90,10 @@ export function ChannelFundsClient({
         <div className="flex items-center gap-2">
           <Select value={channelFilter} onValueChange={(v) => applyFilter(v, typeFilter)}>
             <SelectTrigger className="w-48">
-              <SelectValue placeholder="全部渠道" />
+              <SelectValue placeholder={t("allChannels")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部渠道</SelectItem>
+              <SelectItem value="all">{t("allChannels")}</SelectItem>
               {channels.map((c) => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   {c.name}
@@ -100,12 +103,12 @@ export function ChannelFundsClient({
           </Select>
           <Select value={typeFilter} onValueChange={(v) => applyFilter(channelFilter, v)}>
             <SelectTrigger className="w-40">
-              <SelectValue placeholder="全部类型" />
+              <SelectValue placeholder={tc("allTypes")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部类型</SelectItem>
-              <SelectItem value="recharge">入货</SelectItem>
-              <SelectItem value="adjust">调账</SelectItem>
+              <SelectItem value="all">{tc("allTypes")}</SelectItem>
+              <SelectItem value="recharge">{t("recharge")}</SelectItem>
+              <SelectItem value="adjust">{t("adjust")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -115,28 +118,28 @@ export function ChannelFundsClient({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">共 {total} 条流水</p>
+      <p className="text-xs text-muted-foreground">{t("totalLine", { count: total })}</p>
 
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-16">ID</TableHead>
-            <TableHead className="w-40">时间</TableHead>
-            <TableHead>渠道</TableHead>
-            <TableHead className="w-20">类型</TableHead>
-            <TableHead className="text-right">金额</TableHead>
-            <TableHead className="text-right">变动后额度</TableHead>
-            <TableHead>订单号</TableHead>
-            <TableHead>凭证</TableHead>
-            <TableHead>操作人</TableHead>
-            <TableHead>备注</TableHead>
+            <TableHead className="w-40">{tc("time")}</TableHead>
+            <TableHead>{t("channel")}</TableHead>
+            <TableHead className="w-20">{tc("type")}</TableHead>
+            <TableHead className="text-right">{t("amount")}</TableHead>
+            <TableHead className="text-right">{t("balanceAfter")}</TableHead>
+            <TableHead>{t("orderNo")}</TableHead>
+            <TableHead>{t("voucher")}</TableHead>
+            <TableHead>{t("operator")}</TableHead>
+            <TableHead>{tc("remark")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
               <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                暂无流水
+                {t("noEntries")}
               </TableCell>
             </TableRow>
           ) : (
@@ -158,7 +161,7 @@ export function ChannelFundsClient({
                         : "bg-amber-500/15 text-amber-700 dark:text-amber-300")
                     }
                   >
-                    {r.type === "recharge" ? "入货" : "调账"}
+                    {r.type === "recharge" ? t("recharge") : t("adjust")}
                   </span>
                 </TableCell>
                 <TableCell
@@ -208,12 +211,13 @@ function ChannelSelect({
   channels: ReadonlyArray<ChannelOption>;
   id: string;
 }) {
+  const t = useTranslations("channelFunds");
   return (
     <Field>
-      <FieldLabel htmlFor={id}>渠道</FieldLabel>
+      <FieldLabel htmlFor={id}>{t("channel")}</FieldLabel>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger id={id} className="w-full">
-          <SelectValue placeholder="选择渠道" />
+          <SelectValue placeholder={t("selectChannel")} />
         </SelectTrigger>
         <SelectContent>
           {channels.map((c) => (
@@ -228,6 +232,8 @@ function ChannelSelect({
 }
 
 function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) {
+  const t = useTranslations("channelFunds");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -241,7 +247,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
-      toast.error("凭证截图不能超过 2MB");
+      toast.error(t("voucherTooLarge"));
       return;
     }
     const reader = new FileReader();
@@ -259,8 +265,8 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
 
   function submit() {
     const amt = Number(amount);
-    if (!channelId) return toast.error("请选择渠道");
-    if (!Number.isFinite(amt) || amt <= 0) return toast.error("入货金额须 > 0");
+    if (!channelId) return toast.error(t("channelRequired"));
+    if (!Number.isFinite(amt) || amt <= 0) return toast.error(t("amountPositive"));
     startTransition(async () => {
       const { rechargeChannelAction } = await import("../actions");
       const res = await rechargeChannelAction({
@@ -270,7 +276,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
         remark,
         voucherDataUrl: voucher ?? undefined,
       });
-      if (!notify(res, "入货失败", "已入货")) return;
+      if (!notify(res, t("rechargeFailed"), t("recharged"))) return;
       reset();
       setOpen(false);
     });
@@ -286,20 +292,20 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
     >
       <DialogTrigger asChild>
         <Button>
-          <BanknoteIcon /> 入货
+          <BanknoteIcon /> {t("recharge")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <BanknoteIcon /> 渠道入货
+            <BanknoteIcon /> {t("rechargeTitle")}
           </DialogTitle>
-          <DialogDescription>往上游供应商账户充值进货额度，可附支付订单号与凭证截图。</DialogDescription>
+          <DialogDescription>{t("rechargeDescription")}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <ChannelSelect value={channelId} onChange={setChannelId} channels={channels} id="cf-channel" />
           <Field>
-            <FieldLabel htmlFor="cf-amount">入货金额（元，&gt; 0）</FieldLabel>
+            <FieldLabel htmlFor="cf-amount">{t("amountLabel")}</FieldLabel>
             <Input
               id="cf-amount"
               type="number"
@@ -311,38 +317,39 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="cf-order">支付订单号（可选）</FieldLabel>
+            <FieldLabel htmlFor="cf-order">{t("orderNoLabel")}</FieldLabel>
             <Input
               id="cf-order"
               value={orderNo}
               onChange={(e) => setOrderNo(e.target.value)}
-              placeholder="供应商订单号 / 流水号"
+              placeholder={t("orderNoPlaceholder")}
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="cf-voucher">支付凭证截图（可选，≤2MB）</FieldLabel>
+            <FieldLabel htmlFor="cf-voucher">{t("voucherLabel")}</FieldLabel>
             <Input id="cf-voucher" type="file" accept="image/*" onChange={onFile} />
             {voucher ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={voucher} alt="凭证预览" className="mt-2 max-h-32 rounded border" />
+              <img src={voucher} alt={t("voucherPreview")} className="mt-2 max-h-32 rounded border" />
             ) : null}
           </Field>
           <Field>
-            <FieldLabel htmlFor="cf-remark">备注（可选）</FieldLabel>
+            <FieldLabel htmlFor="cf-remark">{t("remarkOptional")}</FieldLabel>
             <Input
               id="cf-remark"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              placeholder="例如：8月上游充值"
+              placeholder={t("remarkPlaceholder")}
             />
           </Field>
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认入货
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t("confirmRecharge")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -351,6 +358,8 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
 }
 
 function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) {
+  const t = useTranslations("channelFunds");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -366,8 +375,8 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
 
   function submit() {
     const amt = Number(amount);
-    if (!channelId) return toast.error("请选择渠道");
-    if (!Number.isFinite(amt) || amt === 0) return toast.error("调账金额不能为 0");
+    if (!channelId) return toast.error(t("channelRequired"));
+    if (!Number.isFinite(amt) || amt === 0) return toast.error(t("amountNonZero"));
     startTransition(async () => {
       const { adjustChannelAction } = await import("../actions");
       const res = await adjustChannelAction({
@@ -375,7 +384,7 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
         amount,
         remark,
       });
-      if (!notify(res, "调账失败", "已调账")) return;
+      if (!notify(res, t("adjustFailed"), t("adjusted"))) return;
       reset();
       setOpen(false);
     });
@@ -391,45 +400,46 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
     >
       <DialogTrigger asChild>
         <Button variant="outline">
-          <ScaleIcon /> 调账
+          <ScaleIcon /> {t("adjust")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ScaleIcon /> 渠道调账
+            <ScaleIcon /> {t("adjustTitle")}
           </DialogTitle>
-          <DialogDescription>修正进货额度（正=补入，负=扣减），扣减不能把额度调成负。</DialogDescription>
+          <DialogDescription>{t("adjustDescription")}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <ChannelSelect value={channelId} onChange={setChannelId} channels={channels} id="cf-adj-channel" />
           <Field>
-            <FieldLabel htmlFor="cf-adj-amount">调账金额（元，可正负）</FieldLabel>
+            <FieldLabel htmlFor="cf-adj-amount">{t("amountSigned")}</FieldLabel>
             <Input
               id="cf-adj-amount"
               type="number"
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              placeholder="例如 -10.5 或 5"
+              placeholder={t("amountPlaceholder")}
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="cf-adj-remark">备注（可选）</FieldLabel>
+            <FieldLabel htmlFor="cf-adj-remark">{t("remarkOptional")}</FieldLabel>
             <Input
               id="cf-adj-remark"
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              placeholder="调账原因"
+              placeholder={t("reasonPlaceholder")}
             />
           </Field>
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认调账
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t("confirmAdjust")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2Icon, ShieldBanIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
   Table,
@@ -16,32 +17,35 @@ import { fmtDateTime } from "@ai-gateway/api-client/formatters";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill, defineStatusMeta } from "@ai-gateway/ui/components/status-pill";
 
+// 状态 tone 映射留模块级；label 是 redeemBatches 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_LABEL = defineStatusMeta({
-  0: { label: "未使用", tone: "success" },
-  1: { label: "已使用", tone: "info" },
-  2: { label: "已撤销", tone: "neutral" },
-  3: { label: "已过期", tone: "neutral" },
+  0: { label: "statusUnused", tone: "success" },
+  1: { label: "statusUsed", tone: "info" },
+  2: { label: "statusRevoked", tone: "neutral" },
+  3: { label: "statusExpired", tone: "neutral" },
 });
 
 export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCodeRow> }) {
+  const t = useTranslations("redeemBatches");
+  const tc = useTranslations("common");
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-16">ID</TableHead>
-          <TableHead>兑换码（掩码）</TableHead>
-          <TableHead className="w-24">状态</TableHead>
-          <TableHead>使用人</TableHead>
-          <TableHead className="w-40">使用时间</TableHead>
-          <TableHead className="w-40">过期时间</TableHead>
-          <TableHead className="w-24 text-right">操作</TableHead>
+          <TableHead>{t("codeMasked")}</TableHead>
+          <TableHead className="w-24">{tc("status")}</TableHead>
+          <TableHead>{t("usedBy")}</TableHead>
+          <TableHead className="w-40">{t("usedAt")}</TableHead>
+          <TableHead className="w-40">{t("expiresAt")}</TableHead>
+          <TableHead className="w-24 text-right">{tc("actions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {codes.length === 0 ? (
           <TableRow>
             <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-              暂无兑换码
+              {t("noCodes")}
             </TableCell>
           </TableRow>
         ) : (
@@ -53,6 +57,7 @@ export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCode
 }
 
 function CodeRowItem({ code }: { code: RedeemCodeRow }) {
+  const t = useTranslations("redeemBatches");
   const meta = STATUS_LABEL.get(code.status);
   const revocable = code.status === 0;
 
@@ -63,7 +68,7 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{code.codeMasked}</code>
       </TableCell>
       <TableCell>
-        <StatusPill tone={meta.tone} label={meta.label} />
+        <StatusPill tone={meta.tone} label={t(meta.label)} />
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{code.usedBy ?? "—"}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
@@ -74,9 +79,9 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
       </TableCell>
       <TableCell className="text-right">
         <ConfirmAction
-          confirm={`确定撤销兑换码 #${code.id}？`}
+          confirm={t("revokeConfirm", { id: code.id })}
           action={async () => (await import("../../actions")).revokeCodeAction(code.id)}
-          success="已撤销"
+          success={t("statusRevoked")}
         >
           {({ pending, onClick }) => (
             <Button
@@ -85,7 +90,7 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
               disabled={pending || !revocable}
               onClick={onClick}
               className="text-destructive hover:text-destructive"
-              title={revocable ? "撤销" : "不可撤销"}
+              title={revocable ? t("revoke") : t("notRevocable")}
             >
               {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
             </Button>

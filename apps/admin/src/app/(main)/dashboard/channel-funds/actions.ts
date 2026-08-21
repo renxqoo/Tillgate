@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
 
@@ -17,8 +18,9 @@ export interface RechargeInput {
 export async function rechargeChannelAction(
   input: RechargeInput,
 ): Promise<{ error?: string }> {
-  if (!input.channelId) return { error: "请选择渠道" };
-  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) return { error: "入货金额须 > 0" };
+  const t = await getTranslations("channelFunds");
+  if (!input.channelId) return { error: t("channelRequired") };
+  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) return { error: t("amountPositive") };
   try {
     await adminFetch("/v1/channel-funds/recharge", {
       method: "POST",
@@ -33,7 +35,7 @@ export async function rechargeChannelAction(
     revalidatePath("/dashboard/channel-funds");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "入货失败" };
+    return { error: e instanceof ApiError ? e.message : t("rechargeFailed") };
   }
 }
 
@@ -47,8 +49,9 @@ export interface AdjustInput {
 export async function adjustChannelAction(
   input: AdjustInput,
 ): Promise<{ error?: string }> {
-  if (!input.channelId) return { error: "请选择渠道" };
-  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) return { error: "调账金额不能为 0" };
+  const t = await getTranslations("channelFunds");
+  if (!input.channelId) return { error: t("channelRequired") };
+  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) return { error: t("amountNonZero") };
   try {
     await adminFetch("/v1/channel-funds/adjust", {
       method: "POST",
@@ -61,6 +64,6 @@ export async function adjustChannelAction(
     revalidatePath("/dashboard/channel-funds");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "调账失败" };
+    return { error: e instanceof ApiError ? e.message : t("adjustFailed") };
   }
 }

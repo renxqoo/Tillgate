@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { BriefcaseIcon, Loader2Icon, UserIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@ai-gateway/ui/components/ui/button";
 
 import { AdjustDialog, GiftDialog, PasswordDialog } from "../../_components/user-dialogs";
@@ -12,6 +13,8 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
  * 用户详情页操作按钮组（弹窗实现在共享组件 user-dialogs）。
  */
 export function UserActions({ user }: { readonly user: AdminUserRow }) {
+  const t = useTranslations("users");
+  const tc = useTranslations("common");
   const notify = useActionResult();
   const [pending, startTransition] = useTransition();
 
@@ -19,7 +22,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
     startTransition(async () => {
       const { setUserEnterpriseAction } = await import("../../actions");
       const res = await setUserEnterpriseAction(user.id, !user.isEnterprise);
-      notify(res, "操作失败", user.isEnterprise ? "已取消企业" : "已设为企业");
+      notify(res, tc("actionFailed"), user.isEnterprise ? t("removedEnterprise") : t("markedEnterprise"));
     });
   }
 
@@ -32,7 +35,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
         size="sm"
         variant={user.isEnterprise ? "secondary" : "outline"}
         disabled={pending}
-        title={user.isEnterprise ? "取消企业" : "设为企业"}
+        title={user.isEnterprise ? t("removeEnterprise") : t("setEnterprise")}
         onClick={toggleEnterprise}
       >
         {pending ? (
@@ -42,7 +45,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
         ) : (
           <BriefcaseIcon />
         )}
-        {user.isEnterprise ? "取消企业" : "设为企业"}
+        {user.isEnterprise ? t("removeEnterprise") : t("setEnterprise")}
       </Button>
     </div>
   );

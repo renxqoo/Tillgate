@@ -6,18 +6,20 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from '@ai-gateway/ui/components/ui/chart';
+import { useTranslations } from 'next-intl';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { formatMoney } from '@ai-gateway/api-client/formatters';
-
-const requestsConfig: ChartConfig = {
-  value: { label: '请求数', color: 'var(--chart-1)' },
-};
 
 const tokensConfig: ChartConfig = {
   value: { label: 'Tokens', color: 'var(--chart-2)' },
 };
 
 export function RequestsChart({ data }: { data: ReadonlyArray<{ date: string; value: number }> }) {
+  const t = useTranslations('dashboard');
+  // tooltip 名称走目录（模块级常量无法按 locale 解析）
+  const requestsConfig: ChartConfig = {
+    value: { label: t('requestsLabel'), color: 'var(--chart-1)' },
+  };
   return (
     <ChartContainer config={requestsConfig} className="aspect-auto h-62.5 w-full">
       <AreaChart

@@ -1,4 +1,5 @@
 import { ServerIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { SUPPORTED_PROTOCOLS, vendorProfileNames } from "@ai-gateway/ai";
 
@@ -19,6 +20,7 @@ interface PageProps {
 
 export default async function ProvidersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("providers");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchAdminList<AdminProviderRow>("/v1/providers", {
     page,
@@ -30,11 +32,11 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="供应商"
+      title={t("title")}
       icon={<ServerIcon className="size-5 text-muted-foreground" />}
-      description="LLM 供应商入口（baseUrl + 协议）"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索名称 / baseUrl"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={<CreateProviderDialog protocols={SUPPORTED_PROTOCOLS} vendors={vendorProfileNames()} />}

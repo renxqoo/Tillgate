@@ -12,6 +12,7 @@ import {
   Trash2Icon,
   RotateCcwIcon,
 } from 'lucide-react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -65,13 +66,18 @@ import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
 type PricingUnit = (typeof PRICING_UNITS)[number];
 
-const PRICING_UNIT_OPTIONS: ReadonlyArray<{ value: PricingUnit; label: string }> = [
-  { value: 'token', label: '文本模型 · 按 token 计价（输入 / 输出 / 缓存三价）' },
-  { value: 'image', label: '图片模型 · 按张计价' },
-  { value: 'second', label: '视频 / 音频 · 按秒计价' },
-  { value: 'char', label: '语音合成 · 按字符计价' },
-  { value: 'request', label: '按次计价（与用量无关）' },
-];
+/** 计价方式选项的 label 走目录（models 命名空间），渲染处按 locale 解析 */
+function pricingUnitOptions(
+  t: ReturnType<typeof useTranslations<'models'>>,
+): ReadonlyArray<{ value: PricingUnit; label: string }> {
+  return [
+    { value: 'token', label: t('unitToken') },
+    { value: 'image', label: t('unitImage') },
+    { value: 'second', label: t('unitSecond') },
+    { value: 'char', label: t('unitChar') },
+    { value: 'request', label: t('unitRequest') },
+  ];
+}
 
 /** 差价档位（勾选制）：label=界面档位名，value=预填参数值（需与请求参数完全一致，可改） */
 const TIER_PRESETS: Partial<Record<PricingUnit, ReadonlyArray<{ label: string; value: string }>>> = {
@@ -132,41 +138,88 @@ function refinePricing(
     unitPrice?: string;
   },
   ctx: z.RefinementCtx,
+  invalidPrice: string,
 ) {
   const bad = (path: string, message: string) =>
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
   if (v.pricingUnit === 'token') {
-    if (!MONEY_PATTERN.test(v.inputPrice ?? '')) bad('inputPrice', '请输入有效价格');
-    if (!MONEY_PATTERN.test(v.outputPrice ?? '')) bad('outputPrice', '请输入有效价格');
-    if (!MONEY_PATTERN.test(v.cacheInputPrice ?? '')) bad('cacheInputPrice', '请输入有效价格');
+    if (!MONEY_PATTERN.test(v.inputPrice ?? '')) bad('inputPrice', invalidPrice);
+    if (!MONEY_PATTERN.test(v.outputPrice ?? '')) bad('outputPrice', invalidPrice);
+    if (!MONEY_PATTERN.test(v.cacheInputPrice ?? '')) bad('cacheInputPrice', invalidPrice);
     if (v.cacheWritePrice != null && v.cacheWritePrice !== '' && !MONEY_PATTERN.test(v.cacheWritePrice))
-      bad('cacheWritePrice', '请输入有效价格');
+      bad('cacheWritePrice', invalidPrice);
   } else if (v.pricingUnit !== '') {
-    if (!MONEY_PATTERN.test(v.unitPrice ?? '')) bad('unitPrice', '请输入有效价格');
+    if (!MONEY_PATTERN.test(v.unitPrice ?? '')) bad('unitPrice', invalidPrice);
   }
 }
 
-/** 可空整数文本（上下文窗口）：空 = 不填（提交 null，与 API nullable 对齐）；非空需为正整数 */
-const optionalIntText = z
-  .string()
-  .refine((v) => v.trim() === '' || (Number.isInteger(Number(v)) && Number(v) > 0), '需为正整数（留空 = 不限）');
+/** 校验消息走目录：schema 在组件内用 t 构造 */
+function buildCreateSchema(t: ReturnType<typeof useTranslations<'models'>>) {
+  /** 可空整数文本（上下文窗口）：空 = 不填（提交 null，与 API nullable 对齐）；非空需为正整数 */
+  const optionalIntText = z
+    .string()
+    .refine((v) => v.trim() === '' || (Number.isInteger(Number(v)) && Number(v) > 0), t('contextInvalid'));
 
-const createSchema = z
-  .object({
-    externalName: z.string().min(1),
-    realModel: z.string().min(1),
-    inputPrice: z.string(),
-    outputPrice: z.string(),
-    cacheInputPrice: z.string(),
-    cacheWritePrice: z.string(),
-    pricingUnit: z
-      .string()
-      .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
-    unitPrice: z.string(),
-    isFree: z.boolean().optional(),
-    contextLength: optionalIntText,
-  })
-  .superRefine(refinePricing);
+  return z
+    .object({
+      externalName: z.string().min(1),
+      realModel: z.string().min(1),
+      inputPrice: z.string(),
+      outputPrice: z.string(),
+      cacheInputPrice: z.string(),
+      cacheWritePrice: z.string(),
+      pricingUnit: z
+        .string()
+        .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), t('unitRequired')),
+      unitPrice: z.string(),
+      isFree: z.boolean().optional(),
+      contextLength: optionalIntText,
+    })
+    .superRefine((v, ctx) => refinePricing(v, ctx, t('invalidPrice')));
+}
+
+function buildEditSchema(
+  t: ReturnType<typeof useTranslations<'models'>>,
+  tc: ReturnType<typeof useTranslations<'common'>>,
+) {
+  const optionalIntText = z
+    .string()
+    .refine((v) => v.trim() === '' || (Number.isInteger(Number(v)) && Number(v) > 0), t('contextInvalid'));
+
+  return z
+    .object({
+      externalName: z.string().min(1),
+      realModel: z.string().min(1),
+      inputPrice: z.string(),
+      outputPrice: z.string(),
+      cacheInputPrice: z.string(),
+      cacheWritePrice: z.string(),
+      pricingUnit: z
+        .string()
+        .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), t('unitRequired')),
+      unitPrice: z.string(),
+      isFree: z.boolean().optional(),
+      contextLength: optionalIntText,
+      fallbackModels: z.string().optional(),
+      paramRules: z.string().optional(),
+      billingPolicy: z
+        .string()
+        .optional()
+        .refine((value) => {
+          if (!value?.trim()) return true;
+          try {
+            JSON.parse(value);
+            return true;
+          } catch {
+            return false;
+          }
+        }, t('invalidJson')),
+      rpmLimit: z.string().optional(),
+      tpmLimit: z.string().optional(),
+      status: numericText({ message: tc('invalidInteger') }).refine((v) => Number.isInteger(v), tc('invalidInteger')),
+    })
+    .superRefine((v, ctx) => refinePricing(v, ctx, t('invalidPrice')));
+}
 
 export function ModelsTable({
   models,
@@ -175,26 +228,28 @@ export function ModelsTable({
   readonly models: ReadonlyArray<AdminModelRow>;
   readonly channels: ReadonlyArray<ChannelOption>;
 }) {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>外部名称</TableHead>
-          <TableHead>真实模型</TableHead>
-          <TableHead className="text-right">输入价</TableHead>
-          <TableHead className="text-right">输出价</TableHead>
-          <TableHead className="text-right">缓存价</TableHead>
-          <TableHead>兜底模型</TableHead>
-          <TableHead className="w-44">状态</TableHead>
-          <TableHead className="text-right">上下文</TableHead>
-          <TableHead className="w-32 text-right">操作</TableHead>
+          <TableHead>{t('externalName')}</TableHead>
+          <TableHead>{t('realModel')}</TableHead>
+          <TableHead className="text-right">{t('inputPrice')}</TableHead>
+          <TableHead className="text-right">{t('outputPrice')}</TableHead>
+          <TableHead className="text-right">{t('cachePrice')}</TableHead>
+          <TableHead>{t('fallbackModels')}</TableHead>
+          <TableHead className="w-44">{tc('status')}</TableHead>
+          <TableHead className="text-right">{t('context')}</TableHead>
+          <TableHead className="w-32 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {models.length === 0 ? (
           <TableRow>
             <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-              暂无模型
+              {t('noModels')}
             </TableCell>
           </TableRow>
         ) : (
@@ -212,11 +267,14 @@ function ModelRowItem({
   model: AdminModelRow;
   channels: ReadonlyArray<ChannelOption>;
 }) {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
+  const locale = useLocale() as 'en' | 'zh';
   return (
     <TableRow>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{model.externalName}</code>
-        {model.isFree && <StatusPill className="ml-2" tone="info" label="免费" />}
+        {model.isFree && <StatusPill className="ml-2" tone="info" label={tc('free')} />}
       </TableCell>
       <TableCell className="font-medium">{model.realModel}</TableCell>
       <TableCell className="text-right tabular-nums">
@@ -228,7 +286,7 @@ function ModelRowItem({
       </TableCell>
       <TableCell className="text-right tabular-nums">
         {model.pricingUnit && model.pricingUnit !== 'token' ? (
-          <span>¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit)}</span>
+          <span>¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit, locale)}</span>
         ) : (
           <span>¥{fmtPrice(model.outputPrice)}/M</span>
         )}
@@ -245,9 +303,9 @@ function ModelRowItem({
       </TableCell>
       <TableCell>
         {model.status === 0 ? (
-          <StatusPill tone="success" label="启用" />
+          <StatusPill tone="success" label={tc('enabled')} />
         ) : (
-          <StatusPill tone="neutral" label="已下架" />
+          <StatusPill tone="neutral" label={t('delisted')} />
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
@@ -258,9 +316,9 @@ function ModelRowItem({
           <TestModelDialog model={model} />
           {model.status === 0 ? (
             <ConfirmAction
-              confirm={`确定下架模型映射 ${model.externalName}？下架后不再对外提供（历史计费与渠道绑定保留，可随时恢复）`}
+              confirm={t('delistConfirm', { name: model.externalName })}
               action={async () => (await import('../actions')).deleteModelAction(model.id)}
-              success='已下架（列表中状态变为「已下架」，可恢复）'
+              success={t('delistSuccess')}
             >
               {({ pending, onClick }) => (
                 <Button
@@ -269,7 +327,7 @@ function ModelRowItem({
                   disabled={pending}
                   onClick={onClick}
                   className="text-destructive hover:text-destructive"
-                  title="下架"
+                  title={t('delist')}
                 >
                   {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
                 </Button>
@@ -277,9 +335,9 @@ function ModelRowItem({
             </ConfirmAction>
           ) : (
             <ConfirmAction
-              confirm={`恢复上架模型映射 ${model.externalName}？`}
+              confirm={t('restoreConfirm', { name: model.externalName })}
               action={async () => (await import('../actions')).restoreModelAction(model.id)}
-              success='已恢复上架'
+              success={t('restoreSuccess')}
             >
               {({ pending, onClick }) => (
                 <Button
@@ -287,7 +345,7 @@ function ModelRowItem({
                   variant="ghost"
                   disabled={pending}
                   onClick={onClick}
-                  title="恢复上架"
+                  title={t('restore')}
                 >
                   {pending ? <Loader2Icon className="animate-spin" /> : <RotateCcwIcon className="size-4" />}
                 </Button>
@@ -301,9 +359,13 @@ function ModelRowItem({
 }
 
 export function CreateModelDialog() {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const createSchema = buildCreateSchema(t);
   type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
@@ -348,7 +410,7 @@ export function CreateModelDialog() {
         isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
       });
-      if (!notify(res, '创建失败', '已创建')) return;
+      if (!notify(res, tc('createFailed'), tc('created'))) return;
       form.reset();
       setOpen(false);
     });
@@ -359,23 +421,24 @@ export function CreateModelDialog() {
       <DialogTrigger asChild>
         <Button>
           <PlusCircleIcon />
-          新建模型映射
+          {t('create')}
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <CpuIcon /> 新建模型映射
+            <CpuIcon /> {t('create')}
           </DialogTitle>
-          <DialogDescription>把外部模型名映射到上游真实模型</DialogDescription>
+          <DialogDescription>{t('createDescription')}</DialogDescription>
         </DialogHeader>
         <ModelForm form={form} onSubmit={onSubmit} formId="model-form" />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="model-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}创建
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('create')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -383,49 +446,19 @@ export function CreateModelDialog() {
   );
 }
 
-const editSchema = z
-  .object({
-    externalName: z.string().min(1),
-    realModel: z.string().min(1),
-    inputPrice: z.string(),
-    outputPrice: z.string(),
-    cacheInputPrice: z.string(),
-    cacheWritePrice: z.string(),
-    pricingUnit: z
-      .string()
-      .refine((v): v is PricingUnit => (PRICING_UNITS as readonly string[]).includes(v), '请先选择计价方式'),
-    unitPrice: z.string(),
-    isFree: z.boolean().optional(),
-    contextLength: optionalIntText,
-    fallbackModels: z.string().optional(),
-    paramRules: z.string().optional(),
-    billingPolicy: z
-      .string()
-      .optional()
-      .refine((value) => {
-        if (!value?.trim()) return true;
-        try {
-          JSON.parse(value);
-          return true;
-        } catch {
-          return false;
-        }
-      }, '请输入合法 JSON'),
-    rpmLimit: z.string().optional(),
-    tpmLimit: z.string().optional(),
-    status: numericText({ message: '请输入整数' }).refine((v) => Number.isInteger(v), '请输入整数'),
-  })
-  .superRefine(refinePricing);
-
 /** ModelForm 差价编辑器并入的提交载荷扩展（billingConfig 不走 RHF 字段） */
 type WithBillingConfig<V> = V & {
   billingConfig?: { strategy?: string; params?: { selector?: string; prices?: Record<string, string> } };
 };
 
 function EditModelDialog({ model }: { model: AdminModelRow }) {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const editSchema = buildEditSchema(t, tc);
   type FormValues = z.input<typeof editSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
@@ -481,7 +514,7 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
         tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
         status: Number(values.status),
       });
-      if (!notify(res, '保存失败', '已保存')) return;
+      if (!notify(res, tc('saveFailed'), tc('saved'))) return;
       setOpen(false);
     });
   }
@@ -489,14 +522,14 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="编辑">
+        <Button size="sm" variant="ghost" title={tc('edit')}>
           <PencilIcon />
         </Button>
       </DialogTrigger>
       <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PencilIcon /> 编辑模型 - {model.externalName}
+            <PencilIcon /> {t('editTitle', { name: model.externalName })}
           </DialogTitle>
         </DialogHeader>
         <ModelForm
@@ -508,10 +541,11 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
         />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="model-edit-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}保存
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('save')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -535,6 +569,9 @@ function ModelForm({
   /** 差价编辑器初始值（编辑回显——billingConfig 不走 RHF 字段） */
   initialBillingConfig?: { params?: { selector?: string; prices?: Record<string, string> } };
 }) {
+  const t = useTranslations('models');
+  const tc = useTranslations('common');
+  const locale = useLocale() as 'en' | 'zh';
   // 计价方式优先：未选择时隐藏全部价格输入；token 显三价+缓存写价；单位模式（图片/视频/语音/按次）显单位单价+可选差价。
   // useWatch（而非 form.watch）确保 Controller 外的订阅重渲染稳定。
   const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? '';
@@ -552,12 +589,12 @@ function ModelForm({
       id={formId}
       onSubmit={form.handleSubmit((values: any) => {
         // 差价档位 → variant billingConfig：勾选且填写完整的档位进价格表（预扣取最高价由计费域保证）
-        const enabled = tiers.filter((t) => t.on);
-        const active = enabled.filter((t) => t.value.trim() !== '' && t.price.trim() !== '');
+        const enabled = tiers.filter((tr) => tr.on);
+        const active = enabled.filter((tr) => tr.value.trim() !== '' && tr.price.trim() !== '');
         if (unitMode && active.length !== enabled.length) {
           form.setError('root', {
             type: 'manual',
-            message: '已勾选/添加的差价档位需填写参数值与单价（或取消勾选）',
+            message: t('tiersFillError'),
           });
           return;
         }
@@ -569,7 +606,7 @@ function ModelForm({
                   strategy: 'variant',
                   params: {
                     selector: selector.trim() || 'size',
-                    prices: Object.fromEntries(active.map((t) => [t.value.trim(), t.price.trim()])),
+                    prices: Object.fromEntries(active.map((tr) => [tr.value.trim(), tr.price.trim()])),
                   },
                 },
               }
@@ -591,8 +628,8 @@ function ModelForm({
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="m-ext">外部名称</FieldLabel>
-                <Input id="m-ext" placeholder="例如 gpt-4o-mini" {...field} />
+                <FieldLabel htmlFor="m-ext">{t('externalName')}</FieldLabel>
+                <Input id="m-ext" placeholder={t('externalNamePlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </Field>
             )}
@@ -608,8 +645,8 @@ function ModelForm({
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel htmlFor="m-real">真实模型</FieldLabel>
-                <Input id="m-real" placeholder="例如 gpt-4o-mini-2024-07-18" {...field} />
+                <FieldLabel htmlFor="m-real">{t('realModel')}</FieldLabel>
+                <Input id="m-real" placeholder={t('realModelPlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
               </Field>
             )}
@@ -621,7 +658,7 @@ function ModelForm({
           name="pricingUnit"
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="m-unit">计价方式</FieldLabel>
+              <FieldLabel htmlFor="m-unit">{t('pricingMethod')}</FieldLabel>
               <select
                 id="m-unit"
                 value={field.value}
@@ -632,9 +669,9 @@ function ModelForm({
                 className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
               >
                 <option value="" disabled>
-                  请先选择计价方式…
+                  {t('selectUnitPrompt')}
                 </option>
-                {PRICING_UNIT_OPTIONS.map((o) => (
+                {pricingUnitOptions(t).map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -646,7 +683,7 @@ function ModelForm({
         />
         {!chosen ? (
           <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-            请先选择计价方式，价格输入项将按所选计价方式显示。
+            {t('chooseUnitHint')}
           </p>
         ) : null}
         {pricingUnit === 'token' ? (
@@ -654,28 +691,28 @@ function ModelForm({
             <NumberField
               control={form.control}
               name="inputPrice"
-              label="输入价"
+              label={t('inputPrice')}
               id="m-in"
               step="0.0001"
             />
             <NumberField
               control={form.control}
               name="outputPrice"
-              label="输出价"
+              label={t('outputPrice')}
               id="m-out"
               step="0.0001"
             />
             <NumberField
               control={form.control}
               name="cacheInputPrice"
-              label="缓存价"
+              label={t('cachePrice')}
               id="m-cache"
               step="0.0001"
             />
             <NumberField
               control={form.control}
               name="cacheWritePrice"
-              label="缓存写价（可空）"
+              label={t('cacheWritePrice')}
               id="m-cache-w"
               step="0.0001"
             />
@@ -685,16 +722,16 @@ function ModelForm({
           <NumberField
             control={form.control}
             name="unitPrice"
-            label={`统一单价（元/${unitWord(pricingUnit)}）`}
+            label={t('unitPriceLabel', { unit: unitWord(pricingUnit, locale) })}
             id="m-unit-price"
             step="0.0001"
           />
           ) : null}
           {unitMode && tiers.length > 0 ? (
             <div className="space-y-2 rounded-md border p-3">
-              <p className="text-sm font-medium">差价档位（勾选后按该档位参数值单独定价；都不勾 = 统一单价）</p>
+              <p className="text-sm font-medium">{t('tiersTitle')}</p>
               <div className="grid gap-1">
-                <label className="text-xs text-muted-foreground" htmlFor="m-selector">取价参数名（请求体字段）</label>
+                <label className="text-xs text-muted-foreground" htmlFor="m-selector">{t('selectorLabel')}</label>
                 <Input
                   id="m-selector"
                   value={selector}
@@ -710,11 +747,11 @@ function ModelForm({
                   <div key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2">
                     {tier.custom ? (
                       <>
-                        <span className="text-xs text-muted-foreground">自定义</span>
+                        <span className="text-xs text-muted-foreground">{t('customTier')}</span>
                         <Input
                           value={tier.value}
                           onChange={(e) => patch({ value: e.target.value, label: e.target.value })}
-                          placeholder="参数值（如 832*1248）"
+                          placeholder={t('paramValuePlaceholder')}
                           className="h-8"
                         />
                       </>
@@ -734,7 +771,7 @@ function ModelForm({
                           <Input
                             value={tier.value}
                             onChange={(e) => patch({ value: e.target.value })}
-                            title="计费匹配的请求参数值（需完全一致）"
+                            title={t('tierValueTitle')}
                             className="h-8"
                           />
                         ) : (
@@ -746,7 +783,7 @@ function ModelForm({
                       <Input
                         value={tier.price}
                         onChange={(e) => patch({ price: e.target.value })}
-                        placeholder="单价（元）"
+                        placeholder={t('unitPricePlaceholder')}
                         className="h-8"
                         inputMode="decimal"
                       />
@@ -760,7 +797,7 @@ function ModelForm({
                         variant="ghost"
                         onClick={() => setTiers((cur) => cur.filter((_, j) => j !== i))}
                       >
-                        移除
+                        {tc('remove')}
                       </Button>
                     ) : (
                       <span />
@@ -774,30 +811,30 @@ function ModelForm({
                 variant="outline"
                 onClick={() => setTiers((cur) => [...cur, { label: '', value: '', price: '', on: true, custom: true }])}
               >
-                + 自定义档位
+                {t('addTier')}
               </Button>
               {form.formState.errors.root ? (
                 <p className="text-sm text-destructive">
-                  {(form.formState.errors.root as { message?: string }).message ?? '差价配置不完整'}
+                  {(form.formState.errors.root as { message?: string }).message ?? t('tiersIncomplete')}
                 </p>
               ) : null}
               <p className="text-xs text-muted-foreground">
-                参数值需与请求参数完全一致；预扣按档位最高价保守收取，结算按请求实际参数取价，未命中回落统一单价。
+                {t('tiersHint')}
               </p>
             </div>
           ) : null}
           <NumberField
             control={form.control}
             name="contextLength"
-            label="上下文（token，可空）"
+            label={t('contextLabel')}
             id="m-ctx"
             step="1"
           />
         {chosen ? (
           <p className="text-xs text-muted-foreground">
             {unitMode
-              ? `单位：元 / ${unitWord(pricingUnit)}；差价未命中时按统一单价计费`
-              : '单位：元 / 百万 token；缓存写价留空 = 不收缓存写费'}
+              ? t('unitModeHint', { unit: unitWord(pricingUnit, locale) })
+              : t('tokenModeHint')}
           </p>
         ) : null}
         <Controller
@@ -809,7 +846,7 @@ function ModelForm({
                 checked={field.value ?? false}
                 onCheckedChange={(v) => field.onChange(v === true)}
               />
-              显式免费模型（0 元授权，不预留余额/额度）
+              {t('isFreeLabel')}
             </label>
           )}
         />
@@ -817,7 +854,7 @@ function ModelForm({
           <Collapsible className="rounded-md border p-3">
             <CollapsibleTrigger asChild>
               <Button type="button" variant="ghost" size="sm" className="text-muted-foreground">
-                高级设置（兜底模型 / 参数规则 / 计费策略 / 限流 / 状态）
+                {t('advanced')}
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-4 pt-3">
@@ -826,7 +863,7 @@ function ModelForm({
               name="fallbackModels"
               render={({ field }: { field: { value: string } }) => (
                 <Field>
-                  <FieldLabel htmlFor="m-fb">兜底模型（逗号分隔）</FieldLabel>
+                  <FieldLabel htmlFor="m-fb">{t('fallbackLabel')}</FieldLabel>
                   <Input id="m-fb" {...field} />
                 </Field>
               )}
@@ -836,7 +873,7 @@ function ModelForm({
               name="paramRules"
               render={({ field }: { field: { value: string } }) => (
                 <Field>
-                  <FieldLabel htmlFor="m-rules">参数规则（JSON）</FieldLabel>
+                  <FieldLabel htmlFor="m-rules">{t('paramRulesLabel')}</FieldLabel>
                   <Textarea id="m-rules" rows={3} className="font-mono text-xs" {...field} />
                 </Field>
               )}
@@ -846,7 +883,7 @@ function ModelForm({
               name="billingPolicy"
               render={({ field }: { field: { value: string } }) => (
                 <Field>
-                  <FieldLabel htmlFor="m-billing-policy">多模态计费策略（JSON）</FieldLabel>
+                  <FieldLabel htmlFor="m-billing-policy">{t('billingPolicyLabel')}</FieldLabel>
                   <Textarea
                     id="m-billing-policy"
                     rows={8}
@@ -865,7 +902,7 @@ function ModelForm({
                 name="rpmLimit"
                 render={({ field }: { field: { value: string } }) => (
                   <Field>
-                    <FieldLabel htmlFor="m-rpm">RPM（空=默认）</FieldLabel>
+                    <FieldLabel htmlFor="m-rpm">{t('rpm')}</FieldLabel>
                     <Input id="m-rpm" type="number" {...field} />
                   </Field>
                 )}
@@ -875,7 +912,7 @@ function ModelForm({
                 name="tpmLimit"
                 render={({ field }: { field: { value: string } }) => (
                   <Field>
-                    <FieldLabel htmlFor="m-tpm">TPM（空=默认）</FieldLabel>
+                    <FieldLabel htmlFor="m-tpm">{t('tpm')}</FieldLabel>
                     <Input id="m-tpm" type="number" {...field} />
                   </Field>
                 )}
@@ -883,7 +920,7 @@ function ModelForm({
               <NumberField
                 control={form.control}
                 name="status"
-                label="状态"
+                label={tc('status')}
                 id="m-status"
                 step="1"
                 min={0}
@@ -904,6 +941,8 @@ function BindChannelsDialog({
   model: AdminModelRow;
   channels: ReadonlyArray<ChannelOption>;
 }) {
+  const t = useTranslations('models');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -917,7 +956,7 @@ function BindChannelsDialog({
     startTransition(async () => {
       const { bindChannelsAction } = await import('../actions');
       const res = await bindChannelsAction(model.id, selected);
-      if (!notify(res, '绑定失败', `已绑定 ${selected.length} 个渠道`)) return;
+      if (!notify(res, t('bindFailed'), t('channelsBound', { count: selected.length }))) return;
       setSelected([]);
       setOpen(false);
     });
@@ -933,20 +972,20 @@ function BindChannelsDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="绑定渠道">
+        <Button size="sm" variant="ghost" title={t('bindChannels')}>
           <NetworkIcon />
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <NetworkIcon /> 绑定渠道 - {model.externalName}
+            <NetworkIcon /> {t('bindTitle', { name: model.externalName })}
           </DialogTitle>
-          <DialogDescription>勾选为该模型提供服务的渠道（会全量覆盖原绑定）</DialogDescription>
+          <DialogDescription>{t('bindDescription')}</DialogDescription>
         </DialogHeader>
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {channels.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">暂无可用渠道</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t('noChannels')}</p>
           ) : (
             channels.map((c) => (
               <label
@@ -965,10 +1004,11 @@ function BindChannelsDialog({
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button disabled={pending} onClick={onSubmit}>
-            {pending && <Loader2Icon className="animate-spin" />}确认绑定（{selected.length}）
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmBind', { count: selected.length })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -978,6 +1018,7 @@ function BindChannelsDialog({
 
 /** 模型级测试：逐绑定渠道真实最小生成（"1" + max_tokens 1，厘级成本） */
 export function TestModelDialog({ model }: { model: AdminModelRow }) {
+  const t = useTranslations('models');
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState<ModelTestResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -998,7 +1039,7 @@ export function TestModelDialog({ model }: { model: AdminModelRow }) {
         <Button
           size="sm"
           variant="ghost"
-          title="逐渠道发真实最小生成，验证映射配置可用"
+          title={t('testTitle')}
           onClick={() => {
             setResults(null);
             setError(null);
@@ -1015,21 +1056,19 @@ export function TestModelDialog({ model }: { model: AdminModelRow }) {
       </DialogTrigger>
       <DialogContent className="w-[32rem] max-w-[90vw]">
         <DialogHeader>
-          <DialogTitle>测试 {model.externalName}</DialogTitle>
-          <DialogDescription>
-            逐绑定渠道发送真实最小生成（提示词 "1" + max_tokens 1）。付费模型成本为厘级/次。
-          </DialogDescription>
+          <DialogTitle>{t('testDialogTitle', { name: model.externalName })}</DialogTitle>
+          <DialogDescription>{t('testDescription')}</DialogDescription>
         </DialogHeader>
         {pending ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2Icon className="mr-2 animate-spin" /> 正在逐渠道测试…
+            <Loader2Icon className="mr-2 animate-spin" /> {t('testing')}
           </div>
         ) : error ? (
           <p className="py-6 text-center text-sm text-destructive">{error}</p>
         ) : results ? (
           results.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              该模型尚未绑定渠道，先绑定再测试。
+              {t('noBoundChannels')}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

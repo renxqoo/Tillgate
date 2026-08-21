@@ -5,6 +5,7 @@ import {
   DollarSignIcon,
   ServerIcon,
 } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import {
   ApiError,
@@ -27,6 +28,8 @@ import { CostChart, RequestsChart } from "./_components/admin-charts";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
+  const t = await getTranslations("dashboard");
+  const tUi = await getTranslations("ui");
   let stats: StatsOverview | null = null;
   let trends: StatsTrendRow[] = [];
   let error: string | null = null;
@@ -34,7 +37,7 @@ export default async function AdminDashboardPage() {
   try {
     stats = await adminFetch<StatsOverview>("/v1/stats/overview");
   } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载统计失败";
+    error = e instanceof ApiError ? e.message : t("loadFailed");
   }
 
   try {
@@ -55,10 +58,10 @@ export default async function AdminDashboardPage() {
   const totalChannels = healthyCount + degradedCount + downCount;
 
   // 趋势序列（近 14 天，含今日；无量的日子由后端缺行表示，图表自然断点）
-  const requestsSeries = trends.map((t) => ({ date: t.date, value: t.requests }));
-  const costSeries = trends.map((t) => ({
-    date: t.date,
-    value: Number(t.cost ?? 0),
+  const requestsSeries = trends.map((tr) => ({ date: tr.date, value: tr.requests }));
+  const costSeries = trends.map((tr) => ({
+    date: tr.date,
+    value: Number(tr.cost ?? 0),
   }));
 
   return (
@@ -66,9 +69,9 @@ export default async function AdminDashboardPage() {
       <div className="space-y-1">
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <BarChart3Icon className="size-5 text-muted-foreground" />
-          仪表盘
+          {t("title")}
         </h1>
-        <p className="text-sm text-muted-foreground">整体运营概况</p>
+        <p className="text-sm text-muted-foreground">{t("description")}</p>
       </div>
 
       {error ? (
@@ -80,46 +83,49 @@ export default async function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-4 @lg/main:grid-cols-4">
         <KpiCard
           icon={<ActivityIcon className="size-4" />}
-          title="今日请求"
+          title={t("todayRequests")}
           value={fmtInt(stats?.today?.requests ?? 0)}
-          sub={`成功 ${fmtInt(stats?.today?.successCount ?? 0)} · 失败 ${fmtInt(stats?.today?.failedCount ?? 0)}`}
+          sub={t("todaySub", {
+            success: fmtInt(stats?.today?.successCount ?? 0),
+            failed: fmtInt(stats?.today?.failedCount ?? 0),
+          })}
           hint={
             typeof stats?.today?.successRate === "number"
-              ? `成功率 ${stats.today.successRate.toFixed(1)}%`
+              ? t("successRate", { rate: stats.today.successRate.toFixed(1) })
               : undefined
           }
         />
         <KpiCard
           icon={<DollarSignIcon className="size-4" />}
-          title="今日消耗（元）"
+          title={t("todaySpend")}
           value={fmtBalance(stats?.today?.cost ?? 0)}
-          sub={`累计消耗 ${fmtBalance(stats?.total?.cost ?? 0)}`}
-          hint={`累计请求 ${fmtInt(stats?.total?.requests ?? 0)}`}
+          sub={t("totalSpend", { amount: fmtBalance(stats?.total?.cost ?? 0) })}
+          hint={t("totalRequests", { count: fmtInt(stats?.total?.requests ?? 0) })}
         />
         <KpiCard
           icon={<CpuIcon className="size-4" />}
-          title="今日输入 tokens"
+          title={t("todayInputTokens")}
           value={fmtInt(stats?.today?.inputTokens ?? 0)}
-          sub={`输出 ${fmtInt(stats?.today?.outputTokens ?? 0)}`}
-          hint="按令牌计费"
+          sub={t("todayOutputTokens", { count: fmtInt(stats?.today?.outputTokens ?? 0) })}
+          hint={t("billedByTokens")}
         />
         <KpiCard
           icon={<ServerIcon className="size-4" />}
-          title="渠道健康"
+          title={t("channelHealth")}
           value={`${fmtInt(healthyCount)} / ${fmtInt(totalChannels)}`}
           sub={
             <span className="inline-flex items-center gap-2">
               <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
                 <span className="size-1.5 rounded-full bg-amber-500" />
-                降级 {fmtInt(degradedCount)}
+                {t("degraded", { count: fmtInt(degradedCount) })}
               </span>
               <span className="inline-flex items-center gap-1 text-destructive">
                 <span className="size-1.5 rounded-full bg-destructive" />
-                异常 {fmtInt(downCount)}
+                {t("down", { count: fmtInt(downCount) })}
               </span>
             </span>
           }
-          hint="实时探测"
+          hint={t("realtimeProbe")}
         />
       </div>
 
@@ -127,12 +133,12 @@ export default async function AdminDashboardPage() {
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">请求量趋势</CardTitle>
-            <CardDescription>近 14 天按日聚合（北京时间）的请求数</CardDescription>
+            <CardTitle className="text-base">{t("requestsTrend")}</CardTitle>
+            <CardDescription>{t("requestsTrendDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {requestsSeries.length === 0 ? (
-              <EmptyChart />
+              <EmptyChart label={tUi("empty")} />
             ) : (
               <RequestsChart data={requestsSeries} />
             )}
@@ -141,12 +147,12 @@ export default async function AdminDashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">消耗（元）</CardTitle>
-            <CardDescription>近 14 天按日聚合的消耗金额</CardDescription>
+            <CardTitle className="text-base">{t("spend")}</CardTitle>
+            <CardDescription>{t("spendTrendDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {costSeries.length === 0 ? (
-              <EmptyChart />
+              <EmptyChart label={tUi("empty")} />
             ) : (
               <CostChart data={costSeries} />
             )}
@@ -159,10 +165,10 @@ export default async function AdminDashboardPage() {
   );
 }
 
-function EmptyChart() {
+function EmptyChart({ label }: { label: string }) {
   return (
     <div className="flex h-62.5 items-center justify-center text-sm text-muted-foreground">
-      暂无数据
+      {label}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   type Node,
 } from '@xyflow/react';
 import dagre from '@dagrejs/dagre';
+import { useTranslations } from 'next-intl';
 import '@xyflow/react/dist/style.css';
 
 /**
@@ -57,6 +58,7 @@ function layout(nodes: Node[], edges: Edge[], rowH: number): Node[] {
 }
 
 export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
+  const t = useTranslations('tracing');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerH, setContainerH] = useState<number | null>(null);
 
@@ -98,8 +100,8 @@ export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
           id: ch.channel,
           position: { x: 0, y: 0 },
           data: {
-            label: `${ch.channel}\n${ch.attempts} 次 · 成功率 ${(successRate * 100).toFixed(1)}%\n均延迟 ${ch.avgDurationMs}ms${
-              ch.lastError ? `\n最近错误: ${ch.lastError}` : ''
+            label: `${ch.channel}\n${t('nodeLabel', { count: ch.attempts, rate: (successRate * 100).toFixed(1) })}\n${t('avgDelay', { ms: ch.avgDurationMs })}${
+              ch.lastError ? `\n${t('lastError', { error: ch.lastError })}` : ''
             }`,
           },
           style: {
@@ -122,19 +124,20 @@ export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
       id: `gateway->${ch.channel}`,
       source: 'gateway',
       target: ch.channel,
-      label: `${ch.attempts} 次`,
+      label: t('edgeAttempts', { count: ch.attempts }),
       labelStyle: { fontSize: 10, fill: '#a1a1aa' },
       animated: ch.errors > 0 && ch.attempts > 0 && ch.errors / ch.attempts >= 0.3,
       style: { stroke: ch.errors > 0 ? '#d97706' : '#52525b' },
       markerEnd: { type: MarkerType.ArrowClosed, color: ch.errors > 0 ? '#d97706' : '#52525b' },
     }));
     return { nodes: layout(builtNodes, builtEdges, rowH), edges: builtEdges };
-  }, [channels, rowH]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channels, rowH, t]);
 
   if (channels.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        窗口内无渠道调用数据（需要各服务已接 trace-receiver 且有真实流量）。
+        {t('noTopologyData')}
       </p>
     );
   }

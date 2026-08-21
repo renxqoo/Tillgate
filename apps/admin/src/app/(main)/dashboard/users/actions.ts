@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
 
@@ -9,8 +10,9 @@ export async function adjustBalanceAction(
   id: number,
   input: { amount: string; remark: string },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("users");
   if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) {
-    return { error: "调账金额必须为非零数字" };
+    return { error: t("adjustNonZero") };
   }
   try {
     await adminFetch(`/v1/users/${id}/adjust`, {
@@ -21,7 +23,7 @@ export async function adjustBalanceAction(
     revalidatePath(`/dashboard/users/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "调账失败" };
+    return { error: e instanceof ApiError ? e.message : t("adjustFailed") };
   }
 }
 
@@ -30,8 +32,9 @@ export async function setPasswordAction(
   id: number,
   input: { password: string },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("users");
   if (!input.password || input.password.length < 6) {
-    return { error: "密码至少 6 位" };
+    return { error: t("passwordMin6") };
   }
   try {
     await adminFetch(`/v1/users/${id}/set-password`, {
@@ -40,7 +43,7 @@ export async function setPasswordAction(
     });
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "设置密码失败" };
+    return { error: e instanceof ApiError ? e.message : t("setPasswordFailed") };
   }
 }
 
@@ -49,8 +52,9 @@ export async function giftUserAction(
   id: number,
   input: { amount: string; remark: string },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("users");
   if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) {
-    return { error: "赠送金额必须 > 0" };
+    return { error: t("giftPositive") };
   }
   try {
     await adminFetch(`/v1/users/${id}/gift`, {
@@ -61,7 +65,7 @@ export async function giftUserAction(
     revalidatePath(`/dashboard/users/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "赠送失败" };
+    return { error: e instanceof ApiError ? e.message : t("giftFailed") };
   }
 }
 
@@ -70,6 +74,7 @@ export async function setUserStatusAction(
   id: number,
   input: { status: number; freezeReason?: string },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("common");
   try {
     await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
@@ -82,7 +87,7 @@ export async function setUserStatusAction(
     revalidatePath(`/dashboard/users/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "操作失败" };
+    return { error: e instanceof ApiError ? e.message : t("actionFailed") };
   }
 }
 
@@ -91,6 +96,7 @@ export async function setUserEnterpriseAction(
   id: number,
   isEnterprise: boolean,
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("common");
   try {
     await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
@@ -100,7 +106,7 @@ export async function setUserEnterpriseAction(
     revalidatePath(`/dashboard/users/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "操作失败" };
+    return { error: e instanceof ApiError ? e.message : t("actionFailed") };
   }
 }
 
@@ -109,6 +115,7 @@ export async function bindRateCardAction(
   id: number,
   rateCardId: number | null,
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("users");
   try {
     await adminFetch(`/v1/users/${id}`, {
       method: "PATCH",
@@ -118,6 +125,6 @@ export async function bindRateCardAction(
     revalidatePath(`/dashboard/users/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "绑定费率卡失败" };
+    return { error: e instanceof ApiError ? e.message : t("bindFailed") };
   }
 }

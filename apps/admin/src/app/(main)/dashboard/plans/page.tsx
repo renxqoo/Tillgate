@@ -1,4 +1,5 @@
 import { GemIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -17,6 +18,7 @@ interface PageProps {
 
 export default async function PlansPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("plans");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchAdminList<PlanRow>("/v1/plans", {
     page,
@@ -28,11 +30,11 @@ export default async function PlansPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="套餐"
+      title={t("title")}
       icon={<GemIcon className="size-5 text-muted-foreground" />}
-      description="包月订阅与加油包套餐（价格 / 额度均含积分展示）"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索套餐名"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={<CreatePlanDialog />}

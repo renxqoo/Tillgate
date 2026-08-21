@@ -14,6 +14,7 @@ import {
   Position,
 } from '@xyflow/react';
 import dagre from '@dagrejs/dagre';
+import { useTranslations } from 'next-intl';
 import '@xyflow/react/dist/style.css';
 import { buildTraceGraph, type GraphNode, type SpanRowLike } from './graph-adapter';
 import { SpanDetailPanel } from './span-detail-panel';
@@ -42,6 +43,7 @@ function layout(nodes: Node[], edges: Edge[]): Node[] {
 
 /** 语义节点卡片（kind 决定图标与配色；错误红框脉动） */
 function SpanCard({ data }: NodeProps) {
+  const t = useTranslations('tracing');
   const node = data.graphNode as GraphNode;
   const isError = node.status === 'error';
   const icon =
@@ -78,13 +80,13 @@ function SpanCard({ data }: NodeProps) {
         <span className="ml-auto flex items-center gap-1">
           <span
             className="rounded bg-muted px-1.5 text-[10px] text-muted-foreground"
-            title="执行序（按开始时间）"
+            title={t('stepTitle')}
           >
-            第{node.step}步
+            {t('stepNo', { n: node.step })}
           </span>
           {node.attempt != null && node.attempt > 1 ? (
             <span className="rounded bg-amber-500/15 px-1.5 text-[10px] text-amber-600">
-              第{node.attempt}次
+              {t('attemptNo', { n: node.attempt })}
             </span>
           ) : null}
         </span>
@@ -121,6 +123,7 @@ export function TraceGraph({
   /** 画布高度（弹窗全屏时传更大值） */
   heightClass?: string;
 }) {
+  const t = useTranslations('tracing');
   const [selected, setSelected] = useState<SpanDetail | null>(null);
   const graph = useMemo(() => buildTraceGraph(spans), [spans]);
 
@@ -148,29 +151,29 @@ export function TraceGraph({
   }, [graph, spans]);
 
   if (graph.nodes.length === 0) {
-    return <p className="text-sm text-muted-foreground">该 trace 无 span 数据。</p>;
+    return <p className="text-sm text-muted-foreground">{t('noSpanData')}</p>;
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span>
-          共 {graph.nodes.length} 步 · 总耗时 {Math.round(totalMs)} ms
+          {t('summary', { count: graph.nodes.length, ms: Math.round(totalMs) })}
         </span>
         {graph.hasError ? (
           <span className="rounded bg-destructive/15 px-2 py-0.5 text-destructive">
-            {graph.errorCount} 处错误
+            {t('errors', { count: graph.errorCount })}
           </span>
         ) : (
-          <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-emerald-600">全程成功</span>
+          <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-emerald-600">{t('allOk')}</span>
         )}
         <span className="ml-auto">
           <span className="mr-3">
-            <span className="mr-1 inline-block h-0.5 w-6 bg-muted-foreground" /> 顺序
+            <span className="mr-1 inline-block h-0.5 w-6 bg-muted-foreground" /> {t('sequential')}
           </span>
           <span>
             <span className="mr-1 inline-block h-0.5 w-6 border-t-2 border-dashed border-amber-600" />
-            fallback 换渠道
+            {t('fallbackEdge')}
           </span>
         </span>
       </div>

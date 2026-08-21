@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { FilterIcon, SearchIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Input } from "@ai-gateway/ui/components/ui/input";
@@ -18,6 +19,8 @@ export function UsageLogsFilter({
   userId: string;
   estimated: string;
 }) {
+  const t = useTranslations("usageLogs");
+  const tc = useTranslations("common");
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -42,7 +45,7 @@ export function UsageLogsFilter({
   return (
     <div className="flex flex-wrap items-end gap-2">
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">起始日期</label>
+        <label className="text-xs text-muted-foreground">{t("fromDate")}</label>
         <Input
           type="date"
           defaultValue={from}
@@ -51,7 +54,7 @@ export function UsageLogsFilter({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">结束日期</label>
+        <label className="text-xs text-muted-foreground">{t("toDate")}</label>
         <Input
           type="date"
           defaultValue={to}
@@ -60,10 +63,10 @@ export function UsageLogsFilter({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">用户 ID</label>
+        <label className="text-xs text-muted-foreground">{tc("userId")}</label>
         <Input
           defaultValue={userId}
-          placeholder="可选"
+          placeholder={tc("optional")}
           onKeyDown={(e) => {
             if (e.key === "Enter") apply({ userId: (e.target as HTMLInputElement).value });
           }}
@@ -71,7 +74,7 @@ export function UsageLogsFilter({
         />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">计费方式</label>
+        <label className="text-xs text-muted-foreground">{t("billingMethod")}</label>
         <div className="relative">
           <FilterIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <select
@@ -79,14 +82,14 @@ export function UsageLogsFilter({
             onChange={(e) => apply({ estimated: e.target.value })}
             className="h-9 w-36 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
           >
-            <option value="">全部计费</option>
-            <option value="true">仅估算扣款</option>
-            <option value="false">仅真实用量</option>
+            <option value="">{t("allBilling")}</option>
+            <option value="true">{t("estimatedOnly")}</option>
+            <option value="false">{t("actualOnly")}</option>
           </select>
         </div>
       </div>
       <Button variant="outline" size="sm" onClick={reset} className="h-9">
-        <SearchIcon /> 重置
+        <SearchIcon /> {tc("reset")}
       </Button>
     </div>
   );

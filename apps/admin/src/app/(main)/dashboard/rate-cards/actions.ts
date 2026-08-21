@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
 
@@ -14,7 +15,9 @@ export interface RateCardCreateInput {
 export async function createRateCardAction(
   input: RateCardCreateInput,
 ): Promise<{ error?: string }> {
-  if (!input.name.trim()) return { error: "请输入名称" };
+  const t = await getTranslations("rateCards");
+  const tc = await getTranslations("common");
+  if (!input.name.trim()) return { error: t("nameRequired") };
   try {
     await adminFetch("/v1/rate-cards", {
       method: "POST",
@@ -27,7 +30,7 @@ export async function createRateCardAction(
     revalidatePath("/dashboard/rate-cards");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "创建失败" };
+    return { error: e instanceof ApiError ? e.message : tc("createFailed") };
   }
 }
 
@@ -43,23 +46,25 @@ export async function updateRateCardAction(
   id: number,
   input: RateCardUpdateInput,
 ): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/rate-cards/${id}`, { method: "PATCH", body: input });
     revalidatePath("/dashboard/rate-cards");
     revalidatePath(`/dashboard/rate-cards/${id}`);
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "保存失败" };
+    return { error: e instanceof ApiError ? e.message : tc("saveFailed") };
   }
 }
 
 // ── 删除费率卡 ──────────────────────────────────────────────────────────────
 export async function deleteRateCardAction(id: number): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/rate-cards/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/rate-cards");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "删除失败" };
+    return { error: e instanceof ApiError ? e.message : tc("deleteFailed") };
   }
 }

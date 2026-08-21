@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { GaugeIcon, PencilIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { formatMoney } from "@ai-gateway/api-client/formatters";
@@ -36,13 +37,7 @@ import type { RateLimitItem, RateLimitKind } from "../types";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 function fmtLimit(v: number | null): string {
-  return v === null ? "不限" : v.toLocaleString();
-}
-
-/** 元金额：NULL=不限；数值保留 2 位小数。 */
-function fmtMoney(v: string | null | undefined): string {
-  if (v === null || v === undefined) return "不限";
-  return formatMoney(v);
+  return v === null ? "" : v.toLocaleString("en-US");
 }
 
 function RateLimitTable({
@@ -54,8 +49,10 @@ function RateLimitTable({
   kind: RateLimitKind;
   onEdit: (kind: RateLimitKind, item: RateLimitItem) => void;
 }) {
+  const tc = useTranslations("common");
+  const tUi = useTranslations("ui");
   if (items.length === 0) {
-    return <p className="p-8 text-center text-sm text-muted-foreground">暂无数据</p>;
+    return <p className="p-8 text-center text-sm text-muted-foreground">{tUi("empty")}</p>;
   }
   const showCredit = kind === "user";
   const showDailySpend = kind === "user" || kind === "key";
@@ -63,13 +60,13 @@ function RateLimitTable({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
+          <TableHead>{tc("name")}</TableHead>
           <TableHead className="text-right">RPM</TableHead>
           <TableHead className="text-right">TPM</TableHead>
-          {showCredit ? <TableHead className="text-right">透支上限</TableHead> : null}
-          {showDailySpend ? <TableHead className="text-right">每日花费上限</TableHead> : null}
-          <TableHead className="text-center">状态</TableHead>
-          <TableHead className="text-right">操作</TableHead>
+          {showCredit ? <TableHead className="text-right">{tc("creditLimit")}</TableHead> : null}
+          {showDailySpend ? <TableHead className="text-right">{tc("dailySpendLimit")}</TableHead> : null}
+          <TableHead className="text-center">{tc("status")}</TableHead>
+          <TableHead className="text-right">{tc("actions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -81,27 +78,27 @@ function RateLimitTable({
                 <div className="font-mono text-xs text-muted-foreground">{it.sublabel}</div>
               ) : null}
             </TableCell>
-            <TableCell className="text-right tabular-nums">{fmtLimit(it.rpmLimit)}</TableCell>
-            <TableCell className="text-right tabular-nums">{fmtLimit(it.tpmLimit)}</TableCell>
+            <TableCell className="text-right tabular-nums">{fmtLimit(it.rpmLimit) || tc("unlimited")}</TableCell>
+            <TableCell className="text-right tabular-nums">{fmtLimit(it.tpmLimit) || tc("unlimited")}</TableCell>
             {showCredit ? (
-              <TableCell className="text-right tabular-nums">{fmtMoney(it.creditLimit)}</TableCell>
+              <TableCell className="text-right tabular-nums">{fmtMoney(it.creditLimit, tc("unlimited"))}</TableCell>
             ) : null}
             {showDailySpend ? (
               <TableCell className="text-right tabular-nums">
-                {fmtMoney(it.dailySpendLimit)}
+                {fmtMoney(it.dailySpendLimit, tc("unlimited"))}
               </TableCell>
             ) : null}
             <TableCell className="text-center">
               {it.status === 0 ? (
-                <span className="text-xs text-emerald-600">正常</span>
+                <span className="text-xs text-emerald-600">{tc("active")}</span>
               ) : (
-                <span className="text-xs text-destructive">停用</span>
+                <span className="text-xs text-destructive">{tc("stopped")}</span>
               )}
             </TableCell>
             <TableCell className="text-right">
               <Button variant="ghost" size="sm" onClick={() => onEdit(kind, it)}>
                 <PencilIcon className="size-3.5" />
-                编辑
+                {tc("edit")}
               </Button>
             </TableCell>
           </TableRow>
@@ -109,6 +106,12 @@ function RateLimitTable({
       </TableBody>
     </Table>
   );
+}
+
+/** 元金额：NULL=不限；数值保留 2 位小数。 */
+function fmtMoney(v: string | null | undefined, unlimited: string): string {
+  if (v === null || v === undefined) return unlimited;
+  return formatMoney(v);
 }
 
 export function RateLimitsClient({
@@ -122,6 +125,9 @@ export function RateLimitsClient({
   channels: RateLimitItem[];
   keys: RateLimitItem[];
 }) {
+  const t = useTranslations("rateLimits");
+  const tc = useTranslations("common");
+  const tUi = useTranslations("ui");
   const [editing, setEditing] = useState<{ kind: RateLimitKind; item: RateLimitItem } | null>(null);
   const [rpm, setRpm] = useState<string>("");
   const [tpm, setTpm] = useState<string>("");
@@ -147,11 +153,11 @@ export function RateLimitsClient({
     const rpmVal = rpm.trim() === "" ? null : Number(rpm);
     const tpmVal = tpm.trim() === "" ? null : Number(tpm);
     if (rpmVal !== null && (!Number.isFinite(rpmVal) || rpmVal <= 0 || !Number.isInteger(rpmVal))) {
-      toast.error("RPM 须为正整数");
+      toast.error(t("rpmPositive"));
       return;
     }
     if (tpmVal !== null && (!Number.isFinite(tpmVal) || tpmVal <= 0 || !Number.isInteger(tpmVal))) {
-      toast.error("TPM 须为正整数");
+      toast.error(t("tpmPositive"));
       return;
     }
 
@@ -163,17 +169,17 @@ export function RateLimitsClient({
       creditVal = credit.trim() === "" ? "0" : credit.trim();
       dailySpendVal = dailySpend.trim() === "" ? null : dailySpend.trim();
       if (!/^\d+(?:\.\d+)?$/.test(creditVal)) {
-        toast.error("透支上限须为 >= 0 的金额");
+        toast.error(t("creditNonNegative"));
         return;
       }
       if (dailySpendVal !== null && !/^\d+(?:\.\d+)?$/.test(dailySpendVal)) {
-        toast.error("每日花费上限须为 >= 0 的金额");
+        toast.error(t("dailySpendNonNegative"));
         return;
       }
     } else if (editing.kind === "key") {
       dailySpendVal = dailySpend.trim() === "" ? null : dailySpend.trim();
       if (dailySpendVal !== null && !/^\d+(?:\.\d+)?$/.test(dailySpendVal)) {
-        toast.error("每日花费上限须为 >= 0 的金额");
+        toast.error(t("dailySpendNonNegative"));
         return;
       }
     }
@@ -185,7 +191,7 @@ export function RateLimitsClient({
         creditLimit: creditVal,
         dailySpendLimit: dailySpendVal,
       });
-      if (notify(res, undefined, "已保存，立即生效")) setEditing(null);
+      if (notify(res, undefined, t("savedImmediate"))) setEditing(null);
     });
   };
 
@@ -196,10 +202,10 @@ export function RateLimitsClient({
     <div className="flex flex-col gap-4">
       <Tabs defaultValue="user">
         <TabsList>
-          <TabsTrigger value="user">用户 ({users.length})</TabsTrigger>
-          <TabsTrigger value="model">模型 ({models.length})</TabsTrigger>
-          <TabsTrigger value="channel">渠道 ({channels.length})</TabsTrigger>
-          <TabsTrigger value="key">Key ({keys.length})</TabsTrigger>
+          <TabsTrigger value="user">{t("tabUser", { count: users.length })}</TabsTrigger>
+          <TabsTrigger value="model">{t("tabModel", { count: models.length })}</TabsTrigger>
+          <TabsTrigger value="channel">{t("tabChannel", { count: channels.length })}</TabsTrigger>
+          <TabsTrigger value="key">{t("tabKey", { count: keys.length })}</TabsTrigger>
         </TabsList>
         <TabsContent value="user">
           <RateLimitTable items={users} kind="user" onEdit={openEdit} />
@@ -220,36 +226,36 @@ export function RateLimitsClient({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GaugeIcon className="size-4" />
-              编辑限流
+              {t("editTitle")}
             </DialogTitle>
             <DialogDescription>
-              {editing ? `${editing.item.label}（留空 = 不限流，继承上层）` : ""}
+              {editing ? t("editDescription", { label: editing.item.label }) : ""}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <Field>
-              <FieldLabel>RPM（每分钟请求数）</FieldLabel>
+              <FieldLabel>{t("rpmLabel")}</FieldLabel>
               <Input
                 type="number"
                 min={1}
-                placeholder="不限"
+                placeholder={tc("unlimited")}
                 value={rpm}
                 onChange={(e) => setRpm(e.target.value)}
               />
             </Field>
             <Field>
-              <FieldLabel>TPM（每分钟 Token 数）</FieldLabel>
+              <FieldLabel>{t("tpmLabel")}</FieldLabel>
               <Input
                 type="number"
                 min={1}
-                placeholder="不限"
+                placeholder={tc("unlimited")}
                 value={tpm}
                 onChange={(e) => setTpm(e.target.value)}
               />
             </Field>
             {showCreditField ? (
               <Field>
-                <FieldLabel>透支上限（元，留空 = 0 不透支）</FieldLabel>
+                <FieldLabel>{t("creditLabel")}</FieldLabel>
                 <Input
                   type="number"
                   min={0}
@@ -262,12 +268,12 @@ export function RateLimitsClient({
             ) : null}
             {showDailySpendField ? (
               <Field>
-                <FieldLabel>每日花费上限（元，留空 = 不限）</FieldLabel>
+                <FieldLabel>{t("dailySpendLabel")}</FieldLabel>
                 <Input
                   type="number"
                   min={0}
                   step="0.01"
-                  placeholder="不限"
+                  placeholder={tc("unlimited")}
                   value={dailySpend}
                   onChange={(e) => setDailySpend(e.target.value)}
                 />
@@ -276,10 +282,10 @@ export function RateLimitsClient({
           </FieldGroup>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditing(null)} disabled={pending}>
-              取消
+              {tUi("cancel")}
             </Button>
             <Button onClick={save} disabled={pending}>
-              {pending ? "保存中…" : "保存"}
+              {pending ? t("saving") : tc("save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Loader2Icon, SparklesIcon, TicketIcon } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -37,35 +38,43 @@ import type { AdminBatchRow } from '@ai-gateway/api-client/types';
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { moneyText } from '@ai-gateway/ui/lib/forms';
 
-const schema = z.object({
-  name: z.string().min(1, '请输入批次名称'),
-  amount: moneyText({ message: '请输入有效金额', allowZero: false }),
-  count: z.number().int().min(1).max(1000, '最多 1000 张'),
-  remark: z.string().optional(),
-  expiresAt: z.string().optional(),
-});
+/** 校验消息走目录：schema 在组件内用 t 构造 */
+function buildSchema(
+  t: ReturnType<typeof useTranslations<'redeemBatches'>>,
+  tUi: ReturnType<typeof useTranslations<'ui'>>,
+) {
+  return z.object({
+    name: z.string().min(1, t('nameRequired')),
+    amount: moneyText({ message: tUi('invalidAmount'), allowZero: false }),
+    count: z.number().int().min(1).max(1000, t('maxCount')),
+    remark: z.string().optional(),
+    expiresAt: z.string().optional(),
+  });
+}
 
 export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<AdminBatchRow> }) {
+  const t = useTranslations('redeemBatches');
+  const tc = useTranslations('common');
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead className="text-right">面值</TableHead>
-          <TableHead className="text-right">总数</TableHead>
-          <TableHead className="text-right">已用</TableHead>
-          <TableHead className="text-right">使用率</TableHead>
-          <TableHead>备注</TableHead>
-          <TableHead>创建人</TableHead>
-          <TableHead className="w-44">创建时间</TableHead>
-          <TableHead className="w-24 text-right">操作</TableHead>
+          <TableHead>{tc('name')}</TableHead>
+          <TableHead className="text-right">{t('faceValue')}</TableHead>
+          <TableHead className="text-right">{t('total')}</TableHead>
+          <TableHead className="text-right">{t('used')}</TableHead>
+          <TableHead className="text-right">{t('usage')}</TableHead>
+          <TableHead>{tc('remark')}</TableHead>
+          <TableHead>{t('createdBy')}</TableHead>
+          <TableHead className="w-44">{tc('createdAt')}</TableHead>
+          <TableHead className="w-24 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {batches.length === 0 ? (
           <TableRow>
             <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
-              暂无批次
+              {t('noBatches')}
             </TableCell>
           </TableRow>
         ) : (
@@ -94,7 +103,7 @@ export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<Admi
                 </TableCell>
                 <TableCell className="text-right">
                   <Button asChild size="sm" variant="ghost">
-                    <Link href={`/dashboard/redeem-batches/${b.id}`}>详情</Link>
+                    <Link href={`/dashboard/redeem-batches/${b.id}`}>{tc('detail')}</Link>
                   </Button>
                 </TableCell>
               </TableRow>
@@ -117,10 +126,14 @@ function UsageBadge({ rate }: { rate: number }) {
 }
 
 export function GenerateBatchDialog() {
+  const t = useTranslations('redeemBatches');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [revealedCodes, setRevealedCodes] = useState<string[] | null>(null);
+  const schema = buildSchema(t, tUi);
 
   type FormValues = z.input<typeof schema>;
   const form = useForm<FormValues>({
@@ -132,9 +145,9 @@ export function GenerateBatchDialog() {
     startTransition(async () => {
       const { generateBatchAction } = await import('../actions');
       const res = await generateBatchAction(values);
-      if (!notify(res, '生成失败')) return;
+      if (!notify(res, t('generateFailed'))) return;
       setRevealedCodes(res.batch!.codes);
-      toast.success(`已生成 ${res.batch!.codes.length} 张充值码`);
+      toast.success(t('generated', { count: res.batch!.codes.length }));
     });
   }
 
@@ -151,24 +164,24 @@ export function GenerateBatchDialog() {
       <DialogTrigger asChild>
         <Button>
           <SparklesIcon />
-          生成批次
+          {t('generate')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <TicketIcon /> 生成充值码批次
+            <TicketIcon /> {t('generateTitle')}
           </DialogTitle>
-          <DialogDescription>充值码明文仅显示一次，请立即保存</DialogDescription>
+          <DialogDescription>{t('generateDescription')}</DialogDescription>
         </DialogHeader>
 
         {revealedCodes ? (
           <div className="space-y-3 rounded-md bg-emerald-500/10 p-4 ring-1 ring-emerald-500/30">
             <div className="flex items-center justify-between">
               <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                已生成 {revealedCodes.length} 张充值码（请立即保存）
+                {t('revealed', { count: revealedCodes.length })}
               </p>
-              <CopyButton text={revealedCodes.join('\n')} label="全部复制" />
+              <CopyButton text={revealedCodes.join('\n')} label={t('copyAll')} />
             </div>
             <div className="max-h-80 space-y-1 overflow-y-auto rounded bg-background/80 p-3 font-mono text-xs">
               {revealedCodes.map((c, i) => (
@@ -184,8 +197,8 @@ export function GenerateBatchDialog() {
                 name="name"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="b-name">批次名称</FieldLabel>
-                    <Input id="b-name" placeholder="例如 双十一活动" {...field} />
+                    <FieldLabel htmlFor="b-name">{t('batchName')}</FieldLabel>
+                    <Input id="b-name" placeholder={t('namePlaceholder')} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -196,7 +209,7 @@ export function GenerateBatchDialog() {
                   name="amount"
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="b-amount">面值（元）</FieldLabel>
+                      <FieldLabel htmlFor="b-amount">{t('amountLabel')}</FieldLabel>
                       <Input
                         id="b-amount"
                         type="number"
@@ -214,7 +227,7 @@ export function GenerateBatchDialog() {
                   name="count"
                   render={({ field, fieldState }) => (
                     <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel htmlFor="b-count">数量（1-1000）</FieldLabel>
+                      <FieldLabel htmlFor="b-count">{t('countLabel')}</FieldLabel>
                       <Input
                         id="b-count"
                         type="number"
@@ -232,7 +245,7 @@ export function GenerateBatchDialog() {
                 name="remark"
                 render={({ field }) => (
                   <Field>
-                    <FieldLabel htmlFor="b-note">备注（可选）</FieldLabel>
+                    <FieldLabel htmlFor="b-note">{t('remarkOptional')}</FieldLabel>
                     <Input id="b-note" {...field} />
                   </Field>
                 )}
@@ -242,7 +255,7 @@ export function GenerateBatchDialog() {
                 name="expiresAt"
                 render={({ field }) => (
                   <Field>
-                    <FieldLabel htmlFor="b-exp">过期时间（可选）</FieldLabel>
+                    <FieldLabel htmlFor="b-exp">{t('expiresLabel')}</FieldLabel>
                     <Input id="b-exp" type="datetime-local" {...field} />
                   </Field>
                 )}
@@ -254,15 +267,16 @@ export function GenerateBatchDialog() {
         <DialogFooter>
           {revealedCodes ? (
             <DialogClose asChild>
-              <Button variant="outline">关闭</Button>
+              <Button variant="outline">{tc('close')}</Button>
             </DialogClose>
           ) : (
             <>
               <DialogClose asChild>
-                <Button variant="outline">取消</Button>
+                <Button variant="outline">{tUi('cancel')}</Button>
               </DialogClose>
               <Button type="submit" form="batch-form" disabled={pending}>
-                {pending && <Loader2Icon className="animate-spin" />}生成
+                {pending && <Loader2Icon className="animate-spin" />}
+                {t('generateShort')}
               </Button>
             </>
           )}

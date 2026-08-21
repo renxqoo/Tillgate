@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { adminFetch, ApiError } from "@ai-gateway/api-client";
 import { SUPPORTED_PROTOCOLS } from "@ai-gateway/ai";
@@ -15,8 +16,10 @@ export interface ProviderInput {
 }
 
 export async function createProviderAction(input: ProviderInput): Promise<{ error?: string }> {
-  if (!input.name?.trim()) return { error: "请输入名称" };
-  if (!input.baseUrl?.trim()) return { error: "请输入 Base URL" };
+  const t = await getTranslations("providers");
+  const tc = await getTranslations("common");
+  if (!input.name?.trim()) return { error: t("nameRequired") };
+  if (!input.baseUrl?.trim()) return { error: t("baseUrlRequired") };
   try {
     await adminFetch("/v1/providers", {
       method: "POST",
@@ -32,7 +35,7 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "创建失败" };
+    return { error: e instanceof ApiError ? e.message : tc("createFailed") };
   }
 }
 
@@ -40,23 +43,25 @@ export async function updateProviderAction(
   id: number,
   input: Partial<ProviderInput>,
 ): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/providers/${id}`, { method: "PATCH", body: input });
     revalidatePath("/dashboard/providers");
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "保存失败" };
+    return { error: e instanceof ApiError ? e.message : tc("saveFailed") };
   }
 }
 
 export async function deleteProviderAction(id: number): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     await adminFetch(`/v1/providers/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/providers");
     revalidatePath("/dashboard/channels");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "删除失败" };
+    return { error: e instanceof ApiError ? e.message : tc("deleteFailed") };
   }
 }

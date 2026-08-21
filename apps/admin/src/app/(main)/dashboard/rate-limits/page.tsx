@@ -1,4 +1,5 @@
 import { GaugeIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import type { AdminChannelRow, AdminKeyRow, AdminModelRow, AdminUserRow } from "@ai-gateway/api-client";
 import { fetchAdminList } from "@ai-gateway/api-client/list";
@@ -16,6 +17,8 @@ interface PageProps {
 
 export default async function RateLimitsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("rateLimits");
+  const tc = await getTranslations("common");
   const q = firstParam(sp.q) ?? "";
   // 并发拉取 4 类实体（统一分页接口 + q 搜索）；任一失败不阻塞整页
   const [usersRes, modelsRes, channelsRes, keysRes] = await Promise.allSettled([
@@ -29,7 +32,7 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
     usersRes.status === "fulfilled"
       ? usersRes.value.rows.map((u) => ({
           id: u.id,
-          label: u.email ?? `用户#${u.id}`,
+          label: u.email ?? t("userLabel", { id: u.id }),
           sublabel: u.displayName,
           rpmLimit: u.rpmLimit,
           tpmLimit: u.tpmLimit,
@@ -65,7 +68,7 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
       ? keysRes.value.rows.map((k) => ({
           id: k.id,
           label: k.name,
-          sublabel: `${k.subscriptionId != null ? "套餐" : "余额"} · ${k.keyPreview}`,
+          sublabel: `${k.subscriptionId != null ? t("plan") : t("balance")} · ${k.keyPreview}`,
           rpmLimit: k.rpmLimit,
           tpmLimit: k.tpmLimit,
           dailySpendLimit: k.dailySpendLimit,
@@ -80,15 +83,15 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
     keysRes.status === "rejected"
       ? usersRes.reason instanceof Error
         ? usersRes.reason.message
-        : "加载失败"
+        : tc("loadFailed")
       : null;
 
   return (
     <ListPage
-      title="限流设置"
+      title={t("title")}
       icon={<GaugeIcon className="size-5 text-muted-foreground" />}
-      description="集中管理 用户 / 模型 / 渠道 / Key 的 RPM·TPM 限额；用户另含透支上限，用户与 Key 另含每日花费上限（改后立即生效）"
-      searchPlaceholder="搜索用户 / 模型 / 渠道 / Key"
+      description={t("description")}
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q }}
       error={error}

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Network } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { ApiError, adminFetch } from '@ai-gateway/api-client';
 import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
 import { ChannelTopology, type ChannelHealth } from '../_components/channel-topology';
@@ -26,6 +27,8 @@ export default async function TopologyPage({
   searchParams: Promise<{ hours?: string }>;
 }) {
   const requested = (await searchParams).hours;
+  const t = await getTranslations('tracing');
+  const tc = await getTranslations('common');
   const hours = Math.min(168, Math.max(1, Number(requested) || 24));
   let channels: ChannelHealth[] = [];
   let error: string | null = null;
@@ -38,11 +41,11 @@ export default async function TopologyPage({
       adminFetch<{ rows: TtftRow[] }>(`/v1/analytics/channel-ttft?hours=${hours}`),
     ]);
     if (topology.status === 'fulfilled') channels = topology.value.channels;
-    else error = topology.reason instanceof ApiError ? topology.reason.message : '加载失败';
+    else error = topology.reason instanceof ApiError ? topology.reason.message : tc('loadFailed');
     if (ttft.status === 'fulfilled') ttftRows = ttft.value.rows;
-    else ttftError = '首token数据暂不可用';
+    else ttftError = t('ttftUnavailable');
   } catch (caught) {
-    error = caught instanceof ApiError ? caught.message : '加载失败';
+    error = caught instanceof ApiError ? caught.message : tc('loadFailed');
   }
 
   return (
@@ -52,7 +55,7 @@ export default async function TopologyPage({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <h1 className="flex items-center gap-2 text-lg font-semibold">
           <Network className="size-4" />
-          渠道健康拓扑
+          {t('topologyTitle')}
         </h1>
         <nav className="flex items-center gap-3 text-sm">
           <Link
@@ -65,15 +68,14 @@ export default async function TopologyPage({
             href={`/dashboard/tracing/topology?hours=168`}
             className={hours === 168 ? 'font-semibold underline' : 'underline'}
           >
-            7 天
+            {t('sevenDays')}
           </Link>
           <Link href="/dashboard/tracing" className="underline">
-            ← 单 trace 视图
+            {t('singleTrace')}
           </Link>
         </nav>
         <p className="w-full text-xs text-muted-foreground">
-          跨 trace 聚合（{hours}h 窗口）：网关 → 各渠道的调用量、成功率、延迟与最近错误。绿 ≥95% /
-          黄 ≥70% / 红 &lt;70%；错误率 ≥30% 的边有流动动画。点击节点可拖拽，minimap 缩略导航。
+          {t('topologyDescription', { hours })}
         </p>
       </div>
       <Card className="min-h-0 flex-1 overflow-hidden py-3">
@@ -90,18 +92,17 @@ export default async function TopologyPage({
           <CardContent>
             {ttftError && <p className="mb-2 text-xs text-destructive">{ttftError}</p>}
             <p className="mb-2 text-xs text-muted-foreground">
-              渠道首token延迟（{hours}h 流式样本，P50/P95）——上游 = 尝试发出 → 上游首字节；客户 =
-              管道进入 → 首token交付。差值大 = 换渠重试多。
+              {t('ttftDescription', { hours })}
             </p>
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-left text-muted-foreground">
-                  <th className="py-1 font-medium">渠道</th>
-                  <th className="py-1 text-right font-medium">样本</th>
-                  <th className="py-1 text-right font-medium">上游 P50</th>
-                  <th className="py-1 text-right font-medium">上游 P95</th>
-                  <th className="py-1 text-right font-medium">客户 P50</th>
-                  <th className="py-1 text-right font-medium">客户 P95</th>
+                  <th className="py-1 font-medium">{t('channel')}</th>
+                  <th className="py-1 text-right font-medium">{t('samples')}</th>
+                  <th className="py-1 text-right font-medium">{t('upstreamP50')}</th>
+                  <th className="py-1 text-right font-medium">{t('upstreamP95')}</th>
+                  <th className="py-1 text-right font-medium">{t('clientP50')}</th>
+                  <th className="py-1 text-right font-medium">{t('clientP95')}</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">

@@ -11,6 +11,7 @@ import {
   StoreIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Checkbox } from '@ai-gateway/ui/components/ui/checkbox';
@@ -82,11 +83,18 @@ interface Draft {
 type PriceFilter = 'all' | 'free' | 'paid';
 type StateFilter = 'all' | 'new' | 'changed' | 'imported';
 
-const DIFF_BADGES: Record<CatalogItem['diff'], { label: string; className: string } | null> = {
-  new: { label: '未导入', className: 'bg-muted text-muted-foreground' },
+// 徽章样式留模块级；label 是 modelMarket 命名空间的 i18n key，渲染处用 t 解析
+const DIFF_BADGE_CLASS: Record<CatalogItem['diff'], string | null> = {
+  new: 'bg-muted text-muted-foreground',
   same: null,
-  price_up: { label: '上游涨价', className: 'bg-amber-500/15 text-amber-600' },
-  price_down: { label: '上游降价', className: 'bg-emerald-500/15 text-emerald-600' },
+  price_up: 'bg-amber-500/15 text-amber-600',
+  price_down: 'bg-emerald-500/15 text-emerald-600',
+};
+
+const DIFF_BADGE_KEY: Partial<Record<CatalogItem['diff'], string>> = {
+  new: 'badgeNew',
+  price_up: 'badgePriceUp',
+  price_down: 'badgePriceDown',
 };
 
 export function CatalogContent({
@@ -112,6 +120,9 @@ export function CatalogContent({
   needsKey: boolean;
   fx: FxState | null;
 }) {
+  const t = useTranslations('modelMarket');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const router = useRouter();
   const [apiKey, setApiKey] = useState('');
   const [query, setQuery] = useState('');
@@ -206,13 +217,13 @@ export function CatalogContent({
       };
     }
     setDrafts(next);
-    toast.info(kind === 'price_up' ? '已勾选全部上游涨价行（防亏钱方向）' : '已勾选全部上游降价行（让利决策）');
+    toast.info(kind === 'price_up' ? t('selectedPriceUp') : t('selectedPriceDown'));
   }
 
   function doImport(): void {
     if (selectedItems.length === 0) return;
     if (needsKey && !channelReady && apiKey.trim().length === 0) {
-      toast.error(`首次从 ${sourceName} 导入需要填写平台 API Key`);
+      toast.error(t('apiKeyRequired', { source: sourceName }));
       return;
     }
     startTransition(async () => {
@@ -235,8 +246,8 @@ export function CatalogContent({
         }),
       });
       if (notify(res, undefined, sourceKind === 'reference'
-        ? `已导入 ${selectedItems.length} 个模型为草稿（到「模型映射」复核上架）`
-        : `已导入 ${selectedItems.length} 个模型（价格按提交值生效）`)) router.refresh();
+        ? t('importedDraft', { count: selectedItems.length })
+        : t('imported', { count: selectedItems.length }))) router.refresh();
     });
   }
 
@@ -256,7 +267,7 @@ export function CatalogContent({
       setFxEditing(false);
       setOverrideRate('');
       setBufferPct('');
-      toast.success('汇率配置已更新（动作已留审计）');
+      toast.success(t('fxSaved'));
       router.refresh();
     });
   }
@@ -277,33 +288,33 @@ export function CatalogContent({
       {currency === 'USD' && fx ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
           <span className="font-medium">
-            汇率 {fx.baseRate ?? '不可用'}
-            {fx.mode === 'override' ? '（手动覆盖）' : `（${fx.source === 'ecb' ? 'ECB 自动' : fx.source ?? '—'}）`}
+            {t('rate', { rate: fx.baseRate ?? t('unavailable') })}
+            {fx.mode === 'override' ? t('overrideSuffix') : fx.source === 'ecb' ? t('fxSourceEcb') : fx.source ? t('fxSourceOther', { source: fx.source }) : ''}
           </span>
-          {fx.bufferPct !== '0' ? <Badge variant="outline">点差 +{fx.bufferPct}%</Badge> : null}
-          {fx.effectiveRate != null ? <span className="text-muted-foreground">预填生效 {fx.effectiveRate}</span> : null}
+          {fx.bufferPct !== '0' ? <Badge variant="outline">{t('buffer', { pct: fx.bufferPct })}</Badge> : null}
+          {fx.effectiveRate != null ? <span className="text-muted-foreground">{t('effective', { rate: fx.effectiveRate })}</span> : null}
           {fx.fetchedAt ? <span className="text-muted-foreground">· {fmtDateTime(fx.fetchedAt)}</span> : null}
           <div className="ml-auto flex items-center gap-2">
             {fxEditing ? (
               <>
                 <Input
-                  placeholder={`覆盖汇率（当前 ${fx.baseRate ?? '—'}；留空=清除回落自动）`}
+                  placeholder={t('overridePlaceholder', { rate: fx.baseRate ?? '—' })}
                   value={overrideRate}
                   onChange={(e) => setOverrideRate(e.target.value)}
                   className="h-7 w-56 text-xs"
                 />
                 <Input
-                  placeholder={`点差 %（当前 ${fx.bufferPct}）`}
+                  placeholder={t('bufferPlaceholder', { pct: fx.bufferPct })}
                   value={bufferPct}
                   onChange={(e) => setBufferPct(e.target.value)}
                   className="h-7 w-36 text-xs"
                 />
-                <Button size="sm" className="h-7" disabled={pending} onClick={saveFx}>保存</Button>
-                <Button size="sm" variant="ghost" className="h-7" onClick={() => setFxEditing(false)}>取消</Button>
+                <Button size="sm" className="h-7" disabled={pending} onClick={saveFx}>{tc('save')}</Button>
+                <Button size="sm" variant="ghost" className="h-7" onClick={() => setFxEditing(false)}>{tUi('cancel')}</Button>
               </>
             ) : (
               <>
-                <Button size="sm" variant="outline" className="h-7" onClick={() => setFxEditing(true)}>改</Button>
+                <Button size="sm" variant="outline" className="h-7" onClick={() => setFxEditing(true)}>{t('editFx')}</Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -312,10 +323,10 @@ export function CatalogContent({
                   onClick={() => startTransition(async () => {
                     const res = await refreshFxAction(true);
                     if (res.error) toast.error(res.error);
-                    else { toast.success('已强制刷新'); router.refresh(); }
+                    else { toast.success(t('refreshed')); router.refresh(); }
                   })}
                 >
-                  <RefreshCwIcon className="mr-1 size-3" /> 强刷
+                  <RefreshCwIcon className="mr-1 size-3" /> {t('forceRefresh')}
                 </Button>
               </>
             )}
@@ -325,13 +336,13 @@ export function CatalogContent({
 
       <div className="flex flex-wrap items-center gap-2">
         <Input
-          placeholder="搜索模型…"
+          placeholder={t('searchModels')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="w-52"
         />
         <div className="flex gap-1 text-xs">
-          {([['all', '全部'], ['free', '免费'], ['paid', '付费']] as const).map(([k, label]) => (
+          {([['all', tUi('all')], ['free', tc('free')], ['paid', t('paid')]] as const).map(([k, label]) => (
             <button
               key={k}
               type="button"
@@ -343,7 +354,7 @@ export function CatalogContent({
           ))}
         </div>
         <div className="flex gap-1 text-xs">
-          {([['all', '全部'], ['new', `未导入 ${newCount}`], ['changed', `有变化 ${changedCount}`], ['imported', '已导入']] as const).map(([k, label]) => (
+          {([['all', tUi('all')], ['new', t('filterNew', { count: newCount })], ['changed', t('filterChanged', { count: changedCount })], ['imported', t('importedLabel')]] as const).map(([k, label]) => (
             <button
               key={k}
               type="button"
@@ -357,21 +368,21 @@ export function CatalogContent({
         {changedCount > 0 && sourceKind === 'channel' ? (
           <div className="flex gap-1">
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyDiff('price_up')}>
-              <ArrowUpIcon className="mr-1 size-3" /> 跟进涨价（防亏）
+              <ArrowUpIcon className="mr-1 size-3" /> {t('followUp')}
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => applyDiff('price_down')}>
-              <ArrowDownIcon className="mr-1 size-3" /> 跟进降价（让利）
+              <ArrowDownIcon className="mr-1 size-3" /> {t('followDown')}
             </Button>
           </div>
         ) : null}
         <span className="text-xs text-muted-foreground">
-          {sourceName} 目录抓取于 {fmtDateTime(fetchedAt)} · 共 {items.length} 个模型
+          {t('fetchedMeta', { source: sourceName, time: fmtDateTime(fetchedAt), count: items.length })}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {needsKey && !channelReady ? (
             <Input
               type="password"
-              placeholder={`${sourceName} API Key（首次导入必填）`}
+              placeholder={t('apiKeyPlaceholder', { source: sourceName })}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               className="w-72"
@@ -379,7 +390,7 @@ export function CatalogContent({
           ) : null}
           <Button disabled={pending || selectedItems.length === 0} onClick={doImport}>
             {pending ? <Loader2Icon className="mr-1 animate-spin" /> : <StoreIcon className="mr-1" />}
-            {sourceKind === 'reference' ? '导入选中为草稿' : '导入选中'}（{selectedItems.length}）
+            {sourceKind === 'reference' ? t('importDraftCount', { count: selectedItems.length }) : t('importSelectedCount', { count: selectedItems.length })}
           </Button>
         </div>
       </div>
@@ -392,24 +403,25 @@ export function CatalogContent({
                 <Checkbox
                   checked={paged.length > 0 && paged.every((i) => draftOf(i).selected)}
                   onCheckedChange={(v) => selectAll(v === true)}
-                  title="全选本页（跨页累计勾选，导入单批上限 200）"
+                  title={t('selectAllTitle')}
                 />
               </TableHead>
-              <TableHead>上游模型</TableHead>
-              <TableHead className="w-40">对外名（可改）</TableHead>
-              <TableHead className="w-32 text-right">目录价（{currency}/1M）</TableHead>
-              <TableHead className="w-24 text-right">输入价 ¥</TableHead>
-              <TableHead className="w-24 text-right">输出价 ¥</TableHead>
-              <TableHead className="w-24 text-right">缓存价 ¥</TableHead>
-              <TableHead className="w-24 text-right">写价 ¥</TableHead>
-              <TableHead className="w-24 text-right">上下文</TableHead>
-              <TableHead className="w-32">状态</TableHead>
+              <TableHead>{t('upstreamModel')}</TableHead>
+              <TableHead className="w-40">{t('externalName')}</TableHead>
+              <TableHead className="w-32 text-right">{t('catalogPrice', { currency })}</TableHead>
+              <TableHead className="w-24 text-right">{t('inputPrice')}</TableHead>
+              <TableHead className="w-24 text-right">{t('outputPrice')}</TableHead>
+              <TableHead className="w-24 text-right">{t('cachePrice')}</TableHead>
+              <TableHead className="w-24 text-right">{t('writePrice')}</TableHead>
+              <TableHead className="w-24 text-right">{t('context')}</TableHead>
+              <TableHead className="w-32">{tc('status')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paged.map((item) => {
               const d = draftOf(item);
-              const badge = DIFF_BADGES[item.diff];
+              const badgeClass = DIFF_BADGE_CLASS[item.diff];
+              const badgeKey = DIFF_BADGE_KEY[item.diff];
               return (
                 <TableRow key={item.realModel} className={item.priceWarning ? 'bg-destructive/5' : undefined}>
                   <TableCell>
@@ -440,7 +452,7 @@ export function CatalogContent({
                       value={d.inputPrice}
                       onChange={(e) => patch(item, { inputPrice: e.target.value })}
                       className="h-8 text-right text-xs tabular-nums"
-                      title={item.prefillInputCny != null ? `预填 = 目录价 × 生效汇率 ${fx?.effectiveRate ?? ''}` : '汇率不可用，手填'}
+                      title={item.prefillInputCny != null ? t('prefillTitle', { rate: fx?.effectiveRate ?? '' }) : t('noFxHint')}
                     />
                   </TableCell>
                   <TableCell>
@@ -462,7 +474,7 @@ export function CatalogContent({
                       value={d.cacheWritePrice}
                       onChange={(e) => patch(item, { cacheWritePrice: e.target.value })}
                       className="h-8 text-right text-xs tabular-nums"
-                      title="缓存写价（Anthropic 1.25×/2× 输入价；0/缺省按输入价收）"
+                      title={t('cacheWriteTitle')}
                     />
                   </TableCell>
                   <TableCell>
@@ -471,31 +483,31 @@ export function CatalogContent({
                       placeholder="—"
                       onChange={(e) => patch(item, { contextLength: e.target.value })}
                       className="h-8 text-right text-xs tabular-nums"
-                      title="上下文窗口（token），默认取目录值"
+                      title={t('contextTitle')}
                     />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {badge ? (
-                        <Badge variant="outline" className={badge.className}>
-                          {badge.label}
+                      {badgeClass && badgeKey ? (
+                        <Badge variant="outline" className={badgeClass}>
+                          {t(badgeKey)}
                           {item.driftPct != null && item.driftPct !== 0 ? ` ${item.driftPct > 0 ? '+' : ''}${item.driftPct}%` : ''}
                         </Badge>
                       ) : null}
                       {item.imported ? (
-                        <Badge variant="outline">已导入 {item.imported.externalName}</Badge>
+                        <Badge variant="outline">{t('importedAs', { name: item.imported.externalName })}</Badge>
                       ) : null}
                       {item.priceWarning ? (
                         <Badge variant="destructive" className="gap-1">
                           <TriangleAlertIcon className="size-3" />
-                          上游已收费
+                          {t('upstreamCharges')}
                         </Badge>
                       ) : null}
                       {item.imported ? (
                         <button
                           type="button"
                           className="text-muted-foreground hover:text-foreground"
-                          title="价格溯源：历次导入/改价的汇率与预填依据"
+                          title={t('historyButtonTitle')}
                           onClick={() => openHistory(item.imported!.externalName)}
                         >
                           <HistoryIcon className="size-3.5" />
@@ -516,10 +528,11 @@ export function CatalogContent({
       {/* 上游消失（channel 源）：绑定到本源渠道但目录已无——复核下架 */}
       {sourceKind === 'channel' && gone.length > 0 ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
-          <span className="font-medium text-amber-600">上游消失 {gone.length} 条：</span>
+          <span className="font-medium text-amber-600">{t('goneTitle', { count: gone.length })}</span>
           <span className="ml-2 text-muted-foreground">
-            {gone.slice(0, 8).map((g) => g.externalName).join('、')}
-            {gone.length > 8 ? ` 等 ${gone.length} 条` : ''}——目录已无这些模型，复核后到「模型映射」处理。
+            {gone.length > 8
+              ? `${t('goneListMore', { list: gone.slice(0, 8).map((g) => g.externalName).join(', '), count: gone.length })}${t('goneSuffix')}`
+              : `${gone.slice(0, 8).map((g) => g.externalName).join(', ')}${t('goneSuffix')}`}
           </span>
         </div>
       ) : null}
@@ -529,27 +542,32 @@ export function CatalogContent({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setHistoryOf(null)}>
           <div className="max-h-[70vh] w-full max-w-2xl overflow-auto rounded-lg border bg-background p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">价格溯源 · {historyOf}</h3>
-              <Button size="sm" variant="ghost" onClick={() => setHistoryOf(null)}>关闭</Button>
+              <h3 className="text-sm font-semibold">{t('historyTitle', { name: historyOf })}</h3>
+              <Button size="sm" variant="ghost" onClick={() => setHistoryOf(null)}>{tc('close')}</Button>
             </div>
             {historyPending || historyEntries == null ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">查询中…</p>
+              <p className="py-6 text-center text-xs text-muted-foreground">{t('querying')}</p>
             ) : historyEntries.length === 0 ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">无目录导入记录（人工在「模型映射」直接改价的不在此列）。</p>
+              <p className="py-6 text-center text-xs text-muted-foreground">{t('noHistory')}</p>
             ) : (
               <ol className="flex flex-col gap-3">
                 {historyEntries.map((h, i) => (
                   <li key={i} className="rounded-md border p-3 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{h.action === 'model_catalog.import_draft' ? '字典草稿导入' : '目录导入/更新'}</Badge>
+                      <Badge variant="outline">{h.action === 'model_catalog.import_draft' ? t('draftImport') : t('catalogImport')}</Badge>
                       <span className="text-muted-foreground">{fmtDateTime(h.createdAt)}</span>
-                      {h.adminId != null ? <span className="text-muted-foreground">管理员 #{h.adminId}</span> : null}
+                      {h.adminId != null ? <span className="text-muted-foreground">{t('adminId', { id: h.adminId })}</span> : null}
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground md:grid-cols-4">
-                      <span>目录价：${h.catalogPrompt ?? '—'} / ${h.catalogCompletion ?? '—'}</span>
-                      <span>汇率：{h.fx ? `${h.fx.baseRate}（${h.fx.source ?? '—'}${h.fx.effectiveRate != null && h.fx.effectiveRate !== h.fx.baseRate ? `，生效 ${h.fx.effectiveRate}` : ''}）` : '—'}</span>
-                      <span>预填：¥{h.prefillInputCny ?? '—'}</span>
-                      <span className="font-medium text-foreground">提交：¥{h.submittedInputCny} / ¥{h.submittedOutputCny}</span>
+                      <span>{t('catalogPrices', { prompt: h.catalogPrompt ?? '—', completion: h.catalogCompletion ?? '—' })}</span>
+                      <span>{t('fxLabel', {
+                        value: h.fx
+                          ? t('fxValue', { rate: h.fx.baseRate, source: h.fx.source ?? '—' }) +
+                            (h.fx.effectiveRate != null && h.fx.effectiveRate !== h.fx.baseRate ? t('fxEffective', { rate: h.fx.effectiveRate }) : '')
+                          : '—',
+                      })}</span>
+                      <span>{t('prefill', { value: h.prefillInputCny ?? '—' })}</span>
+                      <span className="font-medium text-foreground">{t('submitted', { input: h.submittedInputCny, output: h.submittedOutputCny })}</span>
                     </div>
                   </li>
                 ))}
@@ -560,9 +578,9 @@ export function CatalogContent({
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        价格单位为 元/百万 token；USD 源预填 = 目录价 × 生效汇率（自动 ×(1+点差) 或手动覆盖），提交即确认为你的卖价；
-        {sourceKind === 'reference' ? ' 字典型导入落草稿态，复核后上架。' : ' 渠道限流预填 20 RPM。'}
-        导入后到「模型映射」点烧瓶图标逐渠道测试。每笔请求账单另落「当时基准汇率」（usage_logs.fx_rate）供对账。
+        {t('footerMain')}
+        {sourceKind === 'reference' ? t('footerReference') : t('footerChannel')}
+        {t('footerTest')}
       </p>
     </div>
   );

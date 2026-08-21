@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 
 import {
   ApiError,
@@ -44,6 +45,8 @@ function isoDateParam(v: string | undefined): string | null {
 
 export default async function UserDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const t = await getTranslations('users');
+  const tc = await getTranslations('common');
   const userId = Number(id);
   if (!Number.isFinite(userId) || userId <= 0) notFound();
   const sp = await searchParams;
@@ -61,7 +64,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
   try {
     user = await adminFetch<AdminUserRow>(`/v1/users/${userId}`);
   } catch (e) {
-    error = e instanceof ApiError ? e.message : '加载失败';
+    error = e instanceof ApiError ? e.message : tc('loadFailed');
   }
 
   // 并行拉取流水和该用户的审计（专用接口 targetType=user——必须按用户过滤，
@@ -97,12 +100,12 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
       <div className="flex flex-col gap-4">
         <Button asChild variant="ghost" size="sm" className="w-fit">
           <Link href="/dashboard/users">
-            <ArrowLeftIcon /> 返回用户列表
+            <ArrowLeftIcon /> {t('backToUsers')}
           </Link>
         </Button>
         <Card>
           <CardContent className="p-6 text-sm text-destructive">
-            {error ?? '用户不存在'}
+            {error ?? t('userNotFound')}
           </CardContent>
         </Card>
       </div>
@@ -115,21 +118,21 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
       header: 'ID',
       sortable: true,
       headerClassName: 'w-20',
-      render: (t) => <span className="text-xs text-muted-foreground tabular-nums">#{t.id}</span>,
+      render: (tr) => <span className="text-xs text-muted-foreground tabular-nums">#{tr.id}</span>,
     },
     {
       key: 'type',
-      header: '类型',
+      header: tc('type'),
       headerClassName: 'w-24',
-      render: (t) => <span className="text-xs">{t.type}</span>,
+      render: (tr) => <span className="text-xs">{tr.type}</span>,
     },
     {
       key: 'amount',
-      header: '变动',
+      header: t('amountChange'),
       sortable: true,
       align: 'right',
-      render: (t) => {
-        const amount = Number(t.amount);
+      render: (tr) => {
+        const amount = Number(tr.amount);
         const tone =
           amount > 0
             ? 'text-emerald-700 dark:text-emerald-300'
@@ -139,47 +142,47 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         return (
           <span className={'text-right font-medium tabular-nums ' + tone}>
             {amount >= 0 ? '+' : ''}
-            {fmtBalance(t.amount)}
+            {fmtBalance(tr.amount)}
           </span>
         );
       },
     },
     {
       key: 'balanceAfter',
-      header: '变动后',
+      header: t('balanceAfter'),
       align: 'right',
-      render: (t) => <span className="text-right tabular-nums">{fmtBalance(t.balanceAfter)}</span>,
+      render: (tr) => <span className="text-right tabular-nums">{fmtBalance(tr.balanceAfter)}</span>,
     },
     {
       key: 'ref',
-      header: '关联',
-      render: (t) => (
+      header: t('reference'),
+      render: (tr) => (
         <span className="text-xs text-muted-foreground">
-          {t.refType ? `${t.refType}#${t.refId ?? ''}` : '—'}
+          {tr.refType ? `${tr.refType}#${tr.refId ?? ''}` : '—'}
         </span>
       ),
     },
     {
       key: 'remark',
-      header: '备注',
-      render: (t) => (
+      header: tc('remark'),
+      render: (tr) => (
         <span className="block max-w-xs truncate text-xs text-muted-foreground">
-          {t.remark ?? '—'}
+          {tr.remark ?? '—'}
         </span>
       ),
     },
     {
       key: 'createdBy',
-      header: '操作人',
-      render: (t) => <span className="text-xs text-muted-foreground">{t.createdBy ?? '—'}</span>,
+      header: t('operator'),
+      render: (tr) => <span className="text-xs text-muted-foreground">{tr.createdBy ?? '—'}</span>,
     },
     {
       key: 'createdAt',
-      header: '时间',
+      header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
-      render: (t) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(t.createdAt)}</span>
+      render: (tr) => (
+        <span className="text-xs text-muted-foreground">{fmtDateTime(tr.createdAt)}</span>
       ),
     },
   ];
@@ -193,25 +196,25 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     },
     {
       key: 'adminSubject',
-      header: '管理员',
-      render: (a) => <span className="text-xs">{a.adminSubject ?? (a.actor === 'user' ? '用户本人' : '—')}</span>,
+      header: t('admin'),
+      render: (a) => <span className="text-xs">{a.adminSubject ?? (a.actor === 'user' ? t('userSelf') : '—')}</span>,
     },
     {
       key: 'action',
-      header: '动作',
+      header: t('action'),
       sortable: true,
       headerClassName: 'w-40',
       render: (a) => <span className="text-xs font-medium">{a.action}</span>,
     },
     {
       key: 'targetType',
-      header: '目标类型',
+      header: t('targetType'),
       headerClassName: 'w-32',
       render: (a) => <span className="text-xs text-muted-foreground">{a.targetType}</span>,
     },
     {
       key: 'detail',
-      header: '详情',
+      header: tc('detail'),
       render: (a) => (
         <span className="block max-w-md truncate text-xs text-muted-foreground">
           {a.detail ? JSON.stringify(a.detail) : '—'}
@@ -220,7 +223,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     },
     {
       key: 'createdAt',
-      header: '时间',
+      header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
       render: (a) => (
@@ -233,7 +236,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     <div className="flex flex-col gap-4">
       <Button asChild variant="ghost" size="sm" className="w-fit">
         <Link href="/dashboard/users">
-          <ArrowLeftIcon /> 返回用户列表
+          <ArrowLeftIcon /> {t('backToUsers')}
         </Link>
       </Button>
 
@@ -246,9 +249,9 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                 <span className="text-base font-normal text-muted-foreground">#{user.id}</span>
               </CardTitle>
               <CardDescription className="space-x-2">
-                <span>账号 {user.subject}</span>
+                <span>{tc('account')} {user.subject}</span>
                 <span>·</span>
-                <span>{user.email ?? '无邮箱'}</span>
+                <span>{user.email ?? t('noEmail')}</span>
                 <span>·</span>
                 <span>{user.identityProvider ?? '—'}</span>
               </CardDescription>
@@ -259,42 +262,42 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
             <Field
-              label="状态"
+              label={tc('status')}
               value={
                 user.status === 0
-                  ? '正常'
-                  : `已封禁${user.freezeReason ? `（${user.freezeReason}）` : ''}`
+                  ? tc('active')
+                  : t('bannedReason', { reason: user.freezeReason ?? '' })
               }
             />
-            <Field label="账户类型" value={user.isEnterprise ? '企业' : '个人'} />
-            <Field label="已结算余额" value={fmtBalance(user.balance)} />
-            <Field label="处理中预留" value={fmtBalance(user.reservedBalance)} />
-            <Field label="可用额度" value={fmtBalance(user.availableBalance)} />
-            <Field label="透支上限" value={fmtBalance(user.creditLimit)} />
+            <Field label={t('accountType')} value={user.isEnterprise ? t('enterprise') : t('personal')} />
+            <Field label={t('settledBalanceLabel')} value={fmtBalance(user.balance)} />
+            <Field label={t('reservedBalance')} value={fmtBalance(user.reservedBalance)} />
+            <Field label={t('availableBalance')} value={fmtBalance(user.availableBalance)} />
+            <Field label={tc('creditLimit')} value={fmtBalance(user.creditLimit)} />
             <Field
-              label="每日花费上限"
-              value={user.dailySpendLimit === null ? '不限' : fmtBalance(user.dailySpendLimit)}
+              label={tc('dailySpendLimit')}
+              value={user.dailySpendLimit === null ? tc('unlimited') : fmtBalance(user.dailySpendLimit)}
             />
-            <Field label="费率卡" value={user.rateCardName ?? '—'} />
+            <Field label={t('rateCard')} value={user.rateCardName ?? '—'} />
             <Field
-              label="RPM 限额"
-              value={user.rpmLimit === null ? '默认' : String(user.rpmLimit)}
+              label={t('rpmLimit')}
+              value={user.rpmLimit === null ? tc('default') : String(user.rpmLimit)}
             />
             <Field
-              label="TPM 限额"
-              value={user.tpmLimit === null ? '默认' : String(user.tpmLimit)}
+              label={t('tpmLimit')}
+              value={user.tpmLimit === null ? tc('default') : String(user.tpmLimit)}
             />
             <Field label="Issuer" value={user.issuer ?? '—'} />
-            <Field label="最近登录" value={fmtDateTime(user.lastLoginAt)} />
-            <Field label="创建时间" value={fmtDateTime(user.createdAt)} />
+            <Field label={tc('lastLogin')} value={fmtDateTime(user.lastLoginAt)} />
+            <Field label={tc('createdAt')} value={fmtDateTime(user.createdAt)} />
           </dl>
         </CardContent>
       </Card>
 
       <Tabs defaultValue="tx">
         <TabsList>
-          <TabsTrigger value="tx">交易流水</TabsTrigger>
-          <TabsTrigger value="audit">审计日志</TabsTrigger>
+          <TabsTrigger value="tx">{t('transactions')}</TabsTrigger>
+          <TabsTrigger value="audit">{t('auditLogs')}</TabsTrigger>
         </TabsList>
         <TabsContent value="tx">
           <Card>
@@ -303,7 +306,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
               <form className="flex items-end gap-2 px-6 pb-2" method="get">
                 <div className="space-y-1">
                   <label htmlFor="from" className="text-xs text-muted-foreground">
-                    开始日期
+                    {t('startDate')}
                   </label>
                   <input
                     id="from"
@@ -315,7 +318,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                 </div>
                 <div className="space-y-1">
                   <label htmlFor="to" className="text-xs text-muted-foreground">
-                    结束日期
+                    {t('endDate')}
                   </label>
                   <input
                     id="to"
@@ -326,24 +329,24 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                   />
                 </div>
                 <button type="submit" className="h-8 rounded-md border px-3 text-sm hover:bg-muted">
-                  筛选
+                  {tc('filter')}
                 </button>
                 {fromRaw || toRaw ? (
                   <a
                     href={`/dashboard/users/${userId}`}
                     className="h-8 leading-8 text-sm text-muted-foreground underline-offset-2 hover:underline"
                   >
-                    清除
+                    {tc('clear')}
                   </a>
                 ) : null}
               </form>
               <DataTable
                 columns={txColumns}
                 rows={transactions}
-                rowKey={(t) => t.id}
+                rowKey={(tr) => tr.id}
                 sort={{ sortBy, order }}
                 searchParams={{ tpage: String(txPage), from: fromRaw, to: toRaw }}
-                empty="暂无流水"
+                empty={t('noTransactions')}
               />
               {txTotal > PAGE_SIZE ? (
                 <CardContent className="px-6 pb-4 pt-0">
@@ -374,7 +377,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                 rowKey={(a) => a.id}
                 sort={{ sortBy, order }}
                 searchParams={{ apage: String(auditPage), tpage: String(txPage) }}
-                empty="暂无审计日志"
+                empty={t('noAuditLogs')}
               />
               {auditTotal > PAGE_SIZE ? (
                 <CardContent className="px-6 pb-4 pt-0">

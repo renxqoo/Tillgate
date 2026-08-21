@@ -11,6 +11,7 @@ import {
   PlusCircleIcon,
   Trash2Icon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -51,31 +52,36 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const createSchema = z.object({
-  name: z.string().min(1),
-  coefficient: z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/, '系数范围 0.001-9.999，最多 3 位小数')
-    .refine((v) => v !== '0' && !/^0\.0+$/.test(v), '系数必须大于 0'),
-  description: z.string().optional(),
-});
+// 校验消息走目录：schema 在组件内用 t 构造
+function buildSchema(t: ReturnType<typeof useTranslations<'rateCards'>>) {
+  return z.object({
+    name: z.string().min(1),
+    coefficient: z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/, t('coefficientRange'))
+      .refine((v) => v !== '0' && !/^0\.0+$/.test(v), t('coefficientPositive')),
+    description: z.string().optional(),
+  });
+}
 
 export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<AdminRateCardRow> }) {
+  const t = useTranslations('rateCards');
+  const tc = useTranslations('common');
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead className="text-right">系数</TableHead>
-          <TableHead>说明</TableHead>
-          <TableHead className="w-24">状态</TableHead>
-          <TableHead className="w-44">更新时间</TableHead>
-          <TableHead className="w-28 text-right">操作</TableHead>
+          <TableHead>{tc('name')}</TableHead>
+          <TableHead className="text-right">{t('coefficient')}</TableHead>
+          <TableHead>{t('descriptionLabel')}</TableHead>
+          <TableHead className="w-24">{tc('status')}</TableHead>
+          <TableHead className="w-44">{tc('updatedAt')}</TableHead>
+          <TableHead className="w-28 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {cards.length === 0 ? (
           <TableRow>
             <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-              暂无费率卡
+              {t('noRateCards')}
             </TableCell>
           </TableRow>
         ) : (
@@ -87,6 +93,8 @@ export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<AdminR
 }
 
 function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
+  const t = useTranslations('rateCards');
+  const tc = useTranslations('common');
   return (
     <TableRow>
       <TableCell className="font-medium">
@@ -98,9 +106,9 @@ function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
       <TableCell className="text-sm text-muted-foreground">{card.description ?? '—'}</TableCell>
       <TableCell>
         {card.status === 0 ? (
-          <StatusPill tone="success" label="启用" />
+          <StatusPill tone="success" label={tc('enabled')} />
         ) : (
-          <StatusPill tone="neutral" label="禁用" />
+          <StatusPill tone="neutral" label={tc('disabled')} />
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
@@ -108,16 +116,16 @@ function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
-          <Button asChild size="sm" variant="ghost" title="查看用户">
+          <Button asChild size="sm" variant="ghost" title={t('viewUsers')}>
             <Link href={`/dashboard/rate-cards/${card.id}`}>
               <EyeIcon />
             </Link>
           </Button>
           <EditRateCardDialog card={card} />
           <ConfirmAction
-            confirm={`确定删除费率卡 ${card.name}？若有绑定用户会失败。`}
+            confirm={t('deleteConfirm', { name: card.name })}
             action={async () => (await import('../actions')).deleteRateCardAction(card.id)}
-            success='已删除'
+            success={tc('deleted')}
           >
             {({ pending, onClick }) => (
               <Button
@@ -138,9 +146,13 @@ function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
 }
 
 export function CreateRateCardDialog() {
+  const t = useTranslations('rateCards');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const createSchema = buildSchema(t);
   type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
@@ -155,7 +167,7 @@ export function CreateRateCardDialog() {
         coefficient: values.coefficient,
         description: values.description?.trim() || undefined,
       });
-      if (!notify(res, '创建失败', '已创建')) return;
+      if (!notify(res, tc('createFailed'), tc('created'))) return;
       form.reset();
       setOpen(false);
     });
@@ -166,23 +178,24 @@ export function CreateRateCardDialog() {
       <DialogTrigger asChild>
         <Button>
           <PlusCircleIcon />
-          新建费率卡
+          {t('create')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <BanknoteIcon /> 新建费率卡
+            <BanknoteIcon /> {t('create')}
           </DialogTitle>
-          <DialogDescription>设置系数（用于打折或加成）</DialogDescription>
+          <DialogDescription>{t('createDescription')}</DialogDescription>
         </DialogHeader>
         <RateCardForm form={form} onSubmit={onSubmit} formId="rc-form" />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="rc-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}创建
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('create')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -190,18 +203,16 @@ export function CreateRateCardDialog() {
   );
 }
 
-const editSchema = z.object({
-  name: z.string().min(1),
-  coefficient: z.string().regex(/^(?:[0-9](?:\.\d{1,3})?)$/, '系数范围 0.001-9.999，最多 3 位小数')
-    .refine((v) => v !== '0' && !/^0\.0+$/.test(v), '系数必须大于 0'),
-  description: z.string().optional(),
-  status: z.coerce.number().int(),
-});
-
 function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
+  const t = useTranslations('rateCards');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const editSchema = buildSchema(t).extend({
+    status: z.coerce.number().int(),
+  });
   type FormValues = z.input<typeof editSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
@@ -222,7 +233,7 @@ function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
         description: values.description?.trim() || undefined,
         status: Number(values.status),
       });
-      if (!notify(res, '保存失败', '已保存')) return;
+      if (!notify(res, tc('saveFailed'), tc('saved'))) return;
       setOpen(false);
     });
   }
@@ -230,23 +241,24 @@ function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="编辑">
+        <Button size="sm" variant="ghost" title={tc('edit')}>
           <PencilIcon />
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PencilIcon /> 编辑费率卡 - {card.name}
+            <PencilIcon /> {t('editTitle', { name: card.name })}
           </DialogTitle>
         </DialogHeader>
         <RateCardForm form={form} onSubmit={onSubmit} formId="rc-edit-form" isEdit />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="rc-edit-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}保存
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('save')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -266,6 +278,8 @@ function RateCardForm({
   formId: string;
   isEdit?: boolean;
 }) {
+  const t = useTranslations('rateCards');
+  const tc = useTranslations('common');
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -280,8 +294,8 @@ function RateCardForm({
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="rc-name">名称</FieldLabel>
-              <Input id="rc-name" placeholder="例如 标准版 / 8 折版" {...field} />
+              <FieldLabel htmlFor="rc-name">{tc('name')}</FieldLabel>
+              <Input id="rc-name" placeholder={t('namePlaceholder')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -289,7 +303,7 @@ function RateCardForm({
         <NumberField
           control={form.control}
           name="coefficient"
-          label="系数（0.001-9.999，1 = 原价）"
+          label={t('coefficientLabel')}
           id="rc-coef"
           step="0.05"
           min={0.001}
@@ -299,8 +313,8 @@ function RateCardForm({
           name="description"
           render={({ field }: { field: { value: string } }) => (
             <Field>
-              <FieldLabel htmlFor="rc-desc">说明</FieldLabel>
-              <Input id="rc-desc" placeholder="可选" {...field} />
+              <FieldLabel htmlFor="rc-desc">{t('descriptionLabel')}</FieldLabel>
+              <Input id="rc-desc" placeholder={tc('optional')} {...field} />
             </Field>
           )}
         />
@@ -310,7 +324,7 @@ function RateCardForm({
             name="status"
             render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
               <Field>
-                <FieldLabel>状态</FieldLabel>
+                <FieldLabel>{tc('status')}</FieldLabel>
                 <Select
                   value={String(field.value)}
                   onValueChange={(v) => field.onChange(Number(v))}
@@ -319,8 +333,8 @@ function RateCardForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">启用</SelectItem>
-                    <SelectItem value="1">禁用</SelectItem>
+                    <SelectItem value="0">{tc('enabled')}</SelectItem>
+                    <SelectItem value="1">{tc('disabled')}</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>

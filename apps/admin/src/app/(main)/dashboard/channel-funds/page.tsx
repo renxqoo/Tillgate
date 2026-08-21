@@ -3,6 +3,7 @@ import { fetchAdminList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
 import { firstParam, parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
 import { WalletIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { ChannelFundsClient } from "./_components/channel-funds-content";
 import type { AdminChannelFundRow, ChannelOption } from "@ai-gateway/api-client/types";
@@ -17,6 +18,7 @@ export default async function ChannelFundsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  const t = await getTranslations("channelFunds");
   const { q, page } = parseListSearchParams(sp);
   const channelIdRaw = firstParam(sp.channelId);
   const channelId = channelIdRaw ? Number(channelIdRaw) : undefined;
@@ -42,11 +44,11 @@ export default async function ChannelFundsPage({
 
   return (
     <ListPage
-      title="渠道资金"
+      title={t("title")}
       icon={<WalletIcon className="size-5 text-muted-foreground" />}
-      description="渠道进货额度入货与调账（含支付订单号、凭证截图，可追溯）"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索订单号 / 备注 / 渠道名"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, channelId: channelIdRaw, type }}
       error={error}
