@@ -68,14 +68,8 @@ export * from "./components/ui/tooltip";
 
 // ── Theme system ───────────────────────────────────────────────────────────
 export * from "./lib/preferences/theme";
-export * from "./lib/preferences/layout";
-export * from "./lib/preferences/preferences-config";
-export * from "./lib/preferences/preference-runtime";
-export * from "./lib/preferences/preferences-storage";
 export * from "./lib/preferences/theme-utils";
 
-export * from "./stores/preferences/preferences-store";
-export * from "./stores/preferences/preferences-provider";
 
 export * from "./scripts/theme-boot";
 export * from "./server/server-actions";
@@ -83,6 +77,5 @@ export * from "./server/server-actions";
 // ── Fonts ──────────────────────────────────────────────────────────────────
 export * from "./lib/fonts/registry";
 
-// ── Cookie / local-storage client helpers ──────────────────────────────────
+// ── Cookie client helper ───────────────────────────────────────────────────
 export * from "./lib/cookie.client";
-export * from "./lib/local-storage.client";

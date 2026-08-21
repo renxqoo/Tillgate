@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 
 import type { Metadata } from "next";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getTranslations } from "next-intl/server";
 
 import { Toaster } from "@ai-gateway/ui/components/ui/sonner";
 import { TooltipProvider } from "@ai-gateway/ui/components/ui/tooltip";
 import { fontVars } from "@ai-gateway/ui/lib/fonts/registry";
-import { PREFERENCE_DEFAULTS } from "@ai-gateway/ui/lib/preferences/preferences-config";
+import { DEFAULT_LOCALE, htmlLang, isLocale } from "@ai-gateway/api-client/i18n";
 import { getThemeBootCode } from "@ai-gateway/ui/scripts/theme-boot";
-import { PreferencesStoreProvider } from "@ai-gateway/ui/stores/preferences/preferences-provider";
 
 import { APP_CONFIG } from "@/config/app-config";
 
@@ -17,28 +18,25 @@ import { cn } from "@ai-gateway/ui";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
-export const metadata: Metadata = {
-  title: {
-    default: `${APP_CONFIG.name} — 用户面板`,
-    template: `%s — ${APP_CONFIG.name}`,
-  },
-  description: APP_CONFIG.meta.description,
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return {
+    title: {
+      default: `${APP_CONFIG.name} — ${t("title")}`,
+      template: `%s — ${APP_CONFIG.name}`,
+    },
+    description: t("description"),
+  };
+}
 
 const bootCode = getThemeBootCode();
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  const { theme_mode, content_layout, navbar_style, sidebar_variant, sidebar_collapsible, font } =
-    PREFERENCE_DEFAULTS;
+export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const locale = await getLocale();
   return (
     <html
-      lang="zh-CN"
-      data-theme-mode={theme_mode}
-      data-content-layout={content_layout}
-      data-navbar-style={navbar_style}
-      data-sidebar-variant={sidebar_variant}
-      data-sidebar-collapsible={sidebar_collapsible}
-      data-font={font}
+      lang={htmlLang(isLocale(locale) ? locale : DEFAULT_LOCALE)}
+      data-theme-mode="light"
       suppressHydrationWarning className={cn("font-sans", geist.variable)}
     >
       <head>
@@ -46,10 +44,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       </head>
       <body className={`${fontVars} min-h-screen antialiased`} suppressHydrationWarning>
         <TooltipProvider>
-          <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
+          <NextIntlClientProvider>
             {children}
             <Toaster />
-          </PreferencesStoreProvider>
+          </NextIntlClientProvider>
         </TooltipProvider>
       </body>
     </html>

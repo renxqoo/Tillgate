@@ -54,7 +54,7 @@ src/
 │           └── transactions/                     ← 完整流水
 ├── components/shell/
 │   ├── sidebar/{app-sidebar,nav-main,nav-user,support-card}.tsx
-│   ├── header/{account-switcher,layout-controls,theme-switcher}.tsx
+│   ├── header/{account-switcher,theme-switcher,locale-switcher}.tsx
 │   └── copy-button.tsx
 └── lib/
     ├── server/get-user.ts                        ← requireMe + userFromMe

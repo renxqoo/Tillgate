@@ -3,12 +3,11 @@
 import Link from "next/link";
 
 import { ShieldCheck } from "lucide-react";
-import { useShallow } from "zustand/react/shallow";
+import { useTranslations } from "next-intl";
 
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@ai-gateway/ui/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
 import { buildSidebarItems } from "@/navigation/sidebar/sidebar-items";
-import { usePreferencesStore } from "@ai-gateway/ui/stores/preferences/preferences-provider";
 
 import { NavMain } from "@ai-gateway/ui/components/shell/sidebar/nav-main";
 import { NavUser } from "./nav-user";
@@ -23,21 +22,18 @@ export function AppSidebar({
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { readonly user: SidebarUser }) {
-  const { sidebarVariant, sidebarCollapsible, isSynced } = usePreferencesStore(
-    useShallow((s) => ({
-      sidebarVariant: s.values.sidebar_variant,
-      sidebarCollapsible: s.values.sidebar_collapsible,
-      isSynced: s.isSynced,
-    })),
-  );
+  const t = useTranslations("nav");
 
-  const variant = isSynced ? sidebarVariant : props.variant;
-  const collapsible = isSynced ? sidebarCollapsible : props.collapsible;
 
-  const items = buildSidebarItems();
+  // sidebar-items 存 i18n key，这里解析成当前语言文案再交给共享 NavMain 渲染
+  const items = buildSidebarItems().map((group) => ({
+    ...group,
+    label: group.label ? t(group.label) : undefined,
+    items: group.items.map((item) => ({ ...item, title: t(item.title) })),
+  }));
 
   return (
-    <Sidebar {...props} variant={variant} collapsible={collapsible}>
+    <Sidebar {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -45,13 +41,13 @@ export function AppSidebar({
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5 h-10"
             >
-              <Link prefetch={false} href="/dashboard" aria-label="管理后台首页">
+              <Link prefetch={false} href="/dashboard" aria-label={t("home")}>
                 <div className="flex aspect-square size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
                   <ShieldCheck className="size-4" />
                 </div>
                 <div className="flex flex-col gap-0 leading-tight">
                   <span className="font-semibold text-sm">{APP_CONFIG.name}</span>
-                  <span className="text-[10px] text-muted-foreground">运营后台</span>
+                  <span className="text-[10px] text-muted-foreground">{t("subtitle")}</span>
                 </div>
               </Link>
             </SidebarMenuButton>
