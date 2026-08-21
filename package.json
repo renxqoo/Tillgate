@@ -2,7 +2,7 @@
   "name": "ai-gateway",
   "version": "0.1.0",
   "private": true,
-  "description": "AI Gateway — 多供应商 LLM API ",
+  "description": "AI Gateway（TokenLens）—— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪",
   "workspaces": [
     "apps/*",
     "packages/*"
