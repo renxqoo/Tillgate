@@ -42,7 +42,7 @@ function buildConfig(overrides: Partial<ClientApiConfig> = {}): ClientApiConfig 
   return {
     DATABASE_URL: 'postgres://unused',
     REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
-    PORT: 0,
+    CLIENT_API_PORT: 0,
     DB_POOL_MAX: 5,
     CLIENT_CURRENCY: 'CNY',
     JWT_SECRET,
@@ -58,7 +58,7 @@ function buildConfig(overrides: Partial<ClientApiConfig> = {}): ClientApiConfig 
     LOGIN_IP_FAILURE_WINDOW_S: 300,
     TRUSTED_PROXY_HOPS: 0,
     CORS_ORIGINS: '',
-    BODY_LIMIT_BYTES: 65_536,
+    CLIENT_BODY_LIMIT_BYTES: 65_536,
     TOPUP_MIN: '1',
     TOPUP_MAX: '10000',
     TOPUP_EXCHANGE_RATE: '1',
@@ -89,7 +89,7 @@ async function buildApp(config = buildConfig()) {
       jwtSecret: config.JWT_SECRET,
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       corsOrigins: [],
-      bodyLimitBytes: config.BODY_LIMIT_BYTES,
+      bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
     }),
     assembly,
   };
@@ -395,7 +395,7 @@ describe('协议信封', () => {
   });
 
   it('超大请求体 413 提前拒绝', async () => {
-    const { app } = await buildApp(buildConfig({ BODY_LIMIT_BYTES: 100 }));
+    const { app } = await buildApp(buildConfig({ CLIENT_BODY_LIMIT_BYTES: 100 }));
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'content-length': '5000' },
