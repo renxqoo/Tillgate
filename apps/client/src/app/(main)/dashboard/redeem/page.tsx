@@ -1,11 +1,12 @@
 import { GiftIcon } from 'lucide-react';
+import { signedAmountTone } from '@ai-gateway/ui/lib/money-tone';
 
 import { fmtBalance, fmtDateTime, type RedeemHistoryItem } from '@ai-gateway/api-client';
 import { fetchUserList } from '@ai-gateway/api-client/list';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { parseListSearchParams } from '@ai-gateway/ui/lib/list-query';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 
 import Link from 'next/link';
 
@@ -21,7 +22,8 @@ interface PageProps {
 
 export default async function RedeemPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const t = await getTranslations('redeem');
+  const locale = await getLocale();
+const t = await getTranslations('redeem');
   const { page, sortBy, order } = parseListSearchParams(sp);
   const {
     rows: history,
@@ -40,7 +42,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
       header: t('colValue'),
       align: 'right',
       render: (r) => (
-        <span className="text-right font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+        <span className={'text-right font-medium tabular-nums ' + signedAmountTone(r.amount, locale)}>
           +¥{fmtBalance(r.amount)}
         </span>
       ),
