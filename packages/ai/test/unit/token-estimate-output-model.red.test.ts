@@ -25,7 +25,8 @@ describe('estimateOutputTokens 应与输入侧同口径（BPE 主路径，传 mo
   const mixedText = '总结以下代码并给出重构建议：function foo(a,b){return a+b;} 请用中文回答。'.repeat(10);
 
   for (const [name, text] of [['CJK 文本', cjkText], ['代码混合文本', mixedText]] as const) {
-    it(`${name}：同一文本 content 在输入侧与输出侧的估算应相等（单一估算器）`, () => {
+    // 首个触发的用例要付 BPE 分词器一次性加载成本——CI 慢机上可超 5s 默认超时
+    it(`${name}：同一文本 content 在输入侧与输出侧的估算应相等（单一估算器）`, { timeout: 30_000 }, () => {
       const inputSide = estimateInputTokens(
         { messages: [{ role: 'user', content: text }] },
         { model: 'gpt-4o' },
