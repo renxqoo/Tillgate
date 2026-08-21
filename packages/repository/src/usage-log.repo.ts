@@ -583,7 +583,7 @@ export class UsageLogRepository {
       cost: string;
     }>
   > {
-    const day = sql`to_char(${usageLogs.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+    const day = sql`to_char(${usageLogs.createdAt} at time zone 'Asia/Shanghai', 'YYYY-MM-DD')`;
     const conditions = [eq(usageLogs.userId, input.userId)];
     if (input.from) conditions.push(gte(usageLogs.createdAt, input.from));
     if (input.to) conditions.push(lte(usageLogs.createdAt, input.to));
