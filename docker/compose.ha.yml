@@ -1,0 +1,130 @@
+# 单机 HA 形态（阶段二·容器级）：redis 主从 + sentinel×3 自动切换、应用双副本、PG WAL 归档。
+# 用法：docker compose -f docker/compose.yml -f docker/compose.ha.yml up -d --build
+# 边界（诚实声明）：单机形态防「组件故障」（进程崩/容器死/OOM/发布事故），
+# 不防「机器级故障」（整机死/磁盘损坏）——后者走 docs/ha-deployment.md 的双机升级路径
+# 与 WAL 异机归档。双机时本文件的容器拆到两台机即可（配置零改动）。
+#
+# 关键语义：
+# - 应用经 REDIS_SENTINELS 走 sentinel 发现主库（core 的 redis-client 工厂原生支持）；
+#   REDIS_URL 仅承载密码/db 凭证。
+# - sentinel quorum=2/3：主库失联 5s 判死，15s 内完成切换，应用自动跟随新主。
+# - nginx upstream 写的是服务名：docker DNS 对多副本返回多条 A 记录，
+#   nginx 启动时全部纳入 + 被动健康检查（max_fails）摘除故障副本。
+
+services:
+  # ── Redis 主从 + sentinel 仲裁 ──────────────────────────────
+  redis:
+    # 主库（沿用原服务名：REDIS_URL 凭证指向它；实际路由由 sentinel 接管）
+    command: ['redis-server', '--appendonly', 'yes', '--requirepass', '${REDIS_PASSWORD:-root123}']
+
+  redis-replica:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+      - --requirepass
+      - '${REDIS_PASSWORD:-root123}'
+      - --replicaof
+      - redis
+      - '6379'
+      - --masterauth
+      - '${REDIS_PASSWORD:-root123}'
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'redis-cli -a ${REDIS_PASSWORD:-root123} info replication | grep -q role:slave',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  sentinel-1: &sentinel
+    image: redis:7-alpine
+    entrypoint:
+      - sh
+      - -c
+      - |
+        cat > /tmp/sentinel.conf <<EOF
+        port 26379
+        sentinel resolve-hostnames yes
+        sentinel announce-hostnames yes
+        sentinel monitor mymaster redis 6379 2
+        sentinel auth-pass mymaster ${REDIS_PASSWORD:-root123}
+        sentinel down-after-milliseconds mymaster 5000
+        sentinel failover-timeout mymaster 15000
+        sentinel parallel-syncs mymaster 1
+        EOF
+        exec redis-server /tmp/sentinel.conf --sentinel
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  sentinel-2: *sentinel
+  sentinel-3: *sentinel
+
+  # ── 应用双副本：任一副本故障，nginx 被动摘除，另一副本继续服务 ──
+  gateway:
+    deploy:
+      replicas: 2
+    environment:
+      REDIS_SENTINELS: 'sentinel-1:26379,sentinel-2:26379,sentinel-3:26379'
+      REDIS_SENTINEL_NAME: mymaster
+
+  client-api:
+    deploy:
+      replicas: 2
+    environment:
+      REDIS_SENTINELS: 'sentinel-1:26379,sentinel-2:26379,sentinel-3:26379'
+      REDIS_SENTINEL_NAME: mymaster
+
+  admin-api:
+    deploy:
+      replicas: 2
+    environment:
+      REDIS_SENTINELS: 'sentinel-1:26379,sentinel-2:26379,sentinel-3:26379'
+      REDIS_SENTINEL_NAME: mymaster
+
+  trace-receiver:
+    deploy:
+      replicas: 2
+    environment:
+      REDIS_SENTINELS: 'sentinel-1:26379,sentinel-2:26379,sentinel-3:26379'
+      REDIS_SENTINEL_NAME: mymaster
+
+  # worker 单副本：结算认领 SKIP LOCKED 多实例安全，但单机双副本无增益
+  # （批处理吞吐由 batchSize 决定）；双机形态可 scale worker=2 分摊
+  worker:
+    environment:
+      REDIS_SENTINELS: 'sentinel-1:26379,sentinel-2:26379,sentinel-3:26379'
+      REDIS_SENTINEL_NAME: mymaster
+
+  console-client:
+    deploy:
+      replicas: 2
+  console-admin:
+    deploy:
+      replicas: 2
+
+  # ── PG：WAL 归档卷（本地卷 + 手册 cron 推对象存储 = 盘坏时 RPO 分钟级）──
+  postgres:
+    command:
+      - postgres
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=test ! -f /archive/%f && cp %p /archive/%f
+      - -c
+      - archive_timeout=300
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - pg-archive:/archive
+
+volumes:
+  pg-archive:

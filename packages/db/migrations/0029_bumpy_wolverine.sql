@@ -1,0 +1,1 @@
+ALTER TABLE "billing_requests" ADD COLUMN "trace_parent" varchar(55);

@@ -1,0 +1,37 @@
+{
+  "name": "@ai-gateway/client-api",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "用户面 app：注册/登录会话、API Key 管理、钱包、兑换码、在线充值——账户域业务在本 app services，资金动词来自 @ai-gateway/service wallet",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --conditions=development --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run",
+    "test:e2e": "bun x vitest run --config vitest.config.e2e.ts",
+    "lint": "bun x oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
+    "@ai-gateway/identity-core": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/service": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "ioredis": "^5.8.0",
+    "jose": "^6.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "drizzle-orm": "^0.45.2",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

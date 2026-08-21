@@ -1,0 +1,36 @@
+{
+  "name": "@ai-gateway/worker",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "结算 worker app：认领/结算/回收循环——业务全部来自 @ai-gateway/service 的 settlement 域，本 app 只是定时驱动壳",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --conditions=development --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run",
+    "lint": "bun x oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/ai": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
+    "@ai-gateway/wallet": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.8.0",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

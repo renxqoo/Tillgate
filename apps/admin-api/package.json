@@ -1,0 +1,43 @@
+{
+  "name": "@ai-gateway/admin-api",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "管理面 app：管理员会话/2FA、供应商/渠道/模型绑定/费率卡（计费三轴）、模型目录——SQL 全部下沉 @ai-gateway/repository，账户域业务在本 app services",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --conditions=development --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run",
+    "lint": "bun x oxlint",
+    "test:e2e": "bun x vitest run --config vitest.config.e2e.ts",
+    "test:coverage": "bun x vitest run --coverage",
+    "models-dev:refresh": "bun scripts/fetch-models-dev.mts"
+  },
+  "dependencies": {
+    "@ai-gateway/ai": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "@ai-gateway/identity": "workspace:*",
+    "@ai-gateway/identity-core": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/service": "workspace:*",
+    "@ai-gateway/tracing": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "ioredis": "^5.8.0",
+    "jose": "^6.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "drizzle-orm": "^0.45.2",
+    "typescript": "^5.9.0",
+    "undici": "^7.18.0",
+    "vitest": "^4.1.10"
+  }
+}

@@ -1,0 +1,48 @@
+# deps
+node_modules/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# next
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+logs/
+
+# docker
+docker/data/
+
+# redis 持久化数据（运行时产物，勿入库）
+*.rdb
+appendonlydir/
+*.aof
+
+# misc
+.DS_Store
+coverage/
+.turbo/
+
+# zcode 工具产物
+.zcode/
+
+# 渠道进货凭证截图本地存储（运行时产物，勿入库）
+apps/admin-api/data/
+
+# 安全审计运行产物（账号清单/发现/修复记录，仅本地，不入库）
+scripts/security-audit/ACCOUNTS*.md
+scripts/security-audit/FINDINGS-*.md
+scripts/security-audit/FIXES.md
+scripts/security-audit/ENDPOINTS.md
+scripts/security-audit/TEST-COVERAGE.md
+docker/nginx/certs/
+.pnpm-store

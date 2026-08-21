@@ -1,0 +1,53 @@
+{
+  "name": "@ai-gateway/wallet",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "通用资金钱包（业务无关两阶段账本）：authorize 冻结 → settle 实扣 / release 释放 + credit/refund 幂等入退——可整体目录拎出独立仓复用（电商/内容平台同构）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./migrations": {
+      "development": "./src/migrations.ts",
+      "types": "./src/migrations.ts",
+      "import": "./dist/migrations.js"
+    },
+    "./maintenance": {
+      "development": "./src/maintenance.ts",
+      "types": "./src/maintenance.ts",
+      "import": "./dist/maintenance.js"
+    },
+    "./testing": {
+      "development": "./src/testing.ts",
+      "types": "./src/testing.ts",
+      "import": "./dist/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/maintenance.ts src/migrations.ts src/testing.ts src/migrate-cli.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "migrate": "node ./dist/migrate-cli.js",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run",
+    "test:coverage": "bun x vitest run --coverage"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

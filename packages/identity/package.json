@@ -1,0 +1,42 @@
+{
+  "name": "@ai-gateway/identity",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "会话/JWT/鉴权中间件 + 密码哈希 + 登录限流（client-api 与 admin-api 共用，双身份物理隔离）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run --passWithNoTests",
+    "lint": "bun x oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "@ai-gateway/identity-core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.6.0",
+    "ioredis": "^6.0.0",
+    "jose": "^5.9.0",
+    "nodemailer": "^6.10.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "@types/pg": "^8.20.0",
+    "pg": "^8.13.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

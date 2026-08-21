@@ -1,0 +1,36 @@
+{
+  "name": "@ai-gateway/gateway",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "纯网关 app：HTTP 适配 + 推理管线编排 + 装配根——业务全部来自 @ai-gateway/service",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --conditions=development --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run",
+    "lint": "bun x oxlint",
+    "test:e2e": "bun x vitest run --config vitest.config.e2e.ts"
+  },
+  "dependencies": {
+    "@ai-gateway/ai": "workspace:*",
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/domain": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "@ai-gateway/repository": "workspace:*",
+    "@ai-gateway/service": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0",
+    "ioredis": "^5.8.0",
+    "jose": "^6.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

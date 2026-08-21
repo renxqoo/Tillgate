@@ -1,0 +1,31 @@
+{
+  "name": "@ai-gateway/api-client",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "admin-api 调用封装（apiFetch / ApiError / 类型 / formatters / session）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./formatters": "./src/formatters.ts",
+    "./list": "./src/list.ts",
+    "./types": "./src/types.ts",
+    "./session": "./src/session.ts"
+  },
+  "scripts": {
+    "lint": "bun x oxlint",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run"
+  },
+  "dependencies": {
+    "@ai-gateway/http": "workspace:*",
+    "next": "^16.3.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

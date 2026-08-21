@@ -1,0 +1,35 @@
+{
+  "name": "@ai-gateway/identity-core",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "通用身份内核（业务无关）：凭据/统一挑战（验证码一次性消费）/OAuth 绑定/TOTP+恢复码/会话吊销锚点——不变量全部下沉 DB，可整体目录拎出独立仓复用（电商/内容平台同构）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/migrate-cli.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run",
+    "provision": "node ./dist/migrate-cli.js"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

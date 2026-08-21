@@ -1,0 +1,32 @@
+{
+  "name": "@ai-gateway/repository",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "数据访问层独立包：唯一允许出现 SQL 的地方——意图化原子操作（守卫 UPDATE / SKIP LOCKED / CAS），只依赖 @ai-gateway/db 与 drizzle-orm",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run"
+  },
+  "dependencies": {
+    "@ai-gateway/db": "workspace:*",
+    "drizzle-orm": "^0.45.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

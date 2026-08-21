@@ -1,0 +1,67 @@
+{
+  "name": "ai-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Gateway — 多供应商 LLM API ",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bunx turbo run dev --filter @ai-gateway/gateway --filter @ai-gateway/worker --filter @ai-gateway/client-api --filter @ai-gateway/admin-api",
+    "dev:all": "bunx turbo dev",
+    "regress": "bunx turbo typecheck lint --force --filter=!@ai-gateway/admin --filter=!@ai-gateway/client && turbo test --concurrency=1 --force --filter=!@ai-gateway/admin --filter=!@ai-gateway/client",
+    "dev:client": "bunx turbo run dev --filter @ai-gateway/client",
+    "dev:admin": "bunx turbo run dev --filter @ai-gateway/admin",
+    "dev:client-api": "bunx turbo run dev --filter @ai-gateway/client-api",
+    "dev:admin-api": "bunx turbo run dev --filter @ai-gateway/admin-api",
+    "dev:gateway": "bunx turbo run dev --filter @ai-gateway/gateway",
+    "dev:worker": "bunx turbo run dev --filter @ai-gateway/worker",
+    "build": "bunx turbo build",
+    "typecheck": "bunx turbo typecheck",
+    "test": "bunx turbo test --concurrency=1",
+    "test:real": "bun run --filter @ai-gateway/ai test:real",
+    "lint": "bunx turbo lint",
+    "format": "bun x oxfmt --write .",
+    "format:check": "bun x oxfmt --check .",
+    "prepare": "bun x husky",
+    "db:generate": "bun run --filter @ai-gateway/db db:generate",
+    "db:migrate": "bun run --filter @ai-gateway/identity-core provision && bun run --filter @ai-gateway/ledger-core provision && bun run --filter @ai-gateway/db db:migrate && bun run --filter @ai-gateway/wallet migrate",
+    "db:studio": "bun run --filter @ai-gateway/db db:studio",
+    "docker:up": "docker compose -f docker/compose.yml up -d",
+    "docker:up:obs": "docker compose -f docker/compose.yml --profile obs up -d"
+  },
+  "devDependencies": {
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@ai-gateway/http": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "husky": "^9.1.7",
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0",
+    "pg": "^8.22.0",
+    "turbo": "^2.10.8"
+  },
+  "overrides": {
+    "nanoid": "3.3.18"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "packageManager": "bun@1.4.0",
+  "trustedDependencies": [
+    "esbuild",
+    "sharp",
+    "msgpackr-extract",
+    "protobufjs",
+    "unrs-resolver"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renxqoo/TokenLens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/renxqoo/TokenLens/issues"
+  }
+}

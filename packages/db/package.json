@@ -1,0 +1,44 @@
+{
+  "name": "@ai-gateway/db",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drizzle schema + migrations（表定义单一真源）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": {
+      "development": "./src/schema/index.ts",
+      "types": "./src/schema/index.ts",
+      "import": "./dist/schema/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/schema/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run --passWithNoTests",
+    "db:generate": "bun x drizzle-kit generate",
+    "db:migrate": "bun x drizzle-kit migrate",
+    "db:studio": "bun x drizzle-kit studio",
+    "lint": "bun x oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/ledger-core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "@ai-gateway/core": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.15.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

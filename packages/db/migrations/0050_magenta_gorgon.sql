@@ -1,0 +1,2 @@
+ALTER TABLE "billing_requests" DROP CONSTRAINT "billing_requests_status_ck";--> statement-breakpoint
+ALTER TABLE "billing_requests" ADD CONSTRAINT "billing_requests_status_ck" CHECK ("billing_requests"."status" in ('authorized','in_flight','settlement_pending','processing','retry_wait','settled','released','dead'));

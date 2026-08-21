@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+# migrate：一次性迁移任务（postgres 就绪后执行并退出）
+# 构建段：全 bun；运行段：bun 直跑四个迁移 CLI（dist + drizzle-kit）
+FROM oven/bun:1.4-alpine AS builder
+WORKDIR /repo
+COPY package.json bun.lock tsconfig.base.json ./
+COPY packages ./packages
+RUN bun install --frozen-lockfile
+RUN bun run --filter @ai-gateway/wallet build && bun run --filter @ai-gateway/identity-core build && bun run --filter @ai-gateway/ledger-core build
+
+FROM oven/bun:1.4-alpine AS runtime
+WORKDIR /repo
+COPY --from=builder /repo/packages ./packages
+CMD ["sh", "-c", "bun packages/identity-core/dist/migrate-cli.js && bun packages/ledger-core/dist/migrate-cli.js && (cd packages/db && bun node_modules/.bin/drizzle-kit migrate) && bun packages/wallet/dist/migrate-cli.js"]

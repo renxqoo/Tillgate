@@ -1,0 +1,36 @@
+'use client';
+
+import { DownloadIcon } from 'lucide-react';
+
+import { Button } from '@ai-gateway/ui/components/ui/button';
+
+import type { AdminUserRow } from '@ai-gateway/api-client/types';
+
+export function UsersExport({ users }: { readonly users: ReadonlyArray<AdminUserRow> }) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        const lines = [
+          'id\tsubject\temail\tdisplayName\tstatus\taccountType\tsettledBalance\treservedBalance\tavailableBalance\tcreditLimit\tdailySpendLimit\trateCard',
+        ];
+        for (const u of users) {
+          lines.push(
+            `${u.id}\t${u.subject}\t${u.email ?? ''}\t${u.displayName ?? ''}\t${u.status}\t${u.isEnterprise ? '企业' : '个人'}\t${u.balance}\t${u.reservedBalance}\t${u.availableBalance}\t${u.creditLimit}\t${u.dailySpendLimit ?? ''}\t${u.rateCardName ?? ''}`,
+          );
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/tab-separated-values' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `users-${new Date().toISOString().slice(0, 10)}.tsv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }}
+    >
+      <DownloadIcon />
+      Export
+    </Button>
+  );
+}

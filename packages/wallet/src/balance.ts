@@ -1,0 +1,64 @@
+/** balance / accounts：查询（无户返回 '0'；accounts 列出用户全部币种摘要） */
+import { and, asc, eq } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { UnknownCurrencyError } from './errors';
+import { normalizeAmount } from './money';
+import { walletAccounts } from './schema';
+import {
+  currencySchema,
+  parseWithWalletError,
+  userIdSchema,
+  type ValidationGuards,
+} from './validation';
+import { DEFAULT_CURRENCY } from './types';
+import type { AccountSummary } from './types';
+
+export async function balance(
+  db: NodePgDatabase,
+  userId: number,
+  currency: string = DEFAULT_CURRENCY,
+  guards?: ValidationGuards,
+): Promise<string> {
+  parseWithWalletError(userIdSchema, userId, 'userId');
+  parseWithWalletError(currencySchema, currency, 'currency');
+  if (guards?.currencies && !guards.currencies.has(currency)) {
+    throw new UnknownCurrencyError(currency, [...guards.currencies]);
+  }
+  const [row] = await db
+    .select({ balance: walletAccounts.balance })
+    .from(walletAccounts)
+    .where(
+      and(
+        eq(walletAccounts.kind, 'user'),
+        eq(walletAccounts.userId, userId),
+        eq(walletAccounts.currency, currency),
+      ),
+    );
+  return row ? normalizeAmount(row.balance) : '0';
+}
+
+export async function accounts(
+  db: NodePgDatabase,
+  userId: number,
+  guards?: ValidationGuards,
+): Promise<AccountSummary[]> {
+  parseWithWalletError(userIdSchema, userId, 'userId');
+  const rows = await db
+    .select({
+      currency: walletAccounts.currency,
+      balance: walletAccounts.balance,
+      inFlight: walletAccounts.inFlight,
+      creditLimit: walletAccounts.creditLimit,
+    })
+    .from(walletAccounts)
+    .where(and(eq(walletAccounts.kind, 'user'), eq(walletAccounts.userId, userId)))
+    .orderBy(asc(walletAccounts.currency));
+  return rows
+    .filter((row) => !guards?.currencies || guards.currencies.has(row.currency))
+    .map((row) => ({
+      currency: row.currency,
+      balance: normalizeAmount(row.balance),
+      inFlight: normalizeAmount(row.inFlight),
+      creditLimit: normalizeAmount(row.creditLimit),
+    }));
+}

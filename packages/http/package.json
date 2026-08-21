@@ -1,0 +1,42 @@
+{
+  "name": "@ai-gateway/http",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hono REST 共享组件：统一错误、校验、分页、密钥生成、审计、Redis/网关缓存失效（admin-api 与 client-api 共用）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./network": {
+      "development": "./src/network.ts",
+      "types": "./src/network.ts",
+      "import": "./dist/network.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts src/network.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "test": "bun x vitest run --passWithNoTests",
+    "lint": "bun x oxlint"
+  },
+  "dependencies": {
+    "@ai-gateway/core": "workspace:*",
+    "@ai-gateway/db": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0",
+    "ioredis": "^6.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  }
+}

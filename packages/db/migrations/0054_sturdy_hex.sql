@@ -1,0 +1,1 @@
+ALTER TABLE "generation_tasks" ADD COLUMN "expires_at" timestamp with time zone NOT NULL;
