@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Db } from '@ai-gateway/repository';
 import { createRepositories } from '@ai-gateway/repository';
+import { localeFromContext, localizeMessage, localizedSpecMessage } from '@ai-gateway/http';
 import { AppError, mapErrorToHttp } from './http/error-map.js';
 import { ZodError } from 'zod';
 import { sessionMiddleware, type SessionEnv } from './middleware/session.js';
@@ -47,9 +48,10 @@ export function createApp(deps: AppDeps) {
   const session = sessionMiddleware(db, deps.jwtSecret, deps.revocationStore);
 
   app.onError((error, c) => {
+    const locale = localeFromContext(c);
     if (error instanceof ZodError) {
       return c.json(
-        { error: { code: 'invalid_request', message: 'Invalid request parameters' } },
+        { error: { code: 'invalid_request', message: localizeMessage('VALIDATION_ERROR', locale, 'Invalid request parameters') } },
         400,
       );
     }
@@ -60,12 +62,12 @@ export function createApp(deps: AppDeps) {
       for (const [key, value] of Object.entries(error.headers)) c.header(key, value);
     }
     return c.json(
-      { error: { code: mapped.code, message: mapped.message } },
+      { error: { code: mapped.code, message: localizeMessage(mapped.code, locale, mapped.message) } },
       mapped.status as ContentfulStatusCode,
     );
   });
 
-  app.notFound((c) => c.json({ error: { code: 'not_found', message: 'path not found' } }, 404));
+  app.notFound((c) => c.json({ error: { code: 'not_found', message: localizedSpecMessage('not_found', localeFromContext(c), 'path not found') } }, 404));
 
   app.use('*', corsPreflight(deps.corsOrigins));
   app.use('*', securityHeaders);

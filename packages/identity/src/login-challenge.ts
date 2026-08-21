@@ -46,7 +46,7 @@ export interface LoginCodeChallenger {
   /** 发码（含冷却与投递；成功返回 challengeId） */
   issue(
     ns: LoginCodeNamespace,
-    input: { email: string; purpose?: LoginCodePurpose; payload?: Record<string, string>; ip: string },
+    input: { email: string; purpose?: LoginCodePurpose; payload?: Record<string, string>; ip: string; locale?: 'en' | 'zh' },
   ): Promise<string>;
   /** 验码：expectEmail 给定时必须与挑战目标一致（跨 kind/跨主体重放在此拦截） */
   verify(
@@ -61,9 +61,10 @@ export function createLoginCodeChallenger(
   db: AnyPgDatabase,
   options: { mailer: Mailer | null },
 ): LoginCodeChallenger {
-  // 邮件正文携带请求 IP：按收件邮箱键控（同邮箱并发 issue 被冷却期结构性挡住，
-  // 键控无碰撞——共享单个可变串会把 A 的 IP 发进 B 的邮件，隐私串号）
+  // 邮件正文携带请求 IP 与语言：按收件邮箱键控（同邮箱并发 issue 被冷却期
+  // 结构性挡住，键控无碰撞——共享单个可变串会把 A 的 IP 发进 B 的邮件，隐私串号）
   const deliverIps = new Map<string, string>();
+  const deliverLocales = new Map<string, 'en' | 'zh'>();
   const identity: Identity = createIdentity(db, {
     identifiers: ['email'],
     providers: [],
@@ -79,9 +80,10 @@ export function createLoginCodeChallenger(
         if (!options.mailer) throw new Error('SMTP mailer not configured');
         const ip = deliverIps.get(to) ?? '';
         try {
-          await options.mailer.sendLoginCode(to, code, { ip });
+          await options.mailer.sendLoginCode(to, code, { ip, locale: deliverLocales.get(to) });
         } finally {
           deliverIps.delete(to);
+          deliverLocales.delete(to);
         }
       },
     },
@@ -91,6 +93,7 @@ export function createLoginCodeChallenger(
     async issue(ns, input) {
       const kind = kindOf(ns, input.purpose ?? 'login');
       deliverIps.set(input.email.trim().toLowerCase(), input.ip);
+      deliverLocales.set(input.email.trim().toLowerCase(), input.locale ?? 'en');
       try {
         const { challengeId } = await identity.beginChallenge({
           kind,

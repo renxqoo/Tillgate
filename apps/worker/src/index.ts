@@ -84,7 +84,7 @@ export async function startWorker(
     info: (obj: unknown, msg: string) => console.log('[worker]', msg, obj),
   };
   const notifyMailer =
-    mailerFromEnv(config, { brand: 'AI Gateway 运维告警', brandSub: 'AI GATEWAY · OPS' }) ?? undefined;
+    mailerFromEnv(config, { brand: 'AI Gateway 运维告警', brandEn: 'AI Gateway Ops Alerts', brandSub: 'AI GATEWAY · OPS' }) ?? undefined;
   const balanceLowThreshold = config.WORKER_BALANCE_LOW_THRESHOLD;
   const projectionLimiter = createSlidingWindowLimiter(redis, { failMode: 'open' });
   const settlement = createSettlementDomain({

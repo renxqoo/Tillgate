@@ -24,25 +24,29 @@ export interface MailerConfig {
 
 /** 品牌口径：管理后台与用户面板各自传入，邮件头/页脚统一 */
 export interface MailBrand {
-  /** 邮件品牌名，如「AI Gateway 管理后台」 */
+  /** 邮件品牌名（中文），如「AI Gateway 管理后台」 */
   brand: string;
+  /** 邮件品牌名（英文） */
+  brandEn: string;
   /** 头部副标题，如「AI GATEWAY · ADMIN CONSOLE」 */
   brandSub: string;
 }
 
 export const ADMIN_MAIL_BRAND: MailBrand = {
   brand: 'AI Gateway 管理后台',
+  brandEn: 'AI Gateway Admin Console',
   brandSub: 'AI GATEWAY · ADMIN CONSOLE',
 };
 
 export const USER_MAIL_BRAND: MailBrand = {
   brand: 'AI Gateway 用户面板',
+  brandEn: 'AI Gateway Console',
   brandSub: 'AI GATEWAY · CLIENT CONSOLE',
 };
 
 export interface Mailer {
-  /** 发送登录验证码（6 位数字，5 分钟有效） */
-  sendLoginCode(to: string, code: string, ctx: { ip: string }): Promise<void>;
+  /** 发送登录验证码（6 位数字，5 分钟有效）；locale 跟随触发请求（默认英文） */
+  sendLoginCode(to: string, code: string, ctx: { ip: string; locale?: 'en' | 'zh' }): Promise<void>;
   /** 通用文本邮件（告警通知等 worker 场景） */
   send(to: string, subject: string, text: string): Promise<void>;
 }
@@ -67,34 +71,53 @@ const STYLE = {
   footerP: 'color:#9ca3af;font-size:11px;line-height:1.8;margin:0;',
 } as const;
 
-/** 纯渲染（可测）：验证码邮件的 subject + text + html */
+/** 纯渲染（可测）：验证码邮件的 subject + text + html；locale 跟随触发请求（默认英文） */
 export function renderLoginCodeEmail(
   code: string,
-  ctx: { ip: string },
+  ctx: { ip: string; locale?: 'en' | 'zh' },
   mailBrand: MailBrand = ADMIN_MAIL_BRAND,
 ): { subject: string; text: string; html: string } {
-  const { brand, brandSub } = mailBrand;
-  const sentAt = new Date().toLocaleString('zh-CN', { hour12: false });
-  const subject = `【${brand}】登录验证码 ${code}`;
+  const en = ctx.locale !== 'zh';
+  const { brandSub } = mailBrand;
+  const brand = en ? mailBrand.brandEn : mailBrand.brand;
+  const sentAt = new Date().toLocaleString(en ? 'en-US' : 'zh-CN', { hour12: false });
 
-  const text = [
-    `【${brand}】`,
-    '',
-    '你正在登录，本次登录的验证码为：',
-    '',
-    `    ${code}`,
-    '',
-    '· 验证码 5 分钟内有效，连续输错 5 次将作废；',
-    '· 若非你本人操作，请立即修改密码。',
-    '',
-    `来源 IP：${ctx.ip}`,
-    `发送时间：${sentAt}`,
-    '',
-    '此邮件由系统自动发送，请勿回复。',
-  ].join('\n');
+  const subject = en ? `[${brand}] Login verification code ${code}` : `【${brand}】登录验证码 ${code}`;
+
+  const text = en
+    ? [
+        `[${brand}]`,
+        '',
+        'You are signing in. Your verification code is:',
+        '',
+        `    ${code}`,
+        '',
+        '- The code expires in 5 minutes; 5 failed attempts invalidate it.',
+        '- If this was not you, change your password immediately.',
+        '',
+        `Source IP: ${ctx.ip}`,
+        `Sent at: ${sentAt}`,
+        '',
+        'This email was sent automatically. Do not reply.',
+      ].join('\n')
+    : [
+        `【${brand}】`,
+        '',
+        '你正在登录，本次登录的验证码为：',
+        '',
+        `    ${code}`,
+        '',
+        '· 验证码 5 分钟内有效，连续输错 5 次将作废；',
+        '· 若非你本人操作，请立即修改密码。',
+        '',
+        `来源 IP：${ctx.ip}`,
+        `发送时间：${sentAt}`,
+        '',
+        '此邮件由系统自动发送，请勿回复。',
+      ].join('\n');
 
   const html = `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${en ? 'en' : 'zh-CN'}">
 <body style="margin:0;padding:0;${STYLE.pageBg}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="${STYLE.pageBg}padding:28px 12px;">
 <tr><td align="center">
@@ -106,17 +129,17 @@ export function renderLoginCodeEmail(
 </td></tr>
 
 <tr><td style="${STYLE.body}">
-  <p style="${STYLE.h1}">登录验证码</p>
-  <p style="${STYLE.p}">你正在登录${brand}，请使用以下验证码完成验证：</p>
+  <p style="${STYLE.h1}">${en ? 'Login verification code' : '登录验证码'}</p>
+  <p style="${STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to continue:` : `你正在登录${brand}，请使用以下验证码完成验证：`}</p>
   <div style="${STYLE.codeBox}"><p style="${STYLE.code}">${code}</p></div>
   <div style="${STYLE.note}">
-    <p style="${STYLE.noteP}">验证码 <strong>5 分钟内</strong>有效，连续输错 <strong>5 次</strong>将作废。</p>
+    <p style="${STYLE.noteP}">${en ? 'The code is valid for <strong>5 minutes</strong>; <strong>5</strong> failed attempts invalidate it.' : '验证码 <strong>5 分钟内</strong>有效，连续输错 <strong>5 次</strong>将作废。'}</p>
   </div>
-  <p style="${STYLE.warn}">⚠ 若非你本人操作，请立即修改密码。</p>
+  <p style="${STYLE.warn}">${en ? '⚠ If this was not you, change your password immediately.' : '⚠ 若非你本人操作，请立即修改密码。'}</p>
 </td></tr>
 
 <tr><td style="${STYLE.footer}">
-  <p style="${STYLE.footerP}">来源 IP：${ctx.ip}<br/>发送时间：${sentAt}<br/>此邮件由系统自动发送，请勿回复。</p>
+  <p style="${STYLE.footerP}">${en ? `Source IP: ${ctx.ip}<br/>Sent at: ${sentAt}<br/>This email was sent automatically. Do not reply.` : `来源 IP：${ctx.ip}<br/>发送时间：${sentAt}<br/>此邮件由系统自动发送，请勿回复。`}</p>
 </td></tr>
 
 </table>

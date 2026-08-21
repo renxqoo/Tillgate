@@ -5,7 +5,7 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
+import { parseAcceptLanguage, socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
 import type { SessionRevocationStore } from '@ai-gateway/identity';
 import { userCtxOf } from './ctx.js';
 import type { SessionEnv } from '../middleware/session.js';
@@ -72,7 +72,7 @@ export function authRoutes(
 
   app.post('/v1/auth/register', async (c) => {
     const body = registerSchema.parse(await c.req.json());
-    const result = await service.register(sysCtx(c), { ...body, ip: clientIp(c) });
+    const result = await service.register(sysCtx(c), { ...body, ip: clientIp(c), locale: parseAcceptLanguage(c.req.header('accept-language')) });
     return c.json(result, result.kind === 'success' ? 201 : 200);
   });
 
@@ -84,7 +84,7 @@ export function authRoutes(
 
   app.post('/v1/auth/login', async (c) => {
     const body = loginSchema.parse(await c.req.json());
-    const result = await service.login(sysCtx(c), { ...body, ip: clientIp(c) });
+    const result = await service.login(sysCtx(c), { ...body, ip: clientIp(c), locale: parseAcceptLanguage(c.req.header('accept-language')) });
     return c.json(result);
   });
 

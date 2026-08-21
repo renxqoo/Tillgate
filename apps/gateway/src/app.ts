@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { createRepositories, type Db } from '@ai-gateway/repository';
+import { localeFromContext, localizeMessage, localizedSpecMessage } from '@ai-gateway/http';
 import { mapErrorToHttp } from './http/error-map.js';
 import { systemContext } from '@ai-gateway/service';
 import { apiKeyMiddleware, type AuthEnv, type AuthGuards } from './middleware/api-key.js';
@@ -57,18 +58,20 @@ export function createApp(deps: AppDeps) {
 
   app.onError((error, c) => {
     const mapped = mapErrorToHttp(error);
+    const locale = localeFromContext(c);
     if (mapped.status >= 500) console.error('[gateway] internal error:', error);
     return c.json(
-      { error: { code: mapped.code, message: mapped.message } },
+      { error: { code: mapped.code, message: localizeMessage(mapped.code, locale, mapped.message) } },
       mapped.status as ContentfulStatusCode,
     );
   });
 
   app.notFound((c) => {
+    const locale = localeFromContext(c);
     if (c.req.path.startsWith('/v1/')) {
-      return c.json({ error: { code: 'not_found', message: 'path not found' } }, 404);
+      return c.json({ error: { code: 'not_found', message: localizedSpecMessage('not_found', locale, 'path not found') } }, 404);
     }
-    return c.json({ error: { code: 'not_found', message: 'not found' } }, 404);
+    return c.json({ error: { code: 'not_found', message: localizedSpecMessage('not_found', locale, 'not found') } }, 404);
   });
 
   app.use('*', corsPreflight(deps.corsOrigins ?? []));
