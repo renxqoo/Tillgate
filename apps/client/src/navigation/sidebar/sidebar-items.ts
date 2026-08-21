@@ -23,86 +23,87 @@ export interface SidebarOptions {
 }
 
 export function buildSidebarItems(opts: SidebarOptions = {}): NavGroup[] {
+  // label/title 存 i18n key（nav 命名空间），渲染处（app-sidebar）统一翻译
   const groups: NavGroup[] = [
     {
       id: 1,
-      label: '用户面板',
+      label: 'console',
       items: [
         {
           id: 'dashboard',
-          title: '仪表盘',
+          title: 'dashboard',
           url: '/dashboard',
           icon: LayoutDashboard,
         },
         {
           id: 'keys',
-          title: 'API Key',
+          title: 'keys',
           url: '/dashboard/keys',
           icon: KeyRound,
         },
         {
           id: 'api-guide',
-          title: '接口调用',
+          title: 'apiGuide',
           url: '/dashboard/api-guide',
           icon: BookOpenText,
         },
         {
           id: 'apps',
-          title: '应用',
+          title: 'apps',
           url: '/dashboard/apps',
           icon: ShieldCheck,
         },
         {
           id: 'playground',
-          title: '操练场',
+          title: 'playground',
           url: '/dashboard/playground',
           icon: FlaskConical,
         },
         {
           id: 'invite',
-          title: '邀请返利',
+          title: 'invite',
           url: '/dashboard/invite',
           icon: Users,
         },
         {
           id: 'billing',
-          title: '在线充值',
+          title: 'billing',
           url: '/dashboard/billing',
           icon: Wallet,
         },
         {
           id: 'redeem',
-          title: '充值码',
+          title: 'redeem',
           url: '/dashboard/redeem',
           icon: Gift,
         },
         {
           id: 'subscription',
-          title: '套餐订阅',
+          title: 'subscription',
           url: '/dashboard/subscription',
           icon: Gem,
         },
         {
           id: 'orgs',
-          title: '组织',
+          title: 'orgs',
           url: '/dashboard/orgs',
           icon: Building2,
         },
         {
           id: 'usage',
-          title: '用量',
+          title: 'usage',
           url: '/dashboard/usage',
           icon: LineChart,
         },
         {
           id: 'transactions',
-          title: '账单流水',
+          title: 'transactions',
           url: '/dashboard/transactions',
           icon: Coins,
         },
         {
           id: 'settings',
-          title: '设置',
+          title: 'settings',
           url: '/dashboard/settings',
           icon: Settings,
         },

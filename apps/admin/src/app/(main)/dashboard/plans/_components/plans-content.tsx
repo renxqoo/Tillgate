@@ -10,6 +10,7 @@ import {
   PlusCircleIcon,
   Trash2Icon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -52,77 +53,94 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-/** 周期天数展示：30→月，365→年，其余按天。 */
-function fmtPeriod(days: number): string {
-  if (days === 30) return '月';
-  if (days === 365) return '年';
-  return `${days} 天`;
-}
-
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
 function MoneyPoints({ value }: { value: string }) {
+  const tUi = useTranslations('ui');
   return (
     <span className="tabular-nums">
       <span className="font-medium">¥{formatMoney(value)}</span>
-      <span className="ml-1.5 text-xs text-muted-foreground">{formatPoints(value)} 积分</span>
+      <span className="ml-1.5 text-xs text-muted-foreground">{formatPoints(value)} {tUi('points')}</span>
     </span>
   );
 }
 
 function StatusBadge({ status }: { status: number }) {
+  const t = useTranslations('plans');
   if (status === 0) {
     return (
-      <StatusPill tone="success" label="上架" />
+      <StatusPill tone="success" label={t('listed')} />
     );
   }
   return (
-    <StatusPill tone="neutral" label="下架" />
+    <StatusPill tone="neutral" label={t('unlisted')} />
   );
 }
 
 function KindBadge({ kind }: { kind: PlanRow['kind'] }) {
+  const t = useTranslations('plans');
   if (kind === 'pack') {
     return (
-      <StatusPill tone="accent" label="加油包" />
+      <StatusPill tone="accent" label={t('pack')} />
     );
   }
   return (
-    <StatusPill tone="info" label="包月" />
+    <StatusPill tone="info" label={t('subscription')} />
   );
 }
 
 export function PlansTable({ plans }: { readonly plans: ReadonlyArray<PlanRow> }) {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
+
+  /** 周期天数展示：30→月，365→年，其余按天。 */
+  function fmtPeriod(days: number): string {
+    if (days === 30) return t('periodMonth');
+    if (days === 365) return t('periodYear');
+    return t('periodDays', { days });
+  }
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead className="w-20">类型</TableHead>
-          <TableHead className="w-16">层级</TableHead>
-          <TableHead className="text-right">价格</TableHead>
-          <TableHead className="w-20">周期</TableHead>
-          <TableHead className="text-right">额度</TableHead>
-          <TableHead className="w-20">席位</TableHead>
-          <TableHead className="w-24">状态</TableHead>
-          <TableHead className="w-36 text-right">操作</TableHead>
+          <TableHead>{tc('name')}</TableHead>
+          <TableHead className="w-20">{tc('type')}</TableHead>
+          <TableHead className="w-16">{t('tier')}</TableHead>
+          <TableHead className="text-right">{t('price')}</TableHead>
+          <TableHead className="w-20">{t('period')}</TableHead>
+          <TableHead className="text-right">{t('quota')}</TableHead>
+          <TableHead className="w-20">{t('seats')}</TableHead>
+          <TableHead className="w-24">{tc('status')}</TableHead>
+          <TableHead className="w-36 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {plans.length === 0 ? (
           <TableRow>
             <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-              暂无套餐
+              {t('noPlans')}
             </TableCell>
           </TableRow>
         ) : (
-          plans.map((p) => <PlanRowItem key={p.id} plan={p} />)
+          plans.map((p) => <PlanRowItem key={p.id} plan={p} fmtPeriod={fmtPeriod} tUi={tUi} />)
         )}
       </TableBody>
     </Table>
   );
 }
 
-function PlanRowItem({ plan }: { plan: PlanRow }) {
+function PlanRowItem({
+  plan,
+  fmtPeriod,
+  tUi,
+}: {
+  plan: PlanRow;
+  fmtPeriod: (days: number) => string;
+  tUi: ReturnType<typeof useTranslations<'ui'>>;
+}) {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
   return (
     <TableRow>
       <TableCell className="font-medium">{plan.name}</TableCell>
@@ -141,9 +159,9 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
         {plan.kind === 'pack' ? (
           <span className="text-xs text-muted-foreground">—</span>
         ) : plan.allowSeats ? (
-          <StatusPill tone="accent" label="团队" />
+          <StatusPill tone="accent" label={t('team')} />
         ) : (
-          <StatusPill tone="neutral" label="个人" />
+          <StatusPill tone="neutral" label={t('personal')} />
         )}
       </TableCell>
       <TableCell>
@@ -151,12 +169,12 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
-          {plan.kind === 'pack' ? <GrantPackDialog plan={plan} /> : null}
-          <EditPlanDialog plan={plan} />
+          {plan.kind === 'pack' ? <GrantPackDialog plan={plan} tUi={tUi} /> : null}
+          <EditPlanDialog plan={plan} tUi={tUi} />
           <ConfirmAction
-            confirm={`确定删除套餐 ${plan.name}？若有有效订阅会失败。`}
+            confirm={t('deleteConfirm', { name: plan.name })}
             action={async () => (await import('../actions')).deletePlanAction(plan.id)}
-            success='已删除'
+            success={tc('deleted')}
           >
             {({ pending, onClick }) => (
               <Button
@@ -177,7 +195,9 @@ function PlanRowItem({ plan }: { plan: PlanRow }) {
 }
 
 /** 发放加油包：输入 userId，扣 pack 售价、给用户余额加额度。 */
-function GrantPackDialog({ plan }: { plan: PlanRow }) {
+function GrantPackDialog({ plan, tUi }: { plan: PlanRow; tUi: ReturnType<typeof useTranslations<'ui'>> }) {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -186,13 +206,13 @@ function GrantPackDialog({ plan }: { plan: PlanRow }) {
   function submit() {
     const uid = Number(userId);
     if (!Number.isInteger(uid) || uid <= 0) {
-      toast.error('请输入有效用户 ID');
+      toast.error(t('invalidUserId'));
       return;
     }
     startTransition(async () => {
       const { grantPackAction } = await import('../actions');
       const res = await grantPackAction(plan.id, uid);
-      if (!notify(res, '发放失败', '已发放')) return;
+      if (!notify(res, t('grantFailed'), t('granted'))) return;
       setUserId('');
       setOpen(false);
     });
@@ -207,39 +227,39 @@ function GrantPackDialog({ plan }: { plan: PlanRow }) {
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="发放加油包">
+        <Button size="sm" variant="ghost" title={t('grant')}>
           <GiftIcon />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GiftIcon /> 发放加油包 - {plan.name}
+            <GiftIcon /> {t('grantTitle', { name: plan.name })}
           </DialogTitle>
           <DialogDescription>
-            给指定用户发放该加油包：扣售价 {formatMoney(plan.price)} 元，用户余额增加{' '}
-            {formatPoints(plan.quotaAmount)} 积分。
+            {t('grantDescription', { price: formatMoney(plan.price), points: formatPoints(plan.quotaAmount) })}
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="grant-user-id">用户 ID</FieldLabel>
+            <FieldLabel htmlFor="grant-user-id">{tc('userId')}</FieldLabel>
             <Input
               id="grant-user-id"
               type="number"
               min={1}
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
-              placeholder="例如 1001"
+              placeholder={t('userIdPlaceholder')}
             />
           </Field>
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认发放
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmGrant')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -247,29 +267,32 @@ function GrantPackDialog({ plan }: { plan: PlanRow }) {
   );
 }
 
-const createSchema = z.object({
-  name: z.string().min(1, '请输入名称'),
-  kind: z.enum(['subscription', 'pack']),
-  sortOrder: z
-    .string()
-    .refine(
-      (v) => v.trim() === '' || (Number.isFinite(Number(v)) && Number.isInteger(Number(v))),
-      '层级须为整数',
-    ),
-  price: moneyText({ message: '请输入有效价格', allowZero: false }),
-  periodDays: z.string(),
-  quotaAmount: moneyText({ message: '请输入有效额度', allowZero: false }),
-  allowSeats: z.boolean(),
-});
-
-const editSchema = createSchema.extend({
-  status: z.coerce.number().int(),
-});
+// 校验消息走目录：schema 在组件内用 t 构造
+function buildCreateSchema(t: ReturnType<typeof useTranslations<'plans'>>) {
+  return z.object({
+    name: z.string().min(1, t('nameRequired')),
+    kind: z.enum(['subscription', 'pack']),
+    sortOrder: z
+      .string()
+      .refine(
+        (v) => v.trim() === '' || (Number.isFinite(Number(v)) && Number.isInteger(Number(v))),
+        t('tierInteger'),
+      ),
+    price: moneyText({ message: t('invalidPrice'), allowZero: false }),
+    periodDays: z.string(),
+    quotaAmount: moneyText({ message: t('invalidQuota'), allowZero: false }),
+    allowSeats: z.boolean(),
+  });
+}
 
 export function CreatePlanDialog() {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const createSchema = buildCreateSchema(t);
   type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(createSchema) as never,
@@ -296,7 +319,7 @@ export function CreatePlanDialog() {
         quotaAmount: values.quotaAmount,
         allowSeats: values.allowSeats,
       });
-      if (!notify(res, '创建失败', '已创建')) return;
+      if (!notify(res, tc('createFailed'), tc('created'))) return;
       form.reset();
       setOpen(false);
     });
@@ -307,23 +330,24 @@ export function CreatePlanDialog() {
       <DialogTrigger asChild>
         <Button>
           <PlusCircleIcon />
-          新建套餐
+          {t('create')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GemIcon /> 新建套餐
+            <GemIcon /> {t('create')}
           </DialogTitle>
-          <DialogDescription>设置类型、售价、周期与套餐额度（额度按官方价×系数折算扣减）</DialogDescription>
+          <DialogDescription>{t('createDescription')}</DialogDescription>
         </DialogHeader>
         <PlanForm form={form} onSubmit={onSubmit} formId="plan-form" />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="plan-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}创建
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('create')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -331,10 +355,15 @@ export function CreatePlanDialog() {
   );
 }
 
-function EditPlanDialog({ plan }: { plan: PlanRow }) {
+function EditPlanDialog({ plan, tUi }: { plan: PlanRow; tUi: ReturnType<typeof useTranslations<'ui'>> }) {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const editSchema = buildCreateSchema(t).extend({
+    status: z.coerce.number().int(),
+  });
   type FormValues = z.input<typeof editSchema>;
   const form = useForm<FormValues>({
     resolver: zodResolver(editSchema) as never,
@@ -362,7 +391,7 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
         allowSeats: values.allowSeats,
         status: Number(values.status),
       });
-      if (!notify(res, '保存失败', '已保存')) return;
+      if (!notify(res, tc('saveFailed'), tc('saved'))) return;
       setOpen(false);
     });
   }
@@ -370,23 +399,24 @@ function EditPlanDialog({ plan }: { plan: PlanRow }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="编辑">
+        <Button size="sm" variant="ghost" title={tc('edit')}>
           <PencilIcon />
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PencilIcon /> 编辑套餐 - {plan.name}
+            <PencilIcon /> {t('editTitle', { name: plan.name })}
           </DialogTitle>
         </DialogHeader>
         <PlanForm form={form} onSubmit={onSubmit} formId="plan-edit-form" isEdit />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="plan-edit-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}保存
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc('save')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -407,6 +437,8 @@ function PlanForm({
   formId: string;
   isEdit?: boolean;
 }) {
+  const t = useTranslations('plans');
+  const tc = useTranslations('common');
   const kind: 'subscription' | 'pack' = form.watch('kind');
   const isPack = kind === 'pack';
 
@@ -424,8 +456,8 @@ function PlanForm({
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="plan-name">名称</FieldLabel>
-              <Input id="plan-name" placeholder="例如 标准月卡 / 旗舰年卡 / 加油包" {...field} />
+              <FieldLabel htmlFor="plan-name">{tc('name')}</FieldLabel>
+              <Input id="plan-name" placeholder={t('namePlaceholder')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -439,14 +471,14 @@ function PlanForm({
             field: { value: 'subscription' | 'pack'; onChange: (v: 'subscription' | 'pack') => void };
           }) => (
             <Field>
-              <FieldLabel>类型</FieldLabel>
+              <FieldLabel>{tc('type')}</FieldLabel>
               <Select value={field.value} onValueChange={field.onChange} disabled={isEdit}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="subscription">包月订阅</SelectItem>
-                  <SelectItem value="pack">加油包</SelectItem>
+                  <SelectItem value="subscription">{t('subscriptionOption')}</SelectItem>
+                  <SelectItem value="pack">{t('packOption')}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
@@ -463,8 +495,8 @@ function PlanForm({
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="plan-sort">层级（可空，越大越高级）</FieldLabel>
-              <Input id="plan-sort" type="number" step="1" placeholder="可空" {...field} />
+              <FieldLabel htmlFor="plan-sort">{t('tierLabel')}</FieldLabel>
+              <Input id="plan-sort" type="number" step="1" placeholder={t('blank')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
@@ -472,7 +504,7 @@ function PlanForm({
         <NumberField
           control={form.control}
           name="price"
-          label="售价（元）"
+          label={t('priceLabel')}
           id="plan-price"
           step="0.01"
           min={0}
@@ -487,14 +519,14 @@ function PlanForm({
               field: { value: string; onChange: (v: string) => void };
             }) => (
               <Field>
-                <FieldLabel>周期</FieldLabel>
+                <FieldLabel>{t('period')}</FieldLabel>
                 <Select value={field.value} onValueChange={field.onChange}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="30">月付（30 天）</SelectItem>
-                    <SelectItem value="365">年付（365 天）</SelectItem>
+                    <SelectItem value="30">{t('monthly')}</SelectItem>
+                    <SelectItem value="365">{t('yearly')}</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
@@ -504,7 +536,7 @@ function PlanForm({
         <NumberField
           control={form.control}
           name="quotaAmount"
-          label="套餐额度（元）"
+          label={t('quotaLabel')}
           id="plan-quota"
           step="0.01"
           min={0}
@@ -519,7 +551,7 @@ function PlanForm({
               field: { value: boolean; onChange: (v: boolean) => void };
             }) => (
               <Field>
-                <FieldLabel>席位模式</FieldLabel>
+                <FieldLabel>{t('seatsMode')}</FieldLabel>
                 <Select
                   value={field.value ? '1' : '0'}
                   onValueChange={(v) => field.onChange(v === '1')}
@@ -528,8 +560,8 @@ function PlanForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">个人套餐（固定 1 席）</SelectItem>
-                    <SelectItem value="1">团队套餐（支持加席位）</SelectItem>
+                    <SelectItem value="0">{t('personalOption')}</SelectItem>
+                    <SelectItem value="1">{t('teamOption')}</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
@@ -542,7 +574,7 @@ function PlanForm({
             name="status"
             render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
               <Field>
-                <FieldLabel>状态</FieldLabel>
+                <FieldLabel>{tc('status')}</FieldLabel>
                 <Select
                   value={String(field.value ?? 0)}
                   onValueChange={(v) => field.onChange(Number(v))}
@@ -551,8 +583,8 @@ function PlanForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">上架</SelectItem>
-                    <SelectItem value="1">下架</SelectItem>
+                    <SelectItem value="0">{t('listed')}</SelectItem>
+                    <SelectItem value="1">{t('unlisted')}</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>

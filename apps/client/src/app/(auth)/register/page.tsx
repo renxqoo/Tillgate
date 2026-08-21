@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Sparkles } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { stripAuthParams, type SearchParamsLike } from "@ai-gateway/ui/lib/auth-url";
 
@@ -47,6 +48,7 @@ export default async function RegisterPage({
   } catch {
     registerEnabled = true;
   }
+  const t = await getTranslations("auth");
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* 左侧：注册表单 */}
@@ -61,15 +63,13 @@ export default async function RegisterPage({
               <RegisterForm oauthOptions={oauthOptions} captchaSiteKey={captchaSiteKey} affCode={aff} />
             ) : (
               <div className="rounded-xl border bg-card p-6 text-center">
-                <h1 className="text-lg font-semibold">注册暂未开放</h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  邮箱注册当前已关闭。已有账号可直接登录，或使用下方第三方登录方式。
-                </p>
+                <h1 className="text-lg font-semibold">{t("registerClosedTitle")}</h1>
+                <p className="mt-2 text-sm text-muted-foreground">{t("registerClosedDesc")}</p>
                 <Link
                   href="/login"
                   className="mt-4 inline-block text-sm text-primary underline-offset-2 hover:underline"
                 >
-                  去登录 →
+                  {t("goToLogin")}
                 </Link>
                 <div className="mt-4">
                   <OAuthButtons options={oauthOptions} />
@@ -78,9 +78,9 @@ export default async function RegisterPage({
             )}
             {registerEnabled && (
               <p className="mt-4 text-center text-sm text-muted-foreground">
-                已有账号？
+                {t("hasAccount")}
                 <Link href="/login" className="ml-1 text-foreground hover:underline">
-                  直接登录
+                  {t("loginDirectly")}
                 </Link>
               </p>
             )}
@@ -94,10 +94,8 @@ export default async function RegisterPage({
           <div className="inline-flex size-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Sparkles className="size-7" />
           </div>
-          <h2 className="text-2xl font-semibold tracking-tight">统一接入多家大模型</h2>
-          <p className="text-muted-foreground">
-            余额统一、按量计费、RPM / TPM 实时生效。一行代码调用 OpenAI / Anthropic / DeepSeek 等多家供应商。
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">{t("heroTitle")}</h2>
+          <p className="text-muted-foreground">{t("heroDesc")}</p>
         </div>
       </div>
     </div>

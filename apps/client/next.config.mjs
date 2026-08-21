@@ -1,3 +1,5 @@
+import createNextIntlPlugin from 'next-intl/plugin';
+
 /** @type {import('next').NextConfig} */
 
 /**
@@ -48,7 +50,7 @@ const nextConfig = {
   // ！！只转发推理端点——/v1/pricing 等属 client-api（server 侧走 CLIENT_API_BASE
   // 直连），通配整个 /v1 会劫持它们且网关未启动时全部 500（曾发生）
   async rewrites() {
-    const gateway = process.env.GATEWAY_BASE ?? 'http://localhost:8083';
+    const gateway = process.env.GATEWAY_BASE ?? 'http://localhost:8080';
     return [
       { source: '/v1/chat/completions', destination: `${gateway}/v1/chat/completions` },
       { source: '/v1/completions', destination: `${gateway}/v1/completions` },
@@ -61,4 +63,6 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+
+// next-intl 插件：默认加载 ./src/i18n/request.ts（无路由模式，语言走 cookie）
+export default createNextIntlPlugin()(nextConfig);

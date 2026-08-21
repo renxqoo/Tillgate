@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Store } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { cn } from '@ai-gateway/ui/lib/utils';
 import { ApiError, adminFetch } from '@ai-gateway/api-client';
 import {
@@ -17,12 +18,20 @@ export const dynamic = 'force-dynamic';
  * 模型市场：多源货架（渠道型 = 可接入上游；字典型 = 行业参考，导入落草稿）。
  * 三态 diff（新增/上游涨价/上游降价）+ USD 预填换算（自动汇率 × 点差）+ 汇率追溯条。
  */
+/** 已知目录源的显示名目录键；未知源回落后端原始 name（新源零成本兼容） */
+const SOURCE_NAME_KEYS: Record<string, string> = { 'models-dev': 'sourceModelsDev' };
+
 export default async function ModelMarketPage({
   searchParams,
 }: {
   searchParams: Promise<{ source?: string }>;
 }) {
   const params = await searchParams;
+  const t = await getTranslations('modelMarket');
+  const sourceLabel = (src: { id: string; name: string }): string => {
+    const key = SOURCE_NAME_KEYS[src.id];
+    return key ? t(key) : src.name;
+  };
   let sources: Array<{
     id: string;
     name: string;
@@ -61,7 +70,7 @@ export default async function ModelMarketPage({
       channelReady = data.channelReady;
       fx = data.fx;
     } catch (caught) {
-      error = caught instanceof ApiError ? caught.message : '目录拉取失败';
+      error = caught instanceof ApiError ? caught.message : t('fetchFailed');
     }
   }
 
@@ -70,19 +79,18 @@ export default async function ModelMarketPage({
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold">
           <Store className="size-5" />
-          模型市场
+          {t('title')}
         </h1>
         <p className="text-sm text-muted-foreground">
-          多目录源同步入库（渠道型直接上架；字典型落草稿审批）；美元价自动按
-          汇率×点差预填为你的卖价，提交即确认。每次定价留完整溯源（目录价 × 汇率 → 预填 → 提交）。
+          {t('description')}
           <Link href="/dashboard/models" className="ml-2 underline">
-            模型映射 →
+            {t('modelsLink')}
           </Link>
         </p>
       </div>
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle>目录货架</CardTitle>
+          <CardTitle>{t('shelf')}</CardTitle>
           <CardDescription>
             {sources.length > 1 ? (
               <span className="mr-4 inline-flex gap-1">
@@ -97,28 +105,28 @@ export default async function ModelMarketPage({
                         : 'bg-muted text-muted-foreground hover:bg-muted/70',
                     )}
                   >
-                    {src.name}
-                    {src.kind === 'reference' ? '（草稿）' : ''}
+                    {sourceLabel(src)}
+                    {src.kind === 'reference' ? t('draftSuffix') : ''}
                   </Link>
                 ))}
               </span>
             ) : null}
             {active?.kind === 'channel'
               ? channelReady
-                ? `${active.name} 渠道已就绪，直接勾选导入。`
-                : `首次从 ${active.name} 导入需填写平台 API Key（创建渠道，AES 加密存储）。`
+                ? t('channelReadyText', { name: sourceLabel(active) })
+                : t('needsKeyText', { name: sourceLabel(active) })
               : active?.kind === 'reference'
-                ? '字典型源：导入为草稿态（下架），价格复核后到「模型映射」手动上架。'
+                ? t('referenceHint')
                 : ''}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {error ? (
-            <p className="py-8 text-center text-sm text-destructive">{error}（稍后刷新重试）</p>
+            <p className="py-8 text-center text-sm text-destructive">{error}{t('retryLater')}</p>
           ) : active ? (
             <CatalogContent
               sourceId={active.id}
-              sourceName={active.name}
+              sourceName={sourceLabel(active)}
               sourceKind={active.kind}
               currency={active.priceCurrency}
               items={items}
@@ -130,7 +138,7 @@ export default async function ModelMarketPage({
             />
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              暂无可用目录源（目录源在服务端注册）。
+              {t('noSources')}
             </p>
           )}
         </CardContent>

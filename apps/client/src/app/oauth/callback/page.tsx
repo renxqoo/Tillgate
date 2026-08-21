@@ -7,11 +7,13 @@
  */
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { completeOAuthAction } from './actions';
 
 function CallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const t = useTranslations('auth');
   const [error, setError] = useState<string | null>(null);
   const handled = useRef(false);
 
@@ -20,7 +22,7 @@ function CallbackInner() {
     handled.current = true;
     const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
     if (!token) {
-      setError('未收到登录凭证，请重试');
+      setError(t('noTokenRetry'));
       return;
     }
     const next = params.get('next');
@@ -32,20 +34,29 @@ function CallbackInner() {
       }
       router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard');
     })();
-  }, [params, router]);
+  }, [params, router, t]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center text-sm text-muted-foreground">
-        {error ? <p className="text-destructive">{error}</p> : <p>正在完成登录…</p>}
+        {error ? <p className="text-destructive">{error}</p> : <p>{t('completing')}</p>}
       </div>
+    </div>
+  );
+}
+
+function CallbackFallback() {
+  const t = useTranslations('auth');
+  return (
+    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+      {t('completing')}
     </div>
   );
 }
 
 export default function OAuthCallbackPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">正在完成登录…</div>}>
+    <Suspense fallback={<CallbackFallback />}>
       <CallbackInner />
     </Suspense>
   );

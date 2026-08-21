@@ -1,11 +1,14 @@
 "use client";
 
 import { BriefcaseIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useRouter, useSearchParams } from "next/navigation";
 
 export function UsersEnterpriseFilter({ value }: { value: string }) {
   const router = useRouter();
   const sp = useSearchParams();
+  const tc = useTranslations("common");
+  const t = useTranslations("users");
 
   function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = new URLSearchParams(sp.toString());
@@ -23,9 +26,9 @@ export function UsersEnterpriseFilter({ value }: { value: string }) {
         defaultValue={value}
         className="h-9 w-32 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
       >
-        <option value="all">全部类型</option>
-        <option value="1">企业</option>
-        <option value="0">个人</option>
+        <option value="all">{tc("allTypes")}</option>
+        <option value="1">{t("enterprise")}</option>
+        <option value="0">{t("personal")}</option>
       </select>
     </div>
   );

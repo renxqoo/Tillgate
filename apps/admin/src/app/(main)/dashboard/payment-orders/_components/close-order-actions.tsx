@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Loader2Icon, XIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
@@ -9,6 +10,7 @@ import { Button } from '@ai-gateway/ui/components/ui/button';
 import { closePaymentOrderAction } from '../actions';
 
 export function CloseOrderActions({ orderId }: { orderId: string }) {
+  const t = useTranslations('paymentOrders');
   const [pending, setPending] = useState(false);
   return (
     <Button
@@ -16,7 +18,7 @@ export function CloseOrderActions({ orderId }: { orderId: string }) {
       size="sm"
       disabled={pending}
       onClick={async () => {
-        if (!confirm('确认关闭该待支付订单？关闭后回调将无法入账。')) return;
+        if (!confirm(t('closeConfirm'))) return;
         setPending(true);
         const res = await closePaymentOrderAction(orderId);
         setPending(false);
@@ -24,11 +26,11 @@ export function CloseOrderActions({ orderId }: { orderId: string }) {
           toast.error(res.error);
           return;
         }
-        toast.success('订单已关闭');
+        toast.success(t('closedToast'));
       }}
     >
       {pending ? <Loader2Icon className="size-4 animate-spin" /> : <XIcon className="size-4" />}
-      关闭
+      {t('close')}
     </Button>
   );
 }

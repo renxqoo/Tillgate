@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useTranslations } from "next-intl";
 import { EyeIcon, EyeOffIcon, LockIcon } from "lucide-react";
 
 import { cn } from "../lib/utils";
@@ -20,6 +21,7 @@ export function PasswordInput({
   withLock = false,
   ...props
 }: React.ComponentProps<"input"> & { withLock?: boolean }) {
+  const t = useTranslations("ui");
   const [show, setShow] = useState(false);
 
   if (!withLock) {
@@ -37,7 +39,7 @@ export function PasswordInput({
           className="absolute right-1 top-1 size-7"
           onClick={() => setShow((s) => !s)}
           tabIndex={-1}
-          aria-label={show ? "隐藏密码" : "显示密码"}
+          aria-label={show ? t("hidePassword") : t("showPassword")}
         >
           {show ? <EyeOffIcon /> : <EyeIcon />}
         </Button>
@@ -58,7 +60,7 @@ export function PasswordInput({
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
-          aria-label={show ? "隐藏密码" : "显示密码"}
+          aria-label={show ? t("hidePassword") : t("showPassword")}
           className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
         >
           {show ? <EyeOffIcon /> : <EyeIcon />}

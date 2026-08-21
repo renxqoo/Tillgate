@@ -6,6 +6,7 @@ import { GiftIcon, Loader2Icon } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
@@ -22,14 +23,19 @@ import { formatMoney } from '@ai-gateway/api-client/formatters';
 
 import { redeemAction } from '../actions';
 
-const schema = z.object({
-  code: z.string().min(4, '请输入有效的充值码'),
-});
+interface RedeemValues {
+  code: string;
+}
 
 export function RedeemForm() {
+  const t = useTranslations('redeem');
   const [result, setResult] = useState<{ amount: string; balanceAfter: string } | null>(null);
 
-  const form = useForm<z.infer<typeof schema>>({
+  const schema = z.object({
+    code: z.string().min(4, t('invalidCode')),
+  });
+
+  const form = useForm<RedeemValues>({
     resolver: zodResolver(schema),
     defaultValues: { code: '' },
   });
@@ -39,18 +45,18 @@ export function RedeemForm() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <GiftIcon className="size-5 text-primary" />
-          兑换充值码
+          {t('formTitle')}
         </CardTitle>
-        <CardDescription>输入您的充值码为账户余额充值</CardDescription>
+        <CardDescription>{t('formDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
         {result ? (
           <div className="rounded-md bg-emerald-500/10 p-4 ring-1 ring-emerald-500/30">
             <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-              充值成功 +¥{formatMoney(result.amount)}
+              {t('successNotice', { amount: formatMoney(result.amount) })}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              已结算余额 ¥{formatMoney(result.balanceAfter)}，
+              {t('balanceAfter', { balance: formatMoney(result.balanceAfter) })}
               <button
                 className="text-foreground underline"
                 onClick={() => {
@@ -58,7 +64,7 @@ export function RedeemForm() {
                   form.reset();
                 }}
               >
-                再兑换一张
+                {t('redeemAnother')}
               </button>
             </p>
           </div>
@@ -68,12 +74,12 @@ export function RedeemForm() {
               const res = await redeemAction(values.code);
               if (res.error) {
                 // 文案单一真相 = 服务端注册表 message（错误码：REDEEM_INVALID_CODE 等）
-                toast.error('充值失败', { description: res.error });
+                toast.error(t('failedToast'), { description: res.error });
                 form.setError('code', { message: res.error });
                 return;
               }
               setResult({ amount: res.amount!, balanceAfter: res.balanceAfter! });
-              toast.success(`已入账 ¥${formatMoney(res.amount)}`);
+              toast.success(t('creditedToast', { amount: formatMoney(res.amount!) }));
             })}
             className="space-y-3"
           >
@@ -83,11 +89,11 @@ export function RedeemForm() {
                 name="code"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="redeem-code">充值码</FieldLabel>
+                    <FieldLabel htmlFor="redeem-code">{t('codeLabel')}</FieldLabel>
                     <Input
                       id="redeem-code"
                       autoComplete="off"
-                      placeholder="请输入充值码"
+                      placeholder={t('codePlaceholder')}
                       className="font-mono"
                       {...field}
                     />
@@ -98,7 +104,7 @@ export function RedeemForm() {
             </FieldGroup>
             <Button type="submit" disabled={form.formState.isSubmitting} className="w-full">
               {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-              兑换
+              {t('submit')}
             </Button>
           </form>
         )}

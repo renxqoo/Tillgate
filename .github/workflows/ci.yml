@@ -69,6 +69,10 @@ jobs:
       - name: 四门（typecheck / lint / build / test）
         run: bunx turbo run typecheck lint build test
 
+      # i18n 门禁：前端与共享 UI 零 CJK 字面量残留 + 目录键完备（en↔zh）+ ui 段同源
+      - name: i18n 门禁（check:i18n）
+        run: bun run check:i18n
+
       - name: 覆盖率门禁（ai/admin-api 90/85；资金包 wallet 90/80、service 74/61 棘轮起步）
         run: |
           bun run --filter @ai-gateway/ai test:coverage

@@ -1,4 +1,5 @@
 import { CalendarClockIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import type { AdminSubscriptionRow, PlanRow as ApiPlanRow } from "@ai-gateway/api-client";
@@ -19,6 +20,7 @@ interface PageProps {
 
 export default async function SubscriptionsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("subscriptions");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const planIdRaw = firstParam(sp.planId);
   const planId = planIdRaw ? Number(planIdRaw) : undefined;
@@ -56,11 +58,11 @@ export default async function SubscriptionsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="订阅"
+      title={t("title")}
       icon={<CalendarClockIcon className="size-5 text-muted-foreground" />}
       total={total}
-      totalUnit="条订阅记录"
-      searchPlaceholder="搜索用户 / 套餐名"
+      totalUnit={t("totalUnit")}
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{
         q,

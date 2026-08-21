@@ -13,6 +13,16 @@ client / agent ──> gateway (/v1, OpenAI-compatible)
                      └── traces / TTFT / usage logs ──> admin console
 ```
 
+## Screenshots
+
+**User console** (left) — balance & spend overview, daily cost trend, usage by model, API keys.
+**Admin console** (right) — request/spend/token KPIs, channel health, 14-day trends, full operations surface.
+
+<p align="center">
+  <img src="docs/images/client-console-en.png" alt="User console — dashboard" width="49%">
+  <img src="docs/images/admin-console-en.png" alt="Admin console — dashboard" width="49%">
+</p>
+
 ## Quick Start
 
 ### Installation — Option 1: Local development

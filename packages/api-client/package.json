@@ -9,9 +9,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./formatters": "./src/formatters.ts",
+    "./i18n": "./src/i18n.ts",
     "./list": "./src/list.ts",
-    "./types": "./src/types.ts",
-    "./session": "./src/session.ts"
+    "./session": "./src/session.ts",
+    "./types": "./src/types.ts"
   },
   "scripts": {
     "lint": "bun x oxlint",

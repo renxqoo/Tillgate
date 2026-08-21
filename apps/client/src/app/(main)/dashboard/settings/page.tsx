@@ -1,4 +1,5 @@
 import { SettingsIcon, ShieldCheckIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
 import {
@@ -28,6 +29,8 @@ function InfoRow({ label, value }: { readonly label: string; readonly value: str
 
 export default async function SettingsPage() {
   const me = await requireMe();
+  const t = await getTranslations("settings");
+  const tCommon = await getTranslations("common");
   const balance = me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0';
 
   return (
@@ -35,35 +38,38 @@ export default async function SettingsPage() {
       <div className="space-y-1">
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <SettingsIcon className="size-5 text-muted-foreground" />
-          账户设置
+          {t("title")}
         </h1>
-        <p className="text-sm text-muted-foreground">账户信息与安全设置</p>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-base">账户信息</CardTitle>
-          <CardDescription>当前登录账户的基本信息与限额</CardDescription>
+          <CardTitle className="text-base">{t("infoTitle")}</CardTitle>
+          <CardDescription>{t("infoDesc")}</CardDescription>
           <CardAction>
             <DisplayNameDialog current={me.displayName || me.subject} />
           </CardAction>
         </CardHeader>
         <CardContent>
-          <InfoRow label="显示名称" value={me.displayName || me.subject} />
-          <InfoRow label="邮箱" value={me.email ?? "—"} />
-          <InfoRow label="账户余额" value={`¥${formatMoney(balance)}`} />
-          <InfoRow label="费率卡" value={me.rateCardName ?? "—"} />
-          <InfoRow label="账户类型" value={me.isEnterprise ? "企业账户" : "个人账户"} />
+          <InfoRow label={t("displayName")} value={me.displayName || me.subject} />
+          <InfoRow label={tCommon("email")} value={me.email ?? "—"} />
+          <InfoRow label={t("balanceLabel")} value={`¥${formatMoney(balance)}`} />
+          <InfoRow label={t("rateCardLabel")} value={me.rateCardName ?? "—"} />
+          <InfoRow label={t("accountTypeLabel")} value={me.isEnterprise ? t("enterprise") : t("personal")} />
           <InfoRow
-            label="速率限制"
+            label={t("rateLimitLabel")}
             value={
               me.rpmLimit == null || me.tpmLimit == null
                 ? "—"
-                : `${me.rpmLimit.toLocaleString()} RPM / ${(me.tpmLimit / 10000).toLocaleString(undefined, { maximumFractionDigits: 1 })}万 TPM`
+                : t("rateLimitValue", {
+                    rpm: me.rpmLimit.toLocaleString("en-US"),
+                    tpm: (me.tpmLimit / 10000).toLocaleString("en-US", { maximumFractionDigits: 1 }),
+                  })
             }
           />
-          <InfoRow label="最近登录" value={fmtDateTime(me.lastLoginAt)} />
-          <InfoRow label="注册时间" value={fmtDateTime(me.createdAt)} />
+          <InfoRow label={t("lastLogin")} value={fmtDateTime(me.lastLoginAt)} />
+          <InfoRow label={t("registeredAt")} value={fmtDateTime(me.createdAt)} />
         </CardContent>
       </Card>
 
@@ -71,9 +77,9 @@ export default async function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <ShieldCheckIcon className="size-4 text-muted-foreground" />
-            安全设置
+            {t("securityTitle")}
           </CardTitle>
-          <CardDescription>定期更换密码有助于保障账户安全</CardDescription>
+          <CardDescription>{t("securityDesc")}</CardDescription>
           <CardAction>
             <PasswordDialog />
           </CardAction>

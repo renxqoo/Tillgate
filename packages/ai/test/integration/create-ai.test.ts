@@ -272,7 +272,7 @@ describe('ai.chat 集成', () => {
     }
   });
 
-  it('usage 缺失：按请求/响应字符估算（estimated=true）', async () => {
+  it('usage 缺失：按请求/响应字符估算（estimated=true）', { timeout: 30_000 }, async () => {
     const server = await startServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(

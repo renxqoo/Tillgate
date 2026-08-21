@@ -490,6 +490,43 @@ export const MARKETING_BASELINE = {
   referralCommissionRate: '0.1',
 } as const;
 
+/** marketing_settings 快照（单行全局表——测试不得污染运营实配：进快照、出恢复） */
+export interface MarketingSnapshot {
+  signupGiftAmount: string;
+  referralSignupBonus: string;
+  referralCommissionRate: string;
+  updatedBy: number | null;
+}
+
+export async function snapshotMarketingSettings(): Promise<MarketingSnapshot> {
+  const { eq } = await import('drizzle-orm');
+  const { marketingSettings } = await import('@ai-gateway/db');
+  const [row] = await db.select().from(marketingSettings).where(eq(marketingSettings.id, 1));
+  return (
+    row ?? {
+      signupGiftAmount: MARKETING_BASELINE.signupGiftAmount,
+      referralSignupBonus: MARKETING_BASELINE.referralSignupBonus,
+      referralCommissionRate: MARKETING_BASELINE.referralCommissionRate,
+      updatedBy: null,
+    }
+  );
+}
+
+/** 恢复快照（updatedBy 原样回填，运营侧「最后修改人」不被测试抹掉） */
+export async function restoreMarketingSettings(snapshot: MarketingSnapshot): Promise<void> {
+  const { eq } = await import('drizzle-orm');
+  const { marketingSettings } = await import('@ai-gateway/db');
+  await db
+    .update(marketingSettings)
+    .set({
+      signupGiftAmount: snapshot.signupGiftAmount,
+      referralSignupBonus: snapshot.referralSignupBonus,
+      referralCommissionRate: snapshot.referralCommissionRate,
+      updatedBy: snapshot.updatedBy,
+    })
+    .where(eq(marketingSettings.id, 1));
+}
+
 export async function resetMarketingSettings(): Promise<void> {
   const { eq } = await import('drizzle-orm');
   const { marketingSettings } = await import('@ai-gateway/db');

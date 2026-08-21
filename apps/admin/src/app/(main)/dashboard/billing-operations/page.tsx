@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { fmtDateTime, formatMoney } from '@ai-gateway/api-client';
 import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
@@ -29,6 +30,8 @@ export default async function BillingOperationsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  const t = await getTranslations('billingOperations');
+  const tc = await getTranslations('common');
   const { page } = parseListSearchParams(sp);
   const status = 'dead' as const; // uncertain 队列已随 2026-08-17 估算结算政策删除
   const { rows: items, total, error } = await fetchAdminList<BillingCase>(
@@ -38,9 +41,9 @@ export default async function BillingOperationsPage({
 
   return (
     <ListPage
-      title="计费异常复核"
+      title={t('title')}
       icon={<ShieldAlert className="size-5 text-muted-foreground" />}
-      description="结算死信（不变量破坏）人工复核；所有处理均要求版本校验并写入审计日志。"
+      description={t('description')}
       total={total}
       searchParams={{ status }}
       error={error}
@@ -51,7 +54,7 @@ export default async function BillingOperationsPage({
         columns={[
           {
             key: 'requestId',
-            header: '请求 ID',
+            header: t('requestId'),
             render: (item: BillingCase) => (
               <span>
                 <code className="text-xs">{item.requestId}</code>{' '}
@@ -59,21 +62,21 @@ export default async function BillingOperationsPage({
                   href={`/dashboard/tracing?requestId=${item.requestId}`}
                   className="text-xs underline"
                 >
-                  查链路
+                  {t('viewTrace')}
                 </Link>
               </span>
             ),
           },
-          { key: 'userId', header: '用户', render: (item: BillingCase) => `#${item.userId}` },
+          { key: 'userId', header: tc('user'), render: (item: BillingCase) => `#${item.userId}` },
           {
             key: 'reservedAmount',
-            header: '预扣',
+            header: t('reserved'),
             align: 'right',
             render: (item: BillingCase) => `¥${formatMoney(item.reservedAmount)}`,
           },
           {
             key: 'failureClass',
-            header: '原因',
+            header: t('reason'),
             render: (item: BillingCase) => (
               <span className="max-w-64 text-xs">
                 {item.failureClass ?? item.failureCode ?? item.lastError ?? '—'}
@@ -82,12 +85,12 @@ export default async function BillingOperationsPage({
           },
           {
             key: 'updatedAt',
-            header: '更新时间',
+            header: tc('updatedAt'),
             render: (item: BillingCase) => fmtDateTime(item.updatedAt),
           },
           {
             key: 'actions',
-            header: '操作',
+            header: tc('actions'),
             render: (item: BillingCase) => (
               <ReviewActions
                 requestId={item.requestId}
@@ -99,7 +102,7 @@ export default async function BillingOperationsPage({
         ]}
         rows={items}
         rowKey={(item: BillingCase) => item.requestId}
-        empty="暂无异常请求"
+        empty={t('noCases')}
       />
     </ListPage>
   );

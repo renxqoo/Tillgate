@@ -13,6 +13,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import type { UsageByModelItem } from '@ai-gateway/api-client';
 import { formatMoney } from '@ai-gateway/api-client/formatters';
+import { useTranslations } from 'next-intl';
 
 type Metric = 'cost' | 'tokens' | 'requests' | 'cacheRate';
 
@@ -21,24 +22,24 @@ interface MetricMeta {
   format: (v: number) => string;
 }
 
-const METRICS: Record<Metric, MetricMeta> = {
-  cost: { label: '费用（元）', format: (v) => `¥${formatMoney(v)}` },
-  tokens: { label: 'Token', format: (v) => v.toLocaleString() },
-  requests: { label: '请求次数', format: (v) => v.toLocaleString() },
-  cacheRate: { label: '缓存率', format: (v) => `${(v * 100).toFixed(2)}%` },
-};
-
 /**
  * 不同模型使用量（横向条形图）。
  * 一次拉全量数据，前端用 ToggleGroup 切换度量（费用 / Token / 次数），无需重新请求。
  */
 export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageByModelItem> }) {
+  const t = useTranslations('dashboard');
   const [metric, setMetric] = useState<Metric>('cost');
+  const METRICS: Record<Metric, MetricMeta> = {
+    cost: { label: t('costLabel'), format: (v) => `¥${formatMoney(v)}` },
+    tokens: { label: t('metricTokens'), format: (v) => v.toLocaleString('en-US') },
+    requests: { label: t('metricRequests'), format: (v) => v.toLocaleString('en-US') },
+    cacheRate: { label: t('metricCacheRate'), format: (v) => `${(v * 100).toFixed(2)}%` },
+  };
 
   if (data.length === 0) {
     return (
       <div className="flex h-62.5 items-center justify-center text-sm text-muted-foreground">
-        暂无用量数据
+        {t('noUsageData')}
       </div>
     );
   }
@@ -75,10 +76,10 @@ export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageBy
         variant="outline"
         size="sm"
       >
-        <ToggleGroupItem value="cost">费用</ToggleGroupItem>
-        <ToggleGroupItem value="tokens">Token</ToggleGroupItem>
-        <ToggleGroupItem value="requests">次数</ToggleGroupItem>
-        <ToggleGroupItem value="cacheRate">缓存率</ToggleGroupItem>
+        <ToggleGroupItem value="cost">{t('metricCost')}</ToggleGroupItem>
+        <ToggleGroupItem value="tokens">{t('metricTokens')}</ToggleGroupItem>
+        <ToggleGroupItem value="requests">{t('metricRequests')}</ToggleGroupItem>
+        <ToggleGroupItem value="cacheRate">{t('metricCacheRate')}</ToggleGroupItem>
       </ToggleGroup>
       <ChartContainer
         config={chartConfig}

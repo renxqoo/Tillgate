@@ -30,14 +30,6 @@ export interface PricingPage {
   pageSize: number;
 }
 
-export const PRICING_UNIT_LABEL: Record<string, string> = {
-  token: '按 Token',
-  request: '按次',
-  image: '按张',
-  second: '按秒',
-  char: '按字符',
-};
-
 export async function fetchPublicPricing(query: PricingQuery = {}): Promise<PricingPage | null> {
   const base = process.env.CLIENT_API_BASE || 'http://localhost:8081';
   const params = new URLSearchParams();

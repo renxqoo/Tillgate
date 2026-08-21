@@ -92,7 +92,7 @@ export interface StatusMeta {
  */
 export function defineStatusMeta<T extends PropertyKey>(
   meta: Record<T, StatusMeta>,
-  fallback: StatusMeta = { label: "未知", tone: "neutral" },
+  fallback: StatusMeta = { label: "Unknown", tone: "neutral" },
 ) {
   return {
     get(key: T | number | string): StatusMeta {

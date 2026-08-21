@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
 import { ApiError, adminFetch } from '@ai-gateway/api-client';
 
 export async function retryDeadBillingRequest(input: {
@@ -9,6 +10,7 @@ export async function retryDeadBillingRequest(input: {
   reason: string;
   evidenceRefs?: string[];
 }): Promise<{ error?: string }> {
+  const t = await getTranslations('billingOperations');
   try {
     await adminFetch(`/v1/billing-operations/${input.requestId}/retry`, {
       method: 'POST',
@@ -21,7 +23,7 @@ export async function retryDeadBillingRequest(input: {
     revalidatePath('/dashboard/billing-operations');
     return {};
   } catch (error) {
-    return { error: error instanceof ApiError ? error.message : '重试提交失败' };
+    return { error: error instanceof ApiError ? error.message : t('retryFailed') };
   }
 }
 
@@ -33,6 +35,7 @@ export async function abandonDeadBillingRequest(input: {
   reason: string;
   evidenceRefs?: string[];
 }): Promise<{ error?: string }> {
+  const t = await getTranslations('billingOperations');
   try {
     await adminFetch(`/v1/billing-operations/${input.requestId}/abandon`, {
       method: 'POST',
@@ -45,6 +48,6 @@ export async function abandonDeadBillingRequest(input: {
     revalidatePath('/dashboard/billing-operations');
     return {};
   } catch (error) {
-    return { error: error instanceof ApiError ? error.message : '废弃提交失败' };
+    return { error: error instanceof ApiError ? error.message : t('abandonFailed') };
   }
 }

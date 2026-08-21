@@ -11,6 +11,16 @@ TokenLens 是一个可自托管的生产级 **LLM API 网关**：用统一的 Op
                      └── 链路追踪 / TTFT / 用量日志 ──> 管理后台
 ```
 
+## 界面预览
+
+**用户面板**（左）—— 余额与消费总览、每日费用趋势、模型用量、API 密钥管理。
+**管理后台**（右）—— 今日请求/消费/Token 指标、渠道健康度、14 天趋势与全量运营面。
+
+<p align="center">
+  <img src="docs/images/client-console-zh-cn.png" alt="用户面板 — 仪表盘" width="49%">
+  <img src="docs/images/admin-console-zh-cn.png" alt="管理后台 — 仪表盘" width="49%">
+</p>
+
 ## 快速开始
 
 ### 安装 —— 方式一：本地运行

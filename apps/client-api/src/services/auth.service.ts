@@ -76,7 +76,7 @@ export type LoginResult = { kind: 'success'; token: string; userId: number } | {
 export interface AuthService {
   register(
     ctx: RunContext,
-    input: { email: string; password: string; ip: string; captchaToken?: string; aff?: string },
+    input: { email: string; password: string; ip: string; captchaToken?: string; aff?: string; locale?: 'en' | 'zh' },
   ): Promise<RegisterResult>;
   /** 两步注册第二步：验码建号（一次性消费防重放；开关翻转窗口内拒绝） */
   verifyRegistration(
@@ -85,7 +85,7 @@ export interface AuthService {
   ): Promise<RegisterSuccess>;
   login(
     ctx: RunContext,
-    input: { email: string; password: string; ip: string },
+    input: { email: string; password: string; ip: string; locale?: 'en' | 'zh' },
   ): Promise<LoginResult>;
   /** 两步登录第二步：验码签会话（状态复查 + lastLogin） */
   verifyLogin(
@@ -254,6 +254,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
             purpose: 'register',
             payload: { passwordHash },
             ip: input.ip,
+            locale: input.locale,
           });
           return { kind: 'code_required', challengeId };
         } catch (e) {
@@ -342,6 +343,7 @@ export function createAuthService(deps: AuthServiceDeps): AuthService {
           const challengeId = await codes.issue('user', {
             email: account.email ?? email,
             ip: input.ip,
+            locale: input.locale,
           });
           return { kind: 'code_required', challengeId };
         } catch (e) {

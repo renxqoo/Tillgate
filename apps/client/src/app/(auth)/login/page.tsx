@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { Sparkles } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { stripAuthParams, type SearchParamsLike } from "@ai-gateway/ui/lib/auth-url";
 
@@ -38,6 +39,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const nextRaw = Array.isArray(sp.next) ? sp.next[0] : sp.next;
   const next = typeof nextRaw === "string" && nextRaw.startsWith("/") ? nextRaw : null;
   const oauthOptions = await fetchOAuthOptions(next);
+  const t = await getTranslations("auth");
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       {/* 左侧：登录表单 */}
@@ -59,14 +61,12 @@ export default async function LoginPage({ searchParams }: PageProps) {
           <div className="inline-flex size-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Sparkles className="size-7" />
           </div>
-          <h2 className="text-2xl font-semibold tracking-tight">统一接入多家大模型</h2>
-          <p className="text-muted-foreground">
-            余额统一、按量计费、RPM / TPM 实时生效。一行代码调用 OpenAI / Anthropic / DeepSeek 等多家供应商。
-          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">{t("heroTitle")}</h2>
+          <p className="text-muted-foreground">{t("heroDesc")}</p>
           <p className="text-xs text-muted-foreground pt-4">
-            遇到问题？
+            {t("needHelp")}
             <Link href="#" className="ml-1 text-foreground hover:underline">
-              联系客服
+              {t("contactSupport")}
             </Link>
           </p>
         </div>

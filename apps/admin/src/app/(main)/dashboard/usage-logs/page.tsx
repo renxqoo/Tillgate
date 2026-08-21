@@ -1,5 +1,6 @@
 import { CoinsIcon } from 'lucide-react';
 
+import { getLocale, getTranslations } from 'next-intl/server';
 import { unitWord } from '@ai-gateway/api-client/formatters';
 import {
   ApiError,
@@ -27,24 +28,27 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-/** 估算归属 → 可读文案（管理端观测：这笔为什么按估算扣） */
-function estimateReasonText(reason: string | null): string {
+/** 估算归属 → 可读文案（管理端观测：这笔为什么按估算扣）；label 为 usageLogs 命名空间 key */
+function estimateReasonKey(reason: string | null): string {
   switch (reason) {
     case 'client_disconnect':
     case 'request_cancelled':
     case 'aborted':
-      return '请求提前取消，按已交付内容估算';
+      return 'reasonCancelled';
     case 'usage_missing_completed':
-      return '供应商未返回用量（正常完成），按已交付内容估算';
+      return 'reasonMissingCompleted';
     case 'usage_missing_nonstream':
-      return '供应商未返回用量（非流式），按响应内容估算';
+      return 'reasonMissingNonstream';
     default:
-      return '估算结算';
+      return 'reasonDefault';
   }
 }
 
 export default async function UsageLogsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations('usageLogs');
+  const tc = await getTranslations('common');
+  const locale = (await getLocale()) as 'en' | 'zh';
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const from = firstParam(sp.from) ?? '';
   const to = firstParam(sp.to) ?? '';
@@ -70,7 +74,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     rows = data.rows ?? [];
     total = data.total ?? 0;
   } catch (e) {
-    error = e instanceof ApiError ? e.message : '加载失败';
+    error = e instanceof ApiError ? e.message : tc('loadFailed');
   }
 
   const columns: DataTableColumn<AdminUsageRow>[] = [
@@ -83,35 +87,35 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     },
     {
       key: 'userName',
-      header: '用户',
+      header: tc('user'),
       render: (r) => (
         <span className="text-xs">{r.userName ?? (r.userId ? `#${r.userId}` : '—')}</span>
       ),
     },
     {
       key: 'externalModel',
-      header: '模型',
+      header: t('model'),
       render: (r) => (
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>
       ),
     },
     {
       key: 'inputTokens',
-      header: '输入',
+      header: t('input'),
       sortable: true,
       align: 'right',
       render: (r) =>
         r.units && r.units > 0 ? (
           <span className="text-right text-xs tabular-nums">
-            {r.units.toLocaleString()} {unitWord(r.pricingUnit)}
-            <span className="ml-1 text-muted-foreground">(单位计价)</span>
+            {r.units.toLocaleString('en-US')} {unitWord(r.pricingUnit, locale)}
+            <span className="ml-1 text-muted-foreground">{t('unitPricing')}</span>
           </span>
         ) : (
           <span className="text-right text-xs tabular-nums">
-            {r.inputTokens.toLocaleString()}
+            {r.inputTokens.toLocaleString('en-US')}
             {r.cachedInputTokens > 0 ? (
               <span className="ml-1 text-muted-foreground">
-                (缓存 {r.cachedInputTokens.toLocaleString()})
+                {t('cached', { count: r.cachedInputTokens.toLocaleString('en-US') })}
               </span>
             ) : null}
           </span>
@@ -119,21 +123,21 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     },
     {
       key: 'outputTokens',
-      header: '输出',
+      header: t('output'),
       sortable: true,
       align: 'right',
       render: (r) =>
         r.units && r.units > 0 ? (
           <span className="text-right text-xs tabular-nums text-muted-foreground">
-            {r.unitPrice ? `¥${Number(r.unitPrice).toFixed(2)}/${unitWord(r.pricingUnit)}` : '—'}
+            {r.unitPrice ? `¥${Number(r.unitPrice).toFixed(2)}/${unitWord(r.pricingUnit, locale)}` : '—'}
           </span>
         ) : (
-          <span className="text-right text-xs tabular-nums">{r.outputTokens.toLocaleString()}</span>
+          <span className="text-right text-xs tabular-nums">{r.outputTokens.toLocaleString('en-US')}</span>
         ),
     },
     {
       key: 'amount',
-      header: '扣费',
+      header: t('charge'),
       sortable: true,
       align: 'right',
       render: (r) => (
@@ -141,10 +145,10 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
           ¥{Number(r.amount).toFixed(6)}
           {r.estimated ? (
             <span
-              title={estimateReasonText(r.estimateReason)}
+              title={t(estimateReasonKey(r.estimateReason))}
               className="ml-1 rounded bg-amber-500/15 px-1 text-[10px] leading-4 text-amber-700 dark:text-amber-300"
             >
-              估算
+              {t('estimatedBadge')}
             </span>
           ) : null}
         </span>
@@ -152,16 +156,16 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     },
     {
       key: 'billedBy',
-      header: '来源',
+      header: t('source'),
       render: (r) => (
         <span className="text-xs text-muted-foreground">
-          {r.billedBy === 'plan' ? '套餐' : '余额'}
+          {r.billedBy === 'plan' ? t('plan') : t('balance')}
         </span>
       ),
     },
     {
       key: 'durationMs',
-      header: '耗时',
+      header: t('duration'),
       sortable: true,
       align: 'right',
       render: (r) => (
@@ -172,7 +176,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     },
     {
       key: 'ttft',
-      header: '首token(上游/客户)',
+      header: t('ttft'),
       align: 'right',
       render: (r) => {
         return (
@@ -186,7 +190,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
     },
     {
       key: 'createdAt',
-      header: '时间',
+      header: tc('time'),
       sortable: true,
       headerClassName: 'w-44',
       render: (r) => (
@@ -197,11 +201,11 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="用量明细"
+      title={t('title')}
       icon={<CoinsIcon className="size-5 text-muted-foreground" />}
-      description="每一笔扣款（含估算扣款）；估算 = 供应商未回传 usage 或请求取消，按已交付内容估算计费"
+      description={t('description')}
       total={total}
-      searchPlaceholder="搜索模型 / Request ID"
+      searchPlaceholder={t('searchPlaceholder')}
       q={q}
       searchParams={{
         q,
@@ -223,7 +227,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
         rowKey={(r) => r.id}
         sort={{ sortBy, order }}
         searchParams={{ q, from, to, userId, estimated }}
-        empty="暂无用量记录"
+        empty={t('noLogs')}
       />
     </ListPage>
   );

@@ -1,4 +1,5 @@
 import { BanknoteIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -17,6 +18,7 @@ interface PageProps {
 
 export default async function RateCardsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("rateCards");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchAdminList<AdminRateCardRow>("/v1/rate-cards", {
     page,
@@ -28,11 +30,11 @@ export default async function RateCardsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="费率卡"
+      title={t("title")}
       icon={<BanknoteIcon className="size-5 text-muted-foreground" />}
-      description="基于官方价格 ×系数"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索名称 / 描述"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={<CreateRateCardDialog />}

@@ -17,12 +17,15 @@ export {
   HttpError,
   errorHandler,
   errorResponseBody,
+  localeFromContext,
   pgSqlState,
   type ErrorLogger,
 } from './errors.js';
 export {
   ERROR_REGISTRY,
   errorSpec,
+  localizeMessage,
+  localizedSpecMessage,
   type ErrorSpec,
   type KnownErrorCode,
 } from './error-codes.js';
@@ -36,6 +39,7 @@ export {
 } from './validation.js';
 
 export { intParam } from './params.js';
+export { parseAcceptLanguage, resolveLocale, LOCALES, DEFAULT_LOCALE, LOCALE_COOKIE, type Locale } from './locale.js';
 
 export {
   PAGE_SIZE_MAX,

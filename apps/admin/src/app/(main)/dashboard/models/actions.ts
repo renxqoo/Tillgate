@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
 
 import { adminFetch, ApiError } from '@ai-gateway/api-client';
 
@@ -23,8 +24,10 @@ export interface ModelCreateInput {
 }
 
 export async function createModelAction(input: ModelCreateInput): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
+  const tc = await getTranslations('common');
   if (!input.externalName.trim() || !input.realModel.trim()) {
-    return { error: '名称不能为空' };
+    return { error: t('nameRequired') };
   }
   try {
     await adminFetch('/v1/models', {
@@ -47,7 +50,7 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '创建失败' };
+    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
   }
 }
 
@@ -78,35 +81,38 @@ export async function updateModelAction(
   id: number,
   input: ModelUpdateInput,
 ): Promise<{ error?: string }> {
+  const tc = await getTranslations('common');
   try {
     await adminFetch(`/v1/models/${id}`, { method: 'PATCH', body: input });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '保存失败' };
+    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
   }
 }
 
 // ── 删除模型映射 ────────────────────────────────────────────────────────────
 /** 下架（软删除）：status→1，不再对外提供；历史计费/渠道绑定保留——非物理删除 */
 export async function deleteModelAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
   try {
     await adminFetch(`/v1/models/${id}`, { method: 'DELETE' });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '下架失败' };
+    return { error: e instanceof ApiError ? e.message : t('delistFailed') };
   }
 }
 
 /** 恢复上架：status→0（走编辑表单同款 PATCH） */
 export async function restoreModelAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
   try {
     await adminFetch(`/v1/models/${id}`, { method: 'PATCH', body: { status: 0 } });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '恢复失败' };
+    return { error: e instanceof ApiError ? e.message : t('restoreFailed') };
   }
 }
 
@@ -115,6 +121,7 @@ export async function bindChannelsAction(
   id: number,
   channelIds: number[],
 ): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
   try {
     await adminFetch(`/v1/models/${id}/channels`, {
       method: 'POST',
@@ -125,7 +132,7 @@ export async function bindChannelsAction(
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '绑定失败' };
+    return { error: e instanceof ApiError ? e.message : t('bindFailed') };
   }
 }
 
@@ -142,6 +149,7 @@ export interface ModelTestResult {
 export async function testModelAction(id: number): Promise<
   { results?: ModelTestResult[]; error?: string }
 > {
+  const t = await getTranslations('models');
   try {
     const data = await adminFetch<{ results: ModelTestResult[] }>(
       `/v1/models/${id}/test`,
@@ -149,6 +157,6 @@ export async function testModelAction(id: number): Promise<
     );
     return { results: data.results };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '测试失败' };
+    return { error: e instanceof ApiError ? e.message : t('testFailed') };
   }
 }

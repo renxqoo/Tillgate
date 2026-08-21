@@ -11,6 +11,7 @@ import {
   UploadIcon,
   WifiIcon,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -46,11 +47,12 @@ import { moneyText, numericText } from '@ai-gateway/ui/lib/forms';
 
 import type { AdminChannelRow, ProviderOption } from '@ai-gateway/api-client/types';
 
+// 状态 tone 映射留模块级；label 是 channels 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_META = defineStatusMeta({
-  0: { label: '启用', tone: 'success' },
-  1: { label: '降级', tone: 'warning' },
-  2: { label: '禁用', tone: 'neutral' },
-  3: { label: '冷却', tone: 'warning' },
+  0: { label: 'statusEnabled', tone: 'success' },
+  1: { label: 'statusDegraded', tone: 'warning' },
+  2: { label: 'statusDisabled', tone: 'neutral' },
+  3: { label: 'statusCooldown', tone: 'warning' },
 });
 
 export function ChannelsTable({
@@ -60,26 +62,28 @@ export function ChannelsTable({
   readonly channels: ReadonlyArray<AdminChannelRow>;
   readonly providers: ReadonlyArray<ProviderOption>;
 }) {
+  const t = useTranslations('channels');
+  const tc = useTranslations('common');
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead>供应商</TableHead>
+          <TableHead>{tc('name')}</TableHead>
+          <TableHead>{t('provider')}</TableHead>
           <TableHead>Base URL</TableHead>
-          <TableHead>模型</TableHead>
-          <TableHead className="text-right">权重 / 优先级</TableHead>
-          <TableHead className="text-right">额度</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead className="text-right">失败次数</TableHead>
-          <TableHead className="w-64 text-right">操作</TableHead>
+          <TableHead>{t('models')}</TableHead>
+          <TableHead className="text-right">{t('weightPriority')}</TableHead>
+          <TableHead className="text-right">{t('budget')}</TableHead>
+          <TableHead>{tc('status')}</TableHead>
+          <TableHead className="text-right">{t('failCount')}</TableHead>
+          <TableHead className="w-64 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {channels.length === 0 ? (
           <TableRow>
             <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
-              暂无渠道
+              {t('noChannels')}
             </TableCell>
           </TableRow>
         ) : (
@@ -97,6 +101,8 @@ function ChannelRowItem({
   channel: AdminChannelRow;
   providers: ReadonlyArray<ProviderOption>;
 }) {
+  const t = useTranslations('channels');
+  const tc = useTranslations('common');
   const [testing, setTesting] = useState(false);
   const meta = STATUS_META.get(channel.status);
 
@@ -121,10 +127,10 @@ function ChannelRowItem({
         <span className="font-medium">{formatMoney(channel.upstreamBudget)}</span>
       </TableCell>
       <TableCell>
-        <StatusPill dot tone={meta.tone} label={meta.label}>
+        <StatusPill dot tone={meta.tone} label={t(meta.label)}>
           {channel.cooldownUntil ? (
             <span className="text-muted-foreground" title={channel.cooldownUntil}>
-              （冷却中）
+              {t('cooling')}
             </span>
           ) : null}
         </StatusPill>
@@ -144,17 +150,17 @@ function ChannelRowItem({
               const res = await testChannelAction(channel.id);
               setTesting(false);
               if (res.error) toast.error(String(res.error));
-              else toast.success(`连通 ${res.durationMs ?? 0}ms`);
+              else toast.success(t('connected', { ms: res.durationMs ?? 0 }));
             }}
           >
             {testing ? <Loader2Icon className="animate-spin" /> : <WifiIcon />}
-            测试
+            {t('test')}
           </Button>
           <EditChannelDialog channel={channel} providers={providers} />
           <ConfirmAction
-            confirm={`确定删除渠道 ${channel.name}？`}
+            confirm={t('deleteConfirm', { name: channel.name })}
             action={async () => (await import('../actions')).deleteChannelAction(channel.id)}
-            success="已删除"
+            success={tc('deleted')}
           >
             {({ pending, onClick }) => (
               <Button
@@ -174,26 +180,32 @@ function ChannelRowItem({
   );
 }
 
-const createSchema = z.object({
-  providerId: z.coerce.number().min(1, '请选择供应商'),
-  name: z.string().min(1, '请输入名称'),
-  apiKey: z.string().min(1, '请输入 API Key'),
-  baseUrlOverride: z.string().optional(),
-  models: z.string().optional(),
-  weight: numericText({ message: '请输入整数' })
-    .refine((v) => Number.isInteger(v), '请输入整数')
-    .refine((v) => v >= 1 && v <= 1000, '权重范围 1-1000'),
-  priority: numericText({ message: '请输入整数' })
-    .refine((v) => Number.isInteger(v), '请输入整数')
-    .refine((v) => v >= 0, '优先级不能为负'),
-});
+// 校验消息走目录：schema 在组件内用 t 构造
+function buildCreateSchema(t: ReturnType<typeof useTranslations<'channels'>>, tc: ReturnType<typeof useTranslations<'common'>>) {
+  return z.object({
+    providerId: z.coerce.number().min(1, t('providerRequired')),
+    name: z.string().min(1, t('nameRequired')),
+    apiKey: z.string().min(1, t('apiKeyRequired')),
+    baseUrlOverride: z.string().optional(),
+    models: z.string().optional(),
+    weight: numericText({ message: tc('invalidInteger') })
+      .refine((v) => Number.isInteger(v), tc('invalidInteger'))
+      .refine((v) => v >= 1 && v <= 1000, t('weightRange')),
+    priority: numericText({ message: tc('invalidInteger') })
+      .refine((v) => Number.isInteger(v), tc('invalidInteger'))
+      .refine((v) => v >= 0, t('priorityNonNegative')),
+  });
+}
 
 export function CreateChannelDialog({
   providers,
 }: {
   readonly providers: ReadonlyArray<ProviderOption>;
 }) {
+  const t = useTranslations('channels');
+  const tc = useTranslations('common');
   const notify = useActionResult();
+  const createSchema = buildCreateSchema(t, tc);
 
   type FormValues = z.input<typeof createSchema>;
   const form = useForm<FormValues>({
@@ -214,17 +226,17 @@ export function CreateChannelDialog({
       trigger={
         <Button>
           <PlusCircleIcon />
-          新建渠道
+          {t('create')}
         </Button>
       }
       title={
         <>
-          <NetworkIcon /> 新建渠道
+          <NetworkIcon /> {t('create')}
         </>
       }
       titleClassName="flex items-center gap-2"
-      description="添加一条 LLM 供应商渠道"
-      submitLabel="创建"
+      description={t('createDescription')}
+      submitLabel={tc('create')}
       formId="channel-form"
     >
       {({ run }) => (
@@ -239,7 +251,7 @@ export function CreateChannelDialog({
                 weight: Number(values.weight),
                 priority: Number(values.priority),
               });
-              if (!notify(res, '创建失败', '已创建渠道')) return false;
+              if (!notify(res, tc('createFailed'), t('channelCreated'))) return false;
               form.reset();
               return true;
             })
@@ -259,23 +271,25 @@ function EditChannelDialog({
   channel: AdminChannelRow;
   providers: ReadonlyArray<ProviderOption>;
 }) {
+  const t = useTranslations('channels');
+  const tc = useTranslations('common');
   const notify = useActionResult();
 
   const editSchema = z.object({
-    name: z.string().min(1, '请输入名称'),
+    name: z.string().min(1, t('nameRequired')),
     apiKey: z.string().optional(),
     baseUrlOverride: z.string().optional(),
     models: z.string().optional(),
-    weight: numericText({ message: '请输入整数' })
-      .refine((v) => Number.isInteger(v), '请输入整数')
-      .refine((v) => v >= 1 && v <= 1000, '权重范围 1-1000'),
-    priority: numericText({ message: '请输入整数' })
-      .refine((v) => Number.isInteger(v), '请输入整数')
-      .refine((v) => v >= 0, '优先级不能为负'),
+    weight: numericText({ message: tc('invalidInteger') })
+      .refine((v) => Number.isInteger(v), tc('invalidInteger'))
+      .refine((v) => v >= 1 && v <= 1000, t('weightRange')),
+    priority: numericText({ message: tc('invalidInteger') })
+      .refine((v) => Number.isInteger(v), tc('invalidInteger'))
+      .refine((v) => v >= 0, t('priorityNonNegative')),
     status: z.coerce.number().int(),
     rpmLimit: z.string().optional(),
     tpmLimit: z.string().optional(),
-    upstreamThreshold: z.union([z.literal(''), moneyText({ message: '请输入有效非负金额' })]).optional(),
+    upstreamThreshold: z.union([z.literal(''), moneyText({ message: t('nonNegativeAmount') })]).optional(),
   });
   type FormValues = z.input<typeof editSchema>;
 
@@ -299,18 +313,18 @@ function EditChannelDialog({
   return (
     <FormDialog
       trigger={
-        <Button size="sm" variant="ghost" title="编辑">
+        <Button size="sm" variant="ghost" title={tc('edit')}>
           <PencilIcon />
         </Button>
       }
       title={
         <>
-          <PencilIcon /> 编辑渠道 - {channel.name}
+          <PencilIcon /> {t('editTitle', { name: channel.name })}
         </>
       }
       titleClassName="flex items-center gap-2"
-      description="留空 API Key 表示不修改"
-      submitLabel="保存"
+      description={t('editDescription')}
+      submitLabel={tc('save')}
       formId="channel-edit-form"
     >
       {({ run }) => (
@@ -331,7 +345,7 @@ function EditChannelDialog({
                 tpmLimit: values.tpmLimit === '' ? null : Number(values.tpmLimit),
                 upstreamThreshold: values.upstreamThreshold === '' ? null : values.upstreamThreshold,
               });
-              return notify(res, '保存失败', '已保存');
+              return notify(res, tc('saveFailed'), tc('saved'));
             })
           }
           formId="channel-edit-form"
@@ -358,6 +372,8 @@ function ChannelForm<T extends Record<string, unknown>>({
   providers: ReadonlyArray<ProviderOption>;
   isEdit?: boolean;
 }) {
+  const t = useTranslations('channels');
+  const tc = useTranslations('common');
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -373,13 +389,13 @@ function ChannelForm<T extends Record<string, unknown>>({
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
               <Field data-invalid={fieldState.invalid}>
-                <FieldLabel>供应商</FieldLabel>
+                <FieldLabel>{t('provider')}</FieldLabel>
                 <Select
                   value={String(field.value ?? 0)}
                   onValueChange={(v) => field.onChange(Number(v))}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择供应商" />
+                    <SelectValue placeholder={t('selectProvider')} />
                   </SelectTrigger>
                   <SelectContent>
                     {providers.map((p) => (
@@ -405,7 +421,7 @@ function ChannelForm<T extends Record<string, unknown>>({
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="ch-name">渠道名称</FieldLabel>
+              <FieldLabel htmlFor="ch-name">{t('channelName')}</FieldLabel>
               <Input id="ch-name" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
@@ -422,7 +438,7 @@ function ChannelForm<T extends Record<string, unknown>>({
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="ch-key">API Key{isEdit ? '（留空不修改）' : ''}</FieldLabel>
+              <FieldLabel htmlFor="ch-key">{isEdit ? t('apiKeyKeep') : t('apiKey')}</FieldLabel>
               <Input id="ch-key" type="password" {...field} placeholder={isEdit ? '••••••' : ''} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
@@ -433,8 +449,8 @@ function ChannelForm<T extends Record<string, unknown>>({
           name="baseUrlOverride"
           render={({ field }: { field: { value: string } }) => (
             <Field>
-              <FieldLabel htmlFor="ch-url">Base URL 覆盖（可选）</FieldLabel>
-              <Input id="ch-url" placeholder="覆盖供应商默认地址" {...field} />
+              <FieldLabel htmlFor="ch-url">{t('baseUrlOverride')}</FieldLabel>
+              <Input id="ch-url" placeholder={t('overridePlaceholder')} {...field} />
             </Field>
           )}
         />
@@ -443,8 +459,8 @@ function ChannelForm<T extends Record<string, unknown>>({
           name="models"
           render={({ field }: { field: { value: string } }) => (
             <Field>
-              <FieldLabel htmlFor="ch-models">模型列表（可选）</FieldLabel>
-              <Input id="ch-models" placeholder="例如 gpt-4o,claude-3-5-sonnet" {...field} />
+              <FieldLabel htmlFor="ch-models">{t('modelsLabel')}</FieldLabel>
+              <Input id="ch-models" placeholder={t('modelsPlaceholder')} {...field} />
             </Field>
           )}
         />
@@ -452,7 +468,7 @@ function ChannelForm<T extends Record<string, unknown>>({
           <NumberField
             control={form.control}
             name="weight"
-            label="权重（1-1000）"
+            label={t('weight')}
             id="ch-weight"
             step="1"
             min={1}
@@ -460,7 +476,7 @@ function ChannelForm<T extends Record<string, unknown>>({
           <NumberField
             control={form.control}
             name="priority"
-            label="优先级（数字越大越优先）"
+            label={t('priority')}
             id="ch-priority"
             step="1"
             min={0}
@@ -473,7 +489,7 @@ function ChannelForm<T extends Record<string, unknown>>({
               name="status"
               render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
                 <Field>
-                  <FieldLabel>状态</FieldLabel>
+                  <FieldLabel>{tc('status')}</FieldLabel>
                   <Select
                     value={String(field.value ?? 0)}
                     onValueChange={(v) => field.onChange(Number(v))}
@@ -482,8 +498,8 @@ function ChannelForm<T extends Record<string, unknown>>({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="0">启用</SelectItem>
-                      <SelectItem value="2">禁用</SelectItem>
+                      <SelectItem value="0">{tc('enabled')}</SelectItem>
+                      <SelectItem value="2">{tc('disabled')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
@@ -495,8 +511,8 @@ function ChannelForm<T extends Record<string, unknown>>({
                 name="rpmLimit"
                 render={({ field }: { field: { value: string } }) => (
                   <Field>
-                    <FieldLabel htmlFor="ch-rpm">RPM 限额（空=默认）</FieldLabel>
-                    <Input id="ch-rpm" type="number" {...field} placeholder="默认" />
+                    <FieldLabel htmlFor="ch-rpm">{t('rpmLimit')}</FieldLabel>
+                    <Input id="ch-rpm" type="number" {...field} placeholder={tc('default')} />
                   </Field>
                 )}
               />
@@ -505,8 +521,8 @@ function ChannelForm<T extends Record<string, unknown>>({
                 name="tpmLimit"
                 render={({ field }: { field: { value: string } }) => (
                   <Field>
-                    <FieldLabel htmlFor="ch-tpm">TPM 限额（空=默认）</FieldLabel>
-                    <Input id="ch-tpm" type="number" {...field} placeholder="默认" />
+                    <FieldLabel htmlFor="ch-tpm">{t('tpmLimit')}</FieldLabel>
+                    <Input id="ch-tpm" type="number" {...field} placeholder={tc('default')} />
                   </Field>
                 )}
               />
@@ -516,9 +532,7 @@ function ChannelForm<T extends Record<string, unknown>>({
               name="upstreamThreshold"
               render={({ field }: { field: { value: string } }) => (
                 <Field>
-                  <FieldLabel htmlFor="ch-threshold">
-                    熔断阈值（元，剩余 ≤ 此值自动熔断；空=0 即耗尽才熔断）
-                  </FieldLabel>
+                  <FieldLabel htmlFor="ch-threshold">{t('circuitThreshold')}</FieldLabel>
                   <Input id="ch-threshold" type="number" step="0.01" {...field} placeholder="0" />
                 </Field>
               )}
@@ -532,6 +546,7 @@ function ChannelForm<T extends Record<string, unknown>>({
 
 // ── 批量导入 ────────────────────────────────────────────────────────────────
 export function ImportChannelsDialog() {
+  const t = useTranslations('channels');
   const notify = useActionResult();
   const [text, setText] = useState('');
 
@@ -540,17 +555,17 @@ export function ImportChannelsDialog() {
       trigger={
         <Button variant="outline">
           <UploadIcon />
-          批量导入
+          {t('import')}
         </Button>
       }
       title={
         <>
-          <UploadIcon /> 批量导入渠道
+          <UploadIcon /> {t('importTitle')}
         </>
       }
       titleClassName="flex items-center gap-2"
-      description="粘贴 JSON 数组，每项含 provider（供应商名）、name、apiKey、可选 models / weight / priority"
-      submitLabel="导入"
+      description={t('importDescription')}
+      submitLabel={t('importSubmit')}
       onSubmitClick={async () => {
         let channels: Array<{
           provider: string;
@@ -562,16 +577,16 @@ export function ImportChannelsDialog() {
         }> = [];
         try {
           const parsed = JSON.parse(text);
-          if (!Array.isArray(parsed)) throw new Error('需要 JSON 数组');
+          if (!Array.isArray(parsed)) throw new Error('JSON array required');
           channels = parsed;
         } catch {
-          toast.error('请输入合法的 JSON 数组');
+          toast.error(t('invalidJson'));
           return false;
         }
         const { importChannelsAction } = await import('../actions');
         const res = await importChannelsAction(channels);
-        if (!notify(res, '导入失败')) return false;
-        toast.success(`已导入 ${res.created ?? channels.length} 条`);
+        if (!notify(res, t('importFailed'))) return false;
+        toast.success(t('imported', { count: res.created ?? channels.length }));
         setText('');
         return true;
       }}

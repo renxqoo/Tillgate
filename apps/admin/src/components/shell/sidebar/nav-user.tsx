@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 
 import { EllipsisVertical, Loader2Icon, LogOut } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -26,6 +27,7 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const tUi = useTranslations("ui");
   const [pending, startTransition] = useTransition();
 
   async function handleLogout() {
@@ -80,7 +82,7 @@ export function NavUser({
               className="cursor-pointer text-destructive focus:text-destructive"
             >
               {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
-              退出登录
+              {tUi("logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

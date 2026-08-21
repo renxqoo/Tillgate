@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Input } from '@ai-gateway/ui/components/ui/input';
@@ -11,12 +12,13 @@ export function ReviewActions(props: {
   revision: number;
   status: 'dead';
 }) {
+  const t = useTranslations('billingOperations');
   const [reason, setReason] = useState('');
   const [pending, startTransition] = useTransition();
 
   const run = (action: () => Promise<{ error?: string }>, successMessage: string) => {
     if (!reason.trim()) {
-      toast.error('必须填写复核理由');
+      toast.error(t('reasonRequired'));
       return;
     }
     startTransition(async () => {
@@ -34,16 +36,16 @@ export function ReviewActions(props: {
         <Input
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="重试 / 废弃原因（必填，进审计）"
+          placeholder={t('reasonPlaceholder')}
           maxLength={1000}
         />
         <Button
           size="sm"
           variant="outline"
           disabled={pending}
-          onClick={() => run(() => retryDeadBillingRequest(base), '已进入重试队列')}
+          onClick={() => run(() => retryDeadBillingRequest(base), t('retryQueued'))}
         >
-          重试
+          {t('retry')}
         </Button>
         <Button
           size="sm"
@@ -57,11 +59,11 @@ export function ReviewActions(props: {
                   expectedRevision: props.revision,
                   reason,
                 }),
-              '已废弃并释放预扣',
+              t('abandoned'),
             )
           }
         >
-          废弃
+          {t('abandon')}
         </Button>
       </div>
     );

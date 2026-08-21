@@ -1,5 +1,7 @@
 'use server';
 
+import { getTranslations } from 'next-intl/server';
+
 import { ApiError, adminFetch } from '@ai-gateway/api-client';
 
 export interface TraceDetail {
@@ -26,11 +28,13 @@ export interface TraceDetail {
 
 /** 弹窗懒加载单 trace 详情（server action 转发管理员会话到 admin-api） */
 export async function fetchTraceDetail(traceId: string): Promise<TraceDetail | { error: string }> {
-  if (!/^[0-9a-f]{1,32}$/i.test(traceId)) return { error: 'traceId 格式非法' };
+  const t = await getTranslations('tracing');
+  const tc = await getTranslations('common');
+  if (!/^[0-9a-f]{1,32}$/i.test(traceId)) return { error: t('invalidTraceId') };
   try {
     return await adminFetch<TraceDetail>(`/v1/tracing/traces/${traceId}`);
   } catch (caught) {
-    return { error: caught instanceof ApiError ? caught.message : '加载失败' };
+    return { error: caught instanceof ApiError ? caught.message : tc('loadFailed') };
   }
 }
 
@@ -38,10 +42,12 @@ export async function fetchTraceDetail(traceId: string): Promise<TraceDetail | {
 export async function fetchTraceDetailByRequestId(
   requestId: string,
 ): Promise<TraceDetail | { error: string }> {
-  if (!/^[0-9a-zA-Z-]{1,64}$/.test(requestId)) return { error: 'requestId 格式非法' };
+  const t = await getTranslations('tracing');
+  const tc = await getTranslations('common');
+  if (!/^[0-9a-zA-Z-]{1,64}$/.test(requestId)) return { error: t('invalidRequestId') };
   try {
     return await adminFetch<TraceDetail>(`/v1/tracing/by-request/${requestId}`);
   } catch (caught) {
-    return { error: caught instanceof ApiError ? caught.message : '加载失败' };
+    return { error: caught instanceof ApiError ? caught.message : tc('loadFailed') };
   }
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { Loader2Icon, WalletIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import {
@@ -28,6 +29,7 @@ function validTopupAmount(raw: string): boolean {
 }
 
 export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe'; label: string }> }) {
+  const t = useTranslations('billing');
   const [amount, setAmount] = useState('50');
   const [provider, setProvider] = useState<'epay' | 'stripe' | ''>('');
   const [pending, setPending] = useState(false);
@@ -36,11 +38,11 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
   async function submit() {
     setError(null);
     if (!provider) {
-      setError('请选择支付渠道');
+      setError(t('selectChannel'));
       return;
     }
     if (!validTopupAmount(amount)) {
-      setError('金额须在 1~100000 元之间');
+      setError(t('amountRange'));
       return;
     }
     setPending(true);
@@ -51,7 +53,7 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
       return;
     }
     if (res.payUrl) {
-      toast.success('订单已创建，正在跳转支付…');
+      toast.success(t('orderCreated'));
       window.location.href = res.payUrl;
     }
   }
@@ -61,19 +63,23 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <WalletIcon className="size-5 text-primary" />
-          在线充值
+          {t('topupTitle')}
         </CardTitle>
-        <CardDescription>支付成功后余额实时到账（回调自动入账）</CardDescription>
+        <CardDescription>{t('topupDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
         {channels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            在线支付渠道暂未开放，请使用<a className="underline" href="/dashboard/redeem">充值码</a>充值。
+            {t.rich('channelsEmpty', {
+              link: (chunks) => (
+                <a className="underline" href="/dashboard/redeem">{chunks}</a>
+              ),
+            })}
           </p>
         ) : (
           <FieldGroup>
             <Field>
-              <FieldLabel>充值金额（元，1:1 到账）</FieldLabel>
+              <FieldLabel>{t('amountLabel')}</FieldLabel>
               <div className="flex flex-wrap gap-2">
                 {PRESETS.map((p) => (
                   <Button
@@ -92,11 +98,11 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
                 inputMode="decimal"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ''))}
-                placeholder="自定义金额"
+                placeholder={t('customAmount')}
               />
             </Field>
             <Field>
-              <FieldLabel>支付渠道</FieldLabel>
+              <FieldLabel>{t('channelLabel')}</FieldLabel>
               <div className="flex flex-wrap gap-2">
                 {channels.map((ch) => (
                   <Button
@@ -114,7 +120,7 @@ export function TopUpForm({ channels }: { channels: Array<{ id: 'epay' | 'stripe
             {error ? <FieldError>{error}</FieldError> : null}
             <Button onClick={submit} disabled={pending}>
               {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
-              立即充值
+              {t('submit')}
             </Button>
           </FieldGroup>
         )}

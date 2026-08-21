@@ -3,13 +3,15 @@
 import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 export async function purchaseSubscriptionAction(
   planId: number,
   quantity = 1,
 ): Promise<{ error?: string }> {
-  if (!planId) return { error: "请选择套餐" };
-  if (!Number.isInteger(quantity) || quantity < 1) return { error: "席位至少为 1" };
+  const t = await getTranslations("subscription");
+  if (!planId) return { error: t("planRequired") };
+  if (!Number.isInteger(quantity) || quantity < 1) return { error: t("seatsAtLeast1") };
   try {
     await apiFetch("/v1/subscriptions", {
       method: "POST",
@@ -18,7 +20,7 @@ export async function purchaseSubscriptionAction(
     revalidatePath("/dashboard/subscription");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "购买失败" };
+    return { error: e instanceof ApiError ? e.message : t("purchaseFailed") };
   }
 }
 
@@ -27,23 +29,25 @@ export async function changeSubscriptionAction(
   id: number,
   input: { targetPlanId: number; quantity: number },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("subscription");
   try {
     await apiFetch(`/v1/subscriptions/${id}/change`, { method: "POST", body: input });
     revalidatePath("/dashboard/subscription");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "变更失败" };
+    return { error: e instanceof ApiError ? e.message : t("changeFailed") };
   }
 }
 
 // ── 续费（按原席位扣余额、顺延订阅期）──────────────────────────────────────
 export async function renewSubscriptionAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations("subscription");
   try {
     await apiFetch(`/v1/subscriptions/${id}/renew`, { method: "POST" });
     revalidatePath("/dashboard/subscription");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "续费失败" };
+    return { error: e instanceof ApiError ? e.message : t("renewFailed") };
   }
 }
 

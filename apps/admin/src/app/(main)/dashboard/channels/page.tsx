@@ -1,4 +1,5 @@
 import { NetworkIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import type { AdminProviderRow } from "@ai-gateway/api-client";
@@ -22,6 +23,7 @@ interface PageProps {
 
 export default async function ChannelsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("channels");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows: channels, total, error } = await fetchAdminList<AdminChannelRow>(
     "/v1/channels",
@@ -48,11 +50,11 @@ export default async function ChannelsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="渠道"
+      title={t("title")}
       icon={<NetworkIcon className="size-5 text-muted-foreground" />}
-      description="LLM 供应商渠道管理"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索渠道 / 供应商名"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={

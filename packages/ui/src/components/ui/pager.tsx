@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslations } from 'next-intl';
 
 import { pagerHref } from '../../lib/pager-href';
 
@@ -64,6 +65,7 @@ export function Pager({
   onPageChange?: (page: number) => void;
   className?: string;
 }) {
+  const t = useTranslations('ui');
   const makeHref = (target: number): string => pagerHref(searchParams, pageKey, target);
   /** 页码目标合法性（受控模式同样要拦首尾越界点击） */
   const reachable = (target: number): boolean => target >= 1 && target <= totalPages && target !== page;
@@ -101,11 +103,12 @@ export function Pager({
       className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground ${className ?? ''}`}
     >
       <span>
-        第 {page} / {totalPages} 页{total !== undefined ? ` · 共 ${total.toLocaleString()} 条` : ''}
+        {t('pageOf', { page, totalPages })}
+        {total !== undefined ? ` · ${t('totalItems', { count: total })}` : ''}
       </span>
       <div className="flex items-center gap-1">
         <Nav target={page - 1} arrow>
-          上一页
+          {t('prevPage')}
         </Nav>
         {buildPages(page, totalPages).map((p, i) =>
           p === '...' ? (
@@ -126,7 +129,7 @@ export function Pager({
           ),
         )}
         <Nav target={page + 1} arrow>
-          下一页
+          {t('nextPage')}
         </Nav>
       </div>
     </div>

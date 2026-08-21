@@ -10,10 +10,10 @@ import { z } from "zod";
  * 空串 → 「必填」错误；非数字 → 自定义错误。
  */
 export function numericText(options: { message?: string } = {}) {
-  const { message = "请输入有效数字" } = options;
+  const { message = "Enter a valid number" } = options;
   return z
     .string()
-    .refine((v) => v.trim() !== "", "必填")
+    .refine((v) => v.trim() !== "", "Required")
     .refine((v) => Number.isFinite(Number(v)), message)
     .transform((v) => Number(v));
 }
@@ -30,7 +30,7 @@ export function moneyText(options: {
   allowEmpty?: boolean;
 } = {}) {
   const {
-    message = "请输入有效金额",
+    message = "Enter a valid amount",
     allowNegative = false,
     allowZero = true,
     allowEmpty = false,
@@ -39,5 +39,5 @@ export function moneyText(options: {
   return z
     .string()
     .refine((v) => (allowEmpty ? v === "" || pattern.test(v) : pattern.test(v)), message)
-    .refine((v) => allowZero || !/^-?0+(?:\.0+)?$/.test(v), "金额必须非零");
+    .refine((v) => allowZero || !/^-?0+(?:\.0+)?$/.test(v), "Amount must be non-zero");
 }

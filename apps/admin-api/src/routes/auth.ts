@@ -6,7 +6,7 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
+import { parseAcceptLanguage, socketAddressFromContext, trustedClientIp } from '@ai-gateway/http';
 import type { SessionRevocationStore } from '@ai-gateway/identity';
 import type { SessionEnv } from '../middleware/session.js';
 import type { AdminAuthService } from '../services/auth.service.js';
@@ -49,7 +49,7 @@ export function authRoutes(
 
   app.post('/v1/auth/login', async (c) => {
     const body = loginSchema.parse(await c.req.json());
-    const result = await service.login(sysCtx(c), { ...body, ip: clientIp(c) });
+    const result = await service.login(sysCtx(c), { ...body, ip: clientIp(c), locale: parseAcceptLanguage(c.req.header('accept-language')) });
     if (result.kind === 'code_required') {
       return c.json({ twoFactorRequired: true, challengeId: result.challengeId });
     }

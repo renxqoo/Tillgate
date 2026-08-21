@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
+
 import { CopyButton } from '@ai-gateway/ui/components/shell/copy-button';
 
 /**
@@ -15,13 +17,14 @@ export function CodeBlock({
   html: string;
   text: string;
 }) {
+  const tUi = useTranslations('ui');
   return (
     <div className="overflow-hidden rounded-lg border">
       <div className="flex items-center justify-between border-b bg-muted/60 px-3 py-1.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           {lang ?? 'shell'}
         </span>
-        <CopyButton text={text} label="复制" className="h-6 px-2 text-xs" />
+        <CopyButton text={text} label={tUi('copy')} className="h-6 px-2 text-xs" />
       </div>
       <div
         className="code-block-body overflow-x-auto text-xs"

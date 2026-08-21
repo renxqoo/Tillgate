@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useTranslations } from "next-intl";
 
 import { Loader2Icon, LogOut } from "lucide-react";
 
@@ -32,6 +33,7 @@ export function AccountSwitcher({
   readonly onLogout: () => Promise<void>;
 }) {
   const [pending, startTransition] = useTransition();
+  const t = useTranslations("ui");
 
   function handleLogout() {
     startTransition(async () => {
@@ -42,7 +44,7 @@ export function AccountSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label="账号菜单"
+        aria-label={t("accountMenu")}
         className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Avatar className="size-8 rounded-lg">
@@ -63,7 +65,7 @@ export function AccountSwitcher({
           className="cursor-pointer text-destructive focus:text-destructive"
         >
           {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
-          退出登录
+          {t("logout")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

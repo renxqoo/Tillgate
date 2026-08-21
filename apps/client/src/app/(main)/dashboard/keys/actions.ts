@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 import type { KeyCreated, KeyRow } from "@ai-gateway/api-client/types";
 
@@ -11,7 +12,8 @@ export async function createKeyAction(input: {
   remark?: string;
   subscriptionId?: number | null;
 }): Promise<{ error?: string; key?: KeyCreated }> {
-  if (!input.name.trim()) return { error: "请输入名称" };
+  const t = await getTranslations("keys");
+  if (!input.name.trim()) return { error: t("nameRequired") };
   try {
     const res = await apiFetch<KeyCreated>("/v1/keys", {
       method: "POST",
@@ -24,7 +26,8 @@ export async function createKeyAction(input: {
     revalidatePath("/dashboard/keys");
     return { key: res };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "创建失败" };
+    const tCommon = await getTranslations("common");
+    return { error: e instanceof ApiError ? e.message : tCommon("createFailed") };
   }
 }
 
@@ -38,6 +41,7 @@ export async function updateKeyAction(
     dailySpendLimit?: string | null;
   },
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("common");
   try {
     const body: Record<string, unknown> = {};
     if (input.name !== undefined) body.name = input.name.trim();
@@ -49,16 +53,17 @@ export async function updateKeyAction(
     revalidatePath("/dashboard/keys");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "更新失败" };
+    return { error: e instanceof ApiError ? e.message : t("updateFailed") };
   }
 }
 
 export async function revokeKeyAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations("keys");
   try {
     await apiFetch(`/v1/keys/${id}`, { method: "DELETE" });
     revalidatePath("/dashboard/keys");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "吊销失败" };
+    return { error: e instanceof ApiError ? e.message : t("revokeFailed") };
   }
 }

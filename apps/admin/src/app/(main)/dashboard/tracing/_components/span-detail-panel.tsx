@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
+
 /** span 属性详情侧栏：路线图节点点击与瀑布行点击共用（单一展示真相） */
 export function SpanDetailPanel({
   span,
@@ -22,7 +24,9 @@ export function SpanDetailPanel({
   };
   onClose: () => void;
 }) {
-  const chips = summarizeBilling(span.attributes);
+  const t = useTranslations('tracing');
+  const tc = useTranslations('common');
+  const chips = summarizeBilling(span.attributes, t);
   return (
     <div className="rounded-lg border bg-muted/30 p-3 text-xs">
       <div className="mb-2 flex items-start justify-between gap-2">
@@ -38,7 +42,7 @@ export function SpanDetailPanel({
           </div>
         </div>
         <button type="button" onClick={onClose} className="rounded px-2 py-1 hover:bg-muted">
-          关闭
+          {tc('close')}
         </button>
       </div>
       {chips ? (
@@ -89,26 +93,27 @@ function fmtTokens(v: unknown): string {
  */
 function summarizeBilling(
   attrs: Record<string, unknown>,
+  t: ReturnType<typeof useTranslations<'tracing'>>,
 ): Array<{ label: string; title?: string }> | null {
   const chips: Array<{ label: string; title?: string }> = [];
 
   const settledAmount = attrs['billing.amount'];
   if (typeof settledAmount === 'string' && settledAmount !== '') {
     chips.push({
-      label: `实扣 ${fmtAmount(settledAmount)}`,
-      title: 'billing.amount（元，string）',
+      label: t('settled', { amount: fmtAmount(settledAmount) }),
+      title: t('settledTitle'),
     });
   }
   const reserved = attrs['billing.amount_reserved'];
   if (typeof reserved === 'string' && reserved !== '') {
     chips.push({
-      label: `预授权 ${fmtAmount(reserved)}`,
-      title: 'billing.amount_reserved（预估敞口）',
+      label: t('reservedAuth', { amount: fmtAmount(reserved) }),
+      title: t('reservedTitle'),
     });
   }
   const required = attrs['billing.amount_required'];
   if (typeof required === 'string' && required !== '') {
-    chips.push({ label: `预估 ${fmtAmount(required)}`, title: 'billing.amount_required' });
+    chips.push({ label: t('estimatedRequired', { amount: fmtAmount(required) }), title: 'billing.amount_required' });
   }
   const input = attrs['usage.input_tokens'];
   const cached = attrs['usage.cached_input_tokens'];
@@ -125,18 +130,18 @@ function summarizeBilling(
   }
   const reject = attrs['billing.reject_code'];
   if (typeof reject === 'string' && reject !== '') {
-    chips.push({ label: `拒绝: ${reject}`, title: 'billing.reject_code' });
+    chips.push({ label: t('rejected', { code: reject }), title: 'billing.reject_code' });
   }
   const ttfb = attrs['upstream.ttfb_ms'] ?? attrs['stream.ttfb_ms'];
   if (typeof ttfb === 'number') {
     chips.push({
       label: `TTFB ${ttfb} ms`,
-      title: '首个上游事件（upstream.ttfb_ms / stream.ttfb_ms）',
+      title: t('ttfbTitle'),
     });
   }
   const terminated = attrs['stream.terminated'];
   if (typeof terminated === 'string' && terminated !== '') {
-    chips.push({ label: `流中断: ${terminated}`, title: 'stream.terminated（取消/截断原因）' });
+    chips.push({ label: t('terminated', { reason: terminated }), title: t('terminatedTitle') });
   }
   return chips.length > 0 ? chips : null;
 }

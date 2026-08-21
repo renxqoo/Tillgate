@@ -6,6 +6,7 @@ import { KeyRoundIcon, Loader2Icon, PencilIcon, Trash2Icon } from "lucide-react"
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { z } from "zod";
 
 import { fmtDateTime, formatMoney } from "@ai-gateway/api-client/formatters";
@@ -38,46 +39,38 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const createSchema = z.object({
-  name: z.string().min(1, "请输入名称").max(100),
-  remark: z.string().max(200).optional(),
-  subscriptionId: z.number().int().positive().nullable(),
-});
+interface CreateKeyValues {
+  name: string;
+  remark?: string;
+  subscriptionId: number | null;
+}
 
-const editSchema = z.object({
-  name: z.string().min(1, "请输入名称").max(100),
-  remark: z.string().max(200).optional(),
-  rpmLimit: z.string().optional(),
-  tpmLimit: z.string().optional(),
-  dailySpendLimit: z.string().optional(),
-});
+interface EditKeyValues {
+  name: string;
+  remark?: string;
+  rpmLimit?: string;
+  tpmLimit?: string;
+  dailySpendLimit?: string;
+}
 
 /** RPM/TPM：留空=不限；填值须正整数。 */
-function parsePositiveInt(raw: string | undefined, field: string): number | null {
+function parsePositiveInt(raw: string | undefined, invalidMessage: string): number | null {
   if (raw === undefined || raw.trim() === "") return null;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-    throw new Error(`${field} 须为正整数`);
+    throw new Error(invalidMessage);
   }
   return n;
 }
 
 /** 每日花费上限：留空=不限；填值须 >= 0。 */
-function parseDailySpend(raw: string | undefined): string | null {
+function parseDailySpend(raw: string | undefined, invalidMessage: string): string | null {
   if (raw === undefined || raw.trim() === "") return null;
   const value = raw.trim();
   if (!/^\d+(?:\.\d+)?$/.test(value)) {
-    throw new Error("每日花费上限须为 >= 0 的金额");
+    throw new Error(invalidMessage);
   }
   return value;
-}
-
-function fmtLimit(v: number | null): string {
-  return v === null ? "不限" : v.toLocaleString();
-}
-
-function fmtMoney(v: string | null): string {
-  return v === null ? "不限" : formatMoney(v);
 }
 
 export function KeysTable({
@@ -87,28 +80,36 @@ export function KeysTable({
   readonly keys: ReadonlyArray<KeyRow>;
   readonly subscriptionLabels: ReadonlyMap<number, string>;
 }) {
+  const t = useTranslations("keys");
+  const tCommon = useTranslations("common");
+
+  const fmtLimit = (v: number | null): string =>
+    v === null ? tCommon("unlimited") : v.toLocaleString("en-US");
+  const fmtMoney = (v: string | null): string =>
+    v === null ? tCommon("unlimited") : formatMoney(v);
+
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead>类型</TableHead>
-          <TableHead>Key</TableHead>
-          <TableHead>备注</TableHead>
+          <TableHead>{tCommon("name")}</TableHead>
+          <TableHead>{t("colType")}</TableHead>
+          <TableHead>{t("colKey")}</TableHead>
+          <TableHead>{t("colRemark")}</TableHead>
           <TableHead className="text-right">RPM</TableHead>
           <TableHead className="text-right">TPM</TableHead>
-          <TableHead className="text-right">每日花费上限</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>创建时间</TableHead>
-          <TableHead>最近使用</TableHead>
-          <TableHead className="w-32 text-right">操作</TableHead>
+          <TableHead className="text-right">{t("colDailyLimit")}</TableHead>
+          <TableHead>{tCommon("status")}</TableHead>
+          <TableHead>{tCommon("createdAt")}</TableHead>
+          <TableHead>{t("colLastUsed")}</TableHead>
+          <TableHead className="w-32 text-right">{tCommon("actions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {keys.length === 0 ? (
           <TableRow>
             <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
-              暂无 Key
+              {t("noKeys")}
             </TableCell>
           </TableRow>
         ) : (
@@ -117,7 +118,12 @@ export function KeysTable({
               <TableCell className="font-medium">{k.name}</TableCell>
               <TableCell>
                 <SourceBadge
-                  label={k.subscriptionId != null ? (subscriptionLabels.get(k.subscriptionId) ?? "套餐") : "余额"}
+                  label={
+                    k.subscriptionId != null
+                      ? subscriptionLabels.get(k.subscriptionId) ?? t("planFallback")
+                      : t("sourceBalance")
+                  }
+                  balanceLabel={t("sourceBalance")}
                 />
               </TableCell>
               <TableCell>
@@ -151,18 +157,19 @@ export function KeysTable({
 }
 
 function StatusBadge({ status }: { status: number }) {
+  const t = useTranslations("keys");
   if (status === 0) {
     return (
-      <StatusPill tone="success" label="正常" />
+      <StatusPill tone="success" label={t("statusActive")} />
     );
   }
   return (
-    <StatusPill tone="danger" label="已吊销" />
+    <StatusPill tone="danger" label={t("statusRevoked")} />
   );
 }
 
-function SourceBadge({ label }: { label: string }) {
-  const isBalance = label === "余额";
+function SourceBadge({ label, balanceLabel }: { label: string; balanceLabel: string }) {
+  const isBalance = label === balanceLabel;
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -177,12 +184,13 @@ function SourceBadge({ label }: { label: string }) {
 }
 
 function RevokeInline({ id }: { id: number }) {
+  const t = useTranslations("keys");
   return (
     <ConfirmAction
-      confirm="确定吊销此 Key？吊销后无法恢复。"
+      confirm={t("revokeConfirm")}
       action={async () => (await import("../actions")).revokeKeyAction(id)}
-      errorTitle="吊销失败"
-      success="已吊销"
+      errorTitle={t("revokeFailed")}
+      success={t("revokedToast")}
     >
       {({ pending, onClick }) => (
         <Button
@@ -193,7 +201,7 @@ function RevokeInline({ id }: { id: number }) {
           className="text-destructive hover:text-destructive"
         >
           {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          吊销
+          {t("revoke")}
         </Button>
       )}
     </ConfirmAction>
@@ -201,9 +209,21 @@ function RevokeInline({ id }: { id: number }) {
 }
 
 function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
+  const t = useTranslations("keys");
+  const tCommon = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
-  const form = useForm<z.infer<typeof editSchema>>({
+
+  const editSchema = z.object({
+    name: z.string().min(1, t("nameRequired")).max(100),
+    remark: z.string().max(200).optional(),
+    rpmLimit: z.string().optional(),
+    tpmLimit: z.string().optional(),
+    dailySpendLimit: z.string().optional(),
+  });
+
+  const form = useForm<EditKeyValues>({
     resolver: zodResolver(editSchema),
     defaultValues: {
       name: keyRow.name,
@@ -233,15 +253,13 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <PencilIcon />
-          编辑
+          {tCommon("edit")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>编辑 Key</DialogTitle>
-          <DialogDescription>
-            修改名称、备注或限流（RPM / TPM / 每日花费上限，留空 = 不限）。
-          </DialogDescription>
+          <DialogTitle>{t("editTitle")}</DialogTitle>
+          <DialogDescription>{t("editDesc")}</DialogDescription>
         </DialogHeader>
         <form
           id="edit-key-form"
@@ -250,9 +268,9 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
             let tpmLimit: number | null;
             let dailySpendLimit: string | null;
             try {
-              rpmLimit = parsePositiveInt(values.rpmLimit, "RPM");
-              tpmLimit = parsePositiveInt(values.tpmLimit, "TPM");
-              dailySpendLimit = parseDailySpend(values.dailySpendLimit);
+              rpmLimit = parsePositiveInt(values.rpmLimit, t("positiveIntError", { field: "RPM" }));
+              tpmLimit = parsePositiveInt(values.tpmLimit, t("positiveIntError", { field: "TPM" }));
+              dailySpendLimit = parseDailySpend(values.dailySpendLimit, t("dailySpendError"));
             } catch (e) {
               toast.error((e as Error).message);
               return;
@@ -265,7 +283,7 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
               tpmLimit,
               dailySpendLimit,
             });
-            if (!notify(res, "更新失败", "已更新")) return;
+            if (!notify(res, tCommon("updateFailed"), t("updatedToast"))) return;
             setOpen(false);
           })}
           className="space-y-4"
@@ -276,7 +294,7 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
               name="name"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="edit-key-name">名称</FieldLabel>
+                  <FieldLabel htmlFor="edit-key-name">{tCommon("name")}</FieldLabel>
                   <Input id="edit-key-name" {...field} />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -287,7 +305,7 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
               name="remark"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="edit-key-remark">备注（可选）</FieldLabel>
+                  <FieldLabel htmlFor="edit-key-remark">{t("remarkOptional")}</FieldLabel>
                   <Input id="edit-key-remark" {...field} />
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                 </Field>
@@ -296,39 +314,39 @@ function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
             <NumberField
               control={form.control}
               name="rpmLimit"
-              label="RPM（每分钟请求数，留空=不限）"
+              label={t("rpmLabel")}
               id="edit-key-rpm"
               min={1}
               step="1"
-              placeholder="不限"
+              placeholder={tCommon("unlimited")}
             />
             <NumberField
               control={form.control}
               name="tpmLimit"
-              label="TPM（每分钟 Token 数，留空=不限）"
+              label={t("tpmLabel")}
               id="edit-key-tpm"
               min={1}
               step="1"
-              placeholder="不限"
+              placeholder={tCommon("unlimited")}
             />
             <NumberField
               control={form.control}
               name="dailySpendLimit"
-              label="每日花费上限（元，留空=不限）"
+              label={t("dailyLimitLabel")}
               id="edit-key-dailyspend"
               min={0}
               step="0.01"
-              placeholder="不限"
+              placeholder={tCommon("unlimited")}
             />
           </FieldGroup>
         </form>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="edit-key-form" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-            保存
+            {tCommon("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -341,11 +359,20 @@ export function CreateKeyDialog({
 }: {
   readonly subscriptions: ReadonlyArray<{ id: number; label: string }>;
 }) {
+  const t = useTranslations("keys");
+  const tCommon = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
 
-  const form = useForm<z.infer<typeof createSchema>>({
+  const createSchema = z.object({
+    name: z.string().min(1, t("nameRequired")).max(100),
+    remark: z.string().max(200).optional(),
+    subscriptionId: z.number().int().positive().nullable(),
+  });
+
+  const form = useForm<CreateKeyValues>({
     resolver: zodResolver(createSchema),
     defaultValues: { name: "", remark: "", subscriptionId: null },
   });
@@ -355,14 +382,14 @@ export function CreateKeyDialog({
       <DialogTrigger asChild>
         <Button>
           <KeyRoundIcon />
-          创建 Key
+          {t("createKey")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建新的 API Key</DialogTitle>
+          <DialogTitle>{t("createTitle")}</DialogTitle>
           <DialogDescription>
-            明文 Key 仅在创建时显示一次，请妥善保存。
+            {t("createDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -370,7 +397,7 @@ export function CreateKeyDialog({
           <div className="rounded-md bg-emerald-500/10 p-4 ring-1 ring-emerald-500/30">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                明文 Key（请立即复制并安全保存）
+                {t("plaintextNotice")}
               </p>
               <CopyButton text={revealedKey} />
             </div>
@@ -382,9 +409,9 @@ export function CreateKeyDialog({
             onSubmit={form.handleSubmit(async (values) => {
               const { createKeyAction } = await import("../actions");
               const res = await createKeyAction(values);
-              if (!notify(res, "创建失败")) return;
+              if (!notify(res, tCommon("createFailed"))) return;
               setRevealedKey(res.key!.plaintext);
-              toast.success("已创建 Key");
+              toast.success(t("createdToast"));
             })}
             className="space-y-4"
           >
@@ -394,8 +421,8 @@ export function CreateKeyDialog({
                 name="name"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="key-name">名称</FieldLabel>
-                    <Input id="key-name" placeholder="例如 production" {...field} />
+                    <FieldLabel htmlFor="key-name">{tCommon("name")}</FieldLabel>
+                    <Input id="key-name" placeholder={t("namePlaceholder")} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -405,7 +432,7 @@ export function CreateKeyDialog({
                 name="subscriptionId"
                 render={({ field }) => (
                   <Field>
-                    <FieldLabel htmlFor="key-source">计费来源</FieldLabel>
+                    <FieldLabel htmlFor="key-source">{t("billingSource")}</FieldLabel>
                     <select
                       id="key-source"
                       value={field.value ?? ""}
@@ -414,10 +441,10 @@ export function CreateKeyDialog({
                       }
                       className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                     >
-                      <option value="">余额（扣余额）</option>
+                      <option value="">{t("balanceOption")}</option>
                       {subscriptions.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.label}（扣套餐额度）
+                          {t("planOption", { label: s.label })}
                         </option>
                       ))}
                     </select>
@@ -429,8 +456,8 @@ export function CreateKeyDialog({
                 name="remark"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="key-remark">备注（可选）</FieldLabel>
-                    <Input id="key-remark" placeholder="例如 admin/team/..." {...field} />
+                    <FieldLabel htmlFor="key-remark">{t("remarkOptional")}</FieldLabel>
+                    <Input id="key-remark" placeholder={t("remarkPlaceholder")} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -442,16 +469,16 @@ export function CreateKeyDialog({
         <DialogFooter>
           {revealedKey ? (
             <DialogClose asChild>
-              <Button variant="outline">完成</Button>
+              <Button variant="outline">{tCommon("done")}</Button>
             </DialogClose>
           ) : (
             <>
               <DialogClose asChild>
-                <Button variant="outline">取消</Button>
+                <Button variant="outline">{tUi("cancel")}</Button>
               </DialogClose>
               <Button type="submit" form="create-key-form" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-                创建
+                {tCommon("create")}
               </Button>
             </>
           )}

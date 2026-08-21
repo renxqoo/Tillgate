@@ -1,4 +1,5 @@
 import { BellIcon } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 
 import { adminFetch } from '@ai-gateway/api-client';
 import { fmtDateTime } from '@ai-gateway/api-client/formatters';
@@ -22,14 +23,16 @@ interface ChannelRow {
 }
 
 export default async function NotificationsPage() {
+  const t = await getTranslations('notifications');
+  const tc = await getTranslations('common');
   const data = await adminFetch<{ rows?: ChannelRow[]; list?: ChannelRow[] }>('/v1/notifications').catch(() => null);
 
   const columns: DataTableColumn<ChannelRow>[] = [
-    { key: 'name', header: '名称' },
-    { key: 'type', header: '类型', render: (r) => (r.type === 'webhook' ? 'Webhook' : '邮件') },
+    { key: 'name', header: tc('name') },
+    { key: 'type', header: tc('type'), render: (r) => (r.type === 'webhook' ? 'Webhook' : t('email')) },
     {
       key: 'target',
-      header: '投递目标',
+      header: t('target'),
       render: (r) =>
         r.type === 'webhook'
           ? String(r.config?.url ?? '')
@@ -37,32 +40,32 @@ export default async function NotificationsPage() {
     },
     {
       key: 'events',
-      header: '订阅事件',
+      header: t('events'),
       render: (r) => (
         <span className="font-mono text-xs text-muted-foreground">{r.events.join(', ')}</span>
       ),
     },
-    { key: 'createdAt', header: '创建时间', render: (r) => fmtDateTime(r.createdAt) },
+    { key: 'createdAt', header: tc('createdAt'), render: (r) => fmtDateTime(r.createdAt) },
     {
       key: 'status',
-      header: '状态',
+      header: tc('status'),
       render: (r) => (
         <StatusPill tone={r.status === 0 ? 'success' : 'neutral'}>
-          {r.status === 0 ? '启用' : '停用'}
+          {r.status === 0 ? tc('enabled') : t('disable')}
         </StatusPill>
       ),
     },
-    { key: 'actions', header: '操作', render: (r) => <ChannelActions id={r.id} status={r.status} /> },
+    { key: 'actions', header: tc('actions'), render: (r) => <ChannelActions id={r.id} status={r.status} /> },
   ];
 
   return (
     <ListPage
-      title="告警通知"
-      description="渠道禁用 / 计费死单等事件推送到 webhook（HMAC 签名）或邮箱"
+      title={t('title')}
+      description={t('description')}
       icon={<BellIcon className="size-5 text-muted-foreground" />}
     >
       <ChannelForm />
-      <DataTable rowKey={(r) => r.id} rows={(data?.rows ?? data?.list) ?? []} columns={columns} empty="暂无通知渠道" />
+      <DataTable rowKey={(r) => r.id} rows={(data?.rows ?? data?.list) ?? []} columns={columns} empty={t('noChannels')} />
     </ListPage>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { SendIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Card, CardContent } from '@ai-gateway/ui/components/ui/card';
@@ -18,6 +19,8 @@ interface Msg {
 const KEY_STORAGE = 'pg:api-key';
 
 export function Playground({ models }: { models: string[] }) {
+  const t = useTranslations('playground');
+  const tCommon = useTranslations('common');
   const [model, setModel] = useState(models[0] ?? '');
   const [apiKey, setApiKey] = useState<string>(() => {
     try { return sessionStorage.getItem(KEY_STORAGE) ?? ''; } catch { return ''; }
@@ -38,7 +41,7 @@ export function Playground({ models }: { models: string[] }) {
     const key = apiKey.trim();
     if (!text || !model || pending) return;
     if (!key.startsWith('ag_')) {
-      setError('请先粘贴 API Key（ag_ 开头，在「API Key」页创建并复制）');
+      setError(t('keyMissing'));
       return;
     }
     setError(null);
@@ -57,7 +60,7 @@ export function Playground({ models }: { models: string[] }) {
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(body?.error?.message ?? `请求失败 (${res.status})`);
+        throw new Error(body?.error?.message ?? t('requestFailed', { status: res.status }));
       }
       // fetch-stream 消费（SSE data 帧 → delta.content 增量渲染）
       const reader = res.body.getReader();
@@ -104,13 +107,13 @@ export function Playground({ models }: { models: string[] }) {
           type="password"
           value={apiKey}
           onChange={(e) => onKeyChange(e.target.value)}
-          placeholder="API Key（ag_ 开头，仅本会话使用）"
+          placeholder={t('keyPlaceholder')}
           className="w-72"
           autoComplete="off"
         />
         <Select value={model} onValueChange={setModel}>
           <SelectTrigger className="w-64">
-            <SelectValue placeholder="选择模型" />
+            <SelectValue placeholder={t('selectModel')} />
           </SelectTrigger>
           <SelectContent>
             {models.map((m) => (
@@ -122,7 +125,7 @@ export function Playground({ models }: { models: string[] }) {
         </Select>
         {messages.length > 0 ? (
           <Button variant="outline" size="sm" onClick={() => setMessages([])}>
-            清空
+            {tCommon('clear')}
           </Button>
         ) : null}
       </div>
@@ -130,7 +133,7 @@ export function Playground({ models }: { models: string[] }) {
       <Card>
         <CardContent className="min-h-64 space-y-3 p-4">
           {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground">输入消息开始对话；输出按模型定价从余额扣费。</p>
+            <p className="text-sm text-muted-foreground">{t('emptyHint')}</p>
           ) : (
             messages.map((m, i) => (
               <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
@@ -158,12 +161,12 @@ export function Playground({ models }: { models: string[] }) {
               void send();
             }
           }}
-          placeholder="输入消息（Enter 发送 / Shift+Enter 换行）"
+          placeholder={t('inputPlaceholder')}
           rows={2}
         />
         {pending ? (
           <Button variant="outline" onClick={() => abortRef.current?.abort()}>
-            停止
+            {t('stop')}
           </Button>
         ) : (
           <Button onClick={send} disabled={!input.trim() || !model}>

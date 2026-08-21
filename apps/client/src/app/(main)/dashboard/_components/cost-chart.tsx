@@ -8,16 +8,18 @@ import {
 } from '@ai-gateway/ui/components/ui/chart';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { formatMoney } from '@ai-gateway/api-client/formatters';
-
-const chartConfig: ChartConfig = {
-  cost: { label: '费用（元）', color: 'var(--chart-1)' },
-};
+import { useTranslations } from 'next-intl';
 
 export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value: number }> }) {
+  const t = useTranslations('dashboard');
+  const chartConfig = {
+    cost: { label: t('costLabel'), color: 'var(--chart-1)' },
+  } satisfies ChartConfig;
+
   if (data.length === 0) {
     return (
       <div className="flex h-62.5 items-center justify-center text-sm text-muted-foreground">
-        暂无用量数据
+        {t('noUsageData')}
       </div>
     );
   }

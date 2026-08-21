@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 
 import { ApiError, adminFetch } from "@ai-gateway/api-client";
 
@@ -31,6 +32,7 @@ export async function updateRateLimitAction(
   id: number,
   patch: RateLimitPatch,
 ): Promise<{ error?: string }> {
+  const tc = await getTranslations("common");
   try {
     const body: Record<string, number | string | null> = {
       rpmLimit: patch.rpmLimit,
@@ -50,6 +52,6 @@ export async function updateRateLimitAction(
     revalidatePath("/dashboard/rate-limits");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "保存失败" };
+    return { error: e instanceof ApiError ? e.message : tc("saveFailed") };
   }
 }

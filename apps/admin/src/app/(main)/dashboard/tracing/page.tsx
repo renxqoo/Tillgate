@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Activity } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { fmtDateTime } from '@ai-gateway/api-client';
 import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { Badge } from '@ai-gateway/ui/components/ui/badge';
@@ -30,6 +31,8 @@ export default async function TracingPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  const t = await getTranslations('tracing');
+  const tc = await getTranslations('common');
   const { page } = parseListSearchParams(sp);
   const params = {
     requestId: firstParam(sp.requestId),
@@ -53,10 +56,10 @@ export default async function TracingPage({
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>
-              按 request_id 过滤：
+              {t('filterByRequestId')}
               <code className="mx-1 rounded bg-muted px-1">{params.requestId}</code>
               <Link href="/dashboard/tracing" className="ml-2 underline">
-                清除
+                {tc('clear')}
               </Link>
             </CardDescription>
           </CardHeader>
@@ -64,14 +67,13 @@ export default async function TracingPage({
       ) : null}
 
       <ListPage
-        title="链路追踪"
+        title={t('title')}
         icon={<Activity className="size-5 text-muted-foreground" />}
         description={
           <span>
-            内置 trace 接收端数据（trace_spans，按日分区滚动保留）；与计费系统同库，支持
-            request_id 关联。
+            {t('description')}
             <Link href="/dashboard/tracing/topology" className="ml-2 underline">
-              渠道健康拓扑 →
+              {t('topologyLink')}
             </Link>
           </span>
         }
@@ -81,7 +83,7 @@ export default async function TracingPage({
             href={`/dashboard/tracing?${params.errorsOnly === 'true' ? '' : 'errorsOnly=true'}`}
             className="text-sm underline"
           >
-            {params.errorsOnly === 'true' ? '显示全部' : '只看含错误的'}
+            {params.errorsOnly === 'true' ? t('showAll') : t('errorsOnly')}
           </Link>
         }
         searchParams={{
@@ -97,67 +99,67 @@ export default async function TracingPage({
             {
               key: 'traceId',
               header: 'trace',
-              render: (t: TraceSummary) => (
+              render: (tr: TraceSummary) => (
                 <span className="font-mono text-xs">
-                  <TraceDetailDialog traceId={t.traceId} rootName={t.rootName} />
+                  <TraceDetailDialog traceId={tr.traceId} rootName={tr.rootName} />
                 </span>
               ),
             },
             {
               key: 'rootName',
-              header: '入口',
-              render: (t: TraceSummary) => (
-                <span className="block max-w-64 truncate">{t.rootName}</span>
+              header: t('entry'),
+              render: (tr: TraceSummary) => (
+                <span className="block max-w-64 truncate">{tr.rootName}</span>
               ),
             },
             {
               key: 'durationMs',
-              header: '耗时',
+              header: t('duration'),
               align: 'right',
-              render: (t: TraceSummary) => (
-                <span className="text-right tabular-nums">{t.durationMs} ms</span>
+              render: (tr: TraceSummary) => (
+                <span className="text-right tabular-nums">{tr.durationMs} ms</span>
               ),
             },
             {
               key: 'spanCount',
               header: 'span',
               align: 'right',
-              render: (t: TraceSummary) => <span className="text-right tabular-nums">{t.spanCount}</span>,
+              render: (tr: TraceSummary) => <span className="text-right tabular-nums">{tr.spanCount}</span>,
             },
             {
               key: 'services',
-              header: '服务',
-              render: (t: TraceSummary) => (
+              header: t('services'),
+              render: (tr: TraceSummary) => (
                 <div className="flex flex-wrap gap-1">
-                  {t.services.map((svc) => (
+                  {tr.services.map((svc) => (
                     <Badge key={svc} variant="outline">
                       {svc}
                     </Badge>
                   ))}
-                  {t.hasError ? <Badge variant="destructive">ERROR</Badge> : null}
+                  {tr.hasError ? <Badge variant="destructive">ERROR</Badge> : null}
                 </div>
               ),
             },
             {
               key: 'requestId',
               header: 'request_id',
-              render: (t: TraceSummary) => (
+              render: (tr: TraceSummary) => (
                 <span className="font-mono text-xs">
-                  {t.requestId ? <TraceDetailDialog requestId={t.requestId} /> : '—'}
+                  {tr.requestId ? <TraceDetailDialog requestId={tr.requestId} /> : '—'}
                 </span>
               ),
             },
             {
               key: 'startTimeMs',
-              header: '开始时间',
-              render: (t: TraceSummary) => (
-                <span className="text-xs">{fmtDateTime(new Date(t.startTimeMs).toISOString())}</span>
+              header: t('startTime'),
+              render: (tr: TraceSummary) => (
+                <span className="text-xs">{fmtDateTime(new Date(tr.startTimeMs).toISOString())}</span>
               ),
             },
           ]}
           rows={items}
-          rowKey={(t: TraceSummary) => t.traceId}
-          empty="暂无数据。确认 trace-receiver 已启动且各服务 OTEL_TRACES_MODE=otlp 指向它。"
+          rowKey={(tr: TraceSummary) => tr.traceId}
+          empty={t('emptyHint')}
         />
       </ListPage>
 

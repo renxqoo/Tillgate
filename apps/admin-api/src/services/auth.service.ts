@@ -47,7 +47,7 @@ export type AdminLoginResult =
   | { kind: 'code_required'; challengeId: string };
 
 export interface AdminAuthService {
-  login(ctx: RunContext, input: { email: string; password: string; ip: string }): Promise<AdminLoginResult>;
+  login(ctx: RunContext, input: { email: string; password: string; ip: string; locale?: 'en' | 'zh' }): Promise<AdminLoginResult>;
   /** 2FA 第二步：验码签会话（状态复查 + lastLogin） */
   verifyLoginCode(
     ctx: RunContext,
@@ -165,6 +165,7 @@ export function createAdminAuthService(deps: AdminAuthServiceDeps): AdminAuthSer
           const challengeId = await codes.issue('admin', {
             email: account.email,
             ip: input.ip,
+            locale: input.locale,
           });
           await recordAudit(deps.db, {
             actor: 'system',

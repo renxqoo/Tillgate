@@ -1,4 +1,5 @@
 import { UsersRound } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { ApiError, adminFetch, type AdminRateCardRow, type Paginated } from "@ai-gateway/api-client";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -20,6 +21,8 @@ interface PageProps {
 
 export default async function UsersPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("users");
+  const tc = await getTranslations("common");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const status = firstParam(sp.status) ?? "all";
   const enterprise = firstParam(sp.enterprise) ?? "all";
@@ -42,7 +45,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
     rows = data.rows ?? [];
     total = data.total ?? 0;
   } catch (e) {
-    error = e instanceof ApiError ? e.message : "加载失败";
+    error = e instanceof ApiError ? e.message : tc("loadFailed");
   }
 
   try {
@@ -58,12 +61,12 @@ export default async function UsersPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="用户"
+      title={t("title")}
       icon={<UsersRound className="size-5 text-muted-foreground" />}
-      description="搜索、封禁 / 解封、调账、赠送、改密、绑定费率卡"
+      description={t("description")}
       total={total}
-      totalUnit="个用户"
-      searchPlaceholder="搜索 subject / email / 显示名"
+      totalUnit={t("totalUnit")}
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, status, enterprise, sort_by: sortBy, order: sortBy ? order : undefined }}
       filters={

@@ -10,6 +10,7 @@ import type { MiddlewareHandler } from 'hono';
 import type { Db } from '@ai-gateway/db';
 import { createRepositories } from '@ai-gateway/repository';
 import { verifySession, type SessionRevocationStore } from '@ai-gateway/identity';
+import { localizeMessage, parseAcceptLanguage } from '@ai-gateway/http';
 
 export interface SessionEnv {
   Variables: {
@@ -21,6 +22,18 @@ export interface SessionEnv {
   };
 }
 
+// 401 统一口径：不区分原因（防账号枚举），文案按协商语言出（默认英文）
+const unauthorized = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
+  c.json(
+    {
+      error: {
+        code: 'unauthorized',
+        message: localizeMessage('unauthorized', parseAcceptLanguage(c.req.header('accept-language')), 'Session invalid or expired'),
+      },
+    },
+    401,
+  );
+
 export function sessionMiddleware(
   db: Db,
   jwtSecret: string,
@@ -31,17 +44,17 @@ export function sessionMiddleware(
     const header = c.req.header('authorization') ?? '';
     const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
     if (!token) {
-      return c.json({ error: { code: 'unauthorized', message: 'Missing admin credentials' } }, 401);
+      return unauthorized(c);
     }
     let payload;
     try {
       payload = await verifySession(token, jwtSecret, 'admin');
     } catch {
-      return c.json({ error: { code: 'unauthorized', message: 'Session invalid or expired' } }, 401);
+      return unauthorized(c);
     }
     const adminId = Number(payload.sub);
     if (!Number.isInteger(adminId) || adminId <= 0) {
-      return c.json({ error: { code: 'unauthorized', message: 'Session invalid' } }, 401);
+      return unauthorized(c);
     }
     const account = await repos.adminAccount.findById(
       { db, requestId: c.get('requestId'), actor: { kind: 'system' }, traceParent: null },
@@ -54,11 +67,11 @@ export function sessionMiddleware(
       (account.sessionInvalidBefore != null &&
         (payload.iatMs ?? payload.iat * 1000) < account.sessionInvalidBefore.getTime())
     ) {
-      return c.json({ error: { code: 'unauthorized', message: 'Session invalid or expired' } }, 401);
+      return unauthorized(c);
     }
     // jti 吊销表（登出/强制下线——fail-open，主防线是上方 DB 校验）
     if (revocationStore && (await revocationStore.isRevoked(payload.jti))) {
-      return c.json({ error: { code: 'unauthorized', message: 'Session revoked' } }, 401);
+      return unauthorized(c);
     }
 
     c.set('adminId', adminId);

@@ -1,6 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
+
 import { adminFetch, ApiError } from '@ai-gateway/api-client';
 
 export interface CatalogImportModel {
@@ -19,11 +21,12 @@ export async function importCatalogAction(input: {
   apiKey?: string;
   models: CatalogImportModel[];
 }): Promise<{ error?: string }> {
-  if (input.models.length === 0) return { error: '至少选择一个模型' };
-  if (!/^[a-z0-9-]{1,32}$/.test(input.sourceId)) return { error: '目录源非法' };
+  const t = await getTranslations('modelMarket');
+  if (input.models.length === 0) return { error: t('selectAtLeastOne') };
+  if (!/^[a-z0-9-]{1,32}$/.test(input.sourceId)) return { error: t('invalidSource') };
   for (const m of input.models) {
     if (!m.externalName.trim() || !m.realModel.trim()) {
-      return { error: '对外名与真实模型名不能为空' };
+      return { error: t('namesRequired') };
     }
   }
   try {
@@ -47,12 +50,13 @@ export async function importCatalogAction(input: {
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '导入失败' };
+    return { error: e instanceof ApiError ? e.message : t('importFailed') };
   }
 }
 
 /** 手动覆盖汇率（冻结基准直到清除；审计 fx.override） */
 export async function setFxOverrideAction(rate: string): Promise<{ error?: string }> {
+  const t = await getTranslations('modelMarket');
   try {
     await adminFetch('/v1/fx/catalog/override', {
       method: 'PUT',
@@ -61,23 +65,25 @@ export async function setFxOverrideAction(rate: string): Promise<{ error?: strin
     revalidatePath('/dashboard/model-market');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '覆盖失败' };
+    return { error: e instanceof ApiError ? e.message : t('overrideFailed') };
   }
 }
 
 /** 清除覆盖：回落自动拉取（立即补拉一次） */
 export async function clearFxOverrideAction(): Promise<{ error?: string }> {
+  const t = await getTranslations('modelMarket');
   try {
     await adminFetch('/v1/fx/catalog/override', { method: 'DELETE' });
     revalidatePath('/dashboard/model-market');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '清除失败' };
+    return { error: e instanceof ApiError ? e.message : t('clearFailed') };
   }
 }
 
 /** 点差（%）：生效预填汇率 = 基准 ×(1+点差)；覆盖态不叠加 */
 export async function setFxBufferAction(bufferPct: string): Promise<{ error?: string }> {
+  const t = await getTranslations('modelMarket');
   try {
     await adminFetch('/v1/fx/catalog/buffer', {
       method: 'PUT',
@@ -86,12 +92,13 @@ export async function setFxBufferAction(bufferPct: string): Promise<{ error?: st
     revalidatePath('/dashboard/model-market');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '点差设置失败' };
+    return { error: e instanceof ApiError ? e.message : t('bufferFailed') };
   }
 }
 
 /** 强制刷新汇率（绕过 TTL 直拉 ECB） */
 export async function refreshFxAction(force: boolean): Promise<{ error?: string }> {
+  const t = await getTranslations('modelMarket');
   try {
     await adminFetch('/v1/fx/catalog/refresh', {
       method: 'POST',
@@ -100,7 +107,7 @@ export async function refreshFxAction(force: boolean): Promise<{ error?: string 
     revalidatePath('/dashboard/model-market');
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '刷新失败' };
+    return { error: e instanceof ApiError ? e.message : t('refreshFailed') };
   }
 }
 
@@ -118,13 +125,14 @@ export interface PriceHistoryEntry {
 
 /** 价格溯源：某对外名的历次目录导入/改价（目录原价 × 汇率 → 预填 → 提交 全链） */
 export async function priceHistoryAction(externalName: string): Promise<{ entries?: PriceHistoryEntry[]; error?: string }> {
-  if (!externalName.trim()) return { error: '对外名不能为空' };
+  const t = await getTranslations('modelMarket');
+  if (!externalName.trim()) return { error: t('externalNameRequired') };
   try {
     const data = await adminFetch<{ entries: PriceHistoryEntry[] }>(
       `/v1/model-catalog/price-history?externalName=${encodeURIComponent(externalName.trim())}`,
     );
     return { entries: data.entries };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : '查询失败' };
+    return { error: e instanceof ApiError ? e.message : t('queryFailed') };
   }
 }

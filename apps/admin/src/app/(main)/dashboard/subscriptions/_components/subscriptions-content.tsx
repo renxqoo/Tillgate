@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 
 import { ArrowUpRightIcon, Loader2Icon, RefreshCwIcon, XCircleIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
 import { fmtDateTime, formatMoney, formatPoints } from '@ai-gateway/api-client/formatters';
@@ -39,18 +40,20 @@ import type { PlanOption, AdminSubscriptionRow } from '@ai-gateway/api-client/ty
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { defineStatusMeta, StatusPill } from "@ai-gateway/ui/components/status-pill";
 
+// 状态 tone 映射留模块级；label 是 subscriptions 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_META = defineStatusMeta({
-  0: { label: '有效', tone: 'success' },
-  1: { label: '到期', tone: 'warning' },
-  2: { label: '取消', tone: 'neutral' },
+  0: { label: 'statusActive', tone: 'success' },
+  1: { label: 'statusExpired', tone: 'warning' },
+  2: { label: 'statusCancelled', tone: 'neutral' },
 });
 
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
 function MoneyPoints({ value }: { value: string }) {
+  const tUi = useTranslations('ui');
   return (
     <span className="tabular-nums">
       <span className="font-medium">¥{formatMoney(value)}</span>
-      <span className="ml-1.5 text-xs text-muted-foreground">{formatPoints(value)} 积分</span>
+      <span className="ml-1.5 text-xs text-muted-foreground">{formatPoints(value)} {tUi('points')}</span>
     </span>
   );
 }
@@ -62,27 +65,29 @@ export function SubscriptionsTable({
   readonly rows: ReadonlyArray<AdminSubscriptionRow>;
   readonly plans: ReadonlyArray<PlanOption>;
 }) {
+  const t = useTranslations('subscriptions');
+  const tc = useTranslations('common');
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>用户</TableHead>
-          <TableHead>套餐</TableHead>
-          <TableHead className="w-16">席位</TableHead>
-          <TableHead className="text-right">价格</TableHead>
-          <TableHead>有效期</TableHead>
-          <TableHead className="text-right">额度</TableHead>
-          <TableHead className="text-right">已用</TableHead>
-          <TableHead className="text-right">剩余</TableHead>
-          <TableHead className="w-20">状态</TableHead>
-          <TableHead className="w-40 text-right">操作</TableHead>
+          <TableHead>{tc('user')}</TableHead>
+          <TableHead>{t('plan')}</TableHead>
+          <TableHead className="w-16">{t('seats')}</TableHead>
+          <TableHead className="text-right">{t('price')}</TableHead>
+          <TableHead>{t('validity')}</TableHead>
+          <TableHead className="text-right">{t('quota')}</TableHead>
+          <TableHead className="text-right">{t('used')}</TableHead>
+          <TableHead className="text-right">{t('remaining')}</TableHead>
+          <TableHead className="w-20">{tc('status')}</TableHead>
+          <TableHead className="w-40 text-right">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {rows.length === 0 ? (
           <TableRow>
             <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-              暂无订阅
+              {t('noSubscriptions')}
             </TableCell>
           </TableRow>
         ) : (
@@ -100,6 +105,8 @@ function SubscriptionRowItem({
   row: AdminSubscriptionRow;
   plans: ReadonlyArray<PlanOption>;
 }) {
+  const t = useTranslations('subscriptions');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [pending, setPending] = useState<'renew' | 'cancel' | null>(null);
   const meta = STATUS_META.get(row.status);
@@ -112,7 +119,7 @@ function SubscriptionRowItem({
         ? await mod.renewSubscriptionAction(row.id)
         : await mod.cancelSubscriptionAction(row.id);
     setPending(null);
-    notify(res, action === 'renew' ? '续费失败' : '取消失败', action === 'renew' ? '已续费' : '已取消');
+    notify(res, action === 'renew' ? t('renewFailed') : t('cancelFailed'), action === 'renew' ? t('renewed') : t('cancelled'));
   }
 
   return (
@@ -130,7 +137,7 @@ function SubscriptionRowItem({
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
         <div>{fmtDateTime(row.startAt)}</div>
-        <div className="text-muted-foreground/70">至 {fmtDateTime(row.endAt)}</div>
+        <div className="text-muted-foreground/70">{t('until', { date: fmtDateTime(row.endAt) })}</div>
       </TableCell>
       <TableCell className="text-right">
         <MoneyPoints value={row.quotaAmount} />
@@ -142,7 +149,7 @@ function SubscriptionRowItem({
         <MoneyPoints value={row.remainingAmount} />
       </TableCell>
       <TableCell>
-        <StatusPill tone={meta.tone} label={meta.label} />
+        <StatusPill tone={meta.tone} label={t(meta.label)} />
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
@@ -156,20 +163,20 @@ function SubscriptionRowItem({
                 onClick={() => run('renew')}
               >
                 {pending === 'renew' ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
-                续费
+                {t('renew')}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 disabled={pending !== null}
                 onClick={() => {
-                  if (!confirm('确定取消该订阅？剩余额度作废，不退款。')) return;
+                  if (!confirm(t('cancelConfirm'))) return;
                   void run('cancel');
                 }}
                 className="text-destructive hover:text-destructive"
               >
                 {pending === 'cancel' ? <Loader2Icon className="animate-spin" /> : <XCircleIcon />}
-                取消
+                {tUi('cancel')}
               </Button>
             </>
           ) : (
@@ -189,6 +196,8 @@ function ChangeSubscriptionDialog({
   row: AdminSubscriptionRow;
   plans: ReadonlyArray<PlanOption>;
 }) {
+  const t = useTranslations('subscriptions');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -224,17 +233,17 @@ function ChangeSubscriptionDialog({
     const target = Number(targetPlanId);
     const qty = Number(quantity);
     if (!Number.isInteger(target) || target <= 0) {
-      toast.error('请选择目标套餐');
+      toast.error(t('targetRequired'));
       return;
     }
     if (!Number.isInteger(qty) || qty < row.quantity) {
-      toast.error(`席位不能少于当前（${row.quantity}）`);
+      toast.error(t('quantityMin', { count: row.quantity }));
       return;
     }
     startTransition(async () => {
       const { changeSubscriptionAction } = await import('../actions');
       const res = await changeSubscriptionAction(row.id, { targetPlanId: target, quantity: qty });
-      if (!notify(res, '变更失败', '已变更')) return;
+      if (!notify(res, t('changeFailed'), t('changed'))) return;
       setOpen(false);
     });
   }
@@ -248,22 +257,22 @@ function ChangeSubscriptionDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="变更（升级 / 扩容）">
+        <Button size="sm" variant="ghost" title={t('change')}>
           <ArrowUpRightIcon />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowUpRightIcon /> 变更订阅 - {row.planName}
+            <ArrowUpRightIcon /> {t('changeTitle', { name: row.planName })}
           </DialogTitle>
           <DialogDescription>
-            升级到更高层级套餐或调整席位，系统按剩余额度与差价自动结算。
+            {t('changeDescription')}
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
-            <FieldLabel>目标套餐</FieldLabel>
+            <FieldLabel>{t('targetPlan')}</FieldLabel>
             <Select value={targetPlanId} onValueChange={setTargetPlanId}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -271,14 +280,14 @@ function ChangeSubscriptionDialog({
               <SelectContent>
                 {targets.map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
-                    {p.id === row.planId ? `${p.name}（加席位）` : p.name}
+                    {p.id === row.planId ? t('addSeats', { name: p.name }) : p.name}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
           <Field>
-            <FieldLabel htmlFor="change-quantity">席位（当前 ×{row.quantity}）</FieldLabel>
+            <FieldLabel htmlFor="change-quantity">{t('seatsLabel', { count: row.quantity })}</FieldLabel>
             <Input
               id="change-quantity"
               type="number"
@@ -291,10 +300,11 @@ function ChangeSubscriptionDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button onClick={submit} disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认变更
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmChange')}
           </Button>
         </DialogFooter>
       </DialogContent>

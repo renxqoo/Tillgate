@@ -1,4 +1,5 @@
 import { TicketIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -17,6 +18,7 @@ interface PageProps {
 
 export default async function RedeemBatchesPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("redeemBatches");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchAdminList<AdminBatchRow>(
     "/v1/redeem-batches",
@@ -25,11 +27,11 @@ export default async function RedeemBatchesPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="充值码批次"
+      title={t("title")}
       icon={<TicketIcon className="size-5 text-muted-foreground" />}
-      description="批量生成充值码用于赠送 / 活动"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索批次名 / 备注"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={<GenerateBatchDialog />}

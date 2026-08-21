@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { apiFetch, clearSessionCookie, getSessionToken, setSessionToken } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 const CLIENT_API_BASE = process.env.CLIENT_API_BASE!;
 
@@ -15,7 +16,8 @@ async function authFetch(url: string, init: RequestInit): Promise<Response | { f
   try {
     return await fetch(url, init);
   } catch {
-    return { fetchError: "登录服务暂不可用，请稍后重试" };
+    const t = await getTranslations("auth");
+    return { fetchError: t("fetchError") };
   }
 }
 
@@ -35,9 +37,10 @@ interface AuthStepResult {
  * 用户登录 Server Action（client-api，两步：密码 → 邮箱验证码；未强制验证码时单步直落）。
  */
 export async function loginAction(formData: FormData): Promise<{ error?: string; challengeId?: string }> {
+  const t = await getTranslations("auth");
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (!email || !password) return { error: "请输入邮箱和密码" };
+  if (!email || !password) return { error: t("emailPasswordRequired") };
 
   const r = await authFetch(`${CLIENT_API_BASE}/v1/auth/login`, {
     method: "POST",
@@ -57,7 +60,7 @@ export async function loginAction(formData: FormData): Promise<{ error?: string;
     await setSessionToken(body.token);
     redirect("/dashboard");
   }
-  return { error: body?.error?.message ?? `登录失败 (${res.status})` };
+  return { error: body?.error?.message ?? t("loginFailedStatus", { status: res.status }) };
 }
 
 /** 第二步：验证邮箱验证码，成功落会话并跳转 */
@@ -66,6 +69,7 @@ export async function verifyLoginCodeAction(
   code: string,
   next?: string | null,
 ): Promise<{ error?: string }> {
+  const t = await getTranslations("auth");
   const r = await authFetch(`${CLIENT_API_BASE}/v1/auth/login/verify`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -77,7 +81,7 @@ export async function verifyLoginCodeAction(
 
   const body = (await res.json().catch(() => null)) as AuthStepResult | null;
   if (!res.ok || !body?.token) {
-    return { error: body?.error?.message ?? `验证失败 (${res.status})` };
+    return { error: body?.error?.message ?? t("verifyFailedStatus", { status: res.status }) };
   }
   await setSessionToken(body.token);
 
@@ -92,11 +96,12 @@ export async function verifyLoginCodeAction(
 export async function registerAction(
   formData: FormData,
 ): Promise<{ error?: string; code?: string; challengeId?: string }> {
+  const t = await getTranslations("auth");
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const captchaToken = String(formData.get("captchaToken") ?? "");
   const aff = String(formData.get("aff") ?? "").trim();
-  if (!email || !password) return { error: "请输入邮箱和密码" };
+  if (!email || !password) return { error: t("emailPasswordRequired") };
 
   const r = await authFetch(`${CLIENT_API_BASE}/v1/auth/register`, {
     method: "POST",
@@ -121,11 +126,12 @@ export async function registerAction(
     await setSessionToken(body.token);
     redirect("/dashboard");
   }
-  return { error: body?.error?.message ?? `注册失败 (${res.status})`, code: body?.error?.code };
+  return { error: body?.error?.message ?? t("registerFailedStatus", { status: res.status }), code: body?.error?.code };
 }
 
 /** 注册第二步：验证邮箱验证码，成功建号+落会话并跳转（aff 邀请归因透传） */
 export async function registerVerifyAction(challengeId: string, code: string, aff?: string | null): Promise<{ error?: string }> {
+  const t = await getTranslations("auth");
   const r = await authFetch(`${CLIENT_API_BASE}/v1/auth/register/verify`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -137,7 +143,7 @@ export async function registerVerifyAction(challengeId: string, code: string, af
 
   const body = (await res.json().catch(() => null)) as AuthStepResult | null;
   if (!res.ok || !body?.token) {
-    return { error: body?.error?.message ?? `验证失败 (${res.status})` };
+    return { error: body?.error?.message ?? t("verifyFailedStatus", { status: res.status }) };
   }
   await setSessionToken(body.token);
   redirect("/dashboard");

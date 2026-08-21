@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { Loader2Icon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import {
   Dialog,
   DialogContent,
@@ -40,8 +41,9 @@ export function TraceDetailDialog({
   hideTrigger?: boolean;
 }) {
   if (Boolean(traceId) === Boolean(requestId)) {
-    throw new Error('TraceDetailDialog 需要 traceId 或 requestId 恰好一个');
+    throw new Error('TraceDetailDialog requires exactly one of traceId or requestId');
   }
+  const t = useTranslations('tracing');
   const subjectId = traceId ?? requestId ?? '';
   const [open, setOpen] = useState(defaultOpen);
   const [detail, setDetail] = useState<TraceDetail | null>(null);
@@ -59,7 +61,7 @@ export function TraceDetailDialog({
       if ('error' in result) {
         setError(result.error);
       } else if (result.spans.length === 0) {
-        setError('该请求无 span 数据');
+        setError(t('noSpans'));
       } else {
         setDetail(result);
       }
@@ -85,7 +87,7 @@ export function TraceDetailDialog({
           <button
             type="button"
             className="font-mono text-xs text-primary underline underline-offset-2"
-            title={traceId ? '点击查看链路路线图' : '点击查看该请求的链路'}
+            title={traceId ? t('viewGraph') : t('viewTrace')}
           >
             {subjectId.slice(0, 12)}…
           </button>
@@ -115,25 +117,25 @@ export function TraceDetailDialog({
               onClick={() => setView(view === 'graph' ? 'waterfall' : 'graph')}
               className="text-xs"
             >
-              {view === 'graph' ? '瀑布图（时序）' : '路线图（拓扑）'}
+              {view === 'graph' ? t('waterfall') : t('graph')}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               onClick={() => setFullscreen(!fullscreen)}
-              title={fullscreen ? '退出全屏' : '全屏'}
+              title={fullscreen ? t('exitFullscreen') : t('fullscreen')}
             >
               {fullscreen ? <Minimize2Icon /> : <Maximize2Icon />}
             </Button>
           </div>
         </DialogHeader>
         <DialogDescription asChild>
-          <div className="sr-only">链路 trace 详情</div>
+          <div className="sr-only">{t('srDetail')}</div>
         </DialogDescription>
         <div className="min-h-0 overflow-hidden">
           {pending ? (
             <div className="flex h-[420px] items-center justify-center text-muted-foreground">
-              <Loader2Icon className="mr-2 animate-spin" /> 加载 trace 详情…
+              <Loader2Icon className="mr-2 animate-spin" /> {t('loading')}
             </div>
           ) : error ? (
             <p className="py-10 text-center text-sm text-destructive">{error}</p>

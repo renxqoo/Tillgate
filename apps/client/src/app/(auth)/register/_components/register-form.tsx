@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, ShieldCheckIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { z } from "zod";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -23,18 +24,11 @@ import { OAuthButtons, type OAuthOption } from "../../_components/oauth-buttons"
 import { TurnstileWidget } from "../../_components/turnstile-widget";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
-const schema = z
-  .object({
-    email: z.string().email("请输入有效邮箱"),
-    password: z.string().min(8, "密码至少 10 位").max(128, "密码最多 1210 位"),
-    confirmPassword: z.string().min(1, "请确认密码"),
-  })
-  .refine((v) => v.password === v.confirmPassword, {
-    message: "两次输入的密码不一致",
-    path: ["confirmPassword"],
-  });
-
-type RegisterValues = z.infer<typeof schema>;
+interface RegisterValues {
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
 
 export function RegisterForm({
   oauthOptions = [],
@@ -47,6 +41,8 @@ export function RegisterForm({
   /** 邀请归因 aff 码（?aff=，注册第二步透传） */
   affCode?: string | null;
 }) {
+  const t = useTranslations("auth");
+  const tUi = useTranslations("ui");
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [showPassword, setShowPassword] = useState(false);
@@ -56,6 +52,17 @@ export function RegisterForm({
   // 人机验证：token 单次消费，提交被拒后递增 resetNonce 换新票
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaResetNonce, setCaptchaResetNonce] = useState(0);
+
+  const schema = z
+    .object({
+      email: z.string().email(t("invalidEmail")),
+      password: z.string().min(8, t("passwordMin")).max(128, t("passwordMax")),
+      confirmPassword: z.string().min(1, t("confirmRequired")),
+    })
+    .refine((v) => v.password === v.confirmPassword, {
+      message: t("passwordMismatch"),
+      path: ["confirmPassword"],
+    });
 
   const form = useForm<RegisterValues>({
     resolver: zodResolver(schema),
@@ -77,7 +84,7 @@ export function RegisterForm({
           setCaptchaToken(null);
           setCaptchaResetNonce((n) => n + 1);
         }
-        notify(res ?? {}, "注册失败");
+        notify(res ?? {}, t("registerFailed"));
       }
     });
   }
@@ -86,8 +93,8 @@ export function RegisterForm({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>邮箱验证码</CardTitle>
-          <CardDescription>验证码已发送到你注册的邮箱，5 分钟内有效</CardDescription>
+          <CardTitle>{t("codeTitle")}</CardTitle>
+          <CardDescription>{t("codeSentRegister")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -96,7 +103,7 @@ export function RegisterForm({
               e.preventDefault();
               startTransition(async () => {
                 const res = await registerVerifyAction(challenge, code, affCode);
-                notify(res ?? {}, "验证失败");
+                notify(res ?? {}, t("verifyFailed"));
                 // 成功会 redirect，不会回到这里
               });
             }}
@@ -104,7 +111,7 @@ export function RegisterForm({
           >
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="register-code">6 位验证码</FieldLabel>
+                <FieldLabel htmlFor="register-code">{t("codeLabel")}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon><ShieldCheckIcon /></InputGroupAddon>
                   <InputGroupInput
@@ -118,12 +125,12 @@ export function RegisterForm({
                     autoFocus
                   />
                 </InputGroup>
-                <FieldDescription>连续错 5 次验证码作废，需重新注册。</FieldDescription>
+                <FieldDescription>{t("codeNoticeRegister")}</FieldDescription>
               </Field>
             </FieldGroup>
             <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
               {pending && <Loader2Icon className="animate-spin" />}
-              验证并完成注册
+              {t("verifyAndRegister")}
             </Button>
             <button
               type="button"
@@ -133,7 +140,7 @@ export function RegisterForm({
                 setCode("");
               }}
             >
-              返回修改注册信息
+              {t("backToRegister")}
             </button>
           </form>
         </CardContent>
@@ -144,8 +151,8 @@ export function RegisterForm({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>注册账号</CardTitle>
-        <CardDescription>使用邮箱注册，验证通过后自动登录</CardDescription>
+        <CardTitle>{t("registerTitle")}</CardTitle>
+        <CardDescription>{t("registerDesc")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -155,7 +162,7 @@ export function RegisterForm({
               name="email"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="register-email">邮箱</FieldLabel>
+                  <FieldLabel htmlFor="register-email">{t("emailLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <MailIcon />
@@ -177,7 +184,7 @@ export function RegisterForm({
               name="password"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="register-password">密码</FieldLabel>
+                  <FieldLabel htmlFor="register-password">{t("passwordLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <LockIcon />
@@ -186,14 +193,14 @@ export function RegisterForm({
                       id="register-password"
                       type={showPassword ? "text" : "password"}
                       autoComplete="new-password"
-                      placeholder="至少 10 位"
+                      placeholder={t("passwordMinPlaceholder")}
                       {...field}
                     />
                     <InputGroupAddon align="inline-end">
                       <button
                         type="button"
                         onClick={() => setShowPassword((s) => !s)}
-                        aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                        aria-label={showPassword ? tUi("hidePassword") : tUi("showPassword")}
                         className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
                       >
                         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -210,7 +217,7 @@ export function RegisterForm({
               name="confirmPassword"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="register-confirm">确认密码</FieldLabel>
+                  <FieldLabel htmlFor="register-confirm">{t("confirmLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <LockIcon />
@@ -238,11 +245,11 @@ export function RegisterForm({
             className="w-full"
           >
             {pending && <Loader2Icon className="animate-spin" />}
-            {!!captchaSiteKey && !captchaToken ? "请先完成人机验证" : "注册"}
+            {!!captchaSiteKey && !captchaToken ? t("captchaPending") : t("registerSubmit")}
           </Button>
 
           <FieldDescription className="text-center">
-            已有账号？直接登录即可。
+            {t("hasAccountInline")}
           </FieldDescription>
         </form>
         <div className="mt-4">

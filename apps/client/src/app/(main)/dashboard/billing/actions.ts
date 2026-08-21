@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 export async function createPaymentAction(
   provider: "epay" | "stripe",
@@ -19,6 +20,7 @@ export async function createPaymentAction(
     if (e instanceof ApiError) {
       return { error: e.message };
     }
-    return { error: "下单失败，请重试" };
+    const t = await getTranslations("billing");
+    return { error: t("orderFailed") };
   }
 }

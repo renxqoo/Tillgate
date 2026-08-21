@@ -1,4 +1,5 @@
 import { CpuIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchAdminList } from "@ai-gateway/api-client/list";
 import type { AdminChannelRow } from "@ai-gateway/api-client";
@@ -18,6 +19,7 @@ interface PageProps {
 
 export default async function ModelsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("models");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows: models, total, error } = await fetchAdminList<AdminModelRow>(
     "/v1/models",
@@ -36,11 +38,11 @@ export default async function ModelsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="模型映射"
+      title={t("title")}
       icon={<CpuIcon className="size-5 text-muted-foreground" />}
-      description="外部模型名 → 上游真实模型 + 单价"
+      description={t("description")}
       total={total}
-      searchPlaceholder="搜索外部名 / 真实模型"
+      searchPlaceholder={t("searchPlaceholder")}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={<CreateModelDialog />}

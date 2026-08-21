@@ -24,7 +24,7 @@ export async function requireAdmin(): Promise<AdminMeInfo> {
     return {
       id: 99,
       email: "admin@studio-admin.dev",
-      displayName: "管理员",
+      displayName: "Admin",
       lastLoginAt: null,
     };
   }

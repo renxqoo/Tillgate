@@ -1,4 +1,5 @@
 import { UserPlusIcon } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 
 import { fetchAdminList } from '@ai-gateway/api-client/list';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
@@ -15,6 +16,7 @@ interface PageProps {
 
 export default async function ReferralsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations('referrals');
   const { q, page } = parseListSearchParams(sp);
   const view = (Array.isArray(sp.view) ? sp.view[0] : sp.view) ?? 'relations';
   const payoutKind = (Array.isArray(sp.kind) ? sp.kind[0] : sp.kind) ?? 'commission';
@@ -55,11 +57,11 @@ export default async function ReferralsPage({ searchParams }: PageProps) {
 
   return (
     <ListPage
-      title="邀请管理"
+      title={t('title')}
       icon={<UserPlusIcon className="size-5 text-muted-foreground" />}
-      description="邀请关系与返利流水（账本投影）；封禁 = 停止后续派奖，历史入账不动"
+      description={t('description')}
       total={total}
-      searchPlaceholder={view === 'payouts' ? undefined : '搜索邀请人 / 被邀人邮箱'}
+      searchPlaceholder={view === 'payouts' ? undefined : t('searchPlaceholder')}
       q={view === 'payouts' ? undefined : q}
       searchParams={view === 'payouts' ? { view: 'payouts', kind: payoutKind } : undefined}
       error={error}

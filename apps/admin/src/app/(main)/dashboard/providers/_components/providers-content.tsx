@@ -9,6 +9,7 @@ import {
   ServerIcon,
   Trash2Icon,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,33 +49,38 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const schema = z.object({
-  name: z.string().min(1, "请输入名称"),
-  baseUrl: z.string().url("请输入合法的 URL"),
-  protocol: z.string().min(1),
-  vendor: z.string(),
-  status: z.coerce.number().int(),
-});
-type FormValues = z.infer<typeof schema>;
+// 校验消息走目录：schema 在组件内用 t 构造
+function buildSchema(t: ReturnType<typeof useTranslations<"providers">>) {
+  return z.object({
+    name: z.string().min(1, t("nameRequired")),
+    baseUrl: z.string().url(t("invalidUrl")),
+    protocol: z.string().min(1),
+    vendor: z.string(),
+    status: z.coerce.number().int(),
+  });
+}
+type FormValues = { name: string; baseUrl: string; protocol: string; vendor: string; status: number };
 
 export function ProvidersTable({ providers, protocols, vendors }: { readonly providers: ReadonlyArray<AdminProviderRow>; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
+  const t = useTranslations("providers");
+  const tc = useTranslations("common");
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
+          <TableHead>{tc("name")}</TableHead>
           <TableHead>Base URL</TableHead>
-          <TableHead className="w-40">协议 / 厂商档案</TableHead>
-          <TableHead className="w-24">状态</TableHead>
-          <TableHead className="w-44">更新时间</TableHead>
-          <TableHead className="w-24 text-right">操作</TableHead>
+          <TableHead className="w-40">{t("protocolVendor")}</TableHead>
+          <TableHead className="w-24">{tc("status")}</TableHead>
+          <TableHead className="w-44">{tc("updatedAt")}</TableHead>
+          <TableHead className="w-24 text-right">{tc("actions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {providers.length === 0 ? (
           <TableRow>
             <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-              暂无供应商
+              {t("noProviders")}
             </TableCell>
           </TableRow>
         ) : (
@@ -86,6 +92,8 @@ export function ProvidersTable({ providers, protocols, vendors }: { readonly pro
 }
 
 function ProviderRowItem({ provider, protocols, vendors }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
+  const t = useTranslations("providers");
+  const tc = useTranslations("common");
   return (
     <TableRow>
       <TableCell className="font-medium">{provider.name}</TableCell>
@@ -98,9 +106,9 @@ function ProviderRowItem({ provider, protocols, vendors }: { provider: AdminProv
       </TableCell>
       <TableCell>
         {provider.status === 0 ? (
-          <StatusPill tone="success" label="启用" />
+          <StatusPill tone="success" label={tc("enabled")} />
         ) : (
-          <StatusPill tone="neutral" label="禁用" />
+          <StatusPill tone="neutral" label={tc("disabled")} />
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">
@@ -112,9 +120,9 @@ function ProviderRowItem({ provider, protocols, vendors }: { provider: AdminProv
         <div className="flex items-center justify-end gap-1">
           <EditProviderDialog provider={provider} protocols={protocols} vendors={vendors} />
           <ConfirmAction
-            confirm={`确定删除供应商 ${provider.name}？关联渠道将不可用。`}
+            confirm={t("deleteConfirm", { name: provider.name })}
             action={async () => (await import("../actions")).deleteProviderAction(provider.id)}
-            success="已删除"
+            success={tc("deleted")}
           >
             {({ pending, onClick }) => (
               <Button
@@ -135,9 +143,13 @@ function ProviderRowItem({ provider, protocols, vendors }: { provider: AdminProv
 }
 
 export function CreateProviderDialog({ protocols, vendors }: { readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
+  const t = useTranslations("providers");
+  const tc = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const schema = buildSchema(t);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
     defaultValues: { name: "", baseUrl: "", protocol: protocols[0] ?? "openai-compatible", vendor: "", status: 0 },
@@ -147,7 +159,7 @@ export function CreateProviderDialog({ protocols, vendors }: { readonly protocol
     startTransition(async () => {
       const { createProviderAction } = await import("../actions");
       const res = await createProviderAction(values);
-      if (!notify(res, "创建失败", "已创建")) return;
+      if (!notify(res, tc("createFailed"), tc("created"))) return;
       form.reset();
       setOpen(false);
     });
@@ -158,23 +170,24 @@ export function CreateProviderDialog({ protocols, vendors }: { readonly protocol
       <DialogTrigger asChild>
         <Button>
           <PlusCircleIcon />
-          新建供应商
+          {t("create")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ServerIcon /> 新建供应商
+            <ServerIcon /> {t("create")}
           </DialogTitle>
-          <DialogDescription>定义一个 LLM 供应商入口</DialogDescription>
+          <DialogDescription>{t("createDescription")}</DialogDescription>
         </DialogHeader>
         <ProviderForm form={form} onSubmit={onSubmit} formId="provider-form" protocols={protocols} vendors={vendors} />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="provider-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}创建
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc("create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -183,9 +196,13 @@ export function CreateProviderDialog({ protocols, vendors }: { readonly protocol
 }
 
 function EditProviderDialog({ provider, protocols, vendors }: { provider: AdminProviderRow; readonly protocols: ReadonlyArray<string>; readonly vendors: ReadonlyArray<string> }) {
+  const t = useTranslations("providers");
+  const tc = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const schema = buildSchema(t);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
     defaultValues: {
@@ -201,7 +218,7 @@ function EditProviderDialog({ provider, protocols, vendors }: { provider: AdminP
     startTransition(async () => {
       const { updateProviderAction } = await import("../actions");
       const res = await updateProviderAction(provider.id, values);
-      if (!notify(res, "保存失败", "已保存")) return;
+      if (!notify(res, tc("saveFailed"), tc("saved"))) return;
       setOpen(false);
     });
   }
@@ -209,23 +226,24 @@ function EditProviderDialog({ provider, protocols, vendors }: { provider: AdminP
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" title="编辑">
+        <Button size="sm" variant="ghost" title={tc("edit")}>
           <PencilIcon />
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <PencilIcon /> 编辑供应商 - {provider.name}
+            <PencilIcon /> {t("editTitle", { name: provider.name })}
           </DialogTitle>
         </DialogHeader>
         <ProviderForm form={form} onSubmit={onSubmit} formId="provider-edit-form" protocols={protocols} vendors={vendors} />
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button type="submit" form="provider-edit-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}保存
+            {pending && <Loader2Icon className="animate-spin" />}
+            {tc("save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -235,6 +253,8 @@ function EditProviderDialog({ provider, protocols, vendors }: { provider: AdminP
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: any; onSubmit: (v: FormValues) => void; formId: string; protocols: ReadonlyArray<string>; vendors: ReadonlyArray<string> }) {
+  const t = useTranslations("providers");
+  const tc = useTranslations("common");
   return (
     <form id={formId} onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
       <FieldGroup>
@@ -243,7 +263,7 @@ function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: an
           name="name"
           render={({ field, fieldState }: { field: { value: string }; fieldState: { invalid?: boolean; error?: { message?: string } } }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="p-name">名称</FieldLabel>
+              <FieldLabel htmlFor="p-name">{tc("name")}</FieldLabel>
               <Input id="p-name" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
@@ -265,7 +285,7 @@ function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: an
           name="protocol"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
             <Field>
-              <FieldLabel>协议</FieldLabel>
+              <FieldLabel>{t("protocol")}</FieldLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -284,13 +304,13 @@ function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: an
           name="vendor"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
             <Field>
-              <FieldLabel>厂商档案（参数怪癖预设）</FieldLabel>
+              <FieldLabel>{t("vendorProfile")}</FieldLabel>
               <Select value={field.value || "none"} onValueChange={(v) => field.onChange(v === "none" ? "" : v)}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">无（纯透传）</SelectItem>
+                  <SelectItem value="none">{t("noVendor")}</SelectItem>
                   {vendors.map((v) => (
                     <SelectItem key={v} value={v}>{v}</SelectItem>
                   ))}
@@ -304,14 +324,14 @@ function ProviderForm({ form, onSubmit, formId, protocols, vendors }: { form: an
           name="status"
           render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
             <Field>
-              <FieldLabel>状态</FieldLabel>
+              <FieldLabel>{tc("status")}</FieldLabel>
               <Select value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="0">启用</SelectItem>
-                  <SelectItem value="1">禁用</SelectItem>
+                  <SelectItem value="0">{tc("enabled")}</SelectItem>
+                  <SelectItem value="1">{tc("disabled")}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>

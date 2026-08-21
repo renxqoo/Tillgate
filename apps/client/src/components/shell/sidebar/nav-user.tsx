@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { useTranslations } from "next-intl";
 
 import { CircleUser, Coins, EllipsisVertical, Loader2Icon, LogOut } from "lucide-react";
 
@@ -29,6 +30,8 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const router = useRouter();
+  const tNav = useTranslations("nav");
+  const tUi = useTranslations("ui");
   const [pending, startTransition] = useTransition();
 
   async function handleLogout() {
@@ -80,11 +83,11 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/settings")}>
                 <CircleUser />
-                账户设置
+                {tNav("accountSettings")}
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer" onClick={() => router.push("/dashboard/transactions")}>
                 <Coins />
-                账单流水
+                {tNav("transactions")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
@@ -94,7 +97,7 @@ export function NavUser({
               className="cursor-pointer text-destructive focus:text-destructive"
             >
               {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
-              退出登录
+              {tUi("logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

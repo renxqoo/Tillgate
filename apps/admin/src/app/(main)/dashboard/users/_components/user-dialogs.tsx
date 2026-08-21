@@ -4,6 +4,7 @@ import * as React from 'react';
 import { useState, useTransition } from 'react';
 
 import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -35,20 +36,6 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
  * 修复「数字输入框的 0 无法删除/覆盖」问题。
  */
 
-const adjustSchema = z.object({
-  amount: moneyText({ message: '请输入有效金额', allowNegative: true, allowZero: false }),
-  remark: z.string().optional(),
-});
-
-const giftSchema = z.object({
-  amount: moneyText({ message: '请输入有效金额', allowZero: false }),
-  remark: z.string().optional(),
-});
-
-const passwordSchema = z.object({
-  password: z.string().min(6, '密码至少 6 位'),
-});
-
 interface BalanceFormValues {
   amount: string;
   remark: string;
@@ -62,9 +49,17 @@ export function AdjustDialog({
   /** 自定义触发按钮（列表行用 icon 幽灵按钮，详情页用默认文字按钮） */
   trigger?: React.ReactNode;
 }) {
+  const t = useTranslations('users');
+  const tUi = useTranslations('ui');
+  const tc = useTranslations('common');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  // 校验消息走目录：schema 在组件内用 t 构造
+  const adjustSchema = z.object({
+    amount: moneyText({ message: tUi('invalidAmount'), allowNegative: true, allowZero: false }),
+    remark: z.string().optional(),
+  });
   const form = useForm<BalanceFormValues>({
     resolver: zodResolver(adjustSchema) as never,
     defaultValues: { amount: '', remark: '' },
@@ -77,7 +72,7 @@ export function AdjustDialog({
         amount: values.amount,
         remark: values.remark,
       });
-      if (!notify(res, '调账失败', '已调账')) return;
+      if (!notify(res, t('adjustFailed'), t('adjusted'))) return;
       form.reset();
       setOpen(false);
     });
@@ -88,18 +83,21 @@ export function AdjustDialog({
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm" variant="outline">
-            <ScaleIcon /> 调账
+            <ScaleIcon /> {t('adjust')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ScaleIcon /> 调整余额 - {user.subject}
+            <ScaleIcon /> {t('adjustTitle', { subject: user.subject })}
           </DialogTitle>
           <DialogDescription>
-            已结算 {formatMoney(user.balance)}，处理中预留 {formatMoney(user.reservedBalance)}，
-            可用额度 {formatMoney(user.availableBalance)}。负数调账不能侵占处理中预留。
+            {t('adjustDescription', {
+              balance: formatMoney(user.balance),
+              reserved: formatMoney(user.reservedBalance),
+              available: formatMoney(user.availableBalance),
+            })}
           </DialogDescription>
         </DialogHeader>
         <form id="adj-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -107,19 +105,20 @@ export function AdjustDialog({
             <NumberField
               control={form.control}
               name="amount"
-              label="金额（元，正/负）"
+              label={t('amountSigned')}
               id="adj-amount"
               step="0.01"
             />
-            <TextareaField name="remark" form={form} label="备注" id="adj-remark" />
+            <TextareaField name="remark" form={form} label={tc('remark')} id="adj-remark" />
           </FieldGroup>
         </form>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="adj-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认调账
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmAdjust')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -128,9 +127,16 @@ export function AdjustDialog({
 }
 
 export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: React.ReactNode }) {
+  const t = useTranslations('users');
+  const tUi = useTranslations('ui');
+  const tc = useTranslations('common');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const giftSchema = z.object({
+    amount: moneyText({ message: tUi('invalidAmount'), allowZero: false }),
+    remark: z.string().optional(),
+  });
   const form = useForm<BalanceFormValues>({
     resolver: zodResolver(giftSchema) as never,
     defaultValues: { amount: '', remark: '' },
@@ -143,7 +149,7 @@ export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: Re
         amount: values.amount,
         remark: values.remark,
       });
-      if (!notify(res, '赠送失败', '已赠送')) return;
+      if (!notify(res, t('giftFailed'), t('gifted'))) return;
       form.reset();
       setOpen(false);
     });
@@ -154,35 +160,36 @@ export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: Re
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm" variant="outline">
-            <GiftIcon /> 赠送
+            <GiftIcon /> {t('gift')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <GiftIcon /> 赠送余额 - {user.subject}
+            <GiftIcon /> {t('giftTitle', { subject: user.subject })}
           </DialogTitle>
-          <DialogDescription>赠送金额仅增加余额</DialogDescription>
+          <DialogDescription>{t('giftDescription')}</DialogDescription>
         </DialogHeader>
         <form id="gift-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
             <NumberField
               control={form.control}
               name="amount"
-              label="金额（元，&gt; 0）"
+              label={t('amountPositive')}
               id="gift-amount"
               step="0.01"
             />
-            <TextareaField name="remark" form={form} label="备注" id="gift-remark" />
+            <TextareaField name="remark" form={form} label={tc('remark')} id="gift-remark" />
           </FieldGroup>
         </form>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="gift-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认赠送
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmGift')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -191,10 +198,15 @@ export function GiftDialog({ user, trigger }: { user: AdminUserRow; trigger?: Re
 }
 
 export function PasswordDialog({ user, trigger }: { user: AdminUserRow; trigger?: React.ReactNode }) {
+  const t = useTranslations('users');
+  const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState(false);
   const [pending, startTransition] = useTransition();
+  const passwordSchema = z.object({
+    password: z.string().min(6, t('passwordMin6')),
+  });
   const form = useForm<{ password: string }>({
     resolver: zodResolver(passwordSchema) as never,
     defaultValues: { password: '' },
@@ -204,7 +216,7 @@ export function PasswordDialog({ user, trigger }: { user: AdminUserRow; trigger?
     startTransition(async () => {
       const { setPasswordAction } = await import('../actions');
       const res = await setPasswordAction(user.id, values);
-      if (!notify(res, '设置失败', '已设置密码')) return;
+      if (!notify(res, t('setPasswordFailed'), t('passwordSet'))) return;
       form.reset();
       setShow(false);
       setOpen(false);
@@ -222,21 +234,21 @@ export function PasswordDialog({ user, trigger }: { user: AdminUserRow; trigger?
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm" variant="outline">
-            <KeyRoundIcon /> 改密
+            <KeyRoundIcon /> {t('changePassword')}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <KeyRoundIcon /> 设置密码 - {user.subject}
+            <KeyRoundIcon /> {t('setPasswordTitle', { subject: user.subject })}
           </DialogTitle>
-          <DialogDescription>为本地账号重置登录密码</DialogDescription>
+          <DialogDescription>{t('resetLocalPassword')}</DialogDescription>
         </DialogHeader>
         <form id="pw-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="pw">新密码</FieldLabel>
+              <FieldLabel htmlFor="pw">{t('newPassword')}</FieldLabel>
               <div className="relative">
                 <Input
                   id="pw"
@@ -260,10 +272,11 @@ export function PasswordDialog({ user, trigger }: { user: AdminUserRow; trigger?
         </form>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi('cancel')}</Button>
           </DialogClose>
           <Button type="submit" form="pw-form" disabled={pending}>
-            {pending && <Loader2Icon className="animate-spin" />}确认设置
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('confirmSet')}
           </Button>
         </DialogFooter>
       </DialogContent>
