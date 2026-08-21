@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslations } from 'next-intl';
 import { SearchIcon } from 'lucide-react';
 
 import { Card, CardContent, CardHeader } from './ui/card';
@@ -25,7 +26,7 @@ export function ListPage({
   description,
   icon,
   total,
-  totalUnit = '条',
+  totalUnit,
   searchPlaceholder,
   q,
   searchParams = {},
@@ -43,6 +44,7 @@ export function ListPage({
   icon?: ReactNode;
   /** 列表总数（页头「共 N 条」） */
   total?: number;
+  /** 计数单位词；缺省用 ui.itemsUnit 目录文案 */
   totalUnit?: string;
   /** 搜索框占位文案；不传则不渲染搜索框 */
   searchPlaceholder?: string;
@@ -68,6 +70,8 @@ export function ListPage({
    */
   unbordered?: boolean;
 }) {
+  const t = useTranslations('ui');
+  const unit = totalUnit ?? t('itemsUnit');
   const hiddenParams = Object.entries(searchParams).filter(
     ([key]) => key !== 'q' && key !== 'page',
   );
@@ -83,11 +87,11 @@ export function ListPage({
           {description ? (
             <p className="text-sm text-muted-foreground">
               {description}
-              {total !== undefined ? ` · 共 ${total.toLocaleString()} ${totalUnit}` : ''}
+              {total !== undefined ? ` · ${t('totalLine', { count: total, unit })}` : ''}
             </p>
           ) : total !== undefined ? (
             <p className="text-sm text-muted-foreground">
-              共 {total.toLocaleString()} {totalUnit}
+              {t('totalLine', { count: total, unit })}
             </p>
           ) : null}
         </div>
