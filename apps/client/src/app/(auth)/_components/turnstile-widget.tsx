@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Loader2Icon, ShieldCheckIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Cloudflare Turnstile 隐形挑战 widget（managed 模式）。
@@ -50,9 +51,9 @@ function loadTurnstile(): Promise<TurnstileAPI> {
     script.defer = true;
     script.addEventListener("load", () => {
       if (window.turnstile) resolve(window.turnstile);
-      else reject(new Error("turnstile 全局对象缺失"));
+      else reject(new Error("turnstile global object missing"));
     });
-    script.addEventListener("error", () => reject(new Error("turnstile 脚本不可达")));
+    script.addEventListener("error", () => reject(new Error("turnstile script unreachable")));
     document.head.appendChild(script);
   });
   return scriptPromise;
@@ -71,6 +72,8 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
+  const t = useTranslations("auth");
+  const tCommon = useTranslations("common");
   const [failed, setFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -116,7 +119,7 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
   if (failed) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground">
-        <span>人机验证加载失败（网络或脚本被拦截）</span>
+        <span>{t("captchaLoadFailed")}</span>
         <Button
           type="button"
           variant="outline"
@@ -126,7 +129,7 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
             setReloadNonce((n) => n + 1);
           }}
         >
-          重试
+          {tCommon("retry")}
         </Button>
       </div>
     );
@@ -134,17 +137,17 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
 
   return (
     <div className="space-y-1">
-      <div ref={containerRef} className="min-h-16" aria-label="人机验证" />
+      <div ref={containerRef} className="min-h-16" aria-label={t("captchaAria")} />
       {!mounted && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Loader2Icon className="size-3 animate-spin" />
-          正在加载人机验证…
+          {t("captchaLoading")}
         </p>
       )}
       {mounted && (
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheckIcon className="size-3" />
-          注册受隐形人机验证保护，通常无需任何操作
+          {t("captchaProtected")}
         </p>
       )}
     </div>

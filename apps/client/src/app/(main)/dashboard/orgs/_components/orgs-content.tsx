@@ -12,6 +12,7 @@ import {
   UserPlusIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@ai-gateway/ui/components/ui/button';
 import { Input } from '@ai-gateway/ui/components/ui/input';
@@ -38,12 +39,6 @@ export interface OrgWithMembers {
   invitations: OrgInvitationSummary[];
 }
 
-/** 元展示去尾零：50.0000 → 50（成员日限/月配额按元展示，与 API Key 页口径一致）。 */
-function fmtYuan(value: string | null): string {
-  if (value === null || value === '') return '不限';
-  return `¥${formatMoney(value).replace(/\.?0+$/, '')}`;
-}
-
 /** 积分展示去尾零（组织订阅额度按积分展示，与套餐订阅页口径一致）。 */
 function fmtQuota(value: string): string {
   return formatPoints(value).replace(/\.?0+$/, '');
@@ -57,20 +52,11 @@ function usagePercent(used: string, quota: string): number {
   return Math.min(100, Math.max(0, (u / q) * 100));
 }
 
-function parseNullableMoney(v: string): string | null {
+function parseNullableMoney(v: string, invalidMessage: string): string | null {
   const value = v.trim();
   if (value === '') return null;
-  if (!/^\d+(?:\.\d+)?$/.test(value)) throw new Error('金额格式不正确');
+  if (!/^\d+(?:\.\d+)?$/.test(value)) throw new Error(invalidMessage);
   return value;
-}
-
-/** 邀请到期剩余描述；3 天内到期给警示色。 */
-function expiresLabel(iso: string): { text: string; soon: boolean } {
-  const ms = new Date(iso).getTime() - Date.now();
-  if (ms <= 0) return { text: '已过期', soon: true };
-  const days = Math.floor(ms / 86_400_000);
-  if (days <= 3) return { text: days <= 0 ? '即将到期' : `${days} 天后到期`, soon: true };
-  return { text: new Date(iso).toLocaleDateString(), soon: false };
 }
 
 function memberLabel(m: OrgMemberRow): string {
@@ -84,6 +70,7 @@ function initials(m: OrgMemberRow): string {
 }
 
 export function OrgsContent({ orgs }: { readonly orgs: ReadonlyArray<OrgWithMembers> }) {
+  const t = useTranslations('orgs');
   if (orgs.length === 0) {
     return (
       <Empty className="border-none">
@@ -91,10 +78,8 @@ export function OrgsContent({ orgs }: { readonly orgs: ReadonlyArray<OrgWithMemb
           <EmptyMedia>
             <Building2Icon className="size-8 text-muted-foreground/60" />
           </EmptyMedia>
-          <EmptyTitle>尚未加入任何组织</EmptyTitle>
-          <EmptyDescription>
-            企业购买团队套餐后会自动创建组织，或收到 owner 邀请后加入。
-          </EmptyDescription>
+          <EmptyTitle>{t('emptyTitle')}</EmptyTitle>
+          <EmptyDescription>{t('emptyDesc')}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -109,6 +94,7 @@ export function OrgsContent({ orgs }: { readonly orgs: ReadonlyArray<OrgWithMemb
 }
 
 function OrgSection({ org, members, invitations }: OrgWithMembers) {
+  const t = useTranslations('orgs');
   const isOwner = org.role === 'owner';
   const active = members.filter((m) => m.status === 0);
   const hasSub = org.subscriptionId != null;
@@ -125,18 +111,20 @@ function OrgSection({ org, members, invitations }: OrgWithMembers) {
               <h3 className="truncate text-base font-semibold">{org.name}</h3>
               <StatusPill
                 tone={isOwner ? 'accent' : 'neutral'}
-                label={isOwner ? '所有者' : '成员'}
+                label={isOwner ? t('roleOwner') : t('roleMember')}
               />
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {hasSub ? (
                 <>
                   {org.planName}
-                  {org.quantity != null ? ` · ${org.quantity} 席` : ''}
-                  {` · 成员 ${active.length}${org.quantity != null ? `/${org.quantity}` : ''}`}
+                  {org.quantity != null ? ` · ${t('seatsShort', { count: org.quantity })}` : ''}
+                  {org.quantity != null
+                    ? ` · ${t('membersWithQuota', { count: active.length, total: org.quantity })}`
+                    : ` · ${t('membersLine', { count: active.length })}`}
                 </>
               ) : (
-                '无有效套餐'
+                t('noPlan')
               )}
             </p>
           </div>
@@ -153,15 +141,17 @@ function OrgSection({ org, members, invitations }: OrgWithMembers) {
         <div>
           <Progress value={usagePercent(org.usedAmount, org.quotaAmount)} />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            已用 {fmtQuota(org.usedAmount)} / {fmtQuota(org.quotaAmount)} 积分
-            {org.remainingAmount != null ? ` · 剩余 ${fmtQuota(org.remainingAmount)}` : ''}
+            {t('quotaUsed', { used: fmtQuota(org.usedAmount), quota: fmtQuota(org.quotaAmount) })}
+            {org.remainingAmount != null
+              ? ` · ${t('quotaRemaining', { amount: fmtQuota(org.remainingAmount) })}`
+              : ''}
           </p>
         </div>
       ) : null}
 
       {isOwner && !hasSub ? (
         <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-          组织暂无有效套餐：邀请成员前需先以组织名义购买团队套餐（席位 = 成员名额）。
+          {t('noPlanHint')}
         </p>
       ) : null}
 
@@ -175,6 +165,8 @@ function OrgSection({ org, members, invitations }: OrgWithMembers) {
 }
 
 function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | null }) {
+  const t = useTranslations('orgs');
+  const tCommon = useTranslations('common');
   const [email, setEmail] = useState('');
   const [link, setLink] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -189,10 +181,10 @@ function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | nul
           variant="outline"
           onClick={async () => {
             await navigator.clipboard.writeText(`${window.location.origin}${link}`);
-            toast.success('邀请链接已复制');
+            toast.success(t('inviteLinkCopied'));
           }}
         >
-          <CopyIcon className="size-3" /> 复制链接
+          <CopyIcon className="size-3" /> {tCommon('copyLink')}
         </Button>
         <Button
           size="sm"
@@ -202,7 +194,7 @@ function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | nul
             setEmail('');
           }}
         >
-          再邀请一位
+          {t('inviteAnother')}
         </Button>
       </div>
     );
@@ -213,24 +205,24 @@ function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | nul
       <Input
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="成员登录邮箱"
+        placeholder={t('memberEmailPlaceholder')}
         className="h-8 w-52 text-xs"
       />
       <Button
         size="sm"
         variant="outline"
         disabled={pending || email.trim() === ''}
-        title={seatsLeft != null && seatsLeft <= 0 ? '席位已满' : undefined}
+        title={seatsLeft != null && seatsLeft <= 0 ? t('seatsFull') : undefined}
         onClick={() =>
           startTransition(async () => {
             const { inviteMemberAction } = await import('../actions');
             const res = await inviteMemberAction(org.orgId, email.trim());
-            if (notify(res, '邀请失败', '已生成邀请链接')) setLink(res.link ?? '');
+            if (notify(res, t('inviteFailed'), t('inviteLinkGenerated'))) setLink(res.link ?? '');
           })
         }
       >
         {pending ? <Loader2Icon className="animate-spin" /> : <UserPlusIcon className="size-3.5" />}
-        邀请成员
+        {t('inviteMember')}
       </Button>
     </div>
   );
@@ -245,11 +237,12 @@ function MemberList({
   members: OrgMemberRow[];
   isOwner: boolean;
 }) {
+  const t = useTranslations('orgs');
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-medium text-muted-foreground">成员（{members.length}）</p>
+      <p className="text-xs font-medium text-muted-foreground">{t('membersLabel', { count: members.length })}</p>
       {members.length === 0 ? (
-        <p className="text-sm text-muted-foreground">暂无成员</p>
+        <p className="text-sm text-muted-foreground">{t('noMembers')}</p>
       ) : (
         <ul className="space-y-1.5">
           {members.map((m) => (
@@ -270,6 +263,7 @@ function MemberRow({
   member: OrgMemberRow;
   isOwner: boolean;
 }) {
+  const t = useTranslations('orgs');
   const isOrgOwner = member.role === 'owner';
   return (
     <li className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-sm">
@@ -283,7 +277,7 @@ function MemberRow({
         ) : null}
       </div>
       {isOrgOwner ? (
-        <StatusPill tone="accent" label="所有者" />
+        <StatusPill tone="accent" label={t('roleOwner')} />
       ) : isOwner ? (
         <>
           <QuotaCell org={org} member={member} />
@@ -295,51 +289,58 @@ function MemberRow({
 }
 
 function QuotaCell({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
+  const t = useTranslations('orgs');
+  const tCommon = useTranslations('common');
+  const tUi = useTranslations('ui');
   const [open, setOpen] = useState(false);
   const notify = useActionResult();
   const [daily, setDaily] = useState(member.dailySpendLimit ?? '');
   const [monthly, setMonthly] = useState(member.monthlyQuota ?? '');
   const [pending, startTransition] = useTransition();
 
+  /** 元展示去尾零（与 OrgSection 同口径）。 */
+  const fmtYuan = (value: string | null): string => {
+    if (value === null || value === '') return tCommon('unlimited');
+    return `¥${formatMoney(value).replace(/\.?0+$/, '')}`;
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-          日限 {fmtYuan(member.dailySpendLimit)} · 月配额 {fmtYuan(member.monthlyQuota)}
+          {t('quotaSummary', { daily: fmtYuan(member.dailySpendLimit), monthly: fmtYuan(member.monthlyQuota) })}
           <PencilIcon className="size-3 opacity-60" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">
         <div className="space-y-3">
-          <p className="text-sm font-medium">用量限额 · {memberLabel(member)}</p>
+          <p className="text-sm font-medium">{t('quotaTitle', { name: memberLabel(member) })}</p>
           <div className="space-y-2">
             <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">日限额（元，留空不限）</span>
+              <span className="text-xs text-muted-foreground">{t('dailyLimitLabel')}</span>
               <Input
                 value={daily}
                 onChange={(e) => setDaily(e.target.value)}
                 inputMode="decimal"
-                placeholder="不限"
+                placeholder={tCommon('unlimited')}
                 className="h-8 text-xs"
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">月配额（元，留空不限）</span>
+              <span className="text-xs text-muted-foreground">{t('monthlyQuotaLabel')}</span>
               <Input
                 value={monthly}
                 onChange={(e) => setMonthly(e.target.value)}
                 inputMode="decimal"
-                placeholder="不限"
+                placeholder={tCommon('unlimited')}
                 className="h-8 text-xs"
               />
             </label>
           </div>
-          <p className="text-xs text-muted-foreground">
-            成员各自建自己的 Key，额度按组织套餐扣减。
-          </p>
+          <p className="text-xs text-muted-foreground">{t('quotaNote')}</p>
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-              取消
+              {tUi('cancel')}
             </Button>
             <Button
               size="sm"
@@ -348,14 +349,14 @@ function QuotaCell({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
                 startTransition(async () => {
                   const { setMemberQuotaAction } = await import('../actions');
                   const res = await setMemberQuotaAction(org.orgId, member.userId, {
-                    dailySpendLimit: parseNullableMoney(daily),
-                    monthlyQuota: parseNullableMoney(monthly),
+                    dailySpendLimit: parseNullableMoney(daily, tUi('invalidAmount')),
+                    monthlyQuota: parseNullableMoney(monthly, tUi('invalidAmount')),
                   });
-                  if (notify(res, '保存失败', '已保存')) setOpen(false);
+                  if (notify(res, tCommon('saveFailed'), t('savedToast'))) setOpen(false);
                 })
               }
             >
-              {pending && <Loader2Icon className="animate-spin" />} 保存
+              {pending && <Loader2Icon className="animate-spin" />} {tCommon('save')}
             </Button>
           </div>
         </div>
@@ -371,12 +372,27 @@ function PendingInvitations({
   org: OrgRow;
   invitations: OrgInvitationSummary[];
 }) {
+  const t = useTranslations('orgs');
   const notify = useActionResult();
   const [pending, startTransition] = useTransition();
+
+  /** 邀请到期剩余描述；3 天内到期给警示色。 */
+  const expiresLabel = (iso: string): { text: string; soon: boolean } => {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return { text: t('expired'), soon: true };
+    const days = Math.floor(ms / 86_400_000);
+    if (days <= 3)
+      return {
+        text: days <= 0 ? t('expiringSoon') : t('expiresInDays', { days }),
+        soon: true,
+      };
+    return { text: new Date(iso).toLocaleDateString('en-US'), soon: false };
+  };
+
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">
-        待接受邀请（{invitations.length}）
+        {t('pendingLabel', { count: invitations.length })}
       </p>
       <ul className="space-y-1.5">
         {invitations.map((inv) => {
@@ -405,11 +421,11 @@ function PendingInvitations({
                   startTransition(async () => {
                     const { revokeInvitationAction } = await import('../actions');
                     const res = await revokeInvitationAction(org.orgId, inv.id);
-                    notify(res, '撤销失败', '已撤销邀请');
+                    notify(res, t('revokeFailed'), t('inviteRevoked'));
                   })
                 }
               >
-                <Trash2Icon className="size-4" /> 撤销
+                <Trash2Icon className="size-4" /> {t('revoke')}
               </Button>
             </li>
           );
@@ -420,12 +436,13 @@ function PendingInvitations({
 }
 
 function RemoveButton({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
+  const t = useTranslations('orgs');
   return (
     <ConfirmAction
-      confirm={`确定移除成员 ${member.displayName || member.email}？其历史用量保留。`}
+      confirm={t('removeConfirm', { name: member.displayName || member.email || '' })}
       action={async () => (await import('../actions')).removeMemberAction(org.orgId, member.userId)}
-      errorTitle="移除失败"
-      success="已移除"
+      errorTitle={t('removeFailed')}
+      success={t('removedToast')}
     >
       {({ pending, onClick }) => (
         <Button
@@ -433,7 +450,7 @@ function RemoveButton({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
           variant="ghost"
           className="size-7 text-destructive hover:text-destructive"
           disabled={pending}
-          aria-label="移除成员"
+          aria-label={t('removeMemberAria')}
           onClick={onClick}
         >
           {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon className="size-4" />}

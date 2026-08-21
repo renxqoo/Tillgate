@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 /** 品牌图标（lucide 已移除品牌图标，用官方 mark 内联 SVG） */
 function GithubMarkIcon() {
   return (
@@ -18,7 +20,8 @@ function GoogleMarkIcon() {
   );
 }
 
-/** client-api 已配置的 OAuth 登录方式（页面服务端拉取，未配置不渲染） */
+/** client-api 已配置的 OAuth 登录方式（页面服务端拉取，未配置不渲染）；
+ *  label 存 auth 命名空间 i18n key，渲染处统一翻译 */
 export interface OAuthOption {
   id: "github" | "google";
   label: string;
@@ -30,22 +33,23 @@ export function oauthOptionsFromProviders(
 ): OAuthOption[] {
   const options: OAuthOption[] = [];
   if (providers.includes("github")) {
-    options.push({ id: "github", label: "使用 GitHub 登录", url: "/v1/oauth/github/authorize?next=/oauth/callback" });
+    options.push({ id: "github", label: "oauthGithub", url: "/v1/oauth/github/authorize?next=/oauth/callback" });
   }
   if (providers.includes("google")) {
-    options.push({ id: "google", label: "使用 Google 登录", url: "/v1/oauth/google/authorize?next=/oauth/callback" });
+    options.push({ id: "google", label: "oauthGoogle", url: "/v1/oauth/google/authorize?next=/oauth/callback" });
   }
   return options;
 }
 
 /** 分隔线 + 第三方登录按钮组（无可用方式时不渲染） */
 export function OAuthButtons({ options }: { options: OAuthOption[] }) {
+  const t = useTranslations("auth");
   if (options.length === 0) return null;
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span className="h-px flex-1 bg-border" />
-        或
+        {t("or")}
         <span className="h-px flex-1 bg-border" />
       </div>
       {options.map((option) => (
@@ -55,7 +59,7 @@ export function OAuthButtons({ options }: { options: OAuthOption[] }) {
           className="flex h-9 w-full items-center justify-center gap-2 rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           {option.id === "github" ? <GithubMarkIcon /> : <GoogleMarkIcon />}
-          {option.label}
+          {t(option.label)}
         </a>
       ))}
     </div>

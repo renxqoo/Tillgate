@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 export async function redeemAction(code: string): Promise<{ ok?: boolean; amount?: string; balanceAfter?: string; error?: string }> {
+  const t = await getTranslations("redeem");
   const trimmed = code.trim();
-  if (!trimmed) return { error: "请输入充值码" };
+  if (!trimmed) return { error: t("codeRequired") };
   try {
     const res = await apiFetch<{ ok: boolean; amount: string; balanceAfter: string }>("/v1/redeem", {
       method: "POST",
@@ -19,6 +21,6 @@ export async function redeemAction(code: string): Promise<{ ok?: boolean; amount
     if (e instanceof ApiError) {
       return { error: e.message };
     }
-    return { error: "充值失败，请重试" };
+    return { error: t("redeemFailed") };
   }
 }

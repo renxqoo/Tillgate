@@ -26,9 +26,9 @@ export async function requireMe(): Promise<MeInfo> {
       id: 1,
       subject: "demo_user",
       email: "demo@studio-admin.dev",
-      displayName: "演示账号",
+      displayName: "Demo Account",
       rateCardId: 1,
-      rateCardName: "标准版 ×1.0",
+      rateCardName: "Standard ×1.0",
       accounts: [{
         id: 'demo-cny', kind: 'user', code: null, currency: 'CNY', balance: '4321.50',
         inFlight: '0', creditLimit: '0', status: 'active',

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { KeyRoundIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import { PasswordForm } from "./password-form";
 
 /** 「修改密码」弹窗：设置页安全卡片入口 */
 export function PasswordDialog() {
+  const t = useTranslations("settings");
   const [open, setOpen] = useState(false);
 
   return (
@@ -25,13 +27,13 @@ export function PasswordDialog() {
       <DialogTrigger asChild>
         <Button variant="outline">
           <KeyRoundIcon className="size-4" />
-          修改密码
+          {t("changePassword")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>修改密码</DialogTitle>
-          <DialogDescription>更新您的登录密码，保存后下次登录生效</DialogDescription>
+          <DialogTitle>{t("changePassword")}</DialogTitle>
+          <DialogDescription>{t("changePasswordDesc")}</DialogDescription>
         </DialogHeader>
         <PasswordForm onSuccess={() => setOpen(false)} />
       </DialogContent>

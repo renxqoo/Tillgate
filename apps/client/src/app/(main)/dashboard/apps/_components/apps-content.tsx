@@ -6,6 +6,7 @@ import { Loader2Icon, RefreshCwIcon, ShieldCheckIcon, Trash2Icon } from "lucide-
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { z } from "zod";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -37,30 +38,32 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 import { ConfirmAction } from "@ai-gateway/ui/components/confirm-action";
 import { StatusPill } from "@ai-gateway/ui/components/status-pill";
 
-const createSchema = z.object({
-  name: z.string().min(1, "请输入名称").max(100),
-  description: z.string().max(255).optional(),
-});
+interface CreateAppValues {
+  name: string;
+  description?: string;
+}
 
 export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
+  const t = useTranslations("apps");
+  const tCommon = useTranslations("common");
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>名称</TableHead>
-          <TableHead>client_id</TableHead>
-          <TableHead>app_id</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>创建时间</TableHead>
-          <TableHead>最近轮换</TableHead>
-          <TableHead className="w-40 text-right">操作</TableHead>
+          <TableHead>{tCommon("name")}</TableHead>
+          <TableHead>{t("colClientId")}</TableHead>
+          <TableHead>{t("colAppId")}</TableHead>
+          <TableHead>{tCommon("status")}</TableHead>
+          <TableHead>{tCommon("createdAt")}</TableHead>
+          <TableHead>{t("colRotatedAt")}</TableHead>
+          <TableHead className="w-40 text-right">{tCommon("actions")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {apps.length === 0 ? (
           <TableRow>
             <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-              暂无应用
+              {t("noApps")}
             </TableCell>
           </TableRow>
         ) : (
@@ -105,20 +108,23 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
 }
 
 function StatusBadge({ status }: { status: number }) {
+  const t = useTranslations("apps");
   return status === 0 ? (
-    <StatusPill tone="success" label="启用" />
+    <StatusPill tone="success" label={t("statusEnabled")} />
   ) : (
-    <StatusPill tone="neutral" label="停用" />
+    <StatusPill tone="neutral" label={t("statusDisabled")} />
   );
 }
 
 function DeleteInline({ id, name }: { id: number; name: string }) {
+  const t = useTranslations("apps");
+  const tCommon = useTranslations("common");
   return (
     <ConfirmAction
-      confirm={`确定删除应用「${name}」？无法恢复。`}
+      confirm={t("deleteConfirm", { name })}
       action={async () => (await import("../actions")).deleteAppAction(id)}
-      errorTitle="删除失败"
-      success="已删除"
+      errorTitle={tCommon("deleteFailed")}
+      success={t("deletedToast")}
     >
       {({ pending, onClick }) => (
         <Button
@@ -129,7 +135,7 @@ function DeleteInline({ id, name }: { id: number; name: string }) {
           className="text-destructive hover:text-destructive"
         >
           {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          删除
+          {tCommon("delete")}
         </Button>
       )}
     </ConfirmAction>
@@ -137,6 +143,9 @@ function DeleteInline({ id, name }: { id: number; name: string }) {
 }
 
 function RotateSecretInline({ id, name }: { id: number; name: string }) {
+  const t = useTranslations("apps");
+  const tCommon = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -153,21 +162,19 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <RefreshCwIcon />
-          轮换 Secret
+          {t("rotateSecret")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>轮换 client_secret</DialogTitle>
-          <DialogDescription>
-            应用「{name}」将生成新的 client_secret，旧 secret 立即失效（已签发的 JWT 不受影响）。
-          </DialogDescription>
+          <DialogTitle>{t("rotateTitle")}</DialogTitle>
+          <DialogDescription>{t("rotateDesc", { name })}</DialogDescription>
         </DialogHeader>
 
         {revealed ? (
           <div className="space-y-3 rounded-md bg-emerald-500/10 p-4 ring-1 ring-emerald-500/30">
             <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              新 client_secret（请立即复制并安全保存）
+              {t("newSecretNotice")}
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 break-all rounded bg-background/80 p-2 font-mono text-xs">{revealed}</code>
@@ -175,20 +182,18 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
             </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            确认要轮换此应用的 client_secret 吗？此操作不可撤销。
-          </p>
+          <p className="text-sm text-muted-foreground">{t("rotateConfirmText")}</p>
         )}
 
         <DialogFooter>
           {revealed ? (
             <DialogClose asChild>
-              <Button variant="outline">完成</Button>
+              <Button variant="outline">{tCommon("done")}</Button>
             </DialogClose>
           ) : (
             <>
               <DialogClose asChild>
-                <Button variant="outline">取消</Button>
+                <Button variant="outline">{tUi("cancel")}</Button>
               </DialogClose>
               <Button
                 disabled={pending}
@@ -197,13 +202,13 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
                   const { rotateSecretAction } = await import("../actions");
                   const res = await rotateSecretAction(id);
                   setPending(false);
-                  if (!notify(res, "轮换失败")) return;
+                  if (!notify(res, t("rotateFailed"))) return;
                   setRevealed(res.clientSecret!);
-                  toast.success("已轮换 secret");
+                  toast.success(t("rotatedToast"));
                 }}
               >
                 {pending && <Loader2Icon className="animate-spin" />}
-                确认轮换
+                {t("confirmRotate")}
               </Button>
             </>
           )}
@@ -214,11 +219,19 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
 }
 
 export function CreateAppDialog() {
+  const t = useTranslations("apps");
+  const tCommon = useTranslations("common");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<AppCreated | null>(null);
 
-  const form = useForm<z.infer<typeof createSchema>>({
+  const createSchema = z.object({
+    name: z.string().min(1, t("nameRequired")).max(100),
+    description: z.string().max(255).optional(),
+  });
+
+  const form = useForm<CreateAppValues>({
     resolver: zodResolver(createSchema),
     defaultValues: { name: "", description: "" },
   });
@@ -228,21 +241,19 @@ export function CreateAppDialog() {
       <DialogTrigger asChild>
         <Button>
           <ShieldCheckIcon />
-          创建应用
+          {t("createApp")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>创建新应用</DialogTitle>
-          <DialogDescription>
-            client_id 与 client_secret 仅在创建时完整显示一次，请妥善保存。
-          </DialogDescription>
+          <DialogTitle>{t("createTitle")}</DialogTitle>
+          <DialogDescription>{t("createDesc")}</DialogDescription>
         </DialogHeader>
 
         {created ? (
           <div className="space-y-3 rounded-md bg-emerald-500/10 p-4 ring-1 ring-emerald-500/30">
             <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-              应用已创建（请立即复制并安全保存以下凭据）
+              {t("createdNotice")}
             </p>
             <CreatedField label="client_id" value={created.clientId} />
             <CreatedField label="app_id" value={created.appId} />
@@ -254,9 +265,9 @@ export function CreateAppDialog() {
             onSubmit={form.handleSubmit(async (values) => {
               const { createAppAction } = await import("../actions");
               const res = await createAppAction(values);
-              if (!notify(res, "创建失败")) return;
+              if (!notify(res, tCommon("createFailed"))) return;
               setCreated(res.app!);
-              toast.success("已创建应用");
+              toast.success(t("createdToast"));
             })}
             className="space-y-4"
           >
@@ -266,8 +277,8 @@ export function CreateAppDialog() {
                 name="name"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="app-name">名称</FieldLabel>
-                    <Input id="app-name" placeholder="例如 my-app" {...field} />
+                    <FieldLabel htmlFor="app-name">{tCommon("name")}</FieldLabel>
+                    <Input id="app-name" placeholder={t("namePlaceholder")} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -277,7 +288,7 @@ export function CreateAppDialog() {
                 name="description"
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="app-description">描述（可选）</FieldLabel>
+                    <FieldLabel htmlFor="app-description">{t("descOptional")}</FieldLabel>
                     <Input id="app-description" {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
@@ -290,16 +301,16 @@ export function CreateAppDialog() {
         <DialogFooter>
           {created ? (
             <DialogClose asChild>
-              <Button variant="outline">完成</Button>
+              <Button variant="outline">{tCommon("done")}</Button>
             </DialogClose>
           ) : (
             <>
               <DialogClose asChild>
-                <Button variant="outline">取消</Button>
+                <Button variant="outline">{tUi("cancel")}</Button>
               </DialogClose>
               <Button type="submit" form="create-app-form" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-                创建
+                {tCommon("create")}
               </Button>
             </>
           )}

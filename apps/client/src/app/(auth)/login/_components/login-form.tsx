@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, ShieldCheckIcon } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useTranslations } from "next-intl";
 import { z } from "zod";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -23,20 +24,25 @@ import { loginAction, verifyLoginCodeAction } from "@/lib/server-actions/auth";
 import { OAuthButtons, type OAuthOption } from "../../_components/oauth-buttons";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
-const loginSchema = z.object({
-  email: z.string().email("请输入有效邮箱"),
-  password: z.string().min(1, "请输入密码"),
-});
-
-type LoginValues = z.infer<typeof loginSchema>;
+interface LoginValues {
+  email: string;
+  password: string;
+}
 
 export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oauthOptions?: OAuthOption[] }) {
+  const t = useTranslations("auth");
+  const tUi = useTranslations("ui");
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [showPassword, setShowPassword] = useState(false);
   // 强制邮箱验证码两步登录：第一步通过后进入验证码步
   const [challenge, setChallenge] = useState<string | null>(null);
   const [code, setCode] = useState("");
+
+  const loginSchema = z.object({
+    email: z.string().email(t("invalidEmail")),
+    password: z.string().min(1, t("passwordRequired")),
+  });
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -50,7 +56,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
       fd.append("password", values.password);
       const res = await loginAction(fd);
       if (res?.challengeId) setChallenge(res.challengeId);
-      else notify(res ?? {}, "登录失败");
+      else notify(res ?? {}, t("loginFailed"));
     });
   }
 
@@ -58,8 +64,8 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
     return (
       <Card>
         <CardHeader>
-          <CardTitle>邮箱验证码</CardTitle>
-          <CardDescription>验证码已发送到你的邮箱，5 分钟内有效</CardDescription>
+          <CardTitle>{t("codeTitle")}</CardTitle>
+          <CardDescription>{t("codeSentLogin")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -68,7 +74,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
               e.preventDefault();
               startTransition(async () => {
                 const res = await verifyLoginCodeAction(challenge, code, next);
-                notify(res ?? {}, "验证失败");
+                notify(res ?? {}, t("verifyFailed"));
                 // 成功会 redirect，不会回到这里
               });
             }}
@@ -76,7 +82,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
           >
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="login-code">6 位验证码</FieldLabel>
+                <FieldLabel htmlFor="login-code">{t("codeLabel")}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon><ShieldCheckIcon /></InputGroupAddon>
                   <InputGroupInput
@@ -90,12 +96,12 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
                     autoFocus
                   />
                 </InputGroup>
-                <FieldDescription>连续错 5 次验证码作废，需重新登录。</FieldDescription>
+                <FieldDescription>{t("codeNoticeLogin")}</FieldDescription>
               </Field>
             </FieldGroup>
             <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
               {pending && <Loader2Icon className="animate-spin" />}
-              验证并登录
+              {t("verifyAndLogin")}
             </Button>
             <button
               type="button"
@@ -105,7 +111,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
                 setCode("");
               }}
             >
-              返回重新登录
+              {t("backToLogin")}
             </button>
           </form>
         </CardContent>
@@ -116,8 +122,8 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
   return (
     <Card>
       <CardHeader>
-        <CardTitle>欢迎回来</CardTitle>
-        <CardDescription>输入您的邮箱和密码登录用户面板</CardDescription>
+        <CardTitle>{t("loginTitle")}</CardTitle>
+        <CardDescription>{t("loginDesc")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -127,7 +133,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
               name="email"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="login-email">邮箱</FieldLabel>
+                  <FieldLabel htmlFor="login-email">{t("emailLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <MailIcon />
@@ -149,7 +155,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
               name="password"
               render={({ field, fieldState }) => (
                 <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="login-password">密码</FieldLabel>
+                  <FieldLabel htmlFor="login-password">{t("passwordLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
                       <LockIcon />
@@ -164,7 +170,7 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
                       <button
                         type="button"
                         onClick={() => setShowPassword((s) => !s)}
-                        aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                        aria-label={showPassword ? tUi("hidePassword") : tUi("showPassword")}
                         className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
                       >
                         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
@@ -179,13 +185,13 @@ export function LoginForm({ next, oauthOptions = [] }: { next: string | null; oa
 
           <Button type="submit" disabled={pending} className="w-full">
             {pending && <Loader2Icon className="animate-spin" />}
-            登录
+            {t("loginSubmit")}
           </Button>
 
           <FieldDescription className="text-center">
-            没有账号？
+            {t("noAccount")}
             <Link href="/register" className="ml-1 text-foreground underline-offset-2 hover:underline">
-              立即注册
+              {t("registerNow")}
             </Link>
           </FieldDescription>
         </form>

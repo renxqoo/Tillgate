@@ -1,14 +1,16 @@
 "use server";
 
 import { apiFetch, ApiError, setSessionToken } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 export async function changePasswordAction(input: {
   oldPassword: string;
   newPassword: string;
 }): Promise<{ error?: string; code?: string }> {
-  if (!input.oldPassword) return { error: "请输入当前密码" };
-  if (input.newPassword.length < 8) return { error: "新密码至少 8 位" };
-  if (input.newPassword.length > 128) return { error: "新密码最多 128 位" };
+  const t = await getTranslations("settings");
+  if (!input.oldPassword) return { error: t("oldPasswordRequired") };
+  if (input.newPassword.length < 8) return { error: t("newPasswordMin") };
+  if (input.newPassword.length > 128) return { error: t("newPasswordMax") };
   try {
     const res = await apiFetch<{ token: string }>("/v1/auth/password", {
       method: "POST",
@@ -21,7 +23,7 @@ export async function changePasswordAction(input: {
     if (e instanceof ApiError) {
       return { error: e.message, code: e.code };
     }
-    return { error: "修改失败，请重试" };
+    return { error: t("changeFailedRetry") };
   }
 }
 
@@ -29,9 +31,10 @@ export async function changePasswordAction(input: {
 export async function updateDisplayNameAction(input: {
   displayName: string;
 }): Promise<{ error?: string; displayName?: string }> {
+  const t = await getTranslations("settings");
   const name = input.displayName.trim();
-  if (!name) return { error: "请输入显示名称" };
-  if (name.length > 32) return { error: "最多 32 个字符" };
+  if (!name) return { error: t("nameRequired") };
+  if (name.length > 32) return { error: t("nameTooLong") };
   try {
     const res = await apiFetch("/v1/me/display-name", {
       method: "PATCH",
@@ -42,6 +45,6 @@ export async function updateDisplayNameAction(input: {
     if (e instanceof ApiError) {
       return { error: e.message };
     }
-    return { error: "修改失败，请重试" };
+    return { error: t("changeFailedRetry") };
   }
 }

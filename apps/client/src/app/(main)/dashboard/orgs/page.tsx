@@ -1,4 +1,5 @@
 import { Building2 } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { apiFetch, type OrgDetail, type OrgRow } from "@ai-gateway/api-client";
 import { fetchUserList } from "@ai-gateway/api-client/list";
@@ -17,6 +18,7 @@ interface PageProps {
 
 export default async function OrgsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("orgs");
   const { q, page } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchUserList<OrgRow>("/v1/orgs", {
     page,
@@ -42,12 +44,12 @@ export default async function OrgsPage({ searchParams }: PageProps) {
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <ListPage
-        title="组织"
+        title={t("title")}
         icon={<Building2 className="size-5 text-muted-foreground" />}
-        description="加入/管理的组织。企业套餐以组织为单位：owner 邀请成员，成员各自建自己的 Key 走组织额度。"
+        description={t("description")}
         total={total}
-        totalUnit="个组织"
-        searchPlaceholder="搜索组织名"
+        totalUnit={t("totalUnit")}
+        searchPlaceholder={t("searchPlaceholder")}
         q={q}
         searchParams={{ q }}
         error={error}

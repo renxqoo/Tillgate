@@ -16,6 +16,7 @@ import {
   type UsageByModelItem,
   type UsageDayRow,
 } from '@ai-gateway/api-client';
+import { getTranslations } from 'next-intl/server';
 
 import Link from 'next/link';
 
@@ -43,6 +44,7 @@ interface DashboardData {
 
 export default async function DashboardPage() {
   const me = await requireMe();
+  const t = await getTranslations('dashboard');
 
   let data: DashboardData = {
     balance: me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0',
@@ -107,16 +109,16 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">
-            欢迎回来，{me.displayName || me.subject}
+            {t('welcome', { name: me.displayName || me.subject })}
           </h1>
-          <p className="text-sm text-muted-foreground">这里是您的账户概览</p>
+          <p className="text-sm text-muted-foreground">{t('overview')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/redeem">兑换充值码</Link>
+            <Link href="/dashboard/redeem">{t('redeemCode')}</Link>
           </Button>
           <Button asChild size="sm">
-            <Link href="/dashboard/keys">创建 API Key</Link>
+            <Link href="/dashboard/keys">{t('createKey')}</Link>
           </Button>
         </div>
       </div>
@@ -124,36 +126,39 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 @3xl/main:grid-cols-4">
         <KpiCard
           icon={<WalletIcon className="size-4" />}
-          title="已结算余额（元）"
+          title={t('kpiBalance')}
           value={fmtBalance(data.balance)}
-          hint="在途请求完成结算后更新"
+          hint={t('kpiBalanceHint')}
         />
         <KpiCard
           icon={<CoinsIcon className="size-4" />}
-          title="今日消耗（元）"
+          title={t('kpiTodayCost')}
           value={fmtBalance(data.todayCost)}
-          hint="今日 API 调用费用"
+          hint={t('kpiTodayCostHint')}
         />
         <KpiCard
           icon={<KeyRoundIcon className="size-4" />}
-          title="API Key"
+          title={t('kpiKeys')}
           value={fmtInt(data.totalKeys)}
-          sub={`活跃 ${fmtInt(data.activeKeys)}`}
-          hint="当前账号创建的密钥"
+          sub={t('kpiActiveKeys', { count: fmtInt(data.activeKeys) })}
+          hint={t('kpiKeysHint')}
         />
         <KpiCard
           icon={<GaugeIcon className="size-4" />}
-          title="RPM / TPM"
+          title={t('kpiRate')}
           value={fmtInt(data.rpm)}
-          sub={`TPM ${fmtInt(data.tpm)}`}
-          hint={`近 60 秒实际速率 · 限额 ${data.rpmLimit == null ? '∞' : fmtInt(data.rpmLimit)}/${data.tpmLimit == null ? '∞' : fmtInt(data.tpmLimit)}`}
+          sub={t('kpiTpm', { count: fmtInt(data.tpm) })}
+          hint={t('kpiRateHint', {
+            rpm: data.rpmLimit == null ? '∞' : fmtInt(data.rpmLimit),
+            tpm: data.tpmLimit == null ? '∞' : fmtInt(data.tpmLimit),
+          })}
         />
       </div>
 
       <Card className="@container/card">
         <CardHeader>
-          <CardTitle className="text-base">每日费用趋势</CardTitle>
-          <CardDescription>按日聚合的请求费用（元）</CardDescription>
+          <CardTitle className="text-base">{t('costTrendTitle')}</CardTitle>
+          <CardDescription>{t('costTrendDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <CostChart data={data.dailyCost} />
@@ -162,8 +167,8 @@ export default async function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">不同模型用量</CardTitle>
-          <CardDescription>近 30 天按模型的费用 / Token / 次数分布</CardDescription>
+          <CardTitle className="text-base">{t('modelUsageTitle')}</CardTitle>
+          <CardDescription>{t('modelUsageDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <ModelUsageChart data={data.byModel} />

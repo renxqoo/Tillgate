@@ -4,6 +4,7 @@ import { useTransition, useState } from "react";
 
 import { Loader2Icon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 import { fmtDateTime, formatMoney, formatPoints } from "@ai-gateway/api-client/formatters";
 import { Button } from "@ai-gateway/ui/components/ui/button";
@@ -29,13 +30,6 @@ import { Progress } from "@ai-gateway/ui/components/ui/progress";
 
 import type { CurrentSubscription, OrgRow, PlanRow } from "@ai-gateway/api-client/types";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
-
-/** 周期天数展示：30→月付，365→年付，其余按天。 */
-function fmtPeriod(days: number): string {
-  if (days === 30) return "月付";
-  if (days === 365) return "年付";
-  return `${days} 天`;
-}
 
 /** 元展示去尾零：¥100.0000 → ¥100，¥37.7258 → ¥37.7258（只用于整额/价格类展示）。 */
 function fmtYuan(value: string): string {
@@ -68,6 +62,7 @@ export function SubscriptionContent({
   readonly plansError: string | null;
   readonly orgs: ReadonlyArray<OrgRow>;
 }) {
+  const t = useTranslations("subscription");
   // 有订阅时只展示更高档（升级目标）；无订阅展示全部（开通）。
   const visiblePlans = subscription
     ? plans.filter((p) => (p.sortOrder ?? 0) > (subscription.planSortOrder ?? 0))
@@ -80,8 +75,8 @@ export function SubscriptionContent({
           <CardHeader className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1">
-                <CardTitle className="text-base">当前订阅</CardTitle>
-                <CardDescription>套餐生效期与额度使用情况</CardDescription>
+                <CardTitle className="text-base">{t("currentTitle")}</CardTitle>
+                <CardDescription>{t("currentDesc")}</CardDescription>
               </div>
               <RenewButton sub={subscription} />
             </div>
@@ -95,8 +90,8 @@ export function SubscriptionContent({
       {orgs.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">所属组织套餐</CardTitle>
-            <CardDescription>作为成员消耗的组织额度（用组织 Key 调用时扣这里）</CardDescription>
+            <CardTitle className="text-base">{t("orgPlansTitle")}</CardTitle>
+            <CardDescription>{t("orgPlansDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {orgs.map((o) => (
@@ -105,14 +100,14 @@ export function SubscriptionContent({
                   <div className="min-w-0">
                     <div className="truncate font-medium">{o.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {o.planName ?? "无有效套餐"}
-                      {o.quantity != null ? ` · ${o.quantity} 席` : ""}
+                      {o.planName ?? t("noPlan")}
+                      {o.quantity != null ? ` · ${t("seatsBadge", { count: o.quantity })}` : ""}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
                     {o.remainingAmount != null ? (
                       <div className="text-xs text-muted-foreground">
-                        剩余 {fmtPoints(o.remainingAmount)} 积分
+                        {t("remainingQuota", { amount: fmtPoints(o.remainingAmount) })}
                       </div>
                     ) : null}
                   </div>
@@ -121,7 +116,7 @@ export function SubscriptionContent({
                   <div className="mt-2">
                     <Progress value={usagePercent(o.usedAmount, o.quotaAmount)} />
                     <div className="mt-1 text-xs text-muted-foreground">
-                      已用 {fmtPoints(o.usedAmount)} / {fmtPoints(o.quotaAmount)} 积分
+                      {t("usedQuota", { used: fmtPoints(o.usedAmount), quota: fmtPoints(o.quotaAmount) })}
                     </div>
                   </div>
                 ) : null}
@@ -140,14 +135,14 @@ export function SubscriptionContent({
       ) : !subscription ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">开通套餐</CardTitle>
-            <CardDescription>选择套餐并开通订阅，余额支付，立即生效</CardDescription>
+            <CardTitle className="text-base">{t("buyTitle")}</CardTitle>
+            <CardDescription>{t("buyDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {plansError ? (
               <p className="text-sm text-destructive">{plansError}</p>
             ) : visiblePlans.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无可购套餐</p>
+              <p className="text-sm text-muted-foreground">{t("noPlans")}</p>
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {visiblePlans.map((p) => (
@@ -160,8 +155,8 @@ export function SubscriptionContent({
       ) : visiblePlans.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">套餐方案</CardTitle>
-            <CardDescription>升级到更高层级套餐，余额支付补差价</CardDescription>
+            <CardTitle className="text-base">{t("plansTitle")}</CardTitle>
+            <CardDescription>{t("plansDesc")}</CardDescription>
           </CardHeader>
           <CardContent>
             {plansError ? (
@@ -181,7 +176,10 @@ export function SubscriptionContent({
 }
 
 function CurrentSubscriptionCard({ sub }: { sub: CurrentSubscription }) {
+  const t = useTranslations("subscription");
+  const tUi = useTranslations("ui");
   const pct = usagePercent(sub.usedAmount, sub.quotaAmount);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -190,22 +188,22 @@ function CurrentSubscriptionCard({ sub }: { sub: CurrentSubscription }) {
           <span className="font-medium">{sub.planName}</span>
           {sub.allowSeats ? (
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              ×{sub.quantity} 席位
+              {t("seatsBadge", { count: sub.quantity })}
             </span>
           ) : null}
         </div>
         <span className="text-xs text-muted-foreground">
-          {fmtDateTime(sub.startAt)} 至 {fmtDateTime(sub.endAt)}
+          {t("periodRange", { start: fmtDateTime(sub.startAt), end: fmtDateTime(sub.endAt) })}
         </span>
       </div>
 
       <div className="space-y-1.5">
         <Progress value={pct} />
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          <span>已用 {pct.toFixed(1)}%</span>
+          <span>{t("usedPercent", { pct: pct.toFixed(1) })}</span>
           <span className="tabular-nums">
-            剩余{" "}
-            <span className="font-medium text-foreground">{fmtPoints(sub.remainingAmount)} 积分</span>
+            {t("remainingPoints")}{" "}
+            <span className="font-medium text-foreground">{fmtPoints(sub.remainingAmount)} {tUi("points")}</span>
           </span>
         </div>
       </div>
@@ -217,6 +215,8 @@ function CurrentSubscriptionCard({ sub }: { sub: CurrentSubscription }) {
 
 /** 续费按钮（位于「当前订阅」卡片右上角，与标题水平对齐），点击弹确认框。 */
 function RenewButton({ sub }: { sub: CurrentSubscription }) {
+  const t = useTranslations("subscription");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -225,7 +225,7 @@ function RenewButton({ sub }: { sub: CurrentSubscription }) {
     startTransition(async () => {
       const { renewSubscriptionAction } = await import("../actions");
       const res = await renewSubscriptionAction(sub.id);
-      if (!notify(res, "续费失败", "续费成功")) return;
+      if (!notify(res, t("renewFailed"), t("renewSuccessToast"))) return;
       setOpen(false);
     });
   }
@@ -237,34 +237,42 @@ function RenewButton({ sub }: { sub: CurrentSubscription }) {
   const periodMs = Number.isFinite(sub.periodDays) ? sub.periodDays * 86_400_000 : 0;
   const newEndAt = new Date(baseTs + periodMs);
 
+  /** 周期天数展示：30→月付，365→年付，其余按天。 */
+  const fmtPeriod = (days: number): string => {
+    if (days === 30) return t("monthly");
+    if (days === 365) return t("yearly");
+    return t("periodDays", { days });
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>续费</Button>
+        <Button>{t("renew")}</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>确认续费</DialogTitle>
-          <DialogDescription>续费将按当前套餐与席位顺延一个周期</DialogDescription>
+          <DialogTitle>{t("renewTitle")}</DialogTitle>
+          <DialogDescription>{t("renewDesc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-2 rounded-lg border p-3 text-sm">
-          <InfoRow label="套餐">
+          <InfoRow label={t("labelPlan")}>
             {sub.planName}
-            {sub.allowSeats ? `（×${sub.quantity} 席位）` : ""}
+            {sub.allowSeats ? ` ${t("seatsSuffix", { count: sub.quantity })}` : ""}
           </InfoRow>
-          <InfoRow label="周期">{fmtPeriod(sub.periodDays)}</InfoRow>
-          <InfoRow label="当前到期">{fmtDateTime(sub.endAt)}</InfoRow>
-          <InfoRow label="续费后到期">{fmtDateTime(newEndAt.toISOString())}</InfoRow>
-          <InfoRow label="续费金额" emphasize>
+          <InfoRow label={t("labelPeriod")}>{fmtPeriod(sub.periodDays)}</InfoRow>
+          <InfoRow label={t("labelCurrentEnd")}>{fmtDateTime(sub.endAt)}</InfoRow>
+          <InfoRow label={t("labelNewEnd")}>{fmtDateTime(newEndAt.toISOString())}</InfoRow>
+          <InfoRow label={t("labelRenewAmount")} emphasize>
             ¥{fmtYuan(sub.renewPrice)}
           </InfoRow>
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">取消</Button>
+            <Button variant="outline">{tUi("cancel")}</Button>
           </DialogClose>
           <Button disabled={pending} onClick={confirm}>
-            {pending && <Loader2Icon className="animate-spin" />}确认续费
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t("confirmRenew")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -293,6 +301,8 @@ function InfoRow({
 
 /** 团队套餐：在当前订阅基础上加席位。 */
 function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
+  const t = useTranslations("subscription");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [seatQty, setSeatQty] = useState(String(sub.quantity + 1));
   const [open, setOpen] = useState(false);
@@ -306,7 +316,7 @@ function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
   function addSeat() {
     const n = Number(seatQty);
     if (!Number.isInteger(n) || n <= sub.quantity) {
-      toast.error(`席位须大于当前（${sub.quantity}）`);
+      toast.error(t("seatsGreaterToast", { count: sub.quantity }));
       return;
     }
     startTransition(async () => {
@@ -315,26 +325,26 @@ function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
         targetPlanId: sub.planId,
         quantity: n,
       });
-      if (!notify(res, "扩容失败", "扩容成功")) return;
+      if (!notify(res, t("scaleFailedToast"), t("scaleSuccessToast"))) return;
       setOpen(false);
     });
   }
 
   return (
     <div className="flex items-center gap-2 border-t pt-4">
-      <span className="text-xs text-muted-foreground">加席位</span>
+      <span className="text-xs text-muted-foreground">{t("addSeats")}</span>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button size="sm" variant="outline">扩容</Button>
+          <Button size="sm" variant="outline">{t("scaleUp")}</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认加席位</DialogTitle>
-            <DialogDescription>按剩余价值补差价，席位只能增加</DialogDescription>
+            <DialogTitle>{t("scaleTitle")}</DialogTitle>
+            <DialogDescription>{t("scaleDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">席位</label>
+              <label className="text-xs text-muted-foreground">{t("labelSeats")}</label>
               <Input
                 type="number"
                 min={sub.quantity + 1}
@@ -345,18 +355,19 @@ function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
               />
             </div>
             <div className="space-y-2 rounded-lg border p-3 text-sm">
-              <InfoRow label="席位">{sub.quantity} → {qty}</InfoRow>
-              <InfoRow label="目标总价">¥{fmtYuan(String(total))}</InfoRow>
-              <InfoRow label="剩余价值">¥{fmtYuan(sub.remainingValue)}</InfoRow>
-              <InfoRow label="补差价" emphasize>¥{fmtYuan(String(diff))}</InfoRow>
+              <InfoRow label={t("labelSeats")}>{sub.quantity} → {qty}</InfoRow>
+              <InfoRow label={t("labelTargetTotal")}>¥{fmtYuan(String(total))}</InfoRow>
+              <InfoRow label={t("labelRemainingValue")}>¥{fmtYuan(sub.remainingValue)}</InfoRow>
+              <InfoRow label={t("labelDiff")} emphasize>¥{fmtYuan(String(diff))}</InfoRow>
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">取消</Button>
+              <Button variant="outline">{tUi("cancel")}</Button>
             </DialogClose>
             <Button disabled={pending} onClick={addSeat}>
-              {pending && <Loader2Icon className="animate-spin" />}确认扩容
+              {pending && <Loader2Icon className="animate-spin" />}
+              {t("confirmScale")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -372,6 +383,15 @@ function PlanCard({
   plan: PlanRow;
   subscription: CurrentSubscription | null;
 }) {
+  const t = useTranslations("subscription");
+
+  /** 周期天数展示：30→月付，365→年付，其余按天。 */
+  const fmtPeriod = (days: number): string => {
+    if (days === 30) return t("monthly");
+    if (days === 365) return t("yearly");
+    return t("periodDays", { days });
+  };
+
   // 卡片只出现在两种语境：无订阅→购买；有订阅→更高档→升级。
   const isUpgrade = subscription !== null;
 
@@ -383,10 +403,12 @@ function PlanCard({
       </div>
       <div className="space-y-0.5">
         <div className="text-xs text-muted-foreground">
-          价格{plan.allowSeats ? "（每席位）" : ""}
+          {plan.allowSeats ? t("pricePerSeatLabel") : t("priceLabel")}
         </div>
         <div className="text-2xl font-semibold tabular-nums">¥{fmtYuan(plan.price)}</div>
-        <div className="text-xs text-muted-foreground tabular-nums">{fmtPoints(plan.price)} 积分</div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {t("pointsValue", { points: fmtPoints(plan.price) })}
+        </div>
       </div>
 
       {isUpgrade ? (
@@ -399,10 +421,19 @@ function PlanCard({
 }
 
 function PurchaseAction({ plan }: { plan: PlanRow }) {
+  const t = useTranslations("subscription");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [quantity, setQuantity] = useState("1");
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+
+  /** 周期天数展示：30→月付，365→年付，其余按天。 */
+  const fmtPeriod = (days: number): string => {
+    if (days === 30) return t("monthly");
+    if (days === 365) return t("yearly");
+    return t("periodDays", { days });
+  };
 
   // 弹窗展示用席位（非法值回退到最小）
   const qty = Math.max(1, Number(quantity) || 1);
@@ -411,13 +442,13 @@ function PurchaseAction({ plan }: { plan: PlanRow }) {
   function purchase() {
     const n = Number(quantity);
     if (!Number.isInteger(n) || n < 1) {
-      toast.error("席位至少为 1");
+      toast.error(t("seatsAtLeast1"));
       return;
     }
     startTransition(async () => {
       const { purchaseSubscriptionAction } = await import("../actions");
       const res = await purchaseSubscriptionAction(plan.id, n);
-      if (!notify(res, "购买失败", "购买成功")) return;
+      if (!notify(res, t("purchaseFailed"), t("purchaseSuccessToast"))) return;
       setOpen(false);
     });
   }
@@ -426,17 +457,17 @@ function PurchaseAction({ plan }: { plan: PlanRow }) {
     <div className="mt-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button className="w-full">购买</Button>
+          <Button className="w-full">{t("purchase")}</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认购买</DialogTitle>
-            <DialogDescription>购买后立即开通订阅</DialogDescription>
+            <DialogTitle>{t("purchaseTitle")}</DialogTitle>
+            <DialogDescription>{t("purchaseDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {plan.allowSeats ? (
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">席位</label>
+                <label className="text-xs text-muted-foreground">{t("labelSeats")}</label>
                 <Input
                   type="number"
                   min={1}
@@ -448,20 +479,21 @@ function PurchaseAction({ plan }: { plan: PlanRow }) {
               </div>
             ) : null}
             <div className="space-y-2 rounded-lg border p-3 text-sm">
-              <InfoRow label="套餐">
+              <InfoRow label={t("labelPlan")}>
                 {plan.name}
-                {plan.allowSeats ? `（×${qty} 席位）` : ""}
+                {plan.allowSeats ? ` ${t("seatsSuffix", { count: qty })}` : ""}
               </InfoRow>
-              <InfoRow label="周期">{fmtPeriod(plan.periodDays)}</InfoRow>
-              <InfoRow label="应付金额" emphasize>¥{fmtYuan(String(total))}</InfoRow>
+              <InfoRow label={t("labelPeriod")}>{fmtPeriod(plan.periodDays)}</InfoRow>
+              <InfoRow label={t("labelPayable")} emphasize>¥{fmtYuan(String(total))}</InfoRow>
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">取消</Button>
+              <Button variant="outline">{tUi("cancel")}</Button>
             </DialogClose>
             <Button disabled={pending} onClick={purchase}>
-              {pending && <Loader2Icon className="animate-spin" />}确认购买
+              {pending && <Loader2Icon className="animate-spin" />}
+              {t("purchaseTitle")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -477,6 +509,8 @@ function UpgradeAction({
   plan: PlanRow;
   subscription: CurrentSubscription;
 }) {
+  const t = useTranslations("subscription");
+  const tUi = useTranslations("ui");
   const notify = useActionResult();
   const [quantity, setQuantity] = useState(String(subscription.quantity));
   const [open, setOpen] = useState(false);
@@ -493,7 +527,7 @@ function UpgradeAction({
     // 非席位套餐固定沿用当前席位；席位套餐不能少于当前（防缩容）
     const n = plan.allowSeats ? Number(quantity) : subscription.quantity;
     if (plan.allowSeats && (!Number.isInteger(n) || n < subscription.quantity)) {
-      toast.error(`席位不能少于当前（${subscription.quantity}）`);
+      toast.error(t("seatsNotLessToast", { count: subscription.quantity }));
       return;
     }
     startTransition(async () => {
@@ -502,7 +536,7 @@ function UpgradeAction({
         targetPlanId: plan.id,
         quantity: n,
       });
-      if (!notify(res, "升级失败", "升级成功")) return;
+      if (!notify(res, t("upgradeFailedToast"), t("upgradeSuccessToast"))) return;
       setOpen(false);
     });
   }
@@ -511,17 +545,17 @@ function UpgradeAction({
     <div className="mt-auto">
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button className="w-full">升级</Button>
+          <Button className="w-full">{t("upgrade")}</Button>
         </DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认升级</DialogTitle>
-            <DialogDescription>按剩余价值补差价，只能升不能降</DialogDescription>
+            <DialogTitle>{t("upgradeTitle")}</DialogTitle>
+            <DialogDescription>{t("upgradeDesc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             {plan.allowSeats ? (
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">席位</label>
+                <label className="text-xs text-muted-foreground">{t("labelSeats")}</label>
                 <Input
                   type="number"
                   min={subscription.quantity}
@@ -533,22 +567,23 @@ function UpgradeAction({
               </div>
             ) : null}
             <div className="space-y-2 rounded-lg border p-3 text-sm">
-              <InfoRow label="升级方案">
+              <InfoRow label={t("labelUpgradePath")}>
                 {subscription.planName}
-                {subscription.allowSeats ? `（×${subscription.quantity} 席位）` : ""} → {plan.name}
-                {plan.allowSeats ? `（×${qty} 席位）` : ""}
+                {subscription.allowSeats ? ` ${t("seatsSuffix", { count: subscription.quantity })}` : ""} → {plan.name}
+                {plan.allowSeats ? ` ${t("seatsSuffix", { count: qty })}` : ""}
               </InfoRow>
-              <InfoRow label="目标总价">¥{fmtYuan(String(total))}</InfoRow>
-              <InfoRow label="剩余价值">¥{fmtYuan(subscription.remainingValue)}</InfoRow>
-              <InfoRow label="补差价" emphasize>¥{fmtYuan(String(diff))}</InfoRow>
+              <InfoRow label={t("labelTargetTotal")}>¥{fmtYuan(String(total))}</InfoRow>
+              <InfoRow label={t("labelRemainingValue")}>¥{fmtYuan(subscription.remainingValue)}</InfoRow>
+              <InfoRow label={t("labelDiff")} emphasize>¥{fmtYuan(String(diff))}</InfoRow>
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline">取消</Button>
+              <Button variant="outline">{tUi("cancel")}</Button>
             </DialogClose>
             <Button disabled={pending} onClick={upgrade}>
-              {pending && <Loader2Icon className="animate-spin" />}确认升级
+              {pending && <Loader2Icon className="animate-spin" />}
+              {t("confirmUpgrade")}
             </Button>
           </DialogFooter>
         </DialogContent>

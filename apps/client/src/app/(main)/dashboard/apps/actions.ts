@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { apiFetch, ApiError } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 import type { AppCreated } from "@ai-gateway/api-client/types";
 
@@ -10,7 +11,8 @@ export async function createAppAction(input: {
   name: string;
   description?: string;
 }): Promise<{ error?: string; app?: AppCreated }> {
-  if (!input.name.trim()) return { error: "请输入名称" };
+  const t = await getTranslations("apps");
+  if (!input.name.trim()) return { error: t("nameRequired") };
   try {
     const res = await apiFetch<AppCreated>("/v1/apps", {
       method: "POST",
@@ -22,13 +24,15 @@ export async function createAppAction(input: {
     revalidatePath("/dashboard/apps");
     return { app: res };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "创建失败" };
+    const tCommon = await getTranslations("common");
+    return { error: e instanceof ApiError ? e.message : tCommon("createFailed") };
   }
 }
 
 export async function rotateSecretAction(
   id: number,
 ): Promise<{ error?: string; clientSecret?: string }> {
+  const t = await getTranslations("apps");
   try {
     const res = await apiFetch<{ ok: boolean; clientSecret: string }>(
       `/v1/apps/${id}/rotate`,
@@ -37,17 +41,18 @@ export async function rotateSecretAction(
     revalidatePath("/dashboard/apps");
     return { clientSecret: res.clientSecret };
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "轮换失败" };
+    return { error: e instanceof ApiError ? e.message : t("rotateFailed") };
   }
 }
 
 export async function deleteAppAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations("common");
   try {
     // 删除 = 禁用（应用不物理删除——历史计费归属保留）
     await apiFetch(`/v1/apps/${id}/disable`, { method: "POST" });
     revalidatePath("/dashboard/apps");
     return {};
   } catch (e) {
-    return { error: e instanceof ApiError ? e.message : "删除失败" };
+    return { error: e instanceof ApiError ? e.message : t("deleteFailed") };
   }
 }

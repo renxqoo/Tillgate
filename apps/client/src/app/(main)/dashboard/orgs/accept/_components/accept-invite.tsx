@@ -4,12 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Building2, Loader2Icon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@ai-gateway/ui/components/ui/card";
 import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 export function AcceptInvite({ token }: { token: string }) {
+  const t = useTranslations("orgs");
   const router = useRouter();
   const [done, setDone] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -18,7 +20,7 @@ export function AcceptInvite({ token }: { token: string }) {
   if (!token) {
     return (
       <Card>
-        <CardContent className="p-6 text-sm text-muted-foreground">邀请链接缺少 token。</CardContent>
+        <CardContent className="p-6 text-sm text-muted-foreground">{t("missingToken")}</CardContent>
       </Card>
     );
   }
@@ -28,20 +30,20 @@ export function AcceptInvite({ token }: { token: string }) {
       <div className="space-y-1">
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Building2 className="size-5 text-muted-foreground" />
-          接受组织邀请
+          {t("pageTitle")}
         </h1>
-        <p className="text-sm text-muted-foreground">确认加入该组织？加入后可用组织的套餐额度建 Key。</p>
+        <p className="text-sm text-muted-foreground">{t("pageSubtitle")}</p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">加入组织</CardTitle>
-          <CardDescription>需已登录，且登录账号邮箱与邀请邮箱一致。</CardDescription>
+          <CardTitle className="text-base">{t("joinTitle")}</CardTitle>
+          <CardDescription>{t("joinDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {done ? (
             <div className="space-y-2">
-              <p className="text-sm text-emerald-600">已加入组织。</p>
-              <Button onClick={() => router.push("/dashboard/orgs")}>前往组织页</Button>
+              <p className="text-sm text-emerald-600">{t("joinedNotice")}</p>
+              <Button onClick={() => router.push("/dashboard/orgs")}>{t("goOrgs")}</Button>
             </div>
           ) : (
             <Button
@@ -50,11 +52,12 @@ export function AcceptInvite({ token }: { token: string }) {
                 startTransition(async () => {
                   const { acceptInviteAction } = await import("../../actions");
                   const res = await acceptInviteAction(token);
-                  if (notify(res, "接受失败", "已加入组织")) setDone(true);
+                  if (notify(res, t("acceptFailed"), t("joinedToast"))) setDone(true);
                 })
               }
             >
-              {pending && <Loader2Icon className="animate-spin" />}接受邀请
+              {pending && <Loader2Icon className="animate-spin" />}
+              {t("accept")}
             </Button>
           )}
         </CardContent>

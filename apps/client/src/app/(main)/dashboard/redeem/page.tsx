@@ -5,6 +5,7 @@ import { fetchUserList } from '@ai-gateway/api-client/list';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { parseListSearchParams } from '@ai-gateway/ui/lib/list-query';
+import { getTranslations } from 'next-intl/server';
 
 import Link from 'next/link';
 
@@ -20,6 +21,7 @@ interface PageProps {
 
 export default async function RedeemPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations('redeem');
   const { page, sortBy, order } = parseListSearchParams(sp);
   const {
     rows: history,
@@ -35,7 +37,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
   const columns: DataTableColumn<RedeemHistoryItem>[] = [
     {
       key: 'amount',
-      header: '面值',
+      header: t('colValue'),
       align: 'right',
       render: (r) => (
         <span className="text-right font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
@@ -45,12 +47,12 @@ export default async function RedeemPage({ searchParams }: PageProps) {
     },
     {
       key: 'batchName',
-      header: '批次',
+      header: t('colBatch'),
       render: (r) => <span className="text-sm text-muted-foreground">{r.batchName ?? '—'}</span>,
     },
     {
       key: 'usedAt',
-      header: '兑换时间',
+      header: t('colRedeemedAt'),
       sortable: true,
       render: (r) => <span className="text-xs text-muted-foreground">{fmtDateTime(r.usedAt)}</span>,
     },
@@ -59,16 +61,15 @@ export default async function RedeemPage({ searchParams }: PageProps) {
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <ListPage
-        title="充值码"
+        title={t('title')}
         icon={<GiftIcon className="size-5 text-muted-foreground" />}
-        description={
-          <>
-            兑换充值码，查看兑换记录；完整资金流水见{' '}
+        description={t.rich('description', {
+          link: (chunks) => (
             <Link href="/dashboard/transactions" className="underline hover:text-foreground">
-              账单流水
+              {chunks}
             </Link>
-          </>
-        }
+          ),
+        })}
         total={total}
         error={error}
         page={page}
@@ -83,7 +84,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
             rowKey={(r) => r.id}
             sort={{ sortBy, order }}
             searchParams={{ sort_by: sortBy, order: sortBy ? order : undefined }}
-            empty="暂无兑换记录"
+            empty={t('empty')}
           />
         ) : null}
       </ListPage>

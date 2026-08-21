@@ -18,9 +18,10 @@ import {
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import { getMe } from "@ai-gateway/api-client";
+import { getTranslations } from "next-intl/server";
 
 import { APP_CONFIG } from "@/config/app-config";
-import { fetchPublicPricing, PRICING_UNIT_LABEL } from "@/lib/public-pricing";
+import { fetchPublicPricing } from "@/lib/public-pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,15 @@ function fmtPrice(price: string): string {
   if (!Number.isFinite(n) || n === 0) return "—";
   return `¥${String(Number(n.toFixed(4)))}`;
 }
+
+/** 计价方式目录键（pricing 命名空间）；未知 unit 原样回显 */
+const PRICING_UNIT_KEYS: Record<string, string> = {
+  token: "unitToken",
+  request: "unitRequest",
+  image: "unitImage",
+  second: "unitSecond",
+  char: "unitChar",
+};
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -52,7 +62,7 @@ function SectionHeading({ eyebrow, title, sub }: { eyebrow: string; title: strin
 }
 
 /** Hero 右侧：终端请求卡 + 悬浮能力徽章 */
-function HeroVisual() {
+function HeroVisual({ badgeStream, badgeFailover, badgeLedger }: { badgeStream: string; badgeFailover: string; badgeLedger: string }) {
   return (
     <div className="relative hidden lg:block">
       <div className="absolute -top-8 -right-6 size-48 rounded-full bg-primary/15 blur-3xl" aria-hidden />
@@ -96,55 +106,34 @@ function HeroVisual() {
       </div>
       <div className="absolute top-full mt-3 left-1/2 flex w-max max-w-full -translate-x-1/2 flex-wrap items-center justify-center gap-2">
         <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-          <GaugeIcon className="size-3.5 text-primary" /> 流式输出 · 首 token 秒回
+          <GaugeIcon className="size-3.5 text-primary" /> {badgeStream}
         </span>
         <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-          <RepeatIcon className="size-3.5 text-primary" /> 渠道容灾 · 自动切换
+          <RepeatIcon className="size-3.5 text-primary" /> {badgeFailover}
         </span>
         <span className="flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-xs font-medium shadow-md">
-          <ShieldCheckIcon className="size-3.5 text-primary" /> 双分录账本 · 分毫不差
+          <ShieldCheckIcon className="size-3.5 text-primary" /> {badgeLedger}
         </span>
       </div>
     </div>
   );
 }
 
+/** 特性卡：icon + landing.features.{key} 目录文案 */
 const FEATURES = [
-  {
-    icon: LayersIcon,
-    title: "OpenAI 协议统一",
-    desc: "换个 base_url 即可接入——DeepSeek、GLM、MiniMax、OpenRouter 全部归一为 /v1/chat/completions，SDK 零改动。",
-  },
-  {
-    icon: WalletIcon,
-    title: "实时计费钱包",
-    desc: "预扣 + 实扣两阶段记账，双分录账本每一分钱可对账；余额、账单、流水实时可见。",
-  },
-  {
-    icon: RepeatIcon,
-    title: "渠道容灾路由",
-    desc: "多渠道按优先级加权路由，失败自动切换；渠道进货预算与熔断保护上游成本。",
-  },
-  {
-    icon: PlayIcon,
-    title: "免 Key 操练场",
-    desc: "登录即可在控制台直接对话调试任意模型，按正常计费，流式输出所见即所得。",
-  },
-  {
-    icon: KeyRoundIcon,
-    title: "密钥与限额管理",
-    desc: "独立 API Key 维度的 RPM/TPM 限流与日限额，封禁即全网失效，爆破自动锁定。",
-  },
-  {
-    icon: CpuIcon,
-    title: "用量报表",
-    desc: "按模型、按 Key、按日的用量明细与费用统计，token 级账单随时回溯。",
-  },
-];
+  { icon: LayersIcon, key: "unified" },
+  { icon: WalletIcon, key: "wallet" },
+  { icon: RepeatIcon, key: "routing" },
+  { icon: PlayIcon, key: "playground" },
+  { icon: KeyRoundIcon, key: "keys" },
+  { icon: CpuIcon, key: "reports" },
+] as const;
 
-const PROVIDERS = ["DeepSeek", "智谱 GLM", "MiniMax", "OpenRouter", "Ollama"];
+const PROVIDER_KEYS = ["providerDeepSeek", "providerZhipu", "providerMiniMax", "providerOpenRouter", "providerOllama"] as const;
 
 export default async function Landing() {
+  const t = await getTranslations("landing");
+  const tPricing = await getTranslations("pricing");
   // 模型广场：服务端只要免费前 9（免费徽章置前排；目录可达数千——不拉全量）
   const [me, freePage] = await Promise.all([
     getMe(),
@@ -164,25 +153,25 @@ export default async function Landing() {
             {APP_CONFIG.name}
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
-            <a href="#models" className="transition-colors hover:text-foreground">模型广场</a>
-            <a href="#features" className="transition-colors hover:text-foreground">产品特性</a>
-            <Link href="/pricing" className="transition-colors hover:text-foreground">模型定价</Link>
+            <a href="#models" className="transition-colors hover:text-foreground">{t("navModels")}</a>
+            <a href="#features" className="transition-colors hover:text-foreground">{t("navFeatures")}</a>
+            <Link href="/pricing" className="transition-colors hover:text-foreground">{t("navPricing")}</Link>
           </nav>
           <div className="flex items-center gap-3">
             {me ? (
               <Button asChild size="sm" className="rounded-full">
                 <Link href="/dashboard">
-                  进入控制台 <ArrowRight />
+                  {t("enterConsole")} <ArrowRight />
                 </Link>
               </Button>
             ) : (
               <>
                 <Button asChild variant="outline" size="sm" className="rounded-full">
-                  <Link href="/login">登录</Link>
+                  <Link href="/login">{t("login")}</Link>
                 </Button>
                 <Button asChild size="sm" className="rounded-full">
                   <Link href="/register">
-                    免费开始 <ArrowRight />
+                    {t("startFree")} <ArrowRight />
                   </Link>
                 </Button>
               </>
@@ -202,39 +191,42 @@ export default async function Landing() {
             <div className="space-y-6">
               <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
                 <BadgeCheck className="size-3.5 text-primary" />
-                OpenAI 协议兼容 · 即插即用
+                {t("heroBadge")}
               </span>
               <h1 className="text-4xl font-bold leading-tight tracking-tight md:text-5xl">
-                一个 API Key
+                {t("heroTitleLine1")}
                 <br />
-                直连<span className="text-primary">所有大模型</span>
+                {t("heroTitleLead")}<span className="text-primary">{t("heroTitleHighlight")}</span>
               </h1>
               <p className="max-w-lg text-base leading-relaxed text-muted-foreground">
-                统一接入 DeepSeek、智谱 GLM、MiniMax、OpenRouter 等主流模型——一个余额、一份账单、一套限额，
-                开箱即用的 OpenAI 兼容网关。
+                {t("heroDesc")}
               </p>
               <div className="flex flex-wrap items-center gap-4 pt-2">
                 <Button asChild size="lg" className="rounded-full">
                   <Link href={me ? "/dashboard" : "/register"}>
-                    {me ? "进入控制台" : "免费开始"} <ArrowRight />
+                    {me ? t("enterConsole") : t("startFree")} <ArrowRight />
                   </Link>
                 </Button>
                 <Button asChild variant="outline" size="lg" className="rounded-full">
-                  <Link href="/pricing">查看模型定价</Link>
+                  <Link href="/pricing">{t("viewPricing")}</Link>
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">注册即用，无需信用卡；免费模型零成本体验。</p>
+              <p className="text-xs text-muted-foreground">{t("heroNote")}</p>
             </div>
-            <HeroVisual />
+            <HeroVisual
+              badgeStream={t("badgeStream")}
+              badgeFailover={t("badgeFailover")}
+              badgeLedger={t("badgeLedger")}
+            />
           </div>
         </section>
 
         {/* 供应商条 */}
         <section className="border-y bg-muted/30">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-6 py-6 text-sm font-medium text-muted-foreground">
-            <span className="text-xs">已接入供应商</span>
-            {PROVIDERS.map((p) => (
-              <span key={p} className="transition-colors hover:text-foreground">{p}</span>
+            <span className="text-xs">{t("providersLabel")}</span>
+            {PROVIDER_KEYS.map((key) => (
+              <span key={key} className="transition-colors hover:text-foreground">{t(key)}</span>
             ))}
           </div>
         </section>
@@ -243,13 +235,17 @@ export default async function Landing() {
         <section id="models" className="scroll-mt-16 py-20">
           <div className="mx-auto max-w-6xl px-6">
             <SectionHeading
-              eyebrow="模型广场"
-              title="一个账户，全模型可用"
-              sub="对话、推理、多模态与生成任务模型持续上新；以下为实时定价的精选模型。"
+              eyebrow={t("modelsEyebrow")}
+              title={t("modelsTitle")}
+              sub={t("modelsSub")}
             />
             {showcase.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground">
-                定价服务暂不可用，请稍后再试或前往<a className="underline" href="/pricing">模型定价</a>查看。
+                {t.rich("pricingUnavailable", {
+                  link: (chunks) => (
+                    <a className="underline" href="/pricing">{chunks}</a>
+                  ),
+                })}
               </p>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -260,20 +256,23 @@ export default async function Landing() {
                   >
                     {m.isFree ? (
                       <span className="absolute right-4 top-4 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                        免费
+                        {t("freeBadge")}
                       </span>
                     ) : null}
                     <p className="mb-1 pr-14 font-mono text-sm font-semibold leading-snug">{m.externalName}</p>
                     <p className="mb-4 text-xs text-muted-foreground">
-                      {PRICING_UNIT_LABEL[m.pricingUnit] ?? m.pricingUnit}
-                      {m.contextLength ? ` · ${Math.round(m.contextLength / 1000)}K 上下文` : ""}
+                      {(() => {
+                        const unitKey = PRICING_UNIT_KEYS[m.pricingUnit];
+                        return unitKey ? tPricing(unitKey) : m.pricingUnit;
+                      })()}
+                      {m.contextLength ? ` · ${t("contextShort", { n: Math.round(m.contextLength / 1000) })}` : ""}
                     </p>
                     <div className="mt-auto grid grid-cols-2 gap-2 border-t pt-3 text-xs text-muted-foreground">
                       <span>
-                        输入 <span className="font-medium text-foreground">{fmtPrice(m.inputPrice)}</span>
+                        {t("inputLabel")} <span className="font-medium text-foreground">{fmtPrice(m.inputPrice)}</span>
                       </span>
                       <span>
-                        输出 <span className="font-medium text-foreground">{fmtPrice(m.outputPrice)}</span>
+                        {t("outputLabel")} <span className="font-medium text-foreground">{fmtPrice(m.outputPrice)}</span>
                       </span>
                     </div>
                   </div>
@@ -283,7 +282,7 @@ export default async function Landing() {
             <div className="mt-8 text-center">
               <Button asChild variant="outline" className="rounded-full">
                 <Link href="/pricing">
-                  查看全部模型 <ChevronRight />
+                  {t("viewAllModels")} <ChevronRight />
                 </Link>
               </Button>
             </div>
@@ -294,21 +293,21 @@ export default async function Landing() {
         <section id="features" className="scroll-mt-16 border-t bg-muted/30 py-20">
           <div className="mx-auto max-w-6xl px-6">
             <SectionHeading
-              eyebrow="产品特性"
-              title="为生产环境而生的网关"
-              sub="从鉴权限流到计费对账，每个环节都有结构化防护——不是转发器，是资金级网关。"
+              eyebrow={t("featuresEyebrow")}
+              title={t("featuresTitle")}
+              sub={t("featuresSub")}
             />
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {FEATURES.map((f) => (
                 <div
-                  key={f.title}
+                  key={f.key}
                   className="rounded-xl border bg-card p-6 transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
                 >
                   <span className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                     <f.icon className="size-5" />
                   </span>
-                  <h3 className="mb-2 font-semibold">{f.title}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{f.desc}</p>
+                  <h3 className="mb-2 font-semibold">{t(`features.${f.key}.title`)}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{t(`features.${f.key}.desc`)}</p>
                 </div>
               ))}
             </div>
@@ -321,24 +320,24 @@ export default async function Landing() {
             <div className="relative overflow-hidden rounded-2xl border bg-primary/5 px-6 py-14 text-center">
               <div className="pointer-events-none absolute -top-24 left-1/2 size-72 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" aria-hidden />
               <h2 className="relative mb-3 text-2xl font-bold tracking-tight md:text-3xl">
-                准备好了吗？一分钟拿到第一个 Key
+                {t("ctaTitle")}
               </h2>
               <p className="relative mx-auto mb-8 max-w-xl text-sm text-muted-foreground md:text-base">
-                注册账户、充值余额、创建密钥，三步接入全部模型——也可以先去操练场免费体验。
+                {t("ctaDesc")}
               </p>
               <div className="relative flex flex-wrap items-center justify-center gap-4">
                 <Button asChild size="lg" className="rounded-full">
                   <Link href={me ? "/dashboard" : "/register"}>
-                    {me ? "进入控制台" : "立即注册"} <ArrowRight />
+                    {me ? t("enterConsole") : t("registerNow")} <ArrowRight />
                   </Link>
                 </Button>
                 {me ? (
                   <Button asChild variant="outline" size="lg" className="rounded-full">
-                    <Link href="/dashboard/playground">去操练场试试</Link>
+                    <Link href="/dashboard/playground">{t("tryPlayground")}</Link>
                   </Button>
                 ) : (
                   <Button asChild variant="outline" size="lg" className="rounded-full">
-                    <Link href="/login">已有账号，去登录</Link>
+                    <Link href="/login">{t("hasAccountLogin")}</Link>
                   </Button>
                 )}
               </div>
@@ -357,22 +356,22 @@ export default async function Landing() {
               </span>
               {APP_CONFIG.name}
             </div>
-            <p className="text-sm text-muted-foreground">多供应商 LLM 统一网关：一个余额、一份账单、一套限额。</p>
+            <p className="text-sm text-muted-foreground">{t("footerTagline")}</p>
           </div>
           <div>
-            <p className="mb-3 text-sm font-medium">快捷入口</p>
+            <p className="mb-3 text-sm font-medium">{t("quickLinks")}</p>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link href="/dashboard" className="hover:text-foreground">进入控制台</Link></li>
-              <li><Link href="/dashboard/playground" className="hover:text-foreground">操练场</Link></li>
-              <li><Link href="/pricing" className="hover:text-foreground">模型定价</Link></li>
+              <li><Link href="/dashboard" className="hover:text-foreground">{t("enterConsole")}</Link></li>
+              <li><Link href="/dashboard/playground" className="hover:text-foreground">{t("tryPlayground")}</Link></li>
+              <li><Link href="/pricing" className="hover:text-foreground">{t("navPricing")}</Link></li>
             </ul>
           </div>
           <div>
-            <p className="mb-3 text-sm font-medium">开发者</p>
+            <p className="mb-3 text-sm font-medium">{t("developers")}</p>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link href="/register" className="hover:text-foreground">注册账号</Link></li>
-              <li><Link href="/login" className="hover:text-foreground">登录</Link></li>
-              <li><Link href="/dashboard/keys" className="hover:text-foreground">API 密钥管理</Link></li>
+              <li><Link href="/register" className="hover:text-foreground">{t("footerRegister")}</Link></li>
+              <li><Link href="/login" className="hover:text-foreground">{t("login")}</Link></li>
+              <li><Link href="/dashboard/keys" className="hover:text-foreground">{t("footerKeys")}</Link></li>
             </ul>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Loader2Icon, UserRoundPenIcon } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@ai-gateway/ui/components/ui/button";
 import {
@@ -23,6 +24,8 @@ import { useActionResult } from "@ai-gateway/ui/components/action-toast";
 
 /** 「修改显示名称」弹窗：设置页账户信息卡入口 */
 export function DisplayNameDialog({ current }: { current: string }) {
+  const t = useTranslations("settings");
+  const tCommon = useTranslations("common");
   const notify = useActionResult();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(current);
@@ -34,13 +37,13 @@ export function DisplayNameDialog({ current }: { current: string }) {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <UserRoundPenIcon className="size-4" />
-          修改名称
+          {t("editName")}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>修改显示名称</DialogTitle>
-          <DialogDescription>显示在面板与侧边栏，1-32 个字符</DialogDescription>
+          <DialogTitle>{t("editNameTitle")}</DialogTitle>
+          <DialogDescription>{t("editNameDesc")}</DialogDescription>
         </DialogHeader>
         <form
           noValidate
@@ -48,8 +51,8 @@ export function DisplayNameDialog({ current }: { current: string }) {
             e.preventDefault();
             startTransition(async () => {
               const res = await updateDisplayNameAction({ displayName: name });
-              if (!notify(res, "修改失败")) return;
-              toast.success("显示名称已更新", { description: res.displayName });
+              if (!notify(res, t("changeFailedRetry"))) return;
+              toast.success(t("nameUpdatedToast"), { description: res.displayName });
               setOpen(false);
               router.refresh();
             });
@@ -57,7 +60,7 @@ export function DisplayNameDialog({ current }: { current: string }) {
           className="space-y-4"
         >
           <Field>
-            <FieldLabel htmlFor="display-name-input">显示名称</FieldLabel>
+            <FieldLabel htmlFor="display-name-input">{t("displayName")}</FieldLabel>
             <Input
               id="display-name-input"
               maxLength={32}
@@ -65,11 +68,11 @@ export function DisplayNameDialog({ current }: { current: string }) {
               onChange={(e) => setName(e.target.value)}
               autoFocus
             />
-            <FieldDescription>{name.trim().length} / 32 字符</FieldDescription>
+            <FieldDescription>{t("charCount", { count: name.trim().length })}</FieldDescription>
           </Field>
           <Button type="submit" disabled={pending || !name.trim()} className="w-full">
             {pending && <Loader2Icon className="animate-spin" />}
-            保存
+            {tCommon("save")}
           </Button>
         </form>
       </DialogContent>

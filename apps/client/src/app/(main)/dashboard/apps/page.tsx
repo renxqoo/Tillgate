@@ -1,4 +1,5 @@
 import { ShieldCheckIcon } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 import { fetchUserList } from "@ai-gateway/api-client/list";
 import { ListPage } from "@ai-gateway/ui/components/list-page";
@@ -17,6 +18,7 @@ interface PageProps {
 
 export default async function AppsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations("apps");
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const { rows, total, error } = await fetchUserList<AppRow>("/v1/apps", {
     page,
@@ -29,12 +31,12 @@ export default async function AppsPage({ searchParams }: PageProps) {
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <ListPage
-        title="应用"
+        title={t("title")}
         icon={<ShieldCheckIcon className="size-5 text-muted-foreground" />}
-        description="OAuth 风格 client_id / secret"
+        description={t("description")}
         total={total}
-        totalUnit="个"
-        searchPlaceholder="搜索应用名 / 描述"
+        totalUnit={t("totalUnit")}
+        searchPlaceholder={t("searchPlaceholder")}
         q={q}
         searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
         actions={<CreateAppDialog />}

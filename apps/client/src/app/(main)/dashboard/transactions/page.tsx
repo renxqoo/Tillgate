@@ -5,15 +5,17 @@ import { fetchUserList } from '@ai-gateway/api-client/list';
 import { DataTable, type DataTableColumn } from '@ai-gateway/ui/components/data-table';
 import { ListPage } from '@ai-gateway/ui/components/list-page';
 import { parseListSearchParams } from "@ai-gateway/ui/lib/list-query";
+import { getTranslations } from 'next-intl/server';
 
 export const dynamic = 'force-dynamic';
 
-const TYPE_LABEL: Record<string, string> = {
-  redeem: '充值',
-  gift: '赠送',
-  consume: '消费',
-  refund: '退款',
-  adjust: '调账',
+/** 流水类型 → transactions.typeXxx 目录键；未知类型原样回显 */
+const TYPE_KEYS: Record<string, string> = {
+  redeem: 'typeRedeem',
+  gift: 'typeGift',
+  consume: 'typeConsume',
+  refund: 'typeRefund',
+  adjust: 'typeAdjust',
 };
 
 const PAGE_SIZE = 50;
@@ -24,6 +26,8 @@ interface PageProps {
 
 export default async function TransactionsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
+  const t = await getTranslations('transactions');
+  const tCommon = await getTranslations('common');
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   // statement 行（legId/transactionKind/memo）→ 页面 TransactionRow 形状
   const statement = await fetchUserList<{
@@ -59,48 +63,55 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
   const columns: DataTableColumn<TransactionRow>[] = [
     {
       key: 'createdAt',
-      header: '时间',
+      header: tCommon('time'),
       sortable: true,
-      render: (t) => <span className="text-xs text-muted-foreground">{fmtDateTime(t.createdAt)}</span>,
+      render: (row) => <span className="text-xs text-muted-foreground">{fmtDateTime(row.createdAt)}</span>,
     },
-    { key: 'type', header: '类型', render: (t) => TYPE_LABEL[t.type] ?? t.type },
+    {
+      key: 'type',
+      header: t('colType'),
+      render: (row) => {
+        const key = TYPE_KEYS[row.type];
+        return key ? t(key) : row.type;
+      },
+    },
     {
       key: 'remark',
-      header: '说明',
-      render: (t) => <span className="text-sm text-muted-foreground">{t.remark ?? '—'}</span>,
+      header: t('colRemark'),
+      render: (row) => <span className="text-sm text-muted-foreground">{row.remark ?? '—'}</span>,
     },
     {
       key: 'amount',
-      header: '金额（元）',
+      header: t('colAmount'),
       sortable: true,
       align: 'right',
-      render: (t) => (
+      render: (row) => (
         <span
           className={
             'text-right font-medium tabular-nums ' +
-            (t.amount.startsWith('-') ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400')
+            (row.amount.startsWith('-') ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400')
           }
         >
-          {t.amount.startsWith('-') ? formatMoney(t.amount) : `+${formatMoney(t.amount)}`}
+          {row.amount.startsWith('-') ? formatMoney(row.amount) : `+${formatMoney(row.amount)}`}
         </span>
       ),
     },
     {
       key: 'balanceAfter',
-      header: '已结算余额后',
+      header: t('colBalanceAfter'),
       align: 'right',
-      render: (t) => <span className="text-right tabular-nums text-muted-foreground">{fmtBalance(t.balanceAfter)}</span>,
+      render: (row) => <span className="text-right tabular-nums text-muted-foreground">{fmtBalance(row.balanceAfter)}</span>,
     },
   ];
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <ListPage
-        title="账单流水"
+        title={t('title')}
         icon={<CoinsIcon className="size-5 text-muted-foreground" />}
-        description="账户余额变动记录"
+        description={t('description')}
         total={total}
-        searchPlaceholder="搜索备注 / 关联 / 类型"
+        searchPlaceholder={t('searchPlaceholder')}
         q={q}
         searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
         error={error}
@@ -110,10 +121,10 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
         <DataTable
           columns={columns}
           rows={rows}
-          rowKey={(t) => t.id}
+          rowKey={(row) => row.id}
           sort={{ sortBy, order }}
           searchParams={{ q }}
-          empty="暂无流水"
+          empty={t('empty')}
         />
       </ListPage>
     </div>
