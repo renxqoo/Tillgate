@@ -683,7 +683,8 @@
     "bufferFailed": "Failed to set buffer",
     "refreshFailed": "Refresh failed",
     "externalNameRequired": "External name is required",
-    "queryFailed": "Query failed"
+    "queryFailed": "Query failed",
+    "sourceModelsDev": "models.dev (reference dictionary)"
   },
   "redeemBatches": {
     "title": "Redeem code batches",

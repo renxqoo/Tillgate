@@ -683,7 +683,8 @@
     "bufferFailed": "点差设置失败",
     "refreshFailed": "刷新失败",
     "externalNameRequired": "对外名不能为空",
-    "queryFailed": "查询失败"
+    "queryFailed": "查询失败",
+    "sourceModelsDev": "models.dev（参考字典）"
   },
   "redeemBatches": {
     "title": "充值码批次",

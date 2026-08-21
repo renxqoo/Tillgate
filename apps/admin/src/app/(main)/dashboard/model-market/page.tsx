@@ -18,6 +18,9 @@ export const dynamic = 'force-dynamic';
  * 模型市场：多源货架（渠道型 = 可接入上游；字典型 = 行业参考，导入落草稿）。
  * 三态 diff（新增/上游涨价/上游降价）+ USD 预填换算（自动汇率 × 点差）+ 汇率追溯条。
  */
+/** 已知目录源的显示名目录键；未知源回落后端原始 name（新源零成本兼容） */
+const SOURCE_NAME_KEYS: Record<string, string> = { 'models-dev': 'sourceModelsDev' };
+
 export default async function ModelMarketPage({
   searchParams,
 }: {
@@ -25,6 +28,10 @@ export default async function ModelMarketPage({
 }) {
   const params = await searchParams;
   const t = await getTranslations('modelMarket');
+  const sourceLabel = (src: { id: string; name: string }): string => {
+    const key = SOURCE_NAME_KEYS[src.id];
+    return key ? t(key) : src.name;
+  };
   let sources: Array<{
     id: string;
     name: string;
@@ -98,7 +105,7 @@ export default async function ModelMarketPage({
                         : 'bg-muted text-muted-foreground hover:bg-muted/70',
                     )}
                   >
-                    {src.name}
+                    {sourceLabel(src)}
                     {src.kind === 'reference' ? t('draftSuffix') : ''}
                   </Link>
                 ))}
@@ -106,8 +113,8 @@ export default async function ModelMarketPage({
             ) : null}
             {active?.kind === 'channel'
               ? channelReady
-                ? t('channelReadyText', { name: active.name })
-                : t('needsKeyText', { name: active.name })
+                ? t('channelReadyText', { name: sourceLabel(active) })
+                : t('needsKeyText', { name: sourceLabel(active) })
               : active?.kind === 'reference'
                 ? t('referenceHint')
                 : ''}
@@ -119,7 +126,7 @@ export default async function ModelMarketPage({
           ) : active ? (
             <CatalogContent
               sourceId={active.id}
-              sourceName={active.name}
+              sourceName={sourceLabel(active)}
               sourceKind={active.kind}
               currency={active.priceCurrency}
               items={items}
