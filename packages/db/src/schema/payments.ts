@@ -12,7 +12,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { ledgerOperations } from '@ai-gateway/ledger-core';
+import { ledgerOperations } from './ledger-operations.js';
 import { users } from './users.js';
 
 /**

@@ -1,13 +1,7 @@
 import { boolean, pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { ACCOUNT_STATUS } from './account-status.js';
 
-
-
-export const ADMIN_STATUS = {
-  NORMAL: 0,
-  SUSPENDED: 1,
-  DELETED: 2,
-} as const;
 /**
  * admins — 管理员账户（与 users 物理隔离）。
  *
@@ -31,7 +25,7 @@ export const admins = pgTable(
     /** 2FA 密钥（TOTP base32）；NULL = 未启用 2FA（P1 将要求非空） */
     twoFactorSecret: varchar('two_factor_secret', { length: 64 }),
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK admins_status_ck 兜底非法值 */
-    status: smallint('status').notNull().default(ADMIN_STATUS.NORMAL),
+    status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
     /** 邮箱验证码二次登录开关（默认关；开启后登录需邮箱收码验证。SMTP 未配置时开启失败） */
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
     /** 会话失效线（R5-2）：iat 早于此时间点的管理面会话 JWT 一律拒绝（改密即全网下线） */

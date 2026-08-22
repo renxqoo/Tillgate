@@ -5,3 +5,10 @@
 export { strictBooleanSchema, secretSchema } from './config/env-schemas';
 export { createCipher, type Cipher } from './crypto/cipher';
 export { createLogger, type CreateLoggerOptions, type Logger } from './logging/logger';
+export {
+  createRedisClient,
+  parseSentinels,
+  assertRedisReachable,
+  type RedisClientOptions,
+} from './redis/redis-client';
+export { createRedisScriptRunner, type RedisScriptRunner } from './redis/script-runner';
