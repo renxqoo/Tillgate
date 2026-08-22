@@ -89,6 +89,21 @@ quota_exhausted   # 资金/额度维度不允许 → 402 语义；不可重试�
 
 本表为封闭词表的一部分：`ai` 新增 kind 或 `errors` 调整 category 时必须同步修订本 ADR。
 
+### D8 业务码品牌与绑定构造：目录是唯一签发源（编译期封闭）
+
+初版落地后复评（2026-08-23）发现的最大治理缺口：`BusinessError` 构造器收自由字符串
+code，手误码/未登记码（E2 类）在包内无任何拦截，词表封闭只对 category 成立。裁决：
+
+1. **`BusinessCode` 品牌类型**：业务身份码只能由错误目录签发（`code()` / `entry()` /
+   `business()`）；自由字符串作为 code 编译不通过。`as BusinessCode` 强转可绕过品牌，
+   属刻意违规，由全仓守卫扫描兜底（§4.3，时点不变）。
+2. **绑定构造**：`BusinessError` 构造器只收绑定定义（`BusinessErrorInit`：code +
+   category + message 三元组），三元组只能整体来自目录 `entry()`——message 与 category
+   在构造点无法偏离定义，E8（定制文案杀死本地化）/E9（message 即 code）自此为编译期
+   不可能，而非约定。
+3. **infrastructure / defect 码不打品牌**：二者没有注册表事实源（按设计走通用渲染），
+   无签发源的品牌只是仪式；其命名空间治理随 db/runtime 迁移单元落地。
+
 ## 3. 备选方案与取舍
 
 | 备选 | 否决理由 |
@@ -100,6 +115,8 @@ quota_exhausted   # 资金/额度维度不允许 → 402 语义；不可重试�
 | 大写注册键 + wire 小写转换 | 大小写双轨的实害证据充分（E7），单轨小写 + 点分命名空间更可 grep、无转换层 |
 | 定义携带 status（v1 ErrorSpec 形态） | status 是呈现轴不是身份轴；置于根契约则引入协议依赖，置于能力包则 face 差异又要改能力包 |
 | retryable 逐例覆盖 | 破坏"category 唯一处理契约"；与 ai KIND_MECHANICS 单点派生的结构经验冲突 |
+| 散参构造保留 + 仅靠全仓扫描守卫 | 守卫要等第一个消费者单元才落地（铁律 4），此前窗口内零拦截；且运行时扫描的强度低于编译期封闭（D8 采纳品牌+绑定构造） |
+| infra/defect 码同样打品牌 | 无签发源（二者按设计不进目录），品牌沦为 `as` 仪式；治理收益为零 |
 
 ## 4. 影响
 
@@ -110,7 +127,8 @@ quota_exhausted   # 资金/额度维度不允许 → 402 语义；不可重试�
    override）→ db（pg-error 源头分类）→ 各能力包家谱迁移（`extends BusinessError` +
    自有目录）→ app face 装配（compose + override 表）。每个消费者迁移单元各携
    MIGRATION.md；三份 `error-map.ts` 在对应 app 迁移单元中删除。
-3. 守卫测试（全仓 `new BusinessError` 码必登记、face override 差异显式注释、wire 快照）
-   与错误目录文档生成，随第一个真实消费者迁移单元落地，不预建空壳（铁律 4）。
+3. 守卫测试（D8 落地后范围收窄为：目录 namespace 归属校验、`as BusinessCode` 违规扫描、
+   face override 差异显式注释、wire 快照）与错误目录文档生成，随第一个真实消费者迁移单元
+   落地，不预建空壳（铁律 4）。
 4. `errors.unhandled` / `errors.non_error` 出站一律按缺陷渲染通用文案（内外分际）；原始
    message 与 context 只进日志关联 requestId。

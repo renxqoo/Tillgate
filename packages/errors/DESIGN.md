@@ -19,8 +19,9 @@
 - **category 闭集**：business 错误的唯一处理契约（七项，见 §3.2），附处理语义默认
   （retryable / alert）的**单点派生** `handlingOf`。
 - **身份码规范**：点分命名空间（`ns.key`），装配期形状校验；根命名空间 `errors.*` 保留码。
+  业务码 `BusinessCode` 为品牌类型——**唯一签发源是错误目录**，自由字符串在编译期被拒绝。
 - **错误目录契约**：`ErrorDefinition`（category + 双语文案）+ `defineErrorCatalog`
-  （能力包自有目录）+ `composeErrorCatalogs`（face 装配）。
+  （能力包自有目录，`business()` 抛出 / `entry()` 绑定定义）+ `composeErrorCatalogs`（face 装配）。
 - **错误即数据**：`ErrorRecord` 规范化形状（含 cause 链，深度上限）；
   `normalizeError(unknown)` 边界兜底——外来 Error / 非 Error 值一律按缺陷。
 - **守卫**：`isTokenlensError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
@@ -50,10 +51,10 @@ export const BillingErrors = defineErrorCatalog('billing', {
 // ---- 抛出：受荐路径（文案来自定义，动态事实进 context——本地化的结构前提）----
 throw BillingErrors.business('insufficient_cash', { needed: '5.00', available: '3.00' });
 
-// ---- 抛出：家谱形态（高频错误固化类，身份在类定义处）----
+// ---- 抛出：家谱形态（高频错误固化类；entry() 绑定定义，类与目录零漂移）----
 export class InsufficientCashError extends BusinessError {
   constructor(needed: string, available: string) {
-    super('Insufficient cash balance', 'billing.insufficient_cash', 'quota_exhausted', { needed, available });
+    super(BillingErrors.entry('insufficient_cash'), { needed, available });
   }
 }
 
@@ -113,6 +114,13 @@ handlingOf(record);                             // { retryable, alert } —— �
 
 - 形如 `namespace.key`，两段均为 `/^[a-z][a-z0-9_]*$/`；目录定义与 face 装配期校验，
   多段伪造（`ns.a.b`）在查找时必然 miss。
+- **业务码构造绑定（ADR-0001 D8）**：`BusinessError` 构造器只收绑定定义
+  （code + category + message 三元组，`BusinessErrorInit`），三元组只能整体来自目录的
+  `entry()` / `business()`——message 与 category 无法在构造点偏离定义（E8/E9 的编译期
+  封死）。`BusinessCode` 品牌类型使自由字符串/手误码无法作为身份码编译通过；
+  `as BusinessCode` 强转属刻意违规，由全仓守卫扫描兜底（ADR-0001 §4.3）。
+- infrastructure / defect 码**不打品牌**：它们没有注册表事实源（按设计走通用渲染），
+  无签发源的品牌只是仪式；其命名空间治理随 db/runtime 迁移单元落地。
 - 命名空间即 owner（能力包名）；v1 的 `owner` 字段不复存在——namespace 已是分组与
   告警认领维度。
 - 根命名空间 `errors.*` 保留五码（ADR-0001 D6），由本包单点定义（`ROOT_ERROR_CODES`）。
@@ -127,13 +135,16 @@ infrastructure → `{ retryable: true, alert: true }`；defect → `{ retryable:
 ## 4. 治理与稳定性
 
 1. **封闭词表**：`ErrorCategory`、根保留码、ai 映射表（ADR-0001 D7）三处变更必须走 ADR。
-2. **冻结语义**：目录定义、`codes` 数组、目录对象在构造期深冻结；定义入目录后与源对象
-   隔离（防御性拷贝）。传入可变对象是调用方自由，目录自身不可变。
-3. **零依赖门禁**：`dependencies`/`peerDependencies` 恒为空（`__test__/boundary.test.ts`
+2. **业务码封闭（编译期）**：`BusinessCode` 品牌 + 绑定构造，未登记码无法编译；
+   目录 namespace 归属（能力包不得占用他包命名空间）与 `as BusinessCode` 违规扫描
+   归全仓守卫测试，随第一个消费者迁移单元落地（ADR-0001 §4.3）。
+3. **冻结语义**：目录定义、`codes` 数组、目录对象、`entry()` 返回值在构造期深冻结；
+   定义入目录后与源对象隔离（防御性拷贝）。传入可变对象是调用方自由，目录自身不可变。
+4. **零依赖门禁**：`dependencies`/`peerDependencies` 恒为空（`__test__/boundary.test.ts`
    运行时断言；仓库级边界脚本就位后并入 CI 的静态检查）。
-4. **稳定性承诺**：三性、category、记录形状按"多年稳定"设计——新增 category 是破坏性
+5. **稳定性承诺**：三性、category、记录形状按"多年稳定"设计——新增 category 是破坏性
    变更（消费方 switch 穷举被打破），必须 major 级评审；新增导出一般是安全的。
-5. **ES 目标**：`Error.cause`（ES2022）是 cause 链的唯一载体；不引入自定义链式字段。
+6. **ES 目标**：`Error.cause`（ES2022）是 cause 链的唯一载体；不引入自定义链式字段。
 
 ## 5. 预算
 

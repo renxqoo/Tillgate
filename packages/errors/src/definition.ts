@@ -4,7 +4,13 @@
  */
 import { isErrorCategory, type ErrorCategory } from './category';
 import { ROOT_ERROR_CODES } from './error-record';
-import { BusinessError, DefectError, type ErrorContext, type ErrorOptions } from './nature';
+import {
+  BusinessError,
+  DefectError,
+  type BusinessCode,
+  type ErrorContext,
+  type ErrorOptions,
+} from './nature';
 
 /**
  * 错误定义（能力包目录条目）：
@@ -28,11 +34,22 @@ export interface ErrorCatalog {
   has(code: string): boolean;
 }
 
-/** 命名空间目录：能力包自有定义 + 类型化身份码构造 + 受荐的抛出入口 */
+/** 绑定身份的完整目录条目（`entry()` 的返回；固化子类的零漂移构造材料，ADR-0001 D8） */
+export interface CatalogEntry extends ErrorDefinition {
+  /** 已签发的业务身份码（品牌类型——不可由目录外构造） */
+  readonly code: BusinessCode;
+}
+
+/** 命名空间目录：能力包自有定义 + 身份码签发 + 受荐的抛出入口 */
 export interface NamespacedErrorCatalog<N extends string, K extends string> extends ErrorCatalog {
   readonly namespace: N;
-  /** 身份码构造（编译期模板字面量类型；纯拼接，不做运行时校验） */
-  code(key: K): `${N}.${K}`;
+  /** 身份码签发（品牌类型；纯拼接，不做运行时校验——类型面已保证 key 合法） */
+  code(key: K): BusinessCode;
+  /**
+   * 绑定身份的完整定义（code/category/message/zh 四元组，冻结）。
+   * 固化子类（extends BusinessError）经此构造——类定义与目录单一真相，零漂移。
+   */
+  entry(key: K): CatalogEntry;
   /**
    * 自目录构造业务错误（受荐路径：身份/分类/文案单点来自定义，context 携带动态事实）。
    * 文案不可在调用点覆盖——动态事实进 context，保证 face 按码双语渲染可行。
@@ -48,6 +65,31 @@ function invalid(field: string, value: string): DefectError {
     field,
     value,
   });
+}
+
+/** 身份码签发（品牌类型的唯一落点；断言合法——string → 品牌子类型） */
+const issue = (prefix: string, key: string): BusinessCode => (prefix + key) as BusinessCode;
+
+/** key 查找（含形状与 miss 防呆）——entry()/business() 的公共底座 */
+function lookupEntry(
+  namespace: string,
+  prefix: string,
+  frozen: Record<string, ErrorDefinition>,
+  key: string,
+): CatalogEntry {
+  if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
+  const def = frozen[key];
+  if (def === undefined) {
+    throw new DefectError(
+      `unknown error catalog key: ${namespace}.${key}`,
+      ROOT_ERROR_CODES.catalogKeyMissing,
+      {
+        namespace,
+        key,
+      },
+    );
+  }
+  return Object.freeze({ ...def, code: issue(prefix, key) });
 }
 
 /**
@@ -73,25 +115,13 @@ export function defineErrorCatalog<
   const catalog: NamespacedErrorCatalog<N, keyof D & string> = {
     namespace,
     codes: Object.freeze(Object.keys(frozen).map((key) => prefix + key)),
-    code: (key) => `${namespace}.${key}`,
+    code: (key) => issue(prefix, key),
+    entry: (key: string) => lookupEntry(namespace, prefix, frozen, key),
     get: (code: string) =>
       code.startsWith(prefix) ? frozen[code.slice(prefix.length)] : undefined,
     has: (code: string) => catalog.get(code) !== undefined,
-    business: (key: string, context?: ErrorContext, opts?: ErrorOptions) => {
-      if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
-      const def = frozen[key];
-      if (def === undefined) {
-        throw new DefectError(
-          `unknown error catalog key: ${namespace}.${key}`,
-          ROOT_ERROR_CODES.catalogKeyMissing,
-          {
-            namespace,
-            key,
-          },
-        );
-      }
-      return new BusinessError(def.message, prefix + key, def.category, context, opts);
-    },
+    business: (key: string, context?: ErrorContext, opts?: ErrorOptions) =>
+      new BusinessError(lookupEntry(namespace, prefix, frozen, key), context, opts),
   };
   return Object.freeze(catalog);
 }

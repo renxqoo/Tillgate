@@ -1,6 +1,6 @@
 # @tokenlens/errors 实施文档（IMPLEMENTATION）
 
-> 状态：已完成（P1 单阶段：四门全绿，51 用例，全模块 100% 覆盖）
+> 状态：已完成 + D8 演进（业务码品牌与绑定构造，ADR-0001 D8）：四门全绿，用例数与覆盖率见 §7
 > 基线：旧仓 `ai-getway` 错误体系全量审计（2026-08-23，三路并行：http 三件套 + 测试、
 > 3× app error-map + gateway 出站面、domain/identity/wallet/ledger-core 家谱 + 契约测试 + ai v1 errors）
 > 关联：[DESIGN.md](./DESIGN.md)、[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)、
@@ -72,14 +72,14 @@ packages/errors/
 
 ## 5. 测试计划（新写；v1 契约不变量 → v2 通用化映射）
 
-| 用例组       | 断言要点                                                                                                                                                                                                                                                                                                                                                  | 回归映射                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| nature       | 三类 instanceof 链；`name === new.target` 子类名；nature 字面量；code/category/context/retryAfterMs/cause 保留；家谱形态（测试内定义子类）可用                                                                                                                                                                                                            | E12；identity/wallet/ledger 三份 error-contract 不变量通用化 |
-| category     | 闭集与文档词表逐项一致（硬编码对照）；DEFAULTS 键集 == 闭集无缺无余；isErrorCategory 双向；冻结                                                                                                                                                                                                                                                           | 词表封闭锁 #1（编译期 union 之外）                           |
-| definition   | `code()` 前缀拼接；get/has 命中与 miss；`business()` 的文案/身份/分类来自**定义**而非调用点；context/opts 透传；未知 key → `errors.catalog_key_missing`；坏形状 key/namespace/空文案 → `errors.catalog_key_invalid`；定义入目录后源对象变异不泄漏；目录冻结；compose 跨目录查找、重复命名空间 → `errors.duplicate_namespace`；不同命名空间同名 key 不冲突 | E2/E3/E6/E7/E8/E9/E13                                        |
-| error-record | 三性记录字段映射（business 必带 category）；handlingOf 全矩阵（7 category + infra + defect）；cause 链（嵌套根类/外来 Error/非错误值）；深度上限截断                                                                                                                                                                                                      | 处理语义单点锁；E5（记录不判责，出站归 face）                |
-| normalize    | 根类直达 `recordOf` 等价；外来 Error → `errors.unhandled`（message 保留、name 进 context、空 message 回退）；非 Error 值（string/number/object/null/Symbol/toThrowing toString）→ `errors.non_error` 且不炸                                                                                                                                               | v1 errorHandler "未知一律按缺陷"语义的通用化                 |
-| boundary     | `dependencies`/`peerDependencies` 为空（零依赖叶子运行时断言）；出口面快照 == 预期 17 个值导出                                                                                                                                                                                                                                                            | 铁律 11 边界可执行；词表封闭锁 #2                            |
+| 用例组       | 断言要点                                                                                                                                                                                                                                                                                                                                                                                                                                                           | 回归映射                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| nature       | 三类 instanceof 链；`name === new.target` 子类名；nature 字面量；code/category/context/retryAfterMs/cause 保留；家谱形态（`entry()` 绑定 + 测试内子类）；**编译锁：自由字符串 code 不可构造**（`@ts-expect-error`，typecheck 门禁生效）                                                                                                                                                                                                                            | E12；identity/wallet/ledger 三份 error-contract 不变量通用化；E2 编译期封闭（D8） |
+| category     | 闭集与文档词表逐项一致（硬编码对照）；DEFAULTS 键集 == 闭集无缺无余；isErrorCategory 双向；冻结                                                                                                                                                                                                                                                                                                                                                                    | 词表封闭锁 #1（编译期 union 之外）                                                |
+| definition   | `code()` 前缀拼接；`entry()` 返回绑定三元组（code/category/message/zh，与定义逐项相等且冻结、miss/坏形状同 business 防呆）；get/has 命中与 miss；`business()` 的文案/身份/分类来自**定义**而非调用点；context/opts 透传；未知 key → `errors.catalog_key_missing`；坏形状 key/namespace/空文案 → `errors.catalog_key_invalid`；定义入目录后源对象变异不泄漏；目录冻结；compose 跨目录查找、重复命名空间 → `errors.duplicate_namespace`；不同命名空间同名 key 不冲突 | E2/E3/E6/E7/E8/E9/E13；E8/E9 构造点偏离的编译期封死（D8）                         |
+| error-record | 三性记录字段映射（business 必带 category）；handlingOf 全矩阵（7 category + infra + defect）；cause 链（嵌套根类/外来 Error/非错误值）；深度上限截断                                                                                                                                                                                                                                                                                                               | 处理语义单点锁；E5（记录不判责，出站归 face）                                     |
+| normalize    | 根类直达 `recordOf` 等价；外来 Error → `errors.unhandled`（message 保留、name 进 context、空 message 回退）；非 Error 值（string/number/object/null/Symbol/toThrowing toString）→ `errors.non_error` 且不炸                                                                                                                                                                                                                                                        | v1 errorHandler "未知一律按缺陷"语义的通用化                                      |
+| boundary     | `dependencies`/`peerDependencies` 为空（零依赖叶子运行时断言）；出口面快照 == 预期 18 个值导出                                                                                                                                                                                                                                                                                                                                                                     | 铁律 11 边界可执行；词表封闭锁 #2                                                 |
 
 v1 中**不移植**的用例及理由：error-locale（8+6 例）——语言选择归 face，本包无 locale 逻辑；
 pg-error-translation（8 例）——归 db 迁移单元；error-registry-grading（5 例）——分级纪律
@@ -97,7 +97,8 @@ pg-error-translation（8 例）——归 db 迁移单元；error-registry-gradin
 
 ## 7. 验收
 
-- 四门（typecheck / lint / test / build）全绿；覆盖率 ≥ ai 包基线（90/90/90/85，出口桶除外）。
+- 四门（typecheck / lint / test / build）全绿；覆盖率 ≥ 阈值 90/85（铁律 16：数字如实报告，
+  只补测试不调阈值）。
 - §5 用例矩阵全绿；E2/E3/E6/E7/E8/E9/E12/E13 在本包范围内被结构性消解
-  （消费者侧残留的消解在各迁移单元验收）。
-- 出口面 == DESIGN §2 声明；`dependencies` 为空。
+  （消费者侧残留的消解在各迁移单元验收）；D8 之后 E2/E8/E9 升级为编译期封闭。
+- 出口面 == DESIGN §2 声明（18 个值导出）；`dependencies` 为空。

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { type ErrorCategory } from '../src/category';
+import { defineErrorCatalog } from '../src/definition';
 import {
   MAX_CAUSE_DEPTH,
   ROOT_ERROR_CODES,
@@ -12,12 +13,21 @@ import {
 import { BusinessError, DefectError, InfrastructureError } from '../src/nature';
 
 /** 错误即数据：记录字段映射、处理语义单点派生、cause 链规范化（含深度上限） */
+
+const MatrixErrors = defineErrorCatalog('matrix', {
+  invalid_input: { category: 'invalid_input', message: 'bad input', zh: '输入有误' },
+  not_found: { category: 'not_found', message: 'not found', zh: '未找到' },
+  conflict: { category: 'conflict', message: 'conflict', zh: '冲突' },
+  forbidden: { category: 'forbidden', message: 'forbidden', zh: '不允许' },
+  quota_exhausted: { category: 'quota_exhausted', message: 'quota exhausted', zh: '额度耗尽' },
+  rate_limited: { category: 'rate_limited', message: 'rate limited', zh: '限流' },
+  unavailable: { category: 'unavailable', message: 'unavailable', zh: '不可用' },
+});
+
 describe('recordOf：三性记录映射', () => {
   it('business 记录必带 category；字段全量映射', () => {
     const e = new BusinessError(
-      'denied',
-      'billing.quota',
-      'quota_exhausted',
+      MatrixErrors.entry('quota_exhausted'),
       { needed: 5 },
       { retryAfterMs: 250 },
     );
@@ -25,8 +35,8 @@ describe('recordOf：三性记录映射', () => {
     expect(r).toEqual({
       nature: 'business',
       category: 'quota_exhausted',
-      code: 'billing.quota',
-      message: 'denied',
+      code: 'matrix.quota_exhausted',
+      message: 'quota exhausted',
       context: { needed: 5 },
       retryAfterMs: 250,
       cause: undefined,
@@ -58,7 +68,7 @@ describe('handlingOf：处理语义单点派生（全矩阵）', () => {
   ];
 
   it.each(matrix)('business/%s → retryable=%s alert=%s', (category, retryable, alert) => {
-    const record = recordOf(new BusinessError('m', 'a.b', category));
+    const record = recordOf(MatrixErrors.business(category));
     expect(handlingOf(record)).toEqual({ retryable, alert });
   });
 
@@ -76,7 +86,7 @@ describe('handlingOf：处理语义单点派生（全矩阵）', () => {
 
 describe('cause 链规范化', () => {
   it('嵌套根类错误：逐层成录并保留各自性质', () => {
-    const root = new BusinessError('insufficient', 'billing.insufficient_cash', 'quota_exhausted');
+    const root = MatrixErrors.business('quota_exhausted');
     const outer = new InfrastructureError('settlement failed', 'billing.settle', undefined, {
       cause: root,
     });
@@ -85,15 +95,13 @@ describe('cause 链规范化', () => {
     expect(r.cause).toMatchObject({
       nature: 'business',
       category: 'quota_exhausted',
-      code: 'billing.insufficient_cash',
+      code: 'matrix.quota_exhausted',
     });
   });
 
   it('外来 Error 作 cause：按缺陷 errors.unhandled 成录，name 进 context', () => {
     const pg = Object.assign(new Error('duplicate key'), { name: 'PostgresError' });
-    const e = new BusinessError('conflict', 'accounts.duplicate', 'conflict', undefined, {
-      cause: pg,
-    });
+    const e = new BusinessError(MatrixErrors.entry('conflict'), undefined, { cause: pg });
     const r = recordOf(e);
     expect(r.cause?.nature).toBe('defect');
     expect(r.cause?.code).toBe(ROOT_ERROR_CODES.unhandled);

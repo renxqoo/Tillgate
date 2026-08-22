@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { composeErrorCatalogs, defineErrorCatalog, type ErrorDefinition } from '../src/definition';
 import { isBusinessError, isDefectError } from '../src/guards';
-import { DefectError } from '../src/nature';
+import { BusinessError, DefectError } from '../src/nature';
 import { ROOT_ERROR_CODES } from '../src/error-record';
 
 /**
@@ -40,9 +40,37 @@ function defectCodeOf(fn: () => unknown): string {
 }
 
 describe('defineErrorCatalog', () => {
-  it('code()：命名空间前缀拼接（编译期模板字面量类型）', () => {
+  it('code()：签发带命名空间前缀的身份码（品牌类型，D8 唯一签发源）', () => {
     expect(BillingErrors.code('insufficient_cash')).toBe('billing.insufficient_cash');
     expect(BillingErrors.namespace).toBe('billing');
+  });
+
+  it('entry()：返回与定义逐项相等的绑定四元组（code/category/message/zh），冻结（D8）', () => {
+    const entry = BillingErrors.entry('insufficient_cash');
+    expect(entry).toEqual({
+      code: 'billing.insufficient_cash',
+      category: 'quota_exhausted',
+      message: 'Insufficient cash balance',
+      zh: '现金余额不足',
+    });
+    expect(Object.isFrozen(entry)).toBe(true);
+    // entry 构造的错误与 business() 等价（同一底座）
+    const fromEntry = new BusinessError(entry, { needed: '1' });
+    const fromBusiness = BillingErrors.business('insufficient_cash', { needed: '1' });
+    expect(fromEntry.code).toBe(fromBusiness.code);
+    expect(fromEntry.category).toBe(fromBusiness.category);
+    expect(fromEntry.message).toBe(fromBusiness.message);
+  });
+
+  it('entry()：未登记 key 与坏形状 key 与 business() 同防呆', () => {
+    // @ts-expect-error 类型面不存在该 key；验证 JS 调用方防呆
+    expect(defectCodeOf(() => BillingErrors.entry('nope'))).toBe(
+      ROOT_ERROR_CODES.catalogKeyMissing,
+    );
+    // @ts-expect-error key 形状非法
+    expect(defectCodeOf(() => BillingErrors.entry('Bad-Key'))).toBe(
+      ROOT_ERROR_CODES.catalogKeyInvalid,
+    );
   });
 
   it('get/has：完整身份码命中；前缀不符/未登记/多段伪造码均 miss', () => {

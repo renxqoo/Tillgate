@@ -6,7 +6,13 @@
 
 // ---- 三性根类 ----
 export { TokenlensError, BusinessError, InfrastructureError, DefectError } from './nature';
-export type { ErrorNature, ErrorContext, ErrorOptions } from './nature';
+export type {
+  ErrorNature,
+  ErrorContext,
+  ErrorOptions,
+  BusinessCode,
+  BusinessErrorInit,
+} from './nature';
 
 // ---- category 闭集 ----
 export { ERROR_CATEGORIES, CATEGORY_DEFAULTS, isErrorCategory } from './category';
@@ -14,7 +20,12 @@ export type { ErrorCategory, CategoryDefault } from './category';
 
 // ---- 错误目录契约 ----
 export { defineErrorCatalog, composeErrorCatalogs } from './definition';
-export type { ErrorDefinition, ErrorCatalog, NamespacedErrorCatalog } from './definition';
+export type {
+  ErrorDefinition,
+  ErrorCatalog,
+  NamespacedErrorCatalog,
+  CatalogEntry,
+} from './definition';
 
 // ---- 规范化记录 ----
 export { recordOf, handlingOf, ROOT_ERROR_CODES, MAX_CAUSE_DEPTH } from './error-record';

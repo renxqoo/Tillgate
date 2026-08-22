@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
+import { defineErrorCatalog } from '../src/definition';
 import { normalizeError } from '../src/normalize';
 import { ROOT_ERROR_CODES, recordOf } from '../src/error-record';
-import { BusinessError, DefectError, InfrastructureError } from '../src/nature';
+import { DefectError, InfrastructureError } from '../src/nature';
+
+const NormalizeErrors = defineErrorCatalog('normtest', {
+  denied: { category: 'conflict', message: 'denied', zh: '拒绝' },
+});
 
 /** 边界兜底：任意 unknown → 记录；外来一律按缺陷（v1「未知一律按缺陷」语义的通用化） */
 describe('normalizeError', () => {
   it('根契约错误 → 与 recordOf 等价（三性各一）', () => {
     const samples = [
-      new BusinessError('denied', 'a.b', 'conflict', { x: 1 }),
+      NormalizeErrors.business('denied', { x: 1 }),
       new InfrastructureError('down', 'a.b'),
       new DefectError('broken', 'a.b'),
     ];

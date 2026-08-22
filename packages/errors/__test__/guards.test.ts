@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
+import { defineErrorCatalog } from '../src/definition';
 import {
   isBusinessError,
   isDefectError,
   isInfrastructureError,
   isTokenlensError,
 } from '../src/guards';
-import { BusinessError, DefectError, InfrastructureError } from '../src/nature';
+import { DefectError, InfrastructureError } from '../src/nature';
+
+const GuardErrors = defineErrorCatalog('guardtest', {
+  denied: { category: 'conflict', message: 'm', zh: '中' },
+});
 
 /** 守卫面：middleware/边界层精确捕获的唯一入口（DESIGN §2） */
 describe('instanceof 守卫', () => {
-  const business = new BusinessError('m', 'a.b', 'conflict');
+  const business = GuardErrors.business('denied');
   const infra = new InfrastructureError('m', 'a.b');
   const defect = new DefectError('m', 'a.b');
 
