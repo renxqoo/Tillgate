@@ -47,4 +47,9 @@ describe('connectTestRedis / disconnectTestRedis', () => {
     await expect(connectTestRedis()).resolves.toBeNull();
     await expect(disconnectTestRedis(null)).resolves.toBeUndefined();
   });
+
+  it('REDIS_URL 已配置但不可达 → 抛错（配置问题不静默 skip）', async () => {
+    process.env.REDIS_URL = 'redis://127.0.0.1:1';
+    await expect(connectTestRedis(150)).rejects.toThrow('REDIS_URL 已配置但 Redis 未就绪');
+  });
 });

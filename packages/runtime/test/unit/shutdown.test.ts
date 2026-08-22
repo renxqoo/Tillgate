@@ -90,7 +90,7 @@ describe('createShutdown', () => {
     const exitSpy = vi
       .spyOn(process, 'exit')
       .mockImplementation((() => undefined) as unknown as (code?: number) => never);
-    const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
       createShutdown({ ...deps, exit: undefined, log: undefined })('SIGTERM');
       await new Promise((r) => setTimeout(r, 10));

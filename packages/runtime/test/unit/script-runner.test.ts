@@ -68,4 +68,11 @@ describe('createRedisScriptRunner', () => {
     await expect(runner.run('return 1', 0)).rejects.toBe(boom);
     expect(calls).toEqual(['load:sha(return 1)', 'evalsha:sha(return 1)']);
   });
+
+  it('非 Error 抛出物不按 NOSCRIPT 误判，原样上抛（instanceof 守卫）', async () => {
+    const nonError = { message: 'NOSCRIPT shaped but not an Error' };
+    const { redis } = mockRedis(() => nonError as unknown as Error);
+    const runner = createRedisScriptRunner(redis);
+    await expect(runner.run('return 1', 0)).rejects.toBe(nonError);
+  });
 });

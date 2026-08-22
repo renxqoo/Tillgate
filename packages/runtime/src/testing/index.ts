@@ -27,11 +27,13 @@ export async function waitForRedisReady(redis: Redis, timeoutMs = 3_000): Promis
 /**
  * 连接测试 Redis 并等就绪；REDIS_URL 未配置返回 null（用方整套跳过）。
  * 已配置但未就绪抛错——配置了却连不上是环境问题，静默 skip 会掩盖配置错误。
+ * 连接取快速失败选项（对齐 createRedisClient）：不可达时 ping 立即拒绝，
+ * deadline 才真正生效（默认 offline queue 会让 ping 挂到无限重试）。
  */
 export async function connectTestRedis(timeoutMs = 3_000): Promise<Redis | null> {
   const url = testRedisUrl();
   if (url === undefined) return null;
-  const redis = new Redis(url);
+  const redis = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   if (!(await waitForRedisReady(redis, timeoutMs))) {
     redis.disconnect();
     throw new Error(`REDIS_URL 已配置但 Redis 未就绪：${url}`);

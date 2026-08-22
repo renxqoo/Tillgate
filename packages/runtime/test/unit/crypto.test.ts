@@ -34,4 +34,16 @@ describe('AES-GCM 单 key（createCipher）', () => {
     expect(() => cipher.decrypt('not-packed')).toThrow(/invalid ciphertext format/);
     expect(() => cipher.decrypt('enc:v2:aa:bb:cc')).toThrow(/invalid ciphertext format/);
   });
+
+  it('iv / tag 段长度畸形拒绝（hex 解码后长度不符）', () => {
+    const cipher = createCipher(K);
+    const packed = cipher.encrypt('x');
+    const parts = packed.split(':');
+    // iv 段砍成 11 字节 hex
+    const badIv = ['enc', 'v1', parts[2]!.slice(0, 22), parts[3], parts[4]].join(':');
+    expect(() => cipher.decrypt(badIv)).toThrow(/invalid iv length/);
+    // tag 段砍成 15 字节 hex
+    const badTag = ['enc', 'v1', parts[2], parts[3]!.slice(0, 30), parts[4]].join(':');
+    expect(() => cipher.decrypt(badTag)).toThrow(/invalid tag length/);
+  });
 });

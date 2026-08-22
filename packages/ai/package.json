@@ -17,10 +17,10 @@
     "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude __test__/real --passWithNoTests",
-    "test:watch": "bun x vitest --exclude __test__/real",
-    "test:real": "bun x vitest run __test__/real --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude __test__/real --coverage"
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
     "eventsource-parser": "^3.1.0",

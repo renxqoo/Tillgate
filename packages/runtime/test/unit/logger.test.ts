@@ -57,4 +57,8 @@ describe('createLogger', () => {
     expect(parsed.name).toBe('svc-name');
     expect(parsed.code).toBe('W1');
   });
+
+  it('pretty 形态可创建（开发态 transport 配置不抛错）', () => {
+    expect(() => createLogger({ pretty: true, serviceName: 'pretty-svc' })).not.toThrow();
+  });
 });

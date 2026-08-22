@@ -73,4 +73,22 @@ describe('createRedisClient', () => {
     expect(lines[0]).toContain('inj-svc');
     expect(errSpy).not.toHaveBeenCalled();
   });
+
+  it('sentinel 模式：拓扑解析进实例，url 继续作凭证载体（password/db 提取）', () => {
+    const client = createRedisClient('redis://:sen-pass@127.0.0.1:6379/2', {
+      serviceName: 'sen-svc',
+      sentinels: 'h1:26379,h2:26379',
+      sentinelName: 'mymaster',
+      sentinelPassword: 'svcpass',
+    });
+    clients.push(client);
+    expect(client.options.sentinels).toEqual([
+      { host: 'h1', port: 26379 },
+      { host: 'h2', port: 26379 },
+    ]);
+    expect(client.options.name).toBe('mymaster');
+    expect(client.options.sentinelPassword).toBe('svcpass');
+    expect(client.options.password).toBe('sen-pass'); // 数据节点凭证来自 url
+    expect(client.options.db).toBe(2);
+  });
 });
