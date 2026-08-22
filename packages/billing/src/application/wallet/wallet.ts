@@ -17,24 +17,46 @@ import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import { assertCurrency, type WalletGuards } from '../../domain/wallet/guards.js';
 import type { WalletStore } from '../../ports/wallet-store.js';
 import { createAccountsUseCase } from './accounts.js';
-import { createAuthorizeUseCase, type AuthorizeInput, type AuthorizeResult } from './authorize.js';
-import { createCreditUseCase, type CreditInput, type CreditResult } from './credit.js';
+import { createAuthorizeUseCase } from './authorize.js';
+import type { AuthorizeInput, AuthorizeResult } from './authorize.js';
+import { createCreditUseCase } from './credit.js';
+import type { CreditInput, CreditResult } from './credit.js';
 import {
   createSetCreditLimitUseCase,
   type SetCreditLimitInput,
   type SetCreditLimitResult,
 } from './credit-line.js';
-import { createRefundUseCase, type RefundInput, type RefundResult } from './refund.js';
-import { createReleaseUseCase, type ReleaseInput, type ReleaseResult } from './release.js';
-import { createSettleUseCase, type SettleInput, type SettleResult } from './settle.js';
-import {
-  createStatementUseCase,
-  type StatementItemView,
-  type StatementQuery,
-} from './statement.js';
+import { createRefundUseCase } from './refund.js';
+import type { RefundInput, RefundResult } from './refund.js';
+import { createReleaseUseCase } from './release.js';
+import type { ReleaseInput, ReleaseResult } from './release.js';
+import { createSettleUseCase } from './settle.js';
+import type { SettleInput, SettleResult } from './settle.js';
+import { createStatementUseCase } from './statement.js';
+import type { StatementItemView, StatementQuery } from './statement.js';
 import { createTransferUseCase, type TransferInput, type TransferResult } from './transfer.js';
 
 /** 装配契约（storage port + 词表白名单 + 缺省币种——全部必填注入，不藏全局默认） */
+
+export type {
+  CreditInput,
+  CreditResult,
+  AuthorizeInput,
+  AuthorizeResult,
+  SettleInput,
+  SettleResult,
+  ReleaseInput,
+  ReleaseResult,
+  RefundInput,
+  RefundResult,
+  TransferInput,
+  TransferResult,
+  StatementQuery,
+  StatementItemView,
+  SetCreditLimitInput,
+  SetCreditLimitResult,
+} from './verb-types.js';
+
 export interface WalletEnv {
   store: WalletStore;
   guards: WalletGuards;

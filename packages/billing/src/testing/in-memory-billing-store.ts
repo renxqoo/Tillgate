@@ -15,8 +15,9 @@ import type {
   FundingSourceResolver,
   ResolvedFundingSource,
   SubscriptionQuotaStore,
-  SubscriptionSnapshot,
 } from '../ports/funding-ports.js';
+import { createInMemoryQuotaStore } from './in-memory-quota-store.js';
+export { createInMemoryQuotaStore };
 
 export interface InMemorySubscriptionRow {
   id: number;
@@ -603,63 +604,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
   };
 
-  const quota: SubscriptionQuotaStore = {
-    activeSubscriptionSnapshot(_conn, subscriptionId, now): Promise<SubscriptionSnapshot | null> {
-      const row = subscriptions.get(subscriptionId);
-      if (!row || row.status !== 0 || row.endAt <= now) return Promise.resolve(null);
-      return Promise.resolve({
-        userId: row.userId,
-        orgId: row.orgId,
-        quotaAmount: row.quotaAmount,
-        usedAmount: row.usedAmount,
-        reservedAmount: row.reservedAmount,
-      });
-    },
-
-    memberLimits: (_conn, input) => {
-      const override = memberLimitsOverride.get(`${input.orgId}\0${input.userId}`);
-      return Promise.resolve(override ?? null);
-    },
-
-    tryReserveQuota(_conn, input) {
-      const row = subscriptions.get(input.subscriptionId);
-      if (!row || row.status !== 0) return Promise.resolve('inactive');
-      if (
-        Number(row.quotaAmount) - Number(row.usedAmount) - Number(row.reservedAmount) <
-        Number(input.amount)
-      ) {
-        return Promise.resolve('exhausted');
-      }
-      row.reservedAmount = String(Number(row.reservedAmount) + Number(input.amount));
-      return Promise.resolve('ok');
-    },
-
-    tryReleaseQuota(_conn, input) {
-      const row = subscriptions.get(input.subscriptionId);
-      if (!row || Number(row.reservedAmount) < Number(input.reserved)) {
-        return Promise.resolve(false);
-      }
-      row.reservedAmount = String(Number(row.reservedAmount) - Number(input.reserved));
-      return Promise.resolve(true);
-    },
-
-    trySettleQuota(_conn, input) {
-      const row = subscriptions.get(input.subscriptionId);
-      if (
-        !row ||
-        Number(row.reservedAmount) < Number(input.reserved) ||
-        Number(row.usedAmount) +
-          Number(input.consumed) +
-          (Number(row.reservedAmount) - Number(input.reserved)) >
-          Number(row.quotaAmount)
-      ) {
-        return Promise.resolve(false);
-      }
-      row.reservedAmount = String(Number(row.reservedAmount) - Number(input.reserved));
-      row.usedAmount = String(Number(row.usedAmount) + Number(input.consumed));
-      return Promise.resolve(true);
-    },
-  };
+  const quota = createInMemoryQuotaStore({ subscriptions, memberLimitsOverride });
 
   const channelStore: ChannelExposureStore = {
     findChannel: (_conn, channelId) => {

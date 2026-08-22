@@ -5,6 +5,10 @@
  * adapters/postgres 不从根出口导出：装配走 ./composition（总纲 §5.3）。
  */
 
+// ---- facade（收口） ----
+export { createBilling } from './billing.js';
+export type { Billing, CreateBillingConfig, BillingStores } from './billing.js';
+
 // ---- 领域错误目录 ----
 export { BillingErrors } from './domain/errors.js';
 

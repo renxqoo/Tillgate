@@ -1,6 +1,6 @@
 # @tokenlens/billing 施工图（IMPLEMENTATION）
 
-> 状态：实施中（U0–U5 已核销；收口 facade 进行中——见 MIGRATION-U5.md）
+> 状态：已完成（U0–U5 + 收口全部核销；遗留事项见 §8）
 > 设计基线：[DESIGN.md](./DESIGN.md)；合并裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)
 > 旧仓：`/Users/wrr/work/ai-getway`（下称旧仓；审计时点 2026-08-23，行号以当日 HEAD 为准）
 
@@ -135,3 +135,17 @@ U0–U5 全部核销后：旧仓对应模块整包删除清单开 issue（铁律
 ## 6. 与上位文档的同步承诺
 
 - 实现推翻设计时同一提交先改文档（铁律 13）；B5/B10 的「待审计」项结论出来当轮回写本表。
+
+## 8. 收口遗留清单（诚实登记，非本包缺陷）
+
+1. **旧仓整包删除**（铁律 8 大体量删除开 issue 等维护者确认）：`packages/{wallet,
+ledger-core,domain,service,repository}` 资金部分、空目录 `packages/money/`、
+   `apps/client-api` 的 payments/redeem 服务与 domain/{topup,epay,stripe}。
+2. **apps 接线**（P5 波）：gateway/client-api/admin-api/worker 切换到本包 facade；
+   worker 对账从 `@ai-gateway/wallet/maintenance` 切到 `settlement.verifyInvariants`；
+   resolver/accountContext 桥接在 app assembly 完成。
+3. **B5/B10 待审计项**：gateway 重试层对照后回写 §1.2/§1.3。
+4. **订阅/支付真实 PG 竞态**：唯一索引/行锁/凭证改绑 SQL 已实现并经结算真实套件的
+   同库验证；订阅与支付专属竞态用例随 apps 迁移波补齐（U4/U5 记录在案）。
+5. **P3 迁移链收口**：db 链空库升级存在跨链缺表（identity-core provision——真实套件
+   以 42P01 容错应用并记录）；归 P3 波收口。

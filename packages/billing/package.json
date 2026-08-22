@@ -16,10 +16,20 @@
       "development": "./src/composition.ts",
       "types": "./src/composition.ts",
       "import": "./dist/composition.js"
+    },
+    "./wallet": {
+      "development": "./src/wallet.ts",
+      "types": "./src/wallet.ts",
+      "import": "./dist/wallet.js"
+    },
+    "./settlement": {
+      "development": "./src/settlement.ts",
+      "types": "./src/settlement.ts",
+      "import": "./dist/settlement.js"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && bun build src/index.ts src/composition.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "build": "rm -rf dist && bun build src/index.ts src/composition.ts src/wallet.ts src/settlement.ts src/billing.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
     "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",

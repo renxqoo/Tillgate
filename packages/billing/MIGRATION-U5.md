@@ -15,10 +15,10 @@
 
 | 旧模块 | 裁决 | 动作 |
 | --- | --- |
-| client-api domain/{topup,epay,stripe}（协议纯规则） | 复制+微修 | domain/payment/*（AppError → 目录；语义原样：恒定时间比较/重放窗/三闸事件归一/两位小数面额闸） |
+| client-api domain/{topup,epay,stripe}（协议纯规则） | 复制+微修 | domain/payment/_（AppError → 目录；语义原样：恒定时间比较/重放窗/三闸事件归一/两位小数面额闸） |
 | payments.service（createTopupOrder/handleNotify/orderDetail/listOrders/channels） | 重写 | application/payments（从 app 下沉能力包；RunContext/AppError → port/目录；先落库再调渠道/复活/回退锚资损不变量原样） |
 | redeem.service（redeem/history） | 重写 | application/redemption（核销 CAS 与入账同事务；频率闸 fail-closed） |
-| repository/{payment-order,redeem-*}.repo | 重写 | ports/payment-ports + adapters/postgres/payment-stores（状态机 CAS 原样；批次 total 必填） |
+| repository/{payment-order,redeem-_}.repo | 重写 | ports/payment-ports + adapters/postgres/payment-stores（状态机 CAS 原样；批次 total 必填） |
 | PaymentProviderPort + epay/stripe 适配 | 重构迁入 | adapters/payments/providers（fetch 注入可测；无 SDK 依赖） |
 
 ## 3. 契约演进
@@ -29,11 +29,11 @@
 
 ## 4. 测试迁移矩阵
 
-| 旧测试 | 新去处 | 动作 |
-| --- | --- | --- |
-| client-api payments 服务测试主干 | payments.test（内存 provider + store） | 改写：下单回填/金额核对/重复回调幂等/渠道失败关单/过期复活/回退锚/频率闸/多渠道 |
-| client-api redeem 服务测试主干 | payments.test（兑换组） | 改写：语义四分（无效/已用/吊销/过期）+ 同事务原子性 + 历史 |
-| domain/{topup,epay,stripe} 规则测试 | payments.test（协议规则组） | 改写直测 |
+| 旧测试                              | 新去处                                 | 动作                                                                            |
+| ----------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
+| client-api payments 服务测试主干    | payments.test（内存 provider + store） | 改写：下单回填/金额核对/重复回调幂等/渠道失败关单/过期复活/回退锚/频率闸/多渠道 |
+| client-api redeem 服务测试主干      | payments.test（兑换组）                | 改写：语义四分（无效/已用/吊销/过期）+ 同事务原子性 + 历史                      |
+| domain/{topup,epay,stripe} 规则测试 | payments.test（协议规则组）            | 改写直测                                                                        |
 
 真实 PG（payment_orders 唯一约束竞态/兑换码并发同码）随收口真 PG 套件或 apps 迁移波验证
 （记录于 IMPLEMENTATION 收口清单）。
