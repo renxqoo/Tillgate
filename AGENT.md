@@ -43,7 +43,9 @@
 
 ---
 
-注意老项目代码仓库：/Users/wrr/work/ai-getway
+## 注意老项目代码仓库：/Users/wrr/work/ai-getway
+## 总迁移方针文档：/Users/wrr/work/TokenLens-v2/docs/project-structure-refactoring.md
+
 
 ## 9. 方案先行：文档工作流（所有功能实现与重构的强制前置）
 

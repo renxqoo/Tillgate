@@ -45,5 +45,8 @@ export type {
   Usage,
 } from './types';
 
+// ---- 特征计数器（估算充分统计量，单一真相）----
+export { extractTextFeatures, TextFeaturesAccumulator } from './usage/features';
+
 // ---- 事件契约 ----
 export type { AiEvent } from './events';
