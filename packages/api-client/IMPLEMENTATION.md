@@ -1,6 +1,6 @@
 # @tokenlens/api-client 施工图
 
-> 状态：定稿（实施中随进度推进）
+> 状态：已完成（§5 单阶段原子落地收口；核销随 MIGRATION.md，最终核销待 apps 波次消费方切换）
 > 设计基线：DESIGN.md；迁移单元核销：MIGRATION.md。
 > 旧实现：`/Users/wrr/work/ai-getway/packages/api-client`（8 个源文件 1322 行 + 2 个测试文件 70 行）。
 
