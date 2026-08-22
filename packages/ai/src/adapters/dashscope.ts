@@ -159,8 +159,10 @@ export class DashScopeAdapter extends OpenAICompatibleAdapter implements Protoco
   normalizeRequest(
     req: unknown,
     _rules: ParamRules,
+    _endpoint: Endpoint,
   ): { body: unknown; adjustments: ParamAdjustment[] } {
     void _rules;
+    void _endpoint;
     return { body: req, adjustments: [] };
   }
 }
