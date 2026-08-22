@@ -1,6 +1,6 @@
 # @tokenlens/billing 施工图（IMPLEMENTATION）
 
-> 状态：实施中（U0 已核销，U1 待启动）
+> 状态：实施中（U0 已核销；U1a 已核销，U1b 待续——见 MIGRATION-U1.md）
 > 设计基线：[DESIGN.md](./DESIGN.md)；合并裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)
 > 旧仓：`/Users/wrr/work/ai-getway`（下称旧仓；审计时点 2026-08-23，行号以当日 HEAD 为准）
 
@@ -104,7 +104,7 @@ settle#over`（允许负余额）——活路径独有语义，引擎版无此�
 
 ## 4. 测试计划（§9.1 步骤 5）
 
-- **旧测试 = 行为规格**，逐文件迁移矩阵在各单元 MIGRATION.md；本节只记总原则。
+- **旧测试 = 行为规格**，逐文件迁移矩阵在各单元 MIGRATION-U#.md；本节只记总原则。
 - 资金边界测试**必须打真实 PostgreSQL**（总纲 §5.6 类别 2）：并发（同键恰好一次、
   不超卖、CAS 竞态）、幂等（重放回执全等、同键异参 409）、恢复（滞留回收、租约过期、
   毒行隔离）、对账（verifyInvariants 三类漂移）。
@@ -121,7 +121,7 @@ settle#over`（允许负余额）——活路径独有语义，引擎版无此�
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ |
 | U0   | 包骨架 + `domain/money`（D2 收敛）+ `domain/fingerprint`（D1/B4 收敛）+ 错误目录初始条目                                                                    | ADR-0003 | 实施中 |
 | U1   | 钱包垂直：domain/wallet 定律 + application/wallet 动词 + adapters/postgres + 真实 PG 契约/并发/幂等测试（修 B1；锁死 B5 重放规范化）                        | U0       | 待办   |
-| U2   | 计价与授权链：domain/{rating,billing} + application/billing（authorize/signal/admission/reserve-channel + funding 瀑布 + operations 幂等壳）（修 B2/B3/B6） | U1       | 待办   |
+| U2   | 计价与授权链：domain/{rating,billing} + application/billing（authorize/signal/admission/reserve-channel + funding 瀑布 + operations 幂等壳）（修 B2/B3/B6） | U1       | 实施中（U1a 已核销：56 用例/96.47-95.65-100-96.92）   |
 | U3   | 结算与恢复：application/settlement（claim/settle/process/recover/usage-projection）+ 对账核验迁入（D9 例外）                                                | U2       | 待办   |
 | U4   | 订阅：domain/subscription + application/subscriptions                                                                                                       | U2       | 待办   |
 | U5   | 支付与兑换：application/{payments,redemption} + ports/payment + adapters/{stripe,epay}                                                                      | U4       | 待办   |

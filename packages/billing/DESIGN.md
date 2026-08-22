@@ -113,5 +113,5 @@ worker 结算`，授权阶段只冻结不动余额；观察 tap 丢失由结算�
 ## 5. 文档与实施
 
 - 迁移单元划分、逐模块裁决、B#/D# 登记与测试矩阵见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)。
-- 每个迁移单元一份 MIGRATION.md（行为规格基线 / 测试迁移矩阵 / 回滚 / 验收）。
+- 每个迁移单元一份 MIGRATION-U#.md（行为规格基线 / 测试迁移矩阵 / 回滚 / 验收）。
 - 旧仓路径：`/Users/wrr/work/ai-getway`（审计与行为语义的证据源）。
