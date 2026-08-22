@@ -21,8 +21,8 @@ describe('gemini 入站请求（geminiRequestToChat 深支）', () => {
     }, 'm');
     const msgs = chat.messages as Array<Record<string, unknown>>;
     expect(msgs[0]).toMatchObject({ role: 'system', content: 'S' });
-    expect((msgs[1].tool_calls as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'f' } });
-    expect(msgs[2]).toMatchObject({ role: 'tool', tool_call_id: 'f' });
+    expect(((msgs[1] ?? {}).tool_calls as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'f' } });
+    expect((msgs[2] ?? {})).toMatchObject({ role: 'tool', tool_call_id: 'f' });
   });
   it('非文本 part 保留块数组（textOnly=false 路径）', () => {
     const chat = geminiRequestToChat({ contents: [{ role: 'user', parts: [{ inlineData: { mimeType: 'image/png', data: 'QQ' } }, { text: 't' }] }] }, 'm');
