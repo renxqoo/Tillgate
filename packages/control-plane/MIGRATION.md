@@ -1,6 +1,6 @@
 # control-plane 迁移文档（MIGRATION.md）
 
-> 状态：已核销（行为对照逐项落位于 __test__/*.test.ts；验收数字见 §8）
+> 状态：已核销（行为对照逐项落位于 **test**/*.test.ts；验收数字见 §8）
 > 迁移单元：控制面配置管理（provider/channel/model/rate-card/fx/catalog 六个垂直用例组，共享装配、审计与密钥面——单元矩阵分节如下）
 > 旧实现：/Users/wrr/work/ai-getway（admin-api 服务族 + repository + app 域层，~4.6k 行源 / 65 个旧测试用例）
 > 目标位置：packages/control-plane
@@ -54,7 +54,10 @@
 
 ## 7. 回滚方案
 
-- 每阶段独立提交可独立 revert；本包为新包（旧仓只读不动），revert 即整体还原，无数据回滚。
+- 提交形态裁决（对 §9.1 步骤 6 的显式偏差）：本包为**全新包**（旧仓只读不动、无旧位置删除），
+  六阶段施工在**单一原子提交**内完成——单提交即回滚单元（revert 整体还原到包前状态），
+  中间态拆分提交对纯新增代码不产生独立回滚价值，且无法在缺 index.ts 的中间态保持 build 门绿。
+  阶段边界以目录层（domain/ports/application/adapters/facade）与测试文件边界保留。
 - 无 DDL 变更（75 条迁移已在 `@tokenlens/db` 先行合入；voucher_blobs 表已存在）。
 - bun.lock 为多会话共写文件：本包依赖条目落 lock 但**不随本波提交**（并行会话混入，ironlaw 15——协调后收口）。
 
