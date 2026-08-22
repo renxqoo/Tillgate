@@ -1,6 +1,6 @@
 # @tokenlens/accounts 施工图(IMPLEMENTATION.md)
 
-> 状态:实施中
+> 状态:已完成(2026-08-23;实施记录见 §7)
 > 前置:DESIGN.md(定稿)、三份老仓审计(2026-08-23,证据均带 文件:行号)
 > 纪律:AGENT.md §9.1(七步流程);复制的前提是逐文件审计无可挑剔;实现推翻设计时先改文档。
 
@@ -109,3 +109,23 @@ packages/accounts/
 ## 6. 行为对照清单(验收用,逐项核销于 MIGRATION §3)
 
 见 MIGRATION.md;验收 = 四门 + real 门 + 对照清单全核销。
+
+## 7. 实施记录(2026-08-23 收口)
+
+1. **四门 + real 门**:typecheck/lint/build 绿;单测 208 绿(13 文件),覆盖率
+   95.45/89.34/97.03/97.63(阈值 90/85/90/90);real 门 11/11(独立库
+   `tokenlens_accounts_test`,`DB_TEST_URL` 约定)。
+2. **实现期裁决补充**:
+   - v1 client-api **不写任何审计**(grep 证实,审计报告初稿有误)——MIGRATION §1.6.4
+     已按事实修正:audit_logs 仅管理面动作(user.update / api_key.update /
+     marketing.settings.update / referral.relation.update),AuditPort 只承载这四个动词。
+   - decimal.js `isPositive()` 对 0 返回 true(零为正号)——限额/赠送判定一律显式
+     `greaterThan(0)`,由 domain 测试矩阵锁定。
+   - real 门建库:drizzle 迁移链无法从空库装配(0055/0056/0058 等引用 identity-core/
+     wallet/ledger provision 链的外部表),`drizzle-kit push` 亦在 ledger_operations
+     的 FK 上失败——两处证据留档给 P3「空库升级」;账号域 DDL fixture 先行
+     (与 db schema 同拍维护,退役条件已在 MIGRATION §4 挂待办)。
+   - bun.lock 本次由并行会话混入 billing/control-plane/inference 条目——按铁律 15
+     不随本单元提交,留待对方收口后统一入库。
+3. **错误码增补**(DESIGN §4 同步):member_limits_invalid / relation_status_invalid /
+   app_patch_invalid(实施中发现的语义缺口,均有对应测试)。

@@ -132,6 +132,7 @@ createAccounts({
 | subscription_not_usable | not_found | 订阅不存在/非本人/非所属组织(不泄漏) |
 | app_not_found | not_found | 属主 App 无行 |
 | app_already_disabled | conflict | 重复禁用/轮换已禁用 |
+| app_patch_invalid | invalid_input | App 名称/描述域违规 |
 | app_scope_invalid | invalid_input | scope 形状/上界违规 |
 | org_not_found | not_found | 非成员访问组织 |
 | org_forbidden | forbidden | 非 owner 操作 owner 专属动词 |
@@ -145,6 +146,8 @@ createAccounts({
 | invitation_email_mismatch | forbidden | 接受者 email 不匹配 |
 | org_cannot_remove_owner | conflict | owner 不可移除 |
 | member_not_found | not_found | 成员无行/已离开 |
+| member_limits_invalid | invalid_input | 成员限额域违规 |
+| relation_status_invalid | invalid_input | 推荐关系状态非法 |
 | referral_invalid_code | invalid_input | aff 码畸形 |
 | referral_self_invite | conflict | 自邀 |
 | referral_inviter_not_found | not_found | 邀请人不存在或封禁(防枚举) |
