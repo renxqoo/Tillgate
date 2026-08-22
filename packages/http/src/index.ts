@@ -16,6 +16,33 @@ export {
 export { errorHandler, type ErrorHandlerDeps, type ErrorLogger } from './errors/handler';
 export { pgRejection } from './errors/sqlstate';
 
+// ---- 校验 / 参数 ----
+export { jsonBody, query } from './validation/zod-validator';
+export { intParam } from './validation/int-param';
+
+// ---- 分页：容错解析 + 列表 query 组合基底 ----
+export {
+  PAGE_SIZE_MAX,
+  PAGE_SIZE_DEFAULT,
+  paginationQuerySchema,
+  parsePagination,
+  limitOffset,
+  paginatedResult,
+  paginateQuery,
+  type PaginationParams,
+  type PaginatedResult,
+} from './pagination/page';
+export {
+  sortOrderSchema,
+  sortQuerySchema,
+  searchQuerySchema,
+  escapeLike,
+  listQuerySchema,
+} from './pagination/list-query';
+
+// ---- 幂等 ----
+export { operationId } from './idempotency/operation-id';
+
 // ---- 本地化：Accept-Language 协商内核 ----
 export {
   LOCALES,
