@@ -11,7 +11,7 @@
 ## 0. 原则
 
 1. **db 是物理 schema、迁移顺序和事务基础设施的统一登记点,不是业务事实所有者**(总纲 §3.4【用户裁决=总纲文档】)。表定义在此登记,表语义的消费与演进属于各能力包。
-2. **零内部依赖**:本包不依赖任何 `@tokenlens/*` 包(v1 对 ledger-core 的反向依赖清除,见 IMPLEMENTATION.md B1);未来 `errors` 包落地后按白名单接入。
+2. **依赖白名单 = 仅 `@tokenlens/errors`**(总纲 §5.1;AGENT.md §11 错误根契约):db 自产的基础设施错误按根契约源头分类(`InfrastructureError` 自由码,如 `db.unavailable`);PG SQLSTATE 裸事实经 `pg-error.ts` 上浮供消费方判定,协议边界翻译(→HTTP)归 http 包。v1 对 ledger-core 的反向依赖清除(IMPLEMENTATION.md B1);除此之外零内部依赖。
 3. **零隐藏默认**(铁律 3):连接串、池参数、重试策略全部必填注入;v1 的 6 处硬编码默认连接串与三份 runTx 的魔法数(5 次 / 15ms 基数 / 20ms 抖动)全部显式化到装配层。
 4. **迁移链是不可改写的物理事实**:76 件迁移(0000-0075,含 journal 历史缺口 0036/idx37)原样接管,已应用于生产的 SQL 一字不改;空库可迁移范围受 0055+ 与包外 provision 链耦合限制(IMPLEMENTATION.md C4)。
 
@@ -33,7 +33,8 @@ const db = createDb({
 });
 // db: Db —— drizzle node-postgres + 全 schema 绑定(relational queries 可用)
 
-await ping(db);      // select 1 健康探测(readyz/healthz 用)
+await ping(db);      // select 1 健康探测;失败源头分类为 InfrastructureError('db.unavailable'),
+                     // cause 链保留 pg 原始事实(pg-error 全链探测可达)
 await closeDb(db);   // 池优雅收口(db.$client.end();进程 shutdown 用)
 
 // 事务执行壳:瞬态错误(40P01 死锁 / 40001 串行化失败)指数退避重试

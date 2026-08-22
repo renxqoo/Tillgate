@@ -23,7 +23,8 @@ const { FakePool } = vi.hoisted(() => {
 
 vi.mock('pg', () => ({ default: { Pool: FakePool } }));
 
-import { closeDb, createDb } from '../src/client.js';
+import { closeDb, createDb, ping } from '../src/client.js';
+import { isInfrastructureError } from '@tokenlens/errors';
 
 const CONFIG = {
   url: 'postgres://user:pass@db.local:5432/tokenlens',
@@ -60,5 +61,14 @@ describe('closeDb(五处 app 拷贝的收敛点,C1)', () => {
     const instance = FakePool.instances.at(-1)!;
     await closeDb(db);
     expect(instance.end).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ping(§11 根契约:失败源头分类为 InfrastructureError)', () => {
+  it('探测失败抛 InfrastructureError(db.unavailable),cause 链保留底层事实', async () => {
+    const db = createDb(CONFIG); // FakePool 无 query 能力 → execute 必然失败
+    const failure = await ping(db).catch((error: unknown) => error);
+    expect(isInfrastructureError(failure)).toBe(true);
+    expect((failure as { code: string }).code).toBe('db.unavailable');
   });
 });

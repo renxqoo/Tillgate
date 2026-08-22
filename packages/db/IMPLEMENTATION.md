@@ -152,7 +152,8 @@
 | P1 | schema 32 文件(3 处微修)+ 迁移链原样 + drizzle.config + package.json/tsconfig/vitest 接线 + migrations/schema 单测 | `4529f53` ✅(schema/迁移文件本体因并行会话的整树提交先期入库,内容与本文裁决一致,差异为零) |
 | P2 | client/context/pg-error/transaction 四件 + 单测(B3 回归用例) | `710a9ad` ✅ |
 | P3 | real 集成测试 + 行为核销 + 状态推进「已完成」 | `fda8a19` ✅ |
-| P4 | 新规适配(铁律 14/16):测试迁 `__test__/` 平铺 + `*.real.test.ts` 文件名区分;覆盖率阈值 90/85 写入 vitest;新增外键物化契约测试 | 本次提交 ✅ |
+| P4 | 新规适配(铁律 14/16):测试迁 `__test__/` 平铺 + `*.real.test.ts` 文件名区分;覆盖率阈值 90/85 写入 vitest;新增外键物化契约测试 | `128a83d` ✅ |
+| P5 | §11 错误根契约采纳:db→`@tokenlens/errors` 依赖(白名单唯一内部依赖);ping 失败源头分类为 `InfrastructureError('db.unavailable')`(cause 链保留 pg 事实,SQLSTATE 裸上浮 + pg-error 事实层维持不变——协议翻译归 http);边界测试白名单化 | 本次提交 ✅ |
 
 ## 6. 验收清单(全部满足才算完成)
 
@@ -166,7 +167,8 @@
 - [x] real PG 用例绿(本地 PG,DATABASE_URL 显式注入):SAVEPOINT 内层回滚外层提交、真实 23505 检出含约束名 `kv_pkey`、advisoryLock 同事务同键重入、瞬态重试端到端、closeDb 后连接拒绝;scratch schema 结束即删;
 - [x] **空库迁移探针**(一次性手工验证,临时库已删):drizzle 编程式 migrator 在全新库上推进至 0055 失败(`identity_session_anchors` 不存在,由 identity-core provision 建)并整体回滚——与 v1 CI 注释记录的行为一致;结论:**空库升级范围 = 0000-0054**,0055+ 需 provision 链先行(C4 收口属 P4 能力波次);
 - [x] 不移植清单(C1-C8)各有归属标注,无孤儿;
-- [x] 铁律 14/16 适配(2026-08-23 新规):`__test__/` 平铺 + `pg.real.test.ts` 文件名区分;覆盖率阈值 90/85 落入 vitest thresholds——**实测 99.04% statements / 100% branches / 98.34% functions / 98.91% lines**(40 单测;缺口仅 client.ping 由 real 覆盖、context.ts 纯类型文件),达标未调阈值。
+- [x] 铁律 14/16 适配(2026-08-23 新规):`__test__/` 平铺 + `pg.real.test.ts` 文件名区分;覆盖率阈值 90/85 落入 vitest thresholds——P5 后实测 **99.52% statements / 100% branches / 99.17% functions / 99.46% lines**(41 单测,client.ts 100%),达标未调阈值;
+- [x] §11 错误根契约(2026-08-23 新规):依赖白名单收窄为 `@tokenlens/errors` 单内部依赖;ping 失败 = `InfrastructureError('db.unavailable')`(isInfrastructureError 守卫用例锁定);runTx/pg 事实层不包装不改判(禁止清单合规);bun.lock 因混有 runtime 流同款变更未随本提交入库(铁律 15,待协调收口)。
 
 ## 7. 回滚方案
 

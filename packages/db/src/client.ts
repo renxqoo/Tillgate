@@ -7,6 +7,7 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
+import { InfrastructureError } from '@tokenlens/errors';
 import * as schema from './schema/index.js';
 
 /** 池配置(全部必填——语义注释承接 v1 实测值:生产常用 20/30_000/5_000/1_000) */
@@ -43,9 +44,17 @@ export type Db = ReturnType<typeof createDb>;
 /** drizzle 事务句柄(事务内执行的统一参数类型;用例层持有事务、repo 层接收) */
 export type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-/** 健康探测:select 1(healthz/readyz 用;v1 worker readyz 不 ping DB 的差异在 apps/worker 迁移时修正,C2) */
+/**
+ * 健康探测:select 1(healthz/readyz 用;v1 worker readyz 不 ping DB 的差异在 apps/worker 迁移时修正,C2)。
+ * 失败即 db 自产的基础设施错误,按根契约源头分类(AGENT.md §11 / errors README §2.2):
+ * InfrastructureError 自由码 + cause 链保留底层事实;pg SQLSTATE 原样可达(pg-error 全链探测)。
+ */
 export async function ping(db: Db): Promise<void> {
-  await db.execute(sql`select 1`);
+  try {
+    await db.execute(sql`select 1`);
+  } catch (error) {
+    throw new InfrastructureError('Database ping failed', 'db.unavailable', undefined, { cause: error });
+  }
 }
 
 /** 池优雅收口:进程 shutdown 专用——v1 在五个 app 的 shutdown 里近似拷贝,此处收敛(C1) */
