@@ -89,7 +89,7 @@ describe('createShutdown', () => {
     const { deps } = fakeDeps({ closeCallsCallback: true });
     const exitSpy = vi
       .spyOn(process, 'exit')
-      .mockImplementation((() => undefined) as unknown as (code?: number) => never);
+      .mockImplementation((() => undefined) as unknown as (code?: number | string | null) => never);
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
       createShutdown({ ...deps, exit: undefined, log: undefined })('SIGTERM');
