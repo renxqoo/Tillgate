@@ -45,6 +45,10 @@ export type {
   Usage,
 } from './types';
 
+// ---- 装配与传输 ----
+export { createAi, SUPPORTED_PROTOCOLS } from './create-ai';
+export { assertSafeUrl, assertSafeUrlSync, allowAllUrls } from './transport/http-client';
+
 // ---- 特征计数器（估算充分统计量，单一真相）----
 export { extractTextFeatures, TextFeaturesAccumulator } from './usage/features';
 

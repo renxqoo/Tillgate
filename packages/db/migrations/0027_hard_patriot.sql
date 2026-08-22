@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "user_subscriptions_one_active_uq" ON "user_subscriptions" USING btree ("user_id") WHERE "user_subscriptions"."status" = 0;--> statement-breakpoint
+ALTER TABLE "plans" DROP COLUMN "fallback_to_balance";

@@ -1,0 +1,1 @@
+ALTER TABLE "model_mappings" ADD COLUMN "billing_policy" jsonb;

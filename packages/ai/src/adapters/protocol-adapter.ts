@@ -24,13 +24,9 @@ import type {
  * 扩展两形态（registry/define-adapter）：全量实现本接口（原生协议）；
  * defineAdapter 部分覆写（OpenAI 兼容厂商差异——组合取代继承）。
  */
-export interface ProtocolAdapter {
-  readonly protocol: string;
-  /** 本适配器实际支持的端点集（能力声明面：缺失端点在寻址层显式报错） */
-  readonly supportedEndpoints: readonly Endpoint[];
 
-  // ---- 能力件①：寻址 ----
-  /** 上游寻址计划：协议决定路径与完整请求头（含认证） */
+/** 能力件①：上游寻址（路径 + 认证头 + 签名钩子） */
+export interface Addressing {
   planRequest(
     channel: ChannelDesc,
     input: { endpoint: Endpoint; model: string; requestId: string; stream: boolean },
@@ -42,8 +38,10 @@ export interface ProtocolAdapter {
    * body 后计算认证头（签名依赖 body 哈希，无法在 planRequest 静态给出）。
    */
   signRequest?(args: { url: URL; body: string; apiKey: string; at: Date }): Promise<Record<string, string>> | Record<string, string>;
+}
 
-  // ---- 能力件②：请求方向 ----
+/** 能力件②：请求方向（参数抹平引擎 + 发送前终改） */
+export interface BodyFinalizer {
   /**
    * 参数抹平（透传为基底，规则驱动；vendor profile 编译产物与 per-model 规则汇合）。
    * endpoint 参与：unknown:'drop' 的已知词表按端点取集。
@@ -61,20 +59,35 @@ export interface ProtocolAdapter {
     body: Record<string, unknown>,
     input: { endpoint: Endpoint; model: string; stream: boolean },
   ): Record<string, unknown>;
+}
 
-  // ---- 能力件③：usage 提取（仅计量，正文透传）----
+/** 能力件③：usage 提取（仅计量，正文透传） */
+export interface UsageExtractor {
   extractUsage(res: unknown): Usage | null;
+}
 
-  // ---- 能力件④：错误翻译（厂商错误 → kind；查表顺序见文件头）----
+/** 能力件④：错误翻译（厂商错误 → kind；查表顺序见文件头） */
+export interface ErrorMapper {
   mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError;
+}
 
-  // ---- 能力件⑤：原生线格式 ⇄ 规范形编解码（仅原生协议需要）----
+/** 能力件⑤：原生线格式 ⇄ 规范形编解码（仅原生协议需要） */
+export interface WireCodec {
   translateResponseBody?(body: unknown): unknown;
   translateUpstreamStream?(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array>;
+}
 
-  // ---- 任务族操作面（任务型协议可选实现，如 minimax）----
+/** 聚合契约 = 五能力件并集 */
+export interface ProtocolAdapter
+  extends Addressing, BodyFinalizer, UsageExtractor, ErrorMapper, Partial<WireCodec> {
+  readonly protocol: string;
+  /** 本适配器实际支持的端点集（能力声明面：缺失端点在寻址层显式报错） */
+  readonly supportedEndpoints: readonly Endpoint[];
+  /** 异步生成任务操作面（任务型协议可选实现，如 minimax）。 */
   tasks?: ProtocolTaskOps;
 }
+
+export type { ParamAdjustment };
 
 /** 上游寻址计划 */
 export interface UpstreamRequestPlan {

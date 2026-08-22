@@ -1,0 +1,1 @@
+ALTER TABLE "request_logs" ADD COLUMN "source_ip" varchar(64);

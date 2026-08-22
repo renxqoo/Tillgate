@@ -1,0 +1,2 @@
+ALTER TABLE "model_mappings" ADD COLUMN "is_free" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+UPDATE "model_mappings" SET "is_free" = true WHERE "real_model" LIKE '%:free' AND "input_price" = 0 AND "output_price" = 0 AND "cache_input_price" = 0;

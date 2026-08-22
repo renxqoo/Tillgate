@@ -3,6 +3,7 @@
  * 本包只做「可靠调用上游并产出结构化事件」，不含任何业务知识。
  */
 import type { AiEvent } from './events';
+export type { AiEvent };
 import type { ErrorKind, UpstreamError } from './errors/kinds';
 
 // ─────────────────────────── 渠道与端点 ───────────────────────────

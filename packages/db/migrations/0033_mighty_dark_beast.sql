@@ -1,0 +1,1 @@
+ALTER TABLE "channels" ADD CONSTRAINT "channels_upstream_reserved_nonnegative_ck" CHECK ("channels"."upstream_reserved" >= 0);
