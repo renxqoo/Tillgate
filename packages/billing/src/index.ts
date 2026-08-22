@@ -216,3 +216,32 @@ export {
 export { createReconcileUseCase } from './application/settlement/reconcile.js';
 export { usageLogProjection } from './application/settlement/usage-projection.js';
 export type { UsageProjectionInput } from './application/settlement/usage-projection.js';
+
+// ---- 订阅生命周期与幂等操作档案（U4） ----
+export {
+  renewalStart,
+  periodEnd,
+  remainingQuota,
+  remainingValue,
+  changeDiff,
+  assertChangeEligibility,
+  assertSeatsAllowed,
+  assertValidQuantity,
+} from './domain/subscription/rules.js';
+export type { QuotaSnapshot } from './domain/subscription/rules.js';
+export { createOperationsUseCase, assertOperationId } from './application/operations.js';
+export type { OperationRun } from './application/operations.js';
+export { createSubscriptionsApi } from './application/subscriptions/subscriptions.js';
+export type {
+  SubscriptionsApi,
+  SubscriptionsEnv,
+  SubscribeResult,
+  PurchaseInput,
+  RenewInput,
+  ChangeInput,
+  CancelInput,
+  GrantPackInput,
+  GrantPackResult,
+} from './application/subscriptions/subscriptions.js';
+export type { SubscriptionRow } from './ports/billing-store.js';
+export type { AccountContextStore } from './ports/account-context.js';

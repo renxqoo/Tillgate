@@ -4,7 +4,7 @@
  * 不变量破坏不进目录——用根契约 DefectError（码 billing.wallet_invariant / billing.fingerprint_input）。
  * U0：金额域输入拒绝。U1a：钱包域白名单、出账口径、冻结单状态机。
  * U1b：钱包动词的幂等/归属/账户冻结拒绝。
- * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。
+ * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。U3：结算。U4：订阅生命周期。
  */
 import { defineErrorCatalog } from '@tokenlens/errors';
 
@@ -152,6 +152,43 @@ export const BillingErrors = defineErrorCatalog('billing', {
     category: 'quota_exhausted',
     message: 'Subscription quota exhausted for this request',
     zh: '订阅剩余额度不足以覆盖本请求',
+  },
+  // ---- U4：订阅生命周期 ----
+  plan_not_found: {
+    category: 'not_found',
+    message: 'Plan not found',
+    zh: '套餐不存在',
+  },
+  plan_disabled: {
+    category: 'conflict',
+    message: 'Plan is not on sale',
+    zh: '套餐已停售',
+  },
+  plan_not_purchasable: {
+    category: 'invalid_input',
+    message:
+      'Plan is not purchasable (zero-priced self-serve plans are forbidden — free-quota minting guard)',
+    zh: '套餐不可购买（自助上架套餐必须正价——免费额度印刷机防线）',
+  },
+  not_a_pack: {
+    category: 'invalid_input',
+    message: 'Operation requires a pack-kind plan (or subscription-kind, mismatched)',
+    zh: '套餐类型不匹配（订阅/加油包）',
+  },
+  user_not_found: {
+    category: 'not_found',
+    message: 'User not found',
+    zh: '用户不存在',
+  },
+  subscription_state: {
+    category: 'conflict',
+    message: 'Subscription state conflict (already subscribed / no active subscription / inactive)',
+    zh: '订阅状态冲突（已订阅 / 无有效订阅 / 已失效）',
+  },
+  subscription_rule: {
+    category: 'invalid_input',
+    message: 'Subscription rule violation (quantity / seats / enterprise / downgrade)',
+    zh: '订阅规则不允许（数量 / 席位 / 企业 / 降档）',
   },
   settlement_backlog: {
     category: 'unavailable',

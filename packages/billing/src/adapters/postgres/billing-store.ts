@@ -7,13 +7,20 @@
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
+  apiKeys,
+  apps,
   billingRequests,
   billingReservations,
   isUniqueViolation,
+  ledgerOperations,
   orgMembers,
+  organizations,
+  orgMembers as orgMembersTable,
+  plans,
   runTx,
   usageLogs,
   userSubscriptions,
+  users,
   channels,
   type Db,
   type DbTx,
@@ -82,12 +89,28 @@ const REQUEST_COLUMNS = {
   createdAt: billingRequests.createdAt,
 };
 
+const SUB_COLUMNS = {
+  id: userSubscriptions.id,
+  userId: userSubscriptions.userId,
+  planId: userSubscriptions.planId,
+  orgId: userSubscriptions.orgId,
+  quantity: userSubscriptions.quantity,
+  price: userSubscriptions.price,
+  status: userSubscriptions.status,
+  startAt: userSubscriptions.startAt,
+  endAt: userSubscriptions.endAt,
+  quotaAmount: userSubscriptions.quotaAmount,
+  usedAmount: userSubscriptions.usedAmount,
+  reservedAmount: userSubscriptions.reservedAmount,
+};
+
 export function createPostgresBillingStore(
   db: Db,
   options: PostgresBillingStoreOptions,
 ): BillingStore & {
   quotaStore: SubscriptionQuotaStore;
   channelStore: ChannelExposureStore;
+  accountContext: import('../../ports/account-context.js').AccountContextStore;
 } {
   const { retry } = options;
 
@@ -567,6 +590,142 @@ export function createPostgresBillingStore(
       return row?.amount ?? null;
     },
 
+    async findPlan(conn: WalletConn, planId: number) {
+      const [row] = await asDb(conn)
+        .select({
+          id: plans.id,
+          name: plans.name,
+          kind: plans.kind,
+          sortOrder: plans.sortOrder,
+          price: plans.price,
+          periodDays: plans.periodDays,
+          quotaAmount: plans.quotaAmount,
+          allowSeats: plans.allowSeats,
+          status: plans.status,
+        })
+        .from(plans)
+        .where(eq(plans.id, planId));
+      return row ?? null;
+    },
+
+    async lockActiveSubscription(conn: WalletConn, subscriptionId: number) {
+      const [row] = await asDb(conn)
+        .select(SUB_COLUMNS)
+        .from(userSubscriptions)
+        .where(and(eq(userSubscriptions.id, subscriptionId), eq(userSubscriptions.status, 0)))
+        .for('update');
+      return (row as import('../../ports/billing-store.js').SubscriptionRow | undefined) ?? null;
+    },
+
+    async lockActiveSubscriptionForUser(conn: WalletConn, userId: number, now: Date) {
+      const [row] = await asDb(conn)
+        .select(SUB_COLUMNS)
+        .from(userSubscriptions)
+        .where(
+          and(
+            eq(userSubscriptions.userId, userId),
+            eq(userSubscriptions.status, 0),
+            sql`${userSubscriptions.endAt} > ${now}`,
+          ),
+        )
+        .for('update');
+      return (row as import('../../ports/billing-store.js').SubscriptionRow | undefined) ?? null;
+    },
+
+    async expireLapsedSubscriptions(conn: WalletConn, userId: number, now: Date) {
+      await asDb(conn)
+        .update(userSubscriptions)
+        .set({ status: 1 })
+        .where(
+          and(
+            eq(userSubscriptions.userId, userId),
+            eq(userSubscriptions.status, 0),
+            sql`${userSubscriptions.endAt} <= ${now}`,
+          ),
+        );
+    },
+
+    async insertSubscription(
+      conn: WalletConn,
+      values: Parameters<BillingStore['insertSubscription']>[1],
+    ) {
+      const [row] = await asDb(conn)
+        .insert(userSubscriptions)
+        .values(values)
+        .returning({ id: userSubscriptions.id });
+      if (!row) throw new Error('billing.insert_subscription');
+      return row.id;
+    },
+
+    async casSubscriptionStatus(
+      conn: WalletConn,
+      input: { subscriptionId: number; from: number; to: number },
+    ) {
+      const rows = await asDb(conn)
+        .update(userSubscriptions)
+        .set({ status: input.to })
+        .where(
+          and(
+            eq(userSubscriptions.id, input.subscriptionId),
+            eq(userSubscriptions.status, input.from),
+          ),
+        )
+        .returning({ id: userSubscriptions.id });
+      return rows.length > 0;
+    },
+
+    async tryAddQuota(conn: WalletConn, input: { subscriptionId: number; quota: string }) {
+      const rows = await asDb(conn)
+        .update(userSubscriptions)
+        .set({ quotaAmount: sql`${userSubscriptions.quotaAmount} + ${input.quota}::numeric` })
+        .where(and(eq(userSubscriptions.id, input.subscriptionId), eq(userSubscriptions.status, 0)))
+        .returning({ id: userSubscriptions.id });
+      return rows.length > 0;
+    },
+
+    async insertOperationPlaceholder(
+      conn: WalletConn,
+      input: { operationId: string; kind: string; fingerprint: string },
+    ) {
+      const rows = await asDb(conn)
+        .insert(ledgerOperations)
+        .values(input)
+        .onConflictDoNothing({ target: ledgerOperations.operationId })
+        .returning({ id: ledgerOperations.id });
+      return rows[0]?.id ?? null;
+    },
+
+    async findOperation(conn: WalletConn, operationId: string) {
+      const [row] = await asDb(conn)
+        .select({
+          id: ledgerOperations.id,
+          operationId: ledgerOperations.operationId,
+          kind: ledgerOperations.kind,
+          fingerprint: ledgerOperations.fingerprint,
+          receipt: ledgerOperations.receipt,
+        })
+        .from(ledgerOperations)
+        .where(eq(ledgerOperations.operationId, operationId));
+      return (
+        (row as
+          | {
+              id: number;
+              operationId: string;
+              kind: string;
+              fingerprint: string;
+              receipt: Record<string, unknown> | null;
+            }
+          | undefined) ?? null
+      );
+    },
+
+    async saveOperationReceipt(conn: WalletConn, id: number, receipt: Record<string, unknown>) {
+      await asDb(conn)
+        .update(ledgerOperations)
+        .set({ receipt, updatedAt: new Date() })
+        .where(eq(ledgerOperations.id, id));
+    },
+
     isUniqueViolation: (error) => isUniqueViolation(error),
   };
 
@@ -741,5 +900,45 @@ export function createPostgresBillingStore(
     },
   };
 
-  return { ...store, quotaStore, channelStore };
+  const accountContext: import('../../ports/account-context.js').AccountContextStore = {
+    async userExists(conn, userId) {
+      const [row] = await asDb(conn)
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId));
+      return row != null;
+    },
+    async isEnterprise(conn, userId) {
+      const [row] = await asDb(conn)
+        .select({ isEnterprise: users.isEnterprise })
+        .from(users)
+        .where(eq(users.id, userId));
+      return row?.isEnterprise;
+    },
+    async insertOrgWithOwner(conn, input) {
+      const [org] = await asDb(conn)
+        .insert(organizations)
+        .values({ name: input.name, ownerUserId: input.ownerUserId })
+        .returning({ id: organizations.id });
+      await asDb(conn).insert(orgMembersTable).values({
+        orgId: org!.id,
+        userId: input.ownerUserId,
+        role: 'owner',
+        status: 0,
+      });
+      return org!.id;
+    },
+    async rebindCredentials(conn, fromSubscriptionId, toSubscriptionId) {
+      await asDb(conn)
+        .update(apiKeys)
+        .set({ subscriptionId: toSubscriptionId })
+        .where(eq(apiKeys.subscriptionId, fromSubscriptionId));
+      await asDb(conn)
+        .update(apps)
+        .set({ subscriptionId: toSubscriptionId })
+        .where(eq(apps.subscriptionId, fromSubscriptionId));
+    },
+  };
+
+  return { ...store, quotaStore, channelStore, accountContext };
 }

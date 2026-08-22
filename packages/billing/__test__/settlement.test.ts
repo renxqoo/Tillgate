@@ -560,3 +560,17 @@ describe('分支封口补充', () => {
     void settlement;
   });
 });
+
+describe('U4 补：claim 辅助分支', () => {
+  it('renewClaims 空令牌集零操作；非空续租', async () => {
+    const h = harness();
+    const { requestId } = await toPending(h);
+    await h.settlement.claim({ ownerId: 'w9', batchSize: 10, claimLeaseMs: 60_000 });
+    await h.settlement.renewClaims({ ownerId: 'w9', tokens: [], claimLeaseMs: 1000 });
+    const token = h.world.fixtures.requests.get(requestId)!.claimToken!;
+    await h.settlement.renewClaims({ ownerId: 'w9', tokens: [token], claimLeaseMs: 60_000 });
+    expect(h.world.fixtures.requests.get(requestId)!.claimUntil!.getTime()).toBeGreaterThan(
+      Date.now() - 1000,
+    );
+  });
+});

@@ -21,13 +21,13 @@
 
 ## 3. 逐模块裁决表
 
-| 旧模块 | 裁决 | 动作 |
-| --- | --- | --- |
-| settlement/{claim,failure,process,settle,recover,usage-projection} | 重写 | application/settlement/*（RunContext 移除；渠道收尾经 ChannelExposureStore） |
-| channel-budget/{release-exposure,deduct-budget} | 重构并入 | settle/reserve/signal 内联消费（tryDecreaseReserved / deductBudgetAndMaybeBreak） |
-| billing-request.repo 结算方法族（claimPending/renewClaims/casFinalizeSettled/casToRetryOrDead/findProcessingForClaim/listExpiredForRecovery/recoverOneToReleased/requeueExpiredClaims/abandonOwnedClaims） | 重写 | ports/billing-store 扩展 + postgres adapter（SQL 语义原样：CTE+SKIP LOCKED、clock_timestamp 租约） |
-| usage-log.repo（insertUsageLog/findAmount） | 重写 | billing-store（requestId 唯一约束幂等） |
-| wallet/src/maintenance.ts verifyInvariants | 重构迁入（D9 例外） | wallet-store.verifyInvariants + reconcile 用例（只读哨兵；告警入箱归 worker） |
+| 旧模块                                                                                                                                                                                                     | 裁决                | 动作                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------- |
+| settlement/{claim,failure,process,settle,recover,usage-projection}                                                                                                                                         | 重写                | application/settlement/*（RunContext 移除；渠道收尾经 ChannelExposureStore）                       |
+| channel-budget/{release-exposure,deduct-budget}                                                                                                                                                            | 重构并入            | settle/reserve/signal 内联消费（tryDecreaseReserved / deductBudgetAndMaybeBreak）                  |
+| billing-request.repo 结算方法族（claimPending/renewClaims/casFinalizeSettled/casToRetryOrDead/findProcessingForClaim/listExpiredForRecovery/recoverOneToReleased/requeueExpiredClaims/abandonOwnedClaims） | 重写                | ports/billing-store 扩展 + postgres adapter（SQL 语义原样：CTE+SKIP LOCKED、clock_timestamp 租约） |
+| usage-log.repo（insertUsageLog/findAmount）                                                                                                                                                                | 重写                | billing-store（requestId 唯一约束幂等）                                                            |
+| wallet/src/maintenance.ts verifyInvariants                                                                                                                                                                 | 重构迁入（D9 例外） | wallet-store.verifyInvariants + reconcile 用例（只读哨兵；告警入箱归 worker）                      |
 
 ## 4. 契约演进
 
@@ -41,12 +41,12 @@
 
 ## 5. 测试迁移矩阵
 
-| 旧测试 | 新去处 | 动作 |
-| --- | --- | --- |
-| service settlement.test.ts 主干 | `settlement.test.ts`（内存）+ `settlement-lifecycle.real.test.ts`（真 PG） | 改写：全链/部分结算/零额/毒收据死信/退避重试/恢复三路径/优雅停机 |
-| settlement-failure.test.ts | settlement.test.ts（瞬态直驱）+ billing-rules（策略） | 改写 |
-| 引擎不变量（Σ腿/链/在途投影/append-only/冻结） | wallet-*.real + lifecycle verifyInvariants | 已在 U1 重现；lifecycle 再验 |
-| （新增） | lifecycle：并发双 worker 认领恰好一方、渠道熔断真实触发 | 新增 |
+| 旧测试                                         | 新去处                                                                     | 动作                                                             |
+| ---------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| service settlement.test.ts 主干                | `settlement.test.ts`（内存）+ `settlement-lifecycle.real.test.ts`（真 PG） | 改写：全链/部分结算/零额/毒收据死信/退避重试/恢复三路径/优雅停机 |
+| settlement-failure.test.ts                     | settlement.test.ts（瞬态直驱）+ billing-rules（策略）                      | 改写                                                             |
+| 引擎不变量（Σ腿/链/在途投影/append-only/冻结） | wallet-*.real + lifecycle verifyInvariants                                 | 已在 U1 重现；lifecycle 再验                                     |
+| （新增）                                       | lifecycle：并发双 worker 认领恰好一方、渠道熔断真实触发                    | 新增                                                             |
 
 ## 6. 回滚方案
 

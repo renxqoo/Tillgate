@@ -6,6 +6,38 @@
  */
 import type { WalletConn, WalletTx } from './wallet-store.js';
 
+/** user_subscriptions 行形状（订阅生命周期用例消费） */
+export interface SubscriptionRow {
+  id: number;
+  userId: number;
+  planId: number;
+  orgId: number | null;
+  quantity: number;
+  price: string;
+  status: number;
+  startAt: Date;
+  endAt: Date;
+  quotaAmount: string;
+  usedAmount: string;
+  reservedAmount: string;
+}
+
+/** user_subscriptions 行形状（订阅生命周期用例消费） */
+export interface SubscriptionRow {
+  id: number;
+  userId: number;
+  planId: number;
+  orgId: number | null;
+  quantity: number;
+  price: string;
+  status: number;
+  startAt: Date;
+  endAt: Date;
+  quotaAmount: string;
+  usedAmount: string;
+  reservedAmount: string;
+}
+
 /** billing_requests 行形状（金额/状态原样 string；语义判定在 domain） */
 export interface BillingRequestRow {
   requestId: string;
@@ -218,4 +250,67 @@ export interface BillingStore {
   findUsageAmount(conn: WalletConn, requestId: string): Promise<string | null>;
 
   isUniqueViolation(error: unknown): boolean;
+
+  // ---- 订阅生命周期（U4：plans 目录 + user_subscriptions 行操作 + ledger_operations 档案） ----
+  findPlan(
+    conn: WalletConn,
+    planId: number,
+  ): Promise<{
+    id: number;
+    name: string;
+    kind: string;
+    sortOrder: number | null;
+    price: string;
+    periodDays: number;
+    quotaAmount: string;
+    allowSeats: boolean;
+    status: number;
+  } | null>;
+  /** FOR UPDATE 行锁取有效订阅（折算/续费用新鲜快照） */
+  lockActiveSubscription(tx: WalletConn, subscriptionId: number): Promise<SubscriptionRow | null>;
+  /** 用户当前有效订阅（FOR UPDATE；自然到期惰性翻转由调用方先行） */
+  lockActiveSubscriptionForUser(
+    tx: WalletConn,
+    userId: number,
+    now: Date,
+  ): Promise<SubscriptionRow | null>;
+  /** 惰性翻转「已自然到期但 status 仍 0」（不翻则新购买撞唯一索引） */
+  expireLapsedSubscriptions(tx: WalletConn, userId: number, now: Date): Promise<void>;
+  insertSubscription(
+    tx: WalletConn,
+    values: {
+      userId: number;
+      planId: number;
+      startAt: Date;
+      endAt: Date;
+      quotaAmount: string;
+      quantity: number;
+      price: string;
+      orgId: number | null;
+    },
+  ): Promise<number>;
+  /** CAS 状态迁移（0→1 到期 / 0→2 取消）；0 行 = 状态已被并发改变 */
+  casSubscriptionStatus(
+    tx: WalletConn,
+    input: { subscriptionId: number; from: number; to: number },
+  ): Promise<boolean>;
+  /** quota += amount（status=0 守卫）；0 行 = 并发取消 */
+  tryAddQuota(tx: WalletConn, input: { subscriptionId: number; quota: string }): Promise<boolean>;
+
+  // ---- 幂等操作档案（U4：ledger_operations——占位/回执同事务） ----
+  insertOperationPlaceholder(
+    tx: WalletConn,
+    input: { operationId: string; kind: string; fingerprint: string },
+  ): Promise<number | null>;
+  findOperation(
+    conn: WalletConn,
+    operationId: string,
+  ): Promise<{
+    id: number;
+    operationId: string;
+    kind: string;
+    fingerprint: string;
+    receipt: Record<string, unknown> | null;
+  } | null>;
+  saveOperationReceipt(tx: WalletConn, id: number, receipt: Record<string, unknown>): Promise<void>;
 }

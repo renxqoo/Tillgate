@@ -178,9 +178,7 @@ export interface WalletStore {
    * 对账核验（只读哨兵，U3）：三类漂移（transaction_balance / account_balance /
    * in_flight），limit 上限 10000。消费方 = settlement 对账用例。
    */
-  verifyInvariants(
-    limit: number,
-  ): Promise<
+  verifyInvariants(limit: number): Promise<
     Array<{
       kind: 'transaction_balance' | 'account_balance' | 'in_flight';
       key: string;

@@ -27,6 +27,10 @@ export interface InMemorySubscriptionRow {
   reservedAmount: string;
   status: number; // 0 有效
   endAt: Date;
+  planId: number;
+  quantity: number;
+  price: string;
+  startAt: Date;
 }
 
 export interface InMemoryChannelRow {
@@ -35,6 +39,19 @@ export interface InMemoryChannelRow {
   upstreamReserved: string;
   upstreamThreshold: string | null;
   status: number; // 0 启用 / 3 熔断
+}
+
+/** plans 目录夹具行（与 port findPlan 形状一致） */
+export interface InMemoryPlanRow {
+  id: number;
+  name: string;
+  kind: string;
+  sortOrder: number | null;
+  price: string;
+  periodDays: number;
+  quotaAmount: string;
+  allowSeats: boolean;
+  status: number;
 }
 
 export interface InMemoryBillingWorld {
@@ -55,6 +72,20 @@ export interface InMemoryBillingWorld {
       at: Date;
     }>;
     usageLogs: Map<string, Record<string, unknown>>;
+    plans: Map<number, InMemoryPlanRow>;
+    knownUsers: Set<number>;
+    enterpriseUsers: Set<number>;
+    credentialBindings: Map<number, number>;
+    operations: Map<
+      string,
+      {
+        id: number;
+        operationId: string;
+        kind: string;
+        fingerprint: string;
+        receipt: Record<string, unknown> | null;
+      }
+    >;
   };
   /** 凭证解析结果覆写（缺省：无订阅、无限额） */
   resolveOverride: Partial<ResolvedFundingSource> | null;
@@ -63,6 +94,8 @@ export interface InMemoryBillingWorld {
     string,
     { dailySpendLimit: string | null; monthlyQuota: string | null }
   >;
+  /** 账户侧协作 port（users/orgs/凭证改绑的内存实现） */
+  accountContext: import('../ports/account-context.js').AccountContextStore;
 }
 
 let subSeq = 0;
@@ -75,6 +108,32 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
   const channelsMap = new Map<number, InMemoryChannelRow>();
   const settledSpend: InMemoryBillingWorld['fixtures']['settledSpend'] = [];
   const usageLogsRows = new Map<string, Record<string, unknown>>();
+  const plansCatalog = new Map<
+    number,
+    {
+      id: number;
+      name: string;
+      kind: string;
+      sortOrder: number | null;
+      price: string;
+      periodDays: number;
+      quotaAmount: string;
+      allowSeats: boolean;
+      status: number;
+    }
+  >();
+  const operationsArchive = new Map<
+    string,
+    {
+      id: number;
+      operationId: string;
+      kind: string;
+      fingerprint: string;
+      receipt: Record<string, unknown> | null;
+    }
+  >();
+  let operationSeq = 0;
+  let subscriptionSeq = 1000;
   const memberLimitsOverride = new Map<
     string,
     { dailySpendLimit: string | null; monthlyQuota: string | null }
@@ -467,6 +526,81 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
 
     isUniqueViolation: () => false,
+
+    async findPlan(_conn, planId) {
+      const plan = plansCatalog.get(planId);
+      return plan ? { ...plan } : null;
+    },
+
+    async lockActiveSubscription(_conn, subscriptionId) {
+      const row = subscriptions.get(subscriptionId);
+      if (!row || row.status !== 0) return null;
+      return { ...row };
+    },
+
+    async lockActiveSubscriptionForUser(_conn, userId, now) {
+      for (const row of subscriptions.values()) {
+        if (row.userId === userId && row.status === 0 && row.endAt > now) return { ...row };
+      }
+      return null;
+    },
+
+    async expireLapsedSubscriptions(_conn, userId, now) {
+      for (const row of subscriptions.values()) {
+        if (row.userId === userId && row.status === 0 && row.endAt <= now) row.status = 1;
+      }
+    },
+
+    async insertSubscription(_conn, values) {
+      const id = (subscriptionSeq += 1);
+      subscriptions.set(id, {
+        id,
+        userId: values.userId,
+        orgId: values.orgId,
+        quotaAmount: values.quotaAmount,
+        usedAmount: '0',
+        reservedAmount: '0',
+        status: 0,
+        endAt: values.endAt,
+        planId: values.planId ?? 0,
+        quantity: values.quantity ?? 1,
+        price: values.price ?? '0',
+        startAt: values.startAt ?? new Date(),
+      });
+      return id;
+    },
+
+    async casSubscriptionStatus(_conn, input) {
+      const row = subscriptions.get(input.subscriptionId);
+      if (!row || row.status !== input.from) return false;
+      row.status = input.to;
+      return true;
+    },
+
+    async tryAddQuota(_conn, input) {
+      const row = subscriptions.get(input.subscriptionId);
+      if (!row || row.status !== 0) return false;
+      row.quotaAmount = String(Number(row.quotaAmount) + Number(input.quota));
+      return true;
+    },
+
+    async insertOperationPlaceholder(_conn, input) {
+      if (operationsArchive.has(input.operationId)) return null;
+      const id = (operationSeq += 1);
+      operationsArchive.set(input.operationId, { id, ...input, receipt: null });
+      return id;
+    },
+
+    async findOperation(_conn, operationId) {
+      const row = operationsArchive.get(operationId);
+      return row ? { ...row } : null;
+    },
+
+    async saveOperationReceipt(_conn, id, receipt) {
+      for (const row of operationsArchive.values()) {
+        if (row.id === id) row.receipt = receipt;
+      }
+    },
   };
 
   const quota: SubscriptionQuotaStore = {
@@ -588,13 +722,44 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
   };
 
+  const knownUsers = new Set<number>();
+  const enterpriseUsers = new Set<number>();
+  const credentialBindings = new Map<number, number>(); // credentialId -> subscriptionId（改绑语义以计数验证）
+  let orgSeq = 0;
+  const accountContext: import('../ports/account-context.js').AccountContextStore = {
+    userExists: (_conn, userId) => Promise.resolve(knownUsers.has(userId)),
+    isEnterprise: (_conn, userId) => Promise.resolve(enterpriseUsers.has(userId)),
+    insertOrgWithOwner(_conn, _input) {
+      orgSeq += 1;
+      return Promise.resolve(orgSeq);
+    },
+    rebindCredentials(_conn, fromSubscriptionId, toSubscriptionId) {
+      for (const [credential, bound] of credentialBindings) {
+        if (bound === fromSubscriptionId) credentialBindings.set(credential, toSubscriptionId);
+      }
+      return Promise.resolve();
+    },
+  };
+
   return {
     billing,
     quota,
     channels: channelStore,
     resolver,
+    accountContext,
     memberLimitsOverride,
-    fixtures: { subscriptions, channelsMap, requests, settledSpend, usageLogs: usageLogsRows },
+    fixtures: {
+      subscriptions,
+      channelsMap,
+      requests,
+      settledSpend,
+      usageLogs: usageLogsRows,
+      plans: plansCatalog,
+      operations: operationsArchive,
+      knownUsers,
+      enterpriseUsers,
+      credentialBindings,
+    },
     get resolveOverride() {
       return resolveOverride;
     },
@@ -619,6 +784,10 @@ export function seedSubscription(
     reservedAmount: overrides.reservedAmount ?? '0',
     status: overrides.status ?? 0,
     endAt: overrides.endAt ?? new Date(Date.now() + 86_400_000),
+    planId: overrides.planId ?? 1,
+    quantity: overrides.quantity ?? 1,
+    price: overrides.price ?? '10',
+    startAt: overrides.startAt ?? new Date(),
   });
   return id;
 }

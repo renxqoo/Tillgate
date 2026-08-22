@@ -37,6 +37,13 @@ const EXPECTED: Record<string, string> = {
   subscription_required: 'quota_exhausted',
   subscription_quota_exhausted: 'quota_exhausted',
   settlement_backlog: 'unavailable',
+  plan_not_found: 'not_found',
+  plan_disabled: 'conflict',
+  plan_not_purchasable: 'invalid_input',
+  not_a_pack: 'invalid_input',
+  user_not_found: 'not_found',
+  subscription_state: 'conflict',
+  subscription_rule: 'invalid_input',
 };
 
 describe('billing 错误目录', () => {

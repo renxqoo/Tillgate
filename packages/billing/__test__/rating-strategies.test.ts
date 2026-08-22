@@ -65,6 +65,15 @@ describe('measurement（层 1 计量维度）', () => {
   it('未知单位按次兜底', () => {
     expect(measurementOf('byte').unitsOf({})).toBe(1);
   });
+
+  it('second：audioSeconds 非法回退 duration；响应缺 data 时 image 用请求 n', () => {
+    const second = measurementOf('second');
+    expect(second.unitsUpperBoundOf({ audioSeconds: -3, duration: 8 })).toBe(8);
+    expect(second.unitsUpperBoundOf({ audioSeconds: 'x', duration: 7.6 })).toBe(8);
+    const image = measurementOf('image');
+    expect(image.unitsOf({ n: 4 }, {})).toBe(4);
+    expect(image.unitsOf({ n: 4 }, { data: 'not-array' })).toBe(4);
+  });
 });
 
 describe('pricing-strategy（层 2 定价策略）', () => {
