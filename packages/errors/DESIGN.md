@@ -27,16 +27,16 @@
 
 ### 1.2 明确不处理（写明归属，不留白）
 
-| 不处理 | 归属 |
-|---|---|
-| HTTP status、信封形状、错误渲染出口 | `http` 包（category → 默认渲染）+ app face（override 表 + onError） |
-| 双语**选择**（Accept-Language/cookie）、i18n 超出 en/zh | face 层；本包只要求目录定义的 `message`/`zh` 存在 |
-| PG SQLSTATE 源头分类 | `db` 包（`src/pg-error.ts`），用本包根类表达结果 |
-| Redis / 进程 / 配置类环境错误的具体形状 | `runtime` 包（用 `InfrastructureError`） |
-| 厂商上游错误归一 | `ai` 包自有 `ErrorKind` 封闭词表（映射见 ADR-0001 §D7） |
-| 审计持久化、告警通道、错误计数 | `observability` / `runtime`；本包只给 `alert` 布尔默认 |
-| 全仓守卫测试（throw 点码必登记）、错误文档生成 | 各消费者迁移单元随迁（ADR-0001 §4.3） |
-| 跨请求运维状态（熔断/死凭据） | `inference/health`（`ai` `AiEvent` 订阅者） |
+| 不处理                                                  | 归属                                                                |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| HTTP status、信封形状、错误渲染出口                     | `http` 包（category → 默认渲染）+ app face（override 表 + onError） |
+| 双语**选择**（Accept-Language/cookie）、i18n 超出 en/zh | face 层；本包只要求目录定义的 `message`/`zh` 存在                   |
+| PG SQLSTATE 源头分类                                    | `db` 包（`src/pg-error.ts`），用本包根类表达结果                    |
+| Redis / 进程 / 配置类环境错误的具体形状                 | `runtime` 包（用 `InfrastructureError`）                            |
+| 厂商上游错误归一                                        | `ai` 包自有 `ErrorKind` 封闭词表（映射见 ADR-0001 §D7）             |
+| 审计持久化、告警通道、错误计数                          | `observability` / `runtime`；本包只给 `alert` 布尔默认              |
+| 全仓守卫测试（throw 点码必登记）、错误文档生成          | 各消费者迁移单元随迁（ADR-0001 §4.3）                               |
+| 跨请求运维状态（熔断/死凭据）                           | `inference/health`（`ai` `AiEvent` 订阅者）                         |
 
 ## 2. 外部契约
 
@@ -72,8 +72,8 @@ const record = normalizeError(thrown);          // ErrorRecord
 handlingOf(record);                             // { retryable, alert } —— 单点派生
 ```
 
-接口面刻意极小（结构方案 §3.1："其接口必须极小且多年稳定"）：7 个源文件、约 17 个值导出。
-类型导出与其配套；完整出口清单由 `test/unit/boundary.test.ts` 快照锁定。
+接口面刻意极小（结构方案 §3.1："其接口必须极小且多年稳定"）：7 个源文件、18 个值导出。
+类型导出与其配套；完整出口清单由 `__test__/boundary.test.ts` 快照锁定。
 
 ## 3. 词表与语义
 
@@ -94,15 +94,15 @@ handlingOf(record);                             // { retryable, alert } —— �
 
 ### 3.2 category 闭集（七项；唯一处理契约）
 
-| category | 语义 | 默认 status（http 侧，仅示意） | retryable | alert |
-|---|---|---|---|---|
-| `invalid_input` | 调用方数据问题 | 400 | ✗ | ✗ |
-| `not_found` | 目标不存在 | 404 | ✗ | ✗ |
-| `conflict` | 状态/唯一性冲突，修正后可重试 | 409 | ✗ | ✗ |
-| `forbidden` | 资格/权限/状态不允许 | 401/403 | ✗ | ✗ |
-| `quota_exhausted` | 资金/额度维度不允许（v2 增补，ADR-0001 D4） | 402 | ✗ | ✗ |
-| `rate_limited` | 限流，退避后可重试 | 429 | ✓ | ✗ |
-| `unavailable` | 依赖不可用/自我保护拒流 | 503 | ✓ | ✓ |
+| category          | 语义                                        | 默认 status（http 侧，仅示意） | retryable | alert |
+| ----------------- | ------------------------------------------- | ------------------------------ | --------- | ----- |
+| `invalid_input`   | 调用方数据问题                              | 400                            | ✗         | ✗     |
+| `not_found`       | 目标不存在                                  | 404                            | ✗         | ✗     |
+| `conflict`        | 状态/唯一性冲突，修正后可重试               | 409                            | ✗         | ✗     |
+| `forbidden`       | 资格/权限/状态不允许                        | 401/403                        | ✗         | ✗     |
+| `quota_exhausted` | 资金/额度维度不允许（v2 增补，ADR-0001 D4） | 402                            | ✗         | ✗     |
+| `rate_limited`    | 限流，退避后可重试                          | 429                            | ✓         | ✗     |
+| `unavailable`     | 依赖不可用/自我保护拒流                     | 503                            | ✓         | ✓     |
 
 - 闭集为**编译期 union + 测试双锁**；增删走 ADR（同 ai `ErrorKind` 治理）。
 - "唯一处理契约"：catch 站点与协议出口只对 category（及 nature）分派，不对错误类、
@@ -129,7 +129,7 @@ infrastructure → `{ retryable: true, alert: true }`；defect → `{ retryable:
 1. **封闭词表**：`ErrorCategory`、根保留码、ai 映射表（ADR-0001 D7）三处变更必须走 ADR。
 2. **冻结语义**：目录定义、`codes` 数组、目录对象在构造期深冻结；定义入目录后与源对象
    隔离（防御性拷贝）。传入可变对象是调用方自由，目录自身不可变。
-3. **零依赖门禁**：`dependencies`/`peerDependencies` 恒为空（`test/unit/boundary.test.ts`
+3. **零依赖门禁**：`dependencies`/`peerDependencies` 恒为空（`__test__/boundary.test.ts`
    运行时断言；仓库级边界脚本就位后并入 CI 的静态检查）。
 4. **稳定性承诺**：三性、category、记录形状按"多年稳定"设计——新增 category 是破坏性
    变更（消费方 switch 穷举被打破），必须 major 级评审；新增导出一般是安全的。

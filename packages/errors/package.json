@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "内部错误根契约：三性根类 + category 闭集 + 命名空间错误目录契约 + 规范化错误记录——零业务/协议依赖的稳定叶子（ADR-0001、DESIGN.md）",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -27,6 +28,5 @@
   },
   "engines": {
     "bun": ">=1.4.0"
-  },
-  "license": "MIT"
+  }
 }

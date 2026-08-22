@@ -330,6 +330,7 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
   let cachedTokens = 0;
   let cacheWriteTokens = 0;
   let emitUsage = false;
+  let doneSent = false;
 
   return sseToSseStream(
     upstream,
@@ -344,14 +345,16 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
         const msg = asJson(data.message) ?? {};
         model = str(msg.model) ?? model;
         id = str(msg.id) ?? id;
-        const usage = claudeUsageToUsage(msg.usage);
-        if (usage) {
-          inputTokens = usage.promptTokens;
-          cachedTokens = usage.cachedTokens;
-          cacheWriteTokens = usage.cacheCreationTokens;
-        }
-        emit(openaiFrame({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }));
-        return;
+        // message_start 的 usage 无 output_tokens——补 0 后解析（否则严格双字段判 null，input 侧永不被捕获）
+        const mu = asJson(msg.usage);
+        if (mu) {
+          const cu = claudeUsageToUsage({ ...mu, output_tokens: typeof mu.output_tokens === 'number' ? mu.output_tokens : 0 });
+          if (cu) {
+            inputTokens = cu.promptTokens;
+            cachedTokens = cu.cachedTokens;
+            cacheWriteTokens = cu.cacheCreationTokens;
+          }
+        }return;
       }
       if (data.type === 'content_block_start') {
         const idx = typeof data.index === 'number' ? data.index : 0;
@@ -419,12 +422,14 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
         return;
       }
       if (data.type === 'message_stop') {
+        doneSent = true;
         emit(openaiDone());
       }
       // error 事件：透传给规范形错误帧（relay scanner 识别 {error:...}）
       if (data.type === 'error') {
         const err = asJson(data.error) ?? {};
         emit(openaiFrame({ error: { code: str(err.type) ?? 'upstream_error', type: str(err.type), message: str(err.message) ?? 'claude stream error' } }));
+        doneSent = true;
         emit(openaiDone());
       }
     },
@@ -443,7 +448,7 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
           },
         }));
       }
-      emit(openaiDone());
+      if (!doneSent) emit(openaiDone());
     },
   );
 }

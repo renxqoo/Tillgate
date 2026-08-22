@@ -43,9 +43,17 @@ export function isUnsafeIpv6(ip: string): boolean {
     return true; // 链路本地 fe80::/10
   }
   if (lower.startsWith('ff')) return true; // 组播
-  // IPv4-mapped IPv6 (::ffff:a.b.c.d)：提取 IPv4 部分用 isUnsafeIpv4 判定（防绕过）
-  const mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mapped?.[1]) return isUnsafeIpv4(mapped[1]);
+  // IPv4-mapped IPv6：dotted 形（::ffff:127.0.0.1）与 URL 规范化的压缩 hex 形
+  // （::ffff:7f00:1）都提取 IPv4 部分判定——压缩形是 v1 绕过面（测试暴露）
+  const mappedDotted = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mappedDotted?.[1]) return isUnsafeIpv4(mappedDotted[1]);
+  const mappedHex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mappedHex) {
+    const h1 = parseInt(mappedHex[1] ?? '0', 16);
+    const h2 = parseInt(mappedHex[2] ?? '0', 16);
+    const dotted = `${h1 >> 8}.${h1 & 0xff}.${h2 >> 8}.${h2 & 0xff}`;
+    return isUnsafeIpv4(dotted);
+  }
   return false;
 }
 

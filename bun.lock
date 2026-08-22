@@ -40,6 +40,15 @@
         "vitest": "^4.1.10",
       },
     },
+    "packages/errors": {
+      "name": "@tokenlens/errors",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^22.0.0",
+        "typescript": "^5.9.0",
+        "vitest": "^4.1.10",
+      },
+    },
     "packages/runtime": {
       "name": "@tokenlens/runtime",
       "version": "0.1.0",
@@ -254,6 +263,8 @@
     "@tokenlens/ai": ["@tokenlens/ai@workspace:packages/ai"],
 
     "@tokenlens/db": ["@tokenlens/db@workspace:packages/db"],
+
+    "@tokenlens/errors": ["@tokenlens/errors@workspace:packages/errors"],
 
     "@tokenlens/runtime": ["@tokenlens/runtime@workspace:packages/runtime"],
 

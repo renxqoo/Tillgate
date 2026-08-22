@@ -54,17 +54,18 @@ function invalid(field: string, value: string): DefectError {
  * 定义命名空间错误目录（装配期调用一次；条目深冻结、与源对象隔离）。
  * 形状非法的命名空间/key/定义（JS 调用方绕过类型时）装配期即失败，不带入运行时。
  */
-export function defineErrorCatalog<const N extends string, const D extends Record<string, ErrorDefinition>>(
-  namespace: N,
-  definitions: D,
-): NamespacedErrorCatalog<N, keyof D & string> {
+export function defineErrorCatalog<
+  const N extends string,
+  const D extends Record<string, ErrorDefinition>,
+>(namespace: N, definitions: D): NamespacedErrorCatalog<N, keyof D & string> {
   if (!IDENTIFIER_PATTERN.test(namespace)) throw invalid('namespace', namespace);
   const frozen: Record<string, ErrorDefinition> = {};
   for (const [key, def] of Object.entries(definitions)) {
     if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
     if (def === null || typeof def !== 'object') throw invalid('definition', `${namespace}.${key}`);
     if (!isErrorCategory(def.category)) throw invalid('category', `${namespace}.${key}`);
-    if (typeof def.message !== 'string' || def.message === '') throw invalid('message', `${namespace}.${key}`);
+    if (typeof def.message !== 'string' || def.message === '')
+      throw invalid('message', `${namespace}.${key}`);
     if (typeof def.zh !== 'string' || def.zh === '') throw invalid('zh', `${namespace}.${key}`);
     frozen[key] = Object.freeze({ ...def });
   }
@@ -72,17 +73,22 @@ export function defineErrorCatalog<const N extends string, const D extends Recor
   const catalog: NamespacedErrorCatalog<N, keyof D & string> = {
     namespace,
     codes: Object.freeze(Object.keys(frozen).map((key) => prefix + key)),
-    code: (key) => prefix + key as `${N}.${keyof D & string}`,
-    get: (code: string) => (code.startsWith(prefix) ? frozen[code.slice(prefix.length)] : undefined),
+    code: (key) => `${namespace}.${key}`,
+    get: (code: string) =>
+      code.startsWith(prefix) ? frozen[code.slice(prefix.length)] : undefined,
     has: (code: string) => catalog.get(code) !== undefined,
     business: (key: string, context?: ErrorContext, opts?: ErrorOptions) => {
       if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
       const def = frozen[key];
       if (def === undefined) {
-        throw new DefectError(`unknown error catalog key: ${namespace}.${key}`, ROOT_ERROR_CODES.catalogKeyMissing, {
-          namespace,
-          key,
-        });
+        throw new DefectError(
+          `unknown error catalog key: ${namespace}.${key}`,
+          ROOT_ERROR_CODES.catalogKeyMissing,
+          {
+            namespace,
+            key,
+          },
+        );
       }
       return new BusinessError(def.message, prefix + key, def.category, context, opts);
     },
@@ -94,13 +100,19 @@ export function defineErrorCatalog<const N extends string, const D extends Recor
  * face 装配：合成多个（命名空间）目录为单一查询面（ADR-0001 D1）。
  * 命名空间重复在装配期失败——v1 跨包 code 冲突无门禁（E6）的结构修复。
  */
-export function composeErrorCatalogs(...catalogs: NamespacedErrorCatalog<string, string>[]): ErrorCatalog {
+export function composeErrorCatalogs(
+  ...catalogs: NamespacedErrorCatalog<string, string>[]
+): ErrorCatalog {
   const seen = new Set<string>();
   for (const catalog of catalogs) {
     if (seen.has(catalog.namespace)) {
-      throw new DefectError('duplicate error catalog namespace', ROOT_ERROR_CODES.duplicateNamespace, {
-        namespace: catalog.namespace,
-      });
+      throw new DefectError(
+        'duplicate error catalog namespace',
+        ROOT_ERROR_CODES.duplicateNamespace,
+        {
+          namespace: catalog.namespace,
+        },
+      );
     }
     seen.add(catalog.namespace);
   }

@@ -4,13 +4,7 @@
  * 调用方」的结构修复：记录只陈述事实）。
  */
 import { CATEGORY_DEFAULTS, type ErrorCategory } from './category';
-import {
-  BusinessError,
-  InfrastructureError,
-  TokenlensError,
-  type ErrorContext,
-  type ErrorNature,
-} from './nature';
+import { BusinessError, InfrastructureError, TokenlensError, type ErrorContext } from './nature';
 
 /**
  * 根命名空间保留码（ADR-0001 D6；单一真相——消费者与测试引用此处，不得另写裸字符串）。
@@ -112,7 +106,8 @@ function fromUnknown(value: unknown, depth: number): ErrorRecord {
     return {
       nature: 'defect',
       code: ROOT_ERROR_CODES.unhandled,
-      message: value.message === '' ? (value.name === '' ? 'unknown error' : value.name) : value.message,
+      message:
+        value.message === '' ? (value.name === '' ? 'unknown error' : value.name) : value.message,
       context: { name: value.name },
       cause: causeOf(value.cause, depth),
     };
