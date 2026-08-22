@@ -1,4 +1,4 @@
-# AGENT.md —— 工程规范（人类贡献者与 AI 协作共用）
+# AGENT.md —— 工程规范
 
 > 本文档是本仓库的**代码规范**：架构分层、各层写法、资金域专项纪律与质量门禁。
 > 与代码冲突时：先查本文规则是否被违反，是则修代码；规则过时则先改本文再动代码。
@@ -11,7 +11,6 @@
 
 1. **单向分层**：最终结构为 `routes → application → domain`，存在真实边界时使用
    `application → ports ← adapters → db`；
-   未迁移能力暂用 `routes → service → domain`、`service → repository → db`。两种形态都必须无环且不得在同一能力中混用。
 2. **职责位置唯一**：业务规则只住 domain（纯函数），事务只住 application（迁移前为 service），
    SQL 只住 `adapters/postgres`（迁移前为 repository），表定义只住 `db`。
 3. **零写死**：一切可变值（币种、refType、失败策略参数、开关、阈值）必须装配注入且**必填**，
@@ -43,6 +42,8 @@
     实现中发现文档有误，先改文档再改代码——文档与代码同步演进，禁止口头漂移。
 
 ---
+
+注意老项目代码仓库：/Users/wrr/work/ai-getway
 
 ## 9. 方案先行：文档工作流（所有功能实现与重构的强制前置）
 

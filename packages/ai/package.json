@@ -1,0 +1,39 @@
+{
+  "name": "@tokenlens/ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "上游协议库：透传中继 + 多协议适配 + 多模态 + 事件观察面（§3.6 数据面/观察面契约，零运维状态）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude test/real --passWithNoTests",
+    "test:watch": "bun x vitest --exclude test/real",
+    "test:real": "bun x vitest run test/real --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude test/real --coverage"
+  },
+  "dependencies": {
+    "eventsource-parser": "^3.1.0",
+    "js-tiktoken": "^1.0.21",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "license": "MIT"
+}
