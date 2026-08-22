@@ -250,6 +250,7 @@ export function geminiUpstreamToCanonicalStream(
   model?: string,
 ): ReadableStream<Uint8Array> {
   let started = false;
+  let toolCallIndex = 0;
   return sseToSseStream(
     upstream,
     (ev: SseEvent, emit) => {
@@ -276,6 +277,13 @@ export function geminiUpstreamToCanonicalStream(
         if (!part) continue;
         if (typeof part.text === 'string' && part.text.length > 0) {
           emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { content: part.text }, finish_reason: null }] }));
+        }
+        // functionCall part → tool_calls delta（v1 遗留缺口修复：Gemini 每调用完整下发，
+        // 与 OpenAI 流式增量不同——name+arguments 一次性发出，无分片续接）
+        const fc = asJson(part.functionCall);
+        if (fc !== null && typeof fc.name === 'string') {
+          emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { tool_calls: [{ index: toolCallIndex, id: `call_g${toolCallIndex}`, type: 'function', function: { name: fc.name, arguments: JSON.stringify(fc.args ?? {}) } }] }, finish_reason: null }] }));
+          toolCallIndex += 1;
         }
       }
       const finish = str(candidate?.finishReason);
