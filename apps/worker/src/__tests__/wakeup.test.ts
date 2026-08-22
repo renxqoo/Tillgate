@@ -136,12 +136,14 @@ describe('唤醒全链（真 PG LISTEN/NOTIFY）', () => {
           );
           expect(r.rows[0]?.status).toBe('settled');
         },
-        { timeout: 8_000, interval: 200 },
+        // CI 慢机（import 84s 级）全链 notify→唤醒→claim→结算可超 8s——与 9636014 慢机超时同款；
+        // 本用例单发门铃无兜底定时器，窗口不足即假阴性
+        { timeout: 30_000, interval: 200 },
       );
     } finally {
       await consumer.close();
     }
-  }, 15_000);
+  }, 45_000);
 });
 
 it('通道命名契约：service 常量为唯一真相', () => {
