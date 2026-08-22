@@ -1,0 +1,81 @@
+/**
+ * @tokenlens/control-plane 公共出口：控制面配置能力（Provider/Channel/Model/RateCard/fx/目录）。
+ * 出口面刻意极小且由 __test__/boundary.test.ts 快照锁定——只暴露 facade、用例出入参、
+ * 领域纯函数与错误目录；store/适配器/drizzle 行类型不出包（§5.3）。
+ */
+
+// ---- facade ----
+export { createControlPlane } from './control-plane';
+export type { ControlPlane, ControlPlaneEnv } from './control-plane';
+
+// ---- 调用上下文 ----
+export type { Actor, ControlContext } from './application/context';
+
+// ---- 错误目录（§11：码表封闭性由边界测试锁定）----
+export { controlPlaneErrors } from './errors';
+
+// ---- 领域纯函数与值类型 ----
+export { formatCoefficient, validateCoefficient } from './domain/rate-card/coefficient';
+export { applyBuffer, normalizeRate, normalizeBuffer, trimNumeric } from './domain/fx/fx-rates';
+export type { FxState, FxConfig } from './domain/fx/fx-rates';
+export {
+  suggestExternalName,
+  mapOpenAiCompatibleCatalog,
+  mapModelsDevCatalog,
+  isUnpriceableSentinel,
+} from './domain/catalog/catalog';
+export type {
+  CatalogItem,
+  CatalogComparison,
+  CatalogCurrency,
+  CatalogDiffState,
+} from './domain/catalog/catalog';
+export { compareCatalog, goneFromCatalog } from './domain/catalog/compare';
+export { toCny } from './domain/catalog/convert';
+export { isFreeByPrice, freePriceConsistent } from './domain/model/model-pricing';
+export { maskUpstreamKey } from './domain/channel/channel';
+export { parseVoucherDataUrl } from './domain/channel/voucher';
+export { assertOperationId, commandFingerprint } from './domain/operation';
+export type { ListQuery, ListResult, SortOrder } from './domain/list';
+export type { BillingConfig, PricingUnit, ModelPrices } from './domain/model/model';
+export { PRICING_UNITS } from './domain/model/model';
+export type { ProviderCapabilities } from './domain/provider/provider';
+
+// ---- 装配/桥接 port 契约（assembly 实现与 observability 桥消费）----
+export type { UpstreamProbe, ProbeTarget, ProbeOutcome } from './ports/upstream-probe';
+export type { SecretCipher } from './ports/secret-cipher';
+export type { CatalogSource, CatalogChannelGuard } from './ports/catalog-source';
+export type { AuditSink, AuditEntry, AuditActor } from './ports/audit-sink';
+export type { VoucherStorage } from './ports/voucher-storage';
+export type { CatalogCache, CatalogCacheEntry } from './ports/cache';
+export { createMemoryCatalogCache } from './ports/cache';
+export { createOpenRouterSource } from './adapters/model-sources/openrouter-source';
+export { modelsDevSource } from './adapters/model-sources/models-dev-source';
+
+// ---- 用例出入参（app 路由层契约）----
+export type { CreateProviderInput } from './application/providers/create-provider';
+export type { UpdateProviderInput } from './application/providers/update-provider';
+export type { RetireProviderInput } from './application/providers/retire-provider';
+export type { CreateChannelInput } from './application/channels/create-channel';
+export type { UpdateChannelInput } from './application/channels/update-channel';
+export type { RetireChannelInput } from './application/channels/retire-channel';
+export type {
+  ImportChannelsInput,
+  ImportChannelsResult,
+} from './application/channels/import-channels';
+export type { RechargeChannelInput } from './application/channels/recharge-channel';
+export type { AdjustChannelInput } from './application/channels/adjust-channel';
+export type { ListRechargesInput } from './application/channels/list-recharges';
+export type { CreateModelInput } from './application/models/create-model';
+export type { UpdateModelInput } from './application/models/update-model';
+export type { RetireModelInput } from './application/models/retire-model';
+export type { BindModelChannelsInput } from './application/models/bind-model-channels';
+export type { CreateRateCardInput } from './application/rates/create-rate-card';
+export type { UpdateRateCardInput } from './application/rates/update-rate-card';
+export type { DeleteRateCardInput } from './application/rates/delete-rate-card';
+export type { ListRateCardUsersInput } from './application/rates/list-rate-card-users';
+export type { RefreshFxInput } from './application/fx/refresh-fx';
+export type { SetFxOverrideInput } from './application/fx/set-fx-override';
+export type { ClearFxOverrideInput } from './application/fx/clear-fx-override';
+export type { SetFxBufferInput } from './application/fx/set-fx-buffer';
+export type { ImportCatalogInput } from './application/catalog/import-catalog';

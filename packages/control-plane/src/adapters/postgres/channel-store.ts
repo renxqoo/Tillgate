@@ -1,0 +1,280 @@
+/**
+ * channels 渠道 postgres 适配器（v1 channel.repo 管理面子集等价迁移）：
+ * CRUD/列表富化读 + 探针读 + 运营资金守卫原子操作（budget/recharge 族）。
+ * 热路径族（路由候选/死凭据/任务渠道/敞口守卫/成本扣减熔断）不在此——inference 波次（G1）。
+ * 管理面返回形状永不包含 apiKeyEnc（密文不出库；探针/绑定探针读除外，仅 application 解密用）。
+ */
+import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import {
+  admins,
+  channelRecharges,
+  channels,
+  modelChannels,
+  modelMappings,
+  providers,
+  usageLogs,
+} from '@tokenlens/db';
+import type {
+  ChannelStore,
+  ChannelListRow,
+  RechargeRow,
+  RechargeSortField,
+} from '../../ports/channel-store';
+import { escapeLikePattern } from './search';
+
+const CHANNEL_LIST_SORTS = {
+  id: channels.id,
+  name: channels.name,
+  status: channels.status,
+  priority: channels.priority,
+  createdAt: channels.createdAt,
+} as const;
+
+const RECHARGE_SORTS = {
+  id: channelRecharges.id,
+  amount: channelRecharges.amount,
+  createdAt: channelRecharges.createdAt,
+} as const;
+
+export const postgresChannelStore: ChannelStore = {
+  async insertChannel(db, input) {
+    const [row] = await db
+      .insert(channels)
+      .values({
+        providerId: input.providerId,
+        name: input.name,
+        apiKeyEnc: input.apiKeyEnc,
+        baseUrlOverride: input.baseUrlOverride ?? null,
+        models: input.models ?? null,
+        weight: input.weight ?? 1,
+        priority: input.priority ?? 0,
+        rpmLimit: input.rpmLimit ?? null,
+        tpmLimit: input.tpmLimit ?? null,
+        upstreamBudget: input.upstreamBudget ?? '0',
+        status: input.status ?? 0,
+      })
+      .returning({ id: channels.id, name: channels.name, providerId: channels.providerId });
+    if (!row) throw new Error('channel.insert_failed');
+    return row;
+  },
+
+  async findChannelByName(db, name) {
+    const [row] = await db
+      .select({ id: channels.id, rpmLimit: channels.rpmLimit })
+      .from(channels)
+      .where(eq(channels.name, name));
+    return row ?? null;
+  },
+
+  async updateChannel(db, input) {
+    const rows = await db
+      .update(channels)
+      .set({ ...input.patch, updatedAt: new Date() })
+      .where(eq(channels.id, input.channelId))
+      .returning({
+        id: channels.id,
+        name: channels.name,
+        status: channels.status,
+        failCount: channels.failCount,
+      });
+    return rows[0] ?? null;
+  },
+
+  async retireChannel(db, input) {
+    const rows = await db
+      .update(channels)
+      .set({ status: 1, updatedAt: new Date() })
+      .where(eq(channels.id, input.channelId))
+      .returning({ id: channels.id });
+    return rows.length > 0;
+  },
+
+  async findChannelForProbe(db, channelId) {
+    const [row] = await db
+      .select({
+        channelId: channels.id,
+        channelName: channels.name,
+        apiKeyEnc: channels.apiKeyEnc,
+        baseUrlOverride: channels.baseUrlOverride,
+        providerBaseUrl: providers.baseUrl,
+        providerProtocol: providers.protocol,
+      })
+      .from(channels)
+      .innerJoin(providers, eq(channels.providerId, providers.id))
+      .where(eq(channels.id, channelId));
+    return row ?? null;
+  },
+
+  async findChannelFunds(db, channelId) {
+    const [row] = await db
+      .select({
+        id: channels.id,
+        upstreamBudget: channels.upstreamBudget,
+        upstreamReserved: channels.upstreamReserved,
+        upstreamThreshold: channels.upstreamThreshold,
+        status: channels.status,
+      })
+      .from(channels)
+      .where(eq(channels.id, channelId));
+    return row ?? null;
+  },
+
+  async listChannels(db, query) {
+    const pattern = query.q ? escapeLikePattern(query.q) : null;
+    const where = pattern
+      ? or(ilike(channels.name, pattern), ilike(providers.name, pattern))
+      : undefined;
+    const column = CHANNEL_LIST_SORTS[query.sortBy];
+    const orderBy = [query.order === 'asc' ? asc(column) : desc(column), desc(channels.id)];
+    const [rows, countRows] = await Promise.all([
+      db
+        .select({
+          id: channels.id,
+          name: channels.name,
+          providerId: channels.providerId,
+          providerName: providers.name,
+          baseUrlOverride: channels.baseUrlOverride,
+          models: channels.models,
+          weight: channels.weight,
+          priority: channels.priority,
+          status: channels.status,
+          failCount: channels.failCount,
+          rpmLimit: channels.rpmLimit,
+          tpmLimit: channels.tpmLimit,
+          upstreamBudget: channels.upstreamBudget,
+          upstreamThreshold: channels.upstreamThreshold,
+          createdAt: channels.createdAt,
+        })
+        .from(channels)
+        .innerJoin(providers, eq(channels.providerId, providers.id))
+        .where(where)
+        .orderBy(...orderBy)
+        .limit(query.limit)
+        .offset(query.offset),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(channels)
+        .innerJoin(providers, eq(channels.providerId, providers.id))
+        .where(where),
+    ]);
+    return { rows: rows as ChannelListRow[], total: countRows[0]?.count ?? 0 };
+  },
+
+  async listBoundModelsByChannelIds(db, channelIds) {
+    if (channelIds.length === 0) return [];
+    return db
+      .select({ channelId: modelChannels.channelId, externalName: modelMappings.externalName })
+      .from(modelChannels)
+      .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
+      .where(inArray(modelChannels.channelId, [...channelIds]));
+  },
+
+  async sumUpstreamConsumedByChannelIds(db, channelIds) {
+    if (channelIds.length === 0) return new Map();
+    const rows = await db
+      .select({
+        channelId: usageLogs.channelId,
+        consumed: sql<string>`coalesce(sum(${usageLogs.upstreamCost}), 0)::numeric`,
+      })
+      .from(usageLogs)
+      .where(and(inArray(usageLogs.channelId, [...channelIds]), eq(usageLogs.status, 0)))
+      .groupBy(usageLogs.channelId);
+    return new Map(
+      rows
+        .filter((row): row is { channelId: number; consumed: string } => row.channelId != null)
+        .map((row) => [row.channelId, row.consumed]),
+    );
+  },
+
+  async rechargeBudget(db, input) {
+    const rows = await db
+      .update(channels)
+      .set({
+        upstreamBudget: sql`${channels.upstreamBudget} + ${input.amount}::numeric`,
+        // 熔断(3)自动复活为启用(0)
+        status: sql`case when ${channels.status} = 3 then 0 else ${channels.status} end`,
+        updatedAt: input.now,
+      })
+      .where(eq(channels.id, input.channelId))
+      .returning({ budget: channels.upstreamBudget });
+    if (rows.length === 0) throw new Error('channel.recharge_missed');
+    return rows[0]!.budget;
+  },
+
+  async tryAdjustBudget(db, input) {
+    const rows = await db
+      .update(channels)
+      .set({
+        upstreamBudget: sql`${channels.upstreamBudget} + ${input.amount}::numeric`,
+        updatedAt: input.now,
+      })
+      .where(
+        sql`${channels.id} = ${input.channelId}
+            and ${channels.upstreamBudget} + ${input.amount}::numeric >= 0`,
+      )
+      .returning({ budget: channels.upstreamBudget });
+    const row = rows[0];
+    return row ? { ok: true as const, budget: row.budget } : { ok: false as const };
+  },
+
+  async insertRecharge(db, values) {
+    const [row] = await db
+      .insert(channelRecharges)
+      .values(values)
+      .returning({ id: channelRecharges.id });
+    if (!row) throw new Error('channel.insert_recharge_failed');
+    return row.id;
+  },
+
+  async listRecharges(db, query) {
+    const conditions = [];
+    if (query.q) {
+      const pattern = escapeLikePattern(query.q);
+      conditions.push(
+        or(
+          ilike(channelRecharges.orderNo, pattern),
+          ilike(channelRecharges.remark, pattern),
+          ilike(channels.name, pattern),
+        )!,
+      );
+    }
+    if (query.channelId !== undefined)
+      conditions.push(eq(channelRecharges.channelId, query.channelId));
+    if (query.type !== undefined) conditions.push(eq(channelRecharges.type, query.type));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    const column = RECHARGE_SORTS[query.sortBy as RechargeSortField];
+    const orderBy = [query.order === 'asc' ? asc(column) : desc(column), desc(channelRecharges.id)];
+    const selection = {
+      id: channelRecharges.id,
+      channelId: channelRecharges.channelId,
+      channelName: channels.name,
+      type: channelRecharges.type,
+      amount: channelRecharges.amount,
+      balanceAfter: channelRecharges.balanceAfter,
+      orderNo: channelRecharges.orderNo,
+      voucher: channelRecharges.voucher,
+      remark: channelRecharges.remark,
+      adminId: channelRecharges.adminId,
+      adminEmail: admins.email,
+      adminDisplayName: admins.displayName,
+      createdAt: channelRecharges.createdAt,
+    };
+    const [rows, countRows] = await Promise.all([
+      db
+        .select(selection)
+        .from(channelRecharges)
+        .innerJoin(channels, eq(channelRecharges.channelId, channels.id))
+        .leftJoin(admins, eq(channelRecharges.adminId, admins.id))
+        .where(where)
+        .orderBy(...orderBy)
+        .limit(query.limit)
+        .offset(query.offset),
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(channelRecharges)
+        .innerJoin(channels, eq(channelRecharges.channelId, channels.id))
+        .where(where),
+    ]);
+    return { rows: rows as RechargeRow[], total: countRows[0]?.count ?? 0 };
+  },
+};
