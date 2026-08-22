@@ -60,6 +60,7 @@ packages/notifications/
 │   ├── application/context.ts    # NotifyContext（requestId+actor 锚）
 │   ├── application/enqueue.ts    # 入箱（词表门+dedupe 幂等）
 │   ├── application/dispatch-once.ts # 认领→过滤→并行投递→进度→终态（v1 算法）
+│   ├── application/deliver-to-channel.ts # 单渠道投递分派（v1 deliver 类型分支；铁律 5 拆分）
 │   ├── application/list-channels.ts / create-channel.ts / patch-channel.ts /
 │   │   remove-channel.ts / test-channel.ts
 │   ├── ports/notify-store.ts     # 渠道 CRUD + outbox 五动词（DbLike 参数型）

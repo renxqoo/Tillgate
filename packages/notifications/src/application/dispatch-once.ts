@@ -1,6 +1,6 @@
 /**
  * 单轮告警投递(v1 runNotifyDispatchOnce 算法逐语义迁移,IMPLEMENTATION §4.1):
- * 轮首取活跃渠道快照一次 → 认领一次一行(独立事务,防整批排队租约未执行先过期)→
+ * 轮首取活跃渠道快照一次 → 认领一次一行(独立事务,防整批排队租约未执行就过期)→
  * 订阅+进度过滤 → 并行投递 → 渠道进度 CAS → 全成功终态/否则退避失败。
  * 租约过期:进度/终态 CAS 返回 false 只告警不计数,行等待重领(fencing 保证不重发)。
  */
@@ -11,7 +11,7 @@ import type { EmailSender } from '../ports/email-sender';
 import type { WebhookDeliverer } from '../ports/webhook-deliverer';
 import type { SecretCipher } from '../ports/secret-cipher';
 import { selectTargetChannels, succeededChannelIds, backoffDelayMs } from '../domain/delivery';
-import { renderAlertEmail } from '../templates/alert-email';
+import { deliverToChannel } from './deliver-to-channel';
 import { systemContext, type NotifyContext } from './context';
 
 export interface DispatchConfig {
@@ -89,13 +89,21 @@ export async function dispatchOnce(
     // 同一事件的渠道并行投递:租约上界只受最慢渠道影响(v1 语义)
     const outcomes = await Promise.all(
       matched.map((channel) =>
-        deliverToChannel(deps, {
-          deliveryId: `${item.id}:${channel.id}`,
-          channelType: channel.type,
-          config: channel.config,
-          event: item.event,
-          payload: item.payload,
-        }).catch(() => false),
+        deliverToChannel(
+          {
+            cipher: deps.cipher,
+            ...(deps.emailSender !== undefined ? { emailSender: deps.emailSender } : {}),
+            webhookDeliverer: deps.webhookDeliverer,
+            emailBrand: config.emailBrand,
+          },
+          {
+            deliveryId: `${item.id}:${channel.id}`,
+            channelType: channel.type,
+            config: channel.config,
+            event: item.event,
+            payload: item.payload,
+          },
+        ).catch(() => false),
       ),
     );
 
@@ -149,48 +157,4 @@ export async function dispatchOnce(
     }
   }
   return { sent, failed };
-}
-
-/** 单渠道投递分派(v1 deliver 的类型分支):解密在 application,传输在 port。 */
-async function deliverToChannel(
-  deps: DispatchDeps,
-  input: {
-    deliveryId: string;
-    channelType: string;
-    config: Record<string, unknown>;
-    event: string;
-    payload: Record<string, unknown>;
-  },
-): Promise<boolean> {
-  if (input.channelType === 'webhook') {
-    const url = typeof input.config.url === 'string' ? input.config.url : '';
-    const secret = typeof input.config.secret === 'string' ? input.config.secret : '';
-    if (!url) return false;
-    // secret 只允许统一密文形态:缺密钥、明文存量或解密失败都 fail-closed(v1 语义)
-    if (!secret.startsWith('enc:')) return false;
-    let plaintext: string;
-    try {
-      plaintext = deps.cipher.decrypt(secret);
-    } catch {
-      return false;
-    }
-    return deps.webhookDeliverer.deliver({
-      url,
-      secret: plaintext,
-      event: input.event,
-      payload: input.payload,
-      deliveryId: input.deliveryId,
-    });
-  }
-  if (input.channelType === 'email') {
-    const recipients = Array.isArray(input.config.recipients)
-      ? (input.config.recipients as unknown[]).filter((r): r is string => typeof r === 'string')
-      : [];
-    const sender = deps.emailSender;
-    if (recipients.length === 0 || !sender) return false; // SMTP 未配置 fail-closed
-    const mail = renderAlertEmail(input.event, input.payload, deps.config.emailBrand);
-    await Promise.all(recipients.map((to) => sender.send(to, mail.subject, mail.text)));
-    return true;
-  }
-  return false;
 }
