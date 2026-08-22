@@ -1,6 +1,6 @@
 # @tokenlens/db 迁移实施文档(IMPLEMENTATION)
 
-> 状态:全量审计完成,拆分与测试计划定稿,待实施
+> 状态:已完成——三阶段落地,四门全绿;真实 PG 集成 6/6、空库迁移探针核销(§6)
 > 基线:旧仓 `ai-getway/packages/db`(v1:35 行 index + 32 schema 文件 ~2.4k 行 + 迁移 75 件 + seed 259 行,零测试)及 core/wallet/ledger-core/identity-core/repository/http 中分散的 db 基础设施
 > 设计基线见 [DESIGN.md](./DESIGN.md)(定稿);本文是施工图:审计 / 裁决 / 拆分 / 测试计划 / 实施顺序
 
@@ -49,7 +49,7 @@
 | C2 | 健康检查 `select 1` 在 health.repo / trace-receiver 内联;worker readyz 实际只查内存标志不 ping DB(与注释不符) | v2 提供 `ping(db)`;worker 差异记录在案,P5 修正 |
 | C3 | 业务状态词表无常量导出:channels status 0-4、generation_tasks status、billing_requests status(8 值)、notify event(NOTIFY_EVENTS 在 worker)等,魔法数字散布在 v1 消费方 | **不随 db 移植**(铁律 4:无消费方不写);各能力波次随消费者落词表;db 仅保留与 CHECK 约束成对的 ACCOUNT_STATUS(v1 先例) |
 | C4 | 生产库叠加 **4 条迁移链**:identity-core provision(7 表,IF-NOT-EXISTS 无版本)、ledger-core provision(1 表)、db drizzle-kit(75 件)、wallet migrate(5 件,sha256 checksum + advisory lock);root `db:migrate` 按序串 4 链;**0055 起 drizzle 迁移依赖 provision 链先建表**(CI 注释明示) | v2 原样接管 drizzle 链(含 journal 历史缺口:tag 缺 0036、idx 跳 37——迁移链物理事实);三条 provision 链收口按总纲 §9 P3「按能力迁移逐步收口,每次验证空库/存量/回滚,禁止一次改完」→ P4 能力波次;**空库迁移验证范围 = 0000-0054** |
-| C5 | `scripts/seed-dev.ts`(259 行)依赖 `@ai-gateway/core` 的 encrypt(channel apiKey 加密)与 ENCRYPTION_KEY | **暂缓移植**:runtime 包落地、encrypt 可注入时随 dev 装配波次移植(目标 seeds/);后果:新仓暂无 dev seed,本地库需手工数据 |
+| C5 | `scripts/seed-dev.ts`(259 行)依赖 `@ai-gateway/core` 的 encrypt(channel apiKey 加密)与 ENCRYPTION_KEY | **暂缓移植**:runtime 包落地、encrypt 可注入时随 dev 装配波次移植(目标 seeds/);后果:新仓暂无 dev seed,本地库需手工数据。注:runtime 的 AES-256-GCM cipher 已落地(f57f5b7,enc:v1 字节兼容),阻塞仅剩 dev 装配波次本身 |
 | C6 | `repository/context.ts` 的 Actor/RepoContext(执行元数据)与 `service/context.ts` 的 RunContext/inTx | 归能力包 application/adapters 层;v2 context.ts 仅 `DbLike` |
 | C7 | `runEffect`(提交后 best-effort 副作用)×2(ledger-core/identity-core) | 不移植:与事务无关(纯 try/catch 包装),归能力包 |
 | C8 | identity-core 的 advisoryLock 键构造器(credentialSetLockKey/challengeLockKey) | 锁原语 `advisoryLock` 进 db;**业务键名**归 identity 包 |
@@ -148,22 +148,23 @@
 
 | 阶段 | 内容 | 提交引用 |
 |---|---|---|
-| P0 | 本文档 + DESIGN.md 定稿 | `docs(db): 审计与方案 §1-§5` |
-| P1 | schema 32 文件(3 处微修)+ 迁移链原样 + drizzle.config + package.json/tsconfig/vitest 接线 + migrations/schema 单测 | `feat(db): P1 … IMPLEMENTATION.md §5 P1` |
-| P2 | client/context/pg-error/transaction 四件 + 单测(B3 回归用例) | `feat(db): P2 …` |
-| P3 | real 集成测试 + 行为核销 + 状态推进「已完成」 | `feat(db): P3 …` |
+| P0 | 本文档 + DESIGN.md 定稿 | `d6f8575` ✅ |
+| P1 | schema 32 文件(3 处微修)+ 迁移链原样 + drizzle.config + package.json/tsconfig/vitest 接线 + migrations/schema 单测 | `4529f53` ✅(schema/迁移文件本体因并行会话的整树提交先期入库,内容与本文裁决一致,差异为零) |
+| P2 | client/context/pg-error/transaction 四件 + 单测(B3 回归用例) | `710a9ad` ✅ |
+| P3 | real 集成测试 + 行为核销 + 状态推进「已完成」 | 本次提交 ✅ |
 
 ## 6. 验收清单(全部满足才算完成)
 
-- [ ] 四门全绿(typecheck / lint / test / build);
-- [ ] 表定义与 v1 逐字一致(微修改清单:B1 payments FK 本地化、B4 词表收敛——之外零 diff,以对照脚本/评审核对);
-- [ ] 迁移链 75 件 + journal 原样,一致性测试绿;
-- [ ] db 零内部依赖(package.json 无 @tokenlens/*,src 无跨包 import,schema.test 断言);
-- [ ] createDb/runTx 无隐藏默认(参数全必填);
-- [ ] B3 回归用例绿(深度 4 的 23505 检出);
-- [ ] runTx 注入 {5,15,20} 时重试语义与 v1 三拷贝逐字等价(退避公式、尝试上限、仅瞬态触发);
-- [ ] real PG 用例绿(本地 PG 可用时;否则 skip 并在 CI 待办中记录);
-- [ ] 不移植清单(C1-C8)各有归属标注,无孤儿。
+- [x] 四门全绿(typecheck / lint 0 错 / test 39 单测 + 6 real / build 双入口产物);
+- [x] 表定义与 v1 逐字一致(微修改仅 B1/B4 三处;接管时与旧仓 diff 为零,P1 提交记录);
+- [x] 迁移链 75 件 + journal 原样,一致性测试绿(journal↔SQL 1:1 双向、编号单调、缺口 0036/idx37 断言在案);
+- [x] db 零内部依赖(package.json 无 @tokenlens/*;schema.test 扫全 src import 行断言);
+- [x] createDb/runTx 无隐藏默认(参数全必填;client.test 含 @ts-expect-error 类型面证明);
+- [x] B3 回归用例绿(深度 4/7 的 23505 均检出);
+- [x] runTx 注入 {5,15,20} 时重试语义与 v1 三拷贝等价(退避公式 fake-timers 验证累计 25/65/135ms、尝试上限、仅瞬态触发、钩子吞错);
+- [x] real PG 用例绿(本地 PG,DATABASE_URL 显式注入):SAVEPOINT 内层回滚外层提交、真实 23505 检出含约束名 `kv_pkey`、advisoryLock 同事务同键重入、瞬态重试端到端、closeDb 后连接拒绝;scratch schema 结束即删;
+- [x] **空库迁移探针**(一次性手工验证,临时库已删):drizzle 编程式 migrator 在全新库上推进至 0055 失败(`identity_session_anchors` 不存在,由 identity-core provision 建)并整体回滚——与 v1 CI 注释记录的行为一致;结论:**空库升级范围 = 0000-0054**,0055+ 需 provision 链先行(C4 收口属 P4 能力波次);
+- [x] 不移植清单(C1-C8)各有归属标注,无孤儿。
 
 ## 7. 回滚方案
 
