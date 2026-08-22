@@ -39,6 +39,9 @@ export interface ExecutionDeps {
   onError?: (error: unknown, context: string) => void;
 }
 
+/** 租约属主标识（单一真相——upstream_started / lease_renewed 共用；billing 侧按 owner 认领） */
+export const LEASE_OWNER = 'inference';
+
 export interface AttemptContext {
   prepared: PreparedRequest;
   requestId: string;
@@ -107,7 +110,7 @@ export async function runCandidateLoop<T>(
         await deps.billing.signal({
           type: 'upstream_started',
           requestId,
-          leaseOwner: 'inference',
+          leaseOwner: LEASE_OWNER,
           leaseMs: deps.defaults.authorization.ttlMs,
         });
         leaseStarted = true;

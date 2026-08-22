@@ -3,6 +3,7 @@ import { buildReceipt } from '../domain/usage/receipt';
 import { usageForStream } from '../domain/usage/receipt-usage';
 import type { UpstreamStreamEvent } from '../ports/upstream';
 import {
+  LEASE_OWNER,
   dispatchFailure,
   type AttemptContext,
   type AttemptOutcome,
@@ -59,7 +60,7 @@ export function createStreamAttempt(deps: ExecutionDeps) {
           .signal({
             type: 'lease_renewed',
             requestId: ctx.requestId,
-            leaseOwner: 'inference',
+            leaseOwner: LEASE_OWNER,
             leaseMs: deps.defaults.authorization.ttlMs,
           })
           .catch((error) => deps.onError?.(error, `stream lease renew request=${ctx.requestId}`));

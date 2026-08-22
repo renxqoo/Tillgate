@@ -158,6 +158,58 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
     ]);
   });
 
+  it('chatStream 晚订阅重放：ai per-call 终态缓冲经端口转发（迟到的决定性监听不丢终态）', async () => {
+    // ai 事件面契约：终态事件对晚订阅者重放——适配器 onEvent 必须原样透传该语义。
+    // fake 实现同款缓冲（订阅前暂存、首订阅重放、之后直通）。
+    const buffer: AiEvent[] = [];
+    const subs = new Set<(e: AiEvent) => void>();
+    const { ai } = fakeAi({
+      chatStream: () => ({
+        stream: new ReadableStream<Uint8Array>(),
+        events: {
+          subscribe: (cb: (e: AiEvent) => void) => {
+            subs.add(cb);
+            for (const e of buffer.splice(0)) cb(e);
+          },
+        },
+      }),
+    });
+    const emit = (e: AiEvent) => {
+      if (subs.size === 0) {
+        buffer.push(e);
+        return;
+      }
+      for (const cb of Array.from(subs)) cb(e);
+    };
+    const port = createUpstreamAi({ ai, decrypt: (s) => s });
+    const result = await port.chatStream(channel(), req);
+    // 先终态（无订阅者→缓冲），后订阅
+    emit({
+      type: 'success',
+      requestId: 'r',
+      channelKey: 'k',
+      durationMs: 7,
+      usage: { inputTokens: 2, cachedInputTokens: 0, outputTokens: 3, estimated: false, raw: null },
+    });
+    const received: UpstreamStreamEvent[] = [];
+    result.onEvent((e) => received.push(e));
+    emit({ type: 'success', requestId: 'r', channelKey: 'k', durationMs: 8 });
+    expect(received).toEqual([
+      {
+        type: 'success',
+        usage: {
+          inputTokens: 2,
+          cachedInputTokens: 0,
+          outputTokens: 3,
+          estimated: false,
+          raw: null,
+        },
+        durationMs: 7,
+      }, // 重放
+      { type: 'success', durationMs: 8 }, // 后续
+    ]);
+  });
+
   it('submitTask：endpoint=kind 提交，parse task_submitted → upstreamTaskId', async () => {
     const { ai, seen } = fakeAi({});
     const port = createUpstreamAi({ ai, decrypt: (s) => s });

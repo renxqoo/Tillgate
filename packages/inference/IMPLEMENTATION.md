@@ -25,6 +25,9 @@
 - **B9 上下文溢出告警订阅**（v1 overflow-alert）：归 observability/control-plane 波次，本包不迁。
 - **B10 usage 事件/`success.model` 声明未发**（v2 ai 现状）：消费面只用终态 `success`/`failed`/`first_chunk`
   三个已保证事件，不依赖未实现事件。
+- **B11（v2 实施期缺陷）health 双状态机同键踩踏**：初版 `channel-health` 将熔断与死凭据指向同一存储键，
+  两种状态 JSON 形状互相覆盖——v1 以双前缀规避的坑在重写中复现；修复 = 机器级键前缀
+  `breaker:`/`credential:`（结构约束），回归用例 `channel-health.test.ts`「B11 回归」按铁律 16 命名。
 
 ## 2. 逐模块裁决表（旧 → 新）
 
@@ -144,9 +147,10 @@ ports 增加 `generation`（垂直用例的持久化接缝，结构图清单非�
   本机 Redis 实跑 3/3 过，含并发 CAS 单赢家原子性）。
 - 覆盖率：statements 97.52 / branches 90.77 / functions 96.63 / lines 97.65
   （阈值 90/85/90/90，未调阈值）。
-- 实施期缺陷（边界用例抓出，铁律 16 实证）：channel-health 初版将熔断与死凭据两台
+- 实施期缺陷 B11（边界用例抓出，铁律 16 实证）：channel-health 初版将熔断与死凭据两台
   状态机指向**同一存储键**，两种状态形状互相踩踏（v1 以双前缀规避的坑在重写中复现）；
-  修复 = 机器级键前缀 `breaker:` / `credential:`（结构约束，不依赖装配侧给不同 prefix）。
+  修复 = 机器级键前缀 `breaker:` / `credential:`（结构约束，不依赖装配侧给不同 prefix），
+  已补按编号命名的回归用例（channel-health.test.ts「B11 回归」）。
 - 与老仓的对照核销清单见 MIGRATION.md §4（17 项全勾）。
 - bun.lock 混有并行会话（accounts/billing/control-plane）条目，未随本次提交（铁律 15），
   待协调收口。

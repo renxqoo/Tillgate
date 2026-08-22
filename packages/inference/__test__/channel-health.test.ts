@@ -23,6 +23,32 @@ describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 i
     );
   });
 
+  it('B11 回归（v2 实施期缺陷）：同渠道键下熔断与死凭据状态互不踩踏', async () => {
+    // 初版两台状态机共用同一存储键，BreakerState/DeadCredentialState 两种 JSON 形状
+    // 相互覆盖（v1 以双前缀规避的坑在重写中复现）——机器级键前缀是结构性修复。
+    const store = createMemoryHealthStore();
+    const health = createChannelHealth({ store, config });
+    const { ai, emit } = fakeAi();
+    health.attach(ai);
+    // 同一渠道上：一次死凭据失败 + 一次熔断失败 → 两台状态各自独立记账
+    emit({
+      type: 'failed',
+      requestId: 'r1',
+      channelKey: 'kb',
+      error: upstreamError('invalid_api_key'),
+    });
+    emit({ type: 'failed', requestId: 'r2', channelKey: 'kb', error: upstreamError('network') });
+    await flush();
+    const breaker = await store.getState<BreakerState>('breaker:kb');
+    const credential = await store.getState<DeadCredentialState>('credential:kb');
+    expect(breaker).toMatchObject({ state: 'closed', version: 1 }); // 只有 network 计入
+    expect(breaker?.failures).toHaveLength(1);
+    expect(breaker).not.toHaveProperty('consecutiveFailures'); // 未被凭据形状覆盖
+    expect(credential).toMatchObject({ status: 'valid', version: 1 }); // 只有 401 计入
+    expect(credential?.consecutiveFailures).toBe(1);
+    expect(credential).not.toHaveProperty('failures');
+  });
+
   it('failed 事件：circuitTrip 计熔断、deadCredential 计死凭据（机制位驱动）', async () => {
     const store = createMemoryHealthStore();
     const health = createChannelHealth({ store, config });
