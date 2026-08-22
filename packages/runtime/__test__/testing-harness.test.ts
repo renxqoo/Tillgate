@@ -50,6 +50,6 @@ describe('connectTestRedis / disconnectTestRedis', () => {
 
   it('REDIS_URL 已配置但不可达 → 抛错（配置问题不静默 skip）', async () => {
     process.env.REDIS_URL = 'redis://127.0.0.1:1';
-    await expect(connectTestRedis(150)).rejects.toThrow('REDIS_URL 已配置但 Redis 未就绪');
+    await expect(connectTestRedis(150)).rejects.toThrow('REDIS_URL configured but Redis not ready');
   });
 });

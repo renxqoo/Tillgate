@@ -36,7 +36,7 @@ export async function connectTestRedis(timeoutMs = 3_000): Promise<Redis | null>
   const redis = new Redis(url, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
   if (!(await waitForRedisReady(redis, timeoutMs))) {
     redis.disconnect();
-    throw new Error(`REDIS_URL 已配置但 Redis 未就绪：${url}`);
+    throw new Error(`REDIS_URL configured but Redis not ready: ${url}`);
   }
   return redis;
 }

@@ -39,7 +39,7 @@ describe.skipIf(url == null)('Redis 集成（真实实例）', () => {
       expect(isInfrastructureError(err), String(err)).toBe(true); // §11 身份
       expect((err as { code: string }).code).toBe('runtime.redis.unreachable');
       expect(err!.message).toContain('dead-svc');
-      expect(err!.message).toContain('Redis 启动验证失败');
+      expect(err!.message).toContain('Redis startup check failed');
       expect(err!.message).toContain('***@127.0.0.1:1'); // 脱敏后形态
       expect(err!.message).not.toContain(':pass@'); // 凭证不得泄漏
       // context 只进脱敏后的事实（凭证不得入记录）

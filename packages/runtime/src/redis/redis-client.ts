@@ -61,7 +61,7 @@ export function parseSentinels(spec: string): { host: string; port: number }[] {
       const port = Number(idx > 0 ? node.slice(idx + 1) : '26379');
       if (!host || !Number.isInteger(port) || port <= 0) {
         throw new DefectError(
-          `REDIS_SENTINELS 非法节点：${node}（期望 host:port 逗号分隔）`,
+          `invalid REDIS_SENTINELS node: ${node} (expected comma-separated host:port)`,
           'runtime.redis.sentinels_invalid',
           { node },
         );
@@ -70,7 +70,7 @@ export function parseSentinels(spec: string): { host: string; port: number }[] {
     });
   if (nodes.length === 0) {
     throw new DefectError(
-      'REDIS_SENTINELS 为空（期望 host:port 逗号分隔）',
+      'REDIS_SENTINELS is empty (expected comma-separated host:port)',
       'runtime.redis.sentinels_invalid',
     );
   }
@@ -144,8 +144,8 @@ export async function assertRedisReachable(
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new InfrastructureError(
-    `[${serviceName}] Redis 启动验证失败（${sanitizeUrl(rawUrl)}）：${describeError(lastError ?? new Error(`ping 超时（${timeoutMs}ms）`))}——` +
-      'Redis 为必配组件，拒绝以降级形态启动（检查 REDIS_URL 与 Redis 实例）',
+    `[${serviceName}] Redis startup check failed (${sanitizeUrl(rawUrl)}): ${describeError(lastError ?? new Error(`ping timeout (${timeoutMs}ms)`))} — ` +
+      'Redis is a required component, refusing to start in degraded mode (check REDIS_URL and the Redis instance)',
     'runtime.redis.unreachable',
     { serviceName, url: sanitizeUrl(rawUrl) },
     { cause: lastError ?? undefined },
