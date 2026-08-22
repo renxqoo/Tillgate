@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { Buffer } from 'node:buffer';
-import { createServer } from 'node:http';
 import { eventstreamToClaudeSse, AwsBedrockAdapter } from '../src/adapters/aws-bedrock.js';
 import { geminiUpstreamToCanonicalStream, canonicalStreamToGeminiStream, chatRequestToGemini } from '../src/protocol/gemini-chat.js';
 import { VertexAiAdapter } from '../src/adapters/vertex-ai.js';
