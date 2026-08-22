@@ -130,6 +130,16 @@ describe('依赖方向(§5 白名单:禁 http/ai/runtime/能力包/apps)', () =>
     }
     expect(offenders).toEqual([]);
   });
+
+  it('composition 子入口不被包内业务代码引用(apps assembly 专用,§5.3)', () => {
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file.endsWith('composition.ts')) continue;
+      const text = readFileSync(file, 'utf8');
+      if (/from\s+['"][^'"]*\/composition['"]/.test(text)) offenders.push(file);
+    }
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('错误目录码表封闭(== DESIGN §4)', () => {

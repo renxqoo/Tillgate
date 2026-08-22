@@ -1,6 +1,6 @@
 # observability 迁移文档(MIGRATION.md)
 
-> 状态:已核销(行为对照逐项落位于 __test__/*.test.ts;验收数字见 §6)
+> 状态:已核销(行为对照逐项落位于 `__test__/*.test.ts`;验收数字见 §6)
 > 迁移单元:可观测四件套——OTel 装配(telemetry)、链路追踪(tracing:decode/ingest/store/graph/partition)、
 > 审计存储与查询(audit)、请求日志(request-log)——共享装配与观测数据等级(best-effort 不反压)
 > 旧实现:/Users/wrr/work/ai-getway(packages/tracing + core/otel.ts + repository 审计与请求日志两法 +
@@ -117,13 +117,18 @@ requestSummary 是截断摘要(嗅探逻辑在 P5 gateway 中间件)。
 
 ## 6. 验收(全部满足才算完成)
 
-- [x] 四门全绿(typecheck OK / oxlint 0 warn 0 err / 63 单测 + 11 真 PG / build 39.18+18.79 KB)＋
+- [x] 四门全绿(typecheck OK / oxlint 0 warn 0 err / 64 单测 + 11 真 PG / build 39.18+18.79 KB;
+      根 oxfmt --check 通过;turbo 管线 filter 本包 6/6)＋
       覆盖率 lines 97.00 / branches 87.06 / functions 97.33 / statements 94.00 ≥ 90/85/90/90
       (index/composition 出口桶与 adapters/postgres 排除口径在 vitest.config 注释申报)
 - [x] §1 行为规格逐项核销(decode 9 / graph 13 / ingest 6 / queries 5+分区助手 / telemetry 17 /
-      facade 1;真 PG:store 4 含 B1/B4 回归、分区 1、audit 3、request-log 2 含月分区、facade 1)
+      facade 1 / architecture 10;真 PG:store 4 含 B1/B4 回归、分区 1、audit 3、request-log 2 含月分区、facade 1)
 - [x] B1/B4 回归用例通过;B2 补齐的 telemetry 规格全绿(17 用例,含 OTel v2 管线驱动 withAsyncSpan)
 - [x] 真 PG 集成(store/分区/审计同事务回滚与 best-effort 吞错/请求日志过滤/月分区)11/11 通过
-- [x] 架构测试锁死:根出口 20 值导出 + composition 9 值导出快照、依赖方向扫描
+- [x] 架构测试锁死(10 项):根出口 20 值导出 + composition 9 值导出快照、依赖方向扫描
       (禁 http/ai/runtime/能力包/apps;OTel 只在 telemetry;drizzle 只在 adapters;
-      db 值导入只在 adapters;adapters 只由 facade 与 composition 装配)、码表 3 项封闭
+      db 值导入只在 adapters;adapters 只由 facade 与 composition 装配;
+      composition 不被包内业务代码引用)、码表 3 项封闭
+- [x] §7.1 产物元数据合规:内部包不生成声明文件,顶层不设指向 dist/*.d.ts 的 `types` 字段
+      (仅 exports.types → src;billing/api-client/accounts 同款,与 control-plane/ai/db 的存量陈旧顶指不同——
+      那是待清偿债,不在本波扩散范围)

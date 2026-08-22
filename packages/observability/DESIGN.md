@@ -1,6 +1,6 @@
 # @tokenlens/observability 设计基线
 
-> 状态:定稿并已实施(出口面快照由 __test__/architecture.test.ts 锁定;契约演进走 ADR + 测试同步)
+> 状态:定稿并已实施(出口面快照由 `__test__/architecture.test.ts` 锁定;契约演进走 ADR + 测试同步)
 > 依据:`docs/project-structure-refactoring.md` §3.1(observability = OTel、trace、audit、request log)、§3.4(审计事实的存储/查询/保留归本包;action 语义归业务能力)、§5.1(允许依赖 errors/runtime/db;runtime 不得反向)、P4 第 5 波
 > 波次:P4.5 可观测收尾(tracing、request log、audit storage/query → observability)
 
