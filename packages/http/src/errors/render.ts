@@ -56,6 +56,18 @@ function generic(messages: { readonly en: string; readonly zh: string }, locale:
   return locale === 'zh' ? messages.zh : messages.en;
 }
 
+/** 出站信封组装（errorHandler 与协议中间件共用——信封形状单一实现，DESIGN §4.2） */
+export function errorBody(rendered: RenderedError): {
+  error: { code: string; message: string; context?: ErrorContext };
+} {
+  const error: { code: string; message: string; context?: ErrorContext } = {
+    code: rendered.code,
+    message: rendered.message,
+  };
+  if (rendered.context !== undefined) error.context = rendered.context;
+  return { error };
+}
+
 export function renderError(error: unknown, opts: RenderOptions = {}): RenderedError {
   const locale = opts.locale ?? 'en';
   const record = normalizeError(error);

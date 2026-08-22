@@ -6,10 +6,10 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { ErrorCatalog, ErrorContext } from '@tokenlens/errors';
+import type { ErrorCatalog } from '@tokenlens/errors';
 import { HttpErrors } from './catalog';
 import { localeFromContext } from './locale';
-import { renderError, type FaceOverride, type RenderedError } from './render';
+import { errorBody, renderError, type FaceOverride, type RenderedError } from './render';
 import { pgRejection } from './sqlstate';
 
 /** 最小日志接口（pino 结构兼容；http 不依赖 runtime） */
@@ -55,15 +55,10 @@ export function errorHandler(deps: ErrorHandlerDeps = {}) {
   };
 }
 
-/** 信封组装 + Retry-After（秒，向上取整）——全部出站错误走同一响应路径 */
+/** 信封组装（errorBody）+ Retry-After（秒，向上取整）——全部出站错误走同一响应路径 */
 function respond(c: Context, rendered: RenderedError, statusOverride?: number): Response {
   if (rendered.retryAfterMs !== undefined && rendered.retryAfterMs > 0) {
     c.header('Retry-After', String(Math.ceil(rendered.retryAfterMs / 1000)));
   }
-  const error: { code: string; message: string; context?: ErrorContext } = {
-    code: rendered.code,
-    message: rendered.message,
-  };
-  if (rendered.context !== undefined) error.context = rendered.context;
-  return c.json({ error }, (statusOverride ?? rendered.status) as ContentfulStatusCode);
+  return c.json(errorBody(rendered), (statusOverride ?? rendered.status) as ContentfulStatusCode);
 }

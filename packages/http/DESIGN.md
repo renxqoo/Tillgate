@@ -78,6 +78,7 @@ renderError(err, {
   catalog: APP_ERRORS,                       // face 装配的全量目录（缺省仅 HttpErrors）
   overrides: { 'identity.session_invalid': { status: 401, code: 'unauthorized' } },
 });  // → { status, code, message, context?, retryAfterMs? }
+errorBody(rendered);                          // → { error: { code, message, context? } }（信封单一形状）
 
 // ---- Hono onError：坏 JSON→400、Hono 4xx 保留、PG SQLSTATE→4xx（探测注入）、未知→500 ----
 app.onError(errorHandler({

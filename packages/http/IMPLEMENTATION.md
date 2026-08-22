@@ -1,6 +1,6 @@
 # @tokenlens/http 迁移实现文档
 
-> 状态：审计完成，拆分与测试计划定稿，实施中
+> 状态：已完成（H1-H3 全部提交，四门 + 覆盖率全绿，行为核销清单逐项打勾）
 > 基线：旧仓 `ai-getway/packages/http`（16 源文件 ~1.1k 行 + 11 测试 ~1.0k 行）+ 三个 app 的
 > `middleware/{request-id,security,protocol}.ts` 漂移拷贝（requestId ×3、安全件 ×3）
 > 目标：纯 HTTP/Hono 基础工具包（DESIGN.md §1；重构方案 §3.1/§5.1、ADR-0001/0002）
@@ -140,20 +140,20 @@
 
 ### 5.1 行为对照核销清单（H3 完成时逐项打勾）
 
-- [ ] 坏 JSON 体 → 400 `http.invalid_json`（W2 契约：客户端可预期错误不伪装 500）
-- [ ] zod 校验失败 → 400 `http.validation_failed`，context 含 `body.name`/`query.n` 前缀路径
-- [ ] Hono 4xx HTTPException（含 bodyLimit 413）→ 保留状态码 + 统一信封，不兜 500
-- [ ] PG 六码（探测注入）→ 23505 409 conflict、其余 400 invalid_input；ENOENT 不进翻译仍 500
-- [ ] 未知错误 → 500 `errors.unhandled` 通用文案 + logger.error（细节不外泄）
-- [ ] business status 三级链：override > payload_too_large 413 > category 默认表
-- [ ] infrastructure → 503 原身份码 + 通用文案；defect → 500 细节不外泄
-- [ ] retryAfterMs → Retry-After 秒头
-- [ ] Accept-Language：zh-CN/zh-TW→zh、en-US→en、fr→回落 en、q 值比较、空/缺失→en
-- [ ] 分页容错：page 0/-5/abc→1；page_size 999→100、xyz→20；字符串强转
-- [ ] listQuerySchema 组合基底 + 差异字段 extend；escapeLike 转义 % _ \
-- [ ] intParam：NaN/负数/0 → 400 `http.invalid_path_param`
-- [ ] XFF：hops=0 只信 socket；伪造首段丢弃；双层代理取右数第二跳；不足回退；进程级兜底稳定
-- [ ] requestId：服务端 UUID、不信任客户端头、响应回显
-- [ ] operationId：合法透传、冒号/超长/非法字符 400、缺失生成 UUID（T1 命名空间隔离语义保持）
-- [ ] secrets：sha256 向量、RC- 32×base32、prefix+40hex、app_+16hex、48hex、mask 8/9 字符边界
-- [ ] securityHeaders 4 头；CORS 白名单外静默放行无 CORS 头；预检 204；bodyLimit 双路径 413
+- [x] 坏 JSON 体 → 400 `http.invalid_json`（W2 契约：客户端可预期错误不伪装 500）
+- [x] zod 校验失败 → 400 `http.validation_failed`，context 含 `body.name`/`query.n` 前缀路径
+- [x] Hono 4xx HTTPException（含 bodyLimit 413）→ 保留状态码 + 统一信封，不兜 500
+- [x] PG 六码（探测注入）→ 23505 409 conflict、其余 400 invalid_input；ENOENT 不进翻译仍 500
+- [x] 未知错误 → 500 `errors.unhandled` 通用文案 + logger.error（细节不外泄）
+- [x] business status 三级链：override > payload_too_large 413 > category 默认表
+- [x] infrastructure → 503 原身份码 + 通用文案；defect → 500 细节不外泄
+- [x] retryAfterMs → Retry-After 秒头
+- [x] Accept-Language：zh-CN/zh-TW→zh、en-US→en、fr→回落 en、q 值比较、空/缺失→en
+- [x] 分页容错：page 0/-5/abc→1；page_size 999→100、xyz→20；字符串强转
+- [x] listQuerySchema 组合基底 + 差异字段 extend；escapeLike 转义 % _ \
+- [x] intParam：NaN/负数/0 → 400 `http.invalid_path_param`
+- [x] XFF：hops=0 只信 socket；伪造首段丢弃；双层代理取右数第二跳；不足回退；进程级兜底稳定
+- [x] requestId：服务端 UUID、不信任客户端头、响应回显
+- [x] operationId：合法透传、冒号/超长/非法字符 400、缺失生成 UUID（T1 命名空间隔离语义保持）
+- [x] secrets：sha256 向量、RC- 32×base32、prefix+40hex、app_+16hex、48hex、mask 8/9 字符边界
+- [x] securityHeaders 4 头；CORS 白名单外静默放行无 CORS 头；预检 204；bodyLimit 双路径 413

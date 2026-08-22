@@ -15,6 +15,7 @@ export {
 } from './errors/render';
 export { errorHandler, type ErrorHandlerDeps, type ErrorLogger } from './errors/handler';
 export { pgRejection } from './errors/sqlstate';
+export { errorBody } from './errors/render';
 
 // ---- 校验 / 参数 ----
 export { jsonBody, query } from './validation/zod-validator';
@@ -42,6 +43,29 @@ export {
 
 // ---- 幂等 ----
 export { operationId } from './idempotency/operation-id';
+
+// ---- 网络：可信代理感知的客户端 IP ----
+export {
+  trustedClientIp,
+  socketAddressFromContext,
+  clientIpFromContext,
+  type TrustedClientIpInput,
+} from './network/trusted-client-ip';
+
+// ---- 请求上下文 ----
+export { requestIdMiddleware } from './request-context/request-id';
+
+// ---- 安全件：一次性密钥 + 协议三件套 ----
+export {
+  sha256Hex,
+  generateRedeemCode,
+  generateApiKey,
+  generateClientId,
+  generateClientSecret,
+  maskKey,
+  maskUpstreamKey,
+} from './security/secrets';
+export { securityHeaders, corsPreflight, bodyParserLimit, type CorsConfig } from './security/protocol';
 
 // ---- 本地化：Accept-Language 协商内核 ----
 export {
