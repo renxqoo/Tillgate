@@ -59,40 +59,41 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 
 ### 2.1 真 bug / 缺陷清单
 
-| # | 位置 | 问题 | 级别 |
-|---|---|---|---|
-| B1 | `apps/*/shutdown.ts` | `now?: () => number` 注入参数**从未使用**（gateway 版声明、另两版没有）——死参数，随合一删除 | 死代码 |
-| B2 | `redis-client.ts` createRedisClient | 降级日志硬编码 `console.error`——使用方无法统一日志面/注入测试 spy 只能劫持 console | 可测性 |
-| B3 | `env.ts` KNOWN_WEAK_SECRETS | 测试专用密钥值（'test-jwt-secret-min-16-chars' 等 3 个）编入生产黑名单——黑名单是脆弱兜底（改一字符即绕过），真实防线只有长度+多样性两道 | 记录不改（行为保持；强度门是主防线的结论写入代码注释） |
-| B4 | `shutdown.ts` | `Math.max(1_000, graceMs)` 静默把 <1s 的宽限抬到 1s——无害防御，**保留**但注释声明（不 fail-fast 的理由：宽限下界是强退定时器正确性的前提） | 记录 |
+| #   | 位置                                | 问题                                                                                                                                                                                                                                                  | 级别                                                   |
+| --- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| B1  | `apps/*/shutdown.ts`                | `now?: () => number` 注入参数**从未使用**（gateway 版声明、另两版没有）——死参数，随合一删除                                                                                                                                                           | 死代码                                                 |
+| B2  | `redis-client.ts` createRedisClient | 降级日志硬编码 `console.error`——使用方无法统一日志面/注入测试 spy 只能劫持 console                                                                                                                                                                    | 可测性                                                 |
+| B3  | `env.ts` KNOWN_WEAK_SECRETS         | 测试专用密钥值（'test-jwt-secret-min-16-chars' 等 3 个）编入生产黑名单——黑名单是脆弱兜底（改一字符即绕过），真实防线只有长度+多样性两道                                                                                                               | 记录不改（行为保持；强度门是主防线的结论写入代码注释） |
+| B4  | `shutdown.ts`                       | `Math.max(1_000, graceMs)` 静默把 <1s 的宽限抬到 1s——无害防御，**保留**但注释声明（不 fail-fast 的理由：宽限下界是强退定时器正确性的前提）                                                                                                            | 记录                                                   |
+| B5  | `logger.ts` redact                  | v1 六条 `*.field` 通配路径**对根级日志字段从未生效**——fast-redact 的 `*` 只匹配嵌套层，`logger.info({ apiKey })` 根级用法明文输出，与「敏感字段脱敏」意图不符（v2 行为等价测试暴露）。**修复**：敏感字段清单单一来源，派生根级显式 + 嵌套通配两级路径 | 安全，R1 已修                                          |
 
 ### 2.2 结构性发现
 
-| # | 发现 | 处置 |
-|---|---|---|
-| S1 | 三个 app 的 `shutdown.ts` 逐字重复且**已漂移**（gateway 版独有 closeables/now；注释分叉）——client-api/admin-api 的附加收口无法复用 | D1 合一进 lifecycle，serviceName 参数化 |
-| S2 | `waitForRedisReady`（100ms 轮询返 bool）与 `assertRedisReachable`（200ms 轮询超时抛错）90% 相似——**不是重复，是两个角色**：前者的 8 处消费者全是测试装置，后者是 4 个 app 的生产启动路径 | 按 consumer 归位：前者进 `testing/` 子入口，后者进 `redis/`；文档写明防再合并 |
-| S3 | `redis.test.ts` 的「REDIS_URL 缺省整套跳过 + beforeAll 连接 + afterAll quit」样板在 core 与各 app 测试中重复 ×8+ | D2 提取为 `testing/` 装置 |
+| #   | 发现                                                                                                                                                                                     | 处置                                                                          |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| S1  | 三个 app 的 `shutdown.ts` 逐字重复且**已漂移**（gateway 版独有 closeables/now；注释分叉）——client-api/admin-api 的附加收口无法复用                                                       | D1 合一进 lifecycle，serviceName 参数化                                       |
+| S2  | `waitForRedisReady`（100ms 轮询返 bool）与 `assertRedisReachable`（200ms 轮询超时抛错）90% 相似——**不是重复，是两个角色**：前者的 8 处消费者全是测试装置，后者是 4 个 app 的生产启动路径 | 按 consumer 归位：前者进 `testing/` 子入口，后者进 `redis/`；文档写明防再合并 |
+| S3  | `redis.test.ts` 的「REDIS_URL 缺省整套跳过 + beforeAll 连接 + afterAll quit」样板在 core 与各 app 测试中重复 ×8+                                                                         | D2 提取为 `testing/` 装置                                                     |
 
 ### 2.3 逐文件裁决总表
 
-| 文件 | 裁决 | 去向 / 要点 |
-|---|---|---|
-| `env.ts` strictBooleanSchema / secretSchema（~33 行） | ✅ 复制 | `config/` |
-| `env.ts` loadTraceReceiverEnv / traceReceiverEnvSchema（~27 行） | 不迁移 | trace-receiver app 自有 config（app 建立时随 app 走）——app 配置不进 runtime |
-| `logger.ts`（41 行） | 复制+微修 | `logging/`；redact 补 `*.token` / `*.secret` / `*.password` 三条路径 |
-| `crypto.ts`（46 行） | 复制+微修 | `crypto/`；工厂闭包化（key 派生一次），算法/格式/错误语义逐字节不变 |
-| `otel.ts`（321 行） | 不迁移 | `observability` 包（P3 后续迁移单元）——OTel SDK、内存环形缓冲、traceparent 都是观测语义 |
-| `pg.ts`（13 行） | 不迁移 | `db` 包（pgSqlState 是 PG 基础分类，归 db 收窄职责） |
-| `redis/redis-client.ts` createRedisClient / parseSentinels / assertRedisReachable（~120 行） | 复制+微修 | `redis/`；修 B2（`log?` 注入，缺省 console.error） |
-| `redis/redis-client.ts` waitForRedisReady（~12 行） | ✅ 复制 | `testing/`（S2：纯测试消费面） |
-| `redis/script-runner.ts`（37 行） | ✅ 复制 | `redis/`（无瑕疵；NOSCRIPT 自愈语义官方规定） |
-| `redis/rate-limiter.ts`（280 行） | 不迁移 | gateway 鉴权/限流侧（`apps/gateway/http/middleware/rate-limit`）——TPM 预占/结算回填是计费衔接语义，违反「runtime 禁业务规则」 |
-| `redis/auth-guards.ts` + `auth-local-guard.ts`（296 行） | 不迁移 | 安全策略（爆破锁定阈值/降级三档）随第一个消费者（gateway 鉴权中间件 / http security）迁移；`degraded()` 的 `dim` 死参数届时一并修 |
-| `redis/ai-storages.ts`（79 行） | 不迁移 | `inference/health`（重构方案 §3.6 / P4.4 明确：熔断/死凭据跨请求状态是 inference 的 AiEvent 订阅者形态） |
-| `apps/{gateway,client-api,admin-api}/shutdown.ts`（43×3） | **重构合一** | `lifecycle/`（D1）；gateway 全集形态 + serviceName；删 B1 死参数 |
-| `apps/worker/health.ts`（59 行） | 不迁移 | worker app 自有（livez/readyz/deep 是进程部署语义） |
-| `__tests__/` 5 文件 | 见 §5 迁移矩阵 | 随模块分流 |
+| 文件                                                                                         | 裁决           | 去向 / 要点                                                                                                                                      |
+| -------------------------------------------------------------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env.ts` strictBooleanSchema / secretSchema（~33 行）                                        | ✅ 复制        | `config/`                                                                                                                                        |
+| `env.ts` loadTraceReceiverEnv / traceReceiverEnvSchema（~27 行）                             | 不迁移         | trace-receiver app 自有 config（app 建立时随 app 走）——app 配置不进 runtime                                                                      |
+| `logger.ts`（41 行）                                                                         | 复制+微修      | `logging/`；修 B5（根级 redact）；redact 补 `token` / `secret` / `password` 三类字段；新增 `stream` 注入面（pino 直写 fd 1，劫持 stdout 不可靠） |
+| `crypto.ts`（46 行）                                                                         | 复制+微修      | `crypto/`；工厂闭包化（key 派生一次），算法/格式/错误语义逐字节不变                                                                              |
+| `otel.ts`（321 行）                                                                          | 不迁移         | `observability` 包（P3 后续迁移单元）——OTel SDK、内存环形缓冲、traceparent 都是观测语义                                                          |
+| `pg.ts`（13 行）                                                                             | 不迁移         | `db` 包（pgSqlState 是 PG 基础分类，归 db 收窄职责）                                                                                             |
+| `redis/redis-client.ts` createRedisClient / parseSentinels / assertRedisReachable（~120 行） | 复制+微修      | `redis/`；修 B2（`log?` 注入，缺省 console.error）                                                                                               |
+| `redis/redis-client.ts` waitForRedisReady（~12 行）                                          | ✅ 复制        | `testing/`（S2：纯测试消费面）                                                                                                                   |
+| `redis/script-runner.ts`（37 行）                                                            | ✅ 复制        | `redis/`（无瑕疵；NOSCRIPT 自愈语义官方规定）                                                                                                    |
+| `redis/rate-limiter.ts`（280 行）                                                            | 不迁移         | gateway 鉴权/限流侧（`apps/gateway/http/middleware/rate-limit`）——TPM 预占/结算回填是计费衔接语义，违反「runtime 禁业务规则」                    |
+| `redis/auth-guards.ts` + `auth-local-guard.ts`（296 行）                                     | 不迁移         | 安全策略（爆破锁定阈值/降级三档）随第一个消费者（gateway 鉴权中间件 / http security）迁移；`degraded()` 的 `dim` 死参数届时一并修                |
+| `redis/ai-storages.ts`（79 行）                                                              | 不迁移         | `inference/health`（重构方案 §3.6 / P4.4 明确：熔断/死凭据跨请求状态是 inference 的 AiEvent 订阅者形态）                                         |
+| `apps/{gateway,client-api,admin-api}/shutdown.ts`（43×3）                                    | **重构合一**   | `lifecycle/`（D1）；gateway 全集形态 + serviceName；删 B1 死参数                                                                                 |
+| `apps/worker/health.ts`（59 行）                                                             | 不迁移         | worker app 自有（livez/readyz/deep 是进程部署语义）                                                                                              |
+| `__tests__/` 5 文件                                                                          | 见 §5 迁移矩阵 | 随模块分流                                                                                                                                       |
 
 ### 2.4 消费者面（迁移后谁用 runtime）
 
@@ -155,7 +156,7 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 
 - [ ] secretSchema：弱值/短/低多样性三道门拒绝行为与 v1 逐条一致
 - [ ] strictBooleanSchema：'true'/'false'/boolean 三形解析与 v1 一致
-- [ ] createLogger：redact 六条 v1 路径全保留 + 新增三条
+- [ ] createLogger：redact 根级 + 嵌套（`*`）+ authorization 头三面命中；v1 六字段全保留 + 新增 token/secret/password
 - [ ] createCipher：enc:v1 格式逐字节一致；v1 密钥可解 v2 密文、v2 密钥可解 v1 落库密文（同密钥往返）
 - [ ] createRedisClient：maxRetriesPerRequest=1 / enableOfflineQueue=false / 错误监听去重日志（30s）
 - [ ] parseSentinels：IPv6 lastIndexOf 切分语义
