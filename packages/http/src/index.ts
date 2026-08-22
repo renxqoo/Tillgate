@@ -56,15 +56,8 @@ export {
 export { requestIdMiddleware } from './request-context/request-id';
 
 // ---- 安全件：一次性密钥 + 协议三件套 ----
-export {
-  sha256Hex,
-  generateRedeemCode,
-  generateApiKey,
-  generateClientId,
-  generateClientSecret,
-  maskKey,
-  maskUpstreamKey,
-} from './security/secrets';
+// api-key/app 凭证生成器已随消费者迁入 @tokenlens/accounts(C5/D3)
+export { generateRedeemCode, maskUpstreamKey } from './security/secrets';
 export { securityHeaders, corsPreflight, bodyParserLimit, type CorsConfig } from './security/protocol';
 
 // ---- 本地化：Accept-Language 协商内核 ----
