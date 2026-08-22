@@ -1,0 +1,38 @@
+{
+  "name": "@tokenlens/http",
+  "version": "0.1.0",
+  "private": true,
+  "description": "纯 HTTP/Hono 基础工具：错误渲染出口（@tokenlens/errors 第一消费者）、校验、分页、可信网络提取、请求上下文、幂等键、安全件——不拥有 wire schema、零 DB/业务依赖（DESIGN.md、ADR-0001/0002）",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --passWithNoTests",
+    "test:watch": "bun x vitest",
+    "test:coverage": "bun x vitest run --coverage"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@tokenlens/errors": "workspace:*",
+    "hono": "^4.13.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "license": "MIT"
+}
