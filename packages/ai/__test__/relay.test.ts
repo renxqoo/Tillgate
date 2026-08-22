@@ -4,20 +4,6 @@ import type { RelayStreamEvent } from '../src/transport/relay-stream.js';
 
 const enc = new TextEncoder();
 const b = (t: string) => enc.encode(t);
-  const stream = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      while (queue.length > 0 && queue[0] === 'pause') {
-        await new Promise<void>((r) => { pullResolve = r; });
-        pullResolve = null;
-      }
-      const next = queue.shift();
-      if (next === undefined) { controller.close(); return; }
-      controller.enqueue(next as Uint8Array);
-    },
-  });
-  void paused;
-  return { stream, release };
-};
 
 describe('relay-stream：守护与终止（数据面热路径）', () => {
   it('正常完成：done 事件带 usage/doneSentinel/bytesRelayed（不含合成帧）', async () => {
