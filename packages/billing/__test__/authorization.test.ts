@@ -23,6 +23,7 @@ function auth(overrides: Partial<AuthorizationSnapshot> = {}): AuthorizationSnap
     amount: '5',
     status: 'active',
     settledAmount: null,
+    authorizeFingerprint: null,
     expiresAt: future,
     ...overrides,
   };

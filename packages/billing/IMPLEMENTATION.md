@@ -1,6 +1,6 @@
 # @tokenlens/billing 施工图（IMPLEMENTATION）
 
-> 状态：实施中（U0 已核销；U1a 已核销，U1b 待续——见 MIGRATION-U1.md）
+> 状态：实施中（U0、U1 已核销；U2 待启动——见 MIGRATION-U1.md）
 > 设计基线：[DESIGN.md](./DESIGN.md)；合并裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)
 > 旧仓：`/Users/wrr/work/ai-getway`（下称旧仓；审计时点 2026-08-23，行号以当日 HEAD 为准）
 
@@ -37,13 +37,16 @@
 | B6  | `ReservationError` 双类无继承关系（`extends WalletError` vs `extends Error`），跨包 instanceof 永不匹配；wallet 版全仓零消费                                                                                        | `wallet/src/errors.ts:239-245` vs `domain/src/rating/pricing.ts:115,133-139`                                                         | 实测确认                                                 | U2（目录统一，废除双类）                                 |
 | B7  | 引擎 transfer 内部科目出账错误文案带 `user 0`，误导定位                                                                                                                                                             | `wallet/src/transfer.ts:74`（引擎侧；活路径对照待审计）                                                                              | 实测确认（引擎）/ 待审计（活路径）                       | 随 D9 不移植；U1 实现时错误 context 不携带误导用户号     |
 
-### 1.3 裁决/死码登记（B8–B10；不修，登记归属）
+### 1.3 裁决/死码/迁移中新发现登记（B8–B13）
 
 | #   | 事项                                                                                                 | 裁决                                                                                                                                |
 | --- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | B8  | `reconcile_discrepancies` 表零写入方（worker 对账实际写 `notify_outbox`），表注释与实现脱节          | 表已随 db 链存在于新仓（DDL 不动）；billing 只读核验不写该表；是否补写入或删表在 apps/worker 迁移单元（P5）裁决                     |
 | B9  | 引擎分片能力（0–255）在活路径钉死 shard 0（`repository/wallet.repo.ts:98-116`）                      | 活路径语义唯一：shard 恒 0；`sharding.ts` 不移植；唯一键 `(code,currency,shard)` 保留（DDL 冻结），实现注释固化「分片保留位未启用」 |
 | B10 | 计费授权重放对终态单（released/settlement_pending）抛 409——有意防重放还是缺陷需结合 gateway 重试策略 | 待审计：apps/gateway 迁移单元（P5）对照 pipeline 重试层后裁决；U2 迁移时先保留现语义并测试锁死                                      |
+| B11 | 「按 id 定序锁定防死锁」在引擎与活路径均无显式 ORDER BY——定序实际依赖 PK 索引扫描顺序的实现细节（U1b 复读发现） | 已修：adapter `lockAccounts` 显式 `ORDER BY id`（MIGRATION-U1 §4）；死锁竞速测试通过 |
+| B12 | refund 重放回执返回带符号腿金额（`'-2'`），与首笔正号命令金额（`'2'）不一致——replayLegged 对 credit 恰好无恙、refund 暴露（U1b 契约测试实测发现；B5 同族） | 已修：replayLegged 回执改回命令金额（MIGRATION-U1 §4）；内存与真 PG 回归各一 |
+| B13 | 旧活路径 release 经 lockActiveAccounts 对冻结账户直接拒绝 → 风控冻结后 in_flight 永久占用；引擎版刻意容忍（释放预占不动资金）（U1b 契约测试实测发现） | 已修：release 改裸锁容忍冻结（settle 保持拒绝——引擎 security 语义）；真 PG 回归一 |
 
 ### 1.4 重复代码登记（D#）
 
@@ -117,15 +120,15 @@ settle#over`（允许负余额）——活路径独有语义，引擎版无此�
 
 ## 5. 实施顺序（每单元独立提交 + 四门全绿 + 可独立回滚）
 
-| 单元 | 内容                                                                                                                                                        | 前置     | 状态   |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ |
-| U0   | 包骨架 + `domain/money`（D2 收敛）+ `domain/fingerprint`（D1/B4 收敛）+ 错误目录初始条目                                                                    | ADR-0003 | 实施中 |
-| U1   | 钱包垂直：domain/wallet 定律 + application/wallet 动词 + adapters/postgres + 真实 PG 契约/并发/幂等测试（修 B1；锁死 B5 重放规范化）                        | U0       | 待办   |
-| U2   | 计价与授权链：domain/{rating,billing} + application/billing（authorize/signal/admission/reserve-channel + funding 瀑布 + operations 幂等壳）（修 B2/B3/B6） | U1       | 实施中（U1a 已核销：56 用例/96.47-95.65-100-96.92）   |
-| U3   | 结算与恢复：application/settlement（claim/settle/process/recover/usage-projection）+ 对账核验迁入（D9 例外）                                                | U2       | 待办   |
-| U4   | 订阅：domain/subscription + application/subscriptions                                                                                                       | U2       | 待办   |
-| U5   | 支付与兑换：application/{payments,redemption} + ports/payment + adapters/{stripe,epay}                                                                      | U4       | 待办   |
-| 收口 | facade `createBilling` 全量冻结 + `./wallet`、`./settlement` 子入口 + README                                                                                | U5       | 待办   |
+| 单元 | 内容                                                                                                                                                        | 前置     | 状态                                                |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------- |
+| U0   | 包骨架 + `domain/money`（D2 收敛）+ `domain/fingerprint`（D1/B4 收敛）+ 错误目录初始条目                                                                    | ADR-0003 | 实施中                                              |
+| U1   | 钱包垂直：domain/wallet 定律 + application/wallet 动词 + adapters/postgres + 真实 PG 契约/并发/幂等测试（修 B1；锁死 B5 重放规范化）                        | U0       | 待办                                                |
+| U2   | 计价与授权链：domain/{rating,billing} + application/billing（authorize/signal/admission/reserve-channel + funding 瀑布 + operations 幂等壳）（修 B2/B3/B6） | U1       | 实施中（U1a 已核销：56 用例/96.47-95.65-100-96.92） |
+| U3   | 结算与恢复：application/settlement（claim/settle/process/recover/usage-projection）+ 对账核验迁入（D9 例外）                                                | U2       | 待办                                                |
+| U4   | 订阅：domain/subscription + application/subscriptions                                                                                                       | U2       | 待办                                                |
+| U5   | 支付与兑换：application/{payments,redemption} + ports/payment + adapters/{stripe,epay}                                                                      | U4       | 待办                                                |
+| 收口 | facade `createBilling` 全量冻结 + `./wallet`、`./settlement` 子入口 + README                                                                                | U5       | 待办                                                |
 
 U0–U5 全部核销后：旧仓对应模块整包删除清单开 issue（铁律 8）等维护者确认。
 

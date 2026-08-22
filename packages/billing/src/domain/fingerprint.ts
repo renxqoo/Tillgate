@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { DefectError } from '@tokenlens/errors';
+import { BillingErrors } from './errors.js';
 
 /** canonical 序列化最大长度（1MB）——超限拒绝（防指纹输入洪水） */
 const MAX_CANONICAL_LENGTH = 1_048_576;
@@ -133,4 +134,18 @@ export function commandFingerprint(
     throw defect("payload key 'kind' is reserved for the idempotency domain axis");
   }
   return fingerprintOf({ kind, ...payload });
+}
+
+/**
+ * 重放指纹比对：存储指纹与当前命令指纹不一致 = 同幂等键不同命令 → 409 拒绝，
+ * 绝不静默复用首笔结果。stored 为 null 仅兼容引入指纹前的历史行（直接放行）。
+ */
+export function assertCommandFingerprint(
+  stored: string | null,
+  expected: string,
+  ref: { refType: string; refId: string; kind: string },
+): void {
+  if (stored !== null && stored !== expected) {
+    throw BillingErrors.business('idempotency_conflict', { ...ref });
+  }
 }

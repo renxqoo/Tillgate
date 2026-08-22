@@ -15,6 +15,10 @@ const EXPECTED: Record<string, string> = {
   credit_limit_conflict: 'conflict',
   authorization_not_active: 'conflict',
   settle_exceeds_hold: 'invalid_input',
+  account_frozen: 'forbidden',
+  ref_key_conflict: 'conflict',
+  idempotency_conflict: 'conflict',
+  authorization_not_found: 'not_found',
 };
 
 describe('billing 错误目录', () => {

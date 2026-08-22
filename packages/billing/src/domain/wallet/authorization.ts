@@ -16,6 +16,8 @@ export interface AuthorizationSnapshot {
   amount: string;
   status: string;
   settledAmount: string | null;
+  /** authorize 原命令指纹；NULL 仅兼容引入指纹前的历史冻结单 */
+  authorizeFingerprint: string | null;
   expiresAt: Date | null;
 }
 
