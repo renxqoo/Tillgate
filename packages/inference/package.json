@@ -1,0 +1,41 @@
+{
+  "name": "@tokenlens/inference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "推理用例：候选循环、路由调度、计费衔接与故障转移；渠道熔断/死凭据健康状态（AiEvent 订阅者，§3.6；单向依赖 @tokenlens/ai）",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+  },
+  "dependencies": {
+    "@tokenlens/ai": "workspace:*",
+    "@tokenlens/errors": "workspace:*",
+    "ioredis": "^5.8.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tokenlens/runtime": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

@@ -1,0 +1,96 @@
+import type { Ai, AiEvent, ChannelDesc } from '@tokenlens/ai';
+import type { GenerationTaskKind } from '../domain/generation';
+import type { ChannelCandidate } from '../domain/model/types';
+import type {
+  UpstreamCallRequest,
+  UpstreamPort,
+  UpstreamStreamEvent,
+  UpstreamStreamResult,
+  UpstreamTaskSubmitResult,
+} from '../ports/upstream';
+
+/**
+ * UpstreamPort 生产适配器（封装 @tokenlens/ai——渠道快照 + 凭据注入）：
+ *   - ChannelDesc 组装：baseUrl（目录已解析 override）/ protocol / vendor，
+ *     apiKey = 注入的 decrypt(apiKeyEnc)（明文不落盘、不出调用栈）；
+ *   - 模型名替换：CallOptions.model = realModel（对外名 → 真实名在此完成，
+ *     并回写 body/form——ai 的机制）；
+ *   - 结果零包装：ChatResult/UpstreamError 直接透传（单一形态）；
+ *   - 流事件映射：ai 事件面 → 端口三类事件（first_chunk/failed/success）。
+ */
+/** 调用选项映射（模块级纯函数——不捕获闭包） */
+const callOpts = (req: UpstreamCallRequest) => ({
+  requestId: req.requestId,
+  model: req.realModel,
+  endpoint: req.endpoint,
+  deadlineMs: req.deadlineMs,
+  ...(req.signal != null ? { signal: req.signal } : {}),
+});
+
+/** ai 事件 → 端口三类事件的映射（模块级纯函数） */
+const toStreamEvent = (e: AiEvent, cb: (event: UpstreamStreamEvent) => void): void => {
+  switch (e.type) {
+    case 'first_chunk':
+      cb({ type: 'first_chunk', atMs: e.atMs });
+      break;
+    case 'failed':
+      cb({ type: 'failed', error: e.error });
+      break;
+    case 'success':
+      cb({
+        type: 'success',
+        ...(e.usage !== undefined ? { usage: e.usage } : {}),
+        ...(e.terminated !== undefined ? { terminated: e.terminated } : {}),
+        ...(e.bytesRelayed !== undefined ? { bytesRelayed: e.bytesRelayed } : {}),
+        ...(e.outputFeatures !== undefined ? { outputFeatures: e.outputFeatures } : {}),
+        durationMs: e.durationMs,
+      });
+      break;
+    default:
+      break; // attempt_start/stream_error/aborted 等不进端口面
+  }
+};
+
+export function createUpstreamAi(env: { ai: Ai; decrypt: (enc: string) => string }): UpstreamPort {
+  const descOf = (candidate: ChannelCandidate): ChannelDesc => ({
+    baseUrl: candidate.baseUrl,
+    apiKey: env.decrypt(candidate.apiKeyEnc),
+    protocol: candidate.protocol,
+    ...(candidate.vendor != null ? { vendor: candidate.vendor } : {}),
+  });
+
+  return {
+    async chat(candidate, request) {
+      return await env.ai.chat(descOf(candidate), request.body, callOpts(request));
+    },
+
+    async chatStream(candidate, request): Promise<UpstreamStreamResult> {
+      const result = await env.ai.chatStream(descOf(candidate), request.body, callOpts(request));
+      return {
+        stream: result.stream,
+        onEvent: (cb) => {
+          result.events.subscribe((e) => toStreamEvent(e, cb));
+        },
+      };
+    },
+
+    async submitTask(
+      candidate: ChannelCandidate,
+      kind: GenerationTaskKind,
+      request: UpstreamCallRequest,
+    ): Promise<UpstreamTaskSubmitResult> {
+      const desc = descOf(candidate);
+      const result = await env.ai.chat(desc, request.body, {
+        ...callOpts(request),
+        endpoint: kind,
+      });
+      if (!result.ok) return { ok: false, error: result.error };
+      const parsed = env.ai.tasks.parse(desc, kind, result.body);
+      if (parsed.kind === 'error') return { ok: false, error: parsed.error };
+      return {
+        ok: true,
+        upstreamTaskId: parsed.kind === 'task_submitted' ? parsed.taskId : null,
+      };
+    },
+  };
+}
