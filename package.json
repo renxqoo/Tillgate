@@ -1,0 +1,32 @@
+{
+  "name": "tokenlens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TokenLens v2 —— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪。目标结构与迁移纪律见 docs/project-structure-refactoring.md",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bunx turbo build",
+    "format": "bun x oxfmt --write .",
+    "format:check": "bun x oxfmt --check .",
+    "lint": "bunx turbo lint",
+    "test": "bunx turbo test --concurrency=1",
+    "typecheck": "bunx turbo typecheck"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.62.0",
+    "oxlint": "^1.77.0",
+    "turbo": "^2.10.8",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "nanoid": "3.3.18"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "packageManager": "bun@1.4.0",
+  "license": "MIT"
+}

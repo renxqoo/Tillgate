@@ -1,0 +1,39 @@
+# deps
+node_modules/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# next
+.next/
+out/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+logs/
+
+# docker
+docker/data/
+
+# redis 持久化数据（运行时产物，勿入库）
+*.rdb
+appendonlydir/
+*.aof
+
+# misc
+.DS_Store
+coverage/
+.turbo/
+
+# agent 工具产物
+.zcode/
+
+# 机器生成（generated/ 按文档约定决定是否入库；产物目录本身不受 git 追踪时取消注释）
+# generated/api-client/
