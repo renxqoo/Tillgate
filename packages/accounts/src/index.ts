@@ -10,10 +10,27 @@ export type { AccountsPolicy } from './application/context.js';
 export { AccountsErrors } from './domain/errors.js';
 
 // ---- 领域词表与构造器(跨能力消费的单一真相:幂等键/aff 码/状态) ----
-export { signupGiftRefId, referralSignupRefId, commissionRefId, encodeAffCode, decodeAffCode } from './domain/referral.js';
-export { USER_STATUS, CREDENTIAL_STATUS, MEMBER_STATUS, INVITATION_STATUS, REFERRAL_STATUS } from './domain/status.js';
+export {
+  signupGiftRefId,
+  referralSignupRefId,
+  commissionRefId,
+  encodeAffCode,
+  decodeAffCode,
+} from './domain/referral.js';
+export {
+  USER_STATUS,
+  CREDENTIAL_STATUS,
+  MEMBER_STATUS,
+  INVITATION_STATUS,
+  REFERRAL_STATUS,
+} from './domain/status.js';
 
 // ---- 端口(装配桥接:wallet-credit → billing;audit → observability 存储) ----
 export type { AccountStorePort } from './ports/account-store.js';
-export type { WalletCreditPort, CreditCommand, CreditResult, CreditRefType } from './ports/wallet-credit.js';
+export type {
+  WalletCreditPort,
+  CreditCommand,
+  CreditResult,
+  CreditRefType,
+} from './ports/wallet-credit.js';
 export type { AuditPort, AuditAction } from './ports/audit.js';

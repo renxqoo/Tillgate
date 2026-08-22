@@ -10,7 +10,8 @@ export async function disableApp(
 ): Promise<AppRecord> {
   const owned = await ctx.store.findOwnedApp(ctx.db, { userId: input.userId, appId: input.appId });
   if (owned === null) throw AccountsErrors.business('app_not_found', { appId: input.appId });
-  if (owned.status !== 0) throw AccountsErrors.business('app_already_disabled', { appId: input.appId });
+  if (owned.status !== 0)
+    throw AccountsErrors.business('app_already_disabled', { appId: input.appId });
 
   return runTx(
     ctx.db,

@@ -75,11 +75,21 @@ describe('disableApp / rotateAppSecret', () => {
     expect(rotated.clientSecret).not.toBe(created.clientSecret);
     expect(rotated.app.rotatedAt).not.toBeNull();
     // 旧 secret 验证 miss,新 secret 命中
-    expect(await h.api.verifyAppClient({ clientId: created.app.clientId, clientSecret: created.clientSecret })).toBeNull();
-    const ok = await h.api.verifyAppClient({ clientId: created.app.clientId, clientSecret: rotated.clientSecret });
+    expect(
+      await h.api.verifyAppClient({
+        clientId: created.app.clientId,
+        clientSecret: created.clientSecret,
+      }),
+    ).toBeNull();
+    const ok = await h.api.verifyAppClient({
+      clientId: created.app.clientId,
+      clientSecret: rotated.clientSecret,
+    });
     expect(ok!.id).toBe(created.app.id);
     await h.api.disableApp({ userId: owner.id, appId: created.app.id });
-    await expect(h.api.rotateAppSecret({ userId: owner.id, appId: created.app.id })).rejects.toMatchObject({
+    await expect(
+      h.api.rotateAppSecret({ userId: owner.id, appId: created.app.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.app_already_disabled',
     });
   });
@@ -103,7 +113,9 @@ describe('鉴权读模型', () => {
     const { app, clientSecret } = await h.api.createApp({ userId: owner.id, name: 'x' });
     const ok = await h.api.verifyAppClient({ clientId: app.clientId, clientSecret });
     expect(ok!.appId).toBe(app.appId);
-    expect(await h.api.verifyAppClient({ clientId: app.clientId, clientSecret: '0'.repeat(48) })).toBeNull();
+    expect(
+      await h.api.verifyAppClient({ clientId: app.clientId, clientSecret: '0'.repeat(48) }),
+    ).toBeNull();
     await h.api.disableApp({ userId: owner.id, appId: app.id });
     expect(await h.api.verifyAppClient({ clientId: app.clientId, clientSecret })).toBeNull();
   });

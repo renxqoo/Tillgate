@@ -8,7 +8,11 @@ describe('marketing settings', () => {
   it('缺行兜底全 0(v1 getSettings 语义)', async () => {
     const h = createTestHarness();
     const s = await h.api.getMarketingSettings();
-    expect(s).toMatchObject({ signupGiftAmount: '0', referralSignupBonus: '0', referralCommissionRate: '0' });
+    expect(s).toMatchObject({
+      signupGiftAmount: '0',
+      referralSignupBonus: '0',
+      referralCommissionRate: '0',
+    });
   });
 
   it('写入:部分字段 upsert 保留其余;updatedBy 记录;审计同事务', async () => {
@@ -56,7 +60,6 @@ function relations() {
 }
 
 describe('referral relations(管理面)', () => {
-
   it('列表:双方账号投影;q 命中任一侧 email/displayName', async () => {
     const h = relations();
     const all = await h.api.listReferralRelations({});
@@ -76,7 +79,11 @@ describe('referral relations(管理面)', () => {
     const h = relations();
     const banned = await h.api.setReferralRelationStatus({ relationId: 30, status: 1, adminId: 4 });
     expect(banned.status).toBe(1);
-    const restored = await h.api.setReferralRelationStatus({ relationId: 30, status: 0, adminId: 4 });
+    const restored = await h.api.setReferralRelationStatus({
+      relationId: 30,
+      status: 0,
+      adminId: 4,
+    });
     expect(restored.status).toBe(0);
     await expect(
       h.api.setReferralRelationStatus({ relationId: 30, status: 5, adminId: 4 }),

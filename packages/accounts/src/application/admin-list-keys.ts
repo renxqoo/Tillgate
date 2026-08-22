@@ -13,7 +13,10 @@ export interface AdminListKeysInput {
   readonly limit?: number;
 }
 
-export function adminListKeys(ctx: UseCaseContext, input: AdminListKeysInput): Promise<PageResult<ApiKeyRecord>> {
+export function adminListKeys(
+  ctx: UseCaseContext,
+  input: AdminListKeysInput,
+): Promise<PageResult<ApiKeyRecord>> {
   return ctx.store.listAdminKeys(ctx.db, {
     q: input.q?.trim() || undefined,
     userId: input.userId,

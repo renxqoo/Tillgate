@@ -49,7 +49,9 @@ export async function createApp(
       subscriptionId: input.subscriptionId,
     });
     if (usable === null) {
-      throw AccountsErrors.business('subscription_not_usable', { subscriptionId: input.subscriptionId });
+      throw AccountsErrors.business('subscription_not_usable', {
+        subscriptionId: input.subscriptionId,
+      });
     }
   }
 

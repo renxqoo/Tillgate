@@ -9,7 +9,11 @@ import { createTestHarness, type TestHarness } from '../src/testing/harness.js';
 import type { AccountStorePort } from '../src/ports/account-store.js';
 
 /** 以替身为底座覆写单个方法(仍写同一状态) */
-function withStore<T>(h: TestHarness, override: (base: AccountStorePort) => Partial<AccountStorePort>, fn: (api: ReturnType<typeof createAccountUseCases>) => Promise<T>): Promise<T> {
+function withStore<T>(
+  h: TestHarness,
+  override: (base: AccountStorePort) => Partial<AccountStorePort>,
+  fn: (api: ReturnType<typeof createAccountUseCases>) => Promise<T>,
+): Promise<T> {
   const store = Object.assign(Object.create(h.store) as AccountStorePort, override(h.store));
   const api = createAccountUseCases({ ...h.ctx, store });
   return fn(api);
@@ -22,7 +26,10 @@ describe('CAS 0 行的事务内判别(与预检并发的窗口)', () => {
     const { key } = await h.api.createKey({ userId: owner.id, name: 'k' });
     await withStore(
       h,
-      (base) => ({ revokeKey: async () => (await base.findOwnedKey(base as never, { userId: owner.id, keyId: key.id })) && null }),
+      (base) => ({
+        revokeKey: async () =>
+          (await base.findOwnedKey(base as never, { userId: owner.id, keyId: key.id })) && null,
+      }),
       async (api) => {
         await expect(api.revokeKey({ userId: owner.id, keyId: key.id })).rejects.toMatchObject({
           code: 'accounts.key_already_revoked',
@@ -35,11 +42,17 @@ describe('CAS 0 行的事务内判别(与预检并发的窗口)', () => {
     const h = createTestHarness();
     const owner = h.store.seed.user({});
     const { key } = await h.api.createKey({ userId: owner.id, name: 'k' });
-    await withStore(h, () => ({ patchKey: async () => null }), async (api) => {
-      await expect(api.patchKey({ userId: owner.id, keyId: key.id, patch: { name: 'x' } })).rejects.toMatchObject({
-        code: 'accounts.key_already_revoked',
-      });
-    });
+    await withStore(
+      h,
+      () => ({ patchKey: async () => null }),
+      async (api) => {
+        await expect(
+          api.patchKey({ userId: owner.id, keyId: key.id, patch: { name: 'x' } }),
+        ).rejects.toMatchObject({
+          code: 'accounts.key_already_revoked',
+        });
+      },
+    );
   });
 
   it('rotateKey:旧 Key 吊销 0 行 → 回滚(新行不落库)', async () => {
@@ -47,11 +60,15 @@ describe('CAS 0 行的事务内判别(与预检并发的窗口)', () => {
     const owner = h.store.seed.user({});
     const { key } = await h.api.createKey({ userId: owner.id, name: 'k' });
     const before = (await h.api.listKeys({ userId: owner.id })).total;
-    await withStore(h, () => ({ revokeKey: async () => null }), async (api) => {
-      await expect(api.rotateKey({ userId: owner.id, keyId: key.id })).rejects.toMatchObject({
-        code: 'accounts.key_already_revoked',
-      });
-    });
+    await withStore(
+      h,
+      () => ({ revokeKey: async () => null }),
+      async (api) => {
+        await expect(api.rotateKey({ userId: owner.id, keyId: key.id })).rejects.toMatchObject({
+          code: 'accounts.key_already_revoked',
+        });
+      },
+    );
     expect((await h.api.listKeys({ userId: owner.id })).total).toBe(before); // 新行已回滚
   });
 
@@ -59,16 +76,26 @@ describe('CAS 0 行的事务内判别(与预检并发的窗口)', () => {
     const h = createTestHarness();
     const owner = h.store.seed.user({});
     const { app } = await h.api.createApp({ userId: owner.id, name: 'x' });
-    await withStore(h, () => ({ disableApp: async () => null }), async (api) => {
-      await expect(api.disableApp({ userId: owner.id, appId: app.id })).rejects.toMatchObject({
-        code: 'accounts.app_already_disabled',
-      });
-    });
-    await withStore(h, () => ({ rotateAppSecret: async () => null }), async (api) => {
-      await expect(api.rotateAppSecret({ userId: owner.id, appId: app.id })).rejects.toMatchObject({
-        code: 'accounts.app_already_disabled',
-      });
-    });
+    await withStore(
+      h,
+      () => ({ disableApp: async () => null }),
+      async (api) => {
+        await expect(api.disableApp({ userId: owner.id, appId: app.id })).rejects.toMatchObject({
+          code: 'accounts.app_already_disabled',
+        });
+      },
+    );
+    await withStore(
+      h,
+      () => ({ rotateAppSecret: async () => null }),
+      async (api) => {
+        await expect(
+          api.rotateAppSecret({ userId: owner.id, appId: app.id }),
+        ).rejects.toMatchObject({
+          code: 'accounts.app_already_disabled',
+        });
+      },
+    );
   });
 
   it('acceptInvitation:翻转 0 行(并发赢家已消费)→ invitation_invalid 回滚成员行', async () => {
@@ -78,12 +105,22 @@ describe('CAS 0 行的事务内判别(与预检并发的窗口)', () => {
     h.store.seed.member({ orgId: org.id, userId: owner.id, role: 'owner' });
     h.store.seed.subscription({ userId: owner.id, orgId: org.id, quantity: 5 });
     const acceptor = h.store.seed.user({ id: 2, email: 'a@x.io' });
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@x.io' });
-    await withStore(h, () => ({ acceptInvitation: async () => false }), async (api) => {
-      await expect(api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id })).rejects.toMatchObject({
-        code: 'accounts.invitation_invalid',
-      });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'a@x.io',
     });
+    await withStore(
+      h,
+      () => ({ acceptInvitation: async () => false }),
+      async (api) => {
+        await expect(
+          api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id }),
+        ).rejects.toMatchObject({
+          code: 'accounts.invitation_invalid',
+        });
+      },
+    );
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(1); // insertOrRevive 已回滚
   });
 
@@ -109,8 +146,14 @@ describe('清理分支与异常形状', () => {
     const org = h.store.seed.org({ ownerUserId: owner.id });
     h.store.seed.member({ orgId: org.id, userId: owner.id, role: 'owner' });
     h.store.seed.subscription({ userId: owner.id, orgId: org.id, quantity: 5 });
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'ghost@x.io' });
-    await expect(h.api.acceptInvitation({ token: inv.token, acceptorUserId: 999 })).rejects.toMatchObject({
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'ghost@x.io',
+    });
+    await expect(
+      h.api.acceptInvitation({ token: inv.token, acceptorUserId: 999 }),
+    ).rejects.toMatchObject({
       code: 'accounts.user_not_found',
     });
   });
@@ -138,7 +181,13 @@ describe('清理分支与异常形状', () => {
     const cleared = await h.api.patchKey({
       userId: owner.id,
       keyId: key.id,
-      patch: { remark: null, rpmLimit: null, tpmLimit: null, dailySpendLimit: null, expiresAt: null },
+      patch: {
+        remark: null,
+        rpmLimit: null,
+        tpmLimit: null,
+        dailySpendLimit: null,
+        expiresAt: null,
+      },
     });
     expect(cleared.remark).toBeNull();
     expect(cleared.rpmLimit).toBeNull();
@@ -159,7 +208,12 @@ describe('清理分支与异常形状', () => {
 
   it('adminPatchUser:null 清空(卡/限额/封禁原因显式空)', async () => {
     const h = createTestHarness();
-    const owner = h.store.seed.user({ email: 'keep@x.io', rateCardId: h.store.seed.rateCard({}).id, rpmLimit: 5, tpmLimit: 6 });
+    const owner = h.store.seed.user({
+      email: 'keep@x.io',
+      rateCardId: h.store.seed.rateCard({}).id,
+      rpmLimit: 5,
+      tpmLimit: 6,
+    });
     const patched = await h.api.adminPatchUser({
       userId: owner.id,
       patch: { rateCardId: null, rpmLimit: null, tpmLimit: null, email: null },
@@ -185,7 +239,12 @@ describe('清理分支与异常形状', () => {
     const member = h.store.seed.user({ id: 2 });
     h.store.seed.member({ orgId: org.id, userId: member.id, monthlyQuota: '5' });
     await expect(
-      h.api.setMemberLimits({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id, monthlyQuota: '1e9' }),
+      h.api.setMemberLimits({
+        orgId: org.id,
+        operatorUserId: owner.id,
+        memberUserId: member.id,
+        monthlyQuota: '1e9',
+      }),
     ).rejects.toMatchObject({ code: 'accounts.member_limits_invalid' });
     const cleared = await h.api.setMemberLimits({
       orgId: org.id,
@@ -211,13 +270,9 @@ describe('清理分支与异常形状', () => {
     const h = createTestHarness();
     h.store.seed.user({ id: 2 });
     h.store.seed.marketing({ signupGiftAmount: '1' });
-    const wallet = h.wallet;
-    const boom = Object.assign(wallet, {
-      credit: async () => {
-        throw 'string-error'; // 非 Error 形状
-      },
-    });
-    void boom;
+    h.wallet.credit = async () => {
+      throw 'string-error'; // 非 Error 形状
+    };
     const report = await h.api.completeAccountOnboarding({ userId: 2 });
     expect(report.gift).toEqual({ status: 'failed', code: 'unknown' });
   });

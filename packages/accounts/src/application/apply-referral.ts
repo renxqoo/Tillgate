@@ -33,7 +33,10 @@ export async function applyReferral(
   return runTx(
     ctx.db,
     async (tx) => {
-      const inserted = await ctx.store.insertReferral(tx, { inviterUserId, inviteeUserId: input.inviteeUserId });
+      const inserted = await ctx.store.insertReferral(tx, {
+        inviterUserId,
+        inviteeUserId: input.inviteeUserId,
+      });
       if (inserted === 'already_referred') {
         throw AccountsErrors.business('referral_already_referred');
       }

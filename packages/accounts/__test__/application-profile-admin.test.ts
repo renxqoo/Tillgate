@@ -20,7 +20,9 @@ describe('getProfile / updateDisplayName', () => {
     const u = h.store.seed.user({ displayName: 'old' });
     const updated = await h.api.updateDisplayName({ userId: u.id, displayName: '  新名  ' });
     expect(updated.displayName).toBe('新名');
-    await expect(h.api.updateDisplayName({ userId: u.id, displayName: '   ' })).rejects.toMatchObject({
+    await expect(
+      h.api.updateDisplayName({ userId: u.id, displayName: '   ' }),
+    ).rejects.toMatchObject({
       code: 'accounts.display_name_invalid',
     });
     await expect(h.api.updateDisplayName({ userId: 999, displayName: 'x' })).rejects.toMatchObject({
@@ -33,8 +35,20 @@ describe('adminListUsers', () => {
   it('q 模糊命中 subject/email/displayName;status/enterprise 过滤;分页', async () => {
     const h = createTestHarness();
     h.store.seed.user({ id: 1, subject: 'alpha@x.io', email: 'alpha@x.io', displayName: '甲' });
-    h.store.seed.user({ id: 2, subject: 'beta@x.io', email: 'beta@x.io', displayName: '乙', status: 1 });
-    h.store.seed.user({ id: 3, subject: 'gamma@y.io', email: 'gamma@y.io', displayName: '丙', isEnterprise: true });
+    h.store.seed.user({
+      id: 2,
+      subject: 'beta@x.io',
+      email: 'beta@x.io',
+      displayName: '乙',
+      status: 1,
+    });
+    h.store.seed.user({
+      id: 3,
+      subject: 'gamma@y.io',
+      email: 'gamma@y.io',
+      displayName: '丙',
+      isEnterprise: true,
+    });
 
     const q = await h.api.adminListUsers({ q: 'x.io' });
     expect(q.total).toBe(2);
@@ -52,7 +66,12 @@ describe('adminListUsers', () => {
 
   it('排序白名单外的字段回落默认;非法分页回落缺省(policy 注入)', async () => {
     const h = createTestHarness();
-    const r = await h.api.adminListUsers({ sort: 'passwordHash;drop', order: 'asc', page: -1, limit: 9999 });
+    const r = await h.api.adminListUsers({
+      sort: 'passwordHash;drop',
+      order: 'asc',
+      page: -1,
+      limit: 9999,
+    });
     expect(r.rows).toEqual([]);
   });
 });
@@ -112,13 +131,21 @@ describe('adminPatchUser', () => {
     const h = createTestHarness();
     const u = h.store.seed.user({});
     h.store.seed.rateCard({ id: 7, status: 1 });
-    await expect(h.api.adminPatchUser({ userId: u.id, patch: { rateCardId: 99 }, adminId: 5 })).rejects.toMatchObject({
+    await expect(
+      h.api.adminPatchUser({ userId: u.id, patch: { rateCardId: 99 }, adminId: 5 }),
+    ).rejects.toMatchObject({
       code: 'accounts.rate_card_not_found',
     });
-    await expect(h.api.adminPatchUser({ userId: u.id, patch: { rateCardId: 7 }, adminId: 5 })).rejects.toMatchObject({
+    await expect(
+      h.api.adminPatchUser({ userId: u.id, patch: { rateCardId: 7 }, adminId: 5 }),
+    ).rejects.toMatchObject({
       code: 'accounts.rate_card_disabled',
     });
-    const ok = await h.api.adminPatchUser({ userId: u.id, patch: { rateCardId: h.store.seed.rateCard({}).id }, adminId: 5 });
+    const ok = await h.api.adminPatchUser({
+      userId: u.id,
+      patch: { rateCardId: h.store.seed.rateCard({}).id },
+      adminId: 5,
+    });
     expect(ok.rateCardId).not.toBeNull();
   });
 
@@ -133,24 +160,40 @@ describe('adminPatchUser', () => {
   ])('patch %j 拒绝为 %s', async (patch, code) => {
     const h = createTestHarness();
     const u = h.store.seed.user({});
-    await expect(h.api.adminPatchUser({ userId: u.id, patch, adminId: 5 })).rejects.toMatchObject({ code: `accounts.${code}` });
+    await expect(h.api.adminPatchUser({ userId: u.id, patch, adminId: 5 })).rejects.toMatchObject({
+      code: `accounts.${code}`,
+    });
   });
 
   it('dailySpendLimit=0 在管理面合法(v1 非负口径);null 清空', async () => {
     const h = createTestHarness();
     const u = h.store.seed.user({});
-    const zero = await h.api.adminPatchUser({ userId: u.id, patch: { dailySpendLimit: '0' }, adminId: 5 });
+    const zero = await h.api.adminPatchUser({
+      userId: u.id,
+      patch: { dailySpendLimit: '0' },
+      adminId: 5,
+    });
     expect(zero.dailySpendLimit).toBe('0');
-    const cleared = await h.api.adminPatchUser({ userId: u.id, patch: { dailySpendLimit: null }, adminId: 5 });
+    const cleared = await h.api.adminPatchUser({
+      userId: u.id,
+      patch: { dailySpendLimit: null },
+      adminId: 5,
+    });
     expect(cleared.dailySpendLimit).toBeNull();
   });
 
   it('目标不存在 → user_not_found;审计 user.update 同事务落库', async () => {
     const h = createTestHarness();
-    await expect(h.api.adminPatchUser({ userId: 999, patch: { status: 1 }, adminId: 5 })).rejects.toMatchObject({
+    await expect(
+      h.api.adminPatchUser({ userId: 999, patch: { status: 1 }, adminId: 5 }),
+    ).rejects.toMatchObject({
       code: 'accounts.user_not_found',
     });
-    await h.api.adminPatchUser({ userId: h.store.seed.user({}).id, patch: { isEnterprise: true }, adminId: 5 });
+    await h.api.adminPatchUser({
+      userId: h.store.seed.user({}).id,
+      patch: { isEnterprise: true },
+      adminId: 5,
+    });
     expect(h.audit.actions).toHaveLength(1);
     expect(h.audit.actions[0]).toMatchObject({
       actor: 'admin',
@@ -163,7 +206,9 @@ describe('adminPatchUser', () => {
   it('adminGetUser 无行 404;读数探针直通', async () => {
     const h = createTestHarness();
     const u = h.store.seed.user({ isEnterprise: true, rateCardId: h.store.seed.rateCard({}).id });
-    await expect(h.api.adminGetUser(999)).rejects.toMatchObject({ code: 'accounts.user_not_found' });
+    await expect(h.api.adminGetUser(999)).rejects.toMatchObject({
+      code: 'accounts.user_not_found',
+    });
     expect(await h.api.adminGetUser(u.id)).toMatchObject({ isEnterprise: true });
     expect(await h.api.userExists(u.id)).toBe(true);
     expect(await h.api.userExists(999)).toBe(false);

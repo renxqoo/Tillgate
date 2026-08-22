@@ -13,7 +13,10 @@ export interface SignupGiftResult {
   readonly replayed: boolean;
 }
 
-export async function grantSignupGift(ctx: UseCaseContext, userId: number): Promise<SignupGiftResult> {
+export async function grantSignupGift(
+  ctx: UseCaseContext,
+  userId: number,
+): Promise<SignupGiftResult> {
   const settings = await ctx.store.getMarketingSettings(ctx.db);
   if (!isPositiveAmount(settings.signupGiftAmount)) return { credited: false, replayed: false };
 

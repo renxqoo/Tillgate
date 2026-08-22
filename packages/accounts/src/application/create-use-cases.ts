@@ -47,14 +47,29 @@ import type { KeyFieldsInput } from './key-fields.js';
 /** 全部用例动词(只读视图;调用形态 verb(input)) */
 export interface AccountUseCases {
   // 建号与资料
-  provisionLocalAccount(input: { email: string; displayName?: string }): ReturnType<typeof provisionLocalAccount>;
-  provisionOAuthAccount(input: { issuer: string; subject: string; email?: string; displayName?: string }): ReturnType<typeof provisionOAuthAccount>;
+  provisionLocalAccount(input: {
+    email: string;
+    displayName?: string;
+  }): ReturnType<typeof provisionLocalAccount>;
+  provisionOAuthAccount(input: {
+    issuer: string;
+    subject: string;
+    email?: string;
+    displayName?: string;
+  }): ReturnType<typeof provisionOAuthAccount>;
   getProfile(userId: number): ReturnType<typeof getProfile>;
-  updateDisplayName(input: { userId: number; displayName: string }): ReturnType<typeof updateDisplayName>;
+  updateDisplayName(input: {
+    userId: number;
+    displayName: string;
+  }): ReturnType<typeof updateDisplayName>;
   // 管理面用户
   adminListUsers(input: AdminListUsersInput): ReturnType<typeof adminListUsers>;
   adminGetUser(userId: number): ReturnType<typeof adminGetUser>;
-  adminPatchUser(input: { userId: number; patch: AdminUserPatchInput; adminId: number }): ReturnType<typeof adminPatchUser>;
+  adminPatchUser(input: {
+    userId: number;
+    patch: AdminUserPatchInput;
+    adminId: number;
+  }): ReturnType<typeof adminPatchUser>;
   // 跨能力只读探针
   userExists(userId: number): Promise<boolean>;
   userIsEnterprise(userId: number): Promise<boolean>;
@@ -63,39 +78,87 @@ export interface AccountUseCases {
   // API Key
   createKey(input: CreateKeyInput): ReturnType<typeof createKey>;
   listKeys(input: { userId: number; page?: number; limit?: number }): ReturnType<typeof listKeys>;
-  patchKey(input: { userId: number; keyId: number; patch: KeyFieldsInput }): ReturnType<typeof patchKey>;
+  patchKey(input: {
+    userId: number;
+    keyId: number;
+    patch: KeyFieldsInput;
+  }): ReturnType<typeof patchKey>;
   rotateKey(input: { userId: number; keyId: number }): ReturnType<typeof rotateKey>;
   revokeKey(input: { userId: number; keyId: number }): ReturnType<typeof revokeKey>;
   adminListKeys(input: AdminListKeysInput): ReturnType<typeof adminListKeys>;
-  adminPatchKey(input: { keyId: number; patch: KeyFieldsInput & { status?: number }; adminId: number }): ReturnType<typeof adminPatchKey>;
+  adminPatchKey(input: {
+    keyId: number;
+    patch: KeyFieldsInput & { status?: number };
+    adminId: number;
+  }): ReturnType<typeof adminPatchKey>;
   resolveKeyByHash(keyHash: string): ReturnType<typeof resolveKeyByHash>;
-  rebindSubscription(input: { fromSubscriptionId: number; toSubscriptionId: number }): ReturnType<typeof rebindSubscription>;
+  rebindSubscription(input: {
+    fromSubscriptionId: number;
+    toSubscriptionId: number;
+  }): ReturnType<typeof rebindSubscription>;
   // Application
   createApp(input: Parameters<typeof createApp>[1]): ReturnType<typeof createApp>;
   listApps(input: { userId: number; page?: number; limit?: number }): ReturnType<typeof listApps>;
   disableApp(input: { userId: number; appId: number }): ReturnType<typeof disableApp>;
   rotateAppSecret(input: { userId: number; appId: number }): ReturnType<typeof rotateAppSecret>;
   resolveApp(appId: string): ReturnType<typeof resolveApp>;
-  verifyAppClient(input: { clientId: string; clientSecret: string }): ReturnType<typeof verifyAppClient>;
+  verifyAppClient(input: {
+    clientId: string;
+    clientSecret: string;
+  }): ReturnType<typeof verifyAppClient>;
   // 组织
   createOrg(input: { ownerUserId: number; name: string }): ReturnType<typeof createOrg>;
   listMyOrgs(userId: number): ReturnType<typeof listMyOrgs>;
   getOrgDetail(input: { userId: number; orgId: number }): ReturnType<typeof getOrgDetail>;
   // 邀请与成员
-  inviteMember(input: { orgId: number; operatorUserId: number; email: string }): ReturnType<typeof inviteMember>;
-  revokeInvitation(input: { orgId: number; operatorUserId: number; invitationId: number }): ReturnType<typeof revokeInvitation>;
-  acceptInvitation(input: { token: string; acceptorUserId: number }): ReturnType<typeof acceptInvitation>;
+  inviteMember(input: {
+    orgId: number;
+    operatorUserId: number;
+    email: string;
+  }): ReturnType<typeof inviteMember>;
+  revokeInvitation(input: {
+    orgId: number;
+    operatorUserId: number;
+    invitationId: number;
+  }): ReturnType<typeof revokeInvitation>;
+  acceptInvitation(input: {
+    token: string;
+    acceptorUserId: number;
+  }): ReturnType<typeof acceptInvitation>;
   setMemberLimits(input: Parameters<typeof setMemberLimits>[1]): ReturnType<typeof setMemberLimits>;
-  removeMember(input: { orgId: number; operatorUserId: number; memberUserId: number }): ReturnType<typeof removeMember>;
+  removeMember(input: {
+    orgId: number;
+    operatorUserId: number;
+    memberUserId: number;
+  }): ReturnType<typeof removeMember>;
   // 推荐与拉新参数
   grantSignupGift(userId: number): ReturnType<typeof grantSignupGift>;
-  applyReferral(input: { inviteeUserId: number; affCode: string }): ReturnType<typeof applyReferral>;
-  completeAccountOnboarding(input: { userId: number; affCode?: string }): ReturnType<typeof completeAccountOnboarding>;
-  referralOverview(input: { userId: number; frontendBaseUrl: string }): ReturnType<typeof referralOverview>;
+  applyReferral(input: {
+    inviteeUserId: number;
+    affCode: string;
+  }): ReturnType<typeof applyReferral>;
+  completeAccountOnboarding(input: {
+    userId: number;
+    affCode?: string;
+  }): ReturnType<typeof completeAccountOnboarding>;
+  referralOverview(input: {
+    userId: number;
+    frontendBaseUrl: string;
+  }): ReturnType<typeof referralOverview>;
   getMarketingSettings(): ReturnType<typeof getMarketingSettings>;
-  updateMarketingSettings(input: Parameters<typeof updateMarketingSettings>[1]): ReturnType<typeof updateMarketingSettings>;
-  listReferralRelations(input: { q?: string; page?: number; limit?: number }): ReturnType<typeof listReferralRelations>;
-  setReferralRelationStatus(input: { relationId: number; status: number; adminId: number }): ReturnType<typeof setReferralRelationStatus>;
+  updateMarketingSettings(
+    input: Parameters<typeof updateMarketingSettings>[1],
+  ): ReturnType<typeof updateMarketingSettings>;
+  listReferralRelations(input: {
+    q?: string;
+    page?: number;
+    limit?: number;
+  }): ReturnType<typeof listReferralRelations>;
+  setReferralRelationStatus(input: {
+    relationId: number;
+    status: number;
+    adminId: number;
+  }): ReturnType<typeof setReferralRelationStatus>;
 }
 
 export function createAccountUseCases(ctx: UseCaseContext): AccountUseCases {

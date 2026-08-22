@@ -8,8 +8,7 @@
 import { runTx } from '@tokenlens/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeValidEmail, normalizeName, FIELD_LIMITS } from '../domain/fields.js';
-import { parseRateLimit, isNonNegativeAmount } from '../domain/limits.js';
-import Decimal from 'decimal.js';
+import { isNonNegativeAmountWithin, parseRateLimit } from '../domain/limits.js';
 import { USER_STATUS, USER_STATUSES } from '../domain/status.js';
 import type { UserPatch, UserRecord } from '../ports/account-store.js';
 import type { UserStatus } from '../domain/status.js';
@@ -111,12 +110,10 @@ export async function adminPatchUser(
     if (raw.dailySpendLimit === null) patch.dailySpendLimit = null;
     else {
       // 管理面允许 0(即日全拒;v1 admin zod 非负),但不得超过业务上界
-      const value = raw.dailySpendLimit;
-      const ok =
-        isNonNegativeAmount(value) &&
-        new Decimal(value).lessThanOrEqualTo(new Decimal(ctx.policy.amountLimitUpper));
-      if (!ok) throw AccountsErrors.business('user_patch_invalid', { field: 'dailySpendLimit' });
-      patch.dailySpendLimit = value;
+      if (!isNonNegativeAmountWithin(raw.dailySpendLimit, ctx.policy.amountLimitUpper)) {
+        throw AccountsErrors.business('user_patch_invalid', { field: 'dailySpendLimit' });
+      }
+      patch.dailySpendLimit = raw.dailySpendLimit;
     }
   }
   if (raw.isEnterprise !== undefined) patch.isEnterprise = raw.isEnterprise;
@@ -129,7 +126,8 @@ export async function adminPatchUser(
         patch,
         advanceSessionAnchor,
       });
-      if (updated === null) throw AccountsErrors.business('user_not_found', { userId: input.userId });
+      if (updated === null)
+        throw AccountsErrors.business('user_not_found', { userId: input.userId });
       await ctx.audit.record(tx, {
         actor: 'admin',
         adminId: input.adminId,

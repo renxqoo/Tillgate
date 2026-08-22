@@ -3,9 +3,25 @@
  * v1 语义锚:金额结构性拒绝科学计数法/22 位整数/负数/NaN/超 1e12 上界。
  */
 import { describe, expect, it } from 'vitest';
-import { normalizeEmail, isValidEmail, normalizeValidEmail, normalizeName, clampOptionalText, FIELD_LIMITS } from '../src/domain/fields.js';
-import { parseAmountLimit, parseRateLimit, isNonNegativeAmount, isPositiveAmount } from '../src/domain/limits.js';
-import { localDisplayNameFallback, oauthDisplayNameFallback, clampDisplayName } from '../src/domain/user.js';
+import {
+  normalizeEmail,
+  isValidEmail,
+  normalizeValidEmail,
+  normalizeName,
+  clampOptionalText,
+  FIELD_LIMITS,
+} from '../src/domain/fields.js';
+import {
+  parseAmountLimit,
+  parseRateLimit,
+  isPositiveAmount,
+  isNonNegativeAmountWithin,
+} from '../src/domain/limits.js';
+import {
+  localDisplayNameFallback,
+  oauthDisplayNameFallback,
+  clampDisplayName,
+} from '../src/domain/user.js';
 
 const UPPER = '1000000000000'; // v1 等价上界
 
@@ -36,11 +52,7 @@ describe('名称域(trim 后 1..64)', () => {
     expect(normalizeName('a')).toBe('a');
     expect(normalizeName('x'.repeat(64))).toBe('x'.repeat(64));
   });
-  it.each([
-    [''],
-    ['   '],
-    ['x'.repeat(65)],
-  ])('normalizeName(%j) 拒绝', (input) => {
+  it.each([[''], ['   '], ['x'.repeat(65)]])('normalizeName(%j) 拒绝', (input) => {
     expect(normalizeName(input)).toBeNull();
   });
   it('可空文本 clamp:超长判非法,显式 null 分支归调用方', () => {
@@ -74,12 +86,15 @@ describe('金额上限域(v1 结构性拒绝锚)', () => {
   ])('parseAmountLimit(%j) 拒绝', (input) => {
     expect(parseAmountLimit(input as string, UPPER)).toBeNull();
   });
-  it('isNonNegativeAmount 允许 0;isPositiveAmount 不允许', () => {
-    expect(isNonNegativeAmount('0')).toBe(true);
+  it('isPositiveAmount 不允许 0;isNonNegativeAmountWithin 允许 0 且受上界约束', () => {
     expect(isPositiveAmount('0')).toBe(false);
     expect(isPositiveAmount('0.5')).toBe(true);
-    expect(isNonNegativeAmount('-0.1')).toBe(false);
-    expect(isNonNegativeAmount('1e2')).toBe(false);
+    expect(isNonNegativeAmountWithin('0', UPPER)).toBe(true);
+    expect(isNonNegativeAmountWithin('5', UPPER)).toBe(true);
+    expect(isNonNegativeAmountWithin('1000000000000', UPPER)).toBe(true); // 恰上界
+    expect(isNonNegativeAmountWithin('-0.1', UPPER)).toBe(false);
+    expect(isNonNegativeAmountWithin('1e2', UPPER)).toBe(false);
+    expect(isNonNegativeAmountWithin('1000000000001', UPPER)).toBe(false);
   });
 });
 

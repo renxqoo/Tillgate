@@ -2,7 +2,12 @@
  * 组织/邀请、推荐(aff 码与幂等键词表)、拉新参数域:表驱动矩阵。
  */
 import { describe, expect, it } from 'vitest';
-import { pendingInvitationLimit, generateInvitationToken, invitationEmailMatches, MEMBER_ROLES } from '../src/domain/org.js';
+import {
+  pendingInvitationLimit,
+  generateInvitationToken,
+  invitationEmailMatches,
+  MEMBER_ROLES,
+} from '../src/domain/org.js';
 import {
   encodeAffCode,
   decodeAffCode,
@@ -12,7 +17,11 @@ import {
   commissionAmount,
   inviteUrl,
 } from '../src/domain/referral.js';
-import { validateMarketingPatch, referralProgramEnabled, ZERO_MARKETING_SETTINGS } from '../src/domain/marketing.js';
+import {
+  validateMarketingPatch,
+  referralProgramEnabled,
+  ZERO_MARKETING_SETTINGS,
+} from '../src/domain/marketing.js';
 import { validateAppScope } from '../src/domain/app.js';
 
 const V1_PENDING = { factor: 2, cap: 20 };
@@ -41,7 +50,7 @@ describe('邀请 token', () => {
   });
   it('email 匹配:email 一致或无 email 时按 subject 兜底(v1 语义)', () => {
     expect(invitationEmailMatches({ email: 'A@X.IO', subject: 's' }, 'a@x.io')).toBe(true);
-    expect(invitationEmailMatches({ email: null, subject: 'GH123', }, 'gh123')).toBe(true);
+    expect(invitationEmailMatches({ email: null, subject: 'GH123' }, 'gh123')).toBe(true);
     expect(invitationEmailMatches({ email: 'a@x.io', subject: 's' }, 'b@x.io')).toBe(false);
   });
   it('MEMBER_ROLES 词汇', () => {
@@ -82,7 +91,9 @@ describe('钱包幂等键构造器(单一真相,v1 两处前缀漂移的收敛)'
     expect(commissionAmount('10', '0.333333')).toBe('3.33333');
   });
   it('邀请链接:基址注入(v1 localhost 写死已清除)', () => {
-    expect(inviteUrl('https://console.example.com', 'u10')).toBe('https://console.example.com/register?aff=u10');
+    expect(inviteUrl('https://console.example.com', 'u10')).toBe(
+      'https://console.example.com/register?aff=u10',
+    );
   });
 });
 
@@ -101,8 +112,12 @@ describe('拉新参数域', () => {
     expect(validateMarketingPatch(patch as Record<string, string | undefined>)).toEqual(expected);
   });
   it('开关:任一激励 >0 即 enabled;全 0 关闭', () => {
-    expect(referralProgramEnabled({ ...ZERO_MARKETING_SETTINGS, referralSignupBonus: '0.1' })).toBe(true);
-    expect(referralProgramEnabled({ ...ZERO_MARKETING_SETTINGS, referralCommissionRate: '0.01' })).toBe(true);
+    expect(referralProgramEnabled({ ...ZERO_MARKETING_SETTINGS, referralSignupBonus: '0.1' })).toBe(
+      true,
+    );
+    expect(
+      referralProgramEnabled({ ...ZERO_MARKETING_SETTINGS, referralCommissionRate: '0.01' }),
+    ).toBe(true);
     expect(referralProgramEnabled(ZERO_MARKETING_SETTINGS)).toBe(false);
   });
 });
@@ -122,7 +137,10 @@ describe('App scope 域', () => {
     [{ rpm: 1_000_001 }, ['rpm']],
     [{ tpm: -1 }, ['tpm']],
   ])('validateAppScope(%j) → %s', (scope, expected) => {
-    const invalid = validateAppScope(scope as { models?: string[]; rpm?: number; tpm?: number }, policy);
+    const invalid = validateAppScope(
+      scope as { models?: string[]; rpm?: number; tpm?: number },
+      policy,
+    );
     if (expected === null) expect(invalid).toBeNull();
     else expect(invalid).toEqual(expected);
   });

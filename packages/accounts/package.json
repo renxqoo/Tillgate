@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "账号能力:用户资料、组织/成员/邀请、API Key、Application、推荐与拉新参数——账号事实唯一所有者,不保存认证秘密(DESIGN.md、MIGRATION.md)",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -34,6 +35,5 @@
   },
   "engines": {
     "bun": ">=1.4.0"
-  },
-  "license": "MIT"
+  }
 }

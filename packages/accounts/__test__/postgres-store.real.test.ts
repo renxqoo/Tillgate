@@ -140,11 +140,19 @@ function realHarness(db: Db): TestHarness {
   const api = () => h.api;
 
   async function seedTeam(quantity: number) {
-    const owner = await api().provisionLocalAccount({ email: `owner-${Math.random().toString(36).slice(2)}@x.io` });
+    const owner = await api().provisionLocalAccount({
+      email: `owner-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     const org = await api().createOrg({ ownerUserId: owner.id, name: 'T' });
     const planRows = await db
       .insert(plans)
-      .values({ name: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, price: '1', periodDays: 30, quotaAmount: '1000', allowSeats: true })
+      .values({
+        name: `p-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        price: '1',
+        periodDays: 30,
+        quotaAmount: '1000',
+        allowSeats: true,
+      })
       .returning({ id: plans.id });
     const plan = planRows[0]!;
     await db.insert(userSubscriptions).values({
@@ -179,7 +187,9 @@ function realHarness(db: Db): TestHarness {
 
   afterAll(async () => {
     if (db) {
-      await db.execute(sql`truncate table ${users}, ${organizations}, ${orgMembers}, ${orgInvitations}, ${apiKeys}, ${apps}, ${referrals}, ${marketingSettings}, ${auditLogs}, ${userSubscriptions}, ${plans}, ${rateCards} cascade`);
+      await db.execute(
+        sql`truncate table ${users}, ${organizations}, ${orgMembers}, ${orgInvitations}, ${apiKeys}, ${apps}, ${referrals}, ${marketingSettings}, ${auditLogs}, ${userSubscriptions}, ${plans}, ${rateCards} cascade`,
+      );
       await closeDb(db);
     }
   });
@@ -196,18 +206,30 @@ function realHarness(db: Db): TestHarness {
   });
 
   it('管理补丁:封禁缺省原因 + 审计同事务落库 audit_logs + DB 时钟推进 updatedAt(B4/B6)', async () => {
-    const u = await api().provisionLocalAccount({ email: `audit-${Math.random().toString(36).slice(2)}@x.io` });
+    const u = await api().provisionLocalAccount({
+      email: `audit-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     await new Promise((r) => setTimeout(r, 5)); // 让 updatedAt 有可分辨的时差
     const banned = await api().adminPatchUser({ userId: u.id, patch: { status: 1 }, adminId: 42 });
     expect(banned.freezeReason).toBe('管理员封禁');
-    const rows = await db.select().from(auditLogs).where(eq(auditLogs.targetId, String(u.id)));
+    const rows = await db
+      .select()
+      .from(auditLogs)
+      .where(eq(auditLogs.targetId, String(u.id)));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ actor: 'admin', adminId: 42, action: 'user.update', targetType: 'user' });
+    expect(rows[0]).toMatchObject({
+      actor: 'admin',
+      adminId: 42,
+      action: 'user.update',
+      targetType: 'user',
+    });
     expect(banned.updatedAt.getTime()).toBeGreaterThan(u.updatedAt.getTime()); // 存储时钟生效
   });
 
   it('email 变更同语句推进会话失效线(单 UPDATE 原子语义)', async () => {
-    const u = await api().provisionLocalAccount({ email: `anchor-${Math.random().toString(36).slice(2)}@x.io` });
+    const u = await api().provisionLocalAccount({
+      email: `anchor-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     const updated = await api().adminPatchUser({
       userId: u.id,
       patch: { email: `new-${Math.random().toString(36).slice(2)}@x.io` },
@@ -217,13 +239,17 @@ function realHarness(db: Db): TestHarness {
   });
 
   it('Key 生命周期:创建→resolve 命中;吊销→即刻 miss;轮换→旧 miss 新命中(同事务两行)', async () => {
-    const u = await api().provisionLocalAccount({ email: `key-${Math.random().toString(36).slice(2)}@x.io` });
+    const u = await api().provisionLocalAccount({
+      email: `key-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     const created = await api().createKey({ userId: u.id, name: 'k', rpmLimit: 7 });
     expect((await api().resolveKeyByHash(sha256Hex(created.plaintext)))!.rpmLimit).toBe(7);
 
     const rotated = await api().rotateKey({ userId: u.id, keyId: created.key.id });
     expect(await api().resolveKeyByHash(sha256Hex(created.plaintext))).toBeNull();
-    expect((await api().resolveKeyByHash(sha256Hex(rotated.plaintext)))!.keyId).toBe(rotated.key.id);
+    expect((await api().resolveKeyByHash(sha256Hex(rotated.plaintext)))!.keyId).toBe(
+      rotated.key.id,
+    );
     // 两行并存:旧行 status=1 + revokedAt
     const oldRow = await db.select().from(apiKeys).where(eq(apiKeys.id, created.key.id));
     expect(oldRow[0]!.status).toBe(1);
@@ -232,10 +258,22 @@ function realHarness(db: Db): TestHarness {
 
   it('席位串行化:quantity=2(owner 占 1)两个并发接受恰好一个成功(FOR UPDATE 复检)', async () => {
     const { owner, org } = await seedTeam(2);
-    const m1 = await api().provisionLocalAccount({ email: `m1-${Math.random().toString(36).slice(2)}@x.io` });
-    const m2 = await api().provisionLocalAccount({ email: `m2-${Math.random().toString(36).slice(2)}@x.io` });
-    const i1 = await api().inviteMember({ orgId: org.id, operatorUserId: owner.id, email: m1.email! });
-    const i2 = await api().inviteMember({ orgId: org.id, operatorUserId: owner.id, email: m2.email! });
+    const m1 = await api().provisionLocalAccount({
+      email: `m1-${Math.random().toString(36).slice(2)}@x.io`,
+    });
+    const m2 = await api().provisionLocalAccount({
+      email: `m2-${Math.random().toString(36).slice(2)}@x.io`,
+    });
+    const i1 = await api().inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: m1.email!,
+    });
+    const i2 = await api().inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: m2.email!,
+    });
 
     const [r1, r2] = await Promise.allSettled([
       api().acceptInvitation({ token: i1.token, acceptorUserId: m1.id }),
@@ -251,12 +289,22 @@ function realHarness(db: Db): TestHarness {
 
   it('复活语义:移除成员 → 新邀请接受后同 (org,user) 行 status 回 0', async () => {
     const { owner, org } = await seedTeam(5);
-    const m = await api().provisionLocalAccount({ email: `revive-${Math.random().toString(36).slice(2)}@x.io` });
-    const inv1 = await api().inviteMember({ orgId: org.id, operatorUserId: owner.id, email: m.email! });
+    const m = await api().provisionLocalAccount({
+      email: `revive-${Math.random().toString(36).slice(2)}@x.io`,
+    });
+    const inv1 = await api().inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: m.email!,
+    });
     await api().acceptInvitation({ token: inv1.token, acceptorUserId: m.id });
     await api().removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: m.id });
 
-    const inv2 = await api().inviteMember({ orgId: org.id, operatorUserId: owner.id, email: m.email! });
+    const inv2 = await api().inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: m.email!,
+    });
     await api().acceptInvitation({ token: inv2.token, acceptorUserId: m.id });
     const rows = await db.select().from(orgMembers).where(eq(orgMembers.orgId, org.id));
     const mine = rows.filter((r) => r.userId === m.id);
@@ -280,7 +328,10 @@ function realHarness(db: Db): TestHarness {
 
   it('营销参数 upsert 单往返(B7):部分更新保留其余字段并返回全量', async () => {
     await api().updateMarketingSettings({ patch: { signupGiftAmount: '3.5' }, adminId: 7 });
-    const second = await api().updateMarketingSettings({ patch: { referralCommissionRate: '0.15' }, adminId: 8 });
+    const second = await api().updateMarketingSettings({
+      patch: { referralCommissionRate: '0.15' },
+      adminId: 8,
+    });
     // PG numeric(38,18) 定标尾零——金额断言用 Decimal 等值(v1 测试规约)
     expect(new Decimal(second.signupGiftAmount).eq('3.5')).toBe(true);
     expect(new Decimal(second.referralCommissionRate).eq('0.15')).toBe(true);
@@ -290,15 +341,28 @@ function realHarness(db: Db): TestHarness {
   });
 
   it('App 凭证:创建/轮换(FOR UPDATE 行锁路径)与 client 双等值校验', async () => {
-    const u = await api().provisionLocalAccount({ email: `app-${Math.random().toString(36).slice(2)}@x.io` });
+    const u = await api().provisionLocalAccount({
+      email: `app-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     const created = await api().createApp({ userId: u.id, name: 'a', scope: { rpm: 5 } });
-    expect((await api().verifyAppClient({ clientId: created.app.clientId, clientSecret: created.clientSecret }))!.appId).toBe(
-      created.app.appId,
-    );
-    const rotated = await api().rotateAppSecret({ userId: u.id, appId: created.app.id });
-    expect(await api().verifyAppClient({ clientId: created.app.clientId, clientSecret: created.clientSecret })).toBeNull();
     expect(
-      (await api().verifyAppClient({ clientId: created.app.clientId, clientSecret: rotated.clientSecret }))!.appId,
+      (await api().verifyAppClient({
+        clientId: created.app.clientId,
+        clientSecret: created.clientSecret,
+      }))!.appId,
+    ).toBe(created.app.appId);
+    const rotated = await api().rotateAppSecret({ userId: u.id, appId: created.app.id });
+    expect(
+      await api().verifyAppClient({
+        clientId: created.app.clientId,
+        clientSecret: created.clientSecret,
+      }),
+    ).toBeNull();
+    expect(
+      (await api().verifyAppClient({
+        clientId: created.app.clientId,
+        clientSecret: rotated.clientSecret,
+      }))!.appId,
     ).toBe(created.app.appId);
     const rows = await db.select().from(apps).where(eq(apps.id, created.app.id));
     expect(rows[0]!.rotatedAt).not.toBeNull();
@@ -306,9 +370,16 @@ function realHarness(db: Db): TestHarness {
 
   it('订阅换绑:旧订阅上的 Key/App 批量改绑新订阅', async () => {
     const { owner, org } = await seedTeam(3);
-    const subs = await db.select().from(userSubscriptions).where(eq(userSubscriptions.orgId, org.id));
+    const subs = await db
+      .select()
+      .from(userSubscriptions)
+      .where(eq(userSubscriptions.orgId, org.id));
     const oldSub = subs[0]!;
-    const created = await api().createKey({ userId: owner.id, name: 'k', subscriptionId: oldSub.id });
+    const created = await api().createKey({
+      userId: owner.id,
+      name: 'k',
+      subscriptionId: oldSub.id,
+    });
     // 换绑目标:同 owner 的历史(非 active)订阅行——FK 真实存在
     const newSubRows = await db
       .insert(userSubscriptions)
@@ -324,19 +395,28 @@ function realHarness(db: Db): TestHarness {
       })
       .returning({ id: userSubscriptions.id });
     const newSub = newSubRows[0]!;
-    const result = await api().rebindSubscription({ fromSubscriptionId: oldSub.id, toSubscriptionId: newSub.id });
+    const result = await api().rebindSubscription({
+      fromSubscriptionId: oldSub.id,
+      toSubscriptionId: newSub.id,
+    });
     expect(result.keys).toBe(1);
     const row = await db.select().from(apiKeys).where(eq(apiKeys.id, created.key.id));
     expect(row[0]!.subscriptionId).toBe(newSub.id);
   });
 
   it('钱包入账经替身桥接(生产为 billing):applyReferral 单事务双侧同生共死在真库回滚', async () => {
-    const inviter = await api().provisionLocalAccount({ email: `inv-${Math.random().toString(36).slice(2)}@x.io` });
-    const invitee = await api().provisionLocalAccount({ email: `ite-${Math.random().toString(36).slice(2)}@x.io` });
+    const inviter = await api().provisionLocalAccount({
+      email: `inv-${Math.random().toString(36).slice(2)}@x.io`,
+    });
+    const invitee = await api().provisionLocalAccount({
+      email: `ite-${Math.random().toString(36).slice(2)}@x.io`,
+    });
     await api().updateMarketingSettings({ patch: { referralSignupBonus: '1' }, adminId: 1 });
     h.wallet.failOnRefId(`referral-signup:${invitee.id}:invitee`);
     const aff = `u${inviter.id.toString(36)}`;
-    await expect(api().applyReferral({ inviteeUserId: invitee.id, affCode: aff })).rejects.toThrow();
+    await expect(
+      api().applyReferral({ inviteeUserId: invitee.id, affCode: aff }),
+    ).rejects.toThrow();
     const rel = await db.select().from(referrals).where(eq(referrals.inviteeUserId, invitee.id));
     expect(rel).toHaveLength(0); // 关系随事务回滚
   });

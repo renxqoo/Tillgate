@@ -31,7 +31,10 @@ export function validateMarketingPatch(patch: MarketingSettingsPatch): string[] 
   if (patch.signupGiftAmount !== undefined && !MARKETING_AMOUNT_RE.test(patch.signupGiftAmount)) {
     invalid.push('signupGiftAmount');
   }
-  if (patch.referralSignupBonus !== undefined && !MARKETING_AMOUNT_RE.test(patch.referralSignupBonus)) {
+  if (
+    patch.referralSignupBonus !== undefined &&
+    !MARKETING_AMOUNT_RE.test(patch.referralSignupBonus)
+  ) {
     invalid.push('referralSignupBonus');
   }
   if (

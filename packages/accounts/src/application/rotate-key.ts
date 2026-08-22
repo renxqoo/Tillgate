@@ -20,7 +20,8 @@ export async function rotateKey(
 ): Promise<RotateKeyResult> {
   const owned = await ctx.store.findOwnedKey(ctx.db, { userId: input.userId, keyId: input.keyId });
   if (owned === null) throw AccountsErrors.business('key_not_found', { keyId: input.keyId });
-  if (owned.status !== 0) throw AccountsErrors.business('key_already_revoked', { keyId: input.keyId });
+  if (owned.status !== 0)
+    throw AccountsErrors.business('key_already_revoked', { keyId: input.keyId });
 
   // 订阅重新校验:失格(过期/被移除)降级个人余额(v1 降级语义)
   let subscriptionId = owned.subscriptionId;

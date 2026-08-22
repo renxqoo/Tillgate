@@ -26,7 +26,10 @@ export interface CreateKeyResult {
   readonly plaintext: string;
 }
 
-export async function createKey(ctx: UseCaseContext, input: CreateKeyInput): Promise<CreateKeyResult> {
+export async function createKey(
+  ctx: UseCaseContext,
+  input: CreateKeyInput,
+): Promise<CreateKeyResult> {
   const fields = parseKeyFields(
     {
       name: input.name,
@@ -46,7 +49,9 @@ export async function createKey(ctx: UseCaseContext, input: CreateKeyInput): Pro
       subscriptionId: input.subscriptionId,
     });
     if (usable === null) {
-      throw AccountsErrors.business('subscription_not_usable', { subscriptionId: input.subscriptionId });
+      throw AccountsErrors.business('subscription_not_usable', {
+        subscriptionId: input.subscriptionId,
+      });
     }
   }
 

@@ -3,10 +3,13 @@
  * 内部适配器默认装配路径不破坏动词表形状。
  */
 import { describe, expect, it } from 'vitest';
-import { createAccounts } from '../src/index.js';
-import { V1_POLICY, createInMemoryAuditSink, createInMemoryWalletCredit, createTestHarness } from '../src/testing/harness.js';
-
-
+import { createAccounts, type AccountsPolicy } from '../src/index.js';
+import {
+  V1_POLICY,
+  createInMemoryAuditSink,
+  createInMemoryWalletCredit,
+  createTestHarness,
+} from '../src/testing/harness.js';
 
 describe('createAccounts 装配契约', () => {
   it('缺 policy/txRetry/now/db/walletCredit 在类型面编译失败(零隐藏默认)', () => {
@@ -34,10 +37,9 @@ describe('createAccounts 装配契约', () => {
   });
 
   it('policy 逐字段必填(部分缺省编译失败)', () => {
-    // @ts-expect-error 缺 keyPrefix 等多个旋钮
-    const bad: Parameters<typeof createAccounts>[0]['policy'] = { ...V1_POLICY, keyPrefix: undefined };
-    void bad;
-    expect(true).toBe(true);
+    // @ts-expect-error keyPrefix:undefined 不满足必填 string——逐字段必填的类型面证明
+    const bad: AccountsPolicy = { ...V1_POLICY, keyPrefix: undefined };
+    expect([bad]).toBeDefined();
   });
 
   it('wallet 替身独立可注入(billing 桥接前的装配形态)', () => {

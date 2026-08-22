@@ -8,7 +8,10 @@ import { createAccountUseCases, type AccountUseCases } from '../application/crea
 import type { UseCaseContext } from '../application/context.js';
 import type { AuditPort, AuditAction } from '../ports/audit.js';
 import type { CreditCommand, CreditResult, WalletCreditPort } from '../ports/wallet-credit.js';
-import { createInMemoryAccountStore, type InMemoryAccountStore } from './in-memory-account-store.js';
+import {
+  createInMemoryAccountStore,
+  type InMemoryAccountStore,
+} from './in-memory-account-store.js';
 
 /** v1 等价策略(装配缺省由 app 持有;测试用等价值断行为) */
 export const V1_TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
@@ -46,7 +49,9 @@ export function createInMemoryWalletCredit(): InMemoryWalletCredit {
       if (failRefId !== null && command.refId === failRefId) {
         throw new Error(`wallet credit failed: ${command.refId}`);
       }
-      const replayed = credits.some((c) => c.refType === command.refType && c.refId === command.refId);
+      const replayed = credits.some(
+        (c) => c.refType === command.refType && c.refId === command.refId,
+      );
       if (!replayed) credits.push(command);
       const result: CreditResult = { replayed };
       return result;

@@ -19,7 +19,10 @@ export interface InvitationPendingPolicy {
  * 待接受邀请上限(v1 org.service.ts:141 写死 min(max(剩余,1)×2, 20),此处显式注入)。
  * 允许 pending 总数超过剩余席位——防刷邀请行的有意设计,与席位闸并存(v1 测试锁定)。
  */
-export function pendingInvitationLimit(remainingSeats: number, policy: InvitationPendingPolicy): number {
+export function pendingInvitationLimit(
+  remainingSeats: number,
+  policy: InvitationPendingPolicy,
+): number {
   const base = Math.max(remainingSeats, 1);
   return Math.min(base * policy.factor, policy.cap);
 }
@@ -33,7 +36,10 @@ export function generateInvitationToken(): string {
  * 接受邀请的 email 匹配判定:登录账号 email 与邀请 email 一致;
  * 账号无 email 时按 subject 兜底比对(v1 org.service 语义)。
  */
-export function invitationEmailMatches(account: { email: string | null; subject: string }, invitedEmail: string): boolean {
+export function invitationEmailMatches(
+  account: { email: string | null; subject: string },
+  invitedEmail: string,
+): boolean {
   const identity = account.email ?? account.subject;
   return identity.trim().toLowerCase() === invitedEmail.trim().toLowerCase();
 }

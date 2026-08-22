@@ -26,9 +26,7 @@ export function normalizeEmail(email: string): string {
 
 export function isValidEmail(normalized: string): boolean {
   return (
-    normalized.length >= 3 &&
-    normalized.length <= FIELD_LIMITS.email &&
-    EMAIL_RE.test(normalized)
+    normalized.length >= 3 && normalized.length <= FIELD_LIMITS.email && EMAIL_RE.test(normalized)
   );
 }
 

@@ -9,9 +9,5 @@ export function rebindSubscription(
   ctx: UseCaseContext,
   input: { fromSubscriptionId: number; toSubscriptionId: number },
 ): Promise<{ keys: number; apps: number }> {
-  return runTx(
-    ctx.db,
-    (tx) => ctx.store.rebindSubscription(tx, input),
-    ctx.txRetry,
-  );
+  return runTx(ctx.db, (tx) => ctx.store.rebindSubscription(tx, input), ctx.txRetry);
 }

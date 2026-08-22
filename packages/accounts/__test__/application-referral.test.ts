@@ -47,7 +47,10 @@ describe('applyReferral', () => {
     h.store.seed.marketing({ referralSignupBonus: '1.5' });
     const r = await h.api.applyReferral({ inviteeUserId: 2, affCode: 'u1' });
     expect(r).toEqual({ applied: true, bonusCredited: true });
-    expect(h.wallet.credits.map((c) => c.refId)).toEqual(['referral-signup:2:inviter', 'referral-signup:2:invitee']);
+    expect(h.wallet.credits.map((c) => c.refId)).toEqual([
+      'referral-signup:2:inviter',
+      'referral-signup:2:invitee',
+    ]);
     for (const c of h.wallet.credits) expect(c.amount).toBe('1.5');
   });
 
@@ -55,12 +58,13 @@ describe('applyReferral', () => {
     ['bad-code', 'accounts.referral_invalid_code', '畸形码'],
     ['u2', 'accounts.referral_self_invite', '自邀'],
     ['u9', 'accounts.referral_inviter_not_found', '邀请人不存在'],
-  ])('aff=%s → %s(%s)', async (code, expected, label) => {
+  ])('aff=%s → %s', async (code, expected) => {
     const h = withUsers();
     h.store.seed.marketing({ referralSignupBonus: '1' });
-    await expect(h.api.applyReferral({ inviteeUserId: 2, affCode: code })).rejects.toMatchObject({ code: expected });
+    await expect(h.api.applyReferral({ inviteeUserId: 2, affCode: code })).rejects.toMatchObject({
+      code: expected,
+    });
     expect(h.wallet.credits).toHaveLength(0);
-    void label;
   });
 
   it('封禁邀请人 → inviter_not_found(防枚举)且零入账', async () => {
@@ -85,7 +89,9 @@ describe('applyReferral', () => {
     const h = withUsers();
     h.store.seed.marketing({ referralSignupBonus: '1' });
     h.wallet.failOnRefId('referral-signup:2:invitee'); // 第二笔炸
-    await expect(h.api.applyReferral({ inviteeUserId: 2, affCode: 'u1' })).rejects.toThrow('wallet credit failed');
+    await expect(h.api.applyReferral({ inviteeUserId: 2, affCode: 'u1' })).rejects.toThrow(
+      'wallet credit failed',
+    );
     // 回滚:关系不存在、第一笔奖励不在替身账本(内存替身账本独立于快照,断言关系)
     const invitees = await h.store.listInvitees(h.ctx.db, { inviterUserId: 1, limit: 10 });
     expect(invitees).toHaveLength(0);
@@ -104,7 +110,10 @@ describe('completeAccountOnboarding(尽力而为,v1 全吞语义)', () => {
     // 全新账号 + 自邀码:归因被拒但不抛
     h.store.seed.user({ id: 5 });
     const r2 = await h.api.completeAccountOnboarding({ userId: 5, affCode: 'u5' });
-    expect(r2.referral).toMatchObject({ status: 'rejected', code: 'accounts.referral_self_invite' });
+    expect(r2.referral).toMatchObject({
+      status: 'rejected',
+      code: 'accounts.referral_self_invite',
+    });
   });
 
   it('无 affCode → 归因 skipped;赠送关闭 → disabled', async () => {
@@ -119,9 +128,11 @@ describe('referralOverview', () => {
   it('开关/aff 码/邀请链接(基址注入)/被邀名单(limit 注入)', async () => {
     const h = withUsers();
     h.store.seed.marketing({ referralSignupBonus: '0.5', referralCommissionRate: '0.1' });
-    const inv = await h.api.applyReferral({ inviteeUserId: 2, affCode: 'u1' });
-    void inv;
-    const overview = await h.api.referralOverview({ userId: 1, frontendBaseUrl: 'https://c.example.com' });
+    await h.api.applyReferral({ inviteeUserId: 2, affCode: 'u1' });
+    const overview = await h.api.referralOverview({
+      userId: 1,
+      frontendBaseUrl: 'https://c.example.com',
+    });
     expect(overview.enabled).toBe(true);
     expect(overview.affCode).toBe('u1');
     expect(overview.inviteUrl).toBe('https://c.example.com/register?aff=u1');

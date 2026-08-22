@@ -13,7 +13,10 @@ export interface AdminListUsersInput {
   readonly limit?: number;
 }
 
-export async function adminListUsers(ctx: UseCaseContext, input: AdminListUsersInput): Promise<PageResult<UserRecord>> {
+export async function adminListUsers(
+  ctx: UseCaseContext,
+  input: AdminListUsersInput,
+): Promise<PageResult<UserRecord>> {
   return ctx.store.listUsers(ctx.db, {
     q: input.q?.trim() || undefined,
     status: input.status,

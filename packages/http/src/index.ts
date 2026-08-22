@@ -5,7 +5,11 @@
  */
 
 // ---- 错误：http 自有目录 + 渲染出口 + Hono onError ----
-export { HttpErrors, GENERIC_INTERNAL_MESSAGE, GENERIC_UNAVAILABLE_MESSAGE } from './errors/catalog';
+export {
+  HttpErrors,
+  GENERIC_INTERNAL_MESSAGE,
+  GENERIC_UNAVAILABLE_MESSAGE,
+} from './errors/catalog';
 export {
   renderError,
   CATEGORY_STATUS_DEFAULTS,
@@ -58,7 +62,12 @@ export { requestIdMiddleware } from './request-context/request-id';
 // ---- 安全件：一次性密钥 + 协议三件套 ----
 // api-key/app 凭证生成器已随消费者迁入 @tokenlens/accounts(C5/D3)
 export { generateRedeemCode, maskUpstreamKey } from './security/secrets';
-export { securityHeaders, corsPreflight, bodyParserLimit, type CorsConfig } from './security/protocol';
+export {
+  securityHeaders,
+  corsPreflight,
+  bodyParserLimit,
+  type CorsConfig,
+} from './security/protocol';
 
 // ---- 本地化：Accept-Language 协商内核 ----
 export {

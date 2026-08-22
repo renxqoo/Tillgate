@@ -35,9 +35,9 @@ describe('provisionLocalAccount', () => {
 
   it('显式 displayName 校验 1..64;超长拒绝', async () => {
     const h = createTestHarness();
-    await expect(h.api.provisionLocalAccount({ email: 'a@x.io', displayName: 'x'.repeat(65) })).rejects.toMatchObject(
-      { code: 'accounts.display_name_invalid' },
-    );
+    await expect(
+      h.api.provisionLocalAccount({ email: 'a@x.io', displayName: 'x'.repeat(65) }),
+    ).rejects.toMatchObject({ code: 'accounts.display_name_invalid' });
     const u = await h.api.provisionLocalAccount({ email: 'b@x.io', displayName: 'Bee' });
     expect(u.displayName).toBe('Bee');
   });

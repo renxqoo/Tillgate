@@ -22,7 +22,8 @@ export async function setReferralRelationStatus(
         relationId: input.relationId,
         status: input.status,
       });
-      if (updated === null) throw AccountsErrors.business('relation_not_found', { relationId: input.relationId });
+      if (updated === null)
+        throw AccountsErrors.business('relation_not_found', { relationId: input.relationId });
       await ctx.audit.record(tx, {
         actor: 'admin',
         adminId: input.adminId,

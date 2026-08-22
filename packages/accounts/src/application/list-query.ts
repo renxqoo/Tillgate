@@ -6,7 +6,8 @@ import type { ListQuery, SortSpec } from '../ports/account-store.js';
 import type { AccountsPolicy } from './context.js';
 
 export function clampListQuery(policy: AccountsPolicy, page?: number, limit?: number): ListQuery {
-  const p = page !== undefined && Number.isSafeInteger(page) && page >= 1 ? page : policy.listPage.page;
+  const p =
+    page !== undefined && Number.isSafeInteger(page) && page >= 1 ? page : policy.listPage.page;
   const l =
     limit !== undefined && Number.isSafeInteger(limit) && limit >= 1
       ? Math.min(limit, policy.listPage.maxLimit)

@@ -12,7 +12,10 @@ export interface OrgDetail {
   readonly invitations: readonly InvitationRecord[];
 }
 
-export async function getOrgDetail(ctx: UseCaseContext, input: { userId: number; orgId: number }): Promise<OrgDetail> {
+export async function getOrgDetail(
+  ctx: UseCaseContext,
+  input: { userId: number; orgId: number },
+): Promise<OrgDetail> {
   const membership = await ctx.store.findActiveMembership(ctx.db, input);
   if (membership === null) throw AccountsErrors.business('org_not_found', { orgId: input.orgId });
   const org = await ctx.store.findOrg(ctx.db, input.orgId);

@@ -8,7 +8,13 @@ import { describe, expect, it } from 'vitest';
 import { ACCOUNT_STATUS } from '@tokenlens/db';
 import { ERROR_CATEGORIES } from '@tokenlens/errors';
 import * as publicApi from '../src/index.js';
-import { USER_STATUS, CREDENTIAL_STATUS, MEMBER_STATUS, INVITATION_STATUS, REFERRAL_STATUS } from '../src/domain/status.js';
+import {
+  USER_STATUS,
+  CREDENTIAL_STATUS,
+  MEMBER_STATUS,
+  INVITATION_STATUS,
+  REFERRAL_STATUS,
+} from '../src/domain/status.js';
 import { AccountsErrors } from '../src/domain/errors.js';
 
 describe('状态词汇单一真相(与 db 物理层逐项相等)', () => {

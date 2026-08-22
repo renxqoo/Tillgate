@@ -20,8 +20,11 @@ export async function acceptInvitation(
   if (snapshot.expired) throw AccountsErrors.business('invitation_expired');
 
   const acceptor = await ctx.store.findUserById(ctx.db, input.acceptorUserId);
-  if (acceptor === null) throw AccountsErrors.business('user_not_found', { userId: input.acceptorUserId });
-  if (!invitationEmailMatches({ email: acceptor.email, subject: acceptor.subject }, snapshot.email)) {
+  if (acceptor === null)
+    throw AccountsErrors.business('user_not_found', { userId: input.acceptorUserId });
+  if (
+    !invitationEmailMatches({ email: acceptor.email, subject: acceptor.subject }, snapshot.email)
+  ) {
     throw AccountsErrors.business('invitation_email_mismatch');
   }
 
@@ -29,7 +32,8 @@ export async function acceptInvitation(
     ctx.db,
     async (tx) => {
       const subscription = await ctx.store.lockActiveOrgSubscription(tx, snapshot.orgId);
-      if (subscription === null) throw AccountsErrors.business('org_no_subscription', { orgId: snapshot.orgId });
+      if (subscription === null)
+        throw AccountsErrors.business('org_no_subscription', { orgId: snapshot.orgId });
       const activeMembers = await ctx.store.countActiveMembers(tx, snapshot.orgId);
       if (activeMembers >= subscription.quantity) {
         throw AccountsErrors.business('seats_full', {

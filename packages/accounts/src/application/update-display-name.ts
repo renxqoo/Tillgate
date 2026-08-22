@@ -21,7 +21,8 @@ export async function updateDisplayName(
         patch: { displayName },
         advanceSessionAnchor: false,
       });
-      if (updated === null) throw AccountsErrors.business('user_not_found', { userId: input.userId });
+      if (updated === null)
+        throw AccountsErrors.business('user_not_found', { userId: input.userId });
       return updated;
     },
     ctx.txRetry,

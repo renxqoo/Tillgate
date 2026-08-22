@@ -5,6 +5,9 @@
 import type { ActiveKeyRecord } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';
 
-export function resolveKeyByHash(ctx: UseCaseContext, keyHash: string): Promise<ActiveKeyRecord | null> {
+export function resolveKeyByHash(
+  ctx: UseCaseContext,
+  keyHash: string,
+): Promise<ActiveKeyRecord | null> {
   return ctx.store.findActiveKeyByKeyHash(ctx.db, keyHash);
 }

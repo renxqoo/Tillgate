@@ -21,4 +21,7 @@ export const INVITATION_STATUS = { PENDING: 0, ACCEPTED: 1, REVOKED: 2 } as cons
 /** 推荐/营销关系状态:0 有效 / 1 封禁(作弊停奖,历史不动) */
 export const REFERRAL_STATUS = { ACTIVE: 0, BANNED: 1 } as const;
 
-export const REFERRAL_STATUSES: readonly number[] = [REFERRAL_STATUS.ACTIVE, REFERRAL_STATUS.BANNED];
+export const REFERRAL_STATUSES: readonly number[] = [
+  REFERRAL_STATUS.ACTIVE,
+  REFERRAL_STATUS.BANNED,
+];

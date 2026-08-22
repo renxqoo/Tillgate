@@ -3,7 +3,16 @@
  * 时间语义 = 注入时钟(对应 postgres 的 clock_timestamp);fake db 的 transaction
  * 用快照/恢复实现回滚——「同生共死」类用例(applyReferral 双侧奖励回滚)可真实断言。
  */
-import type { AccountStorePort, ApiKeyInsert, AppInsert, LocalUserInsert, OAuthUserInsert, InvitationInsert } from '../ports/account-store.js';
+import { ZERO_MARKETING_SETTINGS } from '../domain/marketing.js';
+
+import type {
+  AccountStorePort,
+  ApiKeyInsert,
+  AppInsert,
+  LocalUserInsert,
+  OAuthUserInsert,
+  InvitationInsert,
+} from '../ports/account-store.js';
 
 /** 内部可变行形态(时钟由替身注入推进) */
 interface UserRow {
@@ -136,7 +145,17 @@ export interface InMemoryState {
   subscriptions: Map<number, SubscriptionRow>;
   rateCards: Map<number, RateCardRow>;
   marketing: MarketingRow | null;
-  sequences: { user: number; key: number; app: number; org: number; member: number; invitation: number; referral: number; subscription: number; rateCard: number };
+  sequences: {
+    user: number;
+    key: number;
+    app: number;
+    org: number;
+    member: number;
+    invitation: number;
+    referral: number;
+    subscription: number;
+    rateCard: number;
+  };
 }
 
 export interface InMemoryAccountStore extends AccountStorePort {
@@ -197,12 +216,24 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
     subscriptions: new Map(),
     rateCards: new Map(),
     marketing: null,
-    sequences: { user: 0, key: 0, app: 0, org: 0, member: 0, invitation: 0, referral: 0, subscription: 0, rateCard: 0 },
+    sequences: {
+      user: 0,
+      key: 0,
+      app: 0,
+      org: 0,
+      member: 0,
+      invitation: 0,
+      referral: 0,
+      subscription: 0,
+      rateCard: 0,
+    },
   };
   const now = () => clock();
 
   const localEmailTaken = (email: string, exceptId?: number): boolean =>
-    [...state.users.values()].some((u) => u.id !== exceptId && u.issuer === 'local' && u.email === email);
+    [...state.users.values()].some(
+      (u) => u.id !== exceptId && u.issuer === 'local' && u.email === email,
+    );
 
   const activeSubscription = (orgId: number): SubscriptionRow | undefined => {
     const t = now().getTime();
@@ -311,7 +342,14 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       },
       org(row) {
         const id = row.id ?? ++state.sequences.org;
-        const full: OrgRow = { id, name: `org-${id}`, ownerUserId: 0, createdAt: now(), updatedAt: now(), ...row };
+        const full: OrgRow = {
+          id,
+          name: `org-${id}`,
+          ownerUserId: 0,
+          createdAt: now(),
+          updatedAt: now(),
+          ...row,
+        };
         state.orgs.set(id, full);
         return { ...full };
       },
@@ -352,7 +390,14 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       },
       referral(row) {
         const id = row.id ?? ++state.sequences.referral;
-        const full: ReferralRow = { id, inviterUserId: 0, inviteeUserId: 0, status: 0, createdAt: now(), ...row };
+        const full: ReferralRow = {
+          id,
+          inviterUserId: 0,
+          inviteeUserId: 0,
+          status: 0,
+          createdAt: now(),
+          ...row,
+        };
         state.referrals.set(id, full);
         return { ...full };
       },
@@ -378,9 +423,7 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       },
       marketing(row) {
         state.marketing = {
-          signupGiftAmount: '0',
-          referralSignupBonus: '0',
-          referralCommissionRate: '0',
+          ...ZERO_MARKETING_SETTINGS,
           updatedBy: null,
           updatedAt: now(),
           ...row,
@@ -416,7 +459,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
     },
 
     async insertOAuthUser(_db, input: OAuthUserInsert) {
-      const exists = [...state.users.values()].some((u) => u.issuer === input.issuer && u.subject === input.subject);
+      const exists = [...state.users.values()].some(
+        (u) => u.issuer === input.issuer && u.subject === input.subject,
+      );
       if (exists) return { status: 'exists' };
       const id = ++state.sequences.user;
       const row: UserRow = {
@@ -451,7 +496,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       return row ? pubUser(row) : null;
     },
     async findOAuthUser(_db, issuer, subject) {
-      const row = [...state.users.values()].find((u) => u.issuer === issuer && u.subject === subject);
+      const row = [...state.users.values()].find(
+        (u) => u.issuer === issuer && u.subject === subject,
+      );
       return row ? pubUser(row) : null;
     },
     async getUserProfile(_db, userId) {
@@ -494,7 +541,14 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       let rows = [...state.users.values()].filter((u) => {
         if (input.status !== undefined && u.status !== input.status) return false;
         if (input.enterprise !== undefined && u.isEnterprise !== input.enterprise) return false;
-        if (input.q && !(likeHit(u.subject, input.q) || likeHit(u.email, input.q) || likeHit(u.displayName, input.q)))
+        if (
+          input.q &&
+          !(
+            likeHit(u.subject, input.q) ||
+            likeHit(u.email, input.q) ||
+            likeHit(u.displayName, input.q)
+          )
+        )
           return false;
         return true;
       });
@@ -538,7 +592,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       return pubKey(row);
     },
     async listKeysByUser(_db, input) {
-      const rows = [...state.keys.values()].filter((k) => k.userId === input.userId).toSorted((a, b) => b.id - a.id);
+      const rows = [...state.keys.values()]
+        .filter((k) => k.userId === input.userId)
+        .toSorted((a, b) => b.id - a.id);
       return paginate(rows.map(pubKey), input.page, input.limit);
     },
     async findOwnedKey(_db, { userId, keyId }) {
@@ -652,7 +708,10 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
         name: input.name,
         description: input.description,
         subscriptionId: input.subscriptionId,
-        scope: input.scope === null ? null : { ...input.scope, models: input.scope.models ? [...input.scope.models] : undefined },
+        scope:
+          input.scope === null
+            ? null
+            : { ...input.scope, models: input.scope.models ? [...input.scope.models] : undefined },
         status: 0,
         createdAt: now(),
         rotatedAt: null,
@@ -661,7 +720,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       return pubApp(row);
     },
     async listAppsByUser(_db, input) {
-      const rows = [...state.apps.values()].filter((a) => a.userId === input.userId).toSorted((a, b) => b.id - a.id);
+      const rows = [...state.apps.values()]
+        .filter((a) => a.userId === input.userId)
+        .toSorted((a, b) => b.id - a.id);
       return paginate(rows.map(pubApp), input.page, input.limit);
     },
     async findOwnedApp(_db, { userId, appId }) {
@@ -687,7 +748,13 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       if (!row || row.status !== 0) return null;
       const owner = state.users.get(row.userId);
       if (!owner || owner.status !== 0) return null;
-      return { id: row.id, appId: row.appId, userId: row.userId, scope: row.scope, subscriptionId: row.subscriptionId };
+      return {
+        id: row.id,
+        appId: row.appId,
+        userId: row.userId,
+        scope: row.scope,
+        subscriptionId: row.subscriptionId,
+      };
     },
     async findActiveAppByClient(_db, { clientId, clientSecretHash }) {
       const row = [...state.apps.values()].find(
@@ -696,7 +763,13 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       if (!row || row.status !== 0) return null;
       const owner = state.users.get(row.userId);
       if (!owner || owner.status !== 0) return null;
-      return { id: row.id, appId: row.appId, userId: row.userId, scope: row.scope, subscriptionId: row.subscriptionId };
+      return {
+        id: row.id,
+        appId: row.appId,
+        userId: row.userId,
+        scope: row.scope,
+        subscriptionId: row.subscriptionId,
+      };
     },
 
     async insertOrgWithOwner(_db, { name, ownerUserId }) {
@@ -802,7 +875,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       return true;
     },
     async insertOrReviveMember(_db, { orgId, userId, role }) {
-      const existing = [...state.members.values()].find((m) => m.orgId === orgId && m.userId === userId);
+      const existing = [...state.members.values()].find(
+        (m) => m.orgId === orgId && m.userId === userId,
+      );
       if (existing === undefined) {
         const id = ++state.sequences.member;
         state.members.set(id, {
@@ -904,18 +979,28 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
     },
     async getMarketingSettings(_db) {
       if (state.marketing === null) {
-        return { signupGiftAmount: '0', referralSignupBonus: '0', referralCommissionRate: '0', updatedBy: null, updatedAt: new Date(0) };
+        return {
+          ...ZERO_MARKETING_SETTINGS,
+          updatedBy: null,
+          updatedAt: new Date(0),
+        };
       }
       return { ...state.marketing };
     },
     async upsertMarketingSettings(_db, { patch, updatedBy }) {
       const base: MarketingRow =
         state.marketing === null
-          ? { signupGiftAmount: '0', referralSignupBonus: '0', referralCommissionRate: '0', updatedBy: null, updatedAt: new Date(0) }
+          ? {
+              ...ZERO_MARKETING_SETTINGS,
+              updatedBy: null,
+              updatedAt: new Date(0),
+            }
           : { ...state.marketing };
       if (patch.signupGiftAmount !== undefined) base.signupGiftAmount = patch.signupGiftAmount;
-      if (patch.referralSignupBonus !== undefined) base.referralSignupBonus = patch.referralSignupBonus;
-      if (patch.referralCommissionRate !== undefined) base.referralCommissionRate = patch.referralCommissionRate;
+      if (patch.referralSignupBonus !== undefined)
+        base.referralSignupBonus = patch.referralSignupBonus;
+      if (patch.referralCommissionRate !== undefined)
+        base.referralCommissionRate = patch.referralCommissionRate;
       base.updatedBy = updatedBy;
       base.updatedAt = now();
       state.marketing = base;

@@ -41,11 +41,12 @@ export function parseAmountLimit(input: string, upper: string): string | null {
   return input;
 }
 
-/** 纯正数金额判断(营销参数等场景:允许 0,金额上限场景用 parseAmountLimit) */
-export function isNonNegativeAmount(input: string): boolean {
+/** 管理面金额口径:非负且 ≤ 上界(允许 0=即日全拒;v1 admin zod 语义) */
+export function isNonNegativeAmountWithin(input: string, upper: string): boolean {
   if (!DECIMAL_RE.test(input)) return false;
   try {
-    return new Decimal(input).greaterThanOrEqualTo(0);
+    const value = new Decimal(input);
+    return value.greaterThanOrEqualTo(0) && value.lessThanOrEqualTo(new Decimal(upper));
   } catch {
     return false;
   }

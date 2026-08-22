@@ -36,7 +36,10 @@ export async function completeAccountOnboarding(
     referral = { status: 'skipped' };
   } else {
     try {
-      const result = await applyReferral(ctx, { inviteeUserId: input.userId, affCode: input.affCode });
+      const result = await applyReferral(ctx, {
+        inviteeUserId: input.userId,
+        affCode: input.affCode,
+      });
       referral = { status: 'applied', bonusCredited: result.bonusCredited };
     } catch (error) {
       referral = {
@@ -49,7 +52,11 @@ export async function completeAccountOnboarding(
 }
 
 function errCode(error: unknown): string {
-  if (error instanceof Error && 'code' in error && typeof (error as { code: unknown }).code === 'string') {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    typeof (error as { code: unknown }).code === 'string'
+  ) {
     return (error as { code: string }).code;
   }
   return 'unknown';

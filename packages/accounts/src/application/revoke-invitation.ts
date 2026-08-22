@@ -12,5 +12,6 @@ export async function revokeInvitation(
     orgId: input.orgId,
     invitationId: input.invitationId,
   });
-  if (!ok) throw AccountsErrors.business('invitation_invalid', { invitationId: input.invitationId });
+  if (!ok)
+    throw AccountsErrors.business('invitation_invalid', { invitationId: input.invitationId });
 }

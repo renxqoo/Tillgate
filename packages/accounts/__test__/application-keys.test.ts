@@ -45,7 +45,9 @@ describe('createKey', () => {
     await expect(
       h.api.createKey({ userId: owner.id, name: 'k', dailySpendLimit: '1e21' }),
     ).rejects.toMatchObject({ code: 'accounts.key_patch_invalid' });
-    await expect(h.api.createKey({ userId: owner.id, name: 'k', rpmLimit: 1_000_001 })).rejects.toMatchObject({
+    await expect(
+      h.api.createKey({ userId: owner.id, name: 'k', rpmLimit: 1_000_001 }),
+    ).rejects.toMatchObject({
       code: 'accounts.key_patch_invalid',
     });
     await expect(h.api.createKey({ userId: owner.id, name: '' })).rejects.toMatchObject({
@@ -62,10 +64,14 @@ describe('createKey', () => {
     const other = h.store.seed.subscription({ id: 301, userId: stranger.id });
     const ok = await h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: own.id });
     expect(ok.key.subscriptionId).toBe(300);
-    await expect(h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: other.id })).rejects.toMatchObject({
+    await expect(
+      h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: other.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.subscription_not_usable',
     });
-    await expect(h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: 999 })).rejects.toMatchObject({
+    await expect(
+      h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: 999 }),
+    ).rejects.toMatchObject({
       code: 'accounts.subscription_not_usable',
     });
   });
@@ -85,13 +91,21 @@ describe('listKeys / patchKey / revokeKey', () => {
   it('patch:越权/不存在 → key_not_found;已吊销 → key_already_revoked;成功即时生效', async () => {
     const { h, owner, stranger } = seeded();
     const { key } = await h.api.createKey({ userId: owner.id, name: 'a' });
-    await expect(h.api.patchKey({ userId: stranger.id, keyId: key.id, patch: { name: 'x' } })).rejects.toMatchObject({
+    await expect(
+      h.api.patchKey({ userId: stranger.id, keyId: key.id, patch: { name: 'x' } }),
+    ).rejects.toMatchObject({
       code: 'accounts.key_not_found',
     });
-    const patched = await h.api.patchKey({ userId: owner.id, keyId: key.id, patch: { name: 'renamed', rpmLimit: 99 } });
+    const patched = await h.api.patchKey({
+      userId: owner.id,
+      keyId: key.id,
+      patch: { name: 'renamed', rpmLimit: 99 },
+    });
     expect(patched.name).toBe('renamed');
     await h.api.revokeKey({ userId: owner.id, keyId: key.id });
-    await expect(h.api.patchKey({ userId: owner.id, keyId: key.id, patch: { name: 'y' } })).rejects.toMatchObject({
+    await expect(
+      h.api.patchKey({ userId: owner.id, keyId: key.id, patch: { name: 'y' } }),
+    ).rejects.toMatchObject({
       code: 'accounts.key_already_revoked',
     });
   });
@@ -136,7 +150,11 @@ describe('rotateKey', () => {
   it('绑定订阅失格(过期)→ 轮换降级个人余额 subscriptionId=null', async () => {
     const { h, owner } = seeded();
     const teamSub = h.store.seed.subscription({ id: 300, userId: owner.id });
-    const { key } = await h.api.createKey({ userId: owner.id, name: 'a', subscriptionId: teamSub.id });
+    const { key } = await h.api.createKey({
+      userId: owner.id,
+      name: 'a',
+      subscriptionId: teamSub.id,
+    });
     // 订阅过期(时钟推进到 endAt 之后)
     h.advanceClockMs(31 * 86_400_000);
     const rotated = await h.api.rotateKey({ userId: owner.id, keyId: key.id });
@@ -180,10 +198,14 @@ describe('adminListKeys / adminPatchKey / rebindSubscription', () => {
     expect(flipped.status).toBe(1);
     const restored = await h.api.adminPatchKey({ keyId, patch: { status: 0 }, adminId: 5 });
     expect(restored.status).toBe(0);
-    await expect(h.api.adminPatchKey({ keyId, patch: { status: 99 }, adminId: 5 })).rejects.toMatchObject({
+    await expect(
+      h.api.adminPatchKey({ keyId, patch: { status: 99 }, adminId: 5 }),
+    ).rejects.toMatchObject({
       code: 'accounts.key_patch_invalid',
     });
-    await expect(h.api.adminPatchKey({ keyId: 999, patch: { name: 'x' }, adminId: 5 })).rejects.toMatchObject({
+    await expect(
+      h.api.adminPatchKey({ keyId: 999, patch: { name: 'x' }, adminId: 5 }),
+    ).rejects.toMatchObject({
       code: 'accounts.key_not_found',
     });
     expect(h.audit.actions.at(-1)).toMatchObject({ action: 'api_key.update', adminId: 5 });
@@ -195,9 +217,16 @@ describe('adminListKeys / adminPatchKey / rebindSubscription', () => {
     h.store.seed.subscription({ id: 300, userId: owner.id });
     const { key } = await h.api.createKey({ userId: owner.id, name: 'k', subscriptionId: 300 });
     const app = h.store.seed.app({ userId: owner.id, subscriptionId: 300 });
-    const result = await h.api.rebindSubscription({ fromSubscriptionId: 300, toSubscriptionId: 301 });
+    const result = await h.api.rebindSubscription({
+      fromSubscriptionId: 300,
+      toSubscriptionId: 301,
+    });
     expect(result).toEqual({ keys: 1, apps: 1 });
-    expect((await h.store.findOwnedKey(h.ctx.db, { userId: owner.id, keyId: key.id }))!.subscriptionId).toBe(301);
-    expect((await h.store.findOwnedApp(h.ctx.db, { userId: owner.id, appId: app.id }))!.subscriptionId).toBe(301);
+    expect(
+      (await h.store.findOwnedKey(h.ctx.db, { userId: owner.id, keyId: key.id }))!.subscriptionId,
+    ).toBe(301);
+    expect(
+      (await h.store.findOwnedApp(h.ctx.db, { userId: owner.id, appId: app.id }))!.subscriptionId,
+    ).toBe(301);
   });
 });

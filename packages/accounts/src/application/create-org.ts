@@ -17,5 +17,9 @@ export async function createOrg(
   if (!(await ctx.store.userExists(ctx.db, input.ownerUserId))) {
     throw AccountsErrors.business('user_not_found', { userId: input.ownerUserId });
   }
-  return runTx(ctx.db, (tx) => ctx.store.insertOrgWithOwner(tx, { name, ownerUserId: input.ownerUserId }), ctx.txRetry);
+  return runTx(
+    ctx.db,
+    (tx) => ctx.store.insertOrgWithOwner(tx, { name, ownerUserId: input.ownerUserId }),
+    ctx.txRetry,
+  );
 }

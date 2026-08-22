@@ -54,7 +54,11 @@ describe('createOrg / listMyOrgs / getOrgDetail', () => {
     expect(memberView.members).toHaveLength(2);
     expect(memberView.invitations).toEqual([]);
 
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'new@x.io' });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'new@x.io',
+    });
     const ownerAgain = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
     expect(ownerAgain.invitations).toHaveLength(1);
     expect(JSON.stringify(ownerAgain.invitations)).not.toContain(inv.token); // token 永不回列表
@@ -66,7 +70,11 @@ describe('createOrg / listMyOrgs / getOrgDetail', () => {
 describe('inviteMember', () => {
   it('happy path:token 32hex、TTL 注入、pending 计数', async () => {
     const { h, owner, org } = teamOrg();
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: ' New@X.IO ' });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: ' New@X.IO ',
+    });
     expect(inv.token).toMatch(/^[0-9a-f]{32}$/);
     expect(await h.store.countPendingInvitations(h.ctx.db, org.id)).toBe(1);
     const again = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
@@ -78,10 +86,14 @@ describe('inviteMember', () => {
     const stranger = h.store.seed.user({ id: 102, email: 's@x.io' });
     const member = h.store.seed.user({ id: 101, email: 'm@x.io' });
     h.store.seed.member({ orgId: org.id, userId: member.id, role: 'member' });
-    await expect(h.api.inviteMember({ orgId: org.id, operatorUserId: stranger.id, email: 'a@b.io' })).rejects.toMatchObject({
+    await expect(
+      h.api.inviteMember({ orgId: org.id, operatorUserId: stranger.id, email: 'a@b.io' }),
+    ).rejects.toMatchObject({
       code: 'accounts.org_forbidden',
     });
-    await expect(h.api.inviteMember({ orgId: org.id, operatorUserId: member.id, email: 'a@b.io' })).rejects.toMatchObject({
+    await expect(
+      h.api.inviteMember({ orgId: org.id, operatorUserId: member.id, email: 'a@b.io' }),
+    ).rejects.toMatchObject({
       code: 'accounts.org_forbidden',
     });
   });
@@ -91,11 +103,11 @@ describe('inviteMember', () => {
     const owner = h.store.seed.user({ id: 100 });
     const org = h.store.seed.org({ ownerUserId: owner.id });
     h.store.seed.member({ orgId: org.id, userId: owner.id, role: 'owner' });
-    await expect(h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@b.io' })).rejects.toMatchObject({
+    await expect(
+      h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@b.io' }),
+    ).rejects.toMatchObject({
       code: 'accounts.org_no_subscription',
     });
-    const { org: org2 } = teamOrg(2);
-    void org2;
     await expect(
       h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'bad' }),
     ).rejects.toMatchObject({ code: 'accounts.email_invalid' });
@@ -103,7 +115,9 @@ describe('inviteMember', () => {
 
   it('席位闸:active ≥ quantity → seats_full(v1 qty=1 owner 占满)', async () => {
     const { h, owner, org } = teamOrg(1);
-    await expect(h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@b.io' })).rejects.toMatchObject({
+    await expect(
+      h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@b.io' }),
+    ).rejects.toMatchObject({
       code: 'accounts.seats_full',
     });
   });
@@ -112,17 +126,31 @@ describe('inviteMember', () => {
     const { h, owner, org } = teamOrg(2);
     await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a1@x.io' });
     await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a2@x.io' });
-    await expect(h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a3@x.io' })).rejects.toMatchObject({
+    await expect(
+      h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a3@x.io' }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitations_full',
     });
   });
 
   it('撤销:CAS 一次;重复撤销 → invitation_invalid;非 owner 拒绝', async () => {
     const { h, owner, org } = teamOrg();
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'a@x.io' });
-    await h.api.revokeInvitation({ orgId: org.id, operatorUserId: owner.id, invitationId: inv.invitationId });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'a@x.io',
+    });
+    await h.api.revokeInvitation({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      invitationId: inv.invitationId,
+    });
     await expect(
-      h.api.revokeInvitation({ orgId: org.id, operatorUserId: owner.id, invitationId: inv.invitationId }),
+      h.api.revokeInvitation({
+        orgId: org.id,
+        operatorUserId: owner.id,
+        invitationId: inv.invitationId,
+      }),
     ).rejects.toMatchObject({ code: 'accounts.invitation_invalid' });
   });
 });
@@ -132,26 +160,50 @@ describe('acceptInvitation', () => {
     const { h, owner, org } = teamOrg();
     const acceptor = h.store.seed.user({ id: 101, email: 'target@x.io' });
 
-    await expect(h.api.acceptInvitation({ token: 'nope', acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    await expect(
+      h.api.acceptInvitation({ token: 'nope', acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitation_invalid',
     });
 
-    const revoked = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'target@x.io' });
-    await h.api.revokeInvitation({ orgId: org.id, operatorUserId: owner.id, invitationId: revoked.invitationId });
-    await expect(h.api.acceptInvitation({ token: revoked.token, acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    const revoked = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'target@x.io',
+    });
+    await h.api.revokeInvitation({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      invitationId: revoked.invitationId,
+    });
+    await expect(
+      h.api.acceptInvitation({ token: revoked.token, acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitation_revoked',
     });
 
-    const mismatched = h.store.seed.invitation({ orgId: org.id, email: 'other@x.io', token: 't-mismatch' });
-    await expect(h.api.acceptInvitation({ token: 't-mismatch', acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    const mismatched = h.store.seed.invitation({
+      orgId: org.id,
+      email: 'other@x.io',
+      token: 't-mismatch',
+    });
+    await expect(
+      h.api.acceptInvitation({ token: 't-mismatch', acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitation_email_mismatch',
     });
     void mismatched;
 
     // 过期:时钟越过 TTL
-    const expiring = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'target@x.io' });
+    const expiring = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'target@x.io',
+    });
     h.advanceClockMs(7 * 86_400_000 + 1_000);
-    await expect(h.api.acceptInvitation({ token: expiring.token, acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    await expect(
+      h.api.acceptInvitation({ token: expiring.token, acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitation_expired',
     });
   });
@@ -159,14 +211,23 @@ describe('acceptInvitation', () => {
   it('happy path:成员 role=member;pending 列表消耗;重复接受 → already_accepted', async () => {
     const { h, owner, org } = teamOrg();
     const acceptor = h.store.seed.user({ id: 101, email: 'target@x.io' });
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'target@x.io' });
-    const { orgId } = await h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'target@x.io',
+    });
+    const { orgId } = await h.api.acceptInvitation({
+      token: inv.token,
+      acceptorUserId: acceptor.id,
+    });
     expect(orgId).toBe(org.id);
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(2);
     expect(await h.api.getOrgDetail({ userId: owner.id, orgId: org.id })).toMatchObject({});
     const pending = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
     expect(pending.invitations).toHaveLength(0);
-    await expect(h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    await expect(
+      h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.invitation_already_accepted',
     });
   });
@@ -174,10 +235,16 @@ describe('acceptInvitation', () => {
   it('接受事务内复检席位:满员 → seats_full 且成员行不入库(回滚语义)', async () => {
     const { h, owner, org } = teamOrg(3); // 邀请时 3 席
     const acceptor = h.store.seed.user({ id: 101, email: 'target@x.io' });
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'target@x.io' });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'target@x.io',
+    });
     // 邀请后订阅降为 1 席(owner 占满):accept 权威复检拒绝
     h.store.seed.subscription({ id: 500, userId: owner.id, orgId: org.id, quantity: 1 });
-    await expect(h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id })).rejects.toMatchObject({
+    await expect(
+      h.api.acceptInvitation({ token: inv.token, acceptorUserId: acceptor.id }),
+    ).rejects.toMatchObject({
       code: 'accounts.seats_full',
     });
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(1); // 未复活/未插入
@@ -190,10 +257,17 @@ describe('acceptInvitation', () => {
     h.store.seed.member({ orgId: org.id, userId: member.id, role: 'member' });
     await h.api.removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id });
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(1);
-    const inv = await h.api.inviteMember({ orgId: org.id, operatorUserId: owner.id, email: 'm@x.io' });
+    const inv = await h.api.inviteMember({
+      orgId: org.id,
+      operatorUserId: owner.id,
+      email: 'm@x.io',
+    });
     await h.api.acceptInvitation({ token: inv.token, acceptorUserId: member.id });
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(2);
-    const membership = await h.store.findActiveMembership(h.ctx.db, { orgId: org.id, userId: member.id });
+    const membership = await h.store.findActiveMembership(h.ctx.db, {
+      orgId: org.id,
+      userId: member.id,
+    });
     expect(membership!.role).toBe('member');
   });
 });
@@ -213,11 +287,21 @@ describe('setMemberLimits / removeMember / 订阅绑定守卫', () => {
     expect(set.dailySpendLimit).toBe('100.5');
     expect(set.monthlyQuota).toBe('200');
     await expect(
-      h.api.setMemberLimits({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id, dailySpendLimit: '1e21' }),
+      h.api.setMemberLimits({
+        orgId: org.id,
+        operatorUserId: owner.id,
+        memberUserId: member.id,
+        dailySpendLimit: '1e21',
+      }),
     ).rejects.toMatchObject({ code: 'accounts.member_limits_invalid' });
     await h.api.removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id });
     await expect(
-      h.api.setMemberLimits({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id, dailySpendLimit: '1' }),
+      h.api.setMemberLimits({
+        orgId: org.id,
+        operatorUserId: owner.id,
+        memberUserId: member.id,
+        dailySpendLimit: '1',
+      }),
     ).rejects.toMatchObject({ code: 'accounts.member_not_found' });
   });
 
@@ -246,13 +330,20 @@ describe('setMemberLimits / removeMember / 订阅绑定守卫', () => {
     const memberKey = await h.api.createKey({ userId: member.id, name: 'k', subscriptionId: 500 });
     expect(memberKey.key.subscriptionId).toBe(500);
     const stranger = h.store.seed.user({ id: 102 });
-    await expect(h.api.createKey({ userId: stranger.id, name: 'k', subscriptionId: 500 })).rejects.toMatchObject({
+    await expect(
+      h.api.createKey({ userId: stranger.id, name: 'k', subscriptionId: 500 }),
+    ).rejects.toMatchObject({
       code: 'accounts.subscription_not_usable',
     });
     // 被移除后既有绑定不删(历史归属),仅新建被拒
     await h.api.removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id });
-    expect((await h.store.findOwnedKey(h.ctx.db, { userId: member.id, keyId: memberKey.key.id }))!.subscriptionId).toBe(500);
-    await expect(h.api.createKey({ userId: member.id, name: 'k2', subscriptionId: 500 })).rejects.toMatchObject({
+    expect(
+      (await h.store.findOwnedKey(h.ctx.db, { userId: member.id, keyId: memberKey.key.id }))!
+        .subscriptionId,
+    ).toBe(500);
+    await expect(
+      h.api.createKey({ userId: member.id, name: 'k2', subscriptionId: 500 }),
+    ).rejects.toMatchObject({
       code: 'accounts.subscription_not_usable',
     });
     // 读模型

@@ -2,6 +2,9 @@
 import type { OrgMembershipView } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';
 
-export function listMyOrgs(ctx: UseCaseContext, userId: number): Promise<readonly OrgMembershipView[]> {
+export function listMyOrgs(
+  ctx: UseCaseContext,
+  userId: number,
+): Promise<readonly OrgMembershipView[]> {
   return ctx.store.listMembershipsForUser(ctx.db, userId);
 }
