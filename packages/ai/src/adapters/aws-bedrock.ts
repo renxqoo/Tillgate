@@ -207,7 +207,8 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown, _rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules: ParamRules, _endpoint: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
+    void _endpoint;
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
 

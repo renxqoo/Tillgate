@@ -54,8 +54,9 @@ export class AnthropicAdapter implements ProtocolAdapter {
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown, _rules: ParamRules): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules: ParamRules, _endpoint: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
     // 规范形基底（chat 参数语义）+ claude 特有参数透传
+    void _endpoint;
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
 

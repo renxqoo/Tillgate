@@ -1,6 +1,6 @@
 import { createSign } from 'node:crypto';
 import { extractOpenAiUsage } from './shared';
-import type {
+import type { ParamRules,
   Endpoint, ChannelDesc, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import { chatRequestToGemini, geminiResponseToChat, geminiUpstreamToCanonicalStream, geminiUsageToUsage } from '../protocol/gemini-chat';
@@ -118,7 +118,7 @@ export class VertexAiAdapter implements ProtocolAdapter {
     return chatRequestToGemini({ ...body, model });
   }
 
-  normalizeRequest(req: unknown): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(req: unknown, _rules?: ParamRules, _endpoint?: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
     return { body: req, adjustments: [] };
   }
 
