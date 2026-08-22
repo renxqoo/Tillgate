@@ -63,7 +63,7 @@ describe('face 目录装配形态（消费方式示例 + 防重语义）', () =>
     expect(HttpErrors.code('validation_failed')).toBe('http.validation_failed');
   });
 
-  it('能力包目录与 http 目录命名空间不同即可组合', () => {
+  it('B6 回归：业务码不入 http 目录——能力包目录与 http 目录命名空间隔离可组合', () => {
     const Face = defineErrorCatalog('face_test', {
       session_invalid: { category: 'forbidden', message: 'Session invalid', zh: '会话无效' },
     });

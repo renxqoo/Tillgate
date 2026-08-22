@@ -42,7 +42,7 @@ describe('generateApiKey（前缀必填注入）', () => {
     expect(k.slice(3)).toHaveLength(40);
     expect(k.slice(3)).toMatch(/^[0-9a-f]+$/);
   });
-  it('部署自定义前缀原样生效', () => {
+  it('B5 回归：前缀必填注入（v1 藏 ag_ 默认值，须与网关识别端同 env 值）', () => {
     expect(generateApiKey('tk-').startsWith('tk-')).toBe(true);
   });
 });

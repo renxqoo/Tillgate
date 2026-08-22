@@ -80,6 +80,12 @@ describe('列表 query 组合（sort / search / listQuerySchema）', () => {
     expect(sortQuerySchema.parse({ sort_by: ' name ' })).toEqual({ sort_by: 'name', order: 'desc' });
   });
 
+  it('边界：sort_by 超 64 字符 / 搜索词超 100 字符 → 校验拒绝（不静默截断）', () => {
+    expect(sortQuerySchema.safeParse({ sort_by: 'x'.repeat(65) }).success).toBe(false);
+    expect(searchQuerySchema.safeParse('x'.repeat(101)).success).toBe(false);
+    expect(sortQuerySchema.safeParse({ sort_by: 'x'.repeat(64) }).success).toBe(true);
+  });
+
   it('searchQuerySchema：trim、空白/非字符串 → undefined', () => {
     expect(searchQuerySchema.parse(' x ')).toBe('x');
     expect(searchQuerySchema.parse('   ')).toBeUndefined();

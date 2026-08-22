@@ -19,7 +19,7 @@ function app(): Hono {
 }
 
 describe('securityHeaders（统一 4 头全集）', () => {
-  it('响应携带 nosniff / DENY / no-referrer / no-store', async () => {
+  it('B3 回归：安全头统一 4 头全集（gateway 拷贝缺 Cache-Control 的漂移按收紧方向归一）', async () => {
     const res = await app().request('/ping');
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
     expect(res.headers.get('X-Frame-Options')).toBe('DENY');
@@ -53,7 +53,7 @@ describe('corsPreflight', () => {
     expect(res.headers.get('Access-Control-Max-Age')).toBeNull(); // 缺省不输出
   });
 
-  it('策略参数化：自定义方法集 / 请求头 / 预检缓存', async () => {
+  it('B4 回归：CORS 策略参数化（v1 三面方法集/允许头/Max-Age 硬编码漂移）', async () => {
     const a = new Hono();
     a.use(
       '*',
@@ -82,7 +82,7 @@ describe('corsPreflight', () => {
 });
 
 describe('bodyParserLimit（maxBytes 必填）', () => {
-  it('小于上限的请求体照常到达路由', async () => {
+  it('B2 回归：maxBytes 必填注入——小于上限的请求体照常到达路由（v1 gateway 藏 10MiB 默认）', async () => {
     const res = await app().request('/echo', {
       method: 'POST',
       headers: { 'content-type': 'text/plain' },

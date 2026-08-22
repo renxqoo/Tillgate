@@ -150,7 +150,7 @@ describe('errorHandler：PG SQLSTATE → 4xx 翻译（探测注入）', () => {
     });
   }
 
-  it('未注入探测 → 无 PG 翻译（纯 http 消费面）', async () => {
+  it('B1 回归：探测改为装配注入——未注入时无 PG 翻译（v1 越界依赖 core 的结构修复）', async () => {
     const a = new Hono();
     a.onError(errorHandler());
     a.post('/t', () => {
