@@ -79,15 +79,15 @@ ai.tasks.{ parse, query, file }
 | 文件 | 裁决 | 要点 |
 |---|---|---|
 | `retry/with-retry` | ✅ 复制 | 全对（full jitter/信号合并/预算分离） |
-| `errors/classify` | ✅ 复制 | 分类矩阵优等 |
-| `errors/overflow` | 复制+微修 | B8 误判面收窄 |
+| `errors/classify` | **重构** | 拆为：status 兜底分类器 + kind→机制位派生表（§3.2）；正则迁入各 adapter 档案 |
+| `errors/overflow` | 复制+微修 | B8 由 §3.2 结构化消解（context_overflow 精确 code 命中），通用正则兜底收窄 |
 | `errors/server-drain` | ✅ 复制 | 无瑕疵 |
 | `errors/internal` | 重构 | 删熔断/死凭据错误构造 |
 | `usage/token-estimate` | 复制+微修 | B1 三处 model 补传；暴露 `estimateTokensFromFeatures`（见 §3.3） |
 | `usage/normalize` | 复制+微修 | B3 弃真处加观测事件/日志钩子 |
 | `usage/calibration`、`tokenizer` | ✅ 复制 | 无瑕疵（provider offset 语义不对称无实际影响） |
 | `usage/media-duration` | 复制+微修 | L37 死子句删除 |
-| `registry/vendor-profiles`、`define-adapter` | ✅ 复制 | 数据驱动优等 |
+| `registry/vendor-profiles`、`define-adapter` | 复制+微修 | 数据驱动优等；vendor-profiles 扩展 `errorPatterns` 字段（§3.2 正则迁入） |
 | `internal/stream` | ✅ 复制 | peekFirstChunk 竞态处理全仓最佳 |
 | `internal/util` | 重构 | 统一 as 三件套（拒数组语义，D1） |
 | `protocol/claude-chat` | 复制+微修 | 质量高；D8/D9 |
@@ -95,7 +95,7 @@ ai.tasks.{ parse, query, file }
 | `protocol/completions-chat` | 复制+微修 | B7 n>1 |
 | `protocol/responses-chat` | 复制+微修 | completed 事件 output 空回放（记录为已知限制） |
 | `protocol/stream-convert` | **重构** | S3/S4：并入统一 SSE 原语 |
-| `adapters/protocol-adapter` | **重构** | 契约演进（S5）：normalizeRequest 加 endpoint、签名钩子通用化、能力声明面 |
+| `adapters/protocol-adapter` | **重构** | 契约演进（S5）：normalizeRequest 加 endpoint、签名钩子通用化、能力声明面；mapError 契约按 §3.2 表化（kind 翻译 + 机制位禁逐例声明） |
 | `adapters/openai-compatible` | 复制+微修 | unknown-drop 词表随契约修；原型键防护补齐；9 层三元改查表 |
 | `adapters/anthropic` | 复制+微修 | D4 共享提取 |
 | `adapters/gemini`、`vertex-ai` | **重构** | D5 组合化；**B4 修复**；tokenCache 良性竞态文档化 |
@@ -106,7 +106,7 @@ ai.tasks.{ parse, query, file }
 | `transport/http-client` | **重写** | guard 模型定稿；**B5 处置：删除死 pin，白名单+逐地址判定即防线，文档说明**；D2 |
 | `transport/relay-stream` | **重构** | S2 全局 sweeper；D3；快照迭代 |
 | `transport/sse-parser` | **重构** | S1 四计数器化；decoder 语义 |
-| `types/config/events/index/create-ai/pipeline 壳` | 全新写/重构 | §1 API；S6 TerminationReason 收编 |
+| `types/config/events/index/create-ai/pipeline 壳` | 全新写/重构 | §1 API；S6 TerminationReason 收编；`ErrorKind` 封闭词表 + kind→机制位派生表（§3.2） |
 
 ---
 
@@ -126,7 +126,59 @@ src/
 ├── retry/ errors/ generation/ internal/
 ```
 
-### 3.2 关键拆分决策
+### 3.2 错误归一：适配层翻译 + 集中标准（用户裁决，取代 v1 共享正则）
+
+**v1 病灶**：厂商错误知识住在共享层——classify.ts 的 `DEFAULT_*_PATTERNS` 正则（死凭据/配额/限流）在通用层跑全部厂商的 message 文本，误伤面全局扩散（审计 B8 即其产物：`/too many tokens/i` 把输出参数超限误判为上下文溢出）。
+
+**v2 分层翻译模型**：
+
+```text
+厂商响应（status + headers + body）
+  ▼ adapter.mapError —— 厂商知识唯一住所
+  │   查表顺序：厂商结构字段精确匹配（code/type/status → kind）
+  │            → 共享 status 兜底（通用 HTTP 语义，非厂商知识）
+  │            → 档案文本 pattern（个别厂商 message-only 语义的最后兜底）
+  ▼ UpstreamError { kind, vendorCode?, status?, retryAfterMs?, detail, rawBody? }
+  │   机制位（retryable/circuitTrip/deadCredential）由派生表单点得出
+  ▼
+  ├─ 库内：withRetry 读 retryable；事件流出 kind + 机制位
+  ├─ inference：kind 驱动候选循环（换渠道/换模型的路由策略归消费方）
+  └─ app error-face：kind → C 端 OpenAI 信封（出站三层不变，翻译变查表）
+```
+
+**四条硬规则**：
+1. `ErrorKind` 封闭词表全局唯一定义（types.ts），adapter 只翻译不发明；新增 kind 走 ADR。
+2. 机制位由 kind→派生表**单点派生**，adapter 不得逐例声明（杜绝"rate_limited 却 retryable=false"矛盾）。
+3. 适配层只处理**厂商错误**；传输错误（network/timeout）与库策略错误（empty/config/draining）生成时直接带 kind。
+4. 共享层零正则：文本 pattern 全部迁入各 adapter 档案（vendor-profiles 扩展 `errorPatterns`），降为最后兜底。
+
+**kind → 机制位派生表（第一版）**：
+
+| kind | retryable | circuitTrip | deadCredential | 换渠道指引 |
+|---|---|---|---|---|
+| network / timeout | ✓ | ✓ | | ✓ |
+| upstream_error / overloaded | ✓ | ✓ | | ✓ |
+| rate_limited | ✓ | — | | ✓ |
+| quota_exhausted | — | — | | ✓（换有余额渠道） |
+| invalid_api_key | — | — | ✓ | ✓ |
+| insufficient_permissions | — | — | ✓ | ✓ |
+| invalid_request / invalid_response | — | — | | ✗（调用方修请求） |
+| context_overflow | — | — | | ✓（换大窗模型） |
+| content_filtered / model_not_found | — | — | | 视策略 |
+| empty_completion | 独立预算 | | | ✓ |
+| canceled / server_draining / invalid_config | — | — | | 库内闭环 |
+
+**原始信息保留**：`vendorCode`（排障对照）、`status`、`detail`（原文；脱敏在外层出站做）、`rawBody`（审计源）、`retryAfterMs`（Retry-After 头/厂商字段解析，adapter 职责）。
+
+**兜底必须可观测**（吸取 B3 静默弃真教训）：结构查表与 status 兜底 miss、落到文本 pattern 时发日志/事件信号，厂商错误形状漂移可发现。
+
+**与 errors 根契约的关系**：ai 的 kind 是上游传输域语义分类，仓库级 `errors` 三性/category 是跨层体系——映射关系（kind → category）落 ADR，不是两套标准。
+
+**收益闭环**：B8 结构性消解（context_overflow 由 OpenAI `context_length_exceeded` 等 code 精确命中）；UpstreamError.code 自由 string 缺口由封闭词表修复；错误映射变纯数据表——表驱动测试，新增厂商成本从"共享正则堆 pattern"变为"自己档案加表"。
+
+**代价（已接受）**：① 适配器作者需建错误表（openai-compatible 默认表覆盖兼容厂商，原生协议知识已在 v1 迁移即可）；② kind 词表治理走 ADR 不开放注册。
+
+### 3.3 其余拆分决策
 
 1. **`transport/sse.ts` 统一 SSE 原语**（修 S3/S4）：自研单一 reader（行缓冲 + UTF-8 流式解码 + 事件聚合 + **保留 event 名**），sse-parser（扫描器）与 codec 的流转换都基于它；流转换用 TransformStream 包装（不用 pull 模式 ReadableStream，吸取 relay 经验）。
 2. **契约演进**（修 S5）：`normalizeRequest(req, rules, endpoint)`；adapter 增加 `supportedEndpoints` 声明面（寻址覆写缺口静态可见）；`signRequest` 参数去 amzDate 化（bedrock 自带日期）。
@@ -157,33 +209,42 @@ src/
 - 静默超时、取消三路（signal / pipeTo cancel / inactivity）、首帧错误 failEarly、错误出站三层（结构/脱敏内容/细节）
 - **S4 回归**：跨协议流在 node-server 环境下不缓冲（TTFB 对照）
 
-### 4.3 `test/protocol/`（移植 + bug 回归）
+### 4.3 `test/errors/`（新写——错误归一框架，§3.2）
+- **表驱动**：每 adapter 一张错误表用例（结构字段 → kind 精确断言；openai/anthropic/gemini/minimax/dashscope/bedrock 各一组，v1 知识迁移）
+- **兜底链**：未知结构 → status 兜底分类正确；文本 pattern 仅在结构与 status 都 miss 时触发
+- **派生一致性**：任意构造的 UpstreamError，机制位 == 派生表查表值（防逐例声明回归）
+- **兜底可观测**：结构/status/pattern 三档命中各自发信号（B3 教训回归）
+- **B8 回归**：max_tokens 输出超限 ≠ context_overflow（OpenAI code 精确区分）
+- retryAfterMs：Retry-After 头与厂商字段解析
+- kind 词表封闭性：导出面枚举 == 文档词表（编译期 + 测试双锁）
+
+### 4.4 `test/protocol/`（移植 + bug 回归）
 - claude 四方向（请求/响应/流式双向、tool_use 映射、thinking→reasoning_content）
 - **B2 回归**：Gemini 流式 usage 含 cached_tokens（尾帧与中间帧）
 - **B7 回归**：completions n>1 全 choice 返回
 - gemini/completions/responses 既有用例移植；错误映射矩阵（含 401/403 死凭据特征）
 
-### 4.4 `test/usage/`（移植 + bug 回归）
+### 4.5 `test/usage/`（移植 + bug 回归）
 - **B1 回归**：同一响应 content/reasoning/tool_calls 估算同口径（model 透传后）
 - **B3 观测回归**：total 不一致弃真时有事件/日志可观测
 - **B4 回归**：vertex 渠道 usage 双形提取（翻译后 OpenAI 形命中）
 - 四计数器累积器：分段统计求和 == 整段统计（关键性质）；BPE/启发式分流
 - 校准解析三层合并；tokenizer 降级；音频时长（WAV/MP3/兜底）
 
-### 4.5 `test/transport/`
+### 4.6 `test/transport/`
 - guard 矩阵：默认机械基线（https+禁私网+rebinding）/ `allowAllUrls` / 白名单组合
 - **B5 文档性用例**：白名单外域名拒绝；DNS 解析到私网拒绝
 - readChunks 限长 + abort 截断契约；限长默认值表
 
-### 4.6 `test/latency/`（新写——并发预算门禁）
+### 4.7 `test/latency/`（新写——并发预算门禁）
 - 每帧扫描预算：N 万帧合成流的扫描总耗时上界断言
 - **内存上界**：长流（>4MB 输出）扫描器内存为常数（计数器 vs 旧文本缓冲对照）
 - 全局 sweeper：万级活跃流的 timer 总唤醒频率 == 单 interval 频率
 
-### 4.7 `test/real/`
+### 4.8 `test/real/`
 - 移植（凭证隔离，默认 skip）
 
-### 4.8 验收
+### 4.9 验收
 
 四门全绿 + 上表全部回归用例通过 + 行为对照清单核销（透传/重试/超时矩阵/取消三路/usage 归一与估算/param_adjustment/probe/任务族/SSRF 基线/事件时序）。
 
@@ -193,6 +254,6 @@ src/
 
 1. **P1 壳**：types（含 TerminationReason）/config/events/index/create-ai/context——可编译
 2. **P2 传输**：sse 统一原语 → 四计数器 → http-client(guard) → relay-stream(sweeper) + streaming/latency 测试
-3. **P3 机制移植**：errors → retry → internal → registry → protocol（修 B2/B7/D7-D9）→ adapters（修 B4/S5/D4/D5）→ usage（修 B1/B3）+ 对应测试
+3. **P3 机制移植**：errors（classify 拆分：status 兜底 + 派生表，§3.2）→ retry → internal → registry（vendor-profiles 扩 errorPatterns）→ protocol（修 B2/B7/D7-D9）→ adapters（错误表化 + 修 B4/S5/D4/D5）→ usage（修 B1/B3）+ 对应测试（含 test/errors 表驱动）
 4. **P4 管线**：prepare/attempts/stream-report/probe/generation-ops（修 B6/D6）+ contract 测试
 5. **P5 收口**：README、全量四门、行为对照核销
