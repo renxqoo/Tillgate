@@ -115,6 +115,7 @@ export function canonicalStreamToResponsesStream(upstream: ReadableStream<Uint8A
       } catch {
         return;
       }
+      if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
       if (!created) {
         created = true;
         emit(ev('response.created', { type: 'response.created', response: { id: responseId, object: 'response', status: 'in_progress', output: [] } }));

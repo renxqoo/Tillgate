@@ -341,6 +341,7 @@ export function claudeUpstreamToCanonicalStream(upstream: ReadableStream<Uint8Ar
       } catch {
         return;
       }
+      if (data === null || typeof data !== 'object') return; // fuzz：data:null 帧不崩
       if (data.type === 'message_start') {
         const msg = asJson(data.message) ?? {};
         model = str(msg.model) ?? model;
@@ -505,6 +506,7 @@ export function canonicalStreamToClaudeStream(
       } catch {
         return;
       }
+      if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
       // 规范形错误帧（relay 注入/上游错误）→ claude error 事件
       if (chunk.error !== undefined) {
         const err = asJson(chunk.error) ?? {};

@@ -79,6 +79,7 @@ export function canonicalStreamToCompletionsStream(
     } catch {
       return;
     }
+    if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
     const choice = asArray(chunk.choices)[0] as Record<string, unknown> | undefined;
     const delta = (choice?.delta ?? {}) as Record<string, unknown>;
     const text = typeof delta.content === 'string' ? delta.content : '';

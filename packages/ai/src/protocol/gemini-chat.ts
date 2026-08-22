@@ -260,6 +260,7 @@ export function geminiUpstreamToCanonicalStream(
       } catch {
         return;
       }
+      if (data === null || typeof data !== 'object') return; // fuzz：data:null 帧不崩
       if (!started) {
         started = true;
         emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }));
@@ -335,6 +336,7 @@ export function canonicalStreamToGeminiStream(
       } catch {
         return;
       }
+      if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
       if (chunk.error !== undefined) {
         const err = asJson(chunk.error) ?? {};
         emit(frame({ error: { code: 500, message: str(err.message) ?? 'stream error', status: str(err.type) ?? 'INTERNAL' } }));
