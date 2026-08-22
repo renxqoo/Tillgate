@@ -27,7 +27,7 @@ export interface DbPoolConfig {
  * 建立 Drizzle 实例。传 schema 使 db.query.* 有完整类型并支持 relational queries(with: {...})。
  * 池对象不外泄——生命周期仅经 ping/closeDb(DESIGN.md §1)。
  */
-export function createDb(config: DbPoolConfig): Db {
+export function createDb(config: DbPoolConfig) {
   const pool = new pg.Pool({
     connectionString: config.url,
     max: config.poolMax,

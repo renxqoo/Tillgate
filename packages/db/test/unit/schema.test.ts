@@ -71,13 +71,15 @@ describe('词表收敛(B4:三套 → ACCOUNT_STATUS 一套)', () => {
 });
 
 describe('依赖边界(IMPLEMENTATION.md §6:零内部依赖)', () => {
-  const schemaDir = fileURLToPath(new URL('../../src/schema', import.meta.url));
+  const srcDir = fileURLToPath(new URL('../../src', import.meta.url));
 
-  it('全部 schema 源文件 import 行无跨包依赖(payments FK 引本地,B1)', () => {
-    const importLines = readdirSync(schemaDir)
-      .filter((f) => f.endsWith('.ts'))
-      .flatMap((f) => readFileSync(`${schemaDir}/${f}`, 'utf8').match(/^import .*/gm) ?? []);
-    const offenders = importLines.filter((line) => line.includes('@ai-gateway/') || line.includes('@tokenlens/'));
+  it('全部源文件 import 行无跨包依赖(payments FK 引本地,B1;白名单 db→无内部包)', () => {
+    const importLines = readdirSync(srcDir, { recursive: true })
+      .filter((f) => String(f).endsWith('.ts'))
+      .flatMap((f) => readFileSync(`${srcDir}/${String(f)}`, 'utf8').match(/^import .*/gm) ?? []);
+    const offenders = importLines.filter(
+      (line) => line.includes('@ai-gateway/') || line.includes('@tokenlens/'),
+    );
     expect(offenders).toEqual([]);
   });
 
