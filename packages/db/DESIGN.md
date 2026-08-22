@@ -56,7 +56,7 @@ transientTxFailureCode(err);       // '40P01' | '40001' | null
 
 类型面:`Db`(池句柄)、`DbTx`(事务句柄,与 v1 同推导式)、`DbLike = Db | DbTx`(写路径注入 tx / 只读路径池句柄的统一参数型)。
 
-schema 子入口(`@tokenlens/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词表 + 15 组 drizzle relations,与 v1 同构(微修改清单见 IMPLEMENTATION.md §3 裁决表)。
+schema 子入口(`@tokenlens/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词表 + 19 组 drizzle relations,与 v1 同构(微修改清单见 IMPLEMENTATION.md §3 裁决表)。
 
 ### 契约细则
 

@@ -89,7 +89,7 @@
 | org-members.ts | org_members | ✅ 复制 | 无改动 |
 | org-invitations.ts | org_invitations | ✅ 复制 | 无改动 |
 | reconcile.ts | reconcile_discrepancies | ✅ 复制 | 无改动 |
-| relations.ts | (15 组 relations) | ✅ 复制 | 无改动 |
+| relations.ts | (19 组 relations) | ✅ 复制 | 无改动 |
 | tracing.ts | trace_spans | ✅ 复制 | 无改动 |
 | payments.ts | payment_orders | 复制+微修 | B1:FK 改引本地 ./ledger-operations.js,解除 ledger-core 依赖 |
 | referrals.ts | referrals | ✅ 复制 | 无改动 |
