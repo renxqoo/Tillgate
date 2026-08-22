@@ -245,3 +245,34 @@ export type {
 } from './application/subscriptions/subscriptions.js';
 export type { SubscriptionRow } from './ports/billing-store.js';
 export type { AccountContextStore } from './ports/account-context.js';
+
+// ---- 支付与兑换（U5） ----
+export {
+  isValidAmountInput,
+  assertTopupWithinLimit,
+  computeCreditAmount,
+  amountsMatch,
+} from './domain/payment/topup.js';
+export { epaySign, epayVerify, parseEpayNotify, EPAY_PAY_TYPES } from './domain/payment/epay.js';
+export type { EpayNotifyPayload, EpayPayType } from './domain/payment/epay.js';
+export {
+  stripeCentsFromAmount,
+  stripeAmountFromCents,
+  parseStripeSignatureHeader,
+  verifyStripeSignature,
+  parseStripeEvent,
+  STRIPE_WEBHOOK_TOLERANCE_S,
+} from './domain/payment/stripe.js';
+export type { StripeCheckoutEvent, StripeSignatureParts } from './domain/payment/stripe.js';
+export { createPaymentsApi, PROVIDER_LABELS } from './application/payments/payments.js';
+export type { PaymentsDeps, PaymentsApi } from './application/payments/payments.js';
+export { createRedemptionApi, sha256Hex } from './application/redemption/redemption.js';
+export type { RedemptionDeps, RedemptionApi } from './application/redemption/redemption.js';
+export type {
+  PaymentProviderPort,
+  PaymentOrderStore,
+  PaymentOrderRow,
+  RedeemCodeStore,
+  RedeemClaimRow,
+  RateCounterPort,
+} from './ports/payment-ports.js';

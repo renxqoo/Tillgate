@@ -66,6 +66,15 @@ describe('measurement（层 1 计量维度）', () => {
     expect(measurementOf('byte').unitsOf({})).toBe(1);
   });
 
+  it('注册表全量直调（token/request 恒值轴）', () => {
+    expect(MEASUREMENTS.token!.unitsUpperBoundOf({ n: 9 })).toBe(0);
+    expect(MEASUREMENTS.token!.unitsOf({}, {})).toBe(0);
+    expect(MEASUREMENTS.request!.unitsUpperBoundOf({ n: 9 })).toBe(1);
+    expect(MEASUREMENTS.request!.unitsOf({}, {})).toBe(1);
+    expect(MEASUREMENTS.char!.unitsUpperBoundOf({ input: 'ab' })).toBe(2);
+    expect(MEASUREMENTS.second!.unitsOf({ audioSeconds: 2.1 })).toBe(3);
+  });
+
   it('second：audioSeconds 非法回退 duration；响应缺 data 时 image 用请求 n', () => {
     const second = measurementOf('second');
     expect(second.unitsUpperBoundOf({ audioSeconds: -3, duration: 8 })).toBe(8);

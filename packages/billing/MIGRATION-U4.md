@@ -22,12 +22,12 @@
 
 ## 3. 逐模块裁决表
 
-| 旧模块 | 裁决 | 动作 |
-| --- | --- | --- |
-| domain/subscription/rules | 复制+微修 | domain/subscription/rules（SubscriptionDomainError 13 码 → 目录 7 键 + context.reason） |
-| service/shared/operations.ts | 重写 | application/operations.ts（D8 收敛；16KB 上限吸收） |
-| service/subscription/index.ts（5 动词） | 重写 | application/subscriptions/subscriptions.ts（RunContext 移除；资金经 wallet.transfer TxChannel 同事务） |
-| repository/{plan.findPlan, subscription 生命周期方法, operations.repo} | 重写 | ports/billing-store 扩展 + postgres adapter（行锁/CAS/惰性翻转语义原样） |
+| 旧模块                                                                                          | 裁决                  | 动作                                                                                                    |
+| ----------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------- |
+| domain/subscription/rules                                                                       | 复制+微修             | domain/subscription/rules（SubscriptionDomainError 13 码 → 目录 7 键 + context.reason）                 |
+| service/shared/operations.ts                                                                    | 重写                  | application/operations.ts（D8 收敛；16KB 上限吸收）                                                     |
+| service/subscription/index.ts（5 动词）                                                         | 重写                  | application/subscriptions/subscriptions.ts（RunContext 移除；资金经 wallet.transfer TxChannel 同事务）  |
+| repository/{plan.findPlan, subscription 生命周期方法, operations.repo}                          | 重写                  | ports/billing-store 扩展 + postgres adapter（行锁/CAS/惰性翻转语义原样）                                |
 | repository/{user.userExists/isEnterprise, org.insertOrgWithOwner, credential.rebindCredentials} | port 化（跨能力事实） | ports/account-context.ts——app assembly 桥接 accounts 或 adapter 直读（总纲 §5.2；adapter 直读实现已备） |
 
 ## 4. 契约演进
@@ -39,11 +39,11 @@
 
 ## 5. 测试迁移矩阵
 
-| 旧测试 | 新去处 | 动作 |
-| --- | --- | --- |
-| domain/subscription rules.test | subscriptions.test（规则经动词间接）+ 目录码断言 | 改写 |
-| service operations.test | subscriptions.test（operations 组） | 改写（+超限红灯） |
-| service 订阅主干（purchase/renew/change/cancel/grantPack） | subscriptions.test | 改写（含免费升级、管理面续费、企业席位、惰性翻转、单有效订阅、零价印刷机防线） |
+| 旧测试                                                     | 新去处                                           | 动作                                                                           |
+| ---------------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| domain/subscription rules.test                             | subscriptions.test（规则经动词间接）+ 目录码断言 | 改写                                                                           |
+| service operations.test                                    | subscriptions.test（operations 组）              | 改写（+超限红灯）                                                              |
+| service 订阅主干（purchase/renew/change/cancel/grantPack） | subscriptions.test                               | 改写（含免费升级、管理面续费、企业席位、惰性翻转、单有效订阅、零价印刷机防线） |
 
 真实 PG（唯一索引竞态/行锁/凭证改绑 SQL）随 U5 收口套件统一（plans/user_subscriptions/
 organizations/api_keys/apps 种子一次性搭起）。

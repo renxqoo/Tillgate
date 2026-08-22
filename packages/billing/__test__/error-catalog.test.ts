@@ -44,6 +44,18 @@ const EXPECTED: Record<string, string> = {
   user_not_found: 'not_found',
   subscription_state: 'conflict',
   subscription_rule: 'invalid_input',
+  topup_amount_invalid: 'invalid_input',
+  payment_unavailable: 'unavailable',
+  payment_channel_unavailable: 'unavailable',
+  topup_rate_limited: 'rate_limited',
+  order_not_found: 'not_found',
+  order_state_conflict: 'conflict',
+  rate_counter_unavailable: 'unavailable',
+  invalid_code: 'not_found',
+  code_revoked: 'conflict',
+  code_already_used: 'conflict',
+  code_expired: 'invalid_input',
+  redeem_rate_limited: 'rate_limited',
 };
 
 describe('billing 错误目录', () => {

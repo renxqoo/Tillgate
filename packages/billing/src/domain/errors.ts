@@ -4,7 +4,7 @@
  * 不变量破坏不进目录——用根契约 DefectError（码 billing.wallet_invariant / billing.fingerprint_input）。
  * U0：金额域输入拒绝。U1a：钱包域白名单、出账口径、冻结单状态机。
  * U1b：钱包动词的幂等/归属/账户冻结拒绝。
- * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。U3：结算。U4：订阅生命周期。
+ * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。U3：结算。U4：订阅。U5：支付与兑换。
  */
 import { defineErrorCatalog } from '@tokenlens/errors';
 
@@ -189,6 +189,67 @@ export const BillingErrors = defineErrorCatalog('billing', {
     category: 'invalid_input',
     message: 'Subscription rule violation (quantity / seats / enterprise / downgrade)',
     zh: '订阅规则不允许（数量 / 席位 / 企业 / 降档）',
+  },
+  // ---- U5：支付与兑换 ----
+  topup_amount_invalid: {
+    category: 'invalid_input',
+    message: 'Top-up amount invalid (decimals / below minimum / above maximum)',
+    zh: '充值金额非法（小数位 / 低于下限 / 超过上限）',
+  },
+  payment_unavailable: {
+    category: 'unavailable',
+    message: 'Payment channel not enabled or not selectable',
+    zh: '支付渠道未启用或须显式选择',
+  },
+  payment_channel_unavailable: {
+    category: 'unavailable',
+    message: 'Payment channel temporarily unavailable (order closed for trace)',
+    zh: '支付渠道暂时不可用（订单已关单留痕）',
+  },
+  topup_rate_limited: {
+    category: 'rate_limited',
+    message: 'Too many top-up order requests, retry later',
+    zh: '下单过于频繁，请稍后再试',
+  },
+  order_not_found: {
+    category: 'not_found',
+    message: 'Payment order not found for this user',
+    zh: '支付订单不存在',
+  },
+  order_state_conflict: {
+    category: 'conflict',
+    message: 'Payment order state transition conflict',
+    zh: '支付订单状态迁移冲突',
+  },
+  rate_counter_unavailable: {
+    category: 'unavailable',
+    message: 'Rate counter unavailable — request rejected (fail-closed)',
+    zh: '频率计数器不可用——请求拒绝（fail-closed）',
+  },
+  invalid_code: {
+    category: 'not_found',
+    message: 'Invalid redeem code',
+    zh: '兑换码无效',
+  },
+  code_revoked: {
+    category: 'conflict',
+    message: 'Redeem code has been revoked',
+    zh: '兑换码已被吊销',
+  },
+  code_already_used: {
+    category: 'conflict',
+    message: 'Redeem code already used',
+    zh: '兑换码已被使用',
+  },
+  code_expired: {
+    category: 'invalid_input',
+    message: 'Redeem code has expired',
+    zh: '兑换码已过期',
+  },
+  redeem_rate_limited: {
+    category: 'rate_limited',
+    message: 'Redeem attempts too frequent, retry later',
+    zh: '兑换尝试过于频繁，请稍后再试',
   },
   settlement_backlog: {
     category: 'unavailable',

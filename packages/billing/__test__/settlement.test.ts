@@ -574,3 +574,37 @@ describe('U4 补：claim 辅助分支', () => {
     );
   });
 });
+
+describe('结算不变量红灯（分支封口）', () => {
+  it('明细加总 ≠ 账单总预扣 → 投影脱节红灯（DefectError → dead）', async () => {
+    const h = harness();
+    const { requestId } = await toPending(h);
+    h.world.fixtures.requests.get(requestId)!.reservedAmount = '999';
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    const outcome = await h.settlement.processClaim(claim!);
+    expect(outcome).toBe('dead');
+  });
+
+  it('认领 CAS 输家（revision 被并发推进）→ 不变量红灯', async () => {
+    const h = harness();
+    const { requestId } = await toPending(h);
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    h.world.fixtures.requests.get(requestId)!.revision += 100; // 模拟并发对手推进
+    const outcome = await h.settlement.processClaim(claim!);
+    // 五元组失配 → findProcessingForClaim null 且无 usage → claim_lost（幂等安全）
+    expect(outcome).toBe('claim_lost');
+  });
+});
+
+describe('结算 usage 投影冲突红灯', () => {
+  it('usage_logs 已有行（requestId 唯一冲突）→ settle_usage_conflict → dead', async () => {
+    const h = harness();
+    const { requestId } = await toPending(h);
+    // 预插投影行：insertUsageLog 幂等落空 → 红灯（数据脱节防御）
+    h.world.fixtures.usageLogs.set(requestId, { requestId, calculatedAmount: '2' });
+    const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
+    const outcome = await h.settlement.processClaim(claim!);
+    expect(outcome).toBe('dead');
+    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('dead');
+  });
+});
