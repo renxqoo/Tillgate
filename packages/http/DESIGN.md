@@ -61,7 +61,7 @@
 ## 2. 外部契约（v2 API，定稿）
 
 ```ts
-import { HttpErrors, renderError, errorHandler, translateSqlState,
+import { HttpErrors, renderError, errorHandler, pgRejection,
          CATEGORY_STATUS_DEFAULTS, localeFromContext, parseAcceptLanguage,
          jsonBody, query, intParam, paginationQuerySchema, listQuerySchema, escapeLike,
          trustedClientIp, clientIpFromContext, requestIdMiddleware, operationId,
@@ -86,6 +86,7 @@ app.onError(errorHandler({
   sqlState?: pgSqlState,                     // @tokenlens/db 注入（缺省无 PG 翻译）
   logger?: { error(obj, msg?) {} },          // 未知错误日志（缺省静默）
 }));
+pgRejection('23505');                        // → http.pg_unique_violation 业务错误 | null
 
 // ---- 本地化：en|zh 协商内核（v1 语义原样）----
 parseAcceptLanguage('zh-CN,zh;q=0.9');       // → 'zh'
