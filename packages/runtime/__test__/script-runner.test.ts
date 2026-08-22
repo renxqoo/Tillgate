@@ -1,7 +1,7 @@
 /** Lua 脚本运行器（mock Redis，无真实连接）：首跑 LOAD、sha 缓存、NOSCRIPT 自愈、非 NOSCRIPT 原样上抛。 */
 import { describe, expect, it } from 'vitest';
 import type { Redis } from 'ioredis';
-import { createRedisScriptRunner } from '../../src/redis/script-runner';
+import { createRedisScriptRunner } from '../src/redis/script-runner';
 
 const NOSCRIPT_MSG = 'NOSCRIPT No matching script. Please use EVAL.';
 const shaOf = (src: string) => `sha(${src})`;

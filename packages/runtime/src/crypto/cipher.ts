@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { DefectError } from '@tokenlens/errors';
 
 /**
  * AES-256-GCM 对称加解密工厂（渠道上游 Key 落库加密）。
@@ -34,17 +35,34 @@ export function createCipher(encryptionKey: string): Cipher {
     decrypt(packed: string): string {
       const parts = packed.split(':');
       if (parts.length !== 5 || parts[0] !== 'enc' || parts[1] !== 'v1') {
-        throw new Error('invalid ciphertext format (expected enc:v1:iv:tag:cipher)');
+        throw new DefectError(
+          'invalid ciphertext format (expected enc:v1:iv:tag:cipher)',
+          'runtime.cipher.invalid_format',
+        );
       }
       const iv = Buffer.from(parts[2]!, 'hex');
       const tag = Buffer.from(parts[3]!, 'hex');
       const cipherBody = Buffer.from(parts[4]!, 'hex');
-      if (iv.length !== IV_LEN) throw new Error('invalid iv length');
-      if (tag.length !== TAG_LEN) throw new Error('invalid tag length');
+      if (iv.length !== IV_LEN || tag.length !== TAG_LEN) {
+        throw new DefectError(
+          'invalid ciphertext format (iv/tag length mismatch)',
+          'runtime.cipher.invalid_format',
+        );
+      }
       const decipher = createDecipheriv(ALGO, key, iv);
       decipher.setAuthTag(tag);
-      const dec = Buffer.concat([decipher.update(cipherBody), decipher.final()]);
-      return dec.toString('utf8');
+      try {
+        const dec = Buffer.concat([decipher.update(cipherBody), decipher.final()]);
+        return dec.toString('utf8');
+      } catch (err) {
+        // GCM 认证失败：密钥错误或密文被篡改——缺陷语义（数据不变量破坏），保留原生 cause
+        throw new DefectError(
+          'ciphertext authentication failed (wrong key or tampered data)',
+          'runtime.cipher.auth_failed',
+          undefined,
+          { cause: err },
+        );
+      }
     },
   };
 }

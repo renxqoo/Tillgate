@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { secretSchema, strictBooleanSchema } from '../../src/config/env-schemas';
+import { secretSchema, strictBooleanSchema } from '../src/config/env-schemas';
 
 describe('secretSchema（密钥三道门）', () => {
   it('拒绝已知弱密钥、短密钥和低多样性密钥', () => {

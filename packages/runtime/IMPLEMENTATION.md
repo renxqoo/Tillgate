@@ -14,8 +14,11 @@
    runtime 只收第一类；其余各自归位（§2.4），一个都不带走。
 2. **不是复制，是重构**：三份漂移中的 `shutdown.ts` 合一（D1）；测试样板提取为 testing 子入口（D2）；每个模块逐一裁决。
 3. **行为等价**：迁移模块的旧测试是行为规格；微修处逐条列出并给理由。
-4. **零内部依赖起步**：`errors` 根契约包尚未建立（P3 同波），runtime 首版零内部依赖（与 `ai` 一致）；
-   `errors` 建立后如需接入错误分类再评审——当前各模块抛原生 `Error`，无分类需求。
+4. **已接入 `errors` 根契约**（AGENT.md §11）：起步时 errors 包未建，曾零内部依赖；errors 落地（ADR-0001）后按 §11 接入——
+   `assertRedisReachable` 抛 `InfrastructureError`（`runtime.redis.unreachable`，context 只进脱敏后 URL）；
+   `parseSentinels` 配置缺陷与 `cipher` 解密失败（格式/认证）抛 `DefectError`（`runtime.redis.sentinels_invalid` /
+   `runtime.cipher.invalid_format` / `runtime.cipher.auth_failed`，GCM 原生失败保留在 cause 链）。
+   `testing/` 子入口保持原生 Error（测试装置非 §11 运行时范畴）。
 
 ---
 
@@ -125,7 +128,7 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 
 ## 4. 测试计划
 
-### 4.1 `test/unit/`（无需任何外部服务）
+### 4.1 `__test__/`（平铺，铁律 14；无需任何外部服务）
 
 - `config.test.ts`：secretSchema 三道门（弱值/短/低多样性拒，强值过）+ strictBooleanSchema（字符串 'false' 不得变 true；'yes' 拒）——移植 `env-secrets.test.ts` 前两个用例（loadTraceReceiverEnv 用例随模块不迁）
 - `crypto.test.ts`：往返 / iv 随机 / 错误密钥认证失败 / 篡改认证失败 / 非法格式拒绝——移植 `crypto.test.ts` 5 用例（工厂形态改写）
@@ -135,7 +138,7 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 - `parse-sentinels.test.ts`（新写，v1 无）：合法多节点 / IPv6 `[::1]:26379` / 非法项抛错 / 空串抛错
 - `script-runner.test.ts`（新写，mock redis）：首跑 LOAD→evalsha / NOSCRIPT 后重载自愈 / 非 NOSCRIPT 错误原样上抛 / sha 缓存命中不再 LOAD
 
-### 4.2 `test/integration/`（真实 Redis；REDIS_URL 未配置整套 skip——CI 必配）
+### 4.2 `__test__/redis-integration.test.ts`（真实 Redis；REDIS_URL 未配置整套 skip——CI 必配；平铺无子目录）
 
 - `redis.test.ts`：script-runner 真实自愈（SCRIPT FLUSH 后仍可跑）+ assertRedisReachable 对不可达端口超时抛错（信息含脱敏 URL）
 - CAS/限流/爆破防护的真实 Redis 用例**不迁**（模块不在 runtime；随各自归宿的迁移单元走）
@@ -154,16 +157,16 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 
 ### 5.1 行为对照核销清单（2026-08-23 逐项核销，全部满足）
 
-- [x] secretSchema：弱值/短/低多样性三道门拒绝行为与 v1 逐条一致（`test/unit/config.test.ts`）
+- [x] secretSchema：弱值/短/低多样性三道门拒绝行为与 v1 逐条一致（`__test__/config.test.ts`）
 - [x] strictBooleanSchema：'true'/'false'/boolean 三形解析与 v1 一致 + 缺省值补测
 - [x] createLogger：redact 根级 + 嵌套（`*`）+ authorization 头三面命中；v1 六字段全保留 + 新增 token/secret/password（B5 修复后根级才真正生效）
 - [x] createCipher：enc:v1 格式逐字节一致；**跨仓硬验证通过**——v1 密文 v2 可解、v2 密文 v1 可解（同密钥，实机互跑证实；`test/unit/crypto.test.ts`）
-- [x] createRedisClient：maxRetriesPerRequest=1 / enableOfflineQueue=false / 错误监听去重日志（30s）/ URL 脱敏 / AggregateError 展开（`test/unit/redis-client.test.ts`）
-- [x] parseSentinels：IPv6 lastIndexOf 切分语义 + 非法端口/空规格 fail-fast（`test/unit/parse-sentinels.test.ts`）
+- [x] createRedisClient：maxRetriesPerRequest=1 / enableOfflineQueue=false / 错误监听去重日志（30s）/ URL 脱敏 / AggregateError 展开（`__test__/redis-client.test.ts`）
+- [x] parseSentinels：IPv6 lastIndexOf 切分语义 + 非法端口/空规格 fail-fast（`__test__/parse-sentinels.test.ts`）
 - [x] assertRedisReachable：冷连接重试 + 超时抛错信息（服务名 + 脱敏 URL + 拒绝降级启动）（真实 Redis 集成）
 - [x] script-runner：evalsha + NOSCRIPT 重载自愈（mock 忠实建模 + 真实 Redis SCRIPT FLUSH 双验证）
 - [x] createShutdown：v1 三 app 全部可观察行为（顺序/宽限强退/二次信号幂等）+ closeables 顺序（v1 从未测过）+ 收口件失败不阻断 + 日志注入
-- [x] waitForRedisReady：100ms 轮询 + 超时 false（`test/unit/testing-harness.test.ts`）
+- [x] waitForRedisReady：100ms 轮询 + 超时 false（`__test__/testing-harness.test.ts`）
 
 ### 5.2 实施中的 API 对照变更（相对 v1，均已落码）
 
@@ -175,3 +178,5 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 | `createShutdown` 的 `now?: () => number`                         | 删除                                             | B1 死参数（从未使用）                          |
 | shutdown/redis-client console 直打                               | `log` 注入（缺省 console）                       | 与 B2 同理                                     |
 | `createLogger` 无输出注入                                        | 增 `stream?: DestinationStream`                  | pino 直写 fd 1，劫持 stdout 不可靠             |
+| v1 各处抛原生 `Error`                                            | `InfrastructureError`/`DefectError`（§11 接入）  | 错误根契约；身份/码在抛出点定一次              |
+| 测试 `test/unit` + `test/integration` 子目录                     | 包根 `__test__/` 平铺（铁律 14）                 | include 固定 `__test__/*.test.ts`              |

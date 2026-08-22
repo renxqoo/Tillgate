@@ -6,7 +6,7 @@ import {
   disconnectTestRedis,
   testRedisUrl,
   waitForRedisReady,
-} from '../../src/testing';
+} from '../src/testing';
 
 const ORIG = process.env.REDIS_URL;
 afterEach(() => {

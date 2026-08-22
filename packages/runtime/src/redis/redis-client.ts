@@ -7,6 +7,7 @@
  * 各消费方的故障语义在其模块内（限流 fail-open、防护 degraded、日限 fail-closed）。
  */
 import { Redis } from 'ioredis';
+import { DefectError, InfrastructureError } from '@tokenlens/errors';
 
 /** 日志脱敏：URL 带认证信息时抹掉（redis://:pass@host → redis://***@host） */
 function sanitizeUrl(url: string): string {
@@ -59,11 +60,20 @@ export function parseSentinels(spec: string): { host: string; port: number }[] {
       const host = idx > 0 ? node.slice(0, idx) : node;
       const port = Number(idx > 0 ? node.slice(idx + 1) : '26379');
       if (!host || !Number.isInteger(port) || port <= 0) {
-        throw new Error(`REDIS_SENTINELS 非法节点：${node}（期望 host:port 逗号分隔）`);
+        throw new DefectError(
+          `REDIS_SENTINELS 非法节点：${node}（期望 host:port 逗号分隔）`,
+          'runtime.redis.sentinels_invalid',
+          { node },
+        );
       }
       return { host, port };
     });
-  if (nodes.length === 0) throw new Error(`REDIS_SENTINELS 为空（期望 host:port 逗号分隔）`);
+  if (nodes.length === 0) {
+    throw new DefectError(
+      'REDIS_SENTINELS 为空（期望 host:port 逗号分隔）',
+      'runtime.redis.sentinels_invalid',
+    );
+  }
   return nodes;
 }
 
@@ -133,8 +143,11 @@ export async function assertRedisReachable(
     if (Date.now() >= deadline) break;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(
+  throw new InfrastructureError(
     `[${serviceName}] Redis 启动验证失败（${sanitizeUrl(rawUrl)}）：${describeError(lastError ?? new Error(`ping 超时（${timeoutMs}ms）`))}——` +
       'Redis 为必配组件，拒绝以降级形态启动（检查 REDIS_URL 与 Redis 实例）',
+    'runtime.redis.unreachable',
+    { serviceName, url: sanitizeUrl(rawUrl) },
+    { cause: lastError ?? undefined },
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createLogger } from '../../src/logging/logger';
+import { createLogger } from '../src/logging/logger';
 
 /** 行收集流：createLogger 的输出注入面（pino 默认直写 fd 1，劫持 stdout 不可靠） */
 function collect(): { lines: string[]; stream: { write: (line: string) => void } } {

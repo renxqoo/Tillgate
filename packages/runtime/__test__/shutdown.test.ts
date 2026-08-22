@@ -3,7 +3,7 @@
  * 宽限耗尽强退（exit 1）、二次信号幂等、收口件失败不阻断、日志注入面。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { createShutdown, type ShutdownDeps } from '../../src/lifecycle/shutdown';
+import { createShutdown, type ShutdownDeps } from '../src/lifecycle/shutdown';
 
 function fakeDeps(behavior: { closeCallsCallback: boolean; failOtel?: boolean }) {
   const order: string[] = [];

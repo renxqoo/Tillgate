@@ -5,8 +5,9 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
-import { assertRedisReachable, createRedisClient, createRedisScriptRunner } from '../../src';
-import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../../src/testing';
+import { isInfrastructureError } from '@tokenlens/errors';
+import { assertRedisReachable, createRedisClient, createRedisScriptRunner } from '../src';
+import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../src/testing';
 
 const url = testRedisUrl();
 
@@ -35,11 +36,15 @@ describe.skipIf(url == null)('Redis 集成（真实实例）', () => {
       const err = await assertRedisReachable(dead, 'dead-svc', 'redis://:pass@127.0.0.1:1', 1_000)
         .then(() => null)
         .catch((e: Error) => e);
-      expect(err).toBeInstanceOf(Error);
+      expect(isInfrastructureError(err), String(err)).toBe(true); // §11 身份
+      expect((err as { code: string }).code).toBe('runtime.redis.unreachable');
       expect(err!.message).toContain('dead-svc');
       expect(err!.message).toContain('Redis 启动验证失败');
       expect(err!.message).toContain('***@127.0.0.1:1'); // 脱敏后形态
       expect(err!.message).not.toContain(':pass@'); // 凭证不得泄漏
+      // context 只进脱敏后的事实（凭证不得入记录）
+      const ctx = (err as { context?: { url?: string } }).context;
+      expect(ctx?.url).toBe('redis://:***@127.0.0.1:1'); // 非特殊 scheme 不补尾斜杠
     } finally {
       dead.disconnect();
     }
