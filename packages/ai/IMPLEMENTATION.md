@@ -77,26 +77,26 @@ packages/ai/
 
 ## 3. 逐模块裁决表
 
-| 模块（v1 规模） | 裁决 | 理由与动作 |
-|---|---|---|
-| `protocol/*`（1.4k 行） | **复制** | wire 格式知识，真实厂商验证过。原样移植，仅改 import 路径 |
-| `adapters/*`（1.4k 行） | **复制** | 厂商寻址/认证/终改知识（SigV4、azure query key…）。移植时清除对已删机制的引用（仅标志位读取，无状态依赖） |
-| `usage/calibration、media-duration、tokenizer、model-meta`（~1.2k） | **复制** | 实测校准数据表与解析逻辑，数据即资产 |
-| `usage/token-estimate、normalize`（~1k） | **复制 + 接口适配** | 估算算法保留；估算入口接"类别计数器"形态（见 §4.5） |
-| `errors/classify.ts` | **复制** | 分类表 + retryable/circuitTrip/deadCredential 判定——v2 的事件数据基础 |
-| `registry/*` | **复制** | vendor profiles（怪癖默认）+ define-adapter |
-| `retry/with-retry.ts` | **复制（先审计）** | 语义成熟；审计 deadline/signal 传播细节后移植 |
-| `errors/internal.ts` | **重构** | 删 circuitOpenError/deadCredentialError（v1 已裁决）；保留 empty/aborted/serverDraining/invalidConfig/unsupportedProtocol |
-| `transport/http-client.ts` | **重写** | guard 注入模型定稿（v1 二轮手术的设计）；DNS 逐地址判定、连接超时、错误分类保留语义重写；`UrlGuard`/`allowAllUrls` 进公共契约 |
-| `transport/relay-stream.ts` | **重构** | 核心透传语义保留（pipeThrough 不缓冲、心跳、静默超时、abort 传播）；timer 模型与扫描器预算按 §4.5/§4.6 重构 |
-| `transport/sse-parser.ts` | **重构（审计重点）** | 逐帧扫描保留；**累积策略审计**：确认 outputText 是否字符串拼接（O(n²) 风险），改为字符类别计数器 |
-| `pipeline/chat、chat-stream` | **重构** | 尝试体逻辑保留；签名换新（ctx 由壳组装）；fail 收敛去状态化 |
-| `pipeline/stream-report、probe、generation-ops` | **重构** | 事件翻译/探测/任务面保留；接线换新签名 + guard |
-| `pipeline/context.ts` | **重写** | emitTo 快照迭代修复；channelKey 语义改"事件维度" |
-| `pipeline/prepare.ts` | **重构** | 抹平引擎保留；移除准入对象组装；param_adjustment 事件保留 |
-| `create-ai/types/config/index/events` | **全新写** | 新 API 壳（§1） |
-| `generation/task-adapter` | **复制 + 接线适配** | port 组合保留 |
-| `breaker/、dead-credential/、admission、memory-storage` | **不移植** | §3.6 零运维状态；健康计数归 inference/health 订阅者 |
+> **裁决语义**：「复制」= **审计通过后复制**，不是盲搬。审计四条标准：① 正确性（边界、错误路径）；② 契约符合 v2（零跨请求状态、无策略数据、无隐藏默认）；③ 实现质量（职责单一、无重复、热路径预算）；④ 依赖方向干净。审计不通过 → 升级为重构，发现记录在 §4。P3 移植阶段逐文件执行，本表随审计进度更新状态。
+
+| 模块（v1 规模） | 裁决 | 审计状态 | 理由与动作 |
+|---|---|---|---|
+| `retry/with-retry.ts` | 复制 | ✅ 已审计通过 | full jitter（AWS 策略）、AbortSignal.any 合并、deadline finally 清理、空完成独立预算、sleep 可中止——全部正确。微注：Math.random 不可注入（测试以 jitter=0 规避） |
+| `errors/classify.ts` | 复制 | ✅ 已审计通过 | 分类矩阵数据化、body code 精确匹配优先于文本特征、401 恒死凭据 vs 403 按特征、模式表可配置扩展 |
+| `transport/sse-parser.ts` | **重构** | ✅ 已审计（升级） | 发现 4 项，见 §4.5 |
+| `transport/relay-stream.ts` | **重构** | ✅ 已审计（升级） | 发现 2 项，见 §4.6；透传语义/atBoundary 边界判定/错误帧终止序列本身正确 |
+| `protocol/*`（1.4k 行） | 复制 | ⏳ 待审计（P3） | wire 格式知识；逐文件审计后移植 |
+| `adapters/*`（1.4k 行） | 复制 | ⏳ 待审计（P3） | 厂商寻址/认证/终改知识；审计时重点核 SigV4/事件流解析的边界处理 |
+| `usage/calibration、media-duration、tokenizer、model-meta`（~1.2k） | 复制 | ⏳ 待审计（P3） | 校准数据表；核对数据生成脚本的口径注释 |
+| `usage/token-estimate、normalize`（~1k） | 复制+接口适配 | ⏳ 待审计（P3） | 估算算法保留；入口接类别计数器形态 |
+| `registry/*` | 复制 | ⏳ 待审计（P3） | vendor profiles 数据表 |
+| `errors/internal.ts` | 重构 | — | 删熔断/死凭据错误；保留 empty/aborted/serverDraining/invalidConfig/unsupportedProtocol |
+| `transport/http-client.ts` | 重写 | — | guard 注入模型定稿；DNS 逐地址判定、超时、错误分类保留语义重写 |
+| `pipeline/chat、chat-stream、stream-report、probe、generation-ops、prepare` | 重构 | — | 尝试体/事件翻译/探测逻辑保留；签名换新；fail 收敛去状态化 |
+| `pipeline/context.ts` | 重写 | — | emitTo 快照迭代；channelKey 语义改事件维度 |
+| `create-ai/types/config/index/events` | 全新写 | — | 新 API 壳（§1） |
+| `generation/task-adapter` | 复制+接线适配 | ⏳ 待审计（P3） | port 组合 |
+| `breaker/、dead-credential/、admission、memory-storage` | 不移植 | — | 零运维状态裁决 |
 
 ---
 
@@ -108,8 +108,8 @@ v1 实测确认（本会话逐文件核验）：
 2. **SSRF 策略进配置**——`allowLocalUrl`/`allowedHosts` 在 `AiConfig`，且 gateway 从未传过 `allowedHosts`（死配置）→ v2 删除；`guardUrl` 注入，缺省机械基线（https-only + 禁私网/回环 + DNS 逐地址防 rebinding）。
 3. **emitTo 退订竞态**——分发中 `off()`（splice）使 `for...of` 跳过下一监听器 → 快照迭代。
 4. **三层嵌套 API + 双 model**——`{channel, request, ctx}` 且 `ctx.model`（真实名）与 `request.model`（对外名）分离 → 平参数 + 单 model（`opts.model` 覆盖并回写）。
-5. **（待审计）outputText 累积**——`done.outputText` 是"取消时估算源"；若为字符串 `+=` 则 O(n²) → 改按字符类别计数器（估算权重本就按类别校准，计数器是完整输入）；终态一次性估算。
-6. **（待审计）每流心跳 interval**——`checkIntervalMs` 疑似每流一个 timer；万级流 = 万次/秒唤醒 → 全局单扫描器（活跃流表 + 一个 interval），或实测后分阶段。
+5. **（已证实）sse-parser 四项**：① `outputText += piece.join('')` 字符串拼接——V8 rope 摊还尚可，但 `OUTPUT_TEXT_CAP = 4MB`：万级并发流 × 4MB 上界 = **40GB 潜在内存**，估算只需字符类别计数（O(1) 内存）；② 注释称"usage 帧到达时清零重计"，**代码无此逻辑**（注释与实现不一致）；③ `reset()` 不 flush streaming decoder（复用场景残留截断多字节序列）；④ `lastLineEnded` 命名误导（实为"曾有过行结束"）。→ 重构：类别计数器替代文本累积、注释对齐、decoder 语义明确。
+6. **（已证实）relay-stream 两项**：① **每流一个 `setInterval`**（默认 250ms 间隔）——万级流 = 4 万次/秒定时器唤醒，全局单 timer 扫描活跃流表更优；② emit 的 `for...of` 直接迭代数组（同 emitTo 退订竞态模式）——快照迭代统一。→ 重构：全局 sweeper、快照迭代；透传语义与 atBoundary 心跳边界判定保留（正确且精巧）。
 
 ## 5. 并发与性能约束（进延迟门禁）
 
