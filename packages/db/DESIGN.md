@@ -110,9 +110,8 @@ packages/db/
 │   └── index.ts         # 出口:基础设施四件 + schema 全量(含 ./schema 子入口)
 ├── migrations/          # 0000-0075 + meta/(原样接管,journal 缺口 0036/idx37 保留)
 ├── drizzle.config.ts    # schema 入口 / out / dialect;URL 必填(无默认)
-└── test/
-    ├── unit/            # pg-error / transaction / client / migrations 一致性
-    └── real/            # 真实 PG 集成(缺 DATABASE_URL 自动 skip,不进默认门禁)
+└── __test__/            # 平铺(铁律 14):*.test.ts 默认门禁;pg.real.test.ts 真实 PG
+                         # (缺 DATABASE_URL 自动 skip,单独脚本显式运行;覆盖率阈值 90/85)
 ```
 
 - 依赖白名单:**零内部依赖**;运行时依赖仅 `drizzle-orm` + `pg`。

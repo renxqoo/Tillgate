@@ -4,8 +4,8 @@
  * 时,重试触发/上限/退避公式与 v1 三份拷贝逐字一致(D1)。
  */
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import type { Db } from '../../src/client.js';
-import { runTx } from '../../src/transaction.js';
+import type { Db } from '../src/client.js';
+import { runTx } from '../src/transaction.js';
 
 /** v1 行为等价策略 */
 const V1_POLICY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;

@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { is, Relations, type Table } from 'drizzle-orm';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
-import * as schema from '../../src/schema/index.js';
-import * as rootExports from '../../src/index.js';
+import * as schema from '../src/schema/index.js';
+import * as rootExports from '../src/index.js';
 
 /** v1 全量物理表清单(39 张)——新增/删除表必须先改本清单 */
 const EXPECTED_TABLES = new Set([
@@ -70,8 +70,31 @@ describe('词表收敛(B4:三套 → ACCOUNT_STATUS 一套)', () => {
   });
 });
 
+describe('外键引用物化(契约:FK 目标必须在 39 表封闭集合内)', () => {
+  it('全部 FK 物化且目标表可解析——同时执行所有 .references(() => …) 惰性回调', () => {
+    let fkCount = 0;
+    for (const value of Object.values(schema)) {
+      if (!is(value, PgTable)) continue;
+      for (const fk of getTableConfig(value).foreignKeys) {
+        // reference() 为 drizzle 内部口,物化 { columns, foreignTable, foreignColumns }
+        const ref = (fk as unknown as {
+          reference(): { foreignTable: PgTable; columns: unknown[]; foreignColumns: unknown[] };
+        }).reference();
+        fkCount += 1;
+        expect(ref.columns.length).toBeGreaterThan(0);
+        expect(ref.foreignColumns.length).toBeGreaterThan(0);
+        for (const name of tableNames({ t: ref.foreignTable })) {
+          expect(EXPECTED_TABLES).toContain(name);
+        }
+      }
+    }
+    // 39 表中带 FK 列的表远超一张——防物化循环空转(0 个 FK = 测试失效)
+    expect(fkCount).toBeGreaterThan(20);
+  });
+});
+
 describe('依赖边界(IMPLEMENTATION.md §6:零内部依赖)', () => {
-  const srcDir = fileURLToPath(new URL('../../src', import.meta.url));
+  const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
   it('全部源文件 import 行无跨包依赖(payments FK 引本地,B1;白名单 db→无内部包)', () => {
     const importLines = readdirSync(srcDir, { recursive: true })

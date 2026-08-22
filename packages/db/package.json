@@ -22,9 +22,10 @@
     "build": "rm -rf dist && bun build src/index.ts src/schema/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude test/real --passWithNoTests",
-    "test:watch": "bun x vitest --exclude test/real",
-    "test:real": "bun x vitest run test/real --passWithNoTests",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run pg.real.test.ts --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage",
     "db:generate": "bun x drizzle-kit generate",
     "db:migrate": "bun x drizzle-kit migrate",
     "db:studio": "bun x drizzle-kit studio"

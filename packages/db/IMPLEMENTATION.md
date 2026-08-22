@@ -131,18 +131,18 @@
 5. **迁移一致性测试(新增门禁)**:journal↔SQL 文件 1:1、tag 编号严格递增无重复、历史缺口(0036/idx37)显式断言——v1 从未有过任何迁移链结构检查。
 6. **测试分层**:unit(无 PG,默认门禁)+ real(真实 PG,缺 DATABASE_URL 自动 skip,不进默认门禁;资金级边界行为——SAVEPOINT、唯一冲突、advisory lock——必须真实 PG,总纲 §5.6)。
 
-## 4. 测试计划(v1 零测试,全部新增)
+## 4. 测试计划(v1 零测试,全部新增;铁律 14 目录约定:包根 `__test__/` 平铺)
 
 | 测试文件 | 覆盖 | 关键用例 |
 |---|---|---|
-| test/unit/migrations.test.ts | 迁移链结构 | journal 条目 ↔ SQL 文件 1:1 双向;tag 编号严格递增;历史缺口 0036/idx37 断言在案 |
-| test/unit/pg-error.test.ts | 错误分类 | 深度 0/1/3/5/10 的 23505 与 40P01/40001;非字符串 code / 无 code / 无 cause;约束名提取(有/无名);**B3 回归:深度 4 的 23505(wallet v1 盲区)必须检出**;5 位大写码正则边界(4 位/6 位/小写不匹配) |
-| test/unit/transaction.test.ts | 事务壳 | 首试成功直通;瞬态→重试→成功;非瞬态一次抛出;耗尽 maxAttempts 抛最后错误;退避序列 = base·2^attempt + [0,maxJitter)(fake timers);onRetry 收到 {attempt, code};onRetry 抛错被吞 |
-| test/unit/client.test.ts | 连接 | 池参数逐字段透传(spy pg.Pool 构造);无默认值(类型面:缺字段编译失败);closeDb → $client.end;ping 走集成 |
-| test/real/pg.test.ts | 真实 PG 语义 | createDb→ping→closeDb;runTx 提交可见/回滚不可见;**SAVEPOINT:外层事务内 runTx 失败只回滚内层**;advisoryLock 同事务可重入;真实 23505 检测 + uniqueViolationConstraint 拿到约束名;(可选,本地 PG 可用时)空库迁移推进至 0054 |
-| test/unit/schema.test.ts | 表定义结构 | 39 表导出齐备(v1 清单);users/admins default 引用 ACCOUNT_STATUS;payments 无 ledger-core import(边界 grep 断言);exports 快照 |
+| __test__/migrations.test.ts | 迁移链结构 | journal 条目 ↔ SQL 文件 1:1 双向;tag 编号严格递增;历史缺口 0036/idx37 断言在案 |
+| __test__/pg-error.test.ts | 错误分类 | 深度 0/1/3/5/10 的 23505 与 40P01/40001;非字符串 code / 无 code / 无 cause;约束名提取(有/无名);**B3 回归:深度 4 的 23505(wallet v1 盲区)必须检出**;5 位大写码正则边界(4 位/6 位/小写不匹配) |
+| __test__/transaction.test.ts | 事务壳 | 首试成功直通;瞬态→重试→成功;非瞬态一次抛出;耗尽 maxAttempts 抛最后错误;退避序列 = base·2^attempt + [0,maxJitter)(fake timers,累计时刻 25/65/135ms);onRetry 收到 {attempt, code};onRetry 抛错被吞 |
+| __test__/client.test.ts | 连接 | 池参数逐字段透传(spy pg.Pool 构造);无默认值(类型面:缺字段编译失败);closeDb → $client.end;ping 走 real |
+| __test__/schema.test.ts | 表定义结构 | 39 表导出齐备(v1 清单,封闭词表);**外键物化:遍历全部 FK 调用 reference(),断言目标表均在封闭集合内**(同时执行所有 `.references(() => …)` 惰性回调);users/admins default 引用 ACCOUNT_STATUS;全 src 零跨包 import 断言 |
+| __test__/pg.real.test.ts | 真实 PG 语义 | createDb→ping→closeDb;runTx 提交可见/回滚不可见;**SAVEPOINT:外层事务内 runTx 失败只回滚内层**;advisoryLock 同事务可重入;真实 23505 检测 + uniqueViolationConstraint 拿到约束名(`*.real.test.ts` 按文件名排除默认门禁,缺 DATABASE_URL 自动 skip) |
 
-**真实 PG 的行为规格锚点**:SAVEPOINT 退化、唯一冲突阻塞-重放、advisory lock 互斥,是 P4 资金波次(billing)复用本包时的不变量前提,real 层必须有;DATABASE_URL 缺失时 describe.skip(与 ai 包 test/real 同约定)。
+**真实 PG 的行为规格锚点**:SAVEPOINT 退化、唯一冲突阻塞-重放、advisory lock 互斥,是 P4 资金波次(billing)复用本包时的不变量前提,real 层必须有;DATABASE_URL 缺失时整组 skip(与 ai 包 `*.real.test.ts` 同约定,铁律 14)。
 
 ## 5. 实施阶段(每阶段独立提交 + 四门全绿)
 
@@ -151,7 +151,8 @@
 | P0 | 本文档 + DESIGN.md 定稿 | `d6f8575` ✅ |
 | P1 | schema 32 文件(3 处微修)+ 迁移链原样 + drizzle.config + package.json/tsconfig/vitest 接线 + migrations/schema 单测 | `4529f53` ✅(schema/迁移文件本体因并行会话的整树提交先期入库,内容与本文裁决一致,差异为零) |
 | P2 | client/context/pg-error/transaction 四件 + 单测(B3 回归用例) | `710a9ad` ✅ |
-| P3 | real 集成测试 + 行为核销 + 状态推进「已完成」 | 本次提交 ✅ |
+| P3 | real 集成测试 + 行为核销 + 状态推进「已完成」 | `fda8a19` ✅ |
+| P4 | 新规适配(铁律 14/16):测试迁 `__test__/` 平铺 + `*.real.test.ts` 文件名区分;覆盖率阈值 90/85 写入 vitest;新增外键物化契约测试 | 本次提交 ✅ |
 
 ## 6. 验收清单(全部满足才算完成)
 
@@ -164,7 +165,8 @@
 - [x] runTx 注入 {5,15,20} 时重试语义与 v1 三拷贝等价(退避公式 fake-timers 验证累计 25/65/135ms、尝试上限、仅瞬态触发、钩子吞错);
 - [x] real PG 用例绿(本地 PG,DATABASE_URL 显式注入):SAVEPOINT 内层回滚外层提交、真实 23505 检出含约束名 `kv_pkey`、advisoryLock 同事务同键重入、瞬态重试端到端、closeDb 后连接拒绝;scratch schema 结束即删;
 - [x] **空库迁移探针**(一次性手工验证,临时库已删):drizzle 编程式 migrator 在全新库上推进至 0055 失败(`identity_session_anchors` 不存在,由 identity-core provision 建)并整体回滚——与 v1 CI 注释记录的行为一致;结论:**空库升级范围 = 0000-0054**,0055+ 需 provision 链先行(C4 收口属 P4 能力波次);
-- [x] 不移植清单(C1-C8)各有归属标注,无孤儿。
+- [x] 不移植清单(C1-C8)各有归属标注,无孤儿;
+- [x] 铁律 14/16 适配(2026-08-23 新规):`__test__/` 平铺 + `pg.real.test.ts` 文件名区分;覆盖率阈值 90/85 落入 vitest thresholds——**实测 99.04% statements / 100% branches / 98.34% functions / 98.91% lines**(40 单测;缺口仅 client.ping 由 real 覆盖、context.ts 纯类型文件),达标未调阈值。
 
 ## 7. 回滚方案
 

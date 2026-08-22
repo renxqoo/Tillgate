@@ -8,7 +8,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const migrationsDir = fileURLToPath(new URL('../../migrations', import.meta.url));
+const migrationsDir = fileURLToPath(new URL('../migrations', import.meta.url));
 
 interface JournalEntry {
   idx: number;

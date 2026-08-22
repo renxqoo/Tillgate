@@ -2,7 +2,7 @@
  * 真实 PostgreSQL 集成(IMPLEMENTATION.md §4):SAVEPOINT 退化、真实唯一冲突、
  * advisory lock、池生命周期。资金级边界行为必须真实 PG 语义(总纲 §5.6)。
  *
- * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 ai 包 test/real 同约定);
+ * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 ai 包 *.real.test.ts 同约定(铁律 14));
  * 只在独立 scratch schema(tokenlens_db_test)内造对象,结束即删,不触碰库内既有对象。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ import {
   runTx,
   uniqueViolationConstraint,
   type Db,
-} from '../../src/index.js';
+} from '../src/index.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const SCHEMA = sql.raw('tokenlens_db_test');

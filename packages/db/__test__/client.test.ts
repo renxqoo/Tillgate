@@ -1,6 +1,6 @@
 /**
  * 连接与生命周期(IMPLEMENTATION.md §4):池参数逐字段透传、无默认、closeDb 收口。
- * ping 需真实连接,由 test/real 覆盖。
+ * ping 需真实连接,由 __test__/pg.real.test.ts 覆盖。
  */
 import { describe, expect, it, vi, type Mock } from 'vitest';
 
@@ -23,7 +23,7 @@ const { FakePool } = vi.hoisted(() => {
 
 vi.mock('pg', () => ({ default: { Pool: FakePool } }));
 
-import { closeDb, createDb } from '../../src/client.js';
+import { closeDb, createDb } from '../src/client.js';
 
 const CONFIG = {
   url: 'postgres://user:pass@db.local:5432/tokenlens',

@@ -8,7 +8,7 @@ import {
   isUniqueViolation,
   uniqueViolationConstraint,
   transientTxFailureCode,
-} from '../../src/pg-error.js';
+} from '../src/pg-error.js';
 
 /** 模拟 pg 库错误形态:{ code, constraint? } 的 Error */
 function pgLike(code: string, constraint?: string): Error {
