@@ -4,6 +4,8 @@
 # obs 栈（collector+tempo+grafana）是可选增强，需要 Grafana 全家桶时再把各服务
 # OTEL_EXPORTER_OTLP_ENDPOINT 指向 otel-collector:4318。
 
+name: ai-gateway
+
 services:
   nginx:
     image: nginx:alpine
@@ -37,6 +39,9 @@ services:
     restart: unless-stopped
 
   gateway:
+    # 生产镜像按 linux/amd64 构建（服务器 x86_64；本地 Apple Silicon 经 colima Rosetta 交叉构建）
+    image: ai-gateway/gateway:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
@@ -66,6 +71,8 @@ services:
     # 多副本：docker compose up -d --scale gateway=2
 
   client-api:
+    image: ai-gateway/client-api:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
@@ -88,6 +95,8 @@ services:
     stop_grace_period: 15s
 
   admin-api:
+    image: ai-gateway/admin-api:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
@@ -110,6 +119,8 @@ services:
     stop_grace_period: 15s
 
   worker:
+    image: ai-gateway/worker:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
@@ -138,6 +149,8 @@ services:
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
   # 各服务通过 OTEL_TRACES_MODE=otlp + endpoint 指向它（见下方 environment 注入）。
   trace-receiver:
+    image: ai-gateway/trace-receiver:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.server
@@ -160,6 +173,8 @@ services:
     restart: unless-stopped
 
   console-client:
+    image: ai-gateway/console-client:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: apps/client/Dockerfile
@@ -175,6 +190,8 @@ services:
     restart: unless-stopped
 
   console-admin:
+    image: ai-gateway/console-admin:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: apps/admin/Dockerfile
@@ -190,6 +207,8 @@ services:
     restart: unless-stopped
 
   migrate:
+    image: ai-gateway/migrate:${AI_GATEWAY_TAG:-local}
+    platform: linux/amd64
     build:
       context: ..
       dockerfile: docker/Dockerfile.migrate
