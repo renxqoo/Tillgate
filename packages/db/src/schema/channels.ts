@@ -17,7 +17,8 @@ import { providers } from './providers.js';
 
 /**
  * channels — 渠道（供应商 × 上游 Key）
- * status: 0 启用 / 1 禁用 / 2 维护 / 3 熔断(自动) / 4 凭据无效（连续 401/403，换 Key 后恢复）
+ * status: 0 启用 / 1 降级(软退役) / 2 禁用(手动) / 3 熔断(自动,预算) / 4 凭据无效(人工标记)
+ * （自动死凭据防护走 Redis 软计数：连续 3 次 401/403 → 路由跳过 + TTL 自愈，不落库）
  */
 export const channels = pgTable(
   'channels',

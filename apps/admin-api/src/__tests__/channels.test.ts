@@ -115,6 +115,46 @@ describe('渠道更新与退役', () => {
     expect(decrypt(row!.apiKeyEnc, TEST_ENCRYPTION_KEY)).toBe(newKey);
   });
 
+  it('换 Key 不复活手动态：禁用(2)/降级(1)保持原状', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const providerId = await newProviderRow();
+    for (const status of [2, 1] as const) {
+      const created = (await (
+        await createChannel(request, token, { providerId, name: uid('ch'), apiKey: 'sk-old-key' })
+      ).json()) as { id: number };
+      await db.update(channelsTable).set({ status }).where(eq(channelsTable.id, created.id));
+
+      const res = await request(`/v1/channels/${created.id}`, {
+        method: 'PATCH',
+        token,
+        body: { apiKey: `sk-rotated-${status}` },
+      });
+      expect(res.status).toBe(200);
+      const [row] = await db.select().from(channelsTable).where(eq(channelsTable.id, created.id));
+      expect(row!.status).toBe(status); // 例行轮换密钥不应复活手动停用/降级的渠道
+    }
+  });
+
+  it('换 Key + 显式 status：显式值优先（4 → 指定 2 落 2）', async () => {
+    const { request } = buildTestApp();
+    const { token } = await newAdmin();
+    const providerId = await newProviderRow();
+    const created = (await (
+      await createChannel(request, token, { providerId, name: uid('ch'), apiKey: 'sk-old-key' })
+    ).json()) as { id: number };
+    await db.update(channelsTable).set({ status: 4 }).where(eq(channelsTable.id, created.id));
+
+    const res = await request(`/v1/channels/${created.id}`, {
+      method: 'PATCH',
+      token,
+      body: { apiKey: 'sk-rotated-x', status: 2 },
+    });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(channelsTable).where(eq(channelsTable.id, created.id));
+    expect(row!.status).toBe(2);
+  });
+
   it('更新/退役不存在 → 404', async () => {
     const { request } = buildTestApp();
     const { token } = await newAdmin();

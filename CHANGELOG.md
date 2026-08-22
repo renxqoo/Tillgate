@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### 渠道死凭据防护改为「软防护 + 人工裁决」
+- 删除「单次 401/403 即落库 status=4 永久退出路由」的硬杀路径（run-chat / generation submit）
+- 自动防护由 Redis 软计数承担（连续 3 次阈值路由跳过 + 2h TTL 自愈），阈值翻转发 `channel_dead_credential` 事件
+- 网关按 overflow-alert 同款接线投递 `channel_disabled` 告警（通知页零改动可见）
+- 管理台渠道状态下拉扩为 启用/降级/禁用/凭据无效（PATCH /channels 本就接受 0-4）
+- 换 Key 复位语义修正：仅自动态（熔断/凭据无效）且未显式指定 status 时归 0——手动禁用/降级的渠道不再因轮换密钥被复活
+- repo 层 markDeadCredential 死方法移除
+
 ### Added
 
 - **全栈中英文国际化（i18n）**：默认英文，支持中英文切换。

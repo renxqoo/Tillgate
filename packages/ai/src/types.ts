@@ -8,6 +8,9 @@ import type { AiEvent } from './events';
 export interface ChannelDesc {
   baseUrl: string;
   apiKey: string;
+  /** 渠道身份（可选）：网关构造时填充，软防护翻转事件携带——告警可精确定位渠道 */
+  channelId?: number;
+  channelName?: string;
   /**
    * 协议标识 = 适配器注册表的键。合法值由 createAi 的注册表决定
    * （未注册协议显式报错 invalid_config，不静默回退）——词表单一真相见 SUPPORTED_PROTOCOLS。

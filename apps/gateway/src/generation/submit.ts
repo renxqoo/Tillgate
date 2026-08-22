@@ -233,13 +233,7 @@ export function createSubmitGeneration(deps: SubmitGenerationDeps) {
           return await persist(candidate, channel.channelId, channel.channelName, submitted.upstreamTaskId);
         }
         lastError = { code: submitted.error.code ?? 'upstream_error', message: submitted.error.message ?? 'submission failed' };
-        if (submitted.error.deadCredential) {
-          try {
-            await deps.db.transaction((tx) => repos.channel.markDeadCredential({ ...ctx, db: tx }, channel.channelId));
-          } catch (error) {
-            noteError(error, `mark dead credential channel=${channel.channelId}`);
-          }
-        }
+        // 死凭据不落库（软防护 + 人工裁决，与 run-chat 同口径）
         if (!isChannelSwitchable(submitted.error.code)) break;
       }
     }

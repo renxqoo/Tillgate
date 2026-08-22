@@ -23,6 +23,11 @@ import type { StreamError, UpstreamError, Usage } from './types';
  */
 export type AiEvent =
   | { type: 'attempt_start'; requestId: string; channelKey: string; attempt: number; atMs: number }
+  /**
+   * 软防护翻转：死凭据连续失败达阈值（tracker 判 invalid）——每次翻转发一条。
+   * 网关订阅此事件投 channel_disabled 告警（替代原单次落库 status=4 的硬杀路径）。
+   */
+  | { type: 'channel_dead_credential'; channelId: number; channelName: string }
   | { type: 'first_chunk'; requestId: string; atMs: number }
   | {
       type: 'param_adjustment';
