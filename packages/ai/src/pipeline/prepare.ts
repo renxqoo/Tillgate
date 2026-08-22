@@ -43,6 +43,13 @@ export function createPrepare(deps: PrepareDeps) {
       deps.cfg.deadCredential,
       deps.deadCredentialStorage,
       Date.now,
+      // 软防护翻转事件（gateway 订阅投 channel_disabled 告警）——闭包捕获渠道身份
+      () =>
+        deps.emit({
+          type: 'channel_dead_credential',
+          channelId: channel.channelId ?? -1,
+          channelName: channel.channelName ?? 'unknown',
+        }),
     );
 
   return function prepare(input: { channel: ChannelDesc; request: unknown; ctx: RequestCtx }): PreparedRequest {

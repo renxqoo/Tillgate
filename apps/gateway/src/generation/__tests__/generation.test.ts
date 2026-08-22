@@ -286,7 +286,7 @@ describe('提交编排失败分支', () => {
     expect(row.status).toBe('in_flight'); // 预留保留，不自动退款
   });
 
-  it('死凭据提交错误 → 渠道落库 status=4（markDeadCredential）后全败 502', async () => {
+  it('死凭据提交错误 → 不落库（软防护+人工裁决），全败 502 语义不变', async () => {
     const model = await seedVideoModel();
     const { raw } = await newFundedKey();
     const deadPort: GenerationTaskPort = {
@@ -309,7 +309,7 @@ describe('提交编排失败分支', () => {
     const res = await post(app, '/v1/video/generations', raw, { model, prompt: 'a cat', duration: 6 });
     expect(res.status).toBe(502);
     const channel = await db.$client.query<{ status: number }>('select status from channels where id = any($1) order by id desc limit 1', [createdChannels]);
-    expect(channel.rows[0]!.status).toBe(4); // 死凭据落库
+    expect(channel.rows[0]!.status).toBe(0); // 硬杀已移除：DB 不动（Redis 软防护跳过 + 事件告警）
   });
 });
 

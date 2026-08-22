@@ -390,24 +390,16 @@ export function createRunChat(deps: PipelineDeps) {
           );
         },
       );
-    const markDead = async (channelId: number): Promise<void> => {
-      try {
-        await deps.db.transaction((tx) =>
-          repos.channel.markDeadCredential({ ...ctx, db: tx }, channelId),
-        );
-      } catch (error) {
-        noteError(error, `mark dead credential channel=${channelId}`);
-      }
-    };
     /** 上游失败分派（非流式 / 流式 first_chunk 前共用——原先两段逐字重复的孪生逻辑）：
-     *  死凭据拉黑 → 可换性判定 → 4xx 透传终局 / 换候选。控制流编码为 AttemptOutcome
-     *  交还循环体翻译（attempt 函数内无法 break/continue 外层循环）。 */
+     *  可换性判定 → 4xx 透传终局 / 换候选。控制流编码为 AttemptOutcome
+     *  交还循环体翻译（attempt 函数内无法 break/continue 外层循环）。
+     *  死凭据不在此落库：软防护（tracker 3 次阈值 Redis 跳过 + TTL 自愈）承担自动
+     *  保护，永久停用由人工经管理台状态控制面裁决（channel_dead_credential 事件告警）。 */
     const dispatchFailure = async (
       channel: RouteCandidateRow,
       error: UpstreamFailure,
       status?: number,
     ): Promise<AttemptOutcome> => {
-      if (error.deadCredential) await markDead(channel.channelId);
       if (isChannelSwitchable(error.code)) return { kind: 'switch_channel', error };
       // 4xx 客户端错误：退出全部候选（fallback 救不了参数错误——白耗上游调用与预占）
       if ((status ?? 0) >= 400 && (status ?? 0) < 500) {

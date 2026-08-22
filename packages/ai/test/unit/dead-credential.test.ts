@@ -6,8 +6,8 @@ import type { DeadCredentialConfig } from '../../src/dead-credential/tracker.js'
 
 const config: DeadCredentialConfig = { failureThreshold: 3, windowMs: 3_600_000 };
 
-function makeTracker(now: () => number) {
-  return new DeadCredentialTracker('test-channel', config, new MemoryKvStorage<DeadCredentialState>(), now);
+function makeTracker(now: () => number, onInvalid?: () => void) {
+  return new DeadCredentialTracker('test-channel', config, new MemoryKvStorage<DeadCredentialState>(), now, onInvalid);
 }
 
 describe('DeadCredentialTracker', () => {
@@ -101,3 +101,38 @@ describe('DeadCredentialTracker 并发安全', () => {
   });
 });
 
+
+describe('DeadCredentialTracker.onInvalid（软杀告警挂点）', () => {
+  it('达阈值翻转时恰好触发一次（阈值后继续失败不重复发）', async () => {
+    let t = 1000;
+    let fired = 0;
+    const d = makeTracker(() => t, () => { fired += 1; });
+    await d.recordFailure({ deadCredential: true });
+    await d.recordFailure({ deadCredential: true });
+    expect(fired).toBe(0); // 未达阈值不发
+    await d.recordFailure({ deadCredential: true });
+    expect(fired).toBe(1); // 翻转发一次
+    await d.recordFailure({ deadCredential: true });
+    await d.recordFailure({ deadCredential: true });
+    expect(fired).toBe(1); // 已 invalid 不重复发
+  });
+
+  it('恢复（成功）后再次翻转 → 再次触发（每轮告警一条）', async () => {
+    let t = 1000;
+    let fired = 0;
+    const d = makeTracker(() => t, () => { fired += 1; });
+    for (let i = 0; i < 3; i++) await d.recordFailure({ deadCredential: true });
+    expect(fired).toBe(1);
+    await d.recordSuccess();
+    expect(await d.canRequest()).toBe(true);
+    for (let i = 0; i < 3; i++) await d.recordFailure({ deadCredential: true });
+    expect(fired).toBe(2);
+  });
+
+  it('不传回调零影响', async () => {
+    let t = 1000;
+    const d = makeTracker(() => t);
+    for (let i = 0; i < 3; i++) await d.recordFailure({ deadCredential: true });
+    expect(await d.canRequest()).toBe(false);
+  });
+});

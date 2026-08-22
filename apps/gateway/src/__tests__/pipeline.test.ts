@@ -404,7 +404,7 @@ describe('runChat 资金编排', () => {
     expect(Number(receipt.channelId)).toBe(createdChannels.at(-2)); // fb 先种子（在 main 之前）
   });
 
-  it('死凭据：渠道落库 status=4 后继续换渠成功', async () => {
+  it('死凭据：不落库（软防护+人工裁决），请求仍换渠成功', async () => {
     const seeded = await seedModelWithChannels([{}, {}]);
     const { raw, userId } = await newFundedKey();
     const app = makeApp(stubUpstream({
@@ -425,7 +425,7 @@ describe('runChat 资金编排', () => {
     const dead = await db.$client.query<{ status: number }>(
       'select status from channels where id = $1', [createdChannels.at(-2)],
     );
-    expect(dead.rows[0]!.status).toBe(4); // 死凭据渠道永久退出路由
+    expect(dead.rows[0]!.status).toBe(0); // 硬杀已移除：DB 状态不动（Redis 软防护负责跳过）
   });
 
 describe('runChat 流式分支', () => {

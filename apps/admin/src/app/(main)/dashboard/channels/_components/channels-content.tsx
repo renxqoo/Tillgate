@@ -505,7 +505,9 @@ function ChannelForm<T extends Record<string, unknown>>({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="0">{tc('enabled')}</SelectItem>
+                      <SelectItem value="1">{t('statusDegraded')}</SelectItem>
                       <SelectItem value="2">{tc('disabled')}</SelectItem>
+                      <SelectItem value="4">{t('statusDead')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>

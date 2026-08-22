@@ -181,7 +181,9 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
     },
 
     async update(ctx, input) {
-      // 换 Key：重加密 + 复位运行态（死凭据 status=4 / 熔断 status=3 一并清除）
+      // 换 Key：重加密 + 复位运行态——仅自动态（熔断 status=3 / 凭据无效 status=4）且
+      // 请求未显式指定 status 时归 0；手动态（降级 1 / 禁用 2）保持——例行轮换密钥
+      // 不应复活管理员显式停用的渠道
       const { apiKey, ...rest } = input.patch;
       const patch: Omit<ChannelUpdateInput, 'apiKey'> & {
         apiKeyEnc?: string;
@@ -194,8 +196,11 @@ export function createChannelsService(deps: ChannelsServiceDeps): ChannelsServic
         patch.apiKeyEnc = encrypt(apiKey, deps.encryptionKey);
       }
       const row = await db.transaction(async (tx) => {
-        if (keyChanged) {
-          Object.assign(patch, { status: 0, failCount: 0, cooldownUntil: null });
+        if (keyChanged && patch.status === undefined) {
+          const current = await repos.channel.findChannel({ db: tx, ...ctx }, input.channelId);
+          if (current && (current.status === 3 || current.status === 4)) {
+            Object.assign(patch, { status: 0, failCount: 0, cooldownUntil: null });
+          }
         }
         return repos.channel.updateChannel({ db: tx, ...ctx }, { channelId: input.channelId, patch });
       });

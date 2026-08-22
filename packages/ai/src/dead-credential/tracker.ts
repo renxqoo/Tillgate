@@ -30,6 +30,8 @@ export class DeadCredentialTracker {
     private readonly config: DeadCredentialConfig,
     private readonly storage: DeadCredentialStorage,
     private readonly now: () => number = Date.now,
+    /** 状态翻转成 invalid 时恰好触发一次（告警挂点；不传零影响） */
+    private readonly onInvalid?: () => void,
   ) {}
 
   /** 调用前：是否放行（invalid → 拒绝，gateway 路由层跳过该渠道） */
@@ -64,8 +66,11 @@ export class DeadCredentialTracker {
             lastFailedAt: now,
             invalidAt: now,
           }))
-        )
+        ) {
+          // 仅真实翻转（valid → invalid）触发；invalid 后的续失败只刷新状态不重复发
+          if (state.status !== 'invalid') this.onInvalid?.();
           return;
+        }
         continue;
       }
       // 未达阈值 → 更新计数

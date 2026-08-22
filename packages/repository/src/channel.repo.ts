@@ -13,7 +13,6 @@ import {
   channels,
   modelChannels,
   modelMappings,
-  notifyOutbox,
   providers,
   usageLogs,
 } from '@ai-gateway/db';
@@ -96,26 +95,6 @@ export class ChannelRepository {
       .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
       .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
     return rows as RouteCandidateRow[];
-  }
-
-  /** 死凭据落库：status 0/3 → 4（永久退出路由，重启仍生效）+ 事件箱同事务（幂等写） */
-  async markDeadCredential(c: RepoContext, channelId: number): Promise<boolean> {
-    const rows = await tx(c)
-      .update(channels)
-      .set({ status: 4, updatedAt: new Date() })
-      .where(and(eq(channels.id, channelId), inArray(channels.status, [0, 3])))
-      .returning({ id: channels.id });
-    if (rows.length > 0) {
-      await tx(c)
-        .insert(notifyOutbox)
-        .values({
-          event: 'channel_disabled',
-          payload: { channelId, reason: 'dead_credential' },
-          dedupeKey: `channel-disabled:${channelId}:${Date.now()}`,
-        })
-        .onConflictDoNothing();
-    }
-    return rows.length > 0;
   }
 
   async findChannel(c: RepoContext, channelId: number): Promise<ChannelRow | null> {
