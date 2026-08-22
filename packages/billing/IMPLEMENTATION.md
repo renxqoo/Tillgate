@@ -39,14 +39,14 @@
 
 ### 1.3 裁决/死码/迁移中新发现登记（B8–B13）
 
-| #   | 事项                                                                                                 | 裁决                                                                                                                                |
-| --- | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| B8  | `reconcile_discrepancies` 表零写入方（worker 对账实际写 `notify_outbox`），表注释与实现脱节          | 表已随 db 链存在于新仓（DDL 不动）；billing 只读核验不写该表；是否补写入或删表在 apps/worker 迁移单元（P5）裁决                     |
-| B9  | 引擎分片能力（0–255）在活路径钉死 shard 0（`repository/wallet.repo.ts:98-116`）                      | 活路径语义唯一：shard 恒 0；`sharding.ts` 不移植；唯一键 `(code,currency,shard)` 保留（DDL 冻结），实现注释固化「分片保留位未启用」 |
-| B10 | 计费授权重放对终态单（released/settlement_pending）抛 409——有意防重放还是缺陷需结合 gateway 重试策略 | 待审计：apps/gateway 迁移单元（P5）对照 pipeline 重试层后裁决；U2 迁移时先保留现语义并测试锁死                                      |
-| B11 | 「按 id 定序锁定防死锁」在引擎与活路径均无显式 ORDER BY——定序实际依赖 PK 索引扫描顺序的实现细节（U1b 复读发现） | 已修：adapter `lockAccounts` 显式 `ORDER BY id`（MIGRATION-U1 §4）；死锁竞速测试通过 |
-| B12 | refund 重放回执返回带符号腿金额（`'-2'`），与首笔正号命令金额（`'2'）不一致——replayLegged 对 credit 恰好无恙、refund 暴露（U1b 契约测试实测发现；B5 同族） | 已修：replayLegged 回执改回命令金额（MIGRATION-U1 §4）；内存与真 PG 回归各一 |
-| B13 | 旧活路径 release 经 lockActiveAccounts 对冻结账户直接拒绝 → 风控冻结后 in_flight 永久占用；引擎版刻意容忍（释放预占不动资金）（U1b 契约测试实测发现） | 已修：release 改裸锁容忍冻结（settle 保持拒绝——引擎 security 语义）；真 PG 回归一 |
+| #   | 事项                                                                                                                                                       | 裁决                                                                                                                                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| B8  | `reconcile_discrepancies` 表零写入方（worker 对账实际写 `notify_outbox`），表注释与实现脱节                                                                | 表已随 db 链存在于新仓（DDL 不动）；billing 只读核验不写该表；是否补写入或删表在 apps/worker 迁移单元（P5）裁决                     |
+| B9  | 引擎分片能力（0–255）在活路径钉死 shard 0（`repository/wallet.repo.ts:98-116`）                                                                            | 活路径语义唯一：shard 恒 0；`sharding.ts` 不移植；唯一键 `(code,currency,shard)` 保留（DDL 冻结），实现注释固化「分片保留位未启用」 |
+| B10 | 计费授权重放对终态单（released/settlement_pending）抛 409——有意防重放还是缺陷需结合 gateway 重试策略                                                       | 待审计：apps/gateway 迁移单元（P5）对照 pipeline 重试层后裁决；U2 迁移时先保留现语义并测试锁死                                      |
+| B11 | 「按 id 定序锁定防死锁」在引擎与活路径均无显式 ORDER BY——定序实际依赖 PK 索引扫描顺序的实现细节（U1b 复读发现）                                            | 已修：adapter `lockAccounts` 显式 `ORDER BY id`（MIGRATION-U1 §4）；死锁竞速测试通过                                                |
+| B12 | refund 重放回执返回带符号腿金额（`'-2'`），与首笔正号命令金额（`'2'）不一致——replayLegged 对 credit 恰好无恙、refund 暴露（U1b 契约测试实测发现；B5 同族） | 已修：replayLegged 回执改回命令金额（MIGRATION-U1 §4）；内存与真 PG 回归各一                                                        |
+| B13 | 旧活路径 release 经 lockActiveAccounts 对冻结账户直接拒绝 → 风控冻结后 in_flight 永久占用；引擎版刻意容忍（释放预占不动资金）（U1b 契约测试实测发现）      | 已修：release 改裸锁容忍冻结（settle 保持拒绝——引擎 security 语义）；真 PG 回归一                                                   |
 
 ### 1.4 重复代码登记（D#）
 

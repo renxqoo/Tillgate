@@ -117,10 +117,14 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
       sql`update wallet_accounts set status = 'frozen' where kind = 'user' and user_id = ${userId}`,
     );
     expect(
-      await expectBusinessCode(() => h.api.credit({ userId, amount: '1', refType: 'topup', refId: 'c4' })),
+      await expectBusinessCode(() =>
+        h.api.credit({ userId, amount: '1', refType: 'topup', refId: 'c4' }),
+      ),
     ).toBe('billing.account_frozen');
     expect(
-      await expectBusinessCode(() => h.api.settle({ refType: 'billing', refId: 'b2', amount: '1' })),
+      await expectBusinessCode(() =>
+        h.api.settle({ refType: 'billing', refId: 'b2', amount: '1' }),
+      ),
     ).toBe('billing.account_frozen');
     // B13：冻结账户的 active 冻结单仍可释放——只归还 in_flight，不动资金
     const released = await h.api.release({ refType: 'billing', refId: 'b2', reason: 'risk_hold' });
@@ -140,7 +144,9 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
       expiresAt: new Date(Date.now() - 1_000),
     });
     expect(
-      await expectBusinessCode(() => h.api.settle({ refType: 'billing', refId: 'b3', amount: '1' })),
+      await expectBusinessCode(() =>
+        h.api.settle({ refType: 'billing', refId: 'b3', amount: '1' }),
+      ),
     ).toBe('billing.authorization_not_active');
   });
 

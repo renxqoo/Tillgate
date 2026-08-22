@@ -69,3 +69,76 @@ export type {
   TransactionHeader,
   StatementItemRow,
 } from './ports/wallet-store.js';
+
+// ---- 计价域（U2a：rating——计量/定价策略/预扣策略/公式/收据） ----
+export {
+  PRICE_PER_MILLION,
+  calcAmount,
+  estimateMaxCost,
+  requiredReservation,
+} from './domain/rating/pricing.js';
+export type { AmountInput, ReservationEstimateInput } from './domain/rating/pricing.js';
+export { calculateFundingReservation, calculateRequired } from './domain/rating/calculate.js';
+export type { FundingReservationPolicy } from './domain/rating/calculate.js';
+export { computeAmounts } from './domain/rating/amounts.js';
+export type { SettleAmounts } from './domain/rating/amounts.js';
+export { pickCoefficient } from './domain/rating/coefficient.js';
+export type {
+  RateCardCoefficientSnapshot,
+  CoefficientLookup,
+} from './domain/rating/coefficient.js';
+export { MEASUREMENTS, measurementOf } from './domain/rating/measurement.js';
+export type { MeasurementDescriptor } from './domain/rating/measurement.js';
+export { PRICING_STRATEGIES, strategyOf } from './domain/rating/pricing-strategy.js';
+export type {
+  BillingConfig,
+  PricingContext,
+  PricingStrategy,
+} from './domain/rating/pricing-strategy.js';
+export {
+  RESERVATION_STRATEGIES,
+  reservationStrategyOf,
+} from './domain/rating/reservation-strategy.js';
+export type {
+  ReservationPolicyConfig,
+  ReservationStrategy,
+} from './domain/rating/reservation-strategy.js';
+export { decodeReceipt, finiteDecimal } from './domain/rating/decode.js';
+export { validateReceipt } from './domain/rating/receipt.js';
+export {
+  USER_SIDE_CANCELS,
+  ESTIMATE_ATTRIBUTIONS,
+  streamEstimateAttribution,
+  isAttributedEstimate,
+} from './domain/rating/types.js';
+export type {
+  UsageReceipt,
+  UserSideCancel,
+  EstimateAttribution,
+  BillingQuoteCandidate,
+  BillingQuote,
+} from './domain/rating/types.js';
+
+// ---- 计费域（U2a：billing——状态机/限额/分配/失败策略/订阅闸） ----
+export { isTerminal } from './domain/billing/reservation.js';
+export type { BillingStatus } from './domain/billing/reservation.js';
+export { allocateSettlement } from './domain/billing/settle-allocation.js';
+export type { ReservationShare, SettleShare } from './domain/billing/settle-allocation.js';
+export { settleFailurePolicy, isDeadLetterFamily } from './domain/billing/settle-failure.js';
+export type {
+  SettleFailureDecision,
+  SettleFailurePolicyConfig,
+  SettleFailurePolicyInput,
+} from './domain/billing/settle-failure.js';
+export {
+  billingDayStart,
+  billingDayKey,
+  secondsUntilNextBillingDay,
+} from './domain/billing/daily-window.js';
+export { assertDailySpendLimit } from './domain/billing/daily-limit.js';
+export type { DailyLimitCheck } from './domain/billing/daily-limit.js';
+export { subscriptionAvailability } from './domain/billing/subscription-availability.js';
+export type {
+  SubscriptionGateSnapshot,
+  SubscriptionGateInput,
+} from './domain/billing/subscription-availability.js';
