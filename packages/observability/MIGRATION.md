@@ -105,8 +105,12 @@ requestSummary 是截断摘要(嗅探逻辑在 P5 gateway 中间件)。
 
 ## 5. 回滚方案
 
-- 全新包、旧仓只读不动:单原子提交即回滚单元(revert 整体还原;control-plane 先例——
-  缺 index.ts 的中间态无法保持 build 门绿,阶段边界以目录与测试文件边界保留)。
+- **落地提交:da1b237**(并行会话将共享暂存区一并提交——本包 37 文件与 notifications
+  3 文件同落该提交;revert 整个提交会连带回退 notifications 拆分,需按文件路径定向回退
+  或协调后处理。此为 ironlaw 15 的实测教训:多会话共享暂存区,commit 前必须核对
+  `git status` 暂存清单只含自己路径)。
+- 全新包、旧仓只读不动:上述提交即回滚单元(revert 整体还原到包前状态;control-plane
+  先例——缺 index.ts 的中间态无法保持 build 门绿,阶段边界以目录与测试文件边界保留)。
 - 无 DDL 变更(trace_spans/request_logs 分区母表与 75 条迁移已在 @tokenlens/db 先行合入;
   运行时 ensure/maintain DDL 与 v1 逐字兼容——分区命名/边界/锁键不变,新旧进程可互换执行)。
 - bun.lock 多会话共写:依赖条目落 lock 但不随本波提交(ironlaw 15,协调后收口)。
