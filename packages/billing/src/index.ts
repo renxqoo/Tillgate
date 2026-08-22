@@ -191,3 +191,28 @@ export type {
 } from './ports/funding-ports.js';
 export { reserveDecision, budgetRemaining } from './domain/billing/channel-exposure.js';
 export type { ChannelReserveDecision } from './domain/billing/channel-exposure.js';
+
+// ---- 结算与恢复（U3：./settlement 窄子入口的装配体） ----
+export { createSettlementApi } from './application/settlement/settlement.js';
+export type {
+  SettlementApi,
+  SettlementDeps,
+  SettlementClaim,
+  ClaimInput,
+  ClaimOutcome,
+  SettleClaimResult,
+  RecoveryRunResult,
+  ReconcileReport,
+  ReconcileViolation,
+} from './application/settlement/settlement.js';
+export { createClaimUseCase, createRenewClaimsUseCase } from './application/settlement/claim.js';
+export { createSettleClaimUseCase } from './application/settlement/settle.js';
+export { createFailureUseCase } from './application/settlement/failure.js';
+export { createProcessClaimUseCase } from './application/settlement/process.js';
+export {
+  createRecoverUseCase,
+  createAbandonClaimsUseCase,
+} from './application/settlement/recover.js';
+export { createReconcileUseCase } from './application/settlement/reconcile.js';
+export { usageLogProjection } from './application/settlement/usage-projection.js';
+export type { UsageProjectionInput } from './application/settlement/usage-projection.js';

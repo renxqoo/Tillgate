@@ -54,6 +54,7 @@ export interface InMemoryBillingWorld {
       amount: string;
       at: Date;
     }>;
+    usageLogs: Map<string, Record<string, unknown>>;
   };
   /** 凭证解析结果覆写（缺省：无订阅、无限额） */
   resolveOverride: Partial<ResolvedFundingSource> | null;
@@ -73,6 +74,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
   const subscriptions = new Map<number, InMemorySubscriptionRow>();
   const channelsMap = new Map<number, InMemoryChannelRow>();
   const settledSpend: InMemoryBillingWorld['fixtures']['settledSpend'] = [];
+  const usageLogsRows = new Map<string, Record<string, unknown>>();
   const memberLimitsOverride = new Map<
     string,
     { dailySpendLimit: string | null; monthlyQuota: string | null }
@@ -276,6 +278,194 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       return Promise.resolve(true);
     },
 
+    async claimPending(_conn, input) {
+      const claimed: Array<{
+        requestId: string;
+        claimToken: string;
+        revision: number;
+        attempt: number;
+        receipt: Record<string, unknown> | null;
+        traceParent: string | null;
+      }> = [];
+      for (const row of [...requests.values()].toSorted(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      )) {
+        if (claimed.length >= input.batchSize) break;
+        if (row.status !== 'settlement_pending' && row.status !== 'retry_wait') continue;
+        if (
+          input.requestIds &&
+          input.requestIds.length > 0 &&
+          !input.requestIds.includes(row.requestId)
+        ) {
+          continue;
+        }
+        row.status = 'processing';
+        row.revision += 1;
+        row.settlementAttempts += 1;
+        row.claimOwner = input.ownerId;
+        row.claimToken = `token-${row.requestId}-${row.revision}`;
+        row.claimUntil = new Date(Date.now() + input.claimLeaseMs);
+        claimed.push({
+          requestId: row.requestId,
+          claimToken: row.claimToken,
+          revision: row.revision,
+          attempt: row.settlementAttempts,
+          receipt: row.receipt,
+          traceParent: row.traceParent,
+        });
+      }
+      return claimed;
+    },
+
+    renewClaims(_conn, input) {
+      for (const row of requests.values()) {
+        if (
+          row.status === 'processing' &&
+          row.claimOwner === input.ownerId &&
+          input.tokens.includes(row.claimToken ?? '')
+        ) {
+          row.claimUntil = new Date(Date.now() + input.claimLeaseMs);
+        }
+      }
+      return Promise.resolve();
+    },
+
+    findProcessingForClaim(_conn, claim) {
+      const row = requests.get(claim.requestId);
+      if (
+        !row ||
+        row.status !== 'processing' ||
+        row.claimToken !== claim.claimToken ||
+        row.claimOwner !== claim.ownerId ||
+        row.revision !== claim.revision
+      ) {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve(row);
+    },
+
+    casFinalizeSettled(_conn, claim) {
+      const row = requests.get(claim.requestId);
+      if (
+        !row ||
+        row.status !== 'processing' ||
+        row.claimToken !== claim.claimToken ||
+        row.claimOwner !== claim.ownerId ||
+        row.revision !== claim.revision
+      ) {
+        return Promise.resolve(false);
+      }
+      row.status = 'settled';
+      row.revision += 1;
+      row.claimOwner = null;
+      row.claimToken = null;
+      row.claimUntil = null;
+      return Promise.resolve(true);
+    },
+
+    casToRetryOrDead(_conn, claim, input) {
+      const row = requests.get(claim.requestId);
+      if (
+        !row ||
+        row.status !== 'processing' ||
+        row.claimToken !== claim.claimToken ||
+        row.claimOwner !== claim.ownerId ||
+        row.revision !== claim.revision
+      ) {
+        return Promise.resolve(false);
+      }
+      row.status = input.dead ? 'dead' : 'retry_wait';
+      row.revision += 1;
+      row.claimOwner = null;
+      row.claimToken = null;
+      row.claimUntil = null;
+      row.nextSettlementAt = input.dead ? null : new Date(Date.now() + (input.nextDelayMs ?? 0));
+      return Promise.resolve(true);
+    },
+
+    listExpiredForRecovery(_conn, input) {
+      const now = Date.now();
+      const candidates = [...requests.values()]
+        .filter(
+          (row) =>
+            row.status === input.status &&
+            (row.leaseExpiresAt?.getTime() ?? Number.POSITIVE_INFINITY) <= now,
+        )
+        .toSorted((a, b) => (a.leaseExpiresAt?.getTime() ?? 0) - (b.leaseExpiresAt?.getTime() ?? 0))
+        .slice(0, input.limit)
+        .map((row) => row.requestId);
+      return Promise.resolve(candidates);
+    },
+
+    recoverOneToReleased(_conn, input) {
+      const row = requests.get(input.requestId);
+      if (!row || row.status !== input.status) return Promise.resolve(null);
+      row.status = 'released';
+      row.revision += 1;
+      row.failureCode = input.failureCode;
+      row.leaseExpiresAt = null;
+      return Promise.resolve({
+        requestId: row.requestId,
+        reservedAmount: row.reservedAmount,
+        channelId: row.channelId,
+        channelReservedAmount: row.channelReservedAmount,
+      });
+    },
+
+    requeueExpiredClaims(_conn, limit) {
+      let count = 0;
+      const now = Date.now();
+      for (const row of requests.values()) {
+        if (count >= limit) break;
+        if (row.status === 'processing' && (row.claimUntil?.getTime() ?? 0) <= now) {
+          row.status = 'retry_wait';
+          row.revision += 1;
+          row.claimOwner = null;
+          row.claimToken = null;
+          row.claimUntil = null;
+          row.nextSettlementAt = new Date();
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
+    },
+
+    abandonOwnedClaims(_conn, ownerId) {
+      let count = 0;
+      for (const row of requests.values()) {
+        if (row.status === 'processing' && row.claimOwner === ownerId) {
+          row.status = 'retry_wait';
+          row.revision += 1;
+          row.claimOwner = null;
+          row.claimToken = null;
+          row.claimUntil = null;
+          row.nextSettlementAt = new Date();
+          count += 1;
+        }
+      }
+      return Promise.resolve(count);
+    },
+
+    insertUsageLog(_conn, values) {
+      const requestId = String(values.requestId);
+      if (usageLogsRows.has(requestId)) return Promise.resolve(false);
+      usageLogsRows.set(requestId, values);
+      // 每日限额口径同步：settledSpend 追加（status=0 已结算）
+      settledSpend.push({
+        userId: Number(values.userId),
+        apiKeyId: (values.apiKeyId as number | null) ?? null,
+        subscriptionId: (values.subscriptionId as number | null) ?? null,
+        amount: String(values.calculatedAmount ?? values.amount ?? '0'),
+        at: new Date(),
+      });
+      return Promise.resolve(true);
+    },
+
+    findUsageAmount(_conn, requestId) {
+      const row = usageLogsRows.get(requestId);
+      return Promise.resolve(row ? String(row.calculatedAmount ?? row.amount ?? '0') : null);
+    },
+
     isUniqueViolation: () => false,
   };
 
@@ -404,7 +594,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     channels: channelStore,
     resolver,
     memberLimitsOverride,
-    fixtures: { subscriptions, channelsMap, requests, settledSpend },
+    fixtures: { subscriptions, channelsMap, requests, settledSpend, usageLogs: usageLogsRows },
     get resolveOverride() {
       return resolveOverride;
     },

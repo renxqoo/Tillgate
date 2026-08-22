@@ -24,7 +24,7 @@
     "lint": "bun x oxlint",
     "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun x vitest run __test__/wallet-contract.real.test.ts __test__/wallet-invariants.real.test.ts --passWithNoTests",
+    "test:real": "bun x vitest run __test__/wallet-contract.real.test.ts __test__/wallet-invariants.real.test.ts __test__/settlement-lifecycle.real.test.ts --passWithNoTests",
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {

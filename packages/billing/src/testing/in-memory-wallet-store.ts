@@ -72,6 +72,8 @@ export interface InMemoryWalletStore {
   suppressNextFindAuthorization(): void;
   /** 模拟风控冻结（活路径无 freeze 动词，状态由管理面置位——B9/MIGRATION-U1） */
   freezeUserAccount(userId: number, currency: string): void;
+  /** 对账测试专用：绕过动词直改余额制造漂移（运维事故模拟） */
+  defaceBalanceForTest(userId: number, currency: string, balance: string): void;
 }
 
 let idCounter = 0;
@@ -379,6 +381,48 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       return Promise.resolve(rows);
     },
 
+    async verifyInvariants(limit) {
+      const violations: Array<{
+        kind: 'transaction_balance' | 'account_balance' | 'in_flight';
+        key: string;
+        detail: string;
+      }> = [];
+      for (const tx of transactions) {
+        const legsOf = legs.filter((l) => l.transactionId === tx.id);
+        const sum = legsOf.reduce((acc, l) => acc + Number(l.amount), 0);
+        const audit = tx.kind === 'credit_line' || tx.kind === 'freeze';
+        if (sum !== 0 || (audit && legsOf.length !== 1) || (!audit && legsOf.length < 2)) {
+          violations.push({
+            kind: 'transaction_balance',
+            key: String(tx.id),
+            detail: `legs sum ${sum} kind ${tx.kind}`,
+          });
+        }
+      }
+      for (const account of accounts.values()) {
+        const own = legs.filter((l) => l.accountId === account.id);
+        const last = own.length > 0 ? own[own.length - 1]!.balanceAfter : '0';
+        if (account.balance !== last) {
+          violations.push({
+            kind: 'account_balance',
+            key: account.id,
+            detail: `balance ${account.balance} last leg ${last}`,
+          });
+        }
+        const activeSum = [...authorizations.values()]
+          .filter((a) => a.accountId === account.id && a.status === 'active')
+          .reduce((acc, a) => acc + Number(a.amount), 0);
+        if (Number(account.inFlight) !== activeSum) {
+          violations.push({
+            kind: 'in_flight',
+            key: account.id,
+            detail: `in_flight ${account.inFlight} active sum ${activeSum}`,
+          });
+        }
+      }
+      return violations.slice(0, limit);
+    },
+
     isUniqueViolation: (error) => {
       let current: unknown = error;
       for (let depth = 0; current != null && depth < 5; depth++) {
@@ -401,6 +445,14 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       for (const row of accounts.values()) {
         if (row.kind === 'user' && row.userId === userId && row.currency === currency) {
           row.status = 'frozen';
+        }
+      }
+    },
+
+    defaceBalanceForTest(userId, currency, balance) {
+      for (const row of accounts.values()) {
+        if (row.kind === 'user' && row.userId === userId && row.currency === currency) {
+          row.balance = balance;
         }
       }
     },

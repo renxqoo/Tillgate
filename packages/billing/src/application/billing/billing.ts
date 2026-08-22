@@ -69,7 +69,7 @@ export function createBillingApi(deps: BillingDeps): BillingApi {
   };
   return {
     authorize: createAuthorizeUseCase(env),
-    signal: createSignalUseCase(env),
+    signal: createSignalUseCase({ ...env, channels: deps.channels }),
     reserveChannel: createReserveChannelUseCase({
       store: deps.store,
       channels: deps.channels,

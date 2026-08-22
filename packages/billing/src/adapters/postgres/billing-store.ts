@@ -5,7 +5,7 @@
  * 语义基准：旧仓 billing-request/billing-reservation/subscription/usage-log/channel
  * 各 repo 活路径逐方法平移；CAS 语义（WHERE status IN / revision+1 / 乐观锁）保持不变。
  */
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   billingRequests,
   billingReservations,
@@ -328,6 +328,244 @@ export function createPostgresBillingStore(
         .returning({ id: billingReservations.id });
       return rows.length > 0;
     },
+    async claimPending(conn, input) {
+      const idFilter =
+        input.requestIds && input.requestIds.length > 0
+          ? sql`and request_id in (${sql.join(
+              input.requestIds.map((id) => sql`${id}::uuid`),
+              sql`, `,
+            )})`
+          : sql``;
+      const result = await asDb(conn).execute<{
+        request_id: string;
+        claim_token: string;
+        revision: string | number;
+        attempt: string | number;
+        settlement_attempts: string | number;
+        receipt: Record<string, unknown> | null;
+        trace_parent: string | null;
+      }>(sql`
+        with candidates as (
+          select request_id from billing_requests
+          where status in ('settlement_pending', 'retry_wait')
+            and (next_settlement_at is null or next_settlement_at <= clock_timestamp())
+            ${idFilter}
+          order by next_settlement_at nulls first, created_at
+          for update skip locked
+          limit ${input.batchSize}
+        )
+        update billing_requests b
+        set status = 'processing',
+            revision = b.revision + 1,
+            settlement_attempts = b.settlement_attempts + 1,
+            claim_owner = ${input.ownerId},
+            claim_token = gen_random_uuid(),
+            claim_until = clock_timestamp() + (${input.claimLeaseMs} * interval '1 millisecond'),
+            failure_class = null,
+            last_error = null,
+            updated_at = clock_timestamp()
+        from candidates c2
+        where b.request_id = c2.request_id
+        returning b.request_id, b.claim_token, b.revision,
+                  b.settlement_attempts as attempt, b.receipt, b.trace_parent`);
+      return result.rows.map((row) => ({
+        requestId: row.request_id,
+        claimToken: row.claim_token,
+        revision: Number(row.revision),
+        attempt: Number(row.settlement_attempts),
+        receipt: row.receipt,
+        traceParent: row.trace_parent,
+      }));
+    },
+
+    async renewClaims(conn, input) {
+      if (input.tokens.length === 0) return;
+      await asDb(conn).execute(sql`
+        update billing_requests
+        set claim_until = clock_timestamp() + (${input.claimLeaseMs} * interval '1 millisecond'),
+            updated_at = clock_timestamp()
+        where status = 'processing'
+          and claim_owner = ${input.ownerId}
+          and claim_token in (${sql.join(
+            input.tokens.map((token) => sql`${token}::uuid`),
+            sql`, `,
+          )})
+          and claim_until > clock_timestamp()`);
+    },
+
+    async findProcessingForClaim(conn, claim) {
+      const [row] = await asDb(conn)
+        .select(REQUEST_COLUMNS)
+        .from(billingRequests)
+        .where(
+          and(
+            eq(billingRequests.requestId, claim.requestId),
+            eq(billingRequests.status, 'processing'),
+            eq(billingRequests.claimToken, claim.claimToken),
+            eq(billingRequests.claimOwner, claim.ownerId),
+            eq(billingRequests.revision, claim.revision),
+            sql`${billingRequests.claimUntil} > clock_timestamp()`,
+          ),
+        );
+      return (row as BillingRequestRow | undefined) ?? null;
+    },
+
+    async casFinalizeSettled(conn, claim) {
+      const rows = await asDb(conn)
+        .update(billingRequests)
+        .set({
+          status: 'settled',
+          revision: sql`${billingRequests.revision} + 1`,
+          claimOwner: null,
+          claimToken: null,
+          claimUntil: null,
+          settledAt: sql`clock_timestamp()`,
+          nextSettlementAt: null,
+          lastError: null,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(billingRequests.requestId, claim.requestId),
+            eq(billingRequests.status, 'processing'),
+            eq(billingRequests.claimToken, claim.claimToken),
+            eq(billingRequests.claimOwner, claim.ownerId),
+            eq(billingRequests.revision, claim.revision),
+            sql`${billingRequests.claimUntil} > clock_timestamp()`,
+          ),
+        )
+        .returning({ id: billingRequests.requestId });
+      return rows.length > 0;
+    },
+
+    async casToRetryOrDead(conn, claim, input) {
+      const rows = await asDb(conn)
+        .update(billingRequests)
+        .set({
+          status: input.dead ? 'dead' : 'retry_wait',
+          revision: sql`${billingRequests.revision} + 1`,
+          nextSettlementAt: input.dead
+            ? null
+            : sql`clock_timestamp() + (${input.nextDelayMs} * interval '1 millisecond')`,
+          claimOwner: null,
+          claimToken: null,
+          claimUntil: null,
+          failureClass: input.failureClass,
+          lastError: input.lastError.slice(0, 4000),
+          deadAt: input.dead ? sql`clock_timestamp()` : null,
+          updatedAt: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(billingRequests.requestId, claim.requestId),
+            eq(billingRequests.status, 'processing'),
+            eq(billingRequests.claimToken, claim.claimToken),
+            eq(billingRequests.claimOwner, claim.ownerId),
+            eq(billingRequests.revision, claim.revision),
+            sql`${billingRequests.claimUntil} > clock_timestamp()`,
+          ),
+        )
+        .returning({ id: billingRequests.requestId });
+      return rows.length > 0;
+    },
+
+    async listExpiredForRecovery(conn, input) {
+      const upstreamGuard =
+        input.status === 'authorized' ? sql`and upstream_started_at is null` : sql``;
+      const result = await asDb(conn).execute<{ request_id: string }>(sql`
+        select request_id from billing_requests
+        where status = ${input.status}
+          and lease_expires_at <= clock_timestamp()
+          ${upstreamGuard}
+        order by lease_expires_at
+        limit ${input.limit}`);
+      return result.rows.map((row) => row.request_id);
+    },
+
+    async recoverOneToReleased(conn, input) {
+      const upstreamGuard =
+        input.status === 'authorized' ? sql`and upstream_started_at is null` : sql``;
+      const leaseGuard =
+        input.status === 'authorized' ? sql`` : sql`and lease_expires_at <= clock_timestamp()`;
+      const result = await asDb(conn).execute<{
+        request_id: string;
+        reserved_amount: string;
+        channel_id: number | null;
+        channel_reserved_amount: string | null;
+      }>(sql`
+        update billing_requests b
+        set status = 'released', revision = b.revision + 1,
+          failure_code = ${input.failureCode},
+          lease_expires_at = null, released_at = clock_timestamp(), updated_at = clock_timestamp()
+        where b.request_id = ${input.requestId} and b.status = ${input.status}
+          ${upstreamGuard} ${leaseGuard}
+        returning b.request_id, b.reserved_amount, b.channel_id, b.channel_reserved_amount`);
+      const row = result.rows[0];
+      return row
+        ? {
+            requestId: row.request_id,
+            reservedAmount: row.reserved_amount,
+            channelId: row.channel_id,
+            channelReservedAmount: row.channel_reserved_amount,
+          }
+        : null;
+    },
+
+    async requeueExpiredClaims(conn, limit) {
+      const result = await asDb(conn).execute(sql`
+        with candidates as (
+          select request_id from billing_requests
+          where status = 'processing' and claim_until <= clock_timestamp()
+          order by claim_until for update skip locked limit ${limit}
+        )
+        update billing_requests b set
+          status = 'retry_wait', revision = b.revision + 1,
+          next_settlement_at = clock_timestamp(),
+          claim_owner = null, claim_token = null, claim_until = null,
+          failure_class = 'claim_expired', last_error = 'settlement claim lease expired',
+          updated_at = clock_timestamp()
+        from candidates c2 where b.request_id = c2.request_id and b.status = 'processing'
+        returning b.request_id`);
+      return result.rows.length;
+    },
+
+    async abandonOwnedClaims(conn, ownerId, now) {
+      const rows = await asDb(conn)
+        .update(billingRequests)
+        .set({
+          status: 'retry_wait',
+          revision: sql`${billingRequests.revision} + 1`,
+          nextSettlementAt: now,
+          claimOwner: null,
+          claimToken: null,
+          claimUntil: null,
+          failureClass: 'claim_expired',
+          lastError: 'worker shutdown returned claim',
+          updatedAt: now,
+        })
+        .where(
+          and(eq(billingRequests.status, 'processing'), eq(billingRequests.claimOwner, ownerId)),
+        )
+        .returning({ id: billingRequests.requestId });
+      return rows.length;
+    },
+
+    async insertUsageLog(conn, values) {
+      const rows = await asDb(conn)
+        .insert(usageLogs)
+        .values(values as typeof usageLogs.$inferInsert)
+        .onConflictDoNothing({ target: usageLogs.requestId })
+        .returning({ id: usageLogs.id });
+      return rows.length > 0;
+    },
+
+    async findUsageAmount(conn, requestId) {
+      const [row] = await asDb(conn)
+        .select({ amount: usageLogs.amount })
+        .from(usageLogs)
+        .where(eq(usageLogs.requestId, requestId));
+      return row?.amount ?? null;
+    },
 
     isUniqueViolation: (error) => isUniqueViolation(error),
   };
@@ -503,7 +741,5 @@ export function createPostgresBillingStore(
     },
   };
 
-  void desc;
-  void lt;
   return { ...store, quotaStore, channelStore };
 }

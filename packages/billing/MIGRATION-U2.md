@@ -24,18 +24,18 @@ billing/billing-limits —— 全部行为以新测试锁定（文件映射见 �
 
 ## 3. 逐模块裁决表
 
-| 旧模块 | 裁决 | 动作 |
-| --- | --- | --- |
-| domain/rating 14 文件 | 复制+微修 | domain/rating/*（B2/B3 修复；错误进目录） |
-| domain/billing 7 文件 + channel-budget/reserve-rule | 复制+微修 | domain/billing/*（含 channel-exposure 决策纯函数） |
-| service/billing/{authorize,signal,admission,reserve-channel} | 重写 | application/billing/*（RunContext 移除；credential 解析改 port） |
-| service/funding 7 文件 | 重写 | application/billing/funding/*（来源操作收 WalletTx 事务句柄） |
-| service/channel-budget（release/deduct） | 重构并入 | ports/ChannelExposureStore + reserve-channel/settle 消费（U3 接线 deduct） |
-| repository/{billing-request,billing-reservation}.repo | 重写 | ports/billing-store + adapters/postgres（CAS/revision/乐观锁语义原样） |
-| repository/subscription 额度三原语 + org-member 限额 | 重写 | ports/funding-ports（SubscriptionQuotaStore）+ adapter（user_subscriptions/org_members） |
-| repository/channel 敞口/扣减/熔断 | 重写 | ports/funding-ports（ChannelExposureStore）+ adapter（SQL 侧熔断判定保留） |
-| repository/credential.resolveSourceAndLimits | 不移植（跨能力事实） | ports/FundingSourceResolver——app assembly 桥接 accounts/identity（总纲 §5.2） |
-| repository/usage-log 读侧（sumSettledSpend） | 重写 | billing-store（usage_logs 为 billing 投影；写侧随 U3） |
+| 旧模块                                                       | 裁决                 | 动作                                                                                     |
+| ------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------------------- |
+| domain/rating 14 文件                                        | 复制+微修            | domain/rating/*（B2/B3 修复；错误进目录）                                                |
+| domain/billing 7 文件 + channel-budget/reserve-rule          | 复制+微修            | domain/billing/*（含 channel-exposure 决策纯函数）                                       |
+| service/billing/{authorize,signal,admission,reserve-channel} | 重写                 | application/billing/*（RunContext 移除；credential 解析改 port）                         |
+| service/funding 7 文件                                       | 重写                 | application/billing/funding/*（来源操作收 WalletTx 事务句柄）                            |
+| service/channel-budget（release/deduct）                     | 重构并入             | ports/ChannelExposureStore + reserve-channel/settle 消费（U3 接线 deduct）               |
+| repository/{billing-request,billing-reservation}.repo        | 重写                 | ports/billing-store + adapters/postgres（CAS/revision/乐观锁语义原样）                   |
+| repository/subscription 额度三原语 + org-member 限额         | 重写                 | ports/funding-ports（SubscriptionQuotaStore）+ adapter（user_subscriptions/org_members） |
+| repository/channel 敞口/扣减/熔断                            | 重写                 | ports/funding-ports（ChannelExposureStore）+ adapter（SQL 侧熔断判定保留）               |
+| repository/credential.resolveSourceAndLimits                 | 不移植（跨能力事实） | ports/FundingSourceResolver——app assembly 桥接 accounts/identity（总纲 §5.2）            |
+| repository/usage-log 读侧（sumSettledSpend）                 | 重写                 | billing-store（usage_logs 为 billing 投影；写侧随 U3）                                   |
 
 ## 4. 契约演进（引用 IMPLEMENTATION §3）
 
@@ -49,13 +49,13 @@ billing/billing-limits —— 全部行为以新测试锁定（文件映射见 �
 
 ## 5. 测试迁移矩阵
 
-| 旧测试 | 新去处 | 动作 |
-| --- | --- | --- |
-| rating 11 文件（pricing/calculate/amounts/coefficient/decode/receipt/measurement/pricing-strategy/reservation-strategy/attribution/fixtures） | rating-pricing/rating-receipt/rating-strategies + rating-fixtures | 移植 + B2/B3 回归 ×5 |
-| billing gate-rules/settle-rules | billing-rules | 移植（死信判定改码断言） |
-| service wallet→billing/billing-limits 主干 | billing-authorize（authorize/signal/reserveChannel/admission 四组） | 改写（内存 stand-in） |
-| service funding plan/registry（stub 零 DB） | billing-funding + billing-authorize（瀑布切分） | 改写 |
-| funding 来源 settle/release 分支（U3 接线前） | billing-funding | 直驱来源锁死语义（#over 补扣/零额释放/守卫脱节） |
+| 旧测试                                                                                                                                        | 新去处                                                              | 动作                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| rating 11 文件（pricing/calculate/amounts/coefficient/decode/receipt/measurement/pricing-strategy/reservation-strategy/attribution/fixtures） | rating-pricing/rating-receipt/rating-strategies + rating-fixtures   | 移植 + B2/B3 回归 ×5                             |
+| billing gate-rules/settle-rules                                                                                                               | billing-rules                                                       | 移植（死信判定改码断言）                         |
+| service wallet→billing/billing-limits 主干                                                                                                    | billing-authorize（authorize/signal/reserveChannel/admission 四组） | 改写（内存 stand-in）                            |
+| service funding plan/registry（stub 零 DB）                                                                                                   | billing-funding + billing-authorize（瀑布切分）                     | 改写                                             |
+| funding 来源 settle/release 分支（U3 接线前）                                                                                                 | billing-funding                                                     | 直驱来源锁死语义（#over 补扣/零额释放/守卫脱节） |
 
 真实 PG：授权链的 CAS/advisory/守卫原子 UPDATE 竞态语义随 **U3 结算真实套件**统一
 验证（同库同表族一次搭起）；本单元真 PG 不单独开文件（记录于收口清单）。

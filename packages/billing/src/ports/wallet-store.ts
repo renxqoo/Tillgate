@@ -173,4 +173,18 @@ export interface WalletStore {
 
   /** PG 唯一冲突（SQLSTATE 23505）：幂等竞态的兜底信号——并发同键第二个 INSERT 落此处 */
   isUniqueViolation(error: unknown): boolean;
+
+  /**
+   * 对账核验（只读哨兵，U3）：三类漂移（transaction_balance / account_balance /
+   * in_flight），limit 上限 10000。消费方 = settlement 对账用例。
+   */
+  verifyInvariants(
+    limit: number,
+  ): Promise<
+    Array<{
+      kind: 'transaction_balance' | 'account_balance' | 'in_flight';
+      key: string;
+      detail: string;
+    }>
+  >;
 }

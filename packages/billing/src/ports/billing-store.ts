@@ -152,5 +152,70 @@ export interface BillingStore {
   markReservationReleased(tx: WalletConn, id: number, now: Date): Promise<boolean>;
   markReservationSettled(tx: WalletConn, id: number, now: Date): Promise<boolean>;
 
+  // ---- 结算（U3：认领 / CAS 终态 / 恢复三路径 / usage 投影） ----
+  /** 认领 pending/retry → processing（CTE + FOR UPDATE SKIP LOCKED；发 claim 三元组） */
+  claimPending(
+    tx: WalletConn,
+    input: {
+      ownerId: string;
+      batchSize: number;
+      claimLeaseMs: number;
+      requestIds?: readonly string[];
+    },
+  ): Promise<
+    Array<{
+      requestId: string;
+      claimToken: string;
+      revision: number;
+      attempt: number;
+      receipt: Record<string, unknown> | null;
+      traceParent: string | null;
+    }>
+  >;
+  /** 认领租约保活（长结算事务防 recover 误回收 → 双扣防线） */
+  renewClaims(
+    tx: WalletConn,
+    input: { ownerId: string; tokens: readonly string[]; claimLeaseMs: number },
+  ): Promise<void>;
+  /** 结算复验：五元组（processing + owner + token + revision + 租约未过期）全匹配 */
+  findProcessingForClaim(
+    tx: WalletConn,
+    claim: { requestId: string; ownerId: string; claimToken: string; revision: number },
+  ): Promise<BillingRequestRow | null>;
+  /** CAS processing → settled（五元组；清认领） */
+  casFinalizeSettled(
+    tx: WalletConn,
+    claim: { requestId: string; ownerId: string; claimToken: string; revision: number },
+  ): Promise<boolean>;
+  /** 失败处置 CAS：processing → retry_wait（退避）/ dead（死信） */
+  casToRetryOrDead(
+    tx: WalletConn,
+    claim: { requestId: string; ownerId: string; claimToken: string; revision: number },
+    input: { dead: boolean; nextDelayMs: number | null; failureClass: string; lastError: string },
+  ): Promise<boolean>;
+  /** 恢复①②候选清单（无锁列出；逐单 CAS 隔毒行） */
+  listExpiredForRecovery(
+    conn: WalletConn,
+    input: { status: 'authorized' | 'in_flight'; limit: number },
+  ): Promise<string[]>;
+  /** 逐单 CAS → released（authorized 守卫未发上游；in_flight 守卫租约过期） */
+  recoverOneToReleased(
+    tx: WalletConn,
+    input: { requestId: string; status: 'authorized' | 'in_flight'; failureCode: string },
+  ): Promise<{
+    requestId: string;
+    reservedAmount: string;
+    channelId: number | null;
+    channelReservedAmount: string | null;
+  } | null>;
+  /** 恢复③：processing 认领租约过期 → retry_wait 立即可重领 */
+  requeueExpiredClaims(tx: WalletConn, limit: number): Promise<number>;
+  /** 优雅停机：本副本持有的 processing 归还 retry_wait */
+  abandonOwnedClaims(tx: WalletConn, ownerId: string, now: Date): Promise<number>;
+  /** usage_logs 投影落库（requestId 唯一约束幂等；false = 已存在） */
+  insertUsageLog(tx: WalletConn, values: Record<string, unknown>): Promise<boolean>;
+  /** 结算幂等回查：usage_logs 已有金额（认领失效时判 already_settled） */
+  findUsageAmount(conn: WalletConn, requestId: string): Promise<string | null>;
+
   isUniqueViolation(error: unknown): boolean;
 }

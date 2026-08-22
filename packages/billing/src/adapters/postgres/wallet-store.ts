@@ -339,5 +339,45 @@ export function createPostgresWalletStore(
     },
 
     isUniqueViolation: (error) => isUniqueViolation(error),
+
+    async verifyInvariants(limit) {
+      const result = await db.execute<{
+        kind: 'transaction_balance' | 'account_balance' | 'in_flight';
+        key: string;
+        detail: string;
+      }>(sql`
+        select * from (
+          select 'transaction_balance'::text as kind,
+                 t.id::text as key,
+                 'legs sum ' || coalesce(sum(l.amount), 0) || ' kind ' || t.kind as detail
+          from wallet_transactions t
+          left join wallet_legs l on l.transaction_id = t.id
+          group by t.id, t.kind
+          having sum(l.amount) <> 0
+             or (t.kind in ('credit_line', 'freeze') and count(l.id) <> 1)
+             or (t.kind not in ('credit_line', 'freeze') and count(l.id) < 2)
+          union all
+          select 'account_balance'::text as kind,
+                 ac.id::text as key,
+                 'balance ' || ac.balance || ' last leg ' || coalesce((
+                   select l2.balance_after from wallet_legs l2
+                   where l2.account_id = ac.id order by l2.id desc limit 1), 0) as detail
+          from wallet_accounts ac
+          where ac.balance <> coalesce((
+            select l2.balance_after from wallet_legs l2
+            where l2.account_id = ac.id order by l2.id desc limit 1), 0)
+          union all
+          select 'in_flight'::text as kind,
+                 ac.id::text as key,
+                 'in_flight ' || ac.in_flight || ' active sum ' || coalesce((
+                   select sum(a.amount) from wallet_authorizations a
+                   where a.account_id = ac.id and a.status = 'active'), 0) as detail
+          from wallet_accounts ac
+          where ac.in_flight <> coalesce((
+            select sum(a.amount) from wallet_authorizations a
+            where a.account_id = ac.id and a.status = 'active'), 0)
+        ) drifts limit ${limit}`);
+      return result.rows;
+    },
   };
 }
