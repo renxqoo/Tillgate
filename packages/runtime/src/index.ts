@@ -4,6 +4,7 @@
  */
 export { strictBooleanSchema, secretSchema } from './config/env-schemas';
 export { createCipher, type Cipher } from './crypto/cipher';
+export { createShutdown, type ShutdownDeps, type ShutdownLog } from './lifecycle/shutdown';
 export { createLogger, type CreateLoggerOptions, type Logger } from './logging/logger';
 export {
   createRedisClient,

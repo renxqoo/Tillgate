@@ -1,6 +1,6 @@
 # @tokenlens/runtime 迁移实现文档
 
-> 状态：审计完成，拆分与测试计划定稿，待实施
+> 状态：R1–R3 实施完成，四门全绿，行为对照核销完毕（含 enc:v1 跨仓互解硬验证）
 > 基线：旧仓 `ai-getway/packages/core`（12 源文件 ~1375 行 + 5 测试 ~290 行）+ 三个 app 的 `shutdown.ts`（43 行 × 3）
 > 目标：`core → runtime + observability` 拆分的 runtime 半边（重构方案 §3.2 / §9 P3）；**只收纯服务端运行时基础设施**，业务/观测语义全部拒之门外
 > 依据：`docs/project-structure-refactoring.md` §3.1（runtime 禁止进入：业务规则、业务 SQL、HTTP route）、§5.1（runtime 只可依赖 `errors`）
@@ -152,15 +152,26 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 2. **R2 redis + testing**：`redis/`（client + script-runner，修 B2）+ `testing/` 子入口（connectTestRedis/waitForRedisReady，D2）+ 单元/集成测试
 3. **R3 lifecycle + 收口**：`lifecycle/shutdown.ts`（D1 合一，删 B1）+ 测试；全量四门、覆盖率门槛、行为对照核销
 
-### 5.1 行为对照核销清单（R3 完成时逐项打勾）
+### 5.1 行为对照核销清单（2026-08-23 逐项核销，全部满足）
 
-- [ ] secretSchema：弱值/短/低多样性三道门拒绝行为与 v1 逐条一致
-- [ ] strictBooleanSchema：'true'/'false'/boolean 三形解析与 v1 一致
-- [ ] createLogger：redact 根级 + 嵌套（`*`）+ authorization 头三面命中；v1 六字段全保留 + 新增 token/secret/password
-- [ ] createCipher：enc:v1 格式逐字节一致；v1 密钥可解 v2 密文、v2 密钥可解 v1 落库密文（同密钥往返）
-- [ ] createRedisClient：maxRetriesPerRequest=1 / enableOfflineQueue=false / 错误监听去重日志（30s）
-- [ ] parseSentinels：IPv6 lastIndexOf 切分语义
-- [ ] assertRedisReachable：冷连接重试 + 超时抛错信息（服务名 + 脱敏 URL + 拒绝降级启动）
-- [ ] script-runner：evalsha + NOSCRIPT 重载自愈
-- [ ] createShutdown：v1 三 app 全部可观察行为（顺序/宽限强退/二次信号幂等/closeables）
-- [ ] waitForRedisReady：100ms 轮询 + 超时 false
+- [x] secretSchema：弱值/短/低多样性三道门拒绝行为与 v1 逐条一致（`test/unit/config.test.ts`）
+- [x] strictBooleanSchema：'true'/'false'/boolean 三形解析与 v1 一致 + 缺省值补测
+- [x] createLogger：redact 根级 + 嵌套（`*`）+ authorization 头三面命中；v1 六字段全保留 + 新增 token/secret/password（B5 修复后根级才真正生效）
+- [x] createCipher：enc:v1 格式逐字节一致；**跨仓硬验证通过**——v1 密文 v2 可解、v2 密文 v1 可解（同密钥，实机互跑证实；`test/unit/crypto.test.ts`）
+- [x] createRedisClient：maxRetriesPerRequest=1 / enableOfflineQueue=false / 错误监听去重日志（30s）/ URL 脱敏 / AggregateError 展开（`test/unit/redis-client.test.ts`）
+- [x] parseSentinels：IPv6 lastIndexOf 切分语义 + 非法端口/空规格 fail-fast（`test/unit/parse-sentinels.test.ts`）
+- [x] assertRedisReachable：冷连接重试 + 超时抛错信息（服务名 + 脱敏 URL + 拒绝降级启动）（真实 Redis 集成）
+- [x] script-runner：evalsha + NOSCRIPT 重载自愈（mock 忠实建模 + 真实 Redis SCRIPT FLUSH 双验证）
+- [x] createShutdown：v1 三 app 全部可观察行为（顺序/宽限强退/二次信号幂等）+ closeables 顺序（v1 从未测过）+ 收口件失败不阻断 + 日志注入
+- [x] waitForRedisReady：100ms 轮询 + 超时 false（`test/unit/testing-harness.test.ts`）
+
+### 5.2 实施中的 API 对照变更（相对 v1，均已落码）
+
+| v1 签名                                                          | v2 签名                                          | 理由                                           |
+| ---------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| `encrypt(pt, key)` / `decrypt(packed, key)` 双参纯函数           | `createCipher(key)` 工厂                         | 铁律 5 装配一次；SHA-256 派生从每次调用变一次  |
+| `createRedisClient(url, { serviceName, ... })` console 硬编码    | 增 `log?: (message) => void`                     | B2 可测性/统一日志面                           |
+| `createShutdown` 的 `db: { $client: { end() } }`（drizzle 形状） | `db: { end(): Promise<unknown> }`（pg 原生形状） | runtime 不认识 drizzle 词汇；适配留给 app 装配 |
+| `createShutdown` 的 `now?: () => number`                         | 删除                                             | B1 死参数（从未使用）                          |
+| shutdown/redis-client console 直打                               | `log` 注入（缺省 console）                       | 与 B2 同理                                     |
+| `createLogger` 无输出注入                                        | 增 `stream?: DestinationStream`                  | pino 直写 fd 1，劫持 stdout 不可靠             |
