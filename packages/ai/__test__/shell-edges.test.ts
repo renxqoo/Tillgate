@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 import { estimateInputTokens } from '../src/usage/token-estimate.js';
 import { detectSilentOverflow } from '../src/errors/overflow.js';
-import { responsesRequestToChat, chatResponseToResponses, canonicalStreamToResponsesStream } from '../src/protocol/responses-chat.js';
+import { responsesRequestToChat, canonicalStreamToResponsesStream } from '../src/protocol/responses-chat.js';
 import { signAwsRequest, parseAwsCredentials } from '../src/adapters/aws-bedrock.js';
 import { VertexAiAdapter } from '../src/adapters/vertex-ai.js';
 import { defineAdapter } from '../src/registry/define-adapter.js';
@@ -141,7 +141,7 @@ describe('protocol/responses-chat 与 adapter 细节', () => {
       return { ok: true, json: async () => ({ access_token: 'tok-1', expires_in: 3600 }) };
     }) as unknown as typeof fetch;
     const adapter = new VertexAiAdapter(fakeFetch);
-    const headers = await adapter.signRequest?.({ url: new URL('https://vertex.test/x'), body: '{}', apiKey: 'sa-json', at: new Date() }).catch(() => null);
+    const headers = await adapter.signRequest?.({ url: new URL('https://vertex.test/x'), body: '{}', apiKey: 'sa-json' }).catch(() => null);
     void headers;
     expect(exchanged).toBeLessThanOrEqual(1); // 至多一次交换（缓存或失败）
   });
