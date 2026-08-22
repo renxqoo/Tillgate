@@ -9,7 +9,8 @@ COPY package.json bun.lock tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 RUN bun install --frozen-lockfile
-RUN bun run --filter "@ai-gateway/${APP}" build \
+# 尾部 ... = 含依赖图（bun --filter 默认只跑本包；依赖包 dist 不构建则运行时解析必炸）
+RUN bun run --filter "@ai-gateway/${APP}..." build \
   && mkdir -p /out \
   && cp -r "apps/${APP}/dist" /out/dist
 

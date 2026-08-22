@@ -8,7 +8,7 @@ COPY apps/client ./apps/client
 COPY apps/admin ./apps/admin
 COPY packages ./packages
 RUN bun install --frozen-lockfile
-RUN bun run --filter "@ai-gateway/admin" build
+RUN bun run --filter "@ai-gateway/admin..." build
 
 FROM oven/bun:1.4-alpine AS runtime
 ENV NODE_ENV=production
