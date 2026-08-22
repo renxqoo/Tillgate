@@ -22,6 +22,8 @@
   业务码 `BusinessCode` 为品牌类型——**唯一签发源是错误目录**，自由字符串在编译期被拒绝。
 - **错误目录契约**：`ErrorDefinition`（category + 双语文案）+ `defineErrorCatalog`
   （能力包自有目录，`business()` 抛出 / `entry()` 绑定定义）+ `composeErrorCatalogs`（face 装配）。
+- **上下文与注记（ADR-0001 D9）**：`ErrorContext` 值域为递归只读 JSON（结构化校验事实可入）；
+  `annotate()` 传播注记——错误上浮途中实例稳定地累积语境，不包装、不改判。
 - **错误即数据**：`ErrorRecord` 规范化形状（含 cause 链，深度上限）；
   `normalizeError(unknown)` 边界兜底——外来 Error / 非 Error 值一律按缺陷。
 - **守卫**：`isTokenlensError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
@@ -51,6 +53,15 @@ export const BillingErrors = defineErrorCatalog('billing', {
 // ---- 抛出：受荐路径（文案来自定义，动态事实进 context——本地化的结构前提）----
 throw BillingErrors.business('insufficient_cash', { needed: '5.00', available: '3.00' });
 
+// context 收只读 JSON 值：结构化校验事实（字段路径列表等）直接入（D9a）
+throw BillingErrors.business('invalid_amount', { fields: [{ path: 'amount', reason: 'not a decimal' }] });
+
+// ---- 传播注记：外层补事实，实例稳定、不包装、instanceof 不动（D9b）----
+catch (e) {
+  if (isBusinessError(e)) throw annotate(e, { requestId, channelId });
+  throw e;
+}
+
 // ---- 抛出：家谱形态（高频错误固化类；entry() 绑定定义，类与目录零漂移）----
 export class InsufficientCashError extends BusinessError {
   constructor(needed: string, available: string) {
@@ -73,7 +84,7 @@ const record = normalizeError(thrown);          // ErrorRecord
 handlingOf(record);                             // { retryable, alert } —— 单点派生
 ```
 
-接口面刻意极小（结构方案 §3.1："其接口必须极小且多年稳定"）：7 个源文件、18 个值导出。
+接口面刻意极小（结构方案 §3.1："其接口必须极小且多年稳定"）：7 个源文件、19 个值导出。
 类型导出与其配套；完整出口清单由 `__test__/boundary.test.ts` 快照锁定。
 
 ## 3. 词表与语义

@@ -9,9 +9,18 @@ import type { ErrorCategory } from './category';
 
 export type ErrorNature = 'business' | 'infrastructure' | 'defect';
 
-/** 结构化诊断上下文：仅 JSON 标量（日志/出站安全）；复杂数据走日志侧字段，不进上下文 */
+/** 上下文值域：递归只读 JSON（标量/数组/嵌套对象）——结构化校验事实可入（ADR-0001 D9a）；JSON 可序列化是硬边界（日志/出站安全） */
+export type ErrorContextValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ErrorContextValue[]
+  | { readonly [key: string]: ErrorContextValue };
+
+/** 结构化诊断上下文：键到只读 JSON 值；复杂数据仍应走日志侧字段（上下文进错误记录与出站渲染） */
 export interface ErrorContext {
-  readonly [key: string]: string | number | boolean | null;
+  readonly [key: string]: ErrorContextValue;
 }
 
 /** 业务身份码品牌（模块私有符号，不可在包外构造） */
@@ -95,4 +104,33 @@ export class DefectError extends TokenlensError {
   constructor(message: string, code: string, context?: ErrorContext, opts?: ErrorOptions) {
     super(message, { code, context }, opts);
   }
+}
+
+/** 注记存储键（符号、非枚举：不污染序列化,不可在外部伪造遍历） */
+const annotationsKey = Symbol('tokenlens.annotations');
+
+/** 注记槽位的类型桥（符号索引无类型重叠,经 unknown 直取） */
+function annotationsSlot(error: TokenlensError): Readonly<Record<symbol, readonly ErrorContext[]>> {
+  return error as unknown as Readonly<Record<symbol, readonly ErrorContext[]>>;
+}
+
+/**
+ * 传播注记（ADR-0001 D9b）：错误上浮途中由外层补充观察性事实（requestId、channelId…）。
+ * 实例稳定——不包装、不改判,instanceof 与三性分类全程不动;返回同一错误以便
+ * `throw annotate(e, {...})` 直书。构造上下文为底,注记按时间序合并、后写胜出
+ * （recordOf 消费,见 error-record.ts）。
+ */
+export function annotate<T extends TokenlensError>(error: T, context: ErrorContext): T {
+  const existing = annotationsSlot(error)[annotationsKey];
+  Object.defineProperty(error, annotationsKey, {
+    value: existing === undefined ? [context] : [...existing, context],
+    enumerable: false,
+    configurable: true, // 允许后续 annotate 重定义（追加语义）
+  });
+  return error;
+}
+
+/** 读取注记（recordOf 合并用；无注记返回空数组） */
+export function annotationsOf(error: TokenlensError): readonly ErrorContext[] {
+  return annotationsSlot(error)[annotationsKey] ?? [];
 }

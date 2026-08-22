@@ -4,7 +4,13 @@
  * 调用方」的结构修复：记录只陈述事实）。
  */
 import { CATEGORY_DEFAULTS, type ErrorCategory } from './category';
-import { BusinessError, InfrastructureError, TokenlensError, type ErrorContext } from './nature';
+import {
+  annotationsOf,
+  BusinessError,
+  InfrastructureError,
+  TokenlensError,
+  type ErrorContext,
+} from './nature';
 
 /**
  * 根命名空间保留码（ADR-0001 D6；单一真相——消费者与测试引用此处，不得另写裸字符串）。
@@ -87,7 +93,7 @@ function fromTokenlens(error: TokenlensError, depth: number): ErrorRecord {
   const base = {
     code: error.code,
     message: error.message,
-    context: error.context,
+    context: mergedContextOf(error),
     retryAfterMs: error.retryAfterMs,
     cause: causeOf(error.cause, depth),
   };
@@ -98,6 +104,16 @@ function fromTokenlens(error: TokenlensError, depth: number): ErrorRecord {
     return { nature: 'infrastructure', ...base };
   }
   return { nature: 'defect', ...base };
+}
+
+/**
+ * 记录上下文 = 构造上下文为底 + 注记按时间序合并（后写胜出，ADR-0001 D9b）。
+ * 无构造上下文且无注记时保持 undefined（记录干净）。
+ */
+function mergedContextOf(error: TokenlensError): ErrorContext | undefined {
+  const annotations = annotationsOf(error);
+  if (error.context === undefined && annotations.length === 0) return undefined;
+  return Object.assign({}, error.context, ...annotations) as ErrorContext;
 }
 
 function fromUnknown(value: unknown, depth: number): ErrorRecord {

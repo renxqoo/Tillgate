@@ -24,14 +24,15 @@ describe('包边界', () => {
     expect(dependencyCount(pkg.peerDependencies)).toBe(0);
   });
 
-  it('出口面 == 预期值导出清单（18 项）', () => {
+  it('出口面 == 预期值导出清单（19 项）', () => {
     expect(Object.keys(api).toSorted()).toEqual(
       [
-        // 三性根类
+        // 三性根类与传播注记
         'TokenlensError',
         'BusinessError',
         'InfrastructureError',
         'DefectError',
+        'annotate',
         // category 闭集
         'ERROR_CATEGORIES',
         'CATEGORY_DEFAULTS',

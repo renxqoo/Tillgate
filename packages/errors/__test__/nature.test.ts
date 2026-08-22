@@ -65,6 +65,17 @@ describe('三性根类', () => {
     expect(e.context).toBe(context);
   });
 
+  it('context 收递归只读 JSON 值：数组与嵌套对象透传（D9a）', () => {
+    const e = new BusinessError(TestErrors.entry('quota'), {
+      fields: [{ path: 'amount', reason: 'not a decimal' }],
+      nested: { a: 1, list: ['x', null, true] },
+    });
+    expect(e.context).toEqual({
+      fields: [{ path: 'amount', reason: 'not a decimal' }],
+      nested: { a: 1, list: ['x', null, true] },
+    });
+  });
+
   it('opts：cause 原样挂在 Error cause 上，retryAfterMs 保留；缺省均为 undefined', () => {
     const original = new Error('root cause');
     const withOpts = new BusinessError(TestErrors.entry('throttled'), undefined, {
