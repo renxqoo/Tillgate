@@ -182,3 +182,30 @@
 - 阈值 90/85（lines/functions/statements 90、branches 85）写进 vitest coverage thresholds。
 - 未达标 `test:coverage` 保持红：**只补测试，不调阈值**（铁律 15）。
 - 新代码入库同阶段补对应测试；提交信息如实报告用例数与覆盖率数字。
+
+---
+
+## 11. 错误根契约：谁必须用 `@tokenlens/errors`、谁禁止用
+
+错误的表达与处理只有一个词汇源（裁决 [ADR-0001](./docs/adr/0001-errors-registry-ownership.md)；
+用法文档 [packages/errors/README.md](./packages/errors/README.md)，设计基线 [DESIGN.md](./packages/errors/DESIGN.md)）：
+
+**必须使用**（凡产生、传播或处理错误的运行时代码）：
+
+- `runtime` / `db` / `http`：基础设施错误用 `InfrastructureError` / `DefectError` 源头分类；
+  协议边界码走自有目录（如 `http.*` 的 PG 边界翻译族）。
+- 业务能力包（billing / identity / inference / …）的 domain / application：业务拒绝经
+  `defineErrorCatalog` 自有目录表达（`business()` 直抛、`entry()` 固化类），码带包名
+  命名空间；禁止自造错误类体系或自由字符串码。
+- apps 的 middleware / face：`is*Error` 守卫精确捕获、按 nature / category 分派；
+  face 装配用 `composeErrorCatalogs` 合成全量目录。禁止 instanceof 业务类翻译表
+  （v1 E1/E3 病灶）。
+- 传播途中补观察性事实用 `annotate()`（实例稳定，不包装）。
+
+**禁止使用**：
+
+- `ai`：永久零内部依赖叶子，自有 `ErrorKind` 封闭词表；映射由消费方按 ADR-0001 D7 应用。
+- `api-client` / `ui`：发布候选包，公开包依赖闭包不得含私有 workspace 包；
+  前端按 wire 错误数据渲染，不接触根契约类型。
+- `e2e/` 与 scripts：非运行时，不作约束。
+
