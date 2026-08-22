@@ -16,6 +16,6 @@ WORKDIR /app
 # standalone 输出结构与项目目录一致（apps/admin/server.js）
 COPY --from=builder /repo/apps/admin/.next/standalone ./
 COPY --from=builder /repo/apps/admin/.next/static ./apps/admin/.next/static
-COPY --from=builder /repo/apps/admin/public ./apps/admin/public
+# 无 public 目录（无静态资源）；将来添加时恢复 COPY --from=builder /repo/apps/admin/public ./apps/admin/public
 EXPOSE 3002
 CMD ["bun", "apps/admin/server.js"]
