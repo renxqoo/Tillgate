@@ -414,8 +414,9 @@ tokenlens/
 
 - 不为了视觉分类把现有包嵌套成 `packages/backend/*`、`packages/frontend/*`。当前扁平结构路径短、workspace 配置简单，更利于工具与开发者定位。
 - `tsconfig.server.json`、`vitest.shared.ts` 都按实际重复出现后再创建，不预建空壳；需要统一测试入口时使用根 `vitest.config.ts` 的 `test.projects`，不新增 `vitest.workspace.ts`。
-- `errors` 延续 [error-system-design.md](./error-system-design.md) 的三性/category 根契约，但实施前需调整其中的注册表归属：
-  `http` 只提供 category 默认渲染，业务错误定义由各能力包拥有、在 app face 装配，避免 `http` 反向认识全部业务。
+- `errors` 延续旧仓 `error-system-design.md`（v1 定稿，位于 `ai-getway` 仓）的三性/category 根契约；
+  注册表归属调整已裁决于 [ADR-0001](./adr/0001-errors-registry-ownership.md)：`http` 只提供 category
+  默认渲染，业务错误定义由各能力包拥有、在 app face 装配，避免 `http` 反向认识全部业务。
 - Wire contract 由提供接口的 app 所有，分别生成 OpenAPI，再生成 `api-client`；不建立集中式 `contracts` 类型仓库。
 - `db` 只拥有连接、事务、schema 和迁移；业务 SQL 属于各能力包的 `adapters/postgres`。
 - 能力包基础方向为 `domain ← application`；只有真实 I/O、外部服务、可替换实现或需要依赖倒置时才增加

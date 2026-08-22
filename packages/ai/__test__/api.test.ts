@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
-import { createAi, allowAllUrls } from '../../src/index.js';
+import { createAi, allowAllUrls } from '../src/index.js';
 
 const startServer = (handler: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {

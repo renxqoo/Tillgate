@@ -1,11 +1,10 @@
 {
-  "name": "@tokenlens/ai",
+  "name": "@tokenlens/errors",
   "version": "0.1.0",
   "private": true,
-  "description": "上游协议库：透传中继 + 多协议适配 + 多模态 + 事件观察面（§3.6 数据面/观察面契约，零运维状态）",
+  "description": "内部错误根契约：三性根类 + category 闭集 + 命名空间错误目录契约 + 规范化错误记录——零业务/协议依赖的稳定叶子（ADR-0001、DESIGN.md）",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "development": "./src/index.ts",
@@ -17,15 +16,9 @@
     "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
     "typecheck": "bun x tsc --noEmit",
     "lint": "bun x oxlint",
-    "test": "bun x vitest run --exclude __test__/real --passWithNoTests",
-    "test:watch": "bun x vitest --exclude __test__/real",
-    "test:real": "bun x vitest run __test__/real --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude __test__/real --coverage"
-  },
-  "dependencies": {
-    "eventsource-parser": "^3.1.0",
-    "js-tiktoken": "^1.0.21",
-    "zod": "^4.4.3"
+    "test": "bun x vitest run --passWithNoTests",
+    "test:watch": "bun x vitest",
+    "test:coverage": "bun x vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { TextFeaturesAccumulator, extractTextFeatures } from '../../src/usage/features.js';
-import { SseBoundaryTracker, createSseEventReader, sseToSseStream } from '../../src/transport/sse.js';
-import type { SseEvent } from '../../src/transport/sse.js';
+import { TextFeaturesAccumulator, extractTextFeatures } from '../src/usage/features.js';
+import { SseBoundaryTracker, createSseEventReader, sseToSseStream } from '../src/transport/sse.js';
+import type { SseEvent } from '../src/transport/sse.js';
 
 describe('usage/features：四计数器（S1 修复的计量基础）', () => {
   it('extractTextFeatures：CJK 逐字、拉丁词段、数字段、符号（v1 状态机语义）', () => {

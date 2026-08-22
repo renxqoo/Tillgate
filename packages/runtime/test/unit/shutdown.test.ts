@@ -2,7 +2,7 @@
  * 优雅停机单测：drain 路径（close 回调 → OTel/closeables/Redis/DB 收口 → exit 0）、
  * 宽限耗尽强退（exit 1）、二次信号幂等、收口件失败不阻断、日志注入面。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createShutdown, type ShutdownDeps } from '../../src/lifecycle/shutdown';
 
 function fakeDeps(behavior: { closeCallsCallback: boolean; failOtel?: boolean }) {
@@ -76,5 +76,29 @@ describe('createShutdown', () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(logs).toContain('[test-svc] SIGTERM received, draining');
     expect(logs).toContain('[test-svc] drained');
+  });
+
+  it('宽限强退走 error 级日志', async () => {
+    const { deps, logs } = fakeDeps({ closeCallsCallback: false });
+    createShutdown(deps)('SIGTERM');
+    await new Promise((r) => setTimeout(r, 1_200));
+    expect(logs).toContain('[test-svc] drain grace expired, forcing exit');
+  });
+
+  it('缺省出口：不注入 exit/log 时回落 process.exit / console（B2 同理的注入面缺省分支）', async () => {
+    const { deps } = fakeDeps({ closeCallsCallback: true });
+    const exitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => undefined) as unknown as (code?: number) => never);
+    const infoSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      createShutdown({ ...deps, exit: undefined, log: undefined })('SIGTERM');
+      await new Promise((r) => setTimeout(r, 10));
+      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(infoSpy.mock.calls.flat().join('\n')).toContain('[test-svc] drained');
+    } finally {
+      exitSpy.mockRestore();
+      infoSpy.mockRestore();
+    }
   });
 });
