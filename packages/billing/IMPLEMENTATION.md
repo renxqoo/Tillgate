@@ -1,6 +1,6 @@
 # @tokenlens/billing 施工图（IMPLEMENTATION）
 
-> 状态：实施中（U0、U1 已核销；U2 待启动——见 MIGRATION-U1.md）
+> 状态：实施中（U0、U1、U2 已核销；U3 待启动——见 MIGRATION-U2.md）
 > 设计基线：[DESIGN.md](./DESIGN.md)；合并裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)
 > 旧仓：`/Users/wrr/work/ai-getway`（下称旧仓；审计时点 2026-08-23，行号以当日 HEAD 为准）
 

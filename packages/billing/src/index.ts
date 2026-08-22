@@ -142,3 +142,52 @@ export type {
   SubscriptionGateSnapshot,
   SubscriptionGateInput,
 } from './domain/billing/subscription-availability.js';
+
+// ---- 计费授权链（U2b：authorize/signal/admission/reserveChannel + 资金瀑布） ----
+export {
+  createBillingApi,
+  createBillingAdmission,
+  createDefaultFundingRegistry,
+} from './application/billing/billing.js';
+export type { BillingApi, BillingDeps } from './application/billing/billing.js';
+export type {
+  AuthorizeBillingInput,
+  BillingAuthorization,
+  BillingEvent,
+  BillingSignalResult,
+  ReserveChannelInput,
+  ChannelReservationResult,
+  BacklogAdmissionConfig,
+} from './application/billing/billing.js';
+export { createFundingRegistry } from './application/billing/funding/registry.js';
+export type { FundingRegistry } from './application/billing/funding/registry.js';
+export { createPaygSource } from './application/billing/funding/payg-source.js';
+export { createSubscriptionSource } from './application/billing/funding/subscription-source.js';
+export type {
+  FundingSource,
+  FundingSourceContext,
+  SourceReservation,
+  SourceType,
+  ProbeInput,
+  ReserveInput,
+  SourceSettleInput,
+} from './application/billing/funding/source.js';
+export type {
+  FundingPlan,
+  FundingPlanEntry,
+  PlanFundingInput,
+} from './application/billing/funding/plan.js';
+export type {
+  BillingRequestRow,
+  BillingReservationRow,
+  BillingStore,
+} from './ports/billing-store.js';
+export type {
+  FundingSourceResolver,
+  ResolvedFundingSource,
+  SubscriptionQuotaStore,
+  SubscriptionSnapshot,
+  ChannelExposureStore,
+} from './ports/funding-ports.js';
+export { reserveDecision, budgetRemaining } from './domain/billing/channel-exposure.js';
+export type { ChannelReserveDecision } from './domain/billing/channel-exposure.js';
