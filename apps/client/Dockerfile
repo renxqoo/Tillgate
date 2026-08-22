@@ -3,7 +3,7 @@
 # 构建段：全 bun（bun install + bun x next build）；运行段：bun 跑 standalone server
 FROM oven/bun:1.4-alpine AS builder
 WORKDIR /repo
-COPY package.json bun.lock tsconfig.base.json ./
+COPY package.json bun.lock tsconfig.base.json tsconfig.next.json ./
 COPY apps/client ./apps/client
 COPY apps/admin ./apps/admin
 COPY packages ./packages
