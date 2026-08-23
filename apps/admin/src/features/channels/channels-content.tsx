@@ -35,6 +35,7 @@ import {
   NetworkIcon,
   PencilIcon,
   PlusCircleIcon,
+  RotateCcwIcon,
   Trash2Icon,
   UploadIcon,
   WifiIcon,
@@ -45,7 +46,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { formatMoney } from '@/lib/formatters';
+import { formatMoney, fmtDateTime } from '@/lib/formatters';
 
 import { useActionResult } from '@/components/action-toast';
 import { moneyText, numericText } from '@/lib/forms';
@@ -117,9 +118,12 @@ function ChannelRowItem({
   const tUi = useTranslations('ui');
   const [testing, setTesting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const meta = STATUS_META.get(channel.status);
+  // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
+  const deleted = channel.deletedAt != null;
 
   async function runTest() {
     setTesting(true);
@@ -139,8 +143,17 @@ function ChannelRowItem({
     else toast.success(tc('deleted'));
   }
 
+  async function runUndelete() {
+    setRestoring(true);
+    const { undeleteChannelAction } = await import('@/server/channels-actions');
+    const res = await undeleteChannelAction(channel.id);
+    setRestoring(false);
+    if (res.error) toast.error(String(res.error));
+    else toast.success(t('undeleteSuccess'));
+  }
+
   return (
-    <TableRow>
+    <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell className="font-medium">{channel.name}</TableCell>
       <TableCell className="text-muted-foreground">{channel.providerName}</TableCell>
       <TableCell>
@@ -160,59 +173,83 @@ function ChannelRowItem({
         <span className="font-medium">{formatMoney(channel.upstreamBudget)}</span>
       </TableCell>
       <TableCell>
-        <StatusPill dot tone={meta.tone} label={t(meta.label)}>
-          {channel.cooldownUntil ? (
-            <span className="text-muted-foreground" title={channel.cooldownUntil}>
-              {t('cooling')}
+        {deleted ? (
+          <div className="flex flex-col">
+            <StatusPill tone="danger" label={t('deleted')} />
+            <span className="mt-0.5 text-[10px] text-muted-foreground">
+              {fmtDateTime(channel.deletedAt!)}
             </span>
-          ) : null}
-        </StatusPill>
+          </div>
+        ) : (
+          <StatusPill dot tone={meta.tone} label={t(meta.label)}>
+            {channel.cooldownUntil ? (
+              <span className="text-muted-foreground" title={channel.cooldownUntil}>
+                {t('cooling')}
+              </span>
+            ) : null}
+          </StatusPill>
+        )}
       </TableCell>
       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
         {channel.failCount}
       </TableCell>
       <TableCell className="w-16 text-center">
         {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
-        <RowActions label={tc('actions')}>
-          <DropdownMenuItem disabled={testing} onClick={runTest}>
-            {testing ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : (
-              <WifiIcon className="size-4" />
-            )}
-            {t('test')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setEditOpen(true)}>
-            <PencilIcon className="size-4" />
-            {tc('edit')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
-            {deleting ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : (
-              <Trash2Icon className="size-4" />
-            )}
-            {tc('delete')}
-          </DropdownMenuItem>
-        </RowActions>
-        <EditChannelDialog
-          channel={channel}
-          providers={providers}
-          open={editOpen}
-          onOpenChange={setEditOpen}
-        />
-        <ConfirmDialog
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          title={tc('delete')}
-          description={t('deleteConfirm', { name: channel.name })}
-          confirmLabel={tc('delete')}
-          cancelLabel={tUi('cancel')}
-          tone="destructive"
-          onConfirm={runDelete}
-          onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
-        />
+        {deleted ? (
+          <RowActions label={tc('actions')}>
+            <DropdownMenuItem disabled={restoring} onClick={runUndelete}>
+              {restoring ? (
+                <Loader2Icon className="size-4 animate-spin" />
+              ) : (
+                <RotateCcwIcon className="size-4" />
+              )}
+              {t('undelete')}
+            </DropdownMenuItem>
+          </RowActions>
+        ) : (
+          <>
+            <RowActions label={tc('actions')}>
+              <DropdownMenuItem disabled={testing} onClick={runTest}>
+                {testing ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <WifiIcon className="size-4" />
+                )}
+                {t('test')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                <PencilIcon className="size-4" />
+                {tc('edit')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+                {deleting ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-4" />
+                )}
+                {tc('delete')}
+              </DropdownMenuItem>
+            </RowActions>
+            <EditChannelDialog
+              channel={channel}
+              providers={providers}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+            />
+            <ConfirmDialog
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
+              title={tc('delete')}
+              description={t('deleteConfirm', { name: channel.name })}
+              confirmLabel={tc('delete')}
+              cancelLabel={tUi('cancel')}
+              tone="destructive"
+              onConfirm={runDelete}
+              onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+            />
+          </>
+        )}
       </TableCell>
     </TableRow>
   );

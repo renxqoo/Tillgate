@@ -5,7 +5,8 @@
  * 语义（引导最优实践：创建靠命令、密码一次性、幂等）：
  *   - 密码来源优先级：`--password=`（勿入 shell 历史）> env `ADMIN_INITIAL_PASSWORD`
  *     > 现场强随机生成（仅 --apply 时打印一次）；策略与 admin-api 装配一致（8..128）
- *   - 幂等：同邮箱已存在即跳过，**不覆盖已有密码**（改密走登录后 /v1/me/password）
+ *   - 幂等：同邮箱已存在即跳过，**不覆盖已有密码**（改密走登录后 /v1/me/password）；
+ *     邮箱被其他身份（如 client 侧账号）占用 → 报错回滚，绝不静默造「登不上」的废号
  *   - id 分配：admins.id 必须落在 ≥1e9 段——identity_passwords.userId 是无 realm 的
  *     扁平主键，与 users.id 同号即串号（2026-08-23 生产迁移裁决；序列不足时推高）
  *   - 事务：admins + identity_credentials + identity_passwords 同事务原子插入；
@@ -104,12 +105,22 @@ async function main(): Promise<void> {
       const id = Math.max(1_000_000_000, Number(maxRow?.maxId ?? 0) + 1);
       await tx.insert(admins).values({ id, email, displayName, passwordHash: hash });
       await tx.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);
-      await tx
+      // 凭据冲突 = 邮箱已被其他身份占用(常见:client 侧同邮箱账号)。静默跳过会造出
+      // 「创建成功但永远登不上」的废管理员——抛错回滚整个事务,提示换邮箱
+      const cred = await tx
         .insert(identityCredentials)
         .values({ userId: id, identifierKind: 'email', identifierValue: email })
         .onConflictDoNothing({
           target: [identityCredentials.identifierKind, identityCredentials.identifierValue],
-        });
+        })
+        .returning({ id: identityCredentials.id });
+      if (cred.length === 0) {
+        throw new Error(
+          `email ${email} is already bound to another identity (identity_credentials conflict — ` +
+            `likely a client-side account with the same email); admin NOT created, transaction rolled back. ` +
+            `Use a dedicated admin email.`,
+        );
+      }
       await tx
         .insert(identityPasswords)
         .values({ userId: id, passwordHash: hash })

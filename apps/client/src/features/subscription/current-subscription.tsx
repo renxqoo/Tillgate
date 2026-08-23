@@ -142,7 +142,9 @@ export function RenewButton({ sub }: { sub: CurrentSubscription }) {
           </InfoRow>
           <InfoRow label={t('labelPeriod')}>{planPeriodLabel(sub.periodDays, t)}</InfoRow>
           <InfoRow label={t('labelCurrentEnd')}>{formatDateTime(sub.endAt, locale)}</InfoRow>
-          <InfoRow label={t('labelNewEnd')}>{formatDateTime(newEndAt.toISOString(), locale)}</InfoRow>
+          <InfoRow label={t('labelNewEnd')}>
+            {formatDateTime(newEndAt.toISOString(), locale)}
+          </InfoRow>
           <InfoRow label={t('labelRenewAmount')} emphasize>
             {fmtYuan(sub.renewPrice, locale)}
           </InfoRow>
@@ -193,7 +195,9 @@ function SeatUpgrade({ sub }: { sub: CurrentSubscription }) {
     <div className="flex items-center gap-2 border-t pt-4">
       <span className="text-xs text-muted-foreground">{t('addSeats')}</span>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger render={<Button size="sm" variant="outline" />}>{t('scaleUp')}</DialogTrigger>
+        <DialogTrigger render={<Button size="sm" variant="outline" />}>
+          {t('scaleUp')}
+        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t('scaleTitle')}</DialogTitle>

@@ -84,6 +84,9 @@ export async function reservePort(): Promise<number> {
 export function createCaptureMailer(): Mailer & { lastCodeOf(email: string): string | null } {
   const codes = new Map<string, string>();
   return {
+    async sendPasswordResetLink(to: string, url: string) {
+      sent.push({ to, code: url });
+    },
     async sendLoginCode(to, code) {
       codes.set(to, code);
     },

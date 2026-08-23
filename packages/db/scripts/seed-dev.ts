@@ -18,23 +18,21 @@
  *   3. 渠道 Key 加密改用 @tokenlens/runtime 的 AES-256-GCM cipher（enc:v1，与 v1 存量密文逐字节兼容）；
  *   4. 收口走 closeDb(db)（v2 facade 不泄漏 pg 池对象）。
  *
- * 输出：测试用虚拟 Key 明文（ag_xxx），用于 curl 测试。
+ * 用户与测试 Key 不再播种：C 端自助注册 + 控制台建 Key 完整覆盖（2026-08-24 瘦身）。
  * 金额单位：元（numeric 全精度），价格单位为「元/百万 token」。
  */
 import { createDb, closeDb, ACCOUNT_STATUS } from '../src/index.js';
 import {
-  users,
   admins,
   rateCards,
   rateCardCoefficients,
-  apiKeys,
   providers,
   channels,
   modelMappings,
   modelChannels,
 } from '../src/schema/index.js';
 import { eq, and } from 'drizzle-orm';
-import { createHash, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 // cipher 经相对路径注入而非包名：db 是零内部依赖包（依赖白名单仅 @tokenlens/errors，
 // IMPLEMENTATION.md §6），不得把 runtime 写进 db 的 package.json；本脚本是 dev 装配面
@@ -108,13 +106,7 @@ if (ENCRYPTION_KEY.length < 32) {
   process.exit(1);
 }
 
-function sha256hex(s: string): string {
-  return createHash('sha256').update(s).digest('hex');
-}
-
 // ---- 测试用虚拟 Key（明文只在此次输出，落库的是哈希；随机故每次运行新插一把，v1 行为） ----
-const TEST_API_KEY = 'ag_test_dev_key_sk_' + randomBytes(8).toString('hex');
-
 async function main() {
   // 池参数由本脚本（装配层）注入：一次性 seed 用最小池 + 短超时快速失败
   const db = createDb({
@@ -142,28 +134,7 @@ async function main() {
     console.log('✓ 创建费率卡「标准」(系数 1.0)');
   }
 
-  // 2. 用户（本地账号，绑定费率卡；v2 无 balance 列——资金事实唯一在 wallet，见文件头差异清单 1）
-  let user = await db.query.users.findFirst({
-    where: and(eq(users.issuer, 'local'), eq(users.subject, 'dev')),
-  });
-  if (!user) {
-    const [u] = await db
-      .insert(users)
-      .values({
-        issuer: 'local',
-        subject: 'dev',
-        identityProvider: 'local',
-        email: 'dev@ai-gateway.local',
-        displayName: 'Dev User',
-        rateCardId: card.id,
-      })
-      .returning();
-    if (!u) throw new Error('insert users returned no row');
-    user = u;
-    console.log('✓ 创建用户 dev (id=' + u.id + ')');
-  }
-
-  // 3. 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
+  // 2. 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
   const adminEmail = 'admin@ai-gateway.local';
   const existingAdmin = await db.query.admins.findFirst({ where: eq(admins.email, adminEmail) });
   if (!existingAdmin) {
@@ -177,21 +148,7 @@ async function main() {
     console.log('✓ 创建管理员 admin@ai-gateway.local (密码 admin12345，仅开发用)');
   }
 
-  // 4. 测试虚拟 Key（明文随机，keyHash 每次不同——判存永不命中，v1 行为原样）
-  const keyHash = sha256hex(TEST_API_KEY);
-  const existingKey = await db.query.apiKeys.findFirst({ where: eq(apiKeys.keyHash, keyHash) });
-  if (!existingKey) {
-    await db.insert(apiKeys).values({
-      keyHash,
-      keyPreview: 'ag_****' + TEST_API_KEY.slice(-4),
-      userId: user.id,
-      name: 'dev-test-key',
-      status: 0, // 0 有效 / 1 吊销（Key 状态词表未随 db 导出，C3——保持 v1 字面量）
-    });
-    console.log('✓ 创建测试虚拟 Key');
-  }
-
-  // 5. 供应商 + 渠道（DeepSeek + MiniMax）
+  // 3. 供应商 + 渠道（DeepSeek + MiniMax）
   // 占位价（元/百万 token）——上线前请按实际成本调整
   const providerData = [
     {
@@ -284,15 +241,7 @@ async function main() {
   console.log('\n========================================');
   console.log('  种子数据完成');
   console.log('========================================');
-  console.log('测试虚拟 Key（curl 用，仅显示一次）:');
-  console.log('  ' + TEST_API_KEY);
-  console.log('\ncurl 示例（gateway 尚未迁入 v2，端口为 v1 事实）:');
-  console.log(`  curl http://localhost:8787/v1/chat/completions \\`);
-  console.log(`    -H "Authorization: Bearer ${TEST_API_KEY}" \\`);
-  console.log(`    -H "Content-Type: application/json" \\`);
-  console.log(
-    `    -d '{"model":"deepseek-chat","messages":[{"role":"user","content":"你好"}],"stream":true}'`,
-  );
+  console.log('下一步: 用户面板自助注册建号,控制台创建 API Key 后即可 curl 网关。');
   console.log('');
 
   await closeDb(db);

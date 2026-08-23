@@ -128,6 +128,9 @@ describe('challenges.begin 发码与投递', () => {
         sendLoginCode: async () => {
           throw new Error('smtp down');
         },
+        sendPasswordResetLink: async () => {
+          throw new Error('smtp down');
+        },
       },
     });
     await expect(

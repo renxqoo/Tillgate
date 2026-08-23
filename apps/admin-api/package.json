@@ -17,7 +17,8 @@
     "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage",
     "test:e2e": "bun x vitest run -c ../../e2e/admin/vitest.config.ts",
-    "generate:openapi": "bun scripts/generate-openapi.ts"
+    "generate:openapi": "bun scripts/generate-openapi.ts",
+    "migrate:admin-credentials": "bun scripts/migrate-admin-credentials.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",

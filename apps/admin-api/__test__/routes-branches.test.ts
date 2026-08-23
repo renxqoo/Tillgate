@@ -29,13 +29,15 @@ describe('providers/channels 补面', () => {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => providerRow,
             update,
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
           },
           channels: {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
             update: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
             import: async () => ({ success: 2, failed: 0, total: 2, details: [] }),
             probe: async () => ({ ok: false, durationMs: 1, error: { code: 'x', message: 'y' } }),
             recharge: async () => ({
@@ -103,7 +105,8 @@ describe('channel-funds 补面', () => {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
             update: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
             import: async () => ({ success: 1, failed: 0, total: 1, details: [] }),
             probe: async () => ({ ok: true, durationMs: 1 }),
             recharge: async () => ({
@@ -188,7 +191,7 @@ describe('models/rate-cards 补面', () => {
     coefficient: '1.000',
   };
 
-  it('models:PATCH 全价组/单位计价 number 收窄/DELETE/探针', async () => {
+  it('models:PATCH 全价组/单位计价 number 收窄/DELETE 逻辑删除/restore/探针', async () => {
     const app = createAdminApp(
       fakeDeps({
         controlPlane: {
@@ -196,7 +199,8 @@ describe('models/rate-cards 补面', () => {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => modelRow,
             update: async () => modelRow,
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
             bindChannels: async () => ({ bound: 0 }),
             probe: async () => ({ ok: true, durationMs: 2, results: [] }),
           },
@@ -251,7 +255,11 @@ describe('models/rate-cards 补面', () => {
     expect(
       (await app.request('/v1/models/3', { method: 'DELETE', headers: authHeader() })).status,
     ).toBe(200);
+    expect(
+      (await app.request('/v1/models/3/restore', { method: 'POST', headers: authHeader() })).status,
+    ).toBe(200);
     await app.request('/v1/models?q=x', { headers: authHeader() });
+    await app.request('/v1/models?view=deleted', { headers: authHeader() });
     await app.request('/v1/models/3/test', { method: 'POST', headers: authHeader() });
     const badVariant = await app.request('/v1/models', {
       method: 'POST',
@@ -689,13 +697,15 @@ describe('可选字段两分支清扫(缺省形态)', () => {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => providerRow,
             update: async () => providerRow,
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
           },
           channels: {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
             update: async () => ({ id: 1, name: 'c', status: 0, failCount: 0, providerId: 1 }),
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
             import: async () => ({ success: 1, failed: 0, total: 1, details: [] }),
             probe: async () => ({ ok: true, durationMs: 1 }),
             recharge: async () => ({
@@ -716,7 +726,8 @@ describe('可选字段两分支清扫(缺省形态)', () => {
             list: async () => ({ rows: [], total: 0 }),
             create: async () => modelRow2,
             update: async () => modelRow2,
-            retire: async () => ({ ok: true as const }),
+            delete: async () => ({ ok: true as const }),
+            undelete: async () => ({ ok: true as const }),
             bindChannels: async () => ({ bound: 0 }),
             probe: async () => ({ ok: true, durationMs: 1, results: [] }),
           },

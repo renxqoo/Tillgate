@@ -139,7 +139,10 @@ function OrgSection({ org, members, invitations }: OrgWithMembers) {
           </div>
         </div>
         {isOwner ? (
-          <InviteButton org={org} seatsLeft={org.quantity != null ? org.quantity - active.length : null} />
+          <InviteButton
+            org={org}
+            seatsLeft={org.quantity != null ? org.quantity - active.length : null}
+          />
         ) : null}
       </div>
 
@@ -224,7 +227,8 @@ function InviteButton({ org, seatsLeft }: { org: OrgRow; seatsLeft: number | nul
         onClick={() =>
           startTransition(async () => {
             const res = await inviteMemberAction(org.orgId, email.trim());
-            if (actionResult(res, t('inviteFailed'), t('inviteLinkGenerated'))) setLink(res.link ?? '');
+            if (actionResult(res, t('inviteFailed'), t('inviteLinkGenerated')))
+              setLink(res.link ?? '');
           })
         }
       >
@@ -319,7 +323,10 @@ function QuotaCell({ org, member }: { org: OrgRow; member: OrgMemberRow }) {
           <button className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" />
         }
       >
-        {t('quotaSummary', { daily: fmtLimit(member.dailySpendLimit), monthly: fmtLimit(member.monthlyQuota) })}
+        {t('quotaSummary', {
+          daily: fmtLimit(member.dailySpendLimit),
+          monthly: fmtLimit(member.monthlyQuota),
+        })}
         <PencilIcon className="size-3 opacity-60" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72">

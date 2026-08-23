@@ -29,6 +29,7 @@ describe('renderLoginCodeEmail', () => {
     const mail = renderLoginCodeEmail('654321', { ip: 'ip' }, BRAND, PARAMS, NOW);
     expect(mail.html).toContain('<!DOCTYPE html>');
     expect(mail.html).toContain('style="'); // 内联样式(邮件客户端剔除 <style> 的兼容口径)
+    expect(mail.html).toContain('width="480"'); // 卡片宽度用 table 属性(QQ/Outlook 不支持 max-width 的兼容口径)
     expect(mail.html).toContain('TOKENLENS · ADMIN CONSOLE');
     expect(mail.html).not.toContain('登录验证码');
   });

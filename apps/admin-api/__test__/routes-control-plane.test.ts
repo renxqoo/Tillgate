@@ -65,19 +65,22 @@ function controlPlaneApp(overrides: Parameters<typeof fakeDeps>[0]['controlPlane
 }
 
 describe('providers', () => {
-  it('列表/创建 201/更新/退役透传 ctx(admin actor)', async () => {
+  it('列表/创建 201/更新/逻辑删除/恢复透传 ctx(admin actor)', async () => {
     const create = vi.fn(async () => providerRow);
-    const retire = vi.fn(async () => ({ ok: true as const }));
+    const remove = vi.fn(async () => ({ ok: true as const }));
+    const undelete = vi.fn(async () => ({ ok: true as const }));
     const app = controlPlaneApp({
       providers: {
         list: async () => ({ rows: [providerRow], total: 1 }),
         create,
         update: async () => providerRow,
-        retire,
+        delete: remove,
+        undelete,
       },
     });
     const list = await app.request('/v1/providers?sort_by=name', { headers: authHeader() });
     expect(await list.json()).toMatchObject({ rows: [{ id: 1, vendor: null }], total: 1 });
+    await app.request('/v1/providers?view=deleted', { headers: authHeader() });
 
     const created = await app.request('/v1/providers', {
       method: 'POST',
@@ -93,7 +96,14 @@ describe('providers', () => {
 
     const gone = await app.request('/v1/providers/1', { method: 'DELETE', headers: authHeader() });
     expect(await gone.json()).toEqual({ ok: true });
-    expect(retire).toHaveBeenCalledWith({ ctx: expect.anything(), providerId: 1 });
+    expect(remove).toHaveBeenCalledWith({ ctx: expect.anything(), providerId: 1 });
+
+    const back = await app.request('/v1/providers/1/restore', {
+      method: 'POST',
+      headers: authHeader(),
+    });
+    expect(await back.json()).toEqual({ ok: true });
+    expect(undelete).toHaveBeenCalledWith({ ctx: expect.anything(), providerId: 1 });
   });
 
   it('协议词表外 → control_plane.invalid_protocol(4xx)', async () => {
@@ -104,7 +114,8 @@ describe('providers', () => {
           throw controlPlaneErrors.business('invalid_protocol', { protocol: 'bogus' });
         },
         update: async () => providerRow,
-        retire: async () => ({ ok: true as const }),
+        delete: async () => ({ ok: true as const }),
+        undelete: async () => ({ ok: true as const }),
       },
     });
     const res = await app.request('/v1/providers', {
@@ -125,7 +136,8 @@ describe('channels + channel-funds', () => {
         list: async () => ({ rows: [channelRow], total: 1 }),
         create: async () => ({ id: 9, name: 'ch', status: 0, failCount: 0 }),
         update: async () => ({ id: 9, name: 'ch', status: 0, failCount: 0 }),
-        retire: async () => ({ ok: true as const }),
+        delete: async () => ({ ok: true as const }),
+        undelete: async () => ({ ok: true as const }),
         import: importCall,
         probe: async () => ({ ok: true, durationMs: 5 }),
         recharge: async () => ({
@@ -186,7 +198,8 @@ describe('channels + channel-funds', () => {
         list: async () => ({ rows: [], total: 0 }),
         create: async () => ({ id: 1, name: 'c', status: 0, failCount: 0 }),
         update: async () => ({ id: 1, name: 'c', status: 0, failCount: 0 }),
-        retire: async () => ({ ok: true as const }),
+        delete: async () => ({ ok: true as const }),
+        undelete: async () => ({ ok: true as const }),
         import: async () => ({ success: 1, failed: 0, details: [] }),
         probe: async () => ({ ok: true, durationMs: 1 }),
         recharge,
@@ -228,7 +241,8 @@ describe('models + rate-cards + fx + catalog', () => {
         list: async () => ({ rows: [{ ...modelRow, channelIds: [2] }], total: 1 }),
         create,
         update: async () => modelRow,
-        retire: async () => ({ ok: true as const }),
+        delete: async () => ({ ok: true as const }),
+        undelete: async () => ({ ok: true as const }),
         bindChannels: bind,
         probe: async () => ({ ok: true, durationMs: 3, tokens: 5 }),
       },
@@ -333,6 +347,33 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(fx.setOverride).toHaveBeenCalledWith(expect.objectContaining({ rate: '7.2' }));
     await app.request('/v1/fx/catalog/override', { method: 'DELETE', headers: authHeader() });
     expect(fx.clearOverride).toHaveBeenCalled();
+  });
+
+  it('settings:billing-timezone 读 + 写（ctx 透传）+ 空时区 400', async () => {
+    const billingTimezone = {
+      read: async () => ({ timezone: 'Asia/Shanghai' }),
+      update: vi.fn(async () => ({ timezone: 'UTC' })),
+    };
+    const app = controlPlaneApp({ settings: { billingTimezone } });
+    const read = await app.request('/v1/settings/billing-timezone', { headers: authHeader() });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ timezone: 'Asia/Shanghai' });
+    const put = await app.request('/v1/settings/billing-timezone', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ timezone: 'UTC' }),
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toEqual({ timezone: 'UTC' });
+    expect(billingTimezone.update).toHaveBeenCalledWith(
+      expect.objectContaining({ timezone: 'UTC', ctx: expect.anything() }),
+    );
+    const bad = await app.request('/v1/settings/billing-timezone', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ timezone: '' }),
+    });
+    expect(bad.status).toBe(400);
   });
 
   it('catalog:源清单/价格溯源 externalName 必填/未知源 404', async () => {

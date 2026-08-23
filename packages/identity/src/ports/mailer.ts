@@ -6,4 +6,10 @@
 export interface Mailer {
   /** 发送登录/注册验证码(locale 跟随触发请求,默认英文;ip 用于邮件内来源提示) */
   sendLoginCode(to: string, code: string, ctx: { ip: string; locale?: 'en' | 'zh' }): Promise<void>;
+  /** 发送找回密码一次性链接(url 由消费方按部署基地址拼装;ttlMinutes 随邮件展示) */
+  sendPasswordResetLink(
+    to: string,
+    url: string,
+    ctx: { ip: string; locale?: 'en' | 'zh'; ttlMinutes: number },
+  ): Promise<void>;
 }

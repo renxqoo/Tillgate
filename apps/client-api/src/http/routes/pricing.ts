@@ -20,6 +20,8 @@ export interface PricingReads {
   baseCatalog(): Promise<BaseCatalog>;
   /** 用户费率卡系数快照（无绑定 = null） */
   rateCardSnapshot(userId: number): Promise<RateCardCoefficientSnapshot | null>;
+  /** 计费时区（时段窗口的墙钟口径——信封级说明字段） */
+  billingTimezone(): Promise<string>;
 }
 
 export function pricingRoutes(reads: PricingReads, session: MiddlewareHandler<SessionEnv>) {
@@ -27,19 +29,23 @@ export function pricingRoutes(reads: PricingReads, session: MiddlewareHandler<Se
 
   app.get('/v1/pricing', async (c) => {
     const query = parsePricingQuery(new URL(c.req.url));
-    const rows = toPublicPricingRows(await reads.baseCatalog());
-    return c.json(slicePricingCatalog(rows, query));
+    const [rows, billingTimezone] = await Promise.all([
+      reads.baseCatalog().then(toPublicPricingRows),
+      reads.billingTimezone(),
+    ]);
+    return c.json({ ...slicePricingCatalog(rows, query), billingTimezone });
   });
 
   // 个性化价格：费率卡系数 × 官方价 = 到手价（基础目录走共享缓存，快照按用户解析）
   app.get('/v1/pricing/personal', session, async (c) => {
     const query = parsePricingQuery(new URL(c.req.url));
-    const [catalog, snapshot] = await Promise.all([
+    const [catalog, snapshot, billingTimezone] = await Promise.all([
       reads.baseCatalog(),
       reads.rateCardSnapshot(c.get('userId')),
+      reads.billingTimezone(),
     ]);
     const rows = toPersonalPricingRows(catalog, snapshot);
-    return c.json(slicePricingCatalog(rows, query));
+    return c.json({ ...slicePricingCatalog(rows, query), billingTimezone });
   });
 
   return app;

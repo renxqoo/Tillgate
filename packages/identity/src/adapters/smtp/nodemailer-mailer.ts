@@ -9,6 +9,7 @@ import {
   type LoginCodeEmailContext,
   type MailBrand,
 } from '../../templates/login-code-email.js';
+import { renderPasswordResetEmail } from '../../templates/password-reset-email.js';
 import type { Mailer } from '../../ports/mailer.js';
 import type { Clock } from '../../ports/clock.js';
 
@@ -37,6 +38,21 @@ export function createNodemailerMailer(
   return {
     async sendLoginCode(to, code, ctx) {
       const mail = renderLoginCodeEmail(code, ctx, brand, emailParams, clock.now());
+      await transporter.sendMail({
+        from: config.from,
+        to,
+        subject: mail.subject,
+        text: mail.text,
+        html: mail.html,
+      });
+    },
+    async sendPasswordResetLink(to, url, ctx) {
+      const mail = renderPasswordResetEmail(
+        url,
+        { ip: ctx.ip, ...(ctx.locale != null ? { locale: ctx.locale } : {}) },
+        brand,
+        { ttlMinutes: ctx.ttlMinutes },
+      );
       await transporter.sendMail({
         from: config.from,
         to,

@@ -116,6 +116,8 @@ export interface Identity {
     confirmTotp(input: { userId: number; code: string }): Promise<{ recoveryCodes: string[] }>;
     verify(input: { userId: number; code: string }): Promise<{ method: 'totp' | 'recovery' }>;
     disableTotp(input: { userId: number; code?: string }): Promise<{ disabled: boolean }>;
+    /** 读面:注册状态(pending=已发起未确认,不参与登录验证;confirmed=生效) */
+    status(input: { userId: number }): Promise<{ enrolled: boolean; confirmed: boolean }>;
   };
   readonly oauth: {
     findUser(input: { provider: string; subject: string }): Promise<number | null>;
@@ -207,6 +209,10 @@ export function createIdentity(params: CreateIdentityParams): Identity {
       confirmTotp: (input) => confirmTotp(ctx, input),
       verify: (input) => verifyMfa(ctx, input),
       disableTotp: (input) => disableTotp(ctx, input),
+      status: async (input) => {
+        const row = await ctx.mfaStore.loadTotp(ctx.db, input.userId);
+        return { enrolled: row != null, confirmed: row?.confirmedAt != null };
+      },
     },
     oauth: {
       findUser: (input) => findOAuthUser(ctx, input),

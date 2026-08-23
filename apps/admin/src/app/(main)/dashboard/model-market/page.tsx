@@ -10,7 +10,8 @@ import { CatalogContent, type CatalogItem, type FxState } from '@/features/model
 export const dynamic = 'force-dynamic';
 
 /**
- * 模型市场：多源货架（渠道型 = 可接入上游；字典型 = 行业参考，导入落草稿）。
+ * 模型市场：多源货架（渠道型 = 可接入上游；字典型 = 行业参考，导入落草稿 +
+ * 按模型 provider 前缀 find-or-create 对应渠道并绑定）。
  * 三态 diff（新增/上游涨价/上游降价）+ USD 预填换算（自动汇率 × 点差）+ 汇率追溯条。
  */
 /** 已知目录源的显示名目录键；未知源回落后端原始 name（新源零成本兼容） */

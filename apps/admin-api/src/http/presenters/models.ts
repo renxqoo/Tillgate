@@ -23,6 +23,8 @@ export interface ModelRowSource {
   readonly billingPolicy: Record<string, unknown> | null;
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
+  /** 记录面逻辑删除时刻（回收站）；null = 在册 */
+  readonly deletedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -47,6 +49,7 @@ export function toModelWireRow(row: ModelRowSource, channelIds: readonly number[
     rpmLimit: row.rpmLimit,
     tpmLimit: row.tpmLimit,
     status: row.status,
+    deletedAt: iso(row.deletedAt),
     createdAt: iso(row.createdAt)!,
     updatedAt: iso(row.updatedAt)!,
     channelIds: [...channelIds],

@@ -36,12 +36,13 @@ function isFetchError(r: Response | { fetchError: string }): r is { fetchError: 
 
 /**
  * 管理员登录（admin-api，Bearer 会话）。
- *   - 凭证：email + password；2FA 开启时第一步返回 {twoFactorRequired, challengeId}
+ *   - 凭证：email + password；第二因子二分：TOTP 绑定 → {totpRequired:true}（客户端
+ *     改走 loginTotpAction）;邮箱码开启 → {twoFactorRequired, challengeId}
  *   - 会话：token 由 BFF 持有（ag_admin_session cookie 值即 JWT）
  */
 export async function loginAction(
   formData: FormData,
-): Promise<{ error?: string; challengeId?: string }> {
+): Promise<{ error?: string; challengeId?: string; totpRequired?: boolean }> {
   const t = await getTranslations('auth');
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
@@ -59,6 +60,7 @@ export async function loginAction(
   const body = (await res.json().catch(() => null)) as {
     error?: { message?: string };
     twoFactorRequired?: boolean;
+    method?: 'totp' | 'email';
     challengeId?: string;
     token?: string;
   } | null;
@@ -66,10 +68,40 @@ export async function loginAction(
   if (!res.ok) {
     return { error: body?.error?.message ?? t('loginFailedStatus', { status: res.status }) };
   }
+  if (body?.twoFactorRequired && body.method === 'totp') {
+    return { totpRequired: true };
+  }
   if (body?.twoFactorRequired && body.challengeId) {
     return { challengeId: body.challengeId };
   }
   if (!body?.token) return { error: t('noToken') };
+  await setAdminSessionToken(body.token);
+  redirect('/dashboard');
+}
+
+/** 第二步（TOTP）：重验凭证 + 验证器 6 位码或 10 位恢复码 */
+export async function loginTotpAction(
+  email: string,
+  password: string,
+  code: string,
+): Promise<{ error?: string }> {
+  const t = await getTranslations('auth');
+  if (!/^([0-9]{6}|[A-Z0-9]{10})$/.test(code)) return { error: t('invalidCode') };
+  const r = await authFetch(`${getAdminApiBase()}/v1/auth/login/totp`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password, code }),
+    cache: 'no-store',
+  });
+  if (isFetchError(r)) return { error: r.fetchError };
+  const res: Response = r;
+  const body = (await res.json().catch(() => null)) as {
+    token?: string;
+    error?: { message?: string };
+  } | null;
+  if (!res.ok || !body?.token) {
+    return { error: body?.error?.message ?? t('loginFailedStatus', { status: res.status }) };
+  }
   await setAdminSessionToken(body.token);
   redirect('/dashboard');
 }

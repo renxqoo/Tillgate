@@ -77,9 +77,7 @@ export function Playground({ models }: { models: string[] }) {
         body: JSON.stringify({
           model,
           stream: true,
-          messages: next
-            .slice(0, -1)
-            .map((m) => ({ role: m.role, content: m.content })),
+          messages: next.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
         }),
         signal: controller.signal,
       });

@@ -49,6 +49,7 @@ export function KeyRowActions({ keyRow }: { keyRow: KeyRow }) {
   const t = useTranslations('keys');
   const tCommon = useTranslations('common');
   const [editOpen, setEditOpen] = useState(false);
+  const [revokeOpen, setRevokeOpen] = useState(false);
 
   return (
     <>
@@ -59,33 +60,25 @@ export function KeyRowActions({ keyRow }: { keyRow: KeyRow }) {
               <PencilIcon /> {tCommon('edit')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <RevokeMenuItem id={keyRow.id} />
+            <DropdownMenuItem variant="destructive" onClick={() => setRevokeOpen(true)}>
+              <Trash2Icon /> {t('revoke')}
+            </DropdownMenuItem>
           </>
         ) : (
           <DropdownMenuItem disabled>{t('statusRevoked')}</DropdownMenuItem>
         )}
       </RowActions>
       <EditKeyDialog keyRow={keyRow} open={editOpen} onOpenChange={setEditOpen} />
+      {/* 弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+      <ConfirmAction
+        open={revokeOpen}
+        onOpenChange={setRevokeOpen}
+        confirm={t('revokeConfirm')}
+        action={async () => revokeKeyAction(keyRow.id)}
+        errorTitle={t('revokeFailed')}
+        success={t('revokedToast')}
+      />
     </>
-  );
-}
-
-function RevokeMenuItem({ id }: { id: number }) {
-  const t = useTranslations('keys');
-  return (
-    <ConfirmAction
-      confirm={t('revokeConfirm')}
-      action={async () => revokeKeyAction(id)}
-      errorTitle={t('revokeFailed')}
-      success={t('revokedToast')}
-    >
-      {({ pending, onClick }) => (
-        <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
-          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          {t('revoke')}
-        </DropdownMenuItem>
-      )}
-    </ConfirmAction>
   );
 }
 

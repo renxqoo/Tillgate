@@ -533,6 +533,34 @@
       "when": 1787782800000,
       "tag": "0076_identity_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1787786400000,
+      "tag": "0077_model_mappings_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1787790000000,
+      "tag": "0078_providers_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1787790000000,
+      "tag": "0079_usage_pricing_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1787793600000,
+      "tag": "0080_channels_soft_delete",
+      "breakpoints": true
     }
   ]
 }

@@ -98,7 +98,8 @@ export async function updateChannelAction(
   }
 }
 
-// ── 删除渠道 ────────────────────────────────────────────────────────────────
+// ── 删除渠道（逻辑删除/回收站）与恢复记录 ────────────────────────────────────
+/** 删除记录：status→1 + deleted_at；绑定/流水保留可追溯，名称释放可复用（在册映射绑定中会 409） */
 export async function deleteChannelAction(id: number): Promise<{ error?: string }> {
   const tc = await getTranslations('common');
   try {
@@ -107,6 +108,18 @@ export async function deleteChannelAction(id: number): Promise<{ error?: string 
     return {};
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  }
+}
+
+/** 恢复已删除记录：回停用态（不直接启用——复核后显式启用） */
+export async function undeleteChannelAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations('channels');
+  try {
+    await adminApi().post(`/v1/channels/${id}/restore`);
+    revalidatePath('/dashboard/channels');
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : t('undeleteFailed') };
   }
 }
 

@@ -54,8 +54,26 @@ export interface AuthDeps {
   }) => Promise<{ gift: { status: string } }>;
   readonly authenticate: Identity['passwords']['authenticate'];
   readonly changePassword: Identity['passwords']['change'];
+  /** 找回密码重置(免旧密;reset 推进 user realm 吊销线=全网下线) */
+  readonly resetPassword: Identity['passwords']['reset'];
+  /** 一次性重置令牌(Redis 32B,SHA-256 键,GETDEL 单次消费) */
+  readonly issueResetToken: (userId: number) => Promise<string>;
+  readonly consumeResetToken: (token: string) => Promise<number | null>;
+  /** 重置链接邮件(SMTP 未配为 null——forgot 整体 fail-closed) */
+  readonly sendResetLink:
+    | ((
+        to: string,
+        url: string,
+        ctx: { ip: string; locale?: 'en' | 'zh'; ttlMinutes: number },
+      ) => Promise<void>)
+    | null;
+  /** 重置链接基地址(控制台对外地址,随部署配置;未配为 null) */
+  readonly resetLinkBase: string | null;
+  readonly resetTokenTtlMinutes: number;
   readonly guards: { emailIp: KeyBruteForceGuard; ip: AuthFailureGuard };
   readonly userStatus: (userId: number) => Promise<number | null>;
+  /** 邮箱 → 用户(id+状态;null=不存在)——找回密码定位目标账号 */
+  readonly userByEmail: (email: string) => Promise<{ id: number; status: number } | null>;
   readonly touchLastLogin: (userId: number) => Promise<void>;
   readonly sign: (userId: number) => Promise<string>;
   readonly logout: (token: string) => Promise<void>;

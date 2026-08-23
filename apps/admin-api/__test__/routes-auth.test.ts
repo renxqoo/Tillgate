@@ -10,6 +10,7 @@ import { errorHandler } from '@tokenlens/http';
 import { identityErrors } from '@tokenlens/identity';
 import type { SessionEnv } from '../src/http/middleware/session';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
+import { mfaStub } from './helpers';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from '../src/http/routes/auth';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 
@@ -76,6 +77,7 @@ function authHarness(overrides?: Partial<AuthRoutesDeps>) {
   const sign = vi.fn(async () => 'signed-token');
   const deps: AuthRoutesDeps = {
     identity: {
+      mfa: mfaStub(),
       passwords: {
         authenticate: async () => ({ userId: ADMIN_ID }),
         change: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
@@ -130,6 +132,7 @@ describe('auth（P2 登录面）', () => {
   it('凭据错:双闸计数 + invalid_credentials 审计 + identity.invalid_credentials 401 原样透传', async () => {
     const { app, emailIp, ip, audit } = authHarness({
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => {
             throw identityErrors.business('invalid_credentials', { realm: 'admin' });
@@ -175,6 +178,7 @@ describe('auth（P2 登录面）', () => {
     const { app } = authHarness({
       guards: { emailIp: locked, ip: neverLockedGuard() },
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => {
             throw identityErrors.business('invalid_credentials', { realm: 'admin' });
@@ -242,6 +246,7 @@ describe('auth（P2 登录面）', () => {
     const { app: app2, audit } = authHarness({
       mailerConfigured: true,
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '' }),
@@ -273,7 +278,11 @@ describe('auth（P2 登录面）', () => {
       body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'correct horse' }),
     });
     expect(res2.status).toBe(200);
-    expect(await res2.json()).toEqual({ twoFactorRequired: true, challengeId: 'ch-9' });
+    expect(await res2.json()).toEqual({
+      twoFactorRequired: true,
+      method: 'email',
+      challengeId: 'ch-9',
+    });
     expect(begin).toHaveBeenCalledWith(expect.objectContaining({ kind: 'admin_login_code' }));
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'auth.login.2fa_challenge' }),
@@ -284,6 +293,7 @@ describe('auth（P2 登录面）', () => {
     const logout = vi.fn(async () => ({ ok: true as const }));
     const { app } = authHarness({
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '' }),
@@ -338,6 +348,7 @@ describe('me（P2 管理员自身）', () => {
   function meHarness(overrides?: Partial<MeRoutesDeps>) {
     const deps: MeRoutesDeps = {
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }),
@@ -376,6 +387,7 @@ describe('me（P2 管理员自身）', () => {
     const change = vi.fn(async () => ({ invalidBefore: '2026-08-23T00:00:00Z' }));
     const app2 = meHarness({
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: 0 }),
           change,

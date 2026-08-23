@@ -26,6 +26,8 @@ export interface ChannelListRow {
   readonly tpmLimit: number | null;
   readonly upstreamBudget: string;
   readonly upstreamThreshold: string | null;
+  /** 记录面逻辑删除时刻（回收站）：null = 在册；非空 = 已删除 */
+  readonly deletedAt: Date | null;
   readonly createdAt: Date;
 }
 
@@ -85,6 +87,12 @@ export interface RechargeRow {
 export type ChannelSortField = 'id' | 'name' | 'status' | 'priority' | 'createdAt';
 export type RechargeSortField = 'id' | 'amount' | 'createdAt';
 
+/** 列表视图：active = 在册（缺省，含启用/停用/熔断等运行态，不含已删除）；deleted = 回收站 */
+export type ChannelListView = 'active' | 'deleted';
+
+/** 管理面渠道列表查询（统一列表形状 + 回收站视图） */
+export type ChannelListQuery = ListQuery<ChannelSortField> & { readonly view?: ChannelListView };
+
 export interface ChannelStore {
   insertChannel(
     db: DbLike,
@@ -102,11 +110,12 @@ export interface ChannelStore {
       status?: number;
     },
   ): Promise<{ id: number; name: string; providerId: number }>;
+  /** 仅在册——已删除记录的渠道名视为可复用（目录/渠道导入按新记录处理） */
   findChannelByName(
     db: DbLike,
     name: string,
   ): Promise<{ id: number; rpmLimit: number | null } | null>;
-  /** 部分更新（白名单字段；apiKeyEnc/运行态复位由 application 组好传入）。0 行 = 不存在 */
+  /** 部分更新（白名单字段，仅在册行；apiKeyEnc/运行态复位由 application 组好传入）。0 行 = 不存在（含已删除） */
   updateChannel(
     db: DbLike,
     input: {
@@ -120,14 +129,24 @@ export interface ChannelStore {
       };
     },
   ): Promise<{ id: number; name: string; status: number; failCount: number } | null>;
-  /** 软退役：status=1（历史绑定/流水保留） */
+  /** 停用：status=1（仅在册行）；false = 不存在（含已删除） */
   retireChannel(db: DbLike, input: { channelId: number }): Promise<boolean>;
+  /**
+   * 逻辑删除（回收站）：status=1 + deleted_at=now（仅在册行可删）。
+   * 历史绑定/资金流水/FK 引用保留可追溯；渠道名随部分唯一索引释放可复用。
+   * 在册模型映射绑定守卫（channel_has_models）在 application 层——删除前须先解绑。
+   */
+  softDeleteChannel(db: DbLike, input: { channelId: number }): Promise<boolean>;
+  /** 恢复记录：deleted_at=NULL + status=1（回停用态；仅已删除行） */
+  restoreChannel(db: DbLike, input: { channelId: number }): Promise<boolean>;
+  /** 供应商名下在册渠道数（供应商删除守卫：>0 → provider_has_channels） */
+  countActiveByProvider(db: DbLike, providerId: number): Promise<number>;
   /** 单渠道连接信息（探针用：join provider；含密文——仅 application 解密用） */
   findChannelForProbe(db: DbLike, channelId: number): Promise<ChannelProbeRow | null>;
   /** 渠道资金面行（进货/调账的存在性与余额事实） */
   findChannelFunds(db: DbLike, channelId: number): Promise<ChannelFundsRow | null>;
-  /** 统一列表：q 命中渠道名/供应商名（join 表计数同步） */
-  listChannels(db: DbLike, query: ListQuery<ChannelSortField>): Promise<ListResult<ChannelListRow>>;
+  /** 统一列表：q 命中渠道名/供应商名（join 表计数同步）；view 缺省 = 在册 */
+  listChannels(db: DbLike, query: ChannelListQuery): Promise<ListResult<ChannelListRow>>;
   /** 页内渠道的已绑定模型（外部名；绑定时同步落 model_mappings） */
   listBoundModelsByChannelIds(
     db: DbLike,
@@ -172,8 +191,8 @@ export interface ChannelStore {
   ): Promise<ListResult<RechargeRow>>;
   // ---- 网关热路径读（G1，gateway P5 波） ----
   /**
-   * 真实模型 → 路由候选渠道（启用 status=0；基序 priority/weight 降序——加权调度在
-   * inference）。含渠道密文与渠道维限流/预算列（网关 admitChannel 消费）。
+   * 真实模型 → 路由候选渠道（启用 status=0 且未删除、供应商未删除；基序 priority/weight
+   * 降序——加权调度在 inference）。含渠道密文与渠道维限流/预算列（网关 admitChannel 消费）。
    */
   findRouteCandidates(db: DbLike, realModel: string): Promise<RouteCandidateRow[]>;
   /**

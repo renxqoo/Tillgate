@@ -81,41 +81,63 @@ export interface MemoryProviderStore {
   rows: Map<number, ProviderRecord>;
 }
 export function createMemoryProviderStore(seed: ProviderRecord[] = []): MemoryProviderStore {
-  const rows = new Map(seed.map((r) => [r.id, r]));
+  const rows = new Map(seed.map((r) => [r.id, { ...r }]));
   let nextId = seed.reduce((m, r) => Math.max(m, r.id), 0) + 1;
-  const byName = (name: string) => [...rows.values()].find((r) => r.name === name) ?? null;
+  const byName = (name: string) =>
+    [...rows.values()].find((r) => r.name === name && r.deletedAt == null) ?? null;
   const store: ProviderStore = {
     async insert(_db, input) {
       if (byName(input.name)) throw uniqueViolation('providers_name_uq');
-      const row: ProviderRecord = { id: nextId++, createdAt: new Date(), ...input };
+      const row: ProviderRecord = {
+        id: nextId++,
+        deletedAt: null,
+        createdAt: new Date(),
+        ...input,
+      };
       rows.set(row.id, row);
       return row;
     },
     async findById(_db, id) {
-      return rows.get(id) ?? null;
+      const row = rows.get(id);
+      return row && row.deletedAt == null ? row : null;
     },
     async findByName(_db, name) {
       return byName(name);
     },
     async update(_db, input: { providerId: number; patch: ProviderPatchInput }) {
       const row = rows.get(input.providerId);
-      if (!row) return null;
+      if (!row || row.deletedAt != null) return null;
       if (input.patch.name !== undefined) {
         const clash = byName(input.patch.name);
         if (clash && clash.id !== input.providerId) throw uniqueViolation('providers_name_uq');
       }
-      const next = { ...row, ...input.patch };
-      rows.set(input.providerId, next);
-      return next;
+      Object.assign(row, input.patch);
+      return row;
     },
     async retire(_db, input) {
       const row = rows.get(input.providerId);
-      if (!row) return false;
-      rows.set(input.providerId, { ...row, status: 1 });
+      if (!row || row.deletedAt != null) return false;
+      row.status = 1;
+      return true;
+    },
+    async softDelete(_db, input) {
+      const row = rows.get(input.providerId);
+      if (!row || row.deletedAt != null) return false;
+      row.status = 1;
+      row.deletedAt = new Date();
+      return true;
+    },
+    async restore(_db, input) {
+      const row = rows.get(input.providerId);
+      if (!row || row.deletedAt == null) return false;
+      row.deletedAt = null;
+      row.status = 1;
       return true;
     },
     async list(_db, query) {
-      let all = [...rows.values()];
+      let all = [...rows.values()].filter((r) =>
+        query.view === 'deleted' ? r.deletedAt != null : r.deletedAt == null,
+      );
       if (query.q)
         all = all.filter((r) => r.name.includes(query.q!) || r.baseUrl.includes(query.q!));
       const sorted = all.toSorted((a, b) => {
@@ -153,6 +175,8 @@ export interface MemoryChannelRow {
   upstreamBudget: string;
   upstreamReserved: string;
   upstreamThreshold: string | null;
+  /** 记录面逻辑删除时刻（回收站）；null = 在册 */
+  deletedAt: Date | null;
 }
 
 export interface MemoryRechargeRow {
@@ -186,7 +210,8 @@ export function createMemoryChannelStore(
   let nextId = seed.reduce((m, r) => Math.max(m, r.id), 0) + 1;
   const recharges: MemoryRechargeRow[] = [];
   let nextRechargeId = 1;
-  const byName = (name: string) => [...rows.values()].find((r) => r.name === name) ?? null;
+  const byName = (name: string) =>
+    [...rows.values()].find((r) => r.name === name && r.deletedAt == null) ?? null;
   const store: ChannelStore = {
     async insertChannel(_db, input) {
       if (byName(input.name)) throw uniqueViolation('channels_name_uq');
@@ -207,6 +232,7 @@ export function createMemoryChannelStore(
         upstreamBudget: input.upstreamBudget ?? '0',
         upstreamReserved: '0',
         upstreamThreshold: null,
+        deletedAt: null,
       };
       rows.set(row.id, row);
       return { id: row.id, name: row.name, providerId: row.providerId };
@@ -217,7 +243,7 @@ export function createMemoryChannelStore(
     },
     async updateChannel(_db, input) {
       const row = rows.get(input.channelId);
-      if (!row) return null;
+      if (!row || row.deletedAt != null) return null;
       const { apiKeyEnc, status, failCount, cooldownUntil, upstreamThreshold, ...rest } =
         input.patch;
       Object.assign(row, rest);
@@ -230,9 +256,27 @@ export function createMemoryChannelStore(
     },
     async retireChannel(_db, input) {
       const row = rows.get(input.channelId);
-      if (!row) return false;
+      if (!row || row.deletedAt != null) return false;
       row.status = 1;
       return true;
+    },
+    async softDeleteChannel(_db, input) {
+      const row = rows.get(input.channelId);
+      if (!row || row.deletedAt != null) return false;
+      row.status = 1;
+      row.deletedAt = new Date();
+      return true;
+    },
+    async restoreChannel(_db, input) {
+      const row = rows.get(input.channelId);
+      if (!row || row.deletedAt == null) return false;
+      row.deletedAt = null;
+      row.status = 1;
+      return true;
+    },
+    async countActiveByProvider(_db, providerId) {
+      return [...rows.values()].filter((r) => r.providerId === providerId && r.deletedAt == null)
+        .length;
     },
     async findChannelForProbe(_db, channelId): Promise<ChannelProbeRow | null> {
       const row = rows.get(channelId);
@@ -258,23 +302,26 @@ export function createMemoryChannelStore(
       };
     },
     async listChannels(_db, query) {
-      let all: ChannelListRow[] = [...rows.values()].map((row) => ({
-        id: row.id,
-        name: row.name,
-        providerId: row.providerId,
-        providerName: providerNameOf(row.providerId),
-        baseUrlOverride: row.baseUrlOverride,
-        models: row.models,
-        weight: row.weight,
-        priority: row.priority,
-        status: row.status,
-        failCount: row.failCount,
-        rpmLimit: row.rpmLimit,
-        tpmLimit: row.tpmLimit,
-        upstreamBudget: row.upstreamBudget,
-        upstreamThreshold: row.upstreamThreshold,
-        createdAt: new Date(0),
-      }));
+      let all: ChannelListRow[] = [...rows.values()]
+        .filter((r) => (query.view === 'deleted' ? r.deletedAt != null : r.deletedAt == null))
+        .map((row) => ({
+          id: row.id,
+          name: row.name,
+          providerId: row.providerId,
+          providerName: providerNameOf(row.providerId),
+          baseUrlOverride: row.baseUrlOverride,
+          models: row.models,
+          weight: row.weight,
+          priority: row.priority,
+          status: row.status,
+          failCount: row.failCount,
+          rpmLimit: row.rpmLimit,
+          tpmLimit: row.tpmLimit,
+          upstreamBudget: row.upstreamBudget,
+          upstreamThreshold: row.upstreamThreshold,
+          deletedAt: row.deletedAt,
+          createdAt: new Date(0),
+        }));
       if (query.q) {
         all = all.filter((r) => r.name.includes(query.q!) || r.providerName.includes(query.q!));
       }
@@ -352,6 +399,8 @@ export function createMemoryChannelStore(
       for (const row of rows.values()) {
         if (row.status !== 0) continue;
         const provider = providersOf.get(row.providerId);
+        // 已删除供应商的渠道不再路由（与 postgres 适配器同语义）
+        if (provider != null && provider.deletedAt != null) continue;
         out.push({
           channelId: row.id,
           channelName: row.name,
@@ -413,7 +462,7 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
   const rows = new Map(seed.map((r) => [r.id, { ...r, bindings: [...r.bindings] }]));
   let nextId = seed.reduce((m, r) => Math.max(m, r.id), 0) + 1;
   const byExternal = (name: string) =>
-    [...rows.values()].find((r) => r.externalName === name) ?? null;
+    [...rows.values()].find((r) => r.externalName === name && r.deletedAt == null) ?? null;
   const store: ModelStore = {
     async insertMapping(_db, input: ModelInsertInput) {
       if (byExternal(input.externalName)) throw uniqueViolation('model_mappings_external_name_uq');
@@ -434,6 +483,7 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
         billingPolicy: input.billingPolicy ?? null,
         rpmLimit: input.rpmLimit ?? null,
         tpmLimit: input.tpmLimit ?? null,
+        deletedAt: null,
         createdAt: new Date(0),
         updatedAt: new Date(0),
         bindings: [],
@@ -443,14 +493,14 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
     },
     async findById(_db, id) {
       const row = rows.get(id);
-      return row ?? null;
+      return row && row.deletedAt == null ? row : null;
     },
     async findByExternalName(_db, name) {
       return byExternal(name);
     },
     async updateMapping(_db, input: { mappingId: number; patch: ModelPatch }) {
       const row = rows.get(input.mappingId);
-      if (!row) return null;
+      if (!row || row.deletedAt != null) return null;
       if (input.patch.externalName !== undefined) {
         const clash = byExternal(input.patch.externalName);
         if (clash && clash.id !== input.mappingId)
@@ -461,12 +511,28 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
     },
     async retireMapping(_db, input) {
       const row = rows.get(input.mappingId);
-      if (!row) return false;
+      if (!row || row.deletedAt != null) return false;
+      row.status = 1;
+      return true;
+    },
+    async softDeleteMapping(_db, input) {
+      const row = rows.get(input.mappingId);
+      if (!row || row.deletedAt != null) return false;
+      row.status = 1;
+      row.deletedAt = new Date();
+      return true;
+    },
+    async restoreMapping(_db, input) {
+      const row = rows.get(input.mappingId);
+      if (!row || row.deletedAt == null) return false;
+      row.deletedAt = null;
       row.status = 1;
       return true;
     },
     async listMappings(_db, query) {
-      let all = [...rows.values()];
+      let all = [...rows.values()].filter((r) =>
+        query.view === 'deleted' ? r.deletedAt != null : r.deletedAt == null,
+      );
       if (query.q) {
         all = all.filter(
           (r) => r.externalName.includes(query.q!) || r.realModel.includes(query.q!),
@@ -507,16 +573,25 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       }
     },
     async listEnabledByRealModels(_db, realModels) {
-      return [...rows.values()].filter((r) => realModels.includes(r.realModel) && r.status === 0);
+      return [...rows.values()].filter(
+        (r) => realModels.includes(r.realModel) && r.status === 0 && r.deletedAt == null,
+      );
     },
     async listMappingRowsByChannelId(_db, channelId) {
       const out: Array<{ mappingId: number; externalName: string; realModel: string }> = [];
       for (const row of rows.values()) {
+        if (row.deletedAt != null) continue;
         if (row.bindings.some((b) => b.channelId === channelId)) {
           out.push({ mappingId: row.id, externalName: row.externalName, realModel: row.realModel });
         }
       }
       return out;
+    },
+    async countActiveMappingsByChannel(_db, channelId) {
+      // 绑定守卫计数：仅算在册映射（已删除映射的残留绑定不算下游占用）
+      return [...rows.values()].filter(
+        (r) => r.deletedAt == null && r.bindings.some((b) => b.channelId === channelId),
+      ).length;
     },
 
     // ---- 网关热路径读（G1） ----
@@ -534,7 +609,7 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
     },
     async listEnabledMappings(_db) {
       return [...rows.values()]
-        .filter((r) => r.status === 0)
+        .filter((r) => r.status === 0 && r.deletedAt == null)
         .map((r) => ({
           externalName: r.externalName,
           realModel: r.realModel,

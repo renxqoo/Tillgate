@@ -8,15 +8,7 @@ import { CopyButton } from '@tokenlens/ui';
  * GitHub 风格代码框：顶栏（语言标签 + 复制按钮）+ shiki 双主题高亮体。
  * html 由服务端 highlight() 生成；亮暗切换靠 globals.css 的 .shiki 变量规则。
  */
-export function CodeBlock({
-  lang,
-  html,
-  text,
-}: {
-  lang?: string;
-  html: string;
-  text: string;
-}) {
+export function CodeBlock({ lang, html, text }: { lang?: string; html: string; text: string }) {
   const tUi = useTranslations('ui');
   return (
     <div className="overflow-hidden rounded-lg border">

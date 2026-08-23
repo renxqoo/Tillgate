@@ -1,4 +1,5 @@
 import { pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 /** providers — 供应商 */
 export const providers = pgTable(
@@ -20,7 +21,18 @@ export const providers = pgTable(
     baseUrl: varchar('base_url', { length: 255 }).notNull(),
     /** 0 启用 / 1 禁用 */
     status: smallint('status').notNull().default(0),
+    /**
+     * 记录面逻辑删除（回收站）：NULL = 在册；非空 = 已删除（历史渠道 FK 引用不受影响）。
+     * 删除同时强制 status=1；恢复记录回到禁用态。名称唯一约束为部分索引——
+     * 已删除记录不占用名称，可重建同名供应商。
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('providers_name_uq').on(t.name)],
+  (t) => [
+    // 部分唯一：仅约束在册记录——逻辑删除后名称释放，可重建同名
+    uniqueIndex('providers_name_uq')
+      .on(t.name)
+      .where(sql`deleted_at IS NULL`),
+  ],
 );

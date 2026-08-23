@@ -34,7 +34,14 @@ import {
 import { StatusPill } from '@/components/status-pill';
 import { useState, useTransition } from 'react';
 
-import { Loader2Icon, PencilIcon, PlusCircleIcon, ServerIcon, Trash2Icon } from 'lucide-react';
+import {
+  Loader2Icon,
+  PencilIcon,
+  PlusCircleIcon,
+  RotateCcwIcon,
+  ServerIcon,
+  Trash2Icon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -115,8 +122,12 @@ function ProviderRowItem({
   const t = useTranslations('providers');
   const tc = useTranslations('common');
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [undeleteOpen, setUndeleteOpen] = useState(false);
+  // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
+  const deleted = provider.deletedAt != null;
   return (
-    <TableRow>
+    <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
         <div className="flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -135,7 +146,14 @@ function ProviderRowItem({
         ) : null}
       </TableCell>
       <TableCell>
-        {provider.status === 0 ? (
+        {deleted ? (
+          <div className="flex flex-col">
+            <StatusPill tone="danger" label={t('deleted')} />
+            <span className="mt-0.5 text-[10px] text-muted-foreground">
+              {fmtDateTime(provider.deletedAt!)}
+            </span>
+          </div>
+        ) : provider.status === 0 ? (
           <StatusPill tone="success" label={tc('enabled')} />
         ) : (
           <StatusPill tone="neutral" label={tc('disabled')} />
@@ -145,34 +163,55 @@ function ProviderRowItem({
         {provider.updatedAt ? fmtDateTime(provider.updatedAt) : fmtDateTime(provider.createdAt)}
       </TableCell>
       <TableCell className="w-16 text-center">
-        <RowActions label={tc('actions')}>
-          <DropdownMenuItem onClick={() => setEditOpen(true)}>
-            <PencilIcon /> {tc('edit')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <ConfirmAction
-            confirm={t('deleteConfirm', { name: provider.name })}
-            action={async () =>
-              (await import('@/server/providers-actions')).deleteProviderAction(provider.id)
-            }
-            success={tc('deleted')}
-          >
-            {({ pending, onClick }) => (
-              <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
-                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-                {tc('delete')}
+        {deleted ? (
+          <>
+            <RowActions label={tc('actions')}>
+              <DropdownMenuItem onClick={() => setUndeleteOpen(true)}>
+                <RotateCcwIcon className="size-4" /> {t('undelete')}
               </DropdownMenuItem>
-            )}
-          </ConfirmAction>
-        </RowActions>
-        <EditProviderDialog
-          provider={provider}
-          protocols={protocols}
-          vendors={vendors}
-          trigger={null}
-          open={editOpen}
-          onOpenChange={setEditOpen}
-        />
+            </RowActions>
+            {/* 弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+            <ConfirmAction
+              open={undeleteOpen}
+              onOpenChange={setUndeleteOpen}
+              confirm={t('undeleteConfirm', { name: provider.name })}
+              action={async () =>
+                (await import('@/server/providers-actions')).undeleteProviderAction(provider.id)
+              }
+              success={t('undeleteSuccess')}
+              tone="default"
+            />
+          </>
+        ) : (
+          <>
+            <RowActions label={tc('actions')}>
+              <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                <PencilIcon /> {tc('edit')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2Icon /> {tc('delete')}
+              </DropdownMenuItem>
+            </RowActions>
+            <EditProviderDialog
+              provider={provider}
+              protocols={protocols}
+              vendors={vendors}
+              trigger={null}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+            />
+            <ConfirmAction
+              open={deleteOpen}
+              onOpenChange={setDeleteOpen}
+              confirm={t('deleteConfirm', { name: provider.name })}
+              action={async () =>
+                (await import('@/server/providers-actions')).deleteProviderAction(provider.id)
+              }
+              success={tc('deleted')}
+            />
+          </>
+        )}
       </TableCell>
     </TableRow>
   );

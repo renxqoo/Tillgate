@@ -1,12 +1,13 @@
 /**
- * 模型映射用例（v1 models.test.ts 等价迁移）：
+ * 模型映射用例（v1 models.test.ts 等价迁移 + 逻辑删除回收站）：
  * 免费一致性（直判+合并判）/ 数值域不触库 / 重名精确回执 / 绑定全量替换 /
- * channelIds 回显 / 探针请求形状与密钥解密。
+ * channelIds 回显 / 探针请求形状与密钥解密 / 软删-回收站-恢复-外部名复用。
  */
 import { describe, expect, it } from 'vitest';
 import { createModel } from '../src/application/models/create-model';
 import { updateModel } from '../src/application/models/update-model';
-import { retireModel } from '../src/application/models/retire-model';
+import { deleteModel } from '../src/application/models/delete-model';
+import { undeleteModel } from '../src/application/models/undelete-model';
 import { listModels } from '../src/application/models/list-models';
 import { bindModelChannels } from '../src/application/models/bind-model-channels';
 import { probeModel } from '../src/application/models/probe-model';
@@ -77,16 +78,82 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
     expect(models.rows.get(row.id)!.outputPrice).toBe('0');
   });
 
-  it('更新/退役不存在 → model_not_found', async () => {
+  it('更新/删除不存在 → model_not_found', async () => {
     const { deps } = setup();
     await expect(
       updateModel(deps, { ctx: adminCtx(), mappingId: 999999999, patch: { realModel: 'x' } }),
     ).rejects.toMatchObject({ code: 'control_plane.model_not_found' });
     await expect(
-      retireModel(deps, { ctx: adminCtx(), mappingId: 999999999 }),
+      deleteModel(deps, { ctx: adminCtx(), mappingId: 999999999 }),
     ).rejects.toMatchObject({
       code: 'control_plane.model_not_found',
     });
+  });
+});
+
+describe('逻辑删除（回收站）', () => {
+  it('删除：status 压 1 + deleted_at 落刻；列表默认不可见，view=deleted 可见；审计 model.delete', async () => {
+    const { deps, models, audit } = setup();
+    const row = await createOk(deps);
+    await deleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
+    const stored = models.rows.get(row.id)!;
+    expect(stored.status).toBe(1);
+    expect(stored.deletedAt).toBeInstanceOf(Date);
+    expect(await deps.stores.model.findById(deps.db, row.id)).toBeNull();
+    expect(await deps.stores.model.findByExternalName(deps.db, row.externalName)).toBeNull();
+    const active = await listModels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
+    expect(active.rows).toHaveLength(0);
+    const recycled = await listModels(deps, {
+      sortBy: 'id',
+      order: 'asc',
+      limit: 10,
+      offset: 0,
+      view: 'deleted',
+    });
+    expect(recycled.rows.map((r) => r.id)).toEqual([row.id]);
+    expect(recycled.rows[0]!.channelIds).toEqual([]); // 绑定回显不炸（绑定本身保留）
+    expect(audit.entries.map((e) => e.action)).toContain('model.delete');
+  });
+
+  it('已删除记录对外部名「不存在」：可重建同名映射（唯一约束只锁在册行）', async () => {
+    const { deps, models } = setup();
+    const row = await createOk(deps);
+    await deleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
+    const recreated = await createOk(deps); // 同 externalName 'alias'
+    expect(recreated.id).not.toBe(row.id);
+    expect(models.rows.size).toBe(2); // 旧记录保留（逻辑删除），新行在册
+  });
+
+  it('已删除记录对读/改/下架不可见：update/retire 语义 404，不误改回收站行', async () => {
+    const { deps, models } = setup();
+    const row = await createOk(deps, {
+      prices: { inputPrice: '5', outputPrice: '5', cacheInputPrice: '0' },
+    });
+    await deleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
+    await expect(
+      updateModel(deps, { ctx: adminCtx(), mappingId: row.id, patch: { realModel: 'hacked' } }),
+    ).rejects.toMatchObject({ code: 'control_plane.model_not_found' });
+    expect(models.rows.get(row.id)!.realModel).toBe('real-model');
+    expect(await deps.stores.model.retireMapping(deps.db, { mappingId: row.id })).toBe(false);
+  });
+
+  it('恢复：deleted_at 清空 + status 回 1（下架态不复活）；仅已删除行可恢复；审计 model.undelete', async () => {
+    const { deps, models, audit } = setup();
+    const row = await createOk(deps);
+    await deleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
+    // 在册行 restore → 404（防误用恢复做下架）
+    const fresh = await createOk(deps, { externalName: 'other' });
+    await expect(
+      undeleteModel(deps, { ctx: adminCtx(), mappingId: fresh.id }),
+    ).rejects.toMatchObject({ code: 'control_plane.model_not_found' });
+
+    await undeleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
+    const restored = models.rows.get(row.id)!;
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.status).toBe(1); // 回下架态：复核后显式上架
+    const active = await listModels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
+    expect(active.rows.map((r) => r.id)).toContain(row.id);
+    expect(audit.entries.map((e) => e.action)).toContain('model.undelete');
   });
 });
 

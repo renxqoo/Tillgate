@@ -39,6 +39,7 @@ import { NumberField } from '@/components/number-field';
 import { useEffect, useState, useTransition, type ReactElement } from 'react';
 
 import {
+  ArrowDownIcon,
   CoinsIcon,
   CpuIcon,
   FilmIcon,
@@ -60,7 +61,7 @@ import { z } from 'zod';
 
 import type { ModelTestResult } from '@/server/models-actions';
 import { numericText } from '@/lib/forms';
-import { fmtPrice, unitWord } from '@/lib/formatters';
+import { fmtPrice, fmtDateTime, unitWord } from '@/lib/formatters';
 
 /** 上下文窗口 token 数展示：65536 → 64K，1000000 → 1M，未知 → — */
 function fmtContext(tokens: number | null): string {
@@ -164,6 +165,75 @@ function tierPricesOf(
 function tierLabelFor(unit: string, value: string): string {
   const preset = (TIER_PRESETS[unit as PricingUnit] ?? []).find((p) => p.value === value);
   return preset?.label ?? value;
+}
+
+/** 分时段窗口行（schedule 策略编辑态）：start/end = HH:MM，价格字段空串 = 不覆盖该轴 */
+type WindowRow = {
+  label: string;
+  start: string;
+  end: string;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  unitPrice: string;
+};
+
+const EMPTY_WINDOW_ROW: WindowRow = {
+  label: '',
+  start: '18:00',
+  end: '07:00',
+  inputPrice: '',
+  outputPrice: '',
+  cacheInputPrice: '',
+  unitPrice: '',
+};
+
+const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** billingConfig 回显 → 窗口行（schedule 之外 / 空表 → 空数组） */
+function buildWindows(
+  cfg?: { strategy?: string; params?: { windows?: Array<Record<string, string>> } },
+): WindowRow[] {
+  if (cfg?.strategy !== 'schedule') return [];
+  return (cfg.params?.windows ?? []).map((w) => ({
+    label: w.label ?? '',
+    start: w.start ?? '',
+    end: w.end ?? '',
+    inputPrice: w.inputPrice ?? '',
+    outputPrice: w.outputPrice ?? '',
+    cacheInputPrice: w.cacheInputPrice ?? '',
+    unitPrice: w.unitPrice ?? '',
+  }));
+}
+
+/** 窗口行有效性（形状面）：HH:MM、start ≠ end、至少一个价格字段——重叠/数值域由服务端把关 */
+function windowRowInvalid(row: WindowRow): boolean {
+  const prices = [row.inputPrice, row.outputPrice, row.cacheInputPrice, row.unitPrice];
+  const hasPrice = prices.some((p) => p.trim() !== '');
+  return (
+    !HHMM_RE.test(row.start) ||
+    !HHMM_RE.test(row.end) ||
+    row.start === row.end ||
+    !hasPrice
+  );
+}
+
+/** 窗口行 → 提交形状：空串字段剔除（字段级覆盖——未覆盖轴回落基价列） */
+const trimToPayload = (v: string) => (v.trim() === '' ? undefined : v.trim());
+
+function toWindowPayload(row: WindowRow) {
+  const pick = (v: string) => trimToPayload(v);
+  return {
+    ...(pick(row.label) !== undefined ? { label: pick(row.label) } : {}),
+    start: row.start,
+    end: row.end,
+    ...(pick(row.inputPrice) !== undefined ? { inputPrice: pick(row.inputPrice) } : {}),
+    ...(pick(row.outputPrice) !== undefined ? { outputPrice: pick(row.outputPrice) } : {}),
+    ...(pick(row.cacheInputPrice) !== undefined
+      ? { cacheInputPrice: pick(row.cacheInputPrice) }
+      : {}),
+    ...(pick(row.unitPrice) !== undefined ? { unitPrice: pick(row.unitPrice) } : {}),
+  };
 }
 
 /** 金额格式（与 moneyText 同口径）——分支校验挂到具体字段用 */
@@ -341,7 +411,12 @@ function UnitPriceCell({ model, locale }: { model: AdminModelRow; locale: 'en' |
     null,
   );
   if (min === null) return <span>¥0/{word}</span>;
-  if (candidates.length < 2) return <span>¥{fmtPrice(min)}/{word}</span>;
+  if (candidates.length < 2)
+    return (
+      <span>
+        ¥{fmtPrice(min)}/{word}
+      </span>
+    );
   return (
     <Tooltip>
       <TooltipTrigger
@@ -392,9 +467,13 @@ function ModelRowItem({
   const t = useTranslations('models');
   const tc = useTranslations('common');
   const locale = useLocale() as 'en' | 'zh';
-  const [dialog, setDialog] = useState<'bind' | 'edit' | 'test' | null>(null);
+  const [dialog, setDialog] = useState<
+    'bind' | 'edit' | 'test' | 'delist' | 'restore' | 'delete' | 'undelete' | null
+  >(null);
+  // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
+  const deleted = model.deletedAt != null;
   return (
-    <TableRow>
+    <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{model.externalName}</code>
         {model.isFree && <StatusPill className="ml-2" tone="info" label={tc('free')} />}
@@ -425,7 +504,14 @@ function ModelRowItem({
         {model.fallbackModels ?? '—'}
       </TableCell>
       <TableCell>
-        {model.status === 0 ? (
+        {deleted ? (
+          <div className="flex flex-col">
+            <StatusPill tone="danger" label={t('deleted')} />
+            <span className="mt-0.5 text-[10px] text-muted-foreground">
+              {fmtDateTime(model.deletedAt!)}
+            </span>
+          </div>
+        ) : model.status === 0 ? (
           <StatusPill tone="success" label={tc('enabled')} />
         ) : (
           <StatusPill tone="neutral" label={t('delisted')} />
@@ -434,71 +520,104 @@ function ModelRowItem({
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell className="w-16 text-center">
         <RowActions label={tc('actions')}>
-          <DropdownMenuItem onClick={() => setDialog('bind')}>
-            <NetworkIcon /> {t('bindChannels')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setDialog('edit')}>
-            <PencilIcon /> {tc('edit')}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setDialog('test')}>
-            <FlaskConicalIcon /> {t('test')}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {model.status === 0 ? (
+          {deleted ? (
+            <DropdownMenuItem onClick={() => setDialog('undelete')}>
+              <RotateCcwIcon className="size-4" /> {t('undelete')}
+            </DropdownMenuItem>
+          ) : (
+            <>
+              <DropdownMenuItem onClick={() => setDialog('bind')}>
+                <NetworkIcon /> {t('bindChannels')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDialog('edit')}>
+                <PencilIcon /> {tc('edit')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setDialog('test')}>
+                <FlaskConicalIcon /> {t('test')}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {model.status === 0 ? (
+                <DropdownMenuItem onClick={() => setDialog('delist')}>
+                  <ArrowDownIcon className="size-4" /> {t('delist')}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => setDialog('restore')}>
+                  <RotateCcwIcon className="size-4" /> {t('restore')}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem variant="destructive" onClick={() => setDialog('delete')}>
+                <Trash2Icon /> {t('delete')}
+              </DropdownMenuItem>
+            </>
+          )}
+        </RowActions>
+        {/* 确认弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+        {deleted ? (
+          <ConfirmAction
+            open={dialog === 'undelete'}
+            onOpenChange={(open) => !open && setDialog(null)}
+            confirm={t('undeleteConfirm', { name: model.externalName })}
+            action={async () =>
+              (await import('@/server/models-actions')).undeleteModelAction(model.id)
+            }
+            success={t('undeleteSuccess')}
+            tone="default"
+          />
+        ) : (
+          <>
+            {model.status === 0 ? (
+              <ConfirmAction
+                open={dialog === 'delist'}
+                onOpenChange={(open) => !open && setDialog(null)}
+                confirm={t('delistConfirm', { name: model.externalName })}
+                action={async () =>
+                  (await import('@/server/models-actions')).delistModelAction(model.id)
+                }
+                success={t('delistSuccess')}
+                tone="default"
+              />
+            ) : (
+              <ConfirmAction
+                open={dialog === 'restore'}
+                onOpenChange={(open) => !open && setDialog(null)}
+                confirm={t('restoreConfirm', { name: model.externalName })}
+                action={async () =>
+                  (await import('@/server/models-actions')).restoreModelAction(model.id)
+                }
+                success={t('restoreSuccess')}
+                tone="default"
+              />
+            )}
             <ConfirmAction
-              confirm={t('delistConfirm', { name: model.externalName })}
+              open={dialog === 'delete'}
+              onOpenChange={(open) => !open && setDialog(null)}
+              confirm={t('deleteConfirm', { name: model.externalName })}
               action={async () =>
                 (await import('@/server/models-actions')).deleteModelAction(model.id)
               }
-              success={t('delistSuccess')}
-            >
-              {({ pending, onClick }) => (
-                <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
-                  {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-                  {t('delist')}
-                </DropdownMenuItem>
-              )}
-            </ConfirmAction>
-          ) : (
-            <ConfirmAction
-              confirm={t('restoreConfirm', { name: model.externalName })}
-              action={async () =>
-                (await import('@/server/models-actions')).restoreModelAction(model.id)
-              }
-              success={t('restoreSuccess')}
-            >
-              {({ pending, onClick }) => (
-                <DropdownMenuItem disabled={pending} onClick={onClick}>
-                  {pending ? (
-                    <Loader2Icon className="animate-spin" />
-                  ) : (
-                    <RotateCcwIcon className="size-4" />
-                  )}
-                  {t('restore')}
-                </DropdownMenuItem>
-              )}
-            </ConfirmAction>
-          )}
-        </RowActions>
-        <BindChannelsDialog
-          model={model}
-          channels={channels}
-          trigger={null}
-          open={dialog === 'bind'}
-          onOpenChange={(open) => !open && setDialog(null)}
-        />
-        <EditModelDialog
-          model={model}
-          trigger={null}
-          open={dialog === 'edit'}
-          onOpenChange={(open) => !open && setDialog(null)}
-        />
-        <TestModelDialog
-          model={model}
-          trigger={null}
-          open={dialog === 'test'}
-          onOpenChange={(open) => !open && setDialog(null)}
-        />
+              success={t('deleteSuccess')}
+            />
+            <BindChannelsDialog
+              model={model}
+              channels={channels}
+              trigger={null}
+              open={dialog === 'bind'}
+              onOpenChange={(open) => !open && setDialog(null)}
+            />
+            <EditModelDialog
+              model={model}
+              trigger={null}
+              open={dialog === 'edit'}
+              onOpenChange={(open) => !open && setDialog(null)}
+            />
+            <TestModelDialog
+              model={model}
+              trigger={null}
+              open={dialog === 'test'}
+              onOpenChange={(open) => !open && setDialog(null)}
+            />
+          </>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -596,7 +715,20 @@ export function CreateModelDialog() {
 type WithBillingConfig<V> = V & {
   billingConfig?: {
     strategy?: string;
-    params?: { selector?: string; prices?: Record<string, string> };
+    params?: {
+      selector?: string;
+      prices?: Record<string, string>;
+      windows?: Array<{
+        label?: string;
+        start: string;
+        end: string;
+        inputPrice?: string;
+        outputPrice?: string;
+        cacheInputPrice?: string;
+        cacheWritePrice?: string;
+        unitPrice?: string;
+      }>;
+    };
   };
 };
 
@@ -659,10 +791,9 @@ function EditModelDialog({
               ...(values.cacheWritePrice !== '' ? { cacheWritePrice: values.cacheWritePrice } : {}),
             }
           : { unitPrice: values.unitPrice }),
-        // 差价配置显式管理：勾选差价提交 variant，否则 null 清除（避免 DB 残留与界面不一致）
-        ...(tokenMode || values.billingConfig == null
-          ? { billingConfig: null }
-          : { billingConfig: values.billingConfig }),
+        // 差价/时段配置显式管理：表单带 billingConfig 提交（variant 或 schedule），
+        // 否则 null 清除（避免 DB 残留与界面不一致）——token 模式也可配分时段价
+        ...(values.billingConfig == null ? { billingConfig: null } : { billingConfig: values.billingConfig }),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
@@ -737,8 +868,15 @@ function ModelForm({
   onSubmit: (v: any) => void;
   formId: string;
   isEdit?: boolean;
-  /** 差价编辑器初始值（编辑回显——billingConfig 不走 RHF 字段） */
-  initialBillingConfig?: { params?: { selector?: string; prices?: Record<string, string> } };
+  /** 差价/时段编辑器初始值（编辑回显——billingConfig 不走 RHF 字段） */
+  initialBillingConfig?: {
+    strategy?: string;
+    params?: {
+      selector?: string;
+      prices?: Record<string, string>;
+      windows?: Array<Record<string, string>>;
+    };
+  };
 }) {
   const t = useTranslations('models');
   const tc = useTranslations('common');
@@ -759,10 +897,29 @@ function ModelForm({
   const [tiers, setTiers] = useState<TierRow[]>(() =>
     buildTiers(form.getValues('pricingUnit') ?? '', initialConfig),
   );
+  // 分时段编辑器（schedule 策略）：与参数差价互斥（billingConfig.strategy 单值）；
+  // 时段价覆盖全部计价方式（token 三元组 / 单位单价），未覆盖轴回落基价列。
+  const [scheduleOn, setScheduleOn] = useState(initialConfig?.strategy === 'schedule');
+  const [windows, setWindows] = useState<WindowRow[]>(() => buildWindows(initialConfig));
   return (
     <form
       id={formId}
       onSubmit={form.handleSubmit((values: any) => {
+        // 分时段（schedule）优先于参数差价（strategy 单值互斥）：启用即按窗口表提交
+        if (scheduleOn) {
+          if (windows.length === 0 || windows.some((w) => windowRowInvalid(w))) {
+            form.setError('root', { type: 'manual', message: t('windowsFillError') });
+            return;
+          }
+          onSubmit({
+            ...values,
+            billingConfig: {
+              strategy: 'schedule',
+              params: { windows: windows.map(toWindowPayload) },
+            },
+          });
+          return;
+        }
         // 差价档位 → variant billingConfig：勾选且填写完整的档位进价格表（预扣取最高价由计费域保证）
         const enabled = tiers.filter((tr) => tr.on);
         const active = enabled.filter((tr) => tr.value.trim() !== '' && tr.price.trim() !== '');
@@ -918,7 +1075,124 @@ function ModelForm({
             step="0.0001"
           />
         ) : null}
-        {unitMode ? (
+        {/* 分时段定价（schedule）：全部计价方式可用；启用时与参数差价互斥（strategy 单值） */}
+        {chosen ? (
+          <div className="space-y-3 rounded-md border p-4">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={scheduleOn}
+                onCheckedChange={(v) => {
+                  setScheduleOn(v === true);
+                  form.clearErrors('root');
+                }}
+              />
+              {t('scheduleTitle')}
+            </label>
+            <p className="text-xs text-muted-foreground">{t('scheduleHint')}</p>
+            {scheduleOn ? (
+              <div className="space-y-1.5">
+                {windows.map((row, i) => {
+                  const patch = (next: Partial<WindowRow>) =>
+                    setWindows((cur) => cur.map((r, j) => (j === i ? { ...r, ...next } : r)));
+                  return (
+                    <div key={i} className="space-y-2 rounded-md border border-input p-2.5">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={row.label}
+                          onChange={(e) => patch({ label: e.target.value })}
+                          placeholder={t('windowLabelPlaceholder')}
+                          className="h-8 w-32"
+                        />
+                        <Input
+                          value={row.start}
+                          onChange={(e) => patch({ start: e.target.value })}
+                          placeholder="18:00"
+                          className="h-8 w-24 font-mono"
+                          inputMode="numeric"
+                        />
+                        <span className="text-xs text-muted-foreground">→</span>
+                        <Input
+                          value={row.end}
+                          onChange={(e) => patch({ end: e.target.value })}
+                          placeholder="07:00"
+                          className="h-8 w-24 font-mono"
+                          inputMode="numeric"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto px-2 text-destructive hover:text-destructive"
+                          onClick={() => setWindows((cur) => cur.filter((_, j) => j !== i))}
+                        >
+                          {tc('remove')}
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {unitMode ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={row.unitPrice}
+                              onChange={(e) => patch({ unitPrice: e.target.value })}
+                              placeholder={t('unitPricePlaceholder')}
+                              className="h-8 w-36"
+                              inputMode="decimal"
+                            />
+                            <span className="w-14 text-xs text-muted-foreground">
+                              ¥/{unitWord(pricingUnit, locale)}
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <Input
+                              value={row.inputPrice}
+                              onChange={(e) => patch({ inputPrice: e.target.value })}
+                              placeholder={t('inputPrice')}
+                              className="h-8 w-32"
+                              inputMode="decimal"
+                            />
+                            <Input
+                              value={row.outputPrice}
+                              onChange={(e) => patch({ outputPrice: e.target.value })}
+                              placeholder={t('outputPrice')}
+                              className="h-8 w-32"
+                              inputMode="decimal"
+                            />
+                            <Input
+                              value={row.cacheInputPrice}
+                              onChange={(e) => patch({ cacheInputPrice: e.target.value })}
+                              placeholder={t('cachePrice')}
+                              className="h-8 w-32"
+                              inputMode="decimal"
+                            />
+                          </>
+                        )}
+                        <span className="text-xs text-muted-foreground">{t('windowPriceHint')}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setWindows((cur) => [...cur, { ...EMPTY_WINDOW_ROW }])}
+                >
+                  {t('addWindow')}
+                </Button>
+                {form.formState.errors.root ? (
+                  <p className="text-sm text-destructive">
+                    {(form.formState.errors.root as { message?: string }).message ??
+                      t('windowsFillError')}
+                  </p>
+                ) : null}
+                <p className="text-xs text-muted-foreground">{t('windowsHint')}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {/* 参数差价（variant）：仅单位计价；分时段启用时互斥隐藏 */}
+        {unitMode && !scheduleOn ? (
           <div className="space-y-3 rounded-md border p-4">
             <div>
               <p className="text-sm font-medium">{t('tiersTitle')}</p>

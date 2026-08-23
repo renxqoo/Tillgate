@@ -4,7 +4,14 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ToggleGroup, ToggleGroupItem, type ChartConfig } from '@tokenlens/ui';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ToggleGroup,
+  ToggleGroupItem,
+  type ChartConfig,
+} from '@tokenlens/ui';
 import type { UsageByModelItem } from '@tokenlens/api-client';
 
 import { formatMoney } from '@/features/shared/format';
@@ -44,7 +51,8 @@ export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageBy
     if (metric === 'cost') return Number(it.cost) || 0;
     if (metric === 'tokens') return it.inputTokens + it.outputTokens;
     // 缓存率 = 缓存命中 token / 输入 token（聚合后的总比例）
-    if (metric === 'cacheRate') return it.inputTokens > 0 ? it.cachedInputTokens / it.inputTokens : 0;
+    if (metric === 'cacheRate')
+      return it.inputTokens > 0 ? it.cachedInputTokens / it.inputTokens : 0;
     return it.requests;
   };
   // 按当前度量降序后取 Top 10，避免模型过多时条形挤压
@@ -80,7 +88,11 @@ export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageBy
         className="aspect-auto w-full"
         style={{ height: chartHeight }}
       >
-        <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+        <BarChart
+          data={chartData}
+          layout="vertical"
+          margin={{ left: 8, right: 16, top: 4, bottom: 4 }}
+        >
           <CartesianGrid horizontal={false} strokeOpacity={0.15} />
           <XAxis
             type="number"

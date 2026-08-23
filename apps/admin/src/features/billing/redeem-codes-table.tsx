@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import {
   DropdownMenuItem,
   RowActions,
@@ -12,7 +14,7 @@ import {
 } from '@tokenlens/ui';
 import { defineStatusMeta } from '@/components/status-pill';
 import { StatusPill } from '@/components/status-pill';
-import { Loader2Icon, ShieldBanIcon } from 'lucide-react';
+import { ShieldBanIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import type { RedeemCodeRow } from '@tokenlens/api-client';
@@ -63,6 +65,7 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
   const tc = useTranslations('common');
   const meta = STATUS_LABEL.get(code.status);
   const revocable = code.status === 0;
+  const [revokeOpen, setRevokeOpen] = useState(false);
 
   return (
     <TableRow>
@@ -78,26 +81,26 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
       <TableCell className="text-xs text-muted-foreground">{fmtDateTime(code.expiresAt)}</TableCell>
       <TableCell className="w-16 text-center">
         <RowActions label={tc('actions')}>
-          <ConfirmAction
-            confirm={t('revokeConfirm', { id: code.id })}
-            action={async () =>
-              (await import('@/server/redeem-batches-actions')).revokeCodeAction(code.id)
-            }
-            success={t('statusRevoked')}
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={!revocable}
+            onClick={() => setRevokeOpen(true)}
+            title={revocable ? t('revoke') : t('notRevocable')}
           >
-            {({ pending, onClick }) => (
-              <DropdownMenuItem
-                variant="destructive"
-                disabled={pending || !revocable}
-                onClick={onClick}
-                title={revocable ? t('revoke') : t('notRevocable')}
-              >
-                {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
-                {t('revoke')}
-              </DropdownMenuItem>
-            )}
-          </ConfirmAction>
+            <ShieldBanIcon />
+            {t('revoke')}
+          </DropdownMenuItem>
         </RowActions>
+        {/* 弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+        <ConfirmAction
+          open={revokeOpen}
+          onOpenChange={setRevokeOpen}
+          confirm={t('revokeConfirm', { id: code.id })}
+          action={async () =>
+            (await import('@/server/redeem-batches-actions')).revokeCodeAction(code.id)
+          }
+          success={t('statusRevoked')}
+        />
       </TableCell>
     </TableRow>
   );

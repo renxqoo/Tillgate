@@ -40,6 +40,7 @@ import { channelFundsRoutes } from './http/routes/channel-funds';
 import { modelsRoutes } from './http/routes/models';
 import { rateCardsRoutes } from './http/routes/rate-cards';
 import { fxRoutes } from './http/routes/fx';
+import { settingsRoutes } from './http/routes/settings';
 import { catalogRoutes } from './http/routes/catalog';
 import { subscriptionsRoutes } from './http/routes/subscriptions';
 import { plansRoutes } from './http/routes/plans';
@@ -105,7 +106,7 @@ export interface AdminAppDeps {
   /** P4:手动关单 failureReason 留痕文案（审计数据,装配层显式持有——铁律 3） */
   orderCloseReason: string;
   /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装） */
-  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions'>;
+  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
   /** P2:爆破双闸（runtime Redis 守卫产物） */
   authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** P2:信任代理跳数（守卫键的 IP 提取） */
@@ -220,6 +221,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, session));
   app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, session));
   app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, session));
+  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, session));
   app.route(
     '/',
     catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }, session),

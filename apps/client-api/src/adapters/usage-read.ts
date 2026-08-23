@@ -4,7 +4,7 @@
  * 语义对齐 v1：明细 id 倒序 + 名称富化；按模型聚合默认 30 天窗、按消费额排序；
  * 按日汇总为 CLIENT_USAGE_TZ 日界；实时速率为 60s 窗 rpm/tpm。
  */
-import { and, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
 import { apiKeys, apps, modelMappings, usageLogs, type Db } from '@tokenlens/db';
 import type { UsageByModelRow, UsageDayRow, UsageWireRow } from '../http/contracts/usage.js';
 
@@ -72,7 +72,14 @@ export function createUsageRead(db: Db, timezone: string): UsageRead {
         .from(usageLogs)
         .leftJoin(apiKeys, eq(usageLogs.apiKeyId, apiKeys.id))
         .leftJoin(apps, eq(usageLogs.appId, apps.id))
-        .leftJoin(modelMappings, eq(usageLogs.externalModel, modelMappings.externalName))
+        // 仅在册行：外部名对在册记录唯一（部分唯一索引），排除已删除行避免同名 join 用量翻倍
+        .leftJoin(
+          modelMappings,
+          and(
+            eq(usageLogs.externalModel, modelMappings.externalName),
+            isNull(modelMappings.deletedAt),
+          ),
+        )
         .where(where)
         .orderBy(desc(usageLogs.id))
         .limit(q.limit)

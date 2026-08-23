@@ -105,7 +105,7 @@ export function RegisterForm({
 
   if (challenge) {
     return (
-      <Card className="shadow-sm">
+      <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-xl">{t('codeTitle')}</CardTitle>
           <CardDescription>{t('codeSentRegister')}</CardDescription>
@@ -135,7 +135,7 @@ export function RegisterForm({
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     maxLength={6}
-                    placeholder="123456"
+                    placeholder={t('codePlaceholder')}
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     autoFocus
@@ -165,7 +165,7 @@ export function RegisterForm({
   }
 
   return (
-    <Card className="shadow-sm">
+    <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
       <CardHeader className="text-center">
         <CardTitle className="text-xl">{t('registerTitle')}</CardTitle>
         <CardDescription>{t('registerDesc')}</CardDescription>

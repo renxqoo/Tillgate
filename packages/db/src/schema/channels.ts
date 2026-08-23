@@ -58,13 +58,21 @@ export const channels = pgTable(
     upstreamReserved: numeric('upstream_reserved', { precision: 38, scale: 18 })
       .notNull()
       .default('0'),
+    /**
+     * 记录面逻辑删除（回收站）：NULL = 在册；非空 = 已删除（历史绑定/资金流水/FK 引用
+     * 保留可追溯）。删除同时强制 status=1；恢复记录回禁用态。渠道名唯一约束为部分索引
+     * ——已删除记录不占用渠道名，可重建同名渠道。
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('channels_provider_id_idx').on(t.providerId),
-    // 渠道名全局唯一（导入查重按 name，并发导入不得产生同名双渠道——A8 结构化收口）
-    uniqueIndex('channels_name_uq').on(t.name),
+    // 渠道名唯一（仅约束在册记录——导入查重按 name，逻辑删除后名称释放可复用；A8 结构化收口）
+    uniqueIndex('channels_name_uq')
+      .on(t.name)
+      .where(sql`deleted_at IS NULL`),
     // 渠道在途敞口非负（R4）：释放路径带 >= 守卫的原子扣减，DB 兜底禁止穿透为负。
     // 注：不加 upstream_reserved <= upstream_budget 的 CHECK——管理端允许调低 budget，
     // 该场景由 reserveChannel 的守卫 UPDATE 拦截新预留，不构成结构不变量。

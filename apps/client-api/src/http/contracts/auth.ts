@@ -30,3 +30,14 @@ export const passwordSchema = z.object({
   oldPassword: z.string().min(1).max(128),
   newPassword: z.string().min(1).max(128),
 });
+
+/** 找回密码第一步:仅邮箱(存在性不泄漏——响应恒 {ok:true}) */
+export const forgotSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(255),
+});
+
+/** 找回密码第二步:一次性链接令牌 + 新密码(策略在 identity 单源校验) */
+export const forgotResetSchema = z.object({
+  token: z.string().min(20).max(128),
+  password: z.string().min(1).max(128),
+});

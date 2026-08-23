@@ -1,7 +1,14 @@
 import { SettingsIcon, ShieldCheckIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@tokenlens/ui';
 
 import { DisplayNameDialog } from '@/features/settings/display-name-dialog';
 import { PasswordDialog } from '@/features/settings/password-dialog';

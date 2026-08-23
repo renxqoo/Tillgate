@@ -187,9 +187,11 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
       expect((await call(w(), path, { method })).status, path).toBe(200);
     }
 
-    // 退役后列表不再启用态（v1 providers 断言:soft retire → status 1）
-    const afterRetire = await call(w(), `/v1/providers?q=e2e-p-${stamp}`);
-    expect((afterRetire.body.rows as Array<{ status: number }>)[0]!.status).toBe(1);
+    // 删除（逻辑删除）后：默认列表不可见，回收站可见且 status 压 1
+    const afterDelete = await call(w(), `/v1/providers?q=e2e-p-${stamp}`);
+    expect((afterDelete.body.rows as unknown[]).length).toBe(0);
+    const recycled = await call(w(), `/v1/providers?q=e2e-p-${stamp}&view=deleted`);
+    expect((recycled.body.rows as Array<{ status: number }>)[0]!.status).toBe(1);
   });
 
   it('channels 换 Key 复位 + 列表富化;models 改价与列表 channelIds 回显', async () => {

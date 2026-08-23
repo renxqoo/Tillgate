@@ -1,14 +1,20 @@
 /**
- * providers 供应商 postgres 适配器（v1 provider.repo 等价迁移）：
- * 管理面 CRUD + 统一列表。重名交给 PG 唯一索引（23505 由 application 翻译冲突）；
- * 删除 = 软退役（status=1），历史渠道引用不受影响。
+ * providers 供应商 postgres 适配器（v1 provider.repo 等价迁移 + 逻辑删除回收站）：
+ * 管理面 CRUD + 统一列表。重名交给 PG 部分唯一索引（23505 由 application 翻译冲突
+ * ——已删除行不占名）；禁用 = status=1；删除 = 逻辑删除（status=1 + deleted_at，
+ * 历史渠道 FK 引用不受影响），已删除行对管理面读/改不可见。
  */
-import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { DbLike } from '@tokenlens/db';
 import { providers } from '@tokenlens/db';
 import type { ProviderPatchInput } from '../../domain/provider/provider';
-import type { ListQuery, ListResult } from '../../domain/list';
-import type { ProviderRecord, ProviderStore, ProviderSortField } from '../../ports/provider-store';
+import type { ListResult } from '../../domain/list';
+import type {
+  ProviderRecord,
+  ProviderStore,
+  ProviderSortField,
+  ProviderListQuery,
+} from '../../ports/provider-store';
 import { escapeLikePattern } from './search';
 
 const PROVIDER_COLUMNS = {
@@ -18,6 +24,7 @@ const PROVIDER_COLUMNS = {
   vendor: providers.vendor,
   baseUrl: providers.baseUrl,
   status: providers.status,
+  deletedAt: providers.deletedAt,
   createdAt: providers.createdAt,
 } as const;
 
@@ -54,12 +61,15 @@ export const postgresProviderStore: ProviderStore = {
     const [row] = await db
       .select(PROVIDER_COLUMNS)
       .from(providers)
-      .where(eq(providers.id, providerId));
+      .where(and(eq(providers.id, providerId), isNull(providers.deletedAt)));
     return (row as ProviderRecord) ?? null;
   },
 
   async findByName(db: DbLike, name: string) {
-    const [row] = await db.select(PROVIDER_COLUMNS).from(providers).where(eq(providers.name, name));
+    const [row] = await db
+      .select(PROVIDER_COLUMNS)
+      .from(providers)
+      .where(and(eq(providers.name, name), isNull(providers.deletedAt)));
     return (row as ProviderRecord) ?? null;
   },
 
@@ -67,7 +77,8 @@ export const postgresProviderStore: ProviderStore = {
     const rows = await db
       .update(providers)
       .set(input.patch)
-      .where(eq(providers.id, input.providerId))
+      // 已删除记录不可编辑（回收站行只读——恢复走 restore）
+      .where(and(eq(providers.id, input.providerId), isNull(providers.deletedAt)))
       .returning(PROVIDER_COLUMNS);
     return (rows[0] as ProviderRecord) ?? null;
   },
@@ -76,18 +87,44 @@ export const postgresProviderStore: ProviderStore = {
     const rows = await db
       .update(providers)
       .set({ status: 1 })
-      .where(eq(providers.id, input.providerId))
+      .where(and(eq(providers.id, input.providerId), isNull(providers.deletedAt)))
       .returning({ id: providers.id });
     return rows.length > 0;
   },
 
-  async list(db: DbLike, query: ListQuery<ProviderSortField>): Promise<ListResult<ProviderRecord>> {
+  async softDelete(db: DbLike, input: { providerId: number }) {
+    const rows = await db
+      .update(providers)
+      // status 同步压 1：服务面 status=0 语义不再出现在已删除行
+      .set({ status: 1, deletedAt: new Date() })
+      .where(and(eq(providers.id, input.providerId), isNull(providers.deletedAt)))
+      .returning({ id: providers.id });
+    return rows.length > 0;
+  },
+
+  async restore(db: DbLike, input: { providerId: number }) {
+    const rows = await db
+      .update(providers)
+      // 回禁用态：不直接启用——复核后由管理员显式启用
+      .set({ deletedAt: null, status: 1 })
+      .where(and(eq(providers.id, input.providerId), isNotNull(providers.deletedAt)))
+      .returning({ id: providers.id });
+    return rows.length > 0;
+  },
+
+  async list(db: DbLike, query: ProviderListQuery): Promise<ListResult<ProviderRecord>> {
+    // 视图：active（缺省）= 在册（不含已删除）；deleted = 回收站（仅已删除）
+    const viewWhere =
+      query.view === 'deleted' ? isNotNull(providers.deletedAt) : isNull(providers.deletedAt);
     const where = query.q
-      ? or(
-          ilike(providers.name, escapeLikePattern(query.q)),
-          ilike(providers.baseUrl, escapeLikePattern(query.q)),
+      ? and(
+          viewWhere,
+          or(
+            ilike(providers.name, escapeLikePattern(query.q)),
+            ilike(providers.baseUrl, escapeLikePattern(query.q)),
+          ),
         )
-      : undefined;
+      : viewWhere;
     const [rows, countRows] = await Promise.all([
       db
         .select(PROVIDER_COLUMNS)

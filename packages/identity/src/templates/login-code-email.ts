@@ -20,24 +20,24 @@ export interface LoginCodeEmailContext {
   readonly maxAttempts: number;
 }
 
-const STYLE = {
-  pageBg: 'background:#f4f5f7;',
-  card: 'background:#ffffff;border-radius:12px;overflow:hidden;max-width:420px;',
-  header: 'background:#4f46e5;padding:22px 28px;',
-  headerTitle: 'color:#ffffff;font-size:17px;font-weight:600;letter-spacing:1px;margin:0;',
-  headerSub: 'color:#c7d2fe;font-size:11px;margin:4px 0 0;',
-  body: 'padding:28px;',
-  h1: 'color:#111827;font-size:16px;font-weight:600;margin:0 0 10px;',
-  p: 'color:#374151;font-size:13px;line-height:1.7;margin:0 0 14px;',
-  codeBox:
-    'background:#eef2ff;border:1px solid #c7d2fe;border-radius:10px;padding:18px 0;text-align:center;margin:0 0 16px;',
-  code: "color:#4338ca;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:10px;margin:0;text-indent:10px;",
-  note: 'background:#f9fafb;border-left:3px solid #4f46e5;border-radius:0 8px 8px 0;padding:10px 14px;margin:0 0 14px;',
-  noteP: 'color:#4b5563;font-size:12px;line-height:1.7;margin:0;',
-  warn: 'color:#b45309;font-size:12px;line-height:1.7;margin:0 0 14px;',
-  footer: 'background:#f9fafb;padding:16px 28px;border-top:1px solid #eef0f3;',
-  footerP: 'color:#9ca3af;font-size:11px;line-height:1.8;margin:0;',
+/** 邮件基础样式单源(极简白卡口径,与 password-reset-email 共用):
+ * 白底卡片 + 浅灰细边框 + 圆角 12px,黑色粗体品牌名置顶,正文 16px 深灰,
+ * 验证码 32px 加粗等宽,链接仅下划线强调;table + 全内联保邮件客户端兼容。 */
+export const MAIL_BASE_STYLE = {
+  pageBg: 'background:#ffffff;',
+  card: 'background:#ffffff;border:1px solid #f0f0f0;border-radius:12px;max-width:480px;width:100%;',
+  body: 'padding:40px 44px;',
+  logo: 'color:#000000;font-size:24px;font-weight:700;letter-spacing:-0.5px;margin:0 0 28px;',
+  p: 'color:#333333;font-size:16px;font-weight:400;line-height:1.5;margin:0 0 14px;',
+  code: "color:#333333;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:32px;font-weight:700;letter-spacing:-0.5px;margin:16px 0;",
+  link: 'color:#333333;text-decoration:underline;',
+  sign: 'color:#333333;font-size:16px;line-height:1.5;margin:0;',
+  sub: 'color:#9ca3af;font-size:11px;line-height:1.8;margin:8px 0 0;',
 } as const;
+
+/** 邮件正文字体族(卡片与 body 共用) */
+export const MAIL_FONT_FAMILY =
+  "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;";
 
 /** 渲染验证码邮件(subject + text + html);时间格式化由 now 注入(可测) */
 export function renderLoginCodeEmail(
@@ -90,30 +90,22 @@ export function renderLoginCodeEmail(
 
   const html = `<!DOCTYPE html>
 <html lang="${en ? 'en' : 'zh-CN'}">
-<body style="margin:0;padding:0;${STYLE.pageBg}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="${STYLE.pageBg}padding:28px 12px;">
+<body style="margin:0;padding:0;${MAIL_BASE_STYLE.pageBg}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="${MAIL_BASE_STYLE.pageBg}padding:32px 16px;">
 <tr><td align="center">
-<table role="presentation" cellpadding="0" cellspacing="0" style="${STYLE.card}font-family:-apple-system,'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;">
+<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="${MAIL_BASE_STYLE.card}${MAIL_FONT_FAMILY}">
+<tr><td style="${MAIL_BASE_STYLE.body}">
 
-<tr><td style="${STYLE.header}">
-  <p style="${STYLE.headerTitle}">${brand}</p>
-  <p style="${STYLE.headerSub}">${brandSub}</p>
+<p style="${MAIL_BASE_STYLE.logo}">${brand}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? 'Hi there,' : '你好,'}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to complete the verification:` : `你正在登录${brand},请使用以下验证码完成验证:`}</p>
+<p style="${MAIL_BASE_STYLE.code}">${code}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? `The code is valid for <strong>${ttlMinutes} minutes</strong>; <strong>${maxAttempts}</strong> failed attempts invalidate it.` : `验证码 <strong>${ttlMinutes} 分钟内</strong>有效,连续输错 <strong>${maxAttempts} 次</strong>将作废。`}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? 'If this was not you, <a href="mailto:support@tokenlens.com" style="' + MAIL_BASE_STYLE.link + '">contact support</a> or change your password immediately.' : '若非你本人操作,请 <a href="mailto:support@tokenlens.com" style="' + MAIL_BASE_STYLE.link + '">联系支持</a>或立即修改密码。'}</p>
+<p style="${MAIL_BASE_STYLE.sign}">${en ? 'Best,' : '顺祝,'}<br/>${brand} ${en ? 'Team' : '团队'}</p>
+<p style="${MAIL_BASE_STYLE.sub}">${brandSub} · ${en ? `Source IP: ${ctx.ip} · Sent at: ${sentAt} · Do not reply` : `来源 IP:${ctx.ip} · 发送时间:${sentAt} · 请勿回复`}</p>
+
 </td></tr>
-
-<tr><td style="${STYLE.body}">
-  <p style="${STYLE.h1}">${en ? 'Login verification code' : '登录验证码'}</p>
-  <p style="${STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to continue:` : `你正在登录${brand},请使用以下验证码完成验证:`}</p>
-  <div style="${STYLE.codeBox}"><p style="${STYLE.code}">${code}</p></div>
-  <div style="${STYLE.note}">
-    <p style="${STYLE.noteP}">${en ? `The code is valid for <strong>${ttlMinutes} minutes</strong>; <strong>${maxAttempts}</strong> failed attempts invalidate it.` : `验证码 <strong>${ttlMinutes} 分钟内</strong>有效,连续输错 <strong>${maxAttempts} 次</strong>将作废。`}</p>
-  </div>
-  <p style="${STYLE.warn}">${en ? '⚠ If this was not you, change your password immediately.' : '⚠ 若非你本人操作,请立即修改密码。'}</p>
-</td></tr>
-
-<tr><td style="${STYLE.footer}">
-  <p style="${STYLE.footerP}">${en ? `Source IP: ${ctx.ip}<br/>Sent at: ${sentAt}<br/>This email was sent automatically. Do not reply.` : `来源 IP:${ctx.ip}<br/>发送时间:${sentAt}<br/>此邮件由系统自动发送,请勿回复。`}</p>
-</td></tr>
-
 </table>
 </td></tr>
 </table>

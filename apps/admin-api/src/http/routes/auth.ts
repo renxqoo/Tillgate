@@ -14,7 +14,12 @@ import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { isBusinessError } from '@tokenlens/errors';
 import { sha256Hex } from '@tokenlens/billing';
-import { socketAddressFromContext, trustedClientIp, parseAcceptLanguage } from '@tokenlens/http';
+import {
+  jsonBody,
+  socketAddressFromContext,
+  trustedClientIp,
+  parseAcceptLanguage,
+} from '@tokenlens/http';
 import type { Identity } from '@tokenlens/identity';
 import type { ControlPlane } from '@tokenlens/control-plane';
 import { AdminErrors } from '../error-face';
@@ -30,7 +35,7 @@ export interface AuthGuard {
 }
 
 export interface AuthRoutesDeps {
-  readonly identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions'>;
+  readonly identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
   readonly admins: Pick<ControlPlane['admins'], 'findByEmail' | 'find' | 'touchLastLogin'>;
   readonly guards: { emailIp: AuthGuard; ip: AuthGuard };
   /** 登录三审计（后置旁路,失败不阻断——v1 recordAudit best-effort 语义） */
@@ -69,13 +74,15 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
     }
   };
 
-  app.post('/v1/auth/logout', session, async (c) => {
-    await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
-    return c.json({ ok: true });
-  });
-  app.post('/v1/auth/login', async (c) => {
-    const body = authContracts.login.parse(await c.req.json());
-    const ip = clientIpOf(c);
+  /** 凭证鉴别共享段（login 与 login/totp 同口径）:守卫闸 → 密码 → 资料漂移 →
+   *  状态 → 成功清零计数;失败计双闸 + 审计。返回 adminId,拒绝路径统一抛业务错 */
+  const authenticateCredentials = async (
+    body: { email: string; password: string },
+    ip: string,
+  ): Promise<{
+    adminId: number;
+    account: NonNullable<Awaited<ReturnType<AuthRoutesDeps['admins']['findByEmail']>>>;
+  }> => {
     const guardKey = sha256Hex(`${body.email}:${ip}`);
 
     // 守卫不可达 fail-closed（Redis 必配,P2 起）
@@ -131,11 +138,31 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
 
     await Promise.allSettled([
       deps.guards.emailIp.recordSuccess?.(guardKey) ?? Promise.resolve(),
-      deps.guards.ip.recordSuccess?.(ip) ?? Promise.resolve(),
+      ...(deps.guards.ip.recordSuccess != null ? [deps.guards.ip.recordSuccess(ip)] : []),
     ]);
+    return { adminId, account };
+  };
+
+  app.post('/v1/auth/logout', session, async (c) => {
+    await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
+    return c.json({ ok: true });
+  });
+  app.post('/v1/auth/login', async (c) => {
+    const body = authContracts.login.parse(await c.req.json());
+    const ip = clientIpOf(c);
+    const { adminId, account } = await authenticateCredentials(body, ip);
+
+    // 第二因子择路:TOTP 绑定即接管(不退回邮箱码——防降级);否则邮箱码(旧形态)
+    const totp = await deps.identity.mfa.status({ userId: adminId });
+    if (totp.confirmed) {
+      await deps
+        .loginAudit({ action: 'auth.login.2fa_challenge', adminId, ip, twoFactor: true })
+        .catch(() => undefined);
+      return c.json({ twoFactorRequired: true, method: 'totp' });
+    }
 
     // 2FA：密码对不签会话,发码走第二步
-    if (account.twoFactorEnabled) {
+    if (account?.twoFactorEnabled) {
       requireMailer();
       const { challengeId } = await deps.identity.challenges.begin({
         kind: 'admin_login_code',
@@ -156,11 +183,48 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
           ip,
         })
         .catch(() => undefined);
-      return c.json({ twoFactorRequired: true, challengeId });
+      return c.json({ twoFactorRequired: true, method: 'email', challengeId });
     }
 
     await deps.admins.touchLastLogin(adminId);
     await deps.loginAudit({ action: 'auth.login.success', adminId, ip }).catch(() => undefined);
+    return c.json({
+      token: await deps.identity.sessions.sign({
+        realm: 'admin',
+        subjectId: adminId,
+        ttlSec: deps.sessionTtlSec,
+      }),
+      adminId,
+    });
+  });
+
+  // TOTP 第二步:无挑战行(验证无状态、防重放在 identity lastUsedStep CAS)——
+  // 重验凭证(守卫/密码/状态同一口径,失败同样计数)+ 验证器/恢复码
+  app.post('/v1/auth/login/totp', jsonBody(authContracts.loginTotp), async (c) => {
+    const body = c.req.valid('json');
+    const ip = clientIpOf(c);
+    const { adminId } = await authenticateCredentials(body, ip);
+    const totp = await deps.identity.mfa.status({ userId: adminId });
+    if (!totp.confirmed) {
+      // 未绑定却走 TOTP 端点 = 状态漂移(绑定后解绑的两步窗口),按凭据不存在口径
+      throw AdminErrors.business('invalid_credentials_admin', {});
+    }
+    try {
+      await deps.identity.mfa.verify({ userId: adminId, code: body.code });
+    } catch (error) {
+      if (!isBusinessError(error)) throw error;
+      // 码错同计失败闸(6 位码空间小,必须限速爆破)
+      const guardKey = sha256Hex(`${body.email}:${ip}`);
+      await Promise.allSettled([
+        deps.guards.emailIp.recordFailure(guardKey),
+        deps.guards.ip.recordFailure(ip),
+      ]);
+      throw error;
+    }
+    await deps.admins.touchLastLogin(adminId);
+    await deps
+      .loginAudit({ action: 'auth.login.success', adminId, ip, twoFactor: true })
+      .catch(() => undefined);
     return c.json({
       token: await deps.identity.sessions.sign({
         realm: 'admin',

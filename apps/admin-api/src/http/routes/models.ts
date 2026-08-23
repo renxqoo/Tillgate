@@ -1,6 +1,7 @@
 /**
- * 模型映射路由（v1 routes/models.ts 平移）：列表（channelIds 回显）/创建/更新/
- * 软下架/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
+ * 模型映射路由（v1 routes/models.ts 平移 + 逻辑删除回收站）：
+ * 列表（channelIds 回显 / view=deleted 回收站）/创建/更新（含上下架 status）/
+ * 逻辑删除/恢复记录/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -21,12 +22,15 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
 
   app.get('/v1/models', session, async (c) => {
     const query = parseListQuery(c.req.query(), MODEL_SORTS, 'createdAt');
+    // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
+    const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
     const result = await models.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'externalName' | 'realModel' | 'status' | 'createdAt',
       order: query.order,
       limit: query.limit,
       offset: query.offset,
+      ...(view !== undefined ? { view } : {}),
     });
     const rows = result.rows.map((row) =>
       toModelWireRow(row, (row as { channelIds?: number[] }).channelIds ?? []),
@@ -103,7 +107,13 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
 
   app.delete('/v1/models/:id', session, async (c) => {
     const id = idParam(c.req.param('id'));
-    return c.json(await models.retire({ ctx: controlContextOf(c), mappingId: id }));
+    return c.json(await models.delete({ ctx: controlContextOf(c), mappingId: id }));
+  });
+
+  /** 恢复已删除记录（回收站取出，回下架态）；在册行调用 → 404 */
+  app.post('/v1/models/:id/restore', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await models.undelete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   app.post('/v1/models/:id/channels', session, async (c) => {

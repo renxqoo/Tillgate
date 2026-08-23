@@ -10,7 +10,11 @@ export function todayKey(timeZone: string, now: Date = new Date()): string {
 }
 
 /** 按日汇总行中「今天」那一行的费用（无行/无值 → 0） */
-export function todayCost(rows: readonly UsageDayRow[], timeZone: string, now: Date = new Date()): number {
+export function todayCost(
+  rows: readonly UsageDayRow[],
+  timeZone: string,
+  now: Date = new Date(),
+): number {
   const key = todayKey(timeZone, now);
   return Number(rows.find((row) => row.date === key)?.cost ?? 0) || 0;
 }

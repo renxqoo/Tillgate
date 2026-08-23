@@ -1,11 +1,6 @@
 'use client';
 
-import {
-  Controller,
-  type Control,
-  type FieldPath,
-  type FieldValues,
-} from 'react-hook-form';
+import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 
 import { Field, FieldError, FieldLabel, Input } from '@tokenlens/ui';
 

@@ -50,6 +50,15 @@ const RAW_MODELS_DEV = {
       },
     },
   },
+  openai: {
+    models: {
+      'gpt-4o': {
+        name: 'GPT-4o',
+        limit: { context: 128_000 },
+        cost: { input: 2.5, output: 10 },
+      },
+    },
+  },
 };
 
 function mockSource(overrides: Partial<CatalogSource> = {}): CatalogSource {
@@ -408,10 +417,52 @@ describe('channel 导入（find-or-create + 单事务语义）', () => {
   });
 });
 
-describe('reference 导入（models.dev 草稿）', () => {
-  it('草稿态 status=1、不建渠道、重复 skip、审计 import_draft', async () => {
+describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑定）', () => {
+  it('草稿 status=1 + 按 provider 前缀建对应渠道（骨架占位 Key/基址）并绑定；同批同 provider 复用', async () => {
     const s = setup([mockReferenceSource()]);
-    const first = await importCatalog(s.importDeps, {
+    const result = await importCatalog(s.importDeps, {
+      ctx: adminCtx(),
+      sourceId: 'mock-ref',
+      models: [
+        {
+          externalName: 'claude-sonnet-4',
+          realModel: 'anthropic/claude-sonnet-4',
+          inputPrice: '21.6',
+          outputPrice: '108',
+          cacheInputPrice: '2.16',
+          cacheWritePrice: '0',
+        },
+        {
+          externalName: 'gpt-4o',
+          realModel: 'openai/gpt-4o',
+          inputPrice: '18',
+          outputPrice: '72',
+          cacheInputPrice: '0',
+          cacheWritePrice: '0',
+        },
+      ],
+    });
+    expect(result).toMatchObject({ created: 2, channelId: null, providerId: null });
+    const claude = [...s.models.rows.values()].find((m) => m.externalName === 'claude-sonnet-4')!;
+    expect(claude.status).toBe(1); // 草稿
+    // 两个 provider 各建一条对应渠道（provider 同名 find-or-create）
+    expect([...s.channels.rows.values()].map((c) => c.name).toSorted()).toEqual([
+      'anthropic',
+      'openai',
+    ]);
+    const anthropicChannel = [...s.channels.rows.values()].find((c) => c.name === 'anthropic')!;
+    expect(anthropicChannel.rpmLimit).toBe(60);
+    expect(anthropicChannel.upstreamBudget).toBe('100');
+    expect(fakeCipher.decrypt(anthropicChannel.apiKeyEnc)).toBe('no-key-required'); // 占位 Key
+    expect(claude.bindings.map((b) => b.channelId)).toEqual([anthropicChannel.id]);
+    const provider = [...s.providers.rows.values()].find((p) => p.name === 'anthropic')!;
+    expect(provider.baseUrl).toBe('https://placeholder.invalid'); // 非路由占位基址
+    expect(s.audit.entries.map((e) => e.action)).toContain('model_catalog.import_draft');
+  });
+
+  it('重复导入：改价跳过 + 绑定幂等；同 provider 第二个模型复用既有渠道不新建', async () => {
+    const s = setup([mockReferenceSource()]);
+    await importCatalog(s.importDeps, {
       ctx: adminCtx(),
       sourceId: 'mock-ref',
       models: [
@@ -425,10 +476,6 @@ describe('reference 导入（models.dev 草稿）', () => {
         },
       ],
     });
-    expect(first).toMatchObject({ created: 1, channelId: null, providerId: null });
-    const mapping = [...s.models.rows.values()][0]!;
-    expect(mapping.status).toBe(1); // 草稿
-    expect(s.channels.rows.size).toBe(0); // 不建渠道
     const second = await importCatalog(s.importDeps, {
       ctx: adminCtx(),
       sourceId: 'mock-ref',
@@ -441,11 +488,88 @@ describe('reference 导入（models.dev 草稿）', () => {
           cacheInputPrice: '0',
           cacheWritePrice: '0',
         },
+        {
+          externalName: 'claude-sonnet-4.5',
+          realModel: 'anthropic/claude-sonnet-4.5',
+          inputPrice: '30',
+          outputPrice: '120',
+          cacheInputPrice: '0',
+          cacheWritePrice: '0',
+        },
       ],
     });
-    expect(second).toMatchObject({ created: 0, skipped: 1 });
+    expect(second).toMatchObject({ created: 1, skipped: 1 });
     expect([...s.models.rows.values()][0]!.inputPrice).toBe('21.6'); // 已存在跳过不覆盖
-    expect(s.audit.entries.map((e) => e.action)).toContain('model_catalog.import_draft');
+    // 仍只有一条 anthropic 渠道；两个映射都绑在它上面
+    const anthropicChannels = [...s.channels.rows.values()].filter((c) => c.name === 'anthropic');
+    expect(anthropicChannels).toHaveLength(1);
+    for (const mapping of s.models.rows.values()) {
+      expect(mapping.bindings.map((b) => b.channelId)).toEqual([anthropicChannels[0]!.id]);
+    }
+  });
+
+  it('存在同名对应渠道 → 复用不创建（真实 Key 不覆盖，也不建同名 provider）', async () => {
+    const s = setup([mockReferenceSource()]);
+    const real = await s.channels.store.insertChannel(s.db, {
+      providerId: 1,
+      name: 'anthropic',
+      apiKeyEnc: fakeCipher.encrypt('sk-real-admin-key'),
+    });
+    const result = await importCatalog(s.importDeps, {
+      ctx: adminCtx(),
+      sourceId: 'mock-ref',
+      models: [
+        {
+          externalName: 'claude-sonnet-4',
+          realModel: 'anthropic/claude-sonnet-4',
+          inputPrice: '21.6',
+          outputPrice: '108',
+          cacheInputPrice: '2.16',
+          cacheWritePrice: '0',
+        },
+      ],
+    });
+    expect(result.created).toBe(1);
+    expect(s.channels.rows.size).toBe(1); // 未新建渠道
+    expect(fakeCipher.decrypt(s.channels.rows.get(real.id)!.apiKeyEnc)).toBe('sk-real-admin-key');
+    expect([...s.providers.rows.values()].filter((p) => p.name === 'anthropic')).toHaveLength(0);
+    const mapping = [...s.models.rows.values()][0]!;
+    expect(mapping.bindings.map((b) => b.channelId)).toEqual([real.id]);
+  });
+
+  it('无前缀 realModel → 整体作 slug；旧映射重导入幂等补绑对应渠道', async () => {
+    const s = setup([mockReferenceSource()]);
+    // 旧数据形态：映射已存在且无任何渠道绑定（本功能前的 reference 导入产物）
+    const legacy = await s.models.store.insertMapping(s.db, {
+      externalName: 'custom-model',
+      realModel: 'custom-model',
+      inputPrice: '5',
+      outputPrice: '5',
+      cacheInputPrice: '0',
+      isFree: false,
+      status: 1,
+    });
+    const result = await importCatalog(s.importDeps, {
+      ctx: adminCtx(),
+      sourceId: 'mock-ref',
+      models: [
+        {
+          externalName: 'custom-model',
+          realModel: 'custom-model',
+          inputPrice: '50',
+          outputPrice: '50',
+          cacheInputPrice: '0',
+          cacheWritePrice: '0',
+        },
+      ],
+    });
+    expect(result).toMatchObject({ created: 0, skipped: 1 });
+    expect(s.models.rows.get(legacy.id)!.inputPrice).toBe('5'); // 价格不动
+    const slugChannel = [...s.channels.rows.values()].find((c) => c.name === 'custom-model')!;
+    expect(slugChannel).toBeDefined();
+    expect(s.models.rows.get(legacy.id)!.bindings.map((b) => b.channelId)).toEqual([
+      slugChannel.id,
+    ]);
   });
 });
 

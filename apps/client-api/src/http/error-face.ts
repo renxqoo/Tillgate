@@ -21,6 +21,18 @@ export const clientErrors = defineErrorCatalog('client', {
     message: 'Too many registration attempts from this network',
     zh: '注册请求过于频繁',
   },
+  /** 找回密码链接通道不可用(SMTP 或控制台基地址未配)——fail-closed 503 */
+  reset_link_unavailable: {
+    category: 'unavailable',
+    message: 'Password reset is not configured on this deployment',
+    zh: '本部署未配置找回密码功能',
+  },
+  /** 重置令牌无效/过期/已用——统一口径不区分原因 */
+  reset_token_invalid: {
+    category: 'invalid_input',
+    message: 'This reset link is invalid or has expired',
+    zh: '重置链接无效或已过期',
+  },
   captcha_required: {
     category: 'invalid_input',
     message: 'Captcha verification is required',

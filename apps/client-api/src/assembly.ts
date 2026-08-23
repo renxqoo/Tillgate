@@ -49,6 +49,7 @@ import { createSubscriptionRead } from './adapters/subscription-read.js';
 import { createPricingRead } from './adapters/pricing-read.js';
 import { createRedisFixedWindowCounter } from './adapters/redis-rate-counter.js';
 import { createIdentityStack } from './adapters/identity-stack.js';
+import { RESET_TOKEN_TTL_MINUTES } from './adapters/redis-reset-token.js';
 
 export interface ClientApiAssembly {
   readonly logger: Logger;
@@ -136,15 +137,16 @@ export async function assembleClientApi(
   };
 
   // ---- identity（凭据/挑战/会话/OAuth/吊销——OAuth 映射/邮件/Redis 件在 adapters/identity-stack.ts） ----
-  const { identity, oauthProviders, emailCodeRequired, apiBase } = createIdentityStack({
-    config,
-    db,
-    redis,
-    txRetry,
-    logger,
-    clock,
-    ...(overrides.mailer !== undefined ? { mailerOverride: overrides.mailer } : {}),
-  });
+  const { identity, oauthProviders, mailer, resetTokens, emailCodeRequired, apiBase } =
+    createIdentityStack({
+      config,
+      db,
+      redis,
+      txRetry,
+      logger,
+      clock,
+      ...(overrides.mailer !== undefined ? { mailerOverride: overrides.mailer } : {}),
+    });
 
   // ---- billing（钱包/订阅/支付/兑换——共享同一套 postgres store） ----
   const walletStore = createPostgresWalletStore(db, { retry: txRetry });
@@ -271,7 +273,11 @@ export async function assembleClientApi(
   const billingRead = createBillingRead(db);
   const usageRead = createUsageRead(db, config.CLIENT_USAGE_TZ);
   const subscriptionRead = createSubscriptionRead(db);
-  const pricingRead = createPricingRead(db, redis, { cacheTtlMs: config.PRICING_CACHE_TTL_MS });
+  const pricingRead = createPricingRead(db, redis, {
+    cacheTtlMs: config.PRICING_CACHE_TTL_MS,
+    timezoneTtlMs: config.BILLING_TIMEZONE_TTL_MS,
+    timezoneFallback: config.BILLING_TIMEZONE_DEFAULT,
+  });
   const loginGuard = createKeyBruteForceGuard(redis, {
     failureThreshold: config.LOGIN_FAILURE_THRESHOLD,
     failureWindowS: config.LOGIN_FAILURE_WINDOW_S,
@@ -339,8 +345,16 @@ export async function assembleClientApi(
       onboarding: accounts.completeAccountOnboarding,
       authenticate: identity.passwords.authenticate,
       changePassword: identity.passwords.change,
+      resetPassword: identity.passwords.reset,
+      issueResetToken: resetTokens.issue,
+      consumeResetToken: resetTokens.consume,
+      sendResetLink:
+        mailer != null ? (to, url, ctx) => mailer.sendPasswordResetLink(to, url, ctx) : null,
+      resetLinkBase: config.OAUTH_FRONTEND_URL ?? null,
+      resetTokenTtlMinutes: RESET_TOKEN_TTL_MINUTES,
       guards: { emailIp: loginGuard, ip: ipGuard },
       userStatus: accountRead.activeUserStatus,
+      userByEmail: accountRead.userByEmail,
       touchLastLogin: accountRead.touchLastLogin,
       sign: (userId) => identity.sessions.sign({ realm: 'user', subjectId: userId }),
       logout: async (token) => {
