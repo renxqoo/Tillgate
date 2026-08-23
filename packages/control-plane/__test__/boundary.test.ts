@@ -24,9 +24,14 @@ const SRC = join(import.meta.dirname, '../src');
 describe('出口面快照（有意维护的公共接口——新增导出是契约变更）', () => {
   it('index.ts 导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
+      'ADMIN_ROLES',
+      'PERMISSION_ACTIONS',
+      'PERMISSION_DOMAINS',
       'PRICING_UNITS',
       'applyBuffer',
+      'assertAdminRole',
       'assertOperationId',
+      'can',
       'commandFingerprint',
       'compareCatalog',
       'controlPlaneErrors',
@@ -35,6 +40,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'formatCoefficient',
       'freePriceConsistent',
       'goneFromCatalog',
+      'isAdminRole',
       'isFreeByPrice',
       'isUnpriceableSentinel',
       'mapModelsDevCatalog',
@@ -43,6 +49,7 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'normalizeBuffer',
       'normalizeRate',
       'parseVoucherDataUrl',
+      'permissionsOf',
       'suggestExternalName',
       'toCny',
       'trimNumeric',
@@ -119,6 +126,8 @@ describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db
 describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
   it('码集合快照', () => {
     expect([...controlPlaneErrors.codes].toSorted()).toEqual([
+      'control_plane.admin_email_taken',
+      'control_plane.admin_not_found',
       'control_plane.catalog_api_key_required',
       'control_plane.catalog_empty',
       'control_plane.catalog_source_not_found',
@@ -132,6 +141,7 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.import_empty',
       'control_plane.import_limit_exceeded',
       'control_plane.insufficient_budget',
+      'control_plane.invalid_admin_role',
       'control_plane.invalid_billing_timezone',
       'control_plane.invalid_channel_input',
       'control_plane.invalid_coefficient',

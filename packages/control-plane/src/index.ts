@@ -41,6 +41,20 @@ export type { BillingConfig, PricingUnit, ModelPrices } from './domain/model/mod
 export { PRICING_UNITS } from './domain/model/model';
 export type { ProviderCapabilities } from './domain/provider/provider';
 
+// ---- RBAC 权限模型（docs/admin-rbac/DESIGN.md §2;词表/矩阵单一真相）----
+export {
+  ADMIN_ROLES,
+  PERMISSION_DOMAINS,
+  PERMISSION_ACTIONS,
+  permissionsOf,
+  can,
+  isAdminRole,
+  assertAdminRole,
+} from './domain/rbac';
+export type { AdminRole, PermissionDomain, PermissionAction, Permission } from './domain/rbac';
+export type { AdminRecord, CreateAdminRow, UpdateAdminRow } from './ports/admin-store';
+export type { CreateAdminInput } from './application/admins/create-admin';
+
 // ---- 装配/桥接 port 契约（assembly 实现与 observability 桥消费）----
 export type { UpstreamProbe, ProbeTarget, ProbeOutcome } from './ports/upstream-probe';
 export type { SecretCipher } from './ports/secret-cipher';

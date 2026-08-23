@@ -27,6 +27,7 @@ import { postgresFxStore, CATALOG_FX_CONFIG_KEY } from '../src/adapters/postgres
 import { postgresOperationsStore } from '../src/adapters/postgres/operations-store';
 import { createPostgresAuditSink, postgresAuditStore } from '../src/adapters/postgres/audit';
 import { createPostgresVoucherStorage } from '../src/adapters/postgres/voucher-storage';
+import { postgresAdminStore } from '../src/adapters/postgres/admin-store';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 let db: Db | null = null;
@@ -366,5 +367,45 @@ describe('voucher-storage（真实 PG：bytea 往返 + 键白名单）', () => {
       db as unknown as { $client: { query: (q: string, v?: unknown[]) => Promise<unknown> } }
     ).$client;
     await pool.query(`delete from voucher_blobs where "key" = $1`, [key]).catch(() => {});
+  });
+});
+
+describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一兜底/部分更新/补偿删除）', () => {
+  it('create → list → update → remove 全链 + 重名 23505 + id ≥1e9 段分配', async () => {
+    if (!db) return;
+    const email = `${uid()}@example.com`;
+    // create 需事务形态（id 段分配与插入原子——application 层同款包装）
+    const created = await db.transaction((tx) =>
+      postgresAdminStore.create(tx, { email, displayName: 'E2E', role: 'viewer' }),
+    );
+    expect(created.role).toBe('viewer');
+    expect(created.status).toBe(0);
+    expect(created.id).toBeGreaterThanOrEqual(1_000_000_000);
+    try {
+      // 唯一索引兜底（23505 由 application 翻译——此处验原始形状）
+      const dup = await db
+        .transaction((tx) =>
+          postgresAdminStore.create(tx, { email, displayName: null, role: 'operator' }),
+        )
+        .catch((error: unknown) => error);
+      expect(isUniqueViolation(dup)).toBe(true);
+
+      const listed = await postgresAdminStore.list(db);
+      expect(listed.some((row) => row.id === created.id && row.role === 'viewer')).toBe(true);
+
+      const updated = await postgresAdminStore.update(db, {
+        adminId: created.id,
+        role: 'finance',
+        status: 1,
+      });
+      expect(updated).toMatchObject({ role: 'finance', status: 1 });
+      expect(await postgresAdminStore.update(db, { adminId: 999_999_999 })).toBeNull();
+
+      const byId = await postgresAdminStore.findById(db, created.id);
+      expect(byId?.role).toBe('finance');
+    } finally {
+      await postgresAdminStore.remove(db, created.id);
+    }
+    expect(await postgresAdminStore.findById(db, created.id)).toBeNull();
   });
 });

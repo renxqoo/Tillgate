@@ -987,5 +987,43 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
       if (row == null) return;
       rows.set(input.adminId, { ...row, twoFactorEnabled: input.enabled });
     },
+    async list(_db) {
+      return [...rows.values()].toSorted((a, b) => a.id - b.id);
+    },
+    async create(_db, row) {
+      clock += 1;
+      if ([...rows.values()].some((r) => r.email === row.email)) {
+        const error = new Error('duplicate key') as Error & { code: string };
+        error.code = '23505';
+        throw error;
+      }
+      // 与 postgres adapter 同语义:id ≥1e9 段分配（identity_passwords 扁平主键防串号）
+      const maxId = [...rows.keys()].reduce((max, id) => Math.max(max, id), 0);
+      const record: AdminRecord = {
+        id: Math.max(1_000_000_000, maxId + 1),
+        ...row,
+        status: 0,
+        twoFactorEnabled: false,
+        lastLoginAt: null,
+        createdAt: new Date(clock),
+      };
+      rows.set(record.id, record);
+      return record;
+    },
+    async update(_db, input) {
+      const row = rows.get(input.adminId);
+      if (row == null) return null;
+      const next: AdminRecord = {
+        ...row,
+        ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+        ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      };
+      rows.set(input.adminId, next);
+      return next;
+    },
+    async remove(_db, adminId) {
+      rows.delete(adminId);
+    },
   };
 }

@@ -176,6 +176,26 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'External name already bound to another real model',
     zh: '对外模型名已被其他真实模型占用',
   },
+
+  // ── admins（RBAC——docs/admin-rbac/DESIGN.md §2.5）────────────────────────
+  /** 管理员不存在（更新目标缺失；404 不泄漏管理员清单） */
+  admin_not_found: {
+    category: 'not_found',
+    message: 'Admin not found',
+    zh: '管理员不存在',
+  },
+  /** 管理员邮箱已被占用（admins_email_uq 兜底,23505 翻译） */
+  admin_email_taken: {
+    category: 'conflict',
+    message: 'Admin email already exists',
+    zh: '管理员邮箱已被占用',
+  },
+  /** 角色不在封闭词表内（词表单一真相 = domain/rbac ADMIN_ROLES） */
+  invalid_admin_role: {
+    category: 'invalid_input',
+    message: 'Invalid admin role',
+    zh: '角色不在词表内（super_admin/operator/finance/support/viewer）',
+  },
 });
 
 /** control-plane 错误目录身份码类型（码表封闭性的类型面） */
