@@ -30,7 +30,8 @@
     "invalidAmount": "请输入有效金额",
     "nonZeroAmount": "金额必须非零",
     "confirm": "确认",
-    "confirmTitle": "请确认操作"
+    "confirmTitle": "请确认操作",
+    "changePassword": "修改密码"
   },
   "nav": {
     "home": "管理后台首页",
@@ -94,6 +95,24 @@
     "verifyFailedStatus": "验证失败 ({status})",
     "notLoggedIn": "未登录",
     "operationFailedStatus": "操作失败 ({status})"
+  },
+  "changePassword": {
+    "title": "修改密码",
+    "description": "修改成功后其他已登录的管理端会话将全部下线。",
+    "submit": "确认修改",
+    "oldPassword": "当前密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认新密码",
+    "success": "密码已修改",
+    "failed": "修改失败",
+    "fetchError": "服务暂不可用，请稍后重试",
+    "errors": {
+      "required": "请填写全部密码字段",
+      "mismatch": "两次输入的新密码不一致",
+      "tooShort": "新密码至少 8 位",
+      "tooLong": "新密码最多 128 位",
+      "sameAsOld": "新密码不能与当前密码相同"
+    }
   },
   "dashboard": {
     "loadFailed": "加载统计失败",
@@ -944,7 +963,7 @@
     "smtpHint": "需要服务端已配置 SMTP（个人邮箱开 SMTP 授权码即可）。未配置时开启会被拒绝——绝不静默降级为单密码。"
   },
   "landing": {
-    "announcement": "🎉 TokenLens v2 —— 多供应商 LLM API 网关",
+    "announcement": "🎉 TokenLens—— 多供应商 LLM API 网关",
     "heroTitle": "一个网关，接入所有大模型",
     "heroDescription": "TokenLens 以 OpenAI 兼容的单一入口统一多家 LLM 供应商，内置渠道路由与故障转移、钱包计费、订阅限额与全链路追踪——接入大模型服务，像调用一个 API 一样简单。",
     "ctaPrimary": "进入管理控制台",

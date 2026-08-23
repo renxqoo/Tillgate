@@ -1,9 +1,9 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
-import { Loader2Icon, LogOut } from 'lucide-react';
+import { KeyRoundIcon, Loader2Icon, LogOut } from 'lucide-react';
 
 import { Avatar, AvatarFallback } from '@tokenlens/ui';
 import {
@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@tokenlens/ui';
+import { ChangePasswordDialog } from '@/features/auth/change-password-dialog';
 import { getInitials } from '../../../lib/utils';
 
 export interface AccountSwitcherUser {
@@ -31,6 +32,7 @@ export function AccountSwitcher({
   readonly onLogout: () => Promise<void>;
 }) {
   const [pending, startTransition] = useTransition();
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const t = useTranslations('ui');
 
   function handleLogout() {
@@ -40,34 +42,52 @@ export function AccountSwitcher({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={t('accountMenu')}
-        className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <Avatar className="size-8 rounded-lg">
-          <AvatarFallback className="rounded-lg">{getInitials(user.name)}</AvatarFallback>
-        </Avatar>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="min-w-56 rounded-lg" side="bottom" align="end" sideOffset={4}>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="font-normal">
-            <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none">{user.name}</p>
-              <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
-            </div>
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={handleLogout}
-          disabled={pending}
-          className="cursor-pointer text-destructive focus:text-destructive"
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={t('accountMenu')}
+          className="rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
-          {t('logout')}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <Avatar className="size-8 rounded-lg">
+            <AvatarFallback className="rounded-lg">{getInitials(user.name)}</AvatarFallback>
+          </Avatar>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="min-w-56 rounded-lg"
+          side="bottom"
+          align="end"
+          sideOffset={4}
+        >
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">{user.name}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+              </div>
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            // Base UI Menu.Item 的激活事件是 onClick（onSelect 是 Radix API——
+            // 传了会被静默丢弃，表现为点击无反应）；受控 Dialog 挂在菜单外层，
+            // 菜单点击后自然关闭不影响弹窗
+            onClick={() => setPasswordOpen(true)}
+            className="cursor-pointer"
+          >
+            <KeyRoundIcon />
+            {t('changePassword')}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleLogout}
+            disabled={pending}
+            className="cursor-pointer text-destructive focus:text-destructive"
+          >
+            {pending ? <Loader2Icon className="animate-spin" /> : <LogOut />}
+            {t('logout')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+    </>
   );
 }
