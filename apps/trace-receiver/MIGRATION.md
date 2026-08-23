@@ -60,20 +60,26 @@
 
 ## 6. 回滚方案
 
-- 全新 app、旧仓只读不动:revert 本波提交即整体还原(含 http 包 +2 目录码与
-  token-compare——加法变更,revert 无残留引用)。
-- 无 DDL、无 schema、无对外契约变更(/v1/traces 信封码变化仅在 v2 首次部署面发生,
-  v1 生产进程不受影响——两仓独立部署)。
+- **落地提交:8ee81f1(首波)+ 本文件所在提交(P5 返工:R10 pingDb 闭包 + 架构测试 +
+  冒烟记录)**——revert 两提交即整体还原(含 http 包 +2 目录码与 token-compare,
+  加法变更,revert 无残留引用)。
+- 全新 app、旧仓只读不动;无 DDL、无 schema、无对外契约变更(/v1/traces 信封码变化
+  仅在 v2 首次部署面发生,v1 生产进程不受影响——两仓独立部署)。
 - bun.lock 不随本波提交(混并行会话条目,见 IMPLEMENTATION §5)。
 
 ## 7. 验收(全部满足才算完成)
 
-- [x] 四门全绿:typecheck OK / oxlint 0-0 / 30 单测 + 4 真 PG / build 6.0 KB(esm+sourcemap);
+- [x] 四门全绿:typecheck OK / oxlint 0-0 / 34 单测 + 4 真 PG / build(esm+sourcemap);
       覆盖率 lines 100 / branches 92.59 / functions 100 / statements 100 ≥ 90/85/90/90
       (src/index.ts 进程入口排除,vitest.config 口径申报)
 - [x] §1 行为规格逐项核销(鉴权门 3/媒体门 4/载荷门 2/接收与指标 3 + real 4)
 - [x] R6 回归用例通过(生产缺令牌 fail-fast——v1 恒不触发的闸门真实生效)
+- [x] R10/P5 边界架构测试锁定(composition 只在 assembly、Db 类型不入 app.ts、
+      禁 src 深导入;§5.5 机器验证 4 用例)
 - [x] 挂账#3 兑现:token-compare 合一入 @tokenlens/http(4 用例语义锁)
 - [x] http 包目录封闭 15 码 + status 修正表 401/415(catalog/render 测试同步)
-- [x] turbo 管线 filter 本 app+http+依赖面 12/12、11/11 全绿;仓库存量失败(identity
-      typecheck/db 封闭测试)为并行会话在途工作,与本波无涉(未触碰其文件)
+- [x] **进程冒烟双形态**(铁律 17):bun 源码形态与 `node dist/index.js` 产物形态各
+      readyz 200 / 无错令牌 401 / 415 信封 / 202→定时 flush→PG 点查(request_id+user_id=7
+      提升列命中)/ SIGTERM draining→drained 正常退出;冒烟数据自清
+- [x] turbo 管线 filter 本 app+http+依赖面全绿;仓库存量失败(identity typecheck/
+      db 封闭测试)为并行会话在途工作,与本波无涉(未触碰其文件)

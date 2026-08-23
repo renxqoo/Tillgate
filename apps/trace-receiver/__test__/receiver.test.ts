@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import type { Db } from '@tokenlens/db';
 import type {
   SpanBatcher,
   BatcherStats,
@@ -17,13 +16,9 @@ import { createReceiverApp } from '../src/app';
 
 const TOKEN = 't'.repeat(24);
 
-function fakeDb(ok: boolean): Db {
-  return {
-    execute: ok
-      ? vi.fn(async () => undefined)
-      : vi.fn(async () => Promise.reject(new Error('connection refused'))),
-  } as unknown as Db;
-}
+/** DB 探活闭包:app 依赖面只收函数,不出现 Db 类型(P5) */
+const pingDbOk = () => Promise.resolve();
+const pingDbFail = () => Promise.reject(new Error('connection refused'));
 
 function fakeBatcher(droppedOverflow = 0): SpanBatcher & { pushed: unknown[][] } {
   const pushed: unknown[][] = [];
@@ -87,7 +82,7 @@ function otlpPayload(goodSpans: number): unknown {
 describe('鉴权门(令牌配置后)', () => {
   it('无/错令牌 401(http.unauthorized);正确令牌放行到路由', async () => {
     const app = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher: fakeBatcher(),
       token: TOKEN,
@@ -119,7 +114,7 @@ describe('鉴权门(令牌配置后)', () => {
 
   it('未配置令牌(开发内网)放行;探针路径豁免鉴权', async () => {
     const app = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher: fakeBatcher(),
     });
@@ -131,7 +126,7 @@ describe('鉴权门(令牌配置后)', () => {
     expect(open.status).toBe(202);
 
     const gated = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher: fakeBatcher(),
       token: TOKEN,
@@ -145,7 +140,7 @@ describe('鉴权门(令牌配置后)', () => {
 
 describe('媒体类型与载荷门', () => {
   const deps = () => ({
-    db: fakeDb(true),
+    pingDb: pingDbOk,
     store: fakeStore(async () => STORE_STATS),
     batcher: fakeBatcher(),
   });
@@ -215,7 +210,7 @@ describe('接收与指标', () => {
   it('202 计数算术:accepted = rows - droppedOverflow,skippedMalformed 透传', async () => {
     const batcher = fakeBatcher(1); // 模拟队列溢出丢 1
     const app = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher,
     });
@@ -232,7 +227,7 @@ describe('接收与指标', () => {
 
   it('/readyz:DB 可达 up;不可达 503 down(v1 探活形状)', async () => {
     const up = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher: fakeBatcher(),
     });
@@ -241,7 +236,7 @@ describe('接收与指标', () => {
     expect(await upRes.json()).toEqual({ status: 'ok', dependencies: { postgres: 'up' } });
 
     const down = createReceiverApp({
-      db: fakeDb(false),
+      pingDb: pingDbFail,
       store: fakeStore(async () => STORE_STATS),
       batcher: fakeBatcher(),
     });
@@ -256,7 +251,7 @@ describe('接收与指标', () => {
   it('/internal/stats:batcher 计数器直出;存储查询失败不掩盖指标(storage null)', async () => {
     const batcher = fakeBatcher();
     const ok = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => STORE_STATS),
       batcher,
     });
@@ -265,7 +260,7 @@ describe('接收与指标', () => {
     expect(await okRes.json()).toEqual({ batcher: batcher.getStats(), storage: STORE_STATS });
 
     const failing = createReceiverApp({
-      db: fakeDb(true),
+      pingDb: pingDbOk,
       store: fakeStore(async () => {
         throw new Error('pg down');
       }),

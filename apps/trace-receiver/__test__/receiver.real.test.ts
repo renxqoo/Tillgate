@@ -40,7 +40,14 @@ const SERVICE = 'trr-test-svc';
 
 function appUnderTest(batcher: SpanBatcher, token?: string) {
   if (!db) throw new Error('pg unavailable');
-  return createReceiverApp({ db, store: createPgTraceStore(db), batcher, token });
+  const connected = db;
+  // pingDb 闭包绑定在测试装配面:app 依赖不出现 Db 类型(P5)
+  return createReceiverApp({
+    pingDb: () => ping(connected),
+    store: createPgTraceStore(connected),
+    batcher,
+    token,
+  });
 }
 
 /** v1 形状:合法 span + request.id/user.id 提升属性 */

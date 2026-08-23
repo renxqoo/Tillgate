@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ping, pgSqlState, type Db } from '@tokenlens/db';
+import { pgSqlState } from '@tokenlens/db'; // 纯 SQLSTATE 分类函数(http errorHandler 的文档化注入点;非 Db 类型)
 import { composeErrorCatalogs } from '@tokenlens/errors';
 import { HttpErrors, bodyParserLimit, errorHandler, timingSafeTokenEqual } from '@tokenlens/http';
 import {
@@ -11,7 +11,9 @@ import {
 } from '@tokenlens/observability';
 
 /**
- * 链路接收端 HTTP 面（内网服务；v1 app.ts 平移,错误面入 v2 目录体系）：
+ * 链路接收端 HTTP 面（内网服务；v1 app.ts 平移,错误面入 v2 目录体系）。
+ * 本文件是 app 非装配代码:不引用数据库连接类型、composition 或任何 adapter——
+ * DB 探活以闭包注入(P5:app 只持有 facade 与纯契约类型)。
  *
  *   POST /v1/traces      OTLP/HTTP JSON（ExportTraceServiceRequest）→ 解码 → 批量入队
  *   GET  /readyz         DB 探活（K8s/compose healthcheck 不带 Bearer,豁免鉴权）
@@ -23,7 +25,8 @@ import {
  */
 
 export interface ReceiverAppDeps {
-  db: Db;
+  /** DB 探活(readyz 用;装配绑定 ping(db),app 不接触 Db 类型) */
+  pingDb: () => Promise<void>;
   store: TraceStore;
   batcher: SpanBatcher;
   /** 共享令牌;未配置（开发内网）时放行——生产强制由 config 层 fail-fast */
@@ -89,7 +92,7 @@ export function createReceiverApp(deps: ReceiverAppDeps): Hono {
 
   app.get('/readyz', async (c) => {
     try {
-      await ping(deps.db);
+      await deps.pingDb();
       return c.json({ status: 'ok', dependencies: { postgres: 'up' } });
     } catch (error) {
       return c.json(

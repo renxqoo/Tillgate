@@ -31,6 +31,16 @@
   改配 http/json 提示) / 413 `http.payload_too_large` / 400 `http.invalid_json` /
   400 `observability.invalid_otlp_payload`。
 
+## 1.1 并发与性能预算(数字化硬约束;机制归 observability,此处为 app 级口径)
+
+- 请求体上界 **8MB**(超限 content-length 快路径 413,免读流);OTLP JSON 批次远小于此。
+- 摄入队列上界 **10_000** span(满丢最旧并计数,溢出路径 O(n)/条在案——observability B6);
+  flush 定量 **500**/定时 **2s**,写失败丢整批计数不抛——观测链路任何故障不反压接收。
+- flush 定时器 `unref`(不阻止进程退出);停机宽限 **10s**(createShutdown),batcher
+  在 closeables 尽力排空,持续失败放弃。
+- PG 池定值 **10 连接**(双副本 ×10 ≪ PG 常见 max_connections;低流量诊断服务画像)。
+- 鉴权比较常量时间(长度差异哑比较抹平);令牌 ≥16 字符、非已知弱值、≥4 种字符。
+
 ## 2. 契约演进(相对 v1)
 
 | #   | 演进                                                                                | 理由                                                                                                              |
@@ -44,6 +54,7 @@
 | R7  | 优雅停机手写样板 → `runtime createShutdown`(closeables 挂 batcher)                  | 三 app 漂移拷贝合一件(runtime S1/D1);收口顺序归 runtime 契约                                                      |
 | R8  | `drizzle sql\`select 1\``readyz →`db ping()`                                        | app 不直接 import drizzle;源头分类归 db 包                                                                        |
 | R9  | `SpanBatcher` class → `createSpanBatcher` 工厂闭包                                  | observability G5 已裁决,此处仅消费面                                                                              |
+| R10 | app.ts 依赖 `db: Db` + `ping` → `pingDb: () => Promise<void>` 闭包(装配面绑定)      | P5 硬规则:「app 非 assembly 代码不得引用 Db/DbTx 类型」;架构测试机器锁定(§3)                                      |
 
 ## 3. 拆分决策
 
@@ -55,20 +66,27 @@
 - `assembly.ts`:唯一装配根;`@tokenlens/observability/composition` 仅此处引用(§5.3
   白名单:apps assembly)取 `createPgTraceStore` 直组 store+batcher。
 - `app.ts`:纯函数 `createReceiverApp(deps)`(可测,零 env/process);onError 装配
-  `composeErrorCatalogs(HttpErrors, observabilityErrors)` + `pgSqlState` 探测注入。
+  `composeErrorCatalogs(HttpErrors, observabilityErrors)` + `pgSqlState` 探测注入
+  (纯 SQLSTATE 分类函数,http errorHandler 文档化注入点——非 Db 类型,R10);
+  DB 探活经 `pingDb` 闭包,app 不持数据库连接类型。
 - `index.ts`:进程入口(listen/信号注册/停机编排),不持业务;唯一覆盖率排除项
   (vitest.config 口径申报:停机编排件在 runtime 包已测)。
 - PG 池部署定值(10/30s/5s/1000)由 config 层显式持有:接收端是低流量诊断服务,
   db 包全必填无缺省(铁律 3)。
+- **架构测试**(`__test__/architecture.test.ts`,§5.5 机器验证):src 四件套快照;
+  composition 子入口只在 assembly.ts;@tokenlens/db 装配件与 Db/DbTx 类型只在
+  进程装配面(assembly/config/index),app.ts 唯一例外是 pgSqlState 纯函数;
+  跨包 import 只走显式包名(禁 src 深导入)。
 
 ## 4. 测试计划(先行)
 
-- 单测(config 19 / receiver 9 / assembly 2):缺省值表、模式推导、fail-fast 闸、
-  令牌三道门、鉴权门(401/豁免/开放)、媒体类型门(415×2 带 hint context)、
+- 单测(config 19 / receiver 9 / assembly 2 / architecture 4):缺省值表、模式推导、
+  fail-fast 闸、令牌三道门、鉴权门(401/豁免/开放)、媒体类型门(415×2 带 hint context)、
   坏 JSON/结构非法 OTLP 目录码、bodyLimit 413、202 计数算术、readyz 形状、
-  stats 双形态、装配 fail-fast(otel_endpoint_missing)与 off 模式全链。
+  stats 双形态、装配 fail-fast(otel_endpoint_missing)与 off 模式全链、P5 边界锁定。
 - 真 PG(receiver.real 4):v1 HTTP 面段四用例行为等价(bodyLimit/token 门/
   415+400 信封/端到端 POST→flush→request_id 点查含 userId=7 提升断言)。
+- 进程冒烟(dev/start 两形态):readyz/鉴权放行与拒绝/202 入库/优雅停机排空。
 - http 包:+2 目录码封闭(catalog 15 码)、status 修正表 401/415、token-compare 语义。
 
 ## 5. 待办挂账
