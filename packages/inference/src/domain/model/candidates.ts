@@ -34,5 +34,6 @@ function toCandidate(mapping: ModelMappingSnapshot): QuoteCandidate {
     unitUpperBound: mapping.unitUpperBound,
     coefficient: mapping.coefficient,
     billingPolicyFingerprint: mapping.billingPolicyFingerprint,
+    ...(mapping.isFree === true ? { isFree: true } : {}),
   };
 }

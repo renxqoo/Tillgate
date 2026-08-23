@@ -6,6 +6,7 @@
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { rateCardCoefficients, rateCards, users } from '@tokenlens/db';
 import type {
+  UserRateCardContext,
   RateCardStore,
   RateCardRecord,
   RateCardSortField,
@@ -191,5 +192,36 @@ export const postgresRateCardStore: RateCardStore = {
         ),
       );
     return row?.coefficient ?? null;
+  },
+
+  // ---- 网关热路径读（G1；users.rate_card_id 读侧 join——绑定写侧归 accounts） ----
+
+  async findActiveCardByUser(db, userId) {
+    const [card] = await db
+      .select({ cardId: rateCards.id, cardName: rateCards.name, status: rateCards.status })
+      .from(users)
+      .innerJoin(rateCards, eq(users.rateCardId, rateCards.id))
+      .where(eq(users.id, userId));
+    if (!card) return null;
+    const coefficientRows = await db
+      .select({
+        scope: rateCardCoefficients.scope,
+        modelMappingId: rateCardCoefficients.modelMappingId,
+        groupKey: rateCardCoefficients.groupKey,
+        coefficient: rateCardCoefficients.coefficient,
+      })
+      .from(rateCardCoefficients)
+      .where(eq(rateCardCoefficients.rateCardId, card.cardId));
+    return {
+      cardId: card.cardId,
+      cardName: card.cardName,
+      status: card.status,
+      coefficients: coefficientRows.map((row) => ({
+        scope: row.scope as 'model' | 'group' | 'global',
+        modelMappingId: row.modelMappingId,
+        groupKey: row.groupKey,
+        coefficient: row.coefficient,
+      })),
+    } satisfies UserRateCardContext;
   },
 };

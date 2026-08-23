@@ -97,6 +97,12 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Coefficient must be a decimal string in (0, 9.999] with at most 3 decimals',
     zh: '系数须为 0.001–9.999 的十进制字符串且最多 3 位小数',
   },
+  /** 绑定卡停用：网关报价读拒绝新请求（v1 403 语义；热路径消费方抛出） */
+  rate_card_disabled: {
+    category: 'forbidden',
+    message: 'The rate card bound to this account is disabled, please contact the administrator',
+    zh: '账户绑定的费率卡已停用，请联系管理员',
+  },
   rate_card_not_found: {
     category: 'not_found',
     message: 'Rate card not found',

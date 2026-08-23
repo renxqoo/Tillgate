@@ -7,6 +7,38 @@ import type { DbLike } from '@tokenlens/db';
 import type { BillingConfig } from '../domain/model/model';
 import type { ListQuery, ListResult } from '../domain/list';
 
+/**
+ * 网关热路径读行（G1，gateway P5 波）：在架映射的报价快照原料——价格/计价维度/
+ * 分组键/免费标记/fallback 链/策略配置。快照的最终组装（费率卡系数、请求体单位上界）
+ * 在 apps/gateway 的 catalog-port 桥（billing 纯函数 + 本行原料）。
+ */
+export interface ActiveMappingRow {
+  readonly id: number;
+  readonly externalName: string;
+  readonly realModel: string;
+  readonly contextLength: number | null;
+  readonly inputPrice: string;
+  readonly outputPrice: string;
+  readonly cacheInputPrice: string;
+  readonly cacheWritePrice: string;
+  readonly pricingUnit: string;
+  readonly unitPrice: string;
+  /** 费率卡 scope='group' 匹配键（可空） */
+  readonly pricingGroup: string | null;
+  readonly isFree: boolean;
+  /** fallback 对外名链（一级展开；null/空 = 不降级） */
+  readonly fallbackModels: string[] | null;
+  readonly billingPolicy: Record<string, unknown> | null;
+  readonly billingConfig: BillingConfig;
+}
+
+/** /v1/models 在架目录行（三协议形状的原料） */
+export interface EnabledModelRow {
+  readonly externalName: string;
+  readonly realModel: string;
+  readonly pricingUnit: string;
+}
+
 /** 管理面映射行（全字段——目录/绑定/价格编辑共用） */
 export interface ModelRecord {
   readonly id: number;
@@ -126,4 +158,15 @@ export interface ModelStore {
     db: DbLike,
     channelId: number,
   ): Promise<Array<{ mappingId: number; externalName: string; realModel: string }>>;
+  // ---- 网关热路径读（G1，gateway P5 波；v1 findActiveBy* / listEnabledModels 语义） ----
+  /** 按对外名查在架映射（status=0）；无/下架返回 null */
+  findActiveByExternalName(db: DbLike, externalName: string): Promise<ActiveMappingRow | null>;
+  /** 批量查在架映射（fallback 链展开）；空入参返回空表 */
+  findActiveByExternalNames(
+    db: DbLike,
+    externalNames: readonly string[],
+  ): Promise<Map<string, ActiveMappingRow>>;
+  /** 在架模型目录（/v1/models 三协议形状原料；按外部名排序） */
+  listEnabledMappings(db: DbLike): Promise<EnabledModelRow[]>;
 }
+

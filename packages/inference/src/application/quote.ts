@@ -49,11 +49,12 @@ export async function prepareChatRequest(env: {
   if (env.auth.allowedModels != null && !env.auth.allowedModels.includes(externalModel)) {
     throw InferenceErrors.business('model_not_allowed', { model: externalModel });
   }
-  const mapping = await env.catalog.findMapping(externalModel);
+  const pricing = { userId: env.auth.userId, body: env.body };
+  const mapping = await env.catalog.findMapping(externalModel, pricing);
   if (mapping == null) {
     throw InferenceErrors.business('model_not_found', { model: externalModel });
   }
-  const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m));
+  const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m, pricing));
 
   const endpoint = env.endpoint ?? 'chat';
   const kind: 'chat' | 'embeddings' | 'modality' =

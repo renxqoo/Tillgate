@@ -18,6 +18,7 @@ import type {
   ChannelStore,
   ChannelListRow,
   RechargeRow,
+  RouteCandidateRow,
   RechargeSortField,
 } from '../../ports/channel-store';
 import { escapeLikePattern } from './search';
@@ -276,5 +277,60 @@ export const postgresChannelStore: ChannelStore = {
         .where(where),
     ]);
     return { rows: rows as RechargeRow[], total: countRows[0]?.count ?? 0 };
+  },
+
+  // ---- 网关热路径读（G1；v1 channel.repo findRouteCandidates 语义） ----
+
+  async findRouteCandidates(db, realModel) {
+    const rows = await db
+      .select({
+        channelId: channels.id,
+        channelName: channels.name,
+        apiKeyEnc: channels.apiKeyEnc,
+        baseUrlOverride: channels.baseUrlOverride,
+        providerName: providers.name,
+        providerBaseUrl: providers.baseUrl,
+        providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
+        priority: modelChannels.priority,
+        weight: modelChannels.weight,
+        rpmLimit: channels.rpmLimit,
+        tpmLimit: channels.tpmLimit,
+        upstreamBudget: channels.upstreamBudget,
+      })
+      .from(modelChannels)
+      .innerJoin(channels, eq(modelChannels.channelId, channels.id))
+      .innerJoin(providers, eq(channels.providerId, providers.id))
+      .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
+      .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
+      .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
+    return rows as RouteCandidateRow[];
+  },
+
+  // ---- worker 任务轮询读（worker 波；v1 channel.repo findTaskChannel 语义） ----
+
+  async findTaskChannel(db, channelId) {
+    // 不按启用状态过滤：已提交任务所属渠道即使事后停用，轮询/代执行仍须可达
+    // （渠道级 priority/weight 对任务推进无意义，取表列原值填充形状）
+    const [row] = await db
+      .select({
+        channelId: channels.id,
+        channelName: channels.name,
+        apiKeyEnc: channels.apiKeyEnc,
+        baseUrlOverride: channels.baseUrlOverride,
+        providerName: providers.name,
+        providerBaseUrl: providers.baseUrl,
+        providerProtocol: providers.protocol,
+        providerVendor: providers.vendor,
+        priority: channels.priority,
+        weight: channels.weight,
+        rpmLimit: channels.rpmLimit,
+        tpmLimit: channels.tpmLimit,
+        upstreamBudget: channels.upstreamBudget,
+      })
+      .from(channels)
+      .innerJoin(providers, eq(channels.providerId, providers.id))
+      .where(eq(channels.id, channelId));
+    return (row as RouteCandidateRow | undefined) ?? null;
   },
 };

@@ -1,0 +1,47 @@
+{
+  "name": "@tokenlens/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAI/模型推理公网入口：协议适配 + 鉴权 + 限流 + 装配（重构方案 §3 目标树；推理编排/计价/渠道健康全部来自 @tokenlens/inference）",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "start": "node dist/index.js",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+  },
+  "dependencies": {
+    "@tokenlens/accounts": "workspace:*",
+    "@tokenlens/ai": "workspace:*",
+    "@tokenlens/billing": "workspace:*",
+    "@tokenlens/control-plane": "workspace:*",
+    "@tokenlens/db": "workspace:*",
+    "@tokenlens/errors": "workspace:*",
+    "@tokenlens/http": "workspace:*",
+    "@tokenlens/inference": "workspace:*",
+    "@tokenlens/observability": "workspace:*",
+    "@tokenlens/runtime": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0",
+    "ioredis": "^5.8.0",
+    "jose": "^6.2.8",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">= 1.4.0"
+  }
+}

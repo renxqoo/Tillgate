@@ -1,0 +1,251 @@
+/**
+ * gateway 配置（v1 config.ts 语义迁移）：env schema + 缺省 + 生产 fail-fast。
+ * 铁律 3：一切可变值装配注入且必填/显式缺省——本层是缺省值唯一真相。
+ * 环境键名与 v1 保持一致（运维接口连续性）；v2 演进见 MIGRATION §3。
+ */
+import { z } from 'zod';
+import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
+
+/** 正金额（20 位整数 + 18 位小数、非零）——v1 positiveDecimal 同形 */
+const positiveDecimal = z
+  .string()
+  .regex(/^\d{1,20}(\.\d{1,18})?$/, 'must be a positive decimal string')
+  .refine((v) => Number(v) > 0, 'must be greater than zero');
+
+const BYTES_RE = /^(\d+(?:\.\d+)?)(b|kb|mb|gb)$/i;
+
+/** 字节量（"10MB" 形）——v1 同形 */
+const byteSize = z.string().regex(BYTES_RE, 'must be like "10MB"');
+const bytesOf = (v: string): number => {
+  const m = BYTES_RE.exec(v)!;
+  const unit = m[2]!.toLowerCase();
+  const n = Number(m[1]);
+  return Math.floor(n * { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[unit]!);
+};
+
+function createSchema(production: boolean) {
+  return z
+    .object({
+      NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+      GATEWAY_PORT: z.coerce.number().int().min(1).max(65_535).default(8_080),
+      DATABASE_URL: z.string().url(),
+      REDIS_URL: z.string().url(),
+      DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+      GATEWAY_CURRENCY: z.string().length(3).default('CNY'),
+      ADMISSION_MAX_PENDING: z.coerce.number().int().min(1).default(10_000),
+      ADMISSION_MAX_OLDEST_MS: z.coerce.number().int().min(1_000).default(300_000),
+      BILLING_RESERVATION_MAX: positiveDecimal.default('1000'),
+      BILLING_RESERVATION_MODE: z.enum(['full', 'fixed']).default('full'),
+      BILLING_FIXED_RESERVATION_AMOUNT: positiveDecimal.optional(),
+      BILLING_AUTHORIZATION_TTL_MS: z.coerce.number().int().min(1_000).default(300_000),
+      GENERATION_TASK_TTL_MS: z.coerce.number().int().min(1_000).default(3_600_000),
+      GENERATION_LEASE_GRACE_MS: z.coerce.number().int().min(0).default(30_000),
+      AUTH_KEY_FAILURE_THRESHOLD: z.coerce.number().int().min(1).default(5),
+      AUTH_KEY_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(600),
+      AUTH_KEY_LOCK_S: z.coerce.number().int().min(1).default(600),
+      AUTH_IP_FAILURE_LIMIT: z.coerce.number().int().min(1).default(30),
+      AUTH_IP_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(300),
+      TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+      GLOBAL_RPM: z.coerce.number().int().min(0).default(2_000),
+      GATEWAY_UPSTREAM_DEADLINE_MS: z.coerce.number().int().min(1_000).default(120_000),
+      GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10_000),
+      /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */
+      GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
+      GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(60_000),
+      OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
+      OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+      DEFAULT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).default(4_096),
+      GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().min(1).default(32_768),
+      GATEWAY_BODY_LIMIT_BYTES: byteSize.default('10MB'),
+      GATEWAY_UPLOAD_MAX_FILE_BYTES: byteSize.default('16MB'),
+      GATEWAY_UPLOAD_IMAGE_MIME: z
+        .string()
+        .default('image/png,image/jpeg,image/webp'),
+      GATEWAY_UPLOAD_AUDIO_MIME: z.string().default(
+        'audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/webm,audio/mp4,audio/x-m4a,audio/m4a',
+      ),
+      SIGNAL_FINALIZE_ATTEMPTS: z.coerce.number().int().min(1).default(5),
+      SIGNAL_FINALIZE_BASE_DELAY_MS: z.coerce.number().int().min(1).default(500),
+      KEY_PREFIX: z
+        .string()
+        .regex(/^[a-z][a-z0-9_-]{1,15}$/, 'must be 2-16 chars [a-z0-9_-] starting with a letter')
+        .default('ag_'),
+      JWT_ISSUER: z.string().min(1).default('ai-gateway'),
+      JWT_AUDIENCE: z.string().min(1).default('ai-gateway-api'),
+      JWT_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).default(3_600),
+      JWT_SECRET: secretSchema('JWT_SECRET', production ? 32 : 16),
+      CHANNEL_API_KEY_ENCRYPTION: secretSchema('CHANNEL_API_KEY_ENCRYPTION', 32),
+      GATEWAY_CORS_ORIGINS: z.string().default(''),
+    })
+    .superRefine((v, ctx) => {
+      if (v.BILLING_RESERVATION_MODE === 'fixed' && v.BILLING_FIXED_RESERVATION_AMOUNT == null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['BILLING_FIXED_RESERVATION_AMOUNT'],
+          message: 'required when BILLING_RESERVATION_MODE=fixed',
+        });
+      }
+    });
+}
+
+export interface GatewayConfig {
+  readonly nodeEnv: 'development' | 'test' | 'production';
+  readonly port: number;
+  readonly databaseUrl: string;
+  readonly redisUrl: string;
+  readonly dbPoolMax: number;
+  readonly currency: string;
+  readonly admissionMaxPending: number;
+  readonly admissionMaxOldestMs: number;
+  readonly reservationLimit: string;
+  readonly reservationPolicy:
+    | { mode: 'full' }
+    | { mode: 'fixed'; amount: string };
+  readonly authorizationTtlMs: number;
+  readonly generationTaskTtlMs: number;
+  readonly generationLeaseGraceMs: number;
+  readonly authGuards: {
+    keyFailureThreshold: number;
+    keyFailureWindowS: number;
+    keyLockS: number;
+    ipFailureLimit: number;
+    ipFailureWindowS: number;
+  };
+  readonly trustedProxyHops: number;
+  /** null = 不限（0 视为不限） */
+  readonly globalRpm: number | null;
+  readonly upstreamDeadlineMs: number;
+  readonly upstreamConnectTimeoutMs: number;
+  readonly aiAllowLocalUrl: boolean;
+  readonly shutdownGraceMs: number;
+  readonly otel: { mode: 'off' | 'otlp'; endpoint?: string };
+  readonly output: { defaultMaxOutputTokens: number; exposureCap: number };
+  readonly settleSignal: { attempts: number; baseDelayMs: number };
+  readonly bodyLimitBytes: number;
+  readonly uploadLimits: { imageMime: ReadonlySet<string>; audioMime: ReadonlySet<string>; maxFileBytes: number };
+  readonly keyPrefix: string;
+  readonly oauth: { jwtSecret: string; issuer: string; audience: string; tokenTtlSeconds: number };
+  readonly channelApiKeyEncryption: string;
+  readonly corsOrigins: readonly string[];
+}
+
+/**
+ * accounts 装配 policy（部署定值：v1 等价值——网关只消费鉴权读模型，但 policy
+ * 必填且形状 fail-fast；铁律 3：装配层是缺省值唯一真相）
+ */
+export const ACCOUNTS_POLICY = {
+  keyPrefix: 'ag_',
+  invitationTtlMs: 7 * 24 * 3_600_000,
+  invitationPendingFactor: 2,
+  invitationPendingCap: 20,
+  amountLimitUpper: '1000000000000',
+  rpmLimitMax: 1_000_000,
+  tpmLimitMax: 100_000_000,
+  /** App scope.models 白名单上界（v1 等价 100） */
+  scopeModelsMax: 100,
+  referralInviteeLimit: 100,
+  listPage: { page: 1, limit: 20, maxLimit: 100 },
+  banDefaultReason: 'administrator banned account',
+} as const;
+
+/** billing 钱包词表白名单（v1 等价值；billing guards 必填） */
+export const BILLING_GUARDS = {
+  refTypes: ['billing', 'topup', 'admin', 'gift'],
+  currencies: ['CNY', 'USD'],
+  internalAccounts: ['outside', 'platform_revenue'],
+} as const;
+
+const mimeSetOf = (raw: string): Set<string> =>
+  new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+
+/** 废弃键告警（v1 语义：用户级限流无兜底默认——残留键提示迁移） */
+const DEPRECATED_KEYS = [
+  'DEFAULT_USER_RPM',
+  'DEFAULT_USER_TPM',
+  'FREE_MODEL_DAILY_LIMIT',
+  'GENERATION_MAX_ACTIVE_PER_USER',
+] as const;
+
+export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
+  const raw = { ...env };
+  for (const key of DEPRECATED_KEYS) {
+    if (raw[key] != null && raw[key] !== '') {
+      console.warn(`[gateway] config key ${key} is deprecated and ignored (user-level limits have no default)`);
+    }
+    delete raw[key];
+  }
+  const encryption = raw.CHANNEL_API_KEY_ENCRYPTION ?? raw.ENCRYPTION_KEY;
+  const parsed = createSchema(raw.NODE_ENV === 'production').parse({
+    ...raw,
+    CHANNEL_API_KEY_ENCRYPTION: encryption,
+  });
+
+  // 生产 GLOBAL_RPM 硬顶（超配钳到 5000 并告警——v1 静默钳制加可见性）
+  let globalRpm: number | null = parsed.GLOBAL_RPM > 0 ? parsed.GLOBAL_RPM : null;
+  if (parsed.NODE_ENV === 'production' && globalRpm != null && globalRpm > 5_000) {
+    console.warn(`[gateway] GLOBAL_RPM ${globalRpm} clamped to 5000 in production`);
+    globalRpm = 5_000;
+  }
+
+  return {
+    nodeEnv: parsed.NODE_ENV,
+    port: parsed.GATEWAY_PORT,
+    databaseUrl: parsed.DATABASE_URL,
+    redisUrl: parsed.REDIS_URL,
+    dbPoolMax: parsed.DB_POOL_MAX,
+    currency: parsed.GATEWAY_CURRENCY,
+    admissionMaxPending: parsed.ADMISSION_MAX_PENDING,
+    admissionMaxOldestMs: parsed.ADMISSION_MAX_OLDEST_MS,
+    reservationLimit: parsed.BILLING_RESERVATION_MAX,
+    reservationPolicy:
+      parsed.BILLING_RESERVATION_MODE === 'fixed'
+        ? { mode: 'fixed', amount: parsed.BILLING_FIXED_RESERVATION_AMOUNT! }
+        : { mode: 'full' },
+    authorizationTtlMs: parsed.BILLING_AUTHORIZATION_TTL_MS,
+    generationTaskTtlMs: parsed.GENERATION_TASK_TTL_MS,
+    generationLeaseGraceMs: parsed.GENERATION_LEASE_GRACE_MS,
+    authGuards: {
+      keyFailureThreshold: parsed.AUTH_KEY_FAILURE_THRESHOLD,
+      keyFailureWindowS: parsed.AUTH_KEY_FAILURE_WINDOW_S,
+      keyLockS: parsed.AUTH_KEY_LOCK_S,
+      ipFailureLimit: parsed.AUTH_IP_FAILURE_LIMIT,
+      ipFailureWindowS: parsed.AUTH_IP_FAILURE_WINDOW_S,
+    },
+    trustedProxyHops: parsed.TRUSTED_PROXY_HOPS,
+    globalRpm,
+    upstreamDeadlineMs: parsed.GATEWAY_UPSTREAM_DEADLINE_MS,
+    upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
+    aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
+    shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,
+    otel:
+      parsed.OTEL_TRACES_MODE === 'otlp' && parsed.OTEL_EXPORTER_OTLP_ENDPOINT != null
+        ? { mode: 'otlp', endpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT }
+        : { mode: parsed.OTEL_TRACES_MODE },
+    output: {
+      defaultMaxOutputTokens: parsed.DEFAULT_MAX_OUTPUT_TOKENS,
+      exposureCap: parsed.GATEWAY_OUTPUT_EXPOSURE_CAP,
+    },
+    settleSignal: {
+      attempts: parsed.SIGNAL_FINALIZE_ATTEMPTS,
+      baseDelayMs: parsed.SIGNAL_FINALIZE_BASE_DELAY_MS,
+    },
+    bodyLimitBytes: bytesOf(parsed.GATEWAY_BODY_LIMIT_BYTES),
+    uploadLimits: {
+      imageMime: mimeSetOf(parsed.GATEWAY_UPLOAD_IMAGE_MIME),
+      audioMime: mimeSetOf(parsed.GATEWAY_UPLOAD_AUDIO_MIME),
+      maxFileBytes: Math.min(
+        bytesOf(parsed.GATEWAY_UPLOAD_MAX_FILE_BYTES),
+        bytesOf(parsed.GATEWAY_BODY_LIMIT_BYTES),
+      ),
+    },
+    keyPrefix: parsed.KEY_PREFIX,
+    oauth: {
+      jwtSecret: parsed.JWT_SECRET,
+      issuer: parsed.JWT_ISSUER,
+      audience: parsed.JWT_AUDIENCE,
+      tokenTtlSeconds: parsed.JWT_TOKEN_TTL_SECONDS,
+    },
+    channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
+    corsOrigins: parsed.GATEWAY_CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  };
+}

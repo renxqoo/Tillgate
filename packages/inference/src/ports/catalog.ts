@@ -1,13 +1,31 @@
 import type { ChannelCandidate, ModelMappingSnapshot } from '../domain/model/types';
 
 /**
- * 目录 port（control-plane 只读快照的消费方定义；目标态经能力 facade 直连，
- * billing/control-plane 建包前由装配注入实现——重构方案 §5.2）。
+ * 目录 port（control-plane 只读快照的消费方定义；装配注入实现——重构方案 §5.2
+ * 「消费方定义 port、在 app 注入实现」；gateway 波 C-G1 起实现由 apps/gateway
+ * 的 catalog-port 桥提供：control-plane 目录读 + billing 纯函数组装用户价快照）。
  * 目录侧负责启用状态过滤（status=0）与渠道连接信息装配；排序调度归 inference。
  */
+
+/**
+ * 报价解析上下文：快照中的 coefficient / unitPrice / unitUpperBound 是
+ * 「请求时点已解析」值（v1 buildQuote 语义）——
+ *   coefficient = 用户费率卡系数（用户价 = 官方价 × 系数；无卡 = 缺省系数）；
+ *   unitPrice / unitUpperBound = 按请求体推导的变体单价与单位上界（n/秒/字符）
+ *   叠加映射级预扣保底。因此目录查询必须携带用户与请求体两个维度。
+ */
+export interface CatalogPricingContext {
+  userId: number;
+  /** 原始请求体（计量描述符与变体定价选择器的取值源；只读） */
+  body: Readonly<Record<string, unknown>>;
+}
+
 export interface CatalogPort {
-  /** 按对外模型名查映射快照；无/下线返回 null */
-  findMapping(externalModel: string): Promise<ModelMappingSnapshot | null>;
+  /** 按对外模型名查映射快照（含用户价/请求时点报价解析）；无/下线返回 null */
+  findMapping(
+    externalModel: string,
+    pricing: CatalogPricingContext,
+  ): Promise<ModelMappingSnapshot | null>;
   /** 给真实模型名解析候选渠道（顺序任意——加权调度在 inference；空 = 无渠道） */
   resolveChannels(realModel: string): Promise<ChannelCandidate[]>;
 }

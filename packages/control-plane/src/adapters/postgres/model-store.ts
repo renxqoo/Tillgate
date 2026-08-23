@@ -12,6 +12,7 @@ import type {
   ModelPatch,
   ModelSortField,
   ModelProbeChannelRow,
+  ActiveMappingRow,
 } from '../../ports/model-store';
 import { escapeLikePattern } from './search';
 
@@ -34,6 +35,24 @@ const MAPPING_ADMIN_COLUMNS = {
   tpmLimit: modelMappings.tpmLimit,
   createdAt: modelMappings.createdAt,
   updatedAt: modelMappings.updatedAt,
+} as const;
+
+const ACTIVE_MAPPING_COLUMNS = {
+  id: modelMappings.id,
+  externalName: modelMappings.externalName,
+  realModel: modelMappings.realModel,
+  contextLength: modelMappings.contextLength,
+  inputPrice: modelMappings.inputPrice,
+  outputPrice: modelMappings.outputPrice,
+  cacheInputPrice: modelMappings.cacheInputPrice,
+  cacheWritePrice: modelMappings.cacheWritePrice,
+  pricingUnit: modelMappings.pricingUnit,
+  unitPrice: modelMappings.unitPrice,
+  pricingGroup: modelMappings.pricingGroup,
+  isFree: modelMappings.isFree,
+  fallbackModels: modelMappings.fallbackModels,
+  billingPolicy: modelMappings.billingPolicy,
+  billingConfig: modelMappings.billingConfig,
 } as const;
 
 const MAPPING_SORTS = {
@@ -188,5 +207,42 @@ export const postgresModelStore: ModelStore = {
       .from(modelChannels)
       .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
       .where(eq(modelChannels.channelId, channelId));
+  },
+
+  // ---- 网关热路径读（G1；v1 QUOTE_COLUMNS 子集 + status=0 过滤） ----
+
+  async findActiveByExternalName(db, externalName) {
+    const [row] = await db
+      .select(ACTIVE_MAPPING_COLUMNS)
+      .from(modelMappings)
+      .where(and(eq(modelMappings.externalName, externalName), eq(modelMappings.status, 0)));
+    return (row as ActiveMappingRow) ?? null;
+  },
+
+  async findActiveByExternalNames(db, externalNames) {
+    if (externalNames.length === 0) return new Map();
+    const rows = await db
+      .select(ACTIVE_MAPPING_COLUMNS)
+      .from(modelMappings)
+      .where(
+        and(
+          inArray(modelMappings.externalName, [...externalNames]),
+          eq(modelMappings.status, 0),
+        ),
+      );
+    return new Map(rows.map((row) => [(row as ActiveMappingRow).externalName, row as ActiveMappingRow]));
+  },
+
+  async listEnabledMappings(db) {
+    const rows = await db
+      .select({
+        externalName: modelMappings.externalName,
+        realModel: modelMappings.realModel,
+        pricingUnit: modelMappings.pricingUnit,
+      })
+      .from(modelMappings)
+      .where(eq(modelMappings.status, 0))
+      .orderBy(asc(modelMappings.externalName));
+    return rows;
   },
 };

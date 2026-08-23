@@ -24,6 +24,11 @@ export interface ModelMappingSnapshot {
   coefficient: string;
   /** 计费策略指纹（收据快照字段，billing 结算幂等校验用） */
   billingPolicyFingerprint: string | null;
+  /**
+   * 显式免费标记（gateway P5 波 C-G1 增补，可选）：true 时授权走 0 元 fast-path
+   * （billing R6：显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
+   */
+  isFree?: boolean;
 }
 
 /** 报价候选（主模型 + 兜底展开后的有序链；价格快照来自各自映射） */
@@ -40,6 +45,8 @@ export interface QuoteCandidate {
   unitUpperBound: number;
   coefficient: string;
   billingPolicyFingerprint: string | null;
+  /** 显式免费标记透传（授权 0 元 fast-path 判定；见 ModelMappingSnapshot.isFree） */
+  isFree?: boolean;
 }
 
 /** 渠道候选（目录返回的启用渠道；顺序由 inference 加权调度决定） */
@@ -57,6 +64,13 @@ export interface ChannelCandidate {
   apiKeyEnc: string;
   priority: number;
   weight: number;
+  /**
+   * 渠道维限流/预算列（gateway P5 波 C-G1 增补，可选——目录实现方携带；网关
+   * admitChannel 钩子消费，缺省不限）。upstreamBudget 为渠道进货额度快照（元）。
+   */
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  upstreamBudget?: string;
 }
 
 /** 请求凭证事实（鉴权结论由 app 中间件产出，inference 只消费） */

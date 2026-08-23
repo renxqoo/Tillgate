@@ -25,6 +25,24 @@ export interface RateCardUserRow {
 export type RateCardSortField = 'id' | 'name' | 'status' | 'createdAt';
 export type RateCardUserSortField = 'id' | 'subject' | 'createdAt';
 
+
+/**
+ * 用户费率卡上下文（G1，gateway P5 波）：绑卡 + 系数行全集（model/group/global）。
+ * 卡停用（status≠0）也如实返回——「停用卡拒绝新请求」的裁决在消费方（v1 403
+ * rate_card_disabled 语义）。
+ */
+export interface UserRateCardContext {
+  readonly cardId: number;
+  readonly cardName: string;
+  readonly status: number;
+  readonly coefficients: ReadonlyArray<{
+    scope: 'model' | 'group' | 'global';
+    modelMappingId: number | null;
+    groupKey: string | null;
+    coefficient: string;
+  }>;
+}
+
 export interface RateCardStore {
   /** 建卡 + 全局兜底系数（同事务两写）；返回新卡 */
   insertWithGlobal(
@@ -61,4 +79,7 @@ export interface RateCardStore {
   ): Promise<ListResult<RateCardUserRow>>;
   /** 健康自检：全局兜底系数是否存在（「每卡恰一全局行」约束） */
   findGlobalCoefficient(db: DbLike, rateCardId: number): Promise<string | null>;
+  // ---- 网关热路径读（G1，gateway P5 波；users.rate_card_id 读侧 join——绑定事实归 accounts 写侧） ----
+  /** 用户绑定的费率卡 + 系数行全集；未绑卡返回 null */
+  findActiveCardByUser(db: DbLike, userId: number): Promise<UserRateCardContext | null>;
 }
