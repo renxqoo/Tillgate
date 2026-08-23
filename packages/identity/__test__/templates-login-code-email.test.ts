@@ -1,0 +1,68 @@
+/**
+ * 验证码邮件渲染测试(v1 mailer.test 迁移):中英双语要素、HTML 内联样式、
+ * 品牌与语言切换、时效参数注入。
+ */
+import { describe, expect, it } from 'vitest';
+import { renderLoginCodeEmail, type MailBrand } from '../src/templates/login-code-email.js';
+
+const BRAND: MailBrand = {
+  brand: 'TokenLens 管理后台',
+  brandEn: 'TokenLens Admin Console',
+  brandSub: 'TOKENLENS · ADMIN CONSOLE',
+};
+const NOW = new Date('2026-08-23T08:00:00Z');
+const PARAMS = { ttlMinutes: 5, maxAttempts: 5 };
+
+describe('renderLoginCodeEmail', () => {
+  it('默认英文:要素齐全(码/时效/错次/IP/勿回复/品牌)', () => {
+    const mail = renderLoginCodeEmail('654321', { ip: '203.0.113.1' }, BRAND, PARAMS, NOW);
+    expect(mail.subject).toBe('[TokenLens Admin Console] Login verification code 654321');
+    expect(mail.text).toContain('654321');
+    expect(mail.text).toContain('5 minutes');
+    expect(mail.text).toContain('5 failed attempts');
+    expect(mail.text).toContain('Source IP: 203.0.113.1');
+    expect(mail.text).toContain('Do not reply');
+    expect(mail.text).not.toContain('验证码');
+  });
+
+  it('英文 HTML:内联样式 + 品牌 + 不含用户面文案', () => {
+    const mail = renderLoginCodeEmail('654321', { ip: 'ip' }, BRAND, PARAMS, NOW);
+    expect(mail.html).toContain('<!DOCTYPE html>');
+    expect(mail.html).toContain('style="'); // 内联样式(邮件客户端剔除 <style> 的兼容口径)
+    expect(mail.html).toContain('TOKENLENS · ADMIN CONSOLE');
+    expect(mail.html).not.toContain('登录验证码');
+  });
+
+  it('中文全量且不含英文正文;locale 切换', () => {
+    const mail = renderLoginCodeEmail(
+      '654321',
+      { ip: '198.51.100.2', locale: 'zh' },
+      BRAND,
+      PARAMS,
+      NOW,
+    );
+    expect(mail.subject).toBe('【TokenLens 管理后台】登录验证码 654321');
+    expect(mail.text).toContain('来源 IP:198.51.100.2');
+    expect(mail.text).toContain('请勿回复');
+    expect(mail.text).not.toContain('Do not reply');
+    expect(mail.html).toContain('zh-CN');
+  });
+
+  it('品牌切换 + 时效参数注入(挑战配置不同值)', () => {
+    const userBrand: MailBrand = {
+      brand: 'TokenLens 用户面板',
+      brandEn: 'TokenLens Console',
+      brandSub: 'TOKENLENS · CLIENT CONSOLE',
+    };
+    const mail = renderLoginCodeEmail(
+      '111111',
+      { ip: 'ip' },
+      userBrand,
+      { ttlMinutes: 10, maxAttempts: 3 },
+      NOW,
+    );
+    expect(mail.subject).toContain('[TokenLens Console]');
+    expect(mail.text).toContain('10 minutes');
+    expect(mail.text).toContain('3 failed attempts');
+  });
+});
