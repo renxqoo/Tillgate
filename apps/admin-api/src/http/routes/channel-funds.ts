@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import type { ControlPlane } from '@tokenlens/control-plane';
+import { normalizeAmount } from '@tokenlens/billing';
 import { operationId } from '@tokenlens/http';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
@@ -40,30 +41,29 @@ export function channelFundsRoutes(
 
   app.post('/v1/channel-funds/recharge', session, async (c) => {
     const body = channelFundsContracts.recharge.parse(await c.req.json());
-    return c.json(
-      await channels.recharge({
-        ctx: controlContextOf(c),
-        channelId: body.channelId,
-        amount: body.amount,
-        orderNo: body.orderNo ?? null,
-        voucherDataUrl: body.voucherDataUrl ?? null,
-        remark: body.remark ?? null,
-        operationId: operationId(c),
-      }),
-    );
+    const result = await channels.recharge({
+      ctx: controlContextOf(c),
+      channelId: body.channelId,
+      amount: body.amount,
+      orderNo: body.orderNo ?? null,
+      voucherDataUrl: body.voucherDataUrl ?? null,
+      remark: body.remark ?? null,
+      operationId: operationId(c),
+    });
+    // numeric(38,18) 存储精度出站点归一(v1 wire 口径;e2e 抓出)
+    return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 
   app.post('/v1/channel-funds/adjust', session, async (c) => {
     const body = channelFundsContracts.adjust.parse(await c.req.json());
-    return c.json(
-      await channels.adjust({
-        ctx: controlContextOf(c),
-        channelId: body.channelId,
-        amount: body.amount,
-        remark: body.remark ?? null,
-        operationId: operationId(c),
-      }),
-    );
+    const result = await channels.adjust({
+      ctx: controlContextOf(c),
+      channelId: body.channelId,
+      amount: body.amount,
+      remark: body.remark ?? null,
+      operationId: operationId(c),
+    });
+    return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 
   return app;

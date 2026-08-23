@@ -467,6 +467,87 @@ describe('观测/用户补面', () => {
   });
 });
 
+describe('金额出站归一(e2e 抓出的 wire 偏差回归——numeric(38,18) 存储精度不裸出)', () => {
+  it('channel-funds 回执与流水行归一;users-funds 回执归一', async () => {
+    const raw = '10.000000000000000000';
+    const app = createAdminApp(
+      fakeDeps({
+        controlPlane: {
+          channels: {
+            listRecharges: async () => ({
+              rows: [
+                {
+                  id: 1,
+                  channelId: 2,
+                  channelName: 'c',
+                  type: 'recharge',
+                  amount: raw,
+                  balanceAfter: raw,
+                  orderNo: null,
+                  voucher: null,
+                  remark: null,
+                  adminId: 7,
+                  adminEmail: null,
+                  adminDisplayName: null,
+                  createdAt: new Date('2026-08-01T00:00:00Z'),
+                },
+              ],
+              total: 1,
+            }),
+            recharge: async () => ({
+              ok: true as const,
+              rechargeId: 1,
+              balanceAfter: raw,
+              replayed: false,
+            }),
+            adjust: async () => ({
+              ok: true as const,
+              rechargeId: 2,
+              balanceAfter: '7.000000000000000000',
+              replayed: false,
+            }),
+          },
+        },
+        accounts: { userExists: async () => true },
+        wallet: {
+          credit: async () => ({
+            transactionId: 1,
+            amount: raw,
+            balanceAfter: raw,
+            replayed: false,
+          }),
+        },
+        operations: {
+          run: async (input: { execute: (tx: unknown) => Promise<Record<string, unknown>> }) => ({
+            receipt: await input.execute({} as never),
+            replayed: false,
+          }),
+        },
+      }),
+    );
+    const recharge = await app.request('/v1/channel-funds/recharge', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ channelId: 2, amount: '10' }),
+    });
+    expect(await recharge.json()).toMatchObject({ balanceAfter: '10' });
+    const adjust = await app.request('/v1/channel-funds/adjust', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ channelId: 2, amount: '-3' }),
+    });
+    expect(await adjust.json()).toMatchObject({ balanceAfter: '7' });
+    const funds = await app.request('/v1/channel-funds?channelId=2', { headers: authHeader() });
+    expect(await funds.json()).toMatchObject({ rows: [{ amount: '10', balanceAfter: '10' }] });
+    const gift = await app.request('/v1/users/42/gift', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ amount: '10' }),
+    });
+    expect(await gift.json()).toMatchObject({ balanceBefore: '0', balanceAfter: '10' });
+  });
+});
+
 describe('可选字段两分支清扫(缺省形态)', () => {
   it('各列表裸调用(过滤字段全部缺省)+ 可选 body 字段缺省', async () => {
     const modelRow2 = {

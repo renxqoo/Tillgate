@@ -8,7 +8,13 @@ import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { AccountsErrors } from '@tokenlens/accounts';
 import type { AccountUseCases } from '@tokenlens/accounts';
-import { Decimal, OUTSIDE_ACCOUNT, type OperationRun, type WalletApi } from '@tokenlens/billing';
+import {
+  Decimal,
+  normalizeAmount,
+  OUTSIDE_ACCOUNT,
+  type OperationRun,
+  type WalletApi,
+} from '@tokenlens/billing';
 import { operationId } from '@tokenlens/http';
 import type { Observability } from '@tokenlens/observability';
 import type { SessionEnv } from '../middleware/session';
@@ -91,8 +97,10 @@ export function usersFundsRoutes(
             tx,
           });
           result = {
-            balanceBefore: new Decimal(posted.fromBalanceAfter).plus(magnitude).toString(),
-            balanceAfter: posted.fromBalanceAfter,
+            balanceBefore: normalizeAmount(
+              new Decimal(posted.fromBalanceAfter).plus(magnitude).toString(),
+            ),
+            balanceAfter: normalizeAmount(posted.fromBalanceAfter),
           };
         } else {
           const posted = await deps.wallet.credit({
@@ -104,8 +112,10 @@ export function usersFundsRoutes(
             tx,
           });
           result = {
-            balanceBefore: new Decimal(posted.balanceAfter).minus(body.amount).toString(),
-            balanceAfter: posted.balanceAfter,
+            balanceBefore: normalizeAmount(
+              new Decimal(posted.balanceAfter).minus(body.amount).toString(),
+            ),
+            balanceAfter: normalizeAmount(posted.balanceAfter),
           };
         }
         await deps.writeAudit(tx, {
@@ -143,8 +153,10 @@ export function usersFundsRoutes(
           tx,
         });
         const result = {
-          balanceBefore: new Decimal(posted.balanceAfter).minus(body.amount).toString(),
-          balanceAfter: posted.balanceAfter,
+          balanceBefore: normalizeAmount(
+            new Decimal(posted.balanceAfter).minus(body.amount).toString(),
+          ),
+          balanceAfter: normalizeAmount(posted.balanceAfter),
         };
         await deps.writeAudit(tx, {
           actor: 'admin',

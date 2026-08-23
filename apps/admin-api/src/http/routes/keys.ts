@@ -8,7 +8,7 @@ import type { AccountUseCases } from '@tokenlens/accounts';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { KEY_SORTS, keysContracts } from '../contracts/users';
-import { toKeyWireRow } from '../presenters/users';
+import { toKeyWireRow } from '../presenters/keys';
 
 export interface KeysRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'adminListKeys' | 'adminPatchKey'>;

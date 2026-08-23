@@ -1,6 +1,6 @@
 # @tokenlens/admin-api 施工图
 
-> 状态：实施中（2026-08-23）；设计基线见 [DESIGN.md](./DESIGN.md)，v1 行为规格映射见 [MIGRATION.md](./MIGRATION.md)。
+> 状态：本波范围已完成（2026-08-23;P1–P7 pending 见 §3）；设计基线见 [DESIGN.md](./DESIGN.md)，v1 行为规格映射见 [MIGRATION.md](./MIGRATION.md)。
 > 施工纪律：本波只创建 `apps/admin-api/**` + 修改 `.env.example`；`packages/*` 与根文件带并行
 > gateway 波未提交改动（铁律 15），一律不碰；bun.lock 不入本波提交。
 
@@ -11,6 +11,14 @@
   trace-receiver 先例已记录）。
 - 增设 `src/adapters/{upstream-probe,funding-resolver,accounts-bridges}.ts`：装配面桥接件（gateway DESIGN
   同口径，计入 assembly 面——仅 assembly.ts 可引用，architecture 测试锁定；accounts-bridges = D9/D10/G1 三桥）。
+
+## 0.5 >150 行文件审计（铁律 5）
+
+单职责聚合体，非两件事（identity §0.5 同口径）：`assembly.ts`（唯一装配函数）、
+`config.ts`（单 schema + 单 loader）、`http/routes/users-funds.ts`（资金动词族，
+v1 funds.service 编排面）、`http/contracts/models.ts`（v1 models.ts zod 面原样收口）、
+`app.ts`（路由挂载 + 错误面）。users/Key presenter 已按两件事拆分
+（`presenters/{users,keys}.ts`）。
 
 ## 1. 逐文件裁决表（旧 → 新）
 
@@ -63,8 +71,9 @@
 | --- | --- | --- |
 | typecheck | `bun x tsc --noEmit` | ✅ 0 错 |
 | lint | `bun x oxlint` | ✅ 0-0 |
-| test（含覆盖率 90/85） | `bun x vitest run --exclude "__test__/*.real.test.ts" --coverage` | ✅ 69/69；lines 97.95 / statements 97.98 / functions 94.81 / branches 92.37 |
+| test（含覆盖率 90/85） | `bun x vitest run --exclude "__test__/*.real.test.ts" --coverage` | ✅ 70/70；lines 97.96 / statements 97.99 / functions 94.81 / branches 92.82 |
 | build | `bun run build` | ✅ 37 modules → dist（65KB + sourcemap） |
 | real 冒烟 | `bun x vitest run admin-api.real.test.ts`（.env 注入） | ✅ 1/1（真实 PG 装配 + readyz + 401） |
+| e2e（真实进程） | `bun x vitest run e2e.real.test.ts`（spawn `bun --conditions=development src/index.ts` + 真实 PG + 真 admin 令牌） | ✅ 4/4：六域建改退役全链、渠道资金幂等（同键重放回执/异参 409 `control_plane.operation_conflict`）、审计桥真实落 audit_logs、用户 404 守卫零写入、SIGTERM 优雅停机退出码 0 |
 | boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 19 workspace 无深导入/越界 |
 | format | `bun x oxfmt --check src __test__ *.ts` | ✅ |

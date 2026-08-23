@@ -5,7 +5,7 @@ import type { DbPoolConfig } from '@tokenlens/db';
 
 /**
  * admin-api 配置（管理控制面）。v1 loadConfig 平移，v2 差异（DESIGN §2.4）：
- *   - REDIS_URL 本波可选（validate-only 会话无共享吊销面；P2 登录波起必配）；
+ *   - REDIS_URL/TRUSTED_PROXY_HOPS 不在本波配置面（无消费方不落地,铁律 4;P2 登录波引入）;
  *   - 新增 IDENTITY_CODE_PEPPER（identity 配置必填项——挑战/恢复码 HMAC pepper）；
  *   - fx 拉取源地址/TTL/超时由 v1 service 常量升为装配显式值（铁律 3）。
  * 部署缺省值由本层显式持有（铁律 3：装配层是缺省值的唯一真相，不藏全局）。
@@ -39,8 +39,6 @@ const envSchema = z
     ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
     /** identity 挑战/恢复码 HMAC pepper（identity 配置必填 16-512 字符；P2 登录波消费） */
     IDENTITY_CODE_PEPPER: secretSchema('IDENTITY_CODE_PEPPER', 16),
-    /** 本波不装配 Redis（DESIGN §2.4）；P2 登录波起必配（爆破件/共享吊销面） */
-    REDIS_URL: z.string().min(1).optional(),
     /** 批量导入单次上限（渠道条目数） */
     CHANNEL_IMPORT_MAX: z.coerce.number().int().min(1).default(1000),
     /** 目录导入：免费渠道限流预填（公开免费档限额量级） */
@@ -67,8 +65,6 @@ const envSchema = z
     SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(5),
     SETTLE_BASE_DELAY_MS: z.coerce.number().int().min(1).default(1_000),
     SETTLE_MAX_DELAY_MS: z.coerce.number().int().min(1).default(60_000),
-    /** 可信代理跳数（来源 IP 提取语义：0 = 不信 XFF） */
-    TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
     /** CORS 白名单（逗号分隔；空 = 不放行跨域） */
     CORS_ORIGINS: z.string().default(''),
     /** 请求体上限（字节；批量导入/凭证内联批次较大） */
@@ -98,7 +94,6 @@ export interface AdminApiConfig {
   readonly sessionTtlSec: number;
   readonly encryptionKey: string;
   readonly identityCodePepper: string;
-  readonly redisUrl: string | undefined;
   readonly channelImportMax: number;
   readonly catalogFreeChannelRpm: number;
   readonly catalogFreeChannelBudget: string;
@@ -116,7 +111,6 @@ export interface AdminApiConfig {
     readonly baseDelayMs: number;
     readonly maxDelayMs: number;
   };
-  readonly trustedProxyHops: number;
   readonly corsOrigins: readonly string[];
   readonly bodyLimitBytes: number;
   readonly shutdownGraceMs: number;
@@ -147,7 +141,6 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
     sessionTtlSec: parsed.SESSION_TTL_SECONDS,
     encryptionKey: parsed.ENCRYPTION_KEY,
     identityCodePepper: parsed.IDENTITY_CODE_PEPPER,
-    redisUrl: parsed.REDIS_URL,
     channelImportMax: parsed.CHANNEL_IMPORT_MAX,
     catalogFreeChannelRpm: parsed.CATALOG_FREE_CHANNEL_RPM,
     catalogFreeChannelBudget: parsed.CATALOG_FREE_CHANNEL_BUDGET,
@@ -165,7 +158,6 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
       baseDelayMs: parsed.SETTLE_BASE_DELAY_MS,
       maxDelayMs: parsed.SETTLE_MAX_DELAY_MS,
     },
-    trustedProxyHops: parsed.TRUSTED_PROXY_HOPS,
     corsOrigins:
       parsed.CORS_ORIGINS === '' ? [] : parsed.CORS_ORIGINS.split(',').map((s) => s.trim()),
     bodyLimitBytes: parsed.ADMIN_BODY_LIMIT_BYTES,

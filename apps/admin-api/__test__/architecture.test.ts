@@ -60,6 +60,7 @@ describe('admin-api 架构门禁', () => {
       'http/middleware/protocol.ts',
       'http/middleware/session.ts',
       'http/presenters/control-plane.ts',
+      'http/presenters/keys.ts',
       'http/presenters/models.ts',
       'http/presenters/observability.ts',
       'http/presenters/rates.ts',

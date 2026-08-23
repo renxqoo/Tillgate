@@ -26,7 +26,6 @@ describe('loadAdminApiConfig', () => {
     expect(config.fx.sourceUrl).toBe('https://api.frankfurter.app/latest?from=USD&to=CNY');
     expect(config.fx.autoTtlMs).toBe(4 * 60 * 60 * 1000);
     expect(config.fx.fetchTimeoutMs).toBe(10_000);
-    expect(config.trustedProxyHops).toBe(0);
     expect(config.corsOrigins).toEqual([]);
     expect(config.bodyLimitBytes).toBe(4_194_304);
     expect(config.shutdownGraceMs).toBe(10_000);
@@ -37,7 +36,6 @@ describe('loadAdminApiConfig', () => {
     expect(config.dbPool.poolMax).toBe(10);
     // OTel 缺省:非生产 memory
     expect(config.otelMode).toBe('memory');
-    expect(config.redisUrl).toBeUndefined();
   });
 
   it('CORS 白名单逗号拆分与 trim', () => {

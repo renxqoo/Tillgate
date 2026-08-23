@@ -1,9 +1,15 @@
 # @tokenlens/admin-api 迁移行为规格
 
-> 用途：v1（`/Users/wrr/work/ai-getway/apps/admin-api`，28 个测试文件）作为行为规格，
-> 逐文件映射到 v2 契约测试；已知偏差逐条核销（DESIGN §5 裁决同源）。
-> 纪律：断言语义不改（总纲 P5「搬迁只搬文件与启动装置，不得借机改断言语义」——
-> 例外必须在本表 D 项显式登记）。
+> 状态：已核销（2026-08-23;六域零接缝范围——P1–P7 见 IMPLEMENTATION §3）
+> 迁移单元：管理员持有效 admin-realm 会话完成六域管理读写（users/keys、providers/channels/
+> channel-funds、models/rate-cards/fx/catalog、订阅资金动词、tracing/审计/请求日志）
+> 旧实现：`/Users/wrr/work/ai-getway/apps/admin-api`（约 6.8k 行 + 28 个测试文件）
+> 目标位置：`apps/admin-api`（本包）
+> 关联：DESIGN.md §2/§5、IMPLEMENTATION.md §1/§3
+
+用途：v1 测试作为行为规格逐文件映射到 v2 契约测试；已知偏差逐条核销（DESIGN §5 裁决同源）。
+纪律：断言语义不改（总纲 P5「搬迁只搬文件与启动装置，不得借机改断言语义」——
+例外必须在本表 D 项显式登记）。
 
 ## 1. 迁移单元语义对照（v1 测试 → v2 测试）
 
@@ -45,7 +51,7 @@ auth → identity）。本 app 契约测试只锁 HTTP 语义（路径/方法/�
 | `invalid_sort_field` | sort_by 白名单外 | `admin.invalid_sort_field` | AdminErrors |
 | `user_not_found` | 用户/资料/资金属主 | `accounts.user_not_found` | AccountsErrors |
 | `catalog_source_not_found` | 目录源未知 | `admin.catalog_source_not_found` | AdminErrors |
-| `idempotency_conflict`（409） | 幂等键异参 | `billing.idempotency_conflict` | BillingErrors |
+| `idempotency_conflict`（409） | 幂等键异参 | 用户资金动词 `billing.idempotency_conflict`；渠道资金 `control_plane.operation_conflict`（operations store 归属） | BillingErrors / controlPlaneErrors |
 | `insufficient_balance` 等 | 钱包守卫 | `billing.*` | BillingErrors |
 | `invalid_protocol/vendor` | 词表外 | `control_plane.invalid_protocol/vendor` | controlPlaneErrors |
 | 其余 service 码 | 领域规则 | 各能力包目录码（handler 按 nature/category 分派） | — |

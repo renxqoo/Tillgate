@@ -76,7 +76,8 @@ issuer/realm 比对 + jti 吊销 + 锚点线）。通过则注入 `adminId`；�
 - 秘密三件：`ADMIN_JWT_SECRET`（admin realm HS256，secretSchema ≥32）、`ENCRYPTION_KEY`
   （渠道上游 Key AES-256-GCM，经 `runtime.createCipher`）、`IDENTITY_CODE_PEPPER`
   （identity 挑战/恢复码 HMAC pepper，≥16——identity 配置必填项，本波不触发挑战但形状必须合法）。
-- Redis 本波不装配（validate-only 会话无需共享吊销面；登录波 P2 起 Redis 必配 + 爆破件）。
+- Redis 本波不装配（validate-only 会话无需共享吊销面;`REDIS_URL`/`TRUSTED_PROXY_HOPS` 键随 P2
+  登录波引入——无消费方不进配置面,铁律 4）。
 - OTel `off|otlp`（缺省开发 memory / 生产 off，显式配置优先；otlp 缺端点启动期 fail-fast）。
 - control-plane 装配：`capabilities.protocols = ai.SUPPORTED_PROTOCOLS`；
   `probe` = app `src/adapters/upstream-probe.ts`（每次探针新建 `ai.createAi()` 实例——内存态隔离）；
@@ -115,7 +116,10 @@ issuer/realm 比对 + jti 吊销 + 锚点线）。通过则注入 `adminId`；�
 `__test__/` 平铺（铁律 14）：architecture（文件清单 + composition/Db 引用规则机器锁）、
 config（表驱动缺省/fail-fast）、assembly（fail-fast 与桥接形状）、session（401/豁免）、
 按域契约测试（fake facade + `app.request()`，断言 v1 wire 形状与错误码——行为规格源自
-v1 测试文件，映射见 MIGRATION §2）、`admin-api.real.test.ts`（真实 PG 冒烟，不可达优雅跳过）。
+v1 测试文件，映射见 MIGRATION §2）、`admin-api.real.test.ts`（真实 PG 冒烟，不可达优雅跳过）、`e2e.real.test.ts`（真实进程端到端：
+spawn `bun --conditions=development src/index.ts` + 真实 PG + identity 签发真 admin 令牌——六域全链、
+幂等重放/409、审计桥落库、优雅停机；同样不可达优雅跳过。注：bun 运行时默认不应用 exports 的
+development 条件，真实进程启动须显式 `--conditions=development` 或先构建 dist）。
 覆盖率门槛 90/85（lines/statements/functions 90、branches 85）；四门禁 typecheck/lint/test/build
 + 根 boundaries 脚本。
 

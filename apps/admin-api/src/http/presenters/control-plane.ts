@@ -5,7 +5,7 @@
  * boundModels 为 v2 线形 string[]（绑定名清单——{externalName,realModel} 对待 control-plane 列表扩展）。
  */
 import type { ControlPlane } from '@tokenlens/control-plane';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal, normalizeAmount } from '@tokenlens/billing';
 import { iso } from '../contracts/common';
 
 export type ProviderRowSource = Awaited<ReturnType<ControlPlane['providers']['create']>>;
@@ -60,8 +60,8 @@ export function toChannelFundWireRow(row: RechargeRowSource) {
     channelId: row.channelId,
     channelName: row.channelName,
     type: row.type as 'recharge' | 'adjust',
-    amount: row.amount,
-    balanceAfter: row.balanceAfter,
+    amount: normalizeAmount(row.amount),
+    balanceAfter: normalizeAmount(row.balanceAfter),
     orderNo: row.orderNo,
     voucher: row.voucher,
     remark: row.remark,
