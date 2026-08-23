@@ -10,6 +10,7 @@ import { firstParam, listHref, parseListSearchParams } from '../src/server/list-
 import { safeNext } from '../src/server/next-url';
 import { stripAuthParams } from '../src/features/auth/auth-url';
 import { parseOAuthFragment } from '../src/features/auth/oauth-fragment';
+import { isNextRedirect } from '../src/features/auth/next-redirect';
 import { oauthOptionsFromProviders } from '../src/features/auth/oauth-options';
 import { buildSidebarItems } from '../src/features/shell/sidebar-items';
 import { getInitials } from '../src/features/shared/initials';
@@ -378,5 +379,20 @@ describe('format 日期（DISPLAY_TZ 显式时区——B8）', () => {
   it('unitWord：second/second-en 分支', () => {
     expect(unitWord('second', 'zh')).toBe('秒');
     expect(unitWord('second', 'en')).toBe('sec');
+  });
+});
+
+describe('isNextRedirect（NEXT_REDIRECT 判别）', () => {
+  it('redirect 的 digest 形态（含 replace/307 后缀）判为跳转信号', () => {
+    const err = Object.assign(new Error('NEXT_REDIRECT'), {
+      digest: 'NEXT_REDIRECT;replace;/dashboard;307;',
+    });
+    expect(isNextRedirect(err)).toBe(true);
+  });
+
+  it('普通网络错误 / 非 Error / 无 digest 判为真失败', () => {
+    expect(isNextRedirect(new Error('fetch failed'))).toBe(false);
+    expect(isNextRedirect('NEXT_REDIRECT')).toBe(false);
+    expect(isNextRedirect(Object.assign(new Error('x'), { digest: 307 }))).toBe(false);
   });
 });

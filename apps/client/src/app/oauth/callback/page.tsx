@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { parseOAuthFragment } from '@/features/auth/oauth-fragment';
+import { isNextRedirect } from '@/features/auth/next-redirect';
 import { completeOAuthAction } from '@/server/actions/oauth';
 
 /** fragment 解析纯函数（可测）：#token=…&next=… → {token, next} */
@@ -27,10 +28,13 @@ function CallbackInner() {
       setError(t('noTokenRetry'));
       return;
     }
-    // action 成功即 redirect（NEXT_REDIRECT），失败态只可能是网络层异常
-    void completeOAuthAction(token, next ?? params.get('next')).catch(() =>
-      setError(t('fetchError')),
-    );
+    // action 成功即 redirect：redirect() 在 Server Action 内部以 NEXT_REDIRECT
+    // digest 异常表达，手动调用形态下该 rejection 会先到达这里——它是成功信号
+    // （cookie 已写、导航由框架接手），只有非 NEXT_REDIRECT 才是真失败
+    void completeOAuthAction(token, next ?? params.get('next')).catch((err: unknown) => {
+      if (isNextRedirect(err)) return;
+      setError(t('fetchError'));
+    });
   }, [params, t]);
 
   return (
