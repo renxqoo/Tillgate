@@ -29,16 +29,32 @@ export interface SidebarUser {
 
 export function AppSidebar({
   user,
+  permissions = [],
   ...props
-}: React.ComponentProps<typeof Sidebar> & { readonly user: SidebarUser }) {
+}: React.ComponentProps<typeof Sidebar> & {
+  readonly user: SidebarUser;
+  /** 当前角色全量权限集（/v1/me 下发——RBAC 导航过滤单一事实来源） */
+  readonly permissions?: readonly string[];
+}) {
   const t = useTranslations('nav');
 
-  // sidebar-items 存 i18n key，这里解析成当前语言文案再交给共享 NavMain 渲染
-  const items = buildSidebarItems().map((group) => ({
-    ...group,
-    label: group.label ? t(group.label) : undefined,
-    items: group.items.map((item) => ({ ...item, title: t(item.title) })),
-  }));
+  // sidebar-items 存 i18n key，这里解析成当前语言文案再交给共享 NavMain 渲染；
+  // 无权限的入口整项隐藏（权限权威判定在 admin-api 域守卫——此处仅为导航 UX）
+  const allowed = (permission?: string) => permission == null || permissions.includes(permission);
+  const items = buildSidebarItems()
+    .map((group) => ({
+      ...group,
+      label: group.label ? t(group.label) : undefined,
+      items: group.items
+        .filter((item) => allowed(item.permission))
+        .map((item) =>
+          item.subItems != null
+            ? { ...item, subItems: item.subItems.filter((sub) => allowed(sub.permission)) }
+            : item,
+        )
+        .map((item) => ({ ...item, title: t(item.title) })),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>

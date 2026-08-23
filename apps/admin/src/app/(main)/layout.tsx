@@ -35,7 +35,7 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
         } as React.CSSProperties
       }
     >
-      <AppSidebar user={user} />
+      <AppSidebar user={user} permissions={me.permissions ?? []} />
       <SidebarInset className="min-w-0 overflow-x-clip md:!m-0 md:!rounded-none md:!shadow-none">
         <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center gap-2 bg-background/85 backdrop-blur-md transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/70">
           <div className="flex w-full items-center justify-between px-5 md:px-6 lg:px-8 xl:px-10">

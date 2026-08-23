@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { GemIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function PlansPage({ searchParams }: PageProps) {
+  await requirePermission('plans:read');
   const sp = await searchParams;
   const t = await getTranslations('plans');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { Badge, Card, CardDescription, CardHeader } from '@tokenlens/ui';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
@@ -30,6 +31,7 @@ export default async function TracingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('tracing');
   const tc = await getTranslations('common');

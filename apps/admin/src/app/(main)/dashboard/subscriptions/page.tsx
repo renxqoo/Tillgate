@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { CalendarClockIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -19,6 +20,7 @@ interface PageProps {
 }
 
 export default async function SubscriptionsPage({ searchParams }: PageProps) {
+  await requirePermission('plans:read');
   const sp = await searchParams;
   const t = await getTranslations('subscriptions');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { GaugeIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -21,6 +22,7 @@ interface PageProps {
 }
 
 export default async function RateLimitsPage({ searchParams }: PageProps) {
+  await requirePermission('users:read');
   const sp = await searchParams;
   const t = await getTranslations('rateLimits');
   const tc = await getTranslations('common');

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { Card, CardContent } from '@tokenlens/ui';
 import Link from 'next/link';
 import { Network } from 'lucide-react';
@@ -27,6 +28,7 @@ export default async function TopologyPage({
 }: {
   searchParams: Promise<{ hours?: string }>;
 }) {
+  await requirePermission('ops:read');
   const requested = (await searchParams).hours;
   const t = await getTranslations('tracing');
   const tc = await getTranslations('common');

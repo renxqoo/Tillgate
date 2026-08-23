@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { AdminChannelRow } from '@tokenlens/api-client';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
@@ -17,6 +18,7 @@ export default async function ChannelFundsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePermission('funds:read');
   const sp = await searchParams;
   const t = await getTranslations('channelFunds');
   const { q, page } = parseListSearchParams(sp);

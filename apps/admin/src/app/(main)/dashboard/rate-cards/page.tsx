@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { BanknoteIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function RateCardsPage({ searchParams }: PageProps) {
+  await requirePermission('catalog:read');
   const sp = await searchParams;
   const t = await getTranslations('rateCards');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { TicketIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function RedeemBatchesPage({ searchParams }: PageProps) {
+  await requirePermission('funds:read');
   const sp = await searchParams;
   const t = await getTranslations('redeemBatches');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

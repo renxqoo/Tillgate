@@ -12,7 +12,12 @@ import {
   type HttpClient,
   type TokenGetter,
 } from './core/client';
-import type { AdminMeInfo } from './dto/admin-api.generated';
+import type {
+  AdminCreateBody,
+  AdminMeInfo,
+  AdminPatchBody,
+  AdminRow,
+} from './dto/admin-api.generated';
 
 export interface AdminApiClientOptions {
   baseUrl: string;
@@ -37,6 +42,15 @@ export interface AdminApiClient extends HttpClient {
     oldPassword: string;
     newPassword: string;
   }): Promise<AdminPasswordChangeResult>;
+
+  /** 管理员列表（GET /v1/admins;admins 域——仅 super_admin,403 由调用方处理） */
+  listAdmins(): Promise<{ rows: AdminRow[] }>;
+
+  /** 创建管理员（POST /v1/admins;资料行 + identity 凭据双动词编排） */
+  createAdmin(input: AdminCreateBody): Promise<AdminRow>;
+
+  /** 更新管理员（PATCH /v1/admins/:id;role/status 不可改自身） */
+  updateAdmin(id: number, input: AdminPatchBody): Promise<AdminRow>;
 }
 
 export interface AdminPasswordChangeResult {
@@ -56,6 +70,15 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
     },
     async changeMyPassword(input: { oldPassword: string; newPassword: string }) {
       return http.post<AdminPasswordChangeResult>('/v1/me/password', input);
+    },
+    async listAdmins() {
+      return http.get<{ rows: AdminRow[] }>('/v1/admins');
+    },
+    async createAdmin(input: AdminCreateBody) {
+      return http.post<AdminRow>('/v1/admins', input);
+    },
+    async updateAdmin(id: number, input: AdminPatchBody) {
+      return http.patch<AdminRow>(`/v1/admins/${id}`, input);
     },
   };
 }

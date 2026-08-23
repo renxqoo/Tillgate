@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -44,6 +45,7 @@ function estimateReasonKey(reason: string | null): string {
 }
 
 export default async function UsageLogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('usageLogs');
   const tc = await getTranslations('common');

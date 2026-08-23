@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { UserPlusIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -21,6 +22,7 @@ interface PageProps {
 }
 
 export default async function ReferralsPage({ searchParams }: PageProps) {
+  await requirePermission('growth:read');
   const sp = await searchParams;
   const t = await getTranslations('referrals');
   const { q, page } = parseListSearchParams(sp);
@@ -59,7 +61,9 @@ export default async function ReferralsPage({ searchParams }: PageProps) {
       pageSize={PAGE_SIZE}
     >
       <div className="space-y-3">
-        <div className="ml-4 mt-4"><ReferralsViewSelect view={view} kind={payoutKind} /></div>
+        <div className="ml-4 mt-4">
+          <ReferralsViewSelect view={view} kind={payoutKind} />
+        </div>
         {table}
       </div>
     </ListPage>

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 import {
   Button,
@@ -45,6 +46,7 @@ function isoDateParam(v: string | undefined): string | null {
 }
 
 export default async function UserDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('users:read');
   const { id } = await params;
   const locale = await getLocale();
   const t = await getTranslations('users');

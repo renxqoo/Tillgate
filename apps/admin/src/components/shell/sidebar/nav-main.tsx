@@ -42,6 +42,8 @@ interface NavItemBase {
   badge?: NavBadge;
   disabled?: boolean;
   newTab?: boolean;
+  /** 该入口所需的域读权限（RBAC `<domain>:read`;缺省 = 所有角色可见） */
+  permission?: string;
 }
 
 export interface NavMainLinkItem extends NavItemBase {
@@ -62,6 +64,8 @@ export interface NavSubItem {
   icon?: LucideIcon;
   disabled?: boolean;
   newTab?: boolean;
+  /** 该入口所需的域读权限（RBAC `<domain>:read`;缺省 = 所有角色可见） */
+  permission?: string;
 }
 
 export interface NavGroup {

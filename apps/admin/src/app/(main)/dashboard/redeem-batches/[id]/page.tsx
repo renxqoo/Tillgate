@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { Button, Card, CardContent } from '@tokenlens/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -25,6 +26,7 @@ interface PageProps {
 }
 
 export default async function BatchDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('funds:read');
   const { id } = await params;
   const t = await getTranslations('redeemBatches');
   const tc = await getTranslations('common');

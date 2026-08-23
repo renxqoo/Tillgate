@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -25,6 +26,7 @@ interface ChannelRow {
 }
 
 export default async function NotificationsPage() {
+  await requirePermission('growth:read');
   const t = await getTranslations('notifications');
   const tc = await getTranslations('common');
   const data = await adminApi()

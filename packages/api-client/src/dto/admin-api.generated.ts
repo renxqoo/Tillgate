@@ -19,6 +19,41 @@ export interface AdminMeInfo {
   twoFactorEnabled?: boolean;
   /** TOTP 验证器已绑定（接管第二因子） */
   totpEnabled?: boolean;
+  /** RBAC 角色（词表单一真相 = control-plane domain/rbac） */
+  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  /** 该角色全量权限集（<domain>:<read|write>——前端按此过滤导航） */
+  permissions: string[];
+}
+
+// ── admins ─────────────────────────────────────
+
+/** 管理员资料行（GET/POST /v1/admins,PATCH /v1/admins/:id） */
+export interface AdminRow {
+  id: number;
+  email: string;
+  displayName: string | null;
+  /** RBAC 角色（词表/矩阵单一真相 = control-plane domain/rbac） */
+  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  /** 0 正常 / 1 封禁 / 2 注销 */
+  status: number;
+  twoFactorEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+/** 创建管理员请求体（POST /v1/admins;字段真相 = contracts zod——角色词表封闭,密码策略单源在 identity） */
+export interface AdminCreateBody {
+  email: string;
+  displayName?: string;
+  password: string;
+  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+}
+
+/** 更新管理员请求体（PATCH /v1/admins/:id;字段真相 = contracts zod——role/status 不可改自身） */
+export interface AdminPatchBody {
+  displayName?: string | null;
+  role?: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  status?: number;
 }
 
 // ── users ─────────────────────────────────────

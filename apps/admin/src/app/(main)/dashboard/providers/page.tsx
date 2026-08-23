@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { ServerIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -53,6 +54,7 @@ function ViewTabs({
 }
 
 export default async function ProvidersPage({ searchParams }: PageProps) {
+  await requirePermission('catalog:read');
   const sp = await searchParams;
   const t = await getTranslations('providers');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

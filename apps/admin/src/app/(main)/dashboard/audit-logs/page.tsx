@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -20,6 +21,7 @@ interface PageProps {
 }
 
 export default async function AuditLogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('auditLogs');
   const tc = await getTranslations('common');

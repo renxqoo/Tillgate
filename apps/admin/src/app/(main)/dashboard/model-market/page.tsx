@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
 import Link from 'next/link';
 import { Store } from 'lucide-react';
@@ -22,6 +23,7 @@ export default async function ModelMarketPage({
 }: {
   searchParams: Promise<{ source?: string }>;
 }) {
+  await requirePermission('catalog:read');
   const params = await searchParams;
   const t = await getTranslations('modelMarket');
   const sourceLabel = (src: { id: string; name: string }): string => {

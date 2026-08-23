@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 import { Button, Card, CardContent } from '@tokenlens/ui';
 import { DataTable } from '@/components/data-table';
@@ -23,6 +24,7 @@ interface PageProps {
 }
 
 export default async function RateCardDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('catalog:read');
   const { id } = await params;
   const t = await getTranslations('rateCards');
   const tc = await getTranslations('common');
