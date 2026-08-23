@@ -37,10 +37,10 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 75(0000-0075,历史缺口 0036 在案)', () => {
-    expect(journalTags.length).toBe(75);
+  it('条目总数 = 76(0000-0076,历史缺口 0036 在案;0076 = identity 七表)', () => {
+    expect(journalTags.length).toBe(76);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
-    expect(journalTags.at(-1)).toBe('0075_usage_ttft_index');
+    expect(journalTags.at(-1)).toBe('0076_identity_tables');
   });
 
   it('tag 编号严格递增,无重复', () => {

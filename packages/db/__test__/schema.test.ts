@@ -10,7 +10,7 @@ import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import * as schema from '../src/schema/index.js';
 import * as rootExports from '../src/index.js';
 
-/** v1 全量物理表清单(39 张)——新增/删除表必须先改本清单 */
+/** 物理表清单(46 张 = v1 基线 39 + identity 波次七表,迁移 0076)——新增/删除表必须先改本清单 */
 const EXPECTED_TABLES = new Set([
   'users', 'admins', 'apps', 'api_keys', 'providers', 'channels', 'channel_recharges',
   'model_mappings', 'model_channels', 'rate_cards', 'rate_card_coefficients',
@@ -21,6 +21,9 @@ const EXPECTED_TABLES = new Set([
   'marketing_settings', 'notification_channels', 'notify_outbox', 'generation_tasks',
   'wallet_accounts', 'wallet_transactions', 'wallet_legs', 'wallet_authorizations',
   'ledger_operations', 'fx_rates', 'system_configs',
+  'identity_credentials', 'identity_passwords', 'identity_oauth_links',
+  'identity_challenges', 'identity_totp', 'identity_recovery_codes',
+  'identity_session_anchors',
 ]);
 
 function tableNames(namespace: object): Set<string> {
@@ -32,7 +35,7 @@ function tableNames(namespace: object): Set<string> {
 }
 
 describe('schema 表清单', () => {
-  it('物理表集合与 v1 基线一致(39 张,封闭词表)', () => {
+  it('物理表集合与基线一致(46 张,封闭词表;identity 七表 = 迁移 0076)', () => {
     expect(tableNames(schema)).toEqual(EXPECTED_TABLES);
   });
 
@@ -70,7 +73,7 @@ describe('词表收敛(B4:三套 → ACCOUNT_STATUS 一套)', () => {
   });
 });
 
-describe('外键引用物化(契约:FK 目标必须在 39 表封闭集合内)', () => {
+describe('外键引用物化(契约:FK 目标必须在封闭表集合内)', () => {
   it('全部 FK 物化且目标表可解析——同时执行所有 .references(() => …) 惰性回调', () => {
     let fkCount = 0;
     for (const value of Object.values(schema)) {
@@ -88,7 +91,7 @@ describe('外键引用物化(契约:FK 目标必须在 39 表封闭集合内)', 
         }
       }
     }
-    // 39 表中带 FK 列的表远超一张——防物化循环空转(0 个 FK = 测试失效)
+    // 带 FK 列的表远超一张——防物化循环空转(0 个 FK = 测试失效)
     expect(fkCount).toBeGreaterThan(20);
   });
 });
