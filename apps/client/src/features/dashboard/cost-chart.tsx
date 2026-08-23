@@ -1,0 +1,67 @@
+'use client';
+
+import { useLocale, useTranslations } from 'next-intl';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@tokenlens/ui';
+
+import { formatMoney } from '@/features/shared/format';
+
+/** 近 14 日费用面积图（¥，DISPLAY 口径金额格式化） */
+export function CostChart({ data }: { data: ReadonlyArray<{ date: string; value: number }> }) {
+  const t = useTranslations('dashboard');
+  const locale = useLocale();
+  const chartConfig = {
+    cost: { label: t('costLabel'), color: 'var(--chart-1)' },
+  } satisfies ChartConfig;
+
+  if (data.length === 0) {
+    return (
+      <div className="flex h-62.5 items-center justify-center text-sm text-muted-foreground">
+        {t('noUsageData')}
+      </div>
+    );
+  }
+  return (
+    <ChartContainer config={chartConfig} className="aspect-auto h-62.5 w-full">
+      <AreaChart data={data} margin={{ left: 12, right: 12, top: 4, bottom: 4 }}>
+        <defs>
+          <linearGradient id="cost-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid vertical={false} strokeOpacity={0.15} />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tickFormatter={(v: string) => v.slice(5)}
+        />
+        <YAxis
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v: number) => formatMoney(v, locale)}
+          width={48}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={
+            <ChartTooltipContent
+              indicator="line"
+              formatter={(value) => formatMoney(Number(value), locale)}
+            />
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="value"
+          stroke="var(--chart-1)"
+          fill="url(#cost-fill)"
+          strokeWidth={2}
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}

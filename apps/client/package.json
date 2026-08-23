@@ -1,0 +1,45 @@
+{
+  "name": "@tokenlens/client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js 用户控制台(BFF):会话 cookie 持有 + Server Action 编排,业务全部经 @tokenlens/client-api(总纲 §3/P5)",
+  "license": "MIT",
+  "scripts": {
+    "dev": "bun x next dev -p 3001",
+    "build": "bun x next build",
+    "start": "bun x next start -p 3001",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run",
+    "test:watch": "bun x vitest",
+    "test:coverage": "bun x vitest run --coverage"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.7.1",
+    "@tokenlens/api-client": "workspace:*",
+    "@tokenlens/ui": "workspace:*",
+    "lucide-react": "^1.33.0",
+    "next": "^16.3.0",
+    "next-intl": "^4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.84.0",
+    "recharts": "^3.8.0",
+    "shiki": "^4.4.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitest/coverage-v8": "^4.1.11",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

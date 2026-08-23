@@ -20,16 +20,7 @@ export interface MeInfo {
   tpmLimit: number | null;
   lastLoginAt: string | null;
   createdAt: string;
-  accounts: Array<{
-    id: string;
-    kind: string;
-    code: string | null;
-    currency: string;
-    balance: string;
-    inFlight: string;
-    creditLimit: string;
-    status: string;
-  }>;
+  accounts: WalletAccount[];
 }
 
 // ── Key (GET/POST /v1/keys) ────────────────────────────────────────────────
@@ -75,18 +66,24 @@ export interface AppCreated {
   clientSecret: string;
 }
 
-// ── Transactions (GET /v1/me/transactions, /v1/admin/users/:id/transactions) ─
-export interface TransactionRow {
-  id: number;
-  userId: number;
-  type: string;
+// ── 钱包流水 (GET /v1/wallet/statement;游标分页,锚=legId) ──────────────────
+export interface StatementRow {
+  /** 账腿 id(游标锚:下一页 beforeLegId) */
+  legId: number;
+  /** 腿类型(充值/推理扣费/订阅扣费/佣金…) */
+  transactionKind: string;
+  refType: string;
+  refId: string;
+  /** 带符号金额(元,字符串) */
   amount: string;
-  balanceBefore: string;
   balanceAfter: string;
-  refType: string | null;
-  refId: string | null;
-  remark: string | null;
+  memo: string | null;
   createdAt: string;
+}
+/** 流水游标页:满页时 nextCursor=尾腿 legId(字符串形态) */
+export interface StatementPage {
+  rows: StatementRow[];
+  nextCursor?: string;
 }
 
 /** 我的充值码兑换记录 (GET /v1/redeem/history;不含明文码/哈希) */
@@ -199,19 +196,13 @@ export interface OrgInvitationSummary {
 }
 
 export interface OrgDetail {
-  org: { id: number; name: string; ownerUserId: number } | null;
+  org: { id: number; name: string } | null;
   members: OrgMemberRow[];
   /** 待接受邀请(仅 owner 可见;token 不回显——链接只在邀请创建时下发一次) */
   invitations?: OrgInvitationSummary[];
 }
 
-/** 订阅「变更」弹窗的目标套餐选项(仅 subscription;用户面订阅 UI 用) */
-export interface PlanOption {
-  id: number;
-  name: string;
-  kind: 'subscription' | 'pack';
-  sortOrder: number | null;
-}
+/** 公开套餐目录行 (GET /v1/plans;用户面只出上架 subscription 档) */
 
 // ── 套餐订阅(包月) ─────────────────────────────────────────────────────────
 /** 当前订阅摘要 (client GET /v1/me/subscription) */
@@ -254,4 +245,179 @@ export interface SubscribeResult {
   balanceBefore: string;
   balanceAfter: string;
   replayed: boolean;
+}
+
+// ── 认证步骤(公开面;POST /v1/auth/*) ─────────────────────────────────────
+/** 登录/注册页能力探测 (GET /v1/auth/capabilities) */
+export interface AuthCapabilities {
+  registerEnabled: boolean;
+  captchaSiteKey: string | null;
+  emailCodeRequired: boolean;
+}
+/** 登录/注册第一步响应判别联合(kind 缺省按失败处理) */
+export interface AuthStepResult {
+  kind?: 'code_required' | 'success';
+  challengeId?: string;
+  token?: string;
+  userId?: number;
+  email?: string;
+  gifted?: boolean;
+}
+/** POST /v1/auth/login/verify 成功形态(登录两步制第二步) */
+export interface LoginVerifyResult {
+  token: string;
+  userId: number;
+}
+/** POST /v1/auth/password 成功形态(吊销全部旧会话并当场重签) */
+export interface PasswordChangeResult {
+  token: string;
+}
+/** POST /v1/auth/logout */
+export interface LogoutResult {
+  ok: boolean;
+}
+/** PATCH /v1/me/display-name */
+export interface DisplayNameResult {
+  displayName: string;
+}
+
+// ── OAuth(公开面) ──────────────────────────────────────────────────────────
+/** GET /v1/oauth/providers(已配置登录方式,空数组=纯密码登录) */
+export interface OAuthProviders {
+  providers: string[];
+}
+
+// ── 公开定价 (GET /v1/pricing) ─────────────────────────────────────────────
+export interface PricingModel {
+  id: number;
+  externalName: string;
+  contextLength: number | null;
+  pricingUnit: string;
+  inputPrice: string;
+  outputPrice: string;
+  cacheInputPrice: string;
+  unitPrice: string;
+  isFree: boolean;
+  /** 登录态富化(/v1/pricing/personal):费率卡系数与到手价 */
+  coefficient?: string;
+  effective?: {
+    inputPrice: string;
+    outputPrice: string;
+    cacheInputPrice: string;
+    unitPrice: string;
+  };
+  personalized?: boolean;
+  rateCardStatus?: number | null;
+}
+/** 定价目录页(q/free 过滤在服务端目录内做;envelope 键为 models——v1 形态保留) */
+export interface PricingPage {
+  models: PricingModel[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ── 用量聚合信封 ───────────────────────────────────────────────────────────
+/** GET /v1/usage/by-model */
+export interface UsageByModelPage {
+  rows: UsageByModelItem[];
+}
+/** GET /v1/usage/summary(envelope 键为 list——v1 形态保留) */
+export interface UsageSummaryPage {
+  list: UsageDayRow[];
+}
+/** GET /v1/usage/rate(近 60 秒实时速率) */
+export interface UsageRate {
+  rpm: number;
+  tpm: number;
+}
+
+// ── 钱包账户摘要 (GET /v1/wallet/accounts) ─────────────────────────────────
+export interface WalletAccount {
+  id: string;
+  kind: string;
+  code: string | null;
+  currency: string;
+  balance: string;
+  inFlight: string;
+  creditLimit: string;
+  status: string;
+}
+export interface WalletAccountsResult {
+  accounts: WalletAccount[];
+}
+
+// ── 支付 (POST/GET /v1/payments/*) ─────────────────────────────────────────
+/** 充值订单行(status:0 created/1 paid/2 credited/4 expired) */
+export interface PaymentOrderRow {
+  id: string;
+  provider: string;
+  providerOrderId: string;
+  userId: number;
+  amount: string;
+  currency: string;
+  creditAmount: string;
+  status: number;
+  createdAt: string;
+}
+/** 订单列表(信封只 rows 无 total——契约缺口 G3,UI 按「加载更多」消费) */
+export interface PaymentOrdersPage {
+  rows: PaymentOrderRow[];
+}
+/** POST /v1/payments/orders 201 */
+export interface TopupOrderResult {
+  orderId: string;
+  payUrl: string;
+  creditAmount: string;
+}
+export interface PaymentChannel {
+  id: string;
+  label: string;
+}
+/** GET /v1/payments/channels */
+export interface PaymentChannelsResult {
+  channels: PaymentChannel[];
+}
+
+// ── 兑换码 ─────────────────────────────────────────────────────────────────
+/** POST /v1/redeem 成功形态 */
+export interface RedeemResult {
+  amount: string;
+  balanceAfter: string;
+  transactionId: number;
+}
+/** GET /v1/redeem/history(信封只 rows) */
+export interface RedeemHistoryPage {
+  rows: RedeemHistoryItem[];
+}
+
+// ── 邀请返佣 (GET /v1/referrals*) ──────────────────────────────────────────
+/** GET /v1/referrals/config(全零=前端隐藏入口) */
+export interface ReferralConfig {
+  enabled: boolean;
+  signupBonus: string;
+  commissionRate: string;
+}
+export interface ReferralInvitee {
+  inviteeId: number;
+  inviteeName: string | null;
+  createdAt: string;
+  status: number;
+}
+/** GET /v1/referrals */
+export interface ReferralOverview {
+  affCode: string;
+  inviteUrl: string;
+  signupBonus: string;
+  commissionRate: string;
+  invited: ReferralInvitee[];
+  totalCommission: string;
+}
+
+// ── 列表信封(用户面统一 {rows,total,page,limit};例外见各类型注释) ──────────
+export interface RowsPage<Row> {
+  rows: Row[];
+}
+export interface RowsTotalPage<Row> extends RowsPage<Row> {
+  total: number;
 }
