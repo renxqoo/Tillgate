@@ -347,6 +347,62 @@ describe('signal（四事件）', () => {
     expect(replay).toMatchObject({ changed: false, replayed: true, status: 'released' });
   });
 
+  it('B10 回归：authorize 对终态单重放 → state_conflict（released / settlement_pending 旧语义锁死）', async () => {
+    // released：request.failed 三路释放后，同键同参再授权不是幂等重放而是拒绝
+    const failed = await authorized();
+    await failed.api.signal({ type: 'request.failed', requestId: failed.requestId, reason: 'x' });
+    const afterReleased = await rejection(() =>
+      failed.api.authorize({
+        requestId: failed.requestId,
+        userId: failed.userId,
+        stream: true,
+        quote: quote('2', '0'),
+        reservationLimit: '10',
+        authorizationTtlMs: TTL,
+      }),
+    );
+    expect(afterReleased.code).toBe('billing.state_conflict');
+
+    // settlement_pending：收据验收转待结算后重放同样拒绝
+    const done = await authorized();
+    await done.api.signal({
+      type: 'request.succeeded',
+      requestId: done.requestId,
+      receipt: {
+        requestId: done.requestId,
+        userId: done.userId,
+        apiKeyId: null,
+        appId: null,
+        credentialType: 'key',
+        externalModel: 'm',
+        realModel: 'm',
+        channelId: null,
+        channelKey: 't',
+        usage: { inputTokens: 500_000, cachedInputTokens: 0, outputTokens: 0, estimated: false },
+        inputPrice: '2',
+        outputPrice: '0',
+        cacheInputPrice: '0',
+        coefficient: '1',
+        durationMs: 10,
+        stream: true,
+        streamAborted: false,
+        mappingId: 1,
+        billingPolicyFingerprint: null,
+      },
+    });
+    const afterPending = await rejection(() =>
+      done.api.authorize({
+        requestId: done.requestId,
+        userId: done.userId,
+        stream: true,
+        quote: quote('2', '0'),
+        reservationLimit: '10',
+        authorizationTtlMs: TTL,
+      }),
+    );
+    expect(afterPending.code).toBe('billing.state_conflict');
+  });
+
   it('首次交付的错用户收据 → receipt_user_mismatch（毒收据家族）', async () => {
     const { api, requestId, userId } = await authorized();
     const rejected = await rejection(() =>

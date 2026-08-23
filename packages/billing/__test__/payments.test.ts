@@ -9,11 +9,11 @@ import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createPaymentsApi } from '../src/application/payments/payments.js';
 import { createRedemptionApi, sha256Hex } from '../src/application/redemption/redemption.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
+import { createInMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
 import {
-  createInMemoryBillingWorld,
   createInMemoryPaymentStores,
   createInMemoryRateCounter,
-} from '../src/testing/in-memory-billing-store.js';
+} from '../src/testing/in-memory-payment-stores.js';
 import type { PaymentProviderPort } from '../src/ports/payment-ports.js';
 import { epaySign, epayVerify, parseEpayNotify } from '../src/domain/payment/epay.js';
 import {

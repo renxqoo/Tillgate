@@ -75,7 +75,7 @@ markPaid→credit→markCredited 单事务；先落库再调渠道；过期单�
 
 ### 2.4 错误处理（AGENT.md §11）
 
-全部业务拒绝经 `BillingErrors` 目录（55 码；捕获按 nature/category，不做跨包
+全部业务拒绝经 `BillingErrors` 目录（48 码；捕获按 nature/category，不做跨包
 instanceof）：
 
 ```ts

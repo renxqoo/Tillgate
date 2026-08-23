@@ -14,8 +14,8 @@ export {
   type ReconcileReport,
   type ReconcileViolation,
 } from './application/settlement/settlement.js';
+export { createReconcileUseCase } from './application/settlement/reconcile.js';
 export {
-  createReconcileUseCase,
   createRecoverUseCase,
   createAbandonClaimsUseCase,
-} from './application/settlement/index-exports.js';
+} from './application/settlement/recover.js';

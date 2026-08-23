@@ -68,5 +68,9 @@ U2a/U2b 各一提交可独立 revert；零 DDL（billing_requests 等表已在�
 
 - U2a：四门全绿，154 用例（含 U1 的 81），覆盖率 96.19/90.65/97.83/97.99。
 - U2b：四门全绿，183 用例，覆盖率 92.63/85.98/97.14/94.58；B2/B3/B6 回归通过。
+- B10 补遗（2026-08-23 审查回写）：「保留现语义并测试锁死」当时只落了代码
+  （authorize.ts replayOf 对终态单抛 state_conflict）未落具名用例；已补 B10 具名回归
+  （released / settlement_pending 两态重放拒绝，billing-authorize.test.ts）。
+  gateway 重试层对照仍归 P5（IMPLEMENTATION §1.3）。
 - 行为对照：授权瀑布（PAYG/订阅切分/免费/重放/不足/日限/单请求上限）、
   signal 四事件（含竞态指纹幂等）、渠道三模式 + 预算拒绝、积压准入双分支。
