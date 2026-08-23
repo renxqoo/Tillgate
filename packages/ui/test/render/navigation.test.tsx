@@ -1,0 +1,150 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  ThemeProvider,
+  ThemeSwitcher,
+} from '../../src/index';
+
+describe('Tabs', () => {
+  it('受控切换内容', async () => {
+    render(
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="logs">日志</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview">概览内容</TabsContent>
+        <TabsContent value="logs">日志内容</TabsContent>
+      </Tabs>,
+    );
+    expect(screen.getByText('概览内容')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: '日志' }));
+    expect(screen.getByText('日志内容')).toBeInTheDocument();
+  });
+});
+
+describe('Breadcrumb', () => {
+  it('渲染导航路径', () => {
+    render(
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/admin">管理</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>渠道</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>,
+    );
+    expect(screen.getByRole('navigation')).toBeInTheDocument();
+    expect(screen.getByText('渠道')).toBeInTheDocument();
+  });
+});
+
+describe('Pagination', () => {
+  it('渲染链接式分页', () => {
+    render(
+      <Pagination>
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious href="?page=1" />
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink href="?page=1">1</PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationLink href="?page=2" isActive>
+              2
+            </PaginationLink>
+          </PaginationItem>
+          <PaginationItem>
+            <PaginationNext href="?page=3" />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>,
+    );
+    expect(screen.getByRole('navigation', { name: 'pagination' })).toBeInTheDocument();
+    const active = screen.getByRole('link', { name: '2' });
+    expect(active).toHaveAttribute('href', '?page=2');
+    expect(active).toHaveAttribute('aria-current', 'page');
+  });
+});
+
+describe('Sidebar', () => {
+  it('渲染侧栏导航结构', () => {
+    render(
+      <SidebarProvider>
+        <Sidebar>
+          <SidebarHeader>TokenLens</SidebarHeader>
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupLabel>运营</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive>渠道</SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+      </SidebarProvider>,
+    );
+    expect(screen.getByText('TokenLens')).toBeInTheDocument();
+    expect(screen.getByText('运营')).toBeInTheDocument();
+  });
+});
+
+describe('ThemeSwitcher', () => {
+  it('未包 ThemeProvider 时抛错(契约与 useTheme 一致)', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<ThemeSwitcher />)).toThrow(/ThemeProvider/);
+    consoleError.mockRestore();
+  });
+
+  it('打开菜单并切换主题', async () => {
+    render(
+      <ThemeProvider defaultTheme="light">
+        <ThemeSwitcher labels={{ trigger: '切换主题', dark: '深色' }} />
+      </ThemeProvider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: '切换主题' }));
+    const item = await screen.findByRole('menuitem', { name: '深色' });
+    await userEvent.click(item);
+    // documentElement 获得深色类
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    // localStorage 持久化
+    expect(window.localStorage.getItem('theme')).toBe('dark');
+  });
+});

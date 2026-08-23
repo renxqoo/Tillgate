@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    "max-lines": ["error", { "max": 500 }]
+  },
+  "overrides": [
+    {
+      "files": ["**/__test__/**", "**/test/**", "**/*.test.ts", "**/*.test.tsx", "**/testing/**"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
+      "files": ["**/*.generated.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
+      "files": ["src/components/navigation/sidebar.tsx"],
+      "rules": {
+        "max-lines": "off",
+        "no-shadow": "off"
+      }
+    }
+  ],
+  "env": {
+    "node": true,
+    "browser": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**"]
+}
