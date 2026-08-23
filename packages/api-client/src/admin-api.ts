@@ -27,6 +27,20 @@ export interface AdminApiClient extends HttpClient {
    * 能拿到即证明持有效管理员会话(admin-api 已用 adminAuthMiddleware 守护)。
    */
   getAdminMe(): Promise<AdminMeInfo | null>;
+
+  /**
+   * 修改自己的管理员密码(POST /v1/me/password,session 鉴权 + 验旧密)。
+   * 成功即推进 admin realm 失效线——**旧会话全部失效**,响应携带新签 token,
+   * 调用方(BFF)必须立即用返回值换会话 cookie,否则用户当场被登出。
+   */
+  changeMyPassword(input: {
+    oldPassword: string;
+    newPassword: string;
+  }): Promise<AdminPasswordChangeResult>;
+}
+
+export interface AdminPasswordChangeResult {
+  token: string;
 }
 
 export function createAdminApiClient(options: AdminApiClientOptions): AdminApiClient {
@@ -39,6 +53,9 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
       } catch {
         return null;
       }
+    },
+    async changeMyPassword(input: { oldPassword: string; newPassword: string }) {
+      return http.post<AdminPasswordChangeResult>('/v1/me/password', input);
     },
   };
 }

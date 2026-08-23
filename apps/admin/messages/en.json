@@ -30,7 +30,8 @@
     "invalidAmount": "Enter a valid amount",
     "nonZeroAmount": "Amount must be non-zero",
     "confirm": "Confirm",
-    "confirmTitle": "Please confirm"
+    "confirmTitle": "Please confirm",
+    "changePassword": "Change password"
   },
   "nav": {
     "home": "Admin console home",
@@ -94,6 +95,24 @@
     "verifyFailedStatus": "Verification failed ({status})",
     "notLoggedIn": "Not signed in",
     "operationFailedStatus": "Operation failed ({status})"
+  },
+  "changePassword": {
+    "title": "Change password",
+    "description": "Other signed-in admin sessions will be signed out after the change.",
+    "submit": "Update password",
+    "oldPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm new password",
+    "success": "Password updated",
+    "failed": "Update failed",
+    "fetchError": "Service temporarily unavailable, please retry later",
+    "errors": {
+      "required": "All password fields are required",
+      "mismatch": "New passwords do not match",
+      "tooShort": "New password must be at least 8 characters",
+      "tooLong": "New password must be at most 128 characters",
+      "sameAsOld": "New password must differ from the current one"
+    }
   },
   "dashboard": {
     "loadFailed": "Failed to load stats",
@@ -944,7 +963,7 @@
     "smtpHint": "Requires SMTP configured server-side (a personal mailbox with an SMTP authorization code works). Enabling is rejected when unconfigured — it never silently degrades to password-only."
   },
   "landing": {
-    "announcement": "🎉 TokenLens v2 — multi-provider LLM API gateway",
+    "announcement": "🎉 TokenLens— multi-provider LLM API gateway",
     "heroTitle": "One gateway for every LLM",
     "heroDescription": "TokenLens unifies multiple LLM providers behind a single OpenAI-compatible entry point, with channel routing and failover, wallet billing, subscription quotas and end-to-end tracing — hooking up LLM services is as simple as calling one API.",
     "ctaPrimary": "Open admin console",

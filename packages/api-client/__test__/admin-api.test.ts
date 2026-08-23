@@ -68,3 +68,27 @@ describe('B1 回归:管理面 token 只来自本面注入(与用户面 token 源
     expect(calls[0]?.headers.authorization).toBe('Bearer admin-jwt');
   });
 });
+
+describe('changeMyPassword(改密换发新会话 token)', () => {
+  it('POST /v1/me/password 携带新旧密码,返回新 token', async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ token: 'jwt-new' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const admin = createAdminApiClient({ baseUrl: 'http://admin-api', fetch: fetchImpl });
+    const res = await admin.changeMyPassword({ oldPassword: 'a', newPassword: 'b' });
+    expect(res.token).toBe('jwt-new');
+    const [url, init] = vi.mocked(fetchImpl).mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://admin-api/v1/me/password');
+    expect(JSON.parse(String(init.body))).toEqual({ oldPassword: 'a', newPassword: 'b' });
+  });
+
+  it('旧密错误(4xx)按 ApiError 语义抛出——调用方 toast 错误不换 cookie', async () => {
+    const admin = createAdminApiClient({
+      baseUrl: 'http://admin-api',
+      fetch: fetchReturning(400, JSON.stringify({ error: { message: 'password mismatch' } })),
+    });
+    await expect(
+      admin.changeMyPassword({ oldPassword: 'wrong', newPassword: 'b' }),
+    ).rejects.toThrow('password mismatch');
+  });
+});
