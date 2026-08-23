@@ -1,0 +1,203 @@
+'use client';
+
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@tokenlens/ui';
+import { useState, useTransition } from 'react';
+
+import {
+  EyeIcon,
+  EyeOffIcon,
+  Loader2Icon,
+  LockIcon,
+  MailIcon,
+  ShieldCheckIcon,
+} from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+import { loginAction, verifyLoginAction } from '@/server/auth-actions';
+import { useActionResult } from '@/components/action-toast';
+
+type Values = { email: string; password: string };
+
+export function LoginForm() {
+  const t = useTranslations('auth');
+  const tUi = useTranslations('ui');
+  const [pending, startTransition] = useTransition();
+  const notify = useActionResult();
+  const [showPwd, setShowPwd] = useState(false);
+  // 邮箱验证码二次登录：第一步通过后进入验证码步
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+
+  const schema = z.object({
+    email: z.string().email(t('invalidEmail')),
+    password: z.string().min(1, t('passwordRequired')),
+  });
+
+  const form = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '', password: '' },
+  });
+
+  function onSubmit(values: Values) {
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.append('email', values.email);
+      fd.append('password', values.password);
+      const res = await loginAction(fd);
+      if (res?.challengeId) setChallenge(res.challengeId);
+      else notify(res ?? {}, t('loginFailed'));
+    });
+  }
+
+  if (challenge) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('twoFactorTitle')}</CardTitle>
+          <CardDescription>{t('twoFactorSent')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              startTransition(async () => {
+                const res = await verifyLoginAction(challenge, code);
+                notify(res ?? {}, t('verifyFailed'));
+              });
+            }}
+            className="space-y-4"
+          >
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="admin-2fa-code">{t('codeLabel')}</FieldLabel>
+                <InputGroup>
+                  <InputGroupAddon>
+                    <ShieldCheckIcon />
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    id="admin-2fa-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder="123456"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    autoFocus
+                  />
+                </InputGroup>
+                <FieldDescription>{t('twoFactorHint')}</FieldDescription>
+              </Field>
+            </FieldGroup>
+            <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
+              {pending && <Loader2Icon className="animate-spin" />}
+              {t('verifyAndLogin')}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => {
+                setChallenge(null);
+                setCode('');
+              }}
+            >
+              {t('backToLogin')}
+            </button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('loginTitle')}</CardTitle>
+        <CardDescription>{t('loginDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FieldGroup>
+            <Controller
+              control={form.control}
+              name="email"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="admin-email">{t('email')}</FieldLabel>
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <MailIcon />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="admin-email"
+                      autoComplete="email"
+                      placeholder="admin@example.com"
+                      {...field}
+                    />
+                  </InputGroup>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+            <Controller
+              control={form.control}
+              name="password"
+              render={({ field, fieldState }) => (
+                <Field data-invalid={fieldState.invalid}>
+                  <FieldLabel htmlFor="admin-password">{t('password')}</FieldLabel>
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <LockIcon />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="admin-password"
+                      type={showPwd ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      {...field}
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd((s) => !s)}
+                        aria-label={showPwd ? tUi('hidePassword') : tUi('showPassword')}
+                        className="cursor-pointer text-muted-foreground hover:text-foreground"
+                      >
+                        {showPwd ? <EyeOffIcon /> : <EyeIcon />}
+                      </button>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                </Field>
+              )}
+            />
+          </FieldGroup>
+
+          <Button type="submit" disabled={pending} className="w-full">
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('submit')}
+          </Button>
+
+          <FieldDescription className="text-center">{t('noAccountHint')}</FieldDescription>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}

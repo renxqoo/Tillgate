@@ -5,8 +5,6 @@
  * 替换并同提交删除;生成链建立前手写 DTO 是唯一事实源,禁止双轨(总纲 §2.2)。
  * 文件为纯声明聚合(单一职责 = 管理面 wire 形状快照,control-plane §5.2 同口径)。
  */
-import type { TransactionRow } from './client-api';
-
 /** 当前登录管理员 (GET /v1/me,admin-api 管理面) */
 export interface AdminMeInfo {
   id: number;
@@ -43,8 +41,18 @@ export interface AdminUserRow {
   createdAt: string;
 }
 
-/** 管理面交易行(GET /v1/admin/users/:id/transactions;多操作管理员字段,终端用户不可见) */
-export interface AdminTransactionRow extends TransactionRow {
+/** 管理面交易行(GET /v1/users/:id/transactions;多操作管理员字段,终端用户不可见) */
+export interface AdminTransactionRow {
+  id: number;
+  userId: number;
+  /** 交易类型(v2 wire:billing statement transactionKind) */
+  type: string;
+  amount: string;
+  balanceAfter: string;
+  refType: string | null;
+  refId: string | null;
+  remark: string | null;
+  createdAt: string;
   createdBy: number | null;
 }
 
@@ -471,4 +479,84 @@ export interface AdminSubscriptionRow {
   remainingAmount: string;
   status: number;
   createdAt: string;
+}
+
+// ── Admin: Billing Operations (GET /v1/billing-operations;死单复核面) ────────
+/** 死单行(status=dead 专属列表;reservedAmount 仅非 null 时输出)。 */
+export interface DeadCaseRow {
+  requestId: string;
+  userId: number;
+  status: string;
+  /** 乐观锁修订号(retry/abandon 决策体须回传 expectedRevision) */
+  revision: number;
+  attempt: number;
+  failureCode: string | null;
+  lastError: string | null;
+  /** 冻结金额(元,numeric 字符串;可缺省) */
+  reservedAmount?: string;
+  createdAt: string;
+}
+/** 死单复核决策体(retry/abandon 同形;理由必填)。 */
+export interface DeadCaseDecisionBody {
+  expectedRevision: number;
+  reason: string;
+  evidenceRefs?: string[];
+}
+
+// ── Admin: Tracing (GET /v1/tracing/*;observability traces 投影) ────────────
+/** trace 摘要行(GET /v1/tracing/recent 列表)。 */
+export interface TraceSummaryRow {
+  traceId: string;
+  rootName: string;
+  startTimeMs: number;
+  durationMs: number;
+  spanCount: number;
+  hasError: boolean;
+  services: string[];
+  requestId: string | null;
+}
+/** span 落库行的 JSON 形态(时间为 ISO 字符串;attributes 为归一化原始键值)。 */
+export interface TraceSpanRow {
+  traceId: string;
+  spanId: string;
+  parentSpanId: string | null;
+  name: string;
+  service: string;
+  startTime: string;
+  endTime: string;
+  durationMs: number;
+  /** OTel StatusCode:0=UNSET 1=OK 2=ERROR */
+  statusCode: number;
+  statusMessage: string | null;
+  requestId: string | null;
+  userId: number | null;
+  channel: string | null;
+  model: string | null;
+  attributes: Record<string, unknown>;
+  events: Array<{ name: string; timeMs: number; attributes?: Record<string, unknown> }>;
+}
+/** trace 详情(GET /v1/tracing/traces/:traceId 与 /by-request/:requestId)。 */
+export interface TraceDetailDto {
+  spans: TraceSpanRow[];
+  services: string[];
+  startMs: number;
+  durationMs: number;
+}
+/** 渠道健康聚合(topology 行)。 */
+export interface ChannelHealthRow {
+  channel: string;
+  attempts: number;
+  errors: number;
+  avgDurationMs: number;
+  lastAt: number | null;
+  lastError: string | null;
+}
+/** GET /v1/tracing/topology 响应(hours=回看窗口)。 */
+export interface TraceTopologyResponse {
+  hours: number;
+  channels: ChannelHealthRow[];
+}
+/** GET /v1/tracing/stats 响应。 */
+export interface TracingStatsResponse {
+  storage: { spans: number; oldestDays: number | null; partitions: string[] };
 }

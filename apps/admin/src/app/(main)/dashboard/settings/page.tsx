@@ -1,0 +1,21 @@
+import { getTranslations } from 'next-intl/server';
+
+import { ApiError } from '@tokenlens/api-client';
+import type { AdminMeInfo } from '@tokenlens/api-client';
+import { adminApi } from '@/server/admin-api';
+
+import { SettingsContent } from '@/features/settings/settings-content';
+
+export const dynamic = 'force-dynamic';
+
+export default async function SettingsPage() {
+  const tc = await getTranslations('common');
+  let me: AdminMeInfo | null = null;
+  let error: string | null = null;
+  try {
+    me = await adminApi().get<AdminMeInfo>('/v1/me');
+  } catch (e) {
+    error = e instanceof ApiError ? e.message : tc('loadFailed');
+  }
+  return <SettingsContent me={me} error={error} />;
+}

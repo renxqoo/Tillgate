@@ -243,6 +243,7 @@ export {
   ChartLegend,
   ChartLegendContent,
   ChartStyle,
+  type ChartConfig,
 } from './components/data/chart';
 export {
   DataTable,
