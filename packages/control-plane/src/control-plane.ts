@@ -288,7 +288,8 @@ export interface ControlPlane {
     /** RBAC 管理面（docs/admin-rbac）：列表/建行/更新;凭据注册与补偿在 admin-api 编排 */
     list(): Promise<AdminRecord[]>;
     create(input: CreateAdminInput): Promise<AdminRecord>;
-    update(input: UpdateAdminRow): Promise<AdminRecord>;
+    /** 未命中返回 null（404 抛点在 admin-api——admin.admin_not_found 单一码） */
+    update(input: UpdateAdminRow): Promise<AdminRecord | null>;
     /** 补偿删除（创建流程凭据注册失败收回资料行——只此一个消费方） */
     remove(adminId: number): Promise<void>;
   };

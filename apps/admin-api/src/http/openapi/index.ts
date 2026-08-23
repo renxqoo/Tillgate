@@ -13,8 +13,10 @@ import { channelsContracts, providersContracts } from '../contracts/control-plan
 import { keysContracts } from '../contracts/users';
 import { modelsContracts } from '../contracts/models';
 import { rateCardsContracts } from '../contracts/rates';
+import { adminsContracts } from '../contracts/admins';
 import { authEndpoints } from './auth';
 import { usersEndpoints } from './users';
+import { adminsEndpoints, adminRowSchema } from './admins';
 import { controlPlaneEndpoints } from './control-plane';
 import { modelsEndpoints } from './models';
 import { catalogEndpoints } from './catalog';
@@ -27,14 +29,8 @@ import { notificationsEndpoints } from './notifications';
 import { settingsEndpoints } from './settings';
 import { errorEnvelopeSchema, requestBody, responseComponent } from './shared';
 import type { DtoComponent, OpenApiEndpoint } from './shared';
-import {
-  adminMeInfoSchema,
-} from './auth';
-import {
-  adminKeyRowSchema,
-  adminTransactionRowSchema,
-  adminUserRowSchema,
-} from './users';
+import { adminMeInfoSchema } from './auth';
+import { adminKeyRowSchema, adminTransactionRowSchema, adminUserRowSchema } from './users';
 import {
   adminChannelFundRowSchema,
   adminChannelRowSchema,
@@ -73,6 +69,7 @@ import {
 export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
   ...authEndpoints,
   ...usersEndpoints,
+  ...adminsEndpoints,
   ...controlPlaneEndpoints,
   ...modelsEndpoints,
   ...catalogEndpoints,
@@ -88,6 +85,19 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
 // ---- DTO 组件登记（顺序 = api-client 生成物导出顺序;与换轨前手写版逐名对齐）----
 export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('AdminMeInfo', adminMeInfoSchema, 'me'),
+  responseComponent('AdminRow', adminRowSchema, 'admins'),
+  requestBody(
+    'AdminCreateBody',
+    adminsContracts.create,
+    '创建管理员请求体（POST /v1/admins;字段真相 = contracts zod——角色词表封闭,密码策略单源在 identity）',
+    'admins',
+  ),
+  requestBody(
+    'AdminPatchBody',
+    adminsContracts.patch,
+    '更新管理员请求体（PATCH /v1/admins/:id;字段真相 = contracts zod——role/status 不可改自身）',
+    'admins',
+  ),
   responseComponent('AdminUserRow', adminUserRowSchema, 'users'),
   responseComponent('AdminTransactionRow', adminTransactionRowSchema, 'users'),
   responseComponent('AdminChannelRow', adminChannelRowSchema, 'channels'),
@@ -305,7 +315,9 @@ export function buildAdminOpenApiDocument(): JsonSchema {
     const responses: JsonSchema = {
       [status]: {
         description: endpoint.response.description ?? `${endpoint.summary} 成功响应`,
-        content: { 'application/json': { schema: refOrInline(convert(endpoint.response.schema, 'output')) } },
+        content: {
+          'application/json': { schema: refOrInline(convert(endpoint.response.schema, 'output')) },
+        },
       },
     };
     const codes = new Set(endpoint.errors ?? []);
@@ -326,7 +338,9 @@ export function buildAdminOpenApiDocument(): JsonSchema {
         ? {
             requestBody: {
               required: true,
-              content: { 'application/json': { schema: refOrInline(convert(endpoint.body, 'input')) } },
+              content: {
+                'application/json': { schema: refOrInline(convert(endpoint.body, 'input')) },
+              },
             },
           }
         : {}),

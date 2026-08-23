@@ -23,12 +23,14 @@ import type { Notifications } from '@tokenlens/notifications';
 import type { Identity } from '@tokenlens/identity';
 import type { PaymentAdminApi } from '@tokenlens/billing';
 import type { GenerationTaskStore } from '@tokenlens/inference';
+import type { PermissionDomain } from '@tokenlens/control-plane';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
 import {
   sessionMiddleware,
   type SessionEnv,
   type SessionValidator,
 } from './http/middleware/session';
+import { domainGuard } from './http/middleware/permission';
 import { protocolStack } from './http/middleware/protocol';
 import type { OperationsUseCase, WriteAuditInTx } from './http/routes/users-funds';
 import { usersRoutes } from './http/routes/users';
@@ -55,6 +57,7 @@ import { marketingRoutes } from './http/routes/marketing';
 import { referralRoutes } from './http/routes/referrals';
 import { vouchersRoutes } from './http/routes/vouchers';
 import { notificationsRoutes } from './http/routes/notifications';
+import { adminsRoutes } from './http/routes/admins';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
 
@@ -105,8 +108,9 @@ export interface AdminAppDeps {
   paymentAdmin: PaymentAdminApi;
   /** P4:手动关单 failureReason 留痕文案（审计数据,装配层显式持有——铁律 3） */
   orderCloseReason: string;
-  /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装） */
-  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
+  /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装）;
+   *  credentials.register = RBAC 建管理员凭据（docs/admin-rbac §2.5） */
+  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa' | 'credentials'>;
   /** P2:爆破双闸（runtime Redis 守卫产物） */
   authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** P2:信任代理跳数（守卫键的 IP 提取） */
@@ -166,6 +170,11 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
 
   const session = sessionMiddleware(deps.sessions);
 
+  // RBAC 域守卫（docs/admin-rbac/DESIGN §2.2/§2.3）：session → 按 HTTP 方法分派
+  // domain:read/write → handler。域归属在本装配点逐组声明,路由文件零感知（D5）;
+  // auth（公开+logout）与 me（自身资料）不设域——会话即身份。
+  const guarded = (domain: PermissionDomain) => domainGuard(domain, session);
+
   // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
   app.get('/healthz', async (c) => {
     try {
@@ -198,7 +207,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
         rates: deps.controlPlane.rates,
         postAudit: deps.postAudit,
       },
-      session,
+      guarded('users'),
     ),
   );
   app.route(
@@ -211,43 +220,70 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
         writeAudit: deps.writeAudit,
         audit: deps.observability.audit,
       },
-      session,
+      guarded('funds'),
     ),
   );
-  app.route('/', keysRoutes({ accounts: deps.accounts }, session));
-  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, session));
+  app.route('/', keysRoutes({ accounts: deps.accounts }, guarded('users')));
+  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
+  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
+  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, guarded('funds')));
+  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
+  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
+  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
+  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, guarded('settings')));
   app.route(
     '/',
-    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }, session),
+    catalogRoutes(
+      { controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog },
+      guarded('catalog'),
+    ),
   );
-  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, session));
-  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, session));
+  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, guarded('plans')));
+  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, guarded('plans')));
   app.route(
     '/',
-    redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }, session),
+    redeemRoutes(
+      { redeemBatches: deps.redeemBatches, postAudit: deps.postAudit },
+      guarded('funds'),
+    ),
   );
-  app.route('/', billingOperationsRoutes({ review: deps.review }, session));
-  app.route('/', tracingRoutes({ observability: deps.observability }, session));
-  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }, session));
-  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }, session));
-  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, session));
+  app.route('/', billingOperationsRoutes({ review: deps.review }, guarded('funds')));
+  app.route('/', tracingRoutes({ observability: deps.observability }, guarded('ops')));
+  app.route(
+    '/',
+    opsLogsRoutes({ observability: deps.observability, now: deps.now }, guarded('ops')),
+  );
+  app.route(
+    '/',
+    opsUsageRoutes({ observability: deps.observability, now: deps.now }, guarded('ops')),
+  );
+  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, guarded('ops')));
   app.route(
     '/',
     opsOrdersRoutes(
       { paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason },
-      session,
+      guarded('funds'),
     ),
   );
-  app.route('/', marketingRoutes({ accounts: deps.accounts }, session));
-  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, session));
-  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', notificationsRoutes({ notifications: deps.notifications }, session));
+  app.route('/', marketingRoutes({ accounts: deps.accounts }, guarded('growth')));
+  app.route(
+    '/',
+    referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, guarded('growth')),
+  );
+  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, guarded('funds')));
+  app.route('/', notificationsRoutes({ notifications: deps.notifications }, guarded('growth')));
+  // RBAC 管理员管理面（admins 域——仅 super_admin,DESIGN §2.4 矩阵）
+  app.route(
+    '/',
+    adminsRoutes(
+      {
+        admins: deps.controlPlane.admins,
+        identity: deps.identity,
+        postAudit: deps.postAudit,
+      },
+      guarded('admins'),
+    ),
+  );
   // P2 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
   app.route(
     '/',

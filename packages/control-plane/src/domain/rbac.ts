@@ -44,10 +44,15 @@ const BUSINESS_DOMAINS: readonly PermissionDomain[] = PERMISSION_DOMAINS.filter(
  * 矩阵语义见 DESIGN §2.4：operator=运营（目录/订阅/观测/增长/设置/用户写），
  * finance=财务（资金写），support=客服（用户写，settings 不可读），viewer=只读。
  */
-const ROLE_GRANTS: Readonly<Record<AdminRole, {
-  readonly read: readonly PermissionDomain[];
-  readonly write: readonly PermissionDomain[];
-}>> = {
+const ROLE_GRANTS: Readonly<
+  Record<
+    AdminRole,
+    {
+      readonly read: readonly PermissionDomain[];
+      readonly write: readonly PermissionDomain[];
+    }
+  >
+> = {
   super_admin: { read: PERMISSION_DOMAINS, write: PERMISSION_DOMAINS },
   operator: {
     read: BUSINESS_DOMAINS,

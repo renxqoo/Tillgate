@@ -8,8 +8,8 @@
 import { Hono } from 'hono';
 import { jsonBody } from '@tokenlens/http';
 import type { MiddlewareHandler } from 'hono';
+import { permissionsOf, type ControlPlane } from '@tokenlens/control-plane';
 import type { Identity } from '@tokenlens/identity';
-import type { ControlPlane } from '@tokenlens/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
@@ -39,6 +39,9 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
       twoFactorEnabled: me.twoFactorEnabled,
       totpEnabled: totp.confirmed,
       lastLoginAt: me.lastLoginAt,
+      // RBAC:角色 + 全量权限集（前端导航过滤的单一事实来源——docs/admin-rbac §5）
+      role: me.role,
+      permissions: permissionsOf(me.role),
     });
   });
 

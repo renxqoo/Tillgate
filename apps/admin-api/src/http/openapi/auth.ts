@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { authContracts } from '../contracts/auth';
 import { okTrue, type OpenApiEndpoint } from './shared';
 
-/** 当前登录管理员（GET /v1/me） */
+/** 当前登录管理员（GET /v1/me;role/permissions = RBAC 前端导航过滤单一事实来源） */
 export const adminMeInfoSchema = z
   .object({
     id: z.number(),
@@ -15,6 +15,12 @@ export const adminMeInfoSchema = z
     lastLoginAt: z.string().nullable(),
     twoFactorEnabled: z.boolean().optional().describe('邮箱验证码二次登录已开启'),
     totpEnabled: z.boolean().optional().describe('TOTP 验证器已绑定（接管第二因子）'),
+    role: z
+      .enum(['super_admin', 'operator', 'finance', 'support', 'viewer'])
+      .describe('RBAC 角色（词表单一真相 = control-plane domain/rbac）'),
+    permissions: z
+      .array(z.string())
+      .describe('该角色全量权限集（<domain>:<read|write>——前端按此过滤导航）'),
   })
   .meta({ id: 'AdminMeInfo', description: '当前登录管理员 (GET /v1/me,admin-api 管理面)' });
 

@@ -178,13 +178,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
   },
 
   // ── admins（RBAC——docs/admin-rbac/DESIGN.md §2.5）────────────────────────
-  /** 管理员不存在（更新目标缺失；404 不泄漏管理员清单） */
-  admin_not_found: {
-    category: 'not_found',
-    message: 'Admin not found',
-    zh: '管理员不存在',
-  },
-  /** 管理员邮箱已被占用（admins_email_uq 兜底,23505 翻译） */
+  /** 管理员邮箱已被占用（admins_email_uq 兜底,23505 翻译;identity 凭据冲突同码） */
   admin_email_taken: {
     category: 'conflict',
     message: 'Admin email already exists',

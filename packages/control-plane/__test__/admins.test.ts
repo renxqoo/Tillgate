@@ -12,7 +12,6 @@ import { setTwoFactorEnabled } from '../src/application/admins/set-two-factor-en
 import { listAdmins } from '../src/application/admins/list-admins';
 import { createAdmin } from '../src/application/admins/create-admin';
 import { updateAdmin } from '../src/application/admins/update-admin';
-import { isBusinessError } from '@tokenlens/errors';
 import { createMemoryAdminStore } from './memory';
 
 const record = {
@@ -73,7 +72,10 @@ describe('admins（G2 管理员资料用例族）', () => {
     expect(rows.map((r) => r.id)).toEqual([7, created.id]);
 
     await expect(
-      createAdmin({ db: deps.db, store }, { email: 'OPS@tokenlens.dev', displayName: null, role: 'operator' }),
+      createAdmin(
+        { db: deps.db, store },
+        { email: 'OPS@tokenlens.dev', displayName: null, role: 'operator' },
+      ),
     ).rejects.toMatchObject({ code: 'control_plane.admin_email_taken' });
 
     await expect(
@@ -81,23 +83,21 @@ describe('admins（G2 管理员资料用例族）', () => {
     ).rejects.toMatchObject({ code: 'control_plane.invalid_admin_role' });
   });
 
-  it('update:部分更新只动传入字段;未命中 admin_not_found;非法角色拒绝', async () => {
+  it('update:部分更新只动传入字段;未命中 null;非法角色拒绝', async () => {
     const { deps } = setup();
     const renamed = await updateAdmin(deps, { adminId: 7, displayName: 'Renamed' });
-    expect(renamed.displayName).toBe('Renamed');
-    expect(renamed.role).toBe('super_admin');
+    expect(renamed?.displayName).toBe('Renamed');
+    expect(renamed?.role).toBe('super_admin');
 
     const demoted = await updateAdmin(deps, { adminId: 7, role: 'operator', status: 1 });
-    expect(demoted.role).toBe('operator');
-    expect(demoted.status).toBe(1);
-    expect(demoted.displayName).toBe('Renamed');
+    expect(demoted?.role).toBe('operator');
+    expect(demoted?.status).toBe(1);
+    expect(demoted?.displayName).toBe('Renamed');
 
-    const error = await updateAdmin(deps, { adminId: 404, role: 'viewer' }).catch((e: unknown) => e);
-    expect(isBusinessError(error) && error.code === 'control_plane.admin_not_found').toBe(true);
+    // 未命中返回 null（404 抛点在路由——admin.admin_not_found 单一码）
+    expect(await updateAdmin(deps, { adminId: 404, role: 'viewer' })).toBeNull();
 
-    await expect(
-      updateAdmin(deps, { adminId: 7, role: 'ghost' as never }),
-    ).rejects.toMatchObject({
+    await expect(updateAdmin(deps, { adminId: 7, role: 'ghost' as never })).rejects.toMatchObject({
       code: 'control_plane.invalid_admin_role',
     });
   });

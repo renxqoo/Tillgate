@@ -23,7 +23,9 @@ export async function createAdmin(
   const email = input.email.trim().toLowerCase();
   try {
     // id 段分配 + 插入同事务（adapter 内分配;Db 全量形态——事务动词在 Db 上）
-    return await deps.db.transaction((tx) => deps.store.create(tx, { email, displayName: input.displayName, role }));
+    return await deps.db.transaction((tx) =>
+      deps.store.create(tx, { email, displayName: input.displayName, role }),
+    );
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw controlPlaneErrors.business('admin_email_taken', { email });

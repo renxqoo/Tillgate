@@ -54,6 +54,7 @@ const adminRecord = {
   email: 'ops@tokenlens.dev',
   displayName: 'Ops',
   status: 0,
+  role: 'super_admin' as const,
   twoFactorEnabled: true, // 邮箱码开着也要被 TOTP 接管——防降级
   lastLoginAt: null,
   createdAt: new Date(0),

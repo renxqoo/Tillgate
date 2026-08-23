@@ -127,7 +127,6 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
   it('码集合快照', () => {
     expect([...controlPlaneErrors.codes].toSorted()).toEqual([
       'control_plane.admin_email_taken',
-      'control_plane.admin_not_found',
       'control_plane.catalog_api_key_required',
       'control_plane.catalog_empty',
       'control_plane.catalog_source_not_found',

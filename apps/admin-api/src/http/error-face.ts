@@ -87,6 +87,19 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Admin not found',
     zh: '管理员不存在',
   },
+  // ---- RBAC（docs/admin-rbac/DESIGN.md §2.5）----
+  /** 会话有效但角色无该权限（词表/矩阵单一真相 = control-plane domain/rbac） */
+  insufficient_permission: {
+    category: 'forbidden',
+    message: 'Insufficient permission for this operation',
+    zh: '当前角色无权执行该操作',
+  },
+  /** 修改自身 role/status 被拒（防最后一个超管自锁——DESIGN D6;displayName 可改） */
+  cannot_modify_self: {
+    category: 'invalid_input',
+    message: 'Admins cannot modify their own role or status',
+    zh: '不能修改自己的角色或状态',
+  },
   /** 只能为本地账号设密——给 OIDC 身份挂本地密码 = 管理员接管（D6） */
   not_local_account: {
     category: 'invalid_input',

@@ -7,7 +7,12 @@
 import { asc, eq, sql } from 'drizzle-orm';
 import { admins } from '@tokenlens/db';
 import type { DbLike, DbTx } from '@tokenlens/db';
-import type { AdminRecord, AdminStore, CreateAdminRow, UpdateAdminRow } from '../../ports/admin-store';
+import type {
+  AdminRecord,
+  AdminStore,
+  CreateAdminRow,
+  UpdateAdminRow,
+} from '../../ports/admin-store';
 
 /**
  * 旧列 admins.password_hash 的占位值（NOT NULL 兜底）：凭据单一真相在 identity 七表，

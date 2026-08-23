@@ -119,7 +119,9 @@ describe('identity 审计桥', () => {
 });
 
 describe('session 属主回查（D8/W3）', () => {
-  async function appWithOwner(owner: (() => Promise<{ status: number } | null>) | undefined) {
+  async function appWithOwner(
+    owner: (() => Promise<{ status: number; role: string } | null>) | undefined,
+  ) {
     const app = new (await import('hono')).Hono<SessionEnv>();
     app.use(
       '*',
@@ -141,11 +143,11 @@ describe('session 属主回查（D8/W3）', () => {
   }
 
   it('属主存在且 status=0 放行;不存在/封禁一律 401;未注入 owner 时纯会话校验放行', async () => {
-    const ok = await appWithOwner(async () => ({ status: 0 }));
+    const ok = await appWithOwner(async () => ({ status: 0, role: 'super_admin' }));
     expect(ok.status).toBe(200);
     const missing = await appWithOwner(async () => null);
     expect(missing.status).toBe(401);
-    const banned = await appWithOwner(async () => ({ status: 1 }));
+    const banned = await appWithOwner(async () => ({ status: 1, role: 'super_admin' }));
     expect(banned.status).toBe(401);
     const noOwner = await appWithOwner(undefined);
     expect(noOwner.status).toBe(200);
@@ -259,6 +261,7 @@ describe('auth/me 未走分支', () => {
             email: 'ops@tokenlens.dev',
             displayName: null,
             status: 0,
+            role: 'super_admin' as const,
             twoFactorEnabled: false,
             lastLoginAt: null,
             createdAt: new Date(0),

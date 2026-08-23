@@ -83,6 +83,7 @@ describe('admin-api app 骨架', () => {
               email: 'ops@tokenlens.dev',
               displayName: 'Ops',
               status: 0,
+              role: 'super_admin' as const,
               twoFactorEnabled: false,
               lastLoginAt: null,
               createdAt: new Date(0),

@@ -42,6 +42,7 @@ export function fakeDeps(overrides: {
   notifications?: Record<string, unknown>;
   generationTasks?: Record<string, unknown>;
   paymentAdmin?: Record<string, unknown>;
+  identity?: Record<string, unknown>;
   writeAudit?: AdminAppDeps['writeAudit'];
   pingDb?: () => Promise<void>;
   now?: () => Date;
@@ -52,6 +53,8 @@ export function fakeDeps(overrides: {
     vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
       validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
+      // 与生产装配同形:属主回查搭载 role 注入（RBAC 域守卫的放行形态）
+      owner: async (adminId: number) => ({ status: 0, role: 'super_admin', adminId }),
     },
     accounts: {
       adminListUsers: async () => ({ rows: [], total: 0 }),
@@ -195,12 +198,14 @@ export function fakeDeps(overrides: {
       passwords: { authenticate: notWired, change: notWired, reset: notWired },
       challenges: { begin: notWired, verify: notWired, abort: notWired },
       mfa: mfaStub(),
+      credentials: { register: notWired },
       sessions: {
         sign: notWired,
         verify: notWired,
         validate: notWired,
         logout: async () => ({ ok: true as const }),
       },
+      ...overrides.identity,
     } as AdminAppDeps['identity'],
     authGuards: {
       emailIp: {
@@ -285,11 +290,16 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       import: notWired,
     },
     // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
+    // RBAC 管理面动词(list/create/update/remove)同 fake——admins 域测试覆写
     admins: {
       find: notWired,
       findByEmail: notWired,
       touchLastLogin: notWired,
       setTwoFactorEnabled: notWired,
+      list: notWired,
+      create: notWired,
+      update: notWired,
+      remove: notWired,
     },
   };
   return { ...base, ...overrides } as ControlPlane;

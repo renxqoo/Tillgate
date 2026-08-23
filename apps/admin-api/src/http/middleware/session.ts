@@ -13,14 +13,18 @@ import { HttpErrors } from '@tokenlens/http';
 /** 会话校验依赖（identity facade + 管理员资料属主回查——结构子集,app 只持闭包） */
 export interface SessionValidator {
   validate(token: string, realm: 'admin'): Promise<SessionPayload | null>;
-  /** 属主回查：admins 行（不存在/封禁/注销 → null = 401——v1 D8/W3 语义） */
-  owner?: (adminId: number) => Promise<{ status: number } | null>;
+  /** 属主回查：admins 行（不存在/封禁/注销 → null = 401——v1 D8/W3 语义）。
+   *  role 随回查投影注入 adminRole（RBAC——角色变更下一请求即生效,不嵌 JWT）。 */
+  owner?: (adminId: number) => Promise<{ status: number; role: string } | null>;
 }
 
 export interface SessionEnv {
   Variables: {
     requestId: string;
     adminId: number;
+    /** 当前管理员 RBAC 角色（属主回查搭载;回查缺省的纯会话校验形态下无此变量 →
+     *  权限守卫 fail-closed 403——装配形态决定权限面,不静默放行） */
+    adminRole: string;
     /** 原始 Bearer token（logout 吊销需要原始值——jti 提取在 identity 内完成） */
     sessionToken: string;
     /** 当前会话 jti/exp */
@@ -50,6 +54,7 @@ export function sessionMiddleware(sessions: SessionValidator): MiddlewareHandler
       if (owner == null || owner.status !== 0) {
         throw HttpErrors.business('unauthorized');
       }
+      c.set('adminRole', owner.role);
     }
     c.set('adminId', adminId);
     c.set('sessionToken', token);
