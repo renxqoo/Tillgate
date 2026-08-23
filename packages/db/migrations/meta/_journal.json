@@ -561,6 +561,13 @@
       "when": 1787793600000,
       "tag": "0080_channels_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1787880000000,
+      "tag": "0081_admins_role",
+      "breakpoints": true
     }
   ]
 }

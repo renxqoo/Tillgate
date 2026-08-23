@@ -35,6 +35,13 @@ export const admins = pgTable(
     twoFactorSecret: varchar('two_factor_secret', { length: 64 }),
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK admins_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
+    /**
+     * RBAC 角色（封闭词表，权限矩阵单一真相在 control-plane domain/rbac——本列只存
+     * 「该管理员是什么角色」这一事实）。DEFAULT 'super_admin' 是 0081 迁移对既有行的
+     * 回填值（旧形态唯一管理员全权限 = 唯一规格，零破坏）；新建管理员必经
+     * POST /v1/admins 契约显式传 role，不存在无意建出超管的路径。
+     */
+    role: varchar('role', { length: 32 }).notNull().default('super_admin'),
     /** 邮箱验证码二次登录开关（默认关；开启后登录需邮箱收码验证。SMTP 未配置时开启失败） */
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
     /** 会话失效线（R5-2）：iat 早于此时间点的管理面会话 JWT 一律拒绝（改密即全网下线） */
@@ -47,5 +54,10 @@ export const admins = pgTable(
     uniqueIndex('admins_email_uq').on(t.email),
     // 集合与 ACCOUNT_STATUS 一致（新增状态须同步常量与本约束）
     check('admins_status_ck', sql`${t.status} in (0, 1, 2)`),
+    // 词表与 control-plane domain/rbac ADMIN_ROLES 一致（单一真相在 rbac，此处 DB 兜底）
+    check(
+      'admins_role_ck',
+      sql`${t.role} in ('super_admin', 'operator', 'finance', 'support', 'viewer')`,
+    ),
   ],
 );
