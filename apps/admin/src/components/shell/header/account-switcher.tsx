@@ -68,11 +68,10 @@ export function AccountSwitcher({
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onSelect={(event) => {
-              // 只开弹窗不导航；受控 Dialog 挂在菜单外层，不受菜单卸载影响
-              event.preventDefault();
-              setPasswordOpen(true);
-            }}
+            // Base UI Menu.Item 的激活事件是 onClick（onSelect 是 Radix API——
+            // 传了会被静默丢弃，表现为点击无反应）；受控 Dialog 挂在菜单外层，
+            // 菜单点击后自然关闭不影响弹窗
+            onClick={() => setPasswordOpen(true)}
             className="cursor-pointer"
           >
             <KeyRoundIcon />
