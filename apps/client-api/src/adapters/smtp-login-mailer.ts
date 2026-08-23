@@ -4,11 +4,7 @@
  * 三要素不齐返回 null = 邮件通道 fail-closed（两级登录随之关闭，v1 语义）。
  */
 import nodemailer from 'nodemailer';
-import {
-  renderLoginCodeEmail,
-  type MailBrand,
-  type Mailer,
-} from '@tokenlens/identity';
+import { renderLoginCodeEmail, type MailBrand, type Mailer } from '@tokenlens/identity';
 
 export interface SmtpMailerConfig {
   host: string;

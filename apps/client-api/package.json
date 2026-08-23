@@ -14,7 +14,7 @@
     "lint": "bun x oxlint",
     "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun --env-file-if-exists=../../.env x vitest run app.real.test.ts journey.real.test.ts --passWithNoTests",
+    "test:real": "bun x vitest run app.real.test.ts --passWithNoTests",
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
@@ -28,8 +28,8 @@
     "@tokenlens/identity": "workspace:*",
     "@tokenlens/observability": "workspace:*",
     "@tokenlens/runtime": "workspace:*",
-    "hono": "^4.13.0",
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.0",
     "ioredis": "^5.8.0",
     "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
@@ -37,10 +37,10 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^7.0.4",
-    "typescript": "^5.9.0",
-    "vitest": "^4.1.10",
+    "@types/pg": "^8.15.0",
     "pg": "^8.22.0",
-    "@types/pg": "^8.15.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "bun": ">=1.4.0"

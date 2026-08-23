@@ -13,7 +13,11 @@ import {
   purchaseSchema,
   subscriptionIdParamSchema,
 } from '../contracts/billing.js';
-import { toMySubscriptionRow, type PlanRow, type SubscriptionBaseRow } from '../presenters/subscriptions.js';
+import {
+  toMySubscriptionRow,
+  type PlanRow,
+  type SubscriptionBaseRow,
+} from '../presenters/subscriptions.js';
 import { parsePath } from '../contracts/shared.js';
 import type { SessionEnv } from '../middleware/session.js';
 
@@ -35,7 +39,10 @@ function operationIdOf(headerValue: string | undefined): string {
   return headerValue;
 }
 
-export function subscriptionRoutes(deps: SubscriptionsDeps, session: MiddlewareHandler<SessionEnv>) {
+export function subscriptionRoutes(
+  deps: SubscriptionsDeps,
+  session: MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
   // 目录公开（只读上架套餐，无个人数据）

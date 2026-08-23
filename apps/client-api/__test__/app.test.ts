@@ -21,7 +21,11 @@ interface TestState {
   redeems: { failWith?: unknown };
   oauthCallbackState: string | null;
   /** 用例旋钮：能力开关 / 登录结果覆写 / keys 失败注入 */
-  capabilities: { registerEnabled: boolean; captchaSiteKey: string | null; emailCodeRequired: boolean };
+  capabilities: {
+    registerEnabled: boolean;
+    captchaSiteKey: string | null;
+    emailCodeRequired: boolean;
+  };
   authenticateAs: number | null;
   keysPatchFails: boolean;
   keysRevokeFails: boolean;
@@ -89,7 +93,10 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       challenges: {
         begin: (_input) => {
           const challengeId = randomUUID();
-          state.challenges.set(challengeId, (_input as { payload?: Record<string, unknown> }).payload ?? {});
+          state.challenges.set(
+            challengeId,
+            (_input as { payload?: Record<string, unknown> }).payload ?? {},
+          );
           return Promise.resolve({
             challengeId,
             code: '123456',
@@ -103,7 +110,10 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           if (payload == null) throw identityErrors.business('challenge_invalid', {});
           if (input.code !== '123456') throw identityErrors.business('code_invalid', {});
           return Promise.resolve({
-            target: { identifier: { kind: 'email', value: 'u@x.com', normalized: true }, userId: null },
+            target: {
+              identifier: { kind: 'email', value: 'u@x.com', normalized: true },
+              userId: null,
+            },
             payload,
           });
         },
@@ -128,12 +138,16 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       changePassword: () => Promise.resolve({ invalidBefore: new Date().toISOString() }),
       guards: {
         emailIp: {
-          isLocked: () => Promise.resolve(state.locked.emailIp ? { locked: true, retryAfterSec: 120 } : notLocked),
+          isLocked: () =>
+            Promise.resolve(
+              state.locked.emailIp ? { locked: true, retryAfterSec: 120 } : notLocked,
+            ),
           recordFailure: () => Promise.resolve({ locked: false, retryAfterSec: 0 }),
           recordSuccess: () => Promise.resolve(),
         },
         ip: {
-          isLocked: () => Promise.resolve(state.locked.ip ? { locked: true, retryAfterSec: 60 } : notLocked),
+          isLocked: () =>
+            Promise.resolve(state.locked.ip ? { locked: true, retryAfterSec: 60 } : notLocked),
           recordFailure: () => Promise.resolve({ locked: false, retryAfterSec: 0 }),
         },
       },
@@ -144,7 +158,11 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     },
     oauth: {
       providers: ['github'],
-      authorize: () => Promise.resolve({ url: 'https://github.com/login/oauth/authorize?x=1', state: 'good-state' }),
+      authorize: () =>
+        Promise.resolve({
+          url: 'https://github.com/login/oauth/authorize?x=1',
+          state: 'good-state',
+        }),
       callback: (input) => {
         if (input.state !== state.oauthCallbackState) {
           throw identityErrors.business('oauth_state_invalid', { provider: input.provider });
@@ -161,11 +179,23 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       provision: (input) =>
         Promise.resolve({
           user: {
-            id: ++nextUserId, issuer: 'github', subject: 'gh-sub', identityProvider: 'oauth',
-            email: input.email ?? null, displayName: null, rateCardId: null,
-            dailySpendLimit: null, status: 0, sessionInvalidBefore: null, isEnterprise: false,
-            freezeReason: null, rpmLimit: null, tpmLimit: null, lastLoginAt: null,
-            createdAt: new Date(), updatedAt: new Date(),
+            id: ++nextUserId,
+            issuer: 'github',
+            subject: 'gh-sub',
+            identityProvider: 'oauth',
+            email: input.email ?? null,
+            displayName: null,
+            rateCardId: null,
+            dailySpendLimit: null,
+            status: 0,
+            sessionInvalidBefore: null,
+            isEnterprise: false,
+            freezeReason: null,
+            rpmLimit: null,
+            tpmLimit: null,
+            lastLoginAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
           },
           created: true,
         }),
@@ -180,24 +210,56 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     me: {
       profile: () =>
         Promise.resolve({
-          id: 42, issuer: 'local', subject: 'u@x.com', identityProvider: 'local',
-          email: 'u@x.com', displayName: 'U', rateCardId: null, rateCardName: null,
-          dailySpendLimit: null, status: 0, sessionInvalidBefore: null, isEnterprise: false,
-          freezeReason: null, rpmLimit: null, tpmLimit: null, lastLoginAt: null,
-          createdAt: new Date('2026-01-01T00:00:00Z'), updatedAt: new Date('2026-01-01T00:00:00Z'),
+          id: 42,
+          issuer: 'local',
+          subject: 'u@x.com',
+          identityProvider: 'local',
+          email: 'u@x.com',
+          displayName: 'U',
+          rateCardId: null,
+          rateCardName: null,
+          dailySpendLimit: null,
+          status: 0,
+          sessionInvalidBefore: null,
+          isEnterprise: false,
+          freezeReason: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          lastLoginAt: null,
+          createdAt: new Date('2026-01-01T00:00:00Z'),
+          updatedAt: new Date('2026-01-01T00:00:00Z'),
         }),
-      updateDisplayName: (input) => Promise.resolve({
-        id: 42, issuer: 'local', subject: 'u@x.com', identityProvider: 'local',
-        email: 'u@x.com', displayName: input.displayName, rateCardId: null,
-        dailySpendLimit: null, status: 0, sessionInvalidBefore: null, isEnterprise: false,
-        freezeReason: null, rpmLimit: null, tpmLimit: null, lastLoginAt: null,
-        createdAt: new Date(), updatedAt: new Date(),
-      }),
+      updateDisplayName: (input) =>
+        Promise.resolve({
+          id: 42,
+          issuer: 'local',
+          subject: 'u@x.com',
+          identityProvider: 'local',
+          email: 'u@x.com',
+          displayName: input.displayName,
+          rateCardId: null,
+          dailySpendLimit: null,
+          status: 0,
+          sessionInvalidBefore: null,
+          isEnterprise: false,
+          freezeReason: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          lastLoginAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
       walletAccounts: () =>
         Promise.resolve([
           {
-            id: 'a1', kind: 'user', code: null, currency: 'CNY',
-            balance: '10', inFlight: '0', creditLimit: '0', status: 'active',
+            id: 'a1',
+            kind: 'user',
+            code: null,
+            currency: 'CNY',
+            balance: '10',
+            inFlight: '0',
+            creditLimit: '0',
+            status: 'active',
           },
         ]),
     },
@@ -205,10 +267,22 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       create: (input) =>
         Promise.resolve({
           key: {
-            id: 7, keyPreview: 'ag_***', userId: input.userId, appId: null,
-            subscriptionId: null, name: input.name, remark: null, expiresAt: null,
-            rpmLimit: null, tpmLimit: null, dailySpendLimit: null, allowPaygFallback: true,
-            status: 0, lastUsedAt: null, revokedAt: null, createdAt: new Date(),
+            id: 7,
+            keyPreview: 'ag_***',
+            userId: input.userId,
+            appId: null,
+            subscriptionId: null,
+            name: input.name,
+            remark: null,
+            expiresAt: null,
+            rpmLimit: null,
+            tpmLimit: null,
+            dailySpendLimit: null,
+            allowPaygFallback: true,
+            status: 0,
+            lastUsedAt: null,
+            revokedAt: null,
+            createdAt: new Date(),
           },
           plaintext: 'ag_plain_secret',
         }),
@@ -216,10 +290,22 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         Promise.resolve({
           rows: [
             {
-              id: 1, keyPreview: 'ag_***', userId: 42, appId: null, subscriptionId: null,
-              name: 'k1', remark: null, expiresAt: null, rpmLimit: null, tpmLimit: null,
-              dailySpendLimit: null, allowPaygFallback: false, status: 0, lastUsedAt: null,
-              revokedAt: null, createdAt: new Date(),
+              id: 1,
+              keyPreview: 'ag_***',
+              userId: 42,
+              appId: null,
+              subscriptionId: null,
+              name: 'k1',
+              remark: null,
+              expiresAt: null,
+              rpmLimit: null,
+              tpmLimit: null,
+              dailySpendLimit: null,
+              allowPaygFallback: false,
+              status: 0,
+              lastUsedAt: null,
+              revokedAt: null,
+              createdAt: new Date(),
             },
           ],
           total: 1,
@@ -227,29 +313,65 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       patch: () => {
         if (state.keysPatchFails) throw AccountsErrors.business('key_not_found', {});
         return Promise.resolve({
-          id: 1, keyPreview: 'ag_***', userId: 42, appId: null, subscriptionId: null,
-          name: 'k1', remark: 'r', expiresAt: new Date(), rpmLimit: 10, tpmLimit: 100,
-          dailySpendLimit: '5', allowPaygFallback: false, status: 0, lastUsedAt: null,
-          revokedAt: null, createdAt: new Date(),
+          id: 1,
+          keyPreview: 'ag_***',
+          userId: 42,
+          appId: null,
+          subscriptionId: null,
+          name: 'k1',
+          remark: 'r',
+          expiresAt: new Date(),
+          rpmLimit: 10,
+          tpmLimit: 100,
+          dailySpendLimit: '5',
+          allowPaygFallback: false,
+          status: 0,
+          lastUsedAt: null,
+          revokedAt: null,
+          createdAt: new Date(),
         });
       },
       rotate: () =>
         Promise.resolve({
           key: {
-            id: 2, keyPreview: 'ag_***', userId: 42, appId: null, subscriptionId: null,
-            name: 'k1', remark: null, expiresAt: null, rpmLimit: null, tpmLimit: null,
-            dailySpendLimit: null, allowPaygFallback: false, status: 0, lastUsedAt: null,
-            revokedAt: null, createdAt: new Date(),
+            id: 2,
+            keyPreview: 'ag_***',
+            userId: 42,
+            appId: null,
+            subscriptionId: null,
+            name: 'k1',
+            remark: null,
+            expiresAt: null,
+            rpmLimit: null,
+            tpmLimit: null,
+            dailySpendLimit: null,
+            allowPaygFallback: false,
+            status: 0,
+            lastUsedAt: null,
+            revokedAt: null,
+            createdAt: new Date(),
           },
           plaintext: 'ag_rotated',
         }),
       revoke: () => {
         if (state.keysRevokeFails) throw AccountsErrors.business('key_already_revoked', {});
         return Promise.resolve({
-          id: 1, keyPreview: 'ag_***', userId: 42, appId: null, subscriptionId: null,
-          name: 'k1', remark: null, expiresAt: null, rpmLimit: null, tpmLimit: null,
-          dailySpendLimit: null, allowPaygFallback: false, status: 1, lastUsedAt: null,
-          revokedAt: new Date(), createdAt: new Date(),
+          id: 1,
+          keyPreview: 'ag_***',
+          userId: 42,
+          appId: null,
+          subscriptionId: null,
+          name: 'k1',
+          remark: null,
+          expiresAt: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          dailySpendLimit: null,
+          allowPaygFallback: false,
+          status: 1,
+          lastUsedAt: null,
+          revokedAt: new Date(),
+          createdAt: new Date(),
         });
       },
     },
@@ -257,9 +379,17 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       create: (input) =>
         Promise.resolve({
           app: {
-            id: 3, appId: 'apphex', userId: input.userId, clientId: 'cid', name: input.name,
-            description: null, subscriptionId: null, scope: null, status: 0,
-            createdAt: new Date(), rotatedAt: null,
+            id: 3,
+            appId: 'apphex',
+            userId: input.userId,
+            clientId: 'cid',
+            name: input.name,
+            description: null,
+            subscriptionId: null,
+            scope: null,
+            status: 0,
+            createdAt: new Date(),
+            rotatedAt: null,
           },
           clientSecret: 'sec_once',
         }),
@@ -270,8 +400,17 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       rotateSecret: () =>
         Promise.resolve({
           app: {
-            id: 3, appId: 'apphex', userId: 42, clientId: 'cid', name: 'a', description: null,
-            subscriptionId: null, scope: null, status: 0, createdAt: new Date(), rotatedAt: new Date(),
+            id: 3,
+            appId: 'apphex',
+            userId: 42,
+            clientId: 'cid',
+            name: 'a',
+            description: null,
+            subscriptionId: null,
+            scope: null,
+            status: 0,
+            createdAt: new Date(),
+            rotatedAt: new Date(),
           },
           clientSecret: 'sec_new',
         }),
@@ -280,26 +419,57 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       listMyOrgs: () =>
         Promise.resolve([
           {
-            id: 9, orgId: 9, userId: 42, role: 'owner', status: 0, dailySpendLimit: null,
-            monthlyQuota: null, createdAt: new Date(), updatedAt: new Date(), orgName: 'Org',
+            id: 9,
+            orgId: 9,
+            userId: 42,
+            role: 'owner',
+            status: 0,
+            dailySpendLimit: null,
+            monthlyQuota: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            orgName: 'Org',
           },
         ]),
       orgDetail: () =>
         Promise.resolve({
-          org: { id: 9, name: 'Org', ownerUserId: 42, createdAt: new Date(), updatedAt: new Date() },
-          members: [{
-            userId: 42, displayName: 'U', email: 'u@x.com', subject: 'u@x.com', role: 'owner',
-            status: 0, dailySpendLimit: null, monthlyQuota: null, joinedAt: new Date(),
-          }],
+          org: {
+            id: 9,
+            name: 'Org',
+            ownerUserId: 42,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          members: [
+            {
+              userId: 42,
+              displayName: 'U',
+              email: 'u@x.com',
+              subject: 'u@x.com',
+              role: 'owner',
+              status: 0,
+              dailySpendLimit: null,
+              monthlyQuota: null,
+              joinedAt: new Date(),
+            },
+          ],
           invitations: [],
         }),
-      invite: () => Promise.resolve({ invitationId: 11, token: 'invite-token-once', expiresAt: new Date() }),
+      invite: () =>
+        Promise.resolve({ invitationId: 11, token: 'invite-token-once', expiresAt: new Date() }),
       revokeInvitation: () => Promise.resolve(),
       acceptInvitation: () => Promise.resolve({ orgId: 9 }),
       patchMember: () =>
         Promise.resolve({
-          id: 1, orgId: 9, userId: 42, role: 'owner', status: 0,
-          dailySpendLimit: '5', monthlyQuota: null, createdAt: new Date(), updatedAt: new Date(),
+          id: 1,
+          orgId: 9,
+          userId: 42,
+          role: 'owner',
+          status: 0,
+          dailySpendLimit: '5',
+          monthlyQuota: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         }),
       removeMember: () => Promise.resolve(),
       orgSubscriptions: () =>
@@ -307,7 +477,17 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           state.emptyOrgSubs
             ? new Map()
             : new Map([
-                [9, { subscriptionId: 5, planName: 'Team', quantity: 3, quotaAmount: '100', usedAmount: '20', reservedAmount: '5' }],
+                [
+                  9,
+                  {
+                    subscriptionId: 5,
+                    planName: 'Team',
+                    quantity: 3,
+                    quotaAmount: '100',
+                    usedAmount: '20',
+                    reservedAmount: '5',
+                  },
+                ],
               ]),
         ),
     },
@@ -316,8 +496,14 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       statement: (input) => {
         const count = input.limit ?? 20;
         const rows = Array.from({ length: Math.min(count, 3) }, (_, i) => ({
-          legId: 100 - i, transactionKind: 'credit', refType: 'gift', refId: `signup:${42}`,
-          amount: '1', balanceAfter: '10', memo: null, createdAt: new Date(),
+          legId: 100 - i,
+          transactionKind: 'credit',
+          refType: 'gift',
+          refId: `signup:${42}`,
+          amount: '1',
+          balanceAfter: '10',
+          memo: null,
+          createdAt: new Date(),
         }));
         return Promise.resolve(rows);
       },
@@ -327,13 +513,21 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         if (state.redeems.failWith) throw state.redeems.failWith;
         return Promise.resolve({ amount: '5', balanceAfter: '15', transactionId: 3 });
       },
-      history: () => Promise.resolve([{ codeId: 1, batchName: 'b', amount: '5', usedAt: new Date() }]),
+      history: () =>
+        Promise.resolve([{ codeId: 1, batchName: 'b', amount: '5', usedAt: new Date() }]),
     },
     payments: {
       payments: {
-        createTopupOrder: () => Promise.resolve({ orderId: '0f0e0d0c-0000-4000-8000-000000000000', payUrl: 'https://pay', creditAmount: '10' }),
+        createTopupOrder: () =>
+          Promise.resolve({
+            orderId: '0f0e0d0c-0000-4000-8000-000000000000',
+            payUrl: 'https://pay',
+            creditAmount: '10',
+          }),
         handleNotify: (provider) =>
-          Promise.resolve(provider === 'epay' || state.stripeNotifyOk ? ('success' as const) : ('fail' as const)),
+          Promise.resolve(
+            provider === 'epay' || state.stripeNotifyOk ? ('success' as const) : ('fail' as const),
+          ),
         orderDetail: () => {
           throw BillingErrors.business('order_not_found', {});
         },
@@ -343,34 +537,89 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     },
     subscriptions: {
       api: {
-        purchase: () => Promise.resolve({
-          userId: 42, subscriptionId: 5, orgId: null, planId: 1, planName: 'Lite', quantity: 1,
-          startAt: '2026-01-01T00:00:00.000Z', endAt: '2026-01-31T00:00:00.000Z',
-          quotaAmount: '100', price: '10', balanceBefore: '20', balanceAfter: '10', replayed: false,
-        }),
-        change: () => Promise.resolve({
-          userId: 42, subscriptionId: 5, orgId: null, planId: 2, planName: 'Pro', quantity: 1,
-          startAt: '2026-01-01T00:00:00.000Z', endAt: '2026-01-31T00:00:00.000Z',
-          quotaAmount: '200', price: '20', balanceBefore: null, balanceAfter: null, replayed: false,
-        }),
-        renew: () => Promise.resolve({
-          userId: 42, subscriptionId: 5, orgId: null, planId: 1, planName: 'Lite', quantity: 1,
-          startAt: '2026-02-01T00:00:00.000Z', endAt: '2026-03-03T00:00:00.000Z',
-          quotaAmount: '100', price: '10', balanceBefore: '10', balanceAfter: '0', replayed: false,
-        }),
+        purchase: () =>
+          Promise.resolve({
+            userId: 42,
+            subscriptionId: 5,
+            orgId: null,
+            planId: 1,
+            planName: 'Lite',
+            quantity: 1,
+            startAt: '2026-01-01T00:00:00.000Z',
+            endAt: '2026-01-31T00:00:00.000Z',
+            quotaAmount: '100',
+            price: '10',
+            balanceBefore: '20',
+            balanceAfter: '10',
+            replayed: false,
+          }),
+        change: () =>
+          Promise.resolve({
+            userId: 42,
+            subscriptionId: 5,
+            orgId: null,
+            planId: 2,
+            planName: 'Pro',
+            quantity: 1,
+            startAt: '2026-01-01T00:00:00.000Z',
+            endAt: '2026-01-31T00:00:00.000Z',
+            quotaAmount: '200',
+            price: '20',
+            balanceBefore: null,
+            balanceAfter: null,
+            replayed: false,
+          }),
+        renew: () =>
+          Promise.resolve({
+            userId: 42,
+            subscriptionId: 5,
+            orgId: null,
+            planId: 1,
+            planName: 'Lite',
+            quantity: 1,
+            startAt: '2026-02-01T00:00:00.000Z',
+            endAt: '2026-03-03T00:00:00.000Z',
+            quotaAmount: '100',
+            price: '10',
+            balanceBefore: '10',
+            balanceAfter: '0',
+            replayed: false,
+          }),
       },
       reads: {
         listPlans: () =>
           Promise.resolve([
-            { id: 1, name: 'Lite', kind: 'subscription', sortOrder: 1, price: '10', periodDays: 30, quotaAmount: '100', allowSeats: false, status: 0 },
+            {
+              id: 1,
+              name: 'Lite',
+              kind: 'subscription',
+              sortOrder: 1,
+              price: '10',
+              periodDays: 30,
+              quotaAmount: '100',
+              allowSeats: false,
+              status: 0,
+            },
           ]),
         mySubscriptions: () =>
           Promise.resolve([
             {
-              id: 5, planId: 1, planName: 'Lite', planSortOrder: 1, allowSeats: false, periodDays: 30,
-              status: 0, orgId: null, quantity: 2, quotaAmount: '100', usedAmount: '20',
-              reservedAmount: '5', price: '20', planPrice: '10',
-              startAt: new Date('2026-01-01T00:00:00Z'), endAt: new Date('2030-01-01T00:00:00Z'),
+              id: 5,
+              planId: 1,
+              planName: 'Lite',
+              planSortOrder: 1,
+              allowSeats: false,
+              periodDays: 30,
+              status: 0,
+              orgId: null,
+              quantity: 2,
+              quotaAmount: '100',
+              usedAmount: '20',
+              reservedAmount: '5',
+              price: '20',
+              planPrice: '10',
+              startAt: new Date('2026-01-01T00:00:00Z'),
+              endAt: new Date('2030-01-01T00:00:00Z'),
             },
           ]),
       },
@@ -378,17 +627,61 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     usage: {
       list: () =>
         Promise.resolve({
-          rows: [{
-            id: 1, requestId: 'r1', userId: 42, appId: null, apiKeyId: 2, externalModel: 'gpt-x',
-            realModel: 'up-1', channelId: 1, inputTokens: 10, cachedInputTokens: 0, outputTokens: 5,
-            units: 0, unitPrice: null, pricingUnit: '1k_tokens', amount: '0.001', billedBy: 'payg',
-            planAmount: '0', paygAmount: '0.001', upstreamCost: '0.0005', durationMs: 100,
-            clientTtftMs: null, createdAt: new Date(), credentialType: 'key', keyName: 'k1', appName: null,
-          }],
+          rows: [
+            {
+              id: 1,
+              requestId: 'r1',
+              userId: 42,
+              appId: null,
+              apiKeyId: 2,
+              externalModel: 'gpt-x',
+              realModel: 'up-1',
+              channelId: 1,
+              inputTokens: 10,
+              cachedInputTokens: 0,
+              outputTokens: 5,
+              units: 0,
+              unitPrice: null,
+              pricingUnit: '1k_tokens',
+              amount: '0.001',
+              billedBy: 'payg',
+              planAmount: '0',
+              paygAmount: '0.001',
+              upstreamCost: '0.0005',
+              durationMs: 100,
+              clientTtftMs: null,
+              createdAt: new Date(),
+              credentialType: 'key',
+              keyName: 'k1',
+              appName: null,
+            },
+          ],
           total: 1,
         }),
-      byModel: () => Promise.resolve([{ model: 'gpt-x', requests: 1, inputTokens: 10, outputTokens: 5, cachedInputTokens: 0, cost: '0.001' }]),
-      summary: () => Promise.resolve({ list: [{ date: '2026-08-01', requests: 1, inputTokens: 10, outputTokens: 5, cachedInputTokens: 0, cost: '0.001' }] }),
+      byModel: () =>
+        Promise.resolve([
+          {
+            model: 'gpt-x',
+            requests: 1,
+            inputTokens: 10,
+            outputTokens: 5,
+            cachedInputTokens: 0,
+            cost: '0.001',
+          },
+        ]),
+      summary: () =>
+        Promise.resolve({
+          list: [
+            {
+              date: '2026-08-01',
+              requests: 1,
+              inputTokens: 10,
+              outputTokens: 5,
+              cachedInputTokens: 0,
+              cost: '0.001',
+            },
+          ],
+        }),
       rate: () => Promise.resolve({ rpm: 3, tpm: 120 }),
     },
     pricing: {
@@ -399,8 +692,32 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             { externalName: 'claude-y', realModel: 'up-2', pricingUnit: '1k_tokens' },
           ],
           enriched: new Map([
-            ['gpt-x', { id: 1, contextLength: 128000, inputPrice: '1', outputPrice: '2', cacheInputPrice: '0.5', unitPrice: '0', isFree: false, pricingGroup: null }],
-            ['claude-y', { id: 2, contextLength: null, inputPrice: '0', outputPrice: '0', cacheInputPrice: '0', unitPrice: '1', isFree: true, pricingGroup: 'g1' }],
+            [
+              'gpt-x',
+              {
+                id: 1,
+                contextLength: 128000,
+                inputPrice: '1',
+                outputPrice: '2',
+                cacheInputPrice: '0.5',
+                unitPrice: '0',
+                isFree: false,
+                pricingGroup: null,
+              },
+            ],
+            [
+              'claude-y',
+              {
+                id: 2,
+                contextLength: null,
+                inputPrice: '0',
+                outputPrice: '0',
+                cacheInputPrice: '0',
+                unitPrice: '1',
+                isFree: true,
+                pricingGroup: 'g1',
+              },
+            ],
           ]),
         }),
       rateCardSnapshot: () =>
@@ -413,14 +730,28 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     referrals: {
       marketingSettings: () =>
         Promise.resolve({
-          signupGiftAmount: '1', referralSignupBonus: '2', referralCommissionRate: '0.1',
-          updatedBy: null, updatedAt: new Date(),
+          signupGiftAmount: '1',
+          referralSignupBonus: '2',
+          referralCommissionRate: '0.1',
+          updatedBy: null,
+          updatedAt: new Date(),
         }),
       overview: () =>
         Promise.resolve({
-          enabled: true, affCode: 'u1a', inviteUrl: 'https://app.example/register?aff=u1a',
-          signupBonus: '2', commissionRate: '0.1',
-          invitees: [{ inviteeUserId: 7, inviteeEmail: 'i@x.com', inviteeDisplayName: 'I', status: 1, createdAt: new Date() }],
+          enabled: true,
+          affCode: 'u1a',
+          inviteUrl: 'https://app.example/register?aff=u1a',
+          signupBonus: '2',
+          commissionRate: '0.1',
+          invitees: [
+            {
+              inviteeUserId: 7,
+              inviteeEmail: 'i@x.com',
+              inviteeDisplayName: 'I',
+              status: 1,
+              createdAt: new Date(),
+            },
+          ],
         }),
       totalCommission: () => Promise.resolve('4.5'),
       frontendBaseUrl: 'https://app.example',
@@ -430,7 +761,11 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
   return { deps, state };
 }
 
-function build(): { app: ReturnType<typeof createClientApiApp>; state: TestState; deps: ClientApiDeps } {
+function build(): {
+  app: ReturnType<typeof createClientApiApp>;
+  state: TestState;
+  deps: ClientApiDeps;
+} {
   const { deps, state } = createDeps();
   return { app: createClientApiApp(deps), state, deps };
 }
@@ -540,7 +875,13 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ challengeId: regBody.challengeId, code: '123456' }),
     });
     expect(ver.status).toBe(201);
-    const verBody = (await ver.json()) as { kind: string; token: string; userId: number; email: string; gifted: boolean };
+    const verBody = (await ver.json()) as {
+      kind: string;
+      token: string;
+      userId: number;
+      email: string;
+      gifted: boolean;
+    };
     expect(verBody.kind).toBe('success');
     expect(verBody.token).toBe(`signed:${verBody.userId}`);
     expect(verBody.email).toBe('new@x.com');
@@ -556,7 +897,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'a@x.com', password: 'password123' }),
     });
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.register_disabled');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.register_disabled',
+    );
   });
 
   it('IP 限频超限 429 + Retry-After', async () => {
@@ -568,7 +911,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'a@x.com', password: 'password123' }),
     });
     expect(res.status).toBe(429);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.register_rate_limited');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.register_rate_limited',
+    );
     expect(res.headers.get('retry-after')).toBe('3600');
   });
 
@@ -580,7 +925,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'taken@x.com', password: 'password123' }),
     });
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('accounts.email_taken');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'accounts.email_taken',
+    );
   });
 
   it('弱密码 400 identity.weak_password（发码前拒绝）', async () => {
@@ -591,7 +938,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'new@x.com', password: 'short' }),
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('identity.weak_password');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.weak_password',
+    );
   });
 
   it('验证码错误 400 identity.code_invalid', async () => {
@@ -602,7 +951,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ challengeId: '00000000-0000-4000-8000-000000000000', code: '000000' }),
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('identity.challenge_invalid');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.challenge_invalid',
+    );
   });
 
   it('login 成功单密码分支', async () => {
@@ -624,7 +975,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'u@x.com', password: 'wrong' }),
     });
     expect(res.status).toBe(401);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('identity.invalid_credentials');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.invalid_credentials',
+    );
   });
 
   it('login 爆破锁 429 + Retry-After', async () => {
@@ -636,7 +989,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'u@x.com', password: 'password123' }),
     });
     expect(res.status).toBe(429);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.login_locked');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.login_locked',
+    );
     expect(res.headers.get('retry-after')).toBe('120');
   });
 
@@ -649,7 +1004,9 @@ describe('auth 两步制', () => {
       body: JSON.stringify({ email: 'u@x.com', password: 'password123' }),
     });
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.account_unavailable');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.account_unavailable',
+    );
   });
 
   it('两级登录：login → code_required；verify → token（uid 载荷）', async () => {
@@ -714,7 +1071,12 @@ describe('me / keys / apps / orgs', () => {
   it('keys 列表信封 {rows,total,page,limit}', async () => {
     const { app } = build();
     const res = await app.request('/v1/keys?page=2&limit=50', { headers: auth });
-    const body = (await res.json()) as { rows: unknown[]; total: number; page: number; limit: number };
+    const body = (await res.json()) as {
+      rows: unknown[];
+      total: number;
+      page: number;
+      limit: number;
+    };
     expect(body.page).toBe(2);
     expect(body.limit).toBe(50);
     expect(body.total).toBe(1);
@@ -741,7 +1103,9 @@ describe('me / keys / apps / orgs', () => {
       body: JSON.stringify({ name: 'k', dailySpendLimit: 50 }),
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('http.validation_failed');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'http.validation_failed',
+    );
   });
 
   it('keys patch 404 → accounts.key_not_found', async () => {
@@ -753,7 +1117,9 @@ describe('me / keys / apps / orgs', () => {
       body: JSON.stringify({ name: 'n' }),
     });
     expect(res.status).toBe(404);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('accounts.key_not_found');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'accounts.key_not_found',
+    );
   });
 
   it('apps 创建 201 clientSecret；rotate 200 新 secret', async () => {
@@ -772,7 +1138,10 @@ describe('me / keys / apps / orgs', () => {
   it('orgs 列表富化订阅并计算剩余额度', async () => {
     const { app } = build();
     const res = await app.request('/v1/orgs', { headers: auth });
-    const body = (await res.json()) as { rows: Array<{ remainingAmount: string; planName: string | null }>; total: number };
+    const body = (await res.json()) as {
+      rows: Array<{ remainingAmount: string; planName: string | null }>;
+      total: number;
+    };
     expect(body.total).toBe(1);
     expect(body.rows[0]?.planName).toBe('Team');
     expect(body.rows[0]?.remainingAmount).toBe('75');
@@ -839,7 +1208,9 @@ describe('wallet / redeem / payments', () => {
       body: JSON.stringify({ code: 'OLD' }),
     });
     expect(res.status).toBe(410);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('billing.code_expired');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'billing.code_expired',
+    );
   });
 
   it('下单 201 形状；订单不存在 404；畸形 id 400', async () => {
@@ -850,11 +1221,19 @@ describe('wallet / redeem / payments', () => {
       body: JSON.stringify({ amount: '10' }),
     });
     expect(created.status).toBe(201);
-    expect(await created.json()).toMatchObject({ orderId: expect.any(String), payUrl: 'https://pay', creditAmount: '10' });
+    expect(await created.json()).toMatchObject({
+      orderId: expect.any(String),
+      payUrl: 'https://pay',
+      creditAmount: '10',
+    });
 
-    const notFound = await app.request('/v1/payments/orders/0f0e0d0c-0000-4000-8000-000000000000', { headers: auth });
+    const notFound = await app.request('/v1/payments/orders/0f0e0d0c-0000-4000-8000-000000000000', {
+      headers: auth,
+    });
     expect(notFound.status).toBe(404);
-    expect(((await notFound.json()) as { error: { code: string } }).error.code).toBe('billing.order_not_found');
+    expect(((await notFound.json()) as { error: { code: string } }).error.code).toBe(
+      'billing.order_not_found',
+    );
 
     const malformed = await app.request('/v1/payments/orders/not-a-uuid', { headers: auth });
     expect(malformed.status).toBe(400);
@@ -883,7 +1262,9 @@ describe('wallet / redeem / payments', () => {
   it('channels 目录', async () => {
     const { app } = build();
     const res = await app.request('/v1/payments/channels', { headers: auth });
-    expect(((await res.json()) as { channels: Array<{ id: string }> }).channels[0]?.id).toBe('epay');
+    expect(((await res.json()) as { channels: Array<{ id: string }> }).channels[0]?.id).toBe(
+      'epay',
+    );
   });
 });
 
@@ -894,7 +1275,11 @@ describe('subscriptions / usage / pricing / referrals', () => {
     expect(((await plans.json()) as { rows: Array<{ name: string }> }).rows[0]?.name).toBe('Lite');
 
     const mine = await app.request('/v1/subscriptions', { headers: auth });
-    const row = ((await mine.json()) as { rows: Array<{ remainingAmount: string; renewPrice: string; remainingValue: string }> }).rows[0]!;
+    const row = (
+      (await mine.json()) as {
+        rows: Array<{ remainingAmount: string; renewPrice: string; remainingValue: string }>;
+      }
+    ).rows[0]!;
     expect(row.remainingAmount).toBe('75');
     expect(row.renewPrice).toBe('20');
     expect(row.remainingValue).toBe('15');
@@ -916,7 +1301,9 @@ describe('subscriptions / usage / pricing / referrals', () => {
       body: JSON.stringify({ planId: 1 }),
     });
     expect(bad.status).toBe(400);
-    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe('http.invalid_idempotency_key');
+    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe(
+      'http.invalid_idempotency_key',
+    );
   });
 
   it('变更/续费 200', async () => {
@@ -933,28 +1320,47 @@ describe('subscriptions / usage / pricing / referrals', () => {
 
   it('usage 四端信封', async () => {
     const { app } = build();
-    const list = (await (await app.request('/v1/usage', { headers: auth })).json()) as { rows: unknown[]; total: number };
+    const list = (await (await app.request('/v1/usage', { headers: auth })).json()) as {
+      rows: unknown[];
+      total: number;
+    };
     expect(list.total).toBe(1);
-    const byModel = (await (await app.request('/v1/usage/by-model', { headers: auth })).json()) as { rows: unknown[] };
+    const byModel = (await (await app.request('/v1/usage/by-model', { headers: auth })).json()) as {
+      rows: unknown[];
+    };
     expect(byModel.rows).toHaveLength(1);
-    const summary = (await (await app.request('/v1/usage/summary', { headers: auth })).json()) as { list: unknown[] };
+    const summary = (await (await app.request('/v1/usage/summary', { headers: auth })).json()) as {
+      list: unknown[];
+    };
     expect(summary.list).toHaveLength(1);
-    const rate = (await (await app.request('/v1/usage/rate', { headers: auth })).json()) as { rpm: number };
+    const rate = (await (await app.request('/v1/usage/rate', { headers: auth })).json()) as {
+      rpm: number;
+    };
     expect(rate.rpm).toBe(3);
   });
 
   it('pricing 公开目录过滤/分页；personal 含 coefficient 与到手价', async () => {
     const { app } = build();
-    const pub = (await (
-      await app.request('/v1/pricing?free=true&page=1&pageSize=10')
-    ).json()) as { models: Array<{ externalName: string }>; total: number; page: number; pageSize: number };
+    const pub = (await (await app.request('/v1/pricing?free=true&page=1&pageSize=10')).json()) as {
+      models: Array<{ externalName: string }>;
+      total: number;
+      page: number;
+      pageSize: number;
+    };
     expect(pub.total).toBe(1);
     expect(pub.models[0]?.externalName).toBe('claude-y');
     expect(pub.pageSize).toBe(10);
 
     const personal = (await (
       await app.request('/v1/pricing/personal', { headers: auth })
-    ).json()) as { models: Array<{ externalName: string; coefficient?: string; effective?: { inputPrice: string }; personalized?: boolean }> };
+    ).json()) as {
+      models: Array<{
+        externalName: string;
+        coefficient?: string;
+        effective?: { inputPrice: string };
+        personalized?: boolean;
+      }>;
+    };
     const gpt = personal.models.find((m) => m.externalName === 'gpt-x');
     expect(gpt?.coefficient).toBe('0.5');
     expect(gpt?.effective?.inputPrice).toBe('0.5');
@@ -963,7 +1369,9 @@ describe('subscriptions / usage / pricing / referrals', () => {
 
   it('referrals config 开关计算 + overview 合并佣金', async () => {
     const { app } = build();
-    const config = (await (await app.request('/v1/referrals/config', { headers: auth })).json()) as { enabled: boolean; signupBonus: string };
+    const config = (await (
+      await app.request('/v1/referrals/config', { headers: auth })
+    ).json()) as { enabled: boolean; signupBonus: string };
     expect(config.enabled).toBe(true);
     expect(config.signupBonus).toBe('2');
     const overview = (await (await app.request('/v1/referrals', { headers: auth })).json()) as {
@@ -985,8 +1393,12 @@ describe('覆盖补充：成功路径与分支变体', () => {
       method: 'PATCH',
       headers: jsonAuth,
       body: JSON.stringify({
-        name: 'n', remark: 'r', rpmLimit: 10, tpmLimit: 100,
-        dailySpendLimit: '5', expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        name: 'n',
+        remark: 'r',
+        rpmLimit: 10,
+        tpmLimit: 100,
+        dailySpendLimit: '5',
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
       }),
     });
     expect(patched.status).toBe(200);
@@ -1005,8 +1417,13 @@ describe('覆盖补充：成功路径与分支变体', () => {
       method: 'POST',
       headers: jsonAuth,
       body: JSON.stringify({
-        name: 'full', remark: null, rpmLimit: 5, tpmLimit: 50, dailySpendLimit: '1',
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(), subscriptionId: 5,
+        name: 'full',
+        remark: null,
+        rpmLimit: 5,
+        tpmLimit: 50,
+        dailySpendLimit: '1',
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        subscriptionId: 5,
       }),
     });
     expect(res.status).toBe(201);
@@ -1020,7 +1437,9 @@ describe('覆盖补充：成功路径与分支变体', () => {
       body: JSON.stringify({ name: 'n' }),
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('http.invalid_path_param');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'http.invalid_path_param',
+    );
   });
 
   it('apps 列表与禁用路径', async () => {
@@ -1034,18 +1453,27 @@ describe('覆盖补充：成功路径与分支变体', () => {
   it('orgs 详情 / 撤销邀请 / 移除成员；无订阅组织剩余额度为 0', async () => {
     const { app, state } = build();
     const detail = await app.request('/v1/orgs/9', { headers: auth });
-    const detailBody = (await detail.json()) as { org: { id: number }; members: unknown[]; invitations: unknown[] };
+    const detailBody = (await detail.json()) as {
+      org: { id: number };
+      members: unknown[];
+      invitations: unknown[];
+    };
     expect(detailBody.org.id).toBe(9);
     expect(detailBody.members).toHaveLength(1);
 
-    const revoke = await app.request('/v1/orgs/9/invitations/11/revoke', { method: 'POST', headers: auth });
+    const revoke = await app.request('/v1/orgs/9/invitations/11/revoke', {
+      method: 'POST',
+      headers: auth,
+    });
     expect(await revoke.json()).toEqual({ ok: true });
     const remove = await app.request('/v1/orgs/9/members/42', { method: 'DELETE', headers: auth });
     expect(await remove.json()).toEqual({ ok: true });
 
     state.emptyOrgSubs = true;
     const listed = await app.request('/v1/orgs', { headers: auth });
-    const rows = ((await listed.json()) as { rows: Array<{ remainingAmount: string; planName: string | null }> }).rows;
+    const rows = (
+      (await listed.json()) as { rows: Array<{ remainingAmount: string; planName: string | null }> }
+    ).rows;
     expect(rows[0]?.remainingAmount).toBe('0');
     expect(rows[0]?.planName).toBeNull();
   });
@@ -1054,7 +1482,9 @@ describe('覆盖补充：成功路径与分支变体', () => {
     const { app } = build();
     const accounts = await app.request('/v1/wallet/accounts', { headers: auth });
     expect(accounts.status).toBe(200);
-    const statement = await app.request('/v1/wallet/statement?limit=2&beforeLegId=99', { headers: auth });
+    const statement = await app.request('/v1/wallet/statement?limit=2&beforeLegId=99', {
+      headers: auth,
+    });
     expect(statement.status).toBe(200);
   });
 
@@ -1071,7 +1501,10 @@ describe('覆盖补充：成功路径与分支变体', () => {
       { headers: auth },
     );
     expect(ok.status).toBe(200);
-    const byModel = await app.request('/v1/usage/by-model?from=2026-01-01T00:00:00Z&to=2026-12-31T00:00:00Z', { headers: auth });
+    const byModel = await app.request(
+      '/v1/usage/by-model?from=2026-01-01T00:00:00Z&to=2026-12-31T00:00:00Z',
+      { headers: auth },
+    );
     expect(byModel.status).toBe(200);
     const bad = await app.request('/v1/usage?limit=999', { headers: auth });
     expect(bad.status).toBe(400);
@@ -1125,10 +1558,22 @@ describe('presenters 与纯函数分支', () => {
   it('subscriptions 派生：零额度订阅的 renewPrice/remainingValue', async () => {
     const { toMySubscriptionRow } = await import('../src/http/presenters/subscriptions.js');
     const row = toMySubscriptionRow({
-      id: 1, planId: 1, planName: 'Z', planSortOrder: null, allowSeats: false, periodDays: 30,
-      status: 0, orgId: null, quantity: 1, quotaAmount: '0', usedAmount: '0',
-      reservedAmount: '0', price: '10', planPrice: '10',
-      startAt: new Date(), endAt: new Date(),
+      id: 1,
+      planId: 1,
+      planName: 'Z',
+      planSortOrder: null,
+      allowSeats: false,
+      periodDays: 30,
+      status: 0,
+      orgId: null,
+      quantity: 1,
+      quotaAmount: '0',
+      usedAmount: '0',
+      reservedAmount: '0',
+      price: '10',
+      planPrice: '10',
+      startAt: new Date(),
+      endAt: new Date(),
     });
     expect(row.remainingValue).toBe('0');
     expect(row.renewPrice).toBe('10');
@@ -1138,10 +1583,25 @@ describe('presenters 与纯函数分支', () => {
     const { referralOverviewRow } = await import('../src/http/presenters/referrals.js');
     const row = referralOverviewRow(
       {
-        affCode: 'u1', inviteUrl: 'https://x/i', signupBonus: '1', commissionRate: '0.1',
+        affCode: 'u1',
+        inviteUrl: 'https://x/i',
+        signupBonus: '1',
+        commissionRate: '0.1',
         invitees: [
-          { inviteeUserId: 1, inviteeEmail: 'e@x.com', inviteeDisplayName: null, status: 1, createdAt: new Date() },
-          { inviteeUserId: 2, inviteeEmail: null, inviteeDisplayName: null, status: 1, createdAt: new Date() },
+          {
+            inviteeUserId: 1,
+            inviteeEmail: 'e@x.com',
+            inviteeDisplayName: null,
+            status: 1,
+            createdAt: new Date(),
+          },
+          {
+            inviteeUserId: 2,
+            inviteeEmail: null,
+            inviteeDisplayName: null,
+            status: 1,
+            createdAt: new Date(),
+          },
         ],
       },
       '0',
@@ -1181,16 +1641,21 @@ describe('presenters 与纯函数分支', () => {
 
 describe('分支补充（presenter 单元与缺失变体）', () => {
   it('pricing presenter：缺富化行的默认值与过滤组合', async () => {
-    const { toPublicPricingRows, toPersonalPricingRows, slicePricingCatalog } = await import(
-      '../src/http/presenters/pricing.js'
-    );
+    const { toPublicPricingRows, toPersonalPricingRows, slicePricingCatalog } =
+      await import('../src/http/presenters/pricing.js');
     const catalog = {
       models: [{ externalName: 'ghost', realModel: 'x', pricingUnit: 'u' }],
       enriched: new Map(),
     };
     const pub = toPublicPricingRows(catalog);
     expect(pub[0]).toMatchObject({ id: 0, inputPrice: '0', isFree: false, contextLength: null });
-    const personal = toPersonalPricingRows(catalog, { rateCardId: 1, status: 0, global: '2', model: {}, group: {} });
+    const personal = toPersonalPricingRows(catalog, {
+      rateCardId: 1,
+      status: 0,
+      global: '2',
+      model: {},
+      group: {},
+    });
     expect(personal[0]?.coefficient).toBe('2');
     expect(personal[0]?.effective?.inputPrice).toBe('0');
     const sliced = slicePricingCatalog(pub, { q: 'no-match', free: false, page: 1, pageSize: 10 });
@@ -1222,7 +1687,9 @@ describe('分支补充（presenter 单元与缺失变体）', () => {
       body: JSON.stringify({ challengeId, code: '123456' }),
     });
     expect(res.status).toBe(503);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.two_factor_unavailable');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.two_factor_unavailable',
+    );
   });
 
   it('login/verify 未知 uid → 401；封禁 uid → 403', async () => {
@@ -1267,10 +1734,17 @@ describe('分支补充（presenter 单元与缺失变体）', () => {
   it('shutdown 无 logger 装配分支', async () => {
     const { createClientShutdown } = await import('../src/shutdown.js');
     const calls: string[] = [];
-    const exit = ((code: number) => { void code; }) as unknown as (code: number) => never;
+    const exit = ((code: number) => {
+      void code;
+    }) as unknown as (code: number) => never;
     const shutdown = createClientShutdown({
       serviceName: 't',
-      server: { close: (cb) => { calls.push('server'); cb(); } },
+      server: {
+        close: (cb) => {
+          calls.push('server');
+          cb();
+        },
+      },
       otel: { shutdown: () => Promise.resolve() },
       redis: { quit: () => Promise.resolve() },
       db: { end: () => Promise.resolve() },
@@ -1304,14 +1778,18 @@ describe('oauth 社交登录', () => {
     const { app } = build();
     const res = await app.request('/v1/oauth/gitlab/authorize');
     expect(res.status).toBe(404);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('client.oauth_unknown');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'client.oauth_unknown',
+    );
   });
 
   it('callback 双提交不匹配 403；单次消费失败 410；成功 302 fragment 回传', async () => {
     const { app } = build();
     const mismatch = await app.request('/v1/oauth/github/callback?code=c&state=evil');
     expect(mismatch.status).toBe(403);
-    expect(((await mismatch.json()) as { error: { code: string } }).error.code).toBe('client.oauth_state_mismatch');
+    expect(((await mismatch.json()) as { error: { code: string } }).error.code).toBe(
+      'client.oauth_state_mismatch',
+    );
 
     const { app: app2, state: s2 } = build();
     s2.oauthCallbackState = 'consumed-already';
@@ -1319,7 +1797,9 @@ describe('oauth 社交登录', () => {
       headers: { cookie: 'tl_oauth_state=good-state' },
     });
     expect(expired.status).toBe(410);
-    expect(((await expired.json()) as { error: { code: string } }).error.code).toBe('identity.oauth_state_invalid');
+    expect(((await expired.json()) as { error: { code: string } }).error.code).toBe(
+      'identity.oauth_state_invalid',
+    );
 
     const { app: app3 } = build();
     const ok = await app3.request('/v1/oauth/github/callback?code=c&state=good-state', {

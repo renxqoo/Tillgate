@@ -38,7 +38,10 @@ export function oauthRoutes(deps: OAuthDeps) {
   app.get('/v1/oauth/:provider/authorize', async (c) => {
     const provider = c.req.param('provider');
     if (!deps.providers.includes(provider)) {
-      return c.json({ error: { code: 'client.oauth_unknown', message: 'Unknown login method' } }, 404);
+      return c.json(
+        { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
+        404,
+      );
     }
     const { url, state } = await deps.authorize({
       provider,
@@ -58,13 +61,19 @@ export function oauthRoutes(deps: OAuthDeps) {
   app.get('/v1/oauth/:provider/callback', async (c) => {
     const provider = c.req.param('provider');
     if (!deps.providers.includes(provider)) {
-      return c.json({ error: { code: 'client.oauth_unknown', message: 'Unknown login method' } }, 404);
+      return c.json(
+        { error: { code: 'client.oauth_unknown', message: 'Unknown login method' } },
+        404,
+      );
     }
     // 双提交第一因子：cookie state 必须与 query state 一致（cookie 缺失/不符 = 拒绝）
     const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
     const queryState = c.req.query('state') ?? '';
     if (cookieState == null || cookieState !== queryState) {
-      return c.json({ error: { code: 'client.oauth_state_mismatch', message: 'Login state mismatch' } }, 403);
+      return c.json(
+        { error: { code: 'client.oauth_state_mismatch', message: 'Login state mismatch' } },
+        403,
+      );
     }
     // identity 半程：redis 单次消费 state + code 换 profile（上游失败 502）
     const result = await deps.callback({
@@ -89,7 +98,10 @@ export function oauthRoutes(deps: OAuthDeps) {
     }
     const status = await deps.userStatus(userId);
     if (status !== 0) {
-      return c.json({ error: { code: 'client.account_unavailable', message: 'Account is unavailable' } }, 403);
+      return c.json(
+        { error: { code: 'client.account_unavailable', message: 'Account is unavailable' } },
+        403,
+      );
     }
     const token = await deps.sign(userId);
     const next = safeNext(result.next);

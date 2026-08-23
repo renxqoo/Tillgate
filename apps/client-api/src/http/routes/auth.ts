@@ -48,7 +48,10 @@ export interface AuthDeps {
   readonly challenges: Pick<Identity['challenges'], 'begin' | 'verify'>;
   readonly registerCredential: Identity['credentials']['register'];
   readonly provision: (input: { email: string }) => Promise<{ id: number; email: string | null }>;
-  readonly onboarding: (input: { userId: number; affCode?: string }) => Promise<{ gift: { status: string } }>;
+  readonly onboarding: (input: {
+    userId: number;
+    affCode?: string;
+  }) => Promise<{ gift: { status: string } }>;
   readonly authenticate: Identity['passwords']['authenticate'];
   readonly changePassword: Identity['passwords']['change'];
   readonly guards: { emailIp: KeyBruteForceGuard; ip: AuthFailureGuard };
@@ -59,7 +62,9 @@ export interface AuthDeps {
 }
 
 export function bearerToken(header: string | undefined): string {
-  return header != null && header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  return header != null && header.startsWith('Bearer ')
+    ? header.slice('Bearer '.length).trim()
+    : '';
 }
 
 /** 爆破守卫键：邮箱+IP 双维（v1 口径） */

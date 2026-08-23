@@ -19,12 +19,13 @@ import {
   type Logger,
 } from '@tokenlens/runtime';
 import { initOtel, type OtelHandle } from '@tokenlens/observability';
-import { createIdentity, type Identity, type OAuthEndpointsOverride, type OAuthProviderCredentials } from '@tokenlens/identity';
 import {
-  createAccounts,
-  USER_STATUS,
-  type AccountUseCases,
-} from '@tokenlens/accounts';
+  createIdentity,
+  type Identity,
+  type OAuthEndpointsOverride,
+  type OAuthProviderCredentials,
+} from '@tokenlens/identity';
+import { createAccounts, USER_STATUS, type AccountUseCases } from '@tokenlens/accounts';
 import { createPgFundingSourceResolver } from '@tokenlens/accounts/composition';
 import {
   createBilling,
@@ -97,7 +98,10 @@ export async function assembleClientApi(
     serviceVersion: '0.1.0',
     mode: config.OTEL_TRACES_MODE,
     ...(config.OTEL_EXPORTER_OTLP_ENDPOINT != null
-      ? { endpoint: config.OTEL_EXPORTER_OTLP_ENDPOINT, metricsExportIntervalMs: config.OTEL_METRICS_INTERVAL_MS }
+      ? {
+          endpoint: config.OTEL_EXPORTER_OTLP_ENDPOINT,
+          metricsExportIntervalMs: config.OTEL_METRICS_INTERVAL_MS,
+        }
       : {}),
   });
 
@@ -129,7 +133,12 @@ export async function assembleClientApi(
         },
   );
   // Redis 必配（爆破防护/限流/OAuth state/定价缓存——fail-closed：连不上拒绝启动）
-  await assertRedisReachable(redis, 'client-api', config.REDIS_URL, config.CLIENT_STARTUP_PROBE_TIMEOUT_MS);
+  await assertRedisReachable(
+    redis,
+    'client-api',
+    config.REDIS_URL,
+    config.CLIENT_STARTUP_PROBE_TIMEOUT_MS,
+  );
 
   const txRetry: TxRetryPolicy = {
     maxAttempts: config.CLIENT_TX_MAX_ATTEMPTS,
@@ -158,27 +167,31 @@ export async function assembleClientApi(
   const smtpReady =
     config.SMTP_HOST != null && config.SMTP_USER != null && config.SMTP_PASS != null;
   // 用户面邮件品牌（展示常量——非部署可变值）
-  const mailBrand = { brand: 'TokenLens 控制台', brandEn: 'TokenLens Console', brandSub: 'TOKENLENS · CONSOLE' };
+  const mailBrand = {
+    brand: 'TokenLens 控制台',
+    brandEn: 'TokenLens Console',
+    brandSub: 'TOKENLENS · CONSOLE',
+  };
   const mailer =
     overrides.mailer !== undefined
       ? overrides.mailer
       : smtpReady
         ? createSmtpLoginMailer(
-          {
-            host: config.SMTP_HOST as string,
-            port: config.SMTP_PORT,
-            user: config.SMTP_USER as string,
-            pass: config.SMTP_PASS as string,
-            from: config.SMTP_FROM ?? (config.SMTP_USER as string),
-          },
-          mailBrand,
-          {
-            ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
-            maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
-          },
-          clock,
-        )
-      : null;
+            {
+              host: config.SMTP_HOST as string,
+              port: config.SMTP_PORT,
+              user: config.SMTP_USER as string,
+              pass: config.SMTP_PASS as string,
+              from: config.SMTP_FROM ?? (config.SMTP_USER as string),
+            },
+            mailBrand,
+            {
+              ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
+              maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
+            },
+            clock,
+          )
+        : null;
   const emailCodeRequired =
     config.EMAIL_CODE_REQUIRED === 'on'
       ? true
@@ -212,7 +225,11 @@ export async function assembleClientApi(
       // TOTP 词表必填项（用户面暂不开放 MFA 端点——identity 配置契约）
       totp: { issuer: config.CLIENT_TOTP_ISSUER, stepSec: 30, windowSteps: 1, recoveryCount: 8 },
       sessions: {
-        user: { issuer: 'tokenlens:user', secret: config.JWT_SECRET, ttlSec: config.SESSION_TTL_SECONDS },
+        user: {
+          issuer: 'tokenlens:user',
+          secret: config.JWT_SECRET,
+          ttlSec: config.SESSION_TTL_SECONDS,
+        },
       },
       oauth: oauthProviders,
       oauthStateTtlSec: config.OAUTH_STATE_TTL_SECONDS,
@@ -224,7 +241,12 @@ export async function assembleClientApi(
     },
     ...(mailer != null ? { mailer } : {}),
     ...(config.CAPTCHA_SECRET_KEY != null
-      ? { captcha: createTurnstileCaptcha({ secretKey: config.CAPTCHA_SECRET_KEY, verifyUrl: config.CAPTCHA_VERIFY_URL }) }
+      ? {
+          captcha: createTurnstileCaptcha({
+            secretKey: config.CAPTCHA_SECRET_KEY,
+            verifyUrl: config.CAPTCHA_VERIFY_URL,
+          }),
+        }
       : {}),
     sessionRevocation,
     oauthStateStore,
@@ -255,7 +277,8 @@ export async function assembleClientApi(
         maxDelayMs: config.CLIENT_SETTLE_MAX_DELAY_MS,
       },
       clock,
-      onError: (error, context) => logger.error({ err: String(error), context }, 'settlement error'),
+      onError: (error, context) =>
+        logger.error({ err: String(error), context }, 'settlement error'),
     },
   );
 

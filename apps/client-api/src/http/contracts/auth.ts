@@ -5,12 +5,7 @@
 import { z } from 'zod';
 
 export const registerSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email()
-    .max(255),
+  email: z.string().trim().toLowerCase().email().max(255),
   password: z.string().min(1).max(128),
   captchaToken: z.string().max(4096).optional(),
   /** 邀请归因 aff 码（u{base36}；非法形态由域规则拒绝，不阻断注册） */
@@ -18,18 +13,16 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email()
-    .max(255),
+  email: z.string().trim().toLowerCase().email().max(255),
   password: z.string().min(1).max(128),
 });
 
 export const verifySchema = z.object({
   challengeId: z.string().uuid(),
-  code: z.string().trim().regex(/^\d{6}$/, 'verification code must be 6 digits'),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'verification code must be 6 digits'),
   aff: z.string().trim().max(32).optional(),
 });
 

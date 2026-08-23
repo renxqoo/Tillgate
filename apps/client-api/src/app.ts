@@ -15,7 +15,11 @@ import {
 } from '@tokenlens/http';
 import { pgSqlState } from '@tokenlens/db';
 import { CLIENT_FACE_OVERRIDES, clientErrorCatalog } from './http/error-face.js';
-import { sessionMiddleware, type SessionEnv, type SessionValidator } from './http/middleware/session.js';
+import {
+  sessionMiddleware,
+  type SessionEnv,
+  type SessionValidator,
+} from './http/middleware/session.js';
 import { authRoutes, type AuthDeps } from './http/routes/auth.js';
 import { meRoutes, type MeDeps } from './http/routes/me.js';
 import { keysRoutes, type KeysDeps } from './http/routes/keys.js';
@@ -71,12 +75,15 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
     throw HttpErrors.business('not_found');
   });
 
-  app.use('*', corsPreflight({
-    origins: deps.protocol.corsOrigins,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Authorization', 'Content-Type'],
-    maxAgeSeconds: deps.protocol.corsMaxAgeSeconds,
-  }));
+  app.use(
+    '*',
+    corsPreflight({
+      origins: deps.protocol.corsOrigins,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type'],
+      maxAgeSeconds: deps.protocol.corsMaxAgeSeconds,
+    }),
+  );
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit(deps.protocol.bodyLimitBytes));
   app.use('*', requestIdMiddleware<SessionEnv>());

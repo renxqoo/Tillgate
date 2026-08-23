@@ -5,10 +5,7 @@
  */
 import type { Redis } from 'ioredis';
 import type { Db } from '@tokenlens/db';
-import {
-  postgresModelStore,
-  postgresRateCardStore,
-} from '@tokenlens/control-plane/composition';
+import { postgresModelStore, postgresRateCardStore } from '@tokenlens/control-plane/composition';
 import type { RateCardCoefficientSnapshot } from '@tokenlens/billing';
 import type { BaseCatalog, PricingEnrichedRow } from '../http/presenters/pricing.js';
 

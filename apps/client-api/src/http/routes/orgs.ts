@@ -27,7 +27,9 @@ export interface OrgsDeps {
   readonly patchMember: AccountUseCases['setMemberLimits'];
   readonly removeMember: AccountUseCases['removeMember'];
   /** 组织活跃订阅富化（subscription-read 适配器；orgIds 空表返回空 Map） */
-  readonly orgSubscriptions: (orgIds: readonly number[]) => Promise<ReadonlyMap<number, OrgSubscriptionInfo>>;
+  readonly orgSubscriptions: (
+    orgIds: readonly number[],
+  ) => Promise<ReadonlyMap<number, OrgSubscriptionInfo>>;
 }
 
 export function orgRoutes(deps: OrgsDeps, session: MiddlewareHandler<SessionEnv>) {
@@ -84,23 +86,31 @@ export function orgRoutes(deps: OrgsDeps, session: MiddlewareHandler<SessionEnv>
 
   app.post('/v1/orgs/invitations/accept', session, jsonBody(acceptInvitationSchema), async (c) => {
     const body = c.req.valid('json');
-    const result = await deps.acceptInvitation({ token: body.token, acceptorUserId: c.get('userId') });
+    const result = await deps.acceptInvitation({
+      token: body.token,
+      acceptorUserId: c.get('userId'),
+    });
     return c.json({ orgId: result.orgId });
   });
 
-  app.patch('/v1/orgs/:id/members/:memberUserId', session, jsonBody(memberPatchSchema), async (c) => {
-    const { id } = parsePath(orgIdParamSchema, c.req.param());
-    const memberUserId = userIdParam.parse(c.req.param('memberUserId'));
-    const body = c.req.valid('json');
-    await deps.patchMember({
-      orgId: id,
-      operatorUserId: c.get('userId'),
-      memberUserId,
-      dailySpendLimit: body.dailySpendLimit,
-      monthlyQuota: body.monthlyQuota,
-    });
-    return c.json({ ok: true });
-  });
+  app.patch(
+    '/v1/orgs/:id/members/:memberUserId',
+    session,
+    jsonBody(memberPatchSchema),
+    async (c) => {
+      const { id } = parsePath(orgIdParamSchema, c.req.param());
+      const memberUserId = userIdParam.parse(c.req.param('memberUserId'));
+      const body = c.req.valid('json');
+      await deps.patchMember({
+        orgId: id,
+        operatorUserId: c.get('userId'),
+        memberUserId,
+        dailySpendLimit: body.dailySpendLimit,
+        monthlyQuota: body.monthlyQuota,
+      });
+      return c.json({ ok: true });
+    },
+  );
 
   app.delete('/v1/orgs/:id/members/:memberUserId', session, async (c) => {
     const { id } = parsePath(orgIdParamSchema, c.req.param());

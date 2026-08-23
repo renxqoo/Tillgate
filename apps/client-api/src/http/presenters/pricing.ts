@@ -29,7 +29,12 @@ export interface PublicPricingModel {
   isFree: boolean;
   /** 登录态富化：费率卡系数与到手价 */
   coefficient?: string;
-  effective?: { inputPrice: string; outputPrice: string; cacheInputPrice: string; unitPrice: string };
+  effective?: {
+    inputPrice: string;
+    outputPrice: string;
+    cacheInputPrice: string;
+    unitPrice: string;
+  };
   personalized?: boolean;
   rateCardStatus?: number | null;
 }

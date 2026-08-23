@@ -30,7 +30,10 @@ export function meRoutes(deps: MeDeps, session: MiddlewareHandler<SessionEnv>) {
 
   app.patch('/v1/me/display-name', session, jsonBody(displayNameSchema), async (c) => {
     const body = c.req.valid('json');
-    const user = await deps.updateDisplayName({ userId: c.get('userId'), displayName: body.displayName });
+    const user = await deps.updateDisplayName({
+      userId: c.get('userId'),
+      displayName: body.displayName,
+    });
     return c.json({ displayName: user.displayName });
   });
 

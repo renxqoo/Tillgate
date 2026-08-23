@@ -28,7 +28,8 @@ const BY_MODEL_WINDOW_MS = 30 * 24 * 3_600_000;
 
 function windowConditions(userId: number, from?: Date, to?: Date, defaultFromMs?: number): SQL[] {
   const conditions: SQL[] = [eq(usageLogs.userId, userId)];
-  const effectiveFrom = from ?? (defaultFromMs != null ? new Date(Date.now() - defaultFromMs) : undefined);
+  const effectiveFrom =
+    from ?? (defaultFromMs != null ? new Date(Date.now() - defaultFromMs) : undefined);
   if (effectiveFrom != null) conditions.push(gte(usageLogs.createdAt, effectiveFrom));
   if (to != null) conditions.push(lte(usageLogs.createdAt, to));
   return conditions;

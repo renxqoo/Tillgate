@@ -11,20 +11,72 @@ import { BillingErrors } from '@tokenlens/billing';
 
 /** app 编排期目录（跨能力流程的协议级拒绝——v1 裸码的命名空间化） */
 export const clientErrors = defineErrorCatalog('client', {
-  register_disabled: { category: 'forbidden', message: 'Registration is currently disabled', zh: '注册已关闭' },
-  register_rate_limited: { category: 'rate_limited', message: 'Too many registration attempts from this network', zh: '注册请求过于频繁' },
-  captcha_required: { category: 'invalid_input', message: 'Captcha verification is required', zh: '需要人机验证' },
-  captcha_invalid: { category: 'invalid_input', message: 'Captcha verification failed', zh: '人机验证未通过' },
-  captcha_unavailable: { category: 'unavailable', message: 'Captcha service unavailable', zh: '人机验证服务不可用' },
-  two_factor_unavailable: { category: 'unavailable', message: 'Email verification is required but not configured', zh: '需要邮箱验证但邮件通道不可用' },
-  auth_guard_unavailable: { category: 'unavailable', message: 'Login protection unavailable', zh: '登录防护服务不可用' },
-  rate_counter_unavailable: { category: 'unavailable', message: 'Rate counter unavailable', zh: '限流计数服务不可用' },
-  login_locked: { category: 'rate_limited', message: 'Account temporarily locked due to failed attempts', zh: '失败次数过多，账户暂时锁定' },
-  account_unavailable: { category: 'forbidden', message: 'Account is unavailable', zh: '账户不可用' },
+  register_disabled: {
+    category: 'forbidden',
+    message: 'Registration is currently disabled',
+    zh: '注册已关闭',
+  },
+  register_rate_limited: {
+    category: 'rate_limited',
+    message: 'Too many registration attempts from this network',
+    zh: '注册请求过于频繁',
+  },
+  captcha_required: {
+    category: 'invalid_input',
+    message: 'Captcha verification is required',
+    zh: '需要人机验证',
+  },
+  captcha_invalid: {
+    category: 'invalid_input',
+    message: 'Captcha verification failed',
+    zh: '人机验证未通过',
+  },
+  captcha_unavailable: {
+    category: 'unavailable',
+    message: 'Captcha service unavailable',
+    zh: '人机验证服务不可用',
+  },
+  two_factor_unavailable: {
+    category: 'unavailable',
+    message: 'Email verification is required but not configured',
+    zh: '需要邮箱验证但邮件通道不可用',
+  },
+  auth_guard_unavailable: {
+    category: 'unavailable',
+    message: 'Login protection unavailable',
+    zh: '登录防护服务不可用',
+  },
+  rate_counter_unavailable: {
+    category: 'unavailable',
+    message: 'Rate counter unavailable',
+    zh: '限流计数服务不可用',
+  },
+  login_locked: {
+    category: 'rate_limited',
+    message: 'Account temporarily locked due to failed attempts',
+    zh: '失败次数过多，账户暂时锁定',
+  },
+  account_unavailable: {
+    category: 'forbidden',
+    message: 'Account is unavailable',
+    zh: '账户不可用',
+  },
   oauth_unknown: { category: 'not_found', message: 'Unknown login method', zh: '未知的登录方式' },
-  oauth_state_mismatch: { category: 'forbidden', message: 'Login state mismatch', zh: '登录状态不匹配' },
-  oauth_state_expired: { category: 'not_found', message: 'Login state expired, please retry', zh: '登录状态已过期，请重试' },
-  oauth_callback_failed: { category: 'unavailable', message: 'Third-party login failed, please retry', zh: '第三方登录失败，请重试' },
+  oauth_state_mismatch: {
+    category: 'forbidden',
+    message: 'Login state mismatch',
+    zh: '登录状态不匹配',
+  },
+  oauth_state_expired: {
+    category: 'not_found',
+    message: 'Login state expired, please retry',
+    zh: '登录状态已过期，请重试',
+  },
+  oauth_callback_failed: {
+    category: 'unavailable',
+    message: 'Third-party login failed, please retry',
+    zh: '第三方登录失败，请重试',
+  },
 });
 
 /** 状态钉死表：v1 wire 状态码与 category 默认不同的全部条目（app.test.ts 表驱动锁死） */
@@ -53,5 +105,11 @@ export const CLIENT_FACE_OVERRIDES: Readonly<Record<string, FaceOverride>> = {
 
 /** 全量目录（errorHandler 消费） */
 export function clientErrorCatalog() {
-  return composeErrorCatalogs(HttpErrors, identityErrors, AccountsErrors, BillingErrors, clientErrors);
+  return composeErrorCatalogs(
+    HttpErrors,
+    identityErrors,
+    AccountsErrors,
+    BillingErrors,
+    clientErrors,
+  );
 }

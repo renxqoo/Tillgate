@@ -27,7 +27,13 @@ const ALL = readSources('.');
 describe('client-api 架构门禁', () => {
   it('src 顶层文件集快照（新增/删除须同步本清单）', () => {
     const topLevel = [...ALL.keys()].filter((f) => !f.includes('/'));
-    expect(topLevel.toSorted()).toEqual(['app.ts', 'assembly.ts', 'config.ts', 'index.ts', 'shutdown.ts']);
+    expect(topLevel.toSorted()).toEqual([
+      'app.ts',
+      'assembly.ts',
+      'config.ts',
+      'index.ts',
+      'shutdown.ts',
+    ]);
   });
 
   it('./composition 只允许出现在 assembly 与 adapters 的 import 说明符', () => {
@@ -45,9 +51,10 @@ describe('client-api 架构门禁', () => {
     for (const [file, source] of ALL) {
       if (assemblyFace.has(file) || file.startsWith('adapters/')) continue;
       // app.ts 的 pgSqlState 是纯 SQLSTATE 分类函数（trace-receiver 同款白名单例外）
-      const withoutException = file === 'app.ts'
-        ? source.replace(/import \{ pgSqlState \} from '@tokenlens\/db';/, '')
-        : source;
+      const withoutException =
+        file === 'app.ts'
+          ? source.replace(/import \{ pgSqlState \} from '@tokenlens\/db';/, '')
+          : source;
       expect(withoutException, `${file} 不得依赖 db 包`).not.toMatch(/from '@tokenlens\/db'/);
       expect(withoutException, `${file} 不得出现 Db/DbTx 类型`).not.toMatch(/\b(Db|DbTx)\b/);
     }
@@ -56,7 +63,7 @@ describe('client-api 架构门禁', () => {
   it('http 层零 adapter/数据库/composition 依赖（协议层纯消费 facade 与注入读面）', () => {
     for (const [file, source] of ALL) {
       if (!file.startsWith('http/')) continue;
-      expect(source, `${file} 不得 import adapters`).not.toContain("../adapters/");
+      expect(source, `${file} 不得 import adapters`).not.toContain('../adapters/');
       expect(source, `${file} 不得引用 composition`).not.toContain('/composition');
     }
   });

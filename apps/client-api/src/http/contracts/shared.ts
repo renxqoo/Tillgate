@@ -25,7 +25,10 @@ export function isValidSpendLimitInput(raw: string): boolean {
 }
 
 /** 路径参数校验：失败 400 http.invalid_path_param（与 body/query 校验同语义位） */
-export function parsePath<T extends z.ZodType>(schema: T, input: Record<string, string | undefined>): z.output<T> {
+export function parsePath<T extends z.ZodType>(
+  schema: T,
+  input: Record<string, string | undefined>,
+): z.output<T> {
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
     const context: Record<string, string> = {};

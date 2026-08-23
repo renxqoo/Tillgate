@@ -32,10 +32,7 @@ export function createAccountRead(db: Db): AccountRead {
     },
     async touchLastLogin(userId) {
       const now = new Date();
-      await db
-        .update(users)
-        .set({ lastLoginAt: now, updatedAt: now })
-        .where(eq(users.id, userId));
+      await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, userId));
     },
   };
 }

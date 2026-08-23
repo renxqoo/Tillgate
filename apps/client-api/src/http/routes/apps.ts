@@ -22,7 +22,11 @@ export function appsRoutes(deps: AppsDeps, session: MiddlewareHandler<SessionEnv
 
   app.get('/v1/apps', session, queryMiddleware(appsListQuerySchema), async (c) => {
     const query = c.req.valid('query');
-    const result = await deps.list({ userId: c.get('userId'), page: query.page, limit: query.limit });
+    const result = await deps.list({
+      userId: c.get('userId'),
+      page: query.page,
+      limit: query.limit,
+    });
     return c.json({
       rows: result.rows.map(toAppRow),
       total: result.total,

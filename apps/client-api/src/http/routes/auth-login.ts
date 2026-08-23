@@ -37,7 +37,9 @@ export function loginRoutes(deps: AuthDeps) {
     }
     if (emailLock.locked || ipLock.locked) {
       const retryAfterSec = Math.max(1, emailLock.retryAfterSec, ipLock.retryAfterSec);
-      throw clientErrors.business('login_locked', undefined, { retryAfterMs: retryAfterSec * 1000 });
+      throw clientErrors.business('login_locked', undefined, {
+        retryAfterMs: retryAfterSec * 1000,
+      });
     }
     let userId: number;
     try {

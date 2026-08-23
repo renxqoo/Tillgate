@@ -22,22 +22,22 @@
 
 ### 1.1 路由清单（51 条，与 v1 逐条对齐）
 
-| 域 | 路由 | 会话 | 后端对接 |
-|---|---|---|---|
-| auth | GET /v1/auth/capabilities；POST /v1/auth/{register,register/verify,login,login/verify,logout,password} | 仅 logout/password | identity + accounts 编排（§4） |
-| me | GET /v1/me；PATCH /v1/me/display-name | ✓ | accounts.getProfile + wallet.accounts / updateDisplayName |
-| keys | GET/POST /v1/keys；PATCH /v1/keys/:id；POST /v1/keys/:id/rotate；DELETE /v1/keys/:id | ✓ | accounts keys 动词 |
-| apps | GET/POST /v1/apps；POST /v1/apps/:id/{disable,rotate} | ✓ | accounts apps 动词 |
-| orgs | GET /v1/orgs；GET /v1/orgs/:id；POST /v1/orgs/:id/invitations[/:iid/revoke]；POST /v1/orgs/invitations/accept；PATCH /v1/orgs/:id/members/:uid；DELETE …/members/:uid | ✓ | accounts org 动词 |
-| wallet | GET /v1/wallet/{accounts,statement} | ✓ | billing.wallet |
-| redeem | POST /v1/redeem；GET /v1/redeem/history | ✓ | billing redemption |
-| payments | POST/GET /v1/payments/orders[/:id]；GET /v1/payments/channels；POST /v1/payments/notify/:provider | 列表/详情/下单 | billing payments（回调公开） |
-| subscriptions | GET /v1/plans（公开）；GET /v1/subscriptions；POST /v1/subscriptions[/:id/{change,renew}] | 除 plans | billing subscriptions + §5 读适配器 |
-| usage | GET /v1/usage{,/by-model,/summary,/rate} | ✓ | §5 usage 读适配器 |
-| oauth | GET /v1/oauth/providers；GET /v1/oauth/:p/{authorize,callback} | 公开 | identity oauth + accounts 编排 |
-| pricing | GET /v1/pricing（公开）；GET /v1/pricing/personal | personal ✓ | §5 pricing 读适配器 |
-| referrals | GET /v1/referrals{,/config} | ✓ | accounts.referralOverview + §5 佣金和 |
-| health | GET /healthz | 公开 | db ping + redis ping |
+| 域            | 路由                                                                                                                                                                  | 会话               | 后端对接                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------- |
+| auth          | GET /v1/auth/capabilities；POST /v1/auth/{register,register/verify,login,login/verify,logout,password}                                                                | 仅 logout/password | identity + accounts 编排（§4）                            |
+| me            | GET /v1/me；PATCH /v1/me/display-name                                                                                                                                 | ✓                  | accounts.getProfile + wallet.accounts / updateDisplayName |
+| keys          | GET/POST /v1/keys；PATCH /v1/keys/:id；POST /v1/keys/:id/rotate；DELETE /v1/keys/:id                                                                                  | ✓                  | accounts keys 动词                                        |
+| apps          | GET/POST /v1/apps；POST /v1/apps/:id/{disable,rotate}                                                                                                                 | ✓                  | accounts apps 动词                                        |
+| orgs          | GET /v1/orgs；GET /v1/orgs/:id；POST /v1/orgs/:id/invitations[/:iid/revoke]；POST /v1/orgs/invitations/accept；PATCH /v1/orgs/:id/members/:uid；DELETE …/members/:uid | ✓                  | accounts org 动词                                         |
+| wallet        | GET /v1/wallet/{accounts,statement}                                                                                                                                   | ✓                  | billing.wallet                                            |
+| redeem        | POST /v1/redeem；GET /v1/redeem/history                                                                                                                               | ✓                  | billing redemption                                        |
+| payments      | POST/GET /v1/payments/orders[/:id]；GET /v1/payments/channels；POST /v1/payments/notify/:provider                                                                     | 列表/详情/下单     | billing payments（回调公开）                              |
+| subscriptions | GET /v1/plans（公开）；GET /v1/subscriptions；POST /v1/subscriptions[/:id/{change,renew}]                                                                             | 除 plans           | billing subscriptions + §5 读适配器                       |
+| usage         | GET /v1/usage{,/by-model,/summary,/rate}                                                                                                                              | ✓                  | §5 usage 读适配器                                         |
+| oauth         | GET /v1/oauth/providers；GET /v1/oauth/:p/{authorize,callback}                                                                                                        | 公开               | identity oauth + accounts 编排                            |
+| pricing       | GET /v1/pricing（公开）；GET /v1/pricing/personal                                                                                                                     | personal ✓         | §5 pricing 读适配器                                       |
+| referrals     | GET /v1/referrals{,/config}                                                                                                                                           | ✓                  | accounts.referralOverview + §5 佣金和                     |
+| health        | GET /healthz                                                                                                                                                          | 公开               | db ping + redis ping                                      |
 
 ## 2. 内部问题域（处理 / 不处理）
 
@@ -45,6 +45,7 @@
 跨能力只读面组合（§5）、无共享事务的 facade 动词编排（§4）。
 
 **不处理**（归属能力包）：
+
 - 业务规则/事务/SQL → identity/accounts/billing/control-plane 的 domain/application/adapters；
 - 资金不变量与结算 → billing（app 永不触 DbTx，facade 不泄漏 Db）；
 - 管理面 CRUD → admin-api（另一 app）；
@@ -68,6 +69,7 @@ apps/client-api（assembly）
 ```
 
 硬边界（architecture.test.ts 机器执行）：
+
 - `./composition` 只允许出现在 `src/assembly.ts` 与 `src/adapters/*`；
 - `@tokenlens/db` 与 `Db|DbTx` 类型只允许在 `{index,config,assembly}` ∪ `adapters/*`；
 - `src/http/**` 禁止 import `@tokenlens/{db,billing/composition,…}` 与任何 adapter 内部；
@@ -98,17 +100,17 @@ apps/client-api（assembly）
 
 跨能力只读 join 无单一包归属，先落 app 装配面，后续迁移单元再入包（MIGRATION §8 待办）：
 
-| 适配器 | 内容 | 归属裁决 |
-|---|---|---|
-| account-read | emailTaken / activeUserStatus / touchLastLogin | accounts 表只读写；后迁 accounts facade |
-| billing-read | sumReferralCommission（refType=referral 佣金腿求和） | billing 表读；referralOverview 注释明示「拆归 app 组合 G2」 |
-| usage-read | usage 明细/按模型/按日汇总/实时速率（北京时间日桶，tz 配置注入） | usage_logs 为 billing 账本投影；用户面查询词表后迁 billing |
-| pricing-read | 模型目录（enabled mappings + 价格富化，Redis 30s 共享缓存）+ 用户费率卡系数快照 | control-plane store + billing pickCoefficient 的 face join（gateway catalog-port 同款） |
-| subscription-read | listPlans（公开目录）/ mySubscriptions（个人优先排序 + 剩余额度/剩余价值） | billing 表读；后迁 subscriptions facade |
-| redis-rate-counter | 固定窗计数（INCR+EXPIRE NX）——billing RateCounterPort 与注册/兑换闸共用 | runtime 未提供固定窗；纯 redis 机制件 |
-| redis-session-revocation / redis-oauth-state | identity 两 port 的 redis 实现（GETDEL 单次消费） | identity 只定义 port |
-| smtp-login-mailer | identity Mailer（nodemailer + identity.renderLoginCodeEmail） | identity 未带 SMTP 适配器 |
-| turnstile-captcha | identity Captcha（siteverify HTTP） | 同上 |
+| 适配器                                       | 内容                                                                            | 归属裁决                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| account-read                                 | emailTaken / activeUserStatus / touchLastLogin                                  | accounts 表只读写；后迁 accounts facade                                                 |
+| billing-read                                 | sumReferralCommission（refType=referral 佣金腿求和）                            | billing 表读；referralOverview 注释明示「拆归 app 组合 G2」                             |
+| usage-read                                   | usage 明细/按模型/按日汇总/实时速率（北京时间日桶，tz 配置注入）                | usage_logs 为 billing 账本投影；用户面查询词表后迁 billing                              |
+| pricing-read                                 | 模型目录（enabled mappings + 价格富化，Redis 30s 共享缓存）+ 用户费率卡系数快照 | control-plane store + billing pickCoefficient 的 face join（gateway catalog-port 同款） |
+| subscription-read                            | listPlans（公开目录）/ mySubscriptions（个人优先排序 + 剩余额度/剩余价值）      | billing 表读；后迁 subscriptions facade                                                 |
+| redis-rate-counter                           | 固定窗计数（INCR+EXPIRE NX）——billing RateCounterPort 与注册/兑换闸共用         | runtime 未提供固定窗；纯 redis 机制件                                                   |
+| redis-session-revocation / redis-oauth-state | identity 两 port 的 redis 实现（GETDEL 单次消费）                               | identity 只定义 port                                                                    |
+| smtp-login-mailer                            | identity Mailer（nodemailer + identity.renderLoginCodeEmail）                   | identity 未带 SMTP 适配器                                                               |
+| turnstile-captcha                            | identity Captcha（siteverify HTTP）                                             | 同上                                                                                    |
 
 ## 6. 并发与性能预算
 

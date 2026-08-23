@@ -39,17 +39,16 @@ src/
 ```
 
 测试：`__test__/` 平铺（铁律 14）——`architecture / config / app / shutdown`
-（默认门禁）+ `app.real / journey.real`（test:real 通道，按文件名排除；后者为
-真实 PG+Redis+HTTP 全链用户旅程，见 §6.1）。
+（默认门禁）+ `app.real`（test:real 装配冒烟）；跨进程旅程在根 `e2e/client-journey/`（§6.1）。
 
 ### 2.1 §0.5 超长文件审计（单一职责聚合；repo 先例 commit b9d0dc6）
 
-| 文件 | 行数 | 审计结论 |
-|---|---|---|
-| src/assembly.ts | ~499 | 单一职责（进程装配根）：全部可变值来自 config，无业务分支；目标树钉死唯一装配根不拆 |
-| src/config.ts | ~232 | 单一职责（env schema 声明 + 交叉校验）；纯声明式 |
-| src/adapters/usage-read.ts | ~158 | 四查询动词共用窗口条件推导（同文件避免复制 windowConditions）；拆分收益为负 |
-| auth 路由 | 115/113/106 | 已按动词拆分（auth / auth-register / auth-login） |
+| 文件                       | 行数        | 审计结论                                                                            |
+| -------------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| src/assembly.ts            | ~499        | 单一职责（进程装配根）：全部可变值来自 config，无业务分支；目标树钉死唯一装配根不拆 |
+| src/config.ts              | ~232        | 单一职责（env schema 声明 + 交叉校验）；纯声明式                                    |
+| src/adapters/usage-read.ts | ~158        | 四查询动词共用窗口条件推导（同文件避免复制 windowConditions）；拆分收益为负         |
+| auth 路由                  | 115/113/106 | 已按动词拆分（auth / auth-register / auth-login）                                   |
 
 ### 2.2 装配覆盖缝
 
@@ -58,22 +57,22 @@ E2E capture mailer 注入（journey.real 消费）；缺省按 SMTP 环境构造
 
 ## 3. 老service动词 → facade 映射
 
-| 老 service（行数） | 新对接 |
-|---|---|
-| auth.service（505） | identity.{credentials,passwords,challenges,sessions,captcha} + accounts.{provisionLocalAccount,completeAccountOnboarding,getProfile,updateDisplayName} + 编排见 DESIGN §4 |
-| oauth.service（320） | identity.oauth.{authorize,callback,findUser} + accounts.provisionOAuthAccount |
-| payments.service（397） | billing.createPaymentsApi（composition 建 epay/stripe provider） |
-| subscription.service（95） | billing.SubscriptionsApi{purchase,change,renew} + subscription-read |
-| org.service（252） | accounts org/invitation 动词 |
-| keys.service（222） | accounts.{createKey,listKeys,patchKey,rotateKey,revokeKey} |
-| apps.service（135） | accounts.{createApp,listApps,disableApp,rotateAppSecret} |
-| redeem.service（104） | billing.createRedemptionApi |
-| wallet.service（25） | billing.wallet.{accounts,statement} |
-| usage.service（105） | adapters/usage-read |
-| pricing.service（79） | adapters/pricing-read |
-| referral.service（146）/ marketing.service（23） | accounts.{referralOverview,getMarketingSettings} + billing-read 佣金和 |
-| health.service（18） | app.ts 内联（ping + redis） |
-| rate-counter（28） | adapters/redis-rate-counter |
+| 老 service（行数）                               | 新对接                                                                                                                                                                    |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| auth.service（505）                              | identity.{credentials,passwords,challenges,sessions,captcha} + accounts.{provisionLocalAccount,completeAccountOnboarding,getProfile,updateDisplayName} + 编排见 DESIGN §4 |
+| oauth.service（320）                             | identity.oauth.{authorize,callback,findUser} + accounts.provisionOAuthAccount                                                                                             |
+| payments.service（397）                          | billing.createPaymentsApi（composition 建 epay/stripe provider）                                                                                                          |
+| subscription.service（95）                       | billing.SubscriptionsApi{purchase,change,renew} + subscription-read                                                                                                       |
+| org.service（252）                               | accounts org/invitation 动词                                                                                                                                              |
+| keys.service（222）                              | accounts.{createKey,listKeys,patchKey,rotateKey,revokeKey}                                                                                                                |
+| apps.service（135）                              | accounts.{createApp,listApps,disableApp,rotateAppSecret}                                                                                                                  |
+| redeem.service（104）                            | billing.createRedemptionApi                                                                                                                                               |
+| wallet.service（25）                             | billing.wallet.{accounts,statement}                                                                                                                                       |
+| usage.service（105）                             | adapters/usage-read                                                                                                                                                       |
+| pricing.service（79）                            | adapters/pricing-read                                                                                                                                                     |
+| referral.service（146）/ marketing.service（23） | accounts.{referralOverview,getMarketingSettings} + billing-read 佣金和                                                                                                    |
+| health.service（18）                             | app.ts 内联（ping + redis）                                                                                                                                               |
+| rate-counter（28）                               | adapters/redis-rate-counter                                                                                                                                               |
 
 ## 4. 错误码对照与 FaceOverride（v1 裸码 → 新码/状态）
 
@@ -87,17 +86,17 @@ oauth_state_mismatch(403) · oauth_state_expired(410) · oauth_callback_failed(5
 
 FaceOverride（状态与 category 默认不同的钉死项）：
 
-| code（新） | override | v1 对应（旧码/状态） |
-|---|---|---|
-| billing.code_expired | 410 | code_expired/410 |
-| accounts.invitation_expired | 410 | invitation_expired/410 |
-| client.oauth_state_expired | 410 | oauth_state_expired/410 |
-| client.oauth_callback_failed | 502 | oauth_exchange_failed/502 |
-| billing.payment_channel_unavailable | 502 | payment_channel_unavailable/502 |
-| accounts.email_taken | 409（conflict 默认） | email_taken/409 |
-| identity.invalid_credentials | 401（category forbidden→403 需钉 401） | invalid_credentials/401 |
-| identity.weak_password | 400（invalid_input 默认） | weak_password/400 |
-| billing.insufficient_balance | 402（quota_exhausted 默认） | insufficient_balance/402 |
+| code（新）                          | override                               | v1 对应（旧码/状态）            |
+| ----------------------------------- | -------------------------------------- | ------------------------------- |
+| billing.code_expired                | 410                                    | code_expired/410                |
+| accounts.invitation_expired         | 410                                    | invitation_expired/410          |
+| client.oauth_state_expired          | 410                                    | oauth_state_expired/410         |
+| client.oauth_callback_failed        | 502                                    | oauth_exchange_failed/502       |
+| billing.payment_channel_unavailable | 502                                    | payment_channel_unavailable/502 |
+| accounts.email_taken                | 409（conflict 默认）                   | email_taken/409                 |
+| identity.invalid_credentials        | 401（category forbidden→403 需钉 401） | invalid_credentials/401         |
+| identity.weak_password              | 400（invalid_input 默认）              | weak_password/400               |
+| billing.insufficient_balance        | 402（quota_exhausted 默认）            | insufficient_balance/402        |
 
 其余业务码走 `CATEGORY_STATUS_DEFAULTS`；`identity.identifier_taken`≈409、
 `billing.invalid_code`≈404、`billing.code_already_used/revoked`≈409、
@@ -126,11 +125,12 @@ category 声明决定，IMPLEMENTATION §4 表在 app.test.ts 用表驱动锁死
 ### 6.1 真实链路与 E2E（test:real 通道，已核销）
 
 - `app.real.test.ts`：装配 fail-closed + healthz 双检 + 公开端点 + 无 SMTP 注册 503 + 未知凭据 401 + usage adapters SQL 冒烟。
-- `journey.real.test.ts`：真实 PG+Redis+HTTP 进程的全链用户旅程——注册两步制（capture mailer 收码）→ verify 建+号（挑战单次消费重放 400）→ me/改显 → Key 全生命周期（创建明文一次/修补/轮换/吊销）→ 钱包/用量/定价/套餐/组织/推荐只读面 → 兑换未知码 404 → 渠道目录空 → 登出 jti 即时吊销 → 错密码 401 防枚举 → 两级登录 → 改密全网下线 → 新密码复登。数据自清理（FK 逆序 best-effort）；环境经 vitest 配置自载根 .env（bun x 不透传 --env-file，实测确认）。
+- 跨进程旅程归位根 `e2e/client-journey/`（总纲 §3；三套件：user-journey/oauth/org-team，
+  mock GitHub 上游 + 签名 epay 回调 + 完整度矩阵见该目录 README）；app 内不保留副本（单一实现）。
+  （历史：先在 app real 通道以 `journey.real.test.ts` 形式验证全链，后按总纲归位迁移并删除原文件。）注册两步制（capture mailer 收码）→ verify 建+号（挑战单次消费重放 400）→ me/改显 → Key 全生命周期（创建明文一次/修补/轮换/吊销）→ 钱包/用量/定价/套餐/组织/推荐只读面 → 兑换未知码 404 → 渠道目录空 → 登出 jti 即时吊销 → 错密码 401 防枚举 → 两级登录 → 改密全网下线 → 新密码复登。数据自清理（FK 逆序 best-effort）；环境经 vitest 配置自载根 .env（bun x 不透传 --env-file，实测确认）。
 - **B-red-claim（E2E 抓出的跨包真 bug）**：billing postgres 兑换码 claim 的 `UPDATE ... RETURNING` 引用未 JOIN 的批次表列 → 裸列名 → PG 42703，兑换动词全路径 500（连未知码路径都炸）。修复：RETURNING 只留本表列，批次面额由同事务 SELECT 读取；回归用例 `packages/billing/__test__/redemption-claim.real.test.ts`（未知码 null / 有效码面额 / CAS 单赢家 / 过期码）。
 - **B-tz-groupby**：usage 日汇总 `AT TIME ZONE` 参数化后 GROUP BY 与 SELECT 占位符不一致（$1≠$2）无法匹配——时区经 config 字符白名单校验后字面量入 SQL；测试同上旅程覆盖。
 - 跨进程旅程（OAuth 跳转 / 支付回调验签 / gateway 联动）仍归根 `e2e/`（MIGRATION §8 待办——依赖 gateway 与渠道桩）。
-
 
 - `config.test.ts`：默认值/覆盖/生产 fail-fast 矩阵/组配置全-or-无/secret 三闸（表驱动）。
 - `app.test.ts`：**内存替身**驱动 `app.request(...)` 的 HTTP 契约测试——

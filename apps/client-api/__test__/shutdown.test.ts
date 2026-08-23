@@ -20,9 +20,24 @@ function buildHarness() {
         cb();
       },
     },
-    otel: { shutdown: () => { calls.push('otel'); return Promise.resolve(); } },
-    redis: { quit: () => { calls.push('redis'); return Promise.resolve(); } },
-    db: { end: () => { calls.push('db'); return Promise.resolve(); } },
+    otel: {
+      shutdown: () => {
+        calls.push('otel');
+        return Promise.resolve();
+      },
+    },
+    redis: {
+      quit: () => {
+        calls.push('redis');
+        return Promise.resolve();
+      },
+    },
+    db: {
+      end: () => {
+        calls.push('db');
+        return Promise.resolve();
+      },
+    },
     graceMs: 10_000,
   };
   return { calls, exitCodes, deps, exit };

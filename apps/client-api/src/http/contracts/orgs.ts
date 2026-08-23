@@ -7,12 +7,7 @@ import { isValidSpendLimitInput } from './shared.js';
 export const orgIdParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
 export const inviteSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email()
-    .max(255),
+  email: z.string().trim().toLowerCase().email().max(255),
 });
 
 export const invitationParamSchema = z.object({

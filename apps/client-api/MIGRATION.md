@@ -1,6 +1,6 @@
 # client-api 迁移文档（MIGRATION）
 
-> 状态：已核销（默认门禁四门全绿；real 通道双测通过：装配冒烟 + 真实 PG/Redis/HTTP 全链用户旅程；旅程抓出并修复 billing B-red-claim 真 bug，回归已入档）
+> 状态：已核销（默认门禁四门全绿；real 装配冒烟通过；跨进程旅程归位根 `e2e/client-journey/` 三套件全绿——含 mock OAuth 上游与签名支付回调；旅程抓出并修复 billing B-red-claim 真 bug，回归已入档）
 > 迁移单元：用户控制台 REST API 整面（51 路由的 HTTP 面一次性切换；业务语义已在
 > identity/accounts/billing 迁移单元中先行落地，本单元只迁协议/装配/编排面）
 > 旧实现：ai-getway `apps/client-api`（src 4,540 行 + 测试 5,305 行；51 路由；20 测试文件 ~214 用例）
@@ -9,34 +9,35 @@
 
 ## 1. 行为规格基线（旧测试清单 → 等价判定）
 
-| 旧测试文件 | 用例数 | 处置 |
-|---|---|---|
-| frontend-contract.test.ts | 11 | **改写**进 app.test.ts（wire 钉死项逐条保留：201/404/409 状态、`limit` 参数、金额字符串、rows 信封、密钥只回一次） |
-| app.test.ts | 13 | 改写（中间件序/错误信封/CORS/413/404） |
-| auth.test.ts(21) auth-code.test.ts(9) | 30 | 改写为 identity+app 两层：挑战/两级登录语义在 identity 包已有契约测试；app 层保留编排断言（信封/状态/防枚举） |
-| payments.test.ts(25) stripe-domain.test.ts(13) | 38 | 支付域语义已在 billing 包（payments/redemption 契约测试）；app 层保留路由协议（回调应答 success/fail、JSON received、404 未知渠道） |
-| subscriptions.test.ts(16) orgs.test.ts(14) keys.test.ts(7) apps.test.ts(8) redeem.test.ts(6) usage.test.ts(5) referrals.test.ts(14) | 70 | 能力语义归包测试；app.test.ts 保留每域 happy + 代表性错误映射 |
-| production-readiness.test.ts | 5 | 改写进 config.test.ts（生产 fail-fast 矩阵） |
-| architecture.test.ts | 4 | 重写为新边界门禁（composition/db 白名单、文件集快照） |
-| e2e-user-journey(11) | 11 | **改写核销**：核心链已由 `journey.real.test.ts` 在本 app real 通道覆盖（真实 PG/Redis/HTTP，§6.1）；跨进程部分（支付回调/OAuth 上游）仍归根 `e2e/` |
-| e2e-org-team(3)/oauth(12)/cross-app(3) | 18 | **暂缓**：跨进程 E2E 归根 `e2e/`（P5 收尾统一搬迁，总纲 §9 P5）；依赖 apps/gateway 未建成，MIGRATION §8 挂待办 |
+| 旧测试文件                                                                                                                          | 用例数 | 处置                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| frontend-contract.test.ts                                                                                                           | 11     | **改写**进 app.test.ts（wire 钉死项逐条保留：201/404/409 状态、`limit` 参数、金额字符串、rows 信封、密钥只回一次）                                 |
+| app.test.ts                                                                                                                         | 13     | 改写（中间件序/错误信封/CORS/413/404）                                                                                                             |
+| auth.test.ts(21) auth-code.test.ts(9)                                                                                               | 30     | 改写为 identity+app 两层：挑战/两级登录语义在 identity 包已有契约测试；app 层保留编排断言（信封/状态/防枚举）                                      |
+| payments.test.ts(25) stripe-domain.test.ts(13)                                                                                      | 38     | 支付域语义已在 billing 包（payments/redemption 契约测试）；app 层保留路由协议（回调应答 success/fail、JSON received、404 未知渠道）                |
+| subscriptions.test.ts(16) orgs.test.ts(14) keys.test.ts(7) apps.test.ts(8) redeem.test.ts(6) usage.test.ts(5) referrals.test.ts(14) | 70     | 能力语义归包测试；app.test.ts 保留每域 happy + 代表性错误映射                                                                                      |
+| production-readiness.test.ts                                                                                                        | 5      | 改写进 config.test.ts（生产 fail-fast 矩阵）                                                                                                       |
+| architecture.test.ts                                                                                                                | 4      | 重写为新边界门禁（composition/db 白名单、文件集快照）                                                                                              |
+| e2e-user-journey(11)                                                                                                                | 11     | **改写核销**：核心链已由 `journey.real.test.ts` 在本 app real 通道覆盖（真实 PG/Redis/HTTP，§6.1）；跨进程部分（支付回调/OAuth 上游）仍归根 `e2e/` |
+| e2e-org-team(3)/oauth(12)/cross-app(3)                                                                                              | 18     | **暂缓**：跨进程 E2E 归根 `e2e/`（P5 收尾统一搬迁，总纲 §9 P5）；依赖 apps/gateway 未建成，MIGRATION §8 挂待办                                     |
 
 ## 2. 审计结论（引用 IMPLEMENTATION §1）
 
 影响本单元的 v1 真 bug / 缺口：
+
 - B(v1)：instanceof 错误翻译表 → 新仓 category 渲染（已裁决，禁回归）；
 - B(v1)：挑战载荷若存明文密码 → 本单元以 cipher 信封保持「不落明文」语义（DESIGN §4）；
 - 契约缺口 G1/G2/G4（钱包富化/佣金和/find-or-create 归 app 组合）由 accounts 包注释显式预留，本单元实现。
 
 ## 3. 逐模块裁决表
 
-| 旧文件 | 裁决 | 动作 |
-|---|---|---|
-| index/config/shutdown/app/middleware×3 | 重构 | 按 trace-receiver/gateway 范式重写；安全件改用 @tokenlens/http |
-| http/error-map.ts | 重写 | error-face.ts（catalog + override；instanceof 表禁入） |
-| routes/*.ts（14） | 复制+微修 | zod 拆入 contracts/；RunContext 删除（facade 直收窄参）；呈现入 presenters/ |
-| services/*.ts（15） | 不移植 | 语义已在能力包（IMPLEMENTATION §3 映射表） |
-| domain/{topup,stripe,epay,referral,key-limits}.ts | 不移植 | billing/accounts 域内已有（isValidAmountInput/assertTopupWithinLimit/pickCoefficient…） |
+| 旧文件                                            | 裁决      | 动作                                                                                    |
+| ------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
+| index/config/shutdown/app/middleware×3            | 重构      | 按 trace-receiver/gateway 范式重写；安全件改用 @tokenlens/http                          |
+| http/error-map.ts                                 | 重写      | error-face.ts（catalog + override；instanceof 表禁入）                                  |
+| routes/*.ts（14）                                 | 复制+微修 | zod 拆入 contracts/；RunContext 删除（facade 直收窄参）；呈现入 presenters/             |
+| services/*.ts（15）                               | 不移植    | 语义已在能力包（IMPLEMENTATION §3 映射表）                                              |
+| domain/{topup,stripe,epay,referral,key-limits}.ts | 不移植    | billing/accounts 域内已有（isValidAmountInput/assertTopupWithinLimit/pickCoefficient…） |
 
 ## 4. API 对照
 

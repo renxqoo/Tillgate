@@ -98,7 +98,10 @@ function createSchema(production: boolean) {
     CAPTCHA_SITE_KEY: z.string().optional(),
     CAPTCHA_SECRET_KEY: z.string().optional(),
     /** siteverify 端点（默认官方；私有化代理/测试 mock 覆盖） */
-    CAPTCHA_VERIFY_URL: z.string().url().default('https://challenges.cloudflare.com/turnstile/v0/siteverify'),
+    CAPTCHA_VERIFY_URL: z
+      .string()
+      .url()
+      .default('https://challenges.cloudflare.com/turnstile/v0/siteverify'),
     /** OAuth 社交登录（GitHub/Google）：前后端基地址 + 各 provider 凭证（未配 = 404/按钮隐藏） */
     OAUTH_FRONTEND_URL: z.string().url().optional(),
     OAUTH_API_BASE: z.string().url().optional(),
@@ -121,7 +124,11 @@ function createSchema(production: boolean) {
       .regex(/^[a-z][a-z0-9_-]{1,15}$/)
       .default('ag_'),
     /** accounts 装配 policy（邀请有效期/待接受上限因子与上界/Key 限额上界） */
-    CLIENT_INVITATION_TTL_MS: z.coerce.number().int().positive().default(7 * 24 * 3600 * 1000),
+    CLIENT_INVITATION_TTL_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(7 * 24 * 3600 * 1000),
     CLIENT_INVITATION_PENDING_FACTOR: z.coerce.number().int().positive().default(2),
     CLIENT_INVITATION_PENDING_CAP: z.coerce.number().int().positive().default(20),
     CLIENT_RPM_LIMIT_MAX: z.coerce.number().int().positive().default(1_000_000),
@@ -198,17 +205,21 @@ export function loadClientApiConfig(env: NodeJS.ProcessEnv = process.env): Clien
     throw new Error('SECURE_COOKIE must be enabled in production');
   }
   // 支付渠道组配置全-or-无（半配 = 配置错误，直接抛）
-  assertGroup(
-    'EPAY_*',
-    [parsed.EPAY_PID, parsed.EPAY_KEY, parsed.EPAY_GATEWAY_URL, parsed.EPAY_NOTIFY_URL, parsed.EPAY_RETURN_URL],
-  );
-  assertGroup(
-    'STRIPE_*',
-    [parsed.STRIPE_SECRET_KEY, parsed.STRIPE_WEBHOOK_SECRET, parsed.STRIPE_SUCCESS_URL, parsed.STRIPE_CANCEL_URL],
-  );
+  assertGroup('EPAY_*', [
+    parsed.EPAY_PID,
+    parsed.EPAY_KEY,
+    parsed.EPAY_GATEWAY_URL,
+    parsed.EPAY_NOTIFY_URL,
+    parsed.EPAY_RETURN_URL,
+  ]);
+  assertGroup('STRIPE_*', [
+    parsed.STRIPE_SECRET_KEY,
+    parsed.STRIPE_WEBHOOK_SECRET,
+    parsed.STRIPE_SUCCESS_URL,
+    parsed.STRIPE_CANCEL_URL,
+  ]);
   // OAuth：凭证与前后端基地址成组（有凭证必须有跳转面；全无 = 关闭社交登录）
-  const oauthCredentialed =
-    Boolean(parsed.OAUTH_GITHUB_CLIENT_ID || parsed.OAUTH_GOOGLE_CLIENT_ID);
+  const oauthCredentialed = Boolean(parsed.OAUTH_GITHUB_CLIENT_ID || parsed.OAUTH_GOOGLE_CLIENT_ID);
   if (oauthCredentialed && !(parsed.OAUTH_FRONTEND_URL && parsed.OAUTH_API_BASE)) {
     throw new Error(
       'OAUTH_FRONTEND_URL and OAUTH_API_BASE must be configured together with OAuth credentials',
