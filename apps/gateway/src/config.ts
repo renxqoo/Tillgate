@@ -17,8 +17,8 @@ const BYTES_RE = /^(\d+(?:\.\d+)?)(b|kb|mb|gb)$/i;
 /** IANA 时区合法性（Intl 构造抛错即非法——启动 fail-fast，热路径 formatter 直接复用） */
 function isValidTimezone(tz: string): boolean {
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
+    // 构造即探测:非法时区抛 RangeError;作函数调用返回实例(等价 new,规避副作用 new)
+    return Intl.DateTimeFormat('en-US', { timeZone: tz }) instanceof Intl.DateTimeFormat;
   } catch {
     return false;
   }

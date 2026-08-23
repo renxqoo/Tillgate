@@ -4,7 +4,6 @@
  * 值形状 {"timezone":"<IANA 名>"}——jsonb，留扩展位。
  */
 import { eq } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
 import { systemConfigs } from '@tokenlens/db';
 import type { SettingsStore } from '../../ports/settings-store';
 

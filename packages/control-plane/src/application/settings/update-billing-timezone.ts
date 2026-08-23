@@ -23,7 +23,8 @@ export interface UpdateBillingTimezoneInput {
 
 function assertIANATimezone(timezone: string): void {
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    // 构造即探测:非法时区抛 RangeError;作函数调用返回实例(等价 new,规避副作用 new)
+    Intl.DateTimeFormat('en-US', { timeZone: timezone });
   } catch {
     throw controlPlaneErrors.business('invalid_billing_timezone', { timezone });
   }

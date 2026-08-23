@@ -21,10 +21,7 @@ import {
 import { postgresChannelStore } from './adapters/postgres/channel-store';
 import { postgresFxStore } from './adapters/postgres/fx-store';
 import { postgresSettingsStore } from './adapters/postgres/settings-store';
-import {
-  readBillingTimezone,
-  type ReadBillingTimezoneDeps,
-} from './application/settings/read-billing-timezone';
+import { readBillingTimezone } from './application/settings/read-billing-timezone';
 import {
   updateBillingTimezone,
   type UpdateBillingTimezoneInput,
