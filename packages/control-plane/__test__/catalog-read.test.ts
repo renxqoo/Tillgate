@@ -32,6 +32,7 @@ const seedModel = (
   billingPolicy: null,
   rpmLimit: null,
   tpmLimit: null,
+  deletedAt: null,
   createdAt: new Date(0),
   updatedAt: new Date(0),
   bindings: [],
@@ -134,6 +135,7 @@ describe('ChannelStore.findRouteCandidates（G1）', () => {
       vendor: 'openai',
       baseUrl: 'https://a.example/v1',
       status: 0,
+      deletedAt: null,
       createdAt: new Date(0),
     };
     const { store } = createMemoryChannelStore(
@@ -156,6 +158,7 @@ describe('ChannelStore.findRouteCandidates（G1）', () => {
           upstreamBudget: '100',
           upstreamReserved: '0',
           upstreamThreshold: null,
+          deletedAt: null,
         },
         {
           id: 12,
@@ -174,6 +177,7 @@ describe('ChannelStore.findRouteCandidates（G1）', () => {
           upstreamBudget: '0',
           upstreamReserved: '0',
           upstreamThreshold: null,
+          deletedAt: null,
         },
       ],
       new Map(),

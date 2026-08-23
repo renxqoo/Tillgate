@@ -45,6 +45,7 @@ function stores(
     mappings?: ActiveMappingRow[];
     card?: UserRateCardContext | null;
     channels?: RouteCandidateRow[];
+    timezone?: string;
   } = {},
 ): CatalogStores {
   const mappings = over.mappings ?? [
@@ -60,10 +61,11 @@ function stores(
         (over.channels ?? []).filter(() => realModel.length > 0),
     },
     rateCards: { findActiveCardByUser: async () => over.card ?? null },
+    billingTimezone: { read: async () => over.timezone ?? 'Asia/Shanghai' },
   };
 }
 
-const noCard = { userId: 1, body: {} };
+const noCard = { userId: 1, body: {}, now: new Date('2026-08-24T12:00:00+08:00') };
 
 const card = (coefficients: UserRateCardContext['coefficients']): UserRateCardContext => ({
   cardId: 9,
@@ -145,6 +147,7 @@ describe('catalog-port：系数解析（C-G2）', () => {
     const snap = await catalog.findMapping('img-x', {
       userId: 1,
       body: { n: 2, size: '1024x1024' },
+      now: new Date('2026-08-24T12:00:00+08:00'),
     });
     expect(snap!.pricingUnit).toBe('image');
     expect(snap!.unitPrice).toBe('0.04'); // 变体按 body.size 选定
@@ -163,7 +166,11 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap2 = await floored.findMapping('video-x', { userId: 1, body: { duration: 3 } });
+    const snap2 = await floored.findMapping('video-x', {
+      userId: 1,
+      body: { duration: 3 },
+      now: new Date('2026-08-24T12:00:00+08:00'),
+    });
     expect(snap2!.unitUpperBound).toBe(5); // 保底 5 秒只抬不降
   });
 
@@ -213,6 +220,100 @@ describe('catalog-port：系数解析（C-G2）', () => {
       rpmLimit: 60,
       upstreamBudget: '99',
     });
+  });
+
+  it('schedule 时段价：准入时刻命中 → 字段级覆盖 + 审计标签进快照；系数照常叠加', async () => {
+    const catalog = createGatewayCatalog(
+      stores({
+        mappings: [
+          mapping({
+            id: 1,
+            externalName: 'm-main',
+            billingConfig: {
+              strategy: 'schedule',
+              params: {
+                windows: [
+                  {
+                    label: '谷时段',
+                    start: '18:00',
+                    end: '07:00',
+                    inputPrice: '0.5',
+                    outputPrice: '1',
+                  },
+                ],
+              },
+            },
+          }),
+        ],
+        card: card([{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' }]),
+      }),
+    );
+    // 上海 23:00（跨午夜窗口内）→ 覆盖生效；未覆盖的 cache 价回落列基价
+    const night = await catalog.findMapping('m-main', {
+      userId: 1,
+      body: {},
+      now: new Date('2026-08-24T15:00:00Z'),
+    });
+    expect(night!.inputPrice).toBe('0.5');
+    expect(night!.outputPrice).toBe('1');
+    expect(night!.cacheInputPrice).toBe('1'); // 窗口未覆盖 → 基价列
+    expect(night!.coefficient).toBe('0.8'); // 系数轴正交
+    expect(night!.pricingWindow).toBe('谷时段');
+
+    // 上海 12:00（未命中）→ 全轴基价 + 无标签
+    const day = await catalog.findMapping('m-main', noCard);
+    expect(day!.inputPrice).toBe('1');
+    expect(day!.outputPrice).toBe('2');
+    expect(day!.pricingWindow).toBeUndefined();
+  });
+
+  it('schedule 单位计价轴：窗口 unitPrice 覆盖进快照（计量上界照常 body 推导）', async () => {
+    const catalog = createGatewayCatalog(
+      stores({
+        mappings: [
+          mapping({
+            id: 5,
+            externalName: 'img-s',
+            pricingUnit: 'image',
+            unitPrice: '0.02',
+            billingConfig: {
+              strategy: 'schedule',
+              params: {
+                windows: [{ label: '夜图', start: '00:00', end: '07:00', unitPrice: '0.008' }],
+              },
+            },
+          }),
+        ],
+      }),
+    );
+    const snap = await catalog.findMapping('img-s', {
+      userId: 1,
+      body: { n: 2 },
+      now: new Date('2026-08-24T03:00:00+08:00'),
+    });
+    expect(snap!.unitPrice).toBe('0.008');
+    expect(snap!.unitUpperBound).toBe(2);
+    expect(snap!.pricingWindow).toBe('夜图');
+  });
+
+  it('时区来自装配注入的读取器（同窗口按计费时区墙钟判定，不随宿主机本地时）', async () => {
+    const scheduled = () => [
+      mapping({
+        id: 1,
+        externalName: 'm-main',
+        billingConfig: {
+          strategy: 'schedule',
+          params: { windows: [{ start: '18:00', end: '07:00', inputPrice: '0.5' }] },
+        },
+      }),
+    ];
+    // 同一时刻两种计费时区：UTC 12:00 不在 18:00-07:00 窗口（基价）；
+    // 上海墙钟 20:00 在窗口内（覆盖价）——时区由装配注入，与宿主机本地时无关
+    const utc = createGatewayCatalog(stores({ mappings: scheduled(), timezone: 'UTC' }));
+    const sh = createGatewayCatalog(stores({ mappings: scheduled(), timezone: 'Asia/Shanghai' }));
+    const now = new Date('2026-08-24T12:00:00Z');
+    expect((await utc.findMapping('m-main', { userId: 1, body: {}, now }))!.inputPrice).toBe('1');
+    expect((await sh.findMapping('m-main', { userId: 1, body: {}, now }))!.inputPrice).toBe('0.5');
   });
 });
 

@@ -38,5 +38,9 @@ export function createSmtpAdminMailer(
         html: mail.html,
       });
     },
+    // 用户面能力:管理面不发送找回链接——端口合规空实现(永不达)
+    async sendPasswordResetLink() {
+      throw new Error('admin mailer does not send reset links');
+    },
   };
 }

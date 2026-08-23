@@ -4,7 +4,13 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { ApiError, type UsageRow } from '@tokenlens/api-client';
 import { DataTable, Input, Button, type DataTableColumn } from '@tokenlens/ui';
 
-import { formatDateTime, formatMoney, formatInt, msToHuman, unitWord } from '@/features/shared/format';
+import {
+  formatDateTime,
+  formatMoney,
+  formatInt,
+  msToHuman,
+  unitWord,
+} from '@/features/shared/format';
 import { ListPage } from '@/features/shared/list-page';
 import { firstParam, parseListSearchParams } from '@/server/list-query';
 import { createClientApi } from '@/server/api';
@@ -61,12 +67,16 @@ export default async function UsagePage({ searchParams }: PageProps) {
     {
       key: 'createdAt',
       header: tCommon('time'),
-      cell: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>,
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
+      ),
     },
     {
       key: 'externalModel',
       header: t('colModel'),
-      cell: (r) => <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>,
+      cell: (r) => (
+        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>
+      ),
     },
     {
       key: 'source',
@@ -163,7 +173,9 @@ export default async function UsagePage({ searchParams }: PageProps) {
       header: t('colDuration'),
       align: 'right',
       cell: (r) => (
-        <span className="text-right tabular-nums text-muted-foreground">{msToHuman(r.durationMs)}</span>
+        <span className="text-right tabular-nums text-muted-foreground">
+          {msToHuman(r.durationMs)}
+        </span>
       ),
     },
     {
@@ -185,7 +197,12 @@ export default async function UsagePage({ searchParams }: PageProps) {
         icon={<LineChartIcon className="size-5 text-muted-foreground" />}
         total={total}
         totalUnit={t('totalUnit')}
-        searchParams={{ model: model || undefined, from, to, page: page > 1 ? String(page) : undefined }}
+        searchParams={{
+          model: model || undefined,
+          from,
+          to,
+          page: page > 1 ? String(page) : undefined,
+        }}
         filters={
           <form method="GET" className="flex flex-wrap items-center gap-2">
             <Input
@@ -194,8 +211,20 @@ export default async function UsagePage({ searchParams }: PageProps) {
               placeholder={t('filterModel')}
               className="w-44"
             />
-            <Input type="date" name="from" defaultValue={from} aria-label={t('filterFrom')} className="w-36" />
-            <Input type="date" name="to" defaultValue={to} aria-label={t('filterTo')} className="w-36" />
+            <Input
+              type="date"
+              name="from"
+              defaultValue={from}
+              aria-label={t('filterFrom')}
+              className="w-36"
+            />
+            <Input
+              type="date"
+              name="to"
+              defaultValue={to}
+              aria-label={t('filterTo')}
+              className="w-36"
+            />
             <Button type="submit" variant="outline" size="sm">
               {t('filterApply')}
             </Button>

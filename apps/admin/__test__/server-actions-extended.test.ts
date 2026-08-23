@@ -69,13 +69,21 @@ describe('models-actions 覆盖面', () => {
     expect(body).not.toHaveProperty('billingConfig');
   });
 
-  it('update/restore/delete：动词族', async () => {
-    const { mod, calls } = await loadModule('../src/server/models-actions', [{}, {}, {}]);
+  it('update/restore/delist/delete/undelete：动词族', async () => {
+    const { mod, calls } = await loadModule('../src/server/models-actions', [{}, {}, {}, {}, {}]);
     await mod.updateModelAction(4, { inputPrice: '9' });
     await mod.restoreModelAction(4);
+    await mod.delistModelAction(4);
     await mod.deleteModelAction(4);
-    expect(calls.map((c) => c.method)).toEqual(['PATCH', 'PATCH', 'DELETE']);
-    expect(calls[1]).toMatchObject({ url: expect.stringContaining('/v1/models/4') });
+    await mod.undeleteModelAction(4);
+    expect(calls.map((c) => c.method)).toEqual(['PATCH', 'PATCH', 'PATCH', 'DELETE', 'POST']);
+    expect(calls[2]).toMatchObject({
+      url: expect.stringContaining('/v1/models/4'),
+      body: { status: 1 },
+    });
+    expect(calls[4]).toMatchObject({
+      url: expect.stringContaining('/v1/models/4/restore'),
+    });
   });
 });
 
@@ -186,8 +194,24 @@ describe('providers/channels 剩余分支', () => {
     ).resolves.toEqual({ error: 'bad protocol' });
   });
 
+  it('providers delete/undelete：动词族', async () => {
+    const { mod, calls } = await loadModule('../src/server/providers-actions', [{}, {}]);
+    await mod.deleteProviderAction(3);
+    await mod.undeleteProviderAction(3);
+    expect(calls.map((c) => c.method)).toEqual(['DELETE', 'POST']);
+    expect(calls[1]).toMatchObject({
+      url: expect.stringContaining('/v1/providers/3/restore'),
+    });
+  });
+
   it('channels create/update/import 动词族', async () => {
-    const { mod, calls } = await loadModule('../src/server/channels-actions', [{}, {}, {}]);
+    const { mod, calls } = await loadModule('../src/server/channels-actions', [
+      {},
+      {},
+      {},
+      {},
+      {},
+    ]);
     const create = mod.createChannelAction as unknown as (
       a: Record<string, unknown>,
     ) => Promise<unknown>;
@@ -212,6 +236,13 @@ describe('providers/channels 剩余分支', () => {
     expect(calls[2]).toMatchObject({
       method: 'POST',
       url: expect.stringContaining('/v1/channels/import'),
+    });
+    await mod.deleteChannelAction(2);
+    await mod.undeleteChannelAction(2);
+    expect(calls[3]).toMatchObject({ method: 'DELETE' });
+    expect(calls[4]).toMatchObject({
+      method: 'POST',
+      url: expect.stringContaining('/v1/channels/2/restore'),
     });
   });
 });

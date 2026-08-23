@@ -63,6 +63,11 @@ export interface UsageReceipt {
   fxRate?: string | null;
   fxRateId?: number | null;
   /**
+   * 命中时段标签（schedule 策略窗口的 label，缺省 "start-end"）——审计列：
+   * 这笔账为什么是这个价一查便知；null = 无时段策略/未命中窗口。
+   */
+  pricingWindow?: string | null;
+  /**
    * 估算结算归属（政策拍板）：用户侧取消 ∪ 完成缺 usage。
    * usage.estimated=true 时必填且必须属于 ESTIMATE_ATTRIBUTIONS（验收结构性把关）。
    */
@@ -142,6 +147,8 @@ export interface BillingQuoteCandidate {
   /** 请求时点生效基准汇率（1 USD = ? CNY）与 fx_rates 行 id——账单级追溯 */
   fxRate?: string | null;
   fxRateId?: number | null;
+  /** 命中时段标签（schedule 策略；null = 无时段策略/未命中） */
+  pricingWindow?: string | null;
 }
 
 /** 已按供应商参数规则归一化后的可信报价输入 */

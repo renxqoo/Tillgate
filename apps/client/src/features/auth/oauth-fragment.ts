@@ -13,7 +13,6 @@ export function parseOAuthFragment(hash: string): OAuthFragment {
   const params = new URLSearchParams(query);
   const token = params.get('token');
   const next = params.get('next');
-  const safeNext =
-    next !== null && next.startsWith('/') && !next.startsWith('//') ? next : null;
+  const safeNext = next !== null && next.startsWith('/') && !next.startsWith('//') ? next : null;
   return { token: token !== '' ? token : null, next: safeNext };
 }

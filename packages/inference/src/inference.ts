@@ -147,6 +147,8 @@ export function createInference(env: InferenceEnv): Inference {
           requestId,
           auth: input.auth,
           body: input.body,
+          // 分时段选价锚点 = 准入时刻（fallback 重查复用同一值，不随查询时刻抖动）
+          now: new Date(requestStartedAt),
           ...(input.endpoint != null ? { endpoint: input.endpoint } : {}),
         });
         span.setAttributes({ 'quote.candidates': p.candidates.length });

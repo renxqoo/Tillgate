@@ -75,6 +75,12 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Enabling two-factor authentication requires SMTP configuration first',
     zh: '开启两步验证需先配置 SMTP',
   },
+  /** TOTP 解绑码无效（验证器/恢复码都不匹配） */
+  invalid_totp_code: {
+    category: 'invalid_input',
+    message: 'Invalid authenticator or recovery code',
+    zh: '验证器或恢复码不正确',
+  },
   /** 会话有效但管理员资料行缺失（迁移不完整） */
   admin_not_found: {
     category: 'not_found',

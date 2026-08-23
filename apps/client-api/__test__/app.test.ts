@@ -14,6 +14,12 @@ import { createClientApiApp, type ClientApiDeps } from '../src/app.js';
 interface TestState {
   registerHits: number;
   locked: { emailIp: boolean; ip: boolean };
+  usersByEmail: Map<string, { id: number; status: number }>;
+  issuedTokens: Map<string, number>;
+  resetCalls: Array<{ userId: number; realm: string; newPassword: string }>;
+  sentLinks: Array<{ to: string; url: string; ip: string }>;
+  limiterHits: Map<string, number>;
+  forceRegisterLimit: boolean;
   takenEmails: Set<string>;
   challenges: Map<string, Record<string, unknown>>;
   provisioned: Array<{ id: number; email: string | null }>;
@@ -37,8 +43,16 @@ interface TestState {
 function createDeps(): { deps: ClientApiDeps; state: TestState } {
   const state: TestState = {
     registerHits: 0,
+    limiterHits: new Map<string, number>(),
+    forceRegisterLimit: false,
     locked: { emailIp: false, ip: false },
     takenEmails: new Set(['taken@x.com']),
+    usersByEmail: new Map<string, { id: number; status: number }>([
+      ['u@x.com', { id: 42, status: 0 }],
+    ]),
+    issuedTokens: new Map<string, number>(),
+    resetCalls: [],
+    sentLinks: [],
     challenges: new Map(),
     provisioned: [],
     keys: [{ id: 1, name: 'k1', keyPreview: 'ag_***' }],
@@ -82,9 +96,16 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       trustedProxyHops: 0,
       captcha: null,
       registerLimiter: {
-        hit: () => {
-          state.registerHits += 1;
-          return Promise.resolve(state.registerHits);
+        // 按键计数(真实 Redis 计数器语义;v1 桩为全局单计数,找回密码多键并发后失真);
+        // forceRegisterLimit 旋钮模拟注册 IP 键已超限(测试不依赖键格式实现细节)
+        hit: (key: string) => {
+          if (state.forceRegisterLimit && key.startsWith('register:')) {
+            return Promise.resolve(999);
+          }
+          const next = (state.limiterHits.get(key) ?? 0) + 1;
+          state.limiterHits.set(key, next);
+          if (key.startsWith('register:')) state.registerHits = next;
+          return Promise.resolve(next);
         },
       },
       registerIpLimitPerHour: 5,
@@ -125,6 +146,26 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         return Promise.resolve(user);
       },
       onboarding: () => Promise.resolve({ gift: { status: 'credited' } }),
+      resetPassword: async (input: { userId: number; realm: string; newPassword: string }) => {
+        state.resetCalls.push(input);
+        return { invalidBefore: '2026-01-01T00:00:00Z' };
+      },
+      userByEmail: async (email: string) => state.usersByEmail.get(email) ?? null,
+      issueResetToken: async (userId: number) => {
+        const token = `reset-token-${userId}-${state.issuedTokens.size + 1}-xxxxxxxxxxxx`;
+        state.issuedTokens.set(token, userId);
+        return token;
+      },
+      consumeResetToken: async (token: string) => {
+        const userId = state.issuedTokens.get(token) ?? null;
+        if (userId != null) state.issuedTokens.delete(token); // 单次消费
+        return userId;
+      },
+      sendResetLink: async (to: string, url: string, ctx: { ip: string }) => {
+        state.sentLinks.push({ to, url, ip: ctx.ip });
+      },
+      resetLinkBase: 'https://console.example',
+      resetTokenTtlMinutes: 30,
       authenticate: (input) => {
         if (state.authenticateAs != null) return Promise.resolve({ userId: state.authenticateAs });
         if (
@@ -690,8 +731,25 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           models: [
             { externalName: 'gpt-x', realModel: 'up-1', pricingUnit: '1k_tokens' },
             { externalName: 'claude-y', realModel: 'up-2', pricingUnit: '1k_tokens' },
+            { externalName: 'ds-night', realModel: 'up-3', pricingUnit: 'token' },
           ],
           enriched: new Map([
+            [
+              'ds-night',
+              {
+                id: 3,
+                contextLength: null,
+                inputPrice: '2',
+                outputPrice: '8',
+                cacheInputPrice: '2',
+                unitPrice: '0',
+                isFree: false,
+                pricingGroup: null,
+                schedule: [
+                  { label: '谷时段', start: '18:00', end: '07:00', inputPrice: '0.5', outputPrice: '2' },
+                ],
+              },
+            ],
             [
               'gpt-x',
               {
@@ -726,6 +784,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             ? null
             : { rateCardId: 9, status: 0, global: null, model: { 1: '0.5' }, group: { g1: '0.8' } },
         ),
+      billingTimezone: () => Promise.resolve('Asia/Shanghai'),
     },
     referrals: {
       marketingSettings: () =>
@@ -904,7 +963,7 @@ describe('auth 两步制', () => {
 
   it('IP 限频超限 429 + Retry-After', async () => {
     const { app, state } = build();
-    state.registerHits = 5;
+    state.forceRegisterLimit = true;
     const res = await app.request('/v1/auth/register', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1367,6 +1426,42 @@ describe('subscriptions / usage / pricing / referrals', () => {
     expect(gpt?.personalized).toBe(true);
   });
 
+  it('pricing schedule 窗口透出：公开面带窗口与计费时区；personal 带窗口到手价', async () => {
+    const { app } = build();
+    const pub = (await (await app.request('/v1/pricing?page=1&pageSize=10')).json()) as {
+      billingTimezone: string;
+      models: Array<{
+        externalName: string;
+        schedule?: Array<{ label?: string; start: string; end: string; inputPrice?: string }>;
+        effectiveSchedule?: unknown;
+      }>;
+    };
+    expect(pub.billingTimezone).toBe('Asia/Shanghai');
+    const ds = pub.models.find((m) => m.externalName === 'ds-night');
+    expect(ds?.schedule).toEqual([
+      { label: '谷时段', start: '18:00', end: '07:00', inputPrice: '0.5', outputPrice: '2' },
+    ]);
+    expect(ds?.effectiveSchedule).toBeUndefined(); // 公开面不带到手价
+
+    const personal = (await (
+      await app.request('/v1/pricing/personal', { headers: auth })
+    ).json()) as {
+      models: Array<{
+        externalName: string;
+        effectiveSchedule?: Array<{ inputPrice?: string; outputPrice?: string }>;
+      }>;
+    };
+    // 系数表 model: {1:'0.5'}；ds-night id=3 无 model 行 → group g1 miss → global null → 1
+    const dsPersonal = personal.models.find((m) => m.externalName === 'ds-night');
+    expect(dsPersonal?.effectiveSchedule).toEqual([
+      { label: '谷时段', start: '18:00', end: '07:00', inputPrice: '0.5', outputPrice: '2' },
+    ]);
+    // 无 schedule 的模型不携带窗口字段
+    expect(
+      (personal.models.find((m) => m.externalName === 'gpt-x') as { schedule?: unknown }).schedule,
+    ).toBeUndefined();
+  });
+
   it('referrals config 开关计算 + overview 合并佣金', async () => {
     const { app } = build();
     const config = (await (
@@ -1808,5 +1903,100 @@ describe('oauth 社交登录', () => {
     expect(ok.status).toBe(302);
     expect(ok.headers.get('location')).toMatch(/#token=signed%3A\d+/);
     expect(ok.headers.get('location')).toContain('https://app.example/dashboard');
+  });
+});
+
+describe('找回密码(链接制,防枚举)', () => {
+  it('存在账号:{ok:true} + 签发令牌 + 投递链接(基地址拼接 /reset-password)', async () => {
+    const { app, state } = build();
+    const res = await app.request('/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'u@x.com' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(state.sentLinks).toHaveLength(1);
+    expect(state.sentLinks[0]!.to).toBe('u@x.com');
+    expect(state.sentLinks[0]!.url).toMatch(
+      /^https:\/\/console\.example\/reset-password\?token=reset-token-42-1-xxxxxxxxxxxx$/,
+    );
+  });
+
+  it('不存在账号:同款 {ok:true}(不签发不投递)——枚举不可区分', async () => {
+    const { app, state } = build();
+    state.usersByEmail.clear();
+    const res = await app.request('/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'nobody@x.com' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(state.sentLinks).toHaveLength(0);
+    expect(state.issuedTokens.size).toBe(0);
+  });
+
+  it('封禁账号同走哑成功;同邮箱 60s 第二次 429(哑/真实同键)', async () => {
+    const { app, state } = build();
+    state.usersByEmail.set('u@x.com', { id: 42, status: 1 });
+    const banned = await app.request('/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'u@x.com' }),
+    });
+    expect(banned.status).toBe(200);
+    expect(state.sentLinks).toHaveLength(0);
+
+    state.usersByEmail.set('u@x.com', { id: 42, status: 0 });
+    const second = await app.request('/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'u@x.com' }),
+    });
+    expect(second.status).toBe(429);
+  });
+
+  it('reset:有效令牌 → resetPassword(user realm);令牌单次(重放 400)', async () => {
+    const { app, state } = build();
+    await app.request('/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'u@x.com' }),
+    });
+    const token = [...state.issuedTokens.keys()][0]!;
+    const res = await app.request('/v1/auth/forgot/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: 'new-password-1' }),
+    });
+    expect(res.status).toBe(200);
+    expect(state.resetCalls).toEqual([
+      { userId: 42, realm: 'user', newPassword: 'new-password-1' },
+    ]);
+    // 单次消费:同令牌重放 → 无效
+    const replay = await app.request('/v1/auth/forgot/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: 'new-password-2x' }),
+    });
+    expect(replay.status).toBe(400);
+    expect(await replay.json()).toMatchObject({ error: { code: 'client.reset_token_invalid' } });
+  });
+
+  it('reset:坏令牌/弱口令 400', async () => {
+    const { app } = build();
+    const badToken = await app.request('/v1/auth/forgot/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'tok-not-issued-at-all-1234', password: 'new-password-1' }),
+    });
+    expect(badToken.status).toBe(400);
+    const weak = await app.request('/v1/auth/forgot/reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'tok-not-issued-at-all-1234', password: 'short' }),
+    });
+    expect(weak.status).toBe(400);
   });
 });

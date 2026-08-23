@@ -3,7 +3,14 @@
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
 
-import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, ShieldCheckIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  Loader2Icon,
+  LockIcon,
+  MailIcon,
+  ShieldCheckIcon,
+} from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
@@ -105,7 +112,7 @@ export function LoginForm({
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     maxLength={6}
-                    placeholder="123456"
+                    placeholder={t('codePlaceholder')}
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     autoFocus
@@ -204,6 +211,15 @@ export function LoginForm({
               )}
             />
           </FieldGroup>
+
+          <div className="flex justify-end">
+            <Link
+              href="/forgot"
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              {t('forgotLink')}
+            </Link>
+          </div>
 
           <Button type="submit" disabled={pending} className="h-10 w-full">
             {pending && <Loader2Icon className="animate-spin" />}

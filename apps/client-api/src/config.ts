@@ -144,6 +144,10 @@ function createSchema(production: boolean) {
       .default('Asia/Shanghai'),
     /** 公开定价目录共享缓存 TTL（ms；redis 多副本一份） */
     PRICING_CACHE_TTL_MS: z.coerce.number().int().positive().default(30_000),
+    /** 计费时区 KV 读取的进程内缓存（低频变更；与网关 BILLING_TIMEZONE_TTL_MS 同语义） */
+    BILLING_TIMEZONE_TTL_MS: z.coerce.number().int().min(1_000).default(60_000),
+    /** system_configs 未配置 billing_timezone 时的回落（与网关同缺省） */
+    BILLING_TIMEZONE_DEFAULT: z.string().default('Asia/Shanghai'),
     /** 结算失败策略（billing 注入；worker 侧同源语义） */
     CLIENT_SETTLE_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
     CLIENT_SETTLE_BASE_DELAY_MS: z.coerce.number().int().positive().default(1_000),

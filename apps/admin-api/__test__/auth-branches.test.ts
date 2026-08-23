@@ -14,6 +14,7 @@ import * as usersRoutesRef from '../src/http/routes/users';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { loadAdminApiConfig } from '../src/config';
+import { mfaStub } from './helpers';
 import type { MiddlewareHandler } from 'hono';
 
 const json = { 'content-type': 'application/json' };
@@ -33,6 +34,7 @@ function bare(): Hono<SessionEnv> {
   const app = authRoutes(
     {
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: ADMIN_ID }),
           change: async () => ({ invalidBefore: 'x' }),
@@ -187,6 +189,7 @@ describe('auth/me 未走分支', () => {
   it('me:资料行缺失 401 admin_not_found;2FA 开启成功路径(SMTP 已配)回显开关', async () => {
     const meDeps: MeRoutesDeps = {
       identity: {
+        mfa: mfaStub(),
         passwords: {
           authenticate: async () => ({ userId: 0 }),
           change: async () => ({ invalidBefore: 'x' }),
@@ -230,6 +233,7 @@ describe('auth/me 未走分支', () => {
     const app = authRoutes(
       {
         identity: {
+          mfa: mfaStub(),
           passwords: {
             authenticate: async () => ({ userId: ADMIN_ID }),
             change: async () => ({ invalidBefore: 'x' }),

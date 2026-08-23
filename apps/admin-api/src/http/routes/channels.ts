@@ -1,6 +1,7 @@
 /**
- * 渠道路由（v1 routes/channels.ts 平移）：列表（富化）/创建/更新（换 Key 复位运行态）/
- * 软退役/批量导入（best-effort）/连通性探针。apiKey 加密落库（control-plane cipher）。
+ * 渠道路由（v1 routes/channels.ts 平移 + 逻辑删除回收站）：列表（富化 / view=deleted
+ * 回收站）/创建/更新（换 Key 复位运行态）/逻辑删除（在册绑定守卫）/恢复记录/
+ * 批量导入（best-effort）/连通性探针。apiKey 加密落库（control-plane cipher）。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -21,12 +22,15 @@ export function channelsRoutes(deps: ChannelsRoutesDeps, session: MiddlewareHand
 
   app.get('/v1/channels', session, async (c) => {
     const query = parseListQuery(c.req.query(), CHANNEL_SORTS, 'createdAt');
+    // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
+    const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
     const result = await channels.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
       sortBy: query.sortBy as 'id' | 'name' | 'status' | 'priority' | 'createdAt',
       order: query.order,
       limit: query.limit,
       offset: query.offset,
+      ...(view !== undefined ? { view } : {}),
     });
     return c.json(listEnvelope(result.rows.map(toChannelWireRow), result.total, query));
   });
@@ -46,7 +50,13 @@ export function channelsRoutes(deps: ChannelsRoutesDeps, session: MiddlewareHand
 
   app.delete('/v1/channels/:id', session, async (c) => {
     const id = idParam(c.req.param('id'));
-    return c.json(await channels.retire({ ctx: controlContextOf(c), channelId: id }));
+    return c.json(await channels.delete({ ctx: controlContextOf(c), channelId: id }));
+  });
+
+  /** 恢复已删除记录（回收站取出，回停用态）；在册行调用 → 404 */
+  app.post('/v1/channels/:id/restore', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    return c.json(await channels.undelete({ ctx: controlContextOf(c), channelId: id }));
   });
 
   app.post('/v1/channels/import', session, async (c) => {

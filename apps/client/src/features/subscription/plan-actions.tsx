@@ -21,7 +21,10 @@ import {
 import type { CurrentSubscription, PlanRow } from '@tokenlens/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
-import { changeSubscriptionAction, purchaseSubscriptionAction } from '@/server/actions/subscription';
+import {
+  changeSubscriptionAction,
+  purchaseSubscriptionAction,
+} from '@/server/actions/subscription';
 
 import { fmtYuan, InfoRow } from './current-subscription';
 import { planPeriodLabel } from './plan-format';

@@ -62,7 +62,9 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
       key: 'createdAt',
       header: tCommon('time'),
       cell: (row) => (
-        <span className="text-xs text-muted-foreground">{formatDateTime(row.createdAt, locale)}</span>
+        <span className="text-xs text-muted-foreground">
+          {formatDateTime(row.createdAt, locale)}
+        </span>
       ),
     },
     {
@@ -116,7 +118,11 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
         <DataTable columns={columns} rows={rows} rowKey={(row) => row.legId} empty={t('empty')} />
         {nextCursor != null && !error ? (
           <div className="flex justify-center p-4">
-            <Button variant="outline" size="sm" render={<a href={listHref(sp, { before: nextCursor })} />}>
+            <Button
+              variant="outline"
+              size="sm"
+              render={<a href={listHref(sp, { before: nextCursor })} />}
+            >
               {t('loadMore')}
             </Button>
           </div>

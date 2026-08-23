@@ -14,13 +14,19 @@ export const adminMeInfoSchema = z
     displayName: z.string().nullable(),
     lastLoginAt: z.string().nullable(),
     twoFactorEnabled: z.boolean().optional().describe('邮箱验证码二次登录已开启'),
+    totpEnabled: z.boolean().optional().describe('TOTP 验证器已绑定（接管第二因子）'),
   })
   .meta({ id: 'AdminMeInfo', description: '当前登录管理员 (GET /v1/me,admin-api 管理面)' });
 
-/** 登录两步流:密码正确后按 2FA 开关二分（发码半程 / 直接签发会话） */
+/** 登录两步流:密码正确后按第二因子二分（totp=验证器 App / email=发码半程 / 直接签发会话） */
 const loginResponseSchema = z.union([
   z.object({
     twoFactorRequired: z.literal(true),
+    method: z.literal('totp').describe('TOTP 已绑定——客户端改走 /v1/auth/login/totp'),
+  }),
+  z.object({
+    twoFactorRequired: z.literal(true),
+    method: z.literal('email').optional().describe('邮箱验证码（旧形态）'),
     challengeId: z.string().describe('2FA 半程挑战 id（verify 免二次鉴别）'),
   }),
   z.object({ token: z.string().describe('Bearer 会话 JWT'), adminId: z.number() }),
@@ -41,6 +47,16 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
     auth: 'public',
     body: authContracts.login,
     response: { schema: loginResponseSchema },
+    errors: [400, 401, 429, 503],
+  },
+  {
+    method: 'post',
+    path: '/v1/auth/login/totp',
+    tag: 'auth',
+    summary: 'TOTP 第二步登录（重验凭证 + 验证器/恢复码）',
+    auth: 'public',
+    body: authContracts.loginTotp,
+    response: { schema: tokenResponseSchema },
     errors: [400, 401, 429, 503],
   },
   {
@@ -80,12 +96,47 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
   },
   {
     method: 'post',
+    path: '/v1/me/totp/enroll',
+    tag: 'me',
+    summary: 'TOTP 挂起注册（返回 base32 密钥与 otpauth URL,扫码确认前不参与登录）',
+    response: {
+      schema: z.object({
+        secret: z.string().describe('base32 密钥（仅本次返回）'),
+        otpauthUrl: z.string().describe('otpauth:// 二维码内容'),
+      }),
+    },
+    errors: [401],
+  },
+  {
+    method: 'post',
+    path: '/v1/me/totp/confirm',
+    tag: 'me',
+    summary: 'TOTP 确认绑定（验当前码 → 生效 + 整组恢复码,仅此一次返回明文）',
+    body: authContracts.totpCode,
+    response: {
+      schema: z.object({
+        recoveryCodes: z.array(z.string()).describe('一次性恢复码(保存后不可再取)'),
+      }),
+    },
+    errors: [400, 401],
+  },
+  {
+    method: 'post',
+    path: '/v1/me/totp/disable',
+    tag: 'me',
+    summary: 'TOTP 解绑（须持有效验证器/恢复码）',
+    body: authContracts.totpCode,
+    response: { schema: okTrue },
+    errors: [400, 401],
+  },
+  {
+    method: 'post',
     path: '/v1/me/two-factor',
     tag: 'me',
     summary: '2FA 开关（开启前置 SMTP,fail-closed）',
     body: authContracts.twoFactor,
     response: {
-      schema: z.object({ twoFactorEnabled: z.boolean().describe('开关后的生效状态' )}),
+      schema: z.object({ twoFactorEnabled: z.boolean().describe('开关后的生效状态') }),
     },
     errors: [400, 401, 503],
   },

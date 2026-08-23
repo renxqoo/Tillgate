@@ -129,6 +129,64 @@ describe('模型创建校验', () => {
     ).not.toThrow();
   });
 
+  it.each([
+    // 空窗口表 / 格式非法 / 零长度 / 无价格字段 / 重叠（形状与重叠语义归 billing 单一真相）
+    { strategy: 'schedule', params: { windows: [] } },
+    {
+      strategy: 'schedule',
+      params: { windows: [{ start: '8:00', end: '09:00', unitPrice: '1' }] },
+    },
+    {
+      strategy: 'schedule',
+      params: { windows: [{ start: '08:00', end: '08:00', unitPrice: '1' }] },
+    },
+    { strategy: 'schedule', params: { windows: [{ start: '08:00', end: '09:00' }] } },
+    {
+      strategy: 'schedule',
+      params: {
+        windows: [
+          { start: '00:00', end: '07:00', unitPrice: '1' },
+          { start: '06:00', end: '08:00', unitPrice: '2' },
+        ],
+      },
+    },
+    // 价格数值域与 label 长度（control-plane 把关面）
+    {
+      strategy: 'schedule',
+      params: { windows: [{ start: '08:00', end: '09:00', unitPrice: '-1' }] },
+    },
+    {
+      strategy: 'schedule',
+      params: { windows: [{ start: '08:00', end: '09:00', unitPrice: '1', label: 'x'.repeat(33) }] },
+    },
+  ])('非法 schedule 窗口 → invalid_model_input', (billingConfig) => {
+    expect(() => validateModelCreate({ ...base, billingConfig }) ).toThrowError(
+      expect.objectContaining({ code: 'control_plane.invalid_model_input' }),
+    );
+  });
+
+  it('合法 schedule（跨午夜窗口 + 字段级覆盖 + label）通过', () => {
+    expect(() =>
+      validateModelCreate({
+        ...base,
+        billingConfig: {
+          strategy: 'schedule',
+          params: {
+            windows: [
+              {
+                label: '谷时段',
+                start: '18:00',
+                end: '07:00',
+                inputPrice: '0.5',
+                outputPrice: '1',
+              },
+            ],
+          },
+        },
+      }),
+    ).not.toThrow();
+  });
+
   it('补丁校验：status 域/单位词表/价格域', () => {
     expect(() => validateModelPatch({ status: 2 })).toThrowError(
       expect.objectContaining({ code: 'control_plane.invalid_model_input' }),

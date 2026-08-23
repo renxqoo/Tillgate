@@ -65,6 +65,8 @@ export interface UsageReceipt {
   streamAborted: boolean;
   mappingId: number;
   billingPolicyFingerprint: string | null;
+  /** 命中时段标签（schedule 策略审计列；缺省 = 无时段策略/未命中窗口） */
+  pricingWindow?: string;
   /** 估算结算归属（usage.estimated=true 时必填且属白名单） */
   estimatedFor?: EstimateAttribution;
   /** 触发估算的透传字节数（校准作业与审计数据源；非流式恒 0） */
@@ -136,6 +138,7 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     streamAborted: false,
     mappingId: candidate.mappingId,
     billingPolicyFingerprint: candidate.billingPolicyFingerprint,
+    ...(candidate.pricingWindow != null ? { pricingWindow: candidate.pricingWindow } : {}),
     ...(usage.estimated ? { estimatedFor: 'usage_missing_nonstream' } : {}),
     ...(usage.estimated ? { bytesRelayed: 0 } : {}),
   };

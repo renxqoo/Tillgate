@@ -4,7 +4,7 @@
  * 热路径族（路由候选/死凭据/任务渠道/敞口守卫/成本扣减熔断）不在此——inference 波次（G1）。
  * 管理面返回形状永不包含 apiKeyEnc（密文不出库；探针/绑定探针读除外，仅 application 解密用）。
  */
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   admins,
   channelRecharges,
@@ -20,6 +20,7 @@ import type {
   RechargeRow,
   RouteCandidateRow,
   RechargeSortField,
+  ChannelListQuery,
 } from '../../ports/channel-store';
 import { escapeLikePattern } from './search';
 
@@ -63,7 +64,7 @@ export const postgresChannelStore: ChannelStore = {
     const [row] = await db
       .select({ id: channels.id, rpmLimit: channels.rpmLimit })
       .from(channels)
-      .where(eq(channels.name, name));
+      .where(and(eq(channels.name, name), isNull(channels.deletedAt)));
     return row ?? null;
   },
 
@@ -71,7 +72,8 @@ export const postgresChannelStore: ChannelStore = {
     const rows = await db
       .update(channels)
       .set({ ...input.patch, updatedAt: new Date() })
-      .where(eq(channels.id, input.channelId))
+      // 已删除记录不可编辑（回收站行只读——恢复走 restoreChannel）
+      .where(and(eq(channels.id, input.channelId), isNull(channels.deletedAt)))
       .returning({
         id: channels.id,
         name: channels.name,
@@ -85,9 +87,37 @@ export const postgresChannelStore: ChannelStore = {
     const rows = await db
       .update(channels)
       .set({ status: 1, updatedAt: new Date() })
-      .where(eq(channels.id, input.channelId))
+      .where(and(eq(channels.id, input.channelId), isNull(channels.deletedAt)))
       .returning({ id: channels.id });
     return rows.length > 0;
+  },
+
+  async softDeleteChannel(db, input) {
+    const rows = await db
+      .update(channels)
+      // status 同步压 1：路由 status=0 过滤天然排除（删除不可留在启用态）
+      .set({ status: 1, deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(channels.id, input.channelId), isNull(channels.deletedAt)))
+      .returning({ id: channels.id });
+    return rows.length > 0;
+  },
+
+  async restoreChannel(db, input) {
+    const rows = await db
+      .update(channels)
+      // 回停用态：不直接启用——复核后由管理员显式启用
+      .set({ deletedAt: null, status: 1, updatedAt: new Date() })
+      .where(and(eq(channels.id, input.channelId), isNotNull(channels.deletedAt)))
+      .returning({ id: channels.id });
+    return rows.length > 0;
+  },
+
+  async countActiveByProvider(db, providerId) {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(channels)
+      .where(and(eq(channels.providerId, providerId), isNull(channels.deletedAt)));
+    return row?.count ?? 0;
   },
 
   async findChannelForProbe(db, channelId) {
@@ -120,11 +150,14 @@ export const postgresChannelStore: ChannelStore = {
     return row ?? null;
   },
 
-  async listChannels(db, query) {
+  async listChannels(db, query: ChannelListQuery) {
     const pattern = query.q ? escapeLikePattern(query.q) : null;
+    // 视图：active（缺省）= 在册（不含已删除）；deleted = 回收站（仅已删除）
+    const viewWhere =
+      query.view === 'deleted' ? isNotNull(channels.deletedAt) : isNull(channels.deletedAt);
     const where = pattern
-      ? or(ilike(channels.name, pattern), ilike(providers.name, pattern))
-      : undefined;
+      ? and(viewWhere, or(ilike(channels.name, pattern), ilike(providers.name, pattern)))
+      : viewWhere;
     const column = CHANNEL_LIST_SORTS[query.sortBy];
     const orderBy = [query.order === 'asc' ? asc(column) : desc(column), desc(channels.id)];
     const [rows, countRows] = await Promise.all([
@@ -144,6 +177,7 @@ export const postgresChannelStore: ChannelStore = {
           tpmLimit: channels.tpmLimit,
           upstreamBudget: channels.upstreamBudget,
           upstreamThreshold: channels.upstreamThreshold,
+          deletedAt: channels.deletedAt,
           createdAt: channels.createdAt,
         })
         .from(channels)
@@ -302,7 +336,15 @@ export const postgresChannelStore: ChannelStore = {
       .innerJoin(channels, eq(modelChannels.channelId, channels.id))
       .innerJoin(providers, eq(channels.providerId, providers.id))
       .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
-      .where(and(eq(modelMappings.realModel, realModel), eq(channels.status, 0)))
+      // 已删除供应商的渠道不再路由（记录面删除在服务面同步生效；禁用 status 不在此语义内）
+      .where(
+        and(
+          eq(modelMappings.realModel, realModel),
+          eq(channels.status, 0),
+          isNull(channels.deletedAt),
+          isNull(providers.deletedAt),
+        ),
+      )
       .orderBy(desc(modelChannels.priority), desc(modelChannels.weight));
     return rows as RouteCandidateRow[];
   },

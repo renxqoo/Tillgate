@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '@tokenlens/db';
 import { channels, modelMappings, usageLogs, users } from '@tokenlens/db';
 import type {
@@ -82,7 +82,14 @@ export function createPgUsageStore(db: Db): UsageStatsStore {
           })
           .from(usageLogs)
           .leftJoin(users, eq(usageLogs.userId, users.id))
-          .leftJoin(modelMappings, eq(usageLogs.externalModel, modelMappings.externalName))
+          // 仅在册行：外部名对在册记录唯一（部分唯一索引），排除已删除行避免同名 join 用量翻倍
+          .leftJoin(
+            modelMappings,
+            and(
+              eq(usageLogs.externalModel, modelMappings.externalName),
+              isNull(modelMappings.deletedAt),
+            ),
+          )
           .where(where)
           .orderBy(...orderBy)
           .limit(input.limit)
@@ -214,17 +221,15 @@ export function createPgUsageStore(db: Db): UsageStatsStore {
         order by samples desc
         limit 100
       `);
-      return result.rows.map(
-        (r): ChannelTtftRow => ({
-          channelId: r.channel_id == null ? null : Number(r.channel_id),
-          channelName: r.channel_name,
-          samples: r.samples,
-          upstreamP50: r.upstream_p50 == null ? null : Math.round(Number(r.upstream_p50)),
-          upstreamP95: r.upstream_p95 == null ? null : Math.round(Number(r.upstream_p95)),
-          clientP50: r.client_p50 == null ? null : Math.round(Number(r.client_p50)),
-          clientP95: r.client_p95 == null ? null : Math.round(Number(r.client_p95)),
-        }),
-      );
+      return result.rows.map((r): ChannelTtftRow => ({
+        channelId: r.channel_id == null ? null : Number(r.channel_id),
+        channelName: r.channel_name,
+        samples: r.samples,
+        upstreamP50: r.upstream_p50 == null ? null : Math.round(Number(r.upstream_p50)),
+        upstreamP95: r.upstream_p95 == null ? null : Math.round(Number(r.upstream_p95)),
+        clientP50: r.client_p50 == null ? null : Math.round(Number(r.client_p50)),
+        clientP95: r.client_p95 == null ? null : Math.round(Number(r.client_p95)),
+      }));
     },
   };
 }

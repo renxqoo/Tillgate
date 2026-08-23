@@ -19,10 +19,9 @@ const PROBE_TIMEOUT_MS = 1500;
 /** OAuth 登录方式发现（空数组=纯密码登录；不可达按空处理——按钮组隐藏） */
 export async function fetchOAuthProviders(): Promise<string[]> {
   try {
-    const res = await createClientApi({ fetch: timeoutFetch(PROBE_TIMEOUT_MS) }).get<OAuthProviders>(
-      '/v1/oauth/providers',
-      { revalidate: false },
-    );
+    const res = await createClientApi({
+      fetch: timeoutFetch(PROBE_TIMEOUT_MS),
+    }).get<OAuthProviders>('/v1/oauth/providers', { revalidate: false });
     return res.providers;
   } catch {
     return [];

@@ -152,10 +152,14 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
   });
 
   it('catalog-port postgres 路径：model 行系数 0.5 优先 + fallback 链 + 渠道候选（限流列）', async () => {
-    const catalog = createPostgresGatewayCatalog(assembly.db);
+    const catalog = createPostgresGatewayCatalog(assembly.db, {
+      ttlMs: 60_000,
+      fallback: 'Asia/Shanghai',
+    });
     const snap = await catalog.findMapping('it-gpt-x', {
       userId: Number(await scalarUserId()),
       body: {},
+      now: new Date(),
     });
     // numeric 列原样全标度字符串（运算归 billing Decimal——快照只透传）
     expect(Number(snap!.coefficient)).toBe(0.5); // model 行 0.5 > global 0.8
@@ -178,11 +182,15 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       weight: 3,
     });
     // 未绑卡用户 → 快照照常（无卡恒系数 1——v1 buildQuote 语义）
-    const other = await catalog.findMapping('it-gpt-x', { userId: 999_999, body: {} });
+    const other = await catalog.findMapping('it-gpt-x', {
+      userId: 999_999,
+      body: {},
+      now: new Date(),
+    });
     expect(other).not.toBeNull();
     expect(other!.coefficient).toBe('1');
     // 未知模型 → null（status 过滤 + 未命中）
-    expect(await catalog.findMapping('no-such-model', { userId: 1, body: {} })).toBeNull();
+    expect(await catalog.findMapping('no-such-model', { userId: 1, body: {}, now: new Date() })).toBeNull();
   });
 
   it('静态 Key 鉴权 + /v1/models（真实 resolveKeyByHash + 未知 Key 401 经真 guard）', async () => {

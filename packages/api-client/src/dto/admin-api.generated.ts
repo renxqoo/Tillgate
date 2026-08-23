@@ -17,6 +17,8 @@ export interface AdminMeInfo {
   lastLoginAt: string | null;
   /** 邮箱验证码二次登录已开启 */
   twoFactorEnabled?: boolean;
+  /** TOTP 验证器已绑定（接管第二因子） */
+  totpEnabled?: boolean;
 }
 
 // ── users ─────────────────────────────────────
@@ -77,6 +79,8 @@ export interface AdminChannelRow {
   priority: number;
   status: number;
   failCount: number;
+  /** 记录面逻辑删除时刻(回收站);null = 在册 */
+  deletedAt: string | null;
   /** 冷却截止(v2 无列来源,恒 null) */
   cooldownUntil: string | null;
   rpmLimit: number | null;
@@ -147,6 +151,8 @@ export interface AdminProviderRow {
   /** 厂商档案引用(VENDOR_PROFILES 词表键;null = 无档案纯透传) */
   vendor: string | null;
   status: number;
+  /** 记录面逻辑删除时刻(回收站);null = 在册 */
+  deletedAt: string | null;
   createdAt: string;
   /** providers 表当前无 updated_at 列,接口实际不返回该字段(undefined)。前端展示需做空值兜底(回退 createdAt)。 */
   updatedAt?: string;
@@ -188,6 +194,8 @@ export interface AdminModelRow {
   rpmLimit: number | null;
   tpmLimit: number | null;
   status: number;
+  /** 记录面逻辑删除时刻(回收站);null = 在册 */
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
   /** 已绑定的渠道 id(供「绑定渠道」弹窗回显已选) */
@@ -205,7 +213,7 @@ export interface ModelCreateBody {
   cacheWritePrice?: string;
   pricingUnit?: 'token' | 'request' | 'image' | 'second' | 'char';
   unitPrice?: string | number;
-  billingConfig?: { strategy: 'flat' | 'variant'; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string> } } | null;
+  billingConfig?: { strategy: 'flat' | 'variant' | 'schedule'; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string>; windows?: { label?: string; start: string; end: string; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string; unitPrice?: string }[] } } | null;
   isFree?: boolean;
   billingPolicy?: { version: 1; billingMode: 'unified_input_tokens'; maxInputTokens: number; modalities: { image?: { maxItems: number; maxInlineBytes?: number }; audio?: { maxItems: number; maxInlineBytes?: number }; file?: { maxItems: number; maxInlineBytes?: number } } } | null;
   rpmLimit?: number | null;
@@ -224,7 +232,7 @@ export interface ModelUpdateBody {
   cacheWritePrice?: string;
   pricingUnit?: 'token' | 'request' | 'image' | 'second' | 'char';
   unitPrice?: string | number;
-  billingConfig?: { strategy: 'flat' | 'variant'; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string> } } | null;
+  billingConfig?: { strategy: 'flat' | 'variant' | 'schedule'; params?: { unitPrice?: string; selector?: string; prices?: Record<string, string>; windows?: { label?: string; start: string; end: string; inputPrice?: string; outputPrice?: string; cacheInputPrice?: string; cacheWritePrice?: string; unitPrice?: string }[] } } | null;
   isFree?: boolean;
   billingPolicy?: { version: 1; billingMode: 'unified_input_tokens'; maxInputTokens: number; modalities: { image?: { maxItems: number; maxInlineBytes?: number }; audio?: { maxItems: number; maxInlineBytes?: number }; file?: { maxItems: number; maxInlineBytes?: number } } } | null;
   rpmLimit?: number | null;

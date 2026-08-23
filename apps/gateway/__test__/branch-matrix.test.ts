@@ -189,6 +189,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
         ],
       },
       rateCards: { findActiveCardByUser: async () => null },
+      billingTimezone: { read: async () => 'Asia/Shanghai' },
     });
     const channels = await catalog.resolveChannels('x');
     expect('rpmLimit' in channels[0]!).toBe(false);
@@ -279,8 +280,9 @@ describe('catalog 快照杂项防御', () => {
             ],
           }) as UserRateCardContext,
       },
+      billingTimezone: { read: async () => 'Asia/Shanghai' },
     });
-    const snap = await catalog.findMapping('x', { userId: 1, body: {} });
+    const snap = await catalog.findMapping('x', { userId: 1, body: {}, now: new Date() });
     expect(snap!.pricingUnit).toBe('token');
     expect(snap!.coefficient).toBe('0.9');
   });
@@ -352,8 +354,13 @@ describe('杂项分支收官', () => {
         },
       },
     ) as never;
-    const catalog = createPostgresGatewayCatalog(rejecter);
-    await expect(catalog.findMapping('x', { userId: 1, body: {} })).rejects.toThrow('stub-end');
+    const catalog = createPostgresGatewayCatalog(rejecter, {
+      ttlMs: 60_000,
+      fallback: 'Asia/Shanghai',
+    });
+    await expect(
+      catalog.findMapping('x', { userId: 1, body: {}, now: new Date() }),
+    ).rejects.toThrow('stub-end');
     await expect(catalog.resolveChannels('r')).rejects.toThrow('stub-end');
     expect(calls).toContain('select');
   });

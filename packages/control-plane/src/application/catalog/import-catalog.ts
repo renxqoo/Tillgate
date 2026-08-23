@@ -1,8 +1,10 @@
 /**
  * 目录一键入库（channel：find-or-create provider/channel + 绑定 + 上架；
- * reference：草稿 status=1，不建渠道，重复 skip）。整个导入单事务：中途任何失败
- * （如外部名冲突）整体回滚，不留半成品。provenance（目录原价/fx 行/预填值/提交值）
- * 全量进审计——服务端重算预填（与 comparison 同一换算点）。
+ * reference：草稿 status=1 + 按模型 provider 前缀 find-or-create 对应渠道并绑定——
+ * 不再裸落无渠道映射，避免路由时按 realModel 静默「蹭」现有第一个渠道；
+ * 重复 skip 改价）。整个导入单事务：中途任何失败（如外部名冲突）整体回滚，不留半成品。
+ * provenance（目录原价/fx 行/预填值/提交值）全量进审计——服务端重算预填
+ * （与 comparison 同一换算点）。
  */
 import type { Db } from '@tokenlens/db';
 import type { AuditSink } from '../../ports/audit-sink';
@@ -61,6 +63,25 @@ export interface ImportCatalogResult {
   readonly created: number;
   readonly updated: number;
   readonly skipped: number;
+}
+
+/**
+ * reference 源骨架渠道的非路由占位基址：RFC 6761 保留 .invalid 域——
+ * 永不可达，骨架渠道在管理员补全真实基址前只会熔断，不会误打到真实上游。
+ */
+const PLACEHOLDER_BASE_URL = 'https://placeholder.invalid';
+/** 骨架渠道占位密钥（同 channel 源 no-key 语义；管理员换真实 Key 后恢复） */
+const PLACEHOLDER_API_KEY = 'no-key-required';
+/** providers.name 与 channels.name 的公共长度上限（取两者较小值，slug 同长度查建） */
+const SLUG_MAX = 32;
+
+/**
+ * 模型真实名 → 对应渠道 slug：reference 源 realModel 形如 `provider/id`
+ * （models.dev 口径），取首段 `/` 前缀；无前缀整体作 slug。
+ */
+function providerSlugOf(realModel: string): string {
+  const slash = realModel.indexOf('/');
+  return (slash > 0 ? realModel.slice(0, slash) : realModel).slice(0, SLUG_MAX);
 }
 
 export async function importCatalog(
@@ -123,6 +144,42 @@ export async function importCatalog(
     let created = 0;
     let updated = 0;
     let skipped = 0;
+
+    // reference 源：按模型 provider 前缀对应渠道 find-or-create 的导入内记忆
+    // （同批同 provider 只查/建一次；回滚随事务一起作废）
+    const refChannelIds = new Map<string, number>();
+    const ensureReferenceChannel = async (realModel: string): Promise<number> => {
+      const slug = providerSlugOf(realModel);
+      const memo = refChannelIds.get(slug);
+      if (memo != null) return memo;
+      // 存在对应渠道 → 直接复用（不创建、不覆盖 Key/基址——管理员已配好的真实渠道优先）
+      const existing = await deps.stores.channel.findChannelByName(tx, slug);
+      if (existing) {
+        refChannelIds.set(slug, existing.id);
+        return existing.id;
+      }
+      // 不存在 → provider find-or-create 后建骨架渠道（占位基址/Key，管理员后补）
+      let provider = await deps.stores.provider.findByName(tx, slug);
+      if (!provider) {
+        provider = await deps.stores.provider.insert(tx, {
+          name: slug,
+          protocol: 'openai-compatible',
+          vendor: null,
+          baseUrl: PLACEHOLDER_BASE_URL,
+          status: 0,
+        });
+      }
+      const createdChannel = await deps.stores.channel.insertChannel(tx, {
+        providerId: provider.id,
+        name: slug,
+        apiKeyEnc: deps.cipher.encrypt(PLACEHOLDER_API_KEY),
+        rpmLimit: deps.channelRpm,
+        upstreamBudget: deps.channelBudget,
+      });
+      refChannelIds.set(slug, createdChannel.id);
+      return createdChannel.id;
+    };
+
     for (const m of input.models) {
       const existingMapping = await deps.stores.model.findByExternalName(tx, m.externalName);
       const prices = {
@@ -133,18 +190,28 @@ export async function importCatalog(
       };
 
       if (source.kind === 'reference') {
-        // 字典型：草稿态导入（审批制）——已存在跳过不覆盖（价格属资金语义，改价走正式编辑）
+        // 字典型：草稿态导入（审批制）——已存在跳过改价（价格属资金语义，改价走正式编辑），
+        // 但幂等补绑对应渠道（本功能前导入的旧映射经重导入迁到对应渠道上）
+        const refChannelId = await ensureReferenceChannel(m.realModel);
         if (existingMapping) {
+          await deps.stores.model.ensureModelChannelBinding(tx, {
+            mappingId: existingMapping.id,
+            channelId: refChannelId,
+          });
           skipped += 1;
           continue;
         }
-        await deps.stores.model.insertMapping(tx, {
+        const inserted = await deps.stores.model.insertMapping(tx, {
           externalName: m.externalName,
           realModel: m.realModel,
           contextLength: m.contextLength ?? null,
           ...prices,
           isFree: isFreeByPrice(prices),
           status: 1,
+        });
+        await deps.stores.model.ensureModelChannelBinding(tx, {
+          mappingId: inserted.id,
+          channelId: refChannelId,
         });
         created += 1;
         continue;

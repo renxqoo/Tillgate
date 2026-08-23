@@ -14,6 +14,41 @@ export interface PricingEnrichedRow {
   unitPrice: string;
   isFree: boolean;
   pricingGroup: string | null;
+  /** 分时段窗口（billingConfig strategy=schedule；未配置 = undefined） */
+  schedule?: PublicScheduleWindow[];
+}
+
+/** 公开时段窗口（未覆盖价格轴不出场——回落基价展示） */
+export interface PublicScheduleWindow {
+  label?: string;
+  start: string;
+  end: string;
+  inputPrice?: string;
+  outputPrice?: string;
+  cacheInputPrice?: string;
+  unitPrice?: string;
+}
+
+/** billingConfig（DB JSONB）→ 公开窗口表（schedule 之外 / 空表 → undefined） */
+export function scheduleWindowsOf(
+  billingConfig: unknown,
+): PublicScheduleWindow[] | undefined {
+  const cfg = billingConfig as
+    | { strategy?: string; params?: { windows?: unknown[] } }
+    | null
+    | undefined;
+  if (cfg?.strategy !== 'schedule' || !Array.isArray(cfg.params?.windows)) return undefined;
+  const windows = cfg.params.windows as Array<Record<string, unknown>>;
+  if (windows.length === 0) return undefined;
+  return windows.map((w) => ({
+    ...(typeof w.label === 'string' && w.label !== '' ? { label: w.label } : {}),
+    start: String(w.start),
+    end: String(w.end),
+    ...(typeof w.inputPrice === 'string' ? { inputPrice: w.inputPrice } : {}),
+    ...(typeof w.outputPrice === 'string' ? { outputPrice: w.outputPrice } : {}),
+    ...(typeof w.cacheInputPrice === 'string' ? { cacheInputPrice: w.cacheInputPrice } : {}),
+    ...(typeof w.unitPrice === 'string' ? { unitPrice: w.unitPrice } : {}),
+  }));
 }
 
 /** 公开价格目录行（realModel 是上游路由内部信息，不进公开面） */
@@ -27,6 +62,8 @@ export interface PublicPricingModel {
   cacheInputPrice: string;
   unitPrice: string;
   isFree: boolean;
+  /** 分时段窗口（schedule 策略；基价为未命中时段的缺省价） */
+  schedule?: PublicScheduleWindow[];
   /** 登录态富化：费率卡系数与到手价 */
   coefficient?: string;
   effective?: {
@@ -35,6 +72,8 @@ export interface PublicPricingModel {
     cacheInputPrice: string;
     unitPrice: string;
   };
+  /** 登录态富化：各窗口到手价（窗口官方价 × 系数） */
+  effectiveSchedule?: PublicScheduleWindow[];
   personalized?: boolean;
   rateCardStatus?: number | null;
 }
@@ -63,8 +102,23 @@ export function toPublicPricingRows(catalog: BaseCatalog): PublicPricingModel[] 
       cacheInputPrice: full?.cacheInputPrice ?? '0',
       unitPrice: full?.unitPrice ?? '0',
       isFree: full?.isFree ?? false,
+      ...(full?.schedule != null ? { schedule: full.schedule } : {}),
     };
   });
+}
+
+/** 窗口官方价 × 系数 → 各轴到手价（未覆盖轴不出场——与窗口官方价同形） */
+function effectiveWindowsOf(
+  windows: PublicScheduleWindow[],
+  times: (v: string) => string,
+): PublicScheduleWindow[] {
+  return windows.map((w) => ({
+    ...w,
+    ...(w.inputPrice != null ? { inputPrice: times(w.inputPrice) } : {}),
+    ...(w.outputPrice != null ? { outputPrice: times(w.outputPrice) } : {}),
+    ...(w.cacheInputPrice != null ? { cacheInputPrice: times(w.cacheInputPrice) } : {}),
+    ...(w.unitPrice != null ? { unitPrice: times(w.unitPrice) } : {}),
+  }));
 }
 
 export function toPersonalPricingRows(
@@ -92,6 +146,7 @@ export function toPersonalPricingRows(
       cacheInputPrice,
       unitPrice,
       isFree: full?.isFree ?? false,
+      ...(full?.schedule != null ? { schedule: full.schedule } : {}),
       coefficient,
       effective: {
         inputPrice: times(inputPrice),
@@ -99,6 +154,9 @@ export function toPersonalPricingRows(
         cacheInputPrice: times(cacheInputPrice),
         unitPrice: times(unitPrice),
       },
+      ...(full?.schedule != null
+        ? { effectiveSchedule: effectiveWindowsOf(full.schedule, times) }
+        : {}),
       personalized: snapshot != null,
       rateCardStatus: snapshot?.status ?? null,
     };

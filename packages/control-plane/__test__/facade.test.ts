@@ -86,7 +86,7 @@ function setup() {
 }
 
 describe('createControlPlane facade', () => {
-  it('分组 API 齐备（providers/channels/models/rates/fx/catalog）', () => {
+  it('分组 API 齐备（providers/channels/models/rates/fx/catalog/settings）', () => {
     const { controlPlane } = setup();
     expect(Object.keys(controlPlane).toSorted()).toEqual([
       'admins',
@@ -96,8 +96,9 @@ describe('createControlPlane facade', () => {
       'models',
       'providers',
       'rates',
+      'settings',
     ]);
-    for (const verb of ['create', 'update', 'retire', 'list'] as const) {
+    for (const verb of ['create', 'update', 'delete', 'undelete', 'list'] as const) {
       expect(typeof controlPlane.providers[verb]).toBe('function');
     }
     expect(typeof controlPlane.channels.recharge).toBe('function');
@@ -193,8 +194,16 @@ describe('createControlPlane facade', () => {
       providerId: provider.id,
       patch: { status: 1 },
     });
-    await controlPlane.providers.retire({ ctx: adminCtx(), providerId: provider.id });
+    await controlPlane.providers.delete({ ctx: adminCtx(), providerId: provider.id });
+    await controlPlane.providers.undelete({ ctx: adminCtx(), providerId: provider.id });
     await controlPlane.providers.list({ sortBy: 'name', order: 'desc', limit: 5, offset: 0 });
+    await controlPlane.providers.list({
+      sortBy: 'name',
+      order: 'desc',
+      limit: 5,
+      offset: 0,
+      view: 'deleted',
+    });
 
     const channel = await controlPlane.channels.create({
       ctx: adminCtx(),
@@ -212,7 +221,15 @@ describe('createControlPlane facade', () => {
       ctx: adminCtx(),
       channels: [{ provider: 'p2', name: 'c3', apiKey: 'sk3' }],
     });
-    await controlPlane.channels.retire({ ctx: adminCtx(), channelId: channel.id });
+    await controlPlane.channels.delete({ ctx: adminCtx(), channelId: channel.id });
+    await controlPlane.channels.undelete({ ctx: adminCtx(), channelId: channel.id });
+    await controlPlane.channels.list({
+      sortBy: 'id',
+      order: 'asc',
+      limit: 5,
+      offset: 0,
+      view: 'deleted',
+    });
     await controlPlane.channels.probe(channel.id);
     await controlPlane.channels.recharge({
       ctx: adminCtx(),
@@ -242,7 +259,15 @@ describe('createControlPlane facade', () => {
     await controlPlane.models.list({ sortBy: 'id', order: 'asc', limit: 5, offset: 0 });
     await controlPlane.models.bindChannels({ ctx: adminCtx(), mappingId: model.id, channels: [] });
     await controlPlane.models.probe(model.id);
-    await controlPlane.models.retire({ ctx: adminCtx(), mappingId: model.id });
+    await controlPlane.models.delete({ ctx: adminCtx(), mappingId: model.id });
+    await controlPlane.models.undelete({ ctx: adminCtx(), mappingId: model.id });
+    await controlPlane.models.list({
+      sortBy: 'id',
+      order: 'asc',
+      limit: 5,
+      offset: 0,
+      view: 'deleted',
+    });
 
     const card = await controlPlane.rates.createCard({
       ctx: adminCtx(),

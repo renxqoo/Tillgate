@@ -194,6 +194,7 @@ export function fakeDeps(overrides: {
     identity: {
       passwords: { authenticate: notWired, change: notWired, reset: notWired },
       challenges: { begin: notWired, verify: notWired, abort: notWired },
+      mfa: mfaStub(),
       sessions: {
         sign: notWired,
         verify: notWired,
@@ -228,13 +229,15 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
     providers: {
       create: notWired,
       update: notWired,
-      retire: notWired,
+      delete: notWired,
+      undelete: notWired,
       list: notWired,
     },
     channels: {
       create: notWired,
       update: notWired,
-      retire: notWired,
+      delete: notWired,
+      undelete: notWired,
       list: notWired,
       import: notWired,
       probe: notWired,
@@ -246,7 +249,8 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
     models: {
       create: notWired,
       update: notWired,
-      retire: notWired,
+      delete: notWired,
+      undelete: notWired,
       list: notWired,
       bindChannels: notWired,
       probe: notWired,
@@ -266,6 +270,13 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       setOverride: notWired,
       clearOverride: notWired,
       setBuffer: notWired,
+    },
+    // 运营系统配置面（settings 波次进行中;默认 notWired——settings 域测试覆写）
+    settings: {
+      billingTimezone: {
+        read: notWired,
+        update: notWired,
+      },
     },
     catalog: {
       listSources: () => [],
@@ -316,4 +327,23 @@ function fakeObservability(
     Observability,
     'traces' | 'audit' | 'requestLogs' | 'usage'
   >;
+}
+
+/** TOTP/MFA 替身:默认「未绑定」(登录不触发第二因子);绑定态用例传 {confirmed:true} */
+export function mfaStub(over: { confirmed?: boolean; verifyError?: Error } = {}) {
+  return {
+    status: async () => ({ enrolled: over.confirmed === true, confirmed: over.confirmed === true }),
+    enrollTotp: async () => ({
+      secret: 'JBSWY3DPEHPK3PXP',
+      otpauthUrl: 'otpauth://totp/TokenLens:test%40example.dev?secret=JBSWY3DPEHPK3PXP',
+    }),
+    confirmTotp: async () => ({ recoveryCodes: ['RVWXYZ2345'] }),
+    verify:
+      over.verifyError != null
+        ? async () => {
+            throw over.verifyError;
+          }
+        : async () => ({ method: 'totp' as const }),
+    disableTotp: async () => ({ disabled: true }),
+  };
 }

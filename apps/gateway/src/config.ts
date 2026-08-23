@@ -14,6 +14,16 @@ const positiveDecimal = z
 
 const BYTES_RE = /^(\d+(?:\.\d+)?)(b|kb|mb|gb)$/i;
 
+/** IANA 时区合法性（Intl 构造抛错即非法——启动 fail-fast，热路径 formatter 直接复用） */
+function isValidTimezone(tz: string): boolean {
+  try {
+    // 构造即探测:非法时区抛 RangeError;作函数调用返回实例(等价 new,规避副作用 new)
+    return Intl.DateTimeFormat('en-US', { timeZone: tz }) instanceof Intl.DateTimeFormat;
+  } catch {
+    return false;
+  }
+}
+
 /** 字节量（"10MB" 形）——v1 同形 */
 const byteSize = z.string().regex(BYTES_RE, 'must be like "10MB"');
 const bytesOf = (v: string): number => {
@@ -38,6 +48,13 @@ function createSchema(production: boolean) {
       BILLING_RESERVATION_MODE: z.enum(['full', 'fixed']).default('full'),
       BILLING_FIXED_RESERVATION_AMOUNT: positiveDecimal.optional(),
       BILLING_AUTHORIZATION_TTL_MS: z.coerce.number().int().min(1_000).default(300_000),
+      /** 计费时区（全系统统一；schedule 分时段策略的墙钟口径）缓存 TTL */
+      BILLING_TIMEZONE_TTL_MS: z.coerce.number().int().min(1_000).default(60_000),
+      /** system_configs 未配置 billing_timezone 时的回落（IANA 名，启动即验合法性） */
+      BILLING_TIMEZONE_DEFAULT: z
+        .string()
+        .refine((tz) => isValidTimezone(tz), { message: 'invalid IANA timezone' })
+        .default('Asia/Shanghai'),
       GENERATION_TASK_TTL_MS: z.coerce.number().int().min(1_000).default(3_600_000),
       GENERATION_LEASE_GRACE_MS: z.coerce.number().int().min(0).default(30_000),
       AUTH_KEY_FAILURE_THRESHOLD: z.coerce.number().int().min(1).default(5),
@@ -103,6 +120,9 @@ export interface GatewayConfig {
   readonly reservationLimit: string;
   readonly reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
   readonly authorizationTtlMs: number;
+  /** 计费时区缓存 TTL（system_configs 读取）与回落时区 */
+  readonly billingTimezoneTtlMs: number;
+  readonly billingTimezoneFallback: string;
   readonly generationTaskTtlMs: number;
   readonly generationLeaseGraceMs: number;
   readonly authGuards: {
@@ -219,6 +239,8 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
         ? { mode: 'fixed', amount: parsed.BILLING_FIXED_RESERVATION_AMOUNT! }
         : { mode: 'full' },
     authorizationTtlMs: parsed.BILLING_AUTHORIZATION_TTL_MS,
+    billingTimezoneTtlMs: parsed.BILLING_TIMEZONE_TTL_MS,
+    billingTimezoneFallback: parsed.BILLING_TIMEZONE_DEFAULT,
     generationTaskTtlMs: parsed.GENERATION_TASK_TTL_MS,
     generationLeaseGraceMs: parsed.GENERATION_LEASE_GRACE_MS,
     authGuards: {

@@ -28,6 +28,12 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Provider name already exists',
     zh: '供应商重名',
   },
+  /** 删除守卫：供应商名下仍有在册渠道（须先删除/迁移渠道，回收站渠道不阻塞） */
+  provider_has_channels: {
+    category: 'conflict',
+    message: 'Provider still has active channels',
+    zh: '供应商名下仍有在册渠道，须先删除或迁移渠道',
+  },
 
   // ── channels ─────────────────────────────────────────────────────────────
   invalid_channel_input: {
@@ -37,6 +43,12 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
   },
   channel_not_found: { category: 'not_found', message: 'Channel not found', zh: '渠道不存在' },
   channel_exists: { category: 'conflict', message: 'Channel name already exists', zh: '渠道重名' },
+  /** 删除守卫：仍有在册模型映射绑定该渠道（须先解绑/删除映射，回收站映射不阻塞） */
+  channel_has_models: {
+    category: 'conflict',
+    message: 'Channel still has bound model mappings',
+    zh: '仍有在册模型映射绑定该渠道，须先解绑或删除映射',
+  },
   import_empty: {
     category: 'invalid_input',
     message: 'Import list cannot be empty',
@@ -89,6 +101,13 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     category: 'invalid_input',
     message: 'Explicitly free model requires all-zero pricing',
     zh: '显式免费模型必须全零价（token 三价 + 缓存写价 + 单位价）',
+  },
+
+  // ── settings ─────────────────────────────────────────────────────────────
+  invalid_billing_timezone: {
+    category: 'invalid_input',
+    message: 'Billing timezone must be a valid IANA timezone name',
+    zh: '计费时区必须是合法的 IANA 时区名',
   },
 
   // ── rate cards ───────────────────────────────────────────────────────────

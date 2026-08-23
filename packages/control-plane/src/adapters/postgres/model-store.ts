@@ -3,13 +3,12 @@
  * 管理面 CRUD/绑定全量替换/探针读/目录比对读。
  * 报价候选链解析与 /v1/models 在架目录读是网关热路径——不在此（inference 波次 G1）。
  */
-import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, or, sql } from 'drizzle-orm';
 import { channels, modelChannels, modelMappings, providers } from '@tokenlens/db';
 import type {
   ModelStore,
   ModelRecord,
   ModelInsertInput,
-  ModelPatch,
   ModelSortField,
   ModelProbeChannelRow,
   ActiveMappingRow,
@@ -33,6 +32,7 @@ const MAPPING_ADMIN_COLUMNS = {
   billingPolicy: modelMappings.billingPolicy,
   rpmLimit: modelMappings.rpmLimit,
   tpmLimit: modelMappings.tpmLimit,
+  deletedAt: modelMappings.deletedAt,
   createdAt: modelMappings.createdAt,
   updatedAt: modelMappings.updatedAt,
 } as const;
@@ -93,7 +93,7 @@ export const postgresModelStore: ModelStore = {
     const [row] = await db
       .select(MAPPING_ADMIN_COLUMNS)
       .from(modelMappings)
-      .where(eq(modelMappings.id, mappingId));
+      .where(and(eq(modelMappings.id, mappingId), isNull(modelMappings.deletedAt)));
     return (row as ModelRecord) ?? null;
   },
 
@@ -101,15 +101,16 @@ export const postgresModelStore: ModelStore = {
     const [row] = await db
       .select(MAPPING_ADMIN_COLUMNS)
       .from(modelMappings)
-      .where(eq(modelMappings.externalName, externalName));
+      .where(and(eq(modelMappings.externalName, externalName), isNull(modelMappings.deletedAt)));
     return (row as ModelRecord) ?? null;
   },
 
-  async updateMapping(db, input: { mappingId: number; patch: ModelPatch }) {
+  async updateMapping(db, input) {
     const rows = await db
       .update(modelMappings)
       .set({ ...input.patch, updatedAt: new Date() })
-      .where(eq(modelMappings.id, input.mappingId))
+      // 已删除记录不可编辑（回收站行只读——恢复走 restoreMapping）
+      .where(and(eq(modelMappings.id, input.mappingId), isNull(modelMappings.deletedAt)))
       .returning(MAPPING_ADMIN_COLUMNS);
     return (rows[0] as ModelRecord) ?? null;
   },
@@ -118,16 +119,44 @@ export const postgresModelStore: ModelStore = {
     const rows = await db
       .update(modelMappings)
       .set({ status: 1, updatedAt: new Date() })
-      .where(eq(modelMappings.id, input.mappingId))
+      .where(and(eq(modelMappings.id, input.mappingId), isNull(modelMappings.deletedAt)))
+      .returning({ id: modelMappings.id });
+    return rows.length > 0;
+  },
+
+  async softDeleteMapping(db, input) {
+    const rows = await db
+      .update(modelMappings)
+      // status 同步压 1：热路径 status=0 过滤天然排除（删除不可留在上架态）
+      .set({ status: 1, deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(modelMappings.id, input.mappingId), isNull(modelMappings.deletedAt)))
+      .returning({ id: modelMappings.id });
+    return rows.length > 0;
+  },
+
+  async restoreMapping(db, input) {
+    const rows = await db
+      .update(modelMappings)
+      // 回下架态：不直接复活上架——复核后由管理员显式上架
+      .set({ deletedAt: null, status: 1, updatedAt: new Date() })
+      .where(and(eq(modelMappings.id, input.mappingId), isNotNull(modelMappings.deletedAt)))
       .returning({ id: modelMappings.id });
     return rows.length > 0;
   },
 
   async listMappings(db, query) {
     const pattern = query.q ? escapeLikePattern(query.q) : null;
+    // 视图：active（缺省）= 在册（不含已删除）；deleted = 回收站（仅已删除）
+    const viewWhere =
+      query.view === 'deleted'
+        ? isNotNull(modelMappings.deletedAt)
+        : isNull(modelMappings.deletedAt);
     const where = pattern
-      ? or(ilike(modelMappings.externalName, pattern), ilike(modelMappings.realModel, pattern))
-      : undefined;
+      ? and(
+          viewWhere,
+          or(ilike(modelMappings.externalName, pattern), ilike(modelMappings.realModel, pattern)),
+        )
+      : viewWhere;
     const column = MAPPING_SORTS[query.sortBy as ModelSortField];
     const orderBy = [query.order === 'asc' ? asc(column) : desc(column), desc(modelMappings.id)];
     const [rows, countRows] = await Promise.all([
@@ -165,19 +194,24 @@ export const postgresModelStore: ModelStore = {
   },
 
   async listBoundChannelsForProbe(db, mappingId) {
-    return db
-      .select({
-        channelId: channels.id,
-        channelName: channels.name,
-        apiKeyEnc: channels.apiKeyEnc,
-        baseUrlOverride: channels.baseUrlOverride,
-        providerBaseUrl: providers.baseUrl,
-        providerProtocol: providers.protocol,
-      })
-      .from(modelChannels)
-      .innerJoin(channels, eq(modelChannels.channelId, channels.id))
-      .innerJoin(providers, eq(channels.providerId, providers.id))
-      .where(eq(modelChannels.mappingId, mappingId)) as Promise<ModelProbeChannelRow[]>;
+    return (
+      db
+        .select({
+          channelId: channels.id,
+          channelName: channels.name,
+          apiKeyEnc: channels.apiKeyEnc,
+          baseUrlOverride: channels.baseUrlOverride,
+          providerBaseUrl: providers.baseUrl,
+          providerProtocol: providers.protocol,
+        })
+        .from(modelChannels)
+        .innerJoin(channels, eq(modelChannels.channelId, channels.id))
+        .innerJoin(providers, eq(channels.providerId, providers.id))
+        // 已删除渠道不参与探针（回收站行只读；残留绑定仅作历史追溯）
+        .where(and(eq(modelChannels.mappingId, mappingId), isNull(channels.deletedAt))) as Promise<
+        ModelProbeChannelRow[]
+      >
+    );
   },
 
   async ensureModelChannelBinding(db, input) {
@@ -193,7 +227,13 @@ export const postgresModelStore: ModelStore = {
     const rows = await db
       .select(MAPPING_ADMIN_COLUMNS)
       .from(modelMappings)
-      .where(and(inArray(modelMappings.realModel, [...realModels]), eq(modelMappings.status, 0)));
+      .where(
+        and(
+          inArray(modelMappings.realModel, [...realModels]),
+          eq(modelMappings.status, 0),
+          isNull(modelMappings.deletedAt),
+        ),
+      );
     return rows as ModelRecord[];
   },
 
@@ -206,7 +246,17 @@ export const postgresModelStore: ModelStore = {
       })
       .from(modelChannels)
       .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
-      .where(eq(modelChannels.channelId, channelId));
+      .where(and(eq(modelChannels.channelId, channelId), isNull(modelMappings.deletedAt)));
+  },
+
+  async countActiveMappingsByChannel(db, channelId) {
+    // 绑定守卫计数：仅算在册映射（已删除映射的残留绑定是历史追溯，不算下游占用）
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(modelChannels)
+      .innerJoin(modelMappings, eq(modelChannels.mappingId, modelMappings.id))
+      .where(and(eq(modelChannels.channelId, channelId), isNull(modelMappings.deletedAt)));
+    return row?.count ?? 0;
   },
 
   // ---- 网关热路径读（G1；v1 QUOTE_COLUMNS 子集 + status=0 过滤） ----
@@ -215,7 +265,13 @@ export const postgresModelStore: ModelStore = {
     const [row] = await db
       .select(ACTIVE_MAPPING_COLUMNS)
       .from(modelMappings)
-      .where(and(eq(modelMappings.externalName, externalName), eq(modelMappings.status, 0)));
+      .where(
+        and(
+          eq(modelMappings.externalName, externalName),
+          eq(modelMappings.status, 0),
+          isNull(modelMappings.deletedAt),
+        ),
+      );
     return (row as ActiveMappingRow) ?? null;
   },
 
@@ -225,7 +281,11 @@ export const postgresModelStore: ModelStore = {
       .select(ACTIVE_MAPPING_COLUMNS)
       .from(modelMappings)
       .where(
-        and(inArray(modelMappings.externalName, [...externalNames]), eq(modelMappings.status, 0)),
+        and(
+          inArray(modelMappings.externalName, [...externalNames]),
+          eq(modelMappings.status, 0),
+          isNull(modelMappings.deletedAt),
+        ),
       );
     return new Map(
       rows.map((row) => [(row as ActiveMappingRow).externalName, row as ActiveMappingRow]),
@@ -240,7 +300,7 @@ export const postgresModelStore: ModelStore = {
         pricingUnit: modelMappings.pricingUnit,
       })
       .from(modelMappings)
-      .where(eq(modelMappings.status, 0))
+      .where(and(eq(modelMappings.status, 0), isNull(modelMappings.deletedAt)))
       .orderBy(asc(modelMappings.externalName));
     return rows;
   },

@@ -1,7 +1,11 @@
 import { WalletIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import type { PaymentOrdersPage, PaymentOrderRow, PaymentChannelsResult } from '@tokenlens/api-client';
+import type {
+  PaymentOrdersPage,
+  PaymentOrderRow,
+  PaymentChannelsResult,
+} from '@tokenlens/api-client';
 import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tokenlens/ui';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
@@ -36,12 +40,15 @@ export default async function BillingPage() {
     {
       key: 'createdAt',
       header: tCommon('time'),
-      cell: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>,
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
+      ),
     },
     {
       key: 'provider',
       header: tCommon('channel'),
-      cell: (r) => (r.provider === 'epay' ? t('onlinePay') : r.provider === 'stripe' ? 'Stripe' : r.provider),
+      cell: (r) =>
+        r.provider === 'epay' ? t('onlinePay') : r.provider === 'stripe' ? 'Stripe' : r.provider,
     },
     {
       key: 'amount',

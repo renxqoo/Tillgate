@@ -8,12 +8,19 @@ import { ConfirmDialog, toast } from '@tokenlens/ui';
 import { actionResult } from './action-result';
 
 /**
- * 确认弹窗 → pending → server action → toast 的统一封装（render-prop 拿
- * pending/onClick，不额外渲染 DOM 包裹层；不传 confirm 则跳过确认直接执行）。
+ * 确认弹窗 → pending → server action → toast 的统一封装(render-prop 拿
+ * pending/onClick,不额外渲染 DOM 包裹层;不传 confirm 则跳过确认直接执行)。
  * 二次确认用 ui 包 ConfirmDialog(shadcn AlertDialog 风格),不用 window.confirm。
+ *
+ * 触发器是菜单项(DropdownMenuItem)时,禁止把本组件塞进 RowActions/菜单
+ * content 里:菜单点选后关闭会卸载整个 content,弹窗连同内部状态一起被卸掉,
+ * 表现为弹窗闪一下就消失。这种情况改用受控模式——菜单项 onClick 只调
+ * onOpenChange(true),本组件挂在菜单外(与 EditKeyDialog 等摆法一致)。
  */
 export function ConfirmAction({
   confirm,
+  open: openProp,
+  onOpenChange,
   action,
   errorTitle,
   success,
@@ -22,18 +29,25 @@ export function ConfirmAction({
   children,
 }: {
   confirm?: string;
-  /** 弹窗标题；缺省复用 ui.confirmTitle */
+  /** 弹窗标题;缺省复用 ui.confirmTitle */
   title?: string;
+  /** 外部受控打开状态(触发器在菜单里时必用,见顶部注释);须与 onOpenChange 成对传 */
+  open?: boolean;
+  /** 受控模式的关闭回调(取消/确认成功后由 ConfirmDialog 调 false) */
+  onOpenChange?: (open: boolean) => void;
   action: () => Promise<{ error?: string }>;
   errorTitle?: string;
   success?: string;
   /** 弹窗语气;删除等不可逆操作用 destructive(默认) */
   tone?: 'default' | 'destructive';
-  children: (ctx: { pending: boolean; onClick: (e: MouseEvent) => void }) => ReactNode;
+  /** 受控模式下可不传(不渲染触发器,弹窗由外部状态驱动) */
+  children?: (ctx: { pending: boolean; onClick: (e: MouseEvent) => void }) => ReactNode;
 }) {
   const tUi = useTranslations('ui');
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const dialogOpen = openProp ?? innerOpen;
+  const setDialogOpen = onOpenChange ?? setInnerOpen;
 
   function onClick(e: MouseEvent) {
     e.preventDefault();
@@ -57,7 +71,7 @@ export function ConfirmAction({
 
   return (
     <>
-      {children({ pending, onClick })}
+      {children ? children({ pending, onClick }) : null}
       {confirm !== undefined ? (
         <ConfirmDialog
           open={dialogOpen}

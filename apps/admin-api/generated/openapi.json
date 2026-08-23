@@ -77,6 +77,9 @@
     },
     {
       "name": "notifications"
+    },
+    {
+      "name": "settings"
     }
   ],
   "components": {
@@ -120,6 +123,10 @@
           },
           "twoFactorEnabled": {
             "description": "邮箱验证码二次登录已开启",
+            "type": "boolean"
+          },
+          "totpEnabled": {
+            "description": "TOTP 验证器已绑定（接管第二因子）",
             "type": "boolean"
           }
         },
@@ -424,6 +431,17 @@
           "failCount": {
             "type": "number"
           },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "记录面逻辑删除时刻(回收站);null = 在册"
+          },
           "cooldownUntil": {
             "anyOf": [
               {
@@ -522,6 +540,7 @@
           "priority",
           "status",
           "failCount",
+          "deletedAt",
           "cooldownUntil",
           "rpmLimit",
           "tpmLimit",
@@ -786,6 +805,17 @@
           "status": {
             "type": "number"
           },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "记录面逻辑删除时刻(回收站);null = 在册"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -801,6 +831,7 @@
           "protocol",
           "vendor",
           "status",
+          "deletedAt",
           "createdAt"
         ],
         "description": "管理面供应商行(GET /v1/providers)"
@@ -987,6 +1018,17 @@
           "status": {
             "type": "number"
           },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "记录面逻辑删除时刻(回收站);null = 在册"
+          },
           "createdAt": {
             "type": "string"
           },
@@ -1017,6 +1059,7 @@
           "rpmLimit",
           "tpmLimit",
           "status",
+          "deletedAt",
           "createdAt",
           "updatedAt",
           "channelIds"
@@ -1093,7 +1136,8 @@
                     "type": "string",
                     "enum": [
                       "flat",
-                      "variant"
+                      "variant",
+                      "schedule"
                     ]
                   },
                   "params": {
@@ -1116,6 +1160,48 @@
                         },
                         "additionalProperties": {
                           "type": "string"
+                        }
+                      },
+                      "windows": {
+                        "minItems": 1,
+                        "maxItems": 24,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 32
+                            },
+                            "start": {
+                              "type": "string",
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                            },
+                            "end": {
+                              "type": "string",
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                            },
+                            "inputPrice": {
+                              "type": "string"
+                            },
+                            "outputPrice": {
+                              "type": "string"
+                            },
+                            "cacheInputPrice": {
+                              "type": "string"
+                            },
+                            "cacheWritePrice": {
+                              "type": "string"
+                            },
+                            "unitPrice": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end"
+                          ]
                         }
                       }
                     }
@@ -1331,7 +1417,8 @@
                     "type": "string",
                     "enum": [
                       "flat",
-                      "variant"
+                      "variant",
+                      "schedule"
                     ]
                   },
                   "params": {
@@ -1354,6 +1441,48 @@
                         },
                         "additionalProperties": {
                           "type": "string"
+                        }
+                      },
+                      "windows": {
+                        "minItems": 1,
+                        "maxItems": 24,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 32
+                            },
+                            "start": {
+                              "type": "string",
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                            },
+                            "end": {
+                              "type": "string",
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                            },
+                            "inputPrice": {
+                              "type": "string"
+                            },
+                            "outputPrice": {
+                              "type": "string"
+                            },
+                            "cacheInputPrice": {
+                              "type": "string"
+                            },
+                            "cacheWritePrice": {
+                              "type": "string"
+                            },
+                            "unitPrice": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "start",
+                            "end"
+                          ]
                         }
                       }
                     }
@@ -3374,6 +3503,29 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "method": {
+                          "type": "string",
+                          "const": "totp",
+                          "description": "TOTP 已绑定——客户端改走 /v1/auth/login/totp"
+                        }
+                      },
+                      "required": [
+                        "twoFactorRequired",
+                        "method"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "twoFactorRequired": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "method": {
+                          "description": "邮箱验证码（旧形态）",
+                          "type": "string",
+                          "const": "email"
+                        },
                         "challengeId": {
                           "type": "string",
                           "description": "2FA 半程挑战 id（verify 免二次鉴别）"
@@ -3400,6 +3552,220 @@
                         "adminId"
                       ]
                     }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login/totp": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "TOTP 第二步登录（重验凭证 + 验证器/恢复码）",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "code": {
+                    "type": "string",
+                    "pattern": "^([0-9]{6}|[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10})$"
+                  }
+                },
+                "required": [
+                  "email",
+                  "password",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "TOTP 第二步登录（重验凭证 + 验证器/恢复码） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string",
+                      "description": "Bearer 会话 JWT"
+                    },
+                    "adminId": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "token",
+                    "adminId"
                   ]
                 }
               }
@@ -3937,6 +4303,324 @@
                   "required": [
                     "token",
                     "adminId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/totp/enroll": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "TOTP 挂起注册（返回 base32 密钥与 otpauth URL,扫码确认前不参与登录）",
+        "responses": {
+          "200": {
+            "description": "TOTP 挂起注册（返回 base32 密钥与 otpauth URL,扫码确认前不参与登录） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "secret": {
+                      "type": "string",
+                      "description": "base32 密钥（仅本次返回）"
+                    },
+                    "otpauthUrl": {
+                      "type": "string",
+                      "description": "otpauth:// 二维码内容"
+                    }
+                  },
+                  "required": [
+                    "secret",
+                    "otpauthUrl"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/totp/confirm": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "TOTP 确认绑定（验当前码 → 生效 + 整组恢复码,仅此一次返回明文）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^([0-9]{6}|[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10})$"
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "TOTP 确认绑定（验当前码 → 生效 + 整组恢复码,仅此一次返回明文） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recoveryCodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "一次性恢复码(保存后不可再取)"
+                    }
+                  },
+                  "required": [
+                    "recoveryCodes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me/totp/disable": {
+      "post": {
+        "tags": [
+          "me"
+        ],
+        "summary": "TOTP 解绑（须持有效验证器/恢复码）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^([0-9]{6}|[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{10})$"
+                  }
+                },
+                "required": [
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "TOTP 解绑（须持有效验证器/恢复码） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
                   ]
                 }
               }
@@ -6319,7 +7003,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "供应商列表",
+        "summary": "供应商列表（view=deleted = 回收站）",
         "parameters": [
           {
             "name": "page",
@@ -6375,11 +7059,23 @@
                 "desc"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "供应商列表 成功响应",
+            "description": "供应商列表（view=deleted = 回收站） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -6853,7 +7549,7 @@
         "tags": [
           "providers"
         ],
-        "summary": "供应商软退役",
+        "summary": "删除供应商（逻辑删除/回收站：行与渠道引用保留，名称释放可复用；禁用走 PATCH status=1）",
         "parameters": [
           {
             "name": "id",
@@ -6869,7 +7565,7 @@
         ],
         "responses": {
           "200": {
-            "description": "供应商软退役 成功响应",
+            "description": "删除供应商（逻辑删除/回收站：行与渠道引用保留，名称释放可复用；禁用走 PATCH status=1） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -7001,12 +7697,128 @@
         }
       }
     },
+    "/v1/providers/:id/restore": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "恢复已删除的供应商（回收站取出，回禁用态不直接启用；在册行调用 → 404）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "供应商 id",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "恢复已删除的供应商（回收站取出，回禁用态不直接启用；在册行调用 → 404） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/channels": {
       "get": {
         "tags": [
           "channels"
         ],
-        "summary": "渠道列表（富化投影）",
+        "summary": "渠道列表（富化投影；view=deleted = 回收站）",
         "parameters": [
           {
             "name": "page",
@@ -7062,11 +7874,23 @@
                 "desc"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "渠道列表（富化投影） 成功响应",
+            "description": "渠道列表（富化投影；view=deleted = 回收站） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -7581,7 +8405,7 @@
         "tags": [
           "channels"
         ],
-        "summary": "渠道软退役",
+        "summary": "删除渠道（逻辑删除/回收站：绑定/流水保留，名称释放可复用；在册映射绑定中 → 409；停用走 PATCH status=1）",
         "parameters": [
           {
             "name": "id",
@@ -7597,7 +8421,7 @@
         ],
         "responses": {
           "200": {
-            "description": "渠道软退役 成功响应",
+            "description": "删除渠道（逻辑删除/回收站：绑定/流水保留，名称释放可复用；在册映射绑定中 → 409；停用走 PATCH status=1） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -7690,6 +8514,122 @@
             }
           },
           "409": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/channels/:id/restore": {
+      "post": {
+        "tags": [
+          "channels"
+        ],
+        "summary": "恢复已删除的渠道（回收站取出，回停用态不直接启用；在册行调用 → 404）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "渠道 id",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "恢复已删除的渠道（回收站取出，回停用态不直接启用；在册行调用 → 404） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {
@@ -8963,7 +9903,7 @@
         "tags": [
           "models"
         ],
-        "summary": "模型映射列表（channelIds 回显）",
+        "summary": "模型映射列表（channelIds 回显；view=deleted = 回收站）",
         "parameters": [
           {
             "name": "page",
@@ -9019,11 +9959,23 @@
                 "desc"
               ]
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "deleted"
+              ]
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "模型映射列表（channelIds 回显） 成功响应",
+            "description": "模型映射列表（channelIds 回显；view=deleted = 回收站） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -9465,7 +10417,7 @@
         "tags": [
           "models"
         ],
-        "summary": "模型软下架",
+        "summary": "删除模型映射（逻辑删除/回收站：记录与绑定保留，外部名释放可复用；下架走 PATCH status=1）",
         "parameters": [
           {
             "name": "id",
@@ -9481,7 +10433,7 @@
         ],
         "responses": {
           "200": {
-            "description": "模型软下架 成功响应",
+            "description": "删除模型映射（逻辑删除/回收站：记录与绑定保留，外部名释放可复用；下架走 PATCH status=1） 成功响应",
             "content": {
               "application/json": {
                 "schema": {
@@ -9574,6 +10526,122 @@
             }
           },
           "409": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models/:id/restore": {
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "恢复已删除的模型映射（回收站取出，回下架态不直接上架；在册行调用 → 404）",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "模型映射 id",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "恢复已删除的模型映射（回收站取出，回下架态不直接上架；在册行调用 → 404） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {
@@ -20365,6 +21433,202 @@
             }
           },
           "404": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/settings/billing-timezone": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "计费时区读（null = 未配置，消费方回落缺省 Asia/Shanghai）",
+        "responses": {
+          "200": {
+            "description": "计费时区读（null = 未配置，消费方回落缺省 Asia/Shanghai） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "timezone"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "计费时区写（IANA 名；生效节奏 = 网关缓存 TTL，历史账单自带时段标签不受影响）",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "timezone": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "timezone"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "计费时区写（IANA 名；生效节奏 = 网关缓存 TTL，历史账单自带时段标签不受影响） 成功响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timezone": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
+                  },
+                  "required": [
+                    "timezone"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "错误响应（统一信封 { error: { code, message, context? } }）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "context": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {}
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
             "description": "错误响应（统一信封 { error: { code, message, context? } }）",
             "content": {
               "application/json": {

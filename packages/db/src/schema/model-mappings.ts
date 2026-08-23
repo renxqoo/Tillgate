@@ -19,13 +19,24 @@ import { channels } from './channels.js';
  * model_mappings — 模型映射（对外模型名 → 真实模型）
  * 定价：input/output/cache_input 均为**官方价**（元/百万 token），用户价 = 官方价 × 费率卡系数
  */
-/** 计费配置 JSONB 形状（列 $type 与仓储输入共用——variant=分辨率差价价格表） */
+/** 计费配置 JSONB 形状（列 $type 与仓储输入共用——variant=分辨率差价 / schedule=分时段窗口价格表） */
 export interface BillingConfigJson {
   strategy?: string;
   params?: {
     unitPrice?: string;
     selector?: string;
     prices?: Record<string, string>;
+    /** schedule：分时段窗口（N 档；未命中时段回落基价列）——结构契约与 billing PricingWindow 对齐 */
+    windows?: Array<{
+      label?: string;
+      start: string;
+      end: string;
+      inputPrice?: string;
+      outputPrice?: string;
+      cacheInputPrice?: string;
+      cacheWritePrice?: string;
+      unitPrice?: string;
+    }>;
   };
   reservation?: { strategy?: string; params?: Record<string, unknown> };
 }
@@ -97,11 +108,21 @@ export const modelMappings = pgTable(
     billingPolicy: jsonb('billing_policy').$type<Record<string, unknown>>(),
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
+    /**
+     * 记录面逻辑删除（回收站）：NULL = 在册；非空 = 已删除（记录保留，历史计费/
+     * 渠道绑定可追溯）。删除同时强制 status=1（热路径 status=0 过滤天然排除）；
+     * 恢复记录回到下架态（不直接复活上架）。外部名唯一约束为部分索引——
+     * 已删除记录不占用外部名，可重建/再导入同名映射。
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex('model_mappings_external_name_uq').on(t.externalName),
+    // 部分唯一：仅约束在册记录——逻辑删除后外部名释放，可重建/再导入同名
+    uniqueIndex('model_mappings_external_name_uq')
+      .on(t.externalName)
+      .where(sql`deleted_at IS NULL`),
     index('model_mappings_pricing_group_idx').on(t.pricingGroup),
     // 价格非负（入口 zod 已拦，DB 兜底——负价经 calcAmount 钳 0 会静默免费）
     check(

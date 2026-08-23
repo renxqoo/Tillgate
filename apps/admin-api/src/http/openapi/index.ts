@@ -24,6 +24,7 @@ import { observabilityEndpoints } from './observability';
 import { inferenceEndpoints } from './inference';
 import { marketingEndpoints } from './marketing';
 import { notificationsEndpoints } from './notifications';
+import { settingsEndpoints } from './settings';
 import { errorEnvelopeSchema, requestBody, responseComponent } from './shared';
 import type { DtoComponent, OpenApiEndpoint } from './shared';
 import {
@@ -81,6 +82,7 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
   ...inferenceEndpoints,
   ...marketingEndpoints,
   ...notificationsEndpoints,
+  ...settingsEndpoints,
 ];
 
 // ---- DTO 组件登记（顺序 = api-client 生成物导出顺序;与换轨前手写版逐名对齐）----

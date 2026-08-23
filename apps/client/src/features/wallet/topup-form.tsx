@@ -5,7 +5,20 @@ import { useState } from 'react';
 import { Loader2Icon, WalletIcon } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, FieldError, FieldGroup, FieldLabel, Input, toast } from '@tokenlens/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  Input,
+  toast,
+} from '@tokenlens/ui';
 
 import { formatMoney } from '@/features/shared/format';
 import { TOPUP_PRESETS, isValidTopupAmount } from '@/features/wallet/topup-schema';

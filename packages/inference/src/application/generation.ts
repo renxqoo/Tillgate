@@ -49,6 +49,8 @@ export function createGenerationUseCase(deps: ExecutionDeps & { tasks: Generatio
   return {
     async submit(input: GenerationSubmitInput): Promise<GenerationSubmitOutcome> {
       const requestId = input.requestId ?? randomUUID();
+      // 分时段选价锚点 = 任务提交时刻（异步生成同 chat 口径：授权时快照）
+      const submittedAt = new Date();
       const descriptor = generationKindDescriptor(input.kind);
       if (descriptor == null) {
         // 类型面已收窄；JS 调用方绕过类型时的装配缺陷
@@ -62,7 +64,7 @@ export function createGenerationUseCase(deps: ExecutionDeps & { tasks: Generatio
       if (input.auth.allowedModels != null && !input.auth.allowedModels.includes(externalModel)) {
         throw InferenceErrors.business('model_not_allowed', { model: externalModel });
       }
-      const pricing = { userId: input.auth.userId, body: input.body };
+      const pricing = { userId: input.auth.userId, body: input.body, now: submittedAt };
       const mapping = await deps.catalog.findMapping(externalModel, pricing);
       if (mapping == null) {
         throw InferenceErrors.business('model_not_found', { model: externalModel });

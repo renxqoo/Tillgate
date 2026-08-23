@@ -42,6 +42,7 @@ function setup() {
         upstreamBudget: '100',
         upstreamReserved: '0',
         upstreamThreshold: null,
+        deletedAt: null,
       },
     ],
   );

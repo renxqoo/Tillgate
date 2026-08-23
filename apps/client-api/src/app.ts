@@ -21,6 +21,7 @@ import {
   type SessionValidator,
 } from './http/middleware/session.js';
 import { authRoutes, type AuthDeps } from './http/routes/auth.js';
+import { forgotRoutes } from './http/routes/auth-forgot.js';
 import { meRoutes, type MeDeps } from './http/routes/me.js';
 import { keysRoutes, type KeysDeps } from './http/routes/keys.js';
 import { appsRoutes, type AppsDeps } from './http/routes/apps.js';
@@ -100,6 +101,7 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
   });
 
   app.route('/', authRoutes(deps.auth, session));
+  app.route('/', forgotRoutes(deps.auth));
   app.route('/', meRoutes(deps.me, session));
   app.route('/', keysRoutes(deps.keys, session));
   app.route('/', appsRoutes(deps.apps, session));

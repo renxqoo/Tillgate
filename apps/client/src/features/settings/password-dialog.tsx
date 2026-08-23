@@ -5,7 +5,15 @@ import { useState } from 'react';
 import { KeyRoundIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@tokenlens/ui';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@tokenlens/ui';
 
 import { PasswordForm } from './password-form';
 

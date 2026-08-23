@@ -57,7 +57,7 @@ describe('facade 缺省构造（audit/voucher/cache/store 不注入 → postgres
       voucherMaxBytes: 1024,
       fx: { sourceUrl: 'https://fx.example', autoTtlMs: 1000, fetchTimeoutMs: 1000 },
     });
-    expect(Object.keys(controlPlane)).toHaveLength(7);
+    expect(Object.keys(controlPlane)).toHaveLength(8);
   });
 });
 
@@ -104,6 +104,7 @@ describe('并发竞态路径（唯一索引兜底翻译）', () => {
         vendor: null,
         baseUrl: 'https://x.example/v1',
         status: 0,
+        deletedAt: null,
         createdAt: new Date(),
       },
     ]);
@@ -175,6 +176,7 @@ function channelFieldDeps() {
       vendor: null,
       baseUrl: 'https://p.example/v1',
       status: 0,
+      deletedAt: null,
       createdAt: new Date(),
     },
   ]);

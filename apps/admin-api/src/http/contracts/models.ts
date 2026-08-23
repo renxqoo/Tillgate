@@ -40,15 +40,30 @@ const billingPolicySchema = z.object({
     .strict(),
 });
 
-/** 变体价格配置（分辨率差价）：selector=请求参数名（如 size），prices=参数值→单价 */
+/** 分时段窗口（schedule 策略）：HH:MM 边界左闭右开，end < start = 跨午夜；价格字段写哪个覆盖哪个 */
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'must be HH:MM (00:00-23:59)');
+
+const pricingWindowSchema = z.object({
+  label: z.string().min(1).max(32).optional(),
+  start: hhmm,
+  end: hhmm,
+  inputPrice: price.optional(),
+  outputPrice: price.optional(),
+  cacheInputPrice: price.optional(),
+  cacheWritePrice: price.optional(),
+  unitPrice: price.optional(),
+});
+
+/** 计费配置：variant=分辨率差价 / schedule=分时段窗口（重叠与形状深校验在 control-plane 域） */
 const billingConfigSchema = z
   .object({
-    strategy: z.enum(['flat', 'variant']),
+    strategy: z.enum(['flat', 'variant', 'schedule']),
     params: z
       .object({
         unitPrice: price.optional(),
         selector: z.string().min(1).max(64).optional(),
         prices: z.record(z.string().min(1).max(128), price).optional(),
+        windows: z.array(pricingWindowSchema).min(1).max(24).optional(),
       })
       .optional(),
   })
@@ -61,6 +76,10 @@ const billingConfigSchema = z
   .refine(
     (c) => c.strategy !== 'variant' || c.params?.selector != null,
     'variant strategy requires a selector (request parameter name, e.g. size)',
+  )
+  .refine(
+    (c) => c.strategy !== 'schedule' || (c.params?.windows != null && c.params.windows.length > 0),
+    'schedule strategy requires a non-empty windows table',
   );
 
 const pricingUnit = z.enum(['token', 'request', 'image', 'second', 'char']);

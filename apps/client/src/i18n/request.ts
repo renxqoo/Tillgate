@@ -10,7 +10,10 @@ import { LOCALE_COOKIE, resolveLocale } from '@tokenlens/api-client/next';
  */
 export default getRequestConfig(async () => {
   const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
-  const locale = resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'));
+  const locale = resolveLocale(
+    cookieStore.get(LOCALE_COOKIE)?.value,
+    headerStore.get('accept-language'),
+  );
   return {
     locale,
     messages: (await import(`../../messages/${locale}.json`)).default,

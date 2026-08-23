@@ -4,6 +4,7 @@
  * domain 不 import db；装配点由类型系统校验一致性）。
  */
 import type { ErrorContext } from '@tokenlens/errors';
+import { validateScheduleWindows, type PricingWindow } from '@tokenlens/billing';
 import { controlPlaneErrors } from '../../errors';
 import { parseNonNegativeAmount } from '../money';
 import { freePriceConsistent } from './model-pricing';
@@ -19,6 +20,8 @@ export interface BillingConfig {
     unitPrice?: string;
     selector?: string;
     prices?: Record<string, string>;
+    /** schedule：分时段窗口（N 档；未命中时段回落基价列） */
+    windows?: PricingWindow[];
   };
   reservation?: { strategy?: string; params?: Record<string, unknown> };
 }
@@ -70,10 +73,10 @@ function assertPrice(field: string, raw: string): void {
   if (parseNonNegativeAmount(raw) == null) invalid({ [field]: raw });
 }
 
-/** 变体计费配置形状：variant 必须带 selector 与非空 prices 表；flat 无要求 */
+/** 变体计费配置形状：variant 必须带 selector 与非空 prices 表；schedule 必须带合法窗口表 */
 function assertBillingConfig(config: BillingConfig | null | undefined): void {
   if (config == null) return;
-  if (config.strategy !== 'flat' && config.strategy !== 'variant') {
+  if (config.strategy !== 'flat' && config.strategy !== 'variant' && config.strategy !== 'schedule') {
     invalid({ billingConfig: { strategy: config.strategy ?? null } });
   }
   if (
@@ -95,6 +98,31 @@ function assertBillingConfig(config: BillingConfig | null | undefined): void {
     }
     if (config.params?.selector == null) {
       invalid({ billingConfig: 'variant strategy requires a selector' });
+    }
+  }
+  if (config.strategy === 'schedule') assertScheduleConfig(config);
+}
+
+/** schedule 窗口表校验：形状/重叠归 billing 纯函数（单一真相），价格数值域与 label 长度在此把关 */
+function assertScheduleConfig(config: BillingConfig): void {
+  const windows = config.params?.windows ?? [];
+  const issue = validateScheduleWindows(windows);
+  if (issue != null) invalid({ billingConfig: issue });
+  for (const [index, window] of windows.entries()) {
+    if (window.label !== undefined && (window.label.length < 1 || window.label.length > 32)) {
+      invalid({ billingConfig: { window: index, label: window.label } });
+    }
+    const priceFields = {
+      inputPrice: window.inputPrice,
+      outputPrice: window.outputPrice,
+      cacheInputPrice: window.cacheInputPrice,
+      cacheWritePrice: window.cacheWritePrice,
+      unitPrice: window.unitPrice,
+    } as const;
+    for (const [field, value] of Object.entries(priceFields)) {
+      if (value !== undefined && parseNonNegativeAmount(value) == null) {
+        invalid({ billingConfig: { window: index, [field]: value } });
+      }
     }
   }
 }

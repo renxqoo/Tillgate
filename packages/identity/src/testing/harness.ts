@@ -82,6 +82,18 @@ export function createInMemoryMailer(): InMemoryMailer {
       }
       sent.push({ to, code, ip: ctx.ip, ...(ctx.locale != null ? { locale: ctx.locale } : {}) });
     },
+    async sendPasswordResetLink(to, url, ctx) {
+      if (fail) {
+        fail = false;
+        throw new Error('smtp delivery failed');
+      }
+      sent.push({
+        to,
+        code: url,
+        ip: ctx.ip,
+        ...(ctx.locale != null ? { locale: ctx.locale } : {}),
+      });
+    },
   };
 }
 

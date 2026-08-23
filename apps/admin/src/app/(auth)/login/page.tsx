@@ -27,7 +27,7 @@ export default async function LoginPage({
         <LandingLocaleToggle />
       </div>
 
-      <div className="flex w-full max-w-[350px] flex-col items-center gap-8">
+      <div className="flex w-full max-w-[370px] flex-col items-center gap-8">
         <div className="flex flex-col items-center gap-3">
           <span className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
             <ScanEye className="size-8" />

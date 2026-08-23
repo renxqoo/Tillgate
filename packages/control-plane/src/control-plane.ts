@@ -20,6 +20,12 @@ import {
 } from './adapters/postgres/audit';
 import { postgresChannelStore } from './adapters/postgres/channel-store';
 import { postgresFxStore } from './adapters/postgres/fx-store';
+import { postgresSettingsStore } from './adapters/postgres/settings-store';
+import { readBillingTimezone } from './application/settings/read-billing-timezone';
+import {
+  updateBillingTimezone,
+  type UpdateBillingTimezoneInput,
+} from './application/settings/update-billing-timezone';
 import { postgresModelStore } from './adapters/postgres/model-store';
 import { postgresOperationsStore } from './adapters/postgres/operations-store';
 import { postgresAdminStore } from './adapters/postgres/admin-store';
@@ -28,11 +34,19 @@ import { postgresRateCardStore } from './adapters/postgres/rate-card-store';
 import { createPostgresVoucherStorage } from './adapters/postgres/voucher-storage';
 import { createProvider, type CreateProviderInput } from './application/providers/create-provider';
 import { updateProvider, type UpdateProviderInput } from './application/providers/update-provider';
-import { retireProvider, type RetireProviderInput } from './application/providers/retire-provider';
+import { deleteProvider, type DeleteProviderInput } from './application/providers/delete-provider';
+import {
+  undeleteProvider,
+  type UndeleteProviderInput,
+} from './application/providers/undelete-provider';
 import { listProviders } from './application/providers/list-providers';
 import { createChannel, type CreateChannelInput } from './application/channels/create-channel';
 import { updateChannel, type UpdateChannelInput } from './application/channels/update-channel';
-import { retireChannel, type RetireChannelInput } from './application/channels/retire-channel';
+import { deleteChannel, type DeleteChannelInput } from './application/channels/delete-channel';
+import {
+  undeleteChannel,
+  type UndeleteChannelInput,
+} from './application/channels/undelete-channel';
 import { listChannels, type ListChannelsResult } from './application/channels/list-channels';
 import {
   importChannels,
@@ -53,7 +67,8 @@ import { setTwoFactorEnabled } from './application/admins/set-two-factor-enabled
 import type { AdminRecord } from './ports/admin-store';
 import { createModel, type CreateModelInput } from './application/models/create-model';
 import { updateModel, type UpdateModelInput } from './application/models/update-model';
-import { retireModel, type RetireModelInput } from './application/models/retire-model';
+import { deleteModel, type DeleteModelInput } from './application/models/delete-model';
+import { undeleteModel, type UndeleteModelInput } from './application/models/undelete-model';
 import { listModels } from './application/models/list-models';
 import {
   bindModelChannels,
@@ -138,6 +153,7 @@ export interface ControlPlaneEnv {
     readonly model?: import('./ports/model-store').ModelStore;
     readonly rateCard?: import('./ports/rate-card-store').RateCardStore;
     readonly fx?: import('./ports/fx-store').FxStore;
+    readonly settings?: import('./ports/settings-store').SettingsStore;
     readonly audit?: import('./ports/audit-store').AuditStore;
     readonly operations?: import('./ports/operations-store').OperationsStore;
     readonly admin?: import('./ports/admin-store').AdminStore;
@@ -148,25 +164,36 @@ export interface ControlPlane {
   readonly providers: {
     create(input: CreateProviderInput): Promise<ProviderRecord>;
     update(input: UpdateProviderInput): Promise<ProviderRecord>;
-    retire(input: RetireProviderInput): Promise<{ ok: true }>;
+    /** 逻辑删除（回收站）：status→1 + deleted_at；行与渠道引用保留（禁用走 update status=1） */
+    delete(input: DeleteProviderInput): Promise<{ ok: true }>;
+    /** 恢复已删除记录：回禁用态（不直接启用） */
+    undelete(input: UndeleteProviderInput): Promise<{ ok: true }>;
     list(query: {
       q?: string;
       sortBy: ProviderSortField;
       order: 'asc' | 'desc';
       limit: number;
       offset: number;
+      /** 缺省 active（在册）；deleted = 回收站 */
+      view?: 'active' | 'deleted';
     }): Promise<ListResult<ProviderRecord>>;
   };
   readonly channels: {
     create(input: CreateChannelInput): Promise<CreatedChannel>;
     update(input: UpdateChannelInput): Promise<UpdatedChannel>;
-    retire(input: RetireChannelInput): Promise<{ ok: true }>;
+    /** 逻辑删除（回收站）：status→1 + deleted_at；绑定/流水保留（停用走 update status=1）。
+     *  下游守卫：在册映射绑定中 → channel_has_models */
+    delete(input: DeleteChannelInput): Promise<{ ok: true }>;
+    /** 恢复已删除记录：回停用态（不直接启用） */
+    undelete(input: UndeleteChannelInput): Promise<{ ok: true }>;
     list(query: {
       q?: string;
       sortBy: ChannelSortField;
       order: 'asc' | 'desc';
       limit: number;
       offset: number;
+      /** 缺省 active（在册）；deleted = 回收站 */
+      view?: 'active' | 'deleted';
     }): Promise<ListChannelsResult>;
     import(input: ImportChannelsInput): Promise<ImportChannelsResult>;
     probe(channelId: number): Promise<ProbeChannelResult>;
@@ -189,13 +216,18 @@ export interface ControlPlane {
   readonly models: {
     create(input: CreateModelInput): Promise<ModelRecord>;
     update(input: UpdateModelInput): Promise<ModelRecord>;
-    retire(input: RetireModelInput): Promise<{ ok: true }>;
+    /** 逻辑删除（回收站）：status→1 + deleted_at；记录与绑定保留可追溯（下架走 update status=1） */
+    delete(input: DeleteModelInput): Promise<{ ok: true }>;
+    /** 恢复已删除记录：回下架态（不直接复活上架） */
+    undelete(input: UndeleteModelInput): Promise<{ ok: true }>;
     list(query: {
       q?: string;
       sortBy: ModelSortField;
       order: 'asc' | 'desc';
       limit: number;
       offset: number;
+      /** 缺省 active（在册）；deleted = 回收站 */
+      view?: 'active' | 'deleted';
     }): Promise<ListModelsResult>;
     bindChannels(input: BindModelChannelsInput): Promise<{ bound: number }>;
     probe(mappingId: number): Promise<ProbeModelResult>;
@@ -231,6 +263,13 @@ export interface ControlPlane {
     clearOverride(input: ClearFxOverrideInput): Promise<FxState>;
     setBuffer(input: SetFxBufferInput): Promise<FxState>;
   };
+  /** 运营系统配置（system_configs KV）——admin settings 面 */
+  readonly settings: {
+    billingTimezone: {
+      read(): Promise<{ timezone: string | null }>;
+      update(input: UpdateBillingTimezoneInput): Promise<{ timezone: string }>;
+    };
+  };
   readonly catalog: {
     listSources(): ReturnType<typeof listCatalogSources>;
     comparison(sourceId: string): Promise<CatalogComparisonPayload>;
@@ -260,10 +299,12 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     audit: env.stores?.audit ?? postgresAuditStore,
     operations: env.stores?.operations ?? postgresOperationsStore,
     admin: env.stores?.admin ?? postgresAdminStore,
+    settings: env.stores?.settings ?? postgresSettingsStore,
   } as const;
   const adminsDeps = { db: env.db, store: stores.admin };
 
   const fxDeps: FxDeps = { db: env.db, stores: { fx: stores.fx }, audit, env: env.fx };
+  const settingsDeps = { db: env.db, stores: { settings: stores.settings }, audit };
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
 
   return {
@@ -289,8 +330,13 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
           },
           input,
         ),
-      retire: (input) =>
-        retireProvider({ db: env.db, stores: { provider: stores.provider }, audit }, input),
+      delete: (input) =>
+        deleteProvider(
+          { db: env.db, stores: { provider: stores.provider, channel: stores.channel }, audit },
+          input,
+        ),
+      undelete: (input) =>
+        undeleteProvider({ db: env.db, stores: { provider: stores.provider }, audit }, input),
       list: (query) => listProviders({ db: env.db, stores: { provider: stores.provider } }, query),
     },
     channels: {
@@ -304,8 +350,13 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
           { db: env.db, stores: { channel: stores.channel }, cipher: env.cipher, audit },
           input,
         ),
-      retire: (input) =>
-        retireChannel({ db: env.db, stores: { channel: stores.channel }, audit }, input),
+      delete: (input) =>
+        deleteChannel(
+          { db: env.db, stores: { channel: stores.channel, model: stores.model }, audit },
+          input,
+        ),
+      undelete: (input) =>
+        undeleteChannel({ db: env.db, stores: { channel: stores.channel }, audit }, input),
       list: (query) => listChannels({ db: env.db, stores: { channel: stores.channel } }, query),
       import: (input) =>
         importChannels(
@@ -356,7 +407,9 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     models: {
       create: (input) => createModel({ db: env.db, stores: { model: stores.model }, audit }, input),
       update: (input) => updateModel({ db: env.db, stores: { model: stores.model }, audit }, input),
-      retire: (input) => retireModel({ db: env.db, stores: { model: stores.model }, audit }, input),
+      delete: (input) => deleteModel({ db: env.db, stores: { model: stores.model }, audit }, input),
+      undelete: (input) =>
+        undeleteModel({ db: env.db, stores: { model: stores.model }, audit }, input),
       list: (query) => listModels({ db: env.db, stores: { model: stores.model } }, query),
       bindChannels: (input) =>
         bindModelChannels({ db: env.db, stores: { model: stores.model }, audit }, input),
@@ -388,6 +441,12 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
       setOverride: (input) => setFxOverride(fxDeps, input),
       clearOverride: (input) => clearFxOverride(fxDeps, input),
       setBuffer: (input) => setFxBuffer(fxDeps, input),
+    },
+    settings: {
+      billingTimezone: {
+        read: () => readBillingTimezone(settingsDeps),
+        update: (input) => updateBillingTimezone(settingsDeps, input),
+      },
     },
     catalog: {
       listSources: () => listCatalogSources(env.sources),

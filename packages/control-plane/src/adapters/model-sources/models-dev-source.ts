@@ -1,6 +1,7 @@
 /**
- * models.dev 目录源（reference 字典型：不建渠道，导入落草稿；本地快照零网络——
- * 在线源被墙/不可达不影响货架）。价格 $/1M，与 OpenRouter 归一口径一致。
+ * models.dev 目录源（reference 字典型：导入落草稿 + 按模型 provider 前缀
+ * find-or-create 对应渠道并绑定——realModel 形如 `provider/id`；本地快照
+ * 零网络——在线源被墙/不可达不影响货架）。价格 $/1M，与 OpenRouter 归一口径一致。
  * 快照刷新：仓根 `bun scripts/fetch-models-dev.ts`（重写 models-dev-snapshot.json）。
  */
 import { createRequire } from 'node:module';

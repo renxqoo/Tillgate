@@ -126,6 +126,7 @@ function AppRowActions({ app }: { app: AppRow }) {
   const t = useTranslations('apps');
   const tCommon = useTranslations('common');
   const [rotateOpen, setRotateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   return (
     <>
@@ -136,7 +137,9 @@ function AppRowActions({ app }: { app: AppRow }) {
               <RefreshCwIcon /> {t('rotateSecret')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DeleteInline id={app.id} name={app.name} />
+            <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2Icon /> {tCommon('delete')}
+            </DropdownMenuItem>
           </>
         ) : (
           <DropdownMenuItem disabled>{t('statusDisabled')}</DropdownMenuItem>
@@ -149,6 +152,15 @@ function AppRowActions({ app }: { app: AppRow }) {
         open={rotateOpen}
         onOpenChange={setRotateOpen}
       />
+      {/* 弹窗挂在菜单外(受控 open):菜单点选关闭时会卸载整个 content,放里面会连弹窗一起卸掉 */}
+      <ConfirmAction
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        confirm={t('deleteConfirm', { name: app.name })}
+        action={async () => deleteAppAction(app.id)}
+        errorTitle={tCommon('deleteFailed')}
+        success={t('deletedToast')}
+      />
     </>
   );
 }
@@ -159,26 +171,6 @@ function StatusBadge({ status }: { status: number }) {
     <StatusPill tone="success">{t('statusEnabled')}</StatusPill>
   ) : (
     <StatusPill tone="neutral">{t('statusDisabled')}</StatusPill>
-  );
-}
-
-function DeleteInline({ id, name }: { id: number; name: string }) {
-  const t = useTranslations('apps');
-  const tCommon = useTranslations('common');
-  return (
-    <ConfirmAction
-      confirm={t('deleteConfirm', { name })}
-      action={async () => deleteAppAction(id)}
-      errorTitle={tCommon('deleteFailed')}
-      success={t('deletedToast')}
-    >
-      {({ pending, onClick }) => (
-        <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
-          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          {tCommon('delete')}
-        </DropdownMenuItem>
-      )}
-    </ConfirmAction>
   );
 }
 

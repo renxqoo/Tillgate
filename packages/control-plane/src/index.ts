@@ -58,10 +58,13 @@ export { createMemoryCatalogCache } from './ports/cache';
 // ---- 用例出入参（app 路由层契约）----
 export type { CreateProviderInput } from './application/providers/create-provider';
 export type { UpdateProviderInput } from './application/providers/update-provider';
-export type { RetireProviderInput } from './application/providers/retire-provider';
+export type { DeleteProviderInput } from './application/providers/delete-provider';
+export type { UndeleteProviderInput } from './application/providers/undelete-provider';
+export type { ProviderListQuery } from './ports/provider-store';
 export type { CreateChannelInput } from './application/channels/create-channel';
 export type { UpdateChannelInput } from './application/channels/update-channel';
-export type { RetireChannelInput } from './application/channels/retire-channel';
+export type { DeleteChannelInput } from './application/channels/delete-channel';
+export type { UndeleteChannelInput } from './application/channels/undelete-channel';
 export type {
   ImportChannelsInput,
   ImportChannelsResult,
@@ -71,7 +74,9 @@ export type { AdjustChannelInput } from './application/channels/adjust-channel';
 export type { ListRechargesInput } from './application/channels/list-recharges';
 export type { CreateModelInput } from './application/models/create-model';
 export type { UpdateModelInput } from './application/models/update-model';
-export type { RetireModelInput } from './application/models/retire-model';
+export type { DeleteModelInput } from './application/models/delete-model';
+export type { UndeleteModelInput } from './application/models/undelete-model';
+export type { ListModelsQuery } from './application/models/list-models';
 export type { BindModelChannelsInput } from './application/models/bind-model-channels';
 export type { CreateRateCardInput } from './application/rates/create-rate-card';
 export type { UpdateRateCardInput } from './application/rates/update-rate-card';

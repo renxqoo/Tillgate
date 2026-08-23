@@ -106,10 +106,11 @@ export async function registerVerifyAction(
 ): Promise<{ error?: string }> {
   let body: LoginVerifyResult;
   try {
-    body = await createClientApi().post<LoginVerifyResult>(
-      '/v1/auth/register/verify',
-      { challengeId, code, ...(aff ? { aff } : {}) },
-    );
+    body = await createClientApi().post<LoginVerifyResult>('/v1/auth/register/verify', {
+      challengeId,
+      code,
+      ...(aff ? { aff } : {}),
+    });
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : await fetchError() };
   }
@@ -127,4 +128,37 @@ export async function logoutAction(): Promise<void> {
   }
   await clearSessionCookie();
   redirect('/login');
+}
+
+/**
+ * 找回密码（链接制）:发起（仅邮箱——存在性不泄漏,恒 {ok}）→ 邮箱收到一次性
+ * 重置链接（30 分钟有效）→ /reset-password 页提交新密码（token 单次消费,
+ * 重置成功该账号全部旧会话下线）→ 成功页倒计时回登录。
+ */
+export async function forgotAction(formData: FormData): Promise<{ ok?: boolean; error?: string }> {
+  const t = await getTranslations('auth');
+  const email = String(formData.get('email') ?? '').trim();
+  if (!email) return { error: t('emailRequired') };
+  try {
+    const body = await createClientApi().post<{ ok: true }>('/v1/auth/forgot', { email });
+    return { ok: body.ok };
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  }
+}
+
+export async function forgotResetAction(
+  token: string,
+  password: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  let body: { ok: true };
+  try {
+    body = await createClientApi().post<{ ok: true }>('/v1/auth/forgot/reset', {
+      token,
+      password,
+    });
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  }
+  return { ok: body.ok };
 }

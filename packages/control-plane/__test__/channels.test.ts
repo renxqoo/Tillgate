@@ -1,12 +1,14 @@
 /**
- * 渠道用例（v1 channels.test.ts 等价迁移）：
+ * 渠道用例（v1 channels.test.ts 等价迁移 + 逻辑删除回收站）：
  * 密钥生命周期（落库即密文/返回体无密钥事实/换 Key 复位运行态）/
- * 批量导入 best-effort / 探针真解密 + 回显仅 keyPreview / 列表富化 / 404 族。
+ * 批量导入 best-effort / 探针真解密 + 回显仅 keyPreview / 列表富化 / 404 族 /
+ * 软删守卫（在册绑定拒绝）-回收站-恢复-名称复用。
  */
 import { describe, expect, it } from 'vitest';
 import { createChannel } from '../src/application/channels/create-channel';
 import { updateChannel } from '../src/application/channels/update-channel';
-import { retireChannel } from '../src/application/channels/retire-channel';
+import { deleteChannel } from '../src/application/channels/delete-channel';
+import { undeleteChannel } from '../src/application/channels/undelete-channel';
 import { listChannels } from '../src/application/channels/list-channels';
 import { importChannels } from '../src/application/channels/import-channels';
 import { probeChannel } from '../src/application/channels/probe-channel';
@@ -31,6 +33,7 @@ function setup() {
       vendor: null,
       baseUrl: 'https://example.com/v1',
       status: 0,
+      deletedAt: null,
       createdAt: new Date(),
     },
   ]);
@@ -111,16 +114,95 @@ describe('渠道更新与退役', () => {
     expect(channels.rows.get(created.id)!.status).toBe(4);
   });
 
-  it('更新/退役不存在 → channel_not_found', async () => {
+  it('更新/删除不存在 → channel_not_found', async () => {
     const { deps } = setup();
     await expect(
       updateChannel(deps, { ctx: adminCtx(), channelId: 999999999, patch: { name: 'x' } }),
     ).rejects.toMatchObject({ code: 'control_plane.channel_not_found' });
     await expect(
-      retireChannel(deps, { ctx: adminCtx(), channelId: 999999999 }),
+      deleteChannel(deps, { ctx: adminCtx(), channelId: 999999999 }),
     ).rejects.toMatchObject({
       code: 'control_plane.channel_not_found',
     });
+  });
+});
+
+/** 回收站用例共享：建渠道（缺省名 recycle-ch） */
+async function createOk(deps: ReturnType<typeof setup>['deps'], name = 'recycle-ch') {
+  return createChannel(deps, { ctx: adminCtx(), providerId: 1, name, apiKey: 'sk' });
+}
+
+describe('逻辑删除（回收站）', () => {
+  it('删除守卫：在册映射绑定中 → channel_has_models；解绑/删映射后可删', async () => {
+    const { deps, channels, models } = setup();
+    const channel = await createOk(deps);
+    const mapping = await models.store.insertMapping(deps.db, {
+      externalName: 'guard-model',
+      realModel: 'real-guard',
+      inputPrice: '1',
+      outputPrice: '1',
+      cacheInputPrice: '0',
+      isFree: false,
+    });
+    await models.store.ensureModelChannelBinding(deps.db, {
+      mappingId: mapping.id,
+      channelId: channel.id,
+    });
+    await expect(
+      deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id }),
+    ).rejects.toMatchObject({ code: 'control_plane.channel_has_models' });
+    // 映射进回收站后残留绑定不算下游占用 → 可删
+    await models.store.softDeleteMapping(deps.db, { mappingId: mapping.id });
+    await expect(deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id })).resolves.toEqual({
+      ok: true,
+    });
+    expect(channels.rows.get(channel.id)!.deletedAt).toBeInstanceOf(Date);
+  });
+
+  it('删除：status 压 1 + 列表默认不可见 view=deleted 可见；名称可复用；审计 channel.delete', async () => {
+    const { deps, channels, audit } = setup();
+    const channel = await createOk(deps);
+    await deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id });
+    const stored = channels.rows.get(channel.id)!;
+    expect(stored.status).toBe(1);
+    expect(stored.deletedAt).toBeInstanceOf(Date);
+    expect(await deps.stores.channel.findChannelByName(deps.db, 'recycle-ch')).toBeNull();
+    const active = await listChannels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
+    expect(active.total).toBe(0);
+    const recycled = await listChannels(deps, {
+      sortBy: 'id',
+      order: 'asc',
+      limit: 10,
+      offset: 0,
+      view: 'deleted',
+    });
+    expect(recycled.rows.map((r) => r.id)).toEqual([channel.id]);
+    // 名称释放：可重建同名渠道
+    const recreated = await createOk(deps);
+    expect(recreated.id).not.toBe(channel.id);
+    expect(audit.entries.map((e) => e.action)).toContain('channel.delete');
+  });
+
+  it('已删除记录对读/改不可见：update 404 不误改；恢复回停用态；审计 channel.undelete', async () => {
+    const { deps, channels, audit } = setup();
+    const channel = await createOk(deps);
+    await deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id });
+    await expect(
+      updateChannel(deps, { ctx: adminCtx(), channelId: channel.id, patch: { name: 'hacked' } }),
+    ).rejects.toMatchObject({ code: 'control_plane.channel_not_found' });
+    expect(channels.rows.get(channel.id)!.name).toBe('recycle-ch');
+
+    // 在册行 undelete → 404（防误用恢复做停用）
+    const fresh = await createOk(deps, 'fresh-ch');
+    await expect(
+      undeleteChannel(deps, { ctx: adminCtx(), channelId: fresh.id }),
+    ).rejects.toMatchObject({ code: 'control_plane.channel_not_found' });
+
+    await undeleteChannel(deps, { ctx: adminCtx(), channelId: channel.id });
+    const restored = channels.rows.get(channel.id)!;
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.status).toBe(1); // 回停用态：复核后显式启用
+    expect(audit.entries.map((e) => e.action)).toContain('channel.undelete');
   });
 });
 

@@ -59,6 +59,8 @@ export interface ModelRecord {
   readonly billingPolicy: Record<string, unknown> | null;
   readonly rpmLimit: number | null;
   readonly tpmLimit: number | null;
+  /** 记录面逻辑删除时刻（回收站）：null = 在册；非空 = 已删除 */
+  readonly deletedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -112,19 +114,34 @@ export interface ModelProbeChannelRow {
 
 export type ModelSortField = 'id' | 'externalName' | 'realModel' | 'status' | 'createdAt';
 
+/** 列表视图：active = 在册（缺省，含上/下架，不含已删除）；deleted = 回收站（仅已删除） */
+export type ModelListView = 'active' | 'deleted';
+
+/** 管理面列表查询（统一列表形状 + 回收站视图） */
+export type ModelListQuery = ListQuery<ModelSortField> & { readonly view?: ModelListView };
+
 export interface ModelStore {
   insertMapping(db: DbLike, input: ModelInsertInput): Promise<ModelRecord>;
+  /** 仅在册（deleted_at IS NULL）；已删除记录不可见 = null */
   findById(db: DbLike, mappingId: number): Promise<ModelRecord | null>;
+  /** 仅在册——已删除记录的外部名视为可复用（导入/建卡按新记录处理） */
   findByExternalName(db: DbLike, externalName: string): Promise<ModelRecord | null>;
-  /** 部分更新（白名单字段）。0 行 = 不存在 */
+  /** 部分更新（白名单字段，仅在册行）。0 行 = 不存在（含已删除） */
   updateMapping(
     db: DbLike,
     input: { mappingId: number; patch: ModelPatch },
   ): Promise<ModelRecord | null>;
-  /** 软下架：status=1 */
+  /** 软下架：status=1（仅在册行） */
   retireMapping(db: DbLike, input: { mappingId: number }): Promise<boolean>;
-  /** 统一列表：q 命中 externalName/realModel（字面匹配） */
-  listMappings(db: DbLike, query: ListQuery<ModelSortField>): Promise<ListResult<ModelRecord>>;
+  /**
+   * 逻辑删除（回收站）：status=1 + deleted_at=now（仅在册行可删）。
+   * 记录与渠道绑定保留可追溯；外部名随部分唯一索引释放可复用。
+   */
+  softDeleteMapping(db: DbLike, input: { mappingId: number }): Promise<boolean>;
+  /** 恢复记录：deleted_at=NULL + status=1（回下架态，不直接复活上架；仅已删除行） */
+  restoreMapping(db: DbLike, input: { mappingId: number }): Promise<boolean>;
+  /** 统一列表：q 命中 externalName/realModel（字面匹配）；view 缺省 = 在册 */
+  listMappings(db: DbLike, query: ModelListQuery): Promise<ListResult<ModelRecord>>;
   /** 绑定全量替换：删旧插新（事务内）；空 channels = 解绑全部。返回新绑定数 */
   replaceModelChannels(
     db: DbLike,
@@ -158,8 +175,10 @@ export interface ModelStore {
     db: DbLike,
     channelId: number,
   ): Promise<Array<{ mappingId: number; externalName: string; realModel: string }>>;
+  /** 绑定到渠道的在册映射数（渠道删除守卫：>0 → channel_has_models；已删除映射的残留绑定不计） */
+  countActiveMappingsByChannel(db: DbLike, channelId: number): Promise<number>;
   // ---- 网关热路径读（G1，gateway P5 波；v1 findActiveBy* / listEnabledModels 语义） ----
-  /** 按对外名查在架映射（status=0）；无/下架返回 null */
+  /** 按对外名查在架映射（status=0 且未删除）；无/下架/已删除返回 null */
   findActiveByExternalName(db: DbLike, externalName: string): Promise<ActiveMappingRow | null>;
   /** 批量查在架映射（fallback 链展开）；空入参返回空表 */
   findActiveByExternalNames(

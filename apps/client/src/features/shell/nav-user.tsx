@@ -6,7 +6,21 @@ import { useTranslations } from 'next-intl';
 
 import { CircleUser, Coins, EllipsisVertical, Loader2Icon, LogOut } from 'lucide-react';
 
-import { Avatar, AvatarFallback, DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from '@tokenlens/ui';
+import {
+  Avatar,
+  AvatarFallback,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from '@tokenlens/ui';
 
 import { getInitials } from '@/features/shared/initials';
 

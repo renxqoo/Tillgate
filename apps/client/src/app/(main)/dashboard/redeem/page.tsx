@@ -48,7 +48,9 @@ export default async function RedeemPage({ searchParams }: PageProps) {
       header: t('colValue'),
       align: 'right',
       cell: (r) => (
-        <span className={'text-right font-medium tabular-nums ' + signedAmountTone(r.amount, locale)}>
+        <span
+          className={'text-right font-medium tabular-nums ' + signedAmountTone(r.amount, locale)}
+        >
           +{formatMoney(r.amount, locale)}
         </span>
       ),
@@ -61,7 +63,9 @@ export default async function RedeemPage({ searchParams }: PageProps) {
     {
       key: 'usedAt',
       header: t('colRedeemedAt'),
-      cell: (r) => <span className="text-xs text-muted-foreground">{formatDateTime(r.usedAt, locale)}</span>,
+      cell: (r) => (
+        <span className="text-xs text-muted-foreground">{formatDateTime(r.usedAt, locale)}</span>
+      ),
     },
   ];
 
@@ -84,7 +88,12 @@ export default async function RedeemPage({ searchParams }: PageProps) {
       >
         {history.length > 0 ? (
           <>
-            <DataTable columns={columns} rows={history} rowKey={(r) => r.codeId} empty={t('empty')} />
+            <DataTable
+              columns={columns}
+              rows={history}
+              rowKey={(r) => r.codeId}
+              empty={t('empty')}
+            />
             {hasMore && !error ? (
               <div className="flex justify-center p-4">
                 <Button

@@ -1,16 +1,18 @@
 /**
- * 供应商用例（v1 providers.test.ts 等价迁移，HTTP 断言 → facade 断言）：
- * 协议词表校验不触库 / 重名 409 / 404 族 / 软退役 / 审计动作。
+ * 供应商用例（v1 providers.test.ts 等价迁移 + 逻辑删除回收站，HTTP 断言 → facade 断言）：
+ * 协议词表校验不触库 / 重名 409 / 404 族 / 软删-回收站-恢复-名称复用 / 审计动作。
  */
 import { describe, expect, it } from 'vitest';
 import { createProvider } from '../src/application/providers/create-provider';
 import { updateProvider } from '../src/application/providers/update-provider';
-import { retireProvider } from '../src/application/providers/retire-provider';
+import { deleteProvider } from '../src/application/providers/delete-provider';
+import { undeleteProvider } from '../src/application/providers/undelete-provider';
 import { listProviders } from '../src/application/providers/list-providers';
 import {
   adminCtx,
   createMemoryDb,
   createMemoryProviderStore,
+  createMemoryChannelStore,
   createMemoryAudit,
   fakeCipher,
 } from './memory';
@@ -24,15 +26,16 @@ const CAPABILITIES: ProviderCapabilities = {
 function setup() {
   const db = createMemoryDb();
   const providers = createMemoryProviderStore();
+  const channels = createMemoryChannelStore((id) => (id === 1 ? 'p' : 'unknown'));
   const audit = createMemoryAudit();
   const deps = {
     db,
-    stores: { provider: providers.store },
+    stores: { provider: providers.store, channel: channels.store },
     capabilities: CAPABILITIES,
     defaultProtocol: 'openai-compatible',
     audit: audit.sink,
   };
-  return { deps, providers, audit, cipher: fakeCipher };
+  return { deps, providers, channels, audit, cipher: fakeCipher };
 }
 
 describe('供应商协议词表（单一真相 = 注入词表）', () => {
@@ -105,23 +108,16 @@ describe('供应商 CRUD 边界', () => {
     ).rejects.toMatchObject({ code: 'control_plane.provider_exists' });
   });
 
-  it('更新/退役不存在 → provider_not_found；退役 = status 1 软删', async () => {
-    const { deps, providers } = setup();
+  it('更新/删除不存在 → provider_not_found', async () => {
+    const { deps } = setup();
     await expect(
       updateProvider(deps, { ctx: adminCtx(), providerId: 999999999, patch: { name: 'x' } }),
     ).rejects.toMatchObject({ code: 'control_plane.provider_not_found' });
     await expect(
-      retireProvider(deps, { ctx: adminCtx(), providerId: 999999999 }),
+      deleteProvider(deps, { ctx: adminCtx(), providerId: 999999999 }),
     ).rejects.toMatchObject({
       code: 'control_plane.provider_not_found',
     });
-    const created = await createProvider(deps, {
-      ctx: adminCtx(),
-      name: 'ret',
-      baseUrl: 'https://c.example.com/v1',
-    });
-    await retireProvider(deps, { ctx: adminCtx(), providerId: created.id });
-    expect(providers.rows.get(created.id)!.status).toBe(1);
   });
 
   it('列表：q 命中 name/baseUrl；分页与总数', async () => {
@@ -145,6 +141,109 @@ describe('供应商 CRUD 边界', () => {
     });
     expect(result.total).toBe(1);
     expect(result.rows[0]!.name).toBe('alpha');
+  });
+});
+
+/** 回收站用例共享：建供应商返回 id（缺省名 recycle-p） */
+async function createOk(
+  deps: ReturnType<typeof setup>['deps'],
+  name = 'recycle-p',
+): Promise<number> {
+  const row = await createProvider(deps, {
+    ctx: adminCtx(),
+    name,
+    baseUrl: 'https://recycle.example.com/v1',
+  });
+  return row.id;
+}
+
+describe('逻辑删除（回收站）', () => {
+  it('删除守卫：名下有在册渠道 → provider_has_channels；渠道删除后可删', async () => {
+    const { deps, channels } = setup();
+    const id = await createOk(deps);
+    const channel = await channels.store.insertChannel(deps.db, {
+      providerId: id,
+      name: 'downstream-ch',
+      apiKeyEnc: 'enc',
+    });
+    await expect(deleteProvider(deps, { ctx: adminCtx(), providerId: id })).rejects.toMatchObject({
+      code: 'control_plane.provider_has_channels',
+    });
+    // 渠道进回收站后不算下游占用 → 供应商可删
+    await channels.store.softDeleteChannel(deps.db, { channelId: channel.id });
+    await expect(deleteProvider(deps, { ctx: adminCtx(), providerId: id })).resolves.toEqual({
+      ok: true,
+    });
+  });
+  it('删除：status 压 1 + deleted_at 落刻；列表默认不可见，view=deleted 可见；审计 provider.delete', async () => {
+    const { deps, providers, audit } = setup();
+    const id = await createOk(deps);
+    await deleteProvider(deps, { ctx: adminCtx(), providerId: id });
+    const stored = providers.rows.get(id)!;
+    expect(stored.status).toBe(1);
+    expect(stored.deletedAt).toBeInstanceOf(Date);
+    expect(await deps.stores.provider.findById(deps.db, id)).toBeNull();
+    expect(await deps.stores.provider.findByName(deps.db, 'recycle-p')).toBeNull();
+    const active = await listProviders(deps, {
+      sortBy: 'id',
+      order: 'asc',
+      limit: 10,
+      offset: 0,
+    });
+    expect(active.total).toBe(0);
+    const recycled = await listProviders(deps, {
+      sortBy: 'id',
+      order: 'asc',
+      limit: 10,
+      offset: 0,
+      view: 'deleted',
+    });
+    expect(recycled.rows.map((r) => r.id)).toEqual([id]);
+    expect(audit.entries.map((e) => e.action)).toContain('provider.delete');
+  });
+
+  it('已删除记录对名称「不存在」：可重建同名供应商（唯一约束只锁在册行）', async () => {
+    const { deps, providers } = setup();
+    const id = await createOk(deps);
+    await deleteProvider(deps, { ctx: adminCtx(), providerId: id });
+    const recreated = await createOk(deps); // 同名重建
+    expect(recreated).not.toBe(id);
+    expect(providers.rows.size).toBe(2); // 旧记录保留（逻辑删除），新行在册
+  });
+
+  it('已删除记录对读/改/禁用不可见：update/retire 语义 404，不误改回收站行', async () => {
+    const { deps, providers } = setup();
+    const id = await createOk(deps);
+    await deleteProvider(deps, { ctx: adminCtx(), providerId: id });
+    await expect(
+      updateProvider(deps, { ctx: adminCtx(), providerId: id, patch: { name: 'hacked' } }),
+    ).rejects.toMatchObject({ code: 'control_plane.provider_not_found' });
+    expect(providers.rows.get(id)!.name).toBe('recycle-p');
+    expect(await deps.stores.provider.retire(deps.db, { providerId: id })).toBe(false);
+  });
+
+  it('恢复：deleted_at 清空 + status 回 1（禁用态不启用）；仅已删除行可恢复；审计 provider.undelete', async () => {
+    const { deps, providers, audit } = setup();
+    const id = await createOk(deps);
+    await deleteProvider(deps, { ctx: adminCtx(), providerId: id });
+    // 在册行 restore → 404（防误用恢复做禁用）
+    const fresh = await createOk(deps, 'fresh-p');
+    await expect(
+      undeleteProvider(deps, { ctx: adminCtx(), providerId: fresh }),
+    ).rejects.toMatchObject({ code: 'control_plane.provider_not_found' });
+
+    await undeleteProvider(deps, { ctx: adminCtx(), providerId: id });
+    const restored = providers.rows.get(id)!;
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.status).toBe(1); // 回禁用态：复核后显式启用
+    const active = await listProviders(deps, {
+      sortBy: 'id',
+      order: 'asc',
+      limit: 10,
+      offset: 0,
+    });
+    expect(active.rows.map((r) => r.id)).toContain(id);
+    expect(audit.entries.map((e) => e.action)).toContain('provider.undelete');
   });
 });
 

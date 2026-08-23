@@ -18,12 +18,18 @@ import type { ClientApiConfig } from '../config.js';
 import { createRedisSessionRevocation } from './redis-session-revocation.js';
 import { createRedisOAuthStateStore } from './redis-oauth-state.js';
 import { createSmtpLoginMailer } from './smtp-login-mailer.js';
+import {
+  createRedisResetTokenStore,
+  RESET_TOKEN_TTL_MINUTES,
+  type ResetTokenStore,
+} from './redis-reset-token.js';
 import { createTurnstileCaptcha } from './turnstile-captcha.js';
 
 export interface IdentityStack {
   readonly identity: Identity;
   readonly oauthProviders: Record<string, OAuthProviderCredentials>;
   readonly mailer: Mailer | null;
+  readonly resetTokens: ResetTokenStore;
   readonly emailCodeRequired: boolean;
   readonly apiBase: string;
 }
@@ -87,6 +93,7 @@ export function createIdentityStack(args: {
               ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
               maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
             },
+            { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
             clock,
           )
         : null;
@@ -148,5 +155,12 @@ export function createIdentityStack(args: {
     oauthStateStore: createRedisOAuthStateStore(redis),
   });
 
-  return { identity, oauthProviders, mailer, emailCodeRequired, apiBase };
+  return {
+    identity,
+    oauthProviders,
+    mailer,
+    resetTokens: createRedisResetTokenStore(redis),
+    emailCodeRequired,
+    apiBase,
+  };
 }

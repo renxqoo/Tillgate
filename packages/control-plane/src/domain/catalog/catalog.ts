@@ -133,7 +133,8 @@ export function mapOpenAiCompatibleCatalog(
 }
 
 /**
- * models.dev api.json → 全量参考目录（字典型源；不建渠道，导入落草稿）。
+ * models.dev api.json → 全量参考目录（字典型源；导入落草稿 + 按 provider 前缀
+ * find-or-create 对应渠道，见 application/catalog/import-catalog.ts）。
  * 形状：{ [provider]: { models: { [id]: { name, limit.context, cost.{input,output,cache_read,cache_write} } } } }
  * 负价哨兵（不可定价）不入货架——与 OpenAI 兼容源同语义；缺 cost 保持 0（免费口径不变）。
  */

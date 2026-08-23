@@ -24,6 +24,7 @@ export function toProviderWireRow(row: ProviderRowSource) {
     protocol: row.protocol,
     vendor: row.vendor,
     status: row.status,
+    deletedAt: iso(row.deletedAt),
     createdAt: iso(row.createdAt)!,
   };
 }
@@ -40,6 +41,7 @@ export function toChannelWireRow(row: ChannelItemSource) {
     priority: row.priority,
     status: row.status,
     failCount: row.failCount,
+    deletedAt: iso(row.deletedAt),
     cooldownUntil: null,
     rpmLimit: row.rpmLimit,
     tpmLimit: row.tpmLimit,

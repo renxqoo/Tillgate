@@ -18,7 +18,10 @@ export const adminModelRowSchema = z
     outputPrice: z.string(),
     cacheInputPrice: z.string(),
     cacheWritePrice: z.string(),
-    pricingUnit: z.string().optional().describe('计价单位(token/image/second/char/request)——单位计价模型 2026-08-21 管理面通道'),
+    pricingUnit: z
+      .string()
+      .optional()
+      .describe('计价单位(token/image/second/char/request)——单位计价模型 2026-08-21 管理面通道'),
     unitPrice: z.string().optional().describe('单位单价(元/张·秒·字符·次;token 模型 0)'),
     billingConfig: z
       .object({
@@ -42,19 +45,23 @@ export const adminModelRowSchema = z
     rpmLimit: z.number().nullable(),
     tpmLimit: z.number().nullable(),
     status: z.number(),
+    deletedAt: z.string().nullable().describe('记录面逻辑删除时刻(回收站);null = 在册'),
     createdAt: z.string(),
     updatedAt: z.string(),
     channelIds: z.array(z.number()).describe('已绑定的渠道 id(供「绑定渠道」弹窗回显已选)'),
   })
-  .meta({ id: 'AdminModelRow', description: '管理面模型映射行(GET /v1/models;channelIds 列表用例回显)' });
+  .meta({
+    id: 'AdminModelRow',
+    description: '管理面模型映射行(GET /v1/models;channelIds 列表用例回显)',
+  });
 
 export const modelsEndpoints: readonly OpenApiEndpoint[] = [
   {
     method: 'get',
     path: '/v1/models',
     tag: 'models',
-    summary: '模型映射列表（channelIds 回显）',
-    query: listQuery(),
+    summary: '模型映射列表（channelIds 回显；view=deleted = 回收站）',
+    query: listQuery(z.object({ view: z.enum(['active', 'deleted']).optional() })),
     response: { schema: paginatedOf(adminModelRowSchema) },
     errors: [400, 401],
   },
@@ -81,10 +88,20 @@ export const modelsEndpoints: readonly OpenApiEndpoint[] = [
     method: 'delete',
     path: '/v1/models/:id',
     tag: 'models',
-    summary: '模型软下架',
+    summary:
+      '删除模型映射（逻辑删除/回收站：记录与绑定保留，外部名释放可复用；下架走 PATCH status=1）',
     params: [idPathParam('模型映射 id')],
     response: { schema: okTrue },
     errors: [401, 404, 409],
+  },
+  {
+    method: 'post',
+    path: '/v1/models/:id/restore',
+    tag: 'models',
+    summary: '恢复已删除的模型映射（回收站取出，回下架态不直接上架；在册行调用 → 404）',
+    params: [idPathParam('模型映射 id')],
+    response: { schema: okTrue },
+    errors: [401, 404],
   },
   {
     method: 'post',

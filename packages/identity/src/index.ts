@@ -78,3 +78,7 @@ export {
   type MailBrand,
   type LoginCodeEmailContext,
 } from './templates/login-code-email.js';
+export {
+  renderPasswordResetEmail,
+  type PasswordResetEmailContext,
+} from './templates/password-reset-email.js';

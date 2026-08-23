@@ -9,6 +9,7 @@
  *   停用卡（status≠0）拒绝新请求（control_plane.rate_card_disabled → 403）；
  *   unitUpperBound = max(按请求体计量上界, 预扣保底)——只抬不降；
  *   unitPrice = 变体定价策略按请求体选择（hold == settle 单一价格快照）；
+ *   时段价 = schedule 策略按准入时刻 + 计费时区解析整套覆盖（未覆盖轴回落列基价）；
  *   渠道候选基序 = priority/weight 降序（加权调度在 inference 域内）。
  */
 import { createHash } from 'node:crypto';
@@ -31,6 +32,7 @@ import {
   strategyOf,
   type RateCardCoefficientSnapshot,
 } from '@tokenlens/billing';
+import { createBillingTimezoneReader } from './billing-timezone.js';
 import type {
   CatalogPricingContext,
   CatalogPort,
@@ -65,12 +67,14 @@ function toSnapshot(ctx: UserRateCardContext): RateCardCoefficientSnapshot {
   return snapshot;
 }
 
-/** 映射行 + 用户卡 + 请求体 → inference 快照（v1 buildQuote 候选装配的单映射形态） */
-function toSnapshotRow(
+/** 映射行 + 用户卡 + 请求体 + 准入时刻 → inference 快照（v1 buildQuote 候选装配的单映射形态） */
+async function toSnapshotRow(
   row: ActiveMappingRow,
   card: UserRateCardContext | null,
   body: Readonly<Record<string, unknown>>,
-): ModelMappingSnapshot {
+  now: Date,
+  readTimezone: () => Promise<string>,
+): Promise<ModelMappingSnapshot> {
   if (card != null && card.status !== 0) {
     throw controlPlaneErrors.business('rate_card_disabled', { cardId: card.cardId });
   }
@@ -84,13 +88,19 @@ function toSnapshotRow(
   const reservation = billingConfig.reservation ?? {};
   const unitFloor = reservationStrategyOf(reservation).unitFloorOf(reservation);
   const unitUpperBound = unitFloor != null ? Math.max(measured, unitFloor) : measured;
-  // 变体单价（层 2）：按 billingConfig 选公式；body 已知 → 变体即确定（hold == settle）
-  const resolvedUnitPrice = strategyOf(billingConfig).settleUnitPrice({
+  const strategy = strategyOf(billingConfig);
+  const pricingContext = {
     units: unitUpperBound,
     body: body as Record<string, unknown>,
     config: billingConfig,
     fallbackUnitPrice: row.unitPrice,
-  });
+    now,
+    timezone: await readTimezone(),
+  };
+  // 变体单价（层 2）：按 billingConfig 选公式；body 已知 → 变体即确定（hold == settle）
+  const resolvedUnitPrice = strategy.settleUnitPrice(pricingContext);
+  // 时段覆盖（层 2 schedule）：字段级——未覆盖轴回落列基价；命中标签进快照（收据审计列）
+  const overrides = strategy.resolvePriceOverrides(pricingContext);
   const pricingUnit = PRICING_UNITS.has(row.pricingUnit)
     ? (row.pricingUnit as PricingUnit)
     : 'token';
@@ -99,11 +109,12 @@ function toSnapshotRow(
     externalModel: row.externalName,
     realModel: row.realModel,
     fallbackModels: row.fallbackModels ?? [],
-    inputPrice: row.inputPrice,
-    cacheInputPrice: row.cacheInputPrice,
-    cacheWritePrice: row.cacheWritePrice === '0' ? null : row.cacheWritePrice,
-    outputPrice: row.outputPrice,
-    unitPrice: resolvedUnitPrice,
+    inputPrice: overrides?.inputPrice ?? row.inputPrice,
+    cacheInputPrice: overrides?.cacheInputPrice ?? row.cacheInputPrice,
+    cacheWritePrice:
+      overrides?.cacheWritePrice ?? (row.cacheWritePrice === '0' ? null : row.cacheWritePrice),
+    outputPrice: overrides?.outputPrice ?? row.outputPrice,
+    unitPrice: overrides?.unitPrice ?? resolvedUnitPrice,
     pricingUnit,
     unitUpperBound,
     coefficient: pickCoefficient(snapshot, {
@@ -111,6 +122,7 @@ function toSnapshotRow(
       pricingGroup: row.pricingGroup,
     }),
     billingPolicyFingerprint: policyFingerprint(row.billingPolicy),
+    ...(overrides?.pricingWindow != null ? { pricingWindow: overrides.pricingWindow } : {}),
   };
 }
 
@@ -138,6 +150,8 @@ export interface CatalogStores {
   };
   channels: { findRouteCandidates(realModel: string): Promise<RouteCandidateRow[]> };
   rateCards: { findActiveCardByUser(userId: number): Promise<UserRateCardContext | null> };
+  /** 计费时区（TTL 缓存读 system_configs；schedule 策略墙钟口径） */
+  billingTimezone: { read(): Promise<string> };
 }
 
 export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
@@ -149,7 +163,7 @@ export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
       const row = await stores.models.findActiveByExternalName(externalModel);
       if (row == null) return null;
       const card = await stores.rateCards.findActiveCardByUser(pricing.userId);
-      return toSnapshotRow(row, card, pricing.body);
+      return toSnapshotRow(row, card, pricing.body, pricing.now, stores.billingTimezone.read);
     },
     async resolveChannels(realModel): Promise<ChannelCandidate[]> {
       const rows = await stores.channels.findRouteCandidates(realModel);
@@ -158,8 +172,12 @@ export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
   };
 }
 
-/** postgres 装配形态（assembly 消费；store 单例 + db 闭包绑定） */
-export function createPostgresGatewayCatalog(db: Db): CatalogPort {
+/** postgres 装配形态（assembly 消费；store 单例 + db 闭包绑定 + 时区缓存参数） */
+export function createPostgresGatewayCatalog(
+  db: Db,
+  timezoneEnv: { ttlMs: number; fallback: string },
+): CatalogPort {
+  const readTimezone = createBillingTimezoneReader({ db, ...timezoneEnv });
   return createGatewayCatalog({
     models: {
       findActiveByExternalName: (name) => postgresModelStore.findActiveByExternalName(db, name),
@@ -170,5 +188,6 @@ export function createPostgresGatewayCatalog(db: Db): CatalogPort {
     rateCards: {
       findActiveCardByUser: (userId) => postgresRateCardStore.findActiveCardByUser(db, userId),
     },
+    billingTimezone: { read: readTimezone },
   });
 }

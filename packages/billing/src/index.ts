@@ -98,7 +98,15 @@ export type {
   BillingConfig,
   PricingContext,
   PricingStrategy,
+  PriceOverrides,
 } from './domain/rating/pricing-strategy.js';
+export {
+  matchPricingWindow,
+  minuteOfDayInZone,
+  validateScheduleWindows,
+  windowLabelOf,
+} from './domain/rating/schedule.js';
+export type { PricingWindow, ScheduleWindowsIssue } from './domain/rating/schedule.js';
 export {
   RESERVATION_STRATEGIES,
   reservationStrategyOf,
