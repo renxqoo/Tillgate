@@ -7,6 +7,7 @@ FROM oven/bun:1.4-alpine AS builder
 WORKDIR /repo
 COPY package.json bun.lock tsconfig.base.json ./
 COPY packages ./packages
+COPY apps ./apps
 RUN bun install --frozen-lockfile
 
 FROM oven/bun:1.4-alpine AS runtime
@@ -17,5 +18,9 @@ WORKDIR /repo
 COPY --from=builder /repo/package.json ./package.json
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
+# apps 侧运维脚本（create-admin、存量凭据迁移等）随镜像分发——生产
+# `docker compose run --rm migrate bun apps/admin-api/scripts/create-admin.ts --apply`
+# 直跑官方脚本，不再依赖宿主机 clone 仓库或挂载变通
+COPY --from=builder /repo/apps ./apps
 WORKDIR /repo/packages/db
 CMD ["bun", "node_modules/.bin/drizzle-kit", "migrate"]
