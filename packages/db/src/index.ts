@@ -22,5 +22,5 @@ export {
   transientTxFailureCode,
 } from './pg-error.js';
 
-// ---- schema(39 表 + 词表 + relations;另有 ./schema 子入口)----
+// ---- schema(46 表(v1 基线 39 + identity 七表,迁移 0076) + 词表 + relations;另有 ./schema 子入口)----
 export * from './schema/index.js';

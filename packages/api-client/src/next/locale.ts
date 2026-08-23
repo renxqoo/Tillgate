@@ -15,6 +15,18 @@ export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'en';
 
+/**
+ * 语言解析策略(app 级注入,缺省 = 完整协商:cookie → Accept-Language → en)。
+ * 管理后台等内部面可注入 { honorAcceptLanguage: false, fallback: 'zh' }:
+ * cookie 显式选择优先,其余一律中文(en 仅经语言切换器主动选择)。
+ */
+export interface LocaleResolution {
+  /** 无 cookie 时是否跟随浏览器 Accept-Language(默认 true) */
+  honorAcceptLanguage?: boolean;
+  /** 协商不命中时的回落语言(默认英文) */
+  fallback?: Locale;
+}
+
 /** 前端语言 cookie 键(与 next-intl 官方 routing 中间件同名) */
 export const LOCALE_COOKIE = 'NEXT_LOCALE';
 export const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -32,8 +44,11 @@ export function htmlLang(locale: Locale): 'en' | 'zh-CN' {
  * 解析 Accept-Language 头(RFC 9110 简化版):取 q 值最高的已支持语言;
  * q 解析失败按 1 处理;无命中回落默认英文。
  */
-export function parseAcceptLanguage(header: string | null | undefined): Locale {
-  if (!header) return DEFAULT_LOCALE;
+export function parseAcceptLanguage(
+  header: string | null | undefined,
+  fallback: Locale = DEFAULT_LOCALE,
+): Locale {
+  if (!header) return fallback;
   let best: { locale: Locale; q: number } | undefined;
   for (const part of header.split(',')) {
     const [tagRaw, ...params] = part.trim().split(';');
@@ -54,29 +69,36 @@ export function parseAcceptLanguage(header: string | null | undefined): Locale {
         : undefined;
     if (locale && (!best || (q > best.q && q > 0))) best = { locale, q };
   }
-  return best?.locale ?? DEFAULT_LOCALE;
-}
-
-/** 完整解析链:cookie 值优先,其次请求头自动识别,最后默认英文 */
-export function resolveLocale(
-  cookieValue: string | null | undefined,
-  acceptLanguage: string | null | undefined,
-): Locale {
-  const fromCookie = cookieValue?.trim().toLowerCase();
-  if (isLocale(fromCookie)) return fromCookie;
-  return parseAcceptLanguage(acceptLanguage);
+  return best?.locale ?? fallback;
 }
 
 /**
- * BFF 出口语言:与 UI 同源(cookie NEXT_LOCALE → 浏览器 Accept-Language → 默认英文),
- * 注入 accept-language 让 API 错误 message 语言与界面一致。
+ * 完整解析链:cookie 值优先,其次请求头自动识别(可关),最后回落默认英文。
+ * opts 注入 app 级策略(见 LocaleResolution),缺省与历史行为完全一致。
+ */
+export function resolveLocale(
+  cookieValue: string | null | undefined,
+  acceptLanguage: string | null | undefined,
+  opts: LocaleResolution = {},
+): Locale {
+  const { honorAcceptLanguage = true, fallback = DEFAULT_LOCALE } = opts;
+  const fromCookie = cookieValue?.trim().toLowerCase();
+  if (isLocale(fromCookie)) return fromCookie;
+  if (!honorAcceptLanguage) return fallback;
+  return parseAcceptLanguage(acceptLanguage, fallback);
+}
+
+/**
+ * BFF 出口语言:与 UI 同源(cookie NEXT_LOCALE → 浏览器 Accept-Language → 默认英文,
+ * 均可经 opts 重载),注入 accept-language 让 API 错误 message 语言与界面一致。
  * 非请求上下文(SSG 构建等)回落英文。
  */
-export async function outgoingLocale(): Promise<Locale> {
+export async function outgoingLocale(opts: LocaleResolution = {}): Promise<Locale> {
+  const fallback = opts.fallback ?? DEFAULT_LOCALE;
   try {
     const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
-    return resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'));
+    return resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'), opts);
   } catch {
-    return 'en'; // 非请求上下文(SSG 构建等):无入站 cookie/头可读
+    return fallback; // 非请求上下文(SSG 构建等):无入站 cookie/头可读
   }
 }

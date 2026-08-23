@@ -8,10 +8,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenuItem,
   Field,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Table,
   TableBody,
   TableCell,
@@ -56,7 +58,7 @@ function RateLimitTable({
   const showDailySpend = kind === 'user' || kind === 'key';
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="bg-card">
         <TableRow>
           <TableHead>{tc('name')}</TableHead>
           <TableHead className="text-right">RPM</TableHead>
@@ -66,17 +68,26 @@ function RateLimitTable({
             <TableHead className="text-right">{tc('dailySpendLimit')}</TableHead>
           ) : null}
           <TableHead className="text-center">{tc('status')}</TableHead>
-          <TableHead className="text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {items.map((it) => (
           <TableRow key={`${kind}-${it.id}`}>
             <TableCell>
-              <div className="font-medium">{it.label}</div>
-              {it.sublabel ? (
-                <div className="font-mono text-xs text-muted-foreground">{it.sublabel}</div>
-              ) : null}
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <GaugeIcon className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{it.label}</div>
+                  {it.sublabel ? (
+                    <div className="truncate font-mono text-xs text-muted-foreground">
+                      {it.sublabel}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </TableCell>
             <TableCell className="text-right tabular-nums">
               {fmtLimit(it.rpmLimit) || tc('unlimited')}
@@ -101,11 +112,12 @@ function RateLimitTable({
                 <span className="text-xs text-destructive">{tc('stopped')}</span>
               )}
             </TableCell>
-            <TableCell className="text-right">
-              <Button variant="ghost" size="sm" onClick={() => onEdit(kind, it)}>
-                <PencilIcon className="size-3.5" />
-                {tc('edit')}
-              </Button>
+            <TableCell className="w-16 text-center">
+              <RowActions label={tc('actions')}>
+                <DropdownMenuItem onClick={() => onEdit(kind, it)}>
+                  <PencilIcon /> {tc('edit')}
+                </DropdownMenuItem>
+              </RowActions>
             </TableCell>
           </TableRow>
         ))}
@@ -209,7 +221,8 @@ export function RateLimitsClient({
   return (
     <div className="flex flex-col gap-4">
       <Tabs defaultValue="user">
-        <TabsList>
+        {/* 与 ListToolbar 的 px-4、表格首列 pl-4 对齐（ListContent 本身无内边距） */}
+        <TabsList className="ml-4">
           <TabsTrigger value="user">{t('tabUser', { count: users.length })}</TabsTrigger>
           <TabsTrigger value="model">{t('tabModel', { count: models.length })}</TabsTrigger>
           <TabsTrigger value="channel">{t('tabChannel', { count: channels.length })}</TabsTrigger>

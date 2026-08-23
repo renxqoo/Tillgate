@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Buffer } from 'node:buffer';
 import { tryParseJson } from '../src/internal/util.js';
-import { signAwsRequest, parseAwsCredentials, parseEventstreamFrames } from '../src/adapters/aws-bedrock.js';
+import {
+  signAwsRequest,
+  parseAwsCredentials,
+  parseEventstreamFrames,
+} from '../src/adapters/aws-bedrock.js';
 import { chatRequestToGemini, geminiResponseToChat } from '../src/protocol/gemini-chat.js';
 import { chatRequestToClaude, claudeRequestToChat } from '../src/protocol/claude-chat.js';
 import { estimateAudioDurationSeconds } from '../src/usage/media-duration.js';
@@ -44,8 +48,20 @@ describe('bedrock 深支：事件流解析与签名', () => {
   });
   it('signAwsRequest：sessionToken 进签名 + 确定性（同时问稳定输出）', () => {
     const at = new Date('2026-01-01T00:00:00Z');
-    const a = signAwsRequest({ method: 'POST', url: new URL('https://b.test/x'), body: 'b', credentials: { accessKeyId: 'A', secretAccessKey: 'S' }, at });
-    const b = signAwsRequest({ method: 'POST', url: new URL('https://b.test/x'), body: 'b', credentials: { accessKeyId: 'A', secretAccessKey: 'S' }, at });
+    const a = signAwsRequest({
+      method: 'POST',
+      url: new URL('https://b.test/x'),
+      body: 'b',
+      credentials: { accessKeyId: 'A', secretAccessKey: 'S' },
+      at,
+    });
+    const b = signAwsRequest({
+      method: 'POST',
+      url: new URL('https://b.test/x'),
+      body: 'b',
+      credentials: { accessKeyId: 'A', secretAccessKey: 'S' },
+      at,
+    });
     expect(a).toEqual(b); // 签名确定性
   });
 });
@@ -54,33 +70,68 @@ describe('codec 深支', () => {
   it('claude 入站：thinking 块 / 多 tool_use / 数组 system / 工具定义', () => {
     const chat = claudeRequestToChat({
       model: 'c',
-      system: [{ type: 'text', text: 's1' }, { type: 'text', text: 's2' }],
+      system: [
+        { type: 'text', text: 's1' },
+        { type: 'text', text: 's2' },
+      ],
       tools: [{ name: 'f', description: 'd', input_schema: { type: 'object' } }],
       tool_choice: { type: 'any' },
       messages: [
-        { role: 'assistant', content: [{ type: 'thinking', thinking: 'x' }, { type: 'text', text: 't' }] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'x' },
+            { type: 'text', text: 't' },
+          ],
+        },
       ],
     });
-    expect((chat.messages as Array<Record<string, unknown>>)[0]).toMatchObject({ role: 'system', content: 's1s2' });
-    expect((chat.tools as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'f' } });
+    expect((chat.messages as Array<Record<string, unknown>>)[0]).toMatchObject({
+      role: 'system',
+      content: 's1s2',
+    });
+    expect((chat.tools as Array<Record<string, unknown>>)[0]).toMatchObject({
+      function: { name: 'f' },
+    });
     expect(chat.tool_choice).toBe('required');
   });
   it('claude 出站：developer 角色 / tool_choice named / stop_sequences', () => {
-    const cl = chatRequestToClaude({ model: 'm', messages: [{ role: 'developer', content: 'D' }, { role: 'user', content: 'q' }], tool_choice: { type: 'function', function: { name: 'f' } }, stop: ['END'] });
+    const cl = chatRequestToClaude({
+      model: 'm',
+      messages: [
+        { role: 'developer', content: 'D' },
+        { role: 'user', content: 'q' },
+      ],
+      tool_choice: { type: 'function', function: { name: 'f' } },
+      stop: ['END'],
+    });
     expect(cl.system).toBe('D');
     expect(cl.stop_sequences).toEqual(['END']);
     expect(cl.tool_choice).toMatchObject({ type: 'tool', name: 'f' });
   });
   it('gemini 出站：多模态远程 URL part + tool_config', () => {
-    const g = chatRequestToGemini({ model: 'm', messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'https://cdn.example.com/x.png' } }] }] });
+    const g = chatRequestToGemini({
+      model: 'm',
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 'https://cdn.example.com/x.png' } }],
+        },
+      ],
+    });
     const parts = (g.contents as Array<{ parts: Array<Record<string, unknown>> }>)[0]?.parts ?? [];
     // 现状语义：远程 URL 不转 fileData（返回空 text part）——锁定行为防静默变更
     expect(parts.every((p) => p.fileData === undefined)).toBe(true);
   });
   it('gemini 非流式：候选缺失/垃圾容错', () => {
-    expect(Array.isArray((geminiResponseToChat({}, 'm') as { choices: unknown }).choices)).toBe(true);
+    expect(Array.isArray((geminiResponseToChat({}, 'm') as { choices: unknown }).choices)).toBe(
+      true,
+    );
     expect(geminiResponseToChat(null, 'm')).toBeDefined();
-    const r = geminiResponseToChat({ candidates: [{ content: { parts: [{ text: 'x' }, { text: 'y' }] } }] }, 'm');
+    const r = geminiResponseToChat(
+      { candidates: [{ content: { parts: [{ text: 'x' }, { text: 'y' }] } }] },
+      'm',
+    );
     expect(JSON.stringify(r)).toContain('xy');
   });
 });
@@ -90,8 +141,18 @@ describe('defineAdapter 能力覆写面', () => {
     const probe = { path: '/p', headers: {} };
     const a = defineAdapter({
       protocol: 't2',
-      usage: { extractUsage: () => ({ inputTokens: 1, cachedInputTokens: 0, outputTokens: 1, estimated: false, raw: {} }) },
-      errors: { mapError: (status) => ({ kind: 'invalid_request', message: String(status) } as never) },
+      usage: {
+        extractUsage: () => ({
+          inputTokens: 1,
+          cachedInputTokens: 0,
+          outputTokens: 1,
+          estimated: false,
+          raw: {},
+        }),
+      },
+      errors: {
+        mapError: (status) => ({ kind: 'invalid_request', message: String(status) }) as never,
+      },
       codec: { translateResponseBody: (b) => ({ wrapped: b }) },
       tasks: { parseResponse: () => ({ kind: 'error', error: new Error('x') as never }) } as never,
     });

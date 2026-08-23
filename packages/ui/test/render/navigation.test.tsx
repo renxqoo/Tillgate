@@ -133,18 +133,22 @@ describe('ThemeSwitcher', () => {
     consoleError.mockRestore();
   });
 
-  it('打开菜单并切换主题', async () => {
+  it('直接点击在明暗两态间切换并持久化(无菜单)', async () => {
     render(
       <ThemeProvider defaultTheme="light">
-        <ThemeSwitcher labels={{ trigger: '切换主题', dark: '深色' }} />
+        <ThemeSwitcher label="切换主题" />
       </ThemeProvider>,
     );
-    await userEvent.click(screen.getByRole('button', { name: '切换主题' }));
-    const item = await screen.findByRole('menuitem', { name: '深色' });
-    await userEvent.click(item);
-    // documentElement 获得深色类
+    const toggle = screen.getByRole('button', { name: '切换主题' });
+    // 不渲染任何菜单项——切换器只有两态直切形态
+    expect(screen.queryByRole('menuitem')).toBeNull();
+
+    await userEvent.click(toggle);
     expect(document.documentElement.classList.contains('dark')).toBe(true);
-    // localStorage 持久化
     expect(window.localStorage.getItem('theme')).toBe('dark');
+
+    await userEvent.click(toggle);
+    expect(document.documentElement.classList.contains('light')).toBe(true);
+    expect(window.localStorage.getItem('theme')).toBe('light');
   });
 });

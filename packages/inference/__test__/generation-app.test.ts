@@ -97,12 +97,19 @@ describe('application/generation：提交与查询用例', () => {
   it('持久化失败 → billing_receipt_unavailable 且无 request_failed 信号（预留保留交 recover）', async () => {
     const s = setup();
     s.upstream.onSubmit(async () => ({ ok: true, upstreamTaskId: 'up-9' }));
-    // 任务存储注入失败实现：总抛错的 store（预留保留语义断言）
+    // 任务存储注入失败实现：总抛错的 store（预留保留语义断言；推进动词在该
+    // 场景不可达——submit 在 insert 即抛，不会进入轮询路径）
     const failing = {
       insert: async () => {
         throw new Error('pg down');
       },
       findByOwner: async () => null,
+      adminList: async () => ({ rows: [], total: 0 }),
+      settledAmounts: async () => new Map<string, string>(),
+      expireOverdue: async () => [],
+      listActive: async () => [],
+      markRunning: async () => false,
+      casTerminal: async () => false,
     };
     const inference2 = createInference({
       ai: fakeAi().ai,

@@ -6,7 +6,15 @@
  *                       重放的原样归还物）。操作行与业务写在同一事务：要么同生
  *                       （执行完成且回执落档）要么同死（execute 抛错整体回滚）。
  */
-import { bigserial, index, jsonb, pgTable, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  bigserial,
+  index,
+  jsonb,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 export const ledgerOperations = pgTable(
   'ledger_operations',

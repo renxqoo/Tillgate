@@ -41,7 +41,9 @@ export function retryAfterMsOf(headers?: Record<string, string>): number | undef
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : null;
 }
 
 /** status → kind 兜底矩阵（529 overloaded 单列；429 限流；401/403 凭据族；4xx 请求错误） */
@@ -72,7 +74,10 @@ export function statusFallbackError(
     message: extractDetail(body) ?? `upstream responded ${status ?? 'network error'}`,
     rawBody,
     retryAfterMs: kind === 'rate_limited' ? retryAfterMsOf(headers) : undefined,
-    suggestion: kind === 'quota_exhausted' ? '上游配额/余额耗尽，请充值或更换渠道' : undefined,
+    suggestion:
+      kind === 'quota_exhausted'
+        ? 'upstream quota or balance exhausted; top up or switch channel'
+        : undefined,
   });
 }
 
@@ -89,7 +94,8 @@ export function tableOrFallback(input: {
 }): UpstreamError {
   const vendorCode = extractVendorCode(input.body);
   const kind = vendorCode !== undefined ? input.table[vendorCode] : undefined;
-  if (kind === undefined) return statusFallbackError(input.status, input.body, input.rawBody, input.headers);
+  if (kind === undefined)
+    return statusFallbackError(input.status, input.body, input.rawBody, input.headers);
   return new UpstreamError({
     kind,
     status: input.status,

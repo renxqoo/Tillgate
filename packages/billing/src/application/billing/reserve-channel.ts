@@ -31,9 +31,10 @@ export interface ChannelReservationResult {
 export function createReserveChannelUseCase(env: {
   store: BillingStore;
   channels: ChannelExposureStore;
-  clock?: () => Date;
+  /** 时钟（装配必填——零写死） */
+  clock: () => Date;
 }) {
-  const { store, channels, clock = () => new Date() } = env;
+  const { store, channels, clock } = env;
   return async function reserveChannel(
     input: ReserveChannelInput,
   ): Promise<ChannelReservationResult> {

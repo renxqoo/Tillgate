@@ -38,7 +38,9 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       connectionTimeoutMillis: 3_000,
       maxUses: 1_000,
     });
-    const migrationsDir = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
+    const migrationsDir = fileURLToPath(
+      new URL('../../../packages/db/migrations', import.meta.url),
+    );
     const { readdirSync } = await import('node:fs');
     await db.execute(sql.raw(`create schema ${schema}`));
     // 回放范围：0000–0054（db IMPLEMENTATION §6 探针结论的空库可推进范围）
@@ -47,9 +49,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     //   if-not-exists、不依赖 identity 链；目录/渠道/鉴权读需要）
     const files = readdirSync(migrationsDir)
       .filter(
-        (f) =>
-          /^\d{4}_.*\.sql$/.test(f) &&
-          (Number(f.slice(0, 4)) <= 54 || /^(006[0-4])/.test(f)),
+        (f) => /^\d{4}_.*\.sql$/.test(f) && (Number(f.slice(0, 4)) <= 54 || /^(006[0-4])/.test(f)),
       )
       .toSorted();
     for (const file of files) {
@@ -138,7 +138,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
   });
 
   afterAll(async () => {
-    for (const t of teardowns.reverse()) await t();
+    for (const t of teardowns.toReversed()) await t();
     if (schema) await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
     await closeDb(db);
   });
@@ -220,7 +220,11 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     const bad = await app.request('/oauth/token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ grant_type: 'client_credentials', client_id: 'it-ci', client_secret: 'wrong' }),
+      body: JSON.stringify({
+        grant_type: 'client_credentials',
+        client_id: 'it-ci',
+        client_secret: 'wrong',
+      }),
     });
     expect(bad.status).toBe(401);
   });

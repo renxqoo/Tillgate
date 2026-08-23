@@ -37,7 +37,12 @@ export interface Addressing {
    * 请求签名钩子（仅签名协议需要，如 bedrock SigV4）：拿到最终 URL 与序列化
    * body 后计算认证头（签名依赖 body 哈希，无法在 planRequest 静态给出）。
    */
-  signRequest?(args: { url: URL; body: string; apiKey: string; at: Date }): Promise<Record<string, string>> | Record<string, string>;
+  signRequest?(args: {
+    url: URL;
+    body: string;
+    apiKey: string;
+    at: Date;
+  }): Promise<Record<string, string>> | Record<string, string>;
 }
 
 /** 能力件②：请求方向（参数抹平引擎 + 发送前终改） */
@@ -68,13 +73,25 @@ export interface UsageExtractor {
 
 /** 能力件④：错误翻译（厂商错误 → kind；查表顺序见文件头） */
 export interface ErrorMapper {
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError;
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError;
 }
 
 /** 能力件⑤：原生线格式 ⇄ 规范形编解码（仅原生协议需要） */
 export interface WireCodec {
   translateResponseBody?(body: unknown): unknown;
-  translateUpstreamStream?(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array>;
+  /**
+   * 上游流 → 规范形 SSE 流（gemini 族把 model 透传入帧；claude 族从 message_start
+   * 提取真实模型名，实现可忽略该参数）。v1 同签名——出站如需对外目录模型名，
+   * 由 relay 的响应侧 model 替换开关统一处理（§3.6 例外 2）。
+   */
+  translateUpstreamStream?(
+    stream: ReadableStream<Uint8Array>,
+    model: string,
+  ): ReadableStream<Uint8Array>;
 }
 
 /** 聚合契约 = 五能力件并集 */

@@ -99,7 +99,8 @@ export const referralQueries: Pick<
   async upsertMarketingSettings(db, { patch, updatedBy }) {
     const set: Record<string, unknown> = { updatedAt: nowSql, updatedBy };
     if (patch.signupGiftAmount !== undefined) set.signupGiftAmount = patch.signupGiftAmount;
-    if (patch.referralSignupBonus !== undefined) set.referralSignupBonus = patch.referralSignupBonus;
+    if (patch.referralSignupBonus !== undefined)
+      set.referralSignupBonus = patch.referralSignupBonus;
     if (patch.referralCommissionRate !== undefined)
       set.referralCommissionRate = patch.referralCommissionRate;
     // B7 修复:insert onConflictDoUpdate ... returning 单往返(v1 upsert 后回读两往返)

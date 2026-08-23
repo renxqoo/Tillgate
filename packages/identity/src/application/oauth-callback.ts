@@ -5,6 +5,7 @@
  */
 import { identityErrors } from '../domain/errors.js';
 import { guardProvider } from '../domain/identifier.js';
+import { assertRedirectAllowed } from '../domain/config.js';
 import type { OAuthProfile } from '../ports/oauth-provider.js';
 import type { OAuthStatePayload } from '../ports/oauth-state-store.js';
 import type { IdentityUseCaseContext } from './context.js';
@@ -51,12 +52,14 @@ export async function oauthCallback(
       reason: 'missing authorization code',
     });
   }
+  // 回调地址与 authorize 半程同一白名单精确匹配(防止换 URI 换码)
+  const redirectUri = assertRedirectAllowed(ctx.config, input.redirectUri);
 
   let profile: OAuthProfile;
   try {
     profile = await providerAdapter.exchangeAndProfile({
       code: input.code,
-      redirectUri: input.redirectUri,
+      redirectUri,
     });
   } catch (error) {
     ctx.logger.warn({ err: (error as Error).message, provider }, 'oauth upstream exchange failed');

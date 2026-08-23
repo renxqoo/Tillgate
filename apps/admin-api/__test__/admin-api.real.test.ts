@@ -41,7 +41,8 @@ describe('admin-api 真实 PG 冒烟', () => {
     process.env.ADMIN_JWT_SECRET ??= 'real-smoke-admin-jwt-secret-0123456789';
     process.env.ENCRYPTION_KEY ??= 'real-smoke-encryption-key-0123456789';
     process.env.IDENTITY_CODE_PEPPER ??= 'real-smoke-pepper-0123456789';
-    const assembly = assembleAdminApi(loadAdminApiConfig());
+    const config = loadAdminApiConfig();
+    const assembly = assembleAdminApi(config);
     try {
       const app = createAdminApp({
         pingDb: () => ping(assembly.db),
@@ -52,8 +53,23 @@ describe('admin-api 真实 PG 冒烟', () => {
         operations: assembly.operations,
         writeAudit: assembly.writeAuditInTx,
         subscriptions: assembly.billing.subscriptions,
+        plans: assembly.billing.plans,
+        redeemBatches: assembly.redeemBatches,
+        review: assembly.billing.settlement.review,
+        postAudit: assembly.postAudit,
         controlPlane: assembly.controlPlane,
+        vendorCatalog: assembly.vendorCatalog,
         observability: assembly.observability,
+        notifications: assembly.notifications,
+        generationTasks: assembly.generationTasks,
+        paymentAdmin: assembly.paymentAdmin,
+        orderCloseReason: '管理员手动关闭',
+        identity: assembly.identity,
+        authGuards: assembly.authGuards,
+        trustedProxyHops: config.trustedProxyHops,
+        mailerConfigured: assembly.mailerConfigured,
+        loginAudit: assembly.loginAudit,
+        sessionTtlSec: config.sessionTtlSec,
         corsOrigins: [],
         bodyLimitBytes: 1024 * 1024,
         now: () => new Date(),

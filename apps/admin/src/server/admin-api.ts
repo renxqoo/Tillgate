@@ -10,6 +10,9 @@ import type { AdminApiClient } from '@tokenlens/api-client';
 
 import { createNextAdminApiClient } from '@tokenlens/api-client/next';
 
+import { ADMIN_LOCALE_RESOLUTION } from './admin-locale';
+
 export function adminApi(): AdminApiClient {
-  return createNextAdminApiClient();
+  // BFF 出口语言与 UI 同源策略(cookie → zh),API 错误 message 语言随界面
+  return createNextAdminApiClient({ localeResolution: ADMIN_LOCALE_RESOLUTION });
 }

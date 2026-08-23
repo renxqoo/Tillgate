@@ -18,7 +18,15 @@ import type { SlidingWindowLimiter } from '@tokenlens/runtime';
 
 const JWT = { secret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'ag_' };
 const READER: AuthReadModel = {
-  resolveKeyByHash: async () => ({ keyId: 1, userId: 1, rpmLimit: null, tpmLimit: null, allowPaygFallback: false, userRpmLimit: null, userTpmLimit: null }),
+  resolveKeyByHash: async () => ({
+    keyId: 1,
+    userId: 1,
+    rpmLimit: null,
+    tpmLimit: null,
+    allowPaygFallback: false,
+    userRpmLimit: null,
+    userTpmLimit: null,
+  }),
   resolveApp: async () => null,
 };
 
@@ -33,7 +41,12 @@ function mount(inference: Inference, extra: { rateLimit?: never } = {}) {
   return app;
 }
 
-const post = (a: Hono<AuthEnv>, path: string, body: unknown, headers: Record<string, string> = {}) =>
+const post = (
+  a: Hono<AuthEnv>,
+  path: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) =>
   a.request(path, {
     method: 'POST',
     headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json', ...headers },
@@ -46,13 +59,26 @@ describe('gemini 交付三态分支', () => {
     const inference = {
       chat: async () => {
         call += 1;
-        if (call === 1) return { ok: true, status: 200, rawBody: new Uint8Array([1, 2]), rawContentType: 'audio/wav' };
-        return { ok: true, status: 200, body: { choices: [{ message: { role: 'assistant', content: 'hi' } }] } };
+        if (call === 1)
+          return {
+            ok: true,
+            status: 200,
+            rawBody: new Uint8Array([1, 2]),
+            rawContentType: 'audio/wav',
+          };
+        return {
+          ok: true,
+          status: 200,
+          body: { choices: [{ message: { role: 'assistant', content: 'hi' } }] },
+        };
       },
       stream: async () => {
         throw new Error('unused');
       },
-      generation: { submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }), query: async () => null },
+      generation: {
+        submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }),
+        query: async () => null,
+      },
       health: {} as never,
       close: () => undefined,
     } as unknown as Inference;
@@ -160,7 +186,10 @@ describe('multipart 音频族与防御', () => {
       stream: async () => {
         throw new Error('unused');
       },
-      generation: { submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }), query: async () => null },
+      generation: {
+        submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }),
+        query: async () => null,
+      },
       health: {} as never,
       close: () => undefined,
     } as unknown as Inference;
@@ -184,31 +213,46 @@ describe('multipart 音频族与防御', () => {
     const noFile = new FormData();
     noFile.append('model', 'whisper-x');
     expect(
-      (await app.request('/v1/audio/transcriptions', { method: 'POST', headers: { authorization: 'Bearer ag_k' }, body: noFile })).status,
+      (
+        await app.request('/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { authorization: 'Bearer ag_k' },
+          body: noFile,
+        })
+      ).status,
     ).toBe(400);
 
     const badType = new FormData();
     badType.append('model', 'whisper-x');
-    badType.append('file', new File([new Uint8Array([1])], 'x.exe', { type: 'application/octet-stream' }));
+    badType.append(
+      'file',
+      new File([new Uint8Array([1])], 'x.exe', { type: 'application/octet-stream' }),
+    );
     expect(
-      (await app.request('/v1/audio/transcriptions', { method: 'POST', headers: { authorization: 'Bearer ag_k' }, body: badType })).status,
+      (
+        await app.request('/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { authorization: 'Bearer ag_k' },
+          body: badType,
+        })
+      ).status,
     ).toBe(400);
   });
 });
 
-describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
-  function gate(released: string[]) {
-    const limiter = {
-      checkAll: async () => ({ allowed: true }),
-      reserveTpmAll: async () => ({ allowed: true }),
-      check: async () => ({ allowed: true }),
-      releaseTpm: async (id: string) => {
-        released.push(id);
-      },
-    } as unknown as SlidingWindowLimiter;
-    return { limiter, globalRpm: null } satisfies RateLimitGate;
-  }
+function gate(released: string[]) {
+  const limiter = {
+    checkAll: async () => ({ allowed: true }),
+    reserveTpmAll: async () => ({ allowed: true }),
+    check: async () => ({ allowed: true }),
+    releaseTpm: async (id: string) => {
+      released.push(id);
+    },
+  } as unknown as SlidingWindowLimiter;
+  return { limiter, globalRpm: null } satisfies RateLimitGate;
+}
 
+describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
   it('passthrough 提交（402）原样出站；音乐查询异类 404', async () => {
     const inference = {
       chat: async () => ({ ok: true, status: 200, body: {} }),
@@ -216,14 +260,32 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
         throw new Error('unused');
       },
       generation: {
-        submit: async () => ({ ok: true, passthrough: true, status: 402, code: 'billing.insufficient_balance', message: 'no funds' }),
-        query: async () => ({ taskId: 't', kind: 'video' as const, status: 'queued', upstreamTaskId: null, params: {}, result: null, failReason: null, createdAt: 1, expiresAt: 2 }),
+        submit: async () => ({
+          ok: true,
+          passthrough: true,
+          status: 402,
+          code: 'billing.insufficient_balance',
+          message: 'no funds',
+        }),
+        query: async () => ({
+          taskId: 't',
+          kind: 'video' as const,
+          status: 'queued',
+          upstreamTaskId: null,
+          params: {},
+          result: null,
+          failReason: null,
+          createdAt: 1,
+          expiresAt: 2,
+        }),
       },
       health: {} as never,
       close: () => undefined,
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
-    app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+    app.onError(
+      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+    );
     app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
     app.route('/', generationRoutes({ inference }));
     const res = await post(app, '/v1/music/generations', { model: 'm', prompt: 'p' });
@@ -244,7 +306,9 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       },
       generation: {
         submit: async () => {
-          throw (await import('@tokenlens/inference')).InferenceErrors.business('model_not_found', { model: 'm' });
+          throw (await import('@tokenlens/inference')).InferenceErrors.business('model_not_found', {
+            model: 'm',
+          });
         },
         query: async () => null,
       },
@@ -252,15 +316,23 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       close: () => undefined,
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
-    app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
-    app.use(
-      '/v1/*',
-      async (c, next) => {
-        c.set('requestId', 'rel-1');
-        c.set('auth', { userId: 1, apiKeyId: 1, appId: null, allowedModels: null, rpmLimit: 1, tpmLimit: 1, userRpmLimit: null, userTpmLimit: null });
-        await next();
-      },
+    app.onError(
+      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
     );
+    app.use('/v1/*', async (c, next) => {
+      c.set('requestId', 'rel-1');
+      c.set('auth', {
+        userId: 1,
+        apiKeyId: 1,
+        appId: null,
+        allowedModels: null,
+        rpmLimit: 1,
+        tpmLimit: 1,
+        userRpmLimit: null,
+        userTpmLimit: null,
+      });
+      await next();
+    });
     app.route('/', generationRoutes({ inference, rateLimit: gate(released) }));
     const res = await post(app, '/v1/video/generations', { model: 'm', prompt: 'p' });
     expect(res.status).toBe(404);
@@ -279,14 +351,36 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
         submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }),
         query: async (_userId: number, id: string) =>
           id === 'v'
-            ? { taskId: 'v', kind: 'video' as const, status: 'succeeded' as const, upstreamTaskId: 'u', params: {}, failReason: null, createdAt: 1726000000_000, expiresAt: 1726003600_000, result: { url: 'https://v/x.mp4', width: 1280, height: 720 } }
-            : { taskId: 'm', kind: 'music' as const, status: 'failed' as const, upstreamTaskId: null, params: {}, failReason: 'upstream', createdAt: 1726000000_000, expiresAt: 1726003600_000, result: null },
+            ? {
+                taskId: 'v',
+                kind: 'video' as const,
+                status: 'succeeded' as const,
+                upstreamTaskId: 'u',
+                params: {},
+                failReason: null,
+                createdAt: 1726000000_000,
+                expiresAt: 1726003600_000,
+                result: { url: 'https://v/x.mp4', width: 1280, height: 720 },
+              }
+            : {
+                taskId: 'm',
+                kind: 'music' as const,
+                status: 'failed' as const,
+                upstreamTaskId: null,
+                params: {},
+                failReason: 'upstream',
+                createdAt: 1726000000_000,
+                expiresAt: 1726003600_000,
+                result: null,
+              },
       },
       health: {} as never,
       close: () => undefined,
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
-    app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+    app.onError(
+      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+    );
     app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
     app.route('/', generationRoutes({ inference }));
 
@@ -294,14 +388,23 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       headers: { authorization: 'Bearer ag_k' },
     });
     const video = (await bad.json()) as Record<string, unknown>;
-    expect(video).toMatchObject({ video_url: 'https://v/x.mp4', video_width: 1280, video_height: 720, status: 'succeeded' });
+    expect(video).toMatchObject({
+      video_url: 'https://v/x.mp4',
+      video_width: 1280,
+      video_height: 720,
+      status: 'succeeded',
+    });
 
-    const musicRes = await app.request('/v1/musics/m', { headers: { authorization: 'Bearer ag_k' } });
+    const musicRes = await app.request('/v1/musics/m', {
+      headers: { authorization: 'Bearer ag_k' },
+    });
     const music = (await musicRes.json()) as Record<string, unknown>;
     expect(music).toMatchObject({ audio_url: null, fail_reason: 'upstream' });
 
     const gemini = new Hono<AuthEnv>();
-    gemini.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+    gemini.onError(
+      errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }),
+    );
     gemini.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
     gemini.route('/', geminiNativeRoutes({ inference }));
     const badBody = await gemini.request('/v1beta/models/g:generateContent', {

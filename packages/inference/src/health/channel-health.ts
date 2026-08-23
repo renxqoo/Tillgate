@@ -18,7 +18,9 @@ import {
  *     事件不带 channelKey，经 attempt_start 维护的 requestId→channelKey 映射取键；
  *   - success（终态）→ terminated ∈ 故障族（inactivity/upstream_*）计熔断失败
  *     （v1 B6：非客户端断开计入熔断），否则记成功；死凭据随成功自愈；
- *   - empty_completion → 不计（空完成走独立重试预算，非渠道健康信号）。
+ *   - empty_completion → 不计（空完成走独立重试预算，非渠道健康信号），
+ *     但作为请求终态参与 requestId→channelKey 映射清理（ai 非流式空完成重试
+ *     耗尽只发 empty_completion，无 failed/success 跟随——不清理即映射泄漏）。
  *
  * 回调契约：同步部分 O(1) 判型 + fire-and-forget（异步状态机更新不 await、异常吞掉
  * 经 onFault 观察）；存储故障 fail-open（admit 放行——健康是保护机制不是准入事实源）。
@@ -128,6 +130,11 @@ export function createChannelHealth(env: {
         if (key != null) recordSuccess(key);
         break;
       }
+      case 'empty_completion':
+        // 请求终态（ai 非流式空完成重试耗尽只发本事件，无 failed/success 跟随）：
+        // 不进健康状态机，但必须清理映射——否则 currentChannel 随请求量无界增长
+        currentChannel.delete(e.requestId);
+        break;
       case 'success': {
         currentChannel.delete(e.requestId);
         if (e.terminated !== undefined && TRIP_TERMINATIONS.has(e.terminated)) {
@@ -141,7 +148,7 @@ export function createChannelHealth(env: {
         break;
       }
       default:
-        break; // param_adjustment/stream_error/aborted/usage/empty_completion 不进健康状态机
+        break; // param_adjustment/stream_error/aborted/usage 非终态不进健康状态机，也不清映射
     }
   };
 

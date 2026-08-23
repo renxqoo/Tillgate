@@ -118,7 +118,7 @@ describe('i18n 配置装配（cookie → Accept-Language → messages 装载）'
     expect(Object.keys(cfg.messages).length).toBeGreaterThan(5);
   });
 
-  it('无 cookie 时按 Accept-Language 回落英文词表', async () => {
+  it('无 cookie 时忽略 Accept-Language,回落中文(管理台内部面策略)', async () => {
     vi.resetModules();
     vi.doMock('next/headers', () => ({
       cookies: async () => mockCookieJar().jar,
@@ -130,7 +130,7 @@ describe('i18n 配置装配（cookie → Accept-Language → messages 装载）'
     const load = (await import('../src/config/i18n-request')).default as () => Promise<{
       locale: string;
     }>;
-    expect((await load()).locale).toBe('en');
+    expect((await load()).locale).toBe('zh');
   });
 });
 

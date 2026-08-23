@@ -122,9 +122,52 @@
 
 ## 7. 待办挂账
 
-- G1 桥接:accounts/control-plane 的 AuditPort 改由 apps assembly 桥接本包原语——P5 apps 波次。
-- D2:control-plane AuditStore(价格溯源)与 observability AuditLogRow 形状合并——P5 桥接时裁决。
+- G1 桥接——**部分兑现**(2026-08-23 注记):accounts facade 缺省自带 postgres audit-sink
+  (audit_logs 直写,无需 app 桥接);admin-api 经 `adapters/accounts-bridges.ts` 桥接审计;
+  gateway 装配无审计消费面。剩余:identity 的 auditSink 桥接未接(identity 审计事件→
+  audit_logs 行映射)——client-api 现状 identity 审计静默丢弃,挂 apps 登录波(P2)与
+  client-api 后续波。
+- ~~D2:control-plane AuditStore(价格溯源)与 observability AuditLogRow 形状合并~~——
+  **已裁决不合并**(2026-08-23,control-plane IMPLEMENTATION §6 附记):价格溯源等 action
+  语义查询归能力包、通用审计查询归 observability,control-plane listCatalogPriceHistory
+  留守是终态;跨包同名类型副本是边界隔离既有口径(api-client/http D1/D2 先例),不强行单一化。
 - ~~token-compare(trace-receiver)与 http 常量时间比较的合并~~——**已兑现**(apps/trace-receiver
   波次):合一为 `@tokenlens/http` `security/token-compare.ts` `timingSafeTokenEqual`,接收端
   首位消费,worker 健康令牌/client-api webhook 签名(P5)自此同源。
 - 审计保留策略(分区/清理)——v1 无此行为,升格需独立裁决(§3.4「保留」的完整落地)。
+- **T1(2026-08-23 trace 完整性审计新增挂账)**:trace 领域 span 无生产者——v1 的
+  `upstream.attempt`/`billing.*`/`settle.claim` span 族未迁(v2 全仓唯一 span 生产点是
+  gateway HTTP 根 span);`/v1/tracing/topology` 硬编码 `upstream%` 因而无数据恒空,
+  trace_spans 的 channel/model 提升列恒 NULL;`withAsyncSpan`/`remoteParentContext`/
+  ai `tracer` 钩子均零调用方。修复方向:inference attempt/stream/settle 链路恢复 v1 词表
+  (最小集 = upstream.attempt,topology/链路图/渠道排障三面复活);跨服务串联需 inference
+  授权时注入 traceParent(billing authorize 端口字段已备、暂无调用方)。连带配置断点:
+  compose 四服务 `OTEL_TRACES_MODE:'off'` 缺省,且三 app `initOtel` 未传 `authToken`
+  (接收端生产强制 token——缺 token = span 全部 401 拒收;`.env.example` 的「自动对齐」
+  承诺不成立,已随本审计修正)。
+
+## 8. 加法变更:usage_logs 运维读侧（admin-api P4 波;2026-08-23）
+
+v1 `usage-log.repo` 管理面族迁入本包（写入投影归 billing settlement 不动,此处只承载
+运维查询——管理列表/概览/分组/趋势/渠道 TTFT）,全部为**加法变更**:
+
+- `src/usage/types.ts`:词表 + 行/输入形状（`USAGE_SORT_FIELDS` 排序白名单单一真相,
+  admin-api contracts 引用不复制;`UsageStatsStore` port）。
+- `src/usage/day-window.ts`:北京日界纯函数（`beijingDayStart`/`beijingTrendsFrom`;
+  v1 statsOverview/statsTrends 切日公式逐语义随迁——面板面向中国时区,UTC 零点会把
+  早 8 点前的量算进昨日;中国无夏令时,固定 +8h 是口径常量）。
+- `src/usage/queries.ts`:查询信封（overview 三查并发 + failedCount/successRate 一位
+  小数舍入 + bigint 字符串→number 映射;now 由调用方注入——requestLogs.list 同构）。
+- `adapters/postgres/usage-store.ts`:六原语 SQL 逐语义平移（列表恒 status=0、q 三路
+  ilike、id 稳定序;趋势 `at time zone 'Asia/Shanghai'`;TTFT percentile_cont 库端聚合,
+  只统计流式成功样本）。
+- facade `usage` facet + index 出口（快照 +5 值导出）;`__test__/usage-queries.test.ts`
+  9 用例 + `usage-store.real.test.ts` 2 用例（真库行为等价,默认门禁排除）。
+
+与 v1 的偏差（2 项,均为语义无损收口）:管理列表 count 查询去掉了 v1 冗余的 users
+leftJoin（投影不用 users 列,leftJoin 不改变 total）;usageGroups/dailyTrends 的 bigint
+聚合列在 SQL 层显式 `::text`（v1 类型标注说谎为 number 实际回传 string,新实现类型
+诚实,queries 层统一 Number 映射——出口值等价）。
+
+门禁（2026-08-23）:typecheck 0 错;oxlint 0-0;vitest 75/75;覆盖率 stmts 94.54 /
+branches 87.5 / funcs 97.67 / lines 97.32（≥90/85/90/90）;real 测试 2/2（真库）。

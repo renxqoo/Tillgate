@@ -20,12 +20,15 @@ export type OtelMode = 'off' | 'memory' | 'console' | 'otlp';
 
 export interface InitOtelOptions {
   serviceName: string;
-  serviceVersion?: string;
+  /** 服务版本(资源属性;铁律 3 必填注入,不藏缺省) */
+  serviceVersion: string;
   mode: OtelMode;
   /** OTLP HTTP 端点(collector),如 http://otel-collector:4318;mode=otlp 时必填 */
   endpoint?: string;
-  /** mode=console 时的日志出口(缺省 console) */
+  /** mode=console 时的日志出口(必填,不再藏 console 缺省) */
   logger?: SpanLogSink;
+  /** mode=otlp 的指标推送周期毫秒(必填注入,不写死) */
+  metricsExportIntervalMs?: number;
   /** OTLP 推送鉴权(Bearer)。显式装配传入——与接收端同键同值,缺此值 = span 全部 401 拒收 */
   authToken?: string;
 }
@@ -46,12 +49,25 @@ export interface OtelHandle {
  * otlp 缺 endpoint 启动期 fail-fast(G2:authToken 无 env 回落,装配显式传)。
  */
 export function initOtel(options: InitOtelOptions): OtelHandle {
-  const { serviceName, serviceVersion = '0.1.0', mode, endpoint, logger } = options;
+  const { serviceName, serviceVersion, mode, endpoint, logger, metricsExportIntervalMs } = options;
   if (mode === 'off') {
     return { mode, shutdown: async () => {} };
   }
   if (mode === 'otlp' && !endpoint) {
     throw observabilityErrors.business('otel_endpoint_missing', { serviceName });
+  }
+  // 铁律 3 收口:console 模式的日志出口与 otlp 模式的指标周期必填,不再藏缺省
+  if (mode === 'console' && logger == null) {
+    throw observabilityErrors.business('otel_option_missing', {
+      field: 'logger',
+      reason: 'required when mode is console',
+    });
+  }
+  if (mode === 'otlp' && (metricsExportIntervalMs == null || metricsExportIntervalMs <= 0)) {
+    throw observabilityErrors.business('otel_option_missing', {
+      field: 'metricsExportIntervalMs',
+      reason: 'positive integer required when mode is otlp',
+    });
   }
 
   const resource = resourceFromAttributes({
@@ -67,7 +83,7 @@ export function initOtel(options: InitOtelOptions): OtelHandle {
     mode === 'memory'
       ? ((memory = createMemoryTraceViewer()), [memory.processor])
       : mode === 'console'
-        ? [createLogSpanProcessor(logger ?? console)]
+        ? [createLogSpanProcessor(logger!)]
         : [
             new BatchSpanProcessor(
               new OTLPTraceExporter({
@@ -87,7 +103,7 @@ export function initOtel(options: InitOtelOptions): OtelHandle {
               url: `${endpoint}/v1/metrics`,
               ...authHeaders,
             }),
-            exportIntervalMillis: 10_000,
+            exportIntervalMillis: metricsExportIntervalMs!,
           }),
         }
       : {}),

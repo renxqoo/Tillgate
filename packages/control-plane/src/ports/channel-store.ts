@@ -38,7 +38,6 @@ export interface ChannelFundsRow {
   readonly status: number;
 }
 
-
 /** 网关路由候选行（G1，gateway P5 波；v1 findRouteCandidates 语义）：启用渠道 + 密文 + 调度权重 */
 export interface RouteCandidateRow {
   readonly channelId: number;

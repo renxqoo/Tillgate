@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isBusinessError } from '@tokenlens/errors';
 import type { UpstreamStreamEvent } from '../src/ports/upstream';
 import type { BillingSignal } from '../src/ports/billing';
+import { createInference } from '../src/inference';
+import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import {
   baseAuth,
   buildInference,
@@ -244,5 +246,61 @@ describe('application/stream：流式尝试', () => {
     emit({ type: 'success', durationMs: 1 }); // 终态清理定时器（不抛）
     await vi.advanceTimersByTimeAsync(10);
     s.detach();
+  });
+
+  it('B16 回归：后台结算链意外崩溃 → onError 观察 + 续租定时器停（void settle 无 catch 的泄漏）', async () => {
+    // 注入 onError 在结算重试路径抛出（重试器 catch 内的二次故障——初版
+    // `void settle(event)` 无 .catch，异常成为 unhandled rejection 且续租不停）
+    const ai = fakeAi();
+    const upstream = fakeUpstream();
+    const billing = fakeBilling();
+    const catalog = fakeCatalog(
+      { 'gpt-x': mapping() },
+      { 'gpt-x-real': [channel({ channelId: 1, channelName: 'ch-a' })] },
+    );
+    const faults: string[] = [];
+    const original = billing.port.signal;
+    billing.port.signal = async (input) => {
+      if (input.type === 'request_succeeded') throw new Error('db down');
+      await original(input);
+    };
+    const inference = createInference({
+      ai: ai.ai,
+      catalog,
+      billing: billing.port,
+      store: createMemoryHealthStore(),
+      decrypt: (enc) => `plain:${enc}`,
+      upstream: upstream.port,
+      defaults: {
+        authorization: { ttlMs: 3_000 },
+        streamLease: { minRenewIntervalMs: 1_000, maxRenewals: 100 },
+        settleSignal: { attempts: 1, baseDelayMs: 1, maxDelayMs: 1 },
+      },
+      onError: (error, context) => {
+        faults.push(context);
+        if (context.startsWith('signal request_succeeded')) throw error; // 重试器内二次故障
+      },
+    });
+    let emit!: (e: UpstreamStreamEvent) => void;
+    wireStream(upstream, (e) => {
+      emit = e;
+      e({ type: 'first_chunk', atMs: Date.now() });
+    });
+    await inference.stream({ requestId: 'req-7', auth: baseAuth, body });
+    await vi.advanceTimersByTimeAsync(1_200); // 至少 1 次续租后触发终态
+    const renewalsBeforeCrash = billing.signals.filter((e) => e.type === 'lease_renewed').length;
+    expect(renewalsBeforeCrash).toBeGreaterThanOrEqual(1);
+    emit({
+      type: 'success',
+      usage: { inputTokens: 5, cachedInputTokens: 0, outputTokens: 5, estimated: false, raw: null },
+      durationMs: 10,
+    });
+    await vi.advanceTimersByTimeAsync(10); // 结算链崩溃落地（.catch 观察 + 停租）
+    expect(faults.some((c) => c.includes('stream settle crashed'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(10_000); // 停租后不再续租（定时器已清）
+    expect(billing.signals.filter((e) => e.type === 'lease_renewed')).toHaveLength(
+      renewalsBeforeCrash,
+    );
+    inference.close();
   });
 });

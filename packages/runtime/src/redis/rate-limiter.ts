@@ -175,7 +175,10 @@ export function createSlidingWindowLimiter(
       return await op();
     } catch (error) {
       if (failClosed) {
-        logger?.warn({ err: (error as Error).message }, 'rate limit storage unavailable, failing closed');
+        logger?.warn(
+          { err: (error as Error).message },
+          'rate limit storage unavailable, failing closed',
+        );
         throw rateLimitUnavailable(error);
       }
       logger?.warn(
@@ -236,7 +239,10 @@ export function createSlidingWindowLimiter(
       `${tag}:reserved:${minute}:${item.dimension}`,
     ]);
     const reservationKey = `${tag}:request:${requestId}`;
-    const args = limited.flatMap((item) => [Math.max(0, Math.ceil(item.estimatedTokens)), item.max]);
+    const args = limited.flatMap((item) => [
+      Math.max(0, Math.ceil(item.estimatedTokens)),
+      item.max,
+    ]);
     const result = (await scripts.run(
       RESERVE_TPM_SCRIPT,
       keys.length + 1,
@@ -270,9 +276,14 @@ export function createSlidingWindowLimiter(
       return guard(() => reserveTpmAllInner(limited, requestId), { allowed: true });
     },
     async releaseTpm(requestId) {
-      await scripts.run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`).catch((error: Error) => {
-        logger?.warn({ requestId, err: error.message }, 'releaseTpm storage unavailable (best-effort; TTL reclaims)');
-      });
+      await scripts
+        .run(RELEASE_TPM_SCRIPT, 1, `{tpm}:request:${requestId}`)
+        .catch((error: Error) => {
+          logger?.warn(
+            { requestId, err: error.message },
+            'releaseTpm storage unavailable (best-effort; TTL reclaims)',
+          );
+        });
     },
     async backfillTpm(requestId, dimensions, tokens) {
       // dimensions 空才可跳过：tokens=0 也必须走脚本（释放预占——零额结算的请求
@@ -290,7 +301,10 @@ export function createSlidingWindowLimiter(
           tokens,
         )
         .catch((error: Error) => {
-          logger?.warn({ requestId, err: error.message }, 'backfillTpm storage unavailable (best-effort; TTL reclaims)');
+          logger?.warn(
+            { requestId, err: error.message },
+            'backfillTpm storage unavailable (best-effort; TTL reclaims)',
+          );
         });
     },
     async renewTpm(requestId) {

@@ -153,6 +153,8 @@ function createSchema(production: boolean) {
     /** OTel：off 完全 no-op / otlp 走 collector */
     OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
+    TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
     /** Redis 告警日志节流与启动连通性探测超时（ms） */
     CLIENT_REDIS_LOG_THROTTLE_MS: z.coerce.number().int().positive().default(60_000),

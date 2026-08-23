@@ -29,6 +29,13 @@
   两种状态 JSON 形状互相覆盖——v1 以双前缀规避的坑在重写中复现；修复 = 机器级键前缀
   `breaker:`/`credential:`（结构约束），回归用例 `channel-health.test.ts`「B11 回归」按铁律 16 命名。
 
+## 1a. 审计收口补充（2026-08-23 第二轮，登记 MIGRATION.md §3a）
+
+- **B12/B13/B14/B16** 与口径裁决 **R2（可信 usage 不标 stream_aborted）/ R3（上游 4xx 透传，
+  [ADR-0004](../../docs/adr/0004-upstream-4xx-passthrough.md)）**：修复与裁决细节以
+  MIGRATION.md §3a 为单一事实源，此处不重复抄写；各配按编号命名的回归用例
+  （channel-health/switchable/failover/stream/attribution.test.ts）。
+
 ## 2. 逐模块裁决表（旧 → 新）
 
 | 旧文件（ai-getway）                                                                                         | 裁决                                                      | 新位置                                              |
@@ -43,6 +50,7 @@
 | packages/ai/src/breaker/breaker.ts                                                                          | 重写（class→工厂闭包；存储经 HealthStore port）           | src/health/breaker.ts                               |
 | packages/ai/src/dead-credential/tracker.ts                                                                  | 重写（同上）                                              | src/health/dead-credential.ts                       |
 | （v1 无：健康装配/订阅）                                                                                    | 新写（AiEvent 订阅者 + fire-and-forget）                  | src/health/channel-health.ts                        |
+| （v1 run-chat/attempt/settle-retry 的 withAsyncSpan 面）                                                     | 回填（TracePort port 注入；命名见 docs/observability.md §3） | src/ports/trace.ts + 各 application 挂点            |
 | apps/gateway/src/pipeline/run-chat.ts                                                                       | 重写（限流/OTel 剥离；见 failover/chat/stream）           | src/application/{quote,failover,chat,stream}.ts     |
 | apps/gateway/src/pipeline/attempt-nonstream.ts                                                              | 重写                                                      | src/application/chat.ts                             |
 | apps/gateway/src/pipeline/attempt-stream.ts                                                                 | 重写（估算源 outputText→outputFeatures，C1）              | src/application/stream.ts                           |
@@ -113,7 +121,7 @@ ports 增加 `generation`（垂直用例的持久化接缝，结构图清单非�
 | switchable.test.ts           | 19 kind 全矩阵表驱动 + 内部拒绝码 + 4xx 透传边界                                               |
 | candidates.test.ts           | fallback 一级展开、mappingId 去重、缺映射跳过、主缺失即 model_not_found                        |
 | output-cap.test.ts           | max_completion_tokens>max_tokens>缺省、×n、封顶、注入、钳制引用语义、字节上界                  |
-| attribution.test.ts          | terminated 矩阵（undefined/用户侧三态/inactivity/server_draining/未知→partial）+ 词表封闭性    |
+| attribution.test.ts          | terminated 矩阵（undefined/用户侧两态/inactivity/server_draining/未知→partial）+ 词表封闭性    |
 | estimate.test.ts             | 空文本、纯 CJK、混合文本、系数覆写、非有限值防御                                               |
 | measurement.test.ts          | token/image/second/char/request 计量矩阵 + 参数兜底                                            |
 | receipt.test.ts              | 可信 usage/估算 usage 双分支、units、cacheWrite 透传、credentialType                           |
@@ -154,3 +162,40 @@ ports 增加 `generation`（垂直用例的持久化接缝，结构图清单非�
 - 与老仓的对照核销清单见 MIGRATION.md §4（17 项全勾）。
 - bun.lock 混有并行会话（accounts/billing/control-plane）条目，未随本次提交（铁律 15），
   待协调收口。
+
+---
+
+## 附录：gateway P5 波修订（2026-08-23，同迁移单元「推理请求经公网入口完成」）
+
+- **C-G1** `CatalogPort.findMapping(externalModel, pricing: { userId, body })`——快照的
+  coefficient/unitPrice/unitUpperBound 是请求时点已解析值（v1 buildQuote 语义：费率卡
+  系数按用户、单位上界按请求体）；quote/generation 调用点与 harness 同步。实现由
+  apps/gateway 的 catalog-port 桥注入（control-plane 目录读 + billing 纯函数）。
+- **C-G9** `adapters/generation-pg.ts`（generation_tasks 0053/0054）+ 根出口
+  `createPostgresGenerationTaskStore`；`__test__/generation-pg.real.test.ts`（隔离 schema
+  回放迁移链 0000–0054——db IMPLEMENTATION §6 探针结论的空库范围；13 条 `"public".` 限定
+  FK 在回放时剥离限定）。架构门禁同步：db/drizzle 进口白名单限 adapters 层，出口快照 +1。
+
+## 附录 2：admin-api P4 波加法（2026-08-23，管理任务列表读动词）
+
+v1 `generation-task.repo listAdminTasks/findSettledAmounts` 迁入,全部**加法变更**:
+
+- `ports/generation.ts`：+`GENERATION_TASK_STATUSES` 词表（DB check 同源,wire zod
+  单一真相）+ `GenerationTaskStatus` 类型 + `GenerationTaskAdminRow`/`AdminListInput`
+  + `adminList`/`settledAmounts` 两原语（既有动词零改动）。
+- `domain/generation.ts`：+`GENERATION_TASK_KINDS` 词表数组（与 GENERATION_KINDS
+  键集封闭性由测试锁定）。
+- `adapters/generation-pg.ts`：adminList（billing_requests 左联带出 billingStatus,
+  createdAt 降序 + total 全量）;settledAmounts 走 `generation_tasks.request_id =
+  usage_logs.request_id` join——v1 依赖「task.id 即计费 requestId」惯例直查,新仓
+  taskId/requestId 显式分立（提交用例各自 randomUUID）,按账单锚 join 是意图忠实移植。
+- `adapters/task-memory.ts`：同语义内存版（billingStatus 恒 null、settledAmounts 空
+  Map——内存形态无账本投影,数据面缺席非逻辑缺席;注释在文件头）。
+- facade `generation.adminList/settledAmounts` 直通任务存储;根出口 +2 值导出。
+- vitest coverage exclude +`adapters/generation-pg.ts`（纯 SQL/DDL,行为由
+  generation-pg.real.test.ts 承担——observability adapters/postgres 桶同口径;
+  该文件系并行 gateway 波落地,计入分母曾致 functions 阈值失守 88.66%）。
+
+门禁（2026-08-23）：typecheck 0 错;oxlint 0-0;vitest 146/146+1 skip;覆盖率 stmts
+94.09 / branches 88.1 / funcs 92.66 / lines 94.72（≥90/85/90/90）;real 测试 5/5
+（隔离 schema 回放迁移链,含 adminList/settledAmounts 两用例）。

@@ -5,7 +5,6 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  completionsCodec,
   responsesCodec,
   claudeMessagesCodec,
   inferenceEndpoints,
@@ -74,15 +73,16 @@ describe('claude messages codec', () => {
   });
 });
 
+const upstream = () =>
+  new ReadableStream({
+    start(c) {
+      c.enqueue(new TextEncoder().encode('data: {}\n\n'));
+      c.close();
+    },
+  });
+
 describe('端点表', () => {
   it('三 codec 的 encodeStream 全部执行（线格式转换流存在性）', () => {
-    const upstream = () =>
-      new ReadableStream({
-        start(c) {
-          c.enqueue(new TextEncoder().encode('data: {}\n\n'));
-          c.close();
-        },
-      });
     expect(responsesCodec.encodeStream(upstream(), 'm')).toBeInstanceOf(ReadableStream);
     expect(claudeMessagesCodec.encodeStream(upstream(), 'm')).toBeInstanceOf(ReadableStream);
   });

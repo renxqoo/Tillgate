@@ -104,27 +104,46 @@ describe('adminPatchUser', () => {
     expect(withReason.freezeReason).toBe('刷单');
   });
 
-  it('email 变更同语句推进会话失效线(全网下线语义)', async () => {
+  it('email 变更同事务推进 identity 吊销线(§3.4 唯一所有者;port 调用语义)', async () => {
     const h = createTestHarness();
     const u = h.store.seed.user({ email: 'old@x.io' });
-    const after = await h.store.findUserById(h.ctx.db, u.id);
-    expect(after!.sessionInvalidBefore).toBeNull();
+    expect(h.sessionInvalidation.calls).toHaveLength(0);
     const updated = await h.api.adminPatchUser({
       userId: u.id,
       patch: { email: 'New@X.io' },
       adminId: 5,
     });
     expect(updated.email).toBe('new@x.io');
+    // port 恰好被调一次,user realm;不再直写 users.session_invalid_before(列冻结只读)
+    expect(h.sessionInvalidation.calls).toEqual([{ realm: 'user', userId: u.id }]);
     const reread = await h.store.findUserById(h.ctx.db, u.id);
-    expect(reread!.sessionInvalidBefore).not.toBeNull();
+    expect(reread!.sessionInvalidBefore).toBeNull();
   });
 
-  it('非 email 变更不推进锚', async () => {
+  it('非 email 变更不触发会话失效', async () => {
     const h = createTestHarness();
     const u = h.store.seed.user({});
     await h.api.adminPatchUser({ userId: u.id, patch: { displayName: 'n' }, adminId: 5 });
-    const reread = await h.store.findUserById(h.ctx.db, u.id);
-    expect(reread!.sessionInvalidBefore).toBeNull();
+    expect(h.sessionInvalidation.calls).toHaveLength(0);
+  });
+
+  it('会话失效 bridge 失败随业务事务回滚(§5.4:email 变更与吊销原子)', async () => {
+    const h = createTestHarness();
+    const u = h.store.seed.user({ email: 'rollback@x.io' });
+    const before = await h.store.findUserById(h.ctx.db, u.id);
+    const boom: typeof h.sessionInvalidation = {
+      ...h.sessionInvalidation,
+      async invalidateUserSessions() {
+        throw new Error('identity anchor unavailable');
+      },
+    };
+    (h.ctx as unknown as { sessionInvalidation: typeof boom }).sessionInvalidation = boom;
+    await expect(
+      h.api.adminPatchUser({ userId: u.id, patch: { email: 'New2@X.io' }, adminId: 5 }),
+    ).rejects.toThrow('identity anchor unavailable');
+    // 业务写入一并回滚(内存替身经快照回滚 fake db)
+    const after = await h.store.findUserById(h.ctx.db, u.id);
+    expect(after!.email).toBe(before!.email);
   });
 
   it('换卡守卫两分:不存在 → rate_card_not_found;停用 → rate_card_disabled', async () => {

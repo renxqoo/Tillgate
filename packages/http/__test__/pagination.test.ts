@@ -9,7 +9,12 @@ import {
   parsePagination,
   limitOffset,
 } from '../src/pagination/page';
-import { escapeLike, listQuerySchema, searchQuerySchema, sortQuerySchema } from '../src/pagination/list-query';
+import {
+  escapeLike,
+  listQuerySchema,
+  searchQuerySchema,
+  sortQuerySchema,
+} from '../src/pagination/list-query';
 
 /**
  * 分页与列表 query（v1 pagination.test 全部 + list-query.test 纯半边迁移）。
@@ -66,9 +71,17 @@ describe('parsePagination / limitOffset / paginatedResult', () => {
   });
 
   it('paginateQuery：并行两查并组装；count 缺行兜底 0', async () => {
-    const r = await paginateQuery({ page: 1, pageSize: 2 }, Promise.resolve(['a', 'b']), Promise.resolve([{ count: 7 }]));
+    const r = await paginateQuery(
+      { page: 1, pageSize: 2 },
+      Promise.resolve(['a', 'b']),
+      Promise.resolve([{ count: 7 }]),
+    );
     expect(r).toEqual({ list: ['a', 'b'], total: 7, page: 1, page_size: 2 });
-    const empty = await paginateQuery({ page: 1, pageSize: 2 }, Promise.resolve([]), Promise.resolve([]));
+    const empty = await paginateQuery(
+      { page: 1, pageSize: 2 },
+      Promise.resolve([]),
+      Promise.resolve([]),
+    );
     expect(empty.total).toBe(0);
   });
 });
@@ -76,8 +89,14 @@ describe('parsePagination / limitOffset / paginatedResult', () => {
 describe('列表 query 组合（sort / search / listQuerySchema）', () => {
   it('sortQuerySchema：order 默认 desc；sort_by trim；可省略', () => {
     expect(sortQuerySchema.parse({})).toEqual({ sort_by: undefined, order: 'desc' });
-    expect(sortQuerySchema.parse({ sort_by: 'name', order: 'asc' })).toEqual({ sort_by: 'name', order: 'asc' });
-    expect(sortQuerySchema.parse({ sort_by: ' name ' })).toEqual({ sort_by: 'name', order: 'desc' });
+    expect(sortQuerySchema.parse({ sort_by: 'name', order: 'asc' })).toEqual({
+      sort_by: 'name',
+      order: 'asc',
+    });
+    expect(sortQuerySchema.parse({ sort_by: ' name ' })).toEqual({
+      sort_by: 'name',
+      order: 'desc',
+    });
   });
 
   it('边界：sort_by 超 64 字符 / 搜索词超 100 字符 → 校验拒绝（不静默截断）', () => {
@@ -101,9 +120,9 @@ describe('列表 query 组合（sort / search / listQuerySchema）', () => {
       order: 'desc',
     });
     const extended = listQuerySchema.extend({ status: z.coerce.number().int().optional() });
-    expect(
-      extended.safeParse({ status: '1', page: '2', q: ' x ', sort_by: 'name' }),
-    ).toMatchObject({ success: true, data: { status: 1, page: 2, q: 'x', sort_by: 'name' } });
+    expect(extended.safeParse({ status: '1', page: '2', q: ' x ', sort_by: 'name' })).toMatchObject(
+      { success: true, data: { status: 1, page: 2, q: 'x', sort_by: 'name' } },
+    );
   });
 
   it('escapeLike：转义 % _ \\，搜索词按字面匹配', () => {

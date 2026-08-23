@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "上游协议库：透传中继 + 多协议适配 + 多模态 + 事件观察面（§3.6 数据面/观察面契约，零运维状态）",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "development": "./src/index.ts",
@@ -19,11 +19,10 @@
     "lint": "bun x oxlint",
     "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
-    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:real": "bun x vitest run -c vitest.real.config.ts",
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "eventsource-parser": "^3.1.0",
     "js-tiktoken": "^1.0.21",
     "zod": "^4.4.3"
   },
@@ -34,6 +33,5 @@
   },
   "engines": {
     "bun": ">=1.4.0"
-  },
-  "license": "MIT"
+  }
 }

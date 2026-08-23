@@ -13,7 +13,7 @@ import { base32Decode, generateRecoveryCode, matchingTotpStep } from '../domain/
 import type { TotpRow } from '../ports/mfa-store.js';
 import { loadedSecret } from './enroll-totp.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export function matchTotp(ctx: IdentityUseCaseContext, row: TotpRow, code: string): number | null {
   return matchingTotpStep(
@@ -65,18 +65,19 @@ export async function confirmTotp(
       if (outcome.status === 'not_enrolled') {
         throw identityErrors.business('totp_not_enrolled', { userId });
       }
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: `user:${userId}`,
+          action: 'mfa.confirm',
+          targetType: 'user',
+          targetId: userId,
+        }),
+      );
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: `user:${userId}`,
-      action: 'mfa.confirm',
-      targetType: 'user',
-      targetId: userId,
-    }),
-  );
   return { recoveryCodes };
 }

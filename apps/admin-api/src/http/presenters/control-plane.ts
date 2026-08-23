@@ -43,9 +43,10 @@ export function toChannelWireRow(row: ChannelItemSource) {
     cooldownUntil: null,
     rpmLimit: row.rpmLimit,
     tpmLimit: row.tpmLimit,
-    upstreamBudget: row.upstreamBudget,
-    upstreamThreshold: row.upstreamThreshold,
-    upstreamConsumed: row.upstreamConsumed,
+    upstreamBudget: normalizeAmount(row.upstreamBudget),
+    upstreamThreshold:
+      row.upstreamThreshold === null ? null : normalizeAmount(row.upstreamThreshold),
+    upstreamConsumed: normalizeAmount(row.upstreamConsumed),
     upstreamRemaining: new Decimal(row.upstreamBudget).minus(row.upstreamConsumed).toString(),
     createdAt: iso(row.createdAt)!,
     updatedAt: null,

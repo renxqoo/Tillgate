@@ -5,8 +5,10 @@ import { VertexAiAdapter } from '../src/adapters/vertex-ai.js';
 import { GeminiAdapter } from '../src/adapters/gemini.js';
 import { MiniMaxAdapter } from '../src/adapters/minimax.js';
 import { DashScopeAdapter } from '../src/adapters/dashscope.js';
-import { claudeRequestToChat, chatRequestToClaude, claudeUpstreamToCanonicalStream } from '../src/protocol/claude-chat.js';
-import { geminiResponseToChat, geminiUpstreamToCanonicalStream } from '../src/protocol/gemini-chat.js';
+import { claudeRequestToChat, chatRequestToClaude } from '../src/protocol/claude-chat.js';
+import { claudeUpstreamToCanonicalStream } from '../src/protocol/claude-stream.js';
+import { geminiResponseToChat } from '../src/protocol/gemini-chat.js';
+import { geminiUpstreamToCanonicalStream } from '../src/protocol/gemini-stream.js';
 import { chatResponseToCompletions } from '../src/protocol/completions-chat.js';
 import { mergeParamRules } from '../src/registry/vendor-profiles.js';
 
@@ -17,7 +19,11 @@ describe('openai-compatible：参数抹平引擎（S5 端点词表回归）', ()
   it('ignore/clamp/map 全动作 + adjustments 留痕', () => {
     const { body, adjustments } = oc.normalizeRequest(
       { model: 'm', messages: [], temperature: 3, max_tokens: 99999, store: true },
-      { ignore: ['store'], clamp: { temperature: { max: 2 }, max_completion_tokens: { max: 8192 } }, map: { max_tokens: { to: 'max_completion_tokens' } } },
+      {
+        ignore: ['store'],
+        clamp: { temperature: { max: 2 }, max_completion_tokens: { max: 8192 } },
+        map: { max_tokens: { to: 'max_completion_tokens' } },
+      },
       'chat',
     );
     expect((body as Record<string, unknown>).store).toBeUndefined();
@@ -38,7 +44,11 @@ describe('openai-compatible：参数抹平引擎（S5 端点词表回归）', ()
     expect(b.temperature).toBe(1); // chat 词表也含
   });
   it('unknown drop 在 images 端点保留 n/quality', () => {
-    const { body } = oc.normalizeRequest({ model: 'm', prompt: 'p', n: 2, quality: 'hd' }, { unknown: 'drop' }, 'images');
+    const { body } = oc.normalizeRequest(
+      { model: 'm', prompt: 'p', n: 2, quality: 'hd' },
+      { unknown: 'drop' },
+      'images',
+    );
     expect((body as Record<string, unknown>).n).toBe(2);
     expect((body as Record<string, unknown>).quality).toBe('hd');
   });
@@ -47,13 +57,21 @@ describe('openai-compatible：参数抹平引擎（S5 端点词表回归）', ()
     expect((body as Record<string, unknown>).vendor_private).toBe('x');
   });
   it('finalizeRequestBody：model 重写 + stream_options 强制注入', () => {
-    const b = oc.finalizeRequestBody({ model: 'ext', messages: [] }, { endpoint: 'chat', model: 'real', stream: true });
+    const b = oc.finalizeRequestBody(
+      { model: 'ext', messages: [] },
+      { endpoint: 'chat', model: 'real', stream: true },
+    );
     expect(b.model).toBe('real');
     expect((b.stream_options as Record<string, unknown>).include_usage).toBe(true);
   });
   it('寻址：endpoint → 路径表', () => {
-    expect(oc.planRequest(ch, { endpoint: 'chat', model: 'm', requestId: 'r', stream: true }).path).toContain('chat/completions');
-    expect(oc.planRequest(ch, { endpoint: 'embeddings', model: 'm', requestId: 'r', stream: false }).path).toContain('embeddings');
+    expect(
+      oc.planRequest(ch, { endpoint: 'chat', model: 'm', requestId: 'r', stream: true }).path,
+    ).toContain('chat/completions');
+    expect(
+      oc.planRequest(ch, { endpoint: 'embeddings', model: 'm', requestId: 'r', stream: false })
+        .path,
+    ).toContain('embeddings');
     expect(oc.supportedEndpoints).toContain('images');
   });
 });
@@ -61,7 +79,10 @@ describe('openai-compatible：参数抹平引擎（S5 端点词表回归）', ()
 describe('错误表：adapter kind 翻译（§4.3 表驱动）', () => {
   it('anthropic：authentication_error → invalid_api_key（死凭据派生）；overloaded_error → overloaded', () => {
     const a = new AnthropicAdapter();
-    const e1 = a.mapError(401, { type: 'error', error: { type: 'authentication_error', message: 'x' } });
+    const e1 = a.mapError(401, {
+      type: 'error',
+      error: { type: 'authentication_error', message: 'x' },
+    });
     expect(e1.kind).toBe('invalid_api_key');
     expect(e1.deadCredential).toBe(true);
     const e2 = a.mapError(529, { error: { type: 'overloaded_error' } });
@@ -70,45 +91,78 @@ describe('错误表：adapter kind 翻译（§4.3 表驱动）', () => {
   });
   it('gemini：RESOURCE_EXHAUSTED → rate_limited；UNAUTHENTICATED → invalid_api_key', () => {
     const g = new GeminiAdapter();
-    expect(g.mapError(429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED' } }).kind).toBe('rate_limited');
-    expect(g.mapError(401, { error: { code: 401, status: 'UNAUTHENTICATED' } }).kind).toBe('invalid_api_key');
+    expect(g.mapError(429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED' } }).kind).toBe(
+      'rate_limited',
+    );
+    expect(g.mapError(401, { error: { code: 401, status: 'UNAUTHENTICATED' } }).kind).toBe(
+      'invalid_api_key',
+    );
   });
   it('minimax 信封：1004 → invalid_api_key；1008 → quota_exhausted；HTTP 200 信封错误也命中', () => {
     const m = new MiniMaxAdapter();
-    expect(m.mapError(200, { base_resp: { status_code: 1004, status_msg: 'bad key' } }).kind).toBe('invalid_api_key');
+    expect(m.mapError(200, { base_resp: { status_code: 1004, status_msg: 'bad key' } }).kind).toBe(
+      'invalid_api_key',
+    );
     expect(m.mapError(200, { base_resp: { status_code: 1008 } }).kind).toBe('quota_exhausted');
     expect(m.mapError(200, { base_resp: { status_code: 0 } }).kind).toBe('invalid_request'); // 0 = 无错误落 200 兜底
   });
   it('dashscope：Throttling → rate_limited；Arrearage → quota_exhausted', () => {
     const d = new DashScopeAdapter();
-    expect(d.mapError(429, { code: 'Throttling.RequestQPS', message: 'x' }).kind).toBe('rate_limited');
+    expect(d.mapError(429, { code: 'Throttling.RequestQPS', message: 'x' }).kind).toBe(
+      'rate_limited',
+    );
     expect(d.mapError(403, { code: 'Arrearage', message: '欠费' }).kind).toBe('quota_exhausted');
   });
   it('B4 回归：vertex extractUsage 翻译后 OpenAI 形兜底（v1 恒 null）', () => {
     const v = new VertexAiAdapter();
-    expect(v.extractUsage({ usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } })).toMatchObject({ inputTokens: 7, outputTokens: 3 });
-    expect(v.extractUsage({ usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 2 } })).toMatchObject({ inputTokens: 5, outputTokens: 2 });
+    expect(
+      v.extractUsage({ usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 } }),
+    ).toMatchObject({ inputTokens: 7, outputTokens: 3 });
+    expect(
+      v.extractUsage({ usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 2 } }),
+    ).toMatchObject({ inputTokens: 5, outputTokens: 2 });
   });
 });
 
 describe('protocol/claude-chat：四方向 codec', () => {
   it('入站请求：system/messages/tool_result/tool_use 映射', () => {
-    const chat = claudeRequestToChat({ model: 'c', system: 'sys', max_tokens: 100, messages: [
-      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'text', text: 'hi' }] },
-      { role: 'assistant', content: [{ type: 'tool_use', id: 'u1', name: 'f', input: { a: 1 } }] },
-    ] });
+    const chat = claudeRequestToChat({
+      model: 'c',
+      system: 'sys',
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'ok' },
+            { type: 'text', text: 'hi' },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'u1', name: 'f', input: { a: 1 } }],
+        },
+      ],
+    });
     const msgs = chat.messages as Array<Record<string, unknown>>;
     expect(msgs[0]).toMatchObject({ role: 'system', content: 'sys' });
     expect(msgs[1]).toMatchObject({ role: 'tool', tool_call_id: 't1' });
-    expect((((msgs[3] ?? {}) as Record<string, unknown>).tool_calls as Array<Record<string, unknown>>)[0]).toMatchObject({ function: { name: 'f', arguments: '{"a":1}' } });
+    expect(
+      (
+        ((msgs[3] ?? {}) as Record<string, unknown>).tool_calls as Array<Record<string, unknown>>
+      )[0],
+    ).toMatchObject({ function: { name: 'f', arguments: '{"a":1}' } });
   });
   it('出站请求：system 合并 / tool 消息转 tool_result / model 必填', () => {
-    const cl = chatRequestToClaude({ model: 'm', messages: [
-      { role: 'system', content: 'S' },
-      { role: 'user', content: 'q' },
-      { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: '{}' } }] },
-      { role: 'tool', tool_call_id: 'c1', content: 'r' },
-    ] });
+    const cl = chatRequestToClaude({
+      model: 'm',
+      messages: [
+        { role: 'system', content: 'S' },
+        { role: 'user', content: 'q' },
+        { role: 'assistant', tool_calls: [{ id: 'c1', function: { name: 'f', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: 'c1', content: 'r' },
+      ],
+    });
     expect(cl.system).toBe('S');
     expect(cl.model).toBe('m');
     expect(cl.max_tokens).toBeGreaterThan(0); // Claude 必填默认
@@ -124,7 +178,10 @@ describe('protocol/claude-chat：四方向 codec', () => {
       'event: message_stop\ndata: {"type":"message_stop"}\n\n',
     ].join('');
     const stream = new ReadableStream<Uint8Array>({
-      start(c) { c.enqueue(new TextEncoder().encode(frames)); c.close(); },
+      start(c) {
+        c.enqueue(new TextEncoder().encode(frames));
+        c.close();
+      },
     });
     const out = await new Response(claudeUpstreamToCanonicalStream(stream)).text();
     expect(out).toContain('"content":"你好"');
@@ -144,23 +201,45 @@ describe('protocol/gemini + completions：bug 回归', () => {
       'data: {"candidates":[{"content":{"parts":[{"text":"hi"}]}}],"usageMetadata":{"promptTokenCount":8,"cachedContentTokenCount":5,"candidatesTokenCount":2}}\n\n',
       'data: {"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":8,"cachedContentTokenCount":5,"candidatesTokenCount":3}}\n\n',
     ].join('');
-    const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(frames)); c.close(); } });
-    const out = await new Response(geminiUpstreamToCanonicalStream(stream)).text();
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(frames));
+        c.close();
+      },
+    });
+    const out = await new Response(geminiUpstreamToCanonicalStream(stream, 'm')).text();
     expect(out).toContain('"prompt_tokens":8');
     expect(out).toContain('"cached_tokens":5');
     expect(out).toContain('"completion_tokens":3');
   });
   it('B7 回归：completions n>1 全 choice 返回（v1 只取 choices[0]）', () => {
-    const res = chatResponseToCompletions({ id: 'x', choices: [
-      { index: 0, message: { content: 'a' }, finish_reason: 'stop' },
-      { index: 1, message: { content: 'b' }, finish_reason: 'stop' },
-    ], usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } });
+    const res = chatResponseToCompletions({
+      id: 'x',
+      choices: [
+        { index: 0, message: { content: 'a' }, finish_reason: 'stop' },
+        { index: 1, message: { content: 'b' }, finish_reason: 'stop' },
+      ],
+      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+    });
     const choices = res.choices as Array<{ text: string }>;
     expect(choices.length).toBe(2);
     expect(choices[1]?.text).toBe('b');
   });
   it('gemini 非流式：cached 扣出 input、thoughts 计入 output', () => {
-    const u = (geminiResponseToChat({ candidates: [{ content: { parts: [{ text: 'x' }] } }], usageMetadata: { promptTokenCount: 10, cachedContentTokenCount: 3, thoughtsTokenCount: 2, candidatesTokenCount: 4 } }, 'm') as { usage?: Record<string, unknown> }).usage;
+    const u = (
+      geminiResponseToChat(
+        {
+          candidates: [{ content: { parts: [{ text: 'x' }] } }],
+          usageMetadata: {
+            promptTokenCount: 10,
+            cachedContentTokenCount: 3,
+            thoughtsTokenCount: 2,
+            candidatesTokenCount: 4,
+          },
+        },
+        'm',
+      ) as { usage?: Record<string, unknown> }
+    ).usage;
     expect(u?.prompt_tokens).toBe(10);
     expect((u?.prompt_tokens_details as Record<string, unknown>)?.cached_tokens).toBe(3);
     expect(u?.completion_tokens).toBe(6);
@@ -169,7 +248,10 @@ describe('protocol/gemini + completions：bug 回归', () => {
 
 describe('registry/vendor-profiles：规则合并', () => {
   it('ignore 并集、clamp 逐键 model 胜出、unknown model 优先', () => {
-    const merged = mergeParamRules({ ignore: ['a'], clamp: { t: { max: 1 } }, unknown: 'passthrough' }, { ignore: ['b'], clamp: { t: { max: 9 } }, unknown: 'drop' });
+    const merged = mergeParamRules(
+      { ignore: ['a'], clamp: { t: { max: 1 } }, unknown: 'passthrough' },
+      { ignore: ['b'], clamp: { t: { max: 9 } }, unknown: 'drop' },
+    );
     expect(merged.ignore).toEqual(['a', 'b']);
     expect(merged.clamp?.t?.max).toBe(9);
     expect(merged.unknown).toBe('drop');

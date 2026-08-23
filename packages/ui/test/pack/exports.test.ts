@@ -10,6 +10,9 @@ import * as ui from '../../src/index';
 const EXPECTED_EXPORTS = [
   // 基础
   'cn',
+  // layout
+  'AuthShell',
+  'PageHeader',
   // primitives
   'Accordion',
   'AccordionItem',
@@ -219,6 +222,12 @@ const EXPECTED_EXPORTS = [
   'EmptyContent',
   'EmptyMedia',
   'KpiCard',
+  'ListPanel',
+  'ListToolbar',
+  'ListToolbarGroup',
+  'ListContent',
+  'ListFooter',
+  'RowActions',
   'MoneyDisplay',
   'SecretReveal',
   'StatusPill',
@@ -322,8 +331,12 @@ describe('package.json exports 产物存在性', () => {
     expect(existsSync(join(PKG_ROOT, cssEntry))).toBe(true);
   });
 
-  it('根入口 development/types 指向真实源文件', () => {
+  it('根入口指向真实源文件', () => {
     const root = pkg.exports['.'];
+    if (typeof root === 'string') {
+      expect(existsSync(join(PKG_ROOT, root))).toBe(true);
+      return;
+    }
     expect(existsSync(join(PKG_ROOT, root.types))).toBe(true);
     expect(existsSync(join(PKG_ROOT, root.development))).toBe(true);
   });

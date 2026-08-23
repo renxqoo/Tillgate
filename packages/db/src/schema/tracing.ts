@@ -1,12 +1,4 @@
-import {
-  pgTable,
-  varchar,
-  timestamp,
-  bigint,
-  smallint,
-  jsonb,
-  index,
-} from 'drizzle-orm/pg-core';
+import { pgTable, varchar, timestamp, bigint, smallint, jsonb, index } from 'drizzle-orm/pg-core';
 
 /**
  * trace_spans — 链路 span 存储（tracing 接收端写入，admin 查询）。

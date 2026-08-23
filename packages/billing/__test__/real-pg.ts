@@ -6,7 +6,7 @@
  * users/fund_operations 列，与 wallet 四表无关，跳过），连接级 search_path 锁定
  * schema，结束 drop cascade。DDL 单一真源 = packages/db/migrations（不复制 SQL）。
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { closeDb, createDb, type Db } from '@tokenlens/db';
@@ -113,4 +113,66 @@ export async function assertLedgerCoherent(db: Db): Promise<void> {
 function expect0(result: { rows: Array<{ n: number }> }, what: string): void {
   const n = result.rows[0]?.n ?? -1;
   if (n !== 0) throw new Error(`ledger incoherent: ${what} = ${n}`);
+}
+
+export interface RealFullSchemaHarness {
+  db: Db;
+  teardown(): Promise<void>;
+}
+
+/**
+ * 完整迁移链装置（settlement-lifecycle 同款口径，供订阅/支付竞态套件复用）：
+ * 隔离 schema 应用 0000→最新全链——库表初始化容忍 42P01（db 链跨链引用缺口，
+ * 如 identity-core provision 建的表；清单见 IMPLEMENTATION §8 P3 待办），
+ * 其余错误照常失败；个别迁移硬编码 public. 前缀重写到隔离 schema（DDL 内无业务字符串）。
+ */
+export async function setupRealFullSchema(label: string): Promise<RealFullSchemaHarness> {
+  if (!REAL_URL) throw new Error('DB_TEST_URL / DATABASE_URL 未设置');
+  const schema = `tokenlens_billing_${label}_${process.pid.toString(36)}`;
+  const [baseUrl] = REAL_URL.split('?');
+  const db = createDb({
+    url: `${baseUrl}?options=-c%20search_path%3D${schema}`,
+    poolMax: 5,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 3_000,
+    maxUses: 2_000,
+  });
+  await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
+  await db.execute(sql.raw(`create schema ${schema}`));
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .toSorted();
+  for (const file of files) {
+    const text = readFileSync(`${MIGRATIONS_DIR}/${file}`, 'utf8');
+    for (const statement of text.split('--> statement-breakpoint')) {
+      const trimmed = statement
+        .trim()
+        .replaceAll('public.', `${schema}.`)
+        .replaceAll('"public"', `"${schema}"`);
+      if (!trimmed) continue;
+      try {
+        await db.execute(sql.raw(trimmed));
+      } catch (error) {
+        // drizzle 包装 pg 错误——沿 cause 链探测 SQLSTATE（42P01 = 缺外部链表，容错跳过）
+        let current: unknown = error;
+        let missingTable = false;
+        for (let depth = 0; current != null && depth < 5; depth += 1) {
+          if ((current as { code?: string }).code === '42P01') {
+            missingTable = true;
+            break;
+          }
+          current = (current as { cause?: unknown }).cause;
+        }
+        if (missingTable) continue;
+        throw error;
+      }
+    }
+  }
+  return {
+    db,
+    teardown: async () => {
+      await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
+      await closeDb(db);
+    },
+  };
 }

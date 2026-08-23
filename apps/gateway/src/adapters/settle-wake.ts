@@ -24,7 +24,10 @@ export function createSettleWakeProducer(
       void db
         .execute(sql`select pg_notify(${SETTLE_WAKE_CHANNEL}, ${requestId})`)
         .catch((error: unknown) => {
-          logger?.warn({ err: String(error), requestId }, 'settle wake notify failed (worker scan covers)');
+          logger?.warn(
+            { err: String(error), requestId },
+            'settle wake notify failed (worker scan covers)',
+          );
         });
     },
     async close() {

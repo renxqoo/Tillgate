@@ -1,21 +1,30 @@
-import { Card, CardContent, CardHeader, Input } from '@tokenlens/ui';
+import {
+  Button,
+  Input,
+  ListContent,
+  ListFooter,
+  ListPanel,
+  ListToolbar,
+  ListToolbarGroup,
+  PageHeader,
+} from '@tokenlens/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { SearchIcon } from 'lucide-react';
+import { SearchIcon, XIcon } from 'lucide-react';
 
 import { Pager } from '@/components/pager';
-import type { SearchParamsInput } from '../lib/list-query';
+import { listHref, type SearchParamsInput } from '../lib/list-query';
 
 /**
  * 统一「列表搜索页」骨架（admin / client 所有列表页共用）：
  *
  *   页头（图标 + 标题 + 共 N 条 | actions 插槽）
- *   aboveList 插槽（可选，页头与 Card 之间的额外内容）
- *   Card（搜索表单 + filters 插槽 | 表格 children | 分页 Pager）
+ *   aboveList 插槽（可选，页头与列表面板之间的额外内容）
+ *   ListPanel（搜索表单 + filters 插槽 | 表格 children | 分页 Pager）
  *
  * - 搜索是原生 GET form：提交后整组参数进 URL；除 q/page 外的现有筛选
  *   以 hidden input 保留，因此搜索永远回到第 1 页且不丢筛选。
- * - children 放 DataTable；children 传 null 且无 error 时整个列表 Card 不渲染
+ * - children 放 DataTable；children 传 null 且无 error 时整个列表面板不渲染
  *   （无数据隐藏列表，如兑换记录）；分页条仅在超过一页（total > pageSize）时渲染。
  * - 无 "use client"，server page 直接用；插槽里可以放任意 client 组件。
  */
@@ -55,7 +64,7 @@ export function ListPage({
   filters?: ReactNode;
   /** 页头右侧操作插槽（导出 / 新建按钮等） */
   actions?: ReactNode;
-  /** 页头与列表 Card 之间插入的内容（如充值码页的兑换表单卡） */
+  /** 页头与列表面板之间插入的内容（如充值码页的兑换表单卡） */
   aboveList?: ReactNode;
   /** 非空时替代 children 展示错误（页面 fetch 失败文案） */
   error?: string | null;
@@ -74,28 +83,20 @@ export function ListPage({
   const hiddenParams = Object.entries(searchParams).filter(
     ([key]) => key !== 'q' && key !== 'page',
   );
+  const clearSearchHref = listHref(searchParams, { q: undefined, page: undefined });
+  const totalLine = total !== undefined ? t('totalLine', { count: total, unit }) : undefined;
+  const descriptionLine =
+    description || totalLine ? (
+      <>
+        {description}
+        {description && totalLine ? ' · ' : null}
+        {totalLine}
+      </>
+    ) : undefined;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            {icon}
-            {title}
-          </h1>
-          {description ? (
-            <p className="text-sm text-muted-foreground">
-              {description}
-              {total !== undefined ? ` · ${t('totalLine', { count: total, unit })}` : ''}
-            </p>
-          ) : total !== undefined ? (
-            <p className="text-sm text-muted-foreground">
-              {t('totalLine', { count: total, unit })}
-            </p>
-          ) : null}
-        </div>
-        {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-      </div>
+    <div className="flex flex-col gap-4 md:gap-6">
+      <PageHeader title={title} description={descriptionLine} icon={icon} actions={actions} />
 
       {aboveList}
 
@@ -107,12 +108,15 @@ export function ListPage({
             children
           )
         ) : (
-          <Card>
+          <ListPanel>
             {(searchPlaceholder || filters) && (
-              <CardHeader className="space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+              <ListToolbar>
+                <ListToolbarGroup className="flex-1">
                   {searchPlaceholder ? (
-                    <form method="GET" className="relative">
+                    <form
+                      method="GET"
+                      className="flex w-full min-w-0 items-center gap-2 sm:max-w-lg"
+                    >
                       {hiddenParams.map(([key, value]) =>
                         Array.isArray(value) ? (
                           value.map((v, i) => (
@@ -122,44 +126,55 @@ export function ListPage({
                           <input key={key} type="hidden" name={key} value={value ?? ''} />
                         ),
                       )}
-                      <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        name="q"
-                        defaultValue={q ?? ''}
-                        placeholder={searchPlaceholder}
-                        className="w-56 pl-9"
-                      />
+                      <div className="relative min-w-0 flex-1">
+                        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          name="q"
+                          defaultValue={q ?? ''}
+                          placeholder={searchPlaceholder}
+                          className="w-full pl-9"
+                        />
+                      </div>
+                      <Button type="submit" variant="outline">
+                        <SearchIcon data-icon="inline-start" />
+                        <span className="hidden sm:inline">{t('search')}</span>
+                      </Button>
+                      {q ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          render={<a href={clearSearchHref} aria-label={t('clearSearch')} />}
+                        >
+                          <XIcon />
+                        </Button>
+                      ) : null}
                     </form>
-                  ) : (
-                    <div />
-                  )}
-                  {filters ? (
-                    <div className="flex flex-wrap items-center gap-2">{filters}</div>
                   ) : null}
-                </div>
-              </CardHeader>
+                </ListToolbarGroup>
+                {filters ? <ListToolbarGroup>{filters}</ListToolbarGroup> : null}
+              </ListToolbar>
             )}
-            <CardContent className="px-0">
+            <ListContent>
               {error ? (
                 <p className="p-8 text-center text-sm text-destructive">{error}</p>
               ) : (
                 children
               )}
-            </CardContent>
+            </ListContent>
             {page !== undefined &&
             pageSize !== undefined &&
             total !== undefined &&
             total > pageSize ? (
-              <CardContent className="px-6 pb-4 pt-0">
+              <ListFooter>
                 <Pager
                   page={page}
                   totalPages={Math.max(1, Math.ceil(total / pageSize))}
                   total={total}
                   searchParams={searchParams}
                 />
-              </CardContent>
+              </ListFooter>
             ) : null}
-          </Card>
+          </ListPanel>
         )
       ) : null}
     </div>

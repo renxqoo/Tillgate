@@ -1,3 +1,5 @@
+'use client';
+
 // 复制按钮: 点击写入剪贴板并短暂切换为"已复制"状态
 import { CircleCheckIcon, CopyIcon } from 'lucide-react';
 

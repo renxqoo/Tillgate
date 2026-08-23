@@ -31,7 +31,10 @@ function invalidBody(json: (b: unknown, s: 400) => Response, issues: { message?:
 }
 
 /** 限流准入 + 推理调用（chat/stream 分派）；失败释放 TPM 预占（零上游执行） */
-export function inferenceRoutes(deps: InferenceRouteDeps, endpoint: InferenceEndpoint): Hono<AuthEnv> {
+export function inferenceRoutes(
+  deps: InferenceRouteDeps,
+  endpoint: InferenceEndpoint,
+): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/', async (c) => {
     const raw = (await c.req.json().catch(() => null)) as unknown;
     const parsed = endpoint.schema.safeParse(raw);
@@ -66,10 +69,15 @@ export function inferenceRoutes(deps: InferenceRouteDeps, endpoint: InferenceEnd
         endpoint: endpoint.kind,
       };
       const result =
-        canonical.stream === true ? await deps.inference.stream(input) : await deps.inference.chat(input);
+        canonical.stream === true
+          ? await deps.inference.stream(input)
+          : await deps.inference.chat(input);
       return await encodeDelivered(c.json.bind(c), result, {
         ...(endpoint.codec != null
-          ? { encodeResponse: endpoint.codec.encodeResponse, encodeStream: endpoint.codec.encodeStream }
+          ? {
+              encodeResponse: endpoint.codec.encodeResponse,
+              encodeStream: endpoint.codec.encodeStream,
+            }
           : {}),
         model: externalModel,
         requestId,
@@ -120,7 +128,10 @@ export function enginesAliasRoutes(
       });
       return await encodeDelivered(c.json.bind(c), result, {
         ...(endpoint.codec != null
-          ? { encodeResponse: endpoint.codec.encodeResponse, encodeStream: endpoint.codec.encodeStream }
+          ? {
+              encodeResponse: endpoint.codec.encodeResponse,
+              encodeStream: endpoint.codec.encodeStream,
+            }
           : {}),
         model: (canonical as unknown as { model: string }).model,
         requestId,

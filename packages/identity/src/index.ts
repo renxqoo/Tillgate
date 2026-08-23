@@ -1,6 +1,7 @@
 /**
  * @tokenlens/identity 公共出口:facade、用例出入参、领域词表与纯函数、错误目录、
- * port 契约类型(装配桥接用)。Db/DbTx/drizzle 行类型/adapter 一律不出(架构测试锁死)。
+ * 装配配置面 port 类型(无 DB 形态)。带 DbLike 的存储 port 契约(可替换实现/桥接面)
+ * 一律走 ./composition 子入口,根出口零 Db/DbTx 形态泄漏(架构测试锁死)。
  */
 export { createIdentity, type CreateIdentityParams, type Identity } from './identity.js';
 
@@ -53,15 +54,6 @@ export type { SessionTokens } from './ports/session-tokens.js';
 export type { SessionRevocationStore } from './ports/session-revocation-store.js';
 export type { OAuthProvider, OAuthProfile } from './ports/oauth-provider.js';
 export type { OAuthStateStore, OAuthStatePayload } from './ports/oauth-state-store.js';
-export type { CredentialStore, RegisterCredentialOutcome } from './ports/credential-store.js';
-export type {
-  ChallengeStore,
-  BeginChallengeOutcome,
-  StoredChallengeTarget,
-} from './ports/challenge-store.js';
-export type { MfaStore, TotpRow } from './ports/mfa-store.js';
-export type { OAuthStore, LinkOutcome, UnlinkOutcome } from './ports/oauth-store.js';
-export type { AnchorStore } from './ports/anchor-store.js';
 
 export type {
   RegisterCredentialInput,

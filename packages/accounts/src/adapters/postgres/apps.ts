@@ -31,7 +31,13 @@ const ACTIVE_APP_COLUMNS = {
 
 export const appQueries: Pick<
   AccountStorePort,
-  'insertApp' | 'listAppsByUser' | 'findOwnedApp' | 'disableApp' | 'rotateAppSecret' | 'findActiveAppByAppId' | 'findActiveAppByClient'
+  | 'insertApp'
+  | 'listAppsByUser'
+  | 'findOwnedApp'
+  | 'disableApp'
+  | 'rotateAppSecret'
+  | 'findActiveAppByAppId'
+  | 'findActiveAppByClient'
 > = {
   async insertApp(db, input) {
     const rows = await db

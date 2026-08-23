@@ -17,11 +17,17 @@ export const marketingSettings = pgTable(
   {
     id: integer('id').primaryKey().default(1),
     /** 无条件注册赠送（元/人；0 = 关闭）——幂等锚 gift + signup:{userId} */
-    signupGiftAmount: numeric('signup_gift_amount', { precision: 38, scale: 18 }).notNull().default('0'),
+    signupGiftAmount: numeric('signup_gift_amount', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 邀请注册双方奖励（元/人；0 = 关闭）——幂等锚 referral-signup:{inviteeId}:{side} */
-    referralSignupBonus: numeric('referral_signup_bonus', { precision: 38, scale: 18 }).notNull().default('0'),
+    referralSignupBonus: numeric('referral_signup_bonus', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     /** 邀请人佣金比例（被邀请人日消费 × 比例；0 = 关闭）——幂等锚 referral-commission:{inviter}:{yyyyMMdd} */
-    referralCommissionRate: numeric('referral_commission_rate', { precision: 38, scale: 18 }).notNull().default('0'),
+    referralCommissionRate: numeric('referral_commission_rate', { precision: 38, scale: 18 })
+      .notNull()
+      .default('0'),
     updatedBy: bigint('updated_by', { mode: 'number' }).references(() => admins.id),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -29,6 +35,9 @@ export const marketingSettings = pgTable(
     check('marketing_settings_single_row_ck', sql`${t.id} = 1`),
     check('marketing_settings_gift_ck', sql`${t.signupGiftAmount} >= 0`),
     check('marketing_settings_bonus_ck', sql`${t.referralSignupBonus} >= 0`),
-    check('marketing_settings_rate_ck', sql`${t.referralCommissionRate} >= 0 and ${t.referralCommissionRate} <= 1`),
+    check(
+      'marketing_settings_rate_ck',
+      sql`${t.referralCommissionRate} >= 0 and ${t.referralCommissionRate} <= 1`,
+    ),
   ],
 );

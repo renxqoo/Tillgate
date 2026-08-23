@@ -6,7 +6,7 @@
  * 写路径约定：写方法入参必须是事务句柄（动词层保证）；账户行锁（FOR UPDATE，
  * id 定序）是复式账本的串行化点——锁外读到的余额不可用于过账。
  */
-import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, like, lt, sql } from 'drizzle-orm';
 import {
   isUniqueViolation,
   runTx,
@@ -21,6 +21,7 @@ import {
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import type { AuthorizationSnapshot } from '../../domain/wallet/authorization.js';
 import type {
+  ReferralPayoutRow,
   StatementItemRow,
   TransactionHeader,
   WalletConn,
@@ -336,6 +337,49 @@ export function createPostgresWalletStore(
         .orderBy(desc(walletLegs.id))
         .limit(input.limit);
       return rows as StatementItemRow[];
+    },
+
+    /**
+     * 返利流水（v1 marketing.repo listPayouts 逐语义平移）：三类同视图——佣金与注册
+     * 奖励同 refType='referral' 以 refId 前缀区分,注册赠送走 refType='gift'+'signup:' 前缀
+     * （前缀约定单一真相 = accounts domain/referral.ts + billing referral-commission）。
+     */
+    async listReferralPayouts(conn, input) {
+      const referral = input.kind !== 'gift';
+      const prefix =
+        input.kind === 'commission'
+          ? 'referral-commission:'
+          : input.kind === 'referral_signup'
+            ? 'referral-signup:'
+            : 'signup:';
+      const conditions = [
+        eq(walletTransactions.refType, referral ? 'referral' : 'gift'),
+        like(walletTransactions.refId, `${prefix}%`),
+      ];
+      const [rows, countRows] = await Promise.all([
+        asDb(conn)
+          .select({
+            id: walletTransactions.id,
+            kind: walletTransactions.kind,
+            refType: walletTransactions.refType,
+            refId: walletTransactions.refId,
+            memo: walletTransactions.memo,
+            createdAt: walletTransactions.createdAt,
+          })
+          .from(walletTransactions)
+          .where(and(...conditions))
+          .orderBy(desc(walletTransactions.id))
+          .limit(input.limit)
+          .offset(input.offset),
+        asDb(conn)
+          .select({ count: sql<number>`count(*)::int` })
+          .from(walletTransactions)
+          .where(and(...conditions)),
+      ]);
+      return {
+        rows: rows as ReferralPayoutRow[],
+        total: countRows[0]?.count ?? 0,
+      };
     },
 
     isUniqueViolation: (error) => isUniqueViolation(error),

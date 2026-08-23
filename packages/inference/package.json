@@ -24,7 +24,9 @@
   },
   "dependencies": {
     "@tokenlens/ai": "workspace:*",
+    "@tokenlens/db": "workspace:*",
     "@tokenlens/errors": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.8.0",
     "zod": "^4.4.3"
   },

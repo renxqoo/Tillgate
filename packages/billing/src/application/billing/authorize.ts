@@ -35,7 +35,8 @@ export interface BillingEnv {
   /** 资金来源注册表（装配时创建注入；缺省 {subscription, payg}） */
   fundingRegistry: FundingRegistry;
   wallet: WalletApi;
-  clock?: () => Date;
+  /** 时钟（装配必填——零写死；钱包动词的 DB 时钟权威路径不经此） */
+  clock: () => Date;
   /** 结算积压准入（可选注入；抛 settlement_backlog 关闸） */
   assertCapacity?: () => Promise<void>;
   /**
@@ -70,7 +71,7 @@ export interface BillingAuthorization {
 }
 
 export function createAuthorizeUseCase(env: BillingEnv) {
-  const { store, wallet, clock = () => new Date() } = env;
+  const { store, wallet, clock } = env;
   return async function authorize(input: AuthorizeBillingInput): Promise<BillingAuthorization> {
     // 金额推导（保守预估）：每日限额与资金规划的输入口径；落账投影以 plan 实筹为准
     const estimatedAmount = calculateRequired(input.quote, input.reservationLimit).toString();

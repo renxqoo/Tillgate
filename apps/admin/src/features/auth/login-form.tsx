@@ -69,9 +69,9 @@ export function LoginForm() {
 
   if (challenge) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('twoFactorTitle')}</CardTitle>
+      <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">{t('twoFactorTitle')}</CardTitle>
           <CardDescription>{t('twoFactorSent')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -84,7 +84,7 @@ export function LoginForm() {
                 notify(res ?? {}, t('verifyFailed'));
               });
             }}
-            className="space-y-4"
+            className="space-y-6"
           >
             <FieldGroup>
               <Field>
@@ -107,7 +107,7 @@ export function LoginForm() {
                 <FieldDescription>{t('twoFactorHint')}</FieldDescription>
               </Field>
             </FieldGroup>
-            <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
+            <Button type="submit" disabled={pending || code.length !== 6} className="h-10 w-full">
               {pending && <Loader2Icon className="animate-spin" />}
               {t('verifyAndLogin')}
             </Button>
@@ -128,13 +128,18 @@ export function LoginForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('loginTitle')}</CardTitle>
+    <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">{t('loginTitle')}</CardTitle>
         <CardDescription>{t('loginDescription')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form
+          noValidate
+          autoComplete="off"
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="space-y-6"
+        >
           <FieldGroup>
             <Controller
               control={form.control}
@@ -148,8 +153,9 @@ export function LoginForm() {
                     </InputGroupAddon>
                     <InputGroupInput
                       id="admin-email"
-                      autoComplete="email"
+                      autoComplete="off"
                       placeholder="admin@example.com"
+                      className="h-11"
                       {...field}
                     />
                   </InputGroup>
@@ -170,7 +176,8 @@ export function LoginForm() {
                     <InputGroupInput
                       id="admin-password"
                       type={showPwd ? 'text' : 'password'}
-                      autoComplete="current-password"
+                      autoComplete="new-password"
+                      className="h-11"
                       {...field}
                     />
                     <InputGroupAddon align="inline-end">
@@ -190,7 +197,7 @@ export function LoginForm() {
             />
           </FieldGroup>
 
-          <Button type="submit" disabled={pending} className="w-full">
+          <Button type="submit" disabled={pending} className="h-10 w-full">
             {pending && <Loader2Icon className="animate-spin" />}
             {t('submit')}
           </Button>

@@ -22,6 +22,8 @@ export class SseScanner {
   private eventsCompleted = 0;
   private lastEventAt = 0;
   private boundary = new SseBoundaryTracker();
+  /** 行超限等解析故障后停止旁路扫描（不影响透传；防止 reader 缓冲反复重放增长） */
+  private broken = false;
   /** 输出内容特征（估算源；usage 缺失/取消时的 output token 依据） */
   private features = new TextFeaturesAccumulator();
 
@@ -45,7 +47,8 @@ export class SseScanner {
     if (Array.isArray(parsed.choices)) {
       for (const choice of parsed.choices) {
         if (
-          typeof choice === 'object' && choice !== null &&
+          typeof choice === 'object' &&
+          choice !== null &&
           typeof (choice as Record<string, unknown>).finish_reason === 'string'
         ) {
           this.terminalFrameReceived = true;
@@ -69,13 +72,15 @@ export class SseScanner {
   /** 喂入上游 chunk；返回本次完成的完整事件数（心跳边界判定用） */
   consume(chunk: Uint8Array): number {
     const before = this.eventsCompleted;
+    if (this.broken) return 0;
     // 行文本喂边界跟踪（decode 与 reader 内部各自独立流式解码，字符一致）
     const text = new TextDecoder('utf-8').decode(chunk, { stream: true });
     this.boundary.track(text);
     try {
       this.reader.push(chunk);
     } catch {
-      // 解析容错：异常 chunk 不中断透传
+      // 解析容错：行超限等异常 chunk 不中断透传（扫描是旁路）——但停止后续扫描
+      this.broken = true;
     }
     return this.eventsCompleted - before;
   }
@@ -112,10 +117,14 @@ export class SseScanner {
     for (const choice of choices) {
       if (typeof choice !== 'object' || choice === null) continue;
       const c = choice as Record<string, unknown>;
-      const delta = typeof c.delta === 'object' && c.delta !== null ? (c.delta as Record<string, unknown>) : null;
+      const delta =
+        typeof c.delta === 'object' && c.delta !== null
+          ? (c.delta as Record<string, unknown>)
+          : null;
       if (delta !== null) {
         if (typeof delta.content === 'string') this.features.addText(delta.content);
-        if (typeof delta.reasoning_content === 'string') this.features.addText(delta.reasoning_content);
+        if (typeof delta.reasoning_content === 'string')
+          this.features.addText(delta.reasoning_content);
         const toolCalls = delta.tool_calls;
         if (Array.isArray(toolCalls)) {
           for (const tc of toolCalls) {
@@ -136,7 +145,8 @@ export class SseScanner {
 function toErrorFrame(error: unknown): StreamError {
   const e = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
   return {
-    code: typeof e.code === 'string' ? e.code : typeof e.type === 'string' ? e.type : 'stream_error',
+    code:
+      typeof e.code === 'string' ? e.code : typeof e.type === 'string' ? e.type : 'stream_error',
     type: typeof e.type === 'string' ? e.type : undefined,
     detail: typeof e.message === 'string' ? e.message : undefined,
   };

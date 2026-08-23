@@ -1,0 +1,45 @@
+{
+  "name": "@tokenlens/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "后台任务应用：结算/恢复/生成轮询/佣金/告警/对账/分区的调度与生命周期（重构方案 §3 目标树；业务全部来自 @tokenlens/billing、inference、notifications、observability）",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "start": "node dist/index.js",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+  },
+  "dependencies": {
+    "@tokenlens/accounts": "workspace:*",
+    "@tokenlens/ai": "workspace:*",
+    "@tokenlens/billing": "workspace:*",
+    "@tokenlens/control-plane": "workspace:*",
+    "@tokenlens/db": "workspace:*",
+    "@tokenlens/errors": "workspace:*",
+    "@tokenlens/inference": "workspace:*",
+    "@tokenlens/notifications": "workspace:*",
+    "@tokenlens/observability": "workspace:*",
+    "@tokenlens/runtime": "workspace:*",
+    "nodemailer": "^9.0.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "pino-pretty": "^13.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">= 1.4.0"
+  }
+}

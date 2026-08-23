@@ -41,7 +41,7 @@ describe('createLogger', () => {
 
   it('redact 命中嵌套路径（req.headers.authorization）', () => {
     const { lines, stream } = collect();
-    const logger = createLogger({ stream });
+    const logger = createLogger({ level: 'info', pretty: false, stream });
     logger.info({ req: { headers: { authorization: 'Bearer live-token' } } }, 'req');
     const parsed = JSON.parse(lines[0]!) as { req: { headers: { authorization: string } } };
     expect(parsed.req.headers.authorization).toBe('[REDACTED]');
@@ -59,6 +59,8 @@ describe('createLogger', () => {
   });
 
   it('pretty 形态可创建（开发态 transport 配置不抛错）', () => {
-    expect(() => createLogger({ pretty: true, serviceName: 'pretty-svc' })).not.toThrow();
+    expect(() =>
+      createLogger({ level: 'info', pretty: true, serviceName: 'pretty-svc' }),
+    ).not.toThrow();
   });
 });

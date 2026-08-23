@@ -1,3 +1,5 @@
+'use client';
+
 /* eslint-disable react-refresh/only-export-components */
 import * as React from 'react';
 
@@ -13,6 +15,8 @@ type ThemeProviderProps = {
 
 type ThemeProviderState = {
   theme: Theme;
+  /** system 解析后的实际生效主题(明/暗),供切换器等消费方展示当前态 */
+  resolvedTheme: ResolvedTheme;
   setTheme: (theme: Theme) => void;
 };
 
@@ -80,14 +84,21 @@ export function ThemeProvider({
   disableTransitionOnChange = true,
   ...props
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(() => {
+  // SSR/水合安全: 首帧统一 defaultTheme(服务端无 localStorage,且服务端与客户端
+  // 首渲染必须一致防水合错位); 存储值在挂载 effect 中同步——首屏正确类名由宿主
+  // 注入的 boot script 负责(layout 防FOUC), 此处不承担。resolvedTheme 首帧由
+  // defaultTheme 推导(system 视作 light), 挂载后随真实系统偏好/存储值校正
+  const [theme, setThemeState] = React.useState<Theme>(defaultTheme);
+  const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(
+    defaultTheme === 'dark' ? 'dark' : 'light',
+  );
+
+  React.useEffect(() => {
     const storedTheme = localStorage.getItem(storageKey);
     if (isTheme(storedTheme)) {
-      return storedTheme;
+      setThemeState(storedTheme);
     }
-
-    return defaultTheme;
-  });
+  }, [storageKey]);
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
@@ -100,11 +111,14 @@ export function ThemeProvider({
   const applyTheme = React.useCallback(
     (nextTheme: Theme) => {
       const root = document.documentElement;
-      const resolvedTheme = nextTheme === 'system' ? getSystemTheme() : nextTheme;
+      const resolved = nextTheme === 'system' ? getSystemTheme() : nextTheme;
       const restoreTransitions = disableTransitionOnChange ? disableTransitionsTemporarily() : null;
 
       root.classList.remove('light', 'dark');
-      root.classList.add(resolvedTheme);
+      root.classList.add(resolved);
+      // colorScheme 与类名同步(原生控件/滚动条配色); 与宿主 boot script 行为一致
+      root.style.colorScheme = resolved;
+      setResolvedTheme(resolved);
 
       if (restoreTransitions) {
         restoreTransitions();
@@ -200,9 +214,10 @@ export function ThemeProvider({
   const value = React.useMemo(
     () => ({
       theme,
+      resolvedTheme,
       setTheme,
     }),
-    [theme, setTheme],
+    [theme, resolvedTheme, setTheme],
   );
 
   return (

@@ -1,3 +1,5 @@
+'use client';
+
 // 日期选择: Popover + Calendar 组合, 覆盖单日(DatePicker)与区间(DateRangePicker)两模式。
 // 触发器文案的格式化函数必须注入(formatting/date 工厂产物, 零写死);
 // 受控契约: value/onValueChange 完全由调用方持有

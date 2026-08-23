@@ -1,9 +1,9 @@
 'use client';
 
-import { Button, Input } from '@tokenlens/ui';
+import { Button, Input, NativeSelect, NativeSelectOption } from '@tokenlens/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-import { FilterIcon, SearchIcon } from 'lucide-react';
+import { FilterIcon, RotateCcwIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 export function UsageLogsFilter({
@@ -42,25 +42,25 @@ export function UsageLogsFilter({
 
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-muted-foreground">{t('fromDate')}</label>
         <Input
           type="date"
           defaultValue={from}
           onChange={(e) => apply({ from: e.target.value })}
-          className="h-9 w-40"
+          className="w-40"
         />
       </div>
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-muted-foreground">{t('toDate')}</label>
         <Input
           type="date"
           defaultValue={to}
           onChange={(e) => apply({ to: e.target.value })}
-          className="h-9 w-40"
+          className="w-40"
         />
       </div>
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-muted-foreground">{tc('userId')}</label>
         <Input
           defaultValue={userId}
@@ -68,26 +68,27 @@ export function UsageLogsFilter({
           onKeyDown={(e) => {
             if (e.key === 'Enter') apply({ userId: (e.target as HTMLInputElement).value });
           }}
-          className="h-9 w-32"
+          className="w-32"
         />
       </div>
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1.5">
         <label className="text-xs text-muted-foreground">{t('billingMethod')}</label>
         <div className="relative">
           <FilterIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <select
+          <NativeSelect
             defaultValue={estimated}
             onChange={(e) => apply({ estimated: e.target.value })}
-            className="h-9 w-36 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+            className="w-36"
+            selectClassName="pl-9"
           >
-            <option value="">{t('allBilling')}</option>
-            <option value="true">{t('estimatedOnly')}</option>
-            <option value="false">{t('actualOnly')}</option>
-          </select>
+            <NativeSelectOption value="">{t('allBilling')}</NativeSelectOption>
+            <NativeSelectOption value="true">{t('estimatedOnly')}</NativeSelectOption>
+            <NativeSelectOption value="false">{t('actualOnly')}</NativeSelectOption>
+          </NativeSelect>
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={reset} className="h-9">
-        <SearchIcon /> {tc('reset')}
+      <Button variant="outline" onClick={reset}>
+        <RotateCcwIcon data-icon="inline-start" /> {tc('reset')}
       </Button>
     </div>
   );

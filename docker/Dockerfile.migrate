@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# migrate：一次性迁移任务（postgres 就绪后执行并退出）
+# v2 迁移收敛为单入口：packages/db 的 drizzle-kit migrate（SQL 全量在 packages/db/migrations，
+# 含 identity/billing 等业务表——v1 的 identity-core/ledger-core/wallet 多段 provision 已并入）
+# 构建段：全 bun；运行段：bun 直跑 drizzle-kit CLI
+FROM oven/bun:1.4-alpine AS builder
+WORKDIR /repo
+COPY package.json bun.lock tsconfig.base.json ./
+COPY packages ./packages
+RUN bun install --frozen-lockfile
+
+FROM oven/bun:1.4-alpine AS runtime
+WORKDIR /repo
+# node_modules 必拷：drizzle-kit 运行时解析 drizzle-orm 等（isolated linker 下 .bun store 与
+# packages/*/node_modules 软链互相引用，node_modules + packages 必须整体拷贝；
+# 与 Dockerfile.server 的「仅 dist」口径相反——本镜像一次性执行即退出，体积让位于零改造）
+COPY --from=builder /repo/package.json ./package.json
+COPY --from=builder /repo/node_modules ./node_modules
+COPY --from=builder /repo/packages ./packages
+WORKDIR /repo/packages/db
+CMD ["bun", "node_modules/.bin/drizzle-kit", "migrate"]

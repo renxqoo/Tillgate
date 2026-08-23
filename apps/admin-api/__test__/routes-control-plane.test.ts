@@ -351,6 +351,13 @@ describe('models + rate-cards + fx + catalog', () => {
     });
     const sources = await app.request('/v1/model-catalog/sources', { headers: authHeader() });
     expect(await sources.json()).toMatchObject({ sources: [{ id: 'models-dev' }] });
+    // P6/D1:词表端点 = 装配注入面原样透传(fakeDeps 默认词表;真源封闭性锁在 ai 包)
+    const words = await app.request('/v1/vendor-catalog', { headers: authHeader() });
+    expect(words.status).toBe(200);
+    expect(await words.json()).toEqual({
+      protocols: ['openai-compatible'],
+      vendors: ['openai'],
+    });
     const missing = await app.request('/v1/model-catalog/price-history', { headers: authHeader() });
     expect(missing.status).toBe(400);
     expect(await missing.json()).toMatchObject({ error: { code: 'admin.invalid_param' } });

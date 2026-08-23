@@ -41,10 +41,10 @@ const EXPECTED: Readonly<Record<string, string>> = {
 describe('identity 错误目录', () => {
   it('码表封闭快照 + category 分布与 DESIGN §2.3 逐项相等', () => {
     const allCodes = [...identityErrors.codes];
-    expect(allCodes.sort()).toEqual(
+    expect(allCodes.toSorted()).toEqual(
       Object.keys(EXPECTED)
         .map((k) => `identity.${k}`)
-        .sort(),
+        .toSorted(),
     );
     for (const [code, category] of Object.entries(EXPECTED)) {
       const entry = identityErrors.get(identityErrors.code(code as never));

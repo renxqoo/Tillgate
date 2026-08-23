@@ -13,6 +13,11 @@ export const observabilityErrors = defineErrorCatalog('observability', {
     zh: 'OTLP 载荷结构非法(须为含 resourceSpans 数组的 JSON 对象)',
   },
   /** mode=otlp 未配 collector 端点——启动期 fail-fast,不进运行时 */
+  otel_option_missing: {
+    message: 'observability otel option missing or invalid',
+    zh: 'OTel 装配参数缺失或不合法(console 模式需 logger;otlp 模式需正的 metricsExportIntervalMs)',
+    category: 'invalid_input',
+  },
   otel_endpoint_missing: {
     category: 'invalid_input',
     message: 'OTLP endpoint must be configured when mode is otlp',

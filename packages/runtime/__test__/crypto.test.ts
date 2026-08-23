@@ -17,6 +17,10 @@ function expectDefect(fn: () => unknown, code: string): void {
 }
 
 describe('AES-GCM 单 key（createCipher）', () => {
+  it('P3 回归：空密钥 fail-fast（DefectError empty_key——SHA-256 不得把空串安静派生成合法 key）', () => {
+    expectDefect(() => createCipher(''), 'runtime.cipher.empty_key');
+  });
+
   it('加解密往返（enc:v1 格式稳定——存量行不受影响）', () => {
     const cipher = createCipher(K);
     const packed = cipher.encrypt('secret-upstream-key');

@@ -77,7 +77,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
         total={total}
         totalUnit={t('totalUnit')}
         searchParams={{ page: page > 1 ? String(page) : undefined }}
-        filters={<ExportKeys keys={keys} />}
+        filters={<ExportKeys />}
         actions={<CreateKeyDialog subscriptions={subscriptions} />}
         error={error}
         page={page}

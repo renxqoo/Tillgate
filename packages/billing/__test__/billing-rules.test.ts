@@ -13,6 +13,7 @@ import { assertDailySpendLimit } from '../src/domain/billing/daily-limit.js';
 import {
   billingDayKey,
   billingDayStart,
+  billingMonthStart,
   secondsUntilNextBillingDay,
 } from '../src/domain/billing/daily-window.js';
 import { subscriptionAvailability } from '../src/domain/billing/subscription-availability.js';
@@ -183,6 +184,19 @@ describe('每日限额与计费日窗口', () => {
     expect(billingDayStart(now).getTime()).toBe(new Date(2026, 7, 23).getTime());
     expect(secondsUntilNextBillingDay(new Date(2026, 7, 23, 23, 59, 59))).toBe(1);
     expect(secondsUntilNextBillingDay(new Date(2026, 7, 23, 0, 0, 0))).toBe(86_400);
+  });
+
+  it('月度窗口单一真相：billingMonthStart = 本地自然月 1 日 0 点（跨年/月中）', () => {
+    expect(billingMonthStart(new Date(2026, 7, 23, 15, 30)).getTime()).toBe(
+      new Date(2026, 7, 1).getTime(),
+    );
+    expect(billingMonthStart(new Date(2026, 11, 31, 23, 59)).getTime()).toBe(
+      new Date(2026, 11, 1).getTime(),
+    );
+    // 跨年：2027-01-01 0 点
+    expect(billingMonthStart(new Date(2027, 0, 1, 0, 0)).getTime()).toBe(
+      new Date(2027, 0, 1).getTime(),
+    );
   });
 });
 

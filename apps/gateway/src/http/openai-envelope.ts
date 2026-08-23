@@ -43,7 +43,8 @@ export async function encodeDelivered(
   deps: EncodeDeps,
 ): Promise<Response> {
   if ('stream' in result && result.ok && result.status === 200) {
-    const body = deps.encodeStream != null ? deps.encodeStream(result.stream, deps.model) : result.stream;
+    const body =
+      deps.encodeStream != null ? deps.encodeStream(result.stream, deps.model) : result.stream;
     return sseResponse(body, deps.requestId);
   }
   if ('rawBody' in result && result.rawBody instanceof Uint8Array) {
@@ -57,7 +58,10 @@ export async function encodeDelivered(
   }
   if ('passthrough' in result && result.passthrough) {
     // ADR-0004：上游 4xx 原码 + 已翻译/脱敏的消息出站；code 走信封 message 位（线协议已由 inference 保持）
-    return json({ error: { code: result.code, message: result.message ?? result.code } }, result.status as ContentfulStatusCode);
+    return json(
+      { error: { code: result.code, message: result.message ?? result.code } },
+      result.status as ContentfulStatusCode,
+    );
   }
   if ('body' in result) {
     if (deps.encodeResponse != null && result.status === 200) {
@@ -65,5 +69,8 @@ export async function encodeDelivered(
     }
     return json(result.body, result.status as ContentfulStatusCode);
   }
-  return json({ error: { code: 'gateway.invalid_body', message: 'unrecognized delivery shape' } }, 500);
+  return json(
+    { error: { code: 'gateway.invalid_body', message: 'unrecognized delivery shape' } },
+    500,
+  );
 }

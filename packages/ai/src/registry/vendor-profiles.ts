@@ -30,7 +30,8 @@ export interface VendorProfile {
  */
 export const VENDOR_PROFILES: Readonly<Record<string, VendorProfile>> = {
   openai: {
-    basis: 'OpenAI 文档：o 系列推理模型拒收 max_tokens（400 Unsupported parameter）；max_completion_tokens 为全系列通用现代名',
+    basis:
+      'OpenAI 文档：o 系列推理模型拒收 max_tokens（400 Unsupported parameter）；max_completion_tokens 为全系列通用现代名',
     params: {
       map: { max_tokens: { to: 'max_completion_tokens' } },
     },
@@ -42,7 +43,8 @@ export const VENDOR_PROFILES: Readonly<Record<string, VendorProfile>> = {
     },
   },
   moonshot: {
-    basis: 'pi-ai detectCompat：isNonStandard（不收 store）+ useMaxTokens（只认 max_tokens）+ 不支持 reasoning_effort',
+    basis:
+      'pi-ai detectCompat：isNonStandard（不收 store）+ useMaxTokens（只认 max_tokens）+ 不支持 reasoning_effort',
     params: {
       ignore: ['store', 'reasoning_effort'],
       map: { max_completion_tokens: { to: 'max_tokens' } },
@@ -69,7 +71,8 @@ export const VENDOR_PROFILES: Readonly<Record<string, VendorProfile>> = {
     },
   },
   zai: {
-    basis: 'pi-ai detectCompat：isNonStandard（含 open.bigmodel.cn 域，不收 store）+ isZai（不支持 reasoning_effort）',
+    basis:
+      'pi-ai detectCompat：isNonStandard（含 open.bigmodel.cn 域，不收 store）+ isZai（不支持 reasoning_effort）',
     params: {
       ignore: ['store', 'reasoning_effort'],
     },
@@ -104,6 +107,6 @@ export function mergeParamRules(
     ...(ignore.length > 0 ? { ignore } : {}),
     map: { ...profile.map, ...model.map },
     clamp: { ...profile.clamp, ...model.clamp },
-    ...(model.unknown ?? profile.unknown ? { unknown: model.unknown ?? profile.unknown } : {}),
+    ...((model.unknown ?? profile.unknown) ? { unknown: model.unknown ?? profile.unknown } : {}),
   };
 }

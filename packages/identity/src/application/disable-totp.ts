@@ -9,7 +9,7 @@ import { identityErrors } from '../domain/errors.js';
 import { assertUserId } from '../domain/identifier.js';
 import { verifyMfa } from './verify-mfa.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export async function disableTotp(
   ctx: IdentityUseCaseContext,
@@ -32,18 +32,19 @@ export async function disableTotp(
     async (tx) => {
       await advisoryLock(tx, credentialSetLockKey(userId));
       await ctx.mfaStore.deleteTotpAndRecoveryCodes(tx, userId);
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: `user:${userId}`,
+          action: 'mfa.disable',
+          targetType: 'user',
+          targetId: userId,
+        }),
+      );
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: `user:${userId}`,
-      action: 'mfa.disable',
-      targetType: 'user',
-      targetId: userId,
-    }),
-  );
   return { disabled: true };
 }

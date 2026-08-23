@@ -113,21 +113,37 @@ export function DataTable<Row>({
       : new Set<string | number>();
 
   return (
-    <Table className={className}>
+    <Table className={cn('[&_tr]:border-border/60', className)}>
       {dupKeys.size > 0 && (
         <caption className="mt-2 rounded border border-destructive/40 bg-destructive/10 p-2 text-left text-xs text-destructive">
           DataTable diagnostics: duplicate row keys {JSON.stringify([...dupKeys])} (rowKey must
           return unique values)
         </caption>
       )}
-      <TableHeader>
-        <TableRow>
+      <TableHeader className="bg-card">
+        <TableRow className="hover:bg-transparent">
           {columns.map((column) => (
             <TableHead
               key={column.key}
-              className={cn(column.align && ALIGN_CLASS[column.align], column.headerClassName)}
+              aria-sort={
+                column.sortable
+                  ? sort?.sortBy === (column.sortBy ?? column.key)
+                    ? sort.order === 'asc'
+                      ? 'ascending'
+                      : 'descending'
+                    : 'none'
+                  : undefined
+              }
+              className={cn(
+                'first:pl-4 last:pr-4',
+                column.key === 'actions' && 'w-16 text-center',
+                column.align && ALIGN_CLASS[column.align],
+                column.headerClassName,
+              )}
             >
-              {column.sortable && searchParams ? (
+              {column.key === 'actions' ? (
+                column.header
+              ) : column.sortable && searchParams ? (
                 <SortableHead column={column} sort={sort} searchParams={searchParams} />
               ) : (
                 column.header
@@ -149,7 +165,12 @@ export function DataTable<Row>({
               {columns.map((column) => (
                 <TableCell
                   key={column.key}
-                  className={cn(column.align && ALIGN_CLASS[column.align], column.className)}
+                  className={cn(
+                    'first:pl-4 last:pr-4',
+                    column.key === 'actions' && 'w-16 text-center',
+                    column.align && ALIGN_CLASS[column.align],
+                    column.className,
+                  )}
                 >
                   {column.render
                     ? column.render(row, index)

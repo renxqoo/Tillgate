@@ -90,9 +90,9 @@ export function DataTable<Row>({
 
   return (
     <div data-slot="data-table" className={cn('w-full', className)}>
-      <Table>
-        <TableHeader>
-          <TableRow>
+      <Table className="[&_tr]:border-border/60">
+        <TableHeader className="bg-card">
+          <TableRow className="hover:bg-transparent">
             {columns.map((column) => {
               const alignClass = ALIGN_CLASS[column.align ?? 'left'];
               const sortable = column.sortable && onSortChange !== undefined;
@@ -100,9 +100,25 @@ export function DataTable<Row>({
                 <TableHead
                   key={column.key}
                   data-column={column.key}
-                  className={cn(alignClass, column.headerClassName)}
+                  aria-sort={
+                    column.sortable
+                      ? sort?.key === column.key
+                        ? sort.direction === 'asc'
+                          ? 'ascending'
+                          : 'descending'
+                        : 'none'
+                      : undefined
+                  }
+                  className={cn(
+                    'first:pl-4 last:pr-4',
+                    column.key === 'actions' && 'w-16 text-center',
+                    alignClass,
+                    column.headerClassName,
+                  )}
                 >
-                  {sortable ? (
+                  {column.key === 'actions' ? (
+                    column.header
+                  ) : sortable ? (
                     <Button
                       variant="ghost"
                       size="xs"
@@ -127,7 +143,12 @@ export function DataTable<Row>({
                 {columns.map((column) => (
                   <TableCell
                     key={column.key}
-                    className={cn(ALIGN_CLASS[column.align ?? 'left'], column.cellClassName)}
+                    className={cn(
+                      'first:pl-4 last:pr-4',
+                      column.key === 'actions' && 'w-16 text-center',
+                      ALIGN_CLASS[column.align ?? 'left'],
+                      column.cellClassName,
+                    )}
                   >
                     <Skeleton className="h-4 w-full max-w-32" />
                   </TableCell>
@@ -146,7 +167,12 @@ export function DataTable<Row>({
                 {columns.map((column) => (
                   <TableCell
                     key={column.key}
-                    className={cn(ALIGN_CLASS[column.align ?? 'left'], column.cellClassName)}
+                    className={cn(
+                      'first:pl-4 last:pr-4',
+                      column.key === 'actions' && 'w-16 text-center',
+                      ALIGN_CLASS[column.align ?? 'left'],
+                      column.cellClassName,
+                    )}
                   >
                     {column.cell(row, rowIndex)}
                   </TableCell>

@@ -63,6 +63,12 @@ describe('KpiCard', () => {
     expect(screen.getByText('$1,234.50')).toBeInTheDocument();
   });
 
+  it('渲染图标与业务辅助值', () => {
+    render(<KpiCard label="密钥" value="12" icon={<span>K</span>} sub="10 个可用" />);
+    expect(screen.getByText('K')).toBeInTheDocument();
+    expect(screen.getByText('10 个可用')).toBeInTheDocument();
+  });
+
   it('loading 态用骨架替代数值', () => {
     render(<KpiCard label="今日消费" value="$1,234.50" loading />);
     expect(screen.queryByText('$1,234.50')).not.toBeInTheDocument();
@@ -196,6 +202,10 @@ describe('DataTable', () => {
       />,
     );
     expect(screen.getByRole('button', { name: /金额/ }).querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /金额/ })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
   });
 
   it('未提供 onSortChange 时表头不渲染为按钮', () => {

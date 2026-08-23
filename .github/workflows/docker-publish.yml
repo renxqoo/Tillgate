@@ -1,0 +1,69 @@
+# 镜像发布：main 分支推送（或手动触发）→ 构建 8 个 linux/amd64 镜像 → 推 ACR 个人版
+#
+# 产物命名：${ACR_REGISTRY}/${ACR_NAMESPACE}/<服务名>:main（移动标签，服务器 pull 用）
+#           + :sha-<commit>（不可变存档，回滚/审计用）
+# 服务器升级（不构建、只拉取）：
+#   docker login crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com
+#   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml pull
+#   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml up -d
+#
+# Secrets（repo Settings → Secrets → Actions）：ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
+# Variables（Settings → Variables）：ACR_NAMESPACE（缺省回落 tokenlens）
+
+name: docker-publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # compose 插值用：grafana（obs profile）的必填校验变量，构建阶段不消费
+  GRAFANA_ADMIN_PASSWORD: build-placeholder
+
+jobs:
+  build-push:
+    name: build & push (amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      REGISTRY: ${{ secrets.ACR_REGISTRY }}
+      NAMESPACE: ${{ vars.ACR_NAMESPACE || 'tokenlens' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to ACR
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+      # 与 docker/compose.yml 同源构建（build args/platform 由 compose 定义，含 image 标签
+      # tokenlens/<svc>:local）；顺序构建共享 Dockerfile.server 的 bun install 层缓存
+      - name: Build all images
+        run: docker compose -f docker/compose.yml build
+
+      - name: Push images
+        run: |
+          set -eu
+          services="gateway client-api admin-api worker trace-receiver console-client console-admin migrate"
+          for svc in $services; do
+            src="tokenlens/${svc}:local"
+            remote_main="${REGISTRY}/${NAMESPACE}/${svc}:main"
+            remote_sha="${REGISTRY}/${NAMESPACE}/${svc}:sha-${GITHUB_SHA::7}"
+            echo "→ ${remote_main}"
+            docker tag "$src" "$remote_main"
+            docker tag "$src" "$remote_sha"
+            docker push --quiet "$remote_main"
+            docker push --quiet "$remote_sha"
+          done
+          echo "发布完成：${REGISTRY}/${NAMESPACE}/{${services// /,}}"
+
+      - name: Logout
+        if: always()
+        run: docker logout "$REGISTRY" || true

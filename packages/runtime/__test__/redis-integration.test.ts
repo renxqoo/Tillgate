@@ -27,11 +27,14 @@ describe.skipIf(url == null)('Redis 集成（真实实例）', () => {
   });
 
   it('assertRedisReachable：可达实例直接通过', async () => {
-    await expect(assertRedisReachable(redis!, 'it-svc', url!)).resolves.toBeUndefined();
+    await expect(assertRedisReachable(redis!, 'it-svc', url!, 5_000)).resolves.toBeUndefined();
   });
 
   it('assertRedisReachable：不可达端口在超时上界内抛错，信息含服务名与脱敏 URL', async () => {
-    const dead = createRedisClient('redis://:pass@127.0.0.1:1', { serviceName: 'dead-svc' });
+    const dead = createRedisClient('redis://:pass@127.0.0.1:1', {
+      serviceName: 'dead-svc',
+      logThrottleMs: 30_000,
+    });
     try {
       const err = await assertRedisReachable(dead, 'dead-svc', 'redis://:pass@127.0.0.1:1', 1_000)
         .then(() => null)

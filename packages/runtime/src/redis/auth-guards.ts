@@ -75,10 +75,7 @@ export function createKeyBruteForceGuard(
   const local = createLocalKeyBruteForceGuard(policy);
   const failClosed = failMode === 'closed';
   // degraded：存储不可用时改走本地降级体的同语义结果（降质不拒绝）
-  const degraded = <T>(
-    op: (l: KeyBruteForceGuard) => Promise<T>,
-    error: unknown,
-  ): Promise<T> => {
+  const degraded = <T>(op: (l: KeyBruteForceGuard) => Promise<T>, error: unknown): Promise<T> => {
     if (failMode !== 'degraded') {
       if (failClosed) throw authGuardUnavailable(error);
       return Promise.resolve({ locked: false, retryAfterSec: 0 } as T); // open：放行
@@ -151,10 +148,7 @@ export function createAuthFailureGuard(
   const failMode = mode.failMode ?? 'degraded';
   const local = createLocalAuthFailureGuard(policy.limit, policy.windowS);
   const failClosed = failMode === 'closed';
-  const degraded = <T>(
-    op: (l: AuthFailureGuard) => Promise<T>,
-    error: unknown,
-  ): Promise<T> => {
+  const degraded = <T>(op: (l: AuthFailureGuard) => Promise<T>, error: unknown): Promise<T> => {
     if (failMode !== 'degraded') {
       if (failClosed) throw authGuardUnavailable(error);
       return Promise.resolve({ locked: false, retryAfterSec: 0 } as T); // open：放行

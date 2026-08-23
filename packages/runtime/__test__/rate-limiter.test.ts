@@ -16,7 +16,10 @@ const url = testRedisUrl();
 
 /** 预期不可达实例（错误事件静默——连接失败是测试路径，不泄漏 unhandled 噪声） */
 function deadRedis(): Redis {
-  const redis = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  const redis = new Redis('redis://127.0.0.1:1', {
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+  });
   redis.on('error', () => {});
   return redis;
 }
@@ -66,13 +69,22 @@ describe.skipIf(url == null)('createSlidingWindowLimiter（真实 Redis）', () 
 
   it('TPM 预占/释放：预占计入窗口、release 归还、幂等释放', async () => {
     const dim = `it-tpm-${Date.now()}`;
-    const r1 = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 60, max: 100 }], 'it-tpm-1');
+    const r1 = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 60, max: 100 }],
+      'it-tpm-1',
+    );
     expect(r1.allowed).toBe(true);
-    const r2 = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 60, max: 100 }], 'it-tpm-2');
+    const r2 = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 60, max: 100 }],
+      'it-tpm-2',
+    );
     expect(r2.allowed).toBe(false); // 60+60 > 100
     await limiter.releaseTpm('it-tpm-1');
     await limiter.releaseTpm('it-tpm-1'); // 幂等
-    const r3 = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 60, max: 100 }], 'it-tpm-3');
+    const r3 = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 60, max: 100 }],
+      'it-tpm-3',
+    );
     expect(r3.allowed).toBe(true); // 释放归还后可再占
   });
 
@@ -80,7 +92,10 @@ describe.skipIf(url == null)('createSlidingWindowLimiter（真实 Redis）', () 
     const dim = `it-tpm-idem-${Date.now()}`;
     await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 50, max: 100 }], 'it-idem');
     await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 50, max: 100 }], 'it-idem');
-    const res = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 50, max: 100 }], 'it-idem-other');
+    const res = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 50, max: 100 }],
+      'it-idem-other',
+    );
     expect(res.allowed).toBe(true); // 同请求二占不叠加：50（非 100）
   });
 
@@ -93,23 +108,38 @@ describe.skipIf(url == null)('createSlidingWindowLimiter（真实 Redis）', () 
     await limiter.backfillTpm(run, [dim], 30);
     await limiter.backfillTpm(run, [dim], 30); // 幂等
     // actual=30 已记、预占已释放：31 计 30+31=61≤100 放行
-    const ok = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 31, max: 100 }], `${run}-2`);
+    const ok = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 31, max: 100 }],
+      `${run}-2`,
+    );
     expect(ok.allowed).toBe(true);
     // 边界维：干净维度上 30(actual)+70(reserved)=100 恰等上限仍放行（严格大于才拒）
     const edgeDim = `${dim}-edge`;
-    await limiter.reserveTpmAll([{ dimension: edgeDim, estimatedTokens: 80, max: 100 }], `${run}-e`);
+    await limiter.reserveTpmAll(
+      [{ dimension: edgeDim, estimatedTokens: 80, max: 100 }],
+      `${run}-e`,
+    );
     await limiter.backfillTpm(`${run}-e`, [edgeDim], 30);
-    const edge = await limiter.reserveTpmAll([{ dimension: edgeDim, estimatedTokens: 70, max: 100 }], `${run}-3`);
+    const edge = await limiter.reserveTpmAll(
+      [{ dimension: edgeDim, estimatedTokens: 70, max: 100 }],
+      `${run}-3`,
+    );
     expect(edge.allowed).toBe(true);
     // 30+31(在途预占)+101 > 100：拒绝且不计数
-    const over = await limiter.reserveTpmAll([{ dimension: dim, estimatedTokens: 101, max: 100 }], `${run}-4`);
+    const over = await limiter.reserveTpmAll(
+      [{ dimension: dim, estimatedTokens: 101, max: 100 }],
+      `${run}-4`,
+    );
     expect(over.allowed).toBe(false);
   });
 
   it('fail-closed：存储不可用抛 infrastructure 身份码 runtime.rate_limit_unavailable', async () => {
     const dead = deadRedis();
     const closed = createSlidingWindowLimiter(dead);
-    const err = await closed.check('x', 5, 'r').then(() => null, (e: Error) => e);
+    const err = await closed.check('x', 5, 'r').then(
+      () => null,
+      (e: Error) => e,
+    );
     expect(isInfrastructureError(err), String(err)).toBe(true);
     expect((err as { code: string }).code).toBe('runtime.rate_limit_unavailable');
     dead.disconnect();
@@ -154,7 +184,9 @@ describe('限流器机制分支（mock Redis——Lua 外的短路/日志/best-e
     await expect(limiter.checkAll([{ dimension: 'd', max: 0 }], 'r')).resolves.toMatchObject({
       allowed: true,
     });
-    await expect(limiter.reserveTpmAll([{ dimension: 'd', estimatedTokens: 5, max: 0 }], 'r')).resolves.toMatchObject({
+    await expect(
+      limiter.reserveTpmAll([{ dimension: 'd', estimatedTokens: 5, max: 0 }], 'r'),
+    ).resolves.toMatchObject({
       allowed: true,
     });
   });
@@ -162,14 +194,19 @@ describe('限流器机制分支（mock Redis——Lua 外的短路/日志/best-e
   it('renewTpm：无预交维度早退；有维度则全部续期 600s', async () => {
     const redis = stubRedis({ hkeys: async () => [] });
     await createSlidingWindowLimiter(redis).renewTpm('none'); // 早退
-    const withKeys = stubRedis({ hkeys: async () => ['{tpm}:reserved:1:d1', '{tpm}:reserved:1:d2'] });
+    const withKeys = stubRedis({
+      hkeys: async () => ['{tpm}:reserved:1:d1', '{tpm}:reserved:1:d2'],
+    });
     await createSlidingWindowLimiter(withKeys).renewTpm('live');
   });
 
   it('renewTpm / releaseTpm / backfillTpm 存储故障：best-effort 记 warn 不抛', async () => {
     const warns: string[] = [];
     const logger = { warn: (_o: unknown, msg: string) => warns.push(msg) };
-    const dead = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    const dead = new Redis('redis://127.0.0.1:1', {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    });
     dead.on('error', () => {});
     const limiter = createSlidingWindowLimiter(dead, { logger });
     await expect(limiter.renewTpm('r')).resolves.toBeUndefined();
@@ -187,7 +224,10 @@ describe('限流器机制分支（mock Redis——Lua 外的短路/日志/best-e
   it('fail-closed 落 warn 日志（failClosed 与 fail-open 两分支的告警文案）', async () => {
     const warns: string[] = [];
     const logger = { warn: (_o: unknown, msg: string) => warns.push(msg) };
-    const dead = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+    const dead = new Redis('redis://127.0.0.1:1', {
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    });
     dead.on('error', () => {});
     await createSlidingWindowLimiter(dead, { logger })
       .check('x', 5, 'r')

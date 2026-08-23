@@ -69,7 +69,7 @@ export interface FormDialogRenderProps {
 }
 
 interface FormDialogBaseProps {
-  /** DialogTrigger asChild 的触发器（通常是 Button） */
+  /** DialogTrigger asChild 的触发器（通常是 Button）；受控模式（传 open）时省略 */
   trigger?: ReactElement;
   title: ReactNode;
   description?: ReactNode;
@@ -80,7 +80,9 @@ interface FormDialogBaseProps {
   contentClassName?: string;
   /** 透传 DialogTitle className（如 "flex items-center gap-2"） */
   titleClassName?: string;
-  /** 额外的 open 变化回调（如关闭时 reset 表单），内部已维护 open state */
+  /** 受控 open（下拉菜单项等外部触发时使用）；缺省时内部自管 open state */
+  open?: boolean;
+  /** open 变化回调：受控模式下由调用方落 state，非受控模式下是额外回调（如关闭时 reset 表单） */
   onOpenChange?: (open: boolean) => void;
   /** 表单体；render-prop 形式拿 { pending, run, close } */
   children: ReactNode | ((ctx: FormDialogRenderProps) => ReactNode);
@@ -115,35 +117,38 @@ export function FormDialog(props: FormDialogProps) {
     cancelLabel: cancelLabelOverride,
     contentClassName,
     titleClassName,
+    open: openProp,
     onOpenChange,
     children,
   } = props;
   const cancelLabel = cancelLabelOverride ?? t('cancel');
   const formId = props.formId ?? undefined;
   const onSubmitClick = props.onSubmitClick ?? undefined;
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : internalOpen;
   const [pending, startTransition] = useTransition();
 
   function handleOpenChange(next: boolean) {
-    setOpen(next);
+    if (!controlled) setInternalOpen(next);
     onOpenChange?.(next);
   }
 
   function run(fn: () => Promise<boolean>) {
     startTransition(async () => {
-      if (await fn()) setOpen(false);
+      if (await fn()) handleOpenChange(false);
     });
   }
 
   const ctx: FormDialogRenderProps = {
     pending,
     run,
-    close: () => setOpen(false),
+    close: () => handleOpenChange(false),
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={trigger} />
+      {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent className={contentClassName}>
         <DialogHeader>
           <DialogTitle className={titleClassName}>{title}</DialogTitle>

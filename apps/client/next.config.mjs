@@ -29,8 +29,20 @@ const securityHeaders = [
   },
 ];
 
+// 局域网 IP 直访 dev server 时，Turbopack chunk 走 ES module（CORS 模式，必带 Origin 头），
+// 而 Next 16 默认只放行 localhost（block-cross-site-dev）——非 localhost Origin 的 /_next/*
+// 一律 403 Unauthorized。这里加白本机 LAN IP（仅 dev 生效）；IP 变化时可用
+// NEXT_ALLOWED_DEV_ORIGINS 覆盖（逗号分隔），无需改代码。
+const allowedDevOrigins = (process.env.NEXT_ALLOWED_DEV_ORIGINS ?? '192.168.31.98')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const nextConfig = {
   output: 'standalone',
+  allowedDevOrigins,
+  // workspace 源码包由 Next 直接编译（ui/api-client exports 指 src；v1 同款配方）
+  transpilePackages: ['@tokenlens/ui', '@tokenlens/api-client'],
   // 操练场 BYOK 直连网关（同域推理端点）：生产由 nginx 分流（请求不达 Next，
   // 此规则不生效）；dev 无 nginx 时兜底转发本地网关。
   // ！！只转发推理端点——/v1/pricing 等属 client-api（server 侧走 CLIENT_API_BASE

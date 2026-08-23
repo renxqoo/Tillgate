@@ -3,16 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "description": "TokenLens v2 —— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪。目标结构与迁移纪律见 docs/project-structure-refactoring.md",
+  "license": "MIT",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "boundaries": "bun scripts/check-package-boundaries.ts",
     "build": "bunx turbo build",
+    "db:migrate": "cd packages/db && bun --env-file=../../.env x drizzle-kit migrate",
+    "db:seed": "bun packages/db/scripts/seed-dev.ts",
+    "dev": "bunx turbo dev",
+    "docker:up": "docker compose -f docker/compose.yml up -d",
+    "docker:up:obs": "docker compose -f docker/compose.yml --profile obs up -d",
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",
     "lint": "bunx turbo lint",
-    "test": "bunx turbo test --concurrency=1",
+    "test": "bun scripts/check-package-boundaries.ts && bunx turbo test --concurrency=1",
+    "test:e2e": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.config.ts",
+    "test:e2e:real": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.real.config.ts",
+    "test:e2e:smoke": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.smoke.config.ts",
     "typecheck": "bunx turbo typecheck"
   },
   "devDependencies": {
@@ -27,6 +37,5 @@
   "engines": {
     "bun": ">=1.4.0"
   },
-  "packageManager": "bun@1.4.0",
-  "license": "MIT"
+  "packageManager": "bun@1.4.0"
 }

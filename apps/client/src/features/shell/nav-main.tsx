@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Fragment } from 'react';
 
 import {
   SidebarGroup,
@@ -10,6 +11,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarSeparator,
 } from '@tokenlens/ui';
 
 /**
@@ -34,33 +36,38 @@ export function NavMain({ items }: { items: readonly NavGroup[] }) {
   const pathname = usePathname();
   return (
     <>
-      {items.map((group) => (
-        <SidebarGroup key={group.id}>
-          {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((item) => {
-                const active =
-                  item.url === '/dashboard'
-                    ? pathname === '/dashboard'
-                    : pathname.startsWith(item.url);
-                const Icon = item.icon;
-                return (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
-                      isActive={active}
-                      tooltip={item.title}
-                      render={<Link prefetch={false} href={item.url} />}
-                    >
-                      {Icon ? <Icon className="size-4" /> : null}
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {items.map((group, index) => (
+        <Fragment key={group.id}>
+          {index > 0 ? (
+            <SidebarSeparator className="w-auto! group-data-[collapsible=icon]:hidden" />
+          ) : null}
+          <SidebarGroup className={index === 0 ? 'pb-1' : 'py-1'}>
+            {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const active =
+                    item.url === '/dashboard'
+                      ? pathname === '/dashboard'
+                      : pathname.startsWith(item.url);
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        isActive={active}
+                        tooltip={item.title}
+                        render={<Link prefetch={false} href={item.url} />}
+                      >
+                        {Icon ? <Icon className="size-4" /> : null}
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </Fragment>
       ))}
     </>
   );

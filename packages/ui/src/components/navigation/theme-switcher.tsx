@@ -1,67 +1,30 @@
-// 主题切换器: 依赖本包 ThemeProvider(纯 React 实现); 选项文案可注入本地化
-import { CheckIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react';
+'use client';
+
+// 主题切换器: 单按钮直接在明/暗两态间点击切换(无菜单、不提供 system 选项);
+// 依赖本包 ThemeProvider 的 resolvedTheme; aria 文案可注入本地化
+import { MoonIcon, SunIcon } from 'lucide-react';
 
 import { useTheme } from '../primitives/theme-provider';
 import { Button } from '../primitives/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../primitives/dropdown-menu';
-
-export type ThemeSwitcherLabels = {
-  trigger?: string;
-  light?: string;
-  dark?: string;
-  system?: string;
-};
 
 export type ThemeSwitcherProps = {
-  labels?: ThemeSwitcherLabels;
-  align?: 'start' | 'center' | 'end';
+  /** 按钮 aria-label(本地化注入) */
+  label?: string;
 };
 
-const LABEL_DEFAULTS: Required<ThemeSwitcherLabels> = {
-  trigger: 'Change theme',
-  light: 'Light',
-  dark: 'Dark',
-  system: 'System',
-};
-
-export function ThemeSwitcher({ labels, align = 'end' }: ThemeSwitcherProps) {
-  const { theme, setTheme } = useTheme();
-  const text = { ...LABEL_DEFAULTS, ...labels };
-
-  const options = [
-    { value: 'light' as const, label: text.light, icon: SunIcon },
-    { value: 'dark' as const, label: text.dark, icon: MoonIcon },
-    { value: 'system' as const, label: text.system, icon: MonitorIcon },
-  ];
+export function ThemeSwitcher({ label = 'Toggle theme' }: ThemeSwitcherProps) {
+  const { resolvedTheme, setTheme } = useTheme();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={text.trigger}
-            data-slot="theme-switcher-trigger"
-          >
-            {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
-          </Button>
-        }
-      />
-      <DropdownMenuContent align={align} data-slot="theme-switcher">
-        {options.map((option) => (
-          <DropdownMenuItem key={option.value} onClick={() => setTheme(option.value)}>
-            <option.icon className="size-4" />
-            {option.label}
-            {theme === option.value ? <CheckIcon className="ms-auto size-4" /> : null}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={label}
+      aria-pressed={resolvedTheme === 'dark'}
+      data-slot="theme-switcher"
+      onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+    >
+      {resolvedTheme === 'dark' ? <MoonIcon /> : <SunIcon />}
+    </Button>
   );
 }

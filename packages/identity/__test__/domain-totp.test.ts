@@ -84,10 +84,12 @@ describe('matchingTotpStep 窗口语义', () => {
   });
 });
 
+// 模块级确定性字符选取器(字母表末位;不捕获父作用域,供恢复码形状测试复用)
+const lastAlphabetChar = (alphabetLen: number) => alphabetLen - 1;
+
 describe('恢复码', () => {
   it('10 位、字母表去 I/L/O/0/1', () => {
-    const deterministic = (alphabetLen: number) => alphabetLen - 1;
-    const code = generateRecoveryCode(deterministic);
+    const code = generateRecoveryCode(lastAlphabetChar);
     expect(code).toHaveLength(RECOVERY_CODE_LENGTH);
     expect(code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]+$/);
     expect(code).not.toMatch(/[ILO01]/);

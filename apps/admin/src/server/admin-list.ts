@@ -8,6 +8,7 @@ import type { ListFetchOptions, Paginated } from '@tokenlens/api-client';
 import { outgoingLocale } from '@tokenlens/api-client/next';
 
 import { adminApi } from './admin-api';
+import { ADMIN_LOCALE_RESOLUTION } from './admin-locale';
 
 export type { ListFetchOptions };
 
@@ -31,7 +32,7 @@ export async function fetchAdminList<T>(
       error:
         e instanceof ApiError
           ? e.message
-          : (await outgoingLocale()) === 'zh'
+          : (await outgoingLocale(ADMIN_LOCALE_RESOLUTION)) === 'zh'
             ? '加载失败'
             : 'Failed to load',
     };

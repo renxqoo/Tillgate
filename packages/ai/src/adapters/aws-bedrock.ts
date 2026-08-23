@@ -1,7 +1,12 @@
 import { createHash, createHmac } from 'node:crypto';
 import type { Endpoint, ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
-import { chatRequestToClaude, claudeResponseToChat, claudeUpstreamToCanonicalStream, claudeUsageToUsage } from '../protocol/claude-chat';
+import {
+  chatRequestToClaude,
+  claudeResponseToChat,
+  claudeUsageToUsage,
+} from '../protocol/claude-chat';
+import { claudeUpstreamToCanonicalStream } from '../protocol/claude-stream';
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
@@ -40,7 +45,11 @@ export interface AwsCredentials {
 export function parseAwsCredentials(apiKey: string): AwsCredentials | null {
   const parts = apiKey.split(':');
   if (parts.length < 2 || !parts[0] || !parts[1]) return null;
-  return { accessKeyId: parts[0]!, secretAccessKey: parts[1]!, sessionToken: parts[2] || undefined };
+  return {
+    accessKeyId: parts[0]!,
+    secretAccessKey: parts[1]!,
+    sessionToken: parts[2] || undefined,
+  };
 }
 
 function hmac(key: Buffer | string, data: string): Buffer {
@@ -69,7 +78,14 @@ export function signBedrockRequest(args: {
   const signedHeaderNames = Object.keys(headers).toSorted();
   const canonicalHeaders = signedHeaderNames.map((h) => `${h}:${headers[h]!.trim()}\n`).join('');
   const signedHeaders = signedHeaderNames.join(';');
-  const canonicalRequest = [method, url.pathname, url.search.replace(/^\?/, ''), canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const canonicalRequest = [
+    method,
+    url.pathname,
+    url.search.replace(/^\?/, ''),
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
 
   const scope = `${dateStamp}/${regionFromHost(url.host)}/${SERVICE}/aws4_request`;
   const stringToSign = [
@@ -107,7 +123,10 @@ interface EventstreamFrame {
  * 总长(4) + 头长(4) + prelude CRC(4) + headers + payload + message CRC(4)
  * 头部类型字节：7=string(名称长2+值长2) 其他数值类型按宽度读。
  */
-export function parseEventstreamFrames(buffer: Buffer): { frames: EventstreamFrame[]; rest: Buffer } {
+export function parseEventstreamFrames(buffer: Buffer): {
+  frames: EventstreamFrame[];
+  rest: Buffer;
+} {
   const frames: EventstreamFrame[] = [];
   let offset = 0;
   while (buffer.length - offset >= 16) {
@@ -116,7 +135,7 @@ export function parseEventstreamFrames(buffer: Buffer): { frames: EventstreamFra
     const headerLen = buffer.readUInt32BE(offset + 4);
     const headers: Record<string, string | number> = {};
     let h = offset + 12;
-    const headerEnd = offset + 12 + headerLen;  // prelude = 总长4 + 头长4 + CRC4
+    const headerEnd = offset + 12 + headerLen; // prelude = 总长4 + 头长4 + CRC4
     while (h < headerEnd) {
       const nameLen = buffer.readUInt8(h);
       h += 1;
@@ -130,7 +149,16 @@ export function parseEventstreamFrames(buffer: Buffer): { frames: EventstreamFra
         headers[name] = buffer.toString('utf8', h, h + valueLen);
         h += valueLen;
       } else {
-        const width = valueType === 8 ? 2 : valueType === 5 ? 4 : valueType === 6 || valueType === 7 ? 8 : valueType === 4 ? 1 : 8;
+        const width =
+          valueType === 8
+            ? 2
+            : valueType === 5
+              ? 4
+              : valueType === 6 || valueType === 7
+                ? 8
+                : valueType === 4
+                  ? 1
+                  : 8;
         h += width;
       }
     }
@@ -150,7 +178,9 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 /** eventstream 字节流 → anthropic 事件 SSE 字节流（:event-type 头 → event: 行） */
-export function eventstreamToClaudeSse(upstream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+export function eventstreamToClaudeSse(
+  upstream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
   const reader = upstream.getReader();
   let pending: Uint8Array = new Uint8Array(0);
   const enc = new TextEncoder();
@@ -169,7 +199,10 @@ export function eventstreamToClaudeSse(upstream: ReadableStream<Uint8Array>): Re
         }
         pending = new Uint8Array(rest);
         for (const frame of frames) {
-          const eventType = typeof frame.headers[':event-type'] === 'string' ? frame.headers[':event-type'] : 'unknown';
+          const eventType =
+            typeof frame.headers[':event-type'] === 'string'
+              ? frame.headers[':event-type']
+              : 'unknown';
           const payloadText = frame.payload.toString('utf8');
           controller.enqueue(enc.encode(`event: ${eventType}\ndata: ${payloadText}\n\n`));
         }
@@ -188,7 +221,14 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
   readonly protocol = 'aws-bedrock';
   readonly supportedEndpoints: readonly Endpoint[] = ['chat'];
 
-  planRequest(channel: ChannelDesc, { model, stream, requestId }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean }): { path: string; headers: Record<string, string> } {
+  planRequest(
+    channel: ChannelDesc,
+    {
+      model,
+      stream,
+      requestId,
+    }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean },
+  ): { path: string; headers: Record<string, string> } {
     void requestId;
     const action = stream ? 'invoke-with-response-stream' : 'invoke';
     return {
@@ -198,16 +238,28 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
   }
 
   /** Bedrock SigV4 的认证头需要完整 URL 与最终 body——由 create-ai 经 signRequest 钩子注入 */
-  signRequest?: (args: { url: URL; body: string; apiKey: string; at: Date }) => Record<string, string>;
+  signRequest?: (args: {
+    url: URL;
+    body: string;
+    apiKey: string;
+    at: Date;
+  }) => Record<string, string>;
 
-  finalizeRequestBody(body: Record<string, unknown>, { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean }): Record<string, unknown> {
+  finalizeRequestBody(
+    body: Record<string, unknown>,
+    { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean },
+  ): Record<string, unknown> {
     const claudeBody = chatRequestToClaude({ ...body, model });
     claudeBody.anthropic_version = 'bedrock-2023-05-31';
     if (stream) claudeBody.stream = true;
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown, _rules: ParamRules, _endpoint: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(
+    req: unknown,
+    _rules: ParamRules,
+    _endpoint: Endpoint,
+  ): { body: unknown; adjustments: ParamAdjustment[] } {
     void _endpoint;
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
@@ -216,6 +268,7 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
     return claudeResponseToChat(body);
   }
 
+  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取（v1 同语义） */
   translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
     return claudeUpstreamToCanonicalStream(eventstreamToClaudeSse(stream));
   }
@@ -224,11 +277,21 @@ export class AwsBedrockAdapter implements ProtocolAdapter {
     const j = res as Record<string, unknown> | null;
     const u = claudeUsageToUsage(j?.usage);
     return u
-      ? { inputTokens: u.promptTokens, cachedInputTokens: u.cachedTokens, outputTokens: u.completionTokens, estimated: false, raw: j?.usage }
+      ? {
+          inputTokens: u.promptTokens,
+          cachedInputTokens: u.cachedTokens,
+          outputTokens: u.completionTokens,
+          estimated: false,
+          raw: j?.usage,
+        }
       : null;
   }
 
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: BEDROCK_CODE_KINDS, status, body, headers });
   }
 

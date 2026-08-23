@@ -26,8 +26,11 @@ billing/adapters  ← 本包 ports、@tokenlens/db、@tokenlens/runtime、外部
 
 ### 2.1 形态
 
-- 根入口只导出 `createBilling` facade、command/result 类型、领域错误目录与必要值类型；
-  不导出 repository、adapter、`Db/DbTx`、供应商 SDK 类型（总纲 §5.3）。
+- 根入口导出 `createBilling` facade、command/result 类型、领域错误目录、必要值类型，
+  以及 ports 契约类型（`WalletStore`/`BillingStore`/`PaymentOrderStore` 等——`WalletConn`
+  为 opaque 品牌类型，签名零 `Db/DbTx` 泄漏）与各用例工厂（`createWalletApi` 等，供
+  worker 单元消费）；不导出 repository、adapter、供应商 SDK 类型（总纲 §5.3；
+  实际导出面由 `__test__/architecture.test.ts` 快照锁死）。
 - `./wallet`、`./settlement` 窄子入口在对应迁移单元就绪后开放（供 worker 等单一职责
   消费方避免拉入全量 facade）。
 - 事务边界属于发起状态变化的 application 用例；`DbTx` 不出现在任何公开签名
@@ -115,3 +118,6 @@ worker 结算`，授权阶段只冻结不动余额；观察 tap 丢失由结算�
 - 迁移单元划分、逐模块裁决、B#/D# 登记与测试矩阵见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)。
 - 每个迁移单元一份 MIGRATION-U#.md（行为规格基线 / 测试迁移矩阵 / 回滚 / 验收）。
 - 旧仓路径：`/Users/wrr/work/ai-getway`（审计与行为语义的证据源）。
+- U6（管理读侧面）：plans 目录 CRUD/订阅管理列表/兑换批次管理/死信单笔复审——
+  admin-api 消费的 facade 组与独立 `createRedeemBatchApi`；明文码生成器注入（不 import http）；
+  死信 abandon 三路归还复用 U3 releaseAllReservations；规格见 MIGRATION-U6.md。

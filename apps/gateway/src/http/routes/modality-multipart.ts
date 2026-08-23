@@ -39,15 +39,24 @@ function badRequest(c: Context, message: string) {
   return c.json({ error: { code: GatewayErrors.code('invalid_body'), message } }, 400);
 }
 
-function checkFile(file: File, allow: ReadonlySet<string>, audio: boolean, maxFileBytes: number): void {
+function checkFile(
+  file: File,
+  allow: ReadonlySet<string>,
+  audio: boolean,
+  maxFileBytes: number,
+): void {
   const mime = file.type || 'application/octet-stream';
   // MIME 白名单外的常见扩展名回退（浏览器无 type 时仍可用）
-  const extOk = audio ? /\.(mp3|wav|webm|m4a|mp4)$/.test(file.name) : /\.(png|jpe?g|webp)$/.test(file.name);
+  const extOk = audio
+    ? /\.(mp3|wav|webm|m4a|mp4)$/.test(file.name)
+    : /\.(png|jpe?g|webp)$/.test(file.name);
   if (!allow.has(mime) && !extOk) {
     throw new Error(`Unsupported file type: ${file.name} (${mime})`);
   }
   if (file.size > maxFileBytes) {
-    throw new Error(`File exceeds size limit (${Math.floor(maxFileBytes / 1024 / 1024)}MB): ${file.name}`);
+    throw new Error(
+      `File exceeds size limit (${Math.floor(maxFileBytes / 1024 / 1024)}MB): ${file.name}`,
+    );
   }
 }
 
@@ -111,7 +120,12 @@ export function modalityMultipartRoutes(
   );
 
   const route =
-    (opts: { fileField: string; allow: ReadonlySet<string>; audio: boolean; kind: 'images_edits' | 'audio_transcription' | 'audio_translation' }) =>
+    (opts: {
+      fileField: string;
+      allow: ReadonlySet<string>;
+      audio: boolean;
+      kind: 'images_edits' | 'audio_transcription' | 'audio_translation';
+    }) =>
     async (c: Context<AuthEnv>) => {
       let wrapper: MultipartWrapper;
       try {
@@ -156,7 +170,10 @@ export function modalityMultipartRoutes(
             },
           });
         }
-        return c.json('body' in result ? result.body : null, ('status' in result ? result.status : 200) as 200);
+        return c.json(
+          'body' in result ? result.body : null,
+          ('status' in result ? result.status : 200) as 200,
+        );
       } catch (error) {
         await admit.release();
         throw error;
@@ -164,7 +181,16 @@ export function modalityMultipartRoutes(
     };
 
   return new Hono<AuthEnv>()
-    .post('/v1/images/edits', route({ fileField: 'image', allow: imageMime, audio: false, kind: 'images_edits' }))
-    .post('/v1/audio/transcriptions', route({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_transcription' }))
-    .post('/v1/audio/translations', route({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_translation' }));
+    .post(
+      '/v1/images/edits',
+      route({ fileField: 'image', allow: imageMime, audio: false, kind: 'images_edits' }),
+    )
+    .post(
+      '/v1/audio/transcriptions',
+      route({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_transcription' }),
+    )
+    .post(
+      '/v1/audio/translations',
+      route({ fileField: 'file', allow: audioMime, audio: true, kind: 'audio_translation' }),
+    );
 }

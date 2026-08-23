@@ -1,6 +1,6 @@
 /**
  * OAuth 绑定:(provider, subject) 防劫持唯一 + (userId, provider) 单绑定;
- * 冲突分类读回定位;同人同 provider 同 subject = 幂等重放。审计在提交后发射(B03)。
+ * 冲突分类读回定位;同人同 provider 同 subject = 幂等重放。审计同事务写入(§5.4)。
  */
 import { advisoryLock, runTx } from '@tokenlens/db';
 import { auditEvent } from '../domain/audit-events.js';
@@ -13,7 +13,7 @@ import {
   normalizeDisplayEmail,
 } from '../domain/identifier.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export interface LinkOAuthResult {
   readonly linkId: number;
@@ -43,20 +43,22 @@ export async function linkOAuth(
           conflict: outcome.status,
         });
       }
-      return { linkId: outcome.linkId, replayed: outcome.status === 'replay' };
+      const linked = { linkId: outcome.linkId, replayed: outcome.status === 'replay' };
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: `user:${userId}`,
+          action: 'oauth.link',
+          targetType: 'oauth_link',
+          targetId: linked.linkId,
+          detail: { userId, provider, replayed: linked.replayed },
+        }),
+      );
+      return linked;
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: `user:${userId}`,
-      action: 'oauth.link',
-      targetType: 'oauth_link',
-      targetId: result.linkId,
-      detail: { userId, provider, replayed: result.replayed },
-    }),
-  );
   return result;
 }

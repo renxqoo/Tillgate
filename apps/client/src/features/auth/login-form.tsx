@@ -75,9 +75,9 @@ export function LoginForm({
 
   if (challenge) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('codeTitle')}</CardTitle>
+      <Card className="[--card-spacing:--spacing(7)] shadow-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">{t('codeTitle')}</CardTitle>
           <CardDescription>{t('codeSentLogin')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -91,7 +91,7 @@ export function LoginForm({
                 // 成功会 redirect，不会回到这里
               });
             }}
-            className="space-y-4"
+            className="space-y-6"
           >
             <FieldGroup>
               <Field>
@@ -114,13 +114,13 @@ export function LoginForm({
                 <FieldDescription>{t('codeNoticeLogin')}</FieldDescription>
               </Field>
             </FieldGroup>
-            <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
+            <Button type="submit" disabled={pending || code.length !== 6} className="h-10 w-full">
               {pending && <Loader2Icon className="animate-spin" />}
               {t('verifyAndLogin')}
             </Button>
             <button
               type="button"
-              className="w-full cursor-pointer text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
               onClick={() => {
                 setChallenge(null);
                 setCode('');
@@ -135,13 +135,18 @@ export function LoginForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('loginTitle')}</CardTitle>
+    <Card className="[--card-spacing:--spacing(7)] shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">{t('loginTitle')}</CardTitle>
         <CardDescription>{t('loginDesc')}</CardDescription>
       </CardHeader>
       <CardContent>
-        <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form
+          noValidate
+          autoComplete="off"
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="space-y-6"
+        >
           <FieldGroup>
             <Controller
               control={form.control}
@@ -155,8 +160,9 @@ export function LoginForm({
                     </InputGroupAddon>
                     <InputGroupInput
                       id="login-email"
-                      autoComplete="email"
+                      autoComplete="off"
                       placeholder="you@example.com"
+                      className="h-11"
                       {...field}
                     />
                   </InputGroup>
@@ -178,7 +184,8 @@ export function LoginForm({
                     <InputGroupInput
                       id="login-password"
                       type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
+                      autoComplete="new-password"
+                      className="h-11"
                       {...field}
                     />
                     <InputGroupAddon align="inline-end">
@@ -186,7 +193,7 @@ export function LoginForm({
                         type="button"
                         onClick={() => setShowPassword((s) => !s)}
                         aria-label={showPassword ? tUi('hidePassword') : tUi('showPassword')}
-                        className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
+                        className="cursor-pointer text-muted-foreground hover:text-foreground"
                       >
                         {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                       </button>
@@ -198,14 +205,17 @@ export function LoginForm({
             />
           </FieldGroup>
 
-          <Button type="submit" disabled={pending} className="w-full">
+          <Button type="submit" disabled={pending} className="h-10 w-full">
             {pending && <Loader2Icon className="animate-spin" />}
             {t('loginSubmit')}
           </Button>
 
           <FieldDescription className="text-center">
             {t('noAccount')}
-            <Link href="/register" className="ml-1 text-foreground underline-offset-2 hover:underline">
+            <Link
+              href="/register"
+              className="ml-1 text-foreground underline-offset-2 hover:underline"
+            >
               {t('registerNow')}
             </Link>
           </FieldDescription>

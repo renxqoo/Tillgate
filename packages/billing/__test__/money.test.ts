@@ -102,6 +102,17 @@ describe('存储形态', () => {
     expect(normalizeAmount('007')).toBe('7');
   });
 
+  it('normalizeAmount 垃圾串归类 invalid_amount（防线对称——构造异常不逃逸）', () => {
+    for (const garbage of ['not-a-number', '12abc', '', '1.2.3']) {
+      try {
+        normalizeAmount(garbage);
+        throw new Error(`expected invalid_amount for ${garbage}`);
+      } catch (error) {
+        expect((error as { code?: string }).code).toBe('billing.invalid_amount');
+      }
+    }
+  });
+
   it('Decimal precision 40：全尺度加减不丢位', () => {
     const a = new Decimal('99999999999999999999.999999999999999999');
     const b = new Decimal('0.000000000000000001');

@@ -8,7 +8,12 @@ import { renderError } from '@tokenlens/http';
 import { InfrastructureError } from '@tokenlens/errors';
 import { BillingErrors } from '@tokenlens/billing';
 import { InferenceErrors } from '@tokenlens/inference';
-import { GatewayErrors, GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog, LEGACY_CODE_MAP } from '../src/http/openai-error-face';
+import {
+  GatewayErrors,
+  GATEWAY_FACE_OVERRIDES,
+  gatewayErrorCatalog,
+  LEGACY_CODE_MAP,
+} from '../src/http/openai-error-face';
 import { sanitizeUpstreamDetail } from '../src/http/sanitize';
 
 const catalog = gatewayErrorCatalog();
@@ -65,9 +70,7 @@ describe('status 分派（v1 24 条表的 v2 形态；逐类代表核销）', ()
   });
 
   it('基建故障 = 503 + 身份码保留 + 通用文案（v1 rate_limiter_unavailable 同语义）', () => {
-    const infra = render(
-      new InfrastructureError('boom', 'runtime.rate_limit_unavailable'),
-    );
+    const infra = render(new InfrastructureError('boom', 'runtime.rate_limit_unavailable'));
     expect(infra.status).toBe(503);
     expect(infra.code).toBe('runtime.rate_limit_unavailable');
     expect(infra.message).not.toContain('boom');

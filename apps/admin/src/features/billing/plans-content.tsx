@@ -3,6 +3,7 @@
 import { StatusPill } from '@/components/status-pill';
 import {
   Button,
+  ConfirmDialog,
   Dialog,
   DialogClose,
   DialogContent,
@@ -11,11 +12,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -50,7 +54,6 @@ import { moneyText } from '@/lib/forms';
 
 import type { PlanRow } from '@tokenlens/api-client';
 import { useActionResult } from '@/components/action-toast';
-import { ConfirmAction } from '@/components/confirm-action';
 
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
 function MoneyPoints({ value }: { value: string }) {
@@ -105,7 +108,7 @@ export function PlansTable({ plans }: { readonly plans: ReadonlyArray<PlanRow> }
           <TableHead className="text-right">{t('quota')}</TableHead>
           <TableHead className="w-20">{t('seats')}</TableHead>
           <TableHead className="w-24">{tc('status')}</TableHead>
-          <TableHead className="w-36 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -134,6 +137,20 @@ function PlanRowItem({
 }) {
   const t = useTranslations('plans');
   const tc = useTranslations('common');
+  const [deleting, setDeleting] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  async function runDelete() {
+    setDeleting(true);
+    const { deletePlanAction } = await import('@/server/plans-actions');
+    const res = await deletePlanAction(plan.id);
+    setDeleting(false);
+    if (res.error) toast.error(String(res.error));
+    else toast.success(tc('deleted'));
+  }
+
   return (
     <TableRow>
       <TableCell className="font-medium">{plan.name}</TableCell>
@@ -160,28 +177,42 @@ function PlanRowItem({
       <TableCell>
         <StatusBadge status={plan.status} />
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          {plan.kind === 'pack' ? <GrantPackDialog plan={plan} tUi={tUi} /> : null}
-          <EditPlanDialog plan={plan} tUi={tUi} />
-          <ConfirmAction
-            confirm={t('deleteConfirm', { name: plan.name })}
-            action={async () => (await import('@/server/plans-actions')).deletePlanAction(plan.id)}
-            success={tc('deleted')}
-          >
-            {({ pending, onClick }) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={onClick}
-                className="text-destructive hover:text-destructive"
-              >
-                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-              </Button>
+      <TableCell className="w-16 text-center">
+        {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
+        <RowActions label={tc('actions')}>
+          {plan.kind === 'pack' ? (
+            <DropdownMenuItem onClick={() => setGrantOpen(true)}>
+              <GiftIcon className="size-4" /> {t('grant')}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            <PencilIcon className="size-4" /> {tc('edit')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+            {deleting ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <Trash2Icon className="size-4" />
             )}
-          </ConfirmAction>
-        </div>
+            {tc('delete')}
+          </DropdownMenuItem>
+        </RowActions>
+        {plan.kind === 'pack' ? (
+          <GrantPackDialog plan={plan} tUi={tUi} open={grantOpen} onOpenChange={setGrantOpen} />
+        ) : null}
+        <EditPlanDialog plan={plan} tUi={tUi} open={editOpen} onOpenChange={setEditOpen} />
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={tc('delete')}
+          description={t('deleteConfirm', { name: plan.name })}
+          confirmLabel={tc('delete')}
+          cancelLabel={tUi('cancel')}
+          tone="destructive"
+          onConfirm={runDelete}
+          onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+        />
       </TableCell>
     </TableRow>
   );
@@ -191,14 +222,18 @@ function PlanRowItem({
 function GrantPackDialog({
   plan,
   tUi,
+  open,
+  onOpenChange,
 }: {
   plan: PlanRow;
   tUi: ReturnType<typeof useTranslations<'ui'>>;
+  /** 受控 open：由行操作菜单项打开 */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('plans');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const [userId, setUserId] = useState('');
 
@@ -213,7 +248,7 @@ function GrantPackDialog({
       const res = await grantPackAction(plan.id, uid);
       if (!notify(res, t('grantFailed'), t('granted'))) return;
       setUserId('');
-      setOpen(false);
+      onOpenChange(false);
     });
   }
 
@@ -221,17 +256,10 @@ function GrantPackDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        setOpen(o);
+        onOpenChange(o);
         if (!o) setUserId('');
       }}
     >
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={t('grant')}>
-            <GiftIcon />
-          </Button>
-        }
-      />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -360,14 +388,18 @@ export function CreatePlanDialog() {
 function EditPlanDialog({
   plan,
   tUi,
+  open,
+  onOpenChange,
 }: {
   plan: PlanRow;
   tUi: ReturnType<typeof useTranslations<'ui'>>;
+  /** 受控 open：由行操作菜单项打开 */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('plans');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const editSchema = buildCreateSchema(t).extend({
     status: z.coerce.number().int(),
@@ -400,19 +432,12 @@ function EditPlanDialog({
         status: Number(values.status),
       });
       if (!notify(res, tc('saveFailed'), tc('saved'))) return;
-      setOpen(false);
+      onOpenChange(false);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={tc('edit')}>
-            <PencilIcon />
-          </Button>
-        }
-      />
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

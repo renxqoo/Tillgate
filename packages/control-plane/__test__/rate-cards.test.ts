@@ -1,6 +1,7 @@
 /**
  * 费率卡用例（v1 rate-cards.test.ts 等价迁移，含 M1 回归）：
  * 建卡同拍全局系数 / PATCH 只碰 global 行 / 删除绑定守卫 / 健康自检 / 列表兜底回显。
+ * 审计与变更同事务（§5.4/G3）：before/after 都进审计、写失败回滚变更。
  */
 import { describe, expect, it } from 'vitest';
 import { createRateCard } from '../src/application/rates/create-rate-card';
@@ -9,13 +10,24 @@ import { deleteRateCard } from '../src/application/rates/delete-rate-card';
 import { listRateCards } from '../src/application/rates/list-rate-cards';
 import { listRateCardUsers } from '../src/application/rates/list-rate-card-users';
 import { checkRateCardHealth } from '../src/application/rates/check-rate-card-health';
-import { adminCtx, createMemoryRateCardStore, createMemoryAudit, createMemoryDb } from './memory';
+import {
+  adminCtx,
+  createMemoryRateCardStore,
+  createMemoryAudit,
+  createMemoryDb,
+  rollbackDb,
+} from './memory';
 
 function setup() {
   const db = createMemoryDb();
   const rateCards = createMemoryRateCardStore();
   const audit = createMemoryAudit();
-  const deps = { db, stores: { rateCard: rateCards.store }, audit: audit.sink };
+  const deps = {
+    db,
+    stores: { rateCard: rateCards.store },
+    audit: audit.sink,
+    auditTx: audit.txSink,
+  };
   return { deps, rateCards, audit };
 }
 
@@ -128,5 +140,63 @@ describe('M1 red：全局系数更新不得抹平 model 覆写行', () => {
     const modelRow = rateCards.coefficients.find((c) => c.scope === 'model')!;
     expect(globalRow.coefficient).toBe('0.800');
     expect(modelRow.coefficient).toBe('2.500'); // 回归点：未被抹平
+  });
+});
+
+describe('费率审计事务参与（§5.4/G3：费率变更必须产生可审计版本）', () => {
+  it('审计 detail 含变更前值（before/after 同事务快照）', async () => {
+    const { deps, audit } = setup();
+    const card = await createRateCard(deps, {
+      ctx: adminCtx(),
+      name: 'audit-me',
+      coefficient: '1.5',
+    });
+    await updateRateCard(deps, {
+      ctx: adminCtx(),
+      rateCardId: card.id,
+      patch: { name: 'audit-me-2', coefficient: '0.8', status: 1 },
+    });
+    const entry = audit.entries.find((e) => e.action === 'rate_card.update');
+    expect(entry?.detail).toMatchObject({
+      before: { name: 'audit-me', description: null, status: 0, coefficient: '1.500' },
+      after: { name: 'audit-me-2', coefficient: '0.8', status: 1 },
+    });
+  });
+
+  it('G3 回归：审计写失败 → 变更回滚（卡面与系数均无变更落库）', async () => {
+    const world = setup();
+    const card = await createRateCard(world.deps, {
+      ctx: adminCtx(),
+      name: 'rollback',
+      coefficient: '1.5',
+    });
+    // 换回滚语义 db（§5.6 类型 2：内存替身的 PG ROLLBACK 等价）
+    const snapshot = () => {
+      const cards = new Map([...world.rateCards.cards].map(([k, v]) => [k, { ...v }]));
+      const coefficients = world.rateCards.coefficients.map((c) => ({ ...c }));
+      const entries = [...world.audit.entries];
+      return () => {
+        world.rateCards.cards.clear();
+        for (const [k, v] of cards) world.rateCards.cards.set(k, v);
+        world.rateCards.coefficients.length = 0;
+        world.rateCards.coefficients.push(...coefficients);
+        world.audit.entries.length = 0;
+        world.audit.entries.push(...entries);
+      };
+    };
+    const deps = { ...world.deps, db: rollbackDb(snapshot) };
+    world.audit.fail.on = true;
+    await expect(
+      updateRateCard(deps, {
+        ctx: adminCtx(),
+        rateCardId: card.id,
+        patch: { name: 'changed', coefficient: '0.1' },
+      }),
+    ).rejects.toThrow('audit sink down');
+    expect(world.rateCards.cards.get(card.id)!.name).toBe('rollback'); // 卡面未变
+    expect(world.rateCards.coefficients.find((c) => c.scope === 'global')!.coefficient).toBe(
+      '1.500',
+    ); // 系数未变
+    expect(world.audit.entries.filter((e) => e.action === 'rate_card.update')).toHaveLength(0);
   });
 });

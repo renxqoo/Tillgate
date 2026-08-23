@@ -45,13 +45,11 @@ export async function peekFirstChunk(
     void body.cancel().catch(() => {});
     throw new Error('peek aborted before start');
   }
-  const [branchA, branchB] = body.tee();
-  const reader = branchA.getReader();
-  // branchB（完整上游 body）未被调用方接管时必须释放：
-  // 未消费未取消的 tee 分支会让 undici 连接永久保持打开（连接池耗尽）
-  const discard = (): void => {
-    void branchB.cancel().catch(() => {});
-  };
+  // 不用 tee()：现代 WHATWG 语义下单分支 cancel 要等两分支齐 cancel 才 resolve，
+  // 且「一分支 cancel 未决」会让另一分支的 pipeTo 停摆（bun 1.4 / node 22/24 实测）——
+  // 直读原始 reader + 回放式 rest 包装契约不变（rest 先吐 first 再续读上游），
+  // 且不产生待释放的 tee 分支（undici 连接随原始 reader 的消费/取消自然归还）。
+  const reader = body.getReader();
   const onAbort = (): void => {
     void reader.cancel().catch(() => {});
   };
@@ -72,18 +70,36 @@ export async function peekFirstChunk(
         })
       : null;
   try {
-    const { done, value } = timeoutPromise
+    const first = timeoutPromise
       ? await Promise.race([readPromise, timeoutPromise])
       : await readPromise;
-    void reader.cancel().catch(() => {});
-    if (done || !value || value.length === 0) {
-      discard();
+    if (first.done || !first.value || first.value.length === 0) {
+      void reader.cancel().catch(() => {});
       return { done: true };
     }
-    return { done: false, first: value, rest: branchB };
+    const firstChunk = first.value;
+    // 回放式 rest：first 已被预读，包装流先吐 first 再按需续读原始 reader
+    // （pull 驱动——与 pipeTo/手动读都兼容；取消透传给原始 reader 归还上游连接）
+    const rest = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(firstChunk);
+      },
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) controller.close();
+          else controller.enqueue(value);
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+      cancel(reason) {
+        void reader.cancel(reason).catch(() => {});
+      },
+    });
+    return { done: false, first: firstChunk, rest };
   } catch (err) {
     void reader.cancel().catch(() => {});
-    discard();
     throw err;
   } finally {
     if (timeoutTimer !== null) clearTimeout(timeoutTimer);
@@ -98,15 +114,26 @@ export async function peekFirstChunk(
  * 退回 relay-stream 的中流错误帧语义（terminated）兜底。
  */
 export function firstChunkStreamError(first: Uint8Array): UpstreamError | null {
+  const body = firstChunkErrorBody(first);
+  return body !== null ? statusFallbackError(200, body) : null;
+}
+
+/**
+ * 首帧错误体的信封还原（B-F3 修复配套）：create-ai 的 mapError 拿到的是
+ * 原始 SSE 文本（"data: {...}\n\n"），tryParseJson 对该前缀恒失败会把
+ * vendorCode 丢成 status 兜底（insufficient_quota → invalid_request 误分类）。
+ * 此处用扫描器剥壳还原 {error:{code,type,message}} 形状供厂商错误表查表。
+ */
+export function firstChunkErrorBody(first: Uint8Array): Record<string, unknown> | null {
   const scanner = new SseScanner();
   scanner.consume(first);
   const frame = scanner.getErrorFrame();
   if (!frame) return null;
-  return statusFallbackError(200, {
+  return {
     error: {
       code: frame.code,
       ...(frame.type !== undefined ? { type: frame.type } : {}),
       ...(frame.detail !== undefined ? { message: frame.detail } : {}),
     },
-  });
+  };
 }

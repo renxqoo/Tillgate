@@ -25,6 +25,8 @@ export {
 } from './adapters/postgres/payment-stores.js';
 export { createEpayProvider, createStripeProvider } from './adapters/payments/providers.js';
 export type { StripeProviderConfig } from './adapters/payments/providers.js';
+export { createPostgresCommissionStatsStore } from './adapters/postgres/commission-stats.js';
+export { createPostgresReconcileDiscrepancyStore } from './adapters/postgres/reconcile-discrepancy-store.js';
 export type { Billing, CreateBillingConfig, BillingStores } from './billing.js';
 /**
  * postgres 一站式装配便捷件：db + 重试策略 → 全套 store → createBilling。
@@ -53,6 +55,8 @@ export function createPostgresBilling(
       resolver: options.resolver,
       failurePolicy: options.failurePolicy,
       clock: options.clock,
+      outbox: options.outbox,
+      onError: options.onError,
       wake: options.wake,
       onSettled: options.onSettled,
       onDead: options.onDead,

@@ -11,11 +11,12 @@ export interface BacklogAdmissionConfig {
   maxPending: number;
   /** 最老待结算账龄上限（ms） */
   maxOldestPendingMs: number;
-  clock?: () => Date;
+  /** 时钟（装配必填——零写死） */
+  clock: () => Date;
 }
 
 export function createBacklogAdmission(config: BacklogAdmissionConfig) {
-  const clock = config.clock ?? (() => new Date());
+  const clock = config.clock;
   return async function assertCapacity(): Promise<void> {
     const inventory = await config.store.read((conn) => config.store.inventory(conn, clock()));
     const pending = inventory.pending + inventory.retrying;
@@ -23,7 +24,8 @@ export function createBacklogAdmission(config: BacklogAdmissionConfig) {
     if (pending > config.maxPending || inventory.oldestPendingMs > config.maxOldestPendingMs) {
       throw BillingErrors.business('settlement_backlog', {
         pending,
-        oldestPendingMs: Math.round(inventory.oldestPendingMs),
+        // 拒绝上下文携带账龄（ms，浮点原值——非账本金额，不做取整）
+        oldestPendingMs: inventory.oldestPendingMs,
       });
     }
   };

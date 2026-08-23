@@ -1,6 +1,6 @@
 # identity 迁移文档（MIGRATION.md）
 
-> 状态：实施中
+> 状态：已完成（2026-08-23 核销：§0 矩阵 16 个新测试文件全落地，默认门 187/187 + real PG 7/7、四门全绿；§1 apps 编排层留档待 apps 波次行为对照）
 > 迁移单元：身份认证完整能力（凭据/密码/挑战/MFA/OAuth 绑定/会话与吊销的机制层）——一个可观察业务域，不是「一个包」的对拷
 > 旧实现：/Users/wrr/work/ai-getway packages/identity-core（17 文件 ~2.6k 行，13 测试文件）+ packages/identity（9 文件 ~0.95k 行，6 测试文件）+ 两 app auth/oauth service 的机制语义（~1.6k 行，HTTP 编排不迁）
 > 目标位置：packages/identity
@@ -101,7 +101,7 @@ apps 编排层语义（v1 现状留档，本单元不验收、apps 波次行为�
 ## 7. 验收（全部满足才算完成）
 
 - 四门全绿（typecheck/lint/test/build）；覆盖率 ≥ 90/85（排除口径见 vitest.config.ts）。
-- 行为对照清单逐项核销：§0 矩阵 24 个旧测试文件全部对号（迁/并/删+理由）；IMPLEMENTATION §5 新测试 18 件全绿。
+- 行为对照清单逐项核销：§0 矩阵 24 个旧测试文件全部对号（迁/并/删+理由）；IMPLEMENTATION §5 新测试 17 件全绿（domain-session 与 application-revocation 并入 application-session.test.ts，审计/白名单收口轮另加 3 个用例）。
 - 全部 bug 回归用例通过（B04/B05/B08/B11/B12/B13/B14/B19/B20/B27 各至少一例，用例名注明编号）。
 - 架构门禁：index.ts 不泄 Db/DbTx/adapter/供应商类型；全包禁 hono/http/runtime/ai/业务能力包；真实 PG real 门禁（test:real）通过或环境缺失显式 skip。
 
@@ -109,7 +109,7 @@ apps 编排层语义（v1 现状留档，本单元不验收、apps 波次行为�
 
 | #   | 事项                                                                         | 归属波次                                 |
 | --- | ---------------------------------------------------------------------------- | ---------------------------------------- |
-| W1  | users/admins 凭据列退役 DDL + 存量数据迁移脚本（§6）                         | apps 切换单元                            |
+| W1  | ~~users/admins 凭据列退役 DDL + 存量数据迁移脚本（§6）~~ **admins 半边已兑现**（2026-08-23 admin-api P2：`apps/admin-api/scripts/migrate-admin-credentials.ts` 机械转换幂等迁移;users 半边与退役 DDL 归 client-api 后续波） | apps 切换单元                            |
 | W2  | 注册/登录 HTTP 编排（限流/防暴破/封禁探测收敛/邮箱枚举策略）与 wire 契约     | client-api/admin-api 波次（§1 留档对照） |
 | W3  | validateSession 属主回查编排（accounts status）                              | apps 波次                                |
 | W4  | 恢复码离线枚举加固复核（HMAC pepper 已落，字母表熵 2^49.6 维持）             | 安全审计节点                             |

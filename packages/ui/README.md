@@ -40,7 +40,7 @@ const money = createMoneyFormatter({ locale: 'zh-CN', currency: 'USD' });
 ```
 
 - React 19 / react-dom 19 为 peer dependency；
-- 主题：包内 `ThemeProvider`（纯 localStorage 实现）+ `ThemeSwitcher`；
+- 主题：包内 `ThemeProvider`（纯 localStorage 实现）+ `ThemeSwitcher`（单按钮明/暗两态直切，无菜单、无 system 选项）；
 - 金额/日期/数字：一律 `create*Formatter({ locale, ... })` 工厂注入，组件不创建 formatter（零写死）；
 - 文案：交互组件的按钮/aria 文案 prop 必填或可覆盖，i18n 由宿主注入。
 

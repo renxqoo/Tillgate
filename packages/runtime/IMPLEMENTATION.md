@@ -30,16 +30,17 @@ strictBooleanSchema(defaultValue: boolean)          // 布尔只收 true/false�
 secretSchema(field: string, minLen: number)         // 密钥三道门：长度 ≥ minLen、非已知弱值、≥4 种不同字符
 
 // logging/
-createLogger({ level?, serviceName?, pretty? }): Logger   // pino + redact 脱敏 + pretty 开发态
+createLogger({ level, serviceName?, pretty }): Logger    // level/pretty 必填注入（铁律 3 收口）；pino + redact 脱敏
 
 // crypto/ —— 渠道上游 Key 落库加密（AES-256-GCM，enc:v1 格式与存量行兼容）
 createCipher(encryptionKey: string): Cipher              // 工厂闭包：key 派生一次；encrypt/decrypt 纯方法
 type Cipher = { encrypt(plaintext: string): string; decrypt(packed: string): string }
 
 // redis/
-createRedisClient(url, { serviceName, logThrottleMs?, sentinels?, sentinelName?, sentinelPassword?, log? }): Redis
+createRedisClient(url, { serviceName, logThrottleMs, sentinels?, sentinelName?, sentinelPassword?, log? }): Redis
+                                                      // logThrottleMs 必填；sentinel 形态 sentinelName 必填（判别联合）
 parseSentinels(spec: string): { host: string; port: number }[]
-assertRedisReachable(redis, serviceName, rawUrl, timeoutMs?): Promise<void>   // 启动期 fail-fast（冷连接重试直至截止）
+assertRedisReachable(redis, serviceName, rawUrl, timeoutMs): Promise<void>    // timeoutMs 必填注入；启动期 fail-fast（冷连接重试直至截止）
 createRedisScriptRunner(redis): RedisScriptRunner       // Lua evalsha + NOSCRIPT 自愈
 
 // lifecycle/
@@ -119,8 +120,14 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
    `graceMs` 的 `Math.max(1_000, ·)` 下界保留并注释（B4）。
 4. **testing 子入口 exports 形态**：`"./testing"` 与 `"."` 平级（development 源码 / types / import dist 三条件，与 ai 包同款）；
    build 双入口产物。架构测试（scripts/check-package-boundaries.ts 建立 P0 门禁后）限定 `./testing` 只被测试文件引用。
-5. **依赖**：`pino`、`pino-pretty`（pretty transport 动态加载，老仓放 dependencies 的先例保持）、`ioredis`、`zod`。
-   零内部依赖（§0.4）。
+5. **依赖**：`pino`、`pino-pretty`（pretty transport 动态加载，老仓放 dependencies 的先例保持）、`ioredis`、`zod`；
+   内部依赖仅 `@tokenlens/errors`（§0.4：ADR-0001 落地后接入根契约，起步时零内部依赖的陈述已过时）。
+   5a. **redis 一动词一文件拆分**（铁律 5，2026-08-23 审计收口）：原 `redis-client.ts`（153 行三动词）拆为
+   `parse-sentinels.ts` / `create-redis-client.ts` / `assert-redis-reachable.ts`，`sanitizeUrl`/`describeError`
+   两纯函数提取为共享件 `redis-diagnostics.ts`（单一真相，两消费方共用）。同期收口：logThrottleMs/
+   sentinelName（sentinel 形态）/assertRedisReachable timeoutMs/createLogger level+pretty 全部必填注入
+   （铁律 3，函数内 `??` 默认值清除）；parseSentinels 端口改严格十进制 1-65535（拒 0x/1e/空白形态）、
+   url db 段 NaN 守卫、createCipher 空密钥 fail-fast（P3 加固，英文 message）。
 6. **不建 lifecycle 的信号注册器**：v1 的信号注册（`process.on('SIGTERM', shutdown)`）留在 app 的 index.ts——
    runtime 只提供可测编排件（createShutdown 返回函数），不接触全局进程状态（未实现 = bug 的反面：不预建没有消费者的设施）。
 

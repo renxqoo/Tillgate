@@ -19,12 +19,7 @@ import {
   type Logger,
 } from '@tokenlens/runtime';
 import { initOtel, type OtelHandle } from '@tokenlens/observability';
-import {
-  createIdentity,
-  type Identity,
-  type OAuthEndpointsOverride,
-  type OAuthProviderCredentials,
-} from '@tokenlens/identity';
+import type { Identity } from '@tokenlens/identity';
 import { createAccounts, USER_STATUS, type AccountUseCases } from '@tokenlens/accounts';
 import { createPgFundingSourceResolver } from '@tokenlens/accounts/composition';
 import {
@@ -53,10 +48,7 @@ import { createUsageRead } from './adapters/usage-read.js';
 import { createSubscriptionRead } from './adapters/subscription-read.js';
 import { createPricingRead } from './adapters/pricing-read.js';
 import { createRedisFixedWindowCounter } from './adapters/redis-rate-counter.js';
-import { createRedisSessionRevocation } from './adapters/redis-session-revocation.js';
-import { createRedisOAuthStateStore } from './adapters/redis-oauth-state.js';
-import { createSmtpLoginMailer } from './adapters/smtp-login-mailer.js';
-import { createTurnstileCaptcha } from './adapters/turnstile-captcha.js';
+import { createIdentityStack } from './adapters/identity-stack.js';
 
 export interface ClientApiAssembly {
   readonly logger: Logger;
@@ -67,12 +59,6 @@ export interface ClientApiAssembly {
   readonly accounts: AccountUseCases;
   readonly billing: Billing;
   readonly deps: ClientApiDeps;
-}
-
-/** 端点覆盖解析（JSON 已在 config 预校验；此处仅反序列化） */
-function parseEndpoints(json: string | undefined): OAuthEndpointsOverride | undefined {
-  if (!json) return undefined;
-  return JSON.parse(json) as OAuthEndpointsOverride;
 }
 
 /** 存储时钟单点（identity/accounts/billing 同源注入） */
@@ -103,6 +89,7 @@ export async function assembleClientApi(
           metricsExportIntervalMs: config.OTEL_METRICS_INTERVAL_MS,
         }
       : {}),
+    ...(config.TRACE_RECEIVER_TOKEN != null ? { authToken: config.TRACE_RECEIVER_TOKEN } : {}),
   });
 
   const db = createDb({
@@ -146,110 +133,15 @@ export async function assembleClientApi(
     maxJitterMs: config.CLIENT_TX_MAX_JITTER_MS,
   };
 
-  // ---- identity（凭据/挑战/会话/OAuth/吊销） ----
-  const oauthProviders: Record<string, OAuthProviderCredentials> = {};
-  if (config.OAUTH_GITHUB_CLIENT_ID != null && config.OAUTH_GITHUB_CLIENT_SECRET != null) {
-    const endpoints = parseEndpoints(config.OAUTH_GITHUB_ENDPOINTS_JSON);
-    oauthProviders.github = {
-      clientId: config.OAUTH_GITHUB_CLIENT_ID,
-      clientSecret: config.OAUTH_GITHUB_CLIENT_SECRET,
-      ...(endpoints != null ? { endpoints } : {}),
-    };
-  }
-  if (config.OAUTH_GOOGLE_CLIENT_ID != null && config.OAUTH_GOOGLE_CLIENT_SECRET != null) {
-    const endpoints = parseEndpoints(config.OAUTH_GOOGLE_ENDPOINTS_JSON);
-    oauthProviders.google = {
-      clientId: config.OAUTH_GOOGLE_CLIENT_ID,
-      clientSecret: config.OAUTH_GOOGLE_CLIENT_SECRET,
-      ...(endpoints != null ? { endpoints } : {}),
-    };
-  }
-  const smtpReady =
-    config.SMTP_HOST != null && config.SMTP_USER != null && config.SMTP_PASS != null;
-  // 用户面邮件品牌（展示常量——非部署可变值）
-  const mailBrand = {
-    brand: 'TokenLens 控制台',
-    brandEn: 'TokenLens Console',
-    brandSub: 'TOKENLENS · CONSOLE',
-  };
-  const mailer =
-    overrides.mailer !== undefined
-      ? overrides.mailer
-      : smtpReady
-        ? createSmtpLoginMailer(
-            {
-              host: config.SMTP_HOST as string,
-              port: config.SMTP_PORT,
-              user: config.SMTP_USER as string,
-              pass: config.SMTP_PASS as string,
-              from: config.SMTP_FROM ?? (config.SMTP_USER as string),
-            },
-            mailBrand,
-            {
-              ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
-              maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
-            },
-            clock,
-          )
-        : null;
-  const emailCodeRequired =
-    config.EMAIL_CODE_REQUIRED === 'on'
-      ? true
-      : config.EMAIL_CODE_REQUIRED === 'off'
-        ? false
-        : mailer != null; // auto：SMTP 已配置即强制两级登录（v1 口径）
-
-  const sessionRevocation = createRedisSessionRevocation(redis);
-  const oauthStateStore = createRedisOAuthStateStore(redis);
-  const apiBase = config.OAUTH_API_BASE ?? 'http://localhost:8081';
-  const identity = createIdentity({
+  // ---- identity（凭据/挑战/会话/OAuth/吊销——OAuth 映射/邮件/Redis 件在 adapters/identity-stack.ts） ----
+  const { identity, oauthProviders, emailCodeRequired, apiBase } = createIdentityStack({
+    config,
     db,
+    redis,
     txRetry,
-    clock: { now: clock },
-    logger: { warn: (obj, msg) => logger.warn(obj as object, msg) },
-    config: {
-      identifiers: ['email'],
-      // providers 是 identity 认识的词表（须非空）；凭证映射在 oauth——
-      // 未配凭证的 provider 运行时 oauth_provider_unconfigured → 路由 404
-      providers: ['github', 'google'],
-      challengeKinds: ['email_code'],
-      realms: ['user'],
-      passwordPolicy: { minLength: config.CLIENT_PASSWORD_MIN_LENGTH, maxLength: 128 },
-      challenge: {
-        digits: 6,
-        ttlMs: config.CLIENT_CHALLENGE_TTL_MS,
-        cooldownMs: config.CLIENT_CHALLENGE_COOLDOWN_MS,
-        maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
-      },
-      codePepper: config.CLIENT_CODE_PEPPER,
-      // TOTP 词表必填项（用户面暂不开放 MFA 端点——identity 配置契约）
-      totp: { issuer: config.CLIENT_TOTP_ISSUER, stepSec: 30, windowSteps: 1, recoveryCount: 8 },
-      sessions: {
-        user: {
-          issuer: 'tokenlens:user',
-          secret: config.JWT_SECRET,
-          ttlSec: config.SESSION_TTL_SECONDS,
-        },
-      },
-      oauth: oauthProviders,
-      oauthStateTtlSec: config.OAUTH_STATE_TTL_SECONDS,
-      // 回调地址精确白名单（identity assertRedirectAllowed 消费；两 provider 常驻）
-      oauthRedirectAllowlist: [
-        `${apiBase}/v1/oauth/github/callback`,
-        `${apiBase}/v1/oauth/google/callback`,
-      ],
-    },
-    ...(mailer != null ? { mailer } : {}),
-    ...(config.CAPTCHA_SECRET_KEY != null
-      ? {
-          captcha: createTurnstileCaptcha({
-            secretKey: config.CAPTCHA_SECRET_KEY,
-            verifyUrl: config.CAPTCHA_VERIFY_URL,
-          }),
-        }
-      : {}),
-    sessionRevocation,
-    oauthStateStore,
+    logger,
+    clock,
+    ...(overrides.mailer !== undefined ? { mailerOverride: overrides.mailer } : {}),
   });
 
   // ---- billing（钱包/订阅/支付/兑换——共享同一套 postgres store） ----

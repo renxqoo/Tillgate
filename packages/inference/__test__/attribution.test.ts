@@ -7,25 +7,24 @@ import {
 } from '../src/domain/usage/attribution';
 
 describe('domain/usage/attribution：估算归属词表与流式归属单一真相', () => {
-  it('词表封闭性：用户取消三态归一 + 完成缺 usage + 部分交付细分', () => {
+  it('词表封闭性：用户侧取消两态（ai TerminationReason 子集）+ 完成缺 usage + 部分交付细分', () => {
+    // B14 词表对齐：v1 的 'aborted' 是旧事件名残留，ai TerminationReason 词表无此值
     expect([...ESTIMATE_ATTRIBUTIONS]).toEqual([
       'client_disconnect',
       'request_cancelled',
-      'aborted',
       'usage_missing_completed',
       'usage_missing_nonstream',
       'upstream_error_partial',
       'inactivity_timeout',
       'server_draining',
     ]);
-    expect([...USER_SIDE_CANCELS]).toEqual(['client_disconnect', 'request_cancelled', 'aborted']);
+    expect([...USER_SIDE_CANCELS]).toEqual(['client_disconnect', 'request_cancelled']);
   });
 
-  it('terminated 矩阵：undefined=完成缺 usage；用户侧三态归一 client_disconnect', () => {
+  it('terminated 矩阵：undefined=完成缺 usage；用户侧两态归一 client_disconnect', () => {
     expect(streamEstimateAttribution(undefined)).toBe('usage_missing_completed');
     expect(streamEstimateAttribution('client_disconnect')).toBe('client_disconnect');
     expect(streamEstimateAttribution('request_cancelled')).toBe('client_disconnect');
-    expect(streamEstimateAttribution('aborted')).toBe('client_disconnect');
   });
 
   it('terminated 矩阵：inactivity/server_draining 分标签；未知值防御性归 upstream_error_partial', () => {

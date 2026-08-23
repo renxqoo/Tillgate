@@ -54,6 +54,7 @@ function harness() {
     store: world.billing,
     accounts: world.accountContext,
     wallet,
+    clock: () => new Date(),
   });
   return { wallet, world, subscriptions };
 }

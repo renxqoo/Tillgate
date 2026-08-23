@@ -12,7 +12,7 @@ import {
   type HttpClient,
   type TokenGetter,
 } from './core/client';
-import type { AdminMeInfo } from './dto/admin-api';
+import type { AdminMeInfo } from './dto/admin-api.generated';
 
 export interface AdminApiClientOptions {
   baseUrl: string;

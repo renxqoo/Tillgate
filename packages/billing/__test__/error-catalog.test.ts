@@ -8,6 +8,11 @@ import { BillingErrors } from '../src/domain/errors.js';
 
 /** 词表快照：key → category（封闭；增删走本文件 + 文档同步） */
 const EXPECTED: Record<string, string> = {
+  invalid_period_days: 'invalid_input',
+  invalid_review_command: 'invalid_input',
+  plan_in_use: 'conflict',
+  redeem_batch_not_found: 'not_found',
+  redeem_code_not_found: 'not_found',
   invalid_amount: 'invalid_input',
   invalid_ref: 'invalid_input',
   insufficient_balance: 'quota_exhausted',

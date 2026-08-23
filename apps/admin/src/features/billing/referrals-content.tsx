@@ -1,7 +1,7 @@
 'use client';
 
 import type { DataTableColumn } from '@/components/data-table';
-import { Button } from '@tokenlens/ui';
+import { DropdownMenuItem, RowActions } from '@tokenlens/ui';
 import { DataTable } from '@/components/data-table';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
@@ -40,34 +40,35 @@ function RelationActions({ row }: { row: ReferralRelationRow }) {
   const notify = useActionResult();
   const banned = row.status === 1;
   return (
-    <Button
-      size="sm"
-      variant={banned ? 'outline' : 'destructive'}
-      disabled={pending}
-      onClick={() =>
-        startTransition(async () => {
-          try {
-            await setRelationStatusAction(row.id, banned ? 0 : 1);
-            notify(
-              {} as { error?: string },
-              tc('actionFailed'),
-              banned ? t('payoutResumed') : t('bannedToast'),
-            );
-          } catch (e) {
-            notify({ error: e instanceof Error ? e.message : tc('actionFailed') });
-          }
-        })
-      }
-    >
-      {pending ? (
-        <Loader2Icon className="size-4 animate-spin" />
-      ) : banned ? (
-        <CheckCircle2Icon className="size-4" />
-      ) : (
-        <BanIcon className="size-4" />
-      )}
-      {banned ? t('resume') : t('ban')}
-    </Button>
+    <RowActions label={tc('actions')}>
+      <DropdownMenuItem
+        variant={banned ? 'default' : 'destructive'}
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            try {
+              await setRelationStatusAction(row.id, banned ? 0 : 1);
+              notify(
+                {} as { error?: string },
+                tc('actionFailed'),
+                banned ? t('payoutResumed') : t('bannedToast'),
+              );
+            } catch (e) {
+              notify({ error: e instanceof Error ? e.message : tc('actionFailed') });
+            }
+          })
+        }
+      >
+        {pending ? (
+          <Loader2Icon className="size-4 animate-spin" />
+        ) : banned ? (
+          <CheckCircle2Icon className="size-4" />
+        ) : (
+          <BanIcon className="size-4" />
+        )}
+        {banned ? t('resume') : t('ban')}
+      </DropdownMenuItem>
+    </RowActions>
   );
 }
 

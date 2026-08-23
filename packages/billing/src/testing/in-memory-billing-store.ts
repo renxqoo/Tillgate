@@ -17,6 +17,7 @@ import type {
   ResolvedFundingSource,
   SubscriptionQuotaStore,
 } from '../ports/funding-ports.js';
+import { Decimal } from '../domain/money.js';
 import { createInMemoryQuotaStore } from './in-memory-quota-store.js';
 
 export interface InMemorySubscriptionRow {
@@ -97,6 +98,35 @@ export interface InMemoryBillingWorld {
   >;
   /** 账户侧协作 port（users/orgs/凭证改绑的内存实现） */
   accountContext: import('../ports/account-context.js').AccountContextStore;
+  /**
+   * 事务回滚模拟（§5.4 边界测试）：全部夹具集合的深快照。与钱包 stand-in 的
+   * snapshotForTest 配对，由测试的 rollbackable 事务壳在异常时一并还原——
+   * 模拟 PG 的整事务回滚（内存 stand-in 本身无回滚语义）。
+   */
+  snapshotForTest(): BillingWorldSnapshot;
+  restoreForTest(snapshot: BillingWorldSnapshot): void;
+}
+
+export interface BillingWorldSnapshot {
+  requests: Array<[string, BillingRequestRow & { appId?: number | null }]>;
+  reservations: Array<BillingReservationRow & { settledAt?: Date; releasedAt?: Date }>;
+  subscriptions: Array<[number, InMemorySubscriptionRow]>;
+  channels: Array<[number, InMemoryChannelRow]>;
+  settledSpend: InMemoryBillingWorld['fixtures']['settledSpend'];
+  usageLogs: Array<[string, Record<string, unknown>]>;
+  plans: Array<[number, InMemoryPlanRow]>;
+  operations: Array<
+    [
+      string,
+      {
+        id: number;
+        operationId: string;
+        kind: string;
+        fingerprint: string;
+        receipt: Record<string, unknown> | null;
+      },
+    ]
+  >;
 }
 
 let subSeq = 0;
@@ -135,6 +165,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
   >();
   let operationSeq = 0;
   let subscriptionSeq = 1000;
+  let planSeq = 100;
   const memberLimitsOverride = new Map<
     string,
     { dailySpendLimit: string | null; monthlyQuota: string | null }
@@ -195,7 +226,11 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
 
     casTransition(_conn, input) {
       const row = requests.get(input.requestId);
-      if (!row || !(input.from as readonly string[]).includes(row.status)) {
+      if (
+        !row ||
+        !(input.from as readonly string[]).includes(row.status) ||
+        (input.expectLeaseOwner !== undefined && row.leaseOwner !== input.expectLeaseOwner)
+      ) {
         return Promise.resolve(false);
       }
       row.status = input.to;
@@ -597,6 +632,113 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       return row ? { ...row } : null;
     },
 
+    // ---- 管理读侧面（U6 stand-in;users 富化为合成值——join 语义归 pg 适配器） ----
+    listAdminPlans: (_conn, query) => {
+      const all = [...plansCatalog.values()]
+        .filter((row) => query.q === undefined || row.name.includes(query.q))
+        .toSorted((a, b) => (query.order === 'asc' ? a.id - b.id : b.id - a.id));
+      return Promise.resolve({
+        rows: all.slice(query.offset, query.offset + query.limit),
+        total: all.length,
+      });
+    },
+    insertPlan: (_conn, values) => {
+      const id = (planSeq += 1);
+      const row: InMemoryPlanRow = { id, ...values, status: 0 };
+      plansCatalog.set(id, row);
+      return Promise.resolve({ ...row });
+    },
+    patchPlan: (_conn, input) => {
+      const row = plansCatalog.get(input.planId);
+      if (!row) return Promise.resolve(null);
+      Object.assign(row, input.patch);
+      return Promise.resolve({ ...row });
+    },
+    deletePlan: (_conn, planId) => {
+      return Promise.resolve(plansCatalog.delete(planId));
+    },
+    countSubscriptionsAnyStatus: (_conn, planId) => {
+      const count = [...subscriptions.values()].filter((row) => row.planId === planId).length;
+      return Promise.resolve(count);
+    },
+    listAdminSubscriptions: (_conn, input) => {
+      const all = [...subscriptions.values()]
+        .filter(
+          (row) =>
+            (input.planId === undefined || row.planId === input.planId) &&
+            (input.userId === undefined || row.userId === input.userId) &&
+            (input.status === undefined || row.status === input.status) &&
+            (input.q === undefined || `user-${row.userId}`.includes(input.q)),
+        )
+        .toSorted((a, b) => (input.order === 'asc' ? a.id - b.id : b.id - a.id));
+      const rows = all.slice(input.offset, input.offset + input.limit).map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        userSubject: `user-${row.userId}`,
+        userDisplayName: null,
+        planId: row.planId,
+        planName: plansCatalog.get(row.planId)?.name ?? `plan-${row.planId}`,
+        startAt: row.startAt,
+        endAt: row.endAt,
+        quotaAmount: row.quotaAmount,
+        usedAmount: row.usedAmount,
+        reservedAmount: row.reservedAmount,
+        quantity: row.quantity,
+        price: row.price,
+        remainingAmount: new Decimal(row.quotaAmount)
+          .minus(row.usedAmount)
+          .minus(row.reservedAmount)
+          .toString(),
+        status: row.status,
+        createdAt: row.startAt,
+      }));
+      return Promise.resolve({ rows, total: all.length });
+    },
+    listDeadCases: (_conn, input) => {
+      const dead = [...requests.values()]
+        .filter((row) => row.status === 'dead')
+        .toSorted((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      return Promise.resolve({
+        rows: dead.slice(input.offset, input.offset + input.limit).map((row) => ({
+          requestId: row.requestId,
+          userId: row.userId,
+          status: row.status,
+          revision: row.revision,
+          attempt: row.settlementAttempts,
+          failureCode: row.failureCode,
+          lastError: null,
+          reservedAmount: row.reservedAmount,
+          createdAt: row.createdAt,
+        })),
+        total: dead.length,
+      });
+    },
+    casReviewRetryDead: (_conn, input) => {
+      const row = requests.get(input.requestId);
+      if (!row || row.status !== 'dead' || row.revision !== input.expectedRevision) {
+        return Promise.resolve(false);
+      }
+      row.status = 'retry_wait';
+      row.revision += 1;
+      row.settlementAttempts = 0;
+      row.failureCode = null;
+      row.nextSettlementAt = input.now;
+      return Promise.resolve(true);
+    },
+    casReviewAbandonDead: (_conn, input) => {
+      const row = requests.get(input.requestId);
+      if (!row || row.status !== 'dead' || row.revision !== input.expectedRevision) {
+        return Promise.resolve(null);
+      }
+      row.status = 'released';
+      row.revision += 1;
+      return Promise.resolve({
+        reservedAmount: row.reservedAmount,
+        channelId: row.channelId,
+        channelReservedAmount: row.channelReservedAmount,
+      });
+    },
+
     async saveOperationReceipt(_conn, id, receipt) {
       for (const row of operationsArchive.values()) {
         if (row.id === id) row.receipt = receipt;
@@ -710,6 +852,36 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
     },
     set resolveOverride(value) {
       resolveOverride = value;
+    },
+    snapshotForTest(): BillingWorldSnapshot {
+      return {
+        requests: structuredClone([...requests.entries()]),
+        reservations: structuredClone(reservations),
+        subscriptions: structuredClone([...subscriptions.entries()]),
+        channels: structuredClone([...channelsMap.entries()]),
+        settledSpend: structuredClone(settledSpend),
+        usageLogs: structuredClone([...usageLogsRows.entries()]),
+        plans: structuredClone([...plansCatalog.entries()]),
+        operations: structuredClone([...operationsArchive.entries()]),
+      };
+    },
+    restoreForTest(snapshot) {
+      requests.clear();
+      for (const [key, row] of snapshot.requests) requests.set(key, row);
+      reservations.length = 0;
+      reservations.push(...snapshot.reservations);
+      subscriptions.clear();
+      for (const [key, row] of snapshot.subscriptions) subscriptions.set(key, row);
+      channelsMap.clear();
+      for (const [key, row] of snapshot.channels) channelsMap.set(key, row);
+      settledSpend.length = 0;
+      settledSpend.push(...snapshot.settledSpend);
+      usageLogsRows.clear();
+      for (const [key, row] of snapshot.usageLogs) usageLogsRows.set(key, row);
+      plansCatalog.clear();
+      for (const [key, row] of snapshot.plans) plansCatalog.set(key, row);
+      operationsArchive.clear();
+      for (const [key, row] of snapshot.operations) operationsArchive.set(key, row);
     },
   };
 }

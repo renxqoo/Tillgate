@@ -1,23 +1,6 @@
 import { asRecord } from '../internal/util';
 import type { Usage } from '../types';
 
-
-/**
- * 弃真观测钩子（B3 修复：v1 静默丢弃 usage 零观测——total 不一致/0+0 场景
- * 真实 usage 被丢退估算是计费级隐患）。pipeline 装配时注入 logger；默认空。
- */
-export const usageDiscardHooks: Array<(reason: string, raw: unknown) => void> = [];
-
-function reportDiscard(reason: string, raw: unknown): void {
-  for (const h of usageDiscardHooks.slice()) {
-    try {
-      h(reason, raw);
-    } catch {
-      /* 观察者异常不破坏归一 */
-    }
-  }
-}
-
 /**
  * usage 归一化（ai-package.md §7.5）：
  *   - OpenAI 风格: prompt_tokens_details.cached_tokens → cachedInputTokens
@@ -25,7 +8,7 @@ function reportDiscard(reason: string, raw: unknown): void {
  *   - Mistral: prompt_tokens_details.cached_tokens 及其 camel 变体（promptTokensDetails.
  *     cachedTokens / promptTokenDetails.cachedTokens / numCachedTokens——参考 pi-ai mistral 方言）
  *   - 无缓存字段 → cachedInputTokens = 0
- *   - usage 缺失 → 返回 null，由调用方按字符估算（estimated=true，见 token-estimate.ts）
+ *   - usage 缺失/冲突 → 返回 null，由调用方按字符估算（estimated=true，见 token-estimate.ts）
  */
 
 function num(v: unknown): number | undefined {
@@ -89,12 +72,11 @@ export function normalizeUsage(usageRaw: unknown): Usage | null {
   const outputTokens = output ?? 0;
   const total = num(u.total_tokens);
   if (total !== undefined && total !== inputTokens + outputTokens) {
-    // B3：total 含额外分量（cache-write/reasoning）时真实 usage 被弃——必须可观测
-    reportDiscard('total_mismatch', u);
+    // B3：total 含额外分量（cache-write/reasoning）时弃真退估算（返回 null）——
+    // 弃真可观测由调用方日志承担（此处纯函数零副作用）
     return null;
   }
   if (inputTokens === 0 && outputTokens === 0) {
-    reportDiscard('zero_usage', u);
     return null;
   }
   // 缓存写入方言（OpenAI 风格顶层 cache_write_tokens——pi-ai 同名字段；

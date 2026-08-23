@@ -27,10 +27,14 @@ describe('encodeDelivered 三态', () => {
         controller.close();
       },
     });
-    const res = await encodeDelivered(json, { ok: true, status: 200, stream, contentType: 'text/event-stream' } as never, {
-      model: 'm',
-      requestId: 'r',
-    });
+    const res = await encodeDelivered(
+      json,
+      { ok: true, status: 200, stream, contentType: 'text/event-stream' } as never,
+      {
+        model: 'm',
+        requestId: 'r',
+      },
+    );
     expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
     const text = await res.text();
     expect(text).toBe(chunks.join(''));
@@ -85,11 +89,19 @@ describe('encodeDelivered 三态', () => {
   it('passthrough（上游 4xx 透传，ADR-0004）：原码 + code/message 出站', async () => {
     const res = await encodeDelivered(
       json,
-      { ok: true, passthrough: true, status: 422, code: 'invalid_prompt', message: 'prompt too long' },
+      {
+        ok: true,
+        passthrough: true,
+        status: 422,
+        code: 'invalid_prompt',
+        message: 'prompt too long',
+      },
       { model: 'm', requestId: 'r' },
     );
     expect(res.status).toBe(422);
-    expect(await res.json()).toEqual({ error: { code: 'invalid_prompt', message: 'prompt too long' } });
+    expect(await res.json()).toEqual({
+      error: { code: 'invalid_prompt', message: 'prompt too long' },
+    });
   });
 
   it('rawBody 无 content-type 时缺省 application/octet-stream', async () => {

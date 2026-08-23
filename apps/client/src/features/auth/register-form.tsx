@@ -2,7 +2,14 @@
 
 import { useState, useTransition } from 'react';
 
-import { EyeIcon, EyeOffIcon, Loader2Icon, LockIcon, MailIcon, ShieldCheckIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  Loader2Icon,
+  LockIcon,
+  MailIcon,
+  ShieldCheckIcon,
+} from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
@@ -98,9 +105,9 @@ export function RegisterForm({
 
   if (challenge) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('codeTitle')}</CardTitle>
+      <Card className="shadow-sm">
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">{t('codeTitle')}</CardTitle>
           <CardDescription>{t('codeSentRegister')}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -158,9 +165,9 @@ export function RegisterForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('registerTitle')}</CardTitle>
+    <Card className="shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-xl">{t('registerTitle')}</CardTitle>
         <CardDescription>{t('registerDesc')}</CardDescription>
       </CardHeader>
       <CardContent>

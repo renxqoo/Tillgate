@@ -84,8 +84,8 @@ describe('credentials.register', () => {
   });
 });
 
-describe('composition bridge:identityWithinTx(B03/B16 契约)', () => {
-  it('bridge 不发射审计——事件交还调用方提交后冲洗(回滚即丢弃)', async () => {
+describe('composition bridge:identityWithinTx(§5.4 事务参与审计)', () => {
+  it('bridge 审计在调用方事务内直写:auditSink 提供即落库,失败随事务回滚', async () => {
     const h = harness();
     const { guards, config } = resolveConfig(TEST_CONFIG);
     // fake db 结构上非 DbTx(内存 store 无视 tx;advisoryLock 走 no-op execute);
@@ -102,13 +102,32 @@ describe('composition bridge:identityWithinTx(B03/B16 契约)', () => {
       userId: 1,
       identifier: { kind: 'email', value: email(6) },
     });
-    // 契约:bridge 不发射审计——事件交还调用方提交后冲洗(回滚即丢弃;
-    // 随事务回滚的落库语义由 postgres.real 门禁复验,内存替身无视 tx)
-    expect(result.auditEvents).toHaveLength(1);
-    expect(result.auditEvents[0]!.action).toBe('credential.register');
-    expect(h.audit.events).toHaveLength(0);
-    await h.audit.record(result.auditEvents[0]!);
+    expect(result.replayed).toBe(false);
+    // §5.4 契约:bridge 在事务内经 sink 直写(不再返回 auditEvents 交调用方冲洗);
+    // 落库原子性与回滚语义由 postgres.real 门禁复验,内存替身只验证调用链
     expect(h.audit.events).toHaveLength(1);
+    expect(h.audit.events[0]!.action).toBe('credential.register');
+  });
+
+  it('审计事务参与失败不吞:auditSink 抛错 → bridge 调用一并失败(§5.4 不降级)', async () => {
+    const h = harness();
+    const { guards, config } = resolveConfig(TEST_CONFIG);
+    const bridge = identityWithinTx(h.ctx.db as unknown as Parameters<typeof identityWithinTx>[0], {
+      clock: h.ctx.clock,
+      guards,
+      passwordPolicy: config.passwordPolicy,
+      auditSink: {
+        async record() {
+          throw new Error('audit sink down');
+        },
+      },
+      credentialStore: h.store,
+    });
+    await expect(
+      bridge.registerCredential({ userId: 1, identifier: { kind: 'email', value: email(7) } }),
+    ).rejects.toThrow('audit sink down');
+    // 审计失败 → 凭据写入一并回滚(真实回滚语义由 postgres.real 复验;此处断言未产生审计事实)
+    expect(h.audit.events).toHaveLength(0);
   });
 
   it('预哈希路径:非本包 scrypt 格式拒绝(防脏哈希入库=认证永远失败)', async () => {

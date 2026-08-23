@@ -12,17 +12,51 @@ import * as rootExports from '../src/index.js';
 
 /** 物理表清单(46 张 = v1 基线 39 + identity 波次七表,迁移 0076)——新增/删除表必须先改本清单 */
 const EXPECTED_TABLES = new Set([
-  'users', 'admins', 'apps', 'api_keys', 'providers', 'channels', 'channel_recharges',
-  'model_mappings', 'model_channels', 'rate_cards', 'rate_card_coefficients',
-  'usage_logs', 'transactions', 'billing_requests', 'billing_reservations',
-  'redeem_batches', 'redeem_codes', 'request_logs', 'audit_logs',
-  'plans', 'user_subscriptions', 'organizations', 'org_members', 'org_invitations',
-  'reconcile_discrepancies', 'trace_spans', 'payment_orders', 'referrals',
-  'marketing_settings', 'notification_channels', 'notify_outbox', 'generation_tasks',
-  'wallet_accounts', 'wallet_transactions', 'wallet_legs', 'wallet_authorizations',
-  'ledger_operations', 'fx_rates', 'system_configs',
-  'identity_credentials', 'identity_passwords', 'identity_oauth_links',
-  'identity_challenges', 'identity_totp', 'identity_recovery_codes',
+  'users',
+  'admins',
+  'apps',
+  'api_keys',
+  'providers',
+  'channels',
+  'channel_recharges',
+  'model_mappings',
+  'model_channels',
+  'rate_cards',
+  'rate_card_coefficients',
+  'usage_logs',
+  'transactions',
+  'billing_requests',
+  'billing_reservations',
+  'redeem_batches',
+  'redeem_codes',
+  'request_logs',
+  'audit_logs',
+  'plans',
+  'user_subscriptions',
+  'organizations',
+  'org_members',
+  'org_invitations',
+  'reconcile_discrepancies',
+  'trace_spans',
+  'payment_orders',
+  'referrals',
+  'marketing_settings',
+  'notification_channels',
+  'notify_outbox',
+  'generation_tasks',
+  'wallet_accounts',
+  'wallet_transactions',
+  'wallet_legs',
+  'wallet_authorizations',
+  'ledger_operations',
+  'fx_rates',
+  'system_configs',
+  'identity_credentials',
+  'identity_passwords',
+  'identity_oauth_links',
+  'identity_challenges',
+  'identity_totp',
+  'identity_recovery_codes',
   'identity_session_anchors',
 ]);
 
@@ -80,9 +114,11 @@ describe('外键引用物化(契约:FK 目标必须在封闭表集合内)', () =
       if (!is(value, PgTable)) continue;
       for (const fk of getTableConfig(value).foreignKeys) {
         // reference() 为 drizzle 内部口,物化 { columns, foreignTable, foreignColumns }
-        const ref = (fk as unknown as {
-          reference(): { foreignTable: PgTable; columns: unknown[]; foreignColumns: unknown[] };
-        }).reference();
+        const ref = (
+          fk as unknown as {
+            reference(): { foreignTable: PgTable; columns: unknown[]; foreignColumns: unknown[] };
+          }
+        ).reference();
         fkCount += 1;
         expect(ref.columns.length).toBeGreaterThan(0);
         expect(ref.foreignColumns.length).toBeGreaterThan(0);
@@ -111,6 +147,8 @@ describe('依赖边界(IMPLEMENTATION.md §6:零内部依赖)', () => {
   });
 
   it('ledger_operations 本地表定义在包内(FK 目标)', () => {
-    expect(tableNames({ ledgerOperations: schema.ledgerOperations })).toContain('ledger_operations');
+    expect(tableNames({ ledgerOperations: schema.ledgerOperations })).toContain(
+      'ledger_operations',
+    );
   });
 });

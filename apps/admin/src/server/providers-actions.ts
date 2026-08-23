@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 
 import { ApiError } from '@tokenlens/api-client';
-import { SUPPORTED_PROTOCOLS } from '@/config/protocols';
 
 export interface ProviderInput {
   name: string;
@@ -25,7 +24,9 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
     await adminApi().post('/v1/providers', {
       name: input.name.trim(),
       baseUrl: input.baseUrl.trim(),
-      protocol: input.protocol?.trim() || SUPPORTED_PROTOCOLS[0]!,
+      // protocol 缺省不补——v1 前端 SUPPORTED_PROTOCOLS[0] 默认改由 control-plane
+      // defaultProtocol('openai-compatible')兜底（词表不在 app 复制,P6/D1）
+      ...(input.protocol?.trim() ? { protocol: input.protocol.trim() } : {}),
       vendor: input.vendor?.trim() ? input.vendor.trim() : null,
       status: input.status ?? 0,
     });

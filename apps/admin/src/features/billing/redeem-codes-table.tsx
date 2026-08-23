@@ -1,7 +1,8 @@
 'use client';
 
 import {
-  Button,
+  DropdownMenuItem,
+  RowActions,
   Table,
   TableBody,
   TableCell,
@@ -39,7 +40,7 @@ export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCode
           <TableHead>{t('usedBy')}</TableHead>
           <TableHead className="w-40">{t('usedAt')}</TableHead>
           <TableHead className="w-40">{t('expiresAt')}</TableHead>
-          <TableHead className="w-24 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -59,6 +60,7 @@ export function CodesTable({ codes }: { readonly codes: ReadonlyArray<RedeemCode
 
 function CodeRowItem({ code }: { code: RedeemCodeRow }) {
   const t = useTranslations('redeemBatches');
+  const tc = useTranslations('common');
   const meta = STATUS_LABEL.get(code.status);
   const revocable = code.status === 0;
 
@@ -74,27 +76,28 @@ function CodeRowItem({ code }: { code: RedeemCodeRow }) {
       <TableCell className="text-xs text-muted-foreground">{code.usedBy ?? '—'}</TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDateTime(code.usedAt)}</TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDateTime(code.expiresAt)}</TableCell>
-      <TableCell className="text-right">
-        <ConfirmAction
-          confirm={t('revokeConfirm', { id: code.id })}
-          action={async () =>
-            (await import('@/server/redeem-batches-actions')).revokeCodeAction(code.id)
-          }
-          success={t('statusRevoked')}
-        >
-          {({ pending, onClick }) => (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pending || !revocable}
-              onClick={onClick}
-              className="text-destructive hover:text-destructive"
-              title={revocable ? t('revoke') : t('notRevocable')}
-            >
-              {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
-            </Button>
-          )}
-        </ConfirmAction>
+      <TableCell className="w-16 text-center">
+        <RowActions label={tc('actions')}>
+          <ConfirmAction
+            confirm={t('revokeConfirm', { id: code.id })}
+            action={async () =>
+              (await import('@/server/redeem-batches-actions')).revokeCodeAction(code.id)
+            }
+            success={t('statusRevoked')}
+          >
+            {({ pending, onClick }) => (
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={pending || !revocable}
+                onClick={onClick}
+                title={revocable ? t('revoke') : t('notRevocable')}
+              >
+                {pending ? <Loader2Icon className="animate-spin" /> : <ShieldBanIcon />}
+                {t('revoke')}
+              </DropdownMenuItem>
+            )}
+          </ConfirmAction>
+        </RowActions>
       </TableCell>
     </TableRow>
   );

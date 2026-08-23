@@ -8,7 +8,7 @@ import { credentialSetLockKey } from '../domain/locks.js';
 import { assertPasswordPolicy, hashPassword } from '../domain/password.js';
 import { assertUserId, guardRealm } from '../domain/identifier.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export interface ResetPasswordInput {
   readonly userId: number;
@@ -30,20 +30,23 @@ export async function resetPassword(
     async (tx) => {
       await advisoryLock(tx, credentialSetLockKey(userId));
       await ctx.credentialStore.resetPassword(tx, { userId, passwordHash: newHash });
-      return ctx.anchorStore.advanceAnchor(tx, { realm, userId });
+      const before = await ctx.anchorStore.advanceAnchor(tx, { realm, userId });
+      // 安全审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: 'admin',
+          action: 'password.reset',
+          targetType: 'user',
+          targetId: userId,
+          detail: { realm },
+        }),
+      );
+      return before;
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: 'admin',
-      action: 'password.reset',
-      targetType: 'user',
-      targetId: userId,
-      detail: { realm },
-    }),
-  );
   return { invalidBefore };
 }

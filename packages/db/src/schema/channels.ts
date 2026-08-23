@@ -45,9 +45,7 @@ export const channels = pgTable(
      * 当前余额（元）= 渠道「有没有钱」的唯一依据。入货 +、调账 ±、结算时按实际上游成本原子扣减。
      * 余额 ≤ 0 即「没钱」，路由精确硬闸拦截新请求；余额可为负（历史/在途超支）。
      */
-    upstreamBudget: numeric('upstream_budget', { precision: 38, scale: 18 })
-      .notNull()
-      .default('0'),
+    upstreamBudget: numeric('upstream_budget', { precision: 38, scale: 18 }).notNull().default('0'),
     /**
      * 熔断阈值（元）。剩余 ≤ 此值 → 自动熔断（status=3）+ 清路由缓存。
      * NULL = 0（耗尽才熔断）。仅 upstream_budget > 0 时生效。

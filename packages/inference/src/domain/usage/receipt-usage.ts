@@ -57,6 +57,9 @@ export function usageForStream(
 ): StreamUsageVerdict {
   const usage = facts.usage;
   if (usage != null && !usage.estimated) {
+    // 口径裁决（MIGRATION.md §3a R2）：可信累计 usage 优先，不标 stream_aborted——
+    // ai events.ts 头注「success.terminated → 网关标 stream_aborted」是 v1 早期口径，
+    // 与本实现相抵时以 inference 实现为准（中断但有可信 usage = 按最新 usage 正常结算）。
     return { usage: trustedOf(usage), streamAborted: false };
   }
   return {

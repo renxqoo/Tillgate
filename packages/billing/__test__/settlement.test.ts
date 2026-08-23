@@ -48,6 +48,7 @@ function harness() {
     walletStore: walletMemory.store,
     wallet,
     currency: 'CNY',
+    clock: () => new Date(),
   });
   const settlement = createSettlementApi({
     store,
@@ -55,6 +56,8 @@ function harness() {
     fundingRegistry,
     channels: world.channels,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+    clock: () => new Date(),
+    onError: () => undefined,
   });
   return { wallet, walletMemory, world, billing, settlement };
 }
@@ -400,6 +403,8 @@ describe('结算渠道链路与钩子', () => {
       }),
       channels: h.world.channels,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      clock: () => new Date(),
+      onError: () => undefined,
       onSettled: (data) => {
         observed = { requestId: data.requestId, amount: data.amount };
         throw new Error('hook exploded');
@@ -458,6 +463,7 @@ describe('结算渠道链路与钩子', () => {
         store: h.world.billing,
         quota: h.world.quota,
       }),
+      clock: () => new Date(),
       onError: (error, ctx) => errors.push(ctx),
     })({ batchSize: 10 });
     expect(recoverResult.released).toBe(1); // 毒行被隔离，健康行归还
@@ -545,6 +551,8 @@ describe('分支封口补充', () => {
         quota: h.world.quota,
       }),
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
+      clock: () => new Date(),
+      onError: () => undefined,
       onDead: (data) => dead.push(data.requestId),
     });
     // 该认领已被上一 settlement 持有——直接用失败处置走 dead 分支

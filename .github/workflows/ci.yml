@@ -1,0 +1,82 @@
+# CI 主门禁：四门（typecheck / lint / build / test）+ 覆盖率门禁。
+# 默认测试门禁以封闭为主：替身注入，无 PG/外网依赖（AGENT.md 铁律 14）。
+# 例外是 runtime 的 Redis 集成面（redis-integration / auth-guards / rate-limiter 真实段，
+# REDIS_URL 未配置时 skipIf）——testRedisUrl 注释约定「CI 必配」，故两个 job 均挂
+# Redis 服务容器；无它则该面静默跳过且覆盖率阈值（90/85）必挂。
+# 需要真实凭证或上游的 *.real.test.ts 与 e2e/（依赖外网与 dev 库）
+# 走本地独立通道（bun run test:e2e / 包内 test:real），不进 CI。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: typecheck / lint / build / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build + typecheck + lint (turbo)
+        run: bunx turbo run typecheck lint build
+
+      - name: Test (boundaries + vitest, serialized)
+        run: bun run test
+
+  coverage:
+    name: coverage thresholds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build workspace dependencies
+        run: bunx turbo run build
+
+      - name: Coverage gates (packages with enforced thresholds)
+        run: bunx turbo run test:coverage --concurrency=1

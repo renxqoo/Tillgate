@@ -34,14 +34,22 @@ export function fakeDeps(overrides: {
   wallet?: Record<string, unknown>;
   operations?: Record<string, unknown>;
   subscriptions?: Record<string, unknown>;
+  plans?: Record<string, unknown>;
+  redeemBatches?: Record<string, unknown>;
+  review?: Record<string, unknown>;
   controlPlane?: Record<string, unknown>;
   observability?: Record<string, unknown>;
+  notifications?: Record<string, unknown>;
+  generationTasks?: Record<string, unknown>;
+  paymentAdmin?: Record<string, unknown>;
   writeAudit?: AdminAppDeps['writeAudit'];
   pingDb?: () => Promise<void>;
   now?: () => Date;
 }): AdminAppDeps {
   return {
     pingDb: overrides.pingDb ?? (async () => undefined),
+    // P6:词表注入面(真源 = ai 根出口;此处最小 fake——封闭性由 ai 包架构测试锁定)
+    vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
       validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
     },
@@ -58,6 +66,17 @@ export function fakeDeps(overrides: {
         throw new Error('fake not wired');
       },
       userExists: async () => true,
+      // P3:营销/邀请域动词(默认 fake not wired,测试覆写)
+      getMarketingSettings: async () => {
+        throw new Error('fake not wired');
+      },
+      updateMarketingSettings: async () => {
+        throw new Error('fake not wired');
+      },
+      listReferralRelations: async () => ({ rows: [], total: 0 }),
+      setReferralRelationStatus: async () => {
+        throw new Error('fake not wired');
+      },
       ...overrides.accounts,
     } as AdminAppDeps['accounts'],
     wallet: {
@@ -72,6 +91,8 @@ export function fakeDeps(overrides: {
         throw new Error('fake not wired');
       },
       statement: async () => [],
+      // P3:返利流水读侧(billing 接缝)
+      referralPayouts: async () => ({ rows: [], total: 0 }),
       ...overrides.wallet,
     } as AdminAppDeps['wallet'],
     operations: {
@@ -86,6 +107,7 @@ export function fakeDeps(overrides: {
         /* 同事务审计替身:默认静默成功 */
       }),
     subscriptions: {
+      adminList: async () => ({ rows: [], total: 0 }),
       purchase: async () => {
         throw new Error('fake not wired');
       },
@@ -102,9 +124,99 @@ export function fakeDeps(overrides: {
         throw new Error('fake not wired');
       },
       ...overrides.subscriptions,
-    } as AdminAppDeps['subscriptions'],
+    } as unknown as AdminAppDeps['subscriptions'],
+    plans: {
+      list: async () => ({ rows: [], total: 0 }),
+      create: async () => {
+        throw new Error('fake not wired');
+      },
+      update: async () => {
+        throw new Error('fake not wired');
+      },
+      remove: async () => {
+        throw new Error('fake not wired');
+      },
+      ...overrides.plans,
+    } as AdminAppDeps['plans'],
+    redeemBatches: {
+      create: async () => {
+        throw new Error('fake not wired');
+      },
+      list: async () => ({ rows: [], total: 0 }),
+      detail: async () => {
+        throw new Error('fake not wired');
+      },
+      codes: async () => ({ rows: [], total: 0 }),
+      revoke: async () => {
+        throw new Error('fake not wired');
+      },
+      ...overrides.redeemBatches,
+    } as AdminAppDeps['redeemBatches'],
+    review: {
+      listDead: async () => ({ rows: [], total: 0 }),
+      retryDead: async () => {
+        throw new Error('fake not wired');
+      },
+      abandonDead: async () => {
+        throw new Error('fake not wired');
+      },
+      ...overrides.review,
+    } as AdminAppDeps['review'],
+    postAudit: async () => {
+      /* 后置审计替身:默认静默 */
+    },
     controlPlane: fakeControlPlane(overrides.controlPlane),
     observability: fakeObservability(overrides.observability) as AdminAppDeps['observability'],
+    // P5:通知渠道管理面(默认空列表;CRUD 动词测试覆写——键为 channels 动词名)
+    notifications: {
+      channels: {
+        list: async () => [],
+        create: notWired,
+        patch: notWired,
+        remove: notWired,
+        test: notWired,
+        ...(overrides.notifications as Record<string, unknown> | undefined),
+      },
+    } as AdminAppDeps['notifications'],
+    // P4:生成任务管理读侧 + 支付订单管理面(默认最小 fake,测试覆写)
+    generationTasks: {
+      adminList: async () => ({ rows: [], total: 0 }),
+      settledAmounts: async () => new Map<string, string>(),
+      ...overrides.generationTasks,
+    } as AdminAppDeps['generationTasks'],
+    paymentAdmin: {
+      list: async () => ({ rows: [], total: 0 }),
+      close: notWired,
+      ...(overrides.paymentAdmin as Record<string, unknown> | undefined),
+    } as AdminAppDeps['paymentAdmin'],
+    orderCloseReason: '管理员手动关闭',
+    // P2 登录面:identity 动词 fake(不抛哑错——默认拒绝形态,auth 域测试经独立装配)
+    identity: {
+      passwords: { authenticate: notWired, change: notWired, reset: notWired },
+      challenges: { begin: notWired, verify: notWired, abort: notWired },
+      sessions: {
+        sign: notWired,
+        verify: notWired,
+        validate: notWired,
+        logout: async () => ({ ok: true as const }),
+      },
+    } as AdminAppDeps['identity'],
+    authGuards: {
+      emailIp: {
+        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordFailure: async () => undefined,
+        recordSuccess: async () => undefined,
+      },
+      ip: {
+        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordFailure: async () => undefined,
+        recordSuccess: async () => undefined,
+      },
+    },
+    trustedProxyHops: 0,
+    mailerConfigured: false,
+    loginAudit: async () => undefined,
+    sessionTtlSec: 3600,
     corsOrigins: [],
     bodyLimitBytes: 1024 * 1024,
     now: overrides.now ?? (() => new Date('2026-08-23T00:00:00Z')),
@@ -129,6 +241,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       recharge: notWired,
       adjust: notWired,
       listRecharges: notWired,
+      loadVoucher: notWired,
     },
     models: {
       create: notWired,
@@ -145,6 +258,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       listCards: notWired,
       listCardUsers: notWired,
       cardHealth: notWired,
+      findGlobalCoefficient: notWired,
     },
     fx: {
       state: notWired,
@@ -159,13 +273,20 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       priceHistory: notWired,
       import: notWired,
     },
+    // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
+    admins: {
+      find: notWired,
+      findByEmail: notWired,
+      touchLastLogin: notWired,
+      setTwoFactorEnabled: notWired,
+    },
   };
   return { ...base, ...overrides } as ControlPlane;
 }
 
 function fakeObservability(
   overrides?: Record<string, unknown>,
-): Pick<Observability, 'traces' | 'audit' | 'requestLogs'> {
+): Pick<Observability, 'traces' | 'audit' | 'requestLogs' | 'usage'> {
   const base = {
     traces: {
       recent: notWired,
@@ -182,6 +303,17 @@ function fakeObservability(
       insert: notWired,
       list: notWired,
     },
+    // P4:用量运维读侧(默认最小 fake;统计端点测试覆写)
+    usage: {
+      adminList: notWired,
+      overview: notWired,
+      groups: notWired,
+      trends: notWired,
+      channelTtft: notWired,
+    },
   };
-  return { ...base, ...overrides } as Pick<Observability, 'traces' | 'audit' | 'requestLogs'>;
+  return { ...base, ...overrides } as Pick<
+    Observability,
+    'traces' | 'audit' | 'requestLogs' | 'usage'
+  >;
 }

@@ -1,3 +1,5 @@
+'use client';
+
 // react-hook-form 胶水: 把 RHF 的字段状态接到本包 Field 原语上。
 // 分工: Form/FormField 管状态接线(name/value/onChange/onBlur/错误),
 // 视觉层完全复用 Field/FieldLabel/FieldError/FieldDescription; 校验器(resolver/zod)由调用方自选

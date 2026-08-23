@@ -20,6 +20,7 @@ import {
   type Db,
 } from '@tokenlens/db';
 import { postgresNotifyStore } from '../src/adapters/postgres/notify-store';
+import { outboxWithinTx } from '../src/composition';
 import { createChannel } from '../src/application/create-channel';
 import { testChannel } from '../src/application/test-channel';
 import { notificationsErrors } from '../src/errors';
@@ -508,5 +509,78 @@ describe('入箱与渠道', () => {
     ).catch((e: unknown) => e);
     expect(notificationsErrors.has((thrown as { code: string }).code)).toBe(true);
     expect((thrown as { code: string }).code).toBe('notifications.channel_not_found');
+  });
+});
+
+describe('outbox 事务参与(§5.4 三类边界,outboxWithinTx bridge)', () => {
+  it('①业务回滚 → 无 outbox 行(回滚即无事件)', async () => {
+    if (!db) return;
+    const dedupeKey = `real-rollback-${uid()}`;
+    await db!
+      .transaction(async (tx) => {
+        await outboxWithinTx(tx).enqueue({
+          event: 'balance_low',
+          payload: { userId: 1 },
+          dedupeKey,
+        });
+        // 业务侧写入与入箱同一事务——此处主动回滚(模拟业务失败)
+        await tx.rollback();
+      })
+      .catch(() => undefined);
+    const rows = await db
+      .select({ id: notifyOutbox.id })
+      .from(notifyOutbox)
+      .where(eq(notifyOutbox.dedupeKey, dedupeKey));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('②入箱失败 → 业务侧写入一并回滚(同事务原子)', async () => {
+    if (!db) return;
+    const marker = `real-atomic-${uid()}`;
+    // 业务事实 = channels 行;入箱抛错(词表门拒绝超长 event)必须把渠道行一并回滚
+    await expect(
+      db!.transaction(async (tx) => {
+        await tx.insert(notificationChannels).values({
+          name: marker,
+          type: 'email',
+          events: [],
+          config: {},
+          status: 1,
+        });
+        await outboxWithinTx(tx).enqueue({
+          event: 'x'.repeat(300), // 词表外 → 词表门抛错,随事务回滚
+          payload: { userId: 1 },
+          dedupeKey: `real-fail-${uid()}`,
+        });
+      }),
+    ).rejects.toThrow();
+    const channelRows = await db
+      .select({ id: notificationChannels.id })
+      .from(notificationChannels)
+      .where(eq(notificationChannels.name, marker));
+    expect(channelRows).toHaveLength(0);
+  });
+
+  it('③并发重复入箱:同 dedupeKey 恰一行(onConflictDoNothing)', async () => {
+    if (!db) return;
+    const dedupeKey = `real-concurrent-${uid()}`;
+    const attempts = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        db!.transaction((tx) =>
+          outboxWithinTx(tx).enqueue({
+            event: 'balance_low',
+            payload: { userId: 1 },
+            dedupeKey,
+          }),
+        ),
+      ),
+    );
+    expect(attempts).toHaveLength(4); // 全部成功(唯一冲突被静默忽略)
+    const rows = await db
+      .select({ id: notifyOutbox.id })
+      .from(notifyOutbox)
+      .where(eq(notifyOutbox.dedupeKey, dedupeKey));
+    expect(rows).toHaveLength(1);
+    createdOutbox.push(rows[0]!.id);
   });
 });

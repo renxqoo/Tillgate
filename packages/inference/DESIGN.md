@@ -23,6 +23,7 @@ interface InferenceEnv {
   upstream?: UpstreamPort;       // 缺省用内置 ai 适配器；测试/特殊装配可注入替身
   tasks?: GenerationTaskStore;   // 缺省用内置内存实现（单副本开发/测试）；生产装配 postgres 实现
   admitChannel?: ChannelAdmission;  // 渠道维限流钩子（gateway app 装配；未装配 = 放行，单副本形态）
+  trace?: TracePort;                // 阶段 span 注入口（gateway 装配绑 OTel；未装配 = no-op 零开销）
   defaults?: InferenceDefaultsInput;  // zod 缺省可覆写（§4 词表）
   onError?: (error: unknown, context: string) => void;  // 运维旁路日志（结算重试/健康写入失败）
 }
@@ -57,6 +58,8 @@ type StreamOutcome =
 
 - 透传例外与错误出站三层归 app face / ai（§3.6）：inference 不改写上游体，4xx 透传只携带
   归一事实（kind/status/原文 message），脱敏由消费面渲染时执行；上游细节同时经 `onError` 进日志。
+  上游 4xx 原码透传与 5xx/网络错误的 502/504 网关语义之分，裁决见
+  [ADR-0004](../../docs/adr/0004-upstream-4xx-passthrough.md)。
 - `ChatOutcome` 不含收据：收据是 billing 衔接的内部事实，经 `BillingPort.signal` 出包，不回传调用方。
 
 ## 2. 问题域：处理什么 / 不处理什么
@@ -121,6 +124,8 @@ type StreamOutcome =
   永久拉黑经 control-plane 通知路径（待办）。
 - **C4 健康状态消费点**：v1 在 ai 内部 admission 拒绝（`circuit_open`/`dead_credential` 错误码）；v2 由
   inference 候选循环在尝试前 `health.admit` 检查，拒绝视同换渠（行为等价：换下一渠道）。
+  全败时 `circuit_open`/`dead_credential` 归渠道面竭尽（`no_available_channel` 503，B13 行为改进，
+  见 MIGRATION.md §3a）。
 - **C5 结算信号词表**：`request.succeeded/failed` → `request_succeeded/request_failed`（蛇形对齐根契约风格）。
 
 ## 6. 并发与性能预算
@@ -135,5 +140,8 @@ type StreamOutcome =
 
 - 包依赖：`@tokenlens/ai`、`@tokenlens/errors`、`zod`、`ioredis`（redis 适配器类型与 CAS）；
   `@tokenlens/runtime`（仅测试装置子入口，devDependency）。
+- 阶段 span（v1 run-chat/attempt/settle-retry 的 OTel 面）：经 `TracePort` 消费方注入——
+  v2 不引入 observability 编译依赖（§5.2 跨能力经 port；架构测试禁用清单锁定），
+  span 命名与阶段清单见 docs/observability.md §3。
 - 根出口只导出 facade、输入/结果类型、目录、端口类型与两个适配器工厂（upstream-ai / state-redis /
   state-memory / task-memory 供装配选择）；不导出 ai 类型再分发（消费方自 `@tokenlens/ai` 引用）。

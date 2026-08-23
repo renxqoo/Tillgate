@@ -25,7 +25,8 @@
     "lint": "bun x oxlint",
     "test": "bun x vitest run --passWithNoTests",
     "test:watch": "bun x vitest",
-    "test:coverage": "bun x vitest run --coverage"
+    "test:coverage": "bun x vitest run --coverage",
+    "generate:dto": "bun scripts/generate-dto.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -35,6 +36,11 @@
   },
   "peerDependencies": {
     "next": "^16.3.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   },
   "engines": {
     "bun": ">=1.4.0"

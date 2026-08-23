@@ -79,3 +79,24 @@ export type {
   RequestLogRow,
   RequestLogStore,
 } from './request-log/types';
+
+// ---- usage:运维读侧词表(usage_logs 表归 billing 结算投影,此处只承载查询)----
+export { USAGE_SORT_FIELDS } from './usage/types';
+export type {
+  UsageSortField,
+  UsageGroupAxis,
+  UsageAdminListInput,
+  UsageAdminRow,
+  UsageGroupRow,
+  UsageTrendRow,
+  ChannelTtftRow,
+  ChannelStatusCount,
+  UsageStatsStore,
+} from './usage/types';
+export { createUsageQueries } from './usage/queries';
+export type { UsageQueries } from './usage/queries';
+export {
+  BEIJING_ZONE_OFFSET_MS,
+  beijingDayStart,
+  beijingTrendsFrom,
+} from './usage/day-window';

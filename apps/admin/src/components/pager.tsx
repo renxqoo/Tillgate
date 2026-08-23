@@ -1,5 +1,16 @@
 import * as React from 'react';
 import { useTranslations } from 'next-intl';
+import {
+  Button,
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  cn,
+} from '@tokenlens/ui';
 
 import { pagerHref } from '@/lib/pager-href';
 
@@ -73,74 +84,92 @@ export function Pager({
 
   if (totalPages <= 1) return null;
 
-  const arrowBase = 'rounded-md border px-2.5 py-1';
-  const pageBase = 'min-w-8 rounded-md border px-2 py-1 text-center';
-  const active = 'hover:bg-muted';
-  const disabled = 'pointer-events-none opacity-50';
+  const disabledClass = 'pointer-events-none opacity-50';
 
-  /** 链接（URL 模式）或按钮（受控模式）——同一外观，仅交互载体不同 */
-  const Nav = ({
-    target,
-    children,
-    arrow,
-  }: {
-    target: number;
-    children: React.ReactNode;
-    arrow?: boolean;
-  }) =>
+  const PageControl = ({ target }: { target: number }) =>
     onPageChange ? (
-      <button
+      <Button
         type="button"
+        variant={target === page ? 'outline' : 'ghost'}
+        size="icon"
         onClick={() => reachable(target) && onPageChange(target)}
-        aria-disabled={!reachable(target)}
-        className={`${arrow ? arrowBase : pageBase} ${reachable(target) ? active : disabled}`}
+        aria-current={target === page ? 'page' : undefined}
+        aria-label={t('pageN', { page: target })}
+        disabled={target === page}
       >
-        {children}
-      </button>
+        {target}
+      </Button>
     ) : (
-      <a
+      <PaginationLink
         href={makeHref(target)}
-        aria-disabled={!reachable(target)}
-        className={`${arrow ? arrowBase : pageBase} ${reachable(target) ? active : disabled}`}
+        isActive={target === page}
+        aria-label={t('pageN', { page: target })}
       >
-        {children}
-      </a>
+        {target}
+      </PaginationLink>
     );
 
   return (
-    <div
-      className={`flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground ${className ?? ''}`}
-    >
+    <div className={cn('flex w-full flex-wrap items-center justify-between gap-3', className)}>
       <span>
         {t('pageOf', { page, totalPages })}
         {total !== undefined ? ` · ${t('totalItems', { count: total })}` : ''}
       </span>
-      <div className="flex items-center gap-1">
-        <Nav target={page - 1} arrow>
-          {t('prevPage')}
-        </Nav>
-        {buildPages(page, totalPages).map((p, i) =>
-          p === '...' ? (
-            <span key={`e${i}`} className="px-1.5 text-muted-foreground/60">
-              …
-            </span>
-          ) : p === page ? (
-            <span
-              key={p}
-              className={`${pageBase} border-primary bg-primary font-medium text-primary-foreground`}
-            >
-              {p}
-            </span>
-          ) : (
-            <Nav key={p} target={p}>
-              {p}
-            </Nav>
-          ),
-        )}
-        <Nav target={page + 1} arrow>
-          {t('nextPage')}
-        </Nav>
-      </div>
+      <Pagination className="mx-0 w-auto justify-end">
+        <PaginationContent>
+          <PaginationItem>
+            {onPageChange ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => reachable(page - 1) && onPageChange(page - 1)}
+                disabled={!reachable(page - 1)}
+              >
+                {t('prevPage')}
+              </Button>
+            ) : (
+              <PaginationPrevious
+                href={reachable(page - 1) ? makeHref(page - 1) : undefined}
+                text={t('prevPage')}
+                aria-label={t('prevPage')}
+                aria-disabled={!reachable(page - 1)}
+                className={!reachable(page - 1) ? disabledClass : undefined}
+              />
+            )}
+          </PaginationItem>
+          {buildPages(page, totalPages).map((p, i) =>
+            p === '...' ? (
+              <PaginationItem key={`e${i}`}>
+                <PaginationEllipsis />
+              </PaginationItem>
+            ) : (
+              <PaginationItem key={p}>
+                <PageControl target={p} />
+              </PaginationItem>
+            ),
+          )}
+          <PaginationItem>
+            {onPageChange ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => reachable(page + 1) && onPageChange(page + 1)}
+                disabled={!reachable(page + 1)}
+              >
+                {t('nextPage')}
+              </Button>
+            ) : (
+              <PaginationNext
+                href={reachable(page + 1) ? makeHref(page + 1) : undefined}
+                text={t('nextPage')}
+                aria-label={t('nextPage')}
+                aria-disabled={!reachable(page + 1)}
+                className={!reachable(page + 1) ? disabledClass : undefined}
+              />
+            )}
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     </div>
   );
 }

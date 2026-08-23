@@ -55,7 +55,7 @@ export function defineAdapter(input: DefineAdapterInput): ProtocolAdapter {
       ? { translateResponseBody: (b) => input.codec!.translateResponseBody!(b) }
       : {}),
     ...(input.codec?.translateUpstreamStream
-      ? { translateUpstreamStream: (s) => input.codec!.translateUpstreamStream!(s) }
+      ? { translateUpstreamStream: (s, model) => input.codec!.translateUpstreamStream!(s, model) }
       : {}),
     ...(input.tasks ? { tasks: input.tasks } : {}),
   };

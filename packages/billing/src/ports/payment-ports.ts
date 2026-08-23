@@ -39,6 +39,30 @@ export interface PaymentOrderRow {
   createdAt: Date;
 }
 
+// ---- 管理面(admin-api P4 读侧 + 手动关单) ----
+
+/** 订单排序白名单(wire 词表单一真相;admin-api contracts 引用不复制) */
+export const PAYMENT_ORDER_SORT_FIELDS = ['id', 'amount', 'status', 'createdAt'] as const;
+export type PaymentOrderSortField = (typeof PAYMENT_ORDER_SORT_FIELDS)[number];
+
+/** 管理订单行(v1 listAdminOrders 投影;用户列由左联带出) */
+export interface AdminPaymentOrderRow {
+  id: string;
+  provider: string;
+  providerOrderId: string;
+  userId: number;
+  userDisplayName: string | null;
+  userSubject: string | null;
+  amount: string;
+  creditAmount: string;
+  currency: string;
+  status: number;
+  failureReason: string | null;
+  createdAt: Date;
+  paidAt: Date | null;
+  creditedAt: Date | null;
+}
+
 export interface PaymentOrderStore {
   insertOrder(
     tx: WalletConn,
@@ -82,6 +106,20 @@ export interface PaymentOrderStore {
   reviveExpiredAsPaid(tx: WalletConn, input: { orderId: string; paidAt: Date }): Promise<boolean>;
   /** 渠道下单失败关单留痕（0→4，best-effort） */
   markChannelFailed(tx: WalletConn, orderId: string): Promise<void>;
+
+  /** 管理列表：q 为订单 uuid 精确命中，否则按用户显示名精确匹配（无 userId 强制） */
+  listAdminOrders(
+    conn: WalletConn,
+    input: {
+      q?: string;
+      sortBy: PaymentOrderSortField;
+      order: 'asc' | 'desc';
+      limit: number;
+      offset: number;
+    },
+  ): Promise<{ rows: AdminPaymentOrderRow[]; total: number }>;
+  /** 手动关单：CAS status 0→4（created→expired 语义，failureReason 记管理员动作） */
+  closeOrder(tx: WalletConn, input: { orderId: string; reason: string }): Promise<boolean>;
 }
 
 export interface RedeemClaimRow {
@@ -106,6 +144,7 @@ export interface RedeemCodeStore {
     tx: WalletConn,
     input: {
       batchName: string;
+      remark?: string | null;
       amount: string;
       expiresAt: Date | null;
       createdBy: number;
@@ -116,6 +155,54 @@ export interface RedeemCodeStore {
     conn: WalletConn,
     input: { userId: number; limit: number; offset: number },
   ): Promise<Array<{ codeId: number; batchName: string; amount: string; usedAt: Date | null }>>;
+
+  // ---- 批次管理面（U6:admin-api P1 消费;明文永不落库/回显） ----
+  listBatches(
+    conn: WalletConn,
+    input: {
+      q?: string;
+      sortBy: 'id' | 'name' | 'amount' | 'createdAt';
+      order: 'asc' | 'desc';
+      limit: number;
+      offset: number;
+    },
+  ): Promise<{ rows: RedeemBatchRecord[]; total: number }>;
+  findBatch(conn: WalletConn, batchId: number): Promise<RedeemBatchRecord | null>;
+  listCodes(
+    conn: WalletConn,
+    input: {
+      batchId: number;
+      status?: number;
+      sortBy: 'id' | 'usedAt';
+      order: 'asc' | 'desc';
+      limit: number;
+      offset: number;
+    },
+  ): Promise<{ rows: RedeemCodeRecord[]; total: number }>;
+  /** 作废 CAS:status=0 → 2;0 行 = 已用/已废/不存在(统一不区分) */
+  revokeCode(tx: WalletConn, input: { codeId: number }): Promise<boolean>;
+}
+
+/** 兑换批次行（U6 管理面） */
+export interface RedeemBatchRecord {
+  id: number;
+  name: string;
+  remark: string | null;
+  amount: string;
+  total: number;
+  usedCount: number;
+  createdBy: number | null;
+  createdAt: Date;
+}
+
+/** 兑换码管理行（哈希脱敏——明文不存在于库） */
+export interface RedeemCodeRecord {
+  id: number;
+  codeHash: string;
+  status: number;
+  usedBy: number | null;
+  usedAt: Date | null;
+  expiresAt: Date | null;
 }
 
 /** 固定窗计数器（Redis 实现归 runtime 装配；不可达必须抛错——fail-closed） */

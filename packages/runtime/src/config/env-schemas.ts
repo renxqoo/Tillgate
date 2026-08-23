@@ -24,7 +24,7 @@ const KNOWN_WEAK_SECRETS = new Set([
 export function secretSchema(field: string, minLen: number) {
   return z
     .string()
-    .min(minLen, `${field} 至少 ${minLen} 字符`)
+    .min(minLen, `${field} must be at least ${minLen} characters long`)
     .refine((value) => !KNOWN_WEAK_SECRETS.has(value), {
       message: `${field} must not use a placeholder or weak secret (e.g. change-me-*, secret, password)`,
     })

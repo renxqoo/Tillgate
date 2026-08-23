@@ -240,4 +240,66 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
       error: chatError,
     });
   });
+
+  it('queryTask 回归（v1 迁移缺口）：succeeded 带 fileId 且无 url → 适配器经 files 换取补齐 url；换取失败整体 error 下轮重试', async () => {
+    // fileId 换取型（MiniMax video）：probe 只给 fileId/尺寸，url 须二次换取
+    const fileError = upstreamError('network');
+    const ai = {
+      ...fakeAi({}).ai,
+      tasks: {
+        ...fakeAi({}).ai.tasks,
+        query: async () => ({ ok: true, status: 'succeeded', fileId: 'file-xyz', artifact: { width: 1280, height: 720 } }),
+        file: async () => ({ ok: true, downloadUrl: 'https://cdn.mock/video.mp4' }),
+      },
+    } as unknown as Ai;
+    const port = createUpstreamAi({ ai, decrypt: (s) => s });
+    const probe = await port.queryTask(channel(), 'task-1');
+    expect(probe).toEqual({
+      ok: true,
+      status: 'succeeded',
+      fileId: 'file-xyz',
+      artifact: { width: 1280, height: 720, url: 'https://cdn.mock/video.mp4' },
+    });
+
+    // 换取失败 → 整体查询失败（generation-poll 续租下轮重试，不丢终态）
+    const aiFailFile = {
+      ...ai,
+      tasks: { ...ai.tasks, file: async () => ({ ok: false, error: fileError }) },
+    } as unknown as Ai;
+    expect(await createUpstreamAi({ ai: aiFailFile, decrypt: (s) => s }).queryTask(channel(), 't')).toEqual({
+      ok: false,
+      error: fileError,
+    });
+
+    // 直返 url 型协议（artifact.url 已有）→ 不发 files 调用原样透传
+    let fileCalls = 0;
+    const aiDirect = {
+      ...ai,
+      tasks: {
+        ...ai.tasks,
+        query: async () => ({ ok: true, status: 'succeeded', artifact: { url: 'https://direct' } }),
+        file: async () => {
+          fileCalls += 1;
+          return { ok: true, downloadUrl: 'https://never' };
+        },
+      },
+    } as unknown as Ai;
+    expect(
+      await createUpstreamAi({ ai: aiDirect, decrypt: (s) => s }).queryTask(channel(), 't'),
+    ).toEqual({ ok: true, status: 'succeeded', artifact: { url: 'https://direct' } });
+    expect(fileCalls).toBe(0);
+
+    // running/failed 原样透传（不触发换取）
+    for (const status of ['running', 'failed'] as const) {
+      const aiNotSucceeded = {
+        ...ai,
+        tasks: { ...ai.tasks, query: async () => ({ ok: true, status, reason: 'x' }) },
+      } as unknown as Ai;
+      const result = await createUpstreamAi({ ai: aiNotSucceeded, decrypt: (s) => s }).queryTask(
+        channel(),
+        't',
+      );
+      expect(result).toEqual({ ok: true, status, reason: 'x' });
+    }
+  });
 });

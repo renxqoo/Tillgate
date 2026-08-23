@@ -18,14 +18,11 @@ export const PAGE_SIZE_DEFAULT = 20;
  */
 export const paginationQuerySchema = z.object({
   page: z.coerce.number().int().min(1).catch(1),
-  page_size: z.preprocess(
-    (v) => {
-      const n = typeof v === 'string' ? Number(v) : (v as number);
-      if (!Number.isFinite(n) || n < 1) return PAGE_SIZE_DEFAULT;
-      return Math.min(Math.floor(n), PAGE_SIZE_MAX);
-    },
-    z.number().int().min(1).max(PAGE_SIZE_MAX).default(PAGE_SIZE_DEFAULT),
-  ),
+  page_size: z.preprocess((v) => {
+    const n = typeof v === 'string' ? Number(v) : (v as number);
+    if (!Number.isFinite(n) || n < 1) return PAGE_SIZE_DEFAULT;
+    return Math.min(Math.floor(n), PAGE_SIZE_MAX);
+  }, z.number().int().min(1).max(PAGE_SIZE_MAX).default(PAGE_SIZE_DEFAULT)),
 });
 
 export interface PaginationParams {
@@ -53,7 +50,11 @@ export interface PaginatedResult<T> {
   page_size: number;
 }
 
-export function paginatedResult<T>(list: T[], total: number, p: PaginationParams): PaginatedResult<T> {
+export function paginatedResult<T>(
+  list: T[],
+  total: number,
+  p: PaginationParams,
+): PaginatedResult<T> {
   return { list, total, page: p.page, page_size: p.pageSize };
 }
 

@@ -1,0 +1,37 @@
+# OTel Collector：接收各服务 OTLP → trace 送 Tempo、metrics 暴露给 Prometheus
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+  # 采样：trace 10%，错误 100%（错误判定由 tail_sampling 处理需要较多内存，
+  # 脚手架先做固定比例采样，错误全采后续按需启用）
+  probabilistic_sampler:
+    sampling_percentage: 10
+
+exporters:
+  otlphttp/tempo:
+    endpoint: http://tempo:4318
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [probabilistic_sampler, batch]
+      exporters: [otlphttp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

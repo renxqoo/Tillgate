@@ -241,7 +241,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
   ];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       <Button
         variant="ghost"
         size="sm"
@@ -253,7 +253,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         }
       />
 
-      <Card>
+      <Card className="w-full">
         <CardHeader className="space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
@@ -314,17 +314,17 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="tx">
+      <Tabs defaultValue="tx" className="w-full">
         <TabsList>
           <TabsTrigger value="tx">{t('transactions')}</TabsTrigger>
           <TabsTrigger value="audit">{t('auditLogs')}</TabsTrigger>
         </TabsList>
-        <TabsContent value="tx">
-          <Card>
+        <TabsContent value="tx" className="w-full">
+          <Card className="w-full ring-border/50">
             <CardContent className="px-0">
               {/* 时间范围筛选（GET 表单，服务端渲染；与后端 from/to 过滤对齐） */}
-              <form className="flex items-end gap-2 px-6 pb-2" method="get">
-                <div className="space-y-1">
+              <form className="flex items-end gap-2 px-4 pt-4 pb-4" method="get">
+                <div className="flex flex-col gap-1.5">
                   <label htmlFor="from" className="text-xs text-muted-foreground">
                     {t('startDate')}
                   </label>
@@ -336,7 +336,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                     className="h-8 rounded-md border bg-transparent px-2 text-sm"
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="flex flex-col gap-1.5">
                   <label htmlFor="to" className="text-xs text-muted-foreground">
                     {t('endDate')}
                   </label>
@@ -369,7 +369,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                 empty={t('noTransactions')}
               />
               {txTotal > PAGE_SIZE ? (
-                <CardContent className="px-6 pb-4 pt-0">
+                <CardContent className="px-4 pb-4 pt-0">
                   <Pager
                     page={txPage}
                     totalPages={Math.max(1, Math.ceil(txTotal / PAGE_SIZE))}
@@ -388,8 +388,8 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="audit">
-          <Card>
+        <TabsContent value="audit" className="w-full">
+          <Card className="w-full ring-border/50">
             <CardContent className="px-0">
               <DataTable
                 columns={auditColumns}
@@ -400,7 +400,7 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
                 empty={t('noAuditLogs')}
               />
               {auditTotal > PAGE_SIZE ? (
-                <CardContent className="px-6 pb-4 pt-0">
+                <CardContent className="px-4 pb-4 pt-0">
                   <Pager
                     page={auditPage}
                     totalPages={Math.max(1, Math.ceil(auditTotal / PAGE_SIZE))}

@@ -38,6 +38,13 @@ function span(overrides: Partial<SpanRow> = {}): SpanRow {
 }
 
 describe('buildTraceGraph', () => {
+  it('悬挂 parent(parentSpanId 指向缺失 span):子节点保留,边丢弃(不出 from=不存在节点的边)', () => {
+    const orphan = span({ parentSpanId: 'deadbeefdeadbeef', name: 'upstream ghost-parent' });
+    const graph = buildTraceGraph([orphan]);
+    expect(graph.nodes).toHaveLength(1); // 孤儿子照常出节点(不出图丢信息)
+    expect(graph.edges).toHaveLength(0); // 悬挂边不出——展示层不再需要容错缺失 from
+  });
+
   it('单链:http 根 → upstream 成功,普通父子边 + kind 推断 + 展示字段', () => {
     const root = span();
     const ok = span({

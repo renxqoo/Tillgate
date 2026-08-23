@@ -51,6 +51,11 @@ import { createSettlementApi } from '@tokenlens/billing/settlement'; // worker
 - `claim`（SKIP LOCKED）→ `processClaim`（五元组复验→双口径金额→分配→逐源核销→
   usage 投影→渠道敞口归还→CAS settled→进货扣减熔断）；失败自动分类（毒收据死信/
   瞬态退避）；`recover` 三路径滞留兜底；`verifyInvariants` 对账哨兵（只读）。
+- worker 波增补消费面：`currentStatus`（生成任务轮询自愈判定）、
+  `createReferralCommissionUseCase`（佣金日结——rate/refId 桥接 accounts 词表）、
+  `createRecordDiscrepanciesUseCase`（对账差异落表）、`SETTLE_WAKE_CHANNEL`
+  （PG NOTIFY 通道契约，gateway 生产端同值）；入箱事件名为词表成员 `billing_dead`
+  （结算成功不入箱——无告警消费场景）。迁移记录见 MIGRATION-U7。
 
 ### 2.3 支付与兑换（app 按环境组合）
 

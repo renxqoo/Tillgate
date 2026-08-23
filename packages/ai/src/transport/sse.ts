@@ -14,12 +14,27 @@ export interface SseEvent {
   data: string;
 }
 
-export function createSseEventReader(onEvent: (ev: SseEvent) => void): {
+/** 单行最大字节数默认值（内存上界：无换行的故障/恶意流不得撑爆行缓冲；1MiB） */
+export const DEFAULT_MAX_LINE_BYTES = 1024 * 1024;
+
+export interface SseEventReaderOptions {
+  /** 单行（含换行符）最大字节数，默认 1MiB；超限抛英文错误并清空缓冲（流终止） */
+  maxLineBytes?: number;
+}
+
+const lineEncoder = new TextEncoder();
+
+export function createSseEventReader(
+  onEvent: (ev: SseEvent) => void,
+  opts: SseEventReaderOptions = {},
+): {
   push(chunk: Uint8Array): void;
   flush(): void;
 } {
+  const maxLineBytes = opts.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let bufferBytes = 0; // 未消费字节数（含 decoder 内未落串的多字节残段）——增量记账，O(n) 摊销
   let pendingEvent: string | undefined;
   let dataLines: string[] = [];
 
@@ -52,12 +67,20 @@ export function createSseEventReader(onEvent: (ev: SseEvent) => void): {
 
   return {
     push(chunk) {
+      bufferBytes += chunk.byteLength;
       buffer += decoder.decode(chunk, { stream: true });
       let nl: number;
       while ((nl = buffer.indexOf('\n')) >= 0) {
         const raw = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
+        bufferBytes -= lineEncoder.encode(raw).length + 1; // 已消费行出账（+1 = 换行符）
         line(raw.endsWith('\r') ? raw.slice(0, -1) : raw);
+      }
+      // 剩余 buffer 是无换行的半截行：超上界即抛（内存上界；缓冲清空防反复重放）
+      if (bufferBytes > maxLineBytes) {
+        buffer = '';
+        bufferBytes = 0;
+        throw new Error(`SSE line exceeds maximum of ${maxLineBytes} bytes`);
       }
     },
     flush() {

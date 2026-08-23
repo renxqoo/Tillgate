@@ -4,7 +4,7 @@
  */
 import { createAdminApiClient, type AdminApiClient } from '../admin-api';
 import { createClientApiClient, type ClientApiClient } from '../client-api';
-import { outgoingLocale } from './locale';
+import { outgoingLocale, type LocaleResolution } from './locale';
 import { getSessionToken, getAdminSessionToken } from './session';
 import { outgoingUserIpHeader } from './forwarded-ip';
 
@@ -33,9 +33,10 @@ export function getAdminApiBase(): string {
   return (adminApiBase ??= baseOrDefault('ADMIN_API_BASE', 'http://localhost:8082'));
 }
 
-/** 出站附加头:accept-language(与 UI 同源协商)+ x-forwarded-for(可信代理解出的用户 IP) */
-async function outgoingBffHeaders(): Promise<Record<string, string>> {
-  return { 'accept-language': await outgoingLocale(), ...(await outgoingUserIpHeader()) };
+/** 出站附加头:accept-language(与 UI 同源协商,可注入 app 级策略)+ x-forwarded-for(可信代理解出的用户 IP) */
+async function outgoingBffHeaders(resolution?: LocaleResolution): Promise<Record<string, string>> {
+  const locale = await outgoingLocale(resolution);
+  return { 'accept-language': locale, ...(await outgoingUserIpHeader()) };
 }
 
 export interface NextApiClientOptions {
@@ -43,6 +44,8 @@ export interface NextApiClientOptions {
   baseUrl?: string;
   /** 覆盖 globalThis.fetch(测试用) */
   fetch?: typeof globalThis.fetch;
+  /** BFF 出口语言策略(缺省完整协商;内部面可注入固定回落,与 UI 侧 i18n-request 保持同源) */
+  localeResolution?: LocaleResolution;
 }
 
 /** 用户面 client:client-api 基地址 + ag_session 会话 + BFF 出口头 */
@@ -51,7 +54,7 @@ export function createNextClientApiClient(options: NextApiClientOptions = {}): C
     baseUrl: options.baseUrl ?? getClientApiBase(),
     fetch: options.fetch,
     getToken: getSessionToken,
-    getHeaders: outgoingBffHeaders,
+    getHeaders: () => outgoingBffHeaders(options.localeResolution),
   });
 }
 
@@ -61,6 +64,6 @@ export function createNextAdminApiClient(options: NextApiClientOptions = {}): Ad
     baseUrl: options.baseUrl ?? getAdminApiBase(),
     fetch: options.fetch,
     getToken: getAdminSessionToken,
-    getHeaders: outgoingBffHeaders,
+    getHeaders: () => outgoingBffHeaders(options.localeResolution),
   });
 }

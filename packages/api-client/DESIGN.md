@@ -66,9 +66,8 @@ function buildListQuery(opts: ListFetchOptions): string; // page/limit/sort_by/o
 function createClientApiClient(options): ClientApiClient; // + getMe(): Promise<MeInfo|null>
 function createAdminApiClient(options): AdminApiClient; // + getAdminMe(): Promise<AdminMeInfo|null>
 
-// DTO：手写过渡态（dto/client-api.ts、dto/admin-api.ts）
-//   生成链（总纲 P3 scripts/generate-openapi.ts → generated/）落地后整体替换并删除 dto/；
-//   生成链建立前手写 DTO 是唯一事实源，禁止双轨（总纲 §2.2）。
+// DTO：admin 面为生成物（openapi.json → src/dto/admin-api.generated.ts,§3.4 生成链,禁止手改）;
+//   client 面手写（dto/client-api.ts,client-api registry 建立前是唯一事实源——§3.4.6 挂账）
 
 // ./next 子入口
 function createNextClientApiClient(options?: {
@@ -116,7 +115,7 @@ function getAdminApiBase(): string; // env ADMIN_API_BASE 惰性解析，dev 兜
 - 分页查询构造与 `Paginated<T>` 信封解析。
 - Next BFF 侧装配：HttpOnly cookie 会话持有（ag_session/ag_admin_session）、
   cookie→Accept-Language 语言协商出口、可信代理 IP 出站头、env 基地址惰性解析。
-- 两面 wire DTO 的手写快照（过渡态，见 §1.2）。
+- 两面 wire DTO:admin 面生成物 + client 面手写快照（§3.4）。
 
 ### 2.2 不处理（写清归属）
 
@@ -163,11 +162,71 @@ clients.ts（v1 开箱即用行为保留），根入口的 baseUrl 必填。
 两侧任一改动语义必须同步另一侧并同步向量。接受的漂移风险在 IMPLEMENTATION §4
 登记；这不是依赖白名单例外，无需 ADR。
 
-### 3.4 手写 DTO 过渡态（总纲 §2.2「禁止双轨」）
+### 3.4 DTO 生成链（总纲 P3「contract → OpenAPI → generated client」+ P6 C1;定稿）
 
-生成链未建立，手写 DTO 是唯一事实源。落位 `src/dto/{client-api,admin-api}.ts`，
-文件头标注过渡态与替换路径；**不**预建 `src/generated/` 空目录（§3.2 反空壳纪律）。
-P6 落地时 facade 的 DTO import 切到 `generated/`，`dto/` 同提交删除。
+admin 面已换轨为生成物,**单一事实源 = admin-api 侧 OpenAPI registry**;client 面
+（`src/dto/client-api.ts`）生成链未建,手写 DTO 仍是其唯一事实源（§3.4.4 挂账,不算双轨）。
+
+#### 3.4.1 链路形态（zod → JSON Schema → TS 全链单一来源）
+
+```text
+apps/admin-api/src/http/contracts/*.ts     # 请求面 zod(既有,运行时校验单一真相)
+apps/admin-api/src/http/openapi/*.ts       # registry:按域一文件(照 contracts 布局)
+  └─ 端点 {method,path,tag,summary,请求/查询 schema(引用 contracts 实例,不复制),
+           响应 200 schema(wire 形状以 zod 声明——响应面单一真相在此),主要错误码}
+  └─ 组件:响应 DTO 与请求体以 .meta({id}) 成名;信封{rows,total,page,pageSize}/
+     path 参数给可复用构件(shared.ts)
+bun run generate:openapi                    # registry + z.toJSONSchema(zod 4 原生)
+  └─ apps/admin-api/generated/openapi.json  # OpenAPI 3.1,**产物入库**
+bun run generate:dto                        # packages/api-client 侧
+  └─ src/dto/admin-api.generated.ts          # 生成物,**具名导出与手写版同名同形状**（*.generated.ts 走根 oxlint max-lines 豁免）
+```
+
+#### 3.4.2 产物入库裁决（openapi.json 提交进 git）
+
+- **入库**。理由:① api-client 禁止依赖任何私有 `@tokenlens/*` workspace（§5.1 发布闭包）,
+  生成必须从本包 checkout 内可复现,不能 import admin-api 源码;② 总纲 §10 验收要求
+  「生成链可从干净 checkout 重现」——入库的 openapi.json 就是 app → client 的单向交付物,
+  不引入包依赖边;③ 兼容性 diff（PR 里 openapi.json 的 git diff）即产物入库的直接收益。
+- dto/admin-api.ts 同路径覆盖入库（git diff 可见重生成）,不建 `src/generated/` 目录。
+
+#### 3.4.3 映射口径（JSON Schema → TS;wire 事实优先）
+
+- `integer/number → number`;`string(format: date-time) → string`（Date 字段线上是 ISO
+  字符串,不映射 Date 类型——DTO 只描述 wire）;`enum → 'a' | 'b'` 字面量联合;
+  `nullable(anyOf 含 null) → T | null`;不在 required → `?`;
+  `array → T[]`;`record → Record<string, T>`;`z.unknown() → unknown`。
+- 请求体组件以 `io:'input'` 转换（transform/coerce 取输入侧——unitPrice 等
+  `string | number` 联合按输入面生成）;响应组件 `io:'output'`。
+- jsdoc 从 schema description 生成:接口级取组件 description,字段级取属性 description。
+
+#### 3.4.4 禁止手改 + 兼容性 diff 门禁（进 vitest 默认门）
+
+- `__test__/generated-dto.test.ts`:① 文件头含「GENERATED——禁止手改」标记断言;
+  ② 以入库 openapi.json in-memory 重渲（生成器导出为纯函数 `renderAdminApiDto`）与
+  `src/dto/admin-api.ts` 逐字节相等;③ 同名导出集合精确等于手写版 44 个具名导出快照
+  （锁死保名兼容;词表封闭,§10.1）。
+- admin-api `__test__/openapi.test.ts`:openapi.json 重生成逐字节相等 + 端点集合
+  （method+path 全集）快照封闭 + registry 与 routes/*.ts 声明面互相对账（零漏注册）。
+- 生成物类型漂移（optional/nullable/类型）一律回 registry 的 zod 声明修正,
+  不许改生成物或在消费方迁就（红线:api-client 与 apps/admin tsc 双 0）。
+
+#### 3.4.5 已知类型差异（registry 契约真相 vs 手写快照欠账;响应面零差异）
+
+响应面（消费方在用的 22 个行/详情型）逐字段等于手写版。请求体面由 contracts 真相生成,
+手写快照欠账处（见 IMPLEMENTATION §1.3 C1 核销表）:Plan*Body 的 price/quotaAmount
+`number → string`（wire 是精确十进制字符串,手写版标错）;Channel/Provider/Model *Body
+补充 contracts 实际接受的可选字段（providerId/vendor/contextLength/unitPrice 等）;
+`string | number` 收窄等。apps/admin 不直接 import *Body 型（表单侧自有输入类型）,
+零消费方影响。
+
+#### 3.4.6 挂账（铁律 4,非双轨）
+
+- client 面生成链:client-api 侧 openapi registry 建立后,`dto/client-api.ts` 同法换轨;
+  建立前它是 client 面唯一事实源（现状合法,总纲 §2.2）。
+- `ProviderOption/ChannelOption/RateCardOption` 三个下拉选项型:无服务端端点,是
+  页面从行 DTO 投影的 client-safe 形状;作为显式标记的组件（x-domain=options）
+  进 openapi.json 保名兼容,不挂任何 operation。
 
 ### 3.5 Next fetch 扩展的透传口径
 

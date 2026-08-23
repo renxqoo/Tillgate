@@ -28,9 +28,7 @@ export const orgInvitations = pgTable(
     /** 0 pending / 1 accepted / 2 revoked / 3 expired */
     status: smallint('status').notNull().default(0),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    acceptedByUserId: bigint('accepted_by_user_id', { mode: 'number' }).references(
-      () => users.id,
-    ),
+    acceptedByUserId: bigint('accepted_by_user_id', { mode: 'number' }).references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

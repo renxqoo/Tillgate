@@ -76,7 +76,9 @@
    （billing 需补用户面 usage 查询与 plans/mySubscriptions 读动词；accounts 需补
    emailTaken/activeUserStatus/touchLastLogin）——迁入后删 app 适配器并收紧
    architecture 白名单；
-2. 根 e2e/ 搬迁 4 个 client-journey E2E（依赖 gateway 与真实渠道桩）；
+2. ~~根 e2e/ 搬迁 client-journey E2E~~——**已兑现**（`e2e/client-journey` 三套件全绿于
+   真实 PG/Redis/HTTP：user-journey（注册两步制→Key→兑换→epay 下单→签名回调入账→
+   重复回调幂等→金额篡改拒绝）、oauth 跳转、org-team；提交 e965ca2）；
 3. api-client DTO 快照与本实现联调核对（`/v1/me/transactions` 等 DTO 疑似超前项，
    以本实现 51 路由为准修订 DTO）；
 4. OpenAPI 生成链接入后 contracts/ 目录升级为生成源（总纲 P3/P6）。

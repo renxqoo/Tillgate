@@ -4,6 +4,7 @@
  * 同 operationId + 异指纹 → operation_conflict。操作行与业务写在同一事务。
  */
 import type { Db, DbTx } from '@tokenlens/db';
+import { DefectError } from '@tokenlens/errors';
 import type { OperationsStore } from '../../ports/operations-store';
 import {
   assertOperationId,
@@ -49,8 +50,16 @@ export async function runOperation<T extends Record<string, unknown>>(
     if (!existing || existing.fingerprint !== fingerprint) {
       throw controlPlaneErrors.business('operation_conflict', { operationId: input.operationId });
     }
-    // 占位与回执同事务写：提交行必有回执；此处 receipt 为 null 即并发未提交对手
-    // （唯一索引等待语义保证读到的是已提交行），红灯兜底
+    // 占位与回执同事务写：提交行必有回执；receipt 为 null 即「占位已提交但回执缺失」，
+    // 违反不变量——不得伪造空回执糊弄调用方（原 `as T` 红灯兜底会把缺陷漏成脏数据），
+    // 按 defect 显式红灯（AGENT.md §11 源头分类）
+    if (existing.receipt == null) {
+      throw new DefectError(
+        'operation receipt missing on committed placeholder (fingerprint matched)',
+        'control_plane.operation_receipt_missing',
+        { operationId: input.operationId, kind: input.kind },
+      );
+    }
     return { receipt: existing.receipt as T, replayed: true };
   });
 }

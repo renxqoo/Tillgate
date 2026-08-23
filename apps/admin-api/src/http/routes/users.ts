@@ -1,21 +1,36 @@
 /**
  * 用户路由（v1 routes/users.ts 资料面平移）：列表（钱包富化 + 企业过滤）/资料/补丁
- * （封禁语义;creditLimit 拆给 wallet.setCreditLimit——app 组合,非第二套规则）。
- * 响应体永不包含 passwordHash（服务列白名单,测试红线锁定）。
+ * （封禁语义;creditLimit 拆给 wallet.setCreditLimit——app 组合,非第二套规则）/
+ * set-password（P2/D6:管理员为本地账号重置密码——绑默认卡「标准」+ 全网会话下线）。
+ * 响应体永不包括 passwordHash（服务列白名单,测试红线锁定）。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import type { AccountUseCases } from '@tokenlens/accounts';
 import type { WalletApi } from '@tokenlens/billing';
+import type { Identity } from '@tokenlens/identity';
+import type { ControlPlane } from '@tokenlens/control-plane';
+import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
+import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { USER_SORTS, usersContracts } from '../contracts/users';
 import { toUserWireRow, walletEnrichmentOf } from '../presenters/users';
+import { authContracts } from '../contracts/auth';
+import type { PostAudit } from './redeem';
+
+/** v1 users.service DEFAULT_RATE_CARD_NAME 同值（词表事实,装配不复制第二份语义） */
+const DEFAULT_RATE_CARD_NAME = '标准';
 
 /** 路由依赖（facade 结构子集——测试注入替身） */
 export interface UsersRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'adminListUsers' | 'adminGetUser' | 'adminPatchUser'>;
   readonly wallet: Pick<WalletApi, 'accounts' | 'setCreditLimit'>;
+  /** P2/D6:密码重置（identity user realm 单一真相）+ 默认卡绑定 */
+  readonly identity: Pick<Identity, 'passwords'>;
+  readonly rates: Pick<ControlPlane['rates'], 'listCards' | 'updateCard' | 'findGlobalCoefficient'>;
+  /** 后置审计（user.set_password——v1 recordAudit 提交后旁路语义） */
+  readonly postAudit: PostAudit;
 }
 
 export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
@@ -66,6 +81,56 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
       await deps.wallet.setCreditLimit({ userId: id, amount: creditLimit });
     }
     return c.json({ id });
+  });
+
+  app.post('/v1/users/:id/set-password', session, async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = authContracts.setPassword.parse(await c.req.json());
+    const profile = await deps.accounts.adminGetUser(id);
+    // 只能为本地账号设密：给 OIDC 身份挂本地密码 = 管理员接管（v1 语义）
+    if (profile.issuer !== 'local') {
+      throw AdminErrors.business('not_local_account', {});
+    }
+    // 未绑卡 → 绑默认卡「标准」；缺全局兜底系数则回填 1.000（v1 同语义;
+    // 已有系数不覆盖——findGlobalCoefficient 判存后才 update）
+    if (profile.rateCardId == null) {
+      const cards = await deps.rates.listCards({
+        sortBy: 'id',
+        order: 'asc',
+        limit: 100,
+        offset: 0,
+      });
+      const standard = cards.rows.find((card) => card.name === DEFAULT_RATE_CARD_NAME);
+      if (standard != null) {
+        if ((await deps.rates.findGlobalCoefficient(standard.id)) == null) {
+          await deps.rates.updateCard({
+            ctx: controlContextOf(c),
+            rateCardId: standard.id,
+            patch: { coefficient: '1.000' },
+          });
+        }
+        await deps.accounts.adminPatchUser({
+          userId: id,
+          patch: { rateCardId: standard.id },
+          adminId: c.get('adminId'),
+        });
+      }
+    }
+    // 密码重置 = identity user realm（策略单源校验 + 推进锚点线 = 全网旧会话即刻下线）
+    await deps.identity.passwords.reset({
+      userId: id,
+      realm: 'user',
+      newPassword: body.password,
+    });
+    await deps.postAudit({
+      actor: 'admin',
+      adminId: c.get('adminId'),
+      action: 'user.set_password',
+      targetType: 'user',
+      targetId: id,
+      detail: null,
+    });
+    return c.json({ ok: true });
   });
 
   return app;

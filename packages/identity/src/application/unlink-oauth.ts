@@ -5,7 +5,7 @@ import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';
 import { assertUserId, guardProvider } from '../domain/identifier.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export async function unlinkOAuth(
   ctx: IdentityUseCaseContext,
@@ -25,20 +25,22 @@ export async function unlinkOAuth(
       if (outcome.status === 'last_credential') {
         throw identityErrors.business('last_credential', { userId, provider });
       }
-      return { unlinked: true as const, linkId: outcome.linkId };
+      const removed = { unlinked: true as const, linkId: outcome.linkId };
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: `user:${userId}`,
+          action: 'oauth.unlink',
+          targetType: 'oauth_link',
+          targetId: removed.linkId,
+          detail: { userId, provider },
+        }),
+      );
+      return removed;
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: `user:${userId}`,
-      action: 'oauth.unlink',
-      targetType: 'oauth_link',
-      targetId: result.linkId,
-      detail: { userId, provider },
-    }),
-  );
   return result;
 }

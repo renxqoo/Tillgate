@@ -2,7 +2,14 @@
  * 测试装置（非测试文件，不匹配 include）：内存装配的最小 inference 环境。
  * 应用层用例注入 fake UpstreamPort；upstream-ai 适配器测试另配 fake Ai。
  */
-import type { Ai, AiEvent, ErrorKind, UpstreamError, Usage } from '@tokenlens/ai';
+import type {
+  Ai,
+  AiEvent,
+  ErrorKind,
+  GenerationTaskProbeResult,
+  UpstreamError,
+  Usage,
+} from '@tokenlens/ai';
 import { UpstreamError as UpstreamErrorCtor } from '@tokenlens/ai';
 import { createInference, type Inference } from '../src/inference';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
@@ -13,6 +20,7 @@ import type {
   UpstreamPort,
   UpstreamStreamEvent,
   UpstreamStreamResult,
+  UpstreamTaskExecuteResult,
   UpstreamTaskSubmitResult,
 } from '../src/ports/upstream';
 import type {
@@ -116,6 +124,14 @@ const unconfiguredSubmit = async (): Promise<UpstreamTaskSubmitResult> => ({
   ok: false,
   error: upstreamError('upstream_error'),
 });
+const unconfiguredQuery = async (): Promise<GenerationTaskProbeResult> => ({
+  ok: false,
+  error: upstreamError('upstream_error'),
+});
+const unconfiguredExecute = async (): Promise<UpstreamTaskExecuteResult> => ({
+  ok: false,
+  error: upstreamError('upstream_error'),
+});
 const noopAuthorize = async (): Promise<void> => {};
 const allowReserve = async (): Promise<boolean> => true;
 
@@ -146,6 +162,8 @@ export function fakeUpstream() {
       calls.push({ channel: ch, request });
       return await submitImpl(ch, kind, request);
     },
+    queryTask: async () => await unconfiguredQuery(),
+    executeTask: async () => await unconfiguredExecute(),
   };
   return {
     port,
@@ -197,7 +215,7 @@ export function fakeCatalog(
   channelsByReal: Record<string, ChannelCandidate[]>,
 ): CatalogPort & { channelsByReal: Record<string, ChannelCandidate[]> } {
   return {
-    findMapping: async (external) => mappings[external] ?? null,
+    findMapping: async (external, _pricing) => mappings[external] ?? null,
     resolveChannels: async (real) => channelsByReal[real] ?? [],
     channelsByReal,
   };
@@ -245,6 +263,7 @@ export function buildInference(env: {
   upstream: UpstreamPort;
   defaults?: Parameters<typeof createInference>[0]['defaults'];
   admitChannel?: Parameters<typeof createInference>[0]['admitChannel'];
+  trace?: Parameters<typeof createInference>[0]['trace'];
 }): Inference {
   return createInference({
     ai: env.ai,
@@ -255,5 +274,6 @@ export function buildInference(env: {
     upstream: env.upstream,
     ...(env.defaults != null ? { defaults: env.defaults } : {}),
     ...(env.admitChannel != null ? { admitChannel: env.admitChannel } : {}),
+    ...(env.trace != null ? { trace: env.trace } : {}),
   });
 }

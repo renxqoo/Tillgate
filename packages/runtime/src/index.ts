@@ -6,10 +6,30 @@ export { strictBooleanSchema, secretSchema } from './config/env-schemas';
 export { createCipher, type Cipher } from './crypto/cipher';
 export { createShutdown, type ShutdownDeps, type ShutdownLog } from './lifecycle/shutdown';
 export { createLogger, type CreateLoggerOptions, type Logger } from './logging/logger';
+export { parseSentinels } from './redis/parse-sentinels';
 export {
   createRedisClient,
-  parseSentinels,
-  assertRedisReachable,
   type RedisClientOptions,
-} from './redis/redis-client';
+  type SentinelTopology,
+} from './redis/create-redis-client';
+export { assertRedisReachable } from './redis/assert-redis-reachable';
 export { createRedisScriptRunner, type RedisScriptRunner } from './redis/script-runner';
+export {
+  createSlidingWindowLimiter,
+  rateLimitUnavailable,
+  type SlidingWindowLimiter,
+  type SlidingWindowLimiterOptions,
+  type RateLimitResult,
+} from './redis/rate-limiter';
+export {
+  createKeyBruteForceGuard,
+  createAuthFailureGuard,
+  authGuardUnavailable,
+  type KeyBruteForceGuard,
+  type AuthFailureGuard,
+  type BruteForcePolicy,
+  type AuthFailurePolicy,
+  type GuardCheck,
+  type GuardFailMode,
+  type GuardFailureMode,
+} from './redis/auth-guards';

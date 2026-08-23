@@ -151,6 +151,15 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
     }
   });
 
+  it('application/domain/ports 不 import ../composition(装配子入口仅装配面可用,§5.3)', () => {
+    for (const f of files) {
+      if (f.layer !== 'application' && f.layer !== 'domain' && f.layer !== 'ports') continue;
+      for (const spec of f.imports) {
+        expect(spec.includes('composition'), `${f.path} → ${spec}`).toBe(false);
+      }
+    }
+  });
+
   it('全包禁 pg/hono/@tokenlens/http/@tokenlens/runtime/@tokenlens/ai 与业务能力包(DESIGN §5 白名单)', () => {
     const banned = [
       'pg',
@@ -194,6 +203,50 @@ describe('公共出口封闭(§5.3:facade 与类型,不泄漏基础设施)', () 
 
   it('index.ts 不导出 composition 符号(子入口独立,总纲 §5.3)', () => {
     expect(index.includes('identityWithinTx')).toBe(false);
+  });
+
+  it('存储 port 契约(DbLike 形态)不走根出口,只在 ./composition(§5.3 收紧)', () => {
+    for (const storePort of [
+      'CredentialStore',
+      'ChallengeStore',
+      'MfaStore',
+      'OAuthStore',
+      'AnchorStore',
+    ]) {
+      expect(index.includes(storePort), `index.ts 不应导出 ${storePort}`).toBe(false);
+    }
+    const composition = stripComments(readFileSync(`${srcDir}/composition.ts`, 'utf-8'));
+    for (const storePort of [
+      'CredentialStore',
+      'ChallengeStore',
+      'MfaStore',
+      'OAuthStore',
+      'AnchorStore',
+    ]) {
+      expect(composition.includes(storePort), `composition.ts 应导出 ${storePort}`).toBe(true);
+    }
+  });
+
+  it('AUDIT_ACTIONS 审计词表封闭快照(DESIGN §2.6;新增动作先改清单)', async () => {
+    const { AUDIT_ACTIONS } = await import('../src/domain/audit-events.js');
+    expect([...AUDIT_ACTIONS].toSorted()).toEqual(
+      [
+        'credential.register',
+        'credential.replay',
+        'credential.authenticate',
+        'password.change',
+        'password.reset',
+        'challenge.begin',
+        'challenge.verify',
+        'challenge.abort',
+        'mfa.enroll',
+        'mfa.confirm',
+        'mfa.disable',
+        'oauth.link',
+        'oauth.unlink',
+        'session.revoke',
+      ].toSorted(),
+    );
   });
 
   it('根装配面文件集合封闭(identity/composition/index)', () => {

@@ -1,11 +1,14 @@
 /**
  * 渠道资金用例（v1 channel-funds.test.ts 语义等价迁移）：
  * 幂等（同键同参重放回执/同键异参冲突）/ 进货复活熔断 / 调账守卫 / 凭证字节不进指纹。
+ * 审计与业务同事务（§5.4/G3）：写失败回滚业务、重放不重复审计（dedupe 单事实）。
  */
 import { describe, expect, it } from 'vitest';
 import { rechargeChannel } from '../src/application/channels/recharge-channel';
 import { adjustChannel } from '../src/application/channels/adjust-channel';
 import { listRecharges } from '../src/application/channels/list-recharges';
+import { runOperation } from '../src/application/channels/run-operation';
+import { commandFingerprint } from '../src/domain/operation';
 import {
   adminCtx,
   createMemoryChannelStore,
@@ -13,6 +16,8 @@ import {
   createMemoryVoucherStorage,
   createMemoryAudit,
   createMemoryDb,
+  rollbackDb,
+  snapshotMap,
 } from './memory';
 
 function setup() {
@@ -48,9 +53,32 @@ function setup() {
     stores: { channel: channels.store, operations: operations.store },
     voucherStorage: voucher,
     voucherMaxBytes: 1024,
-    audit: audit.sink,
+    auditTx: audit.txSink,
   };
   return { base, channels, operations, voucher, audit };
+}
+
+/** 回滚语义世界（§5.6 类型 2）：审计写失败 → 业务快照恢复（PG ROLLBACK 等价） */
+function setupRollback() {
+  const world = setup();
+  const snapshot = () => {
+    const snap = {
+      rows: snapshotMap(world.channels.rows),
+      recharges: [...world.channels.recharges],
+      ops: new Map(world.operations.rows),
+      entries: [...world.audit.entries],
+    };
+    return () => {
+      snap.rows.restore();
+      world.channels.recharges.length = 0;
+      world.channels.recharges.push(...snap.recharges);
+      world.operations.rows.clear();
+      for (const [k, v] of snap.ops) world.operations.rows.set(k, v);
+      world.audit.entries.length = 0;
+      world.audit.entries.push(...snap.entries);
+    };
+  };
+  return { ...world, base: { ...world.base, db: rollbackDb(snapshot) } };
 }
 
 describe('进货（幂等 operations 用例）', () => {
@@ -82,7 +110,7 @@ describe('进货（幂等 operations 用例）', () => {
     expect(operations.rows.get('op-recharge-1')!.receipt).toMatchObject({
       rechargeId: first.rechargeId,
     });
-    expect(audit.entries.filter((e) => e.action === 'channel.recharge')).toHaveLength(2); // 每次调用都审计
+    expect(audit.entries.filter((e) => e.action === 'channel.recharge')).toHaveLength(1); // 重放不重复审计（§5.4 dedupe 单事实）
   });
 
   it('同键异参 → operation_conflict；坏键形状 → invalid_operation_id', async () => {
@@ -248,17 +276,93 @@ describe('流水列表', () => {
   });
 });
 
-describe('审计 best-effort 契约（B3 语义保持）', () => {
-  it('审计出口故障不反噬已提交的业务操作', async () => {
-    const { base, audit } = setup();
-    audit.fail.on = true;
-    const result = await rechargeChannel(base, {
+describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务）', () => {
+  it('G3 回归：审计写失败 → 业务事务回滚（余额/流水/操作占位/审计全无变更）', async () => {
+    const world = setupRollback();
+    world.audit.fail.on = true;
+    await expect(
+      rechargeChannel(world.base, {
+        ctx: adminCtx(),
+        channelId: 7,
+        amount: '3',
+        operationId: 'op-audit-down',
+      }),
+    ).rejects.toThrow('audit sink down');
+    // 回滚后无任何变更落库（快照恢复 = PG ROLLBACK 等价）
+    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('100');
+    expect(world.channels.recharges).toHaveLength(0);
+    expect(world.operations.rows.size).toBe(0);
+    expect(world.audit.entries).toHaveLength(0);
+  });
+
+  it('正常路径：审计与业务同事务落档；同键重放不产生第二条审计（dedupe 单事实）', async () => {
+    const world = setupRollback();
+    await rechargeChannel(world.base, {
       ctx: adminCtx(),
       channelId: 7,
-      amount: '3',
-      operationId: 'op-audit-down',
+      amount: '5',
+      operationId: 'op-audit-ok',
     });
-    expect(result.ok).toBe(true);
-    expect(result.balanceAfter).toBe('103');
+    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('105');
+    expect(world.audit.entries).toHaveLength(1);
+    expect(world.audit.entries[0]).toMatchObject({
+      action: 'channel.recharge',
+      adminId: 1,
+      detail: { amount: '5', hasVoucher: false },
+    });
+    // 重放：回执复用，不重复入账也不重复审计
+    const replay = await rechargeChannel(world.base, {
+      ctx: adminCtx(),
+      channelId: 7,
+      amount: '5',
+      operationId: 'op-audit-ok',
+    });
+    expect(replay.replayed).toBe(true);
+    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('105');
+    expect(world.audit.entries).toHaveLength(1);
+  });
+
+  it('调账同事务：审计失败 → 调整与流水全回滚', async () => {
+    const world = setupRollback();
+    world.audit.fail.on = true;
+    await expect(
+      adjustChannel(world.base, {
+        ctx: adminCtx(),
+        channelId: 7,
+        amount: '-10',
+        operationId: 'adj-audit-down',
+      }),
+    ).rejects.toThrow('audit sink down');
+    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('100');
+    expect(world.channels.recharges).toHaveLength(0);
+    expect(world.audit.entries).toHaveLength(0);
+  });
+
+  it('占位已提交但回执缺失（不变量违约）→ DefectError 红灯（原 as T 兜底已废）', async () => {
+    const { base, operations } = setup();
+    // 直接制造违约形状：占位行存在、指纹与本次调用一致、回执为 null
+    //（真 PG 中不可能——占位与回执同事务写；此处验证红灯分支不再伪造空回执）
+    const payload = { kind: 'channel.recharge' } as never;
+    await operations.store.insertPlaceholder({} as never, {
+      operationId: 'op-broken',
+      kind: 'channel.recharge',
+      fingerprint: commandFingerprint('channel.recharge', payload),
+    });
+    expect(operations.rows.get('op-broken')!.receipt).toBeNull();
+    await expect(
+      runOperation(
+        { db: base.db, stores: { operations: operations.store } },
+        {
+          ctx: adminCtx(),
+          operationId: 'op-broken',
+          kind: 'channel.recharge',
+          payload,
+          execute: async () => ({}) as never,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: 'control_plane.operation_receipt_missing',
+      message: expect.stringContaining('receipt missing'),
+    });
   });
 });

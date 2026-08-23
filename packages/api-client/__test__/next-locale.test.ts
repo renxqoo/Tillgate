@@ -55,6 +55,23 @@ describe('resolveLocale:cookie 优先,其次请求头(http locale.test 同向量
   });
 });
 
+describe('resolveLocale:app 级策略注入(管理台固定回落场景)', () => {
+  const adminStyle = { honorAcceptLanguage: false, fallback: 'zh' as const };
+  it('cookie 显式选择仍然优先', () => {
+    expect(resolveLocale('en', 'zh-CN,zh;q=0.9', adminStyle)).toBe('en');
+    expect(resolveLocale('zh', 'en-US,en;q=0.9', adminStyle)).toBe('zh');
+  });
+  it('无/非法 cookie 时忽略 Accept-Language,固定回落', () => {
+    expect(resolveLocale(undefined, 'en-US,en;q=0.9', adminStyle)).toBe('zh');
+    expect(resolveLocale('fr', 'en-US', adminStyle)).toBe('zh');
+  });
+  it('fallback 单独注入只改回落,不影响协商命中', () => {
+    expect(resolveLocale(undefined, 'en-US,en', { fallback: 'zh' })).toBe('en');
+    expect(resolveLocale(undefined, undefined, { fallback: 'zh' })).toBe('zh');
+    expect(parseAcceptLanguage('fr-FR', 'zh')).toBe('zh');
+  });
+});
+
 describe('词表与工具(http locale.test 同向量)', () => {
   it('LOCALES 闭集 en|zh,默认 en', () => {
     expect(LOCALES).toEqual(['en', 'zh']);
@@ -94,5 +111,20 @@ describe('outgoingLocale:BFF 出口语言(cookie → 头 → en)', () => {
     vi.mocked(cookies).mockRejectedValueOnce(new Error('outside request'));
     vi.mocked(headers).mockRejectedValueOnce(new Error('outside request'));
     await expect(outgoingLocale()).resolves.toBe('en');
+  });
+  it('策略注入:无 cookie 忽略请求头,回落注入语言;异常时也回落注入语言', async () => {
+    cookieStore.get.mockReturnValue(undefined);
+    headerStore.get.mockImplementation((name: string) =>
+      name === 'accept-language' ? 'en-US,en;q=0.9' : null,
+    );
+    await expect(outgoingLocale({ honorAcceptLanguage: false, fallback: 'zh' })).resolves.toBe(
+      'zh',
+    );
+    const { cookies, headers } = await import('next/headers');
+    vi.mocked(cookies).mockRejectedValueOnce(new Error('outside request'));
+    vi.mocked(headers).mockRejectedValueOnce(new Error('outside request'));
+    await expect(outgoingLocale({ honorAcceptLanguage: false, fallback: 'zh' })).resolves.toBe(
+      'zh',
+    );
   });
 });

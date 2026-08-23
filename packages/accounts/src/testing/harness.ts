@@ -8,10 +8,26 @@ import { createAccountUseCases, type AccountUseCases } from '../application/crea
 import type { UseCaseContext } from '../application/context.js';
 import type { AuditPort, AuditAction } from '../ports/audit.js';
 import type { CreditCommand, CreditResult, WalletCreditPort } from '../ports/wallet-credit.js';
+import type { SessionInvalidationPort } from '../ports/session-invalidation.js';
 import {
   createInMemoryAccountStore,
   type InMemoryAccountStore,
 } from './in-memory-account-store.js';
+
+/** 内存会话失效 bridge:记录调用序供断言(语义等价 identity anchor advance 的观察面) */
+export interface InMemorySessionInvalidation extends SessionInvalidationPort {
+  readonly calls: Array<{ realm: string; userId: number }>;
+}
+
+export function createInMemorySessionInvalidation(): InMemorySessionInvalidation {
+  const calls: InMemorySessionInvalidation['calls'] = [];
+  return {
+    calls,
+    async invalidateUserSessions(_db, input) {
+      calls.push({ realm: input.realm, userId: input.userId });
+    },
+  };
+}
 
 /** v1 等价策略(装配缺省由 app 持有;测试用等价值断行为) */
 export const V1_TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
@@ -80,6 +96,7 @@ export interface TestHarness {
   readonly store: InMemoryAccountStore;
   readonly wallet: InMemoryWalletCredit;
   readonly audit: InMemoryAuditSink;
+  readonly sessionInvalidation: InMemorySessionInvalidation;
   readonly setClock: (when: Date) => void;
   readonly advanceClockMs: (ms: number) => void;
 }
@@ -109,11 +126,13 @@ export function createTestHarness(policy: AccountsPolicy = V1_POLICY): TestHarne
   const store = createInMemoryAccountStore(() => clock);
   const wallet = createInMemoryWalletCredit();
   const audit = createInMemoryAuditSink();
+  const sessionInvalidation = createInMemorySessionInvalidation();
   fakeDb = createFakeDb(store);
   const ctx: UseCaseContext = {
     db: fakeDb,
     store,
     walletCredit: wallet,
+    sessionInvalidation,
     audit,
     policy,
     txRetry: V1_TX_RETRY,
@@ -125,6 +144,7 @@ export function createTestHarness(policy: AccountsPolicy = V1_POLICY): TestHarne
     store,
     wallet,
     audit,
+    sessionInvalidation,
     setClock: (when) => {
       clock = when;
     },

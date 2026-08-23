@@ -1,35 +1,21 @@
-'use client';
-
 import { BriefcaseIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { ListFilterSelect } from '@/components/list-filter-select';
 
 export function UsersEnterpriseFilter({ value }: { value: string }) {
-  const router = useRouter();
-  const sp = useSearchParams();
   const tc = useTranslations('common');
   const t = useTranslations('users');
 
-  function onChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = new URLSearchParams(sp.toString());
-    if (e.target.value === 'all') next.delete('enterprise');
-    else next.set('enterprise', e.target.value);
-    next.delete('page');
-    router.push(`?${next.toString()}`);
-  }
-
   return (
-    <div className="relative">
-      <BriefcaseIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <select
-        onChange={onChange}
-        defaultValue={value}
-        className="h-9 w-32 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
-      >
-        <option value="all">{tc('allTypes')}</option>
-        <option value="1">{t('enterprise')}</option>
-        <option value="0">{t('personal')}</option>
-      </select>
-    </div>
+    <ListFilterSelect
+      param="enterprise"
+      value={value}
+      allLabel={tc('allTypes')}
+      icon={<BriefcaseIcon />}
+      options={[
+        { value: '1', label: t('enterprise') },
+        { value: '0', label: t('personal') },
+      ]}
+    />
   );
 }

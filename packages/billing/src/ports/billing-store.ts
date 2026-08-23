@@ -22,22 +22,6 @@ export interface SubscriptionRow {
   reservedAmount: string;
 }
 
-/** user_subscriptions 行形状（订阅生命周期用例消费） */
-export interface SubscriptionRow {
-  id: number;
-  userId: number;
-  planId: number;
-  orgId: number | null;
-  quantity: number;
-  price: string;
-  status: number;
-  startAt: Date;
-  endAt: Date;
-  quotaAmount: string;
-  usedAmount: string;
-  reservedAmount: string;
-}
-
 /** billing_requests 行形状（金额/状态原样 string；语义判定在 domain） */
 export interface BillingRequestRow {
   requestId: string;
@@ -78,6 +62,52 @@ export interface BillingReservationRow {
   status: string;
 }
 
+/** 套餐目录行（U6 管理面;金额为存储精度字符串,出站点归一归 app） */
+export interface PlanRecord {
+  id: number;
+  name: string;
+  kind: string;
+  sortOrder: number | null;
+  price: string;
+  periodDays: number;
+  quotaAmount: string;
+  allowSeats: boolean;
+  status: number;
+}
+
+/** 订阅管理列表行（users/plans SQL join 物理层富化;remaining = quota − used − reserved） */
+export interface AdminSubscriptionRow {
+  id: number;
+  userId: number;
+  userSubject: string;
+  userDisplayName: string | null;
+  planId: number;
+  planName: string;
+  startAt: Date;
+  endAt: Date;
+  quotaAmount: string;
+  usedAmount: string;
+  reservedAmount: string;
+  quantity: number;
+  price: string;
+  remainingAmount: string;
+  status: number;
+  createdAt: Date;
+}
+
+/** 死信复核列表行（billing_requests dead 投影） */
+export interface DeadCaseRow {
+  requestId: string;
+  userId: number;
+  status: string;
+  revision: number;
+  attempt: number;
+  failureCode: string | null;
+  lastError: string | null;
+  reservedAmount: string | null;
+  createdAt: Date;
+}
+
 export interface BillingStore {
   read<T>(fn: (conn: WalletConn) => Promise<T>): Promise<T>;
   transaction<T>(fn: (tx: WalletTx) => Promise<T>): Promise<T>;
@@ -113,6 +143,8 @@ export interface BillingStore {
       requestId: string;
       from: readonly string[];
       to: string;
+      /** 额外守卫：仅当行 leaseOwner 等于该值才命中（续租的 owner 校验；缺省不校验） */
+      expectLeaseOwner?: string;
       set?: {
         receipt?: Record<string, unknown>;
         receiptFingerprint?: string;
@@ -296,6 +328,80 @@ export interface BillingStore {
   ): Promise<boolean>;
   /** quota += amount（status=0 守卫）；0 行 = 并发取消 */
   tryAddQuota(tx: WalletConn, input: { subscriptionId: number; quota: string }): Promise<boolean>;
+
+  // ---- 管理读侧面（U6：plans 目录 / 订阅管理列表 / 死信复审——admin-api P1 消费） ----
+  listAdminPlans(
+    conn: WalletConn,
+    query: {
+      q?: string;
+      sortBy: 'id' | 'name' | 'status' | 'price' | 'sortOrder';
+      order: 'asc' | 'desc';
+      limit: number;
+      offset: number;
+    },
+  ): Promise<{ rows: PlanRecord[]; total: number }>;
+  insertPlan(
+    tx: WalletConn,
+    values: {
+      name: string;
+      kind: 'subscription' | 'pack';
+      sortOrder: number | null;
+      price: string;
+      periodDays: number;
+      quotaAmount: string;
+      allowSeats: boolean;
+    },
+  ): Promise<PlanRecord>;
+  patchPlan(
+    tx: WalletConn,
+    input: {
+      planId: number;
+      patch: {
+        name?: string;
+        sortOrder?: number | null;
+        price?: string;
+        periodDays?: number;
+        quotaAmount?: string;
+        allowSeats?: boolean;
+        status?: number;
+      };
+    },
+  ): Promise<PlanRecord | null>;
+  /** 硬删;0 行 = 不存在 */
+  deletePlan(tx: WalletConn, planId: number): Promise<boolean>;
+  /** 删除守卫:任何状态的订阅引用(含历史)都算被用过 */
+  countSubscriptionsAnyStatus(conn: WalletConn, planId: number): Promise<number>;
+  listAdminSubscriptions(
+    conn: WalletConn,
+    input: {
+      q?: string;
+      planId?: number;
+      userId?: number;
+      status?: number;
+      sortBy: 'id' | 'createdAt' | 'startAt' | 'endAt' | 'usedAmount';
+      order: 'asc' | 'desc';
+      limit: number;
+      offset: number;
+    },
+  ): Promise<{ rows: AdminSubscriptionRow[]; total: number }>;
+  listDeadCases(
+    conn: WalletConn,
+    input: { limit: number; offset: number },
+  ): Promise<{ rows: DeadCaseRow[]; total: number }>;
+  /** 复核重试 CAS:dead + revision 期望 → retry_wait(清失败态/重置结算) */
+  casReviewRetryDead(
+    tx: WalletConn,
+    input: { requestId: string; expectedRevision: number; now: Date },
+  ): Promise<boolean>;
+  /** 复核弃单 CAS:dead + revision 期望 → released(归还事实由调用方接手) */
+  casReviewAbandonDead(
+    tx: WalletConn,
+    input: { requestId: string; expectedRevision: number; now: Date },
+  ): Promise<{
+    reservedAmount: string;
+    channelId: number | null;
+    channelReservedAmount: string | null;
+  } | null>;
 
   // ---- 幂等操作档案（U4：ledger_operations——占位/回执同事务） ----
   insertOperationPlaceholder(

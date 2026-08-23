@@ -2,7 +2,7 @@ import { tableOrFallback } from '../errors/fallback';
 import { UpstreamError } from '../errors/kinds';
 import type { ErrorKind } from '../errors/kinds';
 import { asRecord } from '../internal/util';
-import type { ChannelDesc, Endpoint, GenerationArtifact, ParamRules,  Usage } from '../types';
+import type { ChannelDesc, Endpoint, GenerationArtifact, ParamRules, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 // 裸扩展名导入（包约定）：Next transpilePackages 不做 .js→.ts 映射，带后缀会让 admin 打包解析失败
 import { createRestTaskOps } from './task-kit';
@@ -65,7 +65,9 @@ export class MiniMaxAdapter implements ProtocolAdapter {
         duration,
         resolution,
         ...(typeof body.image === 'string' ? { first_frame_image: body.image } : {}),
-        ...(typeof body.last_frame_image === 'string' ? { last_frame_image: body.last_frame_image } : {}),
+        ...(typeof body.last_frame_image === 'string'
+          ? { last_frame_image: body.last_frame_image }
+          : {}),
       };
     }
     if (input.endpoint === 'music') {
@@ -150,7 +152,10 @@ export class MiniMaxAdapter implements ProtocolAdapter {
             status: 'succeeded',
             fileId:
               typeof body.file_id === 'string' && body.file_id !== '' ? body.file_id : undefined,
-            artifact: { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) },
+            artifact: {
+              ...(width !== undefined ? { width } : {}),
+              ...(height !== undefined ? { height } : {}),
+            },
           };
         case 'Fail':
           return { status: 'failed', reason: 'upstream task failed' };
@@ -178,11 +183,15 @@ function minimaxEnvelopeError(body: unknown): UpstreamError | null {
       : `minimax api error ${code}`;
   // 1004/2049 认证失败；1008 余额；1002/1026/1027/2013 参数与审查；429 限流；5xx 服务端
   const kind: ErrorKind =
-    code === 1004 || code === 2049 ? 'invalid_api_key'
-    : code === 1008 ? 'quota_exhausted'
-    : code === 429 ? 'rate_limited'
-    : code === 1002 || code === 1026 || code === 1027 || code === 2013 ? 'invalid_request'
-    : 'upstream_error';
+    code === 1004 || code === 2049
+      ? 'invalid_api_key'
+      : code === 1008
+        ? 'quota_exhausted'
+        : code === 429
+          ? 'rate_limited'
+          : code === 1002 || code === 1026 || code === 1027 || code === 2013
+            ? 'invalid_request'
+            : 'upstream_error';
   return new UpstreamError({ kind, vendorCode: String(code), message });
 }
 

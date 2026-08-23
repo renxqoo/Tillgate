@@ -25,7 +25,7 @@ import {
 } from '../domain/identifier.js';
 import type { ChallengeTarget } from '../domain/challenge.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { recordAudit } from './context.js';
 
 export interface BeginChallengeInput {
   readonly kind: string;
@@ -164,7 +164,9 @@ export async function beginChallenge(
     }
     throw identityErrors.business('delivery_failed', { kind, channel });
   }
-  await emitAudit(
+  // 审计在投递成功后(事实=挑战已发到目标;投递失败路径已作废,不该有 begin 事件)——
+  // 独立连接单写,失败抛错不吞(§5.4 不降级)
+  await recordAudit(
     ctx,
     auditEvent(ctx.clock.now(), {
       actor: 'system',

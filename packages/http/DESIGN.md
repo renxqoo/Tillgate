@@ -32,8 +32,9 @@
 ### 1.1 处理
 
 - **错误渲染出口**：`renderError`（TokenlensError → status/code/message/context 的出站投影）、
-  `errorHandler`（Hono onError：坏 JSON / Hono 4xx HTTPException / PG SQLSTATE（探测注入）/ 未知错误
-  的边界翻译与兜底）、category → 默认 status 表、face override 机制、出站 Retry-After 渲染。
+  `errorHandler`（Hono onError：坏 JSON / Hono 4xx HTTPException / 已分类错误按自身身份渲染 /
+  PG SQLSTATE（探测注入，只兜未分类错误）/ 未知错误的边界翻译与兜底）、
+  category → 默认 status 表、face override 机制、出站 Retry-After 渲染。
 - **http 自有错误目录**：`HttpErrors`（`http.*` 命名空间）——http 机制件自身抛出/翻译的边界码
   （validation_failed、invalid_json、payload_too_large、invalid_idempotency_key、pg_* 六码、not_found 等）。
 - **本地化**：Accept-Language 协商内核（en|zh，默认 en）+ 目录文案按 locale 取用。
@@ -47,16 +48,16 @@
 
 ### 1.2 明确不处理（写明归属，不留白）
 
-| 不处理 | 归属 |
-| --- | --- |
-| 业务错误码定义（v1 注册表 ~190 业务码段） | 各能力包目录（P4 随包迁移）；app face 装配（ADR-0001 D1） |
-| SQLSTATE 探测实现（cause 链爬取） | `db` 包 `pgSqlState`（http 经 errorHandler 依赖注入消费，ADR-0002） |
-| drizzle 列表组装件（searchCondition/resolveOrderBy/buildList/countAll） | 不移植；随首个列表端点消费者迁移单元裁决归宿（IMPLEMENTATION C3） |
-| 业务 SQL / Repository CRUD / 审计持久化 | 能力包 adapters / `observability`（v1 audit.ts 不迁，C6） |
-| Redis 连接与测试装置 / .env 加载 / 渠道密钥加密 | `runtime`（createRedisClient、testing 子入口；loadRootEnvFile、createCipher——C4/C7） |
-| OpenAI 错误信封 / 网关对外 wire 投影 | gateway app face（error-face 时用 override 表投影，P5） |
-| wire contract / OpenAPI schema | 提供 API 的 app（结构方案 §3.3） |
-| `errors` 根契约（三性/category/目录/记录） | `@tokenlens/errors`（http 单向依赖它，不重复定义） |
+| 不处理                                                                  | 归属                                                                                 |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 业务错误码定义（v1 注册表 ~190 业务码段）                               | 各能力包目录（P4 随包迁移）；app face 装配（ADR-0001 D1）                            |
+| SQLSTATE 探测实现（cause 链爬取）                                       | `db` 包 `pgSqlState`（http 经 errorHandler 依赖注入消费，ADR-0002）                  |
+| drizzle 列表组装件（searchCondition/resolveOrderBy/buildList/countAll） | 不移植；随首个列表端点消费者迁移单元裁决归宿（IMPLEMENTATION C3）                    |
+| 业务 SQL / Repository CRUD / 审计持久化                                 | 能力包 adapters / `observability`（v1 audit.ts 不迁，C6）                            |
+| Redis 连接与测试装置 / .env 加载 / 渠道密钥加密                         | `runtime`（createRedisClient、testing 子入口；loadRootEnvFile、createCipher——C4/C7） |
+| OpenAI 错误信封 / 网关对外 wire 投影                                    | gateway app face（error-face 时用 override 表投影，P5）                              |
+| wire contract / OpenAPI schema                                          | 提供 API 的 app（结构方案 §3.3）                                                     |
+| `errors` 根契约（三性/category/目录/记录）                              | `@tokenlens/errors`（http 单向依赖它，不重复定义）                                   |
 
 ## 2. 外部契约（v2 API，定稿）
 
@@ -65,8 +66,8 @@ import { HttpErrors, renderError, errorHandler, pgRejection,
          CATEGORY_STATUS_DEFAULTS, localeFromContext, parseAcceptLanguage,
          jsonBody, query, intParam, paginationQuerySchema, listQuerySchema, escapeLike,
          trustedClientIp, clientIpFromContext, requestIdMiddleware, operationId,
-         sha256Hex, generateApiKey, maskKey, securityHeaders, corsPreflight,
-         bodyParserLimit } from '@tokenlens/http';
+         generateRedeemCode, maskUpstreamKey, timingSafeTokenEqual, securityHeaders,
+         corsPreflight, bodyParserLimit } from '@tokenlens/http';
 
 // ---- 错误：http 自有目录（http.* 命名空间；机制件唯一抛出口）----
 HttpErrors.business('validation_failed', { 'body.name': 'expected string' });  // → BusinessError
@@ -80,7 +81,8 @@ renderError(err, {
 });  // → { status, code, message, context?, retryAfterMs? }
 errorBody(rendered);                          // → { error: { code, message, context? } }（信封单一形状）
 
-// ---- Hono onError：坏 JSON→400、Hono 4xx 保留、PG SQLSTATE→4xx（探测注入）、未知→500 ----
+// ---- Hono onError：坏 JSON→400、Hono 4xx 保留、已分类错误按自身目录渲染、
+//      PG SQLSTATE→4xx（探测注入，只兜未分类错误——带 PG cause 的业务错误不丢业务码）、未知→500 ----
 app.onError(errorHandler({
   catalog: APP_ERRORS,                       // face 装配目录
   overrides?: FaceOverride 表
@@ -110,10 +112,12 @@ requestIdMiddleware();                       // 服务端 randomUUID + x-request
 operationId(c);                              // 头缺失→UUID；非法字符集→http.invalid_idempotency_key
 
 // ---- 安全件 ----
-sha256Hex(s); generateApiKey(prefix);        // prefix 必填（部署可变值，不藏默认）
-maskKey(k); maskUpstreamKey(k);
+// （api-key/app 凭证生成器 sha256Hex/generateApiKey/maskKey 等已随消费者迁入 @tokenlens/accounts——C5/D3）
+generateRedeemCode();                          // RC- <32×base32>（随 billing 波次迁走）
+maskUpstreamKey(k);                            // 上游渠道 Key 脱敏
+timingSafeTokenEqual(a, b);                    // 常量时间比较
 securityHeaders;                             // 4 头统一形态（含 Cache-Control: no-store）
-corsPreflight({ origins, methods?, allowHeaders?, maxAgeSeconds? });  // 策略注入
+corsPreflight({ origins, methods, allowHeaders, maxAgeSeconds });  // 策略四要素必填注入（铁律 3）
 bodyParserLimit(maxBytes);                   // maxBytes 必填；快路径 + 流式计数双路径 413
 ```
 
@@ -144,8 +148,10 @@ bodyParserLimit(maxBytes);                   // maxBytes 必填；快路径 + �
 - **http 目录码封闭清单**（装配期由 `defineErrorCatalog` 校验；新增码必须有机制抛点——铁律 4）：
   `validation_failed`、`invalid_json`、`invalid_request`、`invalid_path_param`、
   `invalid_idempotency_key`、`payload_too_large`（invalid_input 族，413 修正）、
+  `unsupported_media_type`（invalid_input 族，415 修正）、`unauthorized`（forbidden 族，401 修正）、
   `not_found`、`pg_unique_violation`（conflict）、`pg_fk_violation`、`pg_check_violation`、
-  `pg_value_too_long`、`pg_invalid_text`、`pg_numeric_out_of_range`（invalid_input 族）。
+  `pg_value_too_long`、`pg_invalid_text`、`pg_numeric_out_of_range`（invalid_input 族）——
+  共 15 码，与 `src/errors/catalog.ts` 一致。
 - **Locale 闭集**：`en | zh`，默认 en；zh-CN/zh-TW/zh-HK 归并 zh，en-* 归并 en（v1 语义）。
 - **XFF 信任模型**：`trustedProxyHops=0` 完全忽略代理头（直连防伪造默认）；`=N` 取右数第 N 跳；
   配错属部署责任（.env 注释约定随 app 配置）。
@@ -160,7 +166,7 @@ bodyParserLimit(maxBytes);                   // maxBytes 必填；快路径 + �
 3. **行为等价验证**：v1 测试迁移矩阵逐条核销（IMPLEMENTATION §5）；重写件（错误体系）
    的差异逐条列入 API 对照表并被新测试锁定。
 4. **覆盖率**：与 errors/runtime 同门槛（lines/statements/functions 90、branches 85），
-  `src/index.ts` 桶文件不计分母。
+   `src/index.ts` 桶文件不计分母。
 
 ## 5. 预算
 

@@ -8,10 +8,12 @@ import {
 } from './adapters/postgres/request-log-partitions';
 import { createPgTraceStore } from './adapters/postgres/trace-store';
 import { maintainTracePartitions } from './adapters/postgres/trace-partitions';
+import { createPgUsageStore } from './adapters/postgres/usage-store';
 import type { AuditQueries } from './audit/types';
 import type { RequestLogStore } from './request-log/types';
 import type { MaintainPartitionsOptions, MaintainPartitionsResult } from './tracing/partition';
 import { createTraceQueries, type TraceQueries } from './tracing/queries';
+import { createUsageQueries, type UsageQueries } from './usage/queries';
 
 /**
  * createObservability facade(装配消费面 = apps 的 assembly:trace-receiver/gateway/
@@ -32,6 +34,8 @@ export interface Observability {
   audit: AuditQueries;
   /** 请求日志写入与列表 */
   requestLogs: RequestLogStore;
+  /** usage_logs 运维读侧(管理列表/概览/分组/趋势/渠道 TTFT;admin-api P4 消费) */
+  usage: UsageQueries;
   /** 分区维护(worker 定时调用;内置 advisory try-lock,未获锁 = 跳过) */
   partitions: {
     traces(options?: MaintainPartitionsOptions): Promise<MaintainPartitionsResult>;
@@ -47,6 +51,7 @@ export function createObservability(env: ObservabilityEnv): Observability {
     traces: createTraceQueries(traceStore),
     audit: createPgAuditQueries(db),
     requestLogs,
+    usage: createUsageQueries({ store: createPgUsageStore(db) }),
     partitions: {
       traces: (options) => maintainTracePartitions(db, options),
       requestLogs: (options) => maintainRequestLogPartitions(db, options),

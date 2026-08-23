@@ -39,18 +39,24 @@ export const TEST_CONFIG: IdentityConfigInput = {
     google: { clientId: 'gg-client', clientSecret: 'gg-secret' },
   },
   oauthStateTtlSec: 600,
+  oauthRedirectAllowlist: [
+    'https://api.example.com/v1/oauth/github/callback',
+    'https://api.example.com/v1/oauth/google/callback',
+    'https://cb',
+  ],
 };
 
 export interface InMemoryAuditSink {
   readonly events: IdentityAuditEvent[];
-  record(event: IdentityAuditEvent): Promise<void>;
+  /** 与 AuditPort 同形(db 参数参与事务语义;内存替身忽略连接,只按事件入列) */
+  record(_db: unknown, event: IdentityAuditEvent): Promise<void>;
 }
 
 export function createInMemoryAuditSink(): InMemoryAuditSink {
   const events: IdentityAuditEvent[] = [];
   return {
     events,
-    async record(event) {
+    async record(_db, event) {
       events.push(event);
     },
   };

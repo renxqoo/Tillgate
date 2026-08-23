@@ -53,6 +53,11 @@ export interface IdentityConfigInput {
   readonly oauth: Readonly<Record<string, OAuthProviderCredentials>>;
   /** OAuth state 存活秒(v1=600) */
   readonly oauthStateTtlSec: number;
+  /**
+   * OAuth redirect_uri 精确匹配白名单(部署方登记的本站回调地址全集;fail-closed:
+   * authorize 与 callback 两半程都校验,不在词表内直接拒绝——防开放重定向/授权码截断)
+   */
+  readonly oauthRedirectAllowlist: readonly string[];
 }
 
 export interface ResolvedIdentityConfig {
@@ -63,11 +68,23 @@ export interface ResolvedIdentityConfig {
   readonly sessions: Readonly<Record<string, SessionRealmConfig>>;
   readonly oauth: Readonly<Record<string, OAuthProviderCredentials>>;
   readonly oauthStateTtlSec: number;
+  readonly oauthRedirectAllowlist: readonly string[];
 }
 
 export interface ResolvedConfig {
   readonly config: ResolvedIdentityConfig;
   readonly guards: ValidationGuards;
+}
+
+/** redirect_uri 运行期守卫:精确匹配白名单(fail-closed;authorize/callback 两半程共用) */
+export function assertRedirectAllowed(config: ResolvedIdentityConfig, redirectUri: string): string {
+  if (typeof redirectUri !== 'string' || !config.oauthRedirectAllowlist.includes(redirectUri)) {
+    throw identityErrors.business('invalid_input', {
+      field: 'redirectUri',
+      reason: 'not in oauthRedirectAllowlist (exact match required)',
+    });
+  }
+  return redirectUri;
 }
 
 function badConfig(field: string, reason: string): never {
@@ -174,6 +191,29 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
   }
   intIn(input.oauthStateTtlSec, 'oauthStateTtlSec', 60, 3600);
 
+  // redirect_uri 白名单:非空、绝对 http(s) URL、无 query/fragment、不重复(精确匹配词表)
+  if (!Array.isArray(input.oauthRedirectAllowlist) || input.oauthRedirectAllowlist.length === 0) {
+    badConfig('oauthRedirectAllowlist', 'must be a non-empty array of redirect URIs');
+  }
+  const allowSeen = new Set<string>();
+  for (const uri of input.oauthRedirectAllowlist) {
+    let parsed: URL;
+    try {
+      parsed = new URL(uri);
+    } catch {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' is not an absolute URL`);
+      continue;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' must use http(s)`);
+    }
+    if (parsed.search !== '' || parsed.hash !== '') {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' must not carry query or fragment`);
+    }
+    if (allowSeen.has(uri)) badConfig('oauthRedirectAllowlist', `duplicate entry '${uri}'`);
+    allowSeen.add(uri);
+  }
+
   const providerSet = new Set(providers);
   for (const [provider, creds] of Object.entries(input.oauth)) {
     if (!providerSet.has(provider))
@@ -195,6 +235,7 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
       sessions: input.sessions,
       oauth: input.oauth,
       oauthStateTtlSec: input.oauthStateTtlSec,
+      oauthRedirectAllowlist: input.oauthRedirectAllowlist,
     },
     guards: {
       identifierKinds: new Set(identifiers),

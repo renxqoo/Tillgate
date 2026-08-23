@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Input } from '@tokenlens/ui';
+import { Button, Input, RowActions } from '@tokenlens/ui';
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import {
 
 export function ReviewActions(props: { requestId: string; revision: number; status: 'dead' }) {
   const t = useTranslations('billingOperations');
+  const tc = useTranslations('common');
   const [reason, setReason] = useState('');
   const [pending, startTransition] = useTransition();
 
@@ -30,40 +31,44 @@ export function ReviewActions(props: { requestId: string; revision: number; stat
 
   if (props.status === 'dead') {
     return (
-      <div className="flex min-w-96 gap-2">
-        <Input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder={t('reasonPlaceholder')}
-          maxLength={1000}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={pending}
-          onClick={() => run(() => retryDeadBillingRequest(base), t('retryQueued'))}
-        >
-          {t('retry')}
-        </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          disabled={pending}
-          onClick={() =>
-            run(
-              () =>
-                abandonDeadBillingRequest({
-                  requestId: props.requestId,
-                  expectedRevision: props.revision,
-                  reason,
-                }),
-              t('abandoned'),
-            )
-          }
-        >
-          {t('abandon')}
-        </Button>
-      </div>
+      <RowActions label={tc('actions')} contentClassName="w-80 p-3">
+        <div className="space-y-2">
+          <Input
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder={t('reasonPlaceholder')}
+            maxLength={1000}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => run(() => retryDeadBillingRequest(base), t('retryQueued'))}
+            >
+              {t('retry')}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={pending}
+              onClick={() =>
+                run(
+                  () =>
+                    abandonDeadBillingRequest({
+                      requestId: props.requestId,
+                      expectedRevision: props.revision,
+                      reason,
+                    }),
+                  t('abandoned'),
+                )
+              }
+            >
+              {t('abandon')}
+            </Button>
+          </div>
+        </div>
+      </RowActions>
     );
   }
 }

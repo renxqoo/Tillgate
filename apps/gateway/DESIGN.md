@@ -23,18 +23,18 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 ### 2.1 HTTP 面（v1 逐路径等价）
 
-| 路径 | 形态 | 说明 |
-| --- | --- | --- |
-| `POST /v1/chat/completions` | chat，body.stream 分流 | SSE 透传字节流原样直传 |
-| `POST /v1/embeddings`、`/v1/completions`、`/v1/responses`、`/v1/messages` | codec 端点 | 入站解码到规范形、出站按线格式编码（含流式） |
-| `POST /v1/images/generations`、`/v1/audio/speech`、`/v1/rerank`、`/v1/moderations` | 模态 JSON 族 | 非流式，走同管线 |
-| `POST /v1/engines/:model/embeddings` | 别名 | OpenAI pre-1.0 SDK |
-| `POST /v1beta/models/:model:(generate\|streamGenerate)Content` | Gemini 原生 | 请求/响应/流式三向翻译 |
-| `POST /v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/translations` | multipart | MIME 白名单 + 单文件上界 |
-| `POST /v1/video/generations`、`/v1/music/generations`；`GET /v1/videos/:id`、`/v1/musics/:id` | 异步生成 | 提交恒 201；查询归属校验（他人/异类/不存在一律 404） |
-| `GET /v1/models`、`GET /v1/models/:model` | 目录 | OpenAI / Anthropic / Gemini 三协议形状；白名单过滤；404 不泄漏目录 |
-| `POST /oauth/token` | OAuth 2.0 client_credentials | form/JSON/Basic 三形态；签发 App-JWT |
-| `/healthz`、`/livez`、`/readyz` | 探针 | healthz/readyz 查 DB，readyz 另探 Redis；livez 纯 200 |
+| 路径                                                                                          | 形态                         | 说明                                                               |
+| --------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------ |
+| `POST /v1/chat/completions`                                                                   | chat，body.stream 分流       | SSE 透传字节流原样直传                                             |
+| `POST /v1/embeddings`、`/v1/completions`、`/v1/responses`、`/v1/messages`                     | codec 端点                   | 入站解码到规范形、出站按线格式编码（含流式）                       |
+| `POST /v1/images/generations`、`/v1/audio/speech`、`/v1/rerank`、`/v1/moderations`            | 模态 JSON 族                 | 非流式，走同管线                                                   |
+| `POST /v1/engines/:model/embeddings`                                                          | 别名                         | OpenAI pre-1.0 SDK                                                 |
+| `POST /v1beta/models/:model:(generate\|streamGenerate)Content`                                | Gemini 原生                  | 请求/响应/流式三向翻译                                             |
+| `POST /v1/images/edits`、`/v1/audio/transcriptions`、`/v1/audio/translations`                 | multipart                    | MIME 白名单 + 单文件上界                                           |
+| `POST /v1/video/generations`、`/v1/music/generations`；`GET /v1/videos/:id`、`/v1/musics/:id` | 异步生成                     | 提交恒 201；查询归属校验（他人/异类/不存在一律 404）               |
+| `GET /v1/models`、`GET /v1/models/:model`                                                     | 目录                         | OpenAI / Anthropic / Gemini 三协议形状；白名单过滤；404 不泄漏目录 |
+| `POST /oauth/token`                                                                           | OAuth 2.0 client_credentials | form/JSON/Basic 三形态；签发 App-JWT                               |
+| `/healthz`、`/livez`、`/readyz`                                                               | 探针                         | healthz/readyz 查 DB，readyz 另探 Redis；livez 纯 200              |
 
 ### 2.2 鉴权（双形态，v1 语义）
 
@@ -76,16 +76,16 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 **不处理**（归属）：
 
-| 不处理项 | 归属 |
-| --- | --- |
-| 候选循环 / 换渠 / 输出钳制 / 收据 / 渠道健康 | `@tokenlens/inference` |
-| 钱包预扣 / 结算状态机 / 渠道敞口 / 资金瀑布 | `@tokenlens/billing`（经 BillingPort 桥） |
-| 模型映射 / 渠道候选 / 费率卡系数读取 | `@tokenlens/control-plane` 只读目录（经 CatalogPort 桥） |
-| 上游协议执行 / 传输 / 重试 / 事件总线 | `@tokenlens/ai`（inference 内部持有；app 运行时不 import ai——§3.6） |
-| Key/App 凭证事实与鉴权读模型 | `@tokenlens/accounts` |
-| 请求日志/审计的持久化与查询 | `@tokenlens/observability` |
-| 生成任务轮询与结算落账 | worker 波（显式挂账，见 MIGRATION §5） |
-| 死凭据永久拉黑与告警 | control-plane/observability 后续波 |
+| 不处理项                                     | 归属                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------- |
+| 候选循环 / 换渠 / 输出钳制 / 收据 / 渠道健康 | `@tokenlens/inference`                                              |
+| 钱包预扣 / 结算状态机 / 渠道敞口 / 资金瀑布  | `@tokenlens/billing`（经 BillingPort 桥）                           |
+| 模型映射 / 渠道候选 / 费率卡系数读取         | `@tokenlens/control-plane` 只读目录（经 CatalogPort 桥）            |
+| 上游协议执行 / 传输 / 重试 / 事件总线        | `@tokenlens/ai`（inference 内部持有；app 运行时不 import ai——§3.6） |
+| Key/App 凭证事实与鉴权读模型                 | `@tokenlens/accounts`                                               |
+| 请求日志/审计的持久化与查询                  | `@tokenlens/observability`                                          |
+| 生成任务轮询与结算落账                       | worker 波（显式挂账，见 MIGRATION §5）                              |
+| 死凭据永久拉黑与告警                         | control-plane/observability 后续波                                  |
 
 ## 4. 并发与性能预算
 
@@ -116,7 +116,7 @@ apps/gateway/src/assembly.ts（唯一装配根）
 ```
 
 - **C-G1 CatalogPort 扩展（inference 小修）**：`findMapping(externalModel, pricing: { userId,
-  body })`——费率卡系数按用户解析、模态单位上界按请求体推导（v1 buildQuote 语义），目录快照
+body })`——费率卡系数按用户解析、模态单位上界按请求体推导（v1 buildQuote 语义），目录快照
   的 coefficient/unitPrice/unitUpperBound 因此是「请求时点已解析」值。resolveChannels 不带
   用户维度（渠道路由无用户语义）。同迁移单元修订 inference 文档附录。
 - **C-G2 报价解析住在装配桥**：gateway `adapters/catalog-port` 组合 control-plane 映射读 +

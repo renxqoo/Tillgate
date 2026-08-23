@@ -61,9 +61,7 @@ export const userSubscriptions = pgTable(
     /** 已用额度（元，原子扣减，同余额模式） */
     usedAmount: numeric('used_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 在途敞口（元）：所有未终结请求对套餐额度的预占之和，结算/释放时清。 */
-    reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 })
-      .notNull()
-      .default('0'),
+    reservedAmount: numeric('reserved_amount', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 席位/数量（共享额度池：总额度 = 档额度 × 席位）。默认 1。 */
     quantity: bigint('quantity', { mode: 'number' }).notNull().default(1),
     /** 组织订阅：org_id 非空 = 企业/团队订阅（user_id=owner）；NULL = 个人订阅。 */
@@ -90,7 +88,10 @@ export const userSubscriptions = pgTable(
     // 套餐额度「永不为负」硬不变量：已用 + 在途 ≤ 额度，且二者非负。
     check('user_subscriptions_used_nonnegative_ck', sql`${t.usedAmount} >= 0`),
     check('user_subscriptions_reserved_nonnegative_ck', sql`${t.reservedAmount} >= 0`),
-    check('user_subscriptions_within_quota_ck', sql`${t.usedAmount} + ${t.reservedAmount} <= ${t.quotaAmount}`),
+    check(
+      'user_subscriptions_within_quota_ck',
+      sql`${t.usedAmount} + ${t.reservedAmount} <= ${t.quotaAmount}`,
+    ),
     check('user_subscriptions_quantity_positive_ck', sql`${t.quantity} >= 1`),
     check('user_subscriptions_price_nonnegative_ck', sql`${t.price} >= 0`),
   ],

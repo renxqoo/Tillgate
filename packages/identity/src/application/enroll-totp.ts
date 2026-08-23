@@ -11,7 +11,7 @@ import { assertUserId } from '../domain/identifier.js';
 import { base32Encode } from '../domain/totp.js';
 import type { SecretCipher } from '../ports/secret-cipher.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export interface EnrollTotpResult {
   /** base32 明文密钥(仅本次返回,消费方渲染二维码) */
@@ -45,18 +45,18 @@ export async function enrollTotp(
       if (outcome.status === 'already_confirmed') {
         throw identityErrors.business('totp_already_enrolled', { userId });
       }
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: `user:${userId}`,
+          action: 'mfa.enroll',
+          targetType: 'user',
+          targetId: userId,
+        }),
+      );
     },
     ctx.txRetry,
-  );
-
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: `user:${userId}`,
-      action: 'mfa.enroll',
-      targetType: 'user',
-      targetId: userId,
-    }),
   );
   const label =
     typeof input.label === 'string' && input.label.trim().length > 0

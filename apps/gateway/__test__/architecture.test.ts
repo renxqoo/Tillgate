@@ -26,7 +26,8 @@ const files = walk(SRC);
 const sourceOf = (f: string) => readFileSync(join(SRC, f), 'utf-8');
 const assemblyFace = new Set(['assembly.ts', 'config.ts', 'index.ts']);
 const isAdapter = (f: string) => f.startsWith('adapters/');
-const stripComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const stripComments = (s: string) =>
+  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 describe('src 文件集合快照', () => {
   it('目录结构即契约（新增/删除文件必须显式更新本快照）', () => {
@@ -34,6 +35,7 @@ describe('src 文件集合快照', () => {
       'adapters/billing-port.ts',
       'adapters/catalog-port.ts',
       'adapters/settle-wake.ts',
+      'adapters/trace-port.ts',
       'app.ts',
       'assembly.ts',
       'config.ts',
@@ -95,10 +97,7 @@ describe('跨包 import 只走包名（§5.5）', () => {
       const specs = [...sourceOf(f).matchAll(/from '([^']+)'/g)].map((m) => m[1]!);
       for (const spec of specs) {
         if (!spec.startsWith('@tokenlens/')) continue;
-        expect(
-          /^@tokenlens\/[a-z-]+(\/composition)?$/.test(spec),
-          `${f} → ${spec}`,
-        ).toBe(true);
+        expect(/^@tokenlens\/[a-z-]+(\/composition)?$/.test(spec), `${f} → ${spec}`).toBe(true);
       }
     }
   });

@@ -8,7 +8,7 @@ import { identityErrors } from '../domain/errors.js';
 import { normalizeIdentifier, type Identifier } from '../domain/identifier.js';
 import { verifyPassword } from '../domain/password.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { recordAudit } from './context.js';
 
 export interface AuthenticatePasswordInput {
   readonly identifier: Identifier;
@@ -26,7 +26,7 @@ export async function authenticatePassword(
     row?.passwordHash ?? null,
   );
   if (!row || !ok) {
-    await emitAudit(
+    await recordAudit(
       ctx,
       auditEvent(ctx.clock.now(), {
         actor: 'anonymous',
@@ -38,7 +38,7 @@ export async function authenticatePassword(
     );
     throw identityErrors.business('invalid_credentials', { kind: identifier.kind });
   }
-  await emitAudit(
+  await recordAudit(
     ctx,
     auditEvent(ctx.clock.now(), {
       actor: `user:${row.userId}`,

@@ -5,11 +5,19 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ProviderRecord } from '../src/ports/provider-store';
-import { createMemoryDb, createMemoryChannelStore, createMemoryModelStore, createMemoryRateCardStore, type MemoryModelRow } from './memory';
+import {
+  createMemoryDb,
+  createMemoryChannelStore,
+  createMemoryModelStore,
+  createMemoryRateCardStore,
+  type MemoryModelRow,
+} from './memory';
 
 const db = createMemoryDb();
 
-const seedModel = (over: Partial<MemoryModelRow> & { id: number; externalName: string }): MemoryModelRow => ({
+const seedModel = (
+  over: Partial<MemoryModelRow> & { id: number; externalName: string },
+): MemoryModelRow => ({
   realModel: `real-${over.externalName}`,
   contextLength: null,
   status: 0,
@@ -35,7 +43,12 @@ const seedModel = (over: Partial<MemoryModelRow> & { id: number; externalName: s
 describe('ModelStore 热路径读（G1）', () => {
   it('findActiveByExternalName：在架命中返回快照原料列；下架/未知返回 null', async () => {
     const { store } = createMemoryModelStore([
-      seedModel({ id: 1, externalName: 'gpt-x', fallbackModels: ['gpt-y'], pricingGroup: 'openai' }),
+      seedModel({
+        id: 1,
+        externalName: 'gpt-x',
+        fallbackModels: ['gpt-y'],
+        pricingGroup: 'openai',
+      }),
       seedModel({ id: 2, externalName: 'gone', status: 1 }),
     ]);
     const hit = await store.findActiveByExternalName(db, 'gpt-x');
@@ -79,10 +92,26 @@ describe('RateCardStore.findActiveCardByUser（G1）', () => {
   it('未绑卡 → null；绑卡返回卡面 + 三层系数行全集（含停用卡如实返回）', async () => {
     const h = createMemoryRateCardStore();
     // 建卡（insertWithGlobal 建 global 行）；补 model/group 覆写行并绑用户
-    const card = await h.store.insertWithGlobal(db, { name: 'vip', description: null, coefficient: '0.8' });
+    const card = await h.store.insertWithGlobal(db, {
+      name: 'vip',
+      description: null,
+      coefficient: '0.8',
+    });
     h.coefficients.push(
-      { rateCardId: card.id, scope: 'model', modelMappingId: 7, groupKey: null, coefficient: '0.5' },
-      { rateCardId: card.id, scope: 'group', modelMappingId: null, groupKey: 'openai', coefficient: '0.9' },
+      {
+        rateCardId: card.id,
+        scope: 'model',
+        modelMappingId: 7,
+        groupKey: null,
+        coefficient: '0.5',
+      },
+      {
+        rateCardId: card.id,
+        scope: 'group',
+        modelMappingId: null,
+        groupKey: 'openai',
+        coefficient: '0.9',
+      },
     );
     h.boundUsers.set(42, card.id);
     const ctx = await h.store.findActiveCardByUser(db, 42);
@@ -111,14 +140,40 @@ describe('ChannelStore.findRouteCandidates（G1）', () => {
       (id) => (id === 1 ? 'upstream-a' : 'other'),
       [
         {
-          id: 11, providerId: 1, name: 'ch-1', apiKeyEnc: 'enc:v1:x', baseUrlOverride: null,
-          models: null, weight: 3, priority: 2, status: 0, failCount: 0, cooldownUntil: null,
-          rpmLimit: 60, tpmLimit: 1000, upstreamBudget: '100', upstreamReserved: '0', upstreamThreshold: null,
+          id: 11,
+          providerId: 1,
+          name: 'ch-1',
+          apiKeyEnc: 'enc:v1:x',
+          baseUrlOverride: null,
+          models: null,
+          weight: 3,
+          priority: 2,
+          status: 0,
+          failCount: 0,
+          cooldownUntil: null,
+          rpmLimit: 60,
+          tpmLimit: 1000,
+          upstreamBudget: '100',
+          upstreamReserved: '0',
+          upstreamThreshold: null,
         },
         {
-          id: 12, providerId: 1, name: 'ch-disabled', apiKeyEnc: 'enc:v1:y', baseUrlOverride: 'https://ov.example',
-          models: null, weight: 1, priority: 1, status: 1, failCount: 9, cooldownUntil: null,
-          rpmLimit: null, tpmLimit: null, upstreamBudget: '0', upstreamReserved: '0', upstreamThreshold: null,
+          id: 12,
+          providerId: 1,
+          name: 'ch-disabled',
+          apiKeyEnc: 'enc:v1:y',
+          baseUrlOverride: 'https://ov.example',
+          models: null,
+          weight: 1,
+          priority: 1,
+          status: 1,
+          failCount: 9,
+          cooldownUntil: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          upstreamBudget: '0',
+          upstreamReserved: '0',
+          upstreamThreshold: null,
         },
       ],
       new Map(),

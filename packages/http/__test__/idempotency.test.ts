@@ -44,7 +44,9 @@ describe('operationId 客户键边界（T1）', () => {
       headers: { 'idempotency-key': 'K'.repeat(200) },
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { context: { length: number } } }).error.context.length).toBe(200);
+    expect(
+      ((await res.json()) as { error: { context: { length: number } } }).error.context.length,
+    ).toBe(200);
   });
 
   it('非法字符（空格/引号/中文）→ 400；缺失 → 服务端生成 UUID', async () => {

@@ -87,6 +87,14 @@
 
 ## 3. 拆分决策（§9.1 步骤 4；每条引用审计证据）
 
+### 3.x 家族聚合裁决（铁律 5:>150 行文件的显式登记）
+
+| 文件                                         | 行数    | 动词族                                 | 裁决                                                                                                                                                                       |
+| -------------------------------------------- | ------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `application/subscriptions/subscriptions.ts` | ~491    | purchase/renew/change/cancel/grantPack | 单一聚合：五动词共享 `purchaseOrRenew/chargeCash/assertPlanPurchasable` 私有内核，拆文件会复制内核或新增转发层；拆分触发条件 = 任一动词出现独立演化（如 proration 独立域） |
+| `application/payments/payments.ts`           | ~265    | createOrder/notify/recover/close/list  | 单一聚合：共享订单状态机守卫与幂等锚；拆分触发条件 = 新支付 provider 族进入（wire/paypal）                                                                                 |
+| `adapters/postgres/*` 各 store 聚合          | 180-383 | —                                      | Postgres repository adapter 为铁律 5 明示例外（closeout 1db6e52 已按聚合拆分过）                                                                                           |
+
 1. **domain 零 I/O**：wallet 引擎的「schema+动词一体」形态不保留——定律（posting/
    exposure/authorization/词表）进 domain，SQL 全部进 `adapters/postgres`（总纲 §5.1；
    证据 D3/D4/D6：一体形态在旧仓直接导致了 service 平行复刻）。
@@ -141,11 +149,88 @@ U0–U5 全部核销后：旧仓对应模块整包删除清单开 issue（铁律
 1. **旧仓整包删除**（铁律 8 大体量删除开 issue 等维护者确认）：`packages/{wallet,
 ledger-core,domain,service,repository}` 资金部分、空目录 `packages/money/`、
    `apps/client-api` 的 payments/redeem 服务与 domain/{topup,epay,stripe}。
-2. **apps 接线**（P5 波）：gateway/client-api/admin-api/worker 切换到本包 facade；
-   worker 对账从 `@ai-gateway/wallet/maintenance` 切到 `settlement.verifyInvariants`；
-   resolver/accountContext 桥接在 app assembly 完成。
+2. ~~**apps 接线**（P5 波）~~——**已兑现**（gateway/client-api/admin-api/worker 四 app
+   全部装配本包 facade；worker 对账走 `settlement.verifyInvariants` + 差异写表用例；
+   resolver/accountContext 桥接在各 app assembly 完成）。
 3. **B5/B10 待审计项**：gateway 重试层对照后回写 §1.2/§1.3。
-4. **订阅/支付真实 PG 竞态**：唯一索引/行锁/凭证改绑 SQL 已实现并经结算真实套件的
-   同库验证；订阅与支付专属竞态用例随 apps 迁移波补齐（U4/U5 记录在案）。
+4. ~~**订阅/支付真实 PG 竞态**~~——**已兑现**（apps 迁移波补齐，U4/U5 记录核销；
+   2026-08-23）：新增 `__test__/subscription-races.real.test.ts`（3 用例：并发
+   purchase 同用户 → 部分唯一索引单赢家、败者事务整体回滚无半订阅/半扣款；并发
+   renew+change 同一订阅 → 行锁串行化后到者按终态拒绝、余额守恒；凭证改绑并发 →
+   恰一成功且 key 恰落在赢家新订阅）与 `__test__/payment-races.real.test.ts`
+   （2 用例：并发同单回调两次 → 恰一入账+重放幂等、wallet 流水恰一笔；并发回调 vs
+   手动 closeOrder → 状态机 CAS 单赢家、已付款单经复活收尾不搁浅）。装置抽取
+   `real-pg.ts setupRealFullSchema`（settlement 同款全链迁移+42P01 容错）；断言口径
+   = Decimal 精确金额 + assertLedgerCoherent 账本守卫 + Promise.allSettled 恰一成
+   恰一败。真库结果：两套件 5/5 全绿（连跑 5 次稳定），test:real 全量 24/24；
+   未暴露既有缺陷。默认门禁不回归（294/294；tsc 0 错；oxlint 0-0）。
 5. **P3 迁移链收口**：db 链空库升级存在跨链缺表（identity-core provision——真实套件
    以 42P01 容错应用并记录）；归 P3 波收口。
+
+## 7. U6：管理读侧面四接缝（admin-api P1 波；2026-08-23）
+
+施工单元与行为规格见 [MIGRATION-U6.md](./MIGRATION-U6.md)。端口/用例/facade 组全部为
+**加法变更**（零既有动词改动）：
+
+- `ports/billing-store.ts`：+plans 目录 CRUD/列表、+listAdminSubscriptions（SQL join 物理层）、
+  +死信复审四原语（listDeadCases/countDead/casReviewRetryDead/casReviewAbandonDead）。
+- `ports/payment-ports.ts`：RedeemCodeStore +批次管理读/CAS 原语
+  （insertBatchWithCodes 已存在——U5 预置）。
+- `application/plans/`（list/create/update/remove 四文件，kind×周期一致性 + 删除守卫）、
+  `application/subscriptions/admin-list-subscriptions.ts`、
+  `application/redeem-batches/`（create/list/detail/list-codes/revoke 五文件）、
+  `application/settlement/review/`（list-dead/retry-dead/abandon-dead 三文件 + 共享命令守卫）。
+- facade：`Billing.plans` 组、`SubscriptionsApi.adminList`、`SettlementApi.review` 组、
+  root 出口 `createRedeemBatchApi`（明文码生成器注入——本包不 import http）。
+- 错误目录增补：`invalid_period_days`/`plan_in_use`/`redeem_batch_not_found`/
+  `redeem_code_not_found`/`invalid_review_command`（state_conflict 复用既有）。
+- 审计口径：plans/redeem 后置审计归 app 装配层；死信复核同事务审计经注入 port
+  （缺省丢弃——测试缝；装配桥 = observability writeAudit，apps G1 同口径）。
+
+U6 门禁（2026-08-23）：typecheck 0 错；oxlint 0-0；vitest 280/280（含 U6 新增 plans 5/
+redemption-batches 4/settlement-review 4）；覆盖率 stmts 93.44 / branches 85.18 /
+funcs 96.28 / lines 95.39（≥90/85）。附修既有 `redemption-claim.real.test.ts` 提交期
+类型破损（裸 db → WalletConn 适配,断言语义零改动）。
+
+U6 提交状态：**代码完成、门禁全绿**；曾因并行 worker 波（U7）碰撞提交挂起——2026-08-23
+更新：U7 已落地（[MIGRATION-U7.md](./MIGRATION-U7.md) 在案、apps/worker MIGRATION 已
+核销），碰撞解除，仅剩 git 提交动作（工作区多波改动整体待提交，铁律 15 逐文件点名）。
+
+## 9. U8：返利流水管理读侧（admin-api P3 波；2026-08-23）
+
+accounts G3 裁决落位（「payouts 归 billing 波次」兑现）——v1 `marketing.repo listPayouts`
+迁入本包，全部为**加法变更**：
+
+- `ports/wallet-store.ts`：+`ReferralPayoutKind` 词表（wire 面）+ `ReferralPayoutRow`
+  行投影 + `listReferralPayouts`（交易级 id 倒序分页 + total）。
+- `adapters/postgres/wallet-store.ts`：三类同视图（佣金/注册奖励同 refType='referral'
+  以 refId 前缀区分、赠送走 refType='gift'+'signup:'——前缀单一真相 = accounts
+  domain/referral + 本包 referral-commission）；内存版同投影。
+- `application/wallet/referral-payouts.ts` + WalletApi `referralPayouts` 动词。
+- 测试：`__test__/referral-payouts.test.ts`（三类投影封闭/干扰前缀零误收/id 倒序/
+  分页越界/total 恒全量）。
+
+U8 门禁（2026-08-23）：typecheck 0 错；oxlint 0-0（附修 U7 落地后
+`subscriptions.ts` 501 行超限 1 行——头部注释去空行，语义零改动）；vitest 283/283
+（含 U8 新增 3 用例）。行为规格 = v1 marketing.repo listPayouts（MIGRATION §1 留档）。
+
+## 10. U9：支付订单管理面（admin-api P4 波；2026-08-23）
+
+v1 `payment-order.repo listAdminOrders/closeOrder` + `ops-logs.service
+paymentOrders/closePaymentOrder` 迁入,全部为**加法变更**:
+
+- `ports/payment-ports.ts`：+`PAYMENT_ORDER_SORT_FIELDS` 词表（wire 单一真相）+
+  `AdminPaymentOrderRow` 行投影 + `listAdminOrders`（q 双锚:订单 uuid 精确或用户
+  显示名精确;无 userId 强制——管理面）+ `closeOrder`（CAS 0→4 + failureReason 留痕）。
+- `adapters/postgres/payment-stores.ts`：两原语 SQL 逐语义平移（排序 id desc 稳定序;
+  close 单语句 CAS,updatedAt=库端时钟——v1 用应用时钟 new Date(),库端时钟更稳）。
+- `application/payments/payment-admin.ts`：`createPaymentAdminApi`（渠道凭证零依赖,
+  与 createPaymentsApi 分立）;close 0 行命中 → `order_state_conflict`（409——v1
+  conflict 语义;重复关单/已付/已入账/不存在一律拒绝,幂等语义逐条保留）。
+- 内存替身同步（displayName 注入源 + closeOrder）;根出口 +4 导出。
+- 测试：`__test__/payment-admin.test.ts` 6 用例（q 双锚/排序/分页/total/close 留痕与
+  幂等拒绝）;附 `payments-edge.test.ts` 4 用例 + `billing-funding.test.ts` 1 用例
+  （铁律 16 补测试拉回分支阈值——U7 后基线曾 83.46% < 85%,非本波引入）。
+
+门禁（2026-08-23）：typecheck 0 错;oxlint 0-0;vitest 294/294;覆盖率 stmts 93.72 /
+branches 85.04 / funcs 96.75 / lines 95.61（≥90/85/90/90）。

@@ -15,11 +15,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Table,
   TableBody,
   TableCell,
@@ -27,19 +30,28 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  cn,
 } from '@tokenlens/ui';
 import { NumberField } from '@/components/number-field';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, type ReactElement } from 'react';
 
 import {
+  CoinsIcon,
   CpuIcon,
+  FilmIcon,
   FlaskConicalIcon,
+  HashIcon,
+  ImageIcon,
   Loader2Icon,
   NetworkIcon,
   PencilIcon,
   PlusCircleIcon,
   Trash2Icon,
   RotateCcwIcon,
+  TypeIcon,
 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -65,20 +77,20 @@ import { ConfirmAction } from '@/components/confirm-action';
 const PRICING_UNITS = ['token', 'request', 'image', 'second', 'char'] as const;
 type PricingUnit = (typeof PRICING_UNITS)[number];
 
-/** 计价方式选项的 label 走目录（models 命名空间），渲染处按 locale 解析 */
+/** 计价方式卡片（直接点选，不走下拉）：name=卡片标题，desc=卡片说明，文案走 models 目录 */
 function pricingUnitOptions(
   t: ReturnType<typeof useTranslations<'models'>>,
-): ReadonlyArray<{ value: PricingUnit; label: string }> {
+): ReadonlyArray<{ value: PricingUnit; name: string; desc: string; icon: typeof CoinsIcon }> {
   return [
-    { value: 'token', label: t('unitToken') },
-    { value: 'image', label: t('unitImage') },
-    { value: 'second', label: t('unitSecond') },
-    { value: 'char', label: t('unitChar') },
-    { value: 'request', label: t('unitRequest') },
+    { value: 'token', name: t('unitTokenName'), desc: t('unitTokenDesc'), icon: CoinsIcon },
+    { value: 'image', name: t('unitImageName'), desc: t('unitImageDesc'), icon: ImageIcon },
+    { value: 'second', name: t('unitSecondName'), desc: t('unitSecondDesc'), icon: FilmIcon },
+    { value: 'char', name: t('unitCharName'), desc: t('unitCharDesc'), icon: TypeIcon },
+    { value: 'request', name: t('unitRequestName'), desc: t('unitRequestDesc'), icon: HashIcon },
   ];
 }
 
-/** 差价档位（勾选制）：label=界面档位名，value=预填参数值（需与请求参数完全一致，可改） */
+/** 差价档位（勾选制）：label=界面档位名，value=固定参数值（与请求参数完全一致，不可改，杜绝手输错值） */
 const TIER_PRESETS: Partial<Record<PricingUnit, ReadonlyArray<{ label: string; value: string }>>> =
   {
     image: [
@@ -91,6 +103,22 @@ const TIER_PRESETS: Partial<Record<PricingUnit, ReadonlyArray<{ label: string; v
       { label: '1080p', value: '1080p' },
     ],
   };
+
+/** 取价参数名候选（按计价方式给出常用请求体字段，直接选择而非手输；支持 "size:quality" 组合键） */
+const SELECTOR_OPTIONS: Partial<Record<PricingUnit, ReadonlyArray<string>>> = {
+  image: ['size', 'quality', 'size:quality', 'model'],
+  second: ['resolution', 'quality', 'model'],
+  char: ['model', 'voice'],
+  request: ['model'],
+};
+
+/** 各计价方式默认取价参数名（切换计价方式时重置；编辑回显优先用存量值） */
+const DEFAULT_SELECTOR: Partial<Record<PricingUnit, string>> = {
+  image: 'size',
+  second: 'resolution',
+  char: 'model',
+  request: 'model',
+};
 
 type TierRow = {
   /** 档位名（预设档位显示用；自定义档位 = 参数值本身） */
@@ -119,6 +147,23 @@ function buildTiers(
     if (!known.has(key)) rows.push({ label: key, value: key, price, on: true, custom: true });
   }
   return rows;
+}
+
+/** 列表用：billingConfig 档位价升序（无 / token 计价 → 空数组） */
+function tierPricesOf(
+  model: Pick<AdminModelRow, 'pricingUnit' | 'billingConfig'>,
+): Array<{ value: string; price: string }> {
+  const prices = model.billingConfig?.params?.prices;
+  if (!prices || !model.pricingUnit || model.pricingUnit === 'token') return [];
+  return Object.entries(prices)
+    .map(([value, price]) => ({ value, price: String(price) }))
+    .toSorted((a, b) => Number(a.price) - Number(b.price));
+}
+
+/** 档位展示名：预设参数值归位到档位名（1024*1024 → 1K），其余显示原值 */
+function tierLabelFor(unit: string, value: string): string {
+  const preset = (TIER_PRESETS[unit as PricingUnit] ?? []).find((p) => p.value === value);
+  return preset?.label ?? value;
 }
 
 /** 金额格式（与 moneyText 同口径）——分支校验挂到具体字段用 */
@@ -261,7 +306,7 @@ export function ModelsTable({
           <TableHead>{t('fallbackModels')}</TableHead>
           <TableHead className="w-44">{tc('status')}</TableHead>
           <TableHead className="text-right">{t('context')}</TableHead>
-          <TableHead className="w-32 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -279,6 +324,64 @@ export function ModelsTable({
   );
 }
 
+/**
+ * 列表「输出价」列（单位计价）：有差价档位时显示最低价（起），
+ * hover 悬浮展示全部档位价（预设档位名 + 参数值）与统一单价回落。
+ */
+function UnitPriceCell({ model, locale }: { model: AdminModelRow; locale: 'en' | 'zh' }) {
+  const t = useTranslations('models');
+  const unit = model.pricingUnit ?? 'request';
+  const word = unitWord(unit, locale);
+  const tiers = tierPricesOf(model);
+  const flat = model.unitPrice ?? '';
+  // 展示最低价：档位价与统一单价一起取最小（未命中档位的请求按统一单价计费）
+  const candidates = [...tiers.map((x) => x.price), ...(flat !== '' ? [flat] : [])];
+  const min = candidates.reduce<string | null>(
+    (acc, p) => (acc === null || Number(p) < Number(acc) ? p : acc),
+    null,
+  );
+  if (min === null) return <span>¥0/{word}</span>;
+  if (candidates.length < 2) return <span>¥{fmtPrice(min)}/{word}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="cursor-help underline decoration-dotted underline-offset-4">
+            {t('listFromPrice', { min: fmtPrice(min), unit: word })}
+          </span>
+        }
+      />
+      <TooltipContent side="top" className="flex-col items-stretch gap-1 px-3 py-2 text-left">
+        <p className="font-medium">{t('tiersTitle')}</p>
+        {model.billingConfig?.params?.selector ? (
+          <p className="opacity-70">
+            {t('listSelectorLine', { selector: model.billingConfig.params.selector })}
+          </p>
+        ) : null}
+        {tiers.map((tr) => {
+          const label = tierLabelFor(unit, tr.value);
+          return (
+            <div key={tr.value} className="flex justify-between gap-6">
+              <span>{label === tr.value ? tr.value : `${label} · ${tr.value}`}</span>
+              <span>
+                ¥{fmtPrice(tr.price)}/{word}
+              </span>
+            </div>
+          );
+        })}
+        {flat !== '' ? (
+          <div className="flex justify-between gap-6 border-t border-background/20 pt-1 opacity-70">
+            <span>{t('tierFlatHint')}</span>
+            <span>
+              ¥{fmtPrice(flat)}/{word}
+            </span>
+          </div>
+        ) : null}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ModelRowItem({
   model,
   channels,
@@ -289,6 +392,7 @@ function ModelRowItem({
   const t = useTranslations('models');
   const tc = useTranslations('common');
   const locale = useLocale() as 'en' | 'zh';
+  const [dialog, setDialog] = useState<'bind' | 'edit' | 'test' | null>(null);
   return (
     <TableRow>
       <TableCell>
@@ -305,9 +409,7 @@ function ModelRowItem({
       </TableCell>
       <TableCell className="text-right tabular-nums">
         {model.pricingUnit && model.pricingUnit !== 'token' ? (
-          <span>
-            ¥{fmtPrice(model.unitPrice ?? '0')}/{unitWord(model.pricingUnit, locale)}
-          </span>
+          <UnitPriceCell model={model} locale={locale} />
         ) : (
           <span>¥{fmtPrice(model.outputPrice)}/M</span>
         )}
@@ -330,11 +432,18 @@ function ModelRowItem({
         )}
       </TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          <BindChannelsDialog model={model} channels={channels} />
-          <EditModelDialog model={model} />
-          <TestModelDialog model={model} />
+      <TableCell className="w-16 text-center">
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem onClick={() => setDialog('bind')}>
+            <NetworkIcon /> {t('bindChannels')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setDialog('edit')}>
+            <PencilIcon /> {tc('edit')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setDialog('test')}>
+            <FlaskConicalIcon /> {t('test')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {model.status === 0 ? (
             <ConfirmAction
               confirm={t('delistConfirm', { name: model.externalName })}
@@ -344,16 +453,10 @@ function ModelRowItem({
               success={t('delistSuccess')}
             >
               {({ pending, onClick }) => (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={onClick}
-                  className="text-destructive hover:text-destructive"
-                  title={t('delist')}
-                >
+                <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
                   {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-                </Button>
+                  {t('delist')}
+                </DropdownMenuItem>
               )}
             </ConfirmAction>
           ) : (
@@ -365,23 +468,37 @@ function ModelRowItem({
               success={t('restoreSuccess')}
             >
               {({ pending, onClick }) => (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={pending}
-                  onClick={onClick}
-                  title={t('restore')}
-                >
+                <DropdownMenuItem disabled={pending} onClick={onClick}>
                   {pending ? (
                     <Loader2Icon className="animate-spin" />
                   ) : (
                     <RotateCcwIcon className="size-4" />
                   )}
-                </Button>
+                  {t('restore')}
+                </DropdownMenuItem>
               )}
             </ConfirmAction>
           )}
-        </div>
+        </RowActions>
+        <BindChannelsDialog
+          model={model}
+          channels={channels}
+          trigger={null}
+          open={dialog === 'bind'}
+          onOpenChange={(open) => !open && setDialog(null)}
+        />
+        <EditModelDialog
+          model={model}
+          trigger={null}
+          open={dialog === 'edit'}
+          onOpenChange={(open) => !open && setDialog(null)}
+        />
+        <TestModelDialog
+          model={model}
+          trigger={null}
+          open={dialog === 'test'}
+          onOpenChange={(open) => !open && setDialog(null)}
+        />
       </TableCell>
     </TableRow>
   );
@@ -455,7 +572,7 @@ export function CreateModelDialog() {
           </Button>
         }
       />
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden">
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CpuIcon /> {t('create')}
@@ -483,12 +600,23 @@ type WithBillingConfig<V> = V & {
   };
 };
 
-function EditModelDialog({ model }: { model: AdminModelRow }) {
+function EditModelDialog({
+  model,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  model: AdminModelRow;
+  trigger?: ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const t = useTranslations('models');
   const tc = useTranslations('common');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const [pending, startTransition] = useTransition();
   const editSchema = buildEditSchema(t, tc);
   type FormValues = z.input<typeof editSchema>;
@@ -547,20 +675,31 @@ function EditModelDialog({ model }: { model: AdminModelRow }) {
         status: Number(values.status),
       });
       if (!notify(res, tc('saveFailed'), tc('saved'))) return;
-      setOpen(false);
+      setInternalOpen(false);
+      onOpenChange?.(false);
     });
   }
 
+  function handleOpenChange(next: boolean) {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={tc('edit')}>
-            <PencilIcon />
-          </Button>
-        }
-      />
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="ghost" title={tc('edit')}>
+                <PencilIcon />
+                {tc('edit')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PencilIcon /> {t('editTitle', { name: model.externalName })}
@@ -609,10 +748,14 @@ function ModelForm({
   const pricingUnit: string = useWatch({ control: form.control, name: 'pricingUnit' }) ?? '';
   const chosen = pricingUnit !== '';
   const unitMode = chosen && pricingUnit !== 'token';
-  // 差价档位编辑器（variant 策略）：直接勾选预设档位（1K/2K/720p…）出价格框；selector=取价参数名。
-  // 切换计价方式时档位按新单位重建（已填价格不跨单位保留）。
+  // 差价档位编辑器（variant 策略）：直接勾选预设档位（1K/2K/720p…）只填单价，参数值固定不可改；selector=取价参数名（下拉直选）。
+  // 切换计价方式时档位按新单位重建（已填价格不跨单位保留），selector 重置为新单位默认值。
   const initialConfig = initialBillingConfig;
-  const [selector, setSelector] = useState<string>(initialConfig?.params?.selector ?? 'size');
+  const [selector, setSelector] = useState<string>(
+    initialConfig?.params?.selector ??
+      DEFAULT_SELECTOR[form.getValues('pricingUnit') as PricingUnit] ??
+      'model',
+  );
   const [tiers, setTiers] = useState<TierRow[]>(() =>
     buildTiers(form.getValues('pricingUnit') ?? '', initialConfig),
   );
@@ -637,7 +780,8 @@ function ModelForm({
                 billingConfig: {
                   strategy: 'variant',
                   params: {
-                    selector: selector.trim() || 'size',
+                    selector:
+                      selector.trim() || DEFAULT_SELECTOR[pricingUnit as PricingUnit] || 'model',
                     prices: Object.fromEntries(
                       active.map((tr) => [tr.value.trim(), tr.price.trim()]),
                     ),
@@ -686,40 +830,53 @@ function ModelForm({
             )}
           />
         </div>
-        {/* 计价方式：决定下方出现哪些价格输入（未选择时价格区整体隐藏）；切换时差价档位按新单位重建 */}
+        {/* 计价方式：卡片直选（决定下方出现哪些价格输入）；切换时差价档位按新单位重建、selector 重置为新单位默认值 */}
         <Controller
           control={form.control}
           name="pricingUnit"
           render={({ field, fieldState }) => (
             <Field data-invalid={fieldState.invalid}>
-              <FieldLabel htmlFor="m-unit">{t('pricingMethod')}</FieldLabel>
-              <select
-                id="m-unit"
-                value={field.value}
-                onChange={(e) => {
-                  field.onChange(e);
-                  setTiers(buildTiers(e.target.value, undefined));
-                }}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+              <FieldLabel>{t('pricingMethod')}</FieldLabel>
+              <div
+                role="radiogroup"
+                aria-label={t('pricingMethod')}
+                className="grid grid-cols-2 gap-2 sm:grid-cols-3"
               >
-                <option value="" disabled>
-                  {t('selectUnitPrompt')}
-                </option>
-                {pricingUnitOptions(t).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
+                {pricingUnitOptions(t).map((o) => {
+                  const selected = field.value === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        if (selected) return;
+                        field.onChange(o.value);
+                        form.clearErrors('pricingUnit');
+                        setTiers(buildTiers(o.value, undefined));
+                        setSelector(DEFAULT_SELECTOR[o.value] ?? 'model');
+                      }}
+                      className={cn(
+                        'flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors',
+                        selected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-input hover:bg-muted/50',
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5 text-sm font-medium">
+                        <o.icon className="size-4 text-muted-foreground" />
+                        {o.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{o.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
             </Field>
           )}
         />
-        {!chosen ? (
-          <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-            {t('chooseUnitHint')}
-          </p>
-        ) : null}
         {pricingUnit === 'token' ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <NumberField
@@ -761,86 +918,117 @@ function ModelForm({
             step="0.0001"
           />
         ) : null}
-        {unitMode && tiers.length > 0 ? (
-          <div className="space-y-2 rounded-md border p-3">
-            <p className="text-sm font-medium">{t('tiersTitle')}</p>
-            <div className="grid gap-1">
+        {unitMode ? (
+          <div className="space-y-3 rounded-md border p-4">
+            <div>
+              <p className="text-sm font-medium">{t('tiersTitle')}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('tiersSubHint')}</p>
+            </div>
+            <div className="grid max-w-xs gap-1">
               <label className="text-xs text-muted-foreground" htmlFor="m-selector">
                 {t('selectorLabel')}
               </label>
-              <Input
+              {/* 常用取价参数直选；存量 selector 不在候选内时追加为选项，编辑回显不丢值 */}
+              <select
                 id="m-selector"
                 value={selector}
                 onChange={(e) => setSelector(e.target.value)}
-                placeholder="size"
-                className="h-8"
-              />
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {(() => {
+                  const base = [...(SELECTOR_OPTIONS[pricingUnit as PricingUnit] ?? ['model'])];
+                  if (selector && !base.includes(selector)) base.push(selector);
+                  return base.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ));
+                })()}
+              </select>
             </div>
-            {tiers.map((tier, i) => {
-              const patch = (next: Partial<TierRow>) =>
-                setTiers((cur) => cur.map((r, j) => (j === i ? { ...r, ...next } : r)));
-              return (
-                <div key={i} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2">
-                  {tier.custom ? (
-                    <>
-                      <span className="text-xs text-muted-foreground">{t('customTier')}</span>
-                      <Input
-                        value={tier.value}
-                        onChange={(e) => patch({ value: e.target.value, label: e.target.value })}
-                        placeholder={t('paramValuePlaceholder')}
-                        className="h-8"
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <label className="flex items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={tier.on}
-                          onCheckedChange={(v) => {
-                            patch({ on: v === true });
-                            form.clearErrors('root');
-                          }}
-                        />
-                        {tier.label}
-                      </label>
-                      {tier.on ? (
-                        <Input
-                          value={tier.value}
-                          onChange={(e) => patch({ value: e.target.value })}
-                          title={t('tierValueTitle')}
-                          className="h-8"
-                        />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">{tier.value}</span>
+            {tiers.length > 0 ? (
+              <div className="space-y-1.5">
+                {tiers.map((tier, i) => {
+                  const patch = (next: Partial<TierRow>) =>
+                    setTiers((cur) => cur.map((r, j) => (j === i ? { ...r, ...next } : r)));
+                  const rowOn = tier.custom || tier.on;
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        'flex items-center gap-3 rounded-md border p-2.5',
+                        rowOn ? 'border-primary/50 bg-primary/5' : 'border-input',
                       )}
-                    </>
-                  )}
-                  {tier.custom || tier.on ? (
-                    <Input
-                      value={tier.price}
-                      onChange={(e) => patch({ price: e.target.value })}
-                      placeholder={t('unitPricePlaceholder')}
-                      className="h-8"
-                      inputMode="decimal"
-                    />
-                  ) : (
-                    <span />
-                  )}
-                  {tier.custom ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setTiers((cur) => cur.filter((_, j) => j !== i))}
                     >
-                      {tc('remove')}
-                    </Button>
-                  ) : (
-                    <span />
-                  )}
-                </div>
-              );
-            })}
+                      {tier.custom ? (
+                        <>
+                          <span className="w-16 shrink-0 text-xs text-muted-foreground">
+                            {t('customTier')}
+                          </span>
+                          <Input
+                            value={tier.value}
+                            onChange={(e) =>
+                              patch({ value: e.target.value, label: e.target.value })
+                            }
+                            placeholder={t('paramValuePlaceholder')}
+                            className="h-8 max-w-44"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label className="flex w-24 shrink-0 items-center gap-2 text-sm font-medium">
+                            <Checkbox
+                              checked={tier.on}
+                              onCheckedChange={(v) => {
+                                patch({ on: v === true });
+                                form.clearErrors('root');
+                              }}
+                            />
+                            {tier.label}
+                          </label>
+                          {/* 档位参数值固定不可改：勾选即按该值单独定价，杜绝手输错值 */}
+                          <code
+                            title={t('tierValueTitle')}
+                            className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground"
+                          >
+                            {tier.value}
+                          </code>
+                        </>
+                      )}
+                      {rowOn ? (
+                        <div className="ml-auto flex shrink-0 items-center gap-2">
+                          <Input
+                            value={tier.price}
+                            onChange={(e) => patch({ price: e.target.value })}
+                            placeholder={t('unitPricePlaceholder')}
+                            className="h-8 w-36"
+                            inputMode="decimal"
+                          />
+                          <span className="w-14 text-xs text-muted-foreground">
+                            ¥/{unitWord(pricingUnit, locale)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {t('tierFlatHint')}
+                        </span>
+                      )}
+                      {tier.custom ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="px-2 text-destructive hover:text-destructive"
+                          onClick={() => setTiers((cur) => cur.filter((_, j) => j !== i))}
+                        >
+                          {tc('remove')}
+                        </Button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
             <Button
               type="button"
               size="sm"
@@ -979,14 +1167,21 @@ function ModelForm({
 function BindChannelsDialog({
   model,
   channels,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   model: AdminModelRow;
   channels: ReadonlyArray<ChannelOption>;
+  trigger?: ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('models');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<number[]>(model.channelIds ?? []);
 
@@ -1000,26 +1195,32 @@ function BindChannelsDialog({
       const res = await bindChannelsAction(model.id, selected);
       if (!notify(res, t('bindFailed'), t('channelsBound', { count: selected.length }))) return;
       setSelected([]);
-      setOpen(false);
+      setInternalOpen(false);
+      onOpenChange?.(false);
     });
   }
 
+  function handleOpenChange(next: boolean) {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+    // 每次打开回显当前已绑定渠道（取消后再打开也重置为最新绑定）
+    if (next) setSelected(model.channelIds ?? []);
+  }
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        // 每次打开回显当前已绑定渠道（取消后再打开也重置为最新绑定）
-        if (o) setSelected(model.channelIds ?? []);
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={t('bindChannels')}>
-            <NetworkIcon />
-          </Button>
-        }
-      />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="ghost" title={t('bindChannels')}>
+                <NetworkIcon />
+                {t('bindChannels')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1059,45 +1260,66 @@ function BindChannelsDialog({
 }
 
 /** 模型级测试：逐绑定渠道真实最小生成（"1" + max_tokens 1，厘级成本） */
-export function TestModelDialog({ model }: { model: AdminModelRow }) {
+export function TestModelDialog({
+  model,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  model: AdminModelRow;
+  trigger?: ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const t = useTranslations('models');
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
   const [results, setResults] = useState<ModelTestResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  function startTest() {
+    setResults(null);
+    setError(null);
+    startTransition(async () => {
+      const { testModelAction } = await import('@/server/models-actions');
+      const res = await testModelAction(model.id);
+      if (res.error) setError(res.error);
+      else setResults(res.results ?? []);
+    });
+  }
+
+  function handleOpenChange(next: boolean) {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+    if (next) {
+      if (controlledOpen === undefined) startTest();
+    } else {
+      setResults(null);
+      setError(null);
+    }
+  }
+
+  useEffect(() => {
+    if (controlledOpen) startTest();
+    // 受控菜单从关闭切到打开时执行一次真实测试；model.id 变化时也必须刷新结果。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledOpen, model.id]);
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setResults(null);
-          setError(null);
-        }
-      }}
-    >
-      <DialogTrigger
-        render={
-          <Button
-            size="sm"
-            variant="ghost"
-            title={t('testTitle')}
-            onClick={() => {
-              setResults(null);
-              setError(null);
-              startTransition(async () => {
-                const { testModelAction } = await import('@/server/models-actions');
-                const res = await testModelAction(model.id);
-                if (res.error) setError(res.error);
-                else setResults(res.results ?? []);
-              });
-            }}
-          >
-            <FlaskConicalIcon />
-          </Button>
-        }
-      />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="ghost" title={t('testTitle')}>
+                <FlaskConicalIcon />
+                {t('test')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent className="w-[32rem] max-w-[90vw]">
         <DialogHeader>
           <DialogTitle>{t('testDialogTitle', { name: model.externalName })}</DialogTitle>

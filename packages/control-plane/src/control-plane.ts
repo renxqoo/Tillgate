@@ -4,7 +4,7 @@
  * 返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK；分组用例按单元收敛。
  */
 import type { Db } from '@tokenlens/db';
-import type { AuditSink } from './ports/audit-sink';
+import type { AuditSink, AuditTxSink } from './ports/audit-sink';
 import type { CatalogCache } from './ports/cache';
 import type { CatalogSource } from './ports/catalog-source';
 import type { SecretCipher } from './ports/secret-cipher';
@@ -13,11 +13,16 @@ import type { VoucherStorage } from './ports/voucher-storage';
 import type { ProviderCapabilities } from './domain/provider/provider';
 import type { FxEnv } from './application/fx/fx-shared';
 import { createMemoryCatalogCache } from './ports/cache';
-import { createPostgresAuditSink, postgresAuditStore } from './adapters/postgres/audit';
+import {
+  createPostgresAuditSink,
+  postgresAuditStore,
+  postgresAuditTxSink,
+} from './adapters/postgres/audit';
 import { postgresChannelStore } from './adapters/postgres/channel-store';
 import { postgresFxStore } from './adapters/postgres/fx-store';
 import { postgresModelStore } from './adapters/postgres/model-store';
 import { postgresOperationsStore } from './adapters/postgres/operations-store';
+import { postgresAdminStore } from './adapters/postgres/admin-store';
 import { postgresProviderStore } from './adapters/postgres/provider-store';
 import { postgresRateCardStore } from './adapters/postgres/rate-card-store';
 import { createPostgresVoucherStorage } from './adapters/postgres/voucher-storage';
@@ -41,6 +46,11 @@ import {
 } from './application/channels/recharge-channel';
 import { adjustChannel, type AdjustChannelInput } from './application/channels/adjust-channel';
 import { listRecharges, type ListRechargesInput } from './application/channels/list-recharges';
+import { findAdmin } from './application/admins/find-admin';
+import { findAdminByEmail } from './application/admins/find-admin-by-email';
+import { touchLastLogin } from './application/admins/touch-last-login';
+import { setTwoFactorEnabled } from './application/admins/set-two-factor-enabled';
+import type { AdminRecord } from './ports/admin-store';
 import { createModel, type CreateModelInput } from './application/models/create-model';
 import { updateModel, type UpdateModelInput } from './application/models/update-model';
 import { retireModel, type RetireModelInput } from './application/models/retire-model';
@@ -113,8 +123,10 @@ export interface ControlPlaneEnv {
   readonly voucherMaxBytes: number;
   /** fx 拉取参数（源地址/TTL/超时/fetch 注入） */
   readonly fx: FxEnv;
-  /** 审计出口（缺省 postgres best-effort；observability 桥可覆盖） */
+  /** 审计出口（运营事件 best-effort；observability 桥可覆盖——降级清单见 ports/audit-sink.ts） */
   readonly audit?: AuditSink;
+  /** 资金/安全类审计（事务参与 port，§5.4/G3；缺省 postgres 同事务写入） */
+  readonly auditTx?: AuditTxSink;
   /** 凭证存储（缺省 postgres voucher_blobs；OSS 适配可覆盖） */
   readonly voucherStorage?: VoucherStorage;
   /** 目录缓存（缺省进程内存；共享缓存可覆盖） */
@@ -128,6 +140,7 @@ export interface ControlPlaneEnv {
     readonly fx?: import('./ports/fx-store').FxStore;
     readonly audit?: import('./ports/audit-store').AuditStore;
     readonly operations?: import('./ports/operations-store').OperationsStore;
+    readonly admin?: import('./ports/admin-store').AdminStore;
   };
 }
 
@@ -170,6 +183,8 @@ export interface ControlPlane {
       replayed: boolean;
     }>;
     listRecharges(input: ListRechargesInput): Promise<ListResult<RechargeRow>>;
+    /** 进货凭证回读（admin-api P5 消费;键校验在 storage——防路径穿越） */
+    loadVoucher(key: string): Promise<{ data: Uint8Array; mimeType: string } | null>;
   };
   readonly models: {
     create(input: CreateModelInput): Promise<ModelRecord>;
@@ -206,6 +221,8 @@ export interface ControlPlane {
       },
     ): Promise<ListResult<import('./ports/rate-card-store').RateCardUserRow>>;
     cardHealth(rateCardId: number): Promise<RateCardHealth>;
+    /** 卡全局兜底系数读（admin-api D6 set-password「缺则回填 1.000」消费） */
+    findGlobalCoefficient(rateCardId: number): Promise<string | null>;
   };
   readonly fx: {
     state(): Promise<FxState>;
@@ -220,10 +237,18 @@ export interface ControlPlane {
     priceHistory(input: { externalName: string }): Promise<CatalogPriceHistoryEntry[]>;
     import(input: ImportCatalogInput): Promise<ImportCatalogResult>;
   };
+  /** 管理员资料与授权策略（G2,admin realm）——密码/挑战在 identity,此处只持资料事实 */
+  readonly admins: {
+    find(id: number): Promise<AdminRecord | null>;
+    findByEmail(email: string): Promise<AdminRecord | null>;
+    touchLastLogin(adminId: number): Promise<void>;
+    setTwoFactorEnabled(input: { adminId: number; enabled: boolean }): Promise<void>;
+  };
 }
 
 export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
   const audit = env.audit ?? createPostgresAuditSink(env.db);
+  const auditTx = env.auditTx ?? postgresAuditTxSink;
   const voucherStorage = env.voucherStorage ?? createPostgresVoucherStorage(env.db);
   const cache = env.cache ?? createMemoryCatalogCache();
   const stores = {
@@ -234,7 +259,9 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     fx: env.stores?.fx ?? postgresFxStore,
     audit: env.stores?.audit ?? postgresAuditStore,
     operations: env.stores?.operations ?? postgresOperationsStore,
+    admin: env.stores?.admin ?? postgresAdminStore,
   } as const;
+  const adminsDeps = { db: env.db, store: stores.admin };
 
   const fxDeps: FxDeps = { db: env.db, stores: { fx: stores.fx }, audit, env: env.fx };
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
@@ -303,7 +330,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
             stores: { channel: stores.channel, operations: stores.operations },
             voucherStorage,
             voucherMaxBytes: env.voucherMaxBytes,
-            audit,
+            auditTx,
           },
           input,
         ),
@@ -312,12 +339,19 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
           {
             db: env.db,
             stores: { channel: stores.channel, operations: stores.operations },
-            audit,
+            auditTx,
           },
           input,
         ),
       listRecharges: (input) =>
         listRecharges({ db: env.db, stores: { channel: stores.channel } }, input),
+      loadVoucher: (key) => voucherStorage.load(key),
+    },
+    admins: {
+      find: (id) => findAdmin(adminsDeps, id),
+      findByEmail: (email) => findAdminByEmail(adminsDeps, email),
+      touchLastLogin: (adminId) => touchLastLogin(adminsDeps, adminId),
+      setTwoFactorEnabled: (input) => setTwoFactorEnabled(adminsDeps, input),
     },
     models: {
       create: (input) => createModel({ db: env.db, stores: { model: stores.model }, audit }, input),
@@ -336,7 +370,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
       createCard: (input) =>
         createRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, audit }, input),
       updateCard: (input) =>
-        updateRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, audit }, input),
+        updateRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, auditTx }, input),
       deleteCard: (input) =>
         deleteRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, audit }, input),
       listCards: (query) =>
@@ -345,6 +379,8 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
         listRateCardUsers({ db: env.db, stores: { rateCard: stores.rateCard } }, input),
       cardHealth: (rateCardId) =>
         checkRateCardHealth({ db: env.db, stores: { rateCard: stores.rateCard } }, rateCardId),
+      findGlobalCoefficient: (rateCardId) =>
+        stores.rateCard.findGlobalCoefficient(env.db, rateCardId),
     },
     fx: {
       state: () => fxState(fxDeps),

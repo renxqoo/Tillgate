@@ -26,7 +26,7 @@ export {
 } from './domain/status.js';
 
 // ---- 端口(装配桥接:wallet-credit → billing;audit → observability 存储) ----
-export type { AccountStorePort } from './ports/account-store.js';
+// AccountStorePort(可替换存储契约,方法首参 DbLike)仅从 ./composition 子入口导出(§5.3)
 export type {
   WalletCreditPort,
   CreditCommand,

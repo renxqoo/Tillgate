@@ -140,6 +140,17 @@ describe('配置解析 fail-fast(v1 security「坏配置 createIdentity 同步�
     ['oauth provider 未声明', { oauth: { gitlab: { clientId: 'a', clientSecret: 'b' } } }],
     ['oauth 凭据空', { oauth: { github: { clientId: '', clientSecret: 'b' } } }],
     ['state ttl 越界', { oauthStateTtlSec: 10 }],
+    ['redirect 白名单空', { oauthRedirectAllowlist: [] }],
+    ['redirect 非绝对 URL', { oauthRedirectAllowlist: ['/relative/cb'] }],
+    ['redirect 带 query', { oauthRedirectAllowlist: ['https://cb?x=1'] }],
+    ['redirect 带 fragment', { oauthRedirectAllowlist: ['https://cb#f'] }],
+    ['redirect 非 http(s)', { oauthRedirectAllowlist: ['ftp://cb'] }],
+    [
+      'redirect 重复项',
+      {
+        oauthRedirectAllowlist: ['https://cb', 'https://cb'],
+      },
+    ],
   ];
   for (const [name, patch] of bad) {
     it(name, () => {
@@ -149,7 +160,7 @@ describe('配置解析 fail-fast(v1 security「坏配置 createIdentity 同步�
 
   it('合法配置解析通过且词表全集', () => {
     const resolved = resolveConfig(TEST_CONFIG);
-    expect([...resolved.guards.realms].sort()).toEqual(['admin', 'user']);
+    expect([...resolved.guards.realms].toSorted()).toEqual(['admin', 'user']);
     expect(resolved.config.oauthStateTtlSec).toBe(600);
   });
 });

@@ -14,6 +14,9 @@
 
 export type GenerationTaskKind = 'video' | 'music';
 
+/** kind 词表数组(wire zod/管理列表过滤的单一真相;与 GENERATION_KINDS 键集封闭) */
+export const GENERATION_TASK_KINDS = ['video', 'music'] as const;
+
 export interface GenerationKindDescriptor {
   readonly kind: GenerationTaskKind;
   readonly execution: 'task_poll' | 'task_execute';

@@ -1,10 +1,11 @@
 import pino, { type DestinationStream } from 'pino';
 
 export interface CreateLoggerOptions {
-  level?: string;
+  /** 日志级别（trace…fatal）——必填注入（铁律 3：'info' 不做藏默认） */
+  level: string;
   serviceName?: string;
-  /** 开发环境输出可读格式 */
-  pretty?: boolean;
+  /** 开发环境输出可读格式——必填注入（装配层显式决定，不藏 false 默认） */
+  pretty: boolean;
   /** 输出流注入（测试捕获用）；缺省 stdout（pino 默认直写 fd 1，不走 process.stdout.write） */
   stream?: DestinationStream;
 }
@@ -31,12 +32,7 @@ const REDACT_PATHS = [
 ];
 
 /** 统一日志封装：JSON 结构化 + 敏感字段脱敏（根级 + 嵌套 + authorization 头）+ 服务名标记。 */
-export function createLogger({
-  level = 'info',
-  serviceName,
-  pretty = false,
-  stream,
-}: CreateLoggerOptions = {}) {
+export function createLogger({ level, serviceName, pretty, stream }: CreateLoggerOptions) {
   return pino(
     {
       level,

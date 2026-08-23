@@ -76,7 +76,12 @@ export function createPgFundingSourceResolver(): PgFundingSourceResolver {
           };
         }
       }
-      return { subscriptionId: null, allowPaygFallback: false, userDailyLimit, keyDailyLimit: null };
+      return {
+        subscriptionId: null,
+        allowPaygFallback: false,
+        userDailyLimit,
+        keyDailyLimit: null,
+      };
     },
   };
 }

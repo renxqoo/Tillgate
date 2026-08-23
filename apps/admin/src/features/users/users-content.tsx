@@ -1,5 +1,6 @@
 'use client';
 
+import type * as React from 'react';
 import { StatusPill } from '@/components/status-pill';
 import {
   Button,
@@ -11,6 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -43,7 +47,7 @@ import { useTranslations } from 'next-intl';
 
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 
-import { AdjustDialog, GiftDialog, PasswordDialog } from './user-dialogs';
+import { AdjustDialog, FreezeDialog, GiftDialog, PasswordDialog } from './user-dialogs';
 import type { RateCardOption, AdminUserRow } from '@tokenlens/api-client';
 import { useActionResult } from '@/components/action-toast';
 
@@ -60,10 +64,7 @@ export function UsersContent({
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-16">ID</TableHead>
           <TableHead>{tc('account')}</TableHead>
-          <TableHead>{tc('displayName')}</TableHead>
-          <TableHead>{tc('email')}</TableHead>
           <TableHead className="w-20">{tc('status')}</TableHead>
           <TableHead className="w-20">{tc('type')}</TableHead>
           <TableHead>{t('rateCard')}</TableHead>
@@ -73,13 +74,13 @@ export function UsersContent({
           <TableHead className="text-right">{tc('creditLimit')}</TableHead>
           <TableHead className="text-right">{tc('dailySpendLimit')}</TableHead>
           <TableHead className="w-44">{tc('lastLogin')}</TableHead>
-          <TableHead className="w-40 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {users.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
               {t('noMatch')}
             </TableCell>
           </TableRow>
@@ -102,24 +103,17 @@ function UserRowItem({
   const tc = useTranslations('common');
   const notify = useActionResult();
   const [pending, setPending] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<
+    'adjust' | 'gift' | 'password' | 'rate' | 'freeze' | null
+  >(null);
 
-  async function toggleStatus() {
-    const newStatus = user.status === 0 ? 1 : 0;
-    const freezing = newStatus === 1;
-    const freezeReason = freezing ? (prompt(t('freezeReasonPrompt')) ?? '') : '';
-    if (freezing && !confirm(t('banConfirm', { subject: user.subject }))) return;
+  /** 解封直执行;封禁经 FreezeDialog(原因输入 + 确认,替代原生 prompt/confirm)。 */
+  async function unban() {
     setPending(true);
     const { setUserStatusAction } = await import('@/server/users-actions');
-    const res = await setUserStatusAction(user.id, {
-      status: newStatus,
-      freezeReason: freezing ? freezeReason : '',
-    });
+    const res = await setUserStatusAction(user.id, { status: 0, freezeReason: '' });
     setPending(false);
-    notify(
-      res,
-      freezing ? t('banFailed') : t('unbanFailed'),
-      freezing ? t('bannedShort') : t('unbanned'),
-    );
+    notify(res, t('unbanFailed'), t('unbanned'));
   }
 
   async function toggleEnterprise() {
@@ -136,18 +130,25 @@ function UserRowItem({
 
   return (
     <TableRow>
-      <TableCell className="text-xs text-muted-foreground tabular-nums">
-        <Link href={`/dashboard/users/${user.id}`} className="hover:underline">
-          #{user.id}
-        </Link>
+      <TableCell className="min-w-64">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <UserIcon className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <Link
+              href={`/dashboard/users/${user.id}`}
+              className="block truncate font-medium hover:underline"
+            >
+              {user.subject}
+            </Link>
+            <span className="block truncate text-sm text-muted-foreground">
+              {user.displayName ?? user.email ?? `#${user.id}`}
+              {user.displayName && user.email ? ` · ${user.email}` : null}
+            </span>
+          </div>
+        </div>
       </TableCell>
-      <TableCell className="font-medium">
-        <Link href={`/dashboard/users/${user.id}`} className="hover:underline">
-          {user.subject}
-        </Link>
-      </TableCell>
-      <TableCell className="text-muted-foreground">{user.displayName ?? '—'}</TableCell>
-      <TableCell className="text-xs text-muted-foreground">{user.email ?? '—'}</TableCell>
       <TableCell>
         {user.status === 0 ? (
           <StatusPill tone="success" label={tc('active')} />
@@ -187,57 +188,33 @@ function UserRowItem({
       <TableCell className="text-xs text-muted-foreground">
         {user.lastLoginAt ? fmtDateTime(user.lastLoginAt) : tc('never')}
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          <AdjustDialog
-            user={user}
-            trigger={
-              <Button size="sm" variant="ghost" title={t('adjust')}>
-                <ScaleIcon />
-              </Button>
-            }
-          />
-          <GiftDialog
-            user={user}
-            trigger={
-              <Button size="sm" variant="ghost" title={t('gift')}>
-                <GiftIcon />
-              </Button>
-            }
-          />
-          <PasswordDialog
-            user={user}
-            trigger={
-              <Button size="sm" variant="ghost" title={t('setPassword')}>
-                <KeyRoundIcon />
-              </Button>
-            }
-          />
-          <BindRateCardDialog user={user} rateCards={rateCards} />
-          <Button
-            size="sm"
-            variant="ghost"
-            title={user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
-            disabled={pending}
-            onClick={toggleEnterprise}
-          >
+      <TableCell className="w-16 text-center">
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem onClick={() => setActiveDialog('adjust')}>
+            <ScaleIcon /> {t('adjust')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveDialog('gift')}>
+            <GiftIcon /> {t('gift')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveDialog('password')}>
+            <KeyRoundIcon /> {t('setPassword')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveDialog('rate')}>
+            <BanknoteIcon /> {t('bindRateCard')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={pending} onClick={toggleEnterprise}>
             {user.isEnterprise ? <UserIcon /> : <BriefcaseIcon />}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            title={tc('detail')}
-            onClick={() => {
-              window.location.href = `/dashboard/users/${user.id}`;
-            }}
-          >
-            <EyeIcon />
-          </Button>
-          <Button
-            size="sm"
-            variant={user.status === 0 ? 'destructive' : 'outline'}
+            {user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
+          </DropdownMenuItem>
+          <DropdownMenuItem render={<Link prefetch={false} href={`/dashboard/users/${user.id}`} />}>
+            <EyeIcon /> {tc('detail')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant={user.status === 0 ? 'destructive' : 'default'}
             disabled={pending}
-            onClick={toggleStatus}
+            onClick={user.status === 0 ? () => setActiveDialog('freeze') : unban}
           >
             {pending ? (
               <Loader2Icon className="animate-spin" />
@@ -247,8 +224,38 @@ function UserRowItem({
               <ShieldCheckIcon />
             )}
             {user.status === 0 ? t('ban') : t('unban')}
-          </Button>
-        </div>
+          </DropdownMenuItem>
+        </RowActions>
+        <AdjustDialog
+          user={user}
+          trigger={null}
+          open={activeDialog === 'adjust'}
+          onOpenChange={(open) => !open && setActiveDialog(null)}
+        />
+        <FreezeDialog
+          user={user}
+          open={activeDialog === 'freeze'}
+          onOpenChange={(open) => !open && setActiveDialog(null)}
+        />
+        <GiftDialog
+          user={user}
+          trigger={null}
+          open={activeDialog === 'gift'}
+          onOpenChange={(open) => !open && setActiveDialog(null)}
+        />
+        <PasswordDialog
+          user={user}
+          trigger={null}
+          open={activeDialog === 'password'}
+          onOpenChange={(open) => !open && setActiveDialog(null)}
+        />
+        <BindRateCardDialog
+          user={user}
+          rateCards={rateCards}
+          trigger={null}
+          open={activeDialog === 'rate'}
+          onOpenChange={(open) => !open && setActiveDialog(null)}
+        />
       </TableCell>
     </TableRow>
   );
@@ -257,15 +264,23 @@ function UserRowItem({
 function BindRateCardDialog({
   user,
   rateCards,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   user: AdminUserRow;
   rateCards: ReadonlyArray<RateCardOption>;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('users');
   const tc = useTranslations('common');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [pending, startTransition] = useTransition();
   const [value, setValue] = useState<string>(
     user.rateCardId === null ? 'none' : String(user.rateCardId),
@@ -283,13 +298,22 @@ function BindRateCardDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={t('bindRateCard')}>
-            <BanknoteIcon />
-          </Button>
-        }
-      />
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                title={t('bindRateCard')}
+                aria-label={t('bindRateCard')}
+              >
+                <BanknoteIcon />
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

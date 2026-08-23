@@ -76,11 +76,7 @@ export const orgQueries: Pick<
   },
 
   async findOrg(db, orgId) {
-    const rows = await db
-      .select()
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .limit(1);
+    const rows = await db.select().from(organizations).where(eq(organizations.id, orgId)).limit(1);
     return rows[0] ?? null;
   },
 

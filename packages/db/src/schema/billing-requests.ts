@@ -20,7 +20,7 @@ import { userSubscriptions } from './plans.js';
 
 /**
  * 请求级计费状态机，也是结算收据的 durable outbox。
- * PostgreSQL 是资金唯一事实源；唤醒通知（PG NOTIFY settle_wake）仅负责低延迟触发。
+ * PostgreSQL 是资金唯一事实源；唤醒通知（PG NOTIFY settle-wake）仅负责低延迟触发。
  */
 export const billingRequests = pgTable(
   'billing_requests',

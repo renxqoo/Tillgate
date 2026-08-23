@@ -26,9 +26,22 @@ export function completionsRequestToChat(req: unknown): Json {
         ? r.prompt.map((p) => (typeof p === 'string' ? p : String(asArray(p)))).join('')
         : '';
   const messages = prompt ? [{ role: 'user', content: prompt }] : [];
-  if (typeof r.system === 'string' && r.system) messages.unshift({ role: 'system', content: r.system });
+  if (typeof r.system === 'string' && r.system)
+    messages.unshift({ role: 'system', content: r.system });
   const out: Json = { model: str(r.model) ?? '', messages };
-  const passthrough = ['max_tokens', 'max_completion_tokens', 'temperature', 'top_p', 'n', 'stop', 'stream', 'presence_penalty', 'frequency_penalty', 'seed', 'user'] as const;
+  const passthrough = [
+    'max_tokens',
+    'max_completion_tokens',
+    'temperature',
+    'top_p',
+    'n',
+    'stop',
+    'stream',
+    'presence_penalty',
+    'frequency_penalty',
+    'seed',
+    'user',
+  ] as const;
   for (const key of passthrough) {
     if (r[key] !== undefined) out[key] = r[key];
   }
@@ -56,7 +69,13 @@ export function chatResponseToCompletions(res: unknown): Json {
     model: str(r.model) ?? '',
     choices,
     ...(usage
-      ? { usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, total_tokens: usage.total_tokens } }
+      ? {
+          usage: {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+          },
+        }
       : {}),
   };
 }
@@ -90,7 +109,8 @@ export function canonicalStreamToCompletionsStream(
         `data: ${JSON.stringify({
           id: typeof chunk.id === 'string' ? chunk.id : 'cmpl_gateway',
           object: 'text_completion',
-          created: typeof chunk.created === 'number' ? chunk.created : Math.floor(Date.now() / 1000),
+          created:
+            typeof chunk.created === 'number' ? chunk.created : Math.floor(Date.now() / 1000),
           model: typeof chunk.model === 'string' ? chunk.model : '',
           choices: [{ index: 0, text, finish_reason: finish }],
         })}\n\n`,

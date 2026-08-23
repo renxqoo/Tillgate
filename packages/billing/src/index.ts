@@ -136,6 +136,7 @@ export type {
 } from './domain/billing/settle-failure.js';
 export {
   billingDayStart,
+  billingMonthStart,
   billingDayKey,
   secondsUntilNextBillingDay,
 } from './domain/billing/daily-window.js';
@@ -193,6 +194,8 @@ export type {
   SubscriptionSnapshot,
   ChannelExposureStore,
 } from './ports/funding-ports.js';
+// 事务参与 port（§5.4）：可靠通知同事务入箱——app assembly 桥接 notifications outbox
+export type { NotificationOutboxPort, OutboxFact } from './ports/notification-outbox.js';
 export { reserveDecision, budgetRemaining } from './domain/billing/channel-exposure.js';
 export type { ChannelReserveDecision } from './domain/billing/channel-exposure.js';
 
@@ -220,6 +223,21 @@ export {
 export { createReconcileUseCase } from './application/settlement/reconcile.js';
 export { usageLogProjection } from './application/settlement/usage-projection.js';
 export type { UsageProjectionInput } from './application/settlement/usage-projection.js';
+export { createRecordDiscrepanciesUseCase } from './application/settlement/record-discrepancies.js';
+
+// ---- worker 消费面（worker 波）：佣金日结 / 对账差异落表 / 结算唤醒通道 ----
+export { createReferralCommissionUseCase } from './application/referral-commission.js';
+export type {
+  ReferralCommissionDeps,
+  ReferralCommissionResult,
+  CommissionWallet,
+} from './application/referral-commission.js';
+export type { CommissionStatsStore, InviteeSpendByInviter } from './ports/commission-stats.js';
+export type {
+  ReconcileDiscrepancyRow,
+  ReconcileDiscrepancyStore,
+} from './ports/reconcile-store.js';
+export { SETTLE_WAKE_CHANNEL } from './domain/billing/settle-wake.js';
 
 // ---- 订阅生命周期与幂等操作档案（U4） ----
 export {
@@ -250,6 +268,34 @@ export type {
 export type { SubscriptionRow } from './ports/billing-store.js';
 export type { AccountContextStore } from './ports/account-context.js';
 
+// ---- 管理读侧面（U6：plans 目录 / 订阅管理列表 / 兑换批次 / 死信复核） ----
+export type { PlansApi } from './billing.js';
+export type { ListPlansQuery } from './application/plans/list-plans.js';
+export type { CreatePlanInput } from './application/plans/create-plan.js';
+export type { UpdatePlanInput } from './application/plans/update-plan.js';
+export type { PlanRecord, AdminSubscriptionRow, DeadCaseRow } from './ports/billing-store.js';
+export type {
+  RetryDeadInput,
+  RetryDeadResult,
+} from './application/settlement/review/retry-dead.js';
+export type {
+  AbandonDeadInput,
+  AbandonDeadResult,
+} from './application/settlement/review/abandon-dead.js';
+export type {
+  ReviewCommand,
+  ReviewAuditTx,
+} from './application/settlement/review/review-shared.js';
+export { createRedeemBatchApi } from './application/redeem-batches/redeem-batches.js';
+export type {
+  RedeemBatchesApi,
+  CreateBatchInput,
+  CreateBatchResult,
+  ListBatchesQuery,
+  ListCodesQuery,
+} from './application/redeem-batches/redeem-batches.js';
+export type { RedeemBatchRecord, RedeemCodeRecord } from './ports/payment-ports.js';
+
 // ---- 支付与兑换（U5） ----
 export {
   isValidAmountInput,
@@ -270,13 +316,22 @@ export {
 export type { StripeCheckoutEvent, StripeSignatureParts } from './domain/payment/stripe.js';
 export { createPaymentsApi, PROVIDER_LABELS } from './application/payments/payments.js';
 export type { PaymentsDeps, PaymentsApi } from './application/payments/payments.js';
+export { createPaymentAdminApi } from './application/payments/payment-admin.js';
+export type {
+  PaymentAdminApi,
+  PaymentAdminDeps,
+  PaymentAdminQuery,
+} from './application/payments/payment-admin.js';
 export { createRedemptionApi, sha256Hex } from './application/redemption/redemption.js';
 export type { RedemptionDeps, RedemptionApi } from './application/redemption/redemption.js';
 export type {
   PaymentProviderPort,
   PaymentOrderStore,
   PaymentOrderRow,
+  AdminPaymentOrderRow,
+  PaymentOrderSortField,
   RedeemCodeStore,
   RedeemClaimRow,
   RateCounterPort,
 } from './ports/payment-ports.js';
+export { PAYMENT_ORDER_SORT_FIELDS } from './ports/payment-ports.js';

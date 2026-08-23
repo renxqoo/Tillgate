@@ -223,6 +223,33 @@ describe('oauth.authorize / callback(state 半程)', () => {
     });
   });
 
+  it('redirect_uri 白名单 fail-closed:authorize/callback 两半程都拒绝词表外地址', async () => {
+    const h = harness();
+    // authorize 半程:词表外 URI 直接拒绝(state 都不签发)
+    await expect(
+      h.api.oauth.authorize({ provider: 'github', redirectUri: 'https://evil.example.com/cb' }),
+    ).rejects.toMatchObject({
+      code: 'identity.invalid_input',
+      context: { field: 'redirectUri' },
+    });
+    // callback 半程:先消耗合法 state,再用词表外 URI 换码也被拒(防换 URI 换码)
+    const auth = await h.api.oauth.authorize({
+      provider: 'github',
+      redirectUri: 'https://cb',
+    });
+    await expect(
+      h.api.oauth.callback({
+        provider: 'github',
+        code: 'c',
+        state: auth.state,
+        redirectUri: 'https://evil.example.com/cb',
+      }),
+    ).rejects.toMatchObject({
+      code: 'identity.invalid_input',
+      context: { field: 'redirectUri' },
+    });
+  });
+
   it('上游交换失败 → oauth_profile_failed(不吞细节)', async () => {
     const h = harness();
     const { createIdentity } = await import('../src/identity.js');

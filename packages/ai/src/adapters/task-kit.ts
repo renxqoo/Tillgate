@@ -61,7 +61,8 @@ export function createRestTaskOps(cfg: RestTaskKitConfig): ProtocolTaskOps {
       if (!rec || typeof rec !== 'object') return { kind: 'error', error: cfg.invalidBodyError() };
       if (kind === 'video') {
         const taskId = cfg.extractSubmissionTaskId(rec);
-        if (taskId === undefined || taskId === '') return { kind: 'error', error: cfg.invalidBodyError() };
+        if (taskId === undefined || taskId === '')
+          return { kind: 'error', error: cfg.invalidBodyError() };
         return { kind: 'task_submitted', taskId };
       }
       const artifact = cfg.extractCompletedArtifact(rec);

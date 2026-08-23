@@ -300,10 +300,7 @@ export interface AccountStorePort {
   findUserById(db: DbLike, userId: number): Promise<UserRecord | null>;
   findOAuthUser(db: DbLike, issuer: string, subject: string): Promise<UserRecord | null>;
   getUserProfile(db: DbLike, userId: number): Promise<UserProfile | null>;
-  updateUser(
-    db: DbLike,
-    input: { userId: number; patch: UserPatch; advanceSessionAnchor: boolean },
-  ): Promise<UserRecord | null>;
+  updateUser(db: DbLike, input: { userId: number; patch: UserPatch }): Promise<UserRecord | null>;
   userExists(db: DbLike, userId: number): Promise<boolean>;
   userIsEnterprise(db: DbLike, userId: number): Promise<boolean>;
   userRateCardBinding(db: DbLike, userId: number): Promise<number | null>;

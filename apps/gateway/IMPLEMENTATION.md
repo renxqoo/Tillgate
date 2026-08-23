@@ -10,7 +10,7 @@
 - 旧仓代码是行为语义参考（`/Users/wrr/work/ai-getway/apps/gateway`），迁移 = 语义重写；
   pipeline 族已迁 `@tokenlens/inference`（P4 wave-4），本波**只落 app 面与装配桥**。
 - 一动词一文件、工厂闭包（铁律 5）；测试平铺 `__test__/`（铁律 14）；错误目录 `gateway.*`
-  + 组合面（铁律 18 / §11）；单文件 ≤500 行（oxlint max-lines）。
+  - 组合面（铁律 18 / §11）；单文件 ≤500 行（oxlint max-lines）。
 - app 非 assembly 代码不引用 `Db/DbTx`/`./composition`（P5；架构测试机器锁定，
   trace-receiver 范式 + `adapters/` 桥列入装配面白名单——见 §3 架构测试）。
 
@@ -34,35 +34,35 @@
 
 ## 2. 逐模块裁决表（旧 → 新）
 
-| 旧文件（ai-getway/apps/gateway/src） | 裁决 | 新位置 |
-| --- | --- | --- |
-| config.ts | 重写（键面保留 + v2 secretSchema/strictBoolean + 废弃键告警） | src/config.ts |
-| index.ts | 重写（runtime shutdown + 配置快照） | src/index.ts |
-| shutdown.ts | 重写（runtime createShutdown 绑定；目标树指定独立文件） | src/shutdown.ts |
-| assembly.ts | 重写（inference facade 装配 + 五桥） | src/assembly.ts |
-| app.ts | 重写（错误面 composeErrorCatalogs + 路由挂载） | src/app.ts |
-| http/error-map.ts | 重写（24 条 instance 表 → 目录组合 + face override 表） | src/http/openai-error-face.ts |
-| http/sanitize.ts | 复制+微修 | src/http/sanitize.ts |
-| middleware/api-key.ts | 重写（accounts 读模型 + jose app_jwt 分支 + runtime guards） | src/http/middleware/api-key.ts |
-| middleware/request-id.ts | 删除（http 包同源件） | — |
-| middleware/security.ts | 删除（http 包三件） | —（app.ts 组装） |
-| middleware/request-log.ts | 重写（observability RequestLogStore 注入） | src/http/middleware/request-log.ts |
-| middleware/otel.ts | 改写（observability OTel 再出口） | src/http/middleware/otel.ts |
-| rate-limit/gate.ts | 改写（runtime limiter 机制 + app 策略） | src/http/middleware/rate-limit.ts |
-| routes/inference-endpoints.ts | 改写（schema → contracts/；调用面 → inference facade） | src/http/routes/inference-endpoints.ts + src/http/contracts/*.ts |
-| routes/native-protocol.ts | 改写（ai codec 出口） | src/http/routes/native-gemini.ts |
-| routes/models.ts | 改写（control-plane 目录读 + accounts 白名单） | src/http/routes/models.ts |
-| routes/modality-multipart.ts | 改写 | src/http/routes/modality-multipart.ts |
-| routes/generation.ts | 改写（inference.generation submit/query） | src/http/routes/generation.ts |
-| routes/oauth-token.ts | 重写（A1 修复） | src/http/routes/oauth-token.ts |
-| （v1 pipeline/run-chat 信封分派） | 重写（ChatDelivered 三态 → Response） | src/http/openai-envelope.ts |
-| billing/wakeup.ts | 复制+微修（通道常量单源） | src/adapters/settle-wake.ts |
-| （无：五个装配桥） | 新写（DESIGN C-G2/3/4 + 任务/健康） | src/adapters/{catalog-port,billing-port,funding?}.ts |
-| （v1 core/redis 三件） | 平移（DESIGN C-G5） | packages/runtime/src/redis/{rate-limiter,auth-guards}.ts |
-| （v1 generation-task.repo） | 重写（inference 端口形状） | packages/inference/src/adapters/generation-pg.ts |
-| （v1 repo 读法：映射/渠道/费率卡） | 重写（只读目录） | packages/control-plane/src/**（§4.3） |
-| （v1 凭证→资金来源读法） | 新写 | packages/accounts/src/adapters/postgres/funding-resolver.ts |
-| e2e-kit.ts + e2e-*.test.ts×7 | 搬迁改写（e2e-worker 显式缓迁，见 MIGRATION §5） | e2e/gateway、e2e/security |
+| 旧文件（ai-getway/apps/gateway/src） | 裁决                                                          | 新位置                                                           |
+| ------------------------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| config.ts                            | 重写（键面保留 + v2 secretSchema/strictBoolean + 废弃键告警） | src/config.ts                                                    |
+| index.ts                             | 重写（runtime shutdown + 配置快照）                           | src/index.ts                                                     |
+| shutdown.ts                          | 重写（runtime createShutdown 绑定；目标树指定独立文件）       | src/shutdown.ts                                                  |
+| assembly.ts                          | 重写（inference facade 装配 + 五桥）                          | src/assembly.ts                                                  |
+| app.ts                               | 重写（错误面 composeErrorCatalogs + 路由挂载）                | src/app.ts                                                       |
+| http/error-map.ts                    | 重写（24 条 instance 表 → 目录组合 + face override 表）       | src/http/openai-error-face.ts                                    |
+| http/sanitize.ts                     | 复制+微修                                                     | src/http/sanitize.ts                                             |
+| middleware/api-key.ts                | 重写（accounts 读模型 + jose app_jwt 分支 + runtime guards）  | src/http/middleware/api-key.ts                                   |
+| middleware/request-id.ts             | 删除（http 包同源件）                                         | —                                                                |
+| middleware/security.ts               | 删除（http 包三件）                                           | —（app.ts 组装）                                                 |
+| middleware/request-log.ts            | 重写（observability RequestLogStore 注入）                    | src/http/middleware/request-log.ts                               |
+| middleware/otel.ts                   | 改写（observability OTel 再出口）                             | src/http/middleware/otel.ts                                      |
+| rate-limit/gate.ts                   | 改写（runtime limiter 机制 + app 策略）                       | src/http/middleware/rate-limit.ts                                |
+| routes/inference-endpoints.ts        | 改写（schema → contracts/；调用面 → inference facade）        | src/http/routes/inference-endpoints.ts + src/http/contracts/*.ts |
+| routes/native-protocol.ts            | 改写（ai codec 出口）                                         | src/http/routes/native-gemini.ts                                 |
+| routes/models.ts                     | 改写（control-plane 目录读 + accounts 白名单）                | src/http/routes/models.ts                                        |
+| routes/modality-multipart.ts         | 改写                                                          | src/http/routes/modality-multipart.ts                            |
+| routes/generation.ts                 | 改写（inference.generation submit/query）                     | src/http/routes/generation.ts                                    |
+| routes/oauth-token.ts                | 重写（A1 修复）                                               | src/http/routes/oauth-token.ts                                   |
+| （v1 pipeline/run-chat 信封分派）    | 重写（ChatDelivered 三态 → Response）                         | src/http/openai-envelope.ts                                      |
+| billing/wakeup.ts                    | 复制+微修（通道常量单源）                                     | src/adapters/settle-wake.ts                                      |
+| （无：五个装配桥）                   | 新写（DESIGN C-G2/3/4 + 任务/健康）                           | src/adapters/{catalog-port,billing-port,funding?}.ts             |
+| （v1 core/redis 三件）               | 平移（DESIGN C-G5）                                           | packages/runtime/src/redis/{rate-limiter,auth-guards}.ts         |
+| （v1 generation-task.repo）          | 重写（inference 端口形状）                                    | packages/inference/src/adapters/generation-pg.ts                 |
+| （v1 repo 读法：映射/渠道/费率卡）   | 重写（只读目录）                                              | packages/control-plane/src/**（§4.3）                            |
+| （v1 凭证→资金来源读法）             | 新写                                                          | packages/accounts/src/adapters/postgres/funding-resolver.ts      |
+| e2e-kit.ts + e2e-*.test.ts×7         | 搬迁改写（e2e-worker 显式缓迁，见 MIGRATION §5）              | e2e/gateway、e2e/security                                        |
 
 ## 3. 拆分后的 app 结构
 
@@ -81,19 +81,22 @@ apps/gateway/
 │   │   ├── routes/               # inference-endpoints / native-gemini / models /
 │   │   │                         #   modality-multipart / generation / oauth-token
 │   │   ├── middleware/           # api-key / otel / request-log / rate-limit
+│   │                         #   （api-key 与 rate-limit 各包阶段 span：auth.api_key /
+│   │                         #   rate_limit.admit——docs/observability.md §3 全链清单）
 │   │   ├── openai-error-face.ts  # 目录组合 + face override（502/402/429…）+ OAuth 错误形
 │   │   ├── openai-envelope.ts    # 交付三态 → Response（SSE/raw/json + x-request-id）
 │   │   └── sanitize.ts           # 上游细节脱敏（§3.6 三层）
 │   └── adapters/                 # inference 端口生产实现（装配面专属，架构测试白名单）
 │       ├── catalog-port.ts       # C-G2：control-plane 读 + billing 纯函数 → CatalogPort
 │       ├── billing-port.ts       # C-G3：BillingPort ← billing facade
+│       ├── trace-port.ts         # inference TracePort ← observability withAsyncSpan（阶段 span）
 │       └── settle-wake.ts        # C-G8：pg_notify 生产端
 └── __test__/                     # 平铺（铁律 14）
 ```
 
 架构测试（§5.5 机器锁定，trace-receiver 范式扩展）：
-src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, adapters/*}；
-`@tokenlens/db` import 与 `Db/DbTx` 类型只允许 {index,config,assembly} ∪ adapters/*
+src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, adapters/_}；
+`@tokenlens/db` import 与 `Db/DbTx` 类型只允许 {index,config,assembly} ∪ adapters/_
 （app.ts 与 http/** 禁入）；跨包 import 只走包名（禁 `/src/` 深导入）；http/** 不 import
 `@tokenlens/ai`（§3.6：ai 类型消费方自 inference 出口引用）。
 
@@ -118,20 +121,20 @@ src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, a
 
 ## 5. 测试计划（先行；铁律 16 边界即规格）
 
-| 文件 | 覆盖 |
-| --- | --- |
-| config.test.ts | 缺省值表、必填 fail-closed、fixed/full 交叉校验、生产密钥门槛、'false' 字符串不开逃生门、GLOBAL_RPM 生产钳制、废弃键告警 |
-| app.test.ts（real PG） | healthz/livez/readyz、鉴权全路径（有效/缺头/错前缀/未知/吊销/过期/未注册 404）、JWT 伪造→锁定→锁后合法也拒、错误面 24 码 × status 核销、信封形状 |
-| error-face.test.ts | 目录组合封闭性、502/402/429 override、上游 502 脱敏端到端（不泄漏真实模型/URL）、OAuth 错误形 |
-| api-key.test.ts | 双形态分派、scope 白名单、allowPaygFallback 语义、socket 缺注防御（A8 维度计数） |
-| rate-limit.test.ts（real Redis） | 并罚制（高限额 Key 不越用户帽）、key RPM/TPM 429 零落账、渠道超限换渠 200、TPM 全败归还、global 维、Retry-After |
-| routes.test.ts | 9 端点契约（schema 拒绝矩阵/codec 往返/embeddings 0 输出/模态强制非流式/engines 别名/gemini 双动作）、multipart 白名单与上界、generation 201/404 归属、oauth token 三形态、models 三协议形状 |
-| request-log.test.ts | 401/429 入日志、SSE 不嗅探 errorCode、requestSummary 截断、写失败不阻塞 |
-| shutdown.test.ts | drain 顺序、宽限耗尽 exit(1)、二次信号幂等 |
-| architecture.test.ts | §3 机器锁定清单 |
-| adapters.test.ts（real PG） | catalog-port（费率卡系数三层解析、fallback 链、停用卡 403、快照列全）、billing-port（词表映射、金额推导、explicitlyFree、重放透传）、settle-wake NOTIFY 到达 |
-| smoke（双形态） | bun 源码 / node dist：readyz 200、401 信封、413、SSE 透传、SIGTERM 排空、冒烟数据自清 |
-| e2e/gateway（根） | attack/params-floor/cost-drain/slow/auth-audit 归组改写；rxm3 真上游单列 real；worker 缓迁（MIGRATION §5） |
+| 文件                             | 覆盖                                                                                                                                                                                         |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| config.test.ts                   | 缺省值表、必填 fail-closed、fixed/full 交叉校验、生产密钥门槛、'false' 字符串不开逃生门、GLOBAL_RPM 生产钳制、废弃键告警                                                                     |
+| app.test.ts（real PG）           | healthz/livez/readyz、鉴权全路径（有效/缺头/错前缀/未知/吊销/过期/未注册 404）、JWT 伪造→锁定→锁后合法也拒、错误面 24 码 × status 核销、信封形状                                             |
+| error-face.test.ts               | 目录组合封闭性、502/402/429 override、上游 502 脱敏端到端（不泄漏真实模型/URL）、OAuth 错误形                                                                                                |
+| api-key.test.ts                  | 双形态分派、scope 白名单、allowPaygFallback 语义、socket 缺注防御（A8 维度计数）                                                                                                             |
+| rate-limit.test.ts（real Redis） | 并罚制（高限额 Key 不越用户帽）、key RPM/TPM 429 零落账、渠道超限换渠 200、TPM 全败归还、global 维、Retry-After                                                                              |
+| routes.test.ts                   | 9 端点契约（schema 拒绝矩阵/codec 往返/embeddings 0 输出/模态强制非流式/engines 别名/gemini 双动作）、multipart 白名单与上界、generation 201/404 归属、oauth token 三形态、models 三协议形状 |
+| request-log.test.ts              | 401/429 入日志、SSE 不嗅探 errorCode、requestSummary 截断、写失败不阻塞                                                                                                                      |
+| shutdown.test.ts                 | drain 顺序、宽限耗尽 exit(1)、二次信号幂等                                                                                                                                                   |
+| architecture.test.ts             | §3 机器锁定清单                                                                                                                                                                              |
+| adapters.test.ts（real PG）      | catalog-port（费率卡系数三层解析、fallback 链、停用卡 403、快照列全）、billing-port（词表映射、金额推导、explicitlyFree、重放透传）、settle-wake NOTIFY 到达                                 |
+| smoke（双形态）                  | bun 源码 / node dist：readyz 200、401 信封、413、SSE 透传、SIGTERM 排空、冒烟数据自清                                                                                                        |
+| e2e/gateway（根）                | attack/params-floor/cost-drain/slow/auth-audit 归组改写；rxm3 真上游单列 real；worker 缓迁（MIGRATION §5）                                                                                   |
 
 ## 6. 实施顺序（每阶段独立提交 + 四门）
 

@@ -1,7 +1,7 @@
 /**
  * 标识绑定:一个标识一个账号;同用户重挂 = 幂等重放(B23:重放不改密码,设初始密码走
  * passwords.reset);他人占用 = identifier_taken。密码策略在此单源校验(B18/D2)。
- * 审计在事务提交后发射(B03)。
+ * 审计同事务写入(§5.4 事务参与;回滚即无审计行)。
  */
 import { advisoryLock, runTx } from '@tokenlens/db';
 import { auditEvent } from '../domain/audit-events.js';
@@ -10,7 +10,7 @@ import { identityErrors } from '../domain/errors.js';
 import { assertPasswordPolicy, hashPassword } from '../domain/password.js';
 import { assertUserId, normalizeIdentifier, type Identifier } from '../domain/identifier.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { auditWithinTx } from './context.js';
 
 export interface RegisterCredentialInput {
   readonly userId: number;
@@ -50,20 +50,26 @@ export async function registerCredential(
       if (outcome.status === 'created' && passwordHash != null) {
         await ctx.credentialStore.upsertPassword(tx, { userId, passwordHash });
       }
-      return { credentialId: outcome.credentialId, replayed: outcome.status === 'replay' };
+      const registered = {
+        credentialId: outcome.credentialId,
+        replayed: outcome.status === 'replay',
+      };
+      // 审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+      await auditWithinTx(
+        tx,
+        ctx,
+        auditEvent(ctx.clock.now(), {
+          actor: 'system',
+          action: registered.replayed ? 'credential.replay' : 'credential.register',
+          targetType: 'credential',
+          targetId: registered.credentialId,
+          detail: { userId, kind: identifier.kind, value: identifier.value },
+        }),
+      );
+      return registered;
     },
     ctx.txRetry,
   );
 
-  await emitAudit(
-    ctx,
-    auditEvent(ctx.clock.now(), {
-      actor: 'system',
-      action: result.replayed ? 'credential.replay' : 'credential.register',
-      targetType: 'credential',
-      targetId: result.credentialId,
-      detail: { userId, kind: identifier.kind, value: identifier.value },
-    }),
-  );
   return result;
 }

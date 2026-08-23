@@ -45,7 +45,10 @@ export function responsesRequestToChat(req: unknown): Json {
           .join('');
       };
       if (role === 'user' || role === 'assistant' || role === 'system' || role === 'developer') {
-        messages.push({ role: role === 'developer' ? 'system' : role, content: contentOf(m.content) });
+        messages.push({
+          role: role === 'developer' ? 'system' : role,
+          content: contentOf(m.content),
+        });
       }
     }
   }
@@ -86,7 +89,9 @@ export function chatResponseToResponses(res: unknown): Json {
   };
 }
 
-export function canonicalStreamToResponsesStream(upstream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+export function canonicalStreamToResponsesStream(
+  upstream: ReadableStream<Uint8Array>,
+): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const ev = (event: string, obj: Record<string, unknown>): Uint8Array =>
     enc.encode(`event: ${event}\ndata: ${JSON.stringify(obj)}\n\n`);
@@ -101,12 +106,44 @@ export function canonicalStreamToResponsesStream(upstream: ReadableStream<Uint8A
     (sse: SseEvent, emit) => {
       if (sse.data === '[DONE]') {
         if (!created) return;
-        emit(ev('response.output_text.done', { type: 'response.output_text.done', item_id: 'msg_gateway', output_index: 0, content_index: 0, text: '' }));
-        emit(ev('response.output_item.done', { type: 'response.output_item.done', output_index: 0, item: { type: 'message', id: 'msg_gateway', status: 'completed', role: 'assistant', content: [] } }));
-        emit(ev('response.completed', {
-          type: 'response.completed',
-          response: { id: responseId, object: 'response', status: 'completed', output: [], usage: { input_tokens: inputTokens, output_tokens: outputTokens, total_tokens: inputTokens + outputTokens } },
-        }));
+        emit(
+          ev('response.output_text.done', {
+            type: 'response.output_text.done',
+            item_id: 'msg_gateway',
+            output_index: 0,
+            content_index: 0,
+            text: '',
+          }),
+        );
+        emit(
+          ev('response.output_item.done', {
+            type: 'response.output_item.done',
+            output_index: 0,
+            item: {
+              type: 'message',
+              id: 'msg_gateway',
+              status: 'completed',
+              role: 'assistant',
+              content: [],
+            },
+          }),
+        );
+        emit(
+          ev('response.completed', {
+            type: 'response.completed',
+            response: {
+              id: responseId,
+              object: 'response',
+              status: 'completed',
+              output: [],
+              usage: {
+                input_tokens: inputTokens,
+                output_tokens: outputTokens,
+                total_tokens: inputTokens + outputTokens,
+              },
+            },
+          }),
+        );
         return;
       }
       let chunk: Json;
@@ -118,16 +155,35 @@ export function canonicalStreamToResponsesStream(upstream: ReadableStream<Uint8A
       if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
       if (!created) {
         created = true;
-        emit(ev('response.created', { type: 'response.created', response: { id: responseId, object: 'response', status: 'in_progress', output: [] } }));
+        emit(
+          ev('response.created', {
+            type: 'response.created',
+            response: { id: responseId, object: 'response', status: 'in_progress', output: [] },
+          }),
+        );
       }
       const usage = asJson(chunk.usage);
       if (usage) {
         inputTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : inputTokens;
-        outputTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : outputTokens;
+        outputTokens =
+          typeof usage.completion_tokens === 'number' ? usage.completion_tokens : outputTokens;
       }
       if (chunk.error !== undefined) {
         const err = asJson(chunk.error) ?? {};
-        emit(ev('response.failed', { type: 'response.failed', response: { id: responseId, object: 'response', status: 'failed', error: { code: str(err.code) ?? 'upstream_error', message: str(err.message) ?? 'stream error' } } }));
+        emit(
+          ev('response.failed', {
+            type: 'response.failed',
+            response: {
+              id: responseId,
+              object: 'response',
+              status: 'failed',
+              error: {
+                code: str(err.code) ?? 'upstream_error',
+                message: str(err.message) ?? 'stream error',
+              },
+            },
+          }),
+        );
         return;
       }
       const choice = asJson(asArray(chunk.choices)[0]);
@@ -135,14 +191,39 @@ export function canonicalStreamToResponsesStream(upstream: ReadableStream<Uint8A
       if (typeof delta.content === 'string' && delta.content.length > 0) {
         if (!itemAdded) {
           itemAdded = true;
-          emit(ev('response.output_item.added', { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_gateway', status: 'in_progress', role: 'assistant', content: [] } }));
+          emit(
+            ev('response.output_item.added', {
+              type: 'response.output_item.added',
+              output_index: 0,
+              item: {
+                type: 'message',
+                id: 'msg_gateway',
+                status: 'in_progress',
+                role: 'assistant',
+                content: [],
+              },
+            }),
+          );
         }
-        emit(ev('response.output_text.delta', { type: 'response.output_text.delta', item_id: 'msg_gateway', output_index: 0, content_index: 0, delta: delta.content }));
+        emit(
+          ev('response.output_text.delta', {
+            type: 'response.output_text.delta',
+            item_id: 'msg_gateway',
+            output_index: 0,
+            content_index: 0,
+            delta: delta.content,
+          }),
+        );
       }
     },
     (emit) => {
       if (created) {
-        emit(ev('response.completed', { type: 'response.completed', response: { id: responseId, object: 'response', status: 'completed', output: [] } }));
+        emit(
+          ev('response.completed', {
+            type: 'response.completed',
+            response: { id: responseId, object: 'response', status: 'completed', output: [] },
+          }),
+        );
       }
     },
   );

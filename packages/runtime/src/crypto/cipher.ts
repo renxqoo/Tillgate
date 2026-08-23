@@ -22,6 +22,13 @@ export interface Cipher {
 }
 
 export function createCipher(encryptionKey: string): Cipher {
+  // 空密钥 fail-fast：SHA-256 会把空串安静派生成合法 key——配置缺陷不得静默通过（P3 加固）
+  if (encryptionKey.length === 0) {
+    throw new DefectError(
+      'encryption key must not be empty (check ENCRYPTION_KEY)',
+      'runtime.cipher.empty_key',
+    );
+  }
   const key = createHash('sha256').update(encryptionKey).digest();
   return {
     encrypt(plaintext: string): string {

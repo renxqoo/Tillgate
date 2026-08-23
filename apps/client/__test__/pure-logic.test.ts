@@ -19,6 +19,13 @@ import { parseDailySpend, parsePositiveInt } from '../src/features/keys/key-para
 import { isValidTopupAmount } from '../src/features/wallet/topup-schema';
 import { ORDER_STATUS_KEYS, ORDER_STATUS_TONES } from '../src/features/wallet/order-status';
 import { todayCost, todayKey } from '../src/features/dashboard/kpi';
+import {
+  TREND_WINDOW_DAYS,
+  dayKeyMinus,
+  fillDailyCostSeries,
+  trendWindowFrom,
+  zonedDayStart,
+} from '../src/features/dashboard/cost-trend';
 import { getThemeBootCode } from '../src/features/shell/theme-boot';
 import { buildPages } from '../src/features/shared/pager-pages';
 import { APP_CONFIG } from '../src/config/app-config';
@@ -204,19 +211,114 @@ describe('kpi（今日费用按显式时区推导——B8 回归）', () => {
 
   it('todayCost 取今天那行费用；无行/垃圾回落 0', () => {
     const rows = [
-      { date: '2026-08-01', requests: 1, inputTokens: 1, outputTokens: 1, cachedInputTokens: 0, cost: '1.5' },
-      { date: '2026-08-02', requests: 2, inputTokens: 2, outputTokens: 2, cachedInputTokens: 0, cost: '2.5' },
+      {
+        date: '2026-08-01',
+        requests: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        cachedInputTokens: 0,
+        cost: '1.5',
+      },
+      {
+        date: '2026-08-02',
+        requests: 2,
+        inputTokens: 2,
+        outputTokens: 2,
+        cachedInputTokens: 0,
+        cost: '2.5',
+      },
     ];
     const now = new Date('2026-08-02T03:00:00Z');
     expect(todayCost(rows, 'Asia/Shanghai', now)).toBe(2.5);
     expect(todayCost([], 'Asia/Shanghai', now)).toBe(0);
     expect(
       todayCost(
-        [{ date: 'bad', requests: 0, inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, cost: 'x' }],
+        [
+          {
+            date: 'bad',
+            requests: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            cost: 'x',
+          },
+        ],
         'Asia/Shanghai',
         now,
       ),
     ).toBe(0);
+  });
+});
+
+describe('费用趋势窗口推导（B21 回归：首日半桶 + 断天不补零）', () => {
+  const SH_TEN_AM = new Date('2026-08-23T02:00:00Z'); // 上海 08-23 10:00
+
+  it('trendWindowFrom 取起始日当地 00:00（正偏移/负偏移时区；不带时分秒）', () => {
+    // 上海窗口起始日 08-10 00:00（+08）= 08-09T16:00Z
+    expect(trendWindowFrom(14, 'Asia/Shanghai', SH_TEN_AM).toISOString()).toBe(
+      '2026-08-09T16:00:00.000Z',
+    );
+    // 同一时刻纽约当地仍是 08-22 22:00 → 起始日 08-09 00:00（夏令时 -04）= 08-09T04:00Z
+    expect(trendWindowFrom(14, 'America/New_York', SH_TEN_AM).toISOString()).toBe(
+      '2026-08-09T04:00:00.000Z',
+    );
+  });
+
+  it('zonedDayStart 覆盖 DST 切换日（US 2026-11-01 回拨：当地 00:00 仍为 -04）', () => {
+    expect(zonedDayStart('2026-11-01', 'America/New_York').toISOString()).toBe(
+      '2026-11-01T04:00:00.000Z',
+    );
+  });
+
+  it('fillDailyCostSeries：窗口内连续 14 点升序补零；垃圾费用回落 0、窗口外行不计', () => {
+    const rows = [
+      {
+        date: '2026-08-23',
+        requests: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        cachedInputTokens: 0,
+        cost: '2.5',
+      },
+      {
+        date: '2026-08-21',
+        requests: 2,
+        inputTokens: 2,
+        outputTokens: 2,
+        cachedInputTokens: 0,
+        cost: '1.5',
+      },
+      {
+        date: '2026-08-22',
+        requests: 1,
+        inputTokens: 1,
+        outputTokens: 1,
+        cachedInputTokens: 0,
+        cost: 'x',
+      },
+      {
+        date: '2026-08-01',
+        requests: 9,
+        inputTokens: 9,
+        outputTokens: 9,
+        cachedInputTokens: 0,
+        cost: '99',
+      },
+    ];
+    const series = fillDailyCostSeries(rows, TREND_WINDOW_DAYS, 'Asia/Shanghai', SH_TEN_AM);
+    expect(series).toHaveLength(14);
+    expect(series[0]).toEqual({ date: '2026-08-10', value: 0 });
+    expect(series[13]).toEqual({ date: '2026-08-23', value: 2.5 });
+    expect(series.find((p) => p.date === '2026-08-21')).toEqual({ date: '2026-08-21', value: 1.5 });
+    expect(series.find((p) => p.date === '2026-08-22')?.value).toBe(0);
+    expect(series.some((p) => p.date === '2026-08-01')).toBe(false);
+    const dates = series.map((p) => p.date);
+    expect(dates.toSorted()).toEqual(dates);
+  });
+
+  it('dayKeyMinus 纯日历运算（跨月/非闰年 2 月）', () => {
+    expect(dayKeyMinus('2026-08-01', 1)).toBe('2026-07-31');
+    expect(dayKeyMinus('2026-03-01', 1)).toBe('2026-02-28');
   });
 });
 

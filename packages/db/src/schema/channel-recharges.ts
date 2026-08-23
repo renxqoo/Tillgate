@@ -32,9 +32,7 @@ export const channelRecharges = pgTable(
     /** 有符号金额（元，numeric 全精度）；入货恒正，调账可正负 */
     amount: numeric('amount', { precision: 38, scale: 18 }).notNull(),
     /** 变动后渠道余额（upstream_budget）快照（元） */
-    balanceAfter: numeric('balance_after', { precision: 38, scale: 18 })
-      .notNull()
-      .default('0'),
+    balanceAfter: numeric('balance_after', { precision: 38, scale: 18 }).notNull().default('0'),
     /** 支付订单号（入货时可选，追溯用） */
     orderNo: varchar('order_no', { length: 128 }),
     /** 支付凭证截图 key（本地磁盘文件名 / 未来 OSS object key） */

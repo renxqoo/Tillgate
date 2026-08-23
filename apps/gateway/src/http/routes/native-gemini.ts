@@ -20,7 +20,10 @@ import { GatewayErrors } from '../openai-error-face';
 
 const GEMINI_ACTION_RE = /^([a-zA-Z0-9._-]+):(generateContent|streamGenerateContent)$/;
 
-export function geminiNativeRoutes(deps: { inference: Inference; rateLimit?: RateLimitGate }): Hono<AuthEnv> {
+export function geminiNativeRoutes(deps: {
+  inference: Inference;
+  rateLimit?: RateLimitGate;
+}): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
     const modelAction = c.req.param('modelAction');
     const m = GEMINI_ACTION_RE.exec(modelAction ?? '');
@@ -33,7 +36,9 @@ export function geminiNativeRoutes(deps: { inference: Inference; rateLimit?: Rat
     const stream = m[2] === 'streamGenerateContent';
     const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!raw) {
-      throw GatewayErrors.business('invalid_body', { detail: 'Request body must be a JSON object' });
+      throw GatewayErrors.business('invalid_body', {
+        detail: 'Request body must be a JSON object',
+      });
     }
 
     const auth = c.get('auth');

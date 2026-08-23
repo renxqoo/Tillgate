@@ -21,20 +21,17 @@ export const securityHeaders: MiddlewareHandler = async (c, next) => {
 export interface CorsConfig {
   /** 允许的 Origin 白名单（空表 = 不放行任何跨域） */
   readonly origins: readonly string[];
-  /** 预检允许的方法（缺省 console 形态：GET/POST/PUT/PATCH/DELETE/OPTIONS） */
-  readonly methods?: readonly string[];
-  /** 预检允许的请求头（缺省 Authorization, Content-Type） */
-  readonly allowHeaders?: readonly string[];
-  /** 预检缓存秒数（缺省不输出 Access-Control-Max-Age） */
-  readonly maxAgeSeconds?: number;
+  /** 预检允许的方法（v1 三面硬编码漂移的参数化——必填注入，不藏 console 形态默认） */
+  readonly methods: readonly string[];
+  /** 预检允许的请求头（必填注入——部署可变值不藏默认） */
+  readonly allowHeaders: readonly string[];
+  /** 预检缓存秒数（必填注入；Access-Control-Max-Age 恒输出） */
+  readonly maxAgeSeconds: number;
 }
 
-const DEFAULT_CORS_METHODS = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
-const DEFAULT_CORS_ALLOW_HEADERS = Object.freeze(['Authorization', 'Content-Type']);
-
 export function corsPreflight(config: CorsConfig): MiddlewareHandler {
-  const methods = (config.methods ?? DEFAULT_CORS_METHODS).join(', ');
-  const allowHeaders = (config.allowHeaders ?? DEFAULT_CORS_ALLOW_HEADERS).join(', ');
+  const methods = config.methods.join(', ');
+  const allowHeaders = config.allowHeaders.join(', ');
   return async (c, next) => {
     const origin = c.req.header('origin');
     if (origin != null && config.origins.includes(origin)) {
@@ -44,10 +41,8 @@ export function corsPreflight(config: CorsConfig): MiddlewareHandler {
           Vary: 'Origin',
           'Access-Control-Allow-Methods': methods,
           'Access-Control-Allow-Headers': allowHeaders,
+          'Access-Control-Max-Age': String(config.maxAgeSeconds),
         };
-        if (config.maxAgeSeconds !== undefined) {
-          headers['Access-Control-Max-Age'] = String(config.maxAgeSeconds);
-        }
         return new Response(null, { status: 204, headers });
       }
       c.header('Access-Control-Allow-Origin', origin);

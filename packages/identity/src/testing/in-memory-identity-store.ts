@@ -4,6 +4,9 @@
  * 单调、恢复码单次消费)、锚点 GREATEST 单调、冷却判定(注入时钟)。
  * snapshot/restore 供 fake db 的 transaction 实现回滚语义(accounts harness 同款)。
  */
+
+// 投递优先级排序键:email > phone > 其他(模块级纯函数,不捕获状态)
+const kindRank = (kind: string) => (kind === 'email' ? 0 : kind === 'phone' ? 1 : 2);
 import type { NormalizedIdentifier } from '../domain/identifier.js';
 import type { Clock } from '../ports/clock.js';
 import type { CredentialStore, RegisterCredentialOutcome } from '../ports/credential-store.js';
@@ -158,11 +161,7 @@ export function createInMemoryIdentityStore(clock: Clock): InMemoryIdentityStore
     async findDeliveryIdentifier(_db, userId) {
       const rows = state.credentials
         .filter((c) => c.userId === userId)
-        .slice()
-        .sort((a, b) => {
-          const rank = (kind: string) => (kind === 'email' ? 0 : kind === 'phone' ? 1 : 2);
-          return rank(a.kind) - rank(b.kind) || a.id - b.id;
-        });
+        .toSorted((a, b) => kindRank(a.kind) - kindRank(b.kind) || a.id - b.id);
       const first = rows[0];
       if (first == null || (first.kind !== 'email' && first.kind !== 'phone')) return null;
       return { kind: first.kind as 'email' | 'phone', value: first.value };

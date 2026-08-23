@@ -36,7 +36,14 @@ const ENDPOINT_EXTRA_PARAMS: Record<string, readonly string[]> = {
   images: ['n', 'size', 'quality', 'response_format', 'style', 'background'],
   images_edits: ['n', 'size', 'response_format', 'image', 'mask'],
   audio_speech: ['input', 'voice', 'response_format', 'speed', 'input_format'],
-  audio_transcription: ['file', 'language', 'prompt', 'response_format', 'temperature', 'timestamp_granularities'],
+  audio_transcription: [
+    'file',
+    'language',
+    'prompt',
+    'response_format',
+    'temperature',
+    'timestamp_granularities',
+  ],
   audio_translation: ['file', 'prompt', 'response_format', 'temperature'],
   rerank: ['query', 'documents', 'top_n', 'return_documents', 'rank_fields'],
   moderations: ['input'],
@@ -74,7 +81,17 @@ const CHAT_KNOWN_PARAMS = new Set([
 
 export class OpenAICompatibleAdapter implements ProtocolAdapter {
   readonly protocol: string = 'openai-compatible';
-  readonly supportedEndpoints: readonly Endpoint[] = ['chat', 'embeddings', 'images', 'images_edits', 'audio_speech', 'audio_transcription', 'audio_translation', 'rerank', 'moderations'];
+  readonly supportedEndpoints: readonly Endpoint[] = [
+    'chat',
+    'embeddings',
+    'images',
+    'images_edits',
+    'audio_speech',
+    'audio_transcription',
+    'audio_translation',
+    'rerank',
+    'moderations',
+  ];
 
   /** 上游寻址：endpoint 决定路径；认证头带幂等键（见下方 finalizeRequestBody 上方 C5 注释） */
   planRequest(
@@ -211,7 +228,11 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
   }
 
   /** 错误映射：委托分类矩阵（含死凭据文本特征） */
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: OPENAI_CODE_KINDS, status, body, headers });
   }
 

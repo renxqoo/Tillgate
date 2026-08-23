@@ -1,6 +1,7 @@
 import type { Transformer } from 'node:stream/web';
 import { SseScanner } from './sse-parser';
 import { registerSweep } from './heartbeat';
+import { SseModelRewriter } from './model-rewrite';
 import type { StreamError } from '../types';
 import { asServerDrainAbort } from '../errors/server-drain';
 
@@ -22,6 +23,12 @@ const enc = (s: string) => new TextEncoder().encode(s);
 export interface RelayStreamOptions {
   heartbeatIdleMs: number;
   inactivityTimeoutMs: number;
+  /**
+   * 响应侧 model 字段替换（§3.6 透传例外 2）：给出即开启——出站 SSE 帧内仅替换
+   * "model" 字符串值为该值（对外目录模型名），其余字节不动；undefined = 关闭，
+   * 逐字节透传。逐事件行改写（不整流缓冲），覆盖同协议中继与跨协议转换出站两条路径。
+   */
+  rewriteModel?: string;
   checkIntervalMs?: number;
   signal?: AbortSignal;
 }
@@ -85,6 +92,10 @@ export function relayStream(
     onErrorFrame: (frame) => emit({ type: 'stream_error', frame }),
   });
 
+  // model 改写器（例外 2）：数据面内联改写——行状态机有界缓冲，逐事件吐出
+  const rewriter =
+    options.rewriteModel !== undefined ? new SseModelRewriter(options.rewriteModel) : null;
+
   let unregisterSweep: (() => void) | null = null;
   let finished = false;
   let lastDataAt = 0;
@@ -124,7 +135,10 @@ export function relayStream(
   ): void => {
     if (finished) return;
     finished = true;
-    if (unregisterSweep !== null) { unregisterSweep(); unregisterSweep = null; }
+    if (unregisterSweep !== null) {
+      unregisterSweep();
+      unregisterSweep = null;
+    }
     emit({ type: 'stream_error', frame });
     emit({ type: 'aborted', reason });
     if (controller) {
@@ -189,14 +203,28 @@ export function relayStream(
       if (finished) return;
       // 首个数据 chunk 流经（上游首字节 → 客户端）：一次性事件，网关据此记真实 TTFB
       // （订阅晚于流开始的消费方拿不到「尝试开始」，只能从这里锚定首字节时刻）
-      if (bytesRelayed === 0) emit({ type: 'first_chunk', atMs: Date.now() });
       lastDataAt = Date.now();
-      scanner.consume(chunk);
-      ctrl.enqueue(chunk);
-      bytesRelayed += chunk.byteLength;
-      lastWriteAt = Date.now();
+      // 例外 2：出站 model 替换（改写后的字节才是 C 端与扫描器所见；无改写则原 chunk）
+      const out = rewriter !== null ? rewriter.push(chunk) : chunk;
+      if (out.byteLength > 0) {
+        if (bytesRelayed === 0) emit({ type: 'first_chunk', atMs: Date.now() });
+        scanner.consume(out);
+        ctrl.enqueue(out);
+        bytesRelayed += out.byteLength;
+        lastWriteAt = Date.now();
+      }
+      // 半截行被改写器持有（有界）：不推进 first_chunk/bytesRelayed，下一 chunk 补齐后吐出
     },
     flush(ctrl) {
+      // 改写器尾行先吐（此后才轮到 [DONE] 兜底注入，保持帧序）
+      if (rewriter !== null) {
+        const tail = rewriter.flush();
+        if (tail.byteLength > 0) {
+          scanner.consume(tail);
+          ctrl.enqueue(tail);
+          bytesRelayed += tail.byteLength;
+        }
+      }
       // `[DONE]` 是成功的权威边界。只有 finish_reason 到达但尾哨兵缺失时可安全补齐；
       // 既无终止帧又无哨兵的 clean EOF 仍是截断，不能伪装成成功。
       if (scanner.hasDone()) {
@@ -227,7 +255,10 @@ export function relayStream(
       // [DONE] > 终止帧（无错误帧）> 错误帧（upstream_error）> 真正的用户中断。
       if (!finished) {
         finished = true;
-        if (unregisterSweep !== null) { unregisterSweep(); unregisterSweep = null; }
+        if (unregisterSweep !== null) {
+          unregisterSweep();
+          unregisterSweep = null;
+        }
         const errorFrame = scanner.getErrorFrame();
         const completed = scanner.hasDone() || (scanner.hasTerminalFrame() && !errorFrame);
         if (!completed) {

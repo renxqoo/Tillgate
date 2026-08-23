@@ -8,8 +8,9 @@ import type { MiddlewareHandler } from 'hono';
 import type { SubscriptionsApi } from '@tokenlens/billing';
 import { operationId } from '@tokenlens/http';
 import type { SessionEnv } from '../middleware/session';
-import { idParam } from '../contracts/common';
+import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { subscriptionsContracts } from '../contracts/subscriptions';
+import { toSubscriptionWireRow } from '../presenters/billing';
 
 export interface SubscriptionsRoutesDeps {
   readonly subscriptions: SubscriptionsApi;
@@ -20,6 +21,37 @@ export function subscriptionsRoutes(
   session: MiddlewareHandler<SessionEnv>,
 ) {
   const app = new Hono<SessionEnv>();
+
+  app.get('/v1/subscriptions', session, async (c) => {
+    const raw = c.req.query();
+    const extra = {
+      planId: raw.planId !== undefined ? Number(raw.planId) : undefined,
+      userId: raw.userId !== undefined ? Number(raw.userId) : undefined,
+      status: raw.status !== undefined ? Number(raw.status) : undefined,
+    };
+    const query = parseListQuery(
+      raw,
+      ['id', 'createdAt', 'startAt', 'endAt', 'usedAmount'],
+      'createdAt',
+    );
+    const page = await deps.subscriptions.adminList({
+      ...(query.q !== undefined ? { q: query.q } : {}),
+      ...(extra.planId !== undefined && Number.isInteger(extra.planId)
+        ? { planId: extra.planId }
+        : {}),
+      ...(extra.userId !== undefined && Number.isInteger(extra.userId)
+        ? { userId: extra.userId }
+        : {}),
+      ...(extra.status !== undefined && Number.isInteger(extra.status)
+        ? { status: extra.status }
+        : {}),
+      sortBy: query.sortBy as 'id' | 'createdAt' | 'startAt' | 'endAt' | 'usedAmount',
+      order: query.order,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    return c.json(listEnvelope(page.rows.map(toSubscriptionWireRow), page.total, query));
+  });
 
   app.post('/v1/subscriptions/:id/renew', session, async (c) => {
     const id = idParam(c.req.param('id'));

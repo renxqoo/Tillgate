@@ -1,8 +1,15 @@
 /**
  * 支付渠道适配（epay / stripe）：PaymentProviderPort 的两个实现。
  * 协议纯规则在 domain/payment/{epay,stripe}；此处只做 IO 组装。
+ * 币种与支付类型是部署配置事实（与装配的 PaymentsDeps.currency 同源注入），
+ * 不在适配器写死——币种单真相（铁律 3）。
  */
-import { epaySign, epayVerify, parseEpayNotify } from '../../domain/payment/epay.js';
+import {
+  EPAY_PAY_TYPES,
+  epaySign,
+  epayVerify,
+  parseEpayNotify,
+} from '../../domain/payment/epay.js';
 import {
   parseStripeEvent,
   stripeCentsFromAmount,
@@ -17,14 +24,21 @@ export function createEpayProvider(config: {
   gatewayUrl: string;
   notifyUrl: string;
   returnUrl: string;
+  /** 支付类型（必填配置；从 EPAY_PAY_TYPES 词表校验——不写死 'alipay'） */
+  payType: (typeof EPAY_PAY_TYPES)[number];
   clock?: () => number;
 }): PaymentProviderPort {
+  if (!EPAY_PAY_TYPES.includes(config.payType)) {
+    throw new Error(
+      `epay pay type not supported: ${config.payType} (allowed: ${EPAY_PAY_TYPES.join('/')})`,
+    );
+  }
   return {
     name: 'epay',
     async createOrder(input) {
       const params: Record<string, string> = {
         pid: config.pid,
-        type: 'alipay',
+        type: config.payType,
         out_trade_no: input.orderId,
         notify_url: config.notifyUrl,
         return_url: config.returnUrl,
@@ -56,6 +70,8 @@ export interface StripeProviderConfig {
   webhookSecret: string;
   successUrl: string;
   cancelUrl: string;
+  /** 计费币种（必填注入：下单 line_items 与回调币种闸同源——不写死 'cny'） */
+  currency: string;
   /** API 基地址（默认官方；测试注入 mock 上游） */
   apiBase?: string;
   fetchImpl?: typeof fetch;
@@ -73,7 +89,7 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
       // Checkout Session 创建（form-encoded，无 SDK 依赖）
       const body = new URLSearchParams({
         mode: 'payment',
-        'line_items[0][price_data][currency]': 'cny',
+        'line_items[0][price_data][currency]': config.currency.toLowerCase(),
         'line_items[0][price_data][unit_amount]': stripeCentsFromAmount(input.amount),
         'line_items[0][price_data][product_data][name]': input.subject,
         'line_items[0][quantity]': '1',
@@ -100,7 +116,7 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
       const payload = raw.payload ?? '';
       const header = raw['stripe-signature'] ?? '';
       if (!verifyStripeSignature(header, payload, config.webhookSecret, nowMs())) return null;
-      const event = parseStripeEvent(payload);
+      const event = parseStripeEvent(payload, config.currency);
       if (!event) return null;
       return {
         providerOrderId: event.sessionId,

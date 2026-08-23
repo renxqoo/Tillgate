@@ -34,7 +34,10 @@ export function trustedClientIp(input: TrustedClientIpInput): string {
   if (hops > 0) {
     const xff = input.headers.get('x-forwarded-for');
     if (xff) {
-      const parts = xff.split(',').map((s) => s.trim()).filter(Boolean);
+      const parts = xff
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       const candidate = parts[parts.length - hops];
       if (candidate) return candidate;
     }
@@ -57,10 +60,7 @@ export function socketAddressFromContext(c: Context): string | null {
  * 从 Hono 上下文提取客户端 IP（@hono/node-server 部署形态）。
  * config 只需含 trustedProxyHops。
  */
-export function clientIpFromContext(
-  c: Context,
-  config: { trustedProxyHops: number },
-): string {
+export function clientIpFromContext(c: Context, config: { trustedProxyHops: number }): string {
   return trustedClientIp({
     headers: c.req.raw.headers,
     trustedProxyHops: config.trustedProxyHops,

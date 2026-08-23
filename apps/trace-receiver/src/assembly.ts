@@ -25,13 +25,20 @@ export interface ReceiverAssembly {
 }
 
 export function assembleReceiver(config: TraceReceiverConfig): ReceiverAssembly {
-  const logger = createLogger({ level: config.logLevel, serviceName: 'trace-receiver' });
+  // pretty 必填注入（铁律 3）：receiver 是结构化 JSON 日志消费面，显式 false（v1 同形态）
+  const logger = createLogger({
+    level: config.logLevel,
+    serviceName: 'trace-receiver',
+    pretty: false,
+  });
   // mode=otlp 缺端点在此启动期 fail-fast(observabilityErrors.otel_endpoint_missing 单一所有者)
   const otel = initOtel({
     serviceName: 'trace-receiver',
+    serviceVersion: config.serviceVersion,
     mode: config.otelMode,
     endpoint: config.otelEndpoint,
     logger,
+    metricsExportIntervalMs: config.otelMetricsIntervalMs,
   });
   const db = createDb({ url: config.databaseUrl, ...config.dbPool });
   const store = createPgTraceStore(db);

@@ -29,7 +29,8 @@ describe.skipIf(url == null)('FundingSourceResolver 桥（真实 PG）', () => {
     });
     conn = db as unknown as { readonly connBrand: 'wallet-conn' };
     await db.execute(sql.raw(`create schema ${schema}`));
-    await db.execute(sql.raw(`
+    await db.execute(
+      sql.raw(`
       create table users (id bigserial primary key, daily_spend_limit numeric(38,18));
       create table apps (id bigserial primary key, user_id bigint not null, subscription_id bigint);
       create table api_keys (
@@ -40,11 +41,10 @@ describe.skipIf(url == null)('FundingSourceResolver 桥（真实 PG）', () => {
         daily_spend_limit numeric(38,18),
         allow_payg_fallback boolean not null default false
       );
-    `));
-    // 种子：user 1（限 50 / 绑 sub 9 的 key 1，key 级限 10，允许 fallback）
-    await db.execute(
-      sql`insert into users (id, daily_spend_limit) values (1, 50), (2, null)`,
+    `),
     );
+    // 种子：user 1（限 50 / 绑 sub 9 的 key 1，key 级限 10，允许 fallback）
+    await db.execute(sql`insert into users (id, daily_spend_limit) values (1, 50), (2, null)`);
     await db.execute(
       sql`insert into api_keys (id, user_id, subscription_id, daily_spend_limit, allow_payg_fallback)
           values (1, 1, 9, 10, true), (2, 2, null, null, false)`,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { identityErrors } from '@tokenlens/identity';
 import { createAdminApp } from '../src/app';
-import { fakeDeps } from './helpers';
+import { authHeader, fakeDeps } from './helpers';
 
 /**
  * app 骨架契约（v1 app.test.ts 行为规格子集）:探针豁免鉴权 / livez 纯 200 /
@@ -47,6 +48,52 @@ describe('admin-api app 骨架', () => {
     const app = createAdminApp(fakeDeps({}));
     const res = await app.request('/v1/unknown-resource');
     expect(res.status).toBe(404);
+  });
+
+  it('P2 登录面经 createAdminApp 挂载(auth/me 未挂载即 404——装配缺位回归锁)', async () => {
+    // auth:凭据错走 401 invalid_credentials(路由未挂载时表现为 404 not_found)
+    const base = fakeDeps({});
+    const app = createAdminApp({
+      ...base,
+      identity: {
+        ...base.identity,
+        passwords: {
+          ...base.identity.passwords,
+          authenticate: async () => {
+            throw identityErrors.business('invalid_credentials', { realm: 'admin' });
+          },
+        },
+      },
+    });
+    const login = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'wrong' }),
+    });
+    expect(login.status).toBe(401);
+    expect(await login.json()).toMatchObject({ error: { code: 'identity.invalid_credentials' } });
+
+    // me:会话有效回显资料(路由未挂载时表现为 404 not_found)
+    const meApp = createAdminApp(
+      fakeDeps({
+        controlPlane: {
+          admins: {
+            find: async () => ({
+              id: 7,
+              email: 'ops@tokenlens.dev',
+              displayName: 'Ops',
+              status: 0,
+              twoFactorEnabled: false,
+              lastLoginAt: null,
+              createdAt: new Date(0),
+            }),
+          },
+        },
+      }),
+    );
+    const me = await meApp.request('/v1/me', { headers: authHeader() });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({ id: 7, email: 'ops@tokenlens.dev' });
   });
 
   it('安全响应头全集', async () => {

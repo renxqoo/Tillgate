@@ -34,116 +34,163 @@ export function createStreamAttempt(deps: ExecutionDeps) {
     ctx: AttemptContext,
   ): Promise<AttemptOutcome<StreamDelivered | PassthroughDelivered>> => {
     const startedAt = Date.now();
-    const result = await deps.upstream.chatStream(ctx.channel, {
-      requestId: ctx.requestId,
-      externalModel: ctx.prepared.externalModel,
-      realModel: ctx.candidate.realModel,
-      endpoint: ctx.prepared.endpoint,
-      body: ctx.prepared.upstreamBody,
-      ...(ctx.signal != null ? { signal: ctx.signal } : {}),
-      deadlineMs: deps.defaults.upstream.deadlineMs,
-    });
-    let firstChunkAt = 0;
-    let alive = false;
-    let renewCount = 0;
-    let renewTimer: ReturnType<typeof setInterval> | undefined;
-    const startLease = (): void => {
-      alive = true;
-      const intervalMs = Math.max(
-        deps.defaults.streamLease.minRenewIntervalMs,
-        Math.floor(deps.defaults.authorization.ttlMs / 3),
-      );
-      renewTimer = setInterval(() => {
-        if (!alive || renewCount >= deps.defaults.streamLease.maxRenewals) return;
-        renewCount += 1;
-        void deps.billing
-          .signal({
-            type: 'lease_renewed',
-            requestId: ctx.requestId,
-            leaseOwner: LEASE_OWNER,
-            leaseMs: deps.defaults.authorization.ttlMs,
-          })
-          .catch((error) => deps.onError?.(error, `stream lease renew request=${ctx.requestId}`));
-      }, intervalMs);
-      renewTimer.unref?.();
-    };
-    /** 终态收尾（后台）：收据（命中候选价 + 可信/估算 usage + 归属）→ signal 重试 */
-    const settle = async (
-      terminal: Extract<UpstreamStreamEvent, { type: 'success' }>,
-    ): Promise<void> => {
-      const finality = usageForStream(terminal, ctx.prepared.inputEstimate, deps.defaults.estimate);
-      const receipt: UsageReceipt = {
-        ...buildReceipt({
+    // 上游调用 → 决定性事件整段包 upstream.attempt span（v1 attempt-stream 等价；
+    // 终态后台结算在此上下文里发起——settle_signal 自然挂本 span 之下）
+    const { result, decisive } = await deps.trace.withSpan(
+      'upstream.attempt',
+      {
+        'request.id': ctx.requestId,
+        'user.id': ctx.prepared.auth.userId,
+        'channel.key': ctx.channel.channelName,
+        'channel.attempt': ctx.channelAttempt,
+        'ai.model': ctx.candidate.realModel,
+        'upstream.stream': true,
+      },
+      async (span) => {
+        const r = await deps.upstream.chatStream(ctx.channel, {
           requestId: ctx.requestId,
-          auth: ctx.prepared.auth,
-          candidate: ctx.candidate,
           externalModel: ctx.prepared.externalModel,
-          channelId: ctx.channel.channelId,
-          channelKey: ctx.channel.channelName,
-          durationMs: Date.now() - startedAt,
-          body: ctx.prepared.body,
-          usage: finality.usage,
-        }),
-        stream: true,
-        streamAborted: finality.streamAborted,
-        ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
-        ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
-        ...(firstChunkAt > 0
-          ? {
-              // 上游锚点 = 本次渠道发起（换渠后即成功渠道）；客户端锚点 = 请求进入
-              //（含授权/路由与换渠等待——用户从提交到首 token 的真实体感）
-              upstreamTtftMs: Math.max(0, firstChunkAt - startedAt),
-              clientTtftMs: Math.max(0, firstChunkAt - ctx.requestStartedAt),
-            }
-          : {}),
-      };
-      const finalized = await signalSucceededWithRetry(
-        {
-          billing: deps.billing,
-          settleSignal: deps.defaults.settleSignal,
-          onError: deps.onError,
-        },
-        ctx.requestId,
-        receipt,
-      );
-      if (!finalized) {
-        deps.onError?.(
-          new Error('signal retries exhausted'),
-          `stream finalize giveup request=${ctx.requestId}`,
-        );
-      }
-      alive = false;
-      if (renewTimer != null) clearInterval(renewTimer);
-    };
+          realModel: ctx.candidate.realModel,
+          endpoint: ctx.prepared.endpoint,
+          body: ctx.prepared.upstreamBody,
+          ...(ctx.signal != null ? { signal: ctx.signal } : {}),
+          deadlineMs: deps.defaults.upstream.deadlineMs,
+        });
+        let firstChunkAt = 0;
+        let alive = false;
+        let renewCount = 0;
+        let renewTimer: ReturnType<typeof setInterval> | undefined;
+        const startLease = (): void => {
+          alive = true;
+          const intervalMs = Math.max(
+            deps.defaults.streamLease.minRenewIntervalMs,
+            Math.floor(deps.defaults.authorization.ttlMs / 3),
+          );
+          renewTimer = setInterval(() => {
+            if (!alive || renewCount >= deps.defaults.streamLease.maxRenewals) return;
+            renewCount += 1;
+            void deps.billing
+              .signal({
+                type: 'lease_renewed',
+                requestId: ctx.requestId,
+                leaseOwner: LEASE_OWNER,
+                leaseMs: deps.defaults.authorization.ttlMs,
+              })
+              .catch((error) =>
+                deps.onError?.(error, `stream lease renew request=${ctx.requestId}`),
+              );
+          }, intervalMs);
+          renewTimer.unref?.();
+        };
+        /** 终态收尾（后台）：收据（命中候选价 + 可信/估算 usage + 归属）→ signal 重试 */
+        const settle = async (
+          terminal: Extract<UpstreamStreamEvent, { type: 'success' }>,
+        ): Promise<void> => {
+          const finality = usageForStream(
+            terminal,
+            ctx.prepared.inputEstimate,
+            deps.defaults.estimate,
+          );
+          const receipt: UsageReceipt = {
+            ...buildReceipt({
+              requestId: ctx.requestId,
+              auth: ctx.prepared.auth,
+              candidate: ctx.candidate,
+              externalModel: ctx.prepared.externalModel,
+              channelId: ctx.channel.channelId,
+              channelKey: ctx.channel.channelName,
+              durationMs: Date.now() - startedAt,
+              body: ctx.prepared.body,
+              usage: finality.usage,
+            }),
+            stream: true,
+            streamAborted: finality.streamAborted,
+            ...(finality.estimatedFor !== undefined ? { estimatedFor: finality.estimatedFor } : {}),
+            ...(finality.bytesRelayed !== undefined ? { bytesRelayed: finality.bytesRelayed } : {}),
+            ...(firstChunkAt > 0
+              ? {
+                  // 上游锚点 = 本次渠道发起（换渠后即成功渠道）；客户端锚点 = 请求进入
+                  //（含授权/路由与换渠等待——用户从提交到首 token 的真实体感）
+                  upstreamTtftMs: Math.max(0, firstChunkAt - startedAt),
+                  clientTtftMs: Math.max(0, firstChunkAt - ctx.requestStartedAt),
+                }
+              : {}),
+          };
+          const finalized = await signalSucceededWithRetry(
+            {
+              billing: deps.billing,
+              settleSignal: deps.defaults.settleSignal,
+              onError: deps.onError,
+              trace: deps.trace,
+            },
+            ctx.requestId,
+            receipt,
+          );
+          if (!finalized) {
+            deps.onError?.(
+              new Error('signal retries exhausted'),
+              `stream finalize giveup request=${ctx.requestId}`,
+            );
+          }
+          alive = false;
+          if (renewTimer != null) clearInterval(renewTimer);
+        };
 
-    // 决定性事件锚定：first_chunk（上线）/ failed（首字节前失败，可换渠）/
-    // success（零块完成——决定性即终态）。同一订阅继续监听终态做后台结算。
-    const decisive = await new Promise<UpstreamStreamEvent>((resolve) => {
-      let settled = false;
-      result.onEvent((event) => {
-        if (event.type === 'first_chunk') {
-          if (firstChunkAt === 0) firstChunkAt = event.atMs;
-          if (!settled) {
-            settled = true;
-            startLease();
-            resolve(event);
-          }
-          return;
+        /** 终态收尾失败兜底：结算链意外崩溃（重试器外的异常）时停续租定时器，防泄漏 */
+        const crashSettle = (error: unknown): void => {
+          alive = false;
+          if (renewTimer != null) clearInterval(renewTimer);
+          deps.onError?.(error, `stream settle crashed request=${ctx.requestId}`);
+        };
+
+        // 决定性事件锚定：first_chunk（上线）/ failed（首字节前失败，可换渠）/
+        // success（零块完成——决定性即终态）。同一订阅继续监听终态做后台结算。
+        const decisiveEvent = await new Promise<UpstreamStreamEvent>((resolve) => {
+          let settled = false;
+          r.onEvent((event) => {
+            if (event.type === 'first_chunk') {
+              if (firstChunkAt === 0) firstChunkAt = event.atMs;
+              if (!settled) {
+                settled = true;
+                startLease();
+                resolve(event);
+              }
+              return;
+            }
+            if (event.type === 'success') {
+              if (!settled) {
+                settled = true;
+                resolve(event);
+              }
+              // 后台结算不得反噬数据面：意外异常经 onError 观察 + 停租（铁律：回调
+              // fire-and-forget 不外溢；正常路径 settle 内部自停租）
+              void settle(event).catch(crashSettle);
+              return;
+            }
+            if (event.type === 'failed' && !settled) {
+              settled = true;
+              resolve(event);
+            }
+          });
+        });
+        if (decisiveEvent.type === 'first_chunk') {
+          span.setAttributes({
+            'upstream.ok': true,
+            'upstream.ttft_ms': Math.max(0, firstChunkAt - startedAt),
+          });
+        } else if (decisiveEvent.type === 'failed') {
+          span.setAttributes({
+            'upstream.ok': false,
+            'upstream.error_code': decisiveEvent.error.kind,
+            ...(decisiveEvent.error.status != null
+              ? { 'http.status_code': decisiveEvent.error.status }
+              : {}),
+          });
+          span.setStatus({ code: 'error', message: decisiveEvent.error.kind });
         }
-        if (event.type === 'success') {
-          if (!settled) {
-            settled = true;
-            resolve(event);
-          }
-          void settle(event);
-          return;
-        }
-        if (event.type === 'failed' && !settled) {
-          settled = true;
-          resolve(event);
-        }
-      });
-    });
+        return { result: r, decisive: decisiveEvent };
+      },
+    );
     if (decisive.type === 'failed') return dispatchFailure(deps, ctx, decisive.error);
     // 上线（first_chunk 或零块完成）：管道立即交还路由
     return {

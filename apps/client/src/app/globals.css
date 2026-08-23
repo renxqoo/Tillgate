@@ -1,4 +1,6 @@
-/* 设计系统全量样式（Tailwind v4 + 主题变量 + Inter 字体）由 ui 包单源提供 */
+@import 'tailwindcss';
+
+/* 设计系统主题变量、组件扩展与 Inter 字体由 ui 包单源提供 */
 @import '@tokenlens/ui/styles.css';
 
 /* Tailwind v4 默认不扫 node_modules（workspace 符号链接同论）——显式声明

@@ -1,0 +1,13 @@
+/**
+ * 装配子入口（总纲 §5.3）：外部目录源 adapter——由 app assembly 选择后注入
+ * `ControlPlaneEnv.sources`（根入口不导出 adapter，§5.3）。
+ * 引用白名单：仅 apps 装配层（assembly.ts）、迁移脚本与 adapter 集成测试；
+ * 包内业务代码（src 下除本文件）禁止 import 本入口（__test__/boundary.test.ts 门禁）。
+ */
+export { createOpenRouterSource } from './adapters/model-sources/openrouter-source';
+export { modelsDevSource } from './adapters/model-sources/models-dev-source';
+
+// ---- postgres store 工厂（gateway P5 波 G1：热路径读的装配取件面；§5.3 同 billing 范式） ----
+export { postgresModelStore } from './adapters/postgres/model-store';
+export { postgresChannelStore } from './adapters/postgres/channel-store';
+export { postgresRateCardStore } from './adapters/postgres/rate-card-store';

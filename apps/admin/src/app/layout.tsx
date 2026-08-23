@@ -1,4 +1,4 @@
-import { Toaster, TooltipProvider } from '@tokenlens/ui';
+import { ThemeProvider, Toaster, TooltipProvider } from '@tokenlens/ui';
 import type { ReactNode } from 'react';
 
 import type { Metadata } from 'next';
@@ -30,19 +30,21 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={htmlLang(isLocale(locale) ? locale : DEFAULT_LOCALE)}
-      data-theme-mode="light"
       suppressHydrationWarning
     >
       <head>
+        {/* 水合前读 localStorage(theme) 落 dark class——与 ui ThemeProvider 同 key（防 FOUC） */}
         <script dangerouslySetInnerHTML={{ __html: bootCode }} />
       </head>
       <body className="min-h-screen antialiased" suppressHydrationWarning>
-        <TooltipProvider>
-          <NextIntlClientProvider>
-            {children}
-            <Toaster />
-          </NextIntlClientProvider>
-        </TooltipProvider>
+        <ThemeProvider>
+          <TooltipProvider>
+            <NextIntlClientProvider>
+              {children}
+              <Toaster />
+            </NextIntlClientProvider>
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

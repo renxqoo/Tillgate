@@ -74,6 +74,9 @@ export const transactions = pgTable(
       .on(t.refType, t.refId)
       .where(sql`ref_type = 'referral_commission'`),
     // 余额链恒等（不变量下沉）：每条流水 after = before + amount。
-    check('transactions_balance_chain_ck', sql`${t.balanceAfter} = ${t.balanceBefore} + ${t.amount}`),
+    check(
+      'transactions_balance_chain_ck',
+      sql`${t.balanceAfter} = ${t.balanceBefore} + ${t.amount}`,
+    ),
   ],
 );

@@ -130,7 +130,9 @@ export function createGatewayBilling(
             type: 'request.succeeded',
             requestId: signal.requestId,
             // 收据两包同源（v1 receipt 迁移 twin）——结构直传
-            receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R } ? R : never,
+            receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R }
+              ? R
+              : never,
           });
           return;
         case 'request_failed':

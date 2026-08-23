@@ -45,12 +45,14 @@ describe('client-api config', () => {
       REGISTER_ENABLED: 'false',
       CLIENT_USAGE_TZ: 'UTC',
       EPAY_PAY_TYPE: 'wxpay',
+      TRACE_RECEIVER_TOKEN: 'tok-1',
     });
     expect(c.CLIENT_API_PORT).toBe(9090);
     expect(c.CLIENT_CURRENCY).toBe('USD');
     expect(c.REGISTER_ENABLED).toBe(false);
     expect(c.CLIENT_USAGE_TZ).toBe('UTC');
     expect(c.EPAY_PAY_TYPE).toBe('wxpay');
+    expect(c.TRACE_RECEIVER_TOKEN).toBe('tok-1');
   });
 
   it('弱密钥拒绝（secret 三闸）', () => {

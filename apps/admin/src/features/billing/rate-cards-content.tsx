@@ -3,6 +3,7 @@
 import { StatusPill } from '@/components/status-pill';
 import {
   Button,
+  ConfirmDialog,
   Dialog,
   DialogClose,
   DialogContent,
@@ -11,11 +12,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -43,12 +47,12 @@ import {
 import { useTranslations } from 'next-intl';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
 import { z } from 'zod';
 
 import type { AdminRateCardRow } from '@tokenlens/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
-import { ConfirmAction } from '@/components/confirm-action';
 
 // 校验消息走目录：schema 在组件内用 t 构造
 function buildSchema(t: ReturnType<typeof useTranslations<'rateCards'>>) {
@@ -74,7 +78,7 @@ export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<AdminR
           <TableHead>{t('descriptionLabel')}</TableHead>
           <TableHead className="w-24">{tc('status')}</TableHead>
           <TableHead className="w-44">{tc('updatedAt')}</TableHead>
-          <TableHead className="w-28 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -95,6 +99,20 @@ export function RateCardsTable({ cards }: { readonly cards: ReadonlyArray<AdminR
 function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
   const t = useTranslations('rateCards');
   const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
+  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  async function runDelete() {
+    setDeleting(true);
+    const { deleteRateCardAction } = await import('@/server/rate-cards-actions');
+    const res = await deleteRateCardAction(card.id);
+    setDeleting(false);
+    if (res.error) toast.error(String(res.error));
+    else toast.success(tc('deleted'));
+  }
+
   return (
     <TableRow>
       <TableCell className="font-medium">
@@ -112,39 +130,37 @@ function RateCardRowItem({ card }: { card: AdminRateCardRow }) {
         )}
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDateTime(card.updatedAt)}</TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            title={t('viewUsers')}
-            render={
-              <Link href={`/dashboard/rate-cards/${card.id}`}>
-                <EyeIcon />
-              </Link>
-            }
-          />
-          <EditRateCardDialog card={card} />
-          <ConfirmAction
-            confirm={t('deleteConfirm', { name: card.name })}
-            action={async () =>
-              (await import('@/server/rate-cards-actions')).deleteRateCardAction(card.id)
-            }
-            success={tc('deleted')}
-          >
-            {({ pending, onClick }) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={onClick}
-                className="text-destructive hover:text-destructive"
-              >
-                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-              </Button>
+      <TableCell className="w-16 text-center">
+        {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem render={<Link href={`/dashboard/rate-cards/${card.id}`} />}>
+            <EyeIcon className="size-4" /> {t('viewUsers')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            <PencilIcon className="size-4" /> {tc('edit')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+            {deleting ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <Trash2Icon className="size-4" />
             )}
-          </ConfirmAction>
-        </div>
+            {tc('delete')}
+          </DropdownMenuItem>
+        </RowActions>
+        <EditRateCardDialog card={card} open={editOpen} onOpenChange={setEditOpen} />
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={tc('delete')}
+          description={t('deleteConfirm', { name: card.name })}
+          confirmLabel={tc('delete')}
+          cancelLabel={tUi('cancel')}
+          tone="destructive"
+          onConfirm={runDelete}
+          onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+        />
       </TableCell>
     </TableRow>
   );
@@ -208,12 +224,20 @@ export function CreateRateCardDialog() {
   );
 }
 
-function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
+function EditRateCardDialog({
+  card,
+  open,
+  onOpenChange,
+}: {
+  card: AdminRateCardRow;
+  /** 受控 open：由行操作菜单项打开 */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const t = useTranslations('rateCards');
   const tc = useTranslations('common');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const editSchema = buildSchema(t).extend({
     status: z.coerce.number().int(),
@@ -239,19 +263,12 @@ function EditRateCardDialog({ card }: { card: AdminRateCardRow }) {
         status: Number(values.status),
       });
       if (!notify(res, tc('saveFailed'), tc('saved'))) return;
-      setOpen(false);
+      onOpenChange(false);
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={tc('edit')}>
-            <PencilIcon />
-          </Button>
-        }
-      />
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -310,7 +327,7 @@ function RateCardForm({
           name="coefficient"
           label={t('coefficientLabel')}
           id="rc-coef"
-          step="0.05"
+          step="0.001"
           min={0.001}
         />
         <Controller

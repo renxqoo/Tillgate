@@ -2,10 +2,29 @@ import { CoinsIcon, GaugeIcon, KeyRoundIcon, WalletIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
-import type { UsageByModelItem, UsageByModelPage, UsageDayRow, UsageRate, UsageSummaryPage } from '@tokenlens/api-client';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  PageHeader,
+} from '@tokenlens/ui';
+import type {
+  UsageByModelItem,
+  UsageByModelPage,
+  UsageDayRow,
+  UsageRate,
+  UsageSummaryPage,
+} from '@tokenlens/api-client';
 
 import { CostChart } from '@/features/dashboard/cost-chart';
+import {
+  TREND_WINDOW_DAYS,
+  fillDailyCostSeries,
+  trendWindowFrom,
+} from '@/features/dashboard/cost-trend';
 import { KpiCard } from '@/features/dashboard/kpi-card';
 import { todayCost } from '@/features/dashboard/kpi';
 import { ModelUsageChart } from '@/features/dashboard/model-usage-chart';
@@ -61,12 +80,14 @@ export default async function DashboardPage() {
     // ignore
   }
 
-  // 近 14 天按日费用（/v1/usage/summary 按日聚合，日界 = 后端 CLIENT_USAGE_TZ）
+  // 近 14 天按日费用（/v1/usage/summary 按日聚合，日界 = 后端 CLIENT_USAGE_TZ；
+  // 起点取起始日 00:00、序列按日补零——B21 修复：首日不再半桶、无消费日不再从图上消失）
   try {
-    const from = new Date(Date.now() - 13 * 86_400_000);
+    const from = trendWindowFrom(TREND_WINDOW_DAYS, DISPLAY_TZ);
     const summary = await api.get<UsageSummaryPage>(`/v1/usage/summary?from=${from.toISOString()}`);
     const dayRows: UsageDayRow[] = summary.list ?? [];
-    data.dailyCost = dayRows.map((row) => ({ date: row.date, value: Number(row.cost) || 0 }));
+    data.dailyCost =
+      dayRows.length > 0 ? fillDailyCostSeries(dayRows, TREND_WINDOW_DAYS, DISPLAY_TZ) : [];
     // 今日费用：DISPLAY_TZ 日界推导（v1 +8h 硬编码近似——B8 修复）
     data.todayCost = todayCost(dayRows, DISPLAY_TZ);
   } catch {
@@ -92,22 +113,20 @@ export default async function DashboardPage() {
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {t('welcome', { name: me.displayName || me.subject })}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('overview')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" render={<Link href="/dashboard/redeem" />}>
-            {t('redeemCode')}
-          </Button>
-          <Button size="sm" render={<Link href="/dashboard/keys" />}>
-            {t('createKey')}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={t('welcome', { name: me.displayName || me.subject })}
+        description={t('overview')}
+        actions={
+          <>
+            <Button variant="outline" size="sm" render={<Link href="/dashboard/redeem" />}>
+              {t('redeemCode')}
+            </Button>
+            <Button size="sm" render={<Link href="/dashboard/keys" />}>
+              {t('createKey')}
+            </Button>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 @3xl/main:grid-cols-4">
         <KpiCard
@@ -141,7 +160,7 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <Card className="@container/card">
+      <Card className="@container/card bg-muted/20 shadow-none ring-1 ring-border/60">
         <CardHeader>
           <CardTitle className="text-base">{t('costTrendTitle')}</CardTitle>
           <CardDescription>{t('costTrendDesc')}</CardDescription>
@@ -151,7 +170,7 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="bg-muted/20 shadow-none ring-1 ring-border/60">
         <CardHeader>
           <CardTitle className="text-base">{t('modelUsageTitle')}</CardTitle>
           <CardDescription>{t('modelUsageDesc')}</CardDescription>

@@ -9,6 +9,8 @@ import { loadAdminApiConfig } from '../src/config';
 const BASE: NodeJS.ProcessEnv = {
   DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
+  REDIS_URL: 'redis://localhost:6379',
+  JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',
   ENCRYPTION_KEY: 'encryption-key-0123456789-abcdef',
   IDENTITY_CODE_PEPPER: 'pepper-0123-9abcd',
 };
@@ -52,6 +54,13 @@ describe('loadAdminApiConfig', () => {
         OTEL_EXPORTER_OTLP_ENDPOINT: 'http://otel:4318',
       }).otelMode,
     ).toBe('otlp');
+  });
+
+  it('TRACE_RECEIVER_TOKEN → otelAuthToken(OTLP 推送鉴权,与接收端同键)', () => {
+    expect(loadAdminApiConfig({ ...BASE }).otelAuthToken).toBeUndefined();
+    expect(loadAdminApiConfig({ ...BASE, TRACE_RECEIVER_TOKEN: 'tok-1' }).otelAuthToken).toBe(
+      'tok-1',
+    );
   });
 
   it.each([

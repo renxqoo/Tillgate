@@ -32,22 +32,23 @@ createControlPlane(env: ControlPlaneEnv): ControlPlane
 
 `ControlPlaneEnv`（装配必填，零缺省——铁律 3）：
 
-| 项                                           | 类型                                               | 来源                                                        |
-| -------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------- |
-| `db`                                         | `Db`（@tokenlens/db）                              | app assembly                                                |
-| `txRetryPolicy`                              | `TxRetryPolicy`                                    | app config（v1 等价值 = 5 / 15ms / 20ms）                   |
-| `cipher`                                     | `SecretCipher`                                     | `runtime.createCipher(ENCRYPTION_KEY)`（结构兼容）          |
-| `capabilities`                               | `ProviderCapabilities`                             | assembly 从 `ai` 取 `SUPPORTED_PROTOCOLS` + vendor 名录注入 |
-| `probe`                                      | `UpstreamProbe`                                    | assembly 用 `ai.createAi` 包装（每次新建实例——内存态隔离）  |
-| `audit`                                      | `AuditSink`                                        | postgres 适配器（默认）或 observability 桥                  |
-| `voucherStorage`                             | `VoucherStorage`                                   | postgres 适配器（voucher_blobs）                            |
-| `sources`                                    | `readonly CatalogSource[]`                         | `[openRouterSource, modelsDevSource]`                       |
-| `cache`                                      | `CatalogCache`                                     | 内存实现（可换共享缓存）                                    |
-| `importMaxChannels`                          | `number`                                           | 装配注入（v1 = 200）                                        |
-| `catalogTtlMs`                               | `number`                                           | 目录源缓存 TTL                                              |
-| `catalogChannelRpm` / `catalogChannelBudget` | `number` / `string`                                | 导入建渠道护栏预填                                          |
-| `fx`                                         | `{ sourceUrl; autoTtlMs; fetchTimeoutMs; fetch? }` | fx 拉取参数（fetch 可注入——测试）                           |
-| `now?`                                       | `() => Date`                                       | 时钟（测试注入；缺省 real）                                 |
+| 项                                           | 类型                                               | 来源                                                                                 |
+| -------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `db`                                         | `Db`（@tokenlens/db）                              | app assembly                                                                         |
+| `txRetryPolicy`                              | `TxRetryPolicy`                                    | app config（v1 等价值 = 5 / 15ms / 20ms）                                            |
+| `cipher`                                     | `SecretCipher`                                     | `runtime.createCipher(ENCRYPTION_KEY)`（结构兼容）                                   |
+| `capabilities`                               | `ProviderCapabilities`                             | assembly 从 `ai` 取 `SUPPORTED_PROTOCOLS` + vendor 名录注入                          |
+| `probe`                                      | `UpstreamProbe`                                    | assembly 用 `ai.createAi` 包装（每次新建实例——内存态隔离）                           |
+| `audit`                                      | `AuditSink`                                        | postgres 适配器（默认）或 observability 桥（仅降级清单内运营事件，§4）               |
+| `auditTx`                                    | `AuditTxSink`                                      | postgres 事务参与实现（默认）——资金/费率审计与业务同事务（§4）                       |
+| `voucherStorage`                             | `VoucherStorage`                                   | postgres 适配器（voucher_blobs）                                                     |
+| `sources`                                    | `readonly CatalogSource[]`                         | 经 `./composition` 子入口注入（§5.3）：`[createOpenRouterSource(), modelsDevSource]` |
+| `cache`                                      | `CatalogCache`                                     | 内存实现（可换共享缓存）                                                             |
+| `importMaxChannels`                          | `number`                                           | 装配注入（v1 = 200）                                                                 |
+| `catalogTtlMs`                               | `number`                                           | 目录源缓存 TTL                                                                       |
+| `catalogChannelRpm` / `catalogChannelBudget` | `number` / `string`                                | 导入建渠道护栏预填                                                                   |
+| `fx`                                         | `{ sourceUrl; autoTtlMs; fetchTimeoutMs; fetch? }` | fx 拉取参数（fetch 可注入——测试）                                                    |
+| `now?`                                       | `() => Date`                                       | 时钟（测试注入；缺省 real）                                                          |
 
 `ControlPlane` 返回面按单元分组（providers/channels/models/rates/fx/catalog），只暴露用例函数与结果类型；
 不泄漏 `Db`/`DbTx`/drizzle 行类型/供应商 SDK（§5 硬约束）。
@@ -98,16 +99,17 @@ interface ControlContext {
 
 ### 2.4 端口（真实边界，全部装配注入）
 
-| port                                                             | 边界理由                                                        | 默认实现                   |
-| ---------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------- |
-| `ProviderCapabilities`                                           | 词表单一真相在 `ai`，反向依赖被 §5.2 禁止                       | assembly 注入              |
-| `UpstreamProbe`                                                  | 探针执行依赖 `ai` 装配（隔离实例）                              | assembly 注入              |
-| `SecretCipher`                                                   | 密钥属装配秘密（ENCRYPTION_KEY）                                | `runtime.createCipher`     |
-| `CatalogCache`                                                   | 目录源缓存（进程内 TTL；未来可共享）                            | `createMemoryCatalogCache` |
-| `AuditSink`                                                      | 审计存储归 observability；v1 语义 = 提交后 best-effort（见 §4） | adapters/postgres          |
-| `VoucherStorage`                                                 | 凭证字节 I/O（DB bytea，后续可切 OSS）                          | adapters/postgres          |
-| `CatalogSource`                                                  | 多源目录适配契约（fetch + map + 源护栏）                        | adapters/model-sources ×2  |
-| `*Store`（provider/channel/model/rate-card/fx/audit/operations） | PostgreSQL 可替换本地依赖（§5.6 类型 2），事务句柄经 port 流动  | adapters/postgres          |
+| port                                                             | 边界理由                                                                   | 默认实现                   |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------- |
+| `ProviderCapabilities`                                           | 词表单一真相在 `ai`，反向依赖被 §5.2 禁止                                  | assembly 注入              |
+| `UpstreamProbe`                                                  | 探针执行依赖 `ai` 装配（隔离实例）                                         | assembly 注入              |
+| `SecretCipher`                                                   | 密钥属装配秘密（ENCRYPTION_KEY）                                           | `runtime.createCipher`     |
+| `CatalogCache`                                                   | 目录源缓存（进程内 TTL；未来可共享）                                       | `createMemoryCatalogCache` |
+| `AuditTxSink`                                                    | 资金/安全类审计事务参与 port（§5.4/G3）：写入失败随业务事务回滚            | adapters/postgres          |
+| `AuditSink`                                                      | 审计存储归 observability；降级清单内运营事件 = 提交后 best-effort（见 §4） | adapters/postgres          |
+| `VoucherStorage`                                                 | 凭证字节 I/O（DB bytea，后续可切 OSS）                                     | adapters/postgres          |
+| `CatalogSource`                                                  | 多源目录适配契约（fetch + map + 源护栏）                                   | adapters/model-sources ×2  |
+| `*Store`（provider/channel/model/rate-card/fx/audit/operations） | PostgreSQL 可替换本地依赖（§5.6 类型 2），事务句柄经 port 流动             | adapters/postgres          |
 
 store 写方法首参 `tx: DbTx`（事务由 application 持有——§1 总纲第 8 条）；读方法无句柄（实现自持池）。
 `DbTx` 类型只出现在 port/adapter 签名与 application 事务体内，**不进 facade 返回面**。
@@ -126,8 +128,11 @@ store 写方法首参 `tx: DbTx`（事务由 application 持有——§1 总纲�
    isFree 由价格全零推导；USD 预填 = 目录价 × effective（服务端重算 provenance 进审计全链）。
 5. **渠道资金**：幂等（`ledger_operations` 占位→执行→回执；同键同参重放回执、同键异参冲突）；
    进货熔断自动复活（status 3→0）；调账守卫 = 调后非负。
-6. **审计**：v1 语义 = 业务提交后旁路 best-effort（失败记日志不反噬业务）。**保留该语义**；
-   升格为事务参与 port 属 observability 波次（契约演进待办，见 IMPLEMENTATION.md §6）。
+6. **审计（§5.4/G3，2026-08-23 收口）**：双形态——**资金/费率类审计（channel.recharge/
+   channel.adjust/rate_card.update）经 `AuditTxSink` 事务参与 port 与业务同事务写入**，失败随
+   事务回滚（审计与变更原子；费率审计 before/after 都进 detail）；**低价值运营事件**
+   （provider/channel/model 建档改档、目录导入、fx 配置）保留 v1 提交后 best-effort 语义
+   （失败记日志不反噬业务；降级清单见 IMPLEMENTATION.md §6）。幂等重放不重复审计（dedupe 单事实）。
 
 ## 4. 并发与性能预算
 

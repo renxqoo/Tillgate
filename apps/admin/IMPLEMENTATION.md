@@ -126,12 +126,18 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 4. features 域迁移：users → channels → models → billing 族 → tracing 族 → 其余
 5. 测试补齐 → 四门 + boundaries → 文档收口 → 提交（逐文件点名）
 
-## 9. 门禁记录（收口时回填）
+## 9. 门禁记录（2026-08-23 复跑回填）
 
 | 门禁       | 命令                                      | 结果 |
 | ---------- | ----------------------------------------- | ---- |
-| typecheck  | `bun x tsc --noEmit`                      | 待   |
-| lint       | `bun x oxlint`                            | 待   |
-| test       | `bun x vitest run --coverage`             | 待   |
-| build      | `bun run build`                           | 待   |
-| boundaries | `bun scripts/check-package-boundaries.ts` | 待   |
+| typecheck  | `bun x tsc --noEmit`                      | ✅ 0 错 |
+| lint       | `bun x oxlint`                            | ✅ 0-0（135 文件） |
+| test       | `bun x vitest run --coverage`             | ✅ 128/128（12 文件）；lines 95.56 / branches 88.68 / funcs 96.39 / stmts 97.77（阈值 90/85 达标） |
+| build      | `bun run build`                           | ✅（/login、/dashboard/users/[id] 等动态路由产物正常） |
+| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 21 workspace 无环、深导入/越界为零 |
+
+## 10. 挂起记录（铁律 15）
+
+- `packages/api-client/package.json` 与 `bun.lock`：本波 DTO 补缺触及 package.json，
+  与并行波共写文件混有他人未提交变更——不随本波提交，待工作区整体收口时逐文件点名
+  处理（内容本身已过门禁验证，仅提交动作挂起）。

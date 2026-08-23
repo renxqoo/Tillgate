@@ -37,7 +37,10 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
     // v1 同款：clone 上 json() 失败即无摘要，原始 body 不受影响）
     let parsedBody: unknown = null;
     if (c.req.method === 'POST') {
-      parsedBody = await c.req.raw.clone().json().catch(() => null);
+      parsedBody = await c.req.raw
+        .clone()
+        .json()
+        .catch(() => null);
     }
     await next();
     const auth = c.get('auth');
@@ -71,7 +74,10 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
         }),
       })
       .catch((error: unknown) => {
-        deps.logger?.error({ err: String(error), requestId }, 'request log write failed (best-effort)');
+        deps.logger?.error(
+          { err: String(error), requestId },
+          'request log write failed (best-effort)',
+        );
       });
   };
 }

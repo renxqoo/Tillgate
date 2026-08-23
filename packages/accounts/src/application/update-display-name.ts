@@ -19,7 +19,6 @@ export async function updateDisplayName(
       const updated = await ctx.store.updateUser(tx, {
         userId: input.userId,
         patch: { displayName },
-        advanceSessionAnchor: false,
       });
       if (updated === null)
         throw AccountsErrors.business('user_not_found', { userId: input.userId });

@@ -8,6 +8,7 @@ build/
 
 # next
 .next/
+.next-dev-verify/
 out/
 
 # env
@@ -21,6 +22,7 @@ logs/
 
 # docker
 docker/data/
+docker/nginx/certs/
 
 # redis 持久化数据（运行时产物，勿入库）
 *.rdb

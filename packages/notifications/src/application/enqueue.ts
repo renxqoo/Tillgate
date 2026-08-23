@@ -27,8 +27,10 @@ export async function enqueue(deps: EnqueueDeps, input: EnqueueInput): Promise<v
   if (
     input.dedupeKey.length < 1 ||
     input.dedupeKey.length > 128 ||
+    // payload 必须是纯对象：数组 typeof 也是 'object'，一并拒绝（jsonb 落库前收口）
     input.payload == null ||
-    typeof input.payload !== 'object'
+    typeof input.payload !== 'object' ||
+    Array.isArray(input.payload)
   ) {
     throw notificationsErrors.business('invalid_outbox_input', { dedupeKey: input.dedupeKey });
   }

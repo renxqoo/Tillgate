@@ -46,7 +46,7 @@ function traceIdOf(i: number): string {
 
 describe('initOtel', () => {
   it('mode=off 完全 no-op:无 memory 句柄,shutdown 即解', async () => {
-    const handle = initOtel({ serviceName: 'svc', mode: 'off' });
+    const handle = initOtel({ serviceName: 'svc', serviceVersion: '0.1.0', mode: 'off' });
     expect(handle.mode).toBe('off');
     expect(handle.memory).toBeUndefined();
     await expect(handle.shutdown()).resolves.toBeUndefined();
@@ -54,7 +54,7 @@ describe('initOtel', () => {
 
   it('mode=otlp 缺 endpoint 启动期 fail-fast(目录码)', () => {
     try {
-      initOtel({ serviceName: 'svc', mode: 'otlp' });
+      initOtel({ serviceName: 'svc', serviceVersion: '0.1.0', mode: 'otlp' });
       expect.unreachable('should throw');
     } catch (error) {
       expect((error as { code: string }).code).toBe('observability.otel_endpoint_missing');
@@ -62,8 +62,29 @@ describe('initOtel', () => {
     }
   });
 
+  it('铁律 3 收口:console 缺 logger / otlp 缺指标周期 fail-fast(otel_option_missing)', () => {
+    try {
+      initOtel({ serviceName: 'svc', serviceVersion: '0.1.0', mode: 'console' });
+      expect.unreachable('should throw');
+    } catch (error) {
+      expect((error as { code: string }).code).toBe('observability.otel_option_missing');
+    }
+    try {
+      initOtel({
+        serviceName: 'svc',
+        serviceVersion: '0.1.0',
+        mode: 'otlp',
+        endpoint: 'http://127.0.0.1:14318',
+        metricsExportIntervalMs: 0,
+      });
+      expect.unreachable('should throw');
+    } catch (error) {
+      expect((error as { code: string }).code).toBe('observability.otel_option_missing');
+    }
+  });
+
   it('mode=memory 返回查看句柄且 SDK 可启停(处理器即 viewer 的采集面)', async () => {
-    const handle = initOtel({ serviceName: 'svc', mode: 'memory' });
+    const handle = initOtel({ serviceName: 'svc', serviceVersion: '0.1.0', mode: 'memory' });
     expect(handle.mode).toBe('memory');
     expect(handle.memory).toBeDefined();
     handle.memory!.processor.onEnd(fakeEndSpan('f'.repeat(32), '01', 0, 'mem-op'));
@@ -74,7 +95,12 @@ describe('initOtel', () => {
   });
 
   it('mode=console 可启停(构造 console 处理器分支)', async () => {
-    const handle = initOtel({ serviceName: 'svc', mode: 'console' });
+    const handle = initOtel({
+      serviceName: 'svc',
+      serviceVersion: '0.1.0',
+      mode: 'console',
+      logger: { info() {}, warn() {} },
+    });
     expect(handle.mode).toBe('console');
     expect(handle.memory).toBeUndefined();
     await expect(handle.shutdown()).resolves.toBeUndefined();
@@ -83,9 +109,11 @@ describe('initOtel', () => {
   it('mode=otlp 带端点可启停(导出器构造,空队列 shutdown 不触网)', async () => {
     const handle = initOtel({
       serviceName: 'svc',
+      serviceVersion: '0.1.0',
       mode: 'otlp',
       endpoint: 'http://127.0.0.1:14318',
       authToken: 't0k3n',
+      metricsExportIntervalMs: 10_000,
     });
     expect(handle.mode).toBe('otlp');
     await expect(handle.shutdown()).resolves.toBeUndefined();

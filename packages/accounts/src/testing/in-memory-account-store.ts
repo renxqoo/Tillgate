@@ -507,7 +507,7 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       const card = row.rateCardId !== null ? state.rateCards.get(row.rateCardId) : undefined;
       return { ...pubUser(row), rateCardName: card?.name ?? null };
     },
-    async updateUser(_db, { userId, patch, advanceSessionAnchor }) {
+    async updateUser(_db, { userId, patch }) {
       const row = state.users.get(userId);
       if (!row) return null;
       if (patch.displayName !== undefined) row.displayName = patch.displayName;
@@ -519,7 +519,6 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       if (patch.tpmLimit !== undefined) row.tpmLimit = patch.tpmLimit;
       if (patch.dailySpendLimit !== undefined) row.dailySpendLimit = patch.dailySpendLimit;
       if (patch.isEnterprise !== undefined) row.isEnterprise = patch.isEnterprise;
-      if (advanceSessionAnchor) row.sessionInvalidBefore = now();
       row.updatedAt = now();
       return pubUser(row);
     },

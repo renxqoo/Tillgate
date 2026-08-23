@@ -18,6 +18,8 @@ const BASE = {
 describe('缺省值与推导', () => {
   it('缺省表（v1 等价值逐项）', () => {
     const c = loadGatewayConfig({ ...BASE });
+    expect(c.otel.mode).toBe('off');
+    expect(c.otel.authToken).toBeUndefined();
     expect(c.port).toBe(8_080);
     expect(c.currency).toBe('CNY');
     expect(c.reservationLimit).toBe('1000');
@@ -56,6 +58,20 @@ describe('缺省值与推导', () => {
     expect(c.globalRpm).toBeNull(); // 0 = 不限
   });
 
+  it('OTLP 覆盖：mode/endpoint/TRACE_RECEIVER_TOKEN → otel.authToken', () => {
+    const c = loadGatewayConfig({
+      ...BASE,
+      OTEL_TRACES_MODE: 'otlp',
+      OTEL_EXPORTER_OTLP_ENDPOINT: 'http://trace-receiver:8088',
+      TRACE_RECEIVER_TOKEN: 'tok-1',
+    });
+    expect(c.otel).toMatchObject({
+      mode: 'otlp',
+      endpoint: 'http://trace-receiver:8088',
+      authToken: 'tok-1',
+    });
+  });
+
   it('ENCRYPTION_KEY 回落：CHANNEL_API_KEY_ENCRYPTION 缺省时旧键兜底', () => {
     const { CHANNEL_API_KEY_ENCRYPTION: _drop, ...rest } = BASE;
     const c = loadGatewayConfig({ ...rest, ENCRYPTION_KEY: secret('hI7j', 32) });
@@ -68,13 +84,15 @@ describe('fail-closed', () => {
     expect(() => loadGatewayConfig({ ...BASE, DATABASE_URL: undefined })).toThrow();
     expect(() => loadGatewayConfig({ ...BASE, REDIS_URL: 'notaurl' })).toThrow();
     expect(() => loadGatewayConfig({ ...BASE, JWT_SECRET: 'short' })).toThrow();
-    expect(() => loadGatewayConfig({ ...BASE, CHANNEL_API_KEY_ENCRYPTION: secret('xY9z', 16) })).toThrow();
+    expect(() =>
+      loadGatewayConfig({ ...BASE, CHANNEL_API_KEY_ENCRYPTION: secret('xY9z', 16) }),
+    ).toThrow();
   });
 
   it('fixed 模式缺金额拒绝；金额串非法拒绝', () => {
-    expect(() =>
-      loadGatewayConfig({ ...BASE, BILLING_RESERVATION_MODE: 'fixed' }),
-    ).toThrow(/BILLING_FIXED_RESERVATION_AMOUNT/);
+    expect(() => loadGatewayConfig({ ...BASE, BILLING_RESERVATION_MODE: 'fixed' })).toThrow(
+      /BILLING_FIXED_RESERVATION_AMOUNT/,
+    );
     expect(() =>
       loadGatewayConfig({
         ...BASE,
@@ -92,8 +110,12 @@ describe('fail-closed', () => {
   });
 
   it('SSRF 逃生门：字符串 "false" 不开门；生产误配也恒关', () => {
-    expect(loadGatewayConfig({ ...BASE, GATEWAY_AI_ALLOW_LOCAL_URL: 'false' }).aiAllowLocalUrl).toBe(false);
-    expect(loadGatewayConfig({ ...BASE, GATEWAY_AI_ALLOW_LOCAL_URL: 'true' }).aiAllowLocalUrl).toBe(true);
+    expect(
+      loadGatewayConfig({ ...BASE, GATEWAY_AI_ALLOW_LOCAL_URL: 'false' }).aiAllowLocalUrl,
+    ).toBe(false);
+    expect(loadGatewayConfig({ ...BASE, GATEWAY_AI_ALLOW_LOCAL_URL: 'true' }).aiAllowLocalUrl).toBe(
+      true,
+    );
     expect(
       loadGatewayConfig({
         ...BASE,
@@ -114,7 +136,9 @@ describe('fail-closed', () => {
   it('废弃键告警且不进 schema（用户级限流无兜底默认）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     loadGatewayConfig({ ...BASE, DEFAULT_USER_RPM: '100', GENERATION_MAX_ACTIVE_PER_USER: '5' });
-    expect(warn.mock.calls.filter((c) => String(c[0]).includes('DEFAULT_USER_RPM'))).toHaveLength(1);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('DEFAULT_USER_RPM'))).toHaveLength(
+      1,
+    );
     warn.mockRestore();
   });
 });

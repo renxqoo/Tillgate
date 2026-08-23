@@ -177,11 +177,14 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
     byParent.set(key, [...(byParent.get(key) ?? []), row]);
   }
   const edges: GraphEdge[] = [];
+  // 节点键集合:悬挂 parent(指向缺失 span)不出边——否则展示层收到 from=不存在节点的边
+  const nodeKeys = new Set(sorted.map((row) => row.spanId));
   for (const [parentKey, children] of byParent) {
     if (parentKey === '__root__') {
       // 根层多个孤立 trace 碎片(跨服务未串联)不出边,仅出节点
       continue;
     }
+    if (!nodeKeys.has(parentKey)) continue; // 悬挂 parent:子照常出节点,边丢弃
     edges.push(childEdge(parentKey, children[0]!.spanId));
     for (let i = 1; i < children.length; i++) {
       const prev = children[i - 1]!;

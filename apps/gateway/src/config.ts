@@ -54,16 +54,19 @@ function createSchema(production: boolean) {
       GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(60_000),
       OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
       OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+      /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
+      TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
+      OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
       DEFAULT_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).default(4_096),
       GATEWAY_OUTPUT_EXPOSURE_CAP: z.coerce.number().int().min(1).default(32_768),
       GATEWAY_BODY_LIMIT_BYTES: byteSize.default('10MB'),
       GATEWAY_UPLOAD_MAX_FILE_BYTES: byteSize.default('16MB'),
-      GATEWAY_UPLOAD_IMAGE_MIME: z
+      GATEWAY_UPLOAD_IMAGE_MIME: z.string().default('image/png,image/jpeg,image/webp'),
+      GATEWAY_UPLOAD_AUDIO_MIME: z
         .string()
-        .default('image/png,image/jpeg,image/webp'),
-      GATEWAY_UPLOAD_AUDIO_MIME: z.string().default(
-        'audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/webm,audio/mp4,audio/x-m4a,audio/m4a',
-      ),
+        .default(
+          'audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/webm,audio/mp4,audio/x-m4a,audio/m4a',
+        ),
       SIGNAL_FINALIZE_ATTEMPTS: z.coerce.number().int().min(1).default(5),
       SIGNAL_FINALIZE_BASE_DELAY_MS: z.coerce.number().int().min(1).default(500),
       KEY_PREFIX: z
@@ -98,9 +101,7 @@ export interface GatewayConfig {
   readonly admissionMaxPending: number;
   readonly admissionMaxOldestMs: number;
   readonly reservationLimit: string;
-  readonly reservationPolicy:
-    | { mode: 'full' }
-    | { mode: 'fixed'; amount: string };
+  readonly reservationPolicy: { mode: 'full' } | { mode: 'fixed'; amount: string };
   readonly authorizationTtlMs: number;
   readonly generationTaskTtlMs: number;
   readonly generationLeaseGraceMs: number;
@@ -118,11 +119,20 @@ export interface GatewayConfig {
   readonly upstreamConnectTimeoutMs: number;
   readonly aiAllowLocalUrl: boolean;
   readonly shutdownGraceMs: number;
-  readonly otel: { mode: 'off' | 'otlp'; endpoint?: string };
+  readonly otel: {
+    mode: 'off' | 'otlp';
+    endpoint?: string;
+    metricsIntervalMs: number;
+    authToken?: string;
+  };
   readonly output: { defaultMaxOutputTokens: number; exposureCap: number };
   readonly settleSignal: { attempts: number; baseDelayMs: number };
   readonly bodyLimitBytes: number;
-  readonly uploadLimits: { imageMime: ReadonlySet<string>; audioMime: ReadonlySet<string>; maxFileBytes: number };
+  readonly uploadLimits: {
+    imageMime: ReadonlySet<string>;
+    audioMime: ReadonlySet<string>;
+    maxFileBytes: number;
+  };
   readonly keyPrefix: string;
   readonly oauth: { jwtSecret: string; issuer: string; audience: string; tokenTtlSeconds: number };
   readonly channelApiKeyEncryption: string;
@@ -156,7 +166,12 @@ export const BILLING_GUARDS = {
 } as const;
 
 const mimeSetOf = (raw: string): Set<string> =>
-  new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
+  new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 
 /** 废弃键告警（v1 语义：用户级限流无兜底默认——残留键提示迁移） */
 const DEPRECATED_KEYS = [
@@ -170,7 +185,9 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
   const raw = { ...env };
   for (const key of DEPRECATED_KEYS) {
     if (raw[key] != null && raw[key] !== '') {
-      console.warn(`[gateway] config key ${key} is deprecated and ignored (user-level limits have no default)`);
+      console.warn(
+        `[gateway] config key ${key} is deprecated and ignored (user-level limits have no default)`,
+      );
     }
     delete raw[key];
   }
@@ -217,10 +234,13 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
     shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,
-    otel:
-      parsed.OTEL_TRACES_MODE === 'otlp' && parsed.OTEL_EXPORTER_OTLP_ENDPOINT != null
-        ? { mode: 'otlp', endpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT }
-        : { mode: parsed.OTEL_TRACES_MODE },
+    otel: {
+      metricsIntervalMs: parsed.OTEL_METRICS_INTERVAL_MS,
+      ...(parsed.OTEL_TRACES_MODE === 'otlp' && parsed.OTEL_EXPORTER_OTLP_ENDPOINT != null
+        ? { mode: 'otlp' as const, endpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT }
+        : { mode: parsed.OTEL_TRACES_MODE }),
+      ...(parsed.TRACE_RECEIVER_TOKEN != null ? { authToken: parsed.TRACE_RECEIVER_TOKEN } : {}),
+    },
     output: {
       defaultMaxOutputTokens: parsed.DEFAULT_MAX_OUTPUT_TOKENS,
       exposureCap: parsed.GATEWAY_OUTPUT_EXPOSURE_CAP,
@@ -246,6 +266,8 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
       tokenTtlSeconds: parsed.JWT_TOKEN_TTL_SECONDS,
     },
     channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
-    corsOrigins: parsed.GATEWAY_CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+    corsOrigins: parsed.GATEWAY_CORS_ORIGINS.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   };
 }

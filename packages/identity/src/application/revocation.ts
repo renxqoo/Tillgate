@@ -7,7 +7,7 @@ import { auditEvent } from '../domain/audit-events.js';
 import { assertUserId, guardRealm } from '../domain/identifier.js';
 import { iatMsOf } from '../domain/session.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { recordAudit } from './context.js';
 
 export async function advanceAnchor(
   ctx: IdentityUseCaseContext,
@@ -33,7 +33,7 @@ export async function revokeSessions(
     userId,
     ...(input.at != null ? { at: input.at } : {}),
   });
-  await emitAudit(
+  await recordAudit(
     ctx,
     auditEvent(ctx.clock.now(), {
       actor: 'admin',

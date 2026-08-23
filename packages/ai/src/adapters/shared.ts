@@ -7,7 +7,11 @@ import type { Usage } from '../types';
 export function extractOpenAiUsage(res: unknown): Usage | null {
   const j = res as Record<string, unknown> | null;
   const usage = j?.usage as Record<string, unknown> | undefined;
-  if (!usage || typeof usage.prompt_tokens !== 'number' || typeof usage.completion_tokens !== 'number') {
+  if (
+    !usage ||
+    typeof usage.prompt_tokens !== 'number' ||
+    typeof usage.completion_tokens !== 'number'
+  ) {
     return null;
   }
   const details = usage.prompt_tokens_details as Record<string, unknown> | undefined;

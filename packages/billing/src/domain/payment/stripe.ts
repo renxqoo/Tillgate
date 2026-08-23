@@ -7,9 +7,17 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { parsePositiveAmount } from '../money.js';
 
-/** 元 → 分（整数串；Decimal 运算避开 ×100 浮点尾差） */
+/**
+ * 元 → 分（整数串；Decimal 运算避开 ×100 浮点尾差）。
+ * 零 round：非整分值结构性拒绝（面额闸上游已限两位小数；此处拒绝是防御对称，
+ * 不做静默取整——静默取整 = 多收/少收）。
+ */
 export function stripeCentsFromAmount(amount: string): string {
-  return parsePositiveAmount(amount).times(100).toFixed(0);
+  const cents = parsePositiveAmount(amount).times(100);
+  if (!cents.isInteger()) {
+    throw new Error('stripe amount does not convert to whole cents');
+  }
+  return cents.toString();
 }
 
 /** 分 → 元（整数拆合，无浮点路径；'1010' → '10.10'） */
@@ -67,10 +75,11 @@ export interface StripeCheckoutEvent {
 
 /**
  * webhook 事件体 → 归一载荷。completed 对延迟支付方式不等于已到账，必须同时
- * 验 payment_status=paid、mode=payment、currency=cny；否则提前赠送余额会形成资损。
- * 只提取不判定：金额核对在 application（需要订单真相）。
+ * 验 payment_status=paid、mode=payment、currency=注入币种（币种单真相：与装配
+ * 的 PaymentsDeps.currency 同源注入，不在本层写死 'cny'）；否则提前赠送余额会
+ * 形成资损。只提取不判定：金额核对在 application（需要订单真相）。
  */
-export function parseStripeEvent(payload: string): StripeCheckoutEvent | null {
+export function parseStripeEvent(payload: string, currency: string): StripeCheckoutEvent | null {
   let event: {
     type?: string;
     data?: {
@@ -107,7 +116,7 @@ export function parseStripeEvent(payload: string): StripeCheckoutEvent | null {
     amountTotal <= 0 ||
     obj.payment_status !== 'paid' ||
     obj.mode !== 'payment' ||
-    obj.currency?.toLowerCase() !== 'cny'
+    obj.currency?.toLowerCase() !== currency.toLowerCase()
   ) {
     return null;
   }

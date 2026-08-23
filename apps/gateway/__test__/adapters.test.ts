@@ -10,17 +10,20 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tokenlens/errors';
 import { controlPlaneErrors } from '@tokenlens/control-plane';
-import {
-  createGatewayCatalog,
-  type CatalogStores,
-} from '../src/adapters/catalog-port';
+import { createGatewayCatalog, type CatalogStores } from '../src/adapters/catalog-port';
 import { createGatewayBilling } from '../src/adapters/billing-port';
 import { createSettleWakeProducer } from '../src/adapters/settle-wake';
-import type { ActiveMappingRow, RouteCandidateRow, UserRateCardContext } from '@tokenlens/control-plane';
+import type {
+  ActiveMappingRow,
+  RouteCandidateRow,
+  UserRateCardContext,
+} from '@tokenlens/control-plane';
 import type { QuoteCandidate } from '@tokenlens/inference';
 
 // ---- catalog-port 替身 ----
-const mapping = (over: Partial<ActiveMappingRow> & { id: number; externalName: string }): ActiveMappingRow => ({
+const mapping = (
+  over: Partial<ActiveMappingRow> & { id: number; externalName: string },
+): ActiveMappingRow => ({
   realModel: `real-${over.externalName}`,
   contextLength: null,
   inputPrice: '1',
@@ -37,18 +40,24 @@ const mapping = (over: Partial<ActiveMappingRow> & { id: number; externalName: s
   ...over,
 });
 
-function stores(over: {
-  mappings?: ActiveMappingRow[];
-  card?: UserRateCardContext | null;
-  channels?: RouteCandidateRow[];
-} = {}): CatalogStores {
-  const mappings = over.mappings ?? [mapping({ id: 1, externalName: 'm-main', fallbackModels: ['m-fb'] })];
+function stores(
+  over: {
+    mappings?: ActiveMappingRow[];
+    card?: UserRateCardContext | null;
+    channels?: RouteCandidateRow[];
+  } = {},
+): CatalogStores {
+  const mappings = over.mappings ?? [
+    mapping({ id: 1, externalName: 'm-main', fallbackModels: ['m-fb'] }),
+  ];
   return {
     models: {
-      findActiveByExternalName: async (name) => mappings.find((m) => m.externalName === name) ?? null,
+      findActiveByExternalName: async (name) =>
+        mappings.find((m) => m.externalName === name) ?? null,
     },
     channels: {
-      findRouteCandidates: async (realModel) => (over.channels ?? []).filter(() => realModel.length > 0),
+      findRouteCandidates: async (realModel) =>
+        (over.channels ?? []).filter(() => realModel.length > 0),
     },
     rateCards: { findActiveCardByUser: async () => over.card ?? null },
   };
@@ -56,15 +65,20 @@ function stores(over: {
 
 const noCard = { userId: 1, body: {} };
 
+const card = (coefficients: UserRateCardContext['coefficients']): UserRateCardContext => ({
+  cardId: 9,
+  cardName: 'vip',
+  status: 0,
+  coefficients,
+});
+
 describe('catalog-port：系数解析（C-G2）', () => {
   it('无卡恒系数 1；global 行兜底；model 行优先；group 行按 pricingGroup 命中', async () => {
-    const card = (coefficients: UserRateCardContext['coefficients']): UserRateCardContext => ({
-      cardId: 9,
-      cardName: 'vip',
-      status: 0,
-      coefficients,
-    });
-    const catalog = createGatewayCatalog(stores({ card: card([{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' }]) }));
+    const catalog = createGatewayCatalog(
+      stores({
+        card: card([{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' }]),
+      }),
+    );
     expect((await catalog.findMapping('m-main', noCard))!.coefficient).toBe('0.8');
 
     const withModel = createGatewayCatalog(
@@ -80,18 +94,30 @@ describe('catalog-port：系数解析（C-G2）', () => {
     const withGroup = createGatewayCatalog(
       stores({
         mappings: [mapping({ id: 2, externalName: 'm-g', pricingGroup: 'anthropic' })],
-        card: card([{ scope: 'group', modelMappingId: null, groupKey: 'anthropic', coefficient: '0.9' }]),
+        card: card([
+          { scope: 'group', modelMappingId: null, groupKey: 'anthropic', coefficient: '0.9' },
+        ]),
       }),
     );
     expect((await withGroup.findMapping('m-g', noCard))!.coefficient).toBe('0.9'); // group 命中
 
-    expect((await createGatewayCatalog(stores({ card: null })).findMapping('m-main', noCard))!.coefficient).toBe('1');
+    expect(
+      (await createGatewayCatalog(stores({ card: null })).findMapping('m-main', noCard))!
+        .coefficient,
+    ).toBe('1');
   });
 
   it('停用卡拒绝新请求（control_plane.rate_card_disabled → 403）', async () => {
     const catalog = createGatewayCatalog(
       stores({
-        card: { cardId: 9, cardName: 'vip', status: 1, coefficients: [{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' }] },
+        card: {
+          cardId: 9,
+          cardName: 'vip',
+          status: 1,
+          coefficients: [
+            { scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' },
+          ],
+        },
       }),
     );
     const err = await catalog.findMapping('m-main', noCard).catch((e: Error) => e);
@@ -116,7 +142,10 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap = await catalog.findMapping('img-x', { userId: 1, body: { n: 2, size: '1024x1024' } });
+    const snap = await catalog.findMapping('img-x', {
+      userId: 1,
+      body: { n: 2, size: '1024x1024' },
+    });
     expect(snap!.pricingUnit).toBe('image');
     expect(snap!.unitPrice).toBe('0.04'); // 变体按 body.size 选定
     expect(snap!.unitUpperBound).toBe(2); // n=2 张
@@ -141,12 +170,29 @@ describe('catalog-port：系数解析（C-G2）', () => {
   it('快照杂项：fallback 链 / cacheWrite 零价归 null / 指纹 / 渠道候选可选限流列映射', async () => {
     const catalog = createGatewayCatalog(
       stores({
-        mappings: [mapping({ id: 1, externalName: 'm-main', fallbackModels: ['m-fb'], billingPolicy: { modal: true } })],
+        mappings: [
+          mapping({
+            id: 1,
+            externalName: 'm-main',
+            fallbackModels: ['m-fb'],
+            billingPolicy: { modal: true },
+          }),
+        ],
         channels: [
           {
-            channelId: 7, channelName: 'c', apiKeyEnc: 'enc', baseUrlOverride: 'https://ov.example',
-            providerName: 'p', providerBaseUrl: 'https://p.example', providerProtocol: 'openai-compatible',
-            providerVendor: 'openai', priority: 3, weight: 2, rpmLimit: 60, tpmLimit: 1000, upstreamBudget: '99',
+            channelId: 7,
+            channelName: 'c',
+            apiKeyEnc: 'enc',
+            baseUrlOverride: 'https://ov.example',
+            providerName: 'p',
+            providerBaseUrl: 'https://p.example',
+            providerProtocol: 'openai-compatible',
+            providerVendor: 'openai',
+            priority: 3,
+            weight: 2,
+            rpmLimit: 60,
+            tpmLimit: 1000,
+            upstreamBudget: '99',
           },
         ],
       }),
@@ -155,7 +201,9 @@ describe('catalog-port：系数解析（C-G2）', () => {
     expect(snap!.fallbackModels).toEqual(['m-fb']);
     expect(snap!.cacheWritePrice).toBeNull();
     expect(snap!.billingPolicyFingerprint).toBe(
-      createHash('sha256').update(JSON.stringify({ modal: true })).digest('hex'),
+      createHash('sha256')
+        .update(JSON.stringify({ modal: true }))
+        .digest('hex'),
     );
     const [channel] = await catalog.resolveChannels('real-m-main');
     expect(channel).toMatchObject({
@@ -169,46 +217,46 @@ describe('catalog-port：系数解析（C-G2）', () => {
 });
 
 // ---- billing-port ----
-describe('billing-port（C-G3）', () => {
-  const candidate = (over: Partial<QuoteCandidate> = {}): QuoteCandidate => ({
-    mappingId: 1,
-    externalModel: 'm',
-    realModel: 'real-m',
-    inputPrice: '1',
-    cacheInputPrice: '1',
-    cacheWritePrice: null,
-    outputPrice: '2',
-    unitPrice: null,
-    pricingUnit: 'token',
-    unitUpperBound: 0,
-    coefficient: '0.8',
-    billingPolicyFingerprint: null,
-    ...over,
-  });
+const candidate = (over: Partial<QuoteCandidate> = {}): QuoteCandidate => ({
+  mappingId: 1,
+  externalModel: 'm',
+  realModel: 'real-m',
+  inputPrice: '1',
+  cacheInputPrice: '1',
+  cacheWritePrice: null,
+  outputPrice: '2',
+  unitPrice: null,
+  pricingUnit: 'token',
+  unitUpperBound: 0,
+  coefficient: '0.8',
+  billingPolicyFingerprint: null,
+  ...over,
+});
 
-  function spyApi() {
-    const calls: { authorize: unknown[]; signals: unknown[]; reserves: unknown[] } = {
-      authorize: [],
-      signals: [],
-      reserves: [],
-    };
-    return {
-      calls,
-      api: {
-        authorize: async (input: unknown) => {
-          calls.authorize.push(input);
-        },
-        signal: async (event: unknown) => {
-          calls.signals.push(event);
-        },
-        reserveChannel: async (input: { amount: string }) => {
-          calls.reserves.push(input);
-          return { allowed: true, remaining: '0', switched: false };
-        },
+function spyApi() {
+  const calls: { authorize: unknown[]; signals: unknown[]; reserves: unknown[] } = {
+    authorize: [],
+    signals: [],
+    reserves: [],
+  };
+  return {
+    calls,
+    api: {
+      authorize: async (input: unknown) => {
+        calls.authorize.push(input);
       },
-    };
-  }
+      signal: async (event: unknown) => {
+        calls.signals.push(event);
+      },
+      reserveChannel: async (input: { amount: string }) => {
+        calls.reserves.push(input);
+        return { allowed: true, remaining: '0', switched: false };
+      },
+    },
+  };
+}
 
+describe('billing-port（C-G3）', () => {
   it('authorize：admission 前置 → 报价组装（上限逐候选盖章 + 预留门槛/policy 透传）', async () => {
     const { api, calls } = spyApi();
     const admissions: number[] = [];
@@ -232,7 +280,11 @@ describe('billing-port（C-G3）', () => {
     });
     expect(admissions).toHaveLength(1);
     const input = calls.authorize[0] as {
-      quote: { candidates: Array<{ inputTokenUpperBound: number }>; maxOutputTokens: number; explicitlyFree?: boolean };
+      quote: {
+        candidates: Array<{ inputTokenUpperBound: number }>;
+        maxOutputTokens: number;
+        explicitlyFree?: boolean;
+      };
       reservationLimit: string;
       reservationPolicy: { mode: string; amount?: string };
     };
@@ -250,23 +302,39 @@ describe('billing-port（C-G3）', () => {
       reservationPolicy: { mode: 'full' },
     });
     await port.authorize({
-      requestId: 'r', userId: 1, apiKeyId: null, appId: null, stream: false,
-      candidates: [candidate({ isFree: true, inputPrice: '0', cacheInputPrice: '0', outputPrice: '0' })],
-      inputTokenUpperBound: 0, maxOutputTokens: 0, authorizationTtlMs: 1,
+      requestId: 'r',
+      userId: 1,
+      apiKeyId: null,
+      appId: null,
+      stream: false,
+      candidates: [
+        candidate({ isFree: true, inputPrice: '0', cacheInputPrice: '0', outputPrice: '0' }),
+      ],
+      inputTokenUpperBound: 0,
+      maxOutputTokens: 0,
+      authorizationTtlMs: 1,
     });
-    expect((calls.authorize[0] as { quote: { explicitlyFree?: boolean } }).quote.explicitlyFree).toBe(true);
+    expect(
+      (calls.authorize[0] as { quote: { explicitlyFree?: boolean } }).quote.explicitlyFree,
+    ).toBe(true);
   });
 
   it('signal：蛇形→点分词表四事件直译', async () => {
     const { api, calls } = spyApi();
-    const port = createGatewayBilling(api as never, { reservationLimit: '1', reservationPolicy: { mode: 'full' } });
+    const port = createGatewayBilling(api as never, {
+      reservationLimit: '1',
+      reservationPolicy: { mode: 'full' },
+    });
     await port.signal({ type: 'upstream_started', requestId: 'r', leaseOwner: 'o', leaseMs: 100 });
     await port.signal({ type: 'lease_renewed', requestId: 'r', leaseOwner: 'o', leaseMs: 100 });
     await port.signal({ type: 'request_failed', requestId: 'r', reason: 'boom' });
     await port.signal({
       type: 'request_succeeded',
       requestId: 'r',
-      receipt: { requestId: 'r', usage: { inputTokens: 1, outputTokens: 2, cachedInputTokens: 0, estimated: false } } as never,
+      receipt: {
+        requestId: 'r',
+        usage: { inputTokens: 1, outputTokens: 2, cachedInputTokens: 0, estimated: false },
+      } as never,
     });
     expect(calls.signals.map((e) => (e as { type: string }).type)).toEqual([
       'upstream.started',
@@ -280,11 +348,19 @@ describe('billing-port（C-G3）', () => {
 
   it('reserveChannel：官方价口径（coefficient=1）amount 自算 + allowed 收窄', async () => {
     const { api, calls } = spyApi();
-    const port = createGatewayBilling(api as never, { reservationLimit: '1', reservationPolicy: { mode: 'full' } });
+    const port = createGatewayBilling(api as never, {
+      reservationLimit: '1',
+      reservationPolicy: { mode: 'full' },
+    });
     const result = await port.reserveChannel({
       requestId: 'r',
       channelId: 7,
-      candidate: candidate({ inputPrice: '3.5', cacheInputPrice: '1', cacheWritePrice: '7', outputPrice: '2' }),
+      candidate: candidate({
+        inputPrice: '3.5',
+        cacheInputPrice: '1',
+        cacheWritePrice: '7',
+        outputPrice: '2',
+      }),
       estimatedInputTokens: 1_000_000,
       maxOutputTokens: 1_000_000,
     });
@@ -307,7 +383,9 @@ describe('settle-wake（C-G8）', () => {
         const chunk = q as { queryChunks?: unknown[] };
         const dump = JSON.stringify(chunk.queryChunks ?? []);
         const text = (chunk.queryChunks ?? [])
-          .map((c) => (typeof c === 'string' ? c : (c as { value?: unknown[] }).value?.join(' ') ?? ''))
+          .map((c) =>
+            typeof c === 'string' ? c : ((c as { value?: unknown[] }).value?.join(' ') ?? ''),
+          )
           .join('');
         executed.push({ sql: text, dump });
         if (executed.length === 2) throw new Error('notify dropped');

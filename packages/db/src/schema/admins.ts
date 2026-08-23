@@ -1,4 +1,13 @@
-import { boolean, pgTable, bigserial, varchar, smallint, timestamp, uniqueIndex, check } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  pgTable,
+  bigserial,
+  varchar,
+  smallint,
+  timestamp,
+  uniqueIndex,
+  check,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { ACCOUNT_STATUS } from './account-status.js';
 

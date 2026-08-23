@@ -1,7 +1,7 @@
 /**
  * 目录路由（v1 routes/catalog.ts 平移）：目录源清单/价格溯源/拉取比对/一键导入。
  * 导入价格必填（提交即确认——目录价只展示不自动带入;防 0 卖亏钱）。
- * /v1/vendor-catalog 为 P6 pending（vendor 档案词表待 ai 根出口,DESIGN §5 D1）。
+ * /v1/vendor-catalog（P6/D1）：协议 + 厂商档案词表（ai 根出口装配注入,单一事实源）。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
@@ -13,6 +13,11 @@ import { catalogContracts, catalogSourceParam } from '../contracts/catalog';
 
 export interface CatalogRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'catalog'>;
+  /** P6/D1:词表装配注入(assembly 自 ai 根出口取——词表不得在 app 复制,双事实源禁令) */
+  readonly vendorCatalog: {
+    readonly protocols: readonly string[];
+    readonly vendors: readonly string[];
+  };
 }
 
 export function catalogRoutes(deps: CatalogRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
@@ -57,6 +62,11 @@ export function catalogRoutes(deps: CatalogRoutesDeps, session: MiddlewareHandle
       }),
     );
   });
+
+  /** 厂商档案 + 协议词表（创建 Provider 表单两下拉单一真相;v1 app 内常量改为装配注入）。 */
+  app.get('/v1/vendor-catalog', session, (c) =>
+    c.json({ protocols: deps.vendorCatalog.protocols, vendors: deps.vendorCatalog.vendors }),
+  );
 
   return app;
 }

@@ -42,6 +42,19 @@ export interface StatementItemRow {
   createdAt: Date;
 }
 
+/** 返利流水分类（管理面 wire 词表;物理投影 = refType + refId 前缀,postgres adapter 单点） */
+export type ReferralPayoutKind = 'commission' | 'referral_signup' | 'gift';
+
+/** 返利流水行（管理读侧投影;v1 marketing.repo listPayouts 同视图——交易级,非腿级） */
+export interface ReferralPayoutRow {
+  id: number;
+  kind: string;
+  refType: string;
+  refId: string;
+  memo: string | null;
+  createdAt: Date;
+}
+
 /** 钱包复式账本聚合存储（无状态；金额一律 string，语义判定与错误翻译在 domain/动词） */
 export interface WalletStore {
   /** 只读池会话（幂等快速路径查询；不开事务） */
@@ -170,6 +183,15 @@ export interface WalletStore {
       beforeLegId?: number;
     },
   ): Promise<StatementItemRow[]>;
+
+  /**
+   * 返利流水页（管理读侧;交易级 id 倒序 + 分页;三类投影条件在 adapter 单点——
+   * accounts G3 裁决落位:payouts 是 wallet 流水投影,资金单一真相在本包）。
+   */
+  listReferralPayouts(
+    conn: WalletConn,
+    input: { kind: ReferralPayoutKind; limit: number; offset: number },
+  ): Promise<{ rows: ReferralPayoutRow[]; total: number }>;
 
   /** PG 唯一冲突（SQLSTATE 23505）：幂等竞态的兜底信号——并发同键第二个 INSERT 落此处 */
   isUniqueViolation(error: unknown): boolean;

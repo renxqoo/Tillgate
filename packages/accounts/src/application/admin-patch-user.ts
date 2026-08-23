@@ -1,7 +1,7 @@
 /**
  * 管理面用户补丁(v1 users.service patch 语义重构):
  * - freezeReason 只能随封禁出现(v1 superRefine);封禁缺省原因注入;解封清原因;
- * - email 变更 = 身份事实变更,同语句推进会话失效线(全网下线);
+ * - email 变更 = 身份事实变更,同事务经 SessionInvalidationPort 推进 identity 吊销线(全网下线;§3.4 唯一所有者);
  * - 换卡守卫两分(不存在/停用);限额域校验;
  * - 审计 user.update 同事务落库(全量 patch detail)。
  */
@@ -12,6 +12,7 @@ import { isNonNegativeAmountWithin, parseRateLimit } from '../domain/limits.js';
 import { USER_STATUS, USER_STATUSES } from '../domain/status.js';
 import type { UserPatch, UserRecord } from '../ports/account-store.js';
 import type { UserStatus } from '../domain/status.js';
+import { SESSION_REALM } from '../ports/session-invalidation.js';
 import type { UseCaseContext } from './context.js';
 
 export interface AdminUserPatchInput {
@@ -124,10 +125,16 @@ export async function adminPatchUser(
       const updated = await ctx.store.updateUser(tx, {
         userId: input.userId,
         patch,
-        advanceSessionAnchor,
       });
       if (updated === null)
         throw AccountsErrors.business('user_not_found', { userId: input.userId });
+      // email 变更:同事务推进 identity 吊销线(§3.4;回滚即未失效,失败随事务回滚)
+      if (advanceSessionAnchor) {
+        await ctx.sessionInvalidation.invalidateUserSessions(tx, {
+          realm: SESSION_REALM,
+          userId: input.userId,
+        });
+      }
       await ctx.audit.record(tx, {
         actor: 'admin',
         adminId: input.adminId,

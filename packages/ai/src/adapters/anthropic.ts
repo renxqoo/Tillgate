@@ -1,13 +1,12 @@
 import { extractOpenAiUsage } from './shared';
-import type {
-  Endpoint, ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
+import type { Endpoint, ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import {
   chatRequestToClaude,
   claudeResponseToChat,
-  claudeUpstreamToCanonicalStream,
   claudeUsageToUsage,
 } from '../protocol/claude-chat';
+import { claudeUpstreamToCanonicalStream } from '../protocol/claude-stream';
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
@@ -35,7 +34,13 @@ export class AnthropicAdapter implements ProtocolAdapter {
   readonly protocol = 'anthropic';
   readonly supportedEndpoints: readonly Endpoint[] = ['chat'];
 
-  planRequest(channel: ChannelDesc, { requestId, stream }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean }): { path: string; headers: Record<string, string> } {
+  planRequest(
+    channel: ChannelDesc,
+    {
+      requestId,
+      stream,
+    }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean },
+  ): { path: string; headers: Record<string, string> } {
     void stream;
     return {
       path: '/v1/messages',
@@ -48,13 +53,20 @@ export class AnthropicAdapter implements ProtocolAdapter {
     };
   }
 
-  finalizeRequestBody(body: Record<string, unknown>, { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean }): Record<string, unknown> {
+  finalizeRequestBody(
+    body: Record<string, unknown>,
+    { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean },
+  ): Record<string, unknown> {
     const claudeBody = chatRequestToClaude({ ...body, model });
     if (stream) claudeBody.stream = true;
     return claudeBody;
   }
 
-  normalizeRequest(req: unknown, _rules: ParamRules, _endpoint: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(
+    req: unknown,
+    _rules: ParamRules,
+    _endpoint: Endpoint,
+  ): { body: unknown; adjustments: ParamAdjustment[] } {
     // 规范形基底（chat 参数语义）+ claude 特有参数透传
     void _endpoint;
     return { body: req, adjustments: [] as ParamAdjustment[] };
@@ -64,6 +76,7 @@ export class AnthropicAdapter implements ProtocolAdapter {
     return claudeResponseToChat(body);
   }
 
+  /** model 参数不参与 claude 族转换：真实模型名从 message_start 提取（v1 同语义） */
   translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
     return claudeUpstreamToCanonicalStream(stream);
   }
@@ -86,7 +99,11 @@ export class AnthropicAdapter implements ProtocolAdapter {
       : null;
   }
 
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: ANTHROPIC_TYPE_KINDS, status, body, headers });
   }
 
@@ -99,4 +116,3 @@ export class AnthropicAdapter implements ProtocolAdapter {
     ];
   }
 }
-

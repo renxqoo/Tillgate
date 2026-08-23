@@ -36,7 +36,7 @@
 
 ## 2. 审计结论（引用 IMPLEMENTATION.md §1，不重复抄写）
 
-影响本单元：B2/B4/B5/B7/B8/B11/B12/B13/B14/B15/B17 修复或清理（各有回归用例或结构性消除）；B1/B6/B9/B10/B18/B19/B20 保留取舍；D1–D4 提取；G1–G4 契约缺口挂 client-api。
+影响本单元：B2/B4/B5/B7/B8/B11/B12/B13/B14/B15/B17 修复或清理（各有回归用例或结构性消除）；B1/B6/B9/B10/B19/B20 保留取舍；B18 已修复（§8 全量翻页 + BOM）；D1–D4 提取；G1–G4 契约缺口挂 client-api。
 
 ## 3. 逐模块裁决表
 
@@ -89,7 +89,14 @@
 
 ## 8. 后续切片（独立跟进，不阻塞本次收口）
 
-- 组件渲染测试（jsdom + testing-library，覆盖表单/弹窗交互）；
+- ~~组件渲染测试~~ **已兑现**（2026-08-23，jsdom + testing-library，`__test__/render-*.test.tsx` 4 件 14 用例：
+  ConfirmAction 弹窗确认/取消/pending 生命周期、TopUpForm 渠道与金额界校验/预设交互/payUrl 跳转、
+  PasswordForm 双层校验与 reset 收尾、RedeemForm 短码校验/成功态切换、ExportKeys 下载链路；
+  环境以文件头 `@vitest-environment jsdom` 内聚声明，词表单一真相 = messages/en.json；
+  覆盖率阈值未调——渲染测试使被其 import 的 features `.tsx` 组件顺带进入 v8 报告，
+  94.41/86.75/98.96/96.93 ≥ 90/85/90/90）；
 - 真实链路 e2e（起 client-api + client 前端做浏览器旅程，归组根 `e2e/client-journey`——注意 spawn 需 `--conditions=development`）；
-- G1/G2/G3/G4 契约扩展后的 UI 回补；B18 导出增强；
+- G1/G2/G3/G4 契约扩展后的 UI 回补；~~B18 导出增强~~ **已兑现**（2026-08-23：导出经既有 `list`
+  动词循环翻页取满 total——不再仅当前页 20 条，页面级导出语义保留；上限 1000 条防失控 + 空页防御；
+  TSV 加 UTF-8 BOM（Excel 中文兼容）；行为规格 8 用例（`__test__/export-keys.test.ts`）+ 渲染 2 用例）；
 - Dockerfile/部署编排（等部署 ADR）。

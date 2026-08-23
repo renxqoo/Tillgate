@@ -1,9 +1,13 @@
 import { createSign } from 'node:crypto';
 import { extractOpenAiUsage } from './shared';
-import type { ParamRules,
-  Endpoint, ChannelDesc, UpstreamError, Usage } from '../types';
+import type { ParamRules, Endpoint, ChannelDesc, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
-import { chatRequestToGemini, geminiResponseToChat, geminiUpstreamToCanonicalStream, geminiUsageToUsage } from '../protocol/gemini-chat';
+import {
+  chatRequestToGemini,
+  geminiResponseToChat,
+  geminiUsageToUsage,
+} from '../protocol/gemini-chat';
+import { geminiUpstreamToCanonicalStream } from '../protocol/gemini-stream';
 import { tableOrFallback } from '../errors/fallback';
 import { GEMINI_STATUS_KINDS } from './gemini';
 
@@ -62,13 +66,18 @@ export class VertexAiAdapter implements ProtocolAdapter {
       exp: now + TOKEN_TTL_S,
     };
     const unsigned = `${b64(header)}.${b64(claims)}`;
-    const signature = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key.replace(/\\n/g, '\n'));
+    const signature = createSign('RSA-SHA256')
+      .update(unsigned)
+      .sign(sa.private_key.replace(/\\n/g, '\n'));
     const assertion = `${unsigned}.${signature.toString('base64url')}`;
 
     const res = await this.fetchImpl('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion }).toString(),
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+      }).toString(),
     });
     if (!res.ok) {
       throw new Error(`vertex token exchange failed: ${res.status}`);
@@ -79,13 +88,18 @@ export class VertexAiAdapter implements ProtocolAdapter {
     }
     this.tokenCache.set(cacheKey, {
       token: data.access_token,
-      expiresAt: Date.now() + (typeof data.expires_in === 'number' ? data.expires_in : TOKEN_TTL_S) * 1000,
+      expiresAt:
+        Date.now() + (typeof data.expires_in === 'number' ? data.expires_in : TOKEN_TTL_S) * 1000,
     });
     return data.access_token;
   }
 
   /** 供 create-ai 获取带认证的最终头（token 异步）——签名钩子同样时序正确 */
-  signRequest = async (args: { url: URL; body: string; apiKey: string }): Promise<Record<string, string>> => {
+  signRequest = async (args: {
+    url: URL;
+    body: string;
+    apiKey: string;
+  }): Promise<Record<string, string>> => {
     void args.url;
     void args.body;
     const sa = this.parseSa(args.apiKey);
@@ -94,7 +108,14 @@ export class VertexAiAdapter implements ProtocolAdapter {
     return { authorization: `Bearer ${token}` };
   };
 
-  planRequest(channel: ChannelDesc, { model, requestId, stream }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean }): { path: string; headers: Record<string, string> } {
+  planRequest(
+    channel: ChannelDesc,
+    {
+      model,
+      requestId,
+      stream,
+    }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean },
+  ): { path: string; headers: Record<string, string> } {
     void channel;
     void requestId;
     const action = stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
@@ -114,11 +135,18 @@ export class VertexAiAdapter implements ProtocolAdapter {
     return m?.[1] ?? 'us-central1';
   }
 
-  finalizeRequestBody(body: Record<string, unknown>, { model }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean }): Record<string, unknown> {
+  finalizeRequestBody(
+    body: Record<string, unknown>,
+    { model }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean },
+  ): Record<string, unknown> {
     return chatRequestToGemini({ ...body, model });
   }
 
-  normalizeRequest(req: unknown, _rules?: ParamRules, _endpoint?: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(
+    req: unknown,
+    _rules?: ParamRules,
+    _endpoint?: Endpoint,
+  ): { body: unknown; adjustments: ParamAdjustment[] } {
     return { body: req, adjustments: [] };
   }
 
@@ -126,8 +154,11 @@ export class VertexAiAdapter implements ProtocolAdapter {
     return geminiResponseToChat(body, '');
   }
 
-  translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-    return geminiUpstreamToCanonicalStream(stream);
+  translateUpstreamStream(
+    stream: ReadableStream<Uint8Array>,
+    model: string,
+  ): ReadableStream<Uint8Array> {
+    return geminiUpstreamToCanonicalStream(stream, model);
   }
 
   extractUsage(res: unknown): Usage | null {
@@ -136,12 +167,22 @@ export class VertexAiAdapter implements ProtocolAdapter {
     const j = res as Record<string, unknown> | null;
     const u = geminiUsageToUsage(j?.usageMetadata);
     if (u) {
-      return { inputTokens: u.promptTokens, cachedInputTokens: u.cachedTokens, outputTokens: u.completionTokens, estimated: false, raw: j?.usageMetadata };
+      return {
+        inputTokens: u.promptTokens,
+        cachedInputTokens: u.cachedTokens,
+        outputTokens: u.completionTokens,
+        estimated: false,
+        raw: j?.usageMetadata,
+      };
     }
     return extractOpenAiUsage(res);
   }
 
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: GEMINI_STATUS_KINDS, status, body, headers });
   }
 

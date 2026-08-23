@@ -19,3 +19,4 @@ export {
   createRecoverUseCase,
   createAbandonClaimsUseCase,
 } from './application/settlement/recover.js';
+export { createRecordDiscrepanciesUseCase } from './application/settlement/record-discrepancies.js';

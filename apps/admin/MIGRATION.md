@@ -103,5 +103,8 @@ v1 无测试 → 全部为新建（IMPLEMENTATION §7）。删除项：无。
 - [x] i18n：en/zh 词表 931 行×2 全量平移；cookie→Accept-Language→默认链经装配测试
 - [x] 表单校验语义（金额正则/零值/长度）经表驱动用例锁步（server-actions 套件）
 - [x] 链路图投影：与 observability buildTraceGraph 语义锁步向量（trace-graph.test.ts）
-- [ ] 登录两步流/守卫/注销的运行时闭环——待 admin-api P2（代码已迁，端点未落地）
-- [ ] 渲染回归（RSC 输出/交互）——e2e 波（admin-api P7）覆盖
+- [x] 登录两步流/守卫/注销的运行时闭环——admin-api P2 已落地（routes/auth.ts：密码对 +
+      2FA challenge（SMTP fail-closed）+ logout jti 吊销；admin-api MIGRATION 状态已核销，2026-08-23 回勾）
+- [ ] 渲染回归（RSC 输出/交互）——admin-api P7 已落后端五旅程（e2e/admin/journey.test.ts），
+      但浏览器级 RSC 渲染/交互回归仍缺（挂账：需真实 Next 进程的 e2e 波，与 apps/client
+      MIGRATION §8「真实链路浏览器 e2e」同批）

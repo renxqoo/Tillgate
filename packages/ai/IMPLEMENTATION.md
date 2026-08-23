@@ -1,6 +1,6 @@
 # @tokenlens/ai 重构实现文档
 
-> 状态：全量审计完成，拆分与测试计划定稿，待实施
+> 状态：已实施(收口轮:出站改写/脱敏/延迟测试落地;real 上游契约测试已移植,见 §4.8)
 > 基线：旧仓 `ai-getway/packages/ai`（v1，112 文件 ~9k 行，444 测试）——全部 30 个源文件已逐一审计
 > 目标：壳全新、机制重构移植、8 个真 bug 修复；**功能零缺失**——旧测试套件是行为规格
 
@@ -38,75 +38,75 @@ ai.tasks.{ parse, query, file }
 
 ### 2.1 真 bug 清单（8 项，计费/数据丢失优先）
 
-| # | 位置 | 问题 | 级别 |
-|---|---|---|---|
-| B1 | `usage/token-estimate.ts` L238/240/242 | 输出侧 reasoning/tool_calls/text 未透传 `opts.model` → 恒走启发式；与 L234 自我声明的口径要求矛盾，同一响应 content 用 BPE、reasoning 用启发式，**估算口径分裂** | 估算精度 |
-| B2 | `protocol/gemini-chat.ts` L287/292 | Gemini 流式尾帧/中间帧 usage 丢 `prompt_tokens_details.cached_tokens`（非流式 L240 有）→ **流式缓存折扣漏记** | 计费 |
-| B3 | `usage/normalize.ts` L74/75 | total 不一致即弃整个 usage（部分代理 total 含额外分量→真实 usage 静默丢弃退估算）；0/0 弃用后估算可能非零（多计）。**零观测** | 计费 |
-| B4 | `adapters/vertex-ai.ts` extractUsage | translate 后恒 null（gemini.ts 有双形兜底，vertex 漏抄）→ **全部落字符估算** | 计费 |
-| B5 | `transport/http-client.ts` L153/195 | `resolveAndPin` 的 DNS pin 结果从未使用，fetch 用原 URL 重解析——**rebinding TOCTOU 窗口实际存在**（白名单是实际防线，pin 是死代码） | 安全 |
-| B6 | `generation/task-adapter.ts` L70/105 | 任务协议未注册返回误导错误 `'Upstream did not return a task ID'`；succeeded 后 file 取回永久失败 → 任务永卡 running | 正确性 |
-| B7 | `protocol/completions-chat.ts` L41 | 非流式 n>1 只回 `choices[0]`，**其余 choice 丢弃** | 数据丢失 |
-| B8 | `errors/overflow.ts` L39-40 | `/too many tokens/i` 等通用兜底可能把「max_tokens 输出超限」误判为上下文溢出——误分类被「不可重试+不换渠道」语义放大 | 正确性 |
+| #   | 位置                                   | 问题                                                                                                                                                             | 级别     |
+| --- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| B1  | `usage/token-estimate.ts` L238/240/242 | 输出侧 reasoning/tool_calls/text 未透传 `opts.model` → 恒走启发式；与 L234 自我声明的口径要求矛盾，同一响应 content 用 BPE、reasoning 用启发式，**估算口径分裂** | 估算精度 |
+| B2  | `protocol/gemini-chat.ts` L287/292     | Gemini 流式尾帧/中间帧 usage 丢 `prompt_tokens_details.cached_tokens`（非流式 L240 有）→ **流式缓存折扣漏记**                                                    | 计费     |
+| B3  | `usage/normalize.ts` L74/75            | total 不一致即弃整个 usage（部分代理 total 含额外分量→真实 usage 静默丢弃退估算）；0/0 弃用后估算可能非零（多计）。**零观测**                                    | 计费     |
+| B4  | `adapters/vertex-ai.ts` extractUsage   | translate 后恒 null（gemini.ts 有双形兜底，vertex 漏抄）→ **全部落字符估算**                                                                                     | 计费     |
+| B5  | `transport/http-client.ts` L153/195    | `resolveAndPin` 的 DNS pin 结果从未使用，fetch 用原 URL 重解析——**rebinding TOCTOU 窗口实际存在**（白名单是实际防线，pin 是死代码）                              | 安全     |
+| B6  | `generation/task-adapter.ts` L70/105   | 任务协议未注册返回误导错误 `'Upstream did not return a task ID'`；succeeded 后 file 取回永久失败 → 任务永卡 running                                              | 正确性   |
+| B7  | `protocol/completions-chat.ts` L41     | 非流式 n>1 只回 `choices[0]`，**其余 choice 丢弃**                                                                                                               | 数据丢失 |
+| B8  | `errors/overflow.ts` L39-40            | `/too many tokens/i` 等通用兜底可能把「max_tokens 输出超限」误判为上下文溢出——误分类被「不可重试+不换渠道」语义放大                                              | 正确性   |
 
 ### 2.2 结构性缺陷（v1 会话逐行核验）
 
-| # | 位置 | 问题 |
-|---|---|---|
-| S1 | `sse-parser.ts` | `outputText +=` 拼接 + 4MB CAP——万级并发流潜在内存上界 40GB；注释"usage 帧到达时清零重计"与实现不符；`reset()` 不 flush 流式 decoder |
-| S2 | `relay-stream.ts` | **每流一个 `setInterval`**（默认 250ms）——万级流 = 4 万次/秒定时器唤醒；emit 数组迭代退订竞态 |
-| S3 | 全包 | **两套 SSE 解析实现并存**（sse-parser 用 eventsource-parser 库；stream-convert 手写行缓冲）——行为漂移风险 |
-| S4 | `stream-convert.ts` | 用 `new ReadableStream({pull})` 模式，与 relay-stream 头注释"必须 pipeThrough 防 node-server 缓冲"的经验矛盾（需实测） |
-| S5 | 契约层 | `normalizeRequest(req, rules)` 缺 endpoint → openai-compatible 的 `unknown:'drop'` 用 **chat 词表删非 chat 端点合法参数**（embeddings 的 `input`、images 的 `n/quality` 不在集合内——契约级潜伏雷）；`amzDate` 泄漏进通用签名钩子；**无 endpoint 能力声明面**（azure/dashscope 覆写缺口只能靠上游 404 暴露） |
-| S6 | `types.ts` | 七值 TerminationReason 在 events.ts/relay-stream.ts **三处手抄**，漂移风险实打实 |
+| #   | 位置                | 问题                                                                                                                                                                                                                                                                                                        |
+| --- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | `sse-parser.ts`     | `outputText +=` 拼接 + 4MB CAP——万级并发流潜在内存上界 40GB；注释"usage 帧到达时清零重计"与实现不符；`reset()` 不 flush 流式 decoder                                                                                                                                                                        |
+| S2  | `relay-stream.ts`   | **每流一个 `setInterval`**（默认 250ms）——万级流 = 4 万次/秒定时器唤醒；emit 数组迭代退订竞态                                                                                                                                                                                                               |
+| S3  | 全包                | **两套 SSE 解析实现并存**（sse-parser 用 eventsource-parser 库；stream-convert 手写行缓冲）——行为漂移风险                                                                                                                                                                                                   |
+| S4  | `stream-convert.ts` | 用 `new ReadableStream({pull})` 模式，与 relay-stream 头注释"必须 pipeThrough 防 node-server 缓冲"的经验矛盾（需实测）                                                                                                                                                                                      |
+| S5  | 契约层              | `normalizeRequest(req, rules)` 缺 endpoint → openai-compatible 的 `unknown:'drop'` 用 **chat 词表删非 chat 端点合法参数**（embeddings 的 `input`、images 的 `n/quality` 不在集合内——契约级潜伏雷）；`amzDate` 泄漏进通用签名钩子；**无 endpoint 能力声明面**（azure/dashscope 覆写缺口只能靠上游 404 暴露） |
+| S6  | `types.ts`          | 七值 TerminationReason 在 events.ts/relay-stream.ts **三处手抄**，漂移风险实打实                                                                                                                                                                                                                            |
 
 ### 2.3 重复代码清单（9 项，重构时提取）
 
-| # | 重复 | 位置 |
-|---|---|---|
-| D1 | asJson/asArray/str 三件套逐字×3，且与 `asRecord`（接受数组）语义冲突 | gemini-chat / completions-chat / responses-chat / internal-util |
-| D2 | readBody/readRawBody 读循环 90% | http-client |
-| D3 | relay done 事件构造×3 | relay-stream finishOk/fail/cancel |
-| D4 | OpenAI 形 usage 提取×2 | adapters/gemini + anthropic |
-| D5 | gemini/vertex codec 装配 ~60 行 | adapters |
-| D6 | task-adapter submit/execute 骨架 90% | generation |
-| D7 | Gemini usage 字面量×3（顺带修 B2） | gemini-chat |
-| D8 | claude flush 兜底与主路径 usage 构造 | claude-chat L400-417 vs L431-447 |
-| D9 | 帧构造的 `created: Date.now()/1000` 每帧重算 | claude/gemini codec |
+| #   | 重复                                                                 | 位置                                                            |
+| --- | -------------------------------------------------------------------- | --------------------------------------------------------------- |
+| D1  | asJson/asArray/str 三件套逐字×3，且与 `asRecord`（接受数组）语义冲突 | gemini-chat / completions-chat / responses-chat / internal-util |
+| D2  | readBody/readRawBody 读循环 90%                                      | http-client                                                     |
+| D3  | relay done 事件构造×3                                                | relay-stream finishOk/fail/cancel                               |
+| D4  | OpenAI 形 usage 提取×2                                               | adapters/gemini + anthropic                                     |
+| D5  | gemini/vertex codec 装配 ~60 行                                      | adapters                                                        |
+| D6  | task-adapter submit/execute 骨架 90%                                 | generation                                                      |
+| D7  | Gemini usage 字面量×3（顺带修 B2）                                   | gemini-chat                                                     |
+| D8  | claude flush 兜底与主路径 usage 构造                                 | claude-chat L400-417 vs L431-447                                |
+| D9  | 帧构造的 `created: Date.now()/1000` 每帧重算                         | claude/gemini codec                                             |
 
 ### 2.4 逐文件裁决总表
 
-| 文件 | 裁决 | 要点 |
-|---|---|---|
-| `retry/with-retry` | ✅ 复制 | 全对（full jitter/信号合并/预算分离） |
-| `errors/classify` | **重构** | 拆为：status 兜底分类器 + kind→机制位派生表（§3.2）；正则迁入各 adapter 档案 |
-| `errors/overflow` | 复制+微修 | B8 由 §3.2 结构化消解（context_overflow 精确 code 命中），通用正则兜底收窄 |
-| `errors/server-drain` | ✅ 复制 | 无瑕疵 |
-| `errors/internal` | 重构 | 删熔断/死凭据错误构造 |
-| `usage/token-estimate` | 复制+微修 | B1 三处 model 补传；暴露 `estimateTokensFromFeatures`（见 §3.3） |
-| `usage/normalize` | 复制+微修 | B3 弃真处加观测事件/日志钩子 |
-| `usage/calibration`、`tokenizer` | ✅ 复制 | 无瑕疵（provider offset 语义不对称无实际影响） |
-| `usage/media-duration` | 复制+微修 | L37 死子句删除 |
-| `registry/vendor-profiles`、`define-adapter` | 复制+微修 | 数据驱动优等；vendor-profiles 扩展 `errorPatterns` 字段（§3.2 正则迁入） |
-| `internal/stream` | ✅ 复制 | peekFirstChunk 竞态处理全仓最佳 |
-| `internal/util` | 重构 | 统一 as 三件套（拒数组语义，D1） |
-| `protocol/claude-chat` | 复制+微修 | 质量高；D8/D9 |
-| `protocol/gemini-chat` | 复制+微修 | **B2 计费修复**；D7/D9；tool_call id 合成跨消息重号（低概率，记录） |
-| `protocol/completions-chat` | 复制+微修 | B7 n>1 |
-| `protocol/responses-chat` | 复制+微修 | completed 事件 output 空回放（记录为已知限制） |
-| `protocol/stream-convert` | **重构** | S3/S4：并入统一 SSE 原语 |
-| `adapters/protocol-adapter` | **重构** | 契约演进（S5）：normalizeRequest 加 endpoint、签名钩子通用化、能力声明面；mapError 契约按 §3.2 表化（kind 翻译 + 机制位禁逐例声明） |
-| `adapters/openai-compatible` | 复制+微修 | unknown-drop 词表随契约修；原型键防护补齐；9 层三元改查表 |
-| `adapters/anthropic` | 复制+微修 | D4 共享提取 |
-| `adapters/gemini`、`vertex-ai` | **重构** | D5 组合化；**B4 修复**；tokenCache 良性竞态文档化 |
-| `adapters/azure-openai` | 复制+微修 | api-version 可配置；endpoint 覆写面声明 |
-| `adapters/minimax` | 复制+微修 | 'Unknown'→running 永挂面文档化（上限归 worker）；静默默认保留（已注释声明） |
-| `adapters/dashscope`、`task-kit` | 复制+微修 | task-kit 数组体守卫 |
-| `generation/task-adapter` | 复制+微修 | B6 错误修正；D6 骨架合并 |
-| `transport/http-client` | **重写** | guard 模型定稿；**B5 处置：删除死 pin，白名单+逐地址判定即防线，文档说明**；D2 |
-| `transport/relay-stream` | **重构** | S2 全局 sweeper；D3；快照迭代 |
-| `transport/sse-parser` | **重构** | S1 四计数器化；decoder 语义 |
-| `types/config/events/index/create-ai/pipeline 壳` | 全新写/重构 | §1 API；S6 TerminationReason 收编；`ErrorKind` 封闭词表 + kind→机制位派生表（§3.2） |
+| 文件                                              | 裁决        | 要点                                                                                                                                |
+| ------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `retry/with-retry`                                | ✅ 复制     | 全对（full jitter/信号合并/预算分离）                                                                                               |
+| `errors/classify`                                 | **重构**    | 拆为：status 兜底分类器 + kind→机制位派生表（§3.2）；正则迁入各 adapter 档案                                                        |
+| `errors/overflow`                                 | 复制+微修   | B8 由 §3.2 结构化消解（context_overflow 精确 code 命中），通用正则兜底收窄                                                          |
+| `errors/server-drain`                             | ✅ 复制     | 无瑕疵                                                                                                                              |
+| `errors/internal`                                 | 重构        | 删熔断/死凭据错误构造                                                                                                               |
+| `usage/token-estimate`                            | 复制+微修   | B1 三处 model 补传；暴露 `estimateTokensFromFeatures`（见 §3.3）                                                                    |
+| `usage/normalize`                                 | 复制+微修   | B3 弃真处加观测事件/日志钩子                                                                                                        |
+| `usage/calibration`、`tokenizer`                  | ✅ 复制     | 无瑕疵（provider offset 语义不对称无实际影响）                                                                                      |
+| `usage/media-duration`                            | 复制+微修   | L37 死子句删除                                                                                                                      |
+| `registry/vendor-profiles`、`define-adapter`      | 复制+微修   | 数据驱动优等；vendor-profiles 扩展 `errorPatterns` 字段（§3.2 正则迁入）                                                            |
+| `internal/stream`                                 | ✅ 复制     | peekFirstChunk 竞态处理全仓最佳                                                                                                     |
+| `internal/util`                                   | 重构        | 统一 as 三件套（拒数组语义，D1）                                                                                                    |
+| `protocol/claude-chat`                            | 复制+微修   | 质量高；D8/D9                                                                                                                       |
+| `protocol/gemini-chat`                            | 复制+微修   | **B2 计费修复**；D7/D9；tool_call id 合成跨消息重号（低概率，记录）                                                                 |
+| `protocol/completions-chat`                       | 复制+微修   | B7 n>1                                                                                                                              |
+| `protocol/responses-chat`                         | 复制+微修   | completed 事件 output 空回放（记录为已知限制）                                                                                      |
+| `protocol/stream-convert`                         | **重构**    | S3/S4：并入统一 SSE 原语                                                                                                            |
+| `adapters/protocol-adapter`                       | **重构**    | 契约演进（S5）：normalizeRequest 加 endpoint、签名钩子通用化、能力声明面；mapError 契约按 §3.2 表化（kind 翻译 + 机制位禁逐例声明） |
+| `adapters/openai-compatible`                      | 复制+微修   | unknown-drop 词表随契约修；原型键防护补齐；9 层三元改查表                                                                           |
+| `adapters/anthropic`                              | 复制+微修   | D4 共享提取                                                                                                                         |
+| `adapters/gemini`、`vertex-ai`                    | **重构**    | D5 组合化；**B4 修复**；tokenCache 良性竞态文档化                                                                                   |
+| `adapters/azure-openai`                           | 复制+微修   | api-version 可配置；endpoint 覆写面声明                                                                                             |
+| `adapters/minimax`                                | 复制+微修   | 'Unknown'→running 永挂面文档化（上限归 worker）；静默默认保留（已注释声明）                                                         |
+| `adapters/dashscope`、`task-kit`                  | 复制+微修   | task-kit 数组体守卫                                                                                                                 |
+| `generation/task-adapter`                         | 复制+微修   | B6 错误修正；D6 骨架合并                                                                                                            |
+| `transport/http-client`                           | **重写**    | guard 模型定稿；**B5 处置：删除死 pin，白名单+逐地址判定即防线，文档说明**；D2                                                      |
+| `transport/relay-stream`                          | **重构**    | S2 全局 sweeper；D3；快照迭代                                                                                                       |
+| `transport/sse-parser`                            | **重构**    | S1 四计数器化；decoder 语义                                                                                                         |
+| `types/config/events/index/create-ai/pipeline 壳` | 全新写/重构 | §1 API；S6 TerminationReason 收编；`ErrorKind` 封闭词表 + kind→机制位派生表（§3.2）                                                 |
 
 ---
 
@@ -117,14 +117,22 @@ ai.tasks.{ parse, query, file }
 ```text
 src/
 ├── index.ts / create-ai.ts / types.ts / config.ts / events.ts   # 壳层
-├── pipeline/    # context(快照emitTo) prepare chat chat-stream stream-report probe generation-ops
+├── pipeline/    # context(快照emitTo/CallCtx) prepare chat chat-stream stream-report probe
+│                # generation-ops attempt-chat attempt-stream tasks(2026-08-23 拆出,铁律5 max-lines)
 ├── transport/   # http-client(guard) relay-stream(全局sweeper) sse(统一解析原语)
-├── protocol/    # claude-chat gemini-chat completions-chat responses-chat（codec 纯函数）
+├── protocol/    # claude-chat/-stream gemini-chat/-stream/-shared(同款拆分) completions-chat responses-chat
 ├── adapters/    # protocol-adapter(契约) openai-compatible anthropic gemini vertex azure minimax dashscope task-kit shared(D4)
 ├── usage/       # normalize token-estimate(含 features 入口) calibration tokenizer media-duration model-meta*
 ├── registry/    # vendor-profiles define-adapter
-├── retry/ errors/ generation/ internal/
+├── retry/ errors/ generation/ internal/(stream json)
 ```
+
+**2026-08-23 拆分注记**（oxlint max-lines 500 门禁收口，行为零变化——365 用例全绿回归）：
+`create-ai.ts` 715→411 行（chat/chatStream 单次尝试执行体拆至 `pipeline/attempt-chat.ts`/
+`attempt-stream.ts`，任务操作组拆至 `pipeline/tasks.ts`，`CallCtx` 移入 `pipeline/context.ts`，
+`tryParseJson/withRawBody` 移入 `internal/json.ts`）；`protocol/gemini-chat.ts` 589→322 行
+（流式双向 codec 拆至 `gemini-stream.ts`，形状小件 `gemini-shared.ts`——与 claude-chat/
+claude-stream 既有拆分同款约定，全部 import 点同步更新、无转发层）。
 
 ### 3.2 错误归一：适配层翻译 + 集中标准（用户裁决，取代 v1 共享正则）
 
@@ -147,6 +155,7 @@ src/
 ```
 
 **四条硬规则**：
+
 1. `ErrorKind` 封闭词表全局唯一定义（types.ts），adapter 只翻译不发明；新增 kind 走 ADR。
 2. 机制位由 kind→派生表**单点派生**，adapter 不得逐例声明（杜绝"rate_limited 却 retryable=false"矛盾）。
 3. 适配层只处理**厂商错误**；传输错误（network/timeout）与库策略错误（empty/config/draining）生成时直接带 kind。
@@ -154,19 +163,19 @@ src/
 
 **kind → 机制位派生表（第一版）**：
 
-| kind | retryable | circuitTrip | deadCredential | 换渠道指引 |
-|---|---|---|---|---|
-| network / timeout | ✓ | ✓ | | ✓ |
-| upstream_error / overloaded | ✓ | ✓ | | ✓ |
-| rate_limited | ✓ | — | | ✓ |
-| quota_exhausted | — | — | | ✓（换有余额渠道） |
-| invalid_api_key | — | — | ✓ | ✓ |
-| insufficient_permissions | — | — | ✓ | ✓ |
-| invalid_request / invalid_response | — | — | | ✗（调用方修请求） |
-| context_overflow | — | — | | ✓（换大窗模型） |
-| content_filtered / model_not_found | — | — | | 视策略 |
-| empty_completion | 独立预算 | | | ✓ |
-| canceled / server_draining / invalid_config | — | — | | 库内闭环 |
+| kind                                        | retryable | circuitTrip | deadCredential | 换渠道指引        |
+| ------------------------------------------- | --------- | ----------- | -------------- | ----------------- |
+| network / timeout                           | ✓         | ✓           |                | ✓                 |
+| upstream_error / overloaded                 | ✓         | ✓           |                | ✓                 |
+| rate_limited                                | ✓         | —           |                | ✓                 |
+| quota_exhausted                             | —         | —           |                | ✓（换有余额渠道） |
+| invalid_api_key                             | —         | —           | ✓              | ✓                 |
+| insufficient_permissions                    | —         | —           | ✓              | ✓                 |
+| invalid_request / invalid_response          | —         | —           |                | ✗（调用方修请求） |
+| context_overflow                            | —         | —           |                | ✓（换大窗模型）   |
+| content_filtered / model_not_found          | —         | —           |                | 视策略            |
+| empty_completion                            | 独立预算  |             |                | ✓                 |
+| canceled / server_draining / invalid_config | —         | —           |                | 库内闭环          |
 
 **原始信息保留**：`vendorCode`（排障对照）、`status`、`detail`（原文；脱敏在外层出站做）、`rawBody`（审计源）、`retryAfterMs`（Retry-After 头/厂商字段解析，adapter 职责）。
 
@@ -193,6 +202,7 @@ src/
 ## 4. 测试用例计划
 
 ### 4.1 `test/contract/`（新写——新 API 面行为）
+
 - 平参数三态：`chat(channel, req)` 两参可用；`opts` 全可选平铺生效
 - `ChatResult` 判别联合穷举；empty 分支语义
 - `requestId` 缺省 randomUUID（同调用事件流 join key 一致）；显式传递透传到全部事件
@@ -203,6 +213,7 @@ src/
 - `tasks`：parse/query/file 命名空间行为（含 B6 错误码 `task_ops_unavailable`）
 
 ### 4.2 `test/streaming/`（移植 + 回归）
+
 - **必移植**：server-drain / firstframe-leak / stream-peek-leak / first-byte-timeout 四个 `.bug.test.ts`
 - 透传保真：上游字节与 C 端接收字节逐位对照（同协议零改写）
 - 心跳：仅 SSE 边界注入（atBoundary 矩阵：行中/行末/空行/CRLF/注释行）
@@ -210,6 +221,7 @@ src/
 - **S4 回归**：跨协议流在 node-server 环境下不缓冲（TTFB 对照）
 
 ### 4.3 `test/errors/`（新写——错误归一框架，§3.2）
+
 - **表驱动**：每 adapter 一张错误表用例（结构字段 → kind 精确断言；openai/anthropic/gemini/minimax/dashscope/bedrock 各一组，v1 知识迁移）
 - **兜底链**：未知结构 → status 兜底分类正确；文本 pattern 仅在结构与 status 都 miss 时触发
 - **派生一致性**：任意构造的 UpstreamError，机制位 == 派生表查表值（防逐例声明回归）
@@ -219,12 +231,14 @@ src/
 - kind 词表封闭性：导出面枚举 == 文档词表（编译期 + 测试双锁）
 
 ### 4.4 `test/protocol/`（移植 + bug 回归）
+
 - claude 四方向（请求/响应/流式双向、tool_use 映射、thinking→reasoning_content）
 - **B2 回归**：Gemini 流式 usage 含 cached_tokens（尾帧与中间帧）
 - **B7 回归**：completions n>1 全 choice 返回
 - gemini/completions/responses 既有用例移植；错误映射矩阵（含 401/403 死凭据特征）
 
 ### 4.5 `test/usage/`（移植 + bug 回归）
+
 - **B1 回归**：同一响应 content/reasoning/tool_calls 估算同口径（model 透传后）
 - **B3 观测回归**：total 不一致弃真时有事件/日志可观测
 - **B4 回归**：vertex 渠道 usage 双形提取（翻译后 OpenAI 形命中）
@@ -232,17 +246,24 @@ src/
 - 校准解析三层合并；tokenizer 降级；音频时长（WAV/MP3/兜底）
 
 ### 4.6 `test/transport/`
+
 - guard 矩阵：默认机械基线（https+禁私网+rebinding）/ `allowAllUrls` / 白名单组合
 - **B5 文档性用例**：白名单外域名拒绝；DNS 解析到私网拒绝
 - readChunks 限长 + abort 截断契约；限长默认值表
 
-### 4.7 `test/latency/`（新写——并发预算门禁）
+### 4.7 `__test__/latency.test.ts`（已实施——§3.6 延迟门禁:TTFB 不缓冲/观察面异常不反噬/500 帧吞吐界;原计划并发预算门禁）
+
 - 每帧扫描预算：N 万帧合成流的扫描总耗时上界断言
 - **内存上界**：长流（>4MB 输出）扫描器内存为常数（计数器 vs 旧文本缓冲对照）
 - 全局 sweeper：万级活跃流的 timer 总唤醒频率 == 单 interval 频率
 
-### 4.8 `test/real/`
-- 移植（凭证隔离，默认 skip）
+### 4.8 `__test__/providers.real.test.ts`（已移植——v1 `test/real/providers.test.ts`）
+
+- v1 real 套件（MiniMax + DeepSeek，9 用例/供应商）逐用例移植到 v2 平参数 API；
+  env 契约随迁（声明即启用、缺必填 fail、无 key 默认 skip；.env 向上查找保留）。
+- 语义映射与 v2 裁决移除项（熔断/死凭据存储配置、allowLocalUrl 键）在文件头注释逐条列明。
+- 门禁（铁律 14）：vitest.config.ts 默认 exclude `__test__/*.real.test.ts`；
+  real 门 = `test:real`（`vitest.real.config.ts`，vitest 4 的 CLI 过滤不能穿透配置级 exclude）。
 
 ### 4.9 验收
 

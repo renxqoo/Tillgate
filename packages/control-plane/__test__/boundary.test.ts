@@ -32,7 +32,6 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'controlPlaneErrors',
       'createControlPlane',
       'createMemoryCatalogCache',
-      'createOpenRouterSource',
       'formatCoefficient',
       'freePriceConsistent',
       'goneFromCatalog',
@@ -41,7 +40,6 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'mapModelsDevCatalog',
       'mapOpenAiCompatibleCatalog',
       'maskUpstreamKey',
-      'modelsDevSource',
       'normalizeBuffer',
       'normalizeRate',
       'parseVoucherDataUrl',
@@ -54,8 +52,33 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
 
   it('不导出 store/适配器/drizzle 行类型（包内部装配细节）', () => {
     for (const name of Object.keys(exports)) {
-      expect(name).not.toMatch(/Store$|^postgres/);
+      expect(name).not.toMatch(/Store$|^postgres|Source$/);
     }
+  });
+});
+
+describe('composition 子入口（§5.3：adapter 可见性白名单的可执行形态）', () => {
+  it('adapter 只在 composition.ts 导出（根入口零 adapter；G1 起含 postgres store 工厂）', async () => {
+    const composition = await import('../src/composition');
+    expect(Object.keys(composition).toSorted()).toEqual([
+      'createOpenRouterSource',
+      'modelsDevSource',
+      'postgresChannelStore',
+      'postgresModelStore',
+      'postgresRateCardStore',
+    ]);
+  });
+
+  it('业务代码不 import ./composition（仅 assembly/迁移脚本/adapter 集成测试可引用）', () => {
+    const offenders: string[] = [];
+    for (const file of tsFiles(SRC)) {
+      if (file.endsWith('composition.ts')) continue; // 子入口自身
+      const text = readFileSync(file, 'utf-8');
+      if (/from\s+['"]\.\/composition['"]|from\s+['"]\.\.\/\.\.\/composition['"]/.test(text)) {
+        offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 
@@ -123,6 +146,7 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.operation_conflict',
       'control_plane.provider_exists',
       'control_plane.provider_not_found',
+      'control_plane.rate_card_disabled',
       'control_plane.rate_card_in_use',
       'control_plane.rate_card_not_found',
       'control_plane.voucher_too_large',

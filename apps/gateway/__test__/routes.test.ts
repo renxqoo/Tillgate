@@ -16,7 +16,12 @@ function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
 }
 import type { Inference, ChatDelivered } from '@tokenlens/inference';
 import type { MiddlewareHandler } from 'hono';
-import { apiKeyMiddleware, type AuthEnv, type AuthReadModel, type AuthContext } from '../src/http/middleware/api-key';
+import {
+  apiKeyMiddleware,
+  type AuthEnv,
+  type AuthReadModel,
+  type AuthContext,
+} from '../src/http/middleware/api-key';
 import { inferenceRoutes, enginesAliasRoutes } from '../src/http/routes/inference-endpoints';
 import { geminiNativeRoutes } from '../src/http/routes/native-gemini';
 import { modelsRoutes } from '../src/http/routes/models';
@@ -27,18 +32,34 @@ import { inferenceEndpoints } from '../src/http/contracts/inference-endpoints';
 
 const JWT = { secret: 'x'.repeat(32), issuer: 'i', audience: 'a', keyPrefix: 'ag_' };
 const READER: AuthReadModel = {
-  resolveKeyByHash: async () => ({ keyId: 7, userId: 42, rpmLimit: null, tpmLimit: null, allowPaygFallback: false, userRpmLimit: null, userTpmLimit: null }),
+  resolveKeyByHash: async () => ({
+    keyId: 7,
+    userId: 42,
+    rpmLimit: null,
+    tpmLimit: null,
+    allowPaygFallback: false,
+    userRpmLimit: null,
+    userTpmLimit: null,
+  }),
   resolveApp: async () => null,
 };
 
 function stubInference(over: Partial<Inference> = {}): Inference {
   return {
-    chat: async (input) => ({ ok: true, status: 200, body: { via: 'chat', body: input.body, endpoint: input.endpoint } }),
+    chat: async (input) => ({
+      ok: true,
+      status: 200,
+      body: { via: 'chat', body: input.body, endpoint: input.endpoint },
+    }),
     stream: async () => {
       throw new Error('stream not expected in these cases');
     },
     generation: {
-      submit: async () => ({ ok: true, taskId: '019c0b7d-0000-7000-8000-0000000000aa', expiresAt: Date.now() + 1 }),
+      submit: async () => ({
+        ok: true,
+        taskId: '019c0b7d-0000-7000-8000-0000000000aa',
+        expiresAt: Date.now() + 1,
+      }),
       query: async () => null,
     },
     health: {} as never,
@@ -124,7 +145,15 @@ describe('端点分发（inference 输入形状）', () => {
 
   it('codec 端点：入站翻译为规范形（completions prompt → messages）；出站编码回线格式', async () => {
     const inference = stubInference({
-      chat: async () => ({ ok: true, status: 200, body: { id: 'x', object: 'chat.completion', choices: [{ message: { role: 'assistant', content: 'hi' } }] } }),
+      chat: async () => ({
+        ok: true,
+        status: 200,
+        body: {
+          id: 'x',
+          object: 'chat.completion',
+          choices: [{ message: { role: 'assistant', content: 'hi' } }],
+        },
+      }),
     });
     const app = harness(inference);
     const res = await post(app, '/v1/completions', { model: 'm', prompt: 'hello' });
@@ -189,7 +218,11 @@ describe('端点分发（inference 输入形状）', () => {
       }),
     });
     const app = harness(inference);
-    const res = await post(app, '/v1/chat/completions', { model: 'm', messages: [{}], stream: true });
+    const res = await post(app, '/v1/chat/completions', {
+      model: 'm',
+      messages: [{}],
+      stream: true,
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('text/event-stream; charset=utf-8');
     expect(res.headers.get('x-accel-buffering')).toBe('no');
@@ -208,8 +241,14 @@ describe('模型目录（三协议形状 + 白名单过滤 + 404 不泄漏）', 
     const app = withErrorFace(new Hono<AuthEnv>());
     if (auth != null) {
       const seed: AuthContext = {
-        userId: 1, apiKeyId: 1, appId: null, allowedModels: auth.allowedModels,
-        rpmLimit: null, tpmLimit: null, userRpmLimit: null, userTpmLimit: null,
+        userId: 1,
+        apiKeyId: 1,
+        appId: null,
+        allowedModels: auth.allowedModels,
+        rpmLimit: null,
+        tpmLimit: null,
+        userRpmLimit: null,
+        userTpmLimit: null,
       };
       app.use('/v1/*', ((c, next) => {
         c.set('auth', seed);
@@ -238,7 +277,9 @@ describe('模型目录（三协议形状 + 白名单过滤 + 404 不泄漏）', 
 
   it('白名单过滤 + 白名单外单查与不存在同口径 404', async () => {
     const app = modelsApp({ allowedModels: ['m-a'] });
-    const list = (await (await app.request('/v1/models')).json()) as { data: Array<{ id: string }> };
+    const list = (await (await app.request('/v1/models')).json()) as {
+      data: Array<{ id: string }>;
+    };
     expect(list.data.map((m) => m.id)).toEqual(['m-a']);
     expect((await app.request('/v1/models/m-b')).status).toBe(404);
     expect((await app.request('/v1/models/m-a')).status).toBe(200);
@@ -256,13 +297,19 @@ describe('generation 提交与查询', () => {
     });
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ object: 'video', model: 'video-x', status: 'queued' });
-    expect((await app.request('/v1/videos/zzz', { headers: { authorization: 'Bearer ag_k' } })).status).toBe(404);
-    expect((await post(app, '/v1/music/generations', { model: 'm', prompt: 'x' })).status).toBe(201);
+    expect(
+      (await app.request('/v1/videos/zzz', { headers: { authorization: 'Bearer ag_k' } })).status,
+    ).toBe(404);
+    expect((await post(app, '/v1/music/generations', { model: 'm', prompt: 'x' })).status).toBe(
+      201,
+    );
   });
 
   it('非法参数 400（duration 越界 / prompt 超长）', async () => {
     const app = harness(stubInference());
-    expect((await post(app, '/v1/video/generations', { model: 'm', prompt: 'x', duration: 99 })).status).toBe(400);
+    expect(
+      (await post(app, '/v1/video/generations', { model: 'm', prompt: 'x', duration: 99 })).status,
+    ).toBe(400);
   });
 });
 
@@ -275,7 +322,11 @@ describe('oauth token（三形态 + 闭环）', () => {
       client_secret: 's',
     });
     expect(ok.status).toBe(200);
-    const body = (await ok.json()) as { access_token: string; token_type: string; expires_in: number };
+    const body = (await ok.json()) as {
+      access_token: string;
+      token_type: string;
+      expires_in: number;
+    };
     expect(body.token_type).toBe('Bearer');
     expect(body.expires_in).toBe(3_600);
 
@@ -304,7 +355,11 @@ describe('oauth token（三形态 + 闭环）', () => {
     expect(bad.status).toBe(401);
     expect(await bad.json()).toMatchObject({ error: 'invalid_client' });
 
-    const badGrant = await post(app, '/oauth/token', { grant_type: 'password', client_id: 'ci-1', client_secret: 's' });
+    const badGrant = await post(app, '/oauth/token', {
+      grant_type: 'password',
+      client_id: 'ci-1',
+      client_secret: 's',
+    });
     expect(badGrant.status).toBe(400);
     expect(await badGrant.json()).toMatchObject({ error: 'unsupported_grant_type' });
   });
@@ -325,7 +380,14 @@ describe('oauth token（三形态 + 闭环）', () => {
     jwtApp.use('/v1/*', apiKeyMiddleware(readerWithApp, undefined, JWT));
     jwtApp.route(
       inferenceEndpoints[0]!.path,
-      inferenceRoutes({ inference: stubInference({ chat: async () => ({ ok: true, status: 200, body: { closed: true } }) }) }, inferenceEndpoints[0]!),
+      inferenceRoutes(
+        {
+          inference: stubInference({
+            chat: async () => ({ ok: true, status: 200, body: { closed: true } }),
+          }),
+        },
+        inferenceEndpoints[0]!,
+      ),
     );
     const tokenRes = await post(app, '/oauth/token', {
       grant_type: 'client_credentials',
@@ -365,7 +427,10 @@ describe('multipart 族', () => {
     const form = new FormData();
     form.append('model', 'img-x');
     form.append('prompt', 'a cat');
-    form.append('image', new File([new Uint8Array([137, 80, 78, 71])], 'cat.png', { type: 'image/png' }));
+    form.append(
+      'image',
+      new File([new Uint8Array([137, 80, 78, 71])], 'cat.png', { type: 'image/png' }),
+    );
     const ok = await app.request('/v1/images/edits', {
       method: 'POST',
       headers: { authorization: 'Bearer ag_k' },

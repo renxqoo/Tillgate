@@ -13,14 +13,35 @@ describe('createGatewayShutdown（gateway 绑定形状）', () => {
     const order: string[] = [];
     const shutdown = createGatewayShutdown({
       // runtime 契约：close(callback)——回调内继续收口链
-      server: { close: (cb: () => void) => { order.push('server'); cb(); } } as never,
-      otel: { shutdown: async () => { order.push('otel'); } },
-      redis: { quit: async () => { order.push('redis'); } } as never,
+      server: {
+        close: (cb: () => void) => {
+          order.push('server');
+          cb();
+        },
+      } as never,
+      otel: {
+        shutdown: async () => {
+          order.push('otel');
+        },
+      },
+      redis: {
+        quit: async () => {
+          order.push('redis');
+        },
+      } as never,
       closeDb: async () => {
         order.push('db');
       },
-      inference: { close: () => { order.push('inference'); } },
-      settleWake: { close: async () => { order.push('settle-wake'); } },
+      inference: {
+        close: () => {
+          order.push('inference');
+        },
+      },
+      settleWake: {
+        close: async () => {
+          order.push('settle-wake');
+        },
+      },
       graceMs: 60_000,
       exit: ((code: number) => {
         order.push(`exit:${code}`);

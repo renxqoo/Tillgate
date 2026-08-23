@@ -19,19 +19,53 @@ export type ChatDelivered =
  * 非流式尝试（v1 attempt-nonstream.ts 迁移）：同步调上游 → 成功**先结算后交付**
  * （未交付不结算——结算耗尽抛 finalize_unavailable，宁可让用户重试也不白送；
  * 预留滞留至租约到期由 recover 兜底，v1 B3 语义保留）→ 失败走统一分派。
+ * 上游调用段包 upstream.attempt span（v1 等价；ok/时长/usage 事后补属性）。
  */
 export function createChatAttempt(deps: ExecutionDeps) {
   return async (ctx: AttemptContext): Promise<AttemptOutcome<ChatDelivered>> => {
     const startedAt = Date.now();
-    const result = await deps.upstream.chat(ctx.channel, {
-      requestId: ctx.requestId,
-      externalModel: ctx.prepared.externalModel,
-      realModel: ctx.candidate.realModel,
-      endpoint: ctx.prepared.endpoint,
-      body: ctx.prepared.upstreamBody,
-      ...(ctx.signal != null ? { signal: ctx.signal } : {}),
-      deadlineMs: deps.defaults.upstream.deadlineMs,
-    });
+    const result = await deps.trace.withSpan(
+      'upstream.attempt',
+      {
+        'request.id': ctx.requestId,
+        'user.id': ctx.prepared.auth.userId,
+        'channel.key': ctx.channel.channelName,
+        'channel.attempt': ctx.channelAttempt,
+        'ai.model': ctx.candidate.realModel,
+        'upstream.stream': false,
+      },
+      async (span) => {
+        const r = await deps.upstream.chat(ctx.channel, {
+          requestId: ctx.requestId,
+          externalModel: ctx.prepared.externalModel,
+          realModel: ctx.candidate.realModel,
+          endpoint: ctx.prepared.endpoint,
+          body: ctx.prepared.upstreamBody,
+          ...(ctx.signal != null ? { signal: ctx.signal } : {}),
+          deadlineMs: deps.defaults.upstream.deadlineMs,
+        });
+        if (r.ok) {
+          span.setAttributes({
+            'upstream.ok': true,
+            'upstream.duration_ms': Date.now() - startedAt,
+            ...(r.usage != null
+              ? {
+                  'tokens.input': r.usage.inputTokens,
+                  'tokens.output': r.usage.outputTokens,
+                }
+              : {}),
+          });
+        } else {
+          span.setAttributes({
+            'upstream.ok': false,
+            'upstream.error_code': r.error.kind,
+            ...(r.error.status != null ? { 'http.status_code': r.error.status } : {}),
+          });
+          span.setStatus({ code: 'error', message: r.error.kind });
+        }
+        return r;
+      },
+    );
     const durationMs = Date.now() - startedAt;
     if (!result.ok) return dispatchFailure(deps, ctx, result.error);
 
@@ -57,6 +91,7 @@ export function createChatAttempt(deps: ExecutionDeps) {
       {
         billing: deps.billing,
         settleSignal: deps.defaults.settleSignal,
+        trace: deps.trace,
         onError: deps.onError,
       },
       ctx.requestId,

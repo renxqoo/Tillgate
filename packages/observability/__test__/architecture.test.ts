@@ -27,7 +27,11 @@ const files = tsFiles(SRC);
 describe('出口面快照(有意维护的公共接口——新增导出是契约变更)', () => {
   it('index.ts 值导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
+      'BEIJING_ZONE_OFFSET_MS',
       'SpanStatusCode',
+      'USAGE_SORT_FIELDS',
+      'beijingDayStart',
+      'beijingTrendsFrom',
       'buildTraceGraph',
       'context',
       'createLogSpanProcessor',
@@ -35,6 +39,7 @@ describe('出口面快照(有意维护的公共接口——新增导出是契约
       'createObservability',
       'createSpanBatcher',
       'createTraceQueries',
+      'createUsageQueries',
       'dayKey',
       'decodeOtlpJson',
       'formatTraceParent',
@@ -148,6 +153,7 @@ describe('错误目录码表封闭(== DESIGN §4)', () => {
       'observability.invalid_otlp_payload',
       'observability.invalid_partition_day',
       'observability.otel_endpoint_missing',
+      'observability.otel_option_missing',
     ]);
   });
 });

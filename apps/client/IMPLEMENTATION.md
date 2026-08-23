@@ -1,6 +1,7 @@
 # apps/client 施工图（IMPLEMENTATION）
 
-> 状态：实施中
+> 状态：已完成（2026-08-23 回勾——§6 三轮实施日志均记载四门全绿与覆盖率达标；
+> 后续切片挂账见 MIGRATION §8，不阻塞本包完成态）
 > 前置：DESIGN.md（定稿）。本文承接 §9.1 七步流程的步骤 2–6：审计 → 裁决 → 拆分 → 测试计划 → 实施顺序。
 > 旧实现：`/Users/wrr/work/ai-getway/apps/client`（63 文件 / 7091 行 / 0 测试）+ 被消费面旧 `packages/{api-client,ui}`。
 
@@ -27,9 +28,10 @@
 | B14 | tsconfig 死映射（`@/stores/*` 等指向不存在目录） | tsconfig | 低 | 新 tsconfig 仅 `@/*` |
 | B15 | package.json 13 个零引用依赖（zustand/dnd-kit/embla/analytics/…） | package.json | 中 | 修剪（见 §3 依赖清单） |
 | B17 | transactions 页 `userId:0`、`balanceBefore:''` 占位假数据 | transactions/page | 中 | 新游标契约真实字段（balanceBefore/After 均回传） |
-| B18 | 导出仅当前页 20 条、TSV 无 BOM | export-keys | 低 | 保留行为（页面级导出语义），挂待办 |
+| B18 | 导出仅当前页 20 条、TSV 无 BOM | export-keys | 低 | **修复**（§6 2026-08-23）：server action 全量翻页（上限 1000 防失控）+ TSV UTF-8 BOM；页面级导出语义保留 |
 | B19 | api-guide 直接信任 `x-forwarded-host` | api-guide | 低 | 保留（部署在可信代理后，仅展示层） |
 | B20 | capabilities 探测失败按「开启」渲染 | login/register | 取舍 | 保留（v1 刻意：探测失败由提交 403 兜底） |
+| B21 | 概览「每日费用趋势」无消费日整段消失（折线跨天直连）；窗口起点 `now-13d` 带时分秒致首日半桶 | dashboard/page | 中 | **修复**（§6 2026-08-23）：趋势窗口纯推导 `features/dashboard/cost-trend.ts`（起始日 00:00 日界 + 按日补零） |
 | B6 | playground/OAuth 浏览器同域依赖 nginx 分流 | next.config | 取舍 | 保留（dev 已知限制，DESIGN §9） |
 | B9/B10 | 全站 force-dynamic、subscription 页重复拉 me | 多处 | 取舍 | 保留（App Router 语义，v1 等价） |
 
@@ -114,3 +116,27 @@ G1 列表 `q`/排序参数缺失（usage/keys）；G2 orgs 批量详情端点缺
   - **覆盖率口径落地**：include = `src/server/**` + `src/config/**` + `src/features/**/*.ts`；排除 `.tsx`（渲染切片 MIGRATION §8）与 `features/shell/types.ts`（纯类型零语句）；`src/i18n/request.ts` 不计（依赖 next-intl/server 请求上下文，无法在 node 门禁内加载——行为由 e2e 切片覆盖）。
   - **消费形态修正**：Base UI `render` prop 替代 Radix asChild（全局 20+ 处）；ui CopyButton `value` prop；ToggleGroup 受控数组值。
   - 四门：typecheck 0 错 / lint 0-0 / 96 用例全绿 / build（19 路由 standalone）；覆盖率 94.36/86.62/98.61/97.38 ≥ 90/85/90/90；边界门禁 21 workspace 通过。
+- 2026-08-23：MIGRATION §8 两项后续切片兑现。
+  - **组件渲染测试**（jsdom + testing-library，`__test__/render-*.test.tsx` 4 件 14 用例）：
+    ConfirmAction/TopUpForm/PasswordForm/RedeemForm/ExportKeys 交互与校验边界；环境按文件头
+    `@vitest-environment jsdom` 内聚声明（默认门禁保持 node）；依赖 devDeps 新增
+    jsdom/@testing-library/{react,user-event,jest-dom}/@vitejs/plugin-react——react 插件仅测试用：
+    tsconfig 继承 Next `jsx:"preserve"`，vite 8/rolldown 下 `esbuild.jsx` 覆盖不生效，由插件转换 .tsx。
+  - **B18 修复**：`exportKeysAction`（actions/keys.ts）经 `list` 循环翻页取满 total
+    （上限 1000、空页防御），`buildKeysTsv`（features/keys/export-tsv.ts）加 UTF-8 BOM；
+    ExportKeys 组件去 keys prop（页面不再传当前页数据），失败 toast 兜底；
+    行为规格 8 用例 + 渲染 2 用例。
+  - 四门：typecheck 0 错 / lint 0-0 / 118 用例全绿（12 件）/ build 成功；覆盖率
+    94.41/86.75/98.96/96.93 ≥ 90/85/90/90（阈值未调；渲染测试使被 import 的 features
+    .tsx 组件顺带进入 v8 报告——statements↑、functions 因组件函数入分母微降）。
+- 2026-08-23：B21 修复（概览「每日费用趋势」数据形态）。
+  - 症状：`/v1/usage/summary` 只返回有消费的日期（GROUP BY 无空桶），页面直接入图——
+    无消费日从 X 轴消失、面积折线跨天直连；且窗口起点 `now-13d` 带时分秒，首日只统计
+    「当前时刻→午夜」的半桶。数值聚合本身正确（已对库核验）。
+  - 修复：新增 `features/dashboard/cost-trend.ts` 纯推导——`trendWindowFrom`（起始日
+    当地 00:00，两段式消偏含 DST 边界）+ `fillDailyCostSeries`（窗口内按日补零、升序到
+    今日、窗口外行与垃圾费用不计）+ `TREND_WINDOW_DAYS` 常量单源；dashboard/page 取数
+    改用（dayRows 为空保留 noUsageData 空态，不渲染全零直线）。
+  - 行为规格 4 用例（正/负偏移时区起点、DST 切换日、补零序列连续性、跨月日历运算）。
+  - 四门：typecheck 0 错 / lint 0-0 / 122 用例全绿（12 件）/ build 成功；覆盖率
+    94.62/86.76/99.04/97.04 ≥ 90/85/90/90（阈值未调）。

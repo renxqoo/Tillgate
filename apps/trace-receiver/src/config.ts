@@ -26,6 +26,10 @@ const envSchema = z
     TRACE_QUEUE_MAX: z.coerce.number().int().min(100).default(10_000),
     OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** 服务版本(OTel 资源属性;缺省取部署包版本字面量——装配层显式持有) */
+    OTEL_SERVICE_VERSION: z.string().min(1).default('0.1.0'),
+    /** OTLP 指标推送周期毫秒(otlp 模式必填——observability 已收必填,缺省在此显式持有) */
+    OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === 'production' && env.TRACE_RECEIVER_TOKEN === undefined) {
@@ -49,6 +53,9 @@ export interface TraceReceiverConfig {
   /** 缺省:开发 memory / 生产 off(显式配置优先) */
   readonly otelMode: OtelMode;
   readonly otelEndpoint: string | undefined;
+  /** OTel 资源版本与指标周期(装配显式值,observability 侧已无藏缺省) */
+  readonly serviceVersion: string;
+  readonly otelMetricsIntervalMs: number;
   /** 池调优项(连接串在 databaseUrl,装配时合并——db 包全必填、无缺省) */
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
 }
@@ -75,6 +82,8 @@ export function loadTraceReceiverConfig(env: NodeJS.ProcessEnv = process.env): T
     queueMax: parsed.TRACE_QUEUE_MAX,
     otelMode,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
+    serviceVersion: parsed.OTEL_SERVICE_VERSION,
+    otelMetricsIntervalMs: parsed.OTEL_METRICS_INTERVAL_MS,
     dbPool: DB_POOL,
   };
 }

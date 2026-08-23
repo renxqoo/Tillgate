@@ -1,16 +1,16 @@
 /**
  * 订阅生命周期用例族（资金走 wallet 复式账本）：
- *
  *   purchase：余额现金购买（禁透支）→ 订阅行（团队套餐组织同事务创建）
  *   renew   ：顺延续费（旧订阅 CAS 转到期 + 新行 + 凭证改绑）
  *   change  ：升档/加席位（行锁新鲜快照折算 → 补差价 max(0, 新总价−剩余价值)）
  *   cancel  ：CAS 0→2，无资金变动——剩余额度作废（不退款）
  *   grantPack：有效订阅加额（现金口径 transfer，禁透支）
- *
  * 幂等：operations 用例（operationId + 指纹——同键同参重放回执，异参 409）。
  * 资金：wallet.transfer(user → platform_revenue, allowCredit:false, 同事务)。
  * 竞态：「单有效订阅」部分唯一索引兜底 → already_subscribed（事务回滚可安全重试）。
+ * adminList：管理面列表（U6）——users/plans 富化在 store 物理层。
  */
+import { adminListSubscriptions } from './admin-list-subscriptions.js';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from '../../domain/money.js';
 import { BillingErrors } from '../../domain/errors.js';
@@ -35,7 +35,8 @@ export interface SubscriptionsEnv {
   accounts: AccountContextStore;
   /** 资金动词（本域只花 transfer：现金收款） */
   wallet: Pick<WalletApi, 'transfer'>;
-  clock?: () => Date;
+  /** 时钟（装配必填——facade 单点注入向下传递） */
+  clock: () => Date;
 }
 
 export interface SubscribeResult {
@@ -100,6 +101,11 @@ export interface GrantPackResult {
 }
 
 export interface SubscriptionsApi {
+  /** 管理面列表（U6;users/plans 富化与剩余额度投影在 store 物理层） */
+  adminList(input: import('./admin-list-subscriptions.js').AdminListSubscriptionsInput): Promise<{
+    rows: import('../../ports/billing-store.js').AdminSubscriptionRow[];
+    total: number;
+  }>;
   purchase(input: PurchaseInput): Promise<SubscribeResult>;
   renew(input: RenewInput): Promise<SubscribeResult>;
   change(input: ChangeInput): Promise<SubscribeResult>;
@@ -155,7 +161,7 @@ function isOneActiveViolation(error: unknown): boolean {
 
 export function createSubscriptionsApi(env: SubscriptionsEnv): SubscriptionsApi {
   const { store, accounts, wallet } = env;
-  const clock = env.clock ?? (() => new Date());
+  const clock = env.clock;
   const operations = createOperationsUseCase({ store });
 
   /** 套餐闸门（购买/变更共用）：存在/上架/正价/订阅型 + 席位能力 */
@@ -310,6 +316,7 @@ export function createSubscriptionsApi(env: SubscriptionsEnv): SubscriptionsApi 
   }
 
   return {
+    adminList: (input) => adminListSubscriptions({ store: env.store }, input),
     purchase: (input) => purchaseOrRenew('subscription.purchase', input),
     renew: (input) => purchaseOrRenew('subscription.renew', input),
 

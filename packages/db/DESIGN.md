@@ -18,41 +18,51 @@
 ## 1. 外部契约(v2 API,定稿)
 
 ```ts
-import { createDb, ping, closeDb, runTx, advisoryLock,
-         pgSqlState, isUniqueViolation, uniqueViolationConstraint,
-         transientTxFailureCode } from '@tokenlens/db';
+import {
+  createDb,
+  ping,
+  closeDb,
+  runTx,
+  advisoryLock,
+  pgSqlState,
+  isUniqueViolation,
+  uniqueViolationConstraint,
+  transientTxFailureCode,
+} from '@tokenlens/db';
 import { users, walletAccounts, ACCOUNT_STATUS } from '@tokenlens/db/schema';
 
 // 连接(全部必填,无默认——装配层从 env 读)
 const db = createDb({
-  url,                      // 连接串
-  poolMax,                  // 池上限(并行测试:worker 数 × poolMax < PG max_connections)
-  idleTimeoutMillis,        // 空闲回收
-  connectionTimeoutMillis,  // 取连接超时(不可用时快速失败)
-  maxUses,                  // 单连接最大使用次数(防长连接内存泄漏)
+  url, // 连接串
+  poolMax, // 池上限(并行测试:worker 数 × poolMax < PG max_connections)
+  idleTimeoutMillis, // 空闲回收
+  connectionTimeoutMillis, // 取连接超时(不可用时快速失败)
+  maxUses, // 单连接最大使用次数(防长连接内存泄漏)
 });
 // db: Db —— drizzle node-postgres + 全 schema 绑定(relational queries 可用)
 
-await ping(db);      // select 1 健康探测;失败源头分类为 InfrastructureError('db.unavailable'),
-                     // cause 链保留 pg 原始事实(pg-error 全链探测可达)
-await closeDb(db);   // 池优雅收口(db.$client.end();进程 shutdown 用)
+await ping(db); // select 1 健康探测;失败源头分类为 InfrastructureError('db.unavailable'),
+// cause 链保留 pg 原始事实(pg-error 全链探测可达)
+await closeDb(db); // 池优雅收口(db.$client.end();进程 shutdown 用)
 
 // 事务执行壳:瞬态错误(40P01 死锁 / 40001 串行化失败)指数退避重试
 await runTx(
-  db,                                        // 或注入 tx 句柄 → drizzle 退化为 SAVEPOINT
-  async (tx) => { /* ... */ },
+  db, // 或注入 tx 句柄 → drizzle 退化为 SAVEPOINT
+  async (tx) => {
+    /* ... */
+  },
   { maxAttempts, baseDelayMs, maxJitterMs }, // 必填(行为等价 v1 的值 = {5, 15, 20})
-  { onRetry?(info) {} },                     // 可选观测钩子;钩子异常吞掉(观测不参与资金决策)
+  { onRetry?(info) {} }, // 可选观测钩子;钩子异常吞掉(观测不参与资金决策)
 );
 
 // 事务级 advisory lock:pg_advisory_xact_lock(hashtext(key)),随事务终结自动释放
 await advisoryLock(db, 'namespace.key');
 
 // PG 错误分类(沿 cause 链全链探测,统一 v1 三种深度行为)
-pgSqlState(err);                   // '23505' | null —— 任意 5 位 SQLSTATE
-isUniqueViolation(err);            // 23505 判定
-uniqueViolationConstraint(err);    // 23505 → 冲突约束名 | null
-transientTxFailureCode(err);       // '40P01' | '40001' | null
+pgSqlState(err); // '23505' | null —— 任意 5 位 SQLSTATE
+isUniqueViolation(err); // 23505 判定
+uniqueViolationConstraint(err); // 23505 → 冲突约束名 | null
+transientTxFailureCode(err); // '40P01' | '40001' | null
 ```
 
 类型面:`Db`(池句柄)、`DbTx`(事务句柄,与 v1 同推导式)、`DbLike = Db | DbTx`(写路径注入 tx / 只读路径池句柄的统一参数型)。
@@ -79,16 +89,16 @@ schema 子入口(`@tokenlens/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词�
 
 ### 不处理(归属写明)
 
-| 不处理 | 归属 |
-|---|---|
-| PG SQLSTATE → HTTP 语义翻译(6 码表) | 未来 `http` 包(v1 `http/src/errors.ts` PG_CODE_MAP) |
-| Actor / RepoContext / RunContext / inTx | 能力包 application 与 adapters 层(v1 repository/service context) |
-| 业务锁键(credentialSetLockKey / challengeLockKey) | 未来 `identity` 包 |
-| runEffect(提交后 best-effort 副作用) | 能力包(billing / identity)——与事务无关,不进 db |
-| 业务 SQL / Repository CRUD | 能力包 `adapters/postgres` |
-| seeds(dev 数据装配,依赖 encrypt) | 待办:runtime 包落地、encrypt 可注入时移植(IMPLEMENTATION.md C5) |
-| identity-core / ledger-core / wallet 三条 provision 链收口 | P4 能力波次,按总纲 §9 P3 纪律逐步做,禁止一次改完(C4) |
-| worker readyz 不 ping DB 的事实差异 | apps/worker 迁移时修正(v1 已知事实,记录在案) |
+| 不处理                                                     | 归属                                                             |
+| ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| PG SQLSTATE → HTTP 语义翻译(6 码表)                        | 未来 `http` 包(v1 `http/src/errors.ts` PG_CODE_MAP)              |
+| Actor / RepoContext / RunContext / inTx                    | 能力包 application 与 adapters 层(v1 repository/service context) |
+| 业务锁键(credentialSetLockKey / challengeLockKey)          | 未来 `identity` 包                                               |
+| runEffect(提交后 best-effort 副作用)                       | 能力包(billing / identity)——与事务无关,不进 db                   |
+| 业务 SQL / Repository CRUD                                 | 能力包 `adapters/postgres`                                       |
+| seeds(dev 数据装配,cipher 加密渠道 Key)                       | 已移植 `scripts/seed-dev.ts`(dev 装配面,非包运行时能力——不进 exports/依赖;cipher 经 runtime 相对路径注入,IMPLEMENTATION.md C5) |
+| identity-core / ledger-core / wallet 三条 provision 链收口 | P4 能力波次,按总纲 §9 P3 纪律逐步做,禁止一次改完(C4)             |
+| worker readyz 不 ping DB 的事实差异                        | apps/worker 迁移时修正(v1 已知事实,记录在案)                     |
 
 ## 3. 并发与性能预算
 

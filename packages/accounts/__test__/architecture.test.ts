@@ -109,13 +109,21 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
     }
   });
 
-  it('adapters 不被 application/ports/testing 之外的层引用(唯一装配点 = accounts.ts)', () => {
+  it('adapters 不被 application/ports/testing 之外的层引用(装配点 = accounts.ts + composition 子入口——与 billing 同约定)', () => {
     for (const f of files) {
-      if (f.path === 'accounts.ts' || f.layer === 'adapters' || f.layer === 'testing') continue;
+      if (
+        f.path === 'accounts.ts' ||
+        f.path === 'composition.ts' ||
+        f.layer === 'adapters' ||
+        f.layer === 'testing'
+      ) {
+        continue;
+      }
       for (const spec of f.imports) {
-        expect(spec.startsWith('../adapters/') || spec.startsWith('./adapters/'), `${f.path} → ${spec}`).toBe(
-          false,
-        );
+        expect(
+          spec.startsWith('../adapters/') || spec.startsWith('./adapters/'),
+          `${f.path} → ${spec}`,
+        ).toBe(false);
       }
     }
   });
@@ -132,9 +140,7 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
 
 /** 剥离块注释与行注释后的代码面(符号检查不因注释误报) */
 function stripComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
 describe('公共出口封闭(§5.3:facade 与类型,不泄漏基础设施)', () => {
@@ -152,8 +158,29 @@ describe('公共出口封闭(§5.3:facade 与类型,不泄漏基础设施)', () 
 
   it('facade 文件唯一(accounts.ts),且 verbs 绑定文件不含 SQL', () => {
     const roots = files.filter((f) => f.layer === 'root');
-    expect(roots.map((f) => f.path).toSorted()).toEqual(['accounts.ts', 'index.ts']);
-    const binder = stripComments(readFileSync(`${srcDir}/application/create-use-cases.ts`, 'utf-8'));
+    expect(roots.map((f) => f.path).toSorted()).toEqual([
+      'accounts.ts',
+      'composition.ts',
+      'index.ts',
+    ]);
+    const binder = stripComments(
+      readFileSync(`${srcDir}/application/create-use-cases.ts`, 'utf-8'),
+    );
     expect(binder.includes('drizzle')).toBe(false);
+  });
+
+  it('AccountStorePort(DbLike 存储契约)不走根出口,只在 ./composition(§5.3 收紧)', () => {
+    expect(index.includes('AccountStorePort')).toBe(false);
+    const composition = stripComments(readFileSync(`${srcDir}/composition.ts`, 'utf-8'));
+    expect(composition.includes('AccountStorePort')).toBe(true);
+  });
+
+  it('domain/application/ports 不 import ../composition(装配子入口仅装配面可用)', () => {
+    for (const f of files) {
+      if (f.layer !== 'domain' && f.layer !== 'application' && f.layer !== 'ports') continue;
+      for (const spec of f.imports) {
+        expect(spec.includes('composition'), `${f.path} → ${spec}`).toBe(false);
+      }
+    }
   });
 });

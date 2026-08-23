@@ -357,6 +357,90 @@ describe('models/rate-cards 补面', () => {
   });
 });
 
+describe('行金额归一(e2e 抓出的存储精度偏差回归×2)', () => {
+  it('渠道行 upstreamBudget/Threshold/Consumed 归一;models 行五价格字段归一', async () => {
+    const raw = '7.000000000000000000';
+    const modelRaw = {
+      id: 9,
+      externalName: 'm',
+      realModel: 'm',
+      contextLength: null,
+      status: 0,
+      inputPrice: raw,
+      outputPrice: raw,
+      cacheInputPrice: raw,
+      cacheWritePrice: raw,
+      pricingUnit: 'token',
+      unitPrice: raw,
+      billingConfig: {},
+      isFree: false,
+      billingPolicy: null,
+      rpmLimit: null,
+      tpmLimit: null,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+    };
+    const app = createAdminApp(
+      fakeDeps({
+        controlPlane: {
+          channels: {
+            list: async () => ({
+              rows: [
+                {
+                  id: 1,
+                  name: 'c',
+                  providerId: 1,
+                  providerName: 'p',
+                  baseUrlOverride: null,
+                  models: null,
+                  weight: 1,
+                  priority: 0,
+                  status: 0,
+                  failCount: 0,
+                  rpmLimit: null,
+                  tpmLimit: null,
+                  upstreamBudget: raw,
+                  upstreamThreshold: raw,
+                  upstreamConsumed: raw,
+                  createdAt: new Date('2026-01-01T00:00:00Z'),
+                  boundModels: [],
+                },
+              ],
+              total: 1,
+            }),
+          },
+          models: {
+            list: async () => ({ rows: [modelRaw], total: 1 }),
+          },
+        },
+      }),
+    );
+    const channels = await app.request('/v1/channels', { headers: authHeader() });
+    expect(await channels.json()).toMatchObject({
+      rows: [
+        {
+          upstreamBudget: '7',
+          upstreamThreshold: '7',
+          upstreamConsumed: '7',
+          upstreamRemaining: '0',
+        },
+      ],
+    });
+    const models = await app.request('/v1/models', { headers: authHeader() });
+    expect(await models.json()).toMatchObject({
+      rows: [
+        {
+          inputPrice: '7',
+          outputPrice: '7',
+          cacheInputPrice: '7',
+          cacheWritePrice: '7',
+          unitPrice: '7',
+        },
+      ],
+    });
+  });
+});
+
 describe('观测/用户补面', () => {
   it('tracing recent 无过滤分支 + minDurationMs;logs from/to/userId/数值状态码', async () => {
     const app = createAdminApp(

@@ -1,3 +1,5 @@
+'use client';
+
 // 密文展示: 默认遮蔽, 可切换明文, 可附复制按钮; 适合 API Key / token / 密钥展示
 import { CircleCheckIcon, CopyIcon, EyeIcon, EyeOffIcon } from 'lucide-react';
 import * as React from 'react';

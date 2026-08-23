@@ -1,6 +1,7 @@
-/** Redis 客户端工厂：错误监听必挂（不刷 Unhandled）+ 30s 去重 + URL 认证脱敏 + 日志注入面（B2）。 */
+/** Redis 客户端工厂：错误监听必挂（不刷 Unhandled）+ 去重（间隔必填注入）+ URL 认证脱敏 + 日志注入面（B2）。 */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createRedisClient } from '../src/redis/redis-client';
+import { isDefectError } from '@tokenlens/errors';
+import { createRedisClient } from '../src/redis/create-redis-client';
 
 const clients: Array<{ disconnect(): void }> = [];
 
@@ -12,7 +13,10 @@ afterEach(() => {
 describe('createRedisClient', () => {
   it('错误监听已挂：emit error 不冒 Unhandled，且 30s 窗口内只记一条', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const client = createRedisClient('redis://127.0.0.1:1', { serviceName: 'test-svc' });
+    const client = createRedisClient('redis://127.0.0.1:1', {
+      serviceName: 'test-svc',
+      logThrottleMs: 30_000,
+    });
     clients.push(client);
     expect(client.listenerCount('error')).toBeGreaterThan(0);
 
@@ -32,7 +36,10 @@ describe('createRedisClient', () => {
 
   it('AggregateError（空 message）展开内层原因，不留空日志', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const client = createRedisClient('redis://127.0.0.1:1', { serviceName: 'agg-svc' });
+    const client = createRedisClient('redis://127.0.0.1:1', {
+      serviceName: 'agg-svc',
+      logThrottleMs: 30_000,
+    });
     clients.push(client);
     client.emit(
       'error',
@@ -51,7 +58,10 @@ describe('createRedisClient', () => {
 
   it('日志 URL 脱敏：带密码的连接串抹掉认证信息', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const client = createRedisClient('redis://:secret-pass@127.0.0.1:1', { serviceName: 's' });
+    const client = createRedisClient('redis://:secret-pass@127.0.0.1:1', {
+      serviceName: 's',
+      logThrottleMs: 30_000,
+    });
     clients.push(client);
     client.emit('error', new Error('x'));
     await new Promise((r) => setTimeout(r, 20));
@@ -64,6 +74,7 @@ describe('createRedisClient', () => {
     const lines: string[] = [];
     const client = createRedisClient('redis://127.0.0.1:1', {
       serviceName: 'inj-svc',
+      logThrottleMs: 30_000,
       log: (msg) => lines.push(msg),
     });
     clients.push(client);
@@ -77,6 +88,7 @@ describe('createRedisClient', () => {
   it('sentinel 模式：拓扑解析进实例，url 继续作凭证载体（password/db 提取）', () => {
     const client = createRedisClient('redis://:sen-pass@127.0.0.1:6379/2', {
       serviceName: 'sen-svc',
+      logThrottleMs: 30_000,
       sentinels: 'h1:26379,h2:26379',
       sentinelName: 'mymaster',
       sentinelPassword: 'svcpass',
@@ -90,5 +102,48 @@ describe('createRedisClient', () => {
     expect(client.options.sentinelPassword).toBe('svcpass');
     expect(client.options.password).toBe('sen-pass'); // 数据节点凭证来自 url
     expect(client.options.db).toBe(2);
+    // 无 db 段的 url：凭证只取 password，db 不设置（不落默认值）
+    const bare = createRedisClient('redis://:bare-pass@127.0.0.1:6379', {
+      serviceName: 'sen-svc',
+      logThrottleMs: 30_000,
+      sentinels: 'h1:26379',
+      sentinelName: 'mymaster',
+    });
+    clients.push(bare);
+    expect(bare.options.password).toBe('bare-pass');
+    expect(bare.options.db).toBe(0); // ioredis 自身缺省 0（非本包注入的默认）
+  });
+
+  it('P3 回归：url db 段非法（NaN/小数/负数/多段）→ 装配期 DefectError fail-fast（不静默传 NaN 给 ioredis）', () => {
+    for (const badPath of ['/abc', '/2.5', '/-1', '/2/3']) {
+      try {
+        // urlCredentials 在 new Redis 参数求值期抛出——不会建立连接，无需 disconnect
+        createRedisClient(`redis://:p@127.0.0.1:6379${badPath}`, {
+          serviceName: 'db-guard',
+          logThrottleMs: 30_000,
+          sentinels: 'h1:26379',
+          sentinelName: 'mymaster',
+        });
+        expect.unreachable(`expected DefectError for path ${badPath}`);
+      } catch (e) {
+        expect(isDefectError(e), `${badPath}: ${String(e)}`).toBe(true);
+        expect((e as { code: string }).code).toBe('runtime.redis.url_invalid');
+      }
+    }
+  });
+
+  it('非法 url（不可解析）不抛——凭证提取返回空，降级日志原样携带 url', async () => {
+    const lines: string[] = [];
+    const client = createRedisClient('::not-a-url', {
+      serviceName: 'raw-url-svc',
+      logThrottleMs: 30_000,
+      sentinels: 'h1:26379',
+      sentinelName: 'mymaster',
+      log: (msg) => lines.push(msg),
+    });
+    clients.push(client);
+    client.emit('error', new Error('synthetic'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(lines[0]).toContain('::not-a-url'); // sanitizeUrl 兜底：解析失败原样输出
   });
 });

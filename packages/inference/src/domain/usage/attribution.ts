@@ -1,3 +1,5 @@
+import type { TerminationReason } from '@tokenlens/ai';
+
 /**
  * 估算归属词表与流式归属判定（v1 domain/rating/types.ts 归属部分迁移，政策不变）。
  *
@@ -7,8 +9,16 @@
  * 估算实扣口径向精确收敛；JSON 字节保守上界只作预扣敞口，不作实扣。
  */
 
-/** 用户侧取消原因（收据归属与验收共用子集） */
-export const USER_SIDE_CANCELS = ['client_disconnect', 'request_cancelled', 'aborted'] as const;
+/**
+ * 用户侧取消原因（收据归属与验收共用子集）。词表源 = @tokenlens/ai 的
+ * TerminationReason 封闭词表（satisfies 编译期对齐，禁止再收录词表外值）：
+ * v1 的 'aborted' 是旧事件名残留，v2 ai 的终止词表只有 client_disconnect /
+ * request_cancelled 两态属用户侧取消，已随本包迁移移除（B14 词表对齐）。
+ */
+export const USER_SIDE_CANCELS = [
+  'client_disconnect',
+  'request_cancelled',
+] as const satisfies readonly TerminationReason[];
 export type UserSideCancel = (typeof USER_SIDE_CANCELS)[number];
 
 /**

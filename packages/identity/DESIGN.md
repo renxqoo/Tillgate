@@ -79,7 +79,9 @@ createIdentity({
 - **challengeKind**：装配声明（v1 消费面：`user_login_code | user_register_code | admin_login_code`；机制对任意 kind 通用）。
 - **realm**：装配声明（`^[a-z][a-z0-9_-]{1,31}$`；v1 消费面：`user | admin`）。写路径（revoke/advance）与读路径（validAt）同一白名单 fail-closed（B08 修复）。
 - **OAuth provider**：装配声明；上游适配器内置 `github | google`（端点可注入覆盖），自定义 provider 由装配提供 `OAuthProvider` 实现注入。
-- **audit 动作**：`credential.register | credential.authenticate | password.change | password.reset | challenge.begin | challenge.verify | challenge.abort | oauth.link | oauth.unlink | mfa.enroll | mfa.confirm | mfa.disable | session.revoke`（携带 actor/realm/targetId/result 上下文；提交后发射，B03 修复）。
+- **audit 动作（封闭词表 14 项，架构测试快照锁死）**：`credential.register | credential.replay | credential.authenticate | password.change | password.reset | challenge.begin | challenge.verify | challenge.abort | oauth.link | oauth.unlink | mfa.enroll | mfa.confirm | mfa.disable | session.revoke`（携带 actor/realm/targetId/result 上下文）。发射形态（§5.4 事务参与，收口审计合规轮修订）：有业务事务的动词在事务内经 `auditSink.record(tx, event)` 同事务写入（回滚即无审计行、写失败随事务回滚，不降级 best-effort）；无事务路径（authenticate/verify/abort/begin 投递成功后）独立连接单写、失败上抛不吞错。
+- **redirect_uri 白名单**：装配必填 `oauthRedirectAllowlist`（绝对 http(s) URL、无 query/fragment、去重校验），authorize 与 callback 两半程精确匹配、词表外 fail-closed 拒绝（invalid_input）——防授权码截断/开放重定向；归属 identity（apps 只透传注入）。
+- **出口收敛**：存储 port 契约（CredentialStore/ChallengeStore/MfaStore/OAuthStore/AnchorStore，方法首参 DbLike）仅从 `./composition` 子入口导出，根出口零 Db 形态泄漏（架构测试锁死）。
 
 词表封闭性由测试快照锁死；新增条目 = 契约变更，须同步本节。
 
@@ -127,7 +129,7 @@ createIdentity({
 
 ### 2.5 挑战参数域（缺省 + 覆盖上界，v1 语义）
 
-6 位数字码 / TTL 300s / 冷却 60s / 错次上限 5（每次 begin 可覆盖，越界拒绝：ttl 1s..1h、cooldown 0s..1h、maxAttempts 1..100、digits 6..8）；哈希 = `HMAC-SHA256(codePepper, code:challengeId)`（B13 修复——v1 无 pepper 的 sha256 对 6 位码空间可秒级离线枚举）；payload ≤4KB 且 JSON 可序列化，投递上下文（ip/locale）与业务 payload 同行存储。
+6 位数字码 / TTL 300s / 冷却 60s / 错次上限 5（每次 begin 可覆盖，越界拒绝：ttl 1s..1h、cooldown 0s..1h、maxAttempts 1..100、digits 6..8）；哈希 = `HMAC-SHA256(codePepper, code:challengeId)`（B13 修复——v1 无 pepper 的 sha256 对 6 位码空间可秒级离线枚举）；payload ≤4KB 且 JSON 可序列化；投递上下文（ip/locale）只随 begin 入参内存流动（投递成功即弃），不与业务 payload 同行落库（v2 实测口径修正——挑战行只存业务 payload）。
 
 ### 2.6 密码哈希格式（单一形态，铁律 8）
 

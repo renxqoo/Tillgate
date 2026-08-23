@@ -2,11 +2,15 @@
 
 import {
   Button,
+  ConfirmDialog,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -44,7 +48,6 @@ import { z } from 'zod';
 import { formatMoney } from '@/lib/formatters';
 
 import { useActionResult } from '@/components/action-toast';
-import { ConfirmAction } from '@/components/confirm-action';
 import { moneyText, numericText } from '@/lib/forms';
 
 import type { AdminChannelRow, ProviderOption } from '@tokenlens/api-client';
@@ -84,7 +87,7 @@ export function ChannelsTable({
           <TableHead className="text-right">{t('budget')}</TableHead>
           <TableHead>{tc('status')}</TableHead>
           <TableHead className="text-right">{t('failCount')}</TableHead>
-          <TableHead className="w-64 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -111,8 +114,30 @@ function ChannelRowItem({
 }) {
   const t = useTranslations('channels');
   const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const meta = STATUS_META.get(channel.status);
+
+  async function runTest() {
+    setTesting(true);
+    const { testChannelAction } = await import('@/server/channels-actions');
+    const res = await testChannelAction(channel.id);
+    setTesting(false);
+    if (res.error) toast.error(String(res.error));
+    else toast.success(t('connected', { ms: res.durationMs ?? 0 }));
+  }
+
+  async function runDelete() {
+    setDeleting(true);
+    const { deleteChannelAction } = await import('@/server/channels-actions');
+    const res = await deleteChannelAction(channel.id);
+    setDeleting(false);
+    if (res.error) toast.error(String(res.error));
+    else toast.success(tc('deleted'));
+  }
 
   return (
     <TableRow>
@@ -146,45 +171,48 @@ function ChannelRowItem({
       <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
         {channel.failCount}
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={testing}
-            onClick={async () => {
-              setTesting(true);
-              const { testChannelAction } = await import('@/server/channels-actions');
-              const res = await testChannelAction(channel.id);
-              setTesting(false);
-              if (res.error) toast.error(String(res.error));
-              else toast.success(t('connected', { ms: res.durationMs ?? 0 }));
-            }}
-          >
-            {testing ? <Loader2Icon className="animate-spin" /> : <WifiIcon />}
-            {t('test')}
-          </Button>
-          <EditChannelDialog channel={channel} providers={providers} />
-          <ConfirmAction
-            confirm={t('deleteConfirm', { name: channel.name })}
-            action={async () =>
-              (await import('@/server/channels-actions')).deleteChannelAction(channel.id)
-            }
-            success={tc('deleted')}
-          >
-            {({ pending, onClick }) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={onClick}
-                className="text-destructive hover:text-destructive"
-              >
-                {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-              </Button>
+      <TableCell className="w-16 text-center">
+        {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem disabled={testing} onClick={runTest}>
+            {testing ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <WifiIcon className="size-4" />
             )}
-          </ConfirmAction>
-        </div>
+            {t('test')}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            <PencilIcon className="size-4" />
+            {tc('edit')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem variant="destructive" onClick={() => setConfirmOpen(true)}>
+            {deleting ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <Trash2Icon className="size-4" />
+            )}
+            {tc('delete')}
+          </DropdownMenuItem>
+        </RowActions>
+        <EditChannelDialog
+          channel={channel}
+          providers={providers}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={tc('delete')}
+          description={t('deleteConfirm', { name: channel.name })}
+          confirmLabel={tc('delete')}
+          cancelLabel={tUi('cancel')}
+          tone="destructive"
+          onConfirm={runDelete}
+          onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+        />
       </TableCell>
     </TableRow>
   );
@@ -280,9 +308,14 @@ export function CreateChannelDialog({
 function EditChannelDialog({
   channel,
   providers,
+  open,
+  onOpenChange,
 }: {
   channel: AdminChannelRow;
   providers: ReadonlyArray<ProviderOption>;
+  /** 受控 open：由行操作菜单项打开（FormDialog 受控模式，无 trigger） */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('channels');
   const tc = useTranslations('common');
@@ -327,11 +360,8 @@ function EditChannelDialog({
 
   return (
     <FormDialog
-      trigger={
-        <Button size="sm" variant="ghost" title={tc('edit')}>
-          <PencilIcon />
-        </Button>
-      }
+      open={open}
+      onOpenChange={onOpenChange}
       title={
         <>
           <PencilIcon /> {t('editTitle', { name: channel.name })}

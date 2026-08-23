@@ -17,20 +17,38 @@ describe('api：facade 契约与出口面', () => {
     expect(Object.keys(barrel).toSorted()).toEqual([
       'ESTIMATE_ATTRIBUTIONS',
       'GENERATION_KINDS',
+      'GENERATION_TASK_KINDS',
+      'GENERATION_TASK_STATUSES',
       'InferenceErrors',
       'USER_SIDE_CANCELS',
       'buildCandidateChain',
+      'canonicalStreamToClaudeStream',
+      'canonicalStreamToCompletionsStream',
+      'canonicalStreamToGeminiStream',
+      'canonicalStreamToResponsesStream',
       'channelHealthKey',
+      'chatResponseToClaude',
+      'chatResponseToCompletions',
+      'chatResponseToGemini',
+      'chatResponseToResponses',
+      'claudeRequestToChat',
+      'completionsRequestToChat',
+      'conservativeInputTokenUpperBound',
       'createChannelHealth',
+      'createGenerationPollUseCase',
       'createInference',
       'createMemoryGenerationTaskStore',
       'createMemoryHealthStore',
+      'createPostgresGenerationTaskStore',
       'createRedisHealthStore',
       'createUpstreamAi',
       'defaultInferenceDefaults',
+      'estimateAudioDurationSeconds',
+      'geminiRequestToChat',
       'inferenceDefaultsSchema',
       'isAttributedEstimate',
       'isGenerationTaskKind',
+      'responsesRequestToChat',
       'streamEstimateAttribution',
     ]);
   });
@@ -83,6 +101,8 @@ describe('api：facade 契约与出口面', () => {
     expect(typeof inference.stream).toBe('function');
     expect(typeof inference.generation.submit).toBe('function');
     expect(typeof inference.generation.query).toBe('function');
+    expect(typeof inference.generation.adminList).toBe('function');
+    expect(typeof inference.generation.settledAmounts).toBe('function');
     expect(typeof inference.health.admit).toBe('function');
     expect(typeof inference.close).toBe('function');
     const delivered = await inference.chat({

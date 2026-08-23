@@ -16,7 +16,12 @@ import type { Inference } from '@tokenlens/inference';
 import type { RequestLogStore } from '@tokenlens/observability';
 import { otelMiddleware } from './http/middleware/otel';
 import { requestLogMiddleware } from './http/middleware/request-log';
-import { apiKeyMiddleware, type AuthEnv, type AuthGuards, type AuthReadModel } from './http/middleware/api-key';
+import {
+  apiKeyMiddleware,
+  type AuthEnv,
+  type AuthGuards,
+  type AuthReadModel,
+} from './http/middleware/api-key';
 import type { RateLimitGate } from './http/middleware/rate-limit';
 import { inferenceEndpoints } from './http/contracts/inference-endpoints';
 import { inferenceRoutes, enginesAliasRoutes } from './http/routes/inference-endpoints';
@@ -41,7 +46,13 @@ export interface GatewayAppDeps {
   redisProbe?: { ping(): Promise<unknown> };
   pingDb: () => Promise<void>;
   authGuards?: AuthGuards;
-  oauth: { jwtSecret: string; issuer: string; audience: string; keyPrefix: string; tokenTtlSeconds: number };
+  oauth: {
+    jwtSecret: string;
+    issuer: string;
+    audience: string;
+    keyPrefix: string;
+    tokenTtlSeconds: number;
+  };
   rateLimit?: RateLimitGate;
   oauthIpGuard?: AuthFailureGuard;
   corsOrigins?: readonly string[];
@@ -124,7 +135,10 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   }
   app.route('/v1/models', modelsRoutes(deps.models));
 
-  const routeDeps = { inference: deps.inference, ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}) };
+  const routeDeps = {
+    inference: deps.inference,
+    ...(deps.rateLimit != null ? { rateLimit: deps.rateLimit } : {}),
+  };
   for (const endpoint of inferenceEndpoints) {
     app.use(endpoint.path, authMiddleware());
     app.route(endpoint.path, inferenceRoutes(routeDeps, endpoint));
@@ -154,7 +168,12 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     }),
   );
   // 异步生成任务族（提交 + 查询，同鉴权）
-  for (const path of ['/v1/video/generations', '/v1/music/generations', '/v1/videos/*', '/v1/musics/*']) {
+  for (const path of [
+    '/v1/video/generations',
+    '/v1/music/generations',
+    '/v1/videos/*',
+    '/v1/musics/*',
+  ]) {
     app.use(path, authMiddleware());
   }
   app.route('/', generationRoutes(routeDeps));

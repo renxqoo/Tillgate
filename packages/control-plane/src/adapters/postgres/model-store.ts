@@ -225,12 +225,11 @@ export const postgresModelStore: ModelStore = {
       .select(ACTIVE_MAPPING_COLUMNS)
       .from(modelMappings)
       .where(
-        and(
-          inArray(modelMappings.externalName, [...externalNames]),
-          eq(modelMappings.status, 0),
-        ),
+        and(inArray(modelMappings.externalName, [...externalNames]), eq(modelMappings.status, 0)),
       );
-    return new Map(rows.map((row) => [(row as ActiveMappingRow).externalName, row as ActiveMappingRow]));
+    return new Map(
+      rows.map((row) => [(row as ActiveMappingRow).externalName, row as ActiveMappingRow]),
+    );
   },
 
   async listEnabledMappings(db) {

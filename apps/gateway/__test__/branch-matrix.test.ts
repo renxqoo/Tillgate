@@ -6,14 +6,18 @@
 import { describe, expect, it } from 'vitest';
 import { Hono, type Context } from 'hono';
 import type { SlidingWindowLimiter } from '@tokenlens/runtime';
-import { admitRequest, type RateLimitGate } from '../src/http/middleware/rate-limit';
+import { admitRequest } from '../src/http/middleware/rate-limit';
 import { otelMiddleware } from '../src/http/middleware/otel';
 import type { AuthEnv, AuthContext } from '../src/http/middleware/api-key';
 import { requestLogMiddleware } from '../src/http/middleware/request-log';
 import { createGatewayCatalog } from '../src/adapters/catalog-port';
 import { createGatewayBilling } from '../src/adapters/billing-port';
 import { sseResponse } from '../src/http/openai-envelope';
-import type { ActiveMappingRow, RouteCandidateRow, UserRateCardContext } from '@tokenlens/control-plane';
+import type {
+  ActiveMappingRow,
+  RouteCandidateRow,
+  UserRateCardContext,
+} from '@tokenlens/control-plane';
 import type { QuoteCandidate } from '@tokenlens/inference';
 
 const auth = (over: Partial<AuthContext> = {}): AuthContext => ({
@@ -40,28 +44,38 @@ function limiter(results: { rpm?: unknown; tpm?: unknown }) {
 describe('限流闸维度矩阵', () => {
   it('rpm 拒绝无 retryAfterSec → 缺省 60 上下文', async () => {
     await expect(
-      admitRequest({ limiter: limiter({ rpm: { allowed: false } }), globalRpm: null }, {
-        requestId: 'r',
-        auth: auth(),
-        estimatedTokens: 1,
-      }),
+      admitRequest(
+        { limiter: limiter({ rpm: { allowed: false } }), globalRpm: null },
+        {
+          requestId: 'r',
+          auth: auth(),
+          estimatedTokens: 1,
+        },
+      ),
     ).rejects.toMatchObject({ code: 'gateway.rate_limit_exceeded' });
   });
 
   it('tpm 拒绝无 retryAfterSec → 缺省 60；key 维 tpm 缺失只押 user 维', async () => {
     const spy = limiter({});
-    const checkSpy = spy as unknown as { reserveTpmAll: (dims: Array<{ dimension: string }>) => Promise<unknown> };
+    const checkSpy = spy as unknown as {
+      reserveTpmAll: (dims: Array<{ dimension: string }>) => Promise<unknown>;
+    };
     const seen: Array<Array<{ dimension: string }>> = [];
-    (spy as unknown as Record<string, unknown>).reserveTpmAll = async (dims: Array<{ dimension: string }>) => {
+    (spy as unknown as Record<string, unknown>).reserveTpmAll = async (
+      dims: Array<{ dimension: string }>,
+    ) => {
       seen.push(dims);
       return { allowed: false };
     };
     await expect(
-      admitRequest({ limiter: spy, globalRpm: null }, {
-        requestId: 'r',
-        auth: auth({ tpmLimit: null }),
-        estimatedTokens: 5,
-      }),
+      admitRequest(
+        { limiter: spy, globalRpm: null },
+        {
+          requestId: 'r',
+          auth: auth({ tpmLimit: null }),
+          estimatedTokens: 5,
+        },
+      ),
     ).rejects.toMatchObject({ code: 'gateway.rate_limit_exceeded' });
     expect(seen[0]!.map((d) => d.dimension)).toEqual(['user:1']); // key TPM 缺失跳过
     void checkSpy;
@@ -70,28 +84,39 @@ describe('限流闸维度矩阵', () => {
   it('JWT 形态（apiKeyId=null）且无 user 限 → 零维预占直通', async () => {
     const spy = limiter({});
     const tpmSeen: Array<Array<{ dimension: string }>> = [];
-    (spy as unknown as Record<string, unknown>).reserveTpmAll = async (dims: Array<{ dimension: string }>) => {
+    (spy as unknown as Record<string, unknown>).reserveTpmAll = async (
+      dims: Array<{ dimension: string }>,
+    ) => {
       tpmSeen.push(dims);
       return { allowed: true };
     };
-    const handle = await admitRequest({ limiter: spy, globalRpm: null }, {
-      requestId: 'r',
-      auth: auth({ apiKeyId: null, rpmLimit: null, tpmLimit: null, userRpmLimit: null, userTpmLimit: null }),
-      estimatedTokens: 5,
-    });
+    const handle = await admitRequest(
+      { limiter: spy, globalRpm: null },
+      {
+        requestId: 'r',
+        auth: auth({
+          apiKeyId: null,
+          rpmLimit: null,
+          tpmLimit: null,
+          userRpmLimit: null,
+          userTpmLimit: null,
+        }),
+        estimatedTokens: 5,
+      },
+    );
     await handle.release();
     expect(tpmSeen).toHaveLength(0);
   });
 });
 
-describe('otel 状态分支', () => {
-  function otelApp(handler: (c: Context<AuthEnv>) => Response | Promise<Response>) {
-    const app = new Hono<AuthEnv>();
-    app.use('*', otelMiddleware());
-    app.get('/v1/x', handler);
-    return app;
-  }
+function otelApp(handler: (c: Context<AuthEnv>) => Response | Promise<Response>) {
+  const app = new Hono<AuthEnv>();
+  app.use('*', otelMiddleware());
+  app.get('/v1/x', handler);
+  return app;
+}
 
+describe('otel 状态分支', () => {
   it('auth 属性挂载 + 5xx 置 ERROR；抛错路径不吞异常', async () => {
     const fiveHundred = otelApp((c) => {
       c.set('auth', auth());
@@ -121,7 +146,10 @@ describe('request-log 嗅探防御', () => {
       }),
     );
     app.get('/v1/list', (c) => c.text('not json'));
-    app.post('/v1/p', (c) => new Response('broken', { headers: { 'content-type': 'application/json' } }));
+    app.post(
+      '/v1/p',
+      (_c) => new Response('broken', { headers: { 'content-type': 'application/json' } }),
+    );
     expect((await app.request('/v1/list')).status).toBe(200);
     expect((await app.request('/v1/p', { method: 'POST', body: '{}' })).status).toBe(200);
     await new Promise((r) => setTimeout(r, 10));
@@ -131,19 +159,35 @@ describe('request-log 嗅探防御', () => {
   });
 });
 
+const candidateRow = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow => ({
+  channelId: 1,
+  channelName: 'c',
+  apiKeyEnc: 'e',
+  baseUrlOverride: null,
+  providerName: 'p',
+  providerBaseUrl: 'https://p',
+  providerProtocol: 'openai-compatible',
+  providerVendor: null,
+  priority: 1,
+  weight: 1,
+  rpmLimit: null,
+  tpmLimit: null,
+  upstreamBudget: '0',
+  ...over,
+});
+
 describe('catalog 渠道可选列 / billing 可选字段透传', () => {
   it('渠道候选缺限流列时不带字段；全带时透传', async () => {
-    const row = (over: Partial<RouteCandidateRow> = {}): RouteCandidateRow => ({
-      channelId: 1, channelName: 'c', apiKeyEnc: 'e', baseUrlOverride: null,
-      providerName: 'p', providerBaseUrl: 'https://p', providerProtocol: 'openai-compatible',
-      providerVendor: null, priority: 1, weight: 1, rpmLimit: null, tpmLimit: null,
-      upstreamBudget: '0', ...over,
-    });
     const catalog = createGatewayCatalog({
       models: {
         findActiveByExternalName: async () => null,
       },
-      channels: { findRouteCandidates: async () => [row(), row({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7' })] },
+      channels: {
+        findRouteCandidates: async () => [
+          candidateRow(),
+          candidateRow({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7' }),
+        ],
+      },
       rateCards: { findActiveCardByUser: async () => null },
     });
     const channels = await catalog.resolveChannels('x');
@@ -164,16 +208,32 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
       { reservationLimit: '1', reservationPolicy: { mode: 'full' } },
     );
     const candidate: QuoteCandidate = {
-      mappingId: 1, externalModel: 'm', realModel: 'r',
-      inputPrice: '1', cacheInputPrice: '1', cacheWritePrice: '2.5', outputPrice: '3',
-      unitPrice: '0.1', pricingUnit: 'image', unitUpperBound: 2, coefficient: '1',
+      mappingId: 1,
+      externalModel: 'm',
+      realModel: 'r',
+      inputPrice: '1',
+      cacheInputPrice: '1',
+      cacheWritePrice: '2.5',
+      outputPrice: '3',
+      unitPrice: '0.1',
+      pricingUnit: 'image',
+      unitUpperBound: 2,
+      coefficient: '1',
       billingPolicyFingerprint: null,
     };
     await port.authorize({
-      requestId: 'r', userId: 1, apiKeyId: null, appId: null, stream: false,
-      candidates: [candidate], inputTokenUpperBound: 10, maxOutputTokens: 100, authorizationTtlMs: 1,
+      requestId: 'r',
+      userId: 1,
+      apiKeyId: null,
+      appId: null,
+      stream: false,
+      candidates: [candidate],
+      inputTokenUpperBound: 10,
+      maxOutputTokens: 100,
+      authorizationTtlMs: 1,
     });
-    const quote = (authorized[0] as { quote: { candidates: Array<Record<string, unknown>> } }).quote;
+    const quote = (authorized[0] as { quote: { candidates: Array<Record<string, unknown>> } })
+      .quote;
     expect(quote.candidates[0]).toMatchObject({ cacheWritePrice: '2.5', unitPrice: '0.1' });
   });
 });
@@ -187,10 +247,21 @@ describe('信封可选分支', () => {
 describe('catalog 快照杂项防御', () => {
   it('非法 pricingUnit 收敛为 token；无卡用户 body 推导照常', async () => {
     const mapping: ActiveMappingRow = {
-      id: 1, externalName: 'x', realModel: 'r', contextLength: null,
-      inputPrice: '1', outputPrice: '1', cacheInputPrice: '1', cacheWritePrice: '0',
-      pricingUnit: 'weird', unitPrice: '0', pricingGroup: null, isFree: false,
-      fallbackModels: null, billingPolicy: null, billingConfig: {},
+      id: 1,
+      externalName: 'x',
+      realModel: 'r',
+      contextLength: null,
+      inputPrice: '1',
+      outputPrice: '1',
+      cacheInputPrice: '1',
+      cacheWritePrice: '0',
+      pricingUnit: 'weird',
+      unitPrice: '0',
+      pricingGroup: null,
+      isFree: false,
+      fallbackModels: null,
+      billingPolicy: null,
+      billingConfig: {},
     };
     const catalog = createGatewayCatalog({
       models: {
@@ -199,7 +270,14 @@ describe('catalog 快照杂项防御', () => {
       channels: { findRouteCandidates: async () => [] },
       rateCards: {
         findActiveCardByUser: async () =>
-          ({ cardId: 1, cardName: 'c', status: 0, coefficients: [{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.9' }] }) as UserRateCardContext,
+          ({
+            cardId: 1,
+            cardName: 'c',
+            status: 0,
+            coefficients: [
+              { scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.9' },
+            ],
+          }) as UserRateCardContext,
       },
     });
     const snap = await catalog.findMapping('x', { userId: 1, body: {} });
@@ -218,7 +296,13 @@ describe('杂项分支收官', () => {
       models: { listEnabledMappings: async () => [] },
       requestLogs: { insert: async () => undefined } as never,
       pingDb: async () => undefined,
-      oauth: { jwtSecret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'ag_', tokenTtlSeconds: 60 },
+      oauth: {
+        jwtSecret: 'ab12'.repeat(8),
+        issuer: 'i',
+        audience: 'a',
+        keyPrefix: 'ag_',
+        tokenTtlSeconds: 60,
+      },
       trustedProxyHops: 0,
       logger: { error: () => undefined },
     });
@@ -242,7 +326,11 @@ describe('杂项分支收官', () => {
     expect(videoSchema.safeParse({ model: 'm', prompt: 'p', duration: 4 }).success).toBe(true);
     expect(videoSchema.safeParse({ model: 'm', prompt: 'p', duration: 15 }).success).toBe(true);
     const withImages = videoSchema.safeParse({
-      model: 'm', prompt: 'p', duration: 6, image: 'https://x/img.png', last_frame_image: 'https://x/f.png',
+      model: 'm',
+      prompt: 'p',
+      duration: 6,
+      image: 'https://x/img.png',
+      last_frame_image: 'https://x/f.png',
     });
     expect(withImages.success).toBe(true);
     expect(videoSchema.safeParse({ model: 'm', prompt: 'p', duration: 3 }).success).toBe(false);

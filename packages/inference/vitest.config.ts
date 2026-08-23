@@ -11,8 +11,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      // 出口桶文件（纯 re-export）不计入分母
-      exclude: ['src/index.ts'],
+      // 出口桶文件（纯 re-export）不计入分母;
+      // adapters/generation-pg.ts = 纯 SQL/DDL(行为由 generation-pg.real.test.ts 承担,
+      // 默认门禁不含真实 PG——observability adapters/postgres 桶同口径)
+      exclude: ['src/index.ts', 'src/adapters/generation-pg.ts'],
       thresholds: { lines: 90, statements: 90, functions: 90, branches: 85 },
     },
   },

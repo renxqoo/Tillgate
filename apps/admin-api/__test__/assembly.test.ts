@@ -12,6 +12,8 @@ import { createAdminShutdown } from '../src/shutdown';
 const BASE: NodeJS.ProcessEnv = {
   DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens-test',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
+  REDIS_URL: 'redis://localhost:6379',
+  JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',
   ENCRYPTION_KEY: 'encryption-key-0123456789-abcdef',
   IDENTITY_CODE_PEPPER: 'pepper-0123-9abcd',
 };
@@ -58,10 +60,14 @@ describe('createAdminShutdown', () => {
       order.push(`exit:${code}`);
       return undefined as never;
     });
+    const redisQuit = vi.fn(async () => {
+      order.push('redis');
+    });
     const shutdown = createAdminShutdown({
-      // 形状适配:runtime 只需 close(callback) / shutdown() / db.$client.end()
+      // 形状适配:runtime 只需 close(callback) / shutdown() / quit() / db.$client.end()
       server: { close } as never,
       otel: { shutdown: otelShutdown } as never,
+      redis: { quit: redisQuit },
       db: { $client: { end: dbEnd } } as never,
       graceMs: 60_000,
       logger: logger as never,
@@ -70,6 +76,6 @@ describe('createAdminShutdown', () => {
     expect(typeof shutdown).toBe('function');
     shutdown('SIGTERM');
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0));
-    expect(order).toEqual(['server', 'otel', 'db', 'exit:0']);
+    expect(order).toEqual(['server', 'otel', 'redis', 'db', 'exit:0']);
   });
 });

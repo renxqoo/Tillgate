@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tokenlens/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createPaygSource } from '../src/application/billing/funding/payg-source.js';
+import { createFundingRegistry } from '../src/application/billing/funding/registry.js';
 import { createSubscriptionSource } from '../src/application/billing/funding/subscription-source.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
 import {
@@ -355,5 +356,11 @@ describe('subscription 来源', () => {
         }),
       'billing.subscription_required',
     );
+  });
+});
+describe('funding registry(铁律 16 分支封口)', () => {
+  it('未注册类型显式拒绝(fail-fast,不静默返回 undefined)', () => {
+    const registry = createFundingRegistry([]);
+    expect(() => registry.get('payg')).toThrow(/funding source not registered/);
   });
 });

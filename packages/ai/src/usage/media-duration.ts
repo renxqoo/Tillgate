@@ -22,7 +22,8 @@ export function estimateAudioDurationSeconds(bytes: Uint8Array): number {
     while (offset + 8 <= bytes.byteLength) {
       const chunkId = view.getUint32(offset, false);
       const chunkSize = view.getUint32(offset + 4, true);
-      if (chunkId === 0x666d7420) byteRate = view.getUint32(offset + 16, true); // 'fmt '
+      if (chunkId === 0x666d7420)
+        byteRate = view.getUint32(offset + 16, true); // 'fmt '
       else if (chunkId === 0x64617461) dataSize = chunkSize; // 'data'
       offset += 8 + chunkSize + (chunkSize % 2);
       if (byteRate > 0 && dataSize > 0) break;
@@ -34,7 +35,10 @@ export function estimateAudioDurationSeconds(bytes: Uint8Array): number {
 
   // MP3：ID3 头跳过后找帧同步 0xFFEx
   let start = 0;
-  if (view.getUint32(0, false) === 0x49443300 || (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)) {
+  if (
+    view.getUint32(0, false) === 0x49443300 ||
+    (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33)
+  ) {
     const tagSize = (bytes[6]! << 21) | (bytes[7]! << 14) | (bytes[8]! << 7) | bytes[9]!;
     start = 10 + tagSize;
   }

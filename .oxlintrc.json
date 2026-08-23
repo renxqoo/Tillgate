@@ -5,6 +5,23 @@
     "correctness": "error",
     "suspicious": "error"
   },
+  "rules": {
+    "max-lines": ["error", { "max": 500 }]
+  },
+  "overrides": [
+    {
+      "files": ["**/__test__/**", "**/*.test.ts", "**/*.spec.ts", "**/testing/**"],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
+      "files": ["**/*.generated.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    }
+  ],
   "env": {
     "node": true
   },

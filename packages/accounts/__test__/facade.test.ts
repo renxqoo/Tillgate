@@ -14,14 +14,19 @@ import {
 describe('createAccounts 装配契约', () => {
   it('缺 policy/txRetry/now/db/walletCredit 在类型面编译失败(零隐藏默认)', () => {
     // @ts-expect-error 缺全部必填——必填契约的类型面证明
-    createAccounts({});
-    expect(true).toBe(true);
+    // 运行期同样 fail-fast:装配期 policy 形状校验先于任何装配步骤抛错
+    expect(() => createAccounts({})).toThrow(/accounts policy invalid/);
   });
 
   it('store 注入缝:替身直通,动词表完整绑定', async () => {
     const h = createTestHarness();
     const api = createAccounts({
       db: h.ctx.db, // harness 的快照回滚 fake db(生产为真实池句柄)
+      sessionInvalidation: {
+        async invalidateUserSessions() {
+          /* no-op:装配形状测试 */
+        },
+      },
       walletCredit: h.wallet,
       policy: V1_POLICY,
       txRetry: { maxAttempts: 2, baseDelayMs: 1, maxJitterMs: 1 },

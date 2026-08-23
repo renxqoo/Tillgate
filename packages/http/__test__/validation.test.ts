@@ -13,8 +13,12 @@ import { errorHandler } from '../src/errors/handler';
 function app(): Hono {
   const a = new Hono();
   a.onError(errorHandler());
-  a.post('/body', jsonBody(z.object({ name: z.string().min(3) })), (c) => c.json(c.req.valid('json')));
-  a.get('/query', query(z.object({ n: z.coerce.number().int() })), (c) => c.json(c.req.valid('query')));
+  a.post('/body', jsonBody(z.object({ name: z.string().min(3) })), (c) =>
+    c.json(c.req.valid('json')),
+  );
+  a.get('/query', query(z.object({ n: z.coerce.number().int() })), (c) =>
+    c.json(c.req.valid('query')),
+  );
   a.get('/query-tag', query(z.object({ tag: z.string() })), (c) => c.json(c.req.valid('query')));
   a.get('/item/:id', (c) => c.json({ id: intParam(c, 'id') }));
   return a;
@@ -42,6 +46,18 @@ describe('jsonBody', () => {
     expect(body.error.code).toBe('http.validation_failed');
     expect(Object.keys(body.error.context)[0]).toBe('body.name');
     expect(body.error.context['body.name']).toBeTruthy();
+  });
+
+  it('根级不符（body 非 object）→ context 键落 source（body）', async () => {
+    const res = await app().request('/body', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([1, 2]),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string; context: Record<string, string> } };
+    expect(body.error.code).toBe('http.validation_failed');
+    expect(Object.keys(body.error.context)[0]).toBe('body');
   });
 });
 

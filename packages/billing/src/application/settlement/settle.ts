@@ -28,8 +28,12 @@ export interface SettleEnv {
   store: BillingStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
-  clock?: () => Date;
-  /** 运营投影钩子（事务外 best-effort——TPM 回填/余额预警；异常不反杀结算） */
+  /** 时钟（装配必填——零写死；DB 时钟权威路径不在此） */
+  clock: () => Date;
+  /**
+   * 提交后观察钩子（事务已提交后的 metrics/trace 级 best-effort——可丢，
+   * 异常不反杀结算）。可靠投递走 outbox port，本钩子不承载资金所需事实。
+   */
   onSettled?: (data: {
     requestId: string;
     userId: number;
@@ -65,7 +69,7 @@ function invariant(code: string): DefectError {
 }
 
 export function createSettleClaimUseCase(env: SettleEnv) {
-  const { store, clock = () => new Date() } = env;
+  const { store, clock } = env;
 
   return async function settleClaim(claim: SettlementClaim): Promise<SettleClaimResult> {
     // 解码守卫（毒收据 → 抛给失败路径判死信）；金额双口径在此算一次
@@ -191,6 +195,10 @@ export function createSettleClaimUseCase(env: SettleEnv) {
           now,
         });
       }
+
+      // 结算成功事实不入通知 outbox（v2 口径，v1 同款）：notifications 词表无
+      // 「结算成功」成员——无告警消费场景；可观测走 usage_logs 投影与 onSettled
+      // 钩子（best-effort）。可靠入箱只有死信路径（failure 用例，billing_dead）。
       return {
         outcome: 'settled',
         settled: true,
@@ -199,7 +207,8 @@ export function createSettleClaimUseCase(env: SettleEnv) {
       };
     });
 
-    // 运营投影（事务已提交）：best-effort，钩子异常绝不改写资金结果
+    // 提交后观察钩子（metrics/trace 级 best-effort——可丢，异常不反杀结算）。
+    // 本钩子仅承载可丢的运营投影（TPM 回填/余额预警），不是通知通道。
     if (result.outcome === 'settled') {
       try {
         env.onSettled?.({

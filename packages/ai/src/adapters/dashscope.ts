@@ -91,7 +91,9 @@ export class DashScopeAdapter extends OpenAICompatibleAdapter implements Protoco
     const out: Record<string, unknown> = {
       model: input.model,
       input: {
-        messages: [{ role: 'user', content: [{ text: typeof body.prompt === 'string' ? body.prompt : '' }] }],
+        messages: [
+          { role: 'user', content: [{ text: typeof body.prompt === 'string' ? body.prompt : '' }] },
+        ],
       },
     };
     if (Object.keys(parameters).length > 0) out.parameters = parameters;
@@ -118,7 +120,9 @@ export class DashScopeAdapter extends OpenAICompatibleAdapter implements Protoco
     const height = typeof usage?.height === 'number' ? usage.height : null;
     const size = width != null && height != null ? `${width}*${height}` : undefined;
     const imageCount =
-      typeof usage?.image_count === 'number' && usage.image_count > 0 ? usage.image_count : urls.length;
+      typeof usage?.image_count === 'number' && usage.image_count > 0
+        ? usage.image_count
+        : urls.length;
     return {
       object: 'list',
       created: Math.floor(Date.now() / 1000),
@@ -144,15 +148,22 @@ export class DashScopeAdapter extends OpenAICompatibleAdapter implements Protoco
   }
 
   /** 错误映射：DashScope 错误体 {code, message, request_id} 走通用分类矩阵 */
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: DASHSCOPE_CODE_KINDS, status, body, headers });
   }
 
   /** 连通性探测：compatible-mode /models（GET，轻量鉴权验证） */
-  probeRequests(
-    channel: ChannelDesc,
-  ): Array<{ path: string; headers: Record<string, string> }> {
-    return [{ path: '/compatible-mode/v1/models', headers: { authorization: `Bearer ${channel.apiKey}` } }];
+  probeRequests(channel: ChannelDesc): Array<{ path: string; headers: Record<string, string> }> {
+    return [
+      {
+        path: '/compatible-mode/v1/models',
+        headers: { authorization: `Bearer ${channel.apiKey}` },
+      },
+    ];
   }
 
   /** 参数抹平：本协议不做模型级参数规则（images 参数由 finalize 收敛进 parameters） */

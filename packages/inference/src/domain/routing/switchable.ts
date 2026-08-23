@@ -55,14 +55,20 @@ export function routeFailure(error: { kind?: string; status?: number }): RouteAc
 
 /**
  * 全败终结分类（v1 releaseAndFail 语义）：从未得到上游响应、纯渠道面拒绝
- * （无渠道/预算耗尽/限流/上游 429 归一码）= 渠道面竭尽（no_available_channel）；
- * 其余上游故障 = upstream_failed。
+ * （无渠道/预算耗尽/限流/上游 429 归一码，以及 health.admit 的熔断/死凭据拒绝）
+ * = 渠道面竭尽（no_available_channel，503）；其余上游故障 = upstream_failed（502）。
+ *
+ * 注：circuit_open/dead_credential 为 v2 新增归类（v1 同形缺陷：admission 拒绝码
+ * 不在竭尽词表，全渠道熔断/死凭据竭尽被误归 upstream_failed 502——网关自身保护
+ * 动作不是上游故障；改进登记见 MIGRATION.md §3a）。
  */
 export function isChannelExhausted(code: string | undefined | null): boolean {
   return (
     code == null ||
     code === 'channel_budget_exhausted' ||
     code === 'rate_limit_exceeded' ||
-    code === 'rate_limited'
+    code === 'rate_limited' ||
+    code === 'circuit_open' ||
+    code === 'dead_credential'
   );
 }

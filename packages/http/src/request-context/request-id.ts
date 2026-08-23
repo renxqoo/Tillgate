@@ -12,7 +12,9 @@ import type { MiddlewareHandler } from 'hono';
  *     重放冲突与 500。
  * 客户端 X-Request-Id 仅用于日志关联（不入 requestId）；响应回显服务端 ID。
  */
-export function requestIdMiddleware<E extends { Variables: { requestId: string } }>(): MiddlewareHandler<E> {
+export function requestIdMiddleware<
+  E extends { Variables: { requestId: string } },
+>(): MiddlewareHandler<E> {
   return async (c, next) => {
     c.set('requestId', randomUUID());
     await next();

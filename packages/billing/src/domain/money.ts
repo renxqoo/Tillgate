@@ -17,9 +17,17 @@ export function toStorage(amount: Decimal): string {
   return amount.toString();
 }
 
-/** 金额字符串规范化（去前导零/尾零统一形态——幂等比对与指纹的稳定输入） */
+/**
+ * 金额字符串规范化（去前导零/尾零统一形态——幂等比对与指纹的稳定输入）。
+ * 防线对称（B3 同族）：垃圾串的 Decimal 构造异常在此归类为 invalid_amount，
+ * 不允许未分类异常逃逸（与 parsePositiveAmount 的 toDecimal 守卫同一口径）。
+ */
 export function normalizeAmount(value: string): string {
-  return new Decimal(value).toString();
+  try {
+    return new Decimal(value).toString();
+  } catch {
+    throw BillingErrors.business('invalid_amount', { raw: String(value), reason: 'malformed' });
+  }
 }
 
 /** 合法金额字符串：非负十进制、≤18 位小数、≤20 位整数（numeric(38,18) 落库前防御） */

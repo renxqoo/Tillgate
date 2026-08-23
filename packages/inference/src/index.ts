@@ -8,6 +8,12 @@ export type { ChatDelivered } from './application/chat';
 export type { StreamDelivered } from './application/stream';
 export type { PassthroughDelivered, ChannelAdmission } from './application/failover';
 export type { GenerationSubmitInput, GenerationSubmitOutcome } from './application/generation';
+export { createGenerationPollUseCase } from './application/generation-poll';
+export type {
+  GenerationPollConfig,
+  GenerationPollResult,
+  GenerationPollDeps,
+} from './application/generation-poll';
 
 // ---- 错误目录（§11）----
 export { InferenceErrors } from './domain/errors';
@@ -17,21 +23,28 @@ export { inferenceDefaultsSchema, defaultInferenceDefaults } from './config';
 export type { InferenceDefaults, InferenceDefaultsInput } from './config';
 
 // ---- 端口契约（装配注入实现）----
-export type { CatalogPort } from './ports/catalog';
+export type { CatalogPort, CatalogPricingContext } from './ports/catalog';
 export type { BillingPort, BillingSignal } from './ports/billing';
+export type { TracePort, SpanHandle, TraceAttributes, TraceAttributeValue } from './ports/trace';
 export type {
   UpstreamPort,
   UpstreamCallRequest,
   UpstreamStreamEvent,
   UpstreamStreamResult,
   UpstreamTaskSubmitResult,
+  UpstreamTaskExecuteResult,
 } from './ports/upstream';
 export type { HealthStore, Versioned } from './ports/state';
 export type {
   GenerationTaskStore,
   GenerationTaskRecord,
   GenerationTaskView,
+  GenerationTaskActiveRow,
+  GenerationTaskAdminRow,
+  GenerationTaskAdminListInput,
+  GenerationTaskStatus,
 } from './ports/generation';
+export { GENERATION_TASK_STATUSES } from './ports/generation';
 
 // ---- 目录/收据契约（端口实现方与 billing 消费方引用）----
 export type {
@@ -42,6 +55,7 @@ export type {
   PricingUnit,
 } from './domain/model/types';
 export { buildCandidateChain } from './domain/model/candidates';
+export { conservativeInputTokenUpperBound } from './domain/model/output-cap';
 export type {
   UsageReceipt,
   ReceiptParams,
@@ -56,7 +70,7 @@ export {
   isAttributedEstimate,
 } from './domain/usage/attribution';
 export type { EstimateAttribution, UserSideCancel } from './domain/usage/attribution';
-export { GENERATION_KINDS, isGenerationTaskKind } from './domain/generation';
+export { GENERATION_KINDS, GENERATION_TASK_KINDS, isGenerationTaskKind } from './domain/generation';
 export type { GenerationTaskKind, GenerationKindDescriptor } from './domain/generation';
 
 // ---- 渠道健康（AiEvent 订阅者；§3.6）----
@@ -70,3 +84,23 @@ export { createUpstreamAi } from './adapters/upstream-ai';
 export { createRedisHealthStore } from './adapters/state-redis';
 export { createMemoryHealthStore } from './adapters/state-memory';
 export { createMemoryGenerationTaskStore } from './adapters/task-memory';
+export { createPostgresGenerationTaskStore } from './adapters/generation-pg';
+
+// ---- 入站协议翻译转出口（gateway P5 波；§3.6「apps 运行时代码不直接 import ai」——
+//      外部线格式 ↔ 规范形的纯翻译函数经本包转发，app HTTP 面单一引用面） ----
+export {
+  completionsRequestToChat,
+  chatResponseToCompletions,
+  canonicalStreamToCompletionsStream,
+  responsesRequestToChat,
+  chatResponseToResponses,
+  canonicalStreamToResponsesStream,
+  claudeRequestToChat,
+  chatResponseToClaude,
+  canonicalStreamToClaudeStream,
+  geminiRequestToChat,
+  chatResponseToGemini,
+  canonicalStreamToGeminiStream,
+  estimateAudioDurationSeconds,
+} from '@tokenlens/ai';
+export type { Endpoint } from '@tokenlens/ai';

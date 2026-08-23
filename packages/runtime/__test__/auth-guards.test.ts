@@ -10,7 +10,10 @@ import {
   createKeyBruteForceGuard,
   authGuardUnavailable,
 } from '../src/redis/auth-guards';
-import { createLocalAuthFailureGuard, createLocalKeyBruteForceGuard } from '../src/redis/auth-local-guard';
+import {
+  createLocalAuthFailureGuard,
+  createLocalKeyBruteForceGuard,
+} from '../src/redis/auth-local-guard';
 import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../src/testing';
 
 const url = testRedisUrl();
@@ -55,13 +58,15 @@ describe.skipIf(url == null)('爆破防护（真实 Redis）', () => {
 
 /** 预期不可达实例（错误事件静默——连接失败是测试路径，不泄漏 unhandled 噪声） */
 function deadRedis(): Redis {
-  const redis = new Redis('redis://127.0.0.1:1', { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  const redis = new Redis('redis://127.0.0.1:1', {
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+  });
   redis.on('error', () => {});
   return redis;
 }
 
 describe('爆破防护故障三档', () => {
-
   it('degraded（默认）：存储不可用降级本地粗限，不 503', async () => {
     const guard = createKeyBruteForceGuard(deadRedis(), {
       failureThreshold: 2,
@@ -80,13 +85,20 @@ describe('爆破防护故障三档', () => {
       { failureThreshold: 2, failureWindowS: 60, lockS: 60 },
       { failMode: 'closed' },
     );
-    const err = await guard.isLocked('x').then(() => null, (e: Error) => e);
+    const err = await guard.isLocked('x').then(
+      () => null,
+      (e: Error) => e,
+    );
     expect(isInfrastructureError(err), String(err)).toBe(true);
     expect((err as { code: string }).code).toBe('runtime.auth_guard_unavailable');
   });
 
   it('open：存储不可用放行', async () => {
-    const guard = createAuthFailureGuard(deadRedis(), { limit: 2, windowS: 60 }, { failMode: 'open' });
+    const guard = createAuthFailureGuard(
+      deadRedis(),
+      { limit: 2, windowS: 60 },
+      { failMode: 'open' },
+    );
     await expect(guard.isLocked('1.2.3.4')).resolves.toMatchObject({ locked: false });
   });
 
@@ -99,7 +111,11 @@ describe('爆破防护故障三档', () => {
 
 describe('本地降级体（纯内存语义）', () => {
   it('key 维：阈值锁 + 锁内重计 + 成功清零', async () => {
-    const guard = createLocalKeyBruteForceGuard({ failureThreshold: 2, failureWindowS: 60, lockS: 1 });
+    const guard = createLocalKeyBruteForceGuard({
+      failureThreshold: 2,
+      failureWindowS: 60,
+      lockS: 1,
+    });
     await guard.recordFailure('k');
     const locked = await guard.recordFailure('k');
     expect(locked.locked).toBe(true);
@@ -114,7 +130,11 @@ describe('本地降级体（纯内存语义）', () => {
   });
 
   it('容量保护：maxEntries 上限整表重计（防维度空间撑内存）', async () => {
-    const guard = createLocalKeyBruteForceGuard({ failureThreshold: 5, failureWindowS: 60, lockS: 60 });
+    const guard = createLocalKeyBruteForceGuard({
+      failureThreshold: 5,
+      failureWindowS: 60,
+      lockS: 60,
+    });
     await guard.recordFailure('seed');
     // 不直接触达内部表——通过大量新维度触发整表重置后 seed 计数归零
     for (let i = 0; i < 100_001; i++) await guard.recordFailure(`dim-${i}`);

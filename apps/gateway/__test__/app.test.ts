@@ -10,8 +10,16 @@ import type { RequestLogStore } from '@tokenlens/observability';
 
 const inference = {
   chat: async () => ({ ok: true, status: 200, body: {} }),
-  stream: async () => ({ ok: true, status: 200, stream: new ReadableStream(), contentType: 'text/event-stream' as const }),
-  generation: { submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }), query: async () => null },
+  stream: async () => ({
+    ok: true,
+    status: 200,
+    stream: new ReadableStream(),
+    contentType: 'text/event-stream' as const,
+  }),
+  generation: {
+    submit: async () => ({ ok: true, taskId: 't', expiresAt: 0 }),
+    query: async () => null,
+  },
   health: {} as never,
   close: () => undefined,
 } as unknown as Inference;
@@ -23,18 +31,36 @@ const requestLogs = {
   },
 } as unknown as RequestLogStore;
 
-function makeApp(over: Parameters<typeof createGatewayApp>[0] extends never ? never : Partial<Parameters<typeof createGatewayApp>[0]> = {}) {
+function makeApp(
+  over: Parameters<typeof createGatewayApp>[0] extends never
+    ? never
+    : Partial<Parameters<typeof createGatewayApp>[0]> = {},
+) {
   return createGatewayApp({
     inference,
     reader: {
-      resolveKeyByHash: async () => ({ keyId: 1, userId: 1, rpmLimit: null, tpmLimit: null, allowPaygFallback: false, userRpmLimit: null, userTpmLimit: null }),
+      resolveKeyByHash: async () => ({
+        keyId: 1,
+        userId: 1,
+        rpmLimit: null,
+        tpmLimit: null,
+        allowPaygFallback: false,
+        userRpmLimit: null,
+        userTpmLimit: null,
+      }),
       resolveApp: async () => null,
     },
     verifyAppClient: async () => null,
     models: { listEnabledMappings: async () => [] },
     requestLogs,
     pingDb: async () => undefined,
-    oauth: { jwtSecret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'ag_', tokenTtlSeconds: 3_600 },
+    oauth: {
+      jwtSecret: 'ab12'.repeat(8),
+      issuer: 'i',
+      audience: 'a',
+      keyPrefix: 'ag_',
+      tokenTtlSeconds: 3_600,
+    },
     trustedProxyHops: 0,
     ...over,
   });
@@ -48,7 +74,11 @@ describe('探针', () => {
     expect((await app.request('/healthz')).status).toBe(200);
     expect((await app.request('/readyz')).status).toBe(200);
     expect((await app.request('/livez')).status).toBe(200);
-    const failing = makeApp({ pingDb: async () => { throw new Error('db down'); } });
+    const failing = makeApp({
+      pingDb: async () => {
+        throw new Error('db down');
+      },
+    });
     expect((await failing.request('/healthz')).status).toBeGreaterThanOrEqual(500);
   });
 });
@@ -66,7 +96,11 @@ describe('未注册路径与信封', () => {
     const app = makeApp();
     const a = await app.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { ...AG.headers, 'content-type': 'application/json', 'x-request-id': 'client-forged' },
+      headers: {
+        ...AG.headers,
+        'content-type': 'application/json',
+        'x-request-id': 'client-forged',
+      },
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
     const echoed = a.headers.get('x-request-id')!;
@@ -158,7 +192,10 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     const form = new FormData();
     form.append('model', 'img');
     form.append('prompt', 'p');
-    form.append('image', new File([new Uint8Array([1])], 'evil.exe', { type: 'application/x-msdownload' }));
+    form.append(
+      'image',
+      new File([new Uint8Array([1])], 'evil.exe', { type: 'application/x-msdownload' }),
+    );
     const bad = await minimal.request('/v1/images/edits', {
       method: 'POST',
       headers: { authorization: 'Bearer ag_k' },
@@ -167,7 +204,11 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     expect(bad.status).toBe(400);
     // 上传限制显式注入分支
     const withUploads = makeApp({
-      uploadLimits: { imageMime: new Set(['image/png']), audioMime: new Set(['audio/mpeg']), maxFileBytes: 1024 },
+      uploadLimits: {
+        imageMime: new Set(['image/png']),
+        audioMime: new Set(['audio/mpeg']),
+        maxFileBytes: 1024,
+      },
     });
     const big = new FormData();
     big.append('model', 'img');
@@ -179,6 +220,8 @@ describe('请求日志（记录一切 /v1 请求）', () => {
       body: big,
     });
     expect(oversized.status).toBe(400);
-    expect(((await oversized.json()) as { error: { message: string } }).error.message).toContain('size limit');
+    expect(((await oversized.json()) as { error: { message: string } }).error.message).toContain(
+      'size limit',
+    );
   });
 });

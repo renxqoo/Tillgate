@@ -1,36 +1,15 @@
-import { openaiDone, openaiFrame, sseToSseStream, type SseEvent } from '../transport/sse';
+import { asArray, asJson, str, FINISH_MAP, type Json } from './gemini-shared';
 
 /**
- * Gemini generateContent ⇄ OpenAI Chat 双向 codec（chat 家族）。
+ * Gemini generateContent ⇄ OpenAI Chat 非流式双向 codec（chat 家族，流式 ④ 在 gemini-stream.ts）。
  *
  * ① geminiRequestToChat   入站 /v1beta/models/:model:generateContent 请求 → 规范形
  * ② chatRequestToGemini   规范形 → Gemini 请求（gemini/vertex 上游适配器用）
  * ③ geminiResponseToChat  Gemini 非流式响应 → 规范形
- * ④ 流式：geminiUpstreamToCanonicalStream / canonicalStreamToGeminiStream
  *
  * usage 语义归一：promptTokenCount → inputTokens（cachedContentTokenCount 扣出 cached，
  * thoughtsTokenCount 计入 output——思考 token 由输出侧承担）。
  */
-
-type Json = Record<string, unknown>;
-
-function asJson(v: unknown): Json | null {
-  return typeof v === 'object' && v !== null && !Array.isArray(v) ? (v as Json) : null;
-}
-function asArray(v: unknown): unknown[] {
-  return Array.isArray(v) ? v : [];
-}
-function str(v: unknown): string | undefined {
-  return typeof v === 'string' ? v : undefined;
-}
-
-const FINISH_MAP: Record<string, string> = {
-  STOP: 'stop',
-  MAX_TOKENS: 'length',
-  SAFETY: 'content_filter',
-  RECITATION: 'content_filter',
-  OTHER: 'stop',
-};
 
 /** gemini parts → chat content（纯文本 join；函数调用/媒体保留块形） */
 function partsToContent(parts: unknown): string | Array<Record<string, unknown>> {
@@ -50,14 +29,17 @@ function partsToContent(parts: unknown): string | Array<Record<string, unknown>>
   return out;
 }
 
-export function geminiUsageToUsage(u: unknown): { promptTokens: number; completionTokens: number; cachedTokens: number } | null {
+export function geminiUsageToUsage(
+  u: unknown,
+): { promptTokens: number; completionTokens: number; cachedTokens: number } | null {
   const j = asJson(u);
   if (!j) return null;
   const prompt = typeof j.promptTokenCount === 'number' ? j.promptTokenCount : NaN;
   const candidates = typeof j.candidatesTokenCount === 'number' ? j.candidatesTokenCount : NaN;
   if (!Number.isFinite(prompt) || !Number.isFinite(candidates)) return null;
   const thoughts = typeof j.thoughtsTokenCount === 'number' ? j.thoughtsTokenCount : 0;
-  const cached = typeof j.cachedContentTokenCount === 'number' ? Math.min(j.cachedContentTokenCount, prompt) : 0;
+  const cached =
+    typeof j.cachedContentTokenCount === 'number' ? Math.min(j.cachedContentTokenCount, prompt) : 0;
   return { promptTokens: prompt, completionTokens: candidates + thoughts, cachedTokens: cached };
 }
 
@@ -67,7 +49,11 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
   const sys = asJson(r.systemInstruction);
-  const sysText = sys ? asArray(sys.parts).map((p) => str(asJson(p)?.text) ?? '').join('') : '';
+  const sysText = sys
+    ? asArray(sys.parts)
+        .map((p) => str(asJson(p)?.text) ?? '')
+        .join('')
+    : '';
   if (sysText) messages.push({ role: 'system', content: sysText });
   for (const c of asArray(r.contents)) {
     const content = asJson(c);
@@ -79,19 +65,26 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
     if (fnResponses.length > 0) {
       for (const fr of fnResponses) {
         const f = asJson(asJson(fr)?.functionResponse) ?? {};
-        messages.push({ role: 'tool', tool_call_id: str(f.name) ?? '', content: JSON.stringify(f.response ?? {}) });
+        messages.push({
+          role: 'tool',
+          tool_call_id: str(f.name) ?? '',
+          content: JSON.stringify(f.response ?? {}),
+        });
       }
       continue;
     }
     const entry: Json = { role, content: partsToContent(parts) };
     if (role === 'assistant') {
+      // B-G1 回归：functionCall 为非对象标量（垃圾形状）时 filter(Boolean) 仍放行，
+      // asJson(fc)! 空断言后读 f.name 抛 TypeError——先归一成对象再过滤 null（垃圾形状不崩）
       const toolCalls = parts
-        .map((p) => asJson(p)?.functionCall)
-        .filter(Boolean)
-        .map((fc, i) => {
-          const f = asJson(fc)!;
-          return { id: `call_g${i}`, type: 'function', function: { name: str(f.name) ?? '', arguments: JSON.stringify(f.args ?? {}) } };
-        });
+        .map((p) => asJson(asJson(p)?.functionCall))
+        .filter((f): f is Json => f !== null)
+        .map((f, i) => ({
+          id: `call_g${i}`,
+          type: 'function',
+          function: { name: str(f.name) ?? '', arguments: JSON.stringify(f.args ?? {}) },
+        }));
       if (toolCalls.length > 0) entry.tool_calls = toolCalls;
     }
     messages.push(entry);
@@ -102,13 +95,21 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
   if (typeof cfg.temperature === 'number') out.temperature = cfg.temperature;
   if (typeof cfg.topP === 'number') out.top_p = cfg.topP;
   if (Array.isArray(cfg.stopSequences)) out.stop = cfg.stopSequences.map(String);
-  if (str(cfg.responseMimeType) === 'application/json') out.response_format = { type: 'json_object' };
+  if (str(cfg.responseMimeType) === 'application/json')
+    out.response_format = { type: 'json_object' };
   if (Array.isArray(r.tools)) {
     const decls = r.tools.flatMap((t) => asArray(asJson(t)?.functionDeclarations));
     if (decls.length > 0) {
       out.tools = decls.map((d) => {
         const decl = asJson(d) ?? {};
-        return { type: 'function', function: { name: str(decl.name) ?? '', description: str(decl.description) ?? '', parameters: decl.parameters ?? decl.parametersSchema ?? {} } };
+        return {
+          type: 'function',
+          function: {
+            name: str(decl.name) ?? '',
+            description: str(decl.description) ?? '',
+            parameters: decl.parameters ?? decl.parametersSchema ?? {},
+          },
+        };
       });
     }
   }
@@ -149,17 +150,24 @@ export function chatRequestToGemini(req: unknown): Json {
     if (!msg) continue;
     const role = str(msg.role);
     if (role === 'system' || role === 'developer') {
-      systemText += (systemText ? '\n' : '') + (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? ''));
+      systemText +=
+        (systemText ? '\n' : '') +
+        (typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? ''));
       continue;
     }
     if (role === 'tool') {
       let response: unknown = {};
       try {
-        response = JSON.parse(typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? {}));
+        response = JSON.parse(
+          typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content ?? {}),
+        );
       } catch {
         response = {};
       }
-      contents.push({ role: 'user', parts: [{ functionResponse: { name: str(msg.tool_call_id) ?? '', response } }] });
+      contents.push({
+        role: 'user',
+        parts: [{ functionResponse: { name: str(msg.tool_call_id) ?? '', response } }],
+      });
       continue;
     }
     if (role === 'assistant') {
@@ -184,7 +192,12 @@ export function chatRequestToGemini(req: unknown): Json {
   const out: Json = { contents };
   if (systemText) out.systemInstruction = { parts: [{ text: systemText }] };
   const cfg: Json = {};
-  const maxTokens = typeof r.max_tokens === 'number' && r.max_tokens > 0 ? r.max_tokens : typeof r.max_completion_tokens === 'number' ? r.max_completion_tokens : undefined;
+  const maxTokens =
+    typeof r.max_tokens === 'number' && r.max_tokens > 0
+      ? r.max_tokens
+      : typeof r.max_completion_tokens === 'number'
+        ? r.max_completion_tokens
+        : undefined;
   if (maxTokens !== undefined) cfg.maxOutputTokens = maxTokens;
   if (typeof r.temperature === 'number') cfg.temperature = r.temperature;
   if (typeof r.top_p === 'number') cfg.topP = r.top_p;
@@ -195,15 +208,21 @@ export function chatRequestToGemini(req: unknown): Json {
     .filter(Boolean)
     .map((fn) => {
       const f = fn!;
-      return { name: str(f.name) ?? '', description: str(f.description) ?? '', parameters: f.parameters ?? { type: 'object' } };
+      return {
+        name: str(f.name) ?? '',
+        description: str(f.description) ?? '',
+        parameters: f.parameters ?? { type: 'object' },
+      };
     });
   if (decls.length > 0) out.tools = [{ functionDeclarations: decls }];
   const tc = r.tool_choice;
   if (tc === 'auto') out.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
-  else if (tc === 'required' || tc === 'none') out.toolConfig = { functionCallingConfig: { mode: tc === 'none' ? 'NONE' : 'ANY' } };
+  else if (tc === 'required' || tc === 'none')
+    out.toolConfig = { functionCallingConfig: { mode: tc === 'none' ? 'NONE' : 'ANY' } };
   else if (asJson(tc)?.type === 'function') {
     const name = str(asJson(asJson(tc)?.function)?.name);
-    if (name) out.toolConfig = { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [name] } };
+    if (name)
+      out.toolConfig = { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [name] } };
   }
   return out;
 }
@@ -223,7 +242,11 @@ export function geminiResponseToChat(res: unknown, model: string): Json {
     if (typeof part.text === 'string') textParts.push(part.text);
     if (part.functionCall !== undefined) {
       const f = asJson(part.functionCall) ?? {};
-      toolCalls.push({ id: `call_g${i}`, type: 'function', function: { name: str(f.name) ?? '', arguments: JSON.stringify(f.args ?? {}) } });
+      toolCalls.push({
+        id: `call_g${i}`,
+        type: 'function',
+        function: { name: str(f.name) ?? '', arguments: JSON.stringify(f.args ?? {}) },
+      });
     }
   });
   const message: Json = { role: 'assistant', content: textParts.join('') };
@@ -237,153 +260,19 @@ export function geminiResponseToChat(res: unknown, model: string): Json {
     model,
     choices: [{ index: 0, message, finish_reason: FINISH_MAP[finish] ?? (finish ? 'stop' : null) }],
     ...(usage
-      ? { usage: { prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens, total_tokens: usage.promptTokens + usage.completionTokens, prompt_tokens_details: { cached_tokens: usage.cachedTokens } } }
+      ? {
+          usage: {
+            prompt_tokens: usage.promptTokens,
+            completion_tokens: usage.completionTokens,
+            total_tokens: usage.promptTokens + usage.completionTokens,
+            prompt_tokens_details: { cached_tokens: usage.cachedTokens },
+          },
+        }
       : {}),
   };
 }
 
-// ─────────────────────────── ④ 流式转换 ───────────────────────────
-
-/** Gemini alt=sse 数据帧（JSON，无 [DONE]，finishReason 终止）→ 规范形 chunk 流 */
-export function geminiUpstreamToCanonicalStream(
-  upstream: ReadableStream<Uint8Array>,
-  model?: string,
-): ReadableStream<Uint8Array> {
-  let started = false;
-  let toolCallIndex = 0;
-  return sseToSseStream(
-    upstream,
-    (ev: SseEvent, emit) => {
-      let data: Json;
-      try {
-        data = JSON.parse(ev.data) as Json;
-      } catch {
-        return;
-      }
-      if (data === null || typeof data !== 'object') return; // fuzz：data:null 帧不崩
-      if (!started) {
-        started = true;
-        emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }] }));
-      }
-      if (data.error !== undefined) {
-        const err = asJson(data.error) ?? {};
-        emit(openaiFrame({ error: { code: str(err.status) ?? str(err.code) ?? 'upstream_error', type: str(err.status), message: str(err.message) ?? 'gemini stream error' } }));
-        emit(openaiDone());
-        return;
-      }
-      const candidate = asJson(asArray(data.candidates)[0]);
-      const parts = asArray(asJson(candidate?.content)?.parts);
-      for (const p of parts) {
-        const part = asJson(p);
-        if (!part) continue;
-        if (typeof part.text === 'string' && part.text.length > 0) {
-          emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { content: part.text }, finish_reason: null }] }));
-        }
-        // functionCall part → tool_calls delta（v1 遗留缺口修复：Gemini 每调用完整下发，
-        // 与 OpenAI 流式增量不同——name+arguments 一次性发出，无分片续接）
-        const fc = asJson(part.functionCall);
-        if (fc !== null && typeof fc.name === 'string') {
-          emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: { tool_calls: [{ index: toolCallIndex, id: `call_g${toolCallIndex}`, type: 'function', function: { name: fc.name, arguments: JSON.stringify(fc.args ?? {}) } }] }, finish_reason: null }] }));
-          toolCallIndex += 1;
-        }
-      }
-      const finish = str(candidate?.finishReason);
-      const usage = geminiUsageToUsage(data.usageMetadata);
-      if (finish !== undefined) {
-        emit(openaiFrame({
-          id: 'chatcmpl-gemini',
-          object: 'chat.completion.chunk',
-          created: Math.floor(Date.now() / 1000),
-          model,
-          choices: [{ index: 0, delta: {}, finish_reason: FINISH_MAP[finish] ?? 'stop' }],
-          ...(usage ? { usage: { prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens, total_tokens: usage.promptTokens + usage.completionTokens, ...(usage.cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: usage.cachedTokens } } : {}) } } : {}),
-        }));
-        emit(openaiDone());
-      } else if (usage) {
-        // 中间帧也可能带 usage（思考 token 计数更新）——最后帧胜出语义由 scanner 保证
-        emit(openaiFrame({ id: 'chatcmpl-gemini', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model, choices: [{ index: 0, delta: {}, finish_reason: null }], usage: { prompt_tokens: usage.promptTokens, completion_tokens: usage.completionTokens, total_tokens: usage.promptTokens + usage.completionTokens, ...(usage.cachedTokens > 0 ? { prompt_tokens_details: { cached_tokens: usage.cachedTokens } } : {}) } }));
-      }
-    },
-    (emit) => {
-      // Gemini 无哨兵：flush 兜底补 [DONE]（截断检测由 relay 完成语义承担）
-      emit(openaiDone());
-    },
-  );
-}
-
-/** 规范形 chunk 流 → Gemini alt=sse 数据帧流（客户端侧，入站 gemini 流式） */
-export function canonicalStreamToGeminiStream(
-  upstream: ReadableStream<Uint8Array>,
-  model: string,
-): ReadableStream<Uint8Array> {
-  const enc = new TextEncoder();
-  const frame = (obj: Record<string, unknown>): Uint8Array => enc.encode(`data: ${JSON.stringify(obj)}\n\n`);
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let finishReason: string | null = null;
-
-
-  return sseToSseStream(
-    upstream,
-    (ev: SseEvent, emit) => {
-      if (ev.data === '[DONE]') {
-        emit(frame({ candidates: [{ content: { role: 'model', parts: [] }, finishReason: geminiFinishOf(finishReason) }], usageMetadata: { promptTokenCount: inputTokens, candidatesTokenCount: outputTokens, totalTokenCount: inputTokens + outputTokens }, modelVersion: model }));
-        return;
-      }
-      let chunk: Json;
-      try {
-        chunk = JSON.parse(ev.data) as Json;
-      } catch {
-        return;
-      }
-      if (chunk === null || typeof chunk !== 'object') return; // fuzz：data:null 帧不崩
-      if (chunk.error !== undefined) {
-        const err = asJson(chunk.error) ?? {};
-        emit(frame({ error: { code: 500, message: str(err.message) ?? 'stream error', status: str(err.type) ?? 'INTERNAL' } }));
-        return;
-      }
-      const choice = asJson(asArray(chunk.choices)[0]);
-      const delta = asJson(choice?.delta) ?? {};
-      const usage = asJson(chunk.usage);
-      if (usage) {
-        inputTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : inputTokens;
-        outputTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : outputTokens;
-      }
-      const parts: Array<Record<string, unknown>> = [];
-      if (typeof delta.content === 'string' && delta.content.length > 0) parts.push({ text: delta.content });
-      for (const tc of asArray(delta.tool_calls)) {
-        const call = asJson(tc);
-        const fn = asJson(call?.function);
-        if (!fn) continue;
-        if (typeof fn.name === 'string' && fn.name) {
-          let args: unknown = {};
-          try {
-            args = JSON.parse(str(fn.arguments) ?? '{}');
-          } catch {
-            args = {};
-          }
-          parts.push({ functionCall: { name: fn.name, args } });
-        }
-      }
-      if (typeof choice?.finish_reason === 'string' && choice.finish_reason) finishReason = choice.finish_reason;
-      if (parts.length > 0) {
-        emit(frame({ candidates: [{ content: { role: 'model', parts } }] }));
-      }
-    },
-    (emit) => {
-      emit(frame({ candidates: [{ content: { role: 'model', parts: [] }, finishReason: geminiFinishOf(finishReason) }] }));
-    },
-  );
-}
-
 // ─────────────────────── 客户端方向非流式：规范形 → Gemini 响应 ───────────────────────
-
-/** finish_reason → gemini finishReason（模块级纯函数） */
-const geminiFinishOf = (finish: string | null): string => {
-  if (finish === 'length') return 'MAX_TOKENS';
-  if (finish === 'content_filter') return 'SAFETY';
-  return 'STOP';
-};
 
 const CHAT_FINISH_TO_GEMINI: Record<string, string> = {
   stop: 'STOP',
@@ -416,8 +305,18 @@ export function chatResponseToGemini(res: unknown): Json {
   const candidates = typeof usage?.completion_tokens === 'number' ? usage.completion_tokens : 0;
   const finish = str(choice.finish_reason) ?? 'STOP';
   return {
-    candidates: [{ content: { role: 'model', parts }, finishReason: CHAT_FINISH_TO_GEMINI[finish] ?? 'STOP', index: 0 }],
-    usageMetadata: { promptTokenCount: prompt, candidatesTokenCount: candidates, totalTokenCount: prompt + candidates },
+    candidates: [
+      {
+        content: { role: 'model', parts },
+        finishReason: CHAT_FINISH_TO_GEMINI[finish] ?? 'STOP',
+        index: 0,
+      },
+    ],
+    usageMetadata: {
+      promptTokenCount: prompt,
+      candidatesTokenCount: candidates,
+      totalTokenCount: prompt + candidates,
+    },
     modelVersion: str(r.model) ?? '',
   };
 }

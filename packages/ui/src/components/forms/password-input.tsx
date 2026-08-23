@@ -1,3 +1,5 @@
+'use client';
+
 // 密码输入框: Input + 显隐切换按钮; 外观/尺寸完全继承 Input, 适合与 Field 组合
 import * as React from 'react';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';

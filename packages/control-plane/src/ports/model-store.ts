@@ -169,4 +169,3 @@ export interface ModelStore {
   /** 在架模型目录（/v1/models 三协议形状原料；按外部名排序） */
   listEnabledMappings(db: DbLike): Promise<EnabledModelRow[]>;
 }
-

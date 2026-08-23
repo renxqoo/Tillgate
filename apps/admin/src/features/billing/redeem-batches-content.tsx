@@ -10,11 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Table,
   TableBody,
   TableCell,
@@ -67,7 +69,7 @@ export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<Admi
           <TableHead>{tc('remark')}</TableHead>
           <TableHead>{t('createdBy')}</TableHead>
           <TableHead className="w-44">{tc('createdAt')}</TableHead>
-          <TableHead className="w-24 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -101,14 +103,12 @@ export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<Admi
                 <TableCell className="text-xs text-muted-foreground">
                   {fmtDateTime(b.createdAt)}
                 </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    render={<Link href={`/dashboard/redeem-batches/${b.id}`} />}
-                  >
-                    {tc('detail')}
-                  </Button>
+                <TableCell className="w-16 text-center">
+                  <RowActions label={tc('actions')}>
+                    <DropdownMenuItem render={<Link href={`/dashboard/redeem-batches/${b.id}`} />}>
+                      {tc('detail')}
+                    </DropdownMenuItem>
+                  </RowActions>
                 </TableCell>
               </TableRow>
             );

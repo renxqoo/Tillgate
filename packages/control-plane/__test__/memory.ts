@@ -12,13 +12,15 @@ import type {
   ChannelFundsRow,
   ChannelProbeRow,
   RechargeRow,
+  RouteCandidateRow,
 } from '../src/ports/channel-store';
-import type { ModelStore, ModelRecord } from '../src/ports/model-store';
+import type { ModelStore, ModelRecord, ActiveMappingRow } from '../src/ports/model-store';
+import type { AdminStore, AdminRecord } from '../src/ports/admin-store';
 import type { RateCardStore, RateCardRecord } from '../src/ports/rate-card-store';
 import type { FxStore } from '../src/ports/fx-store';
 import type { OperationsStore } from '../src/ports/operations-store';
 import type { AuditStore, AuditLogRow } from '../src/ports/audit-store';
-import type { AuditSink, AuditEntry } from '../src/ports/audit-sink';
+import type { AuditSink, AuditTxSink, AuditEntry } from '../src/ports/audit-sink';
 import type { VoucherStorage } from '../src/ports/voucher-storage';
 import type { UpstreamProbe, ProbeTarget, ProbeOutcome } from '../src/ports/upstream-probe';
 import type { SecretCipher } from '../src/ports/secret-cipher';
@@ -40,6 +42,36 @@ export function createMemoryDb(): Db {
       return fn({} as DbTx);
     },
   } as unknown as Db;
+}
+
+/**
+ * 回滚语义 db 替身（§5.6 类型 2）：事务内抛错 → 快照恢复（内存替身的 PG ROLLBACK
+ * 等价）。snapshot 在事务开启时取快照并返回恢复函数——用于「审计写失败 → 业务
+ * 回滚」类边界断言（§5.4：写入失败必须回滚业务事务）。
+ */
+export function rollbackDb(snapshot: () => () => void): Db {
+  return {
+    async transaction<T>(fn: (tx: DbTx) => Promise<T>): Promise<T> {
+      const restore = snapshot();
+      try {
+        return await fn({} as DbTx);
+      } catch (error) {
+        restore();
+        throw error;
+      }
+    },
+  } as unknown as Db;
+}
+
+/** Map 快照（值浅拷贝——行对象内字段变更也被恢复） */
+export function snapshotMap<T>(map: Map<number, T>): { restore: () => void } {
+  const copy = new Map([...map].map(([k, v]) => [k, { ...(v as object) }]) as [number, T][]);
+  return {
+    restore: () => {
+      map.clear();
+      for (const [k, v] of copy) map.set(k, v);
+    },
+  };
 }
 
 // ── providers ────────────────────────────────────────────────────────────────
@@ -147,6 +179,8 @@ export function createMemoryChannelStore(
   boundModels: Map<number, string[]> = new Map(),
   /** 列表富化注入：渠道 → 上游累计消耗（无则 '0'） */
   consumed: Map<number, string> = new Map(),
+  /** 热路径读注入（G1）：providerId → 全量行（路由候选的协议/基址/厂商） */
+  providersOf: Map<number, ProviderRecord> = new Map(),
 ): MemoryChannelStore {
   const rows = new Map(seed.map((r) => [r.id, { ...r }]));
   let nextId = seed.reduce((m, r) => Math.max(m, r.id), 0) + 1;
@@ -310,6 +344,54 @@ export function createMemoryChannelStore(
       if (query.type !== undefined) all = all.filter((r) => r.type === query.type);
       return { rows: all.slice(query.offset, query.offset + query.limit), total: all.length };
     },
+
+    // ---- 网关热路径读（G1）。stand-in 局限：内存行不持 model_channels 绑定表，
+    // 不按 realModel 过滤（返回全部启用渠道）；过滤语义由 postgres.real 测试承担 ----
+    async findRouteCandidates(_db, _realModel) {
+      const out: RouteCandidateRow[] = [];
+      for (const row of rows.values()) {
+        if (row.status !== 0) continue;
+        const provider = providersOf.get(row.providerId);
+        out.push({
+          channelId: row.id,
+          channelName: row.name,
+          apiKeyEnc: row.apiKeyEnc,
+          baseUrlOverride: row.baseUrlOverride,
+          providerName: providerNameOf(row.providerId),
+          providerBaseUrl: provider?.baseUrl ?? '',
+          providerProtocol: provider?.protocol ?? '',
+          providerVendor: provider?.vendor ?? null,
+          priority: row.priority,
+          weight: row.weight,
+          rpmLimit: row.rpmLimit,
+          tpmLimit: row.tpmLimit,
+          upstreamBudget: row.upstreamBudget,
+        });
+      }
+      return out;
+    },
+
+    async findTaskChannel(_db, channelId): Promise<RouteCandidateRow | null> {
+      // by id 不按启用状态过滤（v1 语义：停用渠道的已提交任务仍须可轮询）
+      const row = rows.get(channelId);
+      if (row == null) return null;
+      const provider = providersOf.get(row.providerId);
+      return {
+        channelId: row.id,
+        channelName: row.name,
+        apiKeyEnc: row.apiKeyEnc,
+        baseUrlOverride: row.baseUrlOverride,
+        providerName: providerNameOf(row.providerId),
+        providerBaseUrl: provider?.baseUrl ?? '',
+        providerProtocol: provider?.protocol ?? '',
+        providerVendor: provider?.vendor ?? null,
+        priority: row.priority,
+        weight: row.weight,
+        rpmLimit: row.rpmLimit,
+        tpmLimit: row.tpmLimit,
+        upstreamBudget: row.upstreamBudget,
+      };
+    },
   };
   return { store, rows, recharges };
 }
@@ -318,6 +400,9 @@ export function createMemoryChannelStore(
 
 export interface MemoryModelRow extends ModelRecord {
   bindings: Array<{ channelId: number; weight: number; priority: number }>;
+  /** 热路径读列（ModelRecord 管理面未含；postgres 行天然存在，内存行可选） */
+  fallbackModels?: string[] | null;
+  pricingGroup?: string | null;
 }
 
 export interface MemoryModelStore {
@@ -433,6 +518,30 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       }
       return out;
     },
+
+    // ---- 网关热路径读（G1） ----
+    async findActiveByExternalName(_db, externalName) {
+      const row = byExternal(externalName);
+      return row && row.status === 0 ? toActiveRow(row) : null;
+    },
+    async findActiveByExternalNames(_db, externalNames) {
+      const out = new Map<string, ActiveMappingRow>();
+      for (const name of externalNames) {
+        const row = byExternal(name);
+        if (row && row.status === 0) out.set(name, toActiveRow(row));
+      }
+      return out;
+    },
+    async listEnabledMappings(_db) {
+      return [...rows.values()]
+        .filter((r) => r.status === 0)
+        .map((r) => ({
+          externalName: r.externalName,
+          realModel: r.realModel,
+          pricingUnit: r.pricingUnit,
+        }))
+        .toSorted((a, b) => a.externalName.localeCompare(b.externalName));
+    },
   };
   return { store, rows };
 }
@@ -477,7 +586,9 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
       return card;
     },
     async findById(_db, id) {
-      return cards.get(id) ?? null;
+      // PG SELECT 语义：返回行的独立快照（调用方持有引用不随后续 UPDATE 漂移）
+      const row = cards.get(id);
+      return row == null ? null : { ...row };
     },
     async updateWithGlobal(_db, input) {
       const card = cards.get(input.rateCardId);
@@ -530,6 +641,27 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
         coefficients.find((x) => x.rateCardId === rateCardId && x.scope === 'global')
           ?.coefficient ?? null
       );
+    },
+
+    // ---- 网关热路径读（G1） ----
+    async findActiveCardByUser(_db, userId) {
+      const cardId = boundUsers.get(userId);
+      if (cardId == null) return null;
+      const card = cards.get(cardId);
+      if (!card) return null;
+      return {
+        cardId: card.id,
+        cardName: card.name,
+        status: card.status,
+        coefficients: coefficients
+          .filter((c) => c.rateCardId === card.id)
+          .map((c) => ({
+            scope: c.scope as 'model' | 'group' | 'global',
+            modelMappingId: c.modelMappingId ?? null,
+            groupKey: c.groupKey ?? null,
+            coefficient: c.coefficient,
+          })),
+      };
     },
   };
   return { store, cards, coefficients, boundUsers };
@@ -624,9 +756,10 @@ export function createMemoryOperationsStore(): MemoryOperationsStore {
 
 export interface MemoryAudit {
   sink: AuditSink;
+  txSink: AuditTxSink;
   store: AuditStore;
   entries: AuditEntry[];
-  /** 注入失败模式：置为 true 时 record 抛错（验证 best-effort 契约） */
+  /** 注入失败模式：置为 true 时 record/recordWithinTx 抛错（best-effort / 事务回滚两契约各验） */
   fail: { on: boolean };
 }
 export function createMemoryAudit(): MemoryAudit {
@@ -634,6 +767,13 @@ export function createMemoryAudit(): MemoryAudit {
   const fail = { on: false };
   const sink: AuditSink = {
     async record(entry) {
+      if (fail.on) throw new Error('audit sink down');
+      entries.push(entry);
+    },
+  };
+  /** 事务参与替身：同一 entries 落档（回滚语义由 db 事务替身/真实 PG 测试承担） */
+  const txSink: AuditTxSink = {
+    async recordWithinTx(_db, entry) {
       if (fail.on) throw new Error('audit sink down');
       entries.push(entry);
     },
@@ -663,7 +803,7 @@ export function createMemoryAudit(): MemoryAudit {
         }));
     },
   };
-  return { sink, store, entries, fail };
+  return { sink, txSink, store, entries, fail };
 }
 
 export function createMemoryVoucherStorage(): VoucherStorage & {
@@ -723,5 +863,54 @@ export function adminCtx(adminId = 1) {
   return {
     requestId: `req-${adminId}-${Math.random().toString(36).slice(2, 8)}`,
     actor: { kind: 'admin' as const, id: adminId },
+  };
+}
+
+/** MemoryModelRow → 热路径读行（补齐管理面行缺的两列） */
+function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
+  return {
+    id: row.id,
+    externalName: row.externalName,
+    realModel: row.realModel,
+    contextLength: row.contextLength,
+    inputPrice: row.inputPrice,
+    outputPrice: row.outputPrice,
+    cacheInputPrice: row.cacheInputPrice,
+    cacheWritePrice: row.cacheWritePrice,
+    pricingUnit: row.pricingUnit,
+    unitPrice: row.unitPrice,
+    pricingGroup: row.pricingGroup ?? null,
+    isFree: row.isFree,
+    fallbackModels: row.fallbackModels ?? null,
+    billingPolicy: row.billingPolicy,
+    billingConfig: row.billingConfig,
+  };
+}
+
+/** 管理员资料 store 替身（G2）——投影不含密码列（与 postgres adapter 同口径） */
+export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
+  rows: Map<number, AdminRecord>;
+} {
+  const rows = new Map<number, AdminRecord>(seed.map((r) => [r.id, r]));
+  let clock = 0;
+  return {
+    rows,
+    async findById(_db, id) {
+      return rows.get(id) ?? null;
+    },
+    async findByEmail(_db, email) {
+      return [...rows.values()].find((r) => r.email === email) ?? null;
+    },
+    async touchLastLogin(_db, id) {
+      const row = rows.get(id);
+      if (row == null) return;
+      clock += 1;
+      rows.set(id, { ...row, lastLoginAt: new Date(clock) });
+    },
+    async setTwoFactorEnabled(_db, input) {
+      const row = rows.get(input.adminId);
+      if (row == null) return;
+      rows.set(input.adminId, { ...row, twoFactorEnabled: input.enabled });
+    },
   };
 }

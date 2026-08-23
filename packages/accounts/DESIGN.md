@@ -99,15 +99,15 @@ createAccounts({
 
 ## 3. 领域模型与不变量
 
-| 聚合       | 不变量(必须由测试锁定)                                                                                                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| user       | 本地账号 issuer='local'、subject=规范化 email(trim+lowercase);(issuer,subject) 唯一;本地 email 唯一(部分索引);status ∈{0,1,2};email 变更 = 身份事实变更,同语句推进 sessionInvalidBefore                 |
-| org/member | owner 也是成员(占 1 席);active 成员数 ≤ 订阅 quantity(接受事务内 FOR UPDATE 串行化复检);成员可属多组织;owner 不可被移除;被移除成员经新邀请复活(同 (org,user) 行 status 1→0)                             |
-| invitation | token 32hex 唯一、只在创建响应下发一次;状态机 pending(0)→accepted(1)/revoked(2),翻转原子(CAS + 未过期谓词);过期为**惰性判定**(expires_at 谓词,status=3 不写入,B8 裁决);接受者 email 须与邀请 email 一致 |
-| api-key    | 明文不落库;keyHash = SHA-256(明文) 唯一;吊销 CAS 0→1 不可逆(属主面);轮换 = 同事务「新行(继承设置)+旧行吊销」;订阅失格轮换降级个人余额(null);过期/expiresAt 仅未来可写                                   |
-| app        | appId 32hex 唯一、clientId 唯一;clientSecretHash = SHA-256,明文仅一次;禁用 CAS 0→1 不可逆;轮换 FOR UPDATE 行锁防并发孤儿化                                                                              |
-| referral   | 一人只能被邀一次(invitee 唯一索引);inviter≠invitee;归因单事务:关系 + 双方奖励同生共死;作弊封禁(1)停奖不停历史                                                                                           |
-| marketing  | 单行表(id=1 CHECK);金额非负、比例 ∈[0,1];「下一动作生效、历史不重算」                                                                                                                                   |
+| 聚合       | 不变量(必须由测试锁定)                                                                                                                                                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| user       | 本地账号 issuer='local'、subject=规范化 email(trim+lowercase);(issuer,subject) 唯一;本地 email 唯一(部分索引);status ∈{0,1,2};email 变更 = 身份事实变更,同事务经 SessionInvalidationPort 推进 identity 吊销线(§3.4;users.session_invalid_before 冻结只读) |
+| org/member | owner 也是成员(占 1 席);active 成员数 ≤ 订阅 quantity(接受事务内 FOR UPDATE 串行化复检);成员可属多组织;owner 不可被移除;被移除成员经新邀请复活(同 (org,user) 行 status 1→0)                                                                               |
+| invitation | token 32hex 唯一、只在创建响应下发一次;状态机 pending(0)→accepted(1)/revoked(2),翻转原子(CAS + 未过期谓词);过期为**惰性判定**(expires_at 谓词,status=3 不写入,B8 裁决);接受者 email 须与邀请 email 一致                                                   |
+| api-key    | 明文不落库;keyHash = SHA-256(明文) 唯一;吊销 CAS 0→1 不可逆(属主面);轮换 = 同事务「新行(继承设置)+旧行吊销」;订阅失格轮换降级个人余额(null);过期/expiresAt 仅未来可写                                                                                     |
+| app        | appId 32hex 唯一、clientId 唯一;clientSecretHash = SHA-256,明文仅一次;禁用 CAS 0→1 不可逆;轮换 FOR UPDATE 行锁防并发孤儿化                                                                                                                                |
+| referral   | 一人只能被邀一次(invitee 唯一索引);inviter≠invitee;归因单事务:关系 + 双方奖励同生共死;作弊封禁(1)停奖不停历史                                                                                                                                             |
+| marketing  | 单行表(id=1 CHECK);金额非负、比例 ∈[0,1];「下一动作生效、历史不重算」                                                                                                                                                                                     |
 
 幂等键单一真相(domain 构造器,修复 v1 前缀两处各写一份的漂移面):
 `signup:{userId}`、`referral-signup:{inviteeId}:{inviter|invitee}`、

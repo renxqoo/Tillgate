@@ -62,11 +62,14 @@ export function createGenerationUseCase(deps: ExecutionDeps & { tasks: Generatio
       if (input.auth.allowedModels != null && !input.auth.allowedModels.includes(externalModel)) {
         throw InferenceErrors.business('model_not_allowed', { model: externalModel });
       }
-      const mapping = await deps.catalog.findMapping(externalModel);
+      const pricing = { userId: input.auth.userId, body: input.body };
+      const mapping = await deps.catalog.findMapping(externalModel, pricing);
       if (mapping == null) {
         throw InferenceErrors.business('model_not_found', { model: externalModel });
       }
-      const candidates = await buildCandidateChain(mapping, (m) => deps.catalog.findMapping(m));
+      const candidates = await buildCandidateChain(mapping, (m) =>
+        deps.catalog.findMapping(m, pricing),
+      );
       const prepared: PreparedRequest = {
         requestId,
         auth: input.auth,

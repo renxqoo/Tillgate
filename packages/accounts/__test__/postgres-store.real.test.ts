@@ -127,6 +127,7 @@ function realHarness(db: Db): TestHarness {
   const api = createAccounts({
     db,
     walletCredit: h.wallet,
+    sessionInvalidation: h.sessionInvalidation,
     policy: V1_POLICY,
     txRetry: { maxAttempts: 3, baseDelayMs: 5, maxJitterMs: 5 },
     now: h.ctx.now,
@@ -226,7 +227,7 @@ function realHarness(db: Db): TestHarness {
     expect(banned.updatedAt.getTime()).toBeGreaterThan(u.updatedAt.getTime()); // 存储时钟生效
   });
 
-  it('email 变更同语句推进会话失效线(单 UPDATE 原子语义)', async () => {
+  it('email 变更:users 行更新 + 会话失效 port 同事务调用(§3.4;不再直写本表列)', async () => {
     const u = await api().provisionLocalAccount({
       email: `anchor-${Math.random().toString(36).slice(2)}@x.io`,
     });
@@ -235,7 +236,9 @@ function realHarness(db: Db): TestHarness {
       patch: { email: `new-${Math.random().toString(36).slice(2)}@x.io` },
       adminId: 1,
     });
-    expect(updated.sessionInvalidBefore).not.toBeNull();
+    // 列冻结只读(恒 null);吊销事实由 identity anchors 持有,port 调用已被 harness 记录
+    expect(updated.sessionInvalidBefore).toBeNull();
+    expect(h.sessionInvalidation.calls).toEqual([{ realm: 'user', userId: u.id }]);
   });
 
   it('Key 生命周期:创建→resolve 命中;吊销→即刻 miss;轮换→旧 miss 新命中(同事务两行)', async () => {

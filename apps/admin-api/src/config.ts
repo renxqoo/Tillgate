@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { secretSchema } from '@tokenlens/runtime';
+import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
 import type { OtelMode } from '@tokenlens/observability';
 import type { DbPoolConfig } from '@tokenlens/db';
 
@@ -39,6 +39,27 @@ const envSchema = z
     ENCRYPTION_KEY: secretSchema('ENCRYPTION_KEY', 32),
     /** identity 挑战/恢复码 HMAC pepper（identity 配置必填 16-512 字符；P2 登录波消费） */
     IDENTITY_CODE_PEPPER: secretSchema('IDENTITY_CODE_PEPPER', 16),
+    // ---- P2 登录波（DESIGN §2.4「Redis 必配」兑现）----
+    /** 爆破守卫/会话吊销面（Redis 必配——不可达 fail-closed 503,不静默降级无锁） */
+    REDIS_URL: z.string().url(),
+    /** 信任代理跳数（x-forwarded-for 右数第 N 跳;0 = 不信代理头） */
+    TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+    /** (email,ip) 键爆破锁：阈值/窗口/锁时长（v1 auth-guards 同语义,Redis 固定窗口） */
+    ADMIN_LOGIN_FAILURE_THRESHOLD: z.coerce.number().int().min(1).default(5),
+    ADMIN_LOGIN_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(3600),
+    ADMIN_LOGIN_LOCK_S: z.coerce.number().int().min(1).default(900),
+    /** per-IP 鉴权失败锁（同上） */
+    ADMIN_LOGIN_IP_FAILURE_LIMIT: z.coerce.number().int().min(1).default(30),
+    ADMIN_LOGIN_IP_FAILURE_WINDOW_S: z.coerce.number().int().min(1).default(3600),
+    /** 用户面会话密钥（identity realms 含 'user'——set-password 推进 user 失效线需要;
+     * 本 app 绝不签发 user 会话（无任何 sign 调用路径）,仅满足词表一致性） */
+    JWT_SECRET: secretSchema('JWT_SECRET', 32),
+    /** SMTP 三要素（host/user/pass）齐全才启用发信；未配置 = 2FA fail-closed（client-api 同口径） */
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.coerce.number().int().positive().default(465),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    SMTP_FROM: z.string().optional(),
     /** 批量导入单次上限（渠道条目数） */
     CHANNEL_IMPORT_MAX: z.coerce.number().int().min(1).default(1000),
     /** 目录导入：免费渠道限流预填（公开免费档限额量级） */
@@ -52,6 +73,8 @@ const envSchema = z
     CATALOG_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1).default(10_000),
     /** 渠道进货凭证上传上限（字节） */
     VOUCHER_MAX_BYTES: z.coerce.number().int().min(1).default(2_097_152),
+    /** 通知渠道 webhook 本地地址逃生门（P5;与 worker WORKER_WEBHOOK_ALLOW_LOCAL_URL 同语义） */
+    ADMIN_WEBHOOK_ALLOW_LOCAL_URL: strictBooleanSchema(false),
     /** fx 拉取（ECB/frankfurter 无 key 公共源；v1 FX_SOURCE_ECB 同值） */
     FX_SOURCE_URL: z.string().url().default('https://api.frankfurter.app/latest?from=USD&to=CNY'),
     /** auto 行拉取节奏（ECB 每工作日一发，4h 懒检查足够新鲜——v1 同值） */
@@ -73,6 +96,8 @@ const envSchema = z
     ADMIN_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(10_000),
     OTEL_TRACES_MODE: z.enum(['off', 'memory', 'console', 'otlp']).optional(),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+    /** OTLP 推送鉴权(Bearer)——与 trace-receiver 共用同键同值;缺此值对生产接收端 = span 全部 401 拒收 */
+    TRACE_RECEIVER_TOKEN: z.string().min(1).optional(),
     OTEL_SERVICE_VERSION: z.string().min(1).default('0.1.0'),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().min(1_000).default(10_000),
   })
@@ -101,6 +126,8 @@ export interface AdminApiConfig {
   readonly openrouterCatalogUrl: string;
   readonly catalogFetchTimeoutMs: number;
   readonly voucherMaxBytes: number;
+  /** 通知渠道 webhook 本地地址逃生门（P5;admin 面只管渠道 CRUD,投递在 worker） */
+  readonly webhookAllowLocalUrl: boolean;
   readonly fx: {
     readonly sourceUrl: string;
     readonly autoTtlMs: number;
@@ -123,10 +150,30 @@ export interface AdminApiConfig {
   /** 缺省:开发 memory / 生产 off(显式配置优先) */
   readonly otelMode: OtelMode;
   readonly otelEndpoint: string | undefined;
+  readonly otelAuthToken: string | undefined;
   readonly serviceVersion: string;
   readonly otelMetricsIntervalMs: number;
   /** 池调优项(连接串在 databaseUrl,装配时合并——db 包全必填、无缺省) */
   readonly dbPool: Omit<DbPoolConfig, 'url'>;
+  // ---- P2 登录波 ----
+  readonly redisUrl: string;
+  readonly trustedProxyHops: number;
+  readonly loginGuard: {
+    readonly failureThreshold: number;
+    readonly failureWindowS: number;
+    readonly lockS: number;
+  };
+  readonly ipGuard: { readonly limit: number; readonly windowS: number };
+  /** 用户面会话密钥（identity realms 词表一致性;本 app 无 user 会话签发路径） */
+  readonly userJwtSecret: string;
+  /** SMTP 配置（三要素齐全才非 null;null = 2FA/验证码 fail-closed） */
+  readonly smtp: {
+    host: string;
+    port: number;
+    user: string;
+    pass: string;
+    from: string;
+  } | null;
 }
 
 export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminApiConfig {
@@ -148,6 +195,7 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
     openrouterCatalogUrl: parsed.OPENROUTER_CATALOG_URL,
     catalogFetchTimeoutMs: parsed.CATALOG_FETCH_TIMEOUT_MS,
     voucherMaxBytes: parsed.VOUCHER_MAX_BYTES,
+    webhookAllowLocalUrl: parsed.ADMIN_WEBHOOK_ALLOW_LOCAL_URL,
     fx: {
       sourceUrl: parsed.FX_SOURCE_URL,
       autoTtlMs: parsed.FX_AUTO_TTL_MS,
@@ -169,7 +217,30 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
       internalAccounts: WALLET_INTERNAL_ACCOUNTS,
     },
     otelMode,
+    redisUrl: parsed.REDIS_URL,
+    trustedProxyHops: parsed.TRUSTED_PROXY_HOPS,
+    loginGuard: {
+      failureThreshold: parsed.ADMIN_LOGIN_FAILURE_THRESHOLD,
+      failureWindowS: parsed.ADMIN_LOGIN_FAILURE_WINDOW_S,
+      lockS: parsed.ADMIN_LOGIN_LOCK_S,
+    },
+    ipGuard: {
+      limit: parsed.ADMIN_LOGIN_IP_FAILURE_LIMIT,
+      windowS: parsed.ADMIN_LOGIN_IP_FAILURE_WINDOW_S,
+    },
+    userJwtSecret: parsed.JWT_SECRET,
+    smtp:
+      parsed.SMTP_HOST != null && parsed.SMTP_USER != null && parsed.SMTP_PASS != null
+        ? {
+            host: parsed.SMTP_HOST,
+            port: parsed.SMTP_PORT,
+            user: parsed.SMTP_USER,
+            pass: parsed.SMTP_PASS,
+            from: parsed.SMTP_FROM ?? parsed.SMTP_USER,
+          }
+        : null,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
+    otelAuthToken: parsed.TRACE_RECEIVER_TOKEN,
     serviceVersion: parsed.OTEL_SERVICE_VERSION,
     otelMetricsIntervalMs: parsed.OTEL_METRICS_INTERVAL_MS,
     dbPool: {

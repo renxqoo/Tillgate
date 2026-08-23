@@ -9,7 +9,7 @@ import { isUuidLike, normalizeIdentifier } from '../domain/identifier.js';
 import type { ChallengeTarget } from '../domain/challenge.js';
 import type { StoredChallengeTarget } from '../ports/challenge-store.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { recordAudit } from './context.js';
 
 export interface VerifyChallengeInput {
   readonly challengeId: string;
@@ -68,7 +68,7 @@ export async function verifyChallenge(
   if (input.expect != null && !targetMatches(ctx, input.expect, outcome.target)) {
     throw identityErrors.business('challenge_invalid', { challengeId });
   }
-  await emitAudit(
+  await recordAudit(
     ctx,
     auditEvent(ctx.clock.now(), {
       actor: 'system',

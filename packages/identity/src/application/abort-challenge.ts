@@ -2,7 +2,7 @@
 import { auditEvent } from '../domain/audit-events.js';
 import { isUuidLike } from '../domain/identifier.js';
 import type { IdentityUseCaseContext } from './context.js';
-import { emitAudit } from './context.js';
+import { recordAudit } from './context.js';
 
 export async function abortChallenge(
   ctx: IdentityUseCaseContext,
@@ -14,7 +14,7 @@ export async function abortChallenge(
     return { aborted: false };
   }
   const result = await ctx.challengeStore.abortChallenge(ctx.db, { challengeId });
-  await emitAudit(
+  await recordAudit(
     ctx,
     auditEvent(ctx.clock.now(), {
       actor: 'system',

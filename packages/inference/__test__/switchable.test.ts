@@ -73,7 +73,13 @@ describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表�
     expect(isChannelExhausted('rate_limit_exceeded')).toBe(true);
     expect(isChannelExhausted('rate_limited')).toBe(true);
     expect(isChannelExhausted('upstream_error')).toBe(false);
-    expect(isChannelExhausted('circuit_open')).toBe(false);
+  });
+
+  it('B13 回归：全渠道熔断/死凭据竭尽归渠道面（no_available_channel 503，非 upstream_failed 502）', () => {
+    // v2 行为改进（v1 同形缺陷）：health.admit 拒绝码 circuit_open/dead_credential
+    // 是网关侧保护动作（未发出上游请求），全败时不得误归上游故障 502
+    expect(isChannelExhausted('circuit_open')).toBe(true);
+    expect(isChannelExhausted('dead_credential')).toBe(true);
   });
 
   it('健康词表与 ai 机制位派生表不漂移（closed vocabulary 契约）', () => {

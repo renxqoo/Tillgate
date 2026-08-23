@@ -74,6 +74,20 @@ export interface InMemoryWalletStore {
   freezeUserAccount(userId: number, currency: string): void;
   /** 对账测试专用：绕过动词直改余额制造漂移（运维事故模拟） */
   defaceBalanceForTest(userId: number, currency: string, balance: string): void;
+  /**
+   * 事务回滚模拟（§5.4 边界测试）：四集合深快照。与 BillingStore 快照配对使用，
+   * 由测试的 rollbackable 事务壳在异常时一并还原——模拟 PG 的整事务回滚
+   * （内存 stand-in 本身无回滚语义，PG 语义在 *.real.test.ts 验证）。
+   */
+  snapshotForTest(): WalletStoreSnapshot;
+  restoreForTest(snapshot: WalletStoreSnapshot): void;
+}
+
+export interface WalletStoreSnapshot {
+  accounts: Array<[string, AccountRow]>;
+  authorizations: Array<[string, AuthorizationRow]>;
+  transactions: TransactionRow[];
+  legs: LegRow[];
 }
 
 let idCounter = 0;
@@ -381,6 +395,31 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       return Promise.resolve(rows);
     },
 
+    /** 返利流水（postgres adapter 同投影:refType + refId 前缀三类视图;id 倒序分页） */
+    listReferralPayouts(_conn, input) {
+      const prefix =
+        input.kind === 'commission'
+          ? 'referral-commission:'
+          : input.kind === 'referral_signup'
+            ? 'referral-signup:'
+            : 'signup:';
+      const refType = input.kind === 'gift' ? 'gift' : 'referral';
+      const matched = transactions
+        .filter((t) => t.refType === refType && t.refId.startsWith(prefix))
+        .toSorted((a, b) => b.id - a.id);
+      return Promise.resolve({
+        rows: matched.slice(input.offset, input.offset + input.limit).map((t) => ({
+          id: t.id,
+          kind: t.kind,
+          refType: t.refType,
+          refId: t.refId,
+          memo: t.memo,
+          createdAt: new Date(),
+        })),
+        total: matched.length,
+      });
+    },
+
     async verifyInvariants(limit) {
       const violations: Array<{
         kind: 'transaction_balance' | 'account_balance' | 'in_flight';
@@ -455,6 +494,26 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
           row.balance = balance;
         }
       }
+    },
+
+    snapshotForTest(): WalletStoreSnapshot {
+      return {
+        accounts: structuredClone([...accounts.entries()]),
+        authorizations: structuredClone([...authorizations.entries()]),
+        transactions: structuredClone(transactions),
+        legs: structuredClone(legs),
+      };
+    },
+
+    restoreForTest(snapshot) {
+      accounts.clear();
+      for (const [key, row] of snapshot.accounts) accounts.set(key, row);
+      authorizations.clear();
+      for (const [key, row] of snapshot.authorizations) authorizations.set(key, row);
+      transactions.length = 0;
+      transactions.push(...snapshot.transactions);
+      legs.length = 0;
+      legs.push(...snapshot.legs);
     },
   };
 }

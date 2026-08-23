@@ -9,6 +9,7 @@ import {
 import { createChannelHealth } from '../src/health/channel-health';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import { defaultInferenceDefaults } from '../src/config';
+import { noopTrace } from '../src/ports/trace';
 import {
   baseAuth,
   channel,
@@ -81,6 +82,7 @@ function setup(
     billing: billing.port,
     upstream: upstream.port,
     health,
+    trace: noopTrace,
     defaults: defaultInferenceDefaults(),
   };
   return { deps, billing, upstream, health, chA, chB, chC, channelsByReal };
@@ -202,7 +204,7 @@ describe('application/failover：候选 × 渠道双层循环', () => {
     expect(s.billing.reserves).toHaveLength(2); // 两个渠道都试过预留
   });
 
-  it('admit 拒绝（熔断 open）→ 换渠不计尝试；v1 语义：circuit_open 全败归 upstream_failed', async () => {
+  it('admit 拒绝（熔断 open）→ 换渠不计尝试；B13：circuit_open 全败归渠道面竭尽（no_available_channel）', async () => {
     const s = setup();
     // 手工把 ch-a/ch-b 的健康键打熔断（同 host 共享键——B2 语义）
     const store = createMemoryHealthStore();
@@ -235,9 +237,9 @@ describe('application/failover：候选 × 渠道双层循环', () => {
         },
       ),
     ).rejects.toSatisfy(
-      (e: unknown) => isBusinessError(e) && e.code === 'inference.upstream_failed',
+      (e: unknown) => isBusinessError(e) && e.code === 'inference.no_available_channel',
     );
-    expect(tried).toEqual([]); // 渠道全被健康检查跳过（无上游调用）
+    expect(tried).toEqual([]); // 渠道全被健康检查跳过（无上游调用）→ 渠道面竭尽而非上游故障
   });
 
   it('渠道维限流钩子拒绝 → 换渠并记 rate_limit_exceeded；预留不发生', async () => {

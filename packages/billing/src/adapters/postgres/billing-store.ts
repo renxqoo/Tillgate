@@ -28,6 +28,7 @@ import { createSubscriptionQuotaStore } from './subscription-quota-store.js';
 import { createChannelExposureStore } from './channel-exposure-store.js';
 import { createAccountContextStore } from './account-context-store.js';
 import { subscriptionLifecycleMethods } from './billing-store-subscriptions.js';
+import { adminMethods } from './billing-store-admin.js';
 import { settlementMethods } from './billing-store-settlement.js';
 
 export { createSubscriptionQuotaStore } from './subscription-quota-store.js';
@@ -165,6 +166,11 @@ export function createPostgresBillingStore(
           and(
             eq(billingRequests.requestId, input.requestId),
             inArray(billingRequests.status, [...input.from]),
+            // 续租 owner 守卫：仅当行 leaseOwner = 请求 owner 才命中（signal 的
+            // lease.renewed 消费；缺省不校验，其余调用方行为不变）
+            ...(input.expectLeaseOwner !== undefined
+              ? [eq(billingRequests.leaseOwner, input.expectLeaseOwner)]
+              : []),
           ),
         )
         .returning({ requestId: billingRequests.requestId });
@@ -335,6 +341,7 @@ export function createPostgresBillingStore(
     ...settlementMethods(db),
 
     ...subscriptionLifecycleMethods(db),
+    ...adminMethods(db),
 
     isUniqueViolation: (error) => isUniqueViolation(error),
   };

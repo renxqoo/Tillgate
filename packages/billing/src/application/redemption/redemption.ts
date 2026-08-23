@@ -20,7 +20,8 @@ export interface RedemptionDeps {
   wallet: WalletApi;
   limiter: RateCounterPort;
   perMinuteLimit: number;
-  clock?: () => Date;
+  /** 时钟（装配必填——零写死） */
+  clock: () => Date;
 }
 
 export interface RedemptionApi {
@@ -36,7 +37,7 @@ export interface RedemptionApi {
 
 export function createRedemptionApi(deps: RedemptionDeps): RedemptionApi {
   const { store, codes, wallet } = deps;
-  const clock = deps.clock ?? (() => new Date());
+  const clock = deps.clock;
 
   return {
     async redeem(userId, input) {

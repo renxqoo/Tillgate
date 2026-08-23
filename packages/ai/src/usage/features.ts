@@ -4,7 +4,8 @@ import type { TextTokenFeatures } from '../types';
  * 文本特征四计数器（token-estimate 启发式层的充分统计量，单一真相——v1 审计迁移）。
  * wordSegments 依赖相邻字符状态机（词段 ≠ 字符数），不可简化为字符数分类；
  * scanner 按片段统计后累加（求和可交换），替代 v1 outputText 文本累积（S1：
- * 4MB CAP → O(1) 内存），BPE 精确值作为独立分量随行（语义不降级）。
+ * 4MB CAP → O(1) 内存）；BPE 精确路径由估算层（token-estimate → tokenizer）按
+ * model 直查，不再经特征面随行（bpeExact 分量已按死代码裁决删除，零消费方）。
  */
 
 const codePoint = (ch: string): number => ch.codePointAt(0) ?? 0;
@@ -78,8 +79,6 @@ export class TextFeaturesAccumulator implements TextTokenFeatures {
   wordSegments = 0;
   numberSegments = 0;
   symbolCount = 0;
-  /** BPE 精确计数（文本现场可得时由调用方先行计算；估算层优先采用） */
-  bpeExact: number | null = null;
 
   /** 喂入一个文本片段（每片段内部状态机独立，片段间断段） */
   addText(piece: string): void {

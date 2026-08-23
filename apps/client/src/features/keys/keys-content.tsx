@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { KeyRoundIcon, Loader2Icon, PencilIcon, Trash2Icon } from 'lucide-react';
+import { KeyRoundIcon, Loader2Icon } from 'lucide-react';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useLocale, useTranslations } from 'next-intl';
@@ -37,23 +37,14 @@ import type { KeyRow } from '@tokenlens/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { formatDateTime, formatMoney } from '@/features/shared/format';
-import { RhfNumberField } from '@/features/shared/rhf-number-field';
-import { ConfirmAction } from '@/features/shared/confirm-action';
-import { parseDailySpend, parsePositiveInt } from '@/features/keys/key-params';
-import { createKeyAction, revokeKeyAction, updateKeyAction } from '@/server/actions/keys';
+import { createKeyAction } from '@/server/actions/keys';
+
+import { KeyRowActions } from './key-row-actions';
 
 interface CreateKeyValues {
   name: string;
   remark?: string;
   subscriptionId: number | null;
-}
-
-interface EditKeyValues {
-  name: string;
-  remark?: string;
-  rpmLimit?: string;
-  tpmLimit?: string;
-  dailySpendLimit?: string;
 }
 
 export function KeysTable({
@@ -74,37 +65,48 @@ export function KeysTable({
 
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="bg-card">
         <TableRow>
           <TableHead>{tCommon('name')}</TableHead>
           <TableHead>{t('colType')}</TableHead>
           <TableHead>{t('colKey')}</TableHead>
-          <TableHead>{t('colRemark')}</TableHead>
           <TableHead className="text-right">RPM</TableHead>
           <TableHead className="text-right">TPM</TableHead>
           <TableHead className="text-right">{t('colDailyLimit')}</TableHead>
           <TableHead>{tCommon('status')}</TableHead>
           <TableHead>{tCommon('createdAt')}</TableHead>
           <TableHead>{t('colLastUsed')}</TableHead>
-          <TableHead className="w-32 text-right">{tCommon('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tCommon('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {keys.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
+            <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
               {t('noKeys')}
             </TableCell>
           </TableRow>
         ) : (
           keys.map((k) => (
             <TableRow key={k.id}>
-              <TableCell className="font-medium">{k.name}</TableCell>
+              <TableCell className="min-w-56">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <KeyRoundIcon className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block truncate font-medium">{k.name}</span>
+                    <span className="block truncate text-sm text-muted-foreground">
+                      {k.remark || k.keyPreview}
+                    </span>
+                  </div>
+                </div>
+              </TableCell>
               <TableCell>
                 <SourceBadge
                   label={
                     k.subscriptionId != null
-                      ? subscriptionLabels.get(k.subscriptionId) ?? t('planFallback')
+                      ? (subscriptionLabels.get(k.subscriptionId) ?? t('planFallback'))
                       : t('sourceBalance')
                   }
                   balanceLabel={t('sourceBalance')}
@@ -113,10 +115,11 @@ export function KeysTable({
               <TableCell>
                 <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{k.keyPreview}</code>
               </TableCell>
-              <TableCell className="text-muted-foreground text-sm">{k.remark || '—'}</TableCell>
               <TableCell className="text-right tabular-nums">{fmtLimit(k.rpmLimit)}</TableCell>
               <TableCell className="text-right tabular-nums">{fmtLimit(k.tpmLimit)}</TableCell>
-              <TableCell className="text-right tabular-nums">{fmtMoney(k.dailySpendLimit)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {fmtMoney(k.dailySpendLimit)}
+              </TableCell>
               <TableCell>
                 <StatusBadge status={k.status} />
               </TableCell>
@@ -126,11 +129,8 @@ export function KeysTable({
               <TableCell className="text-xs text-muted-foreground">
                 {formatDateTime(k.lastUsedAt, locale)}
               </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1">
-                  {k.status === 0 && <EditKeyInline key={k.id} keyRow={k} />}
-                  {k.status === 0 && <RevokeInline id={k.id} />}
-                </div>
+              <TableCell className="w-16 text-center">
+                <KeyRowActions keyRow={k} />
               </TableCell>
             </TableRow>
           ))
@@ -160,175 +160,6 @@ function SourceBadge({ label, balanceLabel }: { label: string; balanceLabel: str
     >
       {label}
     </span>
-  );
-}
-
-function RevokeInline({ id }: { id: number }) {
-  const t = useTranslations('keys');
-  return (
-    <ConfirmAction
-      confirm={t('revokeConfirm')}
-      action={async () => revokeKeyAction(id)}
-      errorTitle={t('revokeFailed')}
-      success={t('revokedToast')}
-    >
-      {({ pending, onClick }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={onClick}
-          className="text-destructive hover:text-destructive"
-        >
-          {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-          {t('revoke')}
-        </Button>
-      )}
-    </ConfirmAction>
-  );
-}
-
-function EditKeyInline({ keyRow }: { keyRow: KeyRow }) {
-  const t = useTranslations('keys');
-  const tCommon = useTranslations('common');
-  const tUi = useTranslations('ui');
-  const [open, setOpen] = useState(false);
-
-  const editSchema = z.object({
-    name: z.string().min(1, t('nameRequired')).max(100),
-    remark: z.string().max(200).optional(),
-    rpmLimit: z.string().optional(),
-    tpmLimit: z.string().optional(),
-    dailySpendLimit: z.string().optional(),
-  });
-
-  const form = useForm<EditKeyValues>({
-    resolver: zodResolver(editSchema),
-    defaultValues: {
-      name: keyRow.name,
-      remark: keyRow.remark ?? '',
-      rpmLimit: keyRow.rpmLimit === null ? '' : String(keyRow.rpmLimit),
-      tpmLimit: keyRow.tpmLimit === null ? '' : String(keyRow.tpmLimit),
-      dailySpendLimit: keyRow.dailySpendLimit === null ? '' : String(keyRow.dailySpendLimit),
-    },
-  });
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (o)
-          form.reset({
-            name: keyRow.name,
-            remark: keyRow.remark ?? '',
-            rpmLimit: keyRow.rpmLimit === null ? '' : String(keyRow.rpmLimit),
-            tpmLimit: keyRow.tpmLimit === null ? '' : String(keyRow.tpmLimit),
-            dailySpendLimit:
-              keyRow.dailySpendLimit === null ? '' : String(keyRow.dailySpendLimit),
-          });
-      }}
-    >
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>
-        <PencilIcon />
-        {tCommon('edit')}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t('editTitle')}</DialogTitle>
-          <DialogDescription>{t('editDesc')}</DialogDescription>
-        </DialogHeader>
-        <form
-          id="edit-key-form"
-          onSubmit={form.handleSubmit(async (values) => {
-            const rpm = parsePositiveInt(values.rpmLimit, t('positiveIntError', { field: 'RPM' }));
-            if (!rpm.ok) {
-              toast.error(rpm.message);
-              return;
-            }
-            const tpm = parsePositiveInt(values.tpmLimit, t('positiveIntError', { field: 'TPM' }));
-            if (!tpm.ok) {
-              toast.error(tpm.message);
-              return;
-            }
-            const daily = parseDailySpend(values.dailySpendLimit, t('dailySpendError'));
-            if (!daily.ok) {
-              toast.error(daily.message);
-              return;
-            }
-            const res = await updateKeyAction(keyRow.id, {
-              name: values.name,
-              remark: values.remark,
-              rpmLimit: rpm.value,
-              tpmLimit: tpm.value,
-              dailySpendLimit: daily.value,
-            });
-            if (!actionResult(res, tCommon('updateFailed'), t('updatedToast'))) return;
-            setOpen(false);
-          })}
-          className="space-y-4"
-        >
-          <FieldGroup>
-            <Controller
-              control={form.control}
-              name="name"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="edit-key-name">{tCommon('name')}</FieldLabel>
-                  <Input id="edit-key-name" {...field} />
-                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
-              )}
-            />
-            <Controller
-              control={form.control}
-              name="remark"
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="edit-key-remark">{t('remarkOptional')}</FieldLabel>
-                  <Input id="edit-key-remark" {...field} />
-                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
-              )}
-            />
-            <RhfNumberField
-              control={form.control}
-              name="rpmLimit"
-              label={t('rpmLabel')}
-              id="edit-key-rpm"
-              min={1}
-              step="1"
-              placeholder={tCommon('unlimited')}
-            />
-            <RhfNumberField
-              control={form.control}
-              name="tpmLimit"
-              label={t('tpmLabel')}
-              id="edit-key-tpm"
-              min={1}
-              step="1"
-              placeholder={tCommon('unlimited')}
-            />
-            <RhfNumberField
-              control={form.control}
-              name="dailySpendLimit"
-              label={t('dailyLimitLabel')}
-              id="edit-key-dailyspend"
-              min={0}
-              step="0.01"
-              placeholder={tCommon('unlimited')}
-            />
-          </FieldGroup>
-        </form>
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />}>{tUi('cancel')}</DialogClose>
-          <Button type="submit" form="edit-key-form" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting && <Loader2Icon className="animate-spin" />}
-            {tCommon('save')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

@@ -3,6 +3,7 @@
  * channelIds 由列表用例回显（无绑定 = 空数组——v1 语义）。
  */
 import type { BillingConfig } from '@tokenlens/control-plane';
+import { normalizeAmount } from '@tokenlens/billing';
 import { iso } from '../contracts/common';
 
 export interface ModelRowSource {
@@ -31,12 +32,12 @@ export function toModelWireRow(row: ModelRowSource, channelIds: readonly number[
     id: row.id,
     externalName: row.externalName,
     realModel: row.realModel,
-    inputPrice: row.inputPrice,
-    outputPrice: row.outputPrice,
-    cacheInputPrice: row.cacheInputPrice,
-    cacheWritePrice: row.cacheWritePrice,
+    inputPrice: normalizeAmount(row.inputPrice),
+    outputPrice: normalizeAmount(row.outputPrice),
+    cacheInputPrice: normalizeAmount(row.cacheInputPrice),
+    cacheWritePrice: normalizeAmount(row.cacheWritePrice),
     pricingUnit: row.pricingUnit,
-    unitPrice: row.unitPrice,
+    unitPrice: normalizeAmount(row.unitPrice),
     billingConfig: row.billingConfig,
     isFree: row.isFree,
     contextLength: row.contextLength,

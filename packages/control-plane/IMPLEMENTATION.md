@@ -126,7 +126,34 @@
 
 ## 6. 契约演进待办（显式挂账）
 
-- [ ] G1：inference 波次定义消费方 port（路由候选/在架目录/系数快照/fx 快照/预算守卫/死凭据/任务渠道）。
-- [ ] G2：identity 波次落管理员资料/授权策略用例（admin realm）；届时补 `application/admins`。
-- [ ] G3：observability 波次——AuditSink 升格事务参与 port（资金审计同事务）、价格溯源查询迁出。
-- [ ] D1/D2：出现共享底层包后合并 maskUpstreamKey / BillingConfigJson 形状（ADR）。
+- [x] G1（2026-08-23 回勾）：inference 波已定义消费方 port——`inference/src/ports/{catalog,billing,state,upstream,generation}.ts`
+      （路由候选/在架目录/系数与 fx 快照经 catalog、预算守卫经 billing、死凭据/渠道健康经 state、
+      任务渠道经 generation）；gateway 热路径读已消费（ActiveMappingRow/findRouteCandidates/findActiveCardByUser）。
+- [x] G2（2026-08-23 回勾）：admin realm 用例已落地——`application/admins/{find-admin,find-admin-by-email,set-two-factor-enabled,touch-last-login,admins-shared}.ts`
+      + `ports/admin-store.ts` + `adapters/postgres/admin-store.ts` + composition 出口（admin-api P2 登录波装配；
+      凭据/会话留在 identity 七表，port 头注释载明单一真相口径）。
+- [x] G3（2026-08-23 审计收口核销，前半）：**AuditTxSink 事务参与 port 落地**——渠道进货/调账、
+      费率卡变更的审计移入业务事务提交前（写入失败随事务回滚，§5.4）；rate_card 审计补变更前值
+      （事务内先 SELECT 旧行，before/after 都进 detail）。剩余挂账——**已裁决保留**（2026-08-23）：
+      observability AuditQueries 头注释裁定「价格溯源等 action 语义查询归能力包(control-plane），
+      通用审计查询归 observability」——本包 listCatalogPriceHistory 留守是终态而非过渡,
+      原先「迁 observability」设想被后至裁决取代（文档同步,铁律 13）。**best-effort 降级清单**（保留 `emitAudit` 提交后路径的低价值运营事件，
+      丢失可接受）：provider/channel/model 建档改档、目录导入审计、fx 配置变更——这些事件不承载
+      资金/安全事实，且导入等长事务不宜因审计行抖动整体回滚（显式降级，非默认形态）。
+- [ ] D1/D2：出现共享底层包后合并 maskUpstreamKey / BillingConfigJson 形状（ADR）。附记（2026-08-23）：AuditLogRow 与 observability 同名形状的合并随价格溯源留守裁决一并取消——跨包类型副本是边界隔离既有口径（api-client/http D1/D2 同语义副本先例），不强行单一化。
+
+### 6.1 审计收口补充（2026-08-23 第二轮）
+
+- **composition 子入口（§5.3）**：外部目录源 adapter（createOpenRouterSource/modelsDevSource）
+  从根 index.ts 移入 `src/composition.ts`（package exports `./composition` + build 双入口）；
+  boundary.test.ts 增加「业务代码不 import ./composition」门禁。
+- **run-operation 红灯**：占位已提交但回执缺失（不变量违约）从 `as T` 静默兜底改为
+  `DefectError('control_plane.operation_receipt_missing')` 显式抛错。
+- **重放审计语义**：审计移入 execute 后，幂等重放不再产生第二条审计（§5.4「dedupe 后只有
+  一个事实」）；回执重放本身就是操作审计的补充事实。
+- **package.json**：删除顶层 `types` 字段（§7.1：build 不产 d.ts，源码 types 经 exports 的
+  development/types 条件提供）。
+
+补记（2026-08-23，admin-api P5 波）：channels facade 组新增 `loadVoucher(key)` 读动词
+（进货凭证回读;键校验在 storage port,防路径穿越）——纯存储透传,无域规则;
+消费方 = admin-api `GET /v1/vouchers/:key`。

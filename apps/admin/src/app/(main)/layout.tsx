@@ -9,11 +9,10 @@ import type { ReactNode } from 'react';
 
 import { cookies } from 'next/headers';
 
-import { cn } from '@/lib/utils';
-
 import { AccountSwitcher } from '@/components/shell/header/account-switcher';
 import { LocaleSwitcher } from '@/components/shell/header/locale-switcher';
 import { AppSidebar } from '@/components/shell/sidebar/app-sidebar';
+import { APP_CONFIG } from '@/config/app-config';
 import { logoutAction } from '@/server/auth-actions';
 import { requireAdmin, userFromAdminMe } from '@/server/get-admin';
 
@@ -31,30 +30,22 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
       defaultOpen={defaultOpen}
       style={
         {
-          '--sidebar-width': 'calc(var(--spacing) * 68)',
+          '--sidebar-width': 'calc(var(--spacing) * 72)',
+          '--header-height': 'calc(var(--spacing) * 12)',
         } as React.CSSProperties
       }
     >
       <AppSidebar user={user} />
-      <SidebarInset
-        className={cn(
-          'peer-data-[variant=inset]:border',
-          '[--dashboard-header-height:3rem]',
-          'min-w-0 overflow-x-clip',
-        )}
-      >
-        <header
-          className={cn(
-            'flex h-12 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12',
-          )}
-        >
-          <div className="flex w-full items-center justify-between px-4 lg:px-6">
+      <SidebarInset className="min-w-0 overflow-x-clip md:!m-0 md:!rounded-none md:!shadow-none">
+        <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center gap-2 bg-background/85 backdrop-blur-md transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/70">
+          <div className="flex w-full items-center justify-between px-5 md:px-6 lg:px-8 xl:px-10">
             <div className="flex items-center gap-1 lg:gap-2">
               <SidebarTrigger className="-ml-1" />
               <Separator
                 orientation="vertical"
                 className="mx-2 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
               />
+              <span className="hidden text-sm font-medium sm:inline">{APP_CONFIG.name}</span>
             </div>
             <div className="flex items-center gap-2">
               <ThemeSwitcher />
@@ -66,7 +57,7 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
             </div>
           </div>
         </header>
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden p-4 has-data-[content-padding=false]:p-0 md:p-6 md:has-data-[content-padding=false]:p-0">
+        <div className="@container/main min-h-0 min-w-0 flex-1 overflow-x-hidden px-5 py-5 has-data-[content-padding=false]:p-0 md:px-6 md:py-6 lg:px-8 xl:px-10 md:has-data-[content-padding=false]:p-0">
           {children}
         </div>
       </SidebarInset>

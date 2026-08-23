@@ -1,4 +1,12 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  KpiCard,
+  PageHeader,
+} from '@tokenlens/ui';
 import { adminApi } from '@/server/admin-api';
 import { ActivityIcon, BarChart3Icon, CpuIcon, DollarSignIcon, ServerIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
@@ -46,16 +54,10 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
-      <div className="space-y-1">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <BarChart3Icon className="size-5 text-muted-foreground" />
-          {t('title')}
-        </h1>
-        <p className="text-sm text-muted-foreground">{t('description')}</p>
-      </div>
+      <PageHeader title={t('title')} description={t('description')} icon={<BarChart3Icon />} />
 
       {error ? (
-        <Card>
+        <Card className="bg-muted/20 shadow-none ring-1 ring-border/60">
           <CardContent className="p-6 text-destructive text-sm">{error}</CardContent>
         </Card>
       ) : null}
@@ -63,7 +65,7 @@ export default async function AdminDashboardPage() {
       <div className="grid grid-cols-2 gap-4 @lg/main:grid-cols-4">
         <KpiCard
           icon={<ActivityIcon className="size-4" />}
-          title={t('todayRequests')}
+          label={t('todayRequests')}
           value={fmtInt(stats?.today?.requests ?? 0)}
           sub={t('todaySub', {
             success: fmtInt(stats?.today?.successCount ?? 0),
@@ -77,21 +79,21 @@ export default async function AdminDashboardPage() {
         />
         <KpiCard
           icon={<DollarSignIcon className="size-4" />}
-          title={t('todaySpend')}
+          label={t('todaySpend')}
           value={fmtBalance(stats?.today?.cost ?? 0)}
           sub={t('totalSpend', { amount: fmtBalance(stats?.total?.cost ?? 0) })}
           hint={t('totalRequests', { count: fmtInt(stats?.total?.requests ?? 0) })}
         />
         <KpiCard
           icon={<CpuIcon className="size-4" />}
-          title={t('todayInputTokens')}
+          label={t('todayInputTokens')}
           value={fmtInt(stats?.today?.inputTokens ?? 0)}
           sub={t('todayOutputTokens', { count: fmtInt(stats?.today?.outputTokens ?? 0) })}
           hint={t('billedByTokens')}
         />
         <KpiCard
           icon={<ServerIcon className="size-4" />}
-          title={t('channelHealth')}
+          label={t('channelHealth')}
           value={`${fmtInt(healthyCount)} / ${fmtInt(totalChannels)}`}
           sub={
             <span className="inline-flex items-center gap-2">
@@ -111,7 +113,7 @@ export default async function AdminDashboardPage() {
 
       {/* 大图表区：请求趋势 + 消耗趋势 */}
       <div className="grid grid-cols-1 gap-4 @3xl/main:grid-cols-2">
-        <Card>
+        <Card className="bg-muted/20 shadow-none ring-1 ring-border/60">
           <CardHeader>
             <CardTitle className="text-base">{t('requestsTrend')}</CardTitle>
             <CardDescription>{t('requestsTrendDesc')}</CardDescription>
@@ -125,7 +127,7 @@ export default async function AdminDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-muted/20 shadow-none ring-1 ring-border/60">
           <CardHeader>
             <CardTitle className="text-base">{t('spend')}</CardTitle>
             <CardDescription>{t('spendTrendDesc')}</CardDescription>
@@ -150,35 +152,5 @@ function EmptyChart({ label }: { label: string }) {
     <div className="flex h-62.5 items-center justify-center text-sm text-muted-foreground">
       {label}
     </div>
-  );
-}
-
-function KpiCard({
-  icon,
-  title,
-  value,
-  sub,
-  hint,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  value: string;
-  sub?: React.ReactNode;
-  hint?: React.ReactNode;
-}) {
-  return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <CardDescription className="flex items-center gap-2">
-          <span className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-foreground">
-            {icon}
-          </span>
-          {title}
-        </CardDescription>
-        <CardTitle className="text-2xl tabular-nums tracking-tight">{value}</CardTitle>
-        {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </CardHeader>
-    </Card>
   );
 }

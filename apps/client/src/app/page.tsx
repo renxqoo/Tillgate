@@ -16,7 +16,7 @@ import {
   WalletIcon,
 } from "lucide-react";
 
-import { Button } from '@tokenlens/ui';
+import { buttonVariants } from '@tokenlens/ui';
 
 import { getTranslations } from "next-intl/server";
 
@@ -160,11 +160,11 @@ export default async function Landing() {
           </nav>
           <div className="flex items-center gap-3">
             {me ? (
-              <Button size="sm" className="rounded-full" render={<Link href="/dashboard" />}>{t("enterConsole")} <ArrowRight /></Button>
+              <Link href="/dashboard" className={buttonVariants({ size: "sm", className: "rounded-full" })}>{t("enterConsole")} <ArrowRight /></Link>
             ) : (
               <>
-                <Button variant="outline" size="sm" className="rounded-full" render={<Link href="/login" />}>{t("login")}</Button>
-                <Button size="sm" className="rounded-full" render={<Link href="/register" />}>{t("startFree")} <ArrowRight /></Button>
+                <Link href="/login" className={buttonVariants({ variant: "outline", size: "sm", className: "rounded-full" })}>{t("login")}</Link>
+                <Link href="/register" className={buttonVariants({ size: "sm", className: "rounded-full" })}>{t("startFree")} <ArrowRight /></Link>
               </>
             )}
           </div>
@@ -193,8 +193,8 @@ export default async function Landing() {
                 {t("heroDesc")}
               </p>
               <div className="flex flex-wrap items-center gap-4 pt-2">
-                <Button size="lg" className="rounded-full" render={<Link href={me ? "/dashboard" : "/register"} />}>{me ? t("enterConsole") : t("startFree")} <ArrowRight /></Button>
-                <Button variant="outline" size="lg" className="rounded-full" render={<Link href="/pricing" />}>{t("viewPricing")}</Button>
+                <Link href={me ? "/dashboard" : "/register"} className={buttonVariants({ size: "lg", className: "rounded-full" })}>{me ? t("enterConsole") : t("startFree")} <ArrowRight /></Link>
+                <Link href="/pricing" className={buttonVariants({ variant: "outline", size: "lg", className: "rounded-full" })}>{t("viewPricing")}</Link>
               </div>
               <p className="text-xs text-muted-foreground">{t("heroNote")}</p>
             </div>
@@ -265,7 +265,7 @@ export default async function Landing() {
               </div>
             )}
             <div className="mt-8 text-center">
-              <Button variant="outline" className="rounded-full" render={<Link href="/pricing" />}>{t("viewAllModels")} <ChevronRight /></Button>
+              <Link href="/pricing" className={buttonVariants({ variant: "outline", className: "rounded-full" })}>{t("viewAllModels")} <ChevronRight /></Link>
             </div>
           </div>
         </section>
@@ -307,11 +307,11 @@ export default async function Landing() {
                 {t("ctaDesc")}
               </p>
               <div className="relative flex flex-wrap items-center justify-center gap-4">
-                <Button size="lg" className="rounded-full" render={<Link href={me ? "/dashboard" : "/register"} />}>{me ? t("enterConsole") : t("registerNow")} <ArrowRight /></Button>
+                <Link href={me ? "/dashboard" : "/register"} className={buttonVariants({ size: "lg", className: "rounded-full" })}>{me ? t("enterConsole") : t("registerNow")} <ArrowRight /></Link>
                 {me ? (
-                  <Button variant="outline" size="lg" className="rounded-full" render={<Link href="/dashboard/playground" />}>{t("tryPlayground")}</Button>
+                  <Link href="/dashboard/playground" className={buttonVariants({ variant: "outline", size: "lg", className: "rounded-full" })}>{t("tryPlayground")}</Link>
                 ) : (
-                  <Button variant="outline" size="lg" className="rounded-full" render={<Link href="/login" />}>{t("hasAccountLogin")}</Button>
+                  <Link href="/login" className={buttonVariants({ variant: "outline", size: "lg", className: "rounded-full" })}>{t("hasAccountLogin")}</Link>
                 )}
               </div>
             </div>

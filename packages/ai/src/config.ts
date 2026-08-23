@@ -46,6 +46,23 @@ export const aiDefaultsSchema = z.object({
       connectMs: 10_000,
       totalMs: 120_000,
     }),
+  /**
+   * 响应侧 model 字段替换（§3.6 透传例外 2，默认关）：开启时出站 SSE 帧内仅替换
+   * "model" 字符串值为对外目录模型名（请求的 ctx.model），其余字节不动——
+   * 与请求侧 finalizeRequestBody 的模型名重写共同维护模型目录抽象。
+   */
+  responseModelRewrite: z.boolean().default(false),
+  /**
+   * 错误出站脱敏参数（§3.6 透传例外 3 内容层）：截断上限与内部名→对外名替换表。
+   * 原始全文保留在 UpstreamError.rawBody 与日志路径（细节层只进日志）。
+   */
+  errorSanitize: z
+    .object({
+      maxLen: z.number().int().min(1).default(512),
+      /** 需替换为对外名的内部字符串（如真实部署模型名）；替换目标 = 本次请求的 ctx.model */
+      redactions: z.array(z.string()).default([]),
+    })
+    .default({ maxLen: 512, redactions: [] }),
 });
 
 export type AiDefaults = z.infer<typeof aiDefaultsSchema>;

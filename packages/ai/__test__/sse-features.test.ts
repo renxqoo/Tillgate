@@ -5,28 +5,50 @@ import type { SseEvent } from '../src/transport/sse.js';
 
 describe('usage/features：四计数器（S1 修复的计量基础）', () => {
   it('extractTextFeatures：CJK 逐字、拉丁词段、数字段、符号（v1 状态机语义）', () => {
-    expect(extractTextFeatures('你好世界')).toEqual({ cjkChars: 4, wordSegments: 0, numberSegments: 0, symbolCount: 0 });
-    expect(extractTextFeatures('hello world')).toEqual({ cjkChars: 0, wordSegments: 2, numberSegments: 0, symbolCount: 0 });
-    expect(extractTextFeatures('a1b2')).toEqual({ cjkChars: 0, wordSegments: 2, numberSegments: 2, symbolCount: 0 });
+    expect(extractTextFeatures('你好世界')).toEqual({
+      cjkChars: 4,
+      wordSegments: 0,
+      numberSegments: 0,
+      symbolCount: 0,
+    });
+    expect(extractTextFeatures('hello world')).toEqual({
+      cjkChars: 0,
+      wordSegments: 2,
+      numberSegments: 0,
+      symbolCount: 0,
+    });
+    expect(extractTextFeatures('a1b2')).toEqual({
+      cjkChars: 0,
+      wordSegments: 2,
+      numberSegments: 2,
+      symbolCount: 0,
+    });
     expect(extractTextFeatures('你好 abc 123!!')).toEqual({
       cjkChars: 2,
       wordSegments: 1,
       numberSegments: 1,
       symbolCount: 2,
     });
-    expect(extractTextFeatures('')).toEqual({ cjkChars: 0, wordSegments: 0, numberSegments: 0, symbolCount: 0 });
+    expect(extractTextFeatures('')).toEqual({
+      cjkChars: 0,
+      wordSegments: 0,
+      numberSegments: 0,
+      symbolCount: 0,
+    });
   });
 
   it('累积器 == 逐片段 extractTextFeatures 之和（片段边界即分段边界——v1 口径保持）', () => {
     const pieces = ['你好', ' hel', 'lo ', '123', '!!', '世界'];
     const acc = new TextFeaturesAccumulator();
     for (const p of pieces) acc.addText(p);
-    const sum = pieces.map((p) => extractTextFeatures(p)).reduce((a, b) => ({
-      cjkChars: a.cjkChars + b.cjkChars,
-      wordSegments: a.wordSegments + b.wordSegments,
-      numberSegments: a.numberSegments + b.numberSegments,
-      symbolCount: a.symbolCount + b.symbolCount,
-    }));
+    const sum = pieces
+      .map((p) => extractTextFeatures(p))
+      .reduce((a, b) => ({
+        cjkChars: a.cjkChars + b.cjkChars,
+        wordSegments: a.wordSegments + b.wordSegments,
+        numberSegments: a.numberSegments + b.numberSegments,
+        symbolCount: a.symbolCount + b.symbolCount,
+      }));
     expect(acc.snapshot()).toEqual(sum);
     // "hel"+"lo" 是两个片段 = 2 个词段（与 v1 逐片段调用一致），整段才是 1 段——口径显式锁定
     expect(sum.wordSegments).toBe(2);
@@ -37,11 +59,6 @@ describe('usage/features：四计数器（S1 修复的计量基础）', () => {
     const chunk = 'a'.repeat(1024);
     for (let i = 0; i < 5000; i++) acc.addText(chunk); // 5MB
     expect(acc.snapshot().wordSegments).toBe(5000);
-  });
-
-  it('bpeExact 独立分量随行（默认 null，估算层优先采用）', () => {
-    const acc = new TextFeaturesAccumulator();
-    expect(acc.bpeExact).toBeNull();
   });
 });
 
@@ -69,7 +86,10 @@ describe('transport/sse：统一解析原语（S3/S4 修复）', () => {
     r.push(bytes(': keep-alive\r\ndata: a\r\n\r'));
     r.push(bytes('\ndata: tail-no-newline'));
     r.flush();
-    expect(events).toEqual([{ event: undefined, data: 'a' }, { event: undefined, data: 'tail-no-newline' }]);
+    expect(events).toEqual([
+      { event: undefined, data: 'a' },
+      { event: undefined, data: 'tail-no-newline' },
+    ]);
   });
 
   it('SseBoundaryTracker：事件边界矩阵（心跳注入判定）', () => {

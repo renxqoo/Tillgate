@@ -20,7 +20,7 @@ import { NumberField } from '@/components/number-field';
 import * as React from 'react';
 import { useState, useTransition } from 'react';
 
-import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon } from 'lucide-react';
+import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon, ShieldOffIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -46,16 +46,22 @@ interface BalanceFormValues {
 export function AdjustDialog({
   user,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   user: AdminUserRow;
-  /** 自定义触发按钮（列表行用 icon 幽灵按钮，详情页用默认文字按钮） */
-  trigger?: React.ReactElement;
+  /** null 表示由外部菜单控制，不渲染触发器。 */
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('users');
   const tUi = useTranslations('ui');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [pending, startTransition] = useTransition();
   // 校验消息走目录：schema 在组件内用 t 构造
   const adjustSchema = z.object({
@@ -82,15 +88,17 @@ export function AdjustDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button size="sm" variant="outline">
-              <ScaleIcon /> {t('adjust')}
-            </Button>
-          )
-        }
-      />
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="outline">
+                <ScaleIcon /> {t('adjust')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -131,15 +139,21 @@ export function AdjustDialog({
 export function GiftDialog({
   user,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   user: AdminUserRow;
-  trigger?: React.ReactElement;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('users');
   const tUi = useTranslations('ui');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [pending, startTransition] = useTransition();
   const giftSchema = z.object({
     amount: moneyText({ message: tUi('invalidAmount'), allowZero: false }),
@@ -165,15 +179,17 @@ export function GiftDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button size="sm" variant="outline">
-              <GiftIcon /> {t('gift')}
-            </Button>
-          )
-        }
-      />
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="outline">
+                <GiftIcon /> {t('gift')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -208,14 +224,20 @@ export function GiftDialog({
 export function PasswordDialog({
   user,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   user: AdminUserRow;
-  trigger?: React.ReactElement;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('users');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [show, setShow] = useState(false);
   const [pending, startTransition] = useTransition();
   const passwordSchema = z.object({
@@ -245,15 +267,17 @@ export function PasswordDialog({
         if (!o) setShow(false);
       }}
     >
-      <DialogTrigger
-        render={
-          trigger ?? (
-            <Button size="sm" variant="outline">
-              <KeyRoundIcon /> {t('changePassword')}
-            </Button>
-          )
-        }
-      />
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="outline">
+                <KeyRoundIcon /> {t('changePassword')}
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -291,6 +315,70 @@ export function PasswordDialog({
           <Button type="submit" form="pw-form" disabled={pending}>
             {pending && <Loader2Icon className="animate-spin" />}
             {t('confirmSet')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * 封禁确认弹窗（替代原生 prompt+confirm）：输入封禁原因（可选）后确认执行。
+ * 解封不需要确认，仍走菜单直执行路径。
+ */
+export function FreezeDialog({
+  user,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  user: AdminUserRow;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const t = useTranslations('users');
+  const tUi = useTranslations('ui');
+  const notify = useActionResult();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+  const [reason, setReason] = useState('');
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const { setUserStatusAction } = await import('@/server/users-actions');
+      const res = await setUserStatusAction(user.id, { status: 1, freezeReason: reason });
+      if (!notify(res, t('banFailed'), t('bannedShort'))) return;
+      setReason('');
+      setOpen(false);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldOffIcon /> {t('banConfirm', { subject: user.subject })}
+          </DialogTitle>
+          <DialogDescription>{t('banDescription')}</DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="freeze-reason">{t('freezeReasonPrompt')}</FieldLabel>
+            <Input
+              id="freeze-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={200}
+            />
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />
+          <Button variant="destructive" onClick={submit} disabled={pending}>
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('ban')}
           </Button>
         </DialogFooter>
       </DialogContent>

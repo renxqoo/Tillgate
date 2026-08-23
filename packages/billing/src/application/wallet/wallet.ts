@@ -35,6 +35,8 @@ import type { SettleInput, SettleResult } from './settle.js';
 import { createStatementUseCase } from './statement.js';
 import type { StatementItemView, StatementQuery } from './statement.js';
 import { createTransferUseCase, type TransferInput, type TransferResult } from './transfer.js';
+import { createReferralPayoutsUseCase } from './referral-payouts.js';
+import type { ReferralPayoutsQuery, ReferralPayoutsResult } from './referral-payouts.js';
 
 /** 装配契约（storage port + 词表白名单 + 缺省币种——全部必填注入，不藏全局默认） */
 
@@ -55,6 +57,8 @@ export type {
   StatementItemView,
   SetCreditLimitInput,
   SetCreditLimitResult,
+  ReferralPayoutsQuery,
+  ReferralPayoutsResult,
 } from './verb-types.js';
 
 export interface WalletEnv {
@@ -76,6 +80,8 @@ export interface WalletApi {
   accounts(userId: number): Promise<AccountSnapshot[]>;
   /** 用户资金流水（腿级，id 倒序游标分页；读侧） */
   statement(input: StatementQuery): Promise<StatementItemView[]>;
+  /** 返利流水管理读侧（v1 marketing listPayouts;accounts G3 落位——admin-api P3 消费） */
+  referralPayouts(input: ReferralPayoutsQuery): Promise<ReferralPayoutsResult>;
 }
 
 export function createWalletApi(env: WalletEnv): WalletApi {
@@ -90,5 +96,6 @@ export function createWalletApi(env: WalletEnv): WalletApi {
     setCreditLimit: createSetCreditLimitUseCase(env),
     accounts: createAccountsUseCase(env),
     statement: createStatementUseCase(env),
+    referralPayouts: createReferralPayoutsUseCase(env).list,
   };
 }

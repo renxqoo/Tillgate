@@ -1,9 +1,8 @@
 import { ServerIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { SUPPORTED_PROTOCOLS, VENDOR_PROFILE_NAMES } from '@/config/protocols';
-
 import { fetchAdminList } from '@/server/admin-list';
+import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
@@ -29,6 +28,11 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
     order,
     extra: { q },
   });
+  // P6:词表单一真相 = admin-api /v1/vendor-catalog（ai 根出口装配;过渡快照已删除）。
+  // admin-api 不可达时降级空词表——表单仍可提交,后端 control-plane 词表校验是最终防线。
+  const vendorCatalog = await adminApi()
+    .get<{ protocols: string[]; vendors: string[] }>('/v1/vendor-catalog')
+    .catch(() => ({ protocols: [], vendors: [] }));
 
   return (
     <ListPage
@@ -40,7 +44,10 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={
-        <CreateProviderDialog protocols={SUPPORTED_PROTOCOLS} vendors={VENDOR_PROFILE_NAMES} />
+        <CreateProviderDialog
+          protocols={vendorCatalog.protocols}
+          vendors={vendorCatalog.vendors}
+        />
       }
       error={error}
       page={page}
@@ -48,8 +55,8 @@ export default async function ProvidersPage({ searchParams }: PageProps) {
     >
       <ProvidersTable
         providers={rows}
-        protocols={SUPPORTED_PROTOCOLS}
-        vendors={VENDOR_PROFILE_NAMES}
+        protocols={vendorCatalog.protocols}
+        vendors={vendorCatalog.vendors}
       />
     </ListPage>
   );

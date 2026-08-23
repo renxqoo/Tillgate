@@ -10,9 +10,9 @@ import { errorHandler } from '@tokenlens/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
 /** 测试壳挂生产同款错误面（v1 测试直连 app 同语义） */
-function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
-  app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
-  return app;
+function withErrorFace<E extends AuthEnv>(hono: Hono<E>): Hono<E> {
+  hono.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
+  return hono;
 }
 import { createHash } from 'node:crypto';
 import { SignJWT } from 'jose';
@@ -95,10 +95,10 @@ function makeGuards(keyFailLimit = 3, ipFailLimit = 5) {
 }
 
 function app(readerDeps: AuthReadModel, guards?: AuthGuards) {
-  const app = withErrorFace(new Hono<AuthEnv>());
-  app.use('/v1/*', apiKeyMiddleware(readerDeps, guards, JWT));
-  app.get('/v1/whoami', (c) => c.json(c.get('auth') ?? null));
-  return app;
+  const hono = withErrorFace(new Hono<AuthEnv>());
+  hono.use('/v1/*', apiKeyMiddleware(readerDeps, guards, JWT));
+  hono.get('/v1/whoami', (c) => c.json(c.get('auth') ?? null));
+  return hono;
 }
 
 const get = (a: Hono<AuthEnv>, path: string, token?: string) =>

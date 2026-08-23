@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@tokenlens/ui';
+import { ConfirmDialog, DropdownMenuItem, DropdownMenuSeparator, RowActions } from '@tokenlens/ui';
 import { useState } from 'react';
 import { Loader2Icon, Trash2Icon, ZapIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -14,12 +14,21 @@ import {
 
 export function ChannelActions({ id, status }: { id: number; status: number }) {
   const t = useTranslations('notifications');
+  const tc = useTranslations('common');
+  const tUi = useTranslations('ui');
   const [pending, setPending] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  async function runDelete() {
+    setPending('delete');
+    const res = await deleteChannelAction(id);
+    setPending(null);
+    if (res.error) toast.error(res.error);
+  }
+
   return (
-    <div className="flex gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
+    <RowActions label={tc('actions')}>
+      <DropdownMenuItem
         disabled={pending !== null}
         onClick={async () => {
           setPending('test');
@@ -35,10 +44,8 @@ export function ChannelActions({ id, status }: { id: number; status: number }) {
           <ZapIcon className="size-4" />
         )}
         {t('test')}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
+      </DropdownMenuItem>
+      <DropdownMenuItem
         disabled={pending !== null}
         onClick={async () => {
           setPending('toggle');
@@ -48,25 +55,31 @@ export function ChannelActions({ id, status }: { id: number; status: number }) {
         }}
       >
         {status === 0 ? t('disable') : t('enable')}
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        variant="destructive"
         disabled={pending !== null}
-        onClick={async () => {
-          if (!confirm(t('deleteConfirm'))) return;
-          setPending('delete');
-          const res = await deleteChannelAction(id);
-          setPending(null);
-          if (res.error) toast.error(res.error);
-        }}
+        onClick={() => setConfirmOpen(true)}
       >
         {pending === 'delete' ? (
           <Loader2Icon className="size-4 animate-spin" />
         ) : (
           <Trash2Icon className="size-4" />
         )}
-      </Button>
-    </div>
+        {tc('delete')}
+      </DropdownMenuItem>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={tc('delete')}
+        description={t('deleteConfirm')}
+        confirmLabel={tc('delete')}
+        cancelLabel={tUi('cancel')}
+        tone="destructive"
+        onConfirm={runDelete}
+        onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+      />
+    </RowActions>
   );
 }

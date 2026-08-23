@@ -25,7 +25,6 @@ export interface RateCardUserRow {
 export type RateCardSortField = 'id' | 'name' | 'status' | 'createdAt';
 export type RateCardUserSortField = 'id' | 'subject' | 'createdAt';
 
-
 /**
  * 用户费率卡上下文（G1，gateway P5 波）：绑卡 + 系数行全集（model/group/global）。
  * 卡停用（status≠0）也如实返回——「停用卡拒绝新请求」的裁决在消费方（v1 403

@@ -8,6 +8,7 @@ import type { TxRetryPolicy } from '@tokenlens/db';
 import type { AccountStorePort } from '../ports/account-store.js';
 import type { WalletCreditPort } from '../ports/wallet-credit.js';
 import type { AuditPort } from '../ports/audit.js';
+import type { SessionInvalidationPort } from '../ports/session-invalidation.js';
 
 export interface AccountsPolicy {
   /** Key 前缀(^[a-z][a-z0-9_-]{1,15}$;与网关分派端同一 env;v1 等价 'ag_') */
@@ -38,6 +39,8 @@ export interface UseCaseContext {
   readonly db: Db;
   readonly store: AccountStorePort;
   readonly walletCredit: WalletCreditPort;
+  /** 会话失效 bridge(§3.4 唯一所有者 = identity;email 变更同事务推进吊销线) */
+  readonly sessionInvalidation: SessionInvalidationPort;
   readonly audit: AuditPort;
   readonly policy: AccountsPolicy;
   readonly txRetry: TxRetryPolicy;

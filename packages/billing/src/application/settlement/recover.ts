@@ -17,9 +17,10 @@ export interface RecoverEnv {
   store: BillingStore;
   fundingRegistry: FundingRegistry;
   channels?: ChannelExposureStore;
-  clock?: () => Date;
-  /** 单行归还失败只记日志不中断整批 */
-  onError?: (error: unknown, context: string) => void;
+  /** 时钟（装配必填——零写死） */
+  clock: () => Date;
+  /** 单行归还失败写入（装配必填：logger/遥测注入；异常不中断整批） */
+  onError: (error: unknown, context: string) => void;
 }
 
 export interface RecoveryRunResult {
@@ -28,7 +29,7 @@ export interface RecoveryRunResult {
 }
 
 export function createRecoverUseCase(env: RecoverEnv) {
-  const { store, clock = () => new Date() } = env;
+  const { store, clock } = env;
   const releaseAllReservations = createReleaseAllReservations({
     registry: env.fundingRegistry,
     channels: env.channels,
@@ -69,9 +70,8 @@ export function createRecoverUseCase(env: RecoverEnv) {
   }
 
   return async function recover(input: { batchSize: number }): Promise<RecoveryRunResult> {
-    const noteError =
-      env.onError ??
-      ((error: unknown, context: string) => console.error(`[recover] ${context}:`, error));
+    // 装配必填注入：毒行隔离的写入通道（console 直写是隐藏 I/O——铁律 3）
+    const noteError = env.onError;
     const expired = await releaseExpired(
       {
         status: 'authorized',
@@ -92,8 +92,8 @@ export function createRecoverUseCase(env: RecoverEnv) {
 }
 
 /** 优雅停机：本副本持有的 processing 归还 retry_wait（worker 生命周期收口用） */
-export function createAbandonClaimsUseCase(env: { store: BillingStore; clock?: () => Date }) {
-  const { store, clock = () => new Date() } = env;
+export function createAbandonClaimsUseCase(env: { store: BillingStore; clock: () => Date }) {
+  const { store, clock } = env;
   return async function abandonOwnedClaims(ownerId: string): Promise<number> {
     return store.transaction((tx) => store.abandonOwnedClaims(tx, ownerId, clock()));
   };

@@ -45,12 +45,15 @@ export type { ProviderCapabilities } from './domain/provider/provider';
 export type { UpstreamProbe, ProbeTarget, ProbeOutcome } from './ports/upstream-probe';
 export type { SecretCipher } from './ports/secret-cipher';
 export type { CatalogSource, CatalogChannelGuard } from './ports/catalog-source';
-export type { AuditSink, AuditEntry, AuditActor } from './ports/audit-sink';
+export type { ActiveMappingRow, EnabledModelRow } from './ports/model-store';
+export type { RouteCandidateRow } from './ports/channel-store';
+export type { UserRateCardContext } from './ports/rate-card-store';
+export type { AuditSink, AuditTxSink, AuditEntry, AuditActor } from './ports/audit-sink';
 export type { VoucherStorage } from './ports/voucher-storage';
 export type { CatalogCache, CatalogCacheEntry } from './ports/cache';
 export { createMemoryCatalogCache } from './ports/cache';
-export { createOpenRouterSource } from './adapters/model-sources/openrouter-source';
-export { modelsDevSource } from './adapters/model-sources/models-dev-source';
+// 外部目录源 adapter 不出根入口（§5.3）——装配经 ./composition 子入口引用：
+//   import { createOpenRouterSource, modelsDevSource } from '@tokenlens/control-plane/composition';
 
 // ---- 用例出入参（app 路由层契约）----
 export type { CreateProviderInput } from './application/providers/create-provider';

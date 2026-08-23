@@ -4,7 +4,15 @@ import { MinusIcon, TrendingDownIcon, TrendingUpIcon } from 'lucide-react';
 import type * as React from 'react';
 
 import { cn } from '../../cn';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../primitives/card';
+import { Badge } from '../primitives/badge';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../primitives/card';
 import { Skeleton } from '../primitives/skeleton';
 
 export type KpiCardDelta = {
@@ -16,6 +24,8 @@ export type KpiCardDelta = {
 export type KpiCardProps = {
   label: React.ReactNode;
   value: React.ReactNode;
+  icon?: React.ReactNode;
+  sub?: React.ReactNode;
   delta?: KpiCardDelta;
   hint?: React.ReactNode;
   loading?: boolean;
@@ -35,32 +45,55 @@ function sentimentClass(sentiment: KpiCardDelta['sentiment']): string {
   return sentiment === 'negative' ? 'text-destructive' : 'text-muted-foreground';
 }
 
-export function KpiCard({ label, value, delta, hint, loading = false, className }: KpiCardProps) {
+export function KpiCard({
+  label,
+  value,
+  icon,
+  sub,
+  delta,
+  hint,
+  loading = false,
+  className,
+}: KpiCardProps) {
   const TrendIcon = delta ? TREND_ICONS[delta.trend] : null;
 
   return (
-    <Card data-slot="kpi-card" className={cn('gap-2', className)}>
+    <Card
+      data-slot="kpi-card"
+      className={cn(
+        '@container/card gap-2 bg-muted/35 shadow-none ring-1 ring-border/60 dark:bg-muted/20',
+        className,
+      )}
+    >
       <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-2xl font-medium tabular-nums">
-          {loading ? <Skeleton className="h-7 w-24" /> : value}
-        </CardTitle>
-      </CardHeader>
-      {delta || hint ? (
-        <CardContent className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          {delta && TrendIcon ? (
-            <span
-              data-slot="kpi-card-delta"
-              data-sentiment={delta.sentiment}
-              className={cn(
-                'inline-flex items-center gap-1 font-medium',
-                sentimentClass(delta.sentiment),
-              )}
-            >
-              <TrendIcon className="size-3.5" />
-              {delta.text}
+        <CardDescription className="flex items-center gap-2">
+          {icon ? (
+            <span className="flex size-7 items-center justify-center rounded-lg bg-background/80 text-foreground [&_svg]:size-4">
+              {icon}
             </span>
           ) : null}
+          {label}
+        </CardDescription>
+        <CardTitle className="text-2xl font-semibold tabular-nums tracking-tight @[250px]/card:text-3xl">
+          {loading ? <Skeleton className="h-7 w-24" /> : value}
+        </CardTitle>
+        {delta && TrendIcon ? (
+          <CardAction>
+            <Badge
+              variant="outline"
+              data-slot="kpi-card-delta"
+              data-sentiment={delta.sentiment}
+              className={cn('tabular-nums', sentimentClass(delta.sentiment))}
+            >
+              <TrendIcon />
+              {delta.text}
+            </Badge>
+          </CardAction>
+        ) : null}
+      </CardHeader>
+      {sub || hint ? (
+        <CardContent className="flex flex-col gap-1 text-xs">
+          {sub ? <span className="font-medium text-foreground">{sub}</span> : null}
           {hint ? (
             <span className="text-muted-foreground" data-slot="kpi-card-hint">
               {hint}

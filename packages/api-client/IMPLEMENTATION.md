@@ -39,8 +39,13 @@ peer（./next 专属）；exports 六个子路径按新入口收拢为 `.` 与 `
 
 ### 1.3 契约缺口（演进决策，非本次实施）
 
-- C1：OpenAPI 生成链（scripts/generate-openapi.ts → generated/openapi → generated/api-client）
-  未建；DTO 手写快照为过渡态，P3/P6 替换（DESIGN §3.4）。
+- C1：~~OpenAPI 生成链未建~~——**已兑现**（2026-08-23,DESIGN §3.4 定稿并落地）:
+  admin-api `src/http/openapi/` registry（请求面引用 contracts zod 实例、响应面 wire
+  zod 声明）→ `apps/admin-api/generated/openapi.json`（OpenAPI 3.1,产物入库）→
+  本包 `scripts/generate-dto.ts` 生成 `src/dto/admin-api.generated.ts`（同路径覆盖换轨,44 个
+  具名导出保名兼容,`__test__/generated-dto.test.ts` 锁头标记/逐字节重渲/导出集合快照）。
+  类型差异清单见 DESIGN §3.4.5（响应面零差异;请求体面为 contracts 真相对手写快照
+  欠账的修正,消费方零影响——apps/admin 不 import *Body 型）。
 - C2：v1 README 声称导出 `REDEEM_ERROR_MESSAGES`，types.ts 并不存在——v1 文档漂移，
   新 README 按实际导出重写。
 - C3：`pack/` tarball 冒烟测试（v1 树 test/pack）属发布改造，P6 交付（待办挂 MIGRATION §7）。
@@ -73,10 +78,10 @@ peer（./next 专属）；exports 六个子路径按新入口收拢为 `.` 与 `
    （§1 审计表 index.ts 行）；目标树（总纲 §3）已裁决该形状。
 2. **AdminTransactionRow 跨面继承**：`extends TransactionRow` 保留 import（同一真相只定义
    一次，铁律 3），dto/admin-api.ts import dto/client-api.ts 仅此一处。
-3. **>150 行文件审计**：`dto/admin-api.ts`（~470 行）与 `dto/client-api.ts`（~240 行）为
+3. **>150 行文件审计**：`dto/client-api.ts`（~240 行）为
    纯声明聚合，单一职责 = 一面 wire 形状快照；`core/client.ts`、`next/locale.ts`、
    `next/forwarded-ip.ts` 接近上限但单一职责（transport / 语言协商 / XFF 信任）。
-   control-plane §5.2 同口径。
+   control-plane §5.2 同口径。（换轨后 admin 面为生成物 admin-api.generated.ts——豁免口径见 DESIGN;原「AdminTransactionRow extends TransactionRow 跨面继承」随生成物独立声明而消亡,client 面零改动。）
 4. **测试布局**：目标树 `test/{core,next,pack}/` 与铁律 14（包根 `__test__/` 平铺）冲突，
    按既有全部包先例执行铁律 14；`pack` 维度挂待办（C3）。偏差记 MIGRATION §6。
 
@@ -105,8 +110,12 @@ package.json/tsconfig/vitest → core → dto → facade/根入口 → next 子�
 
 ## 6. 待办（显式挂账，铁律 4）
 
-- ui 波次：formatters.ts + formatters.test.ts 迁 ui/formatting（D3）。
-- P3/P6：OpenAPI 生成链替换 dto/（C1）；pack tarball 冒烟（C3）；dist 声明产物与
-  发布白名单评审（总纲 §7.2/§8）。
+- ~~ui 波次：formatters.ts + formatters.test.ts 迁 ui/formatting（D3）~~——**已兑现**
+  （ui 波次落地 `packages/ui/src/formatting/{date,money,number}.ts` 并经根出口导出；
+  本包 formatters.ts 未随迁，无双轨）。
+- ~~P3/P6：OpenAPI 生成链替换 dto/（C1）~~——admin 面**已兑现**（§1.3 C1）;
+  client 面 registry 归 client-api 后续波（DESIGN §3.4.6 挂账,dto/client-api.ts 仍是
+  该面唯一事实源）。
+- P6：pack tarball 冒烟（C3）；dist 声明产物与发布白名单评审（总纲 §7.2/§8）。
 - apps 波次：apps/client、apps/admin 的 BFF 装配切换到 createNextClientApiClient/
   createNextAdminApiClient（本包无仓内消费方，属既有分波纪律，非本单元范围）。

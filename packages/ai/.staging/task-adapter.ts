@@ -48,11 +48,16 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
 
   return {
     /** task_poll 族：向上游提交任务 → 上游任务号 */
-    async submitTask(channel: TaskChannelDesc, request: {
-      requestId: string; realModel: string; externalModel: string; kind: ProtocolTaskKind; body: Record<string, unknown>;
-    }): Promise<
-      { ok: true; upstreamTaskId: string } | { ok: false; error: TaskPortErrorShape }
-    > {
+    async submitTask(
+      channel: TaskChannelDesc,
+      request: {
+        requestId: string;
+        realModel: string;
+        externalModel: string;
+        kind: ProtocolTaskKind;
+        body: Record<string, unknown>;
+      },
+    ): Promise<{ ok: true; upstreamTaskId: string } | { ok: false; error: TaskPortErrorShape }> {
       const channelDesc = desc(channel);
       const result = await deps.ai.chat({
         channel: channelDesc,
@@ -75,16 +80,27 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
       if (parsed?.kind === 'task_submitted') return { ok: true, upstreamTaskId: parsed.taskId };
       return {
         ok: false,
-        error: parsed?.kind === 'error'
-          ? { code: parsed.error.code, message: parsed.error.message, deadCredential: parsed.error.deadCredential }
-          : { code: 'invalid_response', message: 'Upstream did not return a task ID' },
+        error:
+          parsed?.kind === 'error'
+            ? {
+                code: parsed.error.code,
+                message: parsed.error.message,
+                deadCredential: parsed.error.deadCredential,
+              }
+            : { code: 'invalid_response', message: 'Upstream did not return a task ID' },
       };
     },
 
     /** task_execute 族：同步阻塞型上游调用（worker 代执行）→ 归一产物 */
-    async executeTask(channel: TaskChannelDesc, request: {
-      taskId: string; realModel: string; kind: ProtocolTaskKind; params: Record<string, unknown>;
-    }): Promise<
+    async executeTask(
+      channel: TaskChannelDesc,
+      request: {
+        taskId: string;
+        realModel: string;
+        kind: ProtocolTaskKind;
+        params: Record<string, unknown>;
+      },
+    ): Promise<
       { ok: true; artifact: Record<string, unknown> } | { ok: false; error: TaskPortErrorShape }
     > {
       const channelDesc = desc(channel);
@@ -112,30 +128,54 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
       }
       return {
         ok: false,
-        error: parsed?.kind === 'error'
-          ? { code: parsed.error.code, message: parsed.error.message }
-          : { code: 'invalid_response', message: 'Upstream did not return a generation artifact' },
+        error:
+          parsed?.kind === 'error'
+            ? { code: parsed.error.code, message: parsed.error.message }
+            : {
+                code: 'invalid_response',
+                message: 'Upstream did not return a generation artifact',
+              },
       };
     },
 
     /** task_poll 族：查询上游任务三态（succeeded 的产物 URL 在此补齐） */
-    async queryTask(channel: TaskChannelDesc, upstreamTaskId: string): Promise<
+    async queryTask(
+      channel: TaskChannelDesc,
+      upstreamTaskId: string,
+    ): Promise<
       | { ok: true; status: 'running' }
       | { ok: true; status: 'succeeded'; artifact: Record<string, unknown> }
       | { ok: true; status: 'failed'; reason: string }
       | { ok: false; error: TaskPortErrorShape }
     > {
       if (!deps.ai.queryGenerationTask) {
-        return { ok: false, error: { code: 'task_ops_unavailable', message: 'Protocol does not support task query' } };
+        return {
+          ok: false,
+          error: { code: 'task_ops_unavailable', message: 'Protocol does not support task query' },
+        };
       }
-      const probe = await deps.ai.queryGenerationTask({ channel: desc(channel), taskId: upstreamTaskId });
-      if (!probe.ok) return { ok: false, error: { code: probe.error.code, message: probe.error.message } };
+      const probe = await deps.ai.queryGenerationTask({
+        channel: desc(channel),
+        taskId: upstreamTaskId,
+      });
+      if (!probe.ok)
+        return { ok: false, error: { code: probe.error.code, message: probe.error.message } };
       if (probe.status === 'running') return { ok: true, status: 'running' };
-      if (probe.status === 'failed') return { ok: true, status: 'failed', reason: probe.reason ?? 'upstream task failed' };
-      const artifact: GenerationArtifact = probe.artifact !== undefined ? { ...probe.artifact } : {};
-      if (artifact.url === undefined && probe.fileId !== undefined && deps.ai.retrieveGenerationFile) {
-        const file = await deps.ai.retrieveGenerationFile({ channel: desc(channel), fileId: probe.fileId });
-        if (!file.ok) return { ok: false, error: { code: file.error.code, message: file.error.message } };
+      if (probe.status === 'failed')
+        return { ok: true, status: 'failed', reason: probe.reason ?? 'upstream task failed' };
+      const artifact: GenerationArtifact =
+        probe.artifact !== undefined ? { ...probe.artifact } : {};
+      if (
+        artifact.url === undefined &&
+        probe.fileId !== undefined &&
+        deps.ai.retrieveGenerationFile
+      ) {
+        const file = await deps.ai.retrieveGenerationFile({
+          channel: desc(channel),
+          fileId: probe.fileId,
+        });
+        if (!file.ok)
+          return { ok: false, error: { code: file.error.code, message: file.error.message } };
         artifact.url = file.downloadUrl;
       }
       return { ok: true, status: 'succeeded', artifact: artifact as Record<string, unknown> };

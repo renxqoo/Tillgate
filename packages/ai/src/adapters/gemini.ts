@@ -1,12 +1,11 @@
-import type {
-  Endpoint, ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
+import type { Endpoint, ChannelDesc, ParamRules, UpstreamError, Usage } from '../types';
 import type { ParamAdjustment, ProtocolAdapter } from './protocol-adapter';
 import {
   chatRequestToGemini,
   geminiResponseToChat,
-  geminiUpstreamToCanonicalStream,
   geminiUsageToUsage,
 } from '../protocol/gemini-chat';
+import { geminiUpstreamToCanonicalStream } from '../protocol/gemini-stream';
 import { tableOrFallback } from '../errors/fallback';
 import type { ErrorKind } from '../errors/kinds';
 
@@ -30,7 +29,14 @@ export class GeminiAdapter implements ProtocolAdapter {
   readonly protocol = 'gemini';
   readonly supportedEndpoints: readonly Endpoint[] = ['chat'];
 
-  planRequest(channel: ChannelDesc, { model, requestId, stream }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean }): { path: string; headers: Record<string, string> } {
+  planRequest(
+    channel: ChannelDesc,
+    {
+      model,
+      requestId,
+      stream,
+    }: { endpoint: 'chat' | 'embeddings'; model: string; requestId: string; stream: boolean },
+  ): { path: string; headers: Record<string, string> } {
     const action = stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
     return {
       path: `/v1beta/models/${encodeURIComponent(model)}:${action}`,
@@ -42,13 +48,20 @@ export class GeminiAdapter implements ProtocolAdapter {
     };
   }
 
-  finalizeRequestBody(body: Record<string, unknown>, { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean }): Record<string, unknown> {
+  finalizeRequestBody(
+    body: Record<string, unknown>,
+    { model, stream }: { endpoint: 'chat' | 'embeddings'; model: string; stream: boolean },
+  ): Record<string, unknown> {
     const geminiBody = chatRequestToGemini({ ...body, model });
     if (stream) delete (geminiBody as Record<string, unknown>).stream;
     return geminiBody;
   }
 
-  normalizeRequest(req: unknown, _rules: ParamRules, _endpoint: Endpoint): { body: unknown; adjustments: ParamAdjustment[] } {
+  normalizeRequest(
+    req: unknown,
+    _rules: ParamRules,
+    _endpoint: Endpoint,
+  ): { body: unknown; adjustments: ParamAdjustment[] } {
     void _endpoint;
     return { body: req, adjustments: [] as ParamAdjustment[] };
   }
@@ -57,19 +70,32 @@ export class GeminiAdapter implements ProtocolAdapter {
     return geminiResponseToChat(body, '');
   }
 
-  translateUpstreamStream(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-    return geminiUpstreamToCanonicalStream(stream);
+  translateUpstreamStream(
+    stream: ReadableStream<Uint8Array>,
+    model: string,
+  ): ReadableStream<Uint8Array> {
+    return geminiUpstreamToCanonicalStream(stream, model);
   }
 
   extractUsage(res: unknown): Usage | null {
     const j = res as Record<string, unknown> | null;
     const usage = geminiUsageToUsage(j?.usageMetadata);
     if (usage) {
-      return { inputTokens: usage.promptTokens, cachedInputTokens: usage.cachedTokens, outputTokens: usage.completionTokens, estimated: false, raw: j?.usageMetadata };
+      return {
+        inputTokens: usage.promptTokens,
+        cachedInputTokens: usage.cachedTokens,
+        outputTokens: usage.completionTokens,
+        estimated: false,
+        raw: j?.usageMetadata,
+      };
     }
     // 规范形 usage（translate 后）
     const openaiUsage = j?.usage as Record<string, unknown> | undefined;
-    if (openaiUsage && typeof openaiUsage.prompt_tokens === 'number' && typeof openaiUsage.completion_tokens === 'number') {
+    if (
+      openaiUsage &&
+      typeof openaiUsage.prompt_tokens === 'number' &&
+      typeof openaiUsage.completion_tokens === 'number'
+    ) {
       const details = openaiUsage.prompt_tokens_details as Record<string, unknown> | undefined;
       return {
         inputTokens: openaiUsage.prompt_tokens,
@@ -82,7 +108,11 @@ export class GeminiAdapter implements ProtocolAdapter {
     return null;
   }
 
-  mapError(status: number | undefined, body: unknown, headers?: Record<string, string>): UpstreamError {
+  mapError(
+    status: number | undefined,
+    body: unknown,
+    headers?: Record<string, string>,
+  ): UpstreamError {
     return tableOrFallback({ table: GEMINI_STATUS_KINDS, status, body, headers });
   }
 

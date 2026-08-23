@@ -1,49 +1,46 @@
 import { redirect } from 'next/navigation';
 
-import { ShieldCheck } from 'lucide-react';
-import { getTranslations } from 'next-intl/server';
+import { ScanEye } from 'lucide-react';
 
 import { stripAuthParams, type SearchParamsLike } from '@/lib/auth-url';
 
 import { LoginForm } from '@/features/auth/login-form';
-import { APP_CONFIG } from '@/config/app-config';
+import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
 
+/**
+ * 管理员登录页（chat.z.ai/auth 风格：居中卡片 + logo + 标题 + 表单，黑白配色）。
+ * 登录页 URL 不承载登录信息（email/password 等凭证不留地址栏与浏览器历史）：
+ * 无合法查询参数，带参即 307 到干净 /login。
+ */
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParamsLike>;
 }) {
-  const t = await getTranslations('auth');
-  // 登录页 URL 不承载登录信息（email/password 等凭证不留地址栏与浏览器历史）：
-  // 管理端登录页无合法查询参数，带参即 307 到干净 /login
   const sp = await searchParams;
   const clean = stripAuthParams('/login', sp, []);
   if (clean) redirect(clean);
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="flex flex-col gap-4 p-6 md:p-10">
-        <div className="flex items-center gap-2 self-start">
-          <ShieldCheck className="size-5 text-primary" />
-          <span className="font-semibold text-base">
-            {t('brandTitle', { name: APP_CONFIG.name })}
-          </span>
-        </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">
-            <LoginForm />
-          </div>
-        </div>
+    <main className="relative flex min-h-svh flex-col items-center justify-center bg-background px-4 py-10 text-foreground antialiased">
+      {/* 语言切换:锚定右上角,登录前也可换语言 */}
+      <div className="absolute right-6 top-6 z-10">
+        <LandingLocaleToggle />
       </div>
 
-      <div className="relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center bg-muted/30 p-10">
-        <div className="max-w-md space-y-4 text-center">
-          <div className="inline-flex size-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <ShieldCheck className="size-7" />
-          </div>
-          <h2 className="text-2xl font-semibold tracking-tight">{t('heroTitle')}</h2>
-          <p className="text-muted-foreground">{t('heroDescription')}</p>
+      <div className="flex w-full max-w-[350px] flex-col items-center gap-8">
+        <div className="flex flex-col items-center gap-3">
+          <span className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+            <ScanEye className="size-8" />
+          </span>
+          <span className="text-xl font-semibold tracking-tight">TokenLens</span>
         </div>
+
+        <div className="w-full">
+          <LoginForm />
+        </div>
+
+        <p className="text-sm text-muted-foreground">© 2026 TokenLens · MIT License</p>
       </div>
-    </div>
+    </main>
   );
 }

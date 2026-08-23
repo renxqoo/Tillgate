@@ -1,10 +1,12 @@
 /**
  * 用例上下文(facade 装配产物;一一动词一文件的公共依赖面)。
- * 审计发射契约(B03 修复):emitAudit 仅在事务提交后调用;record 失败降级 warn
- * (审计是观察事实,不反噬业务结果)。
+ * 审计契约(§5.4 事务参与,替代 B03 的提交后 warn 形态):
+ * - auditWithinTx:业务事务提交前于同一 tx 内写入(推荐路径)——回滚即无审计行,
+ *   record 失败随业务事务回滚,不吞错(安全审计不得降级)。
+ * - recordAudit:无业务事务的路径(纯读拒绝/单语句 CAS 后)用独立连接单写,失败抛错。
  * 本文件是纯类型 + 观察助手——装配(缺省 adapter 组装)归根装配面 identity.ts。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, DbLike, TxRetryPolicy } from '@tokenlens/db';
 import type { ResolvedIdentityConfig } from '../domain/config.js';
 import type { ValidationGuards } from '../domain/identifier.js';
 import type { IdentityAuditEvent } from '../domain/audit-events.js';
@@ -46,17 +48,21 @@ export interface IdentityUseCaseContext {
   readonly auditSink?: AuditPort;
 }
 
-export async function emitAudit(
+export async function auditWithinTx(
+  tx: DbLike,
   ctx: IdentityUseCaseContext,
   event: IdentityAuditEvent,
 ): Promise<void> {
   if (ctx.auditSink == null) return;
-  try {
-    await ctx.auditSink.record(event);
-  } catch (error) {
-    ctx.logger.warn(
-      { err: (error as Error).message, action: event.action },
-      'identity audit emit failed',
-    );
-  }
+  // 不吞错:审计写失败 → 业务事务回滚(§5.4 安全审计不降级)
+  await ctx.auditSink.record(tx, event);
+}
+
+export async function recordAudit(
+  ctx: IdentityUseCaseContext,
+  event: IdentityAuditEvent,
+): Promise<void> {
+  if (ctx.auditSink == null) return;
+  // 无业务事务路径:独立连接单写,失败抛错(调用方观察,不降级 warn)
+  await ctx.auditSink.record(ctx.db, event);
 }

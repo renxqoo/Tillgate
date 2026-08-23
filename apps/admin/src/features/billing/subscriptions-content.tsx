@@ -4,6 +4,7 @@ import { defineStatusMeta } from '@/components/status-pill';
 import { StatusPill } from '@/components/status-pill';
 import {
   Button,
+  ConfirmDialog,
   Dialog,
   DialogClose,
   DialogContent,
@@ -11,11 +12,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -89,7 +92,7 @@ export function SubscriptionsTable({
           <TableHead className="text-right">{t('used')}</TableHead>
           <TableHead className="text-right">{t('remaining')}</TableHead>
           <TableHead className="w-20">{tc('status')}</TableHead>
-          <TableHead className="w-40 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -115,9 +118,12 @@ function SubscriptionRowItem({
   plans: ReadonlyArray<PlanOption>;
 }) {
   const t = useTranslations('subscriptions');
+  const tc = useTranslations('common');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
   const [pending, setPending] = useState<'renew' | 'cancel' | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const meta = STATUS_META.get(row.status);
 
   async function run(action: 'renew' | 'cancel') {
@@ -166,38 +172,57 @@ function SubscriptionRowItem({
       <TableCell>
         <StatusPill tone={meta.tone} label={t(meta.label)} />
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-1">
+      <TableCell className="w-16 text-center">
+        {/* 行操作走全站统一的 RowActions 菜单项范式（勿在菜单面板里放独立 Button 竖排） */}
+        <RowActions label={tc('actions')}>
           {row.status === 0 ? (
             <>
-              <ChangeSubscriptionDialog row={row} plans={plans} />
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending !== null}
-                onClick={() => run('renew')}
-              >
-                {pending === 'renew' ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />}
+              <DropdownMenuItem onClick={() => setChangeOpen(true)}>
+                <ArrowUpRightIcon className="size-4" /> {t('change')}
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={pending !== null} onClick={() => run('renew')}>
+                {pending === 'renew' ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="size-4" />
+                )}
                 {t('renew')}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
                 disabled={pending !== null}
-                onClick={() => {
-                  if (!confirm(t('cancelConfirm'))) return;
-                  void run('cancel');
-                }}
-                className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmOpen(true)}
               >
-                {pending === 'cancel' ? <Loader2Icon className="animate-spin" /> : <XCircleIcon />}
+                {pending === 'cancel' ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <XCircleIcon className="size-4" />
+                )}
                 {tUi('cancel')}
-              </Button>
+              </DropdownMenuItem>
             </>
           ) : (
-            <span className="text-xs text-muted-foreground">—</span>
+            <DropdownMenuItem disabled>—</DropdownMenuItem>
           )}
-        </div>
+        </RowActions>
+        <ChangeSubscriptionDialog
+          row={row}
+          plans={plans}
+          open={changeOpen}
+          onOpenChange={setChangeOpen}
+        />
+        <ConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title={tUi('confirmTitle')}
+          description={t('cancelConfirm')}
+          confirmLabel={tUi('confirm')}
+          cancelLabel={tUi('cancel')}
+          tone="destructive"
+          onConfirm={() => run('cancel')}
+          onError={(e) => toast.error(e instanceof Error ? e.message : String(e))}
+        />
       </TableCell>
     </TableRow>
   );
@@ -207,14 +232,18 @@ function SubscriptionRowItem({
 function ChangeSubscriptionDialog({
   row,
   plans,
+  open,
+  onOpenChange,
 }: {
   row: AdminSubscriptionRow;
   plans: ReadonlyArray<PlanOption>;
+  /** 受控 open：由行操作菜单项打开 */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('subscriptions');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const currentPlan: PlanOption = plans.find((p) => p.id === row.planId) ?? {
@@ -259,7 +288,7 @@ function ChangeSubscriptionDialog({
       const { changeSubscriptionAction } = await import('@/server/subscriptions-actions');
       const res = await changeSubscriptionAction(row.id, { targetPlanId: target, quantity: qty });
       if (!notify(res, t('changeFailed'), t('changed'))) return;
-      setOpen(false);
+      onOpenChange(false);
     });
   }
 
@@ -267,17 +296,10 @@ function ChangeSubscriptionDialog({
     <Dialog
       open={open}
       onOpenChange={(o) => {
-        setOpen(o);
+        onOpenChange(o);
         if (o) reset();
       }}
     >
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={t('change')}>
-            <ArrowUpRightIcon />
-          </Button>
-        }
-      />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

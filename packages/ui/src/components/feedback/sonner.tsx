@@ -1,3 +1,5 @@
+'use client';
+
 // Toast 容器(sonner 封装): 主题取自本包 ThemeProvider(纯 React 实现, 替换模版默认的 next-themes);
 // 未包 Provider 时交由 sonner 自身缺省主题处理
 import {

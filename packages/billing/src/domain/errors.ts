@@ -118,6 +118,31 @@ export const BillingErrors = defineErrorCatalog('billing', {
     zh: '收据用户与授权账单不一致',
   },
   // ---- U2a：计费域（billing）状态机/限额/订阅闸 ----
+  invalid_period_days: {
+    category: 'invalid_input',
+    message: 'Invalid periodDays for plan kind (subscription 1-3650 / pack must be 0)',
+    zh: '套餐周期与类型不一致（包月 1-3650 / 加油包恒 0）',
+  },
+  plan_in_use: {
+    category: 'conflict',
+    message: 'Plan has associated subscriptions (including history); disable it instead',
+    zh: '套餐已被订阅引用（含历史），不能删除；请下架',
+  },
+  redeem_batch_not_found: {
+    category: 'not_found',
+    message: 'Redeem batch not found',
+    zh: '兑换批次不存在',
+  },
+  redeem_code_not_found: {
+    category: 'not_found',
+    message: 'Redeem code not found, already used or revoked',
+    zh: '兑换码不存在、已使用或已作废',
+  },
+  invalid_review_command: {
+    category: 'invalid_input',
+    message: 'Invalid review command (reason 1-1000 characters required)',
+    zh: '复核命令非法（理由必填 1-1000 字符）',
+  },
   state_conflict: {
     category: 'conflict',
     message: 'Billing request is not in the required state for this operation',

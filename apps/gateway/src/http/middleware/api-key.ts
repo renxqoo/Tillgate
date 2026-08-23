@@ -5,16 +5,19 @@
  *   + iss/aud，仅认 typ=app_jwt + app_id + sub）→ accounts resolveApp 双 status 守卫。
  * App-JWT 解析键 = apps.app_id（R-E2：v1 数字主键 → v2 应用标识串，签发端同键配对）。
  *
- * 爆破防护（runtime guards 注入；未装配 = 单副本开发形态跳过）：
+ * 爆破防护（runtime guards 注入；未装配 = 直通替身，单副本开发形态）：
  *   Key 分支 keyHash 维 + IP 维双计；JWT 分支只计 IP 维（Key 可枚举、JWT 不可——A8）。
  * 真实 socket 对端地址缺失时 trustedClientIp 落进程级常量（全部客户端共享 IP 桶）——
  * 生产必须注入；app.request 测试无连接信息是唯一合法 null 形态。
+ *
+ * requestId 不在此设置：装配面 requestIdMiddleware 全局前置（DESIGN §2.2 服务端生成）。
  */
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { jwtVerify } from 'jose';
 import type { MiddlewareHandler } from 'hono';
 import { socketAddressFromContext, trustedClientIp, HttpErrors } from '@tokenlens/http';
-import type { AuthFailureGuard, KeyBruteForceGuard } from '@tokenlens/runtime';
+import { getTracer, withAsyncSpan } from '@tokenlens/observability';
+import type { AuthFailureGuard, GuardCheck, KeyBruteForceGuard } from '@tokenlens/runtime';
 
 export interface AuthContext {
   userId: number;
@@ -77,15 +80,52 @@ interface GatewayJwtPayload {
   scope?: { rpm?: number; tpm?: number; models?: string[] };
 }
 
+type Context = Parameters<MiddlewareHandler<AuthEnv>>[0];
+
+const UNLOCKED: GuardCheck = { locked: false, retryAfterSec: 0 };
+
+/** guards 未注入时的直通替身（单副本开发形态：爆破防护跳过） */
+const PASS_THROUGH_GUARDS: AuthGuards = {
+  keyGuard: {
+    isLocked: async () => UNLOCKED,
+    recordFailure: async () => UNLOCKED,
+    recordSuccess: async () => undefined,
+  },
+  ipGuard: {
+    isLocked: async () => UNLOCKED,
+    recordFailure: async () => UNLOCKED,
+    recordSuccess: async () => undefined,
+  },
+  trustedProxyHops: 0,
+};
+
+/** 仅业务 401 计失败：读模型故障（infrastructure）不连坐爆破计数 */
+function isUnauthorized(error: unknown): boolean {
+  return (
+    error instanceof Error && (error as { code?: string }).code === HttpErrors.code('unauthorized')
+  );
+}
+
+/** 锁定即拒（锁优先于凭证判定——不对锁定来源继续查读模型） */
+async function assertUnlocked(subject: string, check: GuardCheck): Promise<void> {
+  if (check.locked) {
+    throw HttpErrors.business('unauthorized', {
+      detail: `${subject} locked, retry after ${check.retryAfterSec}s`,
+    });
+  }
+}
+
 export function apiKeyMiddleware(
   reader: AuthReadModel,
   guards: AuthGuards | undefined,
   jwt: { secret: string; issuer: string; audience: string; keyPrefix: string },
 ): MiddlewareHandler<AuthEnv> {
-  const sourceIpOf = (c: Parameters<MiddlewareHandler<AuthEnv>>[0]): string =>
+  const g = guards ?? PASS_THROUGH_GUARDS;
+
+  const sourceIpOf = (c: Context): string =>
     trustedClientIp({
       headers: c.req.raw.headers,
-      trustedProxyHops: guards?.trustedProxyHops ?? 0,
+      trustedProxyHops: g.trustedProxyHops,
       socketAddress: socketAddressFromContext(c),
     });
 
@@ -100,77 +140,20 @@ export function apiKeyMiddleware(
     return payload as unknown as GatewayJwtPayload;
   };
 
-  return async (c, next) => {
-    const header = c.req.header('authorization') ?? '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-
-    // ---- JWT 凭证分支：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点；per-IP 锁前置 ----
-    if (!token.startsWith(jwt.keyPrefix)) {
-      if (!token) throw HttpErrors.business('unauthorized', { detail: 'missing or malformed api key' });
-      if (guards) {
-        const ipLock = await guards.ipGuard.isLocked(sourceIpOf(c));
-        if (ipLock.locked) {
-          throw HttpErrors.business('unauthorized', { detail: `source locked, retry after ${ipLock.retryAfterSec}s` });
-        }
-      }
-      try {
-        const payload = await verifyJwt(token);
-        // 仅支持 app_jwt：操练场（playground）等其他形态一律 401——信任根分离
-        if (payload.typ !== 'app_jwt' || payload.app_id == null || payload.sub == null) {
-          throw HttpErrors.business('unauthorized', { detail: 'unsupported jwt credential type' });
-        }
-        const app = await reader.resolveApp(payload.app_id);
-        if (!app || app.userId !== Number(payload.sub)) {
-          throw HttpErrors.business('unauthorized', { detail: 'app credential inactive' });
-        }
-        c.set('auth', {
-          userId: app.userId,
-          apiKeyId: null,
-          appId: app.id,
-          allowedModels:
-            app.scope?.models != null && app.scope.models.length > 0
-              ? [...app.scope.models]
-              : null,
-          rpmLimit: positive(app.scope?.rpm),
-          tpmLimit: positive(app.scope?.tpm),
-          userRpmLimit: null,
-          userTpmLimit: null,
-        });
-        await next();
-        return;
-      } catch (error) {
-        if (guards && error instanceof Error && (error as { code?: string }).code === HttpErrors.code('unauthorized')) {
-          await guards.ipGuard.recordFailure(sourceIpOf(c));
-        }
-        throw error;
-      }
-    }
-
+  /** 静态 Key 分支：SHA-256 直查读模型；失败 keyHash + IP 双维计数（A8） */
+  const authByKey = async (token: string, ip: string): Promise<AuthContext> => {
     const keyHash = createHash('sha256').update(token).digest('hex');
-
-    if (guards) {
-      const keyLock = await guards.keyGuard.isLocked(keyHash);
-      if (keyLock.locked) {
-        throw HttpErrors.business('unauthorized', { detail: `api key locked, retry after ${keyLock.retryAfterSec}s` });
-      }
-      const ipLock = await guards.ipGuard.isLocked(sourceIpOf(c));
-      if (ipLock.locked) {
-        throw HttpErrors.business('unauthorized', { detail: `source locked, retry after ${ipLock.retryAfterSec}s` });
-      }
-    }
+    await assertUnlocked('api key', await g.keyGuard.isLocked(keyHash));
+    await assertUnlocked('source', await g.ipGuard.isLocked(ip));
 
     const key = await reader.resolveKeyByHash(keyHash);
-    if (!key) {
-      if (guards) {
-        await guards.keyGuard.recordFailure(keyHash);
-        await guards.ipGuard.recordFailure(sourceIpOf(c));
-      }
+    if (key == null) {
+      await g.keyGuard.recordFailure(keyHash);
+      await g.ipGuard.recordFailure(ip);
       throw HttpErrors.business('unauthorized');
     }
-    if (guards) await guards.keyGuard.recordSuccess(keyHash);
-
-    if (c.get('requestId') == null) c.set('requestId', randomUUID());
-    c.set('auth', {
+    await g.keyGuard.recordSuccess(keyHash);
+    return {
       userId: key.userId,
       apiKeyId: key.keyId,
       appId: null,
@@ -179,7 +162,61 @@ export function apiKeyMiddleware(
       tpmLimit: positive(key.tpmLimit),
       userRpmLimit: positive(key.userRpmLimit),
       userTpmLimit: positive(key.userTpmLimit),
-    });
+    };
+  };
+
+  /**
+   * App-JWT 分支：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点，故 per-IP 锁前置；
+   * 失败只计 IP 维（Key 可枚举、JWT 不可——A8）。
+   */
+  const authByJwt = async (token: string, ip: string): Promise<AuthContext> => {
+    if (!token)
+      throw HttpErrors.business('unauthorized', { detail: 'missing or malformed api key' });
+    await assertUnlocked('source', await g.ipGuard.isLocked(ip));
+    try {
+      const payload = await verifyJwt(token);
+      // 仅支持 app_jwt：操练场（playground）等其他形态一律 401——信任根分离
+      if (payload.typ !== 'app_jwt' || payload.app_id == null || payload.sub == null) {
+        throw HttpErrors.business('unauthorized', { detail: 'unsupported jwt credential type' });
+      }
+      const app = await reader.resolveApp(payload.app_id);
+      if (!app || app.userId !== Number(payload.sub)) {
+        throw HttpErrors.business('unauthorized', { detail: 'app credential inactive' });
+      }
+      return {
+        userId: app.userId,
+        apiKeyId: null,
+        appId: app.id,
+        allowedModels:
+          app.scope?.models != null && app.scope.models.length > 0 ? [...app.scope.models] : null,
+        rpmLimit: positive(app.scope?.rpm),
+        tpmLimit: positive(app.scope?.tpm),
+        userRpmLimit: null,
+        userTpmLimit: null,
+      };
+    } catch (error) {
+      if (isUnauthorized(error)) await g.ipGuard.recordFailure(ip);
+      throw error;
+    }
+  };
+
+  return async (c, next) => {
+    const header = c.req.header('authorization') ?? '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    // 分派：keyPrefix 打头 → 静态 Key；其余（含缺头空 token）→ JWT 形态判定。
+    // 鉴权整段包 auth.api_key span（401 = ERROR + 异常记录，观察不吞错）
+    const byKey = token.startsWith(jwt.keyPrefix);
+    const requestId = c.get('requestId');
+    const auth = await withAsyncSpan(
+      getTracer('gateway'),
+      'auth.api_key',
+      {
+        ...(requestId != null ? { 'request.id': requestId } : {}),
+        'auth.kind': byKey ? 'key' : 'jwt',
+      },
+      () => (byKey ? authByKey(token, sourceIpOf(c)) : authByJwt(token, sourceIpOf(c))),
+    );
+    c.set('auth', auth);
     await next();
   };
 }

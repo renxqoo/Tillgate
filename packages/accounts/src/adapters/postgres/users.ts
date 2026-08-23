@@ -118,7 +118,7 @@ export const userQueries: Pick<
     return rows[0] ?? null;
   },
 
-  async updateUser(db, { userId, patch, advanceSessionAnchor }) {
+  async updateUser(db, { userId, patch }) {
     const set: Record<string, unknown> = { updatedAt: nowSql };
     if (patch.displayName !== undefined) set.displayName = patch.displayName;
     if (patch.email !== undefined) set.email = patch.email;
@@ -129,8 +129,9 @@ export const userQueries: Pick<
     if (patch.tpmLimit !== undefined) set.tpmLimit = patch.tpmLimit;
     if (patch.dailySpendLimit !== undefined) set.dailySpendLimit = patch.dailySpendLimit;
     if (patch.isEnterprise !== undefined) set.isEnterprise = patch.isEnterprise;
-    // email 变更 = 身份事实变更:同语句推进会话失效线(v1 单语句原子语义,拆两条开旧会话存活窗口)
-    if (advanceSessionAnchor) set.sessionInvalidBefore = nowSql;
+    // email 变更的会话失效不再直写 users.session_invalid_before(§3.4 唯一所有者 = identity):
+    // admin-patch-user 在同一事务内经 SessionInvalidationPort 推进 identity 吊销线;
+    // 本列冻结只读,待 v1 读链退役后随迁移删除(identity MIGRATION §8 W1)
     const rows = await db
       .update(users)
       .set(set)

@@ -1,20 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { joinUrl } from '../src/join-url.js';
 import { tokenCountOf, TOKENIZE_MAX_CHARS } from '../src/usage/tokenizer.js';
-import { isContextOverflowMessage } from '../src/errors/overflow.js';
 import { registerSweep } from '../src/transport/heartbeat.js';
 import { isRetryable, isDeadCredential, KIND_MECHANICS } from '../src/errors/kinds.js';
-import { failEarlyStream, createStreamEventBus, attachRelayReporting } from '../src/pipeline/stream-report.js';
+import {
+  failEarlyStream,
+  createStreamEventBus,
+  attachRelayReporting,
+} from '../src/pipeline/stream-report.js';
 import { UpstreamError } from '../src/errors/kinds.js';
 import { defineAdapter } from '../src/registry/define-adapter.js';
 import { relayStream } from '../src/transport/relay-stream.js';
 
 describe('join-url 版本段去重', () => {
   it('base 尾段=路径版本段 → 去重；不同则原样；尾斜杠清理', () => {
-    expect(joinUrl('https://h.test/v1', '/v1/chat/completions')).toBe('https://h.test/v1/chat/completions');
-    expect(joinUrl('https://h.test/v1/', '/v1/chat/completions')).toBe('https://h.test/v1/chat/completions');
-    expect(joinUrl('https://h.test/api', '/v1/chat/completions')).toBe('https://h.test/api/v1/chat/completions');
-    expect(joinUrl('https://h.test', '/v1/chat/completions')).toBe('https://h.test/v1/chat/completions');
+    expect(joinUrl('https://h.test/v1', '/v1/chat/completions')).toBe(
+      'https://h.test/v1/chat/completions',
+    );
+    expect(joinUrl('https://h.test/v1/', '/v1/chat/completions')).toBe(
+      'https://h.test/v1/chat/completions',
+    );
+    expect(joinUrl('https://h.test/api', '/v1/chat/completions')).toBe(
+      'https://h.test/api/v1/chat/completions',
+    );
+    expect(joinUrl('https://h.test', '/v1/chat/completions')).toBe(
+      'https://h.test/v1/chat/completions',
+    );
     expect(joinUrl('https://h.test/V2', '/v2/x')).toBe('https://h.test/V2/x'); // 大小写不敏感
   });
 });
@@ -30,22 +41,18 @@ describe('tokenizer 分流', () => {
   });
 });
 
-describe('overflow 消息模式', () => {
-  it('溢出命中 / 非溢出优先排除', () => {
-    expect(isContextOverflowMessage('prompt is too long')).toBe(true);
-    expect(isContextOverflowMessage('This model maximum context length is 4096 tokens')).toBe(true);
-    expect(isContextOverflowMessage('rate limit exceeded')).toBe(false);
-    expect(isContextOverflowMessage('Throttling error: slow')).toBe(false);
-    expect(isContextOverflowMessage('random')).toBe(false);
-  });
-});
-
 describe('heartbeat 全局扫描器', () => {
   it('注册-检查-注销；false 返回自动注销；空表停表', async () => {
     let checks = 0;
-    const off = registerSweep(() => { checks += 1; return true; });
+    const off = registerSweep(() => {
+      checks += 1;
+      return true;
+    });
     let once = 0;
-    const off2 = registerSweep(() => { once += 1; return false; }); // 立即注销
+    const off2 = registerSweep(() => {
+      once += 1;
+      return false;
+    }); // 立即注销
     await new Promise((r) => setTimeout(r, 350));
     off();
     off2();
@@ -80,14 +87,33 @@ describe('stream-report 深支', () => {
   });
   it('attachRelayReporting：done → success 事件带 usage/features', async () => {
     const bus = createStreamEventBus(() => {}, {});
-    const handle = relayStream(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}\n\n')); c.enqueue(new TextEncoder().encode('data: [DONE]\n\n')); c.close(); } }), { heartbeatIdleMs: 60_000, inactivityTimeoutMs: 60_000 });
+    const handle = relayStream(
+      new ReadableStream({
+        start(c) {
+          c.enqueue(
+            new TextEncoder().encode(
+              'data: {"choices":[{"delta":{"content":"hi"}}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}}\n\n',
+            ),
+          );
+          c.enqueue(new TextEncoder().encode('data: [DONE]\n\n'));
+          c.close();
+        },
+      }),
+      { heartbeatIdleMs: 60_000, inactivityTimeoutMs: 60_000 },
+    );
     attachRelayReporting(handle, { bus, requestId: 'r', channelKey: 'k', startedAt: Date.now() });
     await new Response(handle.stream).text();
     const seen: string[] = [];
     const events: unknown[] = [];
-    (bus as unknown as { subscribe: (cb: (e: unknown) => void) => void }).subscribe((e) => { events.push(e); seen.push((e as { type: string }).type); });
+    (bus as unknown as { subscribe: (cb: (e: unknown) => void) => void }).subscribe((e) => {
+      events.push(e);
+      seen.push((e as { type: string }).type);
+    });
     expect(seen[seen.length - 1]).toBe('success');
-    const success = events.find((e) => (e as { type: string }).type === 'success') as { usage?: { inputTokens: number }; outputFeatures?: { wordSegments: number } };
+    const success = events.find((e) => (e as { type: string }).type === 'success') as {
+      usage?: { inputTokens: number };
+      outputFeatures?: { wordSegments: number };
+    };
     expect(success?.usage?.inputTokens).toBe(2);
     expect(success?.outputFeatures).toBeDefined();
   });
@@ -107,8 +133,16 @@ describe('define-adapter 深支：默认件带签名钩子的 pick 路径', () =
       mapError = () => new UpstreamError({ kind: 'upstream_error' });
     })();
     void base;
-    const combo = defineAdapter({ protocol: 'combo2', addressing: { signRequest: () => ({ 'x-s': '1' }) } as never });
-    const h = await combo.signRequest?.({ url: new URL('https://t/x'), body: '', apiKey: 'k', at: new Date() });
+    const combo = defineAdapter({
+      protocol: 'combo2',
+      addressing: { signRequest: () => ({ 'x-s': '1' }) } as never,
+    });
+    const h = await combo.signRequest?.({
+      url: new URL('https://t/x'),
+      body: '',
+      apiKey: 'k',
+      at: new Date(),
+    });
     expect(h).toMatchObject({ 'x-s': '1' });
   });
 });

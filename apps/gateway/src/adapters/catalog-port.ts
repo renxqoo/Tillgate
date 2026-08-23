@@ -18,7 +18,11 @@ import {
   postgresChannelStore,
   postgresRateCardStore,
 } from '@tokenlens/control-plane/composition';
-import type { ActiveMappingRow, RouteCandidateRow, UserRateCardContext } from '@tokenlens/control-plane';
+import type {
+  ActiveMappingRow,
+  RouteCandidateRow,
+  UserRateCardContext,
+} from '@tokenlens/control-plane';
 import { controlPlaneErrors } from '@tokenlens/control-plane';
 import {
   measurementOf,
@@ -38,9 +42,7 @@ import type {
 const PRICING_UNITS: ReadonlySet<string> = new Set(['token', 'request', 'image', 'second', 'char']);
 
 function policyFingerprint(policy: Record<string, unknown> | null): string | null {
-  return policy != null
-    ? createHash('sha256').update(JSON.stringify(policy)).digest('hex')
-    : null;
+  return policy != null ? createHash('sha256').update(JSON.stringify(policy)).digest('hex') : null;
 }
 
 /** 用户卡上下文 → billing 系数快照（scope 行折叠为两张表） */
@@ -75,9 +77,9 @@ function toSnapshotRow(
   const snapshot = card != null ? toSnapshot(card) : null;
   const billingConfig = row.billingConfig as Parameters<typeof strategyOf>[0];
   // 计量上界（层 1）：按映射声明的 pricingUnit 从请求体推（token 模型恒 0）
-  const measured = measurementOf(row.pricingUnit as Parameters<typeof measurementOf>[0]).unitsUpperBoundOf(
-    body as Record<string, unknown>,
-  );
+  const measured = measurementOf(
+    row.pricingUnit as Parameters<typeof measurementOf>[0],
+  ).unitsUpperBoundOf(body as Record<string, unknown>);
   // 预扣保底（层 3）：只抬不降（视频「至少 5 秒的钱」/图片「至少 1 张的钱」）
   const reservation = billingConfig.reservation ?? {};
   const unitFloor = reservationStrategyOf(reservation).unitFloorOf(reservation);
@@ -140,7 +142,10 @@ export interface CatalogStores {
 
 export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
   return {
-    async findMapping(externalModel, pricing: CatalogPricingContext): Promise<ModelMappingSnapshot | null> {
+    async findMapping(
+      externalModel,
+      pricing: CatalogPricingContext,
+    ): Promise<ModelMappingSnapshot | null> {
       const row = await stores.models.findActiveByExternalName(externalModel);
       if (row == null) return null;
       const card = await stores.rateCards.findActiveCardByUser(pricing.userId);
@@ -167,4 +172,3 @@ export function createPostgresGatewayCatalog(db: Db): CatalogPort {
     },
   });
 }
-

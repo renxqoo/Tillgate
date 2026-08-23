@@ -19,8 +19,10 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarSeparator,
   useSidebar,
 } from '@tokenlens/ui';
+import { Fragment } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -135,27 +137,32 @@ export function NavMain({ items }: NavMainProps) {
 
   return (
     <>
-      {items.map((group) => (
-        <SidebarGroup key={group.id}>
-          {group.label && (
-            <SidebarGroupLabel className="group-data-[collapsible=icon]:pointer-events-none">
-              {group.label}
-            </SidebarGroupLabel>
-          )}
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((item) => (
-                <NavItem
-                  key={item.id}
-                  item={item}
-                  isItemActive={isItemActive}
-                  isSubItemActive={isSubItemActive}
-                  isSubmenuOpen={isSubmenuOpen}
-                />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {items.map((group, index) => (
+        <Fragment key={group.id}>
+          {index > 0 ? (
+            <SidebarSeparator className="w-auto! group-data-[collapsible=icon]:hidden" />
+          ) : null}
+          <SidebarGroup className={index === 0 ? 'pb-1' : 'py-1'}>
+            {group.label && (
+              <SidebarGroupLabel className="group-data-[collapsible=icon]:pointer-events-none">
+                {group.label}
+              </SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => (
+                  <NavItem
+                    key={item.id}
+                    item={item}
+                    isItemActive={isItemActive}
+                    isSubItemActive={isSubItemActive}
+                    isSubmenuOpen={isSubmenuOpen}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </Fragment>
       ))}
     </>
   );

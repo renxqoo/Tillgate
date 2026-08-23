@@ -1,3 +1,5 @@
+'use client';
+
 // 确认对话框: 危险/不可逆操作二次确认。
 // 行为契约: onConfirm resolve 后自动关闭; reject 时保持打开并把错误交给 onError(未提供则原样上抛)。
 import { TriangleAlertIcon } from 'lucide-react';

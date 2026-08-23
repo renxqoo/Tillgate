@@ -15,7 +15,12 @@ import { GatewayErrors } from '../openai-error-face';
 
 function invalidBody(json: (b: unknown, s: 400) => Response, issues: { message?: string }[]) {
   return json(
-    { error: { code: GatewayErrors.code('invalid_body'), message: issues[0]?.message ?? 'invalid request body' } },
+    {
+      error: {
+        code: GatewayErrors.code('invalid_body'),
+        message: issues[0]?.message ?? 'invalid request body',
+      },
+    },
     400,
   );
 }
@@ -49,11 +54,15 @@ function taskResponse(task: {
   return { ...common, audio_url: artifact.url ?? null };
 }
 
-export function generationRoutes(deps: { inference: Inference; rateLimit?: RateLimitGate }): Hono<AuthEnv> {
+export function generationRoutes(deps: {
+  inference: Inference;
+  rateLimit?: RateLimitGate;
+}): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
   const submit =
-    (kind: 'video' | 'music', schema: typeof videoSchema | typeof musicSchema) => async (c: Context<AuthEnv>) => {
+    (kind: 'video' | 'music', schema: typeof videoSchema | typeof musicSchema) =>
+    async (c: Context<AuthEnv>) => {
       const raw = await c.req.json().catch(() => null);
       const parsed = schema.safeParse(raw);
       if (!parsed.success) return invalidBody(c.json.bind(c), parsed.error.issues);
@@ -84,7 +93,12 @@ export function generationRoutes(deps: { inference: Inference; rateLimit?: RateL
         }
         // new-api 形状（提交受理即 201）
         return c.json(
-          { id: result.taskId, object: kind, model: (parsed.data as { model: string }).model, status: 'queued' },
+          {
+            id: result.taskId,
+            object: kind,
+            model: (parsed.data as { model: string }).model,
+            status: 'queued',
+          },
           201,
         );
       } catch (error) {

@@ -8,6 +8,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from '@tokenlens/ui';
 import Link from 'next/link';
 
@@ -40,7 +41,7 @@ export function AppSidebar({
   }));
 
   return (
-    <Sidebar {...props}>
+    <Sidebar variant="inset" collapsible="icon" {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -73,6 +74,7 @@ export function AppSidebar({
           }}
         />
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }

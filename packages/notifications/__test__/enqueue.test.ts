@@ -25,6 +25,19 @@ describe('enqueue', () => {
     expect((tooLong as { code: string }).code).toBe('notifications.invalid_outbox_input');
   });
 
+  it('payload 数组形状 → invalid_outbox_input（typeof object 放过数组的口子收紧）', async () => {
+    const { facade, memory } = buildFacade();
+    const arrayPayload = await facade
+      .enqueue({
+        event: 'billing_dead',
+        payload: [1, 2, 3] as unknown as Record<string, unknown>,
+        dedupeKey: 'arr-1',
+      })
+      .catch((e: unknown) => e);
+    expect((arrayPayload as { code: string }).code).toBe('notifications.invalid_outbox_input');
+    expect(memory.pendingRows()).toHaveLength(0); // 无行落库
+  });
+
   it('同 dedupeKey 幂等:仍一行(onConflictDoNothing 机制面)', async () => {
     const { facade, memory } = buildFacade();
     const input = {

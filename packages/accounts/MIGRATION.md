@@ -104,31 +104,38 @@
 | users.password_hash 写入方                                                                                                                                | identity           | 建号后本地账号暂无密码(与 v1 并行期语义差异,已声明)       |
 | 迁移链空库装配(本单元实测:drizzle 链依赖 identity-core/wallet/ledger provision 先建外部表;drizzle-kit push 亦因 ledger_operations 的 FK/唯一约束形态失败) | P3「空库升级」     | real 门暂用账号域 DDL fixture;链可空库装配后 fixture 退役 |
 
+**回销注记(2026-08-23)**:上表前三行已由后续波兑现——①开户赠送/推荐奖励入账经
+gateway `adapters/funding-resolver.ts` 桥接 billing(billing IMPLEMENTATION §8-2 挂账兑现);
+②佣金日结/返利投影落 `billing/src/application/referral-commission.ts` +
+`adapters/postgres/commission-stats.ts`,管理面经 admin-api referrals 路由;③组织随购买
+同事务诞生落 billing subscriptions 用例。仍开放的只有 users.password_hash 写入方
+(identity W1)与迁移链空库装配两行。
+
 ## 5. 测试迁移矩阵(§9.3 模板;旧测试 = 行为判定标准)
 
-| 旧仓测试(client-api/__tests__) | 新去处 | 动作 |
-|---|---|---|
-| orgs.test.ts(12 用例) | application-orgs + application-race-branches | 改写(service 层 → facade;B5 追加 active-only 回归) |
-| keys.test.ts(7) | application-keys | 改写(网关凭据断言改经 resolveKeyByHash 同口径) |
-| apps.test.ts(5) | application-apps | 改写 |
-| referrals.test.ts(11) | application-referral + domain-org-referral-marketing | 改写(aff 纯规则入 domain 套件;broken wallet 手法保留) |
-| auth / auth-code / oauth.test.ts | 不迁 | identity 波次(凭据/挑战/会话,§4 待办);仅建号断言入 application-provision |
-| app / e2e-user-journey / e2e-org-team / e2e-cross-app / e2e-oauth | 不迁 | 跨进程 E2E 归根 e2e/(P5);账号断言已按单元拆入 application-* |
-| frontend-contract.test.ts | 不迁 | wire contract 归 app contracts(P5) |
-| payments / redeem.test.ts | 不迁 | billing 波次 |
+| 旧仓测试(client-api/**tests**)                                    | 新去处                                               | 动作                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| orgs.test.ts(12 用例)                                             | application-orgs + application-race-branches         | 改写(service 层 → facade;B5 追加 active-only 回归)                       |
+| keys.test.ts(7)                                                   | application-keys                                     | 改写(网关凭据断言改经 resolveKeyByHash 同口径)                           |
+| apps.test.ts(5)                                                   | application-apps                                     | 改写                                                                     |
+| referrals.test.ts(11)                                             | application-referral + domain-org-referral-marketing | 改写(aff 纯规则入 domain 套件;broken wallet 手法保留)                    |
+| auth / auth-code / oauth.test.ts                                  | 不迁                                                 | identity 波次(凭据/挑战/会话,§4 待办);仅建号断言入 application-provision |
+| app / e2e-user-journey / e2e-org-team / e2e-cross-app / e2e-oauth | 不迁                                                 | 跨进程 E2E 归根 e2e/(P5);账号断言已按单元拆入 application-*              |
+| frontend-contract.test.ts                                         | 不迁                                                 | wire contract 归 app contracts(P5)                                       |
+| payments / redeem.test.ts                                         | 不迁                                                 | billing 波次                                                             |
 
-| 旧仓测试(admin-api/__tests__) | 新去处 | 动作 |
-|---|---|---|
-| users.test.ts(11) | application-profile-admin + postgres-store.real | 改写(钱包富化断言拆归 G1;哈希泄漏红线保留) |
-| keys.test.ts(2) | application-keys(管理面) | 改写 |
-| marketing.test.ts(6) | application-marketing + postgres-store.real | 改写(q 搜索断言 v1 未写完(admin marketing.test.ts:137 `void frag`),本仓补齐) |
-| e2e-login / e2e-cross-app | 不迁 | 根 e2e/(P5) |
+| 旧仓测试(admin-api/**tests**) | 新去处                                          | 动作                                                                         |
+| ----------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------- |
+| users.test.ts(11)             | application-profile-admin + postgres-store.real | 改写(钱包富化断言拆归 G1;哈希泄漏红线保留)                                   |
+| keys.test.ts(2)               | application-keys(管理面)                        | 改写                                                                         |
+| marketing.test.ts(6)          | application-marketing + postgres-store.real     | 改写(q 搜索断言 v1 未写完(admin marketing.test.ts:137 `void frag`),本仓补齐) |
+| e2e-login / e2e-cross-app     | 不迁                                            | 根 e2e/(P5)                                                                  |
 
-| 旧仓测试(gateway / worker) | 新去处 | 动作 |
-|---|---|---|
-| gateway oauth-appjwt.test.ts(App JWT 契约) | application-apps(resolveApp/verifyAppClient);签发端契约留 gateway | 拆分 |
-| gateway e2e-auth-audit / e2e-attack | 不迁 | 根 e2e/security(P5) |
-| worker referral.test.ts | 不迁 | billing/worker 波次(佣金日结;accounts 的 settings/关系读模型已备) |
+| 旧仓测试(gateway / worker)                 | 新去处                                                            | 动作                                                                                                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| gateway oauth-appjwt.test.ts(App JWT 契约) | application-apps(resolveApp/verifyAppClient);签发端契约留 gateway | 拆分                                                                                                                                                                                                                              |
+| gateway e2e-auth-audit / e2e-attack        | 不迁                                                              | 根 e2e/security(P5)                                                                                                                                                                                                               |
+| worker referral.test.ts                    | 不迁                                                              | **已核销（worker 波 2026-08-23）**：billing U7 `createReferralCommissionUseCase`（rate 经 composition `createPostgresAccountStore().getMarketingSettings` 读现值、refId 用本包 `commissionRefId`）；worker app jobs/referral 驱动 |
 
 新增门禁(老仓没有):architecture.test.ts(分层依赖白名单 + 出口封闭)、
 domain-contract.test.ts(状态词表与 db 逐项相等、错误目录封闭、出口快照)、
@@ -142,3 +149,11 @@ postgres-store.real.test.ts(仓储级真实 PG 语义——补齐老仓 reposito
 
 本单元在新仓新建包 + http 生成器搬迁,无生产调用方切换——revert 即整体还原;
 老仓只读未动。DDL 零变更(B8 保留惰性过期即为此)。
+
+## 8. 收口补充(会话吊销唯一真相,§3.4)
+
+- email 变更不再直写 `users.session_invalid_before`:admin-patch-user 在同一事务内经
+  `SessionInvalidationPort`(必填装配,生产由 app assembly 桥接 identity anchors advance)推进吊销线;
+  列冻结只读,随 v1 读链退役后以迁移删除(与 identity MIGRATION §8 W1 同口径)。
+- 事务原子性:port 失败随业务事务回滚(单测「会话失效 bridge 失败随业务事务回滚」锁定);
+  `AccountStorePort` 契约移至 `./composition` 子出口(§5.3)。

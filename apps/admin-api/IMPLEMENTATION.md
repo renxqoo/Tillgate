@@ -1,6 +1,6 @@
 # @tokenlens/admin-api 施工图
 
-> 状态：本波范围已完成（2026-08-23;P1–P7 pending 见 §3）；设计基线见 [DESIGN.md](./DESIGN.md)，v1 行为规格映射见 [MIGRATION.md](./MIGRATION.md)。
+> 状态：本波范围已完成;P1–P7 已全部核销（2026-08-23,见 §3 与 §4 收口复测;P7 全量收口:e2e 五旅程 + OpenAPI 生成链,见 §3 P7 行）。设计基线见 [DESIGN.md](./DESIGN.md)，v1 行为规格映射见 [MIGRATION.md](./MIGRATION.md)。
 > 施工纪律：本波只创建 `apps/admin-api/**` + 修改 `.env.example`；`packages/*` 与根文件带并行
 > gateway 波未提交改动（铁律 15），一律不碰；bun.lock 不入本波提交。
 
@@ -9,6 +9,9 @@
 - 目录 = 目标树 `src/{index,config,assembly,app,shutdown}.ts + src/http/{contracts,routes,middleware,presenters}/ + error-face.ts`。
 - 测试按铁律 14 落包根 `__test__/` 平铺（目标树草图 `test/{contract,integration}` 由铁律 14 统一，
   trace-receiver 先例已记录）。
+- 端到端旅程在仓根 `e2e/admin/`（P5「跨进程旅程归 e2e/」;独立 vitest 配置,经 `bun run test:e2e`
+  从本包运行——依赖闭包经 admin-api;gateway 先例的 e2e/node_modules 符号链接不含 identity）。
+  包内 `__test__/admin-api.real.test.ts` 保留为装配冒烟（非旅程）。
 - 增设 `src/adapters/{upstream-probe,funding-resolver,accounts-bridges}.ts`：装配面桥接件（gateway DESIGN
   同口径，计入 assembly 面——仅 assembly.ts 可引用，architecture 测试锁定；accounts-bridges = D9/D10/G1 三桥）。
 
@@ -22,58 +25,60 @@ v1 funds.service 编排面）、`http/contracts/models.ts`（v1 models.ts zod �
 
 ## 1. 逐文件裁决表（旧 → 新）
 
-| v1（ai-getway/apps/admin-api/src） | v2（apps/admin-api/src） | 裁决 |
-| --- | --- | --- |
-| `index.ts` | `index.ts` | 平移：config→assembly→app→serve→信号接线 |
-| `config.ts` | `config.ts` | 重写：zod v4 + secretSchema + control-plane/fx/billing 旋钮 + DB 池常量 |
-| `assembly.ts`（19 个 service 直组） | `assembly.ts` + `adapters/*` | 重写：能力包 facade 装配 + 审计桥（G1）+ capabilities/probe 注入 |
-| `shutdown.ts` | `shutdown.ts` | 形态化：组装 `runtime.createShutdown` 参数（目标树显式文件） |
-| `app.ts`（路由挂载 + v1 错误映射表） | `app.ts` + `http/error-face.ts` | 拆分：路由挂载留 app；错误面入 v2 目录体系（composeErrorCatalogs，无 instanceof 翻译表） |
-| `middleware/session.ts` | `http/middleware/session.ts` | 平移：Bearer → `identity.sessions.validate('admin')`；属主回查 P2 |
-| `middleware/protocol.ts` | `http/middleware/protocol.ts` | 消费货架：`@tokenlens/http` requestId/securityHeaders/cors/bodyLimit |
-| `http/error-map.ts` | 删除 | 病灶 E1/E3（instanceof 翻译表）→ errors 目录体系 |
-| `http/list-query.ts` | 消费 `@tokenlens/http` listQuerySchema + 各 contracts 白名单校验 | 白名单 400 语义由 contracts 层保持 |
-| `http/money-schema.ts` | `http/contracts/common.ts` | 平移（金额 = 十进制字符串，禁 IEEE-754） |
-| `routes/users.ts` | `http/routes/users.ts` + `users-funds.ts` + `contracts/users.ts` + `presenters/users.ts` | 拆分；PATCH 的 creditLimit 拆给 wallet.setCreditLimit（app 组合） |
-| `routes/keys.ts` | `http/routes/keys.ts` + `contracts/keys.ts` + `presenters/keys.ts` | 平移（D3 偏差见 DESIGN §5） |
-| `routes/providers.ts` / `channels.ts` / `models.ts` / `rate-cards.ts` / `fx.ts` / `catalog.ts` | `http/routes/*.ts` 同名 + contracts/presenters | 平移（zod 契约原样收口；service 层删——control-plane 承接） |
-| `routes/channel-funds.ts` | `http/routes/channel-funds.ts` | 平移（control-plane recharge/adjust/listRecharges） |
-| `routes/subscriptions.ts` | `http/routes/subscriptions.ts` | 动词平移；`GET /v1/subscriptions` P1（D7） |
-| `routes/tracing.ts` | `http/routes/tracing.ts` | 平移（observability.traces 信封已吸收 v1 service，S1/B8 已修） |
-| `routes/ops.ts`（logs/audit 子集） | `http/routes/ops-logs.ts` | 子集平移；usage/stats/orders/tasks 族 P4 |
-| `routes/auth.ts`/`me.ts`/`marketing.ts`/`referrals.ts`/`vouchers.ts`/`notifications.ts`/`redeem.ts`/`plans.ts`/`billing-operations.ts` | — | P2/P3/P1/P5（见 §3） |
-| `services/*.service.ts`（21 个） | — | 业务已在 P4 能力包承接；跨包编排（funds）入 users-funds 路由 |
-| `domain/{catalog,model-pricing}.ts` | — | control-plane 领域层承接 |
-| `routes/ctx.ts`（adminCtxOf） | `http/middleware/session.ts` 导出 `controlContextOf` | 形状转换归中间件层 |
+| v1（ai-getway/apps/admin-api/src）                                                                                                     | v2（apps/admin-api/src）                                                                 | 裁决                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `index.ts`                                                                                                                             | `index.ts`                                                                               | 平移：config→assembly→app→serve→信号接线                                                 |
+| `config.ts`                                                                                                                            | `config.ts`                                                                              | 重写：zod v4 + secretSchema + control-plane/fx/billing 旋钮 + DB 池常量                  |
+| `assembly.ts`（19 个 service 直组）                                                                                                    | `assembly.ts` + `adapters/*`                                                             | 重写：能力包 facade 装配 + 审计桥（G1）+ capabilities/probe 注入                         |
+| `shutdown.ts`                                                                                                                          | `shutdown.ts`                                                                            | 形态化：组装 `runtime.createShutdown` 参数（目标树显式文件）                             |
+| `app.ts`（路由挂载 + v1 错误映射表）                                                                                                   | `app.ts` + `http/error-face.ts`                                                          | 拆分：路由挂载留 app；错误面入 v2 目录体系（composeErrorCatalogs，无 instanceof 翻译表） |
+| `middleware/session.ts`                                                                                                                | `http/middleware/session.ts`                                                             | 平移：Bearer → `identity.sessions.validate('admin')`；属主回查 P2                        |
+| `middleware/protocol.ts`                                                                                                               | `http/middleware/protocol.ts`                                                            | 消费货架：`@tokenlens/http` requestId/securityHeaders/cors/bodyLimit                     |
+| `http/error-map.ts`                                                                                                                    | 删除                                                                                     | 病灶 E1/E3（instanceof 翻译表）→ errors 目录体系                                         |
+| `http/list-query.ts`                                                                                                                   | 消费 `@tokenlens/http` listQuerySchema + 各 contracts 白名单校验                         | 白名单 400 语义由 contracts 层保持                                                       |
+| `http/money-schema.ts`                                                                                                                 | `http/contracts/common.ts`                                                               | 平移（金额 = 十进制字符串，禁 IEEE-754）                                                 |
+| `routes/users.ts`                                                                                                                      | `http/routes/users.ts` + `users-funds.ts` + `contracts/users.ts` + `presenters/users.ts` | 拆分；PATCH 的 creditLimit 拆给 wallet.setCreditLimit（app 组合）                        |
+| `routes/keys.ts`                                                                                                                       | `http/routes/keys.ts` + `contracts/keys.ts` + `presenters/keys.ts`                       | 平移（D3 偏差见 DESIGN §5）                                                              |
+| `routes/providers.ts` / `channels.ts` / `models.ts` / `rate-cards.ts` / `fx.ts` / `catalog.ts`                                         | `http/routes/*.ts` 同名 + contracts/presenters                                           | 平移（zod 契约原样收口；service 层删——control-plane 承接）                               |
+| `routes/channel-funds.ts`                                                                                                              | `http/routes/channel-funds.ts`                                                           | 平移（control-plane recharge/adjust/listRecharges）                                      |
+| `routes/subscriptions.ts`                                                                                                              | `http/routes/subscriptions.ts`                                                           | 动词平移；`GET /v1/subscriptions` P1（D7）                                               |
+| `routes/tracing.ts`                                                                                                                    | `http/routes/tracing.ts`                                                                 | 平移（observability.traces 信封已吸收 v1 service，S1/B8 已修）                           |
+| `routes/ops.ts`（logs/audit 子集）                                                                                                     | `http/routes/ops-logs.ts`                                                                | 子集平移；usage/stats/orders/tasks 族 P4                                                 |
+| `routes/auth.ts`/`me.ts`/`marketing.ts`/`referrals.ts`/`vouchers.ts`/`notifications.ts`/`redeem.ts`/`plans.ts`/`billing-operations.ts` | —                                                                                        | P2/P3/P1/P5（见 §3）                                                                     |
+| `services/*.service.ts`（21 个）                                                                                                       | —                                                                                        | 业务已在 P4 能力包承接；跨包编排（funds）入 users-funds 路由                             |
+| `domain/{catalog,model-pricing}.ts`                                                                                                    | —                                                                                        | control-plane 领域层承接                                                                 |
+| `routes/ctx.ts`（adminCtxOf）                                                                                                          | `http/middleware/session.ts` 导出 `controlContextOf`                                     | 形状转换归中间件层                                                                       |
 
 ## 2. 施工顺序（本波）
 
 1. 脚手架（package.json/tsconfig/vitest.config）→ 2. config → 3. adapters →
-4. assembly（含审计桥）→ 5. error-face/中间件 → 6. contracts → 7. presenters →
-8. routes → 9. app/shutdown/index → 10. architecture/config/assembly/session 测试 →
-11. 按域契约测试 → 12. real 冒烟 → 13. 四门禁 + boundaries → 14. .env.example + 提交。
+2. assembly（含审计桥）→ 5. error-face/中间件 → 6. contracts → 7. presenters →
+3. routes → 9. app/shutdown/index → 10. architecture/config/assembly/session 测试 →
+4. 按域契约测试 → 12. real 冒烟 → 13. 四门禁 + boundaries → 14. .env.example + 提交。
 
 ## 3. Pending 清单（后续波次，等并行 gateway 波提交后可立即开工）
 
-| # | 事项 | 依赖/接缝 |
-| --- | --- | --- |
-| P1 | billing 四接缝 + 路由：plans CRUD（`/v1/plans`）、订阅管理列表（`GET /v1/subscriptions`）、兑换批次族（`/v1/redeem-batches*`）、死信单笔复审（`GET /v1/billing-operations?status=dead` + `retry/abandon`，expectedRevision 乐观锁） | 改 `packages/billing/{package.json,src/index.ts}` 等带未提交改动文件（碰撞） |
-| P2 | 登录面：`POST /v1/auth/login`（含 2FA 邮箱码）/`login/verify`/`logout`、`GET /v1/me`、`POST /v1/me/password`、`POST /v1/me/two-factor`、`POST /v1/users/:id/set-password`（D6） | identity W2 编排 + control-plane G2 `application/admins` + Redis 爆破件 + 属主回查 W3 |
-| P3 | marketing/referrals 路由（accounts 动词已齐） | 本包无接缝，纯路由波 |
-| P4 | ops 读侧：usage-logs/stats×3/channel-ttft/generation-tasks/payment-orders(+close) | billing/inference 读侧接缝（observability IMPLEMENTATION §7 记档） |
-| P5 | vouchers/notifications 路由 | control-plane voucherStorage 读出口 / `@tokenlens/notifications` |
-| P6 | `ai` 根出口补 `vendorProfileNames`（1 行）→ capabilities 全词表 + `/v1/vendor-catalog`（D1） | `packages/ai/src/index.ts` 带未提交改动（碰撞） |
-| P7 | e2e 五旅程搬迁（`e2e/admin-journey`、`e2e/billing-recovery`）与 OpenAPI→api-client 生成链 | 全 app 就位 + 总纲 P3/P6 |
+| #                  | 事项                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 依赖/接缝                                                                             |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| P1 ✅(代码)⏸(提交) | billing 四接缝 + 路由（plans CRUD/订阅管理列表/兑换批次族/死信单笔复审）——**代码已完成、双包门禁与 e2e 全绿**（包侧 `packages/billing/MIGRATION-U6.md`；app 侧 contracts/billing-admin + routes/{plans,redeem,billing-operations} + subscriptions 列表 + presenters/billing）。**提交挂起**：实施期间并行 worker 波（U7）进入 `packages/billing` 同一批共享文件（settlement/billing/index/subscriptions/ports）携带未提交语义变更——铁律 15「混有他人未提交变更的文件不提交，留待对方收口」；工作区完整可续，U7 落地后整段提交 | 2026-08-23 更新：U7 已落地（MIGRATION-U7.md 在案），碰撞解除，仅剩提交动作 |
+| P2 ✅(2026-08-23) | 登录面——**已落地**：`routes/{auth,me}` + users set-password（D6 全语义：本地账号守卫/绑标准卡缺系数回填 1.000/identity user realm 重置=全网下线）；编排 = identity（鉴别哑哈希防枚举/挑战 admin_login_code/会话）+ control-plane G2 `application/admins`（资料/状态/2FA 开关）+ runtime Redis 双闸（(email,ip) 键+IP,不可达 fail-closed 503）+ session 属主回查（D8/W3 兑现）+ FaceOverride（invalid_credentials 与凭据行漂移码统一 401）；identity 审计桥（observability G1 剩余半边）+ SMTP mailer 适配器 + 登录三审计 best-effort；config +REDIS_URL/TRUSTED_PROXY_HOPS/ADMIN_LOGIN_*/JWT_SECRET/SMTP_*；存量凭据迁移脚本 `scripts/migrate-admin-credentials.ts`（identity MIGRATION W1 兑现：salt:hash:N:r:p→scrypt:N:r:p:salt:hash 机械转换,幂等）。门禁：117/117、tsc 0、lint 0-0、覆盖率 97.01/85.46/90.78/97.21（≥90/85） | realms 含 user（仅失效线推进,无签发路径——sessions.user 占位仅词表一致性）;admins.password_hash 冻结只读 |
+| P3 ✅(2026-08-23) | marketing/referrals 路由——**已落地**：`routes/{marketing,referrals}` + `contracts/marketing`（金额/费率正则逐字随迁）；关系列表/封禁恢复走 accounts 四动词；返利流水 `GET /v1/referrals/payouts` 经 billing U8 新接缝 `wallet.referralPayouts`（accounts G3「payouts 归 billing」兑现）。门禁：81/81、覆盖率 97.92/87/94.08/97.9 | billing U8（§9）已随波落地；关系列表 commissionTotal 不再出列（accounts B3/G3 裁决） |
+| P4 ✅(2026-08-23) | ops 读侧：usage-logs/stats×3/channel-ttft/generation-tasks/payment-orders(+close)——**已落地**：8 端点拆 `routes/{ops-usage,ops-tasks,ops-orders}` + `presenters/ops.ts` + `contracts/inference.ts`（kind/status 词表自 inference 包单一真相）;usage/stats 五端点走 observability 新 `usage` facet（北京日界/estimated 显式布尔/hours 容错收口逐字随迁 v1）;generation-tasks 走 inference `adminList/settledAmounts`（settled 页内批量回填;epoch→ISO 保 v1 wire）;payment-orders 走 billing U9 `createPaymentAdminApi`（close 无请求体,409=order_state_conflict,关单文案装配注入）。门禁：P4 域 12/12 用例全绿、文件覆盖 100%;**全 app 门禁被并行 P2 半成品阻断**（config.ts 新增 REDIS_URL/JWT_SECRET 必填 vs 其测试未适配：tsc 16 错/vitest 6 失败/覆盖率 assembly 8%——全部位于 P2 域,本波文件零缺陷,待 P2 收口后四门复跑） | observability §8 / inference 附录 2 / billing §10 U9（三包加法记录在案）                |
+| P5 ✅(2026-08-23) | vouchers/notifications 路由——**已落地**：`GET /v1/vouchers/:key`（control-plane channels 组新动词 `loadVoucher`，键校验在 storage）；`/v1/notifications` CRUD+test 五路由经 `@tokenlens/notifications` facade（互斥 refine/events 词表封闭/type 不可改逐字随迁 v1；ctx actor=admin；投递归 worker）。装配：notifications facade（cipher/urlGuard/assertSafeUrl 复用；emailSender 不注入 = admin 面无 SMTP；DispatchConfig 装配字面量——无投递路径）；config +`ADMIN_WEBHOOK_ALLOW_LOCAL_URL`。门禁：85/85、覆盖率 97.73/85.66/93.37/97.7、real 冒烟 1/1 | control-plane `channels.loadVoucher`（本波加法）；错误目录 +`admin.voucher_not_found`、+notifications 目录合成 |
+| P6                 | `ai` 根出口补 `vendorProfileNames`（1 行）→ capabilities 全词表 + `/v1/vendor-catalog`（D1）                                                                                                                                                                                                                                                                                                                                                                                                                                  | `packages/ai/src/index.ts` 带未提交改动（碰撞）                                       |
+| P7 ✅(2026-08-23) | e2e 五旅程搬迁——**已落地**（v1 五个 e2e 全数归仓根 `e2e/`）：`e2e/admin/journey`（6/6,admin 侧四旅程合并）、`e2e/client-journey/`（用户旅程三件）、`e2e/cross-app/`（v1 e2e-cross-app:管理动作→用户面即时生效,client 真进程 + admin in-process 共库,2/2）、`e2e/billing-recovery/`（v1 e2e-worker ⑯ 三环:settle/generation runner 直驱 + scheduler 停机语义,3/3）;两新目录各自 `bun x vitest run` 连跑两次全绿。随修:e2e/admin/kit 补 P2 后必填 JWT_SECRET（此前 6/6 挂）;inference `upstream-ai.queryTask` 补 v1 迁移缺口（succeeded 带 fileId 无 url 时经 files/retrieve 二次换取——video 生成产物 url 丢失,回归用例在包内 upstream-ai.test）。OpenAPI→api-client 生成链**同波落地**（总纲 P3/P6）:本 app `src/http/openapi/` registry（13 域,**94 端点全量**——请求 schema 复用 contracts zod 实例,响应 schema 单一真相自手写 DTO 迁入 registry）→ `bun run generate:openapi` → `generated/openapi.json`（OpenAPI 3.1,614KB,产物入库）→ api-client `bun run generate:dto` → `src/dto/admin-api.generated.ts`（44 导出名与手写版逐名相等——消费方零改动实证:apps/admin tsc 0）;门禁:openapi.test（字节级重生成相等 + 94 端点封闭词表 + 3.1 基本面）与 api-client generated-dto.test（GENERATED 标记 + 字节级重生成 + 导出集合快照）;admin-api 121/121、api-client 85/85、boundaries 21 ws 通过 | 全 app 就位 + 总纲 P3/P6 基建完成                                                              |
 
 ## 4. 门禁记录
 
-| 门禁 | 命令 | 结果（2026-08-23） |
-| --- | --- | --- |
-| typecheck | `bun x tsc --noEmit` | ✅ 0 错 |
-| lint | `bun x oxlint` | ✅ 0-0 |
-| test（含覆盖率 90/85） | `bun x vitest run --exclude "__test__/*.real.test.ts" --coverage` | ✅ 70/70；lines 97.96 / statements 97.99 / functions 94.81 / branches 92.82 |
-| build | `bun run build` | ✅ 37 modules → dist（65KB + sourcemap） |
-| real 冒烟 | `bun x vitest run admin-api.real.test.ts`（.env 注入） | ✅ 1/1（真实 PG 装配 + readyz + 401） |
-| e2e（真实进程） | `bun x vitest run e2e.real.test.ts`（spawn `bun --conditions=development src/index.ts` + 真实 PG + 真 admin 令牌） | ✅ 4/4：六域建改退役全链、渠道资金幂等（同键重放回执/异参 409 `control_plane.operation_conflict`）、审计桥真实落 audit_logs、用户 404 守卫零写入、SIGTERM 优雅停机退出码 0 |
-| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 19 workspace 无深导入/越界 |
-| format | `bun x oxfmt --check src __test__ *.ts` | ✅ |
+| 门禁                   | 命令                                                                                                               | 结果（2026-08-23）                                                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| typecheck              | `bun x tsc --noEmit`                                                                                               | ✅ 0 错                                                                                                                                                                                                                                      |
+| lint                   | `bun x oxlint`                                                                                                     | ✅ 0-0                                                                                                                                                                                                                                       |
+| test（含覆盖率 90/85） | `bun x vitest run --exclude "__test__/*.real.test.ts" --coverage`                                                  | ✅ 77/77；lines 97.78 / statements 97.8 / functions 93.78 / branches 86.71                                                                                                                                                                   |
+| build                  | `bun run build`                                                                                                    | ✅ 37 modules → dist（65KB + sourcemap）                                                                                                                                                                                                     |
+| real 冒烟              | `bun x vitest run admin-api.real.test.ts`（.env 注入）                                                             | ✅ 1/1（真实 PG 装配 + readyz + 401）                                                                                                                                                                                                        |
+| e2e（真实进程）        | `bun x vitest run e2e.real.test.ts`（spawn `bun --conditions=development src/index.ts` + 真实 PG + 真 admin 令牌） | ✅ 5/5：六域建改退役全链、渠道资金幂等（重放/409 `control_plane.operation_conflict`）、审计桥真实落 audit_logs、P1 billing 域（plans 生命周期/兑换批次明文一次返回+作废 404/订阅列表/死信面）、用户 404 守卫零写入、SIGTERM 优雅停机退出码 0 |
+| boundaries             | `bun scripts/check-package-boundaries.ts`                                                                          | ✅ 19 workspace 无深导入/越界                                                                                                                                                                                                                |
+| format                 | `bun x oxfmt --check src __test__ *.ts`                                                                            | ✅                                                                                                                                                                                                                                           |
+| P4 波复测（2026-08-23）| 同上四门                                                                                                            | typecheck/lint/vitest 本波文件全绿（ops 族 12/12）;当时全局余量 = P2 半成品（已由下行收口） |
+| P2+P5+P3+P6 收口复测（2026-08-23）| 同上全套                                                                                                    | ✅ typecheck 0 / lint 0-0 / **117/117**（19 文件,含 auth 域 6+分支补面 13+mailer 1）/ 覆盖率 lines 97.21 / stmts 97.01 / funcs 90.78 / **branches 85.46**（≥90/85,补面只加测试未调阈值）/ build 108.12KB / real 冒烟 1/1（Redis 双闸+双 realm identity 真实装配）/ e2e journey 6/6（真实进程,属主回查下真实 admin 行签发令牌） |

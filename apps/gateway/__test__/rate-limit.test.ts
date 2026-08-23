@@ -10,7 +10,9 @@ import { admitRequest, tryChannelRpm, type RateLimitGate } from '../src/http/mid
 import type { SlidingWindowLimiter } from '@tokenlens/runtime';
 import type { AuthContext } from '../src/http/middleware/api-key';
 
-function fakeLimiter(over: Partial<Record<'checkAll' | 'reserveTpmAll' | 'check' | 'releaseTpm', unknown>> = {}) {
+function fakeLimiter(
+  over: Partial<Record<'checkAll' | 'reserveTpmAll' | 'check' | 'releaseTpm', unknown>> = {},
+) {
   const calls = {
     checkAll: [] as unknown[][],
     reserveTpmAll: [] as unknown[][],
@@ -103,6 +105,16 @@ describe('admitRequest 并罚制', () => {
     expect(calls.reserveTpmAll[0]![0]).toEqual([
       { dimension: 'user:42', estimatedTokens: 5, max: 50_000 },
     ]);
+  });
+
+  it('App-JWT 凭证（apiKeyId=null, appId 在场）：维度同 user-only，span 凭证维走 app:', async () => {
+    const { limiter, calls } = fakeLimiter();
+    await admitRequest(gate(limiter, null), {
+      requestId: 'r',
+      auth: auth({ apiKeyId: null, appId: 9, rpmLimit: 10, tpmLimit: 10 }),
+      estimatedTokens: 5,
+    });
+    expect(calls.checkAll[0]![0]).toEqual([{ dimension: 'user:42', max: 30 }]);
   });
 
   it('限流维度串不外泄：错误码可编程分派，无 dimension 泄漏', async () => {

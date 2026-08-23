@@ -4,8 +4,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { FilterIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { cn } from '../lib/utils';
+import { NativeSelect, NativeSelectOption } from '@tokenlens/ui';
 
 /**
  * URL 筛选下拉（收敛 users-status / users-enterprise / subscriptions-status /
@@ -22,6 +24,7 @@ export function ListFilterSelect({
   allLabel,
   allValue = 'all',
   resetPage = true,
+  icon,
   className,
 }: {
   /** URL 查询参数名（如 status / enterprise / statusCode） */
@@ -36,6 +39,7 @@ export function ListFilterSelect({
   allValue?: string;
   /** 切换筛选时是否重置回第 1 页 */
   resetPage?: boolean;
+  icon?: ReactNode;
   className?: string;
 }) {
   const router = useRouter();
@@ -53,22 +57,22 @@ export function ListFilterSelect({
 
   return (
     <div className="relative">
-      <FilterIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <select
+      <span className="pointer-events-none absolute left-2.5 top-1/2 z-10 flex size-4 -translate-y-1/2 items-center justify-center text-muted-foreground [&_svg]:size-4">
+        {icon ?? <FilterIcon />}
+      </span>
+      <NativeSelect
         onChange={onChange}
         defaultValue={value || allValue}
-        className={cn(
-          'h-9 w-32 appearance-none rounded-md border border-input bg-transparent pl-9 pr-3 text-sm shadow-xs focus-visible:ring-1 focus-visible:ring-ring',
-          className,
-        )}
+        className={cn('w-36', className)}
+        selectClassName="pl-9"
       >
-        {allValue !== '' ? <option value={allValue}>{all}</option> : null}
+        {allValue !== '' ? <NativeSelectOption value={allValue}>{all}</NativeSelectOption> : null}
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <NativeSelectOption key={o.value} value={o.value}>
             {o.label}
-          </option>
+          </NativeSelectOption>
         ))}
-      </select>
+      </NativeSelect>
     </div>
   );
 }

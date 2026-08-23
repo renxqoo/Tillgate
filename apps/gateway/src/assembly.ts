@@ -35,6 +35,7 @@ import {
 import { createPostgresGatewayCatalog } from './adapters/catalog-port';
 import { createGatewayBilling } from './adapters/billing-port';
 import { createSettleWakeProducer } from './adapters/settle-wake';
+import { otelTracePort } from './adapters/trace-port';
 import { tryChannelRpm, type RateLimitGate } from './http/middleware/rate-limit';
 import { ACCOUNTS_POLICY, BILLING_GUARDS, type GatewayConfig } from './config';
 
@@ -51,7 +52,9 @@ export interface GatewayAssembly {
   redis: ReturnType<typeof createRedisClient>;
   accounts: AccountUseCases;
   inference: Inference;
-  modelsReader: { listEnabledMappings(): Promise<import('@tokenlens/control-plane').EnabledModelRow[]> };
+  modelsReader: {
+    listEnabledMappings(): Promise<import('@tokenlens/control-plane').EnabledModelRow[]>;
+  };
   requestLogs: ReturnType<typeof createPgRequestLogStore>;
   billingFacade: Billing;
   rateLimit: RateLimitGate;
@@ -78,12 +81,19 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     connectionTimeoutMillis: 5_000,
     maxUses: 1_000,
   });
-  const redis = createRedisClient(config.redisUrl, { serviceName: 'gateway', logThrottleMs: 5_000 });
+  const redis = createRedisClient(config.redisUrl, {
+    serviceName: 'gateway',
+    logThrottleMs: 5_000,
+  });
   const otel = initOtel({
     serviceName: 'gateway',
     serviceVersion: '0.1.0',
     mode: config.otel.mode === 'otlp' ? 'otlp' : 'off',
     ...(config.otel.endpoint != null ? { endpoint: config.otel.endpoint } : {}),
+    ...(config.otel.mode === 'otlp'
+      ? { metricsExportIntervalMs: config.otel.metricsIntervalMs }
+      : {}),
+    ...(config.otel.authToken != null ? { authToken: config.otel.authToken } : {}),
     logger,
   });
 
@@ -99,7 +109,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   // identity anchor advance）；误调用即刻显式失败
   const sessionInvalidationUnavailable: SessionInvalidationPort = {
     invalidateUserSessions: async () => {
-      throw new Error('gateway assembly does not provide session invalidation (identity face owns it)');
+      throw new Error(
+        'gateway assembly does not provide session invalidation (identity face owns it)',
+      );
     },
   };
   const accounts = createAccounts({
@@ -130,7 +142,8 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       currency: config.currency,
       failurePolicy: { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 8_000 },
       clock: () => new Date(),
-      onError: (error, context) => logger.error({ err: String(error), context }, 'billing settlement error'),
+      onError: (error, context) =>
+        logger.error({ err: String(error), context }, 'billing settlement error'),
       wake: settleWake.wake,
     },
   );
@@ -163,7 +176,9 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
     },
     // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）
-    config.aiAllowLocalUrl && config.nodeEnv !== 'production' ? { guardUrl: async () => undefined } : {},
+    config.aiAllowLocalUrl && config.nodeEnv !== 'production'
+      ? { guardUrl: async () => undefined }
+      : {},
   );
   const inference = createInference({
     ai,
@@ -176,9 +191,14 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     store: createRedisHealthStore(redis, HEALTH_PREFIX),
     decrypt: (enc) => cipher.decrypt(enc),
     tasks: createPostgresGenerationTaskStore(db),
+    // 阶段 span 绑定（inference TracePort → OTel；docs/observability.md §3）
+    trace: otelTracePort,
     // 渠道维 RPM 尝试前判定（渠道 TPM 预占缺口 R-E3 在案——钩子无请求作用域生命周期）
     admitChannel: async (channel) =>
-      tryChannelRpm(rateLimit, { channelId: channel.channelId, rpmLimit: channel.rpmLimit ?? null }),
+      tryChannelRpm(rateLimit, {
+        channelId: channel.channelId,
+        rpmLimit: channel.rpmLimit ?? null,
+      }),
     defaults: {
       output: config.output,
       authorization: { ttlMs: config.authorizationTtlMs },

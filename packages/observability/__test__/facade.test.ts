@@ -7,7 +7,7 @@ import { createObservability } from '../src/observability';
  * SQL 行为由 postgres.real.test.ts 承担(装配不触库)。
  */
 describe('createObservability', () => {
-  it('组装 traces/audit/requestLogs/partitions 四 facet(方法面完整)', () => {
+  it('组装 traces/audit/requestLogs/usage/partitions 五 facet(方法面完整)', () => {
     const observability = createObservability({ db: {} as Db });
     expect(typeof observability.traces.recent).toBe('function');
     expect(typeof observability.traces.traceDetail).toBe('function');
@@ -18,6 +18,11 @@ describe('createObservability', () => {
     expect(typeof observability.audit.listByTarget).toBe('function');
     expect(typeof observability.requestLogs.insert).toBe('function');
     expect(typeof observability.requestLogs.list).toBe('function');
+    expect(typeof observability.usage.adminList).toBe('function');
+    expect(typeof observability.usage.overview).toBe('function');
+    expect(typeof observability.usage.groups).toBe('function');
+    expect(typeof observability.usage.trends).toBe('function');
+    expect(typeof observability.usage.channelTtft).toBe('function');
     expect(typeof observability.partitions.traces).toBe('function');
     expect(typeof observability.partitions.requestLogs).toBe('function');
   });

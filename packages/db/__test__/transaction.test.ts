@@ -75,7 +75,14 @@ describe('runTx 重试语义', () => {
     const { db, transaction } = fakeDb();
     const onRetry = vi.fn();
     await expect(
-      runTx(db, async () => { throw deadlock(); }, { maxAttempts: 3, baseDelayMs: 1, maxJitterMs: 1 }, { onRetry }),
+      runTx(
+        db,
+        async () => {
+          throw deadlock();
+        },
+        { maxAttempts: 3, baseDelayMs: 1, maxJitterMs: 1 },
+        { onRetry },
+      ),
     ).rejects.toThrow('drizzle-wrap'); // 抛出的是 db.transaction 拒绝的原错误(外层包装)
     expect(transaction).toHaveBeenCalledTimes(3);
     expect(onRetry).toHaveBeenCalledTimes(2); // 第 1、2 次失败后各通知一次;第 3 次直接抛

@@ -66,7 +66,10 @@ describe.skipIf(redisUrl == null)('adapters/state-redis：真实 Redis CAS 原�
   it('并发 CAS 只有一个赢家；TTL 生效', async () => {
     const { createRedisClient } = await import('@tokenlens/runtime');
     const { waitForRedisReady } = await import('@tokenlens/runtime/testing');
-    const redis = createRedisClient(redisUrl as string, { serviceName: 'inference-test' });
+    const redis = createRedisClient(redisUrl as string, {
+      serviceName: 'inference-test',
+      logThrottleMs: 30_000, // 必填注入（铁律 3）：测试取生产行为形态值
+    });
     await waitForRedisReady(redis); // offline-queue 关闭形态：就绪前发命令直接抛
     try {
       const store = createRedisHealthStore(redis, 'inference:test:health:');

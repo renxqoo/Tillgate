@@ -7,11 +7,13 @@ import { isChannelExhausted, routeFailure } from '../domain/routing/switchable';
 import { channelHealthKey, type ChannelHealth } from '../health/channel-health';
 import type { BillingPort } from '../ports/billing';
 import type { CatalogPort } from '../ports/catalog';
+import type { TracePort } from '../ports/trace';
 import type { UpstreamPort } from '../ports/upstream';
 import type { PreparedRequest } from './quote';
 
 /**
- * 候选 × 渠道双层循环（v1 run-chat 循环体迁移；限流闸/OTel 剥离，健康检查移入）：
+ * 候选 × 渠道双层循环（v1 run-chat 循环体迁移；限流闸剥离，健康检查移入，阶段 span
+ * 经 TracePort 回填——v1 withAsyncSpan 面等价，命名见 docs/observability.md §3）：
  *
  *   for 候选（主模型 + fallback 链）→ 渠道加权调度序：
  *     渠道维限流钩子（app 装配，缺省放行）→ 健康放行（C4：v1 ai 内 admission 等价）
@@ -35,6 +37,7 @@ export interface ExecutionDeps {
   upstream: UpstreamPort;
   health: ChannelHealth;
   admitChannel?: ChannelAdmission;
+  trace: TracePort;
   defaults: InferenceDefaults;
   onError?: (error: unknown, context: string) => void;
 }
@@ -50,6 +53,8 @@ export interface AttemptContext {
   signal?: AbortSignal;
   candidate: QuoteCandidate;
   channel: ChannelCandidate;
+  /** 当前候选内第几次渠道尝试（span 属性 channel.attempt） */
+  channelAttempt: number;
 }
 
 export type AttemptOutcome<T> =
@@ -77,33 +82,63 @@ export async function runCandidateLoop<T>(
   let lastCode: string | undefined;
   let leaseStarted = false;
   const estimatedTokens = prepared.inputUpperBound + prepared.outputCap;
+  /** 渠道跳过事实（v1 channel.skip span 等价：跳过原因进 trace 不进响应） */
+  const skipChannel = (channel: ChannelCandidate, index: number, reason: string): Promise<void> =>
+    deps.trace.withSpan(
+      'channel.skip',
+      {
+        'request.id': requestId,
+        'channel.key': channel.channelName,
+        'channel.attempt': index,
+        'skip.reason': reason,
+      },
+      async () => undefined,
+    );
 
   for (const candidate of prepared.candidates) {
-    const channels = weightedOrderByPriority(
-      await deps.catalog.resolveChannels(candidate.realModel),
+    const channels = await deps.trace.withSpan(
+      'routing.resolve',
+      { 'request.id': requestId, 'ai.model': candidate.realModel },
+      async (span) => {
+        const list = weightedOrderByPriority(
+          await deps.catalog.resolveChannels(candidate.realModel),
+        );
+        span.setAttributes({ 'routing.channels': list.length });
+        return list;
+      },
     );
+    let channelAttempt = 0;
     for (const channel of channels) {
+      channelAttempt += 1;
       // 渠道维限流（app 钩子；超限视同可换渠）
       if (deps.admitChannel != null && !(await deps.admitChannel(channel, estimatedTokens))) {
         lastCode = 'rate_limit_exceeded';
+        await skipChannel(channel, channelAttempt, 'rate_limited');
         continue;
       }
       // 健康放行（熔断 open / 死凭据 invalid → 换渠；half-open 单探测赢家在此产生）
       const admission = await deps.health.admit(channelHealthKey(channel));
       if (!admission.ok) {
         lastCode = admission.reason;
+        await skipChannel(channel, channelAttempt, admission.reason);
         continue;
       }
       // 渠道采购预算敞口预留（拒绝 = 该渠道预算耗尽，换渠）
-      const reservation = await deps.billing.reserveChannel({
-        requestId,
-        channelId: channel.channelId,
-        candidate,
-        estimatedInputTokens: prepared.inputUpperBound,
-        maxOutputTokens: prepared.outputCap,
-      });
+      const reservation = await deps.trace.withSpan(
+        'billing.reserve_channel',
+        { 'request.id': requestId, 'channel.key': channel.channelName },
+        () =>
+          deps.billing.reserveChannel({
+            requestId,
+            channelId: channel.channelId,
+            candidate,
+            estimatedInputTokens: prepared.inputUpperBound,
+            maxOutputTokens: prepared.outputCap,
+          }),
+      );
       if (!reservation.allowed) {
         lastCode = 'channel_budget_exhausted';
+        await skipChannel(channel, channelAttempt, 'budget_exhausted');
         continue;
       }
       if (!leaseStarted) {
@@ -122,6 +157,7 @@ export async function runCandidateLoop<T>(
         ...(signal != null ? { signal } : {}),
         candidate,
         channel,
+        channelAttempt,
       });
       if (outcome.kind !== 'respond') lastCode = outcome.code;
       if (outcome.kind === 'switch_channel') continue;
@@ -146,23 +182,32 @@ export async function dispatchFailure(
   if (action === 'switch_channel') return { kind: 'switch_channel', code: error.kind };
   if (action === 'respond') {
     // 透传≠免收尾：4xx = 上游确定未计费 → request.failed 三路释放后原码返回
-    await deps.billing.signal({
-      type: 'request_failed',
-      requestId: ctx.requestId,
-      reason: error.kind.slice(0, 64),
-    });
     const status =
       error.status != null && error.status >= 400 && error.status < 500 ? error.status : 502;
-    return {
-      kind: 'respond',
-      value: {
-        ok: true,
-        passthrough: true,
-        status,
-        code: error.kind,
-        ...(error.message !== error.kind ? { message: error.message } : {}),
+    const delivered = await deps.trace.withSpan(
+      'billing.passthrough_4xx',
+      {
+        'request.id': ctx.requestId,
+        'error.code': error.kind,
+        'http.status_code': status,
       },
-    };
+      async (span) => {
+        span.setStatus({ code: 'error', message: error.kind });
+        await deps.billing.signal({
+          type: 'request_failed',
+          requestId: ctx.requestId,
+          reason: error.kind.slice(0, 64),
+        });
+        return {
+          ok: true,
+          passthrough: true,
+          status,
+          code: error.kind,
+          ...(error.message !== error.kind ? { message: error.message } : {}),
+        } as const;
+      },
+    );
+    return { kind: 'respond', value: delivered };
   }
   return { kind: 'next_candidate', code: error.kind };
 }
@@ -175,16 +220,25 @@ async function releaseAndFail(
   lastCode: string | undefined,
 ): Promise<never> {
   const exhausted = isChannelExhausted(lastCode);
-  await deps.billing.signal({
-    type: 'request_failed',
-    requestId,
-    reason: (exhausted ? 'no_available_channel' : (lastCode ?? 'no_available_channel')).slice(
-      0,
-      64,
-    ),
-  });
-  throw InferenceErrors.business(exhausted ? 'no_available_channel' : 'upstream_failed', {
+  const reason = (exhausted ? 'no_available_channel' : (lastCode ?? 'no_available_channel')).slice(
+    0,
+    64,
+  );
+  const error = InferenceErrors.business(exhausted ? 'no_available_channel' : 'upstream_failed', {
     model: prepared.externalModel,
     ...(lastCode != null ? { upstream_code: lastCode } : {}),
   });
+  await deps.trace.withSpan(
+    'billing.release_and_fail',
+    {
+      'request.id': requestId,
+      'user.id': prepared.auth.userId,
+      'error.code': lastCode ?? 'no_available_channel',
+    },
+    async (span) => {
+      span.setStatus({ code: 'error', message: lastCode ?? 'no_available_channel' });
+      await deps.billing.signal({ type: 'request_failed', requestId, reason });
+    },
+  );
+  throw error;
 }

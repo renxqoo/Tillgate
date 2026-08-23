@@ -1,5 +1,6 @@
 'use client';
 
+import type * as React from 'react';
 import { useState } from 'react';
 
 import { Loader2Icon, RefreshCwIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react';
@@ -19,11 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   StatusPill,
   Table,
   TableBody,
@@ -51,7 +55,7 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
   const locale = useLocale();
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="bg-card">
         <TableRow>
           <TableHead>{tCommon('name')}</TableHead>
           <TableHead>{t('colClientId')}</TableHead>
@@ -59,7 +63,7 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
           <TableHead>{tCommon('status')}</TableHead>
           <TableHead>{tCommon('createdAt')}</TableHead>
           <TableHead>{t('colRotatedAt')}</TableHead>
-          <TableHead className="w-40 text-right">{tCommon('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tCommon('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -72,13 +76,20 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
         ) : (
           apps.map((a) => (
             <TableRow key={a.id}>
-              <TableCell className="font-medium">
-                {a.name}
-                {a.description ? (
-                  <span className="block text-xs font-normal text-muted-foreground">
-                    {a.description}
-                  </span>
-                ) : null}
+              <TableCell className="min-w-56">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <ShieldCheckIcon className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block truncate font-medium">{a.name}</span>
+                    {a.description ? (
+                      <span className="block truncate text-sm text-muted-foreground">
+                        {a.description}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -100,17 +111,45 @@ export function AppsTable({ apps }: { readonly apps: ReadonlyArray<AppRow> }) {
               <TableCell className="text-xs text-muted-foreground">
                 {formatDateTime(a.rotatedAt, locale)}
               </TableCell>
-              <TableCell className="text-right">
-                <div className="flex items-center justify-end gap-1">
-                  {a.status === 0 && <RotateSecretInline id={a.id} name={a.name} />}
-                  {a.status === 0 && <DeleteInline id={a.id} name={a.name} />}
-                </div>
+              <TableCell className="w-16 text-center">
+                <AppRowActions app={a} />
               </TableCell>
             </TableRow>
           ))
         )}
       </TableBody>
     </Table>
+  );
+}
+
+function AppRowActions({ app }: { app: AppRow }) {
+  const t = useTranslations('apps');
+  const tCommon = useTranslations('common');
+  const [rotateOpen, setRotateOpen] = useState(false);
+
+  return (
+    <>
+      <RowActions label={tCommon('actions')}>
+        {app.status === 0 ? (
+          <>
+            <DropdownMenuItem onClick={() => setRotateOpen(true)}>
+              <RefreshCwIcon /> {t('rotateSecret')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DeleteInline id={app.id} name={app.name} />
+          </>
+        ) : (
+          <DropdownMenuItem disabled>{t('statusDisabled')}</DropdownMenuItem>
+        )}
+      </RowActions>
+      <RotateSecretInline
+        id={app.id}
+        name={app.name}
+        trigger={null}
+        open={rotateOpen}
+        onOpenChange={setRotateOpen}
+      />
+    </>
   );
 }
 
@@ -134,26 +173,34 @@ function DeleteInline({ id, name }: { id: number; name: string }) {
       success={t('deletedToast')}
     >
       {({ pending, onClick }) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={pending}
-          onClick={onClick}
-          className="text-destructive hover:text-destructive"
-        >
+        <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
           {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
           {tCommon('delete')}
-        </Button>
+        </DropdownMenuItem>
       )}
     </ConfirmAction>
   );
 }
 
-function RotateSecretInline({ id, name }: { id: number; name: string }) {
+function RotateSecretInline({
+  id,
+  name,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  id: number;
+  name: string;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const t = useTranslations('apps');
   const tCommon = useTranslations('common');
   const tUi = useTranslations('ui');
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [pending, setPending] = useState(false);
   const [revealed, setRevealed] = useState<string | null>(null);
 
@@ -165,10 +212,12 @@ function RotateSecretInline({ id, name }: { id: number; name: string }) {
         if (!o) setRevealed(null);
       }}
     >
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>
-        <RefreshCwIcon />
-        {t('rotateSecret')}
-      </DialogTrigger>
+      {trigger !== null ? (
+        <DialogTrigger render={trigger ?? <Button variant="ghost" size="sm" />}>
+          <RefreshCwIcon />
+          {t('rotateSecret')}
+        </DialogTrigger>
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('rotateTitle')}</DialogTitle>
@@ -328,7 +377,9 @@ function CreatedField({ label, value, mono }: { label: string; value: string; mo
       <p className="text-xs text-muted-foreground">{label}</p>
       <div className="flex items-center gap-2">
         <code
-          className={'flex-1 break-all rounded bg-background/80 p-2 text-xs ' + (mono ? 'font-mono' : '')}
+          className={
+            'flex-1 break-all rounded bg-background/80 p-2 text-xs ' + (mono ? 'font-mono' : '')
+          }
         >
           {value}
         </code>

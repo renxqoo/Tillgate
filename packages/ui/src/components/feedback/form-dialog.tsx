@@ -1,3 +1,5 @@
+'use client';
+
 // 表单对话框: Dialog 内置 <form>, 提交走 onSubmit 异步流(pending 锁按钮), 成功后自动关闭。
 // 行为契约与 ConfirmDialog 一致: reject 保持打开并交给 onError(未提供则原样上抛)。
 import * as React from 'react';

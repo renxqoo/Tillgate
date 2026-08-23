@@ -3,6 +3,10 @@
 // next-intl、geist)与 @tokenlens/* workspace 包; 由 test/pack/imports 测试机器锁定。
 export { cn } from './cn';
 
+// ---- layout(应用级无框架布局) ----
+export { AuthShell, type AuthShellProps } from './components/layout/auth-shell';
+export { PageHeader, type PageHeaderProps } from './components/layout/page-header';
+
 // ---- primitives(视觉原子与浮层) ----
 export {
   Accordion,
@@ -260,6 +264,14 @@ export {
   EmptyMedia,
 } from './components/data/empty';
 export { KpiCard, type KpiCardDelta, type KpiCardProps } from './components/data/kpi-card';
+export {
+  ListPanel,
+  ListToolbar,
+  ListToolbarGroup,
+  ListContent,
+  ListFooter,
+} from './components/data/list-panel';
+export { RowActions, type RowActionsProps } from './components/data/row-actions';
 export { MoneyDisplay, type MoneyDisplayProps } from './components/data/money-display';
 export { SecretReveal, type SecretRevealProps } from './components/data/secret-reveal';
 export { StatusPill, type StatusPillProps } from './components/data/status-pill';
@@ -326,11 +338,7 @@ export {
   TabsContent,
   tabsListVariants,
 } from './components/navigation/tabs';
-export {
-  ThemeSwitcher,
-  type ThemeSwitcherLabels,
-  type ThemeSwitcherProps,
-} from './components/navigation/theme-switcher';
+export { ThemeSwitcher, type ThemeSwitcherProps } from './components/navigation/theme-switcher';
 
 // ---- feedback(反馈) ----
 export { Alert, AlertTitle, AlertDescription, AlertAction } from './components/feedback/alert';

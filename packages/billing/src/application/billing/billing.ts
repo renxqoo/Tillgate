@@ -38,7 +38,8 @@ export interface BillingDeps {
   walletStore: WalletStore;
   wallet: WalletApi;
   currency: string;
-  clock?: () => Date;
+  /** 时钟（装配必填——facade 单点注入向下传递） */
+  clock: () => Date;
   assertCapacity?: () => Promise<void>;
   wake?: (requestId: string) => void;
 }

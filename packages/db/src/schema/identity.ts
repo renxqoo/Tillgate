@@ -42,7 +42,10 @@ export const identityCredentials = pgTable(
   (t) => [
     uniqueIndex('identity_credentials_identifier_uq').on(t.identifierKind, t.identifierValue),
     index('identity_credentials_user_idx').on(t.userId),
-    check('identity_credentials_kind_ck', sql`${t.identifierKind} in ('email', 'phone', 'username')`),
+    check(
+      'identity_credentials_kind_ck',
+      sql`${t.identifierKind} in ('email', 'phone', 'username')`,
+    ),
   ],
 );
 
@@ -91,7 +94,10 @@ export const identityChallenges = pgTable(
   },
   (t) => [
     // 目标二选一（标识或用户，恰一个非空）：结构上消灭「双空/双有」的歧义行
-    check('identity_challenges_target_ck', sql`(${t.identifierValue} is null) <> (${t.userId} is null)`),
+    check(
+      'identity_challenges_target_ck',
+      sql`(${t.identifierValue} is null) <> (${t.userId} is null)`,
+    ),
     check(
       'identity_challenges_target_kind_ck',
       sql`${t.identifierValue} is null or ${t.identifierKind} is not null`,
@@ -101,7 +107,10 @@ export const identityChallenges = pgTable(
     check('identity_challenges_max_attempts_ck', sql`${t.maxAttempts} between 1 and 100`),
     check('identity_challenges_expiry_ck', sql`${t.expiresAt} > ${t.issuedAt}`),
     // 终态互斥：不可能既消费又作废
-    check('identity_challenges_terminal_ck', sql`${t.consumedAt} is null or ${t.abortedAt} is null`),
+    check(
+      'identity_challenges_terminal_ck',
+      sql`${t.consumedAt} is null or ${t.abortedAt} is null`,
+    ),
     // 同 kind 同目标至多一条活挑战（发码防刷的结构闸；应用层冷却在其上做替换语义）
     uniqueIndex('identity_challenges_live_identifier_uq')
       .on(t.kind, t.identifierKind, t.identifierValue)

@@ -1,5 +1,6 @@
 'use client';
 
+import type * as React from 'react';
 import {
   Button,
   Dialog,
@@ -10,11 +11,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
   Input,
+  RowActions,
   Select,
   SelectContent,
   SelectItem,
@@ -72,14 +76,14 @@ export function ProvidersTable({
   const tc = useTranslations('common');
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className="bg-card">
         <TableRow>
           <TableHead>{tc('name')}</TableHead>
           <TableHead>Base URL</TableHead>
           <TableHead className="w-40">{t('protocolVendor')}</TableHead>
           <TableHead className="w-24">{tc('status')}</TableHead>
           <TableHead className="w-44">{tc('updatedAt')}</TableHead>
-          <TableHead className="w-24 text-right">{tc('actions')}</TableHead>
+          <TableHead className="w-16 text-center">{tc('actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -110,9 +114,17 @@ function ProviderRowItem({
 }) {
   const t = useTranslations('providers');
   const tc = useTranslations('common');
+  const [editOpen, setEditOpen] = useState(false);
   return (
     <TableRow>
-      <TableCell className="font-medium">{provider.name}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <ServerIcon className="size-4" />
+          </div>
+          <span className="font-medium">{provider.name}</span>
+        </div>
+      </TableCell>
       <TableCell>
         <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{provider.baseUrl}</code>
       </TableCell>
@@ -132,9 +144,12 @@ function ProviderRowItem({
       <TableCell className="text-xs text-muted-foreground">
         {provider.updatedAt ? fmtDateTime(provider.updatedAt) : fmtDateTime(provider.createdAt)}
       </TableCell>
-      <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
-          <EditProviderDialog provider={provider} protocols={protocols} vendors={vendors} />
+      <TableCell className="w-16 text-center">
+        <RowActions label={tc('actions')}>
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            <PencilIcon /> {tc('edit')}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <ConfirmAction
             confirm={t('deleteConfirm', { name: provider.name })}
             action={async () =>
@@ -143,18 +158,21 @@ function ProviderRowItem({
             success={tc('deleted')}
           >
             {({ pending, onClick }) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={onClick}
-                className="text-destructive hover:text-destructive"
-              >
+              <DropdownMenuItem variant="destructive" disabled={pending} onClick={onClick}>
                 {pending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />}
-              </Button>
+                {tc('delete')}
+              </DropdownMenuItem>
             )}
           </ConfirmAction>
-        </div>
+        </RowActions>
+        <EditProviderDialog
+          provider={provider}
+          protocols={protocols}
+          vendors={vendors}
+          trigger={null}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
       </TableCell>
     </TableRow>
   );
@@ -235,16 +253,24 @@ function EditProviderDialog({
   provider,
   protocols,
   vendors,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
 }: {
   provider: AdminProviderRow;
   readonly protocols: ReadonlyArray<string>;
   readonly vendors: ReadonlyArray<string>;
+  trigger?: React.ReactElement | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('providers');
   const tc = useTranslations('common');
   const tUi = useTranslations('ui');
   const notify = useActionResult();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [pending, startTransition] = useTransition();
   const schema = buildSchema(t);
   const form = useForm<FormValues>({
@@ -269,13 +295,17 @@ function EditProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button size="sm" variant="ghost" title={tc('edit')}>
-            <PencilIcon />
-          </Button>
-        }
-      />
+      {trigger !== null ? (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              <Button size="sm" variant="ghost" title={tc('edit')}>
+                <PencilIcon />
+              </Button>
+            )
+          }
+        />
+      ) : null}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -11,7 +11,16 @@ import { bodyParserLimit, corsPreflight, securityHeaders } from '../src/security
 function app(): Hono {
   const a = new Hono();
   a.use('*', securityHeaders);
-  a.use('*', corsPreflight({ origins: ['https://console.example.com'] }));
+  // 铁律 3：CORS 策略四要素全部显式注入（v1 三面硬编码漂移 + 藏默认的收口）
+  a.use(
+    '*',
+    corsPreflight({
+      origins: ['https://console.example.com'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowHeaders: ['Authorization', 'Content-Type'],
+      maxAgeSeconds: 600,
+    }),
+  );
   a.use('*', bodyParserLimit(64));
   a.post('/echo', async (c) => c.text(`len:${(await c.req.text()).length}`));
   a.get('/ping', (c) => c.text('pong'));
@@ -30,7 +39,9 @@ describe('securityHeaders（统一 4 头全集）', () => {
 
 describe('corsPreflight', () => {
   it('白名单内 Origin 的普通请求 → 放行并带 ACAO + Vary', async () => {
-    const res = await app().request('/ping', { headers: { origin: 'https://console.example.com' } });
+    const res = await app().request('/ping', {
+      headers: { origin: 'https://console.example.com' },
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('https://console.example.com');
     expect(res.headers.get('Vary')).toContain('Origin');
@@ -42,15 +53,17 @@ describe('corsPreflight', () => {
     expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
   });
 
-  it('白名单内预检 OPTIONS → 204 + 方法/请求头回显', async () => {
+  it('白名单内预检 OPTIONS → 204 + 方法/请求头/缓存回显', async () => {
     const res = await app().request('/ping', {
       method: 'OPTIONS',
       headers: { origin: 'https://console.example.com', 'access-control-request-method': 'POST' },
     });
     expect(res.status).toBe(204);
-    expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toBe(
+      'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    );
     expect(res.headers.get('Access-Control-Allow-Headers')).toBe('Authorization, Content-Type');
-    expect(res.headers.get('Access-Control-Max-Age')).toBeNull(); // 缺省不输出
+    expect(res.headers.get('Access-Control-Max-Age')).toBe('600');
   });
 
   it('B4 回归：CORS 策略参数化（v1 三面方法集/允许头/Max-Age 硬编码漂移）', async () => {
@@ -65,9 +78,14 @@ describe('corsPreflight', () => {
       }),
     );
     a.get('/x', (c) => c.text('ok'));
-    const res = await a.request('/x', { method: 'OPTIONS', headers: { origin: 'https://gw.example.com' } });
+    const res = await a.request('/x', {
+      method: 'OPTIONS',
+      headers: { origin: 'https://gw.example.com' },
+    });
     expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, POST, OPTIONS');
-    expect(res.headers.get('Access-Control-Allow-Headers')).toBe('Authorization, Content-Type, X-Request-Id');
+    expect(res.headers.get('Access-Control-Allow-Headers')).toBe(
+      'Authorization, Content-Type, X-Request-Id',
+    );
     expect(res.headers.get('Access-Control-Max-Age')).toBe('86400');
   });
 
@@ -108,6 +126,19 @@ describe('bodyParserLimit（maxBytes 必填）', () => {
     });
   });
 
+  it('声明的 content-length 超限而实际体更小（谎报头）→ 快路径同样 413（只看声明值，免读流）', async () => {
+    const req = new Request('http://local/echo', {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', 'content-length': '128' }, // 声明 128 > 64，实发 8 字节
+      body: 'x'.repeat(8),
+    });
+    const res = await app().request(req);
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'http.payload_too_large',
+    );
+  });
+
   it('无 content-length 的流式体按实际字节计数（chunked 谎报兜底）→ 413', async () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -124,6 +155,8 @@ describe('bodyParserLimit（maxBytes 必填）', () => {
     });
     const res = await app().request(req);
     expect(res.status).toBe(413);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('http.payload_too_large');
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'http.payload_too_large',
+    );
   });
 });

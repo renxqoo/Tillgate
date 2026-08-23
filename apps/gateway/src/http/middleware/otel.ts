@@ -17,28 +17,31 @@ export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
       return;
     }
     const spanName = `${c.req.method} ${path}`;
-    return context.with(trace.setSpan(context.active(), getTracer('gateway').startSpan(spanName)), async () => {
-      const span = trace.getSpan(context.active());
-      span?.setAttribute('http.method', c.req.method);
-      span?.setAttribute('http.target', path);
-      const requestId = c.get('requestId');
-      if (requestId != null) span?.setAttribute('request.id', requestId);
-      try {
-        await next();
-        const status = c.res?.status ?? 0;
-        span?.setAttribute('http.status_code', status);
-        const auth = c.get('auth');
-        if (auth != null) {
-          span?.setAttribute('user.id', auth.userId);
-          if (auth.apiKeyId != null) span?.setAttribute('api_key.id', auth.apiKeyId);
+    return context.with(
+      trace.setSpan(context.active(), getTracer('gateway').startSpan(spanName)),
+      async () => {
+        const span = trace.getSpan(context.active());
+        span?.setAttribute('http.method', c.req.method);
+        span?.setAttribute('http.target', path);
+        const requestId = c.get('requestId');
+        if (requestId != null) span?.setAttribute('request.id', requestId);
+        try {
+          await next();
+          const status = c.res?.status ?? 0;
+          span?.setAttribute('http.status_code', status);
+          const auth = c.get('auth');
+          if (auth != null) {
+            span?.setAttribute('user.id', auth.userId);
+            if (auth.apiKeyId != null) span?.setAttribute('api_key.id', auth.apiKeyId);
+          }
+          if (status >= 500) span?.setStatus({ code: SpanStatusCode.ERROR });
+        } catch (error) {
+          span?.setStatus({ code: SpanStatusCode.ERROR, message: String(error) });
+          throw error;
+        } finally {
+          span?.end();
         }
-        if (status >= 500) span?.setStatus({ code: SpanStatusCode.ERROR });
-      } catch (error) {
-        span?.setStatus({ code: SpanStatusCode.ERROR, message: String(error) });
-        throw error;
-      } finally {
-        span?.end();
-      }
-    });
+      },
+    );
   };
 }

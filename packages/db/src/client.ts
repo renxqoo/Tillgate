@@ -53,7 +53,9 @@ export async function ping(db: Db): Promise<void> {
   try {
     await db.execute(sql`select 1`);
   } catch (error) {
-    throw new InfrastructureError('Database ping failed', 'db.unavailable', undefined, { cause: error });
+    throw new InfrastructureError('Database ping failed', 'db.unavailable', undefined, {
+      cause: error,
+    });
   }
 }
 

@@ -37,6 +37,10 @@ const ASSEMBLY_FACE = new Set([
   'adapters/upstream-probe.ts',
   'adapters/funding-resolver.ts',
   'adapters/accounts-bridges.ts',
+  // P2 登录波桥接件(identity 审计桥/SMTP 管理员邮件/jti 吊销表——共享文件代为同步白名单)
+  'adapters/identity-audit-bridge.ts',
+  'adapters/redis-session-revocation.ts',
+  'adapters/smtp-admin-mailer.ts',
 ]);
 
 describe('admin-api 架构门禁', () => {
@@ -44,14 +48,22 @@ describe('admin-api 架构门禁', () => {
     expect(FILES).toEqual([
       'adapters/accounts-bridges.ts',
       'adapters/funding-resolver.ts',
+      'adapters/identity-audit-bridge.ts',
+      'adapters/redis-session-revocation.ts',
+      'adapters/smtp-admin-mailer.ts',
       'adapters/upstream-probe.ts',
       'app.ts',
       'assembly.ts',
       'config.ts',
+      'http/contracts/auth.ts',
+      'http/contracts/billing-admin.ts',
       'http/contracts/catalog.ts',
       'http/contracts/common.ts',
       'http/contracts/control-plane.ts',
+      'http/contracts/inference.ts',
+      'http/contracts/marketing.ts',
       'http/contracts/models.ts',
+      'http/contracts/notifications.ts',
       'http/contracts/observability.ts',
       'http/contracts/rates.ts',
       'http/contracts/subscriptions.ts',
@@ -59,25 +71,52 @@ describe('admin-api 架构门禁', () => {
       'http/error-face.ts',
       'http/middleware/protocol.ts',
       'http/middleware/session.ts',
+      'http/openapi/auth.ts',
+      'http/openapi/billing-admin.ts',
+      'http/openapi/catalog.ts',
+      'http/openapi/control-plane.ts',
+      'http/openapi/index.ts',
+      'http/openapi/inference.ts',
+      'http/openapi/marketing.ts',
+      'http/openapi/models.ts',
+      'http/openapi/notifications.ts',
+      'http/openapi/observability.ts',
+      'http/openapi/rates.ts',
+      'http/openapi/shared.ts',
+      'http/openapi/users.ts',
+      'http/presenters/billing.ts',
       'http/presenters/control-plane.ts',
       'http/presenters/keys.ts',
       'http/presenters/models.ts',
       'http/presenters/observability.ts',
+      'http/presenters/ops.ts',
       'http/presenters/rates.ts',
       'http/presenters/users.ts',
+      'http/routes/auth.ts',
+      'http/routes/billing-operations.ts',
       'http/routes/catalog.ts',
       'http/routes/channel-funds.ts',
       'http/routes/channels.ts',
       'http/routes/fx.ts',
       'http/routes/keys.ts',
+      'http/routes/marketing.ts',
+      'http/routes/me.ts',
       'http/routes/models.ts',
+      'http/routes/notifications.ts',
       'http/routes/ops-logs.ts',
+      'http/routes/ops-orders.ts',
+      'http/routes/ops-tasks.ts',
+      'http/routes/ops-usage.ts',
+      'http/routes/plans.ts',
       'http/routes/providers.ts',
       'http/routes/rate-cards.ts',
+      'http/routes/redeem.ts',
+      'http/routes/referrals.ts',
       'http/routes/subscriptions.ts',
       'http/routes/tracing.ts',
       'http/routes/users-funds.ts',
       'http/routes/users.ts',
+      'http/routes/vouchers.ts',
       'index.ts',
       'shutdown.ts',
     ]);
@@ -126,6 +165,17 @@ describe('admin-api 架构门禁', () => {
       for (const specifier of deepImports) {
         expect(specifier, `${name} 禁深导入 ${specifier}`).not.toMatch(/\/src\//);
       }
+    }
+  });
+
+  it('@tokenlens/ai 只在装配面(ADR-0007:assembly.ts + upstream-probe port 实现)', () => {
+    const allowed = new Set(['assembly.ts', 'adapters/upstream-probe.ts']);
+    for (const [name, code] of source) {
+      if (allowed.has(name)) continue;
+      expect(
+        code.includes("from '@tokenlens/ai'"),
+        `${name} 违反 ADR-0007(ai 只允许装配面与 port 实现 adapter)`,
+      ).toBe(false);
     }
   });
 });

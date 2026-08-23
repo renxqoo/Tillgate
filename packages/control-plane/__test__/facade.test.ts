@@ -69,6 +69,7 @@ function setup() {
       fetch: (async () => new Response(JSON.stringify({ rates: { CNY: 7.2 } }))) as typeof fetch,
     },
     audit: audit.sink,
+    auditTx: audit.txSink,
     voucherStorage: createMemoryVoucherStorage(),
     cache: createMemoryCatalogCache(),
     stores: {
@@ -88,6 +89,7 @@ describe('createControlPlane facade', () => {
   it('分组 API 齐备（providers/channels/models/rates/fx/catalog）', () => {
     const { controlPlane } = setup();
     expect(Object.keys(controlPlane).toSorted()).toEqual([
+      'admins',
       'catalog',
       'channels',
       'fx',

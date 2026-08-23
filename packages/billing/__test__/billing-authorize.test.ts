@@ -64,6 +64,7 @@ function harness() {
     walletStore: walletMemory.store,
     wallet,
     currency: 'CNY',
+    clock: () => new Date(),
   });
   return { wallet, walletMemory, world, api };
 }
@@ -340,6 +341,33 @@ describe('signal（四事件）', () => {
     expect(renewed).toMatchObject({ changed: true, status: 'in_flight' });
   });
 
+  it('lease.renewed owner 校验：他人 owner 续租失败（租约归属/到期不被改写）', async () => {
+    const { api, world, requestId } = await authorized();
+    await api.signal({ type: 'upstream.started', requestId, leaseOwner: 'w1', leaseMs: 1000 });
+    const row = world.fixtures.requests.get(requestId)!;
+    const heldUntil = row.leaseExpiresAt!.getTime();
+    // 并发网关副本（非当前持有者）续租：CAS 落空 → changed=false，现状幂等返回
+    const stranger = await api.signal({
+      type: 'lease.renewed',
+      requestId,
+      leaseOwner: 'stranger',
+      leaseMs: 60_000,
+    });
+    expect(stranger).toMatchObject({ changed: false, replayed: true, status: 'in_flight' });
+    // 租约事实未被改写：owner 仍是 w1，到期未被推移（不被陌生续租「抢占续命」）
+    expect(row.leaseOwner).toBe('w1');
+    expect(row.leaseExpiresAt!.getTime()).toBe(heldUntil);
+    // 持有者本人续租仍成功（守卫不误伤正常保活）
+    const own = await api.signal({
+      type: 'lease.renewed',
+      requestId,
+      leaseOwner: 'w1',
+      leaseMs: 60_000,
+    });
+    expect(own).toMatchObject({ changed: true, status: 'in_flight' });
+    expect(row.leaseExpiresAt!.getTime()).toBeGreaterThan(heldUntil);
+  });
+
   it('request.failed 重放：已 released → 幂等返回现状', async () => {
     const { api, requestId } = await authorized();
     await api.signal({ type: 'request.failed', requestId, reason: 'x' });
@@ -537,6 +565,7 @@ describe('积压准入', () => {
       store: h.world.billing,
       maxPending: 1,
       maxOldestPendingMs: 60_000,
+      clock: () => new Date(),
     });
     await expect(admission()).resolves.toBeUndefined();
     const userId = nextUser();
@@ -571,6 +600,7 @@ describe('积压准入', () => {
       store: h.world.billing,
       maxPending: 100,
       maxOldestPendingMs: 60_000,
+      clock: () => new Date(),
     });
     const userId = nextUser();
     await h.wallet.credit({ userId, amount: '100', refType: 'topup', refId: 'adm2' });

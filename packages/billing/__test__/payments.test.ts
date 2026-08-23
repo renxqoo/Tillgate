@@ -88,6 +88,8 @@ function harness(providers: readonly PaymentProviderPort[]) {
     orderLimiter: limiter.counter,
     perMinuteOrderLimit: 6,
     orderTtlMs: 600_000,
+    clock: () => new Date(),
+    logError: () => undefined,
   });
   const redemption = createRedemptionApi({
     store: world.billing,
@@ -95,6 +97,7 @@ function harness(providers: readonly PaymentProviderPort[]) {
     wallet,
     limiter: limiter.counter,
     perMinuteLimit: 10,
+    clock: () => new Date(),
   });
   return { wallet, world, payments, redemption, paymentsMemory, limiter };
 }
@@ -159,6 +162,7 @@ describe('协议规则', () => {
           },
         },
       }),
+      'CNY',
     );
     expect(event).toEqual({ sessionId: 'cs_1', orderId: 'o1', paidAmount: '10.10' });
     // unpaid / 非 cny / 垃圾 JSON 拒收
@@ -177,9 +181,10 @@ describe('协议规则', () => {
             },
           },
         }),
+        'CNY',
       ),
     ).toBeNull();
-    expect(parseStripeEvent('not-json')).toBeNull();
+    expect(parseStripeEvent('not-json', 'CNY')).toBeNull();
   });
 
   it('topup 规则：面额闸（两位小数/min/max）、汇率入账、金额核对', () => {
@@ -292,7 +297,10 @@ describe('支付下单与回调', () => {
       topupMin: '1',
       topupMax: '1000',
       orderLimiter: broken.counter,
+      perMinuteOrderLimit: 6,
       orderTtlMs: 600_000,
+      clock: () => new Date(),
+      logError: () => undefined,
     });
     expect(
       (await rejection(() => strict.createTopupOrder(nextUser(), { amount: '10' }))).code,
@@ -362,6 +370,7 @@ describe('兑换码', () => {
       wallet,
       limiter: spam.counter,
       perMinuteLimit: 2,
+      clock: () => new Date(),
     });
     const spammer = nextUser();
     await strict.redeem(spammer, { code: 'NOPE' }).catch(() => undefined);
@@ -413,6 +422,7 @@ describe('订单读侧与渠道清单', () => {
       wallet,
       limiter: broken.counter,
       perMinuteLimit: 10,
+      clock: () => new Date(),
     });
     expect((await rejection(() => strict.redeem(nextUser(), { code: 'X' }))).code).toBe(
       'billing.rate_counter_unavailable',
@@ -485,15 +495,96 @@ describe('回调分支封口', () => {
     expect(
       parseStripeEvent(
         stripeEvent('checkout.session.async_payment_succeeded', { client_reference_id: 'o9' }),
+        'CNY',
       ),
     ).toMatchObject({ sessionId: 'cs_9', orderId: 'o9', paidAmount: '5.00' });
-    expect(parseStripeEvent(stripeEvent('checkout.session.expired'))).toBeNull();
+    expect(parseStripeEvent(stripeEvent('checkout.session.expired'), 'CNY')).toBeNull();
     // client_reference_id 缺席时走 metadata.order_id
     expect(
       parseStripeEvent(
         stripeEvent('checkout.session.completed', { metadata: { order_id: 'via-meta' } }),
+        'CNY',
       ),
     ).toMatchObject({ orderId: 'via-meta' });
+  });
+});
+
+describe('渠道适配器配置（币种/支付类型单真相）', () => {
+  it('epay：payType 必填且经 EPAY_PAY_TYPES 词表校验；下单参数携带配置值', async () => {
+    const { createEpayProvider } = await import('../src/adapters/payments/providers.js');
+    const provider = createEpayProvider({
+      pid: '1001',
+      key: 'key',
+      gatewayUrl: 'https://epay.example/submit.php',
+      notifyUrl: 'https://app.example/notify',
+      returnUrl: 'https://app.example/return',
+      payType: 'wxpay',
+    });
+    const order = await provider.createOrder({ orderId: 'o-1', amount: '10', subject: '充值' });
+    expect(order.payUrl).toContain('type=wxpay');
+    expect(order.payUrl).not.toContain('type=alipay');
+    expect(order.providerOrderId).toBe('o-1');
+    // 词表外值：装配即拒（英文 message）
+    expect(() =>
+      createEpayProvider({
+        pid: '1001',
+        key: 'key',
+        gatewayUrl: 'https://epay.example/submit.php',
+        notifyUrl: 'https://app.example/notify',
+        returnUrl: 'https://app.example/return',
+        payType: 'crypto' as never,
+      }),
+    ).toThrow(/epay pay type not supported/);
+  });
+
+  it('stripe：currency 必填注入——下单 body 与回调币种闸同源（USD 单拒收 CNY 事件）', async () => {
+    const { createStripeProvider } = await import('../src/adapters/payments/providers.js');
+    let capturedBody = '';
+    const provider = createStripeProvider({
+      secretKey: 'sk_test',
+      webhookSecret: 'whsec_x',
+      successUrl: 'https://app.example/ok',
+      cancelUrl: 'https://app.example/cancel',
+      currency: 'CNY',
+      apiBase: 'https://stripe.test',
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        capturedBody = String(init?.body);
+        return new Response(JSON.stringify({ id: 'cs_1', url: 'https://pay/cs_1' }), {
+          status: 200,
+        });
+      }) as typeof fetch,
+      clock: () => Math.floor(Date.now() / 1000) * 1000,
+    });
+    const order = await provider.createOrder({ orderId: 'o-2', amount: '10.10', subject: '充值' });
+    expect(order.providerOrderId).toBe('cs_1');
+    expect(capturedBody).toContain('currency%5D=cny'); // 注入币种（非写死;line_items[price_data][currency] 的 URL 编码形态）
+    expect(capturedBody).toContain('unit_amount%5D=1010');
+    // 回调币种闸：注入 CNY → USD 事件拒收；CNY 事件放行
+    const nowSec = Math.floor(Date.now() / 1000);
+    const eventOf = (currency: string) => {
+      const payload = JSON.stringify({
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_9',
+            client_reference_id: 'o-2',
+            amount_total: 1010,
+            payment_status: 'paid',
+            mode: 'payment',
+            currency,
+          },
+        },
+      });
+      const sig = createHmac('sha256', 'whsec_x').update(`${nowSec}.${payload}`).digest('hex');
+      return provider.parseNotify({ payload, 'stripe-signature': `t=${nowSec},v1=${sig}` });
+    };
+    expect(eventOf('usd')).toBeNull(); // 币种错配拒收（资损闸）
+    expect(eventOf('CNY')).toMatchObject({ providerOrderId: 'cs_9', paidAmount: '10.10' });
+  });
+
+  it('stripeCentsFromAmount 零 round：非整分值结构性拒绝（不静默取整）', () => {
+    expect(stripeCentsFromAmount('10.10')).toBe('1010');
+    expect(() => stripeCentsFromAmount('10.005')).toThrow(/whole cents/);
   });
 });
 

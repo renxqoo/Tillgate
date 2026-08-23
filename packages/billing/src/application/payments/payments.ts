@@ -44,9 +44,16 @@ export interface PaymentsDeps {
   topupMax: string;
   /** 下单频率闸（可选注入；不可达时 fail-closed 拒单） */
   orderLimiter?: RateCounterPort;
-  perMinuteOrderLimit?: number;
+  /** 每分钟下单上限（装配必填——配合 orderLimiter 生效；不写死缺省） */
+  perMinuteOrderLimit: number;
   orderTtlMs: number;
-  clock?: () => Date;
+  /** 时钟（装配必填——零写死；DB 时钟权威路径不经此） */
+  clock: () => Date;
+  /**
+   * 运营/审计异常写入（装配必填：logger/遥测注入——console 直写是隐藏 I/O，
+   * 铁律 3）。承载渠道下单失败回填、回调金额错配、入账失败等资金留痕事件。
+   */
+  logError: (message: string, detail?: unknown) => void;
 }
 
 export interface PaymentsApi {
@@ -69,7 +76,7 @@ export interface PaymentsApi {
 
 export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
   const { store, orders, wallet } = deps;
-  const clock = deps.clock ?? (() => new Date());
+  const clock = deps.clock;
   const byName = new Map(deps.providers.map((p) => [p.name, p]));
 
   /** 渠道解析：显式指定须命中；未指定时唯一渠道直通，多渠道须显式选择 */
@@ -94,7 +101,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
         } catch {
           throw BillingErrors.business('rate_counter_unavailable', { action: 'topup-order' });
         }
-        if (n > (deps.perMinuteOrderLimit ?? 10)) {
+        if (n > deps.perMinuteOrderLimit) {
           throw BillingErrors.business('topup_rate_limited', { userId });
         }
       }
@@ -125,7 +132,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
         });
       } catch (error) {
         // 渠道下单失败：关单留痕——渠道侧确定性失败即刻可见
-        console.error(`[billing] payment channel create failed order=${orderId}:`, error);
+        deps.logError(`[billing] payment channel create failed order=${orderId}`, error);
         await store
           .transaction((tx) => orders.markChannelFailed(tx, orderId))
           .catch(() => undefined);
@@ -139,8 +146,8 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
             orders.attachProviderOrderId(tx, { orderId, providerOrderId: channel.providerOrderId }),
           )
           .catch((error) => {
-            console.error(
-              `[billing] attach provider order id failed order=${orderId} channel=${channel.providerOrderId}:`,
+            deps.logError(
+              `[billing] attach provider order id failed order=${orderId} channel=${channel.providerOrderId}`,
               error,
             );
           });
@@ -179,7 +186,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
       if (!order) return 'fail';
       // 金额核对：签名只证来源，金额才防「少付多得」（按订单实付比对，全精度）
       if (!amountsMatch(parsed.paidAmount, order.amount)) {
-        console.error('[billing] payment notify amount mismatch:', order.id);
+        deps.logError('[billing] payment notify amount mismatch', { orderId: order.id });
         return 'fail';
       }
       // 已入账：重复回调幂等成功应答（渠道停止重发）
@@ -225,7 +232,9 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
         });
         return 'success';
       } catch (error) {
-        console.error('[billing] payment credit failed (order stays retryable):', error);
+        // 入账失败：订单停留 created/paid（可重试）——渠道按应答重发回调；
+        // 写入注入留痕（装配必填），静默吞 = 已付款搁浅不可见
+        deps.logError('[billing] payment credit failed (order stays retryable)', error);
         return 'fail';
       }
     },
@@ -237,8 +246,10 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
     },
 
     async listOrders(userId, input) {
-      // 机会式关单：未支付且超 TTL 的订单置 expired（best-effort，失败不阻断列表）。
-      // 只关自己的单——全局关单会把他人支付中的订单误关，制造「已付款被拒收」搁浅单
+      // 机会式关单：未支付且超 TTL 的订单置 expired。只关自己的单——全局关单会把
+      // 他人支付中的订单误关，制造「已付款被拒收」搁浅单。空 catch 是有意为之：
+      // 关单是读路径顺带的 best-effort 优化（失败只影响本页展示口径，不影响资金
+      // 事实——expired 非资金状态，已付款单可经回调复活收尾）；不得阻断订单列表。
       try {
         await store.transaction((tx) =>
           orders.expireOverdue(tx, {

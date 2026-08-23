@@ -4,7 +4,7 @@
  * subscriptionAvailability（结构性非法抛错 / 开关 OFF 整单拒绝 / ON 返回余量补差）。
  */
 import { subscriptionAvailability } from '../../../domain/billing/subscription-availability.js';
-import { billingDayStart } from '../../../domain/billing/daily-window.js';
+import { billingDayStart, billingMonthStart } from '../../../domain/billing/daily-window.js';
 import { BillingErrors } from '../../../domain/errors.js';
 import { Decimal } from '../../../domain/money.js';
 import { BILLING_REF_TYPE } from '../../wallet/authorize.js';
@@ -61,7 +61,9 @@ export function createSubscriptionSource(deps: {
             monthlySpent = await deps.billing.sumSettledSpend(tx, {
               userId: input.userId,
               subscriptionId,
-              since: new Date(input.now.getFullYear(), input.now.getMonth(), 1),
+              // 月度窗口单一真相：与每日窗口同住 daily-window（避免独立 new Date(y,m,1)
+              // 实现漂移——窗口错位 = 配额重置时刻互相矛盾）
+              since: billingMonthStart(input.now),
             });
           }
         }

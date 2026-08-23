@@ -2,7 +2,8 @@
  * signal 用例：四事件——8 态状态机的网关侧入口。
  *
  *   upstream.started   authorized → in_flight（起租约，覆盖整个请求预算）
- *   lease.renewed      in_flight 续租（owner 校验）
+ *   lease.renewed      in_flight 续租（仅当行 leaseOwner = 请求 owner——
+ *                      他人续租 CAS 落空，不改写租约归属）
  *   request.succeeded  authorized/in_flight → settlement_pending
  *                     （rating.validateReceipt 验收 → CAS 落收据；竞态输家按指纹判幂等/冲突）
  *   request.failed     authorized/in_flight → released（三路预扣同事务释放：不扣）
@@ -34,7 +35,7 @@ export interface BillingSignalResult {
 }
 
 export function createSignalUseCase(env: BillingEnv & { channels?: ChannelExposureStore }) {
-  const { store, clock = () => new Date() } = env;
+  const { store, clock } = env;
 
   const releaseAllReservations = createReleaseAllReservations({
     registry: env.fundingRegistry,
@@ -75,6 +76,9 @@ export function createSignalUseCase(env: BillingEnv & { channels?: ChannelExposu
             requestId: event.requestId,
             from: ['in_flight'],
             to: 'in_flight',
+            // 续租只认当前持有者：WHERE leaseOwner = 请求 owner——他人（并发网关副本/
+            // 过期回收后重发者）CAS 落空，租约归属不被改写
+            expectLeaseOwner: event.leaseOwner,
             set: {
               leaseExpiresAt: new Date(now.getTime() + event.leaseMs),
               leaseOwner: event.leaseOwner,

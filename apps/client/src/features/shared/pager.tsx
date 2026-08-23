@@ -44,6 +44,8 @@ export function Pager({
         <PaginationItem>
           <PaginationPrevious
             href={reachable(page - 1) ? makeHref(page - 1) : undefined}
+            text={t('prevPage')}
+            aria-label={t('prevPage')}
             aria-disabled={!reachable(page - 1)}
             className={!reachable(page - 1) ? 'pointer-events-none opacity-50' : undefined}
           />
@@ -55,7 +57,11 @@ export function Pager({
             </PaginationItem>
           ) : (
             <PaginationItem key={p}>
-              <PaginationLink href={makeHref(p)} isActive={p === page} aria-label={t('pageN', { page: p })}>
+              <PaginationLink
+                href={makeHref(p)}
+                isActive={p === page}
+                aria-label={t('pageN', { page: p })}
+              >
                 {p}
               </PaginationLink>
             </PaginationItem>
@@ -64,6 +70,8 @@ export function Pager({
         <PaginationItem>
           <PaginationNext
             href={reachable(page + 1) ? makeHref(page + 1) : undefined}
+            text={t('nextPage')}
+            aria-label={t('nextPage')}
             aria-disabled={!reachable(page + 1)}
             className={!reachable(page + 1) ? 'pointer-events-none opacity-50' : undefined}
           />

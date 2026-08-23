@@ -15,9 +15,12 @@
     "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
     "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
     "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
-    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage",
+    "test:e2e": "bun x vitest run -c ../../e2e/admin/vitest.config.ts",
+    "generate:openapi": "bun scripts/generate-openapi.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.0",
     "@tokenlens/accounts": "workspace:*",
     "@tokenlens/ai": "workspace:*",
     "@tokenlens/billing": "workspace:*",
@@ -26,15 +29,20 @@
     "@tokenlens/errors": "workspace:*",
     "@tokenlens/http": "workspace:*",
     "@tokenlens/identity": "workspace:*",
+    "@tokenlens/inference": "workspace:*",
+    "@tokenlens/notifications": "workspace:*",
     "@tokenlens/observability": "workspace:*",
     "@tokenlens/runtime": "workspace:*",
-    "@hono/node-server": "^1.19.0",
     "hono": "^4.13.0",
+    "ioredis": "^5.8.0",
+    "nodemailer": "^9.0.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^7.0.4",
     "@vitest/coverage-v8": "^4.1.11",
+    "drizzle-orm": "^0.45.2",
     "typescript": "^5.9.0",
     "vitest": "^4.1.10"
   },
