@@ -1,0 +1,44 @@
+{
+  "name": "@tokenlens/admin-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "管理控制面 REST API：会话鉴权 + 六域管理读写（重构方案 §3 目标树；业务全部来自 @tokenlens 能力包 facade）",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "start": "node dist/index.js",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+  },
+  "dependencies": {
+    "@tokenlens/accounts": "workspace:*",
+    "@tokenlens/ai": "workspace:*",
+    "@tokenlens/billing": "workspace:*",
+    "@tokenlens/control-plane": "workspace:*",
+    "@tokenlens/db": "workspace:*",
+    "@tokenlens/errors": "workspace:*",
+    "@tokenlens/http": "workspace:*",
+    "@tokenlens/identity": "workspace:*",
+    "@tokenlens/observability": "workspace:*",
+    "@tokenlens/runtime": "workspace:*",
+    "@hono/node-server": "^1.19.0",
+    "hono": "^4.13.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">= 1.4.0"
+  }
+}
