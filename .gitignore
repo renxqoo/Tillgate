@@ -18,7 +18,9 @@ out/
 
 # logs
 *.log
-logs/
+# 仅根级运行时日志目录；不锚定会误吞 App Router 路由目录
+# apps/admin/src/app/(main)/dashboard/logs（CI 首跑 ENOENT 根因）
+/logs/
 
 # docker
 docker/data/
