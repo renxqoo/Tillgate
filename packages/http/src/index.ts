@@ -59,9 +59,10 @@ export {
 // ---- 请求上下文 ----
 export { requestIdMiddleware } from './request-context/request-id';
 
-// ---- 安全件：一次性密钥 + 协议三件套 ----
+// ---- 安全件：一次性密钥 + 常量时间比较 + 协议三件套 ----
 // api-key/app 凭证生成器已随消费者迁入 @tokenlens/accounts(C5/D3)
 export { generateRedeemCode, maskUpstreamKey } from './security/secrets';
+export { timingSafeTokenEqual } from './security/token-compare';
 export {
   securityHeaders,
   corsPreflight,

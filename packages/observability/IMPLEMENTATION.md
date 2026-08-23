@@ -124,5 +124,7 @@
 
 - G1 桥接:accounts/control-plane 的 AuditPort 改由 apps assembly 桥接本包原语——P5 apps 波次。
 - D2:control-plane AuditStore(价格溯源)与 observability AuditLogRow 形状合并——P5 桥接时裁决。
-- token-compare(trace-receiver)与 http 常量时间比较的合并——P5 trace-receiver app 落地时。
+- ~~token-compare(trace-receiver)与 http 常量时间比较的合并~~——**已兑现**(apps/trace-receiver
+  波次):合一为 `@tokenlens/http` `security/token-compare.ts` `timingSafeTokenEqual`,接收端
+  首位消费,worker 健康令牌/client-api webhook 签名(P5)自此同源。
 - 审计保留策略(分区/清理)——v1 无此行为,升格需独立裁决(§3.4「保留」的完整落地)。

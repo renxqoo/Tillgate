@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DefectError,
-  InfrastructureError,
-  defineErrorCatalog,
-} from '@tokenlens/errors';
+import { DefectError, InfrastructureError, defineErrorCatalog } from '@tokenlens/errors';
 import { CATEGORY_STATUS_DEFAULTS, renderError } from '../src/errors/render';
 import { HttpErrors } from '../src/errors/catalog';
 
@@ -14,8 +10,16 @@ import { HttpErrors } from '../src/errors/catalog';
  */
 
 const Face = defineErrorCatalog('render_test', {
-  session_invalid: { category: 'forbidden', message: 'Session invalid or expired', zh: '会话无效或已过期' },
-  insufficient_cash: { category: 'quota_exhausted', message: 'Insufficient balance', zh: '余额不足' },
+  session_invalid: {
+    category: 'forbidden',
+    message: 'Session invalid or expired',
+    zh: '会话无效或已过期',
+  },
+  insufficient_cash: {
+    category: 'quota_exhausted',
+    message: 'Insufficient balance',
+    zh: '余额不足',
+  },
   throttled: { category: 'rate_limited', message: 'Too many requests', zh: '请求过于频繁' },
 });
 
@@ -42,8 +46,10 @@ describe('renderError：business 分支', () => {
     expect(renderError(HttpErrors.business('pg_unique_violation')).status).toBe(409);
   });
 
-  it('http 自有码修正表：payload_too_large → 413（优先于 category 默认 400）', () => {
+  it('http 自有码修正表：413/401/415 优先于 category 默认', () => {
     expect(renderError(HttpErrors.business('payload_too_large')).status).toBe(413);
+    expect(renderError(HttpErrors.business('unauthorized')).status).toBe(401);
+    expect(renderError(HttpErrors.business('unsupported_media_type')).status).toBe(415);
   });
 
   it('face override 优先级最高（status 与 wire code 双覆盖）', () => {
@@ -56,15 +62,25 @@ describe('renderError：business 分支', () => {
   });
 
   it('文案按 locale 取目录定义：zh 取 zh、缺省/en 取 message', () => {
-    expect(renderError(Face.business('session_invalid'), { catalog: Face }).message).toBe('Session invalid or expired');
-    expect(renderError(Face.business('session_invalid'), { catalog: Face, locale: 'zh' }).message).toBe('会话无效或已过期');
-    expect(renderError(HttpErrors.business('validation_failed'), { locale: 'zh' }).message).toBe('请求参数无效');
+    expect(renderError(Face.business('session_invalid'), { catalog: Face }).message).toBe(
+      'Session invalid or expired',
+    );
+    expect(
+      renderError(Face.business('session_invalid'), { catalog: Face, locale: 'zh' }).message,
+    ).toBe('会话无效或已过期');
+    expect(renderError(HttpErrors.business('validation_failed'), { locale: 'zh' }).message).toBe(
+      '请求参数无效',
+    );
   });
 
   it('context 与 retryAfterMs 透传（出站安全面：context 契约 scalar-only）', () => {
-    const err = Face.business('insufficient_cash', { needed: '5.00', available: '3.00' }, {
-      retryAfterMs: 2_500,
-    });
+    const err = Face.business(
+      'insufficient_cash',
+      { needed: '5.00', available: '3.00' },
+      {
+        retryAfterMs: 2_500,
+      },
+    );
     const rendered = renderError(err, { catalog: Face });
     expect(rendered.context).toEqual({ needed: '5.00', available: '3.00' });
     expect(rendered.retryAfterMs).toBe(2_500);
@@ -81,7 +97,10 @@ describe('renderError：business 分支', () => {
 
 describe('renderError：infrastructure / defect / 未知（内外分际）', () => {
   it('infrastructure → 503 + 身份码保留 + 通用文案（内部诊断不外泄）', () => {
-    const err = new InfrastructureError('connect ECONNREFUSED 10.0.0.5:6379', 'runtime.redis_unreachable');
+    const err = new InfrastructureError(
+      'connect ECONNREFUSED 10.0.0.5:6379',
+      'runtime.redis_unreachable',
+    );
     const rendered = renderError(err);
     expect(rendered.status).toBe(503);
     expect(rendered.code).toBe('runtime.redis_unreachable');
@@ -91,7 +110,10 @@ describe('renderError：infrastructure / defect / 未知（内外分际）', () 
   });
 
   it('defect → 500 + errors.unhandled + 通用文案（细节不外泄）', () => {
-    const err = new DefectError('invariant broken: ledger legs diverged by 100', 'billing.invariant');
+    const err = new DefectError(
+      'invariant broken: ledger legs diverged by 100',
+      'billing.invariant',
+    );
     const rendered = renderError(err);
     expect(rendered.status).toBe(500);
     expect(rendered.code).toBe('errors.unhandled');

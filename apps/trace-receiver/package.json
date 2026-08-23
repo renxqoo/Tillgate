@@ -1,0 +1,38 @@
+{
+  "name": "@tokenlens/trace-receiver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OTLP 接收部署单元（内网）：OTLP/HTTP JSON 接收 → 批量写 PG 日分区；过载即丢绝不反压业务",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --env-file=../../.env --watch src/index.ts",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --sourcemap --packages=external --outdir=dist",
+    "start": "node dist/index.js",
+    "typecheck": "bun x tsc --noEmit",
+    "lint": "bun x oxlint",
+    "test": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --passWithNoTests",
+    "test:watch": "bun x vitest --exclude \"__test__/*.real.test.ts\"",
+    "test:real": "bun x vitest run receiver.real.test.ts --passWithNoTests",
+    "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@tokenlens/db": "workspace:*",
+    "@tokenlens/errors": "workspace:*",
+    "@tokenlens/http": "workspace:*",
+    "@tokenlens/observability": "workspace:*",
+    "@tokenlens/runtime": "workspace:*",
+    "hono": "^4.13.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  }
+}

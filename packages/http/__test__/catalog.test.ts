@@ -8,7 +8,7 @@ import { HttpErrors } from '../src/errors/catalog';
  */
 
 describe('HttpErrors 目录内容', () => {
-  it('码集封闭（13 码，装配即锁）', () => {
+  it('码集封闭（15 码，装配即锁）', () => {
     expect([...HttpErrors.codes].toSorted()).toEqual([
       'http.invalid_idempotency_key',
       'http.invalid_json',
@@ -22,6 +22,8 @@ describe('HttpErrors 目录内容', () => {
       'http.pg_numeric_out_of_range',
       'http.pg_unique_violation',
       'http.pg_value_too_long',
+      'http.unauthorized',
+      'http.unsupported_media_type',
       'http.validation_failed',
     ]);
   });

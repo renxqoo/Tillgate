@@ -25,9 +25,11 @@ export const CATEGORY_STATUS_DEFAULTS: Readonly<Record<ErrorCategory, number>> =
   unavailable: 503,
 });
 
-/** http 自有码的出站 status 修正（唯一例外：payload_too_large 的 413 语义分级） */
+/** http 自有码的出站 status 修正（协议语义分级优先于 category 默认） */
 const HTTP_CODE_STATUS: Readonly<Record<string, number>> = Object.freeze({
   [HttpErrors.code('payload_too_large')]: 413,
+  [HttpErrors.code('unauthorized')]: 401,
+  [HttpErrors.code('unsupported_media_type')]: 415,
 });
 
 /** face 出站差异（ADR-0001 D1：个别码的出站投影——status 与 wire code） */
@@ -74,22 +76,41 @@ export function renderError(error: unknown, opts: RenderOptions = {}): RenderedE
   if (record.nature === 'business') return renderBusiness(record, locale, opts);
   if (record.nature === 'infrastructure') {
     // 环境故障：503 + 身份码保留（调用方可编程分派 unavailable）+ 通用文案（内部诊断不外泄）
-    return { status: 503, code: record.code, message: generic(GENERIC_UNAVAILABLE_MESSAGE, locale) };
+    return {
+      status: 503,
+      code: record.code,
+      message: generic(GENERIC_UNAVAILABLE_MESSAGE, locale),
+    };
   }
   // 缺陷/未知：细节只进日志；出站统一 errors.unhandled + 通用文案（内外分际）
-  return { status: 500, code: ROOT_ERROR_CODES.unhandled, message: generic(GENERIC_INTERNAL_MESSAGE, locale) };
+  return {
+    status: 500,
+    code: ROOT_ERROR_CODES.unhandled,
+    message: generic(GENERIC_INTERNAL_MESSAGE, locale),
+  };
 }
 
-function renderBusiness(record: BusinessRecord, locale: Locale, opts: RenderOptions): RenderedError {
+function renderBusiness(
+  record: BusinessRecord,
+  locale: Locale,
+  opts: RenderOptions,
+): RenderedError {
   const catalog = opts.catalog ?? HttpErrors;
   const definition = catalog.get(record.code);
   if (definition === undefined) {
     // 目录 miss = face 装配缺陷（码未随包登记）：按缺陷渲染兜底，原码由 handler 落日志
-    return { status: 500, code: ROOT_ERROR_CODES.unhandled, message: generic(GENERIC_INTERNAL_MESSAGE, locale) };
+    return {
+      status: 500,
+      code: ROOT_ERROR_CODES.unhandled,
+      message: generic(GENERIC_INTERNAL_MESSAGE, locale),
+    };
   }
   const override = opts.overrides?.[record.code];
   return {
-    status: override?.status ?? HTTP_CODE_STATUS[record.code] ?? CATEGORY_STATUS_DEFAULTS[record.category],
+    status:
+      override?.status ??
+      HTTP_CODE_STATUS[record.code] ??
+      CATEGORY_STATUS_DEFAULTS[record.category],
     code: override?.code ?? record.code,
     message: locale === 'zh' ? definition.zh : definition.message,
     ...(record.context !== undefined ? { context: record.context } : {}),
