@@ -43,13 +43,15 @@ export async function prepareChatRequest(env: {
   auth: RequestAuth;
   body: Record<string, unknown>;
   endpoint?: Endpoint;
+  /** 请求准入时刻（schedule 分时段选价锚点；runChat 入口捕获一次） */
+  now: Date;
 }): Promise<PreparedRequest> {
   // 模型白名单（凭证 scope）：预扣前拒绝——受限凭证调未授权模型的越权计费
   const externalModel = typeof env.body.model === 'string' ? env.body.model : '';
   if (env.auth.allowedModels != null && !env.auth.allowedModels.includes(externalModel)) {
     throw InferenceErrors.business('model_not_allowed', { model: externalModel });
   }
-  const pricing = { userId: env.auth.userId, body: env.body };
+  const pricing = { userId: env.auth.userId, body: env.body, now: env.now };
   const mapping = await env.catalog.findMapping(externalModel, pricing);
   if (mapping == null) {
     throw InferenceErrors.business('model_not_found', { model: externalModel });

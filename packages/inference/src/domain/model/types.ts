@@ -25,6 +25,11 @@ export interface ModelMappingSnapshot {
   /** 计费策略指纹（收据快照字段，billing 结算幂等校验用） */
   billingPolicyFingerprint: string | null;
   /**
+   * 命中时段标签（schedule 策略窗口的 label，缺省 "start-end"）——收据审计列：
+   * 这笔账为什么是这个价一查便知；缺省 = 无时段策略/未命中窗口。
+   */
+  pricingWindow?: string;
+  /**
    * 显式免费标记（gateway P5 波 C-G1 增补，可选）：true 时授权走 0 元 fast-path
    * （billing R6：显式免费与候选价格非全零结构性拒绝）。目录实现方携带。
    */
@@ -45,6 +50,8 @@ export interface QuoteCandidate {
   unitUpperBound: number;
   coefficient: string;
   billingPolicyFingerprint: string | null;
+  /** 命中时段标签透传（收据审计列；见 ModelMappingSnapshot.pricingWindow） */
+  pricingWindow?: string;
   /** 显式免费标记透传（授权 0 元 fast-path 判定；见 ModelMappingSnapshot.isFree） */
   isFree?: boolean;
 }

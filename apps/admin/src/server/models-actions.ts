@@ -17,10 +17,14 @@ export interface ModelCreateInput {
   /** 计价单位（token/image/second/char/request）；单位计价模型配 unitPrice */
   pricingUnit?: string;
   unitPrice?: string;
-  /** 变体价格（分辨率差价）：strategy=variant + selector + prices */
+  /** 计费配置：variant=分辨率差价（selector+prices）/ schedule=分时段窗口（windows） */
   billingConfig?: {
     strategy?: string;
-    params?: { selector?: string; prices?: Record<string, string> };
+    params?: {
+      selector?: string;
+      prices?: Record<string, string>;
+      windows?: Array<Record<string, string>>;
+    };
   };
   isFree?: boolean;
   contextLength?: number | null;
@@ -66,10 +70,14 @@ export interface ModelUpdateInput {
   /** 计价单位（token/image/second/char/request）；单位计价模型配 unitPrice */
   pricingUnit?: string;
   unitPrice?: string;
-  /** 变体价格（分辨率差价）：strategy=variant + selector + prices；null = 清除（回到统一单价） */
+  /** 计费配置：variant=差价 / schedule=分时段；null = 清除（回到基价列） */
   billingConfig?: {
     strategy?: string;
-    params?: { selector?: string; prices?: Record<string, string> };
+    params?: {
+      selector?: string;
+      prices?: Record<string, string>;
+      windows?: Array<Record<string, string>>;
+    };
   } | null;
   isFree?: boolean;
   contextLength?: number | null;
@@ -95,12 +103,12 @@ export async function updateModelAction(
   }
 }
 
-// ── 删除模型映射 ────────────────────────────────────────────────────────────
-/** 下架（软删除）：status→1，不再对外提供；历史计费/渠道绑定保留——非物理删除 */
-export async function deleteModelAction(id: number): Promise<{ error?: string }> {
+// ── 下架/上架（status 语义；下架≠删除——记录仍在列表可见） ────────────────────
+/** 下架：status→1，不再对外提供；历史计费/渠道绑定保留（走编辑同款 PATCH） */
+export async function delistModelAction(id: number): Promise<{ error?: string }> {
   const t = await getTranslations('models');
   try {
-    await adminApi().delete(`/v1/models/${id}`);
+    await adminApi().patch(`/v1/models/${id}`, { status: 1 });
     revalidatePath('/dashboard/models');
     return {};
   } catch (e) {
@@ -108,7 +116,7 @@ export async function deleteModelAction(id: number): Promise<{ error?: string }>
   }
 }
 
-/** 恢复上架：status→0（走编辑表单同款 PATCH） */
+/** 上架：status→0（走编辑表单同款 PATCH） */
 export async function restoreModelAction(id: number): Promise<{ error?: string }> {
   const t = await getTranslations('models');
   try {
@@ -117,6 +125,31 @@ export async function restoreModelAction(id: number): Promise<{ error?: string }
     return {};
   } catch (e) {
     return { error: e instanceof ApiError ? e.message : t('restoreFailed') };
+  }
+}
+
+// ── 删除（逻辑删除/回收站）与恢复记录 ────────────────────────────────────────
+/** 删除记录：status→1 + deleted_at；记录与绑定保留可追溯，外部名释放可复用 */
+export async function deleteModelAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
+  try {
+    await adminApi().delete(`/v1/models/${id}`);
+    revalidatePath('/dashboard/models');
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : t('deleteFailed') };
+  }
+}
+
+/** 恢复已删除记录：回下架态（不直接上架——复核后显式上架） */
+export async function undeleteModelAction(id: number): Promise<{ error?: string }> {
+  const t = await getTranslations('models');
+  try {
+    await adminApi().post(`/v1/models/${id}/restore`);
+    revalidatePath('/dashboard/models');
+    return {};
+  } catch (e) {
+    return { error: e instanceof ApiError ? e.message : t('undeleteFailed') };
   }
 }
 

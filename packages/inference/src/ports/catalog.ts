@@ -12,12 +12,16 @@ import type { ChannelCandidate, ModelMappingSnapshot } from '../domain/model/typ
  * 「请求时点已解析」值（v1 buildQuote 语义）——
  *   coefficient = 用户费率卡系数（用户价 = 官方价 × 系数；无卡 = 缺省系数）；
  *   unitPrice / unitUpperBound = 按请求体推导的变体单价与单位上界（n/秒/字符）
- *   叠加映射级预扣保底。因此目录查询必须携带用户与请求体两个维度。
+ *   叠加映射级预扣保底。因此目录查询必须携带用户、请求体与准入时刻三个维度。
+ *   now = 请求准入时刻（schedule 分时段选价锚点——fallback 重查复用同一值，
+ *   不随查询时刻抖动；时区属装配面环境，不进请求上下文）。
  */
 export interface CatalogPricingContext {
   userId: number;
   /** 原始请求体（计量描述符与变体定价选择器的取值源；只读） */
   body: Readonly<Record<string, unknown>>;
+  /** 请求准入时刻（报价前捕获一次） */
+  now: Date;
 }
 
 export interface CatalogPort {

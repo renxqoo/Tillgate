@@ -69,6 +69,11 @@ export const usageLogs = pgTable(
       .default('0'),
     /** 单位单价快照（元/单位；token 计费模型为 0） */
     unitPrice: numeric('unit_price', { precision: 38, scale: 18 }).notNull().default('0'),
+    /**
+     * 命中计价时段标签快照（schedule 策略窗口的 label，缺省 "start-end"）：
+     * 对账/客诉「这笔为什么是这个价」的审计口径；NULL = 无时段策略/未命中/历史行。
+     */
+    pricingWindow: varchar('pricing_window', { length: 64 }),
     /** 费率卡系数快照（最终单价 = 官方价 × 系数） */
     coefficient: numeric('coefficient', { precision: 6, scale: 3 }).notNull(),
     /** 实扣费用（元，numeric 全精度）；预付费模式不超过 reserved amount。 */

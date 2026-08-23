@@ -74,6 +74,7 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
     pricingUnit: c.pricingUnit,
     unitUpperBound: c.unitUpperBound,
     billingPolicyFingerprint: c.billingPolicyFingerprint,
+    ...(c.pricingWindow != null ? { pricingWindow: c.pricingWindow } : {}),
   };
 }
 

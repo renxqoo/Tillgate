@@ -182,7 +182,10 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   );
   const inference = createInference({
     ai,
-    catalog: createPostgresGatewayCatalog(db),
+    catalog: createPostgresGatewayCatalog(db, {
+      ttlMs: config.billingTimezoneTtlMs,
+      fallback: config.billingTimezoneFallback,
+    }),
     billing: createGatewayBilling(billingFacade.billing, {
       reservationLimit: config.reservationLimit,
       reservationPolicy: config.reservationPolicy,

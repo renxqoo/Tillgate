@@ -288,6 +288,16 @@ export interface OAuthProviders {
 }
 
 // ── 公开定价 (GET /v1/pricing) ─────────────────────────────────────────────
+/** 分时段窗口（schedule 策略；基价 = 未命中时段的缺省价；未覆盖价格轴不出场） */
+export interface PricingScheduleWindow {
+  label?: string;
+  start: string;
+  end: string;
+  inputPrice?: string;
+  outputPrice?: string;
+  cacheInputPrice?: string;
+  unitPrice?: string;
+}
 export interface PricingModel {
   id: number;
   externalName: string;
@@ -298,6 +308,8 @@ export interface PricingModel {
   cacheInputPrice: string;
   unitPrice: string;
   isFree: boolean;
+  /** 分时段窗口（无时段策略 = 缺省） */
+  schedule?: PricingScheduleWindow[];
   /** 登录态富化(/v1/pricing/personal):费率卡系数与到手价 */
   coefficient?: string;
   effective?: {
@@ -306,6 +318,8 @@ export interface PricingModel {
     cacheInputPrice: string;
     unitPrice: string;
   };
+  /** 登录态富化:各窗口到手价（窗口官方价 × 系数） */
+  effectiveSchedule?: PricingScheduleWindow[];
   personalized?: boolean;
   rateCardStatus?: number | null;
 }
@@ -315,6 +329,8 @@ export interface PricingPage {
   total: number;
   page: number;
   pageSize: number;
+  /** 计费时区（时段窗口的墙钟口径说明字段） */
+  billingTimezone?: string;
 }
 
 // ── 用量聚合信封 ───────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
+    "@tokenlens/billing": "workspace:*",
     "@tokenlens/db": "workspace:*",
     "@tokenlens/errors": "workspace:*",
     "decimal.js": "^10.6.0",
