@@ -16,6 +16,8 @@ function createSchema(production: boolean) {
     /** 基础设施必配（fail-closed：连错库/忘配 = 拒绝启动，不落默认值跑偏） */
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
+    /** 运行形态（经 zod 运行期解析消费——直读 process.env.NODE_ENV 会被 bun build 构建期内联） */
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     CLIENT_API_PORT: z.coerce.number().int().positive().default(8081),
     DB_POOL_MAX: z.coerce.number().int().positive().default(10),
     CLIENT_DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),

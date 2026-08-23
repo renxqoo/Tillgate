@@ -73,11 +73,13 @@ export async function assembleClientApi(
   config: ClientApiConfig,
   overrides: AssemblyOverrides = {},
 ): Promise<ClientApiAssembly> {
-  const production = process.env.NODE_ENV === 'production';
+  // 经 zod 配置读运行期 NODE_ENV：直接读 process.env 会被 bun build 在构建期静态
+  // 内联（builder 阶段无 NODE_ENV → pretty 恒 true），生产镜像因 pino-pretty
+  // transport 动态 require（thread-stream worker 打不进 bundle）必崩
   const logger = createLogger({
     level: config.LOG_LEVEL,
     serviceName: 'client-api',
-    pretty: !production,
+    pretty: config.NODE_ENV !== 'production',
   });
   const otel = initOtel({
     serviceName: 'client-api',

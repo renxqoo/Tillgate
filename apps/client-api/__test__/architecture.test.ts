@@ -76,4 +76,17 @@ describe('client-api 架构门禁', () => {
       }
     }
   });
+
+  // 回归（2026-08-23 生产首部署崩溃）：bun build 会把直接出现的 process.env.NODE_ENV
+  // 在构建期静态内联（builder 无 NODE_ENV → pretty 恒 true），pino-pretty transport
+  // 动态 require 打不进 bundle → 镜像启动必崩。NODE_ENV 一律经 config（zod 运行期解析，
+  // config.ts 的 `env = process.env` 参数默认不带成员访问，不受内联影响）。
+  it('禁直接读 process.env.NODE_ENV（构建期可被内联的形态必须走 config）', () => {
+    for (const [file, source] of ALL) {
+      if (file === 'config.ts') continue; // schema 入参默认 = process.env（整体引用，无成员访问）
+      expect(source, `${file} 直接读 process.env.NODE_ENV（改经 config.NODE_ENV）`).not.toContain(
+        'process.env.NODE_ENV',
+      );
+    }
+  });
 });
