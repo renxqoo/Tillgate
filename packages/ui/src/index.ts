@@ -5,6 +5,12 @@ export { cn } from './cn';
 
 // ---- primitives(视觉原子与浮层) ----
 export {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from './components/primitives/accordion';
+export {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -28,6 +34,12 @@ export {
 } from './components/primitives/avatar';
 export { Badge, badgeVariants } from './components/primitives/badge';
 export { Button, buttonVariants } from './components/primitives/button';
+export {
+  ButtonGroup,
+  ButtonGroupSeparator,
+  ButtonGroupText,
+  buttonGroupVariants,
+} from './components/primitives/button-group';
 export {
   Card,
   CardHeader,
@@ -127,6 +139,7 @@ export {
 } from './components/primitives/tooltip';
 
 // ---- forms(表单控件) ----
+export { Calendar, CalendarDayButton } from './components/forms/calendar';
 export { Checkbox } from './components/forms/checkbox';
 export {
   Combobox,
@@ -147,6 +160,12 @@ export {
   useComboboxAnchor,
 } from './components/forms/combobox';
 export {
+  DatePicker,
+  DateRangePicker,
+  type DatePickerProps,
+  type DateRangePickerProps,
+} from './components/forms/date-picker';
+export {
   Field,
   FieldLabel,
   FieldDescription,
@@ -158,6 +177,16 @@ export {
   FieldContent,
   FieldTitle,
 } from './components/forms/field';
+export {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormDescription,
+  FormMessage,
+  FormControl,
+  useFormField,
+} from './components/forms/form';
 export { Input } from './components/forms/input';
 export {
   InputGroup,
@@ -167,7 +196,25 @@ export {
   InputGroupInput,
   InputGroupTextarea,
 } from './components/forms/input-group';
+export {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+  InputOTPSeparator,
+} from './components/forms/input-otp';
 export { Label } from './components/forms/label';
+export {
+  NativeSelect,
+  NativeSelectOptGroup,
+  NativeSelectOption,
+} from './components/forms/native-select';
+export {
+  NumberField,
+  NumberFieldGroup,
+  NumberFieldInput,
+  NumberFieldDecrement,
+  NumberFieldIncrement,
+} from './components/forms/number-field';
 export { PasswordInput, type PasswordInputProps } from './components/forms/password-input';
 export { RadioGroup, RadioGroupItem } from './components/forms/radio-group';
 export {
@@ -182,12 +229,21 @@ export {
   SelectTrigger,
   SelectValue,
 } from './components/forms/select';
+export { Slider } from './components/forms/slider';
 export { Switch } from './components/forms/switch';
 export { Textarea } from './components/forms/textarea';
 export { Toggle, toggleVariants } from './components/forms/toggle';
 export { ToggleGroup, ToggleGroupItem } from './components/forms/toggle-group';
 
 // ---- data(数据展示) ----
+export {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  ChartStyle,
+} from './components/data/chart';
 export {
   DataTable,
   type DataTableColumn,

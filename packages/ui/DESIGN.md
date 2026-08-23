@@ -12,7 +12,7 @@
   - i18n 文案目录（组件文案 prop 必填或可覆盖，宿主注入）；
   - 「业务状态 → 颜色」映射词表（`StatusPill` 只收语义 tone，映射由调用方做——§0.3 零写死）；
   - 本地化 locale/币种默认值（formatting 工厂必填注入，无全局缺省实例——§0.3）。
-- **显式待办**（有真实需求再补，组件注册表随时可加）：calendar/日期区间选择、OTP 输入、图表（recharts 封装）、carousel、chat 组件族（bubble/message）。后果：列表页日期筛选、MFA OTP UI、图表页届时需先补组件再迁移对应页面。
+- **显式待办**（有真实需求再补，组件注册表随时可加）：carousel、menubar/navigation-menu、hover-card、context-menu、resizable、aspect-ratio、simple-icon（OAuth 品牌图标）、chat 组件族（bubble/message/attachment）。后果：相应页面迁移时需先补组件。**已交付**（第二波，2026-08）：calendar + DatePicker/DateRangePicker（区间）、InputOTP、图表（recharts 封装 ChartContainer 族）、ButtonGroup、NativeSelect、Accordion、Slider、NumberField（手写，注册表无此项）、Form 胶水（react-hook-form 接 Field 原语）。
 
 ## 2. 技术基线（模版裁决）
 
@@ -22,7 +22,7 @@
 
 ## 3. 目录与导出
 
-- 五分类：`primitives`（视觉原子+浮层 19）、`forms`（13）、`data`（7）、`navigation`（5）、`feedback`（6）。
+- 五分类：`primitives`（视觉原子+浮层 21：+accordion/button-group）、`forms`（20：+calendar/date-picker/form/input-otp/native-select/number-field/password-input/slider）、`data`（8：+chart）、`navigation`（5）、`feedback`（6）。
 - `src/index.ts` 唯一导出面；`cn` 放 `src/cn.ts`（结构树未列 lib/，cn 是组件编写工具，放顶层与 index 平级）。
 - `components.json` 保留在包内供后续 `shadcn add`（aliases 指向 `@/` → `src/*`，与 tsconfig paths 一致）；CLI 安装步骤在仓库外执行（见 README）。
 - package exports：`.`（development→src / import→dist）+ `./styles.css` + 三个目录子路径；`sideEffects: ["**/*.css"]`。
@@ -33,6 +33,8 @@
 - **异步对话框契约**：ConfirmDialog/FormDialog 的 `onConfirm/onSubmit` resolve 后自动关闭；reject 保持打开并把错误交给 `onError`（缺省原样上抛，不静默吞错——§0.4）。
 - **显式语义**：KpiCard delta 必须声明 `sentiment`（不假设涨=好）；MoneyDisplay 的 `format` 必须注入。
 - **可访问性**：PasswordInput/SecretReveal 显隐按钮 `aria-pressed`；CopyButton 复制态切换 aria-label；骨架用 `Spinner role=status`。
+- **日期选择契约**（第二波）：DatePicker/DateRangePicker 的触发器文案 `format` 必填注入；完全受控（value/onValueChange）。收起规则：单日模式选中即收；区间模式只在形成真正跨度（from<to）时收起——react-day-picker v10 首击返回 from===to 的单日区间，视为未选满。
+- **NumberField 契约**：onValueChange 透传 Base UI 原语签名 `(value, eventDetails)`；空值起步的首次步进落在 `min`（原语语义）。
 
 ## 5. formatting 工厂（零写死落法）
 
@@ -48,7 +50,7 @@
 - unit：formatting 精确断言（Intl 输出预校验）、cn、hooks（可控 matchMedia/clipboard 桩 + fake timers）。
 - render：jsdom + Testing Library/user-event，手写组件全交互覆盖；vendored 组件冒烟（完整交互矩阵归上游）。
 - pack：依赖纯净性（禁 Next 生态/workspace 包/测试依赖进 src）、导出面冻结快照、exports 产物存在性。
-- 覆盖率口径（如实申报）：**仅统计手写代码**（cn/formatting/hooks/10 个手写组件/sonner 重写）；vendored base-nova 组件与 index.ts 桶不计入分母，由 render 冒烟 + pack 导入兜底。阈值 90/90/90/85（仓库标准）。
+- 覆盖率口径（如实申报）：**仅统计手写代码**（cn/formatting/hooks/13 个手写组件文件/sonner 重写；第二波 +date-picker/form/number-field）；vendored base-nova 组件与 index.ts 桶不计入分母，由 render 冒烟 + pack 导入兜底。阈值 90/90/90/85（仓库标准）。
 
 ## 7. 样式系统
 
@@ -58,16 +60,18 @@
 
 ## 8. 迁移映射（旧 → 新）
 
-| 旧 @ai-gateway/ui                                                                   | 新 @tokenlens/ui                               | 说明                                                |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------- |
-| components/ui/*（Radix）                                                            | components/{五类}（Base UI base-nova）         | 全部重生成, 零复制                                  |
-| action-toast / confirm-action / form-dialog                                         | feedback/{confirm-dialog,form-dialog} + sonner | 异步契约显式化(onError/pending)                     |
-| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input | data/* + feedback/copy-button                  | 重写: 受控排序、sentiment 显式、formatter 注入      |
-| shell/(header/sidebar/nav-main)                                                     | navigation/sidebar + theme-switcher            | account/locale switcher 属 app 会话层, 不进设计系统 |
-| lib/money-tone                                                                      | formatting/money.toneOf                        | 纯函数化                                            |
-| lib/list-query / pager-href / auth-url / cookie.client / fonts / preferences        | 不移植                                         | Next 路由/会话耦合, 归属 app 或独立适配层           |
-| hooks/use-lg / use-mobile                                                           | hooks/use-media-query / use-mobile             | 泛化为任意查询                                      |
-| next-themes 主题                                                                    | primitives/theme-provider                      | 模版自带纯 React 实现(本地存储)                     |
+| 旧 @ai-gateway/ui                                                                                         | 新 @tokenlens/ui                                           | 说明                                                               |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
+| components/ui/*（Radix）                                                                                  | components/{五类}（Base UI base-nova）                     | 全部重生成, 零复制                                                 |
+| action-toast / confirm-action / form-dialog                                                               | feedback/{confirm-dialog,form-dialog} + sonner             | 异步契约显式化(onError/pending)                                    |
+| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input                       | data/* + feedback/copy-button                              | 重写: 受控排序、sentiment 显式、formatter 注入                     |
+| shell/(header/sidebar/nav-main)                                                                           | navigation/sidebar + theme-switcher                        | account/locale switcher 属 app 会话层, 不进设计系统                |
+| lib/money-tone                                                                                            | formatting/money.toneOf                                    | 纯函数化                                                           |
+| lib/list-query / pager-href / auth-url / cookie.client / fonts / preferences                              | 不移植                                                     | Next 路由/会话耦合, 归属 app 或独立适配层                          |
+| hooks/use-lg / use-mobile                                                                                 | hooks/use-media-query / use-mobile                         | 泛化为任意查询                                                     |
+| next-themes 主题                                                                                          | primitives/theme-provider                                  | 模版自带纯 React 实现(本地存储)                                    |
+| calendar / input-otp / chart / slider / accordion / native-select / button-group / number-field（第二波） | forms/* + data/chart + primitives/{accordion,button-group} | number-field 注册表无(base-nova 404), 基于 Base UI 原语手写        |
+| lib/forms.ts（react-hook-form 胶水，第二波）                                                              | forms/form.tsx                                             | 重写: Form/FormField/FormControl 接 Field 原语, 校验器由调用方自选 |
 
 ## 9. 后续（P7 发布前核验清单）
 

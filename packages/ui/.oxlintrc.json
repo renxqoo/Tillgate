@@ -22,10 +22,16 @@
       }
     },
     {
-      "files": ["src/components/navigation/sidebar.tsx"],
+      "files": [
+        "src/components/navigation/sidebar.tsx",
+        "src/components/forms/calendar.tsx",
+        "src/components/forms/slider.tsx",
+        "src/components/data/chart.tsx"
+      ],
       "rules": {
         "max-lines": "off",
-        "no-shadow": "off"
+        "no-shadow": "off",
+        "no-underscore-dangle": "off"
       }
     }
   ],

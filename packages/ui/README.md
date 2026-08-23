@@ -9,9 +9,9 @@
 ```
 src/
 ├── components/
-│   ├── primitives/   # 视觉原子与浮层(button/card/dialog/tooltip/...)
-│   ├── forms/        # 表单控件(input/select/field/password-input/...)
-│   ├── data/         # 数据展示(data-table/kpi-card/money-display/secret-reveal/status-pill/...)
+│   ├── primitives/   # 视觉原子与浮层(button/card/dialog/tooltip/accordion/button-group/...)
+│   ├── forms/        # 表单控件(input/select/field/password-input/number-field/date-picker/form[RHF 胶水]/calendar/input-otp/...)
+│   ├── data/         # 数据展示(data-table/kpi-card/money-display/secret-reveal/status-pill/chart/...)
 │   ├── navigation/   # 导航(tabs/breadcrumb/pagination/sidebar/theme-switcher)
 │   └── feedback/     # 反馈(confirm-dialog/form-dialog/copy-button/toaster/alert/progress)
 ├── hooks/            # use-media-query / use-copy / use-mobile
