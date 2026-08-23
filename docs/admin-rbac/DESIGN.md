@@ -1,6 +1,6 @@
 # 管理端 RBAC 设计基线（DESIGN）
 
-> 状态：**定稿**（2026-08-24）。实现进展与裁决落档见同目录 IMPLEMENTATION.md。
+> 状态：**已核销**（2026-08-24）。实施记录与验收核销见同目录 IMPLEMENTATION.md。
 > 铁律 13 跨包功能（db / control-plane / admin-api / api-client / admin 前端）两件套之一。
 
 ## 1. 问题域
@@ -108,13 +108,15 @@ session 中间件组合后作为 `session` 参数传入各路由组）。
 | `POST /v1/admins` | admins:write | 创建：`{email, displayName?, password, role}`。admins 行 + identity 凭据（`credentials.register`，email 标识 + 初始密码）同一事务外先后落库；email 冲突 → 409 `email_taken` |
 | `PATCH /v1/admins/:id` | admins:write | `{displayName?, role?, status?}`；**不可改自身 role/status**（防自锁——`admin.cannot_modify_self` 400）；写操作留审计 |
 
-#### 错误码新增（admin.* 目录）
+#### 错误码（实际落码——实施期自 §2.5 草案收敛）
 
 | code | category | 语义 |
 | --- | --- | --- |
-| `insufficient_permission` | forbidden (403) | 会话有效但角色无该权限 |
-| `email_taken` | conflict (409) | 创建管理员 email 已占用 |
-| `cannot_modify_self` | invalid_input (400) | 修改自身 role/status |
+| `admin.insufficient_permission` | forbidden (403) | 会话有效但角色无该权限（不泄漏角色事实） |
+| `admin.cannot_modify_self` | invalid_input (400) | 修改自身 role/status |
+| `control_plane.admin_email_taken` | conflict (409) | email 被占——admins 表唯一（23505）与 identity 凭据被占（identifier_taken）两路同码，上下文带 source |
+| `control_plane.invalid_admin_role` | invalid_input (400) | 角色词表外（use case 词表守卫） |
+| `admin.admin_not_found` | not_found (404) | 复用既有码（me 路由同码）——update 用例返回 null，抛点在路由 |
 
 ### 2.6 角色事实的读取时机（无 JWT 嵌角色）
 
@@ -167,3 +169,5 @@ ALTER TABLE admins ADD CONSTRAINT admins_role_ck CHECK (role in
 | D5 | 读/写按 HTTP 方法自动分派（GET→read，其余→write） | 路由文件零侵入；26 组路由在装配点一处声明 |
 | D6 | 不可改自身 role/status（可改自身 displayName） | 防最后一个超管自锁；改 displayName 无权限面影响 |
 | D7 | `/v1/admins` 列表不分页 | 管理员数量级 < 100；超量挂账 |
+| D8 | 新建管理员 id 一律落 ≥1e9 段（store.create 事务内 max+1 分配 + setval） | 2026-08-23 生产裁决：identity_passwords.userId 是无 realm 扁平主键，admin id 与 users.id 同号即凭据串号；与 apps/admin-api/scripts/create-admin.ts 同语义（段值两处同源，改动须同步） |
+| D9 | 创建走「插资料行 → 注册凭据 → 失败补偿删行」而非跨包事务；审计 postAudit 在双动词全成后旁路 | control-plane 与 identity 无共享事务边界；补偿不留「创建成功但登不上」的废号（脚本同裁决） |

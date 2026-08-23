@@ -1,6 +1,7 @@
 # 管理端 RBAC 施工图（IMPLEMENTATION）
 
-> 状态：**实施中**。设计基线见同目录 DESIGN.md。
+> 状态：**已核销**（2026-08-24，五阶段全部落地；见 §5 验收清单与 §6 数字申报）。
+> 设计基线见同目录 DESIGN.md。
 > 本功能为**新能力建设**（无旧仓库对应实现），§2 审计对象是 v2 现状接缝而非旧代码。
 
 ## 1. 现状审计结论（动代码前的证据）
@@ -92,19 +93,45 @@
 不调阈值；postgres 适配器仍按 vitest.config.ts 既有排除口径（SQL 行为归 real 门）。
 提交时如实报告各包数字。
 
-## 5. 验收清单（收口核销用）
+## 5. 验收清单（收口核销）
 
-- [ ] 迁移 0081 落库成功；`admins.role` CHECK 生效；既有行回填 super_admin
-- [ ] 词表封闭性 + 80 格矩阵测试绿
-- [ ] 既有 24 个 admin-api 路由测试零改动全绿
-- [ ] viewer/finance/support/operator 拒绝面各有 e2e 断言
-- [ ] 降权下一请求生效（e2e D2 断言）
-- [ ] `/v1/me` 带 role/permissions；前端导航按权限过滤；URL 直达兜底重定向
-- [ ] `/v1/admins` 创建→登录→降权→自改拒绝 全旅程 e2e 绿
-- [ ] openapi 产物重生成 + 封闭表同步
-- [ ] 四门（typecheck/lint/build/test）全绿；覆盖率达标且如实申报
-- [ ] journey.test.ts 零改动全绿
-- [ ] DESIGN/IMPLEMENTATION 状态推进「已核销」
+- [x] 迁移 0081 落库成功；`admins.role` CHECK 生效；既有行回填 super_admin（psql 实测）
+- [x] 词表封闭性 + 80 格矩阵测试绿（control-plane `__test__/rbac.test.ts` 16 用例）
+- [x] 既有 24 个 admin-api 路由测试零改动全绿（helpers owner 注入 super_admin 后 155/155）
+- [x] viewer/finance/support/operator 拒绝面各有断言（单测表驱动 + e2e viewer 旅程抽样）
+- [x] 降权下一请求生效（e2e §G：降权前签发的同一令牌，写动词 200→403 翻转——D2）
+- [x] `/v1/me` 带 role/permissions；前端导航按权限过滤；25 个 dashboard 页面 URL 直达兜底
+- [x] `/v1/admins` 创建→登录凭据可用→降权→自改拒绝→409 冲突补偿 全旅程 e2e 绿
+- [x] openapi 产物重生成 + 封闭表同步（GET/POST/PATCH /v1/admins；api-client DTO 重生成 + 导出快照同步）
+- [x] 四门（typecheck/lint/build/test）全绿：仓库级 34/34 任务
+- [x] 覆盖率：control-plane 92.69/88.61/93.15/93.64；admin-api 96.6/86.11/90.33/96.98（阈值 90/85，未调）
+- [x] journey.test.ts 零改动全绿（super_admin 回填不变性 e2e 回归）
+- [x] DESIGN/IMPLEMENTATION 状态推进「已核销」
+
+### 实施期发现与装置适配记录（skill §6.6 口径——每条列名，无静默改断言）
+
+1. **admin id 段分配（D8）**：`apps/admin-api/scripts/create-admin.ts`（2026-08-23 生产裁决）
+   ——新管理员 id 必须 ≥1e9（identity_passwords.userId 无 realm 扁平主键）。store.create
+   在事务内做 max+1 段分配 + setval；postgres.real.test.ts 断言 `id ≥ 1e9`。
+2. **id 回收导致凭据 replay**：e2e 首版补偿用例「删资料行留凭据再重建」实测 201——删行后
+   max+1 分配回收同一 id，identifier 判定为 replay（同 userId）而非 taken。装置适配：
+   凭据被占场景改为 provisionUser + 为用户注册 email 凭据（真实形态：email 被用户端
+   账号占用），断言语义不变（409 + 补偿无孤儿行）。
+3. **错误码收敛**：草案的 `admin.email_taken` 落地为 `control_plane.admin_email_taken`
+   单码双源（admins 唯一索引 / identity 凭据被占），上下文带 source；404 复用既有
+   `admin.admin_not_found`（不造同义双码）。
+4. **e2e 运行需 env**：`cd apps/admin-api && bun run test:e2e` 需先 source .env
+   （DB_TEST_URL/DATABASE_URL）——kit 探活失败即 world=null 全挂，属装置既有口径。
+
+### 各阶段落地（提交序列）
+
+| 阶段 | 提交 | 四门 |
+| --- | --- | --- |
+| 1 db | `feat(rbac): admin role column — migration 0081 + design docs` | db 41/41 |
+| 2 control-plane | `feat(rbac): control-plane permission model + admin store verbs` | cp 204/204 + real 9/9 |
+| 3 admin-api | `feat(rbac): admin-api permission guards + /v1/admins routes + me permissions` | admin-api 155/155 |
+| 4 api-client+前端 | `feat(rbac): frontend permission nav + /dashboard/admins page` | admin 132/132 + build |
+| 5 e2e+收口 | `feat(rbac): e2e rbac journey + docs closure` | e2e admin 12/12 + 仓库级 34/34 |
 
 ## 6. 挂账（不迁/推迟清单）
 
