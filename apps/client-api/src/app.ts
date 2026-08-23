@@ -34,6 +34,7 @@ export interface ClientApiDeps {
   readonly protocol: {
     readonly trustedProxyHops: number;
     readonly corsOrigins: readonly string[];
+    readonly corsMaxAgeSeconds: number;
     readonly bodyLimitBytes: number;
   };
   readonly logger: { error(obj: Record<string, unknown>, msg?: string): void };
@@ -74,7 +75,7 @@ export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
     origins: deps.protocol.corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Authorization', 'Content-Type'],
-    maxAgeSeconds: 600,
+    maxAgeSeconds: deps.protocol.corsMaxAgeSeconds,
   }));
   app.use('*', securityHeaders);
   app.use('*', bodyParserLimit(deps.protocol.bodyLimitBytes));

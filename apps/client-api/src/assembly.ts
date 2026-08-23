@@ -77,7 +77,15 @@ function parseEndpoints(json: string | undefined): OAuthEndpointsOverride | unde
 /** 存储时钟单点（identity/accounts/billing 同源注入） */
 const clock = (): Date => new Date();
 
-export async function assembleClientApi(config: ClientApiConfig): Promise<ClientApiAssembly> {
+/** 装配覆盖缝：mailer 显式注入/置空（E2E capture mailer 消费；缺省按环境构造） */
+export interface AssemblyOverrides {
+  readonly mailer?: import('@tokenlens/identity').Mailer | null;
+}
+
+export async function assembleClientApi(
+  config: ClientApiConfig,
+  overrides: AssemblyOverrides = {},
+): Promise<ClientApiAssembly> {
   const production = process.env.NODE_ENV === 'production';
   const logger = createLogger({
     level: config.LOG_LEVEL,
@@ -106,7 +114,7 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
     config.REDIS_SENTINELS != null
       ? {
           serviceName: 'client-api',
-          logThrottleMs: 60_000,
+          logThrottleMs: config.CLIENT_REDIS_LOG_THROTTLE_MS,
           log: (message) => logger.warn({ message }, 'client-api redis'),
           sentinels: config.REDIS_SENTINELS,
           sentinelName: config.REDIS_SENTINEL_NAME as string,
@@ -116,12 +124,12 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
         }
       : {
           serviceName: 'client-api',
-          logThrottleMs: 60_000,
+          logThrottleMs: config.CLIENT_REDIS_LOG_THROTTLE_MS,
           log: (message) => logger.warn({ message }, 'client-api redis'),
         },
   );
   // Redis 必配（爆破防护/限流/OAuth state/定价缓存——fail-closed：连不上拒绝启动）
-  await assertRedisReachable(redis, 'client-api', config.REDIS_URL, 5_000);
+  await assertRedisReachable(redis, 'client-api', config.REDIS_URL, config.CLIENT_STARTUP_PROBE_TIMEOUT_MS);
 
   const txRetry: TxRetryPolicy = {
     maxAttempts: config.CLIENT_TX_MAX_ATTEMPTS,
@@ -151,23 +159,26 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
     config.SMTP_HOST != null && config.SMTP_USER != null && config.SMTP_PASS != null;
   // 用户面邮件品牌（展示常量——非部署可变值）
   const mailBrand = { brand: 'TokenLens 控制台', brandEn: 'TokenLens Console', brandSub: 'TOKENLENS · CONSOLE' };
-  const mailer = smtpReady
-    ? createSmtpLoginMailer(
-        {
-          host: config.SMTP_HOST as string,
-          port: config.SMTP_PORT,
-          user: config.SMTP_USER as string,
-          pass: config.SMTP_PASS as string,
-          from: config.SMTP_FROM ?? (config.SMTP_USER as string),
-        },
-        mailBrand,
-        {
-          ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
-          maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
-        },
-        clock,
-      )
-    : null;
+  const mailer =
+    overrides.mailer !== undefined
+      ? overrides.mailer
+      : smtpReady
+        ? createSmtpLoginMailer(
+          {
+            host: config.SMTP_HOST as string,
+            port: config.SMTP_PORT,
+            user: config.SMTP_USER as string,
+            pass: config.SMTP_PASS as string,
+            from: config.SMTP_FROM ?? (config.SMTP_USER as string),
+          },
+          mailBrand,
+          {
+            ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
+            maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
+          },
+          clock,
+        )
+      : null;
   const emailCodeRequired =
     config.EMAIL_CODE_REQUIRED === 'on'
       ? true
@@ -185,7 +196,9 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
     logger: { warn: (obj, msg) => logger.warn(obj as object, msg) },
     config: {
       identifiers: ['email'],
-      providers: Object.keys(oauthProviders),
+      // providers 是 identity 认识的词表（须非空）；凭证映射在 oauth——
+      // 未配凭证的 provider 运行时 oauth_provider_unconfigured → 路由 404
+      providers: ['github', 'google'],
       challengeKinds: ['email_code'],
       realms: ['user'],
       passwordPolicy: { minLength: config.CLIENT_PASSWORD_MIN_LENGTH, maxLength: 128 },
@@ -374,6 +387,7 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       corsOrigins:
         config.CORS_ORIGINS === '' ? [] : config.CORS_ORIGINS.split(',').map((s) => s.trim()),
+      corsMaxAgeSeconds: config.CLIENT_CORS_MAX_AGE_SECONDS,
       bodyLimitBytes: config.CLIENT_BODY_LIMIT_BYTES,
     },
     logger: {
@@ -400,6 +414,7 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
           : null,
       registerLimiter: rateCounter,
       registerIpLimitPerHour: config.REGISTER_IP_LIMIT_PER_HOUR,
+      registerWindowSeconds: config.REGISTER_IP_WINDOW_SECONDS,
       emailTaken: accountRead.emailTaken,
       challenges: identity.challenges,
       registerCredential: identity.credentials.register,
@@ -427,6 +442,7 @@ export async function assembleClientApi(config: ClientApiConfig): Promise<Client
       frontendUrl,
       apiBase,
       secureCookie: config.SECURE_COOKIE,
+      stateTtlSeconds: config.OAUTH_STATE_TTL_SECONDS,
     },
     me: {
       profile: accounts.getProfile,

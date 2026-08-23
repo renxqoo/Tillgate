@@ -10,25 +10,25 @@ import { loadClientApiConfig } from '../src/config.js';
 import { assembleClientApi } from '../src/assembly.js';
 import { createClientApiApp } from '../src/app.js';
 
-const env = {
+const env: NodeJS.ProcessEnv = {
   NODE_ENV: 'development',
   DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
   REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',
-  JWT_SECRET: 'real-test-jwt-secret-0123456789ab',
-  CLIENT_CODE_PEPPER: 'real-test-pepper-0123456789abcd',
-  ENCRYPTION_KEY: 'real-test-enc-key-0123456789abcd',
+  JWT_SECRET: process.env.JWT_SECRET ?? 'real-test-jwt-secret-0123456789ab',
+  CLIENT_CODE_PEPPER: process.env.CLIENT_CODE_PEPPER ?? 'real-test-pepper-0123456789abcd',
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? 'real-test-enc-key-0123456789abcd',
 };
 
 const context = describe.skipIf(
   await (async () => {
     try {
-      const { createRedisClient } = await import('@tokenlens/runtime');
-      const redis = createRedisClient(env.REDIS_URL, {
+      const { createRedisClient, assertRedisReachable } = await import('@tokenlens/runtime');
+      const redis = createRedisClient(env.REDIS_URL as string, {
         serviceName: 'client-api-real-probe',
         logThrottleMs: 1_000,
       });
-      await redis.ping();
-      await redis.quit();
+      await assertRedisReachable(redis, 'client-api-real-probe', env.REDIS_URL as string, 3_000);
+      await redis.quit().catch(() => undefined);
       return false;
     } catch {
       return true;

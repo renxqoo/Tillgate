@@ -111,7 +111,9 @@ export function createUsageRead(db: Db, timezone: string): UsageRead {
     },
 
     async summary(userId, r) {
-      const dayKey = sql<string>`to_char(${usageLogs.createdAt} AT TIME ZONE ${timezone}, 'YYYY-MM-DD')`;
+      // 时区经 config 字符白名单校验后以字面量入 SQL——参数化形态下 GROUP BY 表达式
+      // 与 SELECT 表达式的占位符不一致（$1≠$2），PG 无法匹配（实测确认）
+      const dayKey = sql<string>`to_char(${usageLogs.createdAt} AT TIME ZONE ${sql.raw(`'${timezone}'`)}, 'YYYY-MM-DD')`;
       const rows = await db
         .select({
           date: dayKey,

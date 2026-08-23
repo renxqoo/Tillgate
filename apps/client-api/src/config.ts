@@ -39,7 +39,8 @@ function createSchema(production: boolean) {
     CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('TokenLens'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */
     REGISTER_ENABLED: strictBooleanSchema(true),
-    /** 同 IP 注册请求上限/小时（防批量刷号） */
+    /** 同 IP 注册请求窗口（秒）与上限/窗口（防批量刷号；窗口即 Retry-After 口径） */
+    REGISTER_IP_WINDOW_SECONDS: z.coerce.number().int().positive().default(3_600),
     REGISTER_IP_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(5),
     /** 兑换频率闸：每用户每分钟兑换尝试上限（防暴力猜码） */
     REDEEM_PER_MINUTE_LIMIT: z.coerce.number().int().positive().default(10),
@@ -53,8 +54,9 @@ function createSchema(production: boolean) {
     LOGIN_IP_FAILURE_WINDOW_S: z.coerce.number().int().positive().default(300),
     /** 可信代理跳数（来源 IP 提取语义：0 = 不信 XFF） */
     TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
-    /** CORS 白名单（逗号分隔；空 = 不放行跨域） */
+    /** CORS 白名单（逗号分隔；空 = 不放行跨域）与预检缓存秒数 */
     CORS_ORIGINS: z.string().default(''),
+    CLIENT_CORS_MAX_AGE_SECONDS: z.coerce.number().int().min(1).default(600),
     /** 请求体上限（字节） */
     CLIENT_BODY_LIMIT_BYTES: z.coerce
       .number()
@@ -126,8 +128,11 @@ function createSchema(production: boolean) {
     CLIENT_TPM_LIMIT_MAX: z.coerce.number().int().positive().default(100_000_000),
     /** 推荐被邀名单上界（referralOverview invitees 截断） */
     CLIENT_REFERRAL_INVITEE_LIMIT: z.coerce.number().int().positive().default(100),
-    /** 用量日汇总的日界时区（v1 口径北京时间；SQL 参数化注入不写死） */
-    CLIENT_USAGE_TZ: z.string().min(1).default('Asia/Shanghai'),
+    /** 用量日汇总的日界时区（v1 口径北京时间；GROUP BY 需字面量——字符白名单校验防注入） */
+    CLIENT_USAGE_TZ: z
+      .string()
+      .regex(/^[A-Za-z0-9_+/-]{1,64}$/, 'invalid IANA timezone shape')
+      .default('Asia/Shanghai'),
     /** 公开定价目录共享缓存 TTL（ms；redis 多副本一份） */
     PRICING_CACHE_TTL_MS: z.coerce.number().int().positive().default(30_000),
     /** 结算失败策略（billing 注入；worker 侧同源语义） */
@@ -142,6 +147,9 @@ function createSchema(production: boolean) {
     OTEL_TRACES_MODE: z.enum(['off', 'otlp']).default('off'),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
     OTEL_METRICS_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+    /** Redis 告警日志节流与启动连通性探测超时（ms） */
+    CLIENT_REDIS_LOG_THROTTLE_MS: z.coerce.number().int().positive().default(60_000),
+    CLIENT_STARTUP_PROBE_TIMEOUT_MS: z.coerce.number().int().positive().default(5_000),
     /** 日志级别 */
     LOG_LEVEL: z.string().default('info'),
     /** 运行时对称加密根密钥（密码信封复用——渠道 Key 加密同源，轮换走双 key 窗） */

@@ -1,25 +1,24 @@
 /**
- * 认证路由（公开 + 会话）：注册/登录两步验证码流 / 验码 / 登出 / 改密 / 能力探测。
- * 本层只编排 facade 动词与协议闸（限频/守卫/防枚举口径）——业务规则单源在
- * identity/accounts（DESIGN §4）。挑战载荷只存 cipher 封装后的密码，永不落明文。
+ * 认证路由装配（动词文件聚合处）：能力探测 / 登出 / 改密在本文件；
+ * 注册两步制在 auth-register.ts、登录（含两级验证码）在 auth-login.ts。
+ * 共享 deps 形状与协议助手在此定义——本层只编排 facade 动词与协议闸，
+ * 业务规则单源在 identity/accounts（DESIGN §4）。
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { isBusinessError } from '@tokenlens/errors';
-import { parseAcceptLanguage, socketAddressFromContext, trustedClientIp } from '@tokenlens/http';
-import { AccountsErrors, USER_STATUS } from '@tokenlens/accounts';
-import { jsonBody } from '@tokenlens/http';
-import { sha256Hex } from '@tokenlens/billing';
 import {
-  assertPasswordPolicy,
-  identityErrors,
-  type Identity,
-  type PasswordPolicy,
-} from '@tokenlens/identity';
+  jsonBody,
+  parseAcceptLanguage,
+  socketAddressFromContext,
+  trustedClientIp,
+} from '@tokenlens/http';
+import { sha256Hex } from '@tokenlens/billing';
+import type { Identity, PasswordPolicy } from '@tokenlens/identity';
 import type { AuthFailureGuard, KeyBruteForceGuard } from '@tokenlens/runtime';
-import { registerSchema, loginSchema, verifySchema, passwordSchema } from '../contracts/auth.js';
-import { clientErrors } from '../error-face.js';
+import { passwordSchema } from '../contracts/auth.js';
 import type { SessionEnv } from '../middleware/session.js';
+import { registerRoutes } from './auth-register.js';
+import { loginRoutes } from './auth-login.js';
 
 /** 前端能力探测（登录/注册页按钮渲染依据；无个人数据） */
 export interface ClientCapabilities {
@@ -34,18 +33,6 @@ export interface PasswordSealer {
   open(sealed: string): string;
 }
 
-/** 注册期挑战载荷（identity challenges.payload 的 app 形状） */
-interface RegisterPayload {
-  mail: string;
-  aff: string | null;
-  pwd: string;
-}
-
-/** 登录期挑战载荷（uid 供 verify 半程免二次认证） */
-interface LoginPayload {
-  uid: number;
-}
-
 export interface AuthDeps {
   readonly capabilities: ClientCapabilities;
   readonly passwordPolicy: PasswordPolicy;
@@ -55,6 +42,8 @@ export interface AuthDeps {
   readonly captcha: Pick<Identity['captcha'], 'verify'> | null;
   readonly registerLimiter: { hit(key: string, windowSeconds: number): Promise<number> };
   readonly registerIpLimitPerHour: number;
+  /** 注册限频窗口（秒）——Retry-After 与计数窗口同源 */
+  readonly registerWindowSeconds: number;
   readonly emailTaken: (email: string) => Promise<boolean>;
   readonly challenges: Pick<Identity['challenges'], 'begin' | 'verify'>;
   readonly registerCredential: Identity['credentials']['register'];
@@ -69,202 +58,41 @@ export interface AuthDeps {
   readonly logout: (token: string) => Promise<void>;
 }
 
-function bearerToken(header: string | undefined): string {
+export function bearerToken(header: string | undefined): string {
   return header != null && header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
 }
 
 /** 爆破守卫键：邮箱+IP 双维（v1 口径） */
-function guardKeyOf(email: string, ip: string): string {
+export function guardKeyOf(email: string, ip: string): string {
   return sha256Hex(`${email}:${ip}`);
 }
 
 /** Accept-Language → identity delivery locale（'zh' 之外一律 en） */
-function localeOf(c: Parameters<MiddlewareHandler<SessionEnv>>[0]): 'en' | 'zh' {
+export function localeOf(c: Parameters<MiddlewareHandler<SessionEnv>>[0]): 'en' | 'zh' {
   return parseAcceptLanguage(c.req.header('accept-language')) === 'zh' ? 'zh' : 'en';
+}
+
+/** 真实 socket 对端地址必须注入：置 null 时全部请求落到进程级常量桶——
+ *  注册限频与登录 IP 锁退化为「全站一个桶」的自伤开关（app.request 测试 → null 合法） */
+export function clientIpOf(
+  deps: { trustedProxyHops: number },
+  c: Parameters<MiddlewareHandler<SessionEnv>>[0],
+): string {
+  return trustedClientIp({
+    headers: c.req.raw.headers,
+    trustedProxyHops: deps.trustedProxyHops,
+    socketAddress: socketAddressFromContext(c),
+  });
 }
 
 export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
-  // 真实 socket 对端地址必须注入：置 null 时全部请求落到进程级常量桶——
-  // 注册限频与登录 IP 锁退化为「全站一个桶」的自伤开关（app.request 测试 → null 合法）
-  const clientIp = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
-    trustedClientIp({
-      headers: c.req.raw.headers,
-      trustedProxyHops: deps.trustedProxyHops,
-      socketAddress: socketAddressFromContext(c),
-    });
 
   app.get('/v1/auth/capabilities', (c) => c.json(deps.capabilities));
 
   app.post('/v1/auth/logout', session, async (c) => {
     await deps.logout(bearerToken(c.req.header('authorization')));
     return c.json({ ok: true });
-  });
-
-  app.post('/v1/auth/register', jsonBody(registerSchema), async (c) => {
-    const body = c.req.valid('json');
-    const ip = clientIp(c);
-    if (!deps.capabilities.registerEnabled) {
-      throw clientErrors.business('register_disabled');
-    }
-    let hits: number;
-    try {
-      hits = await deps.registerLimiter.hit(`register:${ip}`, 3_600);
-    } catch {
-      throw clientErrors.business('rate_counter_unavailable');
-    }
-    if (hits > deps.registerIpLimitPerHour) {
-      throw clientErrors.business('register_rate_limited', undefined, { retryAfterMs: 3_600_000 });
-    }
-    if (deps.captcha != null && deps.capabilities.captchaSiteKey != null) {
-      if (body.captchaToken == null) {
-        throw clientErrors.business('captcha_required');
-      }
-      // 判负/不可达由 identity 翻译为业务错误（captcha_invalid 400 / captcha_unavailable 503）
-      await deps.captcha.verify({ token: body.captchaToken, remoteIp: ip ?? undefined });
-    }
-    if (await deps.emailTaken(body.email)) {
-      throw AccountsErrors.business('email_taken', { email: body.email });
-    }
-    // 密码策略单源校验（identity 域；不满足直接 400——v1 在发码前拒绝）
-    assertPasswordPolicy(body.password, deps.passwordPolicy);
-    const payload: Record<string, unknown> = {
-      mail: body.email,
-      aff: body.aff ?? null,
-      pwd: deps.sealer.seal(body.password),
-    };
-    const { challengeId } = await deps.challenges.begin({
-      kind: 'email_code',
-      target: { identifier: { kind: 'email', value: body.email } },
-      payload,
-      delivery: { ip: ip ?? 'unknown', locale: localeOf(c) },
-    });
-    return c.json({ kind: 'code_required', challengeId });
-  });
-
-  app.post('/v1/auth/register/verify', jsonBody(verifySchema), async (c) => {
-    const body = c.req.valid('json');
-    if (!deps.capabilities.registerEnabled) {
-      throw clientErrors.business('register_disabled');
-    }
-    const verified = await deps.challenges.verify({
-      challengeId: body.challengeId,
-      code: body.code,
-    });
-    const payload = (verified.payload ?? {}) as Partial<RegisterPayload>;
-    if (payload.mail == null || payload.pwd == null) {
-      // 挑战载荷损坏 = 装配期坏流（非用户错误），显式 503 不静默吞
-      throw clientErrors.business('two_factor_unavailable');
-    }
-    const user = await deps.provision({ email: payload.mail });
-    await deps.registerCredential({
-      userId: user.id,
-      identifier: { kind: 'email', value: payload.mail },
-      password: deps.sealer.open(payload.pwd),
-    });
-    const onboarding = await deps.onboarding({
-      userId: user.id,
-      affCode: body.aff ?? payload.aff ?? undefined,
-    });
-    const token = await deps.sign(user.id);
-    return c.json(
-      {
-        kind: 'success',
-        token,
-        userId: user.id,
-        email: user.email ?? payload.mail,
-        gifted: onboarding.gift.status === 'credited',
-      },
-      201,
-    );
-  });
-
-  app.post('/v1/auth/login', jsonBody(loginSchema), async (c) => {
-    const body = c.req.valid('json');
-    const ip = clientIp(c);
-    const guardKey = guardKeyOf(body.email, ip);
-    let emailLock: { locked: boolean; retryAfterSec: number };
-    let ipLock: { locked: boolean; retryAfterSec: number };
-    try {
-      [emailLock, ipLock] = await Promise.all([
-        deps.guards.emailIp.isLocked(guardKey),
-        deps.guards.ip.isLocked(ip),
-      ]);
-    } catch {
-      throw clientErrors.business('auth_guard_unavailable');
-    }
-    if (emailLock.locked || ipLock.locked) {
-      const retryAfterSec = Math.max(1, emailLock.retryAfterSec, ipLock.retryAfterSec);
-      throw clientErrors.business('login_locked', undefined, { retryAfterMs: retryAfterSec * 1000 });
-    }
-    let userId: number;
-    try {
-      userId = (
-        await deps.authenticate({
-          identifier: { kind: 'email', value: body.email },
-          password: body.password,
-        })
-      ).userId;
-    } catch (error) {
-      // 防枚举统一 401（identity invalid_credentials）；失败计数双闸 best-effort
-      if (!isBusinessError(error) || error.code !== 'identity.invalid_credentials') throw error;
-      await Promise.allSettled([
-        deps.guards.emailIp.recordFailure(guardKey),
-        deps.guards.ip.recordFailure(ip),
-      ]);
-      throw error;
-    }
-    const status = await deps.userStatus(userId);
-    if (status == null) {
-      await Promise.allSettled([
-        deps.guards.emailIp.recordFailure(guardKey),
-        deps.guards.ip.recordFailure(ip),
-      ]);
-      throw identityErrors.business('invalid_credentials', { realm: 'user' });
-    }
-    if (status !== USER_STATUS.ACTIVE) {
-      throw clientErrors.business('account_unavailable');
-    }
-    await Promise.allSettled([
-      deps.guards.emailIp.recordSuccess(guardKey),
-      ...(deps.guards.ip.recordSuccess != null ? [deps.guards.ip.recordSuccess(ip)] : []),
-    ]);
-    if (deps.capabilities.emailCodeRequired) {
-      const payload: Record<string, unknown> = { uid: userId };
-      const { challengeId } = await deps.challenges.begin({
-        kind: 'email_code',
-        target: { identifier: { kind: 'email', value: body.email } },
-        payload,
-        delivery: { ip: ip ?? 'unknown', locale: localeOf(c) },
-      });
-      return c.json({ kind: 'code_required', challengeId });
-    }
-    const token = await deps.sign(userId);
-    await deps.touchLastLogin(userId).catch(() => undefined);
-    return c.json({ kind: 'success', token, userId });
-  });
-
-  app.post('/v1/auth/login/verify', jsonBody(verifySchema), async (c) => {
-    const body = c.req.valid('json');
-    const verified = await deps.challenges.verify({
-      challengeId: body.challengeId,
-      code: body.code,
-    });
-    const payload = (verified.payload ?? {}) as Partial<LoginPayload>;
-    const userId = payload.uid;
-    if (userId == null) {
-      throw identityErrors.business('invalid_credentials', { realm: 'user' });
-    }
-    const status = await deps.userStatus(userId);
-    if (status == null) {
-      throw identityErrors.business('invalid_credentials', { realm: 'user' });
-    }
-    if (status !== USER_STATUS.ACTIVE) {
-      throw clientErrors.business('account_unavailable');
-    }
-    const token = await deps.sign(userId);
-    await deps.touchLastLogin(userId).catch(() => undefined);
-    return c.json({ token, userId });
   });
 
   app.post('/v1/auth/password', session, jsonBody(passwordSchema), async (c) => {
@@ -281,5 +109,7 @@ export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv
     return c.json({ token });
   });
 
+  app.route('/', registerRoutes(deps));
+  app.route('/', loginRoutes(deps));
   return app;
 }

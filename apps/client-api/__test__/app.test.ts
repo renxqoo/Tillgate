@@ -55,6 +55,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     protocol: {
       trustedProxyHops: 0,
       corsOrigins: ['https://console.example'],
+      corsMaxAgeSeconds: 600,
       bodyLimitBytes: 8 * 1024 * 1024,
     },
     logger: { error: () => undefined },
@@ -83,6 +84,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         },
       },
       registerIpLimitPerHour: 5,
+      registerWindowSeconds: 3_600,
       emailTaken: (email) => Promise.resolve(state.takenEmails.has(email)),
       challenges: {
         begin: (_input) => {
@@ -173,6 +175,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       frontendUrl: 'https://app.example',
       apiBase: 'https://api.example',
       secureCookie: false,
+      stateTtlSeconds: 600,
     },
     me: {
       profile: () =>

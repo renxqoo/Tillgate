@@ -26,6 +26,8 @@ export interface OAuthDeps {
   readonly frontendUrl: string;
   readonly apiBase: string;
   readonly secureCookie: boolean;
+  /** state cookie 寿命（秒）——与 identity state TTL 同源注入 */
+  readonly stateTtlSeconds: number;
 }
 
 export function oauthRoutes(deps: OAuthDeps) {
@@ -47,7 +49,7 @@ export function oauthRoutes(deps: OAuthDeps) {
       httpOnly: true,
       sameSite: 'lax',
       path: '/v1/oauth',
-      maxAge: 600,
+      maxAge: deps.stateTtlSeconds,
       secure: deps.secureCookie,
     });
     return c.redirect(url);

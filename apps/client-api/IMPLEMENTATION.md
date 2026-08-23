@@ -19,7 +19,7 @@
 src/
 ├── index.ts              # bootstrap：config → 装配 → app → serve → shutdown（coverage 排除）
 ├── config.ts             # zod env schema + 生产 fail-fast + 组配置校验
-├── assembly.ts           # 唯一装配根：db/redis/logger/otel + 全部 facade + 适配器绑定
+├── assembly.ts           # 唯一装配根：db/redis/logger/otel + 全部 facade + 适配器绑定 + mailer 覆盖缝
 ├── app.ts                # createClientApiApp(deps)：onError/notFound/中间件序/路由挂载/healthz
 ├── shutdown.ts           # runtime.createShutdown 绑定（薄）
 ├── adapters/             # §DESIGN 5（db/composition 白名单域）
@@ -28,17 +28,33 @@ src/
 │   └── smtp-login-mailer.ts  turnstile-captcha.ts
 └── http/
     ├── error-face.ts     # composeErrorCatalogs + client 自有目录 + FaceOverride 表
-    ├── contracts/        # auth.ts me.ts keys.ts apps.ts orgs.ts wallet.ts redeem.ts
-    │                     # payments.ts subscriptions.ts usage.ts oauth.ts pricing.ts referrals.ts
+    ├── contracts/        # auth.ts me.ts keys.ts apps.ts orgs.ts billing.ts
+    │                     # usage.ts oauth.ts pricing.ts shared.ts
     ├── middleware/
     │   └── session.ts    # Bearer → identity.sessions.validate + 状态读（统一 401）
-    ├── presenters/       # 行映射（ApiKeyRecord→KeyRow 等；Date→ISO；Decimal 展示）
-    │   └── keys.ts apps.ts orgs.ts subscriptions.ts usage.ts payments.ts wallet.ts me.ts
-    └── routes/           # 与 contracts 同域的 13 个路由文件 + healthz（app.ts 内联）
+    ├── presenters/       # 行映射（内部字段不出 wire；Decimal 派生计算）
+    │   └── keys.ts me.ts orgs.ts subscriptions.ts pricing.ts referrals.ts
+    └── routes/           # 认证按动词拆三件（auth / auth-register / auth-login）
+                            + keys apps orgs wallet redeem payments subscriptions usage oauth pricing referrals
 ```
 
-测试：`__test__/` 平铺（铁律 14）——`architecture / config / app / app.real` 四件
-（real 文件名走 `test:real` 通道，默认门禁按文件名排除）。
+测试：`__test__/` 平铺（铁律 14）——`architecture / config / app / shutdown`
+（默认门禁）+ `app.real / journey.real`（test:real 通道，按文件名排除；后者为
+真实 PG+Redis+HTTP 全链用户旅程，见 §6.1）。
+
+### 2.1 §0.5 超长文件审计（单一职责聚合；repo 先例 commit b9d0dc6）
+
+| 文件 | 行数 | 审计结论 |
+|---|---|---|
+| src/assembly.ts | ~499 | 单一职责（进程装配根）：全部可变值来自 config，无业务分支；目标树钉死唯一装配根不拆 |
+| src/config.ts | ~232 | 单一职责（env schema 声明 + 交叉校验）；纯声明式 |
+| src/adapters/usage-read.ts | ~158 | 四查询动词共用窗口条件推导（同文件避免复制 windowConditions）；拆分收益为负 |
+| auth 路由 | 115/113/106 | 已按动词拆分（auth / auth-register / auth-login） |
+
+### 2.2 装配覆盖缝
+
+`assembleClientApi(config, overrides?: { mailer?: Mailer | null })`——v1 同款：
+E2E capture mailer 注入（journey.real 消费）；缺省按 SMTP 环境构造。
 
 ## 3. 老service动词 → facade 映射
 
@@ -106,6 +122,15 @@ category 声明决定，IMPLEMENTATION §4 表在 app.test.ts 用表驱动锁死
 8. 其余 51 路由的路径/方法/状态码/信封逐条对齐 v1（MIGRATION §6 行为对照清单）。
 
 ## 6. 测试计划（§10 标准）
+
+### 6.1 真实链路与 E2E（test:real 通道，已核销）
+
+- `app.real.test.ts`：装配 fail-closed + healthz 双检 + 公开端点 + 无 SMTP 注册 503 + 未知凭据 401 + usage adapters SQL 冒烟。
+- `journey.real.test.ts`：真实 PG+Redis+HTTP 进程的全链用户旅程——注册两步制（capture mailer 收码）→ verify 建+号（挑战单次消费重放 400）→ me/改显 → Key 全生命周期（创建明文一次/修补/轮换/吊销）→ 钱包/用量/定价/套餐/组织/推荐只读面 → 兑换未知码 404 → 渠道目录空 → 登出 jti 即时吊销 → 错密码 401 防枚举 → 两级登录 → 改密全网下线 → 新密码复登。数据自清理（FK 逆序 best-effort）；环境经 vitest 配置自载根 .env（bun x 不透传 --env-file，实测确认）。
+- **B-red-claim（E2E 抓出的跨包真 bug）**：billing postgres 兑换码 claim 的 `UPDATE ... RETURNING` 引用未 JOIN 的批次表列 → 裸列名 → PG 42703，兑换动词全路径 500（连未知码路径都炸）。修复：RETURNING 只留本表列，批次面额由同事务 SELECT 读取；回归用例 `packages/billing/__test__/redemption-claim.real.test.ts`（未知码 null / 有效码面额 / CAS 单赢家 / 过期码）。
+- **B-tz-groupby**：usage 日汇总 `AT TIME ZONE` 参数化后 GROUP BY 与 SELECT 占位符不一致（$1≠$2）无法匹配——时区经 config 字符白名单校验后字面量入 SQL；测试同上旅程覆盖。
+- 跨进程旅程（OAuth 跳转 / 支付回调验签 / gateway 联动）仍归根 `e2e/`（MIGRATION §8 待办——依赖 gateway 与渠道桩）。
+
 
 - `config.test.ts`：默认值/覆盖/生产 fail-fast 矩阵/组配置全-or-无/secret 三闸（表驱动）。
 - `app.test.ts`：**内存替身**驱动 `app.request(...)` 的 HTTP 契约测试——

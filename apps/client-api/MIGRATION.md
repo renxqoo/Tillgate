@@ -1,6 +1,6 @@
 # client-api 迁移文档（MIGRATION）
 
-> 状态：已完成（默认门禁四门全绿；real-PG 通道待有基础设施的环境执行核销）
+> 状态：已核销（默认门禁四门全绿；real 通道双测通过：装配冒烟 + 真实 PG/Redis/HTTP 全链用户旅程；旅程抓出并修复 billing B-red-claim 真 bug，回归已入档）
 > 迁移单元：用户控制台 REST API 整面（51 路由的 HTTP 面一次性切换；业务语义已在
 > identity/accounts/billing 迁移单元中先行落地，本单元只迁协议/装配/编排面）
 > 旧实现：ai-getway `apps/client-api`（src 4,540 行 + 测试 5,305 行；51 路由；20 测试文件 ~214 用例）
@@ -18,7 +18,8 @@
 | subscriptions.test.ts(16) orgs.test.ts(14) keys.test.ts(7) apps.test.ts(8) redeem.test.ts(6) usage.test.ts(5) referrals.test.ts(14) | 70 | 能力语义归包测试；app.test.ts 保留每域 happy + 代表性错误映射 |
 | production-readiness.test.ts | 5 | 改写进 config.test.ts（生产 fail-fast 矩阵） |
 | architecture.test.ts | 4 | 重写为新边界门禁（composition/db 白名单、文件集快照） |
-| e2e-user-journey(11)/org-team(3)/oauth(12)/cross-app(3) | 29 | **暂缓**：跨进程 E2E 归根 `e2e/`（P5 收尾统一搬迁，总纲 §9 P5）；依赖 apps/gateway 未建成，先在 MIGRATION §8 挂待办 |
+| e2e-user-journey(11) | 11 | **改写核销**：核心链已由 `journey.real.test.ts` 在本 app real 通道覆盖（真实 PG/Redis/HTTP，§6.1）；跨进程部分（支付回调/OAuth 上游）仍归根 `e2e/` |
+| e2e-org-team(3)/oauth(12)/cross-app(3) | 18 | **暂缓**：跨进程 E2E 归根 `e2e/`（P5 收尾统一搬迁，总纲 §9 P5）；依赖 apps/gateway 未建成，MIGRATION §8 挂待办 |
 
 ## 2. 审计结论（引用 IMPLEMENTATION §1）
 
