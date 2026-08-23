@@ -15,7 +15,6 @@ export const credentialQueries: Pick<
   | 'findPasswordHashByIdentifier'
   | 'loadPasswordHash'
   | 'findDeliveryIdentifier'
-  | 'hasPassword'
 > = {
   async registerCredential(
     db: DbLike,
@@ -105,14 +104,5 @@ export const credentialQueries: Pick<
     const cred = rows[0];
     if (!cred || (cred.kind !== 'email' && cred.kind !== 'phone')) return null;
     return { kind: cred.kind, value: cred.value };
-  },
-
-  async hasPassword(db: DbLike, userId: number): Promise<boolean> {
-    const rows = await db
-      .select({ userId: identityPasswords.userId })
-      .from(identityPasswords)
-      .where(eq(identityPasswords.userId, userId))
-      .limit(1);
-    return rows.length > 0;
   },
 };

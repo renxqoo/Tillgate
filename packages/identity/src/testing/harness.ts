@@ -149,13 +149,13 @@ export interface TestHarness {
 
 /** fake db:transaction = 快照 → 执行 → 异常恢复快照后重抛(回滚语义,accounts 同款);
  * execute = no-op(满足 runTx 的 Db 形状与 advisoryLock 的 SQL 执行面——内存替身
- * 单线程临界区,锁语义由真实 PG 门禁复验)。 */
+ * 单线程临界区,锁语义由真实 PG 门禁复验)。tx 自引用经闭包捕获(不落模块级)。 */
 function createFakeDb(store: InMemoryIdentityStore): Db {
-  return {
+  const fakeDb = {
     transaction: async <T>(fn: (tx: Db) => Promise<T>): Promise<T> => {
       const snap = store.snapshot();
       try {
-        return await fn(fakeDb);
+        return await fn(fakeDb as unknown as Db);
       } catch (error) {
         store.restore(snap);
         throw error;
@@ -163,9 +163,8 @@ function createFakeDb(store: InMemoryIdentityStore): Db {
     },
     execute: async () => ({ rows: [] }),
   } as unknown as Db;
+  return fakeDb;
 }
-
-let fakeDb: Db;
 
 export function createTestHarness(config: IdentityConfigInput = TEST_CONFIG): TestHarness {
   let clock = new Date('2026-08-23T00:00:00Z');
@@ -176,7 +175,7 @@ export function createTestHarness(config: IdentityConfigInput = TEST_CONFIG): Te
   const oauthState = createInMemoryOAuthStateStore();
   const captcha = createTestCaptcha();
   const audit = createInMemoryAuditSink();
-  fakeDb = createFakeDb(store);
+  const fakeDb = createFakeDb(store);
 
   const api = createIdentity({
     db: fakeDb,

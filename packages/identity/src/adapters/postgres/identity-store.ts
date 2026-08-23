@@ -17,15 +17,11 @@ import { anchorQueries } from './anchors.js';
 export interface PostgresIdentityStore
   extends CredentialStore, ChallengeStore, MfaStore, OAuthStore, AnchorStore {}
 
-export function createPostgresIdentityStore(): PostgresIdentityStore {
-  return {
-    ...credentialQueries,
-    ...passwordQueries,
-    ...challengeQueries,
-    ...mfaQueries,
-    ...oauthQueries,
-    ...anchorQueries,
-  };
-}
-
-export const postgresIdentityStore: PostgresIdentityStore = createPostgresIdentityStore();
+export const postgresIdentityStore: PostgresIdentityStore = {
+  ...credentialQueries,
+  ...passwordQueries,
+  ...challengeQueries,
+  ...mfaQueries,
+  ...oauthQueries,
+  ...anchorQueries,
+};

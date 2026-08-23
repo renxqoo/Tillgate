@@ -20,8 +20,8 @@ export interface OAuthStore {
   findUser(db: DbLike, input: { provider: string; subject: string }): Promise<number | null>;
 
   /**
-   * 绑定(advisoryLock `identity.user:{userId}` 临界区 insert onConflictDoNothing
-   * 双索引兜底 + 读回分类)。
+   * 绑定(insert onConflictDoNothing 双索引兜底 + 读回分类)。
+   * 契约:调用方持 `identity.user:{userId}` advisoryLock。
    */
   link(
     db: DbLike,
@@ -29,7 +29,8 @@ export interface OAuthStore {
   ): Promise<LinkOutcome>;
 
   /**
-   * 解绑(锁内 for update + 凭据集守卫:密码或 ≥2 绑定才允许——删后必须仍留登录方式)。
+   * 解绑(for update + 凭据集守卫:密码或 ≥2 绑定才允许——删后必须仍留登录方式)。
+   * 契约:调用方持锁(「删后仍留登录方式」的判定在临界区内完成)。
    */
   unlink(db: DbLike, input: { userId: number; provider: string }): Promise<UnlinkOutcome>;
 }

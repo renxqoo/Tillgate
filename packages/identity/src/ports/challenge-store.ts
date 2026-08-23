@@ -27,9 +27,10 @@ export type VerifyChallengeResult =
 
 export interface ChallengeStore {
   /**
-   * 发码原子决策(advisoryLock `identity.challenge:{kind}:{target}` 临界区内):
-   * 活挑战未冷却 → cooldown(retryAfterMs 按 DB 钟计算);已冷却 → 作废旧挑战
-   * (替换语义,让出部分唯一索引)→ INSERT。锁内清位仍撞唯一的理论窗口按冷却拒绝。
+   * 发码原子决策:活挑战未冷却 → cooldown(retryAfterMs 按 DB 钟计算);已冷却 →
+   * 作废旧挑战(替换语义,让出部分唯一索引)→ INSERT。契约:调用方持
+   * `identity.challenge:{kind}:{target}` advisoryLock(runTx 临界区内);
+   * 锁内清位仍撞唯一的理论窗口按冷却拒绝。
    */
   beginChallenge(
     db: DbLike,

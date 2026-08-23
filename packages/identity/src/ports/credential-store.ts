@@ -13,15 +13,16 @@ export type RegisterCredentialOutcome =
 
 export interface CredentialStore {
   /**
-   * 绑定标识(advisoryLock `identity.user:{userId}` 临界区内 insert onConflictDoNothing
-   * + 读回分类):created = 新落行;replay = 同用户重挂(幂等);taken = 他人占用。
+   * 绑定标识(insert onConflictDoNothing + 读回分类):created = 新落行;replay =
+   * 同用户重挂(幂等);taken = 他人占用。契约:调用方须已持 `identity.user:{userId}`
+   * advisoryLock(application 的 runTx 临界区内,铁律 2)。
    */
   registerCredential(
     db: DbLike,
     input: { userId: number; identifier: NormalizedIdentifier },
   ): Promise<RegisterCredentialOutcome>;
 
-  /** 首密码行(仅 registerCredential created 分支;SQL now()) */
+  /** 首密码行(仅 registerCredential created 分支;SQL now();调用方持锁) */
   upsertPassword(db: DbLike, input: { userId: number; passwordHash: string }): Promise<void>;
 
   /** 标识 → (userId, passwordHash) | null(authenticate join 查询) */
@@ -33,10 +34,10 @@ export interface CredentialStore {
   /** 读取存储哈希(B04:调用方在锁内临界区读→验→改) */
   loadPasswordHash(db: DbLike, userId: number): Promise<string | null>;
 
-  /** 换哈希(SQL now();行消失 = Defect) */
+  /** 换哈希(SQL now();行消失 = false;B04:调用方在锁内读→验→改) */
   updatePassword(db: DbLike, input: { userId: number; passwordHash: string }): Promise<boolean>;
 
-  /** 重置/设初始密码(upsert;SQL now()) */
+  /** 重置/设初始密码(upsert;SQL now();调用方持锁) */
   resetPassword(db: DbLike, input: { userId: number; passwordHash: string }): Promise<void>;
 
   /** userId 的可投递标识(email 优先、phone 次之,确定性排序) */
@@ -44,7 +45,4 @@ export interface CredentialStore {
     db: DbLike,
     userId: number,
   ): Promise<{ kind: 'email' | 'phone'; value: string } | null>;
-
-  /** 是否存在密码行(解绑最后凭据守卫) */
-  hasPassword(db: DbLike, userId: number): Promise<boolean>;
 }

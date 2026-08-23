@@ -26,8 +26,8 @@ describe('挑战并发语义(内存复演)', () => {
       ),
     );
     const ok = results.filter((r) => r.status === 'fulfilled');
-    // 内存单线程顺序化:第一发消费,后续全部 invalid(CAS 语义;真实并发行为由 real 门禁复验)
-    expect(ok.length).toBeGreaterThanOrEqual(1);
+    // 内存单线程下 6 发顺序穿 CAS:恰 1 消费,其余全部被拒(与 real 门禁同口径)
+    expect(ok).toHaveLength(1);
     for (const failed of results.filter((r) => r.status === 'rejected')) {
       expect((failed as PromiseRejectedResult).reason).toMatchObject({
         code: expect.stringMatching(/^identity\.(code_invalid|challenge_invalid)$/),
