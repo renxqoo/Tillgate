@@ -124,7 +124,7 @@ describe('auth-actions', () => {
     await expect(mod.loginAction(loginForm('a@b.c', 'pw'))).rejects.toMatchObject({
       __redirect: '/dashboard',
     });
-    expect(jar.store.get('sk_admin_session')).toBe('jwt-1');
+    expect(jar.store.get('ag_admin_session')).toBe('jwt-1');
     expect(last(calls)).toMatchObject({
       method: 'POST',
       url: expect.stringContaining('/v1/auth/login'),
@@ -143,7 +143,7 @@ describe('auth-actions', () => {
     await expect(mod.loginAction(loginForm('a@b.c', 'pw'))).resolves.toEqual({
       challengeId: 'ch-1',
     });
-    expect(jar.store.has('sk_admin_session')).toBe(false);
+    expect(jar.store.has('ag_admin_session')).toBe(false);
   });
 
   it('verifyLoginAction：非 6 位码被拒；成功写 cookie 并重定向', async () => {
@@ -157,18 +157,18 @@ describe('auth-actions', () => {
     await expect(mod.verifyLoginAction('ch', '123456')).rejects.toMatchObject({
       __redirect: '/dashboard',
     });
-    expect(jar.store.get('sk_admin_session')).toBe('jwt-2');
+    expect(jar.store.get('ag_admin_session')).toBe('jwt-2');
   });
 
   it('logoutAction：吊销 best-effort 后清 cookie 重定向登录页', async () => {
     vi.resetModules();
     const { fetchStub, calls } = mockFetch([{ status: 500, body: {} }]);
     vi.stubGlobal('fetch', fetchStub);
-    const jar = mockCookieJar({ sk_admin_session: 'jwt-3' });
+    const jar = mockCookieJar({ ag_admin_session: 'jwt-3' });
     installNextStubs({ jar: jar.jar });
     const mod = await import('../src/server/auth-actions');
     await expect(mod.logoutAction()).rejects.toMatchObject({ __redirect: '/login' });
-    expect(jar.store.has('sk_admin_session')).toBe(false);
+    expect(jar.store.has('ag_admin_session')).toBe(false);
     expect(calls[0]).toMatchObject({
       method: 'POST',
       url: expect.stringContaining('/v1/auth/logout'),

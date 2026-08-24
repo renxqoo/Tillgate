@@ -96,10 +96,10 @@ describe('settings 改密/显示名守卫矩阵', () => {
   it('改密成功带 token 轮换会话;无 token 不动 jar', async () => {
     responses.push({ status: 200, body: { token: 'next-token' } });
     expect(await changePasswordAction({ oldPassword: 'a', newPassword: '12345678' })).toEqual({});
-    expect(jar.get('sk_session')).toBe('next-token');
+    expect(jar.get('ag_session')).toBe('next-token');
     responses.push({ status: 200, body: {} });
     await changePasswordAction({ oldPassword: 'a', newPassword: '12345678' });
-    expect(jar.get('sk_session')).toBe('next-token');
+    expect(jar.get('ag_session')).toBe('next-token');
   });
 
   it('改密 ApiError 带 code;网络失败回落', async () => {

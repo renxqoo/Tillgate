@@ -22,7 +22,7 @@ notifications,billing-operations,tracing,tracing/topology,logs,usage-logs,audit-
 ### 1.2 数据契约（唯一来源：admin-api + `@tokenlens/api-client`）
 
 - 全部取数/变更经 `createNextAdminApiClient()`（`@tokenlens/api-client/next`），
-  路径白名单 `/v1/*`，会话=BFF 持有 `sk_admin_session` HttpOnly cookie → 出站 Bearer。
+  路径白名单 `/v1/*`，会话=BFF 持有 `ag_admin_session` HttpOnly cookie → 出站 Bearer。
 - wire DTO 以 `@tokenlens/api-client` 手写快照为编译期事实源（生成链落地前唯一事实源，
   总纲 §2.2）；本波补齐 tracing 族等 admin 消费缺口（IMPLEMENTATION §4）。
 - **前端零直连能力包**：不 import `@tokenlens/{ai,inference,tracing,db,http,runtime,
@@ -32,7 +32,7 @@ identity,accounts,billing,control-plane,notifications,observability}`——架�
 ### 1.3 会话与守卫契约
 
 - 登录/验码：server action 直调 admin-api `POST /v1/auth/login`、`/v1/auth/login/verify`
-  （裸 fetch——登录前无会话 client），token 写 `sk_admin_session`（HttpOnly/SameSite=lax/
+  （裸 fetch——登录前无会话 client），token 写 `ag_admin_session`（HttpOnly/SameSite=lax/
   生产 Secure），出站由 client getToken 注入 Bearer。
 - 守卫：`(main)` layout `requireAdmin()` = client.getAdminMe()（`GET /v1/me`），失败重定向
   `/login`；`/v1/me` 由 admin-api P2 波提供（本波运行时依赖，见 §5）。

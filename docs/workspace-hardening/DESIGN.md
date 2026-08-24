@@ -1,7 +1,7 @@
 # 凭证前缀、契约与可读性门禁收口设计
 
 > 状态：已实施并通过本地全量门禁（2026-08-24）
-> 范围：默认 API Key 前缀与 BFF Cookie 名、费率卡 wire 契约、嵌套三元表达式门禁。
+> 范围：默认 API Key 前缀与 BFF Cookie 兼容性、费率卡 wire 契约、嵌套三元表达式门禁。
 
 ## 1. 背景与问题
 
@@ -9,8 +9,7 @@
 纯可读性重构混成一笔，导致门禁变绿但行为漂移。本设计先固定每组改动的唯一语义：
 
 1. 新部署默认虚拟 API Key 前缀从 `ag_` 改为 `sk_`；用户面与管理面 BFF Cookie
-   分别从 `ag_session` / `ag_admin_session` 改为 `sk_session` /
-   `sk_admin_session`。
+   保持 `ag_session` / `ag_admin_session`，不与 API Key 前缀耦合。
 2. `rate_cards` 已有 `updated_at`，管理端列表应返回真实更新时间，不再伪造恒 `null`。
 3. 启用 `eslint/no-nested-ternary`；改写只改变表达形态，不改变求值优先级、短路、
    `null`/`undefined` 区分或 JSX 渲染结果。
@@ -22,8 +21,8 @@
 - `KEY_PREFIX` 仍是装配期单一配置；client-api 生成端与 gateway 识别端必须取同一值。
 - 默认值改为 `sk_`，不接受 `ag_ | sk_` 双轨识别。存量部署若暂不切换，必须继续显式
   配置 `KEY_PREFIX=ag_`；决定切换时需重新签发 Key，并原子切换生成端与识别端。
-- Cookie 常量直接改名，不读取旧 Cookie；升级后已有控制台会话失效并要求重新登录。
-  这是一次显式迁移，不保留兼容层。
+- Cookie 是浏览器登录会话标识，不是 API Key，常量保持 `ag_session` /
+  `ag_admin_session`。因此升级不会仅因 API Key 默认前缀变化而注销已有控制台会话。
 - 前缀校验规则不变：`^[a-z][a-z0-9_-]{1,15}$`，因此 `Sk_` 仍必须判为非法。
 
 ### 2.2 费率卡更新时间
@@ -50,12 +49,12 @@
 
 - 不批量重命名历史协议、迁移文件或与凭证无关的 `tag` 标识符。
 - 不调整覆盖率阈值。
-- 不引入旧前缀兼容读取、双 Cookie 或自动迁移存量 API Key。
+- 不引入 API Key 旧前缀兼容读取或自动迁移存量 API Key；Cookie 名未迁移，因此无需双写。
 
 ## 4. 验证策略
 
-- 静态词表：仓库正式代码、测试、文档中不再残留旧默认前缀/Cookie 名；同时保留大小写
-  非法前缀测试。
+- 静态词表：仓库正式代码、测试、文档中的 API Key 默认前缀统一为 `sk_`，Cookie
+  统一保持 `ag_session` / `ag_admin_session`；同时保留大小写非法前缀测试。
 - 契约：费率卡 store/presenter/OpenAPI/DTO 对 `updatedAt` 的非空性逐层一致。
 - 行为回归：会话显式 token、显式 `null`、自动 token 三态；排序/状态/错误映射等被改写
   三元表达式保持矩阵覆盖。

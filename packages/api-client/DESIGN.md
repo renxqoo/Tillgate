@@ -113,7 +113,7 @@ function getAdminApiBase(): string; // env ADMIN_API_BASE 惰性解析，dev 兜
 - 双后端（client-api/admin-api）REST 调用 transport：URL 拼接、Bearer 注入、
   accept-language / x-forwarded-for 出口头、JSON 编解码、错误信封 → ApiError。
 - 分页查询构造与 `Paginated<T>` 信封解析。
-- Next BFF 侧装配：HttpOnly cookie 会话持有（sk_session/sk_admin_session）、
+- Next BFF 侧装配：HttpOnly cookie 会话持有（ag_session/ag_admin_session）、
   cookie→Accept-Language 语言协商出口、可信代理 IP 出站头、env 基地址惰性解析。
 - 两面 wire DTO:admin 面生成物 + client 面手写快照（§3.4）。
 
@@ -131,7 +131,7 @@ function getAdminApiBase(): string; // env ADMIN_API_BASE 惰性解析，dev 兜
 ### 2.3 词表
 
 - Locale 词表闭集 `en | zh`（与 http 侧同一语义副本，§3.3）。
-- 会话 cookie 名 `sk_session` / `sk_admin_session`；旧名不兼容，升级后需重新登录。
+- 会话 cookie 名保持 `ag_session` / `ag_admin_session`，不随 API Key 前缀迁移，避免存量会话失效。
 - 环境变量：`CLIENT_API_BASE` / `ADMIN_API_BASE`（./next 层）、`TRUSTED_PROXY_HOPS`
   （./next 层，逐调用读取）、`SESSION_TTL_SECONDS`（./next 层）。
 

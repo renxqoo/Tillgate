@@ -38,7 +38,7 @@ function isFetchError(r: Response | { fetchError: string }): r is { fetchError: 
  * 管理员登录（admin-api，Bearer 会话）。
  *   - 凭证：email + password；第二因子二分：TOTP 绑定 → {totpRequired:true}（客户端
  *     改走 loginTotpAction）;邮箱码开启 → {twoFactorRequired, challengeId}
- *   - 会话：token 由 BFF 持有（sk_admin_session cookie 值即 JWT）
+ *   - 会话：token 由 BFF 持有（ag_admin_session cookie 值即 JWT）
  */
 export async function loginAction(
   formData: FormData,

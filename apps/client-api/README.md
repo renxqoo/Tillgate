@@ -34,7 +34,7 @@ app.ts / index.ts / shutdown.ts
 
 - 能力包 facade：`@tokenlens/identity`（会话/挑战/OAuth，经 `adapters/identity-stack`）、`@tokenlens/accounts`（+`/composition` 资金来源解析器）、`@tokenlens/billing`（+`/composition` wallet/payments/redeem postgres stores 与 EPAY/Stripe provider）、`@tokenlens/observability`（initOtel）、`@tokenlens/runtime`（redis/cipher/爆破守卫/logger）、`@tokenlens/db`
 - app 永不触 DbTx：无共享事务的 facade 动词编排；跨能力只读面组合在 `src/adapters/*-read.ts`
-- 消费方：apps/client（Next.js BFF，经 `@tokenlens/api-client/next` 持 `sk_session` cookie 出站 Bearer）
+- 消费方：apps/client（Next.js BFF，经 `@tokenlens/api-client/next` 持 `ag_session` cookie 出站 Bearer）
 
 ## 本地运行与测试
 

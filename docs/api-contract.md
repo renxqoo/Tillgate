@@ -403,7 +403,7 @@ client_secret=<app.client_secret>
 | 错误信封外 OAuth | `/oauth/token` 失败也用 401 invalid_client（OpenAI 信封） | OAuth 标准错误形 `{error, error_description}`（非 OpenAI 信封）；增 `400 unsupported_grant_type` |
 | 响应 `model` 字段 | 返回真实模型名（映射后） | 响应侧替换为对外目录模型名（可配置开关）；错误消息中真实模型名同样脱敏 |
 | 上游 4xx | 透传（脱敏） | 原码 + 已翻译脱敏消息透传（ADR-0004）；5xx/网络类合成 502 `inference.upstream_failed`（v1 为 `upstream_error` 500 族） |
-| 控制台会话 | HttpOnly Cookie（sk_session/sk_admin_session）+ CSRF 面 | `Authorization: Bearer <会话 JWT>`（无 Cookie 无 CSRF）；jti + 吊销线 |
+| 控制台会话 | HttpOnly Cookie（ag_session/ag_admin_session）+ CSRF 面 | `Authorization: Bearer <会话 JWT>`（无 Cookie 无 CSRF）；jti + 吊销线 |
 | JWT 载荷 | 含 `coefficient` 快照、`jti` | 不含 coefficient（计价快照由 billing 收据持有）；`typ=app_jwt`、scope 全量（models/rpm/tpm）；jti 黑名单未实现（禁用 App 即全量失效） |
 | App JWT 有效期默认 | 2h | 3600s（`JWT_TOKEN_TTL_SECONDS`，≥60 可配） |
 | 请求体上限 | 16MB | 默认 10MB（`GATEWAY_BODY_LIMIT_BYTES`）；multipart 上传文件另限 16MB |

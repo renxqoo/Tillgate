@@ -87,7 +87,7 @@ describe('actions/oauth + locale', () => {
     await expect(completeOAuthAction('frag-token', '/dashboard/keys')).rejects.toSatisfy(
       isRedirectError,
     );
-    expect(jar.get('sk_session')).toBe('frag-token');
+    expect(jar.get('ag_session')).toBe('frag-token');
   });
 
   it('setLocaleAction：合法语言写 cookie；非法静默拒绝', async () => {
@@ -173,7 +173,7 @@ describe('actions/auth 剩余分支', () => {
     responses.push({ status: 401, body: errBody('identity.invalid_credentials', '验证码错误') });
     const res = await verifyLoginCodeAction('ch', '000000');
     expect(res).toEqual({ error: '验证码错误' });
-    expect(jar.has('sk_session')).toBe(false);
+    expect(jar.has('ag_session')).toBe(false);
   });
 
   it('verifyLoginCodeAction：网络失败回落 fetchError 文案', async () => {
@@ -189,7 +189,7 @@ describe('actions/auth 剩余分支', () => {
   it('registerVerifyAction：成功建号落 cookie 并 redirect', async () => {
     responses.push({ status: 201, body: { token: 'jwt-r', userId: 9 } });
     await expect(registerVerifyAction('ch', '123456', 'u1')).rejects.toSatisfy(isRedirectError);
-    expect(jar.get('sk_session')).toBe('jwt-r');
+    expect(jar.get('ag_session')).toBe('jwt-r');
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
       challengeId: 'ch',
       code: '123456',

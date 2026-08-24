@@ -48,7 +48,7 @@ export interface NextApiClientOptions {
   localeResolution?: LocaleResolution;
 }
 
-/** 用户面 client:client-api 基地址 + sk_session 会话 + BFF 出口头 */
+/** 用户面 client:client-api 基地址 + ag_session 会话 + BFF 出口头 */
 export function createNextClientApiClient(options: NextApiClientOptions = {}): ClientApiClient {
   return createClientApiClient({
     baseUrl: options.baseUrl ?? getClientApiBase(),
@@ -58,7 +58,7 @@ export function createNextClientApiClient(options: NextApiClientOptions = {}): C
   });
 }
 
-/** 管理面 client:admin-api 基地址 + sk_admin_session 会话 + BFF 出口头 */
+/** 管理面 client:admin-api 基地址 + ag_admin_session 会话 + BFF 出口头 */
 export function createNextAdminApiClient(options: NextApiClientOptions = {}): AdminApiClient {
   return createAdminApiClient({
     baseUrl: options.baseUrl ?? getAdminApiBase(),

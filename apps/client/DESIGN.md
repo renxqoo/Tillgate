@@ -12,7 +12,7 @@
 部署单元：Next.js 16 App Router，`output: 'standalone'`，端口 3001（沿用 v1）。三种访客形态：
 
 1. **公开页**（无需会话）：营销首页 `/`（含免费模型广场，取公开定价前 9 条）、`/pricing` 公开定价表（`q`/`free` 搜索 + 分页，pageSize=50）、`/login`、`/register`（Cloudflare Turnstile 人机验证，能力探测失败按「开启」渲染、提交 403 兜底——v1 刻意取舍）、`/oauth/callback`（读 URL fragment `#token=` 换 BFF cookie 后跳 `next`）。
-2. **受保护页**（middleware 查 `sk_session` cookie 存在性 + layout `requireMe()` 权威校验，双层）：`/dashboard`（KPI + 双图表）、`keys`、`apps`、`usage`、`transactions`、`billing`（充值+订单）、`redeem`、`invite`（返佣，功能开关可关）、`orgs`（+`orgs/accept?token=`）、`subscription`、`settings`、`playground`（BYOK 同域直连推理端点）、`api-guide`。
+2. **受保护页**（middleware 查 `ag_session` cookie 存在性 + layout `requireMe()` 权威校验，双层）：`/dashboard`（KPI + 双图表）、`keys`、`apps`、`usage`、`transactions`、`billing`（充值+订单）、`redeem`、`invite`（返佣，功能开关可关）、`orgs`（+`orgs/accept?token=`）、`subscription`、`settings`、`playground`（BYOK 同域直连推理端点）、`api-guide`。
 3. **i18n**：无路由 cookie 模式（`NEXT_LOCALE` → `Accept-Language` → en），en/zh 双语全量 SSR，切换无闪变。
 
 写入动作全部经 Server Action（BFF 代理到 client-api），错误以 toast 呈现，message 语言与 UI 一致（BFF 转发 `accept-language`，后端本地化）。
@@ -51,7 +51,7 @@ client-api 消费子集（51 路由中的 41 条）：auth 7、me 2、keys 5、a
 
 ## 4. BFF 模型（会话/语言/IP）
 
-- **会话**：后端无 Cookie 纯 Bearer；浏览器侧 `sk_session` HttpOnly(lax, 生产 secure, path=/, TTL=SESSION_TTL_SECONDS) 持 JWT，由 `@tokenlens/api-client/next` session 工具读写；登录/验码/OAuth 回调/改密从响应体取 `token` 落 cookie；登出先 best-effort 吊销 jti 再清 cookie。
+- **会话**：后端无 Cookie 纯 Bearer；浏览器侧 `ag_session` HttpOnly(lax, 生产 secure, path=/, TTL=SESSION_TTL_SECONDS) 持 JWT，由 `@tokenlens/api-client/next` session 工具读写；登录/验码/OAuth 回调/改密从响应体取 `token` 落 cookie；登出先 best-effort 吊销 jti 再清 cookie。
 - **出站头**：一切后端调用经 `createNextClientApiClient()`（自动注入 `authorization` + `accept-language` + `x-forwarded-for`——v1 auth 裸 fetch 丢头病灶 B7 的结构性修复）；`TRUSTED_PROXY_HOPS` 解不出用户 IP 则不带 XFF。
 - **开放重定向防线**：`next` 参数站内白名单（`/` 开头且非 `//`，缺省 `/dashboard`）单点实现于 `src/server/next-url.ts`，登录/验码/OAuth 三处复用（D2 去重）。
 - **鉴权双层**：middleware（cookie 存在性，快速门卫 + `next` 透传）+ `requireMe()`（`getMe()` 权威校验，失败 redirect `/login`）；`DEV_FAKE_ME=1`（非生产）注入演示会话。

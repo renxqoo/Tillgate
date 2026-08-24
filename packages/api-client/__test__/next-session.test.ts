@@ -37,10 +37,10 @@ afterEach(() => {
   process.env.NODE_ENV = originalEnv;
 });
 
-describe('cookie 名词表(旧名不兼容,升级后重新登录)', () => {
-  it('用户面 sk_session / 管理面 sk_admin_session', () => {
-    expect(SESSION_COOKIE).toBe('sk_session');
-    expect(ADMIN_SESSION_COOKIE).toBe('sk_admin_session');
+describe('cookie 名词表(保持存量会话兼容)', () => {
+  it('用户面 ag_session / 管理面 ag_admin_session', () => {
+    expect(SESSION_COOKIE).toBe('ag_session');
+    expect(ADMIN_SESSION_COOKIE).toBe('ag_admin_session');
   });
 });
 
