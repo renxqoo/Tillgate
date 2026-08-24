@@ -24,7 +24,12 @@ export async function createPermission(
   if (input.type === 'page' && input.code != null && !CODE_PATTERN.test(input.code)) {
     throw controlPlaneErrors.business('invalid_permission_input', { code: input.code });
   }
-  if (input.code != null && (await deps.stores.permission.codeTaken(deps.db, input.code))) {
+  // 唯一性仅约束按钮（页面共享域读码合法——同 update-permission 口径）
+  if (
+    input.type === 'button' &&
+    input.code != null &&
+    (await deps.stores.permission.codeTaken(deps.db, input.code))
+  ) {
     throw controlPlaneErrors.business('permission_code_taken', { code: input.code });
   }
   if (input.parentId != null) {

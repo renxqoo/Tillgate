@@ -159,11 +159,11 @@ export const postgresRoleStore: RoleStore = {
       .select({ id: permissions.id, code: permissions.code })
       .from(permissions)
       .where(inArray(permissions.code, [...codes]));
-    const byCode = new Map(nodes.map((node) => [node.code as string, node.id]));
-    const values = codes
-      .map((code) => byCode.get(code))
-      .filter((id): id is number => id != null)
-      .map((permissionId) => ({ roleId, permissionId }));
+    // 共享码（页面共用域读码）授全部同名节点——授 users:read 覆盖用户页+限流页;
+    // 绑定按 id 解析活码,任一节点改名其授权面随之,零漂移语义完整
+    const values = nodes
+      .filter((node) => node.code != null && codes.includes(node.code))
+      .map((node) => ({ roleId, permissionId: node.id }));
     if (values.length > 0) {
       await db.insert(rolePermissions).values(values).onConflictDoNothing();
     }

@@ -64,8 +64,9 @@ export async function updatePermission(
   if (next.type === 'group' && next.code != null) {
     throw controlPlaneErrors.business('invalid_permission_input', { code: next.code });
   }
-  // 码改动的全局唯一性(排除自身)
-  if (next.code !== node.code && next.code != null) {
+  // 码唯一性仅约束按钮（DB 部分唯一索引同口径;页面共享域读码是合法形态——
+  // 用户页/限流页共用 users:read,改名恢复不得被同码他页拦下）
+  if (next.type === 'button' && next.code !== node.code && next.code != null) {
     if (await deps.stores.permission.codeTaken(deps.db, next.code)) {
       throw controlPlaneErrors.business('permission_code_taken', { code: next.code });
     }
