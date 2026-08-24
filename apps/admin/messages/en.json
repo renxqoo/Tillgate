@@ -1098,6 +1098,7 @@
   "roles": {
     "title": "Roles",
     "description": "Dynamic roles & grants (codes drive navigation, APIs and buttons alike)",
+    "searchPlaceholder": "Search role name",
     "empty": "No roles",
     "create": "New role",
     "createTitle": "Create role",

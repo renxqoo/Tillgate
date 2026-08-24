@@ -1098,6 +1098,7 @@
   "roles": {
     "title": "角色管理",
     "description": "动态角色与授权（角色绑定权限码——导航、接口、按钮同源判定）",
+    "searchPlaceholder": "搜索角色名称",
     "empty": "暂无角色",
     "create": "新建角色",
     "createTitle": "新建角色",

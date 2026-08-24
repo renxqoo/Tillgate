@@ -1,18 +1,28 @@
 'use client';
 
 import type { PermissionNode, RoleRow } from '@tokenlens/api-client';
-import { Badge, Button, Checkbox } from '@tokenlens/ui';
+import {
+  Badge,
+  Button,
+  Checkbox,
+  ConfirmDialog,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  FieldDescription,
+  FieldLabel,
+  FormItem,
+  Input,
+  RowActions,
+} from '@tokenlens/ui';
 import { useState } from 'react';
 import { Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { DataTable } from '@/components/data-table';
 import type { DataTableColumn } from '@/components/data-table';
+import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
-import { ConfirmDialog } from '@tokenlens/ui';
 import { useActionResult } from '@/components/action-toast';
-import { Input } from '@tokenlens/ui';
 import { createRoleAction, deleteRoleAction, updateRoleAction } from '@/server/rbac-actions';
 
 interface RoleRowWithGrants extends RoleRow {
@@ -96,15 +106,19 @@ function GrantTree({
   );
 }
 
-/** 角色编辑/创建表单（码树勾选 = 授权全量替换） */
-function RoleForm({
+/** 角色编辑/创建表单（码树勾选 = 授权全量替换;trigger 创建用,受控 open 行内编辑用） */
+function RoleFormDialog({
   role,
   nodes,
   trigger,
+  open,
+  onOpenChange,
 }: {
   role?: RoleRowWithGrants;
   nodes: PermissionNode[];
-  trigger: React.ReactElement;
+  trigger?: React.ReactElement;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const t = useTranslations('roles');
   const tc = useTranslations('common');
@@ -120,12 +134,15 @@ function RoleForm({
     });
   };
 
-  const formId = role ? `role-form-${role.id}` : 'role-form-create';
+  const formId = `role-form-${role?.id ?? 'create'}`;
+  const nameId = `role-name-${role?.id ?? 'new'}`;
 
   return (
     <FormDialog
       formId={formId}
       trigger={trigger}
+      open={open}
+      onOpenChange={onOpenChange}
       title={role ? t('editTitle', { name: role.name }) : t('createTitle')}
       description={t('formDescription')}
       submitLabel={role ? tc('save') : tc('create')}
@@ -155,28 +172,18 @@ function RoleForm({
           }}
         >
           {role == null && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" htmlFor="role-code">
-                {t('code')}
-              </label>
+            <FormItem>
+              <FieldLabel htmlFor="role-code">{t('code')}</FieldLabel>
               <Input id="role-code" name="code" required maxLength={64} />
-              <p className="text-xs text-muted-foreground">{t('codeHint')}</p>
-            </div>
+              <FieldDescription>{t('codeHint')}</FieldDescription>
+            </FormItem>
           )}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium" htmlFor={`role-name-${role?.id ?? 'new'}`}>
-              {tc('name')}
-            </label>
-            <Input
-              id={`role-name-${role?.id ?? 'new'}`}
-              name="name"
-              defaultValue={role?.name}
-              required
-              maxLength={128}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <span className="text-sm font-medium">{t('grants')}</span>
+          <FormItem>
+            <FieldLabel htmlFor={nameId}>{tc('name')}</FieldLabel>
+            <Input id={nameId} name="name" defaultValue={role?.name} required maxLength={128} />
+          </FormItem>
+          <FormItem>
+            <FieldLabel>{t('grants')}</FieldLabel>
             <GrantTree
               nodes={nodes}
               selected={selected}
@@ -192,7 +199,7 @@ function RoleForm({
                 }
               }}
             />
-          </div>
+          </FormItem>
           {pending ? <Loader2Icon className="size-4 animate-spin" /> : null}
         </form>
       )}
@@ -200,13 +207,63 @@ function RoleForm({
   );
 }
 
+/** 新建角色入口（页头 actions 插槽） */
+export function RoleCreateForm({ nodes }: { nodes: PermissionNode[] }) {
+  const t = useTranslations('roles');
+  return (
+    <RoleFormDialog
+      nodes={nodes}
+      trigger={
+        <Button size="sm">
+          <PlusIcon className="size-4" />
+          {t('create')}
+        </Button>
+      }
+    />
+  );
+}
+
+/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅非内置角色 */
+function RoleRowActions({
+  role,
+  nodes,
+  onDelete,
+}: {
+  role: RoleRowWithGrants;
+  nodes: PermissionNode[];
+  onDelete: (role: RoleRowWithGrants) => void;
+}) {
+  const tc = useTranslations('common');
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <>
+      <RoleFormDialog role={role} nodes={nodes} open={editOpen} onOpenChange={setEditOpen} />
+      <RowActions label={tc('actions')}>
+        <DropdownMenuItem onClick={() => setEditOpen(true)}>
+          <PencilIcon className="size-4" />
+          {tc('edit')}
+        </DropdownMenuItem>
+        {!role.isBuiltin && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => onDelete(role)}>
+              <Trash2Icon className="size-4" />
+              {tc('delete')}
+            </DropdownMenuItem>
+          </>
+        )}
+      </RowActions>
+    </>
+  );
+}
+
+/** 角色清单（通用 DataTable;分页/搜索在页面层 ListPage） */
 export function RolesContent({
   roles,
-  total,
   tree,
 }: {
   roles: RoleRowWithGrants[];
-  total: number;
   tree: PermissionNode[];
 }) {
   const t = useTranslations('roles');
@@ -253,53 +310,18 @@ export function RolesContent({
         r.isSuper ? (
           <span className="text-xs text-muted-foreground">{t('superLocked')}</span>
         ) : (
-          <div className="flex items-center gap-1">
-            <RoleForm
-              role={r}
-              nodes={tree}
-              trigger={
-                <button
-                  type="button"
-                  className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-                  title={tc('edit')}
-                >
-                  <PencilIcon className="size-4" />
-                </button>
-              }
-            />
-            {!r.isBuiltin && (
-              <button
-                type="button"
-                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-                title={tc('delete')}
-                onClick={() => setDeleting(r)}
-              >
-                <Trash2Icon className="size-4" />
-              </button>
-            )}
-          </div>
+          <RoleRowActions role={r} nodes={tree} onDelete={setDeleting} />
         ),
     },
   ];
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <RoleForm
-          nodes={tree}
-          trigger={
-            <Button size="sm">
-              <PlusIcon className="size-4" />
-              {t('create')}
-            </Button>
-          }
-        />
-      </div>
       <DataTable
         rowKey={(r) => r.id}
         rows={roles}
         columns={columns}
-        empty={t('empty', { count: total })}
+        empty={t('empty')}
       />
       <ConfirmDialog
         open={deleting != null}
