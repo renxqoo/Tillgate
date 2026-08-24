@@ -60,19 +60,10 @@ import {
 } from './application/channels/recharge-channel';
 import { adjustChannel, type AdjustChannelInput } from './application/channels/adjust-channel';
 import { listRecharges, type ListRechargesInput } from './application/channels/list-recharges';
-import { findAdmin } from './application/admins/find-admin';
-import { findAdminByEmail } from './application/admins/find-admin-by-email';
-import { touchLastLogin } from './application/admins/touch-last-login';
-import { setTwoFactorEnabled } from './application/admins/set-two-factor-enabled';
-import { listAdmins } from './application/admins/list-admins';
-import { createAdmin, type CreateAdminInput } from './application/admins/create-admin';
-import { updateAdmin } from './application/admins/update-admin';
-import type {
-  AdminListQuery,
-  AdminListResult,
-  AdminRecord,
-  UpdateAdminRow,
-} from './ports/admin-store';
+import { composeRbacSurface, type RbacSurface } from './application/rbac/compose';
+import { composeAdminsSurface, type AdminsSurface } from './application/admins/compose';
+
+import { postgresRoleStore, postgresPermissionStore } from './adapters/postgres/rbac-store';
 import { createModel, type CreateModelInput } from './application/models/create-model';
 import { updateModel, type UpdateModelInput } from './application/models/update-model';
 import { deleteModel, type DeleteModelInput } from './application/models/delete-model';
@@ -165,6 +156,8 @@ export interface ControlPlaneEnv {
     readonly audit?: import('./ports/audit-store').AuditStore;
     readonly operations?: import('./ports/operations-store').OperationsStore;
     readonly admin?: import('./ports/admin-store').AdminStore;
+    readonly role?: import('./ports/rbac-store').RoleStore;
+    readonly permission?: import('./ports/rbac-store').PermissionStore;
   };
 }
 
@@ -284,20 +277,10 @@ export interface ControlPlane {
     priceHistory(input: { externalName: string }): Promise<CatalogPriceHistoryEntry[]>;
     import(input: ImportCatalogInput): Promise<ImportCatalogResult>;
   };
-  /** 管理员资料与授权策略（G2,admin realm）——密码/挑战在 identity,此处只持资料事实 */
-  readonly admins: {
-    find(id: number): Promise<AdminRecord | null>;
-    findByEmail(email: string): Promise<AdminRecord | null>;
-    touchLastLogin(adminId: number): Promise<void>;
-    setTwoFactorEnabled(input: { adminId: number; enabled: boolean }): Promise<void>;
-    /** RBAC 管理面（docs/admin-rbac）：列表/建行/更新;凭据注册与补偿在 admin-api 编排 */
-    list(query: AdminListQuery): Promise<AdminListResult>;
-    create(input: CreateAdminInput): Promise<AdminRecord>;
-    /** 未命中返回 null（404 抛点在 admin-api——admin.admin_not_found 单一码） */
-    update(input: UpdateAdminRow): Promise<AdminRecord | null>;
-    /** 补偿删除（创建流程凭据注册失败收回资料行——只此一个消费方） */
-    remove(adminId: number): Promise<void>;
-  };
+  /** RBAC v2（ADR-0008）：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
+  readonly rbac: RbacSurface;
+  /** 管理员资料面（G2——装配见 application/admins/compose） */
+  readonly admins: AdminsSurface;
 }
 
 export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
@@ -314,9 +297,10 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     audit: env.stores?.audit ?? postgresAuditStore,
     operations: env.stores?.operations ?? postgresOperationsStore,
     admin: env.stores?.admin ?? postgresAdminStore,
+    role: env.stores?.role ?? postgresRoleStore,
+    permission: env.stores?.permission ?? postgresPermissionStore,
     settings: env.stores?.settings ?? postgresSettingsStore,
   } as const;
-  const adminsDeps = { db: env.db, store: stores.admin };
 
   const fxDeps: FxDeps = { db: env.db, stores: { fx: stores.fx }, audit, env: env.fx };
   const settingsDeps = { db: env.db, stores: { settings: stores.settings }, audit };
@@ -413,16 +397,8 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
         listRecharges({ db: env.db, stores: { channel: stores.channel } }, input),
       loadVoucher: (key) => voucherStorage.load(key),
     },
-    admins: {
-      find: (id) => findAdmin(adminsDeps, id),
-      findByEmail: (email) => findAdminByEmail(adminsDeps, email),
-      touchLastLogin: (adminId) => touchLastLogin(adminsDeps, adminId),
-      setTwoFactorEnabled: (input) => setTwoFactorEnabled(adminsDeps, input),
-      list: (query) => listAdmins(adminsDeps, query),
-      create: (input) => createAdmin({ db: env.db, store: stores.admin }, input),
-      update: (input) => updateAdmin(adminsDeps, input),
-      remove: (adminId) => stores.admin.remove(env.db, adminId),
-    },
+    rbac: composeRbacSurface(env.db, { role: stores.role, permission: stores.permission }),
+    admins: composeAdminsSurface(env.db, stores.admin),
     models: {
       create: (input) => createModel({ db: env.db, stores: { model: stores.model }, audit }, input),
       update: (input) => updateModel({ db: env.db, stores: { model: stores.model }, audit }, input),

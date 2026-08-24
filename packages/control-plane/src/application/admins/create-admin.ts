@@ -5,26 +5,27 @@
  * 审计由编排方在双动词全部成功后旁路记录（postAudit——两步全成才算「创建」）。
  */
 import { isUniqueViolation, type Db } from '@tokenlens/db';
-import { assertAdminRole, type AdminRole } from '../../domain/rbac';
 import { controlPlaneErrors } from '../../errors';
 import type { AdminRecord, AdminStore } from '../../ports/admin-store';
 
 export interface CreateAdminInput {
   readonly email: string;
   readonly displayName: string | null;
-  readonly role: string;
+  readonly roleId: number;
 }
 
 export async function createAdmin(
   deps: { db: Db; store: AdminStore },
   input: CreateAdminInput,
 ): Promise<AdminRecord> {
-  const role: AdminRole = assertAdminRole(input.role);
   const email = input.email.trim().toLowerCase();
+  if (!Number.isInteger(input.roleId) || input.roleId < 1) {
+    throw controlPlaneErrors.business('invalid_role_input', { roleId: input.roleId });
+  }
   try {
     // id 段分配 + 插入同事务（adapter 内分配;Db 全量形态——事务动词在 Db 上）
     return await deps.db.transaction((tx) =>
-      deps.store.create(tx, { email, displayName: input.displayName, role }),
+      deps.store.create(tx, { email, displayName: input.displayName, roleId: input.roleId }),
     );
   } catch (error) {
     if (isUniqueViolation(error)) {

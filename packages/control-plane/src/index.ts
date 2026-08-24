@@ -52,6 +52,22 @@ export {
   assertAdminRole,
 } from './domain/rbac';
 export type { AdminRole, PermissionDomain, PermissionAction, Permission } from './domain/rbac';
+// ---- RBAC v2（ADR-0008:动态角色 + 权限树;v1 矩阵在 admin-api 切换后删除）----
+export { ENFORCED_CODES, isEnforcedCode, granted } from './domain/rbac';
+export type { EnforcedCode, AdminGrants } from './domain/rbac';
+export type {
+  RoleRecord,
+  RoleListQuery,
+  RoleListResult,
+  CreateRoleRow,
+  UpdateRoleRow,
+  PermissionNode,
+  CreatePermissionRow,
+  UpdatePermissionRow,
+  RoleStore,
+  PermissionStore,
+} from './ports/rbac-store';
+export type { RoleUpdateResult } from './application/rbac/update-role';
 export type {
   AdminRecord,
   CreateAdminRow,

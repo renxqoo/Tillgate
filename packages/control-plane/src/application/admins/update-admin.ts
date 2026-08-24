@@ -4,7 +4,7 @@
  * 未命中返回 null（404 抛点在路由——admin.admin_not_found 单一码）;
  * 审计由编排方旁路记录（postAudit）。
  */
-import { assertAdminRole } from '../../domain/rbac';
+import { controlPlaneErrors } from '../../errors';
 import type { AdminRecord, UpdateAdminRow } from '../../ports/admin-store';
 import type { AdminsDeps } from './admins-shared';
 
@@ -12,10 +12,13 @@ export async function updateAdmin(
   deps: AdminsDeps,
   input: UpdateAdminRow,
 ): Promise<AdminRecord | null> {
+  if (input.roleId !== undefined && (!Number.isInteger(input.roleId) || input.roleId < 1)) {
+    throw controlPlaneErrors.business('invalid_role_input', { roleId: input.roleId });
+  }
   const patch: UpdateAdminRow = {
     adminId: input.adminId,
     ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-    ...(input.role !== undefined ? { role: assertAdminRole(input.role) } : {}),
+    ...(input.roleId !== undefined ? { roleId: input.roleId } : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
   };
 

@@ -963,7 +963,11 @@ function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
 }
 
 /** 管理员资料 store 替身（G2）——投影不含密码列（与 postgres adapter 同口径） */
-export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
+export function createMemoryAdminStore(
+  seed: AdminRecord[] = [],
+  roleCodes: Map<number, string> = new Map(),
+  grantsByRole: Map<number, { isSuper: boolean; codes: string[] }> = new Map(),
+): AdminStore & {
   rows: Map<number, AdminRecord>;
 } {
   const rows = new Map<number, AdminRecord>(seed.map((r) => [r.id, r]));
@@ -975,6 +979,15 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
     },
     async findByEmail(_db, email) {
       return [...rows.values()].find((r) => r.email === email) ?? null;
+    },
+    async findGrants(_db, adminId) {
+      const row = rows.get(adminId);
+      if (row == null) return null;
+      const grants = grantsByRole.get(row.roleId);
+      if (grants == null || grants.isSuper === undefined) return { isSuper: false, codes: [] };
+      return grants.isSuper
+        ? { isSuper: true, codes: [] }
+        : { isSuper: false, codes: grants.codes };
     },
     async touchLastLogin(_db, id) {
       const row = rows.get(id);
@@ -1028,6 +1041,7 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
       const record: AdminRecord = {
         id: Math.max(1_000_000_000, maxId + 1),
         ...row,
+        role: roleCodes.get(row.roleId) ?? 'custom',
         status: 0,
         twoFactorEnabled: false,
         lastLoginAt: null,
@@ -1039,11 +1053,13 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
     async update(_db, input) {
       const row = rows.get(input.adminId);
       if (row == null) return null;
+      const roleId = input.roleId ?? row.roleId;
       const next: AdminRecord = {
         ...row,
         ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-        ...(input.role !== undefined ? { role: input.role } : {}),
+        ...(input.roleId !== undefined ? { roleId } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        role: roleCodes.get(roleId) ?? row.role,
       };
       rows.set(input.adminId, next);
       return next;
@@ -1052,4 +1068,156 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
       rows.delete(adminId);
     },
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// RBAC v2 替身（roles/permissions;SQL 行为等价由 postgres.real 承担）
+// ══════════════════════════════════════════════════════════════════════════
+
+export function createMemoryRoleStore(seed: import('../src/ports/rbac-store').RoleRecord[] = []) {
+  const rolesById = new Map(seed.map((r) => [r.id, r]));
+  const grantsByRole = new Map<number, string[]>();
+  const adminCounts = new Map<number, number>();
+  let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').RoleStore = {
+    async list(_db, query) {
+      const matched = [...rolesById.values()].filter(
+        (r) => query.q == null || query.q === '' || r.name.includes(query.q!),
+      );
+      return {
+        rows: matched.map((r) => ({
+          ...r,
+          adminCount: adminCounts.get(r.id) ?? 0,
+          codes: grantsByRole.get(r.id) ?? [],
+        })),
+        total: matched.length,
+      };
+    },
+    async findById(_db, id) {
+      return rolesById.get(id) ?? null;
+    },
+    async findByCode(_db, code) {
+      return [...rolesById.values()].find((r) => r.code === code) ?? null;
+    },
+    async create(_db, row) {
+      const record = {
+        id: nextId++,
+        code: row.code,
+        name: row.name,
+        description: row.description,
+        status: 0,
+        isSuper: false,
+        isBuiltin: false,
+        createdAt: new Date(0),
+      };
+      rolesById.set(record.id, record);
+      grantsByRole.set(record.id, [...row.codes]);
+      return record;
+    },
+    async update(_db, input) {
+      const current = rolesById.get(input.roleId);
+      if (current == null) return null;
+      const next = {
+        ...current,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      };
+      rolesById.set(input.roleId, next);
+      return next;
+    },
+    async remove(_db, roleId) {
+      rolesById.delete(roleId);
+      grantsByRole.delete(roleId);
+    },
+    async codesOf(_db, roleId) {
+      return grantsByRole.get(roleId) ?? [];
+    },
+    async replaceCodes(_db, roleId, codes) {
+      grantsByRole.set(roleId, [...codes]);
+    },
+    async adminCount(_db, roleId) {
+      return adminCounts.get(roleId) ?? 0;
+    },
+  };
+  return Object.assign(store, {
+    rolesById,
+    grantsByRole,
+    setAdminCount(roleId: number, count: number) {
+      adminCounts.set(roleId, count);
+    },
+  });
+}
+
+export function createMemoryPermissionStore(
+  seed: import('../src/ports/rbac-store').PermissionNode[] = [],
+) {
+  const nodes = new Map(seed.map((n) => [n.id, n]));
+  const bindings = new Map<number, number>(); // nodeId → 绑定角色数
+  let nextId = seed.reduce((max, n) => Math.max(max, n.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').PermissionStore = {
+    async list(_db) {
+      return [...nodes.values()].toSorted((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    },
+    async findById(_db, id) {
+      return nodes.get(id) ?? null;
+    },
+    async codeTaken(_db, code) {
+      return [...nodes.values()].some((n) => n.code === code);
+    },
+    async create(_db, row) {
+      const node = {
+        id: nextId++,
+        parentId: row.parentId,
+        type: row.type,
+        code: row.code,
+        name: row.name,
+        i18nKey: row.i18nKey,
+        description: row.description,
+        path: row.path,
+        icon: row.icon,
+        sortOrder: row.sortOrder,
+        status: 0,
+        source: 'custom' as const,
+        createdAt: new Date(0),
+      };
+      nodes.set(node.id, node);
+      return node;
+    },
+    async update(_db, input) {
+      const current = nodes.get(input.id);
+      if (current == null) return null;
+      const next = {
+        ...current,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.i18nKey !== undefined ? { i18nKey: input.i18nKey } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      };
+      nodes.set(input.id, next);
+      return next;
+    },
+    async remove(_db, id) {
+      nodes.delete(id);
+    },
+    async childCount(_db, id) {
+      return [...nodes.values()].filter((n) => n.parentId === id).length;
+    },
+    async bindingCount(_db, id) {
+      return bindings.get(id) ?? 0;
+    },
+    async activeCodes(_db) {
+      return [...nodes.values()]
+        .filter((n) => n.status === 0 && n.source === 'enforced' && n.code != null)
+        .map((n) => n.code as string);
+    },
+  };
+  return Object.assign(store, {
+    nodes,
+    setBinding(nodeId: number, count: number) {
+      bindings.set(nodeId, count);
+    },
+  });
 }

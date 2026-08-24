@@ -14,19 +14,25 @@ import { createAdmin } from '../src/application/admins/create-admin';
 import { updateAdmin } from '../src/application/admins/update-admin';
 import { createMemoryAdminStore } from './memory';
 
+const ROLE_SUPER = 1;
 const record = {
   id: 7,
   email: 'ops@tokenlens.dev',
   displayName: 'Ops',
   status: 0,
-  role: 'super_admin' as const,
+  roleId: ROLE_SUPER,
+  role: 'super_admin',
   twoFactorEnabled: false,
   lastLoginAt: null,
   createdAt: new Date(0),
 };
 
 function setup() {
-  const store = createMemoryAdminStore([record]);
+  const store = createMemoryAdminStore(
+    [record],
+    new Map([[ROLE_SUPER, 'super_admin']]),
+    new Map([[ROLE_SUPER, { isSuper: true, codes: [] }]]),
+  );
   // createAdmin 开事务（id 段分配与插入原子）——替身事务桩直接透传 fake tx
   const db = {
     transaction: (fn: (tx: unknown) => Promise<unknown>) => fn({}),
@@ -62,10 +68,10 @@ describe('admins（G2 管理员资料用例族）', () => {
     const { deps, store } = setup();
     const created = await createAdmin(
       { db: deps.db, store },
-      { email: '  Newbie@TokenLens.dev ', displayName: 'Newbie', role: 'viewer' },
+      { email: '  Newbie@TokenLens.dev ', displayName: 'Newbie', roleId: 5 },
     );
     expect(created.email).toBe('newbie@tokenlens.dev');
-    expect(created.role).toBe('viewer');
+    expect(created.roleId).toBe(5);
     expect(created.status).toBe(0);
 
     const base = { sortBy: 'id' as const, order: 'asc' as const };
@@ -86,31 +92,32 @@ describe('admins（G2 管理员资料用例族）', () => {
     await expect(
       createAdmin(
         { db: deps.db, store },
-        { email: 'OPS@tokenlens.dev', displayName: null, role: 'operator' },
+        { email: 'OPS@tokenlens.dev', displayName: null, roleId: 2 },
       ),
     ).rejects.toMatchObject({ code: 'control_plane.admin_email_taken' });
 
     await expect(
-      createAdmin({ db: deps.db, store }, { email: 'x@y.dev', displayName: null, role: 'boss' }),
-    ).rejects.toMatchObject({ code: 'control_plane.invalid_admin_role' });
+      createAdmin({ db: deps.db, store }, { email: 'x@y.dev', displayName: null, roleId: 0 }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_role_input' });
   });
 
   it('update:部分更新只动传入字段;未命中 null;非法角色拒绝', async () => {
     const { deps } = setup();
     const renamed = await updateAdmin(deps, { adminId: 7, displayName: 'Renamed' });
     expect(renamed?.displayName).toBe('Renamed');
-    expect(renamed?.role).toBe('super_admin');
+    expect(renamed?.roleId).toBe(ROLE_SUPER);
 
-    const demoted = await updateAdmin(deps, { adminId: 7, role: 'operator', status: 1 });
-    expect(demoted?.role).toBe('operator');
+    const demoted = await updateAdmin(deps, { adminId: 7, roleId: 2, status: 1 });
+    expect(demoted?.roleId).toBe(2);
     expect(demoted?.status).toBe(1);
     expect(demoted?.displayName).toBe('Renamed');
 
     // 未命中返回 null（404 抛点在路由——admin.admin_not_found 单一码）
-    expect(await updateAdmin(deps, { adminId: 404, role: 'viewer' })).toBeNull();
+    expect(await updateAdmin(deps, { adminId: 404, roleId: 5 })).toBeNull();
 
-    await expect(updateAdmin(deps, { adminId: 7, role: 'ghost' as never })).rejects.toMatchObject({
-      code: 'control_plane.invalid_admin_role',
+    // roleId 形状校验（存在性由 FK + 路由前置校验把关——use case 只拦形状）
+    await expect(updateAdmin(deps, { adminId: 7, roleId: -1 })).rejects.toMatchObject({
+      code: 'control_plane.invalid_role_input',
     });
   });
 
@@ -118,7 +125,7 @@ describe('admins（G2 管理员资料用例族）', () => {
     const { deps, store } = setup();
     const created = await createAdmin(
       { db: deps.db, store },
-      { email: 'temp@tokenlens.dev', displayName: null, role: 'support' },
+      { email: 'temp@tokenlens.dev', displayName: null, roleId: 4 },
     );
     await store.remove(deps.db, created.id);
     expect(await findAdmin(deps, created.id)).toBeNull();

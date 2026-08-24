@@ -1,12 +1,15 @@
 /**
  * 管理员资料 postgres 适配器（ports/admin-store 唯一实现）。
- * 时间戳一律 SQL now()（touchLastLogin/updatedAt）；投影不含密码/2FA 密钥列——
- * 凭据单一真相在 identity 七表（G1/G2 裁决,admins.password_hash 冻结只读不投影）。
+ * 时间戳一律 SQL now()；投影不含密码/2FA 密钥列——凭据单一真相在 identity 七表
+ * （G1/G2 裁决,admins.password_hash 冻结只读不投影）。
+ * role 经 join roles 取 code（v2 切换期旧执法链仍消费 role 字符串）;
+ * findGrants = 会话属主回查的 v2 授权面解析（admins⋈roles⋈role_permissions⋈permissions 一条 join）。
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
  */
 import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import { admins } from '@tokenlens/db';
+import { admins, permissions, rolePermissions, roles } from '@tokenlens/db';
 import type { DbLike, DbTx } from '@tokenlens/db';
+import type { AdminGrants } from '../../domain/rbac';
 import type {
   AdminListQuery,
   AdminListResult,
@@ -32,12 +35,14 @@ const IDENTITY_MANAGED_HASH = 'identity-managed';
  *  （与 apps/admin-api/scripts/create-admin.ts 同语义;段值两处同源,改动须同步）。 */
 const ADMIN_ID_SEGMENT_FLOOR = 1_000_000_000;
 
+/** 列投影 + role code（join roles） */
 const projection = {
   id: admins.id,
   email: admins.email,
   displayName: admins.displayName,
   status: admins.status,
-  role: admins.role,
+  roleId: admins.roleId,
+  role: roles.code,
   twoFactorEnabled: admins.twoFactorEnabled,
   lastLoginAt: admins.lastLoginAt,
   createdAt: admins.createdAt,
@@ -45,12 +50,22 @@ const projection = {
 
 export const postgresAdminStore: AdminStore = {
   async findById(db: DbLike, id: number): Promise<AdminRecord | null> {
-    const rows = await db.select(projection).from(admins).where(eq(admins.id, id)).limit(1);
+    const rows = await db
+      .select(projection)
+      .from(admins)
+      .leftJoin(roles, eq(roles.id, admins.roleId))
+      .where(eq(admins.id, id))
+      .limit(1);
     return (rows[0] as AdminRecord | undefined) ?? null;
   },
 
   async findByEmail(db: DbLike, email: string): Promise<AdminRecord | null> {
-    const rows = await db.select(projection).from(admins).where(eq(admins.email, email)).limit(1);
+    const rows = await db
+      .select(projection)
+      .from(admins)
+      .leftJoin(roles, eq(roles.id, admins.roleId))
+      .where(eq(admins.email, email))
+      .limit(1);
     return (rows[0] as AdminRecord | undefined) ?? null;
   },
 
@@ -66,6 +81,34 @@ export const postgresAdminStore: AdminStore = {
       .update(admins)
       .set({ twoFactorEnabled: input.enabled, updatedAt: sql`now()` })
       .where(eq(admins.id, input.adminId));
+  },
+
+  /** v2 会话授权面：一条 join 带回 isSuper + active 码集合（super 不落授权行,短路） */
+  async findGrants(db: DbLike, adminId: number): Promise<AdminGrants | null> {
+    const rows = await db
+      .select({
+        adminStatus: admins.status,
+        roleStatus: roles.status,
+        isSuper: roles.isSuper,
+        code: permissions.code,
+        permissionStatus: permissions.status,
+      })
+      .from(admins)
+      .leftJoin(roles, eq(roles.id, admins.roleId))
+      .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(eq(admins.id, adminId));
+    const head = rows[0];
+    if (head == null) return null;
+    if (head.roleStatus !== 0) return { isSuper: false, codes: [] };
+    const codes = [
+      ...new Set(
+        rows
+          .filter((row) => row.code != null && row.permissionStatus === 0)
+          .map((row) => row.code as string),
+      ),
+    ];
+    return { isSuper: head.isSuper ?? false, codes: head.isSuper ? [] : codes };
   },
 
   async list(db: DbLike, query: AdminListQuery): Promise<AdminListResult> {
@@ -87,6 +130,7 @@ export const postgresAdminStore: AdminStore = {
     const rows = await db
       .select(projection)
       .from(admins)
+      .leftJoin(roles, eq(roles.id, admins.roleId))
       .where(filter)
       .orderBy(query.order === 'desc' ? desc(sortColumn) : asc(sortColumn))
       .limit(query.limit)
@@ -110,12 +154,16 @@ export const postgresAdminStore: AdminStore = {
         id,
         email: row.email,
         displayName: row.displayName,
-        role: row.role,
+        roleId: row.roleId,
         passwordHash: IDENTITY_MANAGED_HASH,
       })
-      .returning(projection);
+      .returning({ id: admins.id });
     await db.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);
-    const record = inserted[0] as AdminRecord | undefined;
+    const created = inserted[0];
+    if (created == null) {
+      throw new Error('insert admins returned no row');
+    }
+    const record = await this.findById(db, created.id);
     if (record == null) {
       throw new Error('insert admins returned no row');
     }
@@ -128,12 +176,13 @@ export const postgresAdminStore: AdminStore = {
       .set({
         updatedAt: sql`now()`,
         ...(row.displayName !== undefined ? { displayName: row.displayName } : {}),
-        ...(row.role !== undefined ? { role: row.role } : {}),
+        ...(row.roleId !== undefined ? { roleId: row.roleId } : {}),
         ...(row.status !== undefined ? { status: row.status } : {}),
       })
       .where(eq(admins.id, row.adminId))
-      .returning(projection);
-    return (updated[0] as AdminRecord | undefined) ?? null;
+      .returning({ id: admins.id });
+    if (updated[0] == null) return null;
+    return this.findById(db, updated[0].id);
   },
 
   async remove(db: DbLike, adminId: number): Promise<void> {

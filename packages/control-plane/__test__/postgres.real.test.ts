@@ -6,7 +6,7 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like, sql } from 'drizzle-orm';
-import { createDb, isUniqueViolation, closeDb, type Db } from '@tokenlens/db';
+import { createDb, isUniqueViolation, closeDb, roles, type Db } from '@tokenlens/db';
 import {
   providers,
   channels,
@@ -35,11 +35,26 @@ const uid = () => `cp_${Date.now().toString(36)}_${Math.random().toString(36).sl
 
 /** 真管理员行（FK：channel_recharges/audit_logs 的 admin_id 引用 admins） */
 async function realAdminId(): Promise<number> {
+  const [superRole] = await db!
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.code, 'super_admin'));
   const [row] = await db!
     .insert(admins)
-    .values({ email: `${uid()}@example.com`, passwordHash: 'x:0:0:0:0' })
+    .values({
+      email: `${uid()}@example.com`,
+      passwordHash: 'x:0:0:0:0',
+      roleId: superRole!.id,
+    })
     .returning({ id: admins.id });
   return row!.id;
+}
+
+/** viewer 角色 id（0082 种子保证存在;用例建行挂 viewer） */
+async function viewerRoleId(): Promise<number> {
+  const [role] = await db!.select({ id: roles.id }).from(roles).where(eq(roles.code, 'viewer'));
+  if (role == null) throw new Error('viewer role missing (run migrations 0082)');
+  return role.id;
 }
 
 beforeAll(async () => {
@@ -374,9 +389,10 @@ describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一
   it('create → list → update → remove 全链 + 重名 23505 + id ≥1e9 段分配', async () => {
     if (!db) return;
     const email = `${uid()}@example.com`;
+    const roleId = await viewerRoleId();
     // create 需事务形态（id 段分配与插入原子——application 层同款包装）
     const created = await db.transaction((tx) =>
-      postgresAdminStore.create(tx, { email, displayName: 'E2E', role: 'viewer' }),
+      postgresAdminStore.create(tx, { email, displayName: 'E2E', roleId }),
     );
     expect(created.role).toBe('viewer');
     expect(created.status).toBe(0);
@@ -384,9 +400,7 @@ describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一
     try {
       // 唯一索引兜底（23505 由 application 翻译——此处验原始形状）
       const dup = await db
-        .transaction((tx) =>
-          postgresAdminStore.create(tx, { email, displayName: null, role: 'operator' }),
-        )
+        .transaction((tx) => postgresAdminStore.create(tx, { email, displayName: null, roleId }))
         .catch((error: unknown) => error);
       expect(isUniqueViolation(dup)).toBe(true);
 
@@ -400,19 +414,20 @@ describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一
         offset: 0,
       });
       expect(listed.rows).toHaveLength(1);
-      expect(listed.rows[0]).toMatchObject({ id: created.id, role: 'viewer' });
+      expect(listed.rows[0]).toMatchObject({ id: created.id });
+      expect(listed.rows[0]?.role).toBe('viewer');
       expect(listed.total).toBe(1);
 
       const updated = await postgresAdminStore.update(db, {
         adminId: created.id,
-        role: 'finance',
         status: 1,
       });
-      expect(updated).toMatchObject({ role: 'finance', status: 1 });
+      expect(updated).toMatchObject({ status: 1 });
+      expect(updated?.role).toBe('viewer');
       expect(await postgresAdminStore.update(db, { adminId: 999_999_999 })).toBeNull();
 
       const byId = await postgresAdminStore.findById(db, created.id);
-      expect(byId?.role).toBe('finance');
+      expect(byId?.role).toBe('viewer');
     } finally {
       await postgresAdminStore.remove(db, created.id);
     }

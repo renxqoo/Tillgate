@@ -96,8 +96,16 @@ describe('createControlPlane facade', () => {
       'models',
       'providers',
       'rates',
+      'rbac',
       'settings',
     ]);
+    // RBAC v2 面（ADR-0008）
+    for (const verb of ['list', 'create', 'update', 'remove'] as const) {
+      expect(typeof controlPlane.rbac.roles[verb]).toBe('function');
+      expect(typeof controlPlane.rbac.permissions[verb === 'list' ? 'tree' : verb]).toBe(
+        'function',
+      );
+    }
     for (const verb of ['create', 'update', 'delete', 'undelete', 'list'] as const) {
       expect(typeof controlPlane.providers[verb]).toBe('function');
     }
