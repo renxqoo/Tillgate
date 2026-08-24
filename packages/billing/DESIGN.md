@@ -48,6 +48,14 @@ billing/adapters  ← 本包 ports、@tillgate/db、@tillgate/runtime、外部 S
    视为同一命令）。
 5. 金额构造的唯一入口是 `parsePositiveAmount` / `parseNonNegativeAmount`；
    负数/NaN/Infinity/科学计数法/超尺度（>18 位小数、>20 位整数）结构性拒绝。
+6. **派生支付额跨落库边界必须显式收敛**（单一真相：`domain/commission`）：
+   由乘法派生、要进账本的支付额（邀请佣金 = 日合计 × 费率）在进入
+   `parsePositiveAmount` 前按 **18 位小数 ROUND_FLOOR** 收敛。floor 只会少付
+   不会多付（差额 ≤ 1e-18 元，低于落库尺度不可表示）；「账本永不 round」
+   约束的是**账本内加减运算**，不能推出「派生额可带着 >18 位小数去撞落库
+   防线」——撞上即 `out_of_scale` 永久拒绝、幂等自然键建不出来（2026-08-25
+   审计复核 #5：该形态曾致邀请人当日佣金永久丢失）。floor 到 0 的尘埃额
+   由调用方按非正数跳过。
 
 ### 2.3 指纹契约（全包唯一）
 

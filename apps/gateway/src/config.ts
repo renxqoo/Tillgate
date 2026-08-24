@@ -77,6 +77,11 @@ function createSchema(production: boolean) {
       GLOBAL_RPM: z.coerce.number().int().min(0).default(2_000),
       GATEWAY_UPSTREAM_DEADLINE_MS: z.coerce.number().int().min(1_000).default(120_000),
       GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(100).default(10_000),
+      /**
+       * 上游受信 provider 主机名白名单（逗号分隔）——生产 SSRF 主防线（生产必填，
+       * superRefine fail-fast）；命中后仍逐地址拒绝 DNS 私网解析（防 rebinding）。
+       */
+      GATEWAY_UPSTREAM_ALLOWED_HOSTS: z.string().default(''),
       /** SSRF 逃生门：仅非生产可用——生产误配 env 也恒关（与 admin-api 同口径） */
       GATEWAY_AI_ALLOW_LOCAL_URL: strictBooleanSchema(false),
       GATEWAY_SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1_000).default(60_000),
@@ -116,6 +121,14 @@ function createSchema(production: boolean) {
           message: 'required when BILLING_RESERVATION_MODE=fixed',
         });
       }
+      // 生产 SSRF 主防线必填：缺白名单 = 上游寻址只剩机械基线（rebinding TOCTOU 窗口）
+      if (v.NODE_ENV === 'production' && v.GATEWAY_UPSTREAM_ALLOWED_HOSTS.trim() === '') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['GATEWAY_UPSTREAM_ALLOWED_HOSTS'],
+          message: 'required in production (upstream SSRF allowlist)',
+        });
+      }
     });
 }
 
@@ -148,6 +161,8 @@ export interface GatewayConfig {
   readonly globalRpm: number | null;
   readonly upstreamDeadlineMs: number;
   readonly upstreamConnectTimeoutMs: number;
+  /** 上游受信主机名白名单（生产 SSRF 主防线；空数组 = 仅机械基线——仅非生产） */
+  readonly upstreamAllowedHosts: string[];
   readonly aiAllowLocalUrl: boolean;
   readonly shutdownGraceMs: number;
   readonly otel: {
@@ -280,6 +295,9 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     globalRpm,
     upstreamDeadlineMs: parsed.GATEWAY_UPSTREAM_DEADLINE_MS,
     upstreamConnectTimeoutMs: parsed.GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS,
+    upstreamAllowedHosts: parsed.GATEWAY_UPSTREAM_ALLOWED_HOSTS.split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter((h) => h !== ''),
     aiAllowLocalUrl: parsed.GATEWAY_AI_ALLOW_LOCAL_URL,
     shutdownGraceMs: parsed.GATEWAY_SHUTDOWN_GRACE_MS,
     otel: {

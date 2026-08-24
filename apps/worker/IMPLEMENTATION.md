@@ -135,3 +135,13 @@ apps/worker/
 5. wakeup/postgres-notify + 六个 job + balance_low 钩子 + 全部单测。
 6. `worker.real.test.ts` + `.env.example` 补 WORKER_* 段 + accounts MIGRATION
    挂账核销 + 全仓四门。
+
+---
+
+## 增量：SSRF 装配收口（2026-08-25 审计复核）
+
+config 新增 `WORKER_UPSTREAM_ALLOWED_HOSTS`（逗号分隔；生产必填），
+assembly 生产形态给 `createAi` 注入 `guardUrl = assertSafeUrl(url,
+{ allowedHosts })`（与 gateway 同款——生成任务轮询的上游寻址此前同样
+只跑机械基线）。webhook 投递 guard 维持无白名单：目标 URL 由通知渠道
+配置任意指定，防线 = 机械基线 + 不跟随重定向（notifications §7）。

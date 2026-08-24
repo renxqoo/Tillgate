@@ -234,3 +234,19 @@ paymentOrders/closePaymentOrder` 迁入,全部为**加法变更**:
 
 门禁（2026-08-23）：typecheck 0 错;oxlint 0-0;vitest 294/294;覆盖率 stmts 93.72 /
 branches 85.04 / funcs 96.75 / lines 95.61（≥90/85/90/90）。
+
+---
+
+## 增量：审计复核修复（2026-08-25）
+
+1. **佣金落库收敛（DESIGN §2.2 第 6 条落地）**：新增 `domain/commission.ts`
+   （`commissionCreditAmount` = 合计 × 费率后 18 位小数 ROUND_FLOOR），
+   `application/referral-commission.ts` 接线。修复 18 位小数日合计 × 多位
+   小数费率乘积超 `numeric(38,18)` 尺度 → `out_of_scale` 永久拒绝、
+   幂等键建不出（邀请人当日佣金永久丢失）。
+2. **Stripe 零小数币种（协议事实词表）**：`domain/payment/stripe.ts` 新增
+   `STRIPE_ZERO_DECIMAL_CURRENCIES`（bif/clp/djf/gnf/jpy/kmf/krw/mga/pyg/
+   rwf/ugx/vnd/xaf/xof/xpf），换算函数改币种感知：`stripeMinorUnitsFromAmount`
+   / `stripeAmountFromMinorUnits` 取代 ×100/÷100 硬编码对（零小数币种
+   amount 即主币种单位——统一 ×100 会实收 100 倍且回调核对对称通过、
+   正常入账，账实一致但用户被多收）。providers/parseStripeEvent 同步接线。

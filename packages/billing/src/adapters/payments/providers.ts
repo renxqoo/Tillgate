@@ -12,7 +12,7 @@ import {
 } from '../../domain/payment/epay.js';
 import {
   parseStripeEvent,
-  stripeCentsFromAmount,
+  stripeMinorUnitsFromAmount,
   verifyStripeSignature,
 } from '../../domain/payment/stripe.js';
 import type { PaymentProviderPort } from '../../ports/payment-ports.js';
@@ -90,7 +90,10 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
       const body = new URLSearchParams({
         mode: 'payment',
         'line_items[0][price_data][currency]': config.currency.toLowerCase(),
-        'line_items[0][price_data][unit_amount]': stripeCentsFromAmount(input.amount),
+        'line_items[0][price_data][unit_amount]': stripeMinorUnitsFromAmount(
+          input.amount,
+          config.currency,
+        ),
         'line_items[0][price_data][product_data][name]': input.subject,
         'line_items[0][quantity]': '1',
         client_reference_id: input.orderId,

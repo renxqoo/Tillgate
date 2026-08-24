@@ -8,22 +8,52 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { parsePositiveAmount } from '../money.js';
 
 /**
- * 元 → 分（整数串；Decimal 运算避开 ×100 浮点尾差）。
- * 零 round：非整分值结构性拒绝（面额闸上游已限两位小数；此处拒绝是防御对称，
- * 不做静默取整——静默取整 = 多收/少收）。
+ * Stripe 零小数币种封闭词表（协议事实）：这些币种的 amount 即主币种单位
+ * （无「分」换算）——统一 ×100 会向用户实收 100 倍，且回调核对对称通过、
+ * 正常入账（账实一致但用户被多收；2026-08-25 审计复核 #6）。
  */
-export function stripeCentsFromAmount(amount: string): string {
-  const cents = parsePositiveAmount(amount).times(100);
-  if (!cents.isInteger()) {
-    throw new Error('stripe amount does not convert to whole cents');
-  }
-  return cents.toString();
+export const STRIPE_ZERO_DECIMAL_CURRENCIES: readonly string[] = [
+  'bif',
+  'clp',
+  'djf',
+  'gnf',
+  'jpy',
+  'kmf',
+  'krw',
+  'mga',
+  'pyg',
+  'rwf',
+  'ugx',
+  'vnd',
+  'xaf',
+  'xof',
+  'xpf',
+];
+
+function isZeroDecimalCurrency(currency: string): boolean {
+  return STRIPE_ZERO_DECIMAL_CURRENCIES.includes(currency.toLowerCase());
 }
 
-/** 分 → 元（整数拆合，无浮点路径；'1010' → '10.10'） */
-export function stripeAmountFromCents(cents: number): string {
-  if (!Number.isSafeInteger(cents) || cents <= 0) return '0';
-  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
+/**
+ * 元 → Stripe amount 单位（整数串；Decimal 运算避开浮点尾差）。
+ * 两位小数币种 ×100 得分；零小数币种（词表内）amount 即主币种单位。
+ * 零 round：非整单位值结构性拒绝（面额闸上游已限两位小数；此处拒绝是防御对称，
+ * 不做静默取整——静默取整 = 多收/少收）。
+ */
+export function stripeMinorUnitsFromAmount(amount: string, currency: string): string {
+  const value = parsePositiveAmount(amount);
+  const units = isZeroDecimalCurrency(currency) ? value : value.times(100);
+  if (!units.isInteger()) {
+    throw new Error('stripe amount does not convert to whole minor units');
+  }
+  return units.toString();
+}
+
+/** Stripe amount 单位 → 元（零小数币种原值；两位小数币种整数拆合，'1010' → '10.10'） */
+export function stripeAmountFromMinorUnits(units: number, currency: string): string {
+  if (!Number.isSafeInteger(units) || units <= 0) return '0';
+  if (isZeroDecimalCurrency(currency)) return String(units);
+  return `${Math.floor(units / 100)}.${String(units % 100).padStart(2, '0')}`;
 }
 
 export interface StripeSignatureParts {
@@ -125,6 +155,6 @@ export function parseStripeEvent(payload: string, currency: string): StripeCheck
   return {
     sessionId: obj.id,
     orderId,
-    paidAmount: stripeAmountFromCents(amountTotal),
+    paidAmount: stripeAmountFromMinorUnits(amountTotal, currency),
   };
 }
