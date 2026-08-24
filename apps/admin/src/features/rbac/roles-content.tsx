@@ -223,7 +223,7 @@ export function RoleCreateForm({ nodes }: { nodes: PermissionNode[] }) {
   );
 }
 
-/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅非内置角色 */
+/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅非内置角色,挂载管理员预检禁用（后端兜底） */
 function RoleRowActions({
   role,
   nodes,
@@ -233,8 +233,10 @@ function RoleRowActions({
   nodes: PermissionNode[];
   onDelete: (role: RoleRowWithGrants) => void;
 }) {
+  const t = useTranslations('roles');
   const tc = useTranslations('common');
   const [editOpen, setEditOpen] = useState(false);
+  const inUse = role.adminCount > 0;
 
   return (
     <>
@@ -247,7 +249,12 @@ function RoleRowActions({
         {!role.isBuiltin && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(role)}>
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={inUse}
+              title={inUse ? t('deleteBlockedHint', { count: role.adminCount }) : undefined}
+              onClick={() => onDelete(role)}
+            >
               <Trash2Icon className="size-4" />
               {tc('delete')}
             </DropdownMenuItem>
