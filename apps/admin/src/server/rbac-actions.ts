@@ -90,6 +90,9 @@ export async function updatePermissionAction(
     status?: number;
     i18nKey?: string | null;
     code?: string | null;
+    type?: 'group' | 'page' | 'button';
+    parentId?: number | null;
+    description?: string | null;
   },
 ): Promise<{ error?: string; errorKey?: string }> {
   const t = await getTranslations('permissions');
@@ -103,6 +106,8 @@ export async function updatePermissionAction(
       'permission_not_found',
       'permission_code_taken',
       'invalid_permission_input',
+      'permission_has_children',
+      'permission_in_use',
     ]);
   }
 }
@@ -118,9 +123,9 @@ export async function deletePermissionAction(
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), [
-      'permission_immutable',
       'permission_has_children',
       'permission_in_use',
+      'permission_not_found',
     ]);
   }
 }

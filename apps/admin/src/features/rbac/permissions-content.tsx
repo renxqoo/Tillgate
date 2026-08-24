@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialog,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   FieldDescription,
   FieldLabel,
   FormItem,
@@ -22,6 +23,7 @@ import { toast } from 'sonner';
 import type { DataTableColumn } from '@/components/data-table';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
+import { StatusPill } from '@/components/status-pill';
 import { useActionResult } from '@/components/action-toast';
 import {
   createPermissionAction,
@@ -33,20 +35,32 @@ type NodeType = 'group' | 'page' | 'button';
 
 const TYPE_ORDER: Record<NodeType, number> = { group: 0, page: 1, button: 2 };
 
-/** 编辑弹窗（展示字段;code/type/父子恒不可改——码即身份;受控:RowActions 菜单触发） */
+/** 编辑弹窗（全字段——含码/类型/父子移动;type 联动父选项与字段显隐,结构校验后端兜底） */
 function NodeEditDialog({
   node,
+  nodes,
   open,
   onOpenChange,
 }: {
   node: PermissionNode;
+  nodes: PermissionNode[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const t = useTranslations('permissions');
   const tc = useTranslations('common');
   const notify = useActionResult();
+  const [type, setType] = useState<NodeType>(node.type);
+  const [parentId, setParentId] = useState<number | null>(node.parentId);
   const formId = `node-edit-form-${node.id}`;
+
+  const parentOptions =
+    type === 'button'
+      ? nodes.filter((n) => n.type === 'page')
+      : type === 'page'
+        ? nodes.filter((n) => n.type === 'group')
+        : [];
+  const parentValid = parentId != null && parentOptions.some((o) => o.id === parentId);
 
   return (
     <FormDialog
@@ -54,6 +68,7 @@ function NodeEditDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('editTitle', { name: node.name })}
+      description={t('editDescription')}
       submitLabel={tc('save')}
     >
       {({ run }) => (
@@ -65,16 +80,16 @@ function NodeEditDialog({
             const data = new FormData(e.currentTarget);
             run(async () => {
               const res = await updatePermissionAction(node.id, {
+                type,
+                parentId: type === 'group' ? null : (parentId ?? node.parentId),
+                code: type === 'group' ? null : String(data.get('code') ?? '').trim() || null,
                 name: String(data.get('name') ?? '').trim(),
-                code: String(data.get('code') ?? '').trim() || null,
-                status: Number(data.get('status') ?? node.status),
-                ...(node.type === 'page'
-                  ? {
-                      path: String(data.get('path') ?? '') || null,
-                      icon: String(data.get('icon') ?? '') || null,
-                    }
-                  : {}),
+                path: type === 'page' ? String(data.get('path') ?? '').trim() || null : null,
+                icon: type === 'page' ? String(data.get('icon') ?? '').trim() || null : null,
+                i18nKey: String(data.get('i18nKey') ?? '').trim() || null,
+                description: String(data.get('description') ?? '').trim() || null,
                 sortOrder: Number(data.get('sortOrder') ?? node.sortOrder),
+                status: Number(data.get('status') ?? node.status),
               });
               if (res.errorKey) {
                 toast.error(t(`errors.${res.errorKey}`));
@@ -85,6 +100,64 @@ function NodeEditDialog({
           }}
         >
           <FormItem>
+            <FieldLabel htmlFor={`node-type-${node.id}`}>{t('nodeType')}</FieldLabel>
+            <NativeSelect
+              id={`node-type-${node.id}`}
+              value={type}
+              onChange={(e) => {
+                const next = e.target.value as NodeType;
+                setType(next);
+                // 类型切换后原父节点可能不再合法——回落到首个合法父
+                const opts =
+                  next === 'button'
+                    ? nodes.filter((n) => n.type === 'page')
+                    : next === 'page'
+                      ? nodes.filter((n) => n.type === 'group')
+                      : [];
+                setParentId((current) =>
+                  current != null && opts.some((o) => o.id === current) ? current : (opts[0]?.id ?? null),
+                );
+              }}
+              name="type"
+            >
+              <NativeSelectOption value="button">{t('typeButton')}</NativeSelectOption>
+              <NativeSelectOption value="page">{t('typePage')}</NativeSelectOption>
+              <NativeSelectOption value="group">{t('typeGroup')}</NativeSelectOption>
+            </NativeSelect>
+          </FormItem>
+          {type !== 'group' && (
+            <FormItem>
+              <FieldLabel htmlFor={`node-parent-${node.id}`}>{t('parent')}</FieldLabel>
+              <NativeSelect
+                id={`node-parent-${node.id}`}
+                name="parentId"
+                value={parentValid ? String(parentId) : (parentOptions[0]?.id != null ? String(parentOptions[0].id) : '')}
+                onChange={(e) => setParentId(Number(e.target.value))}
+                required
+              >
+                {parentOptions.map((option) => (
+                  <NativeSelectOption key={option.id} value={String(option.id)}>
+                    {option.name}
+                    {option.code != null ? `（${option.code}）` : ''}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </FormItem>
+          )}
+          {type !== 'group' && (
+            <FormItem>
+              <FieldLabel htmlFor={`node-code-${node.id}`}>{t('code')}</FieldLabel>
+              <Input
+                id={`node-code-${node.id}`}
+                name="code"
+                defaultValue={node.code ?? ''}
+                required={type === 'button'}
+                maxLength={64}
+              />
+              <FieldDescription>{t('codeEditHint')}</FieldDescription>
+            </FormItem>
+          )}
+          <FormItem>
             <FieldLabel htmlFor={`node-name-${node.id}`}>{tc('name')}</FieldLabel>
             <Input
               id={`node-name-${node.id}`}
@@ -94,13 +167,48 @@ function NodeEditDialog({
               maxLength={128}
             />
           </FormItem>
-          {node.type === 'page' && (
-            <FormItem>
-              <FieldLabel htmlFor={`node-icon-${node.id}`}>{t('icon')}</FieldLabel>
-              <Input id={`node-icon-${node.id}`} name="icon" defaultValue={node.icon ?? ''} maxLength={64} />
-              <FieldDescription>{t('iconHint')}</FieldDescription>
-            </FormItem>
+          {type === 'page' && (
+            <>
+              <FormItem>
+                <FieldLabel htmlFor={`node-path-${node.id}`}>{t('path')}</FieldLabel>
+                <Input
+                  id={`node-path-${node.id}`}
+                  name="path"
+                  defaultValue={node.path ?? ''}
+                  maxLength={255}
+                />
+              </FormItem>
+              <FormItem>
+                <FieldLabel htmlFor={`node-icon-${node.id}`}>{t('icon')}</FieldLabel>
+                <Input
+                  id={`node-icon-${node.id}`}
+                  name="icon"
+                  defaultValue={node.icon ?? ''}
+                  maxLength={64}
+                />
+                <FieldDescription>{t('iconHint')}</FieldDescription>
+              </FormItem>
+            </>
           )}
+          <FormItem>
+            <FieldLabel htmlFor={`node-i18n-${node.id}`}>{t('i18nKeyField')}</FieldLabel>
+            <Input
+              id={`node-i18n-${node.id}`}
+              name="i18nKey"
+              defaultValue={node.i18nKey ?? ''}
+              maxLength={128}
+            />
+            <FieldDescription>{t('i18nKeyHint')}</FieldDescription>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor={`node-desc-${node.id}`}>{t('descriptionField')}</FieldLabel>
+            <Input
+              id={`node-desc-${node.id}`}
+              name="description"
+              defaultValue={node.description ?? ''}
+              maxLength={512}
+            />
+          </FormItem>
           <FormItem>
             <FieldLabel htmlFor={`node-sort-${node.id}`}>{t('sortOrder')}</FieldLabel>
             <Input
@@ -112,19 +220,18 @@ function NodeEditDialog({
               max={9999}
             />
           </FormItem>
-          {node.source === 'custom' && (
-            <FormItem>
-              <FieldLabel htmlFor={`node-status-${node.id}`}>{tc('status')}</FieldLabel>
-              <NativeSelect id={`node-status-${node.id}`} name="status" defaultValue={String(node.status)}>
-                <NativeSelectOption value="0">{tc('enabled')}</NativeSelectOption>
-                <NativeSelectOption value="1">{tc('disabled')}</NativeSelectOption>
-              </NativeSelect>
-              <FieldDescription>{t('statusHint')}</FieldDescription>
-            </FormItem>
-          )}
-          {node.source === 'enforced' && (
-            <p className="text-xs text-muted-foreground">{t('enforcedHint')}</p>
-          )}
+          <FormItem>
+            <FieldLabel htmlFor={`node-status-${node.id}`}>{tc('status')}</FieldLabel>
+            <NativeSelect
+              id={`node-status-${node.id}`}
+              name="status"
+              defaultValue={String(node.status)}
+            >
+              <NativeSelectOption value="0">{tc('enabled')}</NativeSelectOption>
+              <NativeSelectOption value="1">{tc('disabled')}</NativeSelectOption>
+            </NativeSelect>
+            <FieldDescription>{t('statusHint')}</FieldDescription>
+          </FormItem>
         </form>
       )}
     </FormDialog>
@@ -243,31 +350,38 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
   );
 }
 
-/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅 custom */
+/** 行操作（统一 RowActions 三点菜单）：编辑;删除全节点开放,子节点预检禁用（后端兜底） */
 function NodeRowActions({
   node,
+  nodes,
   onDelete,
 }: {
   node: PermissionNode;
+  nodes: PermissionNode[];
   onDelete: (node: PermissionNode) => void;
 }) {
+  const t = useTranslations('permissions');
   const tc = useTranslations('common');
   const [editOpen, setEditOpen] = useState(false);
+  const hasChildren = nodes.some((n) => n.parentId === node.id);
 
   return (
     <>
-      <NodeEditDialog node={node} open={editOpen} onOpenChange={setEditOpen} />
+      <NodeEditDialog node={node} nodes={nodes} open={editOpen} onOpenChange={setEditOpen} />
       <RowActions label={tc('actions')}>
         <DropdownMenuItem onClick={() => setEditOpen(true)}>
           <PencilIcon className="size-4" />
           {tc('edit')}
         </DropdownMenuItem>
-        {node.source === 'custom' && (
-          <DropdownMenuItem onClick={() => onDelete(node)}>
-            <Trash2Icon className="size-4" />
-            {tc('delete')}
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          disabled={hasChildren}
+          title={hasChildren ? t('deleteBlockedHint') : undefined}
+          onClick={() => onDelete(node)}
+        >
+          <Trash2Icon className="size-4" />
+          {tc('delete')}
+        </DropdownMenuItem>
       </RowActions>
     </>
   );
@@ -328,17 +442,16 @@ export function PermissionsContent({ nodes }: { nodes: PermissionNode[] }) {
     {
       key: 'status',
       header: tc('status'),
-      render: (node) =>
-        node.status === 0 ? (
-          <span className="text-sm text-muted-foreground">{tc('enabled')}</span>
-        ) : (
-          <Badge variant="destructive">{tc('disabled')}</Badge>
-        ),
+      render: (node) => (
+        <StatusPill tone={node.status === 0 ? 'success' : 'neutral'}>
+          {node.status === 0 ? tc('enabled') : tc('disabled')}
+        </StatusPill>
+      ),
     },
     {
       key: 'actions',
       header: tc('actions'),
-      render: (node) => <NodeRowActions node={node} onDelete={setDeleting} />,
+      render: (node) => <NodeRowActions node={node} nodes={nodes} onDelete={setDeleting} />,
     },
   ];
 
