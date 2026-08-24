@@ -26,17 +26,22 @@ export async function createBindingAction(input: {
   }
 }
 
-export async function rebindAction(
+export async function updateBindingAction(
   id: number,
-  permissionId: number,
+  input: { method?: string; path?: string; permissionId?: number },
 ): Promise<{ error?: string; errorKey?: string }> {
   const t = await getTranslations('endpoints');
   try {
-    await adminApi().rebindEndpoint(id, permissionId);
+    await adminApi().updateEndpointBinding(id, input);
     revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
-    return errorOf(e, (key) => t(key), ['endpoint_not_found', 'permission_not_found']);
+    return errorOf(e, (key) => t(key), [
+      'endpoint_not_found',
+      'permission_not_found',
+      'endpoint_bound',
+      'invalid_endpoint_input',
+    ]);
   }
 }
 

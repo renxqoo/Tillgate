@@ -15,7 +15,7 @@ import {
   RowActions,
 } from '@tokenlens/ui';
 import { useState } from 'react';
-import { PlusIcon, UnlinkIcon } from 'lucide-react';
+import { PencilIcon, PlusIcon, UnlinkIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
@@ -23,7 +23,7 @@ import type { DataTableColumn } from '@/components/data-table';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
-import { createBindingAction, deleteBindingAction, rebindAction } from '@/server/binding-actions';
+import { createBindingAction, deleteBindingAction, updateBindingAction } from '@/server/binding-actions';
 
 type Method = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 const METHODS: readonly Method[] = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
@@ -100,8 +100,8 @@ export function CreateBindingForm({ nodes }: { nodes: PermissionNode[] }) {
   );
 }
 
-/** 换绑弹窗（受控:RowActions 菜单触发） */
-function RebindDialog({
+/** 编辑弹窗（全字段:method/path/permission 部分更新;受控:RowActions 菜单触发） */
+function EditBindingDialog({
   binding,
   nodes,
   open,
@@ -115,15 +115,15 @@ function RebindDialog({
   const t = useTranslations('endpoints');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const formId = `rebind-form-${binding.id}`;
+  const formId = `binding-edit-form-${binding.id}`;
   const coded = nodes.filter((node) => node.code != null && node.status === 0);
   return (
     <FormDialog
       formId={formId}
       open={open}
       onOpenChange={onOpenChange}
-      title={t('rebindTitle', { method: binding.method, path: binding.path })}
-      description={t('rebindDescription')}
+      title={t('editTitle', { method: binding.method, path: binding.path })}
+      description={t('editDescription')}
       submitLabel={tc('save')}
     >
       {({ run }) => (
@@ -134,19 +134,49 @@ function RebindDialog({
             e.preventDefault();
             const data = new FormData(e.currentTarget);
             run(async () => {
-              const res = await rebindAction(binding.id, Number(data.get('permissionId')));
+              const res = await updateBindingAction(binding.id, {
+                method: String(data.get('method')) as Method,
+                path: String(data.get('path') ?? '').trim(),
+                permissionId: Number(data.get('permissionId')),
+              });
               if (res.errorKey) {
                 toast.error(t(`errors.${res.errorKey}`));
                 return false;
               }
-              return notify(res, t('actionFailed'), t('rebound'));
+              return notify(res, t('actionFailed'), t('updated'));
             });
           }}
         >
           <FormItem>
-            <FieldLabel htmlFor={`rebind-permission-${binding.id}`}>{t('permission')}</FieldLabel>
+            <FieldLabel htmlFor={`binding-edit-method-${binding.id}`}>{t('method')}</FieldLabel>
             <NativeSelect
-              id={`rebind-permission-${binding.id}`}
+              id={`binding-edit-method-${binding.id}`}
+              name="method"
+              defaultValue={binding.method}
+            >
+              {METHODS.map((method) => (
+                <NativeSelectOption key={method} value={method}>
+                  {method}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor={`binding-edit-path-${binding.id}`}>{t('path')}</FieldLabel>
+            <Input
+              id={`binding-edit-path-${binding.id}`}
+              name="path"
+              defaultValue={binding.path}
+              placeholder="/v1/example/:id"
+              required
+              maxLength={255}
+            />
+            <FieldDescription>{t('pathHint')}</FieldDescription>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor={`binding-edit-permission-${binding.id}`}>{t('permission')}</FieldLabel>
+            <NativeSelect
+              id={`binding-edit-permission-${binding.id}`}
               name="permissionId"
               defaultValue={String(binding.permissionId)}
             >
@@ -174,7 +204,7 @@ export function BindingsContent({
   const t = useTranslations('endpoints');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [rebinding, setRebinding] = useState<EndpointBindingRow | null>(null);
+  const [editing, setEditing] = useState<EndpointBindingRow | null>(null);
   const [deleting, setDeleting] = useState<EndpointBindingRow | null>(null);
 
   const codeById = new Map(nodes.map((node) => [node.id, node.code ?? node.name]));
@@ -216,16 +246,19 @@ export function BindingsContent({
       header: tc('actions'),
       render: (row) => (
         <>
-          {rebinding?.id === row.id && (
-            <RebindDialog
+          {editing?.id === row.id && (
+            <EditBindingDialog
               binding={row}
               nodes={nodes}
-              open={rebinding != null}
-              onOpenChange={(open) => !open && setRebinding(null)}
+              open={editing != null}
+              onOpenChange={(open) => !open && setEditing(null)}
             />
           )}
           <RowActions label={tc('actions')}>
-            <DropdownMenuItem onClick={() => setRebinding(row)}>{t('rebind')}</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setEditing(row)}>
+              <PencilIcon className="size-4" />
+              {tc('edit')}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDeleting(row)}>
               <UnlinkIcon className="size-4" />
               {t('unbind')}

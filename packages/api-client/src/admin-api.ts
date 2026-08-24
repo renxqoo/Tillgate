@@ -146,7 +146,11 @@ export interface AdminApiClient extends HttpClient {
     permissionId: number;
   }): Promise<EndpointBindingRow>;
 
-  rebindEndpoint(id: number, permissionId: number): Promise<EndpointBindingRow>;
+  /** 部分更新（method/path/permissionId 至少一项——契约层校验） */
+  updateEndpointBinding(
+    id: number,
+    input: { method?: string; path?: string; permissionId?: number },
+  ): Promise<EndpointBindingRow>;
 
   deleteEndpointBinding(id: number): Promise<{ ok: true }>;
 
@@ -244,8 +248,8 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
     async createEndpointBinding(input) {
       return http.post<EndpointBindingRow>('/v1/endpoint-bindings', input);
     },
-    async rebindEndpoint(id, permissionId) {
-      return http.patch<EndpointBindingRow>(`/v1/endpoint-bindings/${id}`, { permissionId });
+    async updateEndpointBinding(id, input) {
+      return http.patch<EndpointBindingRow>(`/v1/endpoint-bindings/${id}`, input);
     },
     async deleteEndpointBinding(id) {
       return http.delete<{ ok: true }>(`/v1/endpoint-bindings/${id}`);
