@@ -63,9 +63,15 @@ function NodeEditDialog({
             run(async () => {
               const res = await updatePermissionAction(node.id, {
                 name: String(data.get('name') ?? '').trim(),
-                icon: node.type === 'page' ? String(data.get('icon') ?? '') || null : undefined,
+                code: String(data.get('code') ?? '').trim() || null,
+                status: Number(data.get('status') ?? node.status),
+                ...(node.type === 'page'
+                  ? {
+                      path: String(data.get('path') ?? '') || null,
+                      icon: String(data.get('icon') ?? '') || null,
+                    }
+                  : {}),
                 sortOrder: Number(data.get('sortOrder') ?? node.sortOrder),
-                ...(node.source === 'custom' ? { status: Number(data.get('status') ?? 0) } : {}),
               });
               if (res.errorKey) {
                 toast.error(t(`errors.${res.errorKey}`));

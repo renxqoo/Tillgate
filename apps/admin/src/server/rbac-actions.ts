@@ -84,9 +84,11 @@ export async function updatePermissionAction(
   input: {
     name?: string;
     icon?: string | null;
+    path?: string | null;
     sortOrder?: number;
     status?: number;
     i18nKey?: string | null;
+    code?: string | null;
   },
 ): Promise<{ error?: string; errorKey?: string }> {
   const t = await getTranslations('permissions');
@@ -95,7 +97,11 @@ export async function updatePermissionAction(
     revalidatePath('/dashboard/permissions');
     return {};
   } catch (e) {
-    return errorOf(e, (key) => t(key), ['permission_immutable', 'permission_not_found']);
+    return errorOf(e, (key) => t(key), [
+      'permission_not_found',
+      'permission_code_taken',
+      'invalid_permission_input',
+    ]);
   }
 }
 

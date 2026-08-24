@@ -1145,6 +1145,7 @@
     "parent": "所属",
     "sourceColumn": "来源",
     "code": "权限码",
+    "codeEditHint": "码唯一性仅约束按钮；页面共享域读码合法。",
     "customCodeHint": "自定义码仅作用于角色授权与显示层门控；接口判定仍由系统码执行",
     "path": "路由路径",
     "icon": "图标名",
@@ -1167,6 +1168,37 @@
       "permission_immutable": "系统节点已锁定（不可删除或停用）",
       "permission_has_children": "节点仍有子节点",
       "permission_in_use": "节点仍被角色绑定"
+    }
+  },
+  "endpoints": {
+    "title": "接口绑定",
+    "description": "接口 → 权限绑定（全局 ACL 数据源；改绑/解绑下一请求生效）",
+    "empty": "暂无绑定",
+    "create": "新建绑定",
+    "createTitle": "新建接口绑定",
+    "createDescription": "未绑定接口默认拒绝（fail-closed）；路径用 :param 匹配动态段。",
+    "method": "方法",
+    "path": "路径",
+    "pathHint": "Hono 风格 :param 动态段，如 /v1/users/:id",
+    "permission": "权限",
+    "sourceColumn": "来源",
+    "enforced": "系统",
+    "custom": "自定义",
+    "rebind": "换绑",
+    "rebindTitle": "换绑 {method} {path}",
+    "rebindDescription": "改挂权限节点，下一请求生效。",
+    "rebound": "已换绑",
+    "unbind": "解绑",
+    "unbindTitle": "解绑 {method} {path}",
+    "unbindDescription": "解绑后该接口对非超管默认拒绝，直到重新绑定。",
+    "unbound": "已解绑",
+    "created": "绑定已创建",
+    "actionFailed": "操作失败",
+    "errors": {
+      "endpoint_bound": "该接口已有绑定，请换绑而非新建",
+      "invalid_endpoint_input": "绑定参数不合法",
+      "permission_not_found": "权限节点不存在",
+      "endpoint_not_found": "绑定不存在"
     }
   }
 }

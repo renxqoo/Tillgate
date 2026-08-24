@@ -27,6 +27,7 @@ export {
   createAdminApiClient,
   type AdminApiClient,
   type AdminApiClientOptions,
+  type EndpointBindingRow,
   type MenuGroup,
 } from './admin-api';
 export type * from './dto/admin-api.generated';

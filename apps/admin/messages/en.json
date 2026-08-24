@@ -1145,6 +1145,7 @@
     "parent": "Belongs to",
     "sourceColumn": "Source",
     "code": "Permission code",
+    "codeEditHint": "Uniqueness applies to buttons only; pages may share domain read codes.",
     "customCodeHint": "Custom codes only affect role grants & display gating; API enforcement stays with system codes",
     "path": "Route path",
     "icon": "Icon name",
@@ -1167,6 +1168,37 @@
       "permission_immutable": "System node is locked (cannot delete or disable)",
       "permission_has_children": "Node still has children",
       "permission_in_use": "Node is still bound to roles"
+    }
+  },
+  "endpoints": {
+    "title": "Endpoint Bindings",
+    "description": "Endpoint → permission bindings (global ACL data source; changes apply next request)",
+    "empty": "No bindings",
+    "create": "New binding",
+    "createTitle": "Create endpoint binding",
+    "createDescription": "Unbound endpoints deny by default (fail-closed); use :param for dynamic segments.",
+    "method": "Method",
+    "path": "Path",
+    "pathHint": "Hono-style :param segments, e.g. /v1/users/:id",
+    "permission": "Permission",
+    "sourceColumn": "Source",
+    "enforced": "System",
+    "custom": "Custom",
+    "rebind": "Rebind",
+    "rebindTitle": "Rebind {method} {path}",
+    "rebindDescription": "Switch the bound permission node; applies on the next request.",
+    "rebound": "Rebound",
+    "unbind": "Unbind",
+    "unbindTitle": "Unbind {method} {path}",
+    "unbindDescription": "The endpoint denies non-super admins until re-bound.",
+    "unbound": "Unbound",
+    "created": "Binding created",
+    "actionFailed": "Action failed",
+    "errors": {
+      "endpoint_bound": "Endpoint already bound — rebind instead",
+      "invalid_endpoint_input": "Invalid binding input",
+      "permission_not_found": "Permission node not found",
+      "endpoint_not_found": "Binding not found"
     }
   }
 }

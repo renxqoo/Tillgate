@@ -22,6 +22,16 @@ import type {
   RoleRow,
 } from './dto/admin-api.generated';
 
+/** 接口绑定行（/v1/endpoint-bindings——DTO 生成物未命名,客户端内联声明） */
+export interface EndpointBindingRow {
+  id: number;
+  method: string;
+  path: string;
+  permissionId: number;
+  source: string;
+  createdAt: string;
+}
+
 export interface AdminApiClientOptions {
   baseUrl: string;
   fetch?: typeof globalThis.fetch;
@@ -108,13 +118,37 @@ export interface AdminApiClient extends HttpClient {
   updatePermission(
     id: number,
     input: Partial<
-      Pick<PermissionNode, 'name' | 'i18nKey' | 'description' | 'icon' | 'sortOrder'>
-    > & {
-      status?: number;
-    },
+      Pick<
+        PermissionNode,
+        | 'name'
+        | 'i18nKey'
+        | 'description'
+        | 'icon'
+        | 'path'
+        | 'sortOrder'
+        | 'status'
+        | 'code'
+        | 'type'
+        | 'parentId'
+        | 'source'
+      >
+    >,
   ): Promise<PermissionNode>;
 
   deletePermission(id: number): Promise<{ ok: true }>;
+
+  // ---- 接口绑定（ADR-0009:执行面数据化）----
+  listEndpointBindings(): Promise<EndpointBindingRow[]>;
+
+  createEndpointBinding(input: {
+    method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    path: string;
+    permissionId: number;
+  }): Promise<EndpointBindingRow>;
+
+  rebindEndpoint(id: number, permissionId: number): Promise<EndpointBindingRow>;
+
+  deleteEndpointBinding(id: number): Promise<{ ok: true }>;
 
   /** 本人菜单树（group+page 两级,按授权过滤——sidebar 数据源） */
   getMyMenus(): Promise<{ groups: MenuGroup[] }>;
@@ -202,6 +236,19 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
     },
     async deletePermission(id) {
       return http.delete<{ ok: true }>(`/v1/permissions/${id}`);
+    },
+    async listEndpointBindings() {
+      const data = await http.get<{ rows: EndpointBindingRow[] }>('/v1/endpoint-bindings');
+      return data.rows ?? [];
+    },
+    async createEndpointBinding(input) {
+      return http.post<EndpointBindingRow>('/v1/endpoint-bindings', input);
+    },
+    async rebindEndpoint(id, permissionId) {
+      return http.patch<EndpointBindingRow>(`/v1/endpoint-bindings/${id}`, { permissionId });
+    },
+    async deleteEndpointBinding(id) {
+      return http.delete<{ ok: true }>(`/v1/endpoint-bindings/${id}`);
     },
     async getMyMenus() {
       return http.get<{ groups: MenuGroup[] }>('/v1/me/menus');

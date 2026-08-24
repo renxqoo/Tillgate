@@ -6,6 +6,7 @@ import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
 
 import { PermissionsContent } from '@/features/rbac/permissions-content';
+import { BindingsContent } from '@/features/rbac/bindings-content';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,9 @@ export default async function PermissionsPage() {
   const tree = await adminApi()
     .permissionTree()
     .catch(() => null);
+  const bindings = await adminApi()
+    .listEndpointBindings()
+    .catch(() => []);
 
   return (
     <ListPage
@@ -24,7 +28,10 @@ export default async function PermissionsPage() {
       description={t('description')}
       error={tree == null ? tc('loadFailed') : null}
     >
-      <PermissionsContent nodes={tree ?? []} />
+      <div className="space-y-6">
+        <PermissionsContent nodes={tree ?? []} />
+        <BindingsContent bindings={bindings} nodes={tree ?? []} />
+      </div>
     </ListPage>
   );
 }
