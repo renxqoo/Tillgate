@@ -53,6 +53,7 @@
     "admins": "Admins",
     "roles": "Roles",
     "permissions": "Permissions",
+    "endpoints": "Endpoint bindings",
     "plans": "Plans",
     "subscriptions": "Subscriptions",
     "channelFunds": "Channel funds",
@@ -1130,7 +1131,7 @@
   },
   "permissions": {
     "title": "Permissions",
-    "description": "Permission tree overview & custom resource nodes (system nodes locked, presentation fields editable)",
+    "description": "Permission tree (groups/pages/buttons) node management; endpoint bindings now live on their own page",
     "empty": "Permission tree is empty",
     "create": "New node",
     "createTitle": "Create resource node",

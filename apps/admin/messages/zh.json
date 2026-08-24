@@ -53,6 +53,7 @@
     "admins": "管理员",
     "roles": "角色管理",
     "permissions": "权限资源",
+    "endpoints": "接口绑定",
     "plans": "套餐",
     "subscriptions": "订阅",
     "channelFunds": "渠道资金",
@@ -1130,7 +1131,7 @@
   },
   "permissions": {
     "title": "权限资源",
-    "description": "权限树总览与自定义资源节点管理（系统节点锁定，仅展示字段可调）",
+    "description": "权限树（目录/页面/按钮）节点管理；接口绑定已独立成页",
     "empty": "权限树为空",
     "create": "新建节点",
     "createTitle": "新建资源节点",

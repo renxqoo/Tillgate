@@ -1,12 +1,14 @@
 'use client';
 
-import type { PermissionNode } from '@tokenlens/api-client';
-import type { EndpointBindingRow } from '@tokenlens/api-client';
+import type { EndpointBindingRow, PermissionNode } from '@tokenlens/api-client';
 import {
   Badge,
   Button,
   ConfirmDialog,
   DropdownMenuItem,
+  FieldDescription,
+  FieldLabel,
+  FormItem,
   Input,
   NativeSelect,
   NativeSelectOption,
@@ -26,8 +28,8 @@ import { createBindingAction, deleteBindingAction, rebindAction } from '@/server
 type Method = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 const METHODS: readonly Method[] = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
-/** 新建绑定 */
-function CreateBindingForm({ nodes }: { nodes: PermissionNode[] }) {
+/** 新建绑定入口（页头 actions 插槽） */
+export function CreateBindingForm({ nodes }: { nodes: PermissionNode[] }) {
   const t = useTranslations('endpoints');
   const tc = useTranslations('common');
   const notify = useActionResult();
@@ -67,31 +69,31 @@ function CreateBindingForm({ nodes }: { nodes: PermissionNode[] }) {
             });
           }}
         >
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('method')}</label>
-            <NativeSelect name="method" defaultValue="GET">
+          <FormItem>
+            <FieldLabel htmlFor="binding-method">{t('method')}</FieldLabel>
+            <NativeSelect id="binding-method" name="method" defaultValue="GET">
               {METHODS.map((method) => (
                 <NativeSelectOption key={method} value={method}>
                   {method}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('path')}</label>
-            <Input name="path" placeholder="/v1/example/:id" required maxLength={255} />
-            <p className="text-xs text-muted-foreground">{t('pathHint')}</p>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('permission')}</label>
-            <NativeSelect name="permissionId" required>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor="binding-path">{t('path')}</FieldLabel>
+            <Input id="binding-path" name="path" placeholder="/v1/example/:id" required maxLength={255} />
+            <FieldDescription>{t('pathHint')}</FieldDescription>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor="binding-permission">{t('permission')}</FieldLabel>
+            <NativeSelect id="binding-permission" name="permissionId" required>
               {coded.map((node) => (
                 <NativeSelectOption key={node.id} value={String(node.id)}>
                   {node.name}（{node.code}）
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
+          </FormItem>
         </form>
       )}
     </FormDialog>
@@ -141,23 +143,27 @@ function RebindDialog({
             });
           }}
         >
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('permission')}</label>
-            <NativeSelect name="permissionId" defaultValue={String(binding.permissionId)}>
+          <FormItem>
+            <FieldLabel htmlFor={`rebind-permission-${binding.id}`}>{t('permission')}</FieldLabel>
+            <NativeSelect
+              id={`rebind-permission-${binding.id}`}
+              name="permissionId"
+              defaultValue={String(binding.permissionId)}
+            >
               {coded.map((node) => (
                 <NativeSelectOption key={node.id} value={String(node.id)}>
                   {node.name}（{node.code}）
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
+          </FormItem>
         </form>
       )}
     </FormDialog>
   );
 }
 
-/** 接口绑定面板（DataTable:method/path/权限码/来源/操作） */
+/** 接口绑定清单（DataTable:method/path/权限码/来源/操作;分页/标题在页面层 ListPage） */
 export function BindingsContent({
   bindings,
   nodes,
@@ -232,13 +238,6 @@ export function BindingsContent({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold">{t('title')}</h3>
-          <p className="text-xs text-muted-foreground">{t('description')}</p>
-        </div>
-        <CreateBindingForm nodes={nodes} />
-      </div>
       <DataTable rowKey={(row) => row.id} rows={rows} columns={columns} empty={t('empty')} />
       <ConfirmDialog
         open={deleting != null}

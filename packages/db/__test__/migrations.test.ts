@@ -37,10 +37,10 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 83(0000-0082,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列)', () => {
-    expect(journalTags.length).toBe(84);
+  it('条目总数 = 85(0000-0084,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列;0084 = 接口绑定;0085 = 接口绑定独立成页)', () => {
+    expect(journalTags.length).toBe(85);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
-    expect(journalTags.at(-1)).toBe('0084_endpoint_permissions');
+    expect(journalTags.at(-1)).toBe('0085_endpoints_page');
   });
 
   it('tag 编号严格递增,无重复', () => {

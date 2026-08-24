@@ -69,6 +69,7 @@ export async function createPermissionAction(input: {
   try {
     await adminApi().createPermission(input);
     revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), [
@@ -95,6 +96,7 @@ export async function updatePermissionAction(
   try {
     await adminApi().updatePermission(id, input);
     revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), [
@@ -112,6 +114,7 @@ export async function deletePermissionAction(
   try {
     await adminApi().deletePermission(id);
     revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), [

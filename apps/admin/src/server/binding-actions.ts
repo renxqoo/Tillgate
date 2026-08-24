@@ -15,7 +15,7 @@ export async function createBindingAction(input: {
   const t = await getTranslations('endpoints');
   try {
     await adminApi().createEndpointBinding(input);
-    revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), [
@@ -33,7 +33,7 @@ export async function rebindAction(
   const t = await getTranslations('endpoints');
   try {
     await adminApi().rebindEndpoint(id, permissionId);
-    revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), ['endpoint_not_found', 'permission_not_found']);
@@ -46,7 +46,7 @@ export async function deleteBindingAction(
   const t = await getTranslations('endpoints');
   try {
     await adminApi().deleteEndpointBinding(id);
-    revalidatePath('/dashboard/permissions');
+    revalidatePath('/dashboard/endpoints');
     return {};
   } catch (e) {
     return errorOf(e, (key) => t(key), ['endpoint_not_found']);
