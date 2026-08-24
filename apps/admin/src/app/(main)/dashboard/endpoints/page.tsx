@@ -30,7 +30,12 @@ export default async function EndpointsPage() {
       actions={hasPerm(me, 'admins:create') ? <CreateBindingForm nodes={tree} /> : null}
       error={bindings == null ? tc('loadFailed') : null}
     >
-      <BindingsContent bindings={bindings ?? []} nodes={tree} />
+      <BindingsContent
+        bindings={bindings ?? []}
+        nodes={tree}
+        canUpdate={hasPerm(me, 'admins:update')}
+        canDelete={hasPerm(me, 'admins:delete')}
+      />
     </ListPage>
   );
 }

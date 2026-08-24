@@ -44,7 +44,12 @@ export default async function RolesPage({ searchParams }: PageProps) {
       page={page}
       pageSize={PAGE_SIZE}
     >
-      <RolesContent roles={roles?.rows ?? []} tree={tree} />
+      <RolesContent
+        roles={roles?.rows ?? []}
+        tree={tree}
+        canUpdate={hasPerm(me, 'admins:update')}
+        canDelete={hasPerm(me, 'admins:delete')}
+      />
     </ListPage>
   );
 }

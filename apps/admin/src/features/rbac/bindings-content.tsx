@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialog,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   FieldDescription,
   FieldLabel,
   FormItem,
@@ -197,9 +198,13 @@ function EditBindingDialog({
 export function BindingsContent({
   bindings,
   nodes,
+  canUpdate,
+  canDelete,
 }: {
   bindings: EndpointBindingRow[];
   nodes: PermissionNode[];
+  canUpdate: boolean;
+  canDelete: boolean;
 }) {
   const t = useTranslations('endpoints');
   const tc = useTranslations('common');
@@ -246,7 +251,7 @@ export function BindingsContent({
       header: tc('actions'),
       render: (row) => (
         <>
-          {editing?.id === row.id && (
+          {canUpdate && editing?.id === row.id && (
             <EditBindingDialog
               binding={row}
               nodes={nodes}
@@ -254,16 +259,25 @@ export function BindingsContent({
               onOpenChange={(open) => !open && setEditing(null)}
             />
           )}
-          <RowActions label={tc('actions')}>
-            <DropdownMenuItem onClick={() => setEditing(row)}>
-              <PencilIcon className="size-4" />
-              {tc('edit')}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDeleting(row)}>
-              <UnlinkIcon className="size-4" />
-              {t('unbind')}
-            </DropdownMenuItem>
-          </RowActions>
+          {canUpdate || canDelete ? (
+            <RowActions label={tc('actions')}>
+              {canUpdate && (
+                <DropdownMenuItem onClick={() => setEditing(row)}>
+                  <PencilIcon className="size-4" />
+                  {tc('edit')}
+                </DropdownMenuItem>
+              )}
+              {canUpdate && canDelete && <DropdownMenuSeparator />}
+              {canDelete && (
+                <DropdownMenuItem onClick={() => setDeleting(row)}>
+                  <UnlinkIcon className="size-4" />
+                  {t('unbind')}
+                </DropdownMenuItem>
+              )}
+            </RowActions>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )}
         </>
       ),
     },

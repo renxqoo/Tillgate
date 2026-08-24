@@ -191,14 +191,14 @@ describe('roles 用例族守卫矩阵', () => {
     });
   });
 
-  it('delete:super/内置拒;有挂载管理员拒;自定义角色可删', async () => {
+  it('delete:super 拒;内置未挂载可删(用户裁决反转);有挂载管理员拒;自定义角色可删', async () => {
     const { deps, roleStore } = rbacSetup();
     await expect(deleteRole(deps, 1)).rejects.toMatchObject({
       code: 'control_plane.role_immutable',
     });
-    await expect(deleteRole(deps, 2)).rejects.toMatchObject({
-      code: 'control_plane.role_immutable',
-    });
+    // 内置(预置)角色不再不可删——唯一硬闸 = 被使用;未挂载直接删成
+    const { deps: deps2 } = rbacSetup();
+    await expect(deleteRole(deps2, 2)).resolves.toMatchObject({ ok: true });
 
     const created = await createRole(deps, {
       code: 'temp',

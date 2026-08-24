@@ -9,7 +9,7 @@
  *      语义:custom 码不在 enforced 注册表,不参与接口判定——403 仍由 enforced 码拦）
  *      → 停用 kill-switch → 删除守卫;
  *   §K enforced 全字段放开（停用/删除 200）+ 接口绑定守卫（先解绑）+ 角色停用
- *      整组下线 + super 角色全锁 + 内置角色删除拒;
+ *      整组下线 + super 角色全锁 + 内置角色可删(唯一硬闸=被使用);
  *   §M 绑定全字段更新:path/method 迁移下一请求生效（旧组合 fail-closed）、
  *      终态 (method,path) 撞他绑 409、空 body 400。
  */
@@ -286,7 +286,24 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
     });
     expect(touchSuper.status).toBe(403);
     expect((await call(w(), `/v1/roles/${superRole!.id}`, { method: 'DELETE' })).status).toBe(403);
-    expect((await call(w(), `/v1/roles/${builtin!.id}`, { method: 'DELETE' })).status).toBe(403);
+    // 内置角色不再 role_immutable(用户裁决反转):挂载临时管理员 → 删除撞 role_in_use;
+    // 不直接删未挂载内置,避免破坏种子行
+    const builtinStamp = Date.now();
+    const [builtinHolder] = await w()
+      .assembly.db.insert(admins)
+      .values({
+        email: `e2e-rbacv2-builtin-${builtinStamp}@e2e.invalid`,
+        passwordHash: 'identity-managed',
+        roleId: builtin!.id,
+        displayName: 'e2e-builtin-holder',
+      })
+      .returning({ id: admins.id });
+    if (builtinHolder == null) throw new Error('insert admins returned no row');
+    createdAdminIds.push(builtinHolder.id);
+    const delBuiltin = await call(w(), `/v1/roles/${builtin!.id}`, { method: 'DELETE' });
+    expect(delBuiltin.status).toBe(409);
+    expect(delBuiltin.body).toMatchObject({ error: { code: 'control_plane.role_in_use' } });
+    await w().assembly.db.delete(admins).where(eq(admins.id, builtinHolder.id));
 
     // 角色停用 = 整角色 kill-switch:viewer 角色停用 → viewer 管理员下一请求零授权
     const viewerRole = roleRows.find((role) => role.code === 'viewer');

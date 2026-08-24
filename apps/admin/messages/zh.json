@@ -1113,7 +1113,6 @@
     "builtinFlag": "内置",
     "adminCount": "管理员数",
     "deleteBlockedHint": "名下仍有 {count} 名管理员，须先迁移后再删除",
-    "builtinLockedHint": "内置预置角色不可删除",
     "implicitAll": "隐式全量",
     "superLocked": "锁定（隐式全量）",
     "created": "角色已创建",
@@ -1126,7 +1125,7 @@
       "role_exists": "角色 code 已被占用",
       "invalid_role_input": "角色参数不合法",
       "invalid_permission_code": "存在无效或已停用的权限码",
-      "role_immutable": "内置角色不可如此修改（超管完全锁定，预置角色不可删除）",
+      "role_immutable": "超管角色完全锁定，不可修改或删除",
       "role_not_found": "角色不存在",
       "role_in_use": "角色名下仍有管理员，须先迁移"
     }

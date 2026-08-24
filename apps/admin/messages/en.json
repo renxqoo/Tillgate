@@ -1113,7 +1113,6 @@
     "builtinFlag": "Built-in",
     "adminCount": "Admins",
     "deleteBlockedHint": "Still has {count} admin(s) assigned — reassign them before deleting",
-    "builtinLockedHint": "Built-in preset roles cannot be deleted",
     "implicitAll": "Implicit all",
     "superLocked": "Locked (implicit all)",
     "created": "Role created",
@@ -1126,7 +1125,7 @@
       "role_exists": "Role code already exists",
       "invalid_role_input": "Invalid role input",
       "invalid_permission_code": "Contains unknown or inactive permission code",
-      "role_immutable": "Built-in role cannot be modified this way (super fully locked, presets not deletable)",
+      "role_immutable": "The super role is fully locked and cannot be modified or deleted",
       "role_not_found": "Role not found",
       "role_in_use": "Role still has assigned admins"
     }

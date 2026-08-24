@@ -5,7 +5,8 @@ import { getTranslations } from 'next-intl/server';
 import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
 
-import { CreateNodeForm, PermissionsContent } from '@/features/rbac/permissions-content';
+import { PermissionsContent } from '@/features/rbac/permissions-content';
+import { CreateNodeForm } from '@/features/rbac/permissions-dialogs';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,11 @@ export default async function PermissionsPage() {
       actions={hasPerm(me, 'admins:create') ? <CreateNodeForm nodes={tree ?? []} /> : null}
       error={tree == null ? tc('loadFailed') : null}
     >
-      <PermissionsContent nodes={tree ?? []} />
+      <PermissionsContent
+        nodes={tree ?? []}
+        canUpdate={hasPerm(me, 'admins:update')}
+        canDelete={hasPerm(me, 'admins:delete')}
+      />
     </ListPage>
   );
 }
