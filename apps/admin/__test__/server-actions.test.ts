@@ -114,7 +114,6 @@ function loginForm(email: string, password: string): FormData {
 }
 
 describe('auth-actions', () => {
-
   it('loginAction：成功取 token 写会话 cookie 并重定向 /dashboard', async () => {
     vi.resetModules();
     const { fetchStub, calls } = mockFetch([{ status: 200, body: { token: 'jwt-1' } }]);

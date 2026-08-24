@@ -16,7 +16,7 @@ import { ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { APP_CONFIG } from '@/config/app-config';
-import { buildSidebarItems } from '@/config/sidebar-items';
+import { menuIconOf } from '@/config/menu-icons';
 
 import { NavMain } from '@/components/shell/sidebar/nav-main';
 import { NavUser } from './nav-user';
@@ -27,34 +27,36 @@ export interface SidebarUser {
   readonly avatar: string;
 }
 
+/** layout 解析好的菜单树（/v1/me/menus 后端驱动——labels 与图标已映射,纯渲染） */
+export interface SidebarMenuGroup {
+  readonly label: string | null;
+  readonly items: readonly {
+    readonly title: string;
+    readonly url: string;
+    readonly iconName: string | null;
+  }[];
+}
+
 export function AppSidebar({
   user,
-  permissions = [],
+  groups,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly user: SidebarUser;
-  /** 当前角色全量权限集（/v1/me 下发——RBAC 导航过滤单一事实来源） */
-  readonly permissions?: readonly string[];
+  readonly groups: readonly SidebarMenuGroup[];
 }) {
   const t = useTranslations('nav');
 
-  // sidebar-items 存 i18n key，这里解析成当前语言文案再交给共享 NavMain 渲染；
-  // 无权限的入口整项隐藏（权限权威判定在 admin-api 域守卫——此处仅为导航 UX）
-  const allowed = (permission?: string) => permission == null || permissions.includes(permission);
-  const items = buildSidebarItems()
-    .map((group) => ({
-      ...group,
-      label: group.label ? t(group.label) : undefined,
-      items: group.items
-        .filter((item) => allowed(item.permission))
-        .map((item) =>
-          item.subItems != null
-            ? { ...item, subItems: item.subItems.filter((sub) => allowed(sub.permission)) }
-            : item,
-        )
-        .map((item) => ({ ...item, title: t(item.title) })),
-    }))
-    .filter((group) => group.items.length > 0);
+  const items = groups.map((group, index) => ({
+    id: index + 1,
+    ...(group.label != null ? { label: group.label } : {}),
+    items: group.items.map((item) => ({
+      id: item.url,
+      title: item.title,
+      url: item.url,
+      icon: menuIconOf(item.iconName),
+    })),
+  }));
 
   return (
     <Sidebar variant="inset" collapsible="icon" {...props}>

@@ -89,14 +89,14 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
       <div className="flex flex-col  gap-3">
         <div>
           <Button
-          variant={totpEnabled ? 'destructive' : 'default'}
-          size="sm"
-          disabled={pending}
-          onClick={() => (totpEnabled ? setUnbindOpen(true) : startEnroll(true))}
-        >
-          {pending && <Loader2Icon className="animate-spin" />}
-          {totpEnabled ? t('unbind') : t('bind')}
-        </Button>
+            variant={totpEnabled ? 'destructive' : 'default'}
+            size="sm"
+            disabled={pending}
+            onClick={() => (totpEnabled ? setUnbindOpen(true) : startEnroll(true))}
+          >
+            {pending && <Loader2Icon className="animate-spin" />}
+            {totpEnabled ? t('unbind') : t('bind')}
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground">
           {totpEnabled ? t('boundDescription') : t('bindDescription')}

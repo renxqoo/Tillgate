@@ -19,9 +19,9 @@ export interface AdminMeInfo {
   twoFactorEnabled?: boolean;
   /** TOTP 验证器已绑定（接管第二因子） */
   totpEnabled?: boolean;
-  /** RBAC 角色（词表单一真相 = control-plane domain/rbac） */
-  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
-  /** 该角色全量权限集（<domain>:<read|write>——前端按此过滤导航） */
+  /** RBAC v2 角色对象（roles 表） */
+  role: { id: number; code: string; name: string; /** 超管隐式全量（can() 短路;permissions 下发全码） */isSuper: boolean };
+  /** 本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源） */
   permissions: string[];
 }
 
@@ -32,8 +32,10 @@ export interface AdminRow {
   id: number;
   email: string;
   displayName: string | null;
-  /** RBAC 角色（词表/矩阵单一真相 = control-plane domain/rbac） */
-  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  /** 角色 FK（roles.id） */
+  roleId: number;
+  /** 角色 code（展示用;名称经 /v1/roles 解析） */
+  role: string;
   /** 0 正常 / 1 封禁 / 2 注销 */
   status: number;
   twoFactorEnabled: boolean;
@@ -41,18 +43,58 @@ export interface AdminRow {
   createdAt: string;
 }
 
+// ── roles ─────────────────────────────────────
+
+/** 角色资料行（/v1/roles） */
+export interface RoleRow {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  /** 0 正常 / 1 停用（整角色 kill-switch） */
+  status: number;
+  isSuper: boolean;
+  isBuiltin: boolean;
+  createdAt: string;
+}
+
+// ── permissions ─────────────────────────────────────
+
+/** 权限树节点（/v1/permissions/tree） */
+export interface PermissionNode {
+  id: number;
+  parentId: number | null;
+  type: 'group' | 'page' | 'button';
+  /** 判定原语（group 无码;page 可无码=全员可见） */
+  code: string | null;
+  name: string;
+  i18nKey: string | null;
+  description: string | null;
+  /** page 专属:前端路由路径 */
+  path: string | null;
+  /** page 专属:lucide 图标名 */
+  icon: string | null;
+  sortOrder: number;
+  /** 0 正常 / 1 停用（kill-switch;enforced 不可停用） */
+  status: number;
+  source: 'enforced' | 'custom';
+  createdAt: string;
+}
+
+// ── admins ─────────────────────────────────────
+
 /** 创建管理员请求体（POST /v1/admins;字段真相 = contracts zod——角色词表封闭,密码策略单源在 identity） */
 export interface AdminCreateBody {
   email: string;
   displayName?: string;
   password: string;
-  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  roleId: number;
 }
 
 /** 更新管理员请求体（PATCH /v1/admins/:id;字段真相 = contracts zod——role/status 不可改自身） */
 export interface AdminPatchBody {
   displayName?: string | null;
-  role?: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  roleId?: number;
   status?: number;
 }
 

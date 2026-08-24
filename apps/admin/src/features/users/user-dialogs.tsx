@@ -20,7 +20,15 @@ import { NumberField } from '@/components/number-field';
 import * as React from 'react';
 import { useState, useTransition } from 'react';
 
-import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon, ShieldOffIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  GiftIcon,
+  KeyRoundIcon,
+  Loader2Icon,
+  ScaleIcon,
+  ShieldOffIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';

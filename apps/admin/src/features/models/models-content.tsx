@@ -191,9 +191,10 @@ const EMPTY_WINDOW_ROW: WindowRow = {
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** billingConfig 回显 → 窗口行（schedule 之外 / 空表 → 空数组） */
-function buildWindows(
-  cfg?: { strategy?: string; params?: { windows?: Array<Record<string, string>> } },
-): WindowRow[] {
+function buildWindows(cfg?: {
+  strategy?: string;
+  params?: { windows?: Array<Record<string, string>> };
+}): WindowRow[] {
   if (cfg?.strategy !== 'schedule') return [];
   return (cfg.params?.windows ?? []).map((w) => ({
     label: w.label ?? '',
@@ -210,12 +211,7 @@ function buildWindows(
 function windowRowInvalid(row: WindowRow): boolean {
   const prices = [row.inputPrice, row.outputPrice, row.cacheInputPrice, row.unitPrice];
   const hasPrice = prices.some((p) => p.trim() !== '');
-  return (
-    !HHMM_RE.test(row.start) ||
-    !HHMM_RE.test(row.end) ||
-    row.start === row.end ||
-    !hasPrice
-  );
+  return !HHMM_RE.test(row.start) || !HHMM_RE.test(row.end) || row.start === row.end || !hasPrice;
 }
 
 /** 窗口行 → 提交形状：空串字段剔除（字段级覆盖——未覆盖轴回落基价列） */
@@ -793,7 +789,9 @@ function EditModelDialog({
           : { unitPrice: values.unitPrice }),
         // 差价/时段配置显式管理：表单带 billingConfig 提交（variant 或 schedule），
         // 否则 null 清除（避免 DB 残留与界面不一致）——token 模式也可配分时段价
-        ...(values.billingConfig == null ? { billingConfig: null } : { billingConfig: values.billingConfig }),
+        ...(values.billingConfig == null
+          ? { billingConfig: null }
+          : { billingConfig: values.billingConfig }),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
@@ -1167,7 +1165,9 @@ function ModelForm({
                             />
                           </>
                         )}
-                        <span className="text-xs text-muted-foreground">{t('windowPriceHint')}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('windowPriceHint')}
+                        </span>
                       </div>
                     </div>
                   );

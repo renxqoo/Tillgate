@@ -205,13 +205,7 @@ describe('providers/channels 剩余分支', () => {
   });
 
   it('channels create/update/import 动词族', async () => {
-    const { mod, calls } = await loadModule('../src/server/channels-actions', [
-      {},
-      {},
-      {},
-      {},
-      {},
-    ]);
+    const { mod, calls } = await loadModule('../src/server/channels-actions', [{}, {}, {}, {}, {}]);
     const create = mod.createChannelAction as unknown as (
       a: Record<string, unknown>,
     ) => Promise<unknown>;

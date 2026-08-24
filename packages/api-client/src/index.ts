@@ -23,5 +23,10 @@ export {
 } from './client-api';
 export type * from './dto/client-api';
 
-export { createAdminApiClient, type AdminApiClient, type AdminApiClientOptions } from './admin-api';
+export {
+  createAdminApiClient,
+  type AdminApiClient,
+  type AdminApiClientOptions,
+  type MenuGroup,
+} from './admin-api';
 export type * from './dto/admin-api.generated';

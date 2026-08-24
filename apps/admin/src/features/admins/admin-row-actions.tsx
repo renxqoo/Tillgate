@@ -9,14 +9,7 @@ import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
 import { toggleAdminStatusAction, updateAdminRoleAction } from '@/server/admins-actions';
 
-/** 与 admin-create-form 同词表（值 = 后端 domain/rbac ADMIN_ROLES;label 为 i18n key） */
-const ROLES = [
-  { id: 'super_admin', label: 'roleSuperAdmin' },
-  { id: 'operator', label: 'roleOperator' },
-  { id: 'finance', label: 'roleFinance' },
-  { id: 'support', label: 'roleSupport' },
-  { id: 'viewer', label: 'roleViewer' },
-] as const;
+import type { RoleOption } from './admin-create-form';
 
 /**
  * 行操作（统一 RowActions 三点菜单）:变更角色（小弹窗）/ 封禁与恢复。
@@ -24,14 +17,16 @@ const ROLES = [
  */
 export function AdminRowActions({
   id,
-  role,
+  roleId,
   status,
   self,
+  roles,
 }: {
   id: number;
-  role: string;
+  roleId: number;
   status: number;
   self: boolean;
+  roles: readonly RoleOption[];
 }) {
   const t = useTranslations('admins');
   const tc = useTranslations('common');
@@ -54,21 +49,21 @@ export function AdminRowActions({
             className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault();
-              const next = String(new FormData(e.currentTarget).get('role') ?? role);
+              const next = Number(new FormData(e.currentTarget).get('roleId') ?? roleId);
               run(async () => {
                 const res = await updateAdminRoleAction(id, next);
                 return notify(res, t('updateFailed'), t('roleUpdated'));
               });
             }}
           >
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-2">
               <label className="text-sm font-medium" htmlFor={`admin-role-${id}`}>
                 {t('role')}
               </label>
-              <NativeSelect id={`admin-role-${id}`} name="role" defaultValue={role}>
-                {ROLES.map((option) => (
-                  <NativeSelectOption key={option.id} value={option.id}>
-                    {t(option.label)}
+              <NativeSelect id={`admin-role-${id}`} name="roleId" defaultValue={String(roleId)}>
+                {roles.map((option) => (
+                  <NativeSelectOption key={option.id} value={String(option.id)}>
+                    {option.name}（{option.code}）
                   </NativeSelectOption>
                 ))}
               </NativeSelect>

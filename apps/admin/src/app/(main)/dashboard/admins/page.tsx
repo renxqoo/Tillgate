@@ -1,4 +1,4 @@
-import { requirePermission } from '@/server/get-admin';
+import { hasPerm, requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -13,7 +13,7 @@ import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
-import { AdminCreateForm } from '@/features/admins/admin-create-form';
+import { AdminCreateForm, type RoleOption } from '@/features/admins/admin-create-form';
 import { AdminRowActions } from '@/features/admins/admin-row-actions';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +28,7 @@ interface AdminRow {
   id: number;
   email: string;
   displayName: string | null;
+  roleId: number;
   role: string;
   status: number;
   twoFactorEnabled: boolean;
@@ -41,6 +42,12 @@ export default async function AdminsPage({ searchParams }: PageProps) {
   const t = await getTranslations('admins');
   const tc = await getTranslations('common');
   const { q, page, sortBy, order } = parseListSearchParams(sp);
+
+  const rolesData = await adminApi()
+    .listRoles({ pageSize: 100 })
+    .catch(() => null);
+  const roles: RoleOption[] =
+    rolesData?.rows.map((role) => ({ id: role.id, code: role.code, name: role.name })) ?? [];
 
   let rows: AdminRow[] = [];
   let total = 0;
@@ -60,13 +67,7 @@ export default async function AdminsPage({ searchParams }: PageProps) {
     error = e instanceof ApiError ? e.message : tc('loadFailed');
   }
 
-  const roleLabel: Record<string, string> = {
-    super_admin: t('roleSuperAdmin'),
-    operator: t('roleOperator'),
-    finance: t('roleFinance'),
-    support: t('roleSupport'),
-    viewer: t('roleViewer'),
-  };
+  const roleName = new Map(roles.map((role) => [role.code, role.name]));
 
   const columns: DataTableColumn<AdminRow>[] = [
     {
@@ -78,11 +79,7 @@ export default async function AdminsPage({ searchParams }: PageProps) {
     {
       key: 'role',
       header: t('role'),
-      render: (r) => (
-        <Badge variant={r.role === 'super_admin' ? 'default' : 'secondary'}>
-          {roleLabel[r.role] ?? r.role}
-        </Badge>
-      ),
+      render: (r) => <Badge variant="secondary">{roleName.get(r.role) ?? r.role}</Badge>,
     },
     {
       key: 'status',
@@ -99,7 +96,13 @@ export default async function AdminsPage({ searchParams }: PageProps) {
       key: 'actions',
       header: tc('actions'),
       render: (r) => (
-        <AdminRowActions id={r.id} role={r.role} status={r.status} self={r.id === me.id} />
+        <AdminRowActions
+          id={r.id}
+          roleId={r.roleId}
+          status={r.status}
+          self={r.id === me.id}
+          roles={roles}
+        />
       ),
     },
   ];
@@ -113,7 +116,7 @@ export default async function AdminsPage({ searchParams }: PageProps) {
       searchPlaceholder={t('searchPlaceholder')}
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
-      actions={me.permissions?.includes('admins:write') ? <AdminCreateForm /> : null}
+      actions={hasPerm(me, 'admins:create') ? <AdminCreateForm roles={roles} /> : null}
       error={error}
       page={page}
       pageSize={PAGE_SIZE}

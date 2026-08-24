@@ -18,6 +18,8 @@ import type {
   AdminMeInfo,
   AdminPatchBody,
   AdminRow,
+  PermissionNode,
+  RoleRow,
 } from './dto/admin-api.generated';
 
 export interface AdminApiClientOptions {
@@ -56,8 +58,81 @@ export interface AdminApiClient extends HttpClient {
   /** 创建管理员（POST /v1/admins;资料行 + identity 凭据双动词编排） */
   createAdmin(input: AdminCreateBody): Promise<AdminRow>;
 
-  /** 更新管理员（PATCH /v1/admins/:id;role/status 不可改自身） */
+  /** 更新管理员（PATCH /v1/admins/:id;roleId/status 不可改自身） */
   updateAdmin(id: number, input: AdminPatchBody): Promise<AdminRow>;
+
+  // ---- RBAC v2（ADR-0008）----
+  /** 角色列表（含授权码集与挂载管理员计数） */
+  listRoles(params?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    sortBy?: string;
+    order?: 'asc' | 'desc';
+  }): Promise<Paginated<RoleRow & { adminCount: number; codes: string[] }>>;
+
+  createRole(input: {
+    code: string;
+    name: string;
+    description?: string | null;
+    permissions: string[];
+  }): Promise<RoleRow>;
+
+  updateRole(
+    id: number,
+    input: {
+      name?: string;
+      description?: string | null;
+      status?: number;
+      permissions?: string[];
+    },
+  ): Promise<RoleRow>;
+
+  deleteRole(id: number): Promise<{ ok: true }>;
+
+  /** 权限树全量（平铺;管理面组树与绑定 UI 共用） */
+  permissionTree(): Promise<PermissionNode[]>;
+
+  createPermission(input: {
+    parentId: number | null;
+    type: 'group' | 'page' | 'button';
+    code?: string | null;
+    name: string;
+    i18nKey?: string | null;
+    description?: string | null;
+    path?: string | null;
+    icon?: string | null;
+    sortOrder: number;
+  }): Promise<PermissionNode>;
+
+  updatePermission(
+    id: number,
+    input: Partial<
+      Pick<PermissionNode, 'name' | 'i18nKey' | 'description' | 'icon' | 'sortOrder'>
+    > & {
+      status?: number;
+    },
+  ): Promise<PermissionNode>;
+
+  deletePermission(id: number): Promise<{ ok: true }>;
+
+  /** 本人菜单树（group+page 两级,按授权过滤——sidebar 数据源） */
+  getMyMenus(): Promise<{ groups: MenuGroup[] }>;
+}
+
+/** /v1/me/menus 组节点 */
+export interface MenuGroup {
+  id: number;
+  i18nKey: string | null;
+  name: string;
+  items: {
+    id: number;
+    i18nKey: string | null;
+    name: string;
+    path: string | null;
+    icon: string | null;
+    code: string | null;
+  }[];
 }
 
 export interface AdminPasswordChangeResult {
@@ -93,6 +168,43 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
     },
     async updateAdmin(id: number, input: AdminPatchBody) {
       return http.patch<AdminRow>(`/v1/admins/${id}`, input);
+    },
+    async listRoles(params) {
+      const query = new URLSearchParams();
+      if (params?.page != null) query.set('page', String(params.page));
+      if (params?.pageSize != null) query.set('page_size', String(params.pageSize));
+      if (params?.q != null && params.q !== '') query.set('q', params.q);
+      if (params?.sortBy != null) query.set('sort_by', params.sortBy);
+      if (params?.order != null) query.set('order', params.order);
+      const suffix = query.size > 0 ? `?${query.toString()}` : '';
+      return http.get<Paginated<RoleRow & { adminCount: number; codes: string[] }>>(
+        `/v1/roles${suffix}`,
+      );
+    },
+    async createRole(input) {
+      return http.post<RoleRow>('/v1/roles', input);
+    },
+    async updateRole(id, input) {
+      return http.patch<RoleRow>(`/v1/roles/${id}`, input);
+    },
+    async deleteRole(id) {
+      return http.delete<{ ok: true }>(`/v1/roles/${id}`);
+    },
+    async permissionTree() {
+      const data = await http.get<{ rows: PermissionNode[] }>('/v1/permissions/tree');
+      return data.rows ?? [];
+    },
+    async createPermission(input) {
+      return http.post<PermissionNode>('/v1/permissions', input);
+    },
+    async updatePermission(id, input) {
+      return http.patch<PermissionNode>(`/v1/permissions/${id}`, input);
+    },
+    async deletePermission(id) {
+      return http.delete<{ ok: true }>(`/v1/permissions/${id}`);
+    },
+    async getMyMenus() {
+      return http.get<{ groups: MenuGroup[] }>('/v1/me/menus');
     },
   };
 }

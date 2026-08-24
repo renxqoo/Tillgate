@@ -28,10 +28,7 @@ const bootCode = getThemeBootCode();
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const locale = await getLocale();
   return (
-    <html
-      lang={htmlLang(isLocale(locale) ? locale : DEFAULT_LOCALE)}
-      suppressHydrationWarning
-    >
+    <html lang={htmlLang(isLocale(locale) ? locale : DEFAULT_LOCALE)} suppressHydrationWarning>
       <head>
         {/* 水合前读 localStorage(theme) 落 dark class——与 ui ThemeProvider 同 key（防 FOUC） */}
         <script dangerouslySetInnerHTML={{ __html: bootCode }} />

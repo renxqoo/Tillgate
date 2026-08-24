@@ -16,11 +16,16 @@ export const adminMeInfoSchema = z
     twoFactorEnabled: z.boolean().optional().describe('邮箱验证码二次登录已开启'),
     totpEnabled: z.boolean().optional().describe('TOTP 验证器已绑定（接管第二因子）'),
     role: z
-      .enum(['super_admin', 'operator', 'finance', 'support', 'viewer'])
-      .describe('RBAC 角色（词表单一真相 = control-plane domain/rbac）'),
+      .object({
+        id: z.number(),
+        code: z.string(),
+        name: z.string(),
+        isSuper: z.boolean().describe('超管隐式全量（can() 短路;permissions 下发全码）'),
+      })
+      .describe('RBAC v2 角色对象（roles 表）'),
     permissions: z
       .array(z.string())
-      .describe('该角色全量权限集（<domain>:<read|write>——前端按此过滤导航）'),
+      .describe('本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源）'),
   })
   .meta({ id: 'AdminMeInfo', description: '当前登录管理员 (GET /v1/me,admin-api 管理面)' });
 

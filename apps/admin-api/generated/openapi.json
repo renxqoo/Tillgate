@@ -139,22 +139,36 @@
             "type": "boolean"
           },
           "role": {
-            "type": "string",
-            "enum": [
-              "super_admin",
-              "operator",
-              "finance",
-              "support",
-              "viewer"
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "number"
+              },
+              "code": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "isSuper": {
+                "type": "boolean",
+                "description": "超管隐式全量（can() 短路;permissions 下发全码）"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "name",
+              "isSuper"
             ],
-            "description": "RBAC 角色（词表单一真相 = control-plane domain/rbac）"
+            "description": "RBAC v2 角色对象（roles 表）"
           },
           "permissions": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "该角色全量权限集（<domain>:<read|write>——前端按此过滤导航）"
+            "description": "本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源）"
           }
         },
         "required": [

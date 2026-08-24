@@ -43,7 +43,16 @@ export default async function Landing() {
     { icon: UserRound, title: t('f6Title'), description: t('f6Description') },
   ];
 
-  const stack = ['Next.js 16', 'Hono', 'PostgreSQL', 'Redis', 'OpenTelemetry', 'Docker', 'Turborepo', 'Bun'];
+  const stack = [
+    'Next.js 16',
+    'Hono',
+    'PostgreSQL',
+    'Redis',
+    'OpenTelemetry',
+    'Docker',
+    'Turborepo',
+    'Bun',
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
@@ -89,7 +98,9 @@ export default async function Landing() {
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
             {t('heroTitle')}
           </h1>
-          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">{t('heroDescription')}</p>
+          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+            {t('heroDescription')}
+          </p>
 
           <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row">
             <Link
@@ -122,7 +133,9 @@ export default async function Landing() {
               {t('featuresEyebrow')}
             </p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('featuresTitle')}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">{t('featuresDescription')}</p>
+            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
+              {t('featuresDescription')}
+            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

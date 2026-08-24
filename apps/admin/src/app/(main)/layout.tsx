@@ -14,13 +14,21 @@ import { LocaleSwitcher } from '@/components/shell/header/locale-switcher';
 import { AppSidebar } from '@/components/shell/sidebar/app-sidebar';
 import { APP_CONFIG } from '@/config/app-config';
 import { logoutAction } from '@/server/auth-actions';
-import { requireAdmin, userFromAdminMe } from '@/server/get-admin';
+import { requireAdmin, requireMenus, userFromAdminMe } from '@/server/get-admin';
 
 export const dynamic = 'force-dynamic';
 
 export default async function MainLayout({ children }: Readonly<{ children: ReactNode }>) {
   const me = await requireAdmin();
   const user = userFromAdminMe(me);
+  const menuGroups = (await requireMenus()).map((group) => ({
+    label: group.label,
+    items: group.items.map((item) => ({
+      title: item.name,
+      url: item.path ?? '/dashboard',
+      iconName: item.icon,
+    })),
+  }));
 
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get('sidebar_state')?.value !== 'false';
@@ -35,7 +43,7 @@ export default async function MainLayout({ children }: Readonly<{ children: Reac
         } as React.CSSProperties
       }
     >
-      <AppSidebar user={user} permissions={me.permissions ?? []} />
+      <AppSidebar user={user} groups={menuGroups} />
       <SidebarInset className="min-w-0 overflow-x-clip md:!m-0 md:!rounded-none md:!shadow-none">
         <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center gap-2 bg-background/85 backdrop-blur-md transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/70">
           <div className="flex w-full items-center justify-between px-5 md:px-6 lg:px-8 xl:px-10">

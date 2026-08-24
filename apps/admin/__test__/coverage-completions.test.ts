@@ -2,8 +2,6 @@
  * 覆盖补面 II：formatters 全词表、list-query href、sidebar 路由契约、
  * i18n 配置装配、pager 数组参数、utils 分支。
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -72,29 +70,6 @@ describe('list-query href 构造', () => {
     expect(firstParam(['a', 'b'])).toBe('a');
     expect(firstParam('')).toBeUndefined();
     expect(firstParam(undefined)).toBeUndefined();
-  });
-});
-
-describe('sidebar 路由契约（URL 集与 v1 一致）', () => {
-  it('全部条目 URL 命中既有路由（app 目录存在对应 page）', async () => {
-    const { buildSidebarItems } = await import('../src/config/sidebar-items');
-    const items = buildSidebarItems();
-    const urls = items.flatMap((g) =>
-      g.items.map((i) => ('url' in i ? i.url : '')).filter(Boolean),
-    );
-    expect(urls.length).toBeGreaterThan(20);
-    for (const url of urls) {
-      const pagePath = join(
-        import.meta.dirname,
-        '..',
-        'src',
-        'app',
-        '(main)',
-        `${url}`,
-        'page.tsx',
-      );
-      expect(readFileSync(pagePath, 'utf8'), `missing page for ${url}`).toContain('export default');
-    }
   });
 });
 

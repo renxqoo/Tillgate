@@ -97,7 +97,11 @@ export async function outgoingLocale(opts: LocaleResolution = {}): Promise<Local
   const fallback = opts.fallback ?? DEFAULT_LOCALE;
   try {
     const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
-    return resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'), opts);
+    return resolveLocale(
+      cookieStore.get(LOCALE_COOKIE)?.value,
+      headerStore.get('accept-language'),
+      opts,
+    );
   } catch {
     return fallback; // 非请求上下文(SSG 构建等):无入站 cookie/头可读
   }

@@ -11,7 +11,7 @@ export async function createAdminAction(input: {
   email: string;
   displayName?: string;
   password: string;
-  role: 'super_admin' | 'operator' | 'finance' | 'support' | 'viewer';
+  roleId: number;
 }): Promise<{ error?: string }> {
   const t = await getTranslations('admins');
   try {
@@ -26,10 +26,13 @@ export async function createAdminAction(input: {
   }
 }
 
-export async function updateAdminRoleAction(id: number, role: string): Promise<{ error?: string }> {
+export async function updateAdminRoleAction(
+  id: number,
+  roleId: number,
+): Promise<{ error?: string }> {
   const t = await getTranslations('admins');
   try {
-    await adminApi().patch(`/v1/admins/${id}`, { role });
+    await adminApi().patch(`/v1/admins/${id}`, { roleId });
     revalidatePath('/dashboard/admins');
     return {};
   } catch (e) {

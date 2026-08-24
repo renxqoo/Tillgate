@@ -29,7 +29,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
   }
 
   return (
-    <div className='flex flex-row gap-4'>
+    <div className="flex flex-row gap-4">
       <div className="flex max-w-xl flex-col gap-4">
         <Card>
           <CardHeader>
@@ -74,10 +74,8 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
             <p className="text-xs text-muted-foreground">{t('smtpHint')}</p>
           </CardContent>
         </Card>
-
-    
       </div>
-    
+
       <Card className="max-w-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">

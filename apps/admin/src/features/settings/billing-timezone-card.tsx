@@ -18,10 +18,7 @@ import {
 } from '@tokenlens/ui';
 
 import { useActionResult } from '@/components/action-toast';
-import {
-  getBillingTimezoneAction,
-  updateBillingTimezoneAction,
-} from '@/server/settings-actions';
+import { getBillingTimezoneAction, updateBillingTimezoneAction } from '@/server/settings-actions';
 
 /** 常用时区（置顶组；以运行时全量词表过滤，保证选项恒合法） */
 const COMMON_TIMEZONES = [
@@ -46,9 +43,8 @@ const COMMON_TIMEZONES = [
 /** 全量 IANA 词表（运行时 Intl 提供；不可用时退化为常用组） */
 const ALL_TIMEZONES: readonly string[] = (() => {
   try {
-    const supported = (
-      Intl as unknown as { supportedValuesOf?: (key: 'timeZone') => string[] }
-    ).supportedValuesOf;
+    const supported = (Intl as unknown as { supportedValuesOf?: (key: 'timeZone') => string[] })
+      .supportedValuesOf;
     return supported != null ? supported.call(Intl, 'timeZone') : [];
   } catch {
     return [];
