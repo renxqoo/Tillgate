@@ -1,3 +1,4 @@
+import { ENFORCED_CODES } from '@tokenlens/control-plane';
 import { createDb, type Db, type TxRetryPolicy } from '@tokenlens/db';
 import type Redis from 'ioredis';
 import {
@@ -309,6 +310,26 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       emailBrand: 'TokenLens',
     },
   });
+
+  // RBAC v2 启动对账（ADR-0008）:代码侧 enforced 注册表 ⊆ DB 活动码——
+  // 发版新增码忘了补种子即拒启（绝不静默全站 403）;DB 不可达仅告警（单测装配形态）。
+  void controlPlane.rbac.permissions
+    .activeCodes()
+    .then((active) => {
+      const set = new Set(active);
+      for (const code of ENFORCED_CODES) {
+        if (!set.has(code)) {
+          logger.error(
+            { code },
+            'rbac enforced code missing from DB permissions — refusing to start',
+          );
+          process.exit(1);
+        }
+      }
+    })
+    .catch(() => {
+      logger.warn('rbac startup reconciliation skipped (db unreachable)');
+    });
 
   return {
     logger,

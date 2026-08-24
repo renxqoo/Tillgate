@@ -2,7 +2,7 @@
  * RBAC v2 postgres 适配器（ports/rbac-store 唯一实现）。
  * 时间戳一律 SQL now();role 授权替换 = 事务内 delete+insert（调用方开事务）。
  */
-import { and, asc, eq, ilike, inArray, sql } from 'drizzle-orm';
+import { asc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import { admins, permissions, rolePermissions, roles } from '@tokenlens/db';
 import type { DbLike } from '@tokenlens/db';
 import type {
@@ -260,10 +260,12 @@ export const postgresPermissionStore: PermissionStore = {
   },
 
   async activeCodes(db: DbLike): Promise<string[]> {
+    // 活动码 = status 0（enforced 与 custom 同权——custom 码作用于角色绑定与显示层门控;
+    // 启动对账的 enforced ⊆ 活动集检查不受影响:注册表码必然属于本集合的 enforced 子集）
     const rows = await db
       .select({ code: permissions.code })
       .from(permissions)
-      .where(and(eq(permissions.status, 0), eq(permissions.source, 'enforced')));
+      .where(eq(permissions.status, 0));
     return rows.map((row) => row.code).filter((code): code is string => code != null);
   },
 };

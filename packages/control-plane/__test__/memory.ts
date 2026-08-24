@@ -1214,7 +1214,7 @@ export function createMemoryPermissionStore(
     },
     async activeCodes(_db) {
       return [...nodes.values()]
-        .filter((n) => n.status === 0 && n.source === 'enforced' && n.code != null)
+        .filter((n) => n.status === 0 && n.code != null)
         .map((n) => n.code as string);
     },
   };

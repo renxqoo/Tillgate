@@ -16,6 +16,9 @@ import {
   createMemoryFxStore,
   createMemoryDb,
   createStubProbe,
+  createMemoryAdminStore,
+  createMemoryPermissionStore,
+  createMemoryRoleStore,
 } from './memory';
 import type { CatalogSource } from '../src/ports/catalog-source';
 import { createMemoryCatalogCache } from '../src/ports/cache';
@@ -50,6 +53,9 @@ function setup() {
   const operations = createMemoryOperationsStore();
   const audit = createMemoryAudit();
   const probe = createStubProbe();
+  const roleStore = createMemoryRoleStore();
+  const permissionStore = createMemoryPermissionStore();
+  const adminStore = createMemoryAdminStore();
   const controlPlane = createControlPlane({
     db,
     cipher: fakeCipher,
@@ -80,6 +86,9 @@ function setup() {
       fx: fx.store,
       audit: audit.store,
       operations: operations.store,
+      role: roleStore,
+      permission: permissionStore,
+      admin: adminStore,
     },
   });
   return { controlPlane, providers, channels, models, rateCards, fx, audit, probe };
@@ -111,6 +120,48 @@ describe('createControlPlane facade', () => {
     }
     expect(typeof controlPlane.channels.recharge).toBe('function');
     expect(typeof controlPlane.catalog.import).toBe('function');
+  });
+
+  it('rbac/admins compose 表面全动词可调用（memory stores 透传）', async () => {
+    const { controlPlane } = setup();
+    await expect(controlPlane.rbac.permissions.tree()).resolves.toEqual([]);
+    await expect(
+      controlPlane.rbac.permissions.create({
+        parentId: null,
+        type: 'group',
+        code: null,
+        name: '组',
+        i18nKey: null,
+        description: null,
+        path: null,
+        icon: null,
+        sortOrder: 1,
+      }),
+    ).resolves.toMatchObject({ type: 'group', source: 'custom' });
+    await expect(
+      controlPlane.rbac.permissions.update({ id: 1, name: '改名' }),
+    ).resolves.toMatchObject({
+      name: '改名',
+    });
+    await expect(controlPlane.rbac.permissions.remove(1)).resolves.toEqual({ ok: true });
+    await expect(controlPlane.rbac.permissions.activeCodes()).resolves.toEqual([]);
+
+    await expect(
+      controlPlane.rbac.roles.create({ code: 'r1', name: '角色', description: null, codes: [] }),
+    ).resolves.toMatchObject({ code: 'r1' });
+    await expect(
+      controlPlane.rbac.roles.list({ sortBy: 'id', order: 'asc', limit: 10, offset: 0 }),
+    ).resolves.toMatchObject({ total: 1 });
+    await expect(controlPlane.rbac.roles.find(1)).resolves.toMatchObject({ code: 'r1' });
+    await expect(
+      controlPlane.rbac.roles.update({ roleId: 1, name: '改名', codes: [] }),
+    ).resolves.toMatchObject({ role: { name: '改名' }, added: [], removed: [] });
+    await expect(controlPlane.rbac.roles.remove(1)).resolves.toEqual({ ok: true });
+
+    await expect(controlPlane.admins.findAccess(1)).resolves.toBeNull();
+    await expect(
+      controlPlane.admins.list({ sortBy: 'id', order: 'asc', limit: 10, offset: 0 }),
+    ).resolves.toMatchObject({ rows: [], total: 0 });
   });
 
   it('全单元 smoke：经 facade 走通六组用例', async () => {
