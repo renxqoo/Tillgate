@@ -1,5 +1,5 @@
 /**
- * RBAC v2 路由契约测试（roles/permissions 管理面 + me/menus——docs/admin-rbac-v2 §5）：
+ * 动态 RBAC 路由契约测试（roles/permissions 管理面 + me/menus——docs/admin-rbac-dynamic §5）：
  * 信封/透传/守卫矩阵（super 全锁/内置删除拒/挂载拒/enforced 锁/码冲突/父子守卫）/
  * 审计旁路形状（postAudit 经 fakeDeps 缺省不可覆写,审计 diff 由 e2e 断言）。
  */

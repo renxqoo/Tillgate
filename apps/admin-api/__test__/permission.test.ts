@@ -1,5 +1,5 @@
 /**
- * RBAC v2 权限守卫契约测试（ADR-0008;docs/admin-rbac-v2/DESIGN §3 方案 B）：
+ * 动态 RBAC 权限守卫契约测试（ADR-0008;docs/admin-rbac-dynamic/DESIGN §3 方案 B）：
  *   1. guardFactory 构建期校验——未知码拒构建（fail-closed,路由声明笔误不带上线）;
  *   2. 判定链:会话(401 优先) → isSuper 短路 / 码集合包含放行 / 无权 403;
  *   3. 授权面注入:属主回查 grants 进上下文;封禁 401;回查缺省 fail-closed 403;

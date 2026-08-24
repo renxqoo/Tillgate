@@ -80,3 +80,4 @@
     错误目录的 `zh` 字段（本地化机制见 `packages/errors/README.md` 与
     `docs/adr/0001-errors-registry-ownership.md`：message/zh 双字段，
     中文可读提示由消费方按目录渲染，不在抛出点硬编码）。
+19. 代码中不要写v1、v2的版本注释，不要用v1，v2，v3...来命名文件名。

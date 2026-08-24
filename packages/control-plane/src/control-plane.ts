@@ -277,7 +277,7 @@ export interface ControlPlane {
     priceHistory(input: { externalName: string }): Promise<CatalogPriceHistoryEntry[]>;
     import(input: ImportCatalogInput): Promise<ImportCatalogResult>;
   };
-  /** RBAC v2（ADR-0008）：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
+  /** 动态 RBAC（ADR-0008）：动态角色 + 权限树管理面（装配见 application/rbac/compose） */
   readonly rbac: RbacSurface;
   /** 管理员资料面（G2——装配见 application/admins/compose） */
   readonly admins: AdminsSurface;

@@ -1,5 +1,5 @@
 /**
- * RBAC v2 postgres 适配器（ports/rbac-store 唯一实现）。
+ * 动态 RBAC postgres 适配器（ports/rbac-store 唯一实现）。
  * 时间戳一律 SQL now();role 授权替换 = 事务内 delete+insert（调用方开事务）。
  */
 import { asc, eq, ilike, inArray, sql } from 'drizzle-orm';

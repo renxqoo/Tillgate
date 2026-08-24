@@ -1,7 +1,7 @@
-# ADR-0008：管理端 RBAC v2 —— 静态角色裁决反转（动态角色 + 动态注册面）
+# ADR-0008：管理端 动态 RBAC —— 静态角色裁决反转（动态角色 + 动态注册面）
 
 - 状态：已接受（2026-08-24）
-- 关联：docs/admin-rbac/（v1 已核销）、docs/admin-rbac-v2/（本波次 DESIGN/IMPLEMENTATION）
+- 关联：docs/admin-rbac/（v1 已核销）、docs/admin-rbac-dynamic/（本波次 DESIGN/IMPLEMENTATION）
 - 反转对象：docs/admin-rbac/DESIGN.md §1.2 与裁决 D1（「不做 DB 动态角色」）
 
 ## 背景

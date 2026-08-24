@@ -14,7 +14,7 @@ import {
 import { sql } from 'drizzle-orm';
 
 /**
- * RBAC v2（ADR-0008）：动态角色 + 单表权限树。
+ * 动态 RBAC（ADR-0008）：动态角色 + 单表权限树。
  *
  * permissions = 注册面 + 资源树同体：
  *   group（目录,无码,纯结构）→ page（页面,持 域:read 码 + path;dashboard 无码全员）
@@ -56,11 +56,14 @@ export const permissions = pgTable(
       .where(sql`type = 'button'`),
     index('permissions_parent_idx').on(t.parentId),
     check('permissions_type_ck', sql`${t.type} in ('group', 'page', 'button')`),
-    check('permissions_code_shape_ck', sql`(
+    check(
+      'permissions_code_shape_ck',
+      sql`(
       (type = 'group' and code is null) or
       (type = 'button' and code is not null) or
       type = 'page'
-    )`),
+    )`,
+    ),
     check('permissions_status_ck', sql`${t.status} in (0, 1)`),
     check('permissions_source_ck', sql`${t.source} in ('enforced', 'custom')`),
   ],

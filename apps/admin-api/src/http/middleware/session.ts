@@ -15,7 +15,7 @@ export type { AdminAccess };
 /** 会话校验依赖（identity facade + 属主回查——结构子集,app 只持闭包） */
 export interface SessionValidator {
   validate(token: string, realm: 'admin'): Promise<SessionPayload | null>;
-  /** 属主回查（v2 一条 join）：状态 + isSuper + active 码集合;不存在 → null = 401。
+  /** 属主回查（一条 join）：状态 + isSuper + active 码集合;不存在 → null = 401。
    *  授权面随回查注入——角色/授权变更下一请求即生效（不嵌 JWT）。 */
   owner?: (adminId: number) => Promise<AdminAccess | null>;
 }
@@ -24,7 +24,7 @@ export interface SessionEnv {
   Variables: {
     requestId: string;
     adminId: number;
-    /** v2 会话授权面（guard 工厂消费;回查缺省形态下无此变量 → 权限守卫 fail-closed） */
+    /** 会话授权面（guard 工厂消费;回查缺省形态下无此变量 → 权限守卫 fail-closed） */
     grants: AdminGrants;
     /** 原始 Bearer token（logout 吊销需要原始值——jti 提取在 identity 内完成） */
     sessionToken: string;

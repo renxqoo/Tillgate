@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { ApiError } from '@tokenlens/api-client';
 import { adminApi } from './admin-api';
 
-/** RBAC v2 管理动作（roles/permissions;守卫与审计全在后端——此处只透传错误码语义） */
+/** 动态 RBAC 管理动作（roles/permissions;守卫与审计全在后端——此处只透传错误码语义） */
 
 export async function createRoleAction(input: {
   code: string;

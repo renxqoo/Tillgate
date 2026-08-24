@@ -15,7 +15,7 @@ export interface AdminRecord {
   readonly status: number;
   /** 角色 FK（roles.id） */
   readonly roleId: number;
-  /** 角色 code（join roles——v2 切换期旧执法链消费;切换后仅供展示） */
+  /** 角色 code（join roles——切换期旧执法链消费;切换后仅供展示） */
   readonly role: string;
   readonly twoFactorEnabled: boolean;
   readonly lastLoginAt: Date | null;
@@ -52,7 +52,7 @@ export interface AdminListResult {
 export interface AdminStore {
   findById(db: DbLike, id: number): Promise<AdminRecord | null>;
   findByEmail(db: DbLike, email: string): Promise<AdminRecord | null>;
-  /** v2 属主回查完整面（一条 join:状态 + isSuper + active 码集合;不存在 → null） */
+  /** 属主回查完整面（一条 join:状态 + isSuper + active 码集合;不存在 → null） */
   findAccess(db: DbLike, adminId: number): Promise<AdminAccess | null>;
   /** 登录成功时间戳推进（SQL now()——多副本时钟纪律） */
   touchLastLogin(db: DbLike, id: number): Promise<void>;

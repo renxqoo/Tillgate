@@ -191,7 +191,7 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     zh: '角色不在词表内（super_admin/operator/finance/support/viewer）',
   },
 
-  // ── RBAC v2（ADR-0008:动态角色 + 权限树）─────────────────────────────────
+  // ── 动态 RBAC（ADR-0008:动态角色 + 权限树）─────────────────────────────────
   /** 角色 code 已被占用 */
   role_exists: {
     category: 'conflict',

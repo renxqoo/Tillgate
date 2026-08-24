@@ -1,5 +1,5 @@
 /**
- * 权限资源路由（RBAC v2 权限树管理面——docs/admin-rbac-v2/DESIGN §5;admins 域码）。
+ * 权限资源路由（动态 RBAC 权限树管理面——docs/admin-rbac-dynamic/DESIGN §5;admins 域码）。
  * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
  */
 import { Hono } from 'hono';

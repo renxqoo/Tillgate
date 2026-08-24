@@ -78,7 +78,7 @@ export const requireAdmin = cache(async (): Promise<AdminMeInfo> => {
 });
 
 /**
- * 页面级权限兜底（RBAC v2）:导航已按 permissions 过滤,直访 URL 时在此重定向概览。
+ * 页面级权限兜底（动态 RBAC）:导航已按 permissions 过滤,直访 URL 时在此重定向概览。
  * 权威判定在 admin-api guard(code)——此处仅为 UX,Server Actions 不重复检查。
  */
 export async function requirePermission(code: string): Promise<AdminMeInfo> {

@@ -92,7 +92,7 @@ async function roleIdOf(code: string): Promise<number> {
 const operatorRoleId = () => roleIdOf('operator');
 const viewerRoleId = () => roleIdOf('viewer');
 
-describe('E. viewer 拒绝面（v2 种子等价 v1 矩阵——真装配抽样）', () => {
+describe('E. viewer 拒绝面（v2 种子等价 静态矩阵——真装配抽样）', () => {
   it('读动词 200 / 写动词 403 insufficient_permission / me 权限集只读', async () => {
     const token = await adminWithRole('viewer', `e2e-rbac-viewer-${Date.now()}@e2e.invalid`);
 

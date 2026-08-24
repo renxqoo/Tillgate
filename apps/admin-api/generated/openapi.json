@@ -161,7 +161,7 @@
               "name",
               "isSuper"
             ],
-            "description": "RBAC v2 角色对象（roles 表）"
+            "description": "动态 RBAC 角色对象（roles 表）"
           },
           "permissions": {
             "type": "array",

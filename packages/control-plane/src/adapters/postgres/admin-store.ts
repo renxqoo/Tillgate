@@ -2,8 +2,8 @@
  * 管理员资料 postgres 适配器（ports/admin-store 唯一实现）。
  * 时间戳一律 SQL now()；投影不含密码/2FA 密钥列——凭据单一真相在 identity 七表
  * （G1/G2 裁决,admins.password_hash 冻结只读不投影）。
- * role 经 join roles 取 code（v2 切换期旧执法链仍消费 role 字符串）;
- * findGrants = 会话属主回查的 v2 授权面解析（admins⋈roles⋈role_permissions⋈permissions 一条 join）。
+ * role 经 join roles 取 code（切换期旧执法链仍消费 role 字符串）;
+ * 属主回查授权面解析（admins⋈roles⋈role_permissions⋈permissions 一条 join）。
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
  */
 import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
@@ -25,7 +25,7 @@ function escapeLike(input: string): string {
 
 /**
  * 旧列 admins.password_hash 的占位值（NOT NULL 兜底）：凭据单一真相在 identity 七表，
- * HTTP 面创建的管理员从未有过 v1 密码——非 scrypt 形态哨兵值天然不可被旧校验路径误认。
+ * HTTP 面创建的管理员从未有过旧列密码——非 scrypt 形态哨兵值天然不可被旧校验路径误认。
  */
 const IDENTITY_MANAGED_HASH = 'identity-managed';
 
@@ -82,7 +82,7 @@ export const postgresAdminStore: AdminStore = {
       .where(eq(admins.id, input.adminId));
   },
 
-  /** v2 属主回查完整面：一条 join 带回状态 + isSuper + active 码集合（super 短路） */
+  /** 属主回查完整面：一条 join 带回状态 + isSuper + active 码集合（super 短路） */
   async findAccess(
     db: DbLike,
     adminId: number,

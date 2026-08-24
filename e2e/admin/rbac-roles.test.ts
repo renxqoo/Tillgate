@@ -1,5 +1,5 @@
 /**
- * RBAC v2 旅程 e2e（ADR-0008;docs/admin-rbac-v2/IMPLEMENTATION §4——全真装配）。
+ * 动态 RBAC 旅程 e2e（ADR-0008;docs/admin-rbac-dynamic/IMPLEMENTATION §4——全真装配）。
  * 旅程专属行 e2e-rbacv2-* 前缀,结束自清理（角色/节点/管理员行直删）。
  *
  * 覆盖面：

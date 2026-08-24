@@ -171,7 +171,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
 
   const session = sessionMiddleware(deps.sessions);
 
-  // RBAC v2（ADR-0008;docs/admin-rbac-v2/DESIGN §3 方案 B）：逐端点 guard(code) 声明——
+  // 动态 RBAC（ADR-0008;docs/admin-rbac-dynamic/DESIGN §3 方案 B）：逐端点 guard(code) 声明——
   // 码在各路由文件内挂载,完备性由类型签名保证。auth（公开+logout）与 me（自身域）
   // 挂裸会话件——架构测试锁死仅此两文件。
   const guard = guardFactory(session);
@@ -258,7 +258,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, guard));
   app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, guard));
   app.route('/', notificationsRoutes({ notifications: deps.notifications }, guard));
-  // RBAC v2 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
+  // 动态 RBAC 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
   app.route(
     '/',
     adminsRoutes(

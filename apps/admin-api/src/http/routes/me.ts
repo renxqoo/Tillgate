@@ -16,7 +16,7 @@ import { authContracts } from '../contracts/auth';
 export interface MeRoutesDeps {
   readonly identity: Pick<Identity, 'passwords' | 'sessions' | 'mfa'>;
   readonly admins: Pick<ControlPlane['admins'], 'find' | 'setTwoFactorEnabled'>;
-  /** RBAC v2：角色资料（me 的 role 对象）+ 权限树（menus 过滤） */
+  /** 动态 RBAC：角色资料（me 的 role 对象）+ 权限树（menus 过滤） */
   readonly rbac: Pick<ControlPlane['rbac'], 'permissions'> & {
     roles: Pick<ControlPlane['rbac']['roles'], 'find'>;
   };
@@ -74,7 +74,7 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
       twoFactorEnabled: me.twoFactorEnabled,
       totpEnabled: totp.confirmed,
       lastLoginAt: me.lastLoginAt,
-      // RBAC v2:角色对象 + 授权码集合（导航/按钮显隐的单一事实来源）
+      // 动态 RBAC:角色对象 + 授权码集合（导航/按钮显隐的单一事实来源）
       role: {
         id: me.roleId,
         code: me.role,

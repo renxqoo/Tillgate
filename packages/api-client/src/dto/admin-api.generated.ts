@@ -19,7 +19,7 @@ export interface AdminMeInfo {
   twoFactorEnabled?: boolean;
   /** TOTP 验证器已绑定（接管第二因子） */
   totpEnabled?: boolean;
-  /** RBAC v2 角色对象（roles 表） */
+  /** 动态 RBAC 角色对象（roles 表） */
   role: { id: number; code: string; name: string; /** 超管隐式全量（can() 短路;permissions 下发全码） */isSuper: boolean };
   /** 本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源） */
   permissions: string[];

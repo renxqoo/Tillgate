@@ -139,8 +139,11 @@ async function main() {
   const existingAdmin = await db.query.admins.findFirst({ where: eq(admins.email, adminEmail) });
   if (!existingAdmin) {
     const passwordHash = await hashPassword('admin12345');
-    // RBAC v2:种子管理员挂 super_admin 角色（roles 由 0082 种子保证存在）
-    const [superRole] = await db.select({ id: roles.id }).from(roles).where(eq(roles.code, 'super_admin'));
+    // 动态 RBAC:种子管理员挂 super_admin 角色（roles 由 0082 种子保证存在）
+    const [superRole] = await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.code, 'super_admin'));
     if (superRole == null) throw new Error('seed: super_admin role missing (run migrations 0082)');
     await db.insert(admins).values({
       email: adminEmail,

@@ -1,5 +1,5 @@
 /**
- * RBAC v2 store port：角色与权限树资源的读写边界（ADR-0008）。
+ * 动态 RBAC store port：角色与权限树资源的读写边界（ADR-0008）。
  * 授权策略守卫（super 不可变/内置不可删/码唯一/enforced 锁）由 application 裁决——
  * port 不藏策略;SQL 只在 adapters/postgres。
  */

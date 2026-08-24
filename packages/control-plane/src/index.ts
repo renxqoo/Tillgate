@@ -41,7 +41,7 @@ export type { BillingConfig, PricingUnit, ModelPrices } from './domain/model/mod
 export { PRICING_UNITS } from './domain/model/model';
 export type { ProviderCapabilities } from './domain/provider/provider';
 
-// ---- RBAC（ADR-0008 v2:动态角色 + 权限树;v1 静态矩阵已退役）----
+// ---- RBAC（ADR-0008:动态角色 + 权限树;静态矩阵已退役）----
 export { PERMISSION_DOMAINS } from './domain/rbac';
 export type { PermissionDomain } from './domain/rbac';
 export { ENFORCED_CODES, isEnforcedCode, granted } from './domain/rbac';

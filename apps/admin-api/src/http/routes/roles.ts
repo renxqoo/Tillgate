@@ -1,5 +1,5 @@
 /**
- * 角色管理路由（RBAC v2——docs/admin-rbac-v2/DESIGN §5;admins 域码守护）。
+ * 角色管理路由（动态 RBAC——docs/admin-rbac-dynamic/DESIGN §5;admins 域码守护）。
  * 审计:created/updated（detail 含 added/removed 授权 diff——安全取证主观察面）/deleted。
  */
 import { Hono } from 'hono';

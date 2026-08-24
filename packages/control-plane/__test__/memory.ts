@@ -1075,7 +1075,7 @@ export function createMemoryAdminStore(
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// RBAC v2 替身（roles/permissions;SQL 行为等价由 postgres.real 承担）
+// 动态 RBAC 替身（roles/permissions;SQL 行为等价由 postgres.real 承担）
 // ══════════════════════════════════════════════════════════════════════════
 
 export function createMemoryRoleStore(seed: import('../src/ports/rbac-store').RoleRecord[] = []) {

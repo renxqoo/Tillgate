@@ -1,5 +1,5 @@
 /**
- * RBAC v2 权限守卫（ADR-0008;docs/admin-rbac-v2/DESIGN §3——方案 B 逐端点声明）：
+ * 动态 RBAC 权限守卫（ADR-0008;docs/admin-rbac-dynamic/DESIGN §3——方案 B 逐端点声明）：
  *
  *   const guard = guardFactory(session);
  *   app.post('/v1/admins', guard('admins:create'), handler);
@@ -8,7 +8,7 @@
  * - 判定原语 granted(grants, code)：isSuper 短路全量 / 会话码集合包含;
  * - 会话(含授权面注入) → 码判定 → handler;401 优先于 403;
  * - 会话上下文无授权面（装配缺省属主回查形态）→ fail-closed 403。
- * 旧 domainGuard（方法分派）已随 v1 矩阵退役。
+ * 旧 domainGuard（方法分派）已随 静态矩阵退役。
  */
 import type { MiddlewareHandler } from 'hono';
 import { granted, isEnforcedCode, type AdminGrants } from '@tokenlens/control-plane';

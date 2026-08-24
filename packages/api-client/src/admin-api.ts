@@ -61,7 +61,7 @@ export interface AdminApiClient extends HttpClient {
   /** 更新管理员（PATCH /v1/admins/:id;roleId/status 不可改自身） */
   updateAdmin(id: number, input: AdminPatchBody): Promise<AdminRow>;
 
-  // ---- RBAC v2（ADR-0008）----
+  // ---- 动态 RBAC（ADR-0008）----
   /** 角色列表（含授权码集与挂载管理员计数） */
   listRoles(params?: {
     page?: number;

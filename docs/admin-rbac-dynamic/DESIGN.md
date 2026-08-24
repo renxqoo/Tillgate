@@ -1,7 +1,7 @@
-# 管理端 RBAC v2 设计基线（动态角色 + 权限树）
+# 管理端 动态 RBAC 设计基线（动态角色 + 权限树）
 
 > 状态：**定稿**（2026-08-24，讨论四轮收敛；ADR-0008 记录对 v1 D1 的反转）。
-> 实施进展见同目录 IMPLEMENTATION.md。v1（静态角色波次）见 docs/admin-rbac/。
+> 实施进展见同目录 IMPLEMENTATION.md。前波次（静态角色,已核销）见 docs/admin-rbac/。
 
 ## 1. 模型总览
 
@@ -67,7 +67,7 @@ admins: role_id FK→roles（替换并 drop 旧 role varchar 列）
 
 种子（单一流向：代码注册表 → SQL）：
 - 权限树 = 现有 sidebar 全结构 + 每页按钮节点（i18n_key 对照前端词表）；
-- 5 角色；super 无授权行；operator/finance/support/viewer 按 v1 矩阵展开
+- 5 角色；super 无授权行；operator/finance/support/viewer 按 静态矩阵展开
   （`域:write` → 该域全部动词码；v1 授权面零漂移。ops:write 无端点，自然蒸发）；
 - 既有 admins 行按旧 role 字符串映射 role_id，回填后列置 NOT NULL。
 - 撞名规则：custom 码与未来 enforced 种子冲突 → 迁移失败人工改名（绝不静默覆盖）。

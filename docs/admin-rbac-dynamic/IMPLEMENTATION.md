@@ -1,4 +1,4 @@
-# 管理端 RBAC v2 施工图
+# 管理端 动态 RBAC 施工图
 
 > 状态：**已核销**（2026-08-24,五阶段全部落地;见 §5 验收清单与 §7 数字申报）。设计基线见同目录 DESIGN.md;反转依据见 docs/adr/0008。
 
@@ -27,7 +27,7 @@
 | admin-api routes/roles.ts permissions.ts、me menus | 新写 | 审计含授权 diff |
 | error-face / openapi / api-client | 复制+微修 | 新端点登记 + 403 自动补 + 重生成 |
 | apps/admin：动态 sidebar / 角色管理页 / 权限资源页 / HasPerm / admins 页动态角色 | 新写+微修 | sidebar-items 退役；icon 注册表 |
-| e2e/admin/rbac-v2.test.ts | 新写 | 见 §4 |
+| e2e/admin/rbac-dynamic.test.ts | 新写 | 见 §4 |
 
 ## 3. 端点→码全量清单（26 文件改造的施工依据 = DESIGN §2 表）
 
@@ -45,10 +45,10 @@ DELETE → `域:delete`；动作端点按 DESIGN §2 原词表。逐文件对照
   session join 注入；roles/permissions 路由契约（含审计 diff 断言）；
   既有 24 路由测试零语义漂移（helpers 的 owner fake 改为 codes 形态后全绿）；
   openapi 封闭表 + 产物重生成。
-- e2e（rbac-v2.test.ts）：动态建角色（绑 users:read + funds:adjust）→ 授权管理员登入 →
+- e2e（rbac-dynamic.test.ts）：动态建角色（绑 users:read + funds:adjust）→ 授权管理员登入 →
   读放行/写拒绝 → 改绑（加码）即时生效 → 停用权限 kill-switch → 角色停用整组下线 →
   enforced 节点锁（改 code/删除被拒）→ 审计 diff 断言 → 自清理。
-- 既有 e2e/admin/journey + rbac.test.ts 回归：种子等价 v1 矩阵 ⇒ 行为零漂移。
+- 既有 e2e/admin/journey + rbac.test.ts 回归：种子等价 静态矩阵 ⇒ 行为零漂移。
 
 ## 5. 阶段切片（每阶段独立提交 + 四门全绿）
 
@@ -57,7 +57,7 @@ DELETE → `域:delete`；动作端点按 DESIGN §2 原词表。逐文件对照
 3. **v2-3 admin-api**：session join + guardFactory + 26 文件挂码 + roles/permissions/
    me-menus 端点 + openapi/错误码 + helpers/既有测试改造。
 4. **v2-4 前端**：api-client + 动态 sidebar + 两新页 + HasPerm + i18n + admins 页动态角色。
-5. **v2-5 e2e + 收口**：rbac-v2 旅程 + 仓库级四门 + 文档推进「已核销」。
+5. **v2-5 e2e + 收口**：rbac-dynamic 旅程 + 仓库级四门 + 文档推进「已核销」。
 
 ## 6. 验收清单（收口核销用）
 

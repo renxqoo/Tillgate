@@ -1,5 +1,5 @@
 /**
- * RBAC v2 契约测试（ADR-0008;docs/admin-rbac-v2/DESIGN）：
+ * 动态 RBAC 契约测试（ADR-0008;docs/admin-rbac-dynamic/DESIGN）：
  *   1. enforced 注册表封闭性——41 码全量、无重复、域词表合法、与 0082 迁移种子逐码对账
  *      （迁移 SQL 文本解析,双源一致性锁死——种子漂移即红）;
  *   2. granted() 判定原语（isSuper 短路 / 集合包含 / 未知码拒绝）;

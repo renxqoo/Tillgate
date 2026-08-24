@@ -22,7 +22,7 @@ export const adminMeInfoSchema = z
         name: z.string(),
         isSuper: z.boolean().describe('超管隐式全量（can() 短路;permissions 下发全码）'),
       })
-      .describe('RBAC v2 角色对象（roles 表）'),
+      .describe('动态 RBAC 角色对象（roles 表）'),
     permissions: z
       .array(z.string())
       .describe('本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源）'),

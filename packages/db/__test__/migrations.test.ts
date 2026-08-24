@@ -37,7 +37,7 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 83(0000-0082,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = RBAC v2 权限树/角色;0083 = drop admins.role 旧列)', () => {
+  it('条目总数 = 83(0000-0082,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = 动态 RBAC 权限树/角色;0083 = drop admins.role 旧列)', () => {
     expect(journalTags.length).toBe(83);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
     expect(journalTags.at(-1)).toBe('0083_drop_admins_role');

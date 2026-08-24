@@ -1,5 +1,5 @@
 /**
- * 管理员管理契约（RBAC v2——docs/admin-rbac-v2;角色经 roleId FK,词表在 roles 表）。
+ * 管理员管理契约（动态 RBAC——docs/admin-rbac-dynamic;角色经 roleId FK,词表在 roles 表）。
  * 密码强度策略单源在 identity（credentials.register 内校验,契约层不重复）。
  */
 import { z } from 'zod';

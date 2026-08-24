@@ -311,7 +311,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     },
   });
 
-  // RBAC v2 启动对账（ADR-0008）:代码侧 enforced 注册表 ⊆ DB 活动码——
+  // 动态 RBAC 启动对账（ADR-0008）:代码侧 enforced 注册表 ⊆ DB 活动码——
   // 发版新增码忘了补种子即拒启（绝不静默全站 403）;DB 不可达仅告警（单测装配形态）。
   void controlPlane.rbac.permissions
     .activeCodes()
