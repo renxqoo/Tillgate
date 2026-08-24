@@ -18,10 +18,13 @@ export interface OpsOrdersRoutesDeps {
   readonly orderCloseReason: string;
 }
 
-export function opsOrdersRoutes(deps: OpsOrdersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function opsOrdersRoutes(
+  deps: OpsOrdersRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/payment-orders', session, async (c) => {
+  app.get('/v1/payment-orders', guard('funds:read'), async (c) => {
     const query = parseListQuery(c.req.query(), ORDER_SORTS, 'createdAt');
     const result = await deps.paymentAdmin.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -33,7 +36,7 @@ export function opsOrdersRoutes(deps: OpsOrdersRoutesDeps, session: MiddlewareHa
     return c.json(listEnvelope(result.rows.map(toOrderWireRow), result.total, query));
   });
 
-  app.post('/v1/payment-orders/:id/close', session, async (c) => {
+  app.post('/v1/payment-orders/:id/close', guard('funds:close'), async (c) => {
     // uuid 形状守卫复用 billing 域参数面(同正则单一真相)
     const orderId = requestIdParam(c.req.param('id'));
     return c.json(await deps.paymentAdmin.close({ orderId, reason: deps.orderCloseReason }));

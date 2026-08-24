@@ -92,6 +92,33 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
     errors: [401, 404],
   },
   {
+    method: 'get',
+    path: '/v1/me/menus',
+    tag: 'me',
+    summary: '本人菜单树（group+page 两级,按授权过滤——sidebar 数据源）',
+    response: {
+      schema: z.object({
+        groups: z.array(
+          z.object({
+            id: z.number(),
+            i18nKey: z.string().nullable(),
+            name: z.string(),
+            items: z.array(
+              z.object({
+                id: z.number(),
+                i18nKey: z.string().nullable(),
+                name: z.string(),
+                path: z.string().nullable(),
+                icon: z.string().nullable(),
+                code: z.string().nullable(),
+              }),
+            ),
+          }),
+        ),
+      }),
+    },
+  },
+  {
     method: 'post',
     path: '/v1/me/password',
     tag: 'me',

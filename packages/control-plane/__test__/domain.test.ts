@@ -157,10 +157,12 @@ describe('模型创建校验', () => {
     },
     {
       strategy: 'schedule',
-      params: { windows: [{ start: '08:00', end: '09:00', unitPrice: '1', label: 'x'.repeat(33) }] },
+      params: {
+        windows: [{ start: '08:00', end: '09:00', unitPrice: '1', label: 'x'.repeat(33) }],
+      },
     },
   ])('非法 schedule 窗口 → invalid_model_input', (billingConfig) => {
-    expect(() => validateModelCreate({ ...base, billingConfig }) ).toThrowError(
+    expect(() => validateModelCreate({ ...base, billingConfig })).toThrowError(
       expect.objectContaining({ code: 'control_plane.invalid_model_input' }),
     );
   });

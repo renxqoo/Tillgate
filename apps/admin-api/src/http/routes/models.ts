@@ -16,11 +16,14 @@ export interface ModelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'models'>;
 }
 
-export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function modelsRoutes(
+  deps: ModelsRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
   const models = deps.controlPlane.models;
 
-  app.get('/v1/models', session, async (c) => {
+  app.get('/v1/models', guard('catalog:read'), async (c) => {
     const query = parseListQuery(c.req.query(), MODEL_SORTS, 'createdAt');
     // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
     const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
@@ -38,7 +41,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
     return c.json(listEnvelope(rows, result.total, query));
   });
 
-  app.post('/v1/models', session, async (c) => {
+  app.post('/v1/models', guard('catalog:create'), async (c) => {
     const body = modelsContracts.create.parse(await c.req.json());
     const row = await models.create({
       ctx: controlContextOf(c),
@@ -62,7 +65,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
     return c.json(toModelWireRow(row), 201);
   });
 
-  app.patch('/v1/models/:id', session, async (c) => {
+  app.patch('/v1/models/:id', guard('catalog:update'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = modelsContracts.update.parse(await c.req.json());
     const priceSet =
@@ -105,18 +108,18 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
     return c.json(toModelWireRow(row));
   });
 
-  app.delete('/v1/models/:id', session, async (c) => {
+  app.delete('/v1/models/:id', guard('catalog:delete'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await models.delete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回下架态）；在册行调用 → 404 */
-  app.post('/v1/models/:id/restore', session, async (c) => {
+  app.post('/v1/models/:id/restore', guard('catalog:restore'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await models.undelete({ ctx: controlContextOf(c), mappingId: id }));
   });
 
-  app.post('/v1/models/:id/channels', session, async (c) => {
+  app.post('/v1/models/:id/channels', guard('catalog:bind'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = modelsContracts.bind.parse(await c.req.json());
     const result = await models.bindChannels({
@@ -127,7 +130,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps, session: MiddlewareHandler<
     return c.json({ ok: true, bound: result.bound });
   });
 
-  app.post('/v1/models/:id/test', session, async (c) => {
+  app.post('/v1/models/:id/test', guard('catalog:test'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await models.probe(id));
   });

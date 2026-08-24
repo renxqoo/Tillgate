@@ -17,6 +17,7 @@ import { adminsContracts } from '../contracts/admins';
 import { authEndpoints } from './auth';
 import { usersEndpoints } from './users';
 import { adminsEndpoints, adminRowSchema } from './admins';
+import { rbacEndpoints, roleRowSchema, permissionNodeSchema } from './rbac';
 import { controlPlaneEndpoints } from './control-plane';
 import { modelsEndpoints } from './models';
 import { catalogEndpoints } from './catalog';
@@ -70,6 +71,7 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
   ...authEndpoints,
   ...usersEndpoints,
   ...adminsEndpoints,
+  ...rbacEndpoints,
   ...controlPlaneEndpoints,
   ...modelsEndpoints,
   ...catalogEndpoints,
@@ -86,6 +88,8 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
 export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('AdminMeInfo', adminMeInfoSchema, 'me'),
   responseComponent('AdminRow', adminRowSchema, 'admins'),
+  responseComponent('RoleRow', roleRowSchema, 'roles'),
+  responseComponent('PermissionNode', permissionNodeSchema, 'permissions'),
   requestBody(
     'AdminCreateBody',
     adminsContracts.create,
@@ -321,7 +325,10 @@ export function buildAdminOpenApiDocument(): JsonSchema {
       },
     };
     const codes = new Set(endpoint.errors ?? []);
-    if (endpoint.auth !== 'public') codes.add(401);
+    if (endpoint.auth !== 'public') {
+      codes.add(401);
+      codes.add(403); // v2:全部受护端点经 guard(code),无权 403
+    }
     for (const code of [...codes].toSorted((a, b) => a - b)) {
       responses[String(code)] = {
         description: `错误响应（统一信封 { error: { code, message, context? } }）`,

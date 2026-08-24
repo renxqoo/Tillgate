@@ -1,6 +1,6 @@
 /** facade admins 面装配（G2——从 control-plane.ts 抽出以守 500 行指引） */
 import type { Db } from '@tokenlens/db';
-import type { AdminGrants } from '../../domain/rbac';
+import type { AdminAccess } from '../../domain/rbac';
 import type {
   AdminListQuery,
   AdminListResult,
@@ -20,7 +20,7 @@ import { updateAdmin } from './update-admin';
 export interface AdminsSurface {
   find(id: number): Promise<AdminRecord | null>;
   findByEmail(email: string): Promise<AdminRecord | null>;
-  findGrants(adminId: number): Promise<AdminGrants | null>;
+  findAccess(adminId: number): Promise<AdminAccess | null>;
   touchLastLogin(adminId: number): Promise<void>;
   setTwoFactorEnabled(input: { adminId: number; enabled: boolean }): Promise<void>;
   list(query: AdminListQuery): Promise<AdminListResult>;
@@ -34,7 +34,7 @@ export function composeAdminsSurface(db: Db, store: AdminStore): AdminsSurface {
   return {
     find: (id) => findAdmin(deps, id),
     findByEmail: (email) => findAdminByEmail(deps, email),
-    findGrants: (adminId) => store.findGrants(db, adminId),
+    findAccess: (adminId) => store.findAccess(db, adminId),
     touchLastLogin: (adminId) => touchLastLogin(deps, adminId),
     setTwoFactorEnabled: (input) => setTwoFactorEnabled(deps, input),
     list: (query) => listAdmins(deps, query),

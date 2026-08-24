@@ -575,6 +575,13 @@
       "when": 1787966400000,
       "tag": "0082_rbac_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787966460000,
+      "tag": "0083_drop_admins_role",
+      "breakpoints": true
     }
   ]
 }

@@ -17,10 +17,13 @@ export interface OpsLogsRoutesDeps {
   readonly now: () => Date;
 }
 
-export function opsLogsRoutes(deps: OpsLogsRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function opsLogsRoutes(
+  deps: OpsLogsRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/audit-logs', session, async (c) => {
+  app.get('/v1/audit-logs', guard('ops:read'), async (c) => {
     const query = parseListQuery(c.req.query(), AUDIT_SORTS, 'createdAt');
     const result = await deps.observability.audit.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -32,7 +35,7 @@ export function opsLogsRoutes(deps: OpsLogsRoutesDeps, session: MiddlewareHandle
     return c.json(listEnvelope(result.rows.map(toAuditWireRow), result.total, query));
   });
 
-  app.get('/v1/logs', session, async (c) => {
+  app.get('/v1/logs', guard('ops:read'), async (c) => {
     const extra = logsContracts.queryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), LOG_SORTS, 'createdAt');
     const result = await deps.observability.requestLogs.list({

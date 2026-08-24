@@ -16,11 +16,14 @@ export interface ProvidersRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'providers'>;
 }
 
-export function providersRoutes(deps: ProvidersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function providersRoutes(
+  deps: ProvidersRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
   const providers = deps.controlPlane.providers;
 
-  app.get('/v1/providers', session, async (c) => {
+  app.get('/v1/providers', guard('catalog:read'), async (c) => {
     const query = parseListQuery(c.req.query(), PROVIDER_SORTS, 'createdAt');
     // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
     const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
@@ -35,26 +38,26 @@ export function providersRoutes(deps: ProvidersRoutesDeps, session: MiddlewareHa
     return c.json(listEnvelope(result.rows.map(toProviderWireRow), result.total, query));
   });
 
-  app.post('/v1/providers', session, async (c) => {
+  app.post('/v1/providers', guard('catalog:create'), async (c) => {
     const body = providersContracts.create.parse(await c.req.json());
     const row = await providers.create({ ctx: controlContextOf(c), ...body });
     return c.json(toProviderWireRow(row), 201);
   });
 
-  app.patch('/v1/providers/:id', session, async (c) => {
+  app.patch('/v1/providers/:id', guard('catalog:update'), async (c) => {
     const id = idParam(c.req.param('id'));
     const patch = providersContracts.update.parse(await c.req.json());
     const row = await providers.update({ ctx: controlContextOf(c), providerId: id, patch });
     return c.json(toProviderWireRow(row));
   });
 
-  app.delete('/v1/providers/:id', session, async (c) => {
+  app.delete('/v1/providers/:id', guard('catalog:delete'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await providers.delete({ ctx: controlContextOf(c), providerId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回禁用态）；在册行调用 → 404 */
-  app.post('/v1/providers/:id/restore', session, async (c) => {
+  app.post('/v1/providers/:id/restore', guard('catalog:restore'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await providers.undelete({ ctx: controlContextOf(c), providerId: id }));
   });

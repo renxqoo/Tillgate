@@ -13,27 +13,30 @@ export interface FxRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'fx'>;
 }
 
-export function fxRoutes(deps: FxRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function fxRoutes(
+  deps: FxRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
   const fx = deps.controlPlane.fx;
 
-  app.get('/v1/fx/catalog', session, async (c) => c.json(await fx.state()));
+  app.get('/v1/fx/catalog', guard('catalog:read'), async (c) => c.json(await fx.state()));
 
-  app.post('/v1/fx/catalog/refresh', session, async (c) => {
+  app.post('/v1/fx/catalog/refresh', guard('catalog:refresh'), async (c) => {
     const body = fxCatalogContracts.refresh.parse(await c.req.json().catch(() => ({})));
     return c.json(await fx.refresh({ ctx: controlContextOf(c), force: body.force === true }));
   });
 
-  app.put('/v1/fx/catalog/override', session, async (c) => {
+  app.put('/v1/fx/catalog/override', guard('catalog:update'), async (c) => {
     const body = fxCatalogContracts.override.parse(await c.req.json());
     return c.json(await fx.setOverride({ ctx: controlContextOf(c), rate: body.rate }));
   });
 
-  app.delete('/v1/fx/catalog/override', session, async (c) =>
+  app.delete('/v1/fx/catalog/override', guard('catalog:update'), async (c) =>
     c.json(await fx.clearOverride({ ctx: controlContextOf(c) })),
   );
 
-  app.put('/v1/fx/catalog/buffer', session, async (c) => {
+  app.put('/v1/fx/catalog/buffer', guard('catalog:update'), async (c) => {
     const body = fxCatalogContracts.buffer.parse(await c.req.json());
     return c.json(await fx.setBuffer({ ctx: controlContextOf(c), bufferPct: body.bufferPct }));
   });

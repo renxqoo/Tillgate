@@ -5,7 +5,7 @@
  * 授权策略（status/role 判定）由消费方按词表语义裁决——port 不藏策略。
  */
 import type { DbLike, DbTx } from '@tokenlens/db';
-import type { AdminGrants } from '../domain/rbac';
+import type { AdminAccess } from '../domain/rbac';
 
 export interface AdminRecord {
   readonly id: number;
@@ -52,8 +52,8 @@ export interface AdminListResult {
 export interface AdminStore {
   findById(db: DbLike, id: number): Promise<AdminRecord | null>;
   findByEmail(db: DbLike, email: string): Promise<AdminRecord | null>;
-  /** v2 会话授权面解析（一条 join:isSuper + active 码集合;管理员不存在 → null） */
-  findGrants(db: DbLike, adminId: number): Promise<AdminGrants | null>;
+  /** v2 属主回查完整面（一条 join:状态 + isSuper + active 码集合;不存在 → null） */
+  findAccess(db: DbLike, adminId: number): Promise<AdminAccess | null>;
   /** 登录成功时间戳推进（SQL now()——多副本时钟纪律） */
   touchLastLogin(db: DbLike, id: number): Promise<void>;
   /** 邮箱验证码二次登录开关（SMTP 前置校验在 app 编排——port 不判 SMTP） */

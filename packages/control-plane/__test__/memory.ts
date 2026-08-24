@@ -980,15 +980,19 @@ export function createMemoryAdminStore(
     async findByEmail(_db, email) {
       return [...rows.values()].find((r) => r.email === email) ?? null;
     },
-    async findGrants(_db, adminId) {
+    async findAccess(_db, adminId) {
       const row = rows.get(adminId);
       if (row == null) return null;
       const grants = grantsByRole.get(row.roleId);
-      if (grants == null || grants.isSuper === undefined) return { isSuper: false, codes: [] };
-      return grants.isSuper
-        ? { isSuper: true, codes: [] }
-        : { isSuper: false, codes: grants.codes };
+      const resolved =
+        grants == null
+          ? { isSuper: false, codes: [] }
+          : grants.isSuper
+            ? { isSuper: true, codes: [] }
+            : { isSuper: false, codes: grants.codes };
+      return { status: row.status, grants: resolved };
     },
+
     async touchLastLogin(_db, id) {
       const row = rows.get(id);
       if (row == null) return;

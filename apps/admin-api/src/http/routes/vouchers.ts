@@ -13,10 +13,13 @@ export interface VouchersRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
-export function vouchersRoutes(deps: VouchersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function vouchersRoutes(
+  deps: VouchersRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/vouchers/:key', session, async (c) => {
+  app.get('/v1/vouchers/:key', guard('funds:read'), async (c) => {
     const stored = await deps.controlPlane.channels.loadVoucher(c.req.param('key'));
     if (stored === null) {
       throw AdminErrors.business('voucher_not_found', {});

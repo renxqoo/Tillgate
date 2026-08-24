@@ -23,7 +23,7 @@ import { dirname, resolve } from 'node:path';
 import { eq, sql } from 'drizzle-orm';
 import { closeDb, createDb, admins, identityCredentials, identityPasswords } from '@tokenlens/db';
 import { assertPasswordPolicy, hashPassword } from '@tokenlens/identity';
-import { ADMIN_ROLES, isAdminRole } from '@tokenlens/control-plane';
+import { roles as rolesTable } from '@tokenlens/db';
 
 /** 现场生成 16 位强密码（大小写+数字；避免易混淆字符与 shell 转义烦恼） */
 function generatePassword(): string {
@@ -69,11 +69,7 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  const role = argValue('role') ?? 'super_admin';
-  if (!isAdminRole(role)) {
-    console.error(`invalid --role "${role}" (词表 = ADMIN_ROLES: ${ADMIN_ROLES.join('/')})`);
-    process.exit(1);
-  }
+  const roleCode = argValue('role') ?? 'super_admin';
   const url = process.env.DATABASE_URL;
   if (url == null || url === '') {
     console.error('DATABASE_URL is required (load .env or export it)');
@@ -93,6 +89,15 @@ async function main(): Promise<void> {
     connectionTimeoutMillis: 5_000,
     maxUses: 10_000,
   });
+  const [roleRow] = await db
+    .select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(eq(rolesTable.code, roleCode));
+  if (roleRow == null) {
+    console.error(`role "${roleCode}" not found (roles 表——先确认 0082 种子或自定义角色)`);
+    process.exit(1);
+  }
+
   try {
     const existing = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, email));
     if (existing.length > 0) {
@@ -101,7 +106,7 @@ async function main(): Promise<void> {
     }
     if (!apply) {
       console.log(
-        `dry-run: would create admin ${email} (display "${displayName}", role ${role}, password ${
+        `dry-run: would create admin ${email} (display "${displayName}", role ${roleCode}, password ${
           generated ? 'to be generated' : 'from argument/env'
         })`,
       );
@@ -114,7 +119,9 @@ async function main(): Promise<void> {
         .select({ maxId: sql<number>`coalesce(max(${admins.id}), 0)::bigint` })
         .from(admins);
       const id = Math.max(1_000_000_000, Number(maxRow?.maxId ?? 0) + 1);
-      await tx.insert(admins).values({ id, email, displayName, passwordHash: hash, role });
+      await tx
+        .insert(admins)
+        .values({ id, email, displayName, passwordHash: hash, roleId: roleRow.id });
       await tx.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);
       // 凭据冲突 = 邮箱已被其他身份占用(常见:client 侧同邮箱账号)。静默跳过会造出
       // 「创建成功但永远登不上」的废管理员——抛错回滚整个事务,提示换邮箱
@@ -138,7 +145,7 @@ async function main(): Promise<void> {
         .onConflictDoNothing({ target: identityPasswords.userId });
       return id;
     });
-    console.log(`created admin id=${created} (${email}, role ${role})`);
+    console.log(`created admin id=${created} (${email}, role ${roleCode})`);
     if (generated) {
       console.log(`one-time password (save now, will not be shown again): ${password}`);
       console.log('→ 首次登录后请立即在「账号菜单 → 修改密码」更换');

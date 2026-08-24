@@ -14,10 +14,13 @@ export interface KeysRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'adminListKeys' | 'adminPatchKey'>;
 }
 
-export function keysRoutes(deps: KeysRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function keysRoutes(
+  deps: KeysRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/admin-keys', session, async (c) => {
+  app.get('/v1/admin-keys', guard('users:read'), async (c) => {
     const extra = keysContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), KEY_SORTS, 'createdAt');
     const page = await deps.accounts.adminListKeys({
@@ -32,7 +35,7 @@ export function keysRoutes(deps: KeysRoutesDeps, session: MiddlewareHandler<Sess
     return c.json(listEnvelope(page.rows.map(toKeyWireRow), page.total, query));
   });
 
-  app.patch('/v1/admin-keys/:id', session, async (c) => {
+  app.patch('/v1/admin-keys/:id', guard('users:update'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = keysContracts.patch.parse(await c.req.json());
     const row = await deps.accounts.adminPatchKey({

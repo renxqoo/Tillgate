@@ -18,18 +18,18 @@ export interface BillingOperationsRoutesDeps {
 
 export function billingOperationsRoutes(
   deps: BillingOperationsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
 ) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/billing-operations', session, async (c) => {
+  app.get('/v1/billing-operations', guard('funds:read'), async (c) => {
     reviewContracts.deadListQuery.parse(c.req.query());
     const parts = parseListQuery(c.req.query(), ['id'], 'id');
     const page = await deps.review.listDead({ limit: parts.limit, offset: parts.offset });
     return c.json(listEnvelope(page.rows.map(toDeadCaseWireRow), page.total, parts));
   });
 
-  app.post('/v1/billing-operations/:requestId/retry', session, async (c) => {
+  app.post('/v1/billing-operations/:requestId/retry', guard('funds:retry'), async (c) => {
     const requestId = requestIdParam(c.req.param('requestId'));
     const body = reviewContracts.decision.parse(await c.req.json());
     return c.json(
@@ -44,7 +44,7 @@ export function billingOperationsRoutes(
     );
   });
 
-  app.post('/v1/billing-operations/:requestId/abandon', session, async (c) => {
+  app.post('/v1/billing-operations/:requestId/abandon', guard('funds:abandon'), async (c) => {
     const requestId = requestIdParam(c.req.param('requestId'));
     const body = reviewContracts.decision.parse(await c.req.json());
     return c.json(

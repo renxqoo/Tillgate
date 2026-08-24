@@ -41,20 +41,11 @@ export type { BillingConfig, PricingUnit, ModelPrices } from './domain/model/mod
 export { PRICING_UNITS } from './domain/model/model';
 export type { ProviderCapabilities } from './domain/provider/provider';
 
-// ---- RBAC 权限模型（docs/admin-rbac/DESIGN.md §2;词表/矩阵单一真相）----
-export {
-  ADMIN_ROLES,
-  PERMISSION_DOMAINS,
-  PERMISSION_ACTIONS,
-  permissionsOf,
-  can,
-  isAdminRole,
-  assertAdminRole,
-} from './domain/rbac';
-export type { AdminRole, PermissionDomain, PermissionAction, Permission } from './domain/rbac';
-// ---- RBAC v2（ADR-0008:动态角色 + 权限树;v1 矩阵在 admin-api 切换后删除）----
+// ---- RBAC（ADR-0008 v2:动态角色 + 权限树;v1 静态矩阵已退役）----
+export { PERMISSION_DOMAINS } from './domain/rbac';
+export type { PermissionDomain } from './domain/rbac';
 export { ENFORCED_CODES, isEnforcedCode, granted } from './domain/rbac';
-export type { EnforcedCode, AdminGrants } from './domain/rbac';
+export type { EnforcedCode, AdminGrants, AdminAccess } from './domain/rbac';
 export type {
   RoleRecord,
   RoleListQuery,

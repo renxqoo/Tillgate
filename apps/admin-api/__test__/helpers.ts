@@ -53,8 +53,8 @@ export function fakeDeps(overrides: {
     vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
       validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
-      // 与生产装配同形:属主回查搭载 role 注入（RBAC 域守卫的放行形态）
-      owner: async (adminId: number) => ({ status: 0, role: 'super_admin', adminId }),
+      // 与生产装配同形:属主回查一条 join 带回授权面（super 短路全量）
+      owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
     },
     accounts: {
       adminListUsers: async () => ({ rows: [], total: 0 }),
@@ -289,11 +289,28 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       priceHistory: notWired,
       import: notWired,
     },
+    rbac: {
+      roles: {
+        find: async () => null,
+        list: notWired,
+        create: notWired,
+        update: notWired,
+        remove: notWired,
+      },
+      permissions: {
+        tree: async () => [],
+        create: notWired,
+        update: notWired,
+        remove: notWired,
+        activeCodes: async () => [],
+      },
+    },
     // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
     // RBAC 管理面动词(list/create/update/remove)同 fake——admins 域测试覆写
     admins: {
       find: notWired,
       findByEmail: notWired,
+      findAccess: notWired,
       touchLastLogin: notWired,
       setTwoFactorEnabled: notWired,
       list: notWired,

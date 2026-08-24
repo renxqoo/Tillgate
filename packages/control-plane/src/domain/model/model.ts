@@ -76,7 +76,11 @@ function assertPrice(field: string, raw: string): void {
 /** 变体计费配置形状：variant 必须带 selector 与非空 prices 表；schedule 必须带合法窗口表 */
 function assertBillingConfig(config: BillingConfig | null | undefined): void {
   if (config == null) return;
-  if (config.strategy !== 'flat' && config.strategy !== 'variant' && config.strategy !== 'schedule') {
+  if (
+    config.strategy !== 'flat' &&
+    config.strategy !== 'variant' &&
+    config.strategy !== 'schedule'
+  ) {
     invalid({ billingConfig: { strategy: config.strategy ?? null } });
   }
   if (

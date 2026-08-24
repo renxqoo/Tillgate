@@ -23,7 +23,10 @@ export const adminRateCardRowSchema = z
 /** 费率卡下拉选项（用户绑定费率卡用;无独立端点） */
 export const rateCardOptionSchema = z
   .object({ id: z.number(), name: z.string(), coefficient: z.string() })
-  .meta({ id: 'RateCardOption', description: '费率卡下拉选项(用户绑定费率卡用,来源 AdminRateCardRow)。' });
+  .meta({
+    id: 'RateCardOption',
+    description: '费率卡下拉选项(用户绑定费率卡用,来源 AdminRateCardRow)。',
+  });
 
 /** 创建/更新回执（RateCardRecord——无 coefficient/updatedAt 列） */
 const rateCardRecordSchema = z.object({

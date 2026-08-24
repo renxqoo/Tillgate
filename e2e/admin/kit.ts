@@ -81,7 +81,7 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
     logger: assembly.logger,
     sessions: {
       validate: assembly.identity.sessions.validate,
-      owner: (adminId) => assembly.controlPlane.admins.find(adminId),
+      owner: (adminId) => assembly.controlPlane.admins.findAccess(adminId),
     },
     accounts: assembly.accounts,
     wallet: assembly.billing.wallet,

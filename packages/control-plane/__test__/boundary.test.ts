@@ -24,15 +24,11 @@ const SRC = join(import.meta.dirname, '../src');
 describe('出口面快照（有意维护的公共接口——新增导出是契约变更）', () => {
   it('index.ts 导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
-      'ADMIN_ROLES',
       'ENFORCED_CODES',
-      'PERMISSION_ACTIONS',
       'PERMISSION_DOMAINS',
       'PRICING_UNITS',
       'applyBuffer',
-      'assertAdminRole',
       'assertOperationId',
-      'can',
       'commandFingerprint',
       'compareCatalog',
       'controlPlaneErrors',
@@ -42,7 +38,6 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'freePriceConsistent',
       'goneFromCatalog',
       'granted',
-      'isAdminRole',
       'isEnforcedCode',
       'isFreeByPrice',
       'isUnpriceableSentinel',
@@ -52,7 +47,6 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'normalizeBuffer',
       'normalizeRate',
       'parseVoucherDataUrl',
-      'permissionsOf',
       'suggestExternalName',
       'toCny',
       'trimNumeric',

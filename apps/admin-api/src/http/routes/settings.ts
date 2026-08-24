@@ -13,15 +13,18 @@ export interface SettingsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'settings'>;
 }
 
-export function settingsRoutes(deps: SettingsRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function settingsRoutes(
+  deps: SettingsRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
   const billingTimezone = deps.controlPlane.settings.billingTimezone;
 
-  app.get('/v1/settings/billing-timezone', session, async (c) =>
+  app.get('/v1/settings/billing-timezone', guard('settings:read'), async (c) =>
     c.json(await billingTimezone.read()),
   );
 
-  app.put('/v1/settings/billing-timezone', session, async (c) => {
+  app.put('/v1/settings/billing-timezone', guard('settings:update'), async (c) => {
     const body = settingsContracts.billingTimezoneUpdate.parse(await c.req.json());
     return c.json(
       await billingTimezone.update({ ctx: controlContextOf(c), timezone: body.timezone }),

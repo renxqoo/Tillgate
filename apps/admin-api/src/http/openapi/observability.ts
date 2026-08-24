@@ -4,7 +4,12 @@
  * （与 presenters/{observability,ops}.ts 投影逐字段对齐——金额恒十进制字符串）。
  */
 import { z } from 'zod';
-import { logsContracts, statsContracts, tracingContracts, usageContracts } from '../contracts/observability';
+import {
+  logsContracts,
+  statsContracts,
+  tracingContracts,
+  usageContracts,
+} from '../contracts/observability';
 import { listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 
 /** 概览响应（今日北京日界 + 累计 + 渠道状态分组） */
@@ -35,7 +40,10 @@ export const statsUsageItemSchema = z
     cost: z.string(),
     upstreamCost: z.string(),
   })
-  .meta({ id: 'StatsUsageItem', description: '分组聚合行(GET /v1/stats/usage;group=user/model/channel)' });
+  .meta({
+    id: 'StatsUsageItem',
+    description: '分组聚合行(GET /v1/stats/usage;group=user/model/channel)',
+  });
 
 /** 按日趋势行 */
 export const statsTrendRowSchema = z
@@ -63,7 +71,10 @@ export const logRowSchema = z
     id: z.number(),
     requestId: z.string(),
     userId: z.number(),
-    userName: z.string().nullable().describe('用户名(displayName 优先,其次 email;LEFT JOIN users,可能为 null)'),
+    userName: z
+      .string()
+      .nullable()
+      .describe('用户名(displayName 优先,其次 email;LEFT JOIN users,可能为 null)'),
     apiKeyId: z.number().nullable().describe('v2 无来源列,恒 null'),
     method: z.string(),
     path: z.string(),
@@ -79,7 +90,10 @@ export const logRowSchema = z
       })
       .nullable(),
     attempts: z.number().describe('重试次数(v1 快照口径;v2 presenter 暂不输出——展示兜底为 1 次)'),
-    sourceIp: z.string().nullable().describe('来源 IP(X-Forwarded-For 首段 / X-Real-IP / socket,鉴权前记录)'),
+    sourceIp: z
+      .string()
+      .nullable()
+      .describe('来源 IP(X-Forwarded-For 首段 / X-Real-IP / socket,鉴权前记录)'),
     createdAt: z.string(),
   })
   .meta({ id: 'LogRow', description: '请求日志行(GET /v1/logs;30 天窗内置)' });
@@ -111,11 +125,16 @@ export const adminUsageRowSchema = z
     clientTtftMs: z.number().nullable().optional(),
     stream: z.boolean(),
     streamAborted: z.boolean(),
-    estimated: z.boolean().describe('估算结算标记(2026-08-17 政策):用户取消/完成缺 usage 按估算扣款'),
+    estimated: z
+      .boolean()
+      .describe('估算结算标记(2026-08-17 政策):用户取消/完成缺 usage 按估算扣款'),
     estimateReason: z.string().nullable().describe('估算归属(estimated=true 时有值)'),
     createdAt: z.string(),
   })
-  .meta({ id: 'AdminUsageRow', description: '管理端用量明细行(GET /v1/usage-logs;恒 status=0 只看已计费行)——估算扣款一等字段' });
+  .meta({
+    id: 'AdminUsageRow',
+    description: '管理端用量明细行(GET /v1/usage-logs;恒 status=0 只看已计费行)——估算扣款一等字段',
+  });
 
 /** 审计日志行（detail 为 JSON 对象或字符串;adminSubject v2 无 join 来源恒 null） */
 export const auditLogRowSchema = z
@@ -172,7 +191,10 @@ export const traceSpanRowSchema = z
       }),
     ),
   })
-  .meta({ id: 'TraceSpanRow', description: 'span 落库行的 JSON 形态(时间为 ISO 字符串;attributes 为归一化原始键值)。' });
+  .meta({
+    id: 'TraceSpanRow',
+    description: 'span 落库行的 JSON 形态(时间为 ISO 字符串;attributes 为归一化原始键值)。',
+  });
 
 /** trace 详情 */
 export const traceDetailDtoSchema = z
@@ -182,7 +204,10 @@ export const traceDetailDtoSchema = z
     startMs: z.number(),
     durationMs: z.number(),
   })
-  .meta({ id: 'TraceDetailDto', description: 'trace 详情(GET /v1/tracing/traces/:traceId 与 /by-request/:requestId)。' });
+  .meta({
+    id: 'TraceDetailDto',
+    description: 'trace 详情(GET /v1/tracing/traces/:traceId 与 /by-request/:requestId)。',
+  });
 
 /** 渠道健康聚合（topology 行） */
 export const channelHealthRowSchema = z
@@ -202,7 +227,10 @@ export const traceTopologyResponseSchema = z
     hours: z.number().describe('回看窗口（钳位 1..168）'),
     channels: z.array(channelHealthRowSchema),
   })
-  .meta({ id: 'TraceTopologyResponse', description: 'GET /v1/tracing/topology 响应(hours=回看窗口)。' });
+  .meta({
+    id: 'TraceTopologyResponse',
+    description: 'GET /v1/tracing/topology 响应(hours=回看窗口)。',
+  });
 
 /** tracing 存储统计响应 */
 export const tracingStatsResponseSchema = z
@@ -286,7 +314,11 @@ export const observabilityEndpoints: readonly OpenApiEndpoint[] = [
     tag: 'stats',
     summary: '渠道首字延迟 P50/P95（hours 容错钳位 1..720,缺省 24）',
     query: z.object({
-      hours: z.coerce.number().int().optional().describe('回看小时窗（非数/缺省 → 24,越界钳到 [1,720]）'),
+      hours: z.coerce
+        .number()
+        .int()
+        .optional()
+        .describe('回看小时窗（非数/缺省 → 24,越界钳到 [1,720]）'),
     }),
     response: { schema: z.object({ rows: z.array(channelTtftRowSchema) }) },
     errors: [401],
@@ -306,7 +338,11 @@ export const observabilityEndpoints: readonly OpenApiEndpoint[] = [
     tag: 'tracing',
     summary: '单 trace 瀑布详情',
     params: [
-      { name: 'traceId', description: 'trace id（regex 白名单守卫在存储侧）', schema: z.string().min(1).max(64) },
+      {
+        name: 'traceId',
+        description: 'trace id（regex 白名单守卫在存储侧）',
+        schema: z.string().min(1).max(64),
+      },
     ],
     response: { schema: traceDetailDtoSchema },
     errors: [401, 404],
@@ -316,9 +352,7 @@ export const observabilityEndpoints: readonly OpenApiEndpoint[] = [
     path: '/v1/tracing/by-request/:requestId',
     tag: 'tracing',
     summary: '按 requestId 关联 trace 详情（计费复核入口）',
-    params: [
-      { name: 'requestId', description: '计费请求 id', schema: z.string().min(1).max(64) },
-    ],
+    params: [{ name: 'requestId', description: '计费请求 id', schema: z.string().min(1).max(64) }],
     response: { schema: traceDetailDtoSchema },
     errors: [401, 404],
   },

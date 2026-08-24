@@ -22,6 +22,7 @@ import { deletePermission } from './delete-permission';
 
 export interface RbacSurface {
   readonly roles: {
+    find(roleId: number): Promise<RoleRecord | null>;
     list(query: RoleListQuery): Promise<RoleListResult>;
     create(input: CreateRoleRow): Promise<RoleRecord>;
     update(
@@ -45,6 +46,7 @@ export function composeRbacSurface(
   const deps = { db, stores };
   return {
     roles: {
+      find: (roleId) => stores.role.findById(db, roleId),
       list: (query) => listRoles(deps, query),
       create: (input) => createRole(deps, input),
       update: (input) => updateRole(deps, input),

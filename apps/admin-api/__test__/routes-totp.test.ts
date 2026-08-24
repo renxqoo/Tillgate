@@ -54,7 +54,8 @@ const adminRecord = {
   email: 'ops@tokenlens.dev',
   displayName: 'Ops',
   status: 0,
-  role: 'super_admin' as const,
+  roleId: 1,
+  role: 'super_admin',
   twoFactorEnabled: true, // 邮箱码开着也要被 TOTP 接管——防降级
   lastLoginAt: null,
   createdAt: new Date(0),
@@ -207,6 +208,31 @@ describe('TOTP 登录第二因子', () => {
 describe('TOTP 绑定三动词(me 会话组)', () => {
   function meHarness(mfaImpl: ReturnType<typeof mfa>): Hono<SessionEnv> {
     const deps: MeRoutesDeps = {
+      rbac: {
+        roles: {
+          find: async () => ({
+            id: 1,
+            code: 'super_admin',
+            name: '超级管理员',
+            description: null,
+            status: 0,
+            isSuper: true,
+            isBuiltin: true,
+            createdAt: new Date(0),
+          }),
+        },
+        permissions: {
+          tree: async () => [],
+          create: async () => {
+            throw new Error('fake');
+          },
+          update: async () => {
+            throw new Error('fake');
+          },
+          remove: async () => ({ ok: true as const }),
+          activeCodes: async () => [],
+        },
+      },
       identity: {
         mfa: mfaImpl,
         passwords: {

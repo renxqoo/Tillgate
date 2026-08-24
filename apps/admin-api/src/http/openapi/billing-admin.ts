@@ -50,7 +50,10 @@ export const batchCreatedSchema = z
     batch: z.object({ id: z.number(), name: z.string(), amount: z.string(), total: z.number() }),
     codes: z.array(z.string()).describe('明文兑换码(仅创建响应返回一次,库内只有哈希)'),
   })
-  .meta({ id: 'BatchCreated', description: '批次创建回执(POST /v1/redeem-batches;明文码仅此一次返回)' });
+  .meta({
+    id: 'BatchCreated',
+    description: '批次创建回执(POST /v1/redeem-batches;明文码仅此一次返回)',
+  });
 
 /** 兑换码行（哈希脱敏——明文不可再现） */
 export const redeemCodeRowSchema = z
@@ -62,7 +65,10 @@ export const redeemCodeRowSchema = z
     usedAt: z.string().nullable(),
     expiresAt: z.string().nullable(),
   })
-  .meta({ id: 'RedeemCodeRow', description: '兑换码行(GET /v1/redeem-batches/:id/codes;codeMasked 哈希脱敏)' });
+  .meta({
+    id: 'RedeemCodeRow',
+    description: '兑换码行(GET /v1/redeem-batches/:id/codes;codeMasked 哈希脱敏)',
+  });
 
 /** 管理面订阅列表行 */
 export const adminSubscriptionRowSchema = z
@@ -99,7 +105,10 @@ export const deadCaseRowSchema = z
     reservedAmount: z.string().optional().describe('冻结金额(元,numeric 字符串;可缺省)'),
     createdAt: z.string(),
   })
-  .meta({ id: 'DeadCaseRow', description: '死单行(status=dead 专属列表;reservedAmount 仅非 null 时输出)。' });
+  .meta({
+    id: 'DeadCaseRow',
+    description: '死单行(status=dead 专属列表;reservedAmount 仅非 null 时输出)。',
+  });
 
 /** 订阅续约/变更回执（billing SubscribeResult wire 形状） */
 const subscribeResultSchema = z.object({
@@ -342,7 +351,9 @@ export const billingAdminEndpoints: readonly OpenApiEndpoint[] = [
     path: '/v1/payment-orders/:id/close',
     tag: 'payment-orders',
     summary: '手动关单（无请求体;关单理由装配注入;已付/已入账/已关 → 409）',
-    params: [{ name: 'id', description: '订单 id（uuid 形状）', schema: z.string().min(16).max(64) }],
+    params: [
+      { name: 'id', description: '订单 id（uuid 形状）', schema: z.string().min(16).max(64) },
+    ],
     response: { schema: okTrue },
     errors: [401, 404, 409],
   },

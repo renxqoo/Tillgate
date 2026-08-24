@@ -14,10 +14,13 @@ export interface OpsTasksRoutesDeps {
   readonly generationTasks: Pick<GenerationTaskStore, 'adminList' | 'settledAmounts'>;
 }
 
-export function opsTasksRoutes(deps: OpsTasksRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function opsTasksRoutes(
+  deps: OpsTasksRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/generation-tasks', session, async (c) => {
+  app.get('/v1/generation-tasks', guard('ops:read'), async (c) => {
     const query = tasksContracts.list.parse(c.req.query());
     const result = await deps.generationTasks.adminList({
       ...(query.kind !== undefined ? { kind: query.kind } : {}),

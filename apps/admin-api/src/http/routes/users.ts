@@ -33,10 +33,13 @@ export interface UsersRoutesDeps {
   readonly postAudit: PostAudit;
 }
 
-export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function usersRoutes(
+  deps: UsersRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/users', session, async (c) => {
+  app.get('/v1/users', guard('users:read'), async (c) => {
     const extra = usersContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), USER_SORTS, 'createdAt');
     const page = await deps.accounts.adminListUsers({
@@ -56,7 +59,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     return c.json(listEnvelope(rows, page.total, query));
   });
 
-  app.get('/v1/users/:id', session, async (c) => {
+  app.get('/v1/users/:id', guard('users:read'), async (c) => {
     const id = idParam(c.req.param('id'));
     const profile = await deps.accounts.adminGetUser(id);
     return c.json(
@@ -68,7 +71,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     );
   });
 
-  app.patch('/v1/users/:id', session, async (c) => {
+  app.patch('/v1/users/:id', guard('users:update'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.patch.parse(await c.req.json());
     const { creditLimit, ...patch } = body;
@@ -83,7 +86,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     return c.json({ id });
   });
 
-  app.post('/v1/users/:id/set-password', session, async (c) => {
+  app.post('/v1/users/:id/set-password', guard('users:set-password'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = authContracts.setPassword.parse(await c.req.json());
     const profile = await deps.accounts.adminGetUser(id);

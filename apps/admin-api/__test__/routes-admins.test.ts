@@ -17,7 +17,7 @@ const record = {
   email: 'new@tokenlens.dev',
   displayName: 'New',
   status: 0,
-  role: 'operator' as 'operator' | 'viewer',
+  roleId: 2,
   twoFactorEnabled: false,
   lastLoginAt: null,
   createdAt: new Date(0),
@@ -49,7 +49,7 @@ const createBody = {
   email: 'New@TokenLens.dev ',
   displayName: 'New',
   password: 'initial-pass-123',
-  role: 'operator',
+  roleId: 2,
 };
 
 describe('GET /v1/admins（统一列表契约）', () => {
@@ -67,7 +67,7 @@ describe('GET /v1/admins（统一列表契约）', () => {
     };
     expect(body).toMatchObject({ total: 1, page: 2, pageSize: 5 });
     expect(body.rows).toHaveLength(1);
-    expect(body.rows[0]).toMatchObject({ id: record.id, role: 'operator', status: 0 });
+    expect(body.rows[0]).toMatchObject({ id: record.id, roleId: 2, status: 0 });
     expect(Object.keys(body.rows[0]!)).not.toContain('passwordHash');
     expect(spies.list).toHaveBeenCalledWith({
       q: 'ops',
@@ -108,7 +108,7 @@ describe('GET /v1/admins（统一列表契约）', () => {
       ...base,
       sessions: {
         validate: base.sessions.validate,
-        owner: async () => ({ status: 0, role: 'viewer' }),
+        owner: async () => ({ status: 0, grants: { isSuper: false, codes: [] } }),
       },
     });
     const res = await viewerApp.request('/v1/admins', { headers: authHeader() });
@@ -128,11 +128,11 @@ describe('POST /v1/admins（双动词编排）', () => {
       body: JSON.stringify(createBody),
     });
     expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({ id: record.id, role: 'operator' });
+    expect(await res.json()).toMatchObject({ id: record.id, roleId: 2 });
     expect(spies.create).toHaveBeenCalledWith({
       email: 'new@tokenlens.dev',
       displayName: 'New',
-      role: 'operator',
+      roleId: 2,
     });
     expect(spies.register).toHaveBeenCalledWith({
       userId: record.id,
@@ -181,7 +181,7 @@ describe('POST /v1/admins（双动词编排）', () => {
     const badRole = await app.request('/v1/admins', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ ...createBody, role: 'boss' }),
+      body: JSON.stringify({ ...createBody, roleId: 'boss' as never }),
     });
     expect(badRole.status).toBe(400);
     const missing = await app.request('/v1/admins', {
@@ -195,17 +195,17 @@ describe('POST /v1/admins（双动词编排）', () => {
 
 describe('PATCH /v1/admins/:id', () => {
   it('改角色/封禁透传(update 收窄补丁);未命中 404 admin.admin_not_found', async () => {
-    const { app, spies } = wire({ update: async () => ({ ...record, role: 'viewer', status: 1 }) });
+    const { app, spies } = wire({ update: async () => ({ ...record, roleId: 5, status: 1 }) });
     const res = await app.request(`/v1/admins/${record.id}`, {
       method: 'PATCH',
       headers: json,
-      body: JSON.stringify({ role: 'viewer', status: 1 }),
+      body: JSON.stringify({ roleId: 5, status: 1 }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ role: 'viewer', status: 1 });
+    expect(await res.json()).toMatchObject({ roleId: 5, status: 1 });
     expect(spies.update).toHaveBeenCalledWith({
       adminId: record.id,
-      role: 'viewer',
+      roleId: 5,
       status: 1,
     });
 
@@ -213,7 +213,7 @@ describe('PATCH /v1/admins/:id', () => {
     const missing = await missApp.request('/v1/admins/999', {
       method: 'PATCH',
       headers: json,
-      body: JSON.stringify({ role: 'viewer' }),
+      body: JSON.stringify({ roleId: 5 }),
     });
     expect(missing.status).toBe(404);
     expect(((await missing.json()) as { error: { code: string } }).error.code).toBe(
@@ -243,7 +243,7 @@ describe('PATCH /v1/admins/:id', () => {
     const self = await app.request(`/v1/admins/${ADMIN_ID}`, {
       method: 'PATCH',
       headers: json,
-      body: JSON.stringify({ role: 'viewer' }),
+      body: JSON.stringify({ roleId: 5 }),
     });
     expect(self.status).toBe(400);
     expect(((await self.json()) as { error: { code: string } }).error.code).toBe(

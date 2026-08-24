@@ -20,9 +20,7 @@ export const postgresSettingsStore: SettingsStore = {
       columns: { value: true },
     });
     const value = (row?.value ?? null) as BillingTimezoneValue | null;
-    return typeof value?.timezone === 'string' && value.timezone.length > 0
-      ? value.timezone
-      : null;
+    return typeof value?.timezone === 'string' && value.timezone.length > 0 ? value.timezone : null;
   },
 
   async updateBillingTimezone(db, input) {

@@ -48,7 +48,10 @@ const catalogComparisonItemSchema = z.object({
   driftPct: z.number().nullable().describe('目录换算价相对我们卖价的偏离(%,正=上游比我们贵)'),
   isFree: z.boolean().describe('免费判定：目录输入输出价均为 0'),
   priceWarning: z.boolean().describe('目录收费而我们免费卖 → 亏钱风险，页面标红'),
-  prefillInputCny: z.string().nullable().describe('预填输入价(按 effectiveRate 换算;汇率不可用为 null)'),
+  prefillInputCny: z
+    .string()
+    .nullable()
+    .describe('预填输入价(按 effectiveRate 换算;汇率不可用为 null)'),
   prefillOutputCny: z.string().nullable(),
 });
 

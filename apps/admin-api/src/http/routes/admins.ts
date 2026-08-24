@@ -39,6 +39,7 @@ function adminRowOf(record: AdminRecord) {
     id: record.id,
     email: record.email,
     displayName: record.displayName,
+    roleId: record.roleId,
     role: record.role,
     status: record.status,
     twoFactorEnabled: record.twoFactorEnabled,
@@ -47,10 +48,13 @@ function adminRowOf(record: AdminRecord) {
   };
 }
 
-export function adminsRoutes(deps: AdminsRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function adminsRoutes(
+  deps: AdminsRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/admins', session, async (c) => {
+  app.get('/v1/admins', guard('admins:read'), async (c) => {
     const query = parseListQuery(c.req.query(), ADMIN_SORTS, 'id');
     const page = await deps.admins.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -62,12 +66,12 @@ export function adminsRoutes(deps: AdminsRoutesDeps, session: MiddlewareHandler<
     return c.json(listEnvelope(page.rows.map(adminRowOf), page.total, query));
   });
 
-  app.post('/v1/admins', session, async (c) => {
+  app.post('/v1/admins', guard('admins:create'), async (c) => {
     const body = adminsContracts.create.parse(await c.req.json());
     const created = await deps.admins.create({
       email: body.email,
       displayName: body.displayName ?? null,
-      role: body.role,
+      roleId: body.roleId,
     });
     try {
       await deps.identity.credentials.register({
@@ -92,22 +96,22 @@ export function adminsRoutes(deps: AdminsRoutesDeps, session: MiddlewareHandler<
       action: 'admin.created',
       targetType: 'admin',
       targetId: created.id,
-      detail: { email: created.email, role: created.role },
+      detail: { email: created.email, roleId: created.roleId },
     });
     return c.json(adminRowOf(created), 201);
   });
 
-  app.patch('/v1/admins/:id', session, async (c) => {
+  app.patch('/v1/admins/:id', guard('admins:update'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = adminsContracts.patch.parse(await c.req.json());
-    // 自改守卫：role/status 不可改自身（displayName 可改——无权限面影响,DESIGN D6）
-    if (id === c.get('adminId') && (body.role !== undefined || body.status !== undefined)) {
+    // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响,D6）
+    if (id === c.get('adminId') && (body.roleId !== undefined || body.status !== undefined)) {
       throw AdminErrors.business('cannot_modify_self', {});
     }
     const updated = await deps.admins.update({
       adminId: id,
       ...(body.displayName !== undefined ? { displayName: body.displayName } : {}),
-      ...(body.role !== undefined ? { role: body.role } : {}),
+      ...(body.roleId !== undefined ? { roleId: body.roleId } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
     });
     if (updated == null) {
@@ -121,7 +125,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps, session: MiddlewareHandler<
       targetId: id,
       detail: {
         ...(body.displayName !== undefined ? { displayName: body.displayName } : {}),
-        ...(body.role !== undefined ? { role: body.role } : {}),
+        ...(body.roleId !== undefined ? { roleId: body.roleId } : {}),
         ...(body.status !== undefined ? { status: body.status } : {}),
       },
     });

@@ -11,14 +11,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
-import { admins, identityCredentials, identityPasswords } from '@tokenlens/db';
-import {
-  call,
-  jsonHeaders,
-  setupE2EAdmin,
-  teardownE2EAdmin,
-  type E2EAdminWorld,
-} from './kit';
+import { admins, identityCredentials, identityPasswords, roles as rolesTable } from '@tokenlens/db';
+import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
 
 let world: E2EAdminWorld | null = null;
 
@@ -49,11 +43,21 @@ function w(): E2EAdminWorld {
   return world;
 }
 
-/** 直插管理员行（无凭据——令牌直签;role 指定）并签发真会话令牌 */
-async function adminWithRole(role: string, email: string): Promise<string> {
+/** 直插管理员行（无凭据——令牌直签;角色按 code 查 roles）并签发真会话令牌 */
+async function adminWithRole(roleCode: string, email: string): Promise<string> {
+  const [roleRow] = await w()
+    .assembly.db.select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(eq(rolesTable.code, roleCode));
+  if (roleRow == null) throw new Error(`role ${roleCode} missing (run migrations 0082)`);
   const [row] = await w()
     .assembly.db.insert(admins)
-    .values({ email, passwordHash: 'identity-managed', role, displayName: `e2e-rbac ${role}` })
+    .values({
+      email,
+      passwordHash: 'identity-managed',
+      roleId: roleRow.id,
+      displayName: `e2e-rbac ${roleCode}`,
+    })
     .returning({ id: admins.id });
   if (row == null) throw new Error('insert admins returned no row');
   createdAdminIds.push(row.id);
@@ -76,7 +80,19 @@ async function callAs(
   return { status: res.status, body };
 }
 
-describe('E. viewer 拒绝面（DESIGN §2.4 矩阵真装配抽样）', () => {
+/** 角色种子 id（0082 保证存在;按 code 查——不硬编码自增序） */
+async function roleIdOf(code: string): Promise<number> {
+  const [row] = await w()
+    .assembly.db.select({ id: rolesTable.id })
+    .from(rolesTable)
+    .where(eq(rolesTable.code, code));
+  if (row == null) throw new Error(`role ${code} missing`);
+  return row.id;
+}
+const operatorRoleId = () => roleIdOf('operator');
+const viewerRoleId = () => roleIdOf('viewer');
+
+describe('E. viewer 拒绝面（v2 种子等价 v1 矩阵——真装配抽样）', () => {
   it('读动词 200 / 写动词 403 insufficient_permission / me 权限集只读', async () => {
     const token = await adminWithRole('viewer', `e2e-rbac-viewer-${Date.now()}@e2e.invalid`);
 
@@ -104,7 +120,7 @@ describe('E. viewer 拒绝面（DESIGN §2.4 矩阵真装配抽样）', () => {
 
     const me = await callAs(token, '/v1/me');
     expect(me.status).toBe(200);
-    expect(me.body.role).toBe('viewer');
+    expect(me.body.role).toMatchObject({ code: 'viewer', isSuper: false });
     const permissions = me.body.permissions as string[];
     expect(permissions).not.toContain('users:write');
     expect(permissions).not.toContain('admins:read');
@@ -141,7 +157,7 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
         email,
         displayName: 'e2e-rbac-op',
         password: 'e2e-initial-pass-123',
-        role: 'operator',
+        roleId: await operatorRoleId(),
       }),
     });
     expect(created.status).toBe(201);
@@ -175,10 +191,10 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     const demoted = await call(w(), `/v1/admins/${operatorId}`, {
       method: 'PATCH',
       headers: jsonHeaders,
-      body: JSON.stringify({ role: 'viewer' }),
+      body: JSON.stringify({ roleId: await viewerRoleId() }),
     });
     expect(demoted.status).toBe(200);
-    expect(demoted.body).toMatchObject({ role: 'viewer' });
+    expect(demoted.body).toMatchObject({ roleId: await viewerRoleId() });
 
     const after = await callAs(token, '/v1/settings/billing-timezone', {
       method: 'PUT',
@@ -193,7 +209,7 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     const selfRole = await call(w(), `/v1/admins/${w().adminId}`, {
       method: 'PATCH',
       headers: jsonHeaders,
-      body: JSON.stringify({ role: 'viewer' }),
+      body: JSON.stringify({ roleId: await viewerRoleId() }),
     });
     expect(selfRole.status).toBe(400);
     expect(selfRole.body).toMatchObject({ error: { code: 'admin.cannot_modify_self' } });
@@ -218,7 +234,11 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     const first = await call(w(), '/v1/admins', {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ email, password: 'e2e-pass-123456', role: 'support' }),
+      body: JSON.stringify({
+        email,
+        password: 'e2e-pass-123456',
+        roleId: await roleIdOf('support'),
+      }),
     });
     expect(first.status).toBe(201);
     const conflictId = first.body.id as number;
@@ -228,7 +248,11 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     const dup = await call(w(), '/v1/admins', {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ email, password: 'e2e-pass-123456', role: 'viewer' }),
+      body: JSON.stringify({
+        email,
+        password: 'e2e-pass-123456',
+        roleId: await roleIdOf('viewer'),
+      }),
     });
     expect(dup.status).toBe(409);
     expect(dup.body).toMatchObject({ error: { code: 'control_plane.admin_email_taken' } });
@@ -247,7 +271,11 @@ describe('G. admins 管理旅程（创建→降权即时生效→自改拒绝→
     const orphan = await call(w(), '/v1/admins', {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ email, password: 'e2e-pass-123456', role: 'viewer' }),
+      body: JSON.stringify({
+        email,
+        password: 'e2e-pass-123456',
+        roleId: await roleIdOf('viewer'),
+      }),
     });
     expect(orphan.status).toBe(409);
     expect(orphan.body).toMatchObject({ error: { code: 'control_plane.admin_email_taken' } });

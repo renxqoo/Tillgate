@@ -1,42 +1,51 @@
 /**
- * RBAC 权限守卫（docs/admin-rbac/DESIGN.md §2.3）：会话之后、handler 之前，
- * 按「域 × HTTP 方法」判定权限——GET/HEAD → domain:read，其余 → domain:write。
- * 角色判定 = control-plane domain/rbac 纯函数查表（零查询,词表/矩阵单一真相）。
+ * RBAC v2 权限守卫（ADR-0008;docs/admin-rbac-v2/DESIGN §3——方案 B 逐端点声明）：
  *
- * 域归属在装配点（app.ts）逐路由组声明：domainGuard(domain, session) 组合后作为
- * 各路由组的会话件传入——26 个路由文件零感知（DESIGN D5）。
- * adminRole 未注入（装配缺省属主回查的纯会话校验形态）→ fail-closed 403。
+ *   const guard = guardFactory(session);
+ *   app.post('/v1/admins', guard('admins:create'), handler);
+ *
+ * - 码在构建期经 enforced 注册表校验（未知码拒构建——fail-closed,不静默放行）;
+ * - 判定原语 granted(grants, code)：isSuper 短路全量 / 会话码集合包含;
+ * - 会话(含授权面注入) → 码判定 → handler;401 优先于 403;
+ * - 会话上下文无授权面（装配缺省属主回查形态）→ fail-closed 403。
+ * 旧 domainGuard（方法分派）已随 v1 矩阵退役。
  */
 import type { MiddlewareHandler } from 'hono';
-import { can, type PermissionDomain } from '@tokenlens/control-plane';
+import { granted, isEnforcedCode, type AdminGrants } from '@tokenlens/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from './session';
 
-/** 读动词（GET/HEAD）;其余方法一律视为写——POST/PUT/PATCH/DELETE */
-const READ_METHODS = new Set(['GET', 'HEAD']);
+/** 路由文件依赖签名：只发 guard 工厂——忘挂码 = 编译错误（完备性的类型面） */
+export type GuardFactory = (code: string) => MiddlewareHandler<SessionEnv>;
 
-/** 单权限守卫：角色无该权限 → 403 insufficient_permission（不泄漏角色事实） */
-export function requirePermission(permission: string): MiddlewareHandler<SessionEnv> {
-  return async (c, next) => {
-    if (!can(c.get('adminRole') ?? '', permission)) {
-      throw AdminErrors.business('insufficient_permission', { permission });
+export function guardFactory(session: MiddlewareHandler<SessionEnv>): GuardFactory {
+  return (code: string) => {
+    if (!isEnforcedCode(code)) {
+      // 构建期即炸:码不在注册表 = 路由声明笔误,不许带病上线
+      throw new Error(`[rbac] unknown permission code on route: ${code}`);
     }
-    await next();
+    return async (c, next) => {
+      await session(c, async () => {
+        const grants = c.get('grants');
+        if (grants == null || !granted(grants as AdminGrants, code)) {
+          throw AdminErrors.business('insufficient_permission', { permission: code });
+        }
+        await next();
+      });
+    };
   };
 }
 
-/**
- * 域守卫组合器：session（会话 + adminRole 注入）→ 按方法分派的权限判定 → 放行。
- * 返回值形态与 session 中间件同签名——路由组挂载点原位替换,路由文件不感知。
- */
-export function domainGuard(
-  domain: PermissionDomain,
-  session: MiddlewareHandler<SessionEnv>,
-): MiddlewareHandler<SessionEnv> {
+/** 单码判定（已过会话的上下文内使用;guard 工厂之外的自定义场景） */
+export function requireCode(code: string): MiddlewareHandler<SessionEnv> {
+  if (!isEnforcedCode(code)) {
+    throw new Error(`[rbac] unknown permission code: ${code}`);
+  }
   return async (c, next) => {
-    await session(c, async () => {
-      const action = READ_METHODS.has(c.req.method) ? 'read' : 'write';
-      await requirePermission(`${domain}:${action}`)(c, next);
-    });
+    const grants = c.get('grants');
+    if (grants == null || !granted(grants as AdminGrants, code)) {
+      throw AdminErrors.business('insufficient_permission', { permission: code });
+    }
+    await next();
   };
 }

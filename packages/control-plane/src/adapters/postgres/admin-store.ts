@@ -9,7 +9,6 @@
 import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { admins, permissions, rolePermissions, roles } from '@tokenlens/db';
 import type { DbLike, DbTx } from '@tokenlens/db';
-import type { AdminGrants } from '../../domain/rbac';
 import type {
   AdminListQuery,
   AdminListResult,
@@ -83,8 +82,11 @@ export const postgresAdminStore: AdminStore = {
       .where(eq(admins.id, input.adminId));
   },
 
-  /** v2 会话授权面：一条 join 带回 isSuper + active 码集合（super 不落授权行,短路） */
-  async findGrants(db: DbLike, adminId: number): Promise<AdminGrants | null> {
+  /** v2 属主回查完整面：一条 join 带回状态 + isSuper + active 码集合（super 短路） */
+  async findAccess(
+    db: DbLike,
+    adminId: number,
+  ): Promise<import('../../domain/rbac').AdminAccess | null> {
     const rows = await db
       .select({
         adminStatus: admins.status,
@@ -100,7 +102,9 @@ export const postgresAdminStore: AdminStore = {
       .where(eq(admins.id, adminId));
     const head = rows[0];
     if (head == null) return null;
-    if (head.roleStatus !== 0) return { isSuper: false, codes: [] };
+    if (head.roleStatus !== 0) {
+      return { status: head.adminStatus, grants: { isSuper: false, codes: [] } };
+    }
     const codes = [
       ...new Set(
         rows
@@ -108,7 +112,10 @@ export const postgresAdminStore: AdminStore = {
           .map((row) => row.code as string),
       ),
     ];
-    return { isSuper: head.isSuper ?? false, codes: head.isSuper ? [] : codes };
+    return {
+      status: head.adminStatus,
+      grants: { isSuper: head.isSuper ?? false, codes: head.isSuper ? [] : codes },
+    };
   },
 
   async list(db: DbLike, query: AdminListQuery): Promise<AdminListResult> {

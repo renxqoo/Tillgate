@@ -64,7 +64,8 @@ const adminRecord = {
   email: 'ops@tokenlens.dev',
   displayName: 'Ops',
   status: 0,
-  role: 'super_admin' as const,
+  roleId: 1,
+  role: 'super_admin',
   twoFactorEnabled: false,
   lastLoginAt: null,
   createdAt: new Date(0),
@@ -348,6 +349,31 @@ describe('auth（P2 登录面）', () => {
 describe('me（P2 管理员自身）', () => {
   function meHarness(overrides?: Partial<MeRoutesDeps>) {
     const deps: MeRoutesDeps = {
+      rbac: {
+        roles: {
+          find: async () => ({
+            id: 1,
+            code: 'super_admin',
+            name: '超级管理员',
+            description: null,
+            status: 0,
+            isSuper: true,
+            isBuiltin: true,
+            createdAt: new Date(0),
+          }),
+        },
+        permissions: {
+          tree: async () => [],
+          create: async () => {
+            throw new Error('fake');
+          },
+          update: async () => {
+            throw new Error('fake');
+          },
+          remove: async () => ({ ok: true as const }),
+          activeCodes: async () => [],
+        },
+      },
       identity: {
         mfa: mfaStub(),
         passwords: {

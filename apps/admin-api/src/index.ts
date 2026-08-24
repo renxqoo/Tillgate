@@ -19,7 +19,7 @@ const app = createAdminApp({
   // P2:会话验证 + 属主回查（admins 行存在且 status=0——封禁/注销即刻失效,D8/W3）
   sessions: {
     validate: assembly.identity.sessions.validate,
-    owner: (adminId) => assembly.controlPlane.admins.find(adminId),
+    owner: (adminId) => assembly.controlPlane.admins.findAccess(adminId),
   },
   accounts: assembly.accounts,
   wallet: assembly.billing.wallet,

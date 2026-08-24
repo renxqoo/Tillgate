@@ -19,12 +19,12 @@ export interface ChannelFundsRoutesDeps {
 
 export function channelFundsRoutes(
   deps: ChannelFundsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
 ) {
   const app = new Hono<SessionEnv>();
   const channels = deps.controlPlane.channels;
 
-  app.get('/v1/channel-funds', session, async (c) => {
+  app.get('/v1/channel-funds', guard('funds:read'), async (c) => {
     const extra = channelFundsContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), CHANNEL_FUNDS_SORTS, 'createdAt');
     const result = await channels.listRecharges({
@@ -39,7 +39,7 @@ export function channelFundsRoutes(
     return c.json(listEnvelope(result.rows.map(toChannelFundWireRow), result.total, query));
   });
 
-  app.post('/v1/channel-funds/recharge', session, async (c) => {
+  app.post('/v1/channel-funds/recharge', guard('funds:recharge'), async (c) => {
     const body = channelFundsContracts.recharge.parse(await c.req.json());
     const result = await channels.recharge({
       ctx: controlContextOf(c),
@@ -54,7 +54,7 @@ export function channelFundsRoutes(
     return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 
-  app.post('/v1/channel-funds/adjust', session, async (c) => {
+  app.post('/v1/channel-funds/adjust', guard('funds:adjust'), async (c) => {
     const body = channelFundsContracts.adjust.parse(await c.req.json());
     const result = await channels.adjust({
       ctx: controlContextOf(c),

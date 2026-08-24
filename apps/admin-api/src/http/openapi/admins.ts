@@ -12,9 +12,8 @@ export const adminRowSchema = z
     id: z.number(),
     email: z.string(),
     displayName: z.string().nullable(),
-    role: z
-      .enum(['super_admin', 'operator', 'finance', 'support', 'viewer'])
-      .describe('RBAC 角色（词表/矩阵单一真相 = control-plane domain/rbac）'),
+    roleId: z.number().describe('角色 FK（roles.id）'),
+    role: z.string().describe('角色 code（展示用;名称经 /v1/roles 解析）'),
     status: z.number().describe('0 正常 / 1 封禁 / 2 注销'),
     twoFactorEnabled: z.boolean(),
     lastLoginAt: z.string().nullable(),

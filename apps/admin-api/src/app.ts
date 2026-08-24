@@ -23,14 +23,13 @@ import type { Notifications } from '@tokenlens/notifications';
 import type { Identity } from '@tokenlens/identity';
 import type { PaymentAdminApi } from '@tokenlens/billing';
 import type { GenerationTaskStore } from '@tokenlens/inference';
-import type { PermissionDomain } from '@tokenlens/control-plane';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
 import {
   sessionMiddleware,
   type SessionEnv,
   type SessionValidator,
 } from './http/middleware/session';
-import { domainGuard } from './http/middleware/permission';
+import { guardFactory } from './http/middleware/permission';
 import { protocolStack } from './http/middleware/protocol';
 import type { OperationsUseCase, WriteAuditInTx } from './http/routes/users-funds';
 import { usersRoutes } from './http/routes/users';
@@ -58,6 +57,8 @@ import { referralRoutes } from './http/routes/referrals';
 import { vouchersRoutes } from './http/routes/vouchers';
 import { notificationsRoutes } from './http/routes/notifications';
 import { adminsRoutes } from './http/routes/admins';
+import { rolesRoutes } from './http/routes/roles';
+import { permissionsRoutes } from './http/routes/permissions';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
 
@@ -170,10 +171,10 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
 
   const session = sessionMiddleware(deps.sessions);
 
-  // RBAC 域守卫（docs/admin-rbac/DESIGN §2.2/§2.3）：session → 按 HTTP 方法分派
-  // domain:read/write → handler。域归属在本装配点逐组声明,路由文件零感知（D5）;
-  // auth（公开+logout）与 me（自身资料）不设域——会话即身份。
-  const guarded = (domain: PermissionDomain) => domainGuard(domain, session);
+  // RBAC v2（ADR-0008;docs/admin-rbac-v2/DESIGN §3 方案 B）：逐端点 guard(code) 声明——
+  // 码在各路由文件内挂载,完备性由类型签名保证。auth（公开+logout）与 me（自身域）
+  // 挂裸会话件——架构测试锁死仅此两文件。
+  const guard = guardFactory(session);
 
   // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
   app.get('/healthz', async (c) => {
@@ -207,7 +208,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
         rates: deps.controlPlane.rates,
         postAudit: deps.postAudit,
       },
-      guarded('users'),
+      guard,
     ),
   );
   app.route(
@@ -220,59 +221,44 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
         writeAudit: deps.writeAudit,
         audit: deps.observability.audit,
       },
-      guarded('funds'),
+      guard,
     ),
   );
-  app.route('/', keysRoutes({ accounts: deps.accounts }, guarded('users')));
-  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
-  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
-  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, guarded('funds')));
-  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
-  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
-  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, guarded('catalog')));
-  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, guarded('settings')));
+  app.route('/', keysRoutes({ accounts: deps.accounts }, guard));
+  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, guard));
   app.route(
     '/',
-    catalogRoutes(
-      { controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog },
-      guarded('catalog'),
-    ),
+    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }, guard),
   );
-  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, guarded('plans')));
-  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, guarded('plans')));
+  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, guard));
+  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, guard));
   app.route(
     '/',
-    redeemRoutes(
-      { redeemBatches: deps.redeemBatches, postAudit: deps.postAudit },
-      guarded('funds'),
-    ),
+    redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }, guard),
   );
-  app.route('/', billingOperationsRoutes({ review: deps.review }, guarded('funds')));
-  app.route('/', tracingRoutes({ observability: deps.observability }, guarded('ops')));
-  app.route(
-    '/',
-    opsLogsRoutes({ observability: deps.observability, now: deps.now }, guarded('ops')),
-  );
-  app.route(
-    '/',
-    opsUsageRoutes({ observability: deps.observability, now: deps.now }, guarded('ops')),
-  );
-  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, guarded('ops')));
+  app.route('/', billingOperationsRoutes({ review: deps.review }, guard));
+  app.route('/', tracingRoutes({ observability: deps.observability }, guard));
+  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }, guard));
+  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }, guard));
+  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, guard));
   app.route(
     '/',
     opsOrdersRoutes(
       { paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason },
-      guarded('funds'),
+      guard,
     ),
   );
-  app.route('/', marketingRoutes({ accounts: deps.accounts }, guarded('growth')));
-  app.route(
-    '/',
-    referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, guarded('growth')),
-  );
-  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, guarded('funds')));
-  app.route('/', notificationsRoutes({ notifications: deps.notifications }, guarded('growth')));
-  // RBAC 管理员管理面（admins 域——仅 super_admin,DESIGN §2.4 矩阵）
+  app.route('/', marketingRoutes({ accounts: deps.accounts }, guard));
+  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, guard));
+  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', notificationsRoutes({ notifications: deps.notifications }, guard));
+  // RBAC v2 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
   app.route(
     '/',
     adminsRoutes(
@@ -281,8 +267,13 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
         identity: deps.identity,
         postAudit: deps.postAudit,
       },
-      guarded('admins'),
+      guard,
     ),
+  );
+  app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }, guard));
+  app.route(
+    '/',
+    permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }, guard),
   );
   // P2 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
   app.route(
@@ -306,6 +297,7 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
       {
         identity: deps.identity,
         admins: deps.controlPlane.admins,
+        rbac: deps.controlPlane.rbac,
         mailerConfigured: deps.mailerConfigured,
         sessionTtlSec: deps.sessionTtlSec,
       },

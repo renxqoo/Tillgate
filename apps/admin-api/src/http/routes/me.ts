@@ -1,14 +1,13 @@
 /**
  * 管理员自身路由（P2;v1 routes/me.ts 平移,会话组）：资料/改密/2FA 开关/TOTP。
- * 改密 = identity.passwords.change（验旧密入锁内 B04 + 推进 admin realm 失效线 =
- * 全网旧会话即刻下线）→ 同拍新 token（iat 严格在线后——identity clock 单源）。
- * 2FA 开关 = 邮箱验证码（旧形态,SMTP 前置 fail-closed）;TOTP = 验证器 App
- * （挂起→扫码→验码确认→恢复码;绑定即接管第二因子,登录不再退回邮箱码防降级）。
+ * v2（ADR-0008）：/v1/me 增 role 对象与 DB 授权码集合;新增 /v1/me/menus——
+ * 按本人授权过滤的 group+page 两级树（sidebar 数据源,前端完全后端驱动）。
  */
 import { Hono } from 'hono';
 import { jsonBody } from '@tokenlens/http';
 import type { MiddlewareHandler } from 'hono';
-import { permissionsOf, type ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
+import { ENFORCED_CODES, granted } from '@tokenlens/control-plane';
 import type { Identity } from '@tokenlens/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
@@ -17,8 +16,42 @@ import { authContracts } from '../contracts/auth';
 export interface MeRoutesDeps {
   readonly identity: Pick<Identity, 'passwords' | 'sessions' | 'mfa'>;
   readonly admins: Pick<ControlPlane['admins'], 'find' | 'setTwoFactorEnabled'>;
+  /** RBAC v2：角色资料（me 的 role 对象）+ 权限树（menus 过滤） */
+  readonly rbac: Pick<ControlPlane['rbac'], 'permissions'> & {
+    roles: Pick<ControlPlane['rbac']['roles'], 'find'>;
+  };
   readonly mailerConfigured: boolean;
   readonly sessionTtlSec: number;
+}
+
+/** sidebar 菜单树（group+page 两级;按授权过滤——page 无码 = 全员可见） */
+function menuTreeOf(
+  nodes: readonly PermissionNode[],
+  grants: { isSuper: boolean; codes: readonly string[] },
+) {
+  const groups = nodes
+    .filter((n) => n.type === 'group' && n.status === 0)
+    .toSorted((a, b) => a.sortOrder - b.sortOrder);
+  const pages = nodes.filter((n) => n.type === 'page' && n.status === 0);
+  return groups
+    .map((group) => ({
+      id: group.id,
+      i18nKey: group.i18nKey,
+      name: group.name,
+      items: pages
+        .filter((page) => page.parentId === group.id)
+        .filter((page) => page.code == null || granted(grants, page.code))
+        .toSorted((a, b) => a.sortOrder - b.sortOrder)
+        .map((page) => ({
+          id: page.id,
+          i18nKey: page.i18nKey,
+          name: page.name,
+          path: page.path,
+          icon: page.icon,
+          code: page.code,
+        })),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
 export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
@@ -31,7 +64,9 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
       // 会话有效但资料行缺失（迁移不完整）——与 v1 同口径 401,不泄漏状态
       throw AdminErrors.business('admin_not_found', {});
     }
+    const role = await deps.rbac.roles.find(me.roleId);
     const totp = await deps.identity.mfa.status({ userId: adminId });
+    const grants = c.get('grants');
     return c.json({
       id: me.id,
       email: me.email,
@@ -39,10 +74,22 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
       twoFactorEnabled: me.twoFactorEnabled,
       totpEnabled: totp.confirmed,
       lastLoginAt: me.lastLoginAt,
-      // RBAC:角色 + 全量权限集（前端导航过滤的单一事实来源——docs/admin-rbac §5）
-      role: me.role,
-      permissions: permissionsOf(me.role),
+      // RBAC v2:角色对象 + 授权码集合（导航/按钮显隐的单一事实来源）
+      role: {
+        id: me.roleId,
+        code: me.role,
+        name: role?.name ?? me.role,
+        isSuper: role?.isSuper ?? false,
+      },
+      permissions: grants?.isSuper ? [...ENFORCED_CODES] : [...(grants?.codes ?? [])],
     });
+  });
+
+  // sidebar 数据源（自身域无码——所有有效会话可调;树按本人授权过滤后下发）
+  app.get('/v1/me/menus', session, async (c) => {
+    const grants = c.get('grants') ?? { isSuper: false, codes: [] };
+    const nodes = await deps.rbac.permissions.tree();
+    return c.json({ groups: menuTreeOf(nodes, grants) });
   });
 
   app.post('/v1/me/password', session, async (c) => {

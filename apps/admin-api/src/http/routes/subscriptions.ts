@@ -18,11 +18,11 @@ export interface SubscriptionsRoutesDeps {
 
 export function subscriptionsRoutes(
   deps: SubscriptionsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
 ) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/subscriptions', session, async (c) => {
+  app.get('/v1/subscriptions', guard('plans:read'), async (c) => {
     const raw = c.req.query();
     const extra = {
       planId: raw.planId !== undefined ? Number(raw.planId) : undefined,
@@ -53,7 +53,7 @@ export function subscriptionsRoutes(
     return c.json(listEnvelope(page.rows.map(toSubscriptionWireRow), page.total, query));
   });
 
-  app.post('/v1/subscriptions/:id/renew', session, async (c) => {
+  app.post('/v1/subscriptions/:id/renew', guard('plans:renew'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(
       await deps.subscriptions.renew({
@@ -64,7 +64,7 @@ export function subscriptionsRoutes(
     );
   });
 
-  app.post('/v1/subscriptions/:id/change', session, async (c) => {
+  app.post('/v1/subscriptions/:id/change', guard('plans:change'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = subscriptionsContracts.change.parse(await c.req.json());
     return c.json(
@@ -78,14 +78,14 @@ export function subscriptionsRoutes(
     );
   });
 
-  app.post('/v1/subscriptions/:id/cancel', session, async (c) => {
+  app.post('/v1/subscriptions/:id/cancel', guard('plans:cancel'), async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(
       await deps.subscriptions.cancel({ operationId: operationId(c), subscriptionId: id }),
     );
   });
 
-  app.post('/v1/subscriptions/:id/grant', session, async (c) => {
+  app.post('/v1/subscriptions/:id/grant', guard('plans:grant'), async (c) => {
     const id = idParam(c.req.param('id'));
     const body = subscriptionsContracts.grant.parse(await c.req.json());
     return c.json(

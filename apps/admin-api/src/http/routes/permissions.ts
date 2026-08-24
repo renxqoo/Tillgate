@@ -1,0 +1,109 @@
+/**
+ * 权限资源路由（RBAC v2 权限树管理面——docs/admin-rbac-v2/DESIGN §5;admins 域码）。
+ * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
+ */
+import { Hono } from 'hono';
+import type { MiddlewareHandler } from 'hono';
+import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
+import type { SessionEnv } from '../middleware/session';
+import { idParam } from '../contracts/common';
+import { rbacContracts } from '../contracts/rbac';
+import type { PostAudit } from './redeem';
+
+export interface PermissionsRoutesDeps {
+  readonly rbac: ControlPlane['rbac'];
+  postAudit: PostAudit;
+}
+
+function nodeWire(node: PermissionNode) {
+  return {
+    id: node.id,
+    parentId: node.parentId,
+    type: node.type,
+    code: node.code,
+    name: node.name,
+    i18nKey: node.i18nKey,
+    description: node.description,
+    path: node.path,
+    icon: node.icon,
+    sortOrder: node.sortOrder,
+    status: node.status,
+    source: node.source,
+    createdAt: node.createdAt,
+  };
+}
+
+export function permissionsRoutes(
+  deps: PermissionsRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
+  const app = new Hono<SessionEnv>();
+
+  app.get('/v1/permissions/tree', guard('admins:read'), async (c) => {
+    const nodes = await deps.rbac.permissions.tree();
+    return c.json({ rows: nodes.map(nodeWire) });
+  });
+
+  app.post('/v1/permissions', guard('admins:create'), async (c) => {
+    const body = rbacContracts.createPermission.parse(await c.req.json());
+    const node = await deps.rbac.permissions.create({
+      parentId: body.parentId,
+      type: body.type,
+      code: body.code ?? null,
+      name: body.name,
+      i18nKey: body.i18nKey ?? null,
+      description: body.description ?? null,
+      path: body.path ?? null,
+      icon: body.icon ?? null,
+      sortOrder: body.sortOrder,
+    });
+    await deps.postAudit({
+      actor: 'admin',
+      adminId: c.get('adminId'),
+      action: 'permission.created',
+      targetType: 'permission',
+      targetId: node.id,
+      detail: { type: node.type, code: node.code, name: node.name },
+    });
+    return c.json(nodeWire(node), 201);
+  });
+
+  app.patch('/v1/permissions/:id', guard('admins:update'), async (c) => {
+    const id = idParam(c.req.param('id'));
+    const body = rbacContracts.patchPermission.parse(await c.req.json());
+    const node = await deps.rbac.permissions.update({
+      id,
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.i18nKey !== undefined ? { i18nKey: body.i18nKey } : {}),
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.icon !== undefined ? { icon: body.icon } : {}),
+      ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
+      ...(body.status !== undefined ? { status: body.status } : {}),
+    });
+    await deps.postAudit({
+      actor: 'admin',
+      adminId: c.get('adminId'),
+      action: 'permission.updated',
+      targetType: 'permission',
+      targetId: id,
+      detail: { ...body },
+    });
+    return c.json(nodeWire(node));
+  });
+
+  app.delete('/v1/permissions/:id', guard('admins:delete'), async (c) => {
+    const id = idParam(c.req.param('id'));
+    await deps.rbac.permissions.remove(id);
+    await deps.postAudit({
+      actor: 'admin',
+      adminId: c.get('adminId'),
+      action: 'permission.deleted',
+      targetType: 'permission',
+      targetId: id,
+      detail: null,
+    });
+    return c.json({ ok: true });
+  });
+
+  return app;
+}

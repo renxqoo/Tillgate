@@ -13,14 +13,17 @@ export interface MarketingRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'getMarketingSettings' | 'updateMarketingSettings'>;
 }
 
-export function marketingRoutes(deps: MarketingRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function marketingRoutes(
+  deps: MarketingRoutesDeps,
+  guard: (code: string) => MiddlewareHandler<SessionEnv>,
+) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/marketing/settings', session, async (c) =>
+  app.get('/v1/marketing/settings', guard('growth:read'), async (c) =>
     c.json(await deps.accounts.getMarketingSettings()),
   );
 
-  app.put('/v1/marketing/settings', session, async (c) => {
+  app.put('/v1/marketing/settings', guard('growth:update'), async (c) => {
     const body = marketingContracts.updateSettings.parse(await c.req.json());
     return c.json(
       await deps.accounts.updateMarketingSettings({

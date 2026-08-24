@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import { errorHandler } from '@tokenlens/http';
+import { guardFactory } from '../src/http/middleware/permission';
 import { sessionMiddleware, type SessionEnv } from '../src/http/middleware/session';
 import { createIdentityAuditSinkBridge } from '../src/adapters/identity-audit-bridge';
 import { authRoutes } from '../src/http/routes/auth';
@@ -24,6 +25,7 @@ const ADMIN_ID = 7;
 const validSession: MiddlewareHandler<SessionEnv> = async (c, next) => {
   c.set('requestId', 'req');
   c.set('adminId', ADMIN_ID);
+  c.set('grants', { isSuper: true, codes: [] });
   c.set('sessionToken', TOKEN);
   c.set('sessionJti', 'j');
   c.set('sessionExp', 9999999999);
@@ -120,7 +122,9 @@ describe('identity 审计桥', () => {
 
 describe('session 属主回查（D8/W3）', () => {
   async function appWithOwner(
-    owner: (() => Promise<{ status: number; role: string } | null>) | undefined,
+    owner:
+      | (() => Promise<{ status: number; grants: { isSuper: boolean; codes: string[] } } | null>)
+      | undefined,
   ) {
     const app = new (await import('hono')).Hono<SessionEnv>();
     app.use(
@@ -143,11 +147,17 @@ describe('session 属主回查（D8/W3）', () => {
   }
 
   it('属主存在且 status=0 放行;不存在/封禁一律 401;未注入 owner 时纯会话校验放行', async () => {
-    const ok = await appWithOwner(async () => ({ status: 0, role: 'super_admin' }));
+    const ok = await appWithOwner(async () => ({
+      status: 0,
+      grants: { isSuper: true, codes: [] },
+    }));
     expect(ok.status).toBe(200);
     const missing = await appWithOwner(async () => null);
     expect(missing.status).toBe(401);
-    const banned = await appWithOwner(async () => ({ status: 1, role: 'super_admin' }));
+    const banned = await appWithOwner(async () => ({
+      status: 1,
+      grants: { isSuper: true, codes: [] },
+    }));
     expect(banned.status).toBe(401);
     const noOwner = await appWithOwner(undefined);
     expect(noOwner.status).toBe(200);
@@ -190,6 +200,31 @@ describe('auth/me 未走分支', () => {
 
   it('me:资料行缺失 401 admin_not_found;2FA 开启成功路径(SMTP 已配)回显开关', async () => {
     const meDeps: MeRoutesDeps = {
+      rbac: {
+        roles: {
+          find: async () => ({
+            id: 1,
+            code: 'super_admin',
+            name: '超级管理员',
+            description: null,
+            status: 0,
+            isSuper: true,
+            isBuiltin: true,
+            createdAt: new Date(0),
+          }),
+        },
+        permissions: {
+          tree: async () => [],
+          create: async () => {
+            throw new Error('fake');
+          },
+          update: async () => {
+            throw new Error('fake');
+          },
+          remove: async () => ({ ok: true as const }),
+          activeCodes: async () => [],
+        },
+      },
       identity: {
         mfa: mfaStub(),
         passwords: {
@@ -261,7 +296,8 @@ describe('auth/me 未走分支', () => {
             email: 'ops@tokenlens.dev',
             displayName: null,
             status: 0,
-            role: 'super_admin' as const,
+            roleId: 1,
+            role: 'super_admin',
             twoFactorEnabled: false,
             lastLoginAt: null,
             createdAt: new Date(0),
@@ -398,7 +434,7 @@ describe('users set-password（D6 分支面）', () => {
       },
       postAudit,
     };
-    const app = usersRoutes(deps as never, validSession);
+    const app = usersRoutes(deps as never, guardFactory(validSession));
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
     return { app, patch, reset, updateCard, postAudit };
   }
@@ -460,7 +496,7 @@ describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', 
         },
         vendorCatalog: { protocols: [], vendors: [] },
       } as never,
-      validSession,
+      guardFactory(validSession),
     );
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
     for (const qs of ['', '?externalName=', '?externalName=' + 'x'.repeat(65)]) {

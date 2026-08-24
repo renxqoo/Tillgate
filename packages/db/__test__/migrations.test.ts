@@ -37,10 +37,10 @@ describe('migration journal ↔ SQL files', () => {
     expect(sqlFiles.toSorted()).toEqual(journalTags.toSorted());
   });
 
-  it('条目总数 = 82(0000-0081,历史缺口 0036 在案;0076 = identity 七表;0077/0078/0080 = 模型映射/供应商/渠道逻辑删除;0079 = usage_logs 时段审计列;0081 = admins.role;0082 = RBAC v2 权限树/角色)', () => {
-    expect(journalTags.length).toBe(82);
+  it('条目总数 = 83(0000-0082,历史缺口 0036 在案;0076 = identity 七表;0081 = admins.role;0082 = RBAC v2 权限树/角色;0083 = drop admins.role 旧列)', () => {
+    expect(journalTags.length).toBe(83);
     expect(journalTags[0]).toBe('0000_rapid_living_mummy');
-    expect(journalTags.at(-1)).toBe('0082_rbac_v2');
+    expect(journalTags.at(-1)).toBe('0083_drop_admins_role');
   });
 
   it('tag 编号严格递增,无重复', () => {
