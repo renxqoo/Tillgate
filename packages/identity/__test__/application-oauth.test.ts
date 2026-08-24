@@ -212,7 +212,7 @@ describe('oauth.authorize / callback(state 半程)', () => {
       config: {
         ...TEST_CONFIG,
         providers: ['github', 'gitlab'],
-        oauth: { github: defined(TEST_CONFIG.oauth.github, 'TEST_CONFIG.oauth.github') },
+        oauth: () => ({ github: defined(TEST_CONFIG.oauth().github, 'TEST_CONFIG.oauth.github') }),
       },
       store: h.store,
       oauthStateStore: h.oauthState,
@@ -222,6 +222,34 @@ describe('oauth.authorize / callback(state 半程)', () => {
     ).rejects.toMatchObject({
       code: 'identity.oauth_provider_unconfigured',
     });
+  });
+
+  it('凭据快照解析期校验:词表外键/空凭据在动词调用时 fail-loud', async () => {
+    const h = harness();
+    const { createIdentity } = await import('../src/identity.js');
+    const { TEST_CONFIG } = await import('../src/testing/harness.js');
+    const base = {
+      db: h.ctx.db,
+      txRetry: h.ctx.txRetry,
+      clock: h.ctx.clock,
+      logger: { warn: () => {} },
+      store: h.store,
+      oauthStateStore: h.oauthState,
+    };
+    const undeclared = createIdentity({
+      ...base,
+      config: { ...TEST_CONFIG, providers: ['github'], oauth: () => ({ gitlab: { clientId: 'a', clientSecret: 'b' } }) },
+    });
+    await expect(
+      undeclared.oauth.authorize({ provider: 'gitlab', redirectUri: 'https://cb' }),
+    ).rejects.toThrow();
+    const empty = createIdentity({
+      ...base,
+      config: { ...TEST_CONFIG, oauth: () => ({ github: { clientId: '', clientSecret: 'b' } }) },
+    });
+    await expect(
+      empty.oauth.authorize({ provider: 'github', redirectUri: 'https://api.example.com/v1/oauth/github/callback' }),
+    ).rejects.toThrow();
   });
 
   it('redirect_uri 白名单 fail-closed:authorize/callback 两半程都拒绝词表外地址', async () => {

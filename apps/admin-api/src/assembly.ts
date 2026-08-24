@@ -206,7 +206,8 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
           ttlSec: config.sessionTtlSec,
         },
       },
-      oauth: {},
+      // 无 OAuth 集成(管理面只邮箱密码+2FA)——空快照 getter(identity 契约)
+      oauth: () => ({}),
       // OAuth 回调白名单:identity 配置要求非空——占位哨兵值(不可达域名),P2 登录波
       // 引入真实回调登记时升为 config 显式键(fail-closed:不在词表内直接拒绝)
       oauthRedirectAllowlist: ['https://admin.invalid/oauth/callback'],

@@ -5,7 +5,7 @@
  * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime(DESIGN §5)。
  */
 import type { Db, TxRetryPolicy } from '@tillgate/db';
-import { resolveConfig, type IdentityConfigInput } from './domain/config.js';
+import { resolveConfig, validateOauthCreds, type IdentityConfigInput } from './domain/config.js';
 import { postgresIdentityStore } from './adapters/postgres/identity-store';
 import { createJoseSessionTokens } from './adapters/jwt/jose-tokens';
 import { createGithubProvider } from './adapters/oauth/github';
@@ -154,17 +154,23 @@ export interface Identity {
 export function buildIdentityContext(params: CreateIdentityParams): IdentityUseCaseContext {
   const { config, guards } = resolveConfig(params.config);
   const store = params.store ?? postgresIdentityStore;
-  const providers: Record<string, OAuthProvider> = {};
-  for (const [name, creds] of Object.entries(config.oauth)) {
+  // 动态凭据源:每次动词调用解析当前快照(词表/凭据校验 fail-loud),装配覆盖件优先
+  const oauthProvider = (name: string): OAuthProvider | null => {
+    const override = params.oauthProviders?.[name];
+    if (override != null) return override;
+    const creds = config.oauth()[name];
+    if (creds == null) return null;
+    validateOauthCreds({ [name]: creds }, [...guards.providers]);
     const adapterParams = {
       clientId: creds.clientId,
       clientSecret: creds.clientSecret,
       ...(creds.endpoints != null ? { endpoints: creds.endpoints } : {}),
       logger: params.logger,
     };
-    if (name === 'github') providers[name] = createGithubProvider(adapterParams);
-    else if (name === 'google') providers[name] = createGoogleProvider(adapterParams);
-  }
+    if (name === 'github') return createGithubProvider(adapterParams);
+    if (name === 'google') return createGoogleProvider(adapterParams);
+    return null;
+  };
   return {
     db: params.db,
     txRetry: params.txRetry,
@@ -178,7 +184,7 @@ export function buildIdentityContext(params: CreateIdentityParams): IdentityUseC
     oauthStore: store,
     anchorStore: store,
     tokens: params.tokens ?? createJoseSessionTokens(config.sessions, params.clock),
-    oauthProviders: { ...providers, ...params.oauthProviders },
+    oauthProvider,
     ...(params.mailer != null ? { mailer: params.mailer } : {}),
     ...(params.captcha != null ? { captcha: params.captcha } : {}),
     ...(params.sessionRevocation != null ? { sessionRevocation: params.sessionRevocation } : {}),

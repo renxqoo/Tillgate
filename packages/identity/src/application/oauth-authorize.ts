@@ -21,7 +21,7 @@ export async function oauthAuthorize(
   input: OAuthAuthorizeInput,
 ): Promise<{ url: string; state: string }> {
   const provider = guardProvider(input.provider, ctx.guards);
-  const providerAdapter = ctx.oauthProviders[provider];
+  const providerAdapter = ctx.oauthProvider(provider);
   if (providerAdapter == null) {
     throw identityErrors.business('oauth_provider_unconfigured', { provider });
   }

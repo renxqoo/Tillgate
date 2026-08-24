@@ -134,7 +134,8 @@ export function createIdentityStack(args: {
           ttlSec: config.SESSION_TTL_SECONDS,
         },
       },
-      oauth: oauthProviders,
+      // 快照 getter（identity 契约）：当前返回装配期静态表——Phase 5 换 DB 集成设置源
+      oauth: () => oauthProviders,
       oauthStateTtlSec: config.OAUTH_STATE_TTL_SECONDS,
       // 回调地址精确白名单（identity assertRedirectAllowed 消费；两 provider 常驻）
       oauthRedirectAllowlist: [

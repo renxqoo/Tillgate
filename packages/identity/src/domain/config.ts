@@ -49,8 +49,11 @@ export interface IdentityConfigInput {
   readonly totp: TotpConfig;
   /** 每 realm 会话配置(键必须与 realms 词表一致) */
   readonly sessions: Readonly<Record<string, SessionRealmConfig>>;
-  /** 每 provider 上游凭据(键 ⊆ providers 词表;未配置的 provider 运行期 not_found) */
-  readonly oauth: Readonly<Record<string, OAuthProviderCredentials>>;
+  /**
+   * 每 provider 上游凭据快照 getter(动态配置源——DB 集成设置/静态表均可;
+   * 每次 OAuth 动词解析时调用,键 ⊆ providers 词表与凭据非空在解析期校验)。
+   */
+  readonly oauth: () => Readonly<Record<string, OAuthProviderCredentials>>;
   /** OAuth state 存活秒(v1=600) */
   readonly oauthStateTtlSec: number;
   /**
@@ -66,7 +69,7 @@ export interface ResolvedIdentityConfig {
   readonly codePepper: string;
   readonly totp: TotpConfig;
   readonly sessions: Readonly<Record<string, SessionRealmConfig>>;
-  readonly oauth: Readonly<Record<string, OAuthProviderCredentials>>;
+  readonly oauth: () => Readonly<Record<string, OAuthProviderCredentials>>;
   readonly oauthStateTtlSec: number;
   readonly oauthRedirectAllowlist: readonly string[];
 }
@@ -191,8 +194,8 @@ function validateRedirectAllowlist(uris: readonly string[]): void {
   }
 }
 
-/** OAuth 凭据块校验:词表外的 provider 键拒绝,凭据非空 */
-function validateOauthCreds(
+/** OAuth 凭据快照校验(解析期调用:词表外的 provider 键拒绝,凭据非空) */
+export function validateOauthCreds(
   oauth: Readonly<Record<string, OAuthProviderCredentials>>,
   providers: readonly string[],
 ): void {
@@ -236,7 +239,9 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
   validateSessions(input.sessions, realms);
   intIn(input.oauthStateTtlSec, 'oauthStateTtlSec', [60, 3600]);
   validateRedirectAllowlist(input.oauthRedirectAllowlist);
-  validateOauthCreds(input.oauth, providers);
+  if (typeof input.oauth !== 'function') {
+    badConfig('oauth', 'must be a snapshot getter () => Record<string, OAuthProviderCredentials>');
+  }
 
   return {
     config: {
