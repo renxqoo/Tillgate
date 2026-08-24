@@ -11,6 +11,7 @@ import type { AdminMeInfo } from '@tillgate/api-client';
 import { setTwoFactorAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';
 import { BillingTimezoneCard } from './billing-timezone-card';
+import { IntegrationCards } from './integration-cards';
 import { TotpCard } from './totp-card';
 
 export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: string | null }) {
@@ -29,7 +30,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
   }
 
   return (
-    <div className="flex flex-row gap-4">
+    <div className="flex flex-row flex-wrap gap-4">
       <div className="flex max-w-xl flex-col gap-4">
         <Card>
           <CardHeader>
@@ -92,6 +93,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
       </Card>
 
       <BillingTimezoneCard />
+      <IntegrationCards />
     </div>
   );
 }
