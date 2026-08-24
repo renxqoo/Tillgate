@@ -1,4 +1,4 @@
-# @tokenlens/inference 设计基线
+# @tillgate/inference 设计基线
 
 > 状态：定稿（2026-08-23）
 > 定位：推理用例、路由候选循环、计费衔接与故障转移（重构方案 §3.1 / §5.2）。
@@ -15,7 +15,7 @@
 createInference(env: InferenceEnv): Inference
 
 interface InferenceEnv {
-  ai: Ai;                        // 装配传入的 @tokenlens/ai 实例（inference 是其唯一运行时消费方，§3.6）
+  ai: Ai;                        // 装配传入的 @tillgate/ai 实例（inference 是其唯一运行时消费方，§3.6）
   catalog: CatalogPort;          // control-plane 只读目录（未建包，装配注入实现）
   billing: BillingPort;          // billing 能力（未建包，装配注入实现）
   store: HealthStore;            // 渠道健康跨请求状态存储（redis 装配 / memory 单副本开发）
@@ -138,10 +138,10 @@ type StreamOutcome =
 
 ## 7. 边界
 
-- 包依赖：`@tokenlens/ai`、`@tokenlens/errors`、`zod`、`ioredis`（redis 适配器类型与 CAS）；
-  `@tokenlens/runtime`（仅测试装置子入口，devDependency）。
+- 包依赖：`@tillgate/ai`、`@tillgate/errors`、`zod`、`ioredis`（redis 适配器类型与 CAS）；
+  `@tillgate/runtime`（仅测试装置子入口，devDependency）。
 - 阶段 span（v1 run-chat/attempt/settle-retry 的 OTel 面）：经 `TracePort` 消费方注入——
   v2 不引入 observability 编译依赖（§5.2 跨能力经 port；架构测试禁用清单锁定），
   span 命名与阶段清单见 docs/observability.md §3。
 - 根出口只导出 facade、输入/结果类型、目录、端口类型与两个适配器工厂（upstream-ai / state-redis /
-  state-memory / task-memory 供装配选择）；不导出 ai 类型再分发（消费方自 `@tokenlens/ai` 引用）。
+  state-memory / task-memory 供装配选择）；不导出 ai 类型再分发（消费方自 `@tillgate/ai` 引用）。

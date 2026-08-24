@@ -5,11 +5,10 @@
  * 响应体永不包括 passwordHash（服务列白名单,测试红线锁定）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { WalletApi } from '@tokenlens/billing';
-import type { Identity } from '@tokenlens/identity';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { WalletApi } from '@tillgate/billing';
+import type { Identity } from '@tillgate/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
@@ -33,10 +32,10 @@ export interface UsersRoutesDeps {
   readonly postAudit: PostAudit;
 }
 
-export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function usersRoutes(deps: UsersRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/users', session, async (c) => {
+  app.get('/v1/users', async (c) => {
     const extra = usersContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), USER_SORTS, 'createdAt');
     const page = await deps.accounts.adminListUsers({
@@ -56,7 +55,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     return c.json(listEnvelope(rows, page.total, query));
   });
 
-  app.get('/v1/users/:id', session, async (c) => {
+  app.get('/v1/users/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const profile = await deps.accounts.adminGetUser(id);
     return c.json(
@@ -68,7 +67,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     );
   });
 
-  app.patch('/v1/users/:id', session, async (c) => {
+  app.patch('/v1/users/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.patch.parse(await c.req.json());
     const { creditLimit, ...patch } = body;
@@ -83,7 +82,7 @@ export function usersRoutes(deps: UsersRoutesDeps, session: MiddlewareHandler<Se
     return c.json({ id });
   });
 
-  app.post('/v1/users/:id/set-password', session, async (c) => {
+  app.post('/v1/users/:id/set-password', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = authContracts.setPassword.parse(await c.req.json());
     const profile = await deps.accounts.adminGetUser(id);

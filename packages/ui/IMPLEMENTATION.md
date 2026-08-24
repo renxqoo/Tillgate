@@ -1,4 +1,4 @@
-# @tokenlens/ui 实施文档（IMPLEMENTATION）
+# @tillgate/ui 实施文档（IMPLEMENTATION）
 
 > 状态：已完成（波 1 设计系统落地 → 波 2 高优缺口闭合 → 系统重构轮共享模式件收口，
 > `docs/ui-system-refactoring.md` §8 核销：UI 118 项测试、96.27/94.36/97.36/96.15 覆盖率；
@@ -26,7 +26,7 @@
    文案 prop 必填或可覆盖（i18n 宿主注入）；StatusPill 只收语义 tone，业务状态→颜色映射
    由调用方做。
 4. **依赖纯净性机器锁定**：本包及依赖闭包禁止 Next 生态（`next/*`、next-themes、next-intl、
-   geist）与 `@tokenlens/*` workspace 兄弟包——`test/pack/imports.test.ts` 断言（铁律 11）。
+   geist）与 `@tillgate/*` workspace 兄弟包——`test/pack/imports.test.ts` 断言（铁律 11）。
 
 ## 1. v1 审计结论（无编号审计发现，见 DESIGN.md §2）
 
@@ -34,7 +34,7 @@
   组件无法在非 Next 宿主复用（发布候选资格根本不具备）。
 - **paths 旁路 exports**：消费方经 tsconfig paths 深导入，exports 边界名存实亡。
 - **双前端混入业务逻辑**：lib/list-query、pager-href、auth-url、cookie.client、fonts、
-   preferences 均为 Next 路由/会话耦合件，归属 app 而非设计系统。
+  preferences 均为 Next 路由/会话耦合件，归属 app 而非设计系统。
 - 正面资产（行为参照，非代码源）：money-tone 的金额涨跌语义、list-page 的 URL 搜索/
   清除/筛选交互模式、action-toast/confirm-action 的异步反馈语义——v2 以显式契约重写
   （sentiment 声明、onError 不吞错）。
@@ -43,18 +43,18 @@
 
 ## 2. 逐模块裁决表（v1 → v2；完整映射见 DESIGN §8）
 
-| v1 模块                                    | 裁决       | 动作                                                            |
-| ------------------------------------------- | ---------- | --------------------------------------------------------------- |
-| components/ui/*（62 个 Radix vendored）      | **全部重生成** | base-nova（Base UI 原语）逐个 `shadcn add`，零复制               |
-| action-toast / confirm-action / form-dialog  | 重写       | feedback/{confirm-dialog,form-dialog} + sonner；异步契约显式化（onError/pending） |
-| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input | 重写 | data/* + feedback/copy-button；受控排序、sentiment 显式、formatter 注入 |
-| shell/（header/sidebar/nav-main）            | 重写       | navigation/sidebar + theme-switcher；account/locale switcher 属 app 会话层不进包 |
-| lib/money-tone                               | 重写       | formatting/money.toneOf 纯函数                                  |
-| lib/list-query / pager-href / auth-url / cookie.client / fonts / preferences | 不移植 | Next 路由/会话耦合，归 app 或独立适配层                         |
-| hooks/use-lg / use-mobile                    | 重写       | hooks/use-media-query（泛化任意查询）/ use-mobile               |
-| next-themes 主题                             | 重写       | primitives/theme-provider（模版纯 React 本地存储实现）           |
-| server/server-actions.ts                     | 不移植     | 应用装配面职责                                                   |
-| （无对应）                                   | 新增       | 第二波：calendar/date-picker(区间)/input-otp/chart(Recharts 封装)/number-field(手写,注册表 404)/form(RHF 胶水)/button-group/native-select/accordion/slider；系统重构轮：layout/{page-header,auth-shell}、data/{list-panel,row-actions}、empty |
+| v1 模块                                                                             | 裁决           | 动作                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| components/ui/*（62 个 Radix vendored）                                             | **全部重生成** | base-nova（Base UI 原语）逐个 `shadcn add`，零复制                                                                                                                                                                                            |
+| action-toast / confirm-action / form-dialog                                         | 重写           | feedback/{confirm-dialog,form-dialog} + sonner；异步契约显式化（onError/pending）                                                                                                                                                             |
+| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input | 重写           | data/* + feedback/copy-button；受控排序、sentiment 显式、formatter 注入                                                                                                                                                                       |
+| shell/（header/sidebar/nav-main）                                                   | 重写           | navigation/sidebar + theme-switcher；account/locale switcher 属 app 会话层不进包                                                                                                                                                              |
+| lib/money-tone                                                                      | 重写           | formatting/money.toneOf 纯函数                                                                                                                                                                                                                |
+| lib/list-query / pager-href / auth-url / cookie.client / fonts / preferences        | 不移植         | Next 路由/会话耦合，归 app 或独立适配层                                                                                                                                                                                                       |
+| hooks/use-lg / use-mobile                                                           | 重写           | hooks/use-media-query（泛化任意查询）/ use-mobile                                                                                                                                                                                             |
+| next-themes 主题                                                                    | 重写           | primitives/theme-provider（模版纯 React 本地存储实现）                                                                                                                                                                                        |
+| server/server-actions.ts                                                            | 不移植         | 应用装配面职责                                                                                                                                                                                                                                |
+| （无对应）                                                                          | 新增           | 第二波：calendar/date-picker(区间)/input-otp/chart(Recharts 封装)/number-field(手写,注册表 404)/form(RHF 胶水)/button-group/native-select/accordion/slider；系统重构轮：layout/{page-header,auth-shell}、data/{list-panel,row-actions}、empty |
 
 ## 3. 拆分决策（目录即边界）
 
@@ -76,12 +76,12 @@
 
 ## 4. 测试计划（`test/{unit,render,pack}` 分组——用户指令裁决，优先于铁律 14 平铺先例）
 
-| 层          | 文件 → 用例数（核销时点）                                                                                        | 内容                                                                 |
-| ----------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| unit（4）   | cn 4 / formatting-money 11 / formatting-number 5 / formatting-date 10 / hooks 9 = **39**                          | Intl 输出预校验精确断言、可控 matchMedia/clipboard 桩 + fake timers  |
-| render（7） | primitives 9 / forms 5 / data 20 / feedback 12 / navigation 6 / layout 4 / controls 14 = **70**                    | jsdom + Testing Library/user-event 手写组件全交互；vendored 冒烟     |
-| pack（2）   | imports 4 / exports 5 = **9**                                                                                     | 依赖纯净性（禁 Next 生态/workspace 包/测试依赖进 src）、导出面冻结、exports 产物存在性 |
-| 合计        | 13 文件 **118 用例**（§8 核销口径）                                                                                | 覆盖率仅统计手写代码（vendored 与 index 桶不计分母），阈值 90/90/90/85 |
+| 层          | 文件 → 用例数（核销时点）                                                                       | 内容                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| unit（4）   | cn 4 / formatting-money 11 / formatting-number 5 / formatting-date 10 / hooks 9 = **39**        | Intl 输出预校验精确断言、可控 matchMedia/clipboard 桩 + fake timers                    |
+| render（7） | primitives 9 / forms 5 / data 20 / feedback 12 / navigation 6 / layout 4 / controls 14 = **70** | jsdom + Testing Library/user-event 手写组件全交互；vendored 冒烟                       |
+| pack（2）   | imports 4 / exports 5 = **9**                                                                   | 依赖纯净性（禁 Next 生态/workspace 包/测试依赖进 src）、导出面冻结、exports 产物存在性 |
+| 合计        | 13 文件 **118 用例**（§8 核销口径）                                                             | 覆盖率仅统计手写代码（vendored 与 index 桶不计分母），阈值 90/90/90/85                 |
 
 ## 5. 实施顺序（每波独立提交 + 四门）
 
@@ -101,7 +101,7 @@
 ## 6. 验收清单
 
 - [x] 四门全绿；覆盖率 96.27/94.36/97.36/96.15（手写代码口径）≥ 90/90/90/85，未调阈值
-- [x] 依赖纯净性机器锁定：src 零 Next 生态 / 零 `@tokenlens/*`（pack/imports）
+- [x] 依赖纯净性机器锁定：src 零 Next 生态 / 零 `@tillgate/*`（pack/imports）
 - [x] 导出面冻结快照（pack/exports）；exports 产物存在性验证
 - [x] v1 可保留行为参照逐项重写并有测试（金额 tone、受控排序、异步对话框、复制反馈）
 - [x] 显式待办留档（DESIGN §1）：carousel/menubar/hover-card/context-menu/resizable/

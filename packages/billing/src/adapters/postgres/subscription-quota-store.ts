@@ -3,7 +3,7 @@
  * 从 billing-store 拆出（聚合边界：订阅行操作独立成文件——铁律 5）。
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { orgMembers, userSubscriptions, type Db, type DbTx } from '@tokenlens/db';
+import { orgMembers, userSubscriptions, type Db, type DbTx } from '@tillgate/db';
 import type { SubscriptionQuotaStore, SubscriptionSnapshot } from '../../ports/funding-ports.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 

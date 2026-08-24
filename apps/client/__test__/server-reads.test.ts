@@ -19,7 +19,7 @@ vi.stubGlobal(
   }),
 );
 
-import { ApiError, type ClientApiClient } from '@tokenlens/api-client';
+import { ApiError, type ClientApiClient } from '@tillgate/api-client';
 
 import { fetchPlans } from '../src/server/plans';
 import { highlight } from '../src/features/public/highlight';

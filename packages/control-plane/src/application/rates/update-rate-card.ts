@@ -4,7 +4,7 @@
  * 审计与变更同事务（§5.4/G3）：事务内先读旧行，before/after 都进审计——
  * 费率变更可审计版本（总纲 §3.4：费率变更必须产生可审计版本）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
 import type { RateCardStore } from '../../ports/rate-card-store';
 import { validateCoefficient, formatCoefficient } from '../../domain/rate-card/coefficient';

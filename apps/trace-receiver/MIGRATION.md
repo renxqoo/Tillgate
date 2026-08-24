@@ -21,7 +21,7 @@
 
 - 影响本单元的真 bug:**R6**(v1 NODE_ENV 被 zod strip,生产令牌检查恒不触发)——已修,
   config.test「生产缺令牌 fail-fast」锁定;其余 v1 缺陷(B6 batcher O(n) 等)归 observability 波次。
-- 挂账兑现:observability IMPLEMENTATION §7 挂账#3(token-compare 合一)→ `@tokenlens/http`
+- 挂账兑现:observability IMPLEMENTATION §7 挂账#3(token-compare 合一)→ `@tillgate/http`
   `timingSafeTokenEqual`(挂账条目已在该文档核销);G6(接收端按码映射 400)→ onError 合成目录渲染。
 
 ## 3. 逐模块裁决表
@@ -31,7 +31,7 @@
 | batcher.ts                 | 103  | 已迁(前波) | B6 记录  | observability `tracing/ingest`;app 改消费 `createSpanBatcher`(R9)      |
 | app.ts                     | 116  | 重构       | 无缺陷   | 平移+错误面入目录体系(R1/R2/R3/R8);bodyLimit 用 http `bodyParserLimit` |
 | index.ts                   | 58   | 重构       | 无缺陷   | 拆 config/assembly(目标树);停机样板 → runtime `createShutdown`(R7)     |
-| token-compare.ts           | 17   | 上收       | 无缺陷   | → `@tokenlens/http security/token-compare`(R3;v1 注释即预言此合并)     |
+| token-compare.ts           | 17   | 上收       | 无缺陷   | → `@tillgate/http security/token-compare`(R3;v1 注释即预言此合并)     |
 | **tests**/receiver.test.ts | 218  | 拆分       | —        | batcher 段→observability(前波);HTTP 段→本包 real 测试;单测为新增规格   |
 
 ## 4. API 对照
@@ -41,7 +41,7 @@
 | `createReceiverApp({db,store,token?,batcher})` | 同形(+可选 logger)                       | 仅内部演进          |
 | `new SpanBatcher(store,opts)`                  | `createSpanBatcher(store,opts)`          | observability G5    |
 | `DecodeError` instanceof → 400                 | 流动错误 → onError 合成目录 → 400        | R2/G6               |
-| `timingSafeEqual`(本地)                        | `timingSafeTokenEqual`(@tokenlens/http)  | R3/挂账#3           |
+| `timingSafeEqual`(本地)                        | `timingSafeTokenEqual`(@tillgate/http)  | R3/挂账#3           |
 | `loadTraceReceiverEnv()`(core)                 | `loadTraceReceiverConfig()`(app config)  | R4/R5/R6;env 归 app |
 | `initOtel({authToken 回落 env})`               | 无 authToken(接收端自身不推送)           | G2 已裁决           |
 | 手写 shutdown 样板                             | `createShutdown({closeables:[batcher]})` | R7                  |
@@ -76,7 +76,7 @@
 - [x] R6 回归用例通过(生产缺令牌 fail-fast——v1 恒不触发的闸门真实生效)
 - [x] R10/P5 边界架构测试锁定(composition 只在 assembly、Db 类型不入 app.ts、
       禁 src 深导入;§5.5 机器验证 4 用例)
-- [x] 挂账#3 兑现:token-compare 合一入 @tokenlens/http(4 用例语义锁)
+- [x] 挂账#3 兑现:token-compare 合一入 @tillgate/http(4 用例语义锁)
 - [x] http 包目录封闭 15 码 + status 修正表 401/415(catalog/render 测试同步)
 - [x] **进程冒烟双形态**(铁律 17):bun 源码形态与 `node dist/index.js` 产物形态各
       readyz 200 / 无错令牌 401 / 415 信封 / 202→定时 flush→PG 点查(request_id+user_id=7

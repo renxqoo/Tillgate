@@ -51,13 +51,11 @@ describe('基地址解析(B2 回归:root 工厂 baseUrl 必填,env 读取与 dev
 
 describe('装配工厂端到端(会话/语言/转发 IP 全链注入)', () => {
   it('用户面:env base + ag_session token + cookie 语言 + hops=1 转发 IP', async () => {
-    cookieStore.get.mockImplementation((name: string) =>
-      name === 'ag_session'
-        ? { value: 'user-jwt' }
-        : name === 'NEXT_LOCALE'
-          ? { value: 'zh' }
-          : undefined,
-    );
+    cookieStore.get.mockImplementation((name: string) => {
+      if (name === 'ag_session') return { value: 'user-jwt' };
+      if (name === 'NEXT_LOCALE') return { value: 'zh' };
+      return undefined;
+    });
     headerStore.set('x-forwarded-for', '6.6.6.6, 203.0.113.9');
     process.env.TRUSTED_PROXY_HOPS = '1';
     process.env.CLIENT_API_BASE = 'http://client-api-env';

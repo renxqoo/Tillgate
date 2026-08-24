@@ -5,7 +5,7 @@
  */
 import { BillingErrors } from '../../../domain/errors.js';
 import { Decimal } from '../../../domain/money.js';
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import type { BillingStore } from '../../../ports/billing-store.js';
 import type { ChannelExposureStore } from '../../../ports/funding-ports.js';
 import type { WalletTx } from '../../../ports/wallet-store.js';

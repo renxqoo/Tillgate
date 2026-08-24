@@ -5,8 +5,8 @@
  * 新机制件（EPAY_PAY_TYPE/用量时区/定价缓存）所需。
  */
 import { z } from 'zod';
-import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
-import { Decimal, EPAY_PAY_TYPES } from '@tokenlens/billing';
+import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
+import { Decimal, EPAY_PAY_TYPES } from '@tillgate/billing';
 
 const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
 const positiveDecimal = nonNegativeDecimal.refine((value) => !/^0+(?:\.0+)?$/.test(value));
@@ -38,7 +38,7 @@ function createSchema(production: boolean) {
     CLIENT_CHALLENGE_COOLDOWN_MS: z.coerce.number().int().positive().default(60_000),
     CLIENT_CHALLENGE_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(5),
     /** TOTP（MFA 预留词表；用户面暂不开放端点——identity 配置必填项） */
-    CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('TokenLens'),
+    CLIENT_TOTP_ISSUER: z.string().min(1).max(255).default('Tillgate'),
     /** 邮箱自助注册开关（关闭只留既有账号登录） */
     REGISTER_ENABLED: strictBooleanSchema(true),
     /** 同 IP 注册请求窗口（秒）与上限/窗口（防批量刷号；窗口即 Retry-After 口径） */
@@ -124,7 +124,7 @@ function createSchema(production: boolean) {
     KEY_PREFIX: z
       .string()
       .regex(/^[a-z][a-z0-9_-]{1,15}$/)
-      .default('ag_'),
+      .default('sk_'),
     /** accounts 装配 policy（邀请有效期/待接受上限因子与上界/Key 限额上界） */
     CLIENT_INVITATION_TTL_MS: z.coerce
       .number()

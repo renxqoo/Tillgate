@@ -3,7 +3,7 @@
  * 报价候选链解析（findActiveBy*）与在架目录读（listEnabledModels）是网关热路径——
  * 不在此（inference 波次 G1）；本 port 只覆盖管理面 CRUD/绑定/探针读/目录比对读。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { BillingConfig } from '../domain/model/model';
 import type { ListQuery, ListResult } from '../domain/list';
 

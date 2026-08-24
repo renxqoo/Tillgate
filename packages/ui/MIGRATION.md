@@ -1,4 +1,4 @@
-# @tokenlens/ui 迁移文档（MIGRATION.md）
+# @tillgate/ui 迁移文档（MIGRATION.md）
 
 > 状态：已核销（核销依据 = [docs/ui-system-refactoring.md](../../docs/ui-system-refactoring.md)
 > §8：UI/Admin/Client 三面 361 项测试全过、覆盖率达标、路由与查询参数不变、生产构建通过）
@@ -42,41 +42,41 @@
 
 ## 3. 逐模块裁决表
 
-| 旧文件/模块（v1）                                        | 裁决         | 审计状态      | 动作                                                              |
-| --------------------------------------------------------- | ------------ | ------------- | ----------------------------------------------------------------- |
-| components/ui/*（62 个 Radix vendored）                    | **全部重生成** | DESIGN §2    | base-nova（Base UI）逐个 `shadcn add`，零复制                     |
-| action-toast / confirm-action / form-dialog                | 重写         | —             | feedback/{confirm-dialog,form-dialog} + sonner（onError/pending 显式契约） |
-| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input | 重写 | U3/U5        | data/* + copy-button；受控排序 + `aria-sort`、sentiment 显式、formatter 注入 |
-| shell/（header/sidebar/nav-main）                          | 重写         | U1           | navigation/sidebar（inset + rail 原语）+ 主题件；switcher 归 app   |
-| lib/money-tone                                             | 重写         | —             | formatting/money.toneOf 纯函数                                    |
-| lib/{list-query,pager-href,auth-url,cookie.client,fonts,preferences} | 不移植 | DESIGN §2/§8 | Next 路由/会话耦合，归 app 或独立适配层（其 4 件测试随之删除，§1） |
-| hooks/use-lg / use-mobile                                  | 重写         | —             | hooks/use-media-query（泛化任意查询）/ use-mobile                 |
-| server/server-actions.ts                                   | 不移植       | —             | 应用装配面职责                                                    |
-| apps/admin·client MainLayout（U1）/ ListPage×2（U2）/ 筛选器（U4）/ 行操作（U7）/ Auth（U6）/ Dashboard KPI（U5） | 重构 | U1-U7 | 共享 page-header/auth-shell/list-panel/row-actions/kpi-card 收敛；应用侧保留 URL 适配（ui-system-refactoring §4-§5） |
-| （无对应）                                                 | 新增         | —             | 第二波 9 组件 + 系统重构轮 layout/data 增件（IMPLEMENTATION §2 末行） |
+| 旧文件/模块（v1）                                                                                                 | 裁决           | 审计状态     | 动作                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------- | -------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| components/ui/*（62 个 Radix vendored）                                                                           | **全部重生成** | DESIGN §2    | base-nova（Base UI）逐个 `shadcn add`，零复制                                                                        |
+| action-toast / confirm-action / form-dialog                                                                       | 重写           | —            | feedback/{confirm-dialog,form-dialog} + sonner（onError/pending 显式契约）                                           |
+| data-table / kpi-card / status-pill / money-points / secret-reveal / password-input                               | 重写           | U3/U5        | data/* + copy-button；受控排序 + `aria-sort`、sentiment 显式、formatter 注入                                         |
+| shell/（header/sidebar/nav-main）                                                                                 | 重写           | U1           | navigation/sidebar（inset + rail 原语）+ 主题件；switcher 归 app                                                     |
+| lib/money-tone                                                                                                    | 重写           | —            | formatting/money.toneOf 纯函数                                                                                       |
+| lib/{list-query,pager-href,auth-url,cookie.client,fonts,preferences}                                              | 不移植         | DESIGN §2/§8 | Next 路由/会话耦合，归 app 或独立适配层（其 4 件测试随之删除，§1）                                                   |
+| hooks/use-lg / use-mobile                                                                                         | 重写           | —            | hooks/use-media-query（泛化任意查询）/ use-mobile                                                                    |
+| server/server-actions.ts                                                                                          | 不移植         | —            | 应用装配面职责                                                                                                       |
+| apps/admin·client MainLayout（U1）/ ListPage×2（U2）/ 筛选器（U4）/ 行操作（U7）/ Auth（U6）/ Dashboard KPI（U5） | 重构           | U1-U7        | 共享 page-header/auth-shell/list-panel/row-actions/kpi-card 收敛；应用侧保留 URL 适配（ui-system-refactoring §4-§5） |
+| （无对应）                                                                                                        | 新增           | —            | 第二波 9 组件 + 系统重构轮 layout/data 增件（IMPLEMENTATION §2 末行）                                                |
 
 ## 4. API 对照
 
-| 旧签名/形态                                          | 新签名/形态                                              | 变化理由                                        |
-| ----------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------- |
-| `@ai-gateway/ui` 深导入（paths 旁路）                  | `@tokenlens/ui` 唯一导出面 + `./styles.css` 子路径         | exports 边界可执行（pack 测试冻结）             |
-| Radix 原语 + next-themes 主题                          | Base UI（`@base-ui/react`）+ 纯 React ThemeProvider       | b0 预设裁决；去 Next 耦合                      |
-| `moneyTone(value)`（隐含涨=好）                        | `createMoneyFormatter(...).toneOf` + KpiCard `sentiment` 必填 | 零写死 + 不假设涨跌语义                    |
-| `ListPage`（内置取数 + 回车搜索）                      | 应用侧 list-page.tsx（URL 搜索/清除/筛选/分页适配）+ 包内 list-panel 外壳 | 取数归 app；交互契约统一（§5 交互契约） |
-| `action-toast` / `confirm-action`（Promise 任意形态）  | ConfirmDialog/FormDialog：resolve 关闭、reject 开 + onError | 异步契约显式化，不静默吞错                      |
-| `use-lg()` 断点                                       | `useMediaQuery(query)`                                    | 泛化                                            |
-| v1 无（表单胶水散在 app）                              | Form/FormField/FormControl（react-hook-form 接 Field 原语） | 校验器由调用方自选                              |
-| geist 字体（Next font）                                | `@fontsource-variable/inter` 自托管                       | 去 Next 专有依赖                                |
+| 旧签名/形态                                           | 新签名/形态                                                               | 变化理由                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------- |
+| `@ai-gateway/ui` 深导入（paths 旁路）                 | `@tillgate/ui` 唯一导出面 + `./styles.css` 子路径                        | exports 边界可执行（pack 测试冻结）     |
+| Radix 原语 + next-themes 主题                         | Base UI（`@base-ui/react`）+ 纯 React ThemeProvider                       | b0 预设裁决；去 Next 耦合               |
+| `moneyTone(value)`（隐含涨=好）                       | `createMoneyFormatter(...).toneOf` + KpiCard `sentiment` 必填             | 零写死 + 不假设涨跌语义                 |
+| `ListPage`（内置取数 + 回车搜索）                     | 应用侧 list-page.tsx（URL 搜索/清除/筛选/分页适配）+ 包内 list-panel 外壳 | 取数归 app；交互契约统一（§5 交互契约） |
+| `action-toast` / `confirm-action`（Promise 任意形态） | ConfirmDialog/FormDialog：resolve 关闭、reject 开 + onError               | 异步契约显式化，不静默吞错              |
+| `use-lg()` 断点                                       | `useMediaQuery(query)`                                                    | 泛化                                    |
+| v1 无（表单胶水散在 app）                             | Form/FormField/FormControl（react-hook-form 接 Field 原语）               | 校验器由调用方自选                      |
+| geist 字体（Next font）                               | `@fontsource-variable/inter` 自托管                                       | 去 Next 专有依赖                        |
 
 ## 5. 测试迁移矩阵
 
-| 旧测试                                     | 新去处                                     | 动作（移植 / 改写 / 删除+理由）                     |
-| ------------------------------------------ | ------------------------------------------ | --------------------------------------------------- |
-| `auth-url.test.ts`（6）                    | —                                          | 删除：被测件 Next 会话耦合不移植（DESIGN §8）       |
-| `pager-href.test.ts`（3）                  | —                                          | 删除：同上（URL 组装归 app 侧，app 波自测）         |
-| `list-query.test.ts`（5）                  | —                                          | 删除：服务端 URL 状态归 app；包内列表交互由 render 层锁 |
-| `dashboard-navigation.test.ts`（2）        | —                                          | 删除：导航数据属 app 会话层                         |
-| （apps 侧无单测）                          | UI `test/{unit,render,pack}` 13 文件 118 用例；Admin 125；Client 118 | 新增规格（§8 核销口径，共 361 项）  |
+| 旧测试                              | 新去处                                                               | 动作（移植 / 改写 / 删除+理由）                         |
+| ----------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------- |
+| `auth-url.test.ts`（6）             | —                                                                    | 删除：被测件 Next 会话耦合不移植（DESIGN §8）           |
+| `pager-href.test.ts`（3）           | —                                                                    | 删除：同上（URL 组装归 app 侧，app 波自测）             |
+| `list-query.test.ts`（5）           | —                                                                    | 删除：服务端 URL 状态归 app；包内列表交互由 render 层锁 |
+| `dashboard-navigation.test.ts`（2） | —                                                                    | 删除：导航数据属 app 会话层                             |
+| （apps 侧无单测）                   | UI `test/{unit,render,pack}` 13 文件 118 用例；Admin 125；Client 118 | 新增规格（§8 核销口径，共 361 项）                      |
 
 ## 6. 回滚方案
 

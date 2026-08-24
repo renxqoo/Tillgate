@@ -3,7 +3,7 @@
  * 0 行二义（渠道不存在 vs 守卫未过）在事务内二次读消解。
  * 审计与业务同事务（§5.4/G3）：写失败随事务回滚。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
 import type { ChannelStore } from '../../ports/channel-store';
 import type { OperationsStore } from '../../ports/operations-store';

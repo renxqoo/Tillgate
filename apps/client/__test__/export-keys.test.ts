@@ -27,7 +27,7 @@ vi.mock('next/cache', () => ({
 
 import { exportKeysAction } from '../src/server/actions/keys';
 import { buildKeysTsv } from '../src/features/keys/export-tsv';
-import type { KeyRow } from '@tokenlens/api-client';
+import type { KeyRow } from '@tillgate/api-client';
 
 /** 最小 KeyRow 工厂（列口径只消费 name/keyPreview/status/createdAt，其余给中性值） */
 function keyRow(id: number, over: Partial<KeyRow> = {}): KeyRow {
@@ -58,10 +58,13 @@ function stubPagedFetch(pages: Array<{ rows: KeyRow[]; total: number }>) {
     vi.fn(async (url: string | URL) => {
       calls.push({ url: String(url) });
       const next = queue.shift() ?? { rows: [], total: 0 };
-      return new Response(JSON.stringify({ rows: next.rows, total: next.total, page: 1, limit: 100 }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ rows: next.rows, total: next.total, page: 1, limit: 100 }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      );
     }),
   );
 }
@@ -127,11 +130,12 @@ describe('exportKeysAction（B18：全量翻页导出）', () => {
   it('ApiError 降级：后端 500 返回 error 文案，不向组件抛异常', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () =>
-        new Response(JSON.stringify({ error: { code: 'internal', message: 'upstream down' } }), {
-          status: 500,
-          headers: { 'content-type': 'application/json' },
-        }),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: 'internal', message: 'upstream down' } }), {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          }),
       ),
     );
 

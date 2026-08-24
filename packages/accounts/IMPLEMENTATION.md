@@ -1,4 +1,4 @@
-# @tokenlens/accounts 施工图(IMPLEMENTATION.md)
+# @tillgate/accounts 施工图(IMPLEMENTATION.md)
 
 > 状态:已完成(2026-08-23;实施记录见 §7)
 > 前置:DESIGN.md(定稿)、三份老仓审计(2026-08-23,证据均带 文件:行号)
@@ -114,7 +114,7 @@ packages/accounts/
 
 1. **四门 + real 门**:typecheck/lint/build 绿;单测 208 绿(13 文件),覆盖率
    95.45/89.34/97.03/97.63(阈值 90/85/90/90);real 门 11/11(独立库
-   `tokenlens_accounts_test`,`DB_TEST_URL` 约定)。
+   `tillgate_accounts_test`,`DB_TEST_URL` 约定)。
 2. **实现期裁决补充**:
    - v1 client-api **不写任何审计**(grep 证实,审计报告初稿有误)——MIGRATION §1.6.4
      已按事实修正:audit_logs 仅管理面动作(user.update / api_key.update /

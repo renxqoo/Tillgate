@@ -3,9 +3,9 @@
  * 不会放松已收紧的线);at 缺省 = SQL now()(B28:锚点推进不受应用时钟回拨影响)。
  */
 import { and, eq, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identitySessionAnchors } from '@tokenlens/db';
-import { DefectError } from '@tokenlens/errors';
+import type { DbLike } from '@tillgate/db';
+import { identitySessionAnchors } from '@tillgate/db';
+import { DefectError } from '@tillgate/errors';
 import type { AnchorStore } from '../../ports/anchor-store.js';
 
 export const anchorQueries: AnchorStore = {

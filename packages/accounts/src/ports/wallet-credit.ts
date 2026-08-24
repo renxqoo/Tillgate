@@ -7,7 +7,7 @@
  * 幂等由实现方经 (refType, refId) 自然键保证:重复入账返回 replayed=true 而非报错
  * (v1 wallet.credit 语义);refType/refId 词表由 accounts domain 构造器单一真相。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 /** 资金流类型:gift=注册赠送 / referral=推荐族(注册奖励、日结佣金) */
 export type CreditRefType = 'gift' | 'referral';

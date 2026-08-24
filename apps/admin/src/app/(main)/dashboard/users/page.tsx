@@ -1,8 +1,9 @@
+import { requirePermission } from '@/server/get-admin';
 import { adminApi } from '@/server/admin-api';
 import { UsersRound } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type AdminRateCardRow, type Paginated } from '@tokenlens/api-client';
+import { ApiError, type AdminRateCardRow, type Paginated } from '@tillgate/api-client';
 import { ListPage } from '@/components/list-page';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 
@@ -10,7 +11,7 @@ import { UsersContent } from '@/features/users/users-content';
 import { UsersExport } from '@/features/users/users-export';
 import { UsersStatusFilter } from '@/features/users/users-status-filter';
 import { UsersEnterpriseFilter } from '@/features/users/users-enterprise-filter';
-import type { RateCardOption, AdminUserRow } from '@tokenlens/api-client';
+import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,7 @@ interface PageProps {
 }
 
 export default async function UsersPage({ searchParams }: PageProps) {
+  await requirePermission('users:read');
   const sp = await searchParams;
   const t = await getTranslations('users');
   const tc = await getTranslations('common');

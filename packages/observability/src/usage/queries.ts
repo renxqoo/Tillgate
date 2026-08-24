@@ -33,7 +33,11 @@ export interface UsageQueries {
     channelHealth: ChannelStatusCount[];
   }>;
   /** 分组聚合(user/model/channel;tokens 映射 number,金额保持字符串) */
-  groups(input: { group: UsageGroupAxis; from?: Date; to?: Date }): Promise<{ list: UsageGroupRow[] }>;
+  groups(input: {
+    group: UsageGroupAxis;
+    from?: Date;
+    to?: Date;
+  }): Promise<{ list: UsageGroupRow[] }>;
   /** 按日趋势:近 N 天(含今日;北京日界) */
   trends(input: { days: number; now: Date }): Promise<{
     days: number;
@@ -66,9 +70,7 @@ export function createUsageQueries(env: { store: UsageStatsStore }): UsageQuerie
       const failedCount = today.requests - today.successCount;
       // 一位小数百分比(v1 舍入口径:round(x*1000)/10;零请求恒 0)
       const successRate =
-        today.requests === 0
-          ? 0
-          : Math.round((today.successCount / today.requests) * 1000) / 10;
+        today.requests === 0 ? 0 : Math.round((today.successCount / today.requests) * 1000) / 10;
       return {
         today: {
           requests: today.requests,

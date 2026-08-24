@@ -2,7 +2,7 @@
  * admin-api DTO 生成脚本（P3 生成链第二段;P6 C1 换轨终结手写双轨）。
  * 用法:bun run generate:dto（或 bun scripts/generate-dto.ts）。
  * 输入:apps/admin-api/generated/openapi.json（入库交付物——本包不依赖
- * 任何私有 @tokenlens/* workspace,生成从 checkout 内可复现;DESIGN §3.4）。
+ * 任何私有 @tillgate/* workspace,生成从 checkout 内可复现;DESIGN §3.4）。
  * 输出:src/dto/admin-api.generated.ts（同路径覆盖,**GENERATED——禁止手改**;
  * __test__/generated-dto.test.ts 锁头标记/逐字节重渲/导出集合快照）。
  *

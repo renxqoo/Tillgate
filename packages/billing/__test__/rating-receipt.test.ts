@@ -3,7 +3,7 @@
  * 新增 B3 回归：垃圾价格串的 Decimal 构造异常归类毒收据，不逃逸死信家族）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { decodeReceipt } from '../src/domain/rating/decode.js';
 import { validateReceipt } from '../src/domain/rating/receipt.js';
 import {

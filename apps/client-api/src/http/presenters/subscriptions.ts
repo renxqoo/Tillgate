@@ -2,7 +2,7 @@
  * 订阅呈现：subscription-read 适配器基础行 + Decimal 派生（剩余额度/续费总价/
  * 剩余价值——v1 SQL 口径的等价计算）→ /v1/subscriptions wire 行。
  */
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 
 /** subscription-read 产出基础行（派生字段由本 presenter 计算） */
 export interface SubscriptionBaseRow {

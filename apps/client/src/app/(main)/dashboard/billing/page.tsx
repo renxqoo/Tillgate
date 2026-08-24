@@ -5,8 +5,8 @@ import type {
   PaymentOrdersPage,
   PaymentOrderRow,
   PaymentChannelsResult,
-} from '@tokenlens/api-client';
-import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tokenlens/ui';
+} from '@tillgate/api-client';
+import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tillgate/ui';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { ListPage } from '@/features/shared/list-page';
@@ -47,8 +47,11 @@ export default async function BillingPage() {
     {
       key: 'provider',
       header: tCommon('channel'),
-      cell: (r) =>
-        r.provider === 'epay' ? t('onlinePay') : r.provider === 'stripe' ? 'Stripe' : r.provider,
+      cell: (r) => {
+        if (r.provider === 'epay') return t('onlinePay');
+        if (r.provider === 'stripe') return 'Stripe';
+        return r.provider;
+      },
     },
     {
       key: 'amount',

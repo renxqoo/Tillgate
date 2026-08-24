@@ -11,9 +11,9 @@ import {
   securityHeaders,
   requestIdMiddleware,
   HttpErrors,
-} from '@tokenlens/http';
-import type { Inference } from '@tokenlens/inference';
-import type { RequestLogStore } from '@tokenlens/observability';
+} from '@tillgate/http';
+import type { Inference } from '@tillgate/inference';
+import type { RequestLogStore } from '@tillgate/observability';
 import { otelMiddleware } from './http/middleware/otel';
 import { requestLogMiddleware } from './http/middleware/request-log';
 import {
@@ -30,7 +30,7 @@ import { modelsRoutes, type ModelsReader } from './http/routes/models';
 import { modalityMultipartRoutes } from './http/routes/modality-multipart';
 import { generationRoutes } from './http/routes/generation';
 import { oauthTokenRoutes } from './http/routes/oauth-token';
-import type { AuthFailureGuard } from '@tokenlens/runtime';
+import type { AuthFailureGuard } from '@tillgate/runtime';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from './http/openai-error-face';
 
 export interface GatewayAppDeps {

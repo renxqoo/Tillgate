@@ -3,7 +3,7 @@
  * 密钥生命周期语义（落库即密文/换 Key 复位运行态/回显仅预览）由 application 承担，
  * 本文件只持有不可变口径。
  */
-import type { ErrorContext } from '@tokenlens/errors';
+import type { ErrorContext } from '@tillgate/errors';
 import { controlPlaneErrors } from '../../errors';
 import { parseNonNegativeAmount } from '../money';
 

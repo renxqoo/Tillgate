@@ -2,8 +2,8 @@ import { GiftIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { ApiError, type RedeemHistoryItem, type RedeemHistoryPage } from '@tokenlens/api-client';
-import { Button, DataTable, type DataTableColumn } from '@tokenlens/ui';
+import { ApiError, type RedeemHistoryItem, type RedeemHistoryPage } from '@tillgate/api-client';
+import { Button, DataTable, type DataTableColumn } from '@tillgate/ui';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { signedAmountTone } from '@/features/shared/money-tone';

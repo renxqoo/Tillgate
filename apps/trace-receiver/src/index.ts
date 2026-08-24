@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
-import { closeDb, ping } from '@tokenlens/db';
-import { createShutdown } from '@tokenlens/runtime';
+import { closeDb, ping } from '@tillgate/db';
+import { createShutdown } from '@tillgate/runtime';
 import { loadTraceReceiverConfig } from './config';
 import { assembleReceiver } from './assembly';
 import { createReceiverApp } from './app';

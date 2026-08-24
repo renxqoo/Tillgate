@@ -2,10 +2,10 @@
  * 账户资料路由（会话）：GET /v1/me（资料 + 钱包富化）+ PATCH /v1/me/display-name。
  */
 import { Hono } from 'hono';
-import { jsonBody } from '@tokenlens/http';
+import { jsonBody } from '@tillgate/http';
 import type { MiddlewareHandler } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { AccountSnapshot } from '@tokenlens/billing';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { AccountSnapshot } from '@tillgate/billing';
 import { displayNameSchema } from '../contracts/me.js';
 import { toMeInfo } from '../presenters/me.js';
 import type { SessionEnv } from '../middleware/session.js';

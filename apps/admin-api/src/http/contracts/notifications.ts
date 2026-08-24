@@ -4,7 +4,7 @@
  * 事件词表单一真相 = notifications domain NOTIFY_EVENTS（此处 import,不复制）。
  */
 import { z } from 'zod';
-import { NOTIFY_EVENTS } from '@tokenlens/notifications';
+import { NOTIFY_EVENTS } from '@tillgate/notifications';
 
 const configSchema = z
   .object({

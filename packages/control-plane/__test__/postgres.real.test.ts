@@ -6,7 +6,7 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like, sql } from 'drizzle-orm';
-import { createDb, isUniqueViolation, closeDb, type Db } from '@tokenlens/db';
+import { createDb, isUniqueViolation, closeDb, roles, type Db } from '@tillgate/db';
 import {
   providers,
   channels,
@@ -18,7 +18,7 @@ import {
   auditLogs,
   channelRecharges,
   admins,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import { postgresProviderStore } from '../src/adapters/postgres/provider-store';
 import { postgresChannelStore } from '../src/adapters/postgres/channel-store';
 import { postgresModelStore } from '../src/adapters/postgres/model-store';
@@ -27,6 +27,7 @@ import { postgresFxStore, CATALOG_FX_CONFIG_KEY } from '../src/adapters/postgres
 import { postgresOperationsStore } from '../src/adapters/postgres/operations-store';
 import { createPostgresAuditSink, postgresAuditStore } from '../src/adapters/postgres/audit';
 import { createPostgresVoucherStorage } from '../src/adapters/postgres/voucher-storage';
+import { postgresAdminStore } from '../src/adapters/postgres/admin-store';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 let db: Db | null = null;
@@ -34,11 +35,26 @@ const uid = () => `cp_${Date.now().toString(36)}_${Math.random().toString(36).sl
 
 /** 真管理员行（FK：channel_recharges/audit_logs 的 admin_id 引用 admins） */
 async function realAdminId(): Promise<number> {
+  const [superRole] = await db!
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.code, 'super_admin'));
   const [row] = await db!
     .insert(admins)
-    .values({ email: `${uid()}@example.com`, passwordHash: 'x:0:0:0:0' })
+    .values({
+      email: `${uid()}@example.com`,
+      passwordHash: 'x:0:0:0:0',
+      roleId: superRole!.id,
+    })
     .returning({ id: admins.id });
   return row!.id;
+}
+
+/** viewer 角色 id（0082 种子保证存在;用例建行挂 viewer） */
+async function viewerRoleId(): Promise<number> {
+  const [role] = await db!.select({ id: roles.id }).from(roles).where(eq(roles.code, 'viewer'));
+  if (role == null) throw new Error('viewer role missing (run migrations 0082)');
+  return role.id;
 }
 
 beforeAll(async () => {
@@ -366,5 +382,55 @@ describe('voucher-storage（真实 PG：bytea 往返 + 键白名单）', () => {
       db as unknown as { $client: { query: (q: string, v?: unknown[]) => Promise<unknown> } }
     ).$client;
     await pool.query(`delete from voucher_blobs where "key" = $1`, [key]).catch(() => {});
+  });
+});
+
+describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一兜底/部分更新/补偿删除）', () => {
+  it('create → list → update → remove 全链 + 重名 23505 + id ≥1e9 段分配', async () => {
+    if (!db) return;
+    const email = `${uid()}@example.com`;
+    const roleId = await viewerRoleId();
+    // create 需事务形态（id 段分配与插入原子——application 层同款包装）
+    const created = await db.transaction((tx) =>
+      postgresAdminStore.create(tx, { email, displayName: 'E2E', roleId }),
+    );
+    expect(created.role).toBe('viewer');
+    expect(created.status).toBe(0);
+    expect(created.id).toBeGreaterThanOrEqual(1_000_000_000);
+    try {
+      // 唯一索引兜底（23505 由 application 翻译——此处验原始形状）
+      const dup = await db
+        .transaction((tx) => postgresAdminStore.create(tx, { email, displayName: null, roleId }))
+        .catch((error: unknown) => error);
+      expect(isUniqueViolation(dup)).toBe(true);
+
+      // q 搜索（dev 库管理员行可能 ≥100,asc+limit100 未必覆盖新行——用唯一 email 定位,
+      // 顺带真库验证 ilike 路径）;total 计数同条件
+      const listed = await postgresAdminStore.list(db, {
+        q: email,
+        sortBy: 'id',
+        order: 'asc',
+        limit: 100,
+        offset: 0,
+      });
+      expect(listed.rows).toHaveLength(1);
+      expect(listed.rows[0]).toMatchObject({ id: created.id });
+      expect(listed.rows[0]?.role).toBe('viewer');
+      expect(listed.total).toBe(1);
+
+      const updated = await postgresAdminStore.update(db, {
+        adminId: created.id,
+        status: 1,
+      });
+      expect(updated).toMatchObject({ status: 1 });
+      expect(updated?.role).toBe('viewer');
+      expect(await postgresAdminStore.update(db, { adminId: 999_999_999 })).toBeNull();
+
+      const byId = await postgresAdminStore.findById(db, created.id);
+      expect(byId?.role).toBe('viewer');
+    } finally {
+      await postgresAdminStore.remove(db, created.id);
+    }
+    expect(await postgresAdminStore.findById(db, created.id)).toBeNull();
   });
 });

@@ -10,9 +10,9 @@
  *   - 新增 WORKER_NOTIFY_* 投递参数（v1 写死在 notify-dispatch）。
  */
 import { z } from 'zod';
-import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
-import type { OtelMode } from '@tokenlens/observability';
-import type { DbPoolConfig } from '@tokenlens/db';
+import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
+import type { OtelMode } from '@tillgate/observability';
+import type { DbPoolConfig } from '@tillgate/db';
 
 const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] as const;
 
@@ -233,7 +233,7 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
         webhookTimeoutMs: parsed.WORKER_NOTIFY_WEBHOOK_TIMEOUT_MS,
         backoffBaseMs: parsed.WORKER_NOTIFY_BACKOFF_BASE_MS,
         backoffCapMs: parsed.WORKER_NOTIFY_BACKOFF_CAP_MS,
-        emailBrand: 'TokenLens 运维告警',
+        emailBrand: 'Tillgate 运维告警',
       },
     },
     reconcile: { intervalMs: parsed.WORKER_RECONCILE_INTERVAL_MS },

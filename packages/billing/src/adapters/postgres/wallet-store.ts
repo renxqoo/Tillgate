@@ -17,7 +17,7 @@ import {
   type Db,
   type DbTx,
   type TxRetryPolicy,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import type { AuthorizationSnapshot } from '../../domain/wallet/authorization.js';
 import type {
@@ -346,12 +346,9 @@ export function createPostgresWalletStore(
      */
     async listReferralPayouts(conn, input) {
       const referral = input.kind !== 'gift';
-      const prefix =
-        input.kind === 'commission'
-          ? 'referral-commission:'
-          : input.kind === 'referral_signup'
-            ? 'referral-signup:'
-            : 'signup:';
+      let prefix = 'signup:';
+      if (input.kind === 'commission') prefix = 'referral-commission:';
+      else if (input.kind === 'referral_signup') prefix = 'referral-signup:';
       const conditions = [
         eq(walletTransactions.refType, referral ? 'referral' : 'gift'),
         like(walletTransactions.refId, `${prefix}%`),

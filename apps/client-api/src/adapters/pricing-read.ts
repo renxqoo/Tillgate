@@ -6,10 +6,10 @@
  */
 import { eq } from 'drizzle-orm';
 import type { Redis } from 'ioredis';
-import type { Db } from '@tokenlens/db';
-import { systemConfigs } from '@tokenlens/db';
-import { postgresModelStore, postgresRateCardStore } from '@tokenlens/control-plane/composition';
-import type { RateCardCoefficientSnapshot } from '@tokenlens/billing';
+import type { Db } from '@tillgate/db';
+import { systemConfigs } from '@tillgate/db';
+import { postgresModelStore, postgresRateCardStore } from '@tillgate/control-plane/composition';
+import type { RateCardCoefficientSnapshot } from '@tillgate/billing';
 import type { BaseCatalog, PricingEnrichedRow } from '../http/presenters/pricing.js';
 import { scheduleWindowsOf } from '../http/presenters/pricing.js';
 

@@ -2,7 +2,7 @@
  * 管理面 Key 补丁(v1 adminPatchKey):不限属主;status 仅 {0,1}(管理面可吊销/恢复);
  * 投影不返回 keyHash(B2:v1 返回值供已废弃的缓存清理,已删);审计 api_key.update 同事务。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import type { AdminApiKeyPatch, ApiKeyRecord } from '../ports/account-store.js';
 import { parseKeyFields, type KeyFieldsInput } from './key-fields.js';

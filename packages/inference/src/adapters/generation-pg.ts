@@ -8,8 +8,8 @@
  * 权威时间源 = 库端 clock_timestamp()（expireOverdue 的超时判定不读应用时钟）。
  */
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { billingRequests, generationTasks, usageLogs } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { billingRequests, generationTasks, usageLogs } from '@tillgate/db';
 import type { GenerationTaskKind } from '../domain/generation';
 import type {
   GenerationTaskActiveRow,
@@ -119,25 +119,23 @@ export function createPostgresGenerationTaskStore(db: Db): GenerationTaskStore {
           .where(where),
       ]);
       return {
-        rows: rows.map(
-          (row): GenerationTaskAdminRow => ({
-            taskId: row.taskId,
-            requestId: row.requestId,
-            kind: row.kind as GenerationTaskAdminRow['kind'],
-            status: (TASK_STATUSES as readonly string[]).includes(row.status)
-              ? (row.status as GenerationTaskAdminRow['status'])
-              : 'queued',
-            userId: row.userId,
-            channelId: row.channelId,
-            upstreamTaskId: row.upstreamTaskId,
-            failReason: row.failReason,
-            result: row.result ?? null,
-            billingStatus: row.billingStatus ?? null,
-            createdAt: row.createdAt.getTime(),
-            finishedAt: row.finishedAt == null ? null : row.finishedAt.getTime(),
-            expiresAt: row.expiresAt.getTime(),
-          }),
-        ),
+        rows: rows.map((row): GenerationTaskAdminRow => ({
+          taskId: row.taskId,
+          requestId: row.requestId,
+          kind: row.kind as GenerationTaskAdminRow['kind'],
+          status: (TASK_STATUSES as readonly string[]).includes(row.status)
+            ? (row.status as GenerationTaskAdminRow['status'])
+            : 'queued',
+          userId: row.userId,
+          channelId: row.channelId,
+          upstreamTaskId: row.upstreamTaskId,
+          failReason: row.failReason,
+          result: row.result ?? null,
+          billingStatus: row.billingStatus ?? null,
+          createdAt: row.createdAt.getTime(),
+          finishedAt: row.finishedAt == null ? null : row.finishedAt.getTime(),
+          expiresAt: row.expiresAt.getTime(),
+        })),
         total: countRows[0]?.count ?? 0,
       };
     },

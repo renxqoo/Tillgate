@@ -5,7 +5,7 @@
  * - emitAudit：低价值运营事件的提交后 best-effort 降级路径（显式策略非默认，
  *   降级清单见 ports/audit-sink.ts 文件头）——失败记上下文日志不阻塞已提交业务。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { AuditEntry, AuditSink, AuditTxSink } from '../ports/audit-sink';
 
 /** 事务参与发射（§5.4）：不吞错——失败随调用方事务回滚 */

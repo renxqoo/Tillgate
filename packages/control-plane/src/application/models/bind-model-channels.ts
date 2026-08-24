@@ -1,7 +1,7 @@
 /**
  * 绑定全量替换：事务内删旧插新（空数组 = 解绑全部）；返回新绑定数。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore } from '../../ports/model-store';
 import { controlPlaneErrors } from '../../errors';

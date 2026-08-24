@@ -2,7 +2,7 @@
  * 推荐与拉新参数聚合 SQL:关系/名单、单行表 upsert(B7 单往返)、管理面关系视图。
  */
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { marketingSettings, referrals, users } from '@tokenlens/db';
+import { marketingSettings, referrals, users } from '@tillgate/db';
 import { ZERO_MARKETING_SETTINGS } from '../../domain/marketing.js';
 import type { AccountStorePort, RelationView } from '../../ports/account-store.js';
 import { likePattern, nowSql } from './shared.js';

@@ -8,8 +8,8 @@
  * 存储查询保留归 observability（G3）；全局审计列表不在本包。
  */
 import { and, desc, sql } from 'drizzle-orm';
-import type { Db, DbLike } from '@tokenlens/db';
-import { auditLogs } from '@tokenlens/db';
+import type { Db, DbLike } from '@tillgate/db';
+import { auditLogs } from '@tillgate/db';
 import type { AuditSink, AuditTxSink, AuditEntry } from '../../ports/audit-sink';
 import type { AuditStore, AuditLogRow } from '../../ports/audit-store';
 

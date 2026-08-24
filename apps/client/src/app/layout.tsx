@@ -4,8 +4,8 @@ import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { DEFAULT_LOCALE, htmlLang, isLocale } from '@tokenlens/api-client/next';
-import { ThemeProvider, Toaster, TooltipProvider, cn } from '@tokenlens/ui';
+import { DEFAULT_LOCALE, htmlLang, isLocale } from '@tillgate/api-client/next';
+import { ThemeProvider, Toaster, TooltipProvider, cn } from '@tillgate/ui';
 
 import { APP_CONFIG } from '@/config/app-config';
 import { getThemeBootCode } from '@/features/shell/theme-boot';

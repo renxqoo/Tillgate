@@ -105,7 +105,7 @@ describe('Sidebar', () => {
     render(
       <SidebarProvider>
         <Sidebar>
-          <SidebarHeader>TokenLens</SidebarHeader>
+          <SidebarHeader>Tillgate</SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel>运营</SidebarGroupLabel>
@@ -121,7 +121,7 @@ describe('Sidebar', () => {
         </Sidebar>
       </SidebarProvider>,
     );
-    expect(screen.getByText('TokenLens')).toBeInTheDocument();
+    expect(screen.getByText('Tillgate')).toBeInTheDocument();
     expect(screen.getByText('运营')).toBeInTheDocument();
   });
 });

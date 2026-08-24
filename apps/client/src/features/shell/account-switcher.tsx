@@ -15,7 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { getInitials } from '@/features/shared/initials';
 

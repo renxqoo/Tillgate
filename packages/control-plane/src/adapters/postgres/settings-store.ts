@@ -4,7 +4,7 @@
  * 值形状 {"timezone":"<IANA 名>"}——jsonb，留扩展位。
  */
 import { eq } from 'drizzle-orm';
-import { systemConfigs } from '@tokenlens/db';
+import { systemConfigs } from '@tillgate/db';
 import type { SettingsStore } from '../../ports/settings-store';
 
 export const BILLING_TIMEZONE_KEY = 'billing_timezone';
@@ -20,9 +20,7 @@ export const postgresSettingsStore: SettingsStore = {
       columns: { value: true },
     });
     const value = (row?.value ?? null) as BillingTimezoneValue | null;
-    return typeof value?.timezone === 'string' && value.timezone.length > 0
-      ? value.timezone
-      : null;
+    return typeof value?.timezone === 'string' && value.timezone.length > 0 ? value.timezone : null;
   },
 
   async updateBillingTimezone(db, input) {

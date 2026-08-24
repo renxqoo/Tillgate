@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/ui",
+  "name": "@tillgate/ui",
   "version": "0.1.0",
   "private": true,
   "description": "纯 React 设计系统(shadcn base-nova 预设 / Base UI / Tailwind v4)——第二发布候选; 禁止 Next 专有依赖(总纲 §3/P7)",

@@ -7,7 +7,7 @@
 ## 1. 结构化日志（packages/runtime）
 
 全部服务端应用（gateway / client-api / admin-api / worker / trace-receiver）统一使用
-`@tokenlens/runtime` 的 `createLogger`（pino 10 封装，`packages/runtime/src/logging/logger.ts`）：
+`@tillgate/runtime` 的 `createLogger`（pino 10 封装，`packages/runtime/src/logging/logger.ts`）：
 
 - **JSON 结构化输出**（ndjson），`name` 字段标记服务名；开发环境可开 `pino-pretty`
   （装配层显式注入 `pretty: true`，不藏默认）。
@@ -29,7 +29,7 @@
 
 ## 2. requestId —— 一切关联的锚点
 
-requestId **永远服务端生成**（`requestIdMiddleware`，`@tokenlens/http` 提供），不信任
+requestId **永远服务端生成**（`requestIdMiddleware`，`@tillgate/http` 提供），不信任
 客户端 `X-Request-Id` 头，响应回显 `x-request-id`。不信任客户端的原因：
 
 1. 限流 ZSET 以 requestId 作 member——信任客户端 = 固定 ID 恒去重 = RPM 绕过；

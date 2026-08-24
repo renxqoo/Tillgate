@@ -2,7 +2,7 @@
  * 定价呈现：目录富化行 ×（可选）用户费率卡系数 → 公开/个性化价格行。
  * 到手价 = 官方价 × pickCoefficient（model > group > global > 1，billing 单源）。
  */
-import { Decimal, pickCoefficient, type RateCardCoefficientSnapshot } from '@tokenlens/billing';
+import { Decimal, pickCoefficient, type RateCardCoefficientSnapshot } from '@tillgate/billing';
 
 /** pricing-read 产出的目录富化行（control-plane ActiveMappingRow 的价格投影） */
 export interface PricingEnrichedRow {
@@ -30,9 +30,7 @@ export interface PublicScheduleWindow {
 }
 
 /** billingConfig（DB JSONB）→ 公开窗口表（schedule 之外 / 空表 → undefined） */
-export function scheduleWindowsOf(
-  billingConfig: unknown,
-): PublicScheduleWindow[] | undefined {
+export function scheduleWindowsOf(billingConfig: unknown): PublicScheduleWindow[] | undefined {
   const cfg = billingConfig as
     | { strategy?: string; params?: { windows?: unknown[] } }
     | null

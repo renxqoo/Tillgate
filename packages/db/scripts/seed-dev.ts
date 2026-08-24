@@ -15,13 +15,13 @@
  *   1. users 不再插 balance '1000'——v2 资金事实唯一在 wallet（users.ts 注释明示，无 balance 列），
  *      开发余额初始化归 wallet 能力波次的 provision 动词，seed 不手工造资金行；
  *   2. createDb 收全必填配置对象（v2 契约，池参数由本脚本作为装配层注入字面量）；
- *   3. 渠道 Key 加密改用 @tokenlens/runtime 的 AES-256-GCM cipher（enc:v1，与 v1 存量密文逐字节兼容）；
+ *   3. 渠道 Key 加密改用 @tillgate/runtime 的 AES-256-GCM cipher（enc:v1，与 v1 存量密文逐字节兼容）；
  *   4. 收口走 closeDb(db)（v2 facade 不泄漏 pg 池对象）。
  *
  * 用户与测试 Key 不再播种：C 端自助注册 + 控制台建 Key 完整覆盖（2026-08-24 瘦身）。
  * 金额单位：元（numeric 全精度），价格单位为「元/百万 token」。
  */
-import { createDb, closeDb, ACCOUNT_STATUS } from '../src/index.js';
+import { createDb, closeDb, ACCOUNT_STATUS, roles } from '../src/index.js';
 import {
   admins,
   rateCards,
@@ -34,11 +34,11 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
-// cipher 经相对路径注入而非包名：db 是零内部依赖包（依赖白名单仅 @tokenlens/errors，
+// cipher 经相对路径注入而非包名：db 是零内部依赖包（依赖白名单仅 @tillgate/errors，
 // IMPLEMENTATION.md §6），不得把 runtime 写进 db 的 package.json；本脚本是 dev 装配面
 // （文档「dev 装配波次」口径），跨包装配允许直达源文件——bun 的 workspace 隔离安装下
 // 未声明依赖无法按包名解析，相对路径是唯一不破坏依赖纪律的接入方式。
-// 只引 cipher 模块文件（其仅依赖 node:crypto + @tokenlens/errors），不引 runtime 根出口，
+// 只引 cipher 模块文件（其仅依赖 node:crypto + @tillgate/errors），不引 runtime 根出口，
 // 避免 typecheck 闭包卷入 runtime 的 ioredis/pino 等依赖。
 import { createCipher } from '../../runtime/src/crypto/cipher.js';
 
@@ -139,11 +139,18 @@ async function main() {
   const existingAdmin = await db.query.admins.findFirst({ where: eq(admins.email, adminEmail) });
   if (!existingAdmin) {
     const passwordHash = await hashPassword('admin12345');
+    // 动态 RBAC:种子管理员挂 super_admin 角色（roles 由 0082 种子保证存在）
+    const [superRole] = await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(eq(roles.code, 'super_admin'));
+    if (superRole == null) throw new Error('seed: super_admin role missing (run migrations 0082)');
     await db.insert(admins).values({
       email: adminEmail,
       displayName: 'Dev Admin',
       passwordHash,
       status: ACCOUNT_STATUS.ACTIVE, // v1 字面量 0 → v2 词表（B4/D6 收敛，值不变）
+      roleId: superRole.id,
     });
     console.log('✓ 创建管理员 admin@ai-gateway.local (密码 admin12345，仅开发用)');
   }

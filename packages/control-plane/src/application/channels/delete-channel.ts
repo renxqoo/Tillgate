@@ -5,7 +5,7 @@
  * 或删除映射；回收站映射的残留绑定是历史追溯，不阻塞。
  * 在途任务不受影响：worker 轮询（findTaskChannel）按 v1 语义保持可达。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ChannelStore } from '../../ports/channel-store';
 import type { ModelStore } from '../../ports/model-store';

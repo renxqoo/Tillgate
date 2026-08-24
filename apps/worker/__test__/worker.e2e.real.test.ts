@@ -14,23 +14,23 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
+import { closeDb, createDb, type Db } from '@tillgate/db';
 import {
   createBillingApi,
   createDefaultFundingRegistry,
   createWalletApi,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import {
   createPostgresBillingStore,
   createPostgresWalletStore,
-} from '@tokenlens/billing/composition';
+} from '@tillgate/billing/composition';
 import { assembleWorker } from '../src/assembly';
 import type { WorkerAssembly } from '../src/assembly';
 import { loadWorkerConfig } from '../src/config';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const MIGRATIONS_DIR = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
-const SCHEMA = `tokenlens_worker_e2e_${process.pid.toString(36)}`;
+const SCHEMA = `tillgate_worker_e2e_${process.pid.toString(36)}`;
 const TX_RETRY = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 } as const;
 
 /** gateway 侧门铃（与 gateway adapters/settle-wake.ts 同语义：fire-and-forget pg_notify） */

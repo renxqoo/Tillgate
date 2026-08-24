@@ -18,7 +18,7 @@ import {
   notifyOutbox,
   isUniqueViolation,
   type Db,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import { postgresNotifyStore } from '../src/adapters/postgres/notify-store';
 import { outboxWithinTx } from '../src/composition';
 import { createChannel } from '../src/application/create-channel';

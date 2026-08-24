@@ -5,7 +5,7 @@ import type {
   BatcherStats,
   TraceStore,
   TraceStoreStats,
-} from '@tokenlens/observability';
+} from '@tillgate/observability';
 import { createReceiverApp } from '../src/app';
 
 /**

@@ -4,7 +4,7 @@ import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
-import { ConfirmDialog } from '@tokenlens/ui';
+import { ConfirmDialog } from '@tillgate/ui';
 
 import { useActionResult } from './action-toast';
 

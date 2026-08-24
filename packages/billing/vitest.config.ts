@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // workspace 依赖（@tokenlens/errors）经 development 条件直连源码——
+  // workspace 依赖（@tillgate/errors）经 development 条件直连源码——
   // 测试不经构建产物（与 packages/http 同约定）
   resolve: {
     conditions: ['development'],

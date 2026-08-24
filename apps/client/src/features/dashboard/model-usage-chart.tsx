@@ -11,8 +11,8 @@ import {
   ToggleGroup,
   ToggleGroupItem,
   type ChartConfig,
-} from '@tokenlens/ui';
-import type { UsageByModelItem } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { UsageByModelItem } from '@tillgate/api-client';
 
 import { formatMoney } from '@/features/shared/format';
 

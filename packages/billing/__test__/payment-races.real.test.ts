@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
-import { type Db } from '@tokenlens/db';
+import { type Db } from '@tillgate/db';
 import { Decimal } from '../src/domain/money.js';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from '../src/adapters/postgres/billing-store.js';
@@ -57,7 +57,9 @@ const stubProvider: PaymentProviderPort = {
   let payments: PaymentsApi;
   let orders: PaymentOrderStore;
   /** closeOrder 走 billingStore 事务壳（与生产 admin-api P4 同一原语） */
-  let withBillingTx: <T>(fn: (tx: Parameters<PaymentOrderStore['closeOrder']>[0]) => Promise<T>) => Promise<T>;
+  let withBillingTx: <T>(
+    fn: (tx: Parameters<PaymentOrderStore['closeOrder']>[0]) => Promise<T>,
+  ) => Promise<T>;
   let userSeq = 0;
   /** 回调失败留痕（handleNotify 吞错返回 fail——留痕面必须可观察） */
   const errorLogs: Array<{ message: string }> = [];
@@ -137,8 +139,9 @@ const stubProvider: PaymentProviderPort = {
       payments.handleNotify('stripe', raw),
     ]);
     // 两路都应成功应答（输家 markPaid 0 行 → 重读 credited 幂等返回；渠道停止重发）
-    expect(results.map((r) => (r.status === 'fulfilled' ? r.value : `rejected:${String(r.reason)}`)))
-      .toEqual(['success', 'success']);
+    expect(
+      results.map((r) => (r.status === 'fulfilled' ? r.value : `rejected:${String(r.reason)}`)),
+    ).toEqual(['success', 'success']);
 
     // 入账幂等锚（topup + orderId）：wallet 流水恰一笔
     expect(

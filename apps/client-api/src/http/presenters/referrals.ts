@@ -1,7 +1,7 @@
 /**
  * 推荐呈现：营销参数视图开关 + 概览行合并（accounts referralOverview + billing 佣金和）。
  */
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 
 export interface MarketingSettingsView {
   referralSignupBonus: string;

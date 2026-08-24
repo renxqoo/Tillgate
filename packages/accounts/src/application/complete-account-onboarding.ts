@@ -3,7 +3,7 @@
  * 赠送失败不阻断建号、归因 catch 全吞——两段都**不抛**,结果记入报告
  * (v1 语义:幂等键可补发/归因可丢弃)。基础设施错误同样吞下并记录 code。
  */
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { grantSignupGift } from './grant-signup-gift.js';
 import { applyReferral } from './apply-referral.js';
 import type { UseCaseContext } from './context.js';

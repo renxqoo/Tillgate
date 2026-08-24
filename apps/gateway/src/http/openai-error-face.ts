@@ -6,12 +6,12 @@
  * - 上游 502/504 网关语义、429 Retry-After、OAuth 标准错误形在各自的出口表达。
  * status/触发条件与 v1 24 条 instance 表逐项等价（MIGRATION §4 核销表）。
  */
-import { defineErrorCatalog, composeErrorCatalogs, type ErrorCatalog } from '@tokenlens/errors';
-import { HttpErrors, type FaceOverride } from '@tokenlens/http';
-import { InferenceErrors } from '@tokenlens/inference';
-import { BillingErrors } from '@tokenlens/billing';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { observabilityErrors } from '@tokenlens/observability';
+import { defineErrorCatalog, composeErrorCatalogs, type ErrorCatalog } from '@tillgate/errors';
+import { HttpErrors, type FaceOverride } from '@tillgate/http';
+import { InferenceErrors } from '@tillgate/inference';
+import { BillingErrors } from '@tillgate/billing';
+import { AccountsErrors } from '@tillgate/accounts';
+import { observabilityErrors } from '@tillgate/observability';
 
 /** gateway 自有协议码（§11：message 英文、zh 必填） */
 export const GatewayErrors = defineErrorCatalog('gateway', {

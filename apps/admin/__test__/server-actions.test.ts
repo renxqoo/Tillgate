@@ -114,7 +114,6 @@ function loginForm(email: string, password: string): FormData {
 }
 
 describe('auth-actions', () => {
-
   it('loginAction：成功取 token 写会话 cookie 并重定向 /dashboard', async () => {
     vi.resetModules();
     const { fetchStub, calls } = mockFetch([{ status: 200, body: { token: 'jwt-1' } }]);
@@ -262,13 +261,13 @@ describe('control-plane 域（providers/channels/models/rate-cards/rate-limits�
 
   it('channels：测试端点结果形状透传（ok/durationMs/error）', async () => {
     const { mod, calls } = await loadModule('../src/server/channels-actions', [
-      { status: 200, body: { ok: true, durationMs: 12, keyPreview: 'ag_**' } },
+      { status: 200, body: { ok: true, durationMs: 12, keyPreview: 'sk_**' } },
       { status: 200, body: { ok: false, durationMs: 3, error: 'upstream down' } },
     ]);
     await expect(mod.testChannelAction(9)).resolves.toEqual({
       ok: true,
       durationMs: 12,
-      keyPreview: 'ag_**',
+      keyPreview: 'sk_**',
     });
     await expect(mod.testChannelAction(9)).resolves.toMatchObject({ ok: false });
     expect(calls[0]).toMatchObject({

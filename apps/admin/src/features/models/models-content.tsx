@@ -17,10 +17,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -34,7 +34,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   cn,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useEffect, useState, useTransition, type ReactElement } from 'react';
 
@@ -71,7 +71,7 @@ function fmtContext(tokens: number | null): string {
   return String(tokens);
 }
 
-import type { ChannelOption, AdminModelRow } from '@tokenlens/api-client';
+import type { ChannelOption, AdminModelRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { ConfirmAction } from '@/components/confirm-action';
 
@@ -191,9 +191,10 @@ const EMPTY_WINDOW_ROW: WindowRow = {
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** billingConfig 回显 → 窗口行（schedule 之外 / 空表 → 空数组） */
-function buildWindows(
-  cfg?: { strategy?: string; params?: { windows?: Array<Record<string, string>> } },
-): WindowRow[] {
+function buildWindows(cfg?: {
+  strategy?: string;
+  params?: { windows?: Array<Record<string, string>> };
+}): WindowRow[] {
   if (cfg?.strategy !== 'schedule') return [];
   return (cfg.params?.windows ?? []).map((w) => ({
     label: w.label ?? '',
@@ -210,12 +211,7 @@ function buildWindows(
 function windowRowInvalid(row: WindowRow): boolean {
   const prices = [row.inputPrice, row.outputPrice, row.cacheInputPrice, row.unitPrice];
   const hasPrice = prices.some((p) => p.trim() !== '');
-  return (
-    !HHMM_RE.test(row.start) ||
-    !HHMM_RE.test(row.end) ||
-    row.start === row.end ||
-    !hasPrice
-  );
+  return !HHMM_RE.test(row.start) || !HHMM_RE.test(row.end) || row.start === row.end || !hasPrice;
 }
 
 /** 窗口行 → 提交形状：空串字段剔除（字段级覆盖——未覆盖轴回落基价列） */
@@ -472,6 +468,19 @@ function ModelRowItem({
   >(null);
   // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
   const deleted = model.deletedAt != null;
+  let status = <StatusPill tone="neutral" label={t('delisted')} />;
+  if (deleted) {
+    status = (
+      <div className="flex flex-col">
+        <StatusPill tone="danger" label={t('deleted')} />
+        <span className="mt-0.5 text-[10px] text-muted-foreground">
+          {fmtDateTime(model.deletedAt!)}
+        </span>
+      </div>
+    );
+  } else if (model.status === 0) {
+    status = <StatusPill tone="success" label={tc('enabled')} />;
+  }
   return (
     <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
@@ -503,20 +512,7 @@ function ModelRowItem({
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
       </TableCell>
-      <TableCell>
-        {deleted ? (
-          <div className="flex flex-col">
-            <StatusPill tone="danger" label={t('deleted')} />
-            <span className="mt-0.5 text-[10px] text-muted-foreground">
-              {fmtDateTime(model.deletedAt!)}
-            </span>
-          </div>
-        ) : model.status === 0 ? (
-          <StatusPill tone="success" label={tc('enabled')} />
-        ) : (
-          <StatusPill tone="neutral" label={t('delisted')} />
-        )}
-      </TableCell>
+      <TableCell>{status}</TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell className="w-16 text-center">
         <RowActions label={tc('actions')}>
@@ -793,7 +789,9 @@ function EditModelDialog({
           : { unitPrice: values.unitPrice }),
         // 差价/时段配置显式管理：表单带 billingConfig 提交（variant 或 schedule），
         // 否则 null 清除（避免 DB 残留与界面不一致）——token 模式也可配分时段价
-        ...(values.billingConfig == null ? { billingConfig: null } : { billingConfig: values.billingConfig }),
+        ...(values.billingConfig == null
+          ? { billingConfig: null }
+          : { billingConfig: values.billingConfig }),
         isFree: values.isFree ?? false,
         contextLength: values.contextLength.trim() === '' ? null : Number(values.contextLength),
         fallbackModels: values.fallbackModels?.trim() || undefined,
@@ -962,11 +960,11 @@ function ModelForm({
               field: { value: string };
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <FormItem data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-ext">{t('externalName')}</FieldLabel>
                 <Input id="m-ext" placeholder={t('externalNamePlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
+              </FormItem>
             )}
           />
           <Controller
@@ -979,11 +977,11 @@ function ModelForm({
               field: { value: string };
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <FormItem data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-real">{t('realModel')}</FieldLabel>
                 <Input id="m-real" placeholder={t('realModelPlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
+              </FormItem>
             )}
           />
         </div>
@@ -992,7 +990,7 @@ function ModelForm({
           control={form.control}
           name="pricingUnit"
           render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel>{t('pricingMethod')}</FieldLabel>
               <div
                 role="radiogroup"
@@ -1031,7 +1029,7 @@ function ModelForm({
                 })}
               </div>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         {pricingUnit === 'token' ? (
@@ -1167,7 +1165,9 @@ function ModelForm({
                             />
                           </>
                         )}
-                        <span className="text-xs text-muted-foreground">{t('windowPriceHint')}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('windowPriceHint')}
+                        </span>
                       </div>
                     </div>
                   );
@@ -1366,27 +1366,27 @@ function ModelForm({
                 control={form.control}
                 name="fallbackModels"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-fb">{t('fallbackLabel')}</FieldLabel>
                     <Input id="m-fb" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="paramRules"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-rules">{t('paramRulesLabel')}</FieldLabel>
                     <Textarea id="m-rules" rows={3} className="font-mono text-xs" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="billingPolicy"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-billing-policy">{t('billingPolicyLabel')}</FieldLabel>
                     <Textarea
                       id="m-billing-policy"
@@ -1397,7 +1397,7 @@ function ModelForm({
                       }
                       {...field}
                     />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <div className="grid grid-cols-3 gap-3">
@@ -1405,20 +1405,20 @@ function ModelForm({
                   control={form.control}
                   name="rpmLimit"
                   render={({ field }: { field: { value: string } }) => (
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="m-rpm">{t('rpm')}</FieldLabel>
                       <Input id="m-rpm" type="number" {...field} />
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <Controller
                   control={form.control}
                   name="tpmLimit"
                   render={({ field }: { field: { value: string } }) => (
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="m-tpm">{t('tpm')}</FieldLabel>
                       <Input id="m-tpm" type="number" {...field} />
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <NumberField
@@ -1580,6 +1580,43 @@ export function TestModelDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledOpen, model.id]);
 
+  let resultContent = null;
+  if (pending) {
+    resultContent = (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <Loader2Icon className="mr-2 animate-spin" /> {t('testing')}
+      </div>
+    );
+  } else if (error) {
+    resultContent = <p className="py-6 text-center text-sm text-destructive">{error}</p>;
+  } else if (results?.length === 0) {
+    resultContent = (
+      <p className="py-6 text-center text-sm text-muted-foreground">{t('noBoundChannels')}</p>
+    );
+  } else if (results) {
+    resultContent = (
+      <ul className="flex flex-col gap-2">
+        {results.map((r) => (
+          <li
+            key={r.channelId}
+            className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+          >
+            <span className="font-medium">{r.channel}</span>
+            {r.ok ? (
+              <span className="text-emerald-600">
+                ✓ {r.durationMs}ms · {r.tokens ?? 0} tokens
+              </span>
+            ) : (
+              <span className="max-w-56 truncate text-destructive" title={r.error?.message}>
+                ✗ {r.error?.code ?? 'error'}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {trigger !== null ? (
@@ -1599,37 +1636,7 @@ export function TestModelDialog({
           <DialogTitle>{t('testDialogTitle', { name: model.externalName })}</DialogTitle>
           <DialogDescription>{t('testDescription')}</DialogDescription>
         </DialogHeader>
-        {pending ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2Icon className="mr-2 animate-spin" /> {t('testing')}
-          </div>
-        ) : error ? (
-          <p className="py-6 text-center text-sm text-destructive">{error}</p>
-        ) : results ? (
-          results.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t('noBoundChannels')}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {results.map((r) => (
-                <li
-                  key={r.channelId}
-                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                >
-                  <span className="font-medium">{r.channel}</span>
-                  {r.ok ? (
-                    <span className="text-emerald-600">
-                      ✓ {r.durationMs}ms · {r.tokens ?? 0} tokens
-                    </span>
-                  ) : (
-                    <span className="max-w-56 truncate text-destructive" title={r.error?.message}>
-                      ✗ {r.error?.code ?? 'error'}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )
-        ) : null}
+        {resultContent}
       </DialogContent>
     </Dialog>
   );

@@ -1,5 +1,5 @@
 /**
- * @tokenlens/observability 公共出口:可观测能力(OTel 装配、链路追踪、审计存储查询、请求日志)。
+ * @tillgate/observability 公共出口:可观测能力(OTel 装配、链路追踪、审计存储查询、请求日志)。
  * 出口面刻意极小且由 __test__/architecture.test.ts 快照锁定——adapters/适配器/drizzle 行类型
  * 不出包(§5.3);SQL 只在 adapters/postgres,OTel SDK 只在 telemetry(架构测试强制)。
  */
@@ -95,8 +95,4 @@ export type {
 } from './usage/types';
 export { createUsageQueries } from './usage/queries';
 export type { UsageQueries } from './usage/queries';
-export {
-  BEIJING_ZONE_OFFSET_MS,
-  beijingDayStart,
-  beijingTrendsFrom,
-} from './usage/day-window';
+export { BEIJING_ZONE_OFFSET_MS, beijingDayStart, beijingTrendsFrom } from './usage/day-window';

@@ -3,8 +3,8 @@
  * 再出口直通）：span 嵌套由 OTel 活动上下文决定——网关热路径下父 = otel 中间件的
  * 请求根 span；off 模式为 no-op tracer，零开销。命名清单 docs/observability.md §3。
  */
-import type { TracePort } from '@tokenlens/inference';
-import { getTracer, withAsyncSpan, SpanStatusCode } from '@tokenlens/observability';
+import type { TracePort } from '@tillgate/inference';
+import { getTracer, withAsyncSpan, SpanStatusCode } from '@tillgate/observability';
 
 const tracer = getTracer('gateway.pipeline');
 

@@ -5,7 +5,7 @@
  * → db 收口 → exit。abandon 在 db 收口之前是账务关键步（不等 60s 租约自然
  * 到期，本副本认领立即归还 retry_wait——v1 同款）。
  */
-import { createShutdown } from '@tokenlens/runtime';
+import { createShutdown } from '@tillgate/runtime';
 
 export interface WorkerShutdownDeps {
   /** createShutdown 只依赖该形状（健康端点关闭时传立即回调占位） */

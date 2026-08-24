@@ -5,7 +5,7 @@
  * 行类型不泄 db 形状(type 经词表收窄,delivered_channel_ids 过滤安全整数)。
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { notificationChannels, notifyOutbox } from '@tokenlens/db';
+import { notificationChannels, notifyOutbox } from '@tillgate/db';
 import type {
   ChannelInsertInput,
   ChannelPatchInput,

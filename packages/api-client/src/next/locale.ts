@@ -1,7 +1,7 @@
 /**
  * Accept-Language 协商内核 + BFF 出口语言(仅 ./next 子入口导出)。
  *
- * D1 同语义副本:孪生实现在 @tokenlens/http/src/errors/locale.ts(发布闭包裁决,
+ * D1 同语义副本:孪生实现在 @tillgate/http/src/errors/locale.ts(发布闭包裁决,
  * 总纲 §7.3 顺序一;api-client 禁止依赖私有包)。两侧语义必须同步演进,
  * 测试向量与 http 包 locale.test.ts 锁步一致(IMPLEMENTATION §1.2)。
  *
@@ -62,11 +62,9 @@ export function parseAcceptLanguage(
         if (Number.isFinite(parsed)) q = Math.min(Math.max(parsed, 0), 1);
       }
     }
-    const locale: Locale | undefined = tag.startsWith('zh')
-      ? 'zh'
-      : tag.startsWith('en')
-        ? 'en'
-        : undefined;
+    let locale: Locale | undefined;
+    if (tag.startsWith('zh')) locale = 'zh';
+    else if (tag.startsWith('en')) locale = 'en';
     if (locale && (!best || (q > best.q && q > 0))) best = { locale, q };
   }
   return best?.locale ?? fallback;
@@ -97,7 +95,11 @@ export async function outgoingLocale(opts: LocaleResolution = {}): Promise<Local
   const fallback = opts.fallback ?? DEFAULT_LOCALE;
   try {
     const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
-    return resolveLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'), opts);
+    return resolveLocale(
+      cookieStore.get(LOCALE_COOKIE)?.value,
+      headerStore.get('accept-language'),
+      opts,
+    );
   } catch {
     return fallback; // 非请求上下文(SSG 构建等):无入站 cookie/头可读
   }

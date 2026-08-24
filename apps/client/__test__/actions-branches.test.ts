@@ -129,9 +129,9 @@ describe('settings 错误分支', () => {
       code: 'identity.invalid_credentials',
     });
     failNetwork = true;
-    expect((await changePasswordAction({ oldPassword: 'a', newPassword: 'newpass123' })).error).toBe(
-      'changeFailedRetry',
-    );
+    expect(
+      (await changePasswordAction({ oldPassword: 'a', newPassword: 'newpass123' })).error,
+    ).toBe('changeFailedRetry');
   });
 
   it('updateDisplayName：ApiError 与网络回落', async () => {

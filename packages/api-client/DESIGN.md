@@ -1,4 +1,4 @@
-# @tokenlens/api-client 设计基线
+# @tillgate/api-client 设计基线
 
 > 状态：定稿
 > 定位：发布候选第一号（总纲 §3.1「外部产品候选」）；本阶段以私有内部包落地，
@@ -13,11 +13,11 @@
 ### 1.1 入口结构
 
 ```text
-@tokenlens/api-client          # 根入口：框架无关，不得 import next/（§3 树注释）
-@tokenlens/api-client/next     # BFF 子入口：next/headers 装配（session/locale/forwarded-ip）
+@tillgate/api-client          # 根入口：框架无关，不得 import next/（§3 树注释）
+@tillgate/api-client/next     # BFF 子入口：next/headers 装配（session/locale/forwarded-ip）
 ```
 
-- 根入口零 Next 依赖：`import '@tokenlens/api-client'` 在任意 runtime（Node/Bun/浏览器侧打包）
+- 根入口零 Next 依赖：`import '@tillgate/api-client'` 在任意 runtime（Node/Bun/浏览器侧打包）
   可解析，不要求安装 Next。
 - `./next` 子入口的 Next 以 peer dependency 声明（`^16.3.0`），由消费 app 提供；
   本包 devDependencies 自持同版本用于隔离 typecheck/test。
@@ -96,13 +96,13 @@ function getAdminApiBase(): string; // env ADMIN_API_BASE 惰性解析，dev 兜
 - 响应体非 JSON → 尝试 `{ raw: text }` 保底解析；空体 → `null`。
 - `getMe`/`getAdminMe` 吞掉一切错误返回 `null`（布局守卫语义，v1 行为等价）。
 
-### 1.4 依赖闭包（总纲 §5.1：禁止任何私有 `@tokenlens/*` 运行时包）
+### 1.4 依赖闭包（总纲 §5.1：禁止任何私有 `@tillgate/*` 运行时包）
 
 - dependencies：无（零运行时第三方依赖；zod 在 v1 已无实际引用，删除）。
 - peerDependencies：`next@^16.3.0`（仅 ./next 子入口需要）。
 - devDependencies：next（自满足 peer 的隔离 typecheck/test）、@types/node、typescript、vitest。
-- `@tokenlens/http` 的 `trustedClientIp` / locale 协商算法以**同语义副本**内联（§3.3），
-  不建立依赖边——由架构测试禁止任何 `@tokenlens/*` import。
+- `@tillgate/http` 的 `trustedClientIp` / locale 协商算法以**同语义副本**内联（§3.3），
+  不建立依赖边——由架构测试禁止任何 `@tillgate/*` import。
 
 ---
 
@@ -131,7 +131,7 @@ function getAdminApiBase(): string; // env ADMIN_API_BASE 惰性解析，dev 兜
 ### 2.3 词表
 
 - Locale 词表闭集 `en | zh`（与 http 侧同一语义副本，§3.3）。
-- 会话 cookie 名 `ag_session` / `ag_admin_session`（浏览器侧兼容不变）。
+- 会话 cookie 名保持 `ag_session` / `ag_admin_session`，不随 API Key 前缀迁移，避免存量会话失效。
 - 环境变量：`CLIENT_API_BASE` / `ADMIN_API_BASE`（./next 层）、`TRUSTED_PROXY_HOPS`
   （./next 层，逐调用读取）、`SESSION_TTL_SECONDS`（./next 层）。
 
@@ -156,7 +156,7 @@ clients.ts（v1 开箱即用行为保留），根入口的 baseUrl 必填。
 ### 3.3 http 包算法副本（依赖闭包裁决，总纲 §7.3 顺序一「移除内部依赖」）
 
 `trustedClientIp`（XFF 右数第 N 跳信任模型）与 `parseAcceptLanguage/resolveLocale`
-（en|zh 闭集协商）在 v2 `@tokenlens/http` 已逐字存在；api-client 受发布闭包约束
+（en|zh 闭集协商）在 v2 `@tillgate/http` 已逐字存在；api-client 受发布闭包约束
 （§5.1）不得 import，故内联同语义副本于 `src/next/forwarded-ip.ts`、`src/next/locale.ts`，
 文件头交叉引用 http 侧孪生实现，测试采用与 http 包相同的向量表（锁步约束）：
 两侧任一改动语义必须同步另一侧并同步向量。接受的漂移风险在 IMPLEMENTATION §4
@@ -184,7 +184,7 @@ bun run generate:dto                        # packages/api-client 侧
 
 #### 3.4.2 产物入库裁决（openapi.json 提交进 git）
 
-- **入库**。理由:① api-client 禁止依赖任何私有 `@tokenlens/*` workspace（§5.1 发布闭包）,
+- **入库**。理由:① api-client 禁止依赖任何私有 `@tillgate/*` workspace（§5.1 发布闭包）,
   生成必须从本包 checkout 内可复现,不能 import admin-api 源码;② 总纲 §10 验收要求
   「生成链可从干净 checkout 重现」——入库的 openapi.json 就是 app → client 的单向交付物,
   不引入包依赖边;③ 兼容性 diff（PR 里 openapi.json 的 git diff）即产物入库的直接收益。
@@ -248,7 +248,7 @@ core 不 import next，该字段是无框架耦合的惰性透传，注释固定
 ## 5. 验收对照
 
 - 四门全绿（typecheck/lint/test/build）；覆盖率 ≥ 90/85（§10.3）。
-- 架构门禁测试（铁律 11）：根入口及其依赖闭包无 `next/` import；全包无 `@tokenlens/*`
+- 架构门禁测试（铁律 11）：根入口及其依赖闭包无 `next/` import；全包无 `@tillgate/*`
   import；package.json 依赖闭包无私有 workspace 包；exports 恰为 `.` 与 `./next`。
 - 词表封闭：根入口与 ./next 的运行时导出集合被测试逐一锁定（§10.1）。
 - 行为等价：MIGRATION §7 对照清单逐项核销。

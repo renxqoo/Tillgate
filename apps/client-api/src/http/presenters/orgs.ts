@@ -2,7 +2,7 @@
  * 组织呈现：成员资格视图 + 组织活跃订阅富化（app-face join，accounts G1 注释明示
  * 「订阅富化归 app 组合」）→ /v1/orgs wire 行。剩余额度 = max(quota-used-reserved, 0)。
  */
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 
 /** 组织活跃订阅富化行（subscription-read 适配器产出） */
 export interface OrgSubscriptionInfo {

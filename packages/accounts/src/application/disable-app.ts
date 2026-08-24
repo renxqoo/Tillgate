@@ -1,5 +1,5 @@
 /** 禁用 App:CAS 0→1,属主面不可逆(v1 disableApp) */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import type { AppRecord } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';

@@ -2,7 +2,7 @@
  * 概览页 KPI 纯推导（可测）：今日费用按 DISPLAY_TZ 日界取行
  * （v1 用 +8h 硬编码近似——B8 修复为显式时区推导）。
  */
-import type { UsageDayRow } from '@tokenlens/api-client';
+import type { UsageDayRow } from '@tillgate/api-client';
 
 /** 指定时区的「今天」日期键（yyyy-MM-dd；en-CA locale 恰为该格式） */
 export function todayKey(timeZone: string, now: Date = new Date()): string {

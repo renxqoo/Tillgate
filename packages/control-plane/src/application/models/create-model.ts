@@ -2,7 +2,7 @@
  * 创建模型映射：数值域/词表/免费一致性校验 → 重名前置检查（唯一索引兜底）→ 落库 → 审计。
  * 重名错误回执带已存在 id 与状态（管理员可定位，不再盲猜 23505）。
  */
-import { isUniqueViolation, type Db } from '@tokenlens/db';
+import { isUniqueViolation, type Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore, ModelRecord } from '../../ports/model-store';
 import type { ModelCreateInput } from '../../domain/model/model';

@@ -3,7 +3,7 @@
  * 身份码 = `observability.<key>`;message 英文、zh 中文(铁律 18)。
  * 码表封闭性由 __test__/architecture.test.ts 快照锁死;新增码 = 契约变更,须同步 DESIGN §4。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const observabilityErrors = defineErrorCatalog('observability', {
   /** OTLP 结构级错误(非对象/缺 resourceSpans)——接收端映射 400(G6:取代 v1 DecodeError) */

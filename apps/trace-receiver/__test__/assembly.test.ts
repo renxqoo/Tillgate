@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { closeDb } from '@tokenlens/db';
-import { isBusinessError } from '@tokenlens/errors';
-import { observabilityErrors } from '@tokenlens/observability';
+import { closeDb } from '@tillgate/db';
+import { isBusinessError } from '@tillgate/errors';
+import { observabilityErrors } from '@tillgate/observability';
 import { assembleReceiver } from '../src/assembly';
 import { loadTraceReceiverConfig } from '../src/config';
 

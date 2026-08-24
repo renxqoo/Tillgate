@@ -4,10 +4,10 @@
  * 免二次鉴别后签发。失败计数 best-effort，成功清零。
  */
 import { Hono } from 'hono';
-import { isBusinessError } from '@tokenlens/errors';
-import { jsonBody } from '@tokenlens/http';
-import { USER_STATUS } from '@tokenlens/accounts';
-import { identityErrors } from '@tokenlens/identity';
+import { isBusinessError } from '@tillgate/errors';
+import { jsonBody } from '@tillgate/http';
+import { USER_STATUS } from '@tillgate/accounts';
+import { identityErrors } from '@tillgate/identity';
 import { loginSchema, verifySchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
 import type { SessionEnv } from '../middleware/session.js';

@@ -1,5 +1,5 @@
 /**
- * @tokenlens/billing 公共出口。
+ * @tillgate/billing 公共出口。
  * U0 基座（金额/指纹）+ U1 钱包垂直（domain 定律 + application 动词）。
  * facade createBilling 与 ./settlement 子入口随后续迁移单元开放——不预建空壳（铁律 4）。
  * adapters/postgres 不从根出口导出：装配走 ./composition（总纲 §5.3）。

@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/api-client",
+  "name": "@tillgate/api-client",
   "version": "0.1.0",
   "private": true,
   "description": "client-api/admin-api 调用封装:框架无关 transport/错误/分页 + 手写 DTO 快照 + ./next BFF 装配子入口(发布候选第一候选,总纲 §3/§7.2)",

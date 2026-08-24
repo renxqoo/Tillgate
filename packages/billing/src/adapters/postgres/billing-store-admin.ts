@@ -4,7 +4,7 @@
  * 订阅管理列表的 users/plans 富化在 SQL 物理层 join 完成（不引 accounts 依赖）。
  */
 import { and, asc, desc, eq, ilike, sql } from 'drizzle-orm';
-import { billingRequests, plans, userSubscriptions, users, type Db } from '@tokenlens/db';
+import { billingRequests, plans, userSubscriptions, users, type Db } from '@tillgate/db';
 import { Decimal } from '../../domain/money.js';
 import type {
   AdminSubscriptionRow,

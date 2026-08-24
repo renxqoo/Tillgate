@@ -3,7 +3,7 @@
  * 仅各 app 的 assembly、迁移脚本与 adapter 集成测试可引用；
  * 业务调用方只持有 root index 的 facade。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
 import { createBilling } from './billing.js';
 import { createPostgresWalletStore } from './adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from './adapters/postgres/billing-store.js';

@@ -29,7 +29,11 @@ import { PasswordForm } from '../src/features/settings/password-form';
 import { RedeemForm } from '../src/features/wallet/redeem-form';
 
 function renderUi(node: React.ReactElement) {
-  return render(<NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>);
+  return render(
+    <NextIntlClientProvider locale="en" messages={en}>
+      {node}
+    </NextIntlClientProvider>,
+  );
 }
 
 beforeEach(() => {

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { GaugeIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -6,7 +7,7 @@ import type {
   AdminKeyRow,
   AdminModelRow,
   AdminUserRow,
-} from '@tokenlens/api-client';
+} from '@tillgate/api-client';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
 import { firstParam } from '@/lib/list-query';
@@ -21,6 +22,7 @@ interface PageProps {
 }
 
 export default async function RateLimitsPage({ searchParams }: PageProps) {
+  await requirePermission('users:read');
   const sp = await searchParams;
   const t = await getTranslations('rateLimits');
   const tc = await getTranslations('common');
@@ -81,15 +83,15 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
         }))
       : [];
 
-  const error =
+  const allFailed =
     usersRes.status === 'rejected' &&
     modelsRes.status === 'rejected' &&
     channelsRes.status === 'rejected' &&
-    keysRes.status === 'rejected'
-      ? usersRes.reason instanceof Error
-        ? usersRes.reason.message
-        : tc('loadFailed')
-      : null;
+    keysRes.status === 'rejected';
+  let error: string | null = null;
+  if (allFailed) {
+    error = usersRes.reason instanceof Error ? usersRes.reason.message : tc('loadFailed');
+  }
 
   return (
     <ListPage

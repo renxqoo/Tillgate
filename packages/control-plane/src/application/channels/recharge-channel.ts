@@ -3,7 +3,7 @@
  * 凭证字节先行落存储（事务外——字节不进指纹，重放不重传）；操作行+余额+流水+审计同事务
  * （§5.4/G3：资金审计与业务同事务——审计写失败随事务回滚）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditTxSink } from '../../ports/audit-sink';
 import type { ChannelStore } from '../../ports/channel-store';
 import type { OperationsStore } from '../../ports/operations-store';

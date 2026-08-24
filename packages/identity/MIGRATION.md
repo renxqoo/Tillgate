@@ -84,7 +84,7 @@ apps 编排层语义（v1 现状留档，本单元不验收、apps 波次行为�
 | createLoginCodeChallenger(db, {mailer})                                | （删除）                                                                                                                                                | D4 并入 challenges.begin；kind 词表装配直配                             |
 | createTurnstileCaptcha/captchaFromEnv                                  | adapters/turnstile（经 captcha port 注入）；FromEnv 归 app                                                                                              | B30                                                                     |
 | createMailer/mailerFromEnv                                             | adapters/smtp + templates；FromEnv 归 app                                                                                                               | D6                                                                      |
-| provision/provisionSql/deprovision/migrate-cli                         | （删除）                                                                                                                                                | D1：迁移链统一 @tokenlens/db（0076）                                    |
+| provision/provisionSql/deprovision/migrate-cli                         | （删除）                                                                                                                                                | D1：迁移链统一 @tillgate/db（0076）                                    |
 | 21 个错误类                                                            | identity.* 错误目录 + DefectError                                                                                                                       | ADR-0001；identity_internal → DefectError                               |
 
 ## 5. 测试迁移矩阵
@@ -107,11 +107,11 @@ apps 编排层语义（v1 现状留档，本单元不验收、apps 波次行为�
 
 ## 8. 待办（后续波次，非本单元缺口）
 
-| #   | 事项                                                                         | 归属波次                                 |
-| --- | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| #   | 事项                                                                                                                                                                                                                        | 归属波次                                 |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | W1  | ~~users/admins 凭据列退役 DDL + 存量数据迁移脚本（§6）~~ **admins 半边已兑现**（2026-08-23 admin-api P2：`apps/admin-api/scripts/migrate-admin-credentials.ts` 机械转换幂等迁移;users 半边与退役 DDL 归 client-api 后续波） | apps 切换单元                            |
-| W2  | 注册/登录 HTTP 编排（限流/防暴破/封禁探测收敛/邮箱枚举策略）与 wire 契约     | client-api/admin-api 波次（§1 留档对照） |
-| W3  | validateSession 属主回查编排（accounts status）                              | apps 波次                                |
-| W4  | 恢复码离线枚举加固复核（HMAC pepper 已落，字母表熵 2^49.6 维持）             | 安全审计节点                             |
-| W5  | B07 软锁真节流（锁定态短路 scrypt/DB 的 DoS 取舍）                           | apps 装配（需 ADR）                      |
-| W6  | SMS 通道投递器（phone 目标现仅邮件通道 fail-closed 语义占位——v1 同为未实现） | 需求出现时                               |
+| W2  | 注册/登录 HTTP 编排（限流/防暴破/封禁探测收敛/邮箱枚举策略）与 wire 契约                                                                                                                                                    | client-api/admin-api 波次（§1 留档对照） |
+| W3  | validateSession 属主回查编排（accounts status）                                                                                                                                                                             | apps 波次                                |
+| W4  | 恢复码离线枚举加固复核（HMAC pepper 已落，字母表熵 2^49.6 维持）                                                                                                                                                            | 安全审计节点                             |
+| W5  | B07 软锁真节流（锁定态短路 scrypt/DB 的 DoS 取舍）                                                                                                                                                                          | apps 装配（需 ADR）                      |
+| W6  | SMS 通道投递器（phone 目标现仅邮件通道 fail-closed 语义占位——v1 同为未实现）                                                                                                                                                | 需求出现时                               |

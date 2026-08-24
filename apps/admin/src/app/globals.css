@@ -1,5 +1,5 @@
 @import 'tailwindcss';
-@import '@tokenlens/ui/styles.css';
+@import '@tillgate/ui/styles.css';
 /* Tailwind v4：显式扫描 ui 包源码里的原语 className（README 消费范式） */
 @source "../../../../packages/ui/src/components";
 @source "../../../../packages/ui/src/hooks";
@@ -10,7 +10,7 @@ html {
   overscroll-behavior: none;
 }
 
-/* 自动填充样式中和已下沉至 @tokenlens/ui/styles.css（内阴影遮底法会在
+/* 自动填充样式中和已下沉至 @tillgate/ui/styles.css（内阴影遮底法会在
    透明输入框上画出不透明直角色块、遮盖 InputGroup 圆角边框，已废弃） */
 
 .disable-transitions * {

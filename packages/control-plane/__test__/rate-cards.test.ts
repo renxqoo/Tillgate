@@ -45,6 +45,7 @@ describe('费率卡全流程', () => {
       scope: 'global',
       coefficient: '1.500',
     });
+    const initialUpdatedAt = rateCards.cards.get(card.id)!.updatedAt.getTime();
 
     const list = await listRateCards(deps, {
       q: 'card-a',
@@ -64,6 +65,7 @@ describe('费率卡全流程', () => {
       patch: { coefficient: '0.8' },
     });
     expect(patched.coefficient).toBe('0.800');
+    expect(rateCards.cards.get(card.id)!.updatedAt.getTime()).toBeGreaterThan(initialUpdatedAt);
 
     const removed = await deleteRateCard(deps, { ctx: adminCtx(), rateCardId: card.id });
     expect(removed.ok).toBe(true);

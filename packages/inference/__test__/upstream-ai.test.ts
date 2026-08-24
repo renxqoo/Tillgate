@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Ai, AiEvent, ChatResult } from '@tokenlens/ai';
+import type { Ai, AiEvent, ChatResult } from '@tillgate/ai';
 import { createUpstreamAi } from '../src/adapters/upstream-ai';
 import type { UpstreamStreamEvent } from '../src/ports/upstream';
 import { channel, upstreamError } from './harness';
@@ -248,7 +248,12 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
       ...fakeAi({}).ai,
       tasks: {
         ...fakeAi({}).ai.tasks,
-        query: async () => ({ ok: true, status: 'succeeded', fileId: 'file-xyz', artifact: { width: 1280, height: 720 } }),
+        query: async () => ({
+          ok: true,
+          status: 'succeeded',
+          fileId: 'file-xyz',
+          artifact: { width: 1280, height: 720 },
+        }),
         file: async () => ({ ok: true, downloadUrl: 'https://cdn.mock/video.mp4' }),
       },
     } as unknown as Ai;
@@ -266,7 +271,9 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
       ...ai,
       tasks: { ...ai.tasks, file: async () => ({ ok: false, error: fileError }) },
     } as unknown as Ai;
-    expect(await createUpstreamAi({ ai: aiFailFile, decrypt: (s) => s }).queryTask(channel(), 't')).toEqual({
+    expect(
+      await createUpstreamAi({ ai: aiFailFile, decrypt: (s) => s }).queryTask(channel(), 't'),
+    ).toEqual({
       ok: false,
       error: fileError,
     });

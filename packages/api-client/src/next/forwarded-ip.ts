@@ -1,7 +1,7 @@
 /**
  * 可信代理感知的客户端 IP 提取 + BFF 透传出口头(仅 ./next 子入口导出)。
  *
- * D2 同语义副本:孪生实现在 @tokenlens/http/src/network/trusted-client-ip.ts(发布闭包
+ * D2 同语义副本:孪生实现在 @tillgate/http/src/network/trusted-client-ip.ts(发布闭包
  * 裁决;两侧语义必须同步演进,测试向量与 http 包 network.test.ts 锁步一致)。
  *
  * 语义:TRUSTED_PROXY_HOPS = 部署在前面的反向代理层数。

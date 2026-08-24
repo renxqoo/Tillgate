@@ -30,7 +30,7 @@ vi.mock('next/cache', () => ({
 }));
 
 import { revalidatePath } from 'next/cache';
-import { LOCALE_COOKIE } from '@tokenlens/api-client/next';
+import { LOCALE_COOKIE } from '@tillgate/api-client/next';
 
 import { registerVerifyAction, verifyLoginCodeAction } from '../src/server/actions/auth';
 import { completeOAuthAction } from '../src/server/actions/oauth';
@@ -162,9 +162,9 @@ describe('actions/subscription 变更与错误', () => {
     expect(await changeSubscriptionAction(11, { targetPlanId: 3, quantity: 2 })).toEqual({});
     expect(lastCall().url).toContain('/v1/subscriptions/11/change');
     responses.push({ status: 422, body: errBody('client.subscription_rule', '规则') });
-    expect(
-      (await changeSubscriptionAction(11, { targetPlanId: 3, quantity: 2 })).error,
-    ).toBe('规则');
+    expect((await changeSubscriptionAction(11, { targetPlanId: 3, quantity: 2 })).error).toBe(
+      '规则',
+    );
   });
 });
 

@@ -47,7 +47,9 @@ describe('beijingDayStart(北京日界)', () => {
   it('trendsFrom:近 N 天含今日(days=1 即今日零点;days=14 回退 13 天)', () => {
     const now = new Date('2026-08-23T10:30:00.000Z');
     expect(beijingTrendsFrom(1, now)).toEqual(beijingDayStart(now));
-    expect(beijingTrendsFrom(14, now).getTime()).toBe(beijingDayStart(now).getTime() - 13 * 86_400_000);
+    expect(beijingTrendsFrom(14, now).getTime()).toBe(
+      beijingDayStart(now).getTime() - 13 * 86_400_000,
+    );
   });
 });
 

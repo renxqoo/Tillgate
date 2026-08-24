@@ -11,7 +11,7 @@
  * accounts real 门禁同款口径)。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createDb, runTx, type Db } from '@tokenlens/db';
+import { createDb, runTx, type Db } from '@tillgate/db';
 import { identityWithinTx } from '../src/composition.js';
 import { createIdentity, type Identity } from '../src/identity.js';
 import { resolveConfig } from '../src/domain/config.js';
@@ -30,7 +30,7 @@ let audit: ReturnType<typeof createTestHarness>['audit'];
 const email = (n: number) => `real${n}@example.com`;
 const userId = () => ++userIdSeq;
 
-/** 七表 DDL fixture(与 @tokenlens/db 迁移 0076 同源同序) */
+/** 七表 DDL fixture(与 @tillgate/db 迁移 0076 同源同序) */
 const DDL = `
 create table if not exists identity_credentials (
   id bigserial primary key,
@@ -150,7 +150,7 @@ async function exec(db: Db, sqlText: string): Promise<void> {
   });
 
   afterAll(async () => {
-    const { closeDb } = await import('@tokenlens/db');
+    const { closeDb } = await import('@tillgate/db');
     await closeDb(realDb);
   });
 

@@ -3,8 +3,8 @@
  * advisoryLock 临界区——旧密的读与改之间不存在并发 reset 覆盖窗口(scrypt 在
  * 每用户锁内执行,无全局争用)。无密码账号(OAuth-only)走 reset。
  */
-import { advisoryLock, runTx } from '@tokenlens/db';
-import { DefectError } from '@tokenlens/errors';
+import { advisoryLock, runTx } from '@tillgate/db';
+import { DefectError } from '@tillgate/errors';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';

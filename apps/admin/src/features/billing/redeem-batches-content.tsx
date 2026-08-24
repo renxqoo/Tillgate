@@ -11,10 +11,10 @@ import {
   DialogTitle,
   DialogTrigger,
   DropdownMenuItem,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -23,7 +23,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 
@@ -34,9 +34,9 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { CopyButton } from '@tokenlens/ui';
+import { CopyButton } from '@tillgate/ui';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
-import type { AdminBatchRow } from '@tokenlens/api-client';
+import type { AdminBatchRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { moneyText } from '@/lib/forms';
 
@@ -120,12 +120,9 @@ export function BatchesTable({ batches }: { readonly batches: ReadonlyArray<Admi
 }
 
 function UsageBadge({ rate }: { rate: number }) {
-  const color =
-    rate >= 80
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : rate >= 30
-        ? 'text-amber-600 dark:text-amber-400'
-        : 'text-muted-foreground';
+  let color = 'text-muted-foreground';
+  if (rate >= 80) color = 'text-emerald-600 dark:text-emerald-400';
+  else if (rate >= 30) color = 'text-amber-600 dark:text-amber-400';
   return <span className={`text-xs font-medium tabular-nums ${color}`}>{rate}%</span>;
 }
 
@@ -207,11 +204,11 @@ export function GenerateBatchDialog() {
                 control={form.control}
                 name="name"
                 render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
+                  <FormItem data-invalid={fieldState.invalid}>
                     <FieldLabel htmlFor="b-name">{t('batchName')}</FieldLabel>
                     <Input id="b-name" placeholder={t('namePlaceholder')} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
+                  </FormItem>
                 )}
               />
               <div className="grid grid-cols-2 gap-3">
@@ -219,7 +216,7 @@ export function GenerateBatchDialog() {
                   control={form.control}
                   name="amount"
                   render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
+                    <FormItem data-invalid={fieldState.invalid}>
                       <FieldLabel htmlFor="b-amount">{t('amountLabel')}</FieldLabel>
                       <Input
                         id="b-amount"
@@ -230,14 +227,14 @@ export function GenerateBatchDialog() {
                         onChange={(e) => field.onChange(e.target.value)}
                       />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <Controller
                   control={form.control}
                   name="count"
                   render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
+                    <FormItem data-invalid={fieldState.invalid}>
                       <FieldLabel htmlFor="b-count">{t('countLabel')}</FieldLabel>
                       <Input
                         id="b-count"
@@ -247,7 +244,7 @@ export function GenerateBatchDialog() {
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
+                    </FormItem>
                   )}
                 />
               </div>
@@ -255,20 +252,20 @@ export function GenerateBatchDialog() {
                 control={form.control}
                 name="remark"
                 render={({ field }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="b-note">{t('remarkOptional')}</FieldLabel>
                     <Input id="b-note" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="expiresAt"
                 render={({ field }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="b-exp">{t('expiresLabel')}</FieldLabel>
                     <Input id="b-exp" type="datetime-local" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
             </FieldGroup>

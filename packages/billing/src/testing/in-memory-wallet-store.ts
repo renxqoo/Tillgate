@@ -397,12 +397,9 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
 
     /** 返利流水（postgres adapter 同投影:refType + refId 前缀三类视图;id 倒序分页） */
     listReferralPayouts(_conn, input) {
-      const prefix =
-        input.kind === 'commission'
-          ? 'referral-commission:'
-          : input.kind === 'referral_signup'
-            ? 'referral-signup:'
-            : 'signup:';
+      let prefix = 'signup:';
+      if (input.kind === 'commission') prefix = 'referral-commission:';
+      else if (input.kind === 'referral_signup') prefix = 'referral-signup:';
       const refType = input.kind === 'gift' ? 'gift' : 'referral';
       const matched = transactions
         .filter((t) => t.refType === refType && t.refId.startsWith(prefix))

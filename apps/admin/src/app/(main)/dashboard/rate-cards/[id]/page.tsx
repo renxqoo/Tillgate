@@ -1,13 +1,14 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
-import { Button, Card, CardContent } from '@tokenlens/ui';
+import { Button, Card, CardContent } from '@tillgate/ui';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { AdminRateCardRow, AdminUserRow } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { AdminRateCardRow, AdminUserRow } from '@tillgate/api-client';
 import { fmtBalance, fmtDateTime } from '@/lib/formatters';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
@@ -23,6 +24,7 @@ interface PageProps {
 }
 
 export default async function RateCardDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('catalog:read');
   const { id } = await params;
   const t = await getTranslations('rateCards');
   const tc = await getTranslations('common');

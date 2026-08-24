@@ -1,8 +1,8 @@
-# @tokenlens/admin-api 设计基线
+# @tillgate/admin-api 设计基线
 
 > 状态：定稿（2026-08-23；admin-api 迁移波 = 重构方案 §3 目标树 `apps/admin-api` + P5 第三个 app）
 > 旧实现：`/Users/wrr/work/ai-getway/apps/admin-api`（app 层约 6.8k 行 + 27 个测试文件；
-> 21 个 service 的业务规则已由 P4 波次 `@tokenlens/{accounts,control-plane,billing,observability,identity}` 承接）
+> 21 个 service 的业务规则已由 P4 波次 `@tillgate/{accounts,control-plane,billing,observability,identity}` 承接）
 > 施工图见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)；行为规格与偏差核销见 [MIGRATION.md](./MIGRATION.md)。
 
 ---
@@ -80,7 +80,7 @@ observabilityErrors, identityErrors, AdminErrors)` + `pgSqlState` 注入（error
 - OTel `off|otlp`（缺省开发 memory / 生产 off，显式配置优先；otlp 缺端点启动期 fail-fast）。
 - control-plane 装配：`capabilities.protocols = ai.SUPPORTED_PROTOCOLS`；
   `probe` = app `src/adapters/upstream-probe.ts`（每次探针新建 `ai.createAi()` 实例——内存态隔离）；
-  目录源 = `@tokenlens/control-plane/composition` 内置 `modelsDevSource` + `createOpenRouterSource`
+  目录源 = `@tillgate/control-plane/composition` 内置 `modelsDevSource` + `createOpenRouterSource`
   （composition 子入口仅 assembly.ts 引用）；fx 拉取源 URL/TTL/超时经 config 注入（ECB/frankfurter 公共源）。
 - identity 配置：realms `['admin']`；identifiers `['email']`；providers `['github']`（词表占位，
   无凭据——oauth 动词本波不可达）；challengeKinds `['admin_login_code']`（登录波 P2 消费）。
@@ -100,13 +100,13 @@ currencies:['CNY'], internalAccounts:['outside','platform_revenue']}`；`resolve
 
 | 不处理项                                        | 归属                                          |
 | ----------------------------------------------- | --------------------------------------------- |
-| 用户/Key/组织的业务规则与持久化                 | `@tokenlens/accounts`                         |
-| Provider/Channel/Model/RateCard/fx/目录配置规则 | `@tokenlens/control-plane`                    |
-| 钱包/订阅/结算/兑换的资金定律                   | `@tokenlens/billing`                          |
-| 凭证/会话/挑战/MFA 语义                         | `@tokenlens/identity`                         |
-| trace/审计/请求日志的存储与查询                 | `@tokenlens/observability`                    |
-| HTTP 中间件货架/错误渲染/分页解析               | `@tokenlens/http`、`@tokenlens/errors`        |
-| 优雅停机/日志/OTel/秘密校验                     | `@tokenlens/runtime`                          |
+| 用户/Key/组织的业务规则与持久化                 | `@tillgate/accounts`                         |
+| Provider/Channel/Model/RateCard/fx/目录配置规则 | `@tillgate/control-plane`                    |
+| 钱包/订阅/结算/兑换的资金定律                   | `@tillgate/billing`                          |
+| 凭证/会话/挑战/MFA 语义                         | `@tillgate/identity`                         |
+| trace/审计/请求日志的存储与查询                 | `@tillgate/observability`                    |
+| HTTP 中间件货架/错误渲染/分页解析               | `@tillgate/http`、`@tillgate/errors`        |
+| 优雅停机/日志/OTel/秘密校验                     | `@tillgate/runtime`                          |
 | 登录编排（限流/防暴破/2FA 邮箱码/审计）         | P2（identity W2 + control-plane G2）          |
 | 管理台前端（链路图等数据消费）                  | P5 后续 `apps/admin`，经本 API + `api-client` |
 
@@ -129,8 +129,8 @@ v1 测试文件，映射见 MIGRATION §2）、`admin-api.real.test.ts`（真实
 | D3      | keys 列表 `userEmail/userDisplayName` 恒 null                                                                                                  | `accounts.listAdminKeys` 返回 `ApiKeyRecord` 无用户 join；enrichment 接缝归 accounts（P4 补充波）                                |
 | D4      | transactions `total = offset + rows.length`（末页精确）                                                                                        | v1 有独立计数查询；`wallet.statement` 无 count 动词（billing 接缝，随 P1 评审）                                                  |
 | D5      | 审计行 `adminSubject` 恒 null、请求日志行无 `attempts`                                                                                         | observability 查询行无此二列；enrichment 归 observability（G 项随 P1 记）                                                        |
-| D6      | ✅ P2 已核销：`POST /v1/users/:id/set-password`（本地账号守卫/绑标准卡缺系数回填/identity user realm 重置=全网下线）                            | v1 语义全量落地（routes/users.ts + control-plane rates findGlobalCoefficient 出口）                                              |
+| D6      | ✅ P2 已核销：`POST /v1/users/:id/set-password`（本地账号守卫/绑标准卡缺系数回填/identity user realm 重置=全网下线）                           | v1 语义全量落地（routes/users.ts + control-plane rates findGlobalCoefficient 出口）                                              |
 | D7      | `GET /v1/subscriptions`（管理列表）                                                                                                            | ✅ 已随 P1/U6 落地（users/plans join 在 store 物理层）                                                                           | 已核销 |
-| D8      | ✅ P2 已核销：属主回查（admins 行存在且 status=0）入 sessionMiddleware                                                                          | 统一 401 不泄漏状态;装配缺省可关（纯会话校验形态）                                                                                |
+| D8      | ✅ P2 已核销：属主回查（admins 行存在且 status=0）入 sessionMiddleware                                                                         | 统一 401 不泄漏状态;装配缺省可关（纯会话校验形态）                                                                               |
 | D9      | accounts 三桥（walletCredit 独立事务/sessionInvalidation 后置推进/审计同事务）落 `src/adapters/accounts-bridges.ts`                            | gateway 波 accounts composition 在途（铁律 15 不碰）;admin 面不触达赠送/推荐动词                                                 |
 | D11–D15 | wire 空值族（列表 rateCardName/渠道三列/模型两列/createdBy 恒 null;displayName 拒 null）                                                       | 逐条核销于 MIGRATION §4——列/enrichment 归属能力包,不在 app 造 join                                                               |

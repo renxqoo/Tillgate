@@ -37,7 +37,7 @@ afterEach(() => {
   process.env.NODE_ENV = originalEnv;
 });
 
-describe('cookie 名词表(浏览器侧兼容不变)', () => {
+describe('cookie 名词表(保持存量会话兼容)', () => {
   it('用户面 ag_session / 管理面 ag_admin_session', () => {
     expect(SESSION_COOKIE).toBe('ag_session');
     expect(ADMIN_SESSION_COOKIE).toBe('ag_admin_session');

@@ -1,5 +1,5 @@
 /**
- * @tokenlens/notifications 公共出口:通知能力(渠道 CRUD、事务 outbox 入箱/认领/投递、模板)。
+ * @tillgate/notifications 公共出口:通知能力(渠道 CRUD、事务 outbox 入箱/认领/投递、模板)。
  * 出口面刻意极小且由 __test__/architecture.test.ts 锁定——只暴露 facade、用例出入参、
  * 领域词表与纯函数、错误目录;store/适配器/drizzle 行类型/Db/DbTx 不出包(§5.3)。
  */

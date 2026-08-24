@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { defineErrorCatalog } from '../src/definition';
 import { recordOf } from '../src/error-record';
-import { annotate, annotationsOf, BusinessError, type TokenlensError } from '../src/nature';
+import { annotate, annotationsOf, BusinessError, type TillgateError } from '../src/nature';
 
 /**
  * 传播注记（ADR-0001 D9b）：错误上浮途中实例稳定地累积语境。
@@ -55,7 +55,7 @@ describe('annotate 传播注记', () => {
 
   it('annotationsOf：按时间序返回；无注记为空数组（内部读取面）', () => {
     const e = annotate(annotate(new DeniedError(), { first: 1 }), { second: 2 });
-    const e2: TokenlensError = FlowErrors.business('denied');
+    const e2: TillgateError = FlowErrors.business('denied');
     expect(annotationsOf(e)).toEqual([{ first: 1 }, { second: 2 }]);
     expect(annotationsOf(e2)).toEqual([]);
   });

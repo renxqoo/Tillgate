@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Building2, Loader2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 
 import { actionResult } from '@/features/shared/action-result';
 import { acceptInviteAction } from '@/server/actions/orgs';

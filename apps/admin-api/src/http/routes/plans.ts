@@ -4,8 +4,7 @@
  * plans 域审计后置（v1 recordAudit 同为提交后旁路——writeAudit 装配闭包）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { PlansApi } from '@tokenlens/billing';
+import type { PlansApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { PLAN_SORTS, plansContracts } from '../contracts/billing-admin';
 import { toPlanWireRow } from '../presenters/billing';
@@ -18,10 +17,10 @@ export interface PlansRoutesDeps {
   readonly postAudit: PostAudit;
 }
 
-export function plansRoutes(deps: PlansRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function plansRoutes(deps: PlansRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/plans', session, async (c) => {
+  app.get('/v1/plans', async (c) => {
     const query = parseListQuery(c.req.query(), PLAN_SORTS, 'id');
     const page = await deps.plans.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -33,7 +32,7 @@ export function plansRoutes(deps: PlansRoutesDeps, session: MiddlewareHandler<Se
     return c.json(listEnvelope(page.rows.map(toPlanWireRow), page.total, query));
   });
 
-  app.post('/v1/plans', session, async (c) => {
+  app.post('/v1/plans', async (c) => {
     const body = plansContracts.create.parse(await c.req.json());
     const row = await deps.plans.create({
       name: body.name,
@@ -55,7 +54,7 @@ export function plansRoutes(deps: PlansRoutesDeps, session: MiddlewareHandler<Se
     return c.json(toPlanWireRow(row), 201);
   });
 
-  app.patch('/v1/plans/:id', session, async (c) => {
+  app.patch('/v1/plans/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = plansContracts.update.parse(await c.req.json());
     const row = await deps.plans.update({ planId: id, patch: body });
@@ -70,7 +69,7 @@ export function plansRoutes(deps: PlansRoutesDeps, session: MiddlewareHandler<Se
     return c.json(toPlanWireRow(row));
   });
 
-  app.delete('/v1/plans/:id', session, async (c) => {
+  app.delete('/v1/plans/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const result = await deps.plans.remove({ planId: id });
     await deps.postAudit({

@@ -2,7 +2,7 @@
  * 渠道连通性探针：真实解密 + 独立探针实例；回显仅 keyPreview（坏密文时无预览）。
  * 适配器异常与密文损坏（decrypt 抛）都是探针结果，不是管理面错误。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { ChannelStore } from '../../ports/channel-store';
 import type { UpstreamProbe } from '../../ports/upstream-probe';
 import type { SecretCipher } from '../../ports/secret-cipher';

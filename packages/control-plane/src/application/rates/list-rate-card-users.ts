@@ -1,7 +1,7 @@
 /**
  * 卡内用户列表（q 命中 subject/email/displayName；跨域只读 users）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type {
   RateCardStore,
   RateCardUserRow,

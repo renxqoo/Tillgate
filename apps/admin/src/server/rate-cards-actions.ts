@@ -4,7 +4,7 @@ import { adminApi } from './admin-api';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 
 // ── 创建费率卡 ──────────────────────────────────────────────────────────────
 export interface RateCardCreateInput {

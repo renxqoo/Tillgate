@@ -6,7 +6,7 @@ import type {
   TextTokenFeatures,
   UpstreamError,
   Usage,
-} from '@tokenlens/ai';
+} from '@tillgate/ai';
 import type { GenerationTaskKind } from '../domain/generation';
 import type { ChannelCandidate } from '../domain/model/types';
 

@@ -4,7 +4,7 @@
  * 显式可选(测试替身注入)。返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK。
  * cipher/logger/clock 经 port 注入——本包不编译依赖 runtime(DESIGN §5)。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
 import { resolveConfig, type IdentityConfigInput } from './domain/config.js';
 import { postgresIdentityStore } from './adapters/postgres/identity-store';
 import { createJoseSessionTokens } from './adapters/jwt/jose-tokens';

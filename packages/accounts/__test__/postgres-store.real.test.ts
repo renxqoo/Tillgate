@@ -28,7 +28,7 @@ import {
   userSubscriptions,
   users,
   type Db,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import { createAccounts } from '../src/index.js';
 import { V1_POLICY, type TestHarness } from '../src/testing/harness.js';
 import { createTestHarness } from '../src/testing/harness.js';

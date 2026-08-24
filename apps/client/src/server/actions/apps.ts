@@ -4,7 +4,7 @@
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type AppCreated } from '@tokenlens/api-client';
+import { ApiError, type AppCreated } from '@tillgate/api-client';
 
 import { createClientApi } from '../api';
 

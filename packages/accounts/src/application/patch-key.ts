@@ -2,7 +2,7 @@
  * 属主修改 Key(name/remark/限额/过期;v1 patchKey)。
  * 越权与不存在统一 not_found;已吊销冲突;CAS 0 行竞态按已吊销判别。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import type { ApiKeyRecord } from '../ports/account-store.js';
 import { parseKeyFields, type KeyFieldsInput } from './key-fields.js';

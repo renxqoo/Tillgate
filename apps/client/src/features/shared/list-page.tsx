@@ -11,7 +11,7 @@ import {
   ListToolbar,
   ListToolbarGroup,
   PageHeader,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { listHref, type SearchParamsInput } from '@/server/list-query';
 
@@ -87,14 +87,16 @@ export function ListPage({
 
       {aboveList}
 
-      {error || children ? (
-        unbordered ? (
-          error ? (
+      {(() => {
+        if (!error && !children) return null;
+        if (unbordered) {
+          return error ? (
             <p className="p-8 text-center text-sm text-destructive">{error}</p>
           ) : (
             children
-          )
-        ) : (
+          );
+        }
+        return (
           <ListPanel>
             {(searchPlaceholder || filters) && (
               <ListToolbar>
@@ -161,8 +163,8 @@ export function ListPage({
               </ListFooter>
             ) : null}
           </ListPanel>
-        )
-      ) : null}
+        );
+      })()}
     </div>
   );
 }

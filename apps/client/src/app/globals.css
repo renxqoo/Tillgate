@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /* 设计系统主题变量、组件扩展与 Inter 字体由 ui 包单源提供 */
-@import '@tokenlens/ui/styles.css';
+@import '@tillgate/ui/styles.css';
 
 /* Tailwind v4 默认不扫 node_modules（workspace 符号链接同论）——显式声明
    ui 组件源码路径，否则 bg-card / text-muted-foreground 等原语类会整批丢失 */

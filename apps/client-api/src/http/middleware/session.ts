@@ -5,7 +5,7 @@
  * 无 Cookie 无 CSRF：控制台类客户端自持 Bearer，凭据不经浏览器自动携带。
  */
 import type { MiddlewareHandler } from 'hono';
-import { HttpErrors } from '@tokenlens/http';
+import { HttpErrors } from '@tillgate/http';
 
 export interface SessionEnv {
   Variables: {

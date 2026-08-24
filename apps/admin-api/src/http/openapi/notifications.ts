@@ -12,7 +12,9 @@ const maskedChannelSchema = z.object({
   id: z.number(),
   name: z.string(),
   type: z.string().describe('渠道类型（创建后不可改）'),
-  config: z.record(z.string(), z.unknown()).describe('webhook:{url,secret(掩码)} / email:{recipients}'),
+  config: z
+    .record(z.string(), z.unknown())
+    .describe('webhook:{url,secret(掩码)} / email:{recipients}'),
   events: z.array(z.string()).describe('订阅事件（词表在 notifications NOTIFY_EVENTS）'),
   status: z.number(),
   createdAt: z.string(),

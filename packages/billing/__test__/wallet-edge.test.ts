@@ -2,7 +2,7 @@
  * U1b 补充边界（分支封口）——从 wallet.test 拆出（文件行数上限，铁律 5）。
  */
 import { describe, expect, it } from 'vitest';
-import { isDefectError } from '@tokenlens/errors';
+import { isDefectError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
 

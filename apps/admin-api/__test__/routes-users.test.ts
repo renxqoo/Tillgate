@@ -304,7 +304,7 @@ describe('GET|PATCH /v1/admin-keys', () => {
   it('列表信封(keyPreview 脱敏,无明文);PATCH 透传 adminId', async () => {
     const keyRow = {
       id: 5,
-      keyPreview: 'ag_****abcd',
+      keyPreview: 'sk_****abcd',
       name: 'k',
       remark: null,
       subscriptionId: null,
@@ -329,7 +329,7 @@ describe('GET|PATCH /v1/admin-keys', () => {
     const body = (await list.json()) as { rows: Array<Record<string, unknown>> };
     expect(body.rows[0]).toMatchObject({
       id: 5,
-      keyPreview: 'ag_****abcd',
+      keyPreview: 'sk_****abcd',
       userEmail: null,
       userDisplayName: null,
     });

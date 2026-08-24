@@ -77,9 +77,9 @@ app 层 A1–A9 见 IMPLEMENTATION §1；inference 族 B1–B11 见其 IMPLEMENT
 - B7 dead-credential 告警 dedupeKey 缺陷随迁 control-plane 时消亡（inference B7 同裁决）。
 - **OpenAPI 生成链（gateway.json）**：总纲 §3 目标态含 `generated/openapi/gateway.json`，
   本波未建 registry（admin-api 已建同款链可作模板——`src/http/openapi/` 13 件约 2.3k 行
-  + `scripts/generate-openapi.ts` + 逐字节重生成测试）。gateway 契约含 SSE 流式语义与
-  OpenAI 信封，先出设计文档（铁律 13）再建；生成链接入前手写 DTO 快照为唯一事实源，
-  禁止双轨（总纲 §2.2）。同源挂账：client-api MIGRATION §8-4。
+  - `scripts/generate-openapi.ts` + 逐字节重生成测试）。gateway 契约含 SSE 流式语义与
+    OpenAI 信封，先出设计文档（铁律 13）再建；生成链接入前手写 DTO 快照为唯一事实源，
+    禁止双轨（总纲 §2.2）。同源挂账：client-api MIGRATION §8-4。
 - **trace 领域 span 缺生产者（T1，2026-08-23 trace 审计）**：v1 `upstream.attempt`/
   `billing.*` span 族未迁——gateway HTTP 根 span 是全仓唯一 span 生产点，
   `/v1/tracing/topology` 恒空、trace_spans channel/model 提升列恒 NULL。词表两端
@@ -96,13 +96,13 @@ app 层 A1–A9 见 IMPLEMENTATION §1；inference 族 B1–B11 见其 IMPLEMENT
 
 - [x] 四门全绿（typecheck/lint 0-0/build/test），覆盖率 ≥ 90/85/90/90（apps 口径同 trace-receiver）。
 - [x] 行为对照清单逐项核销：鉴权双形态全路径、9+3 端点契约、错误码×status 表（§4）、
-  SSE 透传字节等价、requestId 服务端生成、限流并罚与 TPM 归还、爆破双维、
-  oauth 三形态闭环、multipart 白名单、目录三协议形状、停机顺序、readyz 双探。
+      SSE 透传字节等价、requestId 服务端生成、限流并罚与 TPM 归还、爆破双维、
+      oauth 三形态闭环、multipart 白名单、目录三协议形状、停机顺序、readyz 双探。
 - [x] e2e/gateway 归组文件断言语义与 v1 逐条等价（仅码表/装配面适配——适配清单
-  见 §8 e2e 段：线名 max_completion_tokens、⑮ connect→deadline 旋钮映射、
-  ② 「拉满再掐」形态适配需求耦合 relay、渠道/映射 id 取世界种子值）。
+      见 §8 e2e 段：线名 max_completion_tokens、⑮ connect→deadline 旋钮映射、
+      ② 「拉满再掐」形态适配需求耦合 relay、渠道/映射 id 取世界种子值）。
 - [x] 双形态进程冒烟通过（bun 源码 / node dist：探针×3、鉴权 200/401、真请求 200、
-  SIGTERM 优雅退出 0、结算对账）；冒烟数据自清（隔离 schema drop cascade）。
+      SIGTERM 优雅退出 0、结算对账）；冒烟数据自清（隔离 schema drop cascade）。
 
 ---
 

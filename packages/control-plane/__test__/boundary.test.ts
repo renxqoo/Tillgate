@@ -24,6 +24,8 @@ const SRC = join(import.meta.dirname, '../src');
 describe('出口面快照（有意维护的公共接口——新增导出是契约变更）', () => {
   it('index.ts 导出集合精确等于下表', () => {
     expect(Object.keys(exports).toSorted()).toEqual([
+      'ENFORCED_CODES',
+      'PERMISSION_DOMAINS',
       'PRICING_UNITS',
       'applyBuffer',
       'assertOperationId',
@@ -35,6 +37,8 @@ describe('出口面快照（有意维护的公共接口——新增导出是契�
       'formatCoefficient',
       'freePriceConsistent',
       'goneFromCatalog',
+      'granted',
+      'isEnforcedCode',
       'isFreeByPrice',
       'isUnpriceableSentinel',
       'mapModelsDevCatalog',
@@ -85,12 +89,12 @@ describe('composition 子入口（§5.3：adapter 可见性白名单的可执行
 describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db）', () => {
   const files = tsFiles(SRC);
 
-  it('全包禁止依赖 @tokenlens/http / @tokenlens/ai / @tokenlens/runtime / apps', () => {
+  it('全包禁止依赖 @tillgate/http / @tillgate/ai / @tillgate/runtime / apps', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
       // 只匹配真实 import/export-from 语句（注释中的包名不构成依赖）
-      if (/from\s+['"]@tokenlens\/(http|ai|runtime)['"]/.test(text)) offenders.push(file);
+      if (/from\s+['"]@tillgate\/(http|ai|runtime)['"]/.test(text)) offenders.push(file);
       if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(text)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
@@ -100,7 +104,7 @@ describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db
     const offenders: string[] = [];
     for (const file of files.filter((f) => f.includes('/domain/'))) {
       const text = readFileSync(file, 'utf8');
-      if (/from\s+['"]@tokenlens\/db['"]/.test(text)) offenders.push(file);
+      if (/from\s+['"]@tillgate\/db['"]/.test(text)) offenders.push(file);
       if (/from\s+['"]\.\.\/\.\.\/(ports|application|adapters)\//.test(text)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
@@ -119,6 +123,7 @@ describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db
 describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
   it('码集合快照', () => {
     expect([...controlPlaneErrors.codes].toSorted()).toEqual([
+      'control_plane.admin_email_taken',
       'control_plane.catalog_api_key_required',
       'control_plane.catalog_empty',
       'control_plane.catalog_source_not_found',
@@ -126,32 +131,47 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.channel_exists',
       'control_plane.channel_has_models',
       'control_plane.channel_not_found',
+      'control_plane.endpoint_bound',
+      'control_plane.endpoint_not_found',
       'control_plane.external_name_conflict',
       'control_plane.free_price_conflict',
       'control_plane.fx_fetch_failed',
       'control_plane.import_empty',
       'control_plane.import_limit_exceeded',
       'control_plane.insufficient_budget',
+      'control_plane.invalid_admin_role',
       'control_plane.invalid_billing_timezone',
       'control_plane.invalid_channel_input',
       'control_plane.invalid_coefficient',
+      'control_plane.invalid_endpoint_input',
       'control_plane.invalid_fx_buffer',
       'control_plane.invalid_fx_rate',
       'control_plane.invalid_model_input',
       'control_plane.invalid_operation_id',
+      'control_plane.invalid_permission_code',
+      'control_plane.invalid_permission_input',
       'control_plane.invalid_protocol',
       'control_plane.invalid_provider_input',
+      'control_plane.invalid_role_input',
       'control_plane.invalid_vendor',
       'control_plane.invalid_voucher',
       'control_plane.model_exists',
       'control_plane.model_not_found',
       'control_plane.operation_conflict',
+      'control_plane.permission_code_taken',
+      'control_plane.permission_has_children',
+      'control_plane.permission_in_use',
+      'control_plane.permission_not_found',
       'control_plane.provider_exists',
       'control_plane.provider_has_channels',
       'control_plane.provider_not_found',
       'control_plane.rate_card_disabled',
       'control_plane.rate_card_in_use',
       'control_plane.rate_card_not_found',
+      'control_plane.role_exists',
+      'control_plane.role_immutable',
+      'control_plane.role_in_use',
+      'control_plane.role_not_found',
       'control_plane.voucher_too_large',
     ]);
   });

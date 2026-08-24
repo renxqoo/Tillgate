@@ -1,4 +1,4 @@
-# @tokenlens/ui 设计基线（DESIGN）
+# @tillgate/ui 设计基线（DESIGN）
 
 > 状态：定稿并已实施（v2 `packages/ui` 全新编写）。
 > 依据：`docs/project-structure-refactoring.md` §3（目标树 / 禁止范围表）、§P7（第二个公开包准备）、AGENT.md §0 铁律。
@@ -8,7 +8,7 @@
 
 - **处理**：纯 React 设计系统——primitives/forms/data/navigation/feedback 五类组件、hooks、money/date/number 格式化工厂、主题令牌与样式、测试三件套。
 - **不处理**（归属消费方）：
-  - 业务取数与路由（apps 自己做；本包禁止依赖 `@tokenlens/api-client`——§3 禁止范围表）；
+  - 业务取数与路由（apps 自己做；本包禁止依赖 `@tillgate/api-client`——§3 禁止范围表）；
   - i18n 文案目录（组件文案 prop 必填或可覆盖，宿主注入）；
   - 「业务状态 → 颜色」映射词表（`StatusPill` 只收语义 tone，映射由调用方做——§0.3 零写死）；
   - 本地化 locale/币种默认值（formatting 工厂必填注入，无全局缺省实例——§0.3）。
@@ -60,7 +60,7 @@
 
 ## 8. 迁移映射（旧 → 新）
 
-| 旧 @ai-gateway/ui                                                                                         | 新 @tokenlens/ui                                           | 说明                                                               |
+| 旧 @ai-gateway/ui                                                                                         | 新 @tillgate/ui                                           | 说明                                                               |
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | components/ui/*（Radix）                                                                                  | components/{五类}（Base UI base-nova）                     | 全部重生成, 零复制                                                 |
 | action-toast / confirm-action / form-dialog                                                               | feedback/{confirm-dialog,form-dialog} + sonner             | 异步契约显式化(onError/pending)                                    |

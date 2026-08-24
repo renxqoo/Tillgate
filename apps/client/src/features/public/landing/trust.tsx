@@ -220,7 +220,7 @@ export function LandingFooter({ t }: { t: LandingT }) {
         <div>
           <div className="flex items-center gap-2">
             <LogoMark className="size-6 text-[#3957ff]" />
-            <span className="font-bold tracking-tight text-slate-900">TokenLens</span>
+            <span className="font-bold tracking-tight text-slate-900">Tillgate</span>
           </div>
           <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-500">
             {t('footerTagline')}

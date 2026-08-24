@@ -33,7 +33,11 @@ const EXPECTED_TABLES = new Set([
   'audit_logs',
   'plans',
   'user_subscriptions',
+  'endpoint_permissions',
   'organizations',
+  'permissions',
+  'role_permissions',
+  'roles',
   'org_members',
   'org_invitations',
   'reconcile_discrepancies',
@@ -69,7 +73,7 @@ function tableNames(namespace: object): Set<string> {
 }
 
 describe('schema 表清单', () => {
-  it('物理表集合与基线一致(46 张,封闭词表;identity 七表 = 迁移 0076)', () => {
+  it('物理表集合与基线一致(49 张,封闭词表;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 动态 RBAC)', () => {
     expect(tableNames(schema)).toEqual(EXPECTED_TABLES);
   });
 
@@ -135,13 +139,13 @@ describe('外键引用物化(契约:FK 目标必须在封闭表集合内)', () =
 describe('依赖边界(IMPLEMENTATION.md §6:零内部依赖)', () => {
   const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
-  it('全部源文件 import 行无白名单外依赖(白名单:@tokenlens/errors,AGENT.md §11)', () => {
+  it('全部源文件 import 行无白名单外依赖(白名单:@tillgate/errors,AGENT.md §11)', () => {
     const importLines = readdirSync(srcDir, { recursive: true })
       .filter((f) => String(f).endsWith('.ts'))
       .flatMap((f) => readFileSync(`${srcDir}/${String(f)}`, 'utf8').match(/^import .*/gm) ?? []);
     const offenders = importLines.filter((line) => {
-      const isExternal = line.includes('@ai-gateway/') || line.includes('@tokenlens/');
-      return isExternal && !line.includes('@tokenlens/errors');
+      const isExternal = line.includes('@ai-gateway/') || line.includes('@tillgate/');
+      return isExternal && !line.includes('@tillgate/errors');
     });
     expect(offenders).toEqual([]);
   });

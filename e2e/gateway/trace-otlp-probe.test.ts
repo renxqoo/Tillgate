@@ -6,7 +6,16 @@
  */
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { E2E_MODEL, E2EKeys, e2ePost, setupE2EWorld, sleep, startE2EGateway, type E2EGateway, type E2EWorld } from './kit';
+import {
+  E2E_MODEL,
+  E2EKeys,
+  e2ePost,
+  setupE2EWorld,
+  sleep,
+  startE2EGateway,
+  type E2EGateway,
+  type E2EWorld,
+} from './kit';
 
 let world: E2EWorld;
 let gw: E2EGateway;
@@ -21,7 +30,10 @@ beforeAll(async () => {
     let raw = '';
     req.on('data', (c: Buffer) => (raw += c.toString()));
     req.on('end', () => {
-      posts.push({ contentType: req.headers['content-type'] ?? '', body: raw ? JSON.parse(raw) : null });
+      posts.push({
+        contentType: req.headers['content-type'] ?? '',
+        body: raw ? JSON.parse(raw) : null,
+      });
       res.writeHead(202);
       res.end('{}');
     });
@@ -57,7 +69,8 @@ function allSpans(): Array<{ traceId: string; name: string; scope: string; reque
             traceId: s.traceId,
             name: s.name,
             scope,
-            requestId: (s.attributes ?? []).find((a: any) => a.key === 'request.id')?.value?.stringValue,
+            requestId: (s.attributes ?? []).find((a: any) => a.key === 'request.id')?.value
+              ?.stringValue,
           });
         }
       }

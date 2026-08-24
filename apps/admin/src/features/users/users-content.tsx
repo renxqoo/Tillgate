@@ -26,7 +26,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 
@@ -48,7 +48,7 @@ import { useTranslations } from 'next-intl';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 
 import { AdjustDialog, FreezeDialog, GiftDialog, PasswordDialog } from './user-dialogs';
-import type { RateCardOption, AdminUserRow } from '@tokenlens/api-client';
+import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 export function UsersContent({
@@ -216,13 +216,9 @@ function UserRowItem({
             disabled={pending}
             onClick={user.status === 0 ? () => setActiveDialog('freeze') : unban}
           >
-            {pending ? (
-              <Loader2Icon className="animate-spin" />
-            ) : user.status === 0 ? (
-              <ShieldOffIcon />
-            ) : (
-              <ShieldCheckIcon />
-            )}
+            {pending && <Loader2Icon className="animate-spin" />}
+            {!pending && user.status === 0 && <ShieldOffIcon />}
+            {!pending && user.status !== 0 && <ShieldCheckIcon />}
             {user.status === 0 ? t('ban') : t('unban')}
           </DropdownMenuItem>
         </RowActions>

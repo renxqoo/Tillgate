@@ -10,7 +10,7 @@
   手工映射 → 全部替换为 category 渲染 + FaceOverride；新仓禁回归。
 - v1 隐患沿用修复：支付回调幂等（billing payments 已内建 status=2 幂等应答）；
   OAuth state 单次消费（identity GETDEL 语义）。
-- D# 重复提取：分页/安全件/请求 ID/网络提取全部改用 `@tokenlens/http` 出口；
+- D# 重复提取：分页/安全件/请求 ID/网络提取全部改用 `@tillgate/http` 出口；
   错误信封/本地化改用 `errorHandler`。
 
 ## 2. 目录与文件清单（src 树）

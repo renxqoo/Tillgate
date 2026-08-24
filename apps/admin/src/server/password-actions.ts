@@ -7,8 +7,8 @@
  */
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import { setAdminSessionToken } from '@tokenlens/api-client/next';
+import { ApiError } from '@tillgate/api-client';
+import { setAdminSessionToken } from '@tillgate/api-client/next';
 
 import { validatePasswordChange, type PasswordChangeInput } from '@/features/auth/password-policy';
 

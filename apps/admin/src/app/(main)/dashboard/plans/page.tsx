@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { GemIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -6,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreatePlanDialog, PlansTable } from '@/features/billing/plans-content';
-import type { PlanRow } from '@tokenlens/api-client';
+import type { PlanRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function PlansPage({ searchParams }: PageProps) {
+  await requirePermission('plans:read');
   const sp = await searchParams;
   const t = await getTranslations('plans');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

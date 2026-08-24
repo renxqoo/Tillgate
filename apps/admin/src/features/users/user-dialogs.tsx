@@ -10,17 +10,25 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   Textarea,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import * as React from 'react';
 import { useState, useTransition } from 'react';
 
-import { EyeIcon, EyeOffIcon, GiftIcon, KeyRoundIcon, Loader2Icon, ScaleIcon, ShieldOffIcon } from 'lucide-react';
+import {
+  EyeIcon,
+  EyeOffIcon,
+  GiftIcon,
+  KeyRoundIcon,
+  Loader2Icon,
+  ScaleIcon,
+  ShieldOffIcon,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useForm, type UseFormReturn } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -29,7 +37,7 @@ import { z } from 'zod';
 import { moneyText } from '@/lib/forms';
 import { formatMoney } from '@/lib/formatters';
 
-import type { AdminUserRow } from '@tokenlens/api-client';
+import type { AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /**
@@ -287,7 +295,7 @@ export function PasswordDialog({
         </DialogHeader>
         <form id="pw-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="pw">{t('newPassword')}</FieldLabel>
               <div className="relative">
                 <Input
@@ -307,7 +315,7 @@ export function PasswordDialog({
                   {show ? <EyeOffIcon /> : <EyeIcon />}
                 </Button>
               </div>
-            </Field>
+            </FormItem>
           </FieldGroup>
         </form>
         <DialogFooter>
@@ -364,7 +372,7 @@ export function FreezeDialog({
           <DialogDescription>{t('banDescription')}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
-          <Field>
+          <FormItem>
             <FieldLabel htmlFor="freeze-reason">{t('freezeReasonPrompt')}</FieldLabel>
             <Input
               id="freeze-reason"
@@ -372,7 +380,7 @@ export function FreezeDialog({
               onChange={(e) => setReason(e.target.value)}
               maxLength={200}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />
@@ -399,9 +407,9 @@ function TextareaField({
   id: string;
 }) {
   return (
-    <Field>
+    <FormItem>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Textarea id={id} rows={2} {...form.register(name)} />
-    </Field>
+    </FormItem>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * @tokenlens/db 公共出口:连接、事务、schema、迁移、PG 错误分类(DESIGN.md §1)。
+ * @tillgate/db 公共出口:连接、事务、schema、迁移、PG 错误分类(DESIGN.md §1)。
  * 业务 SQL / Repository CRUD / PG→HTTP 翻译不在此(总纲 §3.4;零内部依赖)。
  */
 

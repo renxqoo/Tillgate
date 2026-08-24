@@ -2,7 +2,7 @@
  * 包内测试 harness:内存替身 + 快照回滚 fake db + facade 组装(默认门禁无 PG/Redis/
  * SMTP,全部走替身与注入)。仅 __test__ 消费;不进入公共 exports。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
 import type { IdentityConfigInput } from '../domain/config.js';
 import type { IdentityAuditEvent } from '../domain/audit-events.js';
 import type { Captcha } from '../ports/captcha.js';
@@ -29,10 +29,10 @@ export const TEST_CONFIG: IdentityConfigInput = {
   passwordPolicy: { minLength: 10, maxLength: 128 },
   challenge: { digits: 6, ttlMs: 300_000, cooldownMs: 60_000, maxAttempts: 5 },
   codePepper: 'test-pepper-0123456789abcdef',
-  totp: { issuer: 'tokenlens-test', stepSec: 30, windowSteps: 1, recoveryCount: 10 },
+  totp: { issuer: 'tillgate-test', stepSec: 30, windowSteps: 1, recoveryCount: 10 },
   sessions: {
-    user: { issuer: 'tokenlens-console', secret: 'test-user-secret-0123456789', ttlSec: 86_400 },
-    admin: { issuer: 'tokenlens-admin', secret: 'test-admin-secret-0123456789', ttlSec: 86_400 },
+    user: { issuer: 'tillgate-console', secret: 'test-user-secret-0123456789', ttlSec: 86_400 },
+    admin: { issuer: 'tillgate-admin', secret: 'test-admin-secret-0123456789', ttlSec: 86_400 },
   },
   oauth: {
     github: { clientId: 'gh-client', clientSecret: 'gh-secret' },

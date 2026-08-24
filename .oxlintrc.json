@@ -6,7 +6,8 @@
     "suspicious": "error"
   },
   "rules": {
-    "max-lines": ["error", { "max": 500 }]
+    "max-lines": ["error", { "max": 500 }],
+    "eslint/no-nested-ternary": "error"
   },
   "overrides": [
     {

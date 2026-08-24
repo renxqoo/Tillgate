@@ -9,7 +9,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDb, closeDb, runTx, type Db, type DbTx, type TxRetryPolicy } from '@tokenlens/db';
+import { createDb, closeDb, runTx, type Db, type DbTx, type TxRetryPolicy } from '@tillgate/db';
 import { createPgTraceStore } from '../src/adapters/postgres/trace-store';
 import {
   ensureTracePartition,

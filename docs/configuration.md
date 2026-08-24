@@ -46,7 +46,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `DB_POOL_MAX` | `10` | gateway / client-api / admin-api 的 PG 连接池上限。worker（20）与 trace-receiver（10）为部署定值不吃该键（v2 变化） |
 | `TRUSTED_PROXY_HOPS` | `0` | 来源 IP 提取：0 = 不信 XFF；**nginx/LB 后置 `1`**（右数第 1 跳 = 真实客户端）。compose 已给各服务注入 `1`；前端 BFF 也消费（透传用户 IP 给 API）。不配对会让限流/爆破锁按代理 IP 计数 |
 | `SESSION_TTL_SECONDS` | `86400` | 会话有效期（60 ~ 2592000）；client-api 与 admin-api 同键共用，前端 BFF 的会话 cookie 寿命也读它 |
-| `KEY_PREFIX` | `ag_` | 虚拟 Key 前缀（client-api 生成端与 gateway 识别端共用；字母开头 2-16 位 `[a-z0-9_-]`）。**仅限首次部署设定，运行中改值 = 存量 Key 全部失效** |
+| `KEY_PREFIX` | `sk_` | 虚拟 Key 前缀（client-api/admin-api 生成端与 gateway 识别端共用；字母开头 2-16 位 `[a-z0-9_-]`）。**仅限首次部署设定，运行中改值 = 存量 Key 全部失效** |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `ai-gateway` / `ai-gateway-api` | 网关 App JWT 签发/验签主体（多套部署实例隔离用）。**运行中改值 = 在途 JWT 立即失效**（gateway 键） |
 | `CORS_ORIGINS` | 空 | 跨域白名单（逗号分隔；空 = 不放行跨域）；client-api 与 admin-api 消费。网关另有独立键 `GATEWAY_CORS_ORIGINS` |
 | `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`，缺省开发 `memory`、生产 `off`（worker 恒 `off`，除非显式配）。`otlp` 必配 `OTEL_EXPORTER_OTLP_ENDPOINT`。compose 各服务的 `environment` 把它固定为 `'off'`——启用链路需同步改 compose |
@@ -96,7 +96,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `CLIENT_BODY_LIMIT_BYTES` | `8388608` | 请求体上限（字节，纯数字） |
 | `CLIENT_CHALLENGE_TTL_MS` / `CLIENT_CHALLENGE_COOLDOWN_MS` / `CLIENT_CHALLENGE_MAX_ATTEMPTS` | `600000` / `60000` / `5` | 邮箱验证码挑战：有效期 / 发送冷却 / 最大尝试（v2 新增） |
 | `CLIENT_PASSWORD_MIN_LENGTH` | `10` | 密码下界（上界 128 固定） |
-| `CLIENT_TOTP_ISSUER` | `TokenLens` | TOTP 发行方（MFA 预留） |
+| `CLIENT_TOTP_ISSUER` | `Tillgate` | TOTP 发行方（MFA 预留） |
 | `REGISTER_ENABLED` | `true` | 公开注册开关（关闭后 `POST /api/auth/register*` 一律 403，只留 OAuth 建号） |
 | `REGISTER_IP_WINDOW_SECONDS` / `REGISTER_IP_LIMIT_PER_HOUR` | `3600` / `5` | 注册频控（窗口即 Retry-After 口径） |
 | `REDEEM_PER_MINUTE_LIMIT` | `10` | 兑换码频控（防暴力猜码） |
@@ -210,7 +210,7 @@ compose 部署由 `environment` 段注入：
 |---|---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / `postgres` / `ai_gateway` | 容器 PG 超级用户/密码/库名；compose 同时用它们拼 `DATABASE_URL`。生产必改强随机密码 |
 | `REDIS_PASSWORD` | `root123`（仅开发） | compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`；HA 形态的 replica/sentinel 凭证同源。生产务必覆盖强随机值 |
-| `TOKENLENS_TAG` | `local` | 自建镜像标签（`tokenlens/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
+| `TILLGATE_TAG` | `local` | 自建镜像标签（`tillgate/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
 | `GRAFANA_ADMIN_PASSWORD` | 无默认 | obs profile（`--profile obs`）必配——未设时 compose 直接拒绝启动（弱密码默认已移除） |
 
 ## v1 → v2 键名与语义变化

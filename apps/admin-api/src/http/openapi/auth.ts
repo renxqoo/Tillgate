@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { authContracts } from '../contracts/auth';
 import { okTrue, type OpenApiEndpoint } from './shared';
 
-/** 当前登录管理员（GET /v1/me） */
+/** 当前登录管理员（GET /v1/me;role/permissions = RBAC 前端导航过滤单一事实来源） */
 export const adminMeInfoSchema = z
   .object({
     id: z.number(),
@@ -15,6 +15,17 @@ export const adminMeInfoSchema = z
     lastLoginAt: z.string().nullable(),
     twoFactorEnabled: z.boolean().optional().describe('邮箱验证码二次登录已开启'),
     totpEnabled: z.boolean().optional().describe('TOTP 验证器已绑定（接管第二因子）'),
+    role: z
+      .object({
+        id: z.number(),
+        code: z.string(),
+        name: z.string(),
+        isSuper: z.boolean().describe('超管隐式全量（can() 短路;permissions 下发全码）'),
+      })
+      .describe('动态 RBAC 角色对象（roles 表）'),
+    permissions: z
+      .array(z.string())
+      .describe('本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源）'),
   })
   .meta({ id: 'AdminMeInfo', description: '当前登录管理员 (GET /v1/me,admin-api 管理面)' });
 
@@ -84,6 +95,33 @@ export const authEndpoints: readonly OpenApiEndpoint[] = [
     summary: '当前管理员资料',
     response: { schema: adminMeInfoSchema },
     errors: [401, 404],
+  },
+  {
+    method: 'get',
+    path: '/v1/me/menus',
+    tag: 'me',
+    summary: '本人菜单树（group+page 两级,按授权过滤——sidebar 数据源）',
+    response: {
+      schema: z.object({
+        groups: z.array(
+          z.object({
+            id: z.number(),
+            i18nKey: z.string().nullable(),
+            name: z.string(),
+            items: z.array(
+              z.object({
+                id: z.number(),
+                i18nKey: z.string().nullable(),
+                name: z.string(),
+                path: z.string().nullable(),
+                icon: z.string().nullable(),
+                code: z.string().nullable(),
+              }),
+            ),
+          }),
+        ),
+      }),
+    },
   },
   {
     method: 'post',

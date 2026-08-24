@@ -1,4 +1,4 @@
-# @tokenlens/billing 施工图（IMPLEMENTATION）
+# @tillgate/billing 施工图（IMPLEMENTATION）
 
 > 状态：已完成（U0–U5 + 收口全部核销；遗留事项见 §8）
 > 设计基线：[DESIGN.md](./DESIGN.md)；合并裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)

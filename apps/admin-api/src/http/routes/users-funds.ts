@@ -5,18 +5,17 @@
  * 负数调账 = 扣款到外部世界镜像（allowCredit:true——授信地板内可负,地板由 wallet 守卫）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import { AccountsErrors } from '@tokenlens/accounts';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import { AccountsErrors } from '@tillgate/accounts';
+import type { AccountUseCases } from '@tillgate/accounts';
 import {
   Decimal,
   normalizeAmount,
   OUTSIDE_ACCOUNT,
   type OperationRun,
   type WalletApi,
-} from '@tokenlens/billing';
-import { operationId } from '@tokenlens/http';
-import type { Observability } from '@tokenlens/observability';
+} from '@tillgate/billing';
+import { operationId } from '@tillgate/http';
+import type { Observability } from '@tillgate/observability';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { usersContracts } from '../contracts/users';
@@ -59,10 +58,7 @@ interface FundsReceipt {
   replayed: boolean;
 }
 
-export function usersFundsRoutes(
-  deps: UsersFundsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
-) {
+export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
   async function assertUser(userId: number): Promise<void> {
@@ -71,7 +67,7 @@ export function usersFundsRoutes(
     }
   }
 
-  app.post('/v1/users/:id/adjust', session, async (c) => {
+  app.post('/v1/users/:id/adjust', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.adjust.parse(await c.req.json());
     const opId = operationId(c);
@@ -133,7 +129,7 @@ export function usersFundsRoutes(
     return c.json(funds);
   });
 
-  app.post('/v1/users/:id/gift', session, async (c) => {
+  app.post('/v1/users/:id/gift', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.gift.parse(await c.req.json());
     const opId = operationId(c);
@@ -173,7 +169,7 @@ export function usersFundsRoutes(
     return c.json(funds);
   });
 
-  app.get('/v1/users/:id/transactions', session, async (c) => {
+  app.get('/v1/users/:id/transactions', async (c) => {
     const id = idParam(c.req.param('id'));
     // from/to 校验但忽略（日期过滤未启用;非法日期仍 400——v1 语义）
     usersContracts.transactionsQuery.parse(c.req.query());
@@ -184,7 +180,7 @@ export function usersFundsRoutes(
     return c.json(listEnvelope(rows, query.offset + rows.length, query));
   });
 
-  app.get('/v1/users/:id/audit-logs', session, async (c) => {
+  app.get('/v1/users/:id/audit-logs', async (c) => {
     const id = idParam(c.req.param('id'));
     const query = parseListQuery(c.req.query(), ['id', 'action', 'createdAt'], 'createdAt');
     const rows = await deps.audit.listByTarget({

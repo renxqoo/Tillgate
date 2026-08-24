@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { PasswordForm } from './password-form';
 

@@ -3,7 +3,7 @@
  * 「isFree=true + 非零价」矛盾态（如只改 outputPrice>0）。
  * 价格变更影响计费：全量补丁进审计（历史可解释）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore, ModelRecord } from '../../ports/model-store';
 import type { ModelPatchInput } from '../../domain/model/model';

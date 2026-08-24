@@ -3,8 +3,8 @@
  * admin 语义恒直读追加表；进程内缓存只服务网关热路径，归 inference 波次）。
  */
 import { and, desc, eq } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { fxRates, systemConfigs } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { fxRates, systemConfigs } from '@tillgate/db';
 import type { FxStore, FxCurrentRow } from '../../ports/fx-store';
 import { trimNumeric } from '../../domain/fx/fx-rates';
 

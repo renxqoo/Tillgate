@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 import {
   E2E_INPUT_PRICE,
   E2E_MODEL,
@@ -81,10 +81,10 @@ describe.skipIf(!hasEnv)('E2E', () => {
 
       const badForms: Array<Record<string, string>> = [
         { authorization: 'Basic dXNlcjpwYXNz' },
-        { authorization: `Bearer ${randomUUID()}` }, // 非 ag_ 前缀（JWT 样）
+        { authorization: `Bearer ${randomUUID()}` }, // 非 sk_ 前缀（JWT 样）
         { authorization: 'Bearer ' },
-        { authorization: 'ag_only_no_bearer' },
-        { 'x-api-key': 'ag_whatever' }, // 错位置放 key 不算凭证
+        { authorization: 'sk_only_no_bearer' },
+        { 'x-api-key': 'sk_whatever' }, // 错位置放 key 不算凭证
       ];
       // 逐形态直发网关（不注入有效凭证）
       const direct = await Promise.all(

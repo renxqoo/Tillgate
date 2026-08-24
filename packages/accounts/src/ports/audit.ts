@@ -3,7 +3,7 @@
  * MIGRATION §1.6.4)。同事务写入——失败随业务回滚,不吞(v1 audit-log.repo insert 契约);
  * 存储/查询/保留归 observability(§3.4),本包只拥有 action 与 payload 语义。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export interface AuditAction {
   /** v1 词表:admin / system(系统任务;本包现行动作均为 admin) */

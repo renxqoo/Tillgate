@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { closeDb } from '@tokenlens/db';
+import { closeDb } from '@tillgate/db';
 import { assembleAdminApi } from '../src/assembly';
 import { loadAdminApiConfig } from '../src/config';
 import { createAdminShutdown } from '../src/shutdown';
@@ -10,7 +10,7 @@ import { createAdminShutdown } from '../src/shutdown';
  */
 
 const BASE: NodeJS.ProcessEnv = {
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens-test',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/tillgate-test',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',
@@ -25,7 +25,7 @@ describe('assembleAdminApi', () => {
     ).toThrowError(/endpoint/i);
   });
 
-  it('合法配置构造全量 facade(零连接;桥接件就位)', () => {
+  it('合法配置构造全量 facade(零连接;桥接件就位;loginAudit 分支矩阵)', async () => {
     const assembly = assembleAdminApi(loadAdminApiConfig({ ...BASE }));
     try {
       expect(assembly.identity.sessions.validate).toBeTypeOf('function');
@@ -36,6 +36,26 @@ describe('assembleAdminApi', () => {
       expect(assembly.observability.traces.recent).toBeTypeOf('function');
       expect(assembly.operations.run).toBeTypeOf('function');
       expect(assembly.writeAuditInTx).toBeTypeOf('function');
+
+      // loginAudit 形状适配分支全矩阵:adminId/ip/email/twoFactor 有无组合
+      // (writeAudit 落库失败被 best-effort 吞掉——分支在回调内求值,无需真连接)
+      await assembly.loginAudit({
+        action: 'auth.login.success',
+        adminId: 9,
+        ip: '1.2.3.4',
+        email: 'a@b.c',
+        twoFactor: true,
+      });
+      await assembly.loginAudit({
+        action: 'auth.login.invalid_credentials',
+        adminId: null,
+        ip: null,
+        email: undefined,
+        twoFactor: undefined,
+      });
+      await expect(
+        assembly.loginAudit({ action: 'auth.login.2fa_challenge', adminId: 4, ip: null }),
+      ).resolves.toBeUndefined();
     } finally {
       void closeDb(assembly.db);
     }

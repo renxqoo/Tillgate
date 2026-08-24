@@ -36,8 +36,8 @@ import {
   TableHeader,
   TableRow,
   toast,
-} from '@tokenlens/ui';
-import type { AppCreated, AppRow } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { AppCreated, AppRow } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { formatDateTime } from '@/features/shared/format';

@@ -6,7 +6,7 @@
  * 双切换在结构上不可能产生孤儿敞口——输家 CAS 落空 → 整体回滚。
  * 同渠道重复预留：金额更大按差额补足（fallback 模型预估更高路由回同一渠道）。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
 import { budgetRemaining, reserveDecision } from '../../domain/billing/channel-exposure.js';
 import { Decimal } from '../../domain/money.js';

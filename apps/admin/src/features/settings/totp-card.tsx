@@ -17,11 +17,11 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { useActionResult } from '@/components/action-toast';
 import {
@@ -89,14 +89,14 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
       <div className="flex flex-col  gap-3">
         <div>
           <Button
-          variant={totpEnabled ? 'destructive' : 'default'}
-          size="sm"
-          disabled={pending}
-          onClick={() => (totpEnabled ? setUnbindOpen(true) : startEnroll(true))}
-        >
-          {pending && <Loader2Icon className="animate-spin" />}
-          {totpEnabled ? t('unbind') : t('bind')}
-        </Button>
+            variant={totpEnabled ? 'destructive' : 'default'}
+            size="sm"
+            disabled={pending}
+            onClick={() => (totpEnabled ? setUnbindOpen(true) : startEnroll(true))}
+          >
+            {pending && <Loader2Icon className="animate-spin" />}
+            {totpEnabled ? t('unbind') : t('bind')}
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground">
           {totpEnabled ? t('boundDescription') : t('bindDescription')}
@@ -159,7 +159,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                     {enrollment.secret}
                   </p>
                   <FieldGroup>
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="totp-confirm-code">{t('confirmCodeLabel')}</FieldLabel>
                       <Input
                         id="totp-confirm-code"
@@ -175,7 +175,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                           )
                         }
                       />
-                    </Field>
+                    </FormItem>
                   </FieldGroup>
                   <Button
                     className="w-full"
@@ -207,7 +207,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
             <DialogDescription>{t('unbindDescription')}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="totp-unbind-code">{t('confirmCodeLabel')}</FieldLabel>
               <Input
                 id="totp-unbind-code"
@@ -223,7 +223,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                   )
                 }
               />
-            </Field>
+            </FormItem>
           </FieldGroup>
           <Button
             className="w-full"

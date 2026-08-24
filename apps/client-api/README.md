@@ -1,4 +1,4 @@
-# @tokenlens/client-api —— 用户控制台 REST API
+# @tillgate/client-api —— 用户控制台 REST API
 
 Hono 用户面 API（端口沿用 v1 `8081`）：会话/资料/Key/App/组织/钱包/兑换/支付/订阅/用量/定价/推荐。
 业务全部经能力包 facade，本 app 只保留协议与装配（P5）。
@@ -27,14 +27,14 @@ app.ts / index.ts / shutdown.ts
 - 端口 `8081`（`CLIENT_API_PORT`）；健康探针 `GET /healthz`（db ping + redis ping，公开）
 - 必填：`DATABASE_URL`、`REDIS_URL`、`JWT_SECRET`（生产 ≥32）、`CLIENT_CODE_PEPPER`（生产 ≥32，挑战防离线穷举）、`ENCRYPTION_KEY`（生产 ≥32）
 - Redis Sentinel 可选：`REDIS_SENTINELS` + `REDIS_SENTINEL_NAME`（配了节点列表必须带主名）
-- 常用缺省：`SESSION_TTL_SECONDS=86400`、`REGISTER_ENABLED=true`、`TRUSTED_PROXY_HOPS=0`、`TOPUP_MIN/MAX/EXCHANGE_RATE`、`KEY_PREFIX=ag_`
+- 常用缺省：`SESSION_TTL_SECONDS=86400`、`REGISTER_ENABLED=true`、`TRUSTED_PROXY_HOPS=0`、`TOPUP_MIN/MAX/EXCHANGE_RATE`、`KEY_PREFIX=sk_`
 - OTel：`OTEL_TRACES_MODE=off|otlp`（缺省 off）；otlp 需 `OTEL_EXPORTER_OTLP_ENDPOINT`，推送鉴权 `TRACE_RECEIVER_TOKEN`（Bearer，与 trace-receiver 同键同值）
 
 ## 装配与依赖
 
-- 能力包 facade：`@tokenlens/identity`（会话/挑战/OAuth，经 `adapters/identity-stack`）、`@tokenlens/accounts`（+`/composition` 资金来源解析器）、`@tokenlens/billing`（+`/composition` wallet/payments/redeem postgres stores 与 EPAY/Stripe provider）、`@tokenlens/observability`（initOtel）、`@tokenlens/runtime`（redis/cipher/爆破守卫/logger）、`@tokenlens/db`
+- 能力包 facade：`@tillgate/identity`（会话/挑战/OAuth，经 `adapters/identity-stack`）、`@tillgate/accounts`（+`/composition` 资金来源解析器）、`@tillgate/billing`（+`/composition` wallet/payments/redeem postgres stores 与 EPAY/Stripe provider）、`@tillgate/observability`（initOtel）、`@tillgate/runtime`（redis/cipher/爆破守卫/logger）、`@tillgate/db`
 - app 永不触 DbTx：无共享事务的 facade 动词编排；跨能力只读面组合在 `src/adapters/*-read.ts`
-- 消费方：apps/client（Next.js BFF，经 `@tokenlens/api-client/next` 持 `ag_session` cookie 出站 Bearer）
+- 消费方：apps/client（Next.js BFF，经 `@tillgate/api-client/next` 持 `ag_session` cookie 出站 Bearer）
 
 ## 本地运行与测试
 

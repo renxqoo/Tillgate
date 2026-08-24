@@ -3,10 +3,9 @@
  * 内联）/调账。幂等键透传（同键同参重放、异参 409——control-plane operations）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import { normalizeAmount } from '@tokenlens/billing';
-import { operationId } from '@tokenlens/http';
+import type { ControlPlane } from '@tillgate/control-plane';
+import { normalizeAmount } from '@tillgate/billing';
+import { operationId } from '@tillgate/http';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
@@ -17,14 +16,11 @@ export interface ChannelFundsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
-export function channelFundsRoutes(
-  deps: ChannelFundsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
-) {
+export function channelFundsRoutes(deps: ChannelFundsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const channels = deps.controlPlane.channels;
 
-  app.get('/v1/channel-funds', session, async (c) => {
+  app.get('/v1/channel-funds', async (c) => {
     const extra = channelFundsContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), CHANNEL_FUNDS_SORTS, 'createdAt');
     const result = await channels.listRecharges({
@@ -39,7 +35,7 @@ export function channelFundsRoutes(
     return c.json(listEnvelope(result.rows.map(toChannelFundWireRow), result.total, query));
   });
 
-  app.post('/v1/channel-funds/recharge', session, async (c) => {
+  app.post('/v1/channel-funds/recharge', async (c) => {
     const body = channelFundsContracts.recharge.parse(await c.req.json());
     const result = await channels.recharge({
       ctx: controlContextOf(c),
@@ -54,7 +50,7 @@ export function channelFundsRoutes(
     return c.json({ ...result, balanceAfter: normalizeAmount(result.balanceAfter) });
   });
 
-  app.post('/v1/channel-funds/adjust', session, async (c) => {
+  app.post('/v1/channel-funds/adjust', async (c) => {
     const body = channelFundsContracts.adjust.parse(await c.req.json());
     const result = await channels.adjust({
       ctx: controlContextOf(c),

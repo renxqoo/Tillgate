@@ -12,8 +12,8 @@ import {
   HttpErrors,
   requestIdMiddleware,
   securityHeaders,
-} from '@tokenlens/http';
-import { pgSqlState } from '@tokenlens/db';
+} from '@tillgate/http';
+import { pgSqlState } from '@tillgate/db';
 import { CLIENT_FACE_OVERRIDES, clientErrorCatalog } from './http/error-face.js';
 import {
   sessionMiddleware,

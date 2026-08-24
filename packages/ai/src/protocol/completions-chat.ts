@@ -19,12 +19,11 @@ function str(v: unknown): string | undefined {
 
 export function completionsRequestToChat(req: unknown): Json {
   const r = asJson(req) ?? {};
-  const prompt =
-    typeof r.prompt === 'string'
-      ? r.prompt
-      : Array.isArray(r.prompt)
-        ? r.prompt.map((p) => (typeof p === 'string' ? p : String(asArray(p)))).join('')
-        : '';
+  let prompt;
+  if (typeof r.prompt === 'string') prompt = r.prompt;
+  else if (Array.isArray(r.prompt))
+    prompt = r.prompt.map((p) => (typeof p === 'string' ? p : String(asArray(p)))).join('');
+  else prompt = '';
   const messages = prompt ? [{ role: 'user', content: prompt }] : [];
   if (typeof r.system === 'string' && r.system)
     messages.unshift({ role: 'system', content: r.system });

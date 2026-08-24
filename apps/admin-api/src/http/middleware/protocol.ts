@@ -1,5 +1,5 @@
 /**
- * 协议中间件三件套（消费 @tokenlens/http 货架，不重写——v1 middleware/protocol.ts 平移）：
+ * 协议中间件三件套（消费 @tillgate/http 货架，不重写——v1 middleware/protocol.ts 平移）：
  * CORS 预检（白名单空 = 不放行跨域）/ 安全响应头 / 请求体上限 / 服务端 requestId。
  */
 import type { MiddlewareHandler } from 'hono';
@@ -8,7 +8,7 @@ import {
   corsPreflight,
   requestIdMiddleware,
   securityHeaders,
-} from '@tokenlens/http';
+} from '@tillgate/http';
 import type { SessionEnv } from './session';
 
 export interface ProtocolConfig {

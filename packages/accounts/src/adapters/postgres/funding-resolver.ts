@@ -13,8 +13,8 @@
  *   否则 appId → apps {subscription_id}（App-JWT 恒 allowPaygFallback=false）。
  */
 import { eq } from 'drizzle-orm';
-import type { DbTx } from '@tokenlens/db';
-import { apiKeys, apps, users } from '@tokenlens/db';
+import type { DbTx } from '@tillgate/db';
+import { apiKeys, apps, users } from '@tillgate/db';
 
 /** billing WalletConn 的结构形状（brand-only；实际句柄为 billing 事务的 DbTx） */
 interface BillingConn {

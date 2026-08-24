@@ -307,16 +307,19 @@ export function relayStream(
         // 归类 server_draining——部分交付即计费（2026-08-21 拍板：估算结算，
         // 归属 server_draining 分标签，报表可查、可接运营补偿），不得混入用户取消
         const drain = options.signal ? asServerDrainAbort(options.signal.reason) : null;
-        const reason = drain
-          ? 'server_draining'
-          : options.signal?.aborted
-            ? 'request_cancelled'
-            : 'upstream_disconnected';
-        const frame = drain
-          ? { code: 'server_draining', detail: 'gateway draining' }
-          : options.signal?.aborted
-            ? { code: 'request_cancelled', detail: 'request cancelled while reading upstream' }
-            : { code: 'upstream_disconnected', detail: 'upstream read error' };
+        let reason: 'server_draining' | 'request_cancelled' | 'upstream_disconnected' =
+          'upstream_disconnected';
+        let frame = { code: 'upstream_disconnected', detail: 'upstream read error' };
+        if (drain) {
+          reason = 'server_draining';
+          frame = { code: 'server_draining', detail: 'gateway draining' };
+        } else if (options.signal?.aborted) {
+          reason = 'request_cancelled';
+          frame = {
+            code: 'request_cancelled',
+            detail: 'request cancelled while reading upstream',
+          };
+        }
         failWithErrorFrame(frame, reason);
       }
     });

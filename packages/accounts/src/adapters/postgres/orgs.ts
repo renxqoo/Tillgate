@@ -3,7 +3,7 @@
  * 订阅绑定守卫(G8:user_subscriptions 只读最小投影)。
  */
 import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm';
-import { orgInvitations, orgMembers, organizations, userSubscriptions, users } from '@tokenlens/db';
+import { orgInvitations, orgMembers, organizations, userSubscriptions, users } from '@tillgate/db';
 import type { AccountStorePort } from '../../ports/account-store.js';
 import { nowSql } from './shared.js';
 

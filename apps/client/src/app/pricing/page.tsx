@@ -2,7 +2,7 @@ import { SearchIcon, TagIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { Input } from '@tokenlens/ui';
+import { Input } from '@tillgate/ui';
 
 import { Pager } from '@/features/shared/pager';
 import { fetchPublicPricing } from '@/server/public-pricing';
@@ -36,16 +36,11 @@ export default async function PricingPage({
   const fmtUnitPrice = (unit: string, price: string): string => {
     const n = Number(price);
     if (!Number.isFinite(n) || n === 0) return '—';
-    const suffix =
-      unit === 'request'
-        ? t('perRequest')
-        : unit === 'image'
-          ? t('perImage')
-          : unit === 'second'
-            ? t('perSecond')
-            : unit === 'char'
-              ? t('perChar')
-              : '';
+    let suffix = '';
+    if (unit === 'request') suffix = t('perRequest');
+    else if (unit === 'image') suffix = t('perImage');
+    else if (unit === 'second') suffix = t('perSecond');
+    else if (unit === 'char') suffix = t('perChar');
     return `¥${n}${suffix}`;
   };
 

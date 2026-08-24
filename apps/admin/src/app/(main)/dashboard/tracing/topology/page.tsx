@@ -1,8 +1,9 @@
-import { Card, CardContent } from '@tokenlens/ui';
+import { requirePermission } from '@/server/get-admin';
+import { Card, CardContent } from '@tillgate/ui';
 import Link from 'next/link';
 import { Network } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 import { ChannelTopology, type ChannelHealth } from '@/features/tracing/channel-topology';
 
@@ -27,6 +28,7 @@ export default async function TopologyPage({
 }: {
   searchParams: Promise<{ hours?: string }>;
 }) {
+  await requirePermission('ops:read');
   const requested = (await searchParams).hours;
   const t = await getTranslations('tracing');
   const tc = await getTranslations('common');

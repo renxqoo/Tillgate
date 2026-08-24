@@ -10,7 +10,7 @@
  * 显式 failMode:'open' 才放行（仅失去限流，资金正确性仍由 billing_requests DB 硬闸门兜底）。
  * releaseTpm/renewTpm/backfillTpm 恒 best-effort（释放/续租失败不该反杀在途请求，TTL 兜底）。
  */
-import { InfrastructureError } from '@tokenlens/errors';
+import { InfrastructureError } from '@tillgate/errors';
 import type { Redis } from 'ioredis';
 import { createRedisScriptRunner } from './script-runner.js';
 

@@ -7,9 +7,9 @@
  * 环境：DB_TEST_URL / DATABASE_URL（根 .env）；不可达时全组跳过。零业务数据写入。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, ping } from '@tokenlens/db';
-import type { Db } from '@tokenlens/db';
-import { SETTLE_WAKE_CHANNEL } from '@tokenlens/billing';
+import { closeDb, createDb, ping } from '@tillgate/db';
+import type { Db } from '@tillgate/db';
+import { SETTLE_WAKE_CHANNEL } from '@tillgate/billing';
 import { createSettleWakeListener } from '../src/wakeup/postgres-notify';
 import type { ListenConnection } from '../src/wakeup/postgres-notify';
 
@@ -101,7 +101,7 @@ describe('worker 真 PG：对账会话锁门', () => {
   it('他连接持键 → try-lock 获锁失败（null 语义，不误报不漏报）', async (context) => {
     if (!db) return context.skip();
     const connected = db;
-    const key = 'tokenlens-worker-real-test:reconcile';
+    const key = 'tillgate-worker-real-test:reconcile';
     const holder = await connected.$client.connect();
     try {
       const locked = await holder.query<{ locked: boolean }>({

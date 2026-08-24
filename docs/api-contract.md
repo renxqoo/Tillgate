@@ -1,4 +1,4 @@
-# TokenLens API 契约（v0.2）
+# Tillgate API 契约（v0.2）
 
 > 本文档自 v1（ai-getway）同名文档适配至 v2 结构；接口与结构以代码为准。
 > 配套文档：[project-structure-refactoring.md](./project-structure-refactoring.md)（结构目标态）、`billing-flow-deep-dive.md`（[计费全链路](./billing-flow-deep-dive.md)）、`gateway-pipeline.md`（[网关管线](./gateway-pipeline.md)）
@@ -10,7 +10,7 @@
 
 - 对外接口基础路径 `/v1`，格式完全遵循 OpenAI 风格，客户端零改动接入。
 - 鉴权头：`Authorization: Bearer <凭证>`，凭证二选一：
-  - 静态虚拟 Key：`ag_` 前缀（`KEY_PREFIX` 可配，默认 `ag_`；SHA-256 落库，明文仅创建时展示一次）
+  - 静态虚拟 Key：`sk_` 前缀（`KEY_PREFIX` 可配，默认 `sk_`；SHA-256 落库，明文仅创建时展示一次）
   - 网关签发 App JWT（企业 Agent，经 `/oauth/token` 换取；`typ=app_jwt`，其他 JWT 形态一律 401——信任根分离）
 - 时间：UTC，ISO 8601。
 - 金额对外展示为元（小数），内部 `numeric(38,18)` 元 + Decimal 全精度（`packages/billing/src/domain/money.ts` 单一真相；本契约不含金额字段，控制台接口按需）。
@@ -97,7 +97,7 @@ client_secret=<app.client_secret>
 
 ### 2.5 推理端点矩阵（协议入站表面）
 
-鉴权同 §1（Bearer ag_ Key / App JWT）。管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（codec 单一真相在 `@tokenlens/ai` protocol，`apps/gateway/src/http/contracts/inference-endpoints.ts` 注册）。
+鉴权同 §1（Bearer sk_ Key / App JWT）。管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（codec 单一真相在 `@tillgate/ai` protocol，`apps/gateway/src/http/contracts/inference-endpoints.ts` 注册）。
 
 | 端点 | 说明 |
 |---|---|
@@ -117,7 +117,7 @@ client_secret=<app.client_secret>
 
 - 计费单位：模型目录 `pricingUnit` ∈ token / request / image / second / char + unit_price；金额 =（token 部分 + units × unit_price）× 系数（`packages/billing/src/domain/rating` 单一真相）。
 - 费率卡系数解析优先级 model > group（pricing_group 匹配）> global。
-- 上游协议族（vendor 注册表，管理面 GET /v1/vendor-catalog）：openai-compatible / anthropic / gemini / azure-openai / aws-bedrock（SigV4+eventstream）/ vertex-ai（SA JWT）等，adapter 注册表在 `@tokenlens/ai`。
+- 上游协议族（vendor 注册表，管理面 GET /v1/vendor-catalog）：openai-compatible / anthropic / gemini / azure-openai / aws-bedrock（SigV4+eventstream）/ vertex-ai（SA JWT）等，adapter 注册表在 `@tillgate/ai`。
 - 入口 schema 钳制：messages ≤1000、embeddings input 数组 ≤2048、prompt ≤32000 字符、n ≤16 等越界值 400 拒绝。
 
 ### 2.6 异步生成任务（video / music）
@@ -186,7 +186,7 @@ client_secret=<app.client_secret>
 | `?q=` | 文本搜索（1~100 字符，ilike 模糊；`%`/`_`/`\` 按字面匹配；按接口白名单列生效，无文本列的列表不提供） |
 | `?sort_by=&order=asc\|desc` | 排序（字段白名单，白名单外 **400 admin.invalid_sort_field**，不静默回退）；不传时默认时间倒序，多主排序附加 `id desc` 保证分页稳定 |
 
-实现组件：后端 `@tokenlens/http` 的 `listQuerySchema`（pagination + search + sort 合成，`packages/http/src/pagination/list-query.ts`）；前端 `@tokenlens/ui` 的 `DataTable` + `ListPanel`（`packages/ui/src/components/data/`）+ `@tokenlens/api-client` 的 `core/pagination`（`Paginated<T>` / `buildListQuery`）。
+实现组件：后端 `@tillgate/http` 的 `listQuerySchema`（pagination + search + sort 合成，`packages/http/src/pagination/list-query.ts`）；前端 `@tillgate/ui` 的 `DataTable` + `ListPanel`（`packages/ui/src/components/data/`）+ `@tillgate/api-client` 的 `core/pagination`（`Paginated<T>` / `buildListQuery`）。
 分组统计类接口（`stats/*`、`usage/summary`、`usage/by-model`、`tracing/topology`）与外部目录（`model-catalog`）不是记录列表，不适用本约定。时间范围统一 `?from=&to=`（UTC）。
 
 ### 4.1 用户面：会话与账户（apps/client-api/src/http/routes/）
@@ -295,7 +295,7 @@ client_secret=<app.client_secret>
 | `GET /v1/model-catalog/sources` | 外部价目源列表（models.dev 等） |
 | `GET /v1/model-catalog/price-history`、`GET /v1/model-catalog/:sourceId` | 价目历史 / 源内模型明细 |
 | `POST /v1/model-catalog/import` | 从外部源导入官方价 |
-| `GET /v1/vendor-catalog` | vendor/协议注册表（协议族 + 供应商 baseUrl 预设，装配自 `@tokenlens/ai` 词表） |
+| `GET /v1/vendor-catalog` | vendor/协议注册表（协议族 + 供应商 baseUrl 预设，装配自 `@tillgate/ai` 词表） |
 
 ### 4.8 管理面：费率卡与汇率
 

@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import {
   REAL_URL,
   assertLedgerCoherent,

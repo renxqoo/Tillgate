@@ -3,7 +3,7 @@
  * 供应商按名精确解析（miss = 该条失败）；同名渠道拒绝；
  * 目录条目按外部名绑定映射（缺映射跳过——目录名未建映射不算错）。
  */
-import { isUniqueViolation, type Db } from '@tokenlens/db';
+import { isUniqueViolation, type Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { SecretCipher } from '../../ports/secret-cipher';
 import type { ChannelStore } from '../../ports/channel-store';
@@ -11,7 +11,7 @@ import type { ProviderStore } from '../../ports/provider-store';
 import type { ModelStore } from '../../ports/model-store';
 import type { ChannelImportItem } from '../../domain/channel/channel';
 import { validateChannelImportItem } from '../../domain/channel/channel';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { controlPlaneErrors } from '../../errors';
 import { adminIdOf, type ControlContext } from '../context';
 import { emitAudit } from '../audit';

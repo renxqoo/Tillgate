@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { TicketIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -6,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { BatchesTable, GenerateBatchDialog } from '@/features/billing/redeem-batches-content';
-import type { AdminBatchRow } from '@tokenlens/api-client';
+import type { AdminBatchRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function RedeemBatchesPage({ searchParams }: PageProps) {
+  await requirePermission('funds:read');
   const sp = await searchParams;
   const t = await getTranslations('redeemBatches');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

@@ -6,7 +6,7 @@
  *   - writeAudit:同事务参与——失败随业务事务回滚,不吞(资金/安全/权限审计);
  *   - createBestEffortAuditSink(adapters):提交后旁路——不抛、失败记日志(低价值运营审计)。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 /** actor 语义:admin=管理员手动操作;user=用户自助;system=系统任务(对账/赠送/自动冻结) */
 export type AuditActor = 'admin' | 'user' | 'system';

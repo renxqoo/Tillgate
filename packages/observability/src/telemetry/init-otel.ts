@@ -79,19 +79,22 @@ export function initOtel(options: InitOtelOptions): OtelHandle {
     : {};
 
   let memory: MemoryTraceViewer | undefined;
-  const spanProcessors =
-    mode === 'memory'
-      ? ((memory = createMemoryTraceViewer()), [memory.processor])
-      : mode === 'console'
-        ? [createLogSpanProcessor(logger!)]
-        : [
-            new BatchSpanProcessor(
-              new OTLPTraceExporter({
-                url: `${endpoint}/v1/traces`,
-                ...authHeaders,
-              }),
-            ),
-          ];
+  let spanProcessors;
+  if (mode === 'memory') {
+    memory = createMemoryTraceViewer();
+    spanProcessors = [memory.processor];
+  } else if (mode === 'console') {
+    spanProcessors = [createLogSpanProcessor(logger!)];
+  } else {
+    spanProcessors = [
+      new BatchSpanProcessor(
+        new OTLPTraceExporter({
+          url: `${endpoint}/v1/traces`,
+          ...authHeaders,
+        }),
+      ),
+    ];
+  }
 
   const sdk = new NodeSDK({
     resource,

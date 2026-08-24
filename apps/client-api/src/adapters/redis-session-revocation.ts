@@ -3,7 +3,7 @@
  * logout 即时下线；键随令牌自然过期自动清理。
  */
 import type { Redis } from 'ioredis';
-import type { SessionRevocationStore } from '@tokenlens/identity';
+import type { SessionRevocationStore } from '@tillgate/identity';
 
 const keyOf = (jti: string) => `session:jti:${jti}`;
 

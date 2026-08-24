@@ -2,8 +2,8 @@
  * 服务端会话工具(Server Component / Server Action 用;仅 ./next 子入口导出)。
  *
  * 后端是无 Cookie 的 Bearer 会话:JWT 由本 BFF(Next.js 服务端)持有——
- * 登录/验码动作从响应体取 token,写入自己的 HttpOnly Cookie(沿用 ag_session /
- * ag_admin_session 名字,浏览器侧行为不变);发往后端时改以
+ * 登录/验码动作从响应体取 token,写入自己的 HttpOnly Cookie(ag_session /
+ * ag_admin_session);发往后端时改以
  * Authorization: Bearer 头携带(由 clients.ts 装配的 getToken 注入)。
  */
 import { cookies } from 'next/headers';

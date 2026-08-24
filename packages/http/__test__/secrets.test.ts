@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateRedeemCode, maskUpstreamKey } from '../src/security/secrets';
 
-/** api-key/app 生成器与 sha256Hex/maskKey 已随消费者迁入 @tokenlens/accounts(C5/D3);
+/** api-key/app 生成器与 sha256Hex/maskKey 已随消费者迁入 @tillgate/accounts(C5/D3);
  *  本文件只留 http 仍持有的兑换码与上游 Key 脱敏。 */
 
 describe('generateRedeemCode', () => {

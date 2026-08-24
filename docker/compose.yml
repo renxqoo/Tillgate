@@ -4,7 +4,7 @@
 # obs 栈（collector+tempo+grafana）是可选增强，需要 Grafana 全家桶时再把各服务
 # OTEL_EXPORTER_OTLP_ENDPOINT 指向 otel-collector:4318。
 
-name: tokenlens
+name: tillgate
 
 services:
   nginx:
@@ -40,7 +40,7 @@ services:
 
   gateway:
     # 生产镜像按 linux/amd64 构建（服务器 x86_64；本地 Apple Silicon 经 colima Rosetta 交叉构建）
-    image: tokenlens/gateway:${TOKENLENS_TAG:-local}
+    image: tillgate/gateway:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -71,7 +71,7 @@ services:
     # 多副本：docker compose up -d --scale gateway=2
 
   client-api:
-    image: tokenlens/client-api:${TOKENLENS_TAG:-local}
+    image: tillgate/client-api:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -95,7 +95,7 @@ services:
     stop_grace_period: 15s
 
   admin-api:
-    image: tokenlens/admin-api:${TOKENLENS_TAG:-local}
+    image: tillgate/admin-api:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -119,7 +119,7 @@ services:
     stop_grace_period: 15s
 
   worker:
-    image: tokenlens/worker:${TOKENLENS_TAG:-local}
+    image: tillgate/worker:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -149,7 +149,7 @@ services:
   # 链路接收端（内网）：OTLP/HTTP JSON → PG trace_spans 日分区；
   # 各服务通过 OTEL_TRACES_MODE=otlp + endpoint 指向它（见下方 environment 注入）。
   trace-receiver:
-    image: tokenlens/trace-receiver:${TOKENLENS_TAG:-local}
+    image: tillgate/trace-receiver:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -173,7 +173,7 @@ services:
     restart: unless-stopped
 
   console-client:
-    image: tokenlens/console-client:${TOKENLENS_TAG:-local}
+    image: tillgate/console-client:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -190,7 +190,7 @@ services:
     restart: unless-stopped
 
   console-admin:
-    image: tokenlens/console-admin:${TOKENLENS_TAG:-local}
+    image: tillgate/console-admin:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..
@@ -207,7 +207,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: tokenlens/migrate:${TOKENLENS_TAG:-local}
+    image: tillgate/migrate:${TILLGATE_TAG:-local}
     platform: linux/amd64
     build:
       context: ..

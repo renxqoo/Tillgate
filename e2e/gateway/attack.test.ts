@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 import {
   E2EKeys,
   E2E_MODEL,
@@ -53,7 +53,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const { raw, userId } = await keys.issue('1');
 
       const attempts = await Promise.all([
-        e2ePost(gateway.baseUrl, 'ag_invalidinvalidinvalid', {
+        e2ePost(gateway.baseUrl, 'sk_invalidinvalidinvalid', {
           model: E2E_MODEL,
           messages: [{ role: 'user', content: 'x' }],
         }),

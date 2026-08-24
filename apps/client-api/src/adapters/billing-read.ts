@@ -4,7 +4,7 @@
  * 且 refId 前缀 referral-commission: 的正向腿求和（v1 口径）。
  */
 import { and, eq, gt, like, sql } from 'drizzle-orm';
-import { walletAccounts, walletLegs, walletTransactions, type Db } from '@tokenlens/db';
+import { walletAccounts, walletLegs, walletTransactions, type Db } from '@tillgate/db';
 
 export interface BillingRead {
   totalCommission(userId: number): Promise<string>;

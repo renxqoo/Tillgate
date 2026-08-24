@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 import {
   Button,
@@ -10,15 +11,15 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { AdminTransactionRow, AdminUserRow, AuditLogRow } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { AdminTransactionRow, AdminUserRow, AuditLogRow } from '@tillgate/api-client';
 import { fmtBalance } from '@/lib/formatters';
 import { fmtDateTime } from '@/lib/formatters';
 import { adminApi } from '@/server/admin-api';
@@ -45,6 +46,7 @@ function isoDateParam(v: string | undefined): string | null {
 }
 
 export default async function UserDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('users:read');
   const { id } = await params;
   const locale = await getLocale();
   const t = await getTranslations('users');

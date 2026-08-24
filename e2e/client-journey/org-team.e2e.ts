@@ -151,7 +151,7 @@ context('团队套餐组织旅程（老仓 e2e-org-team 核销）', () => {
     });
     expect(memberKey.status).toBe(201);
     const memberKeyBody = (await memberKey.json()) as { plaintext: string };
-    expect(memberKeyBody.plaintext.startsWith('ag_')).toBe(true);
+    expect(memberKeyBody.plaintext.startsWith('sk_')).toBe(true);
 
     // 移除成员；owner 不可自移
     expect(

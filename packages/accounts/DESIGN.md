@@ -1,4 +1,4 @@
-# @tokenlens/accounts 设计基线(DESIGN.md)
+# @tillgate/accounts 设计基线(DESIGN.md)
 
 > 状态:定稿(实施中)
 > 迁移单元:P4 第 4 波「上层消费者:用户/组织/API Key/Application → accounts」(总纲 §9 P4.4)
@@ -177,7 +177,7 @@ createAccounts({
 
 ## 6. 装配与测试策略
 
-- 依赖白名单:`@tokenlens/errors`、`@tokenlens/db`(adapter SQL 与事务件)、`decimal.js`
+- 依赖白名单:`@tillgate/errors`、`@tillgate/db`(adapter SQL 与事务件)、`decimal.js`
   (domain 金额)、`node:crypto`/`node:assert` 内建。**零依赖 http/runtime**(密钥生成器
   随消费者迁入本包 domain/credentials,C5/D3)。
 - 端口:`AccountStorePort`(持久化)、`WalletCreditPort`(入账,装配桥接 billing)、

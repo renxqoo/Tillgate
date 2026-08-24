@@ -1,4 +1,4 @@
-# `@tokenlens/notifications`
+# `@tillgate/notifications`
 
 通知能力包（总纲 §3/P4.1）：渠道 CRUD、事务性 outbox 入箱/认领/投递与告警模板。
 「何时告警、payload 语义」归各业务能力，本包只管「怎么送达」。
@@ -15,10 +15,10 @@
 
 ## 入口
 
-| 入口                                   | 内容                                                                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `@tokenlens/notifications`             | facade `createNotifications`（`channels.{list,create,patch,remove,test}` / `enqueue` / `dispatchOnce`）、错误目录 `notifications.*`、领域词表与纯函数（退避/签名/掩码） |
-| `@tokenlens/notifications/composition` | `outboxWithinTx(tx)`——业务侧同事务入箱桥（DbTx 不进根出口，仅装配层引用）                          |
+| 入口                                   | 内容                                                                                                                                                                    |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@tillgate/notifications`             | facade `createNotifications`（`channels.{list,create,patch,remove,test}` / `enqueue` / `dispatchOnce`）、错误目录 `notifications.*`、领域词表与纯函数（退避/签名/掩码） |
+| `@tillgate/notifications/composition` | `outboxWithinTx(tx)`——业务侧同事务入箱桥（DbTx 不进根出口，仅装配层引用）                                                                                               |
 
 ## 目录结构（src/）
 
@@ -34,7 +34,7 @@ composition.ts   # 事务参与桥子入口
 ## 装配与依赖
 
 - facade 参数平铺、全必填注入（铁律 3）：`db` / `cipher`（注入 `runtime.createCipher(key)` 产物）/ `urlGuard`（注入 `ai.assertSafeUrl`——本包禁依赖 ai）/ `logger` / `emailSender?`（缺省 = email 渠道 fail-closed）/ `config`（租约/重试/批量/超时/退避/品牌）
-- 编译依赖白名单：`@tokenlens/db`、`@tokenlens/errors`、drizzle-orm（仅 postgres adapter）、nodemailer（仅 smtp adapter）；**禁止**依赖 `ai`、`runtime` 与一切业务能力包（防环，SSRF/cipher 经 port 注入）
+- 编译依赖白名单：`@tillgate/db`、`@tillgate/errors`、drizzle-orm（仅 postgres adapter）、nodemailer（仅 smtp adapter）；**禁止**依赖 `ai`、`runtime` 与一切业务能力包（防环，SSRF/cipher 经 port 注入）
 - 消费方：入箱 = billing / inference 装配方（gateway/worker 同事务或旁路）；渠道管理路由 = apps/admin-api；投递调度循环 = apps/worker
 - 不处理：SMTP 登录验证码邮件（归 identity）、管理端 wire schema（归 admin-api）、审计持久化（随 observability 由装配补）
 

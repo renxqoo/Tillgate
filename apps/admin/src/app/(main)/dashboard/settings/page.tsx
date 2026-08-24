@@ -1,7 +1,8 @@
+import { requirePermission } from '@/server/get-admin';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { AdminMeInfo } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { AdminMeInfo } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 
 import { SettingsContent } from '@/features/settings/settings-content';
@@ -9,6 +10,7 @@ import { SettingsContent } from '@/features/settings/settings-content';
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
+  await requirePermission('settings:read');
   const tc = await getTranslations('common');
   let me: AdminMeInfo | null = null;
   let error: string | null = null;

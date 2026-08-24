@@ -4,7 +4,7 @@
  * 档；我的订阅 50 行封顶、个人有效订阅优先、id 倒序。
  */
 import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
-import { plans, userSubscriptions, type Db } from '@tokenlens/db';
+import { plans, userSubscriptions, type Db } from '@tillgate/db';
 import type { OrgSubscriptionInfo } from '../http/presenters/orgs.js';
 import type { PlanRow, SubscriptionBaseRow } from '../http/presenters/subscriptions.js';
 

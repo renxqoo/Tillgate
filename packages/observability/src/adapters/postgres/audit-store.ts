@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import type { Db, DbLike } from '@tokenlens/db';
-import { auditLogs } from '@tokenlens/db';
+import type { Db, DbLike } from '@tillgate/db';
+import { auditLogs } from '@tillgate/db';
 import type {
   AuditEntry,
   AuditListInput,

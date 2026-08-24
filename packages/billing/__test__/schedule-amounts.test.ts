@@ -162,9 +162,7 @@ describe('schedule 金额链路（单位计价模型 × 系数 0.8）', () => {
       timezone: 'Asia/Shanghai',
     };
     const strategy = strategyOf({ strategy: 'schedule' });
-    return (
-      strategy.resolvePriceOverrides(ctx)?.unitPrice ?? strategy.settleUnitPrice(ctx)
-    );
+    return strategy.resolvePriceOverrides(ctx)?.unitPrice ?? strategy.settleUnitPrice(ctx);
   }
 
   it('夜档 2 张 × 0.008 × 0.8 = 0.0128 元；昼档同量 0.032 元；押金 = 上界 × 解析单价', () => {

@@ -3,7 +3,7 @@
  * 金额出站点归一（numeric(38,18) 存储精度不裸出）;兑换码 codeMasked = 哈希脱敏
  * （明文不存在于库——v1 同口径）;createdBy/usedBy wire 为字符串（v1 形状）。
  */
-import { normalizeAmount } from '@tokenlens/billing';
+import { normalizeAmount } from '@tillgate/billing';
 import { iso } from '../contracts/common';
 
 export interface PlanRowSource {

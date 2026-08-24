@@ -100,13 +100,13 @@ application     （自有错误目录     （会话校验）     （编排拒绝
 
 `http` 保持业务无关（只依赖 `errors`）；没有任何包为了错误处理 import 业务包。
 PG 翻译的接缝按 ADR-0002：翻译表归 `http`（HTTP 边界语义），cause 链探测 `pgSqlState`
-归 `@tokenlens/db`，装配期注入。
+归 `@tillgate/db`，装配期注入。
 
 ### 3.2 目录结构（v2 实况）
 
 ```
 packages/errors/src/                 # 根契约包（零依赖叶子）
-  nature.ts                          #   TokenlensError 基类 + 三性 + BusinessCode 品牌 + annotate()
+  nature.ts                          #   TillgateError 基类 + 三性 + BusinessCode 品牌 + annotate()
   category.ts                        #   category 闭集（七项）+ CATEGORY_DEFAULTS + isErrorCategory
   definition.ts                      #   ErrorDefinition + defineErrorCatalog + composeErrorCatalogs
   error-record.ts                    #   ErrorRecord 联合 + recordOf + handlingOf + ROOT_ERROR_CODES
@@ -134,13 +134,13 @@ apps/gateway/src/http/…                              # OpenAI 面信封（kind
 
 ## 4. 核心代码结构（v2 落地实况）
 
-### 4.1 根契约包 `@tokenlens/errors`
+### 4.1 根契约包 `@tillgate/errors`
 
 ```ts
 // nature.ts —— 三性根类 + 品牌身份码 + 传播注记
 export type ErrorNature = 'business' | 'infrastructure' | 'defect';
 
-export abstract class TokenlensError extends Error {
+export abstract class TillgateError extends Error {
   abstract readonly nature: ErrorNature;
   readonly code: string;            // 命名空间身份码（namespace.key）
   readonly context?: ErrorContext;  // 值域 = 递归只读 JSON（D9a）
@@ -149,12 +149,12 @@ export abstract class TokenlensError extends Error {
     super(message, /* cause */); this.name = new.target.name;   // 子类名即错误名（E12 修复）
   }
 }
-export class BusinessError extends TokenlensError {
+export class BusinessError extends TillgateError {
   readonly nature = 'business' as const; readonly category: ErrorCategory;
   constructor(init: BusinessErrorInit, context?, opts?) { … }   // 绑定构造（D8）
 }
-export class InfrastructureError extends TokenlensError { /* DB/缓存/上游不可用 */ }
-export class DefectError extends TokenlensError { /* 不变量破坏：细节不外泄 */ }
+export class InfrastructureError extends TillgateError { /* DB/缓存/上游不可用 */ }
+export class DefectError extends TillgateError { /* 不变量破坏：细节不外泄 */ }
 
 /** 业务身份码品牌（D8）：唯一签发源是错误目录，自由字符串编译不通过 */
 export type BusinessCode = string & { readonly [brand]: true };
@@ -162,7 +162,7 @@ export type BusinessCode = string & { readonly [brand]: true };
 export interface BusinessErrorInit { readonly code; readonly category; readonly message }
 
 /** 传播注记（D9b）：外层补事实，实例稳定不包装；recordOf 按时间序合并、后写胜出 */
-export function annotate<T extends TokenlensError>(error: T, context: ErrorContext): T;
+export function annotate<T extends TillgateError>(error: T, context: ErrorContext): T;
 ```
 
 ```ts
@@ -199,14 +199,14 @@ export function composeErrorCatalogs(...catalogs): ErrorCatalog;   // face 装�
 // error-record.ts / normalize.ts / guards.ts —— 错误即数据
 export type ErrorRecord = BusinessRecord | InfrastructureRecord | DefectRecord;
 //   （business 分支必带 category——判别联合，处理侧无隐式回退；cause 链规范化，深度上限 10）
-export function recordOf(error: TokenlensError): ErrorRecord;
+export function recordOf(error: TillgateError): ErrorRecord;
 export function normalizeError(error: unknown): ErrorRecord;
 //   外来 Error → defects 'errors.unhandled'；非 Error 值 → 'errors.non_error'（一律按缺陷）
 export function handlingOf(record): { retryable; alert };
 //   business 查 CATEGORY_DEFAULTS；infrastructure { true, true }；defect { false, true }——单点派生，无逐例覆盖
 export const ROOT_ERROR_CODES = { unhandled, non_error, catalog_key_missing,
                                   catalog_key_invalid, duplicate_namespace };  // D6 根保留码
-export const isTokenlensError / isBusinessError / isInfrastructureError / isDefectError;
+export const isTillgateError / isBusinessError / isInfrastructureError / isDefectError;
 ```
 
 ### 4.2 能力包目录与家谱（身份在目录/类定义处写死，throw 点只传业务事实）
@@ -243,7 +243,7 @@ v1 设计把 `classifyPg` 放在 repository；v2 落地为**翻译表归 http + 
 
 // errorHandler 的兜底分支（只兜未分类错误——已按三性分类的错误按自身身份出站）：
 if (deps.sqlState !== undefined && !isClassifiedError(err)) {
-  const rejection = pgRejection(deps.sqlState(err));   // pgSqlState 来自 @tokenlens/db，装配注入
+  const rejection = pgRejection(deps.sqlState(err));   // pgSqlState 来自 @tillgate/db，装配注入
   if (rejection !== null) return render(rejection);
 }
 ```
@@ -326,7 +326,7 @@ v1 设计提出 `AuthError(reason)` + middleware 消费；v2 实际落地为**�
 | **app 协议层（face）** | composeErrorCatalogs 装配 + override 表（差异必须带注释存在）+ errorHandler | 复制映射表；import 业务错误类做翻译（instanceof 拷贝） |
 | **middleware** | 守卫（isBusinessError 等）精确捕获已知错误，其余穿透 | 宽 catch |
 | **gateway（OpenAI 面）** | 出站翻译表：ai 的 `ErrorKind`/`circuitTrip` 语义 → OpenAI 错误信封；上游 4xx 原码透传（[ADR-0004](./adr/0004-upstream-4xx-passthrough.md)） | 第三份类拷贝 |
-| **ai 包** | 自有 `ErrorKind` 封闭词表（零内部依赖，不 import errors）；与根契约映射 = ADR-0001 D7 表（消费方装配时应用） | 在 ai 内 import `@tokenlens/errors` |
+| **ai 包** | 自有 `ErrorKind` 封闭词表（零内部依赖，不 import errors）；与根契约映射 = ADR-0001 D7 表（消费方装配时应用） | 在 ai 内 import `@tillgate/errors` |
 
 信封最终形态：`{ error: { code, message, context? } }`（+ `Retry-After` 响应头）。
 `requestId` 由 request-context 中间件另行注入响应头，不进 error 信封。

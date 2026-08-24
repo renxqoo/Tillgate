@@ -6,9 +6,8 @@
  * 资金投影改走 payouts 端点,billing referralPayouts 单一真相）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { WalletApi } from '@tokenlens/billing';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { WalletApi } from '@tillgate/billing';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
@@ -19,10 +18,10 @@ export interface ReferralRoutesDeps {
   readonly wallet: Pick<WalletApi, 'referralPayouts'>;
 }
 
-export function referralRoutes(deps: ReferralRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function referralRoutes(deps: ReferralRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/referrals/relations', session, async (c) => {
+  app.get('/v1/referrals/relations', async (c) => {
     const query = parseListQuery(c.req.query(), ['id'], 'id');
     const page = await deps.accounts.listReferralRelations({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -32,7 +31,7 @@ export function referralRoutes(deps: ReferralRoutesDeps, session: MiddlewareHand
     return c.json(listEnvelope([...page.rows], page.total, query));
   });
 
-  app.patch('/v1/referrals/relations/:id', session, async (c) => {
+  app.patch('/v1/referrals/relations/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = referralContracts.patchRelation.parse(await c.req.json());
     return c.json(
@@ -44,7 +43,7 @@ export function referralRoutes(deps: ReferralRoutesDeps, session: MiddlewareHand
     );
   });
 
-  app.get('/v1/referrals/payouts', session, async (c) => {
+  app.get('/v1/referrals/payouts', async (c) => {
     const kind = c.req.query('kind');
     if (!REFERRAL_KINDS.includes(kind as (typeof REFERRAL_KINDS)[number])) {
       throw AdminErrors.business('invalid_param', {

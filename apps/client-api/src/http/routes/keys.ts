@@ -2,9 +2,9 @@
  * API Key 路由（会话）：列表 / 创建（明文仅此一次返回）/ 修补 / 轮换 / 吊销。
  */
 import { Hono } from 'hono';
-import { jsonBody, query as queryMiddleware } from '@tokenlens/http';
+import { jsonBody, query as queryMiddleware } from '@tillgate/http';
 import type { MiddlewareHandler } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import type { AccountUseCases } from '@tillgate/accounts';
 import {
   keyCreateSchema,
   keyIdParamSchema,

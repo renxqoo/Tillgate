@@ -3,7 +3,7 @@
  * 注册期邮箱占用预检 / 会话与登录链的账户状态读 / 最近登录时间落库。
  */
 import { and, eq } from 'drizzle-orm';
-import { identityCredentials, users, type Db } from '@tokenlens/db';
+import { identityCredentials, users, type Db } from '@tillgate/db';
 
 export interface AccountRead {
   emailTaken(email: string): Promise<boolean>;

@@ -18,11 +18,11 @@ export {
 };
 
 /** 获取 tracer(SDK 未启动时返回全局 no-op tracer,零开销) */
-export function getTracer(name = 'tokenlens'): Tracer {
+export function getTracer(name = 'tillgate'): Tracer {
   return trace.getTracer(name);
 }
 
 /** 获取 meter(SDK 未启动时返回全局 no-op meter) */
-export function getMeter(name = 'tokenlens'): Meter {
+export function getMeter(name = 'tillgate'): Meter {
   return metrics.getMeter(name);
 }

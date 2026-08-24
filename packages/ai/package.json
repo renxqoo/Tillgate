@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/ai",
+  "name": "@tillgate/ai",
   "version": "0.1.0",
   "private": true,
   "description": "上游协议库：透传中继 + 多协议适配 + 多模态 + 事件观察面（§3.6 数据面/观察面契约，零运维状态）",

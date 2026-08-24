@@ -1,4 +1,4 @@
-# @tokenlens/control-plane
+# @tillgate/control-plane
 
 > 控制面配置能力:Provider/Channel/Model/RateCard/fx/目录的管理用例与只读快照边界(总纲 P4.2)。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)

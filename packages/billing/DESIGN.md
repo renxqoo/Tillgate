@@ -1,4 +1,4 @@
-# @tokenlens/billing 设计基线（DESIGN）
+# @tillgate/billing 设计基线（DESIGN）
 
 > 状态：定稿（随迁移单元实施推进；行为语义的唯一标准是代码，本文是导读与裁决记录）
 > 裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)（wallet + ledger-core → billing 合并取舍）
@@ -11,15 +11,15 @@
 
 billing 是**唯一资金与计费事实源**（总纲 §3.4）：金额、钱包、双分录账本、计价、订阅、
 支付、兑换、结算与恢复的领域定律与用例编排全部住在本包。表定义与 DDL 住
-`@tokenlens/db`（billing 的 adapters 消费其 schema 与事务设施）；费率卡/渠道配置的
+`@tillgate/db`（billing 的 adapters 消费其 schema 与事务设施）；费率卡/渠道配置的
 管理面住 control-plane，billing 只消费只读快照。
 
 依赖方向（总纲 §5.1）：
 
 ```text
-billing/domain    ← 仅 @tokenlens/errors + 纯计算依赖（decimal.js）；零 I/O、零框架
+billing/domain    ← 仅 @tillgate/errors + 纯计算依赖（decimal.js）；零 I/O、零框架
 billing/application ← 本包 domain/ports；不直接 import pg/drizzle/Redis/Hono
-billing/adapters  ← 本包 ports、@tokenlens/db、@tokenlens/runtime、外部 SDK（stripe/epay）
+billing/adapters  ← 本包 ports、@tillgate/db、@tillgate/runtime、外部 SDK（stripe/epay）
 ```
 
 ## 2. 外部契约
@@ -63,7 +63,7 @@ function/Date/类实例）显式拒绝**、嵌套深度 ≤64、canonical 总长
 `defineErrorCatalog('billing', …)` 表达（`business()` 直抛，需要精确捕获处用 `entry()`
 固化类）；禁止自造错误类体系或自由字符串码。捕获方按 nature/category 分派，
 **不做跨包 instanceof**（旧仓 B6 病灶：两套同名类永不互配）。基础设施故障用
-`@tokenlens/errors` 的 `InfrastructureError`（码如 `billing.postgres`），不变量破坏用
+`@tillgate/errors` 的 `InfrastructureError`（码如 `billing.postgres`），不变量破坏用
 `DefectError`。
 
 ### 2.5 状态机（迁移自旧仓活路径，语义不变）
@@ -94,12 +94,12 @@ function/Date/类实例）显式拒绝**、嵌套深度 ≤64、canonical 总长
 | 渠道熔断/死凭据健康状态      | `inference`（订阅 AiEvent 维护）；billing 只收结算事实           |
 | 上游协议/传输                | `ai` 包；billing 不接触模型上游                                  |
 | HTTP wire schema / 队列协议  | 各 app 的 contracts；billing 零 HTTP/队列依赖                    |
-| 表 DDL 与迁移顺序            | `@tokenlens/db`（billing 语义变化需要 DDL 时同一迁移单元提交）   |
+| 表 DDL 与迁移顺序            | `@tillgate/db`（billing 语义变化需要 DDL 时同一迁移单元提交）   |
 
 ## 4. 并发与性能预算（数字化硬约束）
 
 1. **事务重试**：40P01/40001 自动重试 ≤5 次，退避 `15×2^attempt + rand(0..20)ms`
-   （`@tokenlens/db` runTx 语义；迁移自旧仓活路径与 ledger-core 共同口径）。
+   （`@tillgate/db` runTx 语义；迁移自旧仓活路径与 ledger-core 共同口径）。
 2. **锁定序**：多账户写按账户 id 升序 `SELECT … FOR UPDATE`（全局定序防死锁）；
    认领用 `FOR UPDATE SKIP LOCKED`；对账哨兵用 advisory lock 单副本。
 3. **幂等三重**：唯一索引（并发兜底）+ CAS 状态迁移 + 命令指纹（同键异参拒绝）。

@@ -1,10 +1,10 @@
-# TokenLens
+# Tillgate
 
 **[中文文档](README.zh-CN.md)** | [docs](docs/) | [CHANGELOG](CHANGELOG.md)
 
-![CI](https://github.com/renxqoo/TokenLens-v2/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/renxqoo/Tillgate/actions/workflows/ci.yml/badge.svg)
 
-TokenLens is a self-hosted, production-grade **LLM API gateway**: one OpenAI-compatible endpoint in front of many upstream providers, with wallet-based metered billing, subscriptions, quota enforcement, and full observability. Built entirely on [Bun](https://bun.com) — Hono + Drizzle + PostgreSQL + Redis on the backend, Next.js 16 + React 19 + Tailwind v4 + shadcn/ui for the two consoles.
+Tillgate is a self-hosted, production-grade **LLM API gateway**: one OpenAI-compatible endpoint in front of many upstream providers, with wallet-based metered billing, subscriptions, quota enforcement, and full observability. Built entirely on [Bun](https://bun.com) — Hono + Drizzle + PostgreSQL + Redis on the backend, Next.js 16 + React 19 + Tailwind v4 + shadcn/ui for the two consoles.
 
 ```
 client / agent ──> gateway (/v1, OpenAI-compatible)
@@ -47,7 +47,7 @@ Run from source with hot reload (for development and contribution).
 Prerequisites: [Bun](https://bun.com) ≥ 1.4 and Docker (for PostgreSQL + Redis only).
 
 ```bash
-git clone https://github.com/renxqoo/TokenLens-v2.git && cd TokenLens-v2
+git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 bun install                        # dependencies (bun.lock)
 cp .env.example .env               # required keys only; everything else has safe defaults
 # generate the required secrets (weak/empty values refuse to boot):
@@ -61,7 +61,7 @@ bun dev                            # turbo dev — all seven apps, hot reload
 
 The seed creates a dev admin (`admin@ai-gateway.local` / `admin12345` — dev only), a demo user,
 a rate card, and — if `DEEPSEEK_API_KEY` is set in `.env` — a DeepSeek channel with a model
-mapping, plus a virtual test key (`ag_…`) printed to the console.
+mapping, plus a virtual test key (`sk_…`) printed to the console.
 
 Ports: gateway `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
 worker health `8792` · client console `3001` · admin console `3002`.
@@ -74,7 +74,7 @@ Prerequisites: Docker 24+ with the compose plugin; DNS A records for two domains
 
 ```bash
 # 1) Get the code
-git clone https://github.com/renxqoo/TokenLens-v2.git && cd TokenLens-v2
+git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 
 # 2) Production .env — the ONLY config surface
 cp .env.example .env && vim .env
@@ -149,7 +149,7 @@ production** — rotate `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, `AD
 
 ## Summary
 
-TokenLens gives teams that resell or aggregate LLM APIs the infrastructure that usually takes
+Tillgate gives teams that resell or aggregate LLM APIs the infrastructure that usually takes
 months to build: a compatible front door, provider failover, a billing ledger that survives
 crashes, quota enforcement on every dimension, and tracing that shows exactly where latency and
 money go. Deep dives: [billing flow](docs/billing-flow-deep-dive.md) ·
@@ -158,4 +158,4 @@ money go. Deep dives: [billing flow](docs/billing-flow-deep-dive.md) ·
 
 ## License
 
-Released under the [MIT License](LICENSE). © 2026 TokenLens contributors.
+Released under the [MIT License](LICENSE). © 2026 Tillgate contributors.

@@ -7,7 +7,7 @@ import { loadAdminApiConfig } from '../src/config';
  */
 
 const BASE: NodeJS.ProcessEnv = {
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/tillgate',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',
@@ -20,6 +20,7 @@ describe('loadAdminApiConfig', () => {
     const config = loadAdminApiConfig({ ...BASE });
     expect(config.port).toBe(8082);
     expect(config.sessionTtlSec).toBe(86_400);
+    expect(config.keyPrefix).toBe('sk_');
     expect(config.channelImportMax).toBe(1000);
     expect(config.catalogFreeChannelRpm).toBe(20);
     expect(config.catalogFreeChannelBudget).toBe('1000000');
@@ -43,6 +44,15 @@ describe('loadAdminApiConfig', () => {
   it('CORS 白名单逗号拆分与 trim', () => {
     const config = loadAdminApiConfig({ ...BASE, CORS_ORIGINS: 'https://a.test, https://b.test' });
     expect(config.corsOrigins).toEqual(['https://a.test', 'https://b.test']);
+  });
+
+  it('KEY_PREFIX 自定义值透传，非法大小写 fail-fast', () => {
+    expect(loadAdminApiConfig({ ...BASE, KEY_PREFIX: 'tk-' }).keyPrefix).toBe('tk-');
+    expect(() => loadAdminApiConfig({ ...BASE, KEY_PREFIX: 'Sk_' })).toThrowError(
+      expect.objectContaining({
+        issues: expect.arrayContaining([expect.objectContaining({ path: ['KEY_PREFIX'] })]),
+      }),
+    );
   });
 
   it('生产环境 OTel 缺省 off;显式配置优先', () => {

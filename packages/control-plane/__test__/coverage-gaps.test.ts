@@ -16,7 +16,7 @@ import { doRefresh } from '../src/application/fx/fx-shared';
 import type { FxDeps } from '../src/application/fx/fx-shared';
 import { mapOpenAiCompatibleCatalog } from '../src/domain/catalog/catalog';
 import type { CatalogSource } from '../src/ports/catalog-source';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { createMemoryCatalogCache } from '../src/ports/cache';
 import {
   adminCtx,
@@ -57,7 +57,7 @@ describe('facade 缺省构造（audit/voucher/cache/store 不注入 → postgres
       voucherMaxBytes: 1024,
       fx: { sourceUrl: 'https://fx.example', autoTtlMs: 1000, fetchTimeoutMs: 1000 },
     });
-    expect(Object.keys(controlPlane)).toHaveLength(8);
+    expect(Object.keys(controlPlane)).toHaveLength(9);
   });
 });
 

@@ -3,8 +3,8 @@
 /** 账户设置 action：改密（成功轮换 BFF 持有的 token）/改显示名。 */
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type DisplayNameResult, type PasswordChangeResult } from '@tokenlens/api-client';
-import { setSessionToken } from '@tokenlens/api-client/next';
+import { ApiError, type DisplayNameResult, type PasswordChangeResult } from '@tillgate/api-client';
+import { setSessionToken } from '@tillgate/api-client/next';
 
 import { createClientApi } from '../api';
 

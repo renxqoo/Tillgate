@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2Icon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { Button } from '@tokenlens/ui';
+import { Button } from '@tillgate/ui';
 
 /**
  * Cloudflare Turnstile 隐形挑战 widget（managed 模式）。

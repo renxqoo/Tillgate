@@ -1,4 +1,5 @@
-import type { AdminChannelRow } from '@tokenlens/api-client';
+import { requirePermission } from '@/server/get-admin';
+import type { AdminChannelRow } from '@tillgate/api-client';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
@@ -6,7 +7,7 @@ import { WalletIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { ChannelFundsClient } from '@/features/billing/channel-funds-content';
-import type { AdminChannelFundRow, ChannelOption } from '@tokenlens/api-client';
+import type { AdminChannelFundRow, ChannelOption } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ export default async function ChannelFundsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePermission('funds:read');
   const sp = await searchParams;
   const t = await getTranslations('channelFunds');
   const { q, page } = parseListSearchParams(sp);

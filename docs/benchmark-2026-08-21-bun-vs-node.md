@@ -5,7 +5,7 @@
 > 重构，但工具链（bun + turbo）与运行时（bun 1.4）的选型结论与运维参数建议仍适用。
 > 下文数据与结论为 v1 实测原貌，一字未改。
 
-> 被测对象：TokenLens 仓库 @ `074f469`（pnpm 11 + tsup + tsx + node 22 基线）
+> 被测对象：Tillgate 仓库 @ `074f469`（pnpm 11 + tsup + tsx + node 22 基线）
 > vs ai-gateway @ `refactor/bun-toolchain` 分支（bun 1.4 全链）。
 > 两边**代码完全相同**（该提交即迁移前最后一个 main 提交），所有差异可归因于工具链与运行时。
 > 基准库 `ai_gateway_bench_node/bun` 与原始采样（`/tmp/samples.csv`、`/tmp/sust-*.json`、
@@ -23,7 +23,7 @@
 
 | | 基线（node 版） | 被测（bun 版） |
 |---|---|---|
-| 代码 | TokenLens @ `074f469` | ai-gateway @ `refactor/bun-toolchain` |
+| 代码 | Tillgate @ `074f469` | ai-gateway @ `refactor/bun-toolchain` |
 | 包管理 | pnpm 11.1.2 | bun 1.4.0（workspaces + bun.lock） |
 | 构建 | tsup 8（esbuild + dts） | bun build（native，无 dts，`exports.types` 指源码） |
 | dev / 测试运行时 | tsx 4.23 / vitest@node | bun --watch / vitest@bun |

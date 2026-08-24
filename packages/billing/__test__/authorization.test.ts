@@ -3,7 +3,7 @@
  * 状态机分岔——U1b 的 CAS 语义依赖这些断言）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { Decimal } from '../src/domain/money.js';
 import {
   assertReleasable,

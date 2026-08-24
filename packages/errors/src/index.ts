@@ -1,12 +1,12 @@
 /**
- * @tokenlens/errors 公共出口——内部错误根契约（ADR-0001、DESIGN.md）。
+ * @tillgate/errors 公共出口——内部错误根契约（ADR-0001、DESIGN.md）。
  * 出口面刻意极小且由 __test__/boundary.test.ts 快照锁定；新增导出是加法变更，
  * 词表（category/根保留码）变更必须走 ADR。
  */
 
 // ---- 三性根类与传播注记 ----
 export {
-  TokenlensError,
+  TillgateError,
   BusinessError,
   InfrastructureError,
   DefectError,
@@ -48,4 +48,4 @@ export type {
 export { normalizeError } from './normalize';
 
 // ---- 守卫 ----
-export { isTokenlensError, isBusinessError, isInfrastructureError, isDefectError } from './guards';
+export { isTillgateError, isBusinessError, isInfrastructureError, isDefectError } from './guards';

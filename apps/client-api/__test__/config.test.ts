@@ -34,7 +34,7 @@ describe('client-api config', () => {
     expect(c.CLIENT_USAGE_TZ).toBe('Asia/Shanghai');
     expect(c.PRICING_CACHE_TTL_MS).toBe(30_000);
     expect(c.EPAY_PAY_TYPE).toBe('alipay');
-    expect(c.KEY_PREFIX).toBe('ag_');
+    expect(c.KEY_PREFIX).toBe('sk_');
     expect(c.OTEL_TRACES_MODE).toBe('off');
   });
 

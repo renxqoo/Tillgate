@@ -3,9 +3,9 @@
  * 断言口径 = v1 wire 形状与错误码（MIGRATION §1 行为规格来源）。
  */
 import type { AdminAppDeps } from '../src/app';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import type { Observability } from '@tokenlens/observability';
-import type { SessionPayload } from '@tokenlens/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
+import type { Observability } from '@tillgate/observability';
+import type { SessionPayload } from '@tillgate/identity';
 
 export const VALID_TOKEN = 'admin-session-token';
 export const ADMIN_ID = 7;
@@ -14,7 +14,7 @@ export const sessionPayload: SessionPayload = {
   realm: 'admin',
   sub: String(ADMIN_ID),
   jti: 'jti-1',
-  iss: 'tokenlens:admin',
+  iss: 'tillgate:admin',
   exp: Math.floor(Date.now() / 1000) + 3600,
   iat: Math.floor(Date.now() / 1000),
 };
@@ -42,6 +42,7 @@ export function fakeDeps(overrides: {
   notifications?: Record<string, unknown>;
   generationTasks?: Record<string, unknown>;
   paymentAdmin?: Record<string, unknown>;
+  identity?: Record<string, unknown>;
   writeAudit?: AdminAppDeps['writeAudit'];
   pingDb?: () => Promise<void>;
   now?: () => Date;
@@ -52,6 +53,8 @@ export function fakeDeps(overrides: {
     vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
       validate: async (token: string) => (token === VALID_TOKEN ? sessionPayload : null),
+      // 与生产装配同形:属主回查一条 join 带回授权面（super 短路全量）
+      owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
     },
     accounts: {
       adminListUsers: async () => ({ rows: [], total: 0 }),
@@ -195,12 +198,14 @@ export function fakeDeps(overrides: {
       passwords: { authenticate: notWired, change: notWired, reset: notWired },
       challenges: { begin: notWired, verify: notWired, abort: notWired },
       mfa: mfaStub(),
+      credentials: { register: notWired },
       sessions: {
         sign: notWired,
         verify: notWired,
         validate: notWired,
         logout: async () => ({ ok: true as const }),
       },
+      ...overrides.identity,
     } as AdminAppDeps['identity'],
     authGuards: {
       emailIp: {
@@ -284,12 +289,40 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       priceHistory: notWired,
       import: notWired,
     },
+    rbac: {
+      roles: {
+        find: async () => null,
+        list: notWired,
+        create: notWired,
+        update: notWired,
+        remove: notWired,
+      },
+      permissions: {
+        tree: async () => [],
+        create: notWired,
+        update: notWired,
+        remove: notWired,
+        activeCodes: async () => [],
+      },
+      endpoints: {
+        list: async () => [],
+        create: notWired,
+        update: notWired,
+        remove: notWired,
+      },
+    },
     // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
+    // RBAC 管理面动词(list/create/update/remove)同 fake——admins 域测试覆写
     admins: {
       find: notWired,
       findByEmail: notWired,
+      findAccess: notWired,
       touchLastLogin: notWired,
       setTwoFactorEnabled: notWired,
+      list: notWired,
+      create: notWired,
+      update: notWired,
+      remove: notWired,
     },
   };
   return { ...base, ...overrides } as ControlPlane;
@@ -335,7 +368,7 @@ export function mfaStub(over: { confirmed?: boolean; verifyError?: Error } = {})
     status: async () => ({ enrolled: over.confirmed === true, confirmed: over.confirmed === true }),
     enrollTotp: async () => ({
       secret: 'JBSWY3DPEHPK3PXP',
-      otpauthUrl: 'otpauth://totp/TokenLens:test%40example.dev?secret=JBSWY3DPEHPK3PXP',
+      otpauthUrl: 'otpauth://totp/Tillgate:test%40example.dev?secret=JBSWY3DPEHPK3PXP',
     }),
     confirmTotp: async () => ({ recoveryCodes: ['RVWXYZ2345'] }),
     verify:

@@ -6,8 +6,8 @@
  * (同为 DB 事实,同一时钟口径,B14;避免 pg numeric → string 的驱动解析坑)。
  */
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identityChallenges } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { identityChallenges } from '@tillgate/db';
 import type { NormalizedIdentifier } from '../../domain/identifier.js';
 import type {
   BeginChallengeOutcome,

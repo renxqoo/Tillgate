@@ -14,10 +14,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -31,7 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -50,7 +50,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import type { AdminRateCardRow } from '@tokenlens/api-client';
+import type { AdminRateCardRow } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 
@@ -315,11 +315,11 @@ function RateCardForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="rc-name">{tc('name')}</FieldLabel>
               <Input id="rc-name" placeholder={t('namePlaceholder')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <NumberField
@@ -334,10 +334,10 @@ function RateCardForm({
           control={form.control}
           name="description"
           render={({ field }: { field: { value: string } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="rc-desc">{t('descriptionLabel')}</FieldLabel>
               <Input id="rc-desc" placeholder={tc('optional')} {...field} />
-            </Field>
+            </FormItem>
           )}
         />
         {isEdit && (
@@ -345,7 +345,7 @@ function RateCardForm({
             control={form.control}
             name="status"
             render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
-              <Field>
+              <FormItem>
                 <FieldLabel>{tc('status')}</FieldLabel>
                 <Select
                   value={String(field.value)}
@@ -359,7 +359,7 @@ function RateCardForm({
                     <SelectItem value="1">{tc('disabled')}</SelectItem>
                   </SelectContent>
                 </Select>
-              </Field>
+              </FormItem>
             )}
           />
         )}

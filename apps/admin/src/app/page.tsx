@@ -19,7 +19,7 @@ import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('landing');
   return {
-    title: { absolute: `TokenLens — ${t('heroTitle')}` },
+    title: { absolute: `Tillgate — ${t('heroTitle')}` },
     description: t('heroDescription'),
   };
 }
@@ -43,18 +43,27 @@ export default async function Landing() {
     { icon: UserRound, title: t('f6Title'), description: t('f6Description') },
   ];
 
-  const stack = ['Next.js 16', 'Hono', 'PostgreSQL', 'Redis', 'OpenTelemetry', 'Docker', 'Turborepo', 'Bun'];
+  const stack = [
+    'Next.js 16',
+    'Hono',
+    'PostgreSQL',
+    'Redis',
+    'OpenTelemetry',
+    'Docker',
+    'Turborepo',
+    'Bun',
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
       {/* ── 头部导航 ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur">
         <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-          <a href="/" aria-label="TokenLens homepage" className="flex items-center gap-2.5">
+          <a href="/" aria-label="Tillgate homepage" className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <ScanEye className="size-4" />
             </span>
-            <span className="text-base font-semibold tracking-tight">TokenLens</span>
+            <span className="text-base font-semibold tracking-tight">Tillgate</span>
           </a>
 
           <div className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
@@ -89,7 +98,9 @@ export default async function Landing() {
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl">
             {t('heroTitle')}
           </h1>
-          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">{t('heroDescription')}</p>
+          <p className="max-w-2xl text-base text-muted-foreground sm:text-lg">
+            {t('heroDescription')}
+          </p>
 
           <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row">
             <Link
@@ -122,7 +133,9 @@ export default async function Landing() {
               {t('featuresEyebrow')}
             </p>
             <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('featuresTitle')}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">{t('featuresDescription')}</p>
+            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
+              {t('featuresDescription')}
+            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

@@ -3,7 +3,7 @@
  * config 整体替换(PUT 口径):不带 secret 键的 config 会覆盖丢 secret——v1 行为,留档。
  * 词表校验按提交口径(v1:不查库合并旧 events——zod 层 min(1) 已保证非空)。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';
 import type { ChannelPatchInput } from '../ports/notify-store';
 import type { SecretCipher } from '../ports/secret-cipher';

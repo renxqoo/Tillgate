@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
 import { ShieldAlert } from 'lucide-react';
@@ -30,6 +31,7 @@ export default async function BillingOperationsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePermission('funds:read');
   const sp = await searchParams;
   const t = await getTranslations('billingOperations');
   const tc = await getTranslations('common');

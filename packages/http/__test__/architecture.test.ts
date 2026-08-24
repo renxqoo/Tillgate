@@ -1,8 +1,8 @@
 /**
  * 边界测试（铁律 11：边界必须可执行）——参照 packages/observability 同名文件写法：
- * src import 白名单（仅 @tokenlens/errors、hono、zod、@hono/node-server、node:*——
+ * src import 白名单（仅 @tillgate/errors、hono、zod、@hono/node-server、node:*——
  * 结构方案 §5.1：http → 仅 errors）/ index.ts 导出面快照（新增导出是契约变更）/
- * 断言零 @tokenlens/db 与业务包引用（ADR-0001 D1：http 永不认识业务码）。
+ * 断言零 @tillgate/db 与业务包引用（ADR-0001 D1：http 永不认识业务码）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,10 +32,10 @@ function externalSpecifiers(text: string): string[] {
   return out;
 }
 
-describe('依赖白名单（§5.1：http 只依赖 @tokenlens/errors + hono/zod/@hono/node-server/node:）', () => {
+describe('依赖白名单（§5.1：http 只依赖 @tillgate/errors + hono/zod/@hono/node-server/node:）', () => {
   it('src 全部外部 import 落在白名单内', () => {
     const ALLOWED =
-      /^(?:@tokenlens\/errors|hono(?:\/[\w/-]+)?|@hono\/node-server(?:\/[\w/-]+)?|zod|node:[\w:]+)$/;
+      /^(?:@tillgate\/errors|hono(?:\/[\w/-]+)?|@hono\/node-server(?:\/[\w/-]+)?|zod|node:[\w:]+)$/;
     const offenders: string[] = [];
     for (const file of files) {
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {
@@ -45,9 +45,9 @@ describe('依赖白名单（§5.1：http 只依赖 @tokenlens/errors + hono/zod/
     expect(offenders).toEqual([]);
   });
 
-  it('零 @tokenlens/db 与业务/观测包引用（ADR-0001 D1 + ADR-0002：http 不 import db 与业务能力）', () => {
+  it('零 @tillgate/db 与业务/观测包引用（ADR-0001 D1 + ADR-0002：http 不 import db 与业务能力）', () => {
     const BANNED =
-      /^@tokenlens\/(db|runtime|observability|ai|api-client|accounts|billing|control-plane|inference|identity|notifications)$/;
+      /^@tillgate\/(db|runtime|observability|ai|api-client|accounts|billing|control-plane|inference|identity|notifications)$/;
     const offenders: string[] = [];
     for (const file of files) {
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {

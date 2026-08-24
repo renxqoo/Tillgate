@@ -1,4 +1,4 @@
-# @tokenlens/observability 迁移实现文档
+# @tillgate/observability 迁移实现文档
 
 > 状态:已完成(四门全绿,行为对照核销见 MIGRATION.md §6;v2 落地 2008 源行 + 1899 测试行)
 > 基线:旧仓 `ai-getway` 的 `packages/tracing`(5 源文件 746 行 + 3 测试 670 行)、
@@ -60,7 +60,7 @@
 | G5  | SpanBatcher/InMemorySpanProcessor/LogSpanProcessor class → 工厂闭包            | 铁律 5(SpanProcessor 接口用对象字面量结构化满足)                                            |
 | G6  | `DecodeError` 自由类 → `observabilityErrors.business('invalid_otlp_payload')`  | §11 目录码;接收端(P5)按码映射 400                                                           |
 | G7  | 维护函数内置 advisory try-lock(未获锁返回空结果=跳过)                          | S3;v1 worker 行为等价                                                                       |
-| G8  | `buildTraceGraph` 只从包出口供服务端消费                                       | §2.2:admin 前端直依赖 `@tokenlens/tracing` 是 P5 要清除的越界;v2 不设前端子入口             |
+| G8  | `buildTraceGraph` 只从包出口供服务端消费                                       | §2.2:admin 前端直依赖 `@tillgate/tracing` 是 P5 要清除的越界;v2 不设前端子入口             |
 | G9  | `initOtel` 返回 `memory?: MemoryTraceViewer`(mode=memory 时)                   | G3 的配套——查看页数据源从全局函数改为返回句柄                                               |
 
 ## 3. 逐模块裁决表
@@ -132,7 +132,7 @@
   语义查询归能力包、通用审计查询归 observability,control-plane listCatalogPriceHistory
   留守是终态;跨包同名类型副本是边界隔离既有口径(api-client/http D1/D2 先例),不强行单一化。
 - ~~token-compare(trace-receiver)与 http 常量时间比较的合并~~——**已兑现**(apps/trace-receiver
-  波次):合一为 `@tokenlens/http` `security/token-compare.ts` `timingSafeTokenEqual`,接收端
+  波次):合一为 `@tillgate/http` `security/token-compare.ts` `timingSafeTokenEqual`,接收端
   首位消费,worker 健康令牌/client-api webhook 签名(P5)自此同源。
 - 审计保留策略(分区/清理)——v1 无此行为,升格需独立裁决(§3.4「保留」的完整落地)。
 - **T1(2026-08-23 trace 完整性审计新增挂账)**:trace 领域 span 无生产者——v1 的

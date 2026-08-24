@@ -120,9 +120,9 @@ refresh 仍走 API 域 httpOnly cookie，`SameSite=None`（跨域必需）+ CSRF
 语义：活跃用户不掉线；闲置 24h 照样登出；安全语义不变。实现要点（BFF 层）：
 
 ```ts
-// BFF 会话读取处（apps/client 的 server 侧；工具来自 @tokenlens/api-client/next）：
+// BFF 会话读取处（apps/client 的 server 侧；工具来自 @tillgate/api-client/next）：
 import { decodeJwt } from 'jose';
-import { getSessionToken, setSessionToken } from '@tokenlens/api-client/next';
+import { getSessionToken, setSessionToken } from '@tillgate/api-client/next';
 
 const token = await getSessionToken();
 const { exp, jti } = decodeJwt(token);

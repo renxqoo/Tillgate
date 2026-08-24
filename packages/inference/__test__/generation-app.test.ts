@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createInference } from '../src/inference';
 import { createMemoryGenerationTaskStore } from '../src/adapters/task-memory';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';

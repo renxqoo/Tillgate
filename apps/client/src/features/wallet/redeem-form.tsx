@@ -21,7 +21,7 @@ import {
   FieldLabel,
   Input,
   toast,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { formatMoney } from '@/features/shared/format';
 import { redeemAction } from '@/server/actions/redeem';

@@ -12,16 +12,16 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { isBusinessError } from '@tokenlens/errors';
-import { sha256Hex } from '@tokenlens/billing';
+import { isBusinessError } from '@tillgate/errors';
+import { sha256Hex } from '@tillgate/billing';
 import {
   jsonBody,
   socketAddressFromContext,
   trustedClientIp,
   parseAcceptLanguage,
-} from '@tokenlens/http';
-import type { Identity } from '@tokenlens/identity';
-import type { ControlPlane } from '@tokenlens/control-plane';
+} from '@tillgate/http';
+import type { Identity } from '@tillgate/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';
@@ -57,7 +57,7 @@ interface LoginPayload {
   adminId: number;
 }
 
-export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function authRoutes(deps: AuthRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
   const clientIpOf = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
@@ -118,7 +118,9 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
           email: body.email,
         }),
       ]);
-      const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
+      let retry = 0;
+      if (byKey.locked) retry = byKey.retryAfterSec;
+      else if (byIp.locked) retry = byIp.retryAfterSec;
       if (retry > 0) {
         throw AdminErrors.business('login_locked', {
           'retry-after': String(Math.max(1, retry)),
@@ -143,7 +145,7 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
     return { adminId, account };
   };
 
-  app.post('/v1/auth/logout', session, async (c) => {
+  app.post('/v1/auth/logout', async (c) => {
     await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
     return c.json({ ok: true });
   });

@@ -1,4 +1,4 @@
-import type { Endpoint } from '@tokenlens/ai';
+import type { Endpoint } from '@tillgate/ai';
 import type { InferenceDefaults } from '../config';
 import { InferenceErrors } from '../domain/errors';
 import { buildCandidateChain } from '../domain/model/candidates';
@@ -59,8 +59,9 @@ export async function prepareChatRequest(env: {
   const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m, pricing));
 
   const endpoint = env.endpoint ?? 'chat';
-  const kind: 'chat' | 'embeddings' | 'modality' =
-    endpoint === 'chat' ? 'chat' : endpoint === 'embeddings' ? 'embeddings' : 'modality';
+  let kind: 'chat' | 'embeddings' | 'modality' = 'modality';
+  if (endpoint === 'chat') kind = 'chat';
+  else if (endpoint === 'embeddings') kind = 'embeddings';
   const outputCap = maxOutputTokensFor(kind, env.body, {
     defaultMax: env.defaults.output.defaultMaxOutputTokens,
     exposureCap: env.defaults.output.exposureCap,

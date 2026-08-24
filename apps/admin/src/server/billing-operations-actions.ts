@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from './admin-api';
 
 export async function retryDeadBillingRequest(input: {

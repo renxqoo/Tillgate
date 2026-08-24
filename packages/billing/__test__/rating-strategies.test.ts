@@ -3,7 +3,7 @@
  * 按源语义改写；错误断言换目录码）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { measurementOf, MEASUREMENTS } from '../src/domain/rating/measurement.js';
 import { strategyOf } from '../src/domain/rating/pricing-strategy.js';
 import { reservationStrategyOf } from '../src/domain/rating/reservation-strategy.js';
@@ -14,10 +14,7 @@ import {
   windowLabelOf,
   type PricingWindow,
 } from '../src/domain/rating/schedule.js';
-import type {
-  BillingConfig,
-  PricingContext,
-} from '../src/domain/rating/pricing-strategy.js';
+import type { BillingConfig, PricingContext } from '../src/domain/rating/pricing-strategy.js';
 
 function ctx(overrides: Partial<PricingContext> = {}): PricingContext {
   return {
@@ -136,7 +133,9 @@ describe('pricing-strategy（层 2 定价策略）', () => {
     expect(strategyOf({}).resolvePriceOverrides(ctx())).toBeNull();
     expect(
       strategyOf({ strategy: 'variant' }).resolvePriceOverrides(
-        ctx({ config: { strategy: 'variant', params: { selector: 'size', prices: { hd: '0.4' } } } }),
+        ctx({
+          config: { strategy: 'variant', params: { selector: 'size', prices: { hd: '0.4' } } },
+        }),
       ),
     ).toBeNull();
   });
@@ -144,7 +143,14 @@ describe('pricing-strategy（层 2 定价策略）', () => {
 
 describe('schedule（层 2 分时段定价策略）', () => {
   const windows = [
-    { label: '谷时段', start: '18:00', end: '07:00', inputPrice: '1', outputPrice: '4', unitPrice: '0.008' },
+    {
+      label: '谷时段',
+      start: '18:00',
+      end: '07:00',
+      inputPrice: '1',
+      outputPrice: '4',
+      unitPrice: '0.008',
+    },
   ];
 
   it('命中窗口：字段级覆盖 + 审计标签；未覆盖轴不出现在覆盖里', () => {
@@ -161,7 +167,10 @@ describe('schedule（层 2 分时段定价策略）', () => {
 
   it('未命中时段：覆盖为 null，settle 回落基价列（峰时 = 基价）', () => {
     const strategy = strategyOf({ strategy: 'schedule' });
-    const day = ctx({ config: scheduleConfig(windows), now: new Date('2026-08-24T12:00:00+08:00') });
+    const day = ctx({
+      config: scheduleConfig(windows),
+      now: new Date('2026-08-24T12:00:00+08:00'),
+    });
     expect(strategy.resolvePriceOverrides(day)).toBeNull();
     expect(strategy.settleUnitPrice(day)).toBe('0.1');
   });
@@ -177,8 +186,7 @@ describe('schedule（层 2 分时段定价策略）', () => {
 
   it('跨午夜窗口按计费时区墙钟匹配（UTC 时刻换算，非服务器本地时）', () => {
     const strategy = strategyOf({ strategy: 'schedule' });
-    const at = (iso: string) =>
-      ctx({ config: scheduleConfig(windows), now: new Date(iso) });
+    const at = (iso: string) => ctx({ config: scheduleConfig(windows), now: new Date(iso) });
     // UTC 10:00 = 上海 18:00（窗口起点）→ 命中
     expect(strategy.resolvePriceOverrides(at('2026-08-24T10:00:00Z'))).not.toBeNull();
     // UTC 15:00 = 上海 23:00（窗口内）→ 命中
@@ -200,7 +208,9 @@ describe('schedule（层 2 分时段定价策略）', () => {
       strategy.resolvePriceOverrides(ctx({ config: scheduleConfig(multi) }))?.pricingWindow,
     ).toBe('00:00-07:00');
     expect(
-      strategy.settleUnitPrice(ctx({ config: scheduleConfig(multi), now: new Date('2026-08-24T08:00:00+08:00') })),
+      strategy.settleUnitPrice(
+        ctx({ config: scheduleConfig(multi), now: new Date('2026-08-24T08:00:00+08:00') }),
+      ),
     ).toBe('0.2');
     expect(strategy.estimateUnitPrice(ctx({ config: scheduleConfig(multi) }))).toBe('0.3');
   });
@@ -219,12 +229,8 @@ describe('schedule（层 2 分时段定价策略）', () => {
   it('未配置 windows（空数组/缺省）：覆盖 null，settle 回落基价列', () => {
     const strategy = strategyOf({ strategy: 'schedule' });
     expect(strategy.resolvePriceOverrides(ctx({ config: { strategy: 'schedule' } }))).toBeNull();
-    expect(
-      strategy.resolvePriceOverrides(ctx({ config: scheduleConfig([]) })),
-    ).toBeNull();
-    expect(
-      strategy.settleUnitPrice(ctx({ config: scheduleConfig([]) })),
-    ).toBe('0.1');
+    expect(strategy.resolvePriceOverrides(ctx({ config: scheduleConfig([]) }))).toBeNull();
+    expect(strategy.settleUnitPrice(ctx({ config: scheduleConfig([]) }))).toBe('0.1');
   });
 });
 

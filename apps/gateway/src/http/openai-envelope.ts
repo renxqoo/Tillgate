@@ -10,7 +10,7 @@
  * 无法把账单/日志与本响应对齐（非流式 c.json 自动带）。
  */
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { ChatDelivered, PassthroughDelivered, StreamDelivered } from '@tokenlens/inference';
+import type { ChatDelivered, PassthroughDelivered, StreamDelivered } from '@tillgate/inference';
 
 export type InferenceDelivered = ChatDelivered | StreamDelivered | PassthroughDelivered;
 

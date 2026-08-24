@@ -1,4 +1,4 @@
-# @tokenlens/trace-receiver 迁移实现文档
+# @tillgate/trace-receiver 迁移实现文档
 
 > 状态:已完成(v2 落地;v2 仓库**第一个 app**,apps/ 装配范式先例)
 > 基线:旧仓 `ai-getway/apps/trace-receiver`(src 4 文件 292 行 + receiver.test.ts 218 行;
@@ -11,7 +11,7 @@
 
 ## 0. 原则
 
-1. **薄 app**:业务能力(decode/ingest/store/OTel)全部来自 `@tokenlens/observability`;
+1. **薄 app**:业务能力(decode/ingest/store/OTel)全部来自 `@tillgate/observability`;
    app 只持有 config/assembly/HTTP 面/进程生命周期(§4.1 准入:进程入口+装配+单部署面)。
 2. **行为等价**:v1 receiver.test.ts 的 HTTP 面段(4 用例)是行为规格;错误信封码按 v2
    目录体系演进(见 §2 G6'),语义(status/触发条件)逐项保持。
@@ -47,7 +47,7 @@
 | --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | R1  | 错误信封码 `UNAUTHORIZED/UNSUPPORTED_MEDIA_TYPE/INVALID_JSON/INVALID_OTLP` → 目录码 | §11/ADR-0001;新增 `http.unauthorized`、`http.unsupported_media_type` 两码(本波入 http 目录,status 修正表 401/415) |
 | R2  | `DecodeError instanceof` → 流动错误直落 onError(合成目录渲染 400)                   | G6 兑现:「接收端按码映射 400」——app 不写 instanceof 翻译表                                                        |
-| R3  | `token-compare.ts` 本地拷贝删除 → `@tokenlens/http timingSafeTokenEqual`            | observability IMPLEMENTATION §7 挂账#3 兑现;worker 健康令牌/client-api webhook 签名(P5)自此同源消费               |
+| R3  | `token-compare.ts` 本地拷贝删除 → `@tillgate/http timingSafeTokenEqual`            | observability IMPLEMENTATION §7 挂账#3 兑现;worker 健康令牌/client-api webhook 签名(P5)自此同源消费               |
 | R4  | `DATABASE_URL` 必填(v1 藏默认连接串)                                                | v2 db 包零缺省(observability B2 同裁决);缺省值唯一归属 config 层                                                  |
 | R5  | 令牌校验 `z.string().min(16)` → `secretSchema` 三道门(≥16/非已知弱值/≥4 种字符)     | runtime 组装件复用;弱值启动即拒绝                                                                                 |
 | R6  | `NODE_ENV` 纳入 schema                                                              | v1 从 strip 后的 parse 结果读它,生产令牌检查**恒不触发**(潜在缺陷,已修;MIGRATION 记录)                            |
@@ -63,7 +63,7 @@
 - `config.ts`:env schema(zod)+ 模式推导(开发 memory/生产 off)+ 生产令牌 fail-fast
   (superRefine);otlp 缺端点 fail-fast 单一所有者是 initOtel(assembly 调用即触发),
   config 只透传——同一真相只定义一次。
-- `assembly.ts`:唯一装配根;`@tokenlens/observability/composition` 仅此处引用(§5.3
+- `assembly.ts`:唯一装配根;`@tillgate/observability/composition` 仅此处引用(§5.3
   白名单:apps assembly)取 `createPgTraceStore` 直组 store+batcher。
 - `app.ts`:纯函数 `createReceiverApp(deps)`(可测,零 env/process);onError 装配
   `composeErrorCatalogs(HttpErrors, observabilityErrors)` + `pgSqlState` 探测注入
@@ -74,7 +74,7 @@
 - PG 池部署定值(10/30s/5s/1000)由 config 层显式持有:接收端是低流量诊断服务,
   db 包全必填无缺省(铁律 3)。
 - **架构测试**(`__test__/architecture.test.ts`,§5.5 机器验证):src 四件套快照;
-  composition 子入口只在 assembly.ts;@tokenlens/db 装配件与 Db/DbTx 类型只在
+  composition 子入口只在 assembly.ts;@tillgate/db 装配件与 Db/DbTx 类型只在
   进程装配面(assembly/config/index),app.ts 唯一例外是 pgSqlState 纯函数;
   跨包 import 只走显式包名(禁 src 深导入)。
 

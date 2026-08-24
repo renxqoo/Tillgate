@@ -1,4 +1,4 @@
-import type { KeyRow } from '@tokenlens/api-client';
+import type { KeyRow } from '@tillgate/api-client';
 
 /**
  * Key 导出 TSV 构造（纯函数，B18 增强）：

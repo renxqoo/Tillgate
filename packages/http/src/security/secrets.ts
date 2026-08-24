@@ -10,7 +10,7 @@
  * 纯函数、无 I/O(node:crypto 随机数除外),便于单测。
  * C5 搬迁记录:api-key/app 凭证生成器(generateApiKey/generateClientId/
  * generateClientSecret/maskKey/sha256Hex)已随消费者迁入
- * @tokenlens/accounts(domain/credentials);RC- 兑换码留待 billing 波次带走。
+ * @tillgate/accounts(domain/credentials);RC- 兑换码留待 billing 波次带走。
  */
 
 import { randomBytes } from 'node:crypto';

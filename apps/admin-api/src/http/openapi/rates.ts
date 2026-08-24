@@ -7,7 +7,7 @@ import { rateCardsContracts, fxCatalogContracts } from '../contracts/rates';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { fxStateSchema } from './catalog';
 
-/** 管理面费率卡行（updatedAt 无列来源恒 null——MIGRATION §4 D12 族） */
+/** 管理面费率卡行 */
 export const adminRateCardRowSchema = z
   .object({
     id: z.number(),
@@ -15,7 +15,7 @@ export const adminRateCardRowSchema = z
     description: z.string().nullable(),
     status: z.number(),
     createdAt: z.string(),
-    updatedAt: z.string().nullable().describe('更新时间(v2 无列来源,恒 null)'),
+    updatedAt: z.string().describe('更新时间(rate_cards.updated_at,update 恒刷新)'),
     coefficient: z.string().describe('系数 numeric(6,3):0.001..9.999,回显恒 3 位小数'),
   })
   .meta({ id: 'AdminRateCardRow', description: '管理面费率卡行(GET /v1/rate-cards)' });
@@ -23,7 +23,10 @@ export const adminRateCardRowSchema = z
 /** 费率卡下拉选项（用户绑定费率卡用;无独立端点） */
 export const rateCardOptionSchema = z
   .object({ id: z.number(), name: z.string(), coefficient: z.string() })
-  .meta({ id: 'RateCardOption', description: '费率卡下拉选项(用户绑定费率卡用,来源 AdminRateCardRow)。' });
+  .meta({
+    id: 'RateCardOption',
+    description: '费率卡下拉选项(用户绑定费率卡用,来源 AdminRateCardRow)。',
+  });
 
 /** 创建/更新回执（RateCardRecord——无 coefficient/updatedAt 列） */
 const rateCardRecordSchema = z.object({

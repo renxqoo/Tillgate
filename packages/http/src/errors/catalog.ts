@@ -3,7 +3,7 @@
  * 只登记有机制抛点的边界码（铁律 4：无抛点不登记）；业务码归能力包目录，
  * 由 app face 装配期合成全量目录（composeErrorCatalogs）。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const HttpErrors = defineErrorCatalog('http', {
   // ── 请求校验 / 协议边界（invalid_input 族）──

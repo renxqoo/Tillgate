@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/identity",
+  "name": "@tillgate/identity",
   "version": "0.1.0",
   "private": true,
   "description": "身份认证能力:凭据、密码、统一挑战、MFA、OAuth 绑定、JWT 会话与吊销(总纲 §3/P4.1)",
@@ -28,8 +28,8 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "jose": "^5.9.0",
     "nodemailer": "^9.0.5"

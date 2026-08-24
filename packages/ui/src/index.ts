@@ -1,6 +1,6 @@
 // 根入口: 纯 React 设计系统唯一导出面。
 // 纪律(总纲 §3/P7): 本文件及其传递闭包禁止引入 Next 专有依赖(next/*、next-themes、
-// next-intl、geist)与 @tokenlens/* workspace 包; 由 test/pack/imports 测试机器锁定。
+// next-intl、geist)与 @tillgate/* workspace 包; 由 test/pack/imports 测试机器锁定。
 export { cn } from './cn';
 
 // ---- layout(应用级无框架布局) ----
@@ -184,13 +184,13 @@ export {
 export {
   Form,
   FormField,
-  FormItem,
   FormLabel,
   FormDescription,
   FormMessage,
   FormControl,
   useFormField,
 } from './components/forms/form';
+export { FormItem, type FormItemProps } from './components/forms/form-item';
 export { Input } from './components/forms/input';
 export {
   InputGroup,

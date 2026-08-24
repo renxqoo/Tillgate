@@ -4,8 +4,7 @@
  * 批量导入（best-effort）/连通性探针。apiKey 加密落库（control-plane cipher）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
@@ -16,11 +15,11 @@ export interface ChannelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
-export function channelsRoutes(deps: ChannelsRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function channelsRoutes(deps: ChannelsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const channels = deps.controlPlane.channels;
 
-  app.get('/v1/channels', session, async (c) => {
+  app.get('/v1/channels', async (c) => {
     const query = parseListQuery(c.req.query(), CHANNEL_SORTS, 'createdAt');
     // 回收站视图：仅认 'deleted'，其余值容错回退默认在册视图（列表参数永不 400）
     const view = c.req.query('view') === 'deleted' ? ('deleted' as const) : undefined;
@@ -35,37 +34,37 @@ export function channelsRoutes(deps: ChannelsRoutesDeps, session: MiddlewareHand
     return c.json(listEnvelope(result.rows.map(toChannelWireRow), result.total, query));
   });
 
-  app.post('/v1/channels', session, async (c) => {
+  app.post('/v1/channels', async (c) => {
     const body = channelsContracts.create.parse(await c.req.json());
     const row = await channels.create({ ctx: controlContextOf(c), ...body });
     return c.json(row, 201);
   });
 
-  app.patch('/v1/channels/:id', session, async (c) => {
+  app.patch('/v1/channels/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = channelsContracts.update.parse(await c.req.json());
     const row = await channels.update({ ctx: controlContextOf(c), channelId: id, patch: body });
     return c.json(row);
   });
 
-  app.delete('/v1/channels/:id', session, async (c) => {
+  app.delete('/v1/channels/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await channels.delete({ ctx: controlContextOf(c), channelId: id }));
   });
 
   /** 恢复已删除记录（回收站取出，回停用态）；在册行调用 → 404 */
-  app.post('/v1/channels/:id/restore', session, async (c) => {
+  app.post('/v1/channels/:id/restore', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await channels.undelete({ ctx: controlContextOf(c), channelId: id }));
   });
 
-  app.post('/v1/channels/import', session, async (c) => {
+  app.post('/v1/channels/import', async (c) => {
     const body = channelsContracts.import.parse(await c.req.json());
     const result = await channels.import({ ctx: controlContextOf(c), channels: body.channels });
     return c.json(result, result.success > 0 ? 200 : 400);
   });
 
-  app.post('/v1/channels/:id/test', session, async (c) => {
+  app.post('/v1/channels/:id/test', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await channels.probe(id));
   });

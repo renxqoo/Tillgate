@@ -6,29 +6,26 @@
  */
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
-import { pgSqlState } from '@tokenlens/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
-import { errorBody, errorHandler, renderError, HttpErrors } from '@tokenlens/http';
-import { localeFromContext } from '@tokenlens/http';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
+import { errorBody, errorHandler, renderError, HttpErrors } from '@tillgate/http';
+import { localeFromContext } from '@tillgate/http';
+import type { AccountUseCases } from '@tillgate/accounts';
 import type {
   PlansApi,
   RedeemBatchesApi,
   SettlementApi,
   SubscriptionsApi,
   WalletApi,
-} from '@tokenlens/billing';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import type { Observability } from '@tokenlens/observability';
-import type { Notifications } from '@tokenlens/notifications';
-import type { Identity } from '@tokenlens/identity';
-import type { PaymentAdminApi } from '@tokenlens/billing';
-import type { GenerationTaskStore } from '@tokenlens/inference';
+} from '@tillgate/billing';
+import type { ControlPlane } from '@tillgate/control-plane';
+import type { Observability } from '@tillgate/observability';
+import type { Notifications } from '@tillgate/notifications';
+import type { Identity } from '@tillgate/identity';
+import type { PaymentAdminApi } from '@tillgate/billing';
+import type { GenerationTaskStore } from '@tillgate/inference';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
-import {
-  sessionMiddleware,
-  type SessionEnv,
-  type SessionValidator,
-} from './http/middleware/session';
+import type { SessionEnv, SessionValidator } from './http/middleware/session';
+import { createAclMiddleware, matchBinding } from './http/middleware/acl';
 import { protocolStack } from './http/middleware/protocol';
 import type { OperationsUseCase, WriteAuditInTx } from './http/routes/users-funds';
 import { usersRoutes } from './http/routes/users';
@@ -55,6 +52,10 @@ import { marketingRoutes } from './http/routes/marketing';
 import { referralRoutes } from './http/routes/referrals';
 import { vouchersRoutes } from './http/routes/vouchers';
 import { notificationsRoutes } from './http/routes/notifications';
+import { adminsRoutes } from './http/routes/admins';
+import { rolesRoutes } from './http/routes/roles';
+import { permissionsRoutes } from './http/routes/permissions';
+import { endpointsRoutes } from './http/routes/endpoints';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
 
@@ -105,8 +106,9 @@ export interface AdminAppDeps {
   paymentAdmin: PaymentAdminApi;
   /** P4:手动关单 failureReason 留痕文案（审计数据,装配层显式持有——铁律 3） */
   orderCloseReason: string;
-  /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装） */
-  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa'>;
+  /** P2 登录面:identity 动词面（鉴别/挑战/会话——编排件在路由内组装）;
+   *  credentials.register = RBAC 建管理员凭据（docs/admin-rbac §2.5） */
+  identity: Pick<Identity, 'passwords' | 'challenges' | 'sessions' | 'mfa' | 'credentials'>;
   /** P2:爆破双闸（runtime Redis 守卫产物） */
   authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** P2:信任代理跳数（守卫键的 IP 提取） */
@@ -164,7 +166,27 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     app.use('*', middleware);
   }
 
-  const session = sessionMiddleware(deps.sessions);
+  // RBAC 全局 ACL（ADR-0009:执行面数据化——接口→权限绑定住 endpoint_permissions,
+  // 单一事实源）。公开/自身白名单在中间件内;未绑定默认拒绝（fail-closed,超管短路
+  // 可进后台补配绑定 = 兜底恢复路径）。每请求绑定表+权限树各一次查询（~百行小表,
+  // 管理面 QPS 无感;缓存挂账）。
+  const resolveBinding = async (method: string, path: string) => {
+    const [bindings, nodes] = await Promise.all([
+      deps.controlPlane.rbac.endpoints.list(),
+      deps.controlPlane.rbac.permissions.tree(),
+    ]);
+    const matched = matchBinding(
+      bindings.map((row) => ({
+        method: row.method,
+        path: row.path,
+        code: nodes.find((node) => node.id === row.permissionId)?.code ?? '',
+      })),
+      method,
+      path,
+    );
+    return matched != null && matched.code !== '' ? matched : null;
+  };
+  app.use('*', createAclMiddleware(deps.sessions, resolveBinding));
 
   // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
   app.get('/healthz', async (c) => {
@@ -190,91 +212,86 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
 
   app.route(
     '/',
-    usersRoutes(
-      {
-        accounts: deps.accounts,
-        wallet: deps.wallet,
-        identity: deps.identity,
-        rates: deps.controlPlane.rates,
-        postAudit: deps.postAudit,
-      },
-      session,
-    ),
+    usersRoutes({
+      accounts: deps.accounts,
+      wallet: deps.wallet,
+      identity: deps.identity,
+      rates: deps.controlPlane.rates,
+      postAudit: deps.postAudit,
+    }),
   );
   app.route(
     '/',
-    usersFundsRoutes(
-      {
-        accounts: deps.accounts,
-        wallet: deps.wallet,
-        operations: deps.operations,
-        writeAudit: deps.writeAudit,
-        audit: deps.observability.audit,
-      },
-      session,
-    ),
+    usersFundsRoutes({
+      accounts: deps.accounts,
+      wallet: deps.wallet,
+      operations: deps.operations,
+      writeAudit: deps.writeAudit,
+      audit: deps.observability.audit,
+    }),
   );
-  app.route('/', keysRoutes({ accounts: deps.accounts }, session));
-  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, session));
+  app.route('/', keysRoutes({ accounts: deps.accounts }));
+  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }));
   app.route(
     '/',
-    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }, session),
+    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }),
   );
-  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, session));
-  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, session));
+  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }));
+  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }));
+  app.route('/', redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }));
+  app.route('/', billingOperationsRoutes({ review: deps.review }));
+  app.route('/', tracingRoutes({ observability: deps.observability }));
+  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }));
+  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }));
+  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }));
   app.route(
     '/',
-    redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }, session),
+    opsOrdersRoutes({ paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason }),
   );
-  app.route('/', billingOperationsRoutes({ review: deps.review }, session));
-  app.route('/', tracingRoutes({ observability: deps.observability }, session));
-  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }, session));
-  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }, session));
-  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, session));
+  app.route('/', marketingRoutes({ accounts: deps.accounts }));
+  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }));
+  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', notificationsRoutes({ notifications: deps.notifications }));
+  // 动态 RBAC 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
   app.route(
     '/',
-    opsOrdersRoutes(
-      { paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason },
-      session,
-    ),
+    adminsRoutes({
+      admins: deps.controlPlane.admins,
+      identity: deps.identity,
+      postAudit: deps.postAudit,
+    }),
   );
-  app.route('/', marketingRoutes({ accounts: deps.accounts }, session));
-  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, session));
-  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, session));
-  app.route('/', notificationsRoutes({ notifications: deps.notifications }, session));
+  app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.route('/', permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.route('/', endpointsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
   // P2 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
   app.route(
     '/',
-    authRoutes(
-      {
-        identity: deps.identity,
-        admins: deps.controlPlane.admins,
-        guards: deps.authGuards,
-        loginAudit: deps.loginAudit,
-        trustedProxyHops: deps.trustedProxyHops,
-        mailerConfigured: deps.mailerConfigured,
-        sessionTtlSec: deps.sessionTtlSec,
-      },
-      session,
-    ),
+    authRoutes({
+      identity: deps.identity,
+      admins: deps.controlPlane.admins,
+      guards: deps.authGuards,
+      loginAudit: deps.loginAudit,
+      trustedProxyHops: deps.trustedProxyHops,
+      mailerConfigured: deps.mailerConfigured,
+      sessionTtlSec: deps.sessionTtlSec,
+    }),
   );
   app.route(
     '/',
-    meRoutes(
-      {
-        identity: deps.identity,
-        admins: deps.controlPlane.admins,
-        mailerConfigured: deps.mailerConfigured,
-        sessionTtlSec: deps.sessionTtlSec,
-      },
-      session,
-    ),
+    meRoutes({
+      identity: deps.identity,
+      admins: deps.controlPlane.admins,
+      rbac: deps.controlPlane.rbac,
+      mailerConfigured: deps.mailerConfigured,
+      sessionTtlSec: deps.sessionTtlSec,
+    }),
   );
 
   return app;

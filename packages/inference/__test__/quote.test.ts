@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { prepareChatRequest } from '../src/application/quote';
 import { defaultInferenceDefaults } from '../src/config';
 import { baseAuth, fakeCatalog, mapping } from './harness';

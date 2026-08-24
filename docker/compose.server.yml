@@ -1,6 +1,6 @@
 # 服务器侧 override：配合「本地构建 → docker save/load」的无源码部署（IP 自签入口）。
 #
-# 用法（服务器 /opt/tokenlens，docker/ 与 .env 同仓内布局）：
+# 用法（服务器 /opt/tillgate，docker/ 与 .env 同仓内布局）：
 #   docker compose --env-file .env -f docker/compose.yml build        # 服务器构建（x86_64 原生）
 #   # ——或「本地构建 → 传输」路线：本地 build 同名 tag → docker save | gzip → scp → docker load
 #   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \

@@ -2,7 +2,7 @@
  * 价格溯源：某对外名历次目录导入/改价的 provenance 全链
  * （目录价 × fx → 预填 → 提交——任何价格都能回答「从哪来、谁改的」）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditStore } from '../../ports/audit-store';
 
 export interface CatalogPriceHistoryEntry {

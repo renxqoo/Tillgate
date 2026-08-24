@@ -13,10 +13,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -30,7 +30,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { StatusPill } from '@/components/status-pill';
 import { useState, useTransition } from 'react';
 
@@ -47,7 +47,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import type { AdminProviderRow } from '@tokenlens/api-client';
+import type { AdminProviderRow } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 import { ConfirmAction } from '@/components/confirm-action';
@@ -126,6 +126,19 @@ function ProviderRowItem({
   const [undeleteOpen, setUndeleteOpen] = useState(false);
   // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
   const deleted = provider.deletedAt != null;
+  let status = <StatusPill tone="neutral" label={tc('disabled')} />;
+  if (deleted) {
+    status = (
+      <div className="flex flex-col">
+        <StatusPill tone="danger" label={t('deleted')} />
+        <span className="mt-0.5 text-[10px] text-muted-foreground">
+          {fmtDateTime(provider.deletedAt!)}
+        </span>
+      </div>
+    );
+  } else if (provider.status === 0) {
+    status = <StatusPill tone="success" label={tc('enabled')} />;
+  }
   return (
     <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
@@ -145,20 +158,7 @@ function ProviderRowItem({
           <span className="ml-1 rounded bg-muted px-1 py-0.5">{provider.vendor}</span>
         ) : null}
       </TableCell>
-      <TableCell>
-        {deleted ? (
-          <div className="flex flex-col">
-            <StatusPill tone="danger" label={t('deleted')} />
-            <span className="mt-0.5 text-[10px] text-muted-foreground">
-              {fmtDateTime(provider.deletedAt!)}
-            </span>
-          </div>
-        ) : provider.status === 0 ? (
-          <StatusPill tone="success" label={tc('enabled')} />
-        ) : (
-          <StatusPill tone="neutral" label={tc('disabled')} />
-        )}
-      </TableCell>
+      <TableCell>{status}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {provider.updatedAt ? fmtDateTime(provider.updatedAt) : fmtDateTime(provider.createdAt)}
       </TableCell>
@@ -399,11 +399,11 @@ function ProviderForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="p-name">{tc('name')}</FieldLabel>
               <Input id="p-name" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
@@ -416,18 +416,18 @@ function ProviderForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="p-url">Base URL</FieldLabel>
               <Input id="p-url" placeholder="https://api.openai.com/v1" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="protocol"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{t('protocol')}</FieldLabel>
               <Select value={field.value} onValueChange={(v) => field.onChange(v ?? '')}>
                 <SelectTrigger className="w-full">
@@ -441,14 +441,14 @@ function ProviderForm({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="vendor"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{t('vendorProfile')}</FieldLabel>
               <Select
                 value={field.value || 'none'}
@@ -466,14 +466,14 @@ function ProviderForm({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="status"
           render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{tc('status')}</FieldLabel>
               <Select value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
                 <SelectTrigger className="w-full">
@@ -484,7 +484,7 @@ function ProviderForm({
                   <SelectItem value="1">{tc('disabled')}</SelectItem>
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
       </FieldGroup>

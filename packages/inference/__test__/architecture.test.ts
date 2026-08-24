@@ -1,10 +1,10 @@
 /**
  * 架构边界门禁（AGENT.md §0.11 / 总纲 §5.5）：目录约定不靠记忆，靠本测试执行。
  * 规则来源 DESIGN §7（依赖白名单）与总纲 §5.1 硬约束：
- * - src 全量 import 白名单：仅 @tokenlens/ai、@tokenlens/errors + 外部 ioredis/zod
+ * - src 全量 import 白名单：仅 @tillgate/ai、@tillgate/errors + 外部 ioredis/zod
  *   + node: 内建 + 包内相对引用（billing/control-plane 等业务能力经 port 注入，
  *   零编译依赖——DESIGN §2「不处理」清单的可执行形态）；
- * - ioredis（外部 Redis SDK）与 @tokenlens/db + drizzle-orm（C-G9 任务存储 pg 适配器）
+ * - ioredis（外部 Redis SDK）与 @tillgate/db + drizzle-orm（C-G9 任务存储 pg 适配器）
  *   只许出现在 src/adapters/**（实现层细节不泄漏；总纲 §5.1「adapters → db/外部 SDK」）；
  * - 零 billing/control-plane 引用（§5.2：inference 单向依赖 ai；控制面经 CatalogPort）；
  * - index.ts 导出面快照（§5.3 公共出口封闭：新增导出必须显式更新本快照）。
@@ -52,19 +52,19 @@ const files: SourceFile[] = walk(srcDir).map((path) => ({
 }));
 
 describe('分层依赖白名单（总纲 §5.1 / DESIGN §7 的可执行形态）', () => {
-  it('src 全量 import 白名单：@tokenlens/ai、@tokenlens/errors、ioredis、zod、node:、包内相对引用；db/drizzle 仅 adapters（C-G9）', () => {
+  it('src 全量 import 白名单：@tillgate/ai、@tillgate/errors、ioredis、zod、node:、包内相对引用；db/drizzle 仅 adapters（C-G9）', () => {
     for (const f of files) {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
           spec.startsWith('./') ||
           spec.startsWith('../') ||
-          spec === '@tokenlens/ai' ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/ai' ||
+          spec === '@tillgate/errors' ||
           spec === 'ioredis' ||
           spec === 'zod' ||
           // C-G9（gateway 波）：任务存储 pg 适配器依赖 db schema 与 drizzle——仅 adapters 层
-          ((spec === '@tokenlens/db' || spec === 'drizzle-orm') && f.layer === 'adapters');
+          ((spec === '@tillgate/db' || spec === 'drizzle-orm') && f.layer === 'adapters');
         expect(ok, `${f.path} → ${spec}`).toBe(true);
       }
     }
@@ -72,14 +72,14 @@ describe('分层依赖白名单（总纲 §5.1 / DESIGN §7 的可执行形态�
 
   it('零 billing / control-plane 引用（跨能力经 port 注入，§5.2；db 归 adapters 白名单另行锁）', () => {
     const banned = [
-      '@tokenlens/billing',
-      '@tokenlens/control-plane',
-      '@tokenlens/accounts',
-      '@tokenlens/identity',
-      '@tokenlens/notifications',
-      '@tokenlens/observability',
-      '@tokenlens/http',
-      '@tokenlens/runtime',
+      '@tillgate/billing',
+      '@tillgate/control-plane',
+      '@tillgate/accounts',
+      '@tillgate/identity',
+      '@tillgate/notifications',
+      '@tillgate/observability',
+      '@tillgate/http',
+      '@tillgate/runtime',
     ];
     for (const f of files) {
       for (const spec of f.imports) {
@@ -101,8 +101,8 @@ describe('分层依赖白名单（总纲 §5.1 / DESIGN §7 的可执行形态�
         // 域内相对引用（./ 与 ../）：domain 子目录间互引（usage→model 等）不出 domain 层
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/ai' ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/ai' ||
+          spec === '@tillgate/errors' ||
           spec.startsWith('./') ||
           spec.startsWith('../');
         expect(ok, `${f.path} → ${spec}`).toBe(true);

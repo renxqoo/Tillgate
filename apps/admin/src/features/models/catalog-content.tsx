@@ -11,7 +11,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -308,6 +308,11 @@ export function CatalogContent({
     });
   }
 
+  let fxSourceLabel = '';
+  if (fx?.mode === 'override') fxSourceLabel = t('overrideSuffix');
+  else if (fx?.source === 'ecb') fxSourceLabel = t('fxSourceEcb');
+  else if (fx?.source) fxSourceLabel = t('fxSourceOther', { source: fx.source });
+
   return (
     <div className="flex flex-col gap-3">
       {/* 汇率条（USD 源显示；追溯口径：请求账单快照基准汇率，点差只进预填） */}
@@ -315,13 +320,7 @@ export function CatalogContent({
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
           <span className="font-medium">
             {t('rate', { rate: fx.baseRate ?? t('unavailable') })}
-            {fx.mode === 'override'
-              ? t('overrideSuffix')
-              : fx.source === 'ecb'
-                ? t('fxSourceEcb')
-                : fx.source
-                  ? t('fxSourceOther', { source: fx.source })
-                  : ''}
+            {fxSourceLabel}
           </span>
           {fx.bufferPct !== '0' ? (
             <Badge variant="outline">{t('buffer', { pct: fx.bufferPct })}</Badge>
@@ -674,56 +673,62 @@ export function CatalogContent({
                 {tc('close')}
               </Button>
             </div>
-            {historyPending || historyEntries == null ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">{t('querying')}</p>
-            ) : historyEntries.length === 0 ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">{t('noHistory')}</p>
-            ) : (
-              <ol className="flex flex-col gap-3">
-                {historyEntries.map((h, i) => (
-                  <li key={i} className="rounded-md border p-3 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">
-                        {h.action === 'model_catalog.import_draft'
-                          ? t('draftImport')
-                          : t('catalogImport')}
-                      </Badge>
-                      <span className="text-muted-foreground">{fmtDateTime(h.createdAt)}</span>
-                      {h.adminId != null ? (
-                        <span className="text-muted-foreground">
-                          {t('adminId', { id: h.adminId })}
+            {(() => {
+              if (historyPending || historyEntries == null)
+                return (
+                  <p className="py-6 text-center text-xs text-muted-foreground">{t('querying')}</p>
+                );
+              if (historyEntries.length === 0)
+                return (
+                  <p className="py-6 text-center text-xs text-muted-foreground">{t('noHistory')}</p>
+                );
+              return (
+                <ol className="flex flex-col gap-3">
+                  {historyEntries.map((h, i) => (
+                    <li key={i} className="rounded-md border p-3 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">
+                          {h.action === 'model_catalog.import_draft'
+                            ? t('draftImport')
+                            : t('catalogImport')}
+                        </Badge>
+                        <span className="text-muted-foreground">{fmtDateTime(h.createdAt)}</span>
+                        {h.adminId != null ? (
+                          <span className="text-muted-foreground">
+                            {t('adminId', { id: h.adminId })}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground md:grid-cols-4">
+                        <span>
+                          {t('catalogPrices', {
+                            prompt: h.catalogPrompt ?? '—',
+                            completion: h.catalogCompletion ?? '—',
+                          })}
                         </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground md:grid-cols-4">
-                      <span>
-                        {t('catalogPrices', {
-                          prompt: h.catalogPrompt ?? '—',
-                          completion: h.catalogCompletion ?? '—',
-                        })}
-                      </span>
-                      <span>
-                        {t('fxLabel', {
-                          value: h.fx
-                            ? t('fxValue', { rate: h.fx.baseRate, source: h.fx.source ?? '—' }) +
-                              (h.fx.effectiveRate != null && h.fx.effectiveRate !== h.fx.baseRate
-                                ? t('fxEffective', { rate: h.fx.effectiveRate })
-                                : '')
-                            : '—',
-                        })}
-                      </span>
-                      <span>{t('prefill', { value: h.prefillInputCny ?? '—' })}</span>
-                      <span className="font-medium text-foreground">
-                        {t('submitted', {
-                          input: h.submittedInputCny,
-                          output: h.submittedOutputCny,
-                        })}
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            )}
+                        <span>
+                          {t('fxLabel', {
+                            value: h.fx
+                              ? t('fxValue', { rate: h.fx.baseRate, source: h.fx.source ?? '—' }) +
+                                (h.fx.effectiveRate != null && h.fx.effectiveRate !== h.fx.baseRate
+                                  ? t('fxEffective', { rate: h.fx.effectiveRate })
+                                  : '')
+                              : '—',
+                          })}
+                        </span>
+                        <span>{t('prefill', { value: h.prefillInputCny ?? '—' })}</span>
+                        <span className="font-medium text-foreground">
+                          {t('submitted', {
+                            input: h.submittedInputCny,
+                            output: h.submittedOutputCny,
+                          })}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              );
+            })()}
           </div>
         </div>
       ) : null}

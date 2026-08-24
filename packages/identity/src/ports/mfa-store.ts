@@ -2,7 +2,7 @@
  * MFA 持久化 port(TOTP 注册/步进单调 CAS + 恢复码单次消费)。
  * 实现见 adapters/postgres/mfa.ts。secret 列可为 SecretCipher 密文(加密在用例层)。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export interface TotpRow {
   readonly secret: string;

@@ -9,8 +9,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { createDb, closeDb, type Db } from '@tokenlens/db';
-import { usageLogs, users } from '@tokenlens/db';
+import { createDb, closeDb, type Db } from '@tillgate/db';
+import { usageLogs, users } from '@tillgate/db';
 import { createPgUsageStore } from '../src/adapters/postgres/usage-store';
 import { beijingDayStart } from '../src/usage/day-window';
 
@@ -147,11 +147,13 @@ describe('PgUsageStore(真 PG)', () => {
     const groups = await store.usageGroups({ group: 'model' });
     const mine = groups.find((g) => g.key === SEED_MODEL);
     expect(mine?.requests).toBe(3);
+    const byUser = await store.usageGroups({ group: 'user' });
+    expect(byUser.find((g) => g.key === seedUserId)?.requests).toBeGreaterThanOrEqual(3);
+    const byChannel = await store.usageGroups({ group: 'channel' });
+    expect(byChannel.find((g) => g.key === null)?.requests).toBeGreaterThanOrEqual(3);
 
     // 趋势:昨日+今日各至少一档(date 为北京日界字符串,升序)
-    const trends = await store.dailyTrends(
-      new Date(beijingDayStart(now).getTime() - 86_400_000),
-    );
+    const trends = await store.dailyTrends(new Date(beijingDayStart(now).getTime() - 86_400_000));
     const dates = trends.map((r) => r.date);
     expect(dates).toEqual(dates.toSorted());
     expect(dates.length).toBeGreaterThanOrEqual(2);

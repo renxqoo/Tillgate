@@ -2,7 +2,7 @@
  * 重置密码(找回/管理员):免旧密,同样推进吊销线(重置即该 realm 全网下线);
  * 弱口令拒绝时旧密码保持(策略先于事务)。可给 OAuth-only 账号设初始密码。
  */
-import { advisoryLock, runTx } from '@tokenlens/db';
+import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { assertPasswordPolicy, hashPassword } from '../domain/password.js';

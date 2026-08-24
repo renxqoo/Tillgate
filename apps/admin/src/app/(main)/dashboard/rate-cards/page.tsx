@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { BanknoteIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -6,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreateRateCardDialog, RateCardsTable } from '@/features/billing/rate-cards-content';
-import type { AdminRateCardRow } from '@tokenlens/api-client';
+import type { AdminRateCardRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,7 @@ interface PageProps {
 }
 
 export default async function RateCardsPage({ searchParams }: PageProps) {
+  await requirePermission('catalog:read');
   const sp = await searchParams;
   const t = await getTranslations('rateCards');
   const { q, page, sortBy, order } = parseListSearchParams(sp);

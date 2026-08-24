@@ -4,7 +4,7 @@
  * 随事务原子(回滚即未失效);accounts 不直接依赖 identity(§5.2 消费方 port,
  * 生产 bridge 由 app assembly 连接 identity anchor advance,同 notifications outbox 先例)。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 /** accounts 管理的是用户面账号;realm 词表归 identity,'user' 为稳定词表项 */
 export const SESSION_REALM = 'user';

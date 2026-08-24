@@ -23,21 +23,21 @@ describe('sha256Hex(v1 标准向量)', () => {
 
 describe('generateKeyMaterial(prefix 必填注入,B5)', () => {
   it('明文 = prefix + 40 hex(160 bit 熵);hash = SHA-256(明文)', () => {
-    const m = generateKeyMaterial('ag_');
-    expect(m.plaintext).toMatch(/^ag_[0-9a-f]{40}$/);
+    const m = generateKeyMaterial('sk_');
+    expect(m.plaintext).toMatch(/^sk_[0-9a-f]{40}$/);
     expect(m.keyHash).toBe(sha256Hex(m.plaintext));
   });
   it('前缀按注入变化(与网关分派端同 env)', () => {
     expect(generateKeyMaterial('tk-').plaintext.startsWith('tk-')).toBe(true);
   });
   it('两次生成不相等', () => {
-    expect(generateKeyMaterial('ag_').plaintext).not.toBe(generateKeyMaterial('ag_').plaintext);
+    expect(generateKeyMaterial('sk_').plaintext).not.toBe(generateKeyMaterial('sk_').plaintext);
   });
 });
 
 describe('maskKey(前 3 + **** + 末 4)', () => {
   it('标准形态', () => {
-    expect(maskKey('ag_abcdef0123456789xyz')).toBe('ag_****9xyz');
+    expect(maskKey('sk_abcdef0123456789xyz')).toBe('sk_****9xyz');
   });
   it.each(['short', '12345678'])('短输入(%s)→ ****', (input) => {
     expect(maskKey(input)).toBe('****');
@@ -65,10 +65,10 @@ describe('generateAppCredentials', () => {
 });
 
 describe('Key 前缀词表(v1 env 约束)', () => {
-  it.each(['ag_', 'tk-', 'a1', 'x-y_z9'])('%s 合法', (p) => {
+  it.each(['sk_', 'tk-', 'a1', 'x-y_z9'])('%s 合法', (p) => {
     expect(isValidKeyPrefix(p)).toBe(true);
   });
-  it.each(['a', 'Ag_', '1a_', '_ag', 'ag$x', 'a'.repeat(17)])('%s 非法', (p) => {
+  it.each(['a', 'Sk_', '1a_', '_sk', 'sk$x', 'a'.repeat(17)])('%s 非法', (p) => {
     expect(isValidKeyPrefix(p)).toBe(false);
   });
 });

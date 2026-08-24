@@ -23,14 +23,11 @@ export class MiniMaxAdapter implements ProtocolAdapter {
     input: { endpoint: Endpoint; model: string; requestId: string; stream: boolean },
   ): { path: string; headers: Record<string, string> } {
     void input.stream;
-    const path =
-      input.endpoint === 'video'
-        ? '/v1/video_generation'
-        : input.endpoint === 'music'
-          ? '/v1/music_generation'
-          : input.endpoint === 'embeddings'
-            ? '/v1/embeddings'
-            : '/v1/chat/completions';
+    let path;
+    if (input.endpoint === 'video') path = '/v1/video_generation';
+    else if (input.endpoint === 'music') path = '/v1/music_generation';
+    else if (input.endpoint === 'embeddings') path = '/v1/embeddings';
+    else path = '/v1/chat/completions';
     return {
       path,
       headers: {
@@ -182,16 +179,13 @@ function minimaxEnvelopeError(body: unknown): UpstreamError | null {
       ? envelope.status_msg
       : `minimax api error ${code}`;
   // 1004/2049 认证失败；1008 余额；1002/1026/1027/2013 参数与审查；429 限流；5xx 服务端
-  const kind: ErrorKind =
-    code === 1004 || code === 2049
-      ? 'invalid_api_key'
-      : code === 1008
-        ? 'quota_exhausted'
-        : code === 429
-          ? 'rate_limited'
-          : code === 1002 || code === 1026 || code === 1027 || code === 2013
-            ? 'invalid_request'
-            : 'upstream_error';
+  let kind: ErrorKind;
+  if (code === 1004 || code === 2049) kind = 'invalid_api_key';
+  else if (code === 1008) kind = 'quota_exhausted';
+  else if (code === 429) kind = 'rate_limited';
+  else if (code === 1002 || code === 1026 || code === 1027 || code === 2013)
+    kind = 'invalid_request';
+  else kind = 'upstream_error';
   return new UpstreamError({ kind, vendorCode: String(code), message });
 }
 

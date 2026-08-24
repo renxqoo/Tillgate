@@ -4,8 +4,8 @@ import { adminApi } from './admin-api';
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { ChannelTestResult } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { ChannelTestResult } from '@tillgate/api-client';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 表单侧输入类型：models 是逗号分隔文本（管理端表单 UX 形态）。
@@ -151,12 +151,9 @@ export async function testChannelAction(id: number): Promise<ChannelTestOutcome>
     }
     return { ok: true, durationMs: res.durationMs, keyPreview: res.keyPreview };
   } catch (e) {
-    const msg =
-      e instanceof ApiError
-        ? typeof e.message === 'string'
-          ? e.message
-          : JSON.stringify(e.message)
-        : t('testFailed');
+    let msg = t('testFailed');
+    if (e instanceof ApiError)
+      msg = typeof e.message === 'string' ? e.message : JSON.stringify(e.message);
     return { error: msg };
   }
 }

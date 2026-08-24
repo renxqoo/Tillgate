@@ -3,8 +3,8 @@
  * v1 referral.repo 同语义）。SQL 只住本目录（AGENT.md §0.2）。
  */
 import { and, eq, gte, lt, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { referrals, usageLogs, users } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { referrals, usageLogs, users } from '@tillgate/db';
 import type { CommissionStatsStore, InviteeSpendByInviter } from '../../ports/commission-stats.js';
 
 export function createPostgresCommissionStatsStore(db: Db): CommissionStatsStore {

@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -5,8 +6,8 @@ import { CoinsIcon } from 'lucide-react';
 
 import { getLocale, getTranslations } from 'next-intl/server';
 import { unitWord } from '@/lib/formatters';
-import { ApiError } from '@tokenlens/api-client';
-import type { AdminUsageRow, Paginated } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { AdminUsageRow, Paginated } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { msToHuman } from '@/lib/formatters';
 import { adminApi } from '@/server/admin-api';
@@ -44,6 +45,7 @@ function estimateReasonKey(reason: string | null): string {
 }
 
 export default async function UsageLogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('usageLogs');
   const tc = await getTranslations('common');

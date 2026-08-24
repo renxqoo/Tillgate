@@ -5,7 +5,7 @@
  */
 import { redirect } from 'next/navigation';
 
-import type { ClientApiClient, MeInfo } from '@tokenlens/api-client';
+import type { ClientApiClient, MeInfo } from '@tillgate/api-client';
 
 import { isDevFakeMe } from '@/config/dev';
 
@@ -26,7 +26,7 @@ function fakeMe(): MeInfo {
   return {
     id: 1,
     subject: 'demo_user',
-    email: 'demo@tokenlens.dev',
+    email: 'demo@tillgate.dev',
     displayName: 'Demo Account',
     rateCardId: 1,
     rateCardName: 'Standard ×1.0',

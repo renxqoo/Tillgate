@@ -5,7 +5,7 @@ import { useState, useTransition, type ReactElement, type ReactNode } from 'reac
 import { useTranslations } from 'next-intl';
 import { Loader2Icon } from 'lucide-react';
 
-import { Button } from '@tokenlens/ui';
+import { Button } from '@tillgate/ui';
 import {
   Dialog,
   DialogClose,
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 /**
  * 表单弹窗骨架：open state + useTransition + Header/Footer/DialogClose + spinner 提交按钮。

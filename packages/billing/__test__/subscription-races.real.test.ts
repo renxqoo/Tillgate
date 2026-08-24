@@ -19,8 +19,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
-import { isBusinessError } from '@tokenlens/errors';
-import { type Db } from '@tokenlens/db';
+import { isBusinessError } from '@tillgate/errors';
+import { type Db } from '@tillgate/db';
 import { Decimal } from '../src/domain/money.js';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from '../src/adapters/postgres/billing-store.js';
@@ -256,7 +256,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     const keyHash = 'ab'.repeat(32);
     await db.execute(sql`
       insert into api_keys (key_hash, key_preview, user_id, name, subscription_id)
-      values (${keyHash}, 'ag_****race3', ${userId}, 'race3-key', ${purchased.subscriptionId})`);
+      values (${keyHash}, 'sk_****race3', ${userId}, 'race3-key', ${purchased.subscriptionId})`);
 
     const { winner, loserReason } = await partition(
       await Promise.allSettled([

@@ -1,4 +1,4 @@
-# @tokenlens/admin-api —— 管理控制面 REST API
+# @tillgate/admin-api —— 管理控制面 REST API
 
 Hono 管理面 API：admin 会话鉴权 + 用户/Key/渠道/模型/费率/订阅资金/链路观测六域管理读写。
 **业务规则零重写**——全部经能力包 facade，app 只保留 config、assembly、协议路由、中间件、presenter 与生命周期。
@@ -7,7 +7,7 @@ Hono 管理面 API：admin 会话鉴权 + 用户/Key/渠道/模型/费率/订阅
 
 ## 核心能力
 
-- **会话**：`Authorization: Bearer <JWT>` → `identity.sessions.validate(token, 'admin')`（issuer `tokenlens:admin`，与用户面/网关物理隔离）；失败统一 401 不区分原因；Redis 爆破双闸（email+ip / ip）与 jti 吊销面
+- **会话**：`Authorization: Bearer <JWT>` → `identity.sessions.validate(token, 'admin')`（issuer `tillgate:admin`，与用户面/网关物理隔离）；失败统一 401 不区分原因；Redis 爆破双闸（email+ip / ip）与 jti 吊销面
 - **路由族**：`/v1/users`（含 adjust/gift 调账赠送、transactions/audit-logs）、`/v1/admin-keys`、providers/channels（import/test）/channel-funds、models/rate-cards/fx/model-catalog、subscriptions 管理动词、`/v1/tracing/*` 五查询、audit-logs/logs、auth（login + 2FA）、notifications、stats/usage-logs/payment-orders/redeem-batches/marketing/referrals、`/v1/vendor-catalog`
 - **列表契约**：`?page=&page_size≤100&q&sort_by&order`，信封 `{rows,total,page,pageSize}`，`sort_by` 白名单外 400
 - **错误面**：信封 `{"error":{code,message}}`（message 英文）；`composeErrorCatalogs` 合成七包目录 + app 自有 `admin.*`
@@ -32,7 +32,7 @@ app.ts / index.ts / shutdown.ts
 
 ## 装配与依赖
 
-- 能力包 facade：`@tokenlens/accounts`、`@tokenlens/billing`（+`/composition` postgres stores）、`@tokenlens/control-plane`（+`/composition` 目录源）、`@tokenlens/identity`、`@tokenlens/observability`（+`/composition` 的 `writeAudit`/`createBestEffortAuditSink` 审计桥）、`@tokenlens/notifications`（渠道管理面；投递在 worker）、`@tokenlens/inference`（generation_tasks 读侧 store）、`@tokenlens/ai`（`SUPPORTED_PROTOCOLS` 词表 + 探针注入，ADR-0007）
+- 能力包 facade：`@tillgate/accounts`、`@tillgate/billing`（+`/composition` postgres stores）、`@tillgate/control-plane`（+`/composition` 目录源）、`@tillgate/identity`、`@tillgate/observability`（+`/composition` 的 `writeAudit`/`createBestEffortAuditSink` 审计桥）、`@tillgate/notifications`（渠道管理面；投递在 worker）、`@tillgate/inference`（generation_tasks 读侧 store）、`@tillgate/ai`（`SUPPORTED_PROTOCOLS` 词表 + 探针注入，ADR-0007）
 - 组合不是第二套业务规则：跨 facade 编排（调账幂等 + 同事务审计、creditLimit 拆分）在路由层组合
 
 ## 本地运行与测试

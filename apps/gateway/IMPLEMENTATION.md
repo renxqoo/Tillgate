@@ -1,4 +1,4 @@
-# @tokenlens/gateway 迁移实现文档（施工图）
+# @tillgate/gateway 迁移实现文档（施工图）
 
 > 状态：app 本体已完成（2026-08-23；见 MIGRATION §8 收口记录）
 > 设计基线见 [DESIGN.md](./DESIGN.md)；行为规格与测试矩阵见 [MIGRATION.md](./MIGRATION.md)。
@@ -8,7 +8,7 @@
 ## 0. 原则
 
 - 旧仓代码是行为语义参考（`/Users/wrr/work/ai-getway/apps/gateway`），迁移 = 语义重写；
-  pipeline 族已迁 `@tokenlens/inference`（P4 wave-4），本波**只落 app 面与装配桥**。
+  pipeline 族已迁 `@tillgate/inference`（P4 wave-4），本波**只落 app 面与装配桥**。
 - 一动词一文件、工厂闭包（铁律 5）；测试平铺 `__test__/`（铁律 14）；错误目录 `gateway.*`
   - 组合面（铁律 18 / §11）；单文件 ≤500 行（oxlint max-lines）。
 - app 非 assembly 代码不引用 `Db/DbTx`/`./composition`（P5；架构测试机器锁定，
@@ -18,9 +18,9 @@
 
 - **A1 oauth-token 直查 apps 表**（v1 routes/oauth-token.ts:120-123，其架构测试自注债务）：
   v2 修复——凭证校验走 `accounts.verifyAppClient`，SQL 不进 app。
-- **A2 requestId 服务端生成**（v1 S1 修复已落地）：保留；`@tokenlens/http` `requestIdMiddleware`
+- **A2 requestId 服务端生成**（v1 S1 修复已落地）：保留；`@tillgate/http` `requestIdMiddleware`
   同语义（注释明示防绕过），直接消费不自写。
-- **A3 CORS/安全头/bodyLimit 三件**：v1 app 内实现 → v2 `@tokenlens/http` 已有同源件
+- **A3 CORS/安全头/bodyLimit 三件**：v1 app 内实现 → v2 `@tillgate/http` 已有同源件
   （trace-receiver 波收口），消费不自写。
 - **A4 v1 `AppError`**（status+code 自带）：v2 由目录 `BusinessError` + face override 取代；
   路由层不再自造错误类。
@@ -96,9 +96,9 @@ apps/gateway/
 
 架构测试（§5.5 机器锁定，trace-receiver 范式扩展）：
 src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, adapters/_}；
-`@tokenlens/db` import 与 `Db/DbTx` 类型只允许 {index,config,assembly} ∪ adapters/_
+`@tillgate/db` import 与 `Db/DbTx` 类型只允许 {index,config,assembly} ∪ adapters/_
 （app.ts 与 http/** 禁入）；跨包 import 只走包名（禁 `/src/` 深导入）；http/** 不 import
-`@tokenlens/ai`（§3.6：ai 类型消费方自 inference 出口引用）。
+`@tillgate/ai`（§3.6：ai 类型消费方自 inference 出口引用）。
 
 ## 4. 能力包补件（同波落地）
 

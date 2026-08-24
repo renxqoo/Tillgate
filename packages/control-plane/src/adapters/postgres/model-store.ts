@@ -4,7 +4,7 @@
  * 报价候选链解析与 /v1/models 在架目录读是网关热路径——不在此（inference 波次 G1）。
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, isNotNull, or, sql } from 'drizzle-orm';
-import { channels, modelChannels, modelMappings, providers } from '@tokenlens/db';
+import { channels, modelChannels, modelMappings, providers } from '@tillgate/db';
 import type {
   ModelStore,
   ModelRecord,

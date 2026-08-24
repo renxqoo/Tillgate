@@ -2,7 +2,7 @@
  * fail-closed 白名单守卫（表驱动矩阵：新增词表项自动获得覆盖，§10.1.4）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import {
   assertCurrency,
   assertInternalCode,

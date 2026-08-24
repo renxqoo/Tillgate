@@ -10,7 +10,7 @@
  * 旧仓按错误类 instanceof 判死信（跨包类匹配的 B6 病灶）；新契约按三性/目录码判定，
  * 渠道侧不变量错误只要以 DefectError 表达即自动进死信家族——无需下行依赖。
  */
-import { isBusinessError, isDefectError } from '@tokenlens/errors';
+import { isBusinessError, isDefectError } from '@tillgate/errors';
 
 export type SettleFailureDecision =
   | { dead: true; failureClass: string }

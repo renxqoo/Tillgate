@@ -2,7 +2,7 @@
  * 创建 API Key(v1 keys.service create):字段域 → 订阅归属守卫 → 生成材料 → 落库。
  * 明文仅本用例返回值出现一次;库内只存 SHA-256 + 脱敏预览。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { generateKeyMaterial } from '../domain/credentials.js';
 import type { ApiKeyRecord } from '../ports/account-store.js';

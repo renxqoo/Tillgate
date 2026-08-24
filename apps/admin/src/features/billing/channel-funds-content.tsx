@@ -10,9 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   Select,
   SelectContent,
@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { BanknoteIcon, ImageIcon, Loader2Icon, ScaleIcon } from 'lucide-react';
@@ -35,7 +35,7 @@ import { toast } from 'sonner';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 import { signedAmountTone } from '@/lib/money-tone';
 
-import type { AdminChannelFundRow, ChannelOption } from '@tokenlens/api-client';
+import type { AdminChannelFundRow, ChannelOption } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 function fmtSigned(v: string): string {
@@ -207,7 +207,7 @@ function ChannelSelect({
 }) {
   const t = useTranslations('channelFunds');
   return (
-    <Field>
+    <FormItem>
       <FieldLabel htmlFor={id}>{t('channel')}</FieldLabel>
       <Select value={value} onValueChange={(v) => onChange(v ?? '')}>
         <SelectTrigger id={id} className="w-full">
@@ -221,7 +221,7 @@ function ChannelSelect({
           ))}
         </SelectContent>
       </Select>
-    </Field>
+    </FormItem>
   );
 }
 
@@ -305,7 +305,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
             channels={channels}
             id="cf-channel"
           />
-          <Field>
+          <FormItem>
             <FieldLabel htmlFor="cf-amount">{t('amountLabel')}</FieldLabel>
             <Input
               id="cf-amount"
@@ -316,8 +316,8 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
             />
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="cf-order">{t('orderNoLabel')}</FieldLabel>
             <Input
               id="cf-order"
@@ -325,8 +325,8 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
               onChange={(e) => setOrderNo(e.target.value)}
               placeholder={t('orderNoPlaceholder')}
             />
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="cf-voucher">{t('voucherLabel')}</FieldLabel>
             <Input id="cf-voucher" type="file" accept="image/*" onChange={onFile} />
             {voucher ? (
@@ -337,8 +337,8 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
                 className="mt-2 max-h-32 rounded border"
               />
             ) : null}
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="cf-remark">{t('remarkOptional')}</FieldLabel>
             <Input
               id="cf-remark"
@@ -346,7 +346,7 @@ function RechargeDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }
               onChange={(e) => setRemark(e.target.value)}
               placeholder={t('remarkPlaceholder')}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />
@@ -422,7 +422,7 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
             channels={channels}
             id="cf-adj-channel"
           />
-          <Field>
+          <FormItem>
             <FieldLabel htmlFor="cf-adj-amount">{t('amountSigned')}</FieldLabel>
             <Input
               id="cf-adj-amount"
@@ -432,8 +432,8 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
               onChange={(e) => setAmount(e.target.value)}
               placeholder={t('amountPlaceholder')}
             />
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="cf-adj-remark">{t('remarkOptional')}</FieldLabel>
             <Input
               id="cf-adj-remark"
@@ -441,7 +441,7 @@ function AdjustDialog({ channels }: { channels: ReadonlyArray<ChannelOption> }) 
               onChange={(e) => setRemark(e.target.value)}
               placeholder={t('reasonPlaceholder')}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />

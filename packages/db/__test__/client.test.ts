@@ -24,10 +24,10 @@ const { FakePool } = vi.hoisted(() => {
 vi.mock('pg', () => ({ default: { Pool: FakePool } }));
 
 import { closeDb, createDb, ping } from '../src/client.js';
-import { isInfrastructureError } from '@tokenlens/errors';
+import { isInfrastructureError } from '@tillgate/errors';
 
 const CONFIG = {
-  url: 'postgres://user:pass@db.local:5432/tokenlens',
+  url: 'postgres://user:pass@db.local:5432/tillgate',
   poolMax: 7,
   idleTimeoutMillis: 31_000,
   connectionTimeoutMillis: 4_000,

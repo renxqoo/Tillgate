@@ -3,7 +3,7 @@
  * 错误断言换目录码；新增 B2 回归：calculateRequired 组装路径必须传 cacheWritePrice）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { Decimal } from '../src/domain/money.js';
 import { calcAmount, estimateMaxCost, requiredReservation } from '../src/domain/rating/pricing.js';
 import { calculateFundingReservation, calculateRequired } from '../src/domain/rating/calculate.js';

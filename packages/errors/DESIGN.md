@@ -1,4 +1,4 @@
-# @tokenlens/errors 设计基线（DESIGN）
+# @tillgate/errors 设计基线（DESIGN）
 
 > 状态：定稿（2026-08-23）
 > 定位：内部错误根契约——三性根类 + category 闭集 + 命名空间错误目录契约 + 规范化错误
@@ -15,7 +15,7 @@
 ### 1.1 处理
 
 - **三性分类**：business（业务拒绝，预期内）/ infrastructure（环境故障，可重试）/
-  defect（缺陷，不变量破坏）三个根类，及其公共基类 `TokenlensError`。
+  defect（缺陷，不变量破坏）三个根类，及其公共基类 `TillgateError`。
 - **category 闭集**：business 错误的唯一处理契约（七项，见 §3.2），附处理语义默认
   （retryable / alert）的**单点派生** `handlingOf`。
 - **身份码规范**：点分命名空间（`ns.key`），装配期形状校验；根命名空间 `errors.*` 保留码。
@@ -26,7 +26,7 @@
   `annotate()` 传播注记——错误上浮途中实例稳定地累积语境，不包装、不改判。
 - **错误即数据**：`ErrorRecord` 规范化形状（含 cause 链，深度上限）；
   `normalizeError(unknown)` 边界兜底——外来 Error / 非 Error 值一律按缺陷。
-- **守卫**：`isTokenlensError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
+- **守卫**：`isTillgateError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
 
 ### 1.2 明确不处理（写明归属，不留白）
 

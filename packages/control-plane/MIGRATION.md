@@ -17,7 +17,7 @@
 | `__tests__/rate-cards.test.ts` (5)                                                             | `__test__/rate-cards.test.ts`                                  | 改写：含 M1 回归（global 行不抹 model 覆写行）                     |
 | `__tests__/fx.test.ts` (4)                                                                     | `__test__/fx.test.ts`                                          | 改写：懒拉/TTL/覆盖冻结/点差/校验（fetch 注入，无真 ECB）          |
 | `__tests__/catalog.test.ts` (17)                                                               | `__test__/domain-catalog.test.ts` + `__test__/catalog.test.ts` | 拆分：纯函数原样移植；服务行为改写（mock 源注入）                  |
-| `packages/core/__tests__/crypto.test.ts` (5)                                                   | 不迁                                                           | cipher 归 `@tokenlens/runtime`（已覆盖，44 用例绿）                |
+| `packages/core/__tests__/crypto.test.ts` (5)                                                   | 不迁                                                           | cipher 归 `@tillgate/runtime`（已覆盖，44 用例绿）                |
 | `__tests__/coverage-gaps.test.ts` / `security.test.ts` / `e2e-crud-sweep.test.ts` 中控制面部分 | 并入上述各文件                                                 | 改写为对应单元边界用例                                             |
 
 **删除的旧用例**：无（全部行为有落位）。**未移植旧能力**：网关读模型族/管理员凭据/运维审计列表——裁决 G1/G2/G3（IMPLEMENTATION §1.3），非本单元范围。
@@ -58,7 +58,7 @@
   六阶段施工在**单一原子提交**内完成——单提交即回滚单元（revert 整体还原到包前状态），
   中间态拆分提交对纯新增代码不产生独立回滚价值，且无法在缺 index.ts 的中间态保持 build 门绿。
   阶段边界以目录层（domain/ports/application/adapters/facade）与测试文件边界保留。
-- 无 DDL 变更（75 条迁移已在 `@tokenlens/db` 先行合入；voucher_blobs 表已存在）。
+- 无 DDL 变更（75 条迁移已在 `@tillgate/db` 先行合入；voucher_blobs 表已存在）。
 - bun.lock 为多会话共写文件：本包依赖条目落 lock 但**不随本波提交**（并行会话混入，ironlaw 15——协调后收口）。
 
 ## 8. 验收（全部满足才算完成）

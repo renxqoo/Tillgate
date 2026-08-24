@@ -1,11 +1,11 @@
 /**
  * NotifyStore port:渠道 CRUD 与 outbox 五动词的持久化边界(DESIGN §4)。
- * 表族 = notification_channels(订阅配置)与 notify_outbox(事务发件箱);DDL 在 @tokenlens/db。
+ * 表族 = notification_channels(订阅配置)与 notify_outbox(事务发件箱);DDL 在 @tillgate/db。
  * 认领/终态/进度的 fencing 语义(三列 CAS + clock_timestamp)由实现承载——
  * 内存替身必须模拟同语义(单认领赢家、租约过期零效果),真实语义由 postgres.real.test.ts 锁定。
  * 入箱不做词表过滤(保留合成事件测试能力,B5);词表门在 application enqueue。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { NotificationChannel, ChannelType } from '../domain/channel';
 
 export interface ChannelInsertInput {

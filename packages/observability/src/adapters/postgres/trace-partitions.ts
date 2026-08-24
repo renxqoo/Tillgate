@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import {
   TRACE_PARTITION_DAY_RE,
   dayKey,

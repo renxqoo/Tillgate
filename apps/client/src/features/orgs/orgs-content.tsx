@@ -29,8 +29,8 @@ import {
   Progress,
   StatusPill,
   toast,
-} from '@tokenlens/ui';
-import type { OrgInvitationSummary, OrgMemberRow, OrgRow } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { OrgInvitationSummary, OrgMemberRow, OrgRow } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { formatMoney } from '@/features/shared/format';
@@ -289,14 +289,17 @@ function MemberRow({
           <div className="truncate text-xs text-muted-foreground">{member.email}</div>
         ) : null}
       </div>
-      {isOrgOwner ? (
-        <StatusPill tone="info">{t('roleOwner')}</StatusPill>
-      ) : isOwner ? (
-        <>
-          <QuotaCell org={org} member={member} />
-          <RemoveButton org={org} member={member} />
-        </>
-      ) : null}
+      {(() => {
+        if (isOrgOwner) return <StatusPill tone="info">{t('roleOwner')}</StatusPill>;
+        if (isOwner)
+          return (
+            <>
+              <QuotaCell org={org} member={member} />
+              <RemoveButton org={org} member={member} />
+            </>
+          );
+        return null;
+      })()}
     </li>
   );
 }

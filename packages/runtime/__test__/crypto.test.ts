@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DefectError, isDefectError } from '@tokenlens/errors';
+import { DefectError, isDefectError } from '@tillgate/errors';
 import { createCipher } from '../src/crypto/cipher';
 
 /** 单 key 单格式语义：enc:v1 是格式标记（非密钥世代）；错误密钥/篡改一律认证失败。 */

@@ -8,8 +8,8 @@
  * 注入（零写死）；并发读合并为单飞行，避免缓存击穿放大查询。
  */
 import { eq } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { systemConfigs } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { systemConfigs } from '@tillgate/db';
 
 /** system_configs 键（与 control-plane settings 读写用例共用同一约定） */
 export const BILLING_TIMEZONE_CONFIG_KEY = 'billing_timezone';

@@ -561,6 +561,41 @@
       "when": 1787793600000,
       "tag": "0080_channels_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1787880000000,
+      "tag": "0081_admins_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1787966400000,
+      "tag": "0082_rbac_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1787966460000,
+      "tag": "0083_drop_admins_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1788052800000,
+      "tag": "0084_endpoint_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1788139200000,
+      "tag": "0085_endpoints_page",
+      "breakpoints": true
     }
   ]
 }

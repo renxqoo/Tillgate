@@ -4,8 +4,8 @@
  * admin 面无此路径——显式红灯（禁静默降级），gateway 波的 accounts funding-resolver
  * 落地并提交后如需授权链再按需桥接。
  */
-import { InfrastructureError } from '@tokenlens/errors';
-import type { FundingSourceResolver } from '@tokenlens/billing';
+import { InfrastructureError } from '@tillgate/errors';
+import type { FundingSourceResolver } from '@tillgate/billing';
 
 export function createAdminFundingResolver(): FundingSourceResolver {
   return {

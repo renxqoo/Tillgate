@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { CopyButton } from '@tokenlens/ui';
+import { CopyButton } from '@tillgate/ui';
 
 /**
  * GitHub 风格代码框：顶栏（语言标签 + 复制按钮）+ shiki 双主题高亮体。

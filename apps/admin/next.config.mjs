@@ -41,7 +41,7 @@ const nextConfig = {
   output: 'standalone',
   allowedDevOrigins,
   // development 条件解析到 src 的 workspace 包必须列在此（Next 才做 .js→.ts 扩展名映射）
-  transpilePackages: ['@tokenlens/ui', '@tokenlens/api-client'],
+  transpilePackages: ['@tillgate/ui', '@tillgate/api-client'],
   reactCompiler: true,
   experimental: {
     // 渠道入货表单需上传凭证截图（base64 ≤ 2MB），放宽 server action 请求体上限

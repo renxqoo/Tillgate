@@ -1,4 +1,4 @@
-# @tokenlens/admin 施工图
+# @tillgate/admin 施工图
 
 > 状态：本波代码已完成，四门全绿（2026-08-23）；api-client package.json/bun.lock
 > 因并行波未提交改动挂起（铁律 15，见 §10）
@@ -37,8 +37,8 @@
 
 ## 2. 依赖与装配
 
-- 运行时 workspace 依赖仅两个：`@tokenlens/ui`、`@tokenlens/api-client`（架构测试锁定）。
-- `transpilePackages: ['@tokenlens/ui', '@tokenlens/api-client']`（development 条件解析
+- 运行时 workspace 依赖仅两个：`@tillgate/ui`、`@tillgate/api-client`（架构测试锁定）。
+- `transpilePackages: ['@tillgate/ui', '@tillgate/api-client']`（development 条件解析
   到 src 的 workspace 包需列入，v1 同款）。
 - api-client 消费模式：每请求 `adminApi()`（`src/server/admin-api.ts` 工厂，内部
   `createNextAdminApiClient()`）——不建模块级单例（Next 模块缓存跨请求共享 client
@@ -50,10 +50,10 @@
 
 | v1（@ai-gateway/ui）                                                                  | v2 去处                                                                                   | 动作                                                                      |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| components/ui/*（button/input/dialog/...）                                            | @tokenlens/ui 根出口同名组件（primitives/forms/data 按新目录）                            | 改 import，props 按 v2 API 微调                                           |
-| components/{data-table,status-pill,kpi-card,secret-reveal,form-dialog,password-input} | @tokenlens/ui 同名（data/feedback/forms）                                                 | 改 import + API 适配（v2 DataTable 为自有受控实现，列定义 cell 函数同形） |
-| components/ui/sonner + toast                                                          | @tokenlens/ui `Toaster` + `toast`（feedback）                                             | 改 import                                                                 |
-| components/shell/header/theme-switcher                                                | @tokenlens/ui `ThemeSwitcher`（navigation）                                               | 改 import                                                                 |
+| components/ui/*（button/input/dialog/...）                                            | @tillgate/ui 根出口同名组件（primitives/forms/data 按新目录）                            | 改 import，props 按 v2 API 微调                                           |
+| components/{data-table,status-pill,kpi-card,secret-reveal,form-dialog,password-input} | @tillgate/ui 同名（data/feedback/forms）                                                 | 改 import + API 适配（v2 DataTable 为自有受控实现，列定义 cell 函数同形） |
+| components/ui/sonner + toast                                                          | @tillgate/ui `Toaster` + `toast`（feedback）                                             | 改 import                                                                 |
+| components/shell/header/theme-switcher                                                | @tillgate/ui `ThemeSwitcher`（navigation）                                               | 改 import                                                                 |
 | components/action-toast                                                               | **app 复制** `src/components/action-toast.tsx`                                            | Next/toast 耦合，44 行                                                    |
 | components/list-page                                                                  | **app 复制改写** `src/components/list-page.tsx`                                           | 列表基座（v2 ui 无对应；按 v2 primitives 重写装配）                       |
 | components/list-filter-select                                                         | **app 复制** `src/components/list-filter-select.tsx`                                      |                                                                           |
@@ -62,12 +62,12 @@
 | components/confirm-action                                                             | **app 复制** `src/components/confirm-action.tsx`                                          | （v2 ConfirmDialog 形状不同；确认按钮+action 语义 v1 原样）               |
 | components/shell/sidebar/nav-main                                                     | **app 复制** `src/components/shell/sidebar/nav-main.tsx`                                  | Next Link/usePathname 耦合                                                |
 | components/shell/header/{account-switcher,locale-switcher}                            | **app 复制** `src/components/shell/header/*`                                              | 同上                                                                      |
-| lib/utils（cn）                                                                       | @tokenlens/ui `cn` 根出口                                                                 | 改 import                                                                 |
+| lib/utils（cn）                                                                       | @tillgate/ui `cn` 根出口                                                                 | 改 import                                                                 |
 | lib/list-query                                                                        | **app 复制** `src/lib/list-query.ts`                                                      | URL 查询状态 hook（useSearchParams 耦合）                                 |
 | lib/money-tone                                                                        | **app 复制** `src/lib/money-tone.ts`                                                      | 展示 tone 计算                                                            |
 | lib/auth-url                                                                          | **app 复制** `src/lib/auth-url.ts`                                                        | 登录回跳 URL                                                              |
 | lib/fonts/registry + scripts/theme-boot                                               | **app 自持** `src/config/fonts.ts` + `src/config/theme-boot.ts`                           | ui 禁 next/font（纪律）；根布局 Geist 由 app 直挂                         |
-| @ai-gateway/api-client/i18n                                                           | @tokenlens/api-client/next `LOCALE_COOKIE/resolveLocale/isLocale/DEFAULT_LOCALE/htmlLang` | 改 import（D1 孪生实现）                                                  |
+| @ai-gateway/api-client/i18n                                                           | @tillgate/api-client/next `LOCALE_COOKIE/resolveLocale/isLocale/DEFAULT_LOCALE/htmlLang` | 改 import（D1 孪生实现）                                                  |
 | @ai-gateway/ai（SUPPORTED_PROTOCOLS/vendorProfileNames）                              | **app 快照** `src/config/protocols.ts`                                                    | P6 `/v1/vendor-catalog` 落地即切（DESIGN §5）                             |
 | @ai-gateway/tracing/graph                                                             | **app 纯函数** `src/features/tracing/graph-layout.ts` + api-client tracing DTO            | 清直依赖                                                                  |
 
@@ -90,7 +90,7 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 
 | v1 模块                                             | 裁决      | 要点                                                                                    |
 | --------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
-| app/layouts/page.tsx/globals.css                    | 复制+微修 | fonts/theme-boot app 自持；globals 引 `@tokenlens/ui/styles.css`                        |
+| app/layouts/page.tsx/globals.css                    | 复制+微修 | fonts/theme-boot app 自持；globals 引 `@tillgate/ui/styles.css`                        |
 | (auth)/login                                        | 复制+微修 | server action 改 v2 client/裸 fetch（ADMIN_API_BASE 经 api-client next 解析）           |
 | lib/server-actions/auth.ts + lib/server/get-user.ts | 重写      | `src/server/auth-actions.ts` + `get-admin.ts`；token 生命周期用 api-client next session |
 | navigation/sidebar-items.ts                         | 复制      | `src/config/sidebar-items.ts`                                                           |
@@ -110,13 +110,13 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 
 ## 7. 测试计划（新建面）
 
-| 面          | 文件                                                    | 内容                                                                                                                                                                                                                              |
-| ----------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 架构边界    | `__test__/architecture.test.ts`                         | ① workspace import 白名单（仅 ui/api-client）② 无 `@tokenlens/*/src` 深导入 ③ app 页面不 import server actions 之外的服务端模块 ④ 词表快照封闭性（protocols.ts 导出 == 快照表）                                                   |
-| server 动作 | `__test__/*-actions.test.ts`                            | mock fetch 断言 wire 调用形状/错误信封映射/返回 `{error}` 形状（vitest 环境 node + next/cache 桩）                                                                                                                                |
-| 纯函数      | `__test__/{list-query,graph-layout,money-tone}.test.ts` | URL 状态往返、dagre 布局确定性（同输入同布局）、tone 边界                                                                                                                                                                         |
-| config      | `__test__/config.test.ts`                               | protocols 快照与裁决表一致；app-config 形状                                                                                                                                                                                       |
-| 覆盖率口径  | vitest.config.ts                                        | 阈值 90/85 施于 `src/{server,lib,config,features}/**` 可测切片；`src/app/**`（页面装配/RSC）与 `src/components/**`（纯展示壳）排除——口径在案：页面行为由 server 动作测试 + 四门 typecheck/build 覆盖，RSC 渲染测试待 e2e 波（P7） |
+| 面          | 文件                                                    | 内容                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 架构边界    | `__test__/architecture.test.ts`                         | ① workspace import 白名单（仅 ui/api-client）② 无 `@tillgate/*/src` 深导入 ③ app 页面不 import server actions 之外的服务端模块 ④ 词表快照封闭性（protocols.ts 导出 == 快照表）                                   |
+| server 动作 | `__test__/*-actions.test.ts`                            | mock fetch 断言 wire 调用形状/错误信封映射/返回 `{error}` 形状（vitest 环境 node + next/cache 桩）                                                                                                                |
+| 纯函数      | `__test__/{list-query,graph-layout,money-tone}.test.ts` | URL 状态往返、dagre 布局确定性（同输入同布局）、tone 边界                                                                                                                                                         |
+| config      | `__test__/config.test.ts`                               | protocols 快照与裁决表一致；app-config 形状                                                                                                                                                                       |
+| 覆盖率口径  | vitest.config.ts                                        | 阈值 90/85 施于 `src/{server,lib,config,features}/**` 可测切片；`src/app/**`（页面装配/RSC）与 TSX 展示层排除覆盖率分母——页面由 server 动作 + typecheck/build 覆盖，关键交互组件另以 jsdom 渲染测试锁定（§11 起） |
 
 ## 8. 施工顺序
 
@@ -128,16 +128,38 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 
 ## 9. 门禁记录（2026-08-23 复跑回填）
 
-| 门禁       | 命令                                      | 结果 |
-| ---------- | ----------------------------------------- | ---- |
-| typecheck  | `bun x tsc --noEmit`                      | ✅ 0 错 |
-| lint       | `bun x oxlint`                            | ✅ 0-0（135 文件） |
+| 门禁       | 命令                                      | 结果                                                                                               |
+| ---------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| typecheck  | `bun x tsc --noEmit`                      | ✅ 0 错                                                                                            |
+| lint       | `bun x oxlint`                            | ✅ 0-0（135 文件）                                                                                 |
 | test       | `bun x vitest run --coverage`             | ✅ 128/128（12 文件）；lines 95.56 / branches 88.68 / funcs 96.39 / stmts 97.77（阈值 90/85 达标） |
-| build      | `bun run build`                           | ✅（/login、/dashboard/users/[id] 等动态路由产物正常） |
-| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 21 workspace 无环、深导入/越界为零 |
+| build      | `bun run build`                           | ✅（/login、/dashboard/users/[id] 等动态路由产物正常）                                             |
+| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 21 workspace 无环、深导入/越界为零                                                              |
 
 ## 10. 挂起记录（铁律 15）
 
 - `packages/api-client/package.json` 与 `bun.lock`：本波 DTO 补缺触及 package.json，
   与并行波共写文件混有他人未提交变更——不随本波提交，待工作区整体收口时逐文件点名
   处理（内容本身已过门禁验证，仅提交动作挂起）。
+
+## 11. 计费异常复核弹窗（小级方案）
+
+> 状态：已核销；用户裁决：将无法输入的行操作下拉改为“操作”按钮 + 模态弹窗。
+
+### 11.1 契约与边界
+
+- 复核列表操作列只展示“操作”按钮；点击后弹窗包含复核理由输入框、重试、废弃、关闭。
+- 重试/废弃继续调用既有 server action，参数、乐观锁、审计与错误信封均不改变。
+- 空白理由不出站并提示；理由上限保持 1000 字符。
+- 成功后关闭弹窗并清空理由；失败时保留弹窗和输入，允许修正后重试。
+- 提交期间三个动作按钮均禁用，防止重复决策或请求中途卸载。
+- 不处理：死单状态机、资金释放和审计事务仍归 billing/admin-api；列表刷新仍归既有
+  server action 的 `revalidatePath`。
+
+### 11.2 测试与验收
+
+- [x] 点击“操作”打开弹窗，输入框可获得焦点并输入内容；关闭后再次打开为空。
+- [x] 空白理由不调用 action；重试/废弃分别透传 requestId、revision 与已输入理由。
+- [x] 成功关闭弹窗；失败保留弹窗、理由和可重试状态；pending 阶段防重复提交。
+- [x] 中英文词表同步；159/159 测试通过；覆盖率 statements 93.40%、branches 85.30%、
+      functions 92.81%、lines 96.07%；format/typecheck/lint/build 通过。

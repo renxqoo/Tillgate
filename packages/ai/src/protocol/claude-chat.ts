@@ -91,8 +91,10 @@ export function claudeRequestToChat(req: unknown): Json {
   for (const m of asArray(r.messages)) {
     const msg = asJson(m);
     if (!msg) continue;
-    const role =
-      str(msg.role) === 'assistant' ? 'assistant' : str(msg.role) === 'user' ? 'user' : 'user';
+    let role;
+    if (str(msg.role) === 'assistant') role = 'assistant';
+    else if (str(msg.role) === 'user') role = 'user';
+    else role = 'user';
     // 工具结果块（user 消息里的 tool_result）→ chat tool 消息
     const blocks = asArray(msg.content);
     const toolResults = blocks.filter((b) => asJson(b)?.type === 'tool_result');
@@ -218,12 +220,10 @@ export function chatRequestToClaude(req: unknown): Json {
   // （DashScope anthropic 兼容端点实测：InvalidParameter Request body format invalid）
   out.model = str(r.model) ?? '';
   out.messages = messages;
-  out.max_tokens =
-    typeof r.max_tokens === 'number' && r.max_tokens > 0
-      ? r.max_tokens
-      : typeof r.max_completion_tokens === 'number' && r.max_completion_tokens > 0
-        ? r.max_completion_tokens
-        : DEFAULT_CLAUDE_MAX_TOKENS;
+  out.max_tokens = DEFAULT_CLAUDE_MAX_TOKENS;
+  if (typeof r.max_tokens === 'number' && r.max_tokens > 0) out.max_tokens = r.max_tokens;
+  else if (typeof r.max_completion_tokens === 'number' && r.max_completion_tokens > 0)
+    out.max_tokens = r.max_completion_tokens;
   if (typeof r.temperature === 'number') out.temperature = r.temperature;
   if (typeof r.top_p === 'number') out.top_p = r.top_p;
   if (Array.isArray(r.stop)) out.stop_sequences = r.stop.map((s) => String(s));

@@ -1,8 +1,8 @@
 {
-  "name": "@tokenlens/client",
+  "name": "@tillgate/client",
   "version": "0.1.0",
   "private": true,
-  "description": "Next.js 用户控制台(BFF):会话 cookie 持有 + Server Action 编排,业务全部经 @tokenlens/client-api(总纲 §3/P5)",
+  "description": "Next.js 用户控制台(BFF):会话 cookie 持有 + Server Action 编排,业务全部经 @tillgate/client-api(总纲 §3/P5)",
   "license": "MIT",
   "scripts": {
     "dev": "bun x next dev -p 3001",
@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.7.1",
-    "@tokenlens/api-client": "workspace:*",
-    "@tokenlens/ui": "workspace:*",
+    "@tillgate/api-client": "workspace:*",
+    "@tillgate/ui": "workspace:*",
     "lucide-react": "^1.33.0",
     "next": "^16.3.0",
     "next-intl": "^4",

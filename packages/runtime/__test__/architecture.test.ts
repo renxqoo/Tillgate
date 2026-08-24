@@ -1,6 +1,6 @@
 /**
  * 边界测试（铁律 11：边界必须可执行）——参照 packages/observability 同名文件写法：
- * src import 白名单（仅 @tokenlens/errors、ioredis、pino、pino-pretty、zod、node:*——
+ * src import 白名单（仅 @tillgate/errors、ioredis、pino、pino-pretty、zod、node:*——
  * 结构方案 §5.1：runtime 只可依赖 errors，不反向依赖 observability）/ 双入口导出面快照 /
  * testing 子入口不进主入口（vitest 语义不得混入生产 bundle，IMPLEMENTATION §3.1）。
  */
@@ -33,9 +33,9 @@ function externalSpecifiers(text: string): string[] {
   return out;
 }
 
-describe('依赖白名单（§5.1：runtime 只依赖 @tokenlens/errors + ioredis/pino/pino-pretty/zod/node:）', () => {
+describe('依赖白名单（§5.1：runtime 只依赖 @tillgate/errors + ioredis/pino/pino-pretty/zod/node:）', () => {
   it('src 全部外部 import 落在白名单内', () => {
-    const ALLOWED = /^(?:@tokenlens\/errors|ioredis|pino|pino-pretty|zod|node:[\w:]+)$/;
+    const ALLOWED = /^(?:@tillgate\/errors|ioredis|pino|pino-pretty|zod|node:[\w:]+)$/;
     const offenders: string[] = [];
     for (const file of files) {
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {
@@ -47,7 +47,7 @@ describe('依赖白名单（§5.1：runtime 只依赖 @tokenlens/errors + ioredi
 
   it('零 http/observability/ai/业务包/apps 引用（不反向依赖观察面与业务能力）', () => {
     const BANNED =
-      /^@tokenlens\/(http|observability|ai|api-client|accounts|billing|control-plane|inference|identity|notifications)$/;
+      /^@tillgate\/(http|observability|ai|api-client|accounts|billing|control-plane|inference|identity|notifications)$/;
     const offenders: string[] = [];
     for (const file of files) {
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {

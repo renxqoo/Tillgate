@@ -8,7 +8,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { DisplayNameDialog } from '@/features/settings/display-name-dialog';
 import { PasswordDialog } from '@/features/settings/password-dialog';

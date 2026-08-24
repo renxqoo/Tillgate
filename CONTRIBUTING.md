@@ -1,4 +1,4 @@
-# Contributing to TokenLens
+# Contributing to Tillgate
 
 Thanks for your interest in contributing! This guide covers setup, code standards, and the PR process.
 

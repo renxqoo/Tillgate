@@ -4,8 +4,8 @@
  * 未知形态降级 null（审计行不断流）。action 加 'identity.' 前缀入 audit_logs
  * 命名空间（与 accounts/control-plane 桥同口径）。装配面文件:仅 assembly 引用。
  */
-import type { AuditPort, IdentityAuditEvent } from '@tokenlens/identity';
-import type { DbLike } from '@tokenlens/db';
+import type { AuditPort, IdentityAuditEvent } from '@tillgate/identity';
+import type { DbLike } from '@tillgate/db';
 
 /** writeAudit 的最小结构子集（observability/composition 同形状;避免 app 持包内类型） */
 export type WriteAuditFn = (

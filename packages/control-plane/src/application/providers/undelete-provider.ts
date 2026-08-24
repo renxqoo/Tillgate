@@ -2,7 +2,7 @@
  * 恢复已删除的供应商（回收站取出）：deleted_at→NULL，status 固定回 1（禁用态）——
  * 不直接启用，复核后由管理员显式启用。仅已删除行可恢复；在册行走常规 PATCH（此处 404）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ProviderStore } from '../../ports/provider-store';
 import { controlPlaneErrors } from '../../errors';

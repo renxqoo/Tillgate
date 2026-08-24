@@ -4,8 +4,8 @@
  * 操作行与业务写在同一事务：要么同生（执行完成且回执落档）要么同死。
  */
 import { eq } from 'drizzle-orm';
-import type { DbTx } from '@tokenlens/db';
-import { ledgerOperations } from '@tokenlens/db';
+import type { DbTx } from '@tillgate/db';
+import { ledgerOperations } from '@tillgate/db';
 import type { OperationsStore } from '../../ports/operations-store';
 
 export const postgresOperationsStore: OperationsStore = {

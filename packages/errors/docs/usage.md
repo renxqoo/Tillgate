@@ -1,4 +1,4 @@
-# @tokenlens/errors 使用文档
+# @tillgate/errors 使用文档
 
 > 内部错误根契约：三性根类 + category 闭集 + 命名空间错误目录 + 规范化记录。
 > 零内部依赖的稳定叶子；本文件是完整的使用文档（按角色的用法与示例），
@@ -123,7 +123,7 @@ const APP_ERRORS = composeErrorCatalogs(BillingErrors, IdentityErrors /* … */)
 APP_ERRORS.get(e.code); // → { category, message, zh } 双语文案按码取
 ```
 
-status 默认值与信封归 `@tokenlens/http` 的 `renderError`（category → 默认 status +
+status 默认值与信封归 `@tillgate/http` 的 `renderError`（category → 默认 status +
 face override）；face 不 import 业务包。
 
 ### 2.6 日志 / 告警

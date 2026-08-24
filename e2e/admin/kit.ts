@@ -9,7 +9,7 @@
  */
 import { serve, type ServerType } from '@hono/node-server';
 import { asc } from 'drizzle-orm';
-import { admins, closeDb, createDb, ping, type Db } from '@tokenlens/db';
+import { admins, closeDb, createDb, ping, type Db } from '@tillgate/db';
 import { loadAdminApiConfig } from '../../apps/admin-api/src/config';
 import { assembleAdminApi, type AdminApiAssembly } from '../../apps/admin-api/src/assembly';
 import { createAdminApp } from '../../apps/admin-api/src/app';
@@ -81,7 +81,7 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
     logger: assembly.logger,
     sessions: {
       validate: assembly.identity.sessions.validate,
-      owner: (adminId) => assembly.controlPlane.admins.find(adminId),
+      owner: (adminId) => assembly.controlPlane.admins.findAccess(adminId),
     },
     accounts: assembly.accounts,
     wallet: assembly.billing.wallet,

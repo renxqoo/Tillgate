@@ -2,7 +2,7 @@
  * 本地账号建号(G4/G5 交界:凭据/挑战归 identity;本用例只建资料行,不触碰
  * password_hash 列)。displayName 缺省=email 本地部分截 64(v1 insertLocalUser)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeValidEmail } from '../domain/fields.js';
 import { localDisplayNameFallback } from '../domain/user.js';

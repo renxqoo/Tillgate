@@ -1,4 +1,4 @@
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 /**
  * inference 错误目录（§11 根契约；message 英文、zh 必填，动态事实进 context）。

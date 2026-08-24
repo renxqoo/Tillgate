@@ -4,15 +4,15 @@
  * errorHandler 按 nature/category 分派渲染,PG SQLSTATE 仅兜底注入。
  * message 英文(铁律 18),中文经目录 zh 字段按 Accept-Language 协商。
  */
-import { composeErrorCatalogs } from '@tokenlens/errors';
-import { HttpErrors, type FaceOverride } from '@tokenlens/http';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
-import { BillingErrors } from '@tokenlens/billing';
-import { observabilityErrors } from '@tokenlens/observability';
-import { identityErrors } from '@tokenlens/identity';
-import { notificationsErrors } from '@tokenlens/notifications';
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { composeErrorCatalogs } from '@tillgate/errors';
+import { HttpErrors, type FaceOverride } from '@tillgate/http';
+import { AccountsErrors } from '@tillgate/accounts';
+import { controlPlaneErrors } from '@tillgate/control-plane';
+import { BillingErrors } from '@tillgate/billing';
+import { observabilityErrors } from '@tillgate/observability';
+import { identityErrors } from '@tillgate/identity';
+import { notificationsErrors } from '@tillgate/notifications';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 /** app 自有目录 admin.*：只登记 app 协议层抛点的边界码（铁律 4：无抛点不登记） */
 export const AdminErrors = defineErrorCatalog('admin', {
@@ -86,6 +86,25 @@ export const AdminErrors = defineErrorCatalog('admin', {
     category: 'not_found',
     message: 'Admin not found',
     zh: '管理员不存在',
+  },
+  // ---- RBAC（docs/admin-rbac/DESIGN.md §2.5）----
+  /** 会话有效但角色无该权限（词表/矩阵单一真相 = control-plane domain/rbac） */
+  insufficient_permission: {
+    category: 'forbidden',
+    message: 'Insufficient permission for this operation',
+    zh: '当前角色无权执行该操作',
+  },
+  /** 接口未绑定权限（全局 ACL fail-closed——除超管外全拒,补配绑定即恢复） */
+  endpoint_unbound: {
+    category: 'forbidden',
+    message: 'Endpoint has no permission binding',
+    zh: '接口未绑定权限（默认拒绝）',
+  },
+  /** 修改自身 role/status 被拒（防最后一个超管自锁——DESIGN D6;displayName 可改） */
+  cannot_modify_self: {
+    category: 'invalid_input',
+    message: 'Admins cannot modify their own role or status',
+    zh: '不能修改自己的角色或状态',
   },
   /** 只能为本地账号设密——给 OIDC 身份挂本地密码 = 管理员接管（D6） */
   not_local_account: {

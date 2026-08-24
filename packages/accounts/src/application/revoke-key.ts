@@ -1,5 +1,5 @@
 /** 属主吊销 Key:CAS 0→1 + revokedAt(存储时钟);不可逆(v1 revokeKey) */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import type { ApiKeyRecord } from '../ports/account-store.js';
 import type { UseCaseContext } from './context.js';

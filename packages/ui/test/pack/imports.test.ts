@@ -13,7 +13,7 @@ const FORBIDDEN_SPECIFIERS: Array<{ pattern: RegExp; reason: string }> = [
   { pattern: /^next-themes$/, reason: 'Next 主题库(用本包 ThemeProvider)' },
   { pattern: /^next-intl$/, reason: 'Next i18n 框架' },
   { pattern: /^geist$/, reason: 'Next 字体库(用 @fontsource-variable)' },
-  { pattern: /^@tokenlens\//, reason: 'ui 禁止依赖 workspace 兄弟包(含 api-client)' },
+  { pattern: /^@tillgate\//, reason: 'ui 禁止依赖 workspace 兄弟包(含 api-client)' },
   { pattern: /^vitest$/, reason: '测试依赖不得进入运行时源码' },
   { pattern: /^@testing-library\//, reason: '测试依赖不得进入运行时源码' },
 ];

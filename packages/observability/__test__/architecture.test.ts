@@ -83,7 +83,7 @@ describe('依赖方向(§5 白名单:禁 http/ai/runtime/能力包/apps)', () =>
       const text = readFileSync(file, 'utf8');
       // 只匹配真实 import/export-from 语句(注释中的包名不构成依赖)
       if (
-        /from\s+['"]@tokenlens\/(http|ai|runtime|accounts|billing|control-plane|inference|identity|notifications)['"]/.test(
+        /from\s+['"]@tillgate\/(http|ai|runtime|accounts|billing|control-plane|inference|identity|notifications)['"]/.test(
           text,
         )
       ) {
@@ -114,13 +114,13 @@ describe('依赖方向(§5 白名单:禁 http/ai/runtime/能力包/apps)', () =>
     expect(offenders).toEqual([]);
   });
 
-  it('@tokenlens/db 值导入只出现在 adapters/postgres/**;非 adapter 只许 type-only', () => {
+  it('@tillgate/db 值导入只出现在 adapters/postgres/**;非 adapter 只许 type-only', () => {
     const offenders: string[] = [];
     for (const file of files) {
       if (file.includes('/adapters/postgres/')) continue;
       // 先剔除 import type 行,剩下的若有 db 引用即为值导入
       const text = readFileSync(file, 'utf8').replace(/^import\s+type[^\n]*\n/gm, '');
-      if (/from\s+['"]@tokenlens\/db['"]/.test(text)) offenders.push(file);
+      if (/from\s+['"]@tillgate\/db['"]/.test(text)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
   });

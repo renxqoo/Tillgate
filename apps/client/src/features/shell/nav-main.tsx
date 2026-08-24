@@ -12,7 +12,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 /**
  * 侧栏导航主区（app 内装配，新 ui 只提供 Sidebar 原语）。

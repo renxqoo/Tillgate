@@ -32,14 +32,14 @@ export default async function LoginPage({
           <span className="flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
             <ScanEye className="size-8" />
           </span>
-          <span className="text-xl font-semibold tracking-tight">TokenLens</span>
+          <span className="text-xl font-semibold tracking-tight">Tillgate</span>
         </div>
 
         <div className="w-full">
           <LoginForm />
         </div>
 
-        <p className="text-sm text-muted-foreground">© 2026 TokenLens · MIT License</p>
+        <p className="text-sm text-muted-foreground">© 2026 Tillgate · MIT License</p>
       </div>
     </main>
   );

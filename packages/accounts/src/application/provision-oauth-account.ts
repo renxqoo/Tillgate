@@ -3,7 +3,7 @@
  * 竞态撞唯一键走 exists 分支回查(23505 兜底)。displayName 兜底「用户{subject 前 6}」。
  * status≠0 的拒绝归调用方(identity 防枚举口径)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { clampDisplayName, oauthDisplayNameFallback } from '../domain/user.js';
 import { normalizeValidEmail } from '../domain/fields.js';
 import type { UserRecord } from '../ports/account-store.js';

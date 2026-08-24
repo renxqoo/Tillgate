@@ -7,7 +7,7 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
-import { InfrastructureError } from '@tokenlens/errors';
+import { InfrastructureError } from '@tillgate/errors';
 import * as schema from './schema/index.js';
 
 /** 池配置(全部必填——语义注释承接 v1 实测值:生产常用 20/30_000/5_000/1_000) */

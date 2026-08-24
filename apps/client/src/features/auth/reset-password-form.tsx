@@ -23,7 +23,7 @@ import {
   FieldGroup,
   FieldLabel,
   Input,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { CheckCircle2Icon, KeyRoundIcon, Loader2Icon } from 'lucide-react';
 
 import { forgotResetAction } from '@/server/actions/auth';

@@ -15,14 +15,14 @@ vi.mock('@/server/actions/keys', () => ({
   exportKeysAction: vi.fn(),
 }));
 
-vi.mock('@tokenlens/ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tokenlens/ui')>();
+vi.mock('@tillgate/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tillgate/ui')>();
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
-import { toast } from '@tokenlens/ui';
+import { toast } from '@tillgate/ui';
 import { exportKeysAction } from '@/server/actions/keys';
-import type { KeyRow } from '@tokenlens/api-client';
+import type { KeyRow } from '@tillgate/api-client';
 import { ExportKeys } from '../src/features/keys/export-keys';
 
 function keyRow(id: number, over: Partial<KeyRow> = {}): KeyRow {
@@ -63,7 +63,9 @@ afterEach(() => {
 describe('ExportKeys（B18 全量导出下载链路）', () => {
   it('成功：生成含 BOM 的 TSV Blob 并触发 anchor 下载、及时 revoke', async () => {
     const user = userEvent.setup();
-    vi.mocked(exportKeysAction).mockResolvedValue({ rows: [keyRow(1), keyRow(2, { name: '中文' })] });
+    vi.mocked(exportKeysAction).mockResolvedValue({
+      rows: [keyRow(1), keyRow(2, { name: '中文' })],
+    });
     // anchor 由组件 createElement 生成、不挂 DOM——桩 createElement 捕获实例；
     // click 仅计数（拦截真实导航）
     const realCreate = document.createElement.bind(document);

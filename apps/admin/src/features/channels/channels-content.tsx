@@ -5,10 +5,10 @@ import {
   ConfirmDialog,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { FormDialog } from '@/components/form-dialog';
 import { NumberField } from '@/components/number-field';
 import { defineStatusMeta } from '@/components/status-pill';
@@ -51,7 +51,7 @@ import { formatMoney, fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 import { moneyText, numericText } from '@/lib/forms';
 
-import type { AdminChannelRow, ProviderOption } from '@tokenlens/api-client';
+import type { AdminChannelRow, ProviderOption } from '@tillgate/api-client';
 
 // 状态 tone 映射留模块级；label 是 channels 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_META = defineStatusMeta(
@@ -471,7 +471,7 @@ function ChannelForm<T extends Record<string, unknown>>({
               field: { value: number; onChange: (v: number) => void };
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <FormItem data-invalid={fieldState.invalid}>
                 <FieldLabel>{t('provider')}</FieldLabel>
                 <Select
                   value={String(field.value ?? 0)}
@@ -489,7 +489,7 @@ function ChannelForm<T extends Record<string, unknown>>({
                   </SelectContent>
                 </Select>
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
+              </FormItem>
             )}
           />
         )}
@@ -503,11 +503,11 @@ function ChannelForm<T extends Record<string, unknown>>({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="ch-name">{t('channelName')}</FieldLabel>
               <Input id="ch-name" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
@@ -520,31 +520,31 @@ function ChannelForm<T extends Record<string, unknown>>({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="ch-key">{isEdit ? t('apiKeyKeep') : t('apiKey')}</FieldLabel>
               <Input id="ch-key" type="password" {...field} placeholder={isEdit ? '••••••' : ''} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="baseUrlOverride"
           render={({ field }: { field: { value: string } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="ch-url">{t('baseUrlOverride')}</FieldLabel>
               <Input id="ch-url" placeholder={t('overridePlaceholder')} {...field} />
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="models"
           render={({ field }: { field: { value: string } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="ch-models">{t('modelsLabel')}</FieldLabel>
               <Input id="ch-models" placeholder={t('modelsPlaceholder')} {...field} />
-            </Field>
+            </FormItem>
           )}
         />
         <div className="grid grid-cols-2 gap-3">
@@ -571,7 +571,7 @@ function ChannelForm<T extends Record<string, unknown>>({
               control={form.control}
               name="status"
               render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
-                <Field>
+                <FormItem>
                   <FieldLabel>{tc('status')}</FieldLabel>
                   <Select
                     value={String(field.value ?? 0)}
@@ -587,7 +587,7 @@ function ChannelForm<T extends Record<string, unknown>>({
                       <SelectItem value="4">{t('statusDead')}</SelectItem>
                     </SelectContent>
                   </Select>
-                </Field>
+                </FormItem>
               )}
             />
             <div className="grid grid-cols-2 gap-3">
@@ -595,20 +595,20 @@ function ChannelForm<T extends Record<string, unknown>>({
                 control={form.control}
                 name="rpmLimit"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="ch-rpm">{t('rpmLimit')}</FieldLabel>
                     <Input id="ch-rpm" type="number" {...field} placeholder={tc('default')} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="tpmLimit"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="ch-tpm">{t('tpmLimit')}</FieldLabel>
                     <Input id="ch-tpm" type="number" {...field} placeholder={tc('default')} />
-                  </Field>
+                  </FormItem>
                 )}
               />
             </div>
@@ -616,10 +616,10 @@ function ChannelForm<T extends Record<string, unknown>>({
               control={form.control}
               name="upstreamThreshold"
               render={({ field }: { field: { value: string } }) => (
-                <Field>
+                <FormItem>
                   <FieldLabel htmlFor="ch-threshold">{t('circuitThreshold')}</FieldLabel>
                   <Input id="ch-threshold" type="number" step="0.01" {...field} placeholder="0" />
-                </Field>
+                </FormItem>
               )}
             />
           </>

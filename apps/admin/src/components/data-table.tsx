@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { listHref, type SearchParamsInput } from '@/lib/list-query';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tokenlens/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tillgate/ui';
 
 /**
  * 统一列表表格（admin / client 所有列表页共用）。
@@ -58,7 +58,8 @@ function SortableHead<Row>({
     order: nextOrder,
     page: 1,
   });
-  const Icon = active ? (sort.order === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  let Icon = ArrowUpDown;
+  if (active) Icon = sort.order === 'asc' ? ArrowUp : ArrowDown;
   return (
     <a
       href={href}
@@ -125,15 +126,11 @@ export function DataTable<Row>({
           {columns.map((column) => (
             <TableHead
               key={column.key}
-              aria-sort={
-                column.sortable
-                  ? sort?.sortBy === (column.sortBy ?? column.key)
-                    ? sort.order === 'asc'
-                      ? 'ascending'
-                      : 'descending'
-                    : 'none'
-                  : undefined
-              }
+              aria-sort={(() => {
+                if (!column.sortable) return undefined;
+                if (sort?.sortBy !== (column.sortBy ?? column.key)) return 'none';
+                return sort.order === 'asc' ? 'ascending' : 'descending';
+              })()}
               className={cn(
                 'first:pl-4 last:pr-4',
                 column.key === 'actions' && 'w-16 text-center',
@@ -141,13 +138,12 @@ export function DataTable<Row>({
                 column.headerClassName,
               )}
             >
-              {column.key === 'actions' ? (
-                column.header
-              ) : column.sortable && searchParams ? (
-                <SortableHead column={column} sort={sort} searchParams={searchParams} />
-              ) : (
-                column.header
-              )}
+              {(() => {
+                if (column.key === 'actions') return column.header;
+                if (column.sortable && searchParams)
+                  return <SortableHead column={column} sort={sort} searchParams={searchParams} />;
+                return column.header;
+              })()}
             </TableHead>
           ))}
         </TableRow>

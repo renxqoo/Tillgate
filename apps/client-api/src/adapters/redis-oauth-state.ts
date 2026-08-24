@@ -3,7 +3,7 @@
  * GETDEL 单次消费——重放/过期统一 null（v1 语义；多副本共享）。
  */
 import type { Redis } from 'ioredis';
-import type { OAuthStatePayload, OAuthStateStore } from '@tokenlens/identity';
+import type { OAuthStatePayload, OAuthStateStore } from '@tillgate/identity';
 
 const keyOf = (state: string) => `oauth:state:${state}`;
 

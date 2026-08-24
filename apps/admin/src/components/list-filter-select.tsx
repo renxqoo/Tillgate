@@ -7,7 +7,7 @@ import { FilterIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { cn } from '../lib/utils';
-import { NativeSelect, NativeSelectOption } from '@tokenlens/ui';
+import { NativeSelect, NativeSelectOption } from '@tillgate/ui';
 
 /**
  * URL 筛选下拉（收敛 users-status / users-enterprise / subscriptions-status /

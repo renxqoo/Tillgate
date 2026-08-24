@@ -31,7 +31,10 @@ function w(): CrossAppWorld {
 }
 
 /** 两步登录走完（captureMailer 抓码）——返回新会话 token（v1「新密码可登 200」的 v2 落点） */
-async function loginTwoStep(email: string, password: string): Promise<{ status: number; token: string | null }> {
+async function loginTwoStep(
+  email: string,
+  password: string,
+): Promise<{ status: number; token: string | null }> {
   const first = await api!('/v1/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
@@ -40,7 +43,10 @@ async function loginTwoStep(email: string, password: string): Promise<{ status: 
   const body = (await first.json()) as { kind: string; challengeId: string };
   const verify = await api!('/v1/auth/login/verify', {
     method: 'POST',
-    body: JSON.stringify({ challengeId: body.challengeId, code: w().client.mailer.lastCodeOf(email) }),
+    body: JSON.stringify({
+      challengeId: body.challengeId,
+      code: w().client.mailer.lastCodeOf(email),
+    }),
   });
   const verified = (await verify.json()) as { token: string };
   return { status: verify.status, token: verify.status === 200 ? verified.token : null };

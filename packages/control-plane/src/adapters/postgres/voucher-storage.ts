@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { controlPlaneErrors } from '../../errors';
 import type { VoucherStorage } from '../../ports/voucher-storage';
 

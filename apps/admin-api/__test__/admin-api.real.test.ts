@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDb, createDb, ping, type Db } from '@tokenlens/db';
+import { closeDb, createDb, ping, type Db } from '@tillgate/db';
 import { assembleAdminApi } from '../src/assembly';
 import { loadAdminApiConfig } from '../src/config';
 import { createAdminApp } from '../src/app';

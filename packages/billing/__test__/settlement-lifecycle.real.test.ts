@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
+import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from '../src/adapters/postgres/billing-store.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
@@ -49,7 +49,7 @@ function quote(input: string, channelId: number | null = null, amount = '2') {
   };
 }
 
-const SCHEMA_NAME = `tokenlens_billing_life_${process.pid.toString(36)}`;
+const SCHEMA_NAME = `tillgate_billing_life_${process.pid.toString(36)}`;
 
 function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
   return {

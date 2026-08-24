@@ -1,4 +1,4 @@
-# `@tokenlens/observability`
+# `@tillgate/observability`
 
 可观测能力包（总纲 §3.1/P4.5）：OTel 装配、链路追踪、审计存储查询、请求日志与 usage 运维读侧。
 观测链路 best-effort，永不反压业务；基础结构化 logger 在 `packages/runtime`，**不在本包**——本包只消费最小 Logger 形状 `{ info, warn }`，不依赖 runtime。
@@ -28,7 +28,7 @@ composition.ts   # writeAudit / createPgTraceStore 等装配原语（仅 apps as
 
 ## 依赖与边界
 
-- 依赖：`@tokenlens/db`（schema/Db/DbLike/runTx）、`@tokenlens/errors`、drizzle-orm、`@opentelemetry/*`
+- 依赖：`@tillgate/db`（schema/Db/DbLike/runTx）、`@tillgate/errors`、drizzle-orm、`@opentelemetry/*`
 - 不依赖 runtime（Logger 本地声明最小形状，runtime 的 pino Logger 结构兼容，装配自然传入）
 - 分层纪律（架构测试锁定）：纯逻辑层不 import drizzle SQL 构造；adapters 不从根出口导出；错误目录 `observability.{invalid_otlp_payload, otel_endpoint_missing, invalid_partition_day}` 封闭
 - 消费方：trace-receiver（decode/ingest/store）、gateway（request-log 写入 + OTel）、admin-api（查询面 + 审计桥）、worker（分区维护调度）

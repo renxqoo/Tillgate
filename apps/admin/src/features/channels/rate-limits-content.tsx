@@ -9,9 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenuItem,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -24,7 +24,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import { GaugeIcon, PencilIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -219,7 +219,7 @@ export function RateLimitsClient({
   const showDailySpendField = editing?.kind === 'user' || editing?.kind === 'key';
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 mt-4">
       <Tabs defaultValue="user">
         {/* 与 ListToolbar 的 px-4、表格首列 pl-4 对齐（ListContent 本身无内边距） */}
         <TabsList className="ml-4">
@@ -254,7 +254,7 @@ export function RateLimitsClient({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel>{t('rpmLabel')}</FieldLabel>
               <Input
                 type="number"
@@ -263,8 +263,8 @@ export function RateLimitsClient({
                 value={rpm}
                 onChange={(e) => setRpm(e.target.value)}
               />
-            </Field>
-            <Field>
+            </FormItem>
+            <FormItem>
               <FieldLabel>{t('tpmLabel')}</FieldLabel>
               <Input
                 type="number"
@@ -273,9 +273,9 @@ export function RateLimitsClient({
                 value={tpm}
                 onChange={(e) => setTpm(e.target.value)}
               />
-            </Field>
+            </FormItem>
             {showCreditField ? (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('creditLabel')}</FieldLabel>
                 <Input
                   type="number"
@@ -285,10 +285,10 @@ export function RateLimitsClient({
                   value={credit}
                   onChange={(e) => setCredit(e.target.value)}
                 />
-              </Field>
+              </FormItem>
             ) : null}
             {showDailySpendField ? (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('dailySpendLabel')}</FieldLabel>
                 <Input
                   type="number"
@@ -298,7 +298,7 @@ export function RateLimitsClient({
                   value={dailySpend}
                   onChange={(e) => setDailySpend(e.target.value)}
                 />
-              </Field>
+              </FormItem>
             ) : null}
           </FieldGroup>
           <DialogFooter>

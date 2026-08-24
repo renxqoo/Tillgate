@@ -130,26 +130,20 @@ export function createInMemoryPaymentStores() {
       const dir = input.order === 'asc' ? 1 : -1;
       const sorted = matched.toSorted((a, b) => {
         // 排序键类型分野:id 为 uuid 字符串序,amount 数值序,createdAt 时间序,status 数值序
-        const av =
-          input.sortBy === 'createdAt'
-            ? a.createdAt.getTime()
-            : input.sortBy === 'amount'
-              ? Number(a.amount)
-              : input.sortBy === 'status'
-                ? a.status
-                : a.id;
-        const bv =
-          input.sortBy === 'createdAt'
-            ? b.createdAt.getTime()
-            : input.sortBy === 'amount'
-              ? Number(b.amount)
-              : input.sortBy === 'status'
-                ? b.status
-                : b.id;
+        const sortKeyOf = (row: (typeof matched)[number]) => {
+          if (input.sortBy === 'createdAt') return row.createdAt.getTime();
+          if (input.sortBy === 'amount') return Number(row.amount);
+          if (input.sortBy === 'status') return row.status;
+          return row.id;
+        };
+        const av = sortKeyOf(a);
+        const bv = sortKeyOf(b);
         if (av < bv) return -dir;
         if (av > bv) return dir;
         // 主序并列时 id desc 稳定决序(与 pg 适配器同口径)
-        return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+        if (a.id < b.id) return 1;
+        if (a.id > b.id) return -1;
+        return 0;
       });
       return Promise.resolve({
         rows: sorted.slice(input.offset, input.offset + input.limit).map((row) => ({

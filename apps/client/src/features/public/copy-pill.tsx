@@ -2,7 +2,7 @@
 
 import { CircleCheckIcon, CopyIcon } from 'lucide-react';
 
-import { useCopy } from '@tokenlens/ui';
+import { useCopy } from '@tillgate/ui';
 
 interface Props {
   value: string;

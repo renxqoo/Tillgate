@@ -10,14 +10,14 @@ import {
   CardHeader,
   CardTitle,
   PageHeader,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import type {
   UsageByModelItem,
   UsageByModelPage,
   UsageDayRow,
   UsageRate,
   UsageSummaryPage,
-} from '@tokenlens/api-client';
+} from '@tillgate/api-client';
 
 import { CostChart } from '@/features/dashboard/cost-chart';
 import {

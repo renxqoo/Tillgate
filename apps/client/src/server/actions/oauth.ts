@@ -6,7 +6,7 @@
  */
 import { redirect } from 'next/navigation';
 
-import { setSessionToken } from '@tokenlens/api-client/next';
+import { setSessionToken } from '@tillgate/api-client/next';
 
 import { safeNext } from '../next-url';
 

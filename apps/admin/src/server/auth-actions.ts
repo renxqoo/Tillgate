@@ -4,12 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import {
   clearAdminSessionCookie,
   getAdminApiBase,
   setAdminSessionToken,
-} from '@tokenlens/api-client/next';
+} from '@tillgate/api-client/next';
 
 import { adminApi } from './admin-api';
 

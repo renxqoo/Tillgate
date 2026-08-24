@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ChevronRight, Terminal } from 'lucide-react';
 
 import { CopyPill } from '@/features/public/copy-pill';
-import type { PricingModel } from '@tokenlens/api-client';
+import type { PricingModel } from '@tillgate/api-client';
 
 import { SectionHeading, fmtPrice, formatUnit, type LandingT, type PricingT } from './ui';
 import { buildSamples } from './samples';

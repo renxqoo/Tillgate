@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Input, NativeSelect, NativeSelectOption } from '@tokenlens/ui';
+import { Button, Input, NativeSelect, NativeSelectOption } from '@tillgate/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { FilterIcon, RotateCcwIcon } from 'lucide-react';

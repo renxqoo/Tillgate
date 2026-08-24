@@ -4,8 +4,7 @@
  * 防路径穿越;load 返回原始字节流,content-type 原样回放）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 
@@ -13,10 +12,10 @@ export interface VouchersRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
-export function vouchersRoutes(deps: VouchersRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function vouchersRoutes(deps: VouchersRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/vouchers/:key', session, async (c) => {
+  app.get('/v1/vouchers/:key', async (c) => {
     const stored = await deps.controlPlane.channels.loadVoucher(c.req.param('key'));
     if (stored === null) {
       throw AdminErrors.business('voucher_not_found', {});

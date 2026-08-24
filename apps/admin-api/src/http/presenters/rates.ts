@@ -9,10 +9,10 @@ export interface RateCardRowSource {
   readonly description: string | null;
   readonly status: number;
   readonly createdAt: Date;
+  readonly updatedAt: Date;
   readonly coefficient: string;
 }
 
-/** updatedAt 无列来源恒 null（v2 RateCardRecord 无该列——MIGRATION §4 D12 族） */
 export function toRateCardWireRow(row: RateCardRowSource) {
   return {
     id: row.id,
@@ -20,7 +20,7 @@ export function toRateCardWireRow(row: RateCardRowSource) {
     description: row.description,
     status: row.status,
     createdAt: iso(row.createdAt)!,
-    updatedAt: null,
+    updatedAt: iso(row.updatedAt)!,
     coefficient: row.coefficient,
   };
 }

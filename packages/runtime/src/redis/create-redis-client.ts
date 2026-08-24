@@ -8,7 +8,7 @@
  * 各消费方的故障语义在其模块内（限流 fail-open、防护 degraded、日限 fail-closed）。
  */
 import { Redis } from 'ioredis';
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { parseSentinels } from './parse-sentinels';
 import { describeError, sanitizeUrl } from './redis-diagnostics';
 

@@ -3,7 +3,7 @@
  * 全保留；InvalidInputError 断言换 DefectError 码断言；新增 B4 回归与 commandFingerprint 契约）。
  */
 import { describe, expect, it } from 'vitest';
-import { isDefectError } from '@tokenlens/errors';
+import { isDefectError } from '@tillgate/errors';
 import { canonicalJson, commandFingerprint, fingerprintOf } from '../src/domain/fingerprint.js';
 
 /** 断言缺陷拒绝并核对码（指纹载荷构造缺陷分类，DESIGN §2.3） */

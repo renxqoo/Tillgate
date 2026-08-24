@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Hono, type Context } from 'hono';
-import type { SlidingWindowLimiter } from '@tokenlens/runtime';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import { admitRequest } from '../src/http/middleware/rate-limit';
 import { otelMiddleware } from '../src/http/middleware/otel';
 import type { AuthEnv, AuthContext } from '../src/http/middleware/api-key';
@@ -17,8 +17,8 @@ import type {
   ActiveMappingRow,
   RouteCandidateRow,
   UserRateCardContext,
-} from '@tokenlens/control-plane';
-import type { QuoteCandidate } from '@tokenlens/inference';
+} from '@tillgate/control-plane';
+import type { QuoteCandidate } from '@tillgate/inference';
 
 const auth = (over: Partial<AuthContext> = {}): AuthContext => ({
   userId: 1,
@@ -302,7 +302,7 @@ describe('杂项分支收官', () => {
         jwtSecret: 'ab12'.repeat(8),
         issuer: 'i',
         audience: 'a',
-        keyPrefix: 'ag_',
+        keyPrefix: 'sk_',
         tokenTtlSeconds: 60,
       },
       trustedProxyHops: 0,

@@ -1,4 +1,5 @@
-import { Badge, Card, CardDescription, CardHeader } from '@tokenlens/ui';
+import { requirePermission } from '@/server/get-admin';
+import { Badge, Card, CardDescription, CardHeader } from '@tillgate/ui';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
 import { Activity } from 'lucide-react';
@@ -30,6 +31,7 @@ export default async function TracingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('tracing');
   const tc = await getTranslations('common');

@@ -1,14 +1,14 @@
-import { createDb, type Db } from '@tokenlens/db';
-import { createLogger, type Logger } from '@tokenlens/runtime';
+import { createDb, type Db } from '@tillgate/db';
+import { createLogger, type Logger } from '@tillgate/runtime';
 import {
   initOtel,
   createSpanBatcher,
   type OtelHandle,
   type SpanBatcher,
   type TraceStore,
-} from '@tokenlens/observability';
+} from '@tillgate/observability';
 // ./composition 子入口仅 assembly 引用(§5.3):app 细粒度直组 store+batcher 的取件处
-import { createPgTraceStore } from '@tokenlens/observability/composition';
+import { createPgTraceStore } from '@tillgate/observability/composition';
 import type { TraceReceiverConfig } from './config';
 
 /**

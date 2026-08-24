@@ -18,8 +18,14 @@ const generationTaskRowSchema = z.object({
   upstreamTaskId: z.string().nullable(),
   failReason: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
-  billingStatus: z.string().nullable().describe('账单状态(billing_requests.status;null = 无账单行)'),
-  settledAmount: z.string().nullable().describe('已结算任务的实扣金额（未结算/无账单行 = null;页内批量回填）'),
+  billingStatus: z
+    .string()
+    .nullable()
+    .describe('账单状态(billing_requests.status;null = 无账单行)'),
+  settledAmount: z
+    .string()
+    .nullable()
+    .describe('已结算任务的实扣金额（未结算/无账单行 = null;页内批量回填）'),
   createdAt: z.string(),
   finishedAt: z.string().nullable(),
   expiresAt: z.string(),

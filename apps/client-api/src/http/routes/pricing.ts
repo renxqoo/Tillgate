@@ -5,7 +5,7 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import type { RateCardCoefficientSnapshot } from '@tokenlens/billing';
+import type { RateCardCoefficientSnapshot } from '@tillgate/billing';
 import { parsePricingQuery } from '../contracts/pricing.js';
 import {
   slicePricingCatalog,

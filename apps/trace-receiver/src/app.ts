@@ -1,14 +1,14 @@
 import { Hono } from 'hono';
-import { pgSqlState } from '@tokenlens/db'; // 纯 SQLSTATE 分类函数(http errorHandler 的文档化注入点;非 Db 类型)
-import { composeErrorCatalogs } from '@tokenlens/errors';
-import { HttpErrors, bodyParserLimit, errorHandler, timingSafeTokenEqual } from '@tokenlens/http';
+import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(http errorHandler 的文档化注入点;非 Db 类型)
+import { composeErrorCatalogs } from '@tillgate/errors';
+import { HttpErrors, bodyParserLimit, errorHandler, timingSafeTokenEqual } from '@tillgate/http';
 import {
   decodeOtlpJson,
   observabilityErrors,
   type SpanBatcher,
   type TraceStore,
   type TraceStoreStats,
-} from '@tokenlens/observability';
+} from '@tillgate/observability';
 
 /**
  * 链路接收端 HTTP 面（内网服务；v1 app.ts 平移,错误面入 v2 目录体系）。

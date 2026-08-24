@@ -3,8 +3,8 @@
  * 单次消费/整组重签(onConflictDoNothing 防同批碰撞,B19)。SQL 与 v1 mfa.ts 对齐。
  */
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identityRecoveryCodes, identityTotp } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { identityRecoveryCodes, identityTotp } from '@tillgate/db';
 import type {
   ConfirmEnrollmentOutcome,
   MfaStore,

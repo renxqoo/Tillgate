@@ -9,7 +9,7 @@ Only the latest `main` branch receives security fixes.
 **Please do not report security vulnerabilities through public GitHub issues.**
 
 Use
-[GitHub private vulnerability reporting](https://github.com/renxqoo/TokenLens-v2/security/advisories/new)
+[GitHub private vulnerability reporting](https://github.com/renxqoo/Tillgate/security/advisories/new)
 for this repository. Please include:
 
 - A description of the issue and its impact

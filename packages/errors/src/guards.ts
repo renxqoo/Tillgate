@@ -2,10 +2,10 @@
  * instanceof 守卫：middleware/边界层的精确捕获面（DESIGN §2）——
  * 已知错误精确捕获，其余穿透；宽 catch 是 v1 已否决的反模式。
  */
-import { BusinessError, DefectError, InfrastructureError, TokenlensError } from './nature';
+import { BusinessError, DefectError, InfrastructureError, TillgateError } from './nature';
 
-export function isTokenlensError(e: unknown): e is TokenlensError {
-  return e instanceof TokenlensError;
+export function isTillgateError(e: unknown): e is TillgateError {
+  return e instanceof TillgateError;
 }
 
 export function isBusinessError(e: unknown): e is BusinessError {

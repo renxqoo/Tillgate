@@ -5,7 +5,7 @@
  * （billing 用例）+ 告警入箱（notifications enqueue，小时级 dedupe——
  * fire-and-forget，告警不反杀对账）。哨兵自身异常只 warn（不算差异，v1 同）。
  */
-import type { ReconcileReport, SettlementApi } from '@tokenlens/billing';
+import type { ReconcileReport, SettlementApi } from '@tillgate/billing';
 
 interface ReconcileJobResult {
   /** null = 未获锁（他副本在跑——不误报不漏报）；false = 哨兵异常 */

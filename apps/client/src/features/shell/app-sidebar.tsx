@@ -14,7 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { APP_CONFIG } from '@/config/app-config';
 

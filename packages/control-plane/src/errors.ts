@@ -3,7 +3,7 @@
  * 身份码 = `control_plane.<key>`；message 英文、zh 中文，face 按码双语渲染（铁律 18）。
  * 码表封闭性由 __test__/boundary.test.ts 快照锁死；新增码 = 契约变更，须同步 DESIGN §2.3。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const controlPlaneErrors = defineErrorCatalog('control_plane', {
   // ── providers ────────────────────────────────────────────────────────────
@@ -175,6 +175,102 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     category: 'conflict',
     message: 'External name already bound to another real model',
     zh: '对外模型名已被其他真实模型占用',
+  },
+
+  // ── admins（RBAC——docs/admin-rbac/DESIGN.md §2.5）────────────────────────
+  /** 管理员邮箱已被占用（admins_email_uq 兜底,23505 翻译;identity 凭据冲突同码） */
+  admin_email_taken: {
+    category: 'conflict',
+    message: 'Admin email already exists',
+    zh: '管理员邮箱已被占用',
+  },
+  /** 角色不在封闭词表内（词表单一真相 = domain/rbac ADMIN_ROLES） */
+  invalid_admin_role: {
+    category: 'invalid_input',
+    message: 'Invalid admin role',
+    zh: '角色不在词表内（super_admin/operator/finance/support/viewer）',
+  },
+
+  // ── 动态 RBAC（ADR-0008:动态角色 + 权限树）─────────────────────────────────
+  /** 角色 code 已被占用 */
+  role_exists: {
+    category: 'conflict',
+    message: 'Role code already exists',
+    zh: '角色 code 已被占用',
+  },
+  /** 角色不存在 */
+  role_not_found: { category: 'not_found', message: 'Role not found', zh: '角色不存在' },
+  /** super/内置角色的不可变面被触碰（super 全锁;内置不可删） */
+  role_immutable: {
+    category: 'forbidden',
+    message: 'Built-in role cannot be modified this way',
+    zh: '内置角色不可如此修改（超管角色完全锁定，预置角色不可删除）',
+  },
+  /** 角色名下仍有管理员（删除守卫） */
+  role_in_use: {
+    category: 'conflict',
+    message: 'Role still has assigned admins',
+    zh: '角色名下仍有管理员，须先迁移',
+  },
+  /** 角色输入非法（code 形状/名称为空/status 词表外） */
+  invalid_role_input: {
+    category: 'invalid_input',
+    message: 'Invalid role input',
+    zh: '角色参数不合法',
+  },
+  /** 授权码不在活动权限集内 */
+  invalid_permission_code: {
+    category: 'invalid_input',
+    message: 'Unknown or inactive permission code',
+    zh: '权限码不存在或已停用',
+  },
+  /** 资源节点输入非法（码形状/父子类型/层级） */
+  invalid_permission_input: {
+    category: 'invalid_input',
+    message: 'Invalid permission node input',
+    zh: '资源节点参数不合法（码形状/父子类型/层级）',
+  },
+  /** 权限码已被占用（全量唯一性应用层守卫） */
+  permission_code_taken: {
+    category: 'conflict',
+    message: 'Permission code already exists',
+    zh: '权限码已被占用',
+  },
+  /** 资源节点不存在 */
+  permission_not_found: {
+    category: 'not_found',
+    message: 'Permission node not found',
+    zh: '资源节点不存在',
+  },
+  /** 节点仍有子节点（删除守卫） */
+  permission_has_children: {
+    category: 'conflict',
+    message: 'Permission node still has children',
+    zh: '节点仍有子节点，须先处理子节点',
+  },
+  /** 节点仍被接口绑定（删除守卫——先解绑/换绑,避免整片接口默认拒绝） */
+  permission_in_use: {
+    category: 'conflict',
+    message: 'Permission node still guards endpoints',
+    zh: '权限仍守护接口，须先解绑或换绑',
+  },
+  /** 接口绑定输入非法（method 词表/path 形状） */
+  invalid_endpoint_input: {
+    category: 'invalid_input',
+    message: 'Invalid endpoint binding input',
+    zh: '接口绑定参数不合法',
+  },
+  /** method+path 已有绑定 */
+  endpoint_bound: {
+    category: 'conflict',
+    message: 'Endpoint already bound',
+    zh: '该接口已有绑定，请换绑而非新建',
+  },
+  /** 绑定不存在 */
+  endpoint_not_found: {
+    category: 'not_found',
+    message: 'Endpoint binding not found',
+    zh: '接口绑定不存在',
   },
 });
 

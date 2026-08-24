@@ -5,9 +5,6 @@
 > 全程中文注释；提交信息用英文 Conventional Commits（`feat` / `fix` / `docs` / `chore` / `refactor` + scope，一行主题说明动机与范围）。
 > **代码是业务逻辑的唯一标准**——docs/ 下的文档仅作导读，可能与实现不同步，与代码冲突时一律以代码为准。
 
-
-
-
 ## 0. 铁律（每条都是硬约束，违反 = 返工）
 
 1. **单向分层**：能力包内 `routes → application → domain`，存在真实边界时使用
@@ -37,7 +34,7 @@
     `ports ← adapters`）；无真实边界的浅包必须合并，不保留永久编制（见铁律 11）。
 11. **边界必须可执行**：package、协议和未来插件边界不能只靠目录命名；显式 `exports`、依赖白名单、
     无环检查、架构测试和发布闭包检查必须在 CI 中执行（当前由 `scripts/check-package-boundaries.ts`
-    + 各包 vitest 契约测试承担）。没有真实边界的浅包必须合并，不保留永久编制。
+    与各包 vitest 契约测试承担）。没有真实边界的浅包必须合并，不保留永久编制。
 12. **数据面与观察面分离**（`ai` 硬约束）：上游响应逐块透传 C 端，不缓冲、不改写、不收完再转发；
     触碰「不改写」的仅有透传例外清单三种情形（docs/project-structure-refactoring.md §3.6）：
     跨协议最小必要转换（含错误体）、响应侧 model 字段替换（`responseModelRewrite` 可配置开关）、
@@ -80,3 +77,9 @@
     错误目录的 `zh` 字段（本地化机制见 `packages/errors/README.md` 与
     `docs/adr/0001-errors-registry-ownership.md`：message/zh 双字段，
     中文可读提示由消费方按目录渲染，不在抛出点硬编码）。
+19. 代码中不要写v1、v2的版本注释，不要用v1，v2，v3...来命名文件名。
+20. **UI 优先用现成组件，可复用的先进 ui 包**：写界面前先查 `packages/ui` 的既有
+    组件（含 `src/index.ts` 导出面），能用的禁止手写替代或内联复刻；ui 包没有时，
+    若该组件会被多处复用（跨页面/跨模块/多列表通用），先落到 `packages/ui` 目录并
+    从 `index.ts` 导出，再在业务侧引用——技术栈固定 shadcn 风格 + Tailwind CSS；
+    仅单处使用的一次性片段可直接写在 feature 内，不强行抽包。

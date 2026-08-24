@@ -3,7 +3,7 @@
  * 整组重签(只存 HMAC 哈希,展示仅此一次)。
  */
 import { randomInt } from 'node:crypto';
-import { advisoryLock, runTx } from '@tokenlens/db';
+import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';

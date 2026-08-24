@@ -1,4 +1,5 @@
-import { createDb, type Db, type TxRetryPolicy } from '@tokenlens/db';
+import { ENFORCED_CODES } from '@tillgate/control-plane';
+import { createDb, type Db, type TxRetryPolicy } from '@tillgate/db';
 import type Redis from 'ioredis';
 import {
   createLogger,
@@ -7,9 +8,9 @@ import {
   createKeyBruteForceGuard,
   createAuthFailureGuard,
   type Logger,
-} from '@tokenlens/runtime';
-import { SUPPORTED_PROTOCOLS, vendorProfileNames, assertSafeUrl } from '@tokenlens/ai';
-import { createIdentity, type Identity } from '@tokenlens/identity';
+} from '@tillgate/runtime';
+import { SUPPORTED_PROTOCOLS, vendorProfileNames, assertSafeUrl } from '@tillgate/ai';
+import { createIdentity, type Identity } from '@tillgate/identity';
 import {
   createBilling,
   createOperationsUseCase,
@@ -18,29 +19,29 @@ import {
   type Billing,
   type OperationRun,
   type RedeemBatchesApi,
-} from '@tokenlens/billing';
-import { generateRedeemCode } from '@tokenlens/http';
+} from '@tillgate/billing';
+import { generateRedeemCode } from '@tillgate/http';
 // ./composition 子入口仅 assembly 引用(§5.3):postgres store 装配便捷件
 import {
   createPostgresBillingStore,
   createPostgresPaymentOrderStore,
   createPostgresRedeemCodeStore,
   createPostgresWalletStore,
-} from '@tokenlens/billing/composition';
-import { createAccounts, type AccountUseCases } from '@tokenlens/accounts';
-import { createControlPlane, type ControlPlane } from '@tokenlens/control-plane';
+} from '@tillgate/billing/composition';
+import { createAccounts, type AccountUseCases } from '@tillgate/accounts';
+import { createControlPlane, type ControlPlane } from '@tillgate/control-plane';
 // 目录源 adapter 不出 control-plane 根入口(§5.3)——装配经 composition 取件
-import { modelsDevSource, createOpenRouterSource } from '@tokenlens/control-plane/composition';
+import { modelsDevSource, createOpenRouterSource } from '@tillgate/control-plane/composition';
 import {
   createObservability,
   initOtel,
   type Observability,
   type OtelHandle,
-} from '@tokenlens/observability';
-import { createNotifications, type Notifications } from '@tokenlens/notifications';
-import { createPostgresGenerationTaskStore } from '@tokenlens/inference';
+} from '@tillgate/observability';
+import { createNotifications, type Notifications } from '@tillgate/notifications';
+import { createPostgresGenerationTaskStore } from '@tillgate/inference';
 // writeAudit/createBestEffortAuditSink = 跨能力审计桥原语(G1;仅 assembly 可引用)
-import { writeAudit, createBestEffortAuditSink } from '@tokenlens/observability/composition';
+import { writeAudit, createBestEffortAuditSink } from '@tillgate/observability/composition';
 import { ADMIN_SESSION_ISSUER, type AdminApiConfig } from './config';
 import type { AuthGuard } from './http/routes/auth';
 import { createUpstreamProbe } from './adapters/upstream-probe';
@@ -65,8 +66,7 @@ import {
 const TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
 /** accounts 装配 policy(v1 等价值——铁律 3,装配层显式持有) */
-const ACCOUNTS_POLICY = {
-  keyPrefix: 'ag_',
+const ACCOUNTS_POLICY_BASE = {
   invitationTtlMs: 7 * 24 * 60 * 60 * 1000,
   invitationPendingFactor: 2,
   invitationPendingCap: 20,
@@ -167,9 +167,9 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       ? createSmtpAdminMailer(
           config.smtp,
           {
-            brand: 'TokenLens 管理后台',
-            brandEn: 'TokenLens Admin',
-            brandSub: 'TOKENLENS · ADMIN CONSOLE',
+            brand: 'Tillgate 管理后台',
+            brandEn: 'Tillgate Admin',
+            brandSub: 'TILLGATE · ADMIN CONSOLE',
           },
           { ttlMinutes: 5, maxAttempts: 5 },
           () => new Date(),
@@ -200,7 +200,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
         // 词表一致性占位（identity 要求 sessions 键 = realms 全集）;
         // secret 用部署级用户面值,但无签发路径——不可用于铸造 user token
         user: {
-          issuer: 'tokenlens:user',
+          issuer: 'tillgate:user',
           secret: config.userJwtSecret,
           ttlSec: config.sessionTtlSec,
         },
@@ -211,7 +211,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       oauthRedirectAllowlist: ['https://admin.invalid/oauth/callback'],
       passwordPolicy: { minLength: 8, maxLength: 128 },
       challenge: { digits: 6, ttlMs: 5 * 60_000, cooldownMs: 60_000, maxAttempts: 5 },
-      totp: { issuer: 'TokenLens Admin', stepSec: 30, windowSteps: 1, recoveryCount: 8 },
+      totp: { issuer: 'Tillgate Admin', stepSec: 30, windowSteps: 1, recoveryCount: 8 },
       oauthStateTtlSec: 600,
     },
     // P2:2FA 邮箱码投递（SMTP 缺省 = fail-closed,不静默降级单密码）+ jti 吊销面
@@ -253,7 +253,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     walletCredit: createWalletCreditBridge(billing.wallet),
     sessionInvalidation: createSessionInvalidationBridge(identity.revocation),
     auditSink: createAuditSinkBridge(writeAudit),
-    policy: ACCOUNTS_POLICY,
+    policy: { ...ACCOUNTS_POLICY_BASE, keyPrefix: config.keyPrefix },
     txRetry: TX_RETRY,
     now: () => new Date(),
   });
@@ -306,9 +306,29 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
       webhookTimeoutMs: 10_000,
       backoffBaseMs: 1_000,
       backoffCapMs: 300_000,
-      emailBrand: 'TokenLens',
+      emailBrand: 'Tillgate',
     },
   });
+
+  // 动态 RBAC 启动对账（ADR-0008）:代码侧 enforced 注册表 ⊆ DB 活动码——
+  // 发版新增码忘了补种子即拒启（绝不静默全站 403）;DB 不可达仅告警（单测装配形态）。
+  void controlPlane.rbac.permissions
+    .activeCodes()
+    .then((active) => {
+      const set = new Set(active);
+      for (const code of ENFORCED_CODES) {
+        if (!set.has(code)) {
+          logger.error(
+            { code },
+            'rbac enforced code missing from DB permissions — refusing to start',
+          );
+          process.exit(1);
+        }
+      }
+    })
+    .catch(() => {
+      logger.warn('rbac startup reconciliation skipped (db unreachable)');
+    });
 
   return {
     logger,

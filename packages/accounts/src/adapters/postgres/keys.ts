@@ -3,7 +3,7 @@
  * 投影结构性排除 keyHash(明文口径见 domain/credentials)。
  */
 import { and, asc, count, desc, eq, gt, ilike, isNull, or } from 'drizzle-orm';
-import { apiKeys, apps, users } from '@tokenlens/db';
+import { apiKeys, apps, users } from '@tillgate/db';
 import type { AccountStorePort } from '../../ports/account-store.js';
 import { likePattern, nowSql } from './shared.js';
 

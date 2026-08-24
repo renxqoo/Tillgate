@@ -18,7 +18,7 @@
  *   failed/expired = 先终态后信号（释放路径相反）——信号失败只记日志不回滚
  *   （任务已终态化，billing 侧租约到期由 settlement recover 按崩溃口径释放）。
  */
-import { UpstreamError } from '@tokenlens/ai';
+import { UpstreamError } from '@tillgate/ai';
 import { GENERATION_KINDS } from '../domain/generation';
 import type { UsageReceipt } from '../domain/usage/receipt';
 import type { BillingSignal } from '../ports/billing';

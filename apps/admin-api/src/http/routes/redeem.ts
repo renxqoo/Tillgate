@@ -4,8 +4,7 @@
  * 审计后置（v1 recordAudit 语义——提交后旁路）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { RedeemBatchesApi } from '@tokenlens/billing';
+import type { RedeemBatchesApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { BATCH_SORTS, CODE_SORTS, redeemContracts } from '../contracts/billing-admin';
 import { toBatchWireRow, toCodeWireRow } from '../presenters/billing';
@@ -28,10 +27,10 @@ export interface RedeemRoutesDeps {
   readonly postAudit: PostAudit;
 }
 
-export function redeemRoutes(deps: RedeemRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function redeemRoutes(deps: RedeemRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.post('/v1/redeem-batches', session, async (c) => {
+  app.post('/v1/redeem-batches', async (c) => {
     const body = redeemContracts.create.parse(await c.req.json());
     const result = await deps.redeemBatches.create({
       createdBy: c.get('adminId'),
@@ -55,7 +54,7 @@ export function redeemRoutes(deps: RedeemRoutesDeps, session: MiddlewareHandler<
     );
   });
 
-  app.get('/v1/redeem-batches', session, async (c) => {
+  app.get('/v1/redeem-batches', async (c) => {
     const query = parseListQuery(c.req.query(), BATCH_SORTS, 'createdAt');
     const page = await deps.redeemBatches.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -67,12 +66,12 @@ export function redeemRoutes(deps: RedeemRoutesDeps, session: MiddlewareHandler<
     return c.json(listEnvelope(page.rows.map(toBatchWireRow), page.total, query));
   });
 
-  app.get('/v1/redeem-batches/:id', session, async (c) => {
+  app.get('/v1/redeem-batches/:id', async (c) => {
     const row = await deps.redeemBatches.detail(idParam(c.req.param('id')));
     return c.json(toBatchWireRow(row));
   });
 
-  app.get('/v1/redeem-batches/:id/codes', session, async (c) => {
+  app.get('/v1/redeem-batches/:id/codes', async (c) => {
     const id = idParam(c.req.param('id'));
     const extra = redeemContracts.codesQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), CODE_SORTS, 'id');
@@ -87,7 +86,7 @@ export function redeemRoutes(deps: RedeemRoutesDeps, session: MiddlewareHandler<
     return c.json(listEnvelope(page.rows.map(toCodeWireRow), page.total, query));
   });
 
-  app.post('/v1/redeem-batches/codes/:codeId/revoke', session, async (c) => {
+  app.post('/v1/redeem-batches/codes/:codeId/revoke', async (c) => {
     const codeId = idParam(c.req.param('codeId'));
     const result = await deps.redeemBatches.revoke({ codeId });
     await deps.postAudit({

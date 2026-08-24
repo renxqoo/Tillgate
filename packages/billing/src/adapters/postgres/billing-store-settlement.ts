@@ -4,7 +4,7 @@
  * clock_timestamp 租约、恢复守卫。
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { billingRequests, usageLogs, type Db, type DbTx } from '@tokenlens/db';
+import { billingRequests, usageLogs, type Db, type DbTx } from '@tillgate/db';
 import type { BillingRequestRow, BillingStore } from '../../ports/billing-store.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 

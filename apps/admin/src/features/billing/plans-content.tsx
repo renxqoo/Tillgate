@@ -14,10 +14,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -31,7 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useState, useTransition } from 'react';
 
@@ -52,7 +52,7 @@ import { z } from 'zod';
 import { formatMoney, formatPoints } from '@/lib/formatters';
 import { moneyText } from '@/lib/forms';
 
-import type { PlanRow } from '@tokenlens/api-client';
+import type { PlanRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */
@@ -141,6 +141,9 @@ function PlanRowItem({
   const [grantOpen, setGrantOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  let seatStatus = <StatusPill tone="neutral" label={t('personal')} />;
+  if (plan.kind === 'pack') seatStatus = <span className="text-xs text-muted-foreground">—</span>;
+  else if (plan.allowSeats) seatStatus = <StatusPill tone="accent" label={t('team')} />;
 
   async function runDelete() {
     setDeleting(true);
@@ -165,15 +168,7 @@ function PlanRowItem({
       <TableCell className="text-right">
         <MoneyPoints value={plan.quotaAmount} />
       </TableCell>
-      <TableCell>
-        {plan.kind === 'pack' ? (
-          <span className="text-xs text-muted-foreground">—</span>
-        ) : plan.allowSeats ? (
-          <StatusPill tone="accent" label={t('team')} />
-        ) : (
-          <StatusPill tone="neutral" label={t('personal')} />
-        )}
-      </TableCell>
+      <TableCell>{seatStatus}</TableCell>
       <TableCell>
         <StatusBadge status={plan.status} />
       </TableCell>
@@ -273,7 +268,7 @@ function GrantPackDialog({
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
-          <Field>
+          <FormItem>
             <FieldLabel htmlFor="grant-user-id">{tc('userId')}</FieldLabel>
             <Input
               id="grant-user-id"
@@ -283,7 +278,7 @@ function GrantPackDialog({
               onChange={(e) => setUserId(e.target.value)}
               placeholder={t('userIdPlaceholder')}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />
@@ -488,11 +483,11 @@ function PlanForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="plan-name">{tc('name')}</FieldLabel>
               <Input id="plan-name" placeholder={t('namePlaceholder')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
@@ -506,7 +501,7 @@ function PlanForm({
               onChange: (v: 'subscription' | 'pack') => void;
             };
           }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{tc('type')}</FieldLabel>
               <Select
                 value={field.value}
@@ -521,7 +516,7 @@ function PlanForm({
                   <SelectItem value="pack">{t('packOption')}</SelectItem>
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
@@ -534,11 +529,11 @@ function PlanForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="plan-sort">{t('tierLabel')}</FieldLabel>
               <Input id="plan-sort" type="number" step="1" placeholder={t('blank')} {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <NumberField
@@ -554,7 +549,7 @@ function PlanForm({
             control={form.control}
             name="periodDays"
             render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('period')}</FieldLabel>
                 <Select value={field.value} onValueChange={(v) => v !== null && field.onChange(v)}>
                   <SelectTrigger className="w-full">
@@ -565,7 +560,7 @@ function PlanForm({
                     <SelectItem value="365">{t('yearly')}</SelectItem>
                   </SelectContent>
                 </Select>
-              </Field>
+              </FormItem>
             )}
           />
         )}
@@ -582,7 +577,7 @@ function PlanForm({
             control={form.control}
             name="allowSeats"
             render={({ field }: { field: { value: boolean; onChange: (v: boolean) => void } }) => (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('seatsMode')}</FieldLabel>
                 <Select
                   value={field.value ? '1' : '0'}
@@ -596,7 +591,7 @@ function PlanForm({
                     <SelectItem value="1">{t('teamOption')}</SelectItem>
                   </SelectContent>
                 </Select>
-              </Field>
+              </FormItem>
             )}
           />
         )}
@@ -605,7 +600,7 @@ function PlanForm({
             control={form.control}
             name="status"
             render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
-              <Field>
+              <FormItem>
                 <FieldLabel>{tc('status')}</FieldLabel>
                 <Select
                   value={String(field.value ?? 0)}
@@ -619,7 +614,7 @@ function PlanForm({
                     <SelectItem value="1">{t('unlisted')}</SelectItem>
                   </SelectContent>
                 </Select>
-              </Field>
+              </FormItem>
             )}
           />
         )}

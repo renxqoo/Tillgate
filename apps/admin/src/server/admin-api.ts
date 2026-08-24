@@ -6,9 +6,9 @@
  * http://localhost:8082）。页面与 server action 一律经 `adminApi()` 取数——
  * 禁止裸 fetch 直连 admin-api（登录/验码除外：会话建立前无 client，见 auth-actions）。
  */
-import type { AdminApiClient } from '@tokenlens/api-client';
+import type { AdminApiClient } from '@tillgate/api-client';
 
-import { createNextAdminApiClient } from '@tokenlens/api-client/next';
+import { createNextAdminApiClient } from '@tillgate/api-client/next';
 
 import { ADMIN_LOCALE_RESOLUTION } from './admin-locale';
 

@@ -2,7 +2,7 @@
 
 import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 
-import { Field, FieldError, FieldLabel, Input } from '@tokenlens/ui';
+import { Field, FieldError, FieldLabel, Input } from '@tillgate/ui';
 
 /**
  * 数字输入（react-hook-form + Controller 封装；v1 旧 ui number-field 语义等价）。

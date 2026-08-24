@@ -7,15 +7,15 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  Field,
   FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import {
@@ -94,7 +94,7 @@ export function LoginForm() {
             className="space-y-6"
           >
             <FieldGroup>
-              <Field>
+              <FormItem>
                 <FieldLabel htmlFor="admin-totp-code">{t('codeLabelTotp')}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
@@ -118,7 +118,7 @@ export function LoginForm() {
                   />
                 </InputGroup>
                 <FieldDescription>{t('totpRecoveryHint')}</FieldDescription>
-              </Field>
+              </FormItem>
             </FieldGroup>
             <Button
               type="submit"
@@ -164,7 +164,7 @@ export function LoginForm() {
             className="space-y-6"
           >
             <FieldGroup>
-              <Field>
+              <FormItem>
                 <FieldLabel htmlFor="admin-2fa-code">{t('codeLabel')}</FieldLabel>
                 <InputGroup>
                   <InputGroupAddon>
@@ -182,7 +182,7 @@ export function LoginForm() {
                   />
                 </InputGroup>
                 <FieldDescription>{t('twoFactorHint')}</FieldDescription>
-              </Field>
+              </FormItem>
             </FieldGroup>
             <Button type="submit" disabled={pending || code.length !== 6} className="h-10 w-full">
               {pending && <Loader2Icon className="animate-spin" />}
@@ -222,7 +222,7 @@ export function LoginForm() {
               control={form.control}
               name="email"
               render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
+                <FormItem data-invalid={fieldState.invalid}>
                   <FieldLabel htmlFor="admin-email">{t('email')}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
@@ -237,14 +237,14 @@ export function LoginForm() {
                     />
                   </InputGroup>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
+                </FormItem>
               )}
             />
             <Controller
               control={form.control}
               name="password"
               render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
+                <FormItem data-invalid={fieldState.invalid}>
                   <FieldLabel htmlFor="admin-password">{t('password')}</FieldLabel>
                   <InputGroup>
                     <InputGroupAddon>
@@ -269,7 +269,7 @@ export function LoginForm() {
                     </InputGroupAddon>
                   </InputGroup>
                   {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
+                </FormItem>
               )}
             />
           </FieldGroup>

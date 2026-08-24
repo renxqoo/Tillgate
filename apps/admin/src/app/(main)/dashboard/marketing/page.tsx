@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import { MegaphoneIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
@@ -9,6 +10,7 @@ import { MarketingContent, type MarketingSettingsView } from '@/features/billing
 export const dynamic = 'force-dynamic';
 
 export default async function MarketingPage() {
+  await requirePermission('growth:read');
   const t = await getTranslations('marketing');
   const tc = await getTranslations('common');
   let settings: MarketingSettingsView | null = null;

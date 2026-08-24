@@ -2,8 +2,8 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@tokenlens/ui';
-import type { CurrentSubscription, OrgRow, PlanRow } from '@tokenlens/api-client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@tillgate/ui';
+import type { CurrentSubscription, OrgRow, PlanRow } from '@tillgate/api-client';
 
 import {
   CurrentSubscriptionCard,
@@ -94,51 +94,60 @@ export function SubscriptionContent({
         </Card>
       ) : null}
 
-      {subError ? (
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-destructive">{subError}</p>
-          </CardContent>
-        </Card>
-      ) : !subscription ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('buyTitle')}</CardTitle>
-            <CardDescription>{t('buyDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {plansError ? (
-              <p className="text-sm text-destructive">{plansError}</p>
-            ) : visiblePlans.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('noPlans')}</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {visiblePlans.map((p) => (
-                  <PlanCard key={p.id} plan={p} subscription={subscription} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : visiblePlans.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('plansTitle')}</CardTitle>
-            <CardDescription>{t('plansDesc')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {plansError ? (
-              <p className="text-sm text-destructive">{plansError}</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {visiblePlans.map((p) => (
-                  <PlanCard key={p.id} plan={p} subscription={subscription} />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
+      {(() => {
+        if (subError)
+          return (
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-sm text-destructive">{subError}</p>
+              </CardContent>
+            </Card>
+          );
+        if (!subscription)
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t('buyTitle')}</CardTitle>
+                <CardDescription>{t('buyDesc')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  if (plansError) return <p className="text-sm text-destructive">{plansError}</p>;
+                  if (visiblePlans.length === 0)
+                    return <p className="text-sm text-muted-foreground">{t('noPlans')}</p>;
+                  return (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {visiblePlans.map((p) => (
+                        <PlanCard key={p.id} plan={p} subscription={subscription} />
+                      ))}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          );
+        if (visiblePlans.length > 0)
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t('plansTitle')}</CardTitle>
+                <CardDescription>{t('plansDesc')}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {plansError ? (
+                  <p className="text-sm text-destructive">{plansError}</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {visiblePlans.map((p) => (
+                      <PlanCard key={p.id} plan={p} subscription={subscription} />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        return null;
+      })()}
     </div>
   );
 }

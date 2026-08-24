@@ -1,26 +1,31 @@
 /**
  * 管理面会话中间件（Bearer）：Authorization: Bearer <JWT> → identity admin realm
  * 全链校验（HS256 验签 + issuer/realm 比对 + jti 吊销 + 锚点线）→ 属主回查
- * （admins 行存在且 status=0——封禁/注销的会话即刻失效,P2/D8/W3 兑现）→ 注入会话变量。
+ * （v2 findAccess：状态 + isSuper + active 码集合一条 join）→ 注入会话变量。
  * 失败统一 401 不区分原因（不泄漏管理账号状态）。
  * 无 Cookie 无 CSRF：管理台类客户端自持 Bearer，凭据不经浏览器自动携带。
  */
 import type { Context, MiddlewareHandler } from 'hono';
-import type { SessionPayload } from '@tokenlens/identity';
-import type { ControlContext } from '@tokenlens/control-plane';
-import { HttpErrors } from '@tokenlens/http';
+import type { SessionPayload } from '@tillgate/identity';
+import type { AdminAccess, AdminGrants, ControlContext } from '@tillgate/control-plane';
+import { HttpErrors } from '@tillgate/http';
 
-/** 会话校验依赖（identity facade + 管理员资料属主回查——结构子集,app 只持闭包） */
+export type { AdminAccess };
+
+/** 会话校验依赖（identity facade + 属主回查——结构子集,app 只持闭包） */
 export interface SessionValidator {
   validate(token: string, realm: 'admin'): Promise<SessionPayload | null>;
-  /** 属主回查：admins 行（不存在/封禁/注销 → null = 401——v1 D8/W3 语义） */
-  owner?: (adminId: number) => Promise<{ status: number } | null>;
+  /** 属主回查（一条 join）：状态 + isSuper + active 码集合;不存在 → null = 401。
+   *  授权面随回查注入——角色/授权变更下一请求即生效（不嵌 JWT）。 */
+  owner?: (adminId: number) => Promise<AdminAccess | null>;
 }
 
 export interface SessionEnv {
   Variables: {
     requestId: string;
     adminId: number;
+    /** 会话授权面（guard 工厂消费;回查缺省形态下无此变量 → 权限守卫 fail-closed） */
+    grants: AdminGrants;
     /** 原始 Bearer token（logout 吊销需要原始值——jti 提取在 identity 内完成） */
     sessionToken: string;
     /** 当前会话 jti/exp */
@@ -46,10 +51,11 @@ export function sessionMiddleware(sessions: SessionValidator): MiddlewareHandler
     }
     // 属主回查（装配缺省不回查 = 纯会话校验形态;生产装配必注入——v1 B01 收敛口径）
     if (sessions.owner != null) {
-      const owner = await sessions.owner(adminId);
-      if (owner == null || owner.status !== 0) {
+      const access = await sessions.owner(adminId);
+      if (access == null || access.status !== 0) {
         throw HttpErrors.business('unauthorized');
       }
+      c.set('grants', access.grants);
     }
     c.set('adminId', adminId);
     c.set('sessionToken', token);

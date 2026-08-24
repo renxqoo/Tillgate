@@ -147,7 +147,10 @@ export async function resolveAndPin(
 ): Promise<ResolvedTarget> {
   const u = assertSafeUrlSync(url, opts);
   const hostname = u.hostname.replace(/^\[|\]$/g, '');
-  const port = u.port ? Number(u.port) : u.protocol === 'https:' ? 443 : 80;
+  let port;
+  if (u.port) port = Number(u.port);
+  else if (u.protocol === 'https:') port = 443;
+  else port = 80;
   if (opts.allowLocal) return { ip: null, hostname, port };
   if (opts.allowedHosts?.length && !opts.allowedHosts.includes(hostname.toLowerCase())) {
     throw new Error(`upstream host is not allowlisted: ${hostname}`);

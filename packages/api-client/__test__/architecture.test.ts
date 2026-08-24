@@ -1,7 +1,7 @@
 /**
  * 架构边界门禁(铁律 11):目录约定由机器验证。
  * - 根入口依赖闭包不得 import next/(总纲 §3 树注释)
- * - 全包禁止任何私有 @tokenlens/* / @ai-gateway/* import(发布闭包,总纲 §5.1)
+ * - 全包禁止任何私有 @tillgate/* / @ai-gateway/* import(发布闭包,总纲 §5.1)
  * - package.json 依赖闭包无私有 workspace 包;exports 恰为 '.' 与 './next'
  * - 双出口运行时词表逐一锁定(§10.1 词表封闭性;收编 v1 api-path-contract.test)
  */
@@ -20,7 +20,7 @@ function listTsFiles(dir: string): string[] {
 
 /** import 语句形态的模块说明符匹配(注释中提到包名不算依赖) */
 const NEXT_IMPORT = /(?:from\s+|import\()\s*['"][^'"]*next\//;
-const PRIVATE_IMPORT = /(?:from\s+|import\()\s*['"](?:@tokenlens|@ai-gateway)\//;
+const PRIVATE_IMPORT = /(?:from\s+|import\()\s*['"](?:@tillgate|@ai-gateway)\//;
 
 describe('边界:根入口闭包框架无关', () => {
   it('src/**(除 src/next/**)不存在任何 next/ 导入', () => {
@@ -38,7 +38,7 @@ describe('边界:根入口闭包框架无关', () => {
 });
 
 describe('边界:发布依赖闭包(总纲 §5.1)', () => {
-  it('全包源码无 @tokenlens/* 与 @ai-gateway/* 导入', () => {
+  it('全包源码无 @tillgate/* 与 @ai-gateway/* 导入', () => {
     for (const file of listTsFiles(srcRoot)) {
       const source = readFileSync(file, 'utf8');
       expect(source, `${relative(pkgRoot, file)} 不应依赖私有包`).not.toMatch(PRIVATE_IMPORT);
@@ -53,7 +53,7 @@ describe('边界:发布依赖闭包(总纲 §5.1)', () => {
     };
     expect(Object.keys(pkg.dependencies ?? {})).toEqual([]);
     const all = JSON.stringify({ ...pkg.peerDependencies, ...pkg.devDependencies });
-    expect(all).not.toContain('@tokenlens/');
+    expect(all).not.toContain('@tillgate/');
     expect(all).not.toContain('@ai-gateway/');
     expect(all).not.toContain('workspace:');
   });

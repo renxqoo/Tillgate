@@ -6,7 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
+import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPgFundingSourceResolver } from '../src/adapters/postgres/funding-resolver.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
@@ -18,7 +18,7 @@ describe.skipIf(url == null)('FundingSourceResolver 桥（真实 PG）', () => {
   let conn: { readonly connBrand: 'wallet-conn' };
 
   beforeAll(async () => {
-    schema = `tokenlens_acc_fund_${process.pid.toString(36)}_${Date.now().toString(36)}`;
+    schema = `tillgate_acc_fund_${process.pid.toString(36)}_${Date.now().toString(36)}`;
     const [baseUrl] = url!.split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,

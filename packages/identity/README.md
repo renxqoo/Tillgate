@@ -1,4 +1,4 @@
-# @tokenlens/identity
+# @tillgate/identity
 
 > 身份认证能力:凭据、密码、统一挑战、MFA、OAuth 绑定、JWT 会话与吊销(总纲 §3/P4.1)。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)

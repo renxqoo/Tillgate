@@ -5,7 +5,7 @@
  * 恢复 job：三类滞留单兜底（authorized 过期 / in_flight 租约过期 / processing
  * 认领过期——recover 用例语义）。
  */
-import type { RecoveryRunResult, SettlementApi, SettlementClaim } from '@tokenlens/billing';
+import type { RecoveryRunResult, SettlementApi, SettlementClaim } from '@tillgate/billing';
 
 interface SettlementBatchResult {
   claimed: number;

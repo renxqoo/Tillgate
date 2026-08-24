@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KIND_MECHANICS } from '@tokenlens/ai';
+import { KIND_MECHANICS } from '@tillgate/ai';
 import {
   isChannelExhausted,
   isChannelSwitchable,

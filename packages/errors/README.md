@@ -1,4 +1,4 @@
-# @tokenlens/errors
+# @tillgate/errors
 
 > 内部错误根契约:三性根类 + category 闭集 + 命名空间错误目录 + 规范化错误记录——零业务/协议依赖的稳定叶子。
 > 裁决:[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) · 设计基线 [DESIGN.md](./DESIGN.md) ·
@@ -11,7 +11,7 @@ nature/category;渲染与日志只消费规范化记录。**
 ## 核心导出面
 
 - 三性根类:`BusinessError` / `InfrastructureError` / `DefectError`(公共基类
-  `TokenlensError`)+ `annotate()` 传播注记(实例稳定:不包装、不改判、instanceof 不动)。
+  `TillgateError`)+ `annotate()` 传播注记(实例稳定:不包装、不改判、instanceof 不动)。
 - category 七项闭集(`ERROR_CATEGORIES`:invalid_input / not_found / conflict / forbidden /
   quota_exhausted / rate_limited / unavailable)+ `CATEGORY_DEFAULTS`;处理语义
   (retryable / alert)由 `handlingOf` **单点派生**。
@@ -20,7 +20,7 @@ nature/category;渲染与日志只消费规范化记录。**
   `BusinessCode` 为品牌类型,自由字符串编译期被拒绝(ADR-0001 D8)。
 - 规范化记录:`recordOf`(根契约错误 → 记录,含 cause 链)、`normalizeError`
   (任意 unknown 安全成录;外来一律按缺陷 `errors.unhandled`)。
-- 守卫:`isTokenlensError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
+- 守卫:`isTillgateError` / `isBusinessError` / `isInfrastructureError` / `isDefectError`。
 
 ## 快速开始(能力包三步)
 
@@ -38,7 +38,7 @@ catch (e) {
 }
 ```
 
-出站渲染归 `@tokenlens/http` 的 `renderError`(category → 默认 status + face override),
+出站渲染归 `@tillgate/http` 的 `renderError`(category → 默认 status + face override),
 本包不定义协议形态;defect / infrastructure 细节不出站,只进日志。
 
 ## 目录结构

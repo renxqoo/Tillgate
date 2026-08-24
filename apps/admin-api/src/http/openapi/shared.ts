@@ -9,7 +9,7 @@
  * 本目录不属于运行时热路径:routes 不 import 此处（仅 scripts/__test__/generator 消费）。
  */
 import { z } from 'zod';
-import { listQuerySchema } from '@tokenlens/http';
+import { listQuerySchema } from '@tillgate/http';
 
 export type OpenApiMethod = 'get' | 'post' | 'patch' | 'put' | 'delete';
 
@@ -69,7 +69,7 @@ export function listQuery(extra?: z.ZodObject<z.ZodRawShape>) {
   return extra === undefined ? listQuerySchema : listQuerySchema.extend(extra.shape);
 }
 
-/** 统一错误信封（@tokenlens/http renderError 形状） */
+/** 统一错误信封（@tillgate/http renderError 形状） */
 export const errorEnvelopeSchema = z.object({
   error: z.object({
     code: z.string(),

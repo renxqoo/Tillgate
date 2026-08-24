@@ -46,16 +46,16 @@ describe('client-api 架构门禁', () => {
     }
   });
 
-  it('@tokenlens/db 与 Db/DbTx 类型只允许在 {index,config,assembly} ∪ adapters', () => {
+  it('@tillgate/db 与 Db/DbTx 类型只允许在 {index,config,assembly} ∪ adapters', () => {
     const assemblyFace = new Set(['index.ts', 'config.ts', 'assembly.ts']);
     for (const [file, source] of ALL) {
       if (assemblyFace.has(file) || file.startsWith('adapters/')) continue;
       // app.ts 的 pgSqlState 是纯 SQLSTATE 分类函数（trace-receiver 同款白名单例外）
       const withoutException =
         file === 'app.ts'
-          ? source.replace(/import \{ pgSqlState \} from '@tokenlens\/db';/, '')
+          ? source.replace(/import \{ pgSqlState \} from '@tillgate\/db';/, '')
           : source;
-      expect(withoutException, `${file} 不得依赖 db 包`).not.toMatch(/from '@tokenlens\/db'/);
+      expect(withoutException, `${file} 不得依赖 db 包`).not.toMatch(/from '@tillgate\/db'/);
       expect(withoutException, `${file} 不得出现 Db/DbTx 类型`).not.toMatch(/\b(Db|DbTx)\b/);
     }
   });
@@ -70,7 +70,7 @@ describe('client-api 架构门禁', () => {
 
   it('跨包 import 只走显式 exports（禁 /src 深导入）', () => {
     for (const [file, source] of ALL) {
-      const specifiers = [...source.matchAll(/from '(@tokenlens\/[^']+)'/g)].map((m) => m[1]);
+      const specifiers = [...source.matchAll(/from '(@tillgate\/[^']+)'/g)].map((m) => m[1]);
       for (const s of specifiers) {
         expect(s, `${file} 深导入 ${s}`).not.toMatch(/\/src\//);
       }

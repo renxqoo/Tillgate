@@ -1,6 +1,6 @@
 /**
- * @tokenlens/http 公共出口——纯 HTTP/Hono 基础工具（DESIGN.md §2）。
- * 出口面有意维护：错误渲染出口（@tokenlens/errors 第一消费者）、本地化、
+ * @tillgate/http 公共出口——纯 HTTP/Hono 基础工具（DESIGN.md §2）。
+ * 出口面有意维护：错误渲染出口（@tillgate/errors 第一消费者）、本地化、
  * 校验、分页、可信网络提取、请求上下文、幂等键、安全件。
  */
 
@@ -60,7 +60,7 @@ export {
 export { requestIdMiddleware } from './request-context/request-id';
 
 // ---- 安全件：一次性密钥 + 常量时间比较 + 协议三件套 ----
-// api-key/app 凭证生成器已随消费者迁入 @tokenlens/accounts(C5/D3)
+// api-key/app 凭证生成器已随消费者迁入 @tillgate/accounts(C5/D3)
 export { generateRedeemCode, maskUpstreamKey } from './security/secrets';
 export { timingSafeTokenEqual } from './security/token-compare';
 export {

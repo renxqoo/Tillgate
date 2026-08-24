@@ -4,11 +4,11 @@
  * P2 登录波装配后 Redis 收口恢复（守卫双闸/jti 吊销面连接 quit）。
  */
 import type { ServerType } from '@hono/node-server';
-import type { Db } from '@tokenlens/db';
-import { closeDb } from '@tokenlens/db';
-import type { Logger } from '@tokenlens/runtime';
-import { createShutdown } from '@tokenlens/runtime';
-import type { OtelHandle } from '@tokenlens/observability';
+import type { Db } from '@tillgate/db';
+import { closeDb } from '@tillgate/db';
+import type { Logger } from '@tillgate/runtime';
+import { createShutdown } from '@tillgate/runtime';
+import type { OtelHandle } from '@tillgate/observability';
 
 export interface AdminShutdownDeps {
   readonly server: ServerType;

@@ -3,7 +3,7 @@
  * siteKey/邮箱验证码开关）。探测失败按「全开」语义回落（v1 刻意取舍 B20：
  * 探测失败不隐藏入口，由提交动作的 403/错误码兜底）。
  */
-import type { AuthCapabilities, OAuthProviders } from '@tokenlens/api-client';
+import type { AuthCapabilities, OAuthProviders } from '@tillgate/api-client';
 
 import { createClientApi } from './api';
 

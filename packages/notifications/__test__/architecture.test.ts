@@ -56,7 +56,7 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/errors' ||
           (spec.startsWith('./') && !spec.startsWith('../'));
         expect(ok, `${f.path} → ${spec}`).toBe(true);
       }
@@ -68,8 +68,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/errors' ||
-          spec === '@tokenlens/db' ||
+          spec === '@tillgate/errors' ||
+          spec === '@tillgate/db' ||
           spec === '../errors' ||
           spec.startsWith('./') ||
           spec.startsWith('../domain/') ||
@@ -85,8 +85,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/errors' ||
-          spec === '@tokenlens/db' ||
+          spec === '@tillgate/errors' ||
+          spec === '@tillgate/db' ||
           spec.startsWith('./') ||
           spec.startsWith('../domain/');
         expect(ok, `${f.path} → ${spec}`).toBe(true);
@@ -99,8 +99,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/db' ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/db' ||
+          spec === '@tillgate/errors' ||
           spec === 'drizzle-orm' ||
           spec.startsWith('drizzle-orm/') ||
           spec === 'nodemailer' ||
@@ -125,17 +125,17 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
     }
   });
 
-  it('全包禁 pg/@tokenlens/http/@tokenlens/runtime/@tokenlens/ai 与业务能力包(DESIGN §5 白名单)', () => {
+  it('全包禁 pg/@tillgate/http/@tillgate/runtime/@tillgate/ai 与业务能力包(DESIGN §5 白名单)', () => {
     const banned = [
       'pg',
-      '@tokenlens/http',
-      '@tokenlens/runtime',
-      '@tokenlens/ai',
-      '@tokenlens/accounts',
-      '@tokenlens/billing',
-      '@tokenlens/inference',
-      '@tokenlens/control-plane',
-      '@tokenlens/identity',
+      '@tillgate/http',
+      '@tillgate/runtime',
+      '@tillgate/ai',
+      '@tillgate/accounts',
+      '@tillgate/billing',
+      '@tillgate/inference',
+      '@tillgate/control-plane',
+      '@tillgate/identity',
     ];
     for (const f of files) {
       for (const spec of f.imports) {

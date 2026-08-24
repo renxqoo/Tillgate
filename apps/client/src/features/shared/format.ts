@@ -6,7 +6,7 @@
  *   - 日期：v1 容器本地时区 → 显式 DISPLAY_TZ（B8 修复；SSR 与浏览器同值无水合漂移）。
  * formatter 构造有成本，按 locale/currency 维度缓存。
  */
-import { createDateFormatter } from '@tokenlens/ui';
+import { createDateFormatter } from '@tillgate/ui';
 
 import { DEFAULT_CURRENCY, DISPLAY_TZ } from '@/config/display';
 

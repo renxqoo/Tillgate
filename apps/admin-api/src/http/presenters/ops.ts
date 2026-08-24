@@ -4,9 +4,9 @@
  * (v1 JSON 序列化 Date 的产物——前端按 ISO 消费,保持兼容);
  * Date 列一律 iso() 收口(货币金额保持十进制字符串)。
  */
-import type { UsageAdminRow } from '@tokenlens/observability';
-import type { GenerationTaskAdminRow } from '@tokenlens/inference';
-import type { AdminPaymentOrderRow } from '@tokenlens/billing';
+import type { UsageAdminRow } from '@tillgate/observability';
+import type { GenerationTaskAdminRow } from '@tillgate/inference';
+import type { AdminPaymentOrderRow } from '@tillgate/billing';
 import { iso } from '../contracts/common';
 
 export function toUsageWireRow(row: UsageAdminRow) {

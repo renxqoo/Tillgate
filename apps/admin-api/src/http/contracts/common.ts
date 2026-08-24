@@ -5,8 +5,8 @@
  *   - 信封 {rows,total,page,pageSize}(v1 键名——前端 fetchAdminList 消费口径)。
  */
 import { z } from 'zod';
-import { Decimal, parseNonNegativeAmount, parsePositiveAmount } from '@tokenlens/billing';
-import { listQuerySchema } from '@tokenlens/http';
+import { Decimal, parseNonNegativeAmount, parsePositiveAmount } from '@tillgate/billing';
+import { listQuerySchema } from '@tillgate/http';
 import { AdminErrors } from '../error-face';
 
 const MONEY_MAX = new Decimal('1000000000');
@@ -66,7 +66,7 @@ export interface ListParts {
 }
 
 /**
- * 统一列表查询解析（v1 parseListQuery 语义）：分页/搜索由 @tokenlens/http
+ * 统一列表查询解析（v1 parseListQuery 语义）：分页/搜索由 @tillgate/http
  * listQuerySchema 容错解析（非法值回退缺省,永不 400）；sort_by 缺省 defaultSort,
  * 白名单外 → 400 admin.invalid_sort_field（不静默回退——v1 语义）。
  */

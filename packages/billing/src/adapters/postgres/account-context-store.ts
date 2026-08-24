@@ -3,7 +3,7 @@
  * 生产可由 app assembly 桥接 accounts 能力替换（port 注入）。
  */
 import { eq } from 'drizzle-orm';
-import { apiKeys, apps, orgMembers, organizations, users, type Db, type DbTx } from '@tokenlens/db';
+import { apiKeys, apps, orgMembers, organizations, users, type Db, type DbTx } from '@tillgate/db';
 import type { AccountContextStore } from '../../ports/account-context.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 

@@ -3,7 +3,7 @@
  * 审计在冻结单本身（reason + 释放指纹），不落交易（零额噪声行取消）；
  * released 重放幂等（返回首笔金额）；settled/expired 是真拒绝（authorization_not_active）。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { commandFingerprint } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { Decimal, toStorage } from '../../domain/money.js';

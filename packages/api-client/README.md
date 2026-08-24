@@ -1,4 +1,4 @@
-# `@tokenlens/api-client`
+# `@tillgate/api-client`
 
 **发布候选第一号**(当前私有;发布改造见总纲 P6)。client-api / admin-api 调用封装:
 框架无关 transport / 错误 / 分页客户端 + 手写 DTO 快照 + `./next` BFF 装配子入口。
@@ -9,15 +9,15 @@
 
 | 入口                         | 内容                                                                                                                           | 依赖                     |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
-| `@tokenlens/api-client`      | `createHttpClient` / `createClientApiClient` / `createAdminApiClient` / `ApiError` / `buildListQuery` / `Paginated` / 两面 DTO | 零运行时依赖,不需要 Next |
-| `@tokenlens/api-client/next` | `createNextClientApiClient` / `createNextAdminApiClient` / session cookie 工具 / locale 协商 / `trustedClientIp`               | peer `next@^16`          |
+| `@tillgate/api-client`      | `createHttpClient` / `createClientApiClient` / `createAdminApiClient` / `ApiError` / `buildListQuery` / `Paginated` / 两面 DTO | 零运行时依赖,不需要 Next |
+| `@tillgate/api-client/next` | `createNextClientApiClient` / `createNextAdminApiClient` / session cookie 工具 / locale 协商 / `trustedClientIp`               | peer `next@^16`          |
 
 ## 用法
 
 ### 框架无关(任意 runtime)
 
 ```ts
-import { createClientApiClient, ApiError } from '@tokenlens/api-client';
+import { createClientApiClient, ApiError } from '@tillgate/api-client';
 
 const client = createClientApiClient({
   baseUrl: 'http://client-api:8081',
@@ -49,7 +49,7 @@ import {
   createNextAdminApiClient,
   setSessionToken,
   hasSessionCookie,
-} from '@tokenlens/api-client/next';
+} from '@tillgate/api-client/next';
 
 // env CLIENT_API_BASE / ADMIN_API_BASE(缺省回落 dev 端口 8081/8082)
 const admin = createNextAdminApiClient();
@@ -73,7 +73,7 @@ SESSION_TTL_SECONDS=86400                 # 会话 cookie maxAge
 
 ## 约束
 
-- 根入口不得 import `next/`(架构测试门禁);发布闭包禁止任何私有 `@tokenlens/*` 依赖。
+- 根入口不得 import `next/`(架构测试门禁);发布闭包禁止任何私有 `@tillgate/*` 依赖。
 - `src/dto/` 为手写过渡态;OpenAPI 生成链落地后由 `generated/` 整体替换(总纲 §2.2/P6)。
 - 抛出的错误 message 一律英文;中文渲染由消费方处理。
 

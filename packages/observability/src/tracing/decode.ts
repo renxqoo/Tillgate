@@ -59,8 +59,8 @@ function normalizeStatus(code: unknown): number {
 }
 
 function nanoToDate(value: unknown): Date | null {
-  const nano =
-    typeof value === 'string' ? (/^\d+$/.test(value) ? Number(value) : NaN) : Number(value);
+  let nano = Number(value);
+  if (typeof value === 'string') nano = /^\d+$/.test(value) ? Number(value) : NaN;
   if (!Number.isFinite(nano) || nano <= 0) return null;
   return new Date(nano / 1_000_000);
 }

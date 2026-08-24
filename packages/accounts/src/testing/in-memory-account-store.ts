@@ -555,12 +555,10 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       rows = rows.toSorted((a, b) => {
         const av = a[field];
         const bv = b[field];
-        const cmp =
-          av instanceof Date && bv instanceof Date
-            ? av.getTime() - bv.getTime()
-            : typeof av === 'number' && typeof bv === 'number'
-              ? av - bv
-              : String(av ?? '').localeCompare(String(bv ?? ''));
+        let cmp: number;
+        if (av instanceof Date && bv instanceof Date) cmp = av.getTime() - bv.getTime();
+        else if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+        else cmp = String(av ?? '').localeCompare(String(bv ?? ''));
         return (input.sort.order === 'asc' ? cmp : -cmp) || b.id - a.id;
       });
       return paginate(rows.map(pubUser), input.page, input.limit);
@@ -638,12 +636,10 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
       rows = rows.toSorted((a, b) => {
         const av = a[field];
         const bv = b[field];
-        const cmp =
-          av instanceof Date && bv instanceof Date
-            ? av.getTime() - bv.getTime()
-            : typeof av === 'number' && typeof bv === 'number'
-              ? av - bv
-              : String(av ?? '').localeCompare(String(bv ?? ''));
+        let cmp: number;
+        if (av instanceof Date && bv instanceof Date) cmp = av.getTime() - bv.getTime();
+        else if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+        else cmp = String(av ?? '').localeCompare(String(bv ?? ''));
         return (input.sort.order === 'asc' ? cmp : -cmp) || b.id - a.id;
       });
       return paginate(rows.map(pubKey), input.page, input.limit);

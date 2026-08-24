@@ -79,9 +79,12 @@ context('OAuth 社交登录（mock GitHub 上游全链）', () => {
     expect(cookieState).toBe(state);
 
     // callback：cookie↔query 双提交一致 → code 换 profile（mock 上游）→ 建号 + fragment 回传
-    const callback = await rawGet(`${h.baseUrl}/v1/oauth/github/callback?code=mock-code&state=${state}`, {
-      cookie: `tl_oauth_state=${state}`,
-    });
+    const callback = await rawGet(
+      `${h.baseUrl}/v1/oauth/github/callback?code=mock-code&state=${state}`,
+      {
+        cookie: `tl_oauth_state=${state}`,
+      },
+    );
     expect(callback.status).toBe(302);
     const redirect = String(callback.headers.location ?? '');
     expect(redirect).toContain(`${h.baseUrl}/app/billing#token=`);

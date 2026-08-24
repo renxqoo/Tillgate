@@ -14,9 +14,9 @@ import {
   DialogTitle,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -30,7 +30,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import { ArrowUpRightIcon, Loader2Icon, RefreshCwIcon, XCircleIcon } from 'lucide-react';
@@ -39,7 +39,7 @@ import { toast } from 'sonner';
 
 import { fmtDateTime, formatMoney, formatPoints } from '@/lib/formatters';
 
-import type { AdminSubscriptionRow } from '@tokenlens/api-client';
+import type { AdminSubscriptionRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /** 套餐下拉选项（PlanRow 的视图投影——订阅页唯一消费域） */
@@ -308,7 +308,7 @@ function ChangeSubscriptionDialog({
           <DialogDescription>{t('changeDescription')}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
-          <Field>
+          <FormItem>
             <FieldLabel>{t('targetPlan')}</FieldLabel>
             <Select value={targetPlanId} onValueChange={(v) => setTargetPlanId(v ?? '')}>
               <SelectTrigger className="w-full">
@@ -322,8 +322,8 @@ function ChangeSubscriptionDialog({
                 ))}
               </SelectContent>
             </Select>
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="change-quantity">
               {t('seatsLabel', { count: row.quantity })}
             </FieldLabel>
@@ -335,7 +335,7 @@ function ChangeSubscriptionDialog({
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />

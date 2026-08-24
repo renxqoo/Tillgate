@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -44,6 +45,7 @@ interface PageProps {
 }
 
 export default async function PaymentOrdersPage({ searchParams }: PageProps) {
+  await requirePermission('funds:read');
   const t = await getTranslations('paymentOrders');
   const tc = await getTranslations('common');
   const sp = await searchParams;

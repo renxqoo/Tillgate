@@ -4,7 +4,7 @@
  * 死信复审乐观锁 409/命令守卫;订阅管理列表信封。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { BillingErrors } from '@tokenlens/billing';
+import { BillingErrors } from '@tillgate/billing';
 import { createAdminApp } from '../src/app';
 import { fakeDeps } from './helpers';
 
@@ -156,8 +156,20 @@ describe('/v1/redeem-batches 族', () => {
     const created = await app.request('/v1/redeem-batches', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ name: '开学季', amount: '10', count: 2 }),
+      body: JSON.stringify({
+        name: '开学季',
+        amount: '10',
+        count: 2,
+        expiresAt: '2099-01-01T00:00:00Z',
+      }),
     });
+    // 非法过期时间 → refine 拒 400
+    const badExpiry = await app.request('/v1/redeem-batches', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ name: '坏', amount: '10', count: 1, expiresAt: 'not-a-date' }),
+    });
+    expect(badExpiry.status).toBe(400);
     expect(created.status).toBe(201);
     expect(await created.json()).toMatchObject({
       batch: { amount: '10.000000000000000000', total: 2 },

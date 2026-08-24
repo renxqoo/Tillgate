@@ -10,7 +10,7 @@ import {
   PaginationNext,
   PaginationPrevious,
   cn,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { pagerHref } from '@/lib/pager-href';
 

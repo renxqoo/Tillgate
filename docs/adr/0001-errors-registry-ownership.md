@@ -72,7 +72,7 @@ quota_exhausted   # 资金/额度维度不允许 → 402 语义；不可重试�
 
 ### D7 `ai` ErrorKind 与根契约的关系：两个封闭词表，消费方装配时映射
 
-`ai` 是零内部依赖的永久叶子（结构方案 §5.1），**不得** import `@tokenlens/errors`；
+`ai` 是零内部依赖的永久叶子（结构方案 §5.1），**不得** import `@tillgate/errors`；
 `errors` 也不认识任何厂商语义。两套词表并存的映射（由 `inference` / app face 在装配与
 出站翻译时应用）裁决如下：
 

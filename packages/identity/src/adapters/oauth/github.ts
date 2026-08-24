@@ -57,7 +57,7 @@ export function createGithubProvider(opts: ProviderAdapterOptions): OAuthProvide
       const headers = {
         authorization: `Bearer ${tokenJson.access_token}`,
         accept: 'application/vnd.github+json',
-        'user-agent': 'tokenlens-identity',
+        'user-agent': 'tillgate-identity',
       };
       const userRes = await doFetch(endpoints.profileUrl, { headers });
       if (!userRes.ok) throw new Error(`github profile failed: ${userRes.status}`);

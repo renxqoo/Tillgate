@@ -1,4 +1,4 @@
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { createPgAuditQueries } from './adapters/postgres/audit-store';
 import { createPgRequestLogStore } from './adapters/postgres/request-log-store';
 import {

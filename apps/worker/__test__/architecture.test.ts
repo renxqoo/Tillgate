@@ -73,20 +73,20 @@ describe('③ ./composition 子入口只在 assembly.ts（唯一装配根）', (
 });
 
 describe('④ 跨包 import 只走包名 exports', () => {
-  it('禁 @tokenlens/*/src 深导入（边界门禁的文本前置）', () => {
+  it('禁 @tillgate/*/src 深导入（边界门禁的文本前置）', () => {
     for (const file of files) {
-      for (const spec of file.code.matchAll(/from\s+'(@tokenlens\/[^']+)'/g)) {
+      for (const spec of file.code.matchAll(/from\s+'(@tillgate\/[^']+)'/g)) {
         expect(spec[1]!.includes('/src/'), `${file.path} → ${spec[1]}`).toBe(false);
       }
     }
   });
 });
 
-describe('⑤ @tokenlens/ai 只在装配面（ADR-0007 注入形态）', () => {
+describe('⑤ @tillgate/ai 只在装配面（ADR-0007 注入形态）', () => {
   it('ai import 仅 assembly.ts（createAi 构造后注入 createInference，业务代码不持 Ai）', () => {
     for (const file of files.filter((f) => f.path !== 'assembly.ts')) {
       expect(
-        file.code.includes("from '@tokenlens/ai'"),
+        file.code.includes("from '@tillgate/ai'"),
         `${file.path} 违反 ADR-0007（ai 只允许装配面）`,
       ).toBe(false);
     }

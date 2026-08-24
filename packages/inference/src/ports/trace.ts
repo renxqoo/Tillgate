@@ -26,8 +26,9 @@ export interface TracePort {
 
 /** 未注入装配时的 no-op（异常语义与真实实现一致：观察不吞错，原样上抛） */
 export const noopTrace: TracePort = {
-  withSpan: async (_name, _attributes, fn) => await fn({
-    setAttributes: () => undefined,
-    setStatus: () => undefined,
-  }),
+  withSpan: async (_name, _attributes, fn) =>
+    await fn({
+      setAttributes: () => undefined,
+      setStatus: () => undefined,
+    }),
 };

@@ -18,13 +18,13 @@
 
 **不处理**（归属）：
 
-- 结算/恢复/对账核验的业务规则 → `@tokenlens/billing`（`./settlement` 窄子入口）。
-- 生成任务状态机推进与信号顺序不变量 → `@tokenlens/inference`
+- 结算/恢复/对账核验的业务规则 → `@tillgate/billing`（`./settlement` 窄子入口）。
+- 生成任务状态机推进与信号顺序不变量 → `@tillgate/inference`
   （`createGenerationPollUseCase`）；worker 只提供节奏与 billing signal 桥。
-- 通知单轮投递算法 → `@tokenlens/notifications`（`dispatchOnce`）。
-- 分区 DDL 与 advisory lock → `@tokenlens/observability`（`partitions.*`）。
-- 佣金费率/幂等键词表 → `@tokenlens/accounts` domain（`getMarketingSettings` /
-  `commissionRefId`）；聚合 SQL 与入账 → `@tokenlens/billing`。
+- 通知单轮投递算法 → `@tillgate/notifications`（`dispatchOnce`）。
+- 分区 DDL 与 advisory lock → `@tillgate/observability`（`partitions.*`）。
+- 佣金费率/幂等键词表 → `@tillgate/accounts` domain（`getMarketingSettings` /
+  `commissionRefId`）；聚合 SQL 与入账 → `@tillgate/billing`。
 - HTTP 业务面、鉴权、限流 → gateway / client-api（本 app 无业务 HTTP）。
 - TPM 回填 → gateway（inference MIGRATION §5 挂账口径，不迁）。
 
@@ -34,14 +34,14 @@
 
 | 消费面                                          | 用途                                                                                                                                                                                                         |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@tokenlens/billing/settlement` + `composition` | `createSettlementApi`（claim/renew/processClaim/recover/abandonOwnedClaims/verifyInvariants/currentStatus）、`createPostgresWalletStore/BillingStore`、佣金日结用例、对账差异写入用例、`SETTLE_WAKE_CHANNEL` |
-| `@tokenlens/billing`（根）                      | `createBillingApi` 的 `signal` 四事件（生成任务终态信号桥）、`createWalletApi`（balance_low 钩子读余额、佣金入账）                                                                                           |
-| `@tokenlens/notifications`                      | `dispatchOnce`（单轮投递）、`enqueue`（reconcile/balance_low 告警入箱）、`composition.outboxWithinTx`（billing 同事务入箱桥）                                                                                |
-| `@tokenlens/inference`                          | `createGenerationPollUseCase`（超时扫描/查询推进/代执行）、`createUpstreamAi`、`createPostgresGenerationTaskStore`、`createMemoryHealthStore`                                                                |
-| `@tokenlens/control-plane/composition`          | `postgresChannelStore.findTaskChannel`（按 id 取渠道连接信息——轮询/代执行的上游凭据源）                                                                                                                      |
-| `@tokenlens/observability`                      | `partitions.traces()/requestLogs()`、OTel 装配                                                                                                                                                               |
-| `@tokenlens/runtime`                            | `createShutdown`、`createLogger`、`createCipher`、`strictBooleanSchema/secretSchema`                                                                                                                         |
-| `@tokenlens/db`                                 | `createDb/closeDb/advisoryLock/runTx`、`$client.connect()`（LISTEN 专用连接）                                                                                                                                |
+| `@tillgate/billing/settlement` + `composition` | `createSettlementApi`（claim/renew/processClaim/recover/abandonOwnedClaims/verifyInvariants/currentStatus）、`createPostgresWalletStore/BillingStore`、佣金日结用例、对账差异写入用例、`SETTLE_WAKE_CHANNEL` |
+| `@tillgate/billing`（根）                      | `createBillingApi` 的 `signal` 四事件（生成任务终态信号桥）、`createWalletApi`（balance_low 钩子读余额、佣金入账）                                                                                           |
+| `@tillgate/notifications`                      | `dispatchOnce`（单轮投递）、`enqueue`（reconcile/balance_low 告警入箱）、`composition.outboxWithinTx`（billing 同事务入箱桥）                                                                                |
+| `@tillgate/inference`                          | `createGenerationPollUseCase`（超时扫描/查询推进/代执行）、`createUpstreamAi`、`createPostgresGenerationTaskStore`、`createMemoryHealthStore`                                                                |
+| `@tillgate/control-plane/composition`          | `postgresChannelStore.findTaskChannel`（按 id 取渠道连接信息——轮询/代执行的上游凭据源）                                                                                                                      |
+| `@tillgate/observability`                      | `partitions.traces()/requestLogs()`、OTel 装配                                                                                                                                                               |
+| `@tillgate/runtime`                            | `createShutdown`、`createLogger`、`createCipher`、`strictBooleanSchema/secretSchema`                                                                                                                         |
+| `@tillgate/db`                                 | `createDb/closeDb/advisoryLock/runTx`、`$client.connect()`（LISTEN 专用连接）                                                                                                                                |
 
 ### 2.2 定时器词表（v1 八循环对位、v2 七 job；缺省值 = config 层唯一真相）
 
@@ -59,7 +59,7 @@
 
 ### 2.3 唤醒通道
 
-- 通道名 = `SETTLE_WAKE_CHANNEL`（`@tokenlens/billing` 根导出，值 `'settle-wake'`；
+- 通道名 = `SETTLE_WAKE_CHANNEL`（`@tillgate/billing` 根导出，值 `'settle-wake'`；
   gateway 生产端同值）。worker 是 PG `LISTEN` 消费端，专用连接取自
   `db.$client.connect()`（不进池循环，停机时 release）。
 - `WORKER_SETTLE_WAKE=false` 可整体关闭（多测试进程互偷门铃的隔离开关，v1 同款）。

@@ -1,4 +1,4 @@
-import { extractTextFeatures } from '@tokenlens/ai';
+import { extractTextFeatures } from '@tillgate/ai';
 
 /**
  * 缺 usage 的实扣估算（C1 契约演进）：v2 ai 不再公开 BPE 估算器，本层用其公开的

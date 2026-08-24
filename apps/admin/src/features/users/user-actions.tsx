@@ -1,12 +1,12 @@
 'use client';
 
-import { Button } from '@tokenlens/ui';
+import { Button } from '@tillgate/ui';
 import { useTransition } from 'react';
 import { BriefcaseIcon, Loader2Icon, UserIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { AdjustDialog, GiftDialog, PasswordDialog } from '@/features/users/user-dialogs';
-import type { AdminUserRow } from '@tokenlens/api-client';
+import type { AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /**
@@ -17,6 +17,9 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
   const tc = useTranslations('common');
   const notify = useActionResult();
   const [pending, startTransition] = useTransition();
+  let enterpriseIcon = <BriefcaseIcon />;
+  if (pending) enterpriseIcon = <Loader2Icon className="animate-spin" />;
+  else if (user.isEnterprise) enterpriseIcon = <UserIcon />;
 
   function toggleEnterprise() {
     startTransition(async () => {
@@ -42,13 +45,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
         title={user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
         onClick={toggleEnterprise}
       >
-        {pending ? (
-          <Loader2Icon className="animate-spin" />
-        ) : user.isEnterprise ? (
-          <UserIcon />
-        ) : (
-          <BriefcaseIcon />
-        )}
+        {enterpriseIcon}
         {user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
       </Button>
     </div>

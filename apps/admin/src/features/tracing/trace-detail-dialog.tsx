@@ -8,12 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useEffect, useState, useTransition } from 'react';
+import type { ReactNode } from 'react';
 import { Loader2Icon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { fetchTraceDetail, fetchTraceDetailByRequestId } from '@/server/tracing-actions';
-import type { TraceDetailDto as TraceDetail } from '@tokenlens/api-client';
+import type { TraceDetailDto as TraceDetail } from '@tillgate/api-client';
 import { TraceGraph } from './trace-graph';
 import { TraceWaterfall } from './trace-waterfall';
 
@@ -64,6 +65,34 @@ export function TraceDetailDialog({
       }
     });
   }, [open, detail, error, traceId, requestId]);
+
+  let detailContent: ReactNode = null;
+  if (pending) {
+    detailContent = (
+      <div className="flex h-[420px] items-center justify-center text-muted-foreground">
+        <Loader2Icon className="mr-2 animate-spin" /> {t('loading')}
+      </div>
+    );
+  } else if (error) {
+    detailContent = <p className="py-10 text-center text-sm text-destructive">{error}</p>;
+  } else if (detail && view === 'graph') {
+    detailContent = (
+      <TraceGraph
+        spans={detail.spans}
+        totalMs={detail.durationMs}
+        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'h-[420px]'}
+      />
+    );
+  } else if (detail) {
+    detailContent = (
+      <TraceWaterfall
+        spans={detail.spans}
+        startMs={detail.startMs}
+        totalMs={detail.durationMs}
+        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'max-h-[60vh]'}
+      />
+    );
+  }
 
   return (
     <Dialog
@@ -129,30 +158,7 @@ export function TraceDetailDialog({
           </div>
         </DialogHeader>
         <DialogDescription render={<div className="sr-only">{t('srDetail')}</div>} />
-        <div className="min-h-0 overflow-hidden">
-          {pending ? (
-            <div className="flex h-[420px] items-center justify-center text-muted-foreground">
-              <Loader2Icon className="mr-2 animate-spin" /> {t('loading')}
-            </div>
-          ) : error ? (
-            <p className="py-10 text-center text-sm text-destructive">{error}</p>
-          ) : detail ? (
-            view === 'graph' ? (
-              <TraceGraph
-                spans={detail.spans}
-                totalMs={detail.durationMs}
-                heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'h-[420px]'}
-              />
-            ) : (
-              <TraceWaterfall
-                spans={detail.spans}
-                startMs={detail.startMs}
-                totalMs={detail.durationMs}
-                heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'max-h-[60vh]'}
-              />
-            )
-          ) : null}
-        </div>
+        <div className="min-h-0 overflow-hidden">{detailContent}</div>
       </DialogContent>
     </Dialog>
   );

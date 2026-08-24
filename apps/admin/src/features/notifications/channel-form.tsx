@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Input } from '@tokenlens/ui';
+import { Button, Input } from '@tillgate/ui';
 import { useState } from 'react';
 import { Loader2Icon, PlusIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

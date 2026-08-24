@@ -1,11 +1,10 @@
 /**
  * 通知渠道路由（P5;v1 routes/notifications.ts 平移）：列表/创建/更新/删除/测试入箱。
- * 渠道 CRUD 与测试动词全部经 @tokenlens/notifications facade（业务校验/加密/掩码在包内）;
+ * 渠道 CRUD 与测试动词全部经 @tillgate/notifications facade（业务校验/加密/掩码在包内）;
  * 实际投递由 worker dispatchOnce 消费——本面只管理 + 入箱测试事件。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
-import type { Notifications } from '@tokenlens/notifications';
+import type { Notifications } from '@tillgate/notifications';
 import type { SessionEnv } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import { notificationsContracts } from '../contracts/notifications';
@@ -22,16 +21,13 @@ function notifyContextOf(c: { get: (k: 'requestId' | 'adminId') => unknown }) {
   };
 }
 
-export function notificationsRoutes(
-  deps: NotificationsRoutesDeps,
-  session: MiddlewareHandler<SessionEnv>,
-) {
+export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const channels = deps.notifications.channels;
 
-  app.get('/v1/notifications', session, async (c) => c.json(await channels.list()));
+  app.get('/v1/notifications', async (c) => c.json(await channels.list()));
 
-  app.post('/v1/notifications', session, async (c) => {
+  app.post('/v1/notifications', async (c) => {
     const body = notificationsContracts.create.parse(await c.req.json());
     const row = await channels.create({
       ctx: notifyContextOf(c),
@@ -44,7 +40,7 @@ export function notificationsRoutes(
     return c.json(row, 201);
   });
 
-  app.patch('/v1/notifications/:id', session, async (c) => {
+  app.patch('/v1/notifications/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = notificationsContracts.update.parse(await c.req.json());
     return c.json(
@@ -61,12 +57,12 @@ export function notificationsRoutes(
     );
   });
 
-  app.delete('/v1/notifications/:id', session, async (c) => {
+  app.delete('/v1/notifications/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await channels.remove({ ctx: notifyContextOf(c), channelId: id }));
   });
 
-  app.post('/v1/notifications/:id/test', session, async (c) => {
+  app.post('/v1/notifications/:id/test', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(await channels.test({ ctx: notifyContextOf(c), channelId: id }));
   });

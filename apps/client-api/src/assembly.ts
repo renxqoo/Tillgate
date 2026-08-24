@@ -8,7 +8,7 @@
  * 世界与平台收入镜像（v1 语义）。跨能力 bridge（walletCredit / sessionInvalidation）
  * 不共享事务——赠送/归因本就是 best-effort 段（accounts G4/G5 注释口径）。
  */
-import { createDb, ping, type Db, type TxRetryPolicy } from '@tokenlens/db';
+import { createDb, ping, type Db, type TxRetryPolicy } from '@tillgate/db';
 import {
   assertRedisReachable,
   createAuthFailureGuard,
@@ -17,11 +17,11 @@ import {
   createLogger,
   createRedisClient,
   type Logger,
-} from '@tokenlens/runtime';
-import { initOtel, type OtelHandle } from '@tokenlens/observability';
-import type { Identity } from '@tokenlens/identity';
-import { createAccounts, USER_STATUS, type AccountUseCases } from '@tokenlens/accounts';
-import { createPgFundingSourceResolver } from '@tokenlens/accounts/composition';
+} from '@tillgate/runtime';
+import { initOtel, type OtelHandle } from '@tillgate/observability';
+import type { Identity } from '@tillgate/identity';
+import { createAccounts, USER_STATUS, type AccountUseCases } from '@tillgate/accounts';
+import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
 import {
   createBilling,
   createPaymentsApi,
@@ -29,7 +29,7 @@ import {
   type Billing,
   type PaymentsApi,
   type RedemptionApi,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import {
   createPostgresBillingStore,
   createPostgresPaymentOrderStore,
@@ -37,7 +37,7 @@ import {
   createPostgresWalletStore,
   createEpayProvider,
   createStripeProvider,
-} from '@tokenlens/billing/composition';
+} from '@tillgate/billing/composition';
 import type { Redis } from 'ioredis';
 import type { ClientApiConfig } from './config.js';
 import type { ClientApiDeps } from './app.js';
@@ -67,7 +67,7 @@ const clock = (): Date => new Date();
 
 /** 装配覆盖缝：mailer 显式注入/置空（E2E capture mailer 消费；缺省按环境构造） */
 export interface AssemblyOverrides {
-  readonly mailer?: import('@tokenlens/identity').Mailer | null;
+  readonly mailer?: import('@tillgate/identity').Mailer | null;
 }
 
 export async function assembleClientApi(

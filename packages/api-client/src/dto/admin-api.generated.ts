@@ -19,6 +19,83 @@ export interface AdminMeInfo {
   twoFactorEnabled?: boolean;
   /** TOTP 验证器已绑定（接管第二因子） */
   totpEnabled?: boolean;
+  /** 动态 RBAC 角色对象（roles 表） */
+  role: { id: number; code: string; name: string; /** 超管隐式全量（can() 短路;permissions 下发全码） */isSuper: boolean };
+  /** 本人全量授权码（<域>:<动词>;超管 = enforced 全码——导航/按钮显隐单一事实源） */
+  permissions: string[];
+}
+
+// ── admins ─────────────────────────────────────
+
+/** 管理员资料行（GET/POST /v1/admins,PATCH /v1/admins/:id） */
+export interface AdminRow {
+  id: number;
+  email: string;
+  displayName: string | null;
+  /** 角色 FK（roles.id） */
+  roleId: number;
+  /** 角色 code（展示用;名称经 /v1/roles 解析） */
+  role: string;
+  /** 0 正常 / 1 封禁 / 2 注销 */
+  status: number;
+  twoFactorEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+// ── roles ─────────────────────────────────────
+
+/** 角色资料行（/v1/roles） */
+export interface RoleRow {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  /** 0 正常 / 1 停用（整角色 kill-switch） */
+  status: number;
+  isSuper: boolean;
+  isBuiltin: boolean;
+  createdAt: string;
+}
+
+// ── permissions ─────────────────────────────────────
+
+/** 权限树节点（/v1/permissions/tree） */
+export interface PermissionNode {
+  id: number;
+  parentId: number | null;
+  type: 'group' | 'page' | 'button';
+  /** 判定原语（group 无码;page 可无码=全员可见） */
+  code: string | null;
+  name: string;
+  i18nKey: string | null;
+  description: string | null;
+  /** page 专属:前端路由路径 */
+  path: string | null;
+  /** page 专属:lucide 图标名 */
+  icon: string | null;
+  sortOrder: number;
+  /** 0 正常 / 1 停用（kill-switch;enforced 不可停用） */
+  status: number;
+  source: 'enforced' | 'custom';
+  createdAt: string;
+}
+
+// ── admins ─────────────────────────────────────
+
+/** 创建管理员请求体（POST /v1/admins;字段真相 = contracts zod——角色词表封闭,密码策略单源在 identity） */
+export interface AdminCreateBody {
+  email: string;
+  displayName?: string;
+  password: string;
+  roleId: number;
+}
+
+/** 更新管理员请求体（PATCH /v1/admins/:id;字段真相 = contracts zod——role/status 不可改自身） */
+export interface AdminPatchBody {
+  displayName?: string | null;
+  roleId?: number;
+  status?: number;
 }
 
 // ── users ─────────────────────────────────────
@@ -244,7 +321,7 @@ export interface ModelUpdateBody {
 /** 管理面 API Key 行(GET /v1/admin-keys;keyPreview 脱敏回显) */
 export interface AdminKeyRow {
   id: number;
-  /** 脱敏预览 ag_****abcd(明文永不回显) */
+  /** 脱敏预览 sk_****abcd(明文永不回显) */
   keyPreview: string;
   name: string;
   remark: string | null;
@@ -306,8 +383,8 @@ export interface AdminRateCardRow {
   description: string | null;
   status: number;
   createdAt: string;
-  /** 更新时间(v2 无列来源,恒 null) */
-  updatedAt: string | null;
+  /** 更新时间(rate_cards.updated_at,update 恒刷新) */
+  updatedAt: string;
   /** 系数 numeric(6,3):0.001..9.999,回显恒 3 位小数 */
   coefficient: string;
 }

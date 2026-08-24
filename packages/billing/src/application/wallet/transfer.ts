@@ -2,7 +2,7 @@
  * transfer 动词：划转——双腿 [from −a, to +a]；from 为用户账户时守卫（信用/现金口径）。
  * 内部科目账户语义可负（守恒由 Σ腿=0 保证），不做借记守卫。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
 import type { FingerprintValue } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';

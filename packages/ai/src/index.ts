@@ -1,5 +1,5 @@
 /**
- * @tokenlens/ai 公共出口（P1 阶段：契约面——类型、错误归一、配置）。
+ * @tillgate/ai 公共出口（P1 阶段：契约面——类型、错误归一、配置）。
  * createAi 装配壳与传输/协议/管线在 P2-P4 落地后进入本出口（IMPLEMENTATION.md §5）。
  */
 

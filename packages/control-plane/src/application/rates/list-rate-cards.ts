@@ -1,7 +1,7 @@
 /**
  * 费率卡列表：各卡全局系数回显（缺行按 '1.000' 兜底——「每卡恰一全局行」的应用侧口径）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { RateCardStore, RateCardRecord, RateCardSortField } from '../../ports/rate-card-store';
 import type { ListQuery, ListResult } from '../../domain/list';
 

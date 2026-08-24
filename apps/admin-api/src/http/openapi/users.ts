@@ -33,7 +33,11 @@ export const adminUserRowSchema = z
     lastLoginAt: z.string().nullable(),
     createdAt: z.string(),
   })
-  .meta({ id: 'AdminUserRow', description: '管理面用户行(GET /v1/users;钱包富化口径 available = balance + creditLimit − inFlight)' });
+  .meta({
+    id: 'AdminUserRow',
+    description:
+      '管理面用户行(GET /v1/users;钱包富化口径 available = balance + creditLimit − inFlight)',
+  });
 
 /** 管理面交易行（多操作管理员字段,终端用户不可见） */
 export const adminTransactionRowSchema = z
@@ -49,19 +53,25 @@ export const adminTransactionRowSchema = z
     createdAt: z.string(),
     createdBy: z.number().nullable().describe('操作管理员(v2 presenter 恒 null——无来源列)'),
   })
-  .meta({ id: 'AdminTransactionRow', description: '管理面交易行(GET /v1/users/:id/transactions;多操作管理员字段,终端用户不可见)' });
+  .meta({
+    id: 'AdminTransactionRow',
+    description: '管理面交易行(GET /v1/users/:id/transactions;多操作管理员字段,终端用户不可见)',
+  });
 
 /** 管理面 Key 行（keyPreview 脱敏回显,明文永不回显） */
 export const adminKeyRowSchema = z
   .object({
     id: z.number(),
-    keyPreview: z.string().describe('脱敏预览 ag_****abcd(明文永不回显)'),
+    keyPreview: z.string().describe('脱敏预览 sk_****abcd(明文永不回显)'),
     name: z.string(),
     remark: z.string().nullable(),
     subscriptionId: z.number().nullable().describe('计费来源:NULL=余额;非空=扣该订阅额度。'),
     userId: z.number(),
     userEmail: z.string().nullable().describe('用户邮箱(v2 accounts 行无用户 join,恒 null)'),
-    userDisplayName: z.string().nullable().describe('用户展示名(v2 accounts 行无用户 join,恒 null)'),
+    userDisplayName: z
+      .string()
+      .nullable()
+      .describe('用户展示名(v2 accounts 行无用户 join,恒 null)'),
     rpmLimit: z.number().nullable(),
     tpmLimit: z.number().nullable(),
     dailySpendLimit: z.string().nullable().describe('Key 级每日花费上限(元,NULL=不限)。'),
@@ -69,7 +79,10 @@ export const adminKeyRowSchema = z
     lastUsedAt: z.string().nullable(),
     createdAt: z.string(),
   })
-  .meta({ id: 'AdminKeyRow', description: '管理面 API Key 行(GET /v1/admin-keys;keyPreview 脱敏回显)' });
+  .meta({
+    id: 'AdminKeyRow',
+    description: '管理面 API Key 行(GET /v1/admin-keys;keyPreview 脱敏回显)',
+  });
 
 /** 调账/赠送幂等回执（v1 FundsReceipt wire 形状） */
 const fundsReceiptSchema = z.object({

@@ -5,8 +5,8 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { HttpErrors, jsonBody, query as queryMiddleware } from '@tokenlens/http';
-import type { PaymentsApi } from '@tokenlens/billing';
+import { HttpErrors, jsonBody, query as queryMiddleware } from '@tillgate/http';
+import type { PaymentsApi } from '@tillgate/billing';
 import { createOrderSchema, orderIdPattern, ordersListQuerySchema } from '../contracts/billing.js';
 import type { SessionEnv } from '../middleware/session.js';
 

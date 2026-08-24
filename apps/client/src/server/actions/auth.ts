@@ -8,8 +8,8 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type AuthStepResult, type LoginVerifyResult } from '@tokenlens/api-client';
-import { clearSessionCookie, getSessionToken, setSessionToken } from '@tokenlens/api-client/next';
+import { ApiError, type AuthStepResult, type LoginVerifyResult } from '@tillgate/api-client';
+import { clearSessionCookie, getSessionToken, setSessionToken } from '@tillgate/api-client/next';
 
 import { createClientApi } from '../api';
 import { safeNext } from '../next-url';

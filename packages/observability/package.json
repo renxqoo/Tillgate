@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/observability",
+  "name": "@tillgate/observability",
   "version": "0.1.0",
   "private": true,
   "description": "可观测能力:OTel 装配、链路追踪(decode/ingest/store/graph/partition)、审计存储查询、请求日志(总纲 P4.5)",
@@ -36,8 +36,8 @@
     "@opentelemetry/sdk-node": "^0.221.0",
     "@opentelemetry/sdk-trace-base": "^2.10.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

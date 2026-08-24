@@ -20,9 +20,9 @@
 **依赖关系（v2）**：
 
 - `ai` 在依赖图上是**永久叶子**：运行时依赖仅 `js-tiktoken`（BPE 分词）与 `zod`（配置
-  校验），不依赖任何 `@tokenlens/*` 包。
+  校验），不依赖任何 `@tillgate/*` 包。
 - 唯一运行时装配消费方是 `inference`（候选循环、路由、计费衔接都在那侧，§8）。
-- apps 在**装配面**直接 import `@tokenlens/ai`：`apps/{gateway,worker,admin-api}/src/assembly.ts`
+- apps 在**装配面**直接 import `@tillgate/ai`：`apps/{gateway,worker,admin-api}/src/assembly.ts`
   构造 `Ai` 实例注入 `createInference`；admin-api 另以 `createAi` 实现 control-plane 的
   `ProviderProbe` port（app 自有 adapter `src/adapters/upstream-probe.ts`）。该窄例外由
   ADR-0007 认可并由各 app 架构测试锁定——业务路由/中间件/任务 handler 不得持有 `ai`。
@@ -492,13 +492,13 @@ usage 方言矩阵都是纯函数/纯协议行为，值得高覆盖单测；传�
 - **usage 矩阵 / fuzz-sweep / 深分支**。
 - **延迟门禁（latency.test.ts）**：TTFB 不缓冲、观察面异常不反噬、扫描内存常数上界、
   全局 sweeper 单 interval 频率（§3.6 契约的机器验证）。
-- **架构（architecture.test.ts）**：零 `@tokenlens/*` 依赖（永久叶子锁定）。
+- **架构（architecture.test.ts）**：零 `@tillgate/*` 依赖（永久叶子锁定）。
 - **real 套件（providers.real.test.ts，`test:real` 独立门）**：MiniMax + DeepSeek 真实
   上游，声明即启用、无 key 默认 skip。
 
 ## 10. 发布候选（v2 增补，替代 v1「二期扩展」）
 
-总纲 §7.2 列 `@tokenlens/ai` 为**第三发布候选**（当前私有、零内部依赖，已是
+总纲 §7.2 列 `@tillgate/ai` 为**第三发布候选**（当前私有、零内部依赖，已是
 `createAi` + `onEvent` + 透传中继的 SDK 形态）。发布前必须：生成 `dist` 与声明文件；
 冻结 `createAi` / `AiEvent` / `ChannelDesc` 契约；重型 vendor SDK 声明为 optional peer；
 纯 Node consumer fixture 安装冒烟。无真实外部消费者前维持私有，不提前承担兼容成本。

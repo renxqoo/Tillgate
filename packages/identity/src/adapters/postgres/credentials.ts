@@ -3,9 +3,9 @@
  * 与凭据查询。SQL 与 v1 identity-core 逐语义对齐(IMPLEMENTATION §4 口径 9)。
  */
 import { and, eq, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identityCredentials, identityPasswords } from '@tokenlens/db';
-import { DefectError } from '@tokenlens/errors';
+import type { DbLike } from '@tillgate/db';
+import { identityCredentials, identityPasswords } from '@tillgate/db';
+import { DefectError } from '@tillgate/errors';
 import type { NormalizedIdentifier } from '../../domain/identifier.js';
 import type { CredentialStore, RegisterCredentialOutcome } from '../../ports/credential-store.js';
 

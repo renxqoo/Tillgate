@@ -9,14 +9,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import Link from 'next/link';
 
 import { ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { APP_CONFIG } from '@/config/app-config';
-import { buildSidebarItems } from '@/config/sidebar-items';
+import { menuIconOf } from '@/config/menu-icons';
 
 import { NavMain } from '@/components/shell/sidebar/nav-main';
 import { NavUser } from './nav-user';
@@ -27,17 +27,35 @@ export interface SidebarUser {
   readonly avatar: string;
 }
 
+/** layout 解析好的菜单树（/v1/me/menus 后端驱动——labels 与图标已映射,纯渲染） */
+export interface SidebarMenuGroup {
+  readonly label: string | null;
+  readonly items: readonly {
+    readonly title: string;
+    readonly url: string;
+    readonly iconName: string | null;
+  }[];
+}
+
 export function AppSidebar({
   user,
+  groups,
   ...props
-}: React.ComponentProps<typeof Sidebar> & { readonly user: SidebarUser }) {
+}: React.ComponentProps<typeof Sidebar> & {
+  readonly user: SidebarUser;
+  readonly groups: readonly SidebarMenuGroup[];
+}) {
   const t = useTranslations('nav');
 
-  // sidebar-items 存 i18n key，这里解析成当前语言文案再交给共享 NavMain 渲染
-  const items = buildSidebarItems().map((group) => ({
-    ...group,
-    label: group.label ? t(group.label) : undefined,
-    items: group.items.map((item) => ({ ...item, title: t(item.title) })),
+  const items = groups.map((group, index) => ({
+    id: index + 1,
+    ...(group.label != null ? { label: group.label } : {}),
+    items: group.items.map((item) => ({
+      id: item.url,
+      title: item.title,
+      url: item.url,
+      icon: menuIconOf(item.iconName),
+    })),
   }));
 
   return (

@@ -137,7 +137,10 @@ export function validateScheduleWindows(windows: PricingWindow[]): ScheduleWindo
 function scheduleUnitPrice(context: PricingContext): string {
   const windows = context.config.params?.windows;
   if (windows == null || windows.length === 0) return context.fallbackUnitPrice;
-  return matchPricingWindow(windows, context.now, context.timezone)?.unitPrice ?? context.fallbackUnitPrice;
+  return (
+    matchPricingWindow(windows, context.now, context.timezone)?.unitPrice ??
+    context.fallbackUnitPrice
+  );
 }
 
 /** 预扣单价（保守口径）：基价列与全部窗口 unitPrice 的最大值——准入时刻未定时的上界 */

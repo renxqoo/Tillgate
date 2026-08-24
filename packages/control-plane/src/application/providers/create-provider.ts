@@ -2,7 +2,7 @@
  * 创建供应商：词表校验（协议/档案）→ 事务落库 → 审计。
  * 重名由 PG 唯一索引兜底（23505 → provider_exists 冲突）。
  */
-import { isUniqueViolation, type Db } from '@tokenlens/db';
+import { isUniqueViolation, type Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ProviderStore, ProviderRecord } from '../../ports/provider-store';
 import type { ProviderCapabilities, ProviderCreateInput } from '../../domain/provider/provider';

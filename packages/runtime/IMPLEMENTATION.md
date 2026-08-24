@@ -1,4 +1,4 @@
-# @tokenlens/runtime 迁移实现文档
+# @tillgate/runtime 迁移实现文档
 
 > 状态：R1–R3 实施完成，四门全绿，行为对照核销完毕（含 enc:v1 跨仓互解硬验证）
 > 基线：旧仓 `ai-getway/packages/core`（12 源文件 ~1375 行 + 5 测试 ~290 行）+ 三个 app 的 `shutdown.ts`（43 行 × 3）
@@ -46,7 +46,7 @@ createRedisScriptRunner(redis): RedisScriptRunner       // Lua evalsha + NOSCRIP
 // lifecycle/
 createShutdown(deps: ShutdownDeps): (signal: string) => void   // 优雅停机编排（三 app 合一，serviceName 参数化）
 
-// testing/ —— 子入口 @tokenlens/runtime/testing（只许 *.test.ts 引用）
+// testing/ —— 子入口 @tillgate/runtime/testing（只许 *.test.ts 引用）
 testRedisUrl(): string | undefined                      // REDIS_URL 非空才返回（skipIf 判据）
 connectTestRedis(timeoutMs?): Promise<Redis | null>      // 连接并等就绪；无 URL 返回 null
 disconnectTestRedis(redis): Promise<void>
@@ -121,7 +121,7 @@ waitForRedisReady(redis, timeoutMs?): Promise<boolean>   // 冷连接就绪等�
 4. **testing 子入口 exports 形态**：`"./testing"` 与 `"."` 平级（development 源码 / types / import dist 三条件，与 ai 包同款）；
    build 双入口产物。架构测试（scripts/check-package-boundaries.ts 建立 P0 门禁后）限定 `./testing` 只被测试文件引用。
 5. **依赖**：`pino`、`pino-pretty`（pretty transport 动态加载，老仓放 dependencies 的先例保持）、`ioredis`、`zod`；
-   内部依赖仅 `@tokenlens/errors`（§0.4：ADR-0001 落地后接入根契约，起步时零内部依赖的陈述已过时）。
+   内部依赖仅 `@tillgate/errors`（§0.4：ADR-0001 落地后接入根契约，起步时零内部依赖的陈述已过时）。
    5a. **redis 一动词一文件拆分**（铁律 5，2026-08-23 审计收口）：原 `redis-client.ts`（153 行三动词）拆为
    `parse-sentinels.ts` / `create-redis-client.ts` / `assert-redis-reachable.ts`，`sanitizeUrl`/`describeError`
    两纯函数提取为共享件 `redis-diagnostics.ts`（单一真相，两消费方共用）。同期收口：logThrottleMs/

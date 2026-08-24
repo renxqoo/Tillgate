@@ -1,5 +1,5 @@
 /** 移除成员:owner-only;owner 自身不可移除;CAS active→left(软删) */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { requireOwnerMembership } from './org-guards.js';
 import type { UseCaseContext } from './context.js';

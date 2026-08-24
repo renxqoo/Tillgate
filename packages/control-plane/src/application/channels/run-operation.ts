@@ -3,8 +3,8 @@
  * 占位 → 执行 → 回执存档 / 重放。同 operationId + 同 canonical 指纹 → 重放首次回执；
  * 同 operationId + 异指纹 → operation_conflict。操作行与业务写在同一事务。
  */
-import type { Db, DbTx } from '@tokenlens/db';
-import { DefectError } from '@tokenlens/errors';
+import type { Db, DbTx } from '@tillgate/db';
+import { DefectError } from '@tillgate/errors';
 import type { OperationsStore } from '../../ports/operations-store';
 import {
   assertOperationId,

@@ -149,16 +149,12 @@ export function parseEventstreamFrames(buffer: Buffer): {
         headers[name] = buffer.toString('utf8', h, h + valueLen);
         h += valueLen;
       } else {
-        const width =
-          valueType === 8
-            ? 2
-            : valueType === 5
-              ? 4
-              : valueType === 6 || valueType === 7
-                ? 8
-                : valueType === 4
-                  ? 1
-                  : 8;
+        let width;
+        if (valueType === 8) width = 2;
+        else if (valueType === 5) width = 4;
+        else if (valueType === 6 || valueType === 7) width = 8;
+        else if (valueType === 4) width = 1;
+        else width = 8;
         h += width;
       }
     }

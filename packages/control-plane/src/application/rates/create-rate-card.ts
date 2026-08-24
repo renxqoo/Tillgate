@@ -1,7 +1,7 @@
 /**
  * 建费率卡：系数域校验（0.001–9.999 三位小数）→ 建卡 + 全局兜底系数同事务两写 → 审计。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { RateCardStore } from '../../ports/rate-card-store';
 import { validateCoefficient } from '../../domain/rate-card/coefficient';

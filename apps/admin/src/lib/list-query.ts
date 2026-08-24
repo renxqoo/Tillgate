@@ -1,7 +1,7 @@
 /**
  * 列表页 URL 参数工具（server / client 通用纯函数）。
  *
- * 统一约定（与 @tokenlens/http listQuery 同口径）：
+ * 统一约定（与 @tillgate/http listQuery 同口径）：
  *   - 分页 ?page=&page_size=
  *   - 搜索 ?q=
  *   - 排序 ?sort_by=&order=asc|desc（默认 created_at desc）

@@ -1,9 +1,10 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import { requirePermission } from '@/server/get-admin';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import Link from 'next/link';
 import { Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { cn } from '@/lib/utils';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 import { CatalogContent, type CatalogItem, type FxState } from '@/features/models/catalog-content';
 
@@ -22,6 +23,7 @@ export default async function ModelMarketPage({
 }: {
   searchParams: Promise<{ source?: string }>;
 }) {
+  await requirePermission('catalog:read');
   const params = await searchParams;
   const t = await getTranslations('modelMarket');
   const sourceLabel = (src: { id: string; name: string }): string => {
@@ -67,6 +69,42 @@ export default async function ModelMarketPage({
       error = caught instanceof ApiError ? caught.message : t('fetchFailed');
     }
   }
+  let activeHint = '';
+  if (active?.kind === 'channel') {
+    activeHint = channelReady
+      ? t('channelReadyText', { name: sourceLabel(active) })
+      : t('needsKeyText', { name: sourceLabel(active) });
+  } else if (active?.kind === 'reference') {
+    activeHint = t('referenceHint');
+  }
+
+  let catalogContent = (
+    <p className="py-8 text-center text-sm text-muted-foreground">{t('noSources')}</p>
+  );
+  if (active) {
+    catalogContent = (
+      <CatalogContent
+        sourceId={active.id}
+        sourceName={sourceLabel(active)}
+        sourceKind={active.kind}
+        currency={active.priceCurrency}
+        items={items}
+        gone={gone}
+        fetchedAt={fetchedAt}
+        channelReady={channelReady}
+        needsKey={active.needsKey}
+        fx={fx}
+      />
+    );
+  }
+  if (error) {
+    catalogContent = (
+      <p className="py-8 text-center text-sm text-destructive">
+        {error}
+        {t('retryLater')}
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,38 +143,10 @@ export default async function ModelMarketPage({
                 ))}
               </span>
             ) : null}
-            {active?.kind === 'channel'
-              ? channelReady
-                ? t('channelReadyText', { name: sourceLabel(active) })
-                : t('needsKeyText', { name: sourceLabel(active) })
-              : active?.kind === 'reference'
-                ? t('referenceHint')
-                : ''}
+            {activeHint}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {error ? (
-            <p className="py-8 text-center text-sm text-destructive">
-              {error}
-              {t('retryLater')}
-            </p>
-          ) : active ? (
-            <CatalogContent
-              sourceId={active.id}
-              sourceName={sourceLabel(active)}
-              sourceKind={active.kind}
-              currency={active.priceCurrency}
-              items={items}
-              gone={gone}
-              fetchedAt={fetchedAt}
-              channelReady={channelReady}
-              needsKey={active.needsKey}
-              fx={fx}
-            />
-          ) : (
-            <p className="py-8 text-center text-sm text-muted-foreground">{t('noSources')}</p>
-          )}
-        </CardContent>
+        <CardContent>{catalogContent}</CardContent>
       </Card>
     </div>
   );

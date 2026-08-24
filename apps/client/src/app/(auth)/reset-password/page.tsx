@@ -33,7 +33,7 @@ export default async function ResetPasswordPage({
         <div className="w-full">
           <ResetPasswordForm token={token} />
         </div>
-        <p className="text-sm text-muted-foreground">© 2026 TokenLens · MIT License</p>
+        <p className="text-sm text-muted-foreground">© 2026 Tillgate · MIT License</p>
       </div>
     </main>
   );

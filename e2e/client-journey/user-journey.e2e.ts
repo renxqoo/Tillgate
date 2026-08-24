@@ -5,7 +5,7 @@
  * 登出吊销 → 两级登录 → 改密全网下线 → 复登。真实 PG/Redis/HTTP。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 import {
   apiClient,
   bootHarness,
@@ -107,7 +107,7 @@ context('用户旅程（老仓 e2e-user-journey 全链核销）', () => {
         body: JSON.stringify({ name: 'journey-key', rpmLimit: 10, dailySpendLimit: '5' }),
       })
     ).json()) as { id: number; plaintext: string };
-    expect(keyCreated.plaintext.startsWith('ag_')).toBe(true);
+    expect(keyCreated.plaintext.startsWith('sk_')).toBe(true);
     const rotated = (await (
       await api(`/v1/keys/${keyCreated.id}/rotate`, { method: 'POST', token })
     ).json()) as { id: number; plaintext: string };

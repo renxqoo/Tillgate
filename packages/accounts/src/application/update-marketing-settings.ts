@@ -3,7 +3,7 @@
  * (非负/比例 ≤1/精度)→ 单语句 upsert returning(B7 修复两往返)→ 同事务审计。
  * 生效语义:下一动作生效、历史不重算。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { validateMarketingPatch, type MarketingSettingsPatch } from '../domain/marketing.js';
 import type { MarketingSettingsRecord } from '../ports/account-store.js';

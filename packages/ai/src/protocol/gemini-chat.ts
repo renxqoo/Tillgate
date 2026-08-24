@@ -192,12 +192,10 @@ export function chatRequestToGemini(req: unknown): Json {
   const out: Json = { contents };
   if (systemText) out.systemInstruction = { parts: [{ text: systemText }] };
   const cfg: Json = {};
-  const maxTokens =
-    typeof r.max_tokens === 'number' && r.max_tokens > 0
-      ? r.max_tokens
-      : typeof r.max_completion_tokens === 'number'
-        ? r.max_completion_tokens
-        : undefined;
+  let maxTokens;
+  if (typeof r.max_tokens === 'number' && r.max_tokens > 0) maxTokens = r.max_tokens;
+  else if (typeof r.max_completion_tokens === 'number') maxTokens = r.max_completion_tokens;
+  else maxTokens = undefined;
   if (maxTokens !== undefined) cfg.maxOutputTokens = maxTokens;
   if (typeof r.temperature === 'number') cfg.temperature = r.temperature;
   if (typeof r.top_p === 'number') cfg.topP = r.top_p;

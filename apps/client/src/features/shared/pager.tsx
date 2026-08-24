@@ -9,7 +9,7 @@ import {
   PaginationLink,
   PaginationNext,
   PaginationPrevious,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { listHref, type SearchParamsInput } from '@/server/list-query';
 

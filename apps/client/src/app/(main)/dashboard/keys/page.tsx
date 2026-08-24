@@ -1,8 +1,8 @@
 import { KeyRoundIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import type { CurrentSubscription, KeyRow, OrgRow, RowsPage } from '@tokenlens/api-client';
-import { ApiError } from '@tokenlens/api-client';
+import type { CurrentSubscription, KeyRow, OrgRow, RowsPage } from '@tillgate/api-client';
+import { ApiError } from '@tillgate/api-client';
 
 import { ListPage } from '@/features/shared/list-page';
 import { parseListSearchParams } from '@/server/list-query';

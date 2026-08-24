@@ -6,7 +6,7 @@
  *   审计交易（credit_line/freeze）：恰好 1 条零额腿（Σ=0 平凡成立），回执字段必填
  * 不变量破坏 = 红灯缺陷（DefectError）：确定性失败，不应被重试掩盖。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { Decimal } from '../money.js';
 
 export type TransactionKind =

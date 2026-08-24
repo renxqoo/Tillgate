@@ -10,8 +10,8 @@
 - 仓库按 [docs/project-structure-refactoring.md](docs/project-structure-refactoring.md) 从 v1
   （ai-getway）重构为 **7 应用 + 14 能力包**：业务能力按真实边界聚合为
   `errors / runtime / db / http / identity / accounts / billing / ai / inference / control-plane /
-  notifications / observability / api-client / ui`，包内统一 `domain / application / ports /
-  adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-receiver / client /
+notifications / observability / api-client / ui`，包内统一 `domain / application / ports /
+adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-receiver / client /
   admin）收敛为薄装配单元（配置 + HTTP 壳 + 接线）。
 - `packages/wallet` + `ledger-core` + `money` 合并为 `packages/billing`——资金与计费唯一事实源
   （ADR-0003）；`packages/errors` 成为内部错误根契约（三性根类 + 错误目录 + 规范化记录，

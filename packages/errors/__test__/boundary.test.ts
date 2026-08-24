@@ -28,7 +28,7 @@ describe('包边界', () => {
     expect(Object.keys(api).toSorted()).toEqual(
       [
         // 三性根类与传播注记
-        'TokenlensError',
+        'TillgateError',
         'BusinessError',
         'InfrastructureError',
         'DefectError',
@@ -48,7 +48,7 @@ describe('包边界', () => {
         // 边界归一
         'normalizeError',
         // 守卫
-        'isTokenlensError',
+        'isTillgateError',
         'isBusinessError',
         'isInfrastructureError',
         'isDefectError',

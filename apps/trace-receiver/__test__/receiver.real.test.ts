@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createDb, closeDb, ping, type Db } from '@tokenlens/db';
-import { createPgTraceStore } from '@tokenlens/observability/composition';
-import { createSpanBatcher, type SpanBatcher } from '@tokenlens/observability';
+import { createDb, closeDb, ping, type Db } from '@tillgate/db';
+import { createPgTraceStore } from '@tillgate/observability/composition';
+import { createSpanBatcher, type SpanBatcher } from '@tillgate/observability';
 import { createReceiverApp } from '../src/app';
 
 /**

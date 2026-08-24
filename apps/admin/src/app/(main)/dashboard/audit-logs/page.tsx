@@ -1,3 +1,4 @@
+import { requirePermission } from '@/server/get-admin';
 import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
@@ -5,7 +6,7 @@ import { HistoryIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { fetchAdminList } from '@/server/admin-list';
-import type { AuditLogRow } from '@tokenlens/api-client';
+import type { AuditLogRow } from '@tillgate/api-client';
 
 import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
@@ -20,6 +21,7 @@ interface PageProps {
 }
 
 export default async function AuditLogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
   const sp = await searchParams;
   const t = await getTranslations('auditLogs');
   const tc = await getTranslations('common');

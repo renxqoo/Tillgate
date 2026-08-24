@@ -17,8 +17,8 @@ import {
   DialogTrigger,
   Input,
   toast,
-} from '@tokenlens/ui';
-import type { CurrentSubscription, PlanRow } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { CurrentSubscription, PlanRow } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import {

@@ -1,10 +1,10 @@
 /**
  * 内存 store stand-in（§5.6 类型 2：PostgreSQL 的行为等价替身）——默认门禁专用。
  * 与 adapters/postgres 同契约实现；唯一约束以 23505 形状错误模拟
- * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tokenlens/db pg-error）。
+ * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tillgate/db pg-error）。
  * 真实 SQL 行为等价由 postgres.real.test.ts 承担（默认门禁排除）。
  */
-import type { Db, DbTx } from '@tokenlens/db';
+import type { Db, DbTx } from '@tillgate/db';
 import type { ProviderStore, ProviderRecord } from '../src/ports/provider-store';
 import type {
   ChannelStore,
@@ -144,7 +144,9 @@ export function createMemoryProviderStore(seed: ProviderRecord[] = []): MemoryPr
         const key = query.sortBy as keyof ProviderRecord;
         const av = a[key] ?? 0;
         const bv = b[key] ?? 0;
-        const cmp = av > bv ? 1 : av < bv ? -1 : 0;
+        let cmp = 0;
+        if (av > bv) cmp = 1;
+        else if (av < bv) cmp = -1;
         return (query.order === 'asc' ? cmp : -cmp) || b.id - a.id;
       });
       return {
@@ -649,6 +651,7 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
         description: input.description,
         status: 0,
         createdAt: new Date(0),
+        updatedAt: new Date(0),
       };
       cards.set(card.id, card);
       coefficients.push({
@@ -668,7 +671,8 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
     async updateWithGlobal(_db, input) {
       const card = cards.get(input.rateCardId);
       if (!card) return null;
-      Object.assign(card, input.patch);
+      // PG 适配器 update 恒刷 updatedAt——此处镜像
+      Object.assign(card, input.patch, { updatedAt: new Date() });
       if (input.globalCoefficient !== undefined) {
         for (const c of coefficients) {
           if (c.rateCardId === input.rateCardId && c.scope === 'global')
@@ -927,7 +931,7 @@ export function createStubProbe(overrides?: {
   return { probe, calls };
 }
 
-/** 密码替身：前缀标记的对称编码（真实 AES-GCM 归 @tokenlens/runtime 已覆盖） */
+/** 密码替身：前缀标记的对称编码（真实 AES-GCM 归 @tillgate/runtime 已覆盖） */
 export const fakeCipher: SecretCipher = {
   encrypt: (plaintext) => `fake-enc:${plaintext}`,
   decrypt: (packed) => packed.replace(/^fake-enc:/, ''),
@@ -963,7 +967,11 @@ function toActiveRow(row: MemoryModelRow): ActiveMappingRow {
 }
 
 /** 管理员资料 store 替身（G2）——投影不含密码列（与 postgres adapter 同口径） */
-export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
+export function createMemoryAdminStore(
+  seed: AdminRecord[] = [],
+  roleCodes: Map<number, string> = new Map(),
+  grantsByRole: Map<number, { isSuper: boolean; codes: string[] }> = new Map(),
+): AdminStore & {
   rows: Map<number, AdminRecord>;
 } {
   const rows = new Map<number, AdminRecord>(seed.map((r) => [r.id, r]));
@@ -976,6 +984,16 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
     async findByEmail(_db, email) {
       return [...rows.values()].find((r) => r.email === email) ?? null;
     },
+    async findAccess(_db, adminId) {
+      const row = rows.get(adminId);
+      if (row == null) return null;
+      const grants = grantsByRole.get(row.roleId);
+      let resolved = { isSuper: false, codes: [] as string[] };
+      if (grants?.isSuper) resolved = { isSuper: true, codes: [] };
+      else if (grants != null) resolved = { isSuper: false, codes: grants.codes };
+      return { status: row.status, grants: resolved };
+    },
+
     async touchLastLogin(_db, id) {
       const row = rows.get(id);
       if (row == null) return;
@@ -987,5 +1005,268 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
       if (row == null) return;
       rows.set(input.adminId, { ...row, twoFactorEnabled: input.enabled });
     },
+    async list(_db, query) {
+      const matched = [...rows.values()].filter((r) => {
+        if (query.q == null || query.q === '') return true;
+        const needle = query.q.toLowerCase();
+        return (
+          r.email.toLowerCase().includes(needle) ||
+          (r.displayName ?? '').toLowerCase().includes(needle)
+        );
+      });
+      const sorted = matched.toSorted((a, b) => {
+        const key = (r: AdminRecord) => {
+          if (query.sortBy === 'email') return r.email;
+          if (query.sortBy === 'lastLoginAt') return r.lastLoginAt?.getTime() ?? 0;
+          if (query.sortBy === 'createdAt') return r.createdAt.getTime();
+          return r.id;
+        };
+        const av = key(a);
+        const bv = key(b);
+        const cmp =
+          typeof av === 'string' ? av.localeCompare(bv as string) : Number(av) - Number(bv);
+        return query.order === 'desc' ? -cmp : cmp;
+      });
+      return {
+        rows: sorted.slice(query.offset, query.offset + query.limit),
+        total: matched.length,
+      };
+    },
+    async create(_db, row) {
+      clock += 1;
+      if ([...rows.values()].some((r) => r.email === row.email)) {
+        const error = new Error('duplicate key') as Error & { code: string };
+        error.code = '23505';
+        throw error;
+      }
+      // 与 postgres adapter 同语义:id ≥1e9 段分配（identity_passwords 扁平主键防串号）
+      const maxId = [...rows.keys()].reduce((max, id) => Math.max(max, id), 0);
+      const record: AdminRecord = {
+        id: Math.max(1_000_000_000, maxId + 1),
+        ...row,
+        role: roleCodes.get(row.roleId) ?? 'custom',
+        status: 0,
+        twoFactorEnabled: false,
+        lastLoginAt: null,
+        createdAt: new Date(clock),
+      };
+      rows.set(record.id, record);
+      return record;
+    },
+    async update(_db, input) {
+      const row = rows.get(input.adminId);
+      if (row == null) return null;
+      const roleId = input.roleId ?? row.roleId;
+      const next: AdminRecord = {
+        ...row,
+        ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+        ...(input.roleId !== undefined ? { roleId } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        role: roleCodes.get(roleId) ?? row.role,
+      };
+      rows.set(input.adminId, next);
+      return next;
+    },
+    async remove(_db, adminId) {
+      rows.delete(adminId);
+    },
   };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 动态 RBAC 替身（roles/permissions;SQL 行为等价由 postgres.real 承担）
+// ══════════════════════════════════════════════════════════════════════════
+
+export function createMemoryRoleStore(seed: import('../src/ports/rbac-store').RoleRecord[] = []) {
+  const rolesById = new Map(seed.map((r) => [r.id, r]));
+  const grantsByRole = new Map<number, string[]>();
+  const adminCounts = new Map<number, number>();
+  let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').RoleStore = {
+    async list(_db, query) {
+      const matched = [...rolesById.values()].filter(
+        (r) => query.q == null || query.q === '' || r.name.includes(query.q!),
+      );
+      return {
+        rows: matched.map((r) => ({
+          ...r,
+          adminCount: adminCounts.get(r.id) ?? 0,
+          codes: grantsByRole.get(r.id) ?? [],
+        })),
+        total: matched.length,
+      };
+    },
+    async findById(_db, id) {
+      return rolesById.get(id) ?? null;
+    },
+    async findByCode(_db, code) {
+      return [...rolesById.values()].find((r) => r.code === code) ?? null;
+    },
+    async create(_db, row) {
+      const record = {
+        id: nextId++,
+        code: row.code,
+        name: row.name,
+        description: row.description,
+        status: 0,
+        isSuper: false,
+        isBuiltin: false,
+        createdAt: new Date(0),
+      };
+      rolesById.set(record.id, record);
+      grantsByRole.set(record.id, [...row.codes]);
+      return record;
+    },
+    async update(_db, input) {
+      const current = rolesById.get(input.roleId);
+      if (current == null) return null;
+      const next = {
+        ...current,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      };
+      rolesById.set(input.roleId, next);
+      return next;
+    },
+    async remove(_db, roleId) {
+      rolesById.delete(roleId);
+      grantsByRole.delete(roleId);
+    },
+    async codesOf(_db, roleId) {
+      return grantsByRole.get(roleId) ?? [];
+    },
+    async replaceCodes(_db, roleId, codes) {
+      grantsByRole.set(roleId, [...codes]);
+    },
+    async adminCount(_db, roleId) {
+      return adminCounts.get(roleId) ?? 0;
+    },
+  };
+  return Object.assign(store, {
+    rolesById,
+    grantsByRole,
+    setAdminCount(roleId: number, count: number) {
+      adminCounts.set(roleId, count);
+    },
+  });
+}
+
+export function createMemoryPermissionStore(
+  seed: import('../src/ports/rbac-store').PermissionNode[] = [],
+) {
+  const nodes = new Map(seed.map((n) => [n.id, n]));
+  const bindings = new Map<number, number>(); // nodeId → 绑定角色数
+  let nextId = seed.reduce((max, n) => Math.max(max, n.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').PermissionStore = {
+    async list(_db) {
+      return [...nodes.values()].toSorted((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+    },
+    async findById(_db, id) {
+      return nodes.get(id) ?? null;
+    },
+    async codeTaken(_db, code) {
+      return [...nodes.values()].some((n) => n.code === code);
+    },
+    async create(_db, row) {
+      const node = {
+        id: nextId++,
+        parentId: row.parentId,
+        type: row.type,
+        code: row.code,
+        name: row.name,
+        i18nKey: row.i18nKey,
+        description: row.description,
+        path: row.path,
+        icon: row.icon,
+        sortOrder: row.sortOrder,
+        status: 0,
+        source: 'custom' as const,
+        createdAt: new Date(0),
+      };
+      nodes.set(node.id, node);
+      return node;
+    },
+    async update(_db, input) {
+      const current = nodes.get(input.id);
+      if (current == null) return null;
+      const next = {
+        ...current,
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.i18nKey !== undefined ? { i18nKey: input.i18nKey } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
+        ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.code !== undefined ? { code: input.code } : {}),
+        ...(input.type !== undefined ? { type: input.type } : {}),
+        ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+        ...(input.source !== undefined ? { source: input.source } : {}),
+      };
+      nodes.set(input.id, next);
+      return next;
+    },
+    async remove(_db, id) {
+      nodes.delete(id);
+    },
+    async childCount(_db, id) {
+      return [...nodes.values()].filter((n) => n.parentId === id).length;
+    },
+    async bindingCount(_db, id) {
+      return bindings.get(id) ?? 0;
+    },
+    async activeCodes(_db) {
+      return [...nodes.values()]
+        .filter((n) => n.status === 0 && n.code != null)
+        .map((n) => n.code as string);
+    },
+  };
+  return Object.assign(store, {
+    nodes,
+    setBinding(nodeId: number, count: number) {
+      bindings.set(nodeId, count);
+    },
+  });
+}
+
+export function createMemoryEndpointStore(
+  seed: import('../src/ports/rbac-store').EndpointBindingRecord[] = [],
+) {
+  const rows = new Map(seed.map((r) => [r.id, r]));
+  let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').EndpointStore = {
+    async list() {
+      return [...rows.values()].toSorted((a, b) => a.path.localeCompare(b.path));
+    },
+    async create(_db, row) {
+      const record = {
+        id: nextId++,
+        source: 'custom' as const,
+        createdAt: new Date(0),
+        ...row,
+      };
+      rows.set(record.id, record);
+      return record;
+    },
+    async update(_db, id, row) {
+      const current = rows.get(id);
+      if (current == null) return null;
+      const next = {
+        ...current,
+        ...(row.method !== undefined ? { method: row.method } : {}),
+        ...(row.path !== undefined ? { path: row.path } : {}),
+        ...(row.permissionId !== undefined ? { permissionId: row.permissionId } : {}),
+      };
+      rows.set(id, next);
+      return next;
+    },
+    async remove(_db, id) {
+      rows.delete(id);
+    },
+    async bindingCountOf(_db, permissionId) {
+      return [...rows.values()].filter((r) => r.permissionId === permissionId).length;
+    },
+  };
+  return Object.assign(store, { rows });
 }

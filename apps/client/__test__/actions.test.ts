@@ -21,8 +21,12 @@ vi.mock('next/headers', () => ({
     },
     has: (name: string) => jar.has(name),
   })),
-  headers: vi.fn(async () =>
-    new Headers({ 'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8', 'x-forwarded-for': '203.0.113.9' }),
+  headers: vi.fn(
+    async () =>
+      new Headers({
+        'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'x-forwarded-for': '203.0.113.9',
+      }),
   ),
 }));
 
@@ -35,9 +39,14 @@ vi.mock('next/cache', () => ({
 }));
 
 import { revalidatePath } from 'next/cache';
-import { SESSION_COOKIE } from '@tokenlens/api-client/next';
+import { SESSION_COOKIE } from '@tillgate/api-client/next';
 
-import { loginAction, logoutAction, registerAction, verifyLoginCodeAction } from '../src/server/actions/auth';
+import {
+  loginAction,
+  logoutAction,
+  registerAction,
+  verifyLoginCodeAction,
+} from '../src/server/actions/auth';
 import { createKeyAction, revokeKeyAction, updateKeyAction } from '../src/server/actions/keys';
 import { inviteMemberAction, setMemberQuotaAction } from '../src/server/actions/orgs';
 import {
@@ -50,7 +59,7 @@ import { createPaymentAction } from '../src/server/actions/billing';
 import { requireMe, userFromMe } from '../src/server/session';
 import { fetchPublicPricing } from '../src/server/public-pricing';
 import { fetchAuthCapabilities, fetchOAuthProviders } from '../src/server/discovery';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 
 type FetchCall = { url: string; init: RequestInit };
 
@@ -126,7 +135,10 @@ describe('actions/auth（认证编排 + B7 回归）', () => {
   });
 
   it('业务错误：ApiError message 上浮 + code 供 CAPTCHA 换票', async () => {
-    responses.push({ status: 400, body: { error: { code: 'client.captcha_invalid', message: '人机验证未通过' } } });
+    responses.push({
+      status: 400,
+      body: { error: { code: 'client.captcha_invalid', message: '人机验证未通过' } },
+    });
     const fd = new FormData();
     fd.append('email', 'u@x.dev');
     fd.append('password', 'pw');
@@ -247,7 +259,10 @@ describe('actions/redeem & billing', () => {
   });
 
   it('createPayment：返回支付跳转 URL', async () => {
-    responses.push({ status: 201, body: { orderId: 'uuid', payUrl: 'https://pay/x', creditAmount: '10' } });
+    responses.push({
+      status: 201,
+      body: { orderId: 'uuid', payUrl: 'https://pay/x', creditAmount: '10' },
+    });
     const res = await createPaymentAction('epay', '50');
     expect(res).toEqual({ ok: true, payUrl: 'https://pay/x' });
   });

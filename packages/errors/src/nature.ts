@@ -56,7 +56,7 @@ export interface ErrorOptions {
  * 全部根契约错误的公共基类：nature 判别 + 身份码 + 上下文。
  * name 取 new.target.name——子类名即错误名，不随重构搬层漂移（v1 E12 的结构修复）。
  */
-export abstract class TokenlensError extends Error {
+export abstract class TillgateError extends Error {
   abstract readonly nature: ErrorNature;
 
   /** 命名空间身份码（`namespace.key`，如 billing.insufficient_cash；规范见 DESIGN §3.3） */
@@ -78,7 +78,7 @@ export abstract class TokenlensError extends Error {
 }
 
 /** 业务拒绝：预期内的"不允许"；处理契约在 category（闭集唯一分派轴） */
-export class BusinessError extends TokenlensError {
+export class BusinessError extends TillgateError {
   override readonly nature = 'business' as const;
   readonly category: ErrorCategory;
 
@@ -89,7 +89,7 @@ export class BusinessError extends TokenlensError {
 }
 
 /** 环境故障：DB/Redis/上游/投递不可用；处理语义由 handlingOf 单点给出（可重试、告警） */
-export class InfrastructureError extends TokenlensError {
+export class InfrastructureError extends TillgateError {
   override readonly nature = 'infrastructure' as const;
 
   constructor(message: string, code: string, context?: ErrorContext, opts?: ErrorOptions) {
@@ -98,7 +98,7 @@ export class InfrastructureError extends TokenlensError {
 }
 
 /** 缺陷：不变量破坏/不可达路径/装配 bug；不重试、最高告警；细节只进日志（内外分际） */
-export class DefectError extends TokenlensError {
+export class DefectError extends TillgateError {
   override readonly nature = 'defect' as const;
 
   constructor(message: string, code: string, context?: ErrorContext, opts?: ErrorOptions) {
@@ -107,10 +107,10 @@ export class DefectError extends TokenlensError {
 }
 
 /** 注记存储键（符号、非枚举：不污染序列化,不可在外部伪造遍历） */
-const annotationsKey = Symbol('tokenlens.annotations');
+const annotationsKey = Symbol('tillgate.annotations');
 
 /** 注记槽位的类型桥（符号索引无类型重叠,经 unknown 直取） */
-function annotationsSlot(error: TokenlensError): Readonly<Record<symbol, readonly ErrorContext[]>> {
+function annotationsSlot(error: TillgateError): Readonly<Record<symbol, readonly ErrorContext[]>> {
   return error as unknown as Readonly<Record<symbol, readonly ErrorContext[]>>;
 }
 
@@ -120,7 +120,7 @@ function annotationsSlot(error: TokenlensError): Readonly<Record<symbol, readonl
  * `throw annotate(e, {...})` 直书。构造上下文为底,注记按时间序合并、后写胜出
  * （recordOf 消费,见 error-record.ts）。
  */
-export function annotate<T extends TokenlensError>(error: T, context: ErrorContext): T {
+export function annotate<T extends TillgateError>(error: T, context: ErrorContext): T {
   const existing = annotationsSlot(error)[annotationsKey];
   Object.defineProperty(error, annotationsKey, {
     value: existing === undefined ? [context] : [...existing, context],
@@ -131,6 +131,6 @@ export function annotate<T extends TokenlensError>(error: T, context: ErrorConte
 }
 
 /** 读取注记（recordOf 合并用；无注记返回空数组） */
-export function annotationsOf(error: TokenlensError): readonly ErrorContext[] {
+export function annotationsOf(error: TillgateError): readonly ErrorContext[] {
   return annotationsSlot(error)[annotationsKey] ?? [];
 }
