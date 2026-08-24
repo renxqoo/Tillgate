@@ -191,7 +191,8 @@ const FACADE_CASES: readonly FacadeCase[] = [
   },
   {
     name: 'createPermission POST',
-    invoke: (c) => c.createPermission({ parentId: 1, type: 'button', code: 'x:y', name: 'n', sortOrder: 0 }),
+    invoke: (c) =>
+      c.createPermission({ parentId: 1, type: 'button', code: 'x:y', name: 'n', sortOrder: 0 }),
     method: 'POST',
     url: 'http://admin-api/v1/permissions',
     sendBody: { parentId: 1, type: 'button', code: 'x:y', name: 'n', sortOrder: 0 },

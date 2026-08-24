@@ -28,7 +28,7 @@ cd packages/db
 DATABASE_URL=postgres://... bun run db:migrate   # drizzle-kit migrate(连接串必填、无默认)
 DATABASE_URL=postgres://... bun run db:studio    # drizzle-kit studio 浏览器查看 schema
 DATABASE_URL=... ENCRYPTION_KEY=... bun scripts/seed-dev.ts
-# 开发种子:用户+费率卡+管理员+测试虚拟 Key(ag_xxx)+供应商/渠道/模型映射;
+# 开发种子:用户+费率卡+管理员+测试虚拟 Key(sk_xxx)+供应商/渠道/模型映射;
 # 幂等按唯一键判存;DEEPSEEK_API_KEY / MINIMAX_API_KEY 可选(缺则跳过该供应商段)
 ```
 

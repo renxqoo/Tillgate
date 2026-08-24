@@ -32,7 +32,7 @@ describe('缺省值与推导', () => {
     expect(c.upstreamConnectTimeoutMs).toBe(10_000);
     expect(c.bodyLimitBytes).toBe(10 * 1024 * 1024);
     expect(c.uploadLimits.maxFileBytes).toBe(10 * 1024 * 1024); // 与 bodyLimit 取 min
-    expect(c.keyPrefix).toBe('ag_');
+    expect(c.keyPrefix).toBe('sk_');
     expect(c.oauth.issuer).toBe('ai-gateway');
     expect(c.oauth.audience).toBe('ai-gateway-api');
     expect(c.oauth.tokenTtlSeconds).toBe(3_600);

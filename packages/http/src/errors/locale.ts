@@ -43,11 +43,9 @@ export function parseAcceptLanguage(header: string | null | undefined): Locale {
         if (Number.isFinite(parsed)) q = Math.min(Math.max(parsed, 0), 1);
       }
     }
-    const locale: Locale | undefined = tag.startsWith('zh')
-      ? 'zh'
-      : tag.startsWith('en')
-        ? 'en'
-        : undefined;
+    let locale: Locale | undefined;
+    if (tag.startsWith('zh')) locale = 'zh';
+    else if (tag.startsWith('en')) locale = 'en';
     if (locale && (!best || (q > best.q && q > 0))) best = { locale, q };
   }
   return best?.locale ?? DEFAULT_LOCALE;

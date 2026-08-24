@@ -8,8 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const feature = (name: string) =>
-  join(import.meta.dirname, '..', 'src', 'features', 'rbac', name);
+const feature = (name: string) => join(import.meta.dirname, '..', 'src', 'features', 'rbac', name);
 const page = (name: string) =>
   join(import.meta.dirname, '..', 'src', 'app', '(main)', 'dashboard', name, 'page.tsx');
 

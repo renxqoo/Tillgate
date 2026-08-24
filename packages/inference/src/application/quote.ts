@@ -59,8 +59,9 @@ export async function prepareChatRequest(env: {
   const candidates = await buildCandidateChain(mapping, (m) => env.catalog.findMapping(m, pricing));
 
   const endpoint = env.endpoint ?? 'chat';
-  const kind: 'chat' | 'embeddings' | 'modality' =
-    endpoint === 'chat' ? 'chat' : endpoint === 'embeddings' ? 'embeddings' : 'modality';
+  let kind: 'chat' | 'embeddings' | 'modality' = 'modality';
+  if (endpoint === 'chat') kind = 'chat';
+  else if (endpoint === 'embeddings') kind = 'embeddings';
   const outputCap = maxOutputTokensFor(kind, env.body, {
     defaultMax: env.defaults.output.defaultMaxOutputTokens,
     exposureCap: env.defaults.output.exposureCap,

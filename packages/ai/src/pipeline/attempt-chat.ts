@@ -55,12 +55,10 @@ export async function chatAttempt(
   // B-F2 修复：签名钩子此前仅在 finalBody 已是 string 时触发——JSON 对象体
   // （一切常规路径）永不签名，vertex/bedrock 等签名协议静默裸奔。
   // 先序列化再签（SigV4 需要 payload hash，必须用最终字节串）。
-  const bodyStr =
-    finalBody instanceof FormData
-      ? undefined
-      : typeof finalBody === 'string'
-        ? finalBody
-        : JSON.stringify(finalBody);
+  let bodyStr;
+  if (finalBody instanceof FormData) bodyStr = undefined;
+  else if (typeof finalBody === 'string') bodyStr = finalBody;
+  else bodyStr = JSON.stringify(finalBody);
   try {
     if (adapter.signRequest && bodyStr !== undefined) {
       const signed = await adapter.signRequest({

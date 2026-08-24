@@ -11,6 +11,7 @@
 旧仓无测试——行为等价判定标准 = 下列清单（源自逐文件审计的消费面）＋新仓 `__test__/` 用例。逐项核销状态：✅ 已核销 / ⚠️ 有意变化（见 §4） / ⬜ 待核销。
 
 **认证旅程**
+
 - ✅ 注册：邮箱+密码（+可选 aff 码 `u[0-9a-z]+`）→ Turnstile（CAPTCHA_REQUIRED/INVALID 时自动换票重渲染）→ 两步验证码（6 位）→ 建号自动登录落 cookie → /dashboard；探测失败按开启渲染
 - ✅ 登录：密码步 → `{kind:'code_required'}` 进验证码步 / 单步直接落 cookie；`next` 白名单回跳
 - ✅ OAuth：providers 发现 → 授权跳转 → 回调页 fragment 取 token → server action 落 cookie → replace 到 next
@@ -18,6 +19,7 @@
 - ✅ 未登录访问 /dashboard/* → 307 /login?next=…（middleware）；会话失效 → requireMe redirect
 
 **控制台读取面**
+
 - ✅ dashboard：余额/今日费用/Key 数/RPM-TPM 四 KPI + 近 14 日费用面积图 + Top10 模型条图（费用/Token/次数/缓存率切换）；后端不可达各卡独立兜底不互炸
 - ✅ keys 列表/创建（一次性明文）/编辑（name/remark/RPM/TPM/日限额）/吊销；计费来源徽章（余额 vs 订阅）
 - ✅ apps 列表/创建（client_secret 一次性明文）/轮换/停用
@@ -44,29 +46,29 @@
 
 ## 4. API 对照（旧签名 → 新签名，含行为变化）
 
-| 旧 | 新 | 变化理由 |
-|---|---|---|
-| `apiFetch(path, {method, body, bearerToken?, revalidate?})` | `createNextClientApiClient()` → `client.{get,post,patch,delete,request}` | facade 显式 token 注入（B1 回归设计）；B7 出站头结构性修复 |
-| `fetchUserList<T>(path, {page,pageSize,sortBy,order,extra})` | `client.list<T>(path, {page,pageSize,sortBy,order,extra})` | 同构平移（buildListQuery 语义等价：page/limit 恒有、sort_by+order 成对、extra 跳 undefined/''） |
-| `getMe()`（旧包） | `client.getMe()`（facade，吞错返 null） | 布局守卫语义 v1 等价 |
-| `{set,get,clear}SessionToken{,Cookie}` / `SESSION_COOKIE` | `@tokenlens/api-client/next` 同名 | cookie 名/TTL/属性 v1 等价 |
-| `formatters.{fmtBalance,fmtCost,fmtPrice,formatMoney}`（4 位**截断**） | `features/shared/format.ts formatMoney(v, {locale, currency})`（Intl 2–4 位**四舍五入**） | ui 设计系统口径（D-D）；信息量保留 |
-| `formatters.{fmtInt,msToHuman,fmtDateTime,fmtDate}` | `createNumberFormatter` / app `formatDateTime`（DISPLAY_TZ 注入） | B8 时区显式化 |
-| `formatters.formatPoints`（元×100） | 移除 | 新契约无积分（D-E） |
-| `formatters.unitWord` | `features/usage/unit-word.ts`（app 内表驱动） | 展示词表属 app |
-| 旧 types.* | `dto/client-api`（KeyRow/KeyCreated/…） | 单一 DTO 源 |
-| `GET /v1/wallet/statement?page&limit&sort_by&order&q`（页码） | `GET ?limit=&beforeLegId=`（游标） | client-api 契约演进（D-A） |
-| `GET /v1/usage?…&q&sort_by…` / `GET /v1/keys?…&q` | `?page&limit(±from/to/model)` | strict 契约（D-B，G1） |
-| `GET /v1/plans?sort_by=sortOrder&order=asc&page_size=100` | `GET /v1/plans?page=1&limit=100` | B2+G4 |
-| `GET /v1/payments/orders`（含 total 页码条） | 同路径，UI 去页码改加载更多 | G3（响应只 rows） |
-| 登录/注册响应按 challengeId 存在性判两步 | 按 `kind` 判别联合判两步 | 新契约显式判别（v1 末期已兼容） |
-| 旧 ui `lib/list-query`、`lib/auth-url`、`lib/money-tone`、`getInitials`、`ListPage`、`useActionResult`、`ConfirmAction`、`NavMain`、header switchers、theme-boot、ui server action `setValueToCookie` | `server/list-query.ts`、`features/shared/*`、`features/shell/*`、`server/actions/locale.ts`（app 内实现） | P7 ui 纯净化后业务装配归 app（D1） |
-| KPI「活跃 Key」=首页 100 条内计数 | KPI「Key 总数」=信封 total | B4（诚实计数） |
+| 旧                                                                                                                                                                                                    | 新                                                                                                        | 变化理由                                                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `apiFetch(path, {method, body, bearerToken?, revalidate?})`                                                                                                                                           | `createNextClientApiClient()` → `client.{get,post,patch,delete,request}`                                  | facade 显式 token 注入（B1 回归设计）；B7 出站头结构性修复                                      |
+| `fetchUserList<T>(path, {page,pageSize,sortBy,order,extra})`                                                                                                                                          | `client.list<T>(path, {page,pageSize,sortBy,order,extra})`                                                | 同构平移（buildListQuery 语义等价：page/limit 恒有、sort_by+order 成对、extra 跳 undefined/''） |
+| `getMe()`（旧包）                                                                                                                                                                                     | `client.getMe()`（facade，吞错返 null）                                                                   | 布局守卫语义 v1 等价                                                                            |
+| `{set,get,clear}SessionToken{,Cookie}` / `SESSION_COOKIE`                                                                                                                                             | `@tokenlens/api-client/next` 同名                                                                         | cookie 名/TTL/属性 v1 等价                                                                      |
+| `formatters.{fmtBalance,fmtCost,fmtPrice,formatMoney}`（4 位**截断**）                                                                                                                                | `features/shared/format.ts formatMoney(v, {locale, currency})`（Intl 2–4 位**四舍五入**）                 | ui 设计系统口径（D-D）；信息量保留                                                              |
+| `formatters.{fmtInt,msToHuman,fmtDateTime,fmtDate}`                                                                                                                                                   | `createNumberFormatter` / app `formatDateTime`（DISPLAY_TZ 注入）                                         | B8 时区显式化                                                                                   |
+| `formatters.formatPoints`（元×100）                                                                                                                                                                   | 移除                                                                                                      | 新契约无积分（D-E）                                                                             |
+| `formatters.unitWord`                                                                                                                                                                                 | `features/usage/unit-word.ts`（app 内表驱动）                                                             | 展示词表属 app                                                                                  |
+| 旧 types.*                                                                                                                                                                                            | `dto/client-api`（KeyRow/KeyCreated/…）                                                                   | 单一 DTO 源                                                                                     |
+| `GET /v1/wallet/statement?page&limit&sort_by&order&q`（页码）                                                                                                                                         | `GET ?limit=&beforeLegId=`（游标）                                                                        | client-api 契约演进（D-A）                                                                      |
+| `GET /v1/usage?…&q&sort_by…` / `GET /v1/keys?…&q`                                                                                                                                                     | `?page&limit(±from/to/model)`                                                                             | strict 契约（D-B，G1）                                                                          |
+| `GET /v1/plans?sort_by=sortOrder&order=asc&page_size=100`                                                                                                                                             | `GET /v1/plans?page=1&limit=100`                                                                          | B2+G4                                                                                           |
+| `GET /v1/payments/orders`（含 total 页码条）                                                                                                                                                          | 同路径，UI 去页码改加载更多                                                                               | G3（响应只 rows）                                                                               |
+| 登录/注册响应按 challengeId 存在性判两步                                                                                                                                                              | 按 `kind` 判别联合判两步                                                                                  | 新契约显式判别（v1 末期已兼容）                                                                 |
+| 旧 ui `lib/list-query`、`lib/auth-url`、`lib/money-tone`、`getInitials`、`ListPage`、`useActionResult`、`ConfirmAction`、`NavMain`、header switchers、theme-boot、ui server action `setValueToCookie` | `server/list-query.ts`、`features/shared/*`、`features/shell/*`、`server/actions/locale.ts`（app 内实现） | P7 ui 纯净化后业务装配归 app（D1）                                                              |
+| KPI「活跃 Key」=首页 100 条内计数                                                                                                                                                                     | KPI「Key 总数」=信封 total                                                                                | B4（诚实计数）                                                                                  |
 
 ## 5. 测试迁移矩阵
 
-| 旧测试 | 新去处 | 动作 |
-|---|---|---|
+| 旧测试              | 新去处                                          | 动作                                       |
+| ------------------- | ----------------------------------------------- | ------------------------------------------ |
 | （无——旧仓 0 测试） | `__test__/*.test.ts` 17 件（IMPLEMENTATION §4） | 全部新建；行为规格以本文 §1 清单为判定基线 |
 
 ## 6. 回滚方案

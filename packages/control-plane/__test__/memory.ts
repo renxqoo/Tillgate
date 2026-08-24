@@ -144,7 +144,9 @@ export function createMemoryProviderStore(seed: ProviderRecord[] = []): MemoryPr
         const key = query.sortBy as keyof ProviderRecord;
         const av = a[key] ?? 0;
         const bv = b[key] ?? 0;
-        const cmp = av > bv ? 1 : av < bv ? -1 : 0;
+        let cmp = 0;
+        if (av > bv) cmp = 1;
+        else if (av < bv) cmp = -1;
         return (query.order === 'asc' ? cmp : -cmp) || b.id - a.id;
       });
       return {
@@ -649,6 +651,7 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
         description: input.description,
         status: 0,
         createdAt: new Date(0),
+        updatedAt: new Date(0),
       };
       cards.set(card.id, card);
       coefficients.push({
@@ -668,7 +671,8 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
     async updateWithGlobal(_db, input) {
       const card = cards.get(input.rateCardId);
       if (!card) return null;
-      Object.assign(card, input.patch);
+      // PG 适配器 update 恒刷 updatedAt——此处镜像
+      Object.assign(card, input.patch, { updatedAt: new Date() });
       if (input.globalCoefficient !== undefined) {
         for (const c of coefficients) {
           if (c.rateCardId === input.rateCardId && c.scope === 'global')
@@ -984,12 +988,9 @@ export function createMemoryAdminStore(
       const row = rows.get(adminId);
       if (row == null) return null;
       const grants = grantsByRole.get(row.roleId);
-      const resolved =
-        grants == null
-          ? { isSuper: false, codes: [] }
-          : grants.isSuper
-            ? { isSuper: true, codes: [] }
-            : { isSuper: false, codes: grants.codes };
+      let resolved = { isSuper: false, codes: [] as string[] };
+      if (grants?.isSuper) resolved = { isSuper: true, codes: [] };
+      else if (grants != null) resolved = { isSuper: false, codes: grants.codes };
       return { status: row.status, grants: resolved };
     },
 
@@ -1014,14 +1015,12 @@ export function createMemoryAdminStore(
         );
       });
       const sorted = matched.toSorted((a, b) => {
-        const key = (r: AdminRecord) =>
-          query.sortBy === 'email'
-            ? r.email
-            : query.sortBy === 'lastLoginAt'
-              ? (r.lastLoginAt?.getTime() ?? 0)
-              : query.sortBy === 'createdAt'
-                ? r.createdAt.getTime()
-                : r.id;
+        const key = (r: AdminRecord) => {
+          if (query.sortBy === 'email') return r.email;
+          if (query.sortBy === 'lastLoginAt') return r.lastLoginAt?.getTime() ?? 0;
+          if (query.sortBy === 'createdAt') return r.createdAt.getTime();
+          return r.id;
+        };
         const av = key(a);
         const bv = key(b);
         const cmp =

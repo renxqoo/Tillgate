@@ -112,10 +112,7 @@ describe('P. 绑定完整性矩阵（零码令牌遍历全部绑定端点）', (
           ? {}
           : { headers: jsonHeaders, body: JSON.stringify({}) };
       const res = await callAs(token, materialize(row.path), { method: row.method, ...init });
-      expect(
-        res.status,
-        `${row.method} ${row.path} 零码应 403`,
-      ).toBe(403);
+      expect(res.status, `${row.method} ${row.path} 零码应 403`).toBe(403);
       expect(res.body, `${row.method} ${row.path}`).toMatchObject({
         error: { code: 'admin.insufficient_permission' },
       });
@@ -132,10 +129,9 @@ describe('Q. 错绑检测矩阵（全码令牌走 GET 绑定）', () => {
     for (const row of bindings) {
       const res = await callAs(token, materialize(row.path));
       const code = (res.body.error as { code?: string } | undefined)?.code;
-      expect(
-        code,
-        `GET ${row.path} 全码令牌不得被 ACL 拒（错绑或绑到非 enforced 码）`,
-      ).not.toBe('admin.insufficient_permission');
+      expect(code, `GET ${row.path} 全码令牌不得被 ACL 拒（错绑或绑到非 enforced 码）`).not.toBe(
+        'admin.insufficient_permission',
+      );
       expect(code).not.toBe('admin.endpoint_unbound');
     }
   });
@@ -145,23 +141,71 @@ describe('R. 预置授权契约（0082 种子逐角色锁定）', () => {
   it('operator/finance/support/viewer 授权码集与种子逐一相等;super 隐式全量零授权行', async () => {
     const expected: Record<string, string[]> = {
       operator: [
-        'users:read', 'funds:read', 'catalog:read', 'plans:read', 'ops:read', 'growth:read', 'settings:read',
-        'users:update', 'users:set-password',
-        'catalog:create', 'catalog:update', 'catalog:delete', 'catalog:restore', 'catalog:test', 'catalog:import', 'catalog:refresh', 'catalog:bind',
-        'plans:create', 'plans:update', 'plans:delete', 'plans:renew', 'plans:cancel', 'plans:change', 'plans:grant',
-        'growth:create', 'growth:update', 'growth:delete', 'growth:test',
+        'users:read',
+        'funds:read',
+        'catalog:read',
+        'plans:read',
+        'ops:read',
+        'growth:read',
+        'settings:read',
+        'users:update',
+        'users:set-password',
+        'catalog:create',
+        'catalog:update',
+        'catalog:delete',
+        'catalog:restore',
+        'catalog:test',
+        'catalog:import',
+        'catalog:refresh',
+        'catalog:bind',
+        'plans:create',
+        'plans:update',
+        'plans:delete',
+        'plans:renew',
+        'plans:cancel',
+        'plans:change',
+        'plans:grant',
+        'growth:create',
+        'growth:update',
+        'growth:delete',
+        'growth:test',
         'settings:update',
       ],
       finance: [
-        'users:read', 'funds:read', 'catalog:read', 'plans:read', 'ops:read', 'growth:read', 'settings:read',
-        'funds:adjust', 'funds:recharge', 'funds:gift', 'funds:close', 'funds:revoke', 'funds:create', 'funds:retry', 'funds:abandon',
+        'users:read',
+        'funds:read',
+        'catalog:read',
+        'plans:read',
+        'ops:read',
+        'growth:read',
+        'settings:read',
+        'funds:adjust',
+        'funds:recharge',
+        'funds:gift',
+        'funds:close',
+        'funds:revoke',
+        'funds:create',
+        'funds:retry',
+        'funds:abandon',
       ],
       support: [
-        'users:read', 'funds:read', 'catalog:read', 'plans:read', 'ops:read', 'growth:read',
-        'users:update', 'users:set-password',
+        'users:read',
+        'funds:read',
+        'catalog:read',
+        'plans:read',
+        'ops:read',
+        'growth:read',
+        'users:update',
+        'users:set-password',
       ],
       viewer: [
-        'users:read', 'funds:read', 'catalog:read', 'plans:read', 'ops:read', 'growth:read', 'settings:read',
+        'users:read',
+        'funds:read',
+        'catalog:read',
+        'plans:read',
+        'ops:read',
+        'growth:read',
+        'settings:read',
       ],
     };
 

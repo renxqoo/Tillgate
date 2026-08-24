@@ -29,7 +29,7 @@ export const apiKeys = pgTable(
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     /** SHA-256(完整 Key)，鉴权时对请求 Key 哈希后查询 */
     keyHash: varchar('key_hash', { length: 64 }).notNull(),
-    /** 展示用：ag_****abcd（末 4 位） */
+    /** 展示用：sk_****abcd（末 4 位） */
     keyPreview: varchar('key_preview', { length: 40 }).notNull(),
     userId: bigint('user_id', { mode: 'number' })
       .notNull()

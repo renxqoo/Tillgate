@@ -6,7 +6,7 @@ import {
   ConfirmDialog,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  RowActions
+  RowActions,
 } from '@tokenlens/ui';
 import { useState } from 'react';
 import { PencilIcon, Trash2Icon } from 'lucide-react';
@@ -18,9 +18,7 @@ import { DataTable } from '@/components/data-table';
 import { NodeEditDialog } from './permissions-dialogs';
 import { StatusPill } from '@/components/status-pill';
 import { useActionResult } from '@/components/action-toast';
-import {
-  deletePermissionAction,
-} from '@/server/rbac-actions';
+import { deletePermissionAction } from '@/server/rbac-actions';
 
 type NodeType = 'group' | 'page' | 'button';
 

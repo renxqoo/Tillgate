@@ -20,6 +20,40 @@ function last(calls: FetchCall[]): FetchCall {
   return calls[calls.length - 1]!;
 }
 
+async function loadGetAdmin(
+  responses: Array<{ status?: number; body?: unknown }>,
+  navKeys: string[] = ['nav.groupSystem', 'nav.users'],
+) {
+  // 自带全套桩（每路径单次注册）——requireMenus 的 t.has 需自定义 i18n 桩,
+  // 叠加 installNextStubs 的同路径 doMock 在 doUnmock 后不可靠
+  vi.resetModules();
+  const { fetchStub, calls } = mockFetch(responses);
+  vi.stubGlobal('fetch', fetchStub);
+  const { jar } = mockCookieJar();
+  const known = new Set(navKeys);
+  const redirectCalls: string[] = [];
+  vi.doMock('next/headers', () => ({
+    cookies: async () => jar,
+    headers: async () => new Map([['accept-language', 'en']]),
+  }));
+  vi.doMock('next/cache', () => ({ revalidatePath: () => undefined }));
+  vi.doMock('next/navigation', () => ({
+    redirect: (path: string) => {
+      redirectCalls.push(path);
+      throw Object.assign(new Error(`redirect:${path}`), { __redirect: path });
+    },
+  }));
+  vi.doMock('next-intl/server', () => ({
+    getTranslations: async () =>
+      Object.assign((key: string) => key, {
+        has: (key: string) => known.has(key),
+      }) as never,
+    getLocale: async () => 'en',
+  }));
+  const mod = await import('../src/server/get-admin');
+  return { mod, calls, redirectCalls };
+}
+
 beforeEach(() => {
   vi.unstubAllGlobals();
 });
@@ -39,7 +73,9 @@ describe('rbac-actions 全分支', () => {
     ]);
     expect(await mod.createRoleAction({ code: 'r', name: '角', permissions: [] })).toEqual({});
     expect(last(calls)).toMatchObject({ method: 'POST', url: 'http://localhost:8082/v1/roles' });
-    expect(await mod.updateRoleAction(1, { name: 'n', status: 1, permissions: ['users:read'] })).toEqual({});
+    expect(
+      await mod.updateRoleAction(1, { name: 'n', status: 1, permissions: ['users:read'] }),
+    ).toEqual({});
     expect(last(calls)).toMatchObject({ method: 'PATCH', url: 'http://localhost:8082/v1/roles/1' });
 
     // errorKey 透传(control_plane.* 短码)
@@ -49,7 +85,9 @@ describe('rbac-actions 全分支', () => {
     expect(await m3.deleteRoleAction(1)).toEqual({ errorKey: 'role_in_use' });
 
     // 网络失败 → error 文案(非 errorKey)
-    const { mod: m4 } = await loadModule('../src/server/rbac-actions', [{ status: 500, body: null }]);
+    const { mod: m4 } = await loadModule('../src/server/rbac-actions', [
+      { status: 500, body: null },
+    ]);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -76,14 +114,17 @@ describe('rbac-actions 全分支', () => {
       vi.resetModules();
       vi.stubGlobal(
         'fetch',
-        mockFetch([{ status: 409, body: { error: { code: `control_plane.${code}`, message: 'x' } } }])
-          .fetchStub,
+        mockFetch([
+          { status: 409, body: { error: { code: `control_plane.${code}`, message: 'x' } } },
+        ]).fetchStub,
       );
       const fresh = await import('../src/server/rbac-actions');
       expect(await invoke.call(fresh as never), code).toMatchObject({ errorKey: code });
     }
 
-    const { mod: okMod } = await loadModule('../src/server/rbac-actions', [{ status: 200, body: {} }]);
+    const { mod: okMod } = await loadModule('../src/server/rbac-actions', [
+      { status: 200, body: {} },
+    ]);
     expect(await okMod.deletePermissionAction(9)).toEqual({});
     expect(
       await okMod.createPermissionAction({
@@ -110,14 +151,20 @@ describe('binding-actions 全分支', () => {
     expect(await mod.updateBindingAction(5, { method: 'POST', path: '/v1/y' })).toEqual({});
     expect(await mod.deleteBindingAction(5)).toEqual({});
 
-    for (const code of ['endpoint_bound', 'endpoint_not_found', 'invalid_endpoint_input'] as const) {
+    for (const code of [
+      'endpoint_bound',
+      'endpoint_not_found',
+      'invalid_endpoint_input',
+    ] as const) {
       const { mod: m } = await loadModule('../src/server/binding-actions', [
         { status: 409, body: { error: { code: `control_plane.${code}`, message: 'x' } } },
       ]);
       expect(await m.updateBindingAction(5, { path: '/v1/z' })).toMatchObject({ errorKey: code });
     }
 
-    const { mod: net } = await loadModule('../src/server/binding-actions', [{ status: 200, body: null }]);
+    const { mod: net } = await loadModule('../src/server/binding-actions', [
+      { status: 200, body: null },
+    ]);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -143,7 +190,9 @@ describe('totp-actions 全分支', () => {
     ]);
     expect((await m2.enrollTotpAction()).error).toBe('已绑定');
 
-    const { mod: m3 } = await loadModule('../src/server/totp-actions', [{ status: 200, body: null }]);
+    const { mod: m3 } = await loadModule('../src/server/totp-actions', [
+      { status: 200, body: null },
+    ]);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -198,40 +247,6 @@ describe('settings-actions 计费时区', () => {
 });
 
 describe('get-admin 守卫与菜单解析', () => {
-  async function loadGetAdmin(
-    responses: Array<{ status?: number; body?: unknown }>,
-    navKeys: string[] = ['nav.groupSystem', 'nav.users'],
-  ) {
-    // 自带全套桩（每路径单次注册）——requireMenus 的 t.has 需自定义 i18n 桩,
-    // 叠加 installNextStubs 的同路径 doMock 在 doUnmock 后不可靠
-    vi.resetModules();
-    const { fetchStub, calls } = mockFetch(responses);
-    vi.stubGlobal('fetch', fetchStub);
-    const { jar } = mockCookieJar();
-    const known = new Set(navKeys);
-    const redirectCalls: string[] = [];
-    vi.doMock('next/headers', () => ({
-      cookies: async () => jar,
-      headers: async () => new Map([['accept-language', 'en']]),
-    }));
-    vi.doMock('next/cache', () => ({ revalidatePath: () => undefined }));
-    vi.doMock('next/navigation', () => ({
-      redirect: (path: string) => {
-        redirectCalls.push(path);
-        throw Object.assign(new Error(`redirect:${path}`), { __redirect: path });
-      },
-    }));
-    vi.doMock('next-intl/server', () => ({
-      getTranslations: async () =>
-        Object.assign((key: string) => key, {
-          has: (key: string) => known.has(key),
-        }) as never,
-      getLocale: async () => 'en',
-    }));
-    const mod = await import('../src/server/get-admin');
-    return { mod, calls, redirectCalls };
-  }
-
   const meBody = {
     id: 9,
     email: 'ops@x.dev',
@@ -250,7 +265,7 @@ describe('get-admin 守卫与菜单解析', () => {
   });
 
   it('requireAdmin:200 回 me;401 redirect /login', async () => {
-    const { mod, redirectCalls } = await loadGetAdmin([{ status: 200, body: meBody }]);
+    const { mod } = await loadGetAdmin([{ status: 200, body: meBody }]);
     expect((await mod.requireAdmin()).id).toBe(9);
 
     const { mod: m2, redirectCalls: rc2 } = await loadGetAdmin([{ status: 401, body: {} }]);
@@ -332,13 +347,26 @@ describe('admins-actions 全分支', () => {
       { status: 409, body: { error: { code: 'control_plane.admin_email_taken', message: 'x' } } },
       { status: 400, body: { error: { code: 'y', message: '参数错' } } },
     ]);
-    expect(await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).toEqual({});
-    expect((await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error).toBe('emailTaken');
-    expect((await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error).toBe('参数错');
+    expect(
+      await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 }),
+    ).toEqual({});
+    expect(
+      (await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
+    ).toBe('emailTaken');
+    expect(
+      (await mod.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
+    ).toBe('参数错');
 
     const { mod: net } = await loadModule('../src/server/admins-actions', []);
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('down'); }));
-    expect((await net.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error).toBe('createFailed');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('down');
+      }),
+    );
+    expect(
+      (await net.createAdminAction({ email: 'a@b.c', password: '12345678', roleId: 1 })).error,
+    ).toBe('createFailed');
   });
 
   it('updateRole/toggleStatus:成功 + ApiError 上浮', async () => {
@@ -349,7 +377,11 @@ describe('admins-actions 全分支', () => {
       { status: 404, body: { error: { code: 'x', message: '不存在' } } },
     ]);
     expect(await mod.updateAdminRoleAction(7, 2)).toEqual({});
-    expect(last(calls)).toMatchObject({ method: 'PATCH', url: 'http://localhost:8082/v1/admins/7', body: { roleId: 2 } });
+    expect(last(calls)).toMatchObject({
+      method: 'PATCH',
+      url: 'http://localhost:8082/v1/admins/7',
+      body: { roleId: 2 },
+    });
     expect((await mod.updateAdminRoleAction(7, 2)).error).toBe('不可自改');
     expect(await mod.toggleAdminStatusAction(7, 1)).toEqual({});
     expect((await mod.toggleAdminStatusAction(7, 1)).error).toBe('不存在');
@@ -363,12 +395,22 @@ describe('password-actions 全分支', () => {
     const { mod, calls } = await loadModule('../src/server/password-actions', [
       { status: 200, body: { token: 'fresh' } },
     ]);
-    expect((await mod.changeMyPasswordAction({ ...okInput, oldPassword: '' })).error).toBe('errors.required');
-    expect((await mod.changeMyPasswordAction({ ...okInput, confirmPassword: 'zzz' })).error).toBe('errors.mismatch');
-    expect((await mod.changeMyPasswordAction({ ...okInput, newPassword: '123', confirmPassword: '123' })).error).toBe('errors.tooShort');
+    expect((await mod.changeMyPasswordAction({ ...okInput, oldPassword: '' })).error).toBe(
+      'errors.required',
+    );
+    expect((await mod.changeMyPasswordAction({ ...okInput, confirmPassword: 'zzz' })).error).toBe(
+      'errors.mismatch',
+    );
+    expect(
+      (await mod.changeMyPasswordAction({ ...okInput, newPassword: '123', confirmPassword: '123' }))
+        .error,
+    ).toBe('errors.tooShort');
     expect(calls).toHaveLength(0);
     expect(await mod.changeMyPasswordAction(okInput)).toEqual({});
-    expect(last(calls)).toMatchObject({ method: 'POST', url: 'http://localhost:8082/v1/me/password' });
+    expect(last(calls)).toMatchObject({
+      method: 'POST',
+      url: 'http://localhost:8082/v1/me/password',
+    });
   });
 
   it('ApiError 上浮;网络回落 fetchError', async () => {
@@ -377,7 +419,12 @@ describe('password-actions 全分支', () => {
     ]);
     expect((await mod.changeMyPasswordAction(okInput)).error).toBe('旧密码错误');
     const { mod: net } = await loadModule('../src/server/password-actions', []);
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('down'); }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('down');
+      }),
+    );
     expect((await net.changeMyPasswordAction(okInput)).error).toBe('fetchError');
   });
 });
@@ -395,7 +442,12 @@ describe('cookies-actions 全分支', () => {
 describe('totp 网络失败补支', () => {
   it('disable 网络失败回落 fetchError', async () => {
     const { mod } = await loadModule('../src/server/totp-actions', []);
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('down'); }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('down');
+      }),
+    );
     expect((await mod.disableTotpAction('123456')).error).toBe('fetchError');
   });
 });

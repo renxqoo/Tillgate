@@ -29,19 +29,9 @@ vi.mock('next-intl/server', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 import { createKeyAction, updateKeyAction, exportKeysAction } from '../src/server/actions/keys';
-import {
-  revokeInvitationAction,
-  removeMemberAction,
-} from '../src/server/actions/orgs';
-import {
-  changePasswordAction,
-  updateDisplayNameAction,
-} from '../src/server/actions/settings';
-import {
-  createAppAction,
-  rotateSecretAction,
-  deleteAppAction,
-} from '../src/server/actions/apps';
+import { revokeInvitationAction, removeMemberAction } from '../src/server/actions/orgs';
+import { changePasswordAction, updateDisplayNameAction } from '../src/server/actions/settings';
+import { createAppAction, rotateSecretAction, deleteAppAction } from '../src/server/actions/apps';
 import { forgotAction, forgotResetAction } from '../src/server/actions/auth';
 import { optionalMe } from '../src/server/session';
 import { planPeriodLabel } from '../src/features/subscription/plan-format';
@@ -137,9 +127,7 @@ describe('settings 改密/显示名守卫矩阵', () => {
     responses.push({ status: 409, body: errBody('x', '重名') });
     expect((await updateDisplayNameAction({ displayName: 'n' })).error).toBe('重名');
     failNetwork = true;
-    expect((await updateDisplayNameAction({ displayName: 'n' })).error).toBe(
-      'changeFailedRetry',
-    );
+    expect((await updateDisplayNameAction({ displayName: 'n' })).error).toBe('changeFailedRetry');
   });
 });
 
@@ -156,7 +144,7 @@ describe('keys 守卫与部分更新字段矩阵', () => {
       remark: '',
       rpmLimit: 5,
       tpmLimit: 6,
-      dailySpendLimit: 7,
+      dailySpendLimit: '7',
     });
     const full = JSON.parse(String(calls[0]!.init?.body));
     expect(full).toEqual({
@@ -164,7 +152,7 @@ describe('keys 守卫与部分更新字段矩阵', () => {
       remark: null,
       rpmLimit: 5,
       tpmLimit: 6,
-      dailySpendLimit: 7,
+      dailySpendLimit: '7',
     });
 
     responses.push({ status: 200, body: {} });
@@ -233,19 +221,21 @@ describe('auth 找回密码族失败面', () => {
   });
 });
 
+const t = (key: string, values?: Record<string, unknown>) =>
+  values ? `${key}:${JSON.stringify(values)}` : key;
+const tPlain = (key: string) => key;
+
 describe('零覆盖纯函数补测', () => {
   it('planPeriodLabel:30→月付,365→年付,其余按天', () => {
-    const t = (key: string, values?: Record<string, unknown>) =>
-      values ? `${key}:${JSON.stringify(values)}` : key;
-    expect(planPeriodLabel(30, t)).toBe('monthly');
-    expect(planPeriodLabel(365, t)).toBe('yearly');
-    expect(planPeriodLabel(90, t)).toBe('periodDays:{"days":90}');
+    const tt = t as unknown as Parameters<typeof planPeriodLabel>[1];
+    expect(planPeriodLabel(30, tt)).toBe('monthly');
+    expect(planPeriodLabel(365, tt)).toBe('yearly');
+    expect(planPeriodLabel(90, tt)).toBe('periodDays:{"days":90}');
   });
 
   it('buildSamples:三语言示例含真实 Base URL', () => {
-    const t = (key: string) => key;
-    const samples = buildSamples(t, 'https://api.example.com');
-    expect(Object.keys(samples).sort()).toEqual(['curl', 'node', 'py']);
+    const samples = buildSamples(tPlain as never, 'https://api.example.com');
+    expect(Object.keys(samples).toSorted()).toEqual(['curl', 'node', 'py']);
     expect(samples.node).toContain('https://api.example.com');
     expect(samples.py).toContain('https://api.example.com');
     expect(samples.curl).toContain('https://api.example.com');

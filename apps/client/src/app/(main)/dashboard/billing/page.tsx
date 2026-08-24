@@ -47,8 +47,11 @@ export default async function BillingPage() {
     {
       key: 'provider',
       header: tCommon('channel'),
-      cell: (r) =>
-        r.provider === 'epay' ? t('onlinePay') : r.provider === 'stripe' ? 'Stripe' : r.provider,
+      cell: (r) => {
+        if (r.provider === 'epay') return t('onlinePay');
+        if (r.provider === 'stripe') return 'Stripe';
+        return r.provider;
+      },
     },
     {
       key: 'amount',

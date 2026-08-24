@@ -12,7 +12,7 @@
 部署单元：Next.js 16 App Router，`output: 'standalone'`，端口 3001（沿用 v1）。三种访客形态：
 
 1. **公开页**（无需会话）：营销首页 `/`（含免费模型广场，取公开定价前 9 条）、`/pricing` 公开定价表（`q`/`free` 搜索 + 分页，pageSize=50）、`/login`、`/register`（Cloudflare Turnstile 人机验证，能力探测失败按「开启」渲染、提交 403 兜底——v1 刻意取舍）、`/oauth/callback`（读 URL fragment `#token=` 换 BFF cookie 后跳 `next`）。
-2. **受保护页**（middleware 查 `ag_session` cookie 存在性 + layout `requireMe()` 权威校验，双层）：`/dashboard`（KPI + 双图表）、`keys`、`apps`、`usage`、`transactions`、`billing`（充值+订单）、`redeem`、`invite`（返佣，功能开关可关）、`orgs`（+`orgs/accept?token=`）、`subscription`、`settings`、`playground`（BYOK 同域直连推理端点）、`api-guide`。
+2. **受保护页**（middleware 查 `sk_session` cookie 存在性 + layout `requireMe()` 权威校验，双层）：`/dashboard`（KPI + 双图表）、`keys`、`apps`、`usage`、`transactions`、`billing`（充值+订单）、`redeem`、`invite`（返佣，功能开关可关）、`orgs`（+`orgs/accept?token=`）、`subscription`、`settings`、`playground`（BYOK 同域直连推理端点）、`api-guide`。
 3. **i18n**：无路由 cookie 模式（`NEXT_LOCALE` → `Accept-Language` → en），en/zh 双语全量 SSR，切换无闪变。
 
 写入动作全部经 Server Action（BFF 代理到 client-api），错误以 toast 呈现，message 语言与 UI 一致（BFF 转发 `accept-language`，后端本地化）。
@@ -22,6 +22,7 @@
 **处理**：页面路由装配、BFF 会话持有（HttpOnly cookie ↔ Bearer JWT 互转）、出站头注入（accept-language / x-forwarded-for）、Server Action 编排（校验→转发→落 cookie→revalidate/redirect）、i18n 词表与语言切换、展示格式化（金额/日期/数字，装配注入 locale/TZ/币种）、纯前端交互态（表单、图表、筛选 URL 状态）。
 
 **不处理**（归属已定，不留白）：
+
 - 业务规则/事务/SQL → 能力包（identity/accounts/billing/…），唯一入口 `apps/client-api`；
 - 会话签发/校验、挑战/验证码、OAuth 状态机 → client-api（本 app 只持 cookie、不解释 JWT）；
 - 错误码目录与本地化 → client-api error-face（本 app 只透传 `error.message` 展示、按 `code` 做极少数 UI 分支如 CAPTCHA 换票）；
@@ -31,15 +32,16 @@
 
 ## 3. 消费面契约（依赖只此两家 + Next 生态）
 
-| 依赖 | 消费方式 | 硬约束 |
-|---|---|---|
-| `@tokenlens/ui` | 根入口 `@tokenlens/ui` 具名导入 + `@tokenlens/ui/styles.css` | 禁 `next/*` 专有能力进 ui（包内自锁）；app 不 import `./components/*` 子路径以外的私货 |
-| `@tokenlens/api-client` | `.`（类型 + `ApiError` + facade）与 `./next`（session/locale/forwarded-ip/clients BFF 装配） | 仅此两条 exports；app 零直接 fetch 后端、零手写 DTO |
-| 其他 `@tokenlens/*` | **一律不依赖** | 由 `__test__/architecture.test.ts` + `scripts/check-package-boundaries.ts` 机器锁定 |
+| 依赖                    | 消费方式                                                                                     | 硬约束                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `@tokenlens/ui`         | 根入口 `@tokenlens/ui` 具名导入 + `@tokenlens/ui/styles.css`                                 | 禁 `next/*` 专有能力进 ui（包内自锁）；app 不 import `./components/*` 子路径以外的私货 |
+| `@tokenlens/api-client` | `.`（类型 + `ApiError` + facade）与 `./next`（session/locale/forwarded-ip/clients BFF 装配） | 仅此两条 exports；app 零直接 fetch 后端、零手写 DTO                                    |
+| 其他 `@tokenlens/*`     | **一律不依赖**                                                                               | 由 `__test__/architecture.test.ts` + `scripts/check-package-boundaries.ts` 机器锁定    |
 
 client-api 消费子集（51 路由中的 41 条）：auth 7、me 2、keys 5、apps 4、orgs 7、wallet 2、redeem 2、payments 4（notify 除外）、subscriptions/plans 5、usage 4、oauth 3（providers/authorize 入口/callback 回跳）、pricing 2（personal 备用）、referrals 2、healthz 不消费。
 
 **契约差异裁决**（相对 v1 行为，详见 MIGRATION §4）：
+
 - D-A 钱包流水：v1 `?page=&limit=&sort_by=&order=&q=` → 现**游标分页** `?limit=&beforeLegId=`，UI 从页码条改「加载更多」；
 - D-B usage/keys 列表：契约 strict 只收 `page/limit`（usage 另收 `from/to/model`）→ v1 的 `q` 搜索与列排序 UI **移除**（契约缺口 G1，后端扩展后回补）；
 - D-C 订单列表：响应只 `{rows}` 无 total → 去页码条，按页「加载更多」（G3）；
@@ -49,7 +51,7 @@ client-api 消费子集（51 路由中的 41 条）：auth 7、me 2、keys 5、a
 
 ## 4. BFF 模型（会话/语言/IP）
 
-- **会话**：后端无 Cookie 纯 Bearer；浏览器侧 `ag_session` HttpOnly(lax, 生产 secure, path=/, TTL=SESSION_TTL_SECONDS) 持 JWT，由 `@tokenlens/api-client/next` session 工具读写；登录/验码/OAuth 回调/改密从响应体取 `token` 落 cookie；登出先 best-effort 吊销 jti 再清 cookie。
+- **会话**：后端无 Cookie 纯 Bearer；浏览器侧 `sk_session` HttpOnly(lax, 生产 secure, path=/, TTL=SESSION_TTL_SECONDS) 持 JWT，由 `@tokenlens/api-client/next` session 工具读写；登录/验码/OAuth 回调/改密从响应体取 `token` 落 cookie；登出先 best-effort 吊销 jti 再清 cookie。
 - **出站头**：一切后端调用经 `createNextClientApiClient()`（自动注入 `authorization` + `accept-language` + `x-forwarded-for`——v1 auth 裸 fetch 丢头病灶 B7 的结构性修复）；`TRUSTED_PROXY_HOPS` 解不出用户 IP 则不带 XFF。
 - **开放重定向防线**：`next` 参数站内白名单（`/` 开头且非 `//`，缺省 `/dashboard`）单点实现于 `src/server/next-url.ts`，登录/验码/OAuth 三处复用（D2 去重）。
 - **鉴权双层**：middleware（cookie 存在性，快速门卫 + `next` 透传）+ `requireMe()`（`getMe()` 权威校验，失败 redirect `/login`）；`DEV_FAKE_ME=1`（非生产）注入演示会话。

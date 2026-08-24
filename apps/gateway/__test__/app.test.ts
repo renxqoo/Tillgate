@@ -58,7 +58,7 @@ function makeApp(
       jwtSecret: 'ab12'.repeat(8),
       issuer: 'i',
       audience: 'a',
-      keyPrefix: 'ag_',
+      keyPrefix: 'sk_',
       tokenTtlSeconds: 3_600,
     },
     trustedProxyHops: 0,
@@ -66,7 +66,7 @@ function makeApp(
   });
 }
 
-const AG = { headers: { authorization: 'Bearer ag_k' } };
+const STATIC_KEY_AUTH = { headers: { authorization: 'Bearer sk_k' } };
 
 describe('探针', () => {
   it('healthz/readyz 查依赖；readyz 连 Redis 探针；失败 503', async () => {
@@ -86,7 +86,7 @@ describe('探针', () => {
 describe('未注册路径与信封', () => {
   it('未注册 /v1 路径 404（先于 401——鉴权只挂已注册端点）', async () => {
     const app = makeApp();
-    const res = await app.request('/v1/not-a-endpoint', { headers: AG.headers });
+    const res = await app.request('/v1/not-a-endpoint', { headers: STATIC_KEY_AUTH.headers });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe('http.not_found');
@@ -97,7 +97,7 @@ describe('未注册路径与信封', () => {
     const a = await app.request('/v1/chat/completions', {
       method: 'POST',
       headers: {
-        ...AG.headers,
+        ...STATIC_KEY_AUTH.headers,
         'content-type': 'application/json',
         'x-request-id': 'client-forged',
       },
@@ -135,7 +135,11 @@ describe('安全面', () => {
     const app = makeApp({ bodyLimitBytes: 1024 });
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { ...AG.headers, 'content-type': 'application/json', 'content-length': '999999' },
+      headers: {
+        ...STATIC_KEY_AUTH.headers,
+        'content-type': 'application/json',
+        'content-length': '999999',
+      },
       body: '{}',
     });
     expect(res.status).toBe(413);
@@ -174,7 +178,7 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     });
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { ...AG.headers, 'content-type': 'application/json' },
+      headers: { ...STATIC_KEY_AUTH.headers, 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
     expect(res.status).toBe(200);
@@ -184,7 +188,7 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     const minimal = makeApp(); // 无 authGuards/rateLimit/corsOrigins/uploadLimits/redisProbe
     const res = await minimal.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
     expect(res.status).toBe(200); // 无 guards 仍可鉴权（替身 reader 放行）
@@ -198,7 +202,7 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     );
     const bad = await minimal.request('/v1/images/edits', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
       body: form,
     });
     expect(bad.status).toBe(400);
@@ -216,7 +220,7 @@ describe('请求日志（记录一切 /v1 请求）', () => {
     big.append('image', new File([new Uint8Array(2048)], 'x.png', { type: 'image/png' }));
     const oversized = await withUploads.request('/v1/images/edits', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
       body: big,
     });
     expect(oversized.status).toBe(400);

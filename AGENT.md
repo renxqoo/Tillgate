@@ -5,9 +5,6 @@
 > 全程中文注释；提交信息用英文 Conventional Commits（`feat` / `fix` / `docs` / `chore` / `refactor` + scope，一行主题说明动机与范围）。
 > **代码是业务逻辑的唯一标准**——docs/ 下的文档仅作导读，可能与实现不同步，与代码冲突时一律以代码为准。
 
-
-
-
 ## 0. 铁律（每条都是硬约束，违反 = 返工）
 
 1. **单向分层**：能力包内 `routes → application → domain`，存在真实边界时使用
@@ -37,7 +34,7 @@
     `ports ← adapters`）；无真实边界的浅包必须合并，不保留永久编制（见铁律 11）。
 11. **边界必须可执行**：package、协议和未来插件边界不能只靠目录命名；显式 `exports`、依赖白名单、
     无环检查、架构测试和发布闭包检查必须在 CI 中执行（当前由 `scripts/check-package-boundaries.ts`
-    + 各包 vitest 契约测试承担）。没有真实边界的浅包必须合并，不保留永久编制。
+    与各包 vitest 契约测试承担）。没有真实边界的浅包必须合并，不保留永久编制。
 12. **数据面与观察面分离**（`ai` 硬约束）：上游响应逐块透传 C 端，不缓冲、不改写、不收完再转发；
     触碰「不改写」的仅有透传例外清单三种情形（docs/project-structure-refactoring.md §3.6）：
     跨协议最小必要转换（含错误体）、响应侧 model 字段替换（`responseModelRewrite` 可配置开关）、

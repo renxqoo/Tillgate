@@ -25,7 +25,7 @@ import {
 import type { GuardCheck } from '@tokenlens/runtime';
 
 const SECRET = 'ab3d'.repeat(8);
-const JWT = { secret: SECRET, issuer: 'ai-gateway', audience: 'ai-gateway-api', keyPrefix: 'ag_' };
+const JWT = { secret: SECRET, issuer: 'ai-gateway', audience: 'ai-gateway-api', keyPrefix: 'sk_' };
 
 const KEY = {
   keyId: 7,
@@ -39,7 +39,7 @@ const KEY = {
 
 function reader(over: Partial<AuthReadModel> = {}): AuthReadModel {
   return {
-    resolveKeyByHash: async (hash) => (hash === sha('ag_valid') ? KEY : null),
+    resolveKeyByHash: async (hash) => (hash === sha('sk_valid') ? KEY : null),
     resolveApp: async (appId) =>
       appId === 'app-1'
         ? { id: 5, userId: 42, scope: { rpm: 10, tpm: 20_000, models: ['m-a', 'm-b'] } }
@@ -113,7 +113,7 @@ const appJwt = (payload: Record<string, unknown>) =>
 
 describe('Key 分支', () => {
   it('有效 Key → 全维上下文（rpm/tpm/user 并罚字段）', async () => {
-    const res = await get(app(reader()), '/v1/whoami', 'ag_valid');
+    const res = await get(app(reader()), '/v1/whoami', 'sk_valid');
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       userId: 42,
@@ -131,22 +131,22 @@ describe('Key 分支', () => {
     const { guards, calls } = makeGuards();
     const a = app(reader(), guards);
     expect((await get(a, '/v1/whoami')).status).toBe(401);
-    expect((await get(a, '/v1/whoami', 'ag_unknown')).status).toBe(401);
+    expect((await get(a, '/v1/whoami', 'sk_unknown')).status).toBe(401);
     expect(calls.keyFail).toBe(1);
     expect(calls.ipFail).toBe(1);
-    expect((await get(a, '/v1/whoami', 'ag_valid')).status).toBe(200);
+    expect((await get(a, '/v1/whoami', 'sk_valid')).status).toBe(200);
     expect(calls.keySuccess).toBe(1);
   });
 
   it('Key 维锁定 → 401 带 retry 提示（阈值内不误伤他人 Key）', async () => {
     const { guards, calls } = makeGuards(3, 100); // IP 维抬高：隔离 Key 维行为
     const a = app(reader(), guards);
-    for (let i = 0; i < 3; i++) await get(a, '/v1/whoami', 'ag_bad'); // 达阈值锁定
+    for (let i = 0; i < 3; i++) await get(a, '/v1/whoami', 'sk_bad'); // 达阈值锁定
     expect(calls.keyFail).toBe(3);
-    const lockedRes = await get(a, '/v1/whoami', 'ag_bad');
+    const lockedRes = await get(a, '/v1/whoami', 'sk_bad');
     expect(lockedRes.status).toBe(401);
     expect(await lockedRes.text()).toContain('locked');
-    const res = await get(a, '/v1/whoami', 'ag_valid');
+    const res = await get(a, '/v1/whoami', 'sk_valid');
     expect(res.status).toBe(200);
   });
 });

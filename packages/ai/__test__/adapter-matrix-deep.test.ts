@@ -405,12 +405,11 @@ describe('task-kit：通用骨架全分支（自定义 auth + 三态 + 兜底）
       typeof body.task_id === 'string' && body.task_id !== '' ? body.task_id : undefined,
     extractCompletedArtifact: (body) =>
       typeof body.url === 'string' && body.url !== '' ? { url: body.url } : undefined,
-    readStatus: (body) =>
-      body.status === 'ok'
-        ? { status: 'succeeded', artifact: { url: 'u' } }
-        : body.status === 'bad'
-          ? { status: 'failed' }
-          : { status: 'running' },
+    readStatus: (body) => {
+      if (body.status === 'ok') return { status: 'succeeded', artifact: { url: 'u' } };
+      if (body.status === 'bad') return { status: 'failed' };
+      return { status: 'running' };
+    },
     extractFileUrl: (body) => (typeof body.dl === 'string' && body.dl !== '' ? body.dl : undefined),
   });
   it('parseResponse：video 提交（空串 taskId 拒）/music 完成/信封优先/非对象体', () => {

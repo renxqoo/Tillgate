@@ -5,12 +5,20 @@ import type {
   ChannelTtftRow,
   UsageAdminListInput,
   UsageAdminRow,
+  UsageGroupAxis,
   UsageGroupStoreRow,
   UsageStatsStore,
   UsageTotalsRow,
   UsageTrendStoreRow,
 } from '../../usage/types';
 import { escapeLikePattern } from './search';
+
+/** 三种分组列数据类型不同；用分支返回联合类型，避免可变变量被首个列类型锁死。 */
+function usageGroupColumn(group: UsageGroupAxis) {
+  if (group === 'user') return usageLogs.userId;
+  if (group === 'channel') return usageLogs.channelId;
+  return usageLogs.externalModel;
+}
 
 /**
  * usage_logs 运维查询的 PG 适配(v1 usage-log.repo 管理面族逐语义平移):
@@ -145,12 +153,7 @@ export function createPgUsageStore(db: Db): UsageStatsStore {
       if (input.from) conditions.push(gte(usageLogs.createdAt, input.from));
       if (input.to) conditions.push(lte(usageLogs.createdAt, input.to));
       const where = conditions.length ? and(...conditions) : undefined;
-      const groupCol =
-        input.group === 'user'
-          ? usageLogs.userId
-          : input.group === 'channel'
-            ? usageLogs.channelId
-            : usageLogs.externalModel;
+      const groupCol = usageGroupColumn(input.group);
       const rows = await db
         .select({
           key: groupCol,

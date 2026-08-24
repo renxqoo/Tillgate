@@ -255,7 +255,11 @@ export async function seedPlan(
 export function rawGet(
   url: string,
   headers: Record<string, string> = {},
-): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }> {
+): Promise<{
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+}> {
   return new Promise((resolve, reject) => {
     const req = get(url, { headers }, (res) => {
       let body = '';

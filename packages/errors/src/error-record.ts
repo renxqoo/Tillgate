@@ -119,11 +119,12 @@ function mergedContextOf(error: TokenlensError): ErrorContext | undefined {
 function fromUnknown(value: unknown, depth: number): ErrorRecord {
   if (value instanceof TokenlensError) return fromTokenlens(value, depth);
   if (value instanceof Error) {
+    let message = value.message;
+    if (message === '') message = value.name === '' ? 'unknown error' : value.name;
     return {
       nature: 'defect',
       code: ROOT_ERROR_CODES.unhandled,
-      message:
-        value.message === '' ? (value.name === '' ? 'unknown error' : value.name) : value.message,
+      message,
       context: { name: value.name },
       cause: causeOf(value.cause, depth),
     };

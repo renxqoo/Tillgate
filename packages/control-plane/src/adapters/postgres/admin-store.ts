@@ -126,14 +126,13 @@ export const postgresAdminStore: AdminStore = {
             ilike(admins.displayName, `%${escapeLike(query.q)}%`),
           )
         : undefined;
-    const sortColumn =
-      query.sortBy === 'email'
-        ? admins.email
-        : query.sortBy === 'lastLoginAt'
-          ? admins.lastLoginAt
-          : query.sortBy === 'createdAt'
-            ? admins.createdAt
-            : admins.id;
+    const sortColumns = {
+      id: admins.id,
+      email: admins.email,
+      lastLoginAt: admins.lastLoginAt,
+      createdAt: admins.createdAt,
+    } as const;
+    const sortColumn = sortColumns[query.sortBy];
     const rows = await db
       .select(projection)
       .from(admins)

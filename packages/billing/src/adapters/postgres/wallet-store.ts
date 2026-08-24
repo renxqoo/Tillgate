@@ -346,12 +346,9 @@ export function createPostgresWalletStore(
      */
     async listReferralPayouts(conn, input) {
       const referral = input.kind !== 'gift';
-      const prefix =
-        input.kind === 'commission'
-          ? 'referral-commission:'
-          : input.kind === 'referral_signup'
-            ? 'referral-signup:'
-            : 'signup:';
+      let prefix = 'signup:';
+      if (input.kind === 'commission') prefix = 'referral-commission:';
+      else if (input.kind === 'referral_signup') prefix = 'referral-signup:';
       const conditions = [
         eq(walletTransactions.refType, referral ? 'referral' : 'gift'),
         like(walletTransactions.refId, `${prefix}%`),

@@ -60,17 +60,17 @@
 
 ### 1.2 明确不处理（写明归属，不留白）
 
-| 不处理                                                       | 归属                                                                 |
-| ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| otel.ts（OTel SDK、内存环形缓冲、traceparent）               | `observability`（P3 后续迁移单元）                                    |
-| pg.ts（SQLSTATE 探测）                                        | `db` `pg-error.ts`（PG 基础分类归 db）                                |
-| 限流**策略**（维度组装、并罚制、global 维、阈值数值）         | 消费 app（gateway `http/middleware/rate-limit`，C-G5）               |
-| 爆破**策略**（keyHash/IP 提取语义、可信代理跳数、阈值）       | 消费 app（注入 guard；C-G5）                                          |
-| TPM 预占的**结算回填编排**（worker 侧消费语义）               | worker / billing 迁移单元                                             |
-| app 配置 schema（env 读取与模式推导）                         | 各 app 自有 config.ts（app 配置不进 runtime；trace-receiver R4/R5 先例）|
-| `.env` 加载 / 进程入口 / 信号注册                            | 根配置与 app index.ts（runtime 只出编排件）                           |
-| 请求日志 / 审计 / trace 消费                                  | `observability`                                                        |
-| 优雅停机的调用时机                                            | app 进程入口（createShutdown 返回函数由 app 持有并接信号）             |
+| 不处理                                                  | 归属                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------ |
+| otel.ts（OTel SDK、内存环形缓冲、traceparent）          | `observability`（P3 后续迁移单元）                                       |
+| pg.ts（SQLSTATE 探测）                                  | `db` `pg-error.ts`（PG 基础分类归 db）                                   |
+| 限流**策略**（维度组装、并罚制、global 维、阈值数值）   | 消费 app（gateway `http/middleware/rate-limit`，C-G5）                   |
+| 爆破**策略**（keyHash/IP 提取语义、可信代理跳数、阈值） | 消费 app（注入 guard；C-G5）                                             |
+| TPM 预占的**结算回填编排**（worker 侧消费语义）         | worker / billing 迁移单元                                                |
+| app 配置 schema（env 读取与模式推导）                   | 各 app 自有 config.ts（app 配置不进 runtime；trace-receiver R4/R5 先例） |
+| `.env` 加载 / 进程入口 / 信号注册                       | 根配置与 app index.ts（runtime 只出编排件）                              |
+| 请求日志 / 审计 / trace 消费                            | `observability`                                                          |
+| 优雅停机的调用时机                                      | app 进程入口（createShutdown 返回函数由 app 持有并接信号）               |
 
 ## 2. 外部契约（v2 API，定稿）
 

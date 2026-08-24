@@ -468,6 +468,19 @@ function ModelRowItem({
   >(null);
   // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
   const deleted = model.deletedAt != null;
+  let status = <StatusPill tone="neutral" label={t('delisted')} />;
+  if (deleted) {
+    status = (
+      <div className="flex flex-col">
+        <StatusPill tone="danger" label={t('deleted')} />
+        <span className="mt-0.5 text-[10px] text-muted-foreground">
+          {fmtDateTime(model.deletedAt!)}
+        </span>
+      </div>
+    );
+  } else if (model.status === 0) {
+    status = <StatusPill tone="success" label={tc('enabled')} />;
+  }
   return (
     <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
@@ -499,20 +512,7 @@ function ModelRowItem({
       <TableCell className="max-w-[160px] truncate text-xs text-muted-foreground">
         {model.fallbackModels ?? '—'}
       </TableCell>
-      <TableCell>
-        {deleted ? (
-          <div className="flex flex-col">
-            <StatusPill tone="danger" label={t('deleted')} />
-            <span className="mt-0.5 text-[10px] text-muted-foreground">
-              {fmtDateTime(model.deletedAt!)}
-            </span>
-          </div>
-        ) : model.status === 0 ? (
-          <StatusPill tone="success" label={tc('enabled')} />
-        ) : (
-          <StatusPill tone="neutral" label={t('delisted')} />
-        )}
-      </TableCell>
+      <TableCell>{status}</TableCell>
       <TableCell className="text-right tabular-nums">{fmtContext(model.contextLength)}</TableCell>
       <TableCell className="w-16 text-center">
         <RowActions label={tc('actions')}>
@@ -1580,6 +1580,43 @@ export function TestModelDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [controlledOpen, model.id]);
 
+  let resultContent = null;
+  if (pending) {
+    resultContent = (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <Loader2Icon className="mr-2 animate-spin" /> {t('testing')}
+      </div>
+    );
+  } else if (error) {
+    resultContent = <p className="py-6 text-center text-sm text-destructive">{error}</p>;
+  } else if (results?.length === 0) {
+    resultContent = (
+      <p className="py-6 text-center text-sm text-muted-foreground">{t('noBoundChannels')}</p>
+    );
+  } else if (results) {
+    resultContent = (
+      <ul className="flex flex-col gap-2">
+        {results.map((r) => (
+          <li
+            key={r.channelId}
+            className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+          >
+            <span className="font-medium">{r.channel}</span>
+            {r.ok ? (
+              <span className="text-emerald-600">
+                ✓ {r.durationMs}ms · {r.tokens ?? 0} tokens
+              </span>
+            ) : (
+              <span className="max-w-56 truncate text-destructive" title={r.error?.message}>
+                ✗ {r.error?.code ?? 'error'}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       {trigger !== null ? (
@@ -1599,37 +1636,7 @@ export function TestModelDialog({
           <DialogTitle>{t('testDialogTitle', { name: model.externalName })}</DialogTitle>
           <DialogDescription>{t('testDescription')}</DialogDescription>
         </DialogHeader>
-        {pending ? (
-          <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2Icon className="mr-2 animate-spin" /> {t('testing')}
-          </div>
-        ) : error ? (
-          <p className="py-6 text-center text-sm text-destructive">{error}</p>
-        ) : results ? (
-          results.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">{t('noBoundChannels')}</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {results.map((r) => (
-                <li
-                  key={r.channelId}
-                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                >
-                  <span className="font-medium">{r.channel}</span>
-                  {r.ok ? (
-                    <span className="text-emerald-600">
-                      ✓ {r.durationMs}ms · {r.tokens ?? 0} tokens
-                    </span>
-                  ) : (
-                    <span className="max-w-56 truncate text-destructive" title={r.error?.message}>
-                      ✗ {r.error?.code ?? 'error'}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )
-        ) : null}
+        {resultContent}
       </DialogContent>
     </Dialog>
   );

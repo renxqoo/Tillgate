@@ -66,7 +66,9 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     // 批窗 5s + receiver 批量 2s：轮询列表直到该请求出现（上限 20s）
     const traces = createObservability({ db: devDb }).traces;
     const deadline = Date.now() + 20_000;
-    let row: { traceId: string; rootName: string; spanCount: number; hasError: boolean } | undefined;
+    let row:
+      | { traceId: string; rootName: string; spanCount: number; hasError: boolean }
+      | undefined;
     for (;;) {
       const recent = await traces.recent({ limit: 20 });
       row = recent.rows.find((r) => r.requestId === requestId);
@@ -94,17 +96,27 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
   ): Promise<Array<{ traceId: string; rootName: string; spanCount: number; hasError: boolean }>> {
     const deadline = Date.now() + deadlineMs;
     for (;;) {
-      const rows = (await traces.recent({ limit: 30 })).rows.filter((r) => r.requestId === requestId);
+      const rows = (await traces.recent({ limit: 30 })).rows.filter(
+        (r) => r.requestId === requestId,
+      );
       if (rows.length > 0 || Date.now() > deadline) return rows;
       await sleep(1_000);
     }
   }
 
   it('失败路径① 上游不可达：列表出现 hasError 的 9-span 记录（release_and_fail）', async () => {
-    await retargetUpstream(world, { baseUrl: 'http://127.0.0.1:9', apiKeyPlain: 'sk-x', protocol: 'openai-compatible' });
+    await retargetUpstream(world, {
+      baseUrl: 'http://127.0.0.1:9',
+      apiKeyPlain: 'sk-x',
+      protocol: 'openai-compatible',
+    });
     try {
       const { raw } = await keys.issue('100');
-      const res = await e2ePost(gw.baseUrl, raw, { model: E2E_MODEL, stream: true, messages: [{ role: 'user', content: 'hi' }] });
+      const res = await e2ePost(gw.baseUrl, raw, {
+        model: E2E_MODEL,
+        stream: true,
+        messages: [{ role: 'user', content: 'hi' }],
+      });
       const requestId = res.headers.get('x-request-id')!;
       await res.text();
       console.log(`① 上游不可达 HTTP ${res.status} x-request-id=${requestId}`);
@@ -114,7 +126,11 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
       expect(rows[0]!.hasError).toBe(true);
       expect(rows[0]!.spanCount).toBe(9);
     } finally {
-      await retargetUpstream(world, { baseUrl: world.upstream.url, apiKeyPlain: 'sk-e2e-minimax-0123456789abcdef', protocol: 'openai-compatible' });
+      await retargetUpstream(world, {
+        baseUrl: world.upstream.url,
+        apiKeyPlain: 'sk-e2e-minimax-0123456789abcdef',
+        protocol: 'openai-compatible',
+      });
     }
   });
 
@@ -122,7 +138,10 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     world.upstream.script = 'nonstream-reject';
     try {
       const { raw } = await keys.issue('100');
-      const res = await e2ePost(gw.baseUrl, raw, { model: E2E_MODEL, messages: [{ role: 'user', content: 'x' }] });
+      const res = await e2ePost(gw.baseUrl, raw, {
+        model: E2E_MODEL,
+        messages: [{ role: 'user', content: 'x' }],
+      });
       const requestId = res.headers.get('x-request-id')!;
       await res.text();
       console.log(`② 上游400 HTTP ${res.status} x-request-id=${requestId}`);
@@ -139,7 +158,12 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     world.upstream.frameGapMs = 30;
     const { raw } = await keys.issue('100');
     const controller = new AbortController();
-    const res = await e2ePost(gw.baseUrl, raw, { model: E2E_MODEL, stream: true, messages: [{ role: 'user', content: '讲故事' }] }, controller.signal);
+    const res = await e2ePost(
+      gw.baseUrl,
+      raw,
+      { model: E2E_MODEL, stream: true, messages: [{ role: 'user', content: '讲故事' }] },
+      controller.signal,
+    );
     const requestId = res.headers.get('x-request-id')!;
     const reader = res.body!.getReader();
     await reader.read();
@@ -148,7 +172,10 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     world.upstream.frameGapMs = 0;
     console.log(`③ 已取消 x-request-id=${requestId}`);
     const rows = await waitForListRow(createObservability({ db: devDb }).traces, requestId);
-    console.log('③ 列表记录（缺陷现场：应为两条——8-span 主链 + 1-span 孤儿 settle）:', JSON.stringify(rows));
+    console.log(
+      '③ 列表记录（缺陷现场：应为两条——8-span 主链 + 1-span 孤儿 settle）:',
+      JSON.stringify(rows),
+    );
     expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 });

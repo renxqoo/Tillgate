@@ -61,7 +61,7 @@ bun dev                            # turbo dev — all seven apps, hot reload
 
 The seed creates a dev admin (`admin@ai-gateway.local` / `admin12345` — dev only), a demo user,
 a rate card, and — if `DEEPSEEK_API_KEY` is set in `.env` — a DeepSeek channel with a model
-mapping, plus a virtual test key (`ag_…`) printed to the console.
+mapping, plus a virtual test key (`sk_…`) printed to the console.
 
 Ports: gateway `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
 worker health `8792` · client console `3001` · admin console `3002`.

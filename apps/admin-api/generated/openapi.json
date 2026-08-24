@@ -1961,7 +1961,7 @@
           },
           "keyPreview": {
             "type": "string",
-            "description": "脱敏预览 ag_****abcd(明文永不回显)"
+            "description": "脱敏预览 sk_****abcd(明文永不回显)"
           },
           "name": {
             "type": "string"
@@ -2268,15 +2268,8 @@
             "type": "string"
           },
           "updatedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "更新时间(v2 无列来源,恒 null)"
+            "type": "string",
+            "description": "更新时间(rate_cards.updated_at,update 恒刷新)"
           },
           "coefficient": {
             "type": "string",

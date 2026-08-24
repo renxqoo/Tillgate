@@ -39,6 +39,9 @@ function RelationActions({ row }: { row: ReferralRelationRow }) {
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const banned = row.status === 1;
+  let actionIcon = <BanIcon className="size-4" />;
+  if (pending) actionIcon = <Loader2Icon className="size-4 animate-spin" />;
+  else if (banned) actionIcon = <CheckCircle2Icon className="size-4" />;
   return (
     <RowActions label={tc('actions')}>
       <DropdownMenuItem
@@ -59,13 +62,7 @@ function RelationActions({ row }: { row: ReferralRelationRow }) {
           })
         }
       >
-        {pending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : banned ? (
-          <CheckCircle2Icon className="size-4" />
-        ) : (
-          <BanIcon className="size-4" />
-        )}
+        {actionIcon}
         {banned ? t('resume') : t('ban')}
       </DropdownMenuItem>
     </RowActions>

@@ -64,12 +64,13 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
       throw new Error(`[api-client] Invalid API path ${path}; only /v1/* is allowed`);
     }
 
-    const token =
-      bearerToken !== undefined
-        ? bearerToken
-        : options.getToken
-          ? await options.getToken()
-          : undefined;
+    let token: string | null | undefined;
+    if (bearerToken !== undefined) {
+      // `null` is an explicit per-request opt-out and must not fall back to getToken.
+      token = bearerToken;
+    } else {
+      token = await options.getToken?.();
+    }
 
     const res = await doFetch(`${baseUrl}${path}`, {
       method,

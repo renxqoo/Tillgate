@@ -33,7 +33,7 @@ describe('src 文件集合快照', () => {
   it('目录结构即契约（新增/删除文件必须显式更新本快照）', () => {
     expect(files).toEqual([
       'adapters/billing-port.ts',
-    'adapters/billing-timezone.ts',
+      'adapters/billing-timezone.ts',
       'adapters/catalog-port.ts',
       'adapters/settle-wake.ts',
       'adapters/trace-port.ts',

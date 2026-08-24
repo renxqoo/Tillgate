@@ -30,7 +30,7 @@ import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
 import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { inferenceEndpoints } from '../src/http/contracts/inference-endpoints';
 
-const JWT = { secret: 'x'.repeat(32), issuer: 'i', audience: 'a', keyPrefix: 'ag_' };
+const JWT = { secret: 'x'.repeat(32), issuer: 'i', audience: 'a', keyPrefix: 'sk_' };
 const READER: AuthReadModel = {
   resolveKeyByHash: async () => ({
     keyId: 7,
@@ -94,7 +94,7 @@ function harness(inference: Inference) {
   return app;
 }
 
-const post = (a: Hono<AuthEnv>, path: string, body: unknown, token = 'ag_k') =>
+const post = (a: Hono<AuthEnv>, path: string, body: unknown, token = 'sk_k') =>
   a.request(path, {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
@@ -175,7 +175,7 @@ describe('端点分发（inference 输入形状）', () => {
     expect(seen[0]).toMatchObject({ endpoint: 'embeddings' });
     const res = await app.request('/v1/engines/gpt-4o/embeddings', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: JSON.stringify({ input: 'x' }),
     });
     expect(res.status).toBe(200);
@@ -298,7 +298,7 @@ describe('generation 提交与查询', () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ object: 'video', model: 'video-x', status: 'queued' });
     expect(
-      (await app.request('/v1/videos/zzz', { headers: { authorization: 'Bearer ag_k' } })).status,
+      (await app.request('/v1/videos/zzz', { headers: { authorization: 'Bearer sk_k' } })).status,
     ).toBe(404);
     expect((await post(app, '/v1/music/generations', { model: 'm', prompt: 'x' })).status).toBe(
       201,
@@ -419,7 +419,7 @@ describe('multipart 族', () => {
 
     const missing = await app.request('/v1/images/edits', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: '{}',
     });
     expect(missing.status).toBe(400);
@@ -433,7 +433,7 @@ describe('multipart 族', () => {
     );
     const ok = await app.request('/v1/images/edits', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
       body: form,
     });
     expect(ok.status).toBe(200);

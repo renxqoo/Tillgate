@@ -66,8 +66,7 @@ import {
 const TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
 /** accounts 装配 policy(v1 等价值——铁律 3,装配层显式持有) */
-const ACCOUNTS_POLICY = {
-  keyPrefix: 'ag_',
+const ACCOUNTS_POLICY_BASE = {
   invitationTtlMs: 7 * 24 * 60 * 60 * 1000,
   invitationPendingFactor: 2,
   invitationPendingCap: 20,
@@ -254,7 +253,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     walletCredit: createWalletCreditBridge(billing.wallet),
     sessionInvalidation: createSessionInvalidationBridge(identity.revocation),
     auditSink: createAuditSinkBridge(writeAudit),
-    policy: ACCOUNTS_POLICY,
+    policy: { ...ACCOUNTS_POLICY_BASE, keyPrefix: config.keyPrefix },
     txRetry: TX_RETRY,
     now: () => new Date(),
   });

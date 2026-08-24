@@ -506,37 +506,49 @@ describe('settle-wake（C-G8）', () => {
   });
 });
 
-describe('billing-timezone 读取器（TTL 缓存 + 单飞行 + 回落）', () => {
-  function fakeDb(results: Array<Record<string, unknown> | null>) {
-    let reads = 0;
-    return {
-      reads: () => reads,
-      query: {
-        systemConfigs: {
-          findFirst: async () => {
-            reads += 1;
-            return results.length > 1 ? results.shift() : results[0];
-          },
+function fakeBillingTimezoneDb(results: Array<Record<string, unknown> | null>) {
+  let reads = 0;
+  return {
+    reads: () => reads,
+    query: {
+      systemConfigs: {
+        findFirst: async () => {
+          reads += 1;
+          return results.length > 1 ? results.shift() : results[0];
         },
       },
-    };
-  }
+    },
+  };
+}
 
+describe('billing-timezone 读取器（TTL 缓存 + 单飞行 + 回落）', () => {
   it('KV 有值取值;缺省回落 fallback;TTL 内不重复查;过期后刷新', async () => {
     const { createBillingTimezoneReader } = await import('../src/adapters/billing-timezone.js');
-    const db = fakeDb([{ value: { timezone: 'UTC' } }]);
-    const read = createBillingTimezoneReader({ db: db as never, ttlMs: 60_000, fallback: 'Asia/Shanghai' });
+    const db = fakeBillingTimezoneDb([{ value: { timezone: 'UTC' } }]);
+    const read = createBillingTimezoneReader({
+      db: db as never,
+      ttlMs: 60_000,
+      fallback: 'Asia/Shanghai',
+    });
     expect(await read()).toBe('UTC');
     expect(await read()).toBe('UTC'); // TTL 内走缓存
     expect(db.reads()).toBe(1);
 
-    const empty = fakeDb([null]);
-    const readEmpty = createBillingTimezoneReader({ db: empty as never, ttlMs: 1, fallback: 'Asia/Shanghai' });
+    const empty = fakeBillingTimezoneDb([null]);
+    const readEmpty = createBillingTimezoneReader({
+      db: empty as never,
+      ttlMs: 1,
+      fallback: 'Asia/Shanghai',
+    });
     expect(await readEmpty()).toBe('Asia/Shanghai'); // 缺省回落
 
     // TTL 过期（ttlMs=1）→ 下一请求重查;非 string/空串形态也回落
-    const shapey = fakeDb([{ value: { timezone: '' } }]);
-    const readShapey = createBillingTimezoneReader({ db: shapey as never, ttlMs: 1, fallback: 'UTC' });
+    const shapey = fakeBillingTimezoneDb([{ value: { timezone: '' } }]);
+    const readShapey = createBillingTimezoneReader({
+      db: shapey as never,
+      ttlMs: 1,
+      fallback: 'UTC',
+    });
     expect(await readShapey()).toBe('UTC');
     await new Promise((r) => setTimeout(r, 3));
     expect(await readShapey()).toBe('UTC');

@@ -17,13 +17,13 @@ function seeded() {
 }
 
 describe('createKey', () => {
-  it('明文 ag_+40hex 仅一次;库内 SHA-256 与网关 resolve 同口径;preview 脱敏', async () => {
+  it('明文 sk_+40hex 仅一次;库内 SHA-256 与网关 resolve 同口径;preview 脱敏', async () => {
     const { h, owner } = seeded();
     const { key, plaintext } = await h.api.createKey({ userId: owner.id, name: 'prod' });
-    expect(plaintext).toMatch(/^ag_[0-9a-f]{40}$/);
+    expect(plaintext).toMatch(/^sk_[0-9a-f]{40}$/);
     expect(key.name).toBe('prod');
     expect(JSON.stringify(key)).not.toMatch(HEX64);
-    expect(key.keyPreview).toBe(`ag_****${plaintext.slice(-4)}`);
+    expect(key.keyPreview).toBe(`sk_****${plaintext.slice(-4)}`);
     const resolved = await h.api.resolveKeyByHash(sha256Hex(plaintext));
     expect(resolved).not.toBeNull();
     expect(resolved!.keyId).toBe(key.id);

@@ -35,11 +35,21 @@ function startGateway(
       cwd: GW_ROOT,
       // NODE_ENV=development：bun 的 development 条件解析 workspace src（NODE_ENV=test
       // 会走 production 条件命中 dist——control-plane dist 缺 JSON 资产是另案的打包缺陷）
-      env: { ...process.env, ...env, GATEWAY_PORT: String(port), NODE_ENV: 'development', OTEL_TRACES_MODE: 'off', REDIS_URL },
+      env: {
+        ...process.env,
+        ...env,
+        GATEWAY_PORT: String(port),
+        NODE_ENV: 'development',
+        OTEL_TRACES_MODE: 'off',
+        REDIS_URL,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let buf = '';
-    const timer = setTimeout(() => reject(new Error(`${form} not listening within 20s:\n${buf}`)), 20_000);
+    const timer = setTimeout(
+      () => reject(new Error(`${form} not listening within 20s:\n${buf}`)),
+      20_000,
+    );
     const onData = (chunk: Buffer): void => {
       buf += chunk.toString();
       if (buf.includes('gateway listening')) {
@@ -75,14 +85,14 @@ it.skipIf(!hasEnv)(
   { timeout: 180_000, sequential: true },
   async () => {
     const world = await setupE2EWorld();
-    const raw = `ag_${randomUUID().replace(/-/g, '')}`;
+    const raw = `sk_${randomUUID().replace(/-/g, '')}`;
     const subject = `smoke-${randomUUID().slice(0, 8)}`;
     const r = await world.db.execute(sql`
       insert into users (issuer, subject, identity_provider) values ('smoke', ${subject}, 'local') returning id`);
     const userId = Number((r.rows[0] as { id: string | number }).id);
     await world.db.execute(sql`
       insert into api_keys (key_hash, key_preview, user_id, name)
-      values (${createHash('sha256').update(raw).digest('hex')}, 'ag_…', ${userId}, 'smoke')`);
+      values (${createHash('sha256').update(raw).digest('hex')}, 'sk_…', ${userId}, 'smoke')`);
 
     // 世界内嵌装配（拿 billing facade 充值 + 驱动结算对账——进程外请求的账单同库）
     const helperGateway = await startE2EGateway(world);
@@ -94,7 +104,12 @@ it.skipIf(!hasEnv)(
     });
     const keys = new E2EKeys(world, helperGateway.assembly.billingFacade);
 
-    const smokeForm = async (form: string, command: string, args: string[], port: number): Promise<void> => {
+    const smokeForm = async (
+      form: string,
+      command: string,
+      args: string[],
+      port: number,
+    ): Promise<void> => {
       console.log(`\n=== ${form} ===`);
       const proc = await startGateway(form, command, args, port, {
         DATABASE_URL: world.scopedUrl,
@@ -108,8 +123,12 @@ it.skipIf(!hasEnv)(
           console.log(`${path} → ${res.status}`);
           expect(res.status).toBe(200);
         }
-        const ok = await fetch(`${proc.baseUrl}/v1/models`, { headers: { authorization: `Bearer ${raw}` } });
-        const bad = await fetch(`${proc.baseUrl}/v1/models`, { headers: { authorization: 'Bearer ag_invalidinvalid' } });
+        const ok = await fetch(`${proc.baseUrl}/v1/models`, {
+          headers: { authorization: `Bearer ${raw}` },
+        });
+        const bad = await fetch(`${proc.baseUrl}/v1/models`, {
+          headers: { authorization: 'Bearer sk_invalidinvalid' },
+        });
         console.log(`/v1/models 鉴权 → ok ${ok.status} / bad ${bad.status}`);
         expect(ok.status).toBe(200);
         expect(bad.status).toBe(401);
@@ -117,7 +136,11 @@ it.skipIf(!hasEnv)(
         const chat = await fetch(`${proc.baseUrl}/v1/chat/completions`, {
           method: 'POST',
           headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ model: 'RX-M3', max_tokens: 100, messages: [{ role: 'user', content: '只回复：好' }] }),
+          body: JSON.stringify({
+            model: 'RX-M3',
+            max_tokens: 100,
+            messages: [{ role: 'user', content: '只回复：好' }],
+          }),
         });
         console.log(`/v1/chat/completions → ${chat.status}`);
         await chat.text();
@@ -129,7 +152,9 @@ it.skipIf(!hasEnv)(
         expect(code).toBe(0);
       }
       await keys.settleAll(userId);
-      const bills = await world.db.execute<{ status: string }>(sql`select status from billing_requests where user_id = ${userId}`);
+      const bills = await world.db.execute<{ status: string }>(
+        sql`select status from billing_requests where user_id = ${userId}`,
+      );
       console.log(`${form} 冒烟账单：`, bills.rows.map((b) => b.status).join(','));
       expect(bills.rows.every((b) => b.status === 'settled')).toBe(true);
     };
@@ -138,7 +163,9 @@ it.skipIf(!hasEnv)(
       await smokeForm('bun 源码形态', 'bun', ['src/index.ts'], 18_081);
       await new Promise<void>((resolve, reject) => {
         const build = spawn('bun', ['run', 'build'], { cwd: GW_ROOT, stdio: 'inherit' });
-        build.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`build failed ${code}`))));
+        build.once('exit', (code) =>
+          code === 0 ? resolve() : reject(new Error(`build failed ${code}`)),
+        );
       });
       await smokeForm('node 产物形态', 'node', ['dist/index.js'], 18_082);
       // 终态对账：余额 = 1 − Σ实扣（两形态各 1 笔）、在途 0

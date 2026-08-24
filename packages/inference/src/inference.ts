@@ -79,9 +79,7 @@ export interface Inference {
     submit(input: GenerationSubmitInput): Promise<GenerationSubmitOutcome>;
     query(userId: number, taskId: string): Promise<GenerationTaskView>;
     /** 管理面全量列表（admin-api P4;任务存储读侧,不属主隔离） */
-    adminList(
-      input: GenerationTaskAdminListInput,
-    ): Promise<{
+    adminList(input: GenerationTaskAdminListInput): Promise<{
       rows: Array<import('./ports/generation.js').GenerationTaskAdminRow>;
       total: number;
     }>;

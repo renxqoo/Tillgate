@@ -383,12 +383,7 @@ export function RolesContent({
 
   return (
     <div className="space-y-3">
-      <DataTable
-        rowKey={(r) => r.id}
-        rows={roles}
-        columns={columns}
-        empty={t('empty')}
-      />
+      <DataTable rowKey={(r) => r.id} rows={roles} columns={columns} empty={t('empty')} />
       <ConfirmDialog
         open={deleting != null}
         onOpenChange={(open) => !open && setDeleting(null)}

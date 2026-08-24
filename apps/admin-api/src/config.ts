@@ -33,6 +33,11 @@ const envSchema = z
     DB_POOL_MAX: z.coerce.number().int().min(1).default(10),
     /** 管理面会话 JWT 密钥（admin realm HS256；与用户面物理隔离） */
     ADMIN_JWT_SECRET: secretSchema('ADMIN_JWT_SECRET', 32),
+    /** 虚拟 Key 前缀（与 client-api 生成端、gateway 识别端共用同一 env） */
+    KEY_PREFIX: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]{1,15}$/)
+      .default('sk_'),
     /** 会话有效期（秒；identity SESSION_TTL_BOUNDS [60, 2592000]） */
     SESSION_TTL_SECONDS: z.coerce.number().int().min(60).max(2_592_000).default(86_400),
     /** 渠道上游 Key 落库加密密钥（AES-256-GCM enc:v1；runtime.createCipher 消费） */
@@ -116,6 +121,7 @@ export interface AdminApiConfig {
   readonly databaseUrl: string;
   readonly port: number;
   readonly adminJwtSecret: string;
+  readonly keyPrefix: string;
   readonly sessionTtlSec: number;
   readonly encryptionKey: string;
   readonly identityCodePepper: string;
@@ -185,6 +191,7 @@ export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminA
     databaseUrl: parsed.DATABASE_URL,
     port: parsed.ADMIN_API_PORT,
     adminJwtSecret: parsed.ADMIN_JWT_SECRET,
+    keyPrefix: parsed.KEY_PREFIX,
     sessionTtlSec: parsed.SESSION_TTL_SECONDS,
     encryptionKey: parsed.ENCRYPTION_KEY,
     identityCodePepper: parsed.IDENTITY_CODE_PEPPER,

@@ -387,10 +387,35 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
   });
 
   it('停用节点剔除:group/page status=1 不进菜单树（kill-switch 同源）', async () => {
-    const groupLive = { ...node, id: 1, parentId: null, type: 'group' as const, code: null, name: '在册组', sortOrder: 1 };
+    const groupLive = {
+      ...node,
+      id: 1,
+      parentId: null,
+      type: 'group' as const,
+      code: null,
+      name: '在册组',
+      sortOrder: 1,
+    };
     const groupDead = { ...groupLive, id: 2, name: '停用组', status: 1 as never, sortOrder: 2 };
-    const pageDead = { ...node, id: 11, parentId: 1, type: 'page' as const, code: 'users:read', name: '停用页', status: 1 as never, sortOrder: 1 };
-    const pageLive = { ...node, id: 10, parentId: 1, type: 'page' as const, code: null, name: '活页', sortOrder: 2 };
+    const pageDead = {
+      ...node,
+      id: 11,
+      parentId: 1,
+      type: 'page' as const,
+      code: 'users:read',
+      name: '停用页',
+      status: 1 as never,
+      sortOrder: 1,
+    };
+    const pageLive = {
+      ...node,
+      id: 10,
+      parentId: 1,
+      type: 'page' as const,
+      code: null,
+      name: '活页',
+      sortOrder: 2,
+    };
     const base = fakeDeps({
       controlPlane: {
         rbac: {

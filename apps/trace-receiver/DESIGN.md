@@ -29,12 +29,12 @@
 
 ```ts
 // ---- HTTP 面（createReceiverApp(deps): Hono 纯函数,零 env/process）----
-POST /v1/traces       // OTLP/HTTP JSON（ExportTraceServiceRequest）,bodyLimit 8MB
-                      //   → 解码 → 批量入队 → 202 { accepted, skippedMalformed, droppedOverflow }
-                      //   best-effort:过载丢最旧并计数,观测链路故障不反压接收
-GET  /readyz          // DB 探活(豁免鉴权——K8s/compose healthcheck 不带 Bearer)
-                      //   { status, dependencies: { postgres } },失败 503
-GET  /internal/stats  // { batcher, storage };存储查询失败 → storage: null 不掩盖 batcher 指标
+POST / v1 / traces; // OTLP/HTTP JSON（ExportTraceServiceRequest）,bodyLimit 8MB
+//   → 解码 → 批量入队 → 202 { accepted, skippedMalformed, droppedOverflow }
+//   best-effort:过载丢最旧并计数,观测链路故障不反压接收
+GET / readyz; // DB 探活(豁免鉴权——K8s/compose healthcheck 不带 Bearer)
+//   { status, dependencies: { postgres } },失败 503
+GET / internal / stats; // { batcher, storage };存储查询失败 → storage: null 不掩盖 batcher 指标
 
 // deps: { pingDb, store, batcher, token?, logger? }
 //   token 未配置(开发内网)放行;生产强制由 config 层 fail-fast(R6:生产缺令牌拒绝启动)
@@ -43,9 +43,9 @@ GET  /internal/stats  // { batcher, storage };存储查询失败 → storage: nu
 - **鉴权**：`Authorization: Bearer <token>`，`timingSafeTokenEqual` 常量时间比较
   （`@tokenlens/http`，长度差异哑比较抹平）；未配置令牌时放行。
 - **错误信封**（v2 目录码，onError 合成目录 `composeErrorCatalogs(HttpErrors, observabilityErrors)`
-  + `pgSqlState` 探测注入）：401 `http.unauthorized` / 415 `http.unsupported_media_type`
-  （protobuf 场景 context 带改配 http/json 提示）/ 413 `http.payload_too_large` /
-  400 `http.invalid_json` / 400 `observability.invalid_otlp_payload`。
+  - `pgSqlState` 探测注入）：401 `http.unauthorized` / 415 `http.unsupported_media_type`
+    （protobuf 场景 context 带改配 http/json 提示）/ 413 `http.payload_too_large` /
+    400 `http.invalid_json` / 400 `observability.invalid_otlp_payload`。
 - **配置面**（config.ts，zod）：`DATABASE_URL` 必填（v1 藏默认连接串已清除，R4）；
   `TRACE_RECEIVER_TOKEN` 三道门（≥16 / 非已知弱值 / ≥4 种字符，R5）；`NODE_ENV` 纳入 schema
   （R6——v1 从 strip 后的 parse 结果读它，生产令牌检查恒不触发的潜在缺陷已修）；
@@ -61,15 +61,15 @@ GET  /internal/stats  // { batcher, storage };存储查询失败 → storage: nu
 
 **明确不处理**（归属写明）：
 
-| 不处理                                     | 归属                                                      |
-| ------------------------------------------ | --------------------------------------------------------- |
-| OTLP JSON 解码 / span 批量摄入 / 日分区存储 | `@tokenlens/observability`（composition 子入口取件）       |
-| flush 定时器 / 队列丢弃 / 写失败计数机制    | observability `createSpanBatcher`（B6 溢出路径 O(n) 在案） |
-| 错误渲染 / 信封 / 目录码 / 常量时间比较原语 | `@tokenlens/http`（errorHandler / timingSafeTokenEqual）   |
-| PG 连接 / ping / SQLSTATE 分类 / 池         | `@tokenlens/db`（装配面 createDb/ping/pgSqlState）         |
+| 不处理                                      | 归属                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------- |
+| OTLP JSON 解码 / span 批量摄入 / 日分区存储 | `@tokenlens/observability`（composition 子入口取件）                 |
+| flush 定时器 / 队列丢弃 / 写失败计数机制    | observability `createSpanBatcher`（B6 溢出路径 O(n) 在案）           |
+| 错误渲染 / 信封 / 目录码 / 常量时间比较原语 | `@tokenlens/http`（errorHandler / timingSafeTokenEqual）             |
+| PG 连接 / ping / SQLSTATE 分类 / 池         | `@tokenlens/db`（装配面 createDb/ping/pgSqlState）                   |
 | 停机编排 / 日志 / 密钥三道门                | `@tokenlens/runtime`（createShutdown / createLogger / secretSchema） |
-| OTel SDK 装配与自身遥测推送                | observability `initOtel`（assembly 调用）                  |
-| `/livez` 进程内探活                        | 未建（v1 同形；有消费方再补，不预建）                       |
+| OTel SDK 装配与自身遥测推送                 | observability `initOtel`（assembly 调用）                            |
+| `/livez` 进程内探活                         | 未建（v1 同形；有消费方再补，不预建）                                |
 
 ## 3. 装配形态（P5 边界）
 

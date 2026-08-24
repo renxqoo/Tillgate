@@ -48,11 +48,9 @@ export function compareCatalog(
       if (oursAvg.gt(0)) {
         const ratio = catalogAvg.div(oursAvg);
         driftPct = ratio.minus(1).times(100).toDecimalPlaces(1).toNumber();
-        diff = ratio.gt(new Decimal(1).plus(DRIFT_BAND))
-          ? 'price_up'
-          : ratio.lt(new Decimal(1).minus(DRIFT_BAND))
-            ? 'price_down'
-            : 'same';
+        if (ratio.gt(new Decimal(1).plus(DRIFT_BAND))) diff = 'price_up';
+        else if (ratio.lt(new Decimal(1).minus(DRIFT_BAND))) diff = 'price_down';
+        else diff = 'same';
       }
     } else if (ours != null) {
       diff = 'same';

@@ -126,6 +126,19 @@ function ProviderRowItem({
   const [undeleteOpen, setUndeleteOpen] = useState(false);
   // 回收站行（deletedAt 非空）：只读——仅「恢复记录」，其余动作不可达
   const deleted = provider.deletedAt != null;
+  let status = <StatusPill tone="neutral" label={tc('disabled')} />;
+  if (deleted) {
+    status = (
+      <div className="flex flex-col">
+        <StatusPill tone="danger" label={t('deleted')} />
+        <span className="mt-0.5 text-[10px] text-muted-foreground">
+          {fmtDateTime(provider.deletedAt!)}
+        </span>
+      </div>
+    );
+  } else if (provider.status === 0) {
+    status = <StatusPill tone="success" label={tc('enabled')} />;
+  }
   return (
     <TableRow className={deleted ? 'opacity-60' : undefined}>
       <TableCell>
@@ -145,20 +158,7 @@ function ProviderRowItem({
           <span className="ml-1 rounded bg-muted px-1 py-0.5">{provider.vendor}</span>
         ) : null}
       </TableCell>
-      <TableCell>
-        {deleted ? (
-          <div className="flex flex-col">
-            <StatusPill tone="danger" label={t('deleted')} />
-            <span className="mt-0.5 text-[10px] text-muted-foreground">
-              {fmtDateTime(provider.deletedAt!)}
-            </span>
-          </div>
-        ) : provider.status === 0 ? (
-          <StatusPill tone="success" label={tc('enabled')} />
-        ) : (
-          <StatusPill tone="neutral" label={tc('disabled')} />
-        )}
-      </TableCell>
+      <TableCell>{status}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {provider.updatedAt ? fmtDateTime(provider.updatedAt) : fmtDateTime(provider.createdAt)}
       </TableCell>

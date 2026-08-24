@@ -55,7 +55,7 @@ import {
 const admin = createNextAdminApiClient();
 const rows = await admin.list<AdminUserRow>('/v1/users', { pageSize: 20 });
 
-// 会话:ag_session / ag_admin_session HttpOnly cookie(BFF 持有 Bearer JWT)
+// 会话:sk_session / sk_admin_session HttpOnly cookie(BFF 持有 Bearer JWT)
 await setSessionToken(tokenFromLoginResponse);
 ```
 

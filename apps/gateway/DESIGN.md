@@ -38,7 +38,7 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 ### 2.2 鉴权（双形态，v1 语义）
 
-- **虚拟 Key**（`ag_` 前缀）：SHA-256 → `@tokenlens/accounts` `resolveKeyByHash`（key 活跃 +
+- **虚拟 Key**（`sk_` 前缀）：SHA-256 → `@tokenlens/accounts` `resolveKeyByHash`（key 活跃 +
   属主活跃 + 未过期，每调用直查无缓存）。爆破防护：keyHash 维 + IP 维双计数、阈值锁定。
 - **App-JWT**（不以 keyPrefix 开头）：HS256 验签（算法白名单 + iss/aud），仅认 `typ='app_jwt'` +
   `app_id` + `sub`；`accounts.resolveApp` 校验 app 活跃且属主匹配；rpm/tpm/白名单取 payload.scope；

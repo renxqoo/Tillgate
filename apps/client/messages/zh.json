@@ -201,12 +201,7 @@
       "一个钱包全模型通用",
       "用量报表随时对账"
     ],
-    "whyOrgItems": [
-      "组织与成员统一管理",
-      "按成员分配密钥",
-      "预算与限额管控",
-      "调用流水审计"
-    ],
+    "whyOrgItems": ["组织与成员统一管理", "按成员分配密钥", "预算与限额管控", "调用流水审计"],
     "whyPersonalTitle": "为个人开发者准备的",
     "whyPersonalText": "注册即可获得统一 API Key，一个钱包覆盖全部模型调用。",
     "whyOrgTitle": "为企业团队准备的",
@@ -449,9 +444,9 @@
   "playground": {
     "title": "操练场",
     "description": "在控制台直接对话调试模型（按正常计费扣余额，流式输出）",
-    "keyMissing": "请先粘贴 API Key（ag_ 开头，在「API Key」页创建并复制）",
+    "keyMissing": "请先粘贴 API Key（sk_ 开头，在「API Key」页创建并复制）",
     "requestFailed": "请求失败（{status}）",
-    "keyPlaceholder": "API Key（ag_ 开头，仅本会话使用）",
+    "keyPlaceholder": "API Key（sk_ 开头，仅本会话使用）",
     "selectModel": "选择模型",
     "emptyHint": "输入消息开始对话；输出按模型定价从余额扣费。",
     "inputPlaceholder": "输入消息（Enter 发送 / Shift+Enter 换行）",

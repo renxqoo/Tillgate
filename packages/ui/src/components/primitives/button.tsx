@@ -54,8 +54,7 @@ function Button({
   // 换成非 <button> 元素（如 next/link 的 <Link> → <a>）时必须为 false，否则 dev 下
   // Base UI 告警且语义不符。未显式指定时按 render 元素推断，调用方显式传值始终优先。
   const inferredNativeButton =
-    nativeButton ??
-    (render == null || (isValidElement(render) && render.type === 'button'));
+    nativeButton ?? (render == null || (isValidElement(render) && render.type === 'button'));
 
   return (
     <ButtonPrimitive

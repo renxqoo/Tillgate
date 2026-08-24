@@ -101,7 +101,10 @@ export interface UsageGroupStoreRow {
 }
 
 /** 分组聚合出口行(tokens 已映射 number;金额保持字符串) */
-export interface UsageGroupRow extends Omit<UsageGroupStoreRow, 'inputTokens' | 'outputTokens' | 'cachedInputTokens'> {
+export interface UsageGroupRow extends Omit<
+  UsageGroupStoreRow,
+  'inputTokens' | 'outputTokens' | 'cachedInputTokens'
+> {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cachedInputTokens: number;

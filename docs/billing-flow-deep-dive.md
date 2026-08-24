@@ -74,7 +74,7 @@ Redis 在 v2 只剩 gateway 侧三用途：限流窗口、鉴权爆破锁、渠�
 ```
 Authorization: Bearer <token>
    │
-   ├─ token 以 keyPrefix（ag_）开头 ──▶ 【静态 API Key】
+   ├─ token 以 keyPrefix（sk_）开头 ──▶ 【静态 API Key】
    │     1. sha256 → keyHash
    │     2. 双层爆破锁：per-keyHash（同 Key 撞库）+ per-IP（随机 Key 扫射）——均 fail-closed
    │     3. 读模型单查守卫：api_keys 状态/有效期 + 属主 user 状态

@@ -118,7 +118,9 @@ export function authRoutes(deps: AuthRoutesDeps) {
           email: body.email,
         }),
       ]);
-      const retry = byKey.locked ? byKey.retryAfterSec : byIp.locked ? byIp.retryAfterSec : 0;
+      let retry = 0;
+      if (byKey.locked) retry = byKey.retryAfterSec;
+      else if (byIp.locked) retry = byIp.retryAfterSec;
       if (retry > 0) {
         throw AdminErrors.business('login_locked', {
           'retry-after': String(Math.max(1, retry)),

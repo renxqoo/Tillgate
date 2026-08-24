@@ -53,7 +53,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const { raw, userId } = await keys.issue('1');
 
       const attempts = await Promise.all([
-        e2ePost(gateway.baseUrl, 'ag_invalidinvalidinvalid', {
+        e2ePost(gateway.baseUrl, 'sk_invalidinvalidinvalid', {
           model: E2E_MODEL,
           messages: [{ role: 'user', content: 'x' }],
         }),

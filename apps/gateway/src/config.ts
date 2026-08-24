@@ -89,7 +89,7 @@ function createSchema(production: boolean) {
       KEY_PREFIX: z
         .string()
         .regex(/^[a-z][a-z0-9_-]{1,15}$/, 'must be 2-16 chars [a-z0-9_-] starting with a letter')
-        .default('ag_'),
+        .default('sk_'),
       JWT_ISSUER: z.string().min(1).default('ai-gateway'),
       JWT_AUDIENCE: z.string().min(1).default('ai-gateway-api'),
       JWT_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).default(3_600),
@@ -164,7 +164,6 @@ export interface GatewayConfig {
  * 必填且形状 fail-fast；铁律 3：装配层是缺省值唯一真相）
  */
 export const ACCOUNTS_POLICY = {
-  keyPrefix: 'ag_',
   invitationTtlMs: 7 * 24 * 3_600_000,
   invitationPendingFactor: 2,
   invitationPendingCap: 20,

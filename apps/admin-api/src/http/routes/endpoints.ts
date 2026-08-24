@@ -29,9 +29,13 @@ const endpointContracts = {
       path: z.string().trim().min(2).max(255).optional(),
       permissionId: z.number().int().min(1).optional(),
     })
-    .refine((body) => body.method !== undefined || body.path !== undefined || body.permissionId !== undefined, {
-      message: 'at least one of method/path/permissionId is required',
-    }),
+    .refine(
+      (body) =>
+        body.method !== undefined || body.path !== undefined || body.permissionId !== undefined,
+      {
+        message: 'at least one of method/path/permissionId is required',
+      },
+    ),
 } as const;
 
 export function endpointsRoutes(deps: EndpointsRoutesDeps) {

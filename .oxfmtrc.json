@@ -12,6 +12,8 @@
     "**/.next/**",
     "**/node_modules/**",
     "**/migrations/**",
+    "**/generated/openapi.json",
+    "**/next-env.d.ts",
     "**/*.generated.ts"
   ]
 }

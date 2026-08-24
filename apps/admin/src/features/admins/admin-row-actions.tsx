@@ -41,6 +41,9 @@ export function AdminRowActions({
   const notify = useActionResult();
   const [pending, setPending] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
+  let statusIcon = <ShieldCheckIcon className="size-4" />;
+  if (pending) statusIcon = <Loader2Icon className="size-4 animate-spin" />;
+  else if (status === 0) statusIcon = <ShieldBanIcon className="size-4" />;
 
   return (
     <>
@@ -97,13 +100,7 @@ export function AdminRowActions({
             notify(res, t('updateFailed'));
           }}
         >
-          {pending ? (
-            <Loader2Icon className="size-4 animate-spin" />
-          ) : status === 0 ? (
-            <ShieldBanIcon className="size-4" />
-          ) : (
-            <ShieldCheckIcon className="size-4" />
-          )}
+          {statusIcon}
           {status === 0 ? t('ban') : t('restore')}
         </DropdownMenuItem>
       </RowActions>

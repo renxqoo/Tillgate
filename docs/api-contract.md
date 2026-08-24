@@ -10,7 +10,7 @@
 
 - 对外接口基础路径 `/v1`，格式完全遵循 OpenAI 风格，客户端零改动接入。
 - 鉴权头：`Authorization: Bearer <凭证>`，凭证二选一：
-  - 静态虚拟 Key：`ag_` 前缀（`KEY_PREFIX` 可配，默认 `ag_`；SHA-256 落库，明文仅创建时展示一次）
+  - 静态虚拟 Key：`sk_` 前缀（`KEY_PREFIX` 可配，默认 `sk_`；SHA-256 落库，明文仅创建时展示一次）
   - 网关签发 App JWT（企业 Agent，经 `/oauth/token` 换取；`typ=app_jwt`，其他 JWT 形态一律 401——信任根分离）
 - 时间：UTC，ISO 8601。
 - 金额对外展示为元（小数），内部 `numeric(38,18)` 元 + Decimal 全精度（`packages/billing/src/domain/money.ts` 单一真相；本契约不含金额字段，控制台接口按需）。
@@ -97,7 +97,7 @@ client_secret=<app.client_secret>
 
 ### 2.5 推理端点矩阵（协议入站表面）
 
-鉴权同 §1（Bearer ag_ Key / App JWT）。管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（codec 单一真相在 `@tokenlens/ai` protocol，`apps/gateway/src/http/contracts/inference-endpoints.ts` 注册）。
+鉴权同 §1（Bearer sk_ Key / App JWT）。管线内部恒为规范形（OpenAI 线格式）：入站协议在路由边界双向翻译（codec 单一真相在 `@tokenlens/ai` protocol，`apps/gateway/src/http/contracts/inference-endpoints.ts` 注册）。
 
 | 端点 | 说明 |
 |---|---|
@@ -403,7 +403,7 @@ client_secret=<app.client_secret>
 | 错误信封外 OAuth | `/oauth/token` 失败也用 401 invalid_client（OpenAI 信封） | OAuth 标准错误形 `{error, error_description}`（非 OpenAI 信封）；增 `400 unsupported_grant_type` |
 | 响应 `model` 字段 | 返回真实模型名（映射后） | 响应侧替换为对外目录模型名（可配置开关）；错误消息中真实模型名同样脱敏 |
 | 上游 4xx | 透传（脱敏） | 原码 + 已翻译脱敏消息透传（ADR-0004）；5xx/网络类合成 502 `inference.upstream_failed`（v1 为 `upstream_error` 500 族） |
-| 控制台会话 | HttpOnly Cookie（ag_session/ag_admin_session）+ CSRF 面 | `Authorization: Bearer <会话 JWT>`（无 Cookie 无 CSRF）；jti + 吊销线 |
+| 控制台会话 | HttpOnly Cookie（sk_session/sk_admin_session）+ CSRF 面 | `Authorization: Bearer <会话 JWT>`（无 Cookie 无 CSRF）；jti + 吊销线 |
 | JWT 载荷 | 含 `coefficient` 快照、`jti` | 不含 coefficient（计价快照由 billing 收据持有）；`typ=app_jwt`、scope 全量（models/rpm/tpm）；jti 黑名单未实现（禁用 App 即全量失效） |
 | App JWT 有效期默认 | 2h | 3600s（`JWT_TOKEN_TTL_SECONDS`，≥60 可配） |
 | 请求体上限 | 16MB | 默认 10MB（`GATEWAY_BODY_LIMIT_BYTES`）；multipart 上传文件另限 16MB |

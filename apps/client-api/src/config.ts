@@ -124,7 +124,7 @@ function createSchema(production: boolean) {
     KEY_PREFIX: z
       .string()
       .regex(/^[a-z][a-z0-9_-]{1,15}$/)
-      .default('ag_'),
+      .default('sk_'),
     /** accounts 装配 policy（邀请有效期/待接受上限因子与上界/Key 限额上界） */
     CLIENT_INVITATION_TTL_MS: z.coerce
       .number()

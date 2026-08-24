@@ -29,12 +29,12 @@ export async function fetchAdminList<T>(
     return {
       rows: [],
       total: 0,
-      error:
-        e instanceof ApiError
-          ? e.message
-          : (await outgoingLocale(ADMIN_LOCALE_RESOLUTION)) === 'zh'
-            ? '加载失败'
-            : 'Failed to load',
+      error: await (async () => {
+        if (e instanceof ApiError) return e.message;
+        return (await outgoingLocale(ADMIN_LOCALE_RESOLUTION)) === 'zh'
+          ? '加载失败'
+          : 'Failed to load';
+      })(),
     };
   }
 }

@@ -29,5 +29,6 @@ export function parseSignedNonZeroAmount(raw: string): Decimal | null {
   const magnitude = raw.startsWith('-') ? raw.slice(1) : raw;
   if (!/^-?\d{1,20}(?:\.\d{1,18})?$/.test(raw)) return null;
   const value = parsePositiveAmount(magnitude);
-  return value == null ? null : raw.startsWith('-') ? value.neg() : value;
+  if (value == null) return null;
+  return raw.startsWith('-') ? value.neg() : value;
 }

@@ -95,8 +95,4 @@ export type {
 } from './usage/types';
 export { createUsageQueries } from './usage/queries';
 export type { UsageQueries } from './usage/queries';
-export {
-  BEIJING_ZONE_OFFSET_MS,
-  beijingDayStart,
-  beijingTrendsFrom,
-} from './usage/day-window';
+export { BEIJING_ZONE_OFFSET_MS, beijingDayStart, beijingTrendsFrom } from './usage/day-window';

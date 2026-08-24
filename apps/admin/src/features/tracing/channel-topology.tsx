@@ -94,7 +94,9 @@ export function ChannelTopology({ channels }: { channels: ChannelHealth[] }) {
       },
       ...channels.map((ch) => {
         const successRate = ch.attempts > 0 ? 1 - ch.errors / ch.attempts : 1;
-        const tone = successRate >= 0.95 ? '#059669' : successRate >= 0.7 ? '#d97706' : '#dc2626';
+        let tone = '#dc2626';
+        if (successRate >= 0.95) tone = '#059669';
+        else if (successRate >= 0.7) tone = '#d97706';
         return {
           id: ch.channel,
           position: { x: 0, y: 0 },

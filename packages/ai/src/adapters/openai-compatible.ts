@@ -99,24 +99,16 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
     input: { endpoint: Endpoint; model: string; requestId: string; stream: boolean },
   ): { path: string; headers: Record<string, string> } {
     void input.stream;
-    const path =
-      input.endpoint === 'embeddings'
-        ? '/v1/embeddings'
-        : input.endpoint === 'images'
-          ? '/v1/images/generations'
-          : input.endpoint === 'images_edits'
-            ? '/v1/images/edits'
-            : input.endpoint === 'audio_speech'
-              ? '/v1/audio/speech'
-              : input.endpoint === 'audio_transcription'
-                ? '/v1/audio/transcriptions'
-                : input.endpoint === 'audio_translation'
-                  ? '/v1/audio/translations'
-                  : input.endpoint === 'rerank'
-                    ? '/v1/rerank'
-                    : input.endpoint === 'moderations'
-                      ? '/v1/moderations'
-                      : '/v1/chat/completions';
+    let path;
+    if (input.endpoint === 'embeddings') path = '/v1/embeddings';
+    else if (input.endpoint === 'images') path = '/v1/images/generations';
+    else if (input.endpoint === 'images_edits') path = '/v1/images/edits';
+    else if (input.endpoint === 'audio_speech') path = '/v1/audio/speech';
+    else if (input.endpoint === 'audio_transcription') path = '/v1/audio/transcriptions';
+    else if (input.endpoint === 'audio_translation') path = '/v1/audio/translations';
+    else if (input.endpoint === 'rerank') path = '/v1/rerank';
+    else if (input.endpoint === 'moderations') path = '/v1/moderations';
+    else path = '/v1/chat/completions';
     return {
       path,
       headers: {

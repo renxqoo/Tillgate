@@ -6,7 +6,11 @@
  */
 
 // 投递优先级排序键:email > phone > 其他(模块级纯函数,不捕获状态)
-const kindRank = (kind: string) => (kind === 'email' ? 0 : kind === 'phone' ? 1 : 2);
+const kindRank = (kind: string) => {
+  if (kind === 'email') return 0;
+  if (kind === 'phone') return 1;
+  return 2;
+};
 import type { NormalizedIdentifier } from '../domain/identifier.js';
 import type { Clock } from '../ports/clock.js';
 import type { CredentialStore, RegisterCredentialOutcome } from '../ports/credential-store.js';

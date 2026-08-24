@@ -116,11 +116,7 @@ export function LandingHero({
       </div>
 
       <div className="mx-auto mt-14 max-w-6xl">
-        <HeroCarousel
-          cards={cards}
-          prevLabel={t('carouselPrev')}
-          nextLabel={t('carouselNext')}
-        />
+        <HeroCarousel cards={cards} prevLabel={t('carouselPrev')} nextLabel={t('carouselNext')} />
       </div>
     </section>
   );

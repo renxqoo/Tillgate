@@ -6,7 +6,7 @@
 
 ## 核心能力
 
-- **BFF 会话**：登录/2FA 验码为 server action 直调 admin-api（裸 fetch），token 写 `ag_admin_session` HttpOnly cookie；浏览器永不见 JWT，出站由 client 注入 Bearer + `accept-language` + `x-forwarded-for`
+- **BFF 会话**：登录/2FA 验码为 server action 直调 admin-api（裸 fetch），token 写 `sk_admin_session` HttpOnly cookie；浏览器永不见 JWT，出站由 client 注入 Bearer + `accept-language` + `x-forwarded-for`
 - **取数唯一出口**：`src/server/admin-api.ts` 的 `adminApi()` = `createNextAdminApiClient()`（`@tokenlens/api-client/next`，每请求新建）；路径白名单 `/v1/*`，禁止页面裸 fetch 直连 admin-api
 - **守卫**：`(main)` layout `requireAdmin()`（`GET /v1/me`），失败重定向 `/login`
 - 页面路由与 v1 逐条一致：`/dashboard` 总览 + users/providers/channels/models/rate-cards/rate-limits/settings/plans/subscriptions/channel-funds/marketing/referrals/payment-orders/model-market/redeem-batches/notifications/billing-operations/tracing(+topology)/logs/usage-logs/audit-logs；全部 `force-dynamic`
@@ -28,11 +28,11 @@ lib/          # 纯前端工具（list-query / money-tone 等）
 - dev 端口 `3002`（`bun x next dev -p 3002`）；生产 `next start -p 3002`，`output: 'standalone'`
 - BFF 侧 env（读自 `@tokenlens/api-client/next` 装配层）：
 
-| 变量 | 缺省 | 说明 |
-|---|---|---|
-| `ADMIN_API_BASE` | `http://localhost:8082` | admin-api 基地址（生产由部署显式注入） |
-| `TRUSTED_PROXY_HOPS` | `0` | 反代跳数（解出用户 IP 才回传 `x-forwarded-for`） |
-| `SESSION_TTL_SECONDS` | `86400` | `ag_admin_session` cookie 寿命 |
+| 变量                  | 缺省                    | 说明                                             |
+| --------------------- | ----------------------- | ------------------------------------------------ |
+| `ADMIN_API_BASE`      | `http://localhost:8082` | admin-api 基地址（生产由部署显式注入）           |
+| `TRUSTED_PROXY_HOPS`  | `0`                     | 反代跳数（解出用户 IP 才回传 `x-forwarded-for`） |
+| `SESSION_TTL_SECONDS` | `86400`                 | `sk_admin_session` cookie 寿命                   |
 
 - 协议/厂商词表：providers 页经 admin-api `/v1/vendor-catalog` 消费（单一事实源 = `@tokenlens/ai` 根出口；后端 zod 仍是最终防线）
 

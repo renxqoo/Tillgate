@@ -11,7 +11,7 @@ import type { AuditPort } from '../ports/audit.js';
 import type { SessionInvalidationPort } from '../ports/session-invalidation.js';
 
 export interface AccountsPolicy {
-  /** Key 前缀(^[a-z][a-z0-9_-]{1,15}$;与网关分派端同一 env;v1 等价 'ag_') */
+  /** Key 前缀(^[a-z][a-z0-9_-]{1,15}$;与网关分派端同一 env;v1 等价 'sk_') */
   readonly keyPrefix: string;
   /** 邀请有效期毫秒(v1 等价 7 天) */
   readonly invitationTtlMs: number;

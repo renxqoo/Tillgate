@@ -256,7 +256,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     const keyHash = 'ab'.repeat(32);
     await db.execute(sql`
       insert into api_keys (key_hash, key_preview, user_id, name, subscription_id)
-      values (${keyHash}, 'ag_****race3', ${userId}, 'race3-key', ${purchased.subscriptionId})`);
+      values (${keyHash}, 'sk_****race3', ${userId}, 'race3-key', ${purchased.subscriptionId})`);
 
     const { winner, loserReason } = await partition(
       await Promise.allSettled([

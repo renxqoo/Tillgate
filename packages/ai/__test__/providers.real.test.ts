@@ -463,8 +463,9 @@ describeOrSkip('真实供应商集成 · 扩展场景', () => {
             console.log(`[${p.name}] stream usage:`, JSON.stringify(success.usage));
           }
           // 自然完成：terminated 缺省或非客户端断开；字节确实送达
-          expect(success.terminated === undefined || success.terminated !== 'client_disconnect')
-            .toBe(true);
+          expect(
+            success.terminated === undefined || success.terminated !== 'client_disconnect',
+          ).toBe(true);
           expect(success.bytesRelayed ?? 0).toBeGreaterThan(0);
         }
         // first_chunk 一次性缓冲重放（per-call 面契约）——晚订阅也能锚定首字节
@@ -474,7 +475,10 @@ describeOrSkip('真实供应商集成 · 扩展场景', () => {
 
       it('无效密钥 → invalid_api_key + deadCredential（分类矩阵真实验证）', async () => {
         const ai = makeAi();
-        const bad: ChannelDesc = { ...channel(p), apiKey: 'sk-invalid-key-for-classification-test' };
+        const bad: ChannelDesc = {
+          ...channel(p),
+          apiKey: 'sk-invalid-key-for-classification-test',
+        };
         const result = await ai.chat(
           bad,
           { model: p.model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 5 },

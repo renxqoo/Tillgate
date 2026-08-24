@@ -24,7 +24,11 @@ import type { DataTableColumn } from '@/components/data-table';
 import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
-import { createBindingAction, deleteBindingAction, updateBindingAction } from '@/server/binding-actions';
+import {
+  createBindingAction,
+  deleteBindingAction,
+  updateBindingAction,
+} from '@/server/binding-actions';
 
 type Method = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 const METHODS: readonly Method[] = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'];
@@ -82,7 +86,13 @@ export function CreateBindingForm({ nodes }: { nodes: PermissionNode[] }) {
           </FormItem>
           <FormItem>
             <FieldLabel htmlFor="binding-path">{t('path')}</FieldLabel>
-            <Input id="binding-path" name="path" placeholder="/v1/example/:id" required maxLength={255} />
+            <Input
+              id="binding-path"
+              name="path"
+              placeholder="/v1/example/:id"
+              required
+              maxLength={255}
+            />
             <FieldDescription>{t('pathHint')}</FieldDescription>
           </FormItem>
           <FormItem>
@@ -175,7 +185,9 @@ function EditBindingDialog({
             <FieldDescription>{t('pathHint')}</FieldDescription>
           </FormItem>
           <FormItem>
-            <FieldLabel htmlFor={`binding-edit-permission-${binding.id}`}>{t('permission')}</FieldLabel>
+            <FieldLabel htmlFor={`binding-edit-permission-${binding.id}`}>
+              {t('permission')}
+            </FieldLabel>
             <NativeSelect
               id={`binding-edit-permission-${binding.id}`}
               name="permissionId"

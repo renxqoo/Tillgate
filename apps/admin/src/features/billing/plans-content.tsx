@@ -141,6 +141,9 @@ function PlanRowItem({
   const [grantOpen, setGrantOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  let seatStatus = <StatusPill tone="neutral" label={t('personal')} />;
+  if (plan.kind === 'pack') seatStatus = <span className="text-xs text-muted-foreground">—</span>;
+  else if (plan.allowSeats) seatStatus = <StatusPill tone="accent" label={t('team')} />;
 
   async function runDelete() {
     setDeleting(true);
@@ -165,15 +168,7 @@ function PlanRowItem({
       <TableCell className="text-right">
         <MoneyPoints value={plan.quotaAmount} />
       </TableCell>
-      <TableCell>
-        {plan.kind === 'pack' ? (
-          <span className="text-xs text-muted-foreground">—</span>
-        ) : plan.allowSeats ? (
-          <StatusPill tone="accent" label={t('team')} />
-        ) : (
-          <StatusPill tone="neutral" label={t('personal')} />
-        )}
-      </TableCell>
+      <TableCell>{seatStatus}</TableCell>
       <TableCell>
         <StatusBadge status={plan.status} />
       </TableCell>

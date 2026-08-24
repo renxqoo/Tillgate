@@ -16,7 +16,7 @@ import { generationRoutes } from '../src/http/routes/generation';
 import { admitRequest, type RateLimitGate } from '../src/http/middleware/rate-limit';
 import type { SlidingWindowLimiter } from '@tokenlens/runtime';
 
-const JWT = { secret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'ag_' };
+const JWT = { secret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'sk_' };
 const READER: AuthReadModel = {
   resolveKeyByHash: async () => ({
     keyId: 1,
@@ -49,7 +49,7 @@ const post = (
 ) =>
   a.request(path, {
     method: 'POST',
-    headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json', ...headers },
+    headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json', ...headers },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -203,7 +203,7 @@ describe('multipart 音频族与防御', () => {
     form.append('n', '7');
     const ok = await app.request('/v1/audio/transcriptions', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
       body: form,
     });
     expect(ok.status).toBe(200);
@@ -216,7 +216,7 @@ describe('multipart 音频族与防御', () => {
       (
         await app.request('/v1/audio/transcriptions', {
           method: 'POST',
-          headers: { authorization: 'Bearer ag_k' },
+          headers: { authorization: 'Bearer sk_k' },
           body: noFile,
         })
       ).status,
@@ -232,7 +232,7 @@ describe('multipart 音频族与防御', () => {
       (
         await app.request('/v1/audio/transcriptions', {
           method: 'POST',
-          headers: { authorization: 'Bearer ag_k' },
+          headers: { authorization: 'Bearer sk_k' },
           body: badType,
         })
       ).status,
@@ -293,7 +293,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     expect(await res.json()).toMatchObject({ error: { code: 'billing.insufficient_balance' } });
     // 音乐查询命中 video 任务 → 异类 404
     expect(
-      (await app.request('/v1/musics/t', { headers: { authorization: 'Bearer ag_k' } })).status,
+      (await app.request('/v1/musics/t', { headers: { authorization: 'Bearer sk_k' } })).status,
     ).toBe(404);
   });
 
@@ -385,7 +385,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     app.route('/', generationRoutes({ inference }));
 
     const bad = await app.request('/v1/videos/v', {
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
     });
     const video = (await bad.json()) as Record<string, unknown>;
     expect(video).toMatchObject({
@@ -396,7 +396,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     });
 
     const musicRes = await app.request('/v1/musics/m', {
-      headers: { authorization: 'Bearer ag_k' },
+      headers: { authorization: 'Bearer sk_k' },
     });
     const music = (await musicRes.json()) as Record<string, unknown>;
     expect(music).toMatchObject({ audio_url: null, fail_reason: 'upstream' });
@@ -409,7 +409,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     gemini.route('/', geminiNativeRoutes({ inference }));
     const badBody = await gemini.request('/v1beta/models/g:generateContent', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: 'not-json',
     });
     expect(badBody.status).toBe(400);

@@ -62,7 +62,7 @@ export const adminTransactionRowSchema = z
 export const adminKeyRowSchema = z
   .object({
     id: z.number(),
-    keyPreview: z.string().describe('脱敏预览 ag_****abcd(明文永不回显)'),
+    keyPreview: z.string().describe('脱敏预览 sk_****abcd(明文永不回显)'),
     name: z.string(),
     remark: z.string().nullable(),
     subscriptionId: z.number().nullable().describe('计费来源:NULL=余额;非空=扣该订阅额度。'),

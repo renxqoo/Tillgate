@@ -39,11 +39,22 @@ describe('assembleAdminApi', () => {
 
       // loginAudit 形状适配分支全矩阵:adminId/ip/email/twoFactor 有无组合
       // (writeAudit 落库失败被 best-effort 吞掉——分支在回调内求值,无需真连接)
-      const audit = assembly as { loginAudit: (e: Record<string, unknown>) => Promise<void> };
-      await audit.loginAudit({ action: 'auth.login.success', adminId: 9, ip: '1.2.3.4', email: 'a@b.c', twoFactor: true });
-      await audit.loginAudit({ action: 'auth.login.failed', adminId: null, ip: null, email: undefined, twoFactor: undefined });
+      await assembly.loginAudit({
+        action: 'auth.login.success',
+        adminId: 9,
+        ip: '1.2.3.4',
+        email: 'a@b.c',
+        twoFactor: true,
+      });
+      await assembly.loginAudit({
+        action: 'auth.login.invalid_credentials',
+        adminId: null,
+        ip: null,
+        email: undefined,
+        twoFactor: undefined,
+      });
       await expect(
-        audit.loginAudit({ action: 'auth.login.2fa_challenge', adminId: 4, ip: null }),
+        assembly.loginAudit({ action: 'auth.login.2fa_challenge', adminId: 4, ip: null }),
       ).resolves.toBeUndefined();
     } finally {
       void closeDb(assembly.db);

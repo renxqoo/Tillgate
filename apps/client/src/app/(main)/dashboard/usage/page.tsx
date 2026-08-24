@@ -83,11 +83,11 @@ export default async function UsagePage({ searchParams }: PageProps) {
       header: t('colSource'),
       cell: (r) => (
         <span className="text-xs text-muted-foreground">
-          {r.credentialType === 'key' && r.keyName
-            ? `🔑 ${r.keyName}`
-            : r.credentialType === 'jwt' && r.appName
-              ? `📦 ${r.appName}`
-              : '—'}
+          {(() => {
+            if (r.credentialType === 'key' && r.keyName) return `🔑 ${r.keyName}`;
+            if (r.credentialType === 'jwt' && r.appName) return `📦 ${r.appName}`;
+            return '—';
+          })()}
         </span>
       ),
     },
@@ -110,11 +110,11 @@ export default async function UsagePage({ searchParams }: PageProps) {
       align: 'right',
       cell: (r) => (
         <span className="text-right tabular-nums text-muted-foreground">
-          {r.units && r.units > 0
-            ? '—'
-            : r.cachedInputTokens > 0
-              ? formatInt(r.cachedInputTokens)
-              : '—'}
+          {(() => {
+            if (r.units && r.units > 0) return '—';
+            if (r.cachedInputTokens > 0) return formatInt(r.cachedInputTokens);
+            return '—';
+          })()}
         </span>
       ),
     },
@@ -124,11 +124,12 @@ export default async function UsagePage({ searchParams }: PageProps) {
       align: 'right',
       cell: (r) => (
         <span className="text-right tabular-nums text-muted-foreground">
-          {r.units && r.units > 0
-            ? '—'
-            : r.inputTokens > 0
-              ? `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%`
-              : '—'}
+          {(() => {
+            if (r.units && r.units > 0) return '—';
+            if (r.inputTokens > 0)
+              return `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%`;
+            return '—';
+          })()}
         </span>
       ),
     },

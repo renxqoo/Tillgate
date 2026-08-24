@@ -31,12 +31,10 @@ export function createPgRequestLogStore(db: Db): RequestLogStore {
         if (typeof input.statusCode === 'number') {
           conditions.push(eq(requestLogs.statusCode, input.statusCode));
         } else {
-          const [lo, hi] =
-            input.statusCode === '2xx'
-              ? [200, 299]
-              : input.statusCode === '4xx'
-                ? [400, 499]
-                : [500, 599];
+          let lo = 500;
+          let hi = 599;
+          if (input.statusCode === '2xx') [lo, hi] = [200, 299];
+          else if (input.statusCode === '4xx') [lo, hi] = [400, 499];
           conditions.push(sql`${requestLogs.statusCode} between ${lo} and ${hi}`);
         }
       }

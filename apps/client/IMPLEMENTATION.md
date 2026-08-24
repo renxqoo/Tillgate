@@ -13,36 +13,36 @@
 
 ### 1.1 真 bug 清单（B#，计 14 条确认 + 6 条定性为取舍/低危）
 
-| # | 症状 | 位置 | 级别 | 处置 |
-|---|---|---|---|---|
-| B1 | Key 状态筛选纯 UI 摆设（写 URL 不发参数） | keys/page + keys-filter | 中 | 随 D-B 移除筛选 UI（契约无 status 参数） |
-| B2 | `/v1/plans` 传 `page_size=100`（全仓契约是 `limit`）大概率被忽略截断 | subscription/page | 中 | **修复**：改 `limit=100`、去 `sort_by`（strict 契约）；回归用例 |
-| B3 | orgs 列表 N+1（每行再拉详情） | orgs/page | 低 | 保留并发拉取（契约无批量端点）；挂 G2 |
-| B4 | 活跃 Key 数只统计前 100 条 | dashboard/page | 低 | KPI 改信封 `total`（语义变化，MIGRATION §4） |
-| B5 | by-model 响应双键（rows/list）只读一种，另一形态静默空白 | dashboard/page | 中 | 按新契约单形态消费（实施时以 routes/usage.ts 实测信封为准）；防御性兜底空数组 |
-| B7 | auth 裸 fetch 丢 `x-forwarded-for`（IP 爆破锁把全员记成 Next 容器 IP）与 `accept-language` | lib/server-actions/auth.ts | **高** | **结构性修复**：全部调用经 `createNextClientApiClient`；回归用例断言出站头 |
-| B8 | 日期格式化依赖容器本地 TZ；「今日」用 +8h 硬编码近似 | formatters + dashboard | 中 | `DISPLAY_TZ` env（默认 Asia/Shanghai）+ `createDateFormatter({timeZone})`；KPI 今日判断显式 TZ |
-| B11 | 死文件 `src/data/users.ts` 全仓零引用 | data/users | 低 | 不移植 |
-| B12 | 品牌串「Studio Admin」模板残留 | app-config | 中 | **修复**：TokenLens Console |
-| B13 | get-user 注释自述调 admin-api，实际 client-api | get-user | 低 | 新实现注释如实 |
-| B14 | tsconfig 死映射（`@/stores/*` 等指向不存在目录） | tsconfig | 低 | 新 tsconfig 仅 `@/*` |
-| B15 | package.json 13 个零引用依赖（zustand/dnd-kit/embla/analytics/…） | package.json | 中 | 修剪（见 §3 依赖清单） |
-| B17 | transactions 页 `userId:0`、`balanceBefore:''` 占位假数据 | transactions/page | 中 | 新游标契约真实字段（balanceBefore/After 均回传） |
-| B18 | 导出仅当前页 20 条、TSV 无 BOM | export-keys | 低 | **修复**（§6 2026-08-23）：server action 全量翻页（上限 1000 防失控）+ TSV UTF-8 BOM；页面级导出语义保留 |
-| B19 | api-guide 直接信任 `x-forwarded-host` | api-guide | 低 | 保留（部署在可信代理后，仅展示层） |
-| B20 | capabilities 探测失败按「开启」渲染 | login/register | 取舍 | 保留（v1 刻意：探测失败由提交 403 兜底） |
-| B21 | 概览「每日费用趋势」无消费日整段消失（折线跨天直连）；窗口起点 `now-13d` 带时分秒致首日半桶 | dashboard/page | 中 | **修复**（§6 2026-08-23）：趋势窗口纯推导 `features/dashboard/cost-trend.ts`（起始日 00:00 日界 + 按日补零） |
-| B6 | playground/OAuth 浏览器同域依赖 nginx 分流 | next.config | 取舍 | 保留（dev 已知限制，DESIGN §9） |
-| B9/B10 | 全站 force-dynamic、subscription 页重复拉 me | 多处 | 取舍 | 保留（App Router 语义，v1 等价） |
+| #      | 症状                                                                                        | 位置                       | 级别   | 处置                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| B1     | Key 状态筛选纯 UI 摆设（写 URL 不发参数）                                                   | keys/page + keys-filter    | 中     | 随 D-B 移除筛选 UI（契约无 status 参数）                                                                     |
+| B2     | `/v1/plans` 传 `page_size=100`（全仓契约是 `limit`）大概率被忽略截断                        | subscription/page          | 中     | **修复**：改 `limit=100`、去 `sort_by`（strict 契约）；回归用例                                              |
+| B3     | orgs 列表 N+1（每行再拉详情）                                                               | orgs/page                  | 低     | 保留并发拉取（契约无批量端点）；挂 G2                                                                        |
+| B4     | 活跃 Key 数只统计前 100 条                                                                  | dashboard/page             | 低     | KPI 改信封 `total`（语义变化，MIGRATION §4）                                                                 |
+| B5     | by-model 响应双键（rows/list）只读一种，另一形态静默空白                                    | dashboard/page             | 中     | 按新契约单形态消费（实施时以 routes/usage.ts 实测信封为准）；防御性兜底空数组                                |
+| B7     | auth 裸 fetch 丢 `x-forwarded-for`（IP 爆破锁把全员记成 Next 容器 IP）与 `accept-language`  | lib/server-actions/auth.ts | **高** | **结构性修复**：全部调用经 `createNextClientApiClient`；回归用例断言出站头                                   |
+| B8     | 日期格式化依赖容器本地 TZ；「今日」用 +8h 硬编码近似                                        | formatters + dashboard     | 中     | `DISPLAY_TZ` env（默认 Asia/Shanghai）+ `createDateFormatter({timeZone})`；KPI 今日判断显式 TZ               |
+| B11    | 死文件 `src/data/users.ts` 全仓零引用                                                       | data/users                 | 低     | 不移植                                                                                                       |
+| B12    | 品牌串「Studio Admin」模板残留                                                              | app-config                 | 中     | **修复**：TokenLens Console                                                                                  |
+| B13    | get-user 注释自述调 admin-api，实际 client-api                                              | get-user                   | 低     | 新实现注释如实                                                                                               |
+| B14    | tsconfig 死映射（`@/stores/*` 等指向不存在目录）                                            | tsconfig                   | 低     | 新 tsconfig 仅 `@/*`                                                                                         |
+| B15    | package.json 13 个零引用依赖（zustand/dnd-kit/embla/analytics/…）                           | package.json               | 中     | 修剪（见 §3 依赖清单）                                                                                       |
+| B17    | transactions 页 `userId:0`、`balanceBefore:''` 占位假数据                                   | transactions/page          | 中     | 新游标契约真实字段（balanceBefore/After 均回传）                                                             |
+| B18    | 导出仅当前页 20 条、TSV 无 BOM                                                              | export-keys                | 低     | **修复**（§6 2026-08-23）：server action 全量翻页（上限 1000 防失控）+ TSV UTF-8 BOM；页面级导出语义保留     |
+| B19    | api-guide 直接信任 `x-forwarded-host`                                                       | api-guide                  | 低     | 保留（部署在可信代理后，仅展示层）                                                                           |
+| B20    | capabilities 探测失败按「开启」渲染                                                         | login/register             | 取舍   | 保留（v1 刻意：探测失败由提交 403 兜底）                                                                     |
+| B21    | 概览「每日费用趋势」无消费日整段消失（折线跨天直连）；窗口起点 `now-13d` 带时分秒致首日半桶 | dashboard/page             | 中     | **修复**（§6 2026-08-23）：趋势窗口纯推导 `features/dashboard/cost-trend.ts`（起始日 00:00 日界 + 按日补零） |
+| B6     | playground/OAuth 浏览器同域依赖 nginx 分流                                                  | next.config                | 取舍   | 保留（dev 已知限制，DESIGN §9）                                                                              |
+| B9/B10 | 全站 force-dynamic、subscription 页重复拉 me                                                | 多处                       | 取舍   | 保留（App Router 语义，v1 等价）                                                                             |
 
 ### 1.2 重复代码（D#）
 
-| # | 内容 | 提取 |
-|---|---|---|
-| D1 | stripAuthParams / parseListSearchParams / listHref / money-tone / getInitials（旧 ui lib） | app 内 `features/shared/`、`server/list-query.ts` 单处实现 |
-| D2 | `next` 回跳白名单逻辑三处复制（login-verify/register-verify/oauth） | `server/next-url.ts` 单点（含回归用例） |
-| D3 | 一次性密钥/密文明文展示（keys/apps 两处手写） | 统一用 ui `SecretReveal` + 复制 |
-| D4 | 订单状态 0-4 → pill 映射 | `features/wallet/order-status.ts` 单处表驱动 |
+| #   | 内容                                                                                       | 提取                                                       |
+| --- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| D1  | stripAuthParams / parseListSearchParams / listHref / money-tone / getInitials（旧 ui lib） | app 内 `features/shared/`、`server/list-query.ts` 单处实现 |
+| D2  | `next` 回跳白名单逻辑三处复制（login-verify/register-verify/oauth）                        | `server/next-url.ts` 单点（含回归用例）                    |
+| D3  | 一次性密钥/密文明文展示（keys/apps 两处手写）                                              | 统一用 ui `SecretReveal` + 复制                            |
+| D4  | 订单状态 0-4 → pill 映射                                                                   | `features/wallet/order-status.ts` 单处表驱动               |
 
 ### 1.3 契约缺口（G#，演进决策）
 
@@ -50,40 +50,41 @@ G1 列表 `q`/排序参数缺失（usage/keys）；G2 orgs 批量详情端点缺
 
 ## 2. 逐模块裁决表（63 文件，分组）
 
-| 旧文件（组） | 裁决 | 动作 |
-|---|---|---|
-| app/layout、(auth)/layout、(main)/layout | 重写 | ui 根入口具名导入；ThemeProvider + app 内联 boot；去 geist/fontVars（ui styles 自带 Inter） |
-| app/page（landing 382）、pricing/page | 复制+微修 | 取数改 `server/public-pricing.ts`（facade），展示组件下 features/public |
-| (auth)/login、register 页 + 表单 + oauth-buttons + turnstile-widget | 复制+微修 | imports 换新面；响应 `kind` 判别（v1 已兼容）；actions 指向 server/actions/auth |
-| oauth/callback（page+actions） | 复制+微修 | fragment 解析提取纯函数（可测）；next 白名单走 D2 |
-| middleware、i18n/request | 复制+微修 | SESSION_COOKIE/resolveLocale 改自 api-client/next |
-| config/app-config | 重写 | B12 修复；去未用 meta |
-| data/users.ts | 不移植 | B11 |
-| lib/server-actions/auth.ts | 重写 | B7：经 facade；结构按 DESIGN §4 |
-| lib/server/get-user.ts | 复制+微修 | getMe 经 facade；注释修正 B13；DEV_FAKE_ME 保留 |
-| lib/public-pricing.ts | 复制+微修 | 公开 facade（无 token）；pageSize 契约保持（pricing 专属宽松解析） |
-| dashboard/page + 双图表 | 复制+微修 | B4/B5/B8；取数编排放页，图表组件去 features/dashboard |
-| keys（page/actions/content/filter/export） | 复制+微修 | B1：去 filter；明文展示 D3；actions 经 facade |
-| apps（page/actions/content） | 复制+微修 | 同上 |
-| usage/page | 复制+微修 | D-B：去 q/排序，加 from/to/model 过滤（URL 状态） |
-| transactions/page | 重写 | D-A：游标 + 加载更多 + 真实字段 B17 |
-| billing（page/actions/topup-form） | 复制+微修 | D-C：去页码条；订单状态映射 D4 表驱动 |
-| redeem（page/actions/form） | 复制+微修 | actions 经 facade |
-| invite/page | 复制+微修 | 积分投影 D-E 去除（金额直显） |
-| orgs（page/actions/content/accept） | 复制+微修 | B3 保留并发；邀请链接生成同 v1 |
-| subscription（page/actions/content） | 复制+微修 | B2；幂等键不传（缺省服务端 uuid）；差价计算原样 |
-| settings（page/actions/3 组件） | 复制+微修 | 改密轮换 cookie 同 v1 |
-| playground（page+组件） | 复制+微修 | rewrites 4 端点原样 |
-| api-guide（page+3 组件） | 复制 | shiki 高亮原样 |
-| navigation/sidebar-items、components/shell/* | 复制+微修 | NavMain 自 app 内实现（新 ui 只有原语）；ThemeSwitcher 用 ui；LocaleSwitcher/AccountSwitcher app 内实现 |
-| 旧 ui 被消费面（ListPage/DataTable/useActionResult/ConfirmAction/…） | 重写 | ListPage/useActionResult/ConfirmAction 为 app 业务装配（features/shared）；DataTable/StatusPill/KpiCard/CopyButton/chart/sidebar 等原语直用新 ui |
-| 旧 api-client 被消费面（apiFetch/fetchUserList/formatters/session/i18n/types） | 重写 | facade `list()` 替 fetchUserList；DTO 用 `dto/client-api`；格式化按 DESIGN D-D/D-E；session/i18n 用 ./next |
-| messages/{en,zh}.json | 复制+微修 | 按 D-A/D-B/D-E 增删 key；en↔zh 对齐测试锁死 |
-| next.config.mjs、postcss、package.json、tsconfig | 重写 | B14/B15；ui styles 经 `@tokenlens/ui/styles.css`；安全头原样 |
+| 旧文件（组）                                                                   | 裁决      | 动作                                                                                                                                             |
+| ------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| app/layout、(auth)/layout、(main)/layout                                       | 重写      | ui 根入口具名导入；ThemeProvider + app 内联 boot；去 geist/fontVars（ui styles 自带 Inter）                                                      |
+| app/page（landing 382）、pricing/page                                          | 复制+微修 | 取数改 `server/public-pricing.ts`（facade），展示组件下 features/public                                                                          |
+| (auth)/login、register 页 + 表单 + oauth-buttons + turnstile-widget            | 复制+微修 | imports 换新面；响应 `kind` 判别（v1 已兼容）；actions 指向 server/actions/auth                                                                  |
+| oauth/callback（page+actions）                                                 | 复制+微修 | fragment 解析提取纯函数（可测）；next 白名单走 D2                                                                                                |
+| middleware、i18n/request                                                       | 复制+微修 | SESSION_COOKIE/resolveLocale 改自 api-client/next                                                                                                |
+| config/app-config                                                              | 重写      | B12 修复；去未用 meta                                                                                                                            |
+| data/users.ts                                                                  | 不移植    | B11                                                                                                                                              |
+| lib/server-actions/auth.ts                                                     | 重写      | B7：经 facade；结构按 DESIGN §4                                                                                                                  |
+| lib/server/get-user.ts                                                         | 复制+微修 | getMe 经 facade；注释修正 B13；DEV_FAKE_ME 保留                                                                                                  |
+| lib/public-pricing.ts                                                          | 复制+微修 | 公开 facade（无 token）；pageSize 契约保持（pricing 专属宽松解析）                                                                               |
+| dashboard/page + 双图表                                                        | 复制+微修 | B4/B5/B8；取数编排放页，图表组件去 features/dashboard                                                                                            |
+| keys（page/actions/content/filter/export）                                     | 复制+微修 | B1：去 filter；明文展示 D3；actions 经 facade                                                                                                    |
+| apps（page/actions/content）                                                   | 复制+微修 | 同上                                                                                                                                             |
+| usage/page                                                                     | 复制+微修 | D-B：去 q/排序，加 from/to/model 过滤（URL 状态）                                                                                                |
+| transactions/page                                                              | 重写      | D-A：游标 + 加载更多 + 真实字段 B17                                                                                                              |
+| billing（page/actions/topup-form）                                             | 复制+微修 | D-C：去页码条；订单状态映射 D4 表驱动                                                                                                            |
+| redeem（page/actions/form）                                                    | 复制+微修 | actions 经 facade                                                                                                                                |
+| invite/page                                                                    | 复制+微修 | 积分投影 D-E 去除（金额直显）                                                                                                                    |
+| orgs（page/actions/content/accept）                                            | 复制+微修 | B3 保留并发；邀请链接生成同 v1                                                                                                                   |
+| subscription（page/actions/content）                                           | 复制+微修 | B2；幂等键不传（缺省服务端 uuid）；差价计算原样                                                                                                  |
+| settings（page/actions/3 组件）                                                | 复制+微修 | 改密轮换 cookie 同 v1                                                                                                                            |
+| playground（page+组件）                                                        | 复制+微修 | rewrites 4 端点原样                                                                                                                              |
+| api-guide（page+3 组件）                                                       | 复制      | shiki 高亮原样                                                                                                                                   |
+| navigation/sidebar-items、components/shell/*                                   | 复制+微修 | NavMain 自 app 内实现（新 ui 只有原语）；ThemeSwitcher 用 ui；LocaleSwitcher/AccountSwitcher app 内实现                                          |
+| 旧 ui 被消费面（ListPage/DataTable/useActionResult/ConfirmAction/…）           | 重写      | ListPage/useActionResult/ConfirmAction 为 app 业务装配（features/shared）；DataTable/StatusPill/KpiCard/CopyButton/chart/sidebar 等原语直用新 ui |
+| 旧 api-client 被消费面（apiFetch/fetchUserList/formatters/session/i18n/types） | 重写      | facade `list()` 替 fetchUserList；DTO 用 `dto/client-api`；格式化按 DESIGN D-D/D-E；session/i18n 用 ./next                                       |
+| messages/{en,zh}.json                                                          | 复制+微修 | 按 D-A/D-B/D-E 增删 key；en↔zh 对齐测试锁死                                                                                                      |
+| next.config.mjs、postcss、package.json、tsconfig                               | 重写      | B14/B15；ui styles 经 `@tokenlens/ui/styles.css`；安全头原样                                                                                     |
 
 ## 3. 拆分决策
 
 目标树见 DESIGN §7。要点：
+
 - **server/**（纯服务端）：`api.ts`（`createClientApi(overrides?)` 装配工厂，测试可注 fetch/baseUrl）、`session.ts`（requireMe/userFromMe/DEV_FAKE_ME）、`list-query.ts`、`next-url.ts`（safeNext）、`public-pricing.ts`、`actions/{auth,oauth,keys,apps,orgs,subscription,settings,redeem,billing,locale}.ts`（"use server"，一动词一文件粒度按域聚合，单文件 ≤ ~150 行）。
 - **features/**：域内组件 + 纯逻辑（校验 schema、映射表、KPI 推导均提 `.ts` 可测文件）；`shared/`（ListPage、useActionResult、ConfirmAction、format、tone、initials）；`shell/`（sidebar/header 装配）。
 - **app/**：只做路由、取数编排、features 组合（薄，≤ ~200 行/页）。
@@ -102,7 +103,7 @@ G1 列表 `q`/排序参数缺失（usage/keys）；G2 orgs 批量详情端点缺
 2. server/ 全量（api、session、list-query、next-url、public-pricing、actions×10）。
 3. features/shared + shell（ListPage、useActionResult、ConfirmAction、format、tone、sidebar 族、header 族）。
 4. features 各域 + app 页面（公开 → auth → dashboard 族）。
-5. __test__/ 全量 + 四门（typecheck/lint/test/build）+ 覆盖率报告。
+5. **test**/ 全量 + 四门（typecheck/lint/test/build）+ 覆盖率报告。
 
 ## 6. 实施日志
 

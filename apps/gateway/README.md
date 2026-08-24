@@ -8,7 +8,7 @@ OpenAI/多协议推理入口（端口沿用 v1 `8080`）：协议适配 + 鉴权
 ## 核心能力
 
 - **协议面**：`POST /v1/chat/completions`（SSE 字节流原样透传）、embeddings/completions/responses/messages、images/audio/rerank/moderations、`/v1/engines/:model/embeddings` 别名、Gemini 原生 `v1beta`、multipart 上传（MIME 白名单）、video/music 异步生成（提交 201 + 查询归属校验）、`GET /v1/models`（三协议形状）、`POST /oauth/token`（client_credentials 签发 App-JWT）
-- **鉴权双形态**：虚拟 Key（`ag_` 前缀，SHA-256 → `accounts.resolveKeyByHash`，每调用直查）/ App-JWT（HS256 验签 + `accounts.resolveApp`）；爆破防护 key 维 + IP 维；`requestId` 恒服务端 randomUUID（响应回显 `x-request-id`）
+- **鉴权双形态**：虚拟 Key（`sk_` 前缀，SHA-256 → `accounts.resolveKeyByHash`，每调用直查）/ App-JWT（HS256 验签 + `accounts.resolveApp`）；爆破防护 key 维 + IP 维；`requestId` 恒服务端 randomUUID（响应回显 `x-request-id`）
 - **限流**：滑动窗口 RPM/TPM/全局（`GLOBAL_RPM` 生产硬顶 5000）+ 渠道维并罚；Redis 不可用 fail-closed 503
 - **请求日志**：一切 `/v1` 请求（鉴权前挂载）写 `request_logs`（observability 写入原语）
 - **上游出站**：错误三层（502/504 网关语义 + 内容脱敏 + 细节只进日志）；SSRF 逃生门 `GATEWAY_AI_ALLOW_LOCAL_URL` 仅非生产恒关

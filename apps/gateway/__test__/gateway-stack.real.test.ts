@@ -92,7 +92,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       values (${mapping.id}, ${channel.id}, 3, 2)`);
     await one(sql`
       insert into api_keys (key_hash, key_preview, user_id, name)
-      values (${createHash('sha256').update('ag_it-real-key').digest('hex')}, 'ag_…', ${owner.id}, 'it-key') returning id`);
+      values (${createHash('sha256').update('sk_it-real-key').digest('hex')}, 'sk_…', ${owner.id}, 'it-key') returning id`);
     await one(sql`
       insert into apps (app_id, user_id, client_id, client_secret_hash, name)
       values ('it-app-1', ${owner.id}, 'it-ci', ${createHash('sha256').update(CLIENT_SECRET).digest('hex')}, 'it-app') returning id`);
@@ -190,19 +190,21 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     expect(other).not.toBeNull();
     expect(other!.coefficient).toBe('1');
     // 未知模型 → null（status 过滤 + 未命中）
-    expect(await catalog.findMapping('no-such-model', { userId: 1, body: {}, now: new Date() })).toBeNull();
+    expect(
+      await catalog.findMapping('no-such-model', { userId: 1, body: {}, now: new Date() }),
+    ).toBeNull();
   });
 
   it('静态 Key 鉴权 + /v1/models（真实 resolveKeyByHash + 未知 Key 401 经真 guard）', async () => {
     const ok = await app.request('/v1/models', {
-      headers: { authorization: 'Bearer ag_it-real-key' },
+      headers: { authorization: 'Bearer sk_it-real-key' },
     });
     expect(ok.status).toBe(200);
     const body = (await ok.json()) as { data: Array<{ id: string }> };
     expect(body.data.map((m) => m.id)).toContain('it-gpt-x');
 
     const unknown = await app.request('/v1/models', {
-      headers: { authorization: 'Bearer ag_not-a-real-key' },
+      headers: { authorization: 'Bearer sk_not-a-real-key' },
     });
     expect(unknown.status).toBe(401);
   });

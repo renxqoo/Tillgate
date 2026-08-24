@@ -216,13 +216,9 @@ function UserRowItem({
             disabled={pending}
             onClick={user.status === 0 ? () => setActiveDialog('freeze') : unban}
           >
-            {pending ? (
-              <Loader2Icon className="animate-spin" />
-            ) : user.status === 0 ? (
-              <ShieldOffIcon />
-            ) : (
-              <ShieldCheckIcon />
-            )}
+            {pending && <Loader2Icon className="animate-spin" />}
+            {!pending && user.status === 0 && <ShieldOffIcon />}
+            {!pending && user.status !== 0 && <ShieldCheckIcon />}
             {user.status === 0 ? t('ban') : t('unban')}
           </DropdownMenuItem>
         </RowActions>

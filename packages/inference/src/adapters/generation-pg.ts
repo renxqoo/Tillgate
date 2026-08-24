@@ -119,25 +119,23 @@ export function createPostgresGenerationTaskStore(db: Db): GenerationTaskStore {
           .where(where),
       ]);
       return {
-        rows: rows.map(
-          (row): GenerationTaskAdminRow => ({
-            taskId: row.taskId,
-            requestId: row.requestId,
-            kind: row.kind as GenerationTaskAdminRow['kind'],
-            status: (TASK_STATUSES as readonly string[]).includes(row.status)
-              ? (row.status as GenerationTaskAdminRow['status'])
-              : 'queued',
-            userId: row.userId,
-            channelId: row.channelId,
-            upstreamTaskId: row.upstreamTaskId,
-            failReason: row.failReason,
-            result: row.result ?? null,
-            billingStatus: row.billingStatus ?? null,
-            createdAt: row.createdAt.getTime(),
-            finishedAt: row.finishedAt == null ? null : row.finishedAt.getTime(),
-            expiresAt: row.expiresAt.getTime(),
-          }),
-        ),
+        rows: rows.map((row): GenerationTaskAdminRow => ({
+          taskId: row.taskId,
+          requestId: row.requestId,
+          kind: row.kind as GenerationTaskAdminRow['kind'],
+          status: (TASK_STATUSES as readonly string[]).includes(row.status)
+            ? (row.status as GenerationTaskAdminRow['status'])
+            : 'queued',
+          userId: row.userId,
+          channelId: row.channelId,
+          upstreamTaskId: row.upstreamTaskId,
+          failReason: row.failReason,
+          result: row.result ?? null,
+          billingStatus: row.billingStatus ?? null,
+          createdAt: row.createdAt.getTime(),
+          finishedAt: row.finishedAt == null ? null : row.finishedAt.getTime(),
+          expiresAt: row.expiresAt.getTime(),
+        })),
         total: countRows[0]?.count ?? 0,
       };
     },

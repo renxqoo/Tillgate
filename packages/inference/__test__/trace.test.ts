@@ -226,10 +226,7 @@ describe('阶段 span（TracePort）：流式 stream 路径', () => {
     }));
     const inference = buildInference({
       ai: fakeAi().ai,
-      catalog: fakeCatalog(
-        { 'gpt-x': mapping() },
-        { 'gpt-x-real': [channel()] },
-      ),
+      catalog: fakeCatalog({ 'gpt-x': mapping() }, { 'gpt-x-real': [channel()] }),
       billing: port,
       upstream: s.upstream.port,
       trace: s.trace.port,

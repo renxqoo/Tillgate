@@ -171,7 +171,11 @@ describe('限流器结果分支（队列态 canned evalsha）', () => {
     const redis = new FakeRedis();
     const limiter = createSlidingWindowLimiter(redis as never);
     redis.evalResults.push([1, 5]);
-    expect(await limiter.check('d', 10, 'r1')).toEqual({ allowed: true, remaining: 5, dimension: 'd' });
+    expect(await limiter.check('d', 10, 'r1')).toEqual({
+      allowed: true,
+      remaining: 5,
+      dimension: 'd',
+    });
     redis.evalResults.push([0, 12345]);
     expect(await limiter.check('d', 10, 'r2')).toEqual({
       allowed: false,
@@ -195,11 +199,25 @@ describe('限流器结果分支（队列态 canned evalsha）', () => {
     const redis = new FakeRedis();
     const limiter = createSlidingWindowLimiter(redis as never, { failMode: 'open' });
     redis.evalResults.push([1, 0]);
-    expect(await limiter.checkAll([{ dimension: 'a', max: 1 }, { dimension: 'b', max: 2 }], 'r1')).toEqual({
+    expect(
+      await limiter.checkAll(
+        [
+          { dimension: 'a', max: 1 },
+          { dimension: 'b', max: 2 },
+        ],
+        'r1',
+      ),
+    ).toEqual({
       allowed: true,
     });
     redis.evalResults.push([0, 2]); // 第 2 维超限
-    const blocked = await limiter.checkAll([{ dimension: 'a', max: 1 }, { dimension: 'b', max: 2 }], 'r2');
+    const blocked = await limiter.checkAll(
+      [
+        { dimension: 'a', max: 1 },
+        { dimension: 'b', max: 2 },
+      ],
+      'r2',
+    );
     expect(blocked).toEqual({ allowed: false, retryAfterSec: 60, dimension: 'b' });
     expect(await limiter.checkAll([{ dimension: 'a', max: 1 }], 'r3')).toEqual({ allowed: true }); // 故障→open 放行
   });
@@ -209,7 +227,8 @@ describe('限流器结果分支（队列态 canned evalsha）', () => {
     const limiter = createSlidingWindowLimiter(redis as never);
     redis.evalResults.push([1]);
     expect(
-      (await limiter.reserveTpmAll([{ dimension: 'm', estimatedTokens: 5, max: 100 }], 'r1')).allowed,
+      (await limiter.reserveTpmAll([{ dimension: 'm', estimatedTokens: 5, max: 100 }], 'r1'))
+        .allowed,
     ).toBe(true);
     redis.evalResults.push([0, 1]);
     const blocked = await limiter.reserveTpmAll(

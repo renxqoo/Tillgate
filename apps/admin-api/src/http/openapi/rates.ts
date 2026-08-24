@@ -7,7 +7,7 @@ import { rateCardsContracts, fxCatalogContracts } from '../contracts/rates';
 import { idPathParam, listQuery, paginatedOf, okTrue, type OpenApiEndpoint } from './shared';
 import { fxStateSchema } from './catalog';
 
-/** 管理面费率卡行（updatedAt 无列来源恒 null——MIGRATION §4 D12 族） */
+/** 管理面费率卡行 */
 export const adminRateCardRowSchema = z
   .object({
     id: z.number(),
@@ -15,7 +15,7 @@ export const adminRateCardRowSchema = z
     description: z.string().nullable(),
     status: z.number(),
     createdAt: z.string(),
-    updatedAt: z.string().nullable().describe('更新时间(v2 无列来源,恒 null)'),
+    updatedAt: z.string().describe('更新时间(rate_cards.updated_at,update 恒刷新)'),
     coefficient: z.string().describe('系数 numeric(6,3):0.001..9.999,回显恒 3 位小数'),
   })
   .meta({ id: 'AdminRateCardRow', description: '管理面费率卡行(GET /v1/rate-cards)' });

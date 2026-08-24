@@ -75,7 +75,7 @@ flowchart LR
 ```
 Authorization: Bearer <token>
 │
-├─ token 以 keyPrefix（ag_）开头？
+├─ token 以 keyPrefix（sk_）开头？
 │  ├─ 是【静态 API Key】
 │  │   sha256 → keyHash
 │  │   □ per-keyHash 爆破锁已锁？→401

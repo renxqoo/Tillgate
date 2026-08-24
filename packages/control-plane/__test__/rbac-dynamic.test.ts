@@ -106,13 +106,19 @@ const ROLE_OPERATOR: RoleRecord = {
   createdAt: new Date(0),
 };
 
+function enforcedParentId(type: PermissionNode['type']): number | null {
+  if (type === 'group') return null;
+  if (type === 'page') return 1;
+  return 10;
+}
+
 const enforcedNode = (
   id: number,
   code: string | null,
   type: PermissionNode['type'],
 ): PermissionNode => ({
   id,
-  parentId: type === 'group' ? null : type === 'page' ? 1 : 10,
+  parentId: enforcedParentId(type),
   type,
   code,
   name: code ?? 'group',

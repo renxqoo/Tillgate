@@ -76,33 +76,32 @@ export function createIdentityStack(args: {
     brandEn: 'TokenLens Console',
     brandSub: 'TOKENLENS · CONSOLE',
   };
-  const mailer =
-    mailerOverride !== undefined
-      ? mailerOverride
-      : smtpReady
-        ? createSmtpLoginMailer(
-            {
-              host: config.SMTP_HOST as string,
-              port: config.SMTP_PORT,
-              user: config.SMTP_USER as string,
-              pass: config.SMTP_PASS as string,
-              from: config.SMTP_FROM ?? (config.SMTP_USER as string),
-            },
-            mailBrand,
-            {
-              ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
-              maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
-            },
-            { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
-            clock,
-          )
-        : null;
-  const emailCodeRequired =
-    config.EMAIL_CODE_REQUIRED === 'on'
-      ? true
-      : config.EMAIL_CODE_REQUIRED === 'off'
-        ? false
-        : mailer != null; // auto：SMTP 已配置即强制两级登录（v1 口径）
+  let mailer: Mailer | null;
+  if (mailerOverride === undefined) {
+    mailer = smtpReady
+      ? createSmtpLoginMailer(
+          {
+            host: config.SMTP_HOST as string,
+            port: config.SMTP_PORT,
+            user: config.SMTP_USER as string,
+            pass: config.SMTP_PASS as string,
+            from: config.SMTP_FROM ?? (config.SMTP_USER as string),
+          },
+          mailBrand,
+          {
+            ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
+            maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
+          },
+          { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
+          clock,
+        )
+      : null;
+  } else {
+    mailer = mailerOverride;
+  }
+  let emailCodeRequired = mailer != null; // auto：SMTP 已配置即强制两级登录（v1 口径）
+  if (config.EMAIL_CODE_REQUIRED === 'on') emailCodeRequired = true;
+  else if (config.EMAIL_CODE_REQUIRED === 'off') emailCodeRequired = false;
 
   const apiBase = config.OAUTH_API_BASE ?? 'http://localhost:8081';
   const identity = createIdentity({

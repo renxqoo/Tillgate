@@ -94,89 +94,87 @@ export function ListPage({
       </>
     ) : undefined;
 
+  let listContent: ReactNode = null;
+  if (error || children) {
+    if (unbordered) {
+      listContent = error ? (
+        <p className="p-8 text-center text-sm text-destructive">{error}</p>
+      ) : (
+        children
+      );
+    } else {
+      listContent = (
+        <ListPanel>
+          {(searchPlaceholder || filters) && (
+            <ListToolbar>
+              <ListToolbarGroup className="flex-1">
+                {searchPlaceholder ? (
+                  <form method="GET" className="flex w-full min-w-0 items-center gap-2 sm:max-w-lg">
+                    {hiddenParams.map(([key, value]) =>
+                      Array.isArray(value) ? (
+                        value.map((v, i) => (
+                          <input key={`${key}-${i}`} type="hidden" name={key} value={v} />
+                        ))
+                      ) : (
+                        <input key={key} type="hidden" name={key} value={value ?? ''} />
+                      ),
+                    )}
+                    <div className="relative min-w-0 flex-1">
+                      <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        name="q"
+                        defaultValue={q ?? ''}
+                        placeholder={searchPlaceholder}
+                        className="w-full pl-9"
+                      />
+                    </div>
+                    <Button type="submit" variant="outline">
+                      <SearchIcon data-icon="inline-start" />
+                      <span className="hidden sm:inline">{t('search')}</span>
+                    </Button>
+                    {q ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        render={<a href={clearSearchHref} aria-label={t('clearSearch')} />}
+                      >
+                        <XIcon />
+                      </Button>
+                    ) : null}
+                  </form>
+                ) : null}
+              </ListToolbarGroup>
+              {filters ? <ListToolbarGroup>{filters}</ListToolbarGroup> : null}
+            </ListToolbar>
+          )}
+          <ListContent>
+            {error ? <p className="p-8 text-center text-sm text-destructive">{error}</p> : children}
+          </ListContent>
+          {page !== undefined &&
+          pageSize !== undefined &&
+          total !== undefined &&
+          total > pageSize ? (
+            <ListFooter>
+              <Pager
+                page={page}
+                totalPages={Math.max(1, Math.ceil(total / pageSize))}
+                total={total}
+                searchParams={searchParams}
+              />
+            </ListFooter>
+          ) : null}
+        </ListPanel>
+      );
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4 md:gap-6">
       <PageHeader title={title} description={descriptionLine} icon={icon} actions={actions} />
 
       {aboveList}
 
-      {error || children ? (
-        unbordered ? (
-          error ? (
-            <p className="p-8 text-center text-sm text-destructive">{error}</p>
-          ) : (
-            children
-          )
-        ) : (
-          <ListPanel>
-            {(searchPlaceholder || filters) && (
-              <ListToolbar>
-                <ListToolbarGroup className="flex-1">
-                  {searchPlaceholder ? (
-                    <form
-                      method="GET"
-                      className="flex w-full min-w-0 items-center gap-2 sm:max-w-lg"
-                    >
-                      {hiddenParams.map(([key, value]) =>
-                        Array.isArray(value) ? (
-                          value.map((v, i) => (
-                            <input key={`${key}-${i}`} type="hidden" name={key} value={v} />
-                          ))
-                        ) : (
-                          <input key={key} type="hidden" name={key} value={value ?? ''} />
-                        ),
-                      )}
-                      <div className="relative min-w-0 flex-1">
-                        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          name="q"
-                          defaultValue={q ?? ''}
-                          placeholder={searchPlaceholder}
-                          className="w-full pl-9"
-                        />
-                      </div>
-                      <Button type="submit" variant="outline">
-                        <SearchIcon data-icon="inline-start" />
-                        <span className="hidden sm:inline">{t('search')}</span>
-                      </Button>
-                      {q ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          render={<a href={clearSearchHref} aria-label={t('clearSearch')} />}
-                        >
-                          <XIcon />
-                        </Button>
-                      ) : null}
-                    </form>
-                  ) : null}
-                </ListToolbarGroup>
-                {filters ? <ListToolbarGroup>{filters}</ListToolbarGroup> : null}
-              </ListToolbar>
-            )}
-            <ListContent>
-              {error ? (
-                <p className="p-8 text-center text-sm text-destructive">{error}</p>
-              ) : (
-                children
-              )}
-            </ListContent>
-            {page !== undefined &&
-            pageSize !== undefined &&
-            total !== undefined &&
-            total > pageSize ? (
-              <ListFooter>
-                <Pager
-                  page={page}
-                  totalPages={Math.max(1, Math.ceil(total / pageSize))}
-                  total={total}
-                  searchParams={searchParams}
-                />
-              </ListFooter>
-            ) : null}
-          </ListPanel>
-        )
-      ) : null}
+      {listContent}
     </div>
   );
 }

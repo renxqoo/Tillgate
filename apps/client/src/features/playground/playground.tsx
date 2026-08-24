@@ -55,7 +55,7 @@ export function Playground({ models }: { models: string[] }) {
     const text = input.trim();
     const key = apiKey.trim();
     if (!text || !model || pending) return;
-    if (!key.startsWith('ag_')) {
+    if (!key.startsWith('sk_')) {
       setError(t('keyMissing'));
       return;
     }

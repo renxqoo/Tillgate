@@ -58,12 +58,8 @@ export const postgresRoleStore: RoleStore = {
   async list(db: DbLike, query: RoleListQuery): Promise<RoleListResult> {
     const filter =
       query.q != null && query.q !== '' ? ilike(roles.name, `%${escapeLike(query.q)}%`) : undefined;
-    const sortColumn =
-      query.sortBy === 'code'
-        ? roles.code
-        : query.sortBy === 'createdAt'
-          ? roles.createdAt
-          : roles.id;
+    const sortColumns = { id: roles.id, code: roles.code, createdAt: roles.createdAt } as const;
+    const sortColumn = sortColumns[query.sortBy];
     const rows = await db
       .select(roleProjection)
       .from(roles)

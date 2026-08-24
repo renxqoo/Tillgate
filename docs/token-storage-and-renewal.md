@@ -16,7 +16,7 @@
 | Token | 单 JWT（HS256）。realm 参数化：用户面 `realm:'user'`、管理面 `realm:'admin'`，**每 realm 独立 issuer/密钥/TTL 装配注入**（v1 的 `JWT_SECRET`/`ADMIN_JWT_SECRET` 双密钥演化为 realm 配置；双身份物理隔离语义不变） |
 | 验签隔离 | 三重校验：算法白名单（仅 HS256）+ issuer 强校验 + 载荷 realm 比对——同 numeric id 的 user/admin 互不串号，即使密钥巧合相同（`packages/identity/src/adapters/jwt/jose-tokens.ts`） |
 | 有效期 | `SESSION_TTL_SECONDS`，client-api 与 admin-api 各自 config schema，默认 **86,400s = 24h 固定**（界 [60, 2_592_000] = `identity` 的 `SESSION_TTL_BOUNDS`）；cookie `maxAge` 与 JWT `exp` 对齐 |
-| 存放 | Next.js **BFF 持有**：`ag_session` / `ag_admin_session` cookie（httpOnly / sameSite=lax / 生产 secure / path=/）——浏览器 JS 从头到尾碰不到 token；后端 API 是**无 Cookie 的 Bearer 面**，BFF 出站时以 `Authorization: Bearer` 头携带 |
+| 存放 | Next.js **BFF 持有**：`sk_session` / `sk_admin_session` cookie（httpOnly / sameSite=lax / 生产 secure / path=/）——浏览器 JS 从头到尾碰不到 token；后端 API 是**无 Cookie 的 Bearer 面**，BFF 出站时以 `Authorization: Bearer` 头携带 |
 | 吊销 | ① 每请求查库校验账号 status（client-api 装配层 `identity.sessions.validate` + `activeUserStatus`，封禁/注销即时生效）② jti 黑名单单会话强制下线（Redis SETEX 存活至令牌自然过期；查询 fail-open + warn，DB 侧锚点线兜底；登出即吊销 jti）③ **锚点线**：`identity_session_anchors` 表按 (realm, userId) 记 `invalid_before`，签发时间早于锚点即失效（改密/重置/管理员强制下线全走这条线） |
 | 续期 | **无**——活跃用户 24h 整点登出（滑动续期方案见 §5.2，仍为设计备选未实施） |
 
@@ -98,7 +98,7 @@ refresh 仍走 API 域 httpOnly cookie，`SameSite=None`（跨域必需）+ CSRF
   `setSessionToken(body.token)`（token 来自响应体）；`logoutAction` 先
   `POST /v1/auth/logout`（吊销服务端 jti，泄露副本即失效）再 `clearSessionCookie`，
   吊销 best-effort 不阻塞登出。`apps/admin/src/server/auth-actions.ts` 管理面同构
-  （`ag_admin_session`）。
+  （`sk_admin_session`）。
 - **校验链**：`packages/identity/src/application/validate-session.ts`——验签 →
   jti 黑名单（读故障 fail-open + warn：吊销是增强层，主防线是属主回查与锚点线）→
   锚点线（`iatMs < invalid_before` 即失效；无锚点全有效）。属主回查与 status 检查不在
@@ -219,7 +219,7 @@ location /v1/ {
 ```
 
 同域反代对会话的实际效果：Next 面板、client-api、gateway 同属一个公网域，
-`ag_session`（sameSite=lax）在面板与 API 之间自然随行，不存在 §6.2 的跨域场景。
+`sk_session`（sameSite=lax）在面板与 API 之间自然随行，不存在 §6.2 的跨域场景。
 
 ## 7. 决策速查
 

@@ -321,7 +321,7 @@ export interface ModelUpdateBody {
 /** 管理面 API Key 行(GET /v1/admin-keys;keyPreview 脱敏回显) */
 export interface AdminKeyRow {
   id: number;
-  /** 脱敏预览 ag_****abcd(明文永不回显) */
+  /** 脱敏预览 sk_****abcd(明文永不回显) */
   keyPreview: string;
   name: string;
   remark: string | null;
@@ -383,8 +383,8 @@ export interface AdminRateCardRow {
   description: string | null;
   status: number;
   createdAt: string;
-  /** 更新时间(v2 无列来源,恒 null) */
-  updatedAt: string | null;
+  /** 更新时间(rate_cards.updated_at,update 恒刷新) */
+  updatedAt: string;
   /** 系数 numeric(6,3):0.001..9.999,回显恒 3 位小数 */
   coefficient: string;
 }

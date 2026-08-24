@@ -302,7 +302,7 @@ describe('杂项分支收官', () => {
         jwtSecret: 'ab12'.repeat(8),
         issuer: 'i',
         audience: 'a',
-        keyPrefix: 'ag_',
+        keyPrefix: 'sk_',
         tokenTtlSeconds: 60,
       },
       trustedProxyHops: 0,

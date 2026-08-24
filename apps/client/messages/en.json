@@ -449,9 +449,9 @@
   "playground": {
     "title": "Playground",
     "description": "Chat with any model right in the console (billed normally from your balance, streamed)",
-    "keyMissing": "Paste an API key first (starts with ag_; create one on the API Keys page)",
+    "keyMissing": "Paste an API key first (starts with sk_; create one on the API Keys page)",
     "requestFailed": "Request failed ({status})",
-    "keyPlaceholder": "API key (ag_…, this session only)",
+    "keyPlaceholder": "API key (sk_…, this session only)",
     "selectModel": "Select a model",
     "emptyHint": "Type a message to start; output is billed at model pricing from your balance.",
     "inputPlaceholder": "Type a message (Enter to send / Shift+Enter for a new line)",

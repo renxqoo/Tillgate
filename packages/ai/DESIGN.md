@@ -54,15 +54,15 @@
 
 ### 1.2 明确不处理（写明归属，不留白）
 
-| 不处理                                                             | 归属                                                                        |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| 候选循环 / 换渠 / 路由 / quote / 计费衔接 / 渠道健康（熔断、死凭据） | `inference`（ai 的唯一运行时装配消费方；健康状态 = AiEvent 订阅者形态）      |
-| 计费取证 / 审计 / trace / 请求日志的消费与持久化                    | billing / observability 等订阅者（装配处挂 `subscribe`，旁路消费）           |
-| 模型映射 / 渠道目录 / 费率                                          | `control-plane`（`SUPPORTED_PROTOCOLS`/`vendorProfileNames` 词表供其校验引用） |
-| 仓库级错误根契约（三性/category）                                   | `@tokenlens/errors`——**ai 禁止依赖**（AGENT.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用） |
-| C 端 wire 出站投影（OpenAI 错误信封、脱敏呈现）                     | app error-face（gateway `openai-error-face` + `sanitize`；ai 只出 UpstreamError 结构与脱敏参数） |
-| 环境变量读取 / OTel SDK / 进程装配                                 | app 装配面（ADR-0007；ai 只收 logger/tracer 结构形状）                      |
-| 任务轮询调度与结算落账                                             | worker / inference（minimax 'Unknown'→running 永挂面上限归 worker，在案）    |
+| 不处理                                                               | 归属                                                                                             |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 候选循环 / 换渠 / 路由 / quote / 计费衔接 / 渠道健康（熔断、死凭据） | `inference`（ai 的唯一运行时装配消费方；健康状态 = AiEvent 订阅者形态）                          |
+| 计费取证 / 审计 / trace / 请求日志的消费与持久化                     | billing / observability 等订阅者（装配处挂 `subscribe`，旁路消费）                               |
+| 模型映射 / 渠道目录 / 费率                                           | `control-plane`（`SUPPORTED_PROTOCOLS`/`vendorProfileNames` 词表供其校验引用）                   |
+| 仓库级错误根契约（三性/category）                                    | `@tokenlens/errors`——**ai 禁止依赖**（AGENT.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用）   |
+| C 端 wire 出站投影（OpenAI 错误信封、脱敏呈现）                      | app error-face（gateway `openai-error-face` + `sanitize`；ai 只出 UpstreamError 结构与脱敏参数） |
+| 环境变量读取 / OTel SDK / 进程装配                                   | app 装配面（ADR-0007；ai 只收 logger/tracer 结构形状）                                           |
+| 任务轮询调度与结算落账                                               | worker / inference（minimax 'Unknown'→running 永挂面上限归 worker，在案）                        |
 
 ## 2. 外部契约（v2 API，定稿）
 
@@ -134,7 +134,7 @@ allowAllUrls;                            // 测试/本地调试注入
   admin 下拉 / control-plane capabilities 的单一真相；未注册协议显式 `unsupported_protocol`，
   不静默回退。
 - **机制默认档位**（config.ts，可整体覆盖）：retry `{ maxAttempts: 3, baseDelayMs: 250,
-  maxDelayMs: 8000, jitterRatio: 0.25, deadlineMs: 240_000, emptyCompletionRetries: 2 }`、
+maxDelayMs: 8000, jitterRatio: 0.25, deadlineMs: 240_000, emptyCompletionRetries: 2 }`、
   stream `{ heartbeatIdleMs: 30_000, firstByteTimeoutMs: 60_000, inactivityTimeoutMs: 120_000 }`、
   timeout `{ connectMs: 10_000, totalMs: 120_000 }`、`responseModelRewrite: false`（默认关）、
   `errorSanitize { maxLen: 512, redactions: [] }`。

@@ -21,6 +21,7 @@ const CARD_COLUMNS = {
   description: rateCards.description,
   status: rateCards.status,
   createdAt: rateCards.createdAt,
+  updatedAt: rateCards.updatedAt,
 } as const;
 
 const CARD_SORTS = {

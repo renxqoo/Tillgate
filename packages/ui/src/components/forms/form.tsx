@@ -63,10 +63,7 @@ function useFormField() {
   };
 }
 
-export function FormLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof FieldLabel>) {
+export function FormLabel({ className, ...props }: React.ComponentProps<typeof FieldLabel>) {
   const { id } = useFormField();
   return <FieldLabel htmlFor={id} className={className} {...props} />;
 }

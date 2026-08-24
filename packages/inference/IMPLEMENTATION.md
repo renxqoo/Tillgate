@@ -38,30 +38,30 @@
 
 ## 2. 逐模块裁决表（旧 → 新）
 
-| 旧文件（ai-getway）                                                                                         | 裁决                                                      | 新位置                                              |
-| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
-| apps/gateway/src/routing/schedule.ts                                                                        | 复制                                                      | src/domain/routing/schedule.ts                      |
-| apps/gateway/src/routing/switchable.ts                                                                      | 重写（词表换 ai ErrorKind 封闭词表 + 内部拒绝码）         | src/domain/routing/switchable.ts                    |
-| apps/gateway/src/routing/resolve-channels.ts                                                                | 重写（repo 排序 → 加权调度内联候选循环）                  | src/application/failover.ts                         |
-| apps/gateway/src/pipeline/output-cap.ts                                                                     | 复制+微修（保守上界去 bpe 入参，C1）                      | src/domain/model/output-cap.ts                      |
-| apps/gateway/src/pipeline/receipt.ts                                                                        | 复制+微修（fx 移除 C2；stream 字段外提）                  | src/domain/usage/receipt.ts                         |
-| packages/domain/src/rating/types.ts（归属部分）                                                             | 复制（ESTIMATE_ATTRIBUTIONS/streamEstimateAttribution）   | src/domain/usage/attribution.ts                     |
-| packages/domain/src/rating/measurement.ts                                                                   | 复制（计量语义归 usage，价格运算留 billing）              | src/domain/usage/measurement.ts                     |
-| packages/ai/src/breaker/breaker.ts                                                                          | 重写（class→工厂闭包；存储经 HealthStore port）           | src/health/breaker.ts                               |
-| packages/ai/src/dead-credential/tracker.ts                                                                  | 重写（同上）                                              | src/health/dead-credential.ts                       |
-| （v1 无：健康装配/订阅）                                                                                    | 新写（AiEvent 订阅者 + fire-and-forget）                  | src/health/channel-health.ts                        |
-| （v1 run-chat/attempt/settle-retry 的 withAsyncSpan 面）                                                     | 回填（TracePort port 注入；命名见 docs/observability.md §3） | src/ports/trace.ts + 各 application 挂点            |
-| apps/gateway/src/pipeline/run-chat.ts                                                                       | 重写（限流/OTel 剥离；见 failover/chat/stream）           | src/application/{quote,failover,chat,stream}.ts     |
-| apps/gateway/src/pipeline/attempt-nonstream.ts                                                              | 重写                                                      | src/application/chat.ts                             |
-| apps/gateway/src/pipeline/attempt-stream.ts                                                                 | 重写（估算源 outputText→outputFeatures，C1）              | src/application/stream.ts                           |
-| apps/gateway/src/pipeline/settle-retry.ts                                                                   | 复制+微修（去 OTel；上限 8s 参数化）                      | src/application/signal-retry.ts                     |
-| apps/gateway/src/pipeline/upstream-port.ts / upstream-adapter.ts                                            | 重写（v2 ai 平参数 API；ChannelDesc 组装+凭据解密注入）   | src/ports/upstream.ts + src/adapters/upstream-ai.ts |
-| packages/core/src/redis/ai-storages.ts                                                                      | 复制+微修（Lua CAS；前缀 inference:health:）              | src/adapters/state-redis.ts                         |
-| apps/gateway/src/pipeline/ai-storages.ts（memory）                                                          | 复制+微修                                                 | src/adapters/state-memory.ts                        |
-| packages/domain/src/generation/kinds.ts                                                                     | 复制（video=task_poll / music=task_execute + 参数白名单） | src/domain/generation.ts                            |
-| apps/gateway/src/generation/submit.ts                                                                       | 重写（限流剥离；TaskStore port 化）                       | src/application/generation.ts                       |
-| （v1 poll 在 service/worker）                                                                               | 不迁（结算/worker 垂直，后续波次；MIGRATION 待办）        | —                                                   |
-| packages/domain/src/rating/{pricing,calculate,pricing-strategy,reservation-strategy,coefficient,amounts}.ts | 不迁（金额运算归 billing 包）                             | —                                                   |
+| 旧文件（ai-getway）                                                                                         | 裁决                                                         | 新位置                                              |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| apps/gateway/src/routing/schedule.ts                                                                        | 复制                                                         | src/domain/routing/schedule.ts                      |
+| apps/gateway/src/routing/switchable.ts                                                                      | 重写（词表换 ai ErrorKind 封闭词表 + 内部拒绝码）            | src/domain/routing/switchable.ts                    |
+| apps/gateway/src/routing/resolve-channels.ts                                                                | 重写（repo 排序 → 加权调度内联候选循环）                     | src/application/failover.ts                         |
+| apps/gateway/src/pipeline/output-cap.ts                                                                     | 复制+微修（保守上界去 bpe 入参，C1）                         | src/domain/model/output-cap.ts                      |
+| apps/gateway/src/pipeline/receipt.ts                                                                        | 复制+微修（fx 移除 C2；stream 字段外提）                     | src/domain/usage/receipt.ts                         |
+| packages/domain/src/rating/types.ts（归属部分）                                                             | 复制（ESTIMATE_ATTRIBUTIONS/streamEstimateAttribution）      | src/domain/usage/attribution.ts                     |
+| packages/domain/src/rating/measurement.ts                                                                   | 复制（计量语义归 usage，价格运算留 billing）                 | src/domain/usage/measurement.ts                     |
+| packages/ai/src/breaker/breaker.ts                                                                          | 重写（class→工厂闭包；存储经 HealthStore port）              | src/health/breaker.ts                               |
+| packages/ai/src/dead-credential/tracker.ts                                                                  | 重写（同上）                                                 | src/health/dead-credential.ts                       |
+| （v1 无：健康装配/订阅）                                                                                    | 新写（AiEvent 订阅者 + fire-and-forget）                     | src/health/channel-health.ts                        |
+| （v1 run-chat/attempt/settle-retry 的 withAsyncSpan 面）                                                    | 回填（TracePort port 注入；命名见 docs/observability.md §3） | src/ports/trace.ts + 各 application 挂点            |
+| apps/gateway/src/pipeline/run-chat.ts                                                                       | 重写（限流/OTel 剥离；见 failover/chat/stream）              | src/application/{quote,failover,chat,stream}.ts     |
+| apps/gateway/src/pipeline/attempt-nonstream.ts                                                              | 重写                                                         | src/application/chat.ts                             |
+| apps/gateway/src/pipeline/attempt-stream.ts                                                                 | 重写（估算源 outputText→outputFeatures，C1）                 | src/application/stream.ts                           |
+| apps/gateway/src/pipeline/settle-retry.ts                                                                   | 复制+微修（去 OTel；上限 8s 参数化）                         | src/application/signal-retry.ts                     |
+| apps/gateway/src/pipeline/upstream-port.ts / upstream-adapter.ts                                            | 重写（v2 ai 平参数 API；ChannelDesc 组装+凭据解密注入）      | src/ports/upstream.ts + src/adapters/upstream-ai.ts |
+| packages/core/src/redis/ai-storages.ts                                                                      | 复制+微修（Lua CAS；前缀 inference:health:）                 | src/adapters/state-redis.ts                         |
+| apps/gateway/src/pipeline/ai-storages.ts（memory）                                                          | 复制+微修                                                    | src/adapters/state-memory.ts                        |
+| packages/domain/src/generation/kinds.ts                                                                     | 复制（video=task_poll / music=task_execute + 参数白名单）    | src/domain/generation.ts                            |
+| apps/gateway/src/generation/submit.ts                                                                       | 重写（限流剥离；TaskStore port 化）                          | src/application/generation.ts                       |
+| （v1 poll 在 service/worker）                                                                               | 不迁（结算/worker 垂直，后续波次；MIGRATION 待办）           | —                                                   |
+| packages/domain/src/rating/{pricing,calculate,pricing-strategy,reservation-strategy,coefficient,amounts}.ts | 不迁（金额运算归 billing 包）                                | —                                                   |
 
 ## 3. 拆分后的包结构
 
@@ -182,12 +182,12 @@ v1 `generation-task.repo listAdminTasks/findSettledAmounts` 迁入,全部**加�
 
 - `ports/generation.ts`：+`GENERATION_TASK_STATUSES` 词表（DB check 同源,wire zod
   单一真相）+ `GenerationTaskStatus` 类型 + `GenerationTaskAdminRow`/`AdminListInput`
-  + `adminList`/`settledAmounts` 两原语（既有动词零改动）。
+  - `adminList`/`settledAmounts` 两原语（既有动词零改动）。
 - `domain/generation.ts`：+`GENERATION_TASK_KINDS` 词表数组（与 GENERATION_KINDS
   键集封闭性由测试锁定）。
 - `adapters/generation-pg.ts`：adminList（billing_requests 左联带出 billingStatus,
   createdAt 降序 + total 全量）;settledAmounts 走 `generation_tasks.request_id =
-  usage_logs.request_id` join——v1 依赖「task.id 即计费 requestId」惯例直查,新仓
+usage_logs.request_id` join——v1 依赖「task.id 即计费 requestId」惯例直查,新仓
   taskId/requestId 显式分立（提交用例各自 randomUUID）,按账单锚 join 是意图忠实移植。
 - `adapters/task-memory.ts`：同语义内存版（billingStatus 恒 null、settledAmounts 空
   Map——内存形态无账本投影,数据面缺席非逻辑缺席;注释在文件头）。

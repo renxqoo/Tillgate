@@ -17,6 +17,9 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
   const tc = useTranslations('common');
   const notify = useActionResult();
   const [pending, startTransition] = useTransition();
+  let enterpriseIcon = <BriefcaseIcon />;
+  if (pending) enterpriseIcon = <Loader2Icon className="animate-spin" />;
+  else if (user.isEnterprise) enterpriseIcon = <UserIcon />;
 
   function toggleEnterprise() {
     startTransition(async () => {
@@ -42,13 +45,7 @@ export function UserActions({ user }: { readonly user: AdminUserRow }) {
         title={user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
         onClick={toggleEnterprise}
       >
-        {pending ? (
-          <Loader2Icon className="animate-spin" />
-        ) : user.isEnterprise ? (
-          <UserIcon />
-        ) : (
-          <BriefcaseIcon />
-        )}
+        {enterpriseIcon}
         {user.isEnterprise ? t('removeEnterprise') : t('setEnterprise')}
       </Button>
     </div>

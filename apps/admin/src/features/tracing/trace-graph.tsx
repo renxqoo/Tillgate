@@ -29,6 +29,25 @@ import { SpanDetailPanel } from './span-detail-panel';
 
 type SpanDetail = Parameters<typeof SpanDetailPanel>[0]['span'];
 
+function spanKindIcon(kind: GraphNode['kind']): string {
+  const icons: Partial<Record<GraphNode['kind'], string>> = {
+    http: '🌐',
+    upstream: '🔀',
+    stream: '📡',
+    billing: '💰',
+    settle: '🧾',
+  };
+  return icons[kind] ?? '⚙️';
+}
+
+function spanTone(node: GraphNode): string {
+  if (node.status === 'error') return 'border-destructive/70 bg-destructive/10 animate-pulse';
+  if (node.status === 'ok') return 'border-emerald-600/40 bg-emerald-500/5';
+  if (node.kind === 'billing') return 'border-sky-600/40 bg-sky-500/5';
+  if (node.kind === 'settle') return 'border-violet-600/40 bg-violet-500/5';
+  return 'border-border bg-background';
+}
+
 // dagre 从左到右自动布局
 function layout(nodes: Node[], edges: Edge[]): Node[] {
   const graph = new dagre.graphlib.Graph();
@@ -48,29 +67,9 @@ function SpanCard({ data }: NodeProps) {
   const t = useTranslations('tracing');
   const node = data.graphNode as GraphNode;
   const isError = node.status === 'error';
-  const icon =
-    node.kind === 'http'
-      ? '🌐'
-      : node.kind === 'upstream'
-        ? '🔀'
-        : node.kind === 'stream'
-          ? '📡'
-          : node.kind === 'billing'
-            ? '💰'
-            : node.kind === 'settle'
-              ? '🧾'
-              : '⚙️';
+  const icon = spanKindIcon(node.kind);
   // 计费节点默认蓝调（金额语义），结算成功绿调
-  const tone =
-    node.status === 'error'
-      ? 'border-destructive/70 bg-destructive/10 animate-pulse'
-      : node.status === 'ok'
-        ? 'border-emerald-600/40 bg-emerald-500/5'
-        : node.kind === 'billing'
-          ? 'border-sky-600/40 bg-sky-500/5'
-          : node.kind === 'settle'
-            ? 'border-violet-600/40 bg-violet-500/5'
-            : 'border-border bg-background';
+  const tone = spanTone(node);
   return (
     <div className={`w-[230px] rounded-lg border-2 px-3 py-2 shadow-sm transition-colors ${tone}`}>
       <Handle type="target" position={Position.Left} className="!bg-muted-foreground" />

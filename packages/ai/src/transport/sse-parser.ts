@@ -144,9 +144,11 @@ export class SseScanner {
 
 function toErrorFrame(error: unknown): StreamError {
   const e = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  let code = 'stream_error';
+  if (typeof e.code === 'string') code = e.code;
+  else if (typeof e.type === 'string') code = e.type;
   return {
-    code:
-      typeof e.code === 'string' ? e.code : typeof e.type === 'string' ? e.type : 'stream_error',
+    code,
     type: typeof e.type === 'string' ? e.type : undefined,
     detail: typeof e.message === 'string' ? e.message : undefined,
   };

@@ -30,9 +30,7 @@ export interface PublicScheduleWindow {
 }
 
 /** billingConfig（DB JSONB）→ 公开窗口表（schedule 之外 / 空表 → undefined） */
-export function scheduleWindowsOf(
-  billingConfig: unknown,
-): PublicScheduleWindow[] | undefined {
+export function scheduleWindowsOf(billingConfig: unknown): PublicScheduleWindow[] | undefined {
   const cfg = billingConfig as
     | { strategy?: string; params?: { windows?: unknown[] } }
     | null

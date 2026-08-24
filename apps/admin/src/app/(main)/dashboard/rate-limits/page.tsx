@@ -83,15 +83,15 @@ export default async function RateLimitsPage({ searchParams }: PageProps) {
         }))
       : [];
 
-  const error =
+  const allFailed =
     usersRes.status === 'rejected' &&
     modelsRes.status === 'rejected' &&
     channelsRes.status === 'rejected' &&
-    keysRes.status === 'rejected'
-      ? usersRes.reason instanceof Error
-        ? usersRes.reason.message
-        : tc('loadFailed')
-      : null;
+    keysRes.status === 'rejected';
+  let error: string | null = null;
+  if (allFailed) {
+    error = usersRes.reason instanceof Error ? usersRes.reason.message : tc('loadFailed');
+  }
 
   return (
     <ListPage

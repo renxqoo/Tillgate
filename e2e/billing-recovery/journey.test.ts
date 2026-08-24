@@ -46,7 +46,11 @@ interface Suite {
   video: VideoUpstream;
 }
 
-async function waitFor(predicate: () => Promise<boolean>, timeoutMs: number, what: string): Promise<void> {
+async function waitFor(
+  predicate: () => Promise<boolean>,
+  timeoutMs: number,
+  what: string,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await predicate()) return;
@@ -112,12 +116,20 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     await res.text();
 
     // worker settle runner 消费（认领/结算是生产函数——只是不经定时器）
-    await waitFor(async () => {
-      await worker.runners.settle!();
-      return (await billStatusOf(userId)) === 'settled';
-    }, 15_000, 'worker 结算');
+    await waitFor(
+      async () => {
+        await worker.runners.settle!();
+        return (await billStatusOf(userId)) === 'settled';
+      },
+      15_000,
+      'worker 结算',
+    );
 
-    const usage = await world.db.execute<{ input_tokens: string; amount: string; real_model: string }>(
+    const usage = await world.db.execute<{
+      input_tokens: string;
+      amount: string;
+      real_model: string;
+    }>(
       sql`select input_tokens::text, amount::text, real_model from usage_logs where user_id = ${userId}`,
     );
     expect(usage.rows.length).toBe(1); // worker 写的计量行
@@ -125,16 +137,22 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     expect(new Decimal(usage.rows[0]!.amount).gt(0)).toBe(true);
 
     const walletState = await keys.walletOf(userId);
-    expect(new Decimal(walletState.balance).eq(new Decimal(FUND).minus(usage.rows[0]!.amount))).toBe(true);
+    expect(
+      new Decimal(walletState.balance).eq(new Decimal(FUND).minus(usage.rows[0]!.amount)),
+    ).toBe(true);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
 
     // 渠道进货额度被 worker 的结算扣减（upstreamCost 口径）
-    await waitFor(async () => {
-      const budgetAfter = await world.db.execute<{ budget: string }>(
-        sql`select upstream_budget::text as budget from channels where id = ${world.seed.channelId}`,
-      );
-      return new Decimal(budgetBefore.rows[0]!.budget).gt(budgetAfter.rows[0]!.budget);
-    }, 10_000, '渠道预算扣减');
+    await waitFor(
+      async () => {
+        const budgetAfter = await world.db.execute<{ budget: string }>(
+          sql`select upstream_budget::text as budget from channels where id = ${world.seed.channelId}`,
+        );
+        return new Decimal(budgetBefore.rows[0]!.budget).gt(budgetAfter.rows[0]!.budget);
+      },
+      10_000,
+      '渠道预算扣减',
+    );
   }, 60_000);
 
   it('⑯b 生成环：mock 视频上游 → 网关提交 201 → worker 轮询终态 → 结算实扣', async () => {
@@ -145,17 +163,17 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     const stamp = Date.now().toString(36);
     const provider = await world.db.execute<{ id: number }>(sql`
       insert into providers (name, base_url, protocol, vendor)
-      values (${"e2e-br-vid-" + stamp}, ${video.baseUrl}, 'minimax', null) returning id`);
+      values (${'e2e-br-vid-' + stamp}, ${video.baseUrl}, 'minimax', null) returning id`);
     vidSeed.providerId = Number(provider.rows[0]!.id);
     const mapping = await world.db.execute<{ id: number; external_name: string }>(sql`
       insert into model_mappings (external_name, real_model, status, input_price, output_price,
         cache_input_price, pricing_unit, unit_price)
-      values (${"e2e-br-vidm-" + stamp}, 'video-01', 0, '0', '0', '0', 'second', '0.5')
+      values (${'e2e-br-vidm-' + stamp}, 'video-01', 0, '0', '0', '0', 'second', '0.5')
       returning id, external_name`);
     vidSeed.mappingId = Number(mapping.rows[0]!.id);
     const channel = await world.db.execute<{ id: number }>(sql`
       insert into channels (provider_id, name, api_key_enc, status, upstream_budget)
-      values (${vidSeed.providerId}, ${"e2e-br-vidch-" + stamp}, ${cipher.encrypt('sk-video-mock')}, 0, '1000')
+      values (${vidSeed.providerId}, ${'e2e-br-vidch-' + stamp}, ${cipher.encrypt('sk-video-mock')}, 0, '1000')
       returning id`);
     vidSeed.channelId = Number(channel.rows[0]!.id);
     await world.db.execute(sql`
@@ -166,7 +184,11 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     const submit = await fetch(`${gateway.baseUrl}/v1/video/generations`, {
       method: 'POST',
       headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: mapping.rows[0]!.external_name, prompt: '一只猫', duration: 6 }),
+      body: JSON.stringify({
+        model: mapping.rows[0]!.external_name,
+        prompt: '一只猫',
+        duration: 6,
+      }),
     });
     expect(submit.status).toBe(201);
     const submitted = (await submit.json()) as { id: string; status: string };
@@ -180,13 +202,17 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     expect(video.submittedAuth).toMatch(/^Bearer /); // 解密注入上游
 
     // worker generation runner：轮询 running×2 → Success → file 换 url → 终态
-    await waitFor(async () => {
-      await worker.runners.generation!();
-      const task = await world.db.execute<{ status: string }>(
-        sql`select status from generation_tasks where id = ${submitted.id}`,
-      );
-      return task.rows[0]?.status === 'succeeded';
-    }, 20_000, 'video 任务终态');
+    await waitFor(
+      async () => {
+        await worker.runners.generation!();
+        const task = await world.db.execute<{ status: string }>(
+          sql`select status from generation_tasks where id = ${submitted.id}`,
+        );
+        return task.rows[0]?.status === 'succeeded';
+      },
+      20_000,
+      'video 任务终态',
+    );
     const task = await world.db.execute<{ status: string; result: Record<string, unknown> }>(
       sql`select status, result from generation_tasks where id = ${submitted.id}`,
     );
@@ -194,14 +220,18 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
 
     // 结算：6s × 0.5 = 3 元实扣（v2 提交响应 id = taskId,billing request_id 与其
     // 分离——经任务行 join 定位账单;v1 两者同值直接查,语义同为「该任务的账单」）
-    await waitFor(async () => {
-      await worker.runners.settle!();
-      const bill = await world.db.execute<{ status: string }>(sql`
+    await waitFor(
+      async () => {
+        await worker.runners.settle!();
+        const bill = await world.db.execute<{ status: string }>(sql`
         select b.status from billing_requests b
         join generation_tasks g on g.request_id = b.request_id
         where g.id = ${submitted.id}`);
-      return bill.rows[0]?.status === 'settled';
-    }, 15_000, 'video 结算');
+        return bill.rows[0]?.status === 'settled';
+      },
+      15_000,
+      'video 结算',
+    );
     const walletState = await keys.walletOf(userId);
     expectDecimalEq(walletState.balance, '2'); // 5 − 6s×0.5
     expectDecimalEq(walletState.inFlight, '0');
@@ -221,7 +251,11 @@ describe.skipIf(!hasInfra)('E2E ⑯ worker 全链', () => {
     });
     expect(res.status).toBe(200);
     await res.text();
-    await waitFor(async () => (await billStatusOf(first.userId)) === 'settled', 15_000, '定时器消费');
+    await waitFor(
+      async () => (await billStatusOf(first.userId)) === 'settled',
+      15_000,
+      '定时器消费',
+    );
 
     // 停机 → 新请求的 pending 停留（原节奏 100ms,等 1.2s 足以证明不再消费）
     await worker.scheduler.stop();

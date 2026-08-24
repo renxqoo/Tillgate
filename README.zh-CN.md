@@ -58,7 +58,7 @@ bun dev                            # turbo dev —— 全部七个应用，热�
 
 种子脚本会创建开发管理员（`admin@ai-gateway.local` / `admin12345`，仅开发用）、示例用户、
 费率卡；若 `.env` 配了 `DEEPSEEK_API_KEY` 还会建 DeepSeek 渠道与模型映射，
-并打印一把虚拟测试 Key（`ag_…`）。
+并打印一把虚拟测试 Key（`sk_…`）。
 
 端口：网关 `8080` · client-api `8081` · admin-api `8082` · trace-receiver `8793` ·
 worker 健康 `8792` · 用户面板 `3001` · 管理后台 `3002`。

@@ -33,7 +33,7 @@ export function createInMemorySessionInvalidation(): InMemorySessionInvalidation
 export const V1_TX_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
 export const V1_POLICY: AccountsPolicy = {
-  keyPrefix: 'ag_',
+  keyPrefix: 'sk_',
   invitationTtlMs: 7 * 86_400_000,
   invitationPendingFactor: 2,
   invitationPendingCap: 20,

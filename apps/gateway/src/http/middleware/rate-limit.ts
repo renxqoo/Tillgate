@@ -40,12 +40,9 @@ export async function admitRequest(
 ): Promise<AdmitHandle> {
   if (gate == null) return { release: async () => undefined };
   const { auth } = input;
-  const credentialDimension =
-    auth.apiKeyId != null
-      ? `key:${auth.apiKeyId}`
-      : auth.appId != null
-        ? `app:${auth.appId}`
-        : `pg:${auth.userId}`;
+  let credentialDimension = `pg:${auth.userId}`;
+  if (auth.apiKeyId != null) credentialDimension = `key:${auth.apiKeyId}`;
+  else if (auth.appId != null) credentialDimension = `app:${auth.appId}`;
   return await withAsyncSpan(
     getTracer('gateway'),
     'rate_limit.admit',
@@ -115,4 +112,3 @@ export async function tryChannelRpm(
   );
   return result.allowed;
 }
-

@@ -128,13 +128,13 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 
 ## 9. 门禁记录（2026-08-23 复跑回填）
 
-| 门禁       | 命令                                      | 结果 |
-| ---------- | ----------------------------------------- | ---- |
-| typecheck  | `bun x tsc --noEmit`                      | ✅ 0 错 |
-| lint       | `bun x oxlint`                            | ✅ 0-0（135 文件） |
+| 门禁       | 命令                                      | 结果                                                                                               |
+| ---------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| typecheck  | `bun x tsc --noEmit`                      | ✅ 0 错                                                                                            |
+| lint       | `bun x oxlint`                            | ✅ 0-0（135 文件）                                                                                 |
 | test       | `bun x vitest run --coverage`             | ✅ 128/128（12 文件）；lines 95.56 / branches 88.68 / funcs 96.39 / stmts 97.77（阈值 90/85 达标） |
-| build      | `bun run build`                           | ✅（/login、/dashboard/users/[id] 等动态路由产物正常） |
-| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 21 workspace 无环、深导入/越界为零 |
+| build      | `bun run build`                           | ✅（/login、/dashboard/users/[id] 等动态路由产物正常）                                             |
+| boundaries | `bun scripts/check-package-boundaries.ts` | ✅ 21 workspace 无环、深导入/越界为零                                                              |
 
 ## 10. 挂起记录（铁律 15）
 

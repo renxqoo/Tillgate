@@ -21,6 +21,13 @@ import { createPermissionAction, updatePermissionAction } from '@/server/rbac-ac
 
 type NodeType = 'group' | 'page' | 'button';
 
+/** 按节点类型取合法父选项(button→页面页,page→分组,group→无) */
+function parentOptionsOf(nodes: PermissionNode[], type: NodeType): PermissionNode[] {
+  if (type === 'button') return nodes.filter((n) => n.type === 'page');
+  if (type === 'page') return nodes.filter((n) => n.type === 'group');
+  return [];
+}
+
 /** 编辑弹窗（全字段——含码/类型/父子移动;type 联动父选项与字段显隐,结构校验后端兜底） */
 export function NodeEditDialog({
   node,
@@ -40,12 +47,7 @@ export function NodeEditDialog({
   const [parentId, setParentId] = useState<number | null>(node.parentId);
   const formId = `node-edit-form-${node.id}`;
 
-  const parentOptions =
-    type === 'button'
-      ? nodes.filter((n) => n.type === 'page')
-      : type === 'page'
-        ? nodes.filter((n) => n.type === 'group')
-        : [];
+  const parentOptions = parentOptionsOf(nodes, type);
   const parentValid = parentId != null && parentOptions.some((o) => o.id === parentId);
 
   return (
@@ -94,14 +96,11 @@ export function NodeEditDialog({
                 const next = e.target.value as NodeType;
                 setType(next);
                 // 类型切换后原父节点可能不再合法——回落到首个合法父
-                const opts =
-                  next === 'button'
-                    ? nodes.filter((n) => n.type === 'page')
-                    : next === 'page'
-                      ? nodes.filter((n) => n.type === 'group')
-                      : [];
+                const opts = parentOptionsOf(nodes, next);
                 setParentId((current) =>
-                  current != null && opts.some((o) => o.id === current) ? current : (opts[0]?.id ?? null),
+                  current != null && opts.some((o) => o.id === current)
+                    ? current
+                    : (opts[0]?.id ?? null),
                 );
               }}
               name="type"
@@ -117,7 +116,11 @@ export function NodeEditDialog({
               <NativeSelect
                 id={`node-parent-${node.id}`}
                 name="parentId"
-                value={parentValid ? String(parentId) : (parentOptions[0]?.id != null ? String(parentOptions[0].id) : '')}
+                value={(() => {
+                  if (parentValid) return String(parentId);
+                  const fallback = parentOptions[0]?.id;
+                  return fallback != null ? String(fallback) : '';
+                })()}
                 onChange={(e) => setParentId(Number(e.target.value))}
                 required
               >
@@ -232,12 +235,7 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
   const [type, setType] = useState<NodeType>('button');
   const formId = 'node-form-create';
 
-  const parentOptions =
-    type === 'button'
-      ? nodes.filter((n) => n.type === 'page')
-      : type === 'page'
-        ? nodes.filter((n) => n.type === 'group')
-        : [];
+  const parentOptions = parentOptionsOf(nodes, type);
 
   return (
     <FormDialog
@@ -318,7 +316,12 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
             <>
               <FormItem>
                 <FieldLabel htmlFor="node-create-path">{t('path')}</FieldLabel>
-                <Input id="node-create-path" name="path" placeholder="/dashboard/xxx" maxLength={255} />
+                <Input
+                  id="node-create-path"
+                  name="path"
+                  placeholder="/dashboard/xxx"
+                  maxLength={255}
+                />
               </FormItem>
               <FormItem>
                 <FieldLabel htmlFor="node-create-icon">{t('icon')}</FieldLabel>
@@ -328,7 +331,14 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
           )}
           <FormItem>
             <FieldLabel htmlFor="node-create-sort">{t('sortOrder')}</FieldLabel>
-            <Input id="node-create-sort" name="sortOrder" type="number" defaultValue={0} min={0} max={9999} />
+            <Input
+              id="node-create-sort"
+              name="sortOrder"
+              type="number"
+              defaultValue={0}
+              min={0}
+              max={9999}
+            />
           </FormItem>
         </form>
       )}

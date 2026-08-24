@@ -23,7 +23,7 @@
    的 v1 测试是行为规格；错误体系重构（HttpError/注册表 → 三性/目录）按 ADR-0001 裁决**有意重写**，
    逐条列入 API 对照表。
 4. **零写死**：可变值（CORS 策略、body 上限、API key 前缀、代理跳数、SQLSTATE 探测）一律注入必填；
-   v1 的三处隐藏默认（gateway bodyLimit 10MiB、generateApiKey 'ag_'、PG 探测实现）全部清除。
+   v1 的三处隐藏默认（gateway bodyLimit 10MiB、generateApiKey 'sk_'、PG 探测实现）全部清除。
 5. **并发预算**：全部为请求内同步计算或常量装配；无跨请求状态、无定时器、无 I/O（secrets 的
    node:crypto 除外——随机数生成本身）。
 

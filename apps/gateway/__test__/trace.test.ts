@@ -150,7 +150,7 @@ function makeApp() {
       jwtSecret: 'ab12'.repeat(8),
       issuer: 'i',
       audience: 'a',
-      keyPrefix: 'ag_',
+      keyPrefix: 'sk_',
       tokenTtlSeconds: 3_600,
     },
     rateLimit,
@@ -161,11 +161,13 @@ function makeApp() {
 describe('adapters/trace-port：OTel 绑定契约', () => {
   it('setAttributes/setStatus 双态映射进真实 span（ok/error 分 span——OTel 语义 OK 后 ERROR 不可覆盖）', async () => {
     otel.memory?.clear();
-    await otelTracePort.withSpan('tp.ok', { probe: 1 }, async (span) => {
-      span.setAttributes({ added: true });
-      span.setStatus({ code: 'ok' });
-      return 42;
-    }).then((v) => expect(v).toBe(42));
+    await otelTracePort
+      .withSpan('tp.ok', { probe: 1 }, async (span) => {
+        span.setAttributes({ added: true });
+        span.setStatus({ code: 'ok' });
+        return 42;
+      })
+      .then((v) => expect(v).toBe(42));
     await otelTracePort.withSpan('tp.error', {}, async (span) => {
       span.setStatus({ code: 'error', message: 'boom' });
     });
@@ -184,7 +186,7 @@ describe('全链路 span 树（memory OTel + 真实 inference 装配）', () => 
     otel.memory?.clear();
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'gpt-x', messages: [{ role: 'user', content: '你好' }] }),
     });
     expect(res.status).toBe(200);
@@ -228,7 +230,7 @@ describe('全链路 span 树（memory OTel + 真实 inference 装配）', () => 
     otel.memory?.clear();
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
-      headers: { authorization: 'Bearer ag_k', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
       body: JSON.stringify({ model: 'gpt-x', messages: [{ role: 'user', content: '坏参数' }] }),
     });
     expect(res.status).toBe(400);

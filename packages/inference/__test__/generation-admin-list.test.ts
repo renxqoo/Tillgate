@@ -55,7 +55,14 @@ describe('内存任务存储 adminList/settledAmounts', () => {
 
     // createdAt 降序:后插入者在前
     const all = await store.adminList({ limit: 10, offset: 0 });
-    expect(all.rows.map((r) => r.taskId)).toEqual(['task-6', 'task-5', 'task-4', 'task-3', 'task-2', 'task-1']);
+    expect(all.rows.map((r) => r.taskId)).toEqual([
+      'task-6',
+      'task-5',
+      'task-4',
+      'task-3',
+      'task-2',
+      'task-1',
+    ]);
 
     const failed = await store.adminList({ status: 'failed', limit: 10, offset: 0 });
     expect(failed.rows).toHaveLength(1);
@@ -103,8 +110,6 @@ describe('词表封闭(契约级,§10.1)', () => {
 
   it('kind 词表数组与 GENERATION_KINDS 注册表键集一致(单一真相不漂移)', async () => {
     const { GENERATION_KINDS, GENERATION_TASK_KINDS } = await import('../src/domain/generation');
-    expect([...GENERATION_TASK_KINDS].toSorted()).toEqual(
-      Object.keys(GENERATION_KINDS).toSorted(),
-    );
+    expect([...GENERATION_TASK_KINDS].toSorted()).toEqual(Object.keys(GENERATION_KINDS).toSorted());
   });
 });

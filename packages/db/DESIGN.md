@@ -89,16 +89,16 @@ schema 子入口(`@tokenlens/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词�
 
 ### 不处理(归属写明)
 
-| 不处理                                                     | 归属                                                             |
-| ---------------------------------------------------------- | ---------------------------------------------------------------- |
-| PG SQLSTATE → HTTP 语义翻译(6 码表)                        | 未来 `http` 包(v1 `http/src/errors.ts` PG_CODE_MAP)              |
-| Actor / RepoContext / RunContext / inTx                    | 能力包 application 与 adapters 层(v1 repository/service context) |
-| 业务锁键(credentialSetLockKey / challengeLockKey)          | 未来 `identity` 包                                               |
-| runEffect(提交后 best-effort 副作用)                       | 能力包(billing / identity)——与事务无关,不进 db                   |
-| 业务 SQL / Repository CRUD                                 | 能力包 `adapters/postgres`                                       |
-| seeds(dev 数据装配,cipher 加密渠道 Key)                       | 已移植 `scripts/seed-dev.ts`(dev 装配面,非包运行时能力——不进 exports/依赖;cipher 经 runtime 相对路径注入,IMPLEMENTATION.md C5) |
-| identity-core / ledger-core / wallet 三条 provision 链收口 | P4 能力波次,按总纲 §9 P3 纪律逐步做,禁止一次改完(C4)             |
-| worker readyz 不 ping DB 的事实差异                        | apps/worker 迁移时修正(v1 已知事实,记录在案)                     |
+| 不处理                                                     | 归属                                                                                                                           |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| PG SQLSTATE → HTTP 语义翻译(6 码表)                        | 未来 `http` 包(v1 `http/src/errors.ts` PG_CODE_MAP)                                                                            |
+| Actor / RepoContext / RunContext / inTx                    | 能力包 application 与 adapters 层(v1 repository/service context)                                                               |
+| 业务锁键(credentialSetLockKey / challengeLockKey)          | 未来 `identity` 包                                                                                                             |
+| runEffect(提交后 best-effort 副作用)                       | 能力包(billing / identity)——与事务无关,不进 db                                                                                 |
+| 业务 SQL / Repository CRUD                                 | 能力包 `adapters/postgres`                                                                                                     |
+| seeds(dev 数据装配,cipher 加密渠道 Key)                    | 已移植 `scripts/seed-dev.ts`(dev 装配面,非包运行时能力——不进 exports/依赖;cipher 经 runtime 相对路径注入,IMPLEMENTATION.md C5) |
+| identity-core / ledger-core / wallet 三条 provision 链收口 | P4 能力波次,按总纲 §9 P3 纪律逐步做,禁止一次改完(C4)                                                                           |
+| worker readyz 不 ping DB 的事实差异                        | apps/worker 迁移时修正(v1 已知事实,记录在案)                                                                                   |
 
 ## 3. 并发与性能预算
 

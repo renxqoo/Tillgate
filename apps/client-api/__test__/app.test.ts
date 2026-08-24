@@ -26,6 +26,8 @@ interface TestState {
   keys: Array<{ id: number; name: string; keyPreview: string }>;
   redeems: { failWith?: unknown };
   oauthCallbackState: string | null;
+  oauthFindUserAs: number | null;
+  oauthUserStatus: number;
   /** 用例旋钮：能力开关 / 登录结果覆写 / keys 失败注入 */
   capabilities: {
     registerEnabled: boolean;
@@ -58,6 +60,8 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     keys: [{ id: 1, name: 'k1', keyPreview: 'sk_***' }],
     redeems: {},
     oauthCallbackState: 'good-state',
+    oauthFindUserAs: null,
+    oauthUserStatus: 0,
     capabilities: { registerEnabled: true, captchaSiteKey: null, emailCodeRequired: false },
     authenticateAs: null,
     keysPatchFails: false,
@@ -192,7 +196,11 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           recordFailure: () => Promise.resolve({ locked: false, retryAfterSec: 0 }),
         },
       },
-      userStatus: (userId) => Promise.resolve(userId === 42 ? 0 : userId === 43 ? 1 : null),
+      userStatus: (userId) => {
+        if (userId === 42) return Promise.resolve(0);
+        if (userId === 43) return Promise.resolve(1);
+        return Promise.resolve(null);
+      },
       touchLastLogin: () => Promise.resolve(),
       sign: (userId) => Promise.resolve(`signed:${userId}`),
       logout: () => Promise.resolve(),
@@ -216,7 +224,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           next: '/dashboard',
         });
       },
-      findUser: () => Promise.resolve(null),
+      findUser: () => Promise.resolve(state.oauthFindUserAs),
       provision: (input) =>
         Promise.resolve({
           user: {
@@ -241,7 +249,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
           created: true,
         }),
       onboarding: () => Promise.resolve({ gift: { status: 'credited' } }),
-      userStatus: () => Promise.resolve(0),
+      userStatus: () => Promise.resolve(state.oauthUserStatus),
       sign: (userId) => Promise.resolve(`signed:${userId}`),
       frontendUrl: 'https://app.example',
       apiBase: 'https://api.example',
@@ -746,7 +754,13 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
                 isFree: false,
                 pricingGroup: null,
                 schedule: [
-                  { label: '谷时段', start: '18:00', end: '07:00', inputPrice: '0.5', outputPrice: '2' },
+                  {
+                    label: '谷时段',
+                    start: '18:00',
+                    end: '07:00',
+                    inputPrice: '0.5',
+                    outputPrice: '2',
+                  },
                 ],
               },
             ],
@@ -2010,7 +2024,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     expect(guardKeyOf('a@b.c', '1.2.3.4')).toBe(guardKeyOf('a@b.c', '1.2.3.4'));
     expect(guardKeyOf('a@b.c', '1.2.3.4')).not.toBe(guardKeyOf('a@b.c', '4.3.2.1'));
     const ctx = (lang: string) =>
-      ({ req: { header: () => lang } }) as Parameters<typeof localeOf>[0];
+      ({ req: { header: () => lang } }) as unknown as Parameters<typeof localeOf>[0];
     expect(localeOf(ctx('zh'))).toBe('zh');
     expect(localeOf(ctx('en-US,en;q=0.9'))).toBe('en');
   });
@@ -2038,13 +2052,19 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     const { parsePricingQuery } = await import('../src/http/contracts/pricing.js');
     const base = new URL('https://x/v1/pricing');
     expect(parsePricingQuery(base)).toMatchObject({ free: null, q: '' });
-    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=true'))).toMatchObject({ free: true });
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=true'))).toMatchObject({
+      free: true,
+    });
     expect(parsePricingQuery(new URL('https://x/v1/pricing?free=1'))).toMatchObject({ free: true });
-    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=other'))).toMatchObject({ free: false });
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=other'))).toMatchObject({
+      free: false,
+    });
     const clamped = parsePricingQuery(new URL('https://x/v1/pricing?pageSize=99999&page=0'));
     expect(clamped.pageSize).toBeLessThanOrEqual(500);
     expect(clamped.page).toBe(1);
-    expect(parsePricingQuery(new URL('https://x/v1/pricing?pageSize=abc')).pageSize).toBeGreaterThan(0);
+    expect(
+      parsePricingQuery(new URL('https://x/v1/pricing?pageSize=abc')).pageSize,
+    ).toBeGreaterThan(0);
   });
 
   it('注册:IP 限流 429 + 验证码缺 token 400', async () => {
@@ -2085,11 +2105,8 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
 
   it('oauth 回调:存量用户不可用 403 account_unavailable', async () => {
     const parts = createDeps();
-    (parts.deps.oauth as {
-      findUser: () => Promise<unknown>;
-      userStatus: (id: number) => Promise<number>;
-    }).findUser = async () => 43;
-    parts.deps.oauth.userStatus = async (id) => (id === 43 ? 1 : 0);
+    parts.state.oauthFindUserAs = 43;
+    parts.state.oauthUserStatus = 1;
     const app = createClientApiApp(parts.deps);
     const res = await app.request('/v1/oauth/github/callback?code=good&state=good-state', {
       headers: { cookie: 'tl_oauth_state=good-state' },

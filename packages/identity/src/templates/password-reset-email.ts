@@ -13,7 +13,7 @@ export interface PasswordResetEmailContext {
 /** 重置邮件专有样式(在共用极简白卡口径上叠加:黑色按钮形态链接) */
 const STYLE = {
   btn: 'display:inline-block;background:#000000;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;padding:12px 32px;border-radius:10px;margin:8px 0 16px;',
-  link: "color:#333333;font-size:13px;word-break:break-all;margin:0 0 16px;line-height:1.7;",
+  link: 'color:#333333;font-size:13px;word-break:break-all;margin:0 0 16px;line-height:1.7;',
 } as const;
 
 /** 渲染找回密码邮件(subject + text + html) */

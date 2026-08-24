@@ -151,12 +151,9 @@ export async function testChannelAction(id: number): Promise<ChannelTestOutcome>
     }
     return { ok: true, durationMs: res.durationMs, keyPreview: res.keyPreview };
   } catch (e) {
-    const msg =
-      e instanceof ApiError
-        ? typeof e.message === 'string'
-          ? e.message
-          : JSON.stringify(e.message)
-        : t('testFailed');
+    let msg = t('testFailed');
+    if (e instanceof ApiError)
+      msg = typeof e.message === 'string' ? e.message : JSON.stringify(e.message);
     return { error: msg };
   }
 }

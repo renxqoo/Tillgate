@@ -118,7 +118,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     db,
     walletCredit: walletCreditUnavailable,
     sessionInvalidation: sessionInvalidationUnavailable,
-    policy: ACCOUNTS_POLICY,
+    policy: { ...ACCOUNTS_POLICY, keyPrefix: config.keyPrefix },
     txRetry: TX_RETRY,
     now: () => new Date(),
   });

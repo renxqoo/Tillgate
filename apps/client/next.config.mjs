@@ -21,7 +21,7 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self'",
-      "frame-src https://challenges.cloudflare.com",
+      'frame-src https://challenges.cloudflare.com',
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

@@ -1,6 +1,6 @@
 /**
  * API Key 鉴权中间件（v1 middleware/api-key.ts 语义迁移；A1/A8 在案）：
- *   Bearer ag_xxx → SHA-256 → accounts resolveKeyByHash（status/过期/属主守卫在
+ *   Bearer sk_xxx → SHA-256 → accounts resolveKeyByHash（status/过期/属主守卫在
  *   accounts 读模型，每调用直查无缓存）；Bearer <jwt> → jose HS256 验签（算法白名单
  *   + iss/aud，仅认 typ=app_jwt + app_id + sub）→ accounts resolveApp 双 status 守卫。
  * App-JWT 解析键 = apps.app_id（R-E2：v1 数字主键 → v2 应用标识串，签发端同键配对）。

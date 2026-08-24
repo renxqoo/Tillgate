@@ -129,8 +129,7 @@
 - [x] G1（2026-08-23 回勾）：inference 波已定义消费方 port——`inference/src/ports/{catalog,billing,state,upstream,generation}.ts`
       （路由候选/在架目录/系数与 fx 快照经 catalog、预算守卫经 billing、死凭据/渠道健康经 state、
       任务渠道经 generation）；gateway 热路径读已消费（ActiveMappingRow/findRouteCandidates/findActiveCardByUser）。
-- [x] G2（2026-08-23 回勾）：admin realm 用例已落地——`application/admins/{find-admin,find-admin-by-email,set-two-factor-enabled,touch-last-login,admins-shared}.ts`
-      + `ports/admin-store.ts` + `adapters/postgres/admin-store.ts` + composition 出口（admin-api P2 登录波装配；
+- [x] G2（2026-08-23 回勾）：admin realm 用例已落地——`application/admins/{find-admin,find-admin-by-email,set-two-factor-enabled,touch-last-login,admins-shared}.ts` + `ports/admin-store.ts` + `adapters/postgres/admin-store.ts` + composition 出口（admin-api P2 登录波装配；
       凭据/会话留在 identity 七表，port 头注释载明单一真相口径）。
 - [x] G3（2026-08-23 审计收口核销，前半）：**AuditTxSink 事务参与 port 落地**——渠道进货/调账、
       费率卡变更的审计移入业务事务提交前（写入失败随事务回滚，§5.4）；rate_card 审计补变更前值

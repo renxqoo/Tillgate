@@ -12,6 +12,7 @@ export interface RateCardRecord {
   readonly description: string | null;
   readonly status: number;
   readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
 export interface RateCardUserRow {
