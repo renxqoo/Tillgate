@@ -49,27 +49,6 @@ export function buildSidebarItems(): NavGroup[] {
           permission: 'users:read',
         },
         {
-          id: 'providers',
-          title: 'providers',
-          url: '/dashboard/providers',
-          icon: Server,
-          permission: 'catalog:read',
-        },
-        {
-          id: 'channels',
-          title: 'channels',
-          url: '/dashboard/channels',
-          icon: Network,
-          permission: 'catalog:read',
-        },
-        {
-          id: 'models',
-          title: 'models',
-          url: '/dashboard/models',
-          icon: Server,
-          permission: 'catalog:read',
-        },
-        {
           id: 'rate-cards',
           title: 'rateCards',
           url: '/dashboard/rate-cards',
@@ -129,8 +108,29 @@ export function buildSidebarItems(): NavGroup[] {
     },
     {
       id: 3,
-      label: 'groupEcosystem',
+      label: 'groupModels',
       items: [
+        {
+          id: 'providers',
+          title: 'providers',
+          url: '/dashboard/providers',
+          icon: Server,
+          permission: 'catalog:read',
+        },
+        {
+          id: 'channels',
+          title: 'channels',
+          url: '/dashboard/channels',
+          icon: Network,
+          permission: 'catalog:read',
+        },
+        {
+          id: 'models',
+          title: 'models',
+          url: '/dashboard/models',
+          icon: Server,
+          permission: 'catalog:read',
+        },
         {
           id: 'model-market',
           title: 'modelMarket',
