@@ -91,27 +91,8 @@ function createSchema(production: boolean) {
     STRIPE_API_BASE: z.string().url().optional(),
     /** 邮箱验证码两级登录：auto = SMTP 已配置即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
-    /** SMTP 三要素（host/user/pass）齐全才启用发信；未配置 = 验证码模式不可用（fail-closed） */
-    SMTP_HOST: z.string().optional(),
-    SMTP_PORT: z.coerce.number().int().positive().default(465),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASS: z.string().optional(),
-    SMTP_FROM: z.string().optional(),
-    /** 人机验证（Turnstile）：siteKey/secretKey 成对配置才启用；只配一半 = 启动失败 */
-    CAPTCHA_SITE_KEY: z.string().optional(),
-    CAPTCHA_SECRET_KEY: z.string().optional(),
-    /** siteverify 端点（默认官方；私有化代理/测试 mock 覆盖） */
-    CAPTCHA_VERIFY_URL: z
-      .string()
-      .url()
-      .default('https://challenges.cloudflare.com/turnstile/v0/siteverify'),
-    /** OAuth 社交登录（GitHub/Google）：前后端基地址 + 各 provider 凭证（未配 = 404/按钮隐藏） */
-    OAUTH_FRONTEND_URL: z.string().url().optional(),
-    OAUTH_API_BASE: z.string().url().optional(),
-    OAUTH_GITHUB_CLIENT_ID: z.string().optional(),
-    OAUTH_GITHUB_CLIENT_SECRET: z.string().optional(),
-    OAUTH_GOOGLE_CLIENT_ID: z.string().optional(),
-    OAUTH_GOOGLE_CLIENT_SECRET: z.string().optional(),
+    // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
+    // docs/integration-settings/DESIGN.md §7.3；本 schema 只留端点覆盖与 TTL）
     /** 端点覆盖（JSON：authorizeUrl/tokenUrl/profileUrl/emailsUrl——私有化/测试 mock 用） */
     OAUTH_GITHUB_ENDPOINTS_JSON: z.string().optional(),
     OAUTH_GOOGLE_ENDPOINTS_JSON: z.string().optional(),
@@ -227,23 +208,10 @@ export function loadClientApiConfig(env: NodeJS.ProcessEnv = process.env): Clien
     parsed.STRIPE_SUCCESS_URL,
     parsed.STRIPE_CANCEL_URL,
   ]);
-  // OAuth：凭证与前后端基地址成组（有凭证必须有跳转面；全无 = 关闭社交登录）
-  const oauthCredentialed = Boolean(parsed.OAUTH_GITHUB_CLIENT_ID || parsed.OAUTH_GOOGLE_CLIENT_ID);
-  if (oauthCredentialed && !(parsed.OAUTH_FRONTEND_URL && parsed.OAUTH_API_BASE)) {
-    throw new Error(
-      'OAUTH_FRONTEND_URL and OAUTH_API_BASE must be configured together with OAuth credentials',
-    );
-  }
-  if (parsed.OAUTH_FRONTEND_URL && !parsed.OAUTH_API_BASE) {
-    throw new Error('OAUTH_API_BASE must be configured together with OAUTH_FRONTEND_URL');
-  }
-  // 预解析端点覆盖（非法 JSON fail-loud 在启动期而非首跳期）
   parseEndpoints(parsed.OAUTH_GITHUB_ENDPOINTS_JSON, 'github');
   parseEndpoints(parsed.OAUTH_GOOGLE_ENDPOINTS_JSON, 'google');
   // captcha 成对校验
-  assertGroup('CAPTCHA_*', [parsed.CAPTCHA_SITE_KEY, parsed.CAPTCHA_SECRET_KEY]);
   // smtp 三要素成组
-  assertGroup('SMTP_*', [parsed.SMTP_HOST, parsed.SMTP_USER, parsed.SMTP_PASS]);
   // sentinel 拓扑：配置了节点列表必须带主名（runtime RedisClientOptions 判别联合）
   if (parsed.REDIS_SENTINELS != null && !parsed.REDIS_SENTINEL_NAME) {
     throw new Error('REDIS_SENTINEL_NAME is required when REDIS_SENTINELS is configured');

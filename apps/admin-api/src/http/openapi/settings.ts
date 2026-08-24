@@ -12,7 +12,11 @@ const billingTimezoneReadSchema = z.object({ timezone: z.string().min(1).max(64)
 /** 集成设置项（GET 列表元素 / PUT 响应）：secret 字段只出掩码（**** + 尾 4 或 null） */
 export const integrationItemSchema = z
   .object({
-    key: z.string().describe('集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe）'),
+    key: z
+      .string()
+      .describe(
+        '集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe）',
+      ),
     enabled: z.boolean(),
     configured: z.boolean().describe('必填字段齐全（enabled=true 的前置不变量）'),
     config: z.record(z.string(), z.string().nullable()).describe('字段值；secret 字段为掩码回显'),

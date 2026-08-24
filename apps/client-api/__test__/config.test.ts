@@ -77,11 +77,11 @@ describe('client-api config', () => {
   });
 
   describe('组配置全-or-无', () => {
+    // CAPTCHA/SMTP/OAuth 凭据组校验已随 env 迁移迁入 integration_settings 写入侧
+    // （control-plane update 用例——docs/integration-settings/DESIGN.md §5 D5）
     it.each([
       ['EPAY', { EPAY_PID: '1' }],
       ['STRIPE', { STRIPE_SECRET_KEY: 'sk' }],
-      ['CAPTCHA', { CAPTCHA_SITE_KEY: 'k' }],
-      ['SMTP', { SMTP_HOST: 'h' }],
     ])('%s 半配拒绝', (_name, patch) => {
       rejectLoad(patch, /as a group/);
     });
@@ -95,10 +95,6 @@ describe('client-api config', () => {
         EPAY_RETURN_URL: 'https://app.example/return',
       });
       expect(c.EPAY_PID).toBe('1');
-    });
-
-    it('OAuth 凭证无基地址拒绝', () => {
-      rejectLoad({ OAUTH_GITHUB_CLIENT_ID: 'id' }, /OAUTH_FRONTEND_URL and OAUTH_API_BASE/);
     });
 
     it('sentinel 无主名拒绝', () => {

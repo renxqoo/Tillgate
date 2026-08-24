@@ -26,12 +26,15 @@ export function createPostgresIntegrationSettingsReader(args: {
   readonly cipher: SecretCipher;
   readonly ttlMs?: number;
   readonly now?: () => number;
+  /** 后台刷新失败钩子（latest 同步面错误出口） */
+  readonly onError?: (error: unknown) => void;
 }): IntegrationSettingsReader {
   return createIntegrationSettingsReader({
     db: args.db,
     cipher: args.cipher,
     ttlMs: args.ttlMs,
     now: args.now,
+    onError: args.onError,
     stores: { integrationSettings: postgresIntegrationSettingsStore },
   });
 }

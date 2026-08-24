@@ -34,12 +34,15 @@ export interface PasswordSealer {
 }
 
 export interface AuthDeps {
-  readonly capabilities: ClientCapabilities;
+  /** capabilities 每请求求值（集成设置快照驱动——DESIGN §4.2） */
+  readonly capabilities: () => ClientCapabilities;
+  /** SMTP 当前是否生效（forgot 闸门——与 mailer 缺席同语义 fail-closed） */
+  readonly smtpReady: () => boolean;
   readonly passwordPolicy: PasswordPolicy;
   readonly sealer: PasswordSealer;
   readonly trustedProxyHops: number;
   /** captcha 未配置（siteKey null）时为 null——探测/校验整体关闭 */
-  readonly captcha: Pick<Identity['captcha'], 'verify'> | null;
+  readonly captcha: Identity['captcha'] | null;
   readonly registerLimiter: { hit(key: string, windowSeconds: number): Promise<number> };
   readonly registerIpLimitPerHour: number;
   /** 注册限频窗口（秒）——Retry-After 与计数窗口同源 */
@@ -112,7 +115,7 @@ export function clientIpOf(
 export function authRoutes(deps: AuthDeps, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/auth/capabilities', (c) => c.json(deps.capabilities));
+  app.get('/v1/auth/capabilities', (c) => c.json(deps.capabilities()));
 
   app.post('/v1/auth/logout', session, async (c) => {
     await deps.logout(bearerToken(c.req.header('authorization')));

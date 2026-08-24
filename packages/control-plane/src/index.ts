@@ -119,6 +119,10 @@ export type { UpdateBillingTimezoneInput } from './application/settings/update-b
 export type { UpdateIntegrationInput } from './application/integrations/update-integration';
 export type { IntegrationListItem } from './application/integrations/list-integrations';
 export type {
+  IntegrationSettingsReader,
+  IntegrationReaderDeps,
+} from './application/integrations/create-reader';
+export type {
   IntegrationSnapshot,
   ResolvedIntegration,
   OauthBaseConfig,

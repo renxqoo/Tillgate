@@ -73,7 +73,7 @@ export function loginRoutes(deps: AuthDeps) {
       deps.guards.emailIp.recordSuccess(guardKey),
       ...(deps.guards.ip.recordSuccess != null ? [deps.guards.ip.recordSuccess(ip)] : []),
     ]);
-    if (deps.capabilities.emailCodeRequired) {
+    if (deps.capabilities().emailCodeRequired) {
       const payload: Record<string, unknown> = { uid: userId };
       const { challengeId } = await deps.challenges.begin({
         kind: 'email_code',

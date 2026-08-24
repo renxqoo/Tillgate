@@ -16,6 +16,9 @@ import type { ClientApiAssembly } from '../../apps/client-api/src/assembly.js';
 import { assembleClientApi } from '../../apps/client-api/src/assembly.js';
 import { loadClientApiConfig } from '../../apps/client-api/src/config.js';
 import { createClientApiApp } from '../../apps/client-api/src/app.js';
+import { closeDb, createDb } from '../../packages/db/src/index.js';
+import { createCipher } from '../../packages/runtime/src/index.js';
+import { postgresIntegrationSettingsStore } from '../../packages/control-plane/src/adapters/postgres/integration-settings-store.js';
 
 // 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
 export function defined<T>(value: T | null | undefined, label = 'value'): T {
@@ -155,17 +158,55 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
     EPAY_NOTIFY_URL: `${appUrl}/v1/payments/notify/epay`,
     EPAY_RETURN_URL: `${appUrl}/v1/payments/return`,
     EPAY_PAY_TYPE: 'alipay',
-    // GitHub 社交登录（mock 上游端点覆盖）
+    // GitHub 社交登录：凭据/基地址经 DB 种子（seedIntegrationSettings——动态配置真路径）；
+    // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门——DESIGN §5 D10）
     ...(githubEndpoints != null
-      ? {
-          OAUTH_FRONTEND_URL: `${appUrl}/app`,
-          OAUTH_API_BASE: appUrl,
-          OAUTH_GITHUB_CLIENT_ID: 'e2e-client-id',
-          OAUTH_GITHUB_CLIENT_SECRET: 'e2e-client-secret',
-          OAUTH_GITHUB_ENDPOINTS_JSON: JSON.stringify(githubEndpoints),
-        }
+      ? { OAUTH_GITHUB_ENDPOINTS_JSON: JSON.stringify(githubEndpoints) }
       : {}),
   };
+}
+
+/**
+ * OAuth 集成种子（动态配置真路径——测试侧的导入脚本口径）：upsert 覆盖旧行
+ * （端口随机，每次旅程重写基地址）；secret 以 enc:v1 密文落库（与生产存储同形）。
+ */
+async function seedOauthIntegrationSettings(
+  env: NodeJS.ProcessEnv,
+  appUrl: string,
+  withGithub: boolean,
+): Promise<void> {
+  if (!withGithub) return;
+  const db = createDb({
+    url: env.DATABASE_URL as string,
+    poolMax: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+    maxUses: 5_000,
+  });
+  try {
+    const cipher = createCipher(env.ENCRYPTION_KEY as string);
+    await postgresIntegrationSettingsStore.upsert(db, {
+      key: 'oauth.base',
+      enabled: true,
+      config: { frontendUrl: `${appUrl}/app`, apiBase: appUrl },
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: null,
+    });
+    await postgresIntegrationSettingsStore.upsert(db, {
+      key: 'oauth.github',
+      enabled: true,
+      config: {
+        clientId: 'e2e-client-id',
+        clientSecret: cipher.encrypt('e2e-client-secret'),
+      },
+      previousSecrets: null,
+      rotatedAt: null,
+      adminId: null,
+    });
+  } finally {
+    await closeDb(db);
+  }
 }
 
 export async function bootHarness(options: {
@@ -182,6 +223,7 @@ export async function bootHarness(options: {
       }
     : undefined;
   const env = buildHarnessEnv(appUrl, githubEndpoints);
+  await seedOauthIntegrationSettings(env, appUrl, githubEndpoints != null);
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });

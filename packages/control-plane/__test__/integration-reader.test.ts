@@ -16,6 +16,12 @@ import { resolveIntegrationSnapshot } from '../src/application/integrations/reso
 import { createIntegrationSettingsReader } from '../src/application/integrations/create-reader';
 import { createMemoryDb, createMemoryIntegrationSettingsStore } from './memory';
 
+/** 微任务/定时器沉降等待（后台刷新落地） */
+const settle = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 5);
+  });
+
 const cipher: SecretCipher = {
   encrypt: (plain) => `CIPHER<<${plain}>>`,
   decrypt: (packed) => {
@@ -215,5 +221,63 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
     await expect(reader.resolve()).rejects.toThrow('db down');
     await reader.resolve();
     expect(reads()).toBe(2);
+  });
+
+  it('latest()：从未加载 = 全关快照（不抛）', () => {
+    const { reader } = makeReader();
+    const initial = reader.latest();
+    expect(initial.oauth.github.effective).toBe(false);
+    expect(initial.smtp.config).toBeNull();
+  });
+
+  it('latest()：TTL 内命中缓存；过期同步返回旧值并后台刷新（失败被吞），严格读仍 fail-loud', async () => {
+    const { reader, reads, failOnce, advance } = makeReader();
+    await reader.resolve();
+    expect(reads()).toBe(1);
+    // TTL 内 latest 命中缓存
+    expect(reader.latest().oauth.base.effective).toBe(true);
+    expect(reads()).toBe(1);
+    // 过期后 latest 同步返回旧值并触发后台刷新（失败被吞——makeReader 无 onError 出口）
+    advance(INTEGRATION_CACHE_TTL_MS);
+    failOnce();
+    const stale = reader.latest();
+    expect(stale.oauth.base.effective).toBe(true);
+    await settle();
+    expect(reads()).toBe(1); // 后台刷新失败：计数未增（throw 在计数前）
+    await reader.resolve();
+    expect(reads()).toBe(2);
+  });
+
+  it('latest() 后台刷新失败经 onError 出口', async () => {
+    const errors: unknown[] = [];
+    const memory = createMemoryIntegrationSettingsStore([row('oauth.base', { config: BASE_FULL })]);
+    let reads = 0;
+    let failNext = false;
+    const store = {
+      async readAll(db: Parameters<typeof memory.store.readAll>[0]) {
+        if (failNext) {
+          failNext = false;
+          throw new Error('db down');
+        }
+        reads += 1;
+        return memory.store.readAll(db);
+      },
+      upsert: memory.store.upsert.bind(memory.store),
+    };
+    let nowMs = 0;
+    const reader = createIntegrationSettingsReader({
+      db: createMemoryDb(),
+      stores: { integrationSettings: store },
+      cipher,
+      now: () => nowMs,
+      onError: (error) => errors.push(error),
+    });
+    await reader.resolve();
+    nowMs += INTEGRATION_CACHE_TTL_MS;
+    failNext = true;
+    reader.latest();
+    await settle();
+    expect(errors).toHaveLength(1);
+    expect(reads).toBe(1); // 失败读不计数；快照保持旧值
   });
 });

@@ -437,7 +437,15 @@ describe('models + rate-cards + fx + catalog', () => {
         updatedByAdminId: 7,
       })),
     };
-    const app = controlPlaneApp({ settings: { billingTimezone: { read: async () => ({ timezone: null }), update: async () => ({ timezone: 'UTC' }) }, integrations } });
+    const app = controlPlaneApp({
+      settings: {
+        billingTimezone: {
+          read: async () => ({ timezone: null }),
+          update: async () => ({ timezone: 'UTC' }),
+        },
+        integrations,
+      },
+    });
     const list = await app.request('/v1/settings/integrations', { headers: authHeader() });
     expect(list.status).toBe(200);
     const listed = (await list.json()) as { integrations: Array<{ key: string }> };
@@ -474,7 +482,15 @@ describe('models + rate-cards + fx + catalog', () => {
         throw controlPlaneErrors.business('integration_unknown', { key: 'payment.paypal' });
       }),
     };
-    const app = controlPlaneApp({ settings: { billingTimezone: { read: async () => ({ timezone: null }), update: async () => ({ timezone: 'UTC' }) }, integrations } });
+    const app = controlPlaneApp({
+      settings: {
+        billingTimezone: {
+          read: async () => ({ timezone: null }),
+          update: async () => ({ timezone: 'UTC' }),
+        },
+        integrations,
+      },
+    });
     const res = await app.request('/v1/settings/integrations/payment.paypal', {
       method: 'PUT',
       headers: { ...authHeader(), 'content-type': 'application/json' },

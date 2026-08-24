@@ -314,12 +314,20 @@ mailer 不改 identity 契约：client-api 注入**动态 Mailer 包装**（实�
 等价的错误）；「邮件可用性」判定（路由层的 `emailCodeRequired`/发送前置检查）改为
 每请求读 reader 快照——与今天 `mailer != null` 的分支语义逐一对应。
 
-### D9 部署拓扑裁决：OAuth 基地址入 DB，其余拓扑留 env
+### D9 部署拓扑裁决：OAuth 基地址入 DB（装配期读取），其余拓扑留 env
 
 `OAUTH_FRONTEND_URL/OAUTH_API_BASE` 若留 env，则「admin 里配好 GitHub 凭据但仍需
-改 env 才能开登录」违背本设计目标——两值并入 `oauth.base` 行（导入脚本承接、
-无行时本地缺省回退 §3.3；它们决定 redirect allowlist，非 secret）。epay/stripe 的
-`notifyUrl/returnUrl/successUrl/cancelUrl` 是集成配置字段，随各自集成行入 DB。
+改 env 才能开登录」违背本设计目标——两值并入 `oauth.base` 行（导入脚本承接；
+无行时本地缺省回退 §3.3）。**收窄**：identity 的 `oauthRedirectAllowlist` 是装配期
+静态契约（回调地址精确白名单），故 `oauth.base` 在**装配期读取一次**（用于回调
+地址构造与白名单），变更需重启；集成凭据与启停语义不受影响（仍 60s 动态）。
+epay/stripe 的 `notifyUrl/returnUrl/successUrl/cancelUrl` 是集成配置字段，随各自
+集成行动态消费（无白名单契约约束）。
+
+消费侧读法细分（D4 补充）：**同步/UX 面**（identity getter、capabilities、
+providers 列表）读最近快照（stale-OK + 后台过期刷新，同步契约不抛）；**发送与
+资金面**（邮件发送、支付下单/验签）走 `resolve()` 严格读（fail-loud）——UX 提示
+面允许陈旧，资金面不允许。
 
 ### D10 端点覆盖不上管理端（安全收窄）
 

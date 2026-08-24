@@ -9,6 +9,8 @@
  * 不共享事务——赠送/归因本就是 best-effort 段（accounts G4/G5 注释口径）。
  */
 import { createDb, ping, type Db, type TxRetryPolicy } from '@tillgate/db';
+import { bootIntegrationReader } from './adapters/integration-reader.js';
+import { createClientPayments } from './adapters/payment-providers.js';
 import {
   assertRedisReachable,
   createAuthFailureGuard,
@@ -24,7 +26,6 @@ import { createAccounts, USER_STATUS, type AccountUseCases } from '@tillgate/acc
 import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
 import {
   createBilling,
-  createPaymentsApi,
   createRedemptionApi,
   type Billing,
   type PaymentsApi,
@@ -32,11 +33,8 @@ import {
 } from '@tillgate/billing';
 import {
   createPostgresBillingStore,
-  createPostgresPaymentOrderStore,
   createPostgresRedeemCodeStore,
   createPostgresWalletStore,
-  createEpayProvider,
-  createStripeProvider,
 } from '@tillgate/billing/composition';
 import type { Redis } from 'ioredis';
 import type { ClientApiConfig } from './config.js';
@@ -137,17 +135,35 @@ export async function assembleClientApi(
     maxJitterMs: config.CLIENT_TX_MAX_JITTER_MS,
   };
 
-  // ---- identity（凭据/挑战/会话/OAuth/吊销——OAuth 映射/邮件/Redis 件在 adapters/identity-stack.ts） ----
-  const { identity, oauthProviders, mailer, resetTokens, emailCodeRequired, apiBase } =
-    createIdentityStack({
-      config,
-      db,
-      redis,
-      txRetry,
-      logger,
-      clock,
-      ...(overrides.mailer !== undefined ? { mailerOverride: overrides.mailer } : {}),
-    });
+  // ---- 集成动态配置 reader + OAuth 基地址 boot 解析（adapters/integration-reader.ts） ----
+  const cipher = createCipher(config.ENCRYPTION_KEY);
+  const {
+    reader,
+    apiBase: bootApiBase,
+    frontendUrl: bootFrontendUrl,
+  } = await bootIntegrationReader(db, config.ENCRYPTION_KEY, logger);
+
+  // ---- identity（凭据/挑战/会话/OAuth/吊销——动态装配在 adapters/identity-stack.ts） ----
+  const {
+    identity,
+    mailer,
+    resetTokens,
+    emailCodeRequired,
+    oauthProviderNames,
+    apiBase,
+    frontendUrl,
+  } = createIdentityStack({
+    config,
+    db,
+    redis,
+    txRetry,
+    logger,
+    clock,
+    reader,
+    apiBase: bootApiBase,
+    frontendUrl: bootFrontendUrl ?? 'http://localhost:3000',
+    ...(overrides.mailer !== undefined ? { mailerOverride: overrides.mailer } : {}),
+  });
 
   // ---- billing（钱包/订阅/支付/兑换——共享同一套 postgres store） ----
   const walletStore = createPostgresWalletStore(db, { retry: txRetry });
@@ -180,45 +196,14 @@ export async function assembleClientApi(
   );
 
   const rateCounter = createRedisFixedWindowCounter(redis, 'client-api');
-  const payments: PaymentsApi = createPaymentsApi({
+  const payments: PaymentsApi = createClientPayments({
+    config,
+    db,
     store: billingStore,
-    orders: createPostgresPaymentOrderStore(db),
     wallet: billing.wallet,
-    providers: [
-      ...(config.EPAY_PID != null
-        ? [
-            createEpayProvider({
-              pid: config.EPAY_PID,
-              key: config.EPAY_KEY as string,
-              gatewayUrl: config.EPAY_GATEWAY_URL as string,
-              notifyUrl: config.EPAY_NOTIFY_URL as string,
-              returnUrl: config.EPAY_RETURN_URL as string,
-              payType: config.EPAY_PAY_TYPE as 'alipay' | 'wxpay' | 'qqpay',
-            }),
-          ]
-        : []),
-      ...(config.STRIPE_SECRET_KEY != null
-        ? [
-            createStripeProvider({
-              secretKey: config.STRIPE_SECRET_KEY,
-              webhookSecret: config.STRIPE_WEBHOOK_SECRET as string,
-              successUrl: config.STRIPE_SUCCESS_URL as string,
-              cancelUrl: config.STRIPE_CANCEL_URL as string,
-              currency: config.CLIENT_CURRENCY,
-              ...(config.STRIPE_API_BASE != null ? { apiBase: config.STRIPE_API_BASE } : {}),
-            }),
-          ]
-        : []),
-    ],
-    currency: config.CLIENT_CURRENCY,
-    exchangeRate: config.TOPUP_EXCHANGE_RATE,
-    topupMin: config.TOPUP_MIN,
-    topupMax: config.TOPUP_MAX,
     orderLimiter: rateCounter,
-    perMinuteOrderLimit: config.CLIENT_TOPUP_ORDERS_PER_MINUTE,
-    orderTtlMs: config.PAYMENT_ORDER_TTL_MS,
+    logger,
     clock,
-    logError: (message, detail) => logger.error({ detail }, message),
   });
   const redemption: RedemptionApi = createRedemptionApi({
     store: billingStore,
@@ -289,7 +274,6 @@ export async function assembleClientApi(
     windowS: config.LOGIN_IP_FAILURE_WINDOW_S,
   });
 
-  const cipher = createCipher(config.ENCRYPTION_KEY);
   const validateSession = async (token: string): Promise<SessionInfo | null> => {
     const payload = await identity.sessions.validate(token, 'user');
     if (payload == null) return null;
@@ -299,12 +283,13 @@ export async function assembleClientApi(
     return { userId, jti: payload.jti, exp: payload.exp };
   };
 
-  const frontendUrl = config.OAUTH_FRONTEND_URL ?? 'http://localhost:3000';
-  const capabilities = {
+  // capabilities 每请求求值（DESIGN §4.2：快照驱动的 UX 面）
+  const captchaSiteKey = (): string | null => reader.latest().captcha.config?.siteKey ?? null;
+  const capabilities = () => ({
     registerEnabled: config.REGISTER_ENABLED,
-    captchaSiteKey: config.CAPTCHA_SITE_KEY ?? null,
-    emailCodeRequired,
-  };
+    captchaSiteKey: captchaSiteKey(),
+    emailCodeRequired: emailCodeRequired(),
+  });
 
   const deps: ClientApiDeps = {
     protocol: {
@@ -326,16 +311,14 @@ export async function assembleClientApi(
     validateSession,
     auth: {
       capabilities,
+      smtpReady: () => reader.latest().smtp.effective,
       passwordPolicy: { minLength: config.CLIENT_PASSWORD_MIN_LENGTH, maxLength: 128 },
       sealer: {
         seal: (plaintext) => cipher.encrypt(plaintext),
         open: (sealed) => cipher.decrypt(sealed),
       },
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
-      captcha:
-        config.CAPTCHA_SECRET_KEY != null && config.CAPTCHA_SITE_KEY != null
-          ? identity.captcha
-          : null,
+      captcha: identity.captcha,
       registerLimiter: rateCounter,
       registerIpLimitPerHour: config.REGISTER_IP_LIMIT_PER_HOUR,
       registerWindowSeconds: config.REGISTER_IP_WINDOW_SECONDS,
@@ -351,7 +334,7 @@ export async function assembleClientApi(
       consumeResetToken: resetTokens.consume,
       sendResetLink:
         mailer != null ? (to, url, ctx) => mailer.sendPasswordResetLink(to, url, ctx) : null,
-      resetLinkBase: config.OAUTH_FRONTEND_URL ?? null,
+      resetLinkBase: frontendUrl !== 'http://localhost:3000' ? frontendUrl : null,
       resetTokenTtlMinutes: RESET_TOKEN_TTL_MINUTES,
       guards: { emailIp: loginGuard, ip: ipGuard },
       userStatus: accountRead.activeUserStatus,
@@ -363,7 +346,7 @@ export async function assembleClientApi(
       },
     },
     oauth: {
-      providers: Object.keys(oauthProviders),
+      providers: oauthProviderNames,
       authorize: identity.oauth.authorize,
       callback: identity.oauth.callback,
       findUser: identity.oauth.findUser,

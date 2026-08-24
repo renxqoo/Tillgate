@@ -25,10 +25,8 @@ const server = serve({ fetch: app.fetch, port: config.CLIENT_API_PORT }, (info) 
         epay: config.EPAY_PID != null,
         stripe: config.STRIPE_SECRET_KEY != null,
       },
-      oauth: {
-        github: config.OAUTH_GITHUB_CLIENT_ID != null,
-        google: config.OAUTH_GOOGLE_CLIENT_ID != null,
-      },
+      // oauth 凭据已迁 integration_settings（快照驱动）;启动日志只报静态面
+
       trustedProxyHops: config.TRUSTED_PROXY_HOPS,
       secureCookie: config.SECURE_COOKIE,
       otel: config.OTEL_TRACES_MODE,

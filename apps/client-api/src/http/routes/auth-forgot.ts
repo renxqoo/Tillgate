@@ -26,8 +26,9 @@ export function forgotRoutes(deps: AuthDeps) {
     const body = c.req.valid('json');
     const ip = clientIpOf(deps, c);
 
-    if (deps.sendResetLink == null || deps.resetLinkBase == null) {
-      // SMTP 未配或控制台基地址未配——fail-closed,不静默降级
+    // SMTP 未生效或控制台基地址未配——fail-closed,不静默降级（快照动态判定）
+    const sendResetLink = deps.smtpReady() ? deps.sendResetLink : null;
+    if (sendResetLink == null || deps.resetLinkBase == null) {
       throw clientErrors.business('reset_link_unavailable');
     }
 
@@ -62,7 +63,7 @@ export function forgotRoutes(deps: AuthDeps) {
 
     const token = await deps.issueResetToken(user.id);
     const url = `${deps.resetLinkBase.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
-    await deps.sendResetLink(body.email, url, {
+    await sendResetLink(body.email, url, {
       ip: ip ?? 'unknown',
       locale: localeOf(c),
       ttlMinutes: deps.resetTokenTtlMinutes,

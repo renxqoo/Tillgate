@@ -11,8 +11,6 @@ export const settingsContracts = {
   /** 集成更新：config 字段三态（缺席=保持 / null=清除 / 值=设置）；键名与形状校验在用例 */
   integrationsUpdate: z.object({
     enabled: z.boolean().optional(),
-    config: z
-      .record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable())
-      .optional(),
+    config: z.record(z.string().min(1).max(64), z.string().min(1).max(1024).nullable()).optional(),
   }),
 } as const;

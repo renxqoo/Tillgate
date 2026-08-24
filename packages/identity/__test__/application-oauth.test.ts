@@ -238,7 +238,11 @@ describe('oauth.authorize / callback(state 半程)', () => {
     };
     const undeclared = createIdentity({
       ...base,
-      config: { ...TEST_CONFIG, providers: ['github'], oauth: () => ({ gitlab: { clientId: 'a', clientSecret: 'b' } }) },
+      config: {
+        ...TEST_CONFIG,
+        providers: ['github'],
+        oauth: () => ({ gitlab: { clientId: 'a', clientSecret: 'b' } }),
+      },
     });
     await expect(
       undeclared.oauth.authorize({ provider: 'gitlab', redirectUri: 'https://cb' }),
@@ -248,7 +252,10 @@ describe('oauth.authorize / callback(state 半程)', () => {
       config: { ...TEST_CONFIG, oauth: () => ({ github: { clientId: '', clientSecret: 'b' } }) },
     });
     await expect(
-      empty.oauth.authorize({ provider: 'github', redirectUri: 'https://api.example.com/v1/oauth/github/callback' }),
+      empty.oauth.authorize({
+        provider: 'github',
+        redirectUri: 'https://api.example.com/v1/oauth/github/callback',
+      }),
     ).rejects.toThrow();
   });
 
