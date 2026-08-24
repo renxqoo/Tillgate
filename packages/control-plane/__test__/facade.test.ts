@@ -17,6 +17,7 @@ import {
   createMemoryDb,
   createStubProbe,
   createMemoryAdminStore,
+  createMemoryEndpointStore,
   createMemoryPermissionStore,
   createMemoryRoleStore,
 } from './memory';
@@ -55,6 +56,7 @@ function setup() {
   const probe = createStubProbe();
   const roleStore = createMemoryRoleStore();
   const permissionStore = createMemoryPermissionStore();
+  const endpointStore = createMemoryEndpointStore();
   const adminStore = createMemoryAdminStore();
   const controlPlane = createControlPlane({
     db,
@@ -89,6 +91,7 @@ function setup() {
       role: roleStore,
       permission: permissionStore,
       admin: adminStore,
+      endpoint: endpointStore,
     },
   });
   return { controlPlane, providers, channels, models, rateCards, fx, audit, probe };
@@ -145,6 +148,25 @@ describe('createControlPlane facade', () => {
     });
     await expect(controlPlane.rbac.permissions.remove(1)).resolves.toEqual({ ok: true });
     await expect(controlPlane.rbac.permissions.activeCodes()).resolves.toEqual([]);
+    await expect(controlPlane.rbac.endpoints.list()).resolves.toEqual([]);
+    const bound = await controlPlane.rbac.permissions.create({
+      parentId: null,
+      type: 'group',
+      code: null,
+      name: '组',
+      i18nKey: null,
+      description: null,
+      path: null,
+      icon: null,
+      sortOrder: 1,
+    });
+    await expect(
+      controlPlane.rbac.endpoints.create({ method: 'GET', path: '/v1/x', permissionId: bound.id }),
+    ).resolves.toMatchObject({ method: 'GET', path: '/v1/x' });
+    await expect(controlPlane.rbac.endpoints.rebind(1, 2)).resolves.toMatchObject({
+      permissionId: 2,
+    });
+    await expect(controlPlane.rbac.endpoints.remove(1)).resolves.toEqual({ ok: true });
 
     await expect(
       controlPlane.rbac.roles.create({ code: 'r1', name: '角色', description: null, codes: [] }),

@@ -10,7 +10,7 @@ import type {
   UpdatePermissionRow,
   UpdateRoleRow,
 } from '../../ports/rbac-store';
-import type { PermissionStore, RoleStore } from '../../ports/rbac-store';
+import type { EndpointStore, PermissionStore, RoleStore } from '../../ports/rbac-store';
 import { listRoles } from './list-roles';
 import { createRole } from './create-role';
 import { updateRole } from './update-role';
@@ -19,6 +19,11 @@ import { treePermissions } from './tree-permissions';
 import { createPermission } from './create-permission';
 import { updatePermission } from './update-permission';
 import { deletePermission } from './delete-permission';
+import { listEndpoints } from './list-endpoints';
+import { createEndpointBinding } from './create-endpoint-binding';
+import { rebindEndpoint } from './rebind-endpoint';
+import { deleteEndpointBinding } from './delete-endpoint-binding';
+import type { CreateEndpointRow, EndpointBindingRecord } from '../../ports/rbac-store';
 
 export interface RbacSurface {
   readonly roles: {
@@ -37,11 +42,17 @@ export interface RbacSurface {
     remove(id: number): Promise<{ ok: true }>;
     activeCodes(): Promise<string[]>;
   };
+  readonly endpoints: {
+    list(): Promise<EndpointBindingRecord[]>;
+    create(input: CreateEndpointRow): Promise<EndpointBindingRecord>;
+    rebind(id: number, permissionId: number): Promise<EndpointBindingRecord>;
+    remove(id: number): Promise<{ ok: true }>;
+  };
 }
 
 export function composeRbacSurface(
   db: Db,
-  stores: { role: RoleStore; permission: PermissionStore },
+  stores: { role: RoleStore; permission: PermissionStore; endpoint: EndpointStore },
 ): RbacSurface {
   const deps = { db, stores };
   return {
@@ -58,6 +69,12 @@ export function composeRbacSurface(
       update: (input) => updatePermission(deps, input),
       remove: (id) => deletePermission(deps, id),
       activeCodes: () => stores.permission.activeCodes(db),
+    },
+    endpoints: {
+      list: () => listEndpoints(deps),
+      create: (input) => createEndpointBinding(deps, input),
+      rebind: (id, permissionId) => rebindEndpoint(deps, id, permissionId),
+      remove: (id) => deleteEndpointBinding(deps, id),
     },
   };
 }

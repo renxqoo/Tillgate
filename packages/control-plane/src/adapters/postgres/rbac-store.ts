@@ -3,11 +3,14 @@
  * 时间戳一律 SQL now();role 授权替换 = 事务内 delete+insert（调用方开事务）。
  */
 import { asc, eq, ilike, inArray, sql } from 'drizzle-orm';
-import { admins, permissions, rolePermissions, roles } from '@tokenlens/db';
+import { admins, endpointPermissions, permissions, rolePermissions, roles } from '@tokenlens/db';
 import type { DbLike } from '@tokenlens/db';
 import type {
+  CreateEndpointRow,
   CreatePermissionRow,
   CreateRoleRow,
+  EndpointBindingRecord,
+  EndpointStore,
   PermissionNode,
   PermissionStore,
   RoleListQuery,
@@ -231,8 +234,13 @@ export const postgresPermissionStore: PermissionStore = {
         ...(row.i18nKey !== undefined ? { i18nKey: row.i18nKey } : {}),
         ...(row.description !== undefined ? { description: row.description } : {}),
         ...(row.icon !== undefined ? { icon: row.icon } : {}),
+        ...(row.path !== undefined ? { path: row.path } : {}),
         ...(row.sortOrder !== undefined ? { sortOrder: row.sortOrder } : {}),
         ...(row.status !== undefined ? { status: row.status } : {}),
+        ...(row.code !== undefined ? { code: row.code } : {}),
+        ...(row.type !== undefined ? { type: row.type } : {}),
+        ...(row.parentId !== undefined ? { parentId: row.parentId } : {}),
+        ...(row.source !== undefined ? { source: row.source } : {}),
       })
       .where(eq(permissions.id, row.id))
       .returning(nodeProjection);
@@ -267,5 +275,61 @@ export const postgresPermissionStore: PermissionStore = {
       .from(permissions)
       .where(eq(permissions.status, 0));
     return rows.map((row) => row.code).filter((code): code is string => code != null);
+  },
+};
+
+// ── 接口权限绑定 postgres 实现（ADR-0009）────────────────────────────────────
+
+const endpointProjection = {
+  id: endpointPermissions.id,
+  method: endpointPermissions.method,
+  path: endpointPermissions.path,
+  permissionId: endpointPermissions.permissionId,
+  source: endpointPermissions.source,
+  createdAt: endpointPermissions.createdAt,
+};
+
+export const postgresEndpointStore: EndpointStore = {
+  async list(db: DbLike): Promise<EndpointBindingRecord[]> {
+    const rows = await db
+      .select(endpointProjection)
+      .from(endpointPermissions)
+      .orderBy(asc(endpointPermissions.path), asc(endpointPermissions.method));
+    return rows as EndpointBindingRecord[];
+  },
+
+  async create(db: DbLike, row: CreateEndpointRow): Promise<EndpointBindingRecord> {
+    const inserted = await db
+      .insert(endpointPermissions)
+      .values({ method: row.method, path: row.path, permissionId: row.permissionId })
+      .returning(endpointProjection);
+    const record = inserted[0] as EndpointBindingRecord | undefined;
+    if (record == null) throw new Error('insert endpoint_permissions returned no row');
+    return record;
+  },
+
+  async rebind(
+    db: DbLike,
+    id: number,
+    permissionId: number,
+  ): Promise<EndpointBindingRecord | null> {
+    const updated = await db
+      .update(endpointPermissions)
+      .set({ permissionId })
+      .where(eq(endpointPermissions.id, id))
+      .returning(endpointProjection);
+    return (updated[0] as EndpointBindingRecord | undefined) ?? null;
+  },
+
+  async remove(db: DbLike, id: number): Promise<void> {
+    await db.delete(endpointPermissions).where(eq(endpointPermissions.id, id));
+  },
+
+  async bindingCountOf(db: DbLike, permissionId: number): Promise<number> {
+    const rows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(endpointPermissions)
+      .where(eq(endpointPermissions.permissionId, permissionId));
+    return rows[0]?.count ?? 0;
   },
 };

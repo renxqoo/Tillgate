@@ -33,6 +33,7 @@ const EXPECTED_TABLES = new Set([
   'audit_logs',
   'plans',
   'user_subscriptions',
+  'endpoint_permissions',
   'organizations',
   'permissions',
   'role_permissions',

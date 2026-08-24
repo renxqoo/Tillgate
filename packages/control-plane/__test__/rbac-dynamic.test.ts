@@ -15,9 +15,16 @@ import { createRole } from '../src/application/rbac/create-role';
 import { updateRole } from '../src/application/rbac/update-role';
 import { deleteRole } from '../src/application/rbac/delete-role';
 import { createPermission } from '../src/application/rbac/create-permission';
+import { createEndpointBinding } from '../src/application/rbac/create-endpoint-binding';
+import { rebindEndpoint } from '../src/application/rbac/rebind-endpoint';
+import { deleteEndpointBinding } from '../src/application/rbac/delete-endpoint-binding';
 import { updatePermission } from '../src/application/rbac/update-permission';
 import { deletePermission } from '../src/application/rbac/delete-permission';
-import { createMemoryPermissionStore, createMemoryRoleStore } from './memory';
+import {
+  createMemoryEndpointStore,
+  createMemoryPermissionStore,
+  createMemoryRoleStore,
+} from './memory';
 import type { PermissionNode, RoleRecord } from '../src/ports/rbac-store';
 
 describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
@@ -105,7 +112,7 @@ const enforcedNode = (
   type: PermissionNode['type'],
 ): PermissionNode => ({
   id,
-  parentId: type === 'group' ? null : 1,
+  parentId: type === 'group' ? null : type === 'page' ? 1 : 10,
   type,
   code,
   name: code ?? 'group',
@@ -127,13 +134,15 @@ function rbacSetup() {
     enforcedNode(11, 'users:update', 'button'),
     enforcedNode(20, 'funds:read', 'page'),
   ]);
+  const endpointStore = createMemoryEndpointStore();
   return {
     deps: {
       db: { transaction: (fn: (tx: unknown) => unknown) => fn({}) } as never,
-      stores: { role: roleStore, permission: permissionStore },
+      stores: { role: roleStore, permission: permissionStore, endpoint: endpointStore },
     },
     roleStore,
     permissionStore,
+    endpointStore,
   };
 }
 
@@ -290,37 +299,81 @@ describe('permissions 用例族守卫矩阵', () => {
     ).rejects.toMatchObject({ code: 'control_plane.invalid_permission_input' });
   });
 
-  it('update:仅展示字段可动;enforced 停用拒（路由守卫在引用）;custom 停用放行', async () => {
+  it('update:全字段可改（含 enforced）——码/类型/父子/来源/状态;结构合法性仍校验', async () => {
     const { deps } = rbacSetup();
-    await expect(updatePermission(deps, { id: 11, status: 1 })).rejects.toMatchObject({
-      code: 'control_plane.permission_immutable',
+    // enforced 停用放行 + 改名 + 改码
+    await expect(updatePermission(deps, { id: 11, status: 1 })).resolves.toMatchObject({
+      status: 1,
     });
     await expect(updatePermission(deps, { id: 11, name: '改个名' })).resolves.toMatchObject({
       name: '改个名',
     });
-    const { deps: deps2 } = rbacSetup();
-    const custom = await createPermission(deps2, {
-      parentId: 10,
-      type: 'button',
-      code: 'custom:do',
-      name: 'x',
-      i18nKey: null,
-      description: null,
-      path: null,
-      icon: null,
-      sortOrder: 0,
+    await expect(updatePermission(deps, { id: 11, code: 'users:rename' })).resolves.toMatchObject({
+      code: 'users:rename',
     });
-    await expect(updatePermission(deps2, { id: custom.id, status: 1 })).resolves.toMatchObject({
-      status: 1,
+    await expect(updatePermission(deps, { id: 11, code: 'users:read' })).rejects.toMatchObject({
+      code: 'control_plane.permission_code_taken',
+    });
+    await expect(updatePermission(deps, { id: 11, code: 'bad code' })).rejects.toMatchObject({
+      code: 'control_plane.invalid_permission_input',
+    });
+    // 改码回原值不判重（排除自身）
+    await expect(updatePermission(deps, { id: 11, code: 'users:update' })).resolves.toMatchObject({
+      code: 'users:update',
+    });
+    // 父子一致性:button 挂 group 拒;顶层 button 拒;group 带父拒;group 带码拒
+    await expect(updatePermission(deps, { id: 11, parentId: 1 })).rejects.toMatchObject({
+      code: 'control_plane.invalid_permission_input',
+    });
+    await expect(updatePermission(deps, { id: 11, parentId: null })).rejects.toMatchObject({
+      code: 'control_plane.invalid_permission_input',
+    });
+    await expect(
+      updatePermission(deps, { id: 1, type: 'group', parentId: 10 }),
+    ).rejects.toMatchObject({
+      code: 'control_plane.invalid_permission_input',
+    });
+    await expect(
+      updatePermission(deps, { id: 1, type: 'group', code: 'a:bb' }),
+    ).rejects.toMatchObject({
+      code: 'control_plane.invalid_permission_input',
+    });
+    // 合法迁移:button(id 11)改 page 挂 group(1) 且去码
+    await expect(
+      updatePermission(deps, { id: 11, type: 'page', parentId: 1, code: null }),
+    ).resolves.toMatchObject({ type: 'page', parentId: 1 });
+    // source 词表外拒;未命中 404
+    await expect(
+      updatePermission(deps, { id: 11, source: 'magic' as never }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_permission_input' });
+    await expect(updatePermission(deps, { id: 404, name: 'x' })).rejects.toMatchObject({
+      code: 'control_plane.permission_not_found',
     });
   });
 
-  it('delete:enforced 拒;有子节点拒;被角色绑定拒;custom 叶子可删', async () => {
+  it('delete:全节点可删（enforced 同权,绑定级联撤权）;有子节点仍拒（自底向上）', async () => {
     const { deps, permissionStore } = rbacSetup();
-    await expect(deletePermission(deps, 11)).rejects.toMatchObject({
-      code: 'control_plane.permission_immutable',
+    // 接口绑定守卫:仍守护接口时拒删（先解绑/换绑——角色绑定级联不拦）
+    await createEndpointBinding(deps, {
+      method: 'GET',
+      path: '/v1/e2e-guard',
+      permissionId: 11,
     });
-
+    await expect(deletePermission(deps, 11)).rejects.toMatchObject({
+      code: 'control_plane.permission_in_use',
+    });
+    // enforced 叶子解除绑定后可删
+    await expect(deletePermission(deps, 11)).rejects.toMatchObject({
+      code: 'control_plane.permission_in_use',
+    });
+    // 有子节点拒（group 1 下有 page）
+    await expect(deletePermission(deps, 1)).rejects.toMatchObject({
+      code: 'control_plane.permission_has_children',
+    });
+    await expect(deletePermission(deps, 404)).rejects.toMatchObject({
+      code: 'control_plane.permission_not_found',
+    });
+    // custom 叶子照旧可删
     const custom = await createPermission(deps, {
       parentId: 10,
       type: 'button',
@@ -332,16 +385,44 @@ describe('permissions 用例族守卫矩阵', () => {
       icon: null,
       sortOrder: 0,
     });
-    permissionStore.setBinding(custom.id, 2);
-    await expect(deletePermission(deps, custom.id)).rejects.toMatchObject({
-      code: 'control_plane.permission_in_use',
-    });
     permissionStore.setBinding(custom.id, 0);
     await expect(deletePermission(deps, custom.id)).resolves.toMatchObject({ ok: true });
+  });
+});
 
-    // 有子节点（group 1 下有 page）
-    await expect(deletePermission(deps, 1)).rejects.toMatchObject({
-      code: 'control_plane.permission_immutable', // enforced group 先命中不可删
+describe('endpoints 用例族（接口绑定——执行面数据化）', () => {
+  it('创建:path 形状/唯一性/权限存在性守卫;rebind/remove 生命周期', async () => {
+    const { deps, endpointStore } = rbacSetup();
+    const created = await createEndpointBinding(deps, {
+      method: 'GET',
+      path: '/v1/things',
+      permissionId: 10,
     });
+    expect(created).toMatchObject({ method: 'GET', path: '/v1/things', permissionId: 10 });
+
+    await expect(
+      createEndpointBinding(deps, { method: 'GET', path: '/v1/things', permissionId: 10 }),
+    ).rejects.toMatchObject({ code: 'control_plane.endpoint_bound' });
+    await expect(
+      createEndpointBinding(deps, { method: 'GET', path: 'bad path', permissionId: 10 }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_endpoint_input' });
+    await expect(
+      createEndpointBinding(deps, { method: 'GET', path: '/v1/other', permissionId: 404 }),
+    ).rejects.toMatchObject({ code: 'control_plane.permission_not_found' });
+
+    const rebound = await rebindEndpoint(deps, created.id, 20);
+    expect(rebound).toMatchObject({ permissionId: 20 });
+    await expect(rebindEndpoint(deps, 404, 10)).rejects.toMatchObject({
+      code: 'control_plane.endpoint_not_found',
+    });
+    await expect(rebindEndpoint(deps, created.id, 404)).rejects.toMatchObject({
+      code: 'control_plane.permission_not_found',
+    });
+
+    await expect(deleteEndpointBinding(deps, created.id)).resolves.toMatchObject({ ok: true });
+    await expect(deleteEndpointBinding(deps, created.id)).rejects.toMatchObject({
+      code: 'control_plane.endpoint_not_found',
+    });
+    expect(endpointStore.rows.size).toBe(0);
   });
 });

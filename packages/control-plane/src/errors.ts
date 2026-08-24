@@ -242,23 +242,35 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     message: 'Permission node not found',
     zh: '资源节点不存在',
   },
-  /** enforced 节点的锁死面被触碰（不可删/不可停用） */
-  permission_immutable: {
-    category: 'forbidden',
-    message: 'Enforced permission node is locked',
-    zh: '系统权限节点已锁定（不可删除或停用）',
-  },
   /** 节点仍有子节点（删除守卫） */
   permission_has_children: {
     category: 'conflict',
     message: 'Permission node still has children',
     zh: '节点仍有子节点，须先处理子节点',
   },
-  /** 节点仍被角色绑定（删除守卫——静默撤权必须拦） */
+  /** 节点仍被接口绑定（删除守卫——先解绑/换绑,避免整片接口默认拒绝） */
   permission_in_use: {
     category: 'conflict',
-    message: 'Permission node is bound to roles',
-    zh: '节点仍被角色绑定，须先解绑',
+    message: 'Permission node still guards endpoints',
+    zh: '权限仍守护接口，须先解绑或换绑',
+  },
+  /** 接口绑定输入非法（method 词表/path 形状） */
+  invalid_endpoint_input: {
+    category: 'invalid_input',
+    message: 'Invalid endpoint binding input',
+    zh: '接口绑定参数不合法',
+  },
+  /** method+path 已有绑定 */
+  endpoint_bound: {
+    category: 'conflict',
+    message: 'Endpoint already bound',
+    zh: '该接口已有绑定，请换绑而非新建',
+  },
+  /** 绑定不存在 */
+  endpoint_not_found: {
+    category: 'not_found',
+    message: 'Endpoint binding not found',
+    zh: '接口绑定不存在',
   },
 });
 

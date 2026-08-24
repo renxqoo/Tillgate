@@ -582,6 +582,13 @@
       "when": 1787966460000,
       "tag": "0083_drop_admins_role",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1788052800000,
+      "tag": "0084_endpoint_permissions",
+      "breakpoints": true
     }
   ]
 }

@@ -103,3 +103,30 @@ export const rolePermissions = pgTable(
     index('role_permissions_permission_idx').on(t.permissionId),
   ],
 );
+
+/**
+ * 接口权限绑定（ADR-0009:执行面数据化）。绑定按 permission_id 外键——改码零漂移;
+ * 全局 ACL 中间件消费:未绑定路由默认拒绝（公开/自身白名单在代码侧）。
+ * 一端点一绑定（UNIQUE(method, path)）。
+ */
+export const endpointPermissions = pgTable(
+  'endpoint_permissions',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    method: varchar('method', { length: 10 }).notNull(),
+    path: varchar('path', { length: 255 }).notNull(),
+    permissionId: bigint('permission_id', { mode: 'number' }).notNull(),
+    /** enforced（0084 种子 = 原 guard 声明导出）| custom */
+    source: varchar('source', { length: 16 }).notNull().default('custom'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('endpoint_permissions_endpoint_uq').on(t.method, t.path),
+    index('endpoint_permissions_permission_idx').on(t.permissionId),
+    check(
+      'endpoint_permissions_method_ck',
+      sql`${t.method} in ('GET','HEAD','POST','PUT','PATCH','DELETE')`,
+    ),
+    check('endpoint_permissions_source_ck', sql`${t.source} in ('enforced', 'custom')`),
+  ],
+);

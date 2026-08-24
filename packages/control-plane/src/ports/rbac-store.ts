@@ -96,14 +96,18 @@ export interface CreatePermissionRow {
 
 export interface UpdatePermissionRow {
   readonly id: number;
-  /** 展示字段（code/type/父子/source 一律不可改——enforced 锁与 code 即身份的统一面） */
+  /** 全字段可改（用户裁决:enforced 锁与「码即身份」放开——结构合法性仍由用例校验） */
   readonly name?: string;
   readonly i18nKey?: string | null;
   readonly description?: string | null;
   readonly icon?: string | null;
+  readonly path?: string | null;
   readonly sortOrder?: number;
-  /** 仅 custom 可停用;enforced 停用由 application 拒绝 */
   readonly status?: number;
+  readonly code?: string | null;
+  readonly type?: 'group' | 'page' | 'button';
+  readonly parentId?: number | null;
+  readonly source?: 'enforced' | 'custom';
 }
 
 export interface PermissionStore {
@@ -121,4 +125,31 @@ export interface PermissionStore {
   bindingCount(db: DbLike, id: number): Promise<number>;
   /** 活动码集合（授权写入校验 + 启动对账消费） */
   activeCodes(db: DbLike): Promise<string[]>;
+}
+
+// ── 接口权限绑定（ADR-0009:执行面数据化）───────────────────────────────────
+
+export interface EndpointBindingRecord {
+  readonly id: number;
+  readonly method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  readonly path: string;
+  readonly permissionId: number;
+  readonly source: 'enforced' | 'custom';
+  readonly createdAt: Date;
+}
+
+export interface CreateEndpointRow {
+  readonly method: EndpointBindingRecord['method'];
+  readonly path: string;
+  readonly permissionId: number;
+}
+
+export interface EndpointStore {
+  list(db: DbLike): Promise<EndpointBindingRecord[]>;
+  create(db: DbLike, row: CreateEndpointRow): Promise<EndpointBindingRecord>;
+  /** 换绑（method+path 不变,改 permission_id） */
+  rebind(db: DbLike, id: number, permissionId: number): Promise<EndpointBindingRecord | null>;
+  remove(db: DbLike, id: number): Promise<void>;
+  /** 删除守卫:权限节点名下仍有接口绑定 */
+  bindingCountOf(db: DbLike, permissionId: number): Promise<number>;
 }

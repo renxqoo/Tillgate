@@ -63,7 +63,11 @@ import { listRecharges, type ListRechargesInput } from './application/channels/l
 import { composeRbacSurface, type RbacSurface } from './application/rbac/compose';
 import { composeAdminsSurface, type AdminsSurface } from './application/admins/compose';
 
-import { postgresRoleStore, postgresPermissionStore } from './adapters/postgres/rbac-store';
+import {
+  postgresRoleStore,
+  postgresPermissionStore,
+  postgresEndpointStore,
+} from './adapters/postgres/rbac-store';
 import { createModel, type CreateModelInput } from './application/models/create-model';
 import { updateModel, type UpdateModelInput } from './application/models/update-model';
 import { deleteModel, type DeleteModelInput } from './application/models/delete-model';
@@ -158,6 +162,7 @@ export interface ControlPlaneEnv {
     readonly admin?: import('./ports/admin-store').AdminStore;
     readonly role?: import('./ports/rbac-store').RoleStore;
     readonly permission?: import('./ports/rbac-store').PermissionStore;
+    readonly endpoint?: import('./ports/rbac-store').EndpointStore;
   };
 }
 
@@ -299,6 +304,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
     admin: env.stores?.admin ?? postgresAdminStore,
     role: env.stores?.role ?? postgresRoleStore,
     permission: env.stores?.permission ?? postgresPermissionStore,
+    endpoint: env.stores?.endpoint ?? postgresEndpointStore,
     settings: env.stores?.settings ?? postgresSettingsStore,
   } as const;
 
@@ -397,7 +403,11 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
         listRecharges({ db: env.db, stores: { channel: stores.channel } }, input),
       loadVoucher: (key) => voucherStorage.load(key),
     },
-    rbac: composeRbacSurface(env.db, { role: stores.role, permission: stores.permission }),
+    rbac: composeRbacSurface(env.db, {
+      role: stores.role,
+      permission: stores.permission,
+      endpoint: stores.endpoint,
+    }),
     admins: composeAdminsSurface(env.db, stores.admin),
     models: {
       create: (input) => createModel({ db: env.db, stores: { model: stores.model }, audit }, input),

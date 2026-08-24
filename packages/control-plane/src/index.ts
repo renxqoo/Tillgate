@@ -59,6 +59,7 @@ export type {
   PermissionStore,
 } from './ports/rbac-store';
 export type { RoleUpdateResult } from './application/rbac/update-role';
+export type { EndpointBindingRecord, CreateEndpointRow, EndpointStore } from './ports/rbac-store';
 export type {
   AdminRecord,
   CreateAdminRow,

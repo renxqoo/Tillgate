@@ -1197,8 +1197,13 @@ export function createMemoryPermissionStore(
         ...(input.i18nKey !== undefined ? { i18nKey: input.i18nKey } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.path !== undefined ? { path: input.path } : {}),
         ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.code !== undefined ? { code: input.code } : {}),
+        ...(input.type !== undefined ? { type: input.type } : {}),
+        ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
+        ...(input.source !== undefined ? { source: input.source } : {}),
       };
       nodes.set(input.id, next);
       return next;
@@ -1224,4 +1229,40 @@ export function createMemoryPermissionStore(
       bindings.set(nodeId, count);
     },
   });
+}
+
+export function createMemoryEndpointStore(
+  seed: import('../src/ports/rbac-store').EndpointBindingRecord[] = [],
+) {
+  const rows = new Map(seed.map((r) => [r.id, r]));
+  let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
+  const store: import('../src/ports/rbac-store').EndpointStore = {
+    async list() {
+      return [...rows.values()].toSorted((a, b) => a.path.localeCompare(b.path));
+    },
+    async create(_db, row) {
+      const record = {
+        id: nextId++,
+        source: 'custom' as const,
+        createdAt: new Date(0),
+        ...row,
+      };
+      rows.set(record.id, record);
+      return record;
+    },
+    async rebind(_db, id, permissionId) {
+      const current = rows.get(id);
+      if (current == null) return null;
+      const next = { ...current, permissionId };
+      rows.set(id, next);
+      return next;
+    },
+    async remove(_db, id) {
+      rows.delete(id);
+    },
+    async bindingCountOf(_db, permissionId) {
+      return [...rows.values()].filter((r) => r.permissionId === permissionId).length;
+    },
+  };
+  return Object.assign(store, { rows });
 }
