@@ -559,3 +559,81 @@ describe('L. 执行面数据化核心断言（换绑即时生效/解绑默认拒
     }
   });
 });
+
+describe('N. 权限停用 kill-switch（enforced 码停用 → 持码角色下一请求 403）', () => {
+  it('users:read 停用 → 同令牌 403 insufficient_permission（绑定在,码失效）;恢复即放行', async () => {
+    const stamp = Date.now();
+    const tree = await call(w(), '/v1/permissions/tree');
+    const rows = (tree.body.rows ?? []) as { id: number; code: string | null }[];
+    // users:read 是共享页面码（用户页 + 限流页两节点同码）——授权时全部同码节点
+    // 都落授权行,kill-switch 生效须全部停用;单停一个,另一活节点仍供码
+    const usersReadNodes = rows.filter((row) => row.code === 'users:read');
+    expect(usersReadNodes.length).toBeGreaterThanOrEqual(2);
+
+    const role = await call(w(), '/v1/roles', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        code: `e2e-rbacv2-pkill-${stamp}`,
+        name: 'e2e permission kill',
+        permissions: ['users:read'],
+      }),
+    });
+    expect(role.status).toBe(201);
+    createdRoleIds.push(role.body.id as number);
+    const [row] = await w()
+      .assembly.db.insert(admins)
+      .values({
+        email: `e2e-rbacv2-pkill-${stamp}@e2e.invalid`,
+        passwordHash: 'identity-managed',
+        roleId: role.body.id as number,
+        displayName: 'e2e-pkill',
+      })
+      .returning({ id: admins.id });
+    if (row == null) throw new Error('insert admins returned no row');
+    createdAdminIds.push(row.id);
+    const token = await w().assembly.identity.sessions.sign({
+      realm: 'admin',
+      subjectId: row.id,
+      ttlSec: 600,
+    });
+    const usersCall = () => callAs(token, '/v1/users');
+    expect((await usersCall()).status).toBe(200);
+
+    try {
+      // 停用 enforced 码:绑定仍在(resolve 得到码),但 findAccess 过滤停用权限 →
+      // 角色失去该码 → 403 insufficient_permission（区别于 endpoint_unbound）
+      for (const node of usersReadNodes) {
+        const ban = await call(w(), `/v1/permissions/${node.id}`, {
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify({ status: 1 }),
+        });
+        expect(ban.status).toBe(200);
+      }
+      const denied = await usersCall();
+      expect(denied.status).toBe(403);
+      expect(denied.body).toMatchObject({ error: { code: 'admin.insufficient_permission' } });
+      // 超管免疫（isSuper 短路）
+      expect((await call(w(), '/v1/users')).status).toBe(200);
+      // 恢复 → 下一请求放行
+      for (const node of usersReadNodes) {
+        const restore = await call(w(), `/v1/permissions/${node.id}`, {
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify({ status: 0 }),
+        });
+        expect(restore.status).toBe(200);
+      }
+      expect((await usersCall()).status).toBe(200);
+    } finally {
+      for (const node of usersReadNodes) {
+        await call(w(), `/v1/permissions/${node.id}`, {
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify({ status: 0 }),
+        }).catch(() => undefined);
+      }
+    }
+  });
+});
