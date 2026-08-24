@@ -220,7 +220,7 @@ export function fakeDeps(overrides: {
       },
     },
     trustedProxyHops: 0,
-    mailerConfigured: false,
+    mailerConfigured: () => false,
     loginAudit: async () => {},
     sessionTtlSec: 3600,
     corsOrigins: [],

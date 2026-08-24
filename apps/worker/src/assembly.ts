@@ -43,7 +43,10 @@ import type { EmailSender, Notifications } from '@tillgate/notifications';
 import { outboxWithinTx } from '@tillgate/notifications/composition';
 import { commissionRefId } from '@tillgate/accounts';
 import { createPostgresAccountStore } from '@tillgate/accounts/composition';
-import { postgresChannelStore } from '@tillgate/control-plane/composition';
+import {
+  postgresChannelStore,
+  createPostgresIntegrationSettingsReader,
+} from '@tillgate/control-plane/composition';
 import {
   createGenerationPollUseCase,
   createPostgresGenerationTaskStore,
@@ -147,27 +150,42 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
 
   // ---- notifications：facade + billing 同事务入箱桥 ----
   const cipher = createCipher(config.channelApiKeyEncryption);
-  let emailSender: EmailSender | undefined;
-  const smtpConfig = config.smtp;
-  if (smtpConfig != null) {
-    // SMTP 三要素齐备才装配（v1 mailerFromEnv 口径：缺一 = email 渠道 fail-closed）
-    const transporter = createTransport({
-      host: smtpConfig.host,
-      port: smtpConfig.port,
-      secure: smtpConfig.port === 465,
-      auth: { user: smtpConfig.user, pass: smtpConfig.pass },
-    });
-    emailSender = {
-      send: async (to, subject, text) => {
-        await transporter.sendMail({ from: smtpConfig.user, to, subject, text });
-      },
-    };
-  }
+  // 告警邮件动态化（DESIGN §5 D7）：每次投递严格读快照（fail-loud），
+  // SMTP 未生效抛错走投递失败重试路径（email 渠道 fail-closed 语义等价）；
+  // 传输器随配置指纹重建。密钥 = 渠道 Key 同一部署契约（CHANNEL_API_KEY_ENCRYPTION）。
+  const integrationReader = createPostgresIntegrationSettingsReader({
+    db,
+    cipher,
+    onError: (error: unknown) =>
+      logger.warn({ err: error }, 'integration settings background refresh failed'),
+  });
+  let mailFingerprint = '';
+  let mailTransporter: ReturnType<typeof createTransport> | null = null;
+  const emailSender: EmailSender = {
+    send: async (to, subject, text) => {
+      const snapshot = await integrationReader.resolve();
+      const smtp = snapshot.smtp.config;
+      if (smtp == null || !snapshot.smtp.effective) {
+        throw new Error('smtp integration not effective');
+      }
+      const next = `${smtp.host}|${smtp.port}|${smtp.user}|${smtp.pass}`;
+      if (next !== mailFingerprint || mailTransporter == null) {
+        mailTransporter = createTransport({
+          host: smtp.host,
+          port: smtp.port,
+          secure: smtp.port === 465,
+          auth: { user: smtp.user, pass: smtp.pass },
+        });
+        mailFingerprint = next;
+      }
+      await mailTransporter.sendMail({ from: smtp.from, to, subject, text });
+    },
+  };
   const notifications: Notifications = createNotifications({
     db,
     cipher,
     urlGuard: { assert: (url, opts) => assertSafeUrl(url, { allowLocal: opts.allowLocal }) },
-    ...(emailSender != null ? { emailSender } : {}),
+    emailSender,
     logger: { warn: (obj, msg) => logger.warn(obj, msg) },
     webhookAllowLocalUrl: config.webhookAllowLocalUrl,
     config: config.notify.dispatch,

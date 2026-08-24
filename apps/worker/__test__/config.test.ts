@@ -72,11 +72,5 @@ describe('worker 配置 fail-closed', () => {
     ).not.toThrow();
   });
 
-  it('SMTP 三要素缺一 = 不装配（email 渠道 fail-closed 的装配前提）', () => {
-    expect(loadWorkerConfig(base()).smtp).toBeNull();
-    expect(loadWorkerConfig(base({ SMTP_HOST: 'smtp.test' })).smtp).toBeNull();
-    expect(
-      loadWorkerConfig(base({ SMTP_HOST: 'smtp.test', SMTP_USER: 'u', SMTP_PASS: 'p' })).smtp,
-    ).toMatchObject({ host: 'smtp.test', port: 465, user: 'u', pass: 'p' });
-  });
+
 });

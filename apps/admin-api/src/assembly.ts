@@ -1,4 +1,5 @@
 import { ENFORCED_CODES } from '@tillgate/control-plane';
+import { createPostgresIntegrationSettingsReader } from '@tillgate/control-plane/composition';
 import { createDb, type Db, type TxRetryPolicy } from '@tillgate/db';
 import type Redis from 'ioredis';
 import {
@@ -47,7 +48,7 @@ import type { AuthGuard } from './http/routes/auth';
 import { createUpstreamProbe } from './adapters/upstream-probe';
 import { createAdminFundingResolver } from './adapters/funding-resolver';
 import { createIdentityAuditSinkBridge } from './adapters/identity-audit-bridge';
-import { createSmtpAdminMailer } from './adapters/smtp-admin-mailer';
+import { createDynamicAdminMailer } from './adapters/dynamic-admin-mailer.js';
 import { createAdminSessionRevocation } from './adapters/redis-session-revocation';
 import {
   createAuditSinkBridge,
@@ -100,7 +101,7 @@ export interface AdminApiAssembly {
   /** P2:爆破双闸（routes/auth 消费;Redis 形态） */
   readonly authGuards: { emailIp: AuthGuard; ip: AuthGuard };
   /** P2:SMTP 是否已配置 */
-  readonly mailerConfigured: boolean;
+  readonly mailerConfigured: () => boolean;
   /** P2:登录三审计（后置旁路,失败不阻断） */
   readonly loginAudit: (entry: {
     action: 'auth.login.invalid_credentials' | 'auth.login.2fa_challenge' | 'auth.login.success';
@@ -163,19 +164,24 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     limit: config.ipGuard.limit,
     windowS: config.ipGuard.windowS,
   });
-  const mailer =
-    config.smtp != null
-      ? createSmtpAdminMailer({
-          config: config.smtp,
-          brand: {
-            brand: 'Tillgate 管理后台',
-            brandEn: 'Tillgate Admin',
-            brandSub: 'TILLGATE · ADMIN CONSOLE',
-          },
-          emailParams: { ttlMinutes: 5, maxAttempts: 5 },
-          now: () => new Date(),
-        })
-      : null;
+  // 2FA 邮件动态化（DESIGN §5 D7）：集成设置 reader + 动态 mailer（恒注入；
+  // SMTP 未生效时发送路径抛 undeliverable_challenge，2FA 开启闸按快照拒绝）
+  const integrationReader = createPostgresIntegrationSettingsReader({
+    db,
+    cipher: createCipher(config.encryptionKey),
+    onError: (error: unknown) =>
+      logger.warn({ err: error }, 'integration settings background refresh failed'),
+  });
+  const mailer = createDynamicAdminMailer({
+    reader: integrationReader,
+    brand: {
+      brand: 'Tillgate 管理后台',
+      brandEn: 'Tillgate Admin',
+      brandSub: 'TILLGATE · ADMIN CONSOLE',
+    },
+    emailParams: { ttlMinutes: 5, maxAttempts: 5 },
+    now: () => new Date(),
+  });
   const sessionRevocation = createAdminSessionRevocation(redis);
 
   // identity:admin realm 会话/挑战 + user realm 失效线（D6）;词表/挑战/TOTP 形状合法即装配
@@ -347,7 +353,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
     // P2 登录面装置（authGuards/loginAudit 消费面在 routes/auth）
     redis,
     authGuards: { emailIp: loginGuard, ip: ipGuard },
-    mailerConfigured: mailer != null,
+    mailerConfigured: () => integrationReader.latest().smtp.effective,
     loginAudit: (entry) =>
       writeAudit(db, {
         actor: 'system',

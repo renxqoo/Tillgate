@@ -61,7 +61,7 @@ function bare(): Hono<SessionEnv> {
     },
     loginAudit: async () => {},
     trustedProxyHops: 0,
-    mailerConfigured: false,
+    mailerConfigured: () => false,
     sessionTtlSec: 3600,
   });
   app.onError((error, c) =>
@@ -226,7 +226,7 @@ describe('auth/me 未走分支', () => {
         },
       },
       admins: { find: async () => null, setTwoFactorEnabled: async () => {} },
-      mailerConfigured: true,
+      mailerConfigured: () => true,
       sessionTtlSec: 3600,
     };
     const app = meRoutes(meDeps);
@@ -303,7 +303,7 @@ describe('auth/me 未走分支', () => {
         throw new Error('audit down');
       },
       trustedProxyHops: 0,
-      mailerConfigured: false,
+      mailerConfigured: () => false,
       sessionTtlSec: 3600,
     });
     app.onError((error, c) =>
@@ -329,27 +329,12 @@ describe('config P2 新键', () => {
     IDENTITY_CODE_PEPPER: 'pepper-0123456789',
   };
 
-  it('缺省值与 SMTP 组装配（三要素齐→非 null;缺任一→null fail-closed）', () => {
+  it('缺省值装配（SMTP 组已迁 integration_settings——config 面无 smtp 字段）', () => {
     const cfg = loadAdminApiConfig({ ...BASE } as NodeJS.ProcessEnv);
     expect(cfg.trustedProxyHops).toBe(0);
     expect(cfg.loginGuard).toEqual({ failureThreshold: 5, failureWindowS: 3600, lockS: 900 });
     expect(cfg.ipGuard).toEqual({ limit: 30, windowS: 3600 });
-    expect(cfg.smtp).toBeNull();
-
-    const withSmtp = loadAdminApiConfig({
-      ...BASE,
-      SMTP_HOST: 'smtp.example',
-      SMTP_USER: 'ops',
-      SMTP_PASS: 'secret',
-    } as NodeJS.ProcessEnv);
-    expect(withSmtp.smtp).toMatchObject({ host: 'smtp.example', user: 'ops', from: 'ops' });
-
-    const partial = loadAdminApiConfig({
-      ...BASE,
-      SMTP_HOST: 'smtp.example',
-      SMTP_USER: 'ops',
-    } as NodeJS.ProcessEnv);
-    expect(partial.smtp).toBeNull();
+    expect('smtp' in cfg).toBe(false);
   });
 
   it('REDIS_URL/JWT_SECRET 缺失 fail-fast', () => {

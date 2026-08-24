@@ -38,6 +38,7 @@ const ASSEMBLY_FACE = new Set([
   'adapters/upstream-probe.ts',
   'adapters/funding-resolver.ts',
   'adapters/accounts-bridges.ts',
+  'adapters/dynamic-admin-mailer.ts',
   // P2 登录波桥接件(identity 审计桥/SMTP 管理员邮件/jti 吊销表——共享文件代为同步白名单)
   'adapters/identity-audit-bridge.ts',
   'adapters/redis-session-revocation.ts',
@@ -48,6 +49,7 @@ describe('admin-api 架构门禁', () => {
   it('src 文件集合快照(目标树 §3:五件套 + http 四层 + 装配面桥接件)', () => {
     expect(FILES).toEqual([
       'adapters/accounts-bridges.ts',
+      'adapters/dynamic-admin-mailer.ts',
       'adapters/funding-resolver.ts',
       'adapters/identity-audit-bridge.ts',
       'adapters/redis-session-revocation.ts',
