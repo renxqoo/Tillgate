@@ -57,7 +57,7 @@ interface LoginPayload {
   adminId: number;
 }
 
-export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function authRoutes(deps: AuthRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
   const clientIpOf = (c: Parameters<MiddlewareHandler<SessionEnv>>[0]) =>
@@ -143,7 +143,7 @@ export function authRoutes(deps: AuthRoutesDeps, session: MiddlewareHandler<Sess
     return { adminId, account };
   };
 
-  app.post('/v1/auth/logout', session, async (c) => {
+  app.post('/v1/auth/logout', async (c) => {
     await deps.identity.sessions.logout(c.get('sessionToken'), 'admin');
     return c.json({ ok: true });
   });

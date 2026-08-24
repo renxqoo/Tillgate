@@ -107,6 +107,77 @@ export const rbacEndpoints: readonly OpenApiEndpoint[] = [
     errors: [400, 403, 404],
   },
   {
+    method: 'get',
+    path: '/v1/endpoint-bindings',
+    tag: 'endpoints',
+    summary: '接口绑定清单（全局 ACL 的执行面数据源）',
+    response: {
+      schema: z.object({
+        rows: z.array(
+          z.object({
+            id: z.number(),
+            method: z.string(),
+            path: z.string(),
+            permissionId: z.number(),
+            source: z.enum(['enforced', 'custom']),
+            createdAt: z.string(),
+          }),
+        ),
+      }),
+    },
+  },
+  {
+    method: 'post',
+    path: '/v1/endpoint-bindings',
+    tag: 'endpoints',
+    summary: '新建接口绑定（method+path 唯一;未绑定端点默认拒绝——fail-closed）',
+    body: z.object({
+      method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']),
+      path: z.string().min(2).max(255),
+      permissionId: z.number().int().min(1),
+    }),
+    response: {
+      schema: z.object({
+        id: z.number(),
+        method: z.string(),
+        path: z.string(),
+        permissionId: z.number(),
+        source: z.string(),
+        createdAt: z.string(),
+      }),
+      status: 201,
+    },
+    errors: [400, 404, 409],
+  },
+  {
+    method: 'patch',
+    path: '/v1/endpoint-bindings/:id',
+    tag: 'endpoints',
+    summary: '换绑（method+path 不变,改挂权限节点;下一请求生效）',
+    params: [idPathParam('绑定 id')],
+    body: z.object({ permissionId: z.number().int().min(1) }),
+    response: {
+      schema: z.object({
+        id: z.number(),
+        method: z.string(),
+        path: z.string(),
+        permissionId: z.number(),
+        source: z.string(),
+        createdAt: z.string(),
+      }),
+    },
+    errors: [400, 404],
+  },
+  {
+    method: 'delete',
+    path: '/v1/endpoint-bindings/:id',
+    tag: 'endpoints',
+    summary: '解绑（该接口随后默认拒绝,直到重新绑定）',
+    params: [idPathParam('绑定 id')],
+    response: { schema: z.object({ ok: z.literal(true) }) },
+    errors: [404],
+  },
+  {
     method: 'delete',
     path: '/v1/permissions/:id',
     tag: 'permissions',

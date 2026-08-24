@@ -4,15 +4,42 @@
  * app 编排:绑定即接管第二因子（不退回邮箱码）、码错计双闸、解绑须持有效码。
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { Hono, MiddlewareHandler } from 'hono';
+import { Hono } from 'hono';
 import { errorHandler } from '@tokenlens/http';
 import { identityErrors } from '@tokenlens/identity';
 import type { SessionEnv } from '../src/http/middleware/session';
+import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from '../src/http/routes/auth';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 
-function withErrorFace(app: Hono<SessionEnv>): Hono<SessionEnv> {
+function withErrorFace(routes: Hono<SessionEnv>): Hono<SessionEnv> {
+  // ACL 时代:会话注入在全局中间件——独立挂具包一层新 app 先挂 session 再挂路由
+  // (Hono 中间件须先于路由注册;令牌 'tok' → 超管授权面)
+  const app = new Hono<SessionEnv>();
+  // 生产形态复刻:全局 ACL 中间件(公开白名单内置;令牌 'tok' → 超管授权面直通)
+  app.use(
+    '*',
+    createAclMiddleware(
+      {
+        validate: async (token: string) =>
+          token === 'tok'
+            ? {
+                realm: 'admin',
+                sub: String(ADMIN_ID),
+                jti: 'j',
+                iss: 'i',
+                exp: 9,
+                iat: 1,
+              }
+            : null,
+        owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
+      },
+      // 挂具全绑定形态(isSuper 直通;具体绑定判定由专测覆盖)
+      async (method, path) => ({ method, path, code: 'users:read' }),
+    ),
+  );
+  app.route('/', routes);
   app.onError((error, c) =>
     errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
   );
@@ -22,18 +49,6 @@ function withErrorFace(app: Hono<SessionEnv>): Hono<SessionEnv> {
 const json = { 'content-type': 'application/json' };
 const VALID_TOKEN = 'tok';
 const ADMIN_ID = 7;
-
-const session: MiddlewareHandler<SessionEnv> = async (c, next) => {
-  if (c.req.header('authorization') !== `Bearer ${VALID_TOKEN}`) {
-    return c.json({ error: { code: 'http.unauthorized' } }, 401);
-  }
-  c.set('requestId', 'req-test');
-  c.set('adminId', ADMIN_ID);
-  c.set('sessionToken', VALID_TOKEN);
-  c.set('sessionJti', 'jti-1');
-  c.set('sessionExp', Math.floor(Date.now() / 1000) + 60);
-  await next();
-};
 
 function guard(): AuthGuard & { failures: number } {
   let failures = 0;
@@ -116,7 +131,7 @@ function authHarness(identity: AuthRoutesDeps['identity']) {
     mailerConfigured: false,
     sessionTtlSec: 3600,
   };
-  return { app: withErrorFace(authRoutes(deps, session)), emailIp, ip };
+  return { app: withErrorFace(authRoutes(deps)), emailIp, ip };
 }
 
 describe('TOTP 登录第二因子', () => {
@@ -247,7 +262,7 @@ describe('TOTP 绑定三动词(me 会话组)', () => {
       mailerConfigured: false,
       sessionTtlSec: 3600,
     };
-    return withErrorFace(meRoutes(deps, session));
+    return withErrorFace(meRoutes(deps));
   }
 
   it('enroll:返回 secret + otpauthUrl(标签带邮箱);无会话 401', async () => {

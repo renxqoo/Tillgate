@@ -4,7 +4,6 @@
  * request_id join,路由只组合）。词表/过滤在 inference 包与 contracts 层。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { GenerationTaskStore } from '@tokenlens/inference';
 import type { SessionEnv } from '../middleware/session';
 import { tasksContracts } from '../contracts/inference';
@@ -14,13 +13,10 @@ export interface OpsTasksRoutesDeps {
   readonly generationTasks: Pick<GenerationTaskStore, 'adminList' | 'settledAmounts'>;
 }
 
-export function opsTasksRoutes(
-  deps: OpsTasksRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function opsTasksRoutes(deps: OpsTasksRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/generation-tasks', guard('ops:read'), async (c) => {
+  app.get('/v1/generation-tasks', async (c) => {
     const query = tasksContracts.list.parse(c.req.query());
     const result = await deps.generationTasks.adminList({
       ...(query.kind !== undefined ? { kind: query.kind } : {}),

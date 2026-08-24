@@ -304,6 +304,12 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
         remove: notWired,
         activeCodes: async () => [],
       },
+      endpoints: {
+        list: async () => [],
+        create: notWired,
+        rebind: notWired,
+        remove: notWired,
+      },
     },
     // P2/G2:管理员资料面(密码/挑战在 identity;此处最小 fake,登录波测试覆写)
     // RBAC 管理面动词(list/create/update/remove)同 fake——admins 域测试覆写

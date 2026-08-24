@@ -3,7 +3,6 @@
  * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { idParam } from '../contracts/common';
@@ -33,18 +32,15 @@ function nodeWire(node: PermissionNode) {
   };
 }
 
-export function permissionsRoutes(
-  deps: PermissionsRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function permissionsRoutes(deps: PermissionsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/permissions/tree', guard('admins:read'), async (c) => {
+  app.get('/v1/permissions/tree', async (c) => {
     const nodes = await deps.rbac.permissions.tree();
     return c.json({ rows: nodes.map(nodeWire) });
   });
 
-  app.post('/v1/permissions', guard('admins:create'), async (c) => {
+  app.post('/v1/permissions', async (c) => {
     const body = rbacContracts.createPermission.parse(await c.req.json());
     const node = await deps.rbac.permissions.create({
       parentId: body.parentId,
@@ -68,7 +64,7 @@ export function permissionsRoutes(
     return c.json(nodeWire(node), 201);
   });
 
-  app.patch('/v1/permissions/:id', guard('admins:update'), async (c) => {
+  app.patch('/v1/permissions/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = rbacContracts.patchPermission.parse(await c.req.json());
     const node = await deps.rbac.permissions.update({
@@ -77,8 +73,13 @@ export function permissionsRoutes(
       ...(body.i18nKey !== undefined ? { i18nKey: body.i18nKey } : {}),
       ...(body.description !== undefined ? { description: body.description } : {}),
       ...(body.icon !== undefined ? { icon: body.icon } : {}),
+      ...(body.path !== undefined ? { path: body.path } : {}),
       ...(body.sortOrder !== undefined ? { sortOrder: body.sortOrder } : {}),
       ...(body.status !== undefined ? { status: body.status } : {}),
+      ...(body.code !== undefined ? { code: body.code } : {}),
+      ...(body.type !== undefined ? { type: body.type } : {}),
+      ...(body.parentId !== undefined ? { parentId: body.parentId } : {}),
+      ...(body.source !== undefined ? { source: body.source } : {}),
     });
     await deps.postAudit({
       actor: 'admin',
@@ -91,7 +92,7 @@ export function permissionsRoutes(
     return c.json(nodeWire(node));
   });
 
-  app.delete('/v1/permissions/:id', guard('admins:delete'), async (c) => {
+  app.delete('/v1/permissions/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     await deps.rbac.permissions.remove(id);
     await deps.postAudit({

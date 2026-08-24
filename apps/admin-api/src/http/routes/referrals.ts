@@ -6,7 +6,6 @@
  * 资金投影改走 payouts 端点,billing referralPayouts 单一真相）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { AccountUseCases } from '@tokenlens/accounts';
 import type { WalletApi } from '@tokenlens/billing';
 import { AdminErrors } from '../error-face';
@@ -19,13 +18,10 @@ export interface ReferralRoutesDeps {
   readonly wallet: Pick<WalletApi, 'referralPayouts'>;
 }
 
-export function referralRoutes(
-  deps: ReferralRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function referralRoutes(deps: ReferralRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/referrals/relations', guard('growth:read'), async (c) => {
+  app.get('/v1/referrals/relations', async (c) => {
     const query = parseListQuery(c.req.query(), ['id'], 'id');
     const page = await deps.accounts.listReferralRelations({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -35,7 +31,7 @@ export function referralRoutes(
     return c.json(listEnvelope([...page.rows], page.total, query));
   });
 
-  app.patch('/v1/referrals/relations/:id', guard('growth:update'), async (c) => {
+  app.patch('/v1/referrals/relations/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = referralContracts.patchRelation.parse(await c.req.json());
     return c.json(
@@ -47,7 +43,7 @@ export function referralRoutes(
     );
   });
 
-  app.get('/v1/referrals/payouts', guard('growth:read'), async (c) => {
+  app.get('/v1/referrals/payouts', async (c) => {
     const kind = c.req.query('kind');
     if (!REFERRAL_KINDS.includes(kind as (typeof REFERRAL_KINDS)[number])) {
       throw AdminErrors.business('invalid_param', {

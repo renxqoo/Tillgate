@@ -5,7 +5,6 @@
  */
 import { Hono } from 'hono';
 import { jsonBody } from '@tokenlens/http';
-import type { MiddlewareHandler } from 'hono';
 import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
 import { ENFORCED_CODES, granted } from '@tokenlens/control-plane';
 import type { Identity } from '@tokenlens/identity';
@@ -54,10 +53,10 @@ function menuTreeOf(
     .filter((group) => group.items.length > 0);
 }
 
-export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionEnv>) {
+export function meRoutes(deps: MeRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/me', session, async (c) => {
+  app.get('/v1/me', async (c) => {
     const adminId = c.get('adminId');
     const me = await deps.admins.find(adminId);
     if (me == null) {
@@ -86,13 +85,13 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
   });
 
   // sidebar 数据源（自身域无码——所有有效会话可调;树按本人授权过滤后下发）
-  app.get('/v1/me/menus', session, async (c) => {
+  app.get('/v1/me/menus', async (c) => {
     const grants = c.get('grants') ?? { isSuper: false, codes: [] };
     const nodes = await deps.rbac.permissions.tree();
     return c.json({ groups: menuTreeOf(nodes, grants) });
   });
 
-  app.post('/v1/me/password', session, async (c) => {
+  app.post('/v1/me/password', async (c) => {
     const body = authContracts.changePassword.parse(await c.req.json());
     await deps.identity.passwords.change({
       userId: c.get('adminId'),
@@ -109,7 +108,7 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
     });
   });
 
-  app.post('/v1/me/two-factor', session, async (c) => {
+  app.post('/v1/me/two-factor', async (c) => {
     const body = authContracts.twoFactor.parse(await c.req.json());
     if (body.enabled && !deps.mailerConfigured) {
       throw AdminErrors.business('smtp_not_configured', {});
@@ -119,7 +118,7 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
   });
 
   // TOTP 挂起注册:返回 base32 密钥 + otpauth URL(仅本次;扫码确认前不参与登录)
-  app.post('/v1/me/totp/enroll', session, async (c) => {
+  app.post('/v1/me/totp/enroll', async (c) => {
     const me = await deps.admins.find(c.get('adminId'));
     const result = await deps.identity.mfa.enrollTotp({
       userId: c.get('adminId'),
@@ -129,7 +128,7 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
   });
 
   // 确认绑定:验当前验证器码 → 生效 + 整组重签恢复码(仅此一次返回明文)
-  app.post('/v1/me/totp/confirm', session, jsonBody(authContracts.totpCode), async (c) => {
+  app.post('/v1/me/totp/confirm', jsonBody(authContracts.totpCode), async (c) => {
     const body = c.req.valid('json');
     const result = await deps.identity.mfa.confirmTotp({
       userId: c.get('adminId'),
@@ -139,7 +138,7 @@ export function meRoutes(deps: MeRoutesDeps, session: MiddlewareHandler<SessionE
   });
 
   // 解绑:必须持有效 TOTP/恢复码(防会话被偷后一键拆防线)
-  app.post('/v1/me/totp/disable', session, jsonBody(authContracts.totpCode), async (c) => {
+  app.post('/v1/me/totp/disable', jsonBody(authContracts.totpCode), async (c) => {
     const body = c.req.valid('json');
     const result = await deps.identity.mfa.disableTotp({
       userId: c.get('adminId'),

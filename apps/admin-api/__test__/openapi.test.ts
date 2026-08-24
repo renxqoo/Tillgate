@@ -18,6 +18,7 @@ const METHODS = new Set(['get', 'post', 'put', 'patch', 'delete']);
 /** 端点全集（封闭词表快照——与 registry 一一对应,来自 generated/openapi.json） */
 const ENDPOINTS: readonly string[] = [
   'DELETE /v1/channels/:id',
+  'DELETE /v1/endpoint-bindings/:id',
   'DELETE /v1/fx/catalog/override',
   'DELETE /v1/models/:id',
   'DELETE /v1/notifications/:id',
@@ -33,6 +34,7 @@ const ENDPOINTS: readonly string[] = [
   'GET /v1/billing-operations',
   'GET /v1/channel-funds',
   'GET /v1/channels',
+  'GET /v1/endpoint-bindings',
   'GET /v1/fx/catalog',
   'GET /v1/generation-tasks',
   'GET /v1/logs',
@@ -77,6 +79,7 @@ const ENDPOINTS: readonly string[] = [
   'PATCH /v1/admin-keys/:id',
   'PATCH /v1/admins/:id',
   'PATCH /v1/channels/:id',
+  'PATCH /v1/endpoint-bindings/:id',
   'PATCH /v1/models/:id',
   'PATCH /v1/notifications/:id',
   'PATCH /v1/permissions/:id',
@@ -99,6 +102,7 @@ const ENDPOINTS: readonly string[] = [
   'POST /v1/channels/:id/restore',
   'POST /v1/channels/:id/test',
   'POST /v1/channels/import',
+  'POST /v1/endpoint-bindings',
   'POST /v1/fx/catalog/refresh',
   'POST /v1/me/password',
   'POST /v1/me/totp/confirm',

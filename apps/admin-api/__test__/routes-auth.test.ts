@@ -5,17 +5,44 @@
  * 机制语义本体在 identity/runtime 测试;此处锁 app 编排与 wire。
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { Hono, MiddlewareHandler } from 'hono';
+import { Hono } from 'hono';
 import { errorHandler } from '@tokenlens/http';
 import { identityErrors } from '@tokenlens/identity';
 import type { SessionEnv } from '../src/http/middleware/session';
+import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { mfaStub } from './helpers';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from '../src/http/routes/auth';
 import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 
 /** 错误面挂具:createAdminApp 的 errorHandler 同装配（独立路由测试复用同一目录渲染） */
-function withErrorFace(app: Hono<SessionEnv>): Hono<SessionEnv> {
+function withErrorFace(routes: Hono<SessionEnv>): Hono<SessionEnv> {
+  // ACL 时代:会话注入在全局中间件——独立挂具包一层新 app 先挂 session 再挂路由
+  // (Hono 中间件须先于路由注册;令牌 'tok' → 超管授权面)
+  const app = new Hono<SessionEnv>();
+  // 生产形态复刻:全局 ACL 中间件(公开白名单内置;令牌 'tok' → 超管授权面直通)
+  app.use(
+    '*',
+    createAclMiddleware(
+      {
+        validate: async (token: string) =>
+          token === 'tok'
+            ? {
+                realm: 'admin',
+                sub: String(ADMIN_ID),
+                jti: 'j',
+                iss: 'i',
+                exp: 9,
+                iat: 1,
+              }
+            : null,
+        owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
+      },
+      // 挂具全绑定形态(isSuper 直通;具体绑定判定由专测覆盖)
+      async (method, path) => ({ method, path, code: 'users:read' }),
+    ),
+  );
+  app.route('/', routes);
   app.onError((error, c) =>
     errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
   );
@@ -25,19 +52,6 @@ function withErrorFace(app: Hono<SessionEnv>): Hono<SessionEnv> {
 const json = { 'content-type': 'application/json' };
 const VALID_TOKEN = 'tok';
 const ADMIN_ID = 7;
-
-/** 会话件替身:固定 token → adminId=7（属主回查路径在 session.test 覆盖） */
-const session: MiddlewareHandler<SessionEnv> = async (c, next) => {
-  if (c.req.header('authorization') !== `Bearer ${VALID_TOKEN}`) {
-    return c.json({ error: { code: 'http.unauthorized' } }, 401);
-  }
-  c.set('requestId', 'req-test');
-  c.set('adminId', ADMIN_ID);
-  c.set('sessionToken', VALID_TOKEN);
-  c.set('sessionJti', 'jti-1');
-  c.set('sessionExp', Math.floor(Date.now() / 1000) + 60);
-  await next();
-};
 
 function neverLockedGuard(): AuthGuard & { failures: number; successes: number } {
   let failures = 0;
@@ -111,7 +125,7 @@ function authHarness(overrides?: Partial<AuthRoutesDeps>) {
     sessionTtlSec: 3600,
     ...overrides,
   };
-  return { app: withErrorFace(authRoutes(deps, session)), deps, emailIp, ip, audit, touch, sign };
+  return { app: withErrorFace(authRoutes(deps)), deps, emailIp, ip, audit, touch, sign };
 }
 
 describe('auth（P2 登录面）', () => {
@@ -398,7 +412,7 @@ describe('me（P2 管理员自身）', () => {
       sessionTtlSec: 3600,
       ...overrides,
     };
-    return withErrorFace(meRoutes(deps, session));
+    return withErrorFace(meRoutes(deps));
   }
 
   it('GET me 资料;改密走 identity.change(admin realm)同拍新 token;2FA 前置 SMTP', async () => {

@@ -3,7 +3,6 @@
  * 审计:created/updated（detail 含 added/removed 授权 diff——安全取证主观察面）/deleted。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { ControlPlane } from '@tokenlens/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
@@ -19,13 +18,10 @@ export interface RolesRoutesDeps {
   postAudit: PostAudit;
 }
 
-export function rolesRoutes(
-  deps: RolesRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function rolesRoutes(deps: RolesRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/roles', guard('admins:read'), async (c) => {
+  app.get('/v1/roles', async (c) => {
     const query = parseListQuery(c.req.query(), ROLE_SORTS, 'id');
     const page = await deps.rbac.roles.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -37,7 +33,7 @@ export function rolesRoutes(
     return c.json(listEnvelope(page.rows, page.total, query));
   });
 
-  app.post('/v1/roles', guard('admins:create'), async (c) => {
+  app.post('/v1/roles', async (c) => {
     const body = rbacContracts.createRole.parse(await c.req.json());
     const role = await deps.rbac.roles.create({
       code: body.code,
@@ -56,7 +52,7 @@ export function rolesRoutes(
     return c.json(role, 201);
   });
 
-  app.patch('/v1/roles/:id', guard('admins:update'), async (c) => {
+  app.patch('/v1/roles/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = rbacContracts.patchRole.parse(await c.req.json());
     const result = await deps.rbac.roles.update({
@@ -86,7 +82,7 @@ export function rolesRoutes(
     return c.json(result.role);
   });
 
-  app.delete('/v1/roles/:id', guard('admins:delete'), async (c) => {
+  app.delete('/v1/roles/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     await deps.rbac.roles.remove(id);
     await deps.postAudit({

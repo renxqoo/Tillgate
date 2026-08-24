@@ -288,7 +288,6 @@ describe('permissions 管理面', () => {
     ).toBe(200);
 
     for (const [code, status] of [
-      ['permission_immutable', 403],
       ['permission_code_taken', 409],
       ['permission_has_children', 409],
       ['permission_in_use', 409],

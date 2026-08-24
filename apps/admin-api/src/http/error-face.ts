@@ -94,6 +94,12 @@ export const AdminErrors = defineErrorCatalog('admin', {
     message: 'Insufficient permission for this operation',
     zh: '当前角色无权执行该操作',
   },
+  /** 接口未绑定权限（全局 ACL fail-closed——除超管外全拒,补配绑定即恢复） */
+  endpoint_unbound: {
+    category: 'forbidden',
+    message: 'Endpoint has no permission binding',
+    zh: '接口未绑定权限（默认拒绝）',
+  },
   /** 修改自身 role/status 被拒（防最后一个超管自锁——DESIGN D6;displayName 可改） */
   cannot_modify_self: {
     category: 'invalid_input',

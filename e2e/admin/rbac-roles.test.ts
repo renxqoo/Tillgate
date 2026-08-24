@@ -235,38 +235,35 @@ describe('J. custom 权限节点全生命周期', () => {
     expect(rebind.status).toBe(400);
     expect(rebind.body).toMatchObject({ error: { code: 'control_plane.invalid_permission_code' } });
 
-    // 删除守卫:被角色绑定 → 409 permission_in_use
-    const delBound = await call(w(), `/v1/permissions/${nodeId}`, { method: 'DELETE' });
-    expect(delBound.status).toBe(409);
-
-    // 解绑后可删
-    await call(w(), `/v1/roles/${role.body.id}`, {
-      method: 'PATCH',
-      headers: jsonHeaders,
-      body: JSON.stringify({ permissions: [] }),
-    });
-    expect((await call(w(), `/v1/permissions/${nodeId}`, { method: 'DELETE' })).status).toBe(200);
+    // 删除守卫:角色绑定级联撤权不拦;接口绑定拦截 → 解绑后可删
+    const delRoleBound = await call(w(), `/v1/permissions/${nodeId}`, { method: 'DELETE' });
+    expect(delRoleBound.status).toBe(200);
     createdNodeIds.splice(createdNodeIds.indexOf(nodeId), 1);
   });
 });
 
 describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () => {
-  it('enforced 节点停用/删除 403;super 角色任何修改 403;内置删除 403;角色停用名下管理员零授权', async () => {
+  it('enforced 节点全字段放开(停用/删除 200);接口绑定守卫;super/内置角色锁;角色停用 kill-switch', async () => {
     const tree = await call(w(), '/v1/permissions/tree');
     const nodes = (tree.body.rows ?? []) as { id: number; code: string | null; source: string }[];
     const enforced = nodes.find((node) => node.code === 'users:update');
     expect(enforced).toBeDefined();
 
+    // 全字段放开:enforced 停用 200 → 恢复;删除被接口绑定守卫拦(409)
     const ban = await call(w(), `/v1/permissions/${enforced!.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ status: 1 }),
     });
-    expect(ban.status).toBe(403);
-    expect(ban.body).toMatchObject({ error: { code: 'control_plane.permission_immutable' } });
-    expect((await call(w(), `/v1/permissions/${enforced!.id}`, { method: 'DELETE' })).status).toBe(
-      403,
-    );
+    expect(ban.status).toBe(200);
+    await call(w(), `/v1/permissions/${enforced!.id}`, {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({ status: 0 }),
+    });
+    const delBound = await call(w(), `/v1/permissions/${enforced!.id}`, { method: 'DELETE' });
+    expect(delBound.status).toBe(409);
+    expect(delBound.body).toMatchObject({ error: { code: 'control_plane.permission_in_use' } });
 
     const rolesList = await call(w(), '/v1/roles?page_size=50');
     const roleRows = (rolesList.body.rows ?? []) as {
@@ -333,6 +330,104 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
       const staleIds = staleRoles.map((r) => r.id);
       await w().assembly.db.delete(admins).where(inArray(admins.roleId, staleIds));
       await w().assembly.db.delete(roles).where(inArray(roles.id, staleIds));
+    }
+  });
+});
+
+describe('L. 执行面数据化核心断言（换绑即时生效/解绑默认拒/改码零漂移）', () => {
+  /** GET /v1/users 的绑定行（0084 种子）——用例内换绑/解绑并在 finally 恢复 */
+  async function usersListBindingId(): Promise<number> {
+    const tree = await call(w(), '/v1/endpoint-bindings');
+    const rows = (tree.body.rows ?? []) as { id: number; method: string; path: string }[];
+    const hit = rows.find((row) => row.method === 'GET' && row.path === '/v1/users');
+    if (hit == null) throw new Error('GET /v1/users binding missing (0084 seed)');
+    return hit.id;
+  }
+
+  async function usersReadNodeId(): Promise<number> {
+    const tree = await call(w(), '/v1/permissions/tree');
+    const rows = (tree.body.rows ?? []) as { id: number; code: string | null }[];
+    const hit = rows.find((row) => row.code === 'users:read');
+    if (hit == null) throw new Error('users:read node missing');
+    return hit.id;
+  }
+
+  it('换绑下一请求生效;解绑 fail-closed 403(超管恢复);改码零漂移(绑定按 id)', async () => {
+    const stamp = Date.now();
+    const bindingId = await usersListBindingId();
+    const usersReadId = await usersReadNodeId();
+
+    // 非超管持 users:read 的令牌
+    const role = await call(w(), '/v1/roles', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        code: `e2e-rbacv2-acl-${stamp}`,
+        name: 'e2e acl',
+        permissions: ['users:read'],
+      }),
+    });
+    expect(role.status).toBe(201);
+    createdRoleIds.push(role.body.id as number);
+    const [row] = await w()
+      .assembly.db.insert(admins)
+      .values({
+        email: `e2e-rbacv2-acl-${stamp}@e2e.invalid`,
+        passwordHash: 'identity-managed',
+        roleId: role.body.id as number,
+        displayName: 'e2e-acl',
+      })
+      .returning({ id: admins.id });
+    if (row == null) throw new Error('insert admins returned no row');
+    createdAdminIds.push(row.id);
+    const token = await w().assembly.identity.sessions.sign({
+      realm: 'admin',
+      subjectId: row.id,
+      ttlSec: 600,
+    });
+    const usersCall = () => callAs(token, '/v1/users');
+    expect((await usersCall()).status).toBe(200);
+
+    try {
+      // 1) 改码零漂移:users:read 改名 → 绑定按 id → 同令牌仍放行(旧架构此处会静默 403)
+      const renamed = await call(w(), `/v1/permissions/${usersReadId}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ code: `e2e:renamed-${stamp}` }),
+      });
+      expect(renamed.status).toBe(200);
+      expect((await usersCall()).status).toBe(200); // ← 零漂移核心断言
+
+      // 2) 换绑即时生效:绑定换到 admin 域码 → 该令牌 403(无 admins:read)
+      const rebound = await call(w(), `/v1/endpoint-bindings/${bindingId}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ permissionId: 1 }), // 任意非 users:read 节点(组节点码为空→视为未绑定)
+      });
+      expect(rebound.status).toBe(200);
+      const afterRebind = await usersCall();
+      expect([403, 404]).toContain(afterRebind.status); // 空码视为未绑定/或无权——一律拒绝
+      expect(afterRebind.status).toBe(403);
+
+      // 3) 解绑默认拒:非超管 403 endpoint_unbound;超管(旅程令牌)仍 200 可恢复
+      const unbound = await call(w(), `/v1/endpoint-bindings/${bindingId}`, { method: 'DELETE' });
+      expect(unbound.status).toBe(200);
+      const denied = await usersCall();
+      expect(denied.status).toBe(403);
+      expect(denied.body).toMatchObject({ error: { code: 'admin.endpoint_unbound' } });
+      expect((await call(w(), '/v1/users')).status).toBe(200); // 超管恢复路径
+    } finally {
+      await call(w(), '/v1/endpoint-bindings', {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ method: 'GET', path: '/v1/users', permissionId: usersReadId }),
+      }).catch(() => undefined); // 已存在(409) = 已恢复
+      await call(w(), `/v1/permissions/${usersReadId}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ code: 'users:read' }),
+      }).catch(() => undefined);
+      expect((await usersCall()).status).toBe(200);
     }
   });
 });

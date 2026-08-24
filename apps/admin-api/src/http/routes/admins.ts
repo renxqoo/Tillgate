@@ -12,7 +12,6 @@
  * （会话身份是路由的知识——防最后一个超管自锁,DESIGN D6）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import { isBusinessError } from '@tokenlens/errors';
 import { controlPlaneErrors, type AdminRecord, type ControlPlane } from '@tokenlens/control-plane';
 import type { Identity } from '@tokenlens/identity';
@@ -48,13 +47,10 @@ function adminRowOf(record: AdminRecord) {
   };
 }
 
-export function adminsRoutes(
-  deps: AdminsRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function adminsRoutes(deps: AdminsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/admins', guard('admins:read'), async (c) => {
+  app.get('/v1/admins', async (c) => {
     const query = parseListQuery(c.req.query(), ADMIN_SORTS, 'id');
     const page = await deps.admins.list({
       ...(query.q !== undefined ? { q: query.q } : {}),
@@ -66,7 +62,7 @@ export function adminsRoutes(
     return c.json(listEnvelope(page.rows.map(adminRowOf), page.total, query));
   });
 
-  app.post('/v1/admins', guard('admins:create'), async (c) => {
+  app.post('/v1/admins', async (c) => {
     const body = adminsContracts.create.parse(await c.req.json());
     const created = await deps.admins.create({
       email: body.email,
@@ -101,7 +97,7 @@ export function adminsRoutes(
     return c.json(adminRowOf(created), 201);
   });
 
-  app.patch('/v1/admins/:id', guard('admins:update'), async (c) => {
+  app.patch('/v1/admins/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = adminsContracts.patch.parse(await c.req.json());
     // 自改守卫：roleId/status 不可改自身（displayName 可改——无权限面影响,D6）

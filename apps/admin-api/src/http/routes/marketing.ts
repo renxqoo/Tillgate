@@ -4,7 +4,6 @@
  * 审计在 accounts 用例内（actor=admin）;worker 佣金循环每 tick 读现值同源。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { AccountUseCases } from '@tokenlens/accounts';
 import type { SessionEnv } from '../middleware/session';
 import { marketingContracts } from '../contracts/marketing';
@@ -13,17 +12,14 @@ export interface MarketingRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'getMarketingSettings' | 'updateMarketingSettings'>;
 }
 
-export function marketingRoutes(
-  deps: MarketingRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function marketingRoutes(deps: MarketingRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/marketing/settings', guard('growth:read'), async (c) =>
+  app.get('/v1/marketing/settings', async (c) =>
     c.json(await deps.accounts.getMarketingSettings()),
   );
 
-  app.put('/v1/marketing/settings', guard('growth:update'), async (c) => {
+  app.put('/v1/marketing/settings', async (c) => {
     const body = marketingContracts.updateSettings.parse(await c.req.json());
     return c.json(
       await deps.accounts.updateMarketingSettings({

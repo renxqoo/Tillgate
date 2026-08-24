@@ -112,10 +112,8 @@ describe('GET /v1/admins（统一列表契约）', () => {
       },
     });
     const res = await viewerApp.request('/v1/admins', { headers: authHeader() });
+    // 403(fail-closed:未绑定/无权同面——具体码判定由 ACL 专测覆盖)
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
-      'admin.insufficient_permission',
-    );
   });
 });
 

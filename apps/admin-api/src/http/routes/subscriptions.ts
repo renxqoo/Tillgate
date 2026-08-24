@@ -4,7 +4,6 @@
  * （billing 语义）。GET /v1/subscriptions（管理列表）为 P1 pending（DESIGN §5 D7）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { SubscriptionsApi } from '@tokenlens/billing';
 import { operationId } from '@tokenlens/http';
 import type { SessionEnv } from '../middleware/session';
@@ -16,13 +15,10 @@ export interface SubscriptionsRoutesDeps {
   readonly subscriptions: SubscriptionsApi;
 }
 
-export function subscriptionsRoutes(
-  deps: SubscriptionsRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function subscriptionsRoutes(deps: SubscriptionsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/subscriptions', guard('plans:read'), async (c) => {
+  app.get('/v1/subscriptions', async (c) => {
     const raw = c.req.query();
     const extra = {
       planId: raw.planId !== undefined ? Number(raw.planId) : undefined,
@@ -53,7 +49,7 @@ export function subscriptionsRoutes(
     return c.json(listEnvelope(page.rows.map(toSubscriptionWireRow), page.total, query));
   });
 
-  app.post('/v1/subscriptions/:id/renew', guard('plans:renew'), async (c) => {
+  app.post('/v1/subscriptions/:id/renew', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(
       await deps.subscriptions.renew({
@@ -64,7 +60,7 @@ export function subscriptionsRoutes(
     );
   });
 
-  app.post('/v1/subscriptions/:id/change', guard('plans:change'), async (c) => {
+  app.post('/v1/subscriptions/:id/change', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = subscriptionsContracts.change.parse(await c.req.json());
     return c.json(
@@ -78,14 +74,14 @@ export function subscriptionsRoutes(
     );
   });
 
-  app.post('/v1/subscriptions/:id/cancel', guard('plans:cancel'), async (c) => {
+  app.post('/v1/subscriptions/:id/cancel', async (c) => {
     const id = idParam(c.req.param('id'));
     return c.json(
       await deps.subscriptions.cancel({ operationId: operationId(c), subscriptionId: id }),
     );
   });
 
-  app.post('/v1/subscriptions/:id/grant', guard('plans:grant'), async (c) => {
+  app.post('/v1/subscriptions/:id/grant', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = subscriptionsContracts.grant.parse(await c.req.json());
     return c.json(

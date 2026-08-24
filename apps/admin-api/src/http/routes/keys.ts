@@ -3,7 +3,6 @@
  * status 枚举 0..1;非法 99 → 400。keyPreview 脱敏回显,明文永不回显。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { AccountUseCases } from '@tokenlens/accounts';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
@@ -14,13 +13,10 @@ export interface KeysRoutesDeps {
   readonly accounts: Pick<AccountUseCases, 'adminListKeys' | 'adminPatchKey'>;
 }
 
-export function keysRoutes(
-  deps: KeysRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function keysRoutes(deps: KeysRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/admin-keys', guard('users:read'), async (c) => {
+  app.get('/v1/admin-keys', async (c) => {
     const extra = keysContracts.listQueryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), KEY_SORTS, 'createdAt');
     const page = await deps.accounts.adminListKeys({
@@ -35,7 +31,7 @@ export function keysRoutes(
     return c.json(listEnvelope(page.rows.map(toKeyWireRow), page.total, query));
   });
 
-  app.patch('/v1/admin-keys/:id', guard('users:update'), async (c) => {
+  app.patch('/v1/admin-keys/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = keysContracts.patch.parse(await c.req.json());
     const row = await deps.accounts.adminPatchKey({

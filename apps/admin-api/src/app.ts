@@ -24,12 +24,8 @@ import type { Identity } from '@tokenlens/identity';
 import type { PaymentAdminApi } from '@tokenlens/billing';
 import type { GenerationTaskStore } from '@tokenlens/inference';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
-import {
-  sessionMiddleware,
-  type SessionEnv,
-  type SessionValidator,
-} from './http/middleware/session';
-import { guardFactory } from './http/middleware/permission';
+import type { SessionEnv, SessionValidator } from './http/middleware/session';
+import { createAclMiddleware, matchBinding } from './http/middleware/acl';
 import { protocolStack } from './http/middleware/protocol';
 import type { OperationsUseCase, WriteAuditInTx } from './http/routes/users-funds';
 import { usersRoutes } from './http/routes/users';
@@ -59,6 +55,7 @@ import { notificationsRoutes } from './http/routes/notifications';
 import { adminsRoutes } from './http/routes/admins';
 import { rolesRoutes } from './http/routes/roles';
 import { permissionsRoutes } from './http/routes/permissions';
+import { endpointsRoutes } from './http/routes/endpoints';
 import { authRoutes, type AuthGuard, type AuthRoutesDeps } from './http/routes/auth';
 import { meRoutes } from './http/routes/me';
 
@@ -169,12 +166,27 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
     app.use('*', middleware);
   }
 
-  const session = sessionMiddleware(deps.sessions);
-
-  // 动态 RBAC（ADR-0008;docs/admin-rbac-dynamic/DESIGN §3 方案 B）：逐端点 guard(code) 声明——
-  // 码在各路由文件内挂载,完备性由类型签名保证。auth（公开+logout）与 me（自身域）
-  // 挂裸会话件——架构测试锁死仅此两文件。
-  const guard = guardFactory(session);
+  // RBAC 全局 ACL（ADR-0009:执行面数据化——接口→权限绑定住 endpoint_permissions,
+  // 单一事实源）。公开/自身白名单在中间件内;未绑定默认拒绝（fail-closed,超管短路
+  // 可进后台补配绑定 = 兜底恢复路径）。每请求绑定表+权限树各一次查询（~百行小表,
+  // 管理面 QPS 无感;缓存挂账）。
+  const resolveBinding = async (method: string, path: string) => {
+    const [bindings, nodes] = await Promise.all([
+      deps.controlPlane.rbac.endpoints.list(),
+      deps.controlPlane.rbac.permissions.tree(),
+    ]);
+    const matched = matchBinding(
+      bindings.map((row) => ({
+        method: row.method,
+        path: row.path,
+        code: nodes.find((node) => node.id === row.permissionId)?.code ?? '',
+      })),
+      method,
+      path,
+    );
+    return matched != null && matched.code !== '' ? matched : null;
+  };
+  app.use('*', createAclMiddleware(deps.sessions, resolveBinding));
 
   // 探针:healthz/readyz 查 DB(livez 纯 200);K8s/compose healthcheck 不带 Bearer
   app.get('/healthz', async (c) => {
@@ -200,109 +212,86 @@ export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
 
   app.route(
     '/',
-    usersRoutes(
-      {
-        accounts: deps.accounts,
-        wallet: deps.wallet,
-        identity: deps.identity,
-        rates: deps.controlPlane.rates,
-        postAudit: deps.postAudit,
-      },
-      guard,
-    ),
+    usersRoutes({
+      accounts: deps.accounts,
+      wallet: deps.wallet,
+      identity: deps.identity,
+      rates: deps.controlPlane.rates,
+      postAudit: deps.postAudit,
+    }),
   );
   app.route(
     '/',
-    usersFundsRoutes(
-      {
-        accounts: deps.accounts,
-        wallet: deps.wallet,
-        operations: deps.operations,
-        writeAudit: deps.writeAudit,
-        audit: deps.observability.audit,
-      },
-      guard,
-    ),
+    usersFundsRoutes({
+      accounts: deps.accounts,
+      wallet: deps.wallet,
+      operations: deps.operations,
+      writeAudit: deps.writeAudit,
+      audit: deps.observability.audit,
+    }),
   );
-  app.route('/', keysRoutes({ accounts: deps.accounts }, guard));
-  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }, guard));
+  app.route('/', keysRoutes({ accounts: deps.accounts }));
+  app.route('/', providersRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', channelsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', channelFundsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', modelsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', rateCardsRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', fxRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', settingsRoutes({ controlPlane: deps.controlPlane }));
   app.route(
     '/',
-    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }, guard),
+    catalogRoutes({ controlPlane: deps.controlPlane, vendorCatalog: deps.vendorCatalog }),
   );
-  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }, guard));
-  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }, guard));
+  app.route('/', subscriptionsRoutes({ subscriptions: deps.subscriptions }));
+  app.route('/', plansRoutes({ plans: deps.plans, postAudit: deps.postAudit }));
+  app.route('/', redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }));
+  app.route('/', billingOperationsRoutes({ review: deps.review }));
+  app.route('/', tracingRoutes({ observability: deps.observability }));
+  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }));
+  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }));
+  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }));
   app.route(
     '/',
-    redeemRoutes({ redeemBatches: deps.redeemBatches, postAudit: deps.postAudit }, guard),
+    opsOrdersRoutes({ paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason }),
   );
-  app.route('/', billingOperationsRoutes({ review: deps.review }, guard));
-  app.route('/', tracingRoutes({ observability: deps.observability }, guard));
-  app.route('/', opsLogsRoutes({ observability: deps.observability, now: deps.now }, guard));
-  app.route('/', opsUsageRoutes({ observability: deps.observability, now: deps.now }, guard));
-  app.route('/', opsTasksRoutes({ generationTasks: deps.generationTasks }, guard));
-  app.route(
-    '/',
-    opsOrdersRoutes(
-      { paymentAdmin: deps.paymentAdmin, orderCloseReason: deps.orderCloseReason },
-      guard,
-    ),
-  );
-  app.route('/', marketingRoutes({ accounts: deps.accounts }, guard));
-  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }, guard));
-  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }, guard));
-  app.route('/', notificationsRoutes({ notifications: deps.notifications }, guard));
+  app.route('/', marketingRoutes({ accounts: deps.accounts }));
+  app.route('/', referralRoutes({ accounts: deps.accounts, wallet: deps.wallet }));
+  app.route('/', vouchersRoutes({ controlPlane: deps.controlPlane }));
+  app.route('/', notificationsRoutes({ notifications: deps.notifications }));
   // 动态 RBAC 管理面（admins 域码——roles/permissions CRUD 与管理员管理同域同受众）
   app.route(
     '/',
-    adminsRoutes(
-      {
-        admins: deps.controlPlane.admins,
-        identity: deps.identity,
-        postAudit: deps.postAudit,
-      },
-      guard,
-    ),
+    adminsRoutes({
+      admins: deps.controlPlane.admins,
+      identity: deps.identity,
+      postAudit: deps.postAudit,
+    }),
   );
-  app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }, guard));
-  app.route(
-    '/',
-    permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }, guard),
-  );
+  app.route('/', rolesRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.route('/', permissionsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
+  app.route('/', endpointsRoutes({ rbac: deps.controlPlane.rbac, postAudit: deps.postAudit }));
   // P2 登录面:auth 公开组（登录/验码不挂会话件;logout 挂）+ me 会话组
   app.route(
     '/',
-    authRoutes(
-      {
-        identity: deps.identity,
-        admins: deps.controlPlane.admins,
-        guards: deps.authGuards,
-        loginAudit: deps.loginAudit,
-        trustedProxyHops: deps.trustedProxyHops,
-        mailerConfigured: deps.mailerConfigured,
-        sessionTtlSec: deps.sessionTtlSec,
-      },
-      session,
-    ),
+    authRoutes({
+      identity: deps.identity,
+      admins: deps.controlPlane.admins,
+      guards: deps.authGuards,
+      loginAudit: deps.loginAudit,
+      trustedProxyHops: deps.trustedProxyHops,
+      mailerConfigured: deps.mailerConfigured,
+      sessionTtlSec: deps.sessionTtlSec,
+    }),
   );
   app.route(
     '/',
-    meRoutes(
-      {
-        identity: deps.identity,
-        admins: deps.controlPlane.admins,
-        rbac: deps.controlPlane.rbac,
-        mailerConfigured: deps.mailerConfigured,
-        sessionTtlSec: deps.sessionTtlSec,
-      },
-      session,
-    ),
+    meRoutes({
+      identity: deps.identity,
+      admins: deps.controlPlane.admins,
+      rbac: deps.controlPlane.rbac,
+      mailerConfigured: deps.mailerConfigured,
+      sessionTtlSec: deps.sessionTtlSec,
+    }),
   );
 
   return app;

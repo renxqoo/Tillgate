@@ -7,7 +7,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import { errorHandler } from '@tokenlens/http';
-import { guardFactory } from '../src/http/middleware/permission';
 import { sessionMiddleware, type SessionEnv } from '../src/http/middleware/session';
 import { createIdentityAuditSinkBridge } from '../src/adapters/identity-audit-bridge';
 import { authRoutes } from '../src/http/routes/auth';
@@ -16,69 +15,55 @@ import { meRoutes, type MeRoutesDeps } from '../src/http/routes/me';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
 import { loadAdminApiConfig } from '../src/config';
 import { mfaStub } from './helpers';
-import type { MiddlewareHandler } from 'hono';
 
 const json = { 'content-type': 'application/json' };
 const TOKEN = 'tok';
 const ADMIN_ID = 7;
 
-const validSession: MiddlewareHandler<SessionEnv> = async (c, next) => {
-  c.set('requestId', 'req');
-  c.set('adminId', ADMIN_ID);
-  c.set('grants', { isSuper: true, codes: [] });
-  c.set('sessionToken', TOKEN);
-  c.set('sessionJti', 'j');
-  c.set('sessionExp', 9999999999);
-  await next();
-};
-
 function bare(): Hono<SessionEnv> {
-  const app = authRoutes(
-    {
-      identity: {
-        mfa: mfaStub(),
-        passwords: {
-          authenticate: async () => ({ userId: ADMIN_ID }),
-          change: async () => ({ invalidBefore: 'x' }),
-          reset: async () => ({ invalidBefore: 'x' }),
-        },
-        challenges: {
-          begin: (async () => ({ challengeId: 'c' })) as never,
-          verify: (async () => ({ payload: {} })) as never,
-          abort: async () => ({ aborted: true }),
-        },
-        sessions: {
-          sign: async () => 't',
-          verify: async () => {
-            throw new Error('u');
-          },
-          validate: async () => null,
-          logout: async () => ({ ok: true as const }),
-        },
+  const app = authRoutes({
+    identity: {
+      mfa: mfaStub(),
+      passwords: {
+        authenticate: async () => ({ userId: ADMIN_ID }),
+        change: async () => ({ invalidBefore: 'x' }),
+        reset: async () => ({ invalidBefore: 'x' }),
       },
-      admins: {
-        findByEmail: async () => null,
-        find: async () => null,
-        touchLastLogin: async () => undefined,
+      challenges: {
+        begin: (async () => ({ challengeId: 'c' })) as never,
+        verify: (async () => ({ payload: {} })) as never,
+        abort: async () => ({ aborted: true }),
       },
-      guards: {
-        emailIp: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => undefined,
-          recordSuccess: async () => undefined,
+      sessions: {
+        sign: async () => 't',
+        verify: async () => {
+          throw new Error('u');
         },
-        ip: {
-          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => undefined,
-        },
+        validate: async () => null,
+        logout: async () => ({ ok: true as const }),
       },
-      loginAudit: async () => undefined,
-      trustedProxyHops: 0,
-      mailerConfigured: false,
-      sessionTtlSec: 3600,
     },
-    validSession,
-  );
+    admins: {
+      findByEmail: async () => null,
+      find: async () => null,
+      touchLastLogin: async () => undefined,
+    },
+    guards: {
+      emailIp: {
+        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordFailure: async () => undefined,
+        recordSuccess: async () => undefined,
+      },
+      ip: {
+        isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+        recordFailure: async () => undefined,
+      },
+    },
+    loginAudit: async () => undefined,
+    trustedProxyHops: 0,
+    mailerConfigured: false,
+    sessionTtlSec: 3600,
+  });
   app.onError((error, c) =>
     errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
   );
@@ -245,7 +230,7 @@ describe('auth/me 未走分支', () => {
       mailerConfigured: true,
       sessionTtlSec: 3600,
     };
-    const app = meRoutes(meDeps, validSession);
+    const app = meRoutes(meDeps);
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
     const missing = await app.request('/v1/me', { headers: { authorization: `Bearer ${TOKEN}` } });
     expect(missing.status).toBe(404);
@@ -267,64 +252,61 @@ describe('auth/me 未走分支', () => {
   });
 
   it('登录成功但 touch/审计为 best-effort 分支（audit 拒绝不阻断登录）', async () => {
-    const app = authRoutes(
-      {
-        identity: {
-          mfa: mfaStub(),
-          passwords: {
-            authenticate: async () => ({ userId: ADMIN_ID }),
-            change: async () => ({ invalidBefore: 'x' }),
-            reset: async () => ({ invalidBefore: 'x' }),
-          },
-          challenges: {
-            begin: (async () => ({ challengeId: 'c' })) as never,
-            verify: (async () => ({ payload: {} })) as never,
-            abort: async () => ({ aborted: true }),
-          },
-          sessions: {
-            sign: async () => 'signed',
-            verify: async () => {
-              throw new Error('u');
-            },
-            validate: async () => null,
-            logout: async () => ({ ok: true as const }),
-          },
+    const app = authRoutes({
+      identity: {
+        mfa: mfaStub(),
+        passwords: {
+          authenticate: async () => ({ userId: ADMIN_ID }),
+          change: async () => ({ invalidBefore: 'x' }),
+          reset: async () => ({ invalidBefore: 'x' }),
         },
-        admins: {
-          findByEmail: async () => ({
-            id: ADMIN_ID,
-            email: 'ops@tokenlens.dev',
-            displayName: null,
-            status: 0,
-            roleId: 1,
-            role: 'super_admin',
-            twoFactorEnabled: false,
-            lastLoginAt: null,
-            createdAt: new Date(0),
-          }),
-          find: async () => null,
-          touchLastLogin: async () => undefined,
+        challenges: {
+          begin: (async () => ({ challengeId: 'c' })) as never,
+          verify: (async () => ({ payload: {} })) as never,
+          abort: async () => ({ aborted: true }),
         },
-        guards: {
-          emailIp: {
-            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-            recordFailure: async () => undefined,
-            recordSuccess: async () => undefined,
+        sessions: {
+          sign: async () => 'signed',
+          verify: async () => {
+            throw new Error('u');
           },
-          ip: {
-            isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-            recordFailure: async () => undefined,
-          },
+          validate: async () => null,
+          logout: async () => ({ ok: true as const }),
         },
-        loginAudit: async () => {
-          throw new Error('audit down');
-        },
-        trustedProxyHops: 0,
-        mailerConfigured: false,
-        sessionTtlSec: 3600,
       },
-      validSession,
-    );
+      admins: {
+        findByEmail: async () => ({
+          id: ADMIN_ID,
+          email: 'ops@tokenlens.dev',
+          displayName: null,
+          status: 0,
+          roleId: 1,
+          role: 'super_admin',
+          twoFactorEnabled: false,
+          lastLoginAt: null,
+          createdAt: new Date(0),
+        }),
+        find: async () => null,
+        touchLastLogin: async () => undefined,
+      },
+      guards: {
+        emailIp: {
+          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+          recordFailure: async () => undefined,
+          recordSuccess: async () => undefined,
+        },
+        ip: {
+          isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
+          recordFailure: async () => undefined,
+        },
+      },
+      loginAudit: async () => {
+        throw new Error('audit down');
+      },
+      trustedProxyHops: 0,
+      mailerConfigured: false,
+      sessionTtlSec: 3600,
+    });
     app.onError((error, c) =>
       errorHandler({ catalog: adminErrorCatalog, overrides: ADMIN_FACE_OVERRIDES })(error, c),
     );
@@ -434,7 +416,7 @@ describe('users set-password（D6 分支面）', () => {
       },
       postAudit,
     };
-    const app = usersRoutes(deps as never, guardFactory(validSession));
+    const app = usersRoutes(deps as never);
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
     return { app, patch, reset, updateCard, postAudit };
   }
@@ -484,20 +466,17 @@ describe('users set-password（D6 分支面）', () => {
 describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', () => {
   it('price-history:externalName 缺失/空串/超长一律 400;合法值透传', async () => {
     const { catalogRoutes } = await import('../src/http/routes/catalog');
-    const app = catalogRoutes(
-      {
-        controlPlane: {
-          catalog: {
-            listSources: () => [],
-            priceHistory: EMPTY_PRICE_HISTORY,
-            comparison: async () => ({}) as never,
-            import: async () => ({}) as never,
-          },
+    const app = catalogRoutes({
+      controlPlane: {
+        catalog: {
+          listSources: () => [],
+          priceHistory: EMPTY_PRICE_HISTORY,
+          comparison: async () => ({}) as never,
+          import: async () => ({}) as never,
         },
-        vendorCatalog: { protocols: [], vendors: [] },
-      } as never,
-      guardFactory(validSession),
-    );
+      },
+      vendorCatalog: { protocols: [], vendors: [] },
+    } as never);
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
     for (const qs of ['', '?externalName=', '?externalName=' + 'x'.repeat(65)]) {
       const res = await app.request(`/v1/model-catalog/price-history${qs}`, {

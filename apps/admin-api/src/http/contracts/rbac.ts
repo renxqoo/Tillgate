@@ -50,12 +50,17 @@ export const rbacContracts = {
       i18nKey: z.string().trim().max(128).nullable().optional(),
       description: z.string().trim().max(512).nullable().optional(),
       icon: z.string().trim().max(64).nullable().optional(),
+      path: z.string().trim().max(255).nullable().optional(),
       sortOrder: z.number().int().min(0).max(9999).optional(),
       status: z
         .number()
         .int()
         .refine((v) => v === 0 || v === 1)
         .optional(),
+      code: z.string().trim().max(64).nullable().optional(),
+      type: z.enum(['group', 'page', 'button']).optional(),
+      parentId: z.number().int().min(1).nullable().optional(),
+      source: z.enum(['enforced', 'custom']).optional(),
     })
     .refine((b) => Object.keys(b).length > 0, { message: 'at least one field is required' }),
 } as const;

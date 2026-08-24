@@ -5,7 +5,6 @@
  * hours 收口逐字随迁 v1（Math.min/max + NaN→24,不走 zod 400——容错语义）。
  */
 import { Hono } from 'hono';
-import type { MiddlewareHandler } from 'hono';
 import type { Observability } from '@tokenlens/observability';
 import type { SessionEnv } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
@@ -18,14 +17,11 @@ export interface OpsUsageRoutesDeps {
   readonly now: () => Date;
 }
 
-export function opsUsageRoutes(
-  deps: OpsUsageRoutesDeps,
-  guard: (code: string) => MiddlewareHandler<SessionEnv>,
-) {
+export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   const app = new Hono<SessionEnv>();
   const usage = deps.observability.usage;
 
-  app.get('/v1/usage-logs', guard('ops:read'), async (c) => {
+  app.get('/v1/usage-logs', async (c) => {
     const extra = usageContracts.queryExtra.parse(c.req.query());
     const query = parseListQuery(c.req.query(), USAGE_SORTS, 'createdAt');
     const result = await usage.adminList({
@@ -49,11 +45,9 @@ export function opsUsageRoutes(
     return c.json(listEnvelope(result.rows.map(toUsageWireRow), result.total, query));
   });
 
-  app.get('/v1/stats/overview', guard('ops:read'), async (c) =>
-    c.json(await usage.overview({ now: deps.now() })),
-  );
+  app.get('/v1/stats/overview', async (c) => c.json(await usage.overview({ now: deps.now() })));
 
-  app.get('/v1/stats/usage', guard('ops:read'), async (c) => {
+  app.get('/v1/stats/usage', async (c) => {
     const query = statsContracts.usage.parse(c.req.query());
     return c.json(
       await usage.groups({
@@ -64,12 +58,12 @@ export function opsUsageRoutes(
     );
   });
 
-  app.get('/v1/stats/trends', guard('ops:read'), async (c) => {
+  app.get('/v1/stats/trends', async (c) => {
     const query = statsContracts.trends.parse(c.req.query());
     return c.json(await usage.trends({ days: query.days, now: deps.now() }));
   });
 
-  app.get('/v1/analytics/channel-ttft', guard('ops:read'), async (c) => {
+  app.get('/v1/analytics/channel-ttft', async (c) => {
     // v1 容错收口:非数/缺省 → 24,越界钳到 [1, 720](不 400)
     const hours = Math.min(720, Math.max(1, Number(c.req.query('hours')) || 24));
     return c.json(await usage.channelTtft({ hours, now: deps.now() }));

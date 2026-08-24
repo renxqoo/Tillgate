@@ -35,19 +35,31 @@ describe('admin-api app 骨架', () => {
     expect(await ready.json()).toEqual({ status: 'ok', dependencies: { postgres: 'up' } });
   });
 
-  it('未知路径 404 统一信封(不泄漏路由清单)', async () => {
+  it('未知 /v1 路径:无凭据 401/有凭据 403 endpoint_unbound(fail-closed 取代 404 探测抗性——不泄漏路由清单)', async () => {
     const app = createAdminApp(fakeDeps({}));
-    const res = await app.request('/v1/does-not-exist');
-    expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({
+    const noToken = await app.request('/v1/does-not-exist');
+    expect(noToken.status).toBe(401);
+    // 超管令牌:isSuper 短路放行 → 未匹配路由落 404（不泄漏）
+    const superToken = await app.request('/v1/does-not-exist', { headers: authHeader() });
+    expect(superToken.status).toBe(404);
+    // 非超管令牌:未绑定 fail-closed 403 endpoint_unbound
+    const base = fakeDeps({});
+    const limited = createAdminApp({
+      ...base,
+      sessions: {
+        validate: base.sessions.validate,
+        owner: async () => ({ status: 0, grants: { isSuper: false, codes: ['users:read'] } }),
+      },
+    });
+    const denied = await limited.request('/v1/does-not-exist', { headers: authHeader() });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ error: { code: 'admin.endpoint_unbound' } });
+    // 非 /v1 未知路径保持 404 统一信封（ACL 只守 /v1/*）
+    const outside = await app.request('/does-not-exist');
+    expect(outside.status).toBe(404);
+    expect(await outside.json()).toEqual({
       error: { code: 'http.not_found', message: 'Path not found' },
     });
-  });
-
-  it('未注册的 /v1 路径 404 而非 401(会话逐路由挂载——v1 语义)', async () => {
-    const app = createAdminApp(fakeDeps({}));
-    const res = await app.request('/v1/unknown-resource');
-    expect(res.status).toBe(404);
   });
 
   it('P2 登录面经 createAdminApp 挂载(auth/me 未挂载即 404——装配缺位回归锁)', async () => {
