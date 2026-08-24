@@ -48,7 +48,9 @@ describe('client-api shutdown', () => {
     const h = buildHarness();
     const shutdown = createClientShutdown({ ...h.deps, exit: h.exit });
     shutdown('SIGTERM');
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(h.calls).toEqual(['server', 'otel', 'redis', 'db']);
     expect(h.exitCodes).toEqual([0]);
   });
@@ -58,7 +60,9 @@ describe('client-api shutdown', () => {
     const shutdown = createClientShutdown({ ...h.deps, exit: h.exit });
     shutdown('SIGTERM');
     shutdown('SIGINT');
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(h.exitCodes).toEqual([0]);
     expect(h.calls.filter((c) => c === 'server')).toHaveLength(1);
   });

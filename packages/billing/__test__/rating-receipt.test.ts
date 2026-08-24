@@ -135,7 +135,7 @@ describe('估算归属词表（封闭性）', () => {
   });
 
   it('streamEstimateAttribution：undefined→completed；用户取消归一；未知值绝不回落 completed', () => {
-    expect(streamEstimateAttribution(undefined)).toBe('usage_missing_completed');
+    expect(streamEstimateAttribution()).toBe('usage_missing_completed');
     expect(streamEstimateAttribution('aborted')).toBe('client_disconnect');
     expect(streamEstimateAttribution('inactivity')).toBe('inactivity_timeout');
     expect(streamEstimateAttribution('server_draining')).toBe('server_draining');

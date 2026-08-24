@@ -17,9 +17,10 @@ export interface OpsUsageRoutesDeps {
   readonly now: () => Date;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function opsUsageRoutes(deps: OpsUsageRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const usage = deps.observability.usage;
+  const { usage } = deps.observability;
 
   app.get('/v1/usage-logs', async (c) => {
     const extra = usageContracts.queryExtra.parse(c.req.query());

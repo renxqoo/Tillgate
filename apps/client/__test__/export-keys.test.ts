@@ -7,9 +7,11 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
-    get: () => undefined,
+    get: () => {},
     set: vi.fn(),
     delete: vi.fn(),
     has: () => false,
@@ -91,12 +93,12 @@ describe('exportKeysAction（B18：全量翻页导出）', () => {
 
     expect(res.error).toBeUndefined();
     expect(res.rows).toHaveLength(250);
-    expect(res.rows!.at(-1)!.name).toBe('key-250');
+    expect(defined(defined(res.rows, 'res.rows').at(-1), 'last row').name).toBe('key-250');
     // 出站查询逐页递增（经既有 list 动词，limit=100 每页）
     expect(calls).toHaveLength(3);
-    expect(calls[0]!.url).toContain('/v1/keys?page=1&limit=100');
-    expect(calls[1]!.url).toContain('page=2');
-    expect(calls[2]!.url).toContain('page=3');
+    expect(defined(calls[0], 'calls[0]').url).toContain('/v1/keys?page=1&limit=100');
+    expect(defined(calls[1], 'calls[1]').url).toContain('page=2');
+    expect(defined(calls[2], 'calls[2]').url).toContain('page=3');
   });
 
   it('上限保护：total=5000 只拉 10 页（1000 条）即停，不发第 11 次请求', async () => {

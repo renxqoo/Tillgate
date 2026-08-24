@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
 import { installNextStubs, mockCookieJar, mockFetch, type FetchCall } from './harness';
 
 async function loadModule(path: string, responses: Array<{ status?: number; body?: unknown }>) {
@@ -17,7 +18,7 @@ async function loadModule(path: string, responses: Array<{ status?: number; body
 }
 
 function last(calls: FetchCall[]): FetchCall {
-  return calls[calls.length - 1]!;
+  return defined(calls.at(-1), 'last fetch call');
 }
 
 async function loadGetAdmin(
@@ -36,7 +37,7 @@ async function loadGetAdmin(
     cookies: async () => jar,
     headers: async () => new Map([['accept-language', 'en']]),
   }));
-  vi.doMock('next/cache', () => ({ revalidatePath: () => undefined }));
+  vi.doMock('next/cache', () => ({ revalidatePath: () => {} }));
   vi.doMock('next/navigation', () => ({
     redirect: (path: string) => {
       redirectCalls.push(path);
@@ -301,13 +302,16 @@ describe('get-admin 守卫与菜单解析', () => {
     };
     const { mod } = await loadGetAdmin([{ status: 200, body: menusBody }]);
     const groups = await mod.requireMenus();
-    expect(groups[0]!.label).toBe('nav.groupSystem'); // 命中词条
-    expect(groups[0]!.items.map((i) => i.name)).toEqual(['用户', '自定义页']);
-    expect(groups[0]!.items[0]).toMatchObject({ path: '/dashboard/users', icon: 'Users' });
+    expect(defined(groups[0], 'groups[0]').label).toBe('nav.groupSystem'); // 命中词条
+    expect(defined(groups[0], 'groups[0]').items.map((i) => i.name)).toEqual(['用户', '自定义页']);
+    expect(defined(groups[0], 'groups[0]').items[0]).toMatchObject({
+      path: '/dashboard/users',
+      icon: 'Users',
+    });
 
     // 词条未命中(nav.groupSystem 不在已知集)→ 回落 DB name
     const { mod: m2 } = await loadGetAdmin([{ status: 200, body: menusBody }], []);
-    expect((await m2.requireMenus())[0]!.label).toBe('系统管理');
+    expect(defined(await m2.requireMenus(), 'menus')[0]?.label).toBe('系统管理');
   });
 });
 
@@ -318,7 +322,7 @@ describe('config/lib 纯函数补零', () => {
     expect(menuIconOf('Plug')).toBeTruthy();
     expect(menuIconOf('NotExist')).toBeTruthy(); // 兜底组件
     expect(menuIconOf(null)).toBeTruthy();
-    expect(menuIconOf(undefined)).toBeTruthy();
+    expect(menuIconOf()).toBeTruthy();
   });
 
   it('isLocale:en/zh 收;其余与空拒', async () => {

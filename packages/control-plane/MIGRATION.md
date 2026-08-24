@@ -17,7 +17,7 @@
 | `__tests__/rate-cards.test.ts` (5)                                                             | `__test__/rate-cards.test.ts`                                  | 改写：含 M1 回归（global 行不抹 model 覆写行）                     |
 | `__tests__/fx.test.ts` (4)                                                                     | `__test__/fx.test.ts`                                          | 改写：懒拉/TTL/覆盖冻结/点差/校验（fetch 注入，无真 ECB）          |
 | `__tests__/catalog.test.ts` (17)                                                               | `__test__/domain-catalog.test.ts` + `__test__/catalog.test.ts` | 拆分：纯函数原样移植；服务行为改写（mock 源注入）                  |
-| `packages/core/__tests__/crypto.test.ts` (5)                                                   | 不迁                                                           | cipher 归 `@tillgate/runtime`（已覆盖，44 用例绿）                |
+| `packages/core/__tests__/crypto.test.ts` (5)                                                   | 不迁                                                           | cipher 归 `@tillgate/runtime`（已覆盖，44 用例绿）                 |
 | `__tests__/coverage-gaps.test.ts` / `security.test.ts` / `e2e-crud-sweep.test.ts` 中控制面部分 | 并入上述各文件                                                 | 改写为对应单元边界用例                                             |
 
 **删除的旧用例**：无（全部行为有落位）。**未移植旧能力**：网关读模型族/管理员凭据/运维审计列表——裁决 G1/G2/G3（IMPLEMENTATION §1.3），非本单元范围。

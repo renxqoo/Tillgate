@@ -97,6 +97,7 @@ export interface SettlementApi {
   currentStatus(requestId: string): Promise<string | null>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 结算门面编排
 export function createSettlementApi(deps: SettlementDeps): SettlementApi {
   const settleClaim = createSettleClaimUseCase({
     store: deps.store,

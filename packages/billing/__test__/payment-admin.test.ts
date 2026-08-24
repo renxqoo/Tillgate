@@ -4,6 +4,7 @@ import { createInMemoryPaymentStores } from '../src/testing/in-memory-payment-st
 import { PAYMENT_ORDER_SORT_FIELDS } from '../src/ports/payment-ports';
 import { isBusinessError } from '@tillgate/errors';
 import type { BillingStore } from '../src/ports/billing-store';
+import { defined } from './defined.js';
 
 /**
  * 支付订单管理面用例(admin-api P4):管理列表(q 双锚/排序/分页/total)+
@@ -72,7 +73,7 @@ describe('payment admin:list(管理列表语义)', () => {
 
     const byId = await api.list({ q: target, sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
     expect(byId.total).toBe(1);
-    expect(byId.rows[0]!.id).toBe(target);
+    expect(defined(byId.rows[0]).id).toBe(target);
 
     const byName = await api.list({
       q: 'nobody',

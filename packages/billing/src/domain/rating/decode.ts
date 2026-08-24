@@ -19,16 +19,19 @@ export function finiteDecimal(value: string): Decimal | null {
   }
 }
 
+// eslint-disable-next-line complexity -- 用量收据防御式解码:垃圾形状枚举分支平铺
 export function decodeReceipt(
   value: UsageReceipt | string | Record<string, unknown> | null,
 ): UsageReceipt {
   const receipt = (typeof value === 'string' ? JSON.parse(value) : value) as UsageReceipt | null;
   const usage = receipt?.usage;
-  const numeric = usage
-    ? [usage.inputTokens, usage.cachedInputTokens, usage.outputTokens, receipt!.durationMs]
-    : [];
+  // usage 非空蕴涵 receipt 非空(usage 派生自 receipt?.usage),条件位显式收窄
+  const numeric =
+    usage && receipt
+      ? [usage.inputTokens, usage.cachedInputTokens, usage.outputTokens, receipt.durationMs]
+      : [];
   const prices = receipt
-    ? [receipt!.inputPrice, receipt!.outputPrice, receipt!.cacheInputPrice, receipt!.coefficient]
+    ? [receipt.inputPrice, receipt.outputPrice, receipt.cacheInputPrice, receipt.coefficient]
     : [];
   if (
     !receipt ||

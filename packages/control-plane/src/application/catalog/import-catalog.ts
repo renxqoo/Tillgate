@@ -84,6 +84,7 @@ function providerSlugOf(realModel: string): string {
   return (slash > 0 ? realModel.slice(0, slash) : realModel).slice(0, SLUG_MAX);
 }
 
+// eslint-disable-next-line max-lines-per-function -- 目录导入事务体:渠道 find-or-create+逐模型 upsert 编排
 export async function importCatalog(
   deps: ImportCatalogDeps,
   input: ImportCatalogInput,
@@ -101,6 +102,7 @@ export async function importCatalog(
   const prefillOf = (price: string): string | null =>
     toCny(price, source.priceCurrency, fxStateNow.effectiveRate);
 
+  // eslint-disable-next-line max-lines-per-function, max-statements, complexity -- 目录导入事务回调:顺序步骤编排,拆分需跨闭包共享 tx 与计数器
   const result = await deps.db.transaction(async (tx) => {
     let providerId: number | null = null;
     let channelId: number | null = null;
@@ -217,6 +219,10 @@ export async function importCatalog(
         continue;
       }
 
+      // 渠道型:上方 find-or-create 必已解析 channelId,守卫收窄替代非空断言
+      if (channelId === null) {
+        throw new Error('catalog_channel_unresolved');
+      }
       if (existingMapping) {
         if (existingMapping.realModel !== m.realModel) {
           // 外部名被其他真实模型占用 → 整体回滚（不留半成品）
@@ -236,7 +242,7 @@ export async function importCatalog(
         });
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: existingMapping.id,
-          channelId: channelId!,
+          channelId,
         });
         updated += 1;
       } else {
@@ -249,7 +255,7 @@ export async function importCatalog(
         });
         await deps.stores.model.ensureModelChannelBinding(tx, {
           mappingId: inserted.id,
-          channelId: channelId!,
+          channelId,
         });
         created += 1;
       }

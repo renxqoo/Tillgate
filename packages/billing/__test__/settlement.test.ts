@@ -11,6 +11,7 @@ import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store
 import { seedChannel } from '../src/testing/in-memory-billing-store.js';
 import { createInMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
 import type { UsageReceipt } from '../src/domain/rating/types.js';
+import { defined } from './defined.js';
 
 let userSeq = 900;
 let reqSeq = 0;
@@ -57,7 +58,7 @@ function harness() {
     channels: world.channels,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date(),
-    onError: () => undefined,
+    onError: () => {},
   });
   return { wallet, walletMemory, world, billing, settlement };
 }
@@ -134,15 +135,15 @@ describe('结算管线（claim → settle）', () => {
     const h = harness();
     const { userId, requestId } = await toPending(h); // 实扣 2（1M×2/1M）
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    expect(claim!.requestId).toBe(requestId);
-    const result = await h.settlement.processClaim(claim!);
+    expect(defined(claim).requestId).toBe(requestId);
+    const result = await h.settlement.processClaim(defined(claim));
     expect(result).toBe('settled');
-    const account = (await h.wallet.accounts(userId))[0]!;
+    const account = defined((await h.wallet.accounts(userId))[0]);
     expect(account.balance).toBe('8');
     expect(account.inFlight).toBe('0');
-    const row = h.world.fixtures.requests.get(requestId)!;
+    const row = defined(h.world.fixtures.requests.get(requestId));
     expect(row.status).toBe('settled');
-    const usage = h.world.fixtures.usageLogs.get(requestId)!;
+    const usage = defined(h.world.fixtures.usageLogs.get(requestId));
     expect(usage.calculatedAmount).toBe('2');
     expect(usage.billedBy).toBe('payg');
   });
@@ -151,11 +152,11 @@ describe('结算管线（claim → settle）', () => {
     const h = harness();
     const { userId } = await toPending(h, 250_000); // 实扣 0.5（预留 2）
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('settled');
-    expect((await h.wallet.accounts(userId))[0]!.balance).toBe('9.5');
+    expect(defined((await h.wallet.accounts(userId))[0]).balance).toBe('9.5');
     // 认领失效 + usage_logs 已有记录 → already_settled（幂等返回首笔金额）
-    const stale = { ...claim!, claimToken: 'ghost' };
+    const stale = { ...defined(claim), claimToken: 'ghost' };
     const result = await h.settlement.settleClaim(stale);
     expect(result).toMatchObject({ outcome: 'already_settled', amount: '0.5' });
     // 无 usage 记录的失效认领才是 claim_lost
@@ -170,24 +171,24 @@ describe('结算管线（claim → settle）', () => {
     const h = harness();
     const { userId, requestId } = await toPending(h, 0); // 全免 usage
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('settled');
-    const account = (await h.wallet.accounts(userId))[0]!;
+    const account = defined((await h.wallet.accounts(userId))[0]);
     expect(account.balance).toBe('10');
     expect(account.inFlight).toBe('0');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('settled');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('settled');
   });
 
   it('毒收据：死信（不重试）——B3 家族经结算管线分型', async () => {
     const h = harness();
     const { requestId } = await toPending(h);
     // 篡改收据价格为垃圾串 → decode 守卫毒收据 → dead
-    const row = h.world.fixtures.requests.get(requestId)!;
+    const row = defined(h.world.fixtures.requests.get(requestId));
     row.receipt = { ...row.receipt, inputPrice: 'garbage' };
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('dead');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
   });
 
   it('瞬态失败：退避重试（retry_wait + 退避时间），再领成功', async () => {
@@ -200,9 +201,9 @@ describe('结算管线（claim → settle）', () => {
     ).createFailureUseCase({
       store: h.world.billing,
       policy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
-    })(claim!, new Error('ECONNRESET'));
+    })(defined(claim), new Error('ECONNRESET'));
     expect(retried).toBe('retried');
-    const row = h.world.fixtures.requests.get(requestId)!;
+    const row = defined(h.world.fixtures.requests.get(requestId));
     expect(row.status).toBe('retry_wait');
     // 重领后完整结算
     const [claim2] = await h.settlement.claim({
@@ -210,8 +211,8 @@ describe('结算管线（claim → settle）', () => {
       batchSize: 10,
       claimLeaseMs: 5_000,
     });
-    expect(claim2!.requestId).toBe(requestId);
-    expect(await h.settlement.processClaim(claim2!)).toBe('settled');
+    expect(defined(claim2).requestId).toBe(requestId);
+    expect(await h.settlement.processClaim(defined(claim2))).toBe('settled');
   });
 });
 
@@ -280,9 +281,9 @@ describe('恢复三路径', () => {
     });
     const result = await h.settlement.recover({ batchSize: 10 });
     expect(result.released).toBe(2);
-    expect((await h.wallet.accounts(userIdA))[0]!.inFlight).toBe('0');
-    expect((await h.wallet.accounts(userIdB))[0]!.inFlight).toBe('0');
-    expect(h.world.fixtures.requests.get(requestIdA)!.status).toBe('released');
+    expect(defined((await h.wallet.accounts(userIdA))[0]).inFlight).toBe('0');
+    expect(defined((await h.wallet.accounts(userIdB))[0]).inFlight).toBe('0');
+    expect(defined(h.world.fixtures.requests.get(requestIdA)).status).toBe('released');
   });
 
   it('processing 认领租约过期 → retry_wait 可重领（再走完整结算）', async () => {
@@ -290,18 +291,18 @@ describe('恢复三路径', () => {
     const { requestId } = await toPending(h);
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
     // 模拟 worker 崩溃：租约过期 → requeue → retry_wait 可重领
-    h.world.fixtures.requests.get(requestId)!.claimUntil = new Date(Date.now() - 1);
+    defined(h.world.fixtures.requests.get(requestId)).claimUntil = new Date(Date.now() - 1);
     const requeued = await h.world.billing.transaction((tx) =>
       h.world.billing.requeueExpiredClaims(tx, 10),
     );
     expect(requeued).toBe(1);
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('retry_wait');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('retry_wait');
     const [reclaim] = await h.settlement.claim({
       ownerId: 'w2',
       batchSize: 10,
       claimLeaseMs: 5_000,
     });
-    expect(reclaim!.requestId).toBe(requestId);
+    expect(defined(reclaim).requestId).toBe(requestId);
     void claim;
   });
 
@@ -309,10 +310,10 @@ describe('恢复三路径', () => {
     const h = harness();
     const { requestId } = await toPending(h);
     await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 60_000 });
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('processing');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('processing');
     const returned = await h.settlement.abandonOwnedClaims('w1');
     expect(returned).toBe(1);
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('retry_wait');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('retry_wait');
   });
 });
 
@@ -363,30 +364,30 @@ describe('结算渠道链路与钩子', () => {
       authorizationTtlMs: 60_000,
     });
     await h.billing.reserveChannel({ requestId, channelId, amount: '2' });
-    expect(h.world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('2');
+    expect(defined(h.world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('2');
     await h.billing.signal({
       type: 'request.succeeded',
       requestId,
       receipt: receiptFor(requestId, userId),
     });
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const result = await h.settlement.settleClaim(claim!);
+    const result = await h.settlement.settleClaim(defined(claim));
     expect(result).toMatchObject({ outcome: 'settled', channelCircuitBroken: true });
     // 敞口归还 + 预算扣减（2 − 2 = 0 ≤ 阈值 0.5 → 熔断）
-    expect(h.world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('0');
-    expect(h.world.fixtures.channelsMap.get(channelId)!.status).toBe(3);
+    expect(defined(h.world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('0');
+    expect(defined(h.world.fixtures.channelsMap.get(channelId)).status).toBe(3);
     void userId;
   });
 
   it('结算归属校验：收据 userId 与账单错配 → receipt_user_mismatch → dead', async () => {
     const h = harness();
     const { requestId } = await toPending(h);
-    const row = h.world.fixtures.requests.get(requestId)!;
-    row.receipt = { ...row.receipt!, userId: 424242 };
+    const row = defined(h.world.fixtures.requests.get(requestId));
+    row.receipt = { ...defined(row.receipt), userId: 424242 };
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('dead');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
   });
 
   it('onSettled 钩子：事务后携金额触发；钩子异常不反杀结算', async () => {
@@ -404,7 +405,7 @@ describe('结算渠道链路与钩子', () => {
       channels: h.world.channels,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
-      onError: () => undefined,
+      onError: () => {},
       onSettled: (data) => {
         observed = { requestId: data.requestId, amount: data.amount };
         throw new Error('hook exploded');
@@ -412,7 +413,7 @@ describe('结算渠道链路与钩子', () => {
     });
     const { requestId } = await toPending(h);
     const [claim] = await settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await settlement.processClaim(claim!);
+    const outcome = await settlement.processClaim(defined(claim));
     expect(outcome).toBe('settled');
     expect(observed).toEqual({ requestId, amount: '2' });
   });
@@ -451,7 +452,7 @@ describe('结算渠道链路与钩子', () => {
       ids.push(requestId);
     }
     // 篡改第一笔的总预扣（制造明细脱节）
-    h.world.fixtures.requests.get(ids[0]!)!.reservedAmount = '999';
+    defined(h.world.fixtures.requests.get(defined(ids[0]))).reservedAmount = '999';
     const errors: string[] = [];
     const recoverResult = await (
       await import('../src/application/settlement/recover.js')
@@ -468,7 +469,7 @@ describe('结算渠道链路与钩子', () => {
     })({ batchSize: 10 });
     expect(recoverResult.released).toBe(1); // 毒行被隔离，健康行归还
     expect(errors.length).toBeGreaterThan(0);
-    expect(h.world.fixtures.requests.get(ids[1]!)!.status).toBe('released');
+    expect(defined(h.world.fixtures.requests.get(defined(ids[1]))).status).toBe('released');
   });
 });
 
@@ -491,7 +492,7 @@ describe('分支封口补充', () => {
       claimToken: 'ghost',
       revision: 0,
       attempt: 1,
-      receipt: b ? h.world.fixtures.requests.get(b.requestId)!.receipt : null,
+      receipt: b ? defined(h.world.fixtures.requests.get(b.requestId)).receipt : null,
       traceParent: null,
     });
     expect(outcome).toBe('claim_lost');
@@ -528,18 +529,18 @@ describe('分支封口补充', () => {
       authorizationTtlMs: 60_000,
     });
     await h.billing.reserveChannel({ requestId, channelId, amount: '2' });
-    expect(h.world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('2');
+    expect(defined(h.world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('2');
     const released = await h.billing.signal({ type: 'request.failed', requestId, reason: 'x' });
     expect(released).toMatchObject({ changed: true, amountReleased: '2' });
-    expect(h.world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('0');
+    expect(defined(h.world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('0');
   });
 
   it('failure 的 onDead 钩子：死信时触发一次', async () => {
     const dead: string[] = [];
     const h = harness();
     const { requestId } = await toPending(h);
-    const row = h.world.fixtures.requests.get(requestId)!;
-    row.receipt = { ...row.receipt!, inputPrice: 'garbage' };
+    const row = defined(h.world.fixtures.requests.get(requestId));
+    row.receipt = { ...defined(row.receipt), inputPrice: 'garbage' };
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
     const settlement = createSettlementApi({
       store: h.world.billing,
@@ -552,7 +553,7 @@ describe('分支封口补充', () => {
       }),
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
-      onError: () => undefined,
+      onError: () => {},
       onDead: (data) => dead.push(data.requestId),
     });
     // 该认领已被上一 settlement 持有——直接用失败处置走 dead 分支
@@ -562,7 +563,7 @@ describe('分支封口补充', () => {
       store: h.world.billing,
       policy: { maxAttempts: 1, baseDelayMs: 100, maxDelayMs: 1_000 },
       onDead: (data) => dead.push(data.requestId),
-    })(claim!, new Error('boom'));
+    })(defined(claim), new Error('boom'));
     expect(outcome).toBe('dead');
     expect(dead).toEqual([requestId]);
     void settlement;
@@ -575,11 +576,11 @@ describe('U4 补：claim 辅助分支', () => {
     const { requestId } = await toPending(h);
     await h.settlement.claim({ ownerId: 'w9', batchSize: 10, claimLeaseMs: 60_000 });
     await h.settlement.renewClaims({ ownerId: 'w9', tokens: [], claimLeaseMs: 1000 });
-    const token = h.world.fixtures.requests.get(requestId)!.claimToken!;
+    const token = defined(defined(h.world.fixtures.requests.get(requestId)).claimToken);
     await h.settlement.renewClaims({ ownerId: 'w9', tokens: [token], claimLeaseMs: 60_000 });
-    expect(h.world.fixtures.requests.get(requestId)!.claimUntil!.getTime()).toBeGreaterThan(
-      Date.now() - 1000,
-    );
+    expect(
+      defined(defined(h.world.fixtures.requests.get(requestId)).claimUntil).getTime(),
+    ).toBeGreaterThan(Date.now() - 1000);
   });
 });
 
@@ -587,9 +588,9 @@ describe('结算不变量红灯（分支封口）', () => {
   it('明细加总 ≠ 账单总预扣 → 投影脱节红灯（DefectError → dead）', async () => {
     const h = harness();
     const { requestId } = await toPending(h);
-    h.world.fixtures.requests.get(requestId)!.reservedAmount = '999';
+    defined(h.world.fixtures.requests.get(requestId)).reservedAmount = '999';
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
   });
 
@@ -597,8 +598,8 @@ describe('结算不变量红灯（分支封口）', () => {
     const h = harness();
     const { requestId } = await toPending(h);
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    h.world.fixtures.requests.get(requestId)!.revision += 100; // 模拟并发对手推进
-    const outcome = await h.settlement.processClaim(claim!);
+    defined(h.world.fixtures.requests.get(requestId)).revision += 100; // 模拟并发对手推进
+    const outcome = await h.settlement.processClaim(defined(claim));
     // 五元组失配 → findProcessingForClaim null 且无 usage → claim_lost（幂等安全）
     expect(outcome).toBe('claim_lost');
   });
@@ -611,8 +612,8 @@ describe('结算 usage 投影冲突红灯', () => {
     // 预插投影行：insertUsageLog 幂等落空 → 红灯（数据脱节防御）
     h.world.fixtures.usageLogs.set(requestId, { requestId, calculatedAmount: '2' });
     const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-    const outcome = await h.settlement.processClaim(claim!);
+    const outcome = await h.settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('dead');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('dead');
   });
 });

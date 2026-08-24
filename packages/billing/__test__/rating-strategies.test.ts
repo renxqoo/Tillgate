@@ -15,6 +15,7 @@ import {
   type PricingWindow,
 } from '../src/domain/rating/schedule.js';
 import type { BillingConfig, PricingContext } from '../src/domain/rating/pricing-strategy.js';
+import { defined } from './defined.js';
 
 function ctx(overrides: Partial<PricingContext> = {}): PricingContext {
   return {
@@ -48,8 +49,8 @@ function expectCode(fn: () => unknown, code: string): void {
 
 describe('measurement（层 1 计量维度）', () => {
   it('token 恒 0（不走单位轴）；request 恒 1', () => {
-    expect(MEASUREMENTS.token!.unitsUpperBoundOf({ n: 5 })).toBe(0);
-    expect(MEASUREMENTS.request!.unitsOf({})).toBe(1);
+    expect(defined(MEASUREMENTS.token).unitsUpperBoundOf({ n: 5 })).toBe(0);
+    expect(defined(MEASUREMENTS.request).unitsOf({})).toBe(1);
   });
 
   it('image：上界 = n（钳 16，缺省 1）；实值 = 响应张数兜底 n，最少 1', () => {
@@ -60,7 +61,7 @@ describe('measurement（层 1 计量维度）', () => {
     expect(image.unitsUpperBoundOf({ n: 'x' })).toBe(1);
     expect(image.unitsOf({ n: 2 }, { data: [1, 2, 3] })).toBe(3);
     expect(image.unitsOf({ n: 2 }, { data: [] })).toBe(2);
-    expect(image.unitsOf({}, undefined)).toBe(1);
+    expect(image.unitsOf({})).toBe(1);
   });
 
   it('second：audioSeconds（向上取整）优先于 duration（钳 4-15 缺省 6——new-api #5498 少押教训）', () => {
@@ -82,12 +83,12 @@ describe('measurement（层 1 计量维度）', () => {
   });
 
   it('注册表全量直调（token/request 恒值轴）', () => {
-    expect(MEASUREMENTS.token!.unitsUpperBoundOf({ n: 9 })).toBe(0);
-    expect(MEASUREMENTS.token!.unitsOf({}, {})).toBe(0);
-    expect(MEASUREMENTS.request!.unitsUpperBoundOf({ n: 9 })).toBe(1);
-    expect(MEASUREMENTS.request!.unitsOf({}, {})).toBe(1);
-    expect(MEASUREMENTS.char!.unitsUpperBoundOf({ input: 'ab' })).toBe(2);
-    expect(MEASUREMENTS.second!.unitsOf({ audioSeconds: 2.1 })).toBe(3);
+    expect(defined(MEASUREMENTS.token).unitsUpperBoundOf({ n: 9 })).toBe(0);
+    expect(defined(MEASUREMENTS.token).unitsOf({}, {})).toBe(0);
+    expect(defined(MEASUREMENTS.request).unitsUpperBoundOf({ n: 9 })).toBe(1);
+    expect(defined(MEASUREMENTS.request).unitsOf({}, {})).toBe(1);
+    expect(defined(MEASUREMENTS.char).unitsUpperBoundOf({ input: 'ab' })).toBe(2);
+    expect(defined(MEASUREMENTS.second).unitsOf({ audioSeconds: 2.1 })).toBe(3);
   });
 
   it('second：audioSeconds 非法回退 duration；响应缺 data 时 image 用请求 n', () => {

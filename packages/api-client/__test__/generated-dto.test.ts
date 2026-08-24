@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderAdminApiDto } from '../scripts/generate-dto';
+import { defined } from './defined';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DTO_PATH = join(HERE, '..', 'src', 'dto', 'admin-api.generated.ts');
@@ -93,7 +94,7 @@ describe('生成 DTO（P6 换轨门禁）', () => {
   it('导出集合与快照逐名相等（保名兼容封闭词表）', () => {
     const names = [
       ...readFileSync(DTO_PATH, 'utf8').matchAll(/export (?:interface|type) (\w+)/g),
-    ].map((m) => m[1]!);
+    ].map((m) => defined(m[1], 'export name'));
     expect(names.toSorted()).toEqual([...EXPORTED_NAMES]);
   });
 });

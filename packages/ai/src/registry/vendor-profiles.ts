@@ -85,7 +85,7 @@ export function vendorProfileNames(): readonly string[] {
 }
 
 /** 解析档案（未知 vendor → null：配置错误在 admin-api 校验层拦截，包内不猜） */
-export function resolveVendorProfile(vendor: string | undefined): VendorProfile | null {
+export function resolveVendorProfile(vendor?: string): VendorProfile | null {
   if (vendor === undefined || vendor === '') return null;
   return VENDOR_PROFILES[vendor] ?? null;
 }
@@ -95,12 +95,10 @@ export function resolveVendorProfile(vendor: string | undefined): VendorProfile 
  * map/clamp 逐键 model 侧胜出；ignore 并集（两侧都要删的参数没有「不删」语义）；
  * unknown 策略 model 侧优先，缺省回落 profile，再缺省透传。
  */
-export function mergeParamRules(
-  profile: ParamRules | undefined,
-  model: ParamRules | undefined,
-): ParamRules {
+export function mergeParamRules(profile?: ParamRules, model?: ParamRules): ParamRules {
   if (profile === undefined && model === undefined) return {};
-  if (profile === undefined) return model!;
+  // 首行已排除双空，?? {} 仅为类型系统无法交叉收窄兜底，运行时恒取实参
+  if (profile === undefined) return model ?? {};
   if (model === undefined) return profile;
   const ignore = [...new Set([...(profile.ignore ?? []), ...(model.ignore ?? [])])];
   return {

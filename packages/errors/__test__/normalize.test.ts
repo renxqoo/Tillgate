@@ -35,10 +35,12 @@ describe('normalizeError', () => {
   });
 
   it('空 message 的外来 Error：回退到 name；name 也为空回退到通用文案', () => {
+    // eslint-disable-next-line unicorn/error-message -- 测试主体即「空 message」这一外来病态输入的回退行为
     const fallbackName = new Error('');
     const r1 = normalizeError(fallbackName);
     expect(r1.message).toBe('Error'); // name 默认值
 
+    // eslint-disable-next-line unicorn/error-message -- 同上:name 与 message 双空的极端回退
     const anonymous = new Error('');
     anonymous.name = '';
     const r2 = normalizeError(anonymous);
@@ -59,7 +61,7 @@ describe('normalizeError', () => {
       code: ROOT_ERROR_CODES.nonError,
       message: 'null',
     });
-    expect(normalizeError(undefined)).toMatchObject({
+    expect(normalizeError()).toMatchObject({
       code: ROOT_ERROR_CODES.nonError,
       message: 'undefined',
     });

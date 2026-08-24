@@ -5,6 +5,7 @@
  * 环境：DATABASE_URL（根 .env）；不可达时全组跳过（退出码 0——由显式运行者保证环境）。
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { eq, inArray, like, sql } from 'drizzle-orm';
 import { createDb, isUniqueViolation, closeDb, roles, type Db } from '@tillgate/db';
 import {
@@ -35,24 +36,27 @@ const uid = () => `cp_${Date.now().toString(36)}_${Math.random().toString(36).sl
 
 /** 真管理员行（FK：channel_recharges/audit_logs 的 admin_id 引用 admins） */
 async function realAdminId(): Promise<number> {
-  const [superRole] = await db!
+  const [superRole] = await defined(db)
     .select({ id: roles.id })
     .from(roles)
     .where(eq(roles.code, 'super_admin'));
-  const [row] = await db!
+  const [row] = await defined(db)
     .insert(admins)
     .values({
       email: `${uid()}@example.com`,
       passwordHash: 'x:0:0:0:0',
-      roleId: superRole!.id,
+      roleId: defined(superRole).id,
     })
     .returning({ id: admins.id });
-  return row!.id;
+  return defined(row).id;
 }
 
 /** viewer 角色 id（0082 种子保证存在;用例建行挂 viewer） */
 async function viewerRoleId(): Promise<number> {
-  const [role] = await db!.select({ id: roles.id }).from(roles).where(eq(roles.code, 'viewer'));
+  const [role] = await defined(db)
+    .select({ id: roles.id })
+    .from(roles)
+    .where(eq(roles.code, 'viewer'));
   if (role == null) throw new Error('viewer role missing (run migrations 0082)');
   return role.id;
 }
@@ -144,7 +148,7 @@ describe('channel-store（真实 PG：守卫原子 UPDATE + 流水）', () => {
     });
     expect(Number(balance)).toBe(100);
     const afterRecharge = await postgresChannelStore.findChannelFunds(db, channel.id);
-    expect(afterRecharge!.status).toBe(0); // 3 → 0 复活
+    expect(defined(afterRecharge).status).toBe(0); // 3 → 0 复活
     // 调账守卫：-50 成功 / -9999 拒绝
     const ok = await postgresChannelStore.tryAdjustBudget(db, {
       channelId: channel.id,
@@ -257,8 +261,8 @@ describe('rate-card-store（真实 PG：M1 隔离 + 硬删级联）', () => {
       .select()
       .from(rateCardCoefficients)
       .where(eq(rateCardCoefficients.rateCardId, card.id));
-    expect(rows.find((r) => r.scope === 'global')!.coefficient).toBe('0.800');
-    expect(rows.find((r) => r.scope === 'model')!.coefficient).toBe('2.500'); // M1：未被抹平
+    expect(defined(rows.find((r) => r.scope === 'global')).coefficient).toBe('0.800');
+    expect(defined(rows.find((r) => r.scope === 'model')).coefficient).toBe('2.500'); // M1：未被抹平
     expect(await postgresRateCardStore.findGlobalCoefficient(db, card.id)).toBe('0.800');
     expect(await postgresRateCardStore.deleteCard(db, { rateCardId: card.id })).toBe(true);
     expect(
@@ -376,7 +380,7 @@ describe('voucher-storage（真实 PG：bytea 往返 + 键白名单）', () => {
     expect(key).toMatch(/\.png$/);
     const loaded = await storage.load(key);
     expect(loaded).toMatchObject({ mimeType: 'image/png' });
-    expect(Array.from(loaded!.data)).toEqual([1, 2, 3, 4, 5]);
+    expect(Array.from(defined(loaded).data)).toEqual([1, 2, 3, 4, 5]);
     expect(await storage.load('../etc/passwd')).toBeNull();
     const pool = (
       db as unknown as { $client: { query: (q: string, v?: unknown[]) => Promise<unknown> } }

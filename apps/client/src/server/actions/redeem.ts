@@ -20,8 +20,8 @@ export async function redeemAction(
     revalidatePath('/dashboard/redeem');
     revalidatePath('/dashboard/transactions');
     return { ok: true, amount: res.amount, balanceAfter: res.balanceAfter };
-  } catch (e) {
-    if (e instanceof ApiError) return { error: e.message };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message };
     return { error: t('redeemFailed') };
   }
 }

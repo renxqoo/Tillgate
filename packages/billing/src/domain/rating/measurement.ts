@@ -19,7 +19,7 @@ export interface MeasurementDescriptor {
 
 /** n 倍数参数取正整数，缺省 1（张/次类上界；与路由层 n≤16 校验同口径） */
 function positiveN(body: Record<string, unknown>): number {
-  const n = body.n;
+  const { n } = body;
   return typeof n === 'number' && Number.isInteger(n) && n > 0 ? Math.min(n, 16) : 1;
 }
 
@@ -58,9 +58,15 @@ function imageUnits(body: Record<string, unknown>, response?: unknown): number {
 
 /** 语音合成字符数（码点口径——emoji/增补平面不被 UTF-16 拆半） */
 function charCount(body: Record<string, unknown>): number {
-  const input = body.input;
+  const { input } = body;
   return typeof input === 'string' ? [...input].length : 0;
 }
+
+/** 按次兜底描述符：未知定价单位按「1 次」计量（注册表封闭词表的缺省项） */
+const REQUEST_MEASUREMENT: MeasurementDescriptor = {
+  unitsUpperBoundOf: () => 1,
+  unitsOf: () => 1,
+};
 
 export const MEASUREMENTS: Record<string, MeasurementDescriptor> = {
   token: {
@@ -80,13 +86,10 @@ export const MEASUREMENTS: Record<string, MeasurementDescriptor> = {
     unitsUpperBoundOf: charCount,
     unitsOf: charCount,
   },
-  request: {
-    unitsUpperBoundOf: () => 1,
-    unitsOf: () => 1,
-  },
+  request: REQUEST_MEASUREMENT,
 };
 
 /** 按定价单位取描述符；未知单位按次兜底 */
 export function measurementOf(pricingUnit: string): MeasurementDescriptor {
-  return MEASUREMENTS[pricingUnit] ?? MEASUREMENTS.request!;
+  return MEASUREMENTS[pricingUnit] ?? REQUEST_MEASUREMENT;
 }

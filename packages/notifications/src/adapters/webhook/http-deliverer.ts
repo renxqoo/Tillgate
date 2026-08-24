@@ -51,8 +51,9 @@ export function createWebhookDeliverer(options: WebhookDelivererOptions): Webhoo
       } catch {
         return false; // 网络异常/超时:本轮失败可重试
       }
-      if (!res.ok)
+      if (!res.ok) {
         options.logger.warn({ status: res.status, event: input.event }, 'webhook deliver failed');
+      }
       return res.ok;
     },
   };

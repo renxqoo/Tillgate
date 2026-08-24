@@ -29,13 +29,14 @@ export function createAccountContextStore(_db: Db): AccountContextStore {
         .insert(organizations)
         .values({ name: input.name, ownerUserId: input.ownerUserId })
         .returning({ id: organizations.id });
+      if (org === undefined) throw new Error('account_context.org_insert_failed');
       await tx(conn).insert(orgMembers).values({
-        orgId: org!.id,
+        orgId: org.id,
         userId: input.ownerUserId,
         role: 'owner',
         status: 0,
       });
-      return org!.id;
+      return org.id;
     },
     async rebindCredentials(
       conn: WalletConn,

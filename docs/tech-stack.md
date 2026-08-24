@@ -224,7 +224,7 @@ client-api┘                                             └─▶ Tempo（链�
 
 ## 10. v2 结构治理与质量门禁（新增）
 
-- **结构重构方案**：[project-structure-refactoring.md](./project-structure-refactoring.md) 是结构目标态唯一权威；根 `AGENT.md` 是执行摘要与硬约束（铁律 17 条）；两者冲突以结构文档为准。
+- **结构重构方案**：[project-structure-refactoring.md](./project-structure-refactoring.md) 是结构目标态唯一权威；根 `AGENTS.md` 是执行摘要与硬约束（铁律 17 条）；两者冲突以结构文档为准。
 - **ADR 体系**：`docs/adr/NNNN-kebab-title.md`，编号递增，被推翻的决策标记 Superseded 不删除。在案七篇：0001 errors 注册表归属、0002 http 与 db 解耦、0003 wallet+ledger-core 合并入 billing、0004 上游 4xx 透传、0005 服务端部署产物策略、0006 `ai` 保留独立库包、0007 apps 装配与 `ai` 注入。结构例外、包准入/合并、发布白名单变更必须先写 ADR 再动代码。
 - **包边界门禁**：`scripts/check-package-boundaries.ts`（`bun run boundaries`，并前置进 `bun run test`）——① package graph 无环；② packages 不得依赖 apps；③ 跨包 import 只能命中显式 exports（禁 `@tillgate/x/src` 深导入）；④ 相对 import 不得越出 workspace 根；⑤ 根 tsconfig paths 不得把包名映射回源码绕过 exports。
 - **四门**：typecheck / lint / test / build 全绿是任何变更的完成条件（覆盖率阈值只许补测试、禁止调低换绿）。

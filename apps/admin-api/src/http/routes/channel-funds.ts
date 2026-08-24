@@ -18,7 +18,7 @@ export interface ChannelFundsRoutesDeps {
 
 export function channelFundsRoutes(deps: ChannelFundsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const channels = deps.controlPlane.channels;
+  const { channels } = deps.controlPlane;
 
   app.get('/v1/channel-funds', async (c) => {
     const extra = channelFundsContracts.listQueryExtra.parse(c.req.query());

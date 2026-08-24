@@ -51,6 +51,7 @@ function invariant(detail: string): DefectError {
  * 结构性校验（全部通过才可写库；DB 侧 check/触发器兜底同一组定律）。
  * 调用方须保证 legs 覆盖的账户全部已被 FOR UPDATE 锁定（传 lockedIds 证明）。
  */
+// eslint-disable-next-line complexity -- 复式记账过账:腿校验矩阵平铺,每分支独立错误载荷
 export function validatePosting(spec: PostingSpec, lockedIds: ReadonlySet<string>): void {
   const audit = isAuditKind(spec.kind);
   if ((audit && spec.legs.length !== 1) || (!audit && spec.legs.length < 2)) {
@@ -70,14 +71,15 @@ export function validatePosting(spec: PostingSpec, lockedIds: ReadonlySet<string
     if (currency !== undefined && currency !== leg.currency) {
       throw invariant(`posting: currency mismatch ${currency}/${leg.currency}`);
     }
-    currency = leg.currency;
+    ({ currency } = leg);
     total = total.plus(leg.amount);
   }
   if (!total.isZero()) {
     throw invariant(`posting ${spec.refType}/${spec.refId}: unbalanced ${total.toString()}`);
   }
-  if (audit && !spec.legs[0]!.amount.isZero()) {
-    throw invariant(`posting ${spec.kind}: audit leg must be zero`);
+  const [auditLeg] = spec.legs;
+  if (audit && (auditLeg === undefined || !auditLeg.amount.isZero())) {
+    throw invariant(`posting ${spec.kind}: audit leg must be present and zero`);
   }
   if (spec.kind === 'freeze' && spec.frozenAfter === undefined) {
     throw invariant('posting freeze: frozenAfter receipt missing');

@@ -1,11 +1,12 @@
 import { GiftIcon } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
 import { ApiError, type RedeemHistoryItem, type RedeemHistoryPage } from '@tillgate/api-client';
 import { Button, DataTable, type DataTableColumn } from '@tillgate/ui';
 
-import { formatDateTime, formatMoney } from '@/features/shared/format';
+import { formatDateTime, formatMoney, type DisplayLocale } from '@/features/shared/format';
 import { signedAmountTone } from '@/features/shared/money-tone';
 import { ListPage } from '@/features/shared/list-page';
 import { RedeemForm } from '@/features/wallet/redeem-form';
@@ -21,6 +22,34 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+// —— 模块级渲染函数：列 cell / t.rich 富文本回调内联 JSX 会被判定为渲染期定义组件
+// （react/no-unstable-nested-components），统一提为模块级小函数返回 ReactNode ——
+
+function renderAmountCell(r: RedeemHistoryItem, locale: DisplayLocale) {
+  return (
+    <span className={`text-right font-medium tabular-nums ${signedAmountTone(r.amount, locale)}`}>
+      +{formatMoney(r.amount, locale)}
+    </span>
+  );
+}
+
+function renderBatchCell(r: RedeemHistoryItem) {
+  return <span className="text-sm text-muted-foreground">{r.batchName ?? '—'}</span>;
+}
+
+function renderTimeCell(r: RedeemHistoryItem, locale: DisplayLocale) {
+  return <span className="text-xs text-muted-foreground">{formatDateTime(r.usedAt, locale)}</span>;
+}
+
+/** t.rich 的 link 富文本渲染：指向钱包流水页 */
+function renderDescriptionLink(chunks: ReactNode) {
+  return (
+    <Link href="/dashboard/transactions" className="underline hover:text-foreground">
+      {chunks}
+    </Link>
+  );
+}
+
 export default async function RedeemPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const locale = await getLocale();
@@ -30,16 +59,18 @@ export default async function RedeemPage({ searchParams }: PageProps) {
   await requireMe(api);
 
   let history: RedeemHistoryItem[] = [];
-  let error: string | null = null;
+  let loadError: string | null = null;
   let hasMore = false;
   try {
     // 信封只 rows 无 total（G3 族）——「加载更多」按满页判断续读
     const qs = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
     const result = await api.get<RedeemHistoryPage>(`/v1/redeem/history?${qs.toString()}`);
-    history = result.rows;
+    // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError：原写法
+    // 赋给了 catch 参数导致外层恒为 null，加载失败提示永不上屏——真实 bug 一并修复
+    ({ rows: history } = result);
     hasMore = result.rows.length === PAGE_SIZE;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : null;
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : null;
   }
 
   const columns: DataTableColumn<RedeemHistoryItem>[] = [
@@ -47,25 +78,17 @@ export default async function RedeemPage({ searchParams }: PageProps) {
       key: 'amount',
       header: t('colValue'),
       align: 'right',
-      cell: (r) => (
-        <span
-          className={'text-right font-medium tabular-nums ' + signedAmountTone(r.amount, locale)}
-        >
-          +{formatMoney(r.amount, locale)}
-        </span>
-      ),
+      cell: (r) => renderAmountCell(r, locale),
     },
     {
       key: 'batchName',
       header: t('colBatch'),
-      cell: (r) => <span className="text-sm text-muted-foreground">{r.batchName ?? '—'}</span>,
+      cell: (r) => renderBatchCell(r),
     },
     {
       key: 'usedAt',
       header: t('colRedeemedAt'),
-      cell: (r) => (
-        <span className="text-xs text-muted-foreground">{formatDateTime(r.usedAt, locale)}</span>
-      ),
+      cell: (r) => renderTimeCell(r, locale),
     },
   ];
 
@@ -75,14 +98,10 @@ export default async function RedeemPage({ searchParams }: PageProps) {
         title={t('title')}
         icon={<GiftIcon className="size-5 text-muted-foreground" />}
         description={t.rich('description', {
-          link: (chunks) => (
-            <Link href="/dashboard/transactions" className="underline hover:text-foreground">
-              {chunks}
-            </Link>
-          ),
+          link: (chunks) => renderDescriptionLink(chunks),
         })}
         total={undefined}
-        error={error}
+        error={loadError}
         searchParams={{ page: page > 1 ? String(page) : undefined }}
         aboveList={<RedeemForm />}
       >
@@ -94,7 +113,7 @@ export default async function RedeemPage({ searchParams }: PageProps) {
               rowKey={(r) => r.codeId}
               empty={t('empty')}
             />
-            {hasMore && !error ? (
+            {hasMore && !loadError ? (
               <div className="flex justify-center p-4">
                 <Button
                   variant="outline"

@@ -41,7 +41,7 @@ export interface ChannelPatchInput {
 /** 上游密钥预览（无固定前缀，多展示一位头部便于区分供应商）：sk-abcdef0123xyz → sk-a****3xyz */
 export function maskUpstreamKey(plaintext: string): string {
   if (plaintext.length <= 8) return '****';
-  return plaintext.slice(0, 4) + '****' + plaintext.slice(-4);
+  return `${plaintext.slice(0, 4)}****${plaintext.slice(-4)}`;
 }
 
 function invalid(detail: ErrorContext): never {
@@ -53,11 +53,13 @@ function assertLimit(name: 'rpmLimit' | 'tpmLimit', value: number): void {
 }
 
 /** 创建输入形状（v1 zod 域：name 1-64 / apiKey 1-512 / 覆盖地址 ≤255 / weight·priority 0-1e6 / 限流正整数） */
+// eslint-disable-next-line complexity -- 渠道创建校验矩阵:平铺守卫,每分支独立错误载荷
 export function validateChannelCreate(input: ChannelCreateInput): ChannelCreateInput {
-  if (!Number.isInteger(input.providerId) || input.providerId < 1)
+  if (!Number.isInteger(input.providerId) || input.providerId < 1) {
     invalid({ providerId: input.providerId });
-  if (input.name.length < 1 || input.name.length > 64) invalid({ name: input.name });
-  if (input.apiKey.length < 1 || input.apiKey.length > 512) invalid({ apiKey: 'length' });
+  }
+  if (input.name.length === 0 || input.name.length > 64) invalid({ name: input.name });
+  if (input.apiKey.length === 0 || input.apiKey.length > 512) invalid({ apiKey: 'length' });
   if (input.baseUrlOverride != null && input.baseUrlOverride.length > 255) {
     invalid({ baseUrlOverride: input.baseUrlOverride });
   }
@@ -73,11 +75,12 @@ export function validateChannelCreate(input: ChannelCreateInput): ChannelCreateI
 }
 
 /** 更新补丁形状（apiKey 可选出现即换 Key；upstreamThreshold 非负金额串或 null=清阈值） */
+// eslint-disable-next-line complexity -- 渠道补丁校验矩阵:平铺守卫
 export function validateChannelPatch(patch: ChannelPatchInput): ChannelPatchInput {
-  if (patch.name !== undefined && (patch.name.length < 1 || patch.name.length > 64)) {
+  if (patch.name !== undefined && (patch.name.length === 0 || patch.name.length > 64)) {
     invalid({ name: patch.name });
   }
-  if (patch.apiKey !== undefined && (patch.apiKey.length < 1 || patch.apiKey.length > 512)) {
+  if (patch.apiKey !== undefined && (patch.apiKey.length === 0 || patch.apiKey.length > 512)) {
     invalid({ apiKey: 'length' });
   }
   if (patch.baseUrlOverride != null && patch.baseUrlOverride.length > 255) {
@@ -95,10 +98,12 @@ export function validateChannelPatch(patch: ChannelPatchInput): ChannelPatchInpu
   ) {
     invalid({ status: patch.status });
   }
-  if (patch.rpmLimit !== undefined && patch.rpmLimit !== null)
+  if (patch.rpmLimit !== undefined && patch.rpmLimit !== null) {
     assertLimit('rpmLimit', patch.rpmLimit);
-  if (patch.tpmLimit !== undefined && patch.tpmLimit !== null)
+  }
+  if (patch.tpmLimit !== undefined && patch.tpmLimit !== null) {
     assertLimit('tpmLimit', patch.tpmLimit);
+  }
   if (
     patch.upstreamThreshold !== undefined &&
     patch.upstreamThreshold !== null &&
@@ -120,9 +125,9 @@ export interface ChannelImportItem {
 }
 
 export function validateChannelImportItem(item: ChannelImportItem): ChannelImportItem {
-  if (item.provider.length < 1) invalid({ provider: item.provider });
-  if (item.name.length < 1 || item.name.length > 64) invalid({ name: item.name });
-  if (item.apiKey.length < 1 || item.apiKey.length > 512) invalid({ apiKey: 'length' });
+  if (item.provider.length === 0) invalid({ provider: item.provider });
+  if (item.name.length === 0 || item.name.length > 64) invalid({ name: item.name });
+  if (item.apiKey.length === 0 || item.apiKey.length > 512) invalid({ apiKey: 'length' });
   if (item.weight !== undefined && (!Number.isInteger(item.weight) || item.weight < 1)) {
     invalid({ weight: item.weight });
   }

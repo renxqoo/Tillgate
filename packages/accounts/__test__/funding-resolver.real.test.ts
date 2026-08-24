@@ -6,6 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
+import { defined } from './defined.js';
 import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPgFundingSourceResolver } from '../src/adapters/postgres/funding-resolver.js';
 
@@ -19,7 +20,7 @@ describe.skipIf(url == null)('FundingSourceResolver 桥（真实 PG）', () => {
 
   beforeAll(async () => {
     schema = `tillgate_acc_fund_${process.pid.toString(36)}_${Date.now().toString(36)}`;
-    const [baseUrl] = url!.split('?');
+    const [baseUrl] = defined(url, 'DB_TEST_URL').split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,
       poolMax: 5,

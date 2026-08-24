@@ -17,6 +17,7 @@ const STYLE = {
 } as const;
 
 /** 渲染找回密码邮件(subject + text + html) */
+// eslint-disable-next-line max-params, complexity -- 渲染入参四要素各有其位(公共导出,调用方按位置参数锁定);复杂度全部来自双语模板的 locale 三元选择(数据选取),非控制流逻辑
 export function renderPasswordResetEmail(
   url: string,
   ctx: { ip: string; locale?: 'en' | 'zh' },
@@ -48,7 +49,7 @@ export function renderPasswordResetEmail(
 <p style="${STYLE.link}">${en ? 'Or copy this link:' : '或复制链接:'}<br/>${url}</p>
 </td></tr></table>
 <p style="${MAIL_BASE_STYLE.p}">${en ? 'Requested from IP: ' : '请求来源 IP:'}${ctx.ip}${en ? '. If you did not request this, ignore this email — your password stays unchanged.' : '。若非你本人操作,请忽略本邮件——你的密码不会变更。'}</p>
-<p style="${MAIL_BASE_STYLE.p}">${en ? 'This email contains a one-time link. Do not forward it. Need help? <a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">Contact support</a>.' : '本邮件含一次性链接,请勿转发给他人。需要帮助请<a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">联系支持</a>。'}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? `This email contains a one-time link. Do not forward it. Need help? <a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">Contact support</a>.` : `本邮件含一次性链接,请勿转发给他人。需要帮助请<a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">联系支持</a>。`}</p>
 <p style="${MAIL_BASE_STYLE.sign}">${en ? 'Best,' : '顺祝,'}<br/>${brand} ${en ? 'Team' : '团队'}</p>
 <p style="${MAIL_BASE_STYLE.sub}">${mailBrand.brandSub} · ${en ? 'Automated account security email. Do not reply.' : '账号安全自动邮件,请勿回复。'}</p>
 

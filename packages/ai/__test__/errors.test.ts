@@ -71,7 +71,7 @@ describe('errors/fallback：status 兜底与厂商表（§3.2）', () => {
     expect(statusKind(401)).toBe('invalid_api_key');
     expect(statusKind(403)).toBe('insufficient_permissions');
     expect(statusKind(400)).toBe('invalid_request');
-    expect(statusKind(undefined)).toBe('network');
+    expect(statusKind()).toBe('network');
   });
 
   it('extractVendorCode：OpenAI error.code / anthropic error.type / gemini error.status / 顶层 code', () => {
@@ -80,7 +80,7 @@ describe('errors/fallback：status 兜底与厂商表（§3.2）', () => {
     expect(extractVendorCode({ error: { code: 429, status: 'RESOURCE_EXHAUSTED' } })).toBe(
       'RESOURCE_EXHAUSTED',
     );
-    expect(extractVendorCode({ code: 'Throttling' })).toBe('Throttning'.slice(0, 0) + 'Throttling');
+    expect(extractVendorCode({ code: 'Throttling' })).toBe(`${'Throttning'.slice(0, 0)}Throttling`);
     expect(extractVendorCode('plain')).toBeUndefined();
     expect(extractVendorCode([1])).toBeUndefined();
   });

@@ -10,13 +10,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 
 const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
+  handler: (req: IncomingMessage, res: ServerResponse) => void,
 ): Promise<{ baseUrl: string; close: () => Promise<void> }> =>
   new Promise((resolve) => {
     const server = createServer(handler);
@@ -63,12 +61,13 @@ describe('§3.6 延迟测试', () => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write(frame('a'));
       // 首帧之后挂住连接——若实现整流缓冲,C 端首块读取将等到这里
-      new Promise<void>((r) => {
-        releaseRest = r;
-      }).then(() => {
+      const finish = () => {
         res.write('data: [DONE]\n\n');
         res.end();
-      });
+      };
+      new Promise<void>((r) => {
+        releaseRest = r;
+      }).then(finish);
     });
     try {
       const ai = mk();
@@ -93,7 +92,7 @@ describe('§3.6 延迟测试', () => {
   });
 
   it('观察面不反噬:监听回调抛异常不破坏透传字节', async () => {
-    const body = frame('x') + frame('y') + 'data: [DONE]\n\n';
+    const body = `${frame('x') + frame('y')}data: [DONE]\n\n`;
     const s = await startServer((_q, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.end(body);

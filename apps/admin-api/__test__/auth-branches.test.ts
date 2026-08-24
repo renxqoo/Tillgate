@@ -46,20 +46,20 @@ function bare(): Hono<SessionEnv> {
     admins: {
       findByEmail: async () => null,
       find: async () => null,
-      touchLastLogin: async () => undefined,
+      touchLastLogin: async () => {},
     },
     guards: {
       emailIp: {
         isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => undefined,
-        recordSuccess: async () => undefined,
+        recordFailure: async () => {},
+        recordSuccess: async () => {},
       },
       ip: {
         isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => undefined,
+        recordFailure: async () => {},
       },
     },
-    loginAudit: async () => undefined,
+    loginAudit: async () => {},
     trustedProxyHops: 0,
     mailerConfigured: false,
     sessionTtlSec: 3600,
@@ -107,9 +107,8 @@ describe('identity 审计桥', () => {
 
 describe('session 属主回查（D8/W3）', () => {
   async function appWithOwner(
-    owner:
-      | (() => Promise<{ status: number; grants: { isSuper: boolean; codes: string[] } } | null>)
-      | undefined,
+    // 未注入 owner = 纯会话校验形态;可选参数以支持零参调用
+    owner?: () => Promise<{ status: number; grants: { isSuper: boolean; codes: string[] } } | null>,
   ) {
     const app = new (await import('hono')).Hono<SessionEnv>();
     app.use(
@@ -144,7 +143,7 @@ describe('session 属主回查（D8/W3）', () => {
       grants: { isSuper: true, codes: [] },
     }));
     expect(banned.status).toBe(401);
-    const noOwner = await appWithOwner(undefined);
+    const noOwner = await appWithOwner();
     expect(noOwner.status).toBe(200);
   });
 
@@ -226,7 +225,7 @@ describe('auth/me 未走分支', () => {
           logout: async () => ({ ok: true as const }),
         },
       },
-      admins: { find: async () => null, setTwoFactorEnabled: async () => undefined },
+      admins: { find: async () => null, setTwoFactorEnabled: async () => {} },
       mailerConfigured: true,
       sessionTtlSec: 3600,
     };
@@ -287,17 +286,17 @@ describe('auth/me 未走分支', () => {
           createdAt: new Date(0),
         }),
         find: async () => null,
-        touchLastLogin: async () => undefined,
+        touchLastLogin: async () => {},
       },
       guards: {
         emailIp: {
           isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => undefined,
-          recordSuccess: async () => undefined,
+          recordFailure: async () => {},
+          recordSuccess: async () => {},
         },
         ip: {
           isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-          recordFailure: async () => undefined,
+          recordFailure: async () => {},
         },
       },
       loginAudit: async () => {
@@ -379,7 +378,7 @@ describe('users set-password（D6 分支面）', () => {
     const patch = vi.fn(async () => ({ id: 3 }) as never);
     const reset = vi.fn(async () => ({ invalidBefore: 'x' }));
     const updateCard = vi.fn(async () => ({ ok: true }) as never);
-    const postAudit = vi.fn(async () => undefined);
+    const postAudit = vi.fn(async () => {});
     const deps = {
       accounts: {
         adminListUsers: async () => ({ rows: [], total: 0 }),
@@ -478,7 +477,7 @@ describe('P6/P5 残余分支（价格溯源参数边界/通知词表边界）', 
       vendorCatalog: { protocols: [], vendors: [] },
     } as never);
     app.onError((error, c) => errorHandler({ catalog: adminErrorCatalog })(error, c));
-    for (const qs of ['', '?externalName=', '?externalName=' + 'x'.repeat(65)]) {
+    for (const qs of ['', '?externalName=', `?externalName=${'x'.repeat(65)}`]) {
       const res = await app.request(`/v1/model-catalog/price-history${qs}`, {
         headers: { authorization: `Bearer ${TOKEN}` },
       });

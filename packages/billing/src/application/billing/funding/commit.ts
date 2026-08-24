@@ -8,6 +8,7 @@ import type { WalletTx } from '../../../ports/wallet-store.js';
 import type { FundingPlan } from './plan.js';
 import type { SourceReservation } from './source.js';
 
+// eslint-disable-next-line max-params -- funding 源端口契约签名,双实现(postgres/内存)同口径
 export async function commitFunding(
   store: BillingStore,
   tx: WalletTx,

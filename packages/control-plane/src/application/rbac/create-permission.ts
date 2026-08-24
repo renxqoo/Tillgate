@@ -11,6 +11,7 @@ import type { RbacDeps } from './rbac-shared';
 
 const CODE_PATTERN = /^[a-z][a-z0-9_-]{0,30}:[a-z][a-z0-9_-]{1,31}$/;
 
+// eslint-disable-next-line complexity -- 平铺输入校验矩阵:每分支独立错误载荷
 export async function createPermission(
   deps: RbacDeps,
   input: CreatePermissionRow,

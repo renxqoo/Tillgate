@@ -38,7 +38,7 @@ function trimNumeric(value: string): string {
 
 export function MarketingContent({
   settings,
-  error,
+  error: loadError,
 }: {
   settings: MarketingSettingsView | null;
   error: string | null;
@@ -57,11 +57,11 @@ export function MarketingContent({
       : null,
   );
 
-  if (error || !form) {
+  if (loadError || !form) {
     return (
       <Card>
         <CardContent className="p-6 text-sm text-muted-foreground">
-          {error ?? t('noSettings')}
+          {loadError ?? t('noSettings')}
         </CardContent>
       </Card>
     );
@@ -75,8 +75,8 @@ export function MarketingContent({
       try {
         await saveMarketingSettingsAction(form);
         notify({} as { error?: string }, tc('saveFailed'), t('saved'));
-      } catch (e) {
-        notify({ error: e instanceof Error ? e.message : tc('saveFailed') });
+      } catch (error) {
+        notify({ error: error instanceof Error ? error.message : tc('saveFailed') });
       }
     });
   };

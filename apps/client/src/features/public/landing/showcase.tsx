@@ -3,6 +3,7 @@
  * 榜单数据来自 /v1/pricing?free=true；示例代码使用真实部署 Base URL。
  */
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { ChevronRight, Terminal } from 'lucide-react';
 
 import { CopyPill } from '@/features/public/copy-pill';
@@ -13,6 +14,15 @@ import { buildSamples } from './samples';
 
 function contextLabel(t: LandingT, n: number | null) {
   return n ? ` · ${t('boardContext', { n: Math.round(n / 1000) })}` : '';
+}
+
+/** t.rich 的 link 富文本渲染：指向公开定价页（模块级，避免渲染期定义组件） */
+function renderPricingLink(chunks: ReactNode) {
+  return (
+    <Link className="underline underline-offset-2" href="/pricing">
+      {chunks}
+    </Link>
+  );
 }
 
 export function ModelsBoard({
@@ -33,11 +43,7 @@ export function ModelsBoard({
         {!featured ? (
           <p className="text-center text-sm text-slate-400">
             {t.rich('pricingUnavailable', {
-              link: (chunks) => (
-                <Link className="underline underline-offset-2" href="/pricing">
-                  {chunks}
-                </Link>
-              ),
+              link: (chunks) => renderPricingLink(chunks),
             })}
           </p>
         ) : (

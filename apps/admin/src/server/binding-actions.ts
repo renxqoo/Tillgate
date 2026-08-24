@@ -17,8 +17,8 @@ export async function createBindingAction(input: {
     await adminApi().createEndpointBinding(input);
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'endpoint_bound',
       'invalid_endpoint_input',
       'permission_not_found',
@@ -35,8 +35,8 @@ export async function updateBindingAction(
     await adminApi().updateEndpointBinding(id, input);
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'endpoint_not_found',
       'permission_not_found',
       'endpoint_bound',
@@ -53,8 +53,8 @@ export async function deleteBindingAction(
     await adminApi().deleteEndpointBinding(id);
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), ['endpoint_not_found']);
+  } catch (error) {
+    return errorOf(error, (key) => t(key), ['endpoint_not_found']);
   }
 }
 

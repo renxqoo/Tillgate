@@ -15,7 +15,7 @@ export const sortQuerySchema = z.object({
 
 /** 搜索词 schema：trim 后 1~100 字符（缺失/空白 → undefined，不拼条件） */
 export const searchQuerySchema = z.preprocess((v) => {
-  if (typeof v !== 'string') return undefined;
+  if (typeof v !== 'string') return;
   const t = v.trim();
   return t === '' ? undefined : t;
 }, z.string().min(1).max(100).optional());

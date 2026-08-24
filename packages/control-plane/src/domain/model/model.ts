@@ -74,6 +74,7 @@ function assertPrice(field: string, raw: string): void {
 }
 
 /** 变体计费配置形状：variant 必须带 selector 与非空 prices 表；schedule 必须带合法窗口表 */
+// eslint-disable-next-line complexity -- 变体计费形状校验矩阵,分支平铺
 function assertBillingConfig(config: BillingConfig | null | undefined): void {
   if (config == null) return;
   if (
@@ -85,13 +86,13 @@ function assertBillingConfig(config: BillingConfig | null | undefined): void {
   }
   if (
     config.params?.selector !== undefined &&
-    (config.params.selector.length < 1 || config.params.selector.length > 64)
+    (config.params.selector.length === 0 || config.params.selector.length > 64)
   ) {
     invalid({ billingConfig: { selector: config.params.selector } });
   }
   if (config.params?.prices !== undefined) {
     for (const [key, price] of Object.entries(config.params.prices)) {
-      if (key.length < 1 || key.length > 128) invalid({ billingConfig: { priceKey: key } });
+      if (key.length === 0 || key.length > 128) invalid({ billingConfig: { priceKey: key } });
       if (parseNonNegativeAmount(price) == null) invalid({ billingConfig: { prices: price } });
     }
   }
@@ -113,7 +114,7 @@ function assertScheduleConfig(config: BillingConfig): void {
   const issue = validateScheduleWindows(windows);
   if (issue != null) invalid({ billingConfig: issue });
   for (const [index, window] of windows.entries()) {
-    if (window.label !== undefined && (window.label.length < 1 || window.label.length > 32)) {
+    if (window.label !== undefined && (window.label.length === 0 || window.label.length > 32)) {
       invalid({ billingConfig: { window: index, label: window.label } });
     }
     const priceFields = {
@@ -176,6 +177,7 @@ function assertFreeConsistency(isFree: boolean, prices: ModelPrices): void {
 }
 
 /** 创建输入校验：名称域/价格数值域/单位词表/变体形状/上下文长度/限流域 + 免费一致性 */
+// eslint-disable-next-line complexity, max-lines-per-function -- 创建校验矩阵:字段域+价格域+词表+免费一致性,平铺守卫
 export function validateModelCreate(input: ModelCreateInput): {
   externalName: string;
   realModel: string;
@@ -188,11 +190,12 @@ export function validateModelCreate(input: ModelCreateInput): {
   rpmLimit: number | null;
   tpmLimit: number | null;
 } {
-  if (input.externalName.length < 1 || input.externalName.length > 64) {
+  if (input.externalName.length === 0 || input.externalName.length > 64) {
     invalid({ externalName: input.externalName });
   }
-  if (input.realModel.length < 1 || input.realModel.length > 128)
+  if (input.realModel.length === 0 || input.realModel.length > 128) {
     invalid({ realModel: input.realModel });
+  }
   assertContextLength(input.contextLength);
   const prices = {
     inputPrice: input.prices.inputPrice,
@@ -229,22 +232,24 @@ export function validateModelCreate(input: ModelCreateInput): {
 }
 
 /** 更新补丁校验（出现字段校验；价格/免费一致性由 application 按「旧值∪新值」合并判） */
+// eslint-disable-next-line complexity -- 补丁校验矩阵(出现字段校验),平铺守卫
 export function validateModelPatch(patch: ModelPatchInput): ModelPatchInput {
   if (
     patch.externalName !== undefined &&
-    (patch.externalName.length < 1 || patch.externalName.length > 64)
+    (patch.externalName.length === 0 || patch.externalName.length > 64)
   ) {
     invalid({ externalName: patch.externalName });
   }
   if (
     patch.realModel !== undefined &&
-    (patch.realModel.length < 1 || patch.realModel.length > 128)
+    (patch.realModel.length === 0 || patch.realModel.length > 128)
   ) {
     invalid({ realModel: patch.realModel });
   }
   assertContextLength(patch.contextLength);
-  if (patch.status !== undefined && patch.status !== 0 && patch.status !== 1)
+  if (patch.status !== undefined && patch.status !== 0 && patch.status !== 1) {
     invalid({ status: patch.status });
+  }
   const prices = patch.prices ?? {};
   for (const [field, value] of Object.entries(prices)) {
     if (value !== undefined) assertPrice(field, value);

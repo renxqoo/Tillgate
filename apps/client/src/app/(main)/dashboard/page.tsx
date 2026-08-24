@@ -57,7 +57,7 @@ export default async function DashboardPage() {
   const t = await getTranslations('dashboard');
   const locale = await getLocale();
 
-  let data: DashboardData = {
+  const data: DashboardData = {
     balance: me.accounts.find((account) => account.currency === 'CNY')?.balance ?? '0',
     rateCardName: me.rateCardName,
     rpmLimit: me.rpmLimit,
@@ -87,7 +87,9 @@ export default async function DashboardPage() {
     const summary = await api.get<UsageSummaryPage>(`/v1/usage/summary?from=${from.toISOString()}`);
     const dayRows: UsageDayRow[] = summary.list ?? [];
     data.dailyCost =
-      dayRows.length > 0 ? fillDailyCostSeries(dayRows, TREND_WINDOW_DAYS, DISPLAY_TZ) : [];
+      dayRows.length > 0
+        ? fillDailyCostSeries({ rows: dayRows, days: TREND_WINDOW_DAYS, timeZone: DISPLAY_TZ })
+        : [];
     // 今日费用：DISPLAY_TZ 日界推导（v1 +8h 硬编码近似——B8 修复）
     data.todayCost = todayCost(dayRows, DISPLAY_TZ);
   } catch {

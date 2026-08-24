@@ -3,6 +3,7 @@
  * 协议词表校验不触库 / 重名 409 / 404 族 / 软删-回收站-恢复-名称复用 / 审计动作。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createProvider } from '../src/application/providers/create-provider';
 import { updateProvider } from '../src/application/providers/update-provider';
 import { deleteProvider } from '../src/application/providers/delete-provider';
@@ -75,7 +76,7 @@ describe('供应商协议词表（单一真相 = 注入词表）', () => {
       baseUrl: 'https://api.example.com/v1',
     });
     expect(row.protocol).toBe('openai-compatible');
-    expect(providers.rows.get(row.id)!.protocol).toBe('openai-compatible');
+    expect(defined(providers.rows.get(row.id)).protocol).toBe('openai-compatible');
     expect(audit.entries).toHaveLength(1);
     expect(audit.entries[0]).toMatchObject({ action: 'provider.create', targetId: row.id });
   });
@@ -140,7 +141,7 @@ describe('供应商 CRUD 边界', () => {
       offset: 0,
     });
     expect(result.total).toBe(1);
-    expect(result.rows[0]!.name).toBe('alpha');
+    expect(defined(result.rows[0]).name).toBe('alpha');
   });
 });
 
@@ -179,7 +180,7 @@ describe('逻辑删除（回收站）', () => {
     const { deps, providers, audit } = setup();
     const id = await createOk(deps);
     await deleteProvider(deps, { ctx: adminCtx(), providerId: id });
-    const stored = providers.rows.get(id)!;
+    const stored = defined(providers.rows.get(id));
     expect(stored.status).toBe(1);
     expect(stored.deletedAt).toBeInstanceOf(Date);
     expect(await deps.stores.provider.findById(deps.db, id)).toBeNull();
@@ -218,7 +219,7 @@ describe('逻辑删除（回收站）', () => {
     await expect(
       updateProvider(deps, { ctx: adminCtx(), providerId: id, patch: { name: 'hacked' } }),
     ).rejects.toMatchObject({ code: 'control_plane.provider_not_found' });
-    expect(providers.rows.get(id)!.name).toBe('recycle-p');
+    expect(defined(providers.rows.get(id)).name).toBe('recycle-p');
     expect(await deps.stores.provider.retire(deps.db, { providerId: id })).toBe(false);
   });
 
@@ -233,7 +234,7 @@ describe('逻辑删除（回收站）', () => {
     ).rejects.toMatchObject({ code: 'control_plane.provider_not_found' });
 
     await undeleteProvider(deps, { ctx: adminCtx(), providerId: id });
-    const restored = providers.rows.get(id)!;
+    const restored = defined(providers.rows.get(id));
     expect(restored.deletedAt).toBeNull();
     expect(restored.status).toBe(1); // 回禁用态：复核后显式启用
     const active = await listProviders(deps, {
@@ -265,7 +266,7 @@ describe('厂商档案 vendor（词表单一真相 = 注入词表）', () => {
       baseUrl: 'https://api.openai.com/v1',
     });
     expect(row.vendor).toBe('openai');
-    expect(providers.rows.get(row.id)!.vendor).toBe('openai');
+    expect(defined(providers.rows.get(row.id)).vendor).toBe('openai');
   });
 
   it('PATCH vendor=null 清除档案（回退纯透传）', async () => {

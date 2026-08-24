@@ -25,6 +25,7 @@ vi.mock('pg', () => ({ default: { Pool: FakePool } }));
 
 import { closeDb, createDb, ping } from '../src/client.js';
 import { isInfrastructureError } from '@tillgate/errors';
+import { defined } from './defined.js';
 
 const CONFIG = {
   url: 'postgres://user:pass@db.local:5432/tillgate',
@@ -58,7 +59,7 @@ describe('createDb(零隐藏默认,B2)', () => {
 describe('closeDb(五处 app 拷贝的收敛点,C1)', () => {
   it('调用池 end() 恰一次', async () => {
     const db = createDb(CONFIG);
-    const instance = FakePool.instances.at(-1)!;
+    const instance = defined(FakePool.instances.at(-1), 'FakePool.instances.at(-1)');
     await closeDb(db);
     expect(instance.end).toHaveBeenCalledTimes(1);
   });

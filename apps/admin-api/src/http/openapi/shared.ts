@@ -94,6 +94,7 @@ export interface DtoComponent {
 }
 
 /** 请求体组件:contracts 实例直接登记（形状单一真相在 contracts,不克隆）。 */
+// eslint-disable-next-line max-params -- openapi 登记DSL,14 处调用点按位置传参;改签名放大 diff(存量棘轮)
 export function requestBody(
   name: string,
   schema: z.ZodType,

@@ -37,14 +37,15 @@ export function newChallengeId(): string {
   return randomUUID();
 }
 
-function invalid(field: string, min: number, max: number, value: number | undefined) {
+function invalid(field: string, bounds: { min: number; max: number }, value: number | undefined) {
   return identityErrors.business('invalid_input', {
     field,
-    reason: `must be an integer in [${min}, ${max}], got ${String(value)}`,
+    reason: `must be an integer in [${bounds.min}, ${bounds.max}], got ${String(value)}`,
   });
 }
 
 /** 覆盖参数界(v1 语义):值未给用缺省;给了必须整数且在界内 */
+// eslint-disable-next-line max-params -- 覆盖语义五要素(值/缺省/字段名/上下界)各有其位,导出 API 且测试规格以位置参数锁定,改 options 放大 diff
 export function boundedOverride(
   value: number | undefined,
   fallback: number,
@@ -54,7 +55,7 @@ export function boundedOverride(
 ): number {
   if (value === undefined) return fallback;
   if (!Number.isInteger(value) || value < min || value > max) {
-    throw invalid(field, min, max, value);
+    throw invalid(field, { min, max }, value);
   }
   return value;
 }

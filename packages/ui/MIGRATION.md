@@ -59,7 +59,7 @@
 
 | 旧签名/形态                                           | 新签名/形态                                                               | 变化理由                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------- |
-| `@ai-gateway/ui` 深导入（paths 旁路）                 | `@tillgate/ui` 唯一导出面 + `./styles.css` 子路径                        | exports 边界可执行（pack 测试冻结）     |
+| `@ai-gateway/ui` 深导入（paths 旁路）                 | `@tillgate/ui` 唯一导出面 + `./styles.css` 子路径                         | exports 边界可执行（pack 测试冻结）     |
 | Radix 原语 + next-themes 主题                         | Base UI（`@base-ui/react`）+ 纯 React ThemeProvider                       | b0 预设裁决；去 Next 耦合               |
 | `moneyTone(value)`（隐含涨=好）                       | `createMoneyFormatter(...).toneOf` + KpiCard `sentiment` 必填             | 零写死 + 不假设涨跌语义                 |
 | `ListPage`（内置取数 + 回车搜索）                     | 应用侧 list-page.tsx（URL 搜索/清除/筛选/分页适配）+ 包内 list-panel 外壳 | 取数归 app；交互契约统一（§5 交互契约） |

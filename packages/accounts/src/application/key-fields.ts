@@ -17,62 +17,55 @@ export interface KeyFieldsInput {
   readonly expiresAt?: Date | null;
 }
 
+/** 可变构建形态(-readonly 映射);交付时即 ApiKeyPatch */
+type MutableKeyPatch = { -readonly [K in keyof ApiKeyPatch]?: ApiKeyPatch[K] };
+
+/**
+ * 可空字段通用解析:undefined → undefined(不落入 patch)、null → null(显式清空)、
+ * 非空经 parse 域校验,非法即抛 key_patch_invalid。
+ */
+function parseNullableField<V, T>(
+  value: V | null | undefined,
+  field: string,
+  parse: (value: V) => T | null,
+): T | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const parsed = parse(value);
+  if (parsed === null) throw AccountsErrors.business('key_patch_invalid', { field });
+  return parsed;
+}
+
 export function parseKeyFields(
   input: KeyFieldsInput,
   policy: AccountsPolicy,
   now: Date,
 ): ApiKeyPatch {
-  const patch: {
-    name?: string;
-    remark?: string | null;
-    rpmLimit?: number | null;
-    tpmLimit?: number | null;
-    dailySpendLimit?: string | null;
-    expiresAt?: Date | null;
-  } = {};
+  const patch: MutableKeyPatch = {};
   if (input.name !== undefined) {
     const name = normalizeName(input.name);
     if (name === null) throw AccountsErrors.business('key_patch_invalid', { field: 'name' });
     patch.name = name;
   }
-  if (input.remark !== undefined) {
-    if (input.remark === null) patch.remark = null;
-    else {
-      const remark = clampOptionalText(input.remark, 255);
-      if (remark === null) throw AccountsErrors.business('key_patch_invalid', { field: 'remark' });
-      patch.remark = remark;
-    }
-  }
-  if (input.rpmLimit !== undefined) {
-    if (input.rpmLimit === null) patch.rpmLimit = null;
-    else {
-      const rpm = parseRateLimit(input.rpmLimit, policy.rpmLimitMax);
-      if (rpm === null) throw AccountsErrors.business('key_patch_invalid', { field: 'rpmLimit' });
-      patch.rpmLimit = rpm;
-    }
-  }
-  if (input.tpmLimit !== undefined) {
-    if (input.tpmLimit === null) patch.tpmLimit = null;
-    else {
-      const tpm = parseRateLimit(input.tpmLimit, policy.tpmLimitMax);
-      if (tpm === null) throw AccountsErrors.business('key_patch_invalid', { field: 'tpmLimit' });
-      patch.tpmLimit = tpm;
-    }
-  }
-  if (input.dailySpendLimit !== undefined) {
-    if (input.dailySpendLimit === null) patch.dailySpendLimit = null;
-    else {
-      const amount = parseAmountLimit(input.dailySpendLimit, policy.amountLimitUpper);
-      if (amount === null)
-        throw AccountsErrors.business('key_patch_invalid', { field: 'dailySpendLimit' });
-      patch.dailySpendLimit = amount;
-    }
-  }
+  const remark = parseNullableField(input.remark, 'remark', (v) => clampOptionalText(v, 255));
+  if (remark !== undefined) patch.remark = remark;
+  const rpmLimit = parseNullableField(input.rpmLimit, 'rpmLimit', (v) =>
+    parseRateLimit(v, policy.rpmLimitMax),
+  );
+  if (rpmLimit !== undefined) patch.rpmLimit = rpmLimit;
+  const tpmLimit = parseNullableField(input.tpmLimit, 'tpmLimit', (v) =>
+    parseRateLimit(v, policy.tpmLimitMax),
+  );
+  if (tpmLimit !== undefined) patch.tpmLimit = tpmLimit;
+  const dailySpendLimit = parseNullableField(input.dailySpendLimit, 'dailySpendLimit', (v) =>
+    parseAmountLimit(v, policy.amountLimitUpper),
+  );
+  if (dailySpendLimit !== undefined) patch.dailySpendLimit = dailySpendLimit;
   if (input.expiresAt !== undefined) {
     if (input.expiresAt === null) patch.expiresAt = null;
-    else if (input.expiresAt.getTime() <= now.getTime())
+    else if (input.expiresAt.getTime() <= now.getTime()) {
       throw AccountsErrors.business('key_patch_invalid', { field: 'expiresAt', reason: 'past' });
-    else patch.expiresAt = input.expiresAt;
+    } else patch.expiresAt = input.expiresAt;
   }
   return patch;
 }

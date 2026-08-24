@@ -19,8 +19,8 @@ export async function purchaseSubscriptionAction(
     await createClientApi().post('/v1/subscriptions', { planId, quantity });
     revalidatePath('/dashboard/subscription');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('purchaseFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('purchaseFailed') };
   }
 }
 
@@ -33,8 +33,8 @@ export async function changeSubscriptionAction(
     await createClientApi().post(`/v1/subscriptions/${id}/change`, input);
     revalidatePath('/dashboard/subscription');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('changeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('changeFailed') };
   }
 }
 
@@ -44,7 +44,7 @@ export async function renewSubscriptionAction(id: number): Promise<{ error?: str
     await createClientApi().post(`/v1/subscriptions/${id}/renew`);
     revalidatePath('/dashboard/subscription');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('renewFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('renewFailed') };
   }
 }

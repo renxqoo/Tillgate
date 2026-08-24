@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { Inference } from '@tillgate/inference';
 import { createGatewayApp } from '../src/app';
 import type { RequestLogStore } from '@tillgate/observability';
+import { defined } from './defined';
 
 const inference = {
   chat: async () => ({ ok: true, status: 200, body: {} }),
@@ -21,7 +22,7 @@ const inference = {
     query: async () => null,
   },
   health: {} as never,
-  close: () => undefined,
+  close: () => {},
 } as unknown as Inference;
 
 const logs: Array<Record<string, unknown>> = [];
@@ -53,7 +54,7 @@ function makeApp(
     verifyAppClient: async () => null,
     models: { listEnabledMappings: async () => [] },
     requestLogs,
-    pingDb: async () => undefined,
+    pingDb: async () => {},
     oauth: {
       jwtSecret: 'ab12'.repeat(8),
       issuer: 'i',
@@ -70,7 +71,7 @@ const STATIC_KEY_AUTH = { headers: { authorization: 'Bearer sk_k' } };
 
 describe('探针', () => {
   it('healthz/readyz 查依赖；readyz 连 Redis 探针；失败 503', async () => {
-    const app = makeApp({ redisProbe: { ping: async () => undefined } });
+    const app = makeApp({ redisProbe: { ping: async () => {} } });
     expect((await app.request('/healthz')).status).toBe(200);
     expect((await app.request('/readyz')).status).toBe(200);
     expect((await app.request('/livez')).status).toBe(200);
@@ -103,7 +104,7 @@ describe('未注册路径与信封', () => {
       },
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
-    const echoed = a.headers.get('x-request-id')!;
+    const echoed = defined(a.headers.get('x-request-id'), 'x-request-id');
     expect(echoed).not.toBe('client-forged');
     expect(echoed).toMatch(/^[0-9a-f-]{36}$/);
   });
@@ -157,9 +158,11 @@ describe('请求日志（记录一切 /v1 请求）', () => {
       headers: { 'content-type': 'application/json' }, // 无鉴权头 → 401
       body: JSON.stringify({ model: 'm', messages: [{}] }),
     });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(logs).toHaveLength(1);
-    const entry = logs[0]!;
+    const entry = defined(logs[0], 'logs[0]');
     expect(entry.statusCode).toBe(401);
     expect(entry.userId).toBeNull();
     expect(entry.method).toBe('POST');

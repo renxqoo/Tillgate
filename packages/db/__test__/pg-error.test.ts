@@ -44,7 +44,8 @@ describe('pgSqlState(任意 5 位 SQLSTATE,全链)', () => {
     expect(pgSqlState(new Error('plain'))).toBeNull();
     expect(pgSqlState(Object.assign(new Error('num'), { code: 23505 }))).toBeNull();
     expect(pgSqlState(null)).toBeNull();
-    expect(pgSqlState(undefined)).toBeNull();
+    // 参数可选:缺省调用与显式 undefined 同为空链(签名可选化,no-useless-undefined 与 typecheck 双过)
+    expect(pgSqlState()).toBeNull();
     expect(pgSqlState('string error')).toBeNull();
   });
 });

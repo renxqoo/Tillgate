@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { Decimal } from '@tillgate/billing';
 import {
+  defined,
   E2E_INPUT_PRICE,
   E2E_MODEL,
   E2E_OUTPUT_PRICE,
@@ -28,6 +29,62 @@ import {
 } from '../gateway/kit';
 
 const hasEnv = process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null;
+
+// ---------------------------------------------------------------------------
+// 模块级断言辅助（describe×2 + it 已占 3 层回调——it 体内的箭头统一提为具名函数；
+// 断言语义逐条不变）
+// ---------------------------------------------------------------------------
+
+/** 无凭证 POST 探测某端点 → 状态码（⑪ 全端点 401 断言） */
+function fetchNoAuthStatus(baseUrl: string, path: string): Promise<number> {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: E2E_MODEL, messages: [{ role: 'user', content: 'x' }] }),
+  }).then((r) => r.status);
+}
+
+/** 坏凭证形态直发 chat 端点 → 状态码（⑪ 逐形态 401 断言——不注入有效凭证） */
+function fetchBadFormStatus(baseUrl: string, headers: Record<string, string>): Promise<number> {
+  return fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    body: JSON.stringify({ model: E2E_MODEL, messages: [{ role: 'user', content: 'x' }] }),
+  }).then((r) => r.status);
+}
+
+const is401 = (s: number): boolean => s === 401;
+
+/** 收据 stream 旗标（⑫ 旗标与请求形态一一对应断言） */
+const receiptStream = (x: { receipt: Record<string, unknown> }): boolean =>
+  (x.receipt as unknown as { stream: boolean }).stream === true;
+
+/** 账单 request_id 集 → SQL uuid 数组字面量（⑫ 预留份额审计的 IN 条件） */
+const requestIdUuidArray = (rows: Array<{ request_id: string }>): string =>
+  `ARRAY[${rows.map((row) => `'${row.request_id}'::uuid`).join(',')}]`;
+
+/** 按归属过滤预留份额行（⑫ 份额合计==预扣断言） */
+function reservationsOf<T extends { billing_request_id: string }>(
+  rows: T[],
+  requestId: string,
+): T[] {
+  return rows.filter((r) => r.billing_request_id === requestId);
+}
+
+/** Decimal 金额列求和（⑫ 审计合计口径） */
+const sumAmounts = (rows: Array<{ amount: string }>): Decimal =>
+  rows.reduce((acc, r) => acc.plus(r.amount), new Decimal(0));
+
+const isSettledPayg = (r: { status: string; source_type: string }): boolean =>
+  r.status === 'settled' && r.source_type === 'payg';
+
+/** 按 request_id 找行（⑫ 收据==日志/授权逐笔相等断言） */
+function findRowByRequestId<T extends { request_id: string }>(
+  rows: T[],
+  requestId: string,
+): T | undefined {
+  return rows.find((u) => u.request_id === requestId);
+}
 
 describe.skipIf(!hasEnv)('E2E', () => {
   let world: E2EWorld;
@@ -61,16 +118,10 @@ describe.skipIf(!hasEnv)('E2E', () => {
     ];
 
     it('全部推理/任务端点：无凭证 → 401（一个都绕不过）', async () => {
-      const results = await Promise.all(
-        jsonEndpoints.map((path) =>
-          fetch(`${gateway.baseUrl}${path}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ model: E2E_MODEL, messages: [{ role: 'user', content: 'x' }] }),
-          }).then((r) => r.status),
-        ),
-      );
-      expect(results.every((s) => s === 401)).toBe(true);
+      const probes: Array<Promise<number>> = [];
+      for (const path of jsonEndpoints) probes.push(fetchNoAuthStatus(gateway.baseUrl, path));
+      const results = await Promise.all(probes);
+      expect(results.every(is401)).toBe(true);
     });
 
     it('模型目录与任务查询：无凭证 → 401；带坏凭证形态（Basic/裸串/JWT 样/空 Bearer）→ 401', async () => {
@@ -87,16 +138,12 @@ describe.skipIf(!hasEnv)('E2E', () => {
         { 'x-api-key': 'sk_whatever' }, // 错位置放 key 不算凭证
       ];
       // 逐形态直发网关（不注入有效凭证）
-      const direct = await Promise.all(
-        badForms.map((headers) =>
-          fetch(`${gateway.baseUrl}/v1/chat/completions`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', ...headers },
-            body: JSON.stringify({ model: E2E_MODEL, messages: [{ role: 'user', content: 'x' }] }),
-          }).then((r) => r.status),
-        ),
-      );
-      expect(direct.every((s) => s === 401)).toBe(true);
+      const directProbes: Array<Promise<number>> = [];
+      for (const headers of badForms) {
+        directProbes.push(fetchBadFormStatus(gateway.baseUrl, headers));
+      }
+      const direct = await Promise.all(directProbes);
+      expect(direct.every(is401)).toBe(true);
     });
 
     it('上游真实密钥零泄露：响应体 / request_logs / usage_logs / 账单 JSON 全扫（明文与密文）', async () => {
@@ -136,7 +183,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       for (const hay of haystacks) {
         expect(hay.includes(E2E_UPSTREAM_KEY)).toBe(false); // 明文密钥
-        expect(hay.includes(enc.rows[0]!.api_key_enc)).toBe(false); // 密文也不出业务表
+        expect(hay.includes(defined(enc.rows[0], 'channel key row').api_key_enc)).toBe(false); // 密文也不出业务表
       }
     }, 120_000);
   });
@@ -197,7 +244,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
         expect(Number(bill.channel_id)).toBe(world.seed.channelId);
         expect(bill.lease_expires_at).toBeNull(); // 结算后租约清理
         expect(bill.released_at).toBeNull();
-        const candidate = bill.quote.candidates[0]!;
+        const candidate = defined(bill.quote.candidates[0], 'quote candidate');
         expect(candidate.mappingId).toBe(world.seed.mappingId); // 种子映射
         expect(candidate.externalModel).toBe(E2E_MODEL);
         expect(candidate.realModel).toBe(E2E_REAL_MODEL);
@@ -224,9 +271,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
         expect(new Decimal(receipt.inputPrice).eq(E2E_INPUT_PRICE)).toBe(true);
         expect(receipt.usage.estimated).toBe(false);
       }
-      const streamCount = bills.rows.filter(
-        (x) => (x.receipt as unknown as { stream: boolean }).stream === true,
-      ).length;
+      const streamCount = bills.rows.filter(receiptStream).length;
       expect(streamCount).toBe(1); // 旗标与请求形态一一对应
 
       // ---- billing_reservations：份额合计 == 预扣、状态 settled ----
@@ -236,14 +281,14 @@ describe.skipIf(!hasEnv)('E2E', () => {
         status: string;
         source_type: string;
       }>(
-        sql`select billing_request_id, amount::text, status, source_type from billing_reservations where billing_request_id = any(${sql.raw(`ARRAY[${bills.rows.map((row) => `'${row.request_id}'::uuid`).join(',')}]`)})`,
+        sql`select billing_request_id, amount::text, status, source_type from billing_reservations where billing_request_id = any(${sql.raw(requestIdUuidArray(bills.rows))})`,
       );
       expect(reservations.rows.length).toBeGreaterThanOrEqual(3);
       for (const bill of bills.rows) {
-        const own = reservations.rows.filter((r) => r.billing_request_id === bill.request_id);
-        const sum = own.reduce((acc, r) => acc.plus(r.amount), new Decimal(0));
+        const own = reservationsOf(reservations.rows, bill.request_id);
+        const sum = sumAmounts(own);
         expect(sum.eq(bill.reserved_amount)).toBe(true); // 明细合计==投影列
-        expect(own.every((r) => r.status === 'settled' && r.source_type === 'payg')).toBe(true);
+        expect(own.every(isSettledPayg)).toBe(true);
       }
 
       // ---- usage_logs：token 与收据逐笔相等；金额公式复核（cached 计价精确）----
@@ -267,7 +312,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       expect(usage.rows.length).toBe(3);
       for (const bill of bills.rows) {
-        const log = usage.rows.find((u) => u.request_id === bill.request_id)!;
+        const log = defined(findRowByRequestId(usage.rows, bill.request_id), 'usage_log row');
         const ru = (
           bill.receipt as unknown as {
             usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number };
@@ -301,7 +346,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
 
       // ---- wallet：余额对账 + 流水连续（balance_before/after 链）+ 授权 settled==实扣 ----
       const walletState = await keys.walletOf(userId);
-      const charged = usage.rows.reduce((acc, u) => acc.plus(u.amount), new Decimal(0));
+      const charged = sumAmounts(usage.rows);
       expect(new Decimal(walletState.balance).eq(new Decimal(FUND).minus(charged))).toBe(true);
       expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
 
@@ -316,21 +361,20 @@ describe.skipIf(!hasEnv)('E2E', () => {
       }>(
         sql`select l.amount::text, l.balance_before::text, l.balance_after::text, t.ref_type
             from wallet_legs l join wallet_transactions t on t.id = l.transaction_id
-            where l.account_id = ${account.rows[0]!.id} order by l.id`,
+            where l.account_id = ${defined(account.rows[0], 'wallet account row').id} order by l.id`,
       );
       expect(legs.rows.length).toBe(4); // 1 充值 + 3 结算
-      expect(legs.rows[0]!.ref_type).toBe('topup');
+      expect(defined(legs.rows[0], 'legs[0]').ref_type).toBe('topup');
       for (let i = 1; i < legs.rows.length; i++) {
-        expect(new Decimal(legs.rows[i]!.balance_before).eq(legs.rows[i - 1]!.balance_after)).toBe(
-          true,
-        ); // 链式连续
-        expect(legs.rows[i]!.ref_type).toBe('billing');
+        const leg = defined(legs.rows[i], `legs[${i}]`);
+        const prevLeg = defined(legs.rows[i - 1], `legs[${i - 1}]`);
+        expect(new Decimal(leg.balance_before).eq(prevLeg.balance_after)).toBe(true); // 链式连续
+        expect(leg.ref_type).toBe('billing');
       }
-      expect(new Decimal(legs.rows.at(-1)!.balance_after).eq(walletState.balance)).toBe(true); // 尾账==账户余额
-      const settleSum = legs.rows
-        .slice(1)
-        .reduce((acc, l) => acc.plus(l.amount), new Decimal(0))
-        .abs();
+      expect(
+        new Decimal(defined(legs.rows.at(-1), 'last leg').balance_after).eq(walletState.balance),
+      ).toBe(true); // 尾账==账户余额
+      const settleSum = sumAmounts(legs.rows.slice(1)).abs();
       expect(settleSum.eq(charged)).toBe(true); // 流水合计==usage_logs 合计
 
       const authorizations = await world.db.execute<{
@@ -345,9 +389,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       expect(authorizations.rows.length).toBe(3); // 每请求恰一条主授权（#over 超额另计）
       for (const authz of authorizations.rows) {
         expect(authz.status).toBe('settled');
-        const bill = bills.rows.find((row) => row.request_id === authz.ref_id)!;
+        const bill = defined(findRowByRequestId(bills.rows, authz.ref_id), 'bill row');
         expect(bill).toBeDefined();
-        const log = usage.rows.find((u) => u.request_id === authz.ref_id)!;
+        const log = defined(findRowByRequestId(usage.rows, authz.ref_id), 'usage_log row');
         expect(new Decimal(authz.amount).eq(bill.reserved_amount)).toBe(true); // 授权额==预扣投影
         expect(new Decimal(authz.settled_amount).eq(log.amount)).toBe(true); // 实结==实扣
       }
@@ -363,7 +407,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       expect(requestLogs.rows.length).toBe(3);
       for (const bill of bills.rows) {
-        const rl = requestLogs.rows.find((r) => r.request_id === bill.request_id);
+        const rl = findRowByRequestId(requestLogs.rows, bill.request_id);
         expect(rl?.status_code).toBe('200');
         expect(rl?.path).toBe('/v1/chat/completions');
         expect(rl?.method).toBe('POST');
@@ -373,7 +417,9 @@ describe.skipIf(!hasEnv)('E2E', () => {
       const after = await world.db.execute<{ budget: string }>(
         sql`select upstream_budget::text as budget from channels where id = ${world.seed.channelId}`,
       );
-      const delta = new Decimal(before.rows[0]!.budget).minus(after.rows[0]!.budget);
+      const delta = new Decimal(defined(before.rows[0], 'budget before').budget).minus(
+        defined(after.rows[0], 'budget after').budget,
+      );
       expect(delta.eq(charged)).toBe(true); // 渠道进货扣减精确等于用户成本（系数 1 口径）
 
       console.log(

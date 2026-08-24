@@ -12,7 +12,17 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const SRC = join(import.meta.dirname, '..', 'src', 'features', 'billing', 'rate-cards-content.tsx');
+import { defined } from './defined';
+
+const SRC = join(
+  import.meta.dirname,
+  '..',
+  'src',
+  'features',
+  'billing',
+  'rate-cards-content',
+  'rate-card-form.tsx',
+);
 
 /** 浏览器等价的 step 校验：v ≥ min 且 (v-min)/step 距整数 < 1e-6 */
 function nativeValid(v: number, min: number, step: number): boolean {
@@ -25,10 +35,11 @@ describe('费率卡系数原生校验回归', () => {
   it('coefficient 的 step/min 让 schema 域内全部值（含 1 = 原价）通过原生校验', () => {
     const src = readFileSync(SRC, 'utf8');
     const block = src.match(/<NumberField[^>]*name="coefficient"[\s\S]*?\/>/)?.[0];
-    expect(block, 'rate-cards-content.tsx 中应存在 coefficient NumberField').toBeDefined();
+    expect(block, 'rate-card-form.tsx 中应存在 coefficient NumberField').toBeDefined();
 
-    const step = Number(block!.match(/step="([\d.]+)"/)?.[1]);
-    const min = Number(block!.match(/min=\{([\d.]+)\}/)?.[1]);
+    const coefficientBlock = defined(block, 'coefficient NumberField block');
+    const step = Number(coefficientBlock.match(/step="([\d.]+)"/)?.[1]);
+    const min = Number(coefficientBlock.match(/min=\{([\d.]+)\}/)?.[1]);
     expect(Number.isFinite(step) && step > 0, `step 应为正数，实际 ${block}`).toBe(true);
     expect(Number.isFinite(min) && min > 0, `min 应为正数（系数必须 > 0）`).toBe(true);
 

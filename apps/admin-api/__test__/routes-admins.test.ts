@@ -9,6 +9,7 @@ import { identityErrors } from '@tillgate/identity';
 import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { ADMIN_ID, authHeader, fakeDeps } from './helpers';
+import { defined } from './defined.js';
 
 const json = { ...authHeader(), 'content-type': 'application/json' };
 
@@ -33,7 +34,7 @@ function wire(overrides?: {
   const register = vi.fn(
     overrides?.register ?? (async () => ({ credentialId: 9, replayed: false })),
   );
-  const remove = vi.fn(async () => undefined);
+  const remove = vi.fn(async () => {});
   const update = vi.fn(overrides?.update ?? (async () => record));
   const list = vi.fn(overrides?.list ?? (async () => ({ rows: [record], total: 1 })));
   const app = createAdminApp(
@@ -68,7 +69,7 @@ describe('GET /v1/admins（统一列表契约）', () => {
     expect(body).toMatchObject({ total: 1, page: 2, pageSize: 5 });
     expect(body.rows).toHaveLength(1);
     expect(body.rows[0]).toMatchObject({ id: record.id, roleId: 2, status: 0 });
-    expect(Object.keys(body.rows[0]!)).not.toContain('passwordHash');
+    expect(Object.keys(defined(body.rows[0], 'body.rows[0]'))).not.toContain('passwordHash');
     expect(spies.list).toHaveBeenCalledWith({
       q: 'ops',
       sortBy: 'email',

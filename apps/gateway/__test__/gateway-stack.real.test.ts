@@ -15,6 +15,7 @@ import { loadGatewayConfig } from '../src/config';
 import { assembleGateway, type GatewayAssembly } from '../src/assembly';
 import { createGatewayApp } from '../src/app';
 import { createPostgresGatewayCatalog } from '../src/adapters/catalog-port';
+import { defined } from './defined';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const redisUrl = process.env.REDIS_URL;
@@ -26,11 +27,11 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
   let schema = '';
   let assembly: GatewayAssembly;
   let app: ReturnType<typeof createGatewayApp>;
-  let teardowns: Array<() => Promise<void>> = [];
+  const teardowns: Array<() => Promise<void>> = [];
 
   beforeAll(async () => {
     schema = `tillgate_gw_${process.pid.toString(36)}_${Date.now().toString(36)}`;
-    const [baseUrl] = url!.split('?');
+    const [baseUrl] = defined(url, 'DB url').split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,
       poolMax: 5,
@@ -100,7 +101,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
     // 全装配（配置直指隔离 schema 的 PG 与本机 Redis）
     const config = loadGatewayConfig({
       DATABASE_URL: `${baseUrl}?options=-c%20search_path%3D${schema}`,
-      REDIS_URL: redisUrl!,
+      REDIS_URL: defined(redisUrl, 'REDIS_URL'),
       CHANNEL_API_KEY_ENCRYPTION: 'aB3daB3daB3daB3daB3daB3daB3daB3d',
       JWT_SECRET: 'eF5geF5geF5geF5geF5geF5geF5geF5g',
       NODE_ENV: 'test',
@@ -156,14 +157,17 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       ttlMs: 60_000,
       fallback: 'Asia/Shanghai',
     });
-    const snap = await catalog.findMapping('it-gpt-x', {
-      userId: Number(await scalarUserId()),
-      body: {},
-      now: new Date(),
-    });
+    const snap = defined(
+      await catalog.findMapping('it-gpt-x', {
+        userId: Number(await scalarUserId()),
+        body: {},
+        now: new Date(),
+      }),
+      'snap',
+    );
     // numeric 列原样全标度字符串（运算归 billing Decimal——快照只透传）
-    expect(Number(snap!.coefficient)).toBe(0.5); // model 行 0.5 > global 0.8
-    expect(Number(snap!.inputPrice)).toBe(1.5);
+    expect(Number(snap.coefficient)).toBe(0.5); // model 行 0.5 > global 0.8
+    expect(Number(snap.inputPrice)).toBe(1.5);
     expect(snap).toMatchObject({
       mappingId: expect.any(Number),
       externalModel: 'it-gpt-x',
@@ -188,7 +192,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
       now: new Date(),
     });
     expect(other).not.toBeNull();
-    expect(other!.coefficient).toBe('1');
+    expect(defined(other, 'other').coefficient).toBe('1');
     // 未知模型 → null（status 过滤 + 未命中）
     expect(
       await catalog.findMapping('no-such-model', { userId: 1, body: {}, now: new Date() }),

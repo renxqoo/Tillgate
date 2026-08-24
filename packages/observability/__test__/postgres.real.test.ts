@@ -26,6 +26,7 @@ import { maintainRequestLogPartitions } from '../src/adapters/postgres/request-l
 import { dayKey } from '../src/tracing/partition';
 import { createObservability } from '../src/observability';
 import type { SpanRow } from '../src/tracing/types';
+import { defined } from './defined';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 let db: Db | null = null;
@@ -76,13 +77,15 @@ function spanRow(overrides: Partial<SpanRow> = {}): SpanRow {
 }
 
 async function cleanup(): Promise<void> {
-  await db!.execute(sql`delete from trace_spans where service = 'trt-test-svc'`);
+  // 调用点均已被 if (!db) 守卫;defined 收窄替代非空断言
+  const conn = defined(db, 'db');
+  await conn.execute(sql`delete from trace_spans where service = 'trt-test-svc'`);
   // 拓扑用例的行 service='gateway',按测试渠道白名单清(不碰真实渠道数据)
-  await db!.execute(
+  await conn.execute(
     sql`delete from trace_spans where service = 'gateway' and channel in ('ch-a', 'ch-b')`,
   );
-  await db!.execute(sql`delete from audit_logs where action like 'trt.%'`);
-  await db!.execute(sql`delete from request_logs where path like '/trt%'`);
+  await conn.execute(sql`delete from audit_logs where action like 'trt.%'`);
+  await conn.execute(sql`delete from request_logs where path like '/trt%'`);
 }
 
 describe('PgTraceStore(真 PG)', () => {
@@ -109,18 +112,19 @@ describe('PgTraceStore(真 PG)', () => {
 
     const byTrace = await store.findByTraceId(root.traceId);
     expect(byTrace).toHaveLength(2);
-    expect(byTrace[0]!.parentSpanId).toBeNull();
-    expect(byTrace[1]!.parentSpanId).toBe(root.spanId);
+    expect(defined(byTrace[0], 'byTrace[0]').parentSpanId).toBeNull();
+    expect(defined(byTrace[1], 'byTrace[1]').parentSpanId).toBe(root.spanId);
 
-    const byRequest = await store.findByRequestId(root.requestId!);
+    const byRequest = await store.findByRequestId(defined(root.requestId, 'root.requestId'));
     expect(byRequest).toHaveLength(2);
 
     const recent = await store.findRecentTraces({ service: 'trt-test-svc', limit: 10 });
     const target = recent.find((t) => t.traceId === root.traceId);
     expect(target).toBeDefined();
-    expect(target!.spanCount).toBe(2);
-    expect(target!.hasError).toBe(true);
-    expect(target!.requestId).toBe(root.requestId);
+    const targetTrace = defined(target, 'target');
+    expect(targetTrace.spanCount).toBe(2);
+    expect(targetTrace.hasError).toBe(true);
+    expect(targetTrace.requestId).toBe(root.requestId);
 
     const errorsOnly = await store.findRecentTraces({ service: 'trt-test-svc', errorsOnly: true });
     expect(errorsOnly.every((t) => t.hasError)).toBe(true);
@@ -191,11 +195,13 @@ describe('PgTraceStore(真 PG)', () => {
     const a = topo.find((t) => t.channel === 'ch-a');
     const b = topo.find((t) => t.channel === 'ch-b');
     expect(a).toBeDefined();
-    expect(a!.attempts).toBe(3);
-    expect(a!.errors).toBe(2);
-    expect(a!.lastError).toBe('upstream_timeout'); // 时间最晚的错误(base+2000)
-    expect(b!.attempts).toBe(1);
-    expect(b!.errors).toBe(0);
+    const chA = defined(a, 'ch-a');
+    const chB = defined(b, 'ch-b');
+    expect(chA.attempts).toBe(3);
+    expect(chA.errors).toBe(2);
+    expect(chA.lastError).toBe('upstream_timeout'); // 时间最晚的错误(base+2000)
+    expect(chB.attempts).toBe(1);
+    expect(chB.errors).toBe(0);
     await cleanup();
   });
 
@@ -210,7 +216,7 @@ describe('PgTraceStore(真 PG)', () => {
     ]);
     const recent = await store.findRecentTraces({ service: 'trt-test-svc' });
     const target = recent.find((t) => t.traceId === traceId);
-    expect(target!.requestId).toBe('trt-early');
+    expect(defined(target, 'target').requestId).toBe('trt-early');
     await cleanup();
   });
 });
@@ -231,7 +237,7 @@ describe('trace 分区维护(真 PG)', () => {
     expect(result.dropped).not.toContain(today);
     // 旧分区确已删除
     const left = await db.execute<{ relname: string }>(
-      sql`select relname from pg_class where relname = ${'trace_spans_p' + oldDay}`,
+      sql`select relname from pg_class where relname = ${`trace_spans_p${oldDay}`}`,
     );
     expect(left.rows).toHaveLength(0);
     expect((await listTracePartitionDays(db)).length).toBeGreaterThan(0);
@@ -262,7 +268,7 @@ describe('audit(真 PG)', () => {
     const gone = await db.execute<{ n: string }>(
       sql`select count(*)::text as n from audit_logs where action = ${rollbackAction}`,
     );
-    expect(gone.rows[0]!.n).toBe('0');
+    expect(defined(gone.rows[0], 'gone.rows[0]').n).toBe('0');
 
     await runTx(
       db,
@@ -286,9 +292,10 @@ describe('audit(真 PG)', () => {
       offset: 0,
     });
     expect(byTarget).toHaveLength(1);
-    expect(byTarget[0]!.action).toBe('trt.tx.commit');
-    expect(byTarget[0]!.targetId).toBe('42'); // number 归一为 string
-    expect(byTarget[0]!.detail).toEqual({ k: 1 });
+    const auditRow = defined(byTarget[0], 'byTarget[0]');
+    expect(auditRow.action).toBe('trt.tx.commit');
+    expect(auditRow.targetId).toBe('42'); // number 归一为 string
+    expect(auditRow.detail).toEqual({ k: 1 });
     await cleanup();
   });
 
@@ -348,7 +355,7 @@ describe('audit(真 PG)', () => {
       sink.record({ actor: 'system', adminId: null, action: 'trt.dead', targetType: 'trt' }),
     ).resolves.toBeUndefined();
     expect(logged).toHaveLength(1);
-    expect(logged[0]!.msg).toContain('[audit] write failed');
+    expect(defined(logged[0], 'logged[0]').msg).toContain('[audit] write failed');
 
     // 成功路径走真库
     const good = createBestEffortAuditSink(db, (obj, msg) => logged.push({ obj, msg }));
@@ -419,7 +426,7 @@ describe('request_logs(真 PG)', () => {
       now,
     });
     expect(grouped.total).toBe(1);
-    expect(grouped.rows[0]!.errorCode).toBe('rate_limited');
+    expect(defined(grouped.rows[0], 'grouped.rows[0]').errorCode).toBe('rate_limited');
 
     const byQ = await store.list({
       q: '10.0.0.1',
@@ -460,14 +467,15 @@ describe('request_logs(真 PG)', () => {
     const current = await db.execute<{ name: string }>(
       sql`select to_char(date_trunc('month', now()), 'YYYY_MM') as name`,
     );
-    const expected = `request_logs_${current.rows[0]!.name}`;
+    const expected = `request_logs_${defined(current.rows[0], 'current.rows[0]').name}`;
     expect(result.created.concat(await existingPartitions())).toContain(expected);
     expect(result.dropped).toEqual([]); // 大保留窗:不清理
   });
 });
 
 async function existingPartitions(): Promise<string[]> {
-  const result = await db!.execute<{ relname: string }>(sql`
+  const conn = defined(db, 'db');
+  const result = await conn.execute<{ relname: string }>(sql`
     select c.relname from pg_inherits i
     join pg_class p on p.oid = i.inhparent
     join pg_class c on c.oid = i.inhrelid

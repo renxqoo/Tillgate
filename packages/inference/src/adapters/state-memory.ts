@@ -23,6 +23,7 @@ export function createMemoryHealthStore(now: () => number = Date.now): HealthSto
       const slot = read(key);
       return slot == null ? null : (structuredClone(slot.value) as T);
     },
+    // eslint-disable-next-line max-params -- 实现 HealthStore 端口契约(键/期望版本/新值/TTL),签名随端口走
     async compareAndSet<T extends Versioned>(
       key: string,
       expectedVersion: number,

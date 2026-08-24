@@ -24,6 +24,7 @@ export function availableToSpend(
 }
 
 /** 出账守卫：可用额不足按口径分流为现金/余额两类拒绝（quota_exhausted，充值语义由 face 翻译） */
+// eslint-disable-next-line max-params -- 导出域守卫:调用点遍布 wallet 应用层,改签名放大跨模块 diff
 export function assertCanDebit(
   account: Pick<AccountSnapshot, 'kind' | 'currency' | 'balance' | 'creditLimit' | 'inFlight'>,
   amount: Decimal,

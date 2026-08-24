@@ -4,6 +4,7 @@
  * 用例本体（billing/inference/notifications 包内）不在此重复。
  */
 import { describe, expect, it, vi } from 'vitest';
+import { defined } from './defined.js';
 import type { ReconcileReport, SettlementApi, SettlementClaim } from '@tillgate/billing';
 import { createNotifyJob } from '../src/jobs/notify';
 import { createPartitionJob } from '../src/jobs/partition';
@@ -48,7 +49,7 @@ describe('jobs/settlement：结算批次', () => {
     const run = createSettlementBatchJob({
       settlement: {
         claim: async () => [claimOf('r1'), claimOf('r2'), claimOf('r3'), claimOf('r4')],
-        renewClaims: async () => undefined,
+        renewClaims: async () => {},
         processClaim: async (claim) => {
           processed.push(claim.requestId);
           if (claim.requestId === 'r1') return 'settled';
@@ -264,7 +265,7 @@ describe('jobs/settlement：租约保活定时器', () => {
       const result = await pending;
       expect(result).toMatchObject({ claimed: 2, settled: 2 });
       expect(renewed.length).toBe(2);
-      expect(renewed[0]!.tokens).toEqual(['tok-r1', 'tok-r2']);
+      expect(defined(renewed[0], 'renewed[0]').tokens).toEqual(['tok-r1', 'tok-r2']);
     } finally {
       vi.useRealTimers();
     }

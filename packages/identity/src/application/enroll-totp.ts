@@ -62,7 +62,7 @@ export async function enrollTotp(
     typeof input.label === 'string' && input.label.trim().length > 0
       ? input.label.trim()
       : String(userId);
-  const issuer = ctx.config.totp.issuer;
+  const { issuer } = ctx.config.totp;
   const otpauthUrl =
     `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(label)}` +
     `?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=${ctx.config.totp.stepSec}`;

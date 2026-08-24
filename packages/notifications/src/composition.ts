@@ -27,7 +27,7 @@ export function outboxWithinTx(tx: DbTx): OutboxWithinTx {
         throw notificationsErrors.business('unknown_event', { event: input.event });
       }
       if (
-        input.dedupeKey.length < 1 ||
+        input.dedupeKey.length === 0 ||
         input.dedupeKey.length > 128 ||
         // payload 必须是纯对象：数组 typeof 也是 'object'，一并拒绝（jsonb 落库前收口）
         input.payload == null ||

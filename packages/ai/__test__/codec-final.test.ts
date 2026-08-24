@@ -14,6 +14,7 @@ import { AnthropicAdapter } from '../src/adapters/anthropic.js';
 import { GeminiAdapter } from '../src/adapters/gemini.js';
 import { MiniMaxAdapter } from '../src/adapters/minimax.js';
 import { peekFirstChunk, firstChunkStreamError } from '../src/internal/stream.js';
+import { defined } from './defined';
 
 const sse = (frames: string[]) =>
   new ReadableStream<Uint8Array>({
@@ -195,7 +196,7 @@ describe('internal/stream：peekFirstChunk 深支', () => {
     );
     expect(full.done).toBe(false);
     expect(full.first?.length).toBeGreaterThan(0);
-    const restText = await new Response(full.rest!).text();
+    const restText = await new Response(defined(full.rest, 'full.rest')).text();
     expect(restText).toContain('{"x":1}');
     await expect(
       peekFirstChunk(

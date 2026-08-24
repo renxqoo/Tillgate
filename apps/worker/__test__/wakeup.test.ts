@@ -4,6 +4,7 @@
  * LISTEN 假连接通知触发、断线重连退避。
  */
 import { describe, expect, it, vi } from 'vitest';
+import { defined } from './defined.js';
 import {
   createCoalescedRunner,
   createSettleWakeListener,
@@ -77,16 +78,22 @@ describe('PG LISTEN 消费端', () => {
         return claimed;
       },
       batchSize: 5,
-      logger: { warn: () => undefined, error: () => undefined },
+      logger: { warn: () => {}, error: () => {} },
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
     expect(fake.queries).toEqual(['LISTEN "settle-wake"']);
     fake.notify('settle-wake');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
     expect(batches).toEqual([3]);
     // 其他通道的通知不触发
     fake.notify('other-channel');
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
     expect(batches).toEqual([3]);
     await listener.close();
     expect(fake.connection.release).toHaveBeenCalled();
@@ -99,13 +106,18 @@ describe('PG LISTEN 消费端', () => {
     const listener = createSettleWakeListener({
       connect: async () => fake.connection,
       channel: 'settle-wake',
-      runBatch: async () => claimCounts[Math.min(call++, claimCounts.length - 1)]!,
+      runBatch: async () =>
+        defined(claimCounts[Math.min(call++, claimCounts.length - 1)], 'claimCounts[call]'),
       batchSize: 5,
-      logger: { warn: () => undefined, error: () => undefined },
+      logger: { warn: () => {}, error: () => {} },
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
     fake.notify('settle-wake');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
     expect(call).toBe(3); // 5(满) → 5(满) → 2(非满，止)
     await listener.close();
   });
@@ -124,7 +136,7 @@ describe('PG LISTEN 消费端', () => {
         channel: 'settle-wake',
         runBatch: async () => 0,
         batchSize: 5,
-        logger: { warn: () => undefined, error: () => undefined },
+        logger: { warn: () => {}, error: () => {} },
         backoff: { baseMs: 1_000, maxMs: 30_000 },
       });
       await vi.advanceTimersByTimeAsync(0);
@@ -155,11 +167,15 @@ describe('PG LISTEN 消费端', () => {
         return 0; // 非满批
       },
       batchSize: 5,
-      logger: { warn: () => undefined, error: () => undefined },
+      logger: { warn: () => {}, error: () => {} },
     });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
     fake.notify('settle-wake');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
     expect(runs).toBe(2); // 一轮 + pending 补跑一轮
     await listener.close();
   });
@@ -210,11 +226,13 @@ describe('唤醒消费端：连接故障路径', () => {
       channel: 'settle-wake',
       runBatch: async () => 0,
       batchSize: 5,
-      logger: { warn: () => undefined, error: () => undefined },
+      logger: { warn: () => {}, error: () => {} },
     });
     await listener.close();
     resolveConnect(fake.connection);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
     expect(fake.connection.release).toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@
 
 - 老仓 15 个 service 的业务语义已由能力包整建吸收（accounts/identity/billing/observability），
   本 app 不移植 service 层——service 对应动词映射见 §3。
-- v1 病灶（AGENT.md §11 E1/E3）：`error-map.ts` 的 instanceof 翻译表与 SUBSCRIPTION_HTTP
+- v1 病灶（AGENTS.md §11 E1/E3）：`error-map.ts` 的 instanceof 翻译表与 SUBSCRIPTION_HTTP
   手工映射 → 全部替换为 category 渲染 + FaceOverride；新仓禁回归。
 - v1 隐患沿用修复：支付回调幂等（billing payments 已内建 status=2 幂等应答）；
   OAuth state 单次消费（identity GETDEL 语义）。

@@ -23,11 +23,11 @@ import { toTransactionWireRow } from '../presenters/users';
 import { toAuditWireRow } from '../presenters/observability';
 
 /** billing operations 用例结构面（run 自开事务;execute 收 WalletTx） */
-export type OperationsUseCase = {
+export interface OperationsUseCase {
   run<T extends Record<string, unknown>>(
     input: OperationRun<T>,
   ): Promise<{ receipt: T; replayed: boolean }>;
-};
+}
 
 /** 同事务审计原语（装配闭包——observability/composition 的 writeAudit 经 assembly 注入） */
 export type WriteAuditInTx = (
@@ -58,6 +58,7 @@ interface FundsReceipt {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -67,6 +68,7 @@ export function usersFundsRoutes(deps: UsersFundsRoutesDeps) {
     }
   }
 
+  // eslint-disable-next-line max-lines-per-function -- 管理员调账(资金域):事务内双侧转账与回执构造语义连续,lint 清零期不动资金逻辑(存量棘轮)
   app.post('/v1/users/:id/adjust', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = usersContracts.adjust.parse(await c.req.json());

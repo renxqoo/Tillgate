@@ -15,9 +15,10 @@ export interface ModelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'models'>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function modelsRoutes(deps: ModelsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const models = deps.controlPlane.models;
+  const { models } = deps.controlPlane;
 
   app.get('/v1/models', async (c) => {
     const query = parseListQuery(c.req.query(), MODEL_SORTS, 'createdAt');
@@ -61,6 +62,7 @@ export function modelsRoutes(deps: ModelsRoutesDeps) {
     return c.json(toModelWireRow(row), 201);
   });
 
+  // eslint-disable-next-line complexity -- 补丁字段映射平铺(逐字段条件展开,分支即 schema 搬运)
   app.patch('/v1/models/:id', async (c) => {
     const id = idParam(c.req.param('id'));
     const body = modelsContracts.update.parse(await c.req.json());

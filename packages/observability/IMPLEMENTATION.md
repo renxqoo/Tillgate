@@ -60,7 +60,7 @@
 | G5  | SpanBatcher/InMemorySpanProcessor/LogSpanProcessor class → 工厂闭包            | 铁律 5(SpanProcessor 接口用对象字面量结构化满足)                                            |
 | G6  | `DecodeError` 自由类 → `observabilityErrors.business('invalid_otlp_payload')`  | §11 目录码;接收端(P5)按码映射 400                                                           |
 | G7  | 维护函数内置 advisory try-lock(未获锁返回空结果=跳过)                          | S3;v1 worker 行为等价                                                                       |
-| G8  | `buildTraceGraph` 只从包出口供服务端消费                                       | §2.2:admin 前端直依赖 `@tillgate/tracing` 是 P5 要清除的越界;v2 不设前端子入口             |
+| G8  | `buildTraceGraph` 只从包出口供服务端消费                                       | §2.2:admin 前端直依赖 `@tillgate/tracing` 是 P5 要清除的越界;v2 不设前端子入口              |
 | G9  | `initOtel` 返回 `memory?: MemoryTraceViewer`(mode=memory 时)                   | G3 的配套——查看页数据源从全局函数改为返回句柄                                               |
 
 ## 3. 逐模块裁决表

@@ -22,16 +22,25 @@ export function weightedOrderByPriority<T extends SchedulableChannel>(
   }
   const ordered: T[] = [];
   for (const priority of [...tiers.keys()].toSorted((a, b) => b - a)) {
-    const pool = [...tiers.get(priority)!]!;
+    const tier = tiers.get(priority);
+    // 不可达守卫:priority 键来自 tiers 自身,仅做类型收窄
+    if (tier == null) continue;
+    const pool = [...tier];
     while (pool.length > 0) {
       const total = pool.reduce((sum, channel) => sum + Math.max(1, channel.weight), 0);
       let pick = rng() * total;
       let index = 0;
       for (; index < pool.length - 1; index++) {
-        pick -= Math.max(1, pool[index]!.weight);
+        const candidate = pool[index];
+        // 不可达守卫:index < pool.length - 1,仅做类型收窄
+        if (candidate == null) break;
+        pick -= Math.max(1, candidate.weight);
         if (pick <= 0) break;
       }
-      ordered.push(pool.splice(index, 1)[0]!);
+      const [picked] = pool.splice(index, 1);
+      // 不可达守卫:pool 非空时 splice 必返回一行,仅做类型收窄
+      if (picked == null) continue;
+      ordered.push(picked);
     }
   }
   return ordered;

@@ -60,7 +60,7 @@ function guard(): AuthGuard & { failures: number } {
     recordFailure: async () => {
       failures += 1;
     },
-    recordSuccess: async () => undefined,
+    recordSuccess: async () => {},
   };
 }
 
@@ -123,10 +123,10 @@ function authHarness(identity: AuthRoutesDeps['identity']) {
     admins: {
       findByEmail: async () => adminRecord,
       find: async () => adminRecord,
-      touchLastLogin: async () => undefined,
+      touchLastLogin: async () => {},
     },
     guards: { emailIp, ip },
-    loginAudit: async () => undefined,
+    loginAudit: async () => {},
     trustedProxyHops: 0,
     mailerConfigured: false,
     sessionTtlSec: 3600,
@@ -257,7 +257,7 @@ describe('TOTP 绑定三动词(me 会话组)', () => {
       } as unknown as MeRoutesDeps['identity'],
       admins: {
         find: async () => adminRecord,
-        setTwoFactorEnabled: async () => undefined,
+        setTwoFactorEnabled: async () => {},
       },
       mailerConfigured: false,
       sessionTtlSec: 3600,

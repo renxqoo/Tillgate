@@ -315,7 +315,11 @@ export function fakeWebhookDeliverer(opts: { failUrls?: string[]; delayMs?: numb
     calls,
     behavior,
     async deliver(input: RecordedWebhookCall) {
-      if (behavior.delayMs) await new Promise((r) => setTimeout(r, behavior.delayMs));
+      if (behavior.delayMs) {
+        await new Promise((r) => {
+          setTimeout(r, behavior.delayMs);
+        });
+      }
       calls.push(input);
       return !behavior.failUrls.includes(input.url);
     },
@@ -341,7 +345,7 @@ export const permissiveUrlGuard = {
   },
 };
 
-export const noopLogger = { warn: () => undefined };
+export const noopLogger = { warn: () => {} };
 
 export const testDispatchConfig = {
   claimLeaseMs: 60_000,

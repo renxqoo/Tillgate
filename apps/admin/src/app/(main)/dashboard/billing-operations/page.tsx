@@ -26,6 +26,31 @@ interface BillingCase {
 
 const PAGE_SIZE = 20;
 
+// 模块级 cell 渲染器：避免在组件渲染期定义组件（no-unstable-nested-components）；
+// 文案标签经参数传入（列定义数组仍留在组件内闭包 t）
+function renderRequestIdCell(item: BillingCase, viewTraceLabel: string) {
+  return (
+    <span>
+      <code className="text-xs">{item.requestId}</code>{' '}
+      <Link href={`/dashboard/tracing?requestId=${item.requestId}`} className="text-xs underline">
+        {viewTraceLabel}
+      </Link>
+    </span>
+  );
+}
+
+function renderReasonCell(item: BillingCase) {
+  return (
+    <span className="max-w-64 text-xs">
+      {item.failureClass ?? item.failureCode ?? item.lastError ?? '—'}
+    </span>
+  );
+}
+
+function renderActionsCell(item: BillingCase) {
+  return <ReviewActions requestId={item.requestId} revision={item.revision} status={item.status} />;
+}
+
 export default async function BillingOperationsPage({
   searchParams,
 }: {
@@ -63,17 +88,7 @@ export default async function BillingOperationsPage({
           {
             key: 'requestId',
             header: t('requestId'),
-            render: (item: BillingCase) => (
-              <span>
-                <code className="text-xs">{item.requestId}</code>{' '}
-                <Link
-                  href={`/dashboard/tracing?requestId=${item.requestId}`}
-                  className="text-xs underline"
-                >
-                  {t('viewTrace')}
-                </Link>
-              </span>
-            ),
+            render: (item: BillingCase) => renderRequestIdCell(item, t('viewTrace')),
           },
           { key: 'userId', header: tc('user'), render: (item: BillingCase) => `#${item.userId}` },
           {
@@ -85,11 +100,7 @@ export default async function BillingOperationsPage({
           {
             key: 'failureClass',
             header: t('reason'),
-            render: (item: BillingCase) => (
-              <span className="max-w-64 text-xs">
-                {item.failureClass ?? item.failureCode ?? item.lastError ?? '—'}
-              </span>
-            ),
+            render: renderReasonCell,
           },
           {
             key: 'updatedAt',
@@ -99,13 +110,7 @@ export default async function BillingOperationsPage({
           {
             key: 'actions',
             header: tc('actions'),
-            render: (item: BillingCase) => (
-              <ReviewActions
-                requestId={item.requestId}
-                revision={item.revision}
-                status={item.status}
-              />
-            ),
+            render: renderActionsCell,
           },
         ]}
         rows={items}

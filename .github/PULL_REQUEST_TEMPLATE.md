@@ -23,7 +23,7 @@
 - [ ] `bun run build`
 - [ ] `bun run test`
 - [ ] `bun run format:check`
-- [ ] Tests added / updated for the change (boundary & regression cases are mandatory — AGENT.md §10)
+- [ ] Tests added / updated for the change (boundary & regression cases are mandatory — AGENTS.md §10)
 - [ ] Coverage numbers reported as-is if thresholds are affected (never lowered)
 
 <!-- If migrations are included: `packages/db/migrations/` SQL idempotent, `_journal.json` entry

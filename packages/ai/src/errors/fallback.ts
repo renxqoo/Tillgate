@@ -47,7 +47,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /** status → kind 兜底矩阵（529 overloaded 单列；429 限流；401/403 凭据族；4xx 请求错误） */
-export function statusKind(status: number | undefined): ErrorKind {
+export function statusKind(status?: number): ErrorKind {
   if (status === undefined) return 'network';
   if (status === 529) return 'overloaded';
   if (status >= 500) return 'upstream_error';
@@ -60,6 +60,7 @@ export function statusKind(status: number | undefined): ErrorKind {
 /**
  * status 兜底构造（adapter 未识别形状时的最终落点；vendorCode/detail/rawBody 保真）。
  */
+// eslint-disable-next-line max-params -- 导出的错误构造 API（internal/stream、tableOrFallback 与测试多调用点），改对象参数放大跨模块 diff
 export function statusFallbackError(
   status: number | undefined,
   body: unknown,
@@ -94,8 +95,9 @@ export function tableOrFallback(input: {
 }): UpstreamError {
   const vendorCode = extractVendorCode(input.body);
   const kind = vendorCode !== undefined ? input.table[vendorCode] : undefined;
-  if (kind === undefined)
+  if (kind === undefined) {
     return statusFallbackError(input.status, input.body, input.rawBody, input.headers);
+  }
   return new UpstreamError({
     kind,
     status: input.status,

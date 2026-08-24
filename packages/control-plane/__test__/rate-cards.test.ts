@@ -4,6 +4,7 @@
  * 审计与变更同事务（§5.4/G3）：before/after 都进审计、写失败回滚变更。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createRateCard } from '../src/application/rates/create-rate-card';
 import { updateRateCard } from '../src/application/rates/update-rate-card';
 import { deleteRateCard } from '../src/application/rates/delete-rate-card';
@@ -45,7 +46,7 @@ describe('费率卡全流程', () => {
       scope: 'global',
       coefficient: '1.500',
     });
-    const initialUpdatedAt = rateCards.cards.get(card.id)!.updatedAt.getTime();
+    const initialUpdatedAt = defined(rateCards.cards.get(card.id)).updatedAt.getTime();
 
     const list = await listRateCards(deps, {
       q: 'card-a',
@@ -54,7 +55,7 @@ describe('费率卡全流程', () => {
       limit: 10,
       offset: 0,
     });
-    expect(list.rows[0]!.coefficient).toBe('1.500');
+    expect(defined(list.rows[0]).coefficient).toBe('1.500');
 
     const health = await checkRateCardHealth(deps, card.id);
     expect(health).toEqual({ hasGlobalCoefficient: true, coefficient: '1.500' });
@@ -65,7 +66,9 @@ describe('费率卡全流程', () => {
       patch: { coefficient: '0.8' },
     });
     expect(patched.coefficient).toBe('0.800');
-    expect(rateCards.cards.get(card.id)!.updatedAt.getTime()).toBeGreaterThan(initialUpdatedAt);
+    expect(defined(rateCards.cards.get(card.id)).updatedAt.getTime()).toBeGreaterThan(
+      initialUpdatedAt,
+    );
 
     const removed = await deleteRateCard(deps, { ctx: adminCtx(), rateCardId: card.id });
     expect(removed.ok).toBe(true);
@@ -117,7 +120,7 @@ describe('费率卡全流程', () => {
       limit: 10,
       offset: 0,
     });
-    expect(list.rows[0]!.coefficient).toBe('1.000');
+    expect(defined(list.rows[0]).coefficient).toBe('1.000');
   });
 });
 
@@ -138,8 +141,8 @@ describe('M1 red：全局系数更新不得抹平 model 覆写行', () => {
       rateCardId: card.id,
       patch: { coefficient: '0.8' },
     });
-    const globalRow = rateCards.coefficients.find((c) => c.scope === 'global')!;
-    const modelRow = rateCards.coefficients.find((c) => c.scope === 'model')!;
+    const globalRow = defined(rateCards.coefficients.find((c) => c.scope === 'global'));
+    const modelRow = defined(rateCards.coefficients.find((c) => c.scope === 'model'));
     expect(globalRow.coefficient).toBe('0.800');
     expect(modelRow.coefficient).toBe('2.500'); // 回归点：未被抹平
   });
@@ -195,10 +198,10 @@ describe('费率审计事务参与（§5.4/G3：费率变更必须产生可审�
         patch: { name: 'changed', coefficient: '0.1' },
       }),
     ).rejects.toThrow('audit sink down');
-    expect(world.rateCards.cards.get(card.id)!.name).toBe('rollback'); // 卡面未变
-    expect(world.rateCards.coefficients.find((c) => c.scope === 'global')!.coefficient).toBe(
-      '1.500',
-    ); // 系数未变
+    expect(defined(world.rateCards.cards.get(card.id)).name).toBe('rollback'); // 卡面未变
+    expect(
+      defined(world.rateCards.coefficients.find((c) => c.scope === 'global')).coefficient,
+    ).toBe('1.500'); // 系数未变
     expect(world.audit.entries.filter((e) => e.action === 'rate_card.update')).toHaveLength(0);
   });
 });

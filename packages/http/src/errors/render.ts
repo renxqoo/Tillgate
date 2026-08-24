@@ -70,7 +70,8 @@ export function errorBody(rendered: RenderedError): {
   return { error };
 }
 
-export function renderError(error: unknown, opts: RenderOptions = {}): RenderedError {
+/** 首参可选:缺省与 undefined 同走 normalizeError 的非错误值兜底(errors.non_error 语义) */
+export function renderError(error?: unknown, opts: RenderOptions = {}): RenderedError {
   const locale = opts.locale ?? 'en';
   const record = normalizeError(error);
   if (record.nature === 'business') return renderBusiness(record, locale, opts);

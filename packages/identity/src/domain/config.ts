@@ -106,11 +106,108 @@ function vocabList(values: readonly string[], field: string): readonly string[] 
   return values;
 }
 
-function intIn(value: number, field: string, min: number, max: number): number {
-  if (!Number.isInteger(value) || value < min || value > max) {
-    badConfig(field, `must be an integer in [${min}, ${max}]`);
+function intIn(value: number, field: string, bounds: readonly [number, number]): number {
+  if (!Number.isInteger(value) || value < bounds[0] || value > bounds[1]) {
+    badConfig(field, `must be an integer in [${bounds[0]}, ${bounds[1]}]`);
   }
   return value;
+}
+
+/** 挑战参数块校验(digits/ttl/cooldown/maxAttempts 均界内) */
+function resolveChallengeConfig(challenge: ChallengeConfig): ChallengeConfig {
+  intIn(challenge.digits, 'challenge.digits', [6, 8]);
+  return {
+    digits: challenge.digits,
+    ttlMs: intIn(challenge.ttlMs, 'challenge.ttlMs', CHALLENGE_BOUNDS.ttlMs),
+    cooldownMs: intIn(challenge.cooldownMs, 'challenge.cooldownMs', CHALLENGE_BOUNDS.cooldownMs),
+    maxAttempts: intIn(
+      challenge.maxAttempts,
+      'challenge.maxAttempts',
+      CHALLENGE_BOUNDS.maxAttempts,
+    ),
+  };
+}
+
+/** TOTP 块校验(步长/窗口/恢复码数界内 + issuer 非空限长) */
+function validateTotpConfig(totp: TotpConfig): void {
+  intIn(totp.stepSec, 'totp.stepSec', [5, 120]);
+  intIn(totp.windowSteps, 'totp.windowSteps', [0, 5]);
+  intIn(totp.recoveryCount, 'totp.recoveryCount', [1, 20]);
+  if (typeof totp.issuer !== 'string' || totp.issuer.length === 0 || totp.issuer.length > 255) {
+    badConfig('totp.issuer', 'must be a string of 1-255 characters');
+  }
+}
+
+/** 会话块校验:声明的 realm 必有配置且 issuer/secret/ttl 合法(签发面完备,fail fast) */
+function validateSessions(
+  sessions: Readonly<Record<string, SessionRealmConfig>>,
+  realms: readonly string[],
+): void {
+  const realmSet = new Set(realms);
+  for (const [realm, session] of Object.entries(sessions)) {
+    if (!realmSet.has(realm)) badConfig('sessions', `realm '${realm}' is not declared in realms`);
+    if (
+      typeof session.issuer !== 'string' ||
+      session.issuer.length === 0 ||
+      session.issuer.length > 255
+    ) {
+      badConfig(`sessions.${realm}.issuer`, 'must be a string of 1-255 characters');
+    }
+    if (typeof session.secret !== 'string' || session.secret.length < 16) {
+      badConfig(`sessions.${realm}.secret`, 'must be a string of >= 16 characters');
+    }
+    assertSessionTtlSec(session.ttlSec);
+  }
+  // 每 realm 必须有会话配置(签发面完备;fail fast)
+  for (const realm of realms) {
+    if (sessions[realm] == null) {
+      badConfig('sessions', `realm '${realm}' has no session config`);
+    }
+  }
+}
+
+/** redirect_uri 白名单校验:非空、绝对 http(s) URL、无 query/fragment、不重复(精确匹配词表) */
+function validateRedirectAllowlist(uris: readonly string[]): void {
+  if (!Array.isArray(uris) || uris.length === 0) {
+    badConfig('oauthRedirectAllowlist', 'must be a non-empty array of redirect URIs');
+  }
+  const seen = new Set<string>();
+  for (const uri of uris) {
+    let parsed: URL;
+    try {
+      parsed = new URL(uri);
+    } catch {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' is not an absolute URL`);
+      continue;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' must use http(s)`);
+    }
+    if (parsed.search !== '' || parsed.hash !== '') {
+      badConfig('oauthRedirectAllowlist', `entry '${uri}' must not carry query or fragment`);
+    }
+    if (seen.has(uri)) badConfig('oauthRedirectAllowlist', `duplicate entry '${uri}'`);
+    seen.add(uri);
+  }
+}
+
+/** OAuth 凭据块校验:词表外的 provider 键拒绝,凭据非空 */
+function validateOauthCreds(
+  oauth: Readonly<Record<string, OAuthProviderCredentials>>,
+  providers: readonly string[],
+): void {
+  const providerSet = new Set(providers);
+  for (const [provider, creds] of Object.entries(oauth)) {
+    if (!providerSet.has(provider)) {
+      badConfig('oauth', `provider '${provider}' is not declared in providers`);
+    }
+    if (typeof creds?.clientId !== 'string' || creds.clientId.length === 0) {
+      badConfig(`oauth.${provider}.clientId`, 'must be a non-empty string');
+    }
+    if (typeof creds.clientSecret !== 'string' || creds.clientSecret.length === 0) {
+      badConfig(`oauth.${provider}.clientSecret`, 'must be a non-empty string');
+    }
+  }
 }
 
 export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
@@ -125,29 +222,7 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
   const realms = vocabList(input.realms, 'realms');
 
   const passwordPolicy = resolvePasswordPolicy(input.passwordPolicy);
-  const { digits } = input.challenge;
-  intIn(digits, 'challenge.digits', 6, 8);
-  const challenge: ChallengeConfig = {
-    digits,
-    ttlMs: intIn(
-      input.challenge.ttlMs,
-      'challenge.ttlMs',
-      CHALLENGE_BOUNDS.ttlMs[0],
-      CHALLENGE_BOUNDS.ttlMs[1],
-    ),
-    cooldownMs: intIn(
-      input.challenge.cooldownMs,
-      'challenge.cooldownMs',
-      CHALLENGE_BOUNDS.cooldownMs[0],
-      CHALLENGE_BOUNDS.cooldownMs[1],
-    ),
-    maxAttempts: intIn(
-      input.challenge.maxAttempts,
-      'challenge.maxAttempts',
-      CHALLENGE_BOUNDS.maxAttempts[0],
-      CHALLENGE_BOUNDS.maxAttempts[1],
-    ),
-  };
+  const challenge = resolveChallengeConfig(input.challenge);
 
   if (
     typeof input.codePepper !== 'string' ||
@@ -157,74 +232,11 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
     badConfig('codePepper', 'must be a string of 16-512 characters');
   }
 
-  intIn(input.totp.stepSec, 'totp.stepSec', 5, 120);
-  intIn(input.totp.windowSteps, 'totp.windowSteps', 0, 5);
-  intIn(input.totp.recoveryCount, 'totp.recoveryCount', 1, 20);
-  if (
-    typeof input.totp.issuer !== 'string' ||
-    input.totp.issuer.length < 1 ||
-    input.totp.issuer.length > 255
-  ) {
-    badConfig('totp.issuer', 'must be a string of 1-255 characters');
-  }
-
-  const realmSet = new Set(realms);
-  for (const [realm, session] of Object.entries(input.sessions)) {
-    if (!realmSet.has(realm)) badConfig('sessions', `realm '${realm}' is not declared in realms`);
-    if (
-      typeof session.issuer !== 'string' ||
-      session.issuer.length < 1 ||
-      session.issuer.length > 255
-    ) {
-      badConfig(`sessions.${realm}.issuer`, 'must be a string of 1-255 characters');
-    }
-    if (typeof session.secret !== 'string' || session.secret.length < 16) {
-      badConfig(`sessions.${realm}.secret`, 'must be a string of >= 16 characters');
-    }
-    assertSessionTtlSec(session.ttlSec);
-  }
-  // 每 realm 必须有会话配置(签发面完备;fail fast)
-  for (const realm of realms) {
-    if (input.sessions[realm] == null) {
-      badConfig('sessions', `realm '${realm}' has no session config`);
-    }
-  }
-  intIn(input.oauthStateTtlSec, 'oauthStateTtlSec', 60, 3600);
-
-  // redirect_uri 白名单:非空、绝对 http(s) URL、无 query/fragment、不重复(精确匹配词表)
-  if (!Array.isArray(input.oauthRedirectAllowlist) || input.oauthRedirectAllowlist.length === 0) {
-    badConfig('oauthRedirectAllowlist', 'must be a non-empty array of redirect URIs');
-  }
-  const allowSeen = new Set<string>();
-  for (const uri of input.oauthRedirectAllowlist) {
-    let parsed: URL;
-    try {
-      parsed = new URL(uri);
-    } catch {
-      badConfig('oauthRedirectAllowlist', `entry '${uri}' is not an absolute URL`);
-      continue;
-    }
-    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-      badConfig('oauthRedirectAllowlist', `entry '${uri}' must use http(s)`);
-    }
-    if (parsed.search !== '' || parsed.hash !== '') {
-      badConfig('oauthRedirectAllowlist', `entry '${uri}' must not carry query or fragment`);
-    }
-    if (allowSeen.has(uri)) badConfig('oauthRedirectAllowlist', `duplicate entry '${uri}'`);
-    allowSeen.add(uri);
-  }
-
-  const providerSet = new Set(providers);
-  for (const [provider, creds] of Object.entries(input.oauth)) {
-    if (!providerSet.has(provider))
-      badConfig('oauth', `provider '${provider}' is not declared in providers`);
-    if (typeof creds?.clientId !== 'string' || creds.clientId.length === 0) {
-      badConfig(`oauth.${provider}.clientId`, 'must be a non-empty string');
-    }
-    if (typeof creds.clientSecret !== 'string' || creds.clientSecret.length === 0) {
-      badConfig(`oauth.${provider}.clientSecret`, 'must be a non-empty string');
-    }
-  }
+  validateTotpConfig(input.totp);
+  validateSessions(input.sessions, realms);
+  intIn(input.oauthStateTtlSec, 'oauthStateTtlSec', [60, 3600]);
+  validateRedirectAllowlist(input.oauthRedirectAllowlist);
+  validateOauthCreds(input.oauth, providers);
 
   return {
     config: {
@@ -239,9 +251,9 @@ export function resolveConfig(input: IdentityConfigInput): ResolvedConfig {
     },
     guards: {
       identifierKinds: new Set(identifiers),
-      providers: providerSet,
+      providers: new Set(providers),
       challengeKinds: new Set(challengeKinds),
-      realms: realmSet,
+      realms: new Set(realms),
     },
   };
 }

@@ -45,6 +45,83 @@ interface RegisterValues {
   confirmPassword: string;
 }
 
+/**
+ * 注册第二步步的邮箱验证码卡（模块级组件）：code 状态随本组件自持，
+ * 返回/重新进入时随卸载归零（与原「返回时清 code」语义一致）。
+ */
+function RegisterCodeStep({
+  challenge,
+  affCode,
+  onBack,
+}: {
+  challenge: string;
+  affCode: string | null;
+  onBack: () => void;
+}) {
+  const t = useTranslations('auth');
+  const [pending, startTransition] = useTransition();
+  const [code, setCode] = useState('');
+
+  return (
+    <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-xl">{t('codeTitle')}</CardTitle>
+        <CardDescription>{t('codeSentRegister')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            startTransition(async () => {
+              const res = await registerVerifyAction(challenge, code, affCode);
+              actionResult(res ?? {}, t('verifyFailed'));
+              // 成功会 redirect，不会回到这里
+            });
+          }}
+          className="space-y-4"
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="register-code">{t('codeLabel')}</FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <ShieldCheckIcon />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="register-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder={t('codePlaceholder')}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  autoFocus
+                />
+              </InputGroup>
+              <FieldDescription>{t('codeNoticeRegister')}</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('verifyAndRegister')}
+          </Button>
+          <button
+            type="button"
+            className="w-full cursor-pointer text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+            onClick={onBack}
+          >
+            {t('backToRegister')}
+          </button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// 主表单：三个 Controller 字段为逐项平铺的模板（email/密码/确认密码 + 人机验证装配），
+// 超限源于表单字段模板的线性长度而非逻辑密度（验证码步已抽为 RegisterCodeStep）
+// eslint-disable-next-line max-lines-per-function -- 表单字段 Controller 模板逐项平铺，逻辑密度低（铁律 22①）
 export function RegisterForm({
   oauthOptions = [],
   captchaSiteKey = null,
@@ -62,7 +139,6 @@ export function RegisterForm({
   const [showPassword, setShowPassword] = useState(false);
   // 注册两步：邮箱+密码 → 邮箱验证码 → 建号并自动登录
   const [challenge, setChallenge] = useState<string | null>(null);
-  const [code, setCode] = useState('');
   // 人机验证：token 单次消费，提交被拒后递增 resetNonce 换新票
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaResetNonce, setCaptchaResetNonce] = useState(0);
@@ -105,62 +181,7 @@ export function RegisterForm({
 
   if (challenge) {
     return (
-      <Card className="[--card-spacing:--spacing(7)] py-[33px] shadow-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">{t('codeTitle')}</CardTitle>
-          <CardDescription>{t('codeSentRegister')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault();
-              startTransition(async () => {
-                const res = await registerVerifyAction(challenge, code, affCode);
-                actionResult(res ?? {}, t('verifyFailed'));
-                // 成功会 redirect，不会回到这里
-              });
-            }}
-            className="space-y-4"
-          >
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="register-code">{t('codeLabel')}</FieldLabel>
-                <InputGroup>
-                  <InputGroupAddon>
-                    <ShieldCheckIcon />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="register-code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    placeholder={t('codePlaceholder')}
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    autoFocus
-                  />
-                </InputGroup>
-                <FieldDescription>{t('codeNoticeRegister')}</FieldDescription>
-              </Field>
-            </FieldGroup>
-            <Button type="submit" disabled={pending || code.length !== 6} className="w-full">
-              {pending && <Loader2Icon className="animate-spin" />}
-              {t('verifyAndRegister')}
-            </Button>
-            <button
-              type="button"
-              className="w-full cursor-pointer text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onClick={() => {
-                setChallenge(null);
-                setCode('');
-              }}
-            >
-              {t('backToRegister')}
-            </button>
-          </form>
-        </CardContent>
-      </Card>
+      <RegisterCodeStep challenge={challenge} affCode={affCode} onBack={() => setChallenge(null)} />
     );
   }
 

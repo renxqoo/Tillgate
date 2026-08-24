@@ -4,7 +4,7 @@
  * （明文不存在于库——v1 同口径）;createdBy/usedBy wire 为字符串（v1 形状）。
  */
 import { normalizeAmount } from '@tillgate/billing';
-import { iso } from '../contracts/common';
+import { iso, isoRequired } from '../contracts/common';
 
 export interface PlanRowSource {
   readonly id: number;
@@ -59,8 +59,8 @@ export function toSubscriptionWireRow(row: AdminSubscriptionSource) {
     userDisplayName: row.userDisplayName,
     planId: row.planId,
     planName: row.planName,
-    startAt: iso(row.startAt)!,
-    endAt: iso(row.endAt)!,
+    startAt: isoRequired(row.startAt),
+    endAt: isoRequired(row.endAt),
     quotaAmount: normalizeAmount(row.quotaAmount),
     usedAmount: normalizeAmount(row.usedAmount),
     reservedAmount: normalizeAmount(row.reservedAmount),
@@ -68,7 +68,7 @@ export function toSubscriptionWireRow(row: AdminSubscriptionSource) {
     price: normalizeAmount(row.price),
     remainingAmount: normalizeAmount(row.remainingAmount),
     status: row.status,
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }
 
@@ -92,7 +92,7 @@ export function toBatchWireRow(row: RedeemBatchSource) {
     total: row.total,
     usedCount: row.usedCount,
     createdBy: row.createdBy === null ? null : String(row.createdBy),
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }
 
@@ -143,6 +143,6 @@ export function toDeadCaseWireRow(row: DeadCaseSource) {
     failureCode: row.failureCode,
     lastError: row.lastError,
     ...(row.reservedAmount !== null ? { reservedAmount: normalizeAmount(row.reservedAmount) } : {}),
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }

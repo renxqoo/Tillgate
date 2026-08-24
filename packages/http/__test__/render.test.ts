@@ -125,7 +125,7 @@ describe('renderError：infrastructure / defect / 未知（内外分际）', () 
     expect(renderError(new Error('kaboom')).status).toBe(500);
     expect(renderError(new Error('kaboom')).code).toBe('errors.unhandled');
     expect(renderError('boom string').status).toBe(500);
-    expect(renderError(undefined).status).toBe(500);
+    expect(renderError().status).toBe(500);
   });
 
   it('cause 链不改变渲染性质（谁检测谁分类，链式透明）', () => {

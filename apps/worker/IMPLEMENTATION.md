@@ -66,6 +66,7 @@ apps/worker/
 │   ├── index.ts            # 进程入口（test 守卫不自动启动）
 │   ├── config.ts           # zod env（fail-closed；缺省显式持有）
 │   ├── assembly.ts         # 唯一装配根（唯一可引 ./composition 的文件）
+│   ├── bridge-mappers.ts   # 装配桥接纯映射（billing 信号/渠道行形状;oxlint 规模上限拆出）
 │   ├── scheduler.ts        # 循环注册/interval/inFlight/stop
 │   ├── jobs/
 │   │   ├── settlement.ts   # runSettlementBatch + runRecovery

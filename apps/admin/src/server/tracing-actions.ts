@@ -14,8 +14,8 @@ export async function fetchTraceDetail(
   if (!/^[0-9a-f]{1,32}$/i.test(traceId)) return { error: t('invalidTraceId') };
   try {
     return await adminApi().get<TraceDetailDto>(`/v1/tracing/traces/${traceId}`);
-  } catch (caught) {
-    return { error: caught instanceof ApiError ? caught.message : tc('loadFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('loadFailed') };
   }
 }
 
@@ -28,7 +28,7 @@ export async function fetchTraceDetailByRequestId(
   if (!/^[0-9a-zA-Z-]{1,64}$/.test(requestId)) return { error: t('invalidRequestId') };
   try {
     return await adminApi().get<TraceDetailDto>(`/v1/tracing/by-request/${requestId}`);
-  } catch (caught) {
-    return { error: caught instanceof ApiError ? caught.message : tc('loadFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('loadFailed') };
   }
 }

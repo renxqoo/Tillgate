@@ -22,10 +22,11 @@ vi.mock('@/server/actions/billing', () => ({
 // toast 经 @tillgate/ui re-export 自 sonner；client 不直依赖 sonner（B15 口径），
 // 故对 ui 面做部分 mock：组件保真，仅 toast 替身以断言成功反馈。
 vi.mock('@tillgate/ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tillgate/ui')>();
+  const actual = await importOriginal<typeof UiModule>();
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
+import type * as UiModule from '@tillgate/ui';
 import { toast } from '@tillgate/ui';
 import { createPaymentAction } from '@/server/actions/billing';
 import { TopUpForm } from '../src/features/wallet/topup-form';

@@ -19,10 +19,10 @@ function* causeChain(err: unknown): Generator<Record<string, unknown>> {
   }
 }
 
-/** 任意 5 位 PG SQLSTATE(如 '23505');无则 null */
-export function pgSqlState(err: unknown): string | null {
+/** 任意 5 位 PG SQLSTATE(如 '23505');无则 null。参数可选:缺省/undefined 沿链探测即无结果 */
+export function pgSqlState(err?: unknown): string | null {
   for (const holder of causeChain(err)) {
-    const code = holder['code'];
+    const { code } = holder;
     if (typeof code === 'string' && SQLSTATE.test(code)) return code;
   }
   return null;
@@ -43,7 +43,7 @@ export function isUniqueViolation(err: unknown): boolean {
 export function uniqueViolationConstraint(err: unknown): string | null {
   for (const holder of causeChain(err)) {
     if (holder['code'] === '23505') {
-      const constraint = holder['constraint'];
+      const { constraint } = holder;
       return typeof constraint === 'string' ? constraint : null;
     }
   }
@@ -53,7 +53,7 @@ export function uniqueViolationConstraint(err: unknown): string | null {
 /** 瞬态事务错误(PG 死锁 40P01 / 串行化失败 40001)——幂等动词可安全重试的唯一信号 */
 export function transientTxFailureCode(err: unknown): '40P01' | '40001' | null {
   for (const holder of causeChain(err)) {
-    const code = holder['code'];
+    const { code } = holder;
     if (code === '40P01' || code === '40001') return code;
   }
   return null;

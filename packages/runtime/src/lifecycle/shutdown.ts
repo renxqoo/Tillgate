@@ -43,7 +43,7 @@ export function createShutdown(deps: ShutdownDeps): (signal: string) => void {
     deps.server.close(() => {
       void (async () => {
         await deps.otel.shutdown().catch(() => {});
-        for (const c of deps.closeables ?? []) await c.close().catch(() => undefined);
+        for (const c of deps.closeables ?? []) await c.close().catch(() => {});
         await deps.redis?.quit().catch(() => {});
         await deps.db.end().catch(() => {});
         log.info(`[${deps.serviceName}] drained`);

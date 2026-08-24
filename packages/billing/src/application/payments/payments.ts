@@ -24,6 +24,7 @@ import type {
   RateCounterPort,
 } from '../../ports/payment-ports.js';
 import type { BillingStore } from '../../ports/billing-store.js';
+import type { PaymentOrderRow } from '../../ports/payment-ports.js';
 import type { WalletApi } from '../wallet/wallet.js';
 
 export const PROVIDER_LABELS: Record<'epay' | 'stripe', string> = {
@@ -63,20 +64,15 @@ export interface PaymentsApi {
   ): Promise<{ orderId: string; payUrl: string; creditAmount: string }>;
   /** 回调处理：返回 'success' | 'fail'（渠道重发语义） */
   handleNotify(providerName: string, raw: Record<string, string>): Promise<'success' | 'fail'>;
-  orderDetail(
-    userId: number,
-    orderId: string,
-  ): Promise<import('../../ports/payment-ports.js').PaymentOrderRow>;
-  listOrders(
-    userId: number,
-    input: { page: number; limit: number },
-  ): Promise<import('../../ports/payment-ports.js').PaymentOrderRow[]>;
+  orderDetail(userId: number, orderId: string): Promise<PaymentOrderRow>;
+  listOrders(userId: number, input: { page: number; limit: number }): Promise<PaymentOrderRow[]>;
   channels(): Array<{ id: string; label: string }>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 支付编排:渠道选择/订单生命周期顺序步骤
 export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
   const { store, orders, wallet } = deps;
-  const clock = deps.clock;
+  const { clock } = deps;
   const byName = new Map(deps.providers.map((p) => [p.name, p]));
 
   /** 渠道解析：显式指定须命中；未指定时唯一渠道直通，多渠道须显式选择 */
@@ -88,11 +84,13 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
       }
       return found;
     }
-    if (deps.providers.length === 1) return deps.providers[0]!;
+    const [only] = deps.providers;
+    if (deps.providers.length === 1 && only !== undefined) return only;
     throw BillingErrors.business('payment_unavailable', {});
   };
 
   return {
+    // eslint-disable-next-line max-lines-per-function -- 支付编排:webhook 回放锚与订单定位顺序步骤
     async createTopupOrder(userId, input) {
       if (deps.orderLimiter) {
         let n: number;
@@ -133,9 +131,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
       } catch (error) {
         // 渠道下单失败：关单留痕——渠道侧确定性失败即刻可见
         deps.logError(`[billing] payment channel create failed order=${orderId}`, error);
-        await store
-          .transaction((tx) => orders.markChannelFailed(tx, orderId))
-          .catch(() => undefined);
+        await store.transaction((tx) => orders.markChannelFailed(tx, orderId)).catch(() => {});
         throw BillingErrors.business('payment_channel_unavailable', { orderId });
       }
       // 渠道会话已建立：回填真实渠道单号（Stripe session id；epay 与占位相同无操作）。
@@ -155,6 +151,7 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
       return { orderId, payUrl: channel.payUrl, creditAmount };
     },
 
+    // eslint-disable-next-line max-lines-per-function -- 支付编排:webhook 幂等核对事务体
     async handleNotify(providerName, raw) {
       const provider = byName.get(providerName as 'epay' | 'stripe');
       if (!provider) return 'fail';
@@ -167,12 +164,11 @@ export function createPaymentsApi(deps: PaymentsDeps): PaymentsApi {
           providerOrderId: parsed.providerOrderId,
         }),
       );
-      if (!order && parsed.merchantOrderId) {
+      const { merchantOrderId } = parsed;
+      if (!order && merchantOrderId) {
         // 回退锚：渠道会话号回填失败/竞态未达时按商户订单号定位
         // （没有它 Stripe webhook 在 attach 缺席时永远找不到订单 = 已付款搁浅）
-        const byMerchant = await store.read((conn) =>
-          orders.findById(conn, parsed.merchantOrderId!),
-        );
+        const byMerchant = await store.read((conn) => orders.findById(conn, merchantOrderId));
         if (
           byMerchant?.provider === providerName &&
           // 仅允许「真实渠道单号尚未回填」的占位订单走商户单号回退。

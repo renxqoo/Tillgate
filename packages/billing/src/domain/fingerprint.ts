@@ -21,12 +21,14 @@ function defect(detail: string, context?: Record<string, string | number>): Defe
   return new DefectError(detail, 'billing.fingerprint_input', context);
 }
 
+// eslint-disable-next-line max-lines-per-function -- 指纹序列化器:递归单真相实现,状态经 seen/emit 闭包线程化
 export function canonicalJson(value: unknown): string {
   const chunks: string[] = [];
   let length = 0;
   write(value, 0, new WeakSet<object>());
   return chunks.join('');
 
+  // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 指纹序列化器:递归单真相实现,状态经 seen/emit 闭包线程化
   function write(input: unknown, depth: number, seen: WeakSet<object>): void {
     if (depth > MAX_DEPTH) {
       throw defect(`nesting depth exceeds ${MAX_DEPTH}`);
@@ -35,25 +37,30 @@ export function canonicalJson(value: unknown): string {
       return emit('null');
     }
     switch (typeof input) {
-      case 'string':
+      case 'string': {
         return emit(JSON.stringify(input));
-      case 'boolean':
+      }
+      case 'boolean': {
         return emit(input ? 'true' : 'false');
+      }
       case 'number': {
         if (!Number.isFinite(input)) {
           throw defect('NaN/Infinity are not fingerprintable (normalize to strings)');
         }
         return emit(Object.is(input, -0) ? '0' : String(input));
       }
-      case 'undefined':
+      case 'undefined': {
         throw defect(
           'undefined is not fingerprintable (JSON.stringify would silently null it — a replay-collision hazard)',
         );
-      case 'bigint':
+      }
+      case 'bigint': {
         throw defect('bigint is not fingerprintable (convert to string first)');
+      }
       case 'symbol':
-      case 'function':
+      case 'function': {
         throw defect(`${typeof input} is not fingerprintable`);
+      }
       case 'object': {
         if (seen.has(input as object)) {
           throw defect('circular reference');
@@ -66,6 +73,7 @@ export function canonicalJson(value: unknown): string {
           if (Array.isArray(input)) {
             emit('[');
             for (let i = 0; i < input.length; i += 1) {
+              // eslint-disable-next-line max-depth -- 递归序列化的分型分发:try/数组/对象天然多级,提取会线程化闭包状态
               if (i > 0) emit(',');
               write(input[i], depth + 1, seen);
             }
@@ -81,10 +89,13 @@ export function canonicalJson(value: unknown): string {
           const keys = Object.keys(input as Record<string, unknown>).toSorted();
           emit('{');
           for (let i = 0; i < keys.length; i += 1) {
+            const key = keys[i];
+            // Object.keys 产出必非空;指纹序列化遇缺失即缺陷,fail-loud 不静默跳过
+            if (key === undefined) throw new Error('fingerprint: object key missing');
             if (i > 0) emit(',');
-            emit(JSON.stringify(keys[i]));
+            emit(JSON.stringify(key));
             emit(':');
-            write((input as Record<string, unknown>)[keys[i]!], depth + 1, seen);
+            write((input as Record<string, unknown>)[key], depth + 1, seen);
           }
           emit('}');
         } finally {
@@ -92,8 +103,9 @@ export function canonicalJson(value: unknown): string {
         }
         return;
       }
-      default:
+      default: {
         throw defect(`unsupported value type '${typeof input}'`);
+      }
     }
   }
 

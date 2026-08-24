@@ -11,6 +11,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { defined } from './defined';
+
 const SRC = join(import.meta.dirname, '..', 'src');
 
 function walk(dir: string): string[] {
@@ -43,7 +45,7 @@ describe('apps/admin 架构边界', () => {
         const sub = m[2] ?? '';
         if (!ALLOWED_PACKAGES.has(pkg)) {
           violations.push(`${rel(f)} → @tillgate/${pkg}${sub}`);
-        } else if (!ALLOWED_SUBENTRY[pkg]!.has(sub)) {
+        } else if (!defined(ALLOWED_SUBENTRY[pkg], 'ALLOWED_SUBENTRY[pkg]').has(sub)) {
           violations.push(`${rel(f)} → 非法子出口 @tillgate/${pkg}${sub}`);
         }
       }
@@ -64,7 +66,7 @@ describe('apps/admin 架构边界', () => {
     for (const f of files.filter((p) => rel(p).startsWith('src/app/'))) {
       const src = readFileSync(f, 'utf8');
       for (const m of src.matchAll(/from ['"](@\/server\/[^'"]+)['"]/g)) {
-        const target = m[1]!.replace('@/server/', '');
+        const target = defined(m[1], 'm[1]').replace('@/server/', '');
         const allowed =
           target.endsWith('-actions') ||
           target === 'admin-api' ||

@@ -24,6 +24,7 @@ export interface SseEventReaderOptions {
 
 const lineEncoder = new TextEncoder();
 
+// eslint-disable-next-line max-lines-per-function -- SSE 解析原语：行缓冲/记账/派发共享闭包状态的一体实现（scanner 与 codec 共用），存量棘轮（铁律 22⑥）
 export function createSseEventReader(
   onEvent: (ev: SseEvent) => void,
   opts: SseEventReaderOptions = {},

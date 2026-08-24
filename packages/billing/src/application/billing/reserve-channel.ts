@@ -28,6 +28,7 @@ export interface ChannelReservationResult {
   switched: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 渠道路由预算预扣编排:候选过滤→预扣→回执
 export function createReserveChannelUseCase(env: {
   store: BillingStore;
   channels: ChannelExposureStore;
@@ -35,6 +36,7 @@ export function createReserveChannelUseCase(env: {
   clock: () => Date;
 }) {
   const { store, channels, clock } = env;
+  // eslint-disable-next-line max-lines-per-function -- 渠道路由预算预扣编排:候选过滤→预扣→回执
   return async function reserveChannel(
     input: ReserveChannelInput,
   ): Promise<ChannelReservationResult> {
@@ -46,6 +48,7 @@ export function createReserveChannelUseCase(env: {
       });
     }
     const now = clock();
+    // eslint-disable-next-line max-lines-per-function -- 渠道路由预算预扣编排:候选过滤→预扣→回执
     return store.transaction(async (tx) => {
       const br = await store.findByRequestId(tx, input.requestId);
       if (!br) {

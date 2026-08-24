@@ -73,7 +73,7 @@ describe('aff 码编解码(纯函数往返封闭)', () => {
     ['u0', 'u0'],
     ['u1G12', '大写非法'],
     ['u01', '非规范形态(前导零)'],
-    ['u' + 'z'.repeat(40), '超长'],
+    [`u${'z'.repeat(40)}`, '超长'],
   ])('decodeAffCode(%j) 拒绝(%s)', (input) => {
     expect(decodeAffCode(input as string)).toBeNull();
   });

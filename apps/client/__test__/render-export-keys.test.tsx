@@ -11,15 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { defined } from './defined';
+
 vi.mock('@/server/actions/keys', () => ({
   exportKeysAction: vi.fn(),
 }));
 
 vi.mock('@tillgate/ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tillgate/ui')>();
+  const actual = await importOriginal<typeof UiModule>();
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
+import type * as UiModule from '@tillgate/ui';
 import { toast } from '@tillgate/ui';
 import { exportKeysAction } from '@/server/actions/keys';
 import type { KeyRow } from '@tillgate/api-client';
@@ -87,7 +90,7 @@ describe('ExportKeys（B18 全量导出下载链路）', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     // Blob.text() 按 spec 以 UTF-8 解码并剥前导 BOM（浏览器同此），可见内容断言
     // 表头 + 全量行；BOM 物理字节由 size 差 3 证明（字节层断言见 export-keys.test.ts）
-    const blob = createObjectURL.mock.calls[0]![0] as Blob;
+    const blob = defined(createObjectURL.mock.calls[0], 'createObjectURL call')[0] as Blob;
     const text = await blob.text();
     expect(text.startsWith('name\tkeyPreview\tstatus\tcreatedAt\n')).toBe(true);
     expect(text).toContain('中文\tsk-prev-2\tactive\t2026-08-01T00:00:00Z');

@@ -52,8 +52,74 @@ export interface HttpClient {
   list<T>(path: string, opts: ListFetchOptions): Promise<Paginated<T>>;
 }
 
+/** 请求 token 解析:显式 bearerToken 优先(null 为显式免会话,不得回落 getToken) */
+async function resolveToken(
+  bearerToken: string | null | undefined,
+  fallback: TokenGetter | undefined,
+): Promise<string | null | undefined> {
+  if (bearerToken !== undefined) {
+    // `null` is an explicit per-request opt-out and must not fall back to getToken.
+    return bearerToken;
+  }
+  return fallback?.();
+}
+
+/** buildFetchInit 的入参面(request 解构后的各部件) */
+interface FetchInitInputs {
+  method: NonNullable<ApiFetchOptions['method']>;
+  /** 默认头与显式头之外的 RequestInit 透传部件 */
+  rest: Omit<RequestInit, 'body' | 'headers'>;
+  token: string | null | undefined;
+  extraHeaders: Record<string, string> | undefined;
+  getHeaders: HeaderGetter | undefined;
+  body: unknown;
+  revalidate: number | false | undefined;
+}
+
+/** 组装 fetch init:默认头 → 注入头 → Bearer → 调用方覆盖;缓存语义与 Next 扩展透传 */
+async function buildFetchInit(inputs: FetchInitInputs): Promise<RequestInit> {
+  const { method, rest, token, extraHeaders, getHeaders, body, revalidate } = inputs;
+  return {
+    method,
+    ...rest,
+    headers: {
+      'content-type': 'application/json',
+      ...((await getHeaders?.()) ?? undefined),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...extraHeaders,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: revalidate === false ? 'no-store' : 'default',
+    // Next.js 专有扩展(标准 fetch 忽略该字段,Next patched fetch 消费)——惰性透传,
+    // core 不 import next(DESIGN §3.5)
+    ...(typeof revalidate === 'number' ? { next: { revalidate } } : {}),
+  } as unknown as RequestInit;
+}
+
+/** 响应体解析:空体→null;JSON 解析失败→{raw}(行为口径见文件头) */
+function parseResponseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+/** 统一错误信封 → ApiError(信封缺失时以状态码兜底文案;铁律 18:message 一律英文) */
+function toApiError(status: number, data: unknown): ApiError {
+  const err = (data as { error?: { message?: string; code?: string; details?: unknown } } | null)
+    ?.error;
+  return new ApiError(
+    status,
+    err?.code,
+    err?.message ?? `Request failed (${status})`,
+    err?.details,
+  );
+}
+
 export function createHttpClient(options: HttpClientOptions): HttpClient {
-  const baseUrl = options.baseUrl;
+  const { baseUrl } = options;
   const doFetch: typeof globalThis.fetch =
     options.fetch ?? ((input, init) => globalThis.fetch(input, init));
 
@@ -64,51 +130,23 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
       throw new Error(`[api-client] Invalid API path ${path}; only /v1/* is allowed`);
     }
 
-    let token: string | null | undefined;
-    if (bearerToken !== undefined) {
-      // `null` is an explicit per-request opt-out and must not fall back to getToken.
-      token = bearerToken;
-    } else {
-      token = await options.getToken?.();
-    }
+    const token = await resolveToken(bearerToken, options.getToken);
+    const res = await doFetch(
+      `${baseUrl}${path}`,
+      await buildFetchInit({
+        method,
+        rest,
+        token,
+        extraHeaders,
+        getHeaders: options.getHeaders,
+        body,
+        revalidate,
+      }),
+    );
 
-    const res = await doFetch(`${baseUrl}${path}`, {
-      method,
-      ...rest,
-      headers: {
-        'content-type': 'application/json',
-        ...((await options.getHeaders?.()) ?? undefined),
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
-        ...extraHeaders,
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-      cache: revalidate === false ? 'no-store' : 'default',
-      // Next.js 专有扩展(标准 fetch 忽略该字段,Next patched fetch 消费)——惰性透传,
-      // core 不 import next(DESIGN §3.5)
-      ...(typeof revalidate === 'number' ? { next: { revalidate } } : {}),
-    } as unknown as RequestInit);
-
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
-      }
-    }
-
+    const data = parseResponseBody(await res.text());
     if (!res.ok) {
-      const err = (
-        data as { error?: { message?: string; code?: string; details?: unknown } } | null
-      )?.error;
-      // 铁律 18:抛出 message 一律英文;本地化渲染归消费方
-      throw new ApiError(
-        res.status,
-        err?.code,
-        err?.message ?? `Request failed (${res.status})`,
-        err?.details,
-      );
+      throw toApiError(res.status, data);
     }
     return data as T;
   }

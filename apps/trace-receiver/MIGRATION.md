@@ -31,7 +31,7 @@
 | batcher.ts                 | 103  | 已迁(前波) | B6 记录  | observability `tracing/ingest`;app 改消费 `createSpanBatcher`(R9)      |
 | app.ts                     | 116  | 重构       | 无缺陷   | 平移+错误面入目录体系(R1/R2/R3/R8);bodyLimit 用 http `bodyParserLimit` |
 | index.ts                   | 58   | 重构       | 无缺陷   | 拆 config/assembly(目标树);停机样板 → runtime `createShutdown`(R7)     |
-| token-compare.ts           | 17   | 上收       | 无缺陷   | → `@tillgate/http security/token-compare`(R3;v1 注释即预言此合并)     |
+| token-compare.ts           | 17   | 上收       | 无缺陷   | → `@tillgate/http security/token-compare`(R3;v1 注释即预言此合并)      |
 | **tests**/receiver.test.ts | 218  | 拆分       | —        | batcher 段→observability(前波);HTTP 段→本包 real 测试;单测为新增规格   |
 
 ## 4. API 对照
@@ -41,7 +41,7 @@
 | `createReceiverApp({db,store,token?,batcher})` | 同形(+可选 logger)                       | 仅内部演进          |
 | `new SpanBatcher(store,opts)`                  | `createSpanBatcher(store,opts)`          | observability G5    |
 | `DecodeError` instanceof → 400                 | 流动错误 → onError 合成目录 → 400        | R2/G6               |
-| `timingSafeEqual`(本地)                        | `timingSafeTokenEqual`(@tillgate/http)  | R3/挂账#3           |
+| `timingSafeEqual`(本地)                        | `timingSafeTokenEqual`(@tillgate/http)   | R3/挂账#3           |
 | `loadTraceReceiverEnv()`(core)                 | `loadTraceReceiverConfig()`(app config)  | R4/R5/R6;env 归 app |
 | `initOtel({authToken 回落 env})`               | 无 authToken(接收端自身不推送)           | G2 已裁决           |
 | 手写 shutdown 样板                             | `createShutdown({closeables:[batcher]})` | R7                  |

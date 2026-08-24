@@ -20,11 +20,13 @@ export interface ReleaseAllInput {
   now: Date;
 }
 
+// eslint-disable-next-line max-lines-per-function -- funding 源生命周期动词事务体
 export function createReleaseAllReservations(deps: {
   registry: FundingRegistry;
   channels?: ChannelExposureStore;
   store: BillingStore;
 }) {
+  // eslint-disable-next-line max-lines-per-function -- funding 源生命周期动词事务体
   return async function releaseAllReservations(
     tx: WalletTx,
     input: ReleaseAllInput,

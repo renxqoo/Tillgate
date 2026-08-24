@@ -26,6 +26,52 @@ interface TraceSummary {
 
 const PAGE_SIZE = 20;
 
+// 模块级 cell 渲染器：避免在组件渲染期定义组件（no-unstable-nested-components）
+function renderTraceCell(tr: TraceSummary) {
+  return (
+    <span className="font-mono text-xs">
+      <TraceDetailDialog traceId={tr.traceId} rootName={tr.rootName} />
+    </span>
+  );
+}
+
+function renderEntryCell(tr: TraceSummary) {
+  return <span className="block max-w-64 truncate">{tr.rootName}</span>;
+}
+
+function renderDurationCell(tr: TraceSummary) {
+  return <span className="text-right tabular-nums">{tr.durationMs} ms</span>;
+}
+
+function renderSpanCountCell(tr: TraceSummary) {
+  return <span className="text-right tabular-nums">{tr.spanCount}</span>;
+}
+
+function renderServicesCell(tr: TraceSummary) {
+  return (
+    <div className="flex flex-wrap gap-1">
+      {tr.services.map((svc) => (
+        <Badge key={svc} variant="outline">
+          {svc}
+        </Badge>
+      ))}
+      {tr.hasError ? <Badge variant="destructive">ERROR</Badge> : null}
+    </div>
+  );
+}
+
+function renderRequestIdCell(tr: TraceSummary) {
+  return (
+    <span className="font-mono text-xs">
+      {tr.requestId ? <TraceDetailDialog requestId={tr.requestId} /> : '—'}
+    </span>
+  );
+}
+
+function renderStartTimeCell(tr: TraceSummary) {
+  return <span className="text-xs">{fmtDateTime(new Date(tr.startTimeMs).toISOString())}</span>;
+}
+
 export default async function TracingPage({
   searchParams,
 }: {
@@ -99,70 +145,18 @@ export default async function TracingPage({
       >
         <DataTable
           columns={[
-            {
-              key: 'traceId',
-              header: 'trace',
-              render: (tr: TraceSummary) => (
-                <span className="font-mono text-xs">
-                  <TraceDetailDialog traceId={tr.traceId} rootName={tr.rootName} />
-                </span>
-              ),
-            },
-            {
-              key: 'rootName',
-              header: t('entry'),
-              render: (tr: TraceSummary) => (
-                <span className="block max-w-64 truncate">{tr.rootName}</span>
-              ),
-            },
+            { key: 'traceId', header: 'trace', render: renderTraceCell },
+            { key: 'rootName', header: t('entry'), render: renderEntryCell },
             {
               key: 'durationMs',
               header: t('duration'),
               align: 'right',
-              render: (tr: TraceSummary) => (
-                <span className="text-right tabular-nums">{tr.durationMs} ms</span>
-              ),
+              render: renderDurationCell,
             },
-            {
-              key: 'spanCount',
-              header: 'span',
-              align: 'right',
-              render: (tr: TraceSummary) => (
-                <span className="text-right tabular-nums">{tr.spanCount}</span>
-              ),
-            },
-            {
-              key: 'services',
-              header: t('services'),
-              render: (tr: TraceSummary) => (
-                <div className="flex flex-wrap gap-1">
-                  {tr.services.map((svc) => (
-                    <Badge key={svc} variant="outline">
-                      {svc}
-                    </Badge>
-                  ))}
-                  {tr.hasError ? <Badge variant="destructive">ERROR</Badge> : null}
-                </div>
-              ),
-            },
-            {
-              key: 'requestId',
-              header: 'request_id',
-              render: (tr: TraceSummary) => (
-                <span className="font-mono text-xs">
-                  {tr.requestId ? <TraceDetailDialog requestId={tr.requestId} /> : '—'}
-                </span>
-              ),
-            },
-            {
-              key: 'startTimeMs',
-              header: t('startTime'),
-              render: (tr: TraceSummary) => (
-                <span className="text-xs">
-                  {fmtDateTime(new Date(tr.startTimeMs).toISOString())}
-                </span>
-              ),
-            },
+            { key: 'spanCount', header: 'span', align: 'right', render: renderSpanCountCell },
+            { key: 'services', header: t('services'), render: renderServicesCell },
+            { key: 'requestId', header: 'request_id', render: renderRequestIdCell },
+            { key: 'startTimeMs', header: t('startTime'), render: renderStartTimeCell },
           ]}
           rows={items}
           rowKey={(tr: TraceSummary) => tr.traceId}

@@ -3,7 +3,7 @@
  * advisoryLock 临界区——旧密的读与改之间不存在并发 reset 覆盖窗口(scrypt 在
  * 每用户锁内执行,无全局争用)。无密码账号(OAuth-only)走 reset。
  */
-import { advisoryLock, runTx } from '@tillgate/db';
+import { advisoryLock, runTx, type DbTx } from '@tillgate/db';
 import { DefectError } from '@tillgate/errors';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
@@ -21,6 +21,49 @@ export interface ChangePasswordInput {
   readonly newPassword: string;
 }
 
+/** 锁内改密临界区:验旧密 → 换哈希 → 吊销线推进 → 同事务审计(§5.4 回滚即无审计行) */
+async function changePasswordWithinLock(
+  ctx: IdentityUseCaseContext,
+  tx: DbTx,
+  args: { userId: number; realm: string; currentPassword: string; newHash: string },
+): Promise<string> {
+  await advisoryLock(tx, credentialSetLockKey(args.userId));
+  const stored = await ctx.credentialStore.loadPasswordHash(tx, args.userId);
+  if (stored == null) {
+    throw identityErrors.business('invalid_credentials', { realm: args.realm });
+  }
+  const currentOk = await verifyPassword(args.currentPassword, stored);
+  if (!currentOk) {
+    throw identityErrors.business('invalid_credentials', { realm: args.realm });
+  }
+  const updated = await ctx.credentialStore.updatePassword(tx, {
+    userId: args.userId,
+    passwordHash: args.newHash,
+  });
+  if (!updated) {
+    throw new DefectError('password row disappeared mid-transaction', 'identity.defect', {
+      operation: 'change_password',
+    });
+  }
+  const before = await ctx.anchorStore.advanceAnchor(tx, {
+    realm: args.realm,
+    userId: args.userId,
+  });
+  // 安全审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
+  await auditWithinTx(
+    tx,
+    ctx,
+    auditEvent(ctx.clock.now(), {
+      actor: `user:${args.userId}`,
+      action: 'password.change',
+      targetType: 'user',
+      targetId: args.userId,
+      detail: { realm: args.realm },
+    }),
+  );
+  return before;
+}
+
 export async function changePassword(
   ctx: IdentityUseCaseContext,
   input: ChangePasswordInput,
@@ -35,40 +78,13 @@ export async function changePassword(
 
   const invalidBefore = await runTx(
     ctx.db,
-    async (tx) => {
-      await advisoryLock(tx, credentialSetLockKey(userId));
-      const stored = await ctx.credentialStore.loadPasswordHash(tx, userId);
-      if (stored == null) {
-        throw identityErrors.business('invalid_credentials', { realm });
-      }
-      const currentOk = await verifyPassword(input.currentPassword, stored);
-      if (!currentOk) {
-        throw identityErrors.business('invalid_credentials', { realm });
-      }
-      const updated = await ctx.credentialStore.updatePassword(tx, {
+    (tx) =>
+      changePasswordWithinLock(ctx, tx, {
         userId,
-        passwordHash: newHash,
-      });
-      if (!updated) {
-        throw new DefectError('password row disappeared mid-transaction', 'identity.defect', {
-          operation: 'change_password',
-        });
-      }
-      const before = await ctx.anchorStore.advanceAnchor(tx, { realm, userId });
-      // 安全审计同事务写入(§5.4):回滚即无审计行,写入失败随事务回滚
-      await auditWithinTx(
-        tx,
-        ctx,
-        auditEvent(ctx.clock.now(), {
-          actor: `user:${userId}`,
-          action: 'password.change',
-          targetType: 'user',
-          targetId: userId,
-          detail: { realm },
-        }),
-      );
-      return before;
-    },
+        realm,
+        currentPassword: input.currentPassword,
+        newHash,
+      }),
     ctx.txRetry,
   );
 

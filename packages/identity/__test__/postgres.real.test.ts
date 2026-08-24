@@ -17,6 +17,7 @@ import { createIdentity, type Identity } from '../src/identity.js';
 import { resolveConfig } from '../src/domain/config.js';
 import { postgresIdentityStore } from '../src/adapters/postgres/identity-store';
 import { TEST_CONFIG, createTestHarness } from '../src/testing/harness.js';
+import { defined } from './defined.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const store = postgresIdentityStore;
@@ -116,7 +117,7 @@ async function exec(db: Db, sqlText: string): Promise<void> {
 (url ? describe : describe.skip)('postgres real:CAS/锁/索引语义', () => {
   beforeAll(async () => {
     realDb = createDb({
-      url: url!,
+      url: defined(url, 'url'),
       poolMax: 8,
       idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
@@ -136,13 +137,12 @@ async function exec(db: Db, sqlText: string): Promise<void> {
     }
     const h = createTestHarness();
     realHarness = h;
-    mailer = h.mailer;
-    audit = h.audit;
+    ({ mailer, audit } = h);
     api = createIdentity({
       db: realDb,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       mailer,
       auditSink: audit,
@@ -211,7 +211,10 @@ async function exec(db: Db, sqlText: string): Promise<void> {
     const { base32Decode, matchingTotpStep, totpAt } = await import('../src/domain/totp.js');
     const secret = base32Decode(enrolled.secret);
     const epochMs = realHarness.ctx.clock.now().getTime();
-    const step = matchingTotpStep(secret, totpAt(secret, epochMs, 30), epochMs, 30, 1)!;
+    const step = defined(
+      matchingTotpStep(secret, totpAt(secret, epochMs, 30), epochMs, 30, 1),
+      'matchingTotpStep',
+    );
     const code = totpAt(secret, step * 30_000, 30);
     await api.mfa.confirmTotp({ userId: id, code });
     const code2step = step + 1;
@@ -246,7 +249,7 @@ async function exec(db: Db, sqlText: string): Promise<void> {
     await store.advanceAnchor(realDb, { realm: 'user', userId: id, at: new Date(1_000) });
     await store.advanceAnchor(realDb, { realm: 'user', userId: id, at: new Date(500) });
     const anchor = await store.readAnchor(realDb, { realm: 'user', userId: id });
-    expect(Date.parse(anchor!)).toBe(1_000);
+    expect(Date.parse(defined(anchor, 'anchor'))).toBe(1_000);
     const nowIso = await store.advanceAnchor(realDb, { realm: 'user', userId: id });
     expect(Date.parse(nowIso)).toBeGreaterThan(Date.now() - 60_000);
   });

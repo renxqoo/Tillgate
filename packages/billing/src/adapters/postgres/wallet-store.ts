@@ -43,6 +43,7 @@ function withBrand(tx: DbTx): WalletTx {
   return tx as unknown as WalletTx;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 钱包 SQL 构造平铺(条件/排序/分页)
 export function createPostgresWalletStore(
   db: Db,
   options: PostgresWalletStoreOptions,
@@ -218,10 +219,11 @@ export function createPostgresWalletStore(
           accountId: walletAuthorizations.accountId,
           amount: walletAuthorizations.amount,
         });
-      const row = rows[0];
+      const [row] = rows;
       return row ? { accountId: row.accountId, heldAmount: row.amount } : null;
     },
 
+    // eslint-disable-next-line max-params -- WalletStore 端口契约签名,双实现同口径
     async casReleaseAuthorization(conn, id, releaseReason, releaseFingerprint) {
       const rows = await asDb(conn)
         .update(walletAuthorizations)
@@ -231,11 +233,12 @@ export function createPostgresWalletStore(
           accountId: walletAuthorizations.accountId,
           amount: walletAuthorizations.amount,
         });
-      const row = rows[0];
+      const [row] = rows;
       return row ? { accountId: row.accountId, amount: row.amount } : null;
     },
 
     // ---------- 过账 ----------
+    // eslint-disable-next-line max-params -- WalletStore 端口契约签名,双实现同口径
     async findTransaction(conn, refType, refId, kind) {
       const [row] = await asDb(conn)
         .select({

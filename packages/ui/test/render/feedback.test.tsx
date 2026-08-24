@@ -12,7 +12,7 @@ import {
 } from '../../src/index';
 
 function installClipboard() {
-  const writeText = vi.fn(async () => undefined);
+  const writeText = vi.fn(async () => {});
   Object.defineProperty(navigator, 'clipboard', {
     value: { writeText },
     configurable: true,
@@ -59,7 +59,12 @@ describe('ConfirmDialog', () => {
 
   it('异步确认 pending 锁按钮, resolve 后自动关闭', async () => {
     let resolveConfirm!: () => void;
-    const onConfirm = vi.fn(() => new Promise<void>((resolve) => (resolveConfirm = resolve)));
+    const onConfirm = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveConfirm = resolve;
+        }),
+    );
     const onOpenChange = vi.fn();
     render(
       <ConfirmDialog
@@ -149,7 +154,12 @@ describe('FormDialog', () => {
 
   it('提交异步流: pending 锁定, resolve 后关闭', async () => {
     let resolveSubmit!: () => void;
-    const onSubmit = vi.fn(() => new Promise<void>((resolve) => (resolveSubmit = resolve)));
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
     const { onOpenChange } = renderForm(onSubmit);
     await userEvent.click(screen.getByRole('button', { name: '创建' }));
     expect(onSubmit).toHaveBeenCalledOnce();

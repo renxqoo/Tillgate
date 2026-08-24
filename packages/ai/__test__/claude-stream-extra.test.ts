@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { claudeUpstreamToCanonicalStream } from '../src/protocol/claude-stream.js';
+import { defined } from './defined';
 
 const sse = (events: string[]): ReadableStream<Uint8Array> =>
   new ReadableStream<Uint8Array>({
@@ -43,9 +44,10 @@ describe('claudeUpstreamToCanonicalStream 深分支', () => {
       (f) => f.choices != null && JSON.stringify(f).includes('tool_calls'),
     );
     expect(toolStart).toBeDefined();
-    const call = (
-      toolStart!.choices as Array<{ delta: { tool_calls: Array<Record<string, unknown>> } }>
-    )[0]!.delta.tool_calls[0]!;
+    const choices = defined(toolStart, 'toolStart').choices as Array<{
+      delta: { tool_calls: Array<Record<string, unknown>> };
+    }>;
+    const call = defined(defined(choices[0], 'choices[0]').delta.tool_calls[0], 'tool_calls[0]');
     expect(call.id).toBe('toolu_1');
     expect((call.function as { name: string }).name).toBe('get_weather');
     const argDeltas = frames(out)
@@ -65,10 +67,12 @@ describe('claudeUpstreamToCanonicalStream 深分支', () => {
         (f.choices as Array<{ finish_reason: string | null }> | undefined)?.[0]?.finish_reason !=
         null,
     );
-    expect((finish!.choices as Array<{ finish_reason: string }>)[0]!.finish_reason).toBe(
-      'tool_calls',
-    );
-    expect(finish!.usage).toMatchObject({
+    const finishFrame = defined(finish, 'finish');
+    expect(
+      defined(finishFrame.choices as Array<{ finish_reason: string }>, 'finish.choices')[0]
+        ?.finish_reason,
+    ).toBe('tool_calls');
+    expect(finishFrame.usage).toMatchObject({
       prompt_tokens: 5,
       completion_tokens: 7,
       total_tokens: 12,
@@ -90,7 +94,7 @@ describe('claudeUpstreamToCanonicalStream 深分支', () => {
     expect(reasoning).toBeDefined();
     const finish = frames(out).find((f) => f.usage != null);
     // 口径:prompt_tokens 含缓存读/写侧(10 输入 + 4 缓存读 + 2 缓存写 = 16)
-    expect(finish!.usage).toMatchObject({
+    expect(defined(finish, 'finish').usage).toMatchObject({
       prompt_tokens: 16,
       completion_tokens: 3,
       prompt_tokens_details: { cached_tokens: 4 },

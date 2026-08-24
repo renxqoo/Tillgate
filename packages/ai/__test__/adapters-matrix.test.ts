@@ -15,6 +15,7 @@ import {
   canonicalStreamToCompletionsStream,
 } from '../src/protocol/completions-chat.js';
 import { normalizeUsage } from '../src/usage/normalize.js';
+import { defined } from './defined';
 
 const ch = (baseUrl = 'https://x.test', protocol = 'openai-compatible') => ({
   baseUrl,
@@ -75,10 +76,9 @@ describe('adapter 寻址矩阵', () => {
   });
   it('minimax：video/music 任务族寻址', () => {
     const m = new MiniMaxAdapter();
-    const t = m.tasks;
-    expect(t).toBeDefined();
-    expect(t!.planTaskQuery(ch('https://x.test', 'minimax'), 'tid').path).toContain('task_id=tid');
-    expect(t!.planFileRetrieve(ch('https://x.test', 'minimax'), 'fid').path).toContain(
+    const t = defined(m.tasks, 'm.tasks');
+    expect(t.planTaskQuery(ch('https://x.test', 'minimax'), 'tid').path).toContain('task_id=tid');
+    expect(t.planFileRetrieve(ch('https://x.test', 'minimax'), 'fid').path).toContain(
       'file_id=fid',
     );
     expect(m.supportedEndpoints).toContain('video');
@@ -118,17 +118,19 @@ describe('adapter usage/error 补充分支', () => {
       inputTokens: 9,
     });
     const m = new MiniMaxAdapter();
-    const st = m.tasks!.parseTaskStatus({ status: 'Success', file_id: 'f1' });
+    const st = defined(m.tasks, 'm.tasks').parseTaskStatus({ status: 'Success', file_id: 'f1' });
     expect(st).toMatchObject({ ok: true, status: 'succeeded', fileId: 'f1' });
-    expect(m.tasks!.parseTaskStatus({ status: 'Fail' })).toMatchObject({
+    expect(defined(m.tasks, 'm.tasks').parseTaskStatus({ status: 'Fail' })).toMatchObject({
       ok: true,
       status: 'failed',
     });
-    expect(m.tasks!.parseTaskStatus({ status: 'Unknown' })).toMatchObject({
+    expect(defined(m.tasks, 'm.tasks').parseTaskStatus({ status: 'Unknown' })).toMatchObject({
       ok: true,
       status: 'running',
     });
-    expect(m.tasks!.parseFileRetrieve({ file: { download_url: 'https://cdn/x' } })).toMatchObject({
+    expect(
+      defined(m.tasks, 'm.tasks').parseFileRetrieve({ file: { download_url: 'https://cdn/x' } }),
+    ).toMatchObject({
       ok: true,
       downloadUrl: 'https://cdn/x',
     });

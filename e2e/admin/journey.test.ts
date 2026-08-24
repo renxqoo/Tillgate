@@ -11,7 +11,21 @@
  * 已知缺口即上列 P2/P4/P7 三项,其余 admin 可观察行为全覆盖。
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
+import {
+  call,
+  defined,
+  jsonHeaders,
+  setupE2EAdmin,
+  teardownE2EAdmin,
+  type E2EAdminWorld,
+} from './kit';
+
+// 审计行 → action 列表/命中判断（it 内 waitFor 回调已占 3 层——箭头提模块级）
+const auditActionOf = (r: { action: string }): string => r.action;
+/** 目标 action 的命中谓词工厂（闭包入参——waitFor 内仍处 4 层回调） */
+function matchesAction(action: string): (r: { action: string }) => boolean {
+  return (r) => r.action === action;
+}
 
 let world: E2EAdminWorld | null = null;
 
@@ -134,7 +148,10 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     const batchId = (batch.body.batch as { id: number }).id;
     expect(batch.body.codes as string[]).toHaveLength(2);
     const codePage = await call(w(), `/v1/redeem-batches/${batchId}/codes`);
-    const firstCode = (codePage.body.rows as Array<{ id: number; codeMasked: string }>)[0]!;
+    const firstCode = defined(
+      (codePage.body.rows as Array<{ id: number; codeMasked: string }>)[0],
+      'first redeem code',
+    );
     expect(firstCode.codeMasked).toMatch(/^[0-9a-f]{8}\*\*\*\*[0-9a-f]{4}$/);
     expect(
       await call(w(), `/v1/redeem-batches/codes/${firstCode.id}/revoke`, { method: 'POST' }),
@@ -191,7 +208,9 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     const afterDelete = await call(w(), `/v1/providers?q=e2e-p-${stamp}`);
     expect((afterDelete.body.rows as unknown[]).length).toBe(0);
     const recycled = await call(w(), `/v1/providers?q=e2e-p-${stamp}&view=deleted`);
-    expect((recycled.body.rows as Array<{ status: number }>)[0]!.status).toBe(1);
+    expect(
+      defined((recycled.body.rows as Array<{ status: number }>)[0], 'recycled row').status,
+    ).toBe(1);
   });
 
   it('channels 换 Key 复位 + 列表富化;models 改价与列表 channelIds 回显', async () => {
@@ -218,7 +237,10 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     });
     expect(rotated.status).toBe(200);
     const channelsListed = await call(w(), `/v1/channels?q=e2e-rich-ch-${stamp}`);
-    const chRow = (channelsListed.body.rows as Array<Record<string, unknown>>)[0]!;
+    const chRow = defined(
+      (channelsListed.body.rows as Array<Record<string, unknown>>)[0],
+      'channel row',
+    );
     expect(chRow).toMatchObject({ upstreamThreshold: '5', upstreamRemaining: '0' });
     expect(JSON.stringify(chRow)).not.toContain('sk-e2e');
 
@@ -247,7 +269,9 @@ describe('B. CRUD 全量扫（e2e-crud-sweep）', () => {
     });
     expect(repriced.body).toMatchObject({ inputPrice: '3' });
     const modelsListed = await call(w(), `/v1/models?q=e2e-rich-m-${stamp}`);
-    expect((modelsListed.body.rows as Array<Record<string, unknown>>)[0]!).toMatchObject({
+    expect(
+      defined((modelsListed.body.rows as Array<Record<string, unknown>>)[0], 'model row'),
+    ).toMatchObject({
       channelIds: [channelId],
     });
 
@@ -362,7 +386,7 @@ describe('C. 资金旅程（e2e-money;旅程专属用户——真实账本,零�
     await vi.waitFor(
       async () => {
         const audit = await call(w(), `/v1/users/${user.id}/audit-logs`);
-        const actions = (audit.body.rows as Array<{ action: string }>).map((r) => r.action);
+        const actions = (audit.body.rows as Array<{ action: string }>).map(auditActionOf);
         expect(actions).toContain('admin.gift');
         expect(actions).toContain('admin.adjust');
       },
@@ -384,10 +408,8 @@ describe('D. 观测面（e2e-ops 的现存子集;stats/usage 族 = P4 pending）
         async () => {
           const page = await call(w(), `/v1/audit-logs?q=${encodeURIComponent(action)}`);
           expect(page.body.total ?? 0, action).toBeGreaterThanOrEqual(1);
-          expect(
-            (page.body.rows as Array<{ action: string }>).some((r) => r.action === action),
-            action,
-          ).toBe(true);
+          const rows = page.body.rows as Array<{ action: string }>;
+          expect(rows.some(matchesAction(action)), action).toBe(true);
         },
         { timeout: 5_000 },
       );

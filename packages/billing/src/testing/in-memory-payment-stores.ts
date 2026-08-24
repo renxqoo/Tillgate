@@ -72,8 +72,10 @@ export function createInMemoryPaymentStores() {
       }
       return Promise.resolve(null);
     },
-    findById: (_conn, orderId) =>
-      Promise.resolve(orders.has(orderId) ? { ...orders.get(orderId)! } : null),
+    findById: (_conn, orderId) => {
+      const row = orders.get(orderId);
+      return Promise.resolve(row ? { ...row } : null);
+    },
     findByUserAndId: (_conn, input) => {
       const row = orders.get(input.orderId);
       return Promise.resolve(row && row.userId === input.userId ? { ...row } : null);

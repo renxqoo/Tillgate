@@ -15,13 +15,13 @@ import {
 } from '../primitives/card';
 import { Skeleton } from '../primitives/skeleton';
 
-export type KpiCardDelta = {
+export interface KpiCardDelta {
   trend: 'up' | 'down' | 'flat';
   sentiment: 'positive' | 'negative' | 'neutral';
   text: React.ReactNode;
-};
+}
 
-export type KpiCardProps = {
+export interface KpiCardProps {
   label: React.ReactNode;
   value: React.ReactNode;
   icon?: React.ReactNode;
@@ -30,7 +30,7 @@ export type KpiCardProps = {
   hint?: React.ReactNode;
   loading?: boolean;
   className?: string;
-};
+}
 
 const TREND_ICONS = {
   up: TrendingUpIcon,

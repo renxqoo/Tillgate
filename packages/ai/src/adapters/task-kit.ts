@@ -51,18 +51,31 @@ function bearerAuth(channel: ChannelDesc): Record<string, string> {
   return { authorization: `Bearer ${channel.apiKey}` };
 }
 
+/** 信封错误与记录形状的共用前奏（三个 parse 入口共用）；可用 → 记录，不可用 → 错误 */
+function checkEnvelope(
+  cfg: RestTaskKitConfig,
+  body: unknown,
+): { ok: true; rec: Record<string, unknown> } | { ok: false; error: UpstreamError } {
+  const envelopeError = cfg.envelopeError(body);
+  if (envelopeError) return { ok: false, error: envelopeError };
+  const rec = body as Record<string, unknown> | null;
+  if (!rec || typeof rec !== 'object') return { ok: false, error: cfg.invalidBodyError() };
+  return { ok: true, rec };
+}
+
+// eslint-disable-next-line max-lines-per-function -- REST 任务探测装配:重构后位于 50 行边界,oxfmt 换行推超 1 行
 export function createRestTaskOps(cfg: RestTaskKitConfig): ProtocolTaskOps {
   const auth = cfg.auth ?? bearerAuth;
   return {
     parseResponse: (kind, body): GenerationParsedResponse => {
-      const envelopeError = cfg.envelopeError(body);
-      if (envelopeError) return { kind: 'error', error: envelopeError };
-      const rec = body as Record<string, unknown> | null;
-      if (!rec || typeof rec !== 'object') return { kind: 'error', error: cfg.invalidBodyError() };
+      const checked = checkEnvelope(cfg, body);
+      if (!checked.ok) return { kind: 'error', error: checked.error };
+      const { rec } = checked;
       if (kind === 'video') {
         const taskId = cfg.extractSubmissionTaskId(rec);
-        if (taskId === undefined || taskId === '')
+        if (taskId === undefined || taskId === '') {
           return { kind: 'error', error: cfg.invalidBodyError() };
+        }
         return { kind: 'task_submitted', taskId };
       }
       const artifact = cfg.extractCompletedArtifact(rec);
@@ -76,11 +89,9 @@ export function createRestTaskOps(cfg: RestTaskKitConfig): ProtocolTaskOps {
     }),
 
     parseTaskStatus: (body): GenerationTaskProbeResult => {
-      const envelopeError = cfg.envelopeError(body);
-      if (envelopeError) return { ok: false, error: envelopeError };
-      const rec = body as Record<string, unknown> | null;
-      if (!rec || typeof rec !== 'object') return { ok: false, error: cfg.invalidBodyError() };
-      const read = cfg.readStatus(rec);
+      const checked = checkEnvelope(cfg, body);
+      if (!checked.ok) return checked;
+      const read = cfg.readStatus(checked.rec);
       if (read.status === 'succeeded') {
         return { ok: true, status: 'succeeded', fileId: read.fileId, artifact: read.artifact };
       }
@@ -96,10 +107,9 @@ export function createRestTaskOps(cfg: RestTaskKitConfig): ProtocolTaskOps {
     }),
 
     parseFileRetrieve: (body) => {
-      const envelopeError = cfg.envelopeError(body);
-      if (envelopeError) return { ok: false, error: envelopeError };
-      const rec = body as Record<string, unknown> | null;
-      const url = rec ? cfg.extractFileUrl(rec) : undefined;
+      const checked = checkEnvelope(cfg, body);
+      if (!checked.ok) return checked;
+      const url = cfg.extractFileUrl(checked.rec);
       if (url === undefined || url === '') return { ok: false, error: cfg.invalidBodyError() };
       return { ok: true, downloadUrl: url };
     },

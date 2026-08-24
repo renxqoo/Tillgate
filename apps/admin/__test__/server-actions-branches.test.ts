@@ -27,13 +27,15 @@ afterEach(() => {
 
 describe('网络异常分支（fetch reject → 通用失败文案，不抛）', () => {
   it('providers/channels/models/plans/rate-cards/redeem/notifications/subscriptions', async () => {
-    const boom = [{ throwError: true }];
+    // 单一失败桩引用：多个 action 模块复用同一响应对象，避免数组下标断言
+    const boomFetch = { throwError: true };
+    const boom = [boomFetch];
     const p1 = await loadModule('../src/server/providers-actions', boom);
     await expect(p1.mod.createProviderAction({ name: 'p', baseUrl: 'https://x' })).resolves.toEqual(
       { error: 'createFailed' },
     );
 
-    const p2 = await loadModule('../src/server/channels-actions', [boom[0]!, boom[0]!]);
+    const p2 = await loadModule('../src/server/channels-actions', [boomFetch, boomFetch]);
     await expect(p2.mod.deleteChannelAction(1)).resolves.toEqual({ error: expect.any(String) });
     const create = p2.mod.createChannelAction as unknown as (
       a: Record<string, unknown>,
@@ -60,10 +62,10 @@ describe('网络异常分支（fetch reject → 通用失败文案，不抛）',
     await expect(p6.mod.revokeCodeAction(1)).resolves.toEqual({ error: expect.any(String) });
 
     const p7 = await loadModule('../src/server/notifications-actions', [
-      boom[0]!,
-      boom[0]!,
-      boom[0]!,
-      boom[0]!,
+      boomFetch,
+      boomFetch,
+      boomFetch,
+      boomFetch,
     ]);
     await expect(p7.mod.deleteChannelAction(1)).resolves.toEqual({ error: expect.any(String) });
     await expect(p7.mod.testChannelAction(1)).resolves.toEqual({ error: expect.any(String) });
@@ -73,9 +75,9 @@ describe('网络异常分支（fetch reject → 通用失败文案，不抛）',
     ).resolves.toEqual({ error: expect.any(String) });
 
     const p8 = await loadModule('../src/server/subscriptions-actions', [
-      boom[0]!,
-      boom[0]!,
-      boom[0]!,
+      boomFetch,
+      boomFetch,
+      boomFetch,
     ]);
     await expect(p8.mod.renewSubscriptionAction(1)).resolves.toEqual({ error: expect.any(String) });
     await expect(p8.mod.cancelSubscriptionAction(1)).resolves.toEqual({
@@ -94,7 +96,10 @@ describe('网络异常分支（fetch reject → 通用失败文案，不抛）',
       error: expect.any(String),
     });
 
-    const p11 = await loadModule('../src/server/billing-operations-actions', [boom[0]!, boom[0]!]);
+    const p11 = await loadModule('../src/server/billing-operations-actions', [
+      boomFetch,
+      boomFetch,
+    ]);
     await expect(
       p11.mod.retryDeadBillingRequest({ requestId: 'r', expectedRevision: 1, reason: 'x' }),
     ).resolves.toEqual({ error: expect.any(String) });
@@ -104,7 +109,7 @@ describe('网络异常分支（fetch reject → 通用失败文案，不抛）',
 
     const p12 = await loadModule(
       '../src/server/model-catalog-actions',
-      Array.from({ length: 5 }, () => boom[0]!),
+      Array.from({ length: 5 }, () => boomFetch),
     );
     await expect(p12.mod.setFxOverrideAction('7')).resolves.toEqual({ error: expect.any(String) });
     await expect(p12.mod.clearFxOverrideAction()).resolves.toEqual({ error: expect.any(String) });
@@ -112,7 +117,7 @@ describe('网络异常分支（fetch reject → 通用失败文案，不抛）',
     await expect(p12.mod.refreshFxAction(false)).resolves.toEqual({ error: expect.any(String) });
     await expect(p12.mod.priceHistoryAction('m')).resolves.toEqual({ error: expect.any(String) });
 
-    const p13 = await loadModule('../src/server/tracing-actions', [boom[0]!, boom[0]!]);
+    const p13 = await loadModule('../src/server/tracing-actions', [boomFetch, boomFetch]);
     await expect(p13.mod.fetchTraceDetail('abc')).resolves.toEqual({ error: expect.any(String) });
     await expect(p13.mod.fetchTraceDetailByRequestId('req-1')).resolves.toEqual({
       error: expect.any(String),
@@ -129,7 +134,7 @@ describe('admin-list 语言分支', () => {
       cookies: async () => mockCookieJar().jar,
       headers: async () => new Map([['accept-language', 'zh-CN,zh;q=0.9']]),
     }));
-    vi.doMock('next/cache', () => ({ revalidatePath: () => undefined }));
+    vi.doMock('next/cache', () => ({ revalidatePath: () => {} }));
     vi.doMock('next/navigation', () => ({
       redirect: (p: string) => {
         throw Object.assign(new Error(`redirect:${p}`), { __redirect: p });

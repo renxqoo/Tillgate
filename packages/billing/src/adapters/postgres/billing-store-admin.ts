@@ -48,6 +48,7 @@ function remainingOf(quotaAmount: string, usedAmount: string, reservedAmount: st
   return new Decimal(quotaAmount).minus(usedAmount).minus(reservedAmount).toString();
 }
 
+// eslint-disable-next-line max-lines-per-function -- 管理面 SQL 查询构造平铺(条件/排序/分页)
 export function adminMethods(
   _db: Db,
 ): Pick<
@@ -114,6 +115,7 @@ export function adminMethods(
       return row?.count ?? 0;
     },
 
+    // eslint-disable-next-line max-lines-per-function -- 管理面 SQL 查询构造平铺(条件/排序/分页)
     async listAdminSubscriptions(conn, input) {
       const conditions = [
         input.planId !== undefined ? eq(userSubscriptions.planId, input.planId) : undefined,
@@ -240,7 +242,7 @@ export function adminMethods(
           channelId: billingRequests.channelId,
           channelReservedAmount: billingRequests.channelReservedAmount,
         });
-      const row = rows[0];
+      const [row] = rows;
       return row === undefined ? null : row;
     },
   };

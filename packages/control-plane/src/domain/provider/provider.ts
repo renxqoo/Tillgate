@@ -79,7 +79,7 @@ export function validateProviderCreate(
   input: ProviderCreateInput,
   defaultProtocol: string,
 ): { name: string; protocol: string; vendor: string | null; baseUrl: string; status: number } {
-  if (input.name.length < 1 || input.name.length > 32) invalid({ name: input.name });
+  if (input.name.length === 0 || input.name.length > 32) invalid({ name: input.name });
   assertBaseUrlShape(input.baseUrl);
   if (
     input.status !== undefined &&
@@ -87,8 +87,9 @@ export function validateProviderCreate(
   ) {
     invalid({ status: input.status });
   }
-  if (input.protocol !== undefined && input.protocol.length > 32)
+  if (input.protocol !== undefined && input.protocol.length > 32) {
     invalid({ protocol: input.protocol });
+  }
   if (input.vendor != null && input.vendor.length > 32) invalid({ vendor: input.vendor });
   const protocol = assertProtocol(capabilities, input.protocol ?? defaultProtocol);
   const vendor = input.vendor === undefined ? null : assertVendor(capabilities, input.vendor);
@@ -106,7 +107,7 @@ export function validateProviderPatch(
   capabilities: ProviderCapabilities,
   patch: ProviderPatchInput,
 ): ProviderPatchInput {
-  if (patch.name !== undefined && (patch.name.length < 1 || patch.name.length > 32)) {
+  if (patch.name !== undefined && (patch.name.length === 0 || patch.name.length > 32)) {
     invalid({ name: patch.name });
   }
   if (patch.baseUrl !== undefined) assertBaseUrlShape(patch.baseUrl);

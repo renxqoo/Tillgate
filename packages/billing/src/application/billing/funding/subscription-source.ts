@@ -3,6 +3,7 @@
  * probe = 查询编排（订阅快照/成员限额/花费口径）；闸门规则本体在 domain 的
  * subscriptionAvailability（结构性非法抛错 / 开关 OFF 整单拒绝 / ON 返回余量补差）。
  */
+import { DefectError } from '@tillgate/errors';
 import { subscriptionAvailability } from '../../../domain/billing/subscription-availability.js';
 import { billingDayStart, billingMonthStart } from '../../../domain/billing/daily-window.js';
 import { BillingErrors } from '../../../domain/errors.js';
@@ -20,6 +21,7 @@ import type {
   SourceSettleInput,
 } from './source.js';
 
+// eslint-disable-next-line max-lines-per-function -- 订阅资金源生命周期动词(probe/reserve)事务体
 export function createSubscriptionSource(deps: {
   quota: SubscriptionQuotaStore;
   billing: BillingStore;
@@ -33,8 +35,13 @@ export function createSubscriptionSource(deps: {
     /** 仅套餐 Key 适用（凭证绑定订阅）；普通 Key 恒不消耗订阅额度 */
     applies: (context) => context.resolved.subscriptionId != null,
 
+    // eslint-disable-next-line max-lines-per-function -- 订阅资金源生命周期动词(probe/reserve)事务体
     async probe(tx: WalletTx, input: ProbeInput): Promise<Decimal> {
-      const subscriptionId = input.context.resolved.subscriptionId!;
+      // applies 谓词保证 subscriptionId 已解析;守卫收窄替代非空断言
+      const { subscriptionId } = input.context.resolved;
+      if (subscriptionId === null) {
+        throw new DefectError('subscription_source.no_subscription', 'billing.wallet_invariant');
+      }
       const sub = await deps.quota.activeSubscriptionSnapshot(tx, subscriptionId, input.now);
 
       // 归属解析：owner 直通（无成员限额）；非 owner 查 org 成员限额与花费口径
@@ -96,7 +103,10 @@ export function createSubscriptionSource(deps: {
     },
 
     async reserve(tx: WalletTx, input: ReserveInput): Promise<SourceReservation> {
-      const subscriptionId = input.context.resolved.subscriptionId!;
+      const { subscriptionId } = input.context.resolved;
+      if (subscriptionId === null) {
+        throw new DefectError('subscription_source.no_subscription', 'billing.wallet_invariant');
+      }
       const outcome = await deps.quota.tryReserveQuota(tx, {
         subscriptionId,
         amount: input.amount,
@@ -121,8 +131,12 @@ export function createSubscriptionSource(deps: {
     },
 
     async release(tx: WalletTx, reservation: SourceReservation, amount?: string): Promise<void> {
+      const { sourceRefId } = reservation;
+      if (sourceRefId === null) {
+        throw new DefectError('subscription_source.no_source_ref', 'billing.wallet_invariant');
+      }
       const ok = await deps.quota.tryReleaseQuota(tx, {
-        subscriptionId: reservation.sourceRefId!,
+        subscriptionId: sourceRefId,
         reserved: amount ?? reservation.amount,
       });
       if (!ok) {
@@ -136,8 +150,12 @@ export function createSubscriptionSource(deps: {
 
     async settle(tx: WalletTx, input: SourceSettleInput): Promise<void> {
       // 套餐只核销预留内份额；纯套餐链的超额转用户余额补扣，可形成负余额。
+      const { sourceRefId } = input.reservation;
+      if (sourceRefId === null) {
+        throw new DefectError('subscription_source.no_source_ref', 'billing.wallet_invariant');
+      }
       const ok = await deps.quota.trySettleQuota(tx, {
-        subscriptionId: input.reservation.sourceRefId!,
+        subscriptionId: sourceRefId,
         reserved: input.reservation.amount,
         consumed: input.consume,
       });

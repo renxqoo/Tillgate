@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { identityErrors } from '../src/domain/errors.js';
+import { defined } from './defined.js';
 
 /** DESIGN §2.3 目录表(单一真相的测试侧快照) */
 const EXPECTED: Readonly<Record<string, string>> = {
@@ -49,10 +50,12 @@ describe('identity 错误目录', () => {
     for (const [code, category] of Object.entries(EXPECTED)) {
       const entry = identityErrors.get(identityErrors.code(code as never));
       expect(entry, code).toBeDefined();
-      expect(entry!.category, code).toBe(category);
-      expect(entry!.message.length, code).toBeGreaterThan(0);
-      expect(entry!.zh.length, code).toBeGreaterThan(0);
-      expect(entry!.message, code).toMatch(/^[\x20-\x7e]+$/);
+      // 上行 toBeDefined 失败即中止,defined 仅做类型收窄不影响断言语义
+      const resolved = defined(entry, `entry(${code})`);
+      expect(resolved.category, code).toBe(category);
+      expect(resolved.message.length, code).toBeGreaterThan(0);
+      expect(resolved.zh.length, code).toBeGreaterThan(0);
+      expect(resolved.message, code).toMatch(/^[\x20-\x7e]+$/);
     }
   });
 

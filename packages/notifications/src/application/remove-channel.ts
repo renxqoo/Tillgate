@@ -22,7 +22,8 @@ export async function removeChannel(
   input: RemoveChannelInput,
 ): Promise<{ ok: true }> {
   const removed = await deps.db.transaction((tx) => deps.store.removeChannel(tx, input.channelId));
-  if (!removed)
+  if (!removed) {
     throw notificationsErrors.business('channel_not_found', { channelId: input.channelId });
+  }
   return { ok: true };
 }

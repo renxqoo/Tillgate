@@ -3,6 +3,7 @@ import type { Ai, AiEvent, ChatResult } from '@tillgate/ai';
 import { createUpstreamAi } from '../src/adapters/upstream-ai';
 import type { UpstreamStreamEvent } from '../src/ports/upstream';
 import { channel, upstreamError } from './harness';
+import { defined } from './defined';
 
 const noopEmit: (e: AiEvent) => void = () => {};
 
@@ -101,9 +102,11 @@ describe('adapters/upstream-ai：ChannelDesc 组装 + 凭据注入 + 结果/事�
     const { ai: ai3, seen } = fakeAi({});
     const port3 = createUpstreamAi({ ai: ai3, decrypt: (s) => s });
     await port3.chat(channel(), { ...req, signal: controller.signal });
-    expect((seen[0]!.opts as { signal?: AbortSignal }).signal).toBe(controller.signal);
+    expect((defined(seen[0], 'seen[0]').opts as { signal?: AbortSignal }).signal).toBe(
+      controller.signal,
+    );
     await port3.chat(channel(), req);
-    expect((seen[1]!.opts as { signal?: AbortSignal }).signal).toBeUndefined();
+    expect((defined(seen[1], 'seen[1]').opts as { signal?: AbortSignal }).signal).toBeUndefined();
   });
 
   it('chatStream：事件面 → 端口三类映射（first_chunk/failed/success）；其余事件不进端口', async () => {

@@ -25,7 +25,7 @@
    不受影响，v1 密钥直接可解——跨仓互解已实机硬验证，IMPLEMENTATION §5.1）。
 3. **零隐藏默认**（铁律 3）：连接串、池参数、重试策略、日志档位、限流 fail 模式之外的一切
    可变值必填注入；v1 的隐藏默认（6 处硬编码连接串属 db 波次、`??` 兜底）全部清除。
-4. **错误根契约**（AGENT.md §11）：基础设施错误源头分类——`assertRedisReachable` 抛
+4. **错误根契约**（AGENTS.md §11）：基础设施错误源头分类——`assertRedisReachable` 抛
    `InfrastructureError`（`runtime.redis.unreachable`，context 只进脱敏后 URL）；`parseSentinels`
    配置缺陷与 `cipher` 解密失败抛 `DefectError`（`runtime.redis.sentiels_invalid` /
    `runtime.cipher.invalid_format` / `runtime.cipher.auth_failed`）；限流/爆破存储不可用抛

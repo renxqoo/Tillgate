@@ -41,12 +41,13 @@ export interface CatalogComparison extends CatalogItem {
 export function suggestExternalName(id: string): string {
   const stripped = id.replace(/:free$/, '');
   const segments = stripped.split('/');
-  return (segments[segments.length - 1] || stripped).slice(0, 64);
+  return (segments.at(-1) || stripped).slice(0, 64);
 }
 
 function asPrice(v: unknown): string {
-  if (!((typeof v === 'string' && v.length > 0) || (typeof v === 'number' && Number.isFinite(v))))
+  if (!((typeof v === 'string' && v.length > 0) || (typeof v === 'number' && Number.isFinite(v)))) {
     return '0';
+  }
   try {
     const value = new Decimal(v);
     return value.isFinite() ? value.toString() : '0';
@@ -88,6 +89,7 @@ const PER_TOKEN_TO_PER_MILLION = new Decimal('1000000');
  * 不可定价哨兵（pricing 为 -1，如 openrouter/auto-beta 动态定价）不入货架：
  * 预填无依据、且负价会在换算/比价里疯走——导入需运营自行配价。
  */
+// eslint-disable-next-line complexity -- 外部目录形状防御式映射,分支来自垃圾形状枚举
 export function mapOpenAiCompatibleCatalog(
   raw: unknown,
   opts: { currency: CatalogCurrency; realModelPrefix?: string },
@@ -106,8 +108,9 @@ export function mapOpenAiCompatibleCatalog(
     if (
       isUnpriceableSentinel(row.pricing?.prompt) ||
       isUnpriceableSentinel(row.pricing?.completion)
-    )
+    ) {
       continue;
+    }
     const prompt = new Decimal(asPrice(row.pricing?.prompt));
     const completion = new Decimal(asPrice(row.pricing?.completion));
     const realModel = opts.realModelPrefix ? `${opts.realModelPrefix}${row.id}` : row.id;
@@ -138,6 +141,7 @@ export function mapOpenAiCompatibleCatalog(
  * 形状：{ [provider]: { models: { [id]: { name, limit.context, cost.{input,output,cache_read,cache_write} } } } }
  * 负价哨兵（不可定价）不入货架——与 OpenAI 兼容源同语义；缺 cost 保持 0（免费口径不变）。
  */
+// eslint-disable-next-line complexity -- models.dev 形状防御式映射,分支来自垃圾形状枚举
 export function mapModelsDevCatalog(raw: unknown): CatalogItem[] {
   const data = raw as Record<string, { models?: Record<string, Record<string, unknown>> }> | null;
   if (!data || typeof data !== 'object') return [];

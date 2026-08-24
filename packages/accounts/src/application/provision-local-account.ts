@@ -19,7 +19,7 @@ export async function provisionLocalAccount(
   let displayName: string;
   if (input.displayName !== undefined) {
     const name = input.displayName.trim();
-    if (name.length < 1 || name.length > 64) {
+    if (name.length === 0 || name.length > 64) {
       throw AccountsErrors.business('display_name_invalid');
     }
     displayName = name;

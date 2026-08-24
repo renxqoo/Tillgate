@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { Loader2Icon, WalletIcon } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -23,6 +23,15 @@ import {
 import { formatMoney } from '@/features/shared/format';
 import { TOPUP_PRESETS, isValidTopupAmount } from '@/features/wallet/topup-schema';
 import { createPaymentAction } from '@/server/actions/billing';
+
+/** t.rich 的 link 富文本渲染：指向兑换码页（模块级，避免渲染期定义组件） */
+function renderRedeemLink(chunks: ReactNode) {
+  return (
+    <a className="underline" href="/dashboard/redeem">
+      {chunks}
+    </a>
+  );
+}
 
 export function TopUpForm({
   channels,
@@ -73,11 +82,7 @@ export function TopUpForm({
         {channels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {t.rich('channelsEmpty', {
-              link: (chunks) => (
-                <a className="underline" href="/dashboard/redeem">
-                  {chunks}
-                </a>
-              ),
+              link: (chunks) => renderRedeemLink(chunks),
             })}
           </p>
         ) : (

@@ -8,6 +8,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as exports from '../src/index.js';
+import { defined } from './defined';
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -26,7 +27,7 @@ const files = tsFiles(SRC);
 function importSources(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(/(?:from|import)\s+['"]([^'"]+)['"]/g)) {
-    out.push(m[1]!);
+    out.push(defined(m[1], 'import source'));
   }
   return out;
 }

@@ -3,6 +3,7 @@
  * owner 保护、B5 回归(active-only 设限)、订阅绑定守卫。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { createTestHarness } from '../src/testing/harness.js';
 
 /** 标准场地:owner + 组织 + quantity 席位订阅 + 一个成员邮箱账号 */
@@ -78,7 +79,7 @@ describe('inviteMember', () => {
     expect(inv.token).toMatch(/^[0-9a-f]{32}$/);
     expect(await h.store.countPendingInvitations(h.ctx.db, org.id)).toBe(1);
     const again = await h.api.getOrgDetail({ userId: owner.id, orgId: org.id });
-    expect(again.invitations[0]!.email).toBe('new@x.io'); // 规范化落库
+    expect(defined(again.invitations[0], 'again.invitations[0]').email).toBe('new@x.io'); // 规范化落库
   });
 
   it('owner-only:非 owner/非成员统一 org_forbidden', async () => {
@@ -248,7 +249,10 @@ describe('acceptInvitation', () => {
       code: 'accounts.seats_full',
     });
     expect(await h.store.countActiveMembers(h.ctx.db, org.id)).toBe(1); // 未复活/未插入
-    expect((await h.store.findInvitationByToken(h.ctx.db, inv.token))!.status).toBe(0); // 邀请未被消费
+    expect(
+      defined(await h.store.findInvitationByToken(h.ctx.db, inv.token), 'findInvitationByToken')
+        .status,
+    ).toBe(0); // 邀请未被消费
   });
 
   it('被移除成员经新邀请复活(同 (org,user) 行 status 1→0)', async () => {
@@ -268,7 +272,7 @@ describe('acceptInvitation', () => {
       orgId: org.id,
       userId: member.id,
     });
-    expect(membership!.role).toBe('member');
+    expect(defined(membership, 'membership').role).toBe('member');
   });
 });
 
@@ -338,8 +342,10 @@ describe('setMemberLimits / removeMember / 订阅绑定守卫', () => {
     // 被移除后既有绑定不删(历史归属),仅新建被拒
     await h.api.removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: member.id });
     expect(
-      (await h.store.findOwnedKey(h.ctx.db, { userId: member.id, keyId: memberKey.key.id }))!
-        .subscriptionId,
+      defined(
+        await h.store.findOwnedKey(h.ctx.db, { userId: member.id, keyId: memberKey.key.id }),
+        'findOwnedKey',
+      ).subscriptionId,
     ).toBe(500);
     await expect(
       h.api.createKey({ userId: member.id, name: 'k2', subscriptionId: 500 }),

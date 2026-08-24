@@ -26,6 +26,7 @@ import { testChannel } from '../src/application/test-channel';
 import { notificationsErrors } from '../src/errors';
 import { fakeCipher } from './memory';
 import type { NotifyContext } from '../src/application/context';
+import { defined } from './defined';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 let db: Db | null = null;
@@ -41,7 +42,8 @@ async function seedOutbox(row: {
   dedupeKey?: string;
   attempts?: number;
 }): Promise<number> {
-  const [inserted] = await db!
+  const conn = defined(db, 'db');
+  const [insertedRow] = await conn
     .insert(notifyOutbox)
     .values({
       event: row.event,
@@ -50,13 +52,15 @@ async function seedOutbox(row: {
       ...(row.attempts !== undefined ? { attempts: row.attempts } : {}),
     })
     .returning({ id: notifyOutbox.id });
-  createdOutbox.push(inserted!.id);
-  return inserted!.id;
+  const inserted = defined(insertedRow, 'inserted');
+  createdOutbox.push(inserted.id);
+  return inserted.id;
 }
 
 /** 认领资格隔离:ambient 待投递行推后 1 小时,返回恢复函数(本文件种子行之前调用) */
 async function quarantineAmbient(): Promise<() => Promise<void>> {
-  const pending = await db!
+  const conn = defined(db, 'db');
+  const pending = await conn
     .update(notifyOutbox)
     .set({ nextAttemptAt: sql`clock_timestamp() + interval '1 hour'` })
     .where(
@@ -69,8 +73,8 @@ async function quarantineAmbient(): Promise<() => Promise<void>> {
     .returning({ id: notifyOutbox.id });
   const ids = pending.map((r) => r.id);
   return async () => {
-    if (!ids.length) return;
-    await db!
+    if (ids.length === 0) return;
+    await conn
       .update(notifyOutbox)
       .set({ nextAttemptAt: new Date() })
       .where(inArray(notifyOutbox.id, ids));
@@ -83,7 +87,7 @@ async function quarantineAmbient(): Promise<() => Promise<void>> {
  * 均不可领)。quarantineAmbient 只在 beforeAll 跑一次,挡不住运行中途的新可领行。
  */
 async function isolateClaimTarget(id: number): Promise<void> {
-  await db!
+  await defined(db, 'db')
     .update(notifyOutbox)
     .set({ nextAttemptAt: sql`clock_timestamp() + interval '1 hour'` })
     .where(
@@ -116,10 +120,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!db) return;
-  if (createdOutbox.length)
+  if (createdOutbox.length > 0) {
     await db.delete(notifyOutbox).where(inArray(notifyOutbox.id, createdOutbox));
-  if (createdChannels.length)
+  }
+  if (createdChannels.length > 0) {
     await db.delete(notificationChannels).where(inArray(notificationChannels.id, createdChannels));
+  }
   await ambientRestore?.();
   await closeDb(db);
 });
@@ -148,11 +154,14 @@ describe('原子认领(SKIP LOCKED)', () => {
     ]);
     const winners = claims.flat().filter((item) => item.id === id);
     expect(winners).toHaveLength(1); // SKIP LOCKED:并发单赢家
-    const winnerIdx = claims.findIndex((c) => c.some((item) => item.id === id));
-    const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(row!.claimOwner).toBe(winnerIdx === 0 ? 'real-a' : 'real-b');
-    expect(row!.claimToken).toBe(winners[0]!.claimToken);
-    expect(row!.claimUntil).not.toBeNull();
+    // 抽具名谓词压平嵌套回调(max-nested-callbacks)
+    const hasWinner = (c: (typeof claims)[number]) => c.some((item) => item.id === id);
+    const winnerIdx = claims.findIndex(hasWinner);
+    const [fetched] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    const row = defined(fetched, 'row');
+    expect(row.claimOwner).toBe(winnerIdx === 0 ? 'real-a' : 'real-b');
+    expect(row.claimToken).toBe(defined(winners[0], 'winner').claimToken);
+    expect(row.claimUntil).not.toBeNull();
   });
 
   it('终态/退避未到期/租约未到期/次数耗尽的行不被认领', async () => {
@@ -200,6 +209,7 @@ describe('CAS fencing', () => {
       maxAttempts: 3,
     });
     expect(claimed?.id).toBe(id);
+    const fence = defined(claimed, 'claimed');
     // 错 token 用合法 uuid 形态(claim_token 是 uuid 列,非 uuid 字符串在比较前即 22P02——
     // 现实中错 token 恒为 gen_random_uuid 产物,不会出现非 uuid 形态)
     const wrongToken = await db.transaction((tx) =>
@@ -210,16 +220,17 @@ describe('CAS fencing', () => {
       postgresNotifyStore.failClaim(tx, {
         id,
         ownerId: 'real-b',
-        claimToken: claimed!.claimToken,
+        claimToken: fence.claimToken,
         maxAttempts: 3,
         error: 'x',
         retryDelayMs: 1000,
       }),
     );
     expect(wrongOwner).toBe(false);
-    const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(row!.sentAt).toBeNull();
-    expect(row!.attempts).toBe(0);
+    const [fetched] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    const row = defined(fetched, 'row');
+    expect(row.sentAt).toBeNull();
+    expect(row.attempts).toBe(0);
   });
 
   it('过期租约的 record/complete 零效果', async () => {
@@ -233,12 +244,15 @@ describe('CAS fencing', () => {
       maxAttempts: 3,
     });
     expect(claimed?.id).toBe(id);
-    await new Promise((r) => setTimeout(r, 20));
+    const lease = defined(claimed, 'claimed');
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     const recorded = await db.transaction((tx) =>
       postgresNotifyStore.recordDeliveredChannels(tx, {
         id,
         ownerId: 'real-a',
-        claimToken: claimed!.claimToken,
+        claimToken: lease.claimToken,
         channelIds: [1, 2],
       }),
     );
@@ -247,7 +261,7 @@ describe('CAS fencing', () => {
       postgresNotifyStore.completeClaim(tx, {
         id,
         ownerId: 'real-a',
-        claimToken: claimed!.claimToken,
+        claimToken: lease.claimToken,
       }),
     );
     expect(completed).toBe(false);
@@ -264,11 +278,12 @@ describe('CAS fencing', () => {
       maxAttempts: 3,
     });
     expect(claimed?.id).toBe(id);
+    const progress = defined(claimed, 'claimed');
     const emptyNoop = await db.transaction((tx) =>
       postgresNotifyStore.recordDeliveredChannels(tx, {
         id,
         ownerId: 'real-a',
-        claimToken: claimed!.claimToken,
+        claimToken: progress.claimToken,
         channelIds: [],
       }),
     );
@@ -278,7 +293,7 @@ describe('CAS fencing', () => {
         postgresNotifyStore.recordDeliveredChannels(tx, {
           id,
           ownerId: 'real-a',
-          claimToken: claimed!.claimToken,
+          claimToken: progress.claimToken,
           channelIds: [3, 4],
         }),
       ),
@@ -288,13 +303,13 @@ describe('CAS fencing', () => {
         postgresNotifyStore.recordDeliveredChannels(tx, {
           id,
           ownerId: 'real-a',
-          claimToken: claimed!.claimToken,
+          claimToken: progress.claimToken,
           channelIds: [5],
         }),
       ),
     ).toBe(true);
-    const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(row!.deliveredChannelIds).toEqual([3, 4, 5]); // 追加不覆盖
+    const [fetched] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    expect(defined(fetched, 'row').deliveredChannelIds).toEqual([3, 4, 5]); // 追加不覆盖
   });
 
   it('completeClaim 终态:attempts+1、claim 清空、lastError 清空', async () => {
@@ -308,20 +323,22 @@ describe('CAS fencing', () => {
       maxAttempts: 3,
     });
     expect(claimed?.id).toBe(id);
+    const done = defined(claimed, 'claimed');
     const completed = await db.transaction((tx) =>
       postgresNotifyStore.completeClaim(tx, {
         id,
         ownerId: 'real-a',
-        claimToken: claimed!.claimToken,
+        claimToken: done.claimToken,
       }),
     );
     expect(completed).toBe(true);
-    const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(row!.sentAt).not.toBeNull();
-    expect(row!.attempts).toBe(2);
-    expect(row!.claimOwner).toBeNull();
-    expect(row!.claimToken).toBeNull();
-    expect(row!.claimUntil).toBeNull();
+    const [fetched] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    const row = defined(fetched, 'row');
+    expect(row.sentAt).not.toBeNull();
+    expect(row.attempts).toBe(2);
+    expect(row.claimOwner).toBeNull();
+    expect(row.claimToken).toBeNull();
+    expect(row.claimUntil).toBeNull();
   });
 
   it('failClaim:未达上限释放认领并退避;达上限终态 failed + lastError 截断 255', async () => {
@@ -335,25 +352,29 @@ describe('CAS fencing', () => {
       maxAttempts: 3,
     });
     expect(claimed?.id).toBe(id);
+    const fail = defined(claimed, 'claimed');
     const before = Date.now();
     expect(
       await db.transaction((tx) =>
         postgresNotifyStore.failClaim(tx, {
           id,
           ownerId: 'real-a',
-          claimToken: claimed!.claimToken,
+          claimToken: fail.claimToken,
           maxAttempts: 3,
           error: 'x'.repeat(300),
           retryDelayMs: 15_000,
         }),
       ),
     ).toBe(true);
-    const [row] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(row!.attempts).toBe(1);
-    expect(row!.sentAt).toBeNull(); // 未达上限不终态
-    expect(row!.claimOwner).toBeNull();
-    expect(row!.lastError).toBe('x'.repeat(255)); // 截断
-    expect(row!.nextAttemptAt!.getTime()).toBeGreaterThanOrEqual(before + 14_000); // 退避 15s
+    const [fetched] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    const row = defined(fetched, 'row');
+    expect(row.attempts).toBe(1);
+    expect(row.sentAt).toBeNull(); // 未达上限不终态
+    expect(row.claimOwner).toBeNull();
+    expect(row.lastError).toBe('x'.repeat(255)); // 截断
+    expect(defined(row.nextAttemptAt, 'nextAttemptAt').getTime()).toBeGreaterThanOrEqual(
+      before + 14_000,
+    ); // 退避 15s
 
     // 直接置 attempts=2 重领后失败:attempts+1=3 达上限 → 终态
     await db
@@ -366,12 +387,11 @@ describe('CAS fencing', () => {
         claimUntil: new Date(Date.now() + 60_000),
       })
       .where(eq(notifyOutbox.id, id));
-    const finalToken = (
-      await db
-        .select({ token: notifyOutbox.claimToken })
-        .from(notifyOutbox)
-        .where(eq(notifyOutbox.id, id))
-    )[0]!.token!;
+    const [tokenRow] = await db
+      .select({ token: notifyOutbox.claimToken })
+      .from(notifyOutbox)
+      .where(eq(notifyOutbox.id, id));
+    const finalToken = defined(defined(tokenRow, 'tokenRow').token, 'token');
     expect(
       await db.transaction((tx) =>
         postgresNotifyStore.failClaim(tx, {
@@ -384,9 +404,10 @@ describe('CAS fencing', () => {
         }),
       ),
     ).toBe(true);
-    const [final] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
-    expect(final!.sentAt).not.toBeNull(); // 达上限终态
-    expect(final!.attempts).toBe(3);
+    const [finalRow] = await db.select().from(notifyOutbox).where(eq(notifyOutbox.id, id));
+    const final = defined(finalRow, 'finalRow');
+    expect(final.sentAt).not.toBeNull(); // 达上限终态
+    expect(final.attempts).toBe(3);
   });
 });
 
@@ -409,7 +430,7 @@ describe('入箱与渠道', () => {
       .from(notifyOutbox)
       .where(eq(notifyOutbox.dedupeKey, dedupeKey));
     expect(rows).toHaveLength(1);
-    createdOutbox.push(rows[0]!.id);
+    createdOutbox.push(defined(rows[0], 'rows[0]').id);
   });
 
   it('渠道 CRUD SQL:插入/查改删/listActive 过滤;重名 23505 经用例翻译为 channel_exists', async () => {
@@ -427,9 +448,9 @@ describe('入箱与渠道', () => {
     );
     createdChannels.push(created.id);
     expect(created.config.secret).toMatch(/^\*{4}/); // 密文不回显
-    const stored = await postgresNotifyStore.findChannel(db, created.id);
-    expect(stored!.config.secret).toMatch(/^enc:v1:fake:/); // 落库密文
-    expect(stored!.type).toBe('webhook');
+    const stored = defined(await postgresNotifyStore.findChannel(db, created.id), 'stored');
+    expect(stored.config.secret).toMatch(/^enc:v1:fake:/); // 落库密文
+    expect(stored.type).toBe('webhook');
 
     // store 层直连可见原生 23505 形状;用例层翻译为 channel_exists
     const dup = await db
@@ -441,12 +462,12 @@ describe('入箱与渠道', () => {
           events: ['billing_dead'],
         }),
       )
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect(isUniqueViolation(dup)).toBe(true);
     const translated = await createChannel(
       { db, store: postgresNotifyStore, cipher: fakeCipher() },
       { ctx, name, type: 'email', config: { recipients: ['a@b.test'] }, events: ['balance_low'] },
-    ).catch((e: unknown) => e);
+    ).catch((error: unknown) => error);
     expect((translated as { code?: string }).code).toBe('notifications.channel_exists');
 
     await db
@@ -464,14 +485,17 @@ describe('入箱与渠道', () => {
       ),
     ).toBe(true);
 
-    const patched = await db.transaction((tx) =>
-      postgresNotifyStore.patchChannel(tx, {
-        channelId: created.id,
-        patch: { events: ['balance_low'], status: 0 },
-      }),
+    const patched = defined(
+      await db.transaction((tx) =>
+        postgresNotifyStore.patchChannel(tx, {
+          channelId: created.id,
+          patch: { events: ['balance_low'], status: 0 },
+        }),
+      ),
+      'patched',
     );
-    expect(patched!.events).toEqual(['balance_low']);
-    expect(patched!.status).toBe(0);
+    expect(patched.events).toEqual(['balance_low']);
+    expect(patched.status).toBe(0);
     expect(await db.transaction((tx) => postgresNotifyStore.removeChannel(tx, created.id))).toBe(
       true,
     );
@@ -499,14 +523,15 @@ describe('入箱与渠道', () => {
       .from(notifyOutbox)
       .where(sql`${notifyOutbox.dedupeKey} like ${`test:${created.id}:%`}`);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.event).toBe('balance_low'); // 首订阅事件
-    expect(rows[0]!.payload).toEqual({ test: true, channel: created.name });
-    createdOutbox.push(rows[0]!.id);
+    const testRow = defined(rows[0], 'rows[0]');
+    expect(testRow.event).toBe('balance_low'); // 首订阅事件
+    expect(testRow.payload).toEqual({ test: true, channel: created.name });
+    createdOutbox.push(testRow.id);
 
     const thrown = await testChannel(
       { db, store: postgresNotifyStore },
       { ctx, channelId: 999_999_999 },
-    ).catch((e: unknown) => e);
+    ).catch((error: unknown) => error);
     expect(notificationsErrors.has((thrown as { code: string }).code)).toBe(true);
     expect((thrown as { code: string }).code).toBe('notifications.channel_not_found');
   });
@@ -516,7 +541,7 @@ describe('outbox 事务参与(§5.4 三类边界,outboxWithinTx bridge)', () => 
   it('①业务回滚 → 无 outbox 行(回滚即无事件)', async () => {
     if (!db) return;
     const dedupeKey = `real-rollback-${uid()}`;
-    await db!
+    await defined(db, 'db')
       .transaction(async (tx) => {
         await outboxWithinTx(tx).enqueue({
           event: 'balance_low',
@@ -526,7 +551,7 @@ describe('outbox 事务参与(§5.4 三类边界,outboxWithinTx bridge)', () => 
         // 业务侧写入与入箱同一事务——此处主动回滚(模拟业务失败)
         await tx.rollback();
       })
-      .catch(() => undefined);
+      .catch(() => {});
     const rows = await db
       .select({ id: notifyOutbox.id })
       .from(notifyOutbox)
@@ -539,7 +564,7 @@ describe('outbox 事务参与(§5.4 三类边界,outboxWithinTx bridge)', () => 
     const marker = `real-atomic-${uid()}`;
     // 业务事实 = channels 行;入箱抛错(词表门拒绝超长 event)必须把渠道行一并回滚
     await expect(
-      db!.transaction(async (tx) => {
+      defined(db, 'db').transaction(async (tx) => {
         await tx.insert(notificationChannels).values({
           name: marker,
           type: 'email',
@@ -564,23 +589,23 @@ describe('outbox 事务参与(§5.4 三类边界,outboxWithinTx bridge)', () => 
   it('③并发重复入箱:同 dedupeKey 恰一行(onConflictDoNothing)', async () => {
     if (!db) return;
     const dedupeKey = `real-concurrent-${uid()}`;
+    // 抽具名事务体压平嵌套回调(max-nested-callbacks)
+    const enqueueOnce = async (tx: Parameters<Parameters<Db['transaction']>[0]>[0]) =>
+      outboxWithinTx(tx).enqueue({
+        event: 'balance_low',
+        payload: { userId: 1 },
+        dedupeKey,
+      });
+    const conn = defined(db, 'db');
     const attempts = await Promise.all(
-      Array.from({ length: 4 }, () =>
-        db!.transaction((tx) =>
-          outboxWithinTx(tx).enqueue({
-            event: 'balance_low',
-            payload: { userId: 1 },
-            dedupeKey,
-          }),
-        ),
-      ),
+      Array.from({ length: 4 }, () => conn.transaction(enqueueOnce)),
     );
     expect(attempts).toHaveLength(4); // 全部成功(唯一冲突被静默忽略)
-    const rows = await db
+    const rows = await conn
       .select({ id: notifyOutbox.id })
       .from(notifyOutbox)
       .where(eq(notifyOutbox.dedupeKey, dedupeKey));
     expect(rows).toHaveLength(1);
-    createdOutbox.push(rows[0]!.id);
+    createdOutbox.push(defined(rows[0], 'rows[0]').id);
   });
 });

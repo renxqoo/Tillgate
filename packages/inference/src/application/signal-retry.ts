@@ -38,9 +38,9 @@ export async function signalSucceededWithRetry(
             span.setStatus({ code: 'error', message: 'signal retries exhausted' });
           }
           if (attempt < attempts) {
-            await new Promise((resolve) =>
-              setTimeout(resolve, Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1))),
-            );
+            await new Promise((resolve) => {
+              setTimeout(resolve, Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1)));
+            });
           }
         }
       }

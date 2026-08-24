@@ -77,14 +77,16 @@ function Section({
   );
 }
 
-export default async function ApiGuidePage() {
-  const t = await getTranslations('apiGuide');
-  // 示例统一使用当前部署的真实地址（与 BaseUrlBadge 同源）——复制即可用，无需改域名
-  const origin = siteOrigin(await headers());
+/** 逐端点示例代码（纯模板字符串，模块级构造以压平页面函数行数） */
+function buildGuideSamples(opts: {
+  t: (key: string) => string;
+  origin: string;
+  key: string;
+  appId: string;
+  appSecret: string;
+}) {
+  const { t, origin, key: KEY, appId: APP_ID, appSecret: APP_SECRET } = opts;
   const BASE = `${origin}/v1`;
-  const KEY = t('sampleKey');
-  const APP_ID = t('sampleAppId');
-  const APP_SECRET = t('sampleAppSecret');
 
   const QUICK_PY = `from openai import OpenAI
 
@@ -199,6 +201,37 @@ print(msg.content[0].text)`;
 
   const MODELS_CURL = `curl ${BASE}/models -H "Authorization: Bearer ${KEY}"`;
 
+  return {
+    QUICK_PY,
+    QUICK_CURL,
+    STREAM_JS,
+    VISION_CURL,
+    IMAGES_CURL,
+    TTS_CURL,
+    STT_CURL,
+    EMBED_CURL,
+    VIDEO_CURL,
+    MUSIC_CURL,
+    CLAUDE_PY,
+    GEMINI_CURL,
+    OAUTH_TOKEN,
+    MODELS_CURL,
+  };
+}
+
+export default async function ApiGuidePage() {
+  const t = await getTranslations('apiGuide');
+  // 示例统一使用当前部署的真实地址（与 BaseUrlBadge 同源）——复制即可用，无需改域名
+  const origin = siteOrigin(await headers());
+  const BASE = `${origin}/v1`;
+  const s = buildGuideSamples({
+    t,
+    origin,
+    key: t('sampleKey'),
+    appId: t('sampleAppId'),
+    appSecret: t('sampleAppSecret'),
+  });
+
   return (
     <div className="@container/main flex flex-col gap-4 md:gap-6">
       <div className="space-y-1">
@@ -213,47 +246,47 @@ print(msg.content[0].text)`;
       </div>
 
       <Section title={t('quickStartTitle')} desc={t('quickStartDesc')}>
-        <CodeSample code={QUICK_PY} lang="python (openai SDK)" />
-        <CodeSample code={QUICK_CURL} lang="curl" />
+        <CodeSample code={s.QUICK_PY} lang="python (openai SDK)" />
+        <CodeSample code={s.QUICK_CURL} lang="curl" />
       </Section>
 
       <Section title={t('streamTitle')} desc={t('streamDesc')}>
-        <CodeSample code={STREAM_JS} lang="javascript (openai SDK)" />
+        <CodeSample code={s.STREAM_JS} lang="javascript (openai SDK)" />
       </Section>
 
       <Section title={t('visionTitle')} desc={t('visionDesc')}>
-        <CodeSample code={VISION_CURL} lang="curl" />
+        <CodeSample code={s.VISION_CURL} lang="curl" />
       </Section>
 
       <Section title={t('imagesTitle')} desc={t('imagesDesc')}>
-        <CodeSample code={IMAGES_CURL} lang="curl" />
+        <CodeSample code={s.IMAGES_CURL} lang="curl" />
       </Section>
 
       <Section title={t('audioTitle')} desc={t('audioDesc')}>
-        <CodeSample code={TTS_CURL} lang={t('langTts')} />
-        <CodeSample code={STT_CURL} lang={t('langStt')} />
+        <CodeSample code={s.TTS_CURL} lang={t('langTts')} />
+        <CodeSample code={s.STT_CURL} lang={t('langStt')} />
       </Section>
 
       <Section title={t('embedTitle')}>
-        <CodeSample code={EMBED_CURL} lang="curl" />
+        <CodeSample code={s.EMBED_CURL} lang="curl" />
       </Section>
 
       <Section title={t('avTitle')} desc={t('avDesc')}>
-        <CodeSample code={VIDEO_CURL} lang={t('langVideo')} />
-        <CodeSample code={MUSIC_CURL} lang={t('langMusic')} />
+        <CodeSample code={s.VIDEO_CURL} lang={t('langVideo')} />
+        <CodeSample code={s.MUSIC_CURL} lang={t('langMusic')} />
       </Section>
 
       <Section title={t('directTitle')} desc={t('directDesc')}>
-        <CodeSample code={CLAUDE_PY} lang="python (anthropic SDK)" />
-        <CodeSample code={GEMINI_CURL} lang={t('langGemini')} />
+        <CodeSample code={s.CLAUDE_PY} lang="python (anthropic SDK)" />
+        <CodeSample code={s.GEMINI_CURL} lang={t('langGemini')} />
       </Section>
 
       <Section title={t('agentTitle')} desc={t('agentDesc')}>
-        <CodeSample code={OAUTH_TOKEN} lang="curl" />
+        <CodeSample code={s.OAUTH_TOKEN} lang="curl" />
       </Section>
 
       <Section title={t('modelsTitle')} desc={t('modelsDesc')}>
-        <CodeSample code={MODELS_CURL} lang="curl" />
+        <CodeSample code={s.MODELS_CURL} lang="curl" />
       </Section>
 
       <Section title={t('tableTitle')} desc={t('tableDesc')}>

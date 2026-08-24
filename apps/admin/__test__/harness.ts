@@ -5,11 +5,14 @@
  */
 import { vi } from 'vitest';
 
+import { defined } from './defined';
+
 /** cookie jar 桩（Map 形态；api-client session 语义：get/set/delete/has） */
 export function mockCookieJar(initial: Record<string, string> = {}) {
   const store = new Map(Object.entries(initial));
   const jar = {
-    get: (key: string) => (store.has(key) ? { value: store.get(key)! } : undefined),
+    get: (key: string) =>
+      store.has(key) ? { value: defined(store.get(key), 'cookie') } : undefined,
     set: (key: string, value: string) => void store.set(key, value),
     delete: (key: string) => void store.delete(key),
     has: (key: string) => store.has(key),
@@ -72,7 +75,7 @@ export function installNextStubs(opts: { jar?: ReturnType<typeof mockCookieJar>[
     cookies: async () => useJar,
     headers: async () => new Map([['accept-language', 'en']]),
   }));
-  vi.doMock('next/cache', () => ({ revalidatePath: () => undefined }));
+  vi.doMock('next/cache', () => ({ revalidatePath: () => {} }));
   const redirectCalls: string[] = [];
   vi.doMock('next/navigation', () => ({
     redirect: (path: string) => {

@@ -40,6 +40,7 @@ function parseEndpoints(json: string | undefined): OAuthEndpointsOverride | unde
   return JSON.parse(json) as OAuthEndpointsOverride;
 }
 
+// eslint-disable-next-line max-lines-per-function, complexity -- identity 装配根:oauth 凭证/mailer/挑战参数线性组装,分支即 provider 与开关判空(存量棘轮)
 export function createIdentityStack(args: {
   config: ClientApiConfig;
   db: Db;
@@ -79,22 +80,22 @@ export function createIdentityStack(args: {
   let mailer: Mailer | null;
   if (mailerOverride === undefined) {
     mailer = smtpReady
-      ? createSmtpLoginMailer(
-          {
+      ? createSmtpLoginMailer({
+          config: {
             host: config.SMTP_HOST as string,
             port: config.SMTP_PORT,
             user: config.SMTP_USER as string,
             pass: config.SMTP_PASS as string,
             from: config.SMTP_FROM ?? (config.SMTP_USER as string),
           },
-          mailBrand,
-          {
+          brand: mailBrand,
+          emailParams: {
             ttlMinutes: Math.ceil(config.CLIENT_CHALLENGE_TTL_MS / 60_000),
             maxAttempts: config.CLIENT_CHALLENGE_MAX_ATTEMPTS,
           },
-          { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
-          clock,
-        )
+          resetParams: { ttlMinutes: RESET_TOKEN_TTL_MINUTES },
+          now: clock,
+        })
       : null;
   } else {
     mailer = mailerOverride;

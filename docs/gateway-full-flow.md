@@ -412,5 +412,5 @@ stateDiagram-v2
 
 - 资金语义全流程（预扣/结算/防刷五向量）：[billing-flow-deep-dive.md](billing-flow-deep-dive.md)
 - 管线结构与文件地图：[gateway-pipeline.md](gateway-pipeline.md)
-- 工程规范：[../AGENT.md](../AGENT.md)；
+- 工程规范：[../AGENTS.md](../AGENTS.md)；
   结构重构背景：[project-structure-refactoring.md](project-structure-refactoring.md)

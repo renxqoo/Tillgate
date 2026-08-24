@@ -5,8 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
 
-import { PermissionsContent } from '@/features/rbac/permissions-content';
-import { CreateNodeForm } from '@/features/rbac/permissions-dialogs';
+import { CreateNodeForm, PermissionsContent } from '@/features/rbac/permissions-content';
 
 export const dynamic = 'force-dynamic';
 

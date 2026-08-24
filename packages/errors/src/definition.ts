@@ -70,13 +70,17 @@ function invalid(field: string, value: string): DefectError {
 /** 身份码签发（品牌类型的唯一落点；断言合法——string → 品牌子类型） */
 const issue = (prefix: string, key: string): BusinessCode => (prefix + key) as BusinessCode;
 
+/** lookupEntry 的目录绑定面(defineErrorCatalog 闭包内的既定事实) */
+interface CatalogBinding {
+  namespace: string;
+  /** 身份码前缀(`${namespace}.`) */
+  prefix: string;
+  frozen: Record<string, ErrorDefinition>;
+}
+
 /** key 查找（含形状与 miss 防呆）——entry()/business() 的公共底座 */
-function lookupEntry(
-  namespace: string,
-  prefix: string,
-  frozen: Record<string, ErrorDefinition>,
-  key: string,
-): CatalogEntry {
+function lookupEntry(binding: CatalogBinding, key: string): CatalogEntry {
+  const { namespace, prefix, frozen } = binding;
   if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
   const def = frozen[key];
   if (def === undefined) {
@@ -106,22 +110,24 @@ export function defineErrorCatalog<
     if (!IDENTIFIER_PATTERN.test(key)) throw invalid('key', `${namespace}.${key}`);
     if (def === null || typeof def !== 'object') throw invalid('definition', `${namespace}.${key}`);
     if (!isErrorCategory(def.category)) throw invalid('category', `${namespace}.${key}`);
-    if (typeof def.message !== 'string' || def.message === '')
+    if (typeof def.message !== 'string' || def.message === '') {
       throw invalid('message', `${namespace}.${key}`);
+    }
     if (typeof def.zh !== 'string' || def.zh === '') throw invalid('zh', `${namespace}.${key}`);
     frozen[key] = Object.freeze({ ...def });
   }
   const prefix = `${namespace}.`;
+  const binding: CatalogBinding = { namespace, prefix, frozen };
   const catalog: NamespacedErrorCatalog<N, keyof D & string> = {
     namespace,
     codes: Object.freeze(Object.keys(frozen).map((key) => prefix + key)),
     code: (key) => issue(prefix, key),
-    entry: (key: string) => lookupEntry(namespace, prefix, frozen, key),
+    entry: (key: string) => lookupEntry(binding, key),
     get: (code: string) =>
       code.startsWith(prefix) ? frozen[code.slice(prefix.length)] : undefined,
     has: (code: string) => catalog.get(code) !== undefined,
     business: (key: string, context?: ErrorContext, opts?: ErrorOptions) =>
-      new BusinessError(lookupEntry(namespace, prefix, frozen, key), context, opts),
+      new BusinessError(lookupEntry(binding, key), context, opts),
   };
   return Object.freeze(catalog);
 }

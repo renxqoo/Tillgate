@@ -11,7 +11,10 @@ const config = {
 };
 
 /** 等待 fire-and-forget 状态机更新落地 */
-const flush = () => new Promise((resolve) => setTimeout(resolve, 5));
+const flush = () =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 5);
+  });
 
 describe('health/channel-health：AiEvent 订阅者（§3.6 零运维状态的 inference 侧）', () => {
   it('健康键 = protocol://host（与 ai 事件 channelKey 同算法）；坏 baseUrl 兜底 unknown', () => {

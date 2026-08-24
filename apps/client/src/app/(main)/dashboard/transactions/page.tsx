@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { ApiError, type StatementPage, type StatementRow } from '@tillgate/api-client';
 import { Button, DataTable, type DataTableColumn } from '@tillgate/ui';
 
-import { formatDateTime, formatMoney } from '@/features/shared/format';
+import { formatDateTime, formatMoney, type DisplayLocale } from '@/features/shared/format';
 import { signedAmountTone } from '@/features/shared/money-tone';
 import { ListPage } from '@/features/shared/list-page';
 import { firstParam, listHref } from '@/server/list-query';
@@ -25,6 +25,42 @@ const TYPE_KEYS: Record<string, string> = {
 /** 游标页大小（满页时 nextCursor=尾腿 legId，续读锚） */
 const PAGE_SIZE = 50;
 
+// —— 模块级 cell 渲染函数：列 cell 内联 JSX/块体会被判定为渲染期定义组件
+// （react/no-unstable-nested-components），统一提为模块级小函数返回 ReactNode ——
+
+function renderTimeCell(row: StatementRow, locale: DisplayLocale) {
+  return (
+    <span className="text-xs text-muted-foreground">{formatDateTime(row.createdAt, locale)}</span>
+  );
+}
+
+function renderTypeCell(row: StatementRow, translate: (key: string) => string) {
+  const key = TYPE_KEYS[row.transactionKind];
+  return key ? translate(key) : row.transactionKind;
+}
+
+function renderRemarkCell(row: StatementRow) {
+  return <span className="text-sm text-muted-foreground">{row.memo ?? '—'}</span>;
+}
+
+function renderAmountCell(row: StatementRow, locale: DisplayLocale) {
+  return (
+    <span className={`text-right font-medium tabular-nums ${signedAmountTone(row.amount, locale)}`}>
+      {row.amount.startsWith('-')
+        ? formatMoney(row.amount, locale)
+        : `+${formatMoney(row.amount, locale)}`}
+    </span>
+  );
+}
+
+function renderBalanceCell(row: StatementRow, locale: DisplayLocale) {
+  return (
+    <span className="text-right tabular-nums text-muted-foreground">
+      {formatMoney(row.balanceAfter, locale)}
+    </span>
+  );
+}
+
 interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -44,65 +80,47 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
 
   let rows: StatementRow[] = [];
   let nextCursor: string | undefined;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
     if (beforeLegId != null && Number.isFinite(beforeLegId) && beforeLegId > 0) {
       query.set('beforeLegId', String(beforeLegId));
     }
     const page = await api.get<StatementPage>(`/v1/wallet/statement?${query.toString()}`);
-    rows = page.rows;
-    nextCursor = page.nextCursor;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : t('loadFailed');
+    // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError：原写法
+    // 赋给了 catch 参数导致外层恒为 null，加载失败提示永不上屏——真实 bug 一并修复
+    ({ rows, nextCursor } = page);
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : t('loadFailed');
   }
 
   const columns: DataTableColumn<StatementRow>[] = [
     {
       key: 'createdAt',
       header: tCommon('time'),
-      cell: (row) => (
-        <span className="text-xs text-muted-foreground">
-          {formatDateTime(row.createdAt, locale)}
-        </span>
-      ),
+      cell: (row) => renderTimeCell(row, locale),
     },
     {
       key: 'type',
       header: t('colType'),
-      cell: (row) => {
-        const key = TYPE_KEYS[row.transactionKind];
-        return key ? t(key) : row.transactionKind;
-      },
+      cell: (row) => renderTypeCell(row, t),
     },
     {
       key: 'remark',
       header: t('colRemark'),
-      cell: (row) => <span className="text-sm text-muted-foreground">{row.memo ?? '—'}</span>,
+      cell: (row) => renderRemarkCell(row),
     },
     {
       key: 'amount',
       header: t('colAmount'),
       align: 'right',
-      cell: (row) => (
-        <span
-          className={'text-right font-medium tabular-nums ' + signedAmountTone(row.amount, locale)}
-        >
-          {row.amount.startsWith('-')
-            ? formatMoney(row.amount, locale)
-            : `+${formatMoney(row.amount, locale)}`}
-        </span>
-      ),
+      cell: (row) => renderAmountCell(row, locale),
     },
     {
       key: 'balanceAfter',
       header: t('colBalanceAfter'),
       align: 'right',
-      cell: (row) => (
-        <span className="text-right tabular-nums text-muted-foreground">
-          {formatMoney(row.balanceAfter, locale)}
-        </span>
-      ),
+      cell: (row) => renderBalanceCell(row, locale),
     },
   ];
 
@@ -113,10 +131,10 @@ export default async function TransactionsPage({ searchParams }: PageProps) {
         icon={<CoinsIcon className="size-5 text-muted-foreground" />}
         description={t('description')}
         searchParams={{ before }}
-        error={error}
+        error={loadError}
       >
         <DataTable columns={columns} rows={rows} rowKey={(row) => row.legId} empty={t('empty')} />
-        {nextCursor != null && !error ? (
+        {nextCursor != null && !loadError ? (
           <div className="flex justify-center p-4">
             <Button
               variant="outline"

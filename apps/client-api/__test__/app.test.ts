@@ -5,6 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { identityErrors } from '@tillgate/identity';
 import { AccountsErrors } from '@tillgate/accounts';
 import { BillingErrors } from '@tillgate/billing';
@@ -80,7 +81,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
       corsMaxAgeSeconds: 600,
       bodyLimitBytes: 8 * 1024 * 1024,
     },
-    logger: { error: () => undefined },
+    logger: { error: () => {} },
     health: {
       pingDb: () => Promise.resolve(),
       pingRedis: () => Promise.resolve(),
@@ -1348,11 +1349,14 @@ describe('subscriptions / usage / pricing / referrals', () => {
     expect(((await plans.json()) as { rows: Array<{ name: string }> }).rows[0]?.name).toBe('Lite');
 
     const mine = await app.request('/v1/subscriptions', { headers: auth });
-    const row = (
-      (await mine.json()) as {
-        rows: Array<{ remainingAmount: string; renewPrice: string; remainingValue: string }>;
-      }
-    ).rows[0]!;
+    const row = defined(
+      (
+        (await mine.json()) as {
+          rows: Array<{ remainingAmount: string; renewPrice: string; remainingValue: string }>;
+        }
+      ).rows[0],
+      'subscriptions.rows[0]',
+    );
     expect(row.remainingAmount).toBe('75');
     expect(row.renewPrice).toBe('20');
     expect(row.remainingValue).toBe('15');
@@ -1580,9 +1584,9 @@ describe('覆盖补充：成功路径与分支变体', () => {
 
     state.emptyOrgSubs = true;
     const listed = await app.request('/v1/orgs', { headers: auth });
-    const rows = (
-      (await listed.json()) as { rows: Array<{ remainingAmount: string; planName: string | null }> }
-    ).rows;
+    const { rows } = (await listed.json()) as {
+      rows: Array<{ remainingAmount: string; planName: string | null }>;
+    };
     expect(rows[0]?.remainingAmount).toBe('0');
     expect(rows[0]?.planName).toBeNull();
   });
@@ -1780,7 +1784,7 @@ describe('分支补充（presenter 单元与缺失变体）', () => {
 
   it('safeNext 归一分支（undefined/空/协议相对）', async () => {
     const { safeNext } = await import('../src/http/contracts/oauth.js');
-    expect(safeNext(undefined)).toBe('/dashboard');
+    expect(safeNext()).toBe('/dashboard');
     expect(safeNext('')).toBe('/dashboard');
     expect(safeNext('https://evil.example')).toBe('/dashboard');
     expect(safeNext('/ok/path')).toBe('/ok/path');
@@ -1861,7 +1865,9 @@ describe('分支补充（presenter 单元与缺失变体）', () => {
       exit,
     });
     shutdown('SIGTERM');
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(calls).toEqual(['server']);
   });
 });
@@ -1931,8 +1937,8 @@ describe('找回密码(链接制,防枚举)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true });
     expect(state.sentLinks).toHaveLength(1);
-    expect(state.sentLinks[0]!.to).toBe('u@x.com');
-    expect(state.sentLinks[0]!.url).toMatch(
+    expect(defined(state.sentLinks[0], 'sentLinks[0]').to).toBe('u@x.com');
+    expect(defined(state.sentLinks[0], 'sentLinks[0]').url).toMatch(
       /^https:\/\/console\.example\/reset-password\?token=reset-token-42-1-xxxxxxxxxxxx$/,
     );
   });
@@ -1978,7 +1984,7 @@ describe('找回密码(链接制,防枚举)', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: 'u@x.com' }),
     });
-    const token = [...state.issuedTokens.keys()][0]!;
+    const token = defined([...state.issuedTokens.keys()][0], 'issuedTokens[0]');
     const res = await app.request('/v1/auth/forgot/reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -2019,7 +2025,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
   it('bearerToken:合法/缺头/非 Bearer;guardKeyOf 确定;localeOf 双语', async () => {
     const { bearerToken, localeOf, guardKeyOf } = await import('../src/http/routes/auth.js');
     expect(bearerToken('Bearer  abc ')).toBe('abc');
-    expect(bearerToken(undefined)).toBe('');
+    expect(bearerToken()).toBe('');
     expect(bearerToken('Basic zzz')).toBe('');
     expect(guardKeyOf('a@b.c', '1.2.3.4')).toBe(guardKeyOf('a@b.c', '1.2.3.4'));
     expect(guardKeyOf('a@b.c', '1.2.3.4')).not.toBe(guardKeyOf('a@b.c', '4.3.2.1'));
@@ -2031,7 +2037,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
 
   it('scheduleWindowsOf:非 schedule/空表/无 label/带 label 四态', async () => {
     const { scheduleWindowsOf } = await import('../src/http/presenters/pricing.js');
-    expect(scheduleWindowsOf(undefined)).toBeUndefined();
+    expect(scheduleWindowsOf()).toBeUndefined();
     expect(scheduleWindowsOf({ strategy: 'flat', params: {} })).toBeUndefined();
     expect(scheduleWindowsOf({ strategy: 'schedule', params: { windows: [] } })).toBeUndefined();
     expect(
@@ -2080,7 +2086,7 @@ describe('覆盖收尾：纯函数与路由分支变体', () => {
     // captcha 是装配期展开的依赖——须在 createClientApiApp 前注入(deps 级)
     const captchaParts = createDeps();
     captchaParts.state.capabilities.captchaSiteKey = 'site-key';
-    (captchaParts.deps.auth as { captcha: unknown }).captcha = { verify: async () => undefined };
+    (captchaParts.deps.auth as { captcha: unknown }).captcha = { verify: async () => {} };
     const captchaApp = createClientApiApp(captchaParts.deps);
     const noToken = await captchaApp.request('/v1/auth/register', {
       method: 'POST',

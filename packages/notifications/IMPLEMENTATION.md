@@ -29,7 +29,7 @@
 | D1  | SSRF 断言经 `@ai-gateway/ai` 直依赖                                                                   | `UrlGuard` port 注入（本包禁依赖 ai；真相仍在 ai）                         |
 | D2  | encrypt/decrypt 经 `@ai-gateway/core`                                                                 | `SecretCipher` port 注入（真相在 runtime.createCipher，enc:v1 逐字节兼容） |
 | D3  | outbox 写入散落 5 处（repo.insertOutboxEvent / gateway overflow×2 / worker index×2 / reconcile 直插） | 统一 `enqueue` 用例 + `./composition` 事务参与 bridge（业务侧单一入口）    |
-| D4  | RepoContext 形状（db+requestId+actor）每仓自造                                                        | `DbLike` 参数型（@tillgate/db 收敛，v2 已有）                             |
+| D4  | RepoContext 形状（db+requestId+actor）每仓自造                                                        | `DbLike` 参数型（@tillgate/db 收敛，v2 已有）                              |
 
 ### 1.3 契约缺口（演进决策）
 

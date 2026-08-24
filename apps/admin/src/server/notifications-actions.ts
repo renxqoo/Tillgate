@@ -21,8 +21,8 @@ export async function createChannelAction(
     await adminApi().post('/v1/notifications', input);
     revalidatePath('/dashboard/notifications');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -32,8 +32,8 @@ export async function toggleChannelAction(id: number, status: number): Promise<{
     await adminApi().patch(`/v1/notifications/${id}`, { status });
     revalidatePath('/dashboard/notifications');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('updateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('updateFailed') };
   }
 }
 
@@ -43,8 +43,8 @@ export async function deleteChannelAction(id: number): Promise<{ error?: string 
     await adminApi().delete(`/v1/notifications/${id}`);
     revalidatePath('/dashboard/notifications');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('deleteFailed') };
   }
 }
 
@@ -53,7 +53,7 @@ export async function testChannelAction(id: number): Promise<{ error?: string }>
   try {
     await adminApi().post(`/v1/notifications/${id}/test`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('testFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('testFailed') };
   }
 }

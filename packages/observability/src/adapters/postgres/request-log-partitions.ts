@@ -40,20 +40,19 @@ export async function maintainRequestLogPartitions(
   }
 }
 
-/** 月分区维护本体(v1 逐句平移;可测纯 DDL 计划,边界由服务端 SQL 生成) */
-async function maintainOnClient(
-  client: PoolClient,
-  opts: RequestLogPartitionOptions,
-): Promise<RequestLogPartitionResult> {
-  const table = 'request_logs';
+/** 预建当月+次月分区(to_regclass 探测,已存在则跳过);返回新建的分区名 */
+async function ensureMonthlyPartitions(client: PoolClient, table: string): Promise<string[]> {
   const created: string[] = [];
-  const dropped: string[] = [];
   for (let i = 0; i <= 1; i++) {
     const r = await client.query<{ name: string }>(
       `select to_char(date_trunc('month', now()) + ($1::text || ' month')::interval, 'YYYY_MM') as name`,
       [String(i)],
     );
-    const name = `${table}_${r.rows[0]!.name}`;
+    const [monthRow] = r.rows;
+    if (monthRow === undefined) {
+      throw new Error('expected one month-name row from to_char query');
+    }
+    const name = `${table}_${monthRow.name}`;
     const bounds = await client.query<{ s: string; e: string }>(
       `select (date_trunc('month', now()) + ($1::text || ' month')::interval)::date::text as s,
               (date_trunc('month', now()) + (($1::int + 1)::text || ' month')::interval)::date::text as e`,
@@ -63,12 +62,26 @@ async function maintainOnClient(
       `public.${name}`,
     ]);
     if (!exists.rows[0]?.ok) {
+      const [boundsRow] = bounds.rows;
+      if (boundsRow === undefined) {
+        throw new Error('expected one month-bounds row from date_trunc query');
+      }
       await client.query(
-        `create table if not exists "${name}" partition of "${table}" for values from ('${bounds.rows[0]!.s}') to ('${bounds.rows[0]!.e}')`,
+        `create table if not exists "${name}" partition of "${table}" for values from ('${boundsRow.s}') to ('${boundsRow.e}')`,
       );
       created.push(name);
     }
   }
+  return created;
+}
+
+/** 月分区维护本体(v1 逐句平移;可测纯 DDL 计划,边界由服务端 SQL 生成) */
+async function maintainOnClient(
+  client: PoolClient,
+  opts: RequestLogPartitionOptions,
+): Promise<RequestLogPartitionResult> {
+  const table = 'request_logs';
+  const created = await ensureMonthlyPartitions(client, table);
   const stale = await client.query<{ relname: string }>(
     `select c.relname from pg_inherits i
        join pg_class p on i.inhparent = p.oid
@@ -83,6 +96,7 @@ async function maintainOnClient(
             < (now() - ($2::text || ' days')::interval)::date`,
     [table, String(opts.retentionDays)],
   );
+  const dropped: string[] = [];
   for (const row of stale.rows) {
     await client.query(`alter table "${table}" detach partition "${row.relname}"`);
     await client.query(`drop table if exists "${row.relname}"`);

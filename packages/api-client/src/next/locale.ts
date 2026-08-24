@@ -40,6 +40,26 @@ export function htmlLang(locale: Locale): 'en' | 'zh-CN' {
   return locale === 'zh' ? 'zh-CN' : 'en';
 }
 
+/** 单条目 q 值解析:多个 q 参数后者胜;解析失败按 1 处理,夹取 [0,1] */
+function entryQ(params: string[]): number {
+  let q = 1;
+  for (const param of params) {
+    const [key, value] = param.trim().split('=');
+    if (key?.toLowerCase() === 'q') {
+      const parsed = Number.parseFloat(value ?? '');
+      if (Number.isFinite(parsed)) q = Math.min(Math.max(parsed, 0), 1);
+    }
+  }
+  return q;
+}
+
+/** 语言标签归并:zh* → zh,en* → en,其余不命中 */
+function localeOfTag(tag: string): Locale | undefined {
+  if (tag.startsWith('zh')) return 'zh';
+  if (tag.startsWith('en')) return 'en';
+  return undefined;
+}
+
 /**
  * 解析 Accept-Language 头(RFC 9110 简化版):取 q 值最高的已支持语言;
  * q 解析失败按 1 处理;无命中回落默认英文。
@@ -54,17 +74,8 @@ export function parseAcceptLanguage(
     const [tagRaw, ...params] = part.trim().split(';');
     const tag = tagRaw?.trim().toLowerCase();
     if (!tag) continue;
-    let q = 1;
-    for (const param of params) {
-      const [key, value] = param.trim().split('=');
-      if (key?.toLowerCase() === 'q') {
-        const parsed = Number.parseFloat(value ?? '');
-        if (Number.isFinite(parsed)) q = Math.min(Math.max(parsed, 0), 1);
-      }
-    }
-    let locale: Locale | undefined;
-    if (tag.startsWith('zh')) locale = 'zh';
-    else if (tag.startsWith('en')) locale = 'en';
+    const q = entryQ(params);
+    const locale = localeOfTag(tag);
     if (locale && (!best || (q > best.q && q > 0))) best = { locale, q };
   }
   return best?.locale ?? fallback;

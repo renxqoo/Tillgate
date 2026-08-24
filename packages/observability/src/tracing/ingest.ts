@@ -38,11 +38,15 @@ export interface SpanBatcher {
   close(): Promise<void>;
 }
 
-export function createSpanBatcher(store: TraceStore, options: SpanBatcherOptions): SpanBatcher {
-  let queue: SpanRow[] = [];
-  let timer: ReturnType<typeof setInterval> | null = null;
-  let flushing = false;
-  const stats: BatcherStats = {
+/** 批写器可变状态(队列 + 互斥标记 + 计数;timer 留在工厂闭包——setInterval 句柄生命周期与工厂一致) */
+interface BatcherState {
+  queue: SpanRow[];
+  flushing: boolean;
+  stats: BatcherStats;
+}
+
+function initialStats(): BatcherStats {
+  return {
     received: 0,
     queued: 0,
     flushed: 0,
@@ -51,25 +55,54 @@ export function createSpanBatcher(store: TraceStore, options: SpanBatcherOptions
     lastError: null,
     lastFlushAt: null,
   };
+}
 
-  async function flush(): Promise<void> {
-    if (flushing || queue.length === 0) return;
-    flushing = true;
-    const batch = queue.splice(0, options.batchMax);
-    try {
-      await store.writeBatch(batch);
-      stats.flushed += batch.length;
-      stats.lastFlushAt = Date.now();
-      stats.lastError = null;
-    } catch (error) {
-      // best-effort:诊断数据写不进去就丢,绝不让观测故障影响接收端存活
-      stats.droppedWriteError += batch.length;
-      stats.lastError = error instanceof Error ? error.message : String(error);
-    } finally {
-      flushing = false;
-    }
-    if (queue.length >= options.batchMax) await flush();
+/** 立即刷写(定时器/定量/关闭共用):失败丢弃整批并计数,不抛出 */
+async function flushBatch(
+  store: TraceStore,
+  options: SpanBatcherOptions,
+  state: BatcherState,
+): Promise<void> {
+  if (state.flushing || state.queue.length === 0) return;
+  state.flushing = true;
+  const batch = state.queue.splice(0, options.batchMax);
+  try {
+    await store.writeBatch(batch);
+    state.stats.flushed += batch.length;
+    state.stats.lastFlushAt = Date.now();
+    state.stats.lastError = null;
+  } catch (error) {
+    // best-effort:诊断数据写不进去就丢,绝不让观测故障影响接收端存活
+    state.stats.droppedWriteError += batch.length;
+    state.stats.lastError = error instanceof Error ? error.message : String(error);
+  } finally {
+    state.flushing = false;
   }
+  if (state.queue.length >= options.batchMax) await flushBatch(store, options, state);
+}
+
+/** 入队溢出控制:满则丢最旧(shift 的 O(n) 口径见 IMPLEMENTATION B6)并计数;返回本次丢弃数 */
+function enqueueWithOverflow(
+  state: BatcherState,
+  rows: SpanRow[],
+  options: SpanBatcherOptions,
+): number {
+  let dropped = 0;
+  for (const row of rows) {
+    state.queue.push(row);
+    if (state.queue.length > options.max) {
+      state.queue.shift();
+      dropped += 1;
+      state.stats.droppedOverflow += 1;
+    }
+  }
+  return dropped;
+}
+
+export function createSpanBatcher(store: TraceStore, options: SpanBatcherOptions): SpanBatcher {
+  const state: BatcherState = { queue: [], flushing: false, stats: initialStats() };
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const flush = () => flushBatch(store, options, state);
 
   return {
     start() {
@@ -80,33 +113,25 @@ export function createSpanBatcher(store: TraceStore, options: SpanBatcherOptions
 
     push(rows) {
       if (rows.length === 0) return 0;
-      stats.received += rows.length;
-      let dropped = 0;
-      for (const row of rows) {
-        queue.push(row);
-        if (queue.length > options.max) {
-          queue.shift();
-          dropped += 1;
-          stats.droppedOverflow += 1;
-        }
-      }
-      if (queue.length >= options.batchMax) void flush();
+      state.stats.received += rows.length;
+      const dropped = enqueueWithOverflow(state, rows, options);
+      if (state.queue.length >= options.batchMax) void flush();
       return dropped;
     },
 
     flush,
 
     getStats() {
-      return { ...stats, queueDepth: queue.length };
+      return { ...state.stats, queueDepth: state.queue.length };
     },
 
     async close() {
       if (timer) clearInterval(timer);
       timer = null;
-      while (queue.length > 0) {
-        const before = queue.length;
+      while (state.queue.length > 0) {
+        const before = state.queue.length;
         await flush();
-        if (queue.length === before) break; // 写入持续失败:放弃剩余
+        if (state.queue.length === before) break; // 写入持续失败:放弃剩余
       }
     },
   };

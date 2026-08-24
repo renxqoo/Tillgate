@@ -39,114 +39,156 @@ function activeOf(row: TaskRow): GenerationTaskActiveRow {
   };
 }
 
+/** 管理面过滤谓词(kind/status 缺省不过滤;行集与 total 共用同一真相) */
+function adminFilterOf(
+  input: Parameters<GenerationTaskStore['adminList']>[0],
+): (row: TaskRow) => boolean {
+  return (row) =>
+    (input.kind === undefined || row.kind === input.kind) &&
+    (input.status === undefined || row.status === input.status);
+}
+
+/** 管理面列表:过滤 + 建序倒排 + 分页(内存形态无账本投影,见文件头注记) */
+async function adminListRows(
+  rows: Map<string, TaskRow>,
+  input: Parameters<GenerationTaskStore['adminList']>[0],
+): Promise<{ rows: GenerationTaskAdminRow[]; total: number }> {
+  const filter = adminFilterOf(input);
+  const matched = [...rows.values()]
+    .filter(filter)
+    .toSorted((a, b) => b.createdAt - a.createdAt)
+    .slice(input.offset, input.offset + input.limit);
+  const total = [...rows.values()].filter(filter).length;
+  const projected: GenerationTaskAdminRow[] = matched.map((row) => ({
+    taskId: row.taskId,
+    requestId: row.requestId,
+    kind: row.kind,
+    status: row.status,
+    userId: row.userId,
+    channelId: row.channelId ?? 0,
+    upstreamTaskId: row.upstreamTaskId,
+    failReason: row.failReason,
+    result: (row.result as Record<string, unknown> | null) ?? null,
+    // 内存形态无账本投影(文件头注记)——管理列表的账单列恒空
+    billingStatus: null,
+    createdAt: row.createdAt,
+    finishedAt: row.finishedAt,
+    expiresAt: row.expiresAt,
+  }));
+  return { rows: projected, total };
+}
+
+/** 过期批推进:非终态且已过 expiresAt 的行收敛 expired */
+async function expireOverdueRows(
+  rows: Map<string, TaskRow>,
+  now: () => number,
+  reason: string,
+): Promise<Array<{ taskId: string; requestId: string }>> {
+  const expired: Array<{ taskId: string; requestId: string }> = [];
+  for (const row of rows.values()) {
+    if ((row.status === 'queued' || row.status === 'running') && row.expiresAt <= now()) {
+      row.status = 'expired';
+      row.failReason = reason;
+      row.finishedAt = now();
+      expired.push({ taskId: row.taskId, requestId: row.requestId });
+    }
+  }
+  return expired;
+}
+
+/** 入队:同 taskId 重复入队响亮失败 */
+async function insertRow(
+  rows: Map<string, TaskRow>,
+  now: () => number,
+  record: GenerationTaskRecord,
+): Promise<void> {
+  if (rows.has(record.taskId)) {
+    throw new Error(`duplicate generation task id: ${record.taskId}`);
+  }
+  rows.set(record.taskId, {
+    ...record,
+    status: record.status,
+    result: null,
+    failReason: null,
+    createdAt: now(),
+    finishedAt: null,
+  });
+}
+
+/** 属主读:非本人 = 不存在(不泄漏存在性) */
+async function findRowByOwner(
+  rows: Map<string, TaskRow>,
+  userId: number,
+  taskId: string,
+): Promise<GenerationTaskView | null> {
+  const row = rows.get(taskId);
+  if (row == null || row.userId !== userId) return null;
+  const { status, result, failReason, createdAt, expiresAt, kind, params } = row;
+  return {
+    taskId: row.taskId,
+    kind,
+    status,
+    upstreamTaskId: row.upstreamTaskId,
+    params,
+    result,
+    failReason,
+    createdAt,
+    expiresAt,
+  };
+}
+
+/** 活跃批拉取(worker 消费面):kind/status 过滤 + 游标 + 有界批量 */
+async function listActiveRows(
+  rows: Map<string, TaskRow>,
+  input: Parameters<GenerationTaskStore['listActive']>[0],
+): Promise<GenerationTaskActiveRow[]> {
+  const matched = [...rows.values()]
+    .filter(
+      (row): row is TaskRow & { status: 'queued' | 'running' } =>
+        (input.kinds as readonly string[]).includes(row.kind) &&
+        (input.statuses as readonly string[]).includes(row.status) &&
+        (input.afterCreatedAt == null || row.createdAt > input.afterCreatedAt),
+    )
+    .toSorted((a, b) => a.createdAt - b.createdAt)
+    .slice(0, input.batch);
+  return matched.map(activeOf);
+}
+
+/** 终态 CAS:非终态守卫(他副本已终态化 = 幂等静默) */
+async function casRowTerminal(
+  rows: Map<string, TaskRow>,
+  now: () => number,
+  input: Parameters<GenerationTaskStore['casTerminal']>[0],
+): Promise<boolean> {
+  const row = rows.get(input.taskId);
+  if (row == null || (row.status !== 'queued' && row.status !== 'running')) return false;
+  row.status = input.status;
+  if (input.status === 'succeeded') row.result = input.result;
+  else row.failReason = input.failReason;
+  row.finishedAt = now();
+  return true;
+}
+
 export function createMemoryGenerationTaskStore(now: () => number = Date.now): GenerationTaskStore {
   const rows = new Map<string, TaskRow>();
 
   return {
-    async insert(record: GenerationTaskRecord): Promise<void> {
-      if (rows.has(record.taskId)) {
-        throw new Error(`duplicate generation task id: ${record.taskId}`);
-      }
-      rows.set(record.taskId, {
-        ...record,
-        status: record.status,
-        result: null,
-        failReason: null,
-        createdAt: now(),
-        finishedAt: null,
-      });
-    },
-    async findByOwner(userId: number, taskId: string): Promise<GenerationTaskView | null> {
-      const row = rows.get(taskId);
-      if (row == null || row.userId !== userId) return null;
-      const { status, result, failReason, createdAt, expiresAt, kind, params } = row;
-      return {
-        taskId: row.taskId,
-        kind,
-        status,
-        upstreamTaskId: row.upstreamTaskId,
-        params,
-        result,
-        failReason,
-        createdAt,
-        expiresAt,
-      };
-    },
-    async adminList(input) {
-      const matched = [...rows.values()]
-        .filter(
-          (row) =>
-            (input.kind === undefined || row.kind === input.kind) &&
-            (input.status === undefined || row.status === input.status),
-        )
-        .toSorted((a, b) => b.createdAt - a.createdAt)
-        .slice(input.offset, input.offset + input.limit);
-      const total = [...rows.values()].filter(
-        (row) =>
-          (input.kind === undefined || row.kind === input.kind) &&
-          (input.status === undefined || row.status === input.status),
-      ).length;
-      const projected: GenerationTaskAdminRow[] = matched.map((row) => ({
-        taskId: row.taskId,
-        requestId: row.requestId,
-        kind: row.kind,
-        status: row.status,
-        userId: row.userId,
-        channelId: row.channelId ?? 0,
-        upstreamTaskId: row.upstreamTaskId,
-        failReason: row.failReason,
-        result: (row.result as Record<string, unknown> | null) ?? null,
-        // 内存形态无账本投影(文件头注记)——管理列表的账单列恒空
-        billingStatus: null,
-        createdAt: row.createdAt,
-        finishedAt: row.finishedAt,
-        expiresAt: row.expiresAt,
-      }));
-      return { rows: projected, total };
-    },
+    insert: (record) => insertRow(rows, now, record),
+    findByOwner: (userId, taskId) => findRowByOwner(rows, userId, taskId),
+    adminList: (input) => adminListRows(rows, input),
     async settledAmounts(taskIds) {
       // 内存形态无 usage_logs 投影(文件头注记)——无命中,键集空
       void taskIds;
       return new Map<string, string>();
     },
-    async expireOverdue(reason) {
-      const expired: Array<{ taskId: string; requestId: string }> = [];
-      for (const row of rows.values()) {
-        if ((row.status === 'queued' || row.status === 'running') && row.expiresAt <= now()) {
-          row.status = 'expired';
-          row.failReason = reason;
-          row.finishedAt = now();
-          expired.push({ taskId: row.taskId, requestId: row.requestId });
-        }
-      }
-      return expired;
-    },
-    async listActive(input) {
-      const matched = [...rows.values()]
-        .filter(
-          (row): row is TaskRow & { status: 'queued' | 'running' } =>
-            (input.kinds as readonly string[]).includes(row.kind) &&
-            (input.statuses as readonly string[]).includes(row.status) &&
-            (input.afterCreatedAt == null || row.createdAt > input.afterCreatedAt),
-        )
-        .toSorted((a, b) => a.createdAt - b.createdAt)
-        .slice(0, input.batch);
-      return matched.map(activeOf);
-    },
+    expireOverdue: (reason) => expireOverdueRows(rows, now, reason),
+    listActive: (input) => listActiveRows(rows, input),
     async markRunning(taskId) {
       const row = rows.get(taskId);
       if (row == null || row.status !== 'queued') return false;
       row.status = 'running';
       return true;
     },
-    async casTerminal(input) {
-      const row = rows.get(input.taskId);
-      if (row == null || (row.status !== 'queued' && row.status !== 'running')) return false;
-      row.status = input.status;
-      if (input.status === 'succeeded') row.result = input.result;
-      else row.failReason = input.failReason;
-      row.finishedAt = now();
-      return true;
-    },
+    casTerminal: (input) => casRowTerminal(rows, now, input),
   };
 }

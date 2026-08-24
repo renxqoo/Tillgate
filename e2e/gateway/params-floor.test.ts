@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { Decimal } from '@tillgate/billing';
 import {
+  defined,
   E2EKeys,
   E2E_MODEL,
   e2ePost,
@@ -24,6 +25,27 @@ import {
 } from './kit';
 
 const hasEnv = process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null;
+
+// ---------------------------------------------------------------------------
+// 模块级断言辅助（it 体内的箭头已处第 4 层回调——max-nested-callbacks 上限 3，
+// 统一提为具名函数；断言语义逐条不变）
+// ---------------------------------------------------------------------------
+
+const responseStatus = (r: Response): number => r.status;
+const statusText = (r: Response): string => String(r.status);
+/** 吞取消/清理时的异常（fire-and-forget 清理口径） */
+const swallow = (): void => {};
+/** 网络层失败折叠标记（⑬ 大内容向量的合法终态之一） */
+const networkError = (): string => 'network-error';
+/** 超量 messages/embed 批的占位条目（数量上界向量——形状与 v1 一致） */
+const userMsg = (): { role: string; content: string } => ({ role: 'user', content: 'x' });
+const xChar = (): string => 'x';
+const is400 = (s: number): boolean => s === 400;
+/** settled 结果 → 状态（拒绝折叠为 'network-error'——⑭ 并发击穿断言口径） */
+const settledStatus = (r: PromiseSettledResult<number>): number | 'network-error' =>
+  r.status === 'fulfilled' ? r.value : 'network-error';
+const isOk200 = (s: number | 'network-error'): boolean => s === 200;
+const is402 = (s: number | 'network-error'): boolean => s === 402;
 
 describe.skipIf(!hasEnv)('E2E', () => {
   let world: E2EWorld;
@@ -68,7 +90,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
           method: 'POST',
           headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
           body,
-        }).then((r) => r.status);
+        }).then(responseStatus);
       const msg = JSON.stringify([{ role: 'user', content: 'x' }]);
       const statuses = await Promise.all([
         rawPost(`{"model":"${E2E_MODEL}","messages":${msg},"max_tokens":1000000000}`), // 超 1M 上界
@@ -79,18 +101,18 @@ describe.skipIf(!hasEnv)('E2E', () => {
         rawPost(`{"model":"${E2E_MODEL}","messages":${msg},"n":17}`), // 超 16
         rawPost(`{"model":"${E2E_MODEL}","messages":[],"max_tokens":100}`), // 空 messages
         rawPost(
-          `{"model":"${E2E_MODEL}","messages":${JSON.stringify(Array.from({ length: 1001 }, () => ({ role: 'user', content: 'x' })))},"max_tokens":10}`,
+          `{"model":"${E2E_MODEL}","messages":${JSON.stringify(Array.from({ length: 1001 }, userMsg))},"max_tokens":10}`,
         ), // 超 1000 条
         fetch(`${fullGateway.baseUrl}/v1/embeddings`, {
           method: 'POST',
           headers: { authorization: `Bearer ${raw}`, 'content-type': 'application/json' },
           body: JSON.stringify({
             model: E2E_MODEL,
-            input: Array.from({ length: 2049 }, () => 'x'),
+            input: Array.from({ length: 2049 }, xChar),
           }),
-        }).then((r) => r.status), // embed 批超 2048
+        }).then(responseStatus), // embed 批超 2048
       ]);
-      expect(statuses.every((s) => s === 400)).toBe(true);
+      expect(statuses.every(is400)).toBe(true);
       expect((await keys.billsOf(userId)).length).toBe(0); // 全家族零扣费
       expect(new Decimal((await keys.walletOf(userId)).balance).eq('1')).toBe(true);
     }, 60_000);
@@ -103,8 +125,8 @@ describe.skipIf(!hasEnv)('E2E', () => {
         max_tokens: 50,
         messages: [{ role: 'user', content: nineMb }],
       })
-        .then((r) => String(r.status))
-        .catch(() => 'network-error');
+        .then(statusText)
+        .catch(networkError);
       const sampled = await e2ePost(fullGateway.baseUrl, raw, {
         model: E2E_MODEL,
         max_tokens: 50,
@@ -112,8 +134,8 @@ describe.skipIf(!hasEnv)('E2E', () => {
         top_p: 1e-320,
         messages: [{ role: 'user', content: '只回复：好' }],
       })
-        .then((r) => String(r.status))
-        .catch(() => 'network-error');
+        .then(statusText)
+        .catch(networkError);
 
       // 允许 200（安全放行并计费）或 4xx/502（上游/校验拒绝）——网关不允许 5xx 崩溃
       for (const status of [giant, sampled]) {
@@ -139,19 +161,21 @@ describe.skipIf(!hasEnv)('E2E', () => {
       world.upstream.script = 'nonstream-usage';
       const FUND = '0.15';
       const { raw, userId } = await keys.issue(FUND);
-      const results = await Promise.allSettled(
-        Array.from({ length: 8 }, () =>
+      const calls: Array<Promise<number>> = [];
+      for (let i = 0; i < 8; i++) {
+        calls.push(
           e2ePost(fixedGateway.baseUrl, raw, {
             // 大 max_tokens：保守估价 ≈0.168 > 余额 0.15，但 fixed 只冻结 0.1。
             model: floorModel,
             max_tokens: 20_000,
             messages: [{ role: 'user', content: '只回复：好' }],
-          }).then((r) => r.status),
-        ),
-      );
-      const statuses = results.map((r) => (r.status === 'fulfilled' ? r.value : 'network-error'));
-      const ok = statuses.filter((s) => s === 200).length;
-      const rejected = statuses.filter((s) => s === 402).length;
+          }).then(responseStatus),
+        );
+      }
+      const results = await Promise.allSettled(calls);
+      const statuses = results.map(settledStatus);
+      const ok = statuses.filter(isOk200).length;
+      const rejected = statuses.filter(is402).length;
       console.log(`⑭ 并发 8 路 → 放行 ${ok} / 402 ${rejected}（fixed 0.1，余额 ${FUND}）`);
       expect(ok).toBeLessThanOrEqual(1); // 串行授权 + 固定冻结：首路后可用 0.05，余路拒绝
       expect(ok + rejected).toBe(8);
@@ -174,7 +198,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       });
       // 200（放行计费）或 502（上游超时三路归还）都是合法终态——两分支资金必须一致
       expect([200, 502]).toContain(res.status);
-      await res.text().catch(() => {});
+      await res.text().catch(swallow);
 
       await sleep(2_000);
       await keys.settleAll(userId);
@@ -186,7 +210,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       expect(new Decimal(balance).gte('-0.18')).toBe(true); // 单笔 §4 上界（20000 token 封顶）
       const bills14 = await keys.billsOf(userId);
       expect(bills14.length).toBe(1);
-      expect(['settled', 'released']).toContain(bills14[0]!.status);
+      expect(['settled', 'released']).toContain(defined(bills14[0], 'bills14[0]').status);
     }, 240_000);
 
     it('结算后连环放行：可用余额仍 ≥ fixed 即可再来——累计扣款恒等于真实用量', async () => {

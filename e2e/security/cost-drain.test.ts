@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { Decimal } from '@tillgate/billing';
 import {
+  defined,
   E2EKeys,
   e2ePost,
   setupE2EWorld,
@@ -29,6 +30,20 @@ import {
 } from '../gateway/kit';
 
 const hasEnv = process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null;
+
+// ---------------------------------------------------------------------------
+// 模块级辅助（describe×2 + it 已占 3 层回调——it 体内的箭头统一提为具名函数）
+// ---------------------------------------------------------------------------
+
+/** 吞取消/清理时的异常（fire-and-forget 清理口径） */
+const swallow = (): void => {};
+
+/** 读流超时哨兵（② 读流竞速——8s 无新帧视为 stall） */
+function readStall(timeoutMs: number): Promise<never> {
+  return new Promise((_, rej) => {
+    setTimeout(() => rej(new Error('read-stall')), timeoutMs);
+  });
+}
 
 describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
   let world: E2EWorld;
@@ -77,7 +92,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
     }>(
       sql`select request_id, status, reserved_amount, receipt from billing_requests where user_id = ${userId} order by created_at desc limit 1`,
     );
-    return rows.rows[0]!;
+    return defined(rows.rows[0], 'latest bill row');
   }
 
   /** 等待收据落库（流式终态信号是响应完成后的异步动作——不是同步可见） */
@@ -107,7 +122,8 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       });
       expect(res.status).toBe(200);
       await res.text();
-      const upstreamBody = world.upstream.recorded.at(-1)!.body as {
+      const upstreamBody = defined(world.upstream.recorded.at(-1), 'recorded upstream request')
+        .body as {
         max_completion_tokens?: number;
         max_tokens?: number;
       };
@@ -123,7 +139,8 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       });
       expect(res4.status).toBe(200);
       await res4.text();
-      const upstreamBody4 = world.upstream.recorded.at(-1)!.body as {
+      const upstreamBody4 = defined(world.upstream.recorded.at(-1), 'recorded upstream request')
+        .body as {
         max_completion_tokens?: number;
         max_tokens?: number;
       };
@@ -140,7 +157,11 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       });
       expect(res.status).toBe(200);
       await res.text();
-      expect(typeof world.upstream.recorded.at(-1)!.headers['idempotency-key']).toBe('string');
+      expect(
+        typeof defined(world.upstream.recorded.at(-1), 'recorded upstream request').headers[
+          'idempotency-key'
+        ],
+      ).toBe('string');
     }, 30_000);
 
     it('⑤ full 模式余额不足 → 402 整单拒绝、零账单零上游调用', async () => {
@@ -154,7 +175,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         messages: [{ role: 'user', content: 'hi' }],
       });
       expect(res.status).toBe(402);
-      await res.text().catch(() => {});
+      await res.text().catch(swallow);
       const bills = await world.db.execute(
         sql`select * from billing_requests where user_id = ${userId}`,
       );
@@ -181,9 +202,10 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       const usage = await world.db.execute<{ amount: string }>(
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
-      expect(new Decimal(usage.rows[0]!.amount).gt(50)).toBe(true);
+      const usageAmount = defined(usage.rows[0], 'usage row').amount;
+      expect(new Decimal(usageAmount).gt(50)).toBe(true);
       const w = await keys.walletOf(userId);
-      expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(usage.rows[0]!.amount))).toBe(true);
+      expect(new Decimal(w.balance).eq(new Decimal('0.5').minus(usageAmount))).toBe(true);
       expect(new Decimal(w.balance).lt(0)).toBe(true);
       expect(w.inFlight).toBe('0'); // 在途清零——无资金搁浅
     }, 60_000);
@@ -204,19 +226,16 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       expect(res.headers.get('content-type')).toContain('text/event-stream');
       // 「拉满输出再掐线」攻击形态：读完全部 20 帧增量后断线（v2 relay 需求耦合，
       // 网关只累计已交付内容——装置适配：v1 读 1 帧时网关已主动累计全部帧）
-      const reader = res.body!.getReader();
+      const reader = defined(res.body, 'stream body').getReader();
       const decoder = new TextDecoder();
       let text = '';
       // mock 恰发 20 个 delta 帧后挂住——按帧计数（TCP 合流时一次读可含多帧）
       while ((text.match(/"delta":\{"content"/g) ?? []).length < 20) {
-        const { done, value } = await Promise.race([
-          reader.read(),
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('read-stall')), 8_000)),
-        ]);
+        const { done, value } = await Promise.race([reader.read(), readStall(8_000)]);
         if (done) break;
         text += decoder.decode(value, { stream: true });
       }
-      await reader.cancel('user abort').catch(() => {});
+      await reader.cancel('user abort').catch(swallow);
       await sleep(500);
 
       const bill = await awaitReceipt(userId);
@@ -236,7 +255,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
       // 输出估算量 × ¥600/M ≥ ¥0.08，加上输入费用——总扣费必须为正且显著
-      expect(new Decimal(usage.rows[0]!.amount).gt('0.05')).toBe(true);
+      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).gt('0.05')).toBe(true);
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);
@@ -267,7 +286,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
       const usage = await world.db.execute<{ amount: string }>(
         sql`select amount::text from usage_logs where user_id = ${userId}`,
       );
-      expect(new Decimal(usage.rows[0]!.amount).gt('0.05')).toBe(true);
+      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).gt('0.05')).toBe(true);
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);
@@ -283,10 +302,10 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         messages: [{ role: 'user', content: 'hi' }],
       });
       expect(res.status).toBe(200);
-      const reader = res.body!.getReader();
+      const reader = defined(res.body, 'stream body').getReader();
       await reader.read();
       await sleep(300); // 让若干累计帧流过
-      await reader.cancel('user abort').catch(() => {});
+      await reader.cancel('user abort').catch(swallow);
       await sleep(500);
 
       const bill = await awaitReceipt(userId);
@@ -305,7 +324,7 @@ describe.skipIf(!hasEnv)('E2E 刷费用专项', () => {
         .times(60)
         .plus(new Decimal(receipt.usage.outputTokens).times(600))
         .div(1_000_000);
-      expect(new Decimal(usage.rows[0]!.amount).eq(expected)).toBe(true); // 分毫=公式
+      expect(new Decimal(defined(usage.rows[0], 'usage row').amount).eq(expected)).toBe(true); // 分毫=公式
       const w = await keys.walletOf(userId);
       expect(w.inFlight).toBe('0');
     }, 60_000);

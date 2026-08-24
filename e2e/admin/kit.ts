@@ -9,10 +9,19 @@
  */
 import { serve, type ServerType } from '@hono/node-server';
 import { asc } from 'drizzle-orm';
-import { admins, closeDb, createDb, ping, type Db } from '@tillgate/db';
+import { admins, closeDb, createDb, ping } from '@tillgate/db';
 import { loadAdminApiConfig } from '../../apps/admin-api/src/config';
 import { assembleAdminApi, type AdminApiAssembly } from '../../apps/admin-api/src/assembly';
 import { createAdminApp } from '../../apps/admin-api/src/app';
+
+// 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
+// （本分区与 cross-app/ 共用——后者经 ../admin/kit.js 导入）
+export function defined<T>(value: T | null | undefined, label = 'value'): T {
+  if (value === null || value === undefined) {
+    throw new Error(`expected ${label} to be defined`);
+  }
+  return value;
+}
 
 const E2E_SECRET = 'e2e-admin-jwt-secret-0123456789-abcdef';
 const E2E_ENC = 'e2e-admin-encryption-key-0123456789';
@@ -30,10 +39,24 @@ export interface E2EAdminWorld {
   provisionUser(): Promise<{ id: number; email: string }>;
 }
 
-export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
-  if (E2E_URL === undefined || E2E_URL === '') return null;
+/** 带会话头的 HTTP 调用(响应体解析为对象) */
+export async function call(
+  world: E2EAdminWorld,
+  path: string,
+  init: RequestInit & { idempotencyKey?: string } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const headers = new Headers(init.headers);
+  headers.set('authorization', `Bearer ${world.token}`);
+  if (init.idempotencyKey !== undefined) headers.set('idempotency-key', init.idempotencyKey);
+  const res = await fetch(`${world.base}${path}`, { ...init, headers });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  return { status: res.status, body };
+}
+
+/** PG 可达探测（不可达 → null 优雅 skip） */
+async function adminDbReachable(url: string): Promise<boolean> {
   const probe = createDb({
-    url: E2E_URL,
+    url,
     poolMax: 2,
     idleTimeoutMillis: 5_000,
     connectionTimeoutMillis: 3_000,
@@ -41,47 +64,25 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
   });
   try {
     await ping(probe);
+    return true;
   } catch {
+    return false;
+  } finally {
     await closeDb(probe);
-    return null;
   }
-  await closeDb(probe);
+}
 
-  process.env.ADMIN_JWT_SECRET = E2E_SECRET;
-  // P2 后 admin config 必填 JWT_SECRET（identity realms 词表一致性——本 app 无
-  // user 会话签发路径）;REDIS_URL 同为必填（爆破双闸）——外部注入,不在此造默认
-  process.env.JWT_SECRET ??= 'e2e-admin-user-jwt-secret-0123456789';
-  process.env.ENCRYPTION_KEY = E2E_ENC;
-  process.env.IDENTITY_CODE_PEPPER = E2E_PEPPER;
-  process.env.OTEL_TRACES_MODE = 'off';
-  process.env.LOG_LEVEL = 'error';
-
-  const config = loadAdminApiConfig();
-  const assembly = assembleAdminApi(config);
-
-  // 进货行/审计行 admin_id 外键指向 admins——令牌 subject 必须是真实管理员
-  const adminRows = await assembly.db
-    .select({ id: admins.id })
-    .from(admins)
-    .orderBy(asc(admins.id))
-    .limit(1);
-  if (adminRows.length === 0) {
-    await closeDb(assembly.db);
-    return null;
-  }
-  const adminId = adminRows[0]!.id;
-  const token = await assembly.identity.sessions.sign({
-    realm: 'admin',
-    subjectId: adminId,
-    ttlSec: 600,
-  });
-
-  const app = createAdminApp({
+/** admin app 装配接线（options 平铺——纯装配数据搬运，从 setup 工厂拆出控函数行数） */
+function buildAdminAppOptions(
+  assembly: AdminApiAssembly,
+  config: ReturnType<typeof loadAdminApiConfig>,
+): Parameters<typeof createAdminApp>[0] {
+  return {
     pingDb: () => ping(assembly.db),
     logger: assembly.logger,
     sessions: {
       validate: assembly.identity.sessions.validate,
-      owner: (adminId) => assembly.controlPlane.admins.findAccess(adminId),
+      owner: (subjectId) => assembly.controlPlane.admins.findAccess(subjectId),
     },
     accounts: assembly.accounts,
     wallet: assembly.billing.wallet,
@@ -108,7 +109,47 @@ export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
     corsOrigins: config.corsOrigins,
     bodyLimitBytes: config.bodyLimitBytes,
     now: () => new Date(),
+  };
+}
+
+/** admin 旅程专用 env 布置（密钥/日志口径；P2 后 JWT_SECRET 是词表一致性的
+ *  必填键——client 同钥签用户会话，REDIS_URL 同为必填（爆破双闸）——外部注入,不在此造默认 */
+function applyAdminJourneyEnv(): void {
+  process.env.ADMIN_JWT_SECRET = E2E_SECRET;
+  process.env.JWT_SECRET ??= 'e2e-admin-user-jwt-secret-0123456789';
+  process.env.ENCRYPTION_KEY = E2E_ENC;
+  process.env.IDENTITY_CODE_PEPPER = E2E_PEPPER;
+  process.env.OTEL_TRACES_MODE = 'off';
+  process.env.LOG_LEVEL = 'error';
+}
+
+export async function setupE2EAdmin(): Promise<E2EAdminWorld | null> {
+  if (E2E_URL === undefined || E2E_URL === '') return null;
+  if (!(await adminDbReachable(E2E_URL))) return null;
+
+  applyAdminJourneyEnv();
+
+  const config = loadAdminApiConfig();
+  const assembly = assembleAdminApi(config);
+
+  // 进货行/审计行 admin_id 外键指向 admins——令牌 subject 必须是真实管理员
+  const adminRows = await assembly.db
+    .select({ id: admins.id })
+    .from(admins)
+    .orderBy(asc(admins.id))
+    .limit(1);
+  if (adminRows.length === 0) {
+    await closeDb(assembly.db);
+    return null;
+  }
+  const adminId = defined(adminRows[0], 'admins row').id;
+  const token = await assembly.identity.sessions.sign({
+    realm: 'admin',
+    subjectId: adminId,
+    ttlSec: 600,
   });
+
+  const app = createAdminApp(buildAdminAppOptions(assembly, config));
 
   const server = serve({ fetch: app.fetch, port: 0 });
   const port = (server.address() as { port: number } | null)?.port ?? 0;
@@ -134,20 +175,6 @@ export async function teardownE2EAdmin(world: E2EAdminWorld): Promise<void> {
     world.server.close(() => resolve());
   });
   await closeDb(world.assembly.db);
-}
-
-/** 带会话头的 HTTP 调用(响应体解析为对象) */
-export async function call(
-  world: E2EAdminWorld,
-  path: string,
-  init: RequestInit & { idempotencyKey?: string } = {},
-): Promise<{ status: number; body: Record<string, unknown> }> {
-  const headers = new Headers(init.headers);
-  headers.set('authorization', `Bearer ${world.token}`);
-  if (init.idempotencyKey !== undefined) headers.set('idempotency-key', init.idempotencyKey);
-  const res = await fetch(`${world.base}${path}`, { ...init, headers });
-  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  return { status: res.status, body };
 }
 
 export const jsonHeaders = { 'content-type': 'application/json' };

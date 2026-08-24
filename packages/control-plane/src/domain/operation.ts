@@ -23,7 +23,9 @@ type CanonicalValue =
   | readonly CanonicalValue[]
   | CanonicalObject;
 /** canonical JSON 输入形状（键排序 + 丢弃 undefined 的对象树） */
-export type CanonicalObject = { readonly [key: string]: CanonicalValue | undefined };
+export interface CanonicalObject {
+  readonly [key: string]: CanonicalValue | undefined;
+}
 
 function canonicalize(value: CanonicalValue | undefined): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);

@@ -3,6 +3,7 @@
  * 幂等、尽力而为收尾、概览开关。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { createTestHarness } from '../src/testing/harness.js';
 import { referralSignupRefId, signupGiftRefId } from '../src/domain/referral.js';
 
@@ -139,7 +140,7 @@ describe('referralOverview', () => {
     expect(overview.signupBonus).toBe('0.5');
     expect(overview.commissionRate).toBe('0.1');
     expect(overview.invitees).toHaveLength(1);
-    expect(overview.invitees[0]!.inviteeUserId).toBe(2);
+    expect(defined(overview.invitees[0], 'overview.invitees[0]').inviteeUserId).toBe(2);
   });
 
   it('全 0 参数 → enabled=false;空名单零佣金面(G2:totalCommission 归 app 组合)', async () => {

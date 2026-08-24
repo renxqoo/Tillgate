@@ -104,7 +104,7 @@ export async function setupCrossApp(): Promise<CrossAppWorld | null> {
       await cleanupUsers(client.assembly.db, users);
       await client.assembly.db
         .execute(sql`delete from admins where email = ${SEEDED_ADMIN_EMAIL}`)
-        .catch(() => undefined);
+        .catch(() => {});
       await teardownE2EAdmin(admin);
       await client.teardown();
     },

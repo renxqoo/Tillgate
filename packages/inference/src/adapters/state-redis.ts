@@ -34,6 +34,7 @@ export function createRedisHealthStore(redis: Redis, prefix: string): HealthStor
         return null; // 坏值 fail-open（按无状态处理）
       }
     },
+    // eslint-disable-next-line max-params -- 实现 HealthStore 端口契约(键/期望版本/新值/TTL),签名随端口走
     async compareAndSet<T extends Versioned>(
       key: string,
       expectedVersion: number,

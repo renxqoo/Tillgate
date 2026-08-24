@@ -12,6 +12,7 @@ import {
   setupRealWallet,
   type RealWalletHarness,
 } from './real-pg.js';
+import { defined } from './defined.js';
 
 async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
   try {
@@ -60,7 +61,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     expect(ids.size).toBe(1);
     expect(results.filter((r) => !r.replayed).length).toBe(1);
     const accounts = await h.api.accounts(userId);
-    expect(accounts[0]!.balance).toBe('3');
+    expect(defined(accounts[0]).balance).toBe('3');
     await assertLedgerCoherent(h.db);
   });
 
@@ -69,7 +70,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     await h.api.credit({ userId, amount: '10', refType: 'topup', refId: 'c2' });
     const auth = await h.api.authorize({ userId, amount: '7', refType: 'billing', refId: 'b1' });
     expect(auth.status).toBe('active');
-    expect((await h.api.accounts(userId))[0]!.inFlight).toBe('7');
+    expect(defined((await h.api.accounts(userId))[0]).inFlight).toBe('7');
     const settled = await h.api.settle({ refType: 'billing', refId: 'b1', amount: '6' });
     expect(settled).toMatchObject({
       settledAmount: '6',
@@ -77,8 +78,8 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
       releasedRemainder: '1',
     });
     const accounts = await h.api.accounts(userId);
-    expect(accounts[0]!.inFlight).toBe('0');
-    expect(accounts[0]!.balance).toBe('4');
+    expect(defined(accounts[0]).inFlight).toBe('0');
+    expect(defined(accounts[0]).balance).toBe('4');
     // 结算重放读回腿上稳定回执
     const replay = await h.api.settle({ refType: 'billing', refId: 'b1', amount: '6' });
     expect(replay).toEqual({ ...settled, replayed: true });
@@ -98,7 +99,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     if (loser) {
       expect(loser.reason.code).toBe('billing.idempotency_conflict');
     }
-    const final = (await h.api.accounts(userId))[0]!.creditLimit;
+    const final = defined((await h.api.accounts(userId))[0]).creditLimit;
     expect(['10', '99']).toContain(final);
     // 后到者顺序重放同键异额 → 409
     const other = final === '10' ? '99' : '10';
@@ -129,7 +130,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     // B13：冻结账户的 active 冻结单仍可释放——只归还 in_flight，不动资金
     const released = await h.api.release({ refType: 'billing', refId: 'b2', reason: 'risk_hold' });
     expect(released).toMatchObject({ releasedAmount: '5', replayed: false });
-    expect((await h.api.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await h.api.accounts(userId))[0]).inFlight).toBe('0');
     await assertLedgerCoherent(h.db);
   });
 
@@ -171,7 +172,7 @@ async function expectBusinessCode(fn: () => Promise<unknown>): Promise<string> {
     });
     expect(over.status).toBe('active');
     await h.api.settle({ refType: 'billing', refId: 'req9#over', amount: '5' });
-    expect((await h.api.accounts(userId))[0]!.balance).toBe('-4');
+    expect(defined((await h.api.accounts(userId))[0]).balance).toBe('-4');
     await assertLedgerCoherent(h.db);
   });
 });

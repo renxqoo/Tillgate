@@ -47,11 +47,11 @@ describe('parseAcceptLanguage(http locale.test 同向量)', () => {
 describe('resolveLocale:cookie 优先,其次请求头(http locale.test 同向量)', () => {
   it('合法 cookie 值直接命中(大小写/空白容错)', () => {
     expect(resolveLocale(' zh ', 'en-US,en;q=0.9')).toBe('zh');
-    expect(resolveLocale('EN', undefined)).toBe('en');
+    expect(resolveLocale('EN', null)).toBe('en');
   });
   it('非法/缺失 cookie → 走 Accept-Language', () => {
     expect(resolveLocale('fr', 'zh-CN,zh;q=0.9')).toBe('zh');
-    expect(resolveLocale(undefined, undefined)).toBe('en');
+    expect(resolveLocale(null, null)).toBe('en');
   });
 });
 
@@ -97,7 +97,7 @@ describe('outgoingLocale:BFF 出口语言(cookie → 头 → en)', () => {
     await expect(outgoingLocale()).resolves.toBe('zh');
   });
   it('无 cookie 走 accept-language;全空回落 en', async () => {
-    cookieStore.get.mockReturnValue(undefined);
+    // cookie mock 经 beforeEach mockReset 已回到默认返回 undefined,无需显式设置
     headerStore.get.mockImplementation((name: string) =>
       name === 'accept-language' ? 'zh-CN,zh;q=0.9' : null,
     );
@@ -113,7 +113,7 @@ describe('outgoingLocale:BFF 出口语言(cookie → 头 → en)', () => {
     await expect(outgoingLocale()).resolves.toBe('en');
   });
   it('策略注入:无 cookie 忽略请求头,回落注入语言;异常时也回落注入语言', async () => {
-    cookieStore.get.mockReturnValue(undefined);
+    // 同上:mockReset 后默认返回 undefined
     headerStore.get.mockImplementation((name: string) =>
       name === 'accept-language' ? 'en-US,en;q=0.9' : null,
     );

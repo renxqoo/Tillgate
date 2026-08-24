@@ -61,6 +61,7 @@ const defaultAdapters: ProtocolAdapter[] = [
 
 export const SUPPORTED_PROTOCOLS: readonly string[] = defaultAdapters.map((a) => a.protocol);
 
+// eslint-disable-next-line max-lines-per-function -- 装配根（create-ai 拆出 attempt-chat/attempt-stream/tasks/stream-report 后的剩余装配 + 两个 API 动词），拆分需跨闭包线程化十余项装配状态，存量棘轮（铁律 22⑥）
 export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?: AiOptions): Ai {
   const cfg: AiDefaults = aiDefaultsSchema.parse(defaults ?? {});
   const log = deps.logger ?? { info: (): void => {}, warn: (): void => {}, error: (): void => {} };
@@ -80,6 +81,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
     adapters.get(channel.protocol) ??
     unsupportedProtocolError(channel.protocol, [...adapters.keys()]);
 
+  // eslint-disable-next-line complexity -- 请求装配校验（渠道/模型/ctx 平铺），分支为显式校验矩阵，存量棘轮（铁律 22⑥）
   const assembleCtx = (
     channel: ChannelDesc,
     request: unknown,
@@ -92,12 +94,13 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
         ? (request as Record<string, unknown>)
         : null;
     const model = opts?.model ?? (typeof rec?.model === 'string' && rec.model ? rec.model : '');
-    if (!model)
+    if (!model) {
       return {
         error: invalidConfigError(
           'model is required (request.model or opts.model must be provided)',
         ),
       };
+    }
     if (
       opts?.endpoint &&
       opts.endpoint !== 'chat' &&
@@ -127,13 +130,14 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
     };
   };
 
-  const prepareBody = (
-    channel: ChannelDesc,
-    request: unknown,
-    ctx: CallCtx,
-    adapter: ProtocolAdapter,
-    stream: boolean,
-  ) => {
+  const prepareBody = (input: {
+    channel: ChannelDesc;
+    request: unknown;
+    ctx: CallCtx;
+    adapter: ProtocolAdapter;
+    stream: boolean;
+  }) => {
+    const { channel, request, ctx, adapter, stream } = input;
     const profile = resolveVendorProfile(channel.vendor);
     const rules = mergeParamRules(profile?.params, ctx.paramRules);
     const { body, adjustments } = adapter.normalizeRequest(request, rules, ctx.endpoint);
@@ -187,6 +191,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
   const ai: Ai = {
     SUPPORTED_PROTOCOLS,
 
+    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 重试编排 → 结果归一的直线流程，拆分需传递十余项闭包装配态，存量棘轮（铁律 22⑥）
     async chat(channel, request, opts): Promise<ChatResult> {
       const start = Date.now();
       const assembled = assembleCtx(channel, request, opts);
@@ -194,9 +199,10 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       const { ctx } = assembled;
       const key = channelKey(channel);
       const adapter = resolveAdapter(channel);
-      if (adapter instanceof UE)
+      if (adapter instanceof UE) {
         return { ok: false, error: adapter, durationMs: Date.now() - start };
-      const finalBody = prepareBody(channel, request, ctx, adapter, false);
+      }
+      const finalBody = prepareBody({ channel, request, ctx, adapter, stream: false });
       const plan = adapter.planRequest(channel, {
         endpoint: ctx.endpoint,
         model: ctx.model,
@@ -255,14 +261,14 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
         kind: error.kind,
         status: error.status,
       });
-      if (empty)
+      if (empty) {
         emit({
           type: 'empty_completion',
           requestId: ctx.requestId,
           channelKey: key,
           attempt: attempts,
         });
-      else emit({ type: 'failed', requestId: ctx.requestId, channelKey: key, error });
+      } else emit({ type: 'failed', requestId: ctx.requestId, channelKey: key, error });
       // 出站错误脱敏（§3.6 例外 3 内容层）：返回值的 message 脱敏、rawBody 保真——
       // 事件面（上方 emit）与日志携带原始错误，细节层只进日志关联 requestId
       const outbound = new UE({
@@ -281,6 +287,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       return { ok: false, error: outbound, durationMs, empty };
     },
 
+    // eslint-disable-next-line max-lines-per-function -- API 动词：装配 → 首帧探测重试 → relay 交接的直线流程，拆分需传递十余项闭包装配态，存量棘轮（铁律 22⑥）
     async chatStream(channel, request, opts): Promise<ChatStreamResult> {
       const start = Date.now();
       const assembled = assembleCtx(channel, request, opts);
@@ -295,7 +302,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
           redactions: cfg.errorSanitize.redactions,
           replacement: opts?.model,
         });
-      if ('error' in assembled)
+      if ('error' in assembled) {
         return failEarlyStream(
           bus,
           assembled.error,
@@ -303,6 +310,7 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
           'unknown',
           sanitizeMessage,
         );
+      }
       const { ctx } = assembled;
       const sanitizeOut = (message: string): string =>
         sanitizeUpstreamDetail(message, {
@@ -313,9 +321,10 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
       const key = channelKey(channel);
       if (!('error' in assembled)) {
         const adapter = resolveAdapter(channel);
-        if (adapter instanceof UE)
+        if (adapter instanceof UE) {
           return failEarlyStream(bus, adapter, ctx.requestId, key, sanitizeOut);
-        const finalBody = prepareBody(channel, request, ctx, adapter, true);
+        }
+        const finalBody = prepareBody({ channel, request, ctx, adapter, stream: true });
         const plan = adapter.planRequest(channel, {
           endpoint: ctx.endpoint,
           model: ctx.model,
@@ -346,13 +355,14 @@ export function createAi(defaults?: AiDefaultsInput, deps: AiDeps = {}, options?
         );
 
         if (!outcome.ok) {
-          if (outcome.empty)
+          if (outcome.empty) {
             bus.emitTerminal({
               type: 'empty_completion',
               requestId: ctx.requestId,
               channelKey: key,
               attempt: 1,
             });
+          }
           return failEarlyStream(bus, outcome.error, ctx.requestId, key, sanitizeOut);
         }
         const handle = relayStream(outcome.value, {

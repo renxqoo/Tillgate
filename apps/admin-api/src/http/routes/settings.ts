@@ -14,7 +14,7 @@ export interface SettingsRoutesDeps {
 
 export function settingsRoutes(deps: SettingsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const billingTimezone = deps.controlPlane.settings.billingTimezone;
+  const { billingTimezone } = deps.controlPlane.settings;
 
   app.get('/v1/settings/billing-timezone', async (c) => c.json(await billingTimezone.read()));
 

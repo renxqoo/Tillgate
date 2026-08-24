@@ -21,9 +21,9 @@ export async function createAppAction(input: {
     });
     revalidatePath('/dashboard/apps');
     return { app };
-  } catch (e) {
+  } catch (error) {
     const tCommon = await getTranslations('common');
-    return { error: e instanceof ApiError ? e.message : tCommon('createFailed') };
+    return { error: error instanceof ApiError ? error.message : tCommon('createFailed') };
   }
 }
 
@@ -36,8 +36,8 @@ export async function rotateSecretAction(id: number): Promise<{
     const res = await createClientApi().post<{ clientSecret: string }>(`/v1/apps/${id}/rotate`);
     revalidatePath('/dashboard/apps');
     return { clientSecret: res.clientSecret };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('rotateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('rotateFailed') };
   }
 }
 
@@ -48,7 +48,7 @@ export async function deleteAppAction(id: number): Promise<{ error?: string }> {
     await createClientApi().post(`/v1/apps/${id}/disable`);
     revalidatePath('/dashboard/apps');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('deleteFailed') };
   }
 }

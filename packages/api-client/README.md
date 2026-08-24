@@ -7,8 +7,8 @@
 
 ## 入口
 
-| 入口                         | 内容                                                                                                                           | 依赖                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| 入口                        | 内容                                                                                                                           | 依赖                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
 | `@tillgate/api-client`      | `createHttpClient` / `createClientApiClient` / `createAdminApiClient` / `ApiError` / `buildListQuery` / `Paginated` / 两面 DTO | 零运行时依赖,不需要 Next |
 | `@tillgate/api-client/next` | `createNextClientApiClient` / `createNextAdminApiClient` / session cookie 工具 / locale 协商 / `trustedClientIp`               | peer `next@^16`          |
 

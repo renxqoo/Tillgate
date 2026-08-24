@@ -8,7 +8,7 @@ import { cn } from '../../cn';
 import { useCopy } from '../../hooks/use-copy';
 import { Button } from '../primitives/button';
 
-export type SecretRevealProps = {
+export interface SecretRevealProps {
   value: string;
   // 遮蔽占位符(默认八位圆点)
   mask?: string;
@@ -20,7 +20,7 @@ export type SecretRevealProps = {
   copiedLabel?: string;
   copiedDurationMs?: number;
   className?: string;
-};
+}
 
 export function SecretReveal({
   value,

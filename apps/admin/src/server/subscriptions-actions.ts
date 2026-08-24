@@ -13,8 +13,8 @@ export async function renewSubscriptionAction(id: number): Promise<{ error?: str
     await adminApi().post(`/v1/subscriptions/${id}/renew`);
     revalidatePath('/dashboard/subscriptions');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('renewFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('renewFailed') };
   }
 }
 
@@ -25,8 +25,8 @@ export async function cancelSubscriptionAction(id: number): Promise<{ error?: st
     await adminApi().post(`/v1/subscriptions/${id}/cancel`);
     revalidatePath('/dashboard/subscriptions');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('cancelFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('cancelFailed') };
   }
 }
 
@@ -45,7 +45,7 @@ export async function changeSubscriptionAction(
     await adminApi().post(`/v1/subscriptions/${id}/change`, input);
     revalidatePath('/dashboard/subscriptions');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('changeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('changeFailed') };
   }
 }

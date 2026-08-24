@@ -1,5 +1,5 @@
 # CI 主门禁：四门（typecheck / lint / build / test）+ 覆盖率门禁。
-# 默认测试门禁以封闭为主：替身注入，无 PG/外网依赖（AGENT.md 铁律 14）。
+# 默认测试门禁以封闭为主：替身注入，无 PG/外网依赖（AGENTS.md 铁律 14）。
 # 例外是 runtime 的 Redis 集成面（redis-integration / auth-guards / rate-limiter 真实段，
 # REDIS_URL 未配置时 skipIf）——testRedisUrl 注释约定「CI 必配」，故两个 job 均挂
 # Redis 服务容器；无它则该面静默跳过且覆盖率阈值（90/85）必挂。

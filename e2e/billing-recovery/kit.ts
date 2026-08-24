@@ -14,7 +14,7 @@
  * - v1 worker 必配 REDIS_URL（BullMQ 唤醒）→ v2 worker 无 Redis 配置项
  *   （PG LISTEN/NOTIFY;本装置 WORKER_SETTLE_WAKE=false 不挂消费端）。
  */
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { ping, closeDb, createDb } from '@tillgate/db';
 import type { Db } from '@tillgate/db';
@@ -35,16 +35,14 @@ export interface VideoUpstream {
   close(): Promise<void>;
 }
 
-export function startVideoUpstream(): VideoUpstream {
-  const state: VideoUpstream = {
-    server: null as unknown as Server,
-    baseUrl: '',
-    lastTaskId: '',
-    submittedAuth: '',
-    close: async () => {},
-  };
-  let queryCount = 0;
-  state.server = createServer((req, res) => {
+/** 内部可变状态（查询计数——前 2 次 Queueing、其后 Success 的应答分流） */
+interface VideoUpstreamState extends VideoUpstream {
+  queryCount: number;
+}
+
+/** 视频上游请求路由（模块级工厂——保持状态闭包并避免 server 工厂深嵌套） */
+function createVideoUpstreamHandler(state: VideoUpstreamState) {
+  return (req: IncomingMessage, res: ServerResponse): void => {
     state.submittedAuth = req.headers.authorization ?? '';
     const url = req.url ?? '';
     const json = (status: number, body: unknown) => {
@@ -63,8 +61,8 @@ export function startVideoUpstream(): VideoUpstream {
       return;
     }
     if (url.includes('/v1/query/video_generation')) {
-      queryCount += 1;
-      if (queryCount <= 2) {
+      state.queryCount += 1;
+      if (state.queryCount <= 2) {
         json(200, {
           status: 'Queueing',
           task_id: state.lastTaskId,
@@ -90,16 +88,32 @@ export function startVideoUpstream(): VideoUpstream {
       return;
     }
     json(404, {});
+  };
+}
+
+export function startVideoUpstream(): VideoUpstream {
+  const state: VideoUpstreamState = {
+    server: null as unknown as Server,
+    baseUrl: '',
+    lastTaskId: '',
+    submittedAuth: '',
+    queryCount: 0,
+    close: async () => {},
+  };
+  state.server = createServer(createVideoUpstreamHandler(state));
+  const listening = new Promise<void>((resolve) => {
+    state.server.listen(0, '127.0.0.1', () => {
+      const address = state.server.address();
+      state.baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+      resolve();
+    });
   });
-  const listening = new Promise<void>((resolve) => state.server.listen(0, '127.0.0.1', resolve));
   state.close = async () => {
     (state.server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
-    await new Promise<void>((resolve) => state.server.close(() => resolve()));
+    await new Promise<void>((resolve) => {
+      state.server.close(() => resolve());
+    });
   };
-  void listening.then(() => {
-    const address = state.server.address();
-    state.baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-  });
   (state as { ready: Promise<void> }).ready = listening;
   return state;
 }
@@ -157,7 +171,7 @@ export async function pgReady(): Promise<boolean> {
   } catch {
     return false;
   } finally {
-    await closeDb(probe).catch(() => undefined);
+    await closeDb(probe).catch(() => {});
   }
 }
 

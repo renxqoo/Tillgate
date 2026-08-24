@@ -7,11 +7,11 @@ function expectSentinelsDefect(spec: string, node?: string): void {
   try {
     parseSentinels(spec);
     expect.unreachable(`expected DefectError for ${spec}`);
-  } catch (e) {
-    expect(isDefectError(e), String(e)).toBe(true);
-    expect((e as { code: string }).code).toBe('runtime.redis.sentinels_invalid');
+  } catch (error) {
+    expect(isDefectError(error), String(error)).toBe(true);
+    expect((error as { code: string }).code).toBe('runtime.redis.sentinels_invalid');
     if (node !== undefined) {
-      expect((e as { context?: { node?: string } }).context?.node).toBe(node);
+      expect((error as { context?: { node?: string } }).context?.node).toBe(node);
     }
   }
 }

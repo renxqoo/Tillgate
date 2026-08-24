@@ -59,7 +59,7 @@ export const appQueries: Pick<
               },
       })
       .returning(APP_COLUMNS);
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) throw new Error('insertApp returning empty');
     return row;
   },

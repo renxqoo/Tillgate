@@ -14,9 +14,10 @@ export interface RateCardsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'rates'>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function rateCardsRoutes(deps: RateCardsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const rates = deps.controlPlane.rates;
+  const { rates } = deps.controlPlane;
 
   app.get('/v1/rate-cards', async (c) => {
     const query = parseListQuery(c.req.query(), RATE_CARD_SORTS, 'createdAt');

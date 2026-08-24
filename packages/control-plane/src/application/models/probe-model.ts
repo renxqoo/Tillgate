@@ -26,6 +26,7 @@ export interface ProbeModelResult {
   }>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 探测编排:逐渠道探测循环+结果归并
 export async function probeModel(
   deps: ProbeModelDeps,
   mappingId: number,
@@ -70,7 +71,7 @@ export async function probeModel(
               },
             },
       );
-    } catch (e) {
+    } catch (error) {
       results.push({
         channelId: channel.channelId,
         channel: channel.channelName,
@@ -78,8 +79,10 @@ export async function probeModel(
         durationMs: Date.now() - startedAt,
         error: {
           code:
-            e instanceof Error && 'code' in e ? String((e as { code: unknown }).code) : 'internal',
-          message: e instanceof Error ? e.message : String(e),
+            error instanceof Error && 'code' in error
+              ? String((error as { code: unknown }).code)
+              : 'internal',
+          message: error instanceof Error ? error.message : String(error),
         },
       });
     }

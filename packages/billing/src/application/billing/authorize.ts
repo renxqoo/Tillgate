@@ -16,6 +16,7 @@ import { calculateFundingReservation, calculateRequired } from '../../domain/rat
 import { assertDailySpendLimit } from '../../domain/billing/daily-limit.js';
 import { billingDayStart } from '../../domain/billing/daily-window.js';
 import { commandFingerprint } from '../../domain/fingerprint.js';
+import type { FingerprintValue } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { Decimal } from '../../domain/money.js';
 import type { BillingQuote } from '../../domain/rating/types.js';
@@ -70,8 +71,10 @@ export interface BillingAuthorization {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 计费授权事务体:重放快径→限额→资金源→投影,阶段共享 tx
 export function createAuthorizeUseCase(env: BillingEnv) {
   const { store, wallet, clock } = env;
+  // eslint-disable-next-line max-lines-per-function -- 计费授权事务体:重放快径→限额→资金源→投影,阶段共享 tx
   return async function authorize(input: AuthorizeBillingInput): Promise<BillingAuthorization> {
     // 金额推导（保守预估）：每日限额与资金规划的输入口径；落账投影以 plan 实筹为准
     const estimatedAmount = calculateRequired(input.quote, input.reservationLimit).toString();
@@ -82,15 +85,9 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       apiKeyId: input.apiKeyId ?? null,
       appId: input.appId ?? null,
       stream: input.stream,
-      quote: input.quote as unknown as Record<
-        string,
-        import('../../domain/fingerprint.js').FingerprintValue
-      >,
+      quote: input.quote as unknown as Record<string, FingerprintValue>,
       estimatedAmount,
-      reservationPolicy: reservationPolicy as Record<
-        string,
-        import('../../domain/fingerprint.js').FingerprintValue
-      >,
+      reservationPolicy: reservationPolicy as Record<string, FingerprintValue>,
     });
     const now = clock();
     let fundedAmount = estimatedAmount;
@@ -118,6 +115,7 @@ export function createAuthorizeUseCase(env: BillingEnv) {
     let replayed = replayOf(fastExisting);
 
     if (!replayed) await env.assertCapacity?.();
+    // eslint-disable-next-line max-lines-per-function -- 计费授权事务体:重放兜底分支,共享 fingerprint/限额中间量
     replayed ??= await store.transaction(async (tx) => {
       // F4：每日限额是 SUM 口径，READ COMMITTED 看不见并发未提交行——按 user 串行化
       await store.advisoryLockAuthorizeUser(tx, input.userId);
@@ -188,7 +186,8 @@ export function createAuthorizeUseCase(env: BillingEnv) {
       if (!inserted) {
         const existing = await store.findByRequestId(tx, input.requestId);
         replayOf(existing);
-        if (!new Decimal(existing!.reservedAmount).eq(fundedAmount)) {
+        // 唯一冲突兜底重放:insert 失败意味着行已存在,缺行即状态冲突
+        if (existing == null || !new Decimal(existing.reservedAmount).eq(fundedAmount)) {
           throw BillingErrors.business('state_conflict', {
             requestId: input.requestId,
             detail: 'authorization replay conflict',

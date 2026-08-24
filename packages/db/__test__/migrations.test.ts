@@ -7,6 +7,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 
 const migrationsDir = fileURLToPath(new URL('../migrations', import.meta.url));
 
@@ -46,13 +47,15 @@ describe('migration journal ↔ SQL files', () => {
   it('tag 编号严格递增,无重复', () => {
     const nums = journalTags.map(tagNumber);
     for (let i = 1; i < nums.length; i += 1) {
-      expect(nums[i]!).toBeGreaterThan(nums[i - 1]!);
+      expect(defined(nums[i], 'nums[i]')).toBeGreaterThan(defined(nums[i - 1], 'nums[i - 1]'));
     }
   });
 
   it('idx 严格递增(允许历史跳跃,不允许回退/重复)', () => {
     for (let i = 1; i < journal.entries.length; i += 1) {
-      expect(journal.entries[i]!.idx).toBeGreaterThan(journal.entries[i - 1]!.idx);
+      const cur = defined(journal.entries[i], 'journal.entries[i]');
+      const prev = defined(journal.entries[i - 1], 'journal.entries[i - 1]');
+      expect(cur.idx).toBeGreaterThan(prev.idx);
     }
   });
 

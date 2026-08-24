@@ -23,6 +23,7 @@ import {
 } from '../src/protocol/gemini-chat.js';
 import { canonicalStreamToGeminiStream } from '../src/protocol/gemini-stream.js';
 import { completionsRequestToChat } from '../src/protocol/completions-chat.js';
+import { defined } from './defined';
 
 type Rec = Record<string, unknown>;
 const msgs = (r: Rec): Rec[] => (r.messages ?? []) as Rec[];
@@ -147,7 +148,11 @@ describe('claude 入站请求深支（claudeRequestToChat）', () => {
     });
     const roles = msgs(chat).map((m) => m.role);
     expect(roles).toEqual(['user', 'assistant', 'assistant']); // 首条垃圾跳过；claude 无 system role → 归 user
-    const call = (msgs(chat)[2]!.tool_calls as Rec[])[0]!;
+    const [firstCall] = defined(
+      defined(msgs(chat)[2], 'msgs[2]').tool_calls as Rec[],
+      'tool_calls',
+    );
+    const call = defined(firstCall, 'tool_calls[0]');
     expect(call).toMatchObject({ id: 'call_x', type: 'function' });
     expect((call.function as Rec).name).toBe('');
     expect((call.function as Rec).arguments).toBe('{}');
@@ -214,9 +219,9 @@ describe('claude 出站请求深支（chatRequestToClaude）', () => {
       ],
     });
     expect(cl.system).toBe('a\n["b"]');
-    const toolMsg = (cl.messages as Rec[])[0];
-    expect(toolMsg?.role).toBe('user');
-    expect((toolMsg!.content as Rec[])[0]).toMatchObject({
+    const toolMsg = defined((cl.messages as Rec[])[0], 'cl.messages[0]');
+    expect(toolMsg.role).toBe('user');
+    expect((toolMsg.content as Rec[])[0]).toMatchObject({
       type: 'tool_result',
       tool_use_id: 'c',
       content: '{"ok":true}',
@@ -262,7 +267,7 @@ describe('claudeUsageToUsage：方言与容错', () => {
 
 describe('claude 非流式响应双向（claudeResponseToChat / chatResponseToClaude）', () => {
   it('stop_reason 映射表 + 未知非空归 stop + 空归 null', () => {
-    const fr = (stop: unknown): unknown =>
+    const fr = (stop?: unknown): unknown =>
       (claudeResponseToChat({ content: [], stop_reason: stop }).choices as Rec[])[0]?.finish_reason;
     expect(fr('end_turn')).toBe('stop');
     expect(fr('stop_sequence')).toBe('stop');
@@ -270,13 +275,16 @@ describe('claude 非流式响应双向（claudeResponseToChat / chatResponseToCl
     expect(fr('tool_use')).toBe('tool_calls');
     expect(fr('refusal')).toBe('content_filter');
     expect(fr('weird')).toBe('stop');
-    expect(fr(undefined)).toBeNull();
+    expect(fr()).toBeNull();
   });
   it('tool_use 块 → tool_calls；usage 缺失不产 usage 键', () => {
     const chat = claudeResponseToChat({
       content: [{ type: 'tool_use', id: 'u1', name: 'fn', input: { a: 1 } }],
     });
-    const call = (((chat.choices as Rec[])[0]!.message as Rec).tool_calls as Rec[])[0]!;
+    const call = defined(
+      ((defined((chat.choices as Rec[])[0], 'choices[0]').message as Rec).tool_calls as Rec[])[0],
+      'tool_calls[0]',
+    );
     expect(call).toEqual({
       id: 'u1',
       type: 'function',
@@ -400,7 +408,7 @@ describe('gemini 入站请求深支（geminiRequestToChat）', () => {
     );
     const calls = msgs(chat)[0]?.tool_calls as Rec[];
     expect(calls.length).toBe(1);
-    expect((calls[0]!.function as Rec).name).toBe('f');
+    expect((defined(calls[0], 'calls[0]').function as Rec).name).toBe('f');
   });
   it('assistant functionCall 缺字段兜底；user 纯文本 join', () => {
     const chat = geminiRequestToChat(
@@ -436,7 +444,7 @@ describe('gemini 出站请求深支（chatRequestToGemini）', () => {
       ],
     });
     const contents = g.contents as Rec[];
-    expect((contents[0]!.parts as Rec[]).length).toBe(0);
+    expect((defined(contents[0], 'contents[0]').parts as Rec[]).length).toBe(0);
     expect(contents[1]?.parts).toEqual([{ text: '' }, { text: '' }, { text: '' }]);
   });
   it('system/developer 非字符串 content 序列化合并；tool 消息非法 JSON content 兜底 {}', () => {
@@ -448,7 +456,11 @@ describe('gemini 出站请求深支（chatRequestToGemini）', () => {
       ],
     });
     expect(((g.systemInstruction as Rec).parts as Rec[])[0]?.text).toBe('{"a":1}');
-    const fr = ((g.contents as Rec[])[0]!.parts as Rec[])[0]!.functionResponse as Rec;
+    const firstPart = defined(
+      (defined((g.contents as Rec[])[0], 'contents[0]').parts as Rec[])[0],
+      'parts[0]',
+    );
+    const fr = firstPart.functionResponse as Rec;
     expect(fr).toMatchObject({ name: 'c1', response: {} });
   });
   it('assistant 工具调用：非法 JSON 参数兜底 {}；缺 function 项跳过；user 多模态 data URL', () => {
@@ -469,12 +481,12 @@ describe('gemini 出站请求深支（chatRequestToGemini）', () => {
         },
       ],
     });
-    const modelParts = ((g.contents as Rec[])[0]!.parts as Rec[]).filter(
+    const modelParts = (defined((g.contents as Rec[])[0], 'contents[0]').parts as Rec[]).filter(
       (p) => p.functionCall !== undefined,
     );
     expect(modelParts.length).toBe(2);
     expect(modelParts[0]).toEqual({ functionCall: { name: 'f', args: {} } });
-    expect(((g.contents as Rec[])[1]!.parts as Rec[])[0]).toEqual({
+    expect((defined((g.contents as Rec[])[1], 'contents[1]').parts as Rec[])[0]).toEqual({
       inlineData: { mimeType: 'image/jpeg', data: 'AA' },
     });
   });
@@ -515,7 +527,7 @@ describe('gemini 出站请求深支（chatRequestToGemini）', () => {
 
 describe('gemini 非流式响应双向', () => {
   it('finishReason 映射表 + functionCall part → tool_calls + responseId 兜底', () => {
-    const fr = (reason: unknown): unknown =>
+    const fr = (reason?: unknown): unknown =>
       (geminiResponseToChat({ candidates: [{ finishReason: reason }] }, 'm').choices as Rec[])[0]
         ?.finish_reason;
     expect(fr('STOP')).toBe('stop');
@@ -524,7 +536,7 @@ describe('gemini 非流式响应双向', () => {
     expect(fr('RECITATION')).toBe('content_filter');
     expect(fr('OTHER')).toBe('stop');
     expect(fr('WEIRD')).toBe('stop');
-    expect(fr(undefined)).toBeNull();
+    expect(fr()).toBeNull();
     const chat = geminiResponseToChat(
       {
         responseId: 'g1',
@@ -533,7 +545,10 @@ describe('gemini 非流式响应双向', () => {
       'm',
     );
     expect(chat.id).toBe('g1');
-    const call = (((chat.choices as Rec[])[0]!.message as Rec).tool_calls as Rec[])[0]!;
+    const call = defined(
+      ((defined((chat.choices as Rec[])[0], 'choices[0]').message as Rec).tool_calls as Rec[])[0],
+      'tool_calls[0]',
+    );
     expect(call).toEqual({
       id: 'call_g0',
       type: 'function',
@@ -559,7 +574,7 @@ describe('gemini 非流式响应双向', () => {
       ],
       usage: { prompt_tokens: 4, completion_tokens: 2 },
     });
-    const cand = (g.candidates as Rec[])[0]!;
+    const cand = defined((g.candidates as Rec[])[0], 'candidates[0]');
     expect((cand.content as Rec).parts).toEqual([
       { text: 'hi' },
       { functionCall: { name: 'f', args: { a: 1 } } },

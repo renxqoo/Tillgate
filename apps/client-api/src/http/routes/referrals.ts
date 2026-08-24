@@ -19,9 +19,9 @@ export interface ReferralsDeps {
 export function referralRoutes(deps: ReferralsDeps, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
 
-  app.get('/v1/referrals/config', session, async (c) => {
-    return c.json(referralConfigView(await deps.marketingSettings()));
-  });
+  app.get('/v1/referrals/config', session, async (c) =>
+    c.json(referralConfigView(await deps.marketingSettings())),
+  );
 
   app.get('/v1/referrals', session, async (c) => {
     const [overview, totalCommission] = await Promise.all([

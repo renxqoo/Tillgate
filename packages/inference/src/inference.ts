@@ -12,6 +12,7 @@ import type { CatalogPort } from './ports/catalog';
 import type { BillingPort } from './ports/billing';
 import type {
   GenerationTaskAdminListInput,
+  GenerationTaskAdminRow,
   GenerationTaskStore,
   GenerationTaskView,
 } from './ports/generation';
@@ -32,7 +33,7 @@ import {
   type ExecutionDeps,
   type PassthroughDelivered,
 } from './application/failover';
-import { prepareChatRequest } from './application/quote';
+import { prepareChatRequest, type PreparedRequest } from './application/quote';
 import { noopTrace, type TracePort } from './ports/trace';
 import type { RequestAuth } from './domain/model/types';
 
@@ -80,7 +81,7 @@ export interface Inference {
     query(userId: number, taskId: string): Promise<GenerationTaskView>;
     /** 管理面全量列表（admin-api P4;任务存储读侧,不属主隔离） */
     adminList(input: GenerationTaskAdminListInput): Promise<{
-      rows: Array<import('./ports/generation.js').GenerationTaskAdminRow>;
+      rows: Array<GenerationTaskAdminRow>;
       total: number;
     }>;
     /** 已结算任务实扣金额（页内批量;taskId → amount） */
@@ -92,8 +93,103 @@ export interface Inference {
   close(): void;
 }
 
-export function createInference(env: InferenceEnv): Inference {
-  const defaults: InferenceDefaults = inferenceDefaultsSchema.parse(env.defaults ?? {});
+/** 预检阶段（inference.prepare span：目录候选链 + 报价上限） */
+async function prepareWithSpan(
+  deps: ExecutionDeps,
+  args: { requestId: string; requestStartedAt: number; input: ChatInput },
+): Promise<PreparedRequest> {
+  return await deps.trace.withSpan(
+    'inference.prepare',
+    {
+      'request.id': args.requestId,
+      'user.id': args.input.auth.userId,
+      ...(typeof args.input.body.model === 'string' ? { 'ai.model': args.input.body.model } : {}),
+    },
+    async (span) => {
+      const p = await prepareChatRequest({
+        catalog: deps.catalog,
+        defaults: deps.defaults,
+        requestId: args.requestId,
+        auth: args.input.auth,
+        body: args.input.body,
+        // 分时段选价锚点 = 准入时刻（fallback 重查复用同一值，不随查询时刻抖动）
+        now: new Date(args.requestStartedAt),
+        ...(args.input.endpoint != null ? { endpoint: args.input.endpoint } : {}),
+      });
+      span.setAttributes({ 'quote.candidates': p.candidates.length });
+      return p;
+    },
+  );
+}
+
+/** authorize 阶段（billing.authorize span 内联包住） */
+async function authorizeWithSpan(
+  deps: ExecutionDeps,
+  args: { input: ChatInput; requestId: string; stream: boolean; prepared: PreparedRequest },
+): Promise<void> {
+  await deps.trace.withSpan(
+    'billing.authorize',
+    {
+      'request.id': args.requestId,
+      'user.id': args.input.auth.userId,
+      'billing.stream': args.stream,
+    },
+    () =>
+      deps.billing.authorize({
+        requestId: args.requestId,
+        userId: args.input.auth.userId,
+        apiKeyId: args.input.auth.apiKeyId,
+        appId: args.input.auth.appId,
+        stream: args.stream,
+        candidates: args.prepared.candidates,
+        inputTokenUpperBound: args.prepared.inputUpperBound,
+        maxOutputTokens: args.prepared.outputCap,
+        authorizationTtlMs: deps.defaults.authorization.ttlMs,
+      }),
+  );
+}
+
+/** 预检 → authorize → 候选循环（chat/stream 共用编排；前两段各包阶段 span） */
+async function runInference<T>(
+  deps: ExecutionDeps,
+  args: {
+    input: ChatInput;
+    stream: boolean;
+    requestId: string;
+    requestStartedAt: number;
+    attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>;
+  },
+): Promise<T> {
+  const prepared = await prepareWithSpan(deps, {
+    requestId: args.requestId,
+    requestStartedAt: args.requestStartedAt,
+    input: args.input,
+  });
+  await authorizeWithSpan(deps, {
+    input: args.input,
+    requestId: args.requestId,
+    stream: args.stream,
+    prepared,
+  });
+  return await runCandidateLoop(
+    deps,
+    prepared,
+    args.requestId,
+    args.requestStartedAt,
+    args.input.signal,
+    args.attempt,
+  );
+}
+
+/** 装配执行依赖面（健康订阅挂一次 + 上游/追踪适配 + 缺省解析；chat 与 generation 共用） */
+function buildExecutionDeps(
+  env: InferenceEnv,
+  defaults: InferenceDefaults,
+): {
+  deps: ExecutionDeps;
+  health: ChannelHealth;
+  detach: () => void;
+} {
   const onError =
     env.onError ??
     ((error: unknown, context: string) => console.error(`[inference] ${context}:`, error));
@@ -115,6 +211,12 @@ export function createInference(env: InferenceEnv): Inference {
     defaults,
     onError,
   };
+  return { deps, health, detach };
+}
+
+export function createInference(env: InferenceEnv): Inference {
+  const defaults: InferenceDefaults = inferenceDefaultsSchema.parse(env.defaults ?? {});
+  const { deps, health, detach } = buildExecutionDeps(env, defaults);
   const chatAttempt = createChatAttempt(deps);
   const streamAttempt = createStreamAttempt(deps);
   const tasks = env.tasks ?? createMemoryGenerationTaskStore();
@@ -123,65 +225,19 @@ export function createInference(env: InferenceEnv): Inference {
     tasks,
   });
 
-  /** 预检 → authorize → 候选循环（chat/stream 共用编排；前两段各包阶段 span） */
-  const run = async <T>(
+  /** 预检 → authorize → 候选循环（chat/stream 共用；requestId/起点时刻在此解析） */
+  const run = <T>(
     input: ChatInput,
     stream: boolean,
     attempt: (ctx: AttemptContext) => Promise<AttemptOutcome<T>>,
-  ): Promise<T> => {
-    const requestId = input.requestId ?? randomUUID();
-    const requestStartedAt = Date.now();
-    const prepared = await trace.withSpan(
-      'inference.prepare',
-      {
-        'request.id': requestId,
-        'user.id': input.auth.userId,
-        ...(typeof input.body.model === 'string' ? { 'ai.model': input.body.model } : {}),
-      },
-      async (span) => {
-        const p = await prepareChatRequest({
-          catalog: env.catalog,
-          defaults,
-          requestId,
-          auth: input.auth,
-          body: input.body,
-          // 分时段选价锚点 = 准入时刻（fallback 重查复用同一值，不随查询时刻抖动）
-          now: new Date(requestStartedAt),
-          ...(input.endpoint != null ? { endpoint: input.endpoint } : {}),
-        });
-        span.setAttributes({ 'quote.candidates': p.candidates.length });
-        return p;
-      },
-    );
-    await trace.withSpan(
-      'billing.authorize',
-      {
-        'request.id': requestId,
-        'user.id': input.auth.userId,
-        'billing.stream': stream,
-      },
-      () =>
-        env.billing.authorize({
-          requestId,
-          userId: input.auth.userId,
-          apiKeyId: input.auth.apiKeyId,
-          appId: input.auth.appId,
-          stream,
-          candidates: prepared.candidates,
-          inputTokenUpperBound: prepared.inputUpperBound,
-          maxOutputTokens: prepared.outputCap,
-          authorizationTtlMs: defaults.authorization.ttlMs,
-        }),
-    );
-    return await runCandidateLoop(
-      deps,
-      prepared,
-      requestId,
-      requestStartedAt,
-      input.signal,
+  ): Promise<T> =>
+    runInference(deps, {
+      input,
+      stream,
+      requestId: input.requestId ?? randomUUID(),
+      requestStartedAt: Date.now(),
       attempt,
-    );
-  };
+    });
 
   return {
     chat: (input) => run(input, false, chatAttempt),

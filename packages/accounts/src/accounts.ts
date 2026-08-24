@@ -34,28 +34,39 @@ function assertPolicyShape(policy: AccountsPolicy): void {
   if (policy == null || typeof policy !== 'object') {
     throw new Error('accounts policy invalid: policy object is required');
   }
-  if (!isValidKeyPrefix(policy.keyPrefix)) {
-    throw new Error(
+  // 校验表逐项平铺:顺序即报错优先级,首个命中即抛(谓词均纯函数,急切求值无副作用)
+  const violations: readonly (readonly [boolean, string])[] = [
+    [
+      !isValidKeyPrefix(policy.keyPrefix),
       `accounts policy invalid: keyPrefix '${policy.keyPrefix}' must match ^[a-z][a-z0-9_-]{1,15}$`,
-    );
-  }
-  if (!Number.isFinite(policy.invitationTtlMs) || policy.invitationTtlMs <= 0) {
-    throw new Error('accounts policy invalid: invitationTtlMs must be a positive number');
-  }
-  if (!Number.isFinite(policy.invitationPendingFactor) || policy.invitationPendingFactor <= 0) {
-    throw new Error('accounts policy invalid: invitationPendingFactor must be positive');
-  }
-  if (!Number.isInteger(policy.invitationPendingCap) || policy.invitationPendingCap <= 0) {
-    throw new Error('accounts policy invalid: invitationPendingCap must be a positive integer');
-  }
-  if (!Number.isInteger(policy.rpmLimitMax) || policy.rpmLimitMax <= 0) {
-    throw new Error('accounts policy invalid: rpmLimitMax must be a positive integer');
-  }
-  if (!Number.isInteger(policy.tpmLimitMax) || policy.tpmLimitMax <= 0) {
-    throw new Error('accounts policy invalid: tpmLimitMax must be a positive integer');
-  }
-  if (typeof policy.banDefaultReason !== 'string' || policy.banDefaultReason.length === 0) {
-    throw new Error('accounts policy invalid: banDefaultReason must be a non-empty string');
+    ],
+    [
+      !Number.isFinite(policy.invitationTtlMs) || policy.invitationTtlMs <= 0,
+      'accounts policy invalid: invitationTtlMs must be a positive number',
+    ],
+    [
+      !Number.isFinite(policy.invitationPendingFactor) || policy.invitationPendingFactor <= 0,
+      'accounts policy invalid: invitationPendingFactor must be positive',
+    ],
+    [
+      !Number.isInteger(policy.invitationPendingCap) || policy.invitationPendingCap <= 0,
+      'accounts policy invalid: invitationPendingCap must be a positive integer',
+    ],
+    [
+      !Number.isInteger(policy.rpmLimitMax) || policy.rpmLimitMax <= 0,
+      'accounts policy invalid: rpmLimitMax must be a positive integer',
+    ],
+    [
+      !Number.isInteger(policy.tpmLimitMax) || policy.tpmLimitMax <= 0,
+      'accounts policy invalid: tpmLimitMax must be a positive integer',
+    ],
+    [
+      typeof policy.banDefaultReason !== 'string' || policy.banDefaultReason.length === 0,
+      'accounts policy invalid: banDefaultReason must be a non-empty string',
+    ],
+  ];
+  for (const [invalid, message] of violations) {
+    if (invalid) throw new Error(message);
   }
 }
 

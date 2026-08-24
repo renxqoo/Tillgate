@@ -3,6 +3,7 @@
  * 轮换继承与降级、网关鉴权读模型、越权=not_found、哈希零泄漏。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { sha256Hex } from '../src/domain/credentials.js';
 import { createTestHarness } from '../src/testing/harness.js';
 
@@ -26,8 +27,8 @@ describe('createKey', () => {
     expect(key.keyPreview).toBe(`sk_****${plaintext.slice(-4)}`);
     const resolved = await h.api.resolveKeyByHash(sha256Hex(plaintext));
     expect(resolved).not.toBeNull();
-    expect(resolved!.keyId).toBe(key.id);
-    expect(resolved!.userId).toBe(owner.id);
+    expect(defined(resolved, 'resolved').keyId).toBe(key.id);
+    expect(defined(resolved, 'resolved').userId).toBe(owner.id);
   });
 
   it('限额字段透传落库;域校验拒绝', async () => {
@@ -139,7 +140,7 @@ describe('rotateKey', () => {
     expect(rotated.key.remark).toBe('r');
     expect(rotated.key.dailySpendLimit).toBe('5');
     const resolvedNew = await h.api.resolveKeyByHash(sha256Hex(rotated.plaintext));
-    expect(resolvedNew!.keyId).toBe(rotated.key.id);
+    expect(defined(resolvedNew, 'resolvedNew').keyId).toBe(rotated.key.id);
     expect(await h.api.resolveKeyByHash(sha256Hex(plaintext))).toBeNull();
     // 再轮换已吊销旧 Key → 409
     await expect(h.api.rotateKey({ userId: owner.id, keyId: key.id })).rejects.toMatchObject({
@@ -192,7 +193,7 @@ describe('adminListKeys / adminPatchKey / rebindSubscription', () => {
     expect(byEmail.total).toBe(1);
     const byName = await h.api.adminListKeys({ q: 'alpha-key' });
     expect(byName.total).toBe(1);
-    const keyId = byName.rows[0]!.id;
+    const keyId = defined(byName.rows[0], 'byName.rows[0]').id;
 
     const flipped = await h.api.adminPatchKey({ keyId, patch: { status: 1 }, adminId: 5 });
     expect(flipped.status).toBe(1);
@@ -223,10 +224,16 @@ describe('adminListKeys / adminPatchKey / rebindSubscription', () => {
     });
     expect(result).toEqual({ keys: 1, apps: 1 });
     expect(
-      (await h.store.findOwnedKey(h.ctx.db, { userId: owner.id, keyId: key.id }))!.subscriptionId,
+      defined(
+        await h.store.findOwnedKey(h.ctx.db, { userId: owner.id, keyId: key.id }),
+        'findOwnedKey',
+      ).subscriptionId,
     ).toBe(301);
     expect(
-      (await h.store.findOwnedApp(h.ctx.db, { userId: owner.id, appId: app.id }))!.subscriptionId,
+      defined(
+        await h.store.findOwnedApp(h.ctx.db, { userId: owner.id, appId: app.id }),
+        'findOwnedApp',
+      ).subscriptionId,
     ).toBe(301);
   });
 });

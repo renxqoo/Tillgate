@@ -14,6 +14,7 @@ export interface ReplayedLegReceipt {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-params -- 导出重放入口契约
 export async function replayLegged(
   store: WalletStore,
   conn: WalletConn,

@@ -184,10 +184,13 @@ const DB_POOL: Omit<DbPoolConfig, 'url'> = {
   maxUses: 1_000,
 };
 
+// eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
   const parsed = envSchema.parse(env);
-  const smtpComplete =
-    parsed.SMTP_HOST != null && parsed.SMTP_USER != null && parsed.SMTP_PASS != null;
+  const smtpHost = parsed.SMTP_HOST;
+  const smtpUser = parsed.SMTP_USER;
+  const smtpPass = parsed.SMTP_PASS;
+  const smtpComplete = smtpHost != null && smtpUser != null && smtpPass != null;
   const otelMode: OtelMode =
     parsed.OTEL_TRACES_MODE ?? (parsed.NODE_ENV === 'production' ? 'off' : 'off');
   return {
@@ -248,14 +251,11 @@ export function loadWorkerConfig(env: NodeJS.ProcessEnv = process.env): WorkerCo
     channelApiKeyEncryption: parsed.CHANNEL_API_KEY_ENCRYPTION,
     aiAllowLocalUrl: parsed.WORKER_AI_ALLOW_LOCAL_URL,
     webhookAllowLocalUrl: parsed.WORKER_WEBHOOK_ALLOW_LOCAL_URL,
-    smtp: smtpComplete
-      ? {
-          host: parsed.SMTP_HOST!,
-          port: parsed.SMTP_PORT,
-          user: parsed.SMTP_USER!,
-          pass: parsed.SMTP_PASS!,
-        }
-      : null,
+    // 三要素齐才非 null(判空收窄在函数头,局部捕获避免对象字面量内回头断言)
+    smtp:
+      smtpComplete && smtpHost != null && smtpUser != null && smtpPass != null
+        ? { host: smtpHost, port: parsed.SMTP_PORT, user: smtpUser, pass: smtpPass }
+        : null,
     otelMode,
     otelEndpoint: parsed.OTEL_EXPORTER_OTLP_ENDPOINT,
     serviceVersion: parsed.OTEL_SERVICE_VERSION,

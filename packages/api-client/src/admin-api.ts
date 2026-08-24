@@ -57,13 +57,7 @@ export interface AdminApiClient extends HttpClient {
   }): Promise<AdminPasswordChangeResult>;
 
   /** 管理员列表（GET /v1/admins;统一列表契约 ?page&page_size&q&sort_by;admins 域——仅 super_admin） */
-  listAdmins(params?: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-    sortBy?: string;
-    order?: 'asc' | 'desc';
-  }): Promise<Paginated<AdminRow>>;
+  listAdmins(params?: AdminListParams): Promise<Paginated<AdminRow>>;
 
   /** 创建管理员（POST /v1/admins;资料行 + identity 凭据双动词编排） */
   createAdmin(input: AdminCreateBody): Promise<AdminRow>;
@@ -73,13 +67,9 @@ export interface AdminApiClient extends HttpClient {
 
   // ---- 动态 RBAC（ADR-0008）----
   /** 角色列表（含授权码集与挂载管理员计数） */
-  listRoles(params?: {
-    page?: number;
-    pageSize?: number;
-    q?: string;
-    sortBy?: string;
-    order?: 'asc' | 'desc';
-  }): Promise<Paginated<RoleRow & { adminCount: number; codes: string[] }>>;
+  listRoles(
+    params?: AdminListParams,
+  ): Promise<Paginated<RoleRow & { adminCount: number; codes: string[] }>>;
 
   createRole(input: {
     code: string;
@@ -177,6 +167,27 @@ export interface AdminPasswordChangeResult {
   token: string;
 }
 
+/** 管理面统一列表查询参数(admins/roles 共用契约 ?page&page_size&q&sort_by&order) */
+export interface AdminListParams {
+  page?: number;
+  pageSize?: number;
+  q?: string;
+  sortBy?: string;
+  order?: 'asc' | 'desc';
+}
+
+/** 列表查询串构造:空缺字段不拼接;全空返回 ''(不带 ?) */
+function adminListQuery(params?: AdminListParams): string {
+  const query = new URLSearchParams();
+  if (params?.page != null) query.set('page', String(params.page));
+  if (params?.pageSize != null) query.set('page_size', String(params.pageSize));
+  if (params?.q != null && params.q !== '') query.set('q', params.q);
+  if (params?.sortBy != null) query.set('sort_by', params.sortBy);
+  if (params?.order != null) query.set('order', params.order);
+  return query.size > 0 ? `?${query.toString()}` : '';
+}
+
+// eslint-disable-next-line max-lines-per-function -- 管理面 facade:线性 CRUD 方法平铺(一端点一薄包装),拆分只会制造人工接缝
 export function createAdminApiClient(options: AdminApiClientOptions): AdminApiClient {
   const http = createHttpClient(options);
   return {
@@ -192,14 +203,7 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
       return http.post<AdminPasswordChangeResult>('/v1/me/password', input);
     },
     async listAdmins(params) {
-      const query = new URLSearchParams();
-      if (params?.page != null) query.set('page', String(params.page));
-      if (params?.pageSize != null) query.set('page_size', String(params.pageSize));
-      if (params?.q != null && params.q !== '') query.set('q', params.q);
-      if (params?.sortBy != null) query.set('sort_by', params.sortBy);
-      if (params?.order != null) query.set('order', params.order);
-      const suffix = query.size > 0 ? `?${query.toString()}` : '';
-      return http.get<Paginated<AdminRow>>(`/v1/admins${suffix}`);
+      return http.get<Paginated<AdminRow>>(`/v1/admins${adminListQuery(params)}`);
     },
     async createAdmin(input: AdminCreateBody) {
       return http.post<AdminRow>('/v1/admins', input);
@@ -208,15 +212,8 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
       return http.patch<AdminRow>(`/v1/admins/${id}`, input);
     },
     async listRoles(params) {
-      const query = new URLSearchParams();
-      if (params?.page != null) query.set('page', String(params.page));
-      if (params?.pageSize != null) query.set('page_size', String(params.pageSize));
-      if (params?.q != null && params.q !== '') query.set('q', params.q);
-      if (params?.sortBy != null) query.set('sort_by', params.sortBy);
-      if (params?.order != null) query.set('order', params.order);
-      const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return http.get<Paginated<RoleRow & { adminCount: number; codes: string[] }>>(
-        `/v1/roles${suffix}`,
+        `/v1/roles${adminListQuery(params)}`,
       );
     },
     async createRole(input) {

@@ -52,7 +52,9 @@ describe('useMediaQuery', () => {
     const media = installMatchMedia({});
     const { result, unmount } = renderHook(() => useMediaQuery('(a)'));
     unmount();
-    expect(() => act(() => media.set('(a)', true))).not.toThrow();
+    // 具名化媒询触发动作: 压平 describe→it→expect→act 的四层回调嵌套
+    const fireMediaChange = () => media.set('(a)', true);
+    expect(() => act(fireMediaChange)).not.toThrow();
     expect(result.current).toBe(false);
   });
 });
@@ -72,7 +74,7 @@ describe('useIsMobile', () => {
 });
 
 describe('useCopy', () => {
-  const writeText = vi.fn(async (_text: string) => undefined);
+  const writeText = vi.fn(async (_text: string) => {});
 
   beforeEach(() => {
     writeText.mockClear();

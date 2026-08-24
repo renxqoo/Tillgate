@@ -51,16 +51,18 @@ export function hotp(secret: Buffer, counter: number, digits = 6): string {
   const counterBuf = Buffer.alloc(8);
   counterBuf.writeBigUInt64BE(BigInt(counter));
   const mac = createHmac('sha1', secret).update(counterBuf).digest();
-  const offset = mac[mac.length - 1]! & 0x0f;
+  // 位运算路径:undefined 参与位运算本就数值化为 0,?? 0 与非空断言运行时等价
+  const offset = (mac.at(-1) ?? 0) & 0x0f;
   const binary =
-    ((mac[offset]! & 0x7f) << 24) |
-    (mac[offset + 1]! << 16) |
-    (mac[offset + 2]! << 8) |
-    mac[offset + 3]!;
+    (((mac[offset] ?? 0) & 0x7f) << 24) |
+    ((mac[offset + 1] ?? 0) << 16) |
+    ((mac[offset + 2] ?? 0) << 8) |
+    (mac[offset + 3] ?? 0);
   return String(binary % 10 ** digits).padStart(digits, '0');
 }
 
 /** epochMs 时刻的 TOTP 码 */
+// eslint-disable-next-line max-params -- RFC 6238 参数位(secret/epochMs/stepSec/digits)逐一对应协议语义,调用点遍布包内与测试,改签名放大 diff
 export function totpAt(secret: Buffer, epochMs: number, stepSec = 30, digits = 6): string {
   return hotp(secret, Math.floor(epochMs / 1000 / stepSec), digits);
 }
@@ -69,6 +71,7 @@ export function totpAt(secret: Buffer, epochMs: number, stepSec = 30, digits = 6
  * 在 [当前步 - windowStep, 当前步 + windowStep] 窗口内匹配 code,
  * 返回命中的步号(多步同时命中取最大步——步进单调 CAS 防重放的最强锚点);未命中返回 null。
  */
+// eslint-disable-next-line max-params -- RFC 6238 参数位逐一对应协议语义,调用点遍布包内与测试,改签名放大 diff
 export function matchingTotpStep(
   secret: Buffer,
   code: string,

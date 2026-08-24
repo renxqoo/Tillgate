@@ -21,7 +21,7 @@ export async function fetchPlans(
       plans: (data.rows ?? []).filter((p) => (isEnterprise ? p.allowSeats : !p.allowSeats)),
       error: null,
     };
-  } catch (e) {
-    return { plans: [], error: e instanceof ApiError ? e.message : fallbackError };
+  } catch (error) {
+    return { plans: [], error: error instanceof ApiError ? error.message : fallbackError };
   }
 }

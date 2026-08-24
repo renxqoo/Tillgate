@@ -5,14 +5,7 @@
  * redeem_codes 0 未用 → 1 已核销 / 2 已吊销（库内只存 SHA-256，明文仅返回一次）。
  */
 import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import {
-  paymentOrders,
-  redeemBatches,
-  redeemCodes,
-  users,
-  type Db,
-  type DbTx,
-} from '@tillgate/db';
+import { paymentOrders, redeemBatches, redeemCodes, users, type Db, type DbTx } from '@tillgate/db';
 import type { WalletConn } from '../../ports/wallet-store.js';
 import type {
   AdminPaymentOrderRow,
@@ -66,6 +59,7 @@ const ORDER_PROJECTION = {
   createdAt: paymentOrders.createdAt,
 };
 
+// eslint-disable-next-line max-lines-per-function -- 兑换码 SQL 构造平铺
 export function createPostgresPaymentOrderStore(_db: Db): PaymentOrderStore {
   return {
     async insertOrder(conn, input) {
@@ -232,6 +226,7 @@ export function createPostgresPaymentOrderStore(_db: Db): PaymentOrderStore {
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- 兑换码 SQL 构造平铺(claim 事务)
 export function createPostgresRedeemCodeStore(_db: Db): RedeemCodeStore {
   return {
     async findByCodeHash(conn, codeHash) {
@@ -262,15 +257,16 @@ export function createPostgresRedeemCodeStore(_db: Db): RedeemCodeStore {
           batchId: redeemCodes.batchId,
         })
         .then(async (claimed) => {
-          if (claimed.length === 0) return null;
+          const [first] = claimed;
+          if (first === undefined) return null;
           // 批次面额（同事务读——claim 成功即锁定该批次的金额真相）
           const [batch] = await tx(conn)
             .select({ amount: redeemBatches.amount })
             .from(redeemBatches)
-            .where(eq(redeemBatches.id, claimed[0]!.batchId));
+            .where(eq(redeemBatches.id, first.batchId));
           return {
-            codeId: claimed[0]!.id,
-            batchId: claimed[0]!.batchId,
+            codeId: first.id,
+            batchId: first.batchId,
             amount: batch?.amount ?? '0',
           };
         });
@@ -288,17 +284,18 @@ export function createPostgresRedeemCodeStore(_db: Db): RedeemCodeStore {
           createdBy: input.createdBy,
         })
         .returning({ id: redeemBatches.id });
+      if (batch === undefined) throw new Error('payment.batch_insert_failed');
       const codeIds = await tx(conn)
         .insert(redeemCodes)
         .values(
           input.codeHashes.map((codeHash) => ({
-            batchId: batch!.id,
+            batchId: batch.id,
             codeHash,
             expiresAt: input.expiresAt,
           })),
         )
         .returning({ id: redeemCodes.id });
-      return { batchId: batch!.id, codeIds: codeIds.map((row) => row.id) };
+      return { batchId: batch.id, codeIds: codeIds.map((row) => row.id) };
     },
 
     async listBatches(conn, input) {

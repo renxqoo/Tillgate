@@ -447,7 +447,7 @@ describe('分页与短批', () => {
           throw new Error('unused');
         },
       },
-      signal: async () => undefined,
+      signal: async () => {},
       billingStatus: async () => 'authorized',
       findChannel: async () => CHANNEL,
       config: {
@@ -457,7 +457,7 @@ describe('分页与短批', () => {
         executeDeadlineMs: 1_000,
         executeMaxRetries: 0,
       },
-      onError: () => undefined,
+      onError: () => {},
     });
     const result = await run();
     expect(result.polled).toBe(12); // 5 + 5 + 2

@@ -36,7 +36,7 @@ billing/adapters  ← 本包 ports、@tillgate/db、@tillgate/runtime、外部 S
 - 事务边界属于发起状态变化的 application 用例；`DbTx` 不出现在任何公开签名
   （总纲 §5.4）。旧仓的 `TxInjection`（调用方共享事务）语义收编为 application 内部
   组合（billing 用例内部在单事务内编排 wallet 动词），不再对外暴露。
-- 参数平铺不嵌套、结果判别联合、可选参数全部有缺省（AGENT.md §9.1 步骤 1）。
+- 参数平铺不嵌套、结果判别联合、可选参数全部有缺省（AGENTS.md §9.1 步骤 1）。
 
 ### 2.2 金额契约（全包唯一，外部消费方同样遵循）
 
@@ -59,7 +59,7 @@ function/Date/类实例）显式拒绝**、嵌套深度 ≤64、canonical 总长
 
 ### 2.4 错误契约
 
-按 AGENT.md §11：本包 domain/application 的业务拒绝经
+按 AGENTS.md §11：本包 domain/application 的业务拒绝经
 `defineErrorCatalog('billing', …)` 表达（`business()` 直抛，需要精确捕获处用 `entry()`
 固化类）；禁止自造错误类体系或自由字符串码。捕获方按 nature/category 分派，
 **不做跨包 instanceof**（旧仓 B6 病灶：两套同名类永不互配）。基础设施故障用
@@ -94,7 +94,7 @@ function/Date/类实例）显式拒绝**、嵌套深度 ≤64、canonical 总长
 | 渠道熔断/死凭据健康状态      | `inference`（订阅 AiEvent 维护）；billing 只收结算事实           |
 | 上游协议/传输                | `ai` 包；billing 不接触模型上游                                  |
 | HTTP wire schema / 队列协议  | 各 app 的 contracts；billing 零 HTTP/队列依赖                    |
-| 表 DDL 与迁移顺序            | `@tillgate/db`（billing 语义变化需要 DDL 时同一迁移单元提交）   |
+| 表 DDL 与迁移顺序            | `@tillgate/db`（billing 语义变化需要 DDL 时同一迁移单元提交）    |
 
 ## 4. 并发与性能预算（数字化硬约束）
 

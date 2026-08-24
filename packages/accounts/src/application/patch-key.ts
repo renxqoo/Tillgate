@@ -15,8 +15,9 @@ export async function patchKey(
   const patch = parseKeyFields(input.patch, ctx.policy, ctx.now());
   const owned = await ctx.store.findOwnedKey(ctx.db, { userId: input.userId, keyId: input.keyId });
   if (owned === null) throw AccountsErrors.business('key_not_found', { keyId: input.keyId });
-  if (owned.status !== 0)
+  if (owned.status !== 0) {
     throw AccountsErrors.business('key_already_revoked', { keyId: input.keyId });
+  }
 
   return runTx(
     ctx.db,

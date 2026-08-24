@@ -31,8 +31,9 @@ export const credentialQueries: Pick<
         target: [identityCredentials.identifierKind, identityCredentials.identifierValue],
       })
       .returning({ id: identityCredentials.id });
-    if (inserted.length > 0) {
-      return { status: 'created', credentialId: inserted[0]!.id };
+    const [first] = inserted;
+    if (first != null) {
+      return { status: 'created', credentialId: first.id };
     }
     const existing = await db
       .select({ id: identityCredentials.id, userId: identityCredentials.userId })
@@ -44,7 +45,7 @@ export const credentialQueries: Pick<
         ),
       )
       .limit(1);
-    const row = existing[0];
+    const [row] = existing;
     if (!row) {
       // 不可能分支:唯一冲突但读回无行
       throw new DefectError('register_credential readback found no row', 'identity.defect', {
@@ -101,7 +102,7 @@ export const credentialQueries: Pick<
         identityCredentials.id,
       )
       .limit(1);
-    const cred = rows[0];
+    const [cred] = rows;
     if (!cred || (cred.kind !== 'email' && cred.kind !== 'phone')) return null;
     return { kind: cred.kind, value: cred.value };
   },

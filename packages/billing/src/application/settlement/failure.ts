@@ -14,6 +14,7 @@ export type FailureOutcome = 'retried' | 'dead';
 
 const LAST_ERROR_MAX = 500;
 
+// eslint-disable-next-line max-lines-per-function -- 失败策略事务体:策略分支矩阵
 export function createFailureUseCase(env: {
   store: BillingStore;
   /** 失败策略参数（装配必填——最大尝试/退避不写死） */
@@ -35,6 +36,7 @@ export function createFailureUseCase(env: {
   }) => void;
 }) {
   const { store } = env;
+  // eslint-disable-next-line max-lines-per-function -- 失败策略事务体:策略分支矩阵
   return async function finishFailure(
     claim: SettlementClaim,
     error: unknown,

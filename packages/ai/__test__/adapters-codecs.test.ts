@@ -258,6 +258,6 @@ describe('registry/vendor-profiles：规则合并', () => {
   });
   it('undefined 两侧容忍', () => {
     expect(mergeParamRules(undefined, { ignore: ['x'] })?.ignore).toEqual(['x']);
-    expect(mergeParamRules({ ignore: ['x'] }, undefined)?.ignore).toEqual(['x']);
+    expect(mergeParamRules({ ignore: ['x'] })?.ignore).toEqual(['x']);
   });
 });

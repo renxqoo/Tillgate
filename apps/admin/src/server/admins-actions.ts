@@ -18,11 +18,11 @@ export async function createAdminAction(input: {
     await adminApi().post('/v1/admins', input);
     revalidatePath('/dashboard/admins');
     return {};
-  } catch (e) {
-    if (e instanceof ApiError && e.code === 'control_plane.admin_email_taken') {
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'control_plane.admin_email_taken') {
       return { error: t('emailTaken') };
     }
-    return { error: e instanceof ApiError ? e.message : t('createFailed') };
+    return { error: error instanceof ApiError ? error.message : t('createFailed') };
   }
 }
 
@@ -35,8 +35,8 @@ export async function updateAdminRoleAction(
     await adminApi().patch(`/v1/admins/${id}`, { roleId });
     revalidatePath('/dashboard/admins');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('updateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('updateFailed') };
   }
 }
 
@@ -49,7 +49,7 @@ export async function toggleAdminStatusAction(
     await adminApi().patch(`/v1/admins/${id}`, { status });
     revalidatePath('/dashboard/admins');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('updateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('updateFailed') };
   }
 }

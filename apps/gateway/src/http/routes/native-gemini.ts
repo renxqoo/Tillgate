@@ -14,26 +14,35 @@ import {
   geminiRequestToChat,
 } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
+import { toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { encodeDelivered, sseResponse } from '../openai-envelope';
 import { GatewayErrors } from '../openai-error-face';
 
 const GEMINI_ACTION_RE = /^([a-zA-Z0-9._-]+):(generateContent|streamGenerateContent)$/;
 
+/** 解析「模型名:动作」路径参数；不匹配支持的封闭动作集 → null（含捕获组形状防御） */
+function parseModelAction(
+  modelAction: string | undefined,
+): { model: string; stream: boolean } | null {
+  const m = GEMINI_ACTION_RE.exec(modelAction ?? '');
+  const [, model, action] = m ?? [];
+  if (m == null || model == null || action == null) return null;
+  return { model, stream: action === 'streamGenerateContent' };
+}
+
 export function geminiNativeRoutes(deps: {
   inference: Inference;
   rateLimit?: RateLimitGate;
 }): Hono<AuthEnv> {
   return new Hono<AuthEnv>().post('/v1beta/models/:modelAction', async (c) => {
-    const modelAction = c.req.param('modelAction');
-    const m = GEMINI_ACTION_RE.exec(modelAction ?? '');
-    if (!m) {
+    const parsed = parseModelAction(c.req.param('modelAction'));
+    if (parsed == null) {
       throw HttpErrors.business('not_found', {
         detail: 'Path not found (supported: :generateContent / :streamGenerateContent)',
       });
     }
-    const model = m[1]!;
-    const stream = m[2] === 'streamGenerateContent';
+    const { model, stream } = parsed;
     const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!raw) {
       throw GatewayErrors.business('invalid_body', {
@@ -53,17 +62,7 @@ export function geminiNativeRoutes(deps: {
       estimatedTokens: conservativeInputTokenUpperBound(canonical),
     });
     try {
-      const input = {
-        requestId,
-        auth: {
-          userId: auth.userId,
-          apiKeyId: auth.apiKeyId,
-          appId: auth.appId,
-          allowedModels: auth.allowedModels,
-        },
-        body: canonical,
-        endpoint: 'chat' as const,
-      };
+      const input = toInferenceInput({ requestId, auth, body: canonical, endpoint: 'chat' });
       const result = stream ? await deps.inference.stream(input) : await deps.inference.chat(input);
       if ('stream' in result && result.ok && result.status === 200) {
         return sseResponse(canonicalStreamToGeminiStream(result.stream, model), requestId);

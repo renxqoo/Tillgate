@@ -47,7 +47,7 @@
 | --- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | R1  | 错误信封码 `UNAUTHORIZED/UNSUPPORTED_MEDIA_TYPE/INVALID_JSON/INVALID_OTLP` → 目录码 | §11/ADR-0001;新增 `http.unauthorized`、`http.unsupported_media_type` 两码(本波入 http 目录,status 修正表 401/415) |
 | R2  | `DecodeError instanceof` → 流动错误直落 onError(合成目录渲染 400)                   | G6 兑现:「接收端按码映射 400」——app 不写 instanceof 翻译表                                                        |
-| R3  | `token-compare.ts` 本地拷贝删除 → `@tillgate/http timingSafeTokenEqual`            | observability IMPLEMENTATION §7 挂账#3 兑现;worker 健康令牌/client-api webhook 签名(P5)自此同源消费               |
+| R3  | `token-compare.ts` 本地拷贝删除 → `@tillgate/http timingSafeTokenEqual`             | observability IMPLEMENTATION §7 挂账#3 兑现;worker 健康令牌/client-api webhook 签名(P5)自此同源消费               |
 | R4  | `DATABASE_URL` 必填(v1 藏默认连接串)                                                | v2 db 包零缺省(observability B2 同裁决);缺省值唯一归属 config 层                                                  |
 | R5  | 令牌校验 `z.string().min(16)` → `secretSchema` 三道门(≥16/非已知弱值/≥4 种字符)     | runtime 组装件复用;弱值启动即拒绝                                                                                 |
 | R6  | `NODE_ENV` 纳入 schema                                                              | v1 从 strip 后的 parse 结果读它,生产令牌检查**恒不触发**(潜在缺陷,已修;MIGRATION 记录)                            |

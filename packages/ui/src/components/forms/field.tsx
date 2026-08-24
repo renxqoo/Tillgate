@@ -200,7 +200,8 @@ function FieldError({
 
     const uniqueErrors = [...new Map(errors.map((error) => [error?.message, error])).values()];
 
-    if (uniqueErrors?.length == 1) {
+    // uniqueErrors 由 Map 构造必然为数组，length 不可能为 undefined，=== 与原 == 等价
+    if (uniqueErrors.length === 1) {
       return uniqueErrors[0]?.message;
     }
 

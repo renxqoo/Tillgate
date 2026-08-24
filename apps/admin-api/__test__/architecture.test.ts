@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 
 /**
  * app 级架构门禁(§5.5/总纲 P5,机器验证不靠记忆):
@@ -172,7 +173,7 @@ describe('admin-api 架构门禁', () => {
   it('跨包 import 只走包名(禁 src 深导入)', () => {
     for (const [name, code] of source) {
       const deepImports = [...code.matchAll(/from '(@tillgate\/[^']+)'/g)]
-        .map((match) => match[1]!)
+        .map((match) => defined(match[1], 'matchAll capture group'))
         .filter((specifier) => !specifier.endsWith('composition'));
       for (const specifier of deepImports) {
         expect(specifier, `${name} 禁深导入 ${specifier}`).not.toMatch(/\/src\//);

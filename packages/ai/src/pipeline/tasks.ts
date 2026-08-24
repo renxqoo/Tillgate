@@ -25,6 +25,34 @@ export interface TaskOpsEnv {
   guard: AiDeps['guardUrl'];
 }
 
+/** GET 探测公共执行段（query/file 共用）：传输 → 读体 → 非 2xx 厂商错误映射 / 2xx 交协议解析 */
+async function fetchTaskProbe(input: {
+  channel: ChannelDesc;
+  path: string;
+  headers: Record<string, string>;
+  adapter: ProtocolAdapter;
+  cfg: AiDefaults;
+  guard: AiDeps['guardUrl'];
+}): Promise<{ ok: true; body: unknown } | { ok: false; error: UpstreamError }> {
+  const { channel, path, headers, adapter, cfg, guard } = input;
+  try {
+    const res = await fetchUpstream(
+      joinUrl(channel.baseUrl, path),
+      { method: 'GET', headers },
+      { connectMs: cfg.timeout.connectMs, guard },
+    );
+    const raw = await readBody(res);
+    const body = tryParseJson(raw) ?? raw;
+    if (!res.ok) return { ok: false, error: adapter.mapError(res.status, body) };
+    return { ok: true, body };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof UE ? error : new UE({ kind: 'network', message: String(error) }),
+    };
+  }
+}
+
 export function createTaskOps(env: TaskOpsEnv): Ai['tasks'] {
   const { adapters, resolveAdapter, cfg, guard } = env;
   const opsOf = (channel: ChannelDesc) => {
@@ -44,52 +72,32 @@ export function createTaskOps(env: TaskOpsEnv): Ai['tasks'] {
       if (ops instanceof UE) return { ok: false, error: ops };
       if (ops === null) return { ok: false, error: taskOpsUnavailableError(channel.protocol) };
       const plan = ops.planTaskQuery(channel, taskId);
-      try {
-        const res = await fetchUpstream(
-          joinUrl(channel.baseUrl, plan.path),
-          { method: 'GET', headers: plan.headers },
-          { connectMs: cfg.timeout.connectMs, guard },
-        );
-        const raw = await readBody(res);
-        const body = tryParseJson(raw) ?? raw;
-        if (!res.ok)
-          return {
-            ok: false,
-            error: (adapters.get(channel.protocol) as ProtocolAdapter).mapError(res.status, body),
-          };
-        return ops.parseTaskStatus(body);
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof UE ? err : new UE({ kind: 'network', message: String(err) }),
-        };
-      }
+      const probe = await fetchTaskProbe({
+        channel,
+        path: plan.path,
+        headers: plan.headers,
+        adapter: adapters.get(channel.protocol) as ProtocolAdapter,
+        cfg,
+        guard,
+      });
+      if (!probe.ok) return probe;
+      return ops.parseTaskStatus(probe.body);
     },
     file: async (channel, fileId): Promise<GenerationFileProbeResult> => {
       const ops = opsOf(channel);
       if (ops instanceof UE) return { ok: false, error: ops };
       if (ops === null) return { ok: false, error: taskOpsUnavailableError(channel.protocol) };
       const plan = ops.planFileRetrieve(channel, fileId);
-      try {
-        const res = await fetchUpstream(
-          joinUrl(channel.baseUrl, plan.path),
-          { method: 'GET', headers: plan.headers },
-          { connectMs: cfg.timeout.connectMs, guard },
-        );
-        const raw = await readBody(res);
-        const body = tryParseJson(raw) ?? raw;
-        if (!res.ok)
-          return {
-            ok: false,
-            error: (adapters.get(channel.protocol) as ProtocolAdapter).mapError(res.status, body),
-          };
-        return ops.parseFileRetrieve(body);
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof UE ? err : new UE({ kind: 'network', message: String(err) }),
-        };
-      }
+      const probe = await fetchTaskProbe({
+        channel,
+        path: plan.path,
+        headers: plan.headers,
+        adapter: adapters.get(channel.protocol) as ProtocolAdapter,
+        cfg,
+        guard,
+      });
+      if (!probe.ok) return probe;
+      return ops.parseFileRetrieve(probe.body);
     },
   };
 }

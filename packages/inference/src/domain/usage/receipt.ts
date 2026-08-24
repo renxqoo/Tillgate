@@ -99,7 +99,7 @@ export function buildReceipt(params: ReceiptParams): UsageReceipt {
     params.body,
     params.responseBody,
   );
-  const usage = params.usage;
+  const { usage } = params;
   const usageSnapshot: ReceiptUsageSnapshot = usage.estimated
     ? {
         estimated: true,

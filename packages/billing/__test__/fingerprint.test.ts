@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
 import { canonicalJson, commandFingerprint, fingerprintOf } from '../src/domain/fingerprint.js';
+import type { FingerprintValue } from '../src/domain/fingerprint.js';
 
 /** 断言缺陷拒绝并核对码（指纹载荷构造缺陷分类，DESIGN §2.3） */
 function expectDefect(fn: () => unknown): void {
@@ -140,7 +141,7 @@ describe('commandFingerprint（幂等命令身份）', () => {
 
   it('B4 回归：payload 含 undefined 显式拒绝（旧宽松版静默丢弃）——模拟绕过类型的 JS 调用方', () => {
     const payload = { userId: 1, memo: undefined } as unknown as Readonly<
-      Record<string, import('../src/domain/fingerprint.js').FingerprintValue>
+      Record<string, FingerprintValue>
     >;
     expectDefect(() => commandFingerprint('credit', payload));
   });

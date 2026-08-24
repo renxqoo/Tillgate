@@ -2,6 +2,7 @@
  * refund 动词：退款——双腿 [本方 −a, 对手科目 +a]（钱离开余额原路退回，缺省 outside；
  * 费用承担类退款可指定其他科目）。出账守卫（信用口径）+ 幂等三段式。
  */
+import { DefectError } from '@tillgate/errors';
 import { commandFingerprint } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { parsePositiveAmount } from '../../domain/money.js';
@@ -31,8 +32,10 @@ export interface RefundResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
 export function createRefundUseCase(env: WalletEnv) {
   const { store, guards, currency: defaultCurrency } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
   return async function refund(input: RefundInput): Promise<RefundResult> {
     const currency = resolveCurrency(guards, defaultCurrency, input);
     assertRefKey(guards, input.refType, input.refId);
@@ -71,7 +74,10 @@ export function createRefundUseCase(env: WalletEnv) {
         const userAccountId = await store.ensureUserAccount(tx, input.userId, currency);
         const cpAccountId = await store.ensureInternalAccount(tx, counterparty, currency);
         const locked = await lockActiveAccounts(store, tx, [userAccountId, cpAccountId]);
-        const user = locked.get(userAccountId)!;
+        const user = locked.get(userAccountId);
+        if (user === undefined) {
+          throw new DefectError('refund.user_lock_missing', 'billing.wallet_invariant');
+        }
         assertCanDebit(user, amount, input.userId);
         const posted = await post(store, tx, {
           kind: 'refund',
@@ -84,10 +90,14 @@ export function createRefundUseCase(env: WalletEnv) {
             { accountId: cpAccountId, currency, amount },
           ],
         });
+        const balanceAfter = posted.balanceAfter.get(userAccountId);
+        if (balanceAfter === undefined) {
+          throw new DefectError('refund.balance_missing', 'billing.wallet_invariant');
+        }
         return {
           transactionId: posted.transactionId,
           amount: normalizeAmount(input.amount),
-          balanceAfter: posted.balanceAfter.get(userAccountId)!,
+          balanceAfter,
           replayed: false,
         };
       });

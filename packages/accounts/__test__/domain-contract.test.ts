@@ -5,6 +5,7 @@
  * - 出口桶快照(公共 API 面)。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { ACCOUNT_STATUS } from '@tillgate/db';
 import { ERROR_CATEGORIES } from '@tillgate/errors';
 import * as publicApi from '../src/index.js';
@@ -38,11 +39,10 @@ describe('错误目录封闭词表', () => {
   });
   it('category 全部在七闭集内(目录构造即校验,此处锁行为)', () => {
     for (const code of AccountsErrors.codes) {
-      const def = AccountsErrors.get(code);
-      expect(def).toBeDefined();
-      expect(ERROR_CATEGORIES).toContain(def!.category);
-      expect(def!.message.length).toBeGreaterThan(0);
-      expect(def!.zh.length).toBeGreaterThan(0);
+      const def = defined(AccountsErrors.get(code), 'AccountsErrors.get(code)');
+      expect(ERROR_CATEGORIES).toContain(def.category);
+      expect(def.message.length).toBeGreaterThan(0);
+      expect(def.zh.length).toBeGreaterThan(0);
     }
   });
   it('business() 携带身份码与 context', () => {

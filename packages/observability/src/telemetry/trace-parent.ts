@@ -11,12 +11,15 @@ export function formatTraceParent(sc: SpanContext): string | null {
 }
 
 /** 解析 traceparent 为远端父 Context;空/格式非法返回 undefined(拒绝面:非 00 版本/非 hex/flags 非 0[01]) */
-export function remoteParentContext(traceParent: string | null | undefined): Context | undefined {
+export function remoteParentContext(traceParent?: string | null): Context | undefined {
   if (typeof traceParent !== 'string') return undefined;
   const m = /^00-([0-9a-f]{32})-([0-9a-f]{16})-0[01]$/.exec(traceParent);
   if (!m) return undefined;
+  // 正则捕获组理论必非空;显式收窄替代非空断言
+  const [, traceId, spanId] = m;
+  if (traceId === undefined || spanId === undefined) return undefined;
   return trace.setSpan(
     context.active(),
-    trace.wrapSpanContext({ traceId: m[1]!, spanId: m[2]!, isRemote: true, traceFlags: 1 }),
+    trace.wrapSpanContext({ traceId, spanId, isRemote: true, traceFlags: 1 }),
   );
 }

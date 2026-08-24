@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   isUnsafeIpv4,
   isUnsafeIpv6,
@@ -33,12 +34,7 @@ const rejectingGuard = async (): Promise<void> => {
   throw new Error('ssrf blocked by policy');
 };
 
-const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
-) =>
+const startServer = (handler: (req: IncomingMessage, res: ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {
     const server = createServer(handler);
     server.listen(0, '127.0.0.1', () => {
@@ -333,8 +329,9 @@ describe('relayStream：flush 四种终止与改写尾行', () => {
     expect((text.match(/"model":"catalog-name"/g) ?? []).length).toBe(2); // 两帧都被改写（含 flush 尾行）
     const done = events.find((e) => e.type === 'done');
     // 出站字节 = 改写后全数据（含 flush 尾行），哨兵 [DONE] 不计入 bytesRelayed
-    if (done?.type === 'done')
+    if (done?.type === 'done') {
       expect(done.bytesRelayed).toBe(text.length - 'data: [DONE]\n\n'.length);
+    }
   });
   it('完成语义后客户端断开：错误帧已完成 → upstream_error 而非 client_disconnect（#6649 同类）', async () => {
     const events: RelayStreamEvent[] = [];
@@ -352,7 +349,9 @@ describe('relayStream：flush 四种终止与改写尾行', () => {
     const reader = handle.stream.getReader();
     await reader.read(); // 数据流经 transform（error + DONE 已处理）
     await reader.cancel(); // 客户端随后断开
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => {
+      setTimeout(r, 30);
+    });
     expect(events.some((e) => e.type === 'aborted' && e.reason === 'upstream_error')).toBe(true);
     const done = events.find((e) => e.type === 'done');
     expect(done).toMatchObject({ terminated: 'upstream_error', doneSentinel: true });
@@ -371,7 +370,9 @@ describe('relayStream：flush 四种终止与改写尾行', () => {
     const reader = handle.stream.getReader();
     await reader.read();
     await reader.cancel();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => {
+      setTimeout(r, 30);
+    });
     const done = events.find((e) => e.type === 'done');
     expect(done).toMatchObject({ terminated: 'client_disconnect' });
     if (done?.type === 'done') expect(done.usage).toEqual({ prompt_tokens: 9 });

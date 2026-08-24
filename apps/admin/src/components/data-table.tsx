@@ -127,7 +127,7 @@ export function DataTable<Row>({
             <TableHead
               key={column.key}
               aria-sort={(() => {
-                if (!column.sortable) return undefined;
+                if (!column.sortable) return;
                 if (sort?.sortBy !== (column.sortBy ?? column.key)) return 'none';
                 return sort.order === 'asc' ? 'ascending' : 'descending';
               })()}
@@ -140,8 +140,9 @@ export function DataTable<Row>({
             >
               {(() => {
                 if (column.key === 'actions') return column.header;
-                if (column.sortable && searchParams)
+                if (column.sortable && searchParams) {
                   return <SortableHead column={column} sort={sort} searchParams={searchParams} />;
+                }
                 return column.header;
               })()}
             </TableHead>

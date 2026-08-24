@@ -17,7 +17,8 @@ import { completeOAuthAction } from '@/server/actions/oauth';
 function CallbackInner() {
   const params = useSearchParams();
   const t = useTranslations('auth');
-  const [error, setError] = useState<string | null>(null);
+  // 状态命名 oauthError：让 .catch 形参可按 catch-error-name 规则命名为 error 而不遮蔽
+  const [oauthError, setOauthError] = useState<string | null>(null);
   const handled = useRef(false);
 
   useEffect(() => {
@@ -25,22 +26,23 @@ function CallbackInner() {
     handled.current = true;
     const { token, next } = parseOAuthFragment(window.location.hash);
     if (!token) {
-      setError(t('noTokenRetry'));
+      // eslint-disable-next-line react/set-state-in-effect -- URL fragment 属浏览器态外部输入，只能在挂载 effect 中校验并一次性上抛错误文案
+      setOauthError(t('noTokenRetry'));
       return;
     }
     // action 成功即 redirect：redirect() 在 Server Action 内部以 NEXT_REDIRECT
     // digest 异常表达，手动调用形态下该 rejection 会先到达这里——它是成功信号
     // （cookie 已写、导航由框架接手），只有非 NEXT_REDIRECT 才是真失败
-    void completeOAuthAction(token, next ?? params.get('next')).catch((err: unknown) => {
-      if (isNextRedirect(err)) return;
-      setError(t('fetchError'));
+    void completeOAuthAction(token, next ?? params.get('next')).catch((error: unknown) => {
+      if (isNextRedirect(error)) return;
+      setOauthError(t('fetchError'));
     });
   }, [params, t]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center text-sm text-muted-foreground">
-        {error ? <p className="text-destructive">{error}</p> : <p>{t('completing')}</p>}
+        {oauthError ? <p className="text-destructive">{oauthError}</p> : <p>{t('completing')}</p>}
       </div>
     </div>
   );

@@ -30,18 +30,8 @@ export async function createKey(
   ctx: UseCaseContext,
   input: CreateKeyInput,
 ): Promise<CreateKeyResult> {
-  const fields = parseKeyFields(
-    {
-      name: input.name,
-      remark: input.remark,
-      rpmLimit: input.rpmLimit,
-      tpmLimit: input.tpmLimit,
-      dailySpendLimit: input.dailySpendLimit,
-      expiresAt: input.expiresAt,
-    },
-    ctx.policy,
-    ctx.now(),
-  );
+  // CreateKeyInput 结构上即 KeyFieldsInput(键字段一一对应),直接整体送解析
+  const fields = parseKeyFields(input, ctx.policy, ctx.now());
 
   if (input.subscriptionId !== undefined && input.subscriptionId !== null) {
     const usable = await ctx.store.findUsableSubscription(ctx.db, {
@@ -56,6 +46,11 @@ export async function createKey(
   }
 
   const material = generateKeyMaterial(ctx.policy.keyPrefix);
+  // createKey 的 name 为必填入参,parseKeyFields 必然落值;守卫仅防御调用方契约漂移
+  const keyName = fields.name;
+  if (keyName === undefined) {
+    throw AccountsErrors.business('key_patch_invalid', { field: 'name' });
+  }
   const key = await runTx(
     ctx.db,
     (tx) =>
@@ -64,7 +59,7 @@ export async function createKey(
         keyPreview: material.keyPreview,
         userId: input.userId,
         subscriptionId: input.subscriptionId ?? null,
-        name: fields.name!,
+        name: keyName,
         remark: fields.remark ?? null,
         expiresAt: fields.expiresAt ?? null,
         rpmLimit: fields.rpmLimit ?? null,

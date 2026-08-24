@@ -3,7 +3,7 @@
 > 状态:定稿(实施中)
 > 迁移单元:P4 第 4 波「上层消费者:用户/组织/API Key/Application → accounts」(总纲 §9 P4.4)
 > 旧实现:/Users/wrr/work/ai-getway 的 repository(user/user-account/org/org-member/api-key/apps/referral/marketing)+ client-api/admin-api/gateway 路由层内嵌规则
-> 关联:IMPLEMENTATION.md(审计/裁决/施工)、MIGRATION.md(行为规格基线)、AGENT.md、docs/project-structure-refactoring.md §3.4/§5.2
+> 关联:IMPLEMENTATION.md(审计/裁决/施工)、MIGRATION.md(行为规格基线)、AGENTS.md、docs/project-structure-refactoring.md §3.4/§5.2
 
 ---
 

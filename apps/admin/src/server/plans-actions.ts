@@ -34,8 +34,8 @@ export async function createPlanAction(input: PlanCreateInput): Promise<{ error?
     });
     revalidatePath('/dashboard/plans');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -59,8 +59,8 @@ export async function updatePlanAction(
     await adminApi().patch(`/v1/plans/${id}`, input);
     revalidatePath('/dashboard/plans');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
 
@@ -71,8 +71,8 @@ export async function deletePlanAction(id: number): Promise<{ error?: string }> 
     await adminApi().delete(`/v1/plans/${id}`);
     revalidatePath('/dashboard/plans');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('deleteFailed') };
   }
 }
 
@@ -84,7 +84,7 @@ export async function grantPackAction(planId: number, userId: number): Promise<{
     await adminApi().post(`/v1/subscriptions/${planId}/grant`, { userId });
     revalidatePath('/dashboard/plans');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('grantFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('grantFailed') };
   }
 }

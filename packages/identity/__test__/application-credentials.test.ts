@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { identityWithinTx } from '../src/composition.js';
 import { resolveConfig } from '../src/domain/config.js';
 import { TEST_CONFIG, createTestHarness } from '../src/testing/harness.js';
+import { defined } from './defined.js';
 
 const harness = () => createTestHarness();
 const email = (n: number) => `user${n}@example.com`;
@@ -106,7 +107,7 @@ describe('composition bridge:identityWithinTx(§5.4 事务参与审计)', () => 
     // §5.4 契约:bridge 在事务内经 sink 直写(不再返回 auditEvents 交调用方冲洗);
     // 落库原子性与回滚语义由 postgres.real 门禁复验,内存替身只验证调用链
     expect(h.audit.events).toHaveLength(1);
-    expect(h.audit.events[0]!.action).toBe('credential.register');
+    expect(defined(h.audit.events[0], 'h.audit.events[0]').action).toBe('credential.register');
   });
 
   it('审计事务参与失败不吞:auditSink 抛错 → bridge 调用一并失败(§5.4 不降级)', async () => {

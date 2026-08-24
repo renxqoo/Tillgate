@@ -79,49 +79,57 @@ function inferKind(row: SpanRow): GraphNodeKind {
   return 'generic';
 }
 
+function httpSubtitle(row: SpanRow): string {
+  const method = row.attributes['http.method'];
+  const code = row.attributes['http.status_code'];
+  return [typeof method === 'string' ? method : null, code != null ? `${code}` : null]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function upstreamSubtitle(row: SpanRow): string {
+  return [row.channel, row.model].filter(Boolean).join(' · ');
+}
+
+function streamSubtitle(row: SpanRow): string {
+  // 流终态语义:中断带原因(复核线索),正常终态只报字节
+  const terminated = row.attributes['stream.terminated'];
+  const bytes = row.attributes['stream.bytes_relayed'];
+  return [
+    typeof terminated === 'string' ? `已中断 ${terminated}` : null,
+    typeof bytes === 'number' ? `${bytes} B` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function billingSubtitle(row: SpanRow, kind: 'billing' | 'settle'): string {
+  // 计费节点副标题带核心数字:预授权/实扣金额(元)或 token 汇总;
+  // 估算节点(billing.estimate / estimated 收尾)显式标注非真实获取
+  const estimated = row.attributes['usage.estimated'] === true ? '估算 · ' : '';
+  // 释放型收尾(billing.finalize: failed/released):直接回答「扣没扣钱」
+  const amountReleased = row.attributes['billing.amount_released'];
+  if (typeof amountReleased === 'string' && amountReleased !== '') {
+    return `已释放 ${amountReleased} 元 · 未扣费`;
+  }
+  const amount = row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
+  if (typeof amount === 'string' && amount !== '') {
+    const label = kind === 'settle' ? '实扣' : '预授权';
+    return `${estimated}${label} ${amount} 元`;
+  }
+  const input = row.attributes['usage.input_tokens'];
+  const output = row.attributes['usage.output_tokens'];
+  if (typeof input === 'number' || typeof output === 'number') {
+    return `${estimated}tokens ${input ?? 0}→${output ?? 0}`;
+  }
+  return row.service;
+}
+
 function buildSubtitle(row: SpanRow, kind: GraphNodeKind): string {
-  if (kind === 'http') {
-    const method = row.attributes['http.method'];
-    const code = row.attributes['http.status_code'];
-    return [typeof method === 'string' ? method : null, code != null ? `${code}` : null]
-      .filter(Boolean)
-      .join(' · ');
-  }
-  if (kind === 'upstream') {
-    return [row.channel, row.model].filter(Boolean).join(' · ');
-  }
-  if (kind === 'stream') {
-    // 流终态语义:中断带原因(复核线索),正常终态只报字节
-    const terminated = row.attributes['stream.terminated'];
-    const bytes = row.attributes['stream.bytes_relayed'];
-    return [
-      typeof terminated === 'string' ? `已中断 ${terminated}` : null,
-      typeof bytes === 'number' ? `${bytes} B` : null,
-    ]
-      .filter(Boolean)
-      .join(' · ');
-  }
-  if (kind === 'billing' || kind === 'settle') {
-    // 计费节点副标题带核心数字:预授权/实扣金额(元)或 token 汇总;
-    // 估算节点(billing.estimate / estimated 收尾)显式标注非真实获取
-    const estimated = row.attributes['usage.estimated'] === true ? '估算 · ' : '';
-    // 释放型收尾(billing.finalize: failed/released):直接回答「扣没扣钱」
-    const amountReleased = row.attributes['billing.amount_released'];
-    if (typeof amountReleased === 'string' && amountReleased !== '') {
-      return `已释放 ${amountReleased} 元 · 未扣费`;
-    }
-    const amount = row.attributes['billing.amount'] ?? row.attributes['billing.amount_reserved'];
-    if (typeof amount === 'string' && amount !== '') {
-      const label = kind === 'settle' ? '实扣' : '预授权';
-      return `${estimated}${label} ${amount} 元`;
-    }
-    const input = row.attributes['usage.input_tokens'];
-    const output = row.attributes['usage.output_tokens'];
-    if (typeof input === 'number' || typeof output === 'number') {
-      return `${estimated}tokens ${input ?? 0}→${output ?? 0}`;
-    }
-    return row.service;
-  }
+  if (kind === 'http') return httpSubtitle(row);
+  if (kind === 'upstream') return upstreamSubtitle(row);
+  if (kind === 'stream') return streamSubtitle(row);
+  if (kind === 'billing' || kind === 'settle') return billingSubtitle(row, kind);
   return row.service;
 }
 
@@ -138,6 +146,41 @@ function inferStatus(row: SpanRow, kind: GraphNodeKind): GraphNodeStatus {
 
 function childEdge(from: string, to: string): GraphEdge {
   return { id: `${from}->${to}`, from, to, kind: 'child' };
+}
+
+/** 按父分组生成执行线边:首节点接父(child),后续依次连前一个(next/fallback) */
+function buildEdges(sorted: SpanRow[]): GraphEdge[] {
+  // 按父分组(保持开始时间序);执行线:首节点接父,后续依次连前一个。
+  // 相邻 upstream 兄弟 = 渠道重试(fallback);其余相邻兄弟 = 时序推进(next)。
+  const byParent = new Map<string, SpanRow[]>();
+  for (const row of sorted) {
+    const key = row.parentSpanId ?? '__root__';
+    byParent.set(key, [...(byParent.get(key) ?? []), row]);
+  }
+  const edges: GraphEdge[] = [];
+  // 节点键集合:悬挂 parent(指向缺失 span)不出边——否则展示层收到 from=不存在节点的边
+  const nodeKeys = new Set(sorted.map((row) => row.spanId));
+  for (const [parentKey, children] of byParent) {
+    if (parentKey === '__root__') {
+      // 根层多个孤立 trace 碎片(跨服务未串联)不出边,仅出节点
+      continue;
+    }
+    if (!nodeKeys.has(parentKey)) continue; // 悬挂 parent:子照常出节点,边丢弃
+    const [first, ...rest] = children;
+    if (first === undefined) continue; // 分组只收非空批,防御性收窄
+    edges.push(childEdge(parentKey, first.spanId));
+    let prev = first;
+    for (const cur of rest) {
+      edges.push({
+        id: `${prev.spanId}->${cur.spanId}`,
+        from: prev.spanId,
+        to: cur.spanId,
+        kind: inferKind(prev) === 'upstream' && inferKind(cur) === 'upstream' ? 'fallback' : 'next',
+      });
+      prev = cur;
+    }
+  }
+  return edges;
 }
 
 export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
@@ -169,39 +212,10 @@ export function buildTraceGraph(spans: SpanRow[]): TraceGraph {
     };
   });
 
-  // 按父分组(保持开始时间序);执行线:首节点接父,后续依次连前一个。
-  // 相邻 upstream 兄弟 = 渠道重试(fallback);其余相邻兄弟 = 时序推进(next)。
-  const byParent = new Map<string, SpanRow[]>();
-  for (const row of sorted) {
-    const key = row.parentSpanId ?? '__root__';
-    byParent.set(key, [...(byParent.get(key) ?? []), row]);
-  }
-  const edges: GraphEdge[] = [];
-  // 节点键集合:悬挂 parent(指向缺失 span)不出边——否则展示层收到 from=不存在节点的边
-  const nodeKeys = new Set(sorted.map((row) => row.spanId));
-  for (const [parentKey, children] of byParent) {
-    if (parentKey === '__root__') {
-      // 根层多个孤立 trace 碎片(跨服务未串联)不出边,仅出节点
-      continue;
-    }
-    if (!nodeKeys.has(parentKey)) continue; // 悬挂 parent:子照常出节点,边丢弃
-    edges.push(childEdge(parentKey, children[0]!.spanId));
-    for (let i = 1; i < children.length; i++) {
-      const prev = children[i - 1]!;
-      const cur = children[i]!;
-      edges.push({
-        id: `${prev.spanId}->${cur.spanId}`,
-        from: prev.spanId,
-        to: cur.spanId,
-        kind: inferKind(prev) === 'upstream' && inferKind(cur) === 'upstream' ? 'fallback' : 'next',
-      });
-    }
-  }
-
   const errorCount = nodes.filter((n) => n.status === 'error').length;
   return {
     nodes,
-    edges,
+    edges: buildEdges(sorted),
     hasError: errorCount > 0,
     errorCount,
     totalDurationMs: endMs - startMs,

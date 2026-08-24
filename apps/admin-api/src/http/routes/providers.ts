@@ -17,7 +17,7 @@ export interface ProvidersRoutesDeps {
 
 export function providersRoutes(deps: ProvidersRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const providers = deps.controlPlane.providers;
+  const { providers } = deps.controlPlane;
 
   app.get('/v1/providers', async (c) => {
     const query = parseListQuery(c.req.query(), PROVIDER_SORTS, 'createdAt');

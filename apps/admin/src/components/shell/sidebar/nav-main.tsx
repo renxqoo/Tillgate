@@ -131,13 +131,10 @@ export function NavMain({ items }: NavMainProps) {
     return path === item.url;
   };
 
-  const isSubItemActive = (url: string) => {
-    return path === url;
-  };
+  const isSubItemActive = (url: string) => path === url;
 
-  const isSubmenuOpen = (item: NavMainParentItem) => {
-    return item.subItems.some((sub) => path.startsWith(sub.url));
-  };
+  const isSubmenuOpen = (item: NavMainParentItem) =>
+    item.subItems.some((sub) => path.startsWith(sub.url));
 
   return (
     <>

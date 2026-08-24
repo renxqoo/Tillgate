@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 
 /**
  * app 级架构门禁(§5.5/总纲 P5,机器验证不靠记忆):
@@ -54,7 +55,7 @@ describe('trace-receiver 架构门禁', () => {
   it('跨包 import 只走包名(禁 src 深导入/相对路径越界)', () => {
     for (const [name, code] of source) {
       const deepImports = [...code.matchAll(/from '(@tillgate\/[^']+)'/g)]
-        .map((match) => match[1]!)
+        .map((match) => defined(match[1], 'import specifier match group'))
         .filter((specifier) => !specifier.endsWith('composition'));
       for (const specifier of deepImports) {
         expect(specifier.startsWith('@tillgate/'), `${name} 非法依赖 ${specifier}`).toBe(true);

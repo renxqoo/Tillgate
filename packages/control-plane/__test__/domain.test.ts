@@ -3,6 +3,7 @@
  * 渠道校验与凭证解析 / 供应商词表校验（v1 对应测试组等价迁移）。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { isFreeByPrice, freePriceConsistent } from '../src/domain/model/model-pricing';
 import { validateModelCreate, validateModelPatch, PRICING_UNITS } from '../src/domain/model/model';
 import {
@@ -68,12 +69,12 @@ describe('资金数值域（铁三角：指数/超界拒绝，绝不溢出 PG）
     expect(parseNonNegativeAmount(raw)).toBeNull();
   });
   it('合法十进制串解析', () => {
-    expect(parseNonNegativeAmount('0')!.toString()).toBe('0');
-    expect(parseNonNegativeAmount('12.5')!.toString()).toBe('12.5');
+    expect(defined(parseNonNegativeAmount('0')).toString()).toBe('0');
+    expect(defined(parseNonNegativeAmount('12.5')).toString()).toBe('12.5');
     expect(parsePositiveAmount('0')).toBeNull();
-    expect(parsePositiveAmount('0.01')!.toString()).toBe('0.01');
-    expect(parseSignedNonZeroAmount('-5')!.toString()).toBe('-5');
-    expect(parseSignedNonZeroAmount('5')!.toString()).toBe('5');
+    expect(defined(parsePositiveAmount('0.01')).toString()).toBe('0.01');
+    expect(defined(parseSignedNonZeroAmount('-5')).toString()).toBe('-5');
+    expect(defined(parseSignedNonZeroAmount('5')).toString()).toBe('5');
     expect(parseSignedNonZeroAmount('0')).toBeNull();
   });
 });
@@ -307,8 +308,8 @@ describe('供应商词表校验（单一真相 = 注入词表）', () => {
     const err = (() => {
       try {
         assertVendor(CAPABILITIES, 'nonexistent-vendor');
-      } catch (e) {
-        return e;
+      } catch (error) {
+        return error;
       }
     })();
     expect(isBusinessError(err)).toBe(true);

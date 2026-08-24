@@ -13,6 +13,7 @@ import {
   createInMemoryBillingWorld,
   seedSubscription,
 } from '../src/testing/in-memory-billing-store.js';
+import { defined } from './defined.js';
 
 let userSeq = 500;
 const nextUser = () => (userSeq += 1);
@@ -100,7 +101,7 @@ describe('payg 来源', () => {
       over: '0',
       now: new Date(),
     });
-    const account = (await wallet.accounts(userId))[0]!;
+    const account = defined((await wallet.accounts(userId))[0]);
     expect(account.inFlight).toBe('0');
     expect(account.balance).toBe('7');
     // 0 元结算：release 路径（冻结单终态 released 而非死信重试）
@@ -119,8 +120,8 @@ describe('payg 来源', () => {
       over: '0',
       now: new Date(),
     });
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('7');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('7');
   });
 
   it('settle 超额：#over 补充授权（负余额路径）+ 原单结算，总扣款精确', async () => {
@@ -142,7 +143,7 @@ describe('payg 来源', () => {
       over: '3',
       now: new Date(),
     });
-    const account = (await wallet.accounts(userId))[0]!;
+    const account = defined((await wallet.accounts(userId))[0]);
     expect(account.balance).toBe('-3'); // 2 − 5
     expect(account.inFlight).toBe('0');
   });
@@ -159,7 +160,7 @@ describe('payg 来源', () => {
       context: { ...ctx, userId },
     });
     await payg.release(tx, reservation);
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
   });
 });
 
@@ -203,7 +204,7 @@ describe('subscription 成员路径（org 限额 probe）', () => {
       resolved: { subscriptionId, allowPaygFallback: true },
     };
     // 套餐 10 − used 2 = 8；日限 3 − spent 1 = 2；月配额 8 − spent 1 = 7 → min = 2
-    world.fixtures.subscriptions.get(subscriptionId)!.usedAmount = '2';
+    defined(world.fixtures.subscriptions.get(subscriptionId)).usedAmount = '2';
     world.fixtures.settledSpend.push({
       userId: memberId,
       apiKeyId: null,
@@ -234,7 +235,7 @@ describe('subscription 成员路径（org 限额 probe）', () => {
       context,
     });
     // 直接掏空 reserved 再按原额释放 → 守卫落空
-    world.fixtures.subscriptions.get(subscriptionId)!.reservedAmount = '0';
+    defined(world.fixtures.subscriptions.get(subscriptionId)).reservedAmount = '0';
     await expectCode(() => subscription.release(tx, reservation), 'billing.state_conflict');
   });
 });
@@ -261,7 +262,7 @@ describe('subscription 来源', () => {
       over: '0',
       now: new Date(),
     });
-    const sub = world.fixtures.subscriptions.get(subscriptionId)!;
+    const sub = defined(world.fixtures.subscriptions.get(subscriptionId));
     expect(sub.usedAmount).toBe('3');
     expect(sub.reservedAmount).toBe('0');
     // 部分释放路径：另一笔预留按 amount 部分归还
@@ -273,7 +274,7 @@ describe('subscription 来源', () => {
       context,
     });
     await subscription.release(tx, partial, '1');
-    expect(world.fixtures.subscriptions.get(subscriptionId)!.reservedAmount).toBe('1');
+    expect(defined(world.fixtures.subscriptions.get(subscriptionId)).reservedAmount).toBe('1');
   });
 
   it('守卫脱节：reserved 不足扣减 → state_conflict（红灯回滚）', async () => {
@@ -324,8 +325,8 @@ describe('subscription 来源', () => {
       over: '2',
       now: new Date(),
     });
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('-1');
-    expect(world.fixtures.subscriptions.get(subscriptionId)!.usedAmount).toBe('5');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('-1');
+    expect(defined(world.fixtures.subscriptions.get(subscriptionId)).usedAmount).toBe('5');
   });
 
   it('reserve 竞态输家（exhausted）/ 失效（inactive）→ 目录拒绝', async () => {
@@ -344,7 +345,7 @@ describe('subscription 来源', () => {
         }),
       'billing.subscription_quota_exhausted',
     );
-    world.fixtures.subscriptions.get(subscriptionId)!.status = 1;
+    defined(world.fixtures.subscriptions.get(subscriptionId)).status = 1;
     await expectCode(
       () =>
         subscription.reserve(tx, {

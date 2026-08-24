@@ -3,7 +3,7 @@
  * 整组重签(只存 HMAC 哈希,展示仅此一次)。
  */
 import { randomInt } from 'node:crypto';
-import { advisoryLock, runTx } from '@tillgate/db';
+import { advisoryLock, runTx, type DbTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';
@@ -22,6 +22,36 @@ export function matchTotp(ctx: IdentityUseCaseContext, row: TotpRow, code: strin
     ctx.clock.now().getTime(),
     ctx.config.totp.stepSec,
     ctx.config.totp.windowSteps,
+  );
+}
+
+/** 锁内确认临界区:CAS 置 confirmed(步号落库防重放)+ 恢复码哈希整组重签 + 同事务审计 */
+async function confirmTotpWithinLock(
+  ctx: IdentityUseCaseContext,
+  tx: DbTx,
+  args: { userId: number; step: number; recoveryCodeHashes: string[] },
+): Promise<void> {
+  await advisoryLock(tx, credentialSetLockKey(args.userId));
+  const outcome = await ctx.mfaStore.confirmEnrollment(tx, {
+    userId: args.userId,
+    step: args.step,
+    recoveryCodeHashes: args.recoveryCodeHashes,
+  });
+  if (outcome.status === 'already_confirmed') {
+    throw identityErrors.business('totp_already_enrolled', { userId: args.userId });
+  }
+  if (outcome.status === 'not_enrolled') {
+    throw identityErrors.business('totp_not_enrolled', { userId: args.userId });
+  }
+  await auditWithinTx(
+    tx,
+    ctx,
+    auditEvent(ctx.clock.now(), {
+      actor: `user:${args.userId}`,
+      action: 'mfa.confirm',
+      targetType: 'user',
+      targetId: args.userId,
+    }),
   );
 }
 
@@ -52,30 +82,7 @@ export async function confirmTotp(
 
   await runTx(
     ctx.db,
-    async (tx) => {
-      await advisoryLock(tx, credentialSetLockKey(userId));
-      const outcome = await ctx.mfaStore.confirmEnrollment(tx, {
-        userId,
-        step,
-        recoveryCodeHashes,
-      });
-      if (outcome.status === 'already_confirmed') {
-        throw identityErrors.business('totp_already_enrolled', { userId });
-      }
-      if (outcome.status === 'not_enrolled') {
-        throw identityErrors.business('totp_not_enrolled', { userId });
-      }
-      await auditWithinTx(
-        tx,
-        ctx,
-        auditEvent(ctx.clock.now(), {
-          actor: `user:${userId}`,
-          action: 'mfa.confirm',
-          targetType: 'user',
-          targetId: userId,
-        }),
-      );
-    },
+    (tx) => confirmTotpWithinLock(ctx, tx, { userId, step, recoveryCodeHashes }),
     ctx.txRetry,
   );
 

@@ -27,6 +27,15 @@ export type { MockUpstream, RecordedRequest, UpstreamScript } from './upstream';
 import { E2E_UPSTREAM_KEY, startMockUpstream, type MockUpstream } from './upstream';
 
 /** 种子事实（v1 dev 库 RX-M3 渠道口径——断言值与 v1 e2e 逐条等价） */
+// 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
+// （本分区与 security/、billing-recovery/ 共用——两者均经 ../gateway/kit 导入）
+export function defined<T>(value: T | null | undefined, label = 'value'): T {
+  if (value === null || value === undefined) {
+    throw new Error(`expected ${label} to be defined`);
+  }
+  return value;
+}
+
 export const E2E_MODEL = 'RX-M3';
 export const E2E_REAL_MODEL = 'MiniMax-M3';
 export const E2E_INPUT_PRICE = '2.1';
@@ -92,11 +101,40 @@ async function replayMigrations(db: Db, schema: string): Promise<void> {
 function pgErrorCode(error: unknown): string | undefined {
   let cur: unknown = error;
   for (let depth = 0; cur != null && depth < 5; depth++) {
-    const code = (cur as { code?: unknown }).code;
+    const { code } = cur as { code?: unknown };
     if (typeof code === 'string') return code;
     cur = (cur as { cause?: unknown }).cause;
   }
   return undefined;
+}
+
+/** 世界种子落库：provider/channel/mapping/model_channels（v1 dev 库口径事实值） */
+async function seedWorld(
+  db: Db,
+  upstream: MockUpstream,
+  cipher: ReturnType<typeof createCipher>,
+): Promise<E2ESeed> {
+  const one = async (statement: ReturnType<typeof sql>) => {
+    const r = await db.execute(statement);
+    return r.rows[0] as Record<string, unknown>;
+  };
+  const provider = await one(sql`
+    insert into providers (name, base_url, protocol, vendor)
+    values ('e2e-minimax', ${upstream.url}, 'openai-compatible', 'openai') returning id`);
+  const channel = await one(sql`
+    insert into channels (provider_id, name, api_key_enc, rpm_limit, upstream_budget)
+    values (${provider.id}, 'e2e-ch', ${cipher.encrypt(E2E_UPSTREAM_KEY)}, 10000, '1000') returning id`);
+  const mapping = await one(sql`
+    insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
+    values (${E2E_MODEL}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE}) returning id`);
+  await db.execute(
+    sql`insert into model_channels (mapping_id, channel_id, weight, priority) values (${mapping.id}, ${channel.id}, 3, 2)`,
+  );
+  return {
+    mappingId: Number(mapping.id),
+    channelId: Number(channel.id),
+    providerId: Number(provider.id),
+  };
 }
 
 export async function setupE2EWorld(): Promise<E2EWorld> {
@@ -117,34 +155,13 @@ export async function setupE2EWorld(): Promise<E2EWorld> {
   await db.execute(sql.raw(`drop schema if exists ${schema} cascade`));
   await db.execute(sql.raw(`create schema ${schema}`));
   await replayMigrations(db, schema);
-
-  const cipher = createCipher(ENCRYPTION_KEY);
-  const one = async (statement: ReturnType<typeof sql>) => {
-    const r = await db.execute(statement);
-    return r.rows[0] as Record<string, unknown>;
-  };
-  const provider = await one(sql`
-    insert into providers (name, base_url, protocol, vendor)
-    values ('e2e-minimax', ${upstream.url}, 'openai-compatible', 'openai') returning id`);
-  const channel = await one(sql`
-    insert into channels (provider_id, name, api_key_enc, rpm_limit, upstream_budget)
-    values (${provider.id}, 'e2e-ch', ${cipher.encrypt(E2E_UPSTREAM_KEY)}, 10000, '1000') returning id`);
-  const mapping = await one(sql`
-    insert into model_mappings (external_name, real_model, input_price, output_price, cache_input_price)
-    values (${E2E_MODEL}, ${E2E_REAL_MODEL}, ${E2E_INPUT_PRICE}, ${E2E_OUTPUT_PRICE}, ${E2E_CACHE_INPUT_PRICE}) returning id`);
-  await db.execute(
-    sql`insert into model_channels (mapping_id, channel_id, weight, priority) values (${mapping.id}, ${channel.id}, 3, 2)`,
-  );
+  const seed = await seedWorld(db, upstream, createCipher(ENCRYPTION_KEY));
 
   return {
     db,
     schema,
     scopedUrl,
-    seed: {
-      mappingId: Number(mapping.id),
-      channelId: Number(channel.id),
-      providerId: Number(provider.id),
-    },
+    seed,
     upstream,
     async teardown() {
       await upstream.close();
@@ -184,27 +201,12 @@ export interface E2EGateway {
   stop(): Promise<void>;
 }
 
-/** 在世界上再挂一个网关实例（同一 schema 可挂多份——cost-drain 双预扣策略形态） */
-export async function startE2EGateway(
-  world: E2EWorld,
-  env: Record<string, string> = {},
-): Promise<E2EGateway> {
-  const redisUrl = E2E_REDIS_URL ?? 'redis://:root123@127.0.0.1:6379';
-  const config = loadGatewayConfig({
-    DATABASE_URL: world.scopedUrl,
-    REDIS_URL: redisUrl,
-    CHANNEL_API_KEY_ENCRYPTION: ENCRYPTION_KEY,
-    JWT_SECRET,
-    NODE_ENV: 'test',
-    OTEL_TRACES_MODE: 'off',
-    // 并发负载（④ 20 路）连接池对齐 v1 kit 口径——缺省 10 会连接超时 500
-    DB_POOL_MAX: '40',
-    // mock 上游在 127.0.0.1——SSRF 逃生门仅非生产可用（与生产装配同口径）
-    GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
-    ...env,
-  });
-  const assembly = assembleGateway(config);
-  const app = createGatewayApp({
+/** 网关 app 装配接线（options 平铺——纯装配数据搬运，从启动工厂拆出控函数行数） */
+function buildGatewayAppOptions(
+  assembly: GatewayAssembly,
+  config: ReturnType<typeof loadGatewayConfig>,
+): Parameters<typeof createGatewayApp>[0] {
+  return {
     inference: assembly.inference,
     reader: {
       resolveKeyByHash: (keyHash) => assembly.accounts.resolveKeyByHash(keyHash),
@@ -227,9 +229,34 @@ export async function startE2EGateway(
     oauthIpGuard: assembly.authGuards.ipGuard,
     trustedProxyHops: 0,
     logger: assembly.logger,
+  };
+}
+
+/** 在世界上再挂一个网关实例（同一 schema 可挂多份——cost-drain 双预扣策略形态） */
+export async function startE2EGateway(
+  world: E2EWorld,
+  env: Record<string, string> = {},
+): Promise<E2EGateway> {
+  const redisUrl = E2E_REDIS_URL ?? 'redis://:root123@127.0.0.1:6379';
+  const config = loadGatewayConfig({
+    DATABASE_URL: world.scopedUrl,
+    REDIS_URL: redisUrl,
+    CHANNEL_API_KEY_ENCRYPTION: ENCRYPTION_KEY,
+    JWT_SECRET,
+    NODE_ENV: 'test',
+    OTEL_TRACES_MODE: 'off',
+    // 并发负载（④ 20 路）连接池对齐 v1 kit 口径——缺省 10 会连接超时 500
+    DB_POOL_MAX: '40',
+    // mock 上游在 127.0.0.1——SSRF 逃生门仅非生产可用（与生产装配同口径）
+    GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
+    ...env,
   });
+  const assembly = assembleGateway(config);
+  const app = createGatewayApp(buildGatewayAppOptions(assembly, config));
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
-  await new Promise<void>((resolve) => server.once('listening', resolve));
+  await new Promise<void>((resolve) => {
+    server.once('listening', resolve);
+  });
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
   return {
@@ -238,7 +265,9 @@ export async function startE2EGateway(
     server,
     async stop() {
       (server as unknown as { closeAllConnections?: () => void }).closeAllConnections?.();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
       assembly.inference.close();
       await assembly.redis.quit();
       await assembly.closeDb();
@@ -283,7 +312,7 @@ export class E2EKeys {
 
   async walletOf(userId: number): Promise<{ balance: string; inFlight: string }> {
     const rows = await this.billing.wallet.accounts(userId);
-    const row = rows.find((a) => a.kind === 'user') ?? rows[0]!;
+    const row = defined(rows.find((a) => a.kind === 'user') ?? rows[0], 'wallet account row');
     return { balance: row.balance, inFlight: row.inFlight };
   }
 
@@ -320,7 +349,7 @@ export class E2EKeys {
         const busy = await this.world.db.execute<{ n: number }>(sql`
           select count(*)::int as n from billing_requests
           where user_id = ${userId} and status = 'processing'`);
-        if (busy.rows[0]!.n === 0 || Date.now() > deadline) return;
+        if (defined(busy.rows[0], 'processing count').n === 0 || Date.now() > deadline) return;
         await sleep(200);
         continue;
       }
@@ -344,7 +373,7 @@ export class E2EKeys {
     const usage = await this.world.db.execute<{ sum: string | null }>(sql`
       select sum(amount)::text as sum from usage_logs where user_id = ${userId}`);
     const walletState = await this.walletOf(userId);
-    const charged = usage.rows[0]!.sum ?? '0';
+    const charged = defined(usage.rows[0], 'usage sum').sum ?? '0';
     expectDecimalEq(walletState.balance, new Decimal(funded).minus(charged).toString());
     expectDecimalEq(walletState.inFlight, '0');
     return { balance: walletState.balance, charged };
@@ -370,6 +399,7 @@ export async function resetChannelHealth(gateway: E2EGateway): Promise<void> {
   if (keys.length > 0) await redis.del(...keys);
 }
 
+// eslint-disable-next-line max-params -- e2e 装置导出辅助，签名沿 v1 位置参数（调用点遍布各测试文件，改 options 对象会放大无谓 diff）
 export const e2ePost = (
   baseUrl: string,
   raw: string,
@@ -384,7 +414,9 @@ export const e2ePost = (
   });
 
 export function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise((r) => {
+    setTimeout(r, ms);
+  });
 }
 
 /** 根 .env 的 ENCRYPTION_KEY（rxm3 real 件：dev 库渠道密钥解密口径与生产装配一致） */

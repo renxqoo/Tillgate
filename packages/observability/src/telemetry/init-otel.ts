@@ -2,9 +2,9 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { resourceFromAttributes } from '@opentelemetry/resources';
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { resourceFromAttributes, type Resource } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { observabilityErrors } from '../errors';
 import { createMemoryTraceViewer, type MemoryTraceViewer } from './memory-viewer';
 import { createLogSpanProcessor, type SpanLogSink } from './log-span-processor';
@@ -48,74 +48,78 @@ export interface OtelHandle {
  *   - otlp:BatchSpanProcessor → OTLP collector(traces + metrics,双通道同令牌)
  * otlp 缺 endpoint 启动期 fail-fast(G2:authToken 无 env 回落,装配显式传)。
  */
-export function initOtel(options: InitOtelOptions): OtelHandle {
-  const { serviceName, serviceVersion, mode, endpoint, logger, metricsExportIntervalMs } = options;
-  if (mode === 'off') {
-    return { mode, shutdown: async () => {} };
-  }
-  if (mode === 'otlp' && !endpoint) {
-    throw observabilityErrors.business('otel_endpoint_missing', { serviceName });
-  }
-  // 铁律 3 收口:console 模式的日志出口与 otlp 模式的指标周期必填,不再藏缺省
-  if (mode === 'console' && logger == null) {
+/** 资源属性(三种启动模式共用) */
+function buildResource(serviceName: string, serviceVersion: string): Resource {
+  return resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_SERVICE_VERSION]: serviceVersion,
+  });
+}
+
+/** memory 模式:进程内环形缓冲处理器 + 查看页句柄 */
+function startMemorySdk(options: InitOtelOptions, resource: Resource): OtelHandle {
+  const memory = createMemoryTraceViewer();
+  const sdk = new NodeSDK({ resource, spanProcessors: [memory.processor] });
+  sdk.start();
+  return { mode: options.mode, shutdown: () => sdk.shutdown(), memory };
+}
+
+/** console 模式:logger 必填(铁律 3,使用点守卫),一行结构化日志处理器 */
+function startConsoleSdk(options: InitOtelOptions, resource: Resource): OtelHandle {
+  const { logger } = options;
+  if (logger == null) {
     throw observabilityErrors.business('otel_option_missing', {
       field: 'logger',
       reason: 'required when mode is console',
     });
   }
-  if (mode === 'otlp' && (metricsExportIntervalMs == null || metricsExportIntervalMs <= 0)) {
+  const sdk = new NodeSDK({ resource, spanProcessors: [createLogSpanProcessor(logger)] });
+  sdk.start();
+  return { mode: options.mode, shutdown: () => sdk.shutdown() };
+}
+
+/** otlp 模式:endpoint 与指标周期必填(使用点守卫),traces + metrics 双通道同令牌 */
+function startOtlpSdk(options: InitOtelOptions, resource: Resource): OtelHandle {
+  const { serviceName, endpoint, metricsExportIntervalMs, authToken } = options;
+  if (endpoint == null) {
+    throw observabilityErrors.business('otel_endpoint_missing', { serviceName });
+  }
+  if (metricsExportIntervalMs == null || metricsExportIntervalMs <= 0) {
     throw observabilityErrors.business('otel_option_missing', {
       field: 'metricsExportIntervalMs',
       reason: 'positive integer required when mode is otlp',
     });
   }
-
-  const resource = resourceFromAttributes({
-    [ATTR_SERVICE_NAME]: serviceName,
-    [ATTR_SERVICE_VERSION]: serviceVersion,
-  });
-  const authHeaders = options.authToken
-    ? { headers: { Authorization: `Bearer ${options.authToken}` } }
-    : {};
-
-  let memory: MemoryTraceViewer | undefined;
-  let spanProcessors;
-  if (mode === 'memory') {
-    memory = createMemoryTraceViewer();
-    spanProcessors = [memory.processor];
-  } else if (mode === 'console') {
-    spanProcessors = [createLogSpanProcessor(logger!)];
-  } else {
-    spanProcessors = [
+  const authHeaders = authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : {};
+  const sdk = new NodeSDK({
+    resource,
+    spanProcessors: [
       new BatchSpanProcessor(
         new OTLPTraceExporter({
           url: `${endpoint}/v1/traces`,
           ...authHeaders,
         }),
       ),
-    ];
-  }
-
-  const sdk = new NodeSDK({
-    resource,
-    spanProcessors,
-    ...(mode === 'otlp'
-      ? {
-          metricReader: new PeriodicExportingMetricReader({
-            exporter: new OTLPMetricExporter({
-              url: `${endpoint}/v1/metrics`,
-              ...authHeaders,
-            }),
-            exportIntervalMillis: metricsExportIntervalMs!,
-          }),
-        }
-      : {}),
+    ],
+    metricReader: new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: `${endpoint}/v1/metrics`,
+        ...authHeaders,
+      }),
+      exportIntervalMillis: metricsExportIntervalMs,
+    }),
   });
-
   sdk.start();
-  return {
-    mode,
-    shutdown: () => sdk.shutdown(),
-    ...(memory ? { memory } : {}),
-  };
+  return { mode: options.mode, shutdown: () => sdk.shutdown() };
+}
+
+export function initOtel(options: InitOtelOptions): OtelHandle {
+  const { serviceName, serviceVersion, mode } = options;
+  if (mode === 'off') {
+    return { mode, shutdown: async () => {} };
+  }
+  const resource = buildResource(serviceName, serviceVersion);
+  if (mode === 'memory') return startMemorySdk(options, resource);
+  if (mode === 'console') return startConsoleSdk(options, resource);
+  return startOtlpSdk(options, resource);
 }

@@ -67,18 +67,41 @@ function snapshot(span: ReadableSpan): ViewableSpan {
   };
 }
 
+/** 淘汰最旧 trace 直到 trace 条数与总 span 数双上限满足;返回淘汰后的总 span 数 */
+function evictOldTraces(traces: Map<string, ViewableSpan[]>, totalSpans: number): number {
+  const oldest = [...traces.keys()];
+  let total = totalSpans;
+  while ((traces.size > MAX_TRACES || total > MAX_SPANS_TOTAL) && oldest.length > 0) {
+    const key = oldest.shift();
+    if (key === undefined) break;
+    total -= traces.get(key)?.length ?? 0;
+    traces.delete(key);
+  }
+  return total;
+}
+
+/** 单 trace 的查看页视图模型:根推断(父不在集内)、聚合时长/服务集、时间序 spans */
+function toViewableTrace(spans: ViewableSpan[]): ViewableTrace {
+  const root =
+    spans.find((s) => !s.parentSpanId || !spans.some((o) => o.spanId === s.parentSpanId)) ??
+    spans[0];
+  if (root === undefined) throw new Error('expected non-empty span group');
+  return {
+    traceId: root.traceId,
+    rootName: root.name,
+    startTimeMs: Math.min(...spans.map((s) => s.startTimeMs)),
+    durationMs:
+      Math.max(...spans.map((s) => s.endTimeMs)) - Math.min(...spans.map((s) => s.startTimeMs)),
+    spanCount: spans.length,
+    hasError: spans.some((s) => s.status.code === SpanStatusCode.ERROR),
+    services: [...new Set(spans.map((s) => s.service))],
+    spans: spans.toSorted((a, b) => a.startTimeMs - b.startTimeMs),
+  };
+}
+
 export function createMemoryTraceViewer(): MemoryTraceViewer {
   const traces = new Map<string, ViewableSpan[]>();
   let totalSpans = 0;
-
-  function evictIfNeeded(): void {
-    const oldest = [...traces.keys()];
-    while ((traces.size > MAX_TRACES || totalSpans > MAX_SPANS_TOTAL) && oldest.length > 0) {
-      const key = oldest.shift()!;
-      totalSpans -= traces.get(key)?.length ?? 0;
-      traces.delete(key);
-    }
-  }
 
   const processor: SpanProcessor = {
     onStart() {
@@ -90,7 +113,7 @@ export function createMemoryTraceViewer(): MemoryTraceViewer {
       list.push(snap);
       traces.set(snap.traceId, list);
       totalSpans += 1;
-      evictIfNeeded();
+      totalSpans = evictOldTraces(traces, totalSpans);
     },
     async shutdown() {
       traces.clear();
@@ -107,21 +130,7 @@ export function createMemoryTraceViewer(): MemoryTraceViewer {
       const grouped: ViewableTrace[] = [];
       for (const spans of traces.values()) {
         if (spans.length === 0) continue;
-        const root =
-          spans.find((s) => !s.parentSpanId || !spans.some((o) => o.spanId === s.parentSpanId)) ??
-          spans[0]!;
-        grouped.push({
-          traceId: root.traceId,
-          rootName: root.name,
-          startTimeMs: Math.min(...spans.map((s) => s.startTimeMs)),
-          durationMs:
-            Math.max(...spans.map((s) => s.endTimeMs)) -
-            Math.min(...spans.map((s) => s.startTimeMs)),
-          spanCount: spans.length,
-          hasError: spans.some((s) => s.status.code === SpanStatusCode.ERROR),
-          services: [...new Set(spans.map((s) => s.service))],
-          spans: spans.toSorted((a, b) => a.startTimeMs - b.startTimeMs),
-        });
+        grouped.push(toViewableTrace(spans));
       }
       return grouped.toSorted((a, b) => b.startTimeMs - a.startTimeMs).slice(0, limit);
     },

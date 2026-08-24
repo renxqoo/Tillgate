@@ -29,7 +29,7 @@ import { geminiNativeRoutes } from './http/routes/native-gemini';
 import { modelsRoutes, type ModelsReader } from './http/routes/models';
 import { modalityMultipartRoutes } from './http/routes/modality-multipart';
 import { generationRoutes } from './http/routes/generation';
-import { oauthTokenRoutes } from './http/routes/oauth-token';
+import { oauthTokenRoutes, type OAuthTokenDeps } from './http/routes/oauth-token';
 import type { AuthFailureGuard } from '@tillgate/runtime';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from './http/openai-error-face';
 
@@ -40,7 +40,7 @@ export interface GatewayAppDeps {
   /** OAuth client_credentials 凭证校验（accounts verifyAppClient 装配绑定） */
   verifyAppClient: Parameters<ReturnType<typeof oauthTokenRoutes>['post']>[0] extends never
     ? never
-    : import('./http/routes/oauth-token').OAuthTokenDeps['verifyAppClient'];
+    : OAuthTokenDeps['verifyAppClient'];
   requestLogs: RequestLogStore;
   /** Redis 探针（/readyz；缺省只探 db） */
   redisProbe?: { ping(): Promise<unknown> };
@@ -66,6 +66,7 @@ export interface GatewayAppDeps {
   logger?: { error(obj: unknown, msg: string): void };
 }
 
+// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约（铁律 22 ①）
 export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
@@ -144,7 +145,11 @@ export function createGatewayApp(deps: GatewayAppDeps): Hono<AuthEnv> {
     app.route(endpoint.path, inferenceRoutes(routeDeps, endpoint));
   }
   // OpenAI legacy 引擎别名（pre-1.0 SDK 走 /v1/engines/:model/embeddings）
-  const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings')!;
+  const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings');
+  if (embeddings == null) {
+    // 端点注册表为冻结形状（architecture 快照锁定）；缺失即注册表漂移，启动 fail-fast
+    throw new Error('inference endpoint registry missing /v1/embeddings');
+  }
   app.use('/v1/engines/:model/embeddings', authMiddleware());
   app.route('/v1/engines/:model', enginesAliasRoutes(routeDeps, embeddings));
   // Gemini 原生入口（/v1beta/models/:model:generateContent|streamGenerateContent）

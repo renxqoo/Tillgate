@@ -24,7 +24,7 @@ const planRow = {
 
 describe('GET|POST|PATCH|DELETE /v1/plans', () => {
   it('创建 201 + 金额归一 + 后置审计;kind×周期 4xx → billing.invalid_period_days', async () => {
-    const postAudit = vi.fn(async () => undefined);
+    const postAudit = vi.fn(async () => {});
     const app2 = createAdminApp({
       ...fakeDeps({
         plans: {

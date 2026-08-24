@@ -38,6 +38,7 @@ export interface AdjustChannelResult {
   readonly replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 用例编排:校验→凭证→事务→回放判定的顺序步骤
 export async function adjustChannel(
   deps: AdjustChannelDeps,
   input: AdjustChannelInput,

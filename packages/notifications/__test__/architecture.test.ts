@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 
 const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -45,8 +46,8 @@ function layerOf(path: string): SourceFile['layer'] {
 const files: SourceFile[] = walk(srcDir).map((path) => ({
   path,
   layer: layerOf(path),
-  imports: [...readFileSync(`${srcDir}/${path}`, 'utf-8').matchAll(/from\s+'([^']+)'/g)].map(
-    (m) => m[1]!,
+  imports: [...readFileSync(`${srcDir}/${path}`, 'utf-8').matchAll(/from\s+'([^']+)'/g)].map((m) =>
+    defined(m[1], 'import path'),
   ),
 }));
 
@@ -114,8 +115,9 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
 
   it('adapters 只被根装配面引用(notifications.ts/composition.ts)', () => {
     for (const f of files) {
-      if (f.path === 'notifications.ts' || f.path === 'composition.ts' || f.layer === 'adapters')
+      if (f.path === 'notifications.ts' || f.path === 'composition.ts' || f.layer === 'adapters') {
         continue;
+      }
       for (const spec of f.imports) {
         expect(
           spec.startsWith('../adapters/') || spec.startsWith('./adapters/'),

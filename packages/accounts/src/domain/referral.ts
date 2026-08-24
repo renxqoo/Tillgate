@@ -7,7 +7,7 @@ import { FIELD_LIMITS } from './fields.js';
 
 /** userId → aff 码:`u` + base36(v1 domain/referral.ts) */
 export function encodeAffCode(userId: number): string {
-  return 'u' + userId.toString(36);
+  return `u${userId.toString(36)}`;
 }
 
 /** aff 码 → userId;畸形(空/无 u 前缀/u0/非 base36/超长)返回 null */

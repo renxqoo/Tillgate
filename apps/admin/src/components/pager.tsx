@@ -32,13 +32,49 @@ function buildPages(page: number, totalPages: number): Array<number | '...'> {
   let prev = 0;
   for (const p of sorted) {
     const gap = p - prev;
-    if (gap === 2)
-      out.push(prev + 1); // 只缺 1 页 → 直接显示该页，不用省略号
+    if (gap === 2) {
+      out.push(prev + 1);
+    } // 只缺 1 页 → 直接显示该页，不用省略号
     else if (gap > 2) out.push('...');
     out.push(p);
     prev = p;
   }
   return out;
+}
+
+/** 单个页码控件：受控模式渲染 button，URL 模式渲染链接 */
+function PageControl({
+  target,
+  current,
+  reachable,
+  href,
+  onPageChange,
+  label,
+}: {
+  target: number;
+  current: number;
+  reachable: boolean;
+  href: string;
+  onPageChange?: (page: number) => void;
+  label: string;
+}) {
+  return onPageChange ? (
+    <Button
+      type="button"
+      variant={target === current ? 'outline' : 'ghost'}
+      size="icon"
+      onClick={() => reachable && onPageChange(target)}
+      aria-current={target === current ? 'page' : undefined}
+      aria-label={label}
+      disabled={target === current}
+    >
+      {target}
+    </Button>
+  ) : (
+    <PaginationLink href={href} isActive={target === current} aria-label={label}>
+      {target}
+    </PaginationLink>
+  );
 }
 
 /**
@@ -86,29 +122,6 @@ export function Pager({
 
   const disabledClass = 'pointer-events-none opacity-50';
 
-  const PageControl = ({ target }: { target: number }) =>
-    onPageChange ? (
-      <Button
-        type="button"
-        variant={target === page ? 'outline' : 'ghost'}
-        size="icon"
-        onClick={() => reachable(target) && onPageChange(target)}
-        aria-current={target === page ? 'page' : undefined}
-        aria-label={t('pageN', { page: target })}
-        disabled={target === page}
-      >
-        {target}
-      </Button>
-    ) : (
-      <PaginationLink
-        href={makeHref(target)}
-        isActive={target === page}
-        aria-label={t('pageN', { page: target })}
-      >
-        {target}
-      </PaginationLink>
-    );
-
   return (
     <div className={cn('flex w-full flex-wrap items-center justify-between gap-3', className)}>
       <span>
@@ -144,7 +157,14 @@ export function Pager({
               </PaginationItem>
             ) : (
               <PaginationItem key={p}>
-                <PageControl target={p} />
+                <PageControl
+                  target={p}
+                  current={page}
+                  reachable={reachable(p)}
+                  href={makeHref(p)}
+                  onPageChange={onPageChange}
+                  label={t('pageN', { page: p })}
+                />
               </PaginationItem>
             ),
           )}

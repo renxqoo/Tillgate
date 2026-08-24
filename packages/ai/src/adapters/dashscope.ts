@@ -33,6 +33,20 @@ import { OpenAICompatibleAdapter } from './openai-compatible';
  *
  * base_url 约定：根域名（https://dashscope.aliyuncs.com），不带尾部路径。
  */
+/** 原生形 choices[].message.content[].image → 图片 url 列表（文生图文生视频产物） */
+function collectImageUrls(choices: unknown[]): string[] {
+  const urls: string[] = [];
+  for (const choice of choices) {
+    const content = asRecord(asRecord(choice)?.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      const url = asRecord(part)?.image;
+      if (typeof url === 'string' && url !== '') urls.push(url);
+    }
+  }
+  return urls;
+}
+
 export class DashScopeAdapter extends OpenAICompatibleAdapter implements ProtocolAdapter {
   readonly protocol: string = 'dashscope';
   readonly supportedEndpoints: readonly Endpoint[] = ['chat', 'embeddings', 'images'];
@@ -106,15 +120,7 @@ export class DashScopeAdapter extends OpenAICompatibleAdapter implements Protoco
     const output = asRecord(record?.output);
     const choices = output?.choices;
     if (!Array.isArray(choices)) return body;
-    const urls: string[] = [];
-    for (const choice of choices) {
-      const content = asRecord(asRecord(choice)?.message)?.content;
-      if (!Array.isArray(content)) continue;
-      for (const part of content) {
-        const url = asRecord(part)?.image;
-        if (typeof url === 'string' && url !== '') urls.push(url);
-      }
-    }
+    const urls = collectImageUrls(choices);
     const usage = asRecord(record?.usage);
     const width = typeof usage?.width === 'number' ? usage.width : null;
     const height = typeof usage?.height === 'number' ? usage.height : null;

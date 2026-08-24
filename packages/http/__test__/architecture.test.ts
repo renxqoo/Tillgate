@@ -8,6 +8,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as exports from '../src/index';
+import { defined } from './defined';
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -26,7 +27,7 @@ const files = tsFiles(SRC);
 function externalSpecifiers(text: string): string[] {
   const out: string[] = [];
   for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
-    const spec = match[1]!;
+    const spec = defined(match[1], 'import specifier');
     if (!spec.startsWith('.') && !spec.startsWith('#')) out.push(spec);
   }
   return out;
@@ -54,8 +55,9 @@ describe('依赖白名单（§5.1：http 只依赖 @tillgate/errors + hono/zod/@
         if (BANNED.test(spec)) offenders.push(`${file}: ${spec}`);
       }
       // 只匹配真实 import 语句（注释中的包名不构成依赖）
-      if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(readFileSync(file, 'utf8')))
+      if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(readFileSync(file, 'utf8'))) {
         offenders.push(file);
+      }
     }
     expect(offenders).toEqual([]);
   });

@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tillgate/observability';
 import {
+  defined,
   E2E_MODEL,
   E2EKeys,
   e2ePost,
@@ -28,7 +29,7 @@ let keys: E2EKeys;
 beforeAll(async () => {
   // 先挂 memory provider，再起网关：装配 off 模式 initOtel 纯 no-op，不覆盖全局
   otel = initOtel({ serviceName: 'gateway', serviceVersion: 'probe', mode: 'memory' });
-  memory = otel.memory!;
+  memory = defined(otel.memory, 'otel.memory');
   world = await setupE2EWorld();
   gw = await startE2EGateway(world);
   keys = new E2EKeys(world, gw.assembly.billingFacade);
@@ -74,10 +75,11 @@ function dumpTrace(trace: ViewableTrace, label: string): void {
   }
   for (const s of rows) {
     console.log(`     · ${s.name}: ${fmtAttrs(s.attributes)}`);
-    for (const e of s.events)
+    for (const e of s.events) {
       console.log(
         `       event ${e.name} @+${(e.timeMs - root.startTimeMs).toFixed(1)}ms ${e.attributes ? fmtAttrs(e.attributes) : ''}`,
       );
+    }
   }
   // 树形视图
   const children = new Map<string | undefined, typeof trace.spans>();
@@ -89,12 +91,14 @@ function dumpTrace(trace: ViewableTrace, label: string): void {
     console.log(`${'  '.repeat(depth)}└ ${span.name} (${span.durationMs.toFixed(1)}ms)`);
     for (const c of (children.get(span.spanId) ?? []).toSorted(
       (a, b) => a.startTimeMs - b.startTimeMs,
-    ))
+    )) {
       render(c, depth + 1);
+    }
   };
   console.log('  span tree:');
-  for (const r of (children.get(undefined) ?? []).toSorted((a, b) => a.startTimeMs - b.startTimeMs))
+  for (const r of (children.get() ?? []).toSorted((a, b) => a.startTimeMs - b.startTimeMs)) {
     render(r, 0);
+  }
 }
 
 const EXPECTED_STAGES = [
@@ -108,22 +112,28 @@ const EXPECTED_STAGES = [
   'billing.settle_signal',
 ] as const;
 
+/** 结构核对入参（聚合对象——控制参数个数） */
+interface TraceCheckInput {
+  trace: ViewableTrace;
+  requestId: string;
+  httpStatus: number;
+  stream: boolean;
+}
+
 /** 结构核对：返回违规清单（空 = 全部通过） */
-function checkTrace(
-  trace: ViewableTrace,
-  requestId: string,
-  httpStatus: number,
-  stream: boolean,
-): string[] {
+function checkTrace(input: TraceCheckInput): string[] {
+  const { trace, requestId, httpStatus, stream } = input;
   const bad: string[] = [];
   const root = trace.spans.find((s) => s.name.startsWith('POST /v1/chat/completions'));
   if (!root) return ['root span POST /v1/chat/completions 缺失'];
   const names = trace.spans.map((s) => s.name);
 
-  if (root.attributes['request.id'] !== requestId)
+  if (root.attributes['request.id'] !== requestId) {
     bad.push(`root request.id=${root.attributes['request.id']} != 响应头 ${requestId}`);
-  if (root.attributes['http.status_code'] !== httpStatus)
+  }
+  if (root.attributes['http.status_code'] !== httpStatus) {
     bad.push(`root http.status_code=${root.attributes['http.status_code']} != 实际 ${httpStatus}`);
+  }
   for (const key of ['user.id', 'api_key.id', 'http.method', 'http.target']) {
     if (!(key in root.attributes)) bad.push(`root 缺属性 ${key}`);
   }
@@ -132,8 +142,9 @@ function checkTrace(
   }
   // 同一 traceId / 全部挂根 span 下（docs §3：每请求一棵树，阶段挂根）
   const traceIds = new Set(trace.spans.map((s) => s.traceId));
-  if (traceIds.size !== 1)
+  if (traceIds.size !== 1) {
     bad.push(`span 跨 ${traceIds.size} 个 traceId：${[...traceIds].join(',')}`);
+  }
   for (const s of trace.spans) {
     if (s.spanId === root.spanId) continue;
     if (s.parentSpanId !== root.spanId) bad.push(`${s.name} parent=${s.parentSpanId} 不挂根 span`);
@@ -152,23 +163,28 @@ function checkTrace(
     (n) => [n, trace.spans.filter((s) => s.name === n).at(-1)] as const,
   );
   for (let i = 1; i < order.length; i++) {
-    const [prevName, prev] = order[i - 1]!;
-    const [curName, cur] = order[i]!;
-    if (prev && cur && prev.startTimeMs > cur.startTimeMs)
+    const [prevName, prev] = defined(order[i - 1], 'order[i-1]');
+    const [curName, cur] = defined(order[i], 'order[i]');
+    if (prev && cur && prev.startTimeMs > cur.startTimeMs) {
       bad.push(`时序倒置：${prevName} 开始晚于 ${curName}`);
+    }
   }
   const attempt = trace.spans.find((s) => s.name === 'upstream.attempt');
   if (attempt) {
-    if (attempt.attributes['upstream.stream'] !== stream)
+    if (attempt.attributes['upstream.stream'] !== stream) {
       bad.push(
         `upstream.attempt upstream.stream=${attempt.attributes['upstream.stream']} 应为 ${stream}`,
       );
-    if (attempt.attributes['upstream.ok'] !== true)
+    }
+    if (attempt.attributes['upstream.ok'] !== true) {
       bad.push(`upstream.attempt upstream.ok != true`);
-    if (stream && typeof attempt.attributes['upstream.ttft_ms'] !== 'number')
+    }
+    if (stream && typeof attempt.attributes['upstream.ttft_ms'] !== 'number') {
       bad.push('流式 upstream.attempt 缺 upstream.ttft_ms');
-    if (!stream && typeof attempt.attributes['upstream.duration_ms'] !== 'number')
+    }
+    if (!stream && typeof attempt.attributes['upstream.duration_ms'] !== 'number') {
       bad.push('非流式 upstream.attempt 缺 upstream.duration_ms');
+    }
   }
   if (trace.hasError) bad.push('成功请求 trace.hasError=true（有 span 标 ERROR）');
   return bad;
@@ -187,10 +203,10 @@ describe('诊断探针：全真装配完整请求的 span 树', () => {
     console.log(
       `HTTP ${res.status} x-request-id=${res.headers.get('x-request-id')} choices=${JSON.stringify(body.choices ?? body).slice(0, 80)}`,
     );
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     const trace = await waitTrace(requestId);
     dumpTrace(trace, '非流式 chat');
-    const bad = checkTrace(trace, requestId, res.status, false);
+    const bad = checkTrace({ trace, requestId, httpStatus: res.status, stream: false });
     console.log(
       bad.length === 0
         ? '结构核对：全部通过'
@@ -213,14 +229,14 @@ describe('诊断探针：全真装配完整请求的 span 树', () => {
       stream: true,
     });
     expect(res.status).toBe(200);
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     // 全量消费 SSE（span 在流终束后结束）
     const text = await res.text();
     const frames = text.split('\n').filter((l) => l.startsWith('data:')).length;
     console.log(`HTTP ${res.status} x-request-id=${requestId} SSE data 帧=${frames}`);
     const trace = await waitTrace(requestId);
     dumpTrace(trace, '流式 chat');
-    const bad = checkTrace(trace, requestId, res.status, true);
+    const bad = checkTrace({ trace, requestId, httpStatus: res.status, stream: true });
     console.log(
       bad.length === 0
         ? '结构核对：全部通过'

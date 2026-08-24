@@ -22,8 +22,8 @@ export async function inviteMemberAction(
     revalidatePath('/dashboard/orgs');
     // token 仅邀请创建时下发一次（服务端不回显）——站内接受链接即时生成
     return { link: `/dashboard/orgs/accept?token=${res.token}` };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('inviteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('inviteFailed') };
   }
 }
 
@@ -34,8 +34,8 @@ export async function acceptInviteAction(token: string): Promise<{ error?: strin
     revalidatePath('/dashboard/orgs');
     revalidatePath('/dashboard/keys');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('acceptFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('acceptFailed') };
   }
 }
 
@@ -49,8 +49,8 @@ export async function setMemberQuotaAction(
     await createClientApi().patch(`/v1/orgs/${orgId}/members/${userId}`, input);
     revalidatePath('/dashboard/orgs');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('saveFailed') };
   }
 }
 
@@ -63,8 +63,8 @@ export async function revokeInvitationAction(
     await createClientApi().post(`/v1/orgs/${orgId}/invitations/${invitationId}/revoke`);
     revalidatePath('/dashboard/orgs');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('revokeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('revokeFailed') };
   }
 }
 
@@ -77,7 +77,7 @@ export async function removeMemberAction(
     await createClientApi().delete(`/v1/orgs/${orgId}/members/${userId}`);
     revalidatePath('/dashboard/orgs');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('removeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('removeFailed') };
   }
 }

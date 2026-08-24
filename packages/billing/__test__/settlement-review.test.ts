@@ -10,6 +10,7 @@ import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
 import { createInMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
 import type { BillingRequestRow } from '../src/ports/billing-store.js';
+import { defined } from './defined.js';
 
 function seedDeadRequest(
   world: ReturnType<typeof createInMemoryBillingWorld>,
@@ -64,7 +65,7 @@ function harness() {
     store: world.billing,
     quota: world.quota,
   });
-  const auditTx = vi.fn(async () => undefined);
+  const auditTx = vi.fn(async () => {});
   const settlement = createSettlementApi({
     store: world.billing,
     walletStore: walletMemory.store,
@@ -72,7 +73,7 @@ function harness() {
     channels: world.channels,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date('2026-08-23T00:00:00Z'),
-    onError: () => undefined,
+    onError: () => {},
     reviewAuditTx: auditTx,
   });
   return { settlement, world, auditTx, walletMemory, wallet };
@@ -83,7 +84,7 @@ describe('SettlementApi.review（U6）', () => {
     const { settlement, world } = harness();
     seedDeadRequest(world, { requestId: '00000000-0000-4000-8000-000000000001' });
     seedDeadRequest(world, { requestId: '00000000-0000-4000-8000-000000000002' });
-    world.fixtures.requests.get('00000000-0000-4000-8000-000000000002')!.status = 'settled';
+    defined(world.fixtures.requests.get('00000000-0000-4000-8000-000000000002')).status = 'settled';
 
     const page = await settlement.review.listDead({ limit: 10, offset: 0 });
     expect(page.total).toBe(1);
@@ -108,7 +109,7 @@ describe('SettlementApi.review（U6）', () => {
       operationId: 'rv-1',
     });
     expect(result).toMatchObject({ requestId, status: 'retry_wait', replayed: false, revision: 4 });
-    const row = world.fixtures.requests.get(requestId)!;
+    const row = defined(world.fixtures.requests.get(requestId));
     expect(row.status).toBe('retry_wait');
     expect(row.failureCode).toBeNull();
     expect(row.settlementAttempts).toBe(0);
@@ -194,7 +195,7 @@ describe('SettlementApi.review（U6）', () => {
       operationId: 'ab-1',
     });
     expect(result).toMatchObject({ requestId, released: true, replayed: false });
-    expect(world.fixtures.requests.get(requestId)!.status).toBe('released');
+    expect(defined(world.fixtures.requests.get(requestId)).status).toBe('released');
     expect(auditTx).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ action: 'billing.abandon_dead', targetId: requestId }),

@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 import type { ChannelDesc } from '../src/types.js';
 import { invalidResponseError } from '../src/errors/internal.js';
@@ -15,15 +16,11 @@ import { withRetry } from '../src/retry/with-retry.js';
 import { registerSweep } from '../src/transport/heartbeat.js';
 import { defineAdapter } from '../src/registry/define-adapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/openai-compatible.js';
+import { defined } from './defined';
 
 type Rec = Record<string, unknown>;
 
-const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
-) =>
+const startServer = (handler: (req: IncomingMessage, res: ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {
     const server = createServer(handler);
     server.listen(0, '127.0.0.1', () => {
@@ -63,6 +60,34 @@ const ch = (baseUrl: string, protocol = 'openai-compatible', apiKey = 'sk-t'): C
   protocol,
 });
 
+/** 收集文本请求体后回 200 JSON 空 body（模块级：避免 it 内 handler→on 四级嵌套回调） */
+function collectTextBody(onBody: (raw: string) => void) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    let raw = '';
+    req.on('data', (c) => {
+      raw += c;
+    });
+    req.on('end', () => {
+      onBody(raw);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+  };
+}
+
+/** 记录 content-type 头并收集二进制请求体后回 200 JSON 空 body */
+function collectBinaryBody(onStart: (contentType: string) => void, onBody: (raw: Buffer) => void) {
+  return (req: IncomingMessage, res: ServerResponse) => {
+    onStart(req.headers['content-type'] ?? '');
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c as Buffer));
+    req.on('end', () => {
+      onBody(Buffer.concat(chunks));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+  };
+}
 describe('注册与配置校验分支', () => {
   it('重复协议注册 → 启动即抛（配置错误 fail fast）', () => {
     const a = new OpenAICompatibleAdapter();
@@ -91,17 +116,11 @@ describe('注册与配置校验分支', () => {
 describe('参数抹平事件面（vendor profile 接线）', () => {
   it('channel.vendor=deepseek：store 被 ignore → param_adjustment 事件 + 出站 body 无 store', async () => {
     let seenBody: Rec = {};
-    const s = await startServer((req, res) => {
-      let raw = '';
-      req.on('data', (c) => {
-        raw += c;
-      });
-      req.on('end', () => {
+    const s = await startServer(
+      collectTextBody((raw) => {
         seenBody = JSON.parse(raw) as Rec;
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end('{}');
-      });
-    });
+      }),
+    );
     try {
       const ai = mk();
       const seen: string[] = [];
@@ -125,17 +144,17 @@ describe('参数抹平事件面（vendor profile 接线）', () => {
 describe('B-F1 回归：FormData 请求体透传（multipart 不被展开毁掉）', () => {
   it('audio_transcription 形态：字段与文件字节完整到达上游，model 重写为真实名', async () => {
     let contentType = '';
-    let raw = Buffer.alloc(0);
-    const s = await startServer((req, res) => {
-      contentType = req.headers['content-type'] ?? '';
-      const chunks: Buffer[] = [];
-      req.on('data', (c) => chunks.push(c as Buffer));
-      req.on('end', () => {
-        raw = Buffer.concat(chunks);
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end('{}');
-      });
-    });
+    let raw: Buffer = Buffer.alloc(0);
+    const s = await startServer(
+      collectBinaryBody(
+        (ct) => {
+          contentType = ct;
+        },
+        (b) => {
+          raw = b;
+        },
+      ),
+    );
     try {
       const ai = mk();
       const form = new FormData();
@@ -199,7 +218,9 @@ describe('签名钩子 / 响应翻译 / rawBody / 取消分类', () => {
       expect(r.ok).toBe(true);
       if (r.ok) {
         const body = r.body as Rec;
-        expect(((body.choices as Rec[])[0]!.message as Rec).content).toBe('salut');
+        expect((defined((body.choices as Rec[])[0], 'choices[0]').message as Rec).content).toBe(
+          'salut',
+        );
         expect(r.usage).toMatchObject({ inputTokens: 5, cachedInputTokens: 1, outputTokens: 2 }); // inputTokens 含缓存读（口径）
       }
     } finally {
@@ -257,7 +278,7 @@ describe('chatStream 深支：首帧错误 / 首字节超时 / 早退脱敏', ()
       expect(text).toContain('insufficient_quota');
       const seen: string[] = [];
       events.subscribe((e) => seen.push(e.type));
-      expect(seen[seen.length - 1]).toBe('failed');
+      expect(seen.at(-1)).toBe('failed');
     } finally {
       await s.close();
     }
@@ -420,7 +441,9 @@ describe('subscribe 退订与共享小件', () => {
       calls += 1;
       throw new Error('checker boom');
     });
-    await new Promise((r) => setTimeout(r, 320));
+    await new Promise((r) => {
+      setTimeout(r, 320);
+    });
     off();
     expect(calls).toBe(1); // 抛错按不存活处理 → 立即注销，不再重入
   });

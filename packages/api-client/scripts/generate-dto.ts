@@ -35,48 +35,63 @@ function literal(value: unknown): string {
   return typeof value === 'string' ? `'${value}'` : String(value);
 }
 
+/** JSON Schema 基础类型 → TS 类型(查表;integer/number 同归 number,wire 事实) */
+const PRIMITIVE_TS: Readonly<Record<string, string>> = {
+  string: 'string',
+  integer: 'number',
+  number: 'number',
+  boolean: 'boolean',
+  null: 'null',
+};
+
+/** anyOf 展平为去重并集文本(嵌套 anyOf 递归拍平;zod union+nullable 会产生 anyOf 套 anyOf) */
+function unionTsType(node: SchemaNode): string {
+  const members: string[] = [];
+  for (const member of node.anyOf as unknown[]) {
+    if (!isSchemaNode(member)) continue;
+    const text = tsType(member);
+    for (const part of text === 'null' ? ['null'] : splitTopLevelUnion(text)) {
+      if (!members.includes(part)) members.push(part);
+    }
+  }
+  return members.join(' | ');
+}
+
+/** array 类型文本:元素为并集时加括号保持结合语义 */
+function arrayTsType(node: SchemaNode): string {
+  const items = tsType(node.items as SchemaNode);
+  return splitTopLevelUnion(items).length > 1 ? `(${items})[]` : `${items}[]`;
+}
+
+/** object 类型文本:有属性出内联形状;仅 additionalProperties 出 Record;空 schema 出 unknown */
+function objectTsType(node: SchemaNode): string {
+  const properties = node.properties as Record<string, SchemaNode> | undefined;
+  if (properties !== undefined && Object.keys(properties).length > 0) {
+    const required = new Set((node.required as string[] | undefined) ?? []);
+    const lines = Object.entries(properties).map(
+      ([name, property]) =>
+        `${docLine(property)}${name}${required.has(name) ? '' : '?'}: ${tsType(property)}`,
+    );
+    return `{ ${lines.join('; ')} }`;
+  }
+  const additional = node.additionalProperties;
+  if (isSchemaNode(additional)) return `Record<string, ${tsType(additional)}>`;
+  return 'unknown';
+}
+
 /** JSON Schema → TS 类型文本（wire 事实优先;date-time 是 string 不映射 Date） */
 function tsType(node: SchemaNode): string {
   if (typeof node.$ref === 'string') return refName(node);
-  if (Array.isArray(node.anyOf)) {
-    // 嵌套 anyOf 展平（zod union+nullable 会产生 anyOf 套 anyOf）
-    const members: string[] = [];
-    for (const member of node.anyOf) {
-      if (!isSchemaNode(member)) continue;
-      const text = tsType(member);
-      for (const part of text === 'null' ? ['null'] : splitTopLevelUnion(text)) {
-        if (!members.includes(part)) members.push(part);
-      }
-    }
-    return members.join(' | ');
-  }
+  if (Array.isArray(node.anyOf)) return unionTsType(node);
   if (node.const !== undefined) return literal(node.const);
   if (Array.isArray(node.enum)) {
     return node.enum.map((value) => literal(value)).join(' | ');
   }
-  const type = node.type;
-  if (type === 'string') return 'string';
-  if (type === 'integer' || type === 'number') return 'number';
-  if (type === 'boolean') return 'boolean';
-  if (type === 'null') return 'null';
-  if (type === 'array') {
-    const items = tsType(node.items as SchemaNode);
-    return splitTopLevelUnion(items).length > 1 ? `(${items})[]` : `${items}[]`;
-  }
-  if (type === 'object') {
-    const properties = node.properties as Record<string, SchemaNode> | undefined;
-    if (properties !== undefined && Object.keys(properties).length > 0) {
-      const required = new Set((node.required as string[] | undefined) ?? []);
-      const lines = Object.entries(properties).map(
-        ([name, property]) =>
-          `${docLine(property)}${name}${required.has(name) ? '' : '?'}: ${tsType(property)}`,
-      );
-      return `{ ${lines.join('; ')} }`;
-    }
-    const additional = node.additionalProperties;
-    if (isSchemaNode(additional)) return `Record<string, ${tsType(additional)}>`;
-    return 'unknown';
-  }
+  const { type } = node;
+  const primitive = typeof type === 'string' ? PRIMITIVE_TS[type] : undefined;
+  if (primitive !== undefined) return primitive;
+  if (type === 'array') return arrayTsType(node);
+  if (type === 'object') return objectTsType(node);
   // z.unknown()/空 schema——按 wire 事实取 unknown
   return 'unknown';
 }
@@ -106,7 +121,7 @@ function splitTopLevelUnion(text: string): string[] {
 
 /** 字段/接口 jsdoc 单行文本（description 缺省不出注释;缩进由调用方决定） */
 function docLine(node: SchemaNode): string {
-  const description = node.description;
+  const { description } = node;
   return typeof description === 'string' && description !== '' ? `/** ${description} */` : '';
 }
 
@@ -129,8 +144,9 @@ export function renderAdminApiDto(openapi: unknown): string {
     components?: { schemas?: Record<string, SchemaNode & { 'x-domain'?: string }> };
   };
   const schemas = spec.components?.schemas;
-  if (schemas === undefined)
+  if (schemas === undefined) {
     throw new Error('[generate-dto] openapi document has no components.schemas');
+  }
 
   const blocks: string[] = [];
   let currentDomain: string | undefined;

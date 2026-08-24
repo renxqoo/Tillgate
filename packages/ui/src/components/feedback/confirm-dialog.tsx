@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '../primitives/alert-dialog';
 
-export type ConfirmDialogProps = {
+export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: React.ReactNode;
@@ -31,7 +31,7 @@ export type ConfirmDialogProps = {
   onConfirm: () => unknown | Promise<unknown>;
   // onConfirm 抛错时的回调(提示 toast 等); 缺省则原样上抛
   onError?: (error: unknown) => void;
-};
+}
 
 export function ConfirmDialog({
   open,

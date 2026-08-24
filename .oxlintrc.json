@@ -1,36 +1,214 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn"],
+
+  // ══════════════════════════════════════════════════════════════════
+  // 设计原则:
+  // 1. correctness + suspicious 全量打底,个别高风险领域手动加码
+  // 2. 规模上限防"上帝文件/上帝函数",数字为业界共识起点,棘轮式收紧
+  // 3. 类型严格:不许 agent 用 any / ! / @ts-ignore 糊弄类型系统
+  // 4. 防静音:disable 必须点名规则,不许一键豁免
+  // 5. 格式化交给 Prettier/Biome,本文件只管语义与结构,不放纯格式规则
+  // 注意: plugins 是"替换"而非"追加",不写 react/react-hooks 就没有 React 规则
+  // 注意: 末尾标注 [type-aware] 的规则需 `oxlint --type-aware`(读 tsconfig)
+  //       才真正运行,纯语法模式下等价于没配
+  // ══════════════════════════════════════════════════════════════════
+
+  // eslint 内置永远生效;显式枚举 = 替换默认插件集,需要的全部列出
+  "plugins": ["typescript", "unicorn", "react", "react-hooks", "promise"],
+
   "categories": {
+    // 明确错误:类型误用、空指针、未定义行为等硬伤,全量 error
     "correctness": "error",
+    // 可疑写法:不一定是 bug,但十有八九是,全量 error
     "suspicious": "error"
+    // 可选棘轮:整体先 warn 不挡 CI,把高质量规则逐条升 error
+    // "pedantic": "warn"
   },
+
   "rules": {
-    "max-lines": ["error", { "max": 500 }],
-    "eslint/no-nested-ternary": "error"
+    // ═══ 规模控制:防"上帝文件/上帝函数" ═══
+    // 单文件最多 400 行;skipComments/skipBlankLines 让注释与排版
+    // 不挤占代码预算,上限衡量的是代码量而非文件物理长度
+    "eslint/max-lines": ["error", { "max": 400, "skipComments": true, "skipBlankLines": true }],
+    // 普通函数最多 50 行;理想 4~20 行,超过通常意味着做了不止一件事
+    "eslint/max-lines-per-function": ["error", { "max": 50 }],
+    // 函数最多 3 个参数;第 4 个参数出现 = 缺了一个抽象,应封装 options 对象
+    "eslint/max-params": ["error", { "max": 3 }],
+    // 圈复杂度 ≤15(McCarthy 建议 10,Sonar 默认 15;给平铺 switch 留余地)
+    "eslint/complexity": ["error", { "max": 15 }],
+    // if/循环嵌套 ≤4 层;更深嵌套用 guard clause 提前返回压平
+    "eslint/max-depth": ["error", { "max": 4 }],
+    // 单函数最多 40 条语句,超限说明该提取子函数
+    "eslint/max-statements": ["error", { "max": 40 }],
+    // 回调嵌套 ≤3 层;现代 async 代码出现更深嵌套基本是写错了
+    "eslint/max-nested-callbacks": ["error", { "max": 3 }],
+    // 一文件一 class;多个 class 同文件是拆分信号
+    "eslint/max-classes-per-file": ["error", 1],
+
+    // ═══ 表达式与比较 ═══
+    // 禁止嵌套/链式三元:a ? x : b ? y : z,提取变量或改 if/else
+    "eslint/no-nested-ternary": "error",
+    // 禁用 == / != 弱比较;"smart" 放行 == null 判空惯用法
+    "eslint/eqeqeq": ["error", "smart"],
+    // 注:eslint/curly 已移除——多行 if 括号属布局领地,归 oxfmt 管(见 AGENTS.md 铁律 21;
+    // oxfmt 换行会与 multi-line 判定打架)
+    // 'a' + b → `a${b}` 模板字面量,拼接风格统一
+    "eslint/prefer-template": "error",
+    // 从不重新赋值的声明必须 const
+    "eslint/prefer-const": "error",
+
+    // ═══ TypeScript 严格性:封死 agent 糊弄类型系统的四条路 ═══
+    // ① 禁止显式 any → 正确做法 unknown + 类型收窄(注意:无安全 autofix)
+    "typescript/no-explicit-any": "error",
+    // ② 禁止 x! 非空断言 → 应收窄类型或显式判空,而不是对编译器拍胸脯
+    "typescript/no-non-null-assertion": "error",
+    // 禁止 a! == b / a != b! 视觉混淆写法,笔误高发区
+    "typescript/no-confusing-non-null-assertion": "error",
+    // ③ 禁止裸 @ts-ignore / @ts-nocheck → 用 @ts-expect-error,
+    //    错误消失时反向报错,防止永久静音
+    "typescript/ban-ts-comment": "error",
+    // ④ 禁止 delete obj[key] 动态删属性(破坏类型形状,应改用 Map)
+    "typescript/no-dynamic-delete": "error",
+    // x || y → x ?? y:|| 会把 0、''、false 误当空值吞掉
+    "typescript/prefer-nullish-coalescing": "error",
+    // a && a.b && a.b.c → a?.b?.c 判空链
+    "typescript/prefer-optional-chain": "error",
+    // 类型导入必须 import type,类型不进运行时 bundle(Next.js 边界尤其重要)
+    "typescript/consistent-type-imports": "error",
+    // 对象类型统一 interface;interface/type 混用是 AI 输出漂移重灾区
+    "typescript/consistent-type-definitions": ["error", "interface"],
+    // 禁止 require() 导入,统一 ESM import(agent 偶尔会退化写 require)
+    "typescript/no-require-imports": "error",
+    // indexOf(x) !== -1 → includes(x)
+    "typescript/prefer-includes": "error",
+    // correctness 类默认已含 no-unused-vars,这里只为加 `_` 前缀豁免
+    // (接口实现保留参数、刻意忽略的 catch,用 _ 占位是社区惯例)
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+
+    // ═══ 异步与错误处理 ═══
+    // new Promise 执行器里 return 无效果且掩盖意图,常见潜在 bug
+    "eslint/no-promise-executor-return": "error",
+    // 'hello ${name}' 忘写反引号 → 变量永远不插值,纯 bug
+    "eslint/no-template-curly-in-string": "error",
+    // async 函数必须至少含一个 await;无 await 的 async 改变错误传播语义
+    "typescript/require-await": "error",
+    // finally 里 return 会吞掉 try/catch 的返回值和异常
+    "promise/no-return-in-finally": "error",
+    // Promise 被 resolve 两次基本是逻辑错误(第二次静默失效)
+    "promise/no-multiple-resolved": "error",
+    // new Error(404) 数字当错误信息,日志不可读;必须字符串
+    "unicorn/error-message": "error",
+    // catch 变量统一命名 error,grep 日志时口径一致
+    "unicorn/catch-error-name": "error",
+
+    // ═══ React:AI 写 hooks 的重灾区 ═══
+    // React 17+ 自动 JSX runtime(Next.js 默认)下无需 import React,
+    // 该规则对新代码全量误报,启用 react 插件时必须显式关闭
+    "react/react-in-jsx-scope": "off",
+    // 条件/循环里调用 hooks 直接破坏 React 契约,运行时崩溃
+    "react-hooks/rules-of-hooks": "error",
+    // useEffect 依赖数组缺漏 → stale closure,AI 最常见的隐性 bug 来源
+    "react-hooks/exhaustive-deps": "error",
+
+    // ═══ 防逃逸:不许 agent 一键静音检查 ═══
+    // 禁止不带规则名的整体 eslint-disable,想豁免必须点名规则
+    "unicorn/no-abusive-eslint-disable": "error",
+    // 禁止脚本式全局变量泄漏(模块作用域外赋值)
+    "eslint/no-implicit-globals": "error",
+
+    // ═══ 防 AI slop 杂项 ═══
+    // console.log 是 agent 最高频遗留物;warn/error 是合法日志出口放行
+    "eslint/no-console": ["warn", { "allow": ["warn", "error"] }],
+    // 文件名统一 kebab-case,治 AI 生成文件的命名漂移(CamelCase.ts vs camel-case.ts)
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+
+    // ═══ 结构与写法统一(存量大多可 --fix 自动清)═══
+    // 注:unicorn/switch-case-braces 已移除——case 括号属布局领地,归 oxfmt 管(同 curly,见 AGENTS.md 铁律 21)
+    // else { if (...) } → else if,消灭"孤儿 if"
+    "unicorn/no-lonely-if": "error",
+    // { x: x } → { x } 简写
+    "eslint/object-shorthand": "error",
+    // () => { return x } → () => x,消灭无意义函数体
+    "eslint/arrow-body-style": "error",
+    // const a = obj.a → const { a } = obj
+    "eslint/prefer-destructuring": "error",
+    // require('fs') → 'node:fs',防与用户空间依赖重名
+    "unicorn/prefer-node-protocol": "error",
+    // .filter(x).length > 0 → .some(x),少一次全量遍历
+    "unicorn/prefer-array-some": "error",
+    // arr[arr.length - 1] → arr.at(-1)
+    "unicorn/prefer-at": "error",
+    // if (arr.length) → if (arr.length > 0),消除 length 非布尔歧义
+    "unicorn/explicit-length-check": "error",
+    // () => undefined、resolve(undefined) 等冗余写法
+    "unicorn/no-useless-undefined": "error",
+
+    // ═══ [type-aware] 以下 4 条需 CI 执行 `oxlint --type-aware` 才生效 ═══
+    // 漏 await 的浮动 Promise,错误被静默吞掉 —— agent 头号 async 杀手
+    "typescript/no-floating-promises": "error",
+    // 把 Promise 当值用(if (p) 判断 / 传给同步参数)
+    "typescript/no-misused-promises": "error",
+    // await 非 Promise 值,暴露对类型的误解
+    "typescript/await-thenable": "error",
+    // 冗余类型断言:x as T 在 T 本便是 x 类型时应删掉
+    "typescript/no-unnecessary-type-assertion": "error"
   },
+
   "overrides": [
     {
-      "files": ["**/__test__/**", "**/*.test.ts", "**/*.spec.ts", "**/testing/**"],
+      // 测试文件:关闭规模类限制(天然长 setup/长用例),
+      // 保留类型严格性 —— 测试代码同样不许 any / !
+      "files": ["**/__test__/**", "**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/testing/**"],
       "rules": {
-        "max-lines": "off"
+        "eslint/max-lines": "off",
+        "eslint/max-lines-per-function": "off",
+        "eslint/max-statements": "off",
+        "eslint/complexity": "off",
+        // 测试里 console 打中间结果是常规调试手段
+        "eslint/no-console": "off"
       }
     },
     {
-      "files": ["**/*.generated.ts"],
+      // TSX 组件:JSX 本身占行数,函数放宽到 150;
+      // 更长组件应拆 dialog/table/toolbar 子组件而非放宽上限;
+      // 文件级 400 不放宽 —— 多个组件就该拆文件
+      "files": ["**/*.tsx"],
       "rules": {
-        "max-lines": "off"
+        "eslint/max-lines-per-function": ["error", { "max": 150 }],
+        // 三元嵌套是 JSX 三态渲染(loading/error/success)标准写法,放行;
+        // 复杂条件仍应抽变量或抽组件
+        "eslint/no-nested-ternary": "off"
+      }
+    },
+    {
+      // CLI 脚本:console 就是输出手段,单文件跑完即弃,不限行数
+      "files": ["**/scripts/**"],
+      "rules": {
+        "eslint/no-console": "off",
+        "eslint/max-lines": "off"
       }
     }
   ],
-  "env": {
-    "node": true
-  },
+
+  // 前后端同仓,node + browser 全局都放行
+  "env": { "node": true, "browser": true },
+
   "ignorePatterns": [
     "**/dist/**",
     "**/.next/**",
     "**/node_modules/**",
+    "**/coverage/**",
+    // DB 迁移产物,一次性生成不回改
     "**/migrations/**",
-    "**/components/ui/**"
+    // 代码生成器输出,不人工维护,整体跳过(比 override 更彻底)
+    "**/generated/**",
+    "**/*.generated.ts"
   ]
 }

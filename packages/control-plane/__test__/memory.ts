@@ -26,6 +26,14 @@ import type { UpstreamProbe, ProbeTarget, ProbeOutcome } from '../src/ports/upst
 import type { SecretCipher } from '../src/ports/secret-cipher';
 import type { ProviderPatchInput } from '../src/domain/provider/provider';
 import type { ModelInsertInput, ModelPatch } from '../src/ports/model-store';
+import type {
+  RoleRecord,
+  RoleStore,
+  PermissionNode,
+  PermissionStore,
+  EndpointBindingRecord,
+  EndpointStore,
+} from '../src/ports/rbac-store';
 
 /** PG 唯一冲突同形错误（cause 链 code 判定兼容） */
 export function uniqueViolation(constraint: string): Error {
@@ -138,8 +146,11 @@ export function createMemoryProviderStore(seed: ProviderRecord[] = []): MemoryPr
       let all = [...rows.values()].filter((r) =>
         query.view === 'deleted' ? r.deletedAt != null : r.deletedAt == null,
       );
-      if (query.q)
-        all = all.filter((r) => r.name.includes(query.q!) || r.baseUrl.includes(query.q!));
+      // 收窄查询词,替代非空断言
+      const { q } = query;
+      if (q) {
+        all = all.filter((r) => r.name.includes(q) || r.baseUrl.includes(q));
+      }
       const sorted = all.toSorted((a, b) => {
         const key = query.sortBy as keyof ProviderRecord;
         const av = a[key] ?? 0;
@@ -198,6 +209,7 @@ export interface MemoryChannelStore {
   rows: Map<number, MemoryChannelRow>;
   recharges: MemoryRechargeRow[];
 }
+// eslint-disable-next-line max-params -- 测试替身装配工厂:各依赖均为可选注入,收敛为 options 会波及十余处调用点
 export function createMemoryChannelStore(
   providerNameOf: (providerId: number) => string,
   seed: MemoryChannelRow[] = [],
@@ -324,16 +336,19 @@ export function createMemoryChannelStore(
           deletedAt: row.deletedAt,
           createdAt: new Date(0),
         }));
-      if (query.q) {
-        all = all.filter((r) => r.name.includes(query.q!) || r.providerName.includes(query.q!));
+      // 收窄查询词,替代非空断言
+      const { q } = query;
+      if (q) {
+        all = all.filter((r) => r.name.includes(q) || r.providerName.includes(q));
       }
       return { rows: all.slice(query.offset, query.offset + query.limit), total: all.length };
     },
     async listBoundModelsByChannelIds(_db, channelIds) {
       const out: Array<{ channelId: number; externalName: string }> = [];
       for (const id of channelIds) {
-        for (const name of boundModels.get(id) ?? [])
+        for (const name of boundModels.get(id) ?? []) {
           out.push({ channelId: id, externalName: name });
+        }
       }
       return out;
     },
@@ -505,8 +520,9 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       if (!row || row.deletedAt != null) return null;
       if (input.patch.externalName !== undefined) {
         const clash = byExternal(input.patch.externalName);
-        if (clash && clash.id !== input.mappingId)
+        if (clash && clash.id !== input.mappingId) {
           throw uniqueViolation('model_mappings_external_name_uq');
+        }
       }
       Object.assign(row, input.patch, { updatedAt: new Date() });
       return row;
@@ -535,10 +551,10 @@ export function createMemoryModelStore(seed: MemoryModelRow[] = []): MemoryModel
       let all = [...rows.values()].filter((r) =>
         query.view === 'deleted' ? r.deletedAt != null : r.deletedAt == null,
       );
-      if (query.q) {
-        all = all.filter(
-          (r) => r.externalName.includes(query.q!) || r.realModel.includes(query.q!),
-        );
+      // 收窄查询词,替代非空断言
+      const { q } = query;
+      if (q) {
+        all = all.filter((r) => r.externalName.includes(q) || r.realModel.includes(q));
       }
       return { rows: all.slice(query.offset, query.offset + query.limit), total: all.length };
     },
@@ -675,8 +691,9 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
       Object.assign(card, input.patch, { updatedAt: new Date() });
       if (input.globalCoefficient !== undefined) {
         for (const c of coefficients) {
-          if (c.rateCardId === input.rateCardId && c.scope === 'global')
+          if (c.rateCardId === input.rateCardId && c.scope === 'global') {
             c.coefficient = input.globalCoefficient;
+          }
         }
       }
       return { id: card.id, name: card.name };
@@ -687,13 +704,17 @@ export function createMemoryRateCardStore(): MemoryRateCardStore {
     async deleteCard(_db, input) {
       const had = cards.delete(input.rateCardId);
       for (let i = coefficients.length - 1; i >= 0; i -= 1) {
-        if (coefficients[i]!.rateCardId === input.rateCardId) coefficients.splice(i, 1);
+        // 反向遍历中先收窄再比较,替代下标非空断言
+        const coeff = coefficients[i];
+        if (coeff !== undefined && coeff.rateCardId === input.rateCardId) coefficients.splice(i, 1);
       }
       return had;
     },
     async list(_db, query) {
       let all = [...cards.values()];
-      if (query.q) all = all.filter((c) => c.name.includes(query.q!));
+      // 收窄查询词,替代非空断言
+      const { q } = query;
+      if (q !== undefined && q !== null) all = all.filter((c) => c.name.includes(q));
       const withCoef = all.map((c) => ({
         ...c,
         globalCoefficient:
@@ -1077,15 +1098,17 @@ export function createMemoryAdminStore(
 // 动态 RBAC 替身（roles/permissions;SQL 行为等价由 postgres.real 承担）
 // ══════════════════════════════════════════════════════════════════════════
 
-export function createMemoryRoleStore(seed: import('../src/ports/rbac-store').RoleRecord[] = []) {
+export function createMemoryRoleStore(seed: RoleRecord[] = []) {
   const rolesById = new Map(seed.map((r) => [r.id, r]));
   const grantsByRole = new Map<number, string[]>();
   const adminCounts = new Map<number, number>();
   let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
-  const store: import('../src/ports/rbac-store').RoleStore = {
+  const store: RoleStore = {
     async list(_db, query) {
+      // 收窄查询词,替代非空断言
+      const { q } = query;
       const matched = [...rolesById.values()].filter(
-        (r) => query.q == null || query.q === '' || r.name.includes(query.q!),
+        (r) => q == null || q === '' || r.name.includes(q),
       );
       return {
         rows: matched.map((r) => ({
@@ -1152,13 +1175,11 @@ export function createMemoryRoleStore(seed: import('../src/ports/rbac-store').Ro
   });
 }
 
-export function createMemoryPermissionStore(
-  seed: import('../src/ports/rbac-store').PermissionNode[] = [],
-) {
+export function createMemoryPermissionStore(seed: PermissionNode[] = []) {
   const nodes = new Map(seed.map((n) => [n.id, n]));
   const bindings = new Map<number, number>(); // nodeId → 绑定角色数
   let nextId = seed.reduce((max, n) => Math.max(max, n.id), 0) + 1;
-  const store: import('../src/ports/rbac-store').PermissionStore = {
+  const store: PermissionStore = {
     async list(_db) {
       return [...nodes.values()].toSorted((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
     },
@@ -1230,12 +1251,10 @@ export function createMemoryPermissionStore(
   });
 }
 
-export function createMemoryEndpointStore(
-  seed: import('../src/ports/rbac-store').EndpointBindingRecord[] = [],
-) {
+export function createMemoryEndpointStore(seed: EndpointBindingRecord[] = []) {
   const rows = new Map(seed.map((r) => [r.id, r]));
   let nextId = seed.reduce((max, r) => Math.max(max, r.id), 0) + 1;
-  const store: import('../src/ports/rbac-store').EndpointStore = {
+  const store: EndpointStore = {
     async list() {
       return [...rows.values()].toSorted((a, b) => a.path.localeCompare(b.path));
     },

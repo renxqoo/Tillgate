@@ -29,8 +29,8 @@ export interface PublicScheduleWindow {
   unitPrice?: string;
 }
 
-/** billingConfig（DB JSONB）→ 公开窗口表（schedule 之外 / 空表 → undefined） */
-export function scheduleWindowsOf(billingConfig: unknown): PublicScheduleWindow[] | undefined {
+/** billingConfig（DB JSONB）→ 公开窗口表（schedule 之外 / 空表 / 缺参 → undefined） */
+export function scheduleWindowsOf(billingConfig?: unknown): PublicScheduleWindow[] | undefined {
   const cfg = billingConfig as
     | { strategy?: string; params?: { windows?: unknown[] } }
     | null
@@ -88,6 +88,7 @@ export interface BaseCatalog {
 }
 
 export function toPublicPricingRows(catalog: BaseCatalog): PublicPricingModel[] {
+  // eslint-disable-next-line complexity -- 公开价格行投影的逐字段空值兜底平铺(分支即字段映射)
   return catalog.models.map((m) => {
     const full = catalog.enriched.get(m.externalName);
     return {
@@ -123,6 +124,7 @@ export function toPersonalPricingRows(
   catalog: BaseCatalog,
   snapshot: RateCardCoefficientSnapshot | null,
 ): PublicPricingModel[] {
+  // eslint-disable-next-line complexity -- 个人化价格行投影+系数挑选,分支即字段映射与三档系数兜底
   return catalog.models.map((m) => {
     const full = catalog.enriched.get(m.externalName);
     const inputPrice = full?.inputPrice ?? '0';

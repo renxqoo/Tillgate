@@ -30,6 +30,7 @@ import {
   pickCoefficient,
   reservationStrategyOf,
   strategyOf,
+  type PriceOverrides,
   type RateCardCoefficientSnapshot,
 } from '@tillgate/billing';
 import { createBillingTimezoneReader } from './billing-timezone.js';
@@ -67,23 +68,17 @@ function toSnapshot(ctx: UserRateCardContext): RateCardCoefficientSnapshot {
   return snapshot;
 }
 
-/** 映射行 + 用户卡 + 请求体 + 准入时刻 → inference 快照（v1 buildQuote 候选装配的单映射形态） */
-async function toSnapshotRow(
+/** 单位计价解析（层 1 请求体计量 + 层 3 预扣保底只抬不降 + 层 2 变体/时段，单一计价上下文） */
+function resolveUnitPricing(
   row: ActiveMappingRow,
-  card: UserRateCardContext | null,
-  body: Readonly<Record<string, unknown>>,
-  now: Date,
-  readTimezone: () => Promise<string>,
-): Promise<ModelMappingSnapshot> {
-  if (card != null && card.status !== 0) {
-    throw controlPlaneErrors.business('rate_card_disabled', { cardId: card.cardId });
-  }
-  const snapshot = card != null ? toSnapshot(card) : null;
+  body: Record<string, unknown>,
+  clock: { now: Date; timezone: string },
+): { unitUpperBound: number; unitPrice: string; overrides: PriceOverrides | null } {
   const billingConfig = row.billingConfig as Parameters<typeof strategyOf>[0];
   // 计量上界（层 1）：按映射声明的 pricingUnit 从请求体推（token 模型恒 0）
   const measured = measurementOf(
     row.pricingUnit as Parameters<typeof measurementOf>[0],
-  ).unitsUpperBoundOf(body as Record<string, unknown>);
+  ).unitsUpperBoundOf(body);
   // 预扣保底（层 3）：只抬不降（视频「至少 5 秒的钱」/图片「至少 1 张的钱」）
   const reservation = billingConfig.reservation ?? {};
   const unitFloor = reservationStrategyOf(reservation).unitFloorOf(reservation);
@@ -91,16 +86,56 @@ async function toSnapshotRow(
   const strategy = strategyOf(billingConfig);
   const pricingContext = {
     units: unitUpperBound,
-    body: body as Record<string, unknown>,
+    body,
     config: billingConfig,
     fallbackUnitPrice: row.unitPrice,
-    now,
-    timezone: await readTimezone(),
+    now: clock.now,
+    timezone: clock.timezone,
   };
-  // 变体单价（层 2）：按 billingConfig 选公式；body 已知 → 变体即确定（hold == settle）
-  const resolvedUnitPrice = strategy.settleUnitPrice(pricingContext);
-  // 时段覆盖（层 2 schedule）：字段级——未覆盖轴回落列基价；命中标签进快照（收据审计列）
-  const overrides = strategy.resolvePriceOverrides(pricingContext);
+  return {
+    unitUpperBound,
+    // 变体单价（层 2）：按 billingConfig 选公式；body 已知 → 变体即确定（hold == settle）
+    unitPrice: strategy.settleUnitPrice(pricingContext),
+    // 时段覆盖（层 2 schedule）：字段级——未覆盖轴回落列基价；命中标签进快照（收据审计列）
+    overrides: strategy.resolvePriceOverrides(pricingContext),
+  };
+}
+
+/** 价格轴装配：字段级覆盖回落列基价（cacheWrite 零价归 null，与快照契约一致） */
+function applyPriceAxes(
+  row: ActiveMappingRow,
+  resolved: { unitPrice: string; overrides: PriceOverrides | null },
+): Pick<
+  ModelMappingSnapshot,
+  'inputPrice' | 'cacheInputPrice' | 'cacheWritePrice' | 'outputPrice' | 'unitPrice'
+> {
+  const { overrides } = resolved;
+  return {
+    inputPrice: overrides?.inputPrice ?? row.inputPrice,
+    cacheInputPrice: overrides?.cacheInputPrice ?? row.cacheInputPrice,
+    cacheWritePrice:
+      overrides?.cacheWritePrice ?? (row.cacheWritePrice === '0' ? null : row.cacheWritePrice),
+    outputPrice: overrides?.outputPrice ?? row.outputPrice,
+    unitPrice: overrides?.unitPrice ?? resolved.unitPrice,
+  };
+}
+
+/** 映射行 + 用户卡 + 请求体 + 准入时刻 → inference 快照（v1 buildQuote 候选装配的单映射形态） */
+async function toSnapshotRow(input: {
+  row: ActiveMappingRow;
+  card: UserRateCardContext | null;
+  pricing: CatalogPricingContext;
+  readTimezone: () => Promise<string>;
+}): Promise<ModelMappingSnapshot> {
+  const { row, card, pricing, readTimezone } = input;
+  if (card != null && card.status !== 0) {
+    throw controlPlaneErrors.business('rate_card_disabled', { cardId: card.cardId });
+  }
+  const snapshot = card != null ? toSnapshot(card) : null;
+  const resolved = resolveUnitPricing(row, pricing.body as Record<string, unknown>, {
+    now: pricing.now,
+    timezone: await readTimezone(),
+  });
   const pricingUnit = PRICING_UNITS.has(row.pricingUnit)
     ? (row.pricingUnit as PricingUnit)
     : 'token';
@@ -109,20 +144,17 @@ async function toSnapshotRow(
     externalModel: row.externalName,
     realModel: row.realModel,
     fallbackModels: row.fallbackModels ?? [],
-    inputPrice: overrides?.inputPrice ?? row.inputPrice,
-    cacheInputPrice: overrides?.cacheInputPrice ?? row.cacheInputPrice,
-    cacheWritePrice:
-      overrides?.cacheWritePrice ?? (row.cacheWritePrice === '0' ? null : row.cacheWritePrice),
-    outputPrice: overrides?.outputPrice ?? row.outputPrice,
-    unitPrice: overrides?.unitPrice ?? resolvedUnitPrice,
+    ...applyPriceAxes(row, resolved),
     pricingUnit,
-    unitUpperBound,
+    unitUpperBound: resolved.unitUpperBound,
     coefficient: pickCoefficient(snapshot, {
       modelMappingId: row.id,
       pricingGroup: row.pricingGroup,
     }),
     billingPolicyFingerprint: policyFingerprint(row.billingPolicy),
-    ...(overrides?.pricingWindow != null ? { pricingWindow: overrides.pricingWindow } : {}),
+    ...(resolved.overrides?.pricingWindow != null
+      ? { pricingWindow: resolved.overrides.pricingWindow }
+      : {}),
   };
 }
 
@@ -163,7 +195,7 @@ export function createGatewayCatalog(stores: CatalogStores): CatalogPort {
       const row = await stores.models.findActiveByExternalName(externalModel);
       if (row == null) return null;
       const card = await stores.rateCards.findActiveCardByUser(pricing.userId);
-      return toSnapshotRow(row, card, pricing.body, pricing.now, stores.billingTimezone.read);
+      return toSnapshotRow({ row, card, pricing, readTimezone: stores.billingTimezone.read });
     },
     async resolveChannels(realModel): Promise<ChannelCandidate[]> {
       const rows = await stores.channels.findRouteCandidates(realModel);

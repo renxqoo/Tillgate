@@ -15,11 +15,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closeDb, createDb, type Db } from '@tillgate/db';
-import {
-  createBillingApi,
-  createDefaultFundingRegistry,
-  createWalletApi,
-} from '@tillgate/billing';
+import { defined } from './defined.js';
+import { createBillingApi, createDefaultFundingRegistry, createWalletApi } from '@tillgate/billing';
 import {
   createPostgresBillingStore,
   createPostgresWalletStore,
@@ -47,7 +44,9 @@ async function pollUntil(predicate: () => Promise<boolean>, timeoutMs = 8_000): 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await predicate()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
   }
   return await predicate();
 }
@@ -60,6 +59,16 @@ async function query<T extends Record<string, unknown>>(db: Db, text: string, va
   } finally {
     client.release();
   }
+}
+
+/** 42P01 = 跨链引用缺口（迁移链顺序问题——与 billing real 门一致的容错口径） */
+function isMissingTableError(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current != null && depth < 5; depth += 1) {
+    if ((current as { code?: string }).code === '42P01') return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 function receiptOf(requestId: string, userId: number) {
@@ -98,7 +107,7 @@ interface E2E {
   let e2e: E2E | null = null;
 
   beforeAll(async () => {
-    const [baseUrl] = url!.split('?');
+    const [baseUrl] = defined(url, 'DB_TEST_URL').split('?');
     const scopedUrl = `${baseUrl}?options=-c%20search_path%3D${SCHEMA}`;
     const gatewayDb = createDb({
       url: scopedUrl,
@@ -124,16 +133,7 @@ interface E2E {
         try {
           await query(gatewayDb, trimmed);
         } catch (error) {
-          let current: unknown = error;
-          let missingTable = false;
-          for (let depth = 0; current != null && depth < 5; depth += 1) {
-            if ((current as { code?: string }).code === '42P01') {
-              missingTable = true;
-              break;
-            }
-            current = (current as { cause?: unknown }).cause;
-          }
-          if (!missingTable) throw error;
+          if (!isMissingTableError(error)) throw error;
         }
       }
     }
@@ -141,7 +141,7 @@ interface E2E {
     const config = loadWorkerConfig({
       NODE_ENV: 'test',
       DATABASE_URL: scopedUrl,
-      CHANNEL_API_KEY_ENCRYPTION: 'wk3y-zx9q-e2e-' + 'pad'.repeat(6),
+      CHANNEL_API_KEY_ENCRYPTION: `wk3y-zx9q-e2e-${'pad'.repeat(6)}`,
       OTEL_TRACES_MODE: 'off',
       WORKER_OWNER_ID: 'e2e-worker',
       WORKER_SETTLE_WAKE: 'true',
@@ -153,7 +153,7 @@ interface E2E {
       // 唤醒监听建立探测（空批无害）——直到 LISTEN 生效
       await settleWakeChime(gatewayDb, 'e2e-listen-probe');
       return false;
-    }, 800).catch(() => undefined);
+    }, 800).catch(() => {});
     let userSeq = 0;
     e2e = {
       gatewayDb,
@@ -167,7 +167,7 @@ interface E2E {
            values ('local', $1, 'local', $1) returning id`,
           [email],
         );
-        return Number(rows.rows[0]!.id);
+        return Number(defined(rows.rows[0], 'rows.rows[0]').id);
       },
     };
   }, 120_000);
@@ -176,10 +176,10 @@ interface E2E {
     if (!e2e) return;
     try {
       await e2e.worker.wakeup?.close();
-      await e2e.worker.closeDb().catch(() => undefined);
+      await e2e.worker.closeDb().catch(() => {});
       await query(e2e.gatewayDb, `drop schema if exists ${SCHEMA} cascade`);
     } finally {
-      await closeDb(e2e.gatewayDb).catch(() => undefined);
+      await closeDb(e2e.gatewayDb).catch(() => {});
     }
   });
 
@@ -272,15 +272,16 @@ interface E2E {
       `select balance, in_flight from wallet_accounts where kind = 'user' and user_id = $1`,
       [userId],
     );
-    expect(Number(account.rows[0]!.balance)).toBe(8);
-    expect(Number(account.rows[0]!.in_flight)).toBe(0);
+    const accountRow = defined(account.rows[0], 'account.rows[0]');
+    expect(Number(accountRow.balance)).toBe(8);
+    expect(Number(accountRow.in_flight)).toBe(0);
     // usage_logs 投影
     const usage = await query<{ n: string }>(
       gatewayDb,
       'select count(*)::text as n from usage_logs where request_id = $1',
       [requestId],
     );
-    expect(usage.rows[0]!.n).toBe('1');
+    expect(defined(usage.rows[0], 'usage.rows[0]').n).toBe('1');
     // balance_low 钩子（阈值 100 > 余额 8）：按用户×日幂等入箱
     const alerts = await query<{ event: string }>(
       gatewayDb,
@@ -316,23 +317,24 @@ interface E2E {
       [`00000000-0000-4000-8000-0000000${dayKey}`.slice(0, 36), inviteeId],
     );
 
-    const first = (await worker.runners.referral!()) as { credited: number };
+    const referralRunner = defined(worker.runners.referral, 'runners.referral');
+    const first = (await referralRunner()) as { credited: number };
     expect(first.credited).toBe(1);
     const afterFirst = await query<{ balance: string }>(
       gatewayDb,
       `select balance from wallet_accounts where kind = 'user' and user_id = $1`,
       [inviterId],
     );
-    expect(Number(afterFirst.rows[0]!.balance)).toBe(1);
+    expect(Number(defined(afterFirst.rows[0], 'afterFirst.rows[0]').balance)).toBe(1);
     // 幂等：同日重跑零新入账、余额不翻倍
-    const second = (await worker.runners.referral!()) as { credited: number };
+    const second = (await referralRunner()) as { credited: number };
     expect(second.credited).toBe(0);
     const afterSecond = await query<{ balance: string }>(
       gatewayDb,
       `select balance from wallet_accounts where kind = 'user' and user_id = $1`,
       [inviterId],
     );
-    expect(Number(afterSecond.rows[0]!.balance)).toBe(1);
+    expect(Number(defined(afterSecond.rows[0], 'afterSecond.rows[0]').balance)).toBe(1);
   }, 30_000);
 
   it('③ 对账闭环：人为破坏余额 → verifyInvariants 捕获 → 差异落表 + 告警入箱', async () => {
@@ -342,7 +344,7 @@ interface E2E {
       gatewayDb,
       'select count(*)::text as n from reconcile_discrepancies',
     );
-    expect(before.rows[0]!.n).toBe('0');
+    expect(defined(before.rows[0], 'before.rows[0]').n).toBe('0');
     // 破坏：账户余额 ≠ 末腿 balance_after。直改被一致性触发器拦截（账本自卫）——
     // 禁用该触发器模拟「事后漂移」（对账哨兵的存在理由：捕获绕过写路径的腐化）
     await query(
@@ -350,7 +352,7 @@ interface E2E {
       'alter table wallet_accounts disable trigger wallet_accounts_coherence_ck',
     );
     await query(gatewayDb, `update wallet_accounts set balance = balance + 1 where kind = 'user'`);
-    const result = (await worker.runners.reconcile!()) as {
+    const result = (await defined(worker.runners.reconcile, 'runners.reconcile')()) as {
       ran: boolean | null;
       violations: number;
       inserted: number;
@@ -364,7 +366,7 @@ interface E2E {
       gatewayDb,
       'select count(*)::text as n, min(scope) as scope from reconcile_discrepancies',
     );
-    expect(Number(rows.rows[0]!.n)).toBe(result.violations);
+    expect(Number(defined(rows.rows[0], 'rows.rows[0]').n)).toBe(result.violations);
     const alert = await query<{ event: string }>(
       gatewayDb,
       `select event from notify_outbox where event = 'reconcile_discrepancy'`,

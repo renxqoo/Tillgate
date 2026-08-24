@@ -34,8 +34,10 @@ export interface TransferResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
 export function createTransferUseCase(env: WalletEnv) {
   const { store, guards, currency: defaultCurrency } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
   return async function transfer(input: TransferInput): Promise<TransferResult> {
     const currency = resolveCurrency(guards, defaultCurrency, input);
     assertRefKey(guards, input.refType, input.refId);
@@ -71,7 +73,10 @@ export function createTransferUseCase(env: WalletEnv) {
             ? await store.ensureUserAccount(tx, input.to.userId, currency)
             : await store.ensureInternalAccount(tx, input.to.code, currency);
         const locked = await lockActiveAccounts(store, tx, [fromId, toId]);
-        const from = locked.get(fromId)!;
+        const from = locked.get(fromId);
+        if (from === undefined) {
+          throw new DefectError('transfer.from_lock_missing', 'billing.wallet_invariant');
+        }
         // B7：出账守卫仅在 from 为用户引用时触达，userId 取窄化后的真值（不携带误导 0）
         if (from.kind === 'user' && 'userId' in input.from) {
           assertCanDebit(from, amount, input.from.userId, { allowCredit: input.allowCredit });
@@ -87,10 +92,15 @@ export function createTransferUseCase(env: WalletEnv) {
             { accountId: toId, currency, amount },
           ],
         });
+        const fromBalanceAfter = posted.balanceAfter.get(fromId);
+        const toBalanceAfter = posted.balanceAfter.get(toId);
+        if (fromBalanceAfter === undefined || toBalanceAfter === undefined) {
+          throw new DefectError('transfer.balance_missing', 'billing.wallet_invariant');
+        }
         return {
           transactionId: posted.transactionId,
-          fromBalanceAfter: posted.balanceAfter.get(fromId)!,
-          toBalanceAfter: posted.balanceAfter.get(toId)!,
+          fromBalanceAfter,
+          toBalanceAfter,
           replayed: false,
         };
       });
@@ -110,6 +120,7 @@ export function createTransferUseCase(env: WalletEnv) {
   };
 }
 
+// eslint-disable-next-line max-params -- 导出钱包动词契约(重放入口)
 async function replayTransfer(
   store: WalletStore,
   conn: WalletConn,
@@ -144,6 +155,7 @@ async function replayTransfer(
   };
 }
 
+// eslint-disable-next-line max-params -- 导出钱包动词契约(对账入口)
 async function findAccountId(
   store: WalletStore,
   conn: WalletConn,

@@ -71,196 +71,260 @@ function receiptOf(task: GenerationTaskActiveRow, durationMs: number): UsageRece
 /** 续租宽限常数（v1 同值）：expires_at 余量 + 30s，下限 config.leaseMs */
 const LEASE_GRACE_MS = 30_000;
 
-export function createGenerationPollUseCase(deps: GenerationPollDeps) {
-  const noteError =
-    deps.onError ??
-    ((error: unknown, context: string) => console.error(`[generation] ${context}:`, error));
+/** 单任务异常记录面（缺省 console；worker 装配注入结构化日志） */
+type NoteError = (error: unknown, context: string) => void;
 
-  /** 续租：锚定任务 expires_at + 宽限，下限 config.leaseMs（防 recover 误释放存活任务） */
-  async function renewLease(task: GenerationTaskActiveRow): Promise<void> {
-    const graceMs = Math.max(task.expiresAt - Date.now() + LEASE_GRACE_MS, deps.config.leaseMs);
-    await deps.signal({
-      type: 'lease_renewed',
-      requestId: task.requestId,
-      leaseOwner: task.requestId,
-      leaseMs: graceMs,
-    });
-  }
+/** 轮询上下文：依赖 + 错误记录面（三个族函数共用） */
+interface PollCtx {
+  deps: GenerationPollDeps;
+  noteError: NoteError;
+}
 
-  /** 终态结算：先信号后终态（顺序即防漏收费不变量——见文件头） */
-  async function settleSucceeded(
-    task: GenerationTaskActiveRow,
-    result: Record<string, unknown>,
-  ): Promise<boolean> {
-    const status = await deps.billingStatus(task.requestId);
-    if (status !== 'settlement_pending' && status !== 'settled') {
-      try {
-        await deps.signal({
-          type: 'request_succeeded',
-          requestId: task.requestId,
-          receipt: receiptOf(task, Date.now() - task.createdAt),
-        });
-      } catch (error) {
-        noteError(error, `settle signal failed task=${task.taskId}`);
-        return false; // 不终态化：下轮重试信号——宁可晚交付，不可漏收费
-      }
-    }
-    return await deps.tasks.casTerminal({ taskId: task.taskId, status: 'succeeded', result });
-  }
+/** 续租：锚定任务 expires_at + 宽限，下限 config.leaseMs（防 recover 误释放存活任务） */
+async function renewLease(ctx: PollCtx, task: GenerationTaskActiveRow): Promise<void> {
+  const graceMs = Math.max(task.expiresAt - Date.now() + LEASE_GRACE_MS, ctx.deps.config.leaseMs);
+  await ctx.deps.signal({
+    type: 'lease_renewed',
+    requestId: task.requestId,
+    leaseOwner: task.requestId,
+    leaseMs: graceMs,
+  });
+}
 
-  /** 终态释放（failed/expired）：CAS 成功才发信号（释放顺序与 succeeded 相反） */
-  async function settleFailed(
-    task: { taskId: string; requestId: string },
-    reason: string,
-  ): Promise<boolean> {
-    if (
-      !(await deps.tasks.casTerminal({
-        taskId: task.taskId,
-        status: 'failed',
-        failReason: reason.slice(0, 512),
-      }))
-    ) {
-      return false;
-    }
+/** 终态结算：先信号后终态（顺序即防漏收费不变量——见文件头） */
+async function settleSucceeded(
+  ctx: PollCtx,
+  args: { task: GenerationTaskActiveRow; result: Record<string, unknown> },
+): Promise<boolean> {
+  const { task, result } = args;
+  const status = await ctx.deps.billingStatus(task.requestId);
+  if (status !== 'settlement_pending' && status !== 'settled') {
     try {
-      await deps.signal({
-        type: 'request_failed',
+      await ctx.deps.signal({
+        type: 'request_succeeded',
         requestId: task.requestId,
-        reason: reason.slice(0, 64),
+        receipt: receiptOf(task, Date.now() - task.createdAt),
       });
     } catch (error) {
-      noteError(error, `release signal failed task=${task.taskId}`);
+      ctx.noteError(error, `settle signal failed task=${task.taskId}`);
+      return false; // 不终态化：下轮重试信号——宁可晚交付，不可漏收费
     }
-    return true;
   }
+  return await ctx.deps.tasks.casTerminal({ taskId: task.taskId, status: 'succeeded', result });
+}
 
-  return async function pollGenerationTasks(): Promise<GenerationPollResult> {
-    const result: GenerationPollResult = {
-      expired: 0,
-      polled: 0,
-      executed: 0,
-      succeeded: 0,
-      failed: 0,
-    };
-
-    // ---- ① 超时扫描（权威时间源：expires_at ≤ 存储端时钟）----
-    const expired = await deps.tasks.expireOverdue(deps.config.expireReason);
-    result.expired = expired.length;
-    for (const row of expired) {
-      try {
-        await deps.signal({
-          type: 'request_failed',
-          requestId: row.requestId,
-          reason: 'generation_task_expired',
-        });
-      } catch (error) {
-        noteError(error, `expire signal failed task=${row.taskId}`);
-      }
-    }
-
-    // ---- ② task_poll 族：轮询上游状态（游标翻页到短批——首屏饥饿防线）----
-    const pollKinds = Object.values(GENERATION_KINDS)
-      .filter((d) => d.execution === 'task_poll')
-      .map((d) => d.kind);
-    for (let cursor: number | undefined, guard = 0; guard < 100; guard++) {
-      const pollTasks = await deps.tasks.listActive({
-        kinds: pollKinds,
-        statuses: ['queued', 'running'],
-        batch: deps.config.batch,
-        ...(cursor != null ? { afterCreatedAt: cursor } : {}),
-      });
-      if (pollTasks.length === 0) break;
-      cursor = pollTasks[pollTasks.length - 1]!.createdAt;
-      for (const task of pollTasks) {
-        result.polled += 1;
-        if (!task.upstreamTaskId) continue;
-        const channel = await deps.findChannel(task.channelId);
-        if (!channel) {
-          noteError(
-            new Error('channel missing'),
-            `poll task=${task.taskId} channel=${task.channelId}`,
-          );
-          continue;
-        }
-        let probe: Awaited<ReturnType<typeof deps.upstream.queryTask>>;
-        try {
-          probe = await deps.upstream.queryTask(channel, task.upstreamTaskId);
-        } catch (error) {
-          noteError(error, `query task=${task.taskId}`);
-          probe = {
-            ok: false,
-            error: new UpstreamError({ kind: 'network', message: 'task query threw' }),
-          };
-        }
-        if (!probe.ok) {
-          await renewLease(task).catch((e) => noteError(e, `renew task=${task.taskId}`)); // 瞬时错误：下轮再查
-          continue;
-        }
-        if (probe.status === 'running') {
-          if (task.status === 'queued') await deps.tasks.markRunning(task.taskId);
-          await renewLease(task).catch((e) => noteError(e, `renew task=${task.taskId}`));
-          continue;
-        }
-        if (probe.status === 'failed') {
-          if (await settleFailed(task, probe.reason ?? 'upstream task failed')) result.failed += 1;
-          continue;
-        }
-        if (probe.status === 'succeeded') {
-          if (await settleSucceeded(task, (probe.artifact ?? {}) as Record<string, unknown>)) {
-            result.succeeded += 1;
-          }
-        }
-      }
-      if (pollTasks.length < deps.config.batch) break;
-    }
-
-    // ---- ③ task_execute 族：worker 代执行（网关只登记不调上游；单批无翻页）----
-    const executeKinds = Object.values(GENERATION_KINDS)
-      .filter((d) => d.execution === 'task_execute')
-      .map((d) => d.kind);
-    const executeTasks = await deps.tasks.listActive({
-      kinds: executeKinds,
-      statuses: ['queued'],
-      batch: deps.config.batch,
+/** 终态释放（failed/expired）：CAS 成功才发信号（释放顺序与 succeeded 相反） */
+async function settleFailed(
+  ctx: PollCtx,
+  args: { task: { taskId: string; requestId: string }; reason: string },
+): Promise<boolean> {
+  const { task, reason } = args;
+  if (
+    !(await ctx.deps.tasks.casTerminal({
+      taskId: task.taskId,
+      status: 'failed',
+      failReason: reason.slice(0, 512),
+    }))
+  ) {
+    return false;
+  }
+  try {
+    await ctx.deps.signal({
+      type: 'request_failed',
+      requestId: task.requestId,
+      reason: reason.slice(0, 64),
     });
-    for (const task of executeTasks) {
-      result.executed += 1;
-      const channel = await deps.findChannel(task.channelId);
-      if (!channel) {
-        noteError(
-          new Error('channel missing'),
-          `execute task=${task.taskId} channel=${task.channelId}`,
-        );
-        continue;
-      }
-      let outcome: Awaited<ReturnType<typeof deps.upstream.executeTask>>;
-      try {
-        outcome = await deps.upstream.executeTask(channel, task.kind, {
-          requestId: task.taskId,
-          externalModel: task.receiptTemplate.externalModel,
-          realModel: task.receiptTemplate.realModel,
-          endpoint: task.kind,
-          body: task.params,
-          deadlineMs: deps.config.executeDeadlineMs,
-          maxRetries: deps.config.executeMaxRetries,
-        });
-      } catch (error) {
-        noteError(error, `execute task=${task.taskId}`);
-        outcome = {
-          ok: false,
-          error: new UpstreamError({ kind: 'network', message: 'task execution threw' }),
-        };
-      }
-      if (outcome.ok && (await settleSucceeded(task, outcome.artifact))) {
-        result.succeeded += 1;
-      } else if (
-        !outcome.ok &&
-        (await settleFailed(task, outcome.error.message ?? 'generation execution failed'))
-      ) {
-        result.failed += 1;
-      }
-    }
+  } catch (error) {
+    ctx.noteError(error, `release signal failed task=${task.taskId}`);
+  }
+  return true;
+}
 
-    return result;
+/** ① 超时扫描（权威时间源：expires_at ≤ 存储端时钟）：CAS expired + request_failed 释放（不扣） */
+async function expireScan(ctx: PollCtx): Promise<number> {
+  const expired = await ctx.deps.tasks.expireOverdue(ctx.deps.config.expireReason);
+  for (const row of expired) {
+    try {
+      await ctx.deps.signal({
+        type: 'request_failed',
+        requestId: row.requestId,
+        reason: 'generation_task_expired',
+      });
+    } catch (error) {
+      ctx.noteError(error, `expire signal failed task=${row.taskId}`);
+    }
+  }
+  return expired.length;
+}
+
+/** ② 单任务轮询推进：返回终态计数（undefined = 无终态推进） */
+// eslint-disable-next-line max-lines-per-function -- 单任务轮询循环:重构后位于 50 行边界,oxfmt 换行推超 1 行
+async function pollSingleTask(
+  ctx: PollCtx,
+  task: GenerationTaskActiveRow,
+): Promise<'succeeded' | 'failed' | undefined> {
+  if (!task.upstreamTaskId) return undefined;
+  const channel = await ctx.deps.findChannel(task.channelId);
+  if (!channel) {
+    ctx.noteError(
+      new Error('channel missing'),
+      `poll task=${task.taskId} channel=${task.channelId}`,
+    );
+    return undefined;
+  }
+  let probe: Awaited<ReturnType<typeof ctx.deps.upstream.queryTask>>;
+  try {
+    probe = await ctx.deps.upstream.queryTask(channel, task.upstreamTaskId);
+  } catch (error) {
+    ctx.noteError(error, `query task=${task.taskId}`);
+    probe = {
+      ok: false,
+      error: new UpstreamError({ kind: 'network', message: 'task query threw' }),
+    };
+  }
+  if (!probe.ok) {
+    await renewLease(ctx, task).catch((error) => ctx.noteError(error, `renew task=${task.taskId}`)); // 瞬时错误：下轮再查
+    return undefined;
+  }
+  if (probe.status === 'running') {
+    if (task.status === 'queued') await ctx.deps.tasks.markRunning(task.taskId);
+    await renewLease(ctx, task).catch((error) => ctx.noteError(error, `renew task=${task.taskId}`));
+    return undefined;
+  }
+  if (probe.status === 'failed') {
+    return (await settleFailed(ctx, {
+      task,
+      reason: probe.reason ?? 'upstream task failed',
+    }))
+      ? 'failed'
+      : undefined;
+  }
+  if (
+    probe.status === 'succeeded' &&
+    (await settleSucceeded(ctx, {
+      task,
+      result: (probe.artifact ?? {}) as Record<string, unknown>,
+    }))
+  ) {
+    return 'succeeded';
+  }
+  return undefined;
+}
+
+/** ② task_poll 族：轮询上游状态（游标翻页到短批——首屏饥饿防线） */
+async function pollTaskFamily(
+  ctx: PollCtx,
+): Promise<{ polled: number; succeeded: number; failed: number }> {
+  const acc = { polled: 0, succeeded: 0, failed: 0 };
+  const pollKinds = Object.values(GENERATION_KINDS)
+    .filter((d) => d.execution === 'task_poll')
+    .map((d) => d.kind);
+  for (let cursor: number | undefined, guard = 0; guard < 100; guard++) {
+    const pollTasks = await ctx.deps.tasks.listActive({
+      kinds: pollKinds,
+      statuses: ['queued', 'running'],
+      batch: ctx.deps.config.batch,
+      ...(cursor != null ? { afterCreatedAt: cursor } : {}),
+    });
+    if (pollTasks.length === 0) break;
+    const lastTask = pollTasks.at(-1);
+    // 不可达守卫:length > 0 时 at(-1) 必存在,仅做类型收窄
+    if (lastTask == null) break;
+    cursor = lastTask.createdAt;
+    for (const task of pollTasks) {
+      acc.polled += 1;
+      const outcome = await pollSingleTask(ctx, task);
+      if (outcome != null) acc[outcome] += 1;
+    }
+    if (pollTasks.length < ctx.deps.config.batch) break;
+  }
+  return acc;
+}
+
+/** ③ 单任务代执行：同步阻塞型上游调用（异常归一 network 错误）→ 终态推进 */
+async function executeSingleTask(
+  ctx: PollCtx,
+  task: GenerationTaskActiveRow,
+  channel: ChannelCandidate,
+): Promise<'succeeded' | 'failed' | undefined> {
+  let outcome: Awaited<ReturnType<typeof ctx.deps.upstream.executeTask>>;
+  try {
+    outcome = await ctx.deps.upstream.executeTask(channel, task.kind, {
+      requestId: task.taskId,
+      externalModel: task.receiptTemplate.externalModel,
+      realModel: task.receiptTemplate.realModel,
+      endpoint: task.kind,
+      body: task.params,
+      deadlineMs: ctx.deps.config.executeDeadlineMs,
+      maxRetries: ctx.deps.config.executeMaxRetries,
+    });
+  } catch (error) {
+    ctx.noteError(error, `execute task=${task.taskId}`);
+    outcome = {
+      ok: false,
+      error: new UpstreamError({ kind: 'network', message: 'task execution threw' }),
+    };
+  }
+  if (outcome.ok && (await settleSucceeded(ctx, { task, result: outcome.artifact }))) {
+    return 'succeeded';
+  }
+  if (
+    !outcome.ok &&
+    (await settleFailed(ctx, {
+      task,
+      reason: outcome.error.message ?? 'generation execution failed',
+    }))
+  ) {
+    return 'failed';
+  }
+  return undefined;
+}
+
+/** ③ task_execute 族：worker 代执行（网关只登记不调上游；单批无翻页） */
+async function executeTaskFamily(
+  ctx: PollCtx,
+): Promise<{ executed: number; succeeded: number; failed: number }> {
+  const acc = { executed: 0, succeeded: 0, failed: 0 };
+  const executeKinds = Object.values(GENERATION_KINDS)
+    .filter((d) => d.execution === 'task_execute')
+    .map((d) => d.kind);
+  const executeTasks = await ctx.deps.tasks.listActive({
+    kinds: executeKinds,
+    statuses: ['queued'],
+    batch: ctx.deps.config.batch,
+  });
+  for (const task of executeTasks) {
+    acc.executed += 1;
+    const channel = await ctx.deps.findChannel(task.channelId);
+    if (!channel) {
+      ctx.noteError(
+        new Error('channel missing'),
+        `execute task=${task.taskId} channel=${task.channelId}`,
+      );
+      continue;
+    }
+    const outcome = await executeSingleTask(ctx, task, channel);
+    if (outcome != null) acc[outcome] += 1;
+  }
+  return acc;
+}
+
+export function createGenerationPollUseCase(deps: GenerationPollDeps) {
+  const ctx: PollCtx = {
+    deps,
+    noteError:
+      deps.onError ?? ((error, context) => console.error(`[generation] ${context}:`, error)),
+  };
+  return async function pollGenerationTasks(): Promise<GenerationPollResult> {
+    const expired = await expireScan(ctx);
+    const polled = await pollTaskFamily(ctx);
+    const executed = await executeTaskFamily(ctx);
+    return {
+      expired,
+      polled: polled.polled,
+      executed: executed.executed,
+      succeeded: polled.succeeded + executed.succeeded,
+      failed: polled.failed + executed.failed,
+    };
   };
 }

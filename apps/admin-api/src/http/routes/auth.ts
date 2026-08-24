@@ -57,6 +57,7 @@ interface LoginPayload {
   adminId: number;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表 + 凭证鉴别/2FA 共享闭包为 v1 平移语义(存量棘轮)
 export function authRoutes(deps: AuthRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -76,6 +77,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
 
   /** 凭证鉴别共享段（login 与 login/totp 同口径）:守卫闸 → 密码 → 资料漂移 →
    *  状态 → 成功清零计数;失败计双闸 + 审计。返回 adminId,拒绝路径统一抛业务错 */
+  // eslint-disable-next-line max-lines-per-function -- 凭证鉴别链(守卫/密码/漂移/状态/计数/审计)语义连续,拆段即互相回读(存量棘轮)
   const authenticateCredentials = async (
     body: { email: string; password: string },
     ip: string,
@@ -159,7 +161,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
     if (totp.confirmed) {
       await deps
         .loginAudit({ action: 'auth.login.2fa_challenge', adminId, ip, twoFactor: true })
-        .catch(() => undefined);
+        .catch(() => {});
       return c.json({ twoFactorRequired: true, method: 'totp' });
     }
 
@@ -184,12 +186,12 @@ export function authRoutes(deps: AuthRoutesDeps) {
           adminId,
           ip,
         })
-        .catch(() => undefined);
+        .catch(() => {});
       return c.json({ twoFactorRequired: true, method: 'email', challengeId });
     }
 
     await deps.admins.touchLastLogin(adminId);
-    await deps.loginAudit({ action: 'auth.login.success', adminId, ip }).catch(() => undefined);
+    await deps.loginAudit({ action: 'auth.login.success', adminId, ip }).catch(() => {});
     return c.json({
       token: await deps.identity.sessions.sign({
         realm: 'admin',
@@ -226,7 +228,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
     await deps.admins.touchLastLogin(adminId);
     await deps
       .loginAudit({ action: 'auth.login.success', adminId, ip, twoFactor: true })
-      .catch(() => undefined);
+      .catch(() => {});
     return c.json({
       token: await deps.identity.sessions.sign({
         realm: 'admin',
@@ -244,7 +246,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
       code: body.code,
     });
     const payload = (verified.payload ?? {}) as Partial<LoginPayload>;
-    const adminId = payload.adminId;
+    const { adminId } = payload;
     if (adminId == null) {
       throw AdminErrors.business('invalid_credentials_admin', {});
     }
@@ -261,7 +263,7 @@ export function authRoutes(deps: AuthRoutesDeps) {
         ip: null,
         twoFactor: true,
       })
-      .catch(() => undefined);
+      .catch(() => {});
     return c.json({
       token: await deps.identity.sessions.sign({
         realm: 'admin',

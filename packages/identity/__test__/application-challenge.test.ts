@@ -191,7 +191,7 @@ describe('challenges.begin 目标寻址与 fail-closed', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       store: h.store,
     });

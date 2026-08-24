@@ -20,13 +20,14 @@ function str(v: unknown): string | undefined {
 export function completionsRequestToChat(req: unknown): Json {
   const r = asJson(req) ?? {};
   let prompt;
-  if (typeof r.prompt === 'string') prompt = r.prompt;
-  else if (Array.isArray(r.prompt))
+  if (typeof r.prompt === 'string') ({ prompt } = r);
+  else if (Array.isArray(r.prompt)) {
     prompt = r.prompt.map((p) => (typeof p === 'string' ? p : String(asArray(p)))).join('');
-  else prompt = '';
+  } else prompt = '';
   const messages = prompt ? [{ role: 'user', content: prompt }] : [];
-  if (typeof r.system === 'string' && r.system)
+  if (typeof r.system === 'string' && r.system) {
     messages.unshift({ role: 'system', content: r.system });
+  }
   const out: Json = { model: str(r.model) ?? '', messages };
   const passthrough = [
     'max_tokens',

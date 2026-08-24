@@ -191,7 +191,7 @@ function fundsDeps() {
 describe('用户资金动词', () => {
   it('赠送:幂等档案 + credit + 同事务审计 + v1 回执形状', async () => {
     const { deps, seen } = fundsDeps();
-    const writeAudit = vi.fn(async () => undefined);
+    const writeAudit = vi.fn(async () => {});
     deps.writeAudit = writeAudit;
     const app = createAdminApp(deps);
     const res = await app.request('/v1/users/42/gift', {

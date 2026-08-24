@@ -68,15 +68,18 @@ function invariant(code: string): DefectError {
   return new DefectError(code, 'billing.billing_invariant', { code });
 }
 
+// eslint-disable-next-line max-lines-per-function -- 结算状态机事务体:投影校验→分配→逐源核销,拆分需共享 tx 与计数器
 export function createSettleClaimUseCase(env: SettleEnv) {
   const { store, clock } = env;
 
+  // eslint-disable-next-line max-lines-per-function -- 结算状态机事务体:投影校验→分配→逐源核销,拆分需共享 tx 与计数器
   return async function settleClaim(claim: SettlementClaim): Promise<SettleClaimResult> {
     // 解码守卫（毒收据 → 抛给失败路径判死信）；金额双口径在此算一次
     const receipt = decodeReceipt(claim.receipt as UsageReceipt | null);
     const { calculatedAmount, upstreamCost } = computeAmounts(receipt);
 
     let settledUserId = receipt.userId;
+    // eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 结算状态机事务体:投影校验→分配→逐源核销,拆分需共享 tx 与计数器
     const result = await store.transaction(async (tx): Promise<SettleClaimResult> => {
       const claimKeys = {
         requestId: claim.requestId,
@@ -133,8 +136,11 @@ export function createSettleClaimUseCase(env: SettleEnv) {
       const now = clock();
       let planConsume = new Decimal(0);
       for (let i = 0; i < shares.length; i++) {
-        const share = shares[i]!;
-        const reservation = reservations[i]!;
+        const share = shares[i];
+        const reservation = reservations[i];
+        if (share === undefined || reservation === undefined) {
+          throw invariant('settle_share_index_mismatch');
+        }
         const source = env.fundingRegistry.get(reservation.sourceType);
         await source.settle(tx, {
           userId: billing.userId,

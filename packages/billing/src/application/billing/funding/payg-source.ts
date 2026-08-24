@@ -15,6 +15,7 @@ import type {
   SourceSettleInput,
 } from './source.js';
 
+// eslint-disable-next-line max-lines-per-function -- PAYG 资金源动词事务体
 export function createPaygSource(deps: {
   wallet: WalletApi;
   walletStore: WalletStore;

@@ -40,6 +40,7 @@ export const MAIL_FONT_FAMILY =
   "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;";
 
 /** 渲染验证码邮件(subject + text + html);时间格式化由 now 注入(可测) */
+// eslint-disable-next-line max-params, max-lines-per-function -- 渲染入参五要素各有其位(公共导出,调用方按位置参数锁定);双语邮件模板 text/html 逐行平铺属数据渲染
 export function renderLoginCodeEmail(
   code: string,
   ctx: { ip: string; locale?: 'en' | 'zh' },
@@ -101,7 +102,7 @@ export function renderLoginCodeEmail(
 <p style="${MAIL_BASE_STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to complete the verification:` : `你正在登录${brand},请使用以下验证码完成验证:`}</p>
 <p style="${MAIL_BASE_STYLE.code}">${code}</p>
 <p style="${MAIL_BASE_STYLE.p}">${en ? `The code is valid for <strong>${ttlMinutes} minutes</strong>; <strong>${maxAttempts}</strong> failed attempts invalidate it.` : `验证码 <strong>${ttlMinutes} 分钟内</strong>有效,连续输错 <strong>${maxAttempts} 次</strong>将作废。`}</p>
-<p style="${MAIL_BASE_STYLE.p}">${en ? 'If this was not you, <a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">contact support</a> or change your password immediately.' : '若非你本人操作,请 <a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">联系支持</a>或立即修改密码。'}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? `If this was not you, <a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">contact support</a> or change your password immediately.` : `若非你本人操作,请 <a href="mailto:support@tillgate.com" style="${MAIL_BASE_STYLE.link}">联系支持</a>或立即修改密码。`}</p>
 <p style="${MAIL_BASE_STYLE.sign}">${en ? 'Best,' : '顺祝,'}<br/>${brand} ${en ? 'Team' : '团队'}</p>
 <p style="${MAIL_BASE_STYLE.sub}">${brandSub} · ${en ? `Source IP: ${ctx.ip} · Sent at: ${sentAt} · Do not reply` : `来源 IP:${ctx.ip} · 发送时间:${sentAt} · 请勿回复`}</p>
 

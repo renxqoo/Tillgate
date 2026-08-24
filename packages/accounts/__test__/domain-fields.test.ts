@@ -36,7 +36,7 @@ describe('email 规范化与校验', () => {
     ['a b@c.d', false], // 空格
     ['no-at-sign', false],
     ['', false],
-    ['x'.repeat(251) + '@d.co', false], // 总长 256 > 255
+    [`${'x'.repeat(251)}@d.co`, false], // 总长 256 > 255
   ])('isValidEmail(%s) = %s', (input, expected) => {
     expect(isValidEmail(input)).toBe(expected);
   });
@@ -111,7 +111,7 @@ describe('频率限额域(正整数 ≤ max)', () => {
 describe('显示名兜底派生(v1 语义)', () => {
   it('本地:email 本地部分截 64', () => {
     expect(localDisplayNameFallback('alice@example.com')).toBe('alice');
-    expect(localDisplayNameFallback('x'.repeat(80) + '@d.co')).toHaveLength(64);
+    expect(localDisplayNameFallback(`${'x'.repeat(80)}@d.co`)).toHaveLength(64);
     expect(localDisplayNameFallback('weird')).toBe('weird'); // 无 @ 全量
   });
   it('OAuth:「用户{subject 前 6}」截 64', () => {

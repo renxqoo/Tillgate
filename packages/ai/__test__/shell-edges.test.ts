@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 import { estimateInputTokens } from '../src/usage/token-estimate.js';
 import {
@@ -11,19 +12,17 @@ import { VertexAiAdapter } from '../src/adapters/vertex-ai.js';
 import { defineAdapter } from '../src/registry/define-adapter.js';
 import { OpenAICompatibleAdapter } from '../src/adapters/openai-compatible.js';
 
-const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
-) =>
+const startServer = (handler: (req: IncomingMessage, res: ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {
     const server = createServer(handler);
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address() as { port: number };
       resolve({
         baseUrl: `http://127.0.0.1:${addr.port}`,
-        close: () => new Promise((r) => server.close(() => r())),
+        close: () =>
+          new Promise((r) => {
+            server.close(() => r());
+          }),
       });
     });
   });
@@ -79,7 +78,7 @@ describe('create-ai 壳：异常分支', () => {
       expect(text).toContain('[DONE]');
       const seen: string[] = [];
       events.subscribe((e) => seen.push(e.type));
-      expect(seen[seen.length - 1]).toBe('failed');
+      expect(seen.at(-1)).toBe('failed');
     } finally {
       await s.close();
     }

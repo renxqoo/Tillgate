@@ -102,7 +102,7 @@ export type EstimateAttribution = (typeof ESTIMATE_ATTRIBUTIONS)[number];
  * 防御性兜底：任何非用户侧终止值都不是「完成」，未知值归 upstream_error_partial
  * ——绝不回落 usage_missing_completed（否则细分口径被未来新增的终止原因稀释）。
  */
-export function streamEstimateAttribution(terminated: string | undefined): EstimateAttribution {
+export function streamEstimateAttribution(terminated?: string): EstimateAttribution {
   if (terminated === undefined) return 'usage_missing_completed';
   if ((USER_SIDE_CANCELS as readonly string[]).includes(terminated)) return 'client_disconnect';
   if (terminated === 'server_draining') return 'server_draining';

@@ -70,12 +70,15 @@ export interface ErrorHandling {
  */
 export function handlingOf(record: ErrorRecord): ErrorHandling {
   switch (record.nature) {
-    case 'business':
+    case 'business': {
       return CATEGORY_DEFAULTS[record.category];
-    case 'infrastructure':
+    }
+    case 'infrastructure': {
       return { retryable: true, alert: true };
-    case 'defect':
+    }
+    case 'defect': {
       return { retryable: false, alert: true };
+    }
   }
 }
 
@@ -119,7 +122,7 @@ function mergedContextOf(error: TillgateError): ErrorContext | undefined {
 function fromUnknown(value: unknown, depth: number): ErrorRecord {
   if (value instanceof TillgateError) return fromTillgate(value, depth);
   if (value instanceof Error) {
-    let message = value.message;
+    let { message } = value;
     if (message === '') message = value.name === '' ? 'unknown error' : value.name;
     return {
       nature: 'defect',

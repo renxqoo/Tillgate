@@ -6,6 +6,7 @@ import { context, trace, SpanStatusCode, type Span, type Tracer } from '@opentel
  * 异常 → span 记 ERROR + recordException 后原样上抛(观测不吞错)。
  * SDK 未启动 = no-op tracer,零开销。
  */
+// eslint-disable-next-line max-params -- 导出 API,apps/gateway 等跨包调用点沿用 tracer/name/attributes/fn 四参形态,改 options 会放大契约 diff
 export async function withAsyncSpan<T>(
   tracer: Tracer,
   name: string,

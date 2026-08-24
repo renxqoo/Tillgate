@@ -11,6 +11,9 @@
  */
 
 /** 与 PG SQLSTATE 23505 同形的冲突错误（isUniqueViolation 探测 cause 链） */
+import type { WalletStore } from '../ports/wallet-store.js';
+
+/** 与 PG SQLSTATE 23505 同形的冲突错误（isUniqueViolation 探测 cause 链） */
 export class UniqueViolationError extends Error {
   readonly code = '23505';
 }
@@ -65,7 +68,7 @@ interface LegRow {
 }
 
 export interface InMemoryWalletStore {
-  readonly store: import('../ports/wallet-store.js').WalletStore;
+  readonly store: WalletStore;
   /** 跳过一次交易快速路径查询（模拟读后写竞态：写路径将撞唯一键走兜底重放） */
   suppressNextFindTransaction(): void;
   /** 跳过一次冻结单快速路径查询 */
@@ -131,7 +134,7 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
   const conn = { connBrand: 'wallet-conn' } as const;
   const txHandle = { ...conn, txBrand: 'wallet-tx' } as const;
 
-  const store: import('../ports/wallet-store.js').WalletStore = {
+  const store: WalletStore = {
     read: (fn) => fn(conn),
     transaction: (fn) => fn(txHandle),
     joinTransaction: (_tx, fn) => fn(txHandle),
@@ -273,6 +276,7 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       return Promise.resolve(null);
     },
 
+    // eslint-disable-next-line max-params -- WalletStore 端口契约签名镜像 postgres 实现同口径
     casReleaseAuthorization(_conn, id, releaseReason, releaseFingerprint) {
       for (const row of authorizations.values()) {
         if (row.id === id && row.status === 'active') {
@@ -285,6 +289,7 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       return Promise.resolve(null);
     },
 
+    // eslint-disable-next-line max-params -- WalletStore 端口契约签名镜像 postgres 实现同口径
     findTransaction(_conn, refType, refId, kind) {
       if (suppressTransaction) {
         suppressTransaction = false;
@@ -374,7 +379,10 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       const rows = legs
         .filter((leg) => accountIds.has(leg.accountId))
         .map((leg) => {
-          const tx = transactions.find((t) => t.id === leg.transactionId)!;
+          const tx = transactions.find((t) => t.id === leg.transactionId);
+          if (tx === undefined) {
+            throw new Error('in-memory wallet: transaction missing for leg');
+          }
           return {
             legId: leg.id,
             transactionKind: tx.kind,
@@ -437,7 +445,8 @@ export function createInMemoryWalletStore(): InMemoryWalletStore {
       }
       for (const account of accounts.values()) {
         const own = legs.filter((l) => l.accountId === account.id);
-        const last = own.length > 0 ? own[own.length - 1]!.balanceAfter : '0';
+        const lastLeg = own.at(-1);
+        const last = lastLeg === undefined ? '0' : lastLeg.balanceAfter;
         if (account.balance !== last) {
           violations.push({
             kind: 'account_balance',

@@ -3,13 +3,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildFacade } from './memory';
+import { defined } from './defined';
 
 describe('enqueue', () => {
   it('词表外事件 → unknown_event', async () => {
     const { facade } = buildFacade();
     const err = await facade
       .enqueue({ event: 'concurrency_probe', payload: {}, dedupeKey: 'k1' })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.unknown_event');
   });
 
@@ -17,11 +18,11 @@ describe('enqueue', () => {
     const { facade } = buildFacade();
     const empty = await facade
       .enqueue({ event: 'billing_dead', payload: {}, dedupeKey: '' })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((empty as { code: string }).code).toBe('notifications.invalid_outbox_input');
     const tooLong = await facade
       .enqueue({ event: 'billing_dead', payload: {}, dedupeKey: 'k'.repeat(129) })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((tooLong as { code: string }).code).toBe('notifications.invalid_outbox_input');
   });
 
@@ -33,7 +34,7 @@ describe('enqueue', () => {
         payload: [1, 2, 3] as unknown as Record<string, unknown>,
         dedupeKey: 'arr-1',
       })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((arrayPayload as { code: string }).code).toBe('notifications.invalid_outbox_input');
     expect(memory.pendingRows()).toHaveLength(0); // 无行落库
   });
@@ -49,8 +50,9 @@ describe('enqueue', () => {
     await facade.enqueue(input);
     const rows = memory.pendingRows().filter((r) => r.dedupeKey === input.dedupeKey);
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.event).toBe('balance_low');
-    expect(rows[0]!.payload).toEqual({ userId: 7, balance: '0.5' });
+    const row = defined(rows[0], 'rows[0]');
+    expect(row.event).toBe('balance_low');
+    expect(row.payload).toEqual({ userId: 7, balance: '0.5' });
   });
 
   it('异 dedupeKey 各自成行', async () => {

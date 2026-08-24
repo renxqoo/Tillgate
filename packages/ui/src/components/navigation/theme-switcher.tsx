@@ -7,10 +7,10 @@ import { MoonIcon, SunIcon } from 'lucide-react';
 import { useTheme } from '../primitives/theme-provider';
 import { Button } from '../primitives/button';
 
-export type ThemeSwitcherProps = {
+export interface ThemeSwitcherProps {
   /** 按钮 aria-label(本地化注入) */
   label?: string;
-};
+}
 
 export function ThemeSwitcher({ label = 'Toggle theme' }: ThemeSwitcherProps) {
   const { resolvedTheme, setTheme } = useTheme();

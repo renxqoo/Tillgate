@@ -166,7 +166,7 @@ export function createInMemoryIdentityStore(clock: Clock): InMemoryIdentityStore
       const rows = state.credentials
         .filter((c) => c.userId === userId)
         .toSorted((a, b) => kindRank(a.kind) - kindRank(b.kind) || a.id - b.id);
-      const first = rows[0];
+      const [first] = rows;
       if (first == null || (first.kind !== 'email' && first.kind !== 'phone')) return null;
       return { kind: first.kind as 'email' | 'phone', value: first.value };
     },
@@ -359,13 +359,11 @@ export function createInMemoryIdentityStore(clock: Clock): InMemoryIdentityStore
       const row = state.anchors.find((a) => a.realm === input.realm && a.userId === input.userId);
       if (row != null) {
         row.invalidBefore = Math.max(row.invalidBefore, at);
-      } else {
-        state.anchors.push({ realm: input.realm, userId: input.userId, invalidBefore: at });
+        return new Date(row.invalidBefore).toISOString();
       }
-      const current = state.anchors.find(
-        (a) => a.realm === input.realm && a.userId === input.userId,
-      )!;
-      return new Date(current.invalidBefore).toISOString();
+      const inserted = { realm: input.realm, userId: input.userId, invalidBefore: at };
+      state.anchors.push(inserted);
+      return new Date(inserted.invalidBefore).toISOString();
     },
 
     async readAnchor(_db, input) {

@@ -7,10 +7,10 @@
 import type { UsageAdminRow } from '@tillgate/observability';
 import type { GenerationTaskAdminRow } from '@tillgate/inference';
 import type { AdminPaymentOrderRow } from '@tillgate/billing';
-import { iso } from '../contracts/common';
+import { iso, isoRequired } from '../contracts/common';
 
 export function toUsageWireRow(row: UsageAdminRow) {
-  return { ...row, createdAt: iso(row.createdAt)! };
+  return { ...row, createdAt: isoRequired(row.createdAt) };
 }
 
 export function toTaskWireRow(row: GenerationTaskAdminRow, settledAmount: string | null) {
@@ -36,7 +36,7 @@ export function toTaskWireRow(row: GenerationTaskAdminRow, settledAmount: string
 export function toOrderWireRow(row: AdminPaymentOrderRow) {
   return {
     ...row,
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
     paidAt: iso(row.paidAt),
     creditedAt: iso(row.creditedAt),
   };

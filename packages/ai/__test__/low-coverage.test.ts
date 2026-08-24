@@ -13,6 +13,7 @@ import { defaultAiDefaults, aiDefaultsSchema } from '../src/config.js';
 import { ServerDrainAbort, asServerDrainAbort } from '../src/errors/server-drain.js';
 import { asRecord } from '../src/internal/util.js';
 import { UpstreamError } from '../src/errors/kinds.js';
+import { defined } from './defined';
 
 const ch = (protocol: string) => ({ baseUrl: 'https://x.test', apiKey: 'k', protocol });
 
@@ -167,14 +168,16 @@ describe('gemini 请求出站 + calibration/config/drain 细节', () => {
   });
   it('minimax parseResponse：video 提交 / music 完成 / 信封错误', () => {
     const m = new MiniMaxAdapter();
-    expect(m.tasks!.parseResponse('video', { task_id: 't1' })).toMatchObject({
+    expect(defined(m.tasks, 'm.tasks').parseResponse('video', { task_id: 't1' })).toMatchObject({
       kind: 'task_submitted',
       taskId: 't1',
     });
-    expect(m.tasks!.parseResponse('music', { data: { audio_url: 'https://a.mp3' } })).toMatchObject(
-      { kind: 'task_completed' },
-    );
-    expect(m.tasks!.parseResponse('video', { base_resp: { status_code: 1004 } })).toMatchObject({
+    expect(
+      defined(m.tasks, 'm.tasks').parseResponse('music', { data: { audio_url: 'https://a.mp3' } }),
+    ).toMatchObject({ kind: 'task_completed' });
+    expect(
+      defined(m.tasks, 'm.tasks').parseResponse('video', { base_resp: { status_code: 1004 } }),
+    ).toMatchObject({
       kind: 'error',
     });
   });

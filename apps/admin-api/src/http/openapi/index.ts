@@ -255,6 +255,7 @@ function collectRefs(node: unknown, into: Set<string>): void {
 }
 
 /** 文档构建（纯函数;两次调用输出逐字节相等） */
+// eslint-disable-next-line max-lines-per-function, max-statements, complexity -- 注册表→JSON 形状的数据装配平铺(组件/端点逐项遍历,语句与分支皆来自字段映射)
 export function buildAdminOpenApiDocument(): JsonSchema {
   // 组件名唯一性守卫 + 组件装配（x-domain 供 api-client 生成物分组注释）
   const componentNames = new Set<string>();

@@ -40,6 +40,7 @@ export interface CatalogComparisonPayload {
   readonly gone: Array<{ mappingId: number; externalName: string; realModel: string }>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 编排:取源→拉取(错误面分支)→映射→比价
 export async function compareCatalogFromSource(
   deps: CompareCatalogDeps,
   sourceId: string,

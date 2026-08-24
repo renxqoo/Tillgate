@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 
+import { defined } from './defined';
 import { installNextStubs, mockFetch, type MockResponse } from './harness';
 
 const ok: MockResponse = { status: 200, body: {} };
@@ -82,7 +83,7 @@ describe('单实例四弧扫描', () => {
   it('models：动词族 × 三弧 + billingConfig 满配', async () => {
     const m = await session(
       '../src/server/models-actions',
-      Array.from({ length: 15 }, (_, i) => [ok, err(), net][i % 3]!),
+      Array.from({ length: 15 }, (_, i) => defined([ok, err(), net][i % 3], 'cycle response')),
     );
     const full = {
       externalName: 'a',
@@ -224,7 +225,7 @@ describe('单实例四弧扫描', () => {
 
     const su = await session(
       '../src/server/subscriptions-actions',
-      Array.from({ length: 9 }, (_, i) => [ok, err(), net][i % 3]!),
+      Array.from({ length: 9 }, (_, i) => defined([ok, err(), net][i % 3], 'cycle response')),
     );
     await R(su.renewSubscriptionAction, 1);
     await R(su.renewSubscriptionAction, 1);
@@ -267,7 +268,7 @@ describe('单实例四弧扫描', () => {
 
     const mc = await session(
       '../src/server/model-catalog-actions',
-      Array.from({ length: 18 }, (_, i) => [ok, err(), net][i % 3]!),
+      Array.from({ length: 18 }, (_, i) => defined([ok, err(), net][i % 3], 'cycle response')),
     );
     const imp = mc.importCatalogAction as unknown as (
       a: Record<string, unknown>,

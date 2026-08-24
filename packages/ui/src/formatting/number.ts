@@ -1,15 +1,15 @@
 // 数值格式化: locale 必须装配注入(AGENT §0.3); 位数缺省沿用 Intl 各形态的展示默认
-export type NumberFormatter = {
+export interface NumberFormatter {
   format(value: number): string;
   formatCompact(value: number): string;
   // fraction 是比例值(0.123 → 12.3%), 不是百分数
   formatPercent(fraction: number, options?: { maximumFractionDigits?: number }): string;
-};
+}
 
-export type NumberFormatterOptions = {
+export interface NumberFormatterOptions {
   locale: string;
   maximumFractionDigits?: number;
-};
+}
 
 function assertFinite(value: number): void {
   if (!Number.isFinite(value)) {

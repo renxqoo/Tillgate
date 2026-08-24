@@ -15,6 +15,7 @@ import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { generationRoutes } from '../src/http/routes/generation';
 import { admitRequest, type RateLimitGate } from '../src/http/middleware/rate-limit';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import { defined } from './defined';
 
 const JWT = { secret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'sk_' };
 const READER: AuthReadModel = {
@@ -41,15 +42,11 @@ function mount(inference: Inference, extra: { rateLimit?: never } = {}) {
   return app;
 }
 
-const post = (
-  a: Hono<AuthEnv>,
-  path: string,
-  body: unknown,
-  headers: Record<string, string> = {},
-) =>
+// 全部调用点都不传自定义 headers（固定 sk_k 鉴权 + JSON 体），故不保留无人使用的第 4 参
+const post = (a: Hono<AuthEnv>, path: string, body: unknown) =>
   a.request(path, {
     method: 'POST',
-    headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json', ...headers },
+    headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -59,13 +56,14 @@ describe('gemini 交付三态分支', () => {
     const inference = {
       chat: async () => {
         call += 1;
-        if (call === 1)
+        if (call === 1) {
           return {
             ok: true,
             status: 200,
             rawBody: new Uint8Array([1, 2]),
             rawContentType: 'audio/wav',
           };
+        }
         return {
           ok: true,
           status: 200,
@@ -80,7 +78,7 @@ describe('gemini 交付三态分支', () => {
         query: async () => null,
       },
       health: {} as never,
-      close: () => undefined,
+      close: () => {},
     } as unknown as Inference;
     const app = mount(inference);
     const raw = await post(app, '/v1beta/models/g:generateContent', { contents: [] });
@@ -100,7 +98,7 @@ describe('oauth 防御分支', () => {
           ? { locked: true, retryAfterSec: 60 }
           : { locked: false, retryAfterSec: 0 },
       recordFailure: async () => ({ locked: false, retryAfterSec: 0 }),
-      recordSuccess: async () => undefined,
+      recordSuccess: async () => {},
     };
     const app = new Hono();
     app.route(
@@ -191,7 +189,7 @@ describe('multipart 音频族与防御', () => {
         query: async () => null,
       },
       health: {} as never,
-      close: () => undefined,
+      close: () => {},
     } as unknown as Inference;
     const app = mount(inference);
     // 极小 WAV 头（RIFF）——解析失败兜底 1 秒（A7 分支）
@@ -207,8 +205,9 @@ describe('multipart 音频族与防御', () => {
       body: form,
     });
     expect(ok.status).toBe(200);
-    expect(seen[0]!.body.audioSeconds).toBeTypeOf('number');
-    expect(seen[0]!.body.n).toBe(7);
+    const transcribed = defined(seen[0], 'seen[0]');
+    expect(transcribed.body.audioSeconds).toBeTypeOf('number');
+    expect(transcribed.body.n).toBe(7);
 
     const noFile = new FormData();
     noFile.append('model', 'whisper-x');
@@ -280,7 +279,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
         }),
       },
       health: {} as never,
-      close: () => undefined,
+      close: () => {},
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
     app.onError(
@@ -313,7 +312,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
         query: async () => null,
       },
       health: {} as never,
-      close: () => undefined,
+      close: () => {},
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
     app.onError(
@@ -336,7 +335,9 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
     app.route('/', generationRoutes({ inference, rateLimit: gate(released) }));
     const res = await post(app, '/v1/video/generations', { model: 'm', prompt: 'p' });
     expect(res.status).toBe(404);
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(released).toContain('rel-1');
     void admitRequest;
   });
@@ -375,7 +376,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
               },
       },
       health: {} as never,
-      close: () => undefined,
+      close: () => {},
     } as unknown as Inference;
     const app = new Hono<AuthEnv>();
     app.onError(

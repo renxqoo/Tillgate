@@ -144,7 +144,7 @@ export class MiniMaxAdapter implements ProtocolAdapter {
       const width = maybeInt(body.video_width);
       const height = maybeInt(body.video_height);
       switch (body.status) {
-        case 'Success':
+        case 'Success': {
           return {
             status: 'succeeded',
             fileId:
@@ -154,11 +154,14 @@ export class MiniMaxAdapter implements ProtocolAdapter {
               ...(height !== undefined ? { height } : {}),
             },
           };
-        case 'Fail':
+        }
+        case 'Fail': {
           return { status: 'failed', reason: 'upstream task failed' };
+        }
         // Preparing/Queueing/Processing/Unknown 及未知枚举 → running
-        default:
+        default: {
           return { status: 'running' };
+        }
       }
     },
     extractFileUrl: (body) => {
@@ -183,9 +186,9 @@ function minimaxEnvelopeError(body: unknown): UpstreamError | null {
   if (code === 1004 || code === 2049) kind = 'invalid_api_key';
   else if (code === 1008) kind = 'quota_exhausted';
   else if (code === 429) kind = 'rate_limited';
-  else if (code === 1002 || code === 1026 || code === 1027 || code === 2013)
+  else if (code === 1002 || code === 1026 || code === 1027 || code === 2013) {
     kind = 'invalid_request';
-  else kind = 'upstream_error';
+  } else kind = 'upstream_error';
   return new UpstreamError({ kind, vendorCode: String(code), message });
 }
 

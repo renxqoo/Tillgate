@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createTraceQueries } from '../src/tracing/queries';
 import { dayKey, shiftDay } from '../src/tracing/partition';
+import { defined } from './defined';
 import type { SpanRow, TraceStore } from '../src/tracing/types';
 
 /**
@@ -119,12 +120,14 @@ describe('createTraceQueries', () => {
     await queries.topology(999); // 钳到 168
     const after = Date.now();
     expect(calls).toHaveLength(3);
-    const [h24, h1, h168] = calls;
     // v1 缺陷:小时数被直接当毫秒时间戳传入(≈1970);修复后应落在「now - hours*3600s」窗内
-    expect(h24!).toBeGreaterThanOrEqual(after - 24 * 3_600_000 - 50);
-    expect(h24!).toBeLessThanOrEqual(before - 24 * 3_600_000 + 50);
-    expect(h1!).toBeGreaterThanOrEqual(after - 3_600_000 - 50);
-    expect(h168!).toBeGreaterThanOrEqual(after - 168 * 3_600_000 - 50);
+    const h24 = defined(calls[0], 'h24');
+    const h1 = defined(calls[1], 'h1');
+    const h168 = defined(calls[2], 'h168');
+    expect(h24).toBeGreaterThanOrEqual(after - 24 * 3_600_000 - 50);
+    expect(h24).toBeLessThanOrEqual(before - 24 * 3_600_000 + 50);
+    expect(h1).toBeGreaterThanOrEqual(after - 3_600_000 - 50);
+    expect(h168).toBeGreaterThanOrEqual(after - 168 * 3_600_000 - 50);
   });
 
   it('stats:透传存储统计', async () => {

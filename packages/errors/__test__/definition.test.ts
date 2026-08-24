@@ -32,9 +32,9 @@ const IdentityErrors = defineErrorCatalog('identity', {
 function defectCodeOf(fn: () => unknown): string {
   try {
     fn();
-  } catch (e) {
-    if (isDefectError(e)) return e.code;
-    throw new Error('expected DefectError', { cause: e });
+  } catch (error) {
+    if (isDefectError(error)) return error.code;
+    throw new Error('expected DefectError', { cause: error });
   }
   throw new Error('expected DefectError, nothing thrown');
 }
@@ -198,8 +198,8 @@ describe('composeErrorCatalogs（face 装配）', () => {
   it('防呆抛出的是 DefectError 实例（可被守卫精确捕获）', () => {
     try {
       composeErrorCatalogs(BillingErrors, BillingErrors);
-    } catch (e) {
-      expect(e).toBeInstanceOf(DefectError);
+    } catch (error) {
+      expect(error).toBeInstanceOf(DefectError);
       return;
     }
     throw new Error('expected throw');

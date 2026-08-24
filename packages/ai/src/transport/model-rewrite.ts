@@ -75,7 +75,7 @@ export class SseModelRewriter {
       this.carryBytes -= encoder.encode(raw).length + 1; // 已消费行出账（含换行符字节）
       const cr = raw.endsWith('\r') ? '\r' : '';
       const body = cr !== '' ? raw.slice(0, -1) : raw;
-      out += rewriteModelInDataLine(body, this.model) + cr + '\n';
+      out += `${rewriteModelInDataLine(body, this.model) + cr}\n`;
     }
     if (this.carryBytes > this.maxLineBytes) {
       const limit = this.maxLineBytes;

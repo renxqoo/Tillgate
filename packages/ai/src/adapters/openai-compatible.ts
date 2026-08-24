@@ -79,6 +79,89 @@ const CHAT_KNOWN_PARAMS = new Set([
   'reasoning_effort',
 ]);
 
+/** 动态键删除的等价写法：计算属性 rest 解构构新对象（no-dynamic-delete，键序保持） */
+function omitKey(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+  const { [key]: _omitted, ...rest } = obj;
+  return rest;
+}
+
+/** 规则 1) ignore：删除该模型不支持的参数（动作可观测） */
+function applyIgnoreRules(
+  out: Record<string, unknown>,
+  rules: ParamRules,
+  adjustments: ParamAdjustment[],
+): Record<string, unknown> {
+  let result = out;
+  for (const name of rules.ignore ?? []) {
+    if (name in result) {
+      adjustments.push({ param: name, action: 'ignore', from: result[name] });
+      result = omitKey(result, name);
+    }
+  }
+  return result;
+}
+
+/** 规则 2) map：参数改名（后到者覆盖同名目标）。原型键防护：目标名命中
+ *  __proto__/constructor/prototype 时跳过——out[to] 赋值会触发 __proto__ setter
+ *  改写本地原型（管理员误配置即畸形请求体）。 */
+function applyMapRules(
+  out: Record<string, unknown>,
+  rules: ParamRules,
+  adjustments: ParamAdjustment[],
+): Record<string, unknown> {
+  let result = out;
+  for (const [name, { to }] of Object.entries(rules.map ?? {})) {
+    if (!(name in result)) continue;
+    if (to === '__proto__' || to === 'constructor' || to === 'prototype') continue;
+    adjustments.push({ param: name, action: 'map', from: result[name], to });
+    result[to] = result[name];
+    result = omitKey(result, name);
+  }
+  return result;
+}
+
+/** 规则 3) clamp：对最终参数名钳制（数值超范围 → 钳到边界） */
+function applyClampRules(
+  out: Record<string, unknown>,
+  rules: ParamRules,
+  adjustments: ParamAdjustment[],
+): Record<string, unknown> {
+  for (const [name, range] of Object.entries(rules.clamp ?? {})) {
+    const v = out[name];
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    let clamped = v;
+    if (range.max !== undefined && clamped > range.max) clamped = range.max;
+    if (range.min !== undefined && clamped < range.min) clamped = range.min;
+    if (clamped !== v) {
+      adjustments.push({ param: name, action: 'clamp', from: v, to: clamped });
+      out[name] = clamped;
+    }
+  }
+  return out;
+}
+
+/** 规则 4) unknown: 'drop' → 删除未知参数（动作记 ignore，可观测；词表按端点取并集——S5） */
+function dropUnknownParams(
+  out: Record<string, unknown>,
+  ctx: { rules: ParamRules; endpoint: Endpoint },
+  adjustments: ParamAdjustment[],
+): Record<string, unknown> {
+  const { rules, endpoint } = ctx;
+  if (rules.unknown !== 'drop') return out;
+  const known = new Set(CHAT_KNOWN_PARAMS);
+  const extra = ENDPOINT_EXTRA_PARAMS[endpoint];
+  if (extra) for (const k of extra) known.add(k);
+  for (const to of Object.values(rules.map ?? {})) known.add(to.to);
+  let result = out;
+  for (const key of Object.keys(result)) {
+    if (!known.has(key)) {
+      adjustments.push({ param: key, action: 'ignore', from: result[key] });
+      result = omitKey(result, key);
+    }
+  }
+  return result;
+}
+
 export class OpenAICompatibleAdapter implements ProtocolAdapter {
   readonly protocol: string = 'openai-compatible';
   readonly supportedEndpoints: readonly Endpoint[] = [
@@ -161,56 +244,12 @@ export class OpenAICompatibleAdapter implements ProtocolAdapter {
     const body = asRecord(req);
     if (!body) return { body: req, adjustments: [] }; // 非对象透传底线：不破坏请求
     const adjustments: ParamAdjustment[] = [];
-    const out: Record<string, unknown> = { ...body };
-
-    // 1) ignore：删除该模型不支持的参数
-    for (const name of rules.ignore ?? []) {
-      if (name in out) {
-        adjustments.push({ param: name, action: 'ignore', from: out[name] });
-        delete out[name];
-      }
-    }
-
-    // 2) map：参数改名（后到者覆盖同名目标）。
-    //    原型键防护：目标名命中 __proto__/constructor/prototype 时跳过——
-    //    out[to] 赋值会触发 __proto__ setter 改写本地原型（管理员误配置即畸形请求体）。
-    for (const [name, { to }] of Object.entries(rules.map ?? {})) {
-      if (name in out) {
-        if (to === '__proto__' || to === 'constructor' || to === 'prototype') continue;
-        adjustments.push({ param: name, action: 'map', from: out[name], to });
-        out[to] = out[name];
-        delete out[name];
-      }
-    }
-
-    // 3) clamp：对最终参数名钳制（数值超范围 → 钳到边界）
-    for (const [name, range] of Object.entries(rules.clamp ?? {})) {
-      const v = out[name];
-      if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-      let clamped = v;
-      if (range.max !== undefined && clamped > range.max) clamped = range.max;
-      if (range.min !== undefined && clamped < range.min) clamped = range.min;
-      if (clamped !== v) {
-        adjustments.push({ param: name, action: 'clamp', from: v, to: clamped });
-        out[name] = clamped;
-      }
-    }
-
-    // 4) unknown: 'drop' → 删除未知参数（动作记 ignore，可观测；词表按端点取并集——S5）
-    if (rules.unknown === 'drop') {
-      const known = new Set(CHAT_KNOWN_PARAMS);
-      const extra = ENDPOINT_EXTRA_PARAMS[endpoint];
-      if (extra) for (const k of extra) known.add(k);
-      for (const to of Object.values(rules.map ?? {})) known.add(to.to);
-      for (const key of Object.keys(out)) {
-        if (!known.has(key)) {
-          adjustments.push({ param: key, action: 'ignore', from: out[key] });
-          delete out[key];
-        }
-      }
-    }
-
-    return { body: out, adjustments };
+    // 四段规则按序作纯变换（各自模块级实现，动词一文件内的步骤函数）
+    let out: Record<string, unknown> = { ...body };
+    out = applyIgnoreRules(out, rules, adjustments);
+    out = applyMapRules(out, rules, adjustments);
+    out = applyClampRules(out, rules, adjustments);
+    return { body: dropUnknownParams(out, { rules, endpoint }, adjustments), adjustments };
   }
 
   /** 响应方向：仅提取计量（usage 归一化），正文透传 */

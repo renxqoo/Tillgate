@@ -15,6 +15,7 @@ import {
   seedSubscription,
 } from '../src/testing/in-memory-billing-store.js';
 import type { BillingQuote } from '../src/domain/rating/types.js';
+import { defined } from './defined.js';
 
 let userSeq = 100;
 let reqSeq = 0;
@@ -102,7 +103,7 @@ describe('authorize（资金瀑布）', () => {
     });
     expect(first).toMatchObject({ reservedAmount: '2', replayed: false });
     expect(first.availableBalance).toBe('8');
-    const account = (await wallet.accounts(userId))[0]!;
+    const account = defined((await wallet.accounts(userId))[0]);
     expect(account.inFlight).toBe('2');
     const row = await world.billing.read((conn) => world.billing.findByRequestId(conn, requestId));
     expect(row).toMatchObject({
@@ -122,7 +123,7 @@ describe('authorize（资金瀑布）', () => {
       authorizationTtlMs: TTL,
     });
     expect(replay.replayed).toBe(true);
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('2');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('2');
   });
 
   it('全链不足 fail-closed（insufficient_balance），零残留', async () => {
@@ -140,7 +141,7 @@ describe('authorize（资金瀑布）', () => {
       }),
     );
     expect(rejected.code).toBe('billing.insufficient_balance');
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
   });
 
   it('免费快路径：explicitlyFree 全零价 → 0 元空计划（不冻结，账单行仅供观测）', async () => {
@@ -157,7 +158,7 @@ describe('authorize（资金瀑布）', () => {
     });
     expect(result.reservedAmount).toBe('0');
     const row = await world.billing.read((conn) => world.billing.findByRequestId(conn, requestId));
-    expect(row!.reservedAmount).toBe('0');
+    expect(defined(row).reservedAmount).toBe('0');
   });
 
   it('订阅 + PAYG 切分：订阅先耗、余额补差；投影记录订阅份额', async () => {
@@ -175,9 +176,9 @@ describe('authorize（资金瀑布）', () => {
       authorizationTtlMs: TTL,
     });
     expect(result.reservedAmount).toBe('2');
-    const sub = world.fixtures.subscriptions.get(subscriptionId)!;
+    const sub = defined(world.fixtures.subscriptions.get(subscriptionId));
     expect(sub.reservedAmount).toBe('1'); // 订阅先耗 1
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('1'); // PAYG 补差 1
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('1'); // PAYG 补差 1
   });
 
   it('订阅开关 OFF 且额度不足 → 整单拒绝（subscription_quota_exhausted），零残留', async () => {
@@ -197,8 +198,8 @@ describe('authorize（资金瀑布）', () => {
       }),
     );
     expect(rejected.code).toBe('billing.subscription_quota_exhausted');
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
-    expect(world.fixtures.subscriptions.get(subscriptionId)!.reservedAmount).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
+    expect(defined(world.fixtures.subscriptions.get(subscriptionId)).reservedAmount).toBe('0');
   });
 
   it('每日限额：projected = 已结算 + 在途 + 本次 > 限额 → daily_spend_limit', async () => {
@@ -344,8 +345,8 @@ describe('signal（四事件）', () => {
   it('lease.renewed owner 校验：他人 owner 续租失败（租约归属/到期不被改写）', async () => {
     const { api, world, requestId } = await authorized();
     await api.signal({ type: 'upstream.started', requestId, leaseOwner: 'w1', leaseMs: 1000 });
-    const row = world.fixtures.requests.get(requestId)!;
-    const heldUntil = row.leaseExpiresAt!.getTime();
+    const row = defined(world.fixtures.requests.get(requestId));
+    const heldUntil = defined(row.leaseExpiresAt).getTime();
     // 并发网关副本（非当前持有者）续租：CAS 落空 → changed=false，现状幂等返回
     const stranger = await api.signal({
       type: 'lease.renewed',
@@ -356,7 +357,7 @@ describe('signal（四事件）', () => {
     expect(stranger).toMatchObject({ changed: false, replayed: true, status: 'in_flight' });
     // 租约事实未被改写：owner 仍是 w1，到期未被推移（不被陌生续租「抢占续命」）
     expect(row.leaseOwner).toBe('w1');
-    expect(row.leaseExpiresAt!.getTime()).toBe(heldUntil);
+    expect(defined(row.leaseExpiresAt).getTime()).toBe(heldUntil);
     // 持有者本人续租仍成功（守卫不误伤正常保活）
     const own = await api.signal({
       type: 'lease.renewed',
@@ -365,7 +366,7 @@ describe('signal（四事件）', () => {
       leaseMs: 60_000,
     });
     expect(own).toMatchObject({ changed: true, status: 'in_flight' });
-    expect(row.leaseExpiresAt!.getTime()).toBeGreaterThan(heldUntil);
+    expect(defined(row.leaseExpiresAt).getTime()).toBeGreaterThan(heldUntil);
   });
 
   it('request.failed 重放：已 released → 幂等返回现状', async () => {
@@ -471,9 +472,9 @@ describe('signal（四事件）', () => {
       reason: 'upstream_error',
     });
     expect(released).toMatchObject({ changed: true, status: 'released', amountReleased: '2' });
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
     const row = await world.billing.read((conn) => world.billing.findByRequestId(conn, requestId));
-    expect(row!.status).toBe('released');
+    expect(defined(row).status).toBe('released');
     // 已释放不可再成功
     const rejected = await rejection(() =>
       api.signal({
@@ -528,14 +529,14 @@ describe('reserveChannel（渠道敞口三模式）', () => {
     const { api, world, requestId, channelId } = await withChannel();
     const result = await api.reserveChannel({ requestId, channelId, amount: '1' });
     expect(result).toMatchObject({ allowed: true, switched: false });
-    expect(world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('1');
+    expect(defined(world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('1');
     // 同渠道同额 = covered（零变更）
     const covered = await api.reserveChannel({ requestId, channelId, amount: '1' });
     expect(covered).toMatchObject({ allowed: true, switched: false });
     // 同渠道更高预估 = topup 差额补足
     const topup = await api.reserveChannel({ requestId, channelId, amount: '1.5' });
     expect(topup.allowed).toBe(true);
-    expect(world.fixtures.channelsMap.get(channelId)!.upstreamReserved).toBe('1.5');
+    expect(defined(world.fixtures.channelsMap.get(channelId)).upstreamReserved).toBe('1.5');
   });
 
   it('换渠道：预留新 → 释放旧 → CAS 认领（switched=true，旧敞口归零）', async () => {
@@ -545,8 +546,8 @@ describe('reserveChannel（渠道敞口三模式）', () => {
     await api.reserveChannel({ requestId, channelId: a, amount: '2' });
     const switched = await api.reserveChannel({ requestId, channelId: b, amount: '1' });
     expect(switched).toMatchObject({ allowed: true, switched: true });
-    expect(world.fixtures.channelsMap.get(a)!.upstreamReserved).toBe('0');
-    expect(world.fixtures.channelsMap.get(b)!.upstreamReserved).toBe('1');
+    expect(defined(world.fixtures.channelsMap.get(a)).upstreamReserved).toBe('0');
+    expect(defined(world.fixtures.channelsMap.get(b)).upstreamReserved).toBe('1');
   });
 
   it('预算不足：零变更拒绝并回余量', async () => {
@@ -554,7 +555,7 @@ describe('reserveChannel（渠道敞口三模式）', () => {
     const small = seedChannel(world, { upstreamBudget: '0.5' });
     const result = await api.reserveChannel({ requestId, channelId: small, amount: '1' });
     expect(result).toMatchObject({ allowed: false, remaining: '0.5', switched: false });
-    expect(world.fixtures.channelsMap.get(small)!.upstreamReserved).toBe('0');
+    expect(defined(world.fixtures.channelsMap.get(small)).upstreamReserved).toBe('0');
   });
 });
 
@@ -580,7 +581,7 @@ describe('积压准入', () => {
       authorizationTtlMs: TTL,
     });
     // 手工转 pending + 追加第二笔，模拟积压（绕过 signal 的收据验收）
-    h.world.fixtures.requests.get(requestId)!.status = 'settlement_pending';
+    defined(h.world.fixtures.requests.get(requestId)).status = 'settlement_pending';
     const requestId2 = nextRequestId();
     await h.api.authorize({
       requestId: requestId2,
@@ -590,7 +591,7 @@ describe('积压准入', () => {
       reservationLimit: '100',
       authorizationTtlMs: TTL,
     });
-    h.world.fixtures.requests.get(requestId2)!.status = 'settlement_pending';
+    defined(h.world.fixtures.requests.get(requestId2)).status = 'settlement_pending';
     await expect(admission()).rejects.toMatchObject({ code: 'billing.settlement_backlog' });
   });
 
@@ -613,7 +614,7 @@ describe('积压准入', () => {
       reservationLimit: '100',
       authorizationTtlMs: TTL,
     });
-    const row = h.world.fixtures.requests.get(requestId)!;
+    const row = defined(h.world.fixtures.requests.get(requestId));
     row.status = 'settlement_pending';
     row.createdAt = new Date(Date.now() - 120_000);
     await expect(admission()).rejects.toMatchObject({ code: 'billing.settlement_backlog' });

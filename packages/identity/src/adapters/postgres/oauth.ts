@@ -8,6 +8,48 @@ import { identityOauthLinks, identityPasswords } from '@tillgate/db';
 import { DefectError } from '@tillgate/errors';
 import type { LinkOutcome, OAuthStore, UnlinkOutcome } from '../../ports/oauth-store.js';
 
+// 模块级:唯一冲突读回分类——定位冲突面是 provider/subject 侧还是 user/provider 侧
+async function classifyLinkConflict(
+  db: DbLike,
+  input: { userId: number; provider: string; subject: string },
+): Promise<LinkOutcome> {
+  const bySubject = await db
+    .select({ id: identityOauthLinks.id, userId: identityOauthLinks.userId })
+    .from(identityOauthLinks)
+    .where(
+      and(
+        eq(identityOauthLinks.provider, input.provider),
+        eq(identityOauthLinks.subject, input.subject),
+      ),
+    )
+    .limit(1);
+  const byUser = await db
+    .select({ id: identityOauthLinks.id })
+    .from(identityOauthLinks)
+    .where(
+      and(
+        eq(identityOauthLinks.userId, input.userId),
+        eq(identityOauthLinks.provider, input.provider),
+      ),
+    )
+    .limit(1);
+  const [sub] = bySubject;
+  const [usr] = byUser;
+  if (sub != null && usr != null && sub.id === usr.id && sub.userId === input.userId) {
+    return { status: 'replay', linkId: sub.id };
+  }
+  if (sub != null && sub.userId !== input.userId) {
+    return { status: 'provider_identity_taken' };
+  }
+  if (usr != null) {
+    return { status: 'user_already_linked' };
+  }
+  // 不可能分支:唯一冲突但读回两侧皆无行
+  throw new DefectError('link_oauth readback found no row on either side', 'identity.defect', {
+    operation: 'link_oauth',
+  });
+}
+
 export const oauthQueries: OAuthStore = {
   async findUser(db: DbLike, input: { provider: string; subject: string }): Promise<number | null> {
     const rows = await db
@@ -38,44 +80,11 @@ export const oauthQueries: OAuthStore = {
       })
       .onConflictDoNothing()
       .returning({ id: identityOauthLinks.id });
-    if (inserted.length > 0) {
-      return { status: 'linked', linkId: inserted[0]!.id };
+    const [first] = inserted;
+    if (first != null) {
+      return { status: 'linked', linkId: first.id };
     }
-    const bySubject = await db
-      .select({ id: identityOauthLinks.id, userId: identityOauthLinks.userId })
-      .from(identityOauthLinks)
-      .where(
-        and(
-          eq(identityOauthLinks.provider, input.provider),
-          eq(identityOauthLinks.subject, input.subject),
-        ),
-      )
-      .limit(1);
-    const byUser = await db
-      .select({ id: identityOauthLinks.id })
-      .from(identityOauthLinks)
-      .where(
-        and(
-          eq(identityOauthLinks.userId, input.userId),
-          eq(identityOauthLinks.provider, input.provider),
-        ),
-      )
-      .limit(1);
-    const sub = bySubject[0];
-    const usr = byUser[0];
-    if (sub != null && usr != null && sub.id === usr.id && sub.userId === input.userId) {
-      return { status: 'replay', linkId: sub.id };
-    }
-    if (sub != null && sub.userId !== input.userId) {
-      return { status: 'provider_identity_taken' };
-    }
-    if (usr != null) {
-      return { status: 'user_already_linked' };
-    }
-    // 不可能分支:唯一冲突但读回两侧皆无行
-    throw new DefectError('link_oauth readback found no row on either side', 'identity.defect', {
-      operation: 'link_oauth',
-    });
+    return classifyLinkConflict(db, input);
   },
 
   async unlink(db: DbLike, input: { userId: number; provider: string }): Promise<UnlinkOutcome> {
@@ -90,7 +99,7 @@ export const oauthQueries: OAuthStore = {
       )
       .for('update')
       .limit(1);
-    const link = links[0];
+    const [link] = links;
     if (link == null) {
       return { status: 'not_found' };
     }

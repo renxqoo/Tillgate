@@ -14,7 +14,7 @@
    runtime 只收第一类；其余各自归位（§2.4），一个都不带走。
 2. **不是复制，是重构**：三份漂移中的 `shutdown.ts` 合一（D1）；测试样板提取为 testing 子入口（D2）；每个模块逐一裁决。
 3. **行为等价**：迁移模块的旧测试是行为规格；微修处逐条列出并给理由。
-4. **已接入 `errors` 根契约**（AGENT.md §11）：起步时 errors 包未建，曾零内部依赖；errors 落地（ADR-0001）后按 §11 接入——
+4. **已接入 `errors` 根契约**（AGENTS.md §11）：起步时 errors 包未建，曾零内部依赖；errors 落地（ADR-0001）后按 §11 接入——
    `assertRedisReachable` 抛 `InfrastructureError`（`runtime.redis.unreachable`，context 只进脱敏后 URL）；
    `parseSentinels` 配置缺陷与 `cipher` 解密失败（格式/认证）抛 `DefectError`（`runtime.redis.sentinels_invalid` /
    `runtime.cipher.invalid_format` / `runtime.cipher.auth_failed`，GCM 原生失败保留在 cause 链）。

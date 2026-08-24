@@ -22,6 +22,75 @@ const GITHUB_ENDPOINTS = {
   emailsUrl: 'https://api.github.com/user/emails',
 } as const;
 
+// 模块级:授权码换 access_token(Authorization Code 流标准半程)
+async function exchangeGithubToken(
+  deps: {
+    doFetch: typeof fetch;
+    endpoints: { tokenUrl: string };
+    opts: ProviderAdapterOptions;
+  },
+  input: { code: string; redirectUri: string },
+): Promise<string> {
+  const { doFetch, endpoints, opts } = deps;
+  const tokenRes = await doFetch(endpoints.tokenUrl, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      client_id: opts.clientId,
+      client_secret: opts.clientSecret,
+      code: input.code,
+      redirect_uri: input.redirectUri,
+      grant_type: 'authorization_code',
+    }),
+  });
+  if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
+  const tokenJson = (await tokenRes.json()) as { access_token?: string };
+  if (!tokenJson.access_token) throw new Error('no access_token');
+  return tokenJson.access_token;
+}
+
+// 模块级:/user 与 /user/emails 拉取与邮箱策略,依赖经参数注入保持工厂单一装配职责
+async function githubExchangeAndProfile(
+  deps: {
+    doFetch: typeof fetch;
+    endpoints: { tokenUrl: string; profileUrl: string; emailsUrl: string };
+    opts: ProviderAdapterOptions;
+  },
+  input: { code: string; redirectUri: string },
+): Promise<OAuthProfile> {
+  const { doFetch, endpoints, opts } = deps;
+  const accessToken = await exchangeGithubToken(deps, input);
+
+  const headers = {
+    authorization: `Bearer ${accessToken}`,
+    accept: 'application/vnd.github+json',
+    'user-agent': 'tillgate-identity',
+  };
+  const userRes = await doFetch(endpoints.profileUrl, { headers });
+  if (!userRes.ok) throw new Error(`github profile failed: ${userRes.status}`);
+  const user = (await userRes.json()) as { id: number; login: string; name: string | null };
+  let email: string | null = null;
+  const emailsRes = await doFetch(endpoints.emailsUrl, { headers });
+  if (emailsRes.ok) {
+    const emails = (await emailsRes.json()) as Array<{
+      email: string;
+      primary: boolean;
+      verified: boolean;
+    }>;
+    email = emails.find((e) => e.primary && e.verified)?.email ?? null;
+  } else {
+    // B27:上游邮箱端点故障不再静默——记 warn,email 显式为 null(不阻断建号)
+    opts.logger.warn(
+      { status: emailsRes.status },
+      'github emails endpoint failed; profile continues without email',
+    );
+  }
+  return { subject: String(user.id), email, displayName: user.name ?? user.login };
+}
+
 export function createGithubProvider(opts: ProviderAdapterOptions): OAuthProvider {
   const doFetch = opts.fetchImpl ?? fetch;
   const endpoints = { ...GITHUB_ENDPOINTS, ...opts.endpoints };
@@ -36,49 +105,7 @@ export function createGithubProvider(opts: ProviderAdapterOptions): OAuthProvide
     },
 
     async exchangeAndProfile({ code, redirectUri }): Promise<OAuthProfile> {
-      const tokenRes = await doFetch(endpoints.tokenUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/x-www-form-urlencoded',
-          accept: 'application/json',
-        },
-        body: new URLSearchParams({
-          client_id: opts.clientId,
-          client_secret: opts.clientSecret,
-          code,
-          redirect_uri: redirectUri,
-          grant_type: 'authorization_code',
-        }),
-      });
-      if (!tokenRes.ok) throw new Error(`token exchange failed: ${tokenRes.status}`);
-      const tokenJson = (await tokenRes.json()) as { access_token?: string };
-      if (!tokenJson.access_token) throw new Error('no access_token');
-
-      const headers = {
-        authorization: `Bearer ${tokenJson.access_token}`,
-        accept: 'application/vnd.github+json',
-        'user-agent': 'tillgate-identity',
-      };
-      const userRes = await doFetch(endpoints.profileUrl, { headers });
-      if (!userRes.ok) throw new Error(`github profile failed: ${userRes.status}`);
-      const user = (await userRes.json()) as { id: number; login: string; name: string | null };
-      let email: string | null = null;
-      const emailsRes = await doFetch(endpoints.emailsUrl, { headers });
-      if (emailsRes.ok) {
-        const emails = (await emailsRes.json()) as Array<{
-          email: string;
-          primary: boolean;
-          verified: boolean;
-        }>;
-        email = emails.find((e) => e.primary && e.verified)?.email ?? null;
-      } else {
-        // B27:上游邮箱端点故障不再静默——记 warn,email 显式为 null(不阻断建号)
-        opts.logger.warn(
-          { status: emailsRes.status },
-          'github emails endpoint failed; profile continues without email',
-        );
-      }
-      return { subject: String(user.id), email, displayName: user.name ?? user.login };
+      return githubExchangeAndProfile({ doFetch, endpoints, opts }, { code, redirectUri });
     },
   };
 }

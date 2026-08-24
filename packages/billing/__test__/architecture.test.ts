@@ -12,6 +12,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 
 const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -38,11 +39,41 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
+/** 基础设施导入判定（分层白名单①：pg/drizzle/@tillgate/db 全家族） */
+function isInfraImport(spec: string): boolean {
+  return (
+    spec === 'pg' ||
+    spec === 'drizzle-orm' ||
+    spec.startsWith('drizzle-orm/') ||
+    spec === '@tillgate/db'
+  );
+}
+
+/** drizzle 家族判定（全包唯一居所 = adapters/postgres） */
+function isDrizzleImport(spec: string): boolean {
+  return spec === 'drizzle-orm' || spec.startsWith('drizzle-orm/');
+}
+
+const ROUND_PATTERNS: RegExp[] = [/\.toFixed\s*\(/, /Math\.round\s*\(/, /\bround\s*\(/];
+
+/** 行是否命中 round 模式 */
+function matchesRoundPattern(line: string): boolean {
+  return ROUND_PATTERNS.some((p) => p.test(line));
+}
+
+/** 行是否命中登记豁免（lineIncludes 未指定 = 整文件豁免） */
+function isExemptLine(
+  line: string,
+  exemptions: Array<{ file: string; lineIncludes?: string }>,
+): boolean {
+  return exemptions.some((e) => (e.lineIncludes ? line.includes(e.lineIncludes) : true));
+}
+
 const files: SourceFile[] = walk(srcDir).map((path) => {
   const source = readFileSync(`${srcDir}/${path}`, 'utf-8');
   return {
     path,
-    imports: [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]!),
+    imports: [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => defined(m[1])),
     code: stripComments(source),
   };
 });
@@ -53,10 +84,10 @@ function exportedNames(code: string): string[] {
   for (const m of code.matchAll(
     /export\s+(?:declare\s+)?(?:type|interface|const|function|class|let|var)\s+([A-Za-z0-9_$]+)/g,
   )) {
-    names.push(m[1]!);
+    names.push(defined(m[1]));
   }
   for (const m of code.matchAll(/export\s*\{([^}]+)\}/g)) {
-    for (const part of m[1]!.split(',')) {
+    for (const part of defined(m[1]).split(',')) {
       const name = part
         .trim()
         .split(/\s+as\s+/)
@@ -72,12 +103,7 @@ describe('① 分层白名单（DESIGN §1 依赖方向的可执行形态）', (
   it('domain：零 drizzle/pg/@tillgate/db（仅 errors/decimal.js/node: 内建/域内相对引用）', () => {
     for (const f of files.filter((x) => x.path.startsWith('domain/'))) {
       for (const spec of f.imports) {
-        const banned =
-          spec === 'pg' ||
-          spec === 'drizzle-orm' ||
-          spec.startsWith('drizzle-orm/') ||
-          spec === '@tillgate/db';
-        expect(banned, `${f.path} → ${spec}`).toBe(false);
+        expect(isInfraImport(spec), `${f.path} → ${spec}`).toBe(false);
       }
     }
   });
@@ -85,18 +111,11 @@ describe('① 分层白名单（DESIGN §1 依赖方向的可执行形态）', (
   it('application：零 SQL——不 import drizzle/pg/@tillgate/db（drizzle 只在 adapters/postgres/**）', () => {
     for (const f of files.filter((x) => x.path.startsWith('application/'))) {
       for (const spec of f.imports) {
-        const banned =
-          spec === 'pg' ||
-          spec === 'drizzle-orm' ||
-          spec.startsWith('drizzle-orm/') ||
-          spec === '@tillgate/db';
-        expect(banned, `${f.path} → ${spec}`).toBe(false);
+        expect(isInfraImport(spec), `${f.path} → ${spec}`).toBe(false);
       }
     }
     // drizzle 的全包唯一居所：adapters/postgres（实现层）
-    const drizzleHomes = files
-      .filter((f) => f.imports.some((s) => s === 'drizzle-orm' || s.startsWith('drizzle-orm/')))
-      .map((f) => f.path);
+    const drizzleHomes = files.filter((f) => f.imports.some(isDrizzleImport)).map((f) => f.path);
     expect(
       drizzleHomes.every((p) => p.startsWith('adapters/postgres/')),
       drizzleHomes.join(', '),
@@ -109,7 +128,7 @@ describe('② 出口面封闭（§5.3：facade 与契约类型，不泄漏基础
 
   it('文本级：不出现 Db/DbTx/drizzle 符号（签名零基础设施类型）', () => {
     for (const name of EXPOSED_ROOTS) {
-      const code = files.find((f) => f.path === name)!.code;
+      const { code } = defined(files.find((f) => f.path === name));
       expect(code.includes('DbTx'), name).toBe(false);
       expect(code.includes('drizzle'), name).toBe(false);
       expect(/\bDb\b/.test(code), name).toBe(false);
@@ -118,7 +137,7 @@ describe('② 出口面封闭（§5.3：facade 与契约类型，不泄漏基础
 
   it('导出符号扫描：导出名不含 Db/DbTx/drizzle', () => {
     for (const name of EXPOSED_ROOTS) {
-      const code = files.find((f) => f.path === name)!.code;
+      const { code } = defined(files.find((f) => f.path === name));
       for (const symbol of exportedNames(code)) {
         const banned = symbol === 'Db' || symbol === 'DbTx' || /drizzle/i.test(symbol);
         expect(banned, `${name} exports ${symbol}`).toBe(false);
@@ -148,8 +167,6 @@ describe('③ 账本零 round（DESIGN §4.5「零 round 架构锁死」）', ()
     { file: 'domain/money.ts' },
   ];
 
-  const ROUND_PATTERNS: RegExp[] = [/\.toFixed\s*\(/, /Math\.round\s*\(/, /\bround\s*\(/];
-
   it('src/domain 与 src/application 除登记豁免外零 toFixed/Math.round/round(', () => {
     const scanned = files.filter(
       (f) => f.path.startsWith('domain/') || f.path.startsWith('application/'),
@@ -158,9 +175,9 @@ describe('③ 账本零 round（DESIGN §4.5「零 round 架构锁死」）', ()
     for (const f of scanned) {
       const exemptions = ROUND_EXEMPTIONS.filter((e) => e.file === f.path);
       const lines = f.code.split('\n').filter((line) => {
-        if (!ROUND_PATTERNS.some((p) => p.test(line))) return false;
+        if (!matchesRoundPattern(line)) return false;
         // 豁免行剔除：登记文件的指定行（未指定 lineIncludes = 整文件豁免）
-        return !exemptions.some((e) => (e.lineIncludes ? line.includes(e.lineIncludes) : true));
+        return !isExemptLine(line, exemptions);
       });
       expect(lines, `${f.path}: ${lines.join(' | ')}`).toEqual([]);
     }

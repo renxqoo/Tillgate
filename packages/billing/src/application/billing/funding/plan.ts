@@ -36,6 +36,7 @@ export interface PlanFundingInput {
   now: Date;
 }
 
+// eslint-disable-next-line max-lines-per-function -- funding 源生命周期动词事务体
 export async function planFunding(
   registry: FundingRegistry,
   tx: WalletTx,

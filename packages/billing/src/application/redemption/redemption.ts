@@ -35,9 +35,10 @@ export interface RedemptionApi {
   ): Promise<Array<{ codeId: number; batchName: string; amount: string; usedAt: Date | null }>>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 兑换编排事务体:核销→入账→回执顺序步骤
 export function createRedemptionApi(deps: RedemptionDeps): RedemptionApi {
   const { store, codes, wallet } = deps;
-  const clock = deps.clock;
+  const { clock } = deps;
 
   return {
     async redeem(userId, input) {

@@ -8,7 +8,7 @@ import type {
 } from '@tillgate/api-client';
 import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tillgate/ui';
 
-import { formatDateTime, formatMoney } from '@/features/shared/format';
+import { formatDateTime, formatMoney, type DisplayLocale } from '@/features/shared/format';
 import { ListPage } from '@/features/shared/list-page';
 import { ORDER_STATUS_KEYS, ORDER_STATUS_TONES } from '@/features/wallet/order-status';
 import { TopUpForm } from '@/features/wallet/topup-form';
@@ -18,6 +18,34 @@ import { requireMe } from '@/server/session';
 export const dynamic = 'force-dynamic';
 
 const ORDERS_PAGE_SIZE = 20;
+
+// —— 模块级 cell 渲染函数：列 cell 内联 JSX/块体会被判定为渲染期定义组件
+// （react/no-unstable-nested-components），统一提为模块级小函数返回 ReactNode ——
+
+function renderTimeCell(r: PaymentOrderRow, locale: DisplayLocale) {
+  return (
+    <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
+  );
+}
+
+function renderProviderCell(r: PaymentOrderRow, onlinePayLabel: string) {
+  if (r.provider === 'epay') return onlinePayLabel;
+  if (r.provider === 'stripe') return 'Stripe';
+  return r.provider;
+}
+
+function renderAmountCell(r: PaymentOrderRow, locale: DisplayLocale) {
+  return <span className="text-right tabular-nums">{formatMoney(r.amount, locale)}</span>;
+}
+
+function renderStatusCell(
+  r: PaymentOrderRow,
+  translate: (key: string, values?: Record<string, string | number>) => string,
+) {
+  const key = ORDER_STATUS_KEYS[r.status];
+  const label = key ? translate(key) : translate('statusUnknown', { status: r.status });
+  return <StatusPill tone={ORDER_STATUS_TONES[r.status] ?? 'neutral'}>{label}</StatusPill>;
+}
 
 export default async function BillingPage() {
   const t = await getTranslations('billing');
@@ -40,33 +68,23 @@ export default async function BillingPage() {
     {
       key: 'createdAt',
       header: tCommon('time'),
-      cell: (r) => (
-        <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
-      ),
+      cell: (r) => renderTimeCell(r, locale),
     },
     {
       key: 'provider',
       header: tCommon('channel'),
-      cell: (r) => {
-        if (r.provider === 'epay') return t('onlinePay');
-        if (r.provider === 'stripe') return 'Stripe';
-        return r.provider;
-      },
+      cell: (r) => renderProviderCell(r, t('onlinePay')),
     },
     {
       key: 'amount',
       header: tCommon('amount'),
       align: 'right',
-      cell: (r) => <span className="text-right tabular-nums">{formatMoney(r.amount, locale)}</span>,
+      cell: (r) => renderAmountCell(r, locale),
     },
     {
       key: 'status',
       header: tCommon('status'),
-      cell: (r) => {
-        const key = ORDER_STATUS_KEYS[r.status];
-        const label = key ? t(key) : t('statusUnknown', { status: r.status });
-        return <StatusPill tone={ORDER_STATUS_TONES[r.status] ?? 'neutral'}>{label}</StatusPill>;
-      },
+      cell: (r) => renderStatusCell(r, t),
     },
   ];
 

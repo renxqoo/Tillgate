@@ -6,19 +6,19 @@ import * as React from 'react';
 type Theme = 'dark' | 'light' | 'system';
 type ResolvedTheme = 'dark' | 'light';
 
-type ThemeProviderProps = {
+interface ThemeProviderProps {
   children: React.ReactNode;
   defaultTheme?: Theme;
   storageKey?: string;
   disableTransitionOnChange?: boolean;
-};
+}
 
-type ThemeProviderState = {
+interface ThemeProviderState {
   theme: Theme;
   /** system 解析后的实际生效主题(明/暗),供切换器等消费方展示当前态 */
   resolvedTheme: ResolvedTheme;
   setTheme: (theme: Theme) => void;
-};
+}
 
 const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)';
 const THEME_VALUES: Theme[] = ['dark', 'light', 'system'];
@@ -77,6 +77,17 @@ function isEditableTarget(target: EventTarget | null) {
   return false;
 }
 
+// 模块级：快捷键主题轮换(dark/light 互切, system 按当前系统偏好切到另一侧)
+function cycleTheme(currentTheme: Theme): Theme {
+  if (currentTheme === 'dark') {
+    return 'light';
+  }
+  if (currentTheme === 'light') {
+    return 'dark';
+  }
+  return getSystemTheme() === 'dark' ? 'light' : 'dark';
+}
+
 export function ThemeProvider({
   children,
   defaultTheme = 'system',
@@ -96,6 +107,7 @@ export function ThemeProvider({
   React.useEffect(() => {
     const storedTheme = localStorage.getItem(storageKey);
     if (isTheme(storedTheme)) {
+      // eslint-disable-next-line react/set-state-in-effect -- 挂载时从 localStorage(外部系统)同步持久化主题；首帧必须用 defaultTheme 保证 SSR/水合一致，只能挂载后校正
       setThemeState(storedTheme);
     }
   }, [storageKey]);
@@ -128,10 +140,11 @@ export function ThemeProvider({
   );
 
   React.useEffect(() => {
+    // eslint-disable-next-line react/set-state-in-effect -- 副作用是把主题同步到 DOM(外部系统)；resolvedTheme 依赖 window 系统偏好，SSR 渲染期不可得，只能在 effect 中派生回填
     applyTheme(theme);
 
     if (theme !== 'system') {
-      return undefined;
+      return;
     }
 
     const mediaQuery = window.matchMedia(COLOR_SCHEME_QUERY);
@@ -165,14 +178,7 @@ export function ThemeProvider({
       }
 
       setThemeState((currentTheme) => {
-        const nextTheme =
-          currentTheme === 'dark'
-            ? 'light'
-            : currentTheme === 'light'
-              ? 'dark'
-              : getSystemTheme() === 'dark'
-                ? 'light'
-                : 'dark';
+        const nextTheme = cycleTheme(currentTheme);
 
         localStorage.setItem(storageKey, nextTheme);
         return nextTheme;

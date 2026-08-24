@@ -9,11 +9,12 @@ vi.mock('node:dns/promises', () => ({
   lookup: vi.fn(async (host: string) => {
     if (host === 'private-v4.test') return [{ address: '10.0.0.5', family: 4 }];
     if (host === 'private-v6.test') return [{ address: 'fd00::1', family: 6 }];
-    if (host === 'public.test')
+    if (host === 'public.test') {
       return [
         { address: '93.184.216.34', family: 4 },
         { address: '1.1.1.1', family: 4 },
       ];
+    }
     throw new Error('ENOTFOUND');
   }),
 }));

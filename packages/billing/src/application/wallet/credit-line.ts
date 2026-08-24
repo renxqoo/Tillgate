@@ -4,6 +4,7 @@
  * B1 修复：唯一冲突兜底不再把输入当回执——重读存储交易，指纹比对通过后返回**存储的**
  * creditLimitAfter（稳定回执），同键异额命令吃 idempotency_conflict。
  */
+import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { Decimal, parseNonNegativeAmount, toStorage } from '../../domain/money.js';
@@ -25,8 +26,10 @@ export interface SetCreditLimitResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
 export function createSetCreditLimitUseCase(env: WalletEnv) {
   const { store, guards, currency: defaultCurrency } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
   return async function setCreditLimit(input: SetCreditLimitInput): Promise<SetCreditLimitResult> {
     const currency = resolveCurrency(guards, defaultCurrency, input);
     const refType = input.refType ?? 'admin';
@@ -48,15 +51,21 @@ export function createSetCreditLimitUseCase(env: WalletEnv) {
         refId,
         kind: 'credit_line',
       });
-      // receipt_ck 约束保证 credit_line 行必有回执值
-      return { creditLimitAfter: normalizeAmount(prior.creditLimitAfter!), replayed: true };
+      // receipt_ck 约束保证 credit_line 行必有回执值;缺回执即账本破损,按缺陷暴露
+      if (prior.creditLimitAfter == null) {
+        throw new DefectError('credit_line.replay_receipt_missing', 'billing.wallet_invariant');
+      }
+      return { creditLimitAfter: normalizeAmount(prior.creditLimitAfter), replayed: true };
     }
 
     try {
       return await withTx(store, input.tx, async (tx) => {
         const accountId = await store.ensureUserAccount(tx, input.userId, currency);
         const locked = await lockActiveAccounts(store, tx, [accountId]);
-        const account = locked.get(accountId)!;
+        const account = locked.get(accountId);
+        if (account === undefined) {
+          throw new DefectError('credit_line.account_lock_missing', 'billing.wallet_invariant');
+        }
         assertCreditLimitCoversExposure(account, limit, input.userId);
         await post(store, tx, {
           kind: 'credit_line',
@@ -82,7 +91,10 @@ export function createSetCreditLimitUseCase(env: WalletEnv) {
             refId,
             kind: 'credit_line',
           });
-          return { creditLimitAfter: normalizeAmount(existing.creditLimitAfter!), replayed: true };
+          if (existing.creditLimitAfter == null) {
+            throw new DefectError('credit_line.replay_receipt_missing', 'billing.wallet_invariant');
+          }
+          return { creditLimitAfter: normalizeAmount(existing.creditLimitAfter), replayed: true };
         }
       }
       throw error;

@@ -270,7 +270,7 @@ describe('管理面 facade 方法矩阵', () => {
       ) as unknown as typeof fetch;
       const client = createAdminApiClient({ baseUrl: 'http://admin-api', fetch: fetchImpl });
       const result = await testCase.invoke(client);
-      const call = vi.mocked(fetchImpl).mock.calls[0];
+      const [call] = vi.mocked(fetchImpl).mock.calls;
       expect(call?.[0]).toBe(testCase.url);
       const init = call?.[1] as RequestInit | undefined;
       expect(init?.method ?? 'GET').toBe(testCase.method);

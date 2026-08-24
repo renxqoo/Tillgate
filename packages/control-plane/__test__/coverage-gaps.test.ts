@@ -3,6 +3,7 @@
  * 非管理员操作者、缺省装配构造、fx 环境分支与目录导入 provenance 分支）。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createControlPlane } from '../src/control-plane';
 import { createChannel } from '../src/application/channels/create-channel';
 import { updateChannel } from '../src/application/channels/update-channel';
@@ -124,7 +125,7 @@ describe('并发竞态路径（唯一索引兜底翻译）', () => {
         { provider: 'prov', name: 'dup-in-batch', apiKey: 'k' },
       ],
     });
-    expect(result.details[1]!.error).toContain('already exists');
+    expect(defined(result.details[1]).error).toContain('already exists');
     // 竞态：查重 miss + 插入撞唯一索引 → 统一收口文案
     const racing = {
       ...deps,
@@ -143,7 +144,7 @@ describe('并发竞态路径（唯一索引兜底翻译）', () => {
       ctx: adminCtx(),
       channels: [{ provider: 'prov', name: 'raced', apiKey: 'k' }],
     });
-    expect(raced.details[0]!.error).toBe('Channel with the same name already exists');
+    expect(defined(raced.details[0]).error).toBe('Channel with the same name already exists');
     // 未知异常统一收口
     const crashing = {
       ...deps,
@@ -162,7 +163,9 @@ describe('并发竞态路径（唯一索引兜底翻译）', () => {
       ctx: adminCtx(),
       channels: [{ provider: 'prov', name: 'boom', apiKey: 'k' }],
     });
-    expect(crashed.details[0]!.error).toBe('Import failed (data conflict or validation failure)');
+    expect(defined(crashed.details[0]).error).toBe(
+      'Import failed (data conflict or validation failure)',
+    );
   });
 });
 
@@ -211,15 +214,18 @@ describe('渠道字段与探针分支', () => {
       rpmLimit: 60,
       tpmLimit: 100_000,
     });
-    expect(channels.rows.get(created.id)!.rpmLimit).toBe(60);
-    expect(channels.rows.get(created.id)!.tpmLimit).toBe(100_000);
+    expect(defined(channels.rows.get(created.id)).rpmLimit).toBe(60);
+    expect(defined(channels.rows.get(created.id)).tpmLimit).toBe(100_000);
     await updateChannel(deps, {
       ctx: adminCtx(),
       channelId: created.id,
       patch: { name: 'renamed', upstreamThreshold: '5' },
     });
-    expect(channels.rows.get(created.id)!.upstreamThreshold).toBe('5');
-    expect(audit.entries.at(-1)!.detail).toMatchObject({ keyChanged: false, name: 'renamed' });
+    expect(defined(channels.rows.get(created.id)).upstreamThreshold).toBe('5');
+    expect(defined(audit.entries.at(-1)).detail).toMatchObject({
+      keyChanged: false,
+      name: 'renamed',
+    });
   });
 
   it('探针失败结果（上游 error 透传分支）；列表富化非空绑定与消耗', async () => {
@@ -248,8 +254,8 @@ describe('渠道字段与探针分支', () => {
     // 非空富化：内存 store 注入了绑定与消耗
     const listed = await listChannels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
     const enriched = listed.rows.find((r) => r.id === 1);
-    expect(enriched!.boundModels).toEqual(['bound-a', 'bound-b']);
-    expect(enriched!.upstreamConsumed).toBe('12.5');
+    expect(defined(enriched).boundModels).toEqual(['bound-a', 'bound-b']);
+    expect(defined(enriched).upstreamConsumed).toBe('12.5');
   });
 });
 
@@ -350,7 +356,7 @@ describe('目录导入 provenance 分支', () => {
       ],
     });
     expect(result).toMatchObject({ created: 2 });
-    const entry = audit.entries[0]!;
+    const entry = defined(audit.entries[0]);
     const models2 = (
       entry.detail as {
         models: Array<{
@@ -360,11 +366,11 @@ describe('目录导入 provenance 分支', () => {
         }>;
       }
     ).models;
-    expect(models2[0]!.catalogPrompt).toBeNull();
-    expect(models2[0]!.prefillInputCny).toBeNull();
-    expect(models2[1]!.catalogPrompt).toBe('1000000'); // OpenRouter 口径恒每 token → ×1e6 归一
+    expect(defined(models2[0]).catalogPrompt).toBeNull();
+    expect(defined(models2[0]).prefillInputCny).toBeNull();
+    expect(defined(models2[1]).catalogPrompt).toBe('1000000'); // OpenRouter 口径恒每 token → ×1e6 归一
     // needsKey=false：未提供 apiKey 也建渠道（'no-key-required' 占位密文）
-    const channel = [...channels.rows.values()][0]!;
+    const channel = defined([...channels.rows.values()][0]);
     expect(fakeCipher.decrypt(channel.apiKeyEnc)).toBe('no-key-required');
   });
 });

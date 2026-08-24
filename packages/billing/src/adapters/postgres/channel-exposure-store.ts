@@ -11,6 +11,7 @@ function tx(conn: WalletConn): DbTx {
   return conn as unknown as DbTx;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 渠道暴露 SQL 构造平铺
 export function createChannelExposureStore(_db: Db): ChannelExposureStore {
   return {
     async findChannel(conn: WalletConn, channelId: number) {
@@ -82,7 +83,7 @@ export function createChannelExposureStore(_db: Db): ChannelExposureStore {
         .returning({
           broken: sql<boolean>`(${channels.upstreamBudget} <= coalesce(${channels.upstreamThreshold}, 0))`,
         });
-      const row = rows[0];
+      const [row] = rows;
       if (!row) return false;
       if (row.broken) {
         await tx(conn)

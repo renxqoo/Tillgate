@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { notificationsErrors } from '../src/errors';
 import { buildFacade } from './memory';
 import type { NotifyContext } from '../src/application/context';
+import { defined } from './defined';
 
 const ctx: NotifyContext = { requestId: 't-channels', actor: { kind: 'admin', id: 1 } };
 
@@ -21,7 +22,7 @@ describe('创建渠道', () => {
     const { facade } = buildFacade();
     const err = await facade.channels
       .create({ ctx, name: 'ch', type: 'email', config: {}, events: ['billing_dead'] })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect(notificationsErrors.has((err as { code: string }).code)).toBe(true);
     expect((err as { code: string }).code).toBe('notifications.invalid_channel_input');
   });
@@ -31,7 +32,7 @@ describe('创建渠道', () => {
     const row = await facade.channels.create({ ctx, ...webhookInput });
     expect(row.id).toBeGreaterThan(0);
     expect(row.config.secret).toMatch(/^\*{4}/); // ****+尾4(密文尾)
-    const stored = memory.state.channels.get(row.id)!;
+    const stored = defined(memory.state.channels.get(row.id), 'stored');
     expect(stored.config.secret).toMatch(/^enc:v1:fake:/); // 落库是密文
     expect(stored.config.secret).not.toBe(webhookInput.config.secret);
   });
@@ -45,7 +46,7 @@ describe('创建渠道', () => {
         ...webhookInput,
         config: { url: 'https://hooks.example.test/y', secret: 's'.repeat(24) },
       })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.channel_exists');
   });
 
@@ -59,7 +60,7 @@ describe('创建渠道', () => {
         config: { recipients: ['a@b.test'] },
         events: ['not_an_event'],
       })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.invalid_channel_input');
   });
 });
@@ -89,7 +90,7 @@ describe('更新渠道', () => {
     });
     expect(patched.events).toEqual(['billing_dead']);
     expect(patched.config.secret).toMatch(/^\*{4}/);
-    const stored = memory.state.channels.get(created.id)!;
+    const stored = defined(memory.state.channels.get(created.id), 'stored');
     expect(stored.config.secret).toMatch(/^enc:v1:fake:/);
     expect(stored.config.url).toBe('https://hooks.example.test/z');
   });
@@ -98,7 +99,7 @@ describe('更新渠道', () => {
     const { facade } = buildFacade();
     const err = await facade.channels
       .patch({ ctx, channelId: 999, patch: { status: 1 } })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.channel_not_found');
   });
 
@@ -106,7 +107,7 @@ describe('更新渠道', () => {
     const { facade } = buildFacade();
     const err = await facade.channels
       .patch({ ctx, channelId: 1, patch: { events: [] } })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.invalid_channel_input');
   });
 });
@@ -114,7 +115,9 @@ describe('更新渠道', () => {
 describe('删除渠道', () => {
   it('miss → not_found;命中删除后不可再查', async () => {
     const { facade, memory } = buildFacade();
-    const err = await facade.channels.remove({ ctx, channelId: 999 }).catch((e: unknown) => e);
+    const err = await facade.channels
+      .remove({ ctx, channelId: 999 })
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.channel_not_found');
     const created = await facade.channels.create({ ctx, ...webhookInput });
     await facade.channels.remove({ ctx, channelId: created.id });
@@ -129,13 +132,16 @@ describe('测试事件入箱', () => {
     await facade.channels.test({ ctx, channelId: created.id });
     const rows = memory.pendingRows().filter((r) => r.dedupeKey.startsWith(`test:${created.id}:`));
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.event).toBe('channel_disabled'); // 首订阅事件
-    expect(rows[0]!.payload).toEqual({ test: true, channel: 'notify-main' });
+    const testRow = defined(rows[0], 'rows[0]');
+    expect(testRow.event).toBe('channel_disabled'); // 首订阅事件
+    expect(testRow.payload).toEqual({ test: true, channel: 'notify-main' });
   });
 
   it('miss → not_found', async () => {
     const { facade } = buildFacade();
-    const err = await facade.channels.test({ ctx, channelId: 999 }).catch((e: unknown) => e);
+    const err = await facade.channels
+      .test({ ctx, channelId: 999 })
+      .catch((error: unknown) => error);
     expect((err as { code: string }).code).toBe('notifications.channel_not_found');
   });
 });

@@ -3,7 +3,7 @@
  * 无状态服务端组件：文案由 page.tsx 注入，保证所有 section 可单独编译。
  */
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import type { getTranslations } from 'next-intl/server';
 import { Sparkles } from 'lucide-react';
 
 export type LandingT = Awaited<ReturnType<typeof getTranslations<'landing'>>>;

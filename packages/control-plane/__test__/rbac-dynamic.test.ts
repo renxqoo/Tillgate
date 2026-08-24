@@ -7,6 +7,7 @@
  *      enforced 锁/子节点守卫/绑定守卫/授权 diff）。
  */
 import { readFileSync } from 'node:fs';
+import { defined } from './defined';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -32,7 +33,7 @@ describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
     expect([...ENFORCED_CODES]).toHaveLength(41);
     expect(new Set(ENFORCED_CODES).size).toBe(41);
     for (const code of ENFORCED_CODES) {
-      const domain = code.split(':')[0]!;
+      const domain = defined(code.split(':')[0]);
       expect(PERMISSION_DOMAINS).toContain(domain);
     }
     // 读码恰 8 个（每域一个,与 8 域一一对应）
@@ -55,7 +56,9 @@ describe('enforced 注册表封闭性（DESIGN §2 = 41 码）', () => {
       ),
       'utf8',
     );
-    const seeded = new Set([...sql.matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => match[1]!));
+    const seeded = new Set(
+      [...sql.matchAll(/'([a-z]+:[a-z-]+)'/g)].map((match) => defined(match[1])),
+    );
     for (const code of ENFORCED_CODES) {
       expect(seeded.has(code), `seed missing: ${code}`).toBe(true);
     }

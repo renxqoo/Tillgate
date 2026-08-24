@@ -3,6 +3,7 @@
  * 管理补丁全矩阵(freezeReason 规则/锚推进/换卡守卫/限额域/审计)。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { createTestHarness } from '../src/testing/harness.js';
 
 describe('getProfile / updateDisplayName', () => {
@@ -54,7 +55,7 @@ describe('adminListUsers', () => {
     expect(q.total).toBe(2);
     const banned = await h.api.adminListUsers({ status: 1 });
     expect(banned.total).toBe(1);
-    expect(banned.rows[0]!.id).toBe(2);
+    expect(defined(banned.rows[0], 'banned.rows[0]').id).toBe(2);
     const ent = await h.api.adminListUsers({ enterprise: true });
     expect(ent.rows.map((r) => r.id)).toEqual([3]);
     const page = await h.api.adminListUsers({ page: 1, limit: 2 });
@@ -117,7 +118,7 @@ describe('adminPatchUser', () => {
     // port 恰好被调一次,user realm;不再直写 users.session_invalid_before(列冻结只读)
     expect(h.sessionInvalidation.calls).toEqual([{ realm: 'user', userId: u.id }]);
     const reread = await h.store.findUserById(h.ctx.db, u.id);
-    expect(reread!.sessionInvalidBefore).toBeNull();
+    expect(defined(reread, 'reread').sessionInvalidBefore).toBeNull();
   });
 
   it('非 email 变更不触发会话失效', async () => {
@@ -143,7 +144,7 @@ describe('adminPatchUser', () => {
     ).rejects.toThrow('identity anchor unavailable');
     // 业务写入一并回滚(内存替身经快照回滚 fake db)
     const after = await h.store.findUserById(h.ctx.db, u.id);
-    expect(after!.email).toBe(before!.email);
+    expect(defined(after, 'after').email).toBe(defined(before, 'before').email);
   });
 
   it('换卡守卫两分:不存在 → rate_card_not_found;停用 → rate_card_disabled', async () => {

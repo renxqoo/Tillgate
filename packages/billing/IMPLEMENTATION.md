@@ -98,7 +98,7 @@
 1. **domain 零 I/O**：wallet 引擎的「schema+动词一体」形态不保留——定律（posting/
    exposure/authorization/词表）进 domain，SQL 全部进 `adapters/postgres`（总纲 §5.1；
    证据 D3/D4/D6：一体形态在旧仓直接导致了 service 平行复刻）。
-2. **动词一文件**（AGENT.md 铁律 5）：credit/authorize/settle/release/refund/transfer/
+2. **动词一文件**（AGENTS.md 铁律 5）：credit/authorize/settle/release/refund/transfer/
    credit-line/freeze 各一文件，编排壳一个文件——沿用旧仓活路径的文件切分
    （`service/src/wallet/` 已是此形态）。
 3. **application 内部共享事务**：旧仓 `TxInjection` 对调用方开放的能力收编——billing
@@ -120,11 +120,11 @@ settle#over`（允许负余额）——活路径独有语义，引擎版无此�
   不超卖、CAS 竞态）、幂等（重放回执全等、同键异参 409）、恢复（滞留回收、租约过期、
   毒行隔离）、对账（verifyInvariants 三类漂移）。
 - 纯 domain（money/fingerprint/posting 定律/exposure/计价）零 I/O 直测。
-- 每个 B# 一个回归用例，用例名注明编号与症状（AGENT.md §10.1）。
+- 每个 B# 一个回归用例，用例名注明编号与症状（AGENTS.md §10.1）。
 - 引擎 25 个 PG 测试不搬运（D9），但其**不变量断言清单**（Σ腿=0、链恒等、
   in_flight 投影、账本不可变、冻结拒动）在新契约测试中逐项重现——不变量本身
   是 DB 触发器 + 活路径共同维护的生产事实。
-- 覆盖率 90/90/90/85 进 vitest thresholds（AGENT.md §10.3）。
+- 覆盖率 90/90/90/85 进 vitest thresholds（AGENTS.md §10.3）。
 
 ## 5. 实施顺序（每单元独立提交 + 四门全绿 + 可独立回滚）
 

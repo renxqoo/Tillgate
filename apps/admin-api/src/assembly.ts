@@ -133,6 +133,7 @@ export interface AdminApiAssembly {
   ) => Promise<void>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文(存量棘轮)
 export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
   const logger = createLogger({ level: config.logLevel, serviceName: 'admin-api', pretty: false });
   const otel = initOtel({
@@ -164,16 +165,16 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
   });
   const mailer =
     config.smtp != null
-      ? createSmtpAdminMailer(
-          config.smtp,
-          {
+      ? createSmtpAdminMailer({
+          config: config.smtp,
+          brand: {
             brand: 'Tillgate 管理后台',
             brandEn: 'Tillgate Admin',
             brandSub: 'TILLGATE · ADMIN CONSOLE',
           },
-          { ttlMinutes: 5, maxAttempts: 5 },
-          () => new Date(),
-        )
+          emailParams: { ttlMinutes: 5, maxAttempts: 5 },
+          now: () => new Date(),
+        })
       : null;
   const sessionRevocation = createAdminSessionRevocation(redis);
 
@@ -312,9 +313,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
 
   // 动态 RBAC 启动对账（ADR-0008）:代码侧 enforced 注册表 ⊆ DB 活动码——
   // 发版新增码忘了补种子即拒启（绝不静默全站 403）;DB 不可达仅告警（单测装配形态）。
-  void controlPlane.rbac.permissions
-    .activeCodes()
-    .then((active) => {
+  // async IIFE 等价原 then/catch:对账失败随 catch 吞为告警,不阻塞启动路径。
+  void (async () => {
+    try {
+      const active = await controlPlane.rbac.permissions.activeCodes();
       const set = new Set(active);
       for (const code of ENFORCED_CODES) {
         if (!set.has(code)) {
@@ -325,10 +327,10 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
           process.exit(1);
         }
       }
-    })
-    .catch(() => {
+    } catch {
       logger.warn('rbac startup reconciliation skipped (db unreachable)');
-    });
+    }
+  })();
 
   return {
     logger,
@@ -357,7 +359,7 @@ export function assembleAdminApi(config: AdminApiConfig): AdminApiAssembly {
           ...(entry.email !== undefined ? { email: entry.email } : {}),
           ...(entry.twoFactor !== undefined ? { twoFactor: entry.twoFactor } : {}),
         },
-      }).catch(() => undefined),
+      }).catch(() => {}),
     // P4:任务存储直组 postgres 适配器（管理读侧不装配 createInference 全家桶——
     // 本 app 无推理热路径,任务表读侧是唯一消费面）
     generationTasks: createPostgresGenerationTaskStore(db),

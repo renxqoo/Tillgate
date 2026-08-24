@@ -108,7 +108,9 @@ describe('列表 query 组合（sort / search / listQuerySchema）', () => {
   it('searchQuerySchema：trim、空白/非字符串 → undefined', () => {
     expect(searchQuerySchema.parse(' x ')).toBe('x');
     expect(searchQuerySchema.parse('   ')).toBeUndefined();
-    expect(searchQuerySchema.parse(undefined)).toBeUndefined();
+    // 显式 undefined 入参经具名变量传递:zod parse 参数必填,字面量 undefined 又会触发 no-useless-undefined
+    const absent: unknown = undefined;
+    expect(searchQuerySchema.parse(absent)).toBeUndefined();
   });
 
   it('listQuerySchema：组合基底缺省形态；差异字段可 extend', () => {

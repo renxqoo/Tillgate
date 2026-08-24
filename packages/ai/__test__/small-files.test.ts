@@ -35,7 +35,7 @@ describe('tokenizer 分流', () => {
     expect(tokenCountOf('hello world', 'gpt-4o')).toBeGreaterThan(0);
     expect(tokenCountOf('hello world', 'gpt-4o-mini')).toBeGreaterThan(0);
     expect(tokenCountOf('你好', 'claude-3')).toBeGreaterThan(0);
-    expect(tokenCountOf('x', undefined)).toBeNull();
+    expect(tokenCountOf('x')).toBeNull();
     expect(tokenCountOf('', 'gpt-4o')).toBeNull();
     expect(tokenCountOf('a'.repeat(TOKENIZE_MAX_CHARS + 1), 'gpt-4o')).toBeNull();
   });
@@ -53,7 +53,9 @@ describe('heartbeat 全局扫描器', () => {
       once += 1;
       return false;
     }); // 立即注销
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => {
+      setTimeout(r, 350);
+    });
     off();
     off2();
     expect(checks).toBeGreaterThanOrEqual(1);
@@ -109,7 +111,7 @@ describe('stream-report 深支', () => {
       events.push(e);
       seen.push((e as { type: string }).type);
     });
-    expect(seen[seen.length - 1]).toBe('success');
+    expect(seen.at(-1)).toBe('success');
     const success = events.find((e) => (e as { type: string }).type === 'success') as {
       usage?: { inputTokens: number };
       outputFeatures?: { wordSegments: number };

@@ -46,12 +46,12 @@ export async function probeChannel(
       error: result.error ? { code: result.error.code, message: result.error.message } : undefined,
       keyPreview,
     };
-  } catch (e) {
+  } catch (error) {
     // 适配器异常与密文损坏都是探针结果——坏密文不回预览（keyPreview 缺省）
     return {
       ok: false,
       durationMs: Date.now() - startedAt,
-      error: { code: 'internal', message: e instanceof Error ? e.message : String(e) },
+      error: { code: 'internal', message: error instanceof Error ? error.message : String(error) },
     };
   }
 }

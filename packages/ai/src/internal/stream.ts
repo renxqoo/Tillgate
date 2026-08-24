@@ -36,6 +36,47 @@ export class PeekTimeoutError extends Error {
   }
 }
 
+/** 首字节预算定时（promise 与清除器成对返回——调用方在 finally 里 clear 防泄漏） */
+function armFirstByteTimeout(timeoutMs: number): { promise: Promise<never>; clear: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const promise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new PeekTimeoutError(timeoutMs)), timeoutMs);
+  });
+  return {
+    promise,
+    clear: () => {
+      if (timer !== null) clearTimeout(timer);
+    },
+  };
+}
+
+/**
+ * 回放式 rest：first 已被预读，包装流先吐 first 再按需续读原始 reader
+ * （pull 驱动——与 pipeTo/手动读都兼容；取消透传给原始 reader 归还上游连接）。
+ */
+function replayRestStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  firstChunk: Uint8Array,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(firstChunk);
+    },
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (error) {
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      void reader.cancel(reason).catch(() => {});
+    },
+  });
+}
+
 export async function peekFirstChunk(
   body: ReadableStream<Uint8Array>,
   opts: { signal?: AbortSignal; timeoutMs?: number } = {},
@@ -56,53 +97,24 @@ export async function peekFirstChunk(
   opts.signal?.addEventListener('abort', onAbort, { once: true });
   // 首字节预算：connectMs 只覆盖到响应头；本超时覆盖「headers 后 body 首字节」
   // （relay-stream 的 inactivity 只于首 chunk 后武装——此处是唯一覆盖点）
-  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = opts.timeoutMs !== undefined ? armFirstByteTimeout(opts.timeoutMs) : null;
   const readPromise = reader.read();
   // 竞态安全：超时后 read 再 reject 不得变成 unhandledRejection
   void readPromise.catch(() => {});
-  const timeoutPromise =
-    opts.timeoutMs !== undefined
-      ? new Promise<never>((_, reject) => {
-          timeoutTimer = setTimeout(
-            () => reject(new PeekTimeoutError(opts.timeoutMs!)),
-            opts.timeoutMs!,
-          );
-        })
-      : null;
   try {
-    const first = timeoutPromise
-      ? await Promise.race([readPromise, timeoutPromise])
-      : await readPromise;
+    const first =
+      timeout !== null ? await Promise.race([readPromise, timeout.promise]) : await readPromise;
     if (first.done || !first.value || first.value.length === 0) {
       void reader.cancel().catch(() => {});
       return { done: true };
     }
     const firstChunk = first.value;
-    // 回放式 rest：first 已被预读，包装流先吐 first 再按需续读原始 reader
-    // （pull 驱动——与 pipeTo/手动读都兼容；取消透传给原始 reader 归还上游连接）
-    const rest = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(firstChunk);
-      },
-      async pull(controller) {
-        try {
-          const { done, value } = await reader.read();
-          if (done) controller.close();
-          else controller.enqueue(value);
-        } catch (error) {
-          controller.error(error);
-        }
-      },
-      cancel(reason) {
-        void reader.cancel(reason).catch(() => {});
-      },
-    });
-    return { done: false, first: firstChunk, rest };
-  } catch (err) {
+    return { done: false, first: firstChunk, rest: replayRestStream(reader, firstChunk) };
+  } catch (error) {
     void reader.cancel().catch(() => {});
-    throw err;
+    throw error;
   } finally {
-    if (timeoutTimer !== null) clearTimeout(timeoutTimer);
+    timeout?.clear();
     opts.signal?.removeEventListener('abort', onAbort);
   }
 }

@@ -138,6 +138,17 @@ const ENDPOINTS: readonly string[] = [
   'PUT /v1/settings/billing-timezone',
 ];
 
+// 模块级:从 OpenAPI 文档收端点清单(提出 describe/it 回调,避免回调深层嵌套)
+function endpointListOf(paths: Record<string, Record<string, unknown>>): string[] {
+  return Object.entries(paths)
+    .flatMap(([path, ops]) =>
+      Object.keys(ops)
+        .filter((m) => METHODS.has(m))
+        .map((m) => `${m.toUpperCase()} ${path}`),
+    )
+    .toSorted();
+}
+
 describe('OpenAPI 生成链（P3）', () => {
   it('入库产物与重生成逐字节相等（禁止手改——generator 是唯一写入方）', () => {
     const regenerated = `${JSON.stringify(buildAdminOpenApiDocument(), null, 2)}\n`;
@@ -146,13 +157,7 @@ describe('OpenAPI 生成链（P3）', () => {
 
   it('端点词表封闭：method+path 全集与快照逐项相等', () => {
     const doc = buildAdminOpenApiDocument();
-    const live = Object.entries(doc.paths as Record<string, Record<string, unknown>>)
-      .flatMap(([path, ops]) =>
-        Object.keys(ops)
-          .filter((m) => METHODS.has(m))
-          .map((m) => `${m.toUpperCase()} ${path}`),
-      )
-      .toSorted();
+    const live = endpointListOf(doc.paths as Record<string, Record<string, unknown>>);
     expect(live).toEqual([...ENDPOINTS]);
   });
 

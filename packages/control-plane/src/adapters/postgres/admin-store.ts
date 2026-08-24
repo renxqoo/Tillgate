@@ -9,6 +9,7 @@
 import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { admins, permissions, rolePermissions, roles } from '@tillgate/db';
 import type { DbLike, DbTx } from '@tillgate/db';
+import type { AdminAccess } from '../../domain/rbac';
 import type {
   AdminListQuery,
   AdminListResult,
@@ -83,10 +84,7 @@ export const postgresAdminStore: AdminStore = {
   },
 
   /** 属主回查完整面：一条 join 带回状态 + isSuper + active 码集合（super 短路） */
-  async findAccess(
-    db: DbLike,
-    adminId: number,
-  ): Promise<import('../../domain/rbac').AdminAccess | null> {
+  async findAccess(db: DbLike, adminId: number): Promise<AdminAccess | null> {
     const rows = await db
       .select({
         adminStatus: admins.status,
@@ -100,7 +98,7 @@ export const postgresAdminStore: AdminStore = {
       .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
       .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
       .where(eq(admins.id, adminId));
-    const head = rows[0];
+    const [head] = rows;
     if (head == null) return null;
     if (head.roleStatus !== 0) {
       return { status: head.adminStatus, grants: { isSuper: false, codes: [] } };
@@ -165,7 +163,7 @@ export const postgresAdminStore: AdminStore = {
       })
       .returning({ id: admins.id });
     await db.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);
-    const created = inserted[0];
+    const [created] = inserted;
     if (created == null) {
       throw new Error('insert admins returned no row');
     }

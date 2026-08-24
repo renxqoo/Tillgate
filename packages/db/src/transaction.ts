@@ -29,18 +29,21 @@ export interface TxRetryHooks {
   onRetry?(info: { attempt: number; code: '40P01' | '40001' }): void;
 }
 
+// eslint-disable-next-line max-params -- 跨包导出 API，policy/hooks 为必填策略与可选观测，改 options 对象会波及全仓调用点（手册 §3）
 export async function runTx<T>(
   db: Db,
   fn: (tx: DbTx) => Promise<T>,
   policy: TxRetryPolicy,
   hooks?: TxRetryHooks,
 ): Promise<T>;
+// eslint-disable-next-line max-params -- 同上：重载声明，参数面与实现一致
 export async function runTx<T>(
   db: DbTx,
   fn: (tx: DbTx) => Promise<T>,
   policy: TxRetryPolicy,
   hooks?: TxRetryHooks,
 ): Promise<T>;
+// eslint-disable-next-line max-params -- 同上：实现签名
 export async function runTx<T>(
   db: DbLike,
   fn: (tx: DbTx) => Promise<T>,
@@ -58,12 +61,12 @@ export async function runTx<T>(
       } catch {
         // 观测失败不得改变资金路径行为。
       }
-      await new Promise((resolve) =>
+      await new Promise((resolve) => {
         setTimeout(
           resolve,
           policy.baseDelayMs * 2 ** attempt + Math.floor(Math.random() * policy.maxJitterMs),
-        ),
-      );
+        );
+      });
     }
   }
 }

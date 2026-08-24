@@ -4,6 +4,7 @@
  * 审计与业务同事务（§5.4/G3）：写失败回滚业务、重放不重复审计（dedupe 单事实）。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { rechargeChannel } from '../src/application/channels/recharge-channel';
 import { adjustChannel } from '../src/application/channels/adjust-channel';
 import { listRecharges } from '../src/application/channels/list-recharges';
@@ -107,8 +108,8 @@ describe('进货（幂等 operations 用例）', () => {
       rechargeId: first.rechargeId,
     });
     expect(channels.recharges).toHaveLength(1); // 重放不重复入账
-    expect(channels.rows.get(7)!.upstreamBudget).toBe('150');
-    expect(operations.rows.get('op-recharge-1')!.receipt).toMatchObject({
+    expect(defined(channels.rows.get(7)).upstreamBudget).toBe('150');
+    expect(defined(operations.rows.get('op-recharge-1')).receipt).toMatchObject({
       rechargeId: first.rechargeId,
     });
     expect(audit.entries.filter((e) => e.action === 'channel.recharge')).toHaveLength(1); // 重放不重复审计（§5.4 dedupe 单事实）
@@ -137,14 +138,14 @@ describe('进货（幂等 operations 用例）', () => {
 
   it('进货自动复活熔断渠道（status 3 → 0）；渠道不存在 → channel_not_found', async () => {
     const { base, channels } = setup();
-    channels.rows.get(7)!.status = 3;
+    defined(channels.rows.get(7)).status = 3;
     await rechargeChannel(base, {
       ctx: adminCtx(),
       channelId: 7,
       amount: '5',
       operationId: 'op-revive',
     });
-    expect(channels.rows.get(7)!.status).toBe(0);
+    expect(defined(channels.rows.get(7)).status).toBe(0);
     await expect(
       rechargeChannel(base, {
         ctx: adminCtx(),
@@ -178,7 +179,7 @@ describe('进货（幂等 operations 用例）', () => {
     expect(replay.replayed).toBe(true);
     expect(replay.rechargeId).toBe(first.rechargeId);
     expect(channels.recharges).toHaveLength(1);
-    expect(channels.rows.get(7)!.upstreamBudget).toBe('101');
+    expect(defined(channels.rows.get(7)).upstreamBudget).toBe('101');
   });
 
   it('非法金额/凭证 → invalid_channel_input / invalid_voucher', async () => {
@@ -228,7 +229,7 @@ describe('调账（守卫 = 调后非负）', () => {
       adjustChannel(base, { ctx: adminCtx(), channelId: 7, amount: '-1000', operationId: 'adj-3' }),
     ).rejects.toMatchObject({ code: 'control_plane.insufficient_budget' });
     // 守卫失败的操作占位被回滚——同键可重试（内存替身无回滚语义，换键验证业务拒绝即可）
-    expect(channels.rows.get(7)!.upstreamBudget).toBe('90');
+    expect(defined(channels.rows.get(7)).upstreamBudget).toBe('90');
   });
 
   it('调账非法金额（零值/垃圾形状）→ invalid_channel_input', async () => {
@@ -290,7 +291,7 @@ describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务�
       }),
     ).rejects.toThrow('audit sink down');
     // 回滚后无任何变更落库（快照恢复 = PG ROLLBACK 等价）
-    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('100');
+    expect(defined(world.channels.rows.get(7)).upstreamBudget).toBe('100');
     expect(world.channels.recharges).toHaveLength(0);
     expect(world.operations.rows.size).toBe(0);
     expect(world.audit.entries).toHaveLength(0);
@@ -304,7 +305,7 @@ describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务�
       amount: '5',
       operationId: 'op-audit-ok',
     });
-    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('105');
+    expect(defined(world.channels.rows.get(7)).upstreamBudget).toBe('105');
     expect(world.audit.entries).toHaveLength(1);
     expect(world.audit.entries[0]).toMatchObject({
       action: 'channel.recharge',
@@ -319,7 +320,7 @@ describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务�
       operationId: 'op-audit-ok',
     });
     expect(replay.replayed).toBe(true);
-    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('105');
+    expect(defined(world.channels.rows.get(7)).upstreamBudget).toBe('105');
     expect(world.audit.entries).toHaveLength(1);
   });
 
@@ -334,7 +335,7 @@ describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务�
         operationId: 'adj-audit-down',
       }),
     ).rejects.toThrow('audit sink down');
-    expect(world.channels.rows.get(7)!.upstreamBudget).toBe('100');
+    expect(defined(world.channels.rows.get(7)).upstreamBudget).toBe('100');
     expect(world.channels.recharges).toHaveLength(0);
     expect(world.audit.entries).toHaveLength(0);
   });
@@ -349,7 +350,7 @@ describe('审计事务参与契约（§5.4/G3：资金审计与业务同事务�
       kind: 'channel.recharge',
       fingerprint: commandFingerprint('channel.recharge', payload),
     });
-    expect(operations.rows.get('op-broken')!.receipt).toBeNull();
+    expect(defined(operations.rows.get('op-broken')).receipt).toBeNull();
     await expect(
       runOperation(
         { db: base.db, stores: { operations: operations.store } },

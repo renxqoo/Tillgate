@@ -27,6 +27,29 @@ export function ChannelForm() {
   const [events, setEvents] = useState<string[]>(['channel_disabled', 'billing_dead']);
   const [pending, setPending] = useState(false);
 
+  const onCreate = async () => {
+    setPending(true);
+    const res = await createChannelAction({
+      name,
+      type,
+      config:
+        type === 'webhook'
+          ? { url, secret }
+          : { recipients: recipients.split(/[,，\s]+/).filter(Boolean) },
+      events,
+    });
+    setPending(false);
+    if (res.error) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success(t('created'));
+    setName('');
+    setUrl('');
+    setSecret('');
+    setRecipients('');
+  };
+
   return (
     <div className="space-y-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -88,31 +111,7 @@ export function ChannelForm() {
           </Button>
         ))}
       </div>
-      <Button
-        disabled={pending || !name || events.length === 0}
-        onClick={async () => {
-          setPending(true);
-          const res = await createChannelAction({
-            name,
-            type,
-            config:
-              type === 'webhook'
-                ? { url, secret }
-                : { recipients: recipients.split(/[,，\s]+/).filter(Boolean) },
-            events,
-          });
-          setPending(false);
-          if (res.error) {
-            toast.error(res.error);
-            return;
-          }
-          toast.success(t('created'));
-          setName('');
-          setUrl('');
-          setSecret('');
-          setRecipients('');
-        }}
-      >
+      <Button disabled={pending || !name || events.length === 0} onClick={onCreate}>
         {pending ? (
           <Loader2Icon className="size-4 animate-spin" />
         ) : (

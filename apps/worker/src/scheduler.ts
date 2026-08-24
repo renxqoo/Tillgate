@@ -30,6 +30,7 @@ export interface Scheduler {
   snapshots(): Record<string, JobSnapshot | null>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 调度器闭包工厂:track/tick/生命周期方法共享 jobs/timers/inFlight 状态,拆分即状态上提或互相回读(存量棘轮)
 export function createScheduler(deps: {
   graceMs: number;
   onError: (error: unknown, name: string) => void;

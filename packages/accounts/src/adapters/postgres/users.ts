@@ -54,7 +54,7 @@ export const userQueries: Pick<
           displayName: input.displayName,
         })
         .returning(USER_COLUMNS);
-      const user = rows[0];
+      const [user] = rows;
       if (user === undefined) throw new Error('insertLocalUser returning empty');
       return { status: 'created', user };
     } catch (error) {
@@ -76,7 +76,7 @@ export const userQueries: Pick<
           displayName: input.displayName,
         })
         .returning(USER_COLUMNS);
-      const user = rows[0];
+      const [user] = rows;
       if (user === undefined) throw new Error('insertOAuthUser returning empty');
       return { status: 'created', user };
     } catch (error) {
@@ -173,7 +173,7 @@ export const userQueries: Pick<
       .from(rateCards)
       .where(eq(rateCards.id, rateCardId))
       .limit(1);
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) return { status: 'missing' };
     return row.status === 0 ? { status: 'ok' } : { status: 'disabled' };
   },

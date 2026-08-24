@@ -25,6 +25,11 @@ export function resolveSort(
   field?: string,
   order?: 'asc' | 'desc',
 ): SortSpec {
-  const chosen = field !== undefined && allowed.includes(field) ? field : allowed[0]!;
+  // 词表为空时 allowed[0] 会静默变成 undefined 落进 ORDER BY——装配期契约在此 fail-fast
+  const [fallback] = allowed;
+  if (fallback === undefined) {
+    throw new Error('resolveSort requires a non-empty sort field whitelist');
+  }
+  const chosen = field !== undefined && allowed.includes(field) ? field : fallback;
   return { field: chosen, order: order === 'asc' ? 'asc' : 'desc' };
 }

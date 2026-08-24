@@ -89,12 +89,12 @@ const PASS_THROUGH_GUARDS: AuthGuards = {
   keyGuard: {
     isLocked: async () => UNLOCKED,
     recordFailure: async () => UNLOCKED,
-    recordSuccess: async () => undefined,
+    recordSuccess: async () => {},
   },
   ipGuard: {
     isLocked: async () => UNLOCKED,
     recordFailure: async () => UNLOCKED,
-    recordSuccess: async () => undefined,
+    recordSuccess: async () => {},
   },
   trustedProxyHops: 0,
 };
@@ -115,91 +115,101 @@ async function assertUnlocked(subject: string, check: GuardCheck): Promise<void>
   }
 }
 
+/** apiKeyMiddleware 依赖束（工厂三参的内聚形态，供分支函数模块级独立） */
+interface ApiKeyAuth {
+  reader: AuthReadModel;
+  guards: AuthGuards;
+  jwt: { secret: string; issuer: string; audience: string; keyPrefix: string };
+}
+
+function sourceIpOf(guards: AuthGuards, c: Context): string {
+  return trustedClientIp({
+    headers: c.req.raw.headers,
+    trustedProxyHops: guards.trustedProxyHops,
+    socketAddress: socketAddressFromContext(c),
+  });
+}
+
+async function verifyJwt(deps: ApiKeyAuth, token: string): Promise<GatewayJwtPayload> {
+  const { payload } = await jwtVerify(token, new TextEncoder().encode(deps.jwt.secret), {
+    issuer: deps.jwt.issuer,
+    audience: deps.jwt.audience,
+    algorithms: ['HS256'], // 算法族白名单（防混淆攻击）
+  }).catch(() => {
+    throw HttpErrors.business('unauthorized', { detail: 'invalid or expired jwt credential' });
+  });
+  return payload as unknown as GatewayJwtPayload;
+}
+
+/** 静态 Key 分支：SHA-256 直查读模型；失败 keyHash + IP 双维计数（A8） */
+async function authByKey(deps: ApiKeyAuth, token: string, ip: string): Promise<AuthContext> {
+  const { reader, guards: g } = deps;
+  const keyHash = createHash('sha256').update(token).digest('hex');
+  await assertUnlocked('api key', await g.keyGuard.isLocked(keyHash));
+  await assertUnlocked('source', await g.ipGuard.isLocked(ip));
+
+  const key = await reader.resolveKeyByHash(keyHash);
+  if (key == null) {
+    await g.keyGuard.recordFailure(keyHash);
+    await g.ipGuard.recordFailure(ip);
+    throw HttpErrors.business('unauthorized');
+  }
+  await g.keyGuard.recordSuccess(keyHash);
+  return {
+    userId: key.userId,
+    apiKeyId: key.keyId,
+    appId: null,
+    allowedModels: null,
+    rpmLimit: positive(key.rpmLimit),
+    tpmLimit: positive(key.tpmLimit),
+    userRpmLimit: positive(key.userRpmLimit),
+    userTpmLimit: positive(key.userTpmLimit),
+  };
+}
+
+/**
+ * App-JWT 分支：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点，故 per-IP 锁前置；
+ * 失败只计 IP 维（Key 可枚举、JWT 不可——A8）。
+ */
+async function authByJwt(deps: ApiKeyAuth, token: string, ip: string): Promise<AuthContext> {
+  const { reader, guards: g } = deps;
+  if (!token) {
+    throw HttpErrors.business('unauthorized', { detail: 'missing or malformed api key' });
+  }
+  await assertUnlocked('source', await g.ipGuard.isLocked(ip));
+  try {
+    const payload = await verifyJwt(deps, token);
+    // 仅支持 app_jwt：操练场（playground）等其他形态一律 401——信任根分离
+    if (payload.typ !== 'app_jwt' || payload.app_id == null || payload.sub == null) {
+      throw HttpErrors.business('unauthorized', { detail: 'unsupported jwt credential type' });
+    }
+    const app = await reader.resolveApp(payload.app_id);
+    if (!app || app.userId !== Number(payload.sub)) {
+      throw HttpErrors.business('unauthorized', { detail: 'app credential inactive' });
+    }
+    return {
+      userId: app.userId,
+      apiKeyId: null,
+      appId: app.id,
+      allowedModels:
+        app.scope?.models != null && app.scope.models.length > 0 ? [...app.scope.models] : null,
+      rpmLimit: positive(app.scope?.rpm),
+      tpmLimit: positive(app.scope?.tpm),
+      userRpmLimit: null,
+      userTpmLimit: null,
+    };
+  } catch (error) {
+    if (isUnauthorized(error)) await g.ipGuard.recordFailure(ip);
+    throw error;
+  }
+}
+
 export function apiKeyMiddleware(
   reader: AuthReadModel,
   guards: AuthGuards | undefined,
   jwt: { secret: string; issuer: string; audience: string; keyPrefix: string },
 ): MiddlewareHandler<AuthEnv> {
-  const g = guards ?? PASS_THROUGH_GUARDS;
-
-  const sourceIpOf = (c: Context): string =>
-    trustedClientIp({
-      headers: c.req.raw.headers,
-      trustedProxyHops: g.trustedProxyHops,
-      socketAddress: socketAddressFromContext(c),
-    });
-
-  const verifyJwt = async (token: string): Promise<GatewayJwtPayload> => {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(jwt.secret), {
-      issuer: jwt.issuer,
-      audience: jwt.audience,
-      algorithms: ['HS256'], // 算法族白名单（防混淆攻击）
-    }).catch(() => {
-      throw HttpErrors.business('unauthorized', { detail: 'invalid or expired jwt credential' });
-    });
-    return payload as unknown as GatewayJwtPayload;
-  };
-
-  /** 静态 Key 分支：SHA-256 直查读模型；失败 keyHash + IP 双维计数（A8） */
-  const authByKey = async (token: string, ip: string): Promise<AuthContext> => {
-    const keyHash = createHash('sha256').update(token).digest('hex');
-    await assertUnlocked('api key', await g.keyGuard.isLocked(keyHash));
-    await assertUnlocked('source', await g.ipGuard.isLocked(ip));
-
-    const key = await reader.resolveKeyByHash(keyHash);
-    if (key == null) {
-      await g.keyGuard.recordFailure(keyHash);
-      await g.ipGuard.recordFailure(ip);
-      throw HttpErrors.business('unauthorized');
-    }
-    await g.keyGuard.recordSuccess(keyHash);
-    return {
-      userId: key.userId,
-      apiKeyId: key.keyId,
-      appId: null,
-      allowedModels: null,
-      rpmLimit: positive(key.rpmLimit),
-      tpmLimit: positive(key.tpmLimit),
-      userRpmLimit: positive(key.userRpmLimit),
-      userTpmLimit: positive(key.userTpmLimit),
-    };
-  };
-
-  /**
-   * App-JWT 分支：伪造 JWT 狂刷 401 不计失败 = 未认证无限打点，故 per-IP 锁前置；
-   * 失败只计 IP 维（Key 可枚举、JWT 不可——A8）。
-   */
-  const authByJwt = async (token: string, ip: string): Promise<AuthContext> => {
-    if (!token)
-      throw HttpErrors.business('unauthorized', { detail: 'missing or malformed api key' });
-    await assertUnlocked('source', await g.ipGuard.isLocked(ip));
-    try {
-      const payload = await verifyJwt(token);
-      // 仅支持 app_jwt：操练场（playground）等其他形态一律 401——信任根分离
-      if (payload.typ !== 'app_jwt' || payload.app_id == null || payload.sub == null) {
-        throw HttpErrors.business('unauthorized', { detail: 'unsupported jwt credential type' });
-      }
-      const app = await reader.resolveApp(payload.app_id);
-      if (!app || app.userId !== Number(payload.sub)) {
-        throw HttpErrors.business('unauthorized', { detail: 'app credential inactive' });
-      }
-      return {
-        userId: app.userId,
-        apiKeyId: null,
-        appId: app.id,
-        allowedModels:
-          app.scope?.models != null && app.scope.models.length > 0 ? [...app.scope.models] : null,
-        rpmLimit: positive(app.scope?.rpm),
-        tpmLimit: positive(app.scope?.tpm),
-        userRpmLimit: null,
-        userTpmLimit: null,
-      };
-    } catch (error) {
-      if (isUnauthorized(error)) await g.ipGuard.recordFailure(ip);
-      throw error;
-    }
-  };
-
+  const deps: ApiKeyAuth = { reader, guards: guards ?? PASS_THROUGH_GUARDS, jwt };
   return async (c, next) => {
     const header = c.req.header('authorization') ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
@@ -214,7 +224,10 @@ export function apiKeyMiddleware(
         ...(requestId != null ? { 'request.id': requestId } : {}),
         'auth.kind': byKey ? 'key' : 'jwt',
       },
-      () => (byKey ? authByKey(token, sourceIpOf(c)) : authByJwt(token, sourceIpOf(c))),
+      () =>
+        byKey
+          ? authByKey(deps, token, sourceIpOf(deps.guards, c))
+          : authByJwt(deps, token, sourceIpOf(deps.guards, c)),
     );
     c.set('auth', auth);
     await next();

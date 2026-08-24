@@ -82,7 +82,7 @@ export const referralQueries: Pick<
       .from(marketingSettings)
       .where(eq(marketingSettings.id, 1))
       .limit(1);
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) {
       // 缺行兜底 = domain 零值常量(单一真相)+ epoch0(v1 getSettings 语义)
       return { ...ZERO_MARKETING_SETTINGS, updatedBy: null, updatedAt: new Date(0) };
@@ -99,10 +99,12 @@ export const referralQueries: Pick<
   async upsertMarketingSettings(db, { patch, updatedBy }) {
     const set: Record<string, unknown> = { updatedAt: nowSql, updatedBy };
     if (patch.signupGiftAmount !== undefined) set.signupGiftAmount = patch.signupGiftAmount;
-    if (patch.referralSignupBonus !== undefined)
+    if (patch.referralSignupBonus !== undefined) {
       set.referralSignupBonus = patch.referralSignupBonus;
-    if (patch.referralCommissionRate !== undefined)
+    }
+    if (patch.referralCommissionRate !== undefined) {
       set.referralCommissionRate = patch.referralCommissionRate;
+    }
     // B7 修复:insert onConflictDoUpdate ... returning 单往返(v1 upsert 后回读两往返)
     const rows = await db
       .insert(marketingSettings)
@@ -115,7 +117,7 @@ export const referralQueries: Pick<
         updatedBy: marketingSettings.updatedBy,
         updatedAt: marketingSettings.updatedAt,
       });
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) throw new Error('upsertMarketingSettings returning empty');
     return row;
   },

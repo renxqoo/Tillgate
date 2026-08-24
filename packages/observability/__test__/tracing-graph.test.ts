@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { buildTraceGraph } from '../src/tracing/graph';
 import type { SpanRow } from '../src/tracing/types';
+import { defined } from './defined';
 
 /**
  * spans → 路线图视图模型(纯函数,与 React/图库解耦——展示层只做渲染)。
@@ -57,8 +58,14 @@ describe('buildTraceGraph', () => {
     });
     const graph = buildTraceGraph([root, ok]);
     expect(graph.nodes).toHaveLength(2);
-    const rootNode = graph.nodes.find((n) => n.id === root.spanId)!;
-    const upNode = graph.nodes.find((n) => n.id === ok.spanId)!;
+    const rootNode = defined(
+      graph.nodes.find((n) => n.id === root.spanId),
+      'rootNode',
+    );
+    const upNode = defined(
+      graph.nodes.find((n) => n.id === ok.spanId),
+      'upNode',
+    );
     expect(rootNode.kind).toBe('http');
     expect(rootNode.status).toBe('ok');
     expect(rootNode.subtitle).toContain('POST');
@@ -101,7 +108,10 @@ describe('buildTraceGraph', () => {
     expect(fallbackEdges[1]).toMatchObject({ from: b.spanId, to: c.spanId });
     expect(graph.edges.filter((e) => e.kind === 'child')).toHaveLength(1);
     // 错误节点带 status error + 错误信息
-    const aNode = graph.nodes.find((n) => n.id === a.spanId)!;
+    const aNode = defined(
+      graph.nodes.find((n) => n.id === a.spanId),
+      'aNode',
+    );
     expect(aNode.status).toBe('error');
     expect(aNode.errorText).toBe('rate_limited');
   });
@@ -128,8 +138,9 @@ describe('buildTraceGraph', () => {
     });
     const graph = buildTraceGraph([lone]);
     expect(graph.nodes).toHaveLength(1);
-    expect(graph.nodes[0]!.kind).toBe('generic');
-    expect(graph.nodes[0]!.attempt).toBe(2);
+    const loneNode = defined(graph.nodes[0], 'loneNode');
+    expect(loneNode.kind).toBe('generic');
+    expect(loneNode.attempt).toBe(2);
     expect(graph.edges).toHaveLength(0);
   });
 
@@ -141,7 +152,10 @@ describe('buildTraceGraph', () => {
       startTime: new Date(1_700_000_005_000),
     });
     const graph = buildTraceGraph([root, child]);
-    const childNode = graph.nodes.find((n) => n.id === child.spanId)!;
+    const childNode = defined(
+      graph.nodes.find((n) => n.id === child.spanId),
+      'childNode',
+    );
     expect(childNode.startOffsetMs).toBe(5_000);
   });
 
@@ -210,7 +224,11 @@ describe('buildTraceGraph', () => {
     expect(graph.edges).toHaveLength(5);
 
     // 步骤号:全 trace 按开始时间的执行序(根=1,authorize=2 …)
-    const stepOf = (id: string) => graph.nodes.find((n) => n.id === id)!.step;
+    const stepOf = (id: string) =>
+      defined(
+        graph.nodes.find((n) => n.id === id),
+        'node',
+      ).step;
     expect(stepOf(root.spanId)).toBe(1);
     expect(stepOf(authorize.spanId)).toBe(2);
     expect(stepOf(up1.spanId)).toBe(3);
@@ -238,10 +256,16 @@ describe('buildTraceGraph', () => {
       },
     });
     const graph = buildTraceGraph([root, authorize, finalize]);
-    const authNode = graph.nodes.find((n) => n.id === authorize.spanId)!;
+    const authNode = defined(
+      graph.nodes.find((n) => n.id === authorize.spanId),
+      'authNode',
+    );
     expect(authNode.kind).toBe('billing');
     expect(authNode.subtitle).toContain('2.5');
-    const finNode = graph.nodes.find((n) => n.id === finalize.spanId)!;
+    const finNode = defined(
+      graph.nodes.find((n) => n.id === finalize.spanId),
+      'finNode',
+    );
     expect(finNode.kind).toBe('billing');
     expect(finNode.subtitle).toContain('1000');
   });
@@ -275,10 +299,16 @@ describe('buildTraceGraph', () => {
       },
     });
     const graph = buildTraceGraph([root, upstream, finalize]);
-    const upNode = graph.nodes.find((n) => n.id === upstream.spanId)!;
+    const upNode = defined(
+      graph.nodes.find((n) => n.id === upstream.spanId),
+      'upNode',
+    );
     expect(upNode.status).toBe('error');
     expect(upNode.errorText).toBe('insufficient_balance_error');
-    const finNode = graph.nodes.find((n) => n.id === finalize.spanId)!;
+    const finNode = defined(
+      graph.nodes.find((n) => n.id === finalize.spanId),
+      'finNode',
+    );
     expect(finNode.status).toBe('error');
     expect(finNode.subtitle).toBe('已释放 0.6751185 元 · 未扣费');
   });
@@ -294,7 +324,10 @@ describe('buildTraceGraph', () => {
       startTime: new Date(1_700_000_003_000),
     });
     const graph = buildTraceGraph([root, settle]);
-    const node = graph.nodes.find((n) => n.id === settle.spanId)!;
+    const node = defined(
+      graph.nodes.find((n) => n.id === settle.spanId),
+      'settleNode',
+    );
     expect(node.kind).toBe('settle');
     expect(node.subtitle).toContain('1.8');
     expect(graph.edges).toContainEqual({
@@ -321,7 +354,10 @@ describe('buildTraceGraph', () => {
       },
     });
     const graph = buildTraceGraph([root, estimate]);
-    const node = graph.nodes.find((n) => n.id === estimate.spanId)!;
+    const node = defined(
+      graph.nodes.find((n) => n.id === estimate.spanId),
+      'estimateNode',
+    );
     expect(node.kind).toBe('billing');
     expect(node.subtitle).toContain('估算');
     expect(node.subtitle).toContain('188');
@@ -351,7 +387,10 @@ describe('buildTraceGraph', () => {
       },
     });
     const graph = buildTraceGraph([root, up, relay]);
-    const relayNode = graph.nodes.find((n) => n.id === relay.spanId)!;
+    const relayNode = defined(
+      graph.nodes.find((n) => n.id === relay.spanId),
+      'relayNode',
+    );
     expect(relayNode.kind).toBe('stream');
     expect(relayNode.subtitle).toContain('client_disconnect');
     expect(relayNode.subtitle).toContain('123');
@@ -389,7 +428,10 @@ describe('buildTraceGraph', () => {
       },
     });
     const graph = buildTraceGraph([root, relay]);
-    const relayNode = graph.nodes.find((n) => n.id === relay.spanId)!;
+    const relayNode = defined(
+      graph.nodes.find((n) => n.id === relay.spanId),
+      'relayNode',
+    );
     expect(relayNode.kind).toBe('stream');
     expect(relayNode.subtitle).toContain('2048');
     expect(relayNode.subtitle).not.toContain('中断');

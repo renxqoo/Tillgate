@@ -229,7 +229,7 @@ describe('错误信封 → ApiError(铁律 18:兜底 message 英文)', () => {
     const client = createHttpClient({ baseUrl: 'http://x', fetch: fn as unknown as typeof fetch });
     const err = await client
       .request('/v1/keys', { method: 'POST', body: {} })
-      .catch((e: unknown) => e);
+      .catch((error: unknown) => error);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toBeInstanceOf(Error);
     const apiError = err as ApiError;

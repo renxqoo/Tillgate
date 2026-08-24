@@ -7,6 +7,7 @@
 import { createServer, type Server } from 'node:http';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  defined,
   E2E_MODEL,
   E2EKeys,
   e2ePost,
@@ -17,29 +18,47 @@ import {
   type E2EWorld,
 } from './kit';
 
+/** OTLP 导出体的最小结构形状（探针只读取这些字段——宽松索引以适配上游 JSON） */
+type OtlpBody = {
+  resourceSpans?: Array<{
+    scopeSpans?: Array<{
+      scope?: { name?: string };
+      spans?: Array<{
+        traceId: string;
+        name: string;
+        attributes?: Array<{ key: string; value?: { stringValue?: unknown } }>;
+      }>;
+    }>;
+  }>;
+} | null;
+
 let world: E2EWorld;
 let gw: E2EGateway;
 let keys: E2EKeys;
 let capture: Server;
 let captureUrl = '';
 /** 捕获的 OTLP POST：content-type + 解析后的 body */
-const posts: Array<{ contentType: string; body: any }> = [];
+const posts: Array<{ contentType: string; body: OtlpBody }> = [];
 
 beforeAll(async () => {
   capture = createServer((req, res) => {
     let raw = '';
-    req.on('data', (c: Buffer) => (raw += c.toString()));
+    req.on('data', (c: Buffer) => {
+      raw += c.toString();
+    });
     req.on('end', () => {
       posts.push({
         contentType: req.headers['content-type'] ?? '',
-        body: raw ? JSON.parse(raw) : null,
+        body: raw ? (JSON.parse(raw) as OtlpBody) : null,
       });
       res.writeHead(202);
       res.end('{}');
     });
   });
-  await new Promise<void>((resolve) => capture.listen(0, '127.0.0.1', resolve));
-  const port = (capture.address() as { port: number }).port;
+  await new Promise<void>((resolve) => {
+    capture.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = capture.address() as { port: number };
   captureUrl = `http://127.0.0.1:${port}`;
 
   world = await setupE2EWorld();
@@ -54,7 +73,9 @@ beforeAll(async () => {
 afterAll(async () => {
   await gw.stop(); // 装配 shutdown 会 flush span
   await world.teardown();
-  await new Promise<void>((resolve) => capture.close(() => resolve()));
+  await new Promise<void>((resolve) => {
+    capture.close(() => resolve());
+  });
 });
 
 /** 从捕获的 OTLP bodies 里平铺出全部 span（traceId/name/scope/attrs） */
@@ -69,8 +90,7 @@ function allSpans(): Array<{ traceId: string; name: string; scope: string; reque
             traceId: s.traceId,
             name: s.name,
             scope,
-            requestId: (s.attributes ?? []).find((a: any) => a.key === 'request.id')?.value
-              ?.stringValue,
+            requestId: (s.attributes ?? []).find((a) => a.key === 'request.id')?.value?.stringValue,
           });
         }
       }
@@ -87,7 +107,7 @@ describe('otlp 导出完整性探针（全真装配 + mock 上游）', () => {
       messages: [{ role: 'user', content: '你好' }],
     });
     expect(res.status).toBe(200);
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     console.log(`HTTP ${res.status} x-request-id=${requestId}`);
     await res.text();
 
@@ -100,7 +120,7 @@ describe('otlp 导出完整性探针（全真装配 + mock 上游）', () => {
         `本请求 span=${spans.length} 个，traceId=${[...traceIds].join(',')}`,
     );
     for (const s of spans) console.log(`  [${s.scope}] ${s.name}`);
-    expect(spans.map((s) => s.name).sort()).toEqual(
+    expect(spans.map((s) => s.name).toSorted()).toEqual(
       [
         'POST /v1/chat/completions',
         'auth.api_key',
@@ -111,7 +131,7 @@ describe('otlp 导出完整性探针（全真装配 + mock 上游）', () => {
         'billing.reserve_channel',
         'upstream.attempt',
         'billing.settle_signal',
-      ].sort(),
+      ].toSorted(),
     );
     expect(traceIds.size).toBe(1);
   });

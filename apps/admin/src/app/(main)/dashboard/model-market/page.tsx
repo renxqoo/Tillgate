@@ -18,6 +18,25 @@ export const dynamic = 'force-dynamic';
 /** 已知目录源的显示名目录键；未知源回落后端原始 name（新源零成本兼容） */
 const SOURCE_NAME_KEYS: Record<string, string> = { 'models-dev': 'sourceModelsDev' };
 
+/** 源提示语：渠道型按就绪状态给接入/需密钥提示；字典型给参考提示 */
+function sourceHint(ctx: {
+  active: { id: string; name: string; kind: 'channel' | 'reference' } | null;
+  channelReady: boolean;
+  t: Awaited<ReturnType<typeof getTranslations<'modelMarket'>>>;
+  label: (src: { id: string; name: string }) => string;
+}): string {
+  const { active, channelReady, t, label } = ctx;
+  if (active?.kind === 'channel') {
+    return channelReady
+      ? t('channelReadyText', { name: label(active) })
+      : t('needsKeyText', { name: label(active) });
+  }
+  if (active?.kind === 'reference') {
+    return t('referenceHint');
+  }
+  return '';
+}
+
 export default async function ModelMarketPage({
   searchParams,
 }: {
@@ -39,7 +58,7 @@ export default async function ModelMarketPage({
   }> = [];
   try {
     const data = await adminApi().get<{ sources: typeof sources }>('/v1/model-catalog/sources');
-    sources = data.sources;
+    ({ sources } = data);
   } catch {
     sources = [];
   }
@@ -50,7 +69,7 @@ export default async function ModelMarketPage({
   let fetchedAt = '';
   let channelReady = false;
   let fx: FxState | null = null;
-  let error: string | null = null;
+  let loadError: string | null = null;
   if (active) {
     try {
       const data = await adminApi().get<{
@@ -60,23 +79,13 @@ export default async function ModelMarketPage({
         channelReady: boolean;
         fx: FxState;
       }>(`/v1/model-catalog/${active.id}`);
-      items = data.items;
+      ({ items, fetchedAt, channelReady, fx } = data);
       gone = data.gone ?? [];
-      fetchedAt = data.fetchedAt;
-      channelReady = data.channelReady;
-      fx = data.fx;
-    } catch (caught) {
-      error = caught instanceof ApiError ? caught.message : t('fetchFailed');
+    } catch (error) {
+      loadError = error instanceof ApiError ? error.message : t('fetchFailed');
     }
   }
-  let activeHint = '';
-  if (active?.kind === 'channel') {
-    activeHint = channelReady
-      ? t('channelReadyText', { name: sourceLabel(active) })
-      : t('needsKeyText', { name: sourceLabel(active) });
-  } else if (active?.kind === 'reference') {
-    activeHint = t('referenceHint');
-  }
+  const activeHint = sourceHint({ active, channelReady, t, label: sourceLabel });
 
   let catalogContent = (
     <p className="py-8 text-center text-sm text-muted-foreground">{t('noSources')}</p>
@@ -97,10 +106,10 @@ export default async function ModelMarketPage({
       />
     );
   }
-  if (error) {
+  if (loadError) {
     catalogContent = (
       <p className="py-8 text-center text-sm text-destructive">
-        {error}
+        {loadError}
         {t('retryLater')}
       </p>
     );

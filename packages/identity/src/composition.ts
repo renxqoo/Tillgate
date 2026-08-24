@@ -49,6 +49,74 @@ export interface IdentityWithinTx {
   registerCredential(input: BridgeRegisterCredentialInput): Promise<BridgeRegisterCredentialResult>;
 }
 
+// 模块级:首密码解析(明文走策略校验+哈希;预哈希须为本包 scrypt 格式)
+async function resolveBridgePasswordHash(
+  input: BridgeRegisterCredentialInput,
+  policy: PasswordPolicy,
+): Promise<string | undefined> {
+  if (input.password != null) {
+    assertPasswordPolicy(input.password, policy);
+    return hashPassword(input.password);
+  }
+  if (input.passwordHash != null) {
+    if (!PASSWORD_HASH_RE.test(input.passwordHash)) {
+      throw identityErrors.business('invalid_input', {
+        field: 'passwordHash',
+        reason: 'must be produced by hashPassword (scrypt:N:r:p:<saltHex>:<hashHex>)',
+      });
+    }
+    return input.passwordHash;
+  }
+  return undefined;
+}
+
+// 模块级:注册临界区(锁内绑定 + 冲突分类 + 密码落库 + 事务参与审计)
+async function registerCredentialWithinTx(
+  tx: DbTx,
+  env: {
+    readonly store: CredentialStore;
+    readonly clock: Clock;
+    readonly guards: ValidationGuards;
+    readonly passwordPolicy: PasswordPolicy;
+    /** 事务参与审计 sink(§5.4):提供时审计随调用方事务原子落库,失败随事务回滚 */
+    readonly auditSink?: AuditPort;
+  },
+  input: BridgeRegisterCredentialInput,
+): Promise<BridgeRegisterCredentialResult> {
+  const userId = assertUserId(input.userId);
+  const identifier = normalizeIdentifier(input.identifier, env.guards);
+  const passwordHash = await resolveBridgePasswordHash(input, env.passwordPolicy);
+
+  await advisoryLock(tx, credentialSetLockKey(userId));
+  const outcome = await env.store.registerCredential(tx, { userId, identifier });
+  if (outcome.status === 'taken') {
+    throw identityErrors.business('identifier_taken', {
+      kind: identifier.kind,
+      value: identifier.value,
+    });
+  }
+  if (outcome.status === 'created' && passwordHash != null) {
+    await env.store.upsertPassword(tx, { userId, passwordHash });
+  }
+  const replayed = outcome.status === 'replay';
+  if (env.auditSink != null) {
+    await env.auditSink.record(
+      tx,
+      auditEvent(env.clock.now(), {
+        actor: 'system',
+        action: replayed ? 'credential.replay' : 'credential.register',
+        targetType: 'credential',
+        targetId: outcome.credentialId,
+        detail: { userId, kind: identifier.kind, value: identifier.value },
+      }),
+    );
+  }
+  return {
+    credentialId: outcome.credentialId,
+    replayed,
+  };
+}
+
 export function identityWithinTx(
   tx: DbTx,
   env: {
@@ -63,50 +131,7 @@ export function identityWithinTx(
   const store = env.credentialStore ?? postgresIdentityStore;
   return {
     async registerCredential(input) {
-      const userId = assertUserId(input.userId);
-      const identifier = normalizeIdentifier(input.identifier, env.guards);
-      let passwordHash: string | undefined;
-      if (input.password != null) {
-        assertPasswordPolicy(input.password, env.passwordPolicy);
-        passwordHash = await hashPassword(input.password);
-      } else if (input.passwordHash != null) {
-        if (!PASSWORD_HASH_RE.test(input.passwordHash)) {
-          throw identityErrors.business('invalid_input', {
-            field: 'passwordHash',
-            reason: 'must be produced by hashPassword (scrypt:N:r:p:<saltHex>:<hashHex>)',
-          });
-        }
-        passwordHash = input.passwordHash;
-      }
-
-      await advisoryLock(tx, credentialSetLockKey(userId));
-      const outcome = await store.registerCredential(tx, { userId, identifier });
-      if (outcome.status === 'taken') {
-        throw identityErrors.business('identifier_taken', {
-          kind: identifier.kind,
-          value: identifier.value,
-        });
-      }
-      if (outcome.status === 'created' && passwordHash != null) {
-        await store.upsertPassword(tx, { userId, passwordHash });
-      }
-      const replayed = outcome.status === 'replay';
-      if (env.auditSink != null) {
-        await env.auditSink.record(
-          tx,
-          auditEvent(env.clock.now(), {
-            actor: 'system',
-            action: replayed ? 'credential.replay' : 'credential.register',
-            targetType: 'credential',
-            targetId: outcome.credentialId,
-            detail: { userId, kind: identifier.kind, value: identifier.value },
-          }),
-        );
-      }
-      return {
-        credentialId: outcome.credentialId,
-        replayed,
-      };
+      return registerCredentialWithinTx(tx, { ...env, store }, input);
     },
   };
 }

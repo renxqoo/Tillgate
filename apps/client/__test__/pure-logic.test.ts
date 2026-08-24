@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { defined } from './defined';
+
 import { firstParam, listHref, parseListSearchParams } from '../src/server/list-query';
 import { safeNext } from '../src/server/next-url';
 import { stripAuthParams } from '../src/features/auth/auth-url';
@@ -38,6 +40,7 @@ describe('list-query（URL 参数工具）', () => {
     expect(firstParam(['a', 'b'])).toBe('a');
     expect(firstParam('x')).toBe('x');
     expect(firstParam('')).toBeUndefined();
+    // eslint-disable-next-line unicorn/no-useless-undefined -- 边界用例：缺参(undefined)输入，参数类型必填故显式传 undefined
     expect(firstParam(undefined)).toBeUndefined();
   });
 
@@ -66,6 +69,7 @@ describe('next-url（回跳白名单，防开放重定向）', () => {
     expect(safeNext('//evil.com')).toBe('/dashboard');
     expect(safeNext('https://evil.com')).toBe('/dashboard');
     expect(safeNext('')).toBe('/dashboard');
+    // eslint-disable-next-line unicorn/no-useless-undefined -- 边界用例：缺参(undefined)输入，参数类型必填故显式传 undefined
     expect(safeNext(undefined)).toBe('/dashboard');
     expect(safeNext(null)).toBe('/dashboard');
   });
@@ -110,10 +114,10 @@ describe('oauth-options（登录方式目录）', () => {
 describe('sidebar-items（邀请开关）', () => {
   it('referralEnabled=false 滤掉 invite 项；其余 12 项保留', () => {
     const withInvite = buildSidebarItems();
-    expect(withInvite[0]!.items).toHaveLength(13);
+    expect(defined(withInvite[0], 'sidebar[0]').items).toHaveLength(13);
     const filtered = buildSidebarItems({ referralEnabled: false });
-    expect(filtered[0]!.items).toHaveLength(12);
-    expect(filtered[0]!.items.some((i) => i.id === 'invite')).toBe(false);
+    expect(defined(filtered[0], 'sidebar[0]').items).toHaveLength(12);
+    expect(defined(filtered[0], 'sidebar[0]').items.some((i) => i.id === 'invite')).toBe(false);
   });
 });
 
@@ -130,6 +134,7 @@ describe('format（展示格式化）', () => {
   it('formatInt：四舍五入、无效回落 0', () => {
     expect(formatInt('42')).toBe('42');
     expect(formatInt(1.6)).toBe('2');
+    // eslint-disable-next-line unicorn/no-useless-undefined -- 边界用例：缺参(undefined)输入，参数类型必填故显式传 undefined
     expect(formatInt(undefined)).toBe('0');
   });
 
@@ -306,7 +311,12 @@ describe('费用趋势窗口推导（B21 回归：首日半桶 + 断天不补零
         cost: '99',
       },
     ];
-    const series = fillDailyCostSeries(rows, TREND_WINDOW_DAYS, 'Asia/Shanghai', SH_TEN_AM);
+    const series = fillDailyCostSeries({
+      rows,
+      days: TREND_WINDOW_DAYS,
+      timeZone: 'Asia/Shanghai',
+      now: SH_TEN_AM,
+    });
     expect(series).toHaveLength(14);
     expect(series[0]).toEqual({ date: '2026-08-10', value: 0 });
     expect(series[13]).toEqual({ date: '2026-08-23', value: 2.5 });

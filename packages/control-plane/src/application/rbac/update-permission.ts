@@ -18,6 +18,7 @@ const PARENT_TYPE: Record<'group' | 'page' | 'button', 'group' | 'page' | null> 
   button: 'page',
 };
 
+// eslint-disable-next-line complexity, max-lines-per-function -- 更新校验+父子一致性+码唯一性矩阵,平铺守卫
 export async function updatePermission(
   deps: RbacDeps,
   input: UpdatePermissionRow,
@@ -66,10 +67,13 @@ export async function updatePermission(
   }
   // 码唯一性仅约束按钮（DB 部分唯一索引同口径;页面共享域读码是合法形态——
   // 用户页/限流页共用 users:read,改名恢复不得被同码他页拦下）
-  if (next.type === 'button' && next.code !== node.code && next.code != null) {
-    if (await deps.stores.permission.codeTaken(deps.db, next.code)) {
-      throw controlPlaneErrors.business('permission_code_taken', { code: next.code });
-    }
+  if (
+    next.type === 'button' &&
+    next.code !== node.code &&
+    next.code != null &&
+    (await deps.stores.permission.codeTaken(deps.db, next.code))
+  ) {
+    throw controlPlaneErrors.business('permission_code_taken', { code: next.code });
   }
   // 父子一致性(类型未变也复验——parentId 改动或类型改动交叉)
   const expectedParent = PARENT_TYPE[next.type];

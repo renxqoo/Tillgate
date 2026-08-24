@@ -23,63 +23,12 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
-export default async function RateCardDetailPage({ params, searchParams }: PageProps) {
-  await requirePermission('catalog:read');
-  const { id } = await params;
-  const t = await getTranslations('rateCards');
-  const tc = await getTranslations('common');
-  const tu = await getTranslations('users');
-  const rcId = Number(id);
-  if (!Number.isFinite(rcId) || rcId <= 0) notFound();
-
-  let card: AdminRateCardRow | null = null;
-  let error: string | null = null;
-  try {
-    // 后端没有单条 GET /:id，从列表里找
-    const list = await fetchAdminList<AdminRateCardRow>('/v1/rate-cards', { pageSize: 100 });
-    card = list.rows.find((c) => c.id === rcId) ?? null;
-    if (!card) notFound();
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
-  }
-
-  const sp = await searchParams;
-  const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const {
-    rows: users,
-    total,
-    error: usersError,
-  } = await fetchAdminList<AdminUserRow>(`/v1/rate-cards/${rcId}/users`, {
-    page,
-    pageSize: PAGE_SIZE,
-    sortBy,
-    order,
-    extra: { q },
-  });
-
-  if (!card) {
-    return (
-      <div className="flex flex-col gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="w-fit"
-          render={
-            <Link href="/dashboard/rate-cards">
-              <ArrowLeftIcon /> {t('back')}
-            </Link>
-          }
-        />
-        <Card>
-          <CardContent className="p-6 text-sm text-destructive">
-            {error ?? t('notFound')}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  const columns: DataTableColumn<AdminUserRow>[] = [
+/** 绑定用户表列定义（cell 渲染器随列声明平铺；t/tc/tu 经参数传入） */
+function buildBoundUserColumns(
+  tc: Awaited<ReturnType<typeof getTranslations<'common'>>>,
+  tu: Awaited<ReturnType<typeof getTranslations<'users'>>>,
+): DataTableColumn<AdminUserRow>[] {
+  return [
     {
       key: 'id',
       header: 'ID',
@@ -139,6 +88,65 @@ export default async function RateCardDetailPage({ params, searchParams }: PageP
       ),
     },
   ];
+}
+
+export default async function RateCardDetailPage({ params, searchParams }: PageProps) {
+  await requirePermission('catalog:read');
+  const { id } = await params;
+  const t = await getTranslations('rateCards');
+  const tc = await getTranslations('common');
+  const tu = await getTranslations('users');
+  const rcId = Number(id);
+  if (!Number.isFinite(rcId) || rcId <= 0) notFound();
+
+  let card: AdminRateCardRow | null = null;
+  let loadError: string | null = null;
+  try {
+    // 后端没有单条 GET /:id，从列表里找
+    const list = await fetchAdminList<AdminRateCardRow>('/v1/rate-cards', { pageSize: 100 });
+    card = list.rows.find((c) => c.id === rcId) ?? null;
+    if (!card) notFound();
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
+  }
+
+  const sp = await searchParams;
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const {
+    rows: users,
+    total,
+    error: usersError,
+  } = await fetchAdminList<AdminUserRow>(`/v1/rate-cards/${rcId}/users`, {
+    page,
+    pageSize: PAGE_SIZE,
+    sortBy,
+    order,
+    extra: { q },
+  });
+
+  if (!card) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-fit"
+          render={
+            <Link href="/dashboard/rate-cards">
+              <ArrowLeftIcon /> {t('back')}
+            </Link>
+          }
+        />
+        <Card>
+          <CardContent className="p-6 text-sm text-destructive">
+            {loadError ?? t('notFound')}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const columns = buildBoundUserColumns(tc, tu);
 
   return (
     <div className="flex flex-col gap-4">
@@ -165,7 +173,7 @@ export default async function RateCardDetailPage({ params, searchParams }: PageP
         searchPlaceholder={t('searchUsersPlaceholder')}
         q={q}
         searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
-        error={usersError ?? error}
+        error={usersError ?? loadError}
         page={page}
         pageSize={PAGE_SIZE}
       >

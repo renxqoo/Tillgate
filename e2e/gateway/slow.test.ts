@@ -8,6 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  defined,
   E2EKeys,
   E2E_MODEL,
   e2ePost,
@@ -77,7 +78,7 @@ describe.skipIf(!hasEnv)('E2E ⑮ 慢上游三形态', () => {
     await keys.settleAll(userId);
     const bills = await keys.billsOf(userId);
     expect(bills.length).toBe(1);
-    expect(bills[0]!.status).toBe('settled');
+    expect(defined(bills[0], 'bills[0]').status).toBe('settled');
     await keys.assertReconciled(userId, '1'); // 慢但照实计费
     world.upstream.delayMs = 0;
   }, 120_000);
@@ -105,9 +106,11 @@ describe.skipIf(!hasEnv)('E2E ⑮ 慢上游三形态', () => {
     await keys.settleAll(userId);
     const bills = await keys.billsOf(userId);
     expect(bills.length).toBe(1);
-    expect(bills[0]!.status).toBe('settled');
+    expect(defined(bills[0], 'bills[0]').status).toBe('settled');
     // 尾帧 usage 是可信计量（不估算）
-    const receipt = bills[0]!.receipt as { usage?: { estimated?: boolean; inputTokens?: number } };
+    const receipt = defined(bills[0], 'bills[0]').receipt as {
+      usage?: { estimated?: boolean; inputTokens?: number };
+    };
     expect(receipt.usage?.estimated).toBe(false);
     expect(receipt.usage?.inputTokens).toBe(50);
     await keys.assertReconciled(userId, '1');

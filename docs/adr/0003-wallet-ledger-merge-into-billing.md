@@ -46,7 +46,7 @@
 4. **金额唯一归 billing**：两套 money.ts 合并为 `billing/domain/money.ts`（超集语义）；
    旧仓空目录 `packages/money/` 的历史占位不再复现，金额构造、运算与序列化只存在于
    billing（总纲 §3.2 已裁决）。
-5. **错误家谱收敛进目录**：wallet/domain 两套同名错误类废除，按 AGENT.md §11 经
+5. **错误家谱收敛进目录**：wallet/domain 两套同名错误类废除，按 AGENTS.md §11 经
    `defineErrorCatalog('billing', …)` 表达；跨包 instanceof 匹配（旧 B6 病灶）由
    nature/category 守卫取代。
 6. **迁移链冻结确认**：wallet/ledger-core 的 provision/migrate 链不移植；DDL 唯一真源

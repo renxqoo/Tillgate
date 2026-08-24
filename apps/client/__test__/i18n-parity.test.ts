@@ -6,6 +6,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { defined } from './defined';
+
 const MESSAGES = join(import.meta.dirname, '..', 'messages');
 const SRC = join(import.meta.dirname, '..', 'src');
 const en: Record<string, unknown> = JSON.parse(readFileSync(join(MESSAGES, 'en.json'), 'utf8'));
@@ -42,7 +44,7 @@ describe('i18n 词表门禁', () => {
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
       for (const m of text.matchAll(/[ug]etTranslations\(\s*['"]([^'"]+)['"]/g)) {
-        used.add(m[1]!);
+        used.add(defined(m[1], 'regex match[1]'));
       }
     }
     expect([...used].toSorted()).toEqual([...used].filter((ns) => ns in en).toSorted());

@@ -24,14 +24,14 @@ export default async function OrgsPage({ searchParams }: PageProps) {
 
   let rows: OrgRow[] = [];
   let total = 0;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     // orgs 列表契约不分页收参（页大小由后端定）——信封 {rows,total}
     const result = await api.get<RowsTotalPage<OrgRow>>('/v1/orgs');
-    rows = result.rows;
-    total = result.total;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : null;
+    // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError（原写法 error 恒为 null，失败提示不上屏）
+    ({ rows, total } = result);
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : null;
   }
   // 逐组织详情（成员+待接受邀请）并发拉取——契约无批量端点（B3/G2 保留并发）
   const orgs: OrgWithMembers[] = await Promise.all(
@@ -59,7 +59,7 @@ export default async function OrgsPage({ searchParams }: PageProps) {
         total={total}
         totalUnit={t('totalUnit')}
         searchParams={{ page: page > 1 ? String(page) : undefined }}
-        error={error}
+        error={loadError}
       >
         <OrgsContent orgs={orgs} />
       </ListPage>

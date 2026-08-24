@@ -46,7 +46,7 @@ export function createSettlementBatchJob(deps: {
       () => {
         void deps.settlement
           .renewClaims({ ownerId: deps.ownerId, tokens, claimLeaseMs: deps.claimLeaseMs })
-          .catch(() => undefined);
+          .catch(() => {});
       },
       Math.max(1_000, Math.floor(deps.claimLeaseMs / 3)),
     );

@@ -78,7 +78,7 @@ const payments = createPaymentsApi({
 资损不变量（实现保证，消费方勿绕）：creditAmount 创建定死；验签+金额双闸；
 markPaid→credit→markCredited 单事务；先落库再调渠道；过期单复活；兑换核销与入账同事务。
 
-### 2.4 错误处理（AGENT.md §11）
+### 2.4 错误处理（AGENTS.md §11）
 
 全部业务拒绝经 `BillingErrors` 目录（48 码；捕获按 nature/category，不做跨包
 instanceof）：

@@ -55,7 +55,7 @@ export const keyQueries: Pick<
         allowPaygFallback: input.allowPaygFallback,
       })
       .returning(KEY_COLUMNS);
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) throw new Error('insertKey returning empty');
     return row;
   },

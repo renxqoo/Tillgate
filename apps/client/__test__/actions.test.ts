@@ -8,11 +8,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 const jar = new Map<string, string>();
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
-    get: (name: string) => (jar.has(name) ? { name, value: jar.get(name)! } : undefined),
+    get: (name: string) => (jar.has(name) ? { name, value: defined(jar.get(name)) } : undefined),
     set: (name: string, value: string) => {
       jar.set(name, value);
     },
@@ -61,7 +63,10 @@ import { fetchPublicPricing } from '../src/server/public-pricing';
 import { fetchAuthCapabilities, fetchOAuthProviders } from '../src/server/discovery';
 import { ApiError } from '@tillgate/api-client';
 
-type FetchCall = { url: string; init: RequestInit };
+interface FetchCall {
+  url: string;
+  init: RequestInit;
+}
 
 let calls: FetchCall[];
 let responses: Array<{ status: number; body: unknown }>;
@@ -81,7 +86,7 @@ function stubFetch() {
 }
 
 function lastCall(): FetchCall {
-  return calls[calls.length - 1]!;
+  return defined(calls.at(-1), 'last fetch call');
 }
 
 function isRedirectError(e: unknown): boolean {
@@ -287,7 +292,7 @@ describe('session 守卫', () => {
   it('DEV_FAKE_ME=1（非生产）：跳过后端返回演示会话', async () => {
     vi.stubEnv('DEV_FAKE_ME', '1');
     const me = await requireMe({ getMe: async () => null } as never);
-    expect(me.accounts[0]!.currency).toBe('CNY');
+    expect(defined(me.accounts[0], 'accounts[0]').currency).toBe('CNY');
     expect(calls).toHaveLength(0);
   });
 });

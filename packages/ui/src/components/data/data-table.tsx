@@ -8,12 +8,12 @@ import { Button } from '../primitives/button';
 import { Skeleton } from '../primitives/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './table';
 
-export type DataTableSortState = {
+export interface DataTableSortState {
   key: string;
   direction: 'asc' | 'desc';
-};
+}
 
-export type DataTableColumn<Row> = {
+export interface DataTableColumn<Row> {
   key: string;
   header: React.ReactNode;
   align?: 'left' | 'right' | 'center';
@@ -22,9 +22,9 @@ export type DataTableColumn<Row> = {
   cell: (row: Row, index: number) => React.ReactNode;
   headerClassName?: string;
   cellClassName?: string;
-};
+}
 
-export type DataTableProps<Row> = {
+export interface DataTableProps<Row> {
   columns: DataTableColumn<Row>[];
   rows: readonly Row[];
   // 行 key 提取必须显式注入(不静默退化为数组下标)
@@ -37,7 +37,7 @@ export type DataTableProps<Row> = {
   // 空态内容(默认内置英文空态)
   empty?: React.ReactNode;
   className?: string;
-};
+}
 
 const ALIGN_CLASS: Record<NonNullable<DataTableColumn<unknown>['align']>, string> = {
   left: 'text-left',

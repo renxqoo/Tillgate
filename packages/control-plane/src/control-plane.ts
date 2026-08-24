@@ -2,8 +2,25 @@
  * createControlPlane facade：唯一装配面（§5.3——app 只见 facade 与稳定契约）。
  * 内部组装 postgres 适配器族；装配级可覆盖件（审计出口/凭证存储/目录缓存）显式注入。
  * 返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK；分组用例按单元收敛。
+ * 按域方法级委托住 src/sections/*-section.ts（逐字搬迁的域构建器）——本文件只做
+ * 缺省解析、共享装配对象（SectionDeps）分发与 rbac/admins compose 收口。
  */
 import type { Db } from '@tillgate/db';
+import type { ProviderStore, ProviderRecord, ProviderSortField } from './ports/provider-store';
+import type { ChannelStore, ChannelSortField, RechargeRow } from './ports/channel-store';
+import type { ModelStore, ModelSortField, ModelRecord } from './ports/model-store';
+import type {
+  RateCardStore,
+  RateCardSortField,
+  RateCardUserSortField,
+  RateCardUserRow,
+} from './ports/rate-card-store';
+import type { FxStore } from './ports/fx-store';
+import type { SettingsStore } from './ports/settings-store';
+import type { AuditStore } from './ports/audit-store';
+import type { OperationsStore } from './ports/operations-store';
+import type { AdminStore } from './ports/admin-store';
+import type { RoleStore, PermissionStore, EndpointStore } from './ports/rbac-store';
 import type { AuditSink, AuditTxSink } from './ports/audit-sink';
 import type { CatalogCache } from './ports/cache';
 import type { CatalogSource } from './ports/catalog-source';
@@ -11,7 +28,48 @@ import type { SecretCipher } from './ports/secret-cipher';
 import type { UpstreamProbe } from './ports/upstream-probe';
 import type { VoucherStorage } from './ports/voucher-storage';
 import type { ProviderCapabilities } from './domain/provider/provider';
-import type { FxEnv } from './application/fx/fx-shared';
+import type { ListResult } from './domain/list';
+import type { FxState } from './domain/fx/fx-rates';
+import type { FxEnv, FxDeps } from './application/fx/fx-shared';
+import type { RefreshFxInput } from './application/fx/refresh-fx';
+import type { SetFxOverrideInput } from './application/fx/set-fx-override';
+import type { ClearFxOverrideInput } from './application/fx/clear-fx-override';
+import type { SetFxBufferInput } from './application/fx/set-fx-buffer';
+import type { CreateProviderInput } from './application/providers/create-provider';
+import type { UpdateProviderInput } from './application/providers/update-provider';
+import type { DeleteProviderInput } from './application/providers/delete-provider';
+import type { UndeleteProviderInput } from './application/providers/undelete-provider';
+import type { CreateChannelInput, CreatedChannel } from './application/channels/create-channel';
+import type { UpdateChannelInput, UpdatedChannel } from './application/channels/update-channel';
+import type { DeleteChannelInput } from './application/channels/delete-channel';
+import type { UndeleteChannelInput } from './application/channels/undelete-channel';
+import type { ListChannelsResult } from './application/channels/list-channels';
+import type {
+  ImportChannelsInput,
+  ImportChannelsResult,
+} from './application/channels/import-channels';
+import type { ProbeChannelResult } from './application/channels/probe-channel';
+import type { RechargeChannelInput } from './application/channels/recharge-channel';
+import type { AdjustChannelInput } from './application/channels/adjust-channel';
+import type { ListRechargesInput } from './application/channels/list-recharges';
+import type { CreateModelInput } from './application/models/create-model';
+import type { UpdateModelInput } from './application/models/update-model';
+import type { DeleteModelInput } from './application/models/delete-model';
+import type { UndeleteModelInput } from './application/models/undelete-model';
+import type { ListModelsResult } from './application/models/list-models';
+import type { BindModelChannelsInput } from './application/models/bind-model-channels';
+import type { ProbeModelResult } from './application/models/probe-model';
+import type { CreateRateCardInput, CreatedRateCard } from './application/rates/create-rate-card';
+import type { UpdateRateCardInput, UpdatedRateCard } from './application/rates/update-rate-card';
+import type { DeleteRateCardInput } from './application/rates/delete-rate-card';
+import type { RateCardListItem } from './application/rates/list-rate-cards';
+import type { ListRateCardUsersInput } from './application/rates/list-rate-card-users';
+import type { RateCardHealth } from './application/rates/check-rate-card-health';
+import type { UpdateBillingTimezoneInput } from './application/settings/update-billing-timezone';
+import type { CatalogComparisonPayload } from './application/catalog/compare-catalog';
+import type { CatalogPriceHistoryEntry } from './application/catalog/catalog-price-history';
+import type { ImportCatalogInput, ImportCatalogResult } from './application/catalog/import-catalog';
+import type { listCatalogSources } from './application/catalog/list-catalog-sources';
 import { createMemoryCatalogCache } from './ports/cache';
 import {
   createPostgresAuditSink,
@@ -21,100 +79,27 @@ import {
 import { postgresChannelStore } from './adapters/postgres/channel-store';
 import { postgresFxStore } from './adapters/postgres/fx-store';
 import { postgresSettingsStore } from './adapters/postgres/settings-store';
-import { readBillingTimezone } from './application/settings/read-billing-timezone';
-import {
-  updateBillingTimezone,
-  type UpdateBillingTimezoneInput,
-} from './application/settings/update-billing-timezone';
 import { postgresModelStore } from './adapters/postgres/model-store';
 import { postgresOperationsStore } from './adapters/postgres/operations-store';
 import { postgresAdminStore } from './adapters/postgres/admin-store';
 import { postgresProviderStore } from './adapters/postgres/provider-store';
 import { postgresRateCardStore } from './adapters/postgres/rate-card-store';
 import { createPostgresVoucherStorage } from './adapters/postgres/voucher-storage';
-import { createProvider, type CreateProviderInput } from './application/providers/create-provider';
-import { updateProvider, type UpdateProviderInput } from './application/providers/update-provider';
-import { deleteProvider, type DeleteProviderInput } from './application/providers/delete-provider';
-import {
-  undeleteProvider,
-  type UndeleteProviderInput,
-} from './application/providers/undelete-provider';
-import { listProviders } from './application/providers/list-providers';
-import { createChannel, type CreateChannelInput } from './application/channels/create-channel';
-import { updateChannel, type UpdateChannelInput } from './application/channels/update-channel';
-import { deleteChannel, type DeleteChannelInput } from './application/channels/delete-channel';
-import {
-  undeleteChannel,
-  type UndeleteChannelInput,
-} from './application/channels/undelete-channel';
-import { listChannels, type ListChannelsResult } from './application/channels/list-channels';
-import {
-  importChannels,
-  type ImportChannelsInput,
-  type ImportChannelsResult,
-} from './application/channels/import-channels';
-import { probeChannel, type ProbeChannelResult } from './application/channels/probe-channel';
-import {
-  rechargeChannel,
-  type RechargeChannelInput,
-} from './application/channels/recharge-channel';
-import { adjustChannel, type AdjustChannelInput } from './application/channels/adjust-channel';
-import { listRecharges, type ListRechargesInput } from './application/channels/list-recharges';
-import { composeRbacSurface, type RbacSurface } from './application/rbac/compose';
-import { composeAdminsSurface, type AdminsSurface } from './application/admins/compose';
-
 import {
   postgresRoleStore,
   postgresPermissionStore,
   postgresEndpointStore,
 } from './adapters/postgres/rbac-store';
-import { createModel, type CreateModelInput } from './application/models/create-model';
-import { updateModel, type UpdateModelInput } from './application/models/update-model';
-import { deleteModel, type DeleteModelInput } from './application/models/delete-model';
-import { undeleteModel, type UndeleteModelInput } from './application/models/undelete-model';
-import { listModels } from './application/models/list-models';
-import {
-  bindModelChannels,
-  type BindModelChannelsInput,
-} from './application/models/bind-model-channels';
-import { probeModel, type ProbeModelResult } from './application/models/probe-model';
-import { createRateCard, type CreateRateCardInput } from './application/rates/create-rate-card';
-import { updateRateCard, type UpdateRateCardInput } from './application/rates/update-rate-card';
-import { deleteRateCard, type DeleteRateCardInput } from './application/rates/delete-rate-card';
-import { listRateCards } from './application/rates/list-rate-cards';
-import {
-  listRateCardUsers,
-  type ListRateCardUsersInput,
-} from './application/rates/list-rate-card-users';
-import { checkRateCardHealth } from './application/rates/check-rate-card-health';
-import type { FxState } from './domain/fx/fx-rates';
-import { fxState } from './application/fx/fx-state';
-import { refreshFx, type RefreshFxInput } from './application/fx/refresh-fx';
-import { setFxOverride, type SetFxOverrideInput } from './application/fx/set-fx-override';
-import { clearFxOverride, type ClearFxOverrideInput } from './application/fx/clear-fx-override';
-import { setFxBuffer, type SetFxBufferInput } from './application/fx/set-fx-buffer';
-import type { FxDeps } from './application/fx/fx-shared';
-import { listCatalogSources } from './application/catalog/list-catalog-sources';
-import {
-  compareCatalogFromSource,
-  type CatalogComparisonPayload,
-} from './application/catalog/compare-catalog';
-import { catalogPriceHistory } from './application/catalog/catalog-price-history';
-import { importCatalog, type ImportCatalogInput } from './application/catalog/import-catalog';
-import type { ChannelSortField, RechargeRow } from './ports/channel-store';
-import type { ModelSortField, ModelRecord } from './ports/model-store';
-import type { ListModelsResult } from './application/models/list-models';
-import type { RateCardSortField, RateCardUserSortField } from './ports/rate-card-store';
-import type { RateCardListItem } from './application/rates/list-rate-cards';
-import type { ProviderRecord, ProviderSortField } from './ports/provider-store';
-import type { ListResult } from './domain/list';
-import type { CreatedRateCard } from './application/rates/create-rate-card';
-import type { UpdatedRateCard } from './application/rates/update-rate-card';
-import type { RateCardHealth } from './application/rates/check-rate-card-health';
-import type { CatalogPriceHistoryEntry } from './application/catalog/catalog-price-history';
-import type { ImportCatalogResult } from './application/catalog/import-catalog';
-import type { CreatedChannel } from './application/channels/create-channel';
-import type { UpdatedChannel } from './application/channels/update-channel';
+import { composeRbacSurface, type RbacSurface } from './application/rbac/compose';
+import { composeAdminsSurface, type AdminsSurface } from './application/admins/compose';
+import type { ResolvedStores, SectionDeps } from './sections/section-deps';
+import { createProviderSection } from './sections/provider-section';
+import { createChannelSection } from './sections/channel-section';
+import { createModelSection } from './sections/model-section';
+import { createRateCardSection } from './sections/rate-card-section';
+import { createFxSection } from './sections/fx-section';
+import { createSettingsSection } from './sections/settings-section';
+import { createCatalogSection } from './sections/catalog-section';
 
 /** 装配环境（全部必填注入——铁律 3；可选覆盖件有包内缺省实现） */
 export interface ControlPlaneEnv {
@@ -151,18 +136,18 @@ export interface ControlPlaneEnv {
   readonly cache?: CatalogCache;
   /** store 覆盖缝（缺省 postgres 适配器；行为等价 stand-in / observability 桥可覆盖） */
   readonly stores?: {
-    readonly provider?: import('./ports/provider-store').ProviderStore;
-    readonly channel?: import('./ports/channel-store').ChannelStore;
-    readonly model?: import('./ports/model-store').ModelStore;
-    readonly rateCard?: import('./ports/rate-card-store').RateCardStore;
-    readonly fx?: import('./ports/fx-store').FxStore;
-    readonly settings?: import('./ports/settings-store').SettingsStore;
-    readonly audit?: import('./ports/audit-store').AuditStore;
-    readonly operations?: import('./ports/operations-store').OperationsStore;
-    readonly admin?: import('./ports/admin-store').AdminStore;
-    readonly role?: import('./ports/rbac-store').RoleStore;
-    readonly permission?: import('./ports/rbac-store').PermissionStore;
-    readonly endpoint?: import('./ports/rbac-store').EndpointStore;
+    readonly provider?: ProviderStore;
+    readonly channel?: ChannelStore;
+    readonly model?: ModelStore;
+    readonly rateCard?: RateCardStore;
+    readonly fx?: FxStore;
+    readonly settings?: SettingsStore;
+    readonly audit?: AuditStore;
+    readonly operations?: OperationsStore;
+    readonly admin?: AdminStore;
+    readonly role?: RoleStore;
+    readonly permission?: PermissionStore;
+    readonly endpoint?: EndpointStore;
   };
 }
 
@@ -257,7 +242,7 @@ export interface ControlPlane {
         limit: number;
         offset: number;
       },
-    ): Promise<ListResult<import('./ports/rate-card-store').RateCardUserRow>>;
+    ): Promise<ListResult<RateCardUserRow>>;
     cardHealth(rateCardId: number): Promise<RateCardHealth>;
     /** 卡全局兜底系数读（admin-api D6 set-password「缺则回填 1.000」消费） */
     findGlobalCoefficient(rateCardId: number): Promise<string | null>;
@@ -288,203 +273,74 @@ export interface ControlPlane {
   readonly admins: AdminsSurface;
 }
 
-export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
-  const audit = env.audit ?? createPostgresAuditSink(env.db);
-  const auditTx = env.auditTx ?? postgresAuditTxSink;
-  const voucherStorage = env.voucherStorage ?? createPostgresVoucherStorage(env.db);
-  const cache = env.cache ?? createMemoryCatalogCache();
-  const stores = {
+/** 管理面 store 覆盖缝回退（实体 CRUD + 定价/汇率/系统配置） */
+function resolveManagementStores(
+  env: ControlPlaneEnv,
+): Pick<ResolvedStores, 'provider' | 'channel' | 'model' | 'rateCard' | 'fx' | 'settings'> {
+  return {
     provider: env.stores?.provider ?? postgresProviderStore,
     channel: env.stores?.channel ?? postgresChannelStore,
     model: env.stores?.model ?? postgresModelStore,
     rateCard: env.stores?.rateCard ?? postgresRateCardStore,
     fx: env.stores?.fx ?? postgresFxStore,
+    settings: env.stores?.settings ?? postgresSettingsStore,
+  };
+}
+
+/** 治理面 store 覆盖缝回退（审计/运营流水/管理员/RBAC） */
+function resolveGovernanceStores(
+  env: ControlPlaneEnv,
+): Pick<ResolvedStores, 'audit' | 'operations' | 'admin' | 'role' | 'permission' | 'endpoint'> {
+  return {
     audit: env.stores?.audit ?? postgresAuditStore,
     operations: env.stores?.operations ?? postgresOperationsStore,
     admin: env.stores?.admin ?? postgresAdminStore,
     role: env.stores?.role ?? postgresRoleStore,
     permission: env.stores?.permission ?? postgresPermissionStore,
     endpoint: env.stores?.endpoint ?? postgresEndpointStore,
-    settings: env.stores?.settings ?? postgresSettingsStore,
-  } as const;
+  };
+}
 
+/** store 覆盖缝汇总：显式注入优先，逐项缺省回落 postgres 适配器（唯一装配真相在 facade） */
+function resolveStores(env: ControlPlaneEnv): ResolvedStores {
+  return {
+    ...resolveManagementStores(env),
+    ...resolveGovernanceStores(env),
+  };
+}
+
+export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
+  const audit = env.audit ?? createPostgresAuditSink(env.db);
+  const auditTx = env.auditTx ?? postgresAuditTxSink;
+  const voucherStorage = env.voucherStorage ?? createPostgresVoucherStorage(env.db);
+  const cache = env.cache ?? createMemoryCatalogCache();
+  const stores = resolveStores(env);
   const fxDeps: FxDeps = { db: env.db, stores: { fx: stores.fx }, audit, env: env.fx };
   const settingsDeps = { db: env.db, stores: { settings: stores.settings }, audit };
   const sourceDeps = { sources: env.sources, cache, cacheTtlMs: env.catalogTtlMs };
-
+  const deps: SectionDeps = {
+    env,
+    stores,
+    audit,
+    auditTx,
+    voucherStorage,
+    fxDeps,
+    settingsDeps,
+    sourceDeps,
+  };
   return {
-    providers: {
-      create: (input) =>
-        createProvider(
-          {
-            db: env.db,
-            stores: { provider: stores.provider },
-            capabilities: env.capabilities,
-            defaultProtocol: env.defaultProtocol,
-            audit,
-          },
-          input,
-        ),
-      update: (input) =>
-        updateProvider(
-          {
-            db: env.db,
-            stores: { provider: stores.provider },
-            capabilities: env.capabilities,
-            audit,
-          },
-          input,
-        ),
-      delete: (input) =>
-        deleteProvider(
-          { db: env.db, stores: { provider: stores.provider, channel: stores.channel }, audit },
-          input,
-        ),
-      undelete: (input) =>
-        undeleteProvider({ db: env.db, stores: { provider: stores.provider }, audit }, input),
-      list: (query) => listProviders({ db: env.db, stores: { provider: stores.provider } }, query),
-    },
-    channels: {
-      create: (input) =>
-        createChannel(
-          { db: env.db, stores: { channel: stores.channel }, cipher: env.cipher, audit },
-          input,
-        ),
-      update: (input) =>
-        updateChannel(
-          { db: env.db, stores: { channel: stores.channel }, cipher: env.cipher, audit },
-          input,
-        ),
-      delete: (input) =>
-        deleteChannel(
-          { db: env.db, stores: { channel: stores.channel, model: stores.model }, audit },
-          input,
-        ),
-      undelete: (input) =>
-        undeleteChannel({ db: env.db, stores: { channel: stores.channel }, audit }, input),
-      list: (query) => listChannels({ db: env.db, stores: { channel: stores.channel } }, query),
-      import: (input) =>
-        importChannels(
-          {
-            db: env.db,
-            stores: { channel: stores.channel, provider: stores.provider, model: stores.model },
-            cipher: env.cipher,
-            importMax: env.importMaxChannels,
-            audit,
-          },
-          input,
-        ),
-      probe: (channelId) =>
-        probeChannel(
-          { db: env.db, stores: { channel: stores.channel }, cipher: env.cipher, probe: env.probe },
-          channelId,
-        ),
-      recharge: (input) =>
-        rechargeChannel(
-          {
-            db: env.db,
-            stores: { channel: stores.channel, operations: stores.operations },
-            voucherStorage,
-            voucherMaxBytes: env.voucherMaxBytes,
-            auditTx,
-          },
-          input,
-        ),
-      adjust: (input) =>
-        adjustChannel(
-          {
-            db: env.db,
-            stores: { channel: stores.channel, operations: stores.operations },
-            auditTx,
-          },
-          input,
-        ),
-      listRecharges: (input) =>
-        listRecharges({ db: env.db, stores: { channel: stores.channel } }, input),
-      loadVoucher: (key) => voucherStorage.load(key),
-    },
+    ...createProviderSection(deps),
+    ...createChannelSection(deps),
     rbac: composeRbacSurface(env.db, {
       role: stores.role,
       permission: stores.permission,
       endpoint: stores.endpoint,
     }),
     admins: composeAdminsSurface(env.db, stores.admin),
-    models: {
-      create: (input) => createModel({ db: env.db, stores: { model: stores.model }, audit }, input),
-      update: (input) => updateModel({ db: env.db, stores: { model: stores.model }, audit }, input),
-      delete: (input) => deleteModel({ db: env.db, stores: { model: stores.model }, audit }, input),
-      undelete: (input) =>
-        undeleteModel({ db: env.db, stores: { model: stores.model }, audit }, input),
-      list: (query) => listModels({ db: env.db, stores: { model: stores.model } }, query),
-      bindChannels: (input) =>
-        bindModelChannels({ db: env.db, stores: { model: stores.model }, audit }, input),
-      probe: (mappingId) =>
-        probeModel(
-          { db: env.db, stores: { model: stores.model }, cipher: env.cipher, probe: env.probe },
-          mappingId,
-        ),
-    },
-    rates: {
-      createCard: (input) =>
-        createRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, audit }, input),
-      updateCard: (input) =>
-        updateRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, auditTx }, input),
-      deleteCard: (input) =>
-        deleteRateCard({ db: env.db, stores: { rateCard: stores.rateCard }, audit }, input),
-      listCards: (query) =>
-        listRateCards({ db: env.db, stores: { rateCard: stores.rateCard } }, query),
-      listCardUsers: (input) =>
-        listRateCardUsers({ db: env.db, stores: { rateCard: stores.rateCard } }, input),
-      cardHealth: (rateCardId) =>
-        checkRateCardHealth({ db: env.db, stores: { rateCard: stores.rateCard } }, rateCardId),
-      findGlobalCoefficient: (rateCardId) =>
-        stores.rateCard.findGlobalCoefficient(env.db, rateCardId),
-    },
-    fx: {
-      state: () => fxState(fxDeps),
-      refresh: (input) => refreshFx(fxDeps, input),
-      setOverride: (input) => setFxOverride(fxDeps, input),
-      clearOverride: (input) => clearFxOverride(fxDeps, input),
-      setBuffer: (input) => setFxBuffer(fxDeps, input),
-    },
-    settings: {
-      billingTimezone: {
-        read: () => readBillingTimezone(settingsDeps),
-        update: (input) => updateBillingTimezone(settingsDeps, input),
-      },
-    },
-    catalog: {
-      listSources: () => listCatalogSources(env.sources),
-      comparison: (sourceId) =>
-        compareCatalogFromSource(
-          {
-            ...sourceDeps,
-            db: env.db,
-            stores: { model: stores.model, channel: stores.channel },
-            fx: fxDeps,
-          },
-          sourceId,
-        ),
-      priceHistory: (input) =>
-        catalogPriceHistory({ db: env.db, stores: { audit: stores.audit } }, input),
-      import: (input) =>
-        importCatalog(
-          {
-            ...sourceDeps,
-            db: env.db,
-            stores: {
-              provider: stores.provider,
-              channel: stores.channel,
-              model: stores.model,
-            },
-            cipher: env.cipher,
-            channelRpm: env.catalogChannelRpm,
-            channelBudget: env.catalogChannelBudget,
-            fx: fxDeps,
-            audit,
-          },
-          input,
-        ),
-    },
+    ...createModelSection(deps),
+    ...createRateCardSection(deps),
+    ...createFxSection(deps),
+    ...createSettingsSection(deps),
+    ...createCatalogSection(deps),
   };
 }

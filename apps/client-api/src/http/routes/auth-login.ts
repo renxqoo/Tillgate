@@ -18,9 +18,11 @@ interface LoginPayload {
   uid: number;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 登录族装配平铺:路由表+多级登录处理器为 v1 平移语义(存量棘轮)
 export function loginRoutes(deps: AuthDeps) {
   const app = new Hono<SessionEnv>();
 
+  // eslint-disable-next-line max-lines-per-function -- 凭证登录链(守卫闸/鉴别/防枚举/状态/计数)语义连续,拆段即互相回读;v1 平移语义(存量棘轮)
   app.post('/v1/auth/login', jsonBody(loginSchema), async (c) => {
     const body = c.req.valid('json');
     const ip = clientIpOf(deps, c);
@@ -43,12 +45,10 @@ export function loginRoutes(deps: AuthDeps) {
     }
     let userId: number;
     try {
-      userId = (
-        await deps.authenticate({
-          identifier: { kind: 'email', value: body.email },
-          password: body.password,
-        })
-      ).userId;
+      ({ userId } = await deps.authenticate({
+        identifier: { kind: 'email', value: body.email },
+        password: body.password,
+      }));
     } catch (error) {
       // 防枚举统一 401（identity invalid_credentials）；失败计数双闸 best-effort
       if (!isBusinessError(error) || error.code !== 'identity.invalid_credentials') throw error;
@@ -84,7 +84,7 @@ export function loginRoutes(deps: AuthDeps) {
       return c.json({ kind: 'code_required', challengeId });
     }
     const token = await deps.sign(userId);
-    await deps.touchLastLogin(userId).catch(() => undefined);
+    await deps.touchLastLogin(userId).catch(() => {});
     return c.json({ kind: 'success', token, userId });
   });
 
@@ -107,7 +107,7 @@ export function loginRoutes(deps: AuthDeps) {
       throw clientErrors.business('account_unavailable');
     }
     const token = await deps.sign(userId);
-    await deps.touchLastLogin(userId).catch(() => undefined);
+    await deps.touchLastLogin(userId).catch(() => {});
     return c.json({ token, userId });
   });
 

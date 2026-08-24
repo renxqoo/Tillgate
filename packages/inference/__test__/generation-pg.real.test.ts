@@ -10,6 +10,7 @@ import { sql } from 'drizzle-orm';
 import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPostgresGenerationTaskStore } from '../src/adapters/generation-pg.js';
 import type { GenerationTaskRecord } from '../src/ports/generation.js';
+import { defined } from './defined';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 
@@ -22,7 +23,7 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
 
   beforeAll(async () => {
     schema = `tillgate_inf_gen_${process.pid.toString(36)}_${Date.now().toString(36)}`;
-    const [baseUrl] = url!.split('?');
+    const [baseUrl] = defined(url, 'url').split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,
       poolMax: 5,
@@ -153,9 +154,9 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
       params: { prompt: 'it', duration: 6 },
       failReason: null,
     });
-    expect(view!.result).toBeNull();
-    expect(view!.createdAt).toBeGreaterThan(0);
-    expect(view!.expiresAt).toBeGreaterThan(Date.now());
+    expect(defined(view, 'view').result).toBeNull();
+    expect(defined(view, 'view').createdAt).toBeGreaterThan(0);
+    expect(defined(view, 'view').expiresAt).toBeGreaterThan(Date.now());
   });
 
   it('属主隔离：他人查询 = 不存在（null，不泄漏存在性）', async () => {

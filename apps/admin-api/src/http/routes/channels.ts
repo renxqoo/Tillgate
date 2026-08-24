@@ -15,9 +15,10 @@ export interface ChannelsRoutesDeps {
   readonly controlPlane: Pick<ControlPlane, 'channels'>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function channelsRoutes(deps: ChannelsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const channels = deps.controlPlane.channels;
+  const { channels } = deps.controlPlane;
 
   app.get('/v1/channels', async (c) => {
     const query = parseListQuery(c.req.query(), CHANNEL_SORTS, 'createdAt');

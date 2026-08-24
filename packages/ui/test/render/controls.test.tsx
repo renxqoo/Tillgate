@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { useForm } from 'react-hook-form';
 import type { DateRange } from 'react-day-picker';
 
+import { defined } from '../defined';
+
 import {
   Accordion,
   AccordionContent,
@@ -55,7 +57,7 @@ const pickFmt = (d: Date) => `PICK:${d.toISOString().slice(0, 10)}`;
 
 // 第一张月网格内按日号定位日期按钮(rerender 后需重查, 不缓存节点)
 function firstGridDay(n: number) {
-  const grid = screen.getAllByRole('grid')[0]!;
+  const grid = defined(screen.getAllByRole('grid')[0], 'first grid');
   return within(grid)
     .getAllByRole('gridcell')
     .map((cell) => cell.querySelector('button'))
@@ -75,8 +77,14 @@ describe('NumberField', () => {
   it('步进按钮按 step 增减并尊重 min', async () => {
     const onValueChange = vi.fn();
     const { container } = render(<NumberFieldDemo onValueChange={onValueChange} />);
-    const inc = container.querySelector('[data-slot="number-field-increment"]')!;
-    const dec = container.querySelector('[data-slot="number-field-decrement"]')!;
+    const inc = defined(
+      container.querySelector('[data-slot="number-field-increment"]'),
+      'increment button',
+    );
+    const dec = defined(
+      container.querySelector('[data-slot="number-field-decrement"]'),
+      'decrement button',
+    );
     // Base UI 语义: 空值起步的首次 increment 落在 min(0)
     await userEvent.click(inc);
     expect(onValueChange.mock.calls.at(-1)?.[0]).toBe(0);
@@ -99,7 +107,7 @@ describe('DatePicker / DateRangePicker', () => {
     expect(screen.getByRole('grid')).toBeInTheDocument();
     const day15 = screen.getByRole('gridcell', { name: /15/ }).querySelector('button');
     expect(day15).not.toBeNull();
-    await userEvent.click(day15!);
+    await userEvent.click(defined(day15, 'day 15 button'));
     expect(onValueChange).toHaveBeenCalled();
     expect(onValueChange.mock.calls.at(-1)?.[0]).toBeInstanceOf(Date);
     // 选择后 popover 收起
@@ -133,11 +141,11 @@ describe('DatePicker / DateRangePicker', () => {
     const { rerender } = render(picker(value));
     await userEvent.click(screen.getByRole('button'));
     // 受控契约: 每次选择后回灌 value, 模拟真实消费方
-    await userEvent.click(firstGridDay(3)!);
+    await userEvent.click(defined(firstGridDay(3), 'day 3 button'));
     // 首击返回 from===to 单日区间: 保持展开
     expect(screen.getAllByRole('grid').length).toBeGreaterThan(0);
     rerender(picker(value));
-    await userEvent.click(firstGridDay(8)!);
+    await userEvent.click(defined(firstGridDay(8), 'day 8 button'));
     const last = onValueChange.mock.calls.at(-1)?.[0];
     expect(last?.from?.getDate()).toBe(3);
     expect(last?.to?.getDate()).toBe(8);
@@ -179,7 +187,10 @@ describe('Form(react-hook-form 胶水)', () => {
     expect(await screen.findByText('名称必填')).toBeInTheDocument();
     expect(input).toHaveAttribute('aria-invalid', 'true');
     // label 与控件关联
-    expect(screen.getByText('名称')).toHaveAttribute('for', input.getAttribute('id')!);
+    expect(screen.getByText('名称')).toHaveAttribute(
+      'for',
+      defined(input.getAttribute('id'), 'input id'),
+    );
     await userEvent.type(input, '渠道 A');
     await userEvent.click(submit);
     await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ name: '渠道 A' }));
@@ -222,7 +233,7 @@ function LayoutDemo({ itemProps }: { itemProps?: ComponentProps<typeof FormItem>
 describe('FormItem 布局契约', () => {
   it('默认垂直布局 gap-2, 描述链只挂 description id', () => {
     render(<LayoutDemo />);
-    const item = document.querySelector('[data-slot="form-item"]')!;
+    const item = defined(document.querySelector('[data-slot="form-item"]'), 'form-item');
     expect(item.className).toContain('flex-col');
     expect(item.className).toContain('gap-2');
     expect(item).toHaveAttribute('data-orientation', 'vertical');
@@ -233,7 +244,7 @@ describe('FormItem 布局契约', () => {
 
   it('gap 档位覆写基类(twMerge 消解 gap-2)且支持水平布局', () => {
     render(<LayoutDemo itemProps={{ gap: 4, orientation: 'horizontal' }} />);
-    const item = document.querySelector('[data-slot="form-item"]')!;
+    const item = defined(document.querySelector('[data-slot="form-item"]'), 'form-item');
     expect(item.className).toContain('gap-4');
     expect(item.className).not.toContain('gap-2');
     expect(item).toHaveAttribute('data-orientation', 'horizontal');

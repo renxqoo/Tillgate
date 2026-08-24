@@ -16,6 +16,7 @@ export class ApiError extends Error {
   public readonly code: string | undefined;
   public readonly details: unknown;
 
+  // eslint-disable-next-line max-params -- 导出错误类构造器镜像后端错误信封四字段(status/code/message/details),跨包调用点众多,改 options 对象放大 diff 无语义收益
   constructor(status: number, code: string | undefined, message: string, details?: unknown) {
     super(message);
     this.name = 'ApiError';

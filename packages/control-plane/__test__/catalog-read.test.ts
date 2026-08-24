@@ -4,6 +4,7 @@
  * SQL 行为等价（join/排序/过滤下推）由 postgres.real.test.ts 承担；此处锁端口语义。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import type { ProviderRecord } from '../src/ports/provider-store';
 import {
   createMemoryDb,
@@ -117,8 +118,12 @@ describe('RateCardStore.findActiveCardByUser（G1）', () => {
     h.boundUsers.set(42, card.id);
     const ctx = await h.store.findActiveCardByUser(db, 42);
     expect(ctx).toMatchObject({ cardId: card.id, cardName: 'vip', status: 0 });
-    expect(ctx!.coefficients.map((c) => c.scope).toSorted()).toEqual(['global', 'group', 'model']);
-    expect(ctx!.coefficients.find((c) => c.scope === 'model')).toMatchObject({
+    expect(
+      defined(ctx)
+        .coefficients.map((c) => c.scope)
+        .toSorted(),
+    ).toEqual(['global', 'group', 'model']);
+    expect(defined(ctx).coefficients.find((c) => c.scope === 'model')).toMatchObject({
       modelMappingId: 7,
       coefficient: '0.5',
     });

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { isInfrastructureError } from '@tillgate/errors';
 import type { Redis } from 'ioredis';
 import { assertRedisReachable } from '../src/redis/assert-redis-reachable';
+import { defined } from './defined';
 
 /** 最小假件：assertRedisReachable 只消费 ping()——契约面收窄，测试替身无需完整 Redis */
 function fakeRedis(ping: () => Promise<string>): Redis {
@@ -32,13 +33,13 @@ describe('assertRedisReachable（timeoutMs 必填注入）', () => {
       50,
     ).then(
       () => null,
-      (e: Error) => e,
+      (error: Error) => error,
     );
     expect(isInfrastructureError(err), String(err)).toBe(true);
     expect((err as { code: string }).code).toBe('runtime.redis.unreachable');
-    expect(err!.message).toContain('svc');
-    expect(err!.message).toContain('***@127.0.0.1:1'); // 凭证脱敏
-    expect(err!.message).not.toContain(':pass@');
+    expect(defined(err, 'err').message).toContain('svc');
+    expect(defined(err, 'err').message).toContain('***@127.0.0.1:1'); // 凭证脱敏
+    expect(defined(err, 'err').message).not.toContain(':pass@');
     expect((err as { cause?: unknown }).cause).toBe(pingErr);
   });
 
@@ -50,9 +51,9 @@ describe('assertRedisReachable（timeoutMs 必填注入）', () => {
       50,
     ).then(
       () => null,
-      (e: Error) => e,
+      (error: Error) => error,
     );
     expect(isInfrastructureError(err), String(err)).toBe(true);
-    expect(err!.message).toContain('ping timeout (50ms)'); // 无异常记录时的兜底描述
+    expect(defined(err, 'err').message).toContain('ping timeout (50ms)'); // 无异常记录时的兜底描述
   });
 });
