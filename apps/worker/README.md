@@ -17,6 +17,7 @@
 ```
 config.ts      # env zod schema（job 节奏/批量/租约/退避/令牌/逃生门）
 assembly.ts    # 唯一装配根（七段：观测/db → billing → notifications → inference poll → 佣金 → 对账 → jobs/wakeup）
+bridge-mappers.ts # 装配桥接纯映射（billing 信号/渠道行形状）
 jobs/          # settle / recover / poll / referral / notify / reconcile / partition
 wakeup/        # postgres-notify.ts（LISTEN 专用连接）
 health.ts / scheduler.ts / shutdown.ts / index.ts

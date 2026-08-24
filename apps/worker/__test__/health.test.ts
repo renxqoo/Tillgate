@@ -10,7 +10,12 @@ import type { Server } from 'node:http';
 const servers: Server[] = [];
 afterAll(async () => {
   await Promise.all(
-    servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+    servers.map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.close(() => resolve());
+        }),
+    ),
   );
 });
 

@@ -20,7 +20,9 @@ export async function waitForRedisReady(redis: Redis, timeoutMs = 3_000): Promis
       /* 未就绪，继续等 */
     }
     if (Date.now() >= deadline) return false;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 100);
+    });
   }
 }
 

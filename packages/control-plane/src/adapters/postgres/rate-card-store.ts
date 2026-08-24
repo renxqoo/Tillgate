@@ -64,7 +64,7 @@ export const postgresRateCardStore: RateCardStore = {
       .set({ ...input.patch, updatedAt: new Date() })
       .where(eq(rateCards.id, input.rateCardId))
       .returning({ id: rateCards.id, name: rateCards.name });
-    const card = rows[0];
+    const [card] = rows;
     if (!card) return null;
     if (input.globalCoefficient !== undefined) {
       // 只更新 scope='global' 行——model/group 覆写行隔离（M1 回归点）
@@ -118,23 +118,24 @@ export const postgresRateCardStore: RateCardStore = {
         .from(rateCards)
         .where(where),
     ]);
-    const coefficients = cards.length
-      ? await db
-          .select({
-            rateCardId: rateCardCoefficients.rateCardId,
-            coefficient: rateCardCoefficients.coefficient,
-          })
-          .from(rateCardCoefficients)
-          .where(
-            and(
-              eq(rateCardCoefficients.scope, 'global'),
-              inArray(
-                rateCardCoefficients.rateCardId,
-                cards.map((card) => card.id),
+    const coefficients =
+      cards.length > 0
+        ? await db
+            .select({
+              rateCardId: rateCardCoefficients.rateCardId,
+              coefficient: rateCardCoefficients.coefficient,
+            })
+            .from(rateCardCoefficients)
+            .where(
+              and(
+                eq(rateCardCoefficients.scope, 'global'),
+                inArray(
+                  rateCardCoefficients.rateCardId,
+                  cards.map((card) => card.id),
+                ),
               ),
-            ),
-          )
-      : [];
+            )
+        : [];
     const byCard = new Map(coefficients.map((row) => [row.rateCardId, row.coefficient]));
     return {
       rows: cards.map((card) => ({
@@ -149,13 +150,13 @@ export const postgresRateCardStore: RateCardStore = {
     const conditions = [eq(users.rateCardId, query.rateCardId)];
     if (query.q) {
       const pattern = escapeLikePattern(query.q);
-      conditions.push(
-        or(
-          ilike(users.subject, pattern),
-          ilike(users.email, pattern),
-          ilike(users.displayName, pattern),
-        )!,
+      // drizzle or() 返回 SQL|undefined,三个非空入参下必为 SQL——显式收窄
+      const cond = or(
+        ilike(users.subject, pattern),
+        ilike(users.email, pattern),
+        ilike(users.displayName, pattern),
       );
+      if (cond !== undefined) conditions.push(cond);
     }
     const where = and(...conditions);
     const column = CARD_USER_SORTS[query.sortBy as RateCardUserSortField];

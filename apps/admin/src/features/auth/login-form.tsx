@@ -34,8 +34,12 @@ import { z } from 'zod';
 import { loginAction, loginTotpAction, verifyLoginAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';
 
-type Values = { email: string; password: string };
+interface Values {
+  email: string;
+  password: string;
+}
 
+// eslint-disable-next-line max-lines-per-function -- 登录三态流程表单（密码/TOTP/恢复码 + 两步切换状态机）整段平铺，拆分需抽流程子组件（存量棘轮，行为等价优先）
 export function LoginForm() {
   const t = useTranslations('auth');
   const tUi = useTranslations('ui');

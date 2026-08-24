@@ -12,6 +12,7 @@ const DRIFT_BAND = new Decimal('0.05');
  * 目录 × 库内映射 → 三态 diff + 回填 + 漂移警告（纯函数）。
  * USD 源需传生效汇率（null 时 diff 退化为 same——无法同币比较）。
  */
+// eslint-disable-next-line max-lines-per-function -- 三态比价纯函数:内聚数学,拆分将互相回读中间量
 export function compareCatalog(
   items: readonly CatalogItem[],
   existing: ReadonlyArray<{

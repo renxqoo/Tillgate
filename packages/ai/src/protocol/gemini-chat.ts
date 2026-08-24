@@ -45,6 +45,7 @@ export function geminiUsageToUsage(
 
 // ─────────────────────────── ① 入站请求 → 规范形 ───────────────────────────
 
+// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function geminiRequestToChat(req: unknown, model: string): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
@@ -95,8 +96,9 @@ export function geminiRequestToChat(req: unknown, model: string): Json {
   if (typeof cfg.temperature === 'number') out.temperature = cfg.temperature;
   if (typeof cfg.topP === 'number') out.top_p = cfg.topP;
   if (Array.isArray(cfg.stopSequences)) out.stop = cfg.stopSequences.map(String);
-  if (str(cfg.responseMimeType) === 'application/json')
+  if (str(cfg.responseMimeType) === 'application/json') {
     out.response_format = { type: 'json_object' };
+  }
   if (Array.isArray(r.tools)) {
     const decls = r.tools.flatMap((t) => asArray(asJson(t)?.functionDeclarations));
     if (decls.length > 0) {
@@ -141,6 +143,7 @@ function chatContentToParts(content: unknown): unknown[] {
   });
 }
 
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function chatRequestToGemini(req: unknown): Json {
   const r = asJson(req) ?? {};
   const contents: unknown[] = [];
@@ -203,24 +206,22 @@ export function chatRequestToGemini(req: unknown): Json {
   if (Object.keys(cfg).length > 0) out.generationConfig = cfg;
   const decls = asArray(r.tools)
     .map((t) => asJson(asJson(t)?.function))
-    .filter(Boolean)
-    .map((fn) => {
-      const f = fn!;
-      return {
-        name: str(f.name) ?? '',
-        description: str(f.description) ?? '',
-        parameters: f.parameters ?? { type: 'object' },
-      };
-    });
+    .filter((fn): fn is Json => fn !== null)
+    .map((f) => ({
+      name: str(f.name) ?? '',
+      description: str(f.description) ?? '',
+      parameters: f.parameters ?? { type: 'object' },
+    }));
   if (decls.length > 0) out.tools = [{ functionDeclarations: decls }];
   const tc = r.tool_choice;
   if (tc === 'auto') out.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
-  else if (tc === 'required' || tc === 'none')
+  else if (tc === 'required' || tc === 'none') {
     out.toolConfig = { functionCallingConfig: { mode: tc === 'none' ? 'NONE' : 'ANY' } };
-  else if (asJson(tc)?.type === 'function') {
+  } else if (asJson(tc)?.type === 'function') {
     const name = str(asJson(asJson(tc)?.function)?.name);
-    if (name)
+    if (name) {
       out.toolConfig = { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [name] } };
+    }
   }
   return out;
 }
@@ -279,6 +280,7 @@ const CHAT_FINISH_TO_GEMINI: Record<string, string> = {
 };
 
 /** 规范形 chat 非流式响应 → Gemini generateContent 响应（入站非流式） */
+// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function chatResponseToGemini(res: unknown): Json {
   const r = asJson(res) ?? {};
   const choice = asJson(asArray(r.choices)[0]) ?? {};

@@ -38,6 +38,7 @@ const upstreamError = (
 ): TaskPortErrorShape =>
   error ?? { code: 'invalid_response', message: 'upstream returned neither body nor error' };
 
+// eslint-disable-next-line max-lines-per-function -- 暂存区文件（.staging）：提交/轮询/文件换取三操作面一体，待正式落位时再拆，存量棘轮（铁律 22⑥）
 export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
   const desc = (channel: TaskChannelDesc) => ({
     baseUrl: channel.baseUrlOverride ?? channel.providerBaseUrl,
@@ -158,11 +159,13 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
         channel: desc(channel),
         taskId: upstreamTaskId,
       });
-      if (!probe.ok)
+      if (!probe.ok) {
         return { ok: false, error: { code: probe.error.code, message: probe.error.message } };
+      }
       if (probe.status === 'running') return { ok: true, status: 'running' };
-      if (probe.status === 'failed')
+      if (probe.status === 'failed') {
         return { ok: true, status: 'failed', reason: probe.reason ?? 'upstream task failed' };
+      }
       const artifact: GenerationArtifact =
         probe.artifact !== undefined ? { ...probe.artifact } : {};
       if (
@@ -174,8 +177,9 @@ export function createGenerationTaskAdapter(deps: AiTaskAdapterDeps) {
           channel: desc(channel),
           fileId: probe.fileId,
         });
-        if (!file.ok)
+        if (!file.ok) {
           return { ok: false, error: { code: file.error.code, message: file.error.message } };
+        }
         artifact.url = file.downloadUrl;
       }
       return { ok: true, status: 'succeeded', artifact: artifact as Record<string, unknown> };

@@ -45,6 +45,7 @@ export interface RechargeChannelResult {
   readonly replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 用例编排:凭证先行落存储→事务→幂等回放
 export async function rechargeChannel(
   deps: RechargeChannelDeps,
   input: RechargeChannelInput,
@@ -81,8 +82,9 @@ export async function rechargeChannel(
     },
     execute: async (tx) => {
       const channel = await deps.stores.channel.findChannelFunds(tx, input.channelId);
-      if (!channel)
+      if (!channel) {
         throw controlPlaneErrors.business('channel_not_found', { channelId: input.channelId });
+      }
       // 进货：budget += amount；熔断(3)自动复活为启用(0)；返回新余额快照
       const balanceAfter = await deps.stores.channel.rechargeBudget(tx, {
         channelId: input.channelId,

@@ -12,6 +12,7 @@ import {
   createInMemoryBillingWorld,
   type InMemoryPlanRow,
 } from '../src/testing/in-memory-billing-store.js';
+import { defined } from './defined.js';
 
 let userSeq = 1500;
 const nextUser = () => (userSeq += 1);
@@ -146,7 +147,7 @@ describe('订阅生命周期', () => {
       replayed: false,
       balanceAfter: '70',
     });
-    const sub = world.fixtures.subscriptions.get(first.subscriptionId)!;
+    const sub = defined(world.fixtures.subscriptions.get(first.subscriptionId));
     expect(sub.status).toBe(0);
     // 同 operationId 的重放语义已在 operations 档案测试证明；此处验证单有效订阅约束
     // 不同 operationId 再购 → already_subscribed
@@ -155,7 +156,7 @@ describe('订阅生命周期', () => {
     );
     expect(again.code).toBe('billing.subscription_state');
     expect(again.context.reason).toBe('already_subscribed');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('70');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('70');
   });
 
   it('余额不足（现金口径禁透支）→ insufficient_cash，零残留', async () => {
@@ -245,7 +246,7 @@ describe('订阅生命周期', () => {
       planId: basicId,
     });
     // 用掉一半额度 → 剩余价值 = 30 × 50/100 = 15；升档补差 = 90 − 15 = 75
-    const sub = world.fixtures.subscriptions.get(purchased.subscriptionId)!;
+    const sub = defined(world.fixtures.subscriptions.get(purchased.subscriptionId));
     sub.usedAmount = '50';
     const changed = await subscriptions.change({
       operationId: nextOp(),
@@ -256,7 +257,7 @@ describe('订阅生命周期', () => {
     });
     expect(changed).toMatchObject({ planId: proId, quotaAmount: '300', replayed: false });
     // 1000 − 30(购) − 75(差) = 895
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('895');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('895');
     expect(sub.status).toBe(1); // 旧订阅转到期
     // 降档拒绝 / 无变化拒绝
     expect(
@@ -304,9 +305,9 @@ describe('订阅生命周期', () => {
     expect(new Date(renewed.endAt).getTime()).toBe(
       new Date(purchased.endAt).getTime() + 10 * 86_400_000,
     );
-    expect(world.fixtures.subscriptions.get(purchased.subscriptionId)!.status).toBe(1);
+    expect(defined(world.fixtures.subscriptions.get(purchased.subscriptionId)).status).toBe(1);
     expect(world.fixtures.credentialBindings.get(701)).toBe(renewed.subscriptionId);
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('940'); // 1000 − 30 × 2
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('940'); // 1000 − 30 × 2
   });
 
   it('cancel：CAS 0→2 无资金变动；重复取消 no_subscription', async () => {
@@ -321,8 +322,8 @@ describe('订阅生命周期', () => {
       subscriptionId: purchased.subscriptionId,
     });
     expect(cancelled.replayed).toBe(false);
-    expect(world.fixtures.subscriptions.get(purchased.subscriptionId)!.status).toBe(2);
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('70'); // 无退款
+    expect(defined(world.fixtures.subscriptions.get(purchased.subscriptionId)).status).toBe(2);
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('70'); // 无退款
     expect(
       (
         await rejection(() =>
@@ -352,7 +353,9 @@ describe('订阅生命周期', () => {
     const purchased = await subscriptions.purchase({ operationId: nextOp(), userId, planId });
     const granted = await subscriptions.grantPack({ operationId: nextOp(), userId, packId });
     expect(granted).toMatchObject({ quotaAdded: '20', balanceAfter: '65' });
-    expect(world.fixtures.subscriptions.get(purchased.subscriptionId)!.quotaAmount).toBe('120');
+    expect(defined(world.fixtures.subscriptions.get(purchased.subscriptionId)).quotaAmount).toBe(
+      '120',
+    );
   });
 });
 
@@ -398,7 +401,7 @@ describe('U4 分支封口', () => {
     });
     expect(changed.balanceBefore).toBeNull();
     expect(changed.balanceAfter).toBeNull();
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('70'); // 只有首次购买扣款
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('70'); // 只有首次购买扣款
   });
 
   it('管理面续费（userId=null 免属主检查）', async () => {

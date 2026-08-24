@@ -23,12 +23,16 @@ export interface SmtpMailerConfig {
   readonly from: string;
 }
 
-export function createNodemailerMailer(
-  config: SmtpMailerConfig,
-  brand: MailBrand,
-  emailParams: LoginCodeEmailContext,
-  clock: Clock,
-): Mailer {
+/** 装配参数(SMTP 连接 + 品牌口径 + 邮件参数 + 时钟,全部显式注入,铁律 3) */
+export interface SmtpMailerOptions {
+  readonly config: SmtpMailerConfig;
+  readonly brand: MailBrand;
+  readonly emailParams: LoginCodeEmailContext;
+  readonly clock: Clock;
+}
+
+export function createNodemailerMailer(opts: SmtpMailerOptions): Mailer {
+  const { config, brand, emailParams, clock } = opts;
   const transporter: Transporter = createTransport({
     host: config.host,
     port: config.port,

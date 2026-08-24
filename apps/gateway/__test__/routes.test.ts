@@ -29,6 +29,7 @@ import { generationRoutes } from '../src/http/routes/generation';
 import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
 import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { inferenceEndpoints } from '../src/http/contracts/inference-endpoints';
+import { defined } from './defined';
 
 const JWT = { secret: 'x'.repeat(32), issuer: 'i', audience: 'a', keyPrefix: 'sk_' };
 const READER: AuthReadModel = {
@@ -63,7 +64,7 @@ function stubInference(over: Partial<Inference> = {}): Inference {
       query: async () => null,
     },
     health: {} as never,
-    close: () => undefined,
+    close: () => {},
     ...over,
   } as Inference;
 }
@@ -73,7 +74,10 @@ function harness(inference: Inference) {
   app.use('/v1/*', apiKeyMiddleware(READER, undefined, JWT));
   app.use('/v1beta/*', apiKeyMiddleware(READER, undefined, JWT));
   for (const ep of inferenceEndpoints) app.route(ep.path, inferenceRoutes({ inference }, ep));
-  const embeddings = inferenceEndpoints.find((e) => e.path === '/v1/embeddings')!;
+  const embeddings = defined(
+    inferenceEndpoints.find((e) => e.path === '/v1/embeddings'),
+    'embeddings endpoint',
+  );
   app.route('/v1/engines/:model', enginesAliasRoutes({ inference }, embeddings));
   app.route('/', geminiNativeRoutes({ inference }));
   app.route('/', generationRoutes({ inference }));
@@ -94,10 +98,11 @@ function harness(inference: Inference) {
   return app;
 }
 
-const post = (a: Hono<AuthEnv>, path: string, body: unknown, token = 'sk_k') =>
+// 全部调用点都不传自定义 token（固定 sk_k），故不保留无人使用的第 4 参
+const post = (a: Hono<AuthEnv>, path: string, body: unknown) =>
   a.request(path, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: { authorization: 'Bearer sk_k', 'content-type': 'application/json' },
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
@@ -272,7 +277,7 @@ describe('模型目录（三协议形状 + 白名单过滤 + 404 不泄漏）', 
     const gemini = (await (
       await app.request('/v1/models', { headers: { 'x-goog-api-key': 'k' } })
     ).json()) as { models: Array<{ name: string }> };
-    expect(gemini.models[0]!.name).toBe('models/m-a');
+    expect(defined(gemini.models[0], 'gemini.models[0]').name).toBe('models/m-a');
   });
 
   it('白名单过滤 + 白名单外单查与不存在同口径 404', async () => {
@@ -378,15 +383,16 @@ describe('oauth token（三形态 + 闭环）', () => {
         appId === 'app-1' ? { id: 5, userId: 42, scope: { rpm: 10 } } : null,
     };
     jwtApp.use('/v1/*', apiKeyMiddleware(readerWithApp, undefined, JWT));
+    const chatEndpoint = defined(inferenceEndpoints[0], 'inferenceEndpoints[0]');
     jwtApp.route(
-      inferenceEndpoints[0]!.path,
+      chatEndpoint.path,
       inferenceRoutes(
         {
           inference: stubInference({
             chat: async () => ({ ok: true, status: 200, body: { closed: true } }),
           }),
         },
-        inferenceEndpoints[0]!,
+        chatEndpoint,
       ),
     );
     const tokenRes = await post(app, '/oauth/token', {

@@ -94,7 +94,7 @@ function/Date/类实例）显式拒绝**、嵌套深度 ≤64、canonical 总长
 | 渠道熔断/死凭据健康状态      | `inference`（订阅 AiEvent 维护）；billing 只收结算事实           |
 | 上游协议/传输                | `ai` 包；billing 不接触模型上游                                  |
 | HTTP wire schema / 队列协议  | 各 app 的 contracts；billing 零 HTTP/队列依赖                    |
-| 表 DDL 与迁移顺序            | `@tillgate/db`（billing 语义变化需要 DDL 时同一迁移单元提交）   |
+| 表 DDL 与迁移顺序            | `@tillgate/db`（billing 语义变化需要 DDL 时同一迁移单元提交）    |
 
 ## 4. 并发与性能预算（数字化硬约束）
 

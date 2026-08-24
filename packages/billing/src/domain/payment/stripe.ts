@@ -47,6 +47,7 @@ export function parseStripeSignatureHeader(header: string): StripeSignatureParts
 export const STRIPE_WEBHOOK_TOLERANCE_S = 300;
 
 /** 验签：HMAC-SHA256 恒定时间比较 + 时间窗防重放（nowMs 注入可测） */
+// eslint-disable-next-line max-params -- 验签参数位镜像 Stripe 官方语义(header/payload/secret/tolerance)
 export function verifyStripeSignature(
   header: string,
   payload: string,
@@ -79,6 +80,7 @@ export interface StripeCheckoutEvent {
  * 的 PaymentsDeps.currency 同源注入，不在本层写死 'cny'）；否则提前赠送余额会
  * 形成资损。只提取不判定：金额核对在 application（需要订单真相）。
  */
+// eslint-disable-next-line complexity -- 验签头解析:格式枚举分支平铺
 export function parseStripeEvent(payload: string, currency: string): StripeCheckoutEvent | null {
   let event: {
     type?: string;

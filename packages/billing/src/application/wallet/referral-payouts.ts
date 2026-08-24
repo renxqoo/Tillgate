@@ -15,7 +15,10 @@ export interface ReferralPayoutsQuery {
   offset: number;
 }
 
-export type ReferralPayoutsResult = { rows: ReferralPayoutRow[]; total: number };
+export interface ReferralPayoutsResult {
+  rows: ReferralPayoutRow[];
+  total: number;
+}
 
 export function createReferralPayoutsUseCase(env: {
   store: Pick<WalletStore, 'read' | 'listReferralPayouts'>;

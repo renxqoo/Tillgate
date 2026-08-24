@@ -5,11 +5,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 const jar = new Map<string, string>();
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
-    get: (name: string) => (jar.has(name) ? { name, value: jar.get(name)! } : undefined),
+    get: (name: string) => (jar.has(name) ? { name, value: defined(jar.get(name)) } : undefined),
     set: (name: string, value: string) => {
       jar.set(name, value);
     },
@@ -45,7 +47,10 @@ import { changeSubscriptionAction } from '../src/server/actions/subscription';
 import { fetchOAuthProviders } from '../src/server/discovery';
 import { requireMe } from '../src/server/session';
 
-type FetchCall = { url: string; init: RequestInit };
+interface FetchCall {
+  url: string;
+  init: RequestInit;
+}
 let calls: FetchCall[];
 let responses: Array<{ status: number; body: unknown }>;
 
@@ -61,7 +66,7 @@ function stubFetch() {
 }
 
 function lastCall(): FetchCall {
-  return calls[calls.length - 1]!;
+  return defined(calls.at(-1), 'last fetch call');
 }
 
 function isRedirectError(e: unknown): boolean {
@@ -190,7 +195,7 @@ describe('actions/auth 剩余分支', () => {
     responses.push({ status: 201, body: { token: 'jwt-r', userId: 9 } });
     await expect(registerVerifyAction('ch', '123456', 'u1')).rejects.toSatisfy(isRedirectError);
     expect(jar.get('ag_session')).toBe('jwt-r');
-    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({
+    expect(JSON.parse(String(defined(calls[0], 'calls[0]').init.body))).toEqual({
       challengeId: 'ch',
       code: '123456',
       aff: 'u1',
@@ -200,7 +205,10 @@ describe('actions/auth 剩余分支', () => {
   it('registerVerifyAction：无 aff 时字段省略', async () => {
     responses.push({ status: 201, body: { token: 'jwt-r2', userId: 10 } });
     await expect(registerVerifyAction('ch', '123456', null)).rejects.toSatisfy(isRedirectError);
-    expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ challengeId: 'ch', code: '123456' });
+    expect(JSON.parse(String(defined(calls[0], 'calls[0]').init.body))).toEqual({
+      challengeId: 'ch',
+      code: '123456',
+    });
   });
 });
 

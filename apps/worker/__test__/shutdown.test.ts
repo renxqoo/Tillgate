@@ -48,13 +48,15 @@ describe('createWorkerShutdown', () => {
       },
       graceMs: 1_000,
       logger: {
-        info: () => undefined,
-        error: () => undefined,
+        info: () => {},
+        error: () => {},
       },
       exit: hangingExit(exitRecord),
     });
     shutdown('SIGTERM');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
     expect(events).toEqual(['server', 'otel', 'scheduler', 'wakeup', 'abandon', 'db']);
     expect(exitRecord.code).toBe(0);
   });
@@ -82,7 +84,9 @@ describe('createWorkerShutdown', () => {
       exit: hangingExit({ code: null }),
     });
     shutdown('SIGINT');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
     expect(events).toEqual(['scheduler', 'db']);
   });
 });

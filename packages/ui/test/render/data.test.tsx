@@ -119,7 +119,7 @@ describe('SecretReveal', () => {
   });
 
   it('copy=true 时复制明文(与显隐无关)', async () => {
-    const writeText = vi.fn(async () => undefined);
+    const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText },
       configurable: true,

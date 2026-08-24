@@ -28,9 +28,14 @@ import { roles as rolesTable } from '@tillgate/db';
 /** 现场生成 16 位强密码（大小写+数字；避免易混淆字符与 shell 转义烦恼） */
 function generatePassword(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-  let out = '';
-  for (let i = 0; i < 16; i += 1) out += alphabet[randomInt(alphabet.length)]!;
-  return out;
+  const chars: string[] = [];
+  for (let i = 0; i < 16; i += 1) {
+    const char = alphabet[randomInt(alphabet.length)];
+    // randomInt 上界即 alphabet.length,越界只能是实现错误;守卫为类型收窄
+    if (char === undefined) throw new Error('random password char out of range');
+    chars.push(char);
+  }
+  return chars.join('');
 }
 
 function argValue(name: string): string | undefined {
@@ -58,6 +63,7 @@ function loadEnv(): void {
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- CLI bootstrap 顺序流程(参数→env→守卫→落库→打印,单文件跑完即弃)
 async function main(): Promise<void> {
   loadEnv();
   const apply = process.argv.includes('--apply');
@@ -75,7 +81,9 @@ async function main(): Promise<void> {
     console.error('DATABASE_URL is required (load .env or export it)');
     process.exit(1);
   }
-  const displayName = argValue('display-name') ?? email.split('@')[0]!.slice(0, 64);
+  // split('@') 至少返回一段(可能为空串);邮箱格式已在上方校验非空
+  const [localPart] = email.split('@');
+  const displayName = argValue('display-name') ?? (localPart ?? '').slice(0, 64);
 
   const passwordProvided = argValue('password') ?? process.env.ADMIN_INITIAL_PASSWORD;
   const password = passwordProvided ?? generatePassword();
@@ -99,9 +107,12 @@ async function main(): Promise<void> {
   }
 
   try {
-    const existing = await db.select({ id: admins.id }).from(admins).where(eq(admins.email, email));
-    if (existing.length > 0) {
-      console.log(`skip: admin already exists (id=${existing[0]!.id}, ${email})`);
+    const [existingAdmin] = await db
+      .select({ id: admins.id })
+      .from(admins)
+      .where(eq(admins.email, email));
+    if (existingAdmin !== undefined) {
+      console.log(`skip: admin already exists (id=${existingAdmin.id}, ${email})`);
       return;
     }
     if (!apply) {

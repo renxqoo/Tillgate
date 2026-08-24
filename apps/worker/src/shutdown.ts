@@ -23,6 +23,8 @@ export interface WorkerShutdownDeps {
 }
 
 export function createWorkerShutdown(deps: WorkerShutdownDeps) {
+  // 判空后以局部捕获收窄,闭包内不再回头断言(收口顺序与语义不变)
+  const { wakeup, logger } = deps;
   return createShutdown({
     serviceName: 'worker',
     server: deps.healthServer,
@@ -33,19 +35,19 @@ export function createWorkerShutdown(deps: WorkerShutdownDeps) {
     // 顺序即语义：先停调度（在途宽限）→ 再释放监听 → 最后归还认领（db 之前）
     closeables: [
       { close: () => deps.scheduler.stop() },
-      ...(deps.wakeup != null ? [{ close: () => deps.wakeup!.close() }] : []),
+      ...(wakeup != null ? [{ close: () => wakeup.close() }] : []),
       {
         close: async () => {
           const released = await deps.abandonOwnedClaims();
-          deps.logger?.info({ released }, 'abandoned owned settlement claims');
+          logger?.info({ released }, 'abandoned owned settlement claims');
         },
       },
     ],
-    ...(deps.logger != null
+    ...(logger != null
       ? {
           log: {
-            info: (message: string) => deps.logger!.info(message),
-            error: (message: string) => deps.logger!.error(message),
+            info: (message: string) => logger.info(message),
+            error: (message: string) => logger.error(message),
           },
         }
       : {}),

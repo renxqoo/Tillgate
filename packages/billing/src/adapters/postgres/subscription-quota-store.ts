@@ -11,6 +11,7 @@ function tx(conn: WalletConn): DbTx {
   return conn as unknown as DbTx;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 配额 SQL upsert 平铺
 export function createSubscriptionQuotaStore(_db: Db): SubscriptionQuotaStore {
   return {
     async activeSubscriptionSnapshot(conn: WalletConn, subscriptionId: number, now: Date) {

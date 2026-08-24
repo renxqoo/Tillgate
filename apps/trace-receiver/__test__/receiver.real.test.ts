@@ -4,6 +4,7 @@ import { createDb, closeDb, ping, type Db } from '@tillgate/db';
 import { createPgTraceStore } from '@tillgate/observability/composition';
 import { createSpanBatcher, type SpanBatcher } from '@tillgate/observability';
 import { createReceiverApp } from '../src/app';
+import { defined } from './defined';
 
 /**
  * 接收端真 PG 集成(铁律 14:默认门禁按文件名排除,test:real 显式运行)。
@@ -33,7 +34,7 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => {
-  if (db) await closeDb(db).catch(() => undefined);
+  if (db) await closeDb(db).catch(() => {});
 });
 
 const SERVICE = 'trr-test-svc';
@@ -197,7 +198,7 @@ describe('接收端 HTTP 面(真 PG)', () => {
       async () => {
         const rows = await store.findByRequestId(requestId);
         expect(rows).toHaveLength(1);
-        expect(rows[0]!.userId).toBe(7);
+        expect(defined(rows[0], 'rows[0]').userId).toBe(7);
       },
       { timeout: 3_000, interval: 25 },
     );

@@ -88,8 +88,8 @@ const adminRecord = {
 function authHarness(overrides?: Partial<AuthRoutesDeps>) {
   const emailIp = neverLockedGuard();
   const ip = neverLockedGuard();
-  const audit = vi.fn(async () => undefined);
-  const touch = vi.fn(async () => undefined);
+  const audit = vi.fn(async () => {});
+  const touch = vi.fn(async () => {});
   const sign = vi.fn(async () => 'signed-token');
   const deps: AuthRoutesDeps = {
     identity: {
@@ -188,8 +188,8 @@ describe('auth（P2 登录面）', () => {
   it('已锁定:同键计数路径 429 admin.login_locked;守卫抛错 503 auth_guard_unavailable', async () => {
     const locked: AuthGuard = {
       isLocked: async () => ({ locked: true, retryAfterSec: 600 }),
-      recordFailure: async () => undefined,
-      recordSuccess: async () => undefined,
+      recordFailure: async () => {},
+      recordSuccess: async () => {},
     };
     const { app } = authHarness({
       guards: { emailIp: locked, ip: neverLockedGuard() },
@@ -229,8 +229,8 @@ describe('auth（P2 登录面）', () => {
       isLocked: async () => {
         throw new Error('redis down');
       },
-      recordFailure: async () => undefined,
-      recordSuccess: async () => undefined,
+      recordFailure: async () => {},
+      recordSuccess: async () => {},
     };
     const { app: app2 } = authHarness({ guards: { emailIp: broken, ip: neverLockedGuard() } });
     const res2 = await app2.request('/v1/auth/login', {
@@ -248,7 +248,7 @@ describe('auth（P2 登录面）', () => {
       admins: {
         findByEmail: async () => ({ ...adminRecord, twoFactorEnabled: true }),
         find: async () => adminRecord,
-        touchLastLogin: async () => undefined,
+        touchLastLogin: async () => {},
       },
     });
     const res = await app.request('/v1/auth/login', {
@@ -285,7 +285,7 @@ describe('auth（P2 登录面）', () => {
       admins: {
         findByEmail: async () => ({ ...adminRecord, twoFactorEnabled: true }),
         find: async () => adminRecord,
-        touchLastLogin: async () => undefined,
+        touchLastLogin: async () => {},
       },
     });
     const res2 = await app2.request('/v1/auth/login', {
@@ -342,7 +342,7 @@ describe('auth（P2 登录面）', () => {
       admins: {
         findByEmail: async () => adminRecord,
         find: async () => ({ ...adminRecord, status: 1 }),
-        touchLastLogin: async () => undefined,
+        touchLastLogin: async () => {},
       },
     }).app.request('/v1/auth/login/verify', {
       method: 'POST',
@@ -406,7 +406,7 @@ describe('me（P2 管理员自身）', () => {
       },
       admins: {
         find: async () => adminRecord,
-        setTwoFactorEnabled: async () => undefined,
+        setTwoFactorEnabled: async () => {},
       },
       mailerConfigured: false,
       sessionTtlSec: 3600,

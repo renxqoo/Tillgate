@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { DefectError } from '@tillgate/errors';
 import { generationKindDescriptor } from '../domain/generation';
-import type { GenerationTaskKind } from '../domain/generation';
+import type { GenerationKindDescriptor, GenerationTaskKind } from '../domain/generation';
 import { InferenceErrors } from '../domain/errors';
 import { buildCandidateChain } from '../domain/model/candidates';
 import type { RequestAuth } from '../domain/model/types';
@@ -45,141 +45,145 @@ interface GenerationHit {
  * 持久化。持久化失败 → billing_receipt_unavailable 且**预留保留**（上游可能已受理，
  * 退款属 billing recover 语义——与 v1 同）。轮询推进归 worker 波次（MIGRATION 待办）。
  */
+/** 提交前段入参装配产物（请求标识 + kind 描述符 + 对外模型名 + 预检） */
+interface GenerationSubmitPrepared {
+  requestId: string;
+  descriptor: GenerationKindDescriptor;
+  externalModel: string;
+  prepared: PreparedRequest;
+}
+
+/** 提交前段·请求校验：kind 词表守卫 + 模型白名单 + 对外模型名解析 */
+function guardSubmitRequest(input: GenerationSubmitInput): {
+  descriptor: GenerationKindDescriptor;
+  externalModel: string;
+} {
+  const descriptor = generationKindDescriptor(input.kind);
+  if (descriptor == null) {
+    // 类型面已收窄；JS 调用方绕过类型时的装配缺陷
+    throw new DefectError(
+      `unknown generation kind: ${input.kind as string}`,
+      'inference.generation.kind_unknown',
+      { kind: input.kind },
+    );
+  }
+  const externalModel = typeof input.body.model === 'string' ? input.body.model : '';
+  if (input.auth.allowedModels != null && !input.auth.allowedModels.includes(externalModel)) {
+    throw InferenceErrors.business('model_not_allowed', { model: externalModel });
+  }
+  return { descriptor, externalModel };
+}
+
+/** 提交前段：请求校验 → 选价映射 + 候选链 → 授权（TTL = 任务 TTL + 租约宽限） */
+async function authorizeGenerationSubmit(
+  deps: ExecutionDeps,
+  input: GenerationSubmitInput,
+): Promise<GenerationSubmitPrepared> {
+  const requestId = input.requestId ?? randomUUID();
+  const { descriptor, externalModel } = guardSubmitRequest(input);
+  // 分时段选价锚点 = 任务提交时刻（异步生成同 chat 口径：授权时快照）
+  const pricing = { userId: input.auth.userId, body: input.body, now: new Date() };
+  const mapping = await deps.catalog.findMapping(externalModel, pricing);
+  if (mapping == null) {
+    throw InferenceErrors.business('model_not_found', { model: externalModel });
+  }
+  const candidates = await buildCandidateChain(mapping, (m) =>
+    deps.catalog.findMapping(m, pricing),
+  );
+  const prepared: PreparedRequest = {
+    requestId,
+    auth: input.auth,
+    externalModel,
+    body: input.body,
+    upstreamBody: input.body,
+    endpoint: input.kind,
+    outputCap: 0,
+    inputUpperBound: 0,
+    inputEstimate: 0,
+    candidates,
+  };
+  const authorizationTtlMs =
+    deps.defaults.generation.taskTtlMs + deps.defaults.generation.leaseGraceMs;
+  await deps.billing.authorize({
+    requestId,
+    userId: input.auth.userId,
+    apiKeyId: input.auth.apiKeyId,
+    appId: input.auth.appId,
+    stream: false,
+    candidates,
+    inputTokenUpperBound: 0,
+    maxOutputTokens: 0,
+    authorizationTtlMs,
+  });
+  return { requestId, descriptor, externalModel, prepared };
+}
+
+/** 候选×渠道循环内的生成尝试：task_poll 提交任务号；task_execute 仅登记（worker 代执行） */
+async function generationAttempt(
+  deps: ExecutionDeps,
+  args: {
+    input: GenerationSubmitInput;
+    requestId: string;
+    externalModel: string;
+    descriptor: GenerationKindDescriptor;
+  },
+  ctx: Parameters<Parameters<typeof runCandidateLoop>[5]>[0],
+): Promise<AttemptOutcome<GenerationHit | PassthroughDelivered>> {
+  const { input, requestId, externalModel, descriptor } = args;
+  if (descriptor.execution !== 'task_poll') {
+    // task_execute：网关只登记（渠道已预留），worker 代执行
+    return {
+      kind: 'respond',
+      value: {
+        upstreamTaskId: null,
+        candidate: ctx.candidate,
+        channelId: ctx.channel.channelId,
+        channelName: ctx.channel.channelName,
+      },
+    };
+  }
+  const result = await deps.upstream.submitTask(ctx.channel, input.kind, {
+    requestId,
+    externalModel,
+    realModel: ctx.candidate.realModel,
+    endpoint: input.kind,
+    body: input.body,
+    ...(input.signal != null ? { signal: input.signal } : {}),
+    deadlineMs: deps.defaults.upstream.deadlineMs,
+  });
+  if (result.ok) {
+    return {
+      kind: 'respond',
+      value: {
+        upstreamTaskId: result.upstreamTaskId,
+        candidate: ctx.candidate,
+        channelId: ctx.channel.channelId,
+        channelName: ctx.channel.channelName,
+      },
+    };
+  }
+  return dispatchFailure(deps, ctx, result.error);
+}
+
 export function createGenerationUseCase(deps: ExecutionDeps & { tasks: GenerationTaskStore }) {
   return {
     async submit(input: GenerationSubmitInput): Promise<GenerationSubmitOutcome> {
-      const requestId = input.requestId ?? randomUUID();
-      // 分时段选价锚点 = 任务提交时刻（异步生成同 chat 口径：授权时快照）
-      const submittedAt = new Date();
-      const descriptor = generationKindDescriptor(input.kind);
-      if (descriptor == null) {
-        // 类型面已收窄；JS 调用方绕过类型时的装配缺陷
-        throw new DefectError(
-          `unknown generation kind: ${input.kind as string}`,
-          'inference.generation.kind_unknown',
-          { kind: input.kind },
-        );
-      }
-      const externalModel = typeof input.body.model === 'string' ? input.body.model : '';
-      if (input.auth.allowedModels != null && !input.auth.allowedModels.includes(externalModel)) {
-        throw InferenceErrors.business('model_not_allowed', { model: externalModel });
-      }
-      const pricing = { userId: input.auth.userId, body: input.body, now: submittedAt };
-      const mapping = await deps.catalog.findMapping(externalModel, pricing);
-      if (mapping == null) {
-        throw InferenceErrors.business('model_not_found', { model: externalModel });
-      }
-      const candidates = await buildCandidateChain(mapping, (m) =>
-        deps.catalog.findMapping(m, pricing),
+      const { requestId, descriptor, externalModel, prepared } = await authorizeGenerationSubmit(
+        deps,
+        input,
       );
-      const prepared: PreparedRequest = {
-        requestId,
-        auth: input.auth,
-        externalModel,
-        body: input.body,
-        upstreamBody: input.body,
-        endpoint: input.kind,
-        outputCap: 0,
-        inputUpperBound: 0,
-        inputEstimate: 0,
-        candidates,
-      };
-      const authorizationTtlMs =
-        deps.defaults.generation.taskTtlMs + deps.defaults.generation.leaseGraceMs;
-      await deps.billing.authorize({
-        requestId,
-        userId: input.auth.userId,
-        apiKeyId: input.auth.apiKeyId,
-        appId: input.auth.appId,
-        stream: false,
-        candidates,
-        inputTokenUpperBound: 0,
-        maxOutputTokens: 0,
-        authorizationTtlMs,
-      });
-
       const hit = await runCandidateLoop<GenerationHit | PassthroughDelivered>(
         deps,
         prepared,
         requestId,
         Date.now(),
         input.signal,
-        async (ctx): Promise<AttemptOutcome<GenerationHit | PassthroughDelivered>> => {
-          if (descriptor.execution !== 'task_poll') {
-            // task_execute：网关只登记（渠道已预留），worker 代执行
-            return {
-              kind: 'respond',
-              value: {
-                upstreamTaskId: null,
-                candidate: ctx.candidate,
-                channelId: ctx.channel.channelId,
-                channelName: ctx.channel.channelName,
-              },
-            };
-          }
-          const result = await deps.upstream.submitTask(ctx.channel, input.kind, {
-            requestId,
-            externalModel,
-            realModel: ctx.candidate.realModel,
-            endpoint: input.kind,
-            body: input.body,
-            ...(input.signal != null ? { signal: input.signal } : {}),
-            deadlineMs: deps.defaults.upstream.deadlineMs,
-          });
-          if (result.ok) {
-            return {
-              kind: 'respond',
-              value: {
-                upstreamTaskId: result.upstreamTaskId,
-                candidate: ctx.candidate,
-                channelId: ctx.channel.channelId,
-                channelName: ctx.channel.channelName,
-              },
-            };
-          }
-          return dispatchFailure(deps, ctx, result.error);
-        },
+        (ctx) => generationAttempt(deps, { input, requestId, externalModel, descriptor }, ctx),
       );
 
       // 上游 4xx 透传（v1 提交路径同款）：客户端问题原码返回，不走收据持久化
       if ('passthrough' in hit) return hit;
-
-      const taskId = randomUUID();
-      const expiresAt = Date.now() + deps.defaults.generation.taskTtlMs;
-      const receiptTemplate = buildReceipt({
-        requestId,
-        auth: input.auth,
-        candidate: hit.candidate,
-        externalModel,
-        channelId: hit.channelId,
-        channelKey: hit.channelName,
-        durationMs: 0,
-        body: input.body,
-        usage: { estimated: true, inputTokens: 0, outputTokens: 0 },
-      });
-      const unitsSnapshot = measurementOf(hit.candidate.pricingUnit).unitsUpperBoundOf(input.body);
-      try {
-        await deps.tasks.insert({
-          taskId,
-          requestId,
-          userId: input.auth.userId,
-          apiKeyId: input.auth.apiKeyId,
-          mappingId: hit.candidate.mappingId,
-          channelId: hit.channelId,
-          kind: input.kind,
-          upstreamTaskId: hit.upstreamTaskId,
-          status: 'queued',
-          params: descriptor.snapshotParams(input.body),
-          receiptTemplate,
-          unitsSnapshot,
-          expiresAt,
-        });
-      } catch (error) {
-        // 上游可能已受理：预留保留交 recover 兜底（不退款——v1 语义）
-        deps.onError?.(error, `generation task persist request=${requestId}`);
-        throw InferenceErrors.business('billing_receipt_unavailable', { request_id: requestId });
-      }
-      return { ok: true, taskId, expiresAt };
+      return persistGenerationHit(deps, { input, requestId, descriptor, externalModel, hit });
     },
 
     async query(userId: number, taskId: string): Promise<GenerationTaskView> {
@@ -188,4 +192,54 @@ export function createGenerationUseCase(deps: ExecutionDeps & { tasks: Generatio
       return view;
     },
   };
+}
+
+/** 提交尾段：命中事实 → 收据模板 + 参数快照落任务行（持久化失败 → 预留保留交 recover） */
+async function persistGenerationHit(
+  deps: ExecutionDeps & { tasks: GenerationTaskStore },
+  args: {
+    input: GenerationSubmitInput;
+    requestId: string;
+    descriptor: GenerationKindDescriptor;
+    externalModel: string;
+    hit: GenerationHit;
+  },
+): Promise<GenerationSubmitOutcome> {
+  const { input, requestId, descriptor, externalModel, hit } = args;
+  const taskId = randomUUID();
+  const expiresAt = Date.now() + deps.defaults.generation.taskTtlMs;
+  const receiptTemplate = buildReceipt({
+    requestId,
+    auth: input.auth,
+    candidate: hit.candidate,
+    externalModel,
+    channelId: hit.channelId,
+    channelKey: hit.channelName,
+    durationMs: 0,
+    body: input.body,
+    usage: { estimated: true, inputTokens: 0, outputTokens: 0 },
+  });
+  const unitsSnapshot = measurementOf(hit.candidate.pricingUnit).unitsUpperBoundOf(input.body);
+  try {
+    await deps.tasks.insert({
+      taskId,
+      requestId,
+      userId: input.auth.userId,
+      apiKeyId: input.auth.apiKeyId,
+      mappingId: hit.candidate.mappingId,
+      channelId: hit.channelId,
+      kind: input.kind,
+      upstreamTaskId: hit.upstreamTaskId,
+      status: 'queued',
+      params: descriptor.snapshotParams(input.body),
+      receiptTemplate,
+      unitsSnapshot,
+      expiresAt,
+    });
+  } catch (error) {
+    // 上游可能已受理：预留保留交 recover 兜底（不退款——v1 语义）
+    deps.onError?.(error, `generation task persist request=${requestId}`);
+    throw InferenceErrors.business('billing_receipt_unavailable', { request_id: requestId });
+  }
+  return { ok: true, taskId, expiresAt };
 }

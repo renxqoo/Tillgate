@@ -45,6 +45,13 @@ export function AdminRowActions({
   if (pending) statusIcon = <Loader2Icon className="size-4 animate-spin" />;
   else if (status === 0) statusIcon = <ShieldBanIcon className="size-4" />;
 
+  const onToggleStatus = async () => {
+    setPending(true);
+    const res = await toggleAdminStatusAction(id, status === 0 ? 1 : 0);
+    setPending(false);
+    notify(res, t('updateFailed'));
+  };
+
   return (
     <>
       <FormDialog
@@ -91,15 +98,7 @@ export function AdminRowActions({
           <PencilIcon className="size-4" />
           {t('changeRole')}
         </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={self || pending}
-          onClick={async () => {
-            setPending(true);
-            const res = await toggleAdminStatusAction(id, status === 0 ? 1 : 0);
-            setPending(false);
-            notify(res, t('updateFailed'));
-          }}
-        >
+        <DropdownMenuItem disabled={self || pending} onClick={onToggleStatus}>
           {statusIcon}
           {status === 0 ? t('ban') : t('restore')}
         </DropdownMenuItem>

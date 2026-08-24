@@ -26,13 +26,24 @@ function isValidTimezone(tz: string): boolean {
 
 /** 字节量（"10MB" 形）——v1 同形 */
 const byteSize = z.string().regex(BYTES_RE, 'must be like "10MB"');
+
+/** 字节单位换算表（与 BYTES_RE 的封闭词表 b/kb/mb/gb 一一对应） */
+const BYTES_UNIT: Record<string, number> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
+
 const bytesOf = (v: string): number => {
-  const m = BYTES_RE.exec(v)!;
-  const unit = m[2]!.toLowerCase();
-  const n = Number(m[1]);
-  return Math.floor(n * { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 }[unit]!);
+  // 入参恒为 byteSize schema 校验过的字面量；此处显式收窄而非断言（null 即形状矛盾）
+  const m = BYTES_RE.exec(v);
+  if (m == null || m[1] == null || m[2] == null) {
+    throw new Error(`invalid byte size literal: ${v}`);
+  }
+  const factor = BYTES_UNIT[m[2].toLowerCase()];
+  if (factor == null) {
+    throw new Error(`unknown byte unit: ${m[2]}`);
+  }
+  return Math.floor(Number(m[1]) * factor);
 };
 
+// eslint-disable-next-line max-lines-per-function -- env schema 逐键平铺的纯配置数据（铁律 22 ①）
 function createSchema(production: boolean) {
   return z
     .object({
@@ -200,15 +211,31 @@ const DEPRECATED_KEYS = [
   'GENERATION_MAX_ACTIVE_PER_USER',
 ] as const;
 
+/** fixed 模式 amount 收窄：schema superRefine 已锁死「mode=fixed ⇒ amount 在场」，缺失即契约破裂 */
+function requireFixedAmount(amount: string | undefined): string {
+  if (amount == null) {
+    throw new Error(
+      'BILLING_FIXED_RESERVATION_AMOUNT required when BILLING_RESERVATION_MODE=fixed',
+    );
+  }
+  return amount;
+}
+
+// eslint-disable-next-line max-lines-per-function -- env → GatewayConfig 逐字段搬运的纯配置映射（铁律 22 ①）
 export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
-  const raw = { ...env };
-  for (const key of DEPRECATED_KEYS) {
-    if (raw[key] != null && raw[key] !== '') {
-      console.warn(
-        `[gateway] config key ${key} is deprecated and ignored (user-level limits have no default)`,
-      );
+  // 弃用键：告警后剔除出解析输入（过滤式构造替代动态 delete，行为等价）
+  const deprecated = new Set<string>(DEPRECATED_KEYS);
+  const raw: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (deprecated.has(key)) {
+      if (value != null && value !== '') {
+        console.warn(
+          `[gateway] config key ${key} is deprecated and ignored (user-level limits have no default)`,
+        );
+      }
+      continue;
     }
-    delete raw[key];
+    raw[key] = value;
   }
   const encryption = raw.CHANNEL_API_KEY_ENCRYPTION ?? raw.ENCRYPTION_KEY;
   const parsed = createSchema(raw.NODE_ENV === 'production').parse({
@@ -235,7 +262,7 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
     reservationLimit: parsed.BILLING_RESERVATION_MAX,
     reservationPolicy:
       parsed.BILLING_RESERVATION_MODE === 'fixed'
-        ? { mode: 'fixed', amount: parsed.BILLING_FIXED_RESERVATION_AMOUNT! }
+        ? { mode: 'fixed', amount: requireFixedAmount(parsed.BILLING_FIXED_RESERVATION_AMOUNT) }
         : { mode: 'full' },
     authorizationTtlMs: parsed.BILLING_AUTHORIZATION_TTL_MS,
     billingTimezoneTtlMs: parsed.BILLING_TIMEZONE_TTL_MS,

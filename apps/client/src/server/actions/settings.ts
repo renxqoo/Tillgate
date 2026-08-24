@@ -24,8 +24,8 @@ export async function changePasswordAction(input: {
     // 改密作废全部旧会话并同拍签发新 token——BFF 轮换持有
     if (res.token) await setSessionToken(res.token);
     return {};
-  } catch (e) {
-    if (e instanceof ApiError) return { error: e.message, code: e.code };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message, code: error.code };
     return { error: t('changeFailedRetry') };
   }
 }
@@ -43,8 +43,8 @@ export async function updateDisplayNameAction(input: {
       displayName: name,
     });
     return { displayName: res.displayName };
-  } catch (e) {
-    if (e instanceof ApiError) return { error: e.message };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message };
     return { error: t('changeFailedRetry') };
   }
 }

@@ -25,9 +25,18 @@ interface Cell {
   lockedUntil: number;
 }
 
+/** 本地计数器的策略参数（max-params：超 3 参改对象入参） */
+interface LocalCounterPolicy {
+  limit: number;
+  windowMs: number;
+  lockMs: number;
+  /** 维度表容量上界（防泄漏整表丢弃阈值），默认 10 万 */
+  maxEntries?: number;
+}
+
 const now = () => Date.now();
 
-function createLocalCounter(limit: number, windowMs: number, lockMs: number, maxEntries = 100_000) {
+function createLocalCounter({ limit, windowMs, lockMs, maxEntries = 100_000 }: LocalCounterPolicy) {
   const cells = new Map<string, Cell>();
 
   const read = (dim: string): Cell => {
@@ -67,11 +76,11 @@ function createLocalCounter(limit: number, windowMs: number, lockMs: number, max
 
 /** KeyBruteForceGuard 的本地降级体（维度=keyHash，策略同 Redis 版语义） */
 export function createLocalKeyBruteForceGuard(policy: BruteForcePolicy): KeyBruteForceGuard {
-  const counter = createLocalCounter(
-    policy.failureThreshold,
-    policy.failureWindowS * 1000,
-    policy.lockS * 1000,
-  );
+  const counter = createLocalCounter({
+    limit: policy.failureThreshold,
+    windowMs: policy.failureWindowS * 1000,
+    lockMs: policy.lockS * 1000,
+  });
   return {
     isLocked: (keyHash) => Promise.resolve(counter.isLocked(keyHash)),
     recordFailure: (keyHash) => Promise.resolve(counter.recordFailure(keyHash)),
@@ -82,9 +91,13 @@ export function createLocalKeyBruteForceGuard(policy: BruteForcePolicy): KeyBrut
   };
 }
 
-/** AuthFailureGuard 的本地降级体（维度=来源 IP；锁长=窗口长，与 Redis 版一致） */
-export function createLocalAuthFailureGuard(limit: number, windowS: number): AuthFailureGuard {
-  const counter = createLocalCounter(limit, windowS * 1000, windowS * 1000);
+/** AuthFailureGuard 的本地降级体（维度=来源 IP；锁长=窗口长，与 Redis 版一致）。
+ *  返回类型声明为完整面（isLocked 恒存在）：实现即完整对象，供 auth-guards 直接调用。 */
+export function createLocalAuthFailureGuard(
+  limit: number,
+  windowS: number,
+): Required<AuthFailureGuard> {
+  const counter = createLocalCounter({ limit, windowMs: windowS * 1000, lockMs: windowS * 1000 });
   return {
     isLocked: (ip) => Promise.resolve(counter.isLocked(ip)),
     recordFailure: (ip) => Promise.resolve(counter.recordFailure(ip)),

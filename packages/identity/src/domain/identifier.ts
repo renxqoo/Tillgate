@@ -106,8 +106,9 @@ export function normalizeIdentifier(
   if (kind === 'email') {
     const value = raw.trim().toLowerCase();
     const hasControlChar = [...value].some((ch) => {
-      const codePoint = ch.codePointAt(0)!;
-      return codePoint <= 0x1f || codePoint === 0x7f;
+      // [...value] 逐码点展开,ch 至少含一个码点;null 分支仅为类型收窄防御
+      const codePoint = ch.codePointAt(0);
+      return codePoint != null && (codePoint <= 0x1f || codePoint === 0x7f);
     });
     if (hasControlChar || value.length === 0 || value.length > 255 || !EMAIL_RE.test(value)) {
       throw identityErrors.business('invalid_identifier', { kind, reason: 'malformed address' });
@@ -153,7 +154,7 @@ export function assertOAuthSubject(subject: unknown): string {
     });
   }
   const value = subject.trim();
-  if (value.length < 1 || value.length > 255) {
+  if (value.length === 0 || value.length > 255) {
     throw identityErrors.business('invalid_subject', { length: value.length });
   }
   return value;

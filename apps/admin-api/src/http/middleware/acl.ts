@@ -46,8 +46,7 @@ function matchesPath(pattern: string, path: string): boolean {
   const patternParts = pattern.split('/');
   const pathParts = path.split('/');
   if (patternParts.length !== pathParts.length) return false;
-  for (let i = 0; i < patternParts.length; i += 1) {
-    const part = patternParts[i]!;
+  for (const [i, part] of patternParts.entries()) {
     if (part.startsWith(':')) {
       if (pathParts[i] === '') return false;
     } else if (part !== pathParts[i]) {
@@ -76,7 +75,7 @@ export function createAclMiddleware(
   const session = sessionMiddleware(sessions);
   return async (c, next) => {
     const method = c.req.method === 'HEAD' ? 'GET' : c.req.method;
-    const path = c.req.path;
+    const { path } = c.req;
 
     // 只守护 /v1/* 管理面:非 v1 未知路径放行走 404（不泄漏路由清单——v1 语义保留）
     if (!path.startsWith('/v1/')) {

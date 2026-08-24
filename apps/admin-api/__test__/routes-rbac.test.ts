@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
+import { defined } from './defined.js';
 
 const json = { ...authHeader(), 'content-type': 'application/json' };
 
@@ -136,13 +137,13 @@ describe('POST/PATCH/DELETE /v1/roles', () => {
       ['role_in_use', 409],
       ['role_not_found', 404],
     ] as const) {
-      const app = wire({
+      const { app } = wire({
         roles: {
           update: async () => {
             throw controlPlaneErrors.business(code, {});
           },
         },
-      }).app;
+      });
       const res = await app.request('/v1/roles/9', {
         method: 'PATCH',
         headers: json,
@@ -349,9 +350,9 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
       name: '总览',
       sortOrder: 1,
     };
-    const app = wire({
+    const { app } = wire({
       permissions: { tree: async () => [group, pageAll, pageGated] },
-    }).app;
+    });
 
     const me = await app.request('/v1/me/menus', { headers: authHeader() });
     expect(me.status).toBe(200);
@@ -360,7 +361,10 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
     };
     // fakeDeps owner = isSuper → 全量树
     expect(body.groups).toHaveLength(1);
-    expect(body.groups[0]!.items.map((item) => item.name)).toEqual(['概览', '用户']);
+    expect(defined(body.groups[0], 'body.groups[0]').items.map((item) => item.name)).toEqual([
+      '概览',
+      '用户',
+    ]);
 
     // 非超管授权面:码过滤生效（users:read 未授 → 仅无码页面;组非空保留）
     const base = fakeDeps({
@@ -383,7 +387,9 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
       groups: { items: { name: string }[] }[];
     };
     expect(filtered.groups).toHaveLength(1);
-    expect(filtered.groups[0]!.items.map((item) => item.name)).toEqual(['概览']);
+    expect(
+      defined(filtered.groups[0], 'filtered.groups[0]').items.map((item) => item.name),
+    ).toEqual(['概览']);
   });
 
   it('停用节点剔除:group/page status=1 不进菜单树（kill-switch 同源）', async () => {
@@ -434,7 +440,9 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
     const res = await app.request('/v1/me/menus', { headers: authHeader() });
     const body = (await res.json()) as { groups: { name: string; items: { name: string }[] }[] };
     expect(body.groups).toHaveLength(1); // 停用组整组剔除
-    expect(body.groups[0]!.name).toBe('在册组');
-    expect(body.groups[0]!.items.map((item) => item.name)).toEqual(['活页']); // 停用页剔除
+    expect(defined(body.groups[0], 'body.groups[0]').name).toBe('在册组');
+    expect(defined(body.groups[0], 'body.groups[0]').items.map((item) => item.name)).toEqual([
+      '活页',
+    ]); // 停用页剔除
   });
 });

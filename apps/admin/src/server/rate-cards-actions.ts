@@ -27,8 +27,8 @@ export async function createRateCardAction(
     });
     revalidatePath('/dashboard/rate-cards');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -50,8 +50,8 @@ export async function updateRateCardAction(
     revalidatePath('/dashboard/rate-cards');
     revalidatePath(`/dashboard/rate-cards/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
 
@@ -62,7 +62,7 @@ export async function deleteRateCardAction(id: number): Promise<{ error?: string
     await adminApi().delete(`/v1/rate-cards/${id}`);
     revalidatePath('/dashboard/rate-cards');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('deleteFailed') };
   }
 }

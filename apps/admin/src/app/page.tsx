@@ -11,6 +11,7 @@ import {
   ScanEye,
   UserRound,
   Wallet,
+  type LucideIcon,
 } from 'lucide-react';
 
 import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
@@ -22,6 +23,78 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { absolute: `Tillgate — ${t('heroTitle')}` },
     description: t('heroDescription'),
   };
+}
+
+/**
+/** 产品能力区块（六卡平铺；t 经参数传入） */
+function LandingFeatures({
+  t,
+  features,
+}: {
+  t: Awaited<ReturnType<typeof getTranslations<'landing'>>>;
+  features: Array<{ icon: LucideIcon; title: string; description: string }>;
+}) {
+  return (
+    <section id="features" className="scroll-mt-16 border-t border-border/60 py-16 sm:py-20">
+      <div className="mx-auto w-full max-w-6xl px-6">
+        <div className="mb-12 text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            {t('featuresEyebrow')}
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('featuresTitle')}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">{t('featuresDescription')}</p>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map(({ icon: Icon, title, description }) => (
+            <div
+              key={title}
+              className="flex flex-col gap-3 rounded-xl border border-border bg-card p-6 transition hover:border-foreground/20 hover:shadow-md"
+            >
+              <span className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Icon className="size-5" />
+              </span>
+              <h3 className="text-base font-semibold">{title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** 技术架构区块（技术栈词条平铺） */
+function LandingStack({
+  t,
+  stack,
+}: {
+  t: Awaited<ReturnType<typeof getTranslations<'landing'>>>;
+  stack: string[];
+}) {
+  return (
+    <section id="stack" className="scroll-mt-16 border-t border-border/60 py-16 sm:py-20">
+      <div className="mx-auto w-full max-w-6xl px-6">
+        <div className="mb-8 text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            {t('stackEyebrow')}
+          </p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('stackTitle')}</h2>
+          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">{t('stackDescription')}</p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-3">
+          {stack.map((item) => (
+            <span
+              key={item}
+              className="rounded-full border border-border bg-muted px-4 py-1.5 text-sm text-muted-foreground"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /**
@@ -125,58 +198,9 @@ export default async function Landing() {
         </div>
       </section>
 
-      {/* ── 产品能力 ─────────────────────────────────────────── */}
-      <section id="features" className="scroll-mt-16 border-t border-border/60 py-16 sm:py-20">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          <div className="mb-12 text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {t('featuresEyebrow')}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('featuresTitle')}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
-              {t('featuresDescription')}
-            </p>
-          </div>
+      <LandingFeatures t={t} features={features} />
 
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map(({ icon: Icon, title, description }) => (
-              <div
-                key={title}
-                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-6 transition hover:border-foreground/20 hover:shadow-md"
-              >
-                <span className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                  <Icon className="size-5" />
-                </span>
-                <h3 className="text-base font-semibold">{title}</h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 技术架构 ─────────────────────────────────────────── */}
-      <section id="stack" className="scroll-mt-16 border-t border-border/60 py-16 sm:py-20">
-        <div className="mx-auto w-full max-w-6xl px-6">
-          <div className="mb-8 text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {t('stackEyebrow')}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight">{t('stackTitle')}</h2>
-            <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">{t('stackDescription')}</p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            {stack.map((item) => (
-              <span
-                key={item}
-                className="rounded-full border border-border bg-muted px-4 py-1.5 text-sm text-muted-foreground"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
+      <LandingStack t={t} stack={stack} />
 
       {/* ── 底部 CTA ─────────────────────────────────────────── */}
       <section className="border-t border-border/60 py-16 sm:py-20">

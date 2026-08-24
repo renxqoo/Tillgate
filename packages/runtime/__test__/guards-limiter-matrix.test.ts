@@ -282,7 +282,7 @@ describe('限流器结果分支（队列态 canned evalsha）', () => {
   it('故障档身份码：默认 closed 是 InfrastructureError(runtime.rate_limit_unavailable)', async () => {
     const redis = new FakeRedis();
     const limiter = createSlidingWindowLimiter(redis as never);
-    const err = await limiter.check('d', 5, 'r').catch((e: unknown) => e);
+    const err = await limiter.check('d', 5, 'r').catch((error: unknown) => error);
     expect(isInfrastructureError(err)).toBe(true);
   });
 });

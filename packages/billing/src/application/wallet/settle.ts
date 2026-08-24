@@ -36,8 +36,10 @@ export interface SettleResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤,拆分需跨闭包共享 tx
 export function createSettleUseCase(env: WalletEnv) {
   const { store, guards } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤,拆分需跨闭包共享 tx
   return async function settle(input: SettleInput): Promise<SettleResult> {
     assertRefKey(guards, input.refType, input.refId);
     const settleAmount = parsePositiveAmount(input.amount);
@@ -49,6 +51,7 @@ export function createSettleUseCase(env: WalletEnv) {
       memo: input.memo ?? null,
     });
 
+    // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤,拆分需跨闭包共享 tx
     return withTx(store, input.tx, async (tx) => {
       // 先锁再做领域校验；避免 DB 状态约束把超额结算泄漏成原始 23514
       const current = await store.lockAuthorization(tx, input.refType, input.refId);
@@ -68,7 +71,10 @@ export function createSettleUseCase(env: WalletEnv) {
 
       const holderAccount = (await lockActiveAccounts(store, tx, [claimed.accountId])).get(
         claimed.accountId,
-      )!;
+      );
+      if (holderAccount === undefined) {
+        throw new DefectError('settle.holder_lock_missing', 'billing.wallet_invariant');
+      }
       const cpAccountId = await store.ensureInternalAccount(
         tx,
         counterparty,
@@ -95,10 +101,14 @@ export function createSettleUseCase(env: WalletEnv) {
         claimed.accountId,
         toStorage(new Decimal(holderAccount.inFlight).minus(claimed.heldAmount)),
       );
+      const balanceAfter = posted.balanceAfter.get(claimed.accountId);
+      if (balanceAfter === undefined) {
+        throw new DefectError('settle.balance_missing', 'billing.wallet_invariant');
+      }
       return {
         authorizationId: current.id,
         settledAmount: normalizeAmount(input.amount),
-        balanceAfter: posted.balanceAfter.get(claimed.accountId)!,
+        balanceAfter,
         releasedRemainder: toStorage(new Decimal(claimed.heldAmount).minus(settleAmount)),
         replayed: false,
       };
@@ -107,6 +117,7 @@ export function createSettleUseCase(env: WalletEnv) {
 }
 
 /** settle 的非 active 分支：settled → 重放首答；released/expired → 拒绝 */
+// eslint-disable-next-line max-params -- 导出钱包动词契约,调用点在网关热路径
 async function replaySettle(
   store: WalletStore,
   conn: WalletConn,

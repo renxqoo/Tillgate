@@ -12,6 +12,7 @@
 import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../domain/errors.js';
 import { assertCommandFingerprint, commandFingerprint } from '../domain/fingerprint.js';
+import type { FingerprintValue } from '../domain/fingerprint.js';
 import type { BillingStore } from '../ports/billing-store.js';
 import type { WalletTx } from '../ports/wallet-store.js';
 
@@ -34,14 +35,16 @@ export interface OperationRun<T> {
   operationId: string;
   kind: string;
   /** 业务参数（canonical 指纹输入；同键不同参 = 冲突）。严格指纹：非 JSON 安全值拒绝 */
-  payload: Record<string, import('../domain/fingerprint.js').FingerprintValue>;
+  payload: Record<string, FingerprintValue>;
   execute: (tx: WalletTx) => Promise<T>;
   /** 加入调用方事务（可选；缺省自开） */
   tx?: WalletTx;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 运营用例事务体:顺序步骤
 export function createOperationsUseCase(env: { store: BillingStore }) {
   const { store } = env;
+  // eslint-disable-next-line max-lines-per-function -- 运营用例事务体:顺序步骤
   async function run<T extends Record<string, unknown>>(
     input: OperationRun<T>,
   ): Promise<{ receipt: T; replayed: boolean }> {

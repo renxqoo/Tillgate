@@ -12,6 +12,7 @@ import { createLogSpanProcessor, type SpanLogSink } from '../src/telemetry/log-s
 import { formatTraceParent, remoteParentContext } from '../src/telemetry/trace-parent';
 import { withAsyncSpan } from '../src/telemetry/with-span';
 import { getMeter, getTracer } from '../src/telemetry/api';
+import { defined } from './defined';
 
 /**
  * telemetry 规格(v1 core/otel.ts 零测试,B2 补齐——铁律 16)。
@@ -23,9 +24,9 @@ import { getMeter, getTracer } from '../src/telemetry/api';
 function fakeEndSpan(
   traceId: string,
   spanId: string,
-  startOffsetMs = 0,
-  name = 'op',
+  opts: { startOffsetMs?: number; name?: string } = {},
 ): ReadableSpan {
+  const { startOffsetMs = 0, name = 'op' } = opts;
   return {
     name,
     spanContext: () => ({ traceId, spanId, traceFlags: 1, isRemote: false }),
@@ -86,12 +87,12 @@ describe('initOtel', () => {
   it('mode=memory 返回查看句柄且 SDK 可启停(处理器即 viewer 的采集面)', async () => {
     const handle = initOtel({ serviceName: 'svc', serviceVersion: '0.1.0', mode: 'memory' });
     expect(handle.mode).toBe('memory');
-    expect(handle.memory).toBeDefined();
-    handle.memory!.processor.onEnd(fakeEndSpan('f'.repeat(32), '01', 0, 'mem-op'));
-    expect(handle.memory!.recent()).toHaveLength(1);
-    expect(handle.memory!.recent()[0]!.rootName).toBe('mem-op');
+    const memory = defined(handle.memory, 'handle.memory');
+    memory.processor.onEnd(fakeEndSpan('f'.repeat(32), '01', { name: 'mem-op' }));
+    expect(memory.recent()).toHaveLength(1);
+    expect(defined(memory.recent()[0], 'recent[0]').rootName).toBe('mem-op');
     await handle.shutdown();
-    expect(handle.memory!.recent()).toHaveLength(0); // shutdown 清缓冲
+    expect(memory.recent()).toHaveLength(0); // shutdown 清缓冲
   });
 
   it('mode=console 可启停(构造 console 处理器分支)', async () => {
@@ -125,20 +126,25 @@ describe('createMemoryTraceViewer', () => {
     const viewer = createMemoryTraceViewer();
     viewer.processor.onStart({} as never, undefined as never); // 只在 onEnd 快照,onStart 无操作
     await viewer.processor.forceFlush();
-    viewer.processor.onEnd(fakeEndSpan('a'.repeat(32), '01', 0, 'lifecycle'));
+    viewer.processor.onEnd(fakeEndSpan('a'.repeat(32), '01', { name: 'lifecycle' }));
     await viewer.processor.shutdown();
     expect(viewer.recent()).toHaveLength(0);
   });
 
   it('span 结束入缓冲;recent 按根开始时间倒序、limit 截断;clear 清空', () => {
     const viewer = createMemoryTraceViewer();
-    viewer.processor.onEnd(fakeEndSpan('a'.repeat(32), '01', 0, 'first'));
-    viewer.processor.onEnd(fakeEndSpan('b'.repeat(32), '02', 1_000, 'second'));
-    viewer.processor.onEnd(fakeEndSpan('c'.repeat(32), '03', 2_000, 'third'));
+    viewer.processor.onEnd(fakeEndSpan('a'.repeat(32), '01', { name: 'first' }));
+    viewer.processor.onEnd(
+      fakeEndSpan('b'.repeat(32), '02', { startOffsetMs: 1_000, name: 'second' }),
+    );
+    viewer.processor.onEnd(
+      fakeEndSpan('c'.repeat(32), '03', { startOffsetMs: 2_000, name: 'third' }),
+    );
     const recent = viewer.recent(2);
     expect(recent.map((t) => t.rootName)).toEqual(['third', 'second']); // 倒序 + limit
-    expect(recent[0]!.spanCount).toBe(1);
-    expect(recent[0]!.services).toEqual(['test-svc']);
+    const newest = defined(recent[0], 'recent[0]');
+    expect(newest.spanCount).toBe(1);
+    expect(newest.services).toEqual(['test-svc']);
     viewer.clear();
     expect(viewer.recent()).toHaveLength(0);
   });
@@ -148,25 +154,25 @@ describe('createMemoryTraceViewer', () => {
     const traceId = 'a'.repeat(32);
     // 先结束子(父=root,晚 500ms)再结束根——聚合不依赖到达序
     viewer.processor.onEnd({
-      ...fakeEndSpan(traceId, '02', 500, 'child'),
+      ...fakeEndSpan(traceId, '02', { startOffsetMs: 500, name: 'child' }),
       parentSpanContext: { traceId, spanId: '01', traceFlags: 1, isRemote: false },
     } as unknown as ReadableSpan);
-    viewer.processor.onEnd(fakeEndSpan(traceId, '01', 0, 'root'));
-    const [trace] = viewer.recent();
-    expect(trace!.rootName).toBe('root');
-    expect(trace!.spanCount).toBe(2);
-    expect(trace!.durationMs).toBeGreaterThanOrEqual(650); // child 终点 = 500+150
-    expect(trace!.spans.map((s) => s.name)).toEqual(['root', 'child']); // 按 startTime 升序
+    viewer.processor.onEnd(fakeEndSpan(traceId, '01', { name: 'root' }));
+    const trace = defined(viewer.recent()[0], 'trace');
+    expect(trace.rootName).toBe('root');
+    expect(trace.spanCount).toBe(2);
+    expect(trace.durationMs).toBeGreaterThanOrEqual(650); // child 终点 = 500+150
+    expect(trace.spans.map((s) => s.name)).toEqual(['root', 'child']); // 按 startTime 升序
   });
 
   it('错误 span 置 hasError(status.code=ERROR)', () => {
     const viewer = createMemoryTraceViewer();
     const bad = {
-      ...fakeEndSpan('a'.repeat(32), '01', 0, 'bad'),
+      ...fakeEndSpan('a'.repeat(32), '01', { name: 'bad' }),
       status: { code: SpanStatusCode.ERROR, message: 'boom' },
     } as unknown as ReadableSpan;
     viewer.processor.onEnd(bad);
-    expect(viewer.recent()[0]!.hasError).toBe(true);
+    expect(defined(viewer.recent()[0], 'trace').hasError).toBe(true);
   });
 
   it('MAX_TRACES 淘汰:第 201 条 trace 顶掉最旧(200 上界)', () => {
@@ -211,20 +217,22 @@ describe('createLogSpanProcessor', () => {
     const processor: SpanProcessor = createLogSpanProcessor(logger);
     processor.onStart({} as never, undefined as never);
     await processor.forceFlush();
-    processor.onEnd(fakeEndSpan('a'.repeat(32), '01', 0, 'ok-span'));
+    processor.onEnd(fakeEndSpan('a'.repeat(32), '01', { name: 'ok-span' }));
     processor.onEnd({
-      ...fakeEndSpan('a'.repeat(32), '02', 0, 'bad-span'),
+      ...fakeEndSpan('a'.repeat(32), '02', { name: 'bad-span' }),
       status: { code: SpanStatusCode.ERROR, message: 'timeout' },
     } as unknown as ReadableSpan);
     await processor.shutdown();
     expect(lines).toHaveLength(2);
-    expect(lines[0]!.level).toBe('info');
-    expect(lines[0]!.line['span']).toBe('ok-span');
-    expect(lines[0]!.line['durationMs']).toBe(150);
-    expect(lines[0]!.line['attrs']).toBeUndefined(); // 无属性不带 attrs 键
-    expect(lines[1]!.level).toBe('warn');
-    expect(lines[1]!.line['error']).toBe('timeout');
-    expect(lines[1]!.line['traceId']).toBe('a'.repeat(32));
+    const info = defined(lines[0], 'lines[0]');
+    const warn = defined(lines[1], 'lines[1]');
+    expect(info.level).toBe('info');
+    expect(info.line['span']).toBe('ok-span');
+    expect(info.line['durationMs']).toBe(150);
+    expect(info.line['attrs']).toBeUndefined(); // 无属性不带 attrs 键
+    expect(warn.level).toBe('warn');
+    expect(warn.line['error']).toBe('timeout');
+    expect(warn.line['traceId']).toBe('a'.repeat(32));
   });
 });
 
@@ -249,7 +257,7 @@ describe('traceparent', () => {
   it('remoteParentContext:合法解析为远端父;非法形状拒绝', () => {
     const ok = remoteParentContext(`00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`);
     expect(ok).toBeDefined();
-    expect(remoteParentContext(undefined)).toBeUndefined();
+    expect(remoteParentContext()).toBeUndefined();
     expect(remoteParentContext(null)).toBeUndefined();
     expect(remoteParentContext('not-a-traceparent')).toBeUndefined();
     expect(remoteParentContext(`ff-${'a'.repeat(32)}-${'b'.repeat(16)}-01`)).toBeUndefined();
@@ -276,11 +284,12 @@ describe('withAsyncSpan', () => {
       async () => 42,
     );
     expect(out).toBe(42);
-    const [span] = viewer.recent()[0]!.spans;
-    expect(span!.name).toBe('stage.do');
-    expect(span!.attributes['channel.key']).toBe('ch-a');
-    expect(span!.status.code).toBe(SpanStatusCode.UNSET); // 未显式设状态(与 v1 行为一致)
-    expect(span!.endTimeMs).toBeGreaterThan(span!.startTimeMs);
+    const trace = defined(viewer.recent()[0], 'trace');
+    const span = defined(trace.spans[0], 'span');
+    expect(span.name).toBe('stage.do');
+    expect(span.attributes['channel.key']).toBe('ch-a');
+    expect(span.status.code).toBe(SpanStatusCode.UNSET); // 未显式设状态(与 v1 行为一致)
+    expect(span.endTimeMs).toBeGreaterThan(span.startTimeMs);
   });
 
   it('异常路径:span 记 ERROR + recordException,错误原样上抛(观测不吞错)', async () => {
@@ -290,23 +299,25 @@ describe('withAsyncSpan', () => {
         throw new Error('upstream 502');
       }),
     ).rejects.toThrow('upstream 502');
-    const [span] = viewer.recent()[0]!.spans;
-    expect(span!.status.code).toBe(SpanStatusCode.ERROR);
-    expect(span!.status.message).toBe('upstream 502');
-    expect(span!.events.some((e) => e.name === 'exception')).toBe(true);
+    const failed = defined(viewer.recent()[0], 'trace');
+    const span = defined(failed.spans[0], 'span');
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.status.message).toBe('upstream 502');
+    expect(span.events.some((e) => e.name === 'exception')).toBe(true);
   });
 
   it('非 Error 抛出物:message 走 String 归一,仍记 ERROR', async () => {
     const { viewer, tracer } = collectTracer();
     await expect(
       withAsyncSpan(tracer, 'stage.raw', {}, async () => {
-        throw 'raw-string'; // eslint-disable-line no-throw-literal
+        throw 'raw-string';
       }),
     ).rejects.toBe('raw-string');
-    const [span] = viewer.recent()[0]!.spans;
-    expect(span!.status.code).toBe(SpanStatusCode.ERROR);
-    expect(span!.status.message).toBe('raw-string');
-    expect(span!.events).toHaveLength(0); // recordException 只收 Error 实例
+    const raw = defined(viewer.recent()[0], 'trace');
+    const span = defined(raw.spans[0], 'span');
+    expect(span.status.code).toBe(SpanStatusCode.ERROR);
+    expect(span.status.message).toBe('raw-string');
+    expect(span.events).toHaveLength(0); // recordException 只收 Error 实例
   });
 
   it('getTracer/getMeter 未启动 SDK 时返回全局 no-op 形态(零开销)', () => {

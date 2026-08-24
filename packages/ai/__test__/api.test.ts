@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 
-const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
-) =>
+const startServer = (handler: (req: IncomingMessage, res: ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {
     const server = createServer(handler);
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address() as { port: number };
       resolve({
         baseUrl: `http://127.0.0.1:${addr.port}`,
-        close: () => new Promise((r) => server.close(() => r())),
+        close: () =>
+          new Promise((r) => {
+            server.close(() => r());
+          }),
       });
     });
   });
@@ -130,9 +129,11 @@ describe('contract：chatStream 流式', () => {
       expect(text).toContain('[DONE]');
       const seen: string[] = [];
       events.subscribe((e) => seen.push(e.type));
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => {
+        setTimeout(r, 50);
+      });
       // 晚订阅契约：per-call events 只重放终态（attempt_start 等经全局 subscribe 观察）
-      expect(seen[seen.length - 1]).toBe('success');
+      expect(seen.at(-1)).toBe('success');
     } finally {
       await s.close();
     }

@@ -14,11 +14,14 @@ const INTERVAL_MS = 250;
 
 function sweep(): void {
   for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
     let alive = false;
-    try {
-      alive = entries[i]!.check();
-    } catch {
-      alive = false;
+    if (entry !== undefined) {
+      try {
+        alive = entry.check();
+      } catch {
+        alive = false;
+      }
     }
     if (!alive) entries.splice(i, 1);
   }

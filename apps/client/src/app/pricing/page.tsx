@@ -1,8 +1,10 @@
 import { SearchIcon, TagIcon } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
 
 import { Input } from '@tillgate/ui';
+import type { PricingModel } from '@tillgate/api-client';
 
 import { Pager } from '@/features/shared/pager';
 import { fetchPublicPricing } from '@/server/public-pricing';
@@ -20,11 +22,72 @@ const PRICING_UNIT_KEYS: Record<string, string> = {
   char: 'unitChar',
 };
 
+/** next-intl t 的最小调用面（传参收窄，避免整份 Translator 类型穿透） */
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
 function fmtYuanPerMillion(price: string): string {
   const n = Number(price);
   if (!Number.isFinite(n) || n === 0) return '—';
   // 元/百万token 展示为 ¥/1M
   return `¥${n}`;
+}
+
+function fmtUnitPrice(unit: string, price: string, t: Translate): string {
+  const n = Number(price);
+  if (!Number.isFinite(n) || n === 0) return '—';
+  let suffix = '';
+  if (unit === 'request') suffix = t('perRequest');
+  else if (unit === 'image') suffix = t('perImage');
+  else if (unit === 'second') suffix = t('perSecond');
+  else if (unit === 'char') suffix = t('perChar');
+  return `¥${n}${suffix}`;
+}
+
+// —— 模块级渲染函数：t.rich 富文本回调 / 行内 JSX 提取，避免渲染期定义组件
+// （react/no-unstable-nested-components）并压平页面函数行数 ——
+
+/** t.rich 的 register 富文本渲染：指向注册页 */
+function renderRegisterLink(chunks: ReactNode) {
+  return (
+    <Link href="/register" className="underline">
+      {chunks}
+    </Link>
+  );
+}
+
+/** 分时段窗口副行（token 制展示输入/输出价，其余制展示单位价） */
+function renderScheduleRow(m: PricingModel, t: Translate) {
+  return (
+    <tr className="border-t bg-muted/20">
+      <td colSpan={7} className="px-4 py-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t('scheduleBadge')}</span>
+          <span>{t('scheduleBase')}</span>
+          {m.pricingUnit === 'token' ? (
+            <span className="font-mono">
+              {t('scheduleInOut', {
+                input: fmtYuanPerMillion(m.inputPrice),
+                output: fmtYuanPerMillion(m.outputPrice),
+              })}
+            </span>
+          ) : (
+            <span className="font-mono">{fmtUnitPrice(m.pricingUnit, m.unitPrice, t)}</span>
+          )}
+          {m.schedule?.map((w, i) => (
+            <span key={i} className="rounded bg-primary/5 px-2 py-0.5 font-mono text-primary">
+              {`${w.label ? `${w.label} ` : ''}${w.start}–${w.end}`}
+              {m.pricingUnit === 'token'
+                ? `：${t('scheduleInOut', {
+                    input: fmtYuanPerMillion(w.inputPrice ?? m.inputPrice),
+                    output: fmtYuanPerMillion(w.outputPrice ?? m.outputPrice),
+                  })}`
+                : `：${fmtUnitPrice(m.pricingUnit, w.unitPrice ?? m.unitPrice, t)}`}
+            </span>
+          ))}
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 export default async function PricingPage({
@@ -33,16 +96,6 @@ export default async function PricingPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const t = await getTranslations('pricing');
-  const fmtUnitPrice = (unit: string, price: string): string => {
-    const n = Number(price);
-    if (!Number.isFinite(n) || n === 0) return '—';
-    let suffix = '';
-    if (unit === 'request') suffix = t('perRequest');
-    else if (unit === 'image') suffix = t('perImage');
-    else if (unit === 'second') suffix = t('perSecond');
-    else if (unit === 'char') suffix = t('perChar');
-    return `¥${n}${suffix}`;
-  };
 
   const sp = await searchParams;
   const q = ((Array.isArray(sp.q) ? sp.q[0] : sp.q) ?? '').trim();
@@ -115,49 +168,14 @@ export default async function PricingPage({
                       {m.pricingUnit === 'token' ? fmtYuanPerMillion(m.cacheInputPrice) : '—'}
                     </td>
                     <td className="px-4 py-2 text-right font-mono text-xs">
-                      {m.pricingUnit === 'token' ? '—' : fmtUnitPrice(m.pricingUnit, m.unitPrice)}
+                      {m.pricingUnit === 'token'
+                        ? '—'
+                        : fmtUnitPrice(m.pricingUnit, m.unitPrice, t)}
                     </td>
                     <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">
                       {m.contextLength ? `${Math.round(m.contextLength / 1000)}K` : '—'}
                     </td>
-                    {m.schedule && m.schedule.length > 0 ? (
-                      <tr className="border-t bg-muted/20">
-                        <td colSpan={7} className="px-4 py-2">
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span className="font-medium text-foreground">
-                              {t('scheduleBadge')}
-                            </span>
-                            <span>{t('scheduleBase')}</span>
-                            {m.pricingUnit === 'token' ? (
-                              <span className="font-mono">
-                                {t('scheduleInOut', {
-                                  input: fmtYuanPerMillion(m.inputPrice),
-                                  output: fmtYuanPerMillion(m.outputPrice),
-                                })}
-                              </span>
-                            ) : (
-                              <span className="font-mono">
-                                {fmtUnitPrice(m.pricingUnit, m.unitPrice)}
-                              </span>
-                            )}
-                            {m.schedule.map((w, i) => (
-                              <span
-                                key={i}
-                                className="rounded bg-primary/5 px-2 py-0.5 font-mono text-primary"
-                              >
-                                {`${w.label ? `${w.label} ` : ''}${w.start}–${w.end}`}
-                                {m.pricingUnit === 'token'
-                                  ? `：${t('scheduleInOut', {
-                                      input: fmtYuanPerMillion(w.inputPrice ?? m.inputPrice),
-                                      output: fmtYuanPerMillion(w.outputPrice ?? m.outputPrice),
-                                    })}`
-                                  : `：${fmtUnitPrice(m.pricingUnit, w.unitPrice ?? m.unitPrice)}`}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
+                    {m.schedule && m.schedule.length > 0 ? renderScheduleRow(m, t) : null}
                   </tr>
                 ))}
                 {data.models.length === 0 ? (
@@ -186,11 +204,7 @@ export default async function PricingPage({
       )}
       <p className="mt-6 text-sm text-muted-foreground">
         {t.rich('footer', {
-          register: (chunks) => (
-            <Link href="/register" className="underline">
-              {chunks}
-            </Link>
-          ),
+          register: (chunks) => renderRegisterLink(chunks),
         })}
       </p>
     </main>

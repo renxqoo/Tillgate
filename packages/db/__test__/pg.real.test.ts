@@ -16,7 +16,9 @@ import {
   runTx,
   uniqueViolationConstraint,
   type Db,
+  type DbTx,
 } from '../src/index.js';
+import { defined } from './defined.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const SCHEMA = sql.raw('tillgate_db_test');
@@ -36,8 +38,14 @@ const POOL = {
     return (r.rows[0] as { n: number }).n;
   };
 
+  // 内层事务体:插入后抛错——SAVEPOINT 回滚断言的行为载体(作用域级具名函数,压平回调嵌套)
+  const innerTxThatFails = async (inner: DbTx): Promise<void> => {
+    await inner.execute(sql`insert into ${SCHEMA}.kv values (3, 'inner')`);
+    throw new Error('inner fail');
+  };
+
   beforeAll(async () => {
-    db = createDb({ url: url!, ...POOL });
+    db = createDb({ url: defined(url, 'url'), ...POOL });
     await db.execute(sql`create schema if not exists ${SCHEMA}`);
     await db.execute(sql`create table if not exists ${SCHEMA}.kv (k int primary key, v text)`);
     await db.execute(sql`truncate ${SCHEMA}.kv`);
@@ -88,14 +96,7 @@ const POOL = {
       async (tx) => {
         await tx.execute(sql`insert into ${SCHEMA}.kv values (2, 'outer')`);
         await expect(
-          runTx(
-            tx,
-            async (inner) => {
-              await inner.execute(sql`insert into ${SCHEMA}.kv values (3, 'inner')`);
-              throw new Error('inner fail');
-            },
-            { maxAttempts: 2, baseDelayMs: 5, maxJitterMs: 5 },
-          ),
+          runTx(tx, innerTxThatFails, { maxAttempts: 2, baseDelayMs: 5, maxJitterMs: 5 }),
         ).rejects.toThrow('inner fail');
         const innerRows = await tx.execute(
           sql`select count(*)::int as n from ${SCHEMA}.kv where k = 3`,
@@ -140,7 +141,7 @@ const POOL = {
   });
 
   it('池生命周期:createDb → ping → closeDb,关闭后连接拒绝', async () => {
-    const own = createDb({ url: url!, ...POOL });
+    const own = createDb({ url: defined(url, 'url'), ...POOL });
     await ping(own); // select 1
     await closeDb(own);
     await expect(own.execute(sql`select 1`)).rejects.toThrow();

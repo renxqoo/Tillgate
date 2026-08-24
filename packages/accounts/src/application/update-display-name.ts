@@ -20,8 +20,9 @@ export async function updateDisplayName(
         userId: input.userId,
         patch: { displayName },
       });
-      if (updated === null)
+      if (updated === null) {
         throw AccountsErrors.business('user_not_found', { userId: input.userId });
+      }
       return updated;
     },
     ctx.txRetry,

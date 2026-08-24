@@ -41,6 +41,7 @@ const REQUEST_COLUMNS = {
   createdAt: billingRequests.createdAt,
 };
 
+// eslint-disable-next-line max-lines-per-function -- 结算投影 SQL 构造平铺
 export function settlementMethods(
   db: Db,
 ): Pick<
@@ -239,7 +240,7 @@ export function settlementMethods(
         where b.request_id = ${input.requestId} and b.status = ${input.status}
           ${upstreamGuard} ${leaseGuard}
         returning b.request_id, b.reserved_amount, b.channel_id, b.channel_reserved_amount`);
-      const row = result.rows[0];
+      const [row] = result.rows;
       return row
         ? {
             requestId: row.request_id,

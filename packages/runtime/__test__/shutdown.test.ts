@@ -43,14 +43,18 @@ describe('createShutdown', () => {
   it('drain 路径：close → OTel → closeables（序）→ Redis → DB → exit(0)', async () => {
     const { deps, order } = fakeDeps({ closeCallsCallback: true });
     createShutdown(deps)('SIGTERM');
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(order).toEqual(['close', 'otel', 'closeable:1', 'closeable:2', 'redis', 'db', 'exit:0']);
   });
 
   it('宽限耗尽：在途未完成（close 回调不触发）→ exit(1)', async () => {
     const { deps, order } = fakeDeps({ closeCallsCallback: false });
     createShutdown(deps)('SIGINT');
-    await new Promise((r) => setTimeout(r, 1_200));
+    await new Promise((r) => {
+      setTimeout(r, 1_200);
+    });
     expect(order).toEqual(['close', 'exit:1']);
   });
 
@@ -59,21 +63,27 @@ describe('createShutdown', () => {
     const shutdown = createShutdown(deps);
     shutdown('SIGTERM');
     shutdown('SIGTERM');
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(order.filter((s) => s.startsWith('exit'))).toEqual(['exit:0']);
   });
 
   it('收口件失败不阻断停机（otel 抛错仍走到 exit(0)）', async () => {
     const { deps, order } = fakeDeps({ closeCallsCallback: true, failOtel: true });
     createShutdown(deps)('SIGTERM');
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(order).toEqual(['close', 'otel', 'closeable:1', 'closeable:2', 'redis', 'db', 'exit:0']);
   });
 
   it('日志走注入出口且带服务名', async () => {
     const { deps, logs } = fakeDeps({ closeCallsCallback: true });
     createShutdown(deps)('SIGTERM');
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(logs).toContain('[test-svc] SIGTERM received, draining');
     expect(logs).toContain('[test-svc] drained');
   });
@@ -81,7 +91,9 @@ describe('createShutdown', () => {
   it('宽限强退走 error 级日志', async () => {
     const { deps, logs } = fakeDeps({ closeCallsCallback: false });
     createShutdown(deps)('SIGTERM');
-    await new Promise((r) => setTimeout(r, 1_200));
+    await new Promise((r) => {
+      setTimeout(r, 1_200);
+    });
     expect(logs).toContain('[test-svc] drain grace expired, forcing exit');
   });
 
@@ -89,11 +101,13 @@ describe('createShutdown', () => {
     const { deps } = fakeDeps({ closeCallsCallback: true });
     const exitSpy = vi
       .spyOn(process, 'exit')
-      .mockImplementation((() => undefined) as unknown as (code?: number | string | null) => never);
+      .mockImplementation((() => {}) as unknown as (code?: number | string | null) => never);
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
       createShutdown({ ...deps, exit: undefined, log: undefined })('SIGTERM');
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((r) => {
+        setTimeout(r, 10);
+      });
       expect(exitSpy).toHaveBeenCalledWith(0);
       expect(infoSpy.mock.calls.flat().join('\n')).toContain('[test-svc] drained');
     } finally {

@@ -23,7 +23,9 @@ describe('relay-stream：守护与终止（数据面热路径）', () => {
     });
     const text = await new Response(handle.stream).text();
     expect(text).toContain('[DONE]');
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     const done = events.find((e) => e.type === 'done');
     expect(done).toBeDefined();
     if (done?.type === 'done') {
@@ -98,7 +100,9 @@ describe('relay-stream：守护与终止（数据面热路径）', () => {
     const reader = handle.stream.getReader();
     await reader.read();
     ctrl.abort();
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => {
+      setTimeout(r, 30);
+    });
     expect(upstreamCancelled || events.some((e) => e.type === 'aborted')).toBe(true);
   });
 

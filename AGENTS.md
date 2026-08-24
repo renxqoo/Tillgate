@@ -24,6 +24,7 @@
    （~150 是设计警戒线，lint 硬阈值与超限处置见铁律 22）。
    禁止 class 做依赖捕获（用 `createXxx(env)` 工厂闭包）；实现协议接口的真实多态
    （如 `ai` 的 `ProtocolAdapter` 适配器族）不受此限。
+   前端组件域的展开细则（目录化形态/组件单一原则/拆分操作规程）见 `rule/component-split.md`。
 6. **改资金逻辑先读懂再动手**：先读 `packages/billing`（`src/domain/wallet`、
    `src/domain/billing`、`src/application/billing` 及 `wallet.ts` / `settlement.ts` /
    `billing.ts` 组装出口）的现有实现（代码与测试是当前行为证据），基于语义重写而不是
@@ -100,6 +101,7 @@
     若该组件会被多处复用（跨页面/跨模块/多列表通用），先落到 `packages/ui` 目录并
     从 `index.ts` 导出，再在业务侧引用——技术栈固定 shadcn 风格 + Tailwind CSS；
     仅单处使用的一次性片段可直接写在 feature 内，不强行抽包。
+    组件怎么拆、怎么写好（目录形态/编排器与哑件/弹窗与表单范式）见 `rule/component-split.md`。
 21. **oxlint 是硬约束，修代码不修规则**：
     - `bun run lint` 0 error 是一切改动的完成标准（并入铁律 7 四门）。
     - lint 报错，只许修代码。
@@ -118,8 +120,9 @@
     逻辑密集代码 → 进 ②。
     ② 消职责（同铁律 5）：抽真实重复为共享模块、查表 / 映射替换长 if-else、配置性数据
     独立成数据文件、按职责边界拆模块。拆分后每个单元必须能独立命名，且不回读对方内部状态。
-    ③ 豁免：`eslint-disable-next-line <规则名>` + 原因注释，逐处单独声明。
+    ③ 豁免边界：**文件级 max-lines 零豁免**——任何源码文件超 400 行必须拆分，禁止
+    `eslint-disable max-lines`、禁止子包 override 豁免；豁免面只限测试文件（`__test__/`、`testing/` 已在根配置关停该规则）与生成物（generated/migrations 已 ignore）。
     ④ 判阈值不合理：向维护者提出，先改本文 / 开 issue，再动配置。
     ⑤ 禁止：内聚函数切成两段；拆到另一文件后互相 import；函数内中间状态上提到外层
     作用域；多条语句挤进一行。
-    ⑥ 存量棘轮：不要求清零存量；触碰超限文件，不得新增超限数。
+    ⑥ 棘轮：文件级超限存量已清零，不得新增超限文件；触碰超限函数，不得新增其豁免数。

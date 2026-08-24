@@ -10,6 +10,7 @@
  */
 import { BillingErrors } from '../../domain/errors.js';
 import { commandFingerprint } from '../../domain/fingerprint.js';
+import type { FingerprintValue } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { validateReceipt } from '../../domain/rating/receipt.js';
 import type { BillingQuote, UsageReceipt } from '../../domain/rating/types.js';
@@ -34,6 +35,7 @@ export interface BillingSignalResult {
   amountReleased?: string;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 计费信号归并:usage/事件双源装配顺序步骤
 export function createSignalUseCase(env: BillingEnv & { channels?: ChannelExposureStore }) {
   const { store, clock } = env;
 
@@ -54,6 +56,7 @@ export function createSignalUseCase(env: BillingEnv & { channels?: ChannelExposu
     return status;
   }
 
+  // eslint-disable-next-line complexity, max-lines-per-function -- 计费信号归并:事件类型判别矩阵平铺
   return async function signal(event: BillingEvent): Promise<BillingSignalResult> {
     switch (event.type) {
       case 'upstream.started': {
@@ -99,10 +102,7 @@ export function createSignalUseCase(env: BillingEnv & { channels?: ChannelExposu
         const now = clock();
         const receiptFp = commandFingerprint(
           'billing.receipt',
-          event.receipt as unknown as Record<
-            string,
-            import('../../domain/fingerprint.js').FingerprintValue
-          >,
+          event.receipt as unknown as Record<string, FingerprintValue>,
         );
         const authorized = await store.read((conn) => store.findByRequestId(conn, event.requestId));
         if (!authorized) {

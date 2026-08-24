@@ -131,7 +131,7 @@ describe('application/chat：非流式尝试（先结算后交付）', () => {
     };
     const result = await s.inference.chat({ requestId: 'req-3', auth: baseAuth, body }).then(
       (value) => value,
-      (e: unknown) => e,
+      (error: unknown) => error,
     );
     expect(isBusinessError(result) && result.code === 'inference.finalize_unavailable').toBe(true);
     expect(succeededAttempts).toBe(3); // 退避重试后耗尽（非一击即溃）

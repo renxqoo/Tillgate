@@ -111,7 +111,7 @@ describe('captcha 用例翻译(facade 面)', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       store: h.store,
     });

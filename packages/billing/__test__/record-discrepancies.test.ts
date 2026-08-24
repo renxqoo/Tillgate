@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createRecordDiscrepanciesUseCase } from '../src/application/settlement/record-discrepancies.js';
 import type { ReconcileDiscrepancyRow } from '../src/ports/reconcile-store.js';
 import type { ReconcileReport } from '../src/application/settlement/reconcile.js';
+import { defined } from './defined.js';
 
 function harness() {
   const inserted: ReconcileDiscrepancyRow[][] = [];
@@ -42,14 +43,14 @@ describe('对账差异落表（record-discrepancies）', () => {
       ]),
     );
     expect(count).toBe(3);
-    const rows = h.inserted[0]!;
+    const rows = defined(h.inserted[0]);
     expect(rows.map((r) => r.scope)).toEqual(['platform', 'platform', 'hold']);
     for (const row of rows) {
       expect(row.userId).toBeNull();
       // 数值口径挂账：布尔核验无数值——三列记 '0'，真相在 detail
       expect([row.expected, row.actual, row.diff]).toEqual(['0', '0', '0']);
     }
-    const first = JSON.parse(rows[0]!.detail!) as Record<string, unknown>;
+    const first = JSON.parse(defined(defined(rows[0]).detail)) as Record<string, unknown>;
     expect(first).toMatchObject({ kind: 'transaction_balance', key: 'tx-1' });
     expect(first.checkedAt).toBe('2026-08-23T01:00:00.000Z');
   });

@@ -3,7 +3,8 @@
  * instanceof 断言换目录码断言——D5 收敛；新增：Decimal 实例入参与垃圾串归类）。
  */
 import { describe, expect, it } from 'vitest';
-import { BusinessError, isBusinessError } from '@tillgate/errors';
+import type { BusinessError } from '@tillgate/errors';
+import { isBusinessError } from '@tillgate/errors';
 import {
   Decimal,
   isValidAmountString,

@@ -11,6 +11,7 @@ import { Decimal, EPAY_PAY_TYPES } from '@tillgate/billing';
 const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
 const positiveDecimal = nonNegativeDecimal.refine((value) => !/^0+(?:\.0+)?$/.test(value));
 
+// eslint-disable-next-line max-lines-per-function -- env zod schema 定义平铺(逐键声明即数据)
 function createSchema(production: boolean) {
   return z.object({
     /** 基础设施必配（fail-closed：连错库/忘配 = 拒绝启动，不落默认值跑偏） */
@@ -189,7 +190,7 @@ function assertGroup(name: string, values: Array<unknown>): boolean {
 
 /** 端点覆盖解析（JSON：私有化/E2E mock 上游用；非法 JSON fail-loud） */
 function parseEndpoints(json: string | undefined, provider: string) {
-  if (!json) return undefined;
+  if (!json) return;
   try {
     return JSON.parse(json) as {
       authorizeUrl?: string;

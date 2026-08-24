@@ -69,24 +69,28 @@ function nanoToDate(value: unknown): Date | null {
  * 领域属性提升:OTel attributes → 索引列(计费关联点查入口)。
  * 写侧长度门宽松(不丢合法数据);读侧点查另有 regex 白名单(防注入)——两道闸各司其职(B5 口径)。
  */
+
+/** string 提取门:是 string 且不超 maxLen 才收,否则 null */
+function pickString(value: unknown, maxLen: number): string | null {
+  return typeof value === 'string' && value.length <= maxLen ? value : null;
+}
+
+/** 正整数提取门(用户 id 不收 0/负数/小数) */
+function pickPositiveInt(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
+}
+
 function promote(attrs: Record<string, unknown>): {
   requestId: string | null;
   userId: number | null;
   channel: string | null;
   model: string | null;
 } {
-  const rawRequestId = attrs['request.id'] ?? attrs['request_id'] ?? attrs['requestId'];
-  const rawUserId = attrs['user.id'] ?? attrs['user_id'] ?? attrs['userId'];
-  const rawChannel = attrs['channel.key'] ?? attrs['channel'];
-  const rawModel = attrs['ai.model'] ?? attrs['model'];
   return {
-    requestId: typeof rawRequestId === 'string' && rawRequestId.length <= 64 ? rawRequestId : null,
-    userId:
-      typeof rawUserId === 'number' && Number.isInteger(rawUserId) && rawUserId > 0
-        ? rawUserId
-        : null,
-    channel: typeof rawChannel === 'string' && rawChannel.length <= 64 ? rawChannel : null,
-    model: typeof rawModel === 'string' && rawModel.length <= 128 ? rawModel : null,
+    requestId: pickString(attrs['request.id'] ?? attrs['request_id'] ?? attrs['requestId'], 64),
+    userId: pickPositiveInt(attrs['user.id'] ?? attrs['user_id'] ?? attrs['userId']),
+    channel: pickString(attrs['channel.key'] ?? attrs['channel'], 64),
+    model: pickString(attrs['ai.model'] ?? attrs['model'], 128),
   };
 }
 
@@ -102,13 +106,84 @@ interface OtlpSpan {
   events?: Array<{ name?: unknown; timeUnixNano?: unknown; attributes?: OtlpAttribute[] }>;
 }
 
+/** id/name 三元组收窄:任一不过 hex/长度/非空门返回 null */
+function spanIdentity(span: OtlpSpan): { traceId: string; spanId: string; name: string } | null {
+  const traceId = typeof span.traceId === 'string' ? span.traceId : '';
+  const spanId = typeof span.spanId === 'string' ? span.spanId : '';
+  const name = typeof span.name === 'string' ? span.name : '';
+  if (
+    !HEX_RE.test(traceId) ||
+    traceId.length > 32 ||
+    !HEX_RE.test(spanId) ||
+    spanId.length > 16 ||
+    !name
+  ) {
+    return null;
+  }
+  return { traceId, spanId, name };
+}
+
+/** 起止时间收窄:坏值或 end < start 返回 null */
+function spanWindow(span: OtlpSpan): { startTime: Date; endTime: Date } | null {
+  const startTime = nanoToDate(span.startTimeUnixNano);
+  const endTime = nanoToDate(span.endTimeUnixNano);
+  if (!startTime || !endTime || endTime < startTime) {
+    return null;
+  }
+  return { startTime, endTime };
+}
+
+/** 单 span → SpanRow;形状/时间门不过返回 null(由调用方计数跳过,不丢整批) */
+function spanToRow(span: OtlpSpan, service: string): SpanRow | null {
+  const identity = spanIdentity(span);
+  if (identity === null) return null;
+  const window = spanWindow(span);
+  if (window === null) return null;
+  const { traceId, spanId, name } = identity;
+  const { startTime, endTime } = window;
+  const attributes = attributesToRecord(span.attributes);
+  return {
+    traceId,
+    spanId,
+    parentSpanId:
+      typeof span.parentSpanId === 'string' && HEX_RE.test(span.parentSpanId)
+        ? span.parentSpanId
+        : null,
+    name: name.slice(0, 256),
+    service,
+    startTime,
+    endTime,
+    durationMs: endTime.getTime() - startTime.getTime(),
+    statusCode: normalizeStatus(span.status?.code),
+    statusMessage:
+      typeof span.status?.message === 'string' ? span.status.message.slice(0, 512) : null,
+    ...promote(attributes),
+    attributes,
+    events: (span.events ?? [])
+      .filter((e) => typeof e?.name === 'string')
+      .map((e) => ({
+        name: (e.name as string).slice(0, 128),
+        timeMs: nanoToDate(e.timeUnixNano)?.getTime() ?? startTime.getTime(),
+        attributes: attributesToRecord(e.attributes),
+      })),
+  };
+}
+
+/** resourceSpans 条目 → 归一 service 名(缺 service.name 兜底 unknown,截断 64) */
+function serviceNameOf(rs: object): string {
+  const { resource } = rs as { resource?: { attributes?: OtlpAttribute[] } };
+  const resourceAttrs = attributesToRecord(resource?.attributes);
+  const raw = resourceAttrs['service.name'];
+  return typeof raw === 'string' && raw ? raw.slice(0, 64) : 'unknown';
+}
+
 export function decodeOtlpJson(body: unknown): DecodeResult {
   if (typeof body !== 'object' || body === null) {
     throw observabilityErrors.business('invalid_otlp_payload', {
       reason: 'payload is not a JSON object',
     });
   }
-  const resourceSpans = (body as { resourceSpans?: unknown }).resourceSpans;
+  const { resourceSpans } = body as { resourceSpans?: unknown };
   if (!Array.isArray(resourceSpans)) {
     throw observabilityErrors.business('invalid_otlp_payload', {
       reason: 'missing the resourceSpans array',
@@ -123,14 +198,9 @@ export function decodeOtlpJson(body: unknown): DecodeResult {
       skipped += 1;
       continue;
     }
-    const resource = (rs as { resource?: { attributes?: OtlpAttribute[] } }).resource;
-    const resourceAttrs = attributesToRecord(resource?.attributes);
-    const service =
-      typeof resourceAttrs['service.name'] === 'string' && resourceAttrs['service.name']
-        ? (resourceAttrs['service.name'] as string).slice(0, 64)
-        : 'unknown';
+    const service = serviceNameOf(rs);
 
-    const scopeSpans = (rs as { scopeSpans?: unknown }).scopeSpans;
+    const { scopeSpans } = rs as { scopeSpans?: unknown };
     if (!Array.isArray(scopeSpans)) continue;
 
     for (const ss of scopeSpans) {
@@ -139,52 +209,12 @@ export function decodeOtlpJson(body: unknown): DecodeResult {
       if (!Array.isArray(spans)) continue;
 
       for (const raw of spans) {
-        const span = raw as OtlpSpan;
-        const traceId = typeof span.traceId === 'string' ? span.traceId : '';
-        const spanId = typeof span.spanId === 'string' ? span.spanId : '';
-        const name = typeof span.name === 'string' ? span.name : '';
-        if (
-          !HEX_RE.test(traceId) ||
-          traceId.length > 32 ||
-          !HEX_RE.test(spanId) ||
-          spanId.length > 16 ||
-          !name
-        ) {
+        const row = spanToRow(raw as OtlpSpan, service);
+        if (row === null) {
           skipped += 1;
           continue;
         }
-        const startTime = nanoToDate(span.startTimeUnixNano);
-        const endTime = nanoToDate(span.endTimeUnixNano);
-        if (!startTime || !endTime || endTime < startTime) {
-          skipped += 1;
-          continue;
-        }
-        const attributes = attributesToRecord(span.attributes);
-        rows.push({
-          traceId,
-          spanId,
-          parentSpanId:
-            typeof span.parentSpanId === 'string' && HEX_RE.test(span.parentSpanId)
-              ? span.parentSpanId
-              : null,
-          name: name.slice(0, 256),
-          service,
-          startTime,
-          endTime,
-          durationMs: endTime.getTime() - startTime.getTime(),
-          statusCode: normalizeStatus(span.status?.code),
-          statusMessage:
-            typeof span.status?.message === 'string' ? span.status.message.slice(0, 512) : null,
-          ...promote(attributes),
-          attributes,
-          events: (span.events ?? [])
-            .filter((e) => typeof e?.name === 'string')
-            .map((e) => ({
-              name: (e.name as string).slice(0, 128),
-              timeMs: nanoToDate(e.timeUnixNano)?.getTime() ?? startTime.getTime(),
-              attributes: attributesToRecord(e.attributes),
-            })),
-        });
+        rows.push(row);
       }
     }
   }

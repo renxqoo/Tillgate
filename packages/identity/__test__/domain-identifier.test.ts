@@ -28,8 +28,9 @@ function catchCode(fn: () => unknown): { code: string; context: Record<string, u
     fn();
   } catch (error) {
     const business = error as { code?: string; context?: Record<string, unknown> };
-    if (typeof business.code === 'string')
+    if (typeof business.code === 'string') {
       return { code: business.code, context: business.context ?? {} };
+    }
     throw error;
   }
   throw new Error('expected identity business error, nothing thrown');

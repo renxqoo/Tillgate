@@ -33,14 +33,13 @@ export default async function SubscriptionPage() {
   try {
     const subResult = await api.get<RowsPage<CurrentSubscription>>('/v1/subscriptions');
     subscription = subResult.rows[0] ?? null;
-  } catch (e) {
-    subError = e instanceof ApiError ? e.message : t('loadFailed');
+  } catch (error) {
+    subError = error instanceof ApiError ? error.message : t('loadFailed');
   }
 
   // B2 修复在 server/plans.ts 单点：limit=100（v1 page_size 形态被忽略截断）
   const plansResult = await fetchPlans(api, isEnterprise, t('loadFailed'));
-  plans = plansResult.plans;
-  plansError = plansResult.error;
+  ({ plans, error: plansError } = plansResult);
 
   try {
     const data = await api.get<RowsTotalPage<OrgRow>>('/v1/orgs');

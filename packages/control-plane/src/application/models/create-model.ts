@@ -21,6 +21,7 @@ export type CreateModelInput = {
   readonly ctx: ControlContext;
 } & ModelCreateInput;
 
+// eslint-disable-next-line max-lines-per-function -- 用例编排:校验→重名前置→插入→绑渠道→审计
 export async function createModel(
   deps: CreateModelDeps,
   input: CreateModelInput,

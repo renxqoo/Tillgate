@@ -20,6 +20,7 @@ export interface RetryDeadResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 死单处置事务体:顺序步骤
 export async function retryDead(
   env: {
     store: Pick<

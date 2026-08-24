@@ -16,6 +16,11 @@ function load(env: Partial<NodeJS.ProcessEnv> = {}) {
   return loadClientApiConfig({ ...BASE, ...env });
 }
 
+// 模块级:组配置拒绝断言(提出 describe/it 回调,避免 expect 内箭头第 4 层嵌套)
+function rejectLoad(env: Partial<NodeJS.ProcessEnv>, pattern: RegExp): void {
+  expect(() => load(env)).toThrowError(pattern);
+}
+
 describe('client-api config', () => {
   it('缺必配项 fail-fast', () => {
     expect(() => loadClientApiConfig({})).toThrowError(/DATABASE_URL|Required/i);
@@ -78,7 +83,7 @@ describe('client-api config', () => {
       ['CAPTCHA', { CAPTCHA_SITE_KEY: 'k' }],
       ['SMTP', { SMTP_HOST: 'h' }],
     ])('%s 半配拒绝', (_name, patch) => {
-      expect(() => load(patch)).toThrowError(/as a group/);
+      rejectLoad(patch, /as a group/);
     });
 
     it('EPAY 全配通过', () => {
@@ -93,13 +98,11 @@ describe('client-api config', () => {
     });
 
     it('OAuth 凭证无基地址拒绝', () => {
-      expect(() => load({ OAUTH_GITHUB_CLIENT_ID: 'id' })).toThrowError(
-        /OAUTH_FRONTEND_URL and OAUTH_API_BASE/,
-      );
+      rejectLoad({ OAUTH_GITHUB_CLIENT_ID: 'id' }, /OAUTH_FRONTEND_URL and OAUTH_API_BASE/);
     });
 
     it('sentinel 无主名拒绝', () => {
-      expect(() => load({ REDIS_SENTINELS: 'h1:26379' })).toThrowError(/REDIS_SENTINEL_NAME/);
+      rejectLoad({ REDIS_SENTINELS: 'h1:26379' }, /REDIS_SENTINEL_NAME/);
     });
   });
 

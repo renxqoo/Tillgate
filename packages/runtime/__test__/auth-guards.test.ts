@@ -15,6 +15,7 @@ import {
   createLocalKeyBruteForceGuard,
 } from '../src/redis/auth-local-guard';
 import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../src/testing';
+import { defined } from './defined';
 
 const url = testRedisUrl();
 
@@ -27,7 +28,7 @@ describe.skipIf(url == null)('爆破防护（真实 Redis）', () => {
   afterAll(() => disconnectTestRedis(redis));
 
   it('keyGuard：窗口内失败达阈值即锁、成功清零', async () => {
-    const guard = createKeyBruteForceGuard(redis!, {
+    const guard = createKeyBruteForceGuard(defined(redis, 'redis'), {
       failureThreshold: 3,
       failureWindowS: 60,
       lockS: 60,
@@ -45,7 +46,7 @@ describe.skipIf(url == null)('爆破防护（真实 Redis）', () => {
   });
 
   it('ipGuard：失败达 limit 即锁（锁长=窗口长）、recordSuccess 清零', async () => {
-    const guard = createAuthFailureGuard(redis!, { limit: 2, windowS: 60 });
+    const guard = createAuthFailureGuard(defined(redis, 'redis'), { limit: 2, windowS: 60 });
     const ip = `10.0.0.${(Date.now() % 250) + 1}`;
     await guard.recordFailure(ip);
     const locked = await guard.recordFailure(ip);
@@ -87,7 +88,7 @@ describe('爆破防护故障三档', () => {
     );
     const err = await guard.isLocked('x').then(
       () => null,
-      (e: Error) => e,
+      (error: Error) => error,
     );
     expect(isInfrastructureError(err), String(err)).toBe(true);
     expect((err as { code: string }).code).toBe('runtime.auth_guard_unavailable');

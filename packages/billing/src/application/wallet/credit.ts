@@ -3,6 +3,7 @@
  * 幂等三段式：快速路径重放 → 唯一冲突兜底重放 → 同键异命令 409；
  * 跨用户键劫持归属前置于指纹（ref_key_conflict，不是把别人的交易当自己的重放）。
  */
+import { DefectError } from '@tillgate/errors';
 import { commandFingerprint } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { parsePositiveAmount } from '../../domain/money.js';
@@ -31,8 +32,10 @@ export interface CreditResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
 export function createCreditUseCase(env: WalletEnv) {
   const { store, guards, currency: defaultCurrency } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
   return async function credit(input: CreditInput): Promise<CreditResult> {
     const currency = resolveCurrency(guards, defaultCurrency, input);
     assertRefKey(guards, input.refType, input.refId);
@@ -81,10 +84,14 @@ export function createCreditUseCase(env: WalletEnv) {
             { accountId: cpAccountId, currency, amount: amount.neg() },
           ],
         });
+        const balanceAfter = posted.balanceAfter.get(userAccountId);
+        if (balanceAfter === undefined) {
+          throw new DefectError('credit.balance_missing', 'billing.wallet_invariant');
+        }
         return {
           transactionId: posted.transactionId,
           amount: normalizeAmount(input.amount),
-          balanceAfter: posted.balanceAfter.get(userAccountId)!,
+          balanceAfter,
           replayed: false,
         };
       });

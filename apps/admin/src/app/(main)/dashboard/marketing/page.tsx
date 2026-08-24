@@ -14,11 +14,11 @@ export default async function MarketingPage() {
   const t = await getTranslations('marketing');
   const tc = await getTranslations('common');
   let settings: MarketingSettingsView | null = null;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     settings = await adminApi().get<MarketingSettingsView>('/v1/marketing/settings');
-  } catch (e) {
-    error = e instanceof Error ? e.message : tc('loadFailed');
+  } catch (error) {
+    loadError = error instanceof Error ? error.message : tc('loadFailed');
   }
   return (
     <ListPage
@@ -27,7 +27,7 @@ export default async function MarketingPage() {
       icon={<MegaphoneIcon className="size-5 text-muted-foreground" />}
       unbordered
     >
-      <MarketingContent settings={settings} error={error} />
+      <MarketingContent settings={settings} error={loadError} />
     </ListPage>
   );
 }

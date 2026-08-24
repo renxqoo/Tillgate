@@ -68,7 +68,8 @@ export const postgresFxStore: FxStore = {
         operatorAdminId: input.operatorAdminId ?? null,
       })
       .returning({ id: fxRates.id });
-    return { id: row!.id };
+    if (row === undefined) throw new Error('fx.insert_rate_failed');
+    return { id: row.id };
   },
 
   async readConfig(db) {

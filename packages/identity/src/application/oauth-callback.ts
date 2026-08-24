@@ -22,6 +22,31 @@ export interface OAuthCallbackResult extends OAuthProfile {
   readonly next: string | undefined;
 }
 
+/** state 单次消费半程:store 缺失拒绝 + GETDEL 语义 + provider 匹配校验(不可达按已过期,fail-closed) */
+async function consumeOAuthState(
+  ctx: IdentityUseCaseContext,
+  args: { provider: string; state: string },
+): Promise<OAuthStatePayload> {
+  if (ctx.oauthStateStore == null) {
+    throw identityErrors.business('oauth_state_unavailable', { provider: args.provider });
+  }
+  let stored: OAuthStatePayload | null;
+  try {
+    stored = await ctx.oauthStateStore.consume(args.state);
+  } catch (error) {
+    // 不可达按已过期拒绝(fail-closed,v1 语义)
+    ctx.logger.warn(
+      { err: (error as Error).message, provider: args.provider },
+      'oauth state consume failed',
+    );
+    throw identityErrors.business('oauth_state_unavailable', { provider: args.provider });
+  }
+  if (stored == null || stored.provider !== args.provider) {
+    throw identityErrors.business('oauth_state_invalid', { provider: args.provider });
+  }
+  return stored;
+}
+
 export async function oauthCallback(
   ctx: IdentityUseCaseContext,
   input: OAuthCallbackInput,
@@ -31,21 +56,8 @@ export async function oauthCallback(
   if (providerAdapter == null) {
     throw identityErrors.business('oauth_provider_unconfigured', { provider });
   }
-  if (ctx.oauthStateStore == null) {
-    throw identityErrors.business('oauth_state_unavailable', { provider });
-  }
 
-  let stored: OAuthStatePayload | null;
-  try {
-    stored = await ctx.oauthStateStore.consume(input.state);
-  } catch (error) {
-    // 不可达按已过期拒绝(fail-closed,v1 语义)
-    ctx.logger.warn({ err: (error as Error).message, provider }, 'oauth state consume failed');
-    throw identityErrors.business('oauth_state_unavailable', { provider });
-  }
-  if (stored == null || stored.provider !== provider) {
-    throw identityErrors.business('oauth_state_invalid', { provider });
-  }
+  const stored = await consumeOAuthState(ctx, { provider, state: input.state });
   if (typeof input.code !== 'string' || input.code.length === 0) {
     throw identityErrors.business('invalid_input', {
       field: 'code',

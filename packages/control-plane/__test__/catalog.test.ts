@@ -4,6 +4,7 @@
  * 重复=价格更新确认/外部名冲突回滚/缺 key 拒绝）/ reference 草稿导入 / provenance 审计全链 / 源缓存 TTL。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { listCatalogSources } from '../src/application/catalog/list-catalog-sources';
 import { compareCatalogFromSource } from '../src/application/catalog/compare-catalog';
 import { catalogPriceHistory } from '../src/application/catalog/catalog-price-history';
@@ -174,7 +175,7 @@ describe('comparison：三态 diff + 预填 + fx 快照 + channelReady + gone', 
       channelReady: false,
     });
     expect(payload.fx).toMatchObject({ mode: 'auto', baseRate: '7.2' });
-    const gpt = payload.items.find((i) => i.realModel === 'openai/gpt-4o')!;
+    const gpt = defined(payload.items.find((i) => i.realModel === 'openai/gpt-4o'));
     expect(gpt.diff).toBe('new');
     expect(Number(gpt.prefillInputCny)).toBeCloseTo(2.5 * 7.2, 8);
     expect(payload.gone).toEqual([]);
@@ -214,7 +215,7 @@ describe('comparison：三态 diff + 预填 + fx 快照 + channelReady + gone', 
     });
     const payload = await compareCatalogFromSource(s.compareDeps, 'mock-src');
     expect(payload.channelReady).toBe(true);
-    const gpt = payload.items.find((i) => i.realModel === 'openai/gpt-4o')!;
+    const gpt = defined(payload.items.find((i) => i.realModel === 'openai/gpt-4o'));
     expect(gpt.imported).toMatchObject({ externalName: 'gpt-4o-alias' });
     expect(gpt.diff).toBe('same');
     expect(payload.gone).toEqual([
@@ -288,23 +289,23 @@ describe('channel 导入（find-or-create + 单事务语义）', () => {
     expect(result).toMatchObject({ created: 2, updated: 0, skipped: 0 });
     expect(result.providerId).not.toBeNull();
     expect(result.channelId).not.toBeNull();
-    const channel = [...s.channels.rows.values()][0]!;
+    const channel = defined([...s.channels.rows.values()][0]);
     expect(channel.name).toBe('mock-ch');
     expect(channel.rpmLimit).toBe(60);
     expect(channel.upstreamBudget).toBe('100');
     expect(fakeCipher.decrypt(channel.apiKeyEnc)).toBe('sk-platform');
     // isFree 按价格全零推导
-    const llama = [...s.models.rows.values()].find((m) => m.realModel.includes('llama'))!;
+    const llama = defined([...s.models.rows.values()].find((m) => m.realModel.includes('llama')));
     expect(llama.isFree).toBe(true);
     expect(llama.status).toBe(0);
     expect(llama.bindings.map((b) => b.channelId)).toEqual([channel.id]);
     // provenance 审计：fx 快照 + 目录价 + 预填 + 提交值
-    const entry = s.audit.entries.find((e) => e.action === 'model_catalog.import')!;
+    const entry = defined(s.audit.entries.find((e) => e.action === 'model_catalog.import'));
     const detail = entry.detail as Record<string, unknown>;
     expect(detail.fx).toMatchObject({ baseRate: '7.2' });
-    const audited = (detail.models as Array<Record<string, unknown>>).find(
-      (m) => m.externalName === 'gpt-4o',
-    )!;
+    const audited = defined(
+      (detail.models as Array<Record<string, unknown>>).find((m) => m.externalName === 'gpt-4o'),
+    );
     expect(audited).toMatchObject({ catalogPrompt: '2.5', submittedInputCny: '18' });
     expect(Number(audited.prefillInputCny)).toBeCloseTo(2.5 * 7.2, 6);
   });
@@ -367,9 +368,9 @@ describe('channel 导入（find-or-create + 单事务语义）', () => {
       ],
     });
     expect(second).toMatchObject({ channelId: first.channelId, created: 0, updated: 1 });
-    const channel = s.channels.rows.get(first.channelId!)!;
+    const channel = defined(s.channels.rows.get(defined(first.channelId)));
     expect(fakeCipher.decrypt(channel.apiKeyEnc)).toBe('sk-first'); // 复用不覆盖
-    const mapping = [...s.models.rows.values()].find((m) => m.externalName === 'gpt-4o')!;
+    const mapping = defined([...s.models.rows.values()].find((m) => m.externalName === 'gpt-4o'));
     expect(mapping.inputPrice).toBe('20');
     expect(mapping.contextLength).toBe(128_000);
     expect([...s.models.rows.values()]).toHaveLength(1);
@@ -443,19 +444,23 @@ describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑
       ],
     });
     expect(result).toMatchObject({ created: 2, channelId: null, providerId: null });
-    const claude = [...s.models.rows.values()].find((m) => m.externalName === 'claude-sonnet-4')!;
+    const claude = defined(
+      [...s.models.rows.values()].find((m) => m.externalName === 'claude-sonnet-4'),
+    );
     expect(claude.status).toBe(1); // 草稿
     // 两个 provider 各建一条对应渠道（provider 同名 find-or-create）
     expect([...s.channels.rows.values()].map((c) => c.name).toSorted()).toEqual([
       'anthropic',
       'openai',
     ]);
-    const anthropicChannel = [...s.channels.rows.values()].find((c) => c.name === 'anthropic')!;
+    const anthropicChannel = defined(
+      [...s.channels.rows.values()].find((c) => c.name === 'anthropic'),
+    );
     expect(anthropicChannel.rpmLimit).toBe(60);
     expect(anthropicChannel.upstreamBudget).toBe('100');
     expect(fakeCipher.decrypt(anthropicChannel.apiKeyEnc)).toBe('no-key-required'); // 占位 Key
     expect(claude.bindings.map((b) => b.channelId)).toEqual([anthropicChannel.id]);
-    const provider = [...s.providers.rows.values()].find((p) => p.name === 'anthropic')!;
+    const provider = defined([...s.providers.rows.values()].find((p) => p.name === 'anthropic'));
     expect(provider.baseUrl).toBe('https://placeholder.invalid'); // 非路由占位基址
     expect(s.audit.entries.map((e) => e.action)).toContain('model_catalog.import_draft');
   });
@@ -499,12 +504,12 @@ describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑
       ],
     });
     expect(second).toMatchObject({ created: 1, skipped: 1 });
-    expect([...s.models.rows.values()][0]!.inputPrice).toBe('21.6'); // 已存在跳过不覆盖
+    expect(defined([...s.models.rows.values()][0]).inputPrice).toBe('21.6'); // 已存在跳过不覆盖
     // 仍只有一条 anthropic 渠道；两个映射都绑在它上面
     const anthropicChannels = [...s.channels.rows.values()].filter((c) => c.name === 'anthropic');
     expect(anthropicChannels).toHaveLength(1);
     for (const mapping of s.models.rows.values()) {
-      expect(mapping.bindings.map((b) => b.channelId)).toEqual([anthropicChannels[0]!.id]);
+      expect(mapping.bindings.map((b) => b.channelId)).toEqual([defined(anthropicChannels[0]).id]);
     }
   });
 
@@ -531,9 +536,11 @@ describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑
     });
     expect(result.created).toBe(1);
     expect(s.channels.rows.size).toBe(1); // 未新建渠道
-    expect(fakeCipher.decrypt(s.channels.rows.get(real.id)!.apiKeyEnc)).toBe('sk-real-admin-key');
+    expect(fakeCipher.decrypt(defined(s.channels.rows.get(real.id)).apiKeyEnc)).toBe(
+      'sk-real-admin-key',
+    );
     expect([...s.providers.rows.values()].filter((p) => p.name === 'anthropic')).toHaveLength(0);
-    const mapping = [...s.models.rows.values()][0]!;
+    const mapping = defined([...s.models.rows.values()][0]);
     expect(mapping.bindings.map((b) => b.channelId)).toEqual([real.id]);
   });
 
@@ -564,10 +571,12 @@ describe('reference 导入（models.dev 草稿 + 对应渠道 find-or-create 绑
       ],
     });
     expect(result).toMatchObject({ created: 0, skipped: 1 });
-    expect(s.models.rows.get(legacy.id)!.inputPrice).toBe('5'); // 价格不动
-    const slugChannel = [...s.channels.rows.values()].find((c) => c.name === 'custom-model')!;
+    expect(defined(s.models.rows.get(legacy.id)).inputPrice).toBe('5'); // 价格不动
+    const slugChannel = defined(
+      [...s.channels.rows.values()].find((c) => c.name === 'custom-model'),
+    );
     expect(slugChannel).toBeDefined();
-    expect(s.models.rows.get(legacy.id)!.bindings.map((b) => b.channelId)).toEqual([
+    expect(defined(s.models.rows.get(legacy.id)).bindings.map((b) => b.channelId)).toEqual([
       slugChannel.id,
     ]);
   });
@@ -602,7 +611,7 @@ describe('价格溯源（provenance 读回）', () => {
       submittedOutputCny: '72',
       fx: expect.objectContaining({ baseRate: '7.2' }),
     });
-    expect(history[0]!.catalogPrompt).toBe('2.5');
+    expect(defined(history[0]).catalogPrompt).toBe('2.5');
   });
 });
 
@@ -637,10 +646,11 @@ describe('分支补口：reference 源 comparison（无渠道护栏）与 fx 不
       ],
     });
     expect(result.created).toBe(1);
-    const entry = s.audit.entries.find((e) => e.action === 'model_catalog.import')!;
+    const entry = defined(s.audit.entries.find((e) => e.action === 'model_catalog.import'));
     expect((entry.detail as { fx: unknown }).fx).toBeNull();
-    const audited = (entry.detail as { models: Array<{ prefillInputCny: string | null }> })
-      .models[0]!;
+    const audited = defined(
+      (entry.detail as { models: Array<{ prefillInputCny: string | null }> }).models[0],
+    );
     expect(audited.prefillInputCny).toBeNull();
   });
 

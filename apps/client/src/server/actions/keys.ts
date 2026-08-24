@@ -23,9 +23,9 @@ export async function createKeyAction(input: {
     });
     revalidatePath('/dashboard/keys');
     return { key };
-  } catch (e) {
+  } catch (error) {
     const tCommon = await getTranslations('common');
-    return { error: e instanceof ApiError ? e.message : tCommon('createFailed') };
+    return { error: error instanceof ApiError ? error.message : tCommon('createFailed') };
   }
 }
 
@@ -50,8 +50,8 @@ export async function updateKeyAction(
     await createClientApi().patch<KeyRow>(`/v1/keys/${id}`, body);
     revalidatePath('/dashboard/keys');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('updateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('updateFailed') };
   }
 }
 
@@ -61,8 +61,8 @@ export async function revokeKeyAction(id: number): Promise<{ error?: string }> {
     await createClientApi().delete(`/v1/keys/${id}`);
     revalidatePath('/dashboard/keys');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('revokeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('revokeFailed') };
   }
 }
 
@@ -83,13 +83,13 @@ export async function exportKeysAction(): Promise<{ error?: string; rows?: KeyRo
     for (let page = 1; rows.length < total && rows.length < EXPORT_MAX_KEYS; page += 1) {
       const res = await api.list<KeyRow>('/v1/keys', { page, pageSize: EXPORT_PAGE_SIZE });
       rows.push(...res.rows);
-      total = res.total;
+      ({ total } = res);
       // 空页防御：total 异常（如大于真实存量）时后端返回空页，立即终止防死循环
       if (res.rows.length === 0) break;
     }
     return { rows };
-  } catch (e) {
+  } catch (error) {
     const tCommon = await getTranslations('common');
-    return { error: e instanceof ApiError ? e.message : tCommon('loadFailed') };
+    return { error: error instanceof ApiError ? error.message : tCommon('loadFailed') };
   }
 }

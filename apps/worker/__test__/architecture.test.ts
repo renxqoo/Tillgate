@@ -8,6 +8,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 
 const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -38,6 +39,7 @@ describe('① src 文件集合快照（目标树机器锁死）', () => {
   it('文件集合与 DESIGN §3 目标目录一致', () => {
     expect(files.map((f) => f.path)).toEqual([
       'assembly.ts',
+      'bridge-mappers.ts',
       'config.ts',
       'health.ts',
       'index.ts',
@@ -76,7 +78,8 @@ describe('④ 跨包 import 只走包名 exports', () => {
   it('禁 @tillgate/*/src 深导入（边界门禁的文本前置）', () => {
     for (const file of files) {
       for (const spec of file.code.matchAll(/from\s+'(@tillgate\/[^']+)'/g)) {
-        expect(spec[1]!.includes('/src/'), `${file.path} → ${spec[1]}`).toBe(false);
+        const specifier = defined(spec[1], 'matchAll capture');
+        expect(specifier.includes('/src/'), `${file.path} → ${specifier}`).toBe(false);
       }
     }
   });

@@ -52,9 +52,7 @@ export function usageRoutes(deps: UsageReads, session: MiddlewareHandler<Session
     return c.json(result);
   });
 
-  app.get('/v1/usage/rate', session, async (c) => {
-    return c.json(await deps.rate(c.get('userId')));
-  });
+  app.get('/v1/usage/rate', session, async (c) => c.json(await deps.rate(c.get('userId'))));
 
   return app;
 }

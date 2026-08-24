@@ -5,12 +5,14 @@ import { useTransition } from 'react';
 import { BriefcaseIcon, Loader2Icon, UserIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { AdjustDialog, GiftDialog, PasswordDialog } from '@/features/users/user-dialogs';
+import { AdjustDialog } from '@/features/users/adjust-user-dialog';
+import { GiftDialog } from '@/features/users/gift-user-dialog';
+import { PasswordDialog } from '@/features/users/set-user-password-dialog';
 import type { AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /**
- * 用户详情页操作按钮组（弹窗实现在共享组件 user-dialogs）。
+ * 用户详情页操作按钮组（弹窗实现在同目录 *-user-dialog 文件）。
  */
 export function UserActions({ user }: { readonly user: AdminUserRow }) {
   const t = useTranslations('users');

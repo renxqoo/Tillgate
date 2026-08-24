@@ -34,6 +34,7 @@ import {
   setupRealFullSchema,
   type RealFullSchemaHarness,
 } from './real-pg.js';
+import { defined } from './defined.js';
 
 /** 业务拒绝信息（非业务错误原样抛出——测试不得吞缺陷） */
 function businessOf(error: unknown): { code: string; reason: unknown } {
@@ -73,7 +74,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
       insert into users (issuer, subject, identity_provider, email)
       values ('local', ${`subrace-${Date.now()}-${userSeq}@test`}, 'local', ${`subrace-${Date.now()}-${userSeq}@test`})
       returning id`);
-    return Number(row.rows[0]!.id);
+    return Number(defined(row.rows[0]).id);
   };
 
   const seedPlan = async (input: {
@@ -86,7 +87,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
       insert into plans (name, kind, sort_order, price, period_days, quota_amount, allow_seats, status)
       values (${input.name}, 'subscription', ${input.sortOrder}, ${input.price}, 30, ${input.quota}, false, 0)
       returning id`);
-    return Number(row.rows[0]!.id);
+    return Number(defined(row.rows[0]).id);
   };
 
   const balanceOf = async (userId: number): Promise<string> =>
@@ -101,7 +102,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
 
   beforeAll(async () => {
     harness = await setupRealFullSchema('subrace');
-    db = harness.db;
+    ({ db } = harness);
     const walletStore = createPostgresWalletStore(db, { retry: V1_RETRY });
     const billingStore = createPostgresBillingStore(db, { retry: V1_RETRY });
     wallet = createWalletApi({
@@ -231,7 +232,7 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     // 与赢家回执余额精确一致（两种合法交错 40 / 10）
     const balance = await balanceOf(userId);
     expect(winner.balanceAfter).not.toBeNull();
-    expect(new Decimal(balance).eq(new Decimal(winner.balanceAfter!))).toBe(true);
+    expect(new Decimal(balance).eq(new Decimal(defined(winner.balanceAfter)))).toBe(true);
     expect(new Decimal(balance).eq(40) || new Decimal(balance).eq(10)).toBe(true);
     expect(
       await countInt(
@@ -281,8 +282,8 @@ function partition<T>(results: PromiseSettledResult<T>[]): {
     // （bigint 经 pg 驱动返回字符串——Number 收敛）
     const key = await db.execute<{ subscription_id: string | number | null }>(sql`
       select subscription_id from api_keys where key_hash = ${keyHash}`);
-    expect(key.rows[0]!.subscription_id).not.toBeNull();
-    expect(Number(key.rows[0]!.subscription_id)).toBe(winner.subscriptionId);
+    expect(defined(key.rows[0]).subscription_id).not.toBeNull();
+    expect(Number(defined(key.rows[0]).subscription_id)).toBe(winner.subscriptionId);
     expect(
       await countInt(
         sql`select count(*)::int as n from api_keys where subscription_id = ${purchased.subscriptionId}`,

@@ -3,6 +3,7 @@
  * 对外名建议 / OpenAI 兼容全量映射 / models.dev 字典映射 / 换算 / 三态 diff / 消失检测。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import {
   suggestExternalName,
   mapOpenAiCompatibleCatalog,
@@ -65,7 +66,7 @@ describe('mapOpenAiCompatibleCatalog：全量返回（免费+付费），币种�
       suggestedName: 'llama-3.3-70b-instruct',
       contextLength: 65536,
     });
-    const paid = items.find((i) => i.realModel === 'openai/gpt-4o')!;
+    const paid = defined(items.find((i) => i.realModel === 'openai/gpt-4o'));
     expect(paid.catalogPrompt).toBe('2.5');
     expect(paid.catalogCacheRead).toBe('1.25');
     expect(paid.catalogCacheWrite).toBeNull();
@@ -86,7 +87,7 @@ describe('mapOpenAiCompatibleCatalog：全量返回（免费+付费），币种�
       { data: [{ id: 'gpt-4o', pricing: { prompt: 0, completion: 0 } }] },
       { currency: 'USD', realModelPrefix: 'openrouter/' },
     );
-    expect(items[0]!.realModel).toBe('openrouter/gpt-4o');
+    expect(defined(items[0]).realModel).toBe('openrouter/gpt-4o');
   });
 });
 
@@ -147,12 +148,14 @@ describe('compareCatalog：三态 diff + 漂移 + 免费警告', () => {
     const compared = compareCatalog(items, existing, { effectiveRate: '1' });
     const byReal = new Map(compared.map((c) => [c.realModel, c]));
     // gpt-4o 目录 2.5/10 vs 库内 2.5/10 → same
-    expect(byReal.get('openai/gpt-4o')!.diff).toBe('same');
-    expect(byReal.get('openai/gpt-4o')!.driftPct).toBe(0);
-    expect(byReal.get('openai/gpt-4o')!.imported).toMatchObject({ externalName: 'same-alias' });
+    expect(defined(byReal.get('openai/gpt-4o')).diff).toBe('same');
+    expect(defined(byReal.get('openai/gpt-4o')).driftPct).toBe(0);
+    expect(defined(byReal.get('openai/gpt-4o')).imported).toMatchObject({
+      externalName: 'same-alias',
+    });
     // qwen 目录 0/0 vs 库内 1000/1000：目录免费 → catalogCharged=false → same + isFree
-    expect(byReal.get('qwen/qwen-2.5-72b-instruct:free')!.diff).toBe('same');
-    expect(byReal.get('qwen/qwen-2.5-72b-instruct:free')!.isFree).toBe(true);
+    expect(defined(byReal.get('qwen/qwen-2.5-72b-instruct:free')).diff).toBe('same');
+    expect(defined(byReal.get('qwen/qwen-2.5-72b-instruct:free')).isFree).toBe(true);
   });
 
   it('汇率缺失 → diff 退化为 same（无法同币比较）', () => {
@@ -165,7 +168,7 @@ describe('compareCatalog：三态 diff + 漂移 + 免费警告', () => {
     const items = mapOpenAiCompatibleCatalog(RAW_CATALOG, { currency: 'USD' });
     // llama 目录免费、库内免费 → 无警告；构造一个目录收费但库内免费的对照
     const custom = [
-      { ...items.find((i) => i.realModel === 'openai/gpt-4o')! },
+      { ...defined(items.find((i) => i.realModel === 'openai/gpt-4o')) },
       {
         realModel: 'fresh/model',
         displayName: 'x',
@@ -190,10 +193,10 @@ describe('compareCatalog：三态 diff + 漂移 + 免费警告', () => {
       ],
       { effectiveRate: '1' },
     );
-    expect(compared[0]!.priceWarning).toBe(true);
-    expect(compared[0]!.diff).toBe('same');
-    expect(compared[1]!.diff).toBe('new');
-    expect(compared[1]!.imported).toBeNull();
+    expect(defined(compared[0]).priceWarning).toBe(true);
+    expect(defined(compared[0]).diff).toBe('same');
+    expect(defined(compared[1]).diff).toBe('new');
+    expect(defined(compared[1]).imported).toBeNull();
   });
 
   it('±5% 带宽内视为 same；越界判涨/跌', () => {
@@ -209,11 +212,13 @@ describe('compareCatalog：三态 diff + 漂移 + 免费警告', () => {
       suggestedName: 'm',
     };
     const ours = [{ externalName: 'a', realModel: 'm', inputPrice: '10', outputPrice: '10' }];
-    expect(compareCatalog([item], ours, { effectiveRate: '1' })[0]!.diff).toBe('same'); // +4%
+    expect(defined(compareCatalog([item], ours, { effectiveRate: '1' })[0]).diff).toBe('same'); // +4%
     const up = { ...item, catalogPrompt: '11', catalogCompletion: '11' };
-    expect(compareCatalog([up], ours, { effectiveRate: '1' })[0]!.diff).toBe('price_up'); // +10%
+    expect(defined(compareCatalog([up], ours, { effectiveRate: '1' })[0]).diff).toBe('price_up'); // +10%
     const down = { ...item, catalogPrompt: '8', catalogCompletion: '8' };
-    expect(compareCatalog([down], ours, { effectiveRate: '1' })[0]!.diff).toBe('price_down'); // -20%
+    expect(defined(compareCatalog([down], ours, { effectiveRate: '1' })[0]).diff).toBe(
+      'price_down',
+    ); // -20%
   });
 });
 

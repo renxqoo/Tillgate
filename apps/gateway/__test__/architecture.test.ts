@@ -10,6 +10,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -50,6 +51,7 @@ describe('src 文件集合快照', () => {
       'http/openai-error-face.ts',
       'http/routes/generation.ts',
       'http/routes/inference-endpoints.ts',
+      'http/routes/inference-input.ts',
       'http/routes/modality-multipart.ts',
       'http/routes/models.ts',
       'http/routes/native-gemini.ts',
@@ -95,7 +97,9 @@ describe('§3.6：app 运行时不直接 import ai', () => {
 describe('跨包 import 只走包名（§5.5）', () => {
   it('禁止 @tillgate/*/src 深导入（composition 子入口豁免）', () => {
     for (const f of files) {
-      const specs = [...sourceOf(f).matchAll(/from '([^']+)'/g)].map((m) => m[1]!);
+      const specs = [...sourceOf(f).matchAll(/from '([^']+)'/g)].map((m) =>
+        defined(m[1], 'import spec match group'),
+      );
       for (const spec of specs) {
         if (!spec.startsWith('@tillgate/')) continue;
         expect(/^@tillgate\/[a-z-]+(\/composition)?$/.test(spec), `${f} → ${spec}`).toBe(true);

@@ -57,7 +57,8 @@ export const RESERVATION_STRATEGIES: Record<string, ReservationStrategy> = {
 export function reservationStrategyOf(config: ReservationPolicyConfig): ReservationStrategy {
   const name = config.strategy ?? 'full';
   const strategy = RESERVATION_STRATEGIES[name];
-  if (strategy == null)
+  if (strategy == null) {
     throw BillingErrors.business('unknown_reservation_strategy', { strategy: name });
+  }
   return strategy;
 }

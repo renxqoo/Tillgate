@@ -67,8 +67,8 @@ export async function createChannelAction(
     });
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -93,8 +93,8 @@ export async function updateChannelAction(
     });
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
 
@@ -106,8 +106,8 @@ export async function deleteChannelAction(id: number): Promise<{ error?: string 
     await adminApi().delete(`/v1/channels/${id}`);
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('deleteFailed') };
   }
 }
 
@@ -118,8 +118,8 @@ export async function undeleteChannelAction(id: number): Promise<{ error?: strin
     await adminApi().post(`/v1/channels/${id}/restore`);
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('undeleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('undeleteFailed') };
   }
 }
 
@@ -150,10 +150,11 @@ export async function testChannelAction(id: number): Promise<ChannelTestOutcome>
       return { ok: false, durationMs: res.durationMs, error: errMsg };
     }
     return { ok: true, durationMs: res.durationMs, keyPreview: res.keyPreview };
-  } catch (e) {
+  } catch (error) {
     let msg = t('testFailed');
-    if (e instanceof ApiError)
-      msg = typeof e.message === 'string' ? e.message : JSON.stringify(e.message);
+    if (error instanceof ApiError) {
+      msg = typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
+    }
     return { error: msg };
   }
 }
@@ -172,7 +173,7 @@ export async function importChannelsAction(
   channels: ChannelImportItem[],
 ): Promise<{ error?: string; created?: number }> {
   const t = await getTranslations('channels');
-  if (!channels.length) return { error: t('importEmpty') };
+  if (channels.length === 0) return { error: t('importEmpty') };
   try {
     const res = await adminApi().post<{ created: number } | { list?: unknown[] } | unknown>(
       '/v1/channels/import',
@@ -186,7 +187,7 @@ export async function importChannelsAction(
       (res as { list?: unknown[] })?.list?.length ??
       channels.length;
     return { created };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('importFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('importFailed') };
   }
 }

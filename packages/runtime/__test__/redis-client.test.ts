@@ -24,7 +24,9 @@ describe('createRedisClient', () => {
     client.emit('error', boom);
     client.emit('error', boom);
     client.emit('error', boom);
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
 
     const logs = errSpy.mock.calls.map((c) => String(c[0]));
     // 真实连接失败可能抢先占首条——断言「有日志且去重到 ≤1 条」
@@ -43,12 +45,15 @@ describe('createRedisClient', () => {
     clients.push(client);
     client.emit(
       'error',
+      // eslint-disable-next-line unicorn/error-message -- 该用例刻意构造空 message 的 AggregateError（回归目标：空 message 不产生「空原因」日志）
       new AggregateError([
         new Error('connect ECONNREFUSED ::1:6379'),
         new Error('connect ECONNREFUSED 127.0.0.1:6379'),
       ]),
     );
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     const logged = errSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logged).toContain('AggregateError');
     expect(logged).toContain('::1:6379');
@@ -64,7 +69,9 @@ describe('createRedisClient', () => {
     });
     clients.push(client);
     client.emit('error', new Error('x'));
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     const logged = errSpy.mock.calls.map((c) => String(c[0])).join('\n');
     expect(logged).not.toContain('secret-pass');
   });
@@ -79,7 +86,9 @@ describe('createRedisClient', () => {
     });
     clients.push(client);
     client.emit('error', new Error('synthetic'));
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(lines.length).toBe(1);
     expect(lines[0]).toContain('inj-svc');
     expect(errSpy).not.toHaveBeenCalled();
@@ -125,9 +134,9 @@ describe('createRedisClient', () => {
           sentinelName: 'mymaster',
         });
         expect.unreachable(`expected DefectError for path ${badPath}`);
-      } catch (e) {
-        expect(isDefectError(e), `${badPath}: ${String(e)}`).toBe(true);
-        expect((e as { code: string }).code).toBe('runtime.redis.url_invalid');
+      } catch (error) {
+        expect(isDefectError(error), `${badPath}: ${String(error)}`).toBe(true);
+        expect((error as { code: string }).code).toBe('runtime.redis.url_invalid');
       }
     }
   });
@@ -143,7 +152,9 @@ describe('createRedisClient', () => {
     });
     clients.push(client);
     client.emit('error', new Error('synthetic'));
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(lines[0]).toContain('::not-a-url'); // sanitizeUrl 兜底：解析失败原样输出
   });
 });

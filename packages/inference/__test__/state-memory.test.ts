@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
+import { defined } from './defined';
 
 interface S {
   version: number;
@@ -37,7 +38,7 @@ describe('adapters/state-memory：版本化 CAS + TTL 懒过期', () => {
     const store = createMemoryHealthStore();
     await store.compareAndSet<S>('k', 0, { version: 1, count: 1 }, 1_000);
     const state = await store.getState<S>('k');
-    state!.count = 99;
+    defined(state, 'state').count = 99;
     expect((await store.getState<S>('k'))?.count).toBe(1);
   });
 });

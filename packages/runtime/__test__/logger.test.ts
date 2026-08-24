@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createLogger } from '../src/logging/logger';
+import { defined } from './defined';
 
 /** 行收集流：createLogger 的输出注入面（pino 默认直写 fd 1，劫持 stdout 不可靠） */
 function collect(): { lines: string[]; stream: { write: (line: string) => void } } {
@@ -24,7 +25,7 @@ describe('createLogger', () => {
       },
       'msg',
     );
-    const parsed = JSON.parse(lines[0]!) as Record<string, string>;
+    const parsed = JSON.parse(defined(lines[0])) as Record<string, string>;
     for (const field of [
       'apiKey',
       'api_key',
@@ -43,7 +44,7 @@ describe('createLogger', () => {
     const { lines, stream } = collect();
     const logger = createLogger({ level: 'info', pretty: false, stream });
     logger.info({ req: { headers: { authorization: 'Bearer live-token' } } }, 'req');
-    const parsed = JSON.parse(lines[0]!) as { req: { headers: { authorization: string } } };
+    const parsed = JSON.parse(defined(lines[0])) as { req: { headers: { authorization: string } } };
     expect(parsed.req.headers.authorization).toBe('[REDACTED]');
   });
 
@@ -53,7 +54,7 @@ describe('createLogger', () => {
     logger.info('dropped');
     logger.warn({ code: 'W1' }, 'kept');
     expect(lines.length).toBe(1);
-    const parsed = JSON.parse(lines[0]!) as { name: string; level: number; code: string };
+    const parsed = JSON.parse(defined(lines[0])) as { name: string; level: number; code: string };
     expect(parsed.name).toBe('svc-name');
     expect(parsed.code).toBe('W1');
   });

@@ -41,6 +41,9 @@ const orderRow = {
   creditedAt: new Date('2026-08-23T01:06:00.000Z'),
 };
 
+// 模块级:settledAmounts 替身(提出 describe/it 回调,避免 vi.fn 内回调深层嵌套)
+const fakeSettledAmounts = async (ids: readonly string[]) => new Map(ids.map((id) => [id, '0.42']));
+
 describe('generation-tasks（P4）', () => {
   it('items/total 信封 + kind/status/limit/offset 透传 + settled 批量回填 + epoch→ISO', async () => {
     const adminList = vi.fn(async () => ({
@@ -57,9 +60,7 @@ describe('generation-tasks（P4）', () => {
       ],
       total: 2,
     }));
-    const settledAmounts = vi.fn(
-      async (ids: readonly string[]) => new Map(ids.map((id) => [id, '0.42'])),
-    );
+    const settledAmounts = vi.fn(fakeSettledAmounts);
     const app = createAdminApp(fakeDeps({ generationTasks: { adminList, settledAmounts } }));
     const res = await app.request(
       '/v1/generation-tasks?kind=video&status=failed&limit=50&offset=100',

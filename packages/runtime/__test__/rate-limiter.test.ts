@@ -11,6 +11,7 @@ import {
   type SlidingWindowLimiter,
 } from '../src/redis/rate-limiter';
 import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../src/testing';
+import { defined } from './defined';
 
 const url = testRedisUrl();
 
@@ -30,7 +31,7 @@ describe.skipIf(url == null)('createSlidingWindowLimiter（真实 Redis）', () 
 
   beforeAll(async () => {
     redis = await connectTestRedis();
-    limiter = createSlidingWindowLimiter(redis!);
+    limiter = createSlidingWindowLimiter(defined(redis, 'redis'));
   });
   afterAll(() => disconnectTestRedis(redis));
 
@@ -138,7 +139,7 @@ describe.skipIf(url == null)('createSlidingWindowLimiter（真实 Redis）', () 
     const closed = createSlidingWindowLimiter(dead);
     const err = await closed.check('x', 5, 'r').then(
       () => null,
-      (e: Error) => e,
+      (error: Error) => error,
     );
     expect(isInfrastructureError(err), String(err)).toBe(true);
     expect((err as { code: string }).code).toBe('runtime.rate_limit_unavailable');

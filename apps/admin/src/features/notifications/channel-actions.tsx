@@ -26,18 +26,24 @@ export function ChannelActions({ id, status }: { id: number; status: number }) {
     if (res.error) toast.error(res.error);
   }
 
+  const onTest = async () => {
+    setPending('test');
+    const res = await testChannelAction(id);
+    setPending(null);
+    if (res.error) toast.error(res.error);
+    else toast.success(t('testQueued'));
+  };
+
+  const onToggle = async () => {
+    setPending('toggle');
+    const res = await toggleChannelAction(id, status === 0 ? 1 : 0);
+    setPending(null);
+    if (res.error) toast.error(res.error);
+  };
+
   return (
     <RowActions label={tc('actions')}>
-      <DropdownMenuItem
-        disabled={pending !== null}
-        onClick={async () => {
-          setPending('test');
-          const res = await testChannelAction(id);
-          setPending(null);
-          if (res.error) toast.error(res.error);
-          else toast.success(t('testQueued'));
-        }}
-      >
+      <DropdownMenuItem disabled={pending !== null} onClick={onTest}>
         {pending === 'test' ? (
           <Loader2Icon className="size-4 animate-spin" />
         ) : (
@@ -45,15 +51,7 @@ export function ChannelActions({ id, status }: { id: number; status: number }) {
         )}
         {t('test')}
       </DropdownMenuItem>
-      <DropdownMenuItem
-        disabled={pending !== null}
-        onClick={async () => {
-          setPending('toggle');
-          const res = await toggleChannelAction(id, status === 0 ? 1 : 0);
-          setPending(null);
-          if (res.error) toast.error(res.error);
-        }}
-      >
+      <DropdownMenuItem disabled={pending !== null} onClick={onToggle}>
         {status === 0 ? t('disable') : t('enable')}
       </DropdownMenuItem>
       <DropdownMenuSeparator />

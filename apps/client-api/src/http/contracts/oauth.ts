@@ -11,7 +11,7 @@ export const providerParamSchema = z.object({
 export const OAUTH_STATE_COOKIE = 'tl_oauth_state';
 
 /** 回跳上下文归一：站内绝对路径（防开放重定向）；非法回落 /dashboard（v1 口径） */
-export function safeNext(raw: string | undefined | null): string {
+export function safeNext(raw?: string | undefined | null): string {
   if (typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//')) return raw;
   return '/dashboard';
 }

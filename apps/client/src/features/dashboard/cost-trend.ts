@@ -60,12 +60,16 @@ export interface DailyCostPoint {
 }
 
 /** 按日汇总行 → 窗口内连续补零序列（升序到今日；窗口外行与垃圾费用不计） */
-export function fillDailyCostSeries(
-  rows: readonly UsageDayRow[],
-  days: number,
-  timeZone: string,
-  now: Date = new Date(),
-): DailyCostPoint[] {
+export function fillDailyCostSeries(opts: {
+  rows: readonly UsageDayRow[];
+  /** 窗口天数（含今日） */
+  days: number;
+  /** 日界时区（与后端按日桶同源） */
+  timeZone: string;
+  /** now 可注入（测试/服务端预渲染），缺省取当前时间 */
+  now?: Date;
+}): DailyCostPoint[] {
+  const { rows, days, timeZone, now = new Date() } = opts;
   const today = todayKey(timeZone, now);
   const costByKey = new Map(rows.map((row) => [row.date, Number(row.cost) || 0]));
   const series: DailyCostPoint[] = [];

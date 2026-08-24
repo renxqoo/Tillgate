@@ -23,6 +23,7 @@ import {
 } from '../src/domain/delivery';
 import { renderAlertEmail } from '../src/templates/alert-email';
 import { fakeCipher } from './memory';
+import { defined } from './defined';
 
 const channel = (over: Partial<NotificationChannel> = {}): NotificationChannel => ({
   id: 1,
@@ -156,8 +157,9 @@ describe('密钥掩码与加密侧归一', () => {
   it('encryptChannelConfig:secret 加密、空串/缺席原样(v1 语义)', () => {
     const cipher = fakeCipher();
     const encrypted = encryptChannelConfig({ url: 'https://x.test', secret: 'whsec' }, cipher);
-    expect(encrypted!.secret).toMatch(/^enc:v1:fake:/);
-    expect(cipher.decrypt(encrypted!.secret as string)).toBe('whsec');
+    const secret = defined(encrypted, 'encrypted').secret as string;
+    expect(secret).toMatch(/^enc:v1:fake:/);
+    expect(cipher.decrypt(secret)).toBe('whsec');
     expect(encryptChannelConfig({ url: 'https://x.test', secret: '' }, cipher)).toEqual({
       url: 'https://x.test',
       secret: '',
@@ -171,8 +173,9 @@ describe('密钥掩码与加密侧归一', () => {
   it('客户端提交 enc: 前缀明文也被再加密(禁伪装内部密文)', () => {
     const cipher = fakeCipher();
     const encrypted = encryptChannelConfig({ secret: 'enc:v1:fake:c3Bvb2Y=' }, cipher);
-    expect(encrypted!.secret).not.toBe('enc:v1:fake:c3Bvb2Y=');
-    expect(cipher.decrypt(encrypted!.secret as string)).toBe('enc:v1:fake:c3Bvb2Y=');
+    const secret = defined(encrypted, 'encrypted').secret as string;
+    expect(secret).not.toBe('enc:v1:fake:c3Bvb2Y=');
+    expect(cipher.decrypt(secret)).toBe('enc:v1:fake:c3Bvb2Y=');
   });
 });
 
@@ -190,7 +193,7 @@ describe('退避公式(v1:base 15s/cap 300s)', () => {
 });
 
 describe('webhook 签名 wire 契约', () => {
-  it('body = {event,timestamp,payload};签名 = HMAC-SHA256(secret, `${ts}.${body}`)', () => {
+  it('body = {event,timestamp,payload};签名 = HMAC-SHA256(secret, ts 点接 body)', () => {
     const body = webhookBody('billing_dead', 1_700_000_000, { requestId: 'r1' });
     expect(JSON.parse(body)).toEqual({
       event: 'billing_dead',

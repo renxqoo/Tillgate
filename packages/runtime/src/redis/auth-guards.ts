@@ -57,6 +57,20 @@ export interface GuardCheck {
 const failsKey = (keyHash: string) => `auth:fails:${keyHash}`;
 const lockKey = (keyHash: string) => `auth:lock:${keyHash}`;
 
+// 模块级：三档故障语义的统一降级裁决（closed 抛错 / open 放行 / degraded 走本地降级体）
+// —— 两个 guard 工厂原各持一份同构闭包，收口为单一实现（真实重复抽共享，铁律 5）
+function degradedOutcome<T>(
+  failMode: GuardFailMode,
+  error: unknown,
+  op: () => Promise<T>,
+): Promise<T> {
+  if (failMode !== 'degraded') {
+    if (failMode === 'closed') throw authGuardUnavailable(error);
+    return Promise.resolve({ locked: false, retryAfterSec: 0 } as T); // open：放行
+  }
+  return op();
+}
+
 export interface KeyBruteForceGuard {
   /** 请求前：是否已锁定（锁存在或失败计数达阈值） */
   isLocked(keyHash: string): Promise<GuardCheck>;
@@ -73,15 +87,6 @@ export function createKeyBruteForceGuard(
 ): KeyBruteForceGuard {
   const failMode = mode.failMode ?? 'degraded';
   const local = createLocalKeyBruteForceGuard(policy);
-  const failClosed = failMode === 'closed';
-  // degraded：存储不可用时改走本地降级体的同语义结果（降质不拒绝）
-  const degraded = <T>(op: (l: KeyBruteForceGuard) => Promise<T>, error: unknown): Promise<T> => {
-    if (failMode !== 'degraded') {
-      if (failClosed) throw authGuardUnavailable(error);
-      return Promise.resolve({ locked: false, retryAfterSec: 0 } as T); // open：放行
-    }
-    return op(local);
-  };
   return {
     async isLocked(keyHash) {
       try {
@@ -90,7 +95,8 @@ export function createKeyBruteForceGuard(
         const fails = Number((await redis.get(failsKey(keyHash))) ?? 0);
         if (fails >= policy.failureThreshold) return { locked: true, retryAfterSec: policy.lockS };
       } catch (error) {
-        return degraded((l) => l.isLocked(keyHash), error);
+        // degraded：存储不可用时改走本地降级体的同语义结果（降质不拒绝）
+        return degradedOutcome(failMode, error, () => local.isLocked(keyHash));
       }
       return { locked: false, retryAfterSec: 0 };
     },
@@ -105,7 +111,7 @@ export function createKeyBruteForceGuard(
           return { locked: true, retryAfterSec: policy.lockS };
         }
       } catch (error) {
-        return degraded((l) => l.recordFailure(keyHash), error);
+        return degradedOutcome(failMode, error, () => local.recordFailure(keyHash));
       }
       return { locked: false, retryAfterSec: 0 };
     },
@@ -147,21 +153,13 @@ export function createAuthFailureGuard(
 ): AuthFailureGuard {
   const failMode = mode.failMode ?? 'degraded';
   const local = createLocalAuthFailureGuard(policy.limit, policy.windowS);
-  const failClosed = failMode === 'closed';
-  const degraded = <T>(op: (l: AuthFailureGuard) => Promise<T>, error: unknown): Promise<T> => {
-    if (failMode !== 'degraded') {
-      if (failClosed) throw authGuardUnavailable(error);
-      return Promise.resolve({ locked: false, retryAfterSec: 0 } as T); // open：放行
-    }
-    return op(local);
-  };
   return {
     async isLocked(ip) {
       try {
         const ttl = await redis.ttl(ipLockKey(ip));
         if (ttl > 0) return { locked: true, retryAfterSec: ttl };
       } catch (error) {
-        return degraded((l) => l.isLocked!(ip), error);
+        return degradedOutcome(failMode, error, () => local.isLocked(ip));
       }
       return { locked: false, retryAfterSec: 0 };
     },
@@ -176,7 +174,7 @@ export function createAuthFailureGuard(
           return { locked: true, retryAfterSec: policy.windowS };
         }
       } catch (error) {
-        return degraded((l) => l.recordFailure(ip), error);
+        return degradedOutcome(failMode, error, () => local.recordFailure(ip));
       }
       return { locked: false, retryAfterSec: 0 };
     },

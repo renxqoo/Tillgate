@@ -36,8 +36,9 @@ export async function setMemberLimits(
     if (input.monthlyQuota === null) patch.monthlyQuota = null;
     else {
       const amount = parseAmountLimit(input.monthlyQuota, ctx.policy.amountLimitUpper);
-      if (amount === null)
+      if (amount === null) {
         throw AccountsErrors.business('member_limits_invalid', { field: 'monthlyQuota' });
+      }
       patch.monthlyQuota = amount;
     }
   }
@@ -50,8 +51,9 @@ export async function setMemberLimits(
         userId: input.memberUserId,
         patch,
       });
-      if (updated === null)
+      if (updated === null) {
         throw AccountsErrors.business('member_not_found', { userId: input.memberUserId });
+      }
       return updated;
     },
     ctx.txRetry,

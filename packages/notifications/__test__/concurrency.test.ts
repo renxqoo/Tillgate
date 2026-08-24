@@ -14,6 +14,7 @@ import {
   permissiveUrlGuard,
 } from './memory';
 import { createNotifications } from '../src/notifications';
+import { defined } from './defined';
 
 const enc = (plain: string) => fakeCipher().encrypt(plain);
 
@@ -74,8 +75,8 @@ describe('notify_outbox 多 worker 并发', () => {
     const id = memory.seedOutbox({ event: 'partial_probe' });
 
     await facade.dispatchOnce({ ownerId: 'w1' });
-    expect(memory.outboxRow(id)!.deliveredChannelIds).toEqual([1]); // 仅成功渠道进度
-    expect(memory.outboxRow(id)!.sentAt).toBeNull(); // 部分失败 → 待重试
+    expect(defined(memory.outboxRow(id), 'outbox').deliveredChannelIds).toEqual([1]); // 仅成功渠道进度
+    expect(defined(memory.outboxRow(id), 'outbox').sentAt).toBeNull(); // 部分失败 → 待重试
 
     memory.state.now += 15_001; // 模拟 next_attempt_at 退避到期
     deliverer.behavior.failUrls = []; // flaky 恢复
@@ -88,6 +89,6 @@ describe('notify_outbox 多 worker 并发', () => {
     expect(callsByUrl.get('http://127.0.0.1/ok')).toBe(1); // 已成功渠道未重发
     expect(callsByUrl.get('http://127.0.0.1/flaky')).toBe(2); // 失败渠道补投
     expect(result).toEqual({ sent: 1, failed: 0 });
-    expect(memory.outboxRow(id)!.sentAt).not.toBeNull();
+    expect(defined(memory.outboxRow(id), 'outbox').sentAt).not.toBeNull();
   });
 });

@@ -21,7 +21,7 @@ export interface CatalogRoutesDeps {
 
 export function catalogRoutes(deps: CatalogRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const catalog = deps.controlPlane.catalog;
+  const { catalog } = deps.controlPlane;
 
   app.get('/v1/model-catalog/sources', (c) => c.json({ sources: catalog.listSources() }));
 

@@ -34,7 +34,7 @@ export default async function TopologyPage({
   const tc = await getTranslations('common');
   const hours = Math.min(168, Math.max(1, Number(requested) || 24));
   let channels: ChannelHealth[] = [];
-  let error: string | null = null;
+  let loadError: string | null = null;
   let ttftRows: TtftRow[] = [];
   let ttftError: string | null = null;
   try {
@@ -43,12 +43,15 @@ export default async function TopologyPage({
       adminApi().get<{ channels: ChannelHealth[] }>(`/v1/tracing/topology?hours=${hours}`),
       adminApi().get<{ rows: TtftRow[] }>(`/v1/analytics/channel-ttft?hours=${hours}`),
     ]);
-    if (topology.status === 'fulfilled') channels = topology.value.channels;
-    else error = topology.reason instanceof ApiError ? topology.reason.message : tc('loadFailed');
+    if (topology.status === 'fulfilled') {
+      ({ channels } = topology.value);
+    } else {
+      loadError = topology.reason instanceof ApiError ? topology.reason.message : tc('loadFailed');
+    }
     if (ttft.status === 'fulfilled') ttftRows = ttft.value.rows;
     else ttftError = t('ttftUnavailable');
-  } catch (caught) {
-    error = caught instanceof ApiError ? caught.message : tc('loadFailed');
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
 
   return (
@@ -83,8 +86,8 @@ export default async function TopologyPage({
       </div>
       <Card className="min-h-0 flex-1 overflow-hidden py-3">
         <CardContent className="min-h-0 flex-1">
-          {error ? (
-            <p className="text-sm text-destructive">{error}</p>
+          {loadError ? (
+            <p className="text-sm text-destructive">{loadError}</p>
           ) : (
             <ChannelTopology channels={channels} />
           )}

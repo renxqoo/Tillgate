@@ -22,7 +22,7 @@ describe('domain/usage/attribution：估算归属词表与流式归属单一真�
   });
 
   it('terminated 矩阵：undefined=完成缺 usage；用户侧两态归一 client_disconnect', () => {
-    expect(streamEstimateAttribution(undefined)).toBe('usage_missing_completed');
+    expect(streamEstimateAttribution()).toBe('usage_missing_completed');
     expect(streamEstimateAttribution('client_disconnect')).toBe('client_disconnect');
     expect(streamEstimateAttribution('request_cancelled')).toBe('client_disconnect');
   });

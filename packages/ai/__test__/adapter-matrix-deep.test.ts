@@ -28,6 +28,7 @@ import {
 } from '../src/registry/vendor-profiles.js';
 import { UpstreamError } from '../src/errors/kinds.js';
 import { asRecord } from '../src/internal/util.js';
+import { defined } from './defined';
 
 type Rec = Record<string, unknown>;
 const ch = (protocol: string, apiKey = 'k', baseUrl = 'https://x.test'): Rec => ({
@@ -384,7 +385,9 @@ describe('aws-bedrock：事件流解析与错误表深支', () => {
     });
     const out = eventstreamToClaudeSse(upstream);
     await out.cancel();
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(upstreamCancelled).toBe(true);
   });
 });
@@ -500,7 +503,11 @@ describe('defineAdapter：能力件组合面全分支', () => {
         c.close();
       },
     });
-    expect(await new Response(a.translateUpstreamStream!(src, 'm')).text()).toContain('data: x');
+    expect(
+      await new Response(
+        defined(a.translateUpstreamStream, 'translateUpstreamStream')(src, 'm'),
+      ).text(),
+    ).toContain('data: x');
     expect(a.tasks?.parseResponse('video', {})).toMatchObject({
       kind: 'task_submitted',
       taskId: 't',
@@ -584,7 +591,7 @@ describe('vendor-profiles：词表封闭与合并语义', () => {
     for (const p of Object.values(VENDOR_PROFILES)) expect(p.basis.length).toBeGreaterThan(0);
   });
   it('resolveVendorProfile：空/未知 → null；命中返回模板', () => {
-    expect(resolveVendorProfile(undefined)).toBeNull();
+    expect(resolveVendorProfile()).toBeNull();
     expect(resolveVendorProfile('')).toBeNull();
     expect(resolveVendorProfile('nope')).toBeNull();
     expect(resolveVendorProfile('openai')?.params.map).toEqual({
@@ -592,9 +599,9 @@ describe('vendor-profiles：词表封闭与合并语义', () => {
     });
   });
   it('mergeParamRules：单侧/双侧全组合 + unknown 优先级', () => {
-    expect(mergeParamRules(undefined, undefined)).toEqual({});
+    expect(mergeParamRules()).toEqual({});
     expect(mergeParamRules(undefined, { ignore: ['x'] })).toEqual({ ignore: ['x'] });
-    expect(mergeParamRules({ ignore: ['x'] }, undefined)).toEqual({ ignore: ['x'] });
+    expect(mergeParamRules({ ignore: ['x'] })).toEqual({ ignore: ['x'] });
     const merged = mergeParamRules(
       { ignore: ['a'], unknown: 'passthrough' },
       { ignore: ['b'], unknown: 'drop' },

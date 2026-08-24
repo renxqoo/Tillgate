@@ -61,15 +61,15 @@ GET / internal / stats; // { batcher, storage };存储查询失败 → storage: 
 
 **明确不处理**（归属写明）：
 
-| 不处理                                      | 归属                                                                 |
-| ------------------------------------------- | -------------------------------------------------------------------- |
+| 不处理                                      | 归属                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------- |
 | OTLP JSON 解码 / span 批量摄入 / 日分区存储 | `@tillgate/observability`（composition 子入口取件）                 |
-| flush 定时器 / 队列丢弃 / 写失败计数机制    | observability `createSpanBatcher`（B6 溢出路径 O(n) 在案）           |
+| flush 定时器 / 队列丢弃 / 写失败计数机制    | observability `createSpanBatcher`（B6 溢出路径 O(n) 在案）          |
 | 错误渲染 / 信封 / 目录码 / 常量时间比较原语 | `@tillgate/http`（errorHandler / timingSafeTokenEqual）             |
 | PG 连接 / ping / SQLSTATE 分类 / 池         | `@tillgate/db`（装配面 createDb/ping/pgSqlState）                   |
 | 停机编排 / 日志 / 密钥三道门                | `@tillgate/runtime`（createShutdown / createLogger / secretSchema） |
-| OTel SDK 装配与自身遥测推送                 | observability `initOtel`（assembly 调用）                            |
-| `/livez` 进程内探活                         | 未建（v1 同形；有消费方再补，不预建）                                |
+| OTel SDK 装配与自身遥测推送                 | observability `initOtel`（assembly 调用）                           |
+| `/livez` 进程内探活                         | 未建（v1 同形；有消费方再补，不预建）                               |
 
 ## 3. 装配形态（P5 边界）
 

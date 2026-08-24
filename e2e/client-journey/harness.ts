@@ -5,7 +5,7 @@
  */
 import { createServer, type Server } from 'node:http';
 import { get } from 'node:http';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 // e2e 非 workspace 成员——包名导入不可解析，统一相对源码导入
 //（app/packages 自身的 @tillgate/* 导入按其文件位置解析，不受影响）
@@ -16,6 +16,14 @@ import type { ClientApiAssembly } from '../../apps/client-api/src/assembly.js';
 import { assembleClientApi } from '../../apps/client-api/src/assembly.js';
 import { loadClientApiConfig } from '../../apps/client-api/src/config.js';
 import { createClientApiApp } from '../../apps/client-api/src/app.js';
+
+// 测试内替代非空断言的统一收窄手段：值缺失时抛出带定位信息的错误而非静默断言
+export function defined<T>(value: T | null | undefined, label = 'value'): T {
+  if (value === null || value === undefined) {
+    throw new Error(`expected ${label} to be defined`);
+  }
+  return value;
+}
 
 /** mock GitHub OAuth 上游（Authorization Code 流的最小实现） */
 export interface MockGithub {
@@ -67,7 +75,9 @@ export async function startMockGithub(): Promise<MockGithub> {
     res.statusCode = 200;
     res.end('{}');
   });
-  await new Promise<void>((resolve) => state.server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    state.server.listen(0, '127.0.0.1', resolve);
+  });
   state.baseUrl = `http://127.0.0.1:${(state.server.address() as AddressInfo).port}`;
   return state;
 }
@@ -75,14 +85,21 @@ export async function startMockGithub(): Promise<MockGithub> {
 /** 抢一个空闲端口（identity 回调白名单要求装配前已知 apiBase——固定端口） */
 export async function reservePort(): Promise<number> {
   const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => {
+    probe.listen(0, '127.0.0.1', resolve);
+  });
   const { port } = probe.address() as AddressInfo;
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  await new Promise<void>((resolve) => {
+    probe.close(() => resolve());
+  });
   return port;
 }
 
 export function createCaptureMailer(): Mailer & { lastCodeOf(email: string): string | null } {
   const codes = new Map<string, string>();
+  // 修复 HEAD 存量潜伏 bug：sent 未声明——sendPasswordResetLink 一被调用即
+  // ReferenceError（此前 e2e 无该路径调用方而未暴露；声明后照原意记录投递）
+  const sent: Array<{ to: string; code: string }> = [];
   return {
     async sendPasswordResetLink(to: string, url: string) {
       sent.push({ to, code: url });
@@ -106,20 +123,17 @@ export interface E2eHarness {
   teardown(): Promise<void>;
 }
 
-export async function bootHarness(options: {
-  appPort: number;
-  github?: MockGithub;
-}): Promise<E2eHarness> {
-  const appUrl = `http://127.0.0.1:${options.appPort}`;
-  const githubEndpoints = options.github
-    ? {
-        authorizeUrl: `${options.github.baseUrl}/authorize`,
-        tokenUrl: `${options.github.baseUrl}/token`,
-        profileUrl: `${options.github.baseUrl}/user`,
-        emailsUrl: `${options.github.baseUrl}/user/emails`,
-      }
-    : undefined;
-  const env: NodeJS.ProcessEnv = {
+/** GitHub OAuth 端点覆盖组（OAUTH_GITHUB_ENDPOINTS_JSON 的结构形状） */
+interface GithubEndpoints {
+  authorizeUrl: string;
+  tokenUrl: string;
+  profileUrl: string;
+  emailsUrl: string;
+}
+
+/** harness 专用 env（装置口径全量平铺——线性装配数据，从 bootHarness 拆出控函数行数） */
+function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): NodeJS.ProcessEnv {
+  return {
     NODE_ENV: 'development',
     DATABASE_URL:
       process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway',
@@ -152,6 +166,22 @@ export async function bootHarness(options: {
         }
       : {}),
   };
+}
+
+export async function bootHarness(options: {
+  appPort: number;
+  github?: MockGithub;
+}): Promise<E2eHarness> {
+  const appUrl = `http://127.0.0.1:${options.appPort}`;
+  const githubEndpoints: GithubEndpoints | undefined = options.github
+    ? {
+        authorizeUrl: `${options.github.baseUrl}/authorize`,
+        tokenUrl: `${options.github.baseUrl}/token`,
+        profileUrl: `${options.github.baseUrl}/user`,
+        emailsUrl: `${options.github.baseUrl}/user/emails`,
+      }
+    : undefined;
+  const env = buildHarnessEnv(appUrl, githubEndpoints);
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
@@ -167,8 +197,8 @@ export async function bootHarness(options: {
     epay: { pid: env.EPAY_PID as string, key: env.EPAY_KEY as string },
     github: options.github ?? null,
     teardown: async () => {
-      await assembly.redis.quit().catch(() => undefined);
-      await assembly.otel.shutdown().catch(() => undefined);
+      await assembly.redis.quit().catch(() => {});
+      await assembly.otel.shutdown().catch(() => {});
       const { closeDb } = await import('@tillgate/db');
       await closeDb(assembly.db);
     },
@@ -187,13 +217,13 @@ export function apiClient(baseUrl: string) {
   };
 }
 
-/** 注册两步制走完 → 返回 {token, userId}（capture mailer 收码） */
+/** 注册两步制走完 → 返回 {token, userId}（capture mailer 收码；api 客户端由 harness 派生——无状态 fetch 封装） */
 export async function registerUser(
   h: E2eHarness,
-  api: ReturnType<typeof apiClient>,
   email: string,
   password: string,
 ): Promise<{ token: string; userId: number }> {
+  const api = apiClient(h.baseUrl);
   const reg = (await (
     await api('/v1/auth/register', {
       method: 'POST',
@@ -275,14 +305,19 @@ export function rawGet(
   });
 }
 
+/** epay 回防伪签上下文（渠道凭据 + 订单定位与金额——聚合以控制参数个数） */
+interface EpayNotifyInput {
+  epay: { pid: string; key: string };
+  orderId: string;
+  money: string;
+}
+
 /** 伪造已签名的 epay 成功回调表单（金额篡改即验签失败） */
 export async function sendEpayNotify(
   api: ReturnType<typeof apiClient>,
-  baseUrl: string,
-  epay: { pid: string; key: string },
-  orderId: string,
-  money: string,
+  input: EpayNotifyInput,
 ): Promise<{ status: number; text: string }> {
+  const { epay, orderId, money } = input;
   const params: Record<string, string> = {
     pid: epay.pid,
     type: 'alipay',
@@ -298,7 +333,6 @@ export async function sendEpayNotify(
     body: new URLSearchParams(params).toString(),
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
   });
-  void baseUrl;
   return { status: res.status, text: await res.text() };
 }
 
@@ -335,7 +369,7 @@ export async function cleanupUsers(
           delete from wallet_accounts where user_id = uid;
         end $$;`),
       )
-      .catch(() => undefined);
+      .catch(() => {});
     const statements = [
       sql`delete from payment_orders where user_id = ${uid}`,
       sql`delete from user_subscriptions where user_id = ${uid} or org_id in (
@@ -355,7 +389,7 @@ export async function cleanupUsers(
       sql`delete from users where id = ${uid}`,
     ];
     for (const statement of statements) {
-      await db.execute(statement).catch(() => undefined);
+      await db.execute(statement).catch(() => {});
     }
   }
 }
@@ -369,7 +403,7 @@ export async function cleanupSeeds(db: ClientApiAssembly['db']): Promise<void> {
     sql`delete from plans where name in ('e2e-personal', 'e2e-team')`,
   ];
   for (const statement of statements) {
-    await db.execute(statement).catch(() => undefined);
+    await db.execute(statement).catch(() => {});
   }
 }
 
@@ -394,7 +428,7 @@ export async function infraReady(): Promise<boolean> {
       logThrottleMs: 1_000,
     });
     await assertRedisReachable(redis, 'e2e-journey-probe', redisUrl, 3_000);
-    await redis.quit().catch(() => undefined);
+    await redis.quit().catch(() => {});
     return true;
   } catch {
     return false;

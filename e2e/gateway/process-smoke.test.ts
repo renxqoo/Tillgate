@@ -22,14 +22,18 @@ interface Proc {
   waitExit(): Promise<number>;
 }
 
+/** 子进程启动入参（聚合对象——控制参数个数） */
+interface GatewaySpawnInput {
+  form: string;
+  command: string;
+  args: string[];
+  port: number;
+  env: Record<string, string>;
+}
+
 /** 起网关子进程（形态名 + 命令），等 listening 日志行 */
-function startGateway(
-  form: string,
-  command: string,
-  args: string[],
-  port: number,
-  env: Record<string, string>,
-): Promise<Proc> {
+function startGateway(input: GatewaySpawnInput): Promise<Proc> {
+  const { form, command, args, port, env } = input;
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: GW_ROOT,
@@ -56,7 +60,10 @@ function startGateway(
         clearTimeout(timer);
         resolve({
           baseUrl: `http://127.0.0.1:${port}`,
-          waitExit: () => new Promise((res) => child.once('exit', (code) => res(code ?? 0))),
+          waitExit: () =>
+            new Promise((res) => {
+              child.once('exit', (code) => res(code ?? 0));
+            }),
         });
       }
     };
@@ -104,18 +111,26 @@ it.skipIf(!hasEnv)(
     });
     const keys = new E2EKeys(world, helperGateway.assembly.billingFacade);
 
-    const smokeForm = async (
-      form: string,
-      command: string,
-      args: string[],
-      port: number,
-    ): Promise<void> => {
+    /** 单形态冒烟入参（聚合对象——控制参数个数） */
+    const smokeForm = async (input: {
+      form: string;
+      command: string;
+      args: string[];
+      port: number;
+    }): Promise<void> => {
+      const { form, command, args, port } = input;
       console.log(`\n=== ${form} ===`);
-      const proc = await startGateway(form, command, args, port, {
-        DATABASE_URL: world.scopedUrl,
-        CHANNEL_API_KEY_ENCRYPTION: 'e2e-channel-key-0123456789abcdef',
-        JWT_SECRET: 'e2e-jwt-secret-0123456789abcdef012345',
-        GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
+      const proc = await startGateway({
+        form,
+        command,
+        args,
+        port,
+        env: {
+          DATABASE_URL: world.scopedUrl,
+          CHANNEL_API_KEY_ENCRYPTION: 'e2e-channel-key-0123456789abcdef',
+          JWT_SECRET: 'e2e-jwt-secret-0123456789abcdef012345',
+          GATEWAY_AI_ALLOW_LOCAL_URL: 'true',
+        },
       });
       try {
         for (const path of ['/healthz', '/readyz', '/livez']) {
@@ -160,14 +175,24 @@ it.skipIf(!hasEnv)(
     };
 
     try {
-      await smokeForm('bun 源码形态', 'bun', ['src/index.ts'], 18_081);
+      await smokeForm({
+        form: 'bun 源码形态',
+        command: 'bun',
+        args: ['src/index.ts'],
+        port: 18_081,
+      });
       await new Promise<void>((resolve, reject) => {
         const build = spawn('bun', ['run', 'build'], { cwd: GW_ROOT, stdio: 'inherit' });
         build.once('exit', (code) =>
           code === 0 ? resolve() : reject(new Error(`build failed ${code}`)),
         );
       });
-      await smokeForm('node 产物形态', 'node', ['dist/index.js'], 18_082);
+      await smokeForm({
+        form: 'node 产物形态',
+        command: 'node',
+        args: ['dist/index.js'],
+        port: 18_082,
+      });
       // 终态对账：余额 = 1 − Σ实扣（两形态各 1 笔）、在途 0
       await keys.settleAll(userId);
       const { balance, charged } = await keys.assertReconciled(userId, '1');

@@ -5,7 +5,7 @@
  */
 import type { AccountSnapshot } from '@tillgate/billing';
 import { Decimal } from '@tillgate/billing';
-import { iso } from '../contracts/common';
+import { iso, isoRequired } from '../contracts/common';
 
 export interface UserRowSource {
   readonly id: number;
@@ -55,7 +55,7 @@ export function walletEnrichmentOf(snapshots: readonly AccountSnapshot[]): {
   creditLimit: string;
   availableBalance: string;
 } {
-  const first = snapshots[0];
+  const [first] = snapshots;
   if (first === undefined) {
     return { balance: '0', reservedBalance: '0', creditLimit: '0', availableBalance: '0' };
   }
@@ -100,7 +100,7 @@ export function toUserWireRow(
     rpmLimit: user.rpmLimit,
     tpmLimit: user.tpmLimit,
     lastLoginAt: iso(user.lastLoginAt),
-    createdAt: iso(user.createdAt)!,
+    createdAt: isoRequired(user.createdAt),
   };
 }
 
@@ -142,7 +142,7 @@ export function toTransactionWireRow(
     refType: item.refType,
     refId: item.refId,
     remark: item.memo,
-    createdAt: iso(item.createdAt)!,
+    createdAt: isoRequired(item.createdAt),
     createdBy: null,
   };
 }

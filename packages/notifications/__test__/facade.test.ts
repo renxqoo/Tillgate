@@ -13,6 +13,7 @@ import {
   noopLogger,
   testDispatchConfig,
 } from './memory';
+import { defined } from './defined';
 
 const enc = (plain: string) => fakeCipher().encrypt(plain);
 
@@ -55,8 +56,9 @@ describe('facade 默认装配路径', () => {
     const result = await facade.dispatchOnce({ ownerId: 'w1' });
     expect(result).toEqual({ sent: 1, failed: 0 });
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]!.url).toBe('https://hooks.example.test/h');
-    const headers = fetchCalls[0]!.init.headers as Record<string, string>;
+    const fetchCall = defined(fetchCalls[0], 'fetchCalls[0]');
+    expect(fetchCall.url).toBe('https://hooks.example.test/h');
+    const headers = fetchCall.init.headers as Record<string, string>;
     expect(headers['x-notify-event']).toBe('billing_dead');
   });
 
@@ -84,7 +86,7 @@ describe('facade 默认装配路径', () => {
     });
     const id = memory.seedOutbox({ event: 'billing_dead' });
     expect(await facade.dispatchOnce({ ownerId: 'w1' })).toEqual({ sent: 0, failed: 1 });
-    expect(memory.outboxRow(id)!.attempts).toBe(1);
+    expect(defined(memory.outboxRow(id), 'outbox').attempts).toBe(1);
   });
 
   it('未知渠道类型:投递分支兜底 false → 计失败', async () => {
@@ -99,7 +101,7 @@ describe('facade 默认装配路径', () => {
     (memory.state.channels.get(channelId) as { type: string }).type = 'sms'; // 词表外类型直改(防御分支)
     const id = memory.seedOutbox({ event: 'billing_dead' });
     expect(await facade.dispatchOnce({ ownerId: 'w1' })).toEqual({ sent: 0, failed: 1 });
-    expect(memory.outboxRow(id)!.attempts).toBe(1);
+    expect(defined(memory.outboxRow(id), 'outbox').attempts).toBe(1);
   });
 });
 
@@ -136,6 +138,6 @@ describe('残余分支', () => {
     });
     const rows = memory.pendingRows().filter((r) => r.dedupeKey.startsWith(`test:${channelId}:`));
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.event).toBe('channel_disabled');
+    expect(defined(rows[0], 'rows[0]').event).toBe('channel_disabled');
   });
 });

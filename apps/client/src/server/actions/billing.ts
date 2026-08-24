@@ -19,8 +19,8 @@ export async function createPaymentAction(
     });
     revalidatePath('/dashboard/billing');
     return { ok: true, payUrl: res.payUrl };
-  } catch (e) {
-    if (e instanceof ApiError) return { error: e.message };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message };
     const t = await getTranslations('billing');
     return { error: t('orderFailed') };
   }

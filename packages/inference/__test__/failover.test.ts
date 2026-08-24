@@ -19,6 +19,7 @@ import {
   mapping,
   upstreamError,
 } from './harness';
+import type { PassthroughDelivered } from '../src/application/failover';
 import type { PreparedRequest } from '../src/application/quote';
 
 const healthConfig = {
@@ -101,8 +102,9 @@ describe('application/failover：候选 × 渠道双层循环', () => {
       async (ctx): Promise<AttemptOutcome<string>> => {
         attempts.push(`${ctx.candidate.realModel}/${ctx.channel.channelName}`);
         if (ctx.channel.channelName === 'ch-a') return { kind: 'switch_channel', code: 'network' };
-        if (ctx.candidate.realModel === 'real-1')
+        if (ctx.candidate.realModel === 'real-1') {
           return { kind: 'next_candidate', code: 'upstream_error' };
+        }
         return { kind: 'respond', value: 'DONE' };
       },
     );
@@ -270,21 +272,13 @@ describe('application/failover：候选 × 渠道双层循环', () => {
       error: upstreamError('invalid_request', { status: 400, message: 'bad shape' }),
       durationMs: 5,
     }));
-    const delivered = await runCandidateLoop<
-      Record<string, unknown> | import('../src/application/failover').PassthroughDelivered
-    >(
+    const delivered = await runCandidateLoop<Record<string, unknown> | PassthroughDelivered>(
       s.deps,
       preparedOf([candidateOf(1, 'real-1')]),
       'req-1',
       0,
       undefined,
-      async (
-        ctx,
-      ): Promise<
-        AttemptOutcome<
-          Record<string, unknown> | import('../src/application/failover').PassthroughDelivered
-        >
-      > => {
+      async (ctx): Promise<AttemptOutcome<Record<string, unknown> | PassthroughDelivered>> => {
         const result = await s.deps.upstream.chat(ctx.channel, {
           requestId: ctx.requestId,
           externalModel: 'gpt-x',

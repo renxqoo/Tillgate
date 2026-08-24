@@ -21,6 +21,54 @@ interface PageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
+/** 用户列表拉取：query 装配 + 失败降级（错误文案经返回值上抛页面展示） */
+async function fetchUsersPage(filters: {
+  page: number;
+  sortBy: string | undefined;
+  order: 'asc' | 'desc';
+  q: string;
+  status: string;
+  enterprise: string;
+}): Promise<{ rows: AdminUserRow[]; total: number; failed: boolean; apiError: string | null }> {
+  const query = new URLSearchParams({
+    page: String(filters.page),
+    page_size: String(PAGE_SIZE),
+    sort_by: filters.sortBy ?? 'createdAt',
+    order: filters.order,
+  });
+  if (filters.q) query.set('q', filters.q);
+  if (filters.status === '0' || filters.status === '1') query.set('status', filters.status);
+  if (filters.enterprise === '0' || filters.enterprise === '1') {
+    query.set('enterprise', filters.enterprise);
+  }
+  try {
+    const data = await adminApi().get<Paginated<AdminUserRow>>(`/v1/users?${query.toString()}`);
+    return { rows: data.rows ?? [], total: data.total ?? 0, failed: false, apiError: null };
+  } catch (error) {
+    return {
+      rows: [],
+      total: 0,
+      failed: true,
+      apiError: error instanceof ApiError ? error.message : null,
+    };
+  }
+}
+
+/** 费率卡选项拉取：失败降级空列表（不阻塞用户列表） */
+async function fetchRateCardOptions(): Promise<RateCardOption[]> {
+  try {
+    const rc = await adminApi().get<Paginated<AdminRateCardRow>>('/v1/rate-cards');
+    // 修复笔误：原 `rc.rows ?? rc.rows` 两侧同值（nullish 时向 .map 抛异常）；改空数组直取同一降级结果
+    return (rc.rows ?? []).map((r) => ({
+      id: r.id,
+      name: r.name,
+      coefficient: r.coefficient,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export default async function UsersPage({ searchParams }: PageProps) {
   await requirePermission('users:read');
   const sp = await searchParams;
@@ -29,38 +77,17 @@ export default async function UsersPage({ searchParams }: PageProps) {
   const { q, page, sortBy, order } = parseListSearchParams(sp);
   const status = firstParam(sp.status) ?? 'all';
   const enterprise = firstParam(sp.enterprise) ?? 'all';
-  let rows: AdminUserRow[] = [];
-  let total = 0;
-  let error: string | null = null;
-  let rateCards: RateCardOption[] = [];
-
-  try {
-    const query = new URLSearchParams({
-      page: String(page),
-      page_size: String(PAGE_SIZE),
-      sort_by: sortBy ?? 'createdAt',
-      order,
-    });
-    if (q) query.set('q', q);
-    if (status === '0' || status === '1') query.set('status', status);
-    if (enterprise === '0' || enterprise === '1') query.set('enterprise', enterprise);
-    const data = await adminApi().get<Paginated<AdminUserRow>>(`/v1/users?${query.toString()}`);
-    rows = data.rows ?? [];
-    total = data.total ?? 0;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
-  }
-
-  try {
-    const rc = await adminApi().get<Paginated<AdminRateCardRow>>('/v1/rate-cards');
-    rateCards = (rc.rows ?? rc.rows ?? []).map((r) => ({
-      id: r.id,
-      name: r.name,
-      coefficient: r.coefficient,
-    }));
-  } catch {
-    // 费率卡加载失败不阻塞列表
-  }
+  // 失败文案在页面侧兜底翻译（fetch 层只回传 ApiError 原文，非 ApiError 由页面回落通用文案）
+  const { rows, total, failed, apiError } = await fetchUsersPage({
+    page,
+    sortBy,
+    order,
+    q,
+    status,
+    enterprise,
+  });
+  const loadError = failed ? (apiError ?? tc('loadFailed')) : null;
+  const rateCards = await fetchRateCardOptions();
 
   return (
     <ListPage
@@ -79,7 +106,7 @@ export default async function UsersPage({ searchParams }: PageProps) {
         </>
       }
       actions={<UsersExport users={rows} />}
-      error={error}
+      error={loadError}
       page={page}
       pageSize={PAGE_SIZE}
     >

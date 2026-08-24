@@ -46,6 +46,7 @@ export interface AuthorizeResult {
 }
 
 /** 幂等键归属校验：同 (refType, refId) 跨用户/币种顶撞必须炸，不能把别人的当自己的重放 */
+// eslint-disable-next-line max-params -- 导出钱包动词:入参为稳定契约,改 options 触及全部调用方
 async function assertAuthorizationOwner(
   store: WalletStore,
   conn: WalletConn,
@@ -75,8 +76,10 @@ function authorizationResult(auth: AuthorizationSnapshot, replayed: boolean): Au
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
 export function createAuthorizeUseCase(env: WalletEnv) {
   const { store, guards, currency: defaultCurrency } = env;
+  // eslint-disable-next-line max-lines-per-function -- 资金动词事务体:锁账→守卫→过账→回执顺序步骤
   return async function authorize(input: AuthorizeInput): Promise<AuthorizeResult> {
     const currency = resolveCurrency(guards, defaultCurrency, input);
     assertRefKey(guards, input.refType, input.refId);
@@ -130,7 +133,10 @@ export function createAuthorizeUseCase(env: WalletEnv) {
       return await withTx(store, input.tx, async (tx) => {
         const accountId = await store.ensureUserAccount(tx, input.userId, currency);
         const locked = await lockActiveAccounts(store, tx, [accountId]);
-        const account = locked.get(accountId)!;
+        const account = locked.get(accountId);
+        if (account === undefined) {
+          throw new DefectError('authorize.account_lock_missing', 'billing.wallet_invariant');
+        }
         if (input.collectOverage !== true) {
           assertCanDebit(account, amount, input.userId, { allowCredit: input.allowCredit });
         }

@@ -39,8 +39,8 @@ export async function generateBatchAction(
     });
     revalidatePath('/dashboard/redeem-batches');
     return { batch: res };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('generateFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('generateFailed') };
   }
 }
 
@@ -51,7 +51,7 @@ export async function revokeCodeAction(codeId: number): Promise<{ error?: string
     await adminApi().post(`/v1/redeem-batches/codes/${codeId}/revoke`);
     revalidatePath('/dashboard/redeem-batches');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('revokeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('revokeFailed') };
   }
 }

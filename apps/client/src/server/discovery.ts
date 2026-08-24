@@ -9,9 +9,11 @@ import { createClientApi } from './api';
 
 /** fetch 包装：限定超时（探测是渲染增强，不允许拖慢页面 SSR） */
 function timeoutFetch(ms: number): typeof globalThis.fetch {
-  return (async (input, init) => {
-    return globalThis.fetch(input, { ...init, signal: AbortSignal.timeout(ms) });
-  }) as typeof globalThis.fetch;
+  return (async (input, init) =>
+    globalThis.fetch(input, {
+      ...init,
+      signal: AbortSignal.timeout(ms),
+    })) as typeof globalThis.fetch;
 }
 
 const PROBE_TIMEOUT_MS = 1500;

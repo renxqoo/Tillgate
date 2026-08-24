@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
 import { installNextStubs, mockCookieJar, mockFetch, type FetchCall } from './harness';
 
 /** 每用例装置：重装桩 → 动态导入被测模块（vi.doMock 只影响后续 import） */
@@ -17,7 +18,7 @@ async function loadModule(path: string, responses: Array<{ status?: number; body
 }
 
 function last(calls: FetchCall[]): FetchCall {
-  return calls[calls.length - 1]!;
+  return defined(calls.at(-1), 'last fetch call');
 }
 
 beforeEach(() => {

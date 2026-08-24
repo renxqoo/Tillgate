@@ -19,13 +19,17 @@ export interface SmtpMailerConfig {
   from: string;
 }
 
-export function createSmtpLoginMailer(
-  config: SmtpMailerConfig,
-  brand: MailBrand,
-  emailParams: { ttlMinutes: number; maxAttempts: number },
-  resetParams: { ttlMinutes: number },
-  now: () => Date,
-): Mailer | null {
+/** 装配参数单对象(SMTP 传输配置与模板品牌/验证码/找回参数/时钟同级注入) */
+export interface SmtpLoginMailerEnv {
+  readonly config: SmtpMailerConfig;
+  readonly brand: MailBrand;
+  readonly emailParams: { ttlMinutes: number; maxAttempts: number };
+  readonly resetParams: { ttlMinutes: number };
+  readonly now: () => Date;
+}
+
+export function createSmtpLoginMailer(env: SmtpLoginMailerEnv): Mailer | null {
+  const { config, brand, emailParams, now } = env;
   const transport = nodemailer.createTransport({
     host: config.host,
     port: config.port,

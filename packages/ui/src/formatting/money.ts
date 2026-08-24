@@ -4,17 +4,17 @@
 // 超界抛错而不是给出错误金额。
 export type MoneyTone = 'positive' | 'negative' | 'zero';
 
-export type MoneyFormatter = {
+export interface MoneyFormatter {
   format(amount: number): string;
   formatMinor(units: number | bigint): string;
   toneOf(amount: number): MoneyTone;
-};
+}
 
-export type MoneyFormatterOptions = {
+export interface MoneyFormatterOptions {
   locale: string;
   currency: string;
   currencyDisplay?: 'symbol' | 'code' | 'narrowSymbol';
-};
+}
 
 // 15 位十进制有效数字以内, units/10^digits 的 double 表示与其十进制真值在
 // "格式化到 minorDigits 位"的输出上完全一致; 16 位起不保证(如 9007199254740991 分

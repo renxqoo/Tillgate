@@ -5,6 +5,7 @@
  * 投影封闭性：AdminRecord 不含密码/2FA 密钥列（identity 七表单一真相,G1/G2）。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { findAdmin } from '../src/application/admins/find-admin';
 import { findAdminByEmail } from '../src/application/admins/find-admin-by-email';
 import { touchLastLogin } from '../src/application/admins/touch-last-login';
@@ -45,7 +46,7 @@ describe('admins（G2 管理员资料用例族）', () => {
     const { deps } = setup();
     const byId = await findAdmin(deps, 7);
     expect(byId).toEqual(record);
-    expect(Object.keys(byId!)).not.toContain('passwordHash');
+    expect(Object.keys(defined(byId))).not.toContain('passwordHash');
     expect(await findAdmin(deps, 999)).toBeNull();
     // 归一化在用例层（app 传入的原始形态也能命中）
     const byEmail = await findAdminByEmail(deps, '  OPS@Tillgate.dev ');

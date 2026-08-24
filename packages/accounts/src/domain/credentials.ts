@@ -37,7 +37,7 @@ export function generateKeyMaterial(prefix: string): KeyMaterial {
 /** Key 脱敏预览(v1 maskKey;长度 ≤8 全遮) */
 export function maskKey(plaintext: string): string {
   if (plaintext.length <= 8) return '****';
-  return plaintext.slice(0, 3) + '****' + plaintext.slice(-4);
+  return `${plaintext.slice(0, 3)}****${plaintext.slice(-4)}`;
 }
 
 export interface AppCredentials {
@@ -56,7 +56,7 @@ export function generateAppCredentials(): AppCredentials {
   const clientSecret = randomBytes(24).toString('hex');
   return {
     appId: randomUUID().replace(/-/g, '').slice(0, 32),
-    clientId: 'app_' + randomBytes(8).toString('hex'),
+    clientId: `app_${randomBytes(8).toString('hex')}`,
     clientSecret,
     clientSecretHash: sha256Hex(clientSecret),
   };

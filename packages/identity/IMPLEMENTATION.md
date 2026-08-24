@@ -51,15 +51,15 @@
 
 ### 1.2 重复与提取（D#）
 
-| #   | v1 现状                                                                | v2 提取                                                                                    |
-| --- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| #   | v1 现状                                                                | v2 提取                                                                                   |
+| --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | D1  | 七表 DDL 双轨（drizzle 定义 + 手写 IDENTITY_DDL 人工同步）             | 单一真相 = `@tillgate/db` schema/identity.ts；迁移 0076 由定义生成同序收录（§2 DDL 先行） |
-| D2  | 密码策略双拷贝（两 app 各一份 PASSWORD_POLICY）                        | domain/password.ts 单源，装配注入                                                          |
-| D3  | 用户/管理员认证链同构复制（validateSession/login/changePassword ×2）   | realm 参数化单实现（v1 身份隔离语义保留：独立密钥/issuer/词表桶）                          |
-| D4  | v1 login-challenge 在 core 之上再造一层（kind 映射 + 错误翻译 + 配置） | 并入 application/begin-challenge 等（kind 映射 = 挑战词表直接装配，无中间层）              |
+| D2  | 密码策略双拷贝（两 app 各一份 PASSWORD_POLICY）                        | domain/password.ts 单源，装配注入                                                         |
+| D3  | 用户/管理员认证链同构复制（validateSession/login/changePassword ×2）   | realm 参数化单实现（v1 身份隔离语义保留：独立密钥/issuer/词表桶）                         |
+| D4  | v1 login-challenge 在 core 之上再造一层（kind 映射 + 错误翻译 + 配置） | 并入 application/begin-challenge 等（kind 映射 = 挑战词表直接装配，无中间层）             |
 | D5  | RepoContext/AnyPgDatabase/DbLike 各包自造                              | `@tillgate/db` 收敛（runTx/advisoryLock/23505 判别直接复用）                              |
-| D6  | 验证码邮件渲染与 Mailer 实现耦合                                       | templates/login-code-email.ts 纯函数 + adapter 仅传输                                      |
-| D7  | OAuth state 双提交 cookie 比对逻辑在 app                               | state 签发/消费归本包 port；cookie 比对归 app（HTTP 关注点）                               |
+| D6  | 验证码邮件渲染与 Mailer 实现耦合                                       | templates/login-code-email.ts 纯函数 + adapter 仅传输                                     |
+| D7  | OAuth state 双提交 cookie 比对逻辑在 app                               | state 签发/消费归本包 port；cookie 比对归 app（HTTP 关注点）                              |
 
 ### 1.3 契约缺口（演进决策）
 
@@ -81,8 +81,8 @@
 | identity-core mfa.ts                                                         | 复制+微修            | 通过（B13/B19/B20/B21 裁决）     | application/{enroll-totp,confirm-totp,verify-mfa,disable-totp}.ts                                                                                                        |
 | identity-core oauth.ts                                                       | 复制+微修            | 通过                             | application/{find-oauth-user,link-oauth,unlink-oauth}.ts                                                                                                                 |
 | identity-core revocation.ts                                                  | 复制+微修            | 通过（B08 修复）                 | application/revocation*.ts + store 动词；realm 白名单双路径                                                                                                              |
-| identity-core schema.ts                                                      | 重构                 | 通过（D1）                       | drizzle 定义迁 @tillgate/db schema/identity.ts；DDL 迁移 0076 同序收录；provision/migrate-cli/deprovision 不移植（迁移链统一 db 包）                                    |
-| identity-core internal.ts                                                    | 不移植               | —                                | runTx/advisoryLock/23505 = @tillgate/db 现有能力；锁键构造器实迁本包 domain/locks.ts（credentialSetLockKey/challengeLockKey 两键，无 shared.ts）                        |
+| identity-core schema.ts                                                      | 重构                 | 通过（D1）                       | drizzle 定义迁 @tillgate/db schema/identity.ts；DDL 迁移 0076 同序收录；provision/migrate-cli/deprovision 不移植（迁移链统一 db 包）                                     |
+| identity-core internal.ts                                                    | 不移植               | —                                | runTx/advisoryLock/23505 = @tillgate/db 现有能力；锁键构造器实迁本包 domain/locks.ts（credentialSetLockKey/challengeLockKey 两键，无 shared.ts）                         |
 | identity-core context.ts / types.ts / errors.ts / index.ts / identity.ts     | 重构                 | 通过                             | config 解析→domain/config.ts；types 按用例拆入各 application 文件；errors→目录（§DESIGN 2.3）；facade 重写                                                               |
 | identity session.ts                                                          | 复制+微修            | 通过（B06 口径）                 | domain/session.ts（契约）+ adapters/jwt/jose-tokens.ts（jose）+ adapters/redis/revocation-store.ts                                                                       |
 | identity login-challenge.ts                                                  | 重构                 | 通过（B05 根治，D4）             | 并入 application/begin-challenge 等；kind 词表装配直配                                                                                                                   |

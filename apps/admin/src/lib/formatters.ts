@@ -12,6 +12,17 @@ const DEFAULT_MONEY_DIGITS = 4;
 const MAX_MONEY_DIGITS = 20;
 const MAX_EXPONENT = 10_000;
 
+/** 按指数平移后的小数点位置切分数字串：全左（纯小数）/ 全右（纯整数）/ 中间 */
+function placeDigits(digits: string, decimalIndex: number): { integer: string; fraction: string } {
+  if (decimalIndex <= 0) {
+    return { integer: '0', fraction: '0'.repeat(-decimalIndex) + digits };
+  }
+  if (decimalIndex >= digits.length) {
+    return { integer: digits + '0'.repeat(decimalIndex - digits.length), fraction: '' };
+  }
+  return { integer: digits.slice(0, decimalIndex), fraction: digits.slice(decimalIndex) };
+}
+
 /** 把普通十进制或科学计数法拆成整数和小数部分，全程不经过 Number。 */
 function splitDecimal(
   value: MoneyValue,
@@ -28,20 +39,7 @@ function splitDecimal(
   const sourceInteger = matched[2] || '0';
   const sourceFraction = matched[3] ?? '';
   const digits = sourceInteger + sourceFraction;
-  const decimalIndex = sourceInteger.length + exponent;
-
-  let integer: string;
-  let fraction: string;
-  if (decimalIndex <= 0) {
-    integer = '0';
-    fraction = '0'.repeat(-decimalIndex) + digits;
-  } else if (decimalIndex >= digits.length) {
-    integer = digits + '0'.repeat(decimalIndex - digits.length);
-    fraction = '';
-  } else {
-    integer = digits.slice(0, decimalIndex);
-    fraction = digits.slice(decimalIndex);
-  }
+  const { integer, fraction } = placeDigits(digits, sourceInteger.length + exponent);
 
   return {
     negative: matched[1] === '-',
@@ -140,28 +138,38 @@ export function unitWord(
 ): string {
   if (locale === 'zh') {
     switch (pricingUnit) {
-      case 'image':
+      case 'image': {
         return '张';
-      case 'second':
+      }
+      case 'second': {
         return '秒';
-      case 'char':
+      }
+      case 'char': {
         return '字符';
-      case 'request':
+      }
+      case 'request': {
         return '次';
-      default:
+      }
+      default: {
         return '单位';
+      }
     }
   }
   switch (pricingUnit) {
-    case 'image':
+    case 'image': {
       return 'image';
-    case 'second':
+    }
+    case 'second': {
       return 'sec';
-    case 'char':
+    }
+    case 'char': {
       return 'char';
-    case 'request':
+    }
+    case 'request': {
       return 'request';
-    default:
+    }
+    default: {
       return 'unit';
+    }
   }
 }

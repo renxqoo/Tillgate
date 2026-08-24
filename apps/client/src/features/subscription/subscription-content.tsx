@@ -5,13 +5,10 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@tillgate/ui';
 import type { CurrentSubscription, OrgRow, PlanRow } from '@tillgate/api-client';
 
-import {
-  CurrentSubscriptionCard,
-  RenewButton,
-  fmtYuan,
-  usagePercent,
-} from './current-subscription';
 import { PlanCard } from './plan-actions';
+import { CurrentSubscriptionCard } from './current-subscription-card';
+import { RenewButton } from './renew-button';
+import { fmtYuan, usagePercent } from './plan-format';
 
 export function SubscriptionContent({
   subscription,
@@ -95,7 +92,7 @@ export function SubscriptionContent({
       ) : null}
 
       {(() => {
-        if (subError)
+        if (subError) {
           return (
             <Card>
               <CardContent className="p-6">
@@ -103,7 +100,8 @@ export function SubscriptionContent({
               </CardContent>
             </Card>
           );
-        if (!subscription)
+        }
+        if (!subscription) {
           return (
             <Card>
               <CardHeader>
@@ -113,8 +111,9 @@ export function SubscriptionContent({
               <CardContent>
                 {(() => {
                   if (plansError) return <p className="text-sm text-destructive">{plansError}</p>;
-                  if (visiblePlans.length === 0)
+                  if (visiblePlans.length === 0) {
                     return <p className="text-sm text-muted-foreground">{t('noPlans')}</p>;
+                  }
                   return (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {visiblePlans.map((p) => (
@@ -126,7 +125,8 @@ export function SubscriptionContent({
               </CardContent>
             </Card>
           );
-        if (visiblePlans.length > 0)
+        }
+        if (visiblePlans.length > 0) {
           return (
             <Card>
               <CardHeader>
@@ -146,6 +146,7 @@ export function SubscriptionContent({
               </CardContent>
             </Card>
           );
+        }
         return null;
       })()}
     </div>

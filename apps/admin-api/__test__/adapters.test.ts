@@ -65,7 +65,7 @@ describe('accounts 三桥', () => {
   });
 
   it('auditSink:字段齐全/缺省两形态(G1 同事务透传)', async () => {
-    const audit = vi.fn(async () => undefined);
+    const audit = vi.fn(async () => {});
     const bridge = createAuditSinkBridge(audit);
     await bridge.record({} as never, {
       actor: 'admin',

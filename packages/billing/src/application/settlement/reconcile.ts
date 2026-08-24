@@ -27,7 +27,7 @@ export function createReconcileUseCase(env: {
   clock: () => Date;
 }) {
   const limit = Math.min(env.limit ?? 1000, 10_000);
-  const clock = env.clock;
+  const { clock } = env;
   return async function verifyInvariants(): Promise<ReconcileReport> {
     const violations = await env.walletStore.verifyInvariants(limit);
     return { ok: violations.length === 0, checkedAt: clock(), violations };

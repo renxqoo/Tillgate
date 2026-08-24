@@ -32,7 +32,7 @@ function TriggerLabel({
   );
 }
 
-export type DatePickerProps = {
+export interface DatePickerProps {
   value?: Date;
   onValueChange: (date: Date | undefined) => void;
   // 选中日期在触发器上的展示文案(必填注入, 见 formatting/date)
@@ -41,7 +41,7 @@ export type DatePickerProps = {
   disabled?: boolean;
   className?: string;
   numberOfMonths?: number;
-};
+}
 
 export function DatePicker({
   value,
@@ -83,7 +83,7 @@ export function DatePicker({
   );
 }
 
-export type DateRangePickerProps = {
+export interface DateRangePickerProps {
   value: DateRange | undefined;
   onValueChange: (range: DateRange | undefined) => void;
   // 区间在触发器上的展示文案(必填注入, 见 formatting/date)
@@ -92,7 +92,7 @@ export type DateRangePickerProps = {
   disabled?: boolean;
   className?: string;
   numberOfMonths?: number;
-};
+}
 
 export function DateRangePicker({
   value,

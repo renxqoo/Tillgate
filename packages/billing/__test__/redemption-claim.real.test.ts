@@ -12,6 +12,7 @@ import { createDb, closeDb, type Db } from '@tillgate/db';
 import { createPostgresRedeemCodeStore } from '../src/adapters/postgres/payment-stores.js';
 import { sha256Hex } from '../src/application/redemption/redemption.js';
 import { redeemBatches, redeemCodes } from '@tillgate/db/schema';
+import { defined } from './defined.js';
 
 const REAL_URL = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 
@@ -88,13 +89,13 @@ create table redeem_codes (
       .values({ name: 'regression', amount: '12.50', total: 1, createdBy: 1 })
       .returning({ id: redeemBatches.id });
     const codeHash = sha256Hex('REGRESSION-CODE-1');
-    await db.insert(redeemCodes).values({ batchId: batch!.id, codeHash, status: 0 });
+    await db.insert(redeemCodes).values({ batchId: defined(batch).id, codeHash, status: 0 });
 
     const claimed = await store.claim(walletConn, { codeHash, userId: 7, now });
     // 存储层返回原始 numeric 全精度串（应用层 normalizeAmount 归一）
     expect(claimed).toEqual({
       codeId: expect.any(Number),
-      batchId: batch!.id,
+      batchId: defined(batch).id,
       amount: '12.500000000000000000',
     });
 
@@ -120,7 +121,7 @@ create table redeem_codes (
       .returning({ id: redeemBatches.id });
     const codeHash = sha256Hex('EXPIRED-CODE-1');
     await db.insert(redeemCodes).values({
-      batchId: batch!.id,
+      batchId: defined(batch).id,
       codeHash,
       status: 0,
       expiresAt: new Date(Date.now() - 1_000),

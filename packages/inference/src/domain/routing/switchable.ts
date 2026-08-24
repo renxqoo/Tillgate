@@ -37,7 +37,7 @@ const CHANNEL_SWITCHABLE_CODES: ReadonlySet<string> = new Set([
   'rate_limit_exceeded',
 ]);
 
-export function isChannelSwitchable(code: string | undefined | null): boolean {
+export function isChannelSwitchable(code?: string | null): boolean {
   return code != null && CHANNEL_SWITCHABLE_CODES.has(code);
 }
 
@@ -62,7 +62,7 @@ export function routeFailure(error: { kind?: string; status?: number }): RouteAc
  * 不在竭尽词表，全渠道熔断/死凭据竭尽被误归 upstream_failed 502——网关自身保护
  * 动作不是上游故障；改进登记见 MIGRATION.md §3a）。
  */
-export function isChannelExhausted(code: string | undefined | null): boolean {
+export function isChannelExhausted(code?: string | null): boolean {
   return (
     code == null ||
     code === 'channel_budget_exhausted' ||

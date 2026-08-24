@@ -6,11 +6,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 const jar = new Map<string, string>();
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
-    get: (name: string) => (jar.has(name) ? { name, value: jar.get(name)! } : undefined),
+    get: (name: string) => (jar.has(name) ? { name, value: defined(jar.get(name)) } : undefined),
     set: (name: string, value: string) => {
       jar.set(name, value);
     },
@@ -146,7 +148,7 @@ describe('keys 守卫与部分更新字段矩阵', () => {
       tpmLimit: 6,
       dailySpendLimit: '7',
     });
-    const full = JSON.parse(String(calls[0]!.init?.body));
+    const full = JSON.parse(String(defined(calls[0], 'calls[0]').init?.body));
     expect(full).toEqual({
       name: 'n',
       remark: null,
@@ -157,7 +159,7 @@ describe('keys 守卫与部分更新字段矩阵', () => {
 
     responses.push({ status: 200, body: {} });
     await updateKeyAction(1, { rpmLimit: 9 });
-    const partial = JSON.parse(String(calls[1]!.init?.body));
+    const partial = JSON.parse(String(defined(calls[1], 'calls[1]').init?.body));
     expect(partial).toEqual({ rpmLimit: 9 });
   });
 

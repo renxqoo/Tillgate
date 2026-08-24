@@ -22,6 +22,7 @@ import type { BillingStore } from '../src/ports/billing-store.js';
 import type { NotificationOutboxPort, OutboxFact } from '../src/ports/notification-outbox.js';
 import type { UsageReceipt } from '../src/domain/rating/types.js';
 import type { InMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
+import { defined } from './defined.js';
 
 let userSeq = 5000;
 let reqSeq = 0;
@@ -112,7 +113,7 @@ function harness() {
     channels: world.channels,
     failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
     clock: () => new Date(),
-    onError: () => undefined,
+    onError: () => {},
     outbox: outbox.port,
   });
   return { wallet, walletMemory, world, billing, settlement, outbox, store };
@@ -176,8 +177,8 @@ async function toClaimed(h: ReturnType<typeof harness>) {
     receipt: receiptFor(requestId, userId),
   });
   const [claim] = await h.settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 5_000 });
-  expect(claim!.requestId).toBe(requestId);
-  return { userId, requestId, claim: claim! };
+  expect(defined(claim).requestId).toBe(requestId);
+  return { userId, requestId, claim: defined(claim) };
 }
 
 describe('§5.4 边界①：业务回滚 → 无事件', () => {
@@ -185,12 +186,12 @@ describe('§5.4 边界①：业务回滚 → 无事件', () => {
     const h = harness();
     const { userId, requestId, claim } = await toClaimed(h);
     // 制造业务红灯：Σ明细 ≠ 总预扣（不变量 DefectError）
-    h.world.fixtures.requests.get(requestId)!.reservedAmount = '999';
+    defined(h.world.fixtures.requests.get(requestId)).reservedAmount = '999';
     await expect(h.settlement.settleClaim(claim)).rejects.toThrow();
     expect(h.outbox.events).toHaveLength(0);
     // 业务结果未被提交：认领仍在 processing，钱包在途未消耗
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('processing');
-    const account = (await h.wallet.accounts(userId))[0]!;
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('processing');
+    const account = defined((await h.wallet.accounts(userId))[0]);
     expect(account.inFlight).toBe('2');
     expect(account.balance).toBe('10');
   });
@@ -204,8 +205,8 @@ describe('§5.4 边界②：入箱抛错 → 业务回滚（余额/状态不变�
     // billing.settled 非词表成员，结算路径已结构性移除入箱——outbox 故障无接触面
     const result = await h.settlement.settleClaim(claim);
     expect(result.outcome).toBe('settled');
-    expect((await h.wallet.accounts(userId))[0]!.balance).toBe('8');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('settled');
+    expect(defined((await h.wallet.accounts(userId))[0]).balance).toBe('8');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('settled');
     expect(h.outbox.events).toHaveLength(0);
   });
 
@@ -219,7 +220,7 @@ describe('§5.4 边界②：入箱抛错 → 业务回滚（余额/状态不变�
       outbox: h.outbox.port,
     });
     await expect(finishFailure(claim, new Error('boom'))).rejects.toThrow('outbox insert failed');
-    expect(h.world.fixtures.requests.get(requestId)!.status).toBe('processing');
+    expect(defined(h.world.fixtures.requests.get(requestId)).status).toBe('processing');
     expect(h.outbox.events).toHaveLength(0);
   });
 });
@@ -250,7 +251,7 @@ describe('§5.4 边界③：同 requestId 并发/重试 → dedupe 后单一事�
     // 事件名 = notifications NOTIFY_EVENTS 词表成员（点分名会被消费方词表门拒绝）
     expect(h.outbox.events[0]).toMatchObject({ event: 'billing_dead' });
     // 模拟「死信已入箱但处置重放」（如 worker 重投）：行重开 processing 后同键再入箱
-    const row = h.world.fixtures.requests.get(requestId)!;
+    const row = defined(h.world.fixtures.requests.get(requestId));
     row.status = 'processing';
     row.claimOwner = claim.ownerId;
     row.claimToken = claim.claimToken;
@@ -288,7 +289,7 @@ describe('未注入 outbox：行为不变（可靠通知是可选增强）', () 
     });
     const result = await bare(claim);
     expect(result).toMatchObject({ outcome: 'settled', amount: '2' });
-    expect((await h.wallet.accounts(userId))[0]!.balance).toBe('8');
+    expect(defined((await h.wallet.accounts(userId))[0]).balance).toBe('8');
     expect(h.outbox.events).toHaveLength(0);
     void requestId;
   });

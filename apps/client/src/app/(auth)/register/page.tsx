@@ -32,7 +32,7 @@ export default async function RegisterPage({
   const oauthOptions = oauthOptionsFromProviders(providers);
   // 后端配置是单一真相（registerEnabled/captchaSiteKey）；探测失败按开启渲染，
   // 由提交时的 403 兜底（B20 取舍：不因网络抖动误显「注册已关闭」）
-  const registerEnabled = capabilities.registerEnabled;
+  const { registerEnabled } = capabilities;
   const captchaSiteKey = registerEnabled ? capabilities.captchaSiteKey : null;
   const t = await getTranslations('auth');
   return (

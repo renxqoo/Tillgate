@@ -85,7 +85,7 @@ export function resolveCalibration(
 ): ResolvedCalibration {
   let weights: TextTokenWeights = { ...calibration.defaults };
   let templateInputOffset = 0;
-  let tokensPerByte = calibration.tokensPerByte;
+  let { tokensPerByte } = calibration;
   if (providerName) {
     const provider = calibration.providers[providerName];
     if (provider) {

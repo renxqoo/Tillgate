@@ -28,6 +28,7 @@ export interface RecoveryRunResult {
   claimsRequeued: number;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 对账恢复事务体:顺序探查各状态分支
 export function createRecoverUseCase(env: RecoverEnv) {
   const { store, clock } = env;
   const releaseAllReservations = createReleaseAllReservations({

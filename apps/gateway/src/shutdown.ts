@@ -21,6 +21,8 @@ export interface GatewayShutdownDeps {
 }
 
 export function createGatewayShutdown(deps: GatewayShutdownDeps) {
+  // 先收窄到局部：条件展开内的闭包不再保持 deps.logger 的属性收窄
+  const { logger } = deps;
   return createShutdown({
     serviceName: 'gateway',
     server: deps.server,
@@ -34,11 +36,11 @@ export function createGatewayShutdown(deps: GatewayShutdownDeps) {
       { close: () => deps.settleWake.close() },
     ],
     ...(deps.exit != null ? { exit: deps.exit } : {}),
-    ...(deps.logger != null
+    ...(logger != null
       ? {
           log: {
-            info: (msg: string) => deps.logger!.info({}, msg),
-            error: (msg: string) => deps.logger!.error({}, msg),
+            info: (msg: string) => logger.info({}, msg),
+            error: (msg: string) => logger.error({}, msg),
           },
         }
       : {}),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAi } from '../src/index.js';
 import type { AiEvent, CallOptions, ChannelDesc, UpstreamError } from '../src/index.js';
+import { defined } from './defined.js';
 
 /**
  * 真实供应商集成测试（MiniMax + DeepSeek）——v1 `ai-getway/packages/ai/test/real/providers.test.ts`
@@ -148,9 +149,9 @@ function loadProviders(): ProviderConfig[] {
     out.push({
       name: def.name,
       providerName: def.providerName,
-      apiKey: cfg.apiKey!,
-      baseUrl: cfg.baseUrl!,
-      model: cfg.model!,
+      apiKey: defined(cfg.apiKey, 'cfg.apiKey'),
+      baseUrl: defined(cfg.baseUrl, 'cfg.baseUrl'),
+      model: defined(cfg.model, 'cfg.model'),
     });
   }
   return out;
@@ -200,6 +201,27 @@ function statusOf(r: { ok: boolean; empty?: boolean }): 'success' | 'empty' | 'e
   return r.empty === true ? 'empty' : 'error';
 }
 
+// 模块级事件谓词/收集器：describeOrSkip → describe → it 内再挂回调会超
+// max-nested-callbacks(3)，这里把单行箭头提为模块级具名函数
+const isSuccessEvent = (e: AiEvent): e is Extract<AiEvent, { type: 'success' }> =>
+  e.type === 'success';
+const isFailedEvent = (e: AiEvent): e is Extract<AiEvent, { type: 'failed' }> =>
+  e.type === 'failed';
+const isAttemptStart = (e: AiEvent) => e.type === 'attempt_start';
+const isFirstChunk = (e: AiEvent) => e.type === 'first_chunk';
+/** 收集事件到数组的 subscribe 回调（工厂避免闭包嵌套） */
+function eventSink(sink: AiEvent[]): (e: AiEvent) => void {
+  return (e) => {
+    sink.push(e);
+  };
+}
+/** 统计 attempt_start 出现次数的 subscribe 回调 */
+function attemptStartCounter(counter: { calls: number }): (e: AiEvent) => void {
+  return (e) => {
+    if (e.type === 'attempt_start') counter.calls++;
+  };
+}
+
 describeOrSkip('真实供应商集成', () => {
   for (const p of PROVIDERS) {
     describe(`${p.name} (${p.model})`, () => {
@@ -218,7 +240,7 @@ describeOrSkip('真实供应商集成', () => {
       it('chat：非流式 + usage 归一化', async () => {
         const ai = makeAi();
         const events: AiEvent[] = [];
-        ai.subscribe((e) => events.push(e));
+        ai.subscribe(eventSink(events));
 
         const result = await ai.chat(
           channel(p),
@@ -243,7 +265,7 @@ describeOrSkip('真实供应商集成', () => {
             console.log(`[${p.name}] chat usage:`, JSON.stringify(result.usage));
           }
           // 事件序列（全局面）：attempt_start + success 终态最后
-          expect(events.some((e) => e.type === 'attempt_start')).toBe(true);
+          expect(events.some(isAttemptStart)).toBe(true);
           expect(events.at(-1)?.type).toBe('success');
         } else if (!result.ok && result.error?.kind === 'quota_exhausted') {
           // 账户余额耗尽（需充值）：不可重试
@@ -274,7 +296,7 @@ describeOrSkip('真实供应商集成', () => {
         );
 
         const events: AiEvent[] = [];
-        handle.events.subscribe((e) => events.push(e));
+        handle.events.subscribe(eventSink(events));
         const reader = handle.stream.getReader();
         const dec = new TextDecoder();
         const chunks: string[] = [];
@@ -289,8 +311,8 @@ describeOrSkip('真实供应商集成', () => {
         expect(text).toMatch(/data:/);
         console.log(`[${p.name}] stream output (前 200 字符):`, text.slice(0, 200));
 
-        const successEv = events.find((e) => e.type === 'success');
-        const failedEv = events.find((e) => e.type === 'failed');
+        const successEv = events.find(isSuccessEvent);
+        const failedEv = events.find(isFailedEvent);
         if (successEv?.type === 'success') {
           // 成功路径：流式正常结束不应有 terminated
           expect(successEv.terminated).toBeUndefined();
@@ -311,10 +333,8 @@ describeOrSkip('真实供应商集成', () => {
 
       it('错误分类：无效模型 → model_not_found（不重试）', async () => {
         const ai = makeAi();
-        let calls = 0;
-        const off = ai.subscribe((e) => {
-          if (e.type === 'attempt_start') calls++;
-        });
+        const counter = { calls: 0 };
+        const off = ai.subscribe(attemptStartCounter(counter));
 
         const result = await ai.chat(
           channel(p),
@@ -332,10 +352,10 @@ describeOrSkip('真实供应商集成', () => {
           const error = result.error as UpstreamError;
           // 4xx 类错误不重试（calls=1）；具体 kind 因供应商而异
           // （404→model_not_found / 400→invalid_request，厂商原码看 vendorCode）
-          expect(calls).toBe(1);
+          expect(counter.calls).toBe(1);
           expect(error.retryable).toBe(false);
           expect(error.circuitTrip).toBe(false);
-          console.log(`[${p.name}] bad-model error:`, error.kind, 'status=' + error.status);
+          console.log(`[${p.name}] bad-model error:`, error.kind, `status=${error.status}`);
         }
       }, 30_000);
 
@@ -370,7 +390,7 @@ describeOrSkip('真实供应商集成', () => {
         );
 
         const events: AiEvent[] = [];
-        handle.events.subscribe((e) => events.push(e));
+        handle.events.subscribe(eventSink(events));
         const reader = handle.stream.getReader();
         const dec = new TextDecoder();
         const chunks: string[] = [];
@@ -381,8 +401,8 @@ describeOrSkip('真实供应商集成', () => {
         }
         const text = chunks.join('');
 
-        const successEv = events.find((e) => e.type === 'success');
-        const failedEv = events.find((e) => e.type === 'failed');
+        const successEv = events.find(isSuccessEvent);
+        const failedEv = events.find(isFailedEvent);
         if (successEv?.type === 'success') {
           // 成功：透传内容应包含 tool_calls 或正常 content（取决于模型是否决定调用工具）
           const hasToolCalls = text.includes('tool_calls');
@@ -449,11 +469,11 @@ describeOrSkip('真实供应商集成 · 扩展场景', () => {
           opts(p, 'v2-stream'),
         );
         const events: AiEvent[] = [];
-        handle.events.subscribe((e) => events.push(e));
+        handle.events.subscribe(eventSink(events));
         const text = await new Response(handle.stream).text();
         expect(text.length).toBeGreaterThan(0);
 
-        const success = events.find((e) => e.type === 'success');
+        const success = events.find(isSuccessEvent);
         if (success !== undefined && success.type === 'success') {
           // 正常完成：usage 可信（供应商真实返回，adapter 强制注入 include_usage 的效果）
           if (success.usage) {
@@ -469,7 +489,7 @@ describeOrSkip('真实供应商集成 · 扩展场景', () => {
           expect(success.bytesRelayed ?? 0).toBeGreaterThan(0);
         }
         // first_chunk 一次性缓冲重放（per-call 面契约）——晚订阅也能锚定首字节
-        const firstChunk = events.find((e) => e.type === 'first_chunk');
+        const firstChunk = events.find(isFirstChunk);
         expect(firstChunk).toBeDefined();
       }, 45_000);
 

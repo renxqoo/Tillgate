@@ -6,19 +6,16 @@
 import { serve } from '@hono/node-server';
 import { assertRedisReachable } from '@tillgate/runtime';
 import { loadGatewayConfig } from './config';
+import type { GatewayConfig } from './config';
 import { assembleGateway } from './assembly';
+import type { GatewayAssembly } from './assembly';
 import { createGatewayApp } from './app';
+import type { GatewayAppDeps } from './app';
 import { createGatewayShutdown } from './shutdown';
 
-async function main(): Promise<void> {
-  const config = loadGatewayConfig();
-  const assembly = assembleGateway(config);
-  const logger = assembly.logger;
-
-  // Redis fail-closed：熔断/限流/爆破共享存储连不上拒绝启动（v1 语义）
-  await assertRedisReachable(assembly.redis, 'gateway', config.redisUrl, 5_000);
-
-  const app = createGatewayApp({
+/** app 依赖组装（assembly + config → createGatewayApp 入参——纯字段搬运） */
+function toAppDeps(assembly: GatewayAssembly, config: GatewayConfig): GatewayAppDeps {
+  return {
     inference: assembly.inference,
     reader: {
       resolveKeyByHash: (keyHash) => assembly.accounts.resolveKeyByHash(keyHash),
@@ -47,8 +44,19 @@ async function main(): Promise<void> {
       maxFileBytes: config.uploadLimits.maxFileBytes,
     },
     trustedProxyHops: config.trustedProxyHops,
-    logger,
-  });
+    logger: assembly.logger,
+  };
+}
+
+async function main(): Promise<void> {
+  const config = loadGatewayConfig();
+  const assembly = assembleGateway(config);
+  const { logger } = assembly;
+
+  // Redis fail-closed：熔断/限流/爆破共享存储连不上拒绝启动（v1 语义）
+  await assertRedisReachable(assembly.redis, 'gateway', config.redisUrl, 5_000);
+
+  const app = createGatewayApp(toAppDeps(assembly, config));
 
   const server = serve({ fetch: app.fetch, port: config.port }, () => {
     logger.info(

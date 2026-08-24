@@ -125,6 +125,7 @@ export interface AdminAppDeps {
   now: () => Date;
 }
 
+// eslint-disable-next-line max-lines-per-function, max-statements -- 应用装配:错误处理/中间件栈/路由挂载线性平铺,每条语句即一个挂载步骤(存量棘轮)
 export function createAdminApp(deps: AdminAppDeps): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
 

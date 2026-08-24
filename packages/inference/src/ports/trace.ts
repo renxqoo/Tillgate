@@ -28,7 +28,7 @@ export interface TracePort {
 export const noopTrace: TracePort = {
   withSpan: async (_name, _attributes, fn) =>
     await fn({
-      setAttributes: () => undefined,
-      setStatus: () => undefined,
+      setAttributes: () => {},
+      setStatus: () => {},
     }),
 };

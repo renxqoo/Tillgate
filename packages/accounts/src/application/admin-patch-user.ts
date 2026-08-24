@@ -4,6 +4,7 @@
  * - email 变更 = 身份事实变更,同事务经 SessionInvalidationPort 推进 identity 吊销线(全网下线;§3.4 唯一所有者);
  * - 换卡守卫两分(不存在/停用);限额域校验;
  * - 审计 user.update 同事务落库(全量 patch detail)。
+ * 字段校验顺序(status → freeze → 身份 → 换卡 → 限额)是行为契约,拆分后保持不变。
  */
 import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
@@ -13,7 +14,7 @@ import { USER_STATUS, USER_STATUSES } from '../domain/status.js';
 import type { UserPatch, UserRecord } from '../ports/account-store.js';
 import type { UserStatus } from '../domain/status.js';
 import { SESSION_REALM } from '../ports/session-invalidation.js';
-import type { UseCaseContext } from './context.js';
+import type { AccountsPolicy, UseCaseContext } from './context.js';
 
 export interface AdminUserPatchInput {
   readonly displayName?: string;
@@ -27,14 +28,15 @@ export interface AdminUserPatchInput {
   readonly isEnterprise?: boolean;
 }
 
-export async function adminPatchUser(
-  ctx: UseCaseContext,
-  input: { userId: number; patch: AdminUserPatchInput; adminId: number },
-): Promise<UserRecord> {
-  const raw = input.patch;
-  /** 可变构建形态(-readonly 映射);交付时即 UserPatch */
-  const patch: { -readonly [K in keyof UserPatch]?: UserPatch[K] } = {};
+/** 可变构建形态(-readonly 映射);交付时即 UserPatch */
+type MutableUserPatch = { -readonly [K in keyof UserPatch]?: UserPatch[K] };
 
+/** 状态与封禁原因域:freezeReason 只能随封禁出现;封禁缺省原因注入;解封清原因 */
+function applyStatusAndFreeze(
+  patch: MutableUserPatch,
+  raw: AdminUserPatchInput,
+  policy: AccountsPolicy,
+): void {
   if (raw.status !== undefined) {
     if (!USER_STATUSES.includes(raw.status as UserStatus)) {
       throw AccountsErrors.business('user_patch_invalid', { field: 'status', value: raw.status });
@@ -44,7 +46,7 @@ export async function adminPatchUser(
   if (raw.freezeReason !== undefined) {
     if (raw.freezeReason !== null) {
       const reason = raw.freezeReason.trim();
-      if (reason.length < 1 || reason.length > FIELD_LIMITS.freezeReason) {
+      if (reason.length === 0 || reason.length > FIELD_LIMITS.freezeReason) {
         throw AccountsErrors.business('user_patch_invalid', { field: 'freezeReason' });
       }
       if (patch.status !== USER_STATUS.BANNED) {
@@ -60,10 +62,13 @@ export async function adminPatchUser(
   }
   // 封禁缺省原因 / 解封清原因(v1 users.service:162-163)
   if (patch.status === USER_STATUS.BANNED && patch.freezeReason === undefined) {
-    patch.freezeReason = ctx.policy.banDefaultReason;
+    patch.freezeReason = policy.banDefaultReason;
   }
   if (patch.status === USER_STATUS.ACTIVE) patch.freezeReason = null;
+}
 
+/** 身份域:email 规范化 + displayName;返回是否需要推进会话吊销线 */
+function applyIdentityFields(patch: MutableUserPatch, raw: AdminUserPatchInput): boolean {
   let advanceSessionAnchor = false;
   if (raw.email !== undefined && raw.email !== null) {
     const email = normalizeValidEmail(raw.email);
@@ -71,30 +76,24 @@ export async function adminPatchUser(
     patch.email = email;
     advanceSessionAnchor = true;
   }
-
   if (raw.displayName !== undefined) {
     const name = normalizeName(raw.displayName);
     if (name === null) throw AccountsErrors.business('display_name_invalid');
     patch.displayName = name;
   }
+  return advanceSessionAnchor;
+}
 
-  if (raw.rateCardId !== undefined && raw.rateCardId !== null) {
-    const probe = await ctx.store.rateCardUsable(ctx.db, raw.rateCardId);
-    if (probe.status === 'missing') {
-      throw AccountsErrors.business('rate_card_not_found', { rateCardId: raw.rateCardId });
-    }
-    if (probe.status === 'disabled') {
-      throw AccountsErrors.business('rate_card_disabled', { rateCardId: raw.rateCardId });
-    }
-    patch.rateCardId = raw.rateCardId;
-  } else if (raw.rateCardId === null) {
-    patch.rateCardId = null;
-  }
-
+/** 限额域:rpm/tpm 上界校验;dailySpendLimit 管理面允许 0 但不得超业务上界 */
+function applyLimitFields(
+  patch: MutableUserPatch,
+  raw: AdminUserPatchInput,
+  policy: AccountsPolicy,
+): void {
   if (raw.rpmLimit !== undefined) {
     if (raw.rpmLimit === null) patch.rpmLimit = null;
     else {
-      const rpm = parseRateLimit(raw.rpmLimit, ctx.policy.rpmLimitMax);
+      const rpm = parseRateLimit(raw.rpmLimit, policy.rpmLimitMax);
       if (rpm === null) throw AccountsErrors.business('user_patch_invalid', { field: 'rpmLimit' });
       patch.rpmLimit = rpm;
     }
@@ -102,7 +101,7 @@ export async function adminPatchUser(
   if (raw.tpmLimit !== undefined) {
     if (raw.tpmLimit === null) patch.tpmLimit = null;
     else {
-      const tpm = parseRateLimit(raw.tpmLimit, ctx.policy.tpmLimitMax);
+      const tpm = parseRateLimit(raw.tpmLimit, policy.tpmLimitMax);
       if (tpm === null) throw AccountsErrors.business('user_patch_invalid', { field: 'tpmLimit' });
       patch.tpmLimit = tpm;
     }
@@ -111,13 +110,46 @@ export async function adminPatchUser(
     if (raw.dailySpendLimit === null) patch.dailySpendLimit = null;
     else {
       // 管理面允许 0(即日全拒;v1 admin zod 非负),但不得超过业务上界
-      if (!isNonNegativeAmountWithin(raw.dailySpendLimit, ctx.policy.amountLimitUpper)) {
+      if (!isNonNegativeAmountWithin(raw.dailySpendLimit, policy.amountLimitUpper)) {
         throw AccountsErrors.business('user_patch_invalid', { field: 'dailySpendLimit' });
       }
       patch.dailySpendLimit = raw.dailySpendLimit;
     }
   }
   if (raw.isEnterprise !== undefined) patch.isEnterprise = raw.isEnterprise;
+}
+
+/** 换卡守卫两分:不存在 → rate_card_not_found;停用 → rate_card_disabled;null → 显式清空 */
+async function applyRateCardId(
+  ctx: UseCaseContext,
+  patch: MutableUserPatch,
+  raw: AdminUserPatchInput,
+): Promise<void> {
+  if (raw.rateCardId === undefined) return;
+  if (raw.rateCardId === null) {
+    patch.rateCardId = null;
+    return;
+  }
+  const probe = await ctx.store.rateCardUsable(ctx.db, raw.rateCardId);
+  if (probe.status === 'missing') {
+    throw AccountsErrors.business('rate_card_not_found', { rateCardId: raw.rateCardId });
+  }
+  if (probe.status === 'disabled') {
+    throw AccountsErrors.business('rate_card_disabled', { rateCardId: raw.rateCardId });
+  }
+  patch.rateCardId = raw.rateCardId;
+}
+
+export async function adminPatchUser(
+  ctx: UseCaseContext,
+  input: { userId: number; patch: AdminUserPatchInput; adminId: number },
+): Promise<UserRecord> {
+  const raw = input.patch;
+  const patch: MutableUserPatch = {};
+  applyStatusAndFreeze(patch, raw, ctx.policy);
+  const advanceSessionAnchor = applyIdentityFields(patch, raw);
+  await applyRateCardId(ctx, patch, raw);
+  applyLimitFields(patch, raw, ctx.policy);
 
   return runTx(
     ctx.db,
@@ -126,8 +158,9 @@ export async function adminPatchUser(
         userId: input.userId,
         patch,
       });
-      if (updated === null)
+      if (updated === null) {
         throw AccountsErrors.business('user_not_found', { userId: input.userId });
+      }
       // email 变更:同事务推进 identity 吊销线(§3.4;回滚即未失效,失败随事务回滚)
       if (advanceSessionAnchor) {
         await ctx.sessionInvalidation.invalidateUserSessions(tx, {

@@ -50,7 +50,10 @@ export function allocateSettlement(
       fallback.over = remaining.toString();
     } else {
       // 纯订阅链：预留内核销套餐，超额转余额补扣（可形成负余额）。
-      const last = out[out.length - 1]!;
+      const last = out.at(-1);
+      if (last === undefined) {
+        throw new Error('settle_allocation: pure subscription chain must be non-empty');
+      }
       last.over = remaining.toString();
     }
   }

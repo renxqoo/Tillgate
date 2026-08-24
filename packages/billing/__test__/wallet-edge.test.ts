@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { isDefectError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
+import { defined } from './defined.js';
 
 const GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'gift'],
@@ -157,7 +158,7 @@ describe('U1b 补充边界（分支封口）', () => {
     // 冻结账户的 active 冻结单仍可释放（在途归还）——旧仓语义：查询/释放预占不受限
     const released = await api.release({ refType: 'billing', refId: 'hk11', reason: 'risk_hold' });
     expect(released.releasedAmount).toBe('3');
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('0');
   });
 
   it('statement limit 钳制：0 → 1、500 → 200', async () => {

@@ -16,7 +16,7 @@ import { Decimal } from '../domain/money.js';
 import type { CommissionStatsStore } from '../ports/commission-stats.js';
 
 /** 佣金入账所需的 wallet 动词窄面（装配注入 wallet facade） */
-export type CommissionWallet = {
+export interface CommissionWallet {
   credit(input: {
     userId: number;
     amount: string;
@@ -24,7 +24,7 @@ export type CommissionWallet = {
     refId: string;
     memo?: string;
   }): Promise<{ replayed: boolean }>;
-};
+}
 
 export interface ReferralCommissionDeps {
   stats: CommissionStatsStore;

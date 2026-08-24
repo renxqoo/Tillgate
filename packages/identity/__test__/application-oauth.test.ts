@@ -4,6 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';
+import { defined } from './defined.js';
 
 const harness = () => createTestHarness();
 
@@ -134,7 +135,7 @@ describe('oauth.authorize / callback(state 半程)', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: { ...TEST_CONFIG, providers: ['github', 'google', 'customidp'] },
       store: h.store,
       oauthStateStore: h.oauthState,
@@ -207,11 +208,11 @@ describe('oauth.authorize / callback(state 半程)', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: {
         ...TEST_CONFIG,
         providers: ['github', 'gitlab'],
-        oauth: { github: TEST_CONFIG.oauth.github! },
+        oauth: { github: defined(TEST_CONFIG.oauth.github, 'TEST_CONFIG.oauth.github') },
       },
       store: h.store,
       oauthStateStore: h.oauthState,
@@ -258,7 +259,7 @@ describe('oauth.authorize / callback(state 半程)', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       store: h.store,
       oauthStateStore: h.oauthState,

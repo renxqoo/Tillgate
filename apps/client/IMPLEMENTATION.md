@@ -23,7 +23,7 @@
 | B7     | auth 裸 fetch 丢 `x-forwarded-for`（IP 爆破锁把全员记成 Next 容器 IP）与 `accept-language`  | lib/server-actions/auth.ts | **高** | **结构性修复**：全部调用经 `createNextClientApiClient`；回归用例断言出站头                                   |
 | B8     | 日期格式化依赖容器本地 TZ；「今日」用 +8h 硬编码近似                                        | formatters + dashboard     | 中     | `DISPLAY_TZ` env（默认 Asia/Shanghai）+ `createDateFormatter({timeZone})`；KPI 今日判断显式 TZ               |
 | B11    | 死文件 `src/data/users.ts` 全仓零引用                                                       | data/users                 | 低     | 不移植                                                                                                       |
-| B12    | 品牌串「Studio Admin」模板残留                                                              | app-config                 | 中     | **修复**：Tillgate Console                                                                                  |
+| B12    | 品牌串「Studio Admin」模板残留                                                              | app-config                 | 中     | **修复**：Tillgate Console                                                                                   |
 | B13    | get-user 注释自述调 admin-api，实际 client-api                                              | get-user                   | 低     | 新实现注释如实                                                                                               |
 | B14    | tsconfig 死映射（`@/stores/*` 等指向不存在目录）                                            | tsconfig                   | 低     | 新 tsconfig 仅 `@/*`                                                                                         |
 | B15    | package.json 13 个零引用依赖（zustand/dnd-kit/embla/analytics/…）                           | package.json               | 中     | 修剪（见 §3 依赖清单）                                                                                       |
@@ -79,7 +79,7 @@ G1 列表 `q`/排序参数缺失（usage/keys）；G2 orgs 批量详情端点缺
 | 旧 ui 被消费面（ListPage/DataTable/useActionResult/ConfirmAction/…）           | 重写      | ListPage/useActionResult/ConfirmAction 为 app 业务装配（features/shared）；DataTable/StatusPill/KpiCard/CopyButton/chart/sidebar 等原语直用新 ui |
 | 旧 api-client 被消费面（apiFetch/fetchUserList/formatters/session/i18n/types） | 重写      | facade `list()` 替 fetchUserList；DTO 用 `dto/client-api`；格式化按 DESIGN D-D/D-E；session/i18n 用 ./next                                       |
 | messages/{en,zh}.json                                                          | 复制+微修 | 按 D-A/D-B/D-E 增删 key；en↔zh 对齐测试锁死                                                                                                      |
-| next.config.mjs、postcss、package.json、tsconfig                               | 重写      | B14/B15；ui styles 经 `@tillgate/ui/styles.css`；安全头原样                                                                                     |
+| next.config.mjs、postcss、package.json、tsconfig                               | 重写      | B14/B15；ui styles 经 `@tillgate/ui/styles.css`；安全头原样                                                                                      |
 
 ## 3. 拆分决策
 

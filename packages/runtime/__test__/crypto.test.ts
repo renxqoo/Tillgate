@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DefectError, isDefectError } from '@tillgate/errors';
+import type { DefectError } from '@tillgate/errors';
+import { isDefectError } from '@tillgate/errors';
 import { createCipher } from '../src/crypto/cipher';
+import { defined } from './defined';
 
 /** 单 key 单格式语义：enc:v1 是格式标记（非密钥世代）；错误密钥/篡改一律认证失败。 */
 const K = 'encryption-key-32-chars-minimum!!';
@@ -10,9 +12,9 @@ function expectDefect(fn: () => unknown, code: string): void {
   try {
     fn();
     expect.unreachable(`expected DefectError (${code})`);
-  } catch (e) {
-    expect(isDefectError(e), String(e)).toBe(true);
-    expect((e as DefectError).code).toBe(code);
+  } catch (error) {
+    expect(isDefectError(error), String(error)).toBe(true);
+    expect((error as DefectError).code).toBe(code);
   }
 }
 
@@ -46,14 +48,14 @@ describe('AES-GCM 单 key（createCipher）', () => {
     // 明文须长于 2 字节：GCM 是流密码（密文=明文长），单字节明文的 cipher 段只有
     // 2 个 hex 字符，末 4 字符篡改会破坏段结构而非走认证路径（v1 泛断言曾掩盖此点）
     const packed = cipher.encrypt('tamper-target-payload-0123456789');
-    const tampered = packed.slice(0, -4) + '0000';
+    const tampered = `${packed.slice(0, -4)}0000`;
     try {
       cipher.decrypt(tampered);
       expect.unreachable('expected auth failure');
-    } catch (e) {
-      expect(isDefectError(e)).toBe(true);
-      expect((e as DefectError).code).toBe('runtime.cipher.auth_failed');
-      expect((e as DefectError).cause).toBeInstanceOf(Error); // 原生 GCM 失败在 cause 链
+    } catch (error) {
+      expect(isDefectError(error)).toBe(true);
+      expect((error as DefectError).code).toBe('runtime.cipher.auth_failed');
+      expect((error as DefectError).cause).toBeInstanceOf(Error); // 原生 GCM 失败在 cause 链
     }
   });
 
@@ -68,10 +70,22 @@ describe('AES-GCM 单 key（createCipher）', () => {
     const packed = cipher.encrypt('x');
     const parts = packed.split(':');
     // iv 段砍成 11 字节 hex
-    const badIv = ['enc', 'v1', parts[2]!.slice(0, 22), parts[3], parts[4]].join(':');
+    const badIv = [
+      'enc',
+      'v1',
+      defined(parts[2], 'parts[2]').slice(0, 22),
+      parts[3],
+      parts[4],
+    ].join(':');
     expectDefect(() => cipher.decrypt(badIv), 'runtime.cipher.invalid_format');
     // tag 段砍成 15 字节 hex
-    const badTag = ['enc', 'v1', parts[2], parts[3]!.slice(0, 30), parts[4]].join(':');
+    const badTag = [
+      'enc',
+      'v1',
+      parts[2],
+      defined(parts[3], 'parts[3]').slice(0, 30),
+      parts[4],
+    ].join(':');
     expectDefect(() => cipher.decrypt(badTag), 'runtime.cipher.invalid_format');
   });
 });

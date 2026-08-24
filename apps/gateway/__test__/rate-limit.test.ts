@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { GatewayErrors } from '../src/http/openai-error-face';
 import { admitRequest, tryChannelRpm, type RateLimitGate } from '../src/http/middleware/rate-limit';
+import { defined } from './defined';
 import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { AuthContext } from '../src/http/middleware/api-key';
 
@@ -64,12 +65,12 @@ describe('admitRequest 并罚制', () => {
       auth: auth(),
       estimatedTokens: 1_234,
     });
-    expect(calls.checkAll[0]![0]).toEqual([
+    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([
       { dimension: 'key:7', max: 60 },
       { dimension: 'user:42', max: 30 },
       { dimension: 'global', max: 2_000 },
     ]);
-    expect(calls.reserveTpmAll[0]![0]).toEqual([
+    expect(defined(calls.reserveTpmAll[0], 'reserveTpmAll[0]')[0]).toEqual([
       { dimension: 'key:7', estimatedTokens: 1_234, max: 100_000 },
       { dimension: 'user:42', estimatedTokens: 1_234, max: 50_000 },
     ]);
@@ -101,8 +102,10 @@ describe('admitRequest 并罚制', () => {
       auth: auth({ apiKeyId: null, rpmLimit: 10, tpmLimit: 10 }),
       estimatedTokens: 5,
     });
-    expect(calls.checkAll[0]![0]).toEqual([{ dimension: 'user:42', max: 30 }]);
-    expect(calls.reserveTpmAll[0]![0]).toEqual([
+    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([
+      { dimension: 'user:42', max: 30 },
+    ]);
+    expect(defined(calls.reserveTpmAll[0], 'reserveTpmAll[0]')[0]).toEqual([
       { dimension: 'user:42', estimatedTokens: 5, max: 50_000 },
     ]);
   });
@@ -114,7 +117,9 @@ describe('admitRequest 并罚制', () => {
       auth: auth({ apiKeyId: null, appId: 9, rpmLimit: 10, tpmLimit: 10 }),
       estimatedTokens: 5,
     });
-    expect(calls.checkAll[0]![0]).toEqual([{ dimension: 'user:42', max: 30 }]);
+    expect(defined(calls.checkAll[0], 'checkAll[0]')[0]).toEqual([
+      { dimension: 'user:42', max: 30 },
+    ]);
   });
 
   it('限流维度串不外泄：错误码可编程分派，无 dimension 泄漏', async () => {
@@ -123,7 +128,7 @@ describe('admitRequest 并罚制', () => {
       requestId: 'r',
       auth: auth(),
       estimatedTokens: 1,
-    }).catch((e: Error & { context?: Record<string, unknown> }) => e);
+    }).catch((error: Error & { context?: Record<string, unknown> }) => error);
     expect((err as { code?: string }).code).toBe(GatewayErrors.code('rate_limit_exceeded'));
     expect(JSON.stringify((err as { context?: unknown }).context ?? {})).not.toContain('key:7');
   });

@@ -56,8 +56,9 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
                         tc('actionFailed'),
                         next ? t('enabledToast') : t('disabledToast'),
                       )
-                    )
+                    ) {
                       setEnabled(next);
+                    }
                   })
                 }
               >

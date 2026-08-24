@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
+import { defined } from './defined.js';
 
 const GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'gift', 'referral'],
@@ -66,7 +67,7 @@ describe('referralPayouts（返利流水管理读侧）', () => {
       'referral-commission:7:20260823',
     ]);
     expect(page.rows[0]).toMatchObject({ refType: 'referral', kind: 'credit', memo: null });
-    expect(page.rows[0]!.createdAt instanceof Date).toBe(true);
+    expect(defined(page.rows[0]).createdAt instanceof Date).toBe(true);
   });
 
   it('referral_signup 与 gift 各自投影封闭（干扰前缀/异 refType 零误收）', async () => {
@@ -85,7 +86,7 @@ describe('referralPayouts（返利流水管理读侧）', () => {
     const second = await api.referralPayouts({ kind: 'gift', limit: 1, offset: 1 });
     expect(first.rows).toHaveLength(1);
     expect(second.rows).toHaveLength(1);
-    expect(first.rows[0]!.id).toBeGreaterThan(second.rows[0]!.id);
+    expect(defined(first.rows[0]).id).toBeGreaterThan(defined(second.rows[0]).id);
     expect(first.total).toBe(2);
     expect(second.total).toBe(2);
     // 越界 offset 空页不抛

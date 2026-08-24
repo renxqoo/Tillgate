@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { isBusinessError } from '@tillgate/errors';
 import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createGatewayCatalog, type CatalogStores } from '../src/adapters/catalog-port';
+import { defined } from './defined';
 import { createGatewayBilling } from '../src/adapters/billing-port';
 import { createSettleWakeProducer } from '../src/adapters/settle-wake';
 import type {
@@ -81,7 +82,7 @@ describe('catalog-port：系数解析（C-G2）', () => {
         card: card([{ scope: 'global', modelMappingId: null, groupKey: null, coefficient: '0.8' }]),
       }),
     );
-    expect((await catalog.findMapping('m-main', noCard))!.coefficient).toBe('0.8');
+    expect(defined(await catalog.findMapping('m-main', noCard)).coefficient).toBe('0.8');
 
     const withModel = createGatewayCatalog(
       stores({
@@ -91,7 +92,7 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ]),
       }),
     );
-    expect((await withModel.findMapping('m-main', noCard))!.coefficient).toBe('0.5'); // model > global
+    expect(defined(await withModel.findMapping('m-main', noCard)).coefficient).toBe('0.5'); // model > global
 
     const withGroup = createGatewayCatalog(
       stores({
@@ -101,10 +102,10 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ]),
       }),
     );
-    expect((await withGroup.findMapping('m-g', noCard))!.coefficient).toBe('0.9'); // group 命中
+    expect(defined(await withGroup.findMapping('m-g', noCard)).coefficient).toBe('0.9'); // group 命中
 
     expect(
-      (await createGatewayCatalog(stores({ card: null })).findMapping('m-main', noCard))!
+      defined(await createGatewayCatalog(stores({ card: null })).findMapping('m-main', noCard))
         .coefficient,
     ).toBe('1');
   });
@@ -122,7 +123,7 @@ describe('catalog-port：系数解析（C-G2）', () => {
         },
       }),
     );
-    const err = await catalog.findMapping('m-main', noCard).catch((e: Error) => e);
+    const err = await catalog.findMapping('m-main', noCard).catch((error: Error) => error);
     expect(isBusinessError(err)).toBe(true);
     expect((err as { code?: string }).code).toBe(controlPlaneErrors.code('rate_card_disabled'));
   });
@@ -144,14 +145,17 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap = await catalog.findMapping('img-x', {
-      userId: 1,
-      body: { n: 2, size: '1024x1024' },
-      now: new Date('2026-08-24T12:00:00+08:00'),
-    });
-    expect(snap!.pricingUnit).toBe('image');
-    expect(snap!.unitPrice).toBe('0.04'); // 变体按 body.size 选定
-    expect(snap!.unitUpperBound).toBe(2); // n=2 张
+    const snap = defined(
+      await catalog.findMapping('img-x', {
+        userId: 1,
+        body: { n: 2, size: '1024x1024' },
+        now: new Date('2026-08-24T12:00:00+08:00'),
+      }),
+      'snap',
+    );
+    expect(snap.pricingUnit).toBe('image');
+    expect(snap.unitPrice).toBe('0.04'); // 变体按 body.size 选定
+    expect(snap.unitUpperBound).toBe(2); // n=2 张
 
     const floored = createGatewayCatalog(
       stores({
@@ -166,12 +170,15 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap2 = await floored.findMapping('video-x', {
-      userId: 1,
-      body: { duration: 3 },
-      now: new Date('2026-08-24T12:00:00+08:00'),
-    });
-    expect(snap2!.unitUpperBound).toBe(5); // 保底 5 秒只抬不降
+    const snap2 = defined(
+      await floored.findMapping('video-x', {
+        userId: 1,
+        body: { duration: 3 },
+        now: new Date('2026-08-24T12:00:00+08:00'),
+      }),
+      'snap2',
+    );
+    expect(snap2.unitUpperBound).toBe(5); // 保底 5 秒只抬不降
   });
 
   it('快照杂项：fallback 链 / cacheWrite 零价归 null / 指纹 / 渠道候选可选限流列映射', async () => {
@@ -204,10 +211,10 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap = await catalog.findMapping('m-main', noCard);
-    expect(snap!.fallbackModels).toEqual(['m-fb']);
-    expect(snap!.cacheWritePrice).toBeNull();
-    expect(snap!.billingPolicyFingerprint).toBe(
+    const snap = defined(await catalog.findMapping('m-main', noCard), 'snap');
+    expect(snap.fallbackModels).toEqual(['m-fb']);
+    expect(snap.cacheWritePrice).toBeNull();
+    expect(snap.billingPolicyFingerprint).toBe(
       createHash('sha256')
         .update(JSON.stringify({ modal: true }))
         .digest('hex'),
@@ -249,22 +256,25 @@ describe('catalog-port：系数解析（C-G2）', () => {
       }),
     );
     // 上海 23:00（跨午夜窗口内）→ 覆盖生效；未覆盖的 cache 价回落列基价
-    const night = await catalog.findMapping('m-main', {
-      userId: 1,
-      body: {},
-      now: new Date('2026-08-24T15:00:00Z'),
-    });
-    expect(night!.inputPrice).toBe('0.5');
-    expect(night!.outputPrice).toBe('1');
-    expect(night!.cacheInputPrice).toBe('1'); // 窗口未覆盖 → 基价列
-    expect(night!.coefficient).toBe('0.8'); // 系数轴正交
-    expect(night!.pricingWindow).toBe('谷时段');
+    const night = defined(
+      await catalog.findMapping('m-main', {
+        userId: 1,
+        body: {},
+        now: new Date('2026-08-24T15:00:00Z'),
+      }),
+      'night',
+    );
+    expect(night.inputPrice).toBe('0.5');
+    expect(night.outputPrice).toBe('1');
+    expect(night.cacheInputPrice).toBe('1'); // 窗口未覆盖 → 基价列
+    expect(night.coefficient).toBe('0.8'); // 系数轴正交
+    expect(night.pricingWindow).toBe('谷时段');
 
     // 上海 12:00（未命中）→ 全轴基价 + 无标签
-    const day = await catalog.findMapping('m-main', noCard);
-    expect(day!.inputPrice).toBe('1');
-    expect(day!.outputPrice).toBe('2');
-    expect(day!.pricingWindow).toBeUndefined();
+    const day = defined(await catalog.findMapping('m-main', noCard), 'day');
+    expect(day.inputPrice).toBe('1');
+    expect(day.outputPrice).toBe('2');
+    expect(day.pricingWindow).toBeUndefined();
   });
 
   it('schedule 单位计价轴：窗口 unitPrice 覆盖进快照（计量上界照常 body 推导）', async () => {
@@ -286,14 +296,17 @@ describe('catalog-port：系数解析（C-G2）', () => {
         ],
       }),
     );
-    const snap = await catalog.findMapping('img-s', {
-      userId: 1,
-      body: { n: 2 },
-      now: new Date('2026-08-24T03:00:00+08:00'),
-    });
-    expect(snap!.unitPrice).toBe('0.008');
-    expect(snap!.unitUpperBound).toBe(2);
-    expect(snap!.pricingWindow).toBe('夜图');
+    const snap = defined(
+      await catalog.findMapping('img-s', {
+        userId: 1,
+        body: { n: 2 },
+        now: new Date('2026-08-24T03:00:00+08:00'),
+      }),
+      'snap',
+    );
+    expect(snap.unitPrice).toBe('0.008');
+    expect(snap.unitUpperBound).toBe(2);
+    expect(snap.pricingWindow).toBe('夜图');
   });
 
   it('时区来自装配注入的读取器（同窗口按计费时区墙钟判定，不随宿主机本地时）', async () => {
@@ -312,8 +325,12 @@ describe('catalog-port：系数解析（C-G2）', () => {
     const utc = createGatewayCatalog(stores({ mappings: scheduled(), timezone: 'UTC' }));
     const sh = createGatewayCatalog(stores({ mappings: scheduled(), timezone: 'Asia/Shanghai' }));
     const now = new Date('2026-08-24T12:00:00Z');
-    expect((await utc.findMapping('m-main', { userId: 1, body: {}, now }))!.inputPrice).toBe('1');
-    expect((await sh.findMapping('m-main', { userId: 1, body: {}, now }))!.inputPrice).toBe('0.5');
+    expect(defined(await utc.findMapping('m-main', { userId: 1, body: {}, now })).inputPrice).toBe(
+      '1',
+    );
+    expect(defined(await sh.findMapping('m-main', { userId: 1, body: {}, now })).inputPrice).toBe(
+      '0.5',
+    );
   });
 });
 
@@ -495,12 +512,17 @@ describe('settle-wake（C-G8）', () => {
     const warns: string[] = [];
     const wake = createSettleWakeProducer(db, { warn: (_o, msg) => warns.push(msg) });
     wake.wake('r-1');
-    await new Promise((r) => setTimeout(r, 10));
-    expect(executed[0]!.sql).toContain('pg_notify');
-    expect(executed[0]!.dump).toContain('settle-wake');
-    expect(executed[0]!.dump).toContain('r-1');
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
+    const first = defined(executed[0], 'executed[0]');
+    expect(first.sql).toContain('pg_notify');
+    expect(first.dump).toContain('settle-wake');
+    expect(first.dump).toContain('r-1');
     wake.wake('r-2'); // 失败路径
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(warns.some((m) => m.includes('settle wake notify failed'))).toBe(true);
     await expect(wake.close()).resolves.toBeUndefined();
   });
@@ -550,7 +572,9 @@ describe('billing-timezone 读取器（TTL 缓存 + 单飞行 + 回落）', () =
       fallback: 'UTC',
     });
     expect(await readShapey()).toBe('UTC');
-    await new Promise((r) => setTimeout(r, 3));
+    await new Promise((r) => {
+      setTimeout(r, 3);
+    });
     expect(await readShapey()).toBe('UTC');
     expect(shapey.reads()).toBe(2);
   });

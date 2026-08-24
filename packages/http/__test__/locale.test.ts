@@ -32,11 +32,11 @@ describe('parseAcceptLanguage', () => {
 describe('resolveLocale：cookie 优先，其次请求头', () => {
   it('合法 cookie 值直接命中（大小写/空白容错）', () => {
     expect(resolveLocale(' zh ', 'en-US,en;q=0.9')).toBe('zh');
-    expect(resolveLocale('EN', undefined)).toBe('en');
+    expect(resolveLocale('EN', null)).toBe('en');
   });
   it('非法/缺失 cookie → 走 Accept-Language', () => {
     expect(resolveLocale('fr', 'zh-CN,zh;q=0.9')).toBe('zh');
-    expect(resolveLocale(undefined, undefined)).toBe('en');
+    expect(resolveLocale(null, null)).toBe('en');
   });
 });
 

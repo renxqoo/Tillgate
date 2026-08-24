@@ -29,6 +29,16 @@ const WALLET_MIGRATIONS = [
 /** v1 行为等价重试策略（db 包 transaction.ts 注释口径；生产缺省归 app config） */
 export const V1_RETRY: TxRetryPolicy = { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 };
 
+/** 沿 cause 链探测 SQLSTATE（drizzle 包装 pg 错误；42P01 = 缺外部链表，容错跳过） */
+export function causeChainHasCode(error: unknown, code: string, maxDepth = 5): boolean {
+  let current: unknown = error;
+  for (let depth = 0; current != null && depth < maxDepth; depth += 1) {
+    if ((current as { code?: string }).code === code) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
 export interface RealWalletHarness {
   db: Db;
   api: WalletApi;
@@ -154,16 +164,7 @@ export async function setupRealFullSchema(label: string): Promise<RealFullSchema
         await db.execute(sql.raw(trimmed));
       } catch (error) {
         // drizzle 包装 pg 错误——沿 cause 链探测 SQLSTATE（42P01 = 缺外部链表，容错跳过）
-        let current: unknown = error;
-        let missingTable = false;
-        for (let depth = 0; current != null && depth < 5; depth += 1) {
-          if ((current as { code?: string }).code === '42P01') {
-            missingTable = true;
-            break;
-          }
-          current = (current as { cause?: unknown }).cause;
-        }
-        if (missingTable) continue;
+        if (causeChainHasCode(error, '42P01')) continue;
         throw error;
       }
     }

@@ -23,8 +23,8 @@ export async function adjustBalanceAction(
     revalidatePath('/dashboard/users');
     revalidatePath(`/dashboard/users/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('adjustFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('adjustFailed') };
   }
 }
 
@@ -40,8 +40,8 @@ export async function setPasswordAction(
   try {
     await adminApi().post(`/v1/users/${id}/set-password`, { password: input.password });
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('setPasswordFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('setPasswordFailed') };
   }
 }
 
@@ -62,8 +62,8 @@ export async function giftUserAction(
     revalidatePath('/dashboard/users');
     revalidatePath(`/dashboard/users/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('giftFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('giftFailed') };
   }
 }
 
@@ -81,8 +81,8 @@ export async function setUserStatusAction(
     revalidatePath('/dashboard/users');
     revalidatePath(`/dashboard/users/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('actionFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('actionFailed') };
   }
 }
 
@@ -97,8 +97,8 @@ export async function setUserEnterpriseAction(
     revalidatePath('/dashboard/users');
     revalidatePath(`/dashboard/users/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('actionFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('actionFailed') };
   }
 }
 
@@ -116,7 +116,7 @@ export async function bindRateCardAction(
     revalidatePath('/dashboard/users');
     revalidatePath(`/dashboard/users/${id}`);
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('bindFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('bindFailed') };
   }
 }

@@ -47,6 +47,7 @@ function adminRowOf(record: AdminRecord) {
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function adminsRoutes(deps: AdminsRoutesDeps) {
   const app = new Hono<SessionEnv>();
 
@@ -77,7 +78,7 @@ export function adminsRoutes(deps: AdminsRoutesDeps) {
       });
     } catch (error) {
       // 补偿收回资料行——凭据没注册成功的管理员是废号,不留孤儿
-      await deps.admins.remove(created.id).catch(() => undefined);
+      await deps.admins.remove(created.id).catch(() => {});
       if (isBusinessError(error) && error.code === 'identity.identifier_taken') {
         throw controlPlaneErrors.business('admin_email_taken', {
           email: created.email,

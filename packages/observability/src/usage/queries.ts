@@ -54,37 +54,39 @@ export interface UsageQueries {
   channelTtft(input: { hours: number; now: Date }): Promise<{ rows: ChannelTtftRow[] }>;
 }
 
+/** 概览组装:今日(北京日界)+ 累计 + 渠道状态分组;successRate 一位小数(v1 舍入口径,零请求恒 0) */
+async function overviewEnvelope(store: UsageStatsStore, now: Date) {
+  // 「今日」按北京时间零点切日(面板/计价面向中国时区;day-window 单一口径)
+  const since = beijingDayStart(now);
+  const [today, totals, channelHealth] = await Promise.all([
+    store.overviewToday(since),
+    store.overviewTotals(),
+    store.channelStatusCounts(),
+  ]);
+  const failedCount = today.requests - today.successCount;
+  const successRate =
+    today.requests === 0 ? 0 : Math.round((today.successCount / today.requests) * 1000) / 10;
+  return {
+    today: {
+      requests: today.requests,
+      inputTokens: Number(today.inputTokens),
+      outputTokens: Number(today.outputTokens),
+      cost: today.cost,
+      successCount: today.successCount,
+      failedCount,
+      successRate,
+    },
+    total: { cost: totals.cost, requests: totals.requests },
+    channelHealth,
+  };
+}
+
 export function createUsageQueries(env: { store: UsageStatsStore }): UsageQueries {
   const { store } = env;
   return {
     adminList: (input) => store.adminList(input),
 
-    async overview(input) {
-      // 「今日」按北京时间零点切日(面板/计价面向中国时区;day-window 单一口径)
-      const since = beijingDayStart(input.now);
-      const [today, totals, channelHealth] = await Promise.all([
-        store.overviewToday(since),
-        store.overviewTotals(),
-        store.channelStatusCounts(),
-      ]);
-      const failedCount = today.requests - today.successCount;
-      // 一位小数百分比(v1 舍入口径:round(x*1000)/10;零请求恒 0)
-      const successRate =
-        today.requests === 0 ? 0 : Math.round((today.successCount / today.requests) * 1000) / 10;
-      return {
-        today: {
-          requests: today.requests,
-          inputTokens: Number(today.inputTokens),
-          outputTokens: Number(today.outputTokens),
-          cost: today.cost,
-          successCount: today.successCount,
-          failedCount,
-          successRate,
-        },
-        total: { cost: totals.cost, requests: totals.requests },
-        channelHealth,
-      };
-    },
+    overview: async (input) => overviewEnvelope(store, input.now),
 
     async groups(input) {
       const list = await store.usageGroups(input);

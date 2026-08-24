@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import * as exports from '../src/index';
 import * as testing from '../src/testing';
+import { defined } from './defined';
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -27,7 +28,7 @@ const files = tsFiles(SRC);
 function externalSpecifiers(text: string): string[] {
   const out: string[] = [];
   for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
-    const spec = match[1]!;
+    const spec = defined(match[1], 'match[1]');
     if (!spec.startsWith('.') && !spec.startsWith('#')) out.push(spec);
   }
   return out;
@@ -53,8 +54,9 @@ describe('依赖白名单（§5.1：runtime 只依赖 @tillgate/errors + ioredis
       for (const spec of externalSpecifiers(readFileSync(file, 'utf8'))) {
         if (BANNED.test(spec)) offenders.push(`${file}: ${spec}`);
       }
-      if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(readFileSync(file, 'utf8')))
+      if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(readFileSync(file, 'utf8'))) {
         offenders.push(file);
+      }
     }
     expect(offenders).toEqual([]);
   });

@@ -13,6 +13,7 @@ import type { ReceiptUsage } from './receipt';
  */
 
 /** 非流式：ChatResult.usage → 收据 usage（估算输出从响应体文本估） */
+// eslint-disable-next-line max-params -- 四要素(usage/响应体/预检兜底输入/权重)各有语义位,域导出 API 且测试规格按位置参数锁定
 export function usageForNonStream(
   usage: Usage | undefined,
   responseBody: unknown,
@@ -55,7 +56,7 @@ export function usageForStream(
   fallbackInputTokens: number,
   weights: EstimateWeights,
 ): StreamUsageVerdict {
-  const usage = facts.usage;
+  const { usage } = facts;
   if (usage != null && !usage.estimated) {
     // 口径裁决（MIGRATION.md §3a R2）：可信累计 usage 优先，不标 stream_aborted——
     // ai events.ts 头注「success.terminated → 网关标 stream_aborted」是 v1 早期口径，

@@ -54,7 +54,7 @@ describe('装配工厂端到端(会话/语言/转发 IP 全链注入)', () => {
     cookieStore.get.mockImplementation((name: string) => {
       if (name === 'ag_session') return { value: 'user-jwt' };
       if (name === 'NEXT_LOCALE') return { value: 'zh' };
-      return undefined;
+      return;
     });
     headerStore.set('x-forwarded-for', '6.6.6.6, 203.0.113.9');
     process.env.TRUSTED_PROXY_HOPS = '1';
@@ -68,10 +68,10 @@ describe('装配工厂端到端(会话/语言/转发 IP 全链注入)', () => {
     const client = mod.createNextClientApiClient({ fetch: fetchImpl });
     await client.getMe();
 
-    const call = vi.mocked(fetchImpl).mock.calls[0];
+    const [call] = vi.mocked(fetchImpl).mock.calls;
     expect(call?.[0]).toBe('http://client-api-env/v1/me');
     if (!call) throw new Error('fetch not called');
-    const headers = (call[1] as { headers: Record<string, string> }).headers;
+    const { headers } = call[1] as { headers: Record<string, string> };
     expect(headers.authorization).toBe('Bearer user-jwt');
     expect(headers['accept-language']).toBe('zh');
     expect(headers['x-forwarded-for']).toBe('203.0.113.9');
@@ -92,10 +92,10 @@ describe('装配工厂端到端(会话/语言/转发 IP 全链注入)', () => {
     const admin = mod.createNextAdminApiClient({ baseUrl: 'http://override', fetch: fetchImpl });
     await admin.getAdminMe();
 
-    const call = vi.mocked(fetchImpl).mock.calls[0];
+    const [call] = vi.mocked(fetchImpl).mock.calls;
     expect(call?.[0]).toBe('http://override/v1/me');
     if (!call) throw new Error('fetch not called');
-    const headers = (call[1] as { headers: Record<string, string> }).headers;
+    const { headers } = call[1] as { headers: Record<string, string> };
     expect(headers.authorization).toBe('Bearer admin-jwt');
     expect(headers['accept-language']).toBe('en'); // 无 cookie 无头 → 默认英文
     expect(headers['x-forwarded-for']).toBeUndefined(); // hops 未配置 → 不带

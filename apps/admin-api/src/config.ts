@@ -182,6 +182,7 @@ export interface AdminApiConfig {
   } | null;
 }
 
+// eslint-disable-next-line max-lines-per-function -- env→config 逐字段搬运(zod schema 映射平铺,分支即字段)
 export function loadAdminApiConfig(env: NodeJS.ProcessEnv = process.env): AdminApiConfig {
   const parsed = envSchema.parse(env);
   const otelMode: OtelMode =

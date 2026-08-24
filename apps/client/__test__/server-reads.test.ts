@@ -7,6 +7,8 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 let calls: Array<{ url: string; init: RequestInit }>;
 let responses: Array<{ status: number; body: unknown }>;
 
@@ -38,9 +40,9 @@ describe('fetchPlans（B2 回归）', () => {
       }) as never,
     } as never;
     await fetchPlans(fake, false, 'loadFailed');
-    expect(calls[0]!.url).toBe('http://stub/v1/plans?page=1&limit=100');
-    expect(calls[0]!.url).not.toContain('page_size');
-    expect(calls[0]!.url).not.toContain('sort_by');
+    expect(defined(calls[0], 'calls[0]').url).toBe('http://stub/v1/plans?page=1&limit=100');
+    expect(defined(calls[0], 'calls[0]').url).not.toContain('page_size');
+    expect(defined(calls[0], 'calls[0]').url).not.toContain('sort_by');
   });
 
   it('allowSeats 过滤：企业看席位套餐、个人看非席位套餐', async () => {

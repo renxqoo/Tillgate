@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createMemoryGenerationTaskStore } from '../src/adapters/task-memory';
 import { GENERATION_TASK_STATUSES } from '../src/ports/generation';
 import type { GenerationTaskRecord } from '../src/ports/generation';
@@ -78,7 +79,7 @@ describe('内存任务存储 adminList/settledAmounts', () => {
     const page1 = await store.adminList({ limit: 2, offset: 0 });
     const page2 = await store.adminList({ limit: 2, offset: 2 });
     expect(page1.total).toBe(6);
-    expect(page2.rows[0]!.taskId).toBe('task-4');
+    expect(defined(page2.rows[0], 'page2.rows[0]').taskId).toBe('task-4');
     // 越界页空数组不抛
     const beyond = await store.adminList({ limit: 2, offset: 100 });
     expect(beyond.rows).toEqual([]);
@@ -88,8 +89,8 @@ describe('内存任务存储 adminList/settledAmounts', () => {
     const store = createMemoryGenerationTaskStore();
     await store.insert(seed());
     const rows = await store.adminList({ limit: 10, offset: 0 });
-    expect(rows.rows[0]!.billingStatus).toBeNull();
-    expect(rows.rows[0]!.result).toBeNull();
+    expect(defined(rows.rows[0], 'rows.rows[0]').billingStatus).toBeNull();
+    expect(defined(rows.rows[0], 'rows.rows[0]').result).toBeNull();
     const amounts = await store.settledAmounts(['task-1']);
     expect(amounts.size).toBe(0);
     // 空入参不查询不抛

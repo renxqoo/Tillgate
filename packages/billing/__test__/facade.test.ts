@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createBilling } from '../src/billing.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
 import { createInMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
+import { defined } from './defined.js';
 
 const CONFIG = {
   guards: {
@@ -25,7 +26,7 @@ const CONFIG = {
   },
   failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
   clock: () => new Date(),
-  onError: () => undefined,
+  onError: () => {},
 } as const;
 
 function assemble() {
@@ -87,7 +88,7 @@ describe('createBilling facade', () => {
       reason: 'x',
     });
     expect(failed.amountReleased).toBe('2');
-    expect((await billing.wallet.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await billing.wallet.accounts(userId))[0]).inFlight).toBe('0');
   });
 
   it('未注入可选 store 的显式红灯（accounts 缺席 → subscriptions 拒绝；禁静默降级）', async () => {

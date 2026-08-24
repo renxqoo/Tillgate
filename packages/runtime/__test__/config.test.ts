@@ -22,7 +22,7 @@ describe('strictBooleanSchema', () => {
   });
 
   it('缺省值生效（未设置时取装配默认）', () => {
-    expect(strictBooleanSchema(true).parse(undefined)).toBe(true);
-    expect(strictBooleanSchema(false).parse(undefined)).toBe(false);
+    expect(strictBooleanSchema(true).parse()).toBe(true);
+    expect(strictBooleanSchema(false).parse()).toBe(false);
   });
 });

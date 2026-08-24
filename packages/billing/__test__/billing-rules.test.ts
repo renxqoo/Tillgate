@@ -17,6 +17,7 @@ import {
   secondsUntilNextBillingDay,
 } from '../src/domain/billing/daily-window.js';
 import { subscriptionAvailability } from '../src/domain/billing/subscription-availability.js';
+import { defined } from './defined.js';
 
 function expectCode(fn: () => unknown, code: string): void {
   let caught: unknown;
@@ -32,8 +33,8 @@ function expectCode(fn: () => unknown, code: string): void {
 describe('allocateSettlement（多来源分摊）', () => {
   it('单源 under：consume = actual，余量隐式归还', () => {
     const [share] = allocateSettlement([{ sourceType: 'payg', amount: '2' }], new Decimal('0.6'));
-    expect(share!.consume).toBe('0.6');
-    expect(share!.over).toBe('0');
+    expect(defined(share).consume).toBe('0.6');
+    expect(defined(share).over).toBe('0');
   });
 
   it('切分链 under：优先级序消耗（订阅先），各源不超预留', () => {
@@ -69,8 +70,8 @@ describe('allocateSettlement（多来源分摊）', () => {
       [{ sourceType: 'subscription', amount: '2' }],
       new Decimal('3'),
     );
-    expect(share!.consume).toBe('2');
-    expect(share!.over).toBe('1');
+    expect(defined(share).consume).toBe('2');
+    expect(defined(share).over).toBe('1');
   });
 
   it('零源 + 正金额 = 不变量红灯（DefectError）；零源零额 = 空分配', () => {

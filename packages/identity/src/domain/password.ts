@@ -9,6 +9,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:cry
 import { promisify } from 'node:util';
 import { identityErrors } from './errors.js';
 
+// eslint-disable-next-line max-params -- node:crypto scrypt 回调签名(经 promisify 转造),参数位由内建 API 固定
 const scrypt = promisify(scryptCallback) as (
   password: string | Buffer,
   salt: string | Buffer,
@@ -108,8 +109,11 @@ function parseStored(stored: string | null | undefined): ParsedHash | null {
   ) {
     return null;
   }
-  const salt = Buffer.from(parts[4]!, 'hex');
-  const expected = Buffer.from(parts[5]!, 'hex');
+  // 逐位解构:上文已校验 length === 6,索引 4/5 为 saltHex/hashHex;null 判仅为类型收窄
+  const [, , , , saltHex, hashHex] = parts;
+  if (saltHex == null || hashHex == null) return null;
+  const salt = Buffer.from(saltHex, 'hex');
+  const expected = Buffer.from(hashHex, 'hex');
   if (salt.length === 0 || expected.length === 0 || expected.length > 1024) return null;
   return { N, r, p, salt, expected };
 }
@@ -147,7 +151,11 @@ export async function verifyPassword(
   if (parsed) {
     return verifyAgainst(plaintext, parsed);
   }
-  const dummy = parseStored(await ensureDummyHash())!;
+  const dummy = parseStored(await ensureDummyHash());
+  if (dummy == null) {
+    // 不可达:哑哈希由本模块 hashPassword 生成,格式必然可解析;fail-loud 防御
+    throw new Error('constant-time dummy hash failed to parse');
+  }
   await verifyAgainst(plaintext, dummy);
   return false;
 }

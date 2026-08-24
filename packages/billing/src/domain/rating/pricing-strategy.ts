@@ -99,7 +99,8 @@ const variantStrategy: PricingStrategy = {
     const selector = ctx.config.params?.selector;
     if (selector != null) {
       const key = variantKey(selector, ctx.body);
-      if (prices[key] != null) return prices[key]!;
+      const variant = prices[key];
+      if (variant != null) return variant;
     }
     return highestPrice(prices); // 保守：参数未指定 → 取最高价
   },
@@ -109,7 +110,8 @@ const variantStrategy: PricingStrategy = {
     const selector = ctx.config.params?.selector;
     if (selector != null) {
       const key = variantKey(selector, ctx.body);
-      if (prices[key] != null) return prices[key]!;
+      const variant = prices[key];
+      if (variant != null) return variant;
     }
     return ctx.config.params?.unitPrice ?? ctx.fallbackUnitPrice; // 回落缺省
   },

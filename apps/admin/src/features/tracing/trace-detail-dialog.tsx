@@ -23,6 +23,48 @@ import { TraceWaterfall } from './trace-waterfall';
  * 路线图/瀑布双 tab；右上角全屏切换（图内容组件与内联卡共用，单一展示真相）。
  * traceId 与 requestId 二选一：requestId 变体走 by-request 关联（计费复核入口）。
  */
+/** 详情主体四态渲染：加载 / 错误 / 路线图 / 瀑布（全屏切换高度经参数） */
+function renderDetailContent(ctx: {
+  pending: boolean;
+  error: string | null;
+  detail: TraceDetail | null;
+  view: 'graph' | 'waterfall';
+  fullscreen: boolean;
+  loadingLabel: string;
+}): ReactNode {
+  const { pending, error, detail, view, fullscreen, loadingLabel } = ctx;
+  if (pending) {
+    return (
+      <div className="flex h-[420px] items-center justify-center text-muted-foreground">
+        <Loader2Icon className="mr-2 animate-spin" /> {loadingLabel}
+      </div>
+    );
+  }
+  if (error) {
+    return <p className="py-10 text-center text-sm text-destructive">{error}</p>;
+  }
+  if (detail && view === 'graph') {
+    return (
+      <TraceGraph
+        spans={detail.spans}
+        totalMs={detail.durationMs}
+        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'h-[420px]'}
+      />
+    );
+  }
+  if (detail) {
+    return (
+      <TraceWaterfall
+        spans={detail.spans}
+        startMs={detail.startMs}
+        totalMs={detail.durationMs}
+        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'max-h-[60vh]'}
+      />
+    );
+  }
+  return null;
+}
+
 export function TraceDetailDialog({
   traceId,
   requestId,
@@ -53,9 +95,10 @@ export function TraceDetailDialog({
   useEffect(() => {
     if (!open || detail || error) return;
     startTransition(async () => {
+      // else 分支 traceId 为空，subjectId 即 requestId（构造时二选一守卫保证非空）
       const result = traceId
         ? await fetchTraceDetail(traceId)
-        : await fetchTraceDetailByRequestId(requestId!);
+        : await fetchTraceDetailByRequestId(subjectId);
       if ('error' in result) {
         setError(result.error);
       } else if (result.spans.length === 0) {
@@ -64,35 +107,16 @@ export function TraceDetailDialog({
         setDetail(result);
       }
     });
-  }, [open, detail, error, traceId, requestId]);
+  }, [open, detail, error, traceId, subjectId, t]);
 
-  let detailContent: ReactNode = null;
-  if (pending) {
-    detailContent = (
-      <div className="flex h-[420px] items-center justify-center text-muted-foreground">
-        <Loader2Icon className="mr-2 animate-spin" /> {t('loading')}
-      </div>
-    );
-  } else if (error) {
-    detailContent = <p className="py-10 text-center text-sm text-destructive">{error}</p>;
-  } else if (detail && view === 'graph') {
-    detailContent = (
-      <TraceGraph
-        spans={detail.spans}
-        totalMs={detail.durationMs}
-        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'h-[420px]'}
-      />
-    );
-  } else if (detail) {
-    detailContent = (
-      <TraceWaterfall
-        spans={detail.spans}
-        startMs={detail.startMs}
-        totalMs={detail.durationMs}
-        heightClass={fullscreen ? 'h-[calc(100vh-10rem)]' : 'max-h-[60vh]'}
-      />
-    );
-  }
+  const detailContent = renderDetailContent({
+    pending,
+    error,
+    detail,
+    view,
+    fullscreen,
+    loadingLabel: t('loading'),
+  });
 
   return (
     <Dialog

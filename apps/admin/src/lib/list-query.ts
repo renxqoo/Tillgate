@@ -38,7 +38,7 @@ export function listHref(
 }
 
 /** Next searchParams 单值读取：数组取第一个，空串视为未传 */
-export function firstParam(value: string | string[] | undefined): string | undefined {
+export function firstParam(value?: string | string[] | undefined): string | undefined {
   const v = Array.isArray(value) ? value[0] : value;
   return v === '' ? undefined : v;
 }

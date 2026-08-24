@@ -10,6 +10,7 @@ import {
   setupRealWallet,
   type RealWalletHarness,
 } from './real-pg.js';
+import { defined } from './defined.js';
 
 (REAL_URL ? describe : describe.skip)('wallet 不变量与并发（真实 PG）', () => {
   let h: RealWalletHarness;
@@ -34,7 +35,7 @@ import {
     const wins = settled.filter((s) => s.status === 'fulfilled').length;
     expect(wins).toBeLessThanOrEqual(2); // 2×4 = 8 ≤ 10；第三笔必拒（12 > 10）
     expect(wins).toBeGreaterThanOrEqual(1);
-    const account = (await h.api.accounts(userId))[0]!;
+    const account = defined((await h.api.accounts(userId))[0]);
     expect(account.inFlight).toBe(String(wins * 4));
     expect(account.balance).toBe('10');
     await assertLedgerCoherent(h.db);
@@ -53,8 +54,8 @@ import {
     const status = await h.db.execute<{ status: string }>(
       sql`select status from wallet_authorizations where ref_type = 'billing' and ref_id = 'b1'`,
     );
-    expect(['settled', 'released']).toContain(status.rows[0]!.status);
-    expect((await h.api.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(['settled', 'released']).toContain(defined(status.rows[0]).status);
+    expect(defined((await h.api.accounts(userId))[0]).inFlight).toBe('0');
     await assertLedgerCoherent(h.db);
   });
 
@@ -96,8 +97,8 @@ import {
       ),
     );
     const accounts = await h.api.accounts(a);
-    expect(accounts[0]!.balance).toBe('100');
-    expect((await h.api.accounts(b))[0]!.balance).toBe('100');
+    expect(defined(accounts[0]).balance).toBe('100');
+    expect(defined((await h.api.accounts(b))[0]).balance).toBe('100');
     await assertLedgerCoherent(h.db);
   });
 
@@ -127,8 +128,8 @@ import {
       ),
     ]);
     expect(settled.filter((s) => s.status === 'fulfilled').length).toBe(10);
-    expect((await h.api.accounts(a))[0]!.balance).toBe('20');
-    expect((await h.api.accounts(b))[0]!.balance).toBe('20');
+    expect(defined((await h.api.accounts(a))[0]).balance).toBe('20');
+    expect(defined((await h.api.accounts(b))[0]).balance).toBe('20');
     await assertLedgerCoherent(h.db);
   });
 });

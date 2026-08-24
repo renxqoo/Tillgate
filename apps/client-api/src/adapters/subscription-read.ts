@@ -17,6 +17,7 @@ export interface SubscriptionRead {
 /** 我的订阅行数封顶（v1 口径——历史订阅翻旧账走账单，不在此翻页） */
 const MY_SUBSCRIPTIONS_CAP = 50;
 
+// eslint-disable-next-line max-lines-per-function -- 读模型工厂:三个查询方法的 SQL 列投影平铺(列定义即数据)
 export function createSubscriptionRead(db: Db): SubscriptionRead {
   return {
     async listPlans() {

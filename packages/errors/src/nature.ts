@@ -5,6 +5,7 @@
  *   infrastructure  环境故障——依赖不可用/外部投递失败，可重试、要告警
  *   defect          缺陷——不变量破坏/不可达路径，不重试、细节不外泄（出站渲染通用文案归 face）
  */
+// eslint-disable-next-line max-classes-per-file -- 三性根类继承族(基类+三子类)是错误体系单一真相(ADR-0001),同文件即设计单元;拆分制造人工接缝
 import type { ErrorCategory } from './category';
 
 export type ErrorNature = 'business' | 'infrastructure' | 'defect';
@@ -92,6 +93,7 @@ export class BusinessError extends TillgateError {
 export class InfrastructureError extends TillgateError {
   override readonly nature = 'infrastructure' as const;
 
+  // eslint-disable-next-line max-params -- 导出根类构造器四元组(message/code/context/opts)为全仓稳定契约,改 options 对象波及所有调用点
   constructor(message: string, code: string, context?: ErrorContext, opts?: ErrorOptions) {
     super(message, { code, context }, opts);
   }
@@ -101,6 +103,7 @@ export class InfrastructureError extends TillgateError {
 export class DefectError extends TillgateError {
   override readonly nature = 'defect' as const;
 
+  // eslint-disable-next-line max-params -- 同 InfrastructureError:导出根类构造器契约
   constructor(message: string, code: string, context?: ErrorContext, opts?: ErrorOptions) {
     super(message, { code, context }, opts);
   }

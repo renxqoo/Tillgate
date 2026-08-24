@@ -76,16 +76,16 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 **不处理**（归属）：
 
-| 不处理项                                     | 归属                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------- |
+| 不处理项                                     | 归属                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------ |
 | 候选循环 / 换渠 / 输出钳制 / 收据 / 渠道健康 | `@tillgate/inference`                                              |
 | 钱包预扣 / 结算状态机 / 渠道敞口 / 资金瀑布  | `@tillgate/billing`（经 BillingPort 桥）                           |
 | 模型映射 / 渠道候选 / 费率卡系数读取         | `@tillgate/control-plane` 只读目录（经 CatalogPort 桥）            |
 | 上游协议执行 / 传输 / 重试 / 事件总线        | `@tillgate/ai`（inference 内部持有；app 运行时不 import ai——§3.6） |
 | Key/App 凭证事实与鉴权读模型                 | `@tillgate/accounts`                                               |
 | 请求日志/审计的持久化与查询                  | `@tillgate/observability`                                          |
-| 生成任务轮询与结算落账                       | worker 波（显式挂账，见 MIGRATION §5）                              |
-| 死凭据永久拉黑与告警                         | control-plane/observability 后续波                                  |
+| 生成任务轮询与结算落账                       | worker 波（显式挂账，见 MIGRATION §5）                             |
+| 死凭据永久拉黑与告警                         | control-plane/observability 后续波                                 |
 
 ## 4. 并发与性能预算
 

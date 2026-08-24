@@ -17,12 +17,17 @@ export function parseVoucherDataUrl(dataUrl: string, maxBytes: number): VoucherP
   if (!match) {
     throw controlPlaneErrors.business('invalid_voucher', { dataUrl: 'malformed' });
   }
-  const data = Uint8Array.from(Buffer.from(match[2]!, 'base64'));
+  // 捕获组与整串匹配同生共死,解构收窄替代下标断言
+  const [, mimeType, base64] = match;
+  if (mimeType === undefined || base64 === undefined) {
+    throw controlPlaneErrors.business('invalid_voucher', { dataUrl: 'malformed' });
+  }
+  const data = Uint8Array.from(Buffer.from(base64, 'base64'));
   if (data.byteLength > maxBytes) {
     throw controlPlaneErrors.business('voucher_too_large', {
       bytes: data.byteLength,
       maxBytes,
     });
   }
-  return { data, mimeType: match[1]! };
+  return { data, mimeType };
 }

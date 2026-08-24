@@ -4,6 +4,7 @@
  * 不继承整个适配器）。新原生协议仍走全量实现 ProtocolAdapter。
  */
 import { OpenAICompatibleAdapter } from '../adapters/openai-compatible';
+import type { Endpoint } from '../types';
 import type {
   Addressing,
   BodyFinalizer,
@@ -30,7 +31,7 @@ export interface DefineAdapterInput {
   /** 异步生成任务操作面 */
   tasks?: ProtocolTaskOps;
   /** 能力声明面（缺省继承 openai-compatible 默认） */
-  supportedEndpoints?: readonly import('../types').Endpoint[];
+  supportedEndpoints?: readonly Endpoint[];
 }
 
 /** OpenAI 兼容默认件（缺省能力的委托目标——单一真相在 OpenAICompatibleAdapter） */
@@ -41,21 +42,23 @@ export function defineAdapter(input: DefineAdapterInput): ProtocolAdapter {
   const body = { ...pickBody(defaults), ...input.body };
   const usage = { ...pickUsage(defaults), ...input.usage };
   const errors = { ...pickErrors(defaults), ...input.errors };
+  // 能力件先取方法引用再条件挂载（合并对象一次性定形，引用即闭包，无需非空断言）
+  const { signRequest } = addressing;
+  const translateResponseBody = input.codec?.translateResponseBody;
+  const translateUpstreamStream = input.codec?.translateUpstreamStream;
   const adapter: ProtocolAdapter = {
     protocol: input.protocol,
     supportedEndpoints: input.supportedEndpoints ?? defaults.supportedEndpoints,
     planRequest: (channel, i) => addressing.planRequest(channel, i),
     probeRequests: (channel) => addressing.probeRequests(channel),
-    ...(addressing.signRequest ? { signRequest: (args) => addressing.signRequest!(args) } : {}),
+    ...(signRequest ? { signRequest: (args) => signRequest(args) } : {}),
     normalizeRequest: (req, rules, endpoint) => body.normalizeRequest(req, rules, endpoint),
     finalizeRequestBody: (b, i) => body.finalizeRequestBody(b, i),
     extractUsage: (res) => usage.extractUsage(res),
     mapError: (status, b, headers) => errors.mapError(status, b, headers),
-    ...(input.codec?.translateResponseBody
-      ? { translateResponseBody: (b) => input.codec!.translateResponseBody!(b) }
-      : {}),
-    ...(input.codec?.translateUpstreamStream
-      ? { translateUpstreamStream: (s, model) => input.codec!.translateUpstreamStream!(s, model) }
+    ...(translateResponseBody ? { translateResponseBody: (b) => translateResponseBody(b) } : {}),
+    ...(translateUpstreamStream
+      ? { translateUpstreamStream: (s, model) => translateUpstreamStream(s, model) }
       : {}),
     ...(input.tasks ? { tasks: input.tasks } : {}),
   };
@@ -63,10 +66,11 @@ export function defineAdapter(input: DefineAdapterInput): ProtocolAdapter {
 }
 
 function pickAddressing(a: ProtocolAdapter): Addressing {
+  const { signRequest } = a;
   return {
     planRequest: (channel, input) => a.planRequest(channel, input),
     probeRequests: (channel) => a.probeRequests(channel),
-    ...(a.signRequest ? { signRequest: (args) => a.signRequest!(args) } : {}),
+    ...(signRequest ? { signRequest: (args) => signRequest(args) } : {}),
   };
 }
 

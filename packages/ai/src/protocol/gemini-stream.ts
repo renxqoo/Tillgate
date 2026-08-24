@@ -13,6 +13,7 @@ import { geminiUsageToUsage } from './gemini-chat';
  */
 
 /** Gemini alt=sse 数据帧（JSON，无 [DONE]，finishReason 终止）→ 规范形 chunk 流（model 透传入帧——v1 语义） */
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
 export function geminiUpstreamToCanonicalStream(
   upstream: ReadableStream<Uint8Array>,
   model: string,
@@ -21,6 +22,7 @@ export function geminiUpstreamToCanonicalStream(
   let toolCallIndex = 0;
   return sseToSseStream(
     upstream,
+    // eslint-disable-next-line max-lines-per-function, complexity -- 逐事件类型翻译的单闭包状态机（事件词表穷举），拆分需跨函数线程化状态，存量棘轮（铁律 22⑥）
     (ev: SseEvent, emit) => {
       let data: Json;
       try {
@@ -156,6 +158,7 @@ export function geminiUpstreamToCanonicalStream(
 }
 
 /** 规范形 chunk 流 → Gemini alt=sse 数据帧流（客户端侧，入站 gemini 流式） */
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
 export function canonicalStreamToGeminiStream(
   upstream: ReadableStream<Uint8Array>,
   model: string,
@@ -169,6 +172,7 @@ export function canonicalStreamToGeminiStream(
 
   return sseToSseStream(
     upstream,
+    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（规范→gemini 事件穷举），拆分需跨函数线程化状态，存量棘轮（铁律 22⑥）
     (ev: SseEvent, emit) => {
       if (ev.data === '[DONE]') {
         emit(
@@ -215,8 +219,9 @@ export function canonicalStreamToGeminiStream(
           typeof usage.completion_tokens === 'number' ? usage.completion_tokens : outputTokens;
       }
       const parts: Array<Record<string, unknown>> = [];
-      if (typeof delta.content === 'string' && delta.content.length > 0)
+      if (typeof delta.content === 'string' && delta.content.length > 0) {
         parts.push({ text: delta.content });
+      }
       for (const tc of asArray(delta.tool_calls)) {
         const call = asJson(tc);
         const fn = asJson(call?.function);
@@ -231,8 +236,9 @@ export function canonicalStreamToGeminiStream(
           parts.push({ functionCall: { name: fn.name, args } });
         }
       }
-      if (typeof choice?.finish_reason === 'string' && choice.finish_reason)
+      if (typeof choice?.finish_reason === 'string' && choice.finish_reason) {
         finishReason = choice.finish_reason;
+      }
       if (parts.length > 0) {
         emit(frame({ candidates: [{ content: { role: 'model', parts } }] }));
       }

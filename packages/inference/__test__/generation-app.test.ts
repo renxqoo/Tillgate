@@ -127,7 +127,7 @@ describe('application/generation：提交与查询用例', () => {
       .submit({ requestId: 'gen-3', auth: baseAuth, kind: 'video', body: { model: 'vid-model' } })
       .then(
         (v) => v,
-        (e: unknown) => e,
+        (error: unknown) => error,
       );
     expect(isBusinessError(result) && result.code === 'inference.billing_receipt_unavailable').toBe(
       true,

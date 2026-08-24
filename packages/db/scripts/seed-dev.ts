@@ -21,7 +21,7 @@
  * 用户与测试 Key 不再播种：C 端自助注册 + 控制台建 Key 完整覆盖（2026-08-24 瘦身）。
  * 金额单位：元（numeric 全精度），价格单位为「元/百万 token」。
  */
-import { createDb, closeDb, ACCOUNT_STATUS, roles } from '../src/index.js';
+import { createDb, closeDb, ACCOUNT_STATUS, roles, type Db } from '../src/index.js';
 import {
   admins,
   rateCards,
@@ -46,6 +46,7 @@ import { createCipher } from '../../runtime/src/crypto/cipher.js';
 // `scrypt:N:r:p:<saltHex>:<hashHex>`，生产存量 password_hash 原样可校验；
 // seed 独立实现避免 db → identity 依赖。注意：v2 schema 列注释写作「saltHex:hashHex:N:r:p」
 // 是 v1 就有的注释漂移（v2 原样复制），行为真相以 identity-core 实现格式为准，不改 schema。）----
+// eslint-disable-next-line max-params -- node:crypto scrypt 原生四参签名（password/salt/keylen/options）的类型镜像，非本仓可改的参数形态
 const scrypt = promisify(scryptCallback) as (
   password: string | Buffer,
   salt: string | Buffer,
@@ -85,7 +86,11 @@ const envPath = findEnv();
 if (envPath) {
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line.trim());
-    if (m && m[1] && !(m[1] in process.env)) process.env[m[1]] = m[2];
+    if (m) {
+      // 解构后判存注入：与原 m[1]/m[2] 下标访问逐字等价（key 为空串时同样跳过）
+      const [, key, value] = m;
+      if (key && !(key in process.env)) process.env[key] = value;
+    }
   }
 }
 
@@ -107,18 +112,11 @@ if (ENCRYPTION_KEY.length < 32) {
 }
 
 // ---- 测试用虚拟 Key（明文只在此次输出，落库的是哈希；随机故每次运行新插一把，v1 行为） ----
-async function main() {
-  // 池参数由本脚本（装配层）注入：一次性 seed 用最小池 + 短超时快速失败
-  const db = createDb({
-    url: DATABASE_URL,
-    poolMax: 2,
-    idleTimeoutMillis: 5_000,
-    connectionTimeoutMillis: 5_000,
-    maxUses: 1_000,
-  });
-  console.log('→ 连接 DB:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
 
-  // 1. 费率卡（系数 1.0）
+// 各播种步骤按唯一键判存幂等（互相独立查存,不回读对方内部状态——铁律 22② 拆分）
+
+/** 1. 费率卡（系数 1.0）：不存在则建卡 + 全局系数行 */
+async function seedRateCard(db: Db): Promise<void> {
   let card = await db.query.rateCards.findFirst({ where: eq(rateCards.name, '标准') });
   if (!card) {
     const [c] = await db
@@ -133,8 +131,10 @@ async function main() {
       .values({ rateCardId: c.id, scope: 'global', coefficient: '1.000' });
     console.log('✓ 创建费率卡「标准」(系数 1.0)');
   }
+}
 
-  // 2. 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345）
+/** 2. 管理员（admins 表，邀请制。测试账号 admin@ai-gateway.local / admin12345） */
+async function seedAdmin(db: Db): Promise<void> {
   const adminEmail = 'admin@ai-gateway.local';
   const existingAdmin = await db.query.admins.findFirst({ where: eq(admins.email, adminEmail) });
   if (!existingAdmin) {
@@ -154,96 +154,142 @@ async function main() {
     });
     console.log('✓ 创建管理员 admin@ai-gateway.local (密码 admin12345，仅开发用)');
   }
+}
 
-  // 3. 供应商 + 渠道（DeepSeek + MiniMax）
-  // 占位价（元/百万 token）——上线前请按实际成本调整
-  const providerData = [
-    {
-      name: 'deepseek',
-      baseUrl: 'https://api.deepseek.com',
-      apiKey: process.env.DEEPSEEK_API_KEY,
-      model: 'deepseek-chat',
-      realModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
-      price: { input: '0.001', output: '0.002', cache: '0.0001' },
-    },
-    {
-      name: 'minimax',
-      baseUrl: 'https://api.minimaxi.com',
-      apiKey: process.env.MINIMAX_API_KEY,
-      model: 'MiniMax-M3',
-      realModel: 'MiniMax-M3',
-      price: { input: '0.001', output: '0.002', cache: '0.0002' },
-    },
-  ];
+/** 供应商占位价（元/百万 token）——上线前请按实际成本调整 */
+interface SeededProvider {
+  name: string;
+  baseUrl: string;
+  apiKey: string | undefined;
+  model: string;
+  realModel: string;
+  price: { input: string; output: string; cache: string };
+}
 
-  // v2 适配：v1 @ai-gateway/core 的 encrypt(key, secret) → runtime cipher（enc:v1，
-  // 密钥 SHA-256 派生，与 v1 存量密文同密钥互解、逐字节兼容）
-  const cipher = createCipher(ENCRYPTION_KEY);
+const PROVIDER_DATA: readonly SeededProvider[] = [
+  {
+    name: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    model: 'deepseek-chat',
+    realModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+    price: { input: '0.001', output: '0.002', cache: '0.0001' },
+  },
+  {
+    name: 'minimax',
+    baseUrl: 'https://api.minimaxi.com',
+    apiKey: process.env.MINIMAX_API_KEY,
+    model: 'MiniMax-M3',
+    realModel: 'MiniMax-M3',
+    price: { input: '0.001', output: '0.002', cache: '0.0002' },
+  },
+];
 
-  for (const p of providerData) {
+/** 按名取或建 provider 行（判存幂等） */
+async function ensureProvider(db: Db, p: SeededProvider): Promise<typeof providers.$inferSelect> {
+  const existing = await db.query.providers.findFirst({ where: eq(providers.name, p.name) });
+  if (existing) return existing;
+  const [row] = await db
+    .insert(providers)
+    .values({ name: p.name, protocol: 'openai-compatible', baseUrl: p.baseUrl })
+    .returning();
+  if (!row) throw new Error('insert providers returned no row');
+  return row;
+}
+
+/** 按名取或建 channel 行（上游 Key 经 runtime cipher 加密落库） */
+async function ensureChannel(
+  db: Db,
+  p: SeededProvider,
+  creation: { providerId: number; encrypt: (plaintext: string) => string },
+): Promise<typeof channels.$inferSelect> {
+  const { providerId, encrypt } = creation;
+  const existing = await db.query.channels.findFirst({
+    where: eq(channels.name, `${p.name}-default`),
+  });
+  if (existing) return existing;
+  const [row] = await db
+    .insert(channels)
+    .values({
+      providerId,
+      name: `${p.name}-default`,
+      apiKeyEnc: encrypt(p.apiKey ?? ''),
+      status: 0, // channels status 0-4 词表未随 db 导出（C3）——保持 v1 字面量
+      weight: 1,
+      priority: 0,
+    })
+    .returning();
+  if (!row) throw new Error('insert channels returned no row');
+  return row;
+}
+
+/** 按外部模型名取或建 mapping 行（占位价） */
+async function ensureMapping(
+  db: Db,
+  p: SeededProvider,
+): Promise<typeof modelMappings.$inferSelect> {
+  const existing = await db.query.modelMappings.findFirst({
+    where: eq(modelMappings.externalName, p.model),
+  });
+  if (existing) return existing;
+  const [row] = await db
+    .insert(modelMappings)
+    .values({
+      externalName: p.model,
+      realModel: p.realModel,
+      status: 0, // 0 上架 / 1 下架（C3 同上）
+      inputPrice: p.price.input,
+      outputPrice: p.price.output,
+      cacheInputPrice: p.price.cache,
+    })
+    .returning();
+  if (!row) throw new Error('insert model_mappings returned no row');
+  return row;
+}
+
+/** mapping × channel 关联判存补建 */
+async function ensureModelChannel(db: Db, mappingId: number, channelId: number): Promise<void> {
+  const exists = await db.query.modelChannels.findFirst({
+    where: and(eq(modelChannels.mappingId, mappingId), eq(modelChannels.channelId, channelId)),
+  });
+  if (!exists) {
+    await db.insert(modelChannels).values({ mappingId, channelId, weight: 1, priority: 0 });
+  }
+}
+
+/** 3. 供应商 + 渠道 + 模型映射 + 关联（DeepSeek + MiniMax，按名判存幂等） */
+async function seedProviders(db: Db, encrypt: (plaintext: string) => string): Promise<void> {
+  for (const p of PROVIDER_DATA) {
     if (!p.apiKey) {
       console.warn(`⚠ ${p.name} API_KEY 未配置，跳过该供应商`);
       continue;
     }
-    // provider
-    let provider = await db.query.providers.findFirst({ where: eq(providers.name, p.name) });
-    if (!provider) {
-      const [pr] = await db
-        .insert(providers)
-        .values({ name: p.name, protocol: 'openai-compatible', baseUrl: p.baseUrl })
-        .returning();
-      if (!pr) throw new Error('insert providers returned no row');
-      provider = pr;
-    }
-    // channel（加密 key）
-    let channel = await db.query.channels.findFirst({
-      where: eq(channels.name, p.name + '-default'),
-    });
-    if (!channel) {
-      const [ch] = await db
-        .insert(channels)
-        .values({
-          providerId: provider.id,
-          name: p.name + '-default',
-          apiKeyEnc: cipher.encrypt(p.apiKey),
-          status: 0, // channels status 0-4 词表未随 db 导出（C3）——保持 v1 字面量
-          weight: 1,
-          priority: 0,
-        })
-        .returning();
-      if (!ch) throw new Error('insert channels returned no row');
-      channel = ch;
-    }
-    // model mapping
-    let mapping = await db.query.modelMappings.findFirst({
-      where: eq(modelMappings.externalName, p.model),
-    });
-    if (!mapping) {
-      const [m] = await db
-        .insert(modelMappings)
-        .values({
-          externalName: p.model,
-          realModel: p.realModel,
-          status: 0, // 0 上架 / 1 下架（C3 同上）
-          inputPrice: p.price.input,
-          outputPrice: p.price.output,
-          cacheInputPrice: p.price.cache,
-        })
-        .returning();
-      if (!m) throw new Error('insert model_mappings returned no row');
-      mapping = m;
-    }
-    // model_channels 关联
-    const exists = await db.query.modelChannels.findFirst({
-      where: and(eq(modelChannels.mappingId, mapping.id), eq(modelChannels.channelId, channel.id)),
-    });
-    if (!exists) {
-      await db
-        .insert(modelChannels)
-        .values({ mappingId: mapping.id, channelId: channel.id, weight: 1, priority: 0 });
-    }
+    const provider = await ensureProvider(db, p);
+    const channel = await ensureChannel(db, p, { providerId: provider.id, encrypt });
+    const mapping = await ensureMapping(db, p);
+    await ensureModelChannel(db, mapping.id, channel.id);
     console.log(`✓ ${p.name}: provider + channel + mapping(${p.model})`);
   }
+}
+
+async function main() {
+  // 池参数由本脚本（装配层）注入：一次性 seed 用最小池 + 短超时快速失败
+  const db = createDb({
+    url: DATABASE_URL,
+    poolMax: 2,
+    idleTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 5_000,
+    maxUses: 1_000,
+  });
+  console.log('→ 连接 DB:', DATABASE_URL.replace(/:[^:@]+@/, ':****@'));
+
+  await seedRateCard(db);
+  await seedAdmin(db);
+
+  // v2 适配：v1 @ai-gateway/core 的 encrypt(key, secret) → runtime cipher（enc:v1，
+  // 密钥 SHA-256 派生，与 v1 存量密文同密钥互解、逐字节兼容）
+  const cipher = createCipher(ENCRYPTION_KEY);
+  await seedProviders(db, cipher.encrypt);
 
   console.log('\n========================================');
   console.log('  种子数据完成');
@@ -254,7 +300,7 @@ async function main() {
   await closeDb(db);
 }
 
-main().catch((e) => {
-  console.error('✗ 种子失败:', e);
+main().catch((error) => {
+  console.error('✗ 种子失败:', error);
   process.exit(1);
 });

@@ -88,6 +88,7 @@ tillgate/
 │   │   │   ├── index.ts
 │   │   │   ├── config.ts
 │   │   │   ├── assembly.ts
+│   │   │   ├── bridge-mappers.ts         # worker↔billing/渠道路由事件的纯映射（装配体积收敛）
 │   │   │   ├── scheduler.ts
 │   │   │   ├── jobs/                      # settlement/poll/reconcile/notify/partition
 │   │   │   ├── wakeup/postgres-notify.ts

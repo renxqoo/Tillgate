@@ -16,7 +16,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like } from 'drizzle-orm';
 import { admins, permissions, roles } from '@tillgate/db';
-import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
+import {
+  call,
+  defined,
+  jsonHeaders,
+  setupE2EAdmin,
+  teardownE2EAdmin,
+  type E2EAdminWorld,
+} from './kit';
 
 let world: E2EAdminWorld | null = null;
 
@@ -173,7 +180,10 @@ describe('J. custom 权限节点全生命周期', () => {
       code: string | null;
       source: string;
     }[];
-    const usersPage = nodes.find((node) => node.code === 'users:read');
+    const usersPage = defined(
+      nodes.find((node) => node.code === 'users:read'),
+      'users:read node',
+    );
     expect(usersPage).toBeDefined();
 
     // 码形状守卫
@@ -181,7 +191,7 @@ describe('J. custom 权限节点全生命周期', () => {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({
-        parentId: usersPage!.id,
+        parentId: usersPage.id,
         type: 'button',
         code: 'Bad Code',
         name: 'x',
@@ -195,7 +205,7 @@ describe('J. custom 权限节点全生命周期', () => {
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({
-        parentId: usersPage!.id,
+        parentId: usersPage.id,
         type: 'button',
         code: `e2e:custom-${stamp}`,
         name: 'e2e 自定义动作',
@@ -248,22 +258,25 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
   it('enforced 节点全字段放开(停用/删除 200);接口绑定守卫;super/内置角色锁;角色停用 kill-switch', async () => {
     const tree = await call(w(), '/v1/permissions/tree');
     const nodes = (tree.body.rows ?? []) as { id: number; code: string | null; source: string }[];
-    const enforced = nodes.find((node) => node.code === 'users:update');
+    const enforced = defined(
+      nodes.find((node) => node.code === 'users:update'),
+      'users:update node',
+    );
     expect(enforced).toBeDefined();
 
     // 全字段放开:enforced 停用 200 → 恢复;删除被接口绑定守卫拦(409)
-    const ban = await call(w(), `/v1/permissions/${enforced!.id}`, {
+    const ban = await call(w(), `/v1/permissions/${enforced.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ status: 1 }),
     });
     expect(ban.status).toBe(200);
-    await call(w(), `/v1/permissions/${enforced!.id}`, {
+    await call(w(), `/v1/permissions/${enforced.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ status: 0 }),
     });
-    const delBound = await call(w(), `/v1/permissions/${enforced!.id}`, { method: 'DELETE' });
+    const delBound = await call(w(), `/v1/permissions/${enforced.id}`, { method: 'DELETE' });
     expect(delBound.status).toBe(409);
     expect(delBound.body).toMatchObject({ error: { code: 'control_plane.permission_in_use' } });
 
@@ -274,18 +287,24 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
       isSuper: boolean;
       isBuiltin: boolean;
     }[];
-    const superRole = roleRows.find((role) => role.isSuper);
-    const builtin = roleRows.find((role) => role.isBuiltin && !role.isSuper);
+    const superRole = defined(
+      roleRows.find((role) => role.isSuper),
+      'super role',
+    );
+    const builtin = defined(
+      roleRows.find((role) => role.isBuiltin && !role.isSuper),
+      'builtin role',
+    );
     expect(superRole).toBeDefined();
     expect(builtin).toBeDefined();
 
-    const touchSuper = await call(w(), `/v1/roles/${superRole!.id}`, {
+    const touchSuper = await call(w(), `/v1/roles/${superRole.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ name: 'hack' }),
     });
     expect(touchSuper.status).toBe(403);
-    expect((await call(w(), `/v1/roles/${superRole!.id}`, { method: 'DELETE' })).status).toBe(403);
+    expect((await call(w(), `/v1/roles/${superRole.id}`, { method: 'DELETE' })).status).toBe(403);
     // 内置角色不再 role_immutable(用户裁决反转):挂载临时管理员 → 删除撞 role_in_use;
     // 不直接删未挂载内置,避免破坏种子行
     const builtinStamp = Date.now();
@@ -294,19 +313,22 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
       .values({
         email: `e2e-rbacv2-builtin-${builtinStamp}@e2e.invalid`,
         passwordHash: 'identity-managed',
-        roleId: builtin!.id,
+        roleId: builtin.id,
         displayName: 'e2e-builtin-holder',
       })
       .returning({ id: admins.id });
     if (builtinHolder == null) throw new Error('insert admins returned no row');
     createdAdminIds.push(builtinHolder.id);
-    const delBuiltin = await call(w(), `/v1/roles/${builtin!.id}`, { method: 'DELETE' });
+    const delBuiltin = await call(w(), `/v1/roles/${builtin.id}`, { method: 'DELETE' });
     expect(delBuiltin.status).toBe(409);
     expect(delBuiltin.body).toMatchObject({ error: { code: 'control_plane.role_in_use' } });
     await w().assembly.db.delete(admins).where(eq(admins.id, builtinHolder.id));
 
     // 角色停用 = 整角色 kill-switch:viewer 角色停用 → viewer 管理员下一请求零授权
-    const viewerRole = roleRows.find((role) => role.code === 'viewer');
+    const viewerRole = defined(
+      roleRows.find((role) => role.code === 'viewer'),
+      'viewer role',
+    );
     expect(viewerRole).toBeDefined();
     const stamp = Date.now();
     const [row] = await w()
@@ -314,7 +336,7 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
       .values({
         email: `e2e-rbacv2-kill-${stamp}@e2e.invalid`,
         passwordHash: 'identity-managed',
-        roleId: viewerRole!.id,
+        roleId: viewerRole.id,
         displayName: 'e2e-kill',
       })
       .returning({ id: admins.id });
@@ -327,7 +349,7 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
     });
     expect((await callAs(token, '/v1/users')).status).toBe(200);
 
-    await call(w(), `/v1/roles/${viewerRole!.id}`, {
+    await call(w(), `/v1/roles/${viewerRole.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ status: 1 }),
@@ -335,7 +357,7 @@ describe('K. enforced 锁 + 角色停用 kill-switch + super/内置守卫', () =
     expect((await callAs(token, '/v1/users')).status).toBe(403);
 
     // 恢复（不留污染）+ 自清理兜底:清除 e2e 残留行（重复跑防护）
-    await call(w(), `/v1/roles/${viewerRole!.id}`, {
+    await call(w(), `/v1/roles/${viewerRole.id}`, {
       method: 'PATCH',
       headers: jsonHeaders,
       body: JSON.stringify({ status: 0 }),
@@ -440,12 +462,12 @@ describe('L. 执行面数据化核心断言（换绑即时生效/解绑默认拒
         method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({ method: 'GET', path: '/v1/users', permissionId: usersReadId }),
-      }).catch(() => undefined); // 已存在(409) = 已恢复
+      }).catch(() => {}); // 已存在(409) = 已恢复
       await call(w(), `/v1/permissions/${usersReadId}`, {
         method: 'PATCH',
         headers: jsonHeaders,
         body: JSON.stringify({ code: 'users:read' }),
-      }).catch(() => undefined);
+      }).catch(() => {});
       expect((await usersCall()).status).toBe(200);
     }
   });
@@ -552,10 +574,8 @@ describe('L. 执行面数据化核心断言（换绑即时生效/解绑默认拒
     } finally {
       await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
         method: 'DELETE',
-      }).catch(() => undefined);
-      await call(w(), `/v1/permissions/${node.body.id}`, { method: 'DELETE' }).catch(
-        () => undefined,
-      );
+      }).catch(() => {});
+      await call(w(), `/v1/permissions/${node.body.id}`, { method: 'DELETE' }).catch(() => {});
     }
   });
 });
@@ -632,7 +652,7 @@ describe('N. 权限停用 kill-switch（enforced 码停用 → 持码角色下�
           method: 'PATCH',
           headers: jsonHeaders,
           body: JSON.stringify({ status: 0 }),
-        }).catch(() => undefined);
+        }).catch(() => {});
       }
     }
   });

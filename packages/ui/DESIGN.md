@@ -60,7 +60,7 @@
 
 ## 8. 迁移映射（旧 → 新）
 
-| 旧 @ai-gateway/ui                                                                                         | 新 @tillgate/ui                                           | 说明                                                               |
+| 旧 @ai-gateway/ui                                                                                         | 新 @tillgate/ui                                            | 说明                                                               |
 | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------ |
 | components/ui/*（Radix）                                                                                  | components/{五类}（Base UI base-nova）                     | 全部重生成, 零复制                                                 |
 | action-toast / confirm-action / form-dialog                                                               | feedback/{confirm-dialog,form-dialog} + sonner             | 异步契约显式化(onError/pending)                                    |

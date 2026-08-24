@@ -20,9 +20,11 @@ export function maxOutputTokensFor(
 
 export function maxOutputTokens(body: Record<string, unknown>, config: OutputCapConfig): number {
   let requested = config.defaultMax;
-  if (typeof body.max_completion_tokens === 'number' && body.max_completion_tokens > 0)
+  if (typeof body.max_completion_tokens === 'number' && body.max_completion_tokens > 0) {
     requested = body.max_completion_tokens;
-  else if (typeof body.max_tokens === 'number' && body.max_tokens > 0) requested = body.max_tokens;
+  } else if (typeof body.max_tokens === 'number' && body.max_tokens > 0) {
+    requested = body.max_tokens;
+  }
   const count = typeof body.n === 'number' && body.n > 0 ? body.n : 1;
   return Math.min(requested * count, config.exposureCap);
 }

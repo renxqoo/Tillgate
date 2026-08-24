@@ -32,13 +32,44 @@ export interface AdmitHandle {
   release(): Promise<void>;
 }
 
+/** RPM 维表（key/user/global 并罚——任一维超限即拒） */
+function rpmDimsOf(
+  gate: RateLimitGate,
+  auth: AuthContext,
+): Array<{ dimension: string; max: number }> {
+  const dims: Array<{ dimension: string; max: number }> = [];
+  if (auth.apiKeyId != null && auth.rpmLimit != null) {
+    dims.push({ dimension: `key:${auth.apiKeyId}`, max: auth.rpmLimit });
+  }
+  if (auth.userRpmLimit != null) {
+    dims.push({ dimension: `user:${auth.userId}`, max: auth.userRpmLimit });
+  }
+  if (gate.globalRpm != null) dims.push({ dimension: 'global', max: gate.globalRpm });
+  return dims;
+}
+
+/** TPM 维表（key/user 预占——凭证维缺失跳过） */
+function tpmDimsOf(
+  auth: AuthContext,
+  estimatedTokens: number,
+): Array<{ dimension: string; estimatedTokens: number; max: number }> {
+  const dims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [];
+  if (auth.apiKeyId != null && auth.tpmLimit != null) {
+    dims.push({ dimension: `key:${auth.apiKeyId}`, estimatedTokens, max: auth.tpmLimit });
+  }
+  if (auth.userTpmLimit != null) {
+    dims.push({ dimension: `user:${auth.userId}`, estimatedTokens, max: auth.userTpmLimit });
+  }
+  return dims;
+}
+
 /** 请求准入（路由入口调用）：RPM 多维原子检查 + TPM 预占；拒绝抛 gateway.rate_limit_exceeded。
  *  准入整段包 rate_limit.admit span（v1 等价；拒绝 = ERROR + 异常记录）。 */
 export async function admitRequest(
   gate: RateLimitGate | undefined,
   input: AdmitInput,
 ): Promise<AdmitHandle> {
-  if (gate == null) return { release: async () => undefined };
+  if (gate == null) return { release: async () => {} };
   const { auth } = input;
   let credentialDimension = `pg:${auth.userId}`;
   if (auth.apiKeyId != null) credentialDimension = `key:${auth.apiKeyId}`;
@@ -53,36 +84,14 @@ export async function admitRequest(
       'tokens.estimate': input.estimatedTokens,
     },
     async () => {
-      const rpmDims: Array<{ dimension: string; max: number }> = [];
-      if (auth.apiKeyId != null && auth.rpmLimit != null) {
-        rpmDims.push({ dimension: `key:${auth.apiKeyId}`, max: auth.rpmLimit });
-      }
-      if (auth.userRpmLimit != null)
-        rpmDims.push({ dimension: `user:${auth.userId}`, max: auth.userRpmLimit });
-      if (gate.globalRpm != null) rpmDims.push({ dimension: 'global', max: gate.globalRpm });
-
-      const rpm = await gate.limiter.checkAll(rpmDims, input.requestId);
+      const rpm = await gate.limiter.checkAll(rpmDimsOf(gate, auth), input.requestId);
       if (!rpm.allowed) {
         throw GatewayErrors.business('rate_limit_exceeded', {
           retryAfterSec: rpm.retryAfterSec ?? 60,
         });
       }
 
-      const tpmDims: Array<{ dimension: string; estimatedTokens: number; max: number }> = [];
-      if (auth.apiKeyId != null && auth.tpmLimit != null) {
-        tpmDims.push({
-          dimension: `key:${auth.apiKeyId}`,
-          estimatedTokens: input.estimatedTokens,
-          max: auth.tpmLimit,
-        });
-      }
-      if (auth.userTpmLimit != null) {
-        tpmDims.push({
-          dimension: `user:${auth.userId}`,
-          estimatedTokens: input.estimatedTokens,
-          max: auth.userTpmLimit,
-        });
-      }
+      const tpmDims = tpmDimsOf(auth, input.estimatedTokens);
       if (tpmDims.length > 0) {
         const tpm = await gate.limiter.reserveTpmAll(tpmDims, input.requestId);
         if (!tpm.allowed) {

@@ -68,7 +68,7 @@ export const orgQueries: Pick<
         name: organizations.name,
         ownerUserId: organizations.ownerUserId,
       });
-      const org = orgRows[0];
+      const [org] = orgRows;
       if (org === undefined) throw new Error('insertOrgWithOwner returning empty');
       await tx.insert(orgMembers).values({ orgId: org.id, userId: ownerUserId, role: 'owner' });
       return org;
@@ -151,7 +151,7 @@ export const orgQueries: Pick<
         expiresAt: sql`clock_timestamp() + (${input.ttlMs} * interval '1 millisecond')`,
       })
       .returning({ ...INVITATION_COLUMNS, token: orgInvitations.token });
-    const row = rows[0];
+    const [row] = rows;
     if (row === undefined) throw new Error('insertInvitation returning empty');
     return row;
   },
@@ -283,7 +283,7 @@ export const orgQueries: Pick<
         ),
       )
       .limit(1);
-    const sub = rows[0];
+    const [sub] = rows;
     if (sub === undefined) return null;
     if (sub.userId === userId) return { userId: sub.userId, orgId: sub.orgId };
     // 组织订阅:须为该组织 active 成员(v1 守卫口径)

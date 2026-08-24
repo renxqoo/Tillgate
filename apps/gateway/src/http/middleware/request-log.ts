@@ -29,6 +29,18 @@ function requestSummaryOf(
   };
 }
 
+/** 嗅探 JSON 响应的 error.code（SSE/二进制不 clone 流——数据面不因日志碰流；失败 → null） */
+async function sniffErrorCode(res: Response | undefined): Promise<string | null> {
+  const contentType = res?.headers.get('content-type') ?? '';
+  if (res == null || !contentType.includes('application/json')) return null;
+  try {
+    const body = (await res.clone().json()) as { error?: { code?: string } };
+    return body?.error?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
     const startedAt = Date.now();
@@ -44,17 +56,7 @@ export function requestLogMiddleware(deps: RequestLogDeps): MiddlewareHandler<Au
     }
     await next();
     const auth = c.get('auth');
-    let errorCode: string | null = null;
-    // 仅嗅探 JSON 响应的 error.code（SSE/二进制不 clone 流——数据面不因日志碰流）
-    const contentType = c.res?.headers.get('content-type') ?? '';
-    if (contentType.includes('application/json')) {
-      try {
-        const body = (await c.res!.clone().json()) as { error?: { code?: string } };
-        errorCode = body?.error?.code ?? null;
-      } catch {
-        errorCode = null;
-      }
-    }
+    const errorCode = await sniffErrorCode(c.res);
     const summary = requestSummaryOf(c.req.method, parsedBody);
     void deps.store
       .insert({

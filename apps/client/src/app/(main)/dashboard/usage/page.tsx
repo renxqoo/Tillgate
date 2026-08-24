@@ -10,6 +10,7 @@ import {
   formatInt,
   msToHuman,
   unitWord,
+  type DisplayLocale,
 } from '@/features/shared/format';
 import { ListPage } from '@/features/shared/list-page';
 import { firstParam, parseListSearchParams } from '@/server/list-query';
@@ -31,6 +32,120 @@ function dayToIso(day: string | undefined, endOfDay: boolean): string | undefine
   return `${day}${t}`;
 }
 
+// —— 模块级 cell 渲染函数：列 cell 若内联 JSX 会被判定为渲染期定义组件
+// （react/no-unstable-nested-components），统一提为模块级小函数返回 ReactNode ——
+
+function renderTimeCell(r: UsageRow, locale: DisplayLocale) {
+  return (
+    <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
+  );
+}
+
+function renderModelCell(r: UsageRow) {
+  return <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>;
+}
+
+/** 来源列：API Key / OAuth 应用凭据，取不到时降级 — */
+function renderSourceCell(r: UsageRow) {
+  return (
+    <span className="text-xs text-muted-foreground">
+      {r.credentialType === 'key' && r.keyName
+        ? `🔑 ${r.keyName}`
+        : r.credentialType === 'jwt' && r.appName
+          ? `📦 ${r.appName}`
+          : '—'}
+    </span>
+  );
+}
+
+/** 用量列：计费单位制（units）优先，否则回退 input tokens */
+function renderUsageCell(r: UsageRow, locale: DisplayLocale) {
+  if (r.units && r.units > 0) {
+    return (
+      <span className="text-right tabular-nums">
+        {formatInt(r.units)} {unitWord(r.pricingUnit, locale)}
+      </span>
+    );
+  }
+  return <span className="text-right tabular-nums">{formatInt(r.inputTokens)}</span>;
+}
+
+/** 缓存命中列：单位制无 token 口径，正数才展示 */
+function cachedCellText(r: UsageRow): string {
+  if (r.units && r.units > 0) return '—';
+  if (r.cachedInputTokens > 0) return formatInt(r.cachedInputTokens);
+  return '—';
+}
+
+function renderCachedCell(r: UsageRow) {
+  return <span className="text-right tabular-nums text-muted-foreground">{cachedCellText(r)}</span>;
+}
+
+function cacheRateCellText(r: UsageRow): string {
+  if (r.units && r.units > 0) return '—';
+  if (r.inputTokens > 0) {
+    return `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%`;
+  }
+  return '—';
+}
+
+function renderCacheRateCell(r: UsageRow) {
+  return (
+    <span className="text-right tabular-nums text-muted-foreground">{cacheRateCellText(r)}</span>
+  );
+}
+
+/** 输出列：单位制展示单价，token 制展示输出 tokens */
+function renderOutputCell(r: UsageRow, locale: DisplayLocale) {
+  if (r.units && r.units > 0) {
+    return (
+      <span className="text-right tabular-nums text-muted-foreground">
+        {r.unitPrice
+          ? `${formatMoney(r.unitPrice, locale)}/${unitWord(r.pricingUnit, locale)}`
+          : '—'}
+      </span>
+    );
+  }
+  return <span className="text-right tabular-nums">{formatInt(r.outputTokens)}</span>;
+}
+
+/** 金额列：plan 计费金额展示口径随 D-E 简化——直接金额展示（v1 ×100 积分投影废除） */
+function renderAmountCell(
+  r: UsageRow,
+  locale: DisplayLocale,
+  labels: { plan: string; balance: string },
+) {
+  return (
+    <span className="text-right font-medium tabular-nums">
+      {r.billedBy === 'plan' ? (
+        <>
+          {formatMoney(r.planAmount, locale)}
+          <span className="ml-1 text-xs text-muted-foreground">{labels.plan}</span>
+        </>
+      ) : (
+        <>
+          {formatMoney(r.paygAmount, locale)}
+          <span className="ml-1 text-xs text-muted-foreground">{labels.balance}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+function renderDurationCell(r: UsageRow) {
+  return (
+    <span className="text-right tabular-nums text-muted-foreground">{msToHuman(r.durationMs)}</span>
+  );
+}
+
+function renderTtftCell(r: UsageRow) {
+  return (
+    <span className="text-right text-xs tabular-nums text-muted-foreground">
+      {r.clientTtftMs != null ? `${(r.clientTtftMs / 1000).toFixed(2)}s` : '—'}
+    </span>
+  );
+}
+
 export default async function UsagePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const t = await getTranslations('usage');
@@ -46,7 +161,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
 
   let rows: UsageRow[] = [];
   let total = 0;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     const result = await api.list<UsageRow>('/v1/usage', {
       page,
@@ -57,137 +172,71 @@ export default async function UsagePage({ searchParams }: PageProps) {
         to: dayToIso(to, true),
       },
     });
-    rows = result.rows;
-    total = result.total;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : t('loadFailed');
+    // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError：原写法
+    // 赋给了 catch 参数导致外层恒为 null，加载失败提示永不上屏——真实 bug 一并修复
+    ({ rows, total } = result);
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : t('loadFailed');
   }
 
   const columns: DataTableColumn<UsageRow>[] = [
     {
       key: 'createdAt',
       header: tCommon('time'),
-      cell: (r) => (
-        <span className="text-xs text-muted-foreground">{formatDateTime(r.createdAt, locale)}</span>
-      ),
+      cell: (r) => renderTimeCell(r, locale),
     },
     {
       key: 'externalModel',
       header: t('colModel'),
-      cell: (r) => (
-        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{r.externalModel}</code>
-      ),
+      cell: (r) => renderModelCell(r),
     },
     {
       key: 'source',
       header: t('colSource'),
-      cell: (r) => (
-        <span className="text-xs text-muted-foreground">
-          {(() => {
-            if (r.credentialType === 'key' && r.keyName) return `🔑 ${r.keyName}`;
-            if (r.credentialType === 'jwt' && r.appName) return `📦 ${r.appName}`;
-            return '—';
-          })()}
-        </span>
-      ),
+      cell: (r) => renderSourceCell(r),
     },
     {
       key: 'inputTokens',
       header: t('colUsage'),
       align: 'right',
-      cell: (r) =>
-        r.units && r.units > 0 ? (
-          <span className="text-right tabular-nums">
-            {formatInt(r.units)} {unitWord(r.pricingUnit, locale)}
-          </span>
-        ) : (
-          <span className="text-right tabular-nums">{formatInt(r.inputTokens)}</span>
-        ),
+      cell: (r) => renderUsageCell(r, locale),
     },
     {
       key: 'cachedInputTokens',
       header: t('colCached'),
       align: 'right',
-      cell: (r) => (
-        <span className="text-right tabular-nums text-muted-foreground">
-          {(() => {
-            if (r.units && r.units > 0) return '—';
-            if (r.cachedInputTokens > 0) return formatInt(r.cachedInputTokens);
-            return '—';
-          })()}
-        </span>
-      ),
+      cell: (r) => renderCachedCell(r),
     },
     {
       key: 'cacheRate',
       header: t('colCacheRate'),
       align: 'right',
-      cell: (r) => (
-        <span className="text-right tabular-nums text-muted-foreground">
-          {(() => {
-            if (r.units && r.units > 0) return '—';
-            if (r.inputTokens > 0)
-              return `${((r.cachedInputTokens / r.inputTokens) * 100).toFixed(2)}%`;
-            return '—';
-          })()}
-        </span>
-      ),
+      cell: (r) => renderCacheRateCell(r),
     },
     {
       key: 'outputTokens',
       header: t('colOutput'),
       align: 'right',
-      cell: (r) =>
-        r.units && r.units > 0 ? (
-          <span className="text-right tabular-nums text-muted-foreground">
-            {r.unitPrice
-              ? `${formatMoney(r.unitPrice, locale)}/${unitWord(r.pricingUnit, locale)}`
-              : '—'}
-          </span>
-        ) : (
-          <span className="text-right tabular-nums">{formatInt(r.outputTokens)}</span>
-        ),
+      cell: (r) => renderOutputCell(r, locale),
     },
     {
       key: 'amount',
       header: t('colCost'),
       align: 'right',
-      cell: (r) => (
-        <span className="text-right font-medium tabular-nums">
-          {/* plan 计费金额展示口径随 D-E 简化：直接金额展示（v1 ×100 积分投影废除） */}
-          {r.billedBy === 'plan' ? (
-            <>
-              {formatMoney(r.planAmount, locale)}
-              <span className="ml-1 text-xs text-muted-foreground">{t('billedPlan')}</span>
-            </>
-          ) : (
-            <>
-              {formatMoney(r.paygAmount, locale)}
-              <span className="ml-1 text-xs text-muted-foreground">{t('billedBalance')}</span>
-            </>
-          )}
-        </span>
-      ),
+      cell: (r) =>
+        renderAmountCell(r, locale, { plan: t('billedPlan'), balance: t('billedBalance') }),
     },
     {
       key: 'durationMs',
       header: t('colDuration'),
       align: 'right',
-      cell: (r) => (
-        <span className="text-right tabular-nums text-muted-foreground">
-          {msToHuman(r.durationMs)}
-        </span>
-      ),
+      cell: (r) => renderDurationCell(r),
     },
     {
       key: 'ttft',
       header: t('colTtft'),
       align: 'right',
-      cell: (r) => (
-        <span className="text-right text-xs tabular-nums text-muted-foreground">
-          {r.clientTtftMs != null ? `${(r.clientTtftMs / 1000).toFixed(2)}s` : '—'}
-        </span>
-      ),
+      cell: (r) => renderTtftCell(r),
     },
   ];
 
@@ -231,7 +280,7 @@ export default async function UsagePage({ searchParams }: PageProps) {
             </Button>
           </form>
         }
-        error={error}
+        error={loadError}
         page={page}
         pageSize={PAGE_SIZE}
       >

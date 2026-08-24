@@ -137,7 +137,9 @@ describe('transport/sse：统一解析原语（S3/S4 修复）', () => {
     });
     const out = sseToSseStream(upstream, (_ev, emit) => emit(new TextEncoder().encode('y')));
     await out.cancel();
-    await new Promise((r) => setTimeout(r, 20)); // 取消链异步传播
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    }); // 取消链异步传播
     expect(cancelled).toBe(true);
   });
 });

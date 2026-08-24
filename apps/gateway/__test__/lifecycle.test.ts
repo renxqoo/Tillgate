@@ -49,10 +49,14 @@ describe('createGatewayShutdown（gateway 绑定形状）', () => {
       }) as never,
     });
     shutdown('SIGTERM');
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => {
+      setTimeout(r, 50);
+    });
     expect(order).toEqual(['server', 'otel', 'inference', 'settle-wake', 'redis', 'db', 'exit:0']);
     shutdown('SIGINT'); // 二次信号不重复触发
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => {
+      setTimeout(r, 20);
+    });
     expect(order.filter((x) => x === 'exit:0')).toHaveLength(1);
   });
 });
@@ -62,20 +66,22 @@ describe('otelMiddleware（off 模式 no-op）', () => {
     const order: string[] = [];
     const shutdown = createGatewayShutdown({
       server: { close: (cb: () => void) => cb() } as never,
-      otel: { shutdown: async () => undefined },
-      redis: { quit: async () => undefined } as never,
-      closeDb: async () => undefined,
-      inference: { close: () => undefined },
-      settleWake: { close: async () => undefined },
+      otel: { shutdown: async () => {} },
+      redis: { quit: async () => {} } as never,
+      closeDb: async () => {},
+      inference: { close: () => {} },
+      settleWake: { close: async () => {} },
       graceMs: 60_000,
-      exit: (() => undefined) as never,
+      exit: (() => {}) as never,
       logger: {
         info: (_o, msg) => order.push(msg),
         error: (_o, msg) => order.push(msg),
       },
     });
     shutdown('SIGTERM');
-    await new Promise((r) => setTimeout(r, 30));
+    await new Promise((r) => {
+      setTimeout(r, 30);
+    });
     expect(order.some((m) => m.includes('draining') || m.includes('drained'))).toBe(true);
   });
 

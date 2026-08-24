@@ -48,7 +48,7 @@ export function fakeDeps(overrides: {
   now?: () => Date;
 }): AdminAppDeps {
   return {
-    pingDb: overrides.pingDb ?? (async () => undefined),
+    pingDb: overrides.pingDb ?? (async () => {}),
     // P6:词表注入面(真源 = ai 根出口;此处最小 fake——封闭性由 ai 包架构测试锁定)
     vendorCatalog: { protocols: ['openai-compatible'], vendors: ['openai'] },
     sessions: {
@@ -210,18 +210,18 @@ export function fakeDeps(overrides: {
     authGuards: {
       emailIp: {
         isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => undefined,
-        recordSuccess: async () => undefined,
+        recordFailure: async () => {},
+        recordSuccess: async () => {},
       },
       ip: {
         isLocked: async () => ({ locked: false, retryAfterSec: 0 }),
-        recordFailure: async () => undefined,
-        recordSuccess: async () => undefined,
+        recordFailure: async () => {},
+        recordSuccess: async () => {},
       },
     },
     trustedProxyHops: 0,
     mailerConfigured: false,
-    loginAudit: async () => undefined,
+    loginAudit: async () => {},
     sessionTtlSec: 3600,
     corsOrigins: [],
     bodyLimitBytes: 1024 * 1024,

@@ -3,7 +3,7 @@
  * wire 偏差（MIGRATION §4 D5）：adminSubject 无 join 来源恒 null;
  * 日志行无 apiKeyId/attempts 列来源（apiKeyId 补 null,attempts 不输出）。
  */
-import { iso } from '../contracts/common';
+import { isoRequired } from '../contracts/common';
 
 export interface AuditRowSource {
   readonly id: number;
@@ -26,7 +26,7 @@ export function toAuditWireRow(row: AuditRowSource) {
     targetType: row.targetType,
     targetId: row.targetId,
     detail: (row.detail ?? null) as Record<string, unknown> | string | null,
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }
 
@@ -59,6 +59,6 @@ export function toRequestLogWireRow(row: RequestLogRowSource) {
     durationMs: row.durationMs,
     requestSummary: row.requestSummary,
     sourceIp: row.sourceIp,
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }

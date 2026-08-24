@@ -9,10 +9,14 @@ import {
   claudeMessagesCodec,
   inferenceEndpoints,
 } from '../src/http/contracts/inference-endpoints';
+import { defined } from './defined';
 
 const encoderOf = (path: string) => {
-  const ep = inferenceEndpoints.find((e) => e.path === path)!;
-  return ep.codec!;
+  const ep = defined(
+    inferenceEndpoints.find((e) => e.path === path),
+    `endpoint ${path}`,
+  );
+  return defined(ep.codec, `codec of ${path}`);
 };
 
 describe('completions codec', () => {
@@ -27,7 +31,7 @@ describe('completions codec', () => {
       choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
     }) as { choices: Array<{ text: string }> };
     expect(Array.isArray(wire.choices)).toBe(true);
-    expect(wire.choices[0]!.text).toBe('hi');
+    expect(defined(wire.choices[0], 'choices[0]').text).toBe('hi');
     const stream = codec.encodeStream(
       new ReadableStream({
         start(c) {
@@ -69,7 +73,7 @@ describe('claude messages codec', () => {
       object: 'chat.completion',
       choices: [{ index: 0, message: { role: 'assistant', content: 'yo' }, finish_reason: 'stop' }],
     }) as { content: Array<{ text: string }> };
-    expect(wire.content[0]!.text).toBe('yo');
+    expect(defined(wire.content[0], 'content[0]').text).toBe('yo');
   });
 });
 

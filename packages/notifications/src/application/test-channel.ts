@@ -22,8 +22,9 @@ export async function testChannel(
   input: TestChannelInput,
 ): Promise<{ ok: true }> {
   const channel = await deps.store.findChannel(deps.db, input.channelId);
-  if (!channel)
+  if (!channel) {
     throw notificationsErrors.business('channel_not_found', { channelId: input.channelId });
+  }
   await deps.db.transaction((tx) =>
     deps.store.insertOutboxEvent(tx, {
       event: channel.events[0] ?? 'channel_disabled',

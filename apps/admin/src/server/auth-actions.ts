@@ -40,6 +40,41 @@ function isFetchError(r: Response | { fetchError: string }): r is { fetchError: 
  *     改走 loginTotpAction）;邮箱码开启 → {twoFactorRequired, challengeId}
  *   - 会话：token 由 BFF 持有（ag_admin_session cookie 值即 JWT）
  */
+/** /v1/auth/login 响应体（错误信封 / 2FA 挑战 / 成功 token） */
+interface LoginResponseBody {
+  error?: { message?: string };
+  twoFactorRequired?: boolean;
+  method?: 'totp' | 'email';
+  challengeId?: string;
+  token?: string;
+}
+
+/** 登录响应分流结果：失败 / TOTP 挑战 / 邮箱码挑战 / 成功（判别联合，token 收窄非空） */
+type LoginOutcome =
+  | { kind: 'error'; error: string }
+  | { kind: 'totp' }
+  | { kind: 'challenge'; challengeId: string }
+  | { kind: 'ok'; token: string };
+
+/** 登录响应分流：失败 / TOTP 挑战 / 邮箱码挑战 / 成功 token */
+function resolveLoginOutcome(
+  res: Response,
+  body: LoginResponseBody | null,
+  messages: { loginFailedStatus: (status: number) => string; noToken: string },
+): LoginOutcome {
+  if (!res.ok) {
+    return { kind: 'error', error: body?.error?.message ?? messages.loginFailedStatus(res.status) };
+  }
+  if (body?.twoFactorRequired && body.method === 'totp') {
+    return { kind: 'totp' };
+  }
+  if (body?.twoFactorRequired && body.challengeId) {
+    return { kind: 'challenge', challengeId: body.challengeId };
+  }
+  if (!body?.token) return { kind: 'error', error: messages.noToken };
+  return { kind: 'ok', token: body.token };
+}
+
 export async function loginAction(
   formData: FormData,
 ): Promise<{ error?: string; challengeId?: string; totpRequired?: boolean }> {
@@ -57,26 +92,26 @@ export async function loginAction(
   if (isFetchError(r)) return { error: r.fetchError };
   const res: Response = r;
 
-  const body = (await res.json().catch(() => null)) as {
-    error?: { message?: string };
-    twoFactorRequired?: boolean;
-    method?: 'totp' | 'email';
-    challengeId?: string;
-    token?: string;
-  } | null;
-
-  if (!res.ok) {
-    return { error: body?.error?.message ?? t('loginFailedStatus', { status: res.status }) };
+  const body = (await res.json().catch(() => null)) as LoginResponseBody | null;
+  const outcome = resolveLoginOutcome(res, body, {
+    loginFailedStatus: (status) => t('loginFailedStatus', { status }),
+    noToken: t('noToken'),
+  });
+  switch (outcome.kind) {
+    case 'error': {
+      return { error: outcome.error };
+    }
+    case 'totp': {
+      return { totpRequired: true };
+    }
+    case 'challenge': {
+      return { challengeId: outcome.challengeId };
+    }
+    case 'ok': {
+      await setAdminSessionToken(outcome.token);
+      redirect('/dashboard');
+    }
   }
-  if (body?.twoFactorRequired && body.method === 'totp') {
-    return { totpRequired: true };
-  }
-  if (body?.twoFactorRequired && body.challengeId) {
-    return { challengeId: body.challengeId };
-  }
-  if (!body?.token) return { error: t('noToken') };
-  await setAdminSessionToken(body.token);
-  redirect('/dashboard');
 }
 
 /** 第二步（TOTP）：重验凭证 + 验证器 6 位码或 10 位恢复码 */
@@ -137,9 +172,9 @@ export async function setTwoFactorAction(enabled: boolean): Promise<{ error?: st
   const t = await getTranslations('auth');
   try {
     await adminApi().post('/v1/me/two-factor', { enabled });
-  } catch (e) {
+  } catch (error) {
     return {
-      error: e instanceof ApiError ? e.message : t('operationFailedStatus', { status: 0 }),
+      error: error instanceof ApiError ? error.message : t('operationFailedStatus', { status: 0 }),
     };
   }
   revalidatePath('/settings');

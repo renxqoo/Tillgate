@@ -20,7 +20,7 @@ const config = (overrides: Record<string, string | undefined> = {}) =>
 describe('assembleReceiver', () => {
   const closers: Array<ReturnType<typeof assembleReceiver>> = [];
   afterAll(async () => {
-    for (const assembled of closers) await closeDb(assembled.db).catch(() => undefined);
+    for (const assembled of closers) await closeDb(assembled.db).catch(() => {});
   });
 
   it('mode=otlp 缺端点 → 启动期抛 observability.otel_endpoint_missing', () => {

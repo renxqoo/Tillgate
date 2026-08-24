@@ -50,6 +50,7 @@ export interface RetryAttemptInfo {
  * @param jitterRatio 抖动比例：延迟在 [0, exp×(1+jitterRatio)] 均匀分布
  * @returns 退避毫秒数（≥1，避免 0 延迟的无效定时器）
  */
+// eslint-disable-next-line max-params -- 导出的纯数学函数（4 个标量各自带 JSDoc），改对象参数会放大全部调用点与测试 diff
 export function backoffDelayMs(
   attempt: number,
   base: number,

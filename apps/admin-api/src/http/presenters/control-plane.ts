@@ -6,7 +6,7 @@
  */
 import type { ControlPlane } from '@tillgate/control-plane';
 import { Decimal, normalizeAmount } from '@tillgate/billing';
-import { iso } from '../contracts/common';
+import { iso, isoRequired } from '../contracts/common';
 
 export type ProviderRowSource = Awaited<ReturnType<ControlPlane['providers']['create']>>;
 export type ChannelItemSource = Awaited<
@@ -25,7 +25,7 @@ export function toProviderWireRow(row: ProviderRowSource) {
     vendor: row.vendor,
     status: row.status,
     deletedAt: iso(row.deletedAt),
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }
 
@@ -50,7 +50,7 @@ export function toChannelWireRow(row: ChannelItemSource) {
       row.upstreamThreshold === null ? null : normalizeAmount(row.upstreamThreshold),
     upstreamConsumed: normalizeAmount(row.upstreamConsumed),
     upstreamRemaining: new Decimal(row.upstreamBudget).minus(row.upstreamConsumed).toString(),
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
     updatedAt: null,
     providerBaseUrl: null,
     boundModels: row.boundModels,
@@ -71,6 +71,6 @@ export function toChannelFundWireRow(row: RechargeRowSource) {
     adminId: row.adminId,
     adminEmail: row.adminEmail,
     adminDisplayName: row.adminDisplayName,
-    createdAt: iso(row.createdAt)!,
+    createdAt: isoRequired(row.createdAt),
   };
 }

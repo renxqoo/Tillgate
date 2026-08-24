@@ -112,3 +112,8 @@ export function listEnvelope<T>(
 export function iso(date: Date | null | undefined): string | null {
   return date == null ? null : date.toISOString();
 }
+
+/** Date → ISO 字符串（NOT NULL 列专用；缺值即装配契约破坏，抛错胜过静默 null 出站） */
+export function isoRequired(date: Date): string {
+  return date.toISOString();
+}

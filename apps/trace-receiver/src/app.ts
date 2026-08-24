@@ -38,6 +38,7 @@ export interface ReceiverAppDeps {
 /** /v1/traces 请求体上限:OTLP JSON 批次远小于此;无上限则整读任意体积 → OOM/存储耗尽(v1 G1 语义) */
 const TRACE_BODY_LIMIT_BYTES = 8 * 1024 * 1024;
 
+// eslint-disable-next-line max-lines-per-function -- HTTP 装配平铺：中间件链与路由挂载顺序即契约（铁律 22 ①）
 export function createReceiverApp(deps: ReceiverAppDeps): Hono {
   const app = new Hono();
 

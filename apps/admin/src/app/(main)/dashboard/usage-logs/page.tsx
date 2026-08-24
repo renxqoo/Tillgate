@@ -33,54 +33,28 @@ function estimateReasonKey(reason: string | null): string {
   switch (reason) {
     case 'client_disconnect':
     case 'request_cancelled':
-    case 'aborted':
+    case 'aborted': {
       return 'reasonCancelled';
-    case 'usage_missing_completed':
+    }
+    case 'usage_missing_completed': {
       return 'reasonMissingCompleted';
-    case 'usage_missing_nonstream':
+    }
+    case 'usage_missing_nonstream': {
       return 'reasonMissingNonstream';
-    default:
+    }
+    default: {
       return 'reasonDefault';
+    }
   }
 }
 
-export default async function UsageLogsPage({ searchParams }: PageProps) {
-  await requirePermission('ops:read');
-  const sp = await searchParams;
-  const t = await getTranslations('usageLogs');
-  const tc = await getTranslations('common');
-  const locale = (await getLocale()) as 'en' | 'zh';
-  const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const from = firstParam(sp.from) ?? '';
-  const to = firstParam(sp.to) ?? '';
-  const userId = firstParam(sp.userId) ?? '';
-  const estimated = firstParam(sp.estimated) ?? '';
-  const query = new URLSearchParams({
-    page: String(page),
-    page_size: String(PAGE_SIZE),
-    sort_by: sortBy ?? 'createdAt',
-    order,
-  });
-  if (q) query.set('q', q);
-  if (from) query.set('from', from);
-  if (to) query.set('to', to);
-  if (userId) query.set('userId', userId);
-  if (estimated) query.set('estimated', estimated);
-
-  let rows: AdminUsageRow[] = [];
-  let total = 0;
-  let error: string | null = null;
-  try {
-    const data = await adminApi().get<Paginated<AdminUsageRow>>(
-      `/v1/usage-logs?${query.toString()}`,
-    );
-    rows = data.rows ?? [];
-    total = data.total ?? 0;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
-  }
-
-  const columns: DataTableColumn<AdminUsageRow>[] = [
+/** 用量表列定义（cell 渲染器随列声明平铺；t/tc/locale 经参数传入） */
+function buildUsageColumns(
+  t: Awaited<ReturnType<typeof getTranslations<'usageLogs'>>>,
+  tc: Awaited<ReturnType<typeof getTranslations<'common'>>>,
+  locale: 'en' | 'zh',
+): DataTableColumn<AdminUsageRow>[] {
+  return [
     {
       key: 'requestId',
       header: 'Request ID',
@@ -185,15 +159,13 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
       key: 'ttft',
       header: t('ttft'),
       align: 'right',
-      render: (r) => {
-        return (
-          <span className="text-right text-xs tabular-nums text-muted-foreground">
-            {r.upstreamTtftMs != null || r.clientTtftMs != null
-              ? `${ttftSec(r.upstreamTtftMs)}/${ttftSec(r.clientTtftMs)}`
-              : '—'}
-          </span>
-        );
-      },
+      render: (r) => (
+        <span className="text-right text-xs tabular-nums text-muted-foreground">
+          {r.upstreamTtftMs != null || r.clientTtftMs != null
+            ? `${ttftSec(r.upstreamTtftMs)}/${ttftSec(r.clientTtftMs)}`
+            : '—'}
+        </span>
+      ),
     },
     {
       key: 'createdAt',
@@ -205,6 +177,44 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
       ),
     },
   ];
+}
+
+export default async function UsageLogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
+  const sp = await searchParams;
+  const t = await getTranslations('usageLogs');
+  const tc = await getTranslations('common');
+  const locale = (await getLocale()) as 'en' | 'zh';
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const from = firstParam(sp.from) ?? '';
+  const to = firstParam(sp.to) ?? '';
+  const userId = firstParam(sp.userId) ?? '';
+  const estimated = firstParam(sp.estimated) ?? '';
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(PAGE_SIZE),
+    sort_by: sortBy ?? 'createdAt',
+    order,
+  });
+  // 非空筛选统一并入 query（q/from/to/userId/estimated）
+  for (const [key, value] of Object.entries({ q, from, to, userId, estimated })) {
+    if (value) query.set(key, value);
+  }
+
+  let rows: AdminUsageRow[] = [];
+  let total = 0;
+  let loadError: string | null = null;
+  try {
+    const data = await adminApi().get<Paginated<AdminUsageRow>>(
+      `/v1/usage-logs?${query.toString()}`,
+    );
+    rows = data.rows ?? [];
+    total = data.total ?? 0;
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
+  }
+
+  const columns = buildUsageColumns(t, tc, locale);
 
   return (
     <ListPage
@@ -224,7 +234,7 @@ export default async function UsageLogsPage({ searchParams }: PageProps) {
         order: sortBy ? order : undefined,
       }}
       filters={<UsageLogsFilter from={from} to={to} userId={userId} estimated={estimated} />}
-      error={error}
+      error={loadError}
       page={page}
       pageSize={PAGE_SIZE}
     >

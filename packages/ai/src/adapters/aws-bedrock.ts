@@ -43,12 +43,12 @@ export interface AwsCredentials {
 }
 
 export function parseAwsCredentials(apiKey: string): AwsCredentials | null {
-  const parts = apiKey.split(':');
-  if (parts.length < 2 || !parts[0] || !parts[1]) return null;
+  const [accessKeyId, secretAccessKey, sessionToken] = apiKey.split(':');
+  if (!accessKeyId || !secretAccessKey) return null;
   return {
-    accessKeyId: parts[0]!,
-    secretAccessKey: parts[1]!,
-    sessionToken: parts[2] || undefined,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken: sessionToken || undefined,
   };
 }
 
@@ -76,7 +76,10 @@ export function signBedrockRequest(args: {
   if (credentials.sessionToken) headers['x-amz-security-token'] = credentials.sessionToken;
 
   const signedHeaderNames = Object.keys(headers).toSorted();
-  const canonicalHeaders = signedHeaderNames.map((h) => `${h}:${headers[h]!.trim()}\n`).join('');
+  // headers[h] 来自 Object.keys(headers)，键必存在；?? '' 仅为 noUncheckedIndexedAccess 的类型收窄
+  const canonicalHeaders = signedHeaderNames
+    .map((h) => `${h}:${(headers[h] ?? '').trim()}\n`)
+    .join('');
   const signedHeaders = signedHeaderNames.join(';');
   const canonicalRequest = [
     method,
@@ -95,15 +98,20 @@ export function signBedrockRequest(args: {
     createHash('sha256').update(canonicalRequest, 'utf8').digest('hex'),
   ].join('\n');
 
-  let key: Buffer = hmac(`AWS4${credentials.secretAccessKey}`, dateStamp);
-  key = hmac(key, regionFromHost(url.host));
-  key = hmac(key, SERVICE);
-  key = hmac(key, 'aws4_request');
+  const key = signingKey(credentials.secretAccessKey, dateStamp, regionFromHost(url.host));
   const signature = createHmac('sha256', key).update(stringToSign, 'utf8').digest('hex');
 
   headers['authorization'] =
     `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
   return headers;
+}
+
+/** SigV4 派生签名密钥（AWS4-HMAC-SHA256 标准四级链：日期/服务/区域/终态） */
+function signingKey(secretAccessKey: string, dateStamp: string, region: string): Buffer {
+  let key: Buffer = hmac(`AWS4${secretAccessKey}`, dateStamp);
+  key = hmac(key, region);
+  key = hmac(key, SERVICE);
+  return hmac(key, 'aws4_request');
 }
 
 function regionFromHost(host: string): string {
@@ -190,7 +198,7 @@ export function eventstreamToClaudeSse(
             controller.close();
             return;
           }
-          pending = concatBytes(pending, value!);
+          pending = concatBytes(pending, value ?? new Uint8Array(0));
           continue;
         }
         pending = new Uint8Array(rest);

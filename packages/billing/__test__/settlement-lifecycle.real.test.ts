@@ -17,7 +17,8 @@ import {
   createDefaultFundingRegistry,
 } from '../src/application/billing/billing.js';
 import { createSettlementApi } from '../src/application/settlement/settlement.js';
-import { V1_RETRY } from './real-pg.js';
+import { causeChainHasCode, V1_RETRY } from './real-pg.js';
+import { defined } from './defined.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 const MIGRATIONS_DIR = fileURLToPath(new URL('../../db/migrations', import.meta.url));
@@ -88,12 +89,12 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       insert into users (issuer, subject, identity_provider, email)
       values ('local', ${`life-${Date.now()}-${userSeq}@test`}, 'local', ${`life-${Date.now()}-${userSeq}@test`})
       returning id`);
-    return Number(row.rows[0]!.id);
+    return Number(defined(row.rows[0]).id);
   };
 
   beforeAll(async () => {
     const schema = SCHEMA_NAME;
-    const [baseUrl] = url!.split('?');
+    const [baseUrl] = defined(url).split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,
       poolMax: 5,
@@ -123,16 +124,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
           await db.execute(sql.raw(trimmed));
         } catch (error) {
           // drizzle 包装 pg 错误——沿 cause 链探测 SQLSTATE
-          let current: unknown = error;
-          let missingTable = false;
-          for (let depth = 0; current != null && depth < 5; depth += 1) {
-            if ((current as { code?: string }).code === '42P01') {
-              missingTable = true;
-              break;
-            }
-            current = (current as { cause?: unknown }).cause;
-          }
-          if (missingTable) {
+          if (causeChainHasCode(error, '42P01')) {
             skipped.push(trimmed.slice(0, 60));
             continue;
           }
@@ -146,9 +138,9 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       insert into providers (name, base_url) values ('life-provider', 'http://upstream') returning id`);
     const channel = await db.execute<{ id: number }>(sql`
       insert into channels (provider_id, name, api_key_enc, priority, weight, status, upstream_budget, upstream_threshold)
-      values (${Number(provider.rows[0]!.id)}, 'life', 'enc', 0, 1, 0, '10', '1')
+      values (${Number(defined(provider.rows[0]).id)}, 'life', 'enc', 0, 1, 0, '10', '1')
       returning id`);
-    channelId = Number(channel.rows[0]!.id);
+    channelId = Number(defined(channel.rows[0]).id);
 
     const walletStore = createPostgresWalletStore(db, { retry: V1_RETRY });
     const billingStore = createPostgresBillingStore(db, { retry: V1_RETRY });
@@ -191,7 +183,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       channels: billingStore.channelStore,
       failurePolicy: { maxAttempts: 3, baseDelayMs: 100, maxDelayMs: 1_000 },
       clock: () => new Date(),
-      onError: () => undefined,
+      onError: () => {},
     });
   });
 
@@ -215,7 +207,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       authorizationTtlMs: 60_000,
     });
     expect(authorization).toMatchObject({ reservedAmount: '2', replayed: false });
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('2');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('2');
 
     const reserved = await billing.reserveChannel({ requestId, channelId, amount: '1.5' });
     expect(reserved).toMatchObject({ allowed: true });
@@ -229,26 +221,26 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
 
     const claims = await settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 10_000 });
     expect(claims.map((c) => c.requestId)).toContain(requestId);
-    const claim = claims.find((c) => c.requestId === requestId)!;
+    const claim = defined(claims.find((c) => c.requestId === requestId));
     const outcome = await settlement.processClaim(claim);
     expect(outcome).toBe('settled');
 
-    const account = (await wallet.accounts(userId))[0]!;
+    const account = defined((await wallet.accounts(userId))[0]);
     expect(account.balance).toBe('8');
     expect(account.inFlight).toBe('0');
     const usage = await db.execute<{ calculated_amount: string; billed_by: string }>(sql`
       select calculated_amount, billed_by from usage_logs where request_id = ${requestId}::uuid`);
     // numeric(38,18) 返回带尾零的定标串——规范化后比较
-    expect(usage.rows[0]!.billed_by).toBe('payg');
-    expect(String(usage.rows[0]!.calculated_amount).replace(/\.?0+$/, '')).toBe('2');
+    expect(defined(usage.rows[0]).billed_by).toBe('payg');
+    expect(String(defined(usage.rows[0]).calculated_amount).replace(/\.?0+$/, '')).toBe('2');
     const status = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(status.rows[0]!.status).toBe('settled');
+    expect(defined(status.rows[0]).status).toBe('settled');
     // 渠道：敞口归还 + 预算按官方成本扣减
     const channel = await db.execute<{ upstream_reserved: string; upstream_budget: string }>(sql`
       select upstream_reserved, upstream_budget from channels where id = ${channelId}`);
-    expect(String(channel.rows[0]!.upstream_reserved).replace(/\.?0+$/, '')).toBe('0');
-    expect(String(channel.rows[0]!.upstream_budget).replace(/\.?0+$/, '')).toBe('8'); // 10 − 2
+    expect(String(defined(channel.rows[0]).upstream_reserved).replace(/\.?0+$/, '')).toBe('0');
+    expect(String(defined(channel.rows[0]).upstream_budget).replace(/\.?0+$/, '')).toBe('8'); // 10 − 2
     // 对账哨兵：真实触发器下零漂移
     expect((await settlement.verifyInvariants()).ok).toBe(true);
   });
@@ -278,10 +270,10 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     const owners = both.flat().filter((c) => c.requestId === requestId);
     expect(owners.length).toBe(1);
     const [winnerOutcome, loserOutcome] = await Promise.all([
-      settlement.processClaim(owners[0]!),
+      settlement.processClaim(defined(owners[0])),
       settlement.processClaim({
         requestId,
-        ownerId: owners[0]!.ownerId === 'w1' ? 'w2' : 'w1',
+        ownerId: defined(owners[0]).ownerId === 'w1' ? 'w2' : 'w1',
         claimToken: '00000000-0000-4000-8000-00000000dead',
         revision: 0,
         attempt: 1,
@@ -292,7 +284,7 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     ]);
     expect(winnerOutcome).toBe('settled');
     expect(loserOutcome).toBe('claim_lost');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('8'); // 本测试独立用户：10 − 2
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('8'); // 本测试独立用户：10 − 2
   });
 
   it('毒收据死信（真实 CAS）：状态 dead + settlement_attempts 保留', async () => {
@@ -317,13 +309,13 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
       update billing_requests set receipt = jsonb_set(receipt, '{inputPrice}', '"garbage"')
       where request_id = ${requestId}::uuid`);
     const [claim] = await settlement.claim({ ownerId: 'w1', batchSize: 10, claimLeaseMs: 10_000 });
-    const outcome = await settlement.processClaim(claim!);
+    const outcome = await settlement.processClaim(defined(claim));
     expect(outcome).toBe('dead');
     const row = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(row.rows[0]!.status).toBe('dead');
+    expect(defined(row.rows[0]).status).toBe('dead');
     // 预扣保留（死信人工复核出口——资金不丢）
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('2');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('2');
   });
 
   it('恢复：过期授权真实 CAS 归还（released + 钱包在途归零）', async () => {
@@ -342,8 +334,8 @@ function lifeReceipt(requestId: string, uid: number, inputTokens = 1_000_000) {
     expect(result.released).toBeGreaterThanOrEqual(1);
     const row = await db.execute<{ status: string }>(sql`
       select status from billing_requests where request_id = ${requestId}::uuid`);
-    expect(row.rows[0]!.status).toBe('released');
-    expect((await wallet.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined(row.rows[0]).status).toBe('released');
+    expect(defined((await wallet.accounts(userId))[0]).inFlight).toBe('0');
     expect((await settlement.verifyInvariants()).ok).toBe(true);
   });
 });

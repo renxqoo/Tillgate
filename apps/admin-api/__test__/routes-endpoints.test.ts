@@ -65,11 +65,11 @@ describe('endpoints 管理面', () => {
       ['permission_not_found', 404],
       ['invalid_endpoint_input', 400],
     ] as const) {
-      const app = wire({
+      const { app } = wire({
         create: async () => {
           throw controlPlaneErrors.business(code, {});
         },
-      }).app;
+      });
       const res = await app.request('/v1/endpoint-bindings', {
         method: 'POST',
         headers: json,

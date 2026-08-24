@@ -15,6 +15,7 @@ import { createDb, closeDb, type Db } from '@tillgate/db';
 import { createCipher } from '@tillgate/runtime';
 import { Decimal } from '@tillgate/billing';
 import {
+  defined,
   E2EKeys,
   E2E_MODEL,
   devEncryptionKey,
@@ -33,6 +34,37 @@ const enabled =
   (process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null) &&
   process.env.REDIS_URL != null;
 
+/** ③ 并发请求的结局形状（状态 + 全文——放行/拒绝统计与失败体诊断用） */
+interface StatusBody {
+  status: number;
+  body: string;
+}
+
+/** 响应折叠为 {status, body}（读全文——③ 断言口径） */
+async function toStatusBody(res: Response): Promise<StatusBody> {
+  return { status: res.status, body: await res.text() };
+}
+
+/** settled → 状态（拒绝折叠为 'network-error'——③ 放行/拒绝统计口径） */
+const settledStatusOf = (r: PromiseSettledResult<StatusBody>): number | 'network-error' =>
+  r.status === 'fulfilled' ? r.value.status : 'network-error';
+
+/** ④ 单路结局形状（多用户归属断言用） */
+interface PeerOutcome {
+  userId: number;
+  userIndex: number;
+  i: number;
+  status: number | 'network-error';
+}
+
+/** ④ 响应折叠为带归属标记的结局（响应必须回到正确的用户） */
+function toPeerOutcome(
+  res: Response,
+  ctx: { userId: number; userIndex: number; i: number },
+): PeerOutcome {
+  return { userId: ctx.userId, userIndex: ctx.userIndex, i: ctx.i, status: res.status };
+}
+
 describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）', () => {
   let world: E2EWorld;
   let gateway: E2EGateway;
@@ -43,7 +75,10 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
   beforeAll(async () => {
     world = await setupE2EWorld();
     // 渠道克隆：dev 库 channel 2（minimax-default）→ 本世界（key 重加密）
-    devDb = createDb({ url: process.env.DB_TEST_URL ?? process.env.DATABASE_URL!, poolMax: 2 });
+    devDb = createDb({
+      url: process.env.DB_TEST_URL ?? defined(process.env.DATABASE_URL, 'DATABASE_URL'),
+      poolMax: 2,
+    });
     const row = await devDb.execute<{
       base_url: string;
       protocol: string;
@@ -53,7 +88,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
       select p.base_url, p.protocol, p.vendor, c.api_key_enc
       from channels c join providers p on p.id = c.provider_id
       where c.id = 2`);
-    const channel = row.rows[0]!;
+    const channel = defined(row.rows[0], 'dev channel row');
     await retargetUpstream(world, {
       baseUrl: channel.base_url,
       protocol: channel.protocol,
@@ -87,7 +122,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/event-stream');
     // 读到首批输出（模型已产生内容）后取消
-    const reader = res.body!.getReader();
+    const reader = defined(res.body, 'stream body').getReader();
     await reader.read();
     await sleep(300); // 让输出累积
     ac.abort();
@@ -99,7 +134,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     expect(bills.length).toBe(1); // 单笔账单（取消不产生第二笔）
     await keys.settleAll(userId);
     const finalBills = await keys.billsOf(userId);
-    expect(['settled', 'released']).toContain(finalBills[0]!.status);
+    expect(['settled', 'released']).toContain(defined(finalBills[0], 'finalBills[0]').status);
     const walletState = await keys.walletOf(userId);
     // 资金一致性：结算后余额 = 1 − 实扣；实扣 ≤ 真实用量（不为负超额放大）
     expect(new Decimal(walletState.balance).gte('-0.05')).toBe(true);
@@ -124,7 +159,7 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     const deadline = Date.now() + 10_000;
     for (;;) {
       const bills = await keys.billsOf(userId);
-      if (bills.length >= 1 || Date.now() > deadline) break;
+      if (bills.length > 0 || Date.now() > deadline) break;
       await sleep(50);
     }
     ac.abort();
@@ -135,7 +170,9 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     await keys.settleAll(userId);
     const bills = await keys.billsOf(userId);
     expect(bills.length).toBe(1);
-    expect(['settled', 'settlement_pending', 'released', 'in_flight']).toContain(bills[0]!.status);
+    expect(['settled', 'settlement_pending', 'released', 'in_flight']).toContain(
+      defined(bills[0], 'bills[0]').status,
+    );
     const walletState = await keys.walletOf(userId);
     expect(new Decimal(walletState.balance).gte('-0.05')).toBe(true);
   }, 120_000);
@@ -143,18 +180,18 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
   it('③ 低余额并发 8 路：放行受限、总亏损有界、余额可负但被结构钳制', async () => {
     const FUND = '0.006'; // ≈ 4 个最小请求的押金（max_tokens 150 → 押 ~0.0013/笔）
     const { raw, userId } = await keys.issue(FUND);
-    const results = await Promise.allSettled(
-      Array.from({ length: 8 }, () =>
+    const calls: Array<Promise<StatusBody>> = [];
+    for (let i = 0; i < 8; i++) {
+      calls.push(
         e2ePost(gateway.baseUrl, raw, {
           model: E2E_MODEL,
           max_tokens: 150,
           messages: [{ role: 'user', content: '只回复：好' }],
-        }).then(async (res) => ({ status: res.status, body: await res.text() })),
-      ),
-    );
-    const statuses = results.map((r) =>
-      r.status === 'fulfilled' ? r.value.status : 'network-error',
-    );
+        }).then(toStatusBody),
+      );
+    }
+    const results = await Promise.allSettled(calls);
+    const statuses = results.map(settledStatusOf);
     const ok = statuses.filter((s) => s === 200).length;
     const rejected = statuses.filter((s) => s === 402).length;
     console.log(
@@ -172,12 +209,12 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     const usage = await world.db.execute<{ sum: string | null }>(
       sql`select sum(amount)::text as sum from usage_logs where user_id = ${userId}`,
     );
-    const expectedBalance = new Decimal(FUND).minus(usage.rows[0]!.sum ?? '0');
+    const expectedBalance = new Decimal(FUND).minus(defined(usage.rows[0], 'usage sum').sum ?? '0');
     expect(new Decimal(walletState.balance).eq(expectedBalance)).toBe(true);
     expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
     // 最多亏损边界：余额不为深度负（单请求级 §4 超额以内）
     console.log(
-      `③ 结算后：余额 ${walletState.balance}（亏损深度 ${new Decimal(FUND).minus(walletState.balance).toString()}）在途 ${walletState.inFlight} Σ实扣 ${usage.rows[0]!.sum}`,
+      `③ 结算后：余额 ${walletState.balance}（亏损深度 ${new Decimal(FUND).minus(walletState.balance).toString()}）在途 ${walletState.inFlight} Σ实扣 ${defined(usage.rows[0], 'usage sum').sum}`,
     );
     expect(new Decimal(walletState.balance).gte('-0.005')).toBe(true); // 最多亏损 ≤ 单笔级超额
   }, 180_000);
@@ -186,17 +223,19 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
     const FUND = '1';
     const peers = await Promise.all(Array.from({ length: 5 }, () => keys.issue(FUND)));
     // 每用户 4 路并发，各带专属标记（响应与账单都必须回到正确的用户）
-    const all = await Promise.allSettled(
-      peers.flatMap((peer, userIndex) =>
-        Array.from({ length: 4 }, (_, i) =>
+    const calls: Array<Promise<PeerOutcome>> = [];
+    for (const [userIndex, peer] of peers.entries()) {
+      for (let i = 0; i < 4; i++) {
+        calls.push(
           e2ePost(gateway.baseUrl, peer.raw, {
             model: E2E_MODEL,
             max_tokens: 200,
             messages: [{ role: 'user', content: `只回复四个字：用户${userIndex}序${i}` }],
-          }).then(async (res) => ({ userId: peer.userId, userIndex, i, status: res.status })),
-        ),
-      ),
-    );
+          }).then((res) => toPeerOutcome(res, { userId: peer.userId, userIndex, i })),
+        );
+      }
+    }
+    const all = await Promise.allSettled(calls);
     const outcomes = all.map((r) =>
       r.status === 'fulfilled' ? r.value : { status: 'network-error' },
     );
@@ -220,15 +259,16 @@ describe.skipIf(!enabled)('E2E · 真网关 + 平台 key + RX-M3（真上游）'
       const usage = await world.db.execute<{ sum: string | null; rows: string }>(
         sql`select sum(amount)::text as sum, count(*)::text as rows from usage_logs where user_id = ${peer.userId}`,
       );
-      expect(usage.rows[0]!.rows).toBe(String(userOk)); // 计量行数与请求一致（不错记他用户）
+      const usageRow = defined(usage.rows[0], 'usage row');
+      expect(usageRow.rows).toBe(String(userOk)); // 计量行数与请求一致（不错记他用户）
       const walletState = await keys.walletOf(peer.userId);
       // 分毫对账：余额 = 充值 − Σ本用户实扣；在途归零
       expect(
-        new Decimal(walletState.balance).eq(new Decimal(FUND).minus(usage.rows[0]!.sum ?? '0')),
+        new Decimal(walletState.balance).eq(new Decimal(FUND).minus(usageRow.sum ?? '0')),
       ).toBe(true);
       expect(new Decimal(walletState.inFlight).eq('0')).toBe(true);
       // 金额 > 0（真上游真用量——不是 0 元白嫖）
-      expect(new Decimal(usage.rows[0]!.sum ?? '0').gt(0)).toBe(true);
+      expect(new Decimal(usageRow.sum ?? '0').gt(0)).toBe(true);
     }
   }, 240_000);
 });

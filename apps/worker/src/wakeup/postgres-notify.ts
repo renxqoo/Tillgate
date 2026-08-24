@@ -65,6 +65,7 @@ interface SettleWakeListenerEnv {
 
 const DRAIN_GUARD_DEFAULT = 1_000;
 
+// eslint-disable-next-line max-lines-per-function -- LISTEN 唤醒监听闭包工厂:listen/scheduleReconnect/close 共享 closed/connection/attempt 重连状态,拆分即互相回读(存量棘轮)
 export function createSettleWakeListener(env: SettleWakeListenerEnv): SettleWakeListener {
   const backoff = env.backoff ?? { baseMs: 1_000, maxMs: 30_000 };
   const guard = env.drainGuard ?? DRAIN_GUARD_DEFAULT;

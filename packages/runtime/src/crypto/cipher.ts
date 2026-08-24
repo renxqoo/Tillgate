@@ -21,6 +21,27 @@ export interface Cipher {
   decrypt(packed: string): string;
 }
 
+/** 密文五段的解包结果（enc:v1:ivHex:tagHex:cipherHex） */
+interface PackedCiphertext {
+  ivHex: string;
+  tagHex: string;
+  cipherHex: string;
+}
+
+// 模块级：密文格式解析与五段形状校验（与 encrypt 的打包格式单一真相对齐）。
+// 解构默认 '' 仅在段缺失时生效——形状校验（恰好 5 段）通过后不会走到默认值，行为等价。
+function parsePackedCiphertext(packed: string): PackedCiphertext {
+  const parts = packed.split(':');
+  const [prefix, version, ivHex = '', tagHex = '', cipherHex = ''] = parts;
+  if (parts.length !== 5 || prefix !== 'enc' || version !== 'v1') {
+    throw new DefectError(
+      'invalid ciphertext format (expected enc:v1:iv:tag:cipher)',
+      'runtime.cipher.invalid_format',
+    );
+  }
+  return { ivHex, tagHex, cipherHex };
+}
+
 export function createCipher(encryptionKey: string): Cipher {
   // 空密钥 fail-fast：SHA-256 会把空串安静派生成合法 key——配置缺陷不得静默通过（P3 加固）
   if (encryptionKey.length === 0) {
@@ -40,16 +61,10 @@ export function createCipher(encryptionKey: string): Cipher {
     },
 
     decrypt(packed: string): string {
-      const parts = packed.split(':');
-      if (parts.length !== 5 || parts[0] !== 'enc' || parts[1] !== 'v1') {
-        throw new DefectError(
-          'invalid ciphertext format (expected enc:v1:iv:tag:cipher)',
-          'runtime.cipher.invalid_format',
-        );
-      }
-      const iv = Buffer.from(parts[2]!, 'hex');
-      const tag = Buffer.from(parts[3]!, 'hex');
-      const cipherBody = Buffer.from(parts[4]!, 'hex');
+      const { ivHex, tagHex, cipherHex } = parsePackedCiphertext(packed);
+      const iv = Buffer.from(ivHex, 'hex');
+      const tag = Buffer.from(tagHex, 'hex');
+      const cipherBody = Buffer.from(cipherHex, 'hex');
       if (iv.length !== IV_LEN || tag.length !== TAG_LEN) {
         throw new DefectError(
           'invalid ciphertext format (iv/tag length mismatch)',
@@ -61,13 +76,13 @@ export function createCipher(encryptionKey: string): Cipher {
       try {
         const dec = Buffer.concat([decipher.update(cipherBody), decipher.final()]);
         return dec.toString('utf8');
-      } catch (err) {
+      } catch (error) {
         // GCM 认证失败：密钥错误或密文被篡改——缺陷语义（数据不变量破坏），保留原生 cause
         throw new DefectError(
           'ciphertext authentication failed (wrong key or tampered data)',
           'runtime.cipher.auth_failed',
           undefined,
-          { cause: err },
+          { cause: error },
         );
       }
     },

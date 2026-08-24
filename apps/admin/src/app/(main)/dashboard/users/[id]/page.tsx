@@ -1,18 +1,5 @@
 import { requirePermission } from '@/server/get-admin';
-import type { DataTableColumn } from '@/components/data-table';
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@tillgate/ui';
-import { DataTable } from '@/components/data-table';
+import { Button, Card, CardContent, Tabs, TabsList, TabsTrigger } from '@tillgate/ui';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeftIcon } from 'lucide-react';
@@ -20,15 +7,17 @@ import { getLocale, getTranslations } from 'next-intl/server';
 
 import { ApiError } from '@tillgate/api-client';
 import type { AdminTransactionRow, AdminUserRow, AuditLogRow } from '@tillgate/api-client';
-import { fmtBalance } from '@/lib/formatters';
-import { fmtDateTime } from '@/lib/formatters';
 import { adminApi } from '@/server/admin-api';
 import { fetchAdminList } from '@/server/admin-list';
-import { signedAmountTone } from '@/lib/money-tone';
-import { Pager } from '@/components/pager';
 import { firstParam } from '@/lib/list-query';
 
-import { UserActions } from '@/features/users/user-actions';
+import {
+  AuditTab,
+  TransactionsTab,
+  UserProfileCard,
+  buildAuditColumns,
+  buildTxColumns,
+} from '@/features/users/user-detail-views';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +26,14 @@ const PAGE_SIZE = 20;
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/** allSettled 列表结果降级：失败 → 空列表 + 0（错误经 loadError 主通道展示） */
+function settledList<T>(result: PromiseSettledResult<{ rows: T[]; total: number }>): {
+  rows: T[];
+  total: number;
+} {
+  return result.status === 'fulfilled' ? result.value : { rows: [], total: 0 };
 }
 
 function isoDateParam(v: string | undefined): string | null {
@@ -64,11 +61,11 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
   const order = firstParam(sp.order) === 'asc' ? 'asc' : 'desc';
 
   let user: AdminUserRow | null = null;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     user = await adminApi().get<AdminUserRow>(`/v1/users/${userId}`);
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
 
   // 并行拉取流水和该用户的审计（专用接口 targetType=user——必须按用户过滤，
@@ -94,10 +91,8 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
     }),
   ]);
 
-  const transactions = txResult.status === 'fulfilled' ? txResult.value.rows : [];
-  const txTotal = txResult.status === 'fulfilled' ? txResult.value.total : 0;
-  const auditLogs = auditResult.status === 'fulfilled' ? auditResult.value.rows : [];
-  const auditTotal = auditResult.status === 'fulfilled' ? auditResult.value.total : 0;
+  const { rows: transactions, total: txTotal } = settledList(txResult);
+  const { rows: auditLogs, total: auditTotal } = settledList(auditResult);
 
   if (!user) {
     return (
@@ -114,133 +109,15 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         />
         <Card>
           <CardContent className="p-6 text-sm text-destructive">
-            {error ?? t('userNotFound')}
+            {loadError ?? t('userNotFound')}
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const txColumns: DataTableColumn<AdminTransactionRow>[] = [
-    {
-      key: 'id',
-      header: 'ID',
-      sortable: true,
-      headerClassName: 'w-20',
-      render: (tr) => <span className="text-xs text-muted-foreground tabular-nums">#{tr.id}</span>,
-    },
-    {
-      key: 'type',
-      header: tc('type'),
-      headerClassName: 'w-24',
-      render: (tr) => <span className="text-xs">{tr.type}</span>,
-    },
-    {
-      key: 'amount',
-      header: t('amountChange'),
-      sortable: true,
-      align: 'right',
-      render: (tr) => {
-        const amount = Number(tr.amount);
-        const tone = signedAmountTone(amount, locale);
-        return (
-          <span className={'text-right font-medium tabular-nums ' + tone}>
-            {amount >= 0 ? '+' : ''}
-            {fmtBalance(tr.amount)}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'balanceAfter',
-      header: t('balanceAfter'),
-      align: 'right',
-      render: (tr) => (
-        <span className="text-right tabular-nums">{fmtBalance(tr.balanceAfter)}</span>
-      ),
-    },
-    {
-      key: 'ref',
-      header: t('reference'),
-      render: (tr) => (
-        <span className="text-xs text-muted-foreground">
-          {tr.refType ? `${tr.refType}#${tr.refId ?? ''}` : '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'remark',
-      header: tc('remark'),
-      render: (tr) => (
-        <span className="block max-w-xs truncate text-xs text-muted-foreground">
-          {tr.remark ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'createdBy',
-      header: t('operator'),
-      render: (tr) => <span className="text-xs text-muted-foreground">{tr.createdBy ?? '—'}</span>,
-    },
-    {
-      key: 'createdAt',
-      header: tc('time'),
-      sortable: true,
-      headerClassName: 'w-44',
-      render: (tr) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(tr.createdAt)}</span>
-      ),
-    },
-  ];
-  const auditColumns: DataTableColumn<AuditLogRow>[] = [
-    {
-      key: 'id',
-      header: 'ID',
-      sortable: true,
-      headerClassName: 'w-20',
-      render: (a) => <span className="text-xs text-muted-foreground tabular-nums">#{a.id}</span>,
-    },
-    {
-      key: 'adminSubject',
-      header: t('admin'),
-      render: (a) => (
-        <span className="text-xs">
-          {a.adminSubject ?? (a.actor === 'user' ? t('userSelf') : '—')}
-        </span>
-      ),
-    },
-    {
-      key: 'action',
-      header: t('action'),
-      sortable: true,
-      headerClassName: 'w-40',
-      render: (a) => <span className="text-xs font-medium">{a.action}</span>,
-    },
-    {
-      key: 'targetType',
-      header: t('targetType'),
-      headerClassName: 'w-32',
-      render: (a) => <span className="text-xs text-muted-foreground">{a.targetType}</span>,
-    },
-    {
-      key: 'detail',
-      header: tc('detail'),
-      render: (a) => (
-        <span className="block max-w-md truncate text-xs text-muted-foreground">
-          {a.detail ? JSON.stringify(a.detail) : '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'createdAt',
-      header: tc('time'),
-      sortable: true,
-      headerClassName: 'w-44',
-      render: (a) => (
-        <span className="text-xs text-muted-foreground">{fmtDateTime(a.createdAt)}</span>
-      ),
-    },
-  ];
+  const txColumns = buildTxColumns(t, tc, locale);
+  const auditColumns = buildAuditColumns(t, tc);
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -255,180 +132,38 @@ export default async function UserDetailPage({ params, searchParams }: PageProps
         }
       />
 
-      <Card className="w-full">
-        <CardHeader className="space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <CardTitle className="text-xl">
-                {user.displayName ?? user.subject}{' '}
-                <span className="text-base font-normal text-muted-foreground">#{user.id}</span>
-              </CardTitle>
-              <CardDescription className="space-x-2">
-                <span>
-                  {tc('account')} {user.subject}
-                </span>
-                <span>·</span>
-                <span>{user.email ?? t('noEmail')}</span>
-                <span>·</span>
-                <span>{user.identityProvider ?? '—'}</span>
-              </CardDescription>
-            </div>
-            <UserActions user={user} />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-4">
-            <Field
-              label={tc('status')}
-              value={
-                user.status === 0
-                  ? tc('active')
-                  : t('bannedReason', { reason: user.freezeReason ?? '' })
-              }
-            />
-            <Field
-              label={t('accountType')}
-              value={user.isEnterprise ? t('enterprise') : t('personal')}
-            />
-            <Field label={t('settledBalanceLabel')} value={fmtBalance(user.balance)} />
-            <Field label={t('reservedBalance')} value={fmtBalance(user.reservedBalance)} />
-            <Field label={t('availableBalance')} value={fmtBalance(user.availableBalance)} />
-            <Field label={tc('creditLimit')} value={fmtBalance(user.creditLimit)} />
-            <Field
-              label={tc('dailySpendLimit')}
-              value={
-                user.dailySpendLimit === null ? tc('unlimited') : fmtBalance(user.dailySpendLimit)
-              }
-            />
-            <Field label={t('rateCard')} value={user.rateCardName ?? '—'} />
-            <Field
-              label={t('rpmLimit')}
-              value={user.rpmLimit === null ? tc('default') : String(user.rpmLimit)}
-            />
-            <Field
-              label={t('tpmLimit')}
-              value={user.tpmLimit === null ? tc('default') : String(user.tpmLimit)}
-            />
-            <Field label="Issuer" value={user.issuer ?? '—'} />
-            <Field label={tc('lastLogin')} value={fmtDateTime(user.lastLoginAt)} />
-            <Field label={tc('createdAt')} value={fmtDateTime(user.createdAt)} />
-          </dl>
-        </CardContent>
-      </Card>
+      <UserProfileCard user={user} t={t} tc={tc} />
 
       <Tabs defaultValue="tx" className="w-full">
         <TabsList>
           <TabsTrigger value="tx">{t('transactions')}</TabsTrigger>
           <TabsTrigger value="audit">{t('auditLogs')}</TabsTrigger>
         </TabsList>
-        <TabsContent value="tx" className="w-full">
-          <Card className="w-full ring-border/50">
-            <CardContent className="px-0">
-              {/* 时间范围筛选（GET 表单，服务端渲染；与后端 from/to 过滤对齐） */}
-              <form className="flex items-end gap-2 px-4 pt-4 pb-4" method="get">
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="from" className="text-xs text-muted-foreground">
-                    {t('startDate')}
-                  </label>
-                  <input
-                    id="from"
-                    name="from"
-                    type="date"
-                    defaultValue={fromRaw ?? ''}
-                    className="h-8 rounded-md border bg-transparent px-2 text-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="to" className="text-xs text-muted-foreground">
-                    {t('endDate')}
-                  </label>
-                  <input
-                    id="to"
-                    name="to"
-                    type="date"
-                    defaultValue={toRaw ?? ''}
-                    className="h-8 rounded-md border bg-transparent px-2 text-sm"
-                  />
-                </div>
-                <button type="submit" className="h-8 rounded-md border px-3 text-sm hover:bg-muted">
-                  {tc('filter')}
-                </button>
-                {fromRaw || toRaw ? (
-                  <a
-                    href={`/dashboard/users/${userId}`}
-                    className="h-8 leading-8 text-sm text-muted-foreground underline-offset-2 hover:underline"
-                  >
-                    {tc('clear')}
-                  </a>
-                ) : null}
-              </form>
-              <DataTable
-                columns={txColumns}
-                rows={transactions}
-                rowKey={(tr) => tr.id}
-                sort={{ sortBy, order }}
-                searchParams={{ tpage: String(txPage), from: fromRaw, to: toRaw }}
-                empty={t('noTransactions')}
-              />
-              {txTotal > PAGE_SIZE ? (
-                <CardContent className="px-4 pb-4 pt-0">
-                  <Pager
-                    page={txPage}
-                    totalPages={Math.max(1, Math.ceil(txTotal / PAGE_SIZE))}
-                    total={txTotal}
-                    pageKey="tpage"
-                    searchParams={{
-                      apage: String(auditPage),
-                      from: fromRaw,
-                      to: toRaw,
-                      sort_by: sortBy,
-                      order: sortBy ? order : undefined,
-                    }}
-                  />
-                </CardContent>
-              ) : null}
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="audit" className="w-full">
-          <Card className="w-full ring-border/50">
-            <CardContent className="px-0">
-              <DataTable
-                columns={auditColumns}
-                rows={auditLogs}
-                rowKey={(a) => a.id}
-                sort={{ sortBy, order }}
-                searchParams={{ apage: String(auditPage), tpage: String(txPage) }}
-                empty={t('noAuditLogs')}
-              />
-              {auditTotal > PAGE_SIZE ? (
-                <CardContent className="px-4 pb-4 pt-0">
-                  <Pager
-                    page={auditPage}
-                    totalPages={Math.max(1, Math.ceil(auditTotal / PAGE_SIZE))}
-                    total={auditTotal}
-                    pageKey="apage"
-                    searchParams={{
-                      tpage: String(txPage),
-                      sort_by: sortBy,
-                      order: sortBy ? order : undefined,
-                    }}
-                  />
-                </CardContent>
-              ) : null}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        <TransactionsTab
+          userId={userId}
+          fromRaw={fromRaw}
+          toRaw={toRaw}
+          txPage={txPage}
+          auditPage={auditPage}
+          transactions={transactions}
+          txTotal={txTotal}
+          txColumns={txColumns}
+          sortBy={sortBy}
+          order={order}
+          t={t}
+          tc={tc}
+        />
+        <AuditTab
+          auditLogs={auditLogs}
+          auditTotal={auditTotal}
+          auditPage={auditPage}
+          txPage={txPage}
+          auditColumns={auditColumns}
+          sortBy={sortBy}
+          order={order}
+          t={t}
+        />
       </Tabs>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="space-y-1">
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
 }

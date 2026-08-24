@@ -34,11 +34,11 @@ export default async function BatchDetailPage({ params, searchParams }: PageProp
   if (!Number.isFinite(batchId) || batchId <= 0) notFound();
 
   let batch: AdminBatchRow | null = null;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     batch = await adminApi().get<AdminBatchRow>(`/v1/redeem-batches/${batchId}`);
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
 
   const sp = await searchParams;
@@ -66,7 +66,7 @@ export default async function BatchDetailPage({ params, searchParams }: PageProp
         />
         <Card>
           <CardContent className="p-6 text-sm text-destructive">
-            {error ?? t('notFound')}
+            {loadError ?? t('notFound')}
           </CardContent>
         </Card>
       </div>

@@ -32,8 +32,8 @@
 
 ### 2.1 消费的能力面（单向 apps → packages）
 
-| 消费面                                          | 用途                                                                                                                                                                                                         |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 消费面                                         | 用途                                                                                                                                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `@tillgate/billing/settlement` + `composition` | `createSettlementApi`（claim/renew/processClaim/recover/abandonOwnedClaims/verifyInvariants/currentStatus）、`createPostgresWalletStore/BillingStore`、佣金日结用例、对账差异写入用例、`SETTLE_WAKE_CHANNEL` |
 | `@tillgate/billing`（根）                      | `createBillingApi` 的 `signal` 四事件（生成任务终态信号桥）、`createWalletApi`（balance_low 钩子读余额、佣金入账）                                                                                           |
 | `@tillgate/notifications`                      | `dispatchOnce`（单轮投递）、`enqueue`（reconcile/balance_low 告警入箱）、`composition.outboxWithinTx`（billing 同事务入箱桥）                                                                                |

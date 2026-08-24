@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { notificationsErrors } from '../src/errors';
+import { defined } from './defined';
 
 describe('notifications 错误目录', () => {
   const KEYS = [
@@ -22,11 +23,10 @@ describe('notifications 错误目录', () => {
 
   it('entry 双语与 category 齐(message 英文/zh 中文)', () => {
     for (const key of KEYS) {
-      const entry = notificationsErrors.entry(key);
-      expect(entry, key).toBeDefined();
-      expect(entry!.category.length).toBeGreaterThan(0);
-      expect(entry!.message).toMatch(/^[\x20-\x7e]+$/); // 英文 ASCII(铁律 18)
-      expect(entry!.zh.length).toBeGreaterThan(0);
+      const entry = defined(notificationsErrors.entry(key), key);
+      expect(entry.category.length).toBeGreaterThan(0);
+      expect(entry.message).toMatch(/^[\x20-\x7e]+$/); // 英文 ASCII(铁律 18)
+      expect(entry.zh.length).toBeGreaterThan(0);
     }
   });
 

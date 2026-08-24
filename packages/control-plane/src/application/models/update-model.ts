@@ -25,6 +25,7 @@ export interface UpdateModelInput {
   readonly patch: ModelPatchInput;
 }
 
+// eslint-disable-next-line complexity -- 用例编排:字段合并相容判+审计分支,各分支独立无嵌套
 export async function updateModel(
   deps: UpdateModelDeps,
   input: UpdateModelInput,

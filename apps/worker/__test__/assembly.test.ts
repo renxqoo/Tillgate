@@ -3,6 +3,7 @@
  * jobs 注册清单、静音/唤醒开关的装配影响、健康深度报告形状、可拆卸。
  */
 import { afterAll, describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { assembleWorker } from '../src/assembly';
 import { loadWorkerConfig } from '../src/config';
 import type { WorkerAssembly } from '../src/assembly';
@@ -20,7 +21,7 @@ describe('assembleWorker', () => {
   const assemblies: WorkerAssembly[] = [];
   afterAll(async () => {
     for (const assembly of assemblies) {
-      await assembly.closeDb().catch(() => undefined);
+      await assembly.closeDb().catch(() => {});
     }
   });
 
@@ -58,8 +59,10 @@ describe('assembleWorker', () => {
     assemblies.push(assembly);
     expect(assembly.wakeup).not.toBeNull();
     // 初始建连对不可达库异步失败（sweep covers 口径）——close 幂等收口
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    await assembly.wakeup!.close();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+    await defined(assembly.wakeup, 'assembly.wakeup').close();
   });
 
   it('pingDb 暴露为闭包（非 Db 类型泄漏——P5 口径的健康探测面）', () => {

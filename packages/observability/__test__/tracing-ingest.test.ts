@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSpanBatcher } from '../src/tracing/ingest';
 import type { SpanRow, TraceStore } from '../src/tracing/types';
+import { defined } from './defined';
 
 /**
  * SpanBatcher 规格(v1 receiver.test SpanBatcher 段平移 + 补齐):
@@ -82,7 +83,7 @@ describe('createSpanBatcher', () => {
     expect(dropped).toBe(2);
     await batcher.flush();
     // 丢最旧:剩下 3/4/5
-    expect(store.batches[0]!.map((r) => r.spanId)).toEqual(['3', '4', '5']);
+    expect(defined(store.batches[0], 'batches[0]').map((r) => r.spanId)).toEqual(['3', '4', '5']);
     const stats = batcher.getStats();
     expect(stats.received).toBe(5);
     expect(stats.droppedOverflow).toBe(2);
@@ -165,7 +166,9 @@ describe('createSpanBatcher', () => {
     deadBatcher.push([row('t', '1'), row('t', '2')]);
     await deadBatcher.close(); // 持续失败:放弃,终止
     // push 自动触发的后台 flush 的 catch 在微任务里落账——等一拍再断言
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
     expect(deadBatcher.getStats().droppedWriteError).toBe(2);
     expect(deadBatcher.getStats().queueDepth).toBe(0);
   });

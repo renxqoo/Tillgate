@@ -33,7 +33,7 @@ export function generateRedeemCode(): string {
     }
   }
   if (bits > 0) out += BASE32_CROCKFORD[(value << (5 - bits)) & 31];
-  return 'RC-' + out.slice(0, 32);
+  return `RC-${out.slice(0, 32)}`;
 }
 
 /**
@@ -42,5 +42,5 @@ export function generateRedeemCode(): string {
  */
 export function maskUpstreamKey(plaintext: string): string {
   if (plaintext.length <= 8) return '****';
-  return plaintext.slice(0, 4) + '****' + plaintext.slice(-4);
+  return `${plaintext.slice(0, 4)}****${plaintext.slice(-4)}`;
 }

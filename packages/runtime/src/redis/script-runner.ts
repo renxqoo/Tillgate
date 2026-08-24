@@ -19,8 +19,8 @@ export function createRedisScriptRunner(redis: Redis): RedisScriptRunner {
       if (cached !== undefined) {
         try {
           return await redis.evalsha(cached, numKeys, ...args);
-        } catch (err) {
-          if (!isNoScriptError(err)) throw err;
+        } catch (error) {
+          if (!isNoScriptError(error)) throw error;
           // NOSCRIPT：脚本缓存消失，走重载路径
         }
       }

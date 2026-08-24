@@ -3,9 +3,9 @@
  * 步号单调防重放、恢复码单次消费、disable 守卫、cipher 密文落库。
  */
 import { describe, expect, it } from 'vitest';
-import { matchingTotpStep, totpAt } from '../src/domain/totp.js';
-import { base32Decode } from '../src/domain/totp.js';
+import { base32Decode, matchingTotpStep, totpAt } from '../src/domain/totp.js';
 import { createTestHarness } from '../src/testing/harness.js';
+import { defined } from './defined.js';
 
 const harness = () => createTestHarness();
 
@@ -106,15 +106,21 @@ describe('mfa.verify(步号单调防重放)', () => {
       code: currentCode(h, enrolled.secret),
     });
     const [first, second] = recoveryCodes;
-    await expect(h.api.mfa.verify({ userId: 1, code: first!.toLowerCase() })).resolves.toEqual({
+    await expect(
+      h.api.mfa.verify({ userId: 1, code: defined(first, 'first').toLowerCase() }),
+    ).resolves.toEqual({
       method: 'recovery',
     });
-    await expect(h.api.mfa.verify({ userId: 1, code: first! })).rejects.toMatchObject({
+    await expect(
+      h.api.mfa.verify({ userId: 1, code: defined(first, 'first') }),
+    ).rejects.toMatchObject({
       code: 'identity.invalid_totp_code',
     });
-    await expect(h.api.mfa.verify({ userId: 1, code: second! })).resolves.toEqual({
-      method: 'recovery',
-    });
+    await expect(h.api.mfa.verify({ userId: 1, code: defined(second, 'second') })).resolves.toEqual(
+      {
+        method: 'recovery',
+      },
+    );
     await expect(h.api.mfa.verify({ userId: 1, code: 'ZZZZZZZZZZ' })).rejects.toMatchObject({
       code: 'identity.invalid_totp_code',
     });
@@ -150,7 +156,9 @@ describe('mfa.disableTotp', () => {
       h.api.mfa.disableTotp({ userId: 1, code: nextCode(h, enrolled.secret) }),
     ).resolves.toEqual({ disabled: true });
     expect(await h.store.loadTotp(h.ctx.db, 1)).toBeNull();
-    await expect(h.api.mfa.verify({ userId: 1, code: recoveryCodes[0]! })).rejects.toMatchObject({
+    await expect(
+      h.api.mfa.verify({ userId: 1, code: defined(recoveryCodes[0], 'recoveryCodes[0]') }),
+    ).rejects.toMatchObject({
       code: 'identity.totp_not_enrolled',
     });
     await expect(h.api.mfa.enrollTotp({ userId: 1 })).resolves.toMatchObject({
@@ -178,7 +186,7 @@ describe('cipher 密文落库(SecretCipher)', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       store: h.store,
       cipher: {

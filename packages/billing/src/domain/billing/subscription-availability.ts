@@ -42,6 +42,7 @@ function clampNonNegative(value: Decimal): Decimal {
   return value.lt(0) ? new Decimal(0) : value;
 }
 
+// eslint-disable-next-line complexity, max-lines-per-function -- 订阅可用性判定矩阵(状态×配额×窗口)平铺
 export function subscriptionAvailability(
   snapshot: SubscriptionGateSnapshot,
   input: SubscriptionGateInput,

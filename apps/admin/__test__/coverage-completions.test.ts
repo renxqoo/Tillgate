@@ -28,12 +28,18 @@ afterEach(() => {
 });
 
 describe('formatters 全词表（表驱动）', () => {
+  // 对象行 + $name 插值：数组行会被 vitest 展开成多参，触发 max-params
   it.each([
-    ['fmtBalance 同 formatMoney 4 位截断', fmtBalance, ['12.34599'], '12.3459'],
-    ['fmtCost 4 位截断', fmtCost, ['0.0001239'], '0.0001'],
-    ['fmtPrice 原样十进制', fmtPrice, ['0.0001'], '0.0001'],
-    ['fmtInt 取整字符串', fmtInt, ['1234567.6'], '1234568'],
-  ] as const)('%s', (_name, fn, args, expected) => {
+    {
+      name: 'fmtBalance 同 formatMoney 4 位截断',
+      fn: fmtBalance,
+      args: ['12.34599'],
+      expected: '12.3459',
+    },
+    { name: 'fmtCost 4 位截断', fn: fmtCost, args: ['0.0001239'], expected: '0.0001' },
+    { name: 'fmtPrice 原样十进制', fn: fmtPrice, args: ['0.0001'], expected: '0.0001' },
+    { name: 'fmtInt 取整字符串', fn: fmtInt, args: ['1234567.6'], expected: '1234568' },
+  ])('$name', ({ fn, args, expected }) => {
     expect((fn as (...a: string[]) => string)(...(args as unknown as string[]))).toBe(expected);
   });
 
@@ -69,14 +75,14 @@ describe('list-query href 构造', () => {
   it('firstParam：数组取首个；空串=未传', () => {
     expect(firstParam(['a', 'b'])).toBe('a');
     expect(firstParam('')).toBeUndefined();
-    expect(firstParam(undefined)).toBeUndefined();
+    expect(firstParam()).toBeUndefined();
   });
 });
 
 describe('i18n 配置装配（cookie → Accept-Language → messages 装载）', () => {
   it('zh cookie 命中时装载 zh 词表', async () => {
     vi.resetModules();
-    const jar = mockCookieJar({ NEXT_LOCALE: 'zh' }).jar;
+    const { jar } = mockCookieJar({ NEXT_LOCALE: 'zh' });
     vi.doMock('next/headers', () => ({
       cookies: async () => jar,
       headers: async () => new Map(),

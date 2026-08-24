@@ -19,6 +19,7 @@ import type {
   UserRateCardContext,
 } from '@tillgate/control-plane';
 import type { QuoteCandidate } from '@tillgate/inference';
+import { defined } from './defined';
 
 const auth = (over: Partial<AuthContext> = {}): AuthContext => ({
   userId: 1,
@@ -37,7 +38,7 @@ function limiter(results: { rpm?: unknown; tpm?: unknown }) {
     checkAll: async () => results.rpm ?? { allowed: true },
     reserveTpmAll: async () => results.tpm ?? { allowed: true },
     check: async () => ({ allowed: true }),
-    releaseTpm: async () => undefined,
+    releaseTpm: async () => {},
   } as unknown as SlidingWindowLimiter;
 }
 
@@ -77,7 +78,7 @@ describe('限流闸维度矩阵', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'gateway.rate_limit_exceeded' });
-    expect(seen[0]!.map((d) => d.dimension)).toEqual(['user:1']); // key TPM 缺失跳过
+    expect(defined(seen[0], 'seen[0]').map((d) => d.dimension)).toEqual(['user:1']); // key TPM 缺失跳过
     void checkSpy;
   });
 
@@ -152,10 +153,12 @@ describe('request-log 嗅探防御', () => {
     );
     expect((await app.request('/v1/list')).status).toBe(200);
     expect((await app.request('/v1/p', { method: 'POST', body: '{}' })).status).toBe(200);
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => {
+      setTimeout(r, 10);
+    });
     expect(rows).toHaveLength(2);
     expect((rows[0] as { requestSummary?: unknown }).requestSummary ?? null).toBeNull(); // GET 无摘要（恒 null 字段）
-    expect(rows[1]!.errorCode ?? null).toBeNull(); // 嗅探失败安全回退
+    expect(defined(rows[1], 'rows[1]').errorCode ?? null).toBeNull(); // 嗅探失败安全回退
   });
 });
 
@@ -192,7 +195,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
       billingTimezone: { read: async () => 'Asia/Shanghai' },
     });
     const channels = await catalog.resolveChannels('x');
-    expect('rpmLimit' in channels[0]!).toBe(false);
+    expect('rpmLimit' in defined(channels[0], 'channels[0]')).toBe(false);
     expect(channels[1]).toMatchObject({ rpmLimit: 5, tpmLimit: 6, upstreamBudget: '7' });
   });
 
@@ -203,7 +206,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
         authorize: async (input: unknown) => {
           authorized.push(input);
         },
-        signal: async () => undefined,
+        signal: async () => {},
         reserveChannel: async () => ({ allowed: true, remaining: '0', switched: false }),
       } as never,
       { reservationLimit: '1', reservationPolicy: { mode: 'full' } },
@@ -233,8 +236,7 @@ describe('catalog 渠道可选列 / billing 可选字段透传', () => {
       maxOutputTokens: 100,
       authorizationTtlMs: 1,
     });
-    const quote = (authorized[0] as { quote: { candidates: Array<Record<string, unknown>> } })
-      .quote;
+    const { quote } = authorized[0] as { quote: { candidates: Array<Record<string, unknown>> } };
     expect(quote.candidates[0]).toMatchObject({ cacheWritePrice: '2.5', unitPrice: '0.1' });
   });
 });
@@ -282,9 +284,12 @@ describe('catalog 快照杂项防御', () => {
       },
       billingTimezone: { read: async () => 'Asia/Shanghai' },
     });
-    const snap = await catalog.findMapping('x', { userId: 1, body: {}, now: new Date() });
-    expect(snap!.pricingUnit).toBe('token');
-    expect(snap!.coefficient).toBe('0.9');
+    const snap = defined(
+      await catalog.findMapping('x', { userId: 1, body: {}, now: new Date() }),
+      'snap',
+    );
+    expect(snap.pricingUnit).toBe('token');
+    expect(snap.coefficient).toBe('0.9');
   });
 });
 
@@ -296,8 +301,8 @@ describe('杂项分支收官', () => {
       reader: { resolveKeyByHash: async () => null, resolveApp: async () => null },
       verifyAppClient: async () => null,
       models: { listEnabledMappings: async () => [] },
-      requestLogs: { insert: async () => undefined } as never,
-      pingDb: async () => undefined,
+      requestLogs: { insert: async () => {} } as never,
+      pingDb: async () => {},
       oauth: {
         jwtSecret: 'ab12'.repeat(8),
         issuer: 'i',
@@ -306,7 +311,7 @@ describe('杂项分支收官', () => {
         tokenTtlSeconds: 60,
       },
       trustedProxyHops: 0,
-      logger: { error: () => undefined },
+      logger: { error: () => {} },
     });
     const res = await app.request('/nope');
     expect(res.status).toBe(404);
@@ -346,7 +351,7 @@ describe('杂项分支收官', () => {
       {},
       {
         get: (_t, prop) => {
-          if (prop === 'then') return undefined; // 非 thenable
+          if (prop === 'then') return; // 非 thenable
           return () => {
             calls.push(String(prop));
             throw new Error('stub-end');

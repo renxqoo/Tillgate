@@ -28,7 +28,7 @@ export function walletRoutes(deps: WalletDeps, session: MiddlewareHandler<Sessio
       limit: query.limit,
       beforeLegId: query.beforeLegId,
     });
-    const last = rows[rows.length - 1];
+    const last = rows.at(-1);
     const nextCursor = rows.length >= query.limit && last != null ? String(last.legId) : null;
     return c.json({ rows, ...(nextCursor != null ? { nextCursor } : {}) });
   });

@@ -41,11 +41,15 @@ describe('hashPassword / verifyPassword 往返', () => {
     // 用 v1 自述参数形态构造历史哈希(N=16384),keylen 跟随存储长度
     const { randomBytes, scrypt } = await import('node:crypto');
     const salt = randomBytes(16);
-    const key = await new Promise<Buffer>((resolve, reject) =>
-      scrypt('legacy-password-1', salt, 32, { N: 16384, r: 8, p: 1 }, (err, derived) =>
-        err ? reject(err) : resolve(derived as Buffer),
-      ),
-    );
+    const key = await new Promise<Buffer>((resolve, reject) => {
+      scrypt('legacy-password-1', salt, 32, { N: 16384, r: 8, p: 1 }, (err, derived) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(derived as Buffer);
+        }
+      });
+    });
     const legacy = `scrypt:16384:8:1:${salt.toString('hex')}:${key.toString('hex')}`;
     expect(await verifyPassword('legacy-password-1', legacy)).toBe(true);
     expect(await verifyPassword('legacy-password-2', legacy)).toBe(false);

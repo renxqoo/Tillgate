@@ -101,7 +101,7 @@ describe('sessions.validate / logout', () => {
     await h.api.sessions.logout(token, 'user');
     expect(await h.api.sessions.validate(token, 'user')).toBeNull();
     // 剩余 TTL 随 exp 写入黑名单
-    const jti = (await h.api.sessions.verify(token, 'user')).jti;
+    const { jti } = await h.api.sessions.verify(token, 'user');
     expect(h.revocation.revoked.get(jti)).toBe(86_400);
   });
 
@@ -133,7 +133,7 @@ describe('sessions.validate / logout', () => {
       db: h.ctx.db,
       txRetry: h.ctx.txRetry,
       clock: h.ctx.clock,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
       config: TEST_CONFIG,
       store: h.store,
     });

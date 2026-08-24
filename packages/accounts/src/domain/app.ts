@@ -25,7 +25,11 @@ export function validateAppScope(scope: AppScope, policy: AppScopePolicy): strin
       invalid.push('models');
     } else {
       for (const model of scope.models) {
-        if (typeof model !== 'string' || model.length < 1 || model.length > FIELD_LIMITS.modelId) {
+        if (
+          typeof model !== 'string' ||
+          model.length === 0 ||
+          model.length > FIELD_LIMITS.modelId
+        ) {
           invalid.push('models');
           break;
         }

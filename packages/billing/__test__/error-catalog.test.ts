@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { isErrorCategory } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
+import { defined } from './defined.js';
 
 /** 词表快照：key → category（封闭；增删走本文件 + 文档同步） */
 const EXPECTED: Record<string, string> = {
@@ -76,10 +77,10 @@ describe('billing 错误目录', () => {
     for (const code of BillingErrors.codes) {
       const def = BillingErrors.get(code);
       expect(def, code).toBeDefined();
-      expect(isErrorCategory(def!.category), code).toBe(true);
-      expect(def!.category, code).toBe(EXPECTED[code.slice('billing.'.length)]);
-      expect(def!.message.length, code).toBeGreaterThan(0);
-      expect(def!.zh.length, code).toBeGreaterThan(0);
+      expect(isErrorCategory(defined(def).category), code).toBe(true);
+      expect(defined(def).category, code).toBe(EXPECTED[code.slice('billing.'.length)]);
+      expect(defined(def).message.length, code).toBeGreaterThan(0);
+      expect(defined(def).zh.length, code).toBeGreaterThan(0);
     }
   });
 

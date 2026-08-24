@@ -50,8 +50,8 @@
     "eslint/no-nested-ternary": "error",
     // 禁用 == / != 弱比较;"smart" 放行 == null 判空惯用法
     "eslint/eqeqeq": ["error", "smart"],
-    // 跨多行的 if/else 必须带 {},防手滑改错分支;单行 if (x) return 不受影响
-    "eslint/curly": ["error", "multi-line"],
+    // 注:eslint/curly 已移除——多行 if 括号属布局领地,归 oxfmt 管(见 AGENTS.md 铁律 21;
+    // oxfmt 换行会与 multi-line 判定打架)
     // 'a' + b → `a${b}` 模板字面量,拼接风格统一
     "eslint/prefer-template": "error",
     // 从不重新赋值的声明必须 const
@@ -83,11 +83,14 @@
     "typescript/prefer-includes": "error",
     // correctness 类默认已含 no-unused-vars,这里只为加 `_` 前缀豁免
     // (接口实现保留参数、刻意忽略的 catch,用 _ 占位是社区惯例)
-    "eslint/no-unused-vars": ["error", {
-      "argsIgnorePattern": "^_",
-      "varsIgnorePattern": "^_",
-      "caughtErrorsIgnorePattern": "^_"
-    }],
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
 
     // ═══ 异步与错误处理 ═══
     // new Promise 执行器里 return 无效果且掩盖意图,常见潜在 bug
@@ -127,8 +130,7 @@
     "unicorn/filename-case": ["error", { "case": "kebabCase" }],
 
     // ═══ 结构与写法统一(存量大多可 --fix 自动清)═══
-    // switch 的 case 分支必须 {} 包住,防落穿与变量泄漏
-    "unicorn/switch-case-braces": "error",
+    // 注:unicorn/switch-case-braces 已移除——case 括号属布局领地,归 oxfmt 管(同 curly,见 AGENTS.md 铁律 21)
     // else { if (...) } → else if,消灭"孤儿 if"
     "unicorn/no-lonely-if": "error",
     // { x: x } → { x } 简写
@@ -207,8 +209,6 @@
     "**/migrations/**",
     // 代码生成器输出,不人工维护,整体跳过(比 override 更彻底)
     "**/generated/**",
-    "**/*.generated.ts",
-    // vendored UI 组件库(shadcn 类):不动手改,正确性由上游负责
-    "**/components/ui/**"
+    "**/*.generated.ts"
   ]
 }

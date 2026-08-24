@@ -56,12 +56,12 @@ export interface ParamRules {
 }
 
 /** 参数调整记录（进 param_adjustment 事件，审计留痕） */
-export type ParamAdjustment = {
+export interface ParamAdjustment {
   param: string;
   action: 'ignore' | 'clamp' | 'map';
   from?: unknown;
   to?: unknown;
-};
+}
 
 // ─────────────────────────── 计量 ───────────────────────────
 

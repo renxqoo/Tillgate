@@ -3,6 +3,7 @@
  * 禁用/轮换 CAS、鉴权读模型(appId/client 双等值 + 属主状态守卫)。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { sha256Hex } from '../src/domain/credentials.js';
 import { createTestHarness } from '../src/testing/harness.js';
 
@@ -85,7 +86,7 @@ describe('disableApp / rotateAppSecret', () => {
       clientId: created.app.clientId,
       clientSecret: rotated.clientSecret,
     });
-    expect(ok!.id).toBe(created.app.id);
+    expect(defined(ok, 'ok').id).toBe(created.app.id);
     await h.api.disableApp({ userId: owner.id, appId: created.app.id });
     await expect(
       h.api.rotateAppSecret({ userId: owner.id, appId: created.app.id }),
@@ -112,7 +113,7 @@ describe('鉴权读模型', () => {
     const owner = h.store.seed.user({});
     const { app, clientSecret } = await h.api.createApp({ userId: owner.id, name: 'x' });
     const ok = await h.api.verifyAppClient({ clientId: app.clientId, clientSecret });
-    expect(ok!.appId).toBe(app.appId);
+    expect(defined(ok, 'ok').appId).toBe(app.appId);
     expect(
       await h.api.verifyAppClient({ clientId: app.clientId, clientSecret: '0'.repeat(48) }),
     ).toBeNull();

@@ -38,49 +38,59 @@ export function isChannelType(value: unknown): value is ChannelType {
   return typeof value === 'string' && (CHANNEL_TYPES as readonly string[]).includes(value);
 }
 
+/** name 门:在场才校验(非空 string 且 ≤64) */
+function nameError(name: unknown): ChannelShapeError | null {
+  if (name === undefined) return null;
+  const ok = typeof name === 'string' && name.length > 0 && name.length <= 64;
+  return ok ? null : 'name';
+}
+
+/** status 门:在场才校验(0/1 整数) */
+function statusError(status: unknown): ChannelShapeError | null {
+  if (status === undefined) return null;
+  const ok = typeof status === 'number' && Number.isInteger(status) && status >= 0 && status <= 1;
+  return ok ? null : 'status';
+}
+
+/** events 门:在场才校验(非空数组 + 词表成员) */
+function eventsError(events: unknown): ChannelShapeError | null {
+  if (events === undefined) return null;
+  if (!Array.isArray(events) || events.length === 0) return 'events_empty';
+  for (const event of events) {
+    if (typeof event !== 'string' || !isNotifyEvent(event)) return 'event_word';
+  }
+  return null;
+}
+
+/** config 门:结构性形状(url+secret 对或非空 recipients)+ type 在场时的跨校验 */
+function configError(config: unknown, type: unknown): ChannelShapeError | null {
+  if (config === undefined) return null;
+  const shape = config as ChannelConfigShape;
+  if (shape == null || typeof shape !== 'object' || Array.isArray(shape)) return 'config';
+  const hasWebhookPair =
+    typeof shape.url === 'string' &&
+    shape.url !== '' &&
+    typeof shape.secret === 'string' &&
+    shape.secret !== '';
+  const hasRecipients = Array.isArray(shape.recipients) && shape.recipients.length > 0;
+  if (!hasWebhookPair && !hasRecipients) return 'config';
+  if (type === 'webhook' && !hasWebhookPair) return 'config';
+  if (type === 'email' && !hasRecipients) return 'config';
+  return null;
+}
+
 /**
- * 结构校验:返回首个违规项,null = 通过。
+ * 结构校验:返回首个违规项,null = 通过(字段序:name → status → events → type → config)。
  * 类型收窄为「字段在场才校验」——PATCH 部分更新语义(type 缺席不触发跨校验,v1 语义)。
  */
 export function validateChannelShape(input: ChannelShapeInput): ChannelShapeError | null {
-  if (
-    input.name !== undefined &&
-    !(typeof input.name === 'string' && input.name.length >= 1 && input.name.length <= 64)
-  ) {
-    return 'name';
-  }
-  if (
-    input.status !== undefined &&
-    !(
-      typeof input.status === 'number' &&
-      Number.isInteger(input.status) &&
-      input.status >= 0 &&
-      input.status <= 1
-    )
-  ) {
-    return 'status';
-  }
-  if (input.events !== undefined) {
-    if (!Array.isArray(input.events) || input.events.length === 0) return 'events_empty';
-    for (const event of input.events) {
-      if (typeof event !== 'string' || !isNotifyEvent(event)) return 'event_word';
-    }
-  }
-  if (input.type !== undefined && !isChannelType(input.type)) return 'type';
-  if (input.config !== undefined) {
-    const config = input.config as ChannelConfigShape;
-    if (config == null || typeof config !== 'object' || Array.isArray(config)) return 'config';
-    const hasWebhookPair =
-      typeof config.url === 'string' &&
-      config.url !== '' &&
-      typeof config.secret === 'string' &&
-      config.secret !== '';
-    const hasRecipients = Array.isArray(config.recipients) && config.recipients.length > 0;
-    if (!hasWebhookPair && !hasRecipients) return 'config';
-    if (input.type === 'webhook' && !hasWebhookPair) return 'config';
-    if (input.type === 'email' && !hasRecipients) return 'config';
-  }
-  return null;
+  return (
+    nameError(input.name) ??
+    statusError(input.status) ??
+    eventsError(input.events) ??
+    (input.type !== undefined && !isChannelType(input.type) ? 'type' : null) ??
+    configError(input.config, input.type)
+  );
 }
 
 /** 渠道订阅事件的词表收窄(落库行 events → NotifyEvent[];非词表成员丢弃——行来源必经校验) */

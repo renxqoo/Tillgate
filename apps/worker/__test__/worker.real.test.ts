@@ -33,7 +33,7 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => {
-  if (db) await closeDb(db).catch(() => undefined);
+  if (db) await closeDb(db).catch(() => {});
 });
 
 /** 轮询等待（真 LISTEN/通知到达是异步的） */
@@ -41,7 +41,9 @@ async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<boo
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (predicate()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
   }
   return predicate();
 }
@@ -69,14 +71,17 @@ describe('worker 真 PG：结算唤醒全链', () => {
         return 0; // 非满批
       },
       batchSize: 5,
-      logger: { warn: () => undefined, error: () => undefined },
+      logger: { warn: () => {}, error: () => {} },
     });
     try {
       // LISTEN 建立等待：发一条通知直到被收到（自旋探测，最多 5s）
-      const established = await waitForEstablished(connected, async () => {
+      // 谓词提为同级 const：避免回调字面量再嵌一层（max-nested-callbacks）
+      const firstRun = () => runs >= 1;
+      const probeOnce = async () => {
         await notify(connected, SETTLE_WAKE_CHANNEL, 'probe');
-        return waitFor(() => runs >= 1, 400);
-      });
+        return waitFor(firstRun, 400);
+      };
+      const established = await waitForEstablished(connected, probeOnce);
       expect(established).toBe(true);
       const probeRuns = runs;
       // 他通道不触发
@@ -92,7 +97,9 @@ describe('worker 真 PG：结算唤醒全链', () => {
 async function waitForEstablished(connected: Db, probe: () => Promise<boolean>): Promise<boolean> {
   for (let i = 0; i < 10; i++) {
     if (await probe()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 200);
+    });
   }
   return false;
 }

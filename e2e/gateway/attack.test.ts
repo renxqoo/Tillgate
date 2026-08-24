@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { Decimal } from '@tillgate/billing';
 import {
+  defined,
   E2EKeys,
   E2E_MODEL,
   e2ePost,
@@ -30,6 +31,71 @@ import {
 } from './kit';
 
 const hasEnv = process.env.DB_TEST_URL != null || process.env.DATABASE_URL != null;
+
+// ---------------------------------------------------------------------------
+// 模块级断言辅助（it 体内的箭头已处第 4 层回调——max-nested-callbacks 上限 3，
+// 统一提为具名函数；断言语义逐条不变）
+// ---------------------------------------------------------------------------
+
+/** 吞取消/断连清理时的异常（fire-and-forget 清理口径） */
+const swallow = (): void => {};
+
+/** 把异常折叠为 Error 值（⑤ 缺 messages 用例的失败形态断言用） */
+const asError = (error: unknown): Error => error as Error;
+
+/** 尝试结果 → 状态字符串（异常折叠为 'throw'——⑤ 家族断言口径） */
+const attemptStatus = (a: Response | Error): string =>
+  a instanceof Error ? 'throw' : String(a.status);
+
+/** AbortController 批量构造（⑧ 取消风暴 6 路） */
+const newController = (): AbortController => new AbortController();
+
+/** 结局折叠为 ok/err 标记（⑧ 存活断言——拒绝也算有始有终） */
+const asOk = (): 'ok' => 'ok';
+const asErr = (): 'err' => 'err';
+const outcome = (p: Promise<boolean>): Promise<'ok' | 'err'> => p.then(asOk, asErr);
+
+const isOk = (s: string): boolean => s === 'ok';
+const isStreamKind = (k: 'stream' | 'plain'): boolean => k === 'stream';
+const isReleased = (b: { status: string }): boolean => b.status === 'released';
+
+/** 账单收据的 stream 旗标（⑨ 收据旗标断言——收据形态与请求形态不串） */
+const receiptStreamFlag = (b: { receipt: Record<string, unknown> | null }): boolean =>
+  (b.receipt as { stream?: boolean } | null)?.stream === true;
+
+/** 按 request_id 找 usage_log 行（⑨ 收据==日志逐笔一致断言） */
+function findLogByRequestId(
+  rows: Array<{ request_id: string; input_tokens: string; output_tokens: string }>,
+  requestId: string,
+): { request_id: string; input_tokens: string; output_tokens: string } | undefined {
+  return rows.find((l) => l.request_id === requestId);
+}
+
+/** ⑧ 单路流式动作：启动 → 读首帧 → 交错延迟 → 取消（取消风暴的每一路） */
+async function launchStreamJob(
+  ctx: { baseUrl: string; raw: string },
+  ac: AbortController,
+  index: number,
+): Promise<boolean> {
+  const res = await e2ePost(
+    ctx.baseUrl,
+    ctx.raw,
+    {
+      model: E2E_MODEL,
+      stream: true,
+      max_tokens: 300,
+      messages: [{ role: 'user', content: `从 1 慢慢数到 30（第 ${index} 批）` }],
+    },
+    ac.signal,
+  );
+  expect(res.status).toBe(200);
+  const reader = defined(res.body, 'stream body').getReader();
+  await reader.read(); // 至少一帧输出
+  await sleep(150 * (index + 1)); // 交错取消点
+  ac.abort();
+  await reader.cancel().catch(swallow);
+  return true;
+}
 
 describe.skipIf(!hasEnv)('E2E', () => {
   let world: E2EWorld;
@@ -57,7 +123,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
           model: E2E_MODEL,
           messages: [{ role: 'user', content: 'x' }],
         }),
-        e2ePost(gateway.baseUrl, raw, { model: E2E_MODEL }).catch((e) => e as Error), // 缺 messages → 400
+        e2ePost(gateway.baseUrl, raw, { model: E2E_MODEL }).catch(asError), // 缺 messages → 400
         e2ePost(gateway.baseUrl, raw, {
           model: `no-such-model-${randomUUID().slice(0, 6)}`,
           messages: [{ role: 'user', content: 'x' }],
@@ -72,7 +138,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
           messages: [{ role: 'user', content: 'x' }],
         }),
       ]);
-      const statuses = attempts.map((a) => (a instanceof Error ? 'throw' : String(a.status)));
+      const statuses = attempts.map(attemptStatus);
       expect(statuses[0]).toBe('401');
       expect(['400', 'throw']).toContain(statuses[1]);
       expect(statuses[2]).toBe('404');
@@ -158,13 +224,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       expect(res.status).toBe(200);
       ac.abort(); // 拿到响应头即断（不读体）
-      await res.body?.cancel().catch(() => {});
+      await res.body?.cancel().catch(swallow);
 
       await sleep(2_000);
       await keys.settleAll(userId);
       const bills = await keys.billsOf(userId);
       expect(bills.length).toBe(1);
-      expect(bills[0]!.status).toBe('settled');
+      expect(defined(bills[0], 'bills[0]').status).toBe('settled');
       await keys.assertReconciled(userId, '1'); // 分毫对账（断连不等于免费）
     }, 120_000);
   });
@@ -174,37 +240,13 @@ describe.skipIf(!hasEnv)('E2E', () => {
       world.upstream.script = 'stream-usage-hold';
       const FUND = '1';
       const { raw, userId } = await keys.issue(FUND);
-      const controllers = Array.from({ length: 6 }, () => new AbortController());
-      const launches = controllers.map((ac, i) =>
-        e2ePost(
-          gateway.baseUrl,
-          raw,
-          {
-            model: E2E_MODEL,
-            stream: true,
-            max_tokens: 300,
-            messages: [{ role: 'user', content: `从 1 慢慢数到 30（第 ${i} 批）` }],
-          },
-          ac.signal,
-        ).then(async (res) => {
-          expect(res.status).toBe(200);
-          const reader = res.body!.getReader();
-          await reader.read(); // 至少一帧输出
-          await sleep(150 * (i + 1)); // 交错取消点
-          ac.abort();
-          await reader.cancel().catch(() => {});
-          return true;
-        }),
-      );
-      const survived = await Promise.all(
-        launches.map((p) =>
-          p.then(
-            () => 'ok',
-            () => 'err',
-          ),
-        ),
-      );
-      expect(survived.every((s) => s === 'ok')).toBe(true);
+      const controllers = Array.from({ length: 6 }, newController);
+      const launches: Array<Promise<boolean>> = [];
+      for (const [i, ac] of controllers.entries()) {
+        launches.push(launchStreamJob({ baseUrl: gateway.baseUrl, raw }, ac, i));
+      }
+      const survived = await Promise.all(launches.map(outcome));
+      expect(survived.every(isOk)).toBe(true);
 
       await sleep(3_000); // 终态收敛
       await keys.settleAll(userId);
@@ -240,21 +282,18 @@ describe.skipIf(!hasEnv)('E2E', () => {
         await res.text();
         return 'plain';
       };
-      const jobs = [
-        ...Array.from({ length: 4 }, () => streamJob()),
-        ...Array.from({ length: 4 }, () => plainJob()),
-      ];
+      const jobs: Array<Promise<'stream' | 'plain'>> = [];
+      for (let i = 0; i < 4; i++) jobs.push(streamJob());
+      for (let i = 0; i < 4; i++) jobs.push(plainJob());
       const kinds = await Promise.all(jobs);
-      expect(kinds.filter((k) => k === 'stream').length).toBe(4);
+      expect(kinds.filter(isStreamKind).length).toBe(4);
 
       await sleep(2_000);
       await keys.settleAll(userId);
       const bills = await keys.billsOf(userId);
       expect(bills.length).toBe(8);
       // 收据旗标与请求形态一致（不串）
-      const streamFlags = bills.map(
-        (b) => (b.receipt as { stream?: boolean } | null)?.stream === true,
-      );
+      const streamFlags = bills.map(receiptStreamFlag);
       expect(streamFlags.filter(Boolean).length).toBe(4);
       // 逐笔一致：收据 token 与 usage_logs 行 token 完全相等（不多算不少算）
       const logs = await world.db.execute<{
@@ -266,13 +305,14 @@ describe.skipIf(!hasEnv)('E2E', () => {
       );
       expect(logs.rows.length).toBe(8);
       for (const bill of bills) {
-        const log = logs.rows.find((l) => l.request_id === bill.request_id);
+        const log = findLogByRequestId(logs.rows, bill.request_id);
         expect(log).toBeDefined();
         const usage = (
           bill.receipt as { usage?: { inputTokens?: number; outputTokens?: number } } | null
         )?.usage;
-        expect(String(usage?.inputTokens ?? 0)).toBe(log!.input_tokens);
-        expect(String(usage?.outputTokens ?? 0)).toBe(log!.output_tokens);
+        const matched = defined(log, 'usage_log row');
+        expect(String(usage?.inputTokens ?? 0)).toBe(matched.input_tokens);
+        expect(String(usage?.outputTokens ?? 0)).toBe(matched.output_tokens);
       }
       await keys.assertReconciled(userId, FUND);
     }, 240_000);
@@ -293,7 +333,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       await keys.settleAll(first.userId);
       const bills = await keys.billsOf(first.userId);
       expect(bills.length).toBe(1);
-      expect(bills[0]!.status).toBe('settled');
+      expect(defined(bills[0], 'bills[0]').status).toBe('settled');
       await keys.assertReconciled(first.userId, FUND);
 
       // 分支二：上游拒绝 → 502 三路归还
@@ -308,7 +348,7 @@ describe.skipIf(!hasEnv)('E2E', () => {
       await rejected.text();
       await sleep(1_500);
       const bills2 = await keys.billsOf(second.userId);
-      expect(bills2.every((b) => b.status === 'released')).toBe(true);
+      expect(bills2.every(isReleased)).toBe(true);
       await keys.assertReconciled(second.userId, FUND); // 释放后 charged=0，余额==充值
     }, 120_000);
   });

@@ -82,8 +82,11 @@ export function RedeemForm() {
                 form.setError('code', { message: res.error });
                 return;
               }
-              setResult({ amount: res.amount!, balanceAfter: res.balanceAfter! });
-              toast.success(t('creditedToast', { amount: formatMoney(res.amount!, locale) }));
+              // 成功契约：无 error 时 amount/balanceAfter 必在；缺字段视为契约破坏，跳过反馈
+              const { amount, balanceAfter } = res;
+              if (amount === undefined || balanceAfter === undefined) return;
+              setResult({ amount, balanceAfter });
+              toast.success(t('creditedToast', { amount: formatMoney(amount, locale) }));
             })}
             className="space-y-3"
           >

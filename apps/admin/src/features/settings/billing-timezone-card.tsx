@@ -78,13 +78,16 @@ export function BillingTimezoneCard() {
 
   useEffect(() => {
     let alive = true;
-    void getBillingTimezoneAction().then((res) => {
-      if (!alive) return;
+    // async IIFE 替代 then 链（promise/always-return）；alive 拦截卸载后的 setState
+    void (async () => {
+      const res = await getBillingTimezoneAction();
       // null = 未配置（回落缺省 Asia/Shanghai——与网关 BILLING_TIMEZONE_DEFAULT 同口径展示）
-      const effective = res.timezone ?? 'Asia/Shanghai';
-      setTimezone(effective);
-      setLoaded(effective);
-    });
+      if (alive) {
+        const effective = res.timezone ?? 'Asia/Shanghai';
+        setTimezone(effective);
+        setLoaded(effective);
+      }
+    })();
     return () => {
       alive = false;
     };

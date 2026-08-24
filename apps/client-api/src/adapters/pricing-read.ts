@@ -46,13 +46,16 @@ function toSnapshot(ctx: {
   };
   for (const c of ctx.coefficients) {
     if (c.scope === 'global') snapshot.global = c.coefficient;
-    else if (c.scope === 'model' && c.modelMappingId != null)
+    else if (c.scope === 'model' && c.modelMappingId != null) {
       snapshot.model[c.modelMappingId] = c.coefficient;
-    else if (c.scope === 'group' && c.groupKey != null) snapshot.group[c.groupKey] = c.coefficient;
+    } else if (c.scope === 'group' && c.groupKey != null) {
+      snapshot.group[c.groupKey] = c.coefficient;
+    }
   }
   return snapshot;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 价格读模型工厂:目录投影/缓存方法的列映射平铺(缓存缝共享 db/redis 闭包)
 export function createPricingRead(
   db: Db,
   redis: Redis,

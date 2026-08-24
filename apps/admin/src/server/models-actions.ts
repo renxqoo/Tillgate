@@ -54,8 +54,8 @@ export async function createModelAction(input: ModelCreateInput): Promise<{ erro
     });
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -98,8 +98,8 @@ export async function updateModelAction(
     await adminApi().patch(`/v1/models/${id}`, input);
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
 
@@ -111,8 +111,8 @@ export async function delistModelAction(id: number): Promise<{ error?: string }>
     await adminApi().patch(`/v1/models/${id}`, { status: 1 });
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('delistFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('delistFailed') };
   }
 }
 
@@ -123,8 +123,8 @@ export async function restoreModelAction(id: number): Promise<{ error?: string }
     await adminApi().patch(`/v1/models/${id}`, { status: 0 });
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('restoreFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('restoreFailed') };
   }
 }
 
@@ -136,8 +136,8 @@ export async function deleteModelAction(id: number): Promise<{ error?: string }>
     await adminApi().delete(`/v1/models/${id}`);
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('deleteFailed') };
   }
 }
 
@@ -148,8 +148,8 @@ export async function undeleteModelAction(id: number): Promise<{ error?: string 
     await adminApi().post(`/v1/models/${id}/restore`);
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('undeleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('undeleteFailed') };
   }
 }
 
@@ -165,8 +165,8 @@ export async function bindChannelsAction(
     });
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('bindFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('bindFailed') };
   }
 }
 
@@ -187,7 +187,7 @@ export async function testModelAction(
   try {
     const data = await adminApi().post<{ results: ModelTestResult[] }>(`/v1/models/${id}/test`);
     return { results: data.results };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('testFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('testFailed') };
   }
 }

@@ -4,11 +4,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
+
 const jar = new Map<string, string>();
 
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
-    get: (name: string) => (jar.has(name) ? { name, value: jar.get(name)! } : undefined),
+    get: (name: string) => (jar.has(name) ? { name, value: defined(jar.get(name)) } : undefined),
     set: (name: string, value: string) => {
       jar.set(name, value);
     },
@@ -189,8 +191,8 @@ describe('剩余分支补线', () => {
   it('public-pricing：非法 page/pageSize 跳参；可注入 fetch', async () => {
     responses.push({ status: 200, body: { models: [], total: 0, page: 1, pageSize: 20 } });
     await fetchPublicPricing({ page: Number.NaN, pageSize: Number.NaN });
-    expect(calls[0]!.url).not.toContain('page=');
-    expect(calls[0]!.url).not.toContain('pageSize=');
+    expect(defined(calls[0], 'calls[0]').url).not.toContain('page=');
+    expect(defined(calls[0], 'calls[0]').url).not.toContain('pageSize=');
     const injected: string[] = [];
     await fetchPublicPricing({}, (async (input: unknown) => {
       injected.push(String(input));

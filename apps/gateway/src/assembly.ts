@@ -23,6 +23,7 @@ import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
 import { createAccounts, type AccountUseCases, type WalletCreditPort } from '@tillgate/accounts';
 import { type SessionInvalidationPort } from '@tillgate/accounts/composition';
 import { postgresModelStore } from '@tillgate/control-plane/composition';
+import type { EnabledModelRow } from '@tillgate/control-plane';
 import { initOtel } from '@tillgate/observability';
 import { createPgRequestLogStore } from '@tillgate/observability/composition';
 import { createAi } from '@tillgate/ai';
@@ -53,7 +54,7 @@ export interface GatewayAssembly {
   accounts: AccountUseCases;
   inference: Inference;
   modelsReader: {
-    listEnabledMappings(): Promise<import('@tillgate/control-plane').EnabledModelRow[]>;
+    listEnabledMappings(): Promise<EnabledModelRow[]>;
   };
   requestLogs: ReturnType<typeof createPgRequestLogStore>;
   billingFacade: Billing;
@@ -68,6 +69,7 @@ export interface GatewayAssembly {
   settleWake: ReturnType<typeof createSettleWakeProducer>;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 进程级 DI 装配平铺：逐依赖一次构造、顺序即生命周期契约（铁律 22 ①）
 export function assembleGateway(config: GatewayConfig): GatewayAssembly {
   const logger = createLogger({
     level: 'info',
@@ -176,9 +178,7 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
     },
     // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）
-    config.aiAllowLocalUrl && config.nodeEnv !== 'production'
-      ? { guardUrl: async () => undefined }
-      : {},
+    config.aiAllowLocalUrl && config.nodeEnv !== 'production' ? { guardUrl: async () => {} } : {},
   );
   const inference = createInference({
     ai,

@@ -11,9 +11,11 @@ export function useMediaQuery(query: string): boolean | undefined {
     [query],
   );
 
-  return React.useSyncExternalStore(
+  // getServerSnapshot 显式返回 undefined: SSR/水合首帧语义与 hook 契约一致(由调用方降级)
+  return React.useSyncExternalStore<boolean | undefined>(
     subscribe,
     () => window.matchMedia(query).matches,
+    // eslint-disable-next-line unicorn/no-useless-undefined -- getServerSnapshot 需显式返回 undefined(非省略)：SSR/水合首帧契约由调用方按 undefined 降级，不能用 null/false 替代
     () => undefined,
   );
 }

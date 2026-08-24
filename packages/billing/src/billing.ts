@@ -12,6 +12,7 @@
  * （入箱失败回滚，§5.4）；onSettled/onDead/wake 是提交后的 metrics 级 best-effort
  * 观察钩子（可丢），不承载资金、安全、恢复所需事实。
  */
+import { DefectError } from '@tillgate/errors';
 import { createWalletApi, type WalletApi, type WalletEnv } from './application/wallet/wallet.js';
 import {
   createBillingApi,
@@ -99,6 +100,7 @@ export interface Billing {
   plans: PlansApi;
 }
 
+// eslint-disable-next-line max-lines-per-function -- billing 装配根:DI 接线顺序即契约
 export function createBilling(stores: BillingStores, config: CreateBillingConfig): Billing {
   const wallet = createWalletApi({
     store: stores.walletStore,
@@ -159,31 +161,55 @@ export function createBilling(stores: BillingStores, config: CreateBillingConfig
 /** 未注入渠道敞口 store 时授权链渠道闸的显式红灯（禁静默降级） */
 const defaultChannelsUnavailable: ChannelExposureStore = {
   findChannel() {
-    throw new Error('billing: channel exposure store not assembled (reserveChannel unavailable)');
+    throw new DefectError(
+      'channel exposure store not assembled (reserveChannel unavailable)',
+      'billing.channel_exposure_unassembled',
+    );
   },
   tryIncreaseReserved() {
-    throw new Error('billing: channel exposure store not assembled (reserveChannel unavailable)');
+    throw new DefectError(
+      'channel exposure store not assembled (reserveChannel unavailable)',
+      'billing.channel_exposure_unassembled',
+    );
   },
   tryDecreaseReserved() {
-    throw new Error('billing: channel exposure store not assembled');
+    throw new DefectError(
+      'channel exposure store not assembled',
+      'billing.channel_exposure_unassembled',
+    );
   },
   deductBudgetAndMaybeBreak() {
-    throw new Error('billing: channel exposure store not assembled');
+    throw new DefectError(
+      'channel exposure store not assembled',
+      'billing.channel_exposure_unassembled',
+    );
   },
 };
 
 /** 未注入账户协作 port 时订阅生命周期的显式红灯（禁静默降级） */
 const defaultAccountContextUnavailable: AccountContextStore = {
   userExists() {
-    throw new Error('billing: accountContext store not assembled (subscriptions unavailable)');
+    throw new DefectError(
+      'accountContext store not assembled (subscriptions unavailable)',
+      'billing.account_context_unassembled',
+    );
   },
   isEnterprise() {
-    throw new Error('billing: accountContext store not assembled (subscriptions unavailable)');
+    throw new DefectError(
+      'accountContext store not assembled (subscriptions unavailable)',
+      'billing.account_context_unassembled',
+    );
   },
   insertOrgWithOwner() {
-    throw new Error('billing: accountContext store not assembled (subscriptions unavailable)');
+    throw new DefectError(
+      'accountContext store not assembled (subscriptions unavailable)',
+      'billing.account_context_unassembled',
+    );
   },
   rebindCredentials() {
-    throw new Error('billing: accountContext store not assembled (subscriptions unavailable)');
+    throw new DefectError(
+      'accountContext store not assembled (subscriptions unavailable)',
+      'billing.account_context_unassembled',
+    );
   },
 };

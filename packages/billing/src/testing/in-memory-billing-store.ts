@@ -11,6 +11,7 @@ import type {
   BillingReservationRow,
   BillingStore,
 } from '../ports/billing-store.js';
+import type { AccountContextStore } from '../ports/account-context.js';
 import type {
   ChannelExposureStore,
   FundingSourceResolver,
@@ -97,7 +98,7 @@ export interface InMemoryBillingWorld {
     { dailySpendLimit: string | null; monthlyQuota: string | null }
   >;
   /** 账户侧协作 port（users/orgs/凭证改绑的内存实现） */
-  accountContext: import('../ports/account-context.js').AccountContextStore;
+  accountContext: AccountContextStore;
   /**
    * 事务回滚模拟（§5.4 边界测试）：全部夹具集合的深快照。与钱包 stand-in 的
    * snapshotForTest 配对，由测试的 rollbackable 事务壳在异常时一并还原——
@@ -654,9 +655,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
       Object.assign(row, input.patch);
       return Promise.resolve({ ...row });
     },
-    deletePlan: (_conn, planId) => {
-      return Promise.resolve(plansCatalog.delete(planId));
-    },
+    deletePlan: (_conn, planId) => Promise.resolve(plansCatalog.delete(planId)),
     countSubscriptionsAnyStatus: (_conn, planId) => {
       const count = [...subscriptions.values()].filter((row) => row.planId === planId).length;
       return Promise.resolve(count);
@@ -813,7 +812,7 @@ export function createInMemoryBillingWorld(): InMemoryBillingWorld {
   const enterpriseUsers = new Set<number>();
   const credentialBindings = new Map<number, number>(); // credentialId -> subscriptionId（改绑语义以计数验证）
   let orgSeq = 0;
-  const accountContext: import('../ports/account-context.js').AccountContextStore = {
+  const accountContext: AccountContextStore = {
     userExists: (_conn, userId) => Promise.resolve(knownUsers.has(userId)),
     isEnterprise: (_conn, userId) => Promise.resolve(enterpriseUsers.has(userId)),
     insertOrgWithOwner(_conn, _input) {

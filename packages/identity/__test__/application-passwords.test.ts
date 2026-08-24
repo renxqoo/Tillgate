@@ -37,10 +37,10 @@ describe('passwords.authenticate(防枚举契约)', () => {
     await registerWithPassword(h, 1, 'password-123456');
     const unknown = await h.api.passwords
       .authenticate({ identifier: { kind: 'email', value: email(99) }, password: 'whatever-12345' })
-      .catch((e: Error) => e);
+      .catch((error: Error) => error);
     const wrong = await h.api.passwords
       .authenticate({ identifier: { kind: 'email', value: email(1) }, password: 'whatever-12345' })
-      .catch((e: Error) => e);
+      .catch((error: Error) => error);
     expect(unknown).toMatchObject({ code: 'identity.invalid_credentials' });
     expect((unknown as Error).message).toBe((wrong as Error).message);
     expect((wrong as { code?: string }).code).toBe('identity.invalid_credentials');
@@ -76,7 +76,7 @@ describe('passwords.authenticate(防枚举契约)', () => {
     });
     await h.api.passwords
       .authenticate({ identifier: { kind: 'email', value: email(1) }, password: 'wrong-pass-1234' })
-      .catch(() => undefined);
+      .catch(() => {});
     const outcomes = h.audit.events
       .filter((e) => e.action === 'credential.authenticate')
       .map((e) => (e.detail as { outcome: string }).outcome);

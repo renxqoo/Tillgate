@@ -25,6 +25,9 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+/** responses input 条目可接受的角色词表（developer 映射 system） */
+const RESPONSES_INPUT_ROLES = new Set(['user', 'assistant', 'system', 'developer']);
+
 export function responsesRequestToChat(req: unknown): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
@@ -44,7 +47,7 @@ export function responsesRequestToChat(req: unknown): Json {
           .map((b) => str(asJson(b)?.text) ?? '')
           .join('');
       };
-      if (role === 'user' || role === 'assistant' || role === 'system' || role === 'developer') {
+      if (role !== undefined && RESPONSES_INPUT_ROLES.has(role)) {
         messages.push({
           role: role === 'developer' ? 'system' : role,
           content: contentOf(m.content),
@@ -89,13 +92,14 @@ export function chatResponseToResponses(res: unknown): Json {
   };
 }
 
+// eslint-disable-next-line max-lines-per-function -- 双向 codec 外壳（装配 + 终态收尾），存量棘轮（铁律 22⑥）
 export function canonicalStreamToResponsesStream(
   upstream: ReadableStream<Uint8Array>,
 ): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   const ev = (event: string, obj: Record<string, unknown>): Uint8Array =>
     enc.encode(`event: ${event}\ndata: ${JSON.stringify(obj)}\n\n`);
-  const responseId = 'resp_' + Math.random().toString(36).slice(2, 12);
+  const responseId = `resp_${Math.random().toString(36).slice(2, 12)}`;
   let created = false;
   let itemAdded = false;
   let inputTokens = 0;
@@ -103,6 +107,7 @@ export function canonicalStreamToResponsesStream(
 
   return sseToSseStream(
     upstream,
+    // eslint-disable-next-line complexity, max-lines-per-function -- 逐事件类型翻译的单闭包状态机（responses 事件词表穷举），存量棘轮（铁律 22⑥）
     (sse: SseEvent, emit) => {
       if (sse.data === '[DONE]') {
         if (!created) return;

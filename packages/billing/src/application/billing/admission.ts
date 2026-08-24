@@ -16,7 +16,7 @@ export interface BacklogAdmissionConfig {
 }
 
 export function createBacklogAdmission(config: BacklogAdmissionConfig) {
-  const clock = config.clock;
+  const { clock } = config;
   return async function assertCapacity(): Promise<void> {
     const inventory = await config.store.read((conn) => config.store.inventory(conn, clock()));
     const pending = inventory.pending + inventory.retrying;

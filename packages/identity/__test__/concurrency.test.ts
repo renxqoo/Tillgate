@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createTestHarness } from '../src/testing/harness.js';
+import { defined } from './defined.js';
 
 const harness = () => createTestHarness();
 const email = (n: number) => `cc${n}@example.com`;
@@ -68,7 +69,7 @@ describe('挑战并发语义(内存复演)', () => {
     );
     expect(new Set(codes.map((c) => c.challengeId)).size).toBe(4);
     // 最后一次创建的挑战可验,先前的全部终态
-    const last = codes[codes.length - 1]!;
+    const last = defined(codes.at(-1), 'codes.at(-1)');
     await expect(
       h.api.challenges.verify({ challengeId: last.challengeId, code: last.code }),
     ).resolves.toBeTruthy();
@@ -113,7 +114,7 @@ describe('挑战并发语义(内存复演)', () => {
       ),
     );
     expect(results.every((r) => r.code.match(/^[0-9]{6}$/))).toBe(true);
-    const first = results[0]!;
+    const first = defined(results[0], 'results[0]');
     await expect(
       h.api.challenges.verify({ challengeId: first.challengeId, code: first.code }),
     ).resolves.toBeTruthy();

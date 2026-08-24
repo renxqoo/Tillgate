@@ -23,7 +23,7 @@ function notifyContextOf(c: { get: (k: 'requestId' | 'adminId') => unknown }) {
 
 export function notificationsRoutes(deps: NotificationsRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const channels = deps.notifications.channels;
+  const { channels } = deps.notifications;
 
   app.get('/v1/notifications', async (c) => c.json(await channels.list()));
 

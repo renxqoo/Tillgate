@@ -1,7 +1,7 @@
 /**
  * 费率卡 presenter：RateCardListItem（= RateCardRecord + coefficient）→ AdminRateCardRow。
  */
-import { iso } from '../contracts/common';
+import { isoRequired } from '../contracts/common';
 
 export interface RateCardRowSource {
   readonly id: number;
@@ -19,8 +19,8 @@ export function toRateCardWireRow(row: RateCardRowSource) {
     name: row.name,
     description: row.description,
     status: row.status,
-    createdAt: iso(row.createdAt)!,
-    updatedAt: iso(row.updatedAt)!,
+    createdAt: isoRequired(row.createdAt),
+    updatedAt: isoRequired(row.updatedAt),
     coefficient: row.coefficient,
   };
 }

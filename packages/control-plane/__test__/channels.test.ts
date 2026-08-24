@@ -5,6 +5,7 @@
  * 软删守卫（在册绑定拒绝）-回收站-恢复-名称复用。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createChannel } from '../src/application/channels/create-channel';
 import { updateChannel } from '../src/application/channels/update-channel';
 import { deleteChannel } from '../src/application/channels/delete-channel';
@@ -61,7 +62,7 @@ describe('渠道创建契约', () => {
       apiKey: 'sk-plain-secret-xyz',
       models: ['gpt-4o', 'claude-3-5-sonnet'],
     });
-    const stored = channels.rows.get(row.id)!;
+    const stored = defined(channels.rows.get(row.id));
     expect(stored.models).toEqual(['gpt-4o', 'claude-3-5-sonnet']);
     expect(stored.apiKeyEnc).toBe('fake-enc:sk-plain-secret-xyz');
     expect(JSON.stringify(row)).not.toContain('sk-plain-secret-xyz');
@@ -87,14 +88,14 @@ describe('渠道更新与退役', () => {
       apiKey: 'sk-old-key',
     });
     // 造死凭据态
-    channels.rows.get(created.id)!.status = 4;
-    channels.rows.get(created.id)!.failCount = 7;
+    defined(channels.rows.get(created.id)).status = 4;
+    defined(channels.rows.get(created.id)).failCount = 7;
     const updated = await updateChannel(deps, {
       ctx: adminCtx(),
       channelId: created.id,
       patch: { apiKey: 'sk-rotated-key-2' },
     });
-    const row = channels.rows.get(created.id)!;
+    const row = defined(channels.rows.get(created.id));
     expect(updated.status).toBe(0);
     expect(row.status).toBe(0);
     expect(row.failCount).toBe(0);
@@ -109,9 +110,9 @@ describe('渠道更新与退役', () => {
       name: 'ch2',
       apiKey: 'k',
     });
-    channels.rows.get(created.id)!.status = 4;
+    defined(channels.rows.get(created.id)).status = 4;
     await updateChannel(deps, { ctx: adminCtx(), channelId: created.id, patch: { weight: 5 } });
-    expect(channels.rows.get(created.id)!.status).toBe(4);
+    expect(defined(channels.rows.get(created.id)).status).toBe(4);
   });
 
   it('更新/删除不存在 → channel_not_found', async () => {
@@ -156,14 +157,14 @@ describe('逻辑删除（回收站）', () => {
     await expect(deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id })).resolves.toEqual({
       ok: true,
     });
-    expect(channels.rows.get(channel.id)!.deletedAt).toBeInstanceOf(Date);
+    expect(defined(channels.rows.get(channel.id)).deletedAt).toBeInstanceOf(Date);
   });
 
   it('删除：status 压 1 + 列表默认不可见 view=deleted 可见；名称可复用；审计 channel.delete', async () => {
     const { deps, channels, audit } = setup();
     const channel = await createOk(deps);
     await deleteChannel(deps, { ctx: adminCtx(), channelId: channel.id });
-    const stored = channels.rows.get(channel.id)!;
+    const stored = defined(channels.rows.get(channel.id));
     expect(stored.status).toBe(1);
     expect(stored.deletedAt).toBeInstanceOf(Date);
     expect(await deps.stores.channel.findChannelByName(deps.db, 'recycle-ch')).toBeNull();
@@ -190,7 +191,7 @@ describe('逻辑删除（回收站）', () => {
     await expect(
       updateChannel(deps, { ctx: adminCtx(), channelId: channel.id, patch: { name: 'hacked' } }),
     ).rejects.toMatchObject({ code: 'control_plane.channel_not_found' });
-    expect(channels.rows.get(channel.id)!.name).toBe('recycle-ch');
+    expect(defined(channels.rows.get(channel.id)).name).toBe('recycle-ch');
 
     // 在册行 undelete → 404（防误用恢复做停用）
     const fresh = await createOk(deps, 'fresh-ch');
@@ -199,7 +200,7 @@ describe('逻辑删除（回收站）', () => {
     ).rejects.toMatchObject({ code: 'control_plane.channel_not_found' });
 
     await undeleteChannel(deps, { ctx: adminCtx(), channelId: channel.id });
-    const restored = channels.rows.get(channel.id)!;
+    const restored = defined(channels.rows.get(channel.id));
     expect(restored.deletedAt).toBeNull();
     expect(restored.status).toBe(1); // 回停用态：复核后显式启用
     expect(audit.entries.map((e) => e.action)).toContain('channel.undelete');
@@ -225,13 +226,13 @@ describe('批量导入（best-effort）', () => {
       ],
     });
     expect(result).toMatchObject({ total: 2, success: 1, failed: 1 });
-    expect(result.details[0]!.ok).toBe(false);
-    expect(result.details[0]!.error).toContain('not found');
-    const chan = [...channels.rows.values()].find((c) => c.name === 'imp-ch')!;
+    expect(defined(result.details[0]).ok).toBe(false);
+    expect(defined(result.details[0]).error).toContain('not found');
+    const chan = defined([...channels.rows.values()].find((c) => c.name === 'imp-ch'));
     expect(chan).toBeTruthy();
     expect(fakeCipher.decrypt(chan.apiKeyEnc)).toBe('sk-2');
     // 同名映射绑定建立（weight 1 / priority 0）
-    expect(models.rows.get(mapping.id)!.bindings).toEqual([
+    expect(defined(models.rows.get(mapping.id)).bindings).toEqual([
       { channelId: chan.id, weight: 1, priority: 0 },
     ]);
   });
@@ -281,7 +282,7 @@ describe('渠道探针', () => {
     const depsWithProbe = { ...deps, probe: probe.probe };
     const result = await probeChannel(depsWithProbe, created.id);
     expect(result.ok).toBe(true);
-    expect(probe.calls[0]!.target).toMatchObject({
+    expect(defined(probe.calls[0]).target).toMatchObject({
       apiKey: 'sk-probe-secret-abcdef',
       baseUrl: 'https://override.example.com/v1',
       protocol: 'openai-compatible',
@@ -329,7 +330,7 @@ describe('渠道列表富化', () => {
     await createChannel(deps, { ctx: adminCtx(), providerId: 1, name: 'no-q', apiKey: 'k' });
     const result = await listChannels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
     expect(result.total).toBeGreaterThanOrEqual(1);
-    expect(result.rows[0]!.upstreamConsumed).toBe('0');
+    expect(defined(result.rows[0]).upstreamConsumed).toBe('0');
   });
 
   it('含 providerName/boundModels/upstreamConsumed；密文不出结果', async () => {

@@ -17,6 +17,7 @@ import {
   BodyTooLargeError,
 } from '../src/transport/http-client.js';
 import { UpstreamError } from '../src/errors/kinds.js';
+import { defined } from './defined';
 
 const sse = (frames: string[]) =>
   new ReadableStream<Uint8Array>({
@@ -86,7 +87,10 @@ describe('bedrock eventstream → claude SSE', () => {
   it('适配器 translateUpstreamStream 接线：eventstream → claude → 规范形', async () => {
     const b = new AwsBedrockAdapter();
     const out = await readAll(
-      b.translateUpstreamStream!(
+      defined(
+        b.translateUpstreamStream,
+        'translateUpstreamStream',
+      )(
         new ReadableStream({
           start(c) {
             c.enqueue(
@@ -218,7 +222,7 @@ describe('minimax 剩余分支', () => {
     expect(body).toEqual({ model: 'm', messages: [] });
   });
   it('video 提交缺 task_id → invalid_response', () => {
-    const r = m.tasks!.parseResponse('video', { other: 1 });
+    const r = defined(m.tasks, 'm.tasks').parseResponse('video', { other: 1 });
     expect(r.kind).toBe('error');
     if (r.kind === 'error') expect(r.error.kind).toBe('invalid_response');
   });

@@ -26,7 +26,17 @@ export interface UsageRead {
 /** by-model 默认 30 天窗（避免全表聚合——v1 口径） */
 const BY_MODEL_WINDOW_MS = 30 * 24 * 3_600_000;
 
-function windowConditions(userId: number, from?: Date, to?: Date, defaultFromMs?: number): SQL[] {
+/** 时间窗条件入参（options 形态,守住参数规模上限） */
+interface UsageWindowQuery {
+  userId: number;
+  from?: Date;
+  to?: Date;
+  /** 缺省回溯窗(from 未给时兜底;by-model 30 天口径) */
+  defaultFromMs?: number;
+}
+
+function windowConditions(query: UsageWindowQuery): SQL[] {
+  const { userId, from, to, defaultFromMs } = query;
   const conditions: SQL[] = [eq(usageLogs.userId, userId)];
   const effectiveFrom =
     from ?? (defaultFromMs != null ? new Date(Date.now() - defaultFromMs) : undefined);
@@ -35,10 +45,12 @@ function windowConditions(userId: number, from?: Date, to?: Date, defaultFromMs?
   return conditions;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 读模型工厂:四个查询方法的 SQL 列投影平铺(列定义即数据)
 export function createUsageRead(db: Db, timezone: string): UsageRead {
   return {
+    // eslint-disable-next-line max-lines-per-function -- list 列投影 24 列平铺(join 三表),行数来自列定义
     async list(userId, q) {
-      const conditions = windowConditions(userId, q.from, q.to);
+      const conditions = windowConditions({ userId, from: q.from, to: q.to });
       if (q.model != null) conditions.push(eq(usageLogs.externalModel, q.model));
       const where = and(...conditions);
       const rows = await db
@@ -105,7 +117,16 @@ export function createUsageRead(db: Db, timezone: string): UsageRead {
           cost: sql<string>`coalesce(sum(${usageLogs.amount}), 0)::text`,
         })
         .from(usageLogs)
-        .where(and(...windowConditions(userId, r.from, r.to, BY_MODEL_WINDOW_MS)))
+        .where(
+          and(
+            ...windowConditions({
+              userId,
+              from: r.from,
+              to: r.to,
+              defaultFromMs: BY_MODEL_WINDOW_MS,
+            }),
+          ),
+        )
         .groupBy(usageLogs.externalModel)
         .orderBy(desc(sql`coalesce(sum(${usageLogs.amount}), 0)`));
       return rows.map((agg) => ({
@@ -132,7 +153,7 @@ export function createUsageRead(db: Db, timezone: string): UsageRead {
           cost: sql<string>`coalesce(sum(${usageLogs.amount}), 0)::text`,
         })
         .from(usageLogs)
-        .where(and(...windowConditions(userId, r.from, r.to)))
+        .where(and(...windowConditions({ userId, from: r.from, to: r.to })))
         .groupBy(dayKey)
         .orderBy(sql`1`);
       return {

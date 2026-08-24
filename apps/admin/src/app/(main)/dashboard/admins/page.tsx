@@ -51,7 +51,7 @@ export default async function AdminsPage({ searchParams }: PageProps) {
 
   let rows: AdminRow[] = [];
   let total = 0;
-  let error: string | null = null;
+  let loadError: string | null = null;
   try {
     const query = new URLSearchParams({
       page: String(page),
@@ -63,8 +63,8 @@ export default async function AdminsPage({ searchParams }: PageProps) {
     const data = await adminApi().get<Paginated<AdminRow>>(`/v1/admins?${query.toString()}`);
     rows = data.rows ?? [];
     total = data.total ?? 0;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
   }
 
   const roleName = new Map(roles.map((role) => [role.code, role.name]));
@@ -117,7 +117,7 @@ export default async function AdminsPage({ searchParams }: PageProps) {
       q={q}
       searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
       actions={hasPerm(me, 'admins:create') ? <AdminCreateForm roles={roles} /> : null}
-      error={error}
+      error={loadError}
       page={page}
       pageSize={PAGE_SIZE}
     >

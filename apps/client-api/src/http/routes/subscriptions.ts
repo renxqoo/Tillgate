@@ -39,6 +39,7 @@ function operationIdOf(headerValue: string | undefined): string {
   return headerValue;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function subscriptionRoutes(
   deps: SubscriptionsDeps,
   session: MiddlewareHandler<SessionEnv>,

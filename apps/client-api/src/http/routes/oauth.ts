@@ -30,6 +30,7 @@ export interface OAuthDeps {
   readonly stateTtlSeconds: number;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function oauthRoutes(deps: OAuthDeps) {
   const app = new Hono();
 
@@ -94,7 +95,7 @@ export function oauthRoutes(deps: OAuthDeps) {
         displayName: result.displayName ?? undefined,
       });
       userId = created.user.id;
-      await deps.onboarding(userId).catch(() => undefined);
+      await deps.onboarding(userId).catch(() => {});
     }
     const status = await deps.userStatus(userId);
     if (status !== 0) {

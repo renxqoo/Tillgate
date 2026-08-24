@@ -129,7 +129,7 @@ export function estimateTextTokens(
 
 /** 是否媒体 part（image_url/audio/video/file 等非文本内容）。 */
 function isMediaPart(p: Record<string, unknown>): boolean {
-  const type = p.type;
+  const { type } = p;
   return (
     type === 'image_url' ||
     type === 'image' ||
@@ -174,6 +174,26 @@ function estimateToolCalls(toolCalls: unknown, weights: TextTokenWeights, model?
 }
 
 /**
+ * embeddings input 估算：string / string[] / token-id 数组（number[] / number[][]）。
+ * token-id 数组每 id 即一个 token（OpenAI 官方形态，跳过会低估预扣）。
+ */
+function estimateEmbeddingsInput(
+  input: unknown,
+  weights: TextTokenWeights,
+  model: string | undefined,
+): number {
+  if (typeof input === 'string') return countText(input, weights, model);
+  if (!Array.isArray(input)) return 0;
+  let n = 0;
+  for (const item of input) {
+    if (typeof item === 'string') n += countText(item, weights, model);
+    else if (typeof item === 'number') n += 1;
+    else if (Array.isArray(item)) n += item.length;
+  }
+  return n;
+}
+
+/**
  * 请求体 → 输入 token 估算。
  * 覆盖 messages.content + 历史 tool_calls + tools 定义体 + embeddings input + 媒体非零下限
  * + templateInputOffset（供应商注入开销）。
@@ -201,17 +221,7 @@ export function estimateInputTokens(body: unknown, opts: EstimateOptions = {}): 
       /* 循环引用等异常 → 跳过，不破坏估算 */
     }
   }
-  // embeddings：input 为 string / string[] / token-id 数组（number[] / number[][]）
-  if (typeof rec.input === 'string') {
-    n += countText(rec.input, weights, opts.model);
-  } else if (Array.isArray(rec.input)) {
-    for (const item of rec.input) {
-      if (typeof item === 'string') n += countText(item, weights, opts.model);
-      // token-id 数组：每 id 即一个 token（OpenAI 官方形态，跳过会低估预扣）
-      else if (typeof item === 'number') n += 1;
-      else if (Array.isArray(item)) n += item.length;
-    }
-  }
+  n += estimateEmbeddingsInput(rec.input, weights, opts.model);
   // 生成类端点（images/video/music）与 rerank 的顶层 prompt/query：
   // 混合计价（token 价 + 单位价并存）时 token 分量的预扣来源
   if (typeof rec.prompt === 'string') n += countText(rec.prompt, weights, opts.model);
@@ -239,8 +249,9 @@ export function estimateOutputTokens(json: unknown, opts: EstimateOptions = {}):
       // 同一文本两侧口径分裂，估算结算金额随文本构成漂移）
       n += estimateContent(message.content, weights, opts.model);
       for (const key of ['reasoning_content', 'reasoning', 'thinking']) {
-        if (typeof message[key] === 'string')
+        if (typeof message[key] === 'string') {
           n += estimateTextTokens(message[key], weights, opts.model);
+        }
       }
       n += estimateToolCalls(message.tool_calls, weights, opts.model);
     }

@@ -15,7 +15,7 @@ export interface TracingRoutesDeps {
 
 export function tracingRoutes(deps: TracingRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const traces = deps.observability.traces;
+  const { traces } = deps.observability;
 
   app.get('/v1/tracing/recent', async (c) => {
     const parts = parseListQuery(c.req.query(), ['id'], 'id');

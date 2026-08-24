@@ -45,7 +45,10 @@ let scriptPromise: Promise<TurnstileAPI> | null = null;
 
 function loadTurnstile(): Promise<TurnstileAPI> {
   scriptPromise ??= new Promise<TurnstileAPI>((resolve, reject) => {
-    if (window.turnstile) return resolve(window.turnstile);
+    if (window.turnstile) {
+      resolve(window.turnstile);
+      return;
+    }
     const script = document.createElement('script');
     script.src = SCRIPT_URL;
     script.async = true;
@@ -72,7 +75,6 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
-  onTokenRef.current = onToken;
   const t = useTranslations('auth');
   const tCommon = useTranslations('common');
   const [failed, setFailed] = useState(false);
@@ -81,11 +83,20 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
   // 首次 resetNonce（0）不触发换票，只挂载
   const firstResetRef = useRef(true);
 
+  // latest-ref：写 ref 移入 effect（渲染期写 ref 违反 react/refs）；
+  // token 事件均由 turnstile 脚本异步触发，必然晚于本 effect 生效
+  useEffect(() => {
+    onTokenRef.current = onToken;
+  }, [onToken]);
+
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react/set-state-in-effect -- 重挂载重试前必须复位旧失败标记（siteKey 变更等 prop 驱动重跑时无事件回调可承载该复位）
     setFailed(false);
-    loadTurnstile()
-      .then((api) => {
+    // async IIFE 替代 .then 链：早退/落尾路径统一，规避 promise/always-return
+    void (async () => {
+      try {
+        const api = await loadTurnstile();
         if (cancelled || !containerRef.current || widgetIdRef.current !== null) return;
         widgetIdRef.current = api.render(containerRef.current, {
           sitekey: siteKey,
@@ -97,8 +108,10 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
           },
         });
         setMounted(true);
-      })
-      .catch(() => setFailed(true));
+      } catch {
+        setFailed(true);
+      }
+    })();
     return () => {
       cancelled = true;
       if (widgetIdRef.current !== null) {
@@ -107,6 +120,7 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
       }
       setMounted(false);
     };
+    // eslint-disable-next-line react/exhaustive-effect-dependencies -- reloadNonce 是加载失败后「重试」的重跑触发器（值本身不在体内使用），刻意保留以重挂载 widget
   }, [siteKey, reloadNonce]);
 
   useEffect(() => {
@@ -115,6 +129,7 @@ export function TurnstileWidget({ siteKey, onToken, resetNonce = 0 }: TurnstileW
       return;
     }
     if (widgetIdRef.current !== null) window.turnstile?.reset(widgetIdRef.current);
+    // eslint-disable-next-line react/exhaustive-effect-dependencies -- resetNonce 是父组件强制换票的重跑触发器（值本身不在体内使用），刻意保留以触发 reset
   }, [resetNonce]);
 
   if (failed) {

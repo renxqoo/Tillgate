@@ -57,7 +57,7 @@
 | Redis 连接与测试装置 / .env 加载 / 渠道密钥加密                         | `runtime`（createRedisClient、testing 子入口；loadRootEnvFile、createCipher——C4/C7） |
 | OpenAI 错误信封 / 网关对外 wire 投影                                    | gateway app face（error-face 时用 override 表投影，P5）                              |
 | wire contract / OpenAPI schema                                          | 提供 API 的 app（结构方案 §3.3）                                                     |
-| `errors` 根契约（三性/category/目录/记录）                              | `@tillgate/errors`（http 单向依赖它，不重复定义）                                   |
+| `errors` 根契约（三性/category/目录/记录）                              | `@tillgate/errors`（http 单向依赖它，不重复定义）                                    |
 
 ## 2. 外部契约（v2 API，定稿）
 

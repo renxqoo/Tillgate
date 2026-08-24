@@ -51,8 +51,9 @@ export function ModelUsageChart({ data }: { readonly data: ReadonlyArray<UsageBy
     if (metric === 'cost') return Number(it.cost) || 0;
     if (metric === 'tokens') return it.inputTokens + it.outputTokens;
     // 缓存率 = 缓存命中 token / 输入 token（聚合后的总比例）
-    if (metric === 'cacheRate')
+    if (metric === 'cacheRate') {
       return it.inputTokens > 0 ? it.cachedInputTokens / it.inputTokens : 0;
+    }
     return it.requests;
   };
   // 按当前度量降序后取 Top 10，避免模型过多时条形挤压

@@ -25,12 +25,12 @@ export async function fetchAdminList<T>(
   try {
     const data = await adminApi().get<Paginated<T>>(`${path}?${buildListQuery(opts)}`);
     return { rows: (data.rows ?? []) as T[], total: data.total ?? 0, error: null };
-  } catch (e) {
+  } catch (error) {
     return {
       rows: [],
       total: 0,
       error: await (async () => {
-        if (e instanceof ApiError) return e.message;
+        if (error instanceof ApiError) return error.message;
         return (await outgoingLocale(ADMIN_LOCALE_RESOLUTION)) === 'zh'
           ? '加载失败'
           : 'Failed to load';

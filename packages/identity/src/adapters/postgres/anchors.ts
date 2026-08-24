@@ -37,12 +37,13 @@ export const anchorQueries: AnchorStore = {
               },
             })
             .returning({ invalidBefore: identitySessionAnchors.invalidBefore });
-    if (rows.length === 0) {
+    const [row] = rows;
+    if (row == null) {
       throw new DefectError('advance_anchor upsert returned no row', 'identity.defect', {
         operation: 'advance_anchor',
       });
     }
-    return rows[0]!.invalidBefore.toISOString();
+    return row.invalidBefore.toISOString();
   },
 
   async readAnchor(db: DbLike, input: { realm: string; userId: number }): Promise<string | null> {

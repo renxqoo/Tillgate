@@ -46,7 +46,7 @@ describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表�
   });
 
   it('null/undefined/未知码不换渠（防御垃圾形状）', () => {
-    expect(isChannelSwitchable(undefined)).toBe(false);
+    expect(isChannelSwitchable()).toBe(false);
     expect(isChannelSwitchable(null)).toBe(false);
     expect(isChannelSwitchable('no_such_kind')).toBe(false);
   });
@@ -68,7 +68,7 @@ describe('domain/routing/switchable：ErrorKind 全矩阵（词表封闭性表�
 
   it('全败终结分类：无错误/预算/限流族 = 渠道面竭尽；其余上游故障', () => {
     expect(isChannelExhausted(null)).toBe(true);
-    expect(isChannelExhausted(undefined)).toBe(true);
+    expect(isChannelExhausted()).toBe(true);
     expect(isChannelExhausted('channel_budget_exhausted')).toBe(true);
     expect(isChannelExhausted('rate_limit_exceeded')).toBe(true);
     expect(isChannelExhausted('rate_limited')).toBe(true);

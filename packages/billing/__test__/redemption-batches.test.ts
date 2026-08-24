@@ -7,6 +7,7 @@ import { createRedeemBatchApi } from '../src/application/redeem-batches/redeem-b
 import { createInMemoryBillingWorld } from '../src/testing/in-memory-billing-store.js';
 import { createInMemoryPaymentStores } from '../src/testing/in-memory-payment-stores.js';
 import { sha256Hex } from '../src/application/redemption/redemption.js';
+import { defined } from './defined.js';
 
 function harness() {
   const world = createInMemoryBillingWorld();
@@ -41,7 +42,7 @@ describe('createRedeemBatchApi（U6）', () => {
     expect(result.codes).toEqual(generated);
     expect(result.codes).toHaveLength(3);
     // 库内只落哈希:按任一明文哈希可查到码行
-    const found = await codes.findByCodeHash(null as never, sha256Hex(result.codes[0]!));
+    const found = await codes.findByCodeHash(null as never, sha256Hex(defined(result.codes[0])));
     expect(found).toMatchObject({ status: 0, batchId: result.batch.id });
     // 明文绝不出现于存储面
     expect(JSON.stringify(found)).not.toContain('RC-PLAINTEXT');
@@ -75,7 +76,7 @@ describe('createRedeemBatchApi（U6）', () => {
     });
     expect(codePage.total).toBe(2);
     expect(codePage.rows[0]).toMatchObject({ status: 0, usedBy: null });
-    expect(typeof codePage.rows[0]!.codeHash).toBe('string');
+    expect(typeof defined(codePage.rows[0]).codeHash).toBe('string');
 
     await expect(
       api.codes({ batchId: 999, sortBy: 'id', order: 'asc', limit: 5, offset: 0 }),
@@ -87,8 +88,8 @@ describe('createRedeemBatchApi（U6）', () => {
     const { api, codes } = harness();
     const created = await api.create({ createdBy: 1, name: 'b', amount: '1', count: 2 });
     const [firstCode] = created.codes;
-    const row = await codes.findByCodeHash(null as never, sha256Hex(firstCode!));
-    const codeId = row!.id;
+    const row = await codes.findByCodeHash(null as never, sha256Hex(defined(firstCode)));
+    const codeId = defined(row).id;
 
     await expect(api.revoke({ codeId })).resolves.toEqual({ ok: true });
     // 再废(已废)→ 404 语义

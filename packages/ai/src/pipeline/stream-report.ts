@@ -16,43 +16,41 @@ export interface StreamEventBus {
   subscribe(cb: (e: AiEvent) => void): void;
 }
 
+/**
+ * first_chunk 一次性缓冲 + 幂等单发：chatStream 返回前即合成发火（上游首字节
+ * 已被 peek 锁定），而 relay 的 transform 侧 first_chunk 要等客户端读流才触发
+ * （TransformStream 需求耦合）——不合成则消费方（inference 的 decisive 锚）
+ * 与响应启动互等成死锁；relay 侧晚到的重复 first_chunk 按幂等吞掉。
+ * 与终态同规则：晚订阅重放。
+ */
+/** 观察者安全派发：回调异常不反噬（观察面契约，订阅与重放两路径共用） */
+function safeDispatch(cb: (e: AiEvent) => void, e: AiEvent): void {
+  try {
+    cb(e);
+  } catch {
+    /* 观察者异常不反噬（含重放路径） */
+  }
+}
+
 export function createStreamEventBus(
   emit: (e: AiEvent) => void,
   meta: { providerName?: string; model?: string } = {},
 ): StreamEventBus {
   const terminalBuffer: AiEvent[] = [];
-  // first_chunk 一次性缓冲 + 幂等单发：chatStream 返回前即合成发火（上游首字节
-  // 已被 peek 锁定），而 relay 的 transform 侧 first_chunk 要等客户端读流才触发
-  // （TransformStream 需求耦合）——不合成则消费方（inference 的 decisive 锚）
-  // 与响应启动互等成死锁；relay 侧晚到的重复 first_chunk 按幂等吞掉。
-  // 与终态同规则：晚订阅重放。
   let firstChunkBuffered: AiEvent | null = null;
   const callCbs: Array<(e: AiEvent) => void> = [];
-  let globalBound = false;
   const push = (e: AiEvent): void => {
     if (e.type === 'first_chunk') {
       if (firstChunkBuffered !== null) return; // 幂等：一次性事件只出一次
       firstChunkBuffered = e;
     }
     emit(e);
-    for (const cb of callCbs.slice()) {
-      try {
-        cb(e);
-      } catch {
-        /* 观察者异常不反噬 */
-      }
-    }
+    for (const cb of callCbs.slice()) safeDispatch(cb, e);
   };
   const replayTo = (cb: (e: AiEvent) => void): void => {
     const replay =
       firstChunkBuffered !== null ? [firstChunkBuffered, ...terminalBuffer] : terminalBuffer;
-    for (const e of replay.slice()) {
-      try {
-        cb(e);
-      } catch {
-        /* 重放异常忽略 */
-      }
-    }
+    for (const e of replay.slice()) safeDispatch(cb, e);
   };
   const bus: StreamEventBus = {
     ...meta,
@@ -69,9 +67,6 @@ export function createStreamEventBus(
       subscribe: (cb) => {
         callCbs.push(cb);
         replayTo(cb);
-        if (!globalBound) {
-          globalBound = true;
-        }
       },
     }),
   };
@@ -83,6 +78,7 @@ export function createStreamEventBus(
  * sanitizeMessage：C 端错误帧 message 的出站脱敏（§3.6 例外 3 内容层）——
  * 事件面（emitTerminal）携带原始错误不脱敏（观察面/日志保真），仅出站字节脱敏。
  */
+// eslint-disable-next-line max-params -- 导出 API（create-ai 4 处 + 测试调用点），签名即契约，改对象参数放大 diff
 export function failEarlyStream(
   bus: StreamEventBus,
   error: UpstreamError,
@@ -116,15 +112,18 @@ export function attachRelayReporting(
   const { bus, requestId, channelKey, startedAt } = deps;
   handle.onEvent((ev: RelayStreamEvent) => {
     switch (ev.type) {
-      case 'first_chunk':
+      case 'first_chunk': {
         bus.emitStream({ type: 'first_chunk', requestId, atMs: ev.atMs });
         break;
-      case 'stream_error':
+      }
+      case 'stream_error': {
         bus.emitStream({ type: 'stream_error', requestId, frame: ev.frame });
         break;
-      case 'aborted':
+      }
+      case 'aborted': {
         bus.emitStream({ type: 'aborted', requestId, reason: ev.reason });
         break;
+      }
       case 'done': {
         const usage: Usage | null =
           ev.usage !== null && ev.usage !== undefined ? normalizeUsage(ev.usage) : null;

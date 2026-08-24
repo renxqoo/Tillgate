@@ -27,6 +27,7 @@ import {
   amountsMatch,
   computeCreditAmount,
 } from '../src/domain/payment/topup.js';
+import { defined } from './defined.js';
 
 let userSeq = 2500;
 const nextUser = () => (userSeq += 1);
@@ -89,7 +90,7 @@ function harness(providers: readonly PaymentProviderPort[]) {
     perMinuteOrderLimit: 6,
     orderTtlMs: 600_000,
     clock: () => new Date(),
-    logError: () => undefined,
+    logError: () => {},
   });
   const redemption = createRedemptionApi({
     store: world.billing,
@@ -206,7 +207,7 @@ describe('支付下单与回调', () => {
     const userId = nextUser();
     const order = await payments.createTopupOrder(userId, { amount: '10' });
     expect(order.creditAmount).toBe('10');
-    const row = paymentsMemory.orders.get(order.orderId)!;
+    const row = defined(paymentsMemory.orders.get(order.orderId));
     expect(row.providerOrderId).toBe(`cs_${order.orderId}`); // 回填生效
     // 金额不符拒收
     expect(
@@ -221,8 +222,8 @@ describe('支付下单与回调', () => {
       paidAmount: '10',
     });
     expect(ok).toBe('success');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('10');
-    expect(paymentsMemory.orders.get(order.orderId)!.status).toBe(2);
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('10');
+    expect(defined(paymentsMemory.orders.get(order.orderId)).status).toBe(2);
     // 重复回调幂等成功应答，不重复入账
     expect(
       await payments.handleNotify('stripe', {
@@ -230,7 +231,7 @@ describe('支付下单与回调', () => {
         paidAmount: '10',
       }),
     ).toBe('success');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('10');
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('10');
   });
 
   it('渠道下单失败：关单留痕（0→4）+ payment_channel_unavailable', async () => {
@@ -240,7 +241,7 @@ describe('支付下单与回调', () => {
     const rejected = await rejection(() => payments.createTopupOrder(userId, { amount: '10' }));
     expect(rejected.code).toBe('billing.payment_channel_unavailable');
     const [row] = [...paymentsMemory.orders.values()];
-    expect(row!.status).toBe(4);
+    expect(defined(row).status).toBe(4);
   });
 
   it('过期单复活：已付款的关单标记（4→1→2）不搁浅资金', async () => {
@@ -248,14 +249,14 @@ describe('支付下单与回调', () => {
     const { wallet, payments, paymentsMemory } = harness([provider]);
     const userId = nextUser();
     const order = await payments.createTopupOrder(userId, { amount: '10' });
-    paymentsMemory.orders.get(order.orderId)!.status = 4; // 模拟 TTL 误关
+    defined(paymentsMemory.orders.get(order.orderId)).status = 4; // 模拟 TTL 误关
     const ok = await payments.handleNotify('stripe', {
       providerOrderId: `cs_${order.orderId}`,
       paidAmount: '10',
     });
     expect(ok).toBe('success');
-    expect((await wallet.accounts(userId))[0]!.balance).toBe('10');
-    expect(paymentsMemory.orders.get(order.orderId)!.status).toBe(2);
+    expect(defined((await wallet.accounts(userId))[0]).balance).toBe('10');
+    expect(defined(paymentsMemory.orders.get(order.orderId)).status).toBe(2);
   });
 
   it('Stripe 回退锚：attach 缺席时按商户单号定位（不认领已绑定他人会话的单）', async () => {
@@ -264,7 +265,7 @@ describe('支付下单与回调', () => {
     const userId = nextUser();
     const order = await payments.createTopupOrder(userId, { amount: '10' });
     // 模拟 attach 失败：providerOrderId 仍是占位
-    paymentsMemory.orders.get(order.orderId)!.providerOrderId = order.orderId;
+    defined(paymentsMemory.orders.get(order.orderId)).providerOrderId = order.orderId;
     const ok = await payments.handleNotify('stripe', {
       providerOrderId: 'cs_unknown',
       merchantOrderId: order.orderId,
@@ -300,7 +301,7 @@ describe('支付下单与回调', () => {
       perMinuteOrderLimit: 6,
       orderTtlMs: 600_000,
       clock: () => new Date(),
-      logError: () => undefined,
+      logError: () => {},
     });
     expect(
       (await rejection(() => strict.createTopupOrder(nextUser(), { amount: '10' }))).code,
@@ -343,7 +344,7 @@ describe('兑换码', () => {
       createdBy: 1,
       codeHashes: [revokedHash],
     });
-    paymentsMemory.codes.get(revokedHash)!.status = 2;
+    defined(paymentsMemory.codes.get(revokedHash)).status = 2;
     expect((await rejection(() => redemption.redeem(userId, { code: 'REVOKED' }))).code).toBe(
       'billing.code_revoked',
     );
@@ -373,8 +374,8 @@ describe('兑换码', () => {
       clock: () => new Date(),
     });
     const spammer = nextUser();
-    await strict.redeem(spammer, { code: 'NOPE' }).catch(() => undefined);
-    await strict.redeem(spammer, { code: 'NOPE' }).catch(() => undefined);
+    await strict.redeem(spammer, { code: 'NOPE' }).catch(() => {});
+    await strict.redeem(spammer, { code: 'NOPE' }).catch(() => {});
     expect((await rejection(() => strict.redeem(spammer, { code: 'NOPE' }))).code).toBe(
       'billing.redeem_rate_limited',
     );
@@ -394,9 +395,9 @@ describe('订单读侧与渠道清单', () => {
       'billing.order_not_found',
     );
     // 机会式关单：把创建时间拨回 TTL 之前，listOrders 触发关单
-    paymentsMemory.orders.get(order.orderId)!.createdAt = new Date(Date.now() - 700_000);
+    defined(paymentsMemory.orders.get(order.orderId)).createdAt = new Date(Date.now() - 700_000);
     const list = await payments.listOrders(userId, { page: 1, limit: 10 });
-    expect(list[0]!.status).toBe(4);
+    expect(defined(list[0]).status).toBe(4);
     expect(payments.channels()).toEqual([{ id: 'stripe', label: 'Stripe' }]);
   });
 
@@ -474,7 +475,7 @@ describe('回调分支封口', () => {
     expect(await payments.handleNotify('stripe', raw)).toBe('success');
     // 非 1/2/4 态（构造 status=0 但 markPaid 被抢——直接置 3 非法态模拟守卫失败）
     const order2 = await payments.createTopupOrder(userId, { amount: '10' });
-    paymentsMemory.orders.get(order2.orderId)!.status = 99;
+    defined(paymentsMemory.orders.get(order2.orderId)).status = 99;
     expect(
       await payments.handleNotify('stripe', {
         providerOrderId: `cs_${order2.orderId}`,

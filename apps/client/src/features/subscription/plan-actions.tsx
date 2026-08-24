@@ -26,8 +26,8 @@ import {
   purchaseSubscriptionAction,
 } from '@/server/actions/subscription';
 
-import { fmtYuan, InfoRow } from './current-subscription';
-import { planPeriodLabel } from './plan-format';
+import { InfoRow } from './info-row';
+import { fmtYuan, planPeriodLabel } from './plan-format';
 
 export function PlanCard({
   plan,
@@ -58,8 +58,8 @@ export function PlanCard({
         </div>
       </div>
 
-      {isUpgrade ? (
-        <UpgradeAction plan={plan} subscription={subscription!} />
+      {isUpgrade && subscription !== null ? (
+        <UpgradeAction plan={plan} subscription={subscription} />
       ) : (
         <PurchaseAction plan={plan} />
       )}

@@ -5,10 +5,11 @@
  * 冷连接友好：客户端关闭了 offline queue（连接就绪前的命令立即拒绝），
  * 因此用「重试直至截止」而非单发 ping；超时报错带脱敏 URL 便于直接排查。
  */
-import { Redis } from 'ioredis';
+import type { Redis } from 'ioredis';
 import { InfrastructureError } from '@tillgate/errors';
 import { describeError, sanitizeUrl } from './redis-diagnostics';
 
+// eslint-disable-next-line max-params -- 跨包导出 API（gateway/client-api/e2e 已有调用点），改签名会放大跨包 diff
 export async function assertRedisReachable(
   redis: Redis,
   serviceName: string,
@@ -20,11 +21,13 @@ export async function assertRedisReachable(
   for (;;) {
     try {
       if ((await redis.ping()) === 'PONG') return;
-    } catch (err) {
-      lastError = err as Error;
+    } catch (error) {
+      lastError = error as Error;
     }
     if (Date.now() >= deadline) break;
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 200);
+    });
   }
   throw new InfrastructureError(
     `[${serviceName}] Redis startup check failed (${sanitizeUrl(rawUrl)}): ${describeError(lastError ?? new Error(`ping timeout (${timeoutMs}ms)`))} — ` +

@@ -5,6 +5,7 @@
  */
 import { recordOfUnknown, type ErrorRecord } from './error-record';
 
-export function normalizeError(error: unknown): ErrorRecord {
+/** 参数可选:缺省与 undefined 同录为 errors.non_error(非错误值兜底语义) */
+export function normalizeError(error?: unknown): ErrorRecord {
   return recordOfUnknown(error);
 }

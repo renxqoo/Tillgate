@@ -100,13 +100,13 @@ currencies:['CNY'], internalAccounts:['outside','platform_revenue']}`；`resolve
 
 | 不处理项                                        | 归属                                          |
 | ----------------------------------------------- | --------------------------------------------- |
-| 用户/Key/组织的业务规则与持久化                 | `@tillgate/accounts`                         |
-| Provider/Channel/Model/RateCard/fx/目录配置规则 | `@tillgate/control-plane`                    |
-| 钱包/订阅/结算/兑换的资金定律                   | `@tillgate/billing`                          |
-| 凭证/会话/挑战/MFA 语义                         | `@tillgate/identity`                         |
-| trace/审计/请求日志的存储与查询                 | `@tillgate/observability`                    |
-| HTTP 中间件货架/错误渲染/分页解析               | `@tillgate/http`、`@tillgate/errors`        |
-| 优雅停机/日志/OTel/秘密校验                     | `@tillgate/runtime`                          |
+| 用户/Key/组织的业务规则与持久化                 | `@tillgate/accounts`                          |
+| Provider/Channel/Model/RateCard/fx/目录配置规则 | `@tillgate/control-plane`                     |
+| 钱包/订阅/结算/兑换的资金定律                   | `@tillgate/billing`                           |
+| 凭证/会话/挑战/MFA 语义                         | `@tillgate/identity`                          |
+| trace/审计/请求日志的存储与查询                 | `@tillgate/observability`                     |
+| HTTP 中间件货架/错误渲染/分页解析               | `@tillgate/http`、`@tillgate/errors`          |
+| 优雅停机/日志/OTel/秘密校验                     | `@tillgate/runtime`                           |
 | 登录编排（限流/防暴破/2FA 邮箱码/审计）         | P2（identity W2 + control-plane G2）          |
 | 管理台前端（链路图等数据消费）                  | P5 后续 `apps/admin`，经本 API + `api-client` |
 

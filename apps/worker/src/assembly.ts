@@ -27,7 +27,6 @@ import {
   createWalletApi,
 } from '@tillgate/billing';
 import type {
-  BillingEvent,
   NotificationOutboxPort,
   OutboxFact,
   ReconcileReport,
@@ -50,7 +49,7 @@ import {
   createPostgresGenerationTaskStore,
   createUpstreamAi,
 } from '@tillgate/inference';
-import type { BillingSignal, ChannelCandidate } from '@tillgate/inference';
+import { toBillingEvent, toChannelCandidate } from './bridge-mappers.js';
 import type { WorkerConfig } from './config';
 import { createScheduler } from './scheduler';
 import type { Scheduler } from './scheduler';
@@ -101,67 +100,9 @@ export interface WorkerAssembly {
   runners: Readonly<Record<string, () => Promise<unknown>>>;
 }
 
-/** inference 蛇形 → billing 点分（两包同源 v1 词表；与 gateway 桥同款映射） */
-function toBillingEvent(signal: BillingSignal): BillingEvent {
-  switch (signal.type) {
-    case 'upstream_started':
-      return {
-        type: 'upstream.started',
-        requestId: signal.requestId,
-        leaseOwner: signal.leaseOwner,
-        leaseMs: signal.leaseMs,
-      };
-    case 'lease_renewed':
-      return {
-        type: 'lease.renewed',
-        requestId: signal.requestId,
-        leaseOwner: signal.leaseOwner,
-        leaseMs: signal.leaseMs,
-      };
-    case 'request_succeeded':
-      return {
-        type: 'request.succeeded',
-        requestId: signal.requestId,
-        // 收据两包同源（v1 receipt 迁移 twin）——结构直传
-        receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R } ? R : never,
-      };
-    case 'request_failed':
-      return { type: 'request.failed', requestId: signal.requestId, reason: signal.reason };
-  }
-}
+/** inference 蛇形 → billing 点分 与 渠道行 → 候选形状两个桥接映射已拆至 ./bridge-mappers.ts */
 
-/** control-plane 渠道行 → inference 候选形状（连接信息同源映射） */
-function toChannelCandidate(row: {
-  channelId: number;
-  channelName: string;
-  providerName: string | null;
-  providerProtocol: string;
-  providerVendor: string | null;
-  baseUrlOverride: string | null;
-  providerBaseUrl: string;
-  apiKeyEnc: string;
-  priority: number;
-  weight: number;
-  rpmLimit: number | null;
-  tpmLimit: number | null;
-  upstreamBudget: string;
-}): ChannelCandidate {
-  return {
-    channelId: row.channelId,
-    channelName: row.channelName,
-    providerName: row.providerName,
-    protocol: row.providerProtocol,
-    vendor: row.providerVendor,
-    baseUrl: row.baseUrlOverride ?? row.providerBaseUrl,
-    apiKeyEnc: row.apiKeyEnc,
-    priority: row.priority,
-    weight: row.weight,
-    rpmLimit: row.rpmLimit,
-    tpmLimit: row.tpmLimit,
-    upstreamBudget: row.upstreamBudget,
-  };
-}
-
+// eslint-disable-next-line max-lines-per-function, max-statements -- 装配根 composition root:线性依赖组装,每条语句即一个装配步骤;拆段只会层层透传上下文(存量棘轮)
 export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const logger = createLogger({
     level: config.logLevel,
@@ -207,17 +148,18 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   // ---- notifications：facade + billing 同事务入箱桥 ----
   const cipher = createCipher(config.channelApiKeyEncryption);
   let emailSender: EmailSender | undefined;
-  if (config.smtp != null) {
+  const smtpConfig = config.smtp;
+  if (smtpConfig != null) {
     // SMTP 三要素齐备才装配（v1 mailerFromEnv 口径：缺一 = email 渠道 fail-closed）
     const transporter = createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
-      secure: config.smtp.port === 465,
-      auth: { user: config.smtp.user, pass: config.smtp.pass },
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.port === 465,
+      auth: { user: smtpConfig.user, pass: smtpConfig.pass },
     });
     emailSender = {
       send: async (to, subject, text) => {
-        await transporter.sendMail({ from: config.smtp!.user, to, subject, text });
+        await transporter.sendMail({ from: smtpConfig.user, to, subject, text });
       },
     };
   }
@@ -268,7 +210,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     onError,
     outbox: outboxPort,
     onSettled: (data) => {
-      void balanceLowCheck(data).catch(() => undefined);
+      void balanceLowCheck(data).catch(() => {});
     },
   });
 
@@ -293,9 +235,7 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   const ai: Ai = createAi(
     {},
     // SSRF 双门：逃生门仅非生产可用（v1 同口径）
-    config.aiAllowLocalUrl && config.nodeEnv !== 'production'
-      ? { guardUrl: async () => undefined }
-      : {},
+    config.aiAllowLocalUrl && config.nodeEnv !== 'production' ? { guardUrl: async () => {} } : {},
   );
   const pollGeneration = createGenerationPollUseCase({
     tasks: createPostgresGenerationTaskStore(db),
@@ -415,7 +355,12 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
     ...(config.notify.enabled ? { notify: config.notify.intervalMs } : {}),
   };
   for (const [name, run] of Object.entries(runners)) {
-    scheduler.register({ name, intervalMs: intervals[name]!, run });
+    // runner 与 interval 表装配期同源声明;缺间隔即装配缺陷,fail-fast 胜过注册 undefined 周期
+    const intervalMs = intervals[name];
+    if (intervalMs === undefined) {
+      throw new Error(`worker runner "${name}" has no interval configured`);
+    }
+    scheduler.register({ name, intervalMs, run });
   }
 
   // ---- 唤醒消费端（LISTEN 专用连接；收口挂 shutdown closeables）----

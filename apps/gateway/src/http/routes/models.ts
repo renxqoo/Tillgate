@@ -12,6 +12,50 @@ export interface ModelsReader {
   listEnabledMappings(): Promise<EnabledModelRow[]>;
 }
 
+/** Anthropic 原生列表形（anthropic-version 头探测命中） */
+function anthropicListModel(names: string[]) {
+  return {
+    data: names.map((name) => ({
+      id: name,
+      display_name: name,
+      created_at: '2026-01-01T00:00:00Z',
+      type: 'model',
+    })),
+    first_id: names[0] ?? null,
+    last_id: names.at(-1) ?? null,
+    has_more: false,
+  };
+}
+
+/** Gemini 原生列表形（x-goog-api-key 头探测命中） */
+function geminiListModel(names: string[]) {
+  return {
+    models: names.map((name) => ({
+      name: `models/${name}`,
+      displayName: name,
+      baseModelId: '',
+      description: '',
+      inputTokenLimit: 0,
+      outputTokenLimit: 0,
+      supportedGenerationMethods: ['generateContent', 'streamGenerateContent'],
+    })),
+    nextPageToken: null,
+  };
+}
+
+/** OpenAI 缺省列表形 */
+function openAiListModel(visible: EnabledModelRow[]) {
+  return {
+    object: 'list',
+    data: visible.map((m) => ({
+      id: m.externalName,
+      object: 'model',
+      owned_by: 'ai-gateway',
+      pricing_unit: m.pricingUnit,
+    })),
+  };
+}
+
 export function modelsRoutes(reader: ModelsReader): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>();
 
@@ -24,41 +68,12 @@ export function modelsRoutes(reader: ModelsReader): Hono<AuthEnv> {
     // 协议形状：Anthropic SDK（anthropic-version 头）/ Gemini SDK（x-goog-api-key 头）
     // 各自的原生列表形——OpenAI 形为缺省
     if (c.req.header('anthropic-version')) {
-      return c.json({
-        data: names.map((name) => ({
-          id: name,
-          display_name: name,
-          created_at: '2026-01-01T00:00:00Z',
-          type: 'model',
-        })),
-        first_id: names[0] ?? null,
-        last_id: names[names.length - 1] ?? null,
-        has_more: false,
-      });
+      return c.json(anthropicListModel(names));
     }
     if (c.req.header('x-goog-api-key')) {
-      return c.json({
-        models: names.map((name) => ({
-          name: `models/${name}`,
-          displayName: name,
-          baseModelId: '',
-          description: '',
-          inputTokenLimit: 0,
-          outputTokenLimit: 0,
-          supportedGenerationMethods: ['generateContent', 'streamGenerateContent'],
-        })),
-        nextPageToken: null,
-      });
+      return c.json(geminiListModel(names));
     }
-    return c.json({
-      object: 'list',
-      data: visible.map((m) => ({
-        id: m.externalName,
-        object: 'model',
-        owned_by: 'ai-gateway',
-        pricing_unit: m.pricingUnit,
-      })),
-    });
+    return c.json(openAiListModel(visible));
   });
 
   app.get('/:model', async (c) => {

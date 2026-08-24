@@ -8,6 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tillgate/observability';
 import {
+  defined,
   E2E_MODEL,
   E2EKeys,
   e2ePost,
@@ -28,7 +29,7 @@ let upstreamUrl: string;
 
 beforeAll(async () => {
   otel = initOtel({ serviceName: 'gateway', serviceVersion: 'probe', mode: 'memory' });
-  memory = otel.memory!;
+  memory = defined(otel.memory, 'otel.memory');
   world = await setupE2EWorld();
   upstreamUrl = world.upstream.url;
   gw = await startE2EGateway(world);
@@ -75,6 +76,19 @@ function dump(trace: ViewableTrace, label: string): void {
   }
 }
 
+/** trace 分组转储形状（③ 全缓冲转储——诊断打印用；提模块级避免回调深嵌套） */
+const traceGroupDump = (t: ViewableTrace): Record<string, unknown> => ({
+  traceId: t.traceId,
+  root: t.rootName,
+  n: t.spanCount,
+  names: t.spans.map((s) => s.name),
+});
+
+/** 判 trace 是否含该请求的 span（③ 同一请求应单分组断言用） */
+function traceContainsRequest(t: ViewableTrace, requestId: string): boolean {
+  return t.spans.some((s) => s.attributes['request.id'] === requestId);
+}
+
 describe('失败路径 span 树（全真装配 + mock 上游）', () => {
   it('① 流式 + 上游不可达：upstream.attempt ERROR + billing.release_and_fail，客户端 5xx', async () => {
     await retargetUpstream(world, {
@@ -89,7 +103,7 @@ describe('失败路径 span 树（全真装配 + mock 上游）', () => {
       stream: true,
       messages: [{ role: 'user', content: 'hi' }],
     });
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     const body = await res.text();
     console.log(`HTTP ${res.status} x-request-id=${requestId} body=${body.slice(0, 120)}`);
     const trace = await waitTrace(requestId, ['billing.release_and_fail']);
@@ -97,7 +111,10 @@ describe('失败路径 span 树（全真装配 + mock 上游）', () => {
     const names = trace.spans.map((s) => s.name);
     expect(names).toContain('billing.release_and_fail');
     expect(names).not.toContain('billing.settle_signal'); // 无收据不结算
-    const attempt = trace.spans.find((s) => s.name === 'upstream.attempt')!;
+    const attempt = defined(
+      trace.spans.find((s) => s.name === 'upstream.attempt'),
+      'upstream.attempt span',
+    );
     expect(attempt.attributes['upstream.ok']).toBe(false);
     expect(trace.hasError).toBe(true);
   });
@@ -115,7 +132,7 @@ describe('失败路径 span 树（全真装配 + mock 上游）', () => {
       model: E2E_MODEL,
       messages: [{ role: 'user', content: 'x' }],
     });
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     const body = await res.text();
     console.log(`HTTP ${res.status} x-request-id=${requestId} body=${body.slice(0, 120)}`);
     const trace = await waitTrace(requestId, ['billing.passthrough_4xx']);
@@ -140,37 +157,28 @@ describe('失败路径 span 树（全真装配 + mock 上游）', () => {
       { model: E2E_MODEL, stream: true, messages: [{ role: 'user', content: '讲故事' }] },
       controller.signal,
     );
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     // 读到第一帧后取消
-    const reader = res.body!.getReader();
+    const reader = defined(res.body, 'stream body').getReader();
     await reader.read();
     controller.abort();
-    await reader.cancel().catch(() => undefined);
+    await reader.cancel().catch(() => {});
     console.log(`流式已取消 x-request-id=${requestId}`);
     const trace = await waitTrace(requestId, ['billing.settle_signal']);
     dump(trace, '流式·用户取消');
     // 全缓冲转储：确认其余 span 是「未结束」还是「落在了别的 traceId 分组」
-    console.log(
-      'memory 全部 trace 分组:',
-      JSON.stringify(
-        memory.recent(50).map((t) => ({
-          traceId: t.traceId,
-          root: t.rootName,
-          n: t.spanCount,
-          names: t.spans.map((s) => s.name),
-        })),
-      ),
-    );
+    console.log('memory 全部 trace 分组:', JSON.stringify(memory.recent(50).map(traceGroupDump)));
     const names = trace.spans.map((s) => s.name);
     expect(names).toContain('billing.settle_signal'); // 取消也要结算（估算/实收）
     // 正确形状：单 traceId —— settle 与主链同一条 trace，不是孤儿
-    const groups = memory
-      .recent(50)
-      .filter((t) => t.spans.some((s) => s.attributes['request.id'] === requestId));
+    const groups = memory.recent(50).filter((t) => traceContainsRequest(t, requestId));
     expect(groups, '同一请求的 span 应落在同一个 traceId 分组').toHaveLength(1);
     const root = trace.spans.find((s) => s.name === 'POST /v1/chat/completions');
     expect(root).toBeDefined();
-    const settle = trace.spans.find((s) => s.name === 'billing.settle_signal')!;
-    expect(settle.traceId).toBe(root!.traceId);
+    const settle = defined(
+      trace.spans.find((s) => s.name === 'billing.settle_signal'),
+      'settle span',
+    );
+    expect(settle.traceId).toBe(defined(root, 'root span').traceId);
   });
 });

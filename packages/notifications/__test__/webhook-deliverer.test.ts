@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { createWebhookDeliverer } from '../src/adapters/webhook/http-deliverer';
 import type { UrlGuard } from '../src/ports/url-guard';
+import { defined } from './defined';
 
 interface FetchCall {
   url: string;
@@ -55,8 +56,9 @@ describe('createWebhookDeliverer', () => {
     });
     expect(ok).toBe(true);
     expect(calls).toHaveLength(1);
-    const headers = calls[0]!.init.headers as Record<string, string>;
-    const body = calls[0]!.init.body as string;
+    const call = defined(calls[0], 'calls[0]');
+    const headers = call.init.headers as Record<string, string>;
+    const body = call.init.body as string;
     const timestamp = headers['x-notify-timestamp'];
     // 体 = {event, timestamp, payload}(timestamp 与头一致)
     expect(JSON.parse(body)).toEqual({
@@ -72,7 +74,7 @@ describe('createWebhookDeliverer', () => {
     expect(headers['x-notify-delivery']).toBe('9:11');
     expect(headers['x-notify-event']).toBe('billing_dead');
     expect(headers['content-type']).toBe('application/json');
-    expect(calls[0]!.init.method).toBe('POST');
+    expect(call.init.method).toBe('POST');
     expect(warnings).toHaveLength(0);
   });
 
@@ -115,7 +117,7 @@ describe('createWebhookDeliverer', () => {
       guard,
       timeoutMs: 1_000,
       allowLocal: true,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
     });
     await deliverer.deliver({
       url: 'http://10.0.0.1/h',
@@ -158,7 +160,7 @@ describe('createWebhookDeliverer', () => {
       guard: permissive,
       timeoutMs: 1_000,
       allowLocal: false,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
     });
     await expect(
       deliverer.deliver({
@@ -177,7 +179,7 @@ describe('createWebhookDeliverer', () => {
       guard: permissive,
       timeoutMs: 1_000,
       allowLocal: false,
-      logger: { warn: () => undefined },
+      logger: { warn: () => {} },
     });
     await expect(
       deliverer.deliver({ url: '', secret: 's', event: 'e', payload: {}, deliveryId: '1:1' }),

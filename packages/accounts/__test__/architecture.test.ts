@@ -11,6 +11,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 
 const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 
@@ -44,8 +45,8 @@ function layerOf(path: string): SourceFile['layer'] {
 const files: SourceFile[] = walk(srcDir).map((path) => ({
   path,
   layer: layerOf(path),
-  imports: [...readFileSync(`${srcDir}/${path}`, 'utf-8').matchAll(/from\s+'([^']+)'/g)].map(
-    (m) => m[1]!,
+  imports: [...readFileSync(`${srcDir}/${path}`, 'utf-8').matchAll(/from\s+'([^']+)'/g)].map((m) =>
+    defined(m[1], 'matchAll capture group'),
   ),
 }));
 

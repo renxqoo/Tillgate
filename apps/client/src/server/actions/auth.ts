@@ -31,8 +31,8 @@ export async function loginAction(
   let body: AuthStepResult;
   try {
     body = await createClientApi().post<AuthStepResult>('/v1/auth/login', { email, password });
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : await fetchError() };
   }
   if (body.kind === 'code_required' && body.challengeId) {
     return { challengeId: body.challengeId };
@@ -56,8 +56,8 @@ export async function verifyLoginCodeAction(
       challengeId,
       code,
     });
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : await fetchError() };
   }
   await setSessionToken(body.token);
   redirect(safeNext(next));
@@ -84,8 +84,8 @@ export async function registerAction(formData: FormData): Promise<{
       ...(captchaToken ? { captchaToken } : {}),
       ...(aff ? { aff } : {}),
     });
-  } catch (e) {
-    if (e instanceof ApiError) return { error: e.message, code: e.code };
+  } catch (error) {
+    if (error instanceof ApiError) return { error: error.message, code: error.code };
     return { error: await fetchError() };
   }
   if (body.kind === 'code_required' && body.challengeId) {
@@ -111,8 +111,8 @@ export async function registerVerifyAction(
       code,
       ...(aff ? { aff } : {}),
     });
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : await fetchError() };
   }
   await setSessionToken(body.token);
   redirect('/dashboard');
@@ -142,8 +142,8 @@ export async function forgotAction(formData: FormData): Promise<{ ok?: boolean; 
   try {
     const body = await createClientApi().post<{ ok: true }>('/v1/auth/forgot', { email });
     return { ok: body.ok };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : await fetchError() };
   }
 }
 
@@ -157,8 +157,8 @@ export async function forgotResetAction(
       token,
       password,
     });
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : await fetchError() };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : await fetchError() };
   }
   return { ok: body.ok };
 }

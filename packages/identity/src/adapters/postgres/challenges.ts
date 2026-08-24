@@ -16,6 +16,84 @@ import type {
   VerifyChallengeResult,
 } from '../../ports/challenge-store.js';
 
+// 模块级:活挑战定位条件(identifier 优先;双空是域层契约违约,fail-closed 显式拒绝)
+function liveTargetWhere(input: {
+  identifier: NormalizedIdentifier | null;
+  userId: number | null;
+}) {
+  if (input.identifier != null) {
+    return and(
+      eq(identityChallenges.identifierKind, input.identifier.kind),
+      eq(identityChallenges.identifierValue, input.identifier.value),
+    );
+  }
+  if (input.userId == null) {
+    throw new Error('challenge target must carry identifier or userId');
+  }
+  return eq(identityChallenges.userId, input.userId);
+}
+
+// 模块级:锁内活挑战检查——冷却未过返回拒绝,已过则作废旧挑战(替换语义,让出部分唯一索引)
+async function abortLiveChallengeIfCooling(
+  db: DbLike,
+  input: {
+    kind: string;
+    identifier: NormalizedIdentifier | null;
+    userId: number | null;
+    cooldownMs: number;
+  },
+): Promise<{ status: 'cooldown'; retryAfterMs: number } | null> {
+  // clock_timestamp()(墙钟)而非 now()(事务起始时刻):advisory lock 等待期间
+  // 事务的 now() 停在等待前,冷却判定会拒绝本应已冷却的旧挑战(v1 注释口径)。
+  const [row] = await db
+    .select({
+      id: identityChallenges.id,
+      issuedAt: identityChallenges.issuedAt,
+      dbNow: sql<Date>`clock_timestamp()`,
+    })
+    .from(identityChallenges)
+    .where(
+      and(
+        eq(identityChallenges.kind, input.kind),
+        liveTargetWhere(input),
+        isNull(identityChallenges.consumedAt),
+        isNull(identityChallenges.abortedAt),
+      ),
+    )
+    .for('update')
+    .limit(1);
+  if (row != null) {
+    // sql<Date> 选择列不经列映射,驱动可能返回字符串——显式归一到毫秒
+    const dbNowMs = new Date(row.dbNow as string | Date).getTime();
+    const elapsedMs = dbNowMs - row.issuedAt.getTime();
+    if (elapsedMs < input.cooldownMs) {
+      return { status: 'cooldown', retryAfterMs: Math.max(0, input.cooldownMs - elapsedMs) };
+    }
+    await db
+      .update(identityChallenges)
+      .set({ abortedAt: sql`now()` })
+      .where(eq(identityChallenges.id, row.id));
+  }
+  return null;
+}
+
+// 模块级:CAS 行 → 挑战目标(identifier 优先,否则 userId)
+function storedTargetOf(row: {
+  identifierKind: string | null;
+  identifierValue: string | null;
+  userId: number | null;
+}): StoredChallengeTarget {
+  return row.identifierValue != null
+    ? {
+        identifier: {
+          kind: row.identifierKind as NormalizedIdentifier['kind'],
+          value: row.identifierValue,
+        },
+        userId: null,
+      }
+    : { identifier: null, userId: row.userId };
+}
+
 export const challengeQueries: ChallengeStore = {
   async beginChallenge(
     db: DbLike,
@@ -31,43 +109,9 @@ export const challengeQueries: ChallengeStore = {
       maxAttempts: number;
     },
   ): Promise<BeginChallengeOutcome> {
-    // 活挑战(锁内读):冷却未过 → 拒绝;已过 → 作废旧挑战(替换语义,让出部分唯一索引)。
-    // clock_timestamp()(墙钟)而非 now()(事务起始时刻):advisory lock 等待期间
-    // 事务的 now() 停在等待前,冷却判定会拒绝本应已冷却的旧挑战(v1 注释口径)。
-    const live = await db
-      .select({
-        id: identityChallenges.id,
-        issuedAt: identityChallenges.issuedAt,
-        dbNow: sql<Date>`clock_timestamp()`,
-      })
-      .from(identityChallenges)
-      .where(
-        and(
-          eq(identityChallenges.kind, input.kind),
-          input.identifier != null
-            ? and(
-                eq(identityChallenges.identifierKind, input.identifier.kind),
-                eq(identityChallenges.identifierValue, input.identifier.value),
-              )
-            : eq(identityChallenges.userId, input.userId!),
-          isNull(identityChallenges.consumedAt),
-          isNull(identityChallenges.abortedAt),
-        ),
-      )
-      .for('update')
-      .limit(1);
-    const row = live[0];
-    if (row != null) {
-      // sql<Date> 选择列不经列映射,驱动可能返回字符串——显式归一到毫秒
-      const dbNowMs = new Date(row.dbNow as string | Date).getTime();
-      const elapsedMs = dbNowMs - row.issuedAt.getTime();
-      if (elapsedMs < input.cooldownMs) {
-        return { status: 'cooldown', retryAfterMs: Math.max(0, input.cooldownMs - elapsedMs) };
-      }
-      await db
-        .update(identityChallenges)
-        .set({ abortedAt: sql`now()` })
-        .where(eq(identityChallenges.id, row.id));
+    const cooldown = await abortLiveChallengeIfCooling(db, input);
+    if (cooldown != null) {
+      return cooldown;
     }
     const inserted = await db
       .insert(identityChallenges)
@@ -84,11 +128,12 @@ export const challengeQueries: ChallengeStore = {
       })
       .onConflictDoNothing()
       .returning({ expiresAt: identityChallenges.expiresAt });
-    if (inserted.length === 0) {
+    const [insertedRow] = inserted;
+    if (insertedRow == null) {
       // 锁内已清位仍撞唯一:同键并发发码穿过 advisory lock 的理论窗口——按冷却拒绝
       return { status: 'cooldown', retryAfterMs: input.cooldownMs };
     }
-    return { status: 'inserted', expiresAt: inserted[0]!.expiresAt.toISOString() };
+    return { status: 'inserted', expiresAt: insertedRow.expiresAt.toISOString() };
   },
 
   async verifyChallenge(
@@ -121,7 +166,7 @@ export const challengeQueries: ChallengeStore = {
         userId: identityChallenges.userId,
       });
 
-    const row = rows[0];
+    const [row] = rows;
     if (row == null) {
       // 不存在 / 已消费 / 已作废 / 已过期 / 错次耗尽——统一口径,不泄露具体原因
       return { status: 'invalid' };
@@ -132,19 +177,9 @@ export const challengeQueries: ChallengeStore = {
         remainingAttempts: Math.max(0, row.maxAttempts - row.attempts),
       };
     }
-    const target: StoredChallengeTarget =
-      row.identifierValue != null
-        ? {
-            identifier: {
-              kind: row.identifierKind as NormalizedIdentifier['kind'],
-              value: row.identifierValue,
-            },
-            userId: null,
-          }
-        : { identifier: null, userId: row.userId };
     return {
       status: 'consumed',
-      target,
+      target: storedTargetOf(row),
       payload: (row.payload as Record<string, unknown> | null) ?? null,
     };
   },

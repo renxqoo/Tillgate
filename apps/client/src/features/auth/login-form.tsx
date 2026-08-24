@@ -44,6 +44,80 @@ interface LoginValues {
   password: string;
 }
 
+/**
+ * 两步登录的邮箱验证码步（模块级组件）：code 状态随本组件自持，
+ * 返回/重新进入时随卸载归零（与原「返回时清 code」语义一致）。
+ */
+function LoginCodeStep({
+  challenge,
+  next,
+  onBack,
+}: {
+  challenge: string;
+  next: string | null;
+  onBack: () => void;
+}) {
+  const t = useTranslations('auth');
+  const [pending, startTransition] = useTransition();
+  const [code, setCode] = useState('');
+
+  return (
+    <Card className="[--card-spacing:--spacing(7)] shadow-sm">
+      <CardHeader className="text-center">
+        <CardTitle className="text-2xl">{t('codeTitle')}</CardTitle>
+        <CardDescription>{t('codeSentLogin')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            startTransition(async () => {
+              const res = await verifyLoginCodeAction(challenge, code, next);
+              actionResult(res ?? {}, t('verifyFailed'));
+              // 成功会 redirect，不会回到这里
+            });
+          }}
+          className="space-y-6"
+        >
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="login-code">{t('codeLabel')}</FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <ShieldCheckIcon />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id="login-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder={t('codePlaceholder')}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  autoFocus
+                />
+              </InputGroup>
+              <FieldDescription>{t('codeNoticeLogin')}</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <Button type="submit" disabled={pending || code.length !== 6} className="h-10 w-full">
+            {pending && <Loader2Icon className="animate-spin" />}
+            {t('verifyAndLogin')}
+          </Button>
+          <button
+            type="button"
+            className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+            onClick={onBack}
+          >
+            {t('backToLogin')}
+          </button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function LoginForm({
   next,
   oauthOptions = [],
@@ -57,7 +131,6 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false);
   // 两步登录：第一步通过后进入邮箱验证码步（capabilities.emailCodeRequired）
   const [challenge, setChallenge] = useState<string | null>(null);
-  const [code, setCode] = useState('');
 
   const loginSchema = z.object({
     email: z.string().email(t('invalidEmail')),
@@ -81,64 +154,7 @@ export function LoginForm({
   }
 
   if (challenge) {
-    return (
-      <Card className="[--card-spacing:--spacing(7)] shadow-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">{t('codeTitle')}</CardTitle>
-          <CardDescription>{t('codeSentLogin')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            noValidate
-            onSubmit={(e) => {
-              e.preventDefault();
-              startTransition(async () => {
-                const res = await verifyLoginCodeAction(challenge, code, next);
-                actionResult(res ?? {}, t('verifyFailed'));
-                // 成功会 redirect，不会回到这里
-              });
-            }}
-            className="space-y-6"
-          >
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="login-code">{t('codeLabel')}</FieldLabel>
-                <InputGroup>
-                  <InputGroupAddon>
-                    <ShieldCheckIcon />
-                  </InputGroupAddon>
-                  <InputGroupInput
-                    id="login-code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    placeholder={t('codePlaceholder')}
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    autoFocus
-                  />
-                </InputGroup>
-                <FieldDescription>{t('codeNoticeLogin')}</FieldDescription>
-              </Field>
-            </FieldGroup>
-            <Button type="submit" disabled={pending || code.length !== 6} className="h-10 w-full">
-              {pending && <Loader2Icon className="animate-spin" />}
-              {t('verifyAndLogin')}
-            </Button>
-            <button
-              type="button"
-              className="w-full text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
-              onClick={() => {
-                setChallenge(null);
-                setCode('');
-              }}
-            >
-              {t('backToLogin')}
-            </button>
-          </form>
-        </CardContent>
-      </Card>
-    );
+    return <LoginCodeStep challenge={challenge} next={next} onBack={() => setChallenge(null)} />;
   }
 
   return (

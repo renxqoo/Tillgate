@@ -12,6 +12,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
+import { defined } from './defined.js';
 import {
   apiKeys,
   apps,
@@ -155,7 +156,7 @@ function realHarness(db: Db): TestHarness {
         allowSeats: true,
       })
       .returning({ id: plans.id });
-    const plan = planRows[0]!;
+    const plan = defined(planRows[0], 'planRows[0]');
     await db.insert(userSubscriptions).values({
       userId: owner.id,
       planId: plan.id,
@@ -171,7 +172,7 @@ function realHarness(db: Db): TestHarness {
 
   beforeAll(async () => {
     db = createDb({
-      url: url!,
+      url: defined(url, 'DB_TEST_URL'),
       poolMax: 8,
       idleTimeoutMillis: 5_000,
       connectionTimeoutMillis: 5_000,
@@ -210,7 +211,9 @@ function realHarness(db: Db): TestHarness {
     const u = await api().provisionLocalAccount({
       email: `audit-${Math.random().toString(36).slice(2)}@x.io`,
     });
-    await new Promise((r) => setTimeout(r, 5)); // 让 updatedAt 有可分辨的时差
+    await new Promise((r) => {
+      setTimeout(r, 5); // 让 updatedAt 有可分辨的时差
+    });
     const banned = await api().adminPatchUser({ userId: u.id, patch: { status: 1 }, adminId: 42 });
     expect(banned.freezeReason).toBe('管理员封禁');
     const rows = await db
@@ -246,17 +249,20 @@ function realHarness(db: Db): TestHarness {
       email: `key-${Math.random().toString(36).slice(2)}@x.io`,
     });
     const created = await api().createKey({ userId: u.id, name: 'k', rpmLimit: 7 });
-    expect((await api().resolveKeyByHash(sha256Hex(created.plaintext)))!.rpmLimit).toBe(7);
+    expect(
+      defined(await api().resolveKeyByHash(sha256Hex(created.plaintext)), 'resolveKeyByHash')
+        .rpmLimit,
+    ).toBe(7);
 
     const rotated = await api().rotateKey({ userId: u.id, keyId: created.key.id });
     expect(await api().resolveKeyByHash(sha256Hex(created.plaintext))).toBeNull();
-    expect((await api().resolveKeyByHash(sha256Hex(rotated.plaintext)))!.keyId).toBe(
-      rotated.key.id,
-    );
+    expect(
+      defined(await api().resolveKeyByHash(sha256Hex(rotated.plaintext)), 'resolveKeyByHash').keyId,
+    ).toBe(rotated.key.id);
     // 两行并存:旧行 status=1 + revokedAt
     const oldRow = await db.select().from(apiKeys).where(eq(apiKeys.id, created.key.id));
-    expect(oldRow[0]!.status).toBe(1);
-    expect(oldRow[0]!.revokedAt).not.toBeNull();
+    expect(defined(oldRow[0], 'oldRow[0]').status).toBe(1);
+    expect(defined(oldRow[0], 'oldRow[0]').revokedAt).not.toBeNull();
   });
 
   it('席位串行化:quantity=2(owner 占 1)两个并发接受恰好一个成功(FOR UPDATE 复检)', async () => {
@@ -270,12 +276,12 @@ function realHarness(db: Db): TestHarness {
     const i1 = await api().inviteMember({
       orgId: org.id,
       operatorUserId: owner.id,
-      email: m1.email!,
+      email: defined(m1.email, 'm1.email'),
     });
     const i2 = await api().inviteMember({
       orgId: org.id,
       operatorUserId: owner.id,
-      email: m2.email!,
+      email: defined(m2.email, 'm2.email'),
     });
 
     const [r1, r2] = await Promise.allSettled([
@@ -298,7 +304,7 @@ function realHarness(db: Db): TestHarness {
     const inv1 = await api().inviteMember({
       orgId: org.id,
       operatorUserId: owner.id,
-      email: m.email!,
+      email: defined(m.email, 'm.email'),
     });
     await api().acceptInvitation({ token: inv1.token, acceptorUserId: m.id });
     await api().removeMember({ orgId: org.id, operatorUserId: owner.id, memberUserId: m.id });
@@ -306,13 +312,13 @@ function realHarness(db: Db): TestHarness {
     const inv2 = await api().inviteMember({
       orgId: org.id,
       operatorUserId: owner.id,
-      email: m.email!,
+      email: defined(m.email, 'm.email'),
     });
     await api().acceptInvitation({ token: inv2.token, acceptorUserId: m.id });
     const rows = await db.select().from(orgMembers).where(eq(orgMembers.orgId, org.id));
     const mine = rows.filter((r) => r.userId === m.id);
     expect(mine).toHaveLength(1); // 未新增行
-    expect(mine[0]!.status).toBe(0); // 复活
+    expect(defined(mine[0], 'mine[0]').status).toBe(0); // 复活
   });
 
   it('ilike 转义:q="100%" 只命中字面含 100% 的行,不通配匹配一切', async () => {
@@ -326,7 +332,7 @@ function realHarness(db: Db): TestHarness {
     await api().provisionLocalAccount({ email: `pct-b-${suffix}@x.io` });
     const result = await api().adminListUsers({ q: `100%-${suffix}` });
     expect(result.total).toBe(1);
-    expect(result.rows[0]!.id).toBe(literal[0]!.id);
+    expect(defined(result.rows[0], 'result.rows[0]').id).toBe(defined(literal[0], 'literal[0]').id);
   });
 
   it('营销参数 upsert 单往返(B7):部分更新保留其余字段并返回全量', async () => {
@@ -349,10 +355,13 @@ function realHarness(db: Db): TestHarness {
     });
     const created = await api().createApp({ userId: u.id, name: 'a', scope: { rpm: 5 } });
     expect(
-      (await api().verifyAppClient({
-        clientId: created.app.clientId,
-        clientSecret: created.clientSecret,
-      }))!.appId,
+      defined(
+        await api().verifyAppClient({
+          clientId: created.app.clientId,
+          clientSecret: created.clientSecret,
+        }),
+        'verifyAppClient',
+      ).appId,
     ).toBe(created.app.appId);
     const rotated = await api().rotateAppSecret({ userId: u.id, appId: created.app.id });
     expect(
@@ -362,13 +371,16 @@ function realHarness(db: Db): TestHarness {
       }),
     ).toBeNull();
     expect(
-      (await api().verifyAppClient({
-        clientId: created.app.clientId,
-        clientSecret: rotated.clientSecret,
-      }))!.appId,
+      defined(
+        await api().verifyAppClient({
+          clientId: created.app.clientId,
+          clientSecret: rotated.clientSecret,
+        }),
+        'verifyAppClient',
+      ).appId,
     ).toBe(created.app.appId);
     const rows = await db.select().from(apps).where(eq(apps.id, created.app.id));
-    expect(rows[0]!.rotatedAt).not.toBeNull();
+    expect(defined(rows[0], 'rows[0]').rotatedAt).not.toBeNull();
   });
 
   it('订阅换绑:旧订阅上的 Key/App 批量改绑新订阅', async () => {
@@ -377,7 +389,7 @@ function realHarness(db: Db): TestHarness {
       .select()
       .from(userSubscriptions)
       .where(eq(userSubscriptions.orgId, org.id));
-    const oldSub = subs[0]!;
+    const oldSub = defined(subs[0], 'subs[0]');
     const created = await api().createKey({
       userId: owner.id,
       name: 'k',
@@ -397,14 +409,14 @@ function realHarness(db: Db): TestHarness {
         status: 1,
       })
       .returning({ id: userSubscriptions.id });
-    const newSub = newSubRows[0]!;
+    const newSub = defined(newSubRows[0], 'newSubRows[0]');
     const result = await api().rebindSubscription({
       fromSubscriptionId: oldSub.id,
       toSubscriptionId: newSub.id,
     });
     expect(result.keys).toBe(1);
     const row = await db.select().from(apiKeys).where(eq(apiKeys.id, created.key.id));
-    expect(row[0]!.subscriptionId).toBe(newSub.id);
+    expect(defined(row[0], 'row[0]').subscriptionId).toBe(newSub.id);
   });
 
   it('钱包入账经替身桥接(生产为 billing):applyReferral 单事务双侧同生共死在真库回滚', async () => {

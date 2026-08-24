@@ -4,14 +4,24 @@
  * off 模式 no-op（observability initOtel 契约）。
  */
 import type { MiddlewareHandler } from 'hono';
-import { context, getTracer, trace, SpanStatusCode } from '@tillgate/observability';
-import type { AuthEnv } from './api-key';
+import { context, getTracer, trace, SpanStatusCode, type Span } from '@tillgate/observability';
+import type { AuthContext, AuthEnv } from './api-key';
 
 const SKIPPED = new Set(['/healthz', '/readyz', '/livez']);
 
+/** 请求后观察回填：状态码 + 鉴权属性 + ≥5xx 置 ERROR（观察面旁路，不碰数据面） */
+function observeResponse(span: Span | undefined, auth: AuthContext | undefined, status: number) {
+  span?.setAttribute('http.status_code', status);
+  if (auth != null) {
+    span?.setAttribute('user.id', auth.userId);
+    if (auth.apiKeyId != null) span?.setAttribute('api_key.id', auth.apiKeyId);
+  }
+  if (status >= 500) span?.setStatus({ code: SpanStatusCode.ERROR });
+}
+
 export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
   return async (c, next) => {
-    const path = c.req.path;
+    const { path } = c.req;
     if (SKIPPED.has(path)) {
       await next();
       return;
@@ -27,14 +37,7 @@ export function otelMiddleware(): MiddlewareHandler<AuthEnv> {
         if (requestId != null) span?.setAttribute('request.id', requestId);
         try {
           await next();
-          const status = c.res?.status ?? 0;
-          span?.setAttribute('http.status_code', status);
-          const auth = c.get('auth');
-          if (auth != null) {
-            span?.setAttribute('user.id', auth.userId);
-            if (auth.apiKeyId != null) span?.setAttribute('api_key.id', auth.apiKeyId);
-          }
-          if (status >= 500) span?.setStatus({ code: SpanStatusCode.ERROR });
+          observeResponse(span, c.get('auth'), c.res?.status ?? 0);
         } catch (error) {
           span?.setStatus({ code: SpanStatusCode.ERROR, message: String(error) });
           throw error;

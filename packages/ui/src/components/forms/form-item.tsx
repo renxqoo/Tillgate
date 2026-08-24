@@ -29,7 +29,9 @@ export type FormItemProps = React.ComponentProps<typeof Field> & {
   disabled?: boolean;
 };
 
-type FormItemContextValue = { id: string };
+interface FormItemContextValue {
+  id: string;
+}
 
 export const FormItemContext = React.createContext<FormItemContextValue | null>(null);
 

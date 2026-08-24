@@ -33,7 +33,7 @@ export function assertInternalCode(guards: WalletGuards, code: string): void {
 
 /** refId 契约：1-128 可见字符（幂等键是调用方设计责任，空/超长即拒绝） */
 export function assertRefId(refId: string): void {
-  if (refId.length < 1 || refId.length > 128) {
+  if (refId.length === 0 || refId.length > 128) {
     throw BillingErrors.business('invalid_ref', { reason: 'invalid_ref_id', length: refId.length });
   }
 }

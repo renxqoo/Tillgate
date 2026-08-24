@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '../primitives/dialog';
 
-export type FormDialogProps = {
+export interface FormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: React.ReactNode;
@@ -30,7 +30,7 @@ export type FormDialogProps = {
   children: React.ReactNode;
   contentClassName?: string;
   onError?: (error: unknown) => void;
-};
+}
 
 export function FormDialog({
   open,

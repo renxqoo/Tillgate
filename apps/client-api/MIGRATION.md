@@ -33,7 +33,7 @@
 
 | 旧文件                                            | 裁决      | 动作                                                                                    |
 | ------------------------------------------------- | --------- | --------------------------------------------------------------------------------------- |
-| index/config/shutdown/app/middleware×3            | 重构      | 按 trace-receiver/gateway 范式重写；安全件改用 @tillgate/http                          |
+| index/config/shutdown/app/middleware×3            | 重构      | 按 trace-receiver/gateway 范式重写；安全件改用 @tillgate/http                           |
 | http/error-map.ts                                 | 重写      | error-face.ts（catalog + override；instanceof 表禁入）                                  |
 | routes/*.ts（14）                                 | 复制+微修 | zod 拆入 contracts/；RunContext 删除（facade 直收窄参）；呈现入 presenters/             |
 | services/*.ts（15）                               | 不移植    | 语义已在能力包（IMPLEMENTATION §3 映射表）                                              |

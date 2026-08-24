@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import type { Inference } from '@tillgate/inference';
 import { conservativeInputTokenUpperBound } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
+import { toInferenceInput } from './inference-input';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';
 import { encodeDelivered } from '../openai-envelope';
@@ -30,6 +31,36 @@ function invalidBody(json: (b: unknown, s: 400) => Response, issues: { message?:
   );
 }
 
+/** 端点入站解码：codec 端点外部体 → 规范形；非规范形 chat 的端点族强制非流式 */
+function toCanonicalBody(
+  endpoint: InferenceEndpoint,
+  parsed: Record<string, unknown>,
+  externalModel: string,
+): Record<string, unknown> {
+  // codec 端点：外部体 → 规范形（估算/计费/上游全用规范形）
+  const canonical = endpoint.codec
+    ? endpoint.codec.decodeRequest(parsed, externalModel)
+    : { ...parsed };
+  if (endpoint.kind !== 'chat' && endpoint.codec === undefined) {
+    canonical.stream = false; // 非规范形 chat 的端点族无流式（embeddings/模态 JSON 族）
+  }
+  return canonical;
+}
+
+/** 出站编码选项：codec 端点带上双向翻译，规范形端点透传 */
+function encodeOptionsOf(endpoint: InferenceEndpoint, model: string, requestId: string) {
+  return {
+    ...(endpoint.codec != null
+      ? {
+          encodeResponse: endpoint.codec.encodeResponse,
+          encodeStream: endpoint.codec.encodeStream,
+        }
+      : {}),
+    model,
+    requestId,
+  };
+}
+
 /** 限流准入 + 推理调用（chat/stream 分派）；失败释放 TPM 预占（零上游执行） */
 export function inferenceRoutes(
   deps: InferenceRouteDeps,
@@ -43,13 +74,7 @@ export function inferenceRoutes(
     const auth = c.get('auth');
     const requestId = c.get('requestId');
     const externalModel = (parsed.data as { model: string }).model;
-    // codec 端点：外部体 → 规范形（估算/计费/上游全用规范形）
-    const canonical = endpoint.codec
-      ? endpoint.codec.decodeRequest(parsed.data, externalModel)
-      : { ...parsed.data };
-    if (endpoint.kind !== 'chat' && endpoint.codec === undefined) {
-      canonical.stream = false; // 非规范形 chat 的端点族无流式（embeddings/模态 JSON 族）
-    }
+    const canonical = toCanonicalBody(endpoint, parsed.data, externalModel);
 
     const admit = await admitRequest(deps.rateLimit, {
       requestId,
@@ -57,31 +82,21 @@ export function inferenceRoutes(
       estimatedTokens: conservativeInputTokenUpperBound(canonical),
     });
     try {
-      const input = {
+      const input = toInferenceInput({
         requestId,
-        auth: {
-          userId: auth.userId,
-          apiKeyId: auth.apiKeyId,
-          appId: auth.appId,
-          allowedModels: auth.allowedModels,
-        },
+        auth,
         body: canonical,
         endpoint: endpoint.kind,
-      };
+      });
       const result =
         canonical.stream === true
           ? await deps.inference.stream(input)
           : await deps.inference.chat(input);
-      return await encodeDelivered(c.json.bind(c), result, {
-        ...(endpoint.codec != null
-          ? {
-              encodeResponse: endpoint.codec.encodeResponse,
-              encodeStream: endpoint.codec.encodeStream,
-            }
-          : {}),
-        model: externalModel,
-        requestId,
-      });
+      return await encodeDelivered(
+        c.json.bind(c),
+        result,
+        encodeOptionsOf(endpoint, externalModel, requestId),
+      );
     } catch (error) {
       // 零上游执行的失败（鉴权后异常/目录未命中/预算拒绝）归还 TPM 预占——宁可归还
       // 也不过度占用窗口（成功路径由结算 backfill 归还，失败路径 TTL 兜底）
@@ -115,27 +130,14 @@ export function enginesAliasRoutes(
       estimatedTokens: conservativeInputTokenUpperBound(canonical),
     });
     try {
-      const result = await deps.inference.chat({
-        requestId,
-        auth: {
-          userId: auth.userId,
-          apiKeyId: auth.apiKeyId,
-          appId: auth.appId,
-          allowedModels: auth.allowedModels,
-        },
-        body: canonical,
-        endpoint: endpoint.kind,
-      });
-      return await encodeDelivered(c.json.bind(c), result, {
-        ...(endpoint.codec != null
-          ? {
-              encodeResponse: endpoint.codec.encodeResponse,
-              encodeStream: endpoint.codec.encodeStream,
-            }
-          : {}),
-        model: (canonical as unknown as { model: string }).model,
-        requestId,
-      });
+      const result = await deps.inference.chat(
+        toInferenceInput({ requestId, auth, body: canonical, endpoint: endpoint.kind }),
+      );
+      return await encodeDelivered(
+        c.json.bind(c),
+        result,
+        encodeOptionsOf(endpoint, (canonical as unknown as { model: string }).model, requestId),
+      );
     } catch (error) {
       await admit.release();
       throw error;

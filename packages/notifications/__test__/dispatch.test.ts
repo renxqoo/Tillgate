@@ -16,6 +16,7 @@ import {
 } from './memory';
 import { createNotifications } from '../src/notifications';
 import type { MemoryNotifyStore } from './memory';
+import { defined } from './defined';
 
 const enc = (plain: string) => fakeCipher().encrypt(plain);
 
@@ -41,7 +42,7 @@ describe('无订阅渠道', () => {
     memory.seedOutbox({ event: 'parity_probe_unsubscribed', payload: { discrepancies: 1 } });
     const result = await facade.dispatchOnce();
     expect(memory.pendingRows()).toHaveLength(0);
-    const row = memory.outboxRow(1)!;
+    const row = defined(memory.outboxRow(1), 'outbox');
     expect(row.sentAt).not.toBeNull();
     expect(deliverer.calls).toHaveLength(0);
     expect(result).toEqual({ sent: 0, failed: 0 });
@@ -57,10 +58,10 @@ describe('无订阅渠道', () => {
       status: 0,
     });
     const id = memory.seedOutbox({ event: 'probe_done' });
-    memory.outboxRow(id)!.deliveredChannelIds = [1];
+    defined(memory.outboxRow(id), 'outbox').deliveredChannelIds = [1];
     await facade.dispatchOnce();
     expect(deliverer.calls).toHaveLength(0); // 唯一渠道已成功 → 无目标 → 终态化
-    expect(memory.outboxRow(id)!.sentAt).not.toBeNull();
+    expect(defined(memory.outboxRow(id), 'outbox').sentAt).not.toBeNull();
   });
 });
 
@@ -84,7 +85,7 @@ describe('webhook 投递', () => {
       event: 'billing_dead',
       deliveryId: `${id}:1`,
     });
-    const row = memory.outboxRow(id)!;
+    const row = defined(memory.outboxRow(id), 'outbox');
     expect(row.sentAt).not.toBeNull();
     expect(row.deliveredChannelIds).toEqual([1]);
   });
@@ -101,7 +102,7 @@ describe('webhook 投递', () => {
     const id = memory.seedOutbox({ event: 'billing_dead' });
     const result = await facade.dispatchOnce({ ownerId: 'w1' });
     expect(result).toEqual({ sent: 0, failed: 1 });
-    const row = memory.outboxRow(id)!;
+    const row = defined(memory.outboxRow(id), 'outbox');
     expect(row.sentAt).toBeNull();
     expect(row.attempts).toBe(1);
     expect(row.lastError).toBe('delivery failed');
@@ -125,12 +126,12 @@ describe('webhook 投递', () => {
     await facade.dispatchOnce({ ownerId: 'w1' }); // attempts 1,退避 15s
     memory.state.now += 15_001;
     await facade.dispatchOnce({ ownerId: 'w2' }); // attempts 2,退避 30s
-    expect(memory.outboxRow(id)!.attempts).toBe(2);
-    expect(memory.outboxRow(id)!.nextAttemptAt).toBe(memory.state.now + 30_000);
+    expect(defined(memory.outboxRow(id), 'outbox').attempts).toBe(2);
+    expect(defined(memory.outboxRow(id), 'outbox').nextAttemptAt).toBe(memory.state.now + 30_000);
     memory.state.now += 30_001;
     const result = await facade.dispatchOnce({ ownerId: 'w3' }); // attempts 3 = 上限 → 终态
     expect(result).toEqual({ sent: 0, failed: 1 });
-    const row = memory.outboxRow(id)!;
+    const row = defined(memory.outboxRow(id), 'outbox');
     expect(row.sentAt).not.toBeNull(); // 终态不再扫描
     expect(row.attempts).toBe(3);
     memory.state.now += 60_001;
@@ -151,7 +152,7 @@ describe('webhook 投递', () => {
     const result = await facade.dispatchOnce({ ownerId: 'w1' });
     expect(result).toEqual({ sent: 0, failed: 1 });
     expect(deliverer.calls).toHaveLength(0);
-    expect(memory.outboxRow(id)!.attempts).toBe(1);
+    expect(defined(memory.outboxRow(id), 'outbox').attempts).toBe(1);
   });
 
   it('损坏密文解密抛错 fail-closed', async () => {
@@ -216,7 +217,7 @@ describe('email 投递', () => {
       expect(mail.subject).toBe('[AI Gateway] 告警：balance_low');
       expect(mail.text).toContain('"userId": 7');
     }
-    expect(memory.outboxRow(id)!.sentAt).not.toBeNull();
+    expect(defined(memory.outboxRow(id), 'outbox').sentAt).not.toBeNull();
   });
 
   it('recipients 混入非字符串被过滤;全垃圾则 fail-closed', async () => {
@@ -288,7 +289,7 @@ describe('租约与循环边界', () => {
     expect(result).toEqual({ sent: 0, failed: 0 }); // 计数零(行待重领)
     expect(warnings).toHaveLength(1); // 过期告警一次
     expect(warnings[0]).toMatchObject({ outboxId: id, ownerId: 'w1' });
-    const row = memory.outboxRow(id)!;
+    const row = defined(memory.outboxRow(id), 'outbox');
     expect(row.sentAt).toBeNull();
     expect(row.attempts).toBe(0); // 终态 CAS 未生效
     expect(row.deliveredChannelIds).toEqual([]); // 进度 CAS 未生效

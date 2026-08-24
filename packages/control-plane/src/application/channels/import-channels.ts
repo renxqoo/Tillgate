@@ -49,6 +49,7 @@ export interface ImportChannelsResult {
   readonly details: ImportChannelDetail[];
 }
 
+// eslint-disable-next-line max-lines-per-function -- 批量导入编排:逐行 find-or-create 循环
 export async function importChannels(
   deps: ImportChannelsDeps,
   input: ImportChannelsInput,
@@ -96,13 +97,13 @@ export async function importChannels(
       });
       success += 1;
       details.push({ index, ok: true, channelId: created.id, name: item.name });
-    } catch (e) {
+    } catch (error) {
       // 单条失败不裸漏 PG 内部：业务错误用目录文案，唯一冲突给同名义，其余统一收口
       details.push({
         index,
         ok: false,
         name: raw.name,
-        error: importItemErrorMessage(e),
+        error: importItemErrorMessage(error),
       });
     }
   }

@@ -60,6 +60,7 @@ export interface ClientApiDeps {
   readonly referrals: ReferralsDeps;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 应用装配:错误处理/中间件栈/路由挂载线性平铺(存量棘轮)
 export function createClientApiApp(deps: ClientApiDeps): Hono<SessionEnv> {
   const app = new Hono<SessionEnv>();
   const session = sessionMiddleware(deps.validateSession);

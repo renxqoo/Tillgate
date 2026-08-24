@@ -3,6 +3,7 @@
  * 会换代模块注册表,与错误面渲染测试互不污染）。
  */
 import { describe, expect, it, vi } from 'vitest';
+import { defined } from './defined.js';
 
 describe('smtp-admin-mailer（装配面传输件）', () => {
   it('三要素构建传输;sendLoginCode 渲染模板经 nodemailer 发送（465=secure）', async () => {
@@ -18,20 +19,26 @@ describe('smtp-admin-mailer（装配面传输件）', () => {
     vi.doMock('nodemailer', () => ({ default: { createTransport }, createTransport }));
     vi.resetModules();
     const { createSmtpAdminMailer } = await import('../src/adapters/smtp-admin-mailer');
-    const mailer = createSmtpAdminMailer(
-      { host: 'smtp.example', port: 465, user: 'ops', pass: 'p', from: 'no-reply@tillgate.dev' },
-      {
+    const mailer = createSmtpAdminMailer({
+      config: {
+        host: 'smtp.example',
+        port: 465,
+        user: 'ops',
+        pass: 'p',
+        from: 'no-reply@tillgate.dev',
+      },
+      brand: {
         brand: 'Tillgate 管理后台',
         brandEn: 'Tillgate Admin',
         brandSub: 'TILLGATE · ADMIN CONSOLE',
       },
-      { ttlMinutes: 5, maxAttempts: 5 },
-      () => new Date(0),
-    );
+      emailParams: { ttlMinutes: 5, maxAttempts: 5 },
+      now: () => new Date(0),
+    });
     await mailer.sendLoginCode('ops@tillgate.dev', '123456', { ip: '1.2.3.4', locale: 'zh' });
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ from: 'no-reply@tillgate.dev', to: 'ops@tillgate.dev' });
-    expect(String(sent[0]!.subject).length).toBeGreaterThan(0);
-    expect(String(sent[0]!.html)).toContain('123456');
+    expect(String(defined(sent[0], 'sent[0]').subject).length).toBeGreaterThan(0);
+    expect(String(defined(sent[0], 'sent[0]').html)).toContain('123456');
   });
 });

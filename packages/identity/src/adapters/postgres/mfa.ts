@@ -23,7 +23,7 @@ export const mfaQueries: MfaStore = {
       .from(identityTotp)
       .where(eq(identityTotp.userId, userId))
       .limit(1);
-    const row = rows[0];
+    const [row] = rows;
     return row ? { ...row, confirmedAt: row.confirmedAt?.toISOString() ?? null } : null;
   },
 

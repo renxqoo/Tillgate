@@ -4,7 +4,7 @@
  */
 import type { BillingConfig } from '@tillgate/control-plane';
 import { normalizeAmount } from '@tillgate/billing';
-import { iso } from '../contracts/common';
+import { iso, isoRequired } from '../contracts/common';
 
 export interface ModelRowSource {
   readonly id: number;
@@ -50,8 +50,8 @@ export function toModelWireRow(row: ModelRowSource, channelIds: readonly number[
     tpmLimit: row.tpmLimit,
     status: row.status,
     deletedAt: iso(row.deletedAt),
-    createdAt: iso(row.createdAt)!,
-    updatedAt: iso(row.updatedAt)!,
+    createdAt: isoRequired(row.createdAt),
+    updatedAt: isoRequired(row.updatedAt),
     channelIds: [...channelIds],
   };
 }

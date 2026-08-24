@@ -18,7 +18,8 @@ const count = (s: string, needle: string) => s.split(needle).length - 1;
 
 describe('RBAC 行操作按钮权限显隐', () => {
   it('角色管理：编辑弹窗+菜单项挂 canUpdate,删除项挂 canDelete;皆无则占位 —', () => {
-    const s = src(feature('roles-content.tsx'));
+    // 目录化拆分后行操作住 index.tsx(见 rule/component-split.md)
+    const s = src(join(feature('roles-content'), 'index.tsx'));
     // 弹窗渲染 + 菜单项两处守卫
     expect(count(s, '{canUpdate && (')).toBe(2);
     expect(count(s, '{canDelete && (')).toBe(1);
@@ -26,7 +27,7 @@ describe('RBAC 行操作按钮权限显隐', () => {
   });
 
   it('权限资源：编辑弹窗+菜单项挂 canUpdate,删除项挂 canDelete（子节点预检在内层）', () => {
-    const s = src(feature('permissions-content.tsx'));
+    const s = src(join(feature('permissions-content'), 'index.tsx'));
     expect(count(s, '{canUpdate && (')).toBe(2);
     expect(count(s, '{canDelete && (')).toBe(1);
     expect(s).toContain('disabled={hasChildren}');
@@ -34,7 +35,7 @@ describe('RBAC 行操作按钮权限显隐', () => {
   });
 
   it('接口绑定：编辑弹窗+菜单项挂 canUpdate,解绑项挂 canDelete;皆无则占位 —', () => {
-    const s = src(feature('bindings-content.tsx'));
+    const s = src(join(feature('bindings-content'), 'index.tsx'));
     expect(count(s, 'canUpdate && editing?.id === row.id')).toBe(1);
     expect(count(s, '{canUpdate && (')).toBe(1);
     expect(count(s, '{canDelete && (')).toBe(1);

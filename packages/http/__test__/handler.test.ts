@@ -132,7 +132,7 @@ describe('errorHandler：Hono HTTPException 4xx 保留状态码（不兜 500）'
 function fakeSqlState(err: unknown): string | null {
   let cur: unknown = err;
   while (cur != null && typeof cur === 'object') {
-    const code = (cur as { code?: unknown }).code;
+    const { code } = cur as { code?: unknown };
     if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
     cur = (cur as { cause?: unknown }).cause;
   }

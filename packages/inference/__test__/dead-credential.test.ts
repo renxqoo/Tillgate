@@ -47,7 +47,7 @@ describe('health/dead-credential：连续计数状态机（v1 迁移；C3 单阈
   });
 
   it('成功自愈：invalid → valid、计数清零（凭据恢复或人工换 Key）', async () => {
-    let now = 1_000_000;
+    const now = 1_000_000;
     const store = createMemoryHealthStore(() => now);
     const tracker = trackerOf(store, () => now);
     for (let i = 0; i < 3; i++) await tracker.recordFailure({ deadCredential: true });

@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { defined } from './defined';
 import { installNextStubs, mockFetch, type FetchCall } from './harness';
 
 async function loadModule(path: string, responses: Array<{ status?: number; body?: unknown }>) {
@@ -16,7 +17,7 @@ async function loadModule(path: string, responses: Array<{ status?: number; body
 }
 
 function last(calls: FetchCall[]): FetchCall {
-  return calls[calls.length - 1]!;
+  return defined(calls.at(-1), 'last fetch call');
 }
 
 beforeEach(() => {

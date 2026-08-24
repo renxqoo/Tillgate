@@ -60,6 +60,6 @@ const REGISTRY: Record<string, LucideIcon> = {
 };
 
 /** 图标名 → 组件;未知名兜底（DB 任意字符串不炸渲染） */
-export function menuIconOf(name: string | null | undefined): LucideIcon {
+export function menuIconOf(name?: string | null | undefined): LucideIcon {
   return (name != null && REGISTRY[name]) || ChartBar;
 }

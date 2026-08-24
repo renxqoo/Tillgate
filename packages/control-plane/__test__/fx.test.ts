@@ -3,6 +3,7 @@
  * 冷启动懒拉 / TTL 跳过 / force 绕过 / 点差不叠覆盖 / 覆盖冻结与清除 / 校验拒绝 / 拉取失败降级。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { fxState } from '../src/application/fx/fx-state';
 import { refreshFx } from '../src/application/fx/refresh-fx';
 import { setFxOverride } from '../src/application/fx/set-fx-override';
@@ -50,7 +51,7 @@ describe('fx 状态与懒拉', () => {
     });
     expect(calls.n).toBe(1);
     expect(fx.rates.at(-1)).toMatchObject({ rate: '7.21', source: 'ecb', mode: 'auto' });
-    expect(s1.fxRateId).toBe(fx.rates.at(-1)!.id);
+    expect(s1.fxRateId).toBe(defined(fx.rates.at(-1)).id);
 
     // TTL 内第二次 state 不再拉；非强制 refresh 同样早退
     await fxState(deps);

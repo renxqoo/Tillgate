@@ -5,13 +5,7 @@
  */
 
 // ---- 三性根类与传播注记 ----
-export {
-  TillgateError,
-  BusinessError,
-  InfrastructureError,
-  DefectError,
-  annotate,
-} from './nature';
+export { TillgateError, BusinessError, InfrastructureError, DefectError, annotate } from './nature';
 export type {
   ErrorNature,
   ErrorContext,

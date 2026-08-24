@@ -4,6 +4,7 @@
  * 每个断言对应一个真实并发窗口(v1 语义:0 行 = 状态已变,按冲突表达)。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined.js';
 import { createAccountUseCases } from '../src/application/create-use-cases.js';
 import { createTestHarness, type TestHarness } from '../src/testing/harness.js';
 import type { AccountStorePort } from '../src/ports/account-store.js';
@@ -261,9 +262,9 @@ describe('清理分支与异常形状', () => {
     await h.api.createKey({ userId: owner.id, name: 'b' });
     await h.api.createKey({ userId: owner.id, name: 'a' });
     const asc = await h.api.adminListKeys({ sort: 'name', order: 'asc' });
-    expect(asc.rows[0]!.name).toBe('a');
+    expect(defined(asc.rows[0], 'asc.rows[0]').name).toBe('a');
     const desc = await h.api.adminListKeys({ sort: 'name', order: 'desc' });
-    expect(desc.rows[0]!.name).toBe('b');
+    expect(defined(desc.rows[0], 'desc.rows[0]').name).toBe('b');
   });
 
   it('onboarding:非 Error 形状的失败 → code unknown(不抛)', async () => {

@@ -33,6 +33,20 @@ function listDirs(glob: string): string[] {
     .map((e) => join(base, e.name));
 }
 
+/** 从 package.json 三类依赖字段收集 @tillgate/* 依赖 */
+function internalDepsOf(pkg: Record<string, unknown>): Set<string> {
+  const internalDeps = new Set<string>();
+  for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+    const deps = pkg[field];
+    if (deps != null && typeof deps === 'object') {
+      for (const dep of Object.keys(deps as Record<string, unknown>)) {
+        if (dep.startsWith('@tillgate/')) internalDeps.add(dep);
+      }
+    }
+  }
+  return internalDeps;
+}
+
 const workspaceDirs = [...listDirs('packages/*'), ...listDirs('apps/*')];
 const workspaces: Workspace[] = [];
 const byName = new Map<string, Workspace>();
@@ -49,15 +63,7 @@ for (const dir of workspaceDirs) {
   } else if (exp != null && typeof exp === 'object') {
     for (const key of Object.keys(exp as Record<string, unknown>)) exports.add(key);
   }
-  const internalDeps = new Set<string>();
-  for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
-    const deps = pkg[field];
-    if (deps != null && typeof deps === 'object') {
-      for (const dep of Object.keys(deps as Record<string, unknown>)) {
-        if (dep.startsWith('@tillgate/')) internalDeps.add(dep);
-      }
-    }
-  }
+  const internalDeps = internalDepsOf(pkg);
   const ws: Workspace = { name, dir, exports, internalDeps };
   workspaces.push(ws);
   byName.set(name, ws);
@@ -128,26 +134,32 @@ function walkTs(dir: string, acc: string[] = []): string[] {
 const IMPORT_RE =
   /(?:import|export)\s[^'"]*?from\s+['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)|require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
+/** @tillgate/* import 检查:子路径必须命中目标包的显式 exports */
+function checkInternalImport(spec: string, file: string): void {
+  const rest = spec.slice('@tillgate/'.length);
+  // split 恒返回非空数组;空段(形如 '@tillgate/')落入 unknown-import 口径
+  const pkgShort = rest.split('/')[0] ?? '';
+  const target = byName.get(`@tillgate/${pkgShort}`);
+  if (target == null) {
+    violations.push(`[unknown-import] ${relative(ROOT, file)} → ${spec}(非 workspace 包)`);
+    return;
+  }
+  const subpath = rest.slice(pkgShort.length).replace(/^\/+/, '');
+  const wanted = subpath === '' ? '.' : `./${subpath}`;
+  if (!target.exports.has(wanted)) {
+    violations.push(
+      `[deep-import] ${relative(ROOT, file)} → ${spec}(未命中 ${target.name} 的显式 exports;已登记: ${[...target.exports].join(', ') || '无'})`,
+    );
+  }
+}
+
 function checkFile(file: string, ws: Workspace): void {
   const source = readFileSync(file, 'utf-8');
   for (const m of source.matchAll(IMPORT_RE)) {
     const spec = m[1] ?? m[2] ?? m[3];
     if (spec == null) continue;
     if (spec.startsWith('@tillgate/')) {
-      const rest = spec.slice('@tillgate/'.length);
-      const pkgShort = rest.split('/')[0]!;
-      const target = byName.get(`@tillgate/${pkgShort}`);
-      if (target == null) {
-        violations.push(`[unknown-import] ${relative(ROOT, file)} → ${spec}(非 workspace 包)`);
-        continue;
-      }
-      const subpath = rest.slice(pkgShort.length).replace(/^\/+/, '');
-      const wanted = subpath === '' ? '.' : `./${subpath}`;
-      if (!target.exports.has(wanted)) {
-        violations.push(
-          `[deep-import] ${relative(ROOT, file)} → ${spec}(未命中 ${target.name} 的显式 exports;已登记: ${[...target.exports].join(', ') || '无'})`,
-        );
-      }
+      checkInternalImport(spec, file);
       continue;
     }
     if (spec.startsWith('.')) {

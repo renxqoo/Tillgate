@@ -34,7 +34,7 @@ createControlPlane(env: ControlPlaneEnv): ControlPlane
 
 | 项                                           | 类型                                               | 来源                                                                                 |
 | -------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `db`                                         | `Db`（@tillgate/db）                              | app assembly                                                                         |
+| `db`                                         | `Db`（@tillgate/db）                               | app assembly                                                                         |
 | `txRetryPolicy`                              | `TxRetryPolicy`                                    | app config（v1 等价值 = 5 / 15ms / 20ms）                                            |
 | `cipher`                                     | `SecretCipher`                                     | `runtime.createCipher(ENCRYPTION_KEY)`（结构兼容）                                   |
 | `capabilities`                               | `ProviderCapabilities`                             | assembly 从 `ai` 取 `SUPPORTED_PROTOCOLS` + vendor 名录注入                          |

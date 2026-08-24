@@ -1,17 +1,4 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
-  "extends": ["../../.oxlintrc.json"],
-  "overrides": [
-    {
-      "files": [
-        "src/features/channels/channels-content.tsx",
-        "src/features/billing/plans-content.tsx",
-        "src/features/models/catalog-content.tsx",
-        "src/features/models/models-content.tsx"
-      ],
-      "rules": {
-        "max-lines": "off"
-      }
-    }
-  ]
+  "extends": ["../../.oxlintrc.json"]
 }

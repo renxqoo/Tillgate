@@ -32,6 +32,23 @@ const CHANNEL_LIST_SORTS = {
   createdAt: channels.createdAt,
 } as const;
 
+// 充值流水列表选取面:纯列引用,模块级复用避免函数超限
+const RECHARGE_LIST_SELECTION = {
+  id: channelRecharges.id,
+  channelId: channelRecharges.channelId,
+  channelName: channels.name,
+  type: channelRecharges.type,
+  amount: channelRecharges.amount,
+  balanceAfter: channelRecharges.balanceAfter,
+  orderNo: channelRecharges.orderNo,
+  voucher: channelRecharges.voucher,
+  remark: channelRecharges.remark,
+  adminId: channelRecharges.adminId,
+  adminEmail: admins.email,
+  adminDisplayName: admins.displayName,
+  createdAt: channelRecharges.createdAt,
+} as const;
+
 const RECHARGE_SORTS = {
   id: channelRecharges.id,
   amount: channelRecharges.amount,
@@ -232,8 +249,9 @@ export const postgresChannelStore: ChannelStore = {
       })
       .where(eq(channels.id, input.channelId))
       .returning({ budget: channels.upstreamBudget });
-    if (rows.length === 0) throw new Error('channel.recharge_missed');
-    return rows[0]!.budget;
+    const [row] = rows;
+    if (row === undefined) throw new Error('channel.recharge_missed');
+    return row.budget;
   },
 
   async tryAdjustBudget(db, input) {
@@ -248,7 +266,7 @@ export const postgresChannelStore: ChannelStore = {
             and ${channels.upstreamBudget} + ${input.amount}::numeric >= 0`,
       )
       .returning({ budget: channels.upstreamBudget });
-    const row = rows[0];
+    const [row] = rows;
     return row ? { ok: true as const, budget: row.budget } : { ok: false as const };
   },
 
@@ -265,38 +283,24 @@ export const postgresChannelStore: ChannelStore = {
     const conditions = [];
     if (query.q) {
       const pattern = escapeLikePattern(query.q);
-      conditions.push(
-        or(
-          ilike(channelRecharges.orderNo, pattern),
-          ilike(channelRecharges.remark, pattern),
-          ilike(channels.name, pattern),
-        )!,
+      // drizzle or() 返回 SQL|undefined,三个非空入参下必为 SQL——显式收窄
+      const cond = or(
+        ilike(channelRecharges.orderNo, pattern),
+        ilike(channelRecharges.remark, pattern),
+        ilike(channels.name, pattern),
       );
+      if (cond !== undefined) conditions.push(cond);
     }
-    if (query.channelId !== undefined)
+    if (query.channelId !== undefined) {
       conditions.push(eq(channelRecharges.channelId, query.channelId));
+    }
     if (query.type !== undefined) conditions.push(eq(channelRecharges.type, query.type));
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const column = RECHARGE_SORTS[query.sortBy as RechargeSortField];
     const orderBy = [query.order === 'asc' ? asc(column) : desc(column), desc(channelRecharges.id)];
-    const selection = {
-      id: channelRecharges.id,
-      channelId: channelRecharges.channelId,
-      channelName: channels.name,
-      type: channelRecharges.type,
-      amount: channelRecharges.amount,
-      balanceAfter: channelRecharges.balanceAfter,
-      orderNo: channelRecharges.orderNo,
-      voucher: channelRecharges.voucher,
-      remark: channelRecharges.remark,
-      adminId: channelRecharges.adminId,
-      adminEmail: admins.email,
-      adminDisplayName: admins.displayName,
-      createdAt: channelRecharges.createdAt,
-    };
     const [rows, countRows] = await Promise.all([
       db
-        .select(selection)
+        .select(RECHARGE_LIST_SELECTION)
         .from(channelRecharges)
         .innerJoin(channels, eq(channelRecharges.channelId, channels.id))
         .leftJoin(admins, eq(channelRecharges.adminId, admins.id))

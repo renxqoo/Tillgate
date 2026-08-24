@@ -91,28 +91,48 @@ function fmtTokens(v: unknown): string {
  * 计费相关属性的友好摘要（金额/ token 千分位）：
  * billing.* / usage.* 存在时渲染 chips，一眼看金额与用量，细节仍看原始 JSON。
  */
+/** 依次尝试多个 key（等价 a ?? b 链：首个非 nullish 胜出），命中非空字符串才返回 */
+function firstTextAttr(attrs: Record<string, unknown>, keys: string[]): string | null {
+  let value: unknown = null;
+  for (const key of keys) {
+    value = attrs[key];
+    if (value != null) break;
+  }
+  return typeof value === 'string' && value !== '' ? value : null;
+}
+
+/** 依次尝试多个 key（?? 语义），命中数值才返回 */
+function firstNumberAttr(attrs: Record<string, unknown>, keys: string[]): number | null {
+  let value: unknown = null;
+  for (const key of keys) {
+    value = attrs[key];
+    if (value != null) break;
+  }
+  return typeof value === 'number' ? value : null;
+}
+
 function summarizeBilling(
   attrs: Record<string, unknown>,
   t: ReturnType<typeof useTranslations<'tracing'>>,
 ): Array<{ label: string; title?: string }> | null {
   const chips: Array<{ label: string; title?: string }> = [];
 
-  const settledAmount = attrs['billing.amount'];
-  if (typeof settledAmount === 'string' && settledAmount !== '') {
+  const settledAmount = firstTextAttr(attrs, ['billing.amount']);
+  if (settledAmount != null) {
     chips.push({
       label: t('settled', { amount: fmtAmount(settledAmount) }),
       title: t('settledTitle'),
     });
   }
-  const reserved = attrs['billing.amount_reserved'];
-  if (typeof reserved === 'string' && reserved !== '') {
+  const reserved = firstTextAttr(attrs, ['billing.amount_reserved']);
+  if (reserved != null) {
     chips.push({
       label: t('reservedAuth', { amount: fmtAmount(reserved) }),
       title: t('reservedTitle'),
     });
   }
-  const required = attrs['billing.amount_required'];
-  if (typeof required === 'string' && required !== '') {
+  const required = firstTextAttr(attrs, ['billing.amount_required']);
+  if (required != null) {
     chips.push({
       label: t('estimatedRequired', { amount: fmtAmount(required) }),
       title: 'billing.amount_required',
@@ -127,23 +147,23 @@ function summarizeBilling(
       title: 'usage.*_tokens',
     });
   }
-  const state = attrs['billing.state'] ?? attrs['billing.finalize'];
-  if (typeof state === 'string' && state !== '') {
+  const state = firstTextAttr(attrs, ['billing.state', 'billing.finalize']);
+  if (state != null) {
     chips.push({ label: `state: ${state}`, title: 'billing.state' });
   }
-  const reject = attrs['billing.reject_code'];
-  if (typeof reject === 'string' && reject !== '') {
+  const reject = firstTextAttr(attrs, ['billing.reject_code']);
+  if (reject != null) {
     chips.push({ label: t('rejected', { code: reject }), title: 'billing.reject_code' });
   }
-  const ttfb = attrs['upstream.ttfb_ms'] ?? attrs['stream.ttfb_ms'];
-  if (typeof ttfb === 'number') {
+  const ttfb = firstNumberAttr(attrs, ['upstream.ttfb_ms', 'stream.ttfb_ms']);
+  if (ttfb != null) {
     chips.push({
       label: `TTFB ${ttfb} ms`,
       title: t('ttfbTitle'),
     });
   }
-  const terminated = attrs['stream.terminated'];
-  if (typeof terminated === 'string' && terminated !== '') {
+  const terminated = firstTextAttr(attrs, ['stream.terminated']);
+  if (terminated != null) {
     chips.push({ label: t('terminated', { reason: terminated }), title: t('terminatedTitle') });
   }
   return chips.length > 0 ? chips : null;

@@ -4,6 +4,7 @@
  * channelIds 回显 / 探针请求形状与密钥解密 / 软删-回收站-恢复-外部名复用。
  */
 import { describe, expect, it } from 'vitest';
+import { defined } from './defined';
 import { createModel } from '../src/application/models/create-model';
 import { updateModel } from '../src/application/models/update-model';
 import { deleteModel } from '../src/application/models/delete-model';
@@ -75,7 +76,7 @@ describe('模型 CRUD 与 R6 免费价格一致性', () => {
         patch: { prices: { outputPrice: '3' } },
       }),
     ).rejects.toMatchObject({ code: 'control_plane.free_price_conflict' });
-    expect(models.rows.get(row.id)!.outputPrice).toBe('0');
+    expect(defined(models.rows.get(row.id)).outputPrice).toBe('0');
   });
 
   it('更新/删除不存在 → model_not_found', async () => {
@@ -96,7 +97,7 @@ describe('逻辑删除（回收站）', () => {
     const { deps, models, audit } = setup();
     const row = await createOk(deps);
     await deleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
-    const stored = models.rows.get(row.id)!;
+    const stored = defined(models.rows.get(row.id));
     expect(stored.status).toBe(1);
     expect(stored.deletedAt).toBeInstanceOf(Date);
     expect(await deps.stores.model.findById(deps.db, row.id)).toBeNull();
@@ -111,7 +112,7 @@ describe('逻辑删除（回收站）', () => {
       view: 'deleted',
     });
     expect(recycled.rows.map((r) => r.id)).toEqual([row.id]);
-    expect(recycled.rows[0]!.channelIds).toEqual([]); // 绑定回显不炸（绑定本身保留）
+    expect(defined(recycled.rows[0]).channelIds).toEqual([]); // 绑定回显不炸（绑定本身保留）
     expect(audit.entries.map((e) => e.action)).toContain('model.delete');
   });
 
@@ -133,7 +134,7 @@ describe('逻辑删除（回收站）', () => {
     await expect(
       updateModel(deps, { ctx: adminCtx(), mappingId: row.id, patch: { realModel: 'hacked' } }),
     ).rejects.toMatchObject({ code: 'control_plane.model_not_found' });
-    expect(models.rows.get(row.id)!.realModel).toBe('real-model');
+    expect(defined(models.rows.get(row.id)).realModel).toBe('real-model');
     expect(await deps.stores.model.retireMapping(deps.db, { mappingId: row.id })).toBe(false);
   });
 
@@ -148,7 +149,7 @@ describe('逻辑删除（回收站）', () => {
     ).rejects.toMatchObject({ code: 'control_plane.model_not_found' });
 
     await undeleteModel(deps, { ctx: adminCtx(), mappingId: row.id });
-    const restored = models.rows.get(row.id)!;
+    const restored = defined(models.rows.get(row.id));
     expect(restored.deletedAt).toBeNull();
     expect(restored.status).toBe(1); // 回下架态：复核后显式上架
     const active = await listModels(deps, { sortBy: 'id', order: 'asc', limit: 10, offset: 0 });
@@ -193,7 +194,7 @@ describe('单位计价与变体价格', () => {
     });
     expect(row.billingConfig).toMatchObject({ strategy: 'variant' });
     await updateModel(deps, { ctx: adminCtx(), mappingId: row.id, patch: { billingConfig: null } });
-    expect(models.rows.get(row.id)!.billingConfig).toEqual({});
+    expect(defined(models.rows.get(row.id)).billingConfig).toEqual({});
   });
 
   it('variant 缺 prices 或缺 selector → invalid_model_input 不触库', async () => {
@@ -231,13 +232,13 @@ describe('绑定全量替换 + channelIds 回显', () => {
       mappingId: row.id,
       channels: [{ channelId: 11 }],
     });
-    expect(models.rows.get(row.id)!.bindings.map((b) => b.channelId)).toEqual([11]);
+    expect(defined(models.rows.get(row.id)).bindings.map((b) => b.channelId)).toEqual([11]);
     await bindModelChannels(deps, {
       ctx: adminCtx(),
       mappingId: row.id,
       channels: [{ channelId: 22 }],
     });
-    expect(models.rows.get(row.id)!.bindings.map((b) => b.channelId)).toEqual([22]);
+    expect(defined(models.rows.get(row.id)).bindings.map((b) => b.channelId)).toEqual([22]);
     const listResult = await listModels(deps, {
       q: row.externalName,
       sortBy: 'createdAt',
@@ -245,10 +246,10 @@ describe('绑定全量替换 + channelIds 回显', () => {
       limit: 10,
       offset: 0,
     });
-    expect(listResult.rows[0]!.channelIds).toEqual([22]);
+    expect(defined(listResult.rows[0]).channelIds).toEqual([22]);
     // 空数组 = 解绑全部
     await bindModelChannels(deps, { ctx: adminCtx(), mappingId: row.id, channels: [] });
-    expect(models.rows.get(row.id)!.bindings).toHaveLength(0);
+    expect(defined(models.rows.get(row.id)).bindings).toHaveLength(0);
     const after = await listModels(deps, {
       q: row.externalName,
       sortBy: 'createdAt',
@@ -256,7 +257,7 @@ describe('绑定全量替换 + channelIds 回显', () => {
       limit: 10,
       offset: 0,
     });
-    expect(after.rows[0]!.channelIds).toEqual([]); // 未绑定 = []（而非 undefined）
+    expect(defined(after.rows[0]).channelIds).toEqual([]); // 未绑定 = []（而非 undefined）
   });
 
   it('绑定不存在的模型 → model_not_found', async () => {
@@ -289,8 +290,8 @@ describe('模型探针', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0]).toMatchObject({ channelId: 5, ok: true, tokens: 3 });
     expect(probe.calls[0]).toMatchObject({ kind: 'model', model: 'probe-real' });
-    expect(probe.calls[0]!.target.apiKey).toBe('enc-for-5'); // 内存替身 cipher 解密路径
-    expect(probe.calls[0]!.requestId).toBe(`model-test-${row.id}-5`);
+    expect(defined(probe.calls[0]).target.apiKey).toBe('enc-for-5'); // 内存替身 cipher 解密路径
+    expect(defined(probe.calls[0]).requestId).toBe(`model-test-${row.id}-5`);
     void models;
   });
 
@@ -318,8 +319,8 @@ describe('模型探针', () => {
       },
       row.id,
     );
-    expect(result.results[0]!.ok).toBe(false);
-    expect(result.results[0]!.error).toMatchObject({ code: 'rate_limited' });
+    expect(defined(result.results[0]).ok).toBe(false);
+    expect(defined(result.results[0]).error).toMatchObject({ code: 'rate_limited' });
     await expect(
       probeModel(
         {

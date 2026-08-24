@@ -29,7 +29,7 @@ const context = describe.skipIf(
         logThrottleMs: 1_000,
       });
       await assertRedisReachable(redis, 'client-api-real-probe', env.REDIS_URL as string, 3_000);
-      await redis.quit().catch(() => undefined);
+      await redis.quit().catch(() => {});
       return false;
     } catch {
       return true;
@@ -41,8 +41,8 @@ let assembly: Awaited<ReturnType<typeof assembleClientApi>> | null = null;
 
 afterAll(async () => {
   if (assembly != null) {
-    await assembly.redis.quit().catch(() => undefined);
-    await assembly.otel.shutdown().catch(() => undefined);
+    await assembly.redis.quit().catch(() => {});
+    await assembly.otel.shutdown().catch(() => {});
     await closeDb(assembly.db);
   }
 });

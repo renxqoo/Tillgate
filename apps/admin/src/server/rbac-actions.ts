@@ -18,8 +18,8 @@ export async function createRoleAction(input: {
     await adminApi().createRole(input);
     revalidatePath('/dashboard/roles');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'role_exists',
       'invalid_role_input',
       'invalid_permission_code',
@@ -36,8 +36,8 @@ export async function updateRoleAction(
     await adminApi().updateRole(id, input);
     revalidatePath('/dashboard/roles');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'role_immutable',
       'role_not_found',
       'invalid_permission_code',
@@ -51,8 +51,8 @@ export async function deleteRoleAction(id: number): Promise<{ error?: string; er
     await adminApi().deleteRole(id);
     revalidatePath('/dashboard/roles');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), ['role_immutable', 'role_in_use', 'role_not_found']);
+  } catch (error) {
+    return errorOf(error, (key) => t(key), ['role_immutable', 'role_in_use', 'role_not_found']);
   }
 }
 
@@ -71,8 +71,8 @@ export async function createPermissionAction(input: {
     revalidatePath('/dashboard/permissions');
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'permission_code_taken',
       'invalid_permission_input',
       'permission_not_found',
@@ -101,8 +101,8 @@ export async function updatePermissionAction(
     revalidatePath('/dashboard/permissions');
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'permission_not_found',
       'permission_code_taken',
       'invalid_permission_input',
@@ -121,8 +121,8 @@ export async function deletePermissionAction(
     revalidatePath('/dashboard/permissions');
     revalidatePath('/dashboard/endpoints');
     return {};
-  } catch (e) {
-    return errorOf(e, (key) => t(key), [
+  } catch (error) {
+    return errorOf(error, (key) => t(key), [
       'permission_has_children',
       'permission_in_use',
       'permission_not_found',

@@ -41,73 +41,93 @@ export interface DeadCredentialHandle {
   recordSuccess(): Promise<void>;
 }
 
+/** 死凭据上下文（依赖 + 注入时钟） */
+interface DeadCredentialCtx {
+  env: { key: string; config: DeadCredentialConfig; store: HealthStore };
+  now(): number;
+}
+
+async function loadDeadCredentialState(ctx: DeadCredentialCtx): Promise<DeadCredentialState> {
+  return (await ctx.env.store.getState<DeadCredentialState>(ctx.env.key)) ?? validState();
+}
+
+async function casDeadCredential(
+  ctx: DeadCredentialCtx,
+  current: DeadCredentialState,
+  mutator: (s: DeadCredentialState) => DeadCredentialState,
+): Promise<boolean> {
+  const next = mutator({ ...current });
+  next.version = current.version + 1;
+  /** TTL 略大于窗口，保证 invalid 状态不会因 TTL 提前丢失 */
+  return await ctx.env.store.compareAndSet(
+    ctx.env.key,
+    current.version,
+    next,
+    ctx.env.config.windowMs * 2,
+  );
+}
+
+/** 记录失败：窗口内连续计数，达阈值 CAS 转 invalid（超限降级放弃计数——尽力保护） */
+async function recordDeadCredentialFailure(
+  ctx: DeadCredentialCtx,
+  opts: { deadCredential: boolean },
+): Promise<void> {
+  if (!opts.deadCredential) return;
+  const at = ctx.now();
+  for (let retry = 0; retry < CAS_MAX_RETRIES; retry++) {
+    const state = await loadDeadCredentialState(ctx);
+    // 窗口语义：上次失败距今超过窗口 → 不算连续，重置为 1
+    const inWindow =
+      state.lastFailedAt !== undefined && at - state.lastFailedAt <= ctx.env.config.windowMs;
+    const consecutive = inWindow ? state.consecutiveFailures + 1 : 1;
+
+    if (consecutive >= ctx.env.config.failureThreshold) {
+      if (
+        await casDeadCredential(ctx, state, (s) => ({
+          ...s,
+          status: 'invalid',
+          consecutiveFailures: consecutive,
+          lastFailedAt: at,
+          invalidAt: at,
+        }))
+      ) {
+        return;
+      }
+      continue;
+    }
+    if (
+      await casDeadCredential(ctx, state, (s) => ({
+        ...s,
+        consecutiveFailures: consecutive,
+        lastFailedAt: at,
+      }))
+    ) {
+      return;
+    }
+  }
+  // 超出重试上限：降级放弃本次计数（死凭据是尽力保护）
+}
+
+/** 记录成功：清零计数；invalid → valid（凭据恢复或人工换 Key 后首个成功） */
+async function recordDeadCredentialSuccess(ctx: DeadCredentialCtx): Promise<void> {
+  const state = await loadDeadCredentialState(ctx);
+  if (state.status === 'valid' && state.consecutiveFailures === 0) return; // 无需更新
+  await casDeadCredential(ctx, state, () => ({ ...validState() }));
+}
+
 export function createDeadCredentialTracker(env: {
   key: string;
   config: DeadCredentialConfig;
   store: HealthStore;
   now?: () => number;
 }): DeadCredentialHandle {
-  const now = env.now ?? Date.now;
-
-  async function load(): Promise<DeadCredentialState> {
-    return (await env.store.getState<DeadCredentialState>(env.key)) ?? validState();
-  }
-
-  async function cas(
-    current: DeadCredentialState,
-    mutator: (s: DeadCredentialState) => DeadCredentialState,
-  ): Promise<boolean> {
-    const next = mutator({ ...current });
-    next.version = current.version + 1;
-    /** TTL 略大于窗口，保证 invalid 状态不会因 TTL 提前丢失 */
-    return await env.store.compareAndSet(env.key, current.version, next, env.config.windowMs * 2);
-  }
-
+  const ctx: DeadCredentialCtx = { env, now: env.now ?? Date.now };
   return {
     async canRequest(): Promise<boolean> {
-      const state = await load();
+      const state = await loadDeadCredentialState(ctx);
       return state.status !== 'invalid';
     },
-
-    async recordFailure(opts: { deadCredential: boolean }): Promise<void> {
-      if (!opts.deadCredential) return;
-      const at = now();
-      for (let retry = 0; retry < CAS_MAX_RETRIES; retry++) {
-        const state = await load();
-        // 窗口语义：上次失败距今超过窗口 → 不算连续，重置为 1
-        const inWindow =
-          state.lastFailedAt !== undefined && at - state.lastFailedAt <= env.config.windowMs;
-        const consecutive = inWindow ? state.consecutiveFailures + 1 : 1;
-
-        if (consecutive >= env.config.failureThreshold) {
-          if (
-            await cas(state, (s) => ({
-              ...s,
-              status: 'invalid',
-              consecutiveFailures: consecutive,
-              lastFailedAt: at,
-              invalidAt: at,
-            }))
-          )
-            return;
-          continue;
-        }
-        if (
-          await cas(state, (s) => ({
-            ...s,
-            consecutiveFailures: consecutive,
-            lastFailedAt: at,
-          }))
-        )
-          return;
-      }
-      // 超出重试上限：降级放弃本次计数（死凭据是尽力保护）
-    },
-
-    async recordSuccess(): Promise<void> {
-      const state = await load();
-      if (state.status === 'valid' && state.consecutiveFailures === 0) return; // 无需更新
-      await cas(state, () => ({ ...validState() }));
-    },
+    recordFailure: (opts) => recordDeadCredentialFailure(ctx, opts),
+    recordSuccess: () => recordDeadCredentialSuccess(ctx),
   };
 }

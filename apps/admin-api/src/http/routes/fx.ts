@@ -14,7 +14,7 @@ export interface FxRoutesDeps {
 
 export function fxRoutes(deps: FxRoutesDeps) {
   const app = new Hono<SessionEnv>();
-  const fx = deps.controlPlane.fx;
+  const { fx } = deps.controlPlane;
 
   app.get('/v1/fx/catalog', async (c) => c.json(await fx.state()));
 

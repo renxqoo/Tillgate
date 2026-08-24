@@ -15,12 +15,16 @@ export interface SmtpMailerConfig {
   from: string;
 }
 
-export function createSmtpAdminMailer(
-  config: SmtpMailerConfig,
-  brand: MailBrand,
-  emailParams: { ttlMinutes: number; maxAttempts: number },
-  now: () => Date,
-): Mailer {
+/** 装配参数单对象(模板品牌/验证码参数/时钟与 SMTP 传输配置同级注入) */
+export interface SmtpAdminMailerEnv {
+  readonly config: SmtpMailerConfig;
+  readonly brand: MailBrand;
+  readonly emailParams: { ttlMinutes: number; maxAttempts: number };
+  readonly now: () => Date;
+}
+
+export function createSmtpAdminMailer(env: SmtpAdminMailerEnv): Mailer {
+  const { config, brand, emailParams, now } = env;
   const transport = nodemailer.createTransport({
     host: config.host,
     port: config.port,

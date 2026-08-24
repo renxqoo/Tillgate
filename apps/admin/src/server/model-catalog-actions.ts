@@ -47,8 +47,8 @@ export async function importCatalogAction(input: {
     revalidatePath('/dashboard/model-market');
     revalidatePath('/dashboard/models');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('importFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('importFailed') };
   }
 }
 
@@ -59,8 +59,8 @@ export async function setFxOverrideAction(rate: string): Promise<{ error?: strin
     await adminApi().put('/v1/fx/catalog/override', { rate });
     revalidatePath('/dashboard/model-market');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('overrideFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('overrideFailed') };
   }
 }
 
@@ -71,8 +71,8 @@ export async function clearFxOverrideAction(): Promise<{ error?: string }> {
     await adminApi().delete('/v1/fx/catalog/override');
     revalidatePath('/dashboard/model-market');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('clearFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('clearFailed') };
   }
 }
 
@@ -83,8 +83,8 @@ export async function setFxBufferAction(bufferPct: string): Promise<{ error?: st
     await adminApi().put('/v1/fx/catalog/buffer', { bufferPct });
     revalidatePath('/dashboard/model-market');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('bufferFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('bufferFailed') };
   }
 }
 
@@ -95,8 +95,8 @@ export async function refreshFxAction(force: boolean): Promise<{ error?: string 
     await adminApi().post('/v1/fx/catalog/refresh', { force });
     revalidatePath('/dashboard/model-market');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('refreshFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('refreshFailed') };
   }
 }
 
@@ -128,7 +128,7 @@ export async function priceHistoryAction(
       `/v1/model-catalog/price-history?externalName=${encodeURIComponent(externalName.trim())}`,
     );
     return { entries: data.entries };
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('queryFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('queryFailed') };
   }
 }

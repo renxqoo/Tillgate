@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDb, closeDb } from '@tillgate/db';
 import { createObservability } from '@tillgate/observability';
 import {
+  defined,
   E2E_MODEL,
   E2EKeys,
   e2ePost,
@@ -21,6 +22,35 @@ import {
 } from './kit';
 
 const RECEIVER = process.env.TRACE_RECEIVER_URL ?? 'http://localhost:8793';
+
+/** trace 列表行形状（recent/byRequest 断言用） */
+interface TraceListRow {
+  traceId: string;
+  rootName: string;
+  spanCount: number;
+  hasError: boolean;
+}
+
+/** 轮询列表直到该请求出现（批窗 5s + receiver 批量 2s） */
+async function waitForListRow(
+  traces: ReturnType<typeof createObservability>['traces'],
+  requestId: string,
+  deadlineMs = 25_000,
+): Promise<TraceListRow[]> {
+  const deadline = Date.now() + deadlineMs;
+  for (;;) {
+    const rows = (await traces.recent({ limit: 30 })).rows.filter((r) => r.requestId === requestId);
+    if (rows.length > 0 || Date.now() > deadline) return rows;
+    await sleep(1_000);
+  }
+}
+
+// span 名排序——与默认 sort 同口径（UTF-16 码位比较；unicorn/no-array-sort 要求显式比较器）
+function byCodeUnit(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
 
 // 本机/CI 没有在跑 receiver 时整组 skip（诊断探针不硬性依赖部署形态）
 const receiverUp = await fetch(`${RECEIVER}/readyz`, { signal: AbortSignal.timeout(2_000) })
@@ -42,7 +72,7 @@ beforeAll(async () => {
   });
   keys = new E2EKeys(world, gw.assembly.billingFacade);
   // admin-api 同款查询面，连 receiver 写入的共享 dev 库
-  devDb = createDb({ url: process.env.DATABASE_URL! });
+  devDb = createDb({ url: defined(process.env.DATABASE_URL, 'DATABASE_URL') });
 });
 
 afterAll(async () => {
@@ -59,16 +89,14 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
       messages: [{ role: 'user', content: '闭环测试' }],
     });
     expect(res.status).toBe(200);
-    const requestId = res.headers.get('x-request-id')!;
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
     await res.text();
     console.log(`HTTP 200 x-request-id=${requestId}（隔离世界网关 → 真 receiver ${RECEIVER}）`);
 
     // 批窗 5s + receiver 批量 2s：轮询列表直到该请求出现（上限 20s）
-    const traces = createObservability({ db: devDb }).traces;
+    const { traces } = createObservability({ db: devDb });
     const deadline = Date.now() + 20_000;
-    let row:
-      | { traceId: string; rootName: string; spanCount: number; hasError: boolean }
-      | undefined;
+    let row: TraceListRow | undefined;
     for (;;) {
       const recent = await traces.recent({ limit: 20 });
       row = recent.rows.find((r) => r.requestId === requestId);
@@ -77,32 +105,17 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
     }
     console.log('列表命中:', row ? JSON.stringify(row) : '(未命中)');
     expect(row, 'traces.recent 应包含本请求').toBeDefined();
-    expect(row!.rootName).toBe('POST /v1/chat/completions');
-    expect(row!.spanCount).toBe(9);
-    expect(row!.hasError).toBe(false);
+    const hit = defined(row, 'traces.recent row');
+    expect(hit.rootName).toBe('POST /v1/chat/completions');
+    expect(hit.spanCount).toBe(9);
+    expect(hit.hasError).toBe(false);
 
     const detail = await traces.byRequest(requestId);
-    const names = detail.spans.map((s: { name: string }) => s.name).sort();
+    const names = detail.spans.map((s: { name: string }) => s.name).toSorted(byCodeUnit);
     console.log('byRequest span 名单:', names.join(', '));
     expect(names).toContain('billing.settle_signal');
     expect(names).toContain('upstream.attempt');
   });
-
-  /** 轮询列表直到该请求出现（批窗 5s + receiver 批量 2s） */
-  async function waitForListRow(
-    traces: ReturnType<typeof createObservability>['traces'],
-    requestId: string,
-    deadlineMs = 25_000,
-  ): Promise<Array<{ traceId: string; rootName: string; spanCount: number; hasError: boolean }>> {
-    const deadline = Date.now() + deadlineMs;
-    for (;;) {
-      const rows = (await traces.recent({ limit: 30 })).rows.filter(
-        (r) => r.requestId === requestId,
-      );
-      if (rows.length > 0 || Date.now() > deadline) return rows;
-      await sleep(1_000);
-    }
-  }
 
   it('失败路径① 上游不可达：列表出现 hasError 的 9-span 记录（release_and_fail）', async () => {
     await retargetUpstream(world, {
@@ -117,14 +130,15 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
         stream: true,
         messages: [{ role: 'user', content: 'hi' }],
       });
-      const requestId = res.headers.get('x-request-id')!;
+      const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
       await res.text();
       console.log(`① 上游不可达 HTTP ${res.status} x-request-id=${requestId}`);
       const rows = await waitForListRow(createObservability({ db: devDb }).traces, requestId);
       console.log('① 列表记录:', JSON.stringify(rows));
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.hasError).toBe(true);
-      expect(rows[0]!.spanCount).toBe(9);
+      const firstRow = defined(rows[0], 'rows[0]');
+      expect(firstRow.hasError).toBe(true);
+      expect(firstRow.spanCount).toBe(9);
     } finally {
       await retargetUpstream(world, {
         baseUrl: world.upstream.url,
@@ -142,13 +156,13 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
         model: E2E_MODEL,
         messages: [{ role: 'user', content: 'x' }],
       });
-      const requestId = res.headers.get('x-request-id')!;
+      const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
       await res.text();
       console.log(`② 上游400 HTTP ${res.status} x-request-id=${requestId}`);
       const rows = await waitForListRow(createObservability({ db: devDb }).traces, requestId);
       console.log('② 列表记录:', JSON.stringify(rows));
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.spanCount).toBe(9);
+      expect(defined(rows[0], 'rows[0]').spanCount).toBe(9);
     } finally {
       world.upstream.script = 'auto';
     }
@@ -164,11 +178,11 @@ describe.skipIf(!receiverUp)('成功请求 → 链路追踪列表 闭环（真 r
       { model: E2E_MODEL, stream: true, messages: [{ role: 'user', content: '讲故事' }] },
       controller.signal,
     );
-    const requestId = res.headers.get('x-request-id')!;
-    const reader = res.body!.getReader();
+    const requestId = defined(res.headers.get('x-request-id'), 'x-request-id');
+    const reader = defined(res.body, 'stream body').getReader();
     await reader.read();
     controller.abort();
-    await reader.cancel().catch(() => undefined);
+    await reader.cancel().catch(() => {});
     world.upstream.frameGapMs = 0;
     console.log(`③ 已取消 x-request-id=${requestId}`);
     const rows = await waitForListRow(createObservability({ db: devDb }).traces, requestId);

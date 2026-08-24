@@ -40,14 +40,14 @@ export function createPostgresVoucherStorage(db: Db): VoucherStorage {
     async load(key) {
       // 键白名单校验（防注入/越权键）
       if (!KEY_RE.test(key)) return null;
-      const ext = key.split('.')[1]!;
-      const mimeType = EXT_MIME[ext];
+      const [, ext] = key.split('.');
+      const mimeType = ext === undefined ? undefined : EXT_MIME[ext];
       if (!mimeType) return null;
       // 键与落库 MIME 双校验（防扩展名改写型伪造键）
       const result = await db.execute<{ mime: string; data: Uint8Array }>(
         sql`select mime, "data" from voucher_blobs where "key" = ${key} and mime = ${mimeType}`,
       );
-      const row = result.rows[0];
+      const [row] = result.rows;
       return row ? { data: Uint8Array.from(row.data), mimeType: row.mime } : null;
     },
   };

@@ -33,8 +33,8 @@ export async function createProviderAction(input: ProviderInput): Promise<{ erro
     revalidatePath('/dashboard/providers');
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('createFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('createFailed') };
   }
 }
 
@@ -48,8 +48,8 @@ export async function updateProviderAction(
     revalidatePath('/dashboard/providers');
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }
 
@@ -61,8 +61,8 @@ export async function deleteProviderAction(id: number): Promise<{ error?: string
     revalidatePath('/dashboard/providers');
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('deleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('deleteFailed') };
   }
 }
 
@@ -74,7 +74,7 @@ export async function undeleteProviderAction(id: number): Promise<{ error?: stri
     revalidatePath('/dashboard/providers');
     revalidatePath('/dashboard/channels');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('undeleteFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('undeleteFailed') };
   }
 }

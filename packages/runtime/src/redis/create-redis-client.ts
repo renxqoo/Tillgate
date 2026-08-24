@@ -60,8 +60,8 @@ function urlCredentials(url: string): { password?: string; db?: number } {
       return { password, db };
     }
     return { password };
-  } catch (err) {
-    if (err instanceof DefectError) throw err;
+  } catch (error) {
+    if (error instanceof DefectError) throw error;
     return {};
   }
 }

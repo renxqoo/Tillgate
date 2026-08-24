@@ -22,6 +22,7 @@ import type {
   BillingStore,
 } from '../../ports/billing-store.js';
 import type { SubscriptionQuotaStore } from '../../ports/funding-ports.js';
+import type { AccountContextStore } from '../../ports/account-context.js';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
 import type { WalletConn, WalletTx } from '../../ports/wallet-store.js';
 import { createSubscriptionQuotaStore } from './subscription-quota-store.js';
@@ -86,13 +87,14 @@ const REQUEST_COLUMNS = {
   createdAt: billingRequests.createdAt,
 };
 
+// eslint-disable-next-line max-lines-per-function -- 授权预留 SQL 构造平铺
 export function createPostgresBillingStore(
   db: Db,
   options: PostgresBillingStoreOptions,
 ): BillingStore & {
   quotaStore: SubscriptionQuotaStore;
   channelStore: ChannelExposureStore;
-  accountContext: import('../../ports/account-context.js').AccountContextStore;
+  accountContext: AccountContextStore;
 } {
   const { retry } = options;
 
@@ -140,6 +142,7 @@ export function createPostgresBillingStore(
       return rows.length > 0;
     },
 
+    // eslint-disable-next-line complexity -- 回放查询构造:字段条件矩阵平铺
     async casTransition(conn, input) {
       const rows = await asDb(conn)
         .update(billingRequests)
@@ -234,8 +237,9 @@ export function createPostgresBillingStore(
         sql`coalesce(${billingRequests.estimatedExposureAmount}, ${billingRequests.reservedAmount}) is not null`,
       ];
       if (input.userId !== undefined) conditions.push(eq(billingRequests.userId, input.userId));
-      if (input.apiKeyId !== undefined)
+      if (input.apiKeyId !== undefined) {
         conditions.push(eq(billingRequests.apiKeyId, input.apiKeyId));
+      }
       if (input.subscriptionId !== undefined) {
         conditions.push(eq(billingRequests.subscriptionId, input.subscriptionId));
       }
@@ -264,7 +268,7 @@ export function createPostgresBillingStore(
             filter (where status in ('settlement_pending', 'retry_wait')), 0)::float8 as oldest_pending_ms
         from billing_requests
         where status in ('settlement_pending', 'retry_wait')`);
-      const row = result.rows[0];
+      const [row] = result.rows;
       return {
         pending: row?.pending ?? 0,
         retrying: row?.retrying ?? 0,

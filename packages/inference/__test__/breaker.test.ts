@@ -67,7 +67,7 @@ describe('health/breaker：closed/open/half-open 状态机（v1 迁移）', () =
   });
 
   it('half-open：探测成功 → 恢复 closed 清窗口；探测失败 → 重开并重置冷却', async () => {
-    let now = 1_000_000;
+    const now = 1_000_000;
     const store = createMemoryHealthStore(() => now);
     await store.compareAndSet<BreakerState>(
       'k',

@@ -19,7 +19,7 @@ import {
   type Logger,
 } from '@tillgate/runtime';
 import { initOtel, type OtelHandle } from '@tillgate/observability';
-import type { Identity } from '@tillgate/identity';
+import type { Identity, Mailer } from '@tillgate/identity';
 import { createAccounts, USER_STATUS, type AccountUseCases } from '@tillgate/accounts';
 import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
 import {
@@ -67,9 +67,10 @@ const clock = (): Date => new Date();
 
 /** 装配覆盖缝：mailer 显式注入/置空（E2E capture mailer 消费；缺省按环境构造） */
 export interface AssemblyOverrides {
-  readonly mailer?: import('@tillgate/identity').Mailer | null;
+  readonly mailer?: Mailer | null;
 }
 
+// eslint-disable-next-line max-lines-per-function, complexity -- 装配根 composition root:线性依赖组装,拆段只会层层透传上下文(存量棘轮)
 export async function assembleClientApi(
   config: ClientApiConfig,
   overrides: AssemblyOverrides = {},

@@ -15,7 +15,7 @@ describe('domain/usage/measurement：pricingUnit 计量注册表（表驱动）'
     expect(m.unitsUpperBoundOf({ n: 0 })).toBe(1);
     expect(m.unitsOf({ n: 2 }, { data: [{}, {}, {}] })).toBe(3);
     expect(m.unitsOf({ n: 2 }, { data: [] })).toBe(2);
-    expect(m.unitsOf({}, undefined)).toBe(1);
+    expect(m.unitsOf({})).toBe(1);
   });
 
   it('second：audioSeconds（向上取整）优先于 duration 钳制（4-15 缺省 6）', () => {

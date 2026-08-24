@@ -13,6 +13,7 @@ import { createDb, closeDb, type Db } from '@tillgate/db';
 import { usageLogs, users } from '@tillgate/db';
 import { createPgUsageStore } from '../src/adapters/postgres/usage-store';
 import { beijingDayStart } from '../src/usage/day-window';
+import { defined } from './defined';
 
 const url = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/ai_gateway';
 const SEED_MODEL = 'zz-usage-real';
@@ -48,7 +49,7 @@ afterAll(async () => {
 function usageSeed(overrides: Partial<typeof usageLogs.$inferInsert> = {}) {
   return {
     requestId: randomUUID(),
-    userId: seedUserId!,
+    userId: defined(seedUserId, 'seedUserId'),
     credentialType: 'key',
     externalModel: SEED_MODEL,
     realModel: SEED_MODEL,
@@ -92,7 +93,7 @@ describe('PgUsageStore(真 PG)', () => {
       realModel: SEED_MODEL,
       inputTokens: 100,
     });
-    expect(Number(base.rows[0]!.amount)).toBe(1.5);
+    expect(Number(defined(base.rows[0], 'base.rows[0]').amount)).toBe(1.5);
 
     const byUser = await store.adminList({
       userId: seedUserId,
@@ -102,7 +103,7 @@ describe('PgUsageStore(真 PG)', () => {
       limit: 1,
       offset: 0,
     });
-    expect(byUser.rows[0]!.userId).toBe(seedUserId);
+    expect(defined(byUser.rows[0], 'byUser.rows[0]').userId).toBe(seedUserId);
     expect(byUser.total).toBe(3); // total 恒全量(不受分页影响)
 
     const estimated = await store.adminList({

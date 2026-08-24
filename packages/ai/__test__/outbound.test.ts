@@ -8,17 +8,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createServer } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createAi, allowAllUrls } from '../src/index.js';
 import { sanitizeUpstreamDetail } from '../src/errors/sanitize.js';
 
 const enc = new TextEncoder();
 
-const startServer = (
-  handler: (
-    req: import('node:http').IncomingMessage,
-    res: import('node:http').ServerResponse,
-  ) => void,
-) =>
+const startServer = (handler: (req: IncomingMessage, res: ServerResponse) => void) =>
   new Promise<{ baseUrl: string; close: () => Promise<void> }>((resolve) => {
     const server = createServer(handler);
     server.listen(0, '127.0.0.1', () => {
@@ -59,11 +55,7 @@ const ch = (baseUrl: string, protocol = 'openai-compatible') => ({
 });
 
 /** 逐块写上游帧（可在任意字节边界劈开——验证行重组） */
-const writeChunked = (
-  res: import('node:http').ServerResponse,
-  text: string,
-  splitAt: number,
-): void => {
+const writeChunked = (res: ServerResponse, text: string, splitAt: number): void => {
   res.write(text.slice(0, splitAt));
   res.write(text.slice(splitAt));
   res.end();

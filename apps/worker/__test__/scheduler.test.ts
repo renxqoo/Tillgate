@@ -3,6 +3,7 @@
  * 快照更新、无立即首跑（interval 到点才触发——v1 同款）。
  */
 import { describe, expect, it, vi } from 'vitest';
+import { defined } from './defined.js';
 import { createScheduler } from '../src/scheduler';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -32,11 +33,13 @@ describe('createScheduler', () => {
       },
     });
     scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 25);
+    });
     await scheduler.stop();
     expect(calls).toBeGreaterThanOrEqual(2); // 首次失败后调度继续
     expect(errors).toEqual([{ error: new Error('job down'), name: 'boom' }]);
-    const snapshot = scheduler.snapshots()['boom']!;
+    const snapshot = defined(scheduler.snapshots()['boom'], "snapshots()['boom']");
     expect(snapshot.lastError).toBe('job down');
     expect(snapshot.lastStartedAt).toBe('2026-08-23T00:00:00.000Z');
   });
@@ -45,7 +48,7 @@ describe('createScheduler', () => {
     vi.useFakeTimers();
     try {
       const gate = deferred();
-      const scheduler = createScheduler({ graceMs: 5_000, onError: () => undefined });
+      const scheduler = createScheduler({ graceMs: 5_000, onError: () => {} });
       let started = 0;
       let finished = 0;
       scheduler.register({
@@ -73,11 +76,13 @@ describe('createScheduler', () => {
   });
 
   it('stop 宽限耗尽不强等（宽限上界封口）', async () => {
-    const scheduler = createScheduler({ graceMs: 10, onError: () => undefined });
+    const scheduler = createScheduler({ graceMs: 10, onError: () => {} });
     const gate = deferred();
     scheduler.register({ name: 'stuck', intervalMs: 1, run: () => gate.promise });
     scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
     const startedAt = Date.now();
     await scheduler.stop(); // stuck 未完成——10ms 宽限后返回
     expect(Date.now() - startedAt).toBeLessThan(2_000);
@@ -85,10 +90,12 @@ describe('createScheduler', () => {
   });
 
   it('start 前不触发（无立即首跑）；快照未运行为 null', async () => {
-    const scheduler = createScheduler({ graceMs: 100, onError: () => undefined });
+    const scheduler = createScheduler({ graceMs: 100, onError: () => {} });
     let calls = 0;
     scheduler.register({ name: 'x', intervalMs: 5, run: async () => (calls += 1) });
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 15);
+    });
     expect(calls).toBe(0);
     expect(scheduler.snapshots().x).toBeNull();
     expect(scheduler.isRunning()).toBe(false);
@@ -99,7 +106,7 @@ describe('createScheduler vi 定时器口径', () => {
   it('interval 到点触发一次（非立即）', async () => {
     vi.useFakeTimers();
     try {
-      const scheduler = createScheduler({ graceMs: 100, onError: () => undefined });
+      const scheduler = createScheduler({ graceMs: 100, onError: () => {} });
       const runs: number[] = [];
       scheduler.register({
         name: 't',

@@ -29,40 +29,12 @@ function statusCodeTone(code: number): string {
   return 'bg-muted text-muted-foreground';
 }
 
-export default async function LogsPage({ searchParams }: PageProps) {
-  await requirePermission('ops:read');
-  const sp = await searchParams;
-  const t = await getTranslations('logs');
-  const tc = await getTranslations('common');
-  const { q, page, sortBy, order } = parseListSearchParams(sp);
-  const from = firstParam(sp.from) ?? '';
-  const to = firstParam(sp.to) ?? '';
-  const userId = firstParam(sp.userId) ?? '';
-  const statusCode = firstParam(sp.statusCode) ?? '';
-  const query = new URLSearchParams({
-    page: String(page),
-    page_size: String(PAGE_SIZE),
-    sort_by: sortBy ?? 'createdAt',
-    order,
-  });
-  if (q) query.set('q', q);
-  if (from) query.set('from', from);
-  if (to) query.set('to', to);
-  if (userId) query.set('userId', userId);
-  if (statusCode) query.set('statusCode', statusCode);
-
-  let rows: LogRow[] = [];
-  let total = 0;
-  let error: string | null = null;
-  try {
-    const data = await adminApi().get<Paginated<LogRow>>(`/v1/logs?${query.toString()}`);
-    rows = data.rows ?? [];
-    total = data.total ?? 0;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : tc('loadFailed');
-  }
-
-  const columns: DataTableColumn<LogRow>[] = [
+/** 日志表列定义（cell 渲染器随列声明平铺；t/tc 经参数传入） */
+function buildLogColumns(
+  t: Awaited<ReturnType<typeof getTranslations<'logs'>>>,
+  tc: Awaited<ReturnType<typeof getTranslations<'common'>>>,
+): DataTableColumn<LogRow>[] {
+  return [
     {
       key: 'requestId',
       header: 'Request ID',
@@ -110,10 +82,9 @@ export default async function LogsPage({ searchParams }: PageProps) {
       headerClassName: 'w-20',
       render: (l) => (
         <span
-          className={
-            'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ' +
-            statusCodeTone(l.statusCode)
-          }
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${statusCodeTone(
+            l.statusCode,
+          )}`}
         >
           {l.statusCode}
         </span>
@@ -157,6 +128,41 @@ export default async function LogsPage({ searchParams }: PageProps) {
       ),
     },
   ];
+}
+
+export default async function LogsPage({ searchParams }: PageProps) {
+  await requirePermission('ops:read');
+  const sp = await searchParams;
+  const t = await getTranslations('logs');
+  const tc = await getTranslations('common');
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+  const from = firstParam(sp.from) ?? '';
+  const to = firstParam(sp.to) ?? '';
+  const userId = firstParam(sp.userId) ?? '';
+  const statusCode = firstParam(sp.statusCode) ?? '';
+  const query = new URLSearchParams({
+    page: String(page),
+    page_size: String(PAGE_SIZE),
+    sort_by: sortBy ?? 'createdAt',
+    order,
+  });
+  // 非空筛选统一并入 query（q/from/to/userId/statusCode）
+  for (const [key, value] of Object.entries({ q, from, to, userId, statusCode })) {
+    if (value) query.set(key, value);
+  }
+
+  let rows: LogRow[] = [];
+  let total = 0;
+  let loadError: string | null = null;
+  try {
+    const data = await adminApi().get<Paginated<LogRow>>(`/v1/logs?${query.toString()}`);
+    rows = data.rows ?? [];
+    total = data.total ?? 0;
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : tc('loadFailed');
+  }
+
+  const columns = buildLogColumns(t, tc);
 
   return (
     <ListPage
@@ -168,7 +174,7 @@ export default async function LogsPage({ searchParams }: PageProps) {
       q={q}
       searchParams={{ q, from, to, userId, sort_by: sortBy, order: sortBy ? order : undefined }}
       filters={<LogsFilter from={from} to={to} userId={userId} statusCode={statusCode} />}
-      error={error}
+      error={loadError}
       page={page}
       pageSize={PAGE_SIZE}
     >

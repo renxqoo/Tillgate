@@ -39,7 +39,7 @@ export function normalizeValidEmail(email: string): string | null {
 /** 通用命名域:trim 后 1..64(用户显示名/Key 名/App 名/组织名共用) */
 export function normalizeName(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed.length < 1 || trimmed.length > FIELD_LIMITS.name) return null;
+  if (trimmed.length === 0 || trimmed.length > FIELD_LIMITS.name) return null;
   return trimmed;
 }
 

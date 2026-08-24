@@ -7,6 +7,7 @@ import { createReferralCommissionUseCase } from '../src/application/referral-com
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
 import type { CommissionStatsStore } from '../src/ports/commission-stats.js';
+import { defined } from './defined.js';
 
 function stubStats(
   windows: Array<{ from: Date; to: Date; rows: Array<{ inviterId: number; total: string }> }>,
@@ -83,7 +84,7 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
     const result = await h.run();
     expect(result.credited).toBe(1);
     const accounts = await h.wallet.accounts(101);
-    expect(accounts[0]!.balance).toBe('1.25');
+    expect(defined(accounts[0]).balance).toBe('1.25');
     expect(await h.wallet.accounts(102)).toEqual([]);
   });
 
@@ -92,7 +93,7 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
     await h.run();
     const again = await h.run();
     expect(again.credited).toBe(0);
-    expect((await h.wallet.accounts(101))[0]!.balance).toBe('1.25');
+    expect(defined((await h.wallet.accounts(101))[0]).balance).toBe('1.25');
   });
 
   it('窗口边界：backfillDays=1 只查昨日 [00:00, 24:00)（今日不计）', async () => {
@@ -101,8 +102,8 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
     await h.run();
     // clock = 2026-08-23T10:30Z → 昨日窗口 = 08-22T00:00Z ~ 08-23T00:00Z（今日不计）
     expect(stats.calls).toHaveLength(1);
-    expect(stats.calls[0]!.from.toISOString()).toBe('2026-08-22T00:00:00.000Z');
-    expect(stats.calls[0]!.to.toISOString()).toBe('2026-08-23T00:00:00.000Z');
+    expect(defined(stats.calls[0]).from.toISOString()).toBe('2026-08-22T00:00:00.000Z');
+    expect(defined(stats.calls[0]).to.toISOString()).toBe('2026-08-23T00:00:00.000Z');
   });
 
   it('窗口回补：backfillDays=7 逐日查询（7 个完整 UTC 自然日）', async () => {
@@ -116,12 +117,12 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
       refIdOf: (inviterId, dayKey) => `referral-commission:${inviterId}:${dayKey}`,
       backfillDays: 7,
       clock: () => new Date('2026-08-23T00:00:00Z'),
-      onError: () => undefined,
+      onError: () => {},
     });
     await run7();
     expect(stats.calls).toHaveLength(7);
-    expect(stats.calls[0]!.from.toISOString()).toBe('2026-08-16T00:00:00.000Z');
-    expect(stats.calls.at(-1)!.to.toISOString()).toBe('2026-08-23T00:00:00.000Z');
+    expect(defined(stats.calls[0]).from.toISOString()).toBe('2026-08-16T00:00:00.000Z');
+    expect(defined(stats.calls.at(-1)).to.toISOString()).toBe('2026-08-23T00:00:00.000Z');
   });
 
   it('rate=0：功能关闭——零查询零入账', async () => {
@@ -138,7 +139,7 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
     const result = await h.run();
     expect(result.credited).toBe(0);
     expect(h.errors).toHaveLength(1);
-    expect(h.errors[0]!.context).toContain('rate');
+    expect(defined(h.errors[0]).context).toContain('rate');
     expect(stats.calls).toHaveLength(0);
   });
 
@@ -170,7 +171,7 @@ describe('佣金日结（v1 referral.test.ts 对位）', () => {
       },
       backfillDays: 1,
       clock: () => new Date('2026-08-23T10:30:00Z'),
-      onError: () => undefined,
+      onError: () => {},
     });
     await run();
     expect(seen).toEqual([[101, '20260822']]);

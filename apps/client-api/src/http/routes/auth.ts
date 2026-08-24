@@ -79,7 +79,8 @@ export interface AuthDeps {
   readonly logout: (token: string) => Promise<void>;
 }
 
-export function bearerToken(header: string | undefined): string {
+// header 为请求头可选值;缺参即无 Authorization 的归一口径(测试锁零参分支)
+export function bearerToken(header?: string | undefined): string {
   return header != null && header.startsWith('Bearer ')
     ? header.slice('Bearer '.length).trim()
     : '';

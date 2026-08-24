@@ -15,6 +15,28 @@ export interface CreateAppResult {
   readonly clientSecret: string;
 }
 
+/** 可选描述:非空入参超限即抛 app_patch_invalid;undefined/null 归一为 null */
+function parseAppDescription(description: string | null | undefined): string | null {
+  if (description === undefined || description === null) return null;
+  const clamped = clampOptionalText(description, 255);
+  if (clamped === null) {
+    throw AccountsErrors.business('app_patch_invalid', { field: 'description' });
+  }
+  return clamped;
+}
+
+/** 订阅归属守卫(与 Key 同口径):不存在/停用/非本人 → subscription_not_usable */
+async function assertSubscriptionUsable(
+  ctx: UseCaseContext,
+  userId: number,
+  subscriptionId: number,
+): Promise<void> {
+  const usable = await ctx.store.findUsableSubscription(ctx.db, { userId, subscriptionId });
+  if (usable === null) {
+    throw AccountsErrors.business('subscription_not_usable', { subscriptionId });
+  }
+}
+
 export async function createApp(
   ctx: UseCaseContext,
   input: {
@@ -27,14 +49,7 @@ export async function createApp(
 ): Promise<CreateAppResult> {
   const name = normalizeName(input.name);
   if (name === null) throw AccountsErrors.business('app_patch_invalid', { field: 'name' });
-  let description: string | null = null;
-  if (input.description !== undefined && input.description !== null) {
-    const d = clampOptionalText(input.description, 255);
-    if (d === null) throw AccountsErrors.business('app_patch_invalid', { field: 'description' });
-    description = d;
-  } else if (input.description === null) {
-    description = null;
-  }
+  const description = parseAppDescription(input.description);
   if (input.scope !== undefined && input.scope !== null) {
     const invalid = validateAppScope(input.scope, {
       rpmLimitMax: ctx.policy.rpmLimitMax,
@@ -44,15 +59,7 @@ export async function createApp(
     if (invalid !== null) throw AccountsErrors.business('app_scope_invalid', { fields: invalid });
   }
   if (input.subscriptionId !== undefined && input.subscriptionId !== null) {
-    const usable = await ctx.store.findUsableSubscription(ctx.db, {
-      userId: input.userId,
-      subscriptionId: input.subscriptionId,
-    });
-    if (usable === null) {
-      throw AccountsErrors.business('subscription_not_usable', {
-        subscriptionId: input.subscriptionId,
-      });
-    }
+    await assertSubscriptionUsable(ctx, input.userId, input.subscriptionId);
   }
 
   const creds = generateAppCredentials();

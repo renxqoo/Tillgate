@@ -6,6 +6,6 @@
  */
 export function isNextRedirect(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  const digest = (error as Error & { digest?: unknown }).digest;
+  const { digest } = error as Error & { digest?: unknown };
   return typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT');
 }

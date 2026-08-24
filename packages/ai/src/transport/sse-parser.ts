@@ -14,6 +14,40 @@ export interface SseScannerCallbacks {
   onErrorFrame?: (frame: StreamError) => void;
 }
 
+/** 事件 JSON 解析：非对象形（含解析失败）→ null（旁路扫描不中断透传） */
+function parseEventJson(data: string): Record<string, unknown> | null {
+  try {
+    const v = JSON.parse(data);
+    if (typeof v !== 'object' || v === null) return null;
+    return v as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** tool_calls 片段的函数名/参数计入特征（名称与参数串都是输出 token 载体） */
+function accumulateToolCallFeatures(toolCalls: unknown, features: TextFeaturesAccumulator): void {
+  if (!Array.isArray(toolCalls)) return;
+  for (const tc of toolCalls) {
+    if (typeof tc !== 'object' || tc === null) continue;
+    const fn = (tc as Record<string, unknown>).function;
+    if (typeof fn !== 'object' || fn === null) continue;
+    const f = fn as Record<string, unknown>;
+    if (typeof f.name === 'string') features.addText(f.name);
+    if (typeof f.arguments === 'string') features.addText(f.arguments);
+  }
+}
+
+/** delta 片段计入特征（content / reasoning_content / tool_calls 参数） */
+function accumulateDeltaFeatures(
+  delta: Record<string, unknown>,
+  features: TextFeaturesAccumulator,
+): void {
+  if (typeof delta.content === 'string') features.addText(delta.content);
+  if (typeof delta.reasoning_content === 'string') features.addText(delta.reasoning_content);
+  accumulateToolCallFeatures(delta.tool_calls, features);
+}
+
 export class SseScanner {
   private usage: unknown | null = null;
   private errorFrame: StreamError | null = null;
@@ -34,28 +68,11 @@ export class SseScanner {
       this.lastEventAt = Date.now();
       return;
     }
-    let parsed: Record<string, unknown>;
-    try {
-      const v = JSON.parse(ev.data);
-      if (typeof v !== 'object' || v === null) return;
-      parsed = v as Record<string, unknown>;
-    } catch {
-      return; // 非 JSON 帧不中断透传（扫描是旁路）
-    }
+    const parsed = parseEventJson(ev.data);
+    if (parsed === null) return; // 非 JSON 帧不中断透传（扫描是旁路）
     this.eventsCompleted += 1;
     this.lastEventAt = Date.now();
-    if (Array.isArray(parsed.choices)) {
-      for (const choice of parsed.choices) {
-        if (
-          typeof choice === 'object' &&
-          choice !== null &&
-          typeof (choice as Record<string, unknown>).finish_reason === 'string'
-        ) {
-          this.terminalFrameReceived = true;
-          break;
-        }
-      }
-    }
+    this.noteTerminalFrame(parsed);
     if (parsed.usage !== undefined && parsed.usage !== null) {
       // 最后 usage 帧胜出；usage:null 忽略（部分供应商中间/尾帧带 null，避免覆盖真实值）
       this.usage = parsed.usage;
@@ -66,6 +83,21 @@ export class SseScanner {
       this.callbacks?.onErrorFrame?.(this.errorFrame);
     }
   });
+
+  /** 终止帧判定：任一 choice 带 finish_reason 字符串（终止帧到达） */
+  private noteTerminalFrame(parsed: Record<string, unknown>): void {
+    if (!Array.isArray(parsed.choices)) return;
+    for (const choice of parsed.choices) {
+      if (
+        typeof choice === 'object' &&
+        choice !== null &&
+        typeof (choice as Record<string, unknown>).finish_reason === 'string'
+      ) {
+        this.terminalFrameReceived = true;
+        break;
+      }
+    }
+  }
 
   constructor(private readonly callbacks?: SseScannerCallbacks) {}
 
@@ -112,30 +144,13 @@ export class SseScanner {
    * tool_calls 参数；按片段统计后累加——与估算层口径一致）。
    */
   private accumulateOutput(frame: Record<string, unknown>): void {
-    const choices = frame.choices;
+    const { choices } = frame;
     if (!Array.isArray(choices)) return;
     for (const choice of choices) {
       if (typeof choice !== 'object' || choice === null) continue;
       const c = choice as Record<string, unknown>;
-      const delta =
-        typeof c.delta === 'object' && c.delta !== null
-          ? (c.delta as Record<string, unknown>)
-          : null;
-      if (delta !== null) {
-        if (typeof delta.content === 'string') this.features.addText(delta.content);
-        if (typeof delta.reasoning_content === 'string')
-          this.features.addText(delta.reasoning_content);
-        const toolCalls = delta.tool_calls;
-        if (Array.isArray(toolCalls)) {
-          for (const tc of toolCalls) {
-            if (typeof tc !== 'object' || tc === null) continue;
-            const fn = (tc as Record<string, unknown>).function;
-            if (typeof fn !== 'object' || fn === null) continue;
-            const f = fn as Record<string, unknown>;
-            if (typeof f.name === 'string') this.features.addText(f.name);
-            if (typeof f.arguments === 'string') this.features.addText(f.arguments);
-          }
-        }
+      if (typeof c.delta === 'object' && c.delta !== null) {
+        accumulateDeltaFeatures(c.delta as Record<string, unknown>, this.features);
       }
       if (typeof c.text === 'string') this.features.addText(c.text);
     }
@@ -145,8 +160,8 @@ export class SseScanner {
 function toErrorFrame(error: unknown): StreamError {
   const e = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
   let code = 'stream_error';
-  if (typeof e.code === 'string') code = e.code;
-  else if (typeof e.type === 'string') code = e.type;
+  if (typeof e.code === 'string') ({ code } = e);
+  else if (typeof e.type === 'string') ({ type: code } = e);
   return {
     code,
     type: typeof e.type === 'string' ? e.type : undefined,

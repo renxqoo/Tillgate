@@ -10,14 +10,15 @@ import type { AiEvent } from '../events';
 import { UpstreamError as UE } from '../errors/kinds';
 import { canceledError, emptyError } from '../errors/internal';
 import { asServerDrainAbort } from '../errors/server-drain';
-import { fetchUpstream, readBody, BodyTooLargeError } from '../transport/http-client';
-import { tryParseJson, withRawBody } from '../internal/json';
+import { fetchUpstream, BodyTooLargeError } from '../transport/http-client';
 import {
   peekFirstChunk,
   firstChunkStreamError,
   firstChunkErrorBody,
   PeekTimeoutError,
 } from '../internal/stream';
+import { mapUpstreamFailure } from './upstream-failure';
+import { emitAttemptStart } from './attempt-start';
 import type { CallCtx } from './context';
 
 export interface StreamAttemptEnv {
@@ -34,6 +35,77 @@ export interface StreamAttemptEnv {
   emit: (e: AiEvent) => void;
 }
 
+/**
+ * 流式请求签名（B-F2 同修）：流式同样过签名钩子（此前整条 chatStream 路径
+ * 无签名——vertex 流式请求会裸奔 401）；签名用最终字节串，与 SigV4 payload
+ * hash 语义一致。无签名钩子的协议原样返回。
+ */
+async function signStreamHeaders(input: {
+  adapter: ProtocolAdapter;
+  channel: ChannelDesc;
+  url: string;
+  bodyStr: string;
+  headers: Record<string, string>;
+}): Promise<Record<string, string>> {
+  const { adapter, channel, url, bodyStr, headers } = input;
+  if (!adapter.signRequest) return headers;
+  const signed = await adapter.signRequest({
+    url: new URL(url),
+    body: bodyStr,
+    apiKey: channel.apiKey,
+    at: new Date(),
+  });
+  return { ...headers, ...signed };
+}
+
+/**
+ * 首帧判定：错误帧（200 + 流内错误体）→ 厂商错误表映射；正常首帧 → null。
+ * B-F3 修复：首帧是 SSE 文本，直接 tryParseJson 恒失败会把 vendorCode 丢成
+ * status 兜底（quota → invalid_request 误分类，重试/熔断判定失真）——用扫描器
+ * 剥壳还原错误信封后交厂商错误表。放弃 rest 必须 cancel（tee 分支泄漏）。
+ */
+function firstFrameFailure(
+  adapter: ProtocolAdapter,
+  first: Uint8Array,
+  rest: ReadableStream<Uint8Array>,
+): UpstreamError | null {
+  const fe = firstChunkStreamError(first);
+  if (fe === null) return null;
+  void rest.cancel().catch(() => {});
+  return adapter.mapError(200, firstChunkErrorBody(first) ?? first);
+}
+
+/**
+ * 流式尝试的 catch 分类序（v1 语义保持）：
+ * drain → 取消 → 超限 → 首字节超时 → 传输错误透传 → 网络。
+ */
+function classifyStreamAttemptFailure(
+  error: unknown,
+  signal: AbortSignal,
+  firstByteTimeoutMs: number,
+): UpstreamError {
+  if (asServerDrainAbort(signal.reason)) {
+    return new UE({ kind: 'server_draining' });
+  }
+  if (signal.aborted) {
+    return canceledError();
+  }
+  if (error instanceof BodyTooLargeError) {
+    return new UE({ kind: 'invalid_response', message: 'upstream error body exceeds limit' });
+  }
+  if (error instanceof PeekTimeoutError) {
+    return new UE({
+      kind: 'timeout',
+      message: `no first byte from upstream within ${firstByteTimeoutMs}ms`,
+    });
+  }
+  if (error instanceof UE) {
+    return error;
+  }
+  return new UE({ kind: 'network', message: String(error) });
+}
+
+// eslint-disable-next-line max-lines-per-function -- 流式尝试管线:四阶段重构后位于边界,oxfmt 换行推超 1 行
 export async function streamAttempt(
   env: StreamAttemptEnv,
   attempt: number,
@@ -43,31 +115,13 @@ export async function streamAttempt(
   | { ok: false; error: UpstreamError; empty?: boolean }
 > {
   const { adapter, channel, url, headers, finalBody, ctx, cfg, guard, key, emit } = env;
-  emit({
-    type: 'attempt_start',
-    requestId: ctx.requestId,
-    channelKey: key,
-    attempt,
-    atMs: Date.now(),
-  });
-  let outHeaders = headers;
+  emitAttemptStart(emit, { ctx, key, attempt });
   const bodyStr = JSON.stringify(finalBody);
-  // B-F2 同修：流式同样过签名钩子（此前整条 chatStream 路径无签名——
-  // vertex 流式请求会裸奔 401；签名用最终字节串，与 SigV4 payload hash 语义一致）
-  if (adapter.signRequest) {
-    const signed = await adapter.signRequest({
-      url: new URL(url),
-      body: bodyStr,
-      apiKey: channel.apiKey,
-      at: new Date(),
-    });
-    outHeaders = { ...headers, ...signed };
-  }
+  const outHeaders = await signStreamHeaders({ adapter, channel, url, bodyStr, headers });
   try {
     // v1 语义：流式不用 totalMs（流可持续很久，由 heartbeat/inactivity 管理）；
-    // connectMs 只覆盖建连阶段（fetchUpstream 内部定时器），首字节预算由
-    // peekFirstChunk 独立判定（timeout 类错误）——不得用 connectMs 包住
-    // fetch+peek 全程（否则 firstByteTimeoutMs 永不可达、超时误判 empty）
+    // connectMs 只覆盖建连，首字节预算由 peekFirstChunk 独立判定——不得用 connectMs
+    // 包住 fetch+peek 全程（否则 firstByteTimeoutMs 永不可达、超时误判 empty）
     const res = await fetchUpstream(
       url,
       {
@@ -78,21 +132,14 @@ export async function streamAttempt(
       { connectMs: cfg.timeout.connectMs, signal, guard },
     );
     if (!res.ok) {
-      const raw = await readBody(res, { signal });
-      // rawBody 保真(§3.6 例外 3 细节层):出站 message 脱敏,原文随错误携带供日志/审计
-      return {
-        ok: false as const,
-        error: withRawBody(
-          adapter.mapError(res.status, tryParseJson(raw) ?? raw, Object.fromEntries(res.headers)),
-          raw,
-        ),
-      };
+      return { ok: false as const, error: await mapUpstreamFailure(adapter, res, signal) };
     }
-    if (!res.body)
+    if (!res.body) {
       return {
         ok: false as const,
         error: new UE({ kind: 'invalid_response', message: 'no body' }),
       };
+    }
     const upstream = adapter.translateUpstreamStream
       ? adapter.translateUpstreamStream(res.body, ctx.model)
       : res.body;
@@ -102,41 +149,11 @@ export async function streamAttempt(
       signal,
     });
     if (peek.done || !peek.rest) return { ok: false as const, error: emptyError(), empty: true };
-    const fe = peek.first ? firstChunkStreamError(peek.first) : null;
-    if (fe) {
-      // 首帧即错误（200 + 流内错误体）：放弃 rest 必须 cancel（tee 分支泄漏）
-      void peek.rest.cancel().catch(() => {});
-      // B-F3 修复：首帧是 SSE 文本，直接 tryParseJson 恒失败会把 vendorCode
-      // 丢成 status 兜底（quota → invalid_request 误分类，重试/熔断判定失真）。
-      // 用扫描器剥壳还原错误信封后交厂商错误表。
-      return {
-        ok: false as const,
-        error: adapter.mapError(200, firstChunkErrorBody(peek.first!) ?? peek.first!),
-      };
-    }
+    const failure = peek.first ? firstFrameFailure(adapter, peek.first, peek.rest) : null;
+    if (failure !== null) return { ok: false as const, error: failure };
     return { ok: true as const, value: peek.rest };
-  } catch (err) {
-    // v1 分类序：drain → 取消 → 超限 → 首字节超时 → 传输错误透传 → 网络
-    if (asServerDrainAbort(signal.reason))
-      return { ok: false as const, error: new UE({ kind: 'server_draining' }) };
-    if (signal.aborted) return { ok: false as const, error: canceledError() };
-    if (err instanceof BodyTooLargeError)
-      return {
-        ok: false as const,
-        error: new UE({
-          kind: 'invalid_response',
-          message: 'upstream error body exceeds limit',
-        }),
-      };
-    if (err instanceof PeekTimeoutError)
-      return {
-        ok: false as const,
-        error: new UE({
-          kind: 'timeout',
-          message: `no first byte from upstream within ${cfg.stream.firstByteTimeoutMs}ms`,
-        }),
-      };
-    if (err instanceof UE) return { ok: false as const, error: err };
-    return { ok: false as const, error: new UE({ kind: 'network', message: String(err) }) };
+  } catch (error) {
+    const err = classifyStreamAttemptFailure(error, signal, cfg.stream.firstByteTimeoutMs);
+    return { ok: false as const, error: err };
   }
 }

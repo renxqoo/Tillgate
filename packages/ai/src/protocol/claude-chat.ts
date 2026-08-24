@@ -76,6 +76,7 @@ function claudeContentToChat(blocks: unknown): string | Array<Record<string, unk
 
 // ─────────────────────────── ① 入站请求 → 规范形 ───────────────────────────
 
+// eslint-disable-next-line complexity, max-lines-per-function -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function claudeRequestToChat(req: unknown): Json {
   const r = asJson(req) ?? {};
   const messages: unknown[] = [];
@@ -100,7 +101,9 @@ export function claudeRequestToChat(req: unknown): Json {
     const toolResults = blocks.filter((b) => asJson(b)?.type === 'tool_result');
     if (toolResults.length > 0) {
       for (const tr of toolResults) {
-        const t = asJson(tr)!;
+        const t = asJson(tr);
+        // 过滤谓词已保证 tool_result 块 asJson 非空；收窄分支仅为类型系统
+        if (t === null) continue;
         messages.push({
           role: 'tool',
           tool_call_id: str(t.tool_use_id) ?? '',
@@ -115,13 +118,17 @@ export function claudeRequestToChat(req: unknown): Json {
     const toolUses = blocks.filter((b) => asJson(b)?.type === 'tool_use');
     const entry: Json = { role, content: claudeContentToChat(msg.content) };
     if (role === 'assistant' && toolUses.length > 0) {
-      entry.tool_calls = toolUses.map((tu) => {
-        const t = asJson(tu)!;
-        return {
-          id: str(t.id) ?? `call_${str(t.id) ?? 'x'}`,
-          type: 'function',
-          function: { name: str(t.name) ?? '', arguments: JSON.stringify(t.input ?? {}) },
-        };
+      entry.tool_calls = toolUses.flatMap((tu) => {
+        const t = asJson(tu);
+        // 过滤谓词已保证 tool_use 块 asJson 非空；收窄分支仅为类型系统
+        if (t === null) return [];
+        return [
+          {
+            id: str(t.id) ?? `call_${str(t.id) ?? 'x'}`,
+            type: 'function',
+            function: { name: str(t.name) ?? '', arguments: JSON.stringify(t.input ?? {}) },
+          },
+        ];
       });
     }
     messages.push(entry);
@@ -152,14 +159,16 @@ export function claudeRequestToChat(req: unknown): Json {
   if (tc) {
     if (tc.type === 'auto') out.tool_choice = 'auto';
     else if (tc.type === 'any') out.tool_choice = 'required';
-    else if (tc.type === 'tool' && typeof tc.name === 'string')
+    else if (tc.type === 'tool' && typeof tc.name === 'string') {
       out.tool_choice = { type: 'function', function: { name: tc.name } };
+    }
   }
   return out;
 }
 
 // ─────────────────────────── ② 规范形请求 → Claude（上游适配器） ───────────────────────────
 
+// eslint-disable-next-line complexity, max-lines-per-function, max-statements -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function chatRequestToClaude(req: unknown): Json {
   const r = asJson(req) ?? {};
   const out: Json = {};
@@ -222,8 +231,9 @@ export function chatRequestToClaude(req: unknown): Json {
   out.messages = messages;
   out.max_tokens = DEFAULT_CLAUDE_MAX_TOKENS;
   if (typeof r.max_tokens === 'number' && r.max_tokens > 0) out.max_tokens = r.max_tokens;
-  else if (typeof r.max_completion_tokens === 'number' && r.max_completion_tokens > 0)
+  else if (typeof r.max_completion_tokens === 'number' && r.max_completion_tokens > 0) {
     out.max_tokens = r.max_completion_tokens;
+  }
   if (typeof r.temperature === 'number') out.temperature = r.temperature;
   if (typeof r.top_p === 'number') out.top_p = r.top_p;
   if (Array.isArray(r.stop)) out.stop_sequences = r.stop.map((s) => String(s));
@@ -285,9 +295,11 @@ export function claudeUsageToUsage(u: unknown): {
   };
 }
 
-export function claudeResponseToChat(res: unknown): Json {
-  const r = asJson(res) ?? {};
-  const blocks = asArray(r.content);
+/** 响应内容块收集：text 块拼正文、tool_use 块转 tool_calls（形状兜底同 v1） */
+function collectClaudeBlocks(blocks: unknown[]): {
+  textParts: string[];
+  toolCalls: Array<Record<string, unknown>>;
+} {
   const textParts: string[] = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   for (const b of blocks) {
@@ -302,6 +314,12 @@ export function claudeResponseToChat(res: unknown): Json {
       });
     }
   }
+  return { textParts, toolCalls };
+}
+
+export function claudeResponseToChat(res: unknown): Json {
+  const r = asJson(res) ?? {};
+  const { textParts, toolCalls } = collectClaudeBlocks(asArray(r.content));
   const message: Json = { role: 'assistant', content: textParts.join('') };
   if (toolCalls.length > 0) message.tool_calls = toolCalls;
   const stopReason = str(r.stop_reason) ?? '';
@@ -349,6 +367,7 @@ const CHAT_FINISH_TO_CLAUDE: Record<string, string> = {
 };
 
 /** 规范形 chat 非流式响应 → Claude Messages 响应（入站 /v1/messages 非流式） */
+// eslint-disable-next-line complexity -- 双向 codec：字段级形状穷举（请求方言矩阵），拆分需跨函数线程化中间状态，存量棘轮（铁律 22⑥）
 export function chatResponseToClaude(res: unknown): Json {
   const r = asJson(res) ?? {};
   const choice = asJson(asArray(r.choices)[0]) ?? {};
@@ -376,10 +395,8 @@ export function chatResponseToClaude(res: unknown): Json {
   const usage = asJson(r.usage);
   const inputTokens = typeof usage?.prompt_tokens === 'number' ? usage.prompt_tokens : 0;
   const outputTokens = typeof usage?.completion_tokens === 'number' ? usage.completion_tokens : 0;
-  const cached =
-    typeof (asJson(usage?.prompt_tokens_details) ?? {})?.cached_tokens === 'number'
-      ? (asJson(usage?.prompt_tokens_details)!.cached_tokens as number)
-      : 0;
+  const promptDetails = asJson(usage?.prompt_tokens_details);
+  const cached = typeof promptDetails?.cached_tokens === 'number' ? promptDetails.cached_tokens : 0;
   const finish = str(choice.finish_reason) ?? 'end_turn';
   return {
     id: str(r.id) ?? 'msg_gateway',

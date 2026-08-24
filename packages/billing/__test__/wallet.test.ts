@@ -9,6 +9,7 @@ import { isBusinessError, isDefectError } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';
+import { defined } from './defined.js';
 
 const GUARDS = {
   refTypes: ['billing', 'topup', 'admin', 'gift'],
@@ -56,7 +57,7 @@ describe('credit / refund（腿级幂等）', () => {
     const again = await api.credit({ userId, amount: '10.5', refType: 'topup', refId: 'o1' });
     expect(again.amount).toBe('10.5');
     const accounts = await api.accounts(userId);
-    expect(accounts[0]!.balance).toBe('10.5');
+    expect(defined(accounts[0]).balance).toBe('10.5');
   });
 
   it('唯一冲突兜底重放（suppress 快速路径模拟读后写竞态）——回执仍是首笔', async () => {
@@ -96,7 +97,7 @@ describe('credit / refund（腿级幂等）', () => {
     expect(replay.replayed).toBe(true);
     // 同 refType/refId 不同 kind 不顶撞（credit 与 refund 幂等域隔离）
     await api.credit({ userId, amount: '1', refType: 'admin', refId: 'rf1' });
-    expect((await api.accounts(userId))[0]!.balance).toBe('7');
+    expect(defined((await api.accounts(userId))[0]).balance).toBe('7');
     const insufficient = await rejection(() =>
       api.refund({ userId, amount: '8', refType: 'admin', refId: 'rf2' }),
     );
@@ -117,8 +118,8 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     await api.credit({ userId, amount: '10', refType: 'topup', refId: 'c1' });
     const auth = await api.authorize({ userId, amount: '7', refType: 'billing', refId: 'b1' });
     expect(auth.status).toBe('active');
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('7');
-    expect((await api.accounts(userId))[0]!.balance).toBe('10');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('7');
+    expect(defined((await api.accounts(userId))[0]).balance).toBe('10');
     const settled = await api.settle({ refType: 'billing', refId: 'b1', amount: '6' });
     expect(settled).toMatchObject({
       settledAmount: '6',
@@ -126,7 +127,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
       releasedRemainder: '1',
       replayed: false,
     });
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('0');
     // 结算重放 = 首答（settled 分支读回腿上稳定回执）
     const replay = await api.settle({ refType: 'billing', refId: 'b1', amount: '6' });
     expect(replay).toEqual({ ...settled, replayed: true });
@@ -152,7 +153,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
       api.authorize({ userId, amount: '3', refType: 'billing', refId: 'b4' }),
     );
     expect(rejected.code).toBe('billing.insufficient_balance');
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('8');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('8');
   });
 
   it('现金口径（allowCredit:false）：授信不参与可用额', async () => {
@@ -179,7 +180,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
       reason: 'upstream_failed',
     });
     expect(released).toMatchObject({ releasedAmount: '5', replayed: false });
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('0');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('0');
     const replay = await api.release({
       refType: 'billing',
       refId: 'b7',
@@ -199,7 +200,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     expect(
       (await rejection(() => api.settle({ refType: 'billing', refId: 'b8', amount: '5.01' }))).code,
     ).toBe('billing.settle_exceeds_hold');
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('5');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('5');
     expect(
       (await rejection(() => api.settle({ refType: 'billing', refId: 'nope', amount: '1' }))).code,
     ).toBe('billing.authorization_not_found');
@@ -213,7 +214,7 @@ describe('authorize / settle / release（两阶段闭环）', () => {
     memory.suppressNextFindAuthorization();
     const replay = await api.authorize({ userId, amount: '4', refType: 'billing', refId: 'b9' });
     expect(replay).toEqual({ ...first, replayed: true });
-    expect((await api.accounts(userId))[0]!.inFlight).toBe('4');
+    expect(defined((await api.accounts(userId))[0]).inFlight).toBe('4');
   });
 
   it('collectOverage 域约束：非 billing/#over 键使用即红灯缺陷', async () => {
@@ -322,7 +323,7 @@ describe('读侧与装配校验', () => {
     });
     const page = await api.statement({ userId, limit: 10 });
     expect(page.map((item) => item.refType)).toEqual(['gift', 'topup']);
-    expect(page[0]!.amount).toBe('1');
+    expect(defined(page[0]).amount).toBe('1');
     // kinds 按**交易种类**过滤（两笔都是 credit；再退一笔后按 refund 过滤命中它）
     await api.refund({ userId, amount: '0.5', refType: 'admin', refId: 'rf-s' });
     const creditsOnly = await api.statement({ userId, kinds: ['credit'], limit: 10 });
@@ -335,7 +336,7 @@ describe('读侧与装配校验', () => {
     const next = await api.statement({
       userId,
       limit: 10,
-      beforeLegId: firstPage[1]!.legId,
+      beforeLegId: defined(firstPage[1]).legId,
     });
     expect(next.map((item) => item.refId)).toEqual(['s1']);
   });

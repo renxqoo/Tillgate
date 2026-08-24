@@ -38,6 +38,7 @@ export function toOrgRows(
   memberships: readonly MembershipView[],
   subs: ReadonlyMap<number, OrgSubscriptionInfo>,
 ): OrgRow[] {
+  // eslint-disable-next-line complexity -- 行投影的逐字段空值兜底平铺(分支即字段映射)
   return memberships.map((m) => {
     const sub = subs.get(m.orgId);
     const remaining =

@@ -39,9 +39,9 @@ function fakeBatcher(droppedOverflow = 0): SpanBatcher & { pushed: unknown[][] }
       pushed.push(rows);
       return droppedOverflow;
     }),
-    flush: vi.fn(async () => undefined),
+    flush: vi.fn(async () => {}),
     getStats: () => stats,
-    close: vi.fn(async () => undefined),
+    close: vi.fn(async () => {}),
   } as unknown as SpanBatcher & { pushed: unknown[][] };
 }
 

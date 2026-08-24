@@ -44,13 +44,13 @@ export async function updateRateLimitAction(
     if (kind === 'user') {
       if (patch.creditLimit !== undefined) body.creditLimit = patch.creditLimit;
       if (patch.dailySpendLimit !== undefined) body.dailySpendLimit = patch.dailySpendLimit;
-    } else if (kind === 'key') {
-      if (patch.dailySpendLimit !== undefined) body.dailySpendLimit = patch.dailySpendLimit;
+    } else if (kind === 'key' && patch.dailySpendLimit !== undefined) {
+      body.dailySpendLimit = patch.dailySpendLimit;
     }
     await adminApi().patch(PATH_BY_KIND[kind](id), body);
     revalidatePath('/dashboard/rate-limits');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : tc('saveFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : tc('saveFailed') };
   }
 }

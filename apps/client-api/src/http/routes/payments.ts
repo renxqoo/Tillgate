@@ -14,6 +14,7 @@ export interface PaymentsDeps {
   readonly payments: PaymentsApi;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 路由表装配平铺:注册即数据,内联处理器为 v1 平移语义(存量棘轮)
 export function paymentsRoutes(deps: PaymentsDeps, session: MiddlewareHandler<SessionEnv>) {
   const app = new Hono<SessionEnv>();
 

@@ -11,21 +11,27 @@ import type { UrlGuard } from '../types';
  * 状态码不在此层分类（429/401 等由 adapter.mapError 处理，见阶段 C）
  */
 
-/** IPv4 内网/保留段判定（SSRF 防护） */
+/** 按首字节的 IPv4 保留段判定表（入参为次字节 b）；未列出的首字节 → 公网 */
+const IPV4_RESERVED_BY_FIRST_OCTET: ReadonlyMap<number, (b: number) => boolean> = new Map<
+  number,
+  (b: number) => boolean
+>([
+  [0, () => true], // 0.0.0.0/8（本网络）
+  [10, () => true], // 10/8 私网
+  [100, (b) => b >= 64 && b <= 127], // 100.64/10 CGNAT
+  [127, () => true], // 127/8 回环
+  [169, (b) => b === 254], // 链路本地（含云 metadata 169.254.169.254）
+  [172, (b) => b >= 16 && b <= 31], // 172.16/12 私网
+  [192, (b) => b === 168], // 192.168/16 私网
+]);
+
+/** IPv4 内网/保留段判定（SSRF 防护）——保留段表见 IPV4_RESERVED_BY_FIRST_OCTET */
 export function isUnsafeIpv4(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4 || parts.some((p) => Number.isNaN(p) || p < 0 || p > 255)) return true;
-  const a = parts[0] ?? -1;
-  const b = parts[1] ?? -1;
-  if (a === 0) return true; // 0.0.0.0/8（本网络）
-  if (a === 10) return true; // 10/8 私网
-  if (a === 127) return true; // 127/8 回环
-  if (a === 169 && b === 254) return true; // 链路本地（含云 metadata 169.254.169.254）
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16/12 私网
-  if (a === 192 && b === 168) return true; // 192.168/16 私网
-  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64/10 CGNAT
+  const [a = -1, b = -1] = parts;
   if (a >= 224) return true; // 组播/保留
-  return false;
+  return IPV4_RESERVED_BY_FIRST_OCTET.get(a)?.(b) === true;
 }
 
 /** IPv6 内网/保留段判定（SSRF 防护） */
@@ -34,14 +40,8 @@ export function isUnsafeIpv6(ip: string): boolean {
   if (lower.includes('%')) return true; // 链路本地 zone index
   if (lower === '::' || lower === '::1') return true; // 未指定/回环
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA fc00::/7
-  if (
-    lower.startsWith('fe8') ||
-    lower.startsWith('fe9') ||
-    lower.startsWith('fea') ||
-    lower.startsWith('feb')
-  ) {
-    return true; // 链路本地 fe80::/10
-  }
+  // 链路本地 fe80::/10（fe8/fe9/fea/feb 四个前缀）
+  if (['fe8', 'fe9', 'fea', 'feb'].some((p) => lower.startsWith(p))) return true;
   if (lower.startsWith('ff')) return true; // 组播
   // IPv4-mapped IPv6：dotted 形（::ffff:127.0.0.1）与 URL 规范化的压缩 hex 形
   // （::ffff:7f00:1）都提取 IPv4 部分判定——压缩形是 v1 绕过面（测试暴露）
@@ -200,18 +200,18 @@ export async function fetchUpstream(
     // SSRF/协议校验错误原样上抛（具体错误信息是测试与排障契约，不吞成 network）
     if (opts.guard) await opts.guard(url);
     else await assertSafeUrl(url);
-  } catch (err) {
+  } catch (error) {
     clearTimeout(timer);
     opts.signal?.removeEventListener('abort', onExternalAbort);
-    throw err;
+    throw error;
   }
   try {
     // 原生 fetch 保持响应体逐块流式传输；生产安全边界是不可由请求方控制的
     // provider host allowlist，加上 DNS 私网地址检查和 HTTPS 证书校验。
     return await fetch(url, { ...init, signal: controller.signal });
-  } catch (err) {
+  } catch (error) {
     if (opts.signal?.aborted) {
-      throw new Error('aborted', { cause: err });
+      throw new Error('aborted', { cause: error });
     }
     if (controller.signal.aborted) {
       throw new UpstreamError({ kind: 'timeout', message: 'connect timeout / transport timeout' });
@@ -294,7 +294,8 @@ export async function readRawBody(
         await reader.cancel();
         throw new BodyTooLargeError(maxBytes);
       }
-      chunks.push(value!);
+      // done-break 后 value 已由 ReadableStreamReadResult 判别联合收窄
+      chunks.push(value);
     }
     return Buffer.concat(chunks);
   } finally {

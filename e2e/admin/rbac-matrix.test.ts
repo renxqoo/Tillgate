@@ -16,7 +16,14 @@ import { admins, roles } from '@tillgate/db';
 import { ENFORCED_CODES } from '@tillgate/control-plane';
 import { adminApiEndpoints } from '../../apps/admin-api/src/http/openapi/index';
 import { PUBLIC_ROUTES, SELF_PREFIXES } from '../../apps/admin-api/src/http/middleware/acl';
-import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
+import {
+  call,
+  defined,
+  jsonHeaders,
+  setupE2EAdmin,
+  teardownE2EAdmin,
+  type E2EAdminWorld,
+} from './kit';
 
 let world: E2EAdminWorld | null = null;
 
@@ -92,6 +99,14 @@ function materialize(path: string): string {
     .split('/')
     .map((segment) => (segment.startsWith(':') ? '1' : segment))
     .join('/');
+}
+
+/** 公开/自身白名单路由命中（S 矩阵:白名单端点不要求绑定行——模块级避免每用例重建） */
+function isWhitelistedRoute(method: string, path: string): boolean {
+  return (
+    PUBLIC_ROUTES.some((route) => route.method === method && route.path === path) ||
+    SELF_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+  );
 }
 
 describe('P. 绑定完整性矩阵（零码令牌遍历全部绑定端点）', () => {
@@ -219,16 +234,14 @@ describe('R. 预置授权契约（0082 种子逐角色锁定）', () => {
     const byCode = new Map(rows.map((row) => [row.code, row]));
 
     for (const [roleCode, codes] of Object.entries(expected)) {
-      const role = byCode.get(roleCode);
+      const role = defined(byCode.get(roleCode), `预置角色 ${roleCode}`);
       expect(role, `预置角色 ${roleCode} 缺失`).toBeDefined();
-      expect([...role!.codes].toSorted(), `${roleCode} 授权码集漂移`).toEqual(
-        [...codes].toSorted(),
-      );
+      expect([...role.codes].toSorted(), `${roleCode} 授权码集漂移`).toEqual([...codes].toSorted());
     }
-    const superRole = byCode.get('super_admin');
+    const superRole = defined(byCode.get('super_admin'), 'super_admin role');
     expect(superRole).toBeDefined();
-    expect(superRole!.isSuper).toBe(true);
-    expect(superRole!.codes).toEqual([]); // 隐式全量:不落授权行
+    expect(superRole.isSuper).toBe(true);
+    expect(superRole.codes).toEqual([]); // 隐式全量:不落授权行
   });
 });
 
@@ -237,16 +250,12 @@ describe('S. 路由 ⊆ 绑定表（新端点漏绑定即红）', () => {
     const bindings = await listBindings();
     const bound = new Set(bindings.map((row) => `${row.method} ${row.path}`));
 
-    const whitelisted = (method: string, path: string): boolean =>
-      PUBLIC_ROUTES.some((route) => route.method === method && route.path === path) ||
-      SELF_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-
     const missing: string[] = [];
     for (const endpoint of adminApiEndpoints) {
       const method = endpoint.method.toUpperCase();
       // HEAD 经 ACL 归一为 GET 判定——绑定表按 GET 存（注册表如无 HEAD 项此分支自然不触发）
       const key = `${method} ${endpoint.path}`;
-      if (whitelisted(method, endpoint.path)) continue;
+      if (isWhitelistedRoute(method, endpoint.path)) continue;
       if (!bound.has(key)) missing.push(key);
     }
     expect(missing, '以下端点未绑定权限——fail-closed 下超管外全体 403').toEqual([]);

@@ -19,8 +19,9 @@ export interface RechargeInput {
 export async function rechargeChannelAction(input: RechargeInput): Promise<{ error?: string }> {
   const t = await getTranslations('channelFunds');
   if (!input.channelId) return { error: t('channelRequired') };
-  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0)
+  if (!/^\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) <= 0) {
     return { error: t('amountPositive') };
+  }
   try {
     await adminApi().post('/v1/channel-funds/recharge', {
       channelId: input.channelId,
@@ -31,8 +32,8 @@ export async function rechargeChannelAction(input: RechargeInput): Promise<{ err
     });
     revalidatePath('/dashboard/channel-funds');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('rechargeFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('rechargeFailed') };
   }
 }
 
@@ -46,8 +47,9 @@ export interface AdjustInput {
 export async function adjustChannelAction(input: AdjustInput): Promise<{ error?: string }> {
   const t = await getTranslations('channelFunds');
   if (!input.channelId) return { error: t('channelRequired') };
-  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0)
+  if (!/^-?\d+(?:\.\d+)?$/.test(input.amount) || Number(input.amount) === 0) {
     return { error: t('amountNonZero') };
+  }
   try {
     await adminApi().post('/v1/channel-funds/adjust', {
       channelId: input.channelId,
@@ -56,7 +58,7 @@ export async function adjustChannelAction(input: AdjustInput): Promise<{ error?:
     });
     revalidatePath('/dashboard/channel-funds');
     return {};
-  } catch (e) {
-    return { error: e instanceof ApiError ? e.message : t('adjustFailed') };
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : t('adjustFailed') };
   }
 }

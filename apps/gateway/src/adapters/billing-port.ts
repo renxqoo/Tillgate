@@ -14,12 +14,7 @@ import {
   type BillingQuote,
   type BillingQuoteCandidate,
 } from '@tillgate/billing';
-import type {
-  BillingPort,
-  BillingSignal,
-  QuoteCandidate,
-  UsageReceipt,
-} from '@tillgate/inference';
+import type { BillingPort, BillingSignal, QuoteCandidate, UsageReceipt } from '@tillgate/inference';
 
 export interface GatewayBillingConfig {
   reservationLimit: string;
@@ -78,6 +73,73 @@ function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): Bill
   };
 }
 
+/** 报价组装：inputTokenUpperBound 逐候选盖章；显式免费 = 候选链全免费（v1 chain.every） */
+function toQuote(input: {
+  maxOutputTokens: number;
+  inputTokenUpperBound: number;
+  candidates: readonly QuoteCandidate[];
+}): BillingQuote {
+  return {
+    maxOutputTokens: input.maxOutputTokens,
+    candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
+    // billing R6 结构性校验兜底
+    ...(input.candidates.every((c) => c.isFree === true || allPricesZero(c))
+      ? { explicitlyFree: true }
+      : {}),
+  };
+}
+
+/** 蛇形事件词表 → billing 点分词表直译（收据两包同源 v1 receipt 迁移 twin——结构直传） */
+function toBillingEvent(signal: BillingSignal): BillingEvent {
+  switch (signal.type) {
+    case 'upstream_started': {
+      return {
+        type: 'upstream.started',
+        requestId: signal.requestId,
+        leaseOwner: signal.leaseOwner,
+        leaseMs: signal.leaseMs,
+      };
+    }
+    case 'lease_renewed': {
+      return {
+        type: 'lease.renewed',
+        requestId: signal.requestId,
+        leaseOwner: signal.leaseOwner,
+        leaseMs: signal.leaseMs,
+      };
+    }
+    case 'request_succeeded': {
+      return {
+        type: 'request.succeeded',
+        requestId: signal.requestId,
+        receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R } ? R : never,
+      };
+    }
+    case 'request_failed': {
+      return { type: 'request.failed', requestId: signal.requestId, reason: signal.reason };
+    }
+  }
+}
+
+/** 渠道进货额度金额：官方价口径（coefficient=1，衡量上游成本，与用户费率卡无关） */
+function officialPriceAmount(
+  c: QuoteCandidate,
+  estimatedInputTokens: number,
+  maxOutputTokens: number,
+): string {
+  return estimateMaxCost({
+    estimatedInputTokens,
+    maxOutputTokens,
+    inputPrice: c.inputPrice,
+    cacheInputPrice: c.cacheInputPrice,
+    cacheWritePrice: c.cacheWritePrice ?? undefined,
+    outputPrice: c.outputPrice,
+    unitPrice: c.unitPrice ?? '0',
+    unitUpperBound: c.unitUpperBound,
+    coefficient: '1',
+  }).toString();
+}
+
 export function createGatewayBilling(
   api: GatewayBillingApi,
   config: GatewayBillingConfig,
@@ -85,21 +147,13 @@ export function createGatewayBilling(
   return {
     async authorize(input) {
       if (config.assertCapacity != null) await config.assertCapacity();
-      const quote: BillingQuote = {
-        maxOutputTokens: input.maxOutputTokens,
-        candidates: input.candidates.map((c) => toQuoteCandidate(c, input.inputTokenUpperBound)),
-        // 显式免费 = 候选链全免费（v1 chain.every(isFree)；billing R6 结构性校验兜底）
-        ...(input.candidates.every((c) => c.isFree === true || allPricesZero(c))
-          ? { explicitlyFree: true }
-          : {}),
-      };
       await api.authorize({
         requestId: input.requestId,
         userId: input.userId,
         apiKeyId: input.apiKeyId,
         appId: input.appId,
         stream: input.stream,
-        quote,
+        quote: toQuote(input),
         reservationLimit: config.reservationLimit,
         ...(config.reservationPolicy.mode === 'fixed'
           ? { reservationPolicy: { mode: 'fixed', amount: config.reservationPolicy.amount } }
@@ -109,57 +163,15 @@ export function createGatewayBilling(
     },
 
     async signal(signal: BillingSignal) {
-      switch (signal.type) {
-        case 'upstream_started':
-          await api.signal({
-            type: 'upstream.started',
-            requestId: signal.requestId,
-            leaseOwner: signal.leaseOwner,
-            leaseMs: signal.leaseMs,
-          });
-          return;
-        case 'lease_renewed':
-          await api.signal({
-            type: 'lease.renewed',
-            requestId: signal.requestId,
-            leaseOwner: signal.leaseOwner,
-            leaseMs: signal.leaseMs,
-          });
-          return;
-        case 'request_succeeded':
-          await api.signal({
-            type: 'request.succeeded',
-            requestId: signal.requestId,
-            // 收据两包同源（v1 receipt 迁移 twin）——结构直传
-            receipt: signal.receipt as unknown as BillingEvent extends { receipt: infer R }
-              ? R
-              : never,
-          });
-          return;
-        case 'request_failed':
-          await api.signal({
-            type: 'request.failed',
-            requestId: signal.requestId,
-            reason: signal.reason,
-          });
-          return;
-      }
+      await api.signal(toBillingEvent(signal));
     },
 
     async reserveChannel(input) {
-      const c = input.candidate;
-      // 官方价口径（coefficient=1）：渠道进货额度闸衡量上游成本，与用户费率卡无关
-      const amount = estimateMaxCost({
-        estimatedInputTokens: input.estimatedInputTokens,
-        maxOutputTokens: input.maxOutputTokens,
-        inputPrice: c.inputPrice,
-        cacheInputPrice: c.cacheInputPrice,
-        cacheWritePrice: c.cacheWritePrice ?? undefined,
-        outputPrice: c.outputPrice,
-        unitPrice: c.unitPrice ?? '0',
-        unitUpperBound: c.unitUpperBound,
-        coefficient: '1',
-      }).toString();
+      const amount = officialPriceAmount(
+        input.candidate,
+        input.estimatedInputTokens,
+        input.maxOutputTokens,
+      );
       const result = await api.reserveChannel({
         requestId: input.requestId,
         channelId: input.channelId,

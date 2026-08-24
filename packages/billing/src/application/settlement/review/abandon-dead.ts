@@ -21,6 +21,7 @@ export interface AbandonDeadResult {
   replayed: boolean;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 死单处置事务体:顺序步骤
 export async function abandonDead(
   env: {
     store: Parameters<typeof createOperationsUseCase>[0]['store'];

@@ -547,8 +547,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
             likeHit(u.email, input.q) ||
             likeHit(u.displayName, input.q)
           )
-        )
+        ) {
           return false;
+        }
         return true;
       });
       const field = input.sort.field as keyof UserRow;
@@ -783,7 +784,9 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
         createdAt: t,
         updatedAt: t,
       });
-      const org = state.orgs.get(orgId)!;
+      // 两行前刚写入;守卫仅类型收窄,缺失即内存替身状态被外部破坏
+      const org = state.orgs.get(orgId);
+      if (org === undefined) throw new Error(`in-memory store: org ${orgId} missing after insert`);
       return { ...org };
     },
     async findOrg(_db, orgId) {
@@ -992,10 +995,12 @@ export function createInMemoryAccountStore(clock: () => Date): InMemoryAccountSt
             }
           : { ...state.marketing };
       if (patch.signupGiftAmount !== undefined) base.signupGiftAmount = patch.signupGiftAmount;
-      if (patch.referralSignupBonus !== undefined)
+      if (patch.referralSignupBonus !== undefined) {
         base.referralSignupBonus = patch.referralSignupBonus;
-      if (patch.referralCommissionRate !== undefined)
+      }
+      if (patch.referralCommissionRate !== undefined) {
         base.referralCommissionRate = patch.referralCommissionRate;
+      }
       base.updatedBy = updatedBy;
       base.updatedAt = now();
       state.marketing = base;

@@ -2,7 +2,7 @@ import type { Transformer } from 'node:stream/web';
 import { SseScanner } from './sse-parser';
 import { registerSweep } from './heartbeat';
 import { SseModelRewriter } from './model-rewrite';
-import type { StreamError } from '../types';
+import type { StreamError, TextTokenFeatures } from '../types';
 import { asServerDrainAbort } from '../errors/server-drain';
 
 /**
@@ -53,7 +53,7 @@ export type RelayStreamEvent =
       errorFrame: StreamError | null;
       bytesRelayed: number;
       /** 扫描器累计的输出内容文本（usage 缺失/取消时的输出估算源） */
-      outputFeatures?: import('../types').TextTokenFeatures;
+      outputFeatures?: TextTokenFeatures;
       /** 终止细节（观测/计费留痕）：[DONE] 哨兵是否到达；终止帧（finish_reason）是否到达 */
       doneSentinel?: boolean;
       terminalFrame?: boolean;
@@ -72,6 +72,7 @@ export interface RelayStreamHandle {
   onEvent: (cb: (e: RelayStreamEvent) => void) => void;
 }
 
+// eslint-disable-next-line max-lines-per-function -- 透传热路径核心（铁律 12：不缓冲不改写）：取消/心跳/不活动/截断/错误帧五类终止语义交织在同一 transform 闭包，拆分线程化状态会触碰数据面语义，存量棘轮（铁律 22⑥）
 export function relayStream(
   upstream: ReadableStream<Uint8Array>,
   options: RelayStreamOptions,
@@ -122,6 +123,7 @@ export function relayStream(
     });
   };
 
+  // eslint-disable-next-line max-lines-per-function -- 透传热路径核心(铁律12):重构后位于边界,oxfmt 换行推超 3 行
   const failWithErrorFrame = (
     frame: StreamError,
     reason:
@@ -130,9 +132,13 @@ export function relayStream(
       | 'inactivity'
       | 'upstream_disconnected'
       | 'upstream_truncated',
-    controller: TransformStreamDefaultController<Uint8Array> | null = tCtrl,
-    terminate = true,
+    opts?: {
+      controller?: TransformStreamDefaultController<Uint8Array> | null;
+      terminate?: boolean;
+    },
   ): void => {
+    const controller = opts?.controller ?? tCtrl;
+    const terminate = opts?.terminate ?? true;
     if (finished) return;
     finished = true;
     if (unregisterSweep !== null) {
@@ -242,8 +248,7 @@ export function relayStream(
             detail: 'upstream stream ended before a terminal event',
           },
           'upstream_truncated',
-          ctrl,
-          false,
+          { controller: ctrl, terminate: false },
         );
       }
     },

@@ -6,7 +6,8 @@ import { ApiError } from '@tillgate/api-client';
 
 import { ListPage } from '@/features/shared/list-page';
 import { parseListSearchParams } from '@/server/list-query';
-import { CreateKeyDialog, KeysTable } from '@/features/keys/keys-content';
+import { CreateKeyDialog } from '@/features/keys/create-key-dialog';
+import { KeysTable } from '@/features/keys/keys-content';
 import { ExportKeys } from '@/features/keys/export-keys';
 import { isDevFakeMe } from '@/config/dev';
 import { createClientApi } from '@/server/api';
@@ -30,14 +31,14 @@ export default async function KeysPage({ searchParams }: PageProps) {
 
   let keys: KeyRow[] = [];
   let total = 0;
-  let error: string | null = null;
-  let subscriptions: Array<{ id: number; label: string }> = [];
+  let loadError: string | null = null;
+  const subscriptions: Array<{ id: number; label: string }> = [];
   try {
     const result = await api.list<KeyRow>('/v1/keys', { page, pageSize: PAGE_SIZE });
-    keys = result.rows;
-    total = result.total;
-  } catch (e) {
-    error = e instanceof ApiError ? e.message : t('loadFailed');
+    // catch 形参按 catch-error-name 规则命名为 error，外层改名为 loadError（原写法 error 恒为 null，失败提示不上屏）
+    ({ rows: keys, total } = result);
+  } catch (error) {
+    loadError = error instanceof ApiError ? error.message : t('loadFailed');
   }
   // 计费来源下拉：个人订阅 + 所属组织订阅（含余额选项，由弹窗固定渲染）。
   try {
@@ -79,7 +80,7 @@ export default async function KeysPage({ searchParams }: PageProps) {
         searchParams={{ page: page > 1 ? String(page) : undefined }}
         filters={<ExportKeys />}
         actions={<CreateKeyDialog subscriptions={subscriptions} />}
-        error={error}
+        error={loadError}
         page={page}
         pageSize={PAGE_SIZE}
       >

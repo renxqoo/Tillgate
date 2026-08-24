@@ -9,6 +9,7 @@ import type { DbTx } from '@tillgate/db';
 import { notifyOutbox } from '@tillgate/db';
 import { NOTIFY_EVENTS } from '../src/domain/events';
 import { outboxWithinTx } from '../src/composition';
+import { defined } from './defined';
 
 interface RecordedInsert {
   table: unknown;
@@ -46,9 +47,10 @@ describe('outboxWithinTx:入箱 SQL 构造(机制面)', () => {
     };
     await outboxWithinTx(tx).enqueue(input);
     expect(inserts).toHaveLength(1);
-    expect(inserts[0]!.table).toBe(notifyOutbox); // 表目标唯一(不误写他表)
-    expect(inserts[0]!.values).toEqual(input); // values 原样透传(无改写/无补字段)
-    expect(inserts[0]!.onConflictDoNothing).toBe(true); // dedupe 幂等在 SQL 层
+    const insert = defined(inserts[0], 'inserts[0]');
+    expect(insert.table).toBe(notifyOutbox); // 表目标唯一(不误写他表)
+    expect(insert.values).toEqual(input); // values 原样透传(无改写/无补字段)
+    expect(insert.onConflictDoNothing).toBe(true); // dedupe 幂等在 SQL 层
   });
 
   it('词表封闭性:全部 NOTIFY_EVENTS 可入箱(新增事件自动获得覆盖)', async () => {

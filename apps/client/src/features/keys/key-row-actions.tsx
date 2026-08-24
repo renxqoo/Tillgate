@@ -45,6 +45,17 @@ interface EditKeyValues {
   dailySpendLimit?: string;
 }
 
+/** Key 行 → 编辑表单默认值（初值与每次打开弹窗的重置共用，消除重复映射） */
+function toEditDefaults(keyRow: KeyRow): EditKeyValues {
+  return {
+    name: keyRow.name,
+    remark: keyRow.remark ?? '',
+    rpmLimit: keyRow.rpmLimit === null ? '' : String(keyRow.rpmLimit),
+    tpmLimit: keyRow.tpmLimit === null ? '' : String(keyRow.tpmLimit),
+    dailySpendLimit: keyRow.dailySpendLimit === null ? '' : String(keyRow.dailySpendLimit),
+  };
+}
+
 export function KeyRowActions({ keyRow }: { keyRow: KeyRow }) {
   const t = useTranslations('keys');
   const tCommon = useTranslations('common');
@@ -107,13 +118,7 @@ function EditKeyDialog({
 
   const form = useForm<EditKeyValues>({
     resolver: zodResolver(editSchema),
-    defaultValues: {
-      name: keyRow.name,
-      remark: keyRow.remark ?? '',
-      rpmLimit: keyRow.rpmLimit === null ? '' : String(keyRow.rpmLimit),
-      tpmLimit: keyRow.tpmLimit === null ? '' : String(keyRow.tpmLimit),
-      dailySpendLimit: keyRow.dailySpendLimit === null ? '' : String(keyRow.dailySpendLimit),
-    },
+    defaultValues: toEditDefaults(keyRow),
   });
 
   return (
@@ -122,13 +127,7 @@ function EditKeyDialog({
       onOpenChange={(nextOpen) => {
         onOpenChange(nextOpen);
         if (nextOpen) {
-          form.reset({
-            name: keyRow.name,
-            remark: keyRow.remark ?? '',
-            rpmLimit: keyRow.rpmLimit === null ? '' : String(keyRow.rpmLimit),
-            tpmLimit: keyRow.tpmLimit === null ? '' : String(keyRow.tpmLimit),
-            dailySpendLimit: keyRow.dailySpendLimit === null ? '' : String(keyRow.dailySpendLimit),
-          });
+          form.reset(toEditDefaults(keyRow));
         }
       }}
     >

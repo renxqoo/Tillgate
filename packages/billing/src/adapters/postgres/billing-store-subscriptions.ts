@@ -4,7 +4,7 @@
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { ledgerOperations, plans, userSubscriptions, type Db, type DbTx } from '@tillgate/db';
-import type { BillingStore } from '../../ports/billing-store.js';
+import type { BillingStore, SubscriptionRow } from '../../ports/billing-store.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 
 function tx(conn: WalletConn): DbTx {
@@ -26,6 +26,7 @@ const SUB_COLUMNS = {
   reservedAmount: userSubscriptions.reservedAmount,
 };
 
+// eslint-disable-next-line max-lines-per-function -- 订阅读取 join 投影平铺
 export function subscriptionLifecycleMethods(
   db: Db,
 ): Pick<
@@ -67,7 +68,7 @@ export function subscriptionLifecycleMethods(
         .from(userSubscriptions)
         .where(and(eq(userSubscriptions.id, subscriptionId), eq(userSubscriptions.status, 0)))
         .for('update');
-      return (row as import('../../ports/billing-store.js').SubscriptionRow | undefined) ?? null;
+      return (row as SubscriptionRow | undefined) ?? null;
     },
 
     async lockActiveSubscriptionForUser(conn: WalletConn, userId: number, now: Date) {
@@ -82,7 +83,7 @@ export function subscriptionLifecycleMethods(
           ),
         )
         .for('update');
-      return (row as import('../../ports/billing-store.js').SubscriptionRow | undefined) ?? null;
+      return (row as SubscriptionRow | undefined) ?? null;
     },
 
     async expireLapsedSubscriptions(conn: WalletConn, userId: number, now: Date) {
