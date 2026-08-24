@@ -77,3 +77,26 @@ DELETE → `域:delete`；动作端点按 DESIGN §2 原词表。逐文件对照
 | 授权编辑乐观锁（expectedRevision 409） | 低频 LWW 够用 | 后续波次 |
 | grants Redis 缓存 + 角色版本失效 | 当前单 join 查询无压力 | 后续波次 |
 | v1 遗留挂账延续（id 回收 replay 防御等） | 见 docs/admin-rbac/IMPLEMENTATION §6 | 不变 |
+
+## 8. 执行面数据化增补（ADR-0009,2026-08-24 第三波——用户裁决反转方案 B）
+
+用户裁决:资源节点**全字段编辑 + 全节点删除**（含 enforced）。方案 B 双事实源
+（执行面在代码）下该需求产生系统性漂移,故执行面一并数据化——**全局 ACL 中间件
++ endpoint_permissions 绑定表（0084,种子=原 104 处 guard 声明导出）**,详见
+docs/adr/0009。第三波提交序列:
+
+| 阶段 | 提交 | 内容 |
+| --- | --- | --- |
+| A+B | `feat(rbac): endpoint permission bindings table + full-field node CRUD` | 0084 迁移 + cp endpoint 面节点全字段/删除守卫 |
+| C | `feat(rbac): global ACL middleware — endpoint bindings as data` | acl.ts + 26 文件回退 + 绑定端点 + e2e §L 零漂移 |
+| 修正 | `fix(rbac): shared page codes grant all nodes` | 页面共享域读码合法:唯一性收窄到按钮,授权授全部同名节点 |
+| D | `feat(rbac): frontend bindings management + full-field node editing` | 权限页绑定面板 + 节点编辑全字段 |
+
+### 语义变更记录（对第一波验收清单的修正）
+
+- 「忘挂码不可编译」→「未绑定 fail-closed 403 + 超管短路恢复路径」;
+- 「enforced 节点锁死」→「全字段可改可删;删除守卫仅剩:有子节点/仍守护接口」;
+- 「未注册 /v1 路径 404」→「401/403 endpoint_unbound（超管 404）」;
+- 码唯一性:全局 → 仅按钮（页面共享域读码合法,授权授全部同名节点）。
+- e2e:rbac-roles.test.ts §J/K 改按新语义;新增 §L 换绑即时生效/解绑默认拒/
+  改码零漂移（绑定按 id——第三波的核心价值断言）。
