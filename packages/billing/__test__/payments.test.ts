@@ -35,14 +35,20 @@ const nextUser = () => (userSeq += 1);
 /** 可编程假渠道：内存 createOrder + 受控 notify 载荷 */
 function fakeProvider(
   name: 'epay' | 'stripe',
-  behavior: { failCreate?: boolean } = {},
+  behavior: { failCreate?: boolean; paused?: boolean } = {},
 ): PaymentProviderPort & {
   sessions: Map<string, string>; // orderId -> providerOrderId
+  setPaused: (paused: boolean) => void;
 } {
   const sessions = new Map<string, string>();
+  let paused = behavior.paused ?? false;
   return {
     name,
     sessions,
+    setPaused: (next: boolean) => {
+      paused = next;
+    },
+    accepting: () => !paused,
     async createOrder(input) {
       if (behavior.failCreate) throw new Error('channel down');
       const providerOrderId = `cs_${input.orderId}`;
@@ -581,6 +587,81 @@ describe('渠道适配器配置（币种/支付类型单真相）', () => {
     };
     expect(eventOf('usd')).toBeNull(); // 币种错配拒收（资损闸）
     expect(eventOf('CNY')).toMatchObject({ providerOrderId: 'cs_9', paidAmount: '10.10' });
+  });
+
+  it('epay verifyKeys：轮换双读窗内旧 key 签名回调通过；序列外 key 拒绝', async () => {
+    const { createEpayProvider } = await import('../src/adapters/payments/providers.js');
+    const oldKey = 'old-secret';
+    const newKey = 'new-secret';
+    // 用旧 key 构造 TRADE_SUCCESS 回调（键序 MD5 签名——domain 纯规则）
+    const notify: Record<string, string> = {
+      pid: '1001',
+      trade_no: 'tn-1',
+      out_trade_no: 'o-rot',
+      type: 'alipay',
+      money: '10.00',
+      trade_status: 'TRADE_SUCCESS',
+    };
+    notify.sign = epaySign(notify, oldKey);
+    notify.sign_type = 'MD5';
+    const base = {
+      pid: '1001',
+      key: newKey,
+      gatewayUrl: 'https://epay.example/submit.php',
+      notifyUrl: 'https://app.example/notify',
+      returnUrl: 'https://app.example/return',
+      payType: 'alipay' as const,
+    };
+    // 双读窗序列 [新, 旧]：旧 key 签名通过（在途订单回调不因轮换丢失）
+    const windowed = createEpayProvider({ ...base, verifyKeys: [newKey, oldKey] });
+    expect(windowed.parseNotify(notify)).toMatchObject({ providerOrderId: 'o-rot' });
+    // 缺省序列只认当前 key：旧签名拒绝（窗口外的等价行为）
+    const strict = createEpayProvider(base);
+    expect(strict.parseNotify(notify)).toBeNull();
+  });
+
+  it('stripe webhookSecrets：轮换双读窗内新旧密钥签名均通过；缺省只认当前', async () => {
+    const { createStripeProvider } = await import('../src/adapters/payments/providers.js');
+    const payload = JSON.stringify({
+      type: 'checkout.session.completed',
+      data: {
+        object: {
+          id: 'cs_rot',
+          client_reference_id: 'o-rot',
+          amount_total: 1010,
+          payment_status: 'paid',
+          mode: 'payment',
+          currency: 'CNY',
+        },
+      },
+    });
+    const nowSec = Math.floor(Date.now() / 1000);
+    const sigOf = (secret: string) =>
+      createHmac('sha256', secret).update(`${nowSec}.${payload}`).digest('hex');
+    const oldSig = `t=${nowSec},v1=${sigOf('whsec_old')}`;
+    const newSig = `t=${nowSec},v1=${sigOf('whsec_new')}`;
+    const base = {
+      secretKey: 'sk_test',
+      webhookSecret: 'whsec_new',
+      successUrl: 'https://app.example/ok',
+      cancelUrl: 'https://app.example/cancel',
+      currency: 'CNY',
+      apiBase: 'https://stripe.test',
+      fetchImpl: (async () => new Response('{}')) as typeof fetch,
+      clock: () => nowSec * 1000,
+    };
+    const windowed = createStripeProvider({ ...base, webhookSecrets: ['whsec_new', 'whsec_old'] });
+    expect(windowed.parseNotify({ payload, 'stripe-signature': oldSig })).toMatchObject({
+      providerOrderId: 'cs_rot',
+    });
+    expect(windowed.parseNotify({ payload, 'stripe-signature': newSig })).toMatchObject({
+      providerOrderId: 'cs_rot',
+    });
+    const strict = createStripeProvider(base);
+    expect(strict.parseNotify({ payload, 'stripe-signature': oldSig })).toBeNull();
+    expect(strict.parseNotify({ payload, 'stripe-signature': newSig })).toMatchObject({
+      providerOrderId: 'cs_rot',
+    });
   });
 
   it('stripeCentsFromAmount 零 round：非整分值结构性拒绝（不静默取整）', () => {

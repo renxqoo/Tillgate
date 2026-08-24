@@ -59,7 +59,7 @@ describe('planIntegrationImport（分组语义）', () => {
     expect(keys).toContain('payment.stripe');
     expect(keys).not.toContain('oauth.google');
     expect(plan.skipped).toEqual([
-      { key: 'oauth.google', present: ['clientId'], missing: ['clientSecret'] },
+      { key: 'oauth.google', present: ['clientId'], missing: ['clientSecret'], invalid: [] },
     ]);
     expect(plan.absent).toEqual([]);
   });
@@ -69,6 +69,18 @@ describe('planIntegrationImport（分组语义）', () => {
     expect(plan.imports).toEqual([]);
     expect(plan.skipped).toEqual([]);
     expect(plan.absent).toHaveLength(7);
+  });
+
+  it('值形状非法 → 组跳过并列出 invalid（对齐原 env zod 口径）', () => {
+    const plan = planIntegrationImport({
+      EPAY_PID: '1001',
+      EPAY_KEY: 'k',
+      EPAY_GATEWAY_URL: 'not-a-url',
+      EPAY_NOTIFY_URL: 'https://api.example.com/notify',
+      EPAY_RETURN_URL: 'https://app.example.com/return',
+    });
+    expect(plan.imports).toEqual([]);
+    expect(plan.skipped[0]).toMatchObject({ key: 'payment.epay', invalid: ['gatewayUrl'] });
   });
 
   it('oauth.base 只有 frontendUrl → 半配跳过（对齐启动期两地址必齐口径）', () => {

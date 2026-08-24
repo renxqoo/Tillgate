@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
-import { Decimal, EPAY_PAY_TYPES } from '@tillgate/billing';
+import { Decimal } from '@tillgate/billing';
 
 const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
 const positiveDecimal = nonNegativeDecimal.refine((value) => !/^0+(?:\.0+)?$/.test(value));
@@ -73,22 +73,7 @@ function createSchema(production: boolean) {
     /** 未支付订单超时关单（ms） */
     PAYMENT_ORDER_TTL_MS: z.coerce.number().int().positive().default(1_800_000),
     /** 易支付五件套全配才启用该渠道；PAY_TYPE 从词表校验（不写死 alipay） */
-    EPAY_PID: z.string().optional(),
-    EPAY_KEY: z.string().optional(),
-    EPAY_GATEWAY_URL: z.string().url().optional(),
-    EPAY_NOTIFY_URL: z.string().url().optional(),
-    EPAY_RETURN_URL: z.string().url().optional(),
-    EPAY_PAY_TYPE: z
-      .string()
-      .refine((v) => (EPAY_PAY_TYPES as readonly string[]).includes(v), 'unsupported epay pay type')
-      .default('alipay'),
-    /** Stripe（国际卡）四件套全配才启用该渠道（Checkout Session + webhook 验签） */
-    STRIPE_SECRET_KEY: z.string().optional(),
-    STRIPE_WEBHOOK_SECRET: z.string().optional(),
-    STRIPE_SUCCESS_URL: z.string().url().optional(),
-    STRIPE_CANCEL_URL: z.string().url().optional(),
-    /** API 基地址覆盖（默认官方 api.stripe.com；私有化网关/测试 mock 上游用） */
-    STRIPE_API_BASE: z.string().url().optional(),
+    // 支付渠道凭据（EPAY/STRIPE）已迁 integration_settings（动态配置——DESIGN §7.3）
     /** 邮箱验证码两级登录：auto = SMTP 已配置即强制 / on 强制 / off 关闭（单密码） */
     EMAIL_CODE_REQUIRED: z.enum(['auto', 'on', 'off']).default('auto'),
     // SMTP/CAPTCHA/OAuth 凭据与基地址已迁入 integration_settings（动态配置——
@@ -160,15 +145,6 @@ function createSchema(production: boolean) {
 
 export type ClientApiConfig = z.infer<ReturnType<typeof createSchema>>;
 
-/** 全配返回 true；全空返回 false；半配抛错（fail-closed——半配 = 静默坏流） */
-function assertGroup(name: string, values: Array<unknown>): boolean {
-  if (values.every((v) => !v)) return false;
-  if (values.some((v) => !v)) {
-    throw new Error(`${name} options must be configured as a group`);
-  }
-  return true;
-}
-
 /** 端点覆盖解析（JSON：私有化/E2E mock 上游用；非法 JSON fail-loud） */
 function parseEndpoints(json: string | undefined, provider: string) {
   if (!json) return;
@@ -194,20 +170,6 @@ export function loadClientApiConfig(env: NodeJS.ProcessEnv = process.env): Clien
   if (production && !parsed.SECURE_COOKIE) {
     throw new Error('SECURE_COOKIE must be enabled in production');
   }
-  // 支付渠道组配置全-or-无（半配 = 配置错误，直接抛）
-  assertGroup('EPAY_*', [
-    parsed.EPAY_PID,
-    parsed.EPAY_KEY,
-    parsed.EPAY_GATEWAY_URL,
-    parsed.EPAY_NOTIFY_URL,
-    parsed.EPAY_RETURN_URL,
-  ]);
-  assertGroup('STRIPE_*', [
-    parsed.STRIPE_SECRET_KEY,
-    parsed.STRIPE_WEBHOOK_SECRET,
-    parsed.STRIPE_SUCCESS_URL,
-    parsed.STRIPE_CANCEL_URL,
-  ]);
   parseEndpoints(parsed.OAUTH_GITHUB_ENDPOINTS_JSON, 'github');
   parseEndpoints(parsed.OAUTH_GOOGLE_ENDPOINTS_JSON, 'google');
   // captcha 成对校验

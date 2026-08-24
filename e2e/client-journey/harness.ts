@@ -151,13 +151,6 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
     TOPUP_MIN: '1',
     TOPUP_MAX: '100000',
     TOPUP_EXCHANGE_RATE: '1',
-    // 易支付渠道（下单纯本地计算；回调由装置伪造签名）
-    EPAY_PID: 'e2e-pid',
-    EPAY_KEY: 'e2e-key',
-    EPAY_GATEWAY_URL: 'https://epay-mock.invalid/submit.php',
-    EPAY_NOTIFY_URL: `${appUrl}/v1/payments/notify/epay`,
-    EPAY_RETURN_URL: `${appUrl}/v1/payments/return`,
-    EPAY_PAY_TYPE: 'alipay',
     // GitHub 社交登录：凭据/基地址经 DB 种子（seedIntegrationSettings——动态配置真路径）；
     // mock 上游端点覆盖保持 env（ENDPOINTS_JSON 是 env 专属逃生门——DESIGN §5 D10）
     ...(githubEndpoints != null
@@ -166,16 +159,24 @@ function buildHarnessEnv(appUrl: string, githubEndpoints?: GithubEndpoints): Nod
   };
 }
 
+/** 易支付旅程凭据（下单纯本地计算；回调由装置伪造签名——seed 进集成设置） */
+const EPAY = {
+  pid: 'e2e-pid',
+  key: 'e2e-key',
+  gatewayUrl: 'https://epay-mock.invalid/submit.php',
+  payType: 'alipay',
+} as const;
+
 /**
- * OAuth 集成种子（动态配置真路径——测试侧的导入脚本口径）：upsert 覆盖旧行
- * （端口随机，每次旅程重写基地址）；secret 以 enc:v1 密文落库（与生产存储同形）。
+ * 集成种子（动态配置真路径——测试侧的导入脚本口径）：upsert 覆盖旧行
+ * （端口随机，每次旅程重写回调基地址）；secret 以 enc:v1 密文落库（与生产存储同形）。
+ * OAuth 两行仅 GitHub 旅程种入；易支付行恒种（充值旅程回调按其伪造签名）。
  */
-async function seedOauthIntegrationSettings(
+async function seedIntegrationSettings(
   env: NodeJS.ProcessEnv,
   appUrl: string,
   withGithub: boolean,
 ): Promise<void> {
-  if (!withGithub) return;
   const db = createDb({
     url: env.DATABASE_URL as string,
     poolMax: 2,
@@ -185,27 +186,44 @@ async function seedOauthIntegrationSettings(
   });
   try {
     const cipher = createCipher(env.ENCRYPTION_KEY as string);
+    if (withGithub) {
+      await postgresIntegrationSettingsStore.upsert(db, {
+        key: 'oauth.base',
+        enabled: true,
+        config: { frontendUrl: `${appUrl}/app`, apiBase: appUrl },
+        previousSecrets: null,
+        rotatedAt: null,
+        adminId: null,
+      });
+      await postgresIntegrationSettingsStore.upsert(db, {
+        key: 'oauth.github',
+        enabled: true,
+        config: {
+          clientId: 'e2e-client-id',
+          clientSecret: cipher.encrypt('e2e-client-secret'),
+        },
+        previousSecrets: null,
+        rotatedAt: null,
+        adminId: null,
+      });
+    }
     await postgresIntegrationSettingsStore.upsert(db, {
-      key: 'oauth.base',
-      enabled: true,
-      config: { frontendUrl: `${appUrl}/app`, apiBase: appUrl },
-      previousSecrets: null,
-      rotatedAt: null,
-      adminId: null,
-    });
-    await postgresIntegrationSettingsStore.upsert(db, {
-      key: 'oauth.github',
+      key: 'payment.epay',
       enabled: true,
       config: {
-        clientId: 'e2e-client-id',
-        clientSecret: cipher.encrypt('e2e-client-secret'),
+        pid: EPAY.pid,
+        key: cipher.encrypt(EPAY.key),
+        gatewayUrl: EPAY.gatewayUrl,
+        notifyUrl: `${appUrl}/v1/payments/notify/epay`,
+        returnUrl: `${appUrl}/v1/payments/return`,
+        payType: EPAY.payType,
       },
       previousSecrets: null,
       rotatedAt: null,
       adminId: null,
     });
   } finally {
-    await closeDb(db);
+    await closeDb(db).catch(() => {});
   }
 }
 
@@ -223,7 +241,7 @@ export async function bootHarness(options: {
       }
     : undefined;
   const env = buildHarnessEnv(appUrl, githubEndpoints);
-  await seedOauthIntegrationSettings(env, appUrl, githubEndpoints != null);
+  await seedIntegrationSettings(env, appUrl, githubEndpoints != null);
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
@@ -236,7 +254,7 @@ export async function bootHarness(options: {
     assembly,
     baseUrl: appUrl,
     mailer,
-    epay: { pid: env.EPAY_PID as string, key: env.EPAY_KEY as string },
+    epay: { pid: EPAY.pid, key: EPAY.key },
     github: options.github ?? null,
     teardown: async () => {
       await assembly.redis.quit().catch(() => {});

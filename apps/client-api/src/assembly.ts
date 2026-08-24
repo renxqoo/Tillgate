@@ -199,6 +199,7 @@ export async function assembleClientApi(
   const payments: PaymentsApi = createClientPayments({
     config,
     db,
+    reader,
     store: billingStore,
     wallet: billing.wallet,
     orderLimiter: rateCounter,

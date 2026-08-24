@@ -3,7 +3,7 @@
  * 计划纯函数（可测）+ 应用函数（幂等：已存在的键跳过，不覆盖 admin 已改值）。
  * 语义对齐存量启动校验：完整组导入并启用；非空不完整组跳过并警告（不部分导入）。
  */
-import { specOf } from '../../domain/integrations/specs';
+import { isValidFieldValue, specOf } from '../../domain/integrations/specs';
 import { INTEGRATION_KEYS } from '../../domain/integrations/keys';
 import type { IntegrationKey } from '../../domain/integrations/keys';
 import type { Db } from '@tillgate/db';
@@ -61,6 +61,8 @@ export interface IntegrationImportSkip {
   readonly key: IntegrationKey;
   readonly present: readonly string[];
   readonly missing: readonly string[];
+  /** 值形状非法的字段（对齐原 env zod 校验——垃圾值不导入） */
+  readonly invalid: readonly string[];
 }
 
 export interface IntegrationImportPlan {
@@ -81,18 +83,25 @@ export function planIntegrationImport(
     const config: Record<string, string> = {};
     const present: string[] = [];
     const missing: string[] = [];
+    const invalid: string[] = [];
     for (const field of spec.fields) {
       const envName = ENV_FIELDS[key][field.name] ?? '';
       const value = env[envName];
       if (value != null && value.length > 0) {
+        if (!isValidFieldValue(field.kind, value)) {
+          invalid.push(field.name);
+          continue;
+        }
         config[field.name] = value;
         present.push(field.name);
       } else if (field.required) {
         missing.push(field.name);
       }
     }
-    if (missing.length === 0 && present.length > 0) imports.push({ key, config });
-    else if (missing.length > 0 && present.length > 0) skipped.push({ key, present, missing });
+    if (invalid.length > 0) skipped.push({ key, present, missing, invalid });
+    else if (missing.length === 0 && present.length > 0) imports.push({ key, config });
+    else if (missing.length > 0 && present.length > 0)
+      skipped.push({ key, present, missing, invalid });
     else absent.push(key);
   }
   return { imports, skipped, absent };

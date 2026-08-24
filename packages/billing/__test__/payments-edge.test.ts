@@ -18,6 +18,7 @@ import type { WalletConn } from '../src/ports/wallet-store.js';
 function fakeProvider(behavior: { failCreate?: boolean } = {}): PaymentProviderPort {
   return {
     name: 'stripe',
+    accepting: () => true,
     async createOrder(input) {
       if (behavior.failCreate) throw new Error('channel down');
       return {

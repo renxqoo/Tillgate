@@ -26,6 +26,8 @@ export function createEpayProvider(config: {
   returnUrl: string;
   /** 支付类型（必填配置；从 EPAY_PAY_TYPES 词表校验——不写死 'alipay'） */
   payType: (typeof EPAY_PAY_TYPES)[number];
+  /** 验签密钥序列（先新后旧，旧值仅双读窗内——DESIGN integration-settings §5 D6；缺省 [key]） */
+  verifyKeys?: readonly string[];
   clock?: () => number;
 }): PaymentProviderPort {
   if (!EPAY_PAY_TYPES.includes(config.payType)) {
@@ -35,6 +37,7 @@ export function createEpayProvider(config: {
   }
   return {
     name: 'epay',
+    accepting: () => true,
     async createOrder(input) {
       const params: Record<string, string> = {
         pid: config.pid,
@@ -55,7 +58,8 @@ export function createEpayProvider(config: {
       return { providerOrderId: input.orderId, payUrl: `${config.gatewayUrl}?${query}` };
     },
     parseNotify(query) {
-      if (!epayVerify(query, config.key)) return null;
+      const verifyKeys = config.verifyKeys ?? [config.key];
+      if (!verifyKeys.some((secret) => epayVerify(query, secret))) return null;
       if (query.pid !== config.pid) return null;
       const payload = parseEpayNotify(query);
       if (!payload || payload.tradeStatus !== 'TRADE_SUCCESS') return null;
@@ -68,6 +72,8 @@ export interface StripeProviderConfig {
   secretKey: string;
   /** webhook 端点签名密钥（whsec_...） */
   webhookSecret: string;
+  /** webhook 验签密钥序列（先新后旧，旧值仅双读窗内；缺省 [webhookSecret]） */
+  webhookSecrets?: readonly string[];
   successUrl: string;
   cancelUrl: string;
   /** 计费币种（必填注入：下单 line_items 与回调币种闸同源——不写死 'cny'） */
@@ -85,6 +91,7 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
   const apiBase = config.apiBase ?? 'https://api.stripe.com';
   return {
     name: 'stripe',
+    accepting: () => true,
     async createOrder(input) {
       // Checkout Session 创建（form-encoded，无 SDK 依赖）
       const body = new URLSearchParams({
@@ -113,16 +120,29 @@ export function createStripeProvider(config: StripeProviderConfig): PaymentProvi
       return { providerOrderId: session.id, payUrl: session.url };
     },
     parseNotify(raw) {
-      const payload = raw.payload ?? '';
-      const header = raw['stripe-signature'] ?? '';
-      if (!verifyStripeSignature(header, payload, config.webhookSecret, nowMs())) return null;
-      const event = parseStripeEvent(payload, config.currency);
-      if (!event) return null;
-      return {
-        providerOrderId: event.sessionId,
-        merchantOrderId: event.orderId,
-        paidAmount: event.paidAmount,
-      };
+      return stripeParseNotify(config, raw, nowMs);
     },
+  };
+}
+
+/** webhook 验签归一（独立职责）：密钥序列先新后旧（双读窗），事件币种闸在 domain */
+function stripeParseNotify(
+  config: StripeProviderConfig,
+  raw: Record<string, string>,
+  nowMs: () => number,
+): { providerOrderId: string; merchantOrderId?: string; paidAmount: string } | null {
+  const payload = raw.payload ?? '';
+  const header = raw['stripe-signature'] ?? '';
+  const webhookSecrets = config.webhookSecrets ?? [config.webhookSecret];
+  const verified = webhookSecrets.some((secret) =>
+    verifyStripeSignature(header, payload, secret, nowMs()),
+  );
+  if (!verified) return null;
+  const event = parseStripeEvent(payload, config.currency);
+  if (!event) return null;
+  return {
+    providerOrderId: event.sessionId,
+    merchantOrderId: event.orderId,
+    paidAmount: event.paidAmount,
   };
 }
