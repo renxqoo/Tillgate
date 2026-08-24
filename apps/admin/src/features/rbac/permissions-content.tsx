@@ -121,8 +121,8 @@ function NodeEditDialog({
   );
 }
 
-/** 新建 custom 节点（type/父子/码在创建时定死） */
-function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
+/** 新建 custom 节点入口（页头 actions 插槽;type/父子/码在创建时定死） */
+export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
   const t = useTranslations('permissions');
   const tc = useTranslations('common');
   const notify = useActionResult();
@@ -262,7 +262,7 @@ function NodeRowActions({
   );
 }
 
-/** 资源清单（通用 DataTable;层级上下文经「父节点」列呈现,排序 目录→页面→按钮） */
+/** 资源清单（通用 DataTable;层级上下文经「父节点」列呈现,排序 目录→页面→按钮;分页/标题在页面层 ListPage） */
 export function PermissionsContent({ nodes }: { nodes: PermissionNode[] }) {
   const t = useTranslations('permissions');
   const tc = useTranslations('common');
@@ -333,9 +333,6 @@ export function PermissionsContent({ nodes }: { nodes: PermissionNode[] }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <CreateNodeForm nodes={nodes} />
-      </div>
       <DataTable rowKey={(node) => node.id} rows={rows} columns={columns} empty={t('empty')} />
       <ConfirmDialog
         open={deleting != null}

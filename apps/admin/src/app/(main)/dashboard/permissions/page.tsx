@@ -1,16 +1,16 @@
-import { requirePermission } from '@/server/get-admin';
+import { hasPerm, requirePermission } from '@/server/get-admin';
 import { ListTreeIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { adminApi } from '@/server/admin-api';
 import { ListPage } from '@/components/list-page';
 
-import { PermissionsContent } from '@/features/rbac/permissions-content';
+import { CreateNodeForm, PermissionsContent } from '@/features/rbac/permissions-content';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PermissionsPage() {
-  await requirePermission('admins:read');
+  const me = await requirePermission('admins:read');
   const t = await getTranslations('permissions');
   const tc = await getTranslations('common');
   const tree = await adminApi()
@@ -22,6 +22,8 @@ export default async function PermissionsPage() {
       title={t('title')}
       icon={<ListTreeIcon className="size-5 text-muted-foreground" />}
       description={t('description')}
+      total={(tree ?? []).length}
+      actions={hasPerm(me, 'admins:create') ? <CreateNodeForm nodes={tree ?? []} /> : null}
       error={tree == null ? tc('loadFailed') : null}
     >
       <PermissionsContent nodes={tree ?? []} />
