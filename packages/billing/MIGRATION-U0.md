@@ -46,7 +46,7 @@
 
 | 旧签名                                                     | 新签名                                                      | 变化理由                                             |
 | ---------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------- |
-| `InvalidAmountError`（自造类，raw+reason）                 | `BillingErrors.business('invalid_amount', { raw, reason })` | D5/AGENT.md §11：业务拒绝进目录，捕获按码/分类不按类 |
+| `InvalidAmountError`（自造类，raw+reason）                 | `BillingErrors.business('invalid_amount', { raw, reason })` | D5/AGENTS.md §11：业务拒绝进目录，捕获按码/分类不按类 |
 | `canonicalJson` 抛 `InvalidInputError`（ledger-core 自有） | 抛 `DefectError`（`billing.fingerprint_input`）             | §11：不变量/契约破坏用根契约 Defect；细节只进日志    |
 | `commandFingerprint`：undefined 静默丢弃                   | undefined 显式拒绝（Defect）                                | B4 修复：静默吞值 = 顶替重放温床                     |
 | `commandFingerprint` 键序 localeCompare                    | 码点序（`.toSorted()` 默认比较）                            | B4 修复：跨环境指纹稳定                              |

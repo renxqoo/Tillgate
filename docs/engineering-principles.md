@@ -1,9 +1,9 @@
 # 工程纪律（Engineering Principles）
 
 > **v2 移植注（2026-08-23）**：本文八条纪律源自 v1 仓库，原则本身与代码结构无关，内容原样保留。
-> 在 v2 仓库中，权威工程规范是根目录 [AGENT.md](../AGENT.md)（结构唯一权威为
+> 在 v2 仓库中，权威工程规范是根目录 [AGENTS.md](../AGENTS.md)（结构唯一权威为
 > [project-structure-refactoring.md](./project-structure-refactoring.md)）；本文作为理念背景与历史来源保留，
-> 与 AGENT.md 冲突时以 AGENT.md 为准。
+> 与 AGENTS.md 冲突时以 AGENTS.md 为准。
 
 本仓库所有变更的验收依据。评审与自查时逐条对照；与既有习惯冲突时，以本文为准。
 

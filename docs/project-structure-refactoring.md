@@ -354,7 +354,7 @@ tillgate/
 ├── .oxlintrc.json
 ├── .oxfmtrc.json
 ├── .env.example
-├── AGENT.md
+├── AGENTS.md
 └── README.md
 ```
 
@@ -442,7 +442,7 @@ tillgate/
 
 ### 3.5 ADR 与文档治理
 
-- 本文档是结构目标态的唯一权威，根 `AGENT.md` 是其执行摘要与硬约束；两者冲突时以本文档为准，并在同一变更中同步修订 AGENT.md，禁止规则分叉。
+- 本文档是结构目标态的唯一权威，根 `AGENTS.md` 是其执行摘要与硬约束；两者冲突时以本文档为准，并在同一变更中同步修订 AGENTS.md，禁止规则分叉。
 - 结构例外、包准入/合并、`*-protocol` 与插件化升格、发布白名单变更，必须先写 ADR 再动代码；被推翻的决策标记 Superseded 而不删除。
 - ADR 命名 `docs/adr/NNNN-kebab-title.md`，编号递增；模板至少含：背景、决策、备选方案与取舍、影响。
 - 必需 ADR 清单（缺失不得启动对应阶段）：
@@ -874,7 +874,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 ### P0：固化结构规则
 
 - 合入本文档。
-- 将配置、包准入和发布规则写入根 `AGENT.md`。
+- 将配置、包准入和发布规则写入根 `AGENTS.md`。
 - 建立仓库级边界检查脚本 `scripts/check-package-boundaries.ts` 并进入 CI：覆盖跨包深导入、相对路径越界、TypeScript source alias 绕过和 package graph 循环检查；本文档 §2.3 的引用计数为手扫近似值，此后以该脚本扫描为准。
 - 固化现有 HTTP/任务协议、资金不变量、并发/幂等/恢复行为和数据库迁移基线；重构后的边界测试必须证明行为等价。
 - 交付测试覆盖缺口盘点：对资金（`service/repository/db` 写路径与 `wallet` 双实现）、身份凭据、通知 outbox、结算恢复四类路径逐项列出已有测试与缺口；缺口必须在对应能力迁移开始前补齐，否则「行为等价」验收不可判定。
@@ -963,7 +963,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 
 - 一律逐 PR 灰度迁移，禁止长寿命 refactor 分支；每个迁移 PR 只覆盖一个垂直用例，可独立 revert，revert 后旧路径完整可用（旧实现与切换同 PR 删除，revert 即整体还原）。
 - 涉及 DDL 的用例迁移必须把迁移单元拆出先行合入；迁移 PR 本身不携带 schema 语义变更，保证 revert 不需要数据回滚。
-- 迁移期间旧结构只读不新增：未迁移能力的新用例仍落旧 `service/domain/repository` 位置并遵守 AGENT.md 现行分层；不得在目标包提前创建该能力的实现，也不得在旧位置新增已迁移能力的新代码。
+- 迁移期间旧结构只读不新增：未迁移能力的新用例仍落旧 `service/domain/repository` 位置并遵守 AGENTS.md 现行分层；不得在目标包提前创建该能力的实现，也不得在旧位置新增已迁移能力的新代码。
 - 业务 PR 与迁移 PR 冲突时，迁移 PR rebase 业务 PR；禁止业务 PR 顺手「帮忙迁移」。
 - 每个迁移 PR 携带该用例的边界测试清单并通过四门（typecheck/lint/test/build）；资金用例另加真实 PostgreSQL 下的并发、幂等、恢复测试。
 

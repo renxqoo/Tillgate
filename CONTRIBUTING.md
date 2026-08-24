@@ -35,7 +35,7 @@ Additional gates, run explicitly when relevant:
 
 ## Code standards
 
-Read [AGENT.md](AGENT.md) before your first change — it is the authoritative engineering standard
+Read [AGENTS.md](AGENTS.md) before your first change — it is the authoritative engineering standard
 (§0 lists the hard rules). The essentials:
 
 - Layered architecture: `routes → application → domain`, with `ports ← adapters` at real
@@ -45,7 +45,7 @@ Read [AGENT.md](AGENT.md) before your first change — it is the authoritative e
   policy flags; no hidden global defaults.
 - One verb / one use case per file (~150 lines max); factory closures over classes.
 - Money logic has extra rules (idempotency, CAS state transitions, double-entry ledger) —
-  summarized in AGENT.md §6. The code in `packages/billing` is the source of truth; docs under
+  summarized in AGENTS.md §6. The code in `packages/billing` is the source of truth; docs under
   `docs/` are introductory guides only.
 - Tests live in the package-root `__test__/` directory, flat (no subdirectories); tests needing
   real credentials/PG are named `*.real.test.ts` and excluded from default gates.
@@ -53,7 +53,7 @@ Read [AGENT.md](AGENT.md) before your first change — it is the authoritative e
   belongs in the error registry).
 - No compatibility shims or dead code — when a new path replaces an old one, delete the old one
   in the same PR.
-- Docs-first workflow for features and refactors (AGENT.md §9): DESIGN / IMPLEMENTATION /
+- Docs-first workflow for features and refactors (AGENTS.md §13): DESIGN / IMPLEMENTATION /
   MIGRATION docs per capability; architecture decisions get an ADR in `docs/adr/`.
 
 ## Commit & PR conventions

@@ -19,6 +19,7 @@
     "format": "bun x oxfmt --write .",
     "format:check": "bun x oxfmt --check .",
     "lint": "bunx turbo lint",
+    "lint:fix": "bun x oxlint --fix",
     "test": "bun scripts/check-package-boundaries.ts && bunx turbo test --concurrency=1",
     "test:e2e": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.config.ts",
     "test:e2e:real": "cd apps/gateway && bun x vitest run -c ../../e2e/vitest.real.config.ts",

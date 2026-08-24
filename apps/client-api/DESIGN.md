@@ -3,7 +3,7 @@
 > 状态：定稿
 > 定位：用户控制台 REST API——P5「收紧 apps」wave（总纲 §3 target tree L98-111、§9 P5）
 > 旧实现：ai-getway 仓 `apps/client-api`（65 文件 / ~4.5k 生产行 / 51 路由 / 20 测试文件 ~214 用例）
-> 关联：`docs/project-structure-refactoring.md` §3/§5/§9 P5 · AGENT.md §0/§11 · IMPLEMENTATION.md · MIGRATION.md
+> 关联：`docs/project-structure-refactoring.md` §3/§5/§9 P5 · AGENTS.md §0/§11 · IMPLEMENTATION.md · MIGRATION.md
 
 ## 1. 外部契约（wire）
 

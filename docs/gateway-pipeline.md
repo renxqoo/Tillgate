@@ -102,4 +102,4 @@ gateway，在 `packages/inference`（`src/application/{quote,failover,chat,strea
 
 - 资金语义全流程：[billing-flow-deep-dive.md](billing-flow-deep-dive.md)
 - 全链路判定细节（分图 -1～8 + 估算归属附录）：[gateway-full-flow.md](gateway-full-flow.md)
-- 工程规范：[../AGENT.md](../AGENT.md)
+- 工程规范：[../AGENTS.md](../AGENTS.md)

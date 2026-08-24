@@ -2,7 +2,7 @@
 
 > 状态:已完成(2026-08-23;实施记录见 §7)
 > 前置:DESIGN.md(定稿)、三份老仓审计(2026-08-23,证据均带 文件:行号)
-> 纪律:AGENT.md §9.1(七步流程);复制的前提是逐文件审计无可挑剔;实现推翻设计时先改文档。
+> 纪律:AGENTS.md §9.1(七步流程);复制的前提是逐文件审计无可挑剔;实现推翻设计时先改文档。
 
 ---
 
@@ -129,7 +129,7 @@ packages/accounts/
      不随本单元提交,留待对方收口后统一入库。
 3. **错误码增补**(DESIGN §4 同步):member_limits_invalid / relation_status_invalid /
    app_patch_invalid(实施中发现的语义缺口,均有对应测试)。
-4. **合规复审补齐(2026-08-23 第二轮,AGENT.md 逐条自查)**:
+4. **合规复审补齐(2026-08-23 第二轮,AGENTS.md 逐条自查)**:
    - §0.11 边界可执行:新增 `__test__/architecture.test.ts`(9 用例:domain/application/
      ports/adapters 分层 import 白名单、adapters 唯一装配点、全包禁 pg/http/runtime、
      出口桶零 Db/DbTx/adapter 泄漏、facade 文件唯一);该测试当场抓到两处真实违规并已修

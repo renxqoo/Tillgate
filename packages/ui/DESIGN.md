@@ -1,7 +1,7 @@
 # @tillgate/ui 设计基线（DESIGN）
 
 > 状态：定稿并已实施（v2 `packages/ui` 全新编写）。
-> 依据：`docs/project-structure-refactoring.md` §3（目标树 / 禁止范围表）、§P7（第二个公开包准备）、AGENT.md §0 铁律。
+> 依据：`docs/project-structure-refactoring.md` §3（目标树 / 禁止范围表）、§P7（第二个公开包准备）、AGENTS.md §0 铁律。
 > 指令裁决：用户明确要求「直接使用 `pnpm dlx shadcn@latest init --preset b0 --template vite` 模版，不复用旧 ui，完全重写对应组件」。
 
 ## 1. 范围与不处理

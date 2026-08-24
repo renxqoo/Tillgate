@@ -26,7 +26,7 @@ Tillgate 是一个可自托管的生产级 **LLM API 网关**：用统一的 Ope
 Turborepo monorepo：7 个应用 + 14 个能力包。业务能力按真实边界聚合为包，
 包内统一 `domain / application / ports / adapters` 分层；应用是薄装配单元（配置 + HTTP 壳 + 接线）。
 目标结构与迁移纪律见 [docs/project-structure-refactoring.md](docs/project-structure-refactoring.md)，
-工程规范见 [AGENT.md](AGENT.md)。
+工程规范见 [AGENTS.md](AGENTS.md)。
 
 ```
 apps/       gateway · client-api · admin-api · worker · trace-receiver · client · admin   （装配单元）
@@ -138,11 +138,11 @@ curl http://localhost:8080/v1/chat/completions \
 - **通知与告警** — 事务性发件箱驱动的告警投递（worker）、Webhook / 邮件通知渠道、管理员可选邮箱验证码二次登录。
 - **故障韧性** — Redis Sentinel 支持；Redis 故障分级降级（限流 fail-open、爆破防护降级内存粗限、免费日限 fail-closed）；结算唤醒走 PostgreSQL LISTEN/NOTIFY——无队列中间件依赖。
 - **双控制台** — 管理后台（渠道/模型/费率卡/用户/订阅/支付/观测）与用户面板（Key/用量/账单/操练场），经类型化客户端（`packages/api-client`）消费 API。
-- **可执行架构** — 包边界（依赖白名单、显式 exports、无环）由 `scripts/check-package-boundaries.ts` 在 CI 强制执行；每个能力包带 DESIGN / IMPLEMENTATION / MIGRATION 文档（[AGENT.md](AGENT.md) §9）。
+- **可执行架构** — 包边界（依赖白名单、显式 exports、无环）由 `scripts/check-package-boundaries.ts` 在 CI 强制执行；每个能力包带 DESIGN / IMPLEMENTATION / MIGRATION 文档（[AGENTS.md](AGENTS.md) §13）。
 
 ## 总结
 
-Tillgate 面向需要聚合或转售 LLM API 的团队，把通常要花数月自建的基础设施开箱化：兼容入口、供应商故障转移、能扛住崩溃的计费账本、全维度限额，以及能看清延迟与钱花在哪的链路追踪。深入阅读：[扣款全流程](docs/billing-flow-deep-dive.md) · [网关管线](docs/gateway-pipeline.md) · [技术选型](docs/tech-stack.md) · [API 契约](docs/api-contract.md) · [工程规范](AGENT.md)。
+Tillgate 面向需要聚合或转售 LLM API 的团队，把通常要花数月自建的基础设施开箱化：兼容入口、供应商故障转移、能扛住崩溃的计费账本、全维度限额，以及能看清延迟与钱花在哪的链路追踪。深入阅读：[扣款全流程](docs/billing-flow-deep-dive.md) · [网关管线](docs/gateway-pipeline.md) · [技术选型](docs/tech-stack.md) · [API 契约](docs/api-contract.md) · [工程规范](AGENTS.md)。
 
 ## 开源声明
 

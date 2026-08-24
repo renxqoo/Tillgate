@@ -29,7 +29,7 @@ A Turborepo monorepo of 7 apps + 14 capability packages. Business capabilities a
 packages with a uniform `domain / application / ports / adapters` layering; apps are thin assembly
 units (config + HTTP shell + wiring). See
 [docs/project-structure-refactoring.md](docs/project-structure-refactoring.md) for the target
-structure and migration discipline, and [AGENT.md](AGENT.md) for engineering standards.
+structure and migration discipline, and [AGENTS.md](AGENTS.md) for engineering standards.
 
 ```
 apps/       gateway · client-api · admin-api · worker · trace-receiver · client · admin   (assembly units)
@@ -145,7 +145,7 @@ production** — rotate `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, `AD
 - **Notifications & alerts** — transactional-outbox alert delivery (worker), webhook / email notification channels, optional email verification-code second factor for admin sign-in.
 - **Resilience** — Redis Sentinel support; graded degradation when Redis is down (rate limiting fail-open, brute-force guard degraded to in-memory, free-quota fail-closed); settlement wakeups over PostgreSQL LISTEN/NOTIFY — no queue middleware.
 - **Two consoles** — admin (channels, models, rate cards, users, subscriptions, payments, observability) and client (keys, usage, billing, playground), consuming the APIs through a typed client (`packages/api-client`).
-- **Executable architecture** — package boundaries (dependency whitelist, explicit exports, no cycles) are enforced in CI by `scripts/check-package-boundaries.ts`; every capability carries DESIGN / IMPLEMENTATION / MIGRATION docs ([AGENT.md](AGENT.md) §9).
+- **Executable architecture** — package boundaries (dependency whitelist, explicit exports, no cycles) are enforced in CI by `scripts/check-package-boundaries.ts`; every capability carries DESIGN / IMPLEMENTATION / MIGRATION docs ([AGENTS.md](AGENTS.md) §13).
 
 ## Summary
 
@@ -154,7 +154,7 @@ months to build: a compatible front door, provider failover, a billing ledger th
 crashes, quota enforcement on every dimension, and tracing that shows exactly where latency and
 money go. Deep dives: [billing flow](docs/billing-flow-deep-dive.md) ·
 [gateway pipeline](docs/gateway-pipeline.md) · [tech stack](docs/tech-stack.md) ·
-[API contract](docs/api-contract.md) · [engineering standards](AGENT.md).
+[API contract](docs/api-contract.md) · [engineering standards](AGENTS.md).
 
 ## License
 

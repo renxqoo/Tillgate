@@ -10,7 +10,7 @@
 > SQL 全部收敛于此，内部分 `domain/application/ports/adapters`）、`apps/worker`（结算）。
 > 所有公式与流程均以源码为准。结构背景见
 > [project-structure-refactoring.md](project-structure-refactoring.md) 与
-> [../AGENT.md](../AGENT.md)。
+> [../AGENTS.md](../AGENTS.md)。
 
 ---
 

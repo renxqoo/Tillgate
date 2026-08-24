@@ -4,7 +4,7 @@
 > 零内部依赖的稳定叶子；本文件是完整的使用文档（按角色的用法与示例），
 > 包导读见 [README.md](../README.md)。
 > 裁决与词表治理：[ADR-0001](../../../docs/adr/0001-errors-registry-ownership.md)；
-> 设计基线：[DESIGN.md](../DESIGN.md)；谁必须/禁止使用：AGENT.md §11。
+> 设计基线：[DESIGN.md](../DESIGN.md)；谁必须/禁止使用：AGENTS.md §11。
 
 一句话：**错误的身份与分类在抛出点定一次（目录），之后穿层透明传播；
 捕获只看 nature/category；渲染与日志只消费规范化记录。**

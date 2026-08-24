@@ -8,7 +8,7 @@
 > 关联：[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)（保留独立库、不并入 inference）、
 > [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)（apps 装配面注入形态）、
 > [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) D7（ErrorKind ↔ errors 根契约映射归消费方）、
-> [project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3.5/§3.6（数据面/观察面分离）、§5（依赖图：inference 单向依赖 ai）、§5.1（白名单）、§7.2（发布候选资格保留、白名单初始为空）、AGENT.md §0 铁律 12 与 §11「禁止使用」清单
+> [project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3.5/§3.6（数据面/观察面分离）、§5（依赖图：inference 单向依赖 ai）、§5.1（白名单）、§7.2（发布候选资格保留、白名单初始为空）、AGENTS.md §0 铁律 12 与 §11「禁止使用」清单
 
 ---
 
@@ -17,7 +17,7 @@
 1. **独立库，不并入 inference**（ADR-0006）：并入会把已验证的库边界降级为目录边界——
    ai 的消费面除了运行时装配（inference），还有协议矩阵测试、admin-api 探针 port 与未来
    独立发布候选；目录内聚会让这些消费面失去 exports 级契约保护。库/用例两种生命周期不耦合。
-2. **数据面与观察面分离**（AGENT.md 铁律 12 / 总纲 §3.6）：上游响应逐块透传 C 端
+2. **数据面与观察面分离**（AGENTS.md 铁律 12 / 总纲 §3.6）：上游响应逐块透传 C 端
    （`pipeThrough` 不缓冲、不改写、不收完再转发）；触碰「不改写」的仅透传例外清单三种
    （§3.6）：跨协议最小必要转换（含错误体）、响应侧 model 字段替换（`responseModelRewrite`
    可配置开关，默认关）、错误出站三层（结构翻译、内容脱敏后保留原文、细节只进日志）。
@@ -59,7 +59,7 @@
 | 候选循环 / 换渠 / 路由 / quote / 计费衔接 / 渠道健康（熔断、死凭据） | `inference`（ai 的唯一运行时装配消费方；健康状态 = AiEvent 订阅者形态）                          |
 | 计费取证 / 审计 / trace / 请求日志的消费与持久化                     | billing / observability 等订阅者（装配处挂 `subscribe`，旁路消费）                               |
 | 模型映射 / 渠道目录 / 费率                                           | `control-plane`（`SUPPORTED_PROTOCOLS`/`vendorProfileNames` 词表供其校验引用）                   |
-| 仓库级错误根契约（三性/category）                                    | `@tillgate/errors`——**ai 禁止依赖**（AGENT.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用）   |
+| 仓库级错误根契约（三性/category）                                    | `@tillgate/errors`——**ai 禁止依赖**（AGENTS.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用）   |
 | C 端 wire 出站投影（OpenAI 错误信封、脱敏呈现）                      | app error-face（gateway `openai-error-face` + `sanitize`；ai 只出 UpstreamError 结构与脱敏参数） |
 | 环境变量读取 / OTel SDK / 进程装配                                   | app 装配面（ADR-0007；ai 只收 logger/tracer 结构形状）                                           |
 | 任务轮询调度与结算落账                                               | worker / inference（minimax 'Unknown'→running 永挂面上限归 worker，在案）                        |

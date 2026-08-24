@@ -15,7 +15,7 @@
 > 目标位置：`/Users/wrr/work/Tillgate/packages/errors`
 > 关联：[DESIGN.md](./DESIGN.md)、[IMPLEMENTATION.md](./IMPLEMENTATION.md)（缺陷编号 **E#**
 > 出处——本包审计用 E# 系列，无 B#/D# 编号）、[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
-> （注册表归属与 D1-D9 裁决）、AGENT.md §11（谁必须用/谁禁止用）
+> （注册表归属与 D1-D9 裁决）、AGENTS.md §11（谁必须用/谁禁止用）
 
 ## 1. 行为规格基线
 
