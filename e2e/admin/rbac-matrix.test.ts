@@ -7,11 +7,15 @@
  *   §Q 全码 GET 侧:41 enforced 码全授令牌走全部 GET 绑定 → 不得命中
  *      insufficient_permission / endpoint_unbound（抓「错绑权限码」型越权/误拦）。
  *   §R 预置授权契约:0082 种子的 4 个预置角色授权码集逐一相等（种子被误改即红）。
+ *   §S 路由 ⊆ 绑定:openapi 端点注册表（单一真相）× 绑定表集合 diff——
+ *      新端点漏绑定时 §P 测不到（它不在绑定表里）,上线即超管外全体 403。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inArray } from 'drizzle-orm';
 import { admins, roles } from '@tokenlens/db';
 import { ENFORCED_CODES } from '@tokenlens/control-plane';
+import { adminApiEndpoints } from '../../apps/admin-api/src/http/openapi/index';
+import { PUBLIC_ROUTES, SELF_PREFIXES } from '../../apps/admin-api/src/http/middleware/acl';
 import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
 
 let world: E2EAdminWorld | null = null;
@@ -181,5 +185,28 @@ describe('R. 预置授权契约（0082 种子逐角色锁定）', () => {
     expect(superRole).toBeDefined();
     expect(superRole!.isSuper).toBe(true);
     expect(superRole!.codes).toEqual([]); // 隐式全量:不落授权行
+  });
+});
+
+describe('S. 路由 ⊆ 绑定表（新端点漏绑定即红）', () => {
+  it('注册表端点（剔除公开/自身白名单）逐条有绑定;:param 形态一致', async () => {
+    const bindings = await listBindings();
+    const bound = new Set(bindings.map((row) => `${row.method} ${row.path}`));
+
+    const whitelisted = (method: string, path: string): boolean =>
+      PUBLIC_ROUTES.some((route) => route.method === method && route.path === path) ||
+      SELF_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+
+    const missing: string[] = [];
+    for (const endpoint of adminApiEndpoints) {
+      const method = endpoint.method.toUpperCase();
+      // HEAD 经 ACL 归一为 GET 判定——绑定表按 GET 存（注册表如无 HEAD 项此分支自然不触发）
+      const key = `${method} ${endpoint.path}`;
+      if (whitelisted(method, endpoint.path)) continue;
+      if (!bound.has(key)) missing.push(key);
+    }
+    expect(missing, '以下端点未绑定权限——fail-closed 下超管外全体 403').toEqual([]);
+    // 反向健康度:绑定量应接近注册表量（§P 已逐条验证绑定侧,此处防注册表意外缩水）
+    expect(adminApiEndpoints.length).toBeGreaterThanOrEqual(119); // 注册表缩水即红（当前 119）
   });
 });

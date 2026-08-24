@@ -12,6 +12,8 @@ import {
   FieldLabel,
   FormItem,
   Input,
+  NativeSelect,
+  NativeSelectOption,
   RowActions,
 } from '@tokenlens/ui';
 import { useState } from 'react';
@@ -41,6 +43,7 @@ function GrantTree({
   onToggle: (code: string, next: boolean) => void;
 }) {
   const t = useTranslations('permissions');
+  const tShared = useTranslations('common');
   const groups = nodes
     .filter((n) => n.type === 'group')
     .toSorted((a, b) => a.sortOrder - b.sortOrder);
@@ -64,15 +67,23 @@ function GrantTree({
               return (
                 <div key={page.id} className="space-y-1 rounded-md bg-muted/40 px-2.5 py-2">
                   {page.code != null ? (
-                    <label className="flex items-center gap-2 text-sm font-medium">
+                    <label
+                      className={`flex items-center gap-2 text-sm font-medium${page.status === 1 ? ' opacity-50' : ''}`}
+                    >
                       <Checkbox
                         checked={selected.has(page.code)}
+                        disabled={page.status === 1}
                         onCheckedChange={(checked) => onToggle(page.code!, checked === true)}
                       />
                       {page.name}
                       <span className="font-mono text-[10px] text-muted-foreground">
                         {page.code}
                       </span>
+                      {page.status === 1 ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          （{tShared('disabled')}）
+                        </span>
+                      ) : null}
                     </label>
                   ) : (
                     <div className="text-sm font-medium">{page.name}</div>
@@ -80,9 +91,13 @@ function GrantTree({
                   {pageButtons.length > 0 && (
                     <div className="ml-6 flex flex-col gap-1">
                       {pageButtons.map((button) => (
-                        <label key={button.id} className="flex items-center gap-2 text-sm">
+                        <label
+                          key={button.id}
+                          className={`flex items-center gap-2 text-sm${button.status === 1 ? ' opacity-50' : ''}`}
+                        >
                           <Checkbox
                             checked={selected.has(button.code ?? '')}
+                            disabled={button.status === 1}
                             onCheckedChange={(checked) =>
                               onToggle(button.code ?? '', checked === true)
                             }
@@ -91,6 +106,11 @@ function GrantTree({
                           <span className="font-mono text-[10px] text-muted-foreground">
                             {button.code}
                           </span>
+                          {button.status === 1 ? (
+                            <span className="text-[10px] text-muted-foreground">
+                              （{tShared('disabled')}）
+                            </span>
+                          ) : null}
                         </label>
                       ))}
                     </div>
@@ -157,7 +177,11 @@ function RoleFormDialog({
             run(async () => {
               const name = String(data.get('name') ?? '').trim();
               const res = role
-                ? await updateRoleAction(role.id, { name, permissions: [...selected] })
+                ? await updateRoleAction(role.id, {
+                    name,
+                    status: Number(data.get('status') ?? role.status),
+                    permissions: [...selected],
+                  })
                 : await createRoleAction({
                     code: String(data.get('code') ?? ''),
                     name,
@@ -182,6 +206,20 @@ function RoleFormDialog({
             <FieldLabel htmlFor={nameId}>{tc('name')}</FieldLabel>
             <Input id={nameId} name="name" defaultValue={role?.name} required maxLength={128} />
           </FormItem>
+          {role != null && (
+            <FormItem>
+              <FieldLabel htmlFor={`role-status-${role.id}`}>{tc('status')}</FieldLabel>
+              <NativeSelect
+                id={`role-status-${role.id}`}
+                name="status"
+                defaultValue={String(role.status)}
+              >
+                <NativeSelectOption value="0">{tc('enabled')}</NativeSelectOption>
+                <NativeSelectOption value="1">{tc('disabled')}</NativeSelectOption>
+              </NativeSelect>
+              <FieldDescription>{t('statusHint')}</FieldDescription>
+            </FormItem>
+          )}
           <FormItem>
             <FieldLabel>{t('grants')}</FieldLabel>
             <GrantTree

@@ -1109,6 +1109,7 @@
     "codeHint": "Immutable after creation; lowercase letters/digits/dash, 2-64 chars",
     "grants": "Grants (menus/APIs/buttons)",
     "flags": "Flags",
+    "statusHint": "Disabling zeroes grants for its admins on the next request (kill-switch); re-enable to restore",
     "superFlag": "Super",
     "builtinFlag": "Built-in",
     "adminCount": "Admins",

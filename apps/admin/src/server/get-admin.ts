@@ -103,14 +103,15 @@ export interface ResolvedMenuGroup {
 }
 
 /**
- * 菜单树解析（layout 消费;/v1/me/menus 后端驱动 + i18n 解析——内置节点走 nav 词表,
- * 自定义节点回落 DB name）。React cache:同请求与 requireAdmin 各只打一次接口。
+ * 菜单树解析（layout 消费;/v1/me/menus 后端驱动 + i18n 解析——i18n_key 是根限定键
+ * （内置节点 'nav.xxx'）,用根命名空间解析;未命中回落 DB name）。React cache:
+ * 同请求与 requireAdmin 各只打一次接口。
  */
 export const requireMenus = cache(async (): Promise<ResolvedMenuGroup[]> => {
   if (process.env.DEV_FAKE_ME === '1' && process.env.NODE_ENV !== 'production') {
     return [];
   }
-  const t = await getTranslations('nav');
+  const t = await getTranslations();
   const data = await adminApi().getMyMenus();
   return (data.groups ?? []).map((group) => ({
     label: group.i18nKey != null && t.has(group.i18nKey) ? t(group.i18nKey) : group.name,

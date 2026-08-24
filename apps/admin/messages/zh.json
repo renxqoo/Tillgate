@@ -1109,6 +1109,7 @@
     "codeHint": "创建后不可改；小写字母/数字/中划线，2-64 字符",
     "grants": "授权（菜单/接口/按钮）",
     "flags": "标记",
+    "statusHint": "停用 = 名下管理员下一请求起零授权（kill-switch），重新启用即恢复",
     "superFlag": "超管",
     "builtinFlag": "内置",
     "adminCount": "管理员数",

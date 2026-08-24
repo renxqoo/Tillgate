@@ -28,7 +28,7 @@ export interface EndpointBinding {
 export type BindingResolver = (method: string, path: string) => Promise<EndpointBinding | null>;
 
 /** 公开白名单:探针 + 登录族（无会话直通——结构性端点,不属运营配置） */
-const PUBLIC_ROUTES: readonly { method: string; path: string }[] = [
+export const PUBLIC_ROUTES: readonly { method: string; path: string }[] = [
   { method: 'GET', path: '/healthz' },
   { method: 'GET', path: '/livez' },
   { method: 'GET', path: '/readyz' },
@@ -38,7 +38,7 @@ const PUBLIC_ROUTES: readonly { method: string; path: string }[] = [
 ];
 
 /** 自身白名单:有会话即放行（不做码判定）——me 族 + logout */
-const SELF_PREFIXES: readonly string[] = ['/v1/me', '/v1/auth/logout'];
+export const SELF_PREFIXES: readonly string[] = ['/v1/me', '/v1/auth/logout'];
 
 function matchesPath(pattern: string, path: string): boolean {
   if (pattern === path) return true;
