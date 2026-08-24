@@ -1,6 +1,14 @@
 'use client';
 
-import { Button, Input, NativeSelect, NativeSelectOption } from '@tokenlens/ui';
+import {
+  Button,
+  FieldDescription,
+  FieldLabel,
+  FormItem,
+  Input,
+  NativeSelect,
+  NativeSelectOption,
+} from '@tokenlens/ui';
 import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -54,22 +62,16 @@ export function AdminCreateForm({ roles }: { roles: readonly RoleOption[] }) {
             });
           }}
         >
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium" htmlFor="admin-email">
-              {tc('email')}
-            </label>
+          <FormItem>
+            <FieldLabel htmlFor="admin-email">{tc('email')}</FieldLabel>
             <Input id="admin-email" name="email" type="email" required maxLength={255} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium" htmlFor="admin-display-name">
-              {tc('displayName')}
-            </label>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor="admin-display-name">{tc('displayName')}</FieldLabel>
             <Input id="admin-display-name" name="displayName" maxLength={64} />
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium" htmlFor="admin-password">
-              {t('initialPassword')}
-            </label>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor="admin-password">{t('initialPassword')}</FieldLabel>
             <Input
               id="admin-password"
               name="password"
@@ -78,12 +80,10 @@ export function AdminCreateForm({ roles }: { roles: readonly RoleOption[] }) {
               minLength={8}
               maxLength={128}
             />
-            <p className="text-xs text-muted-foreground">{t('initialPasswordHint')}</p>
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium" htmlFor="admin-role">
-              {t('role')}
-            </label>
+            <FieldDescription>{t('initialPasswordHint')}</FieldDescription>
+          </FormItem>
+          <FormItem>
+            <FieldLabel htmlFor="admin-role">{t('role')}</FieldLabel>
             <NativeSelect id="admin-role" name="roleId" defaultValue={String(roles[0]?.id ?? '')}>
               {roles.map((role) => (
                 <NativeSelectOption key={role.id} value={String(role.id)}>
@@ -91,7 +91,7 @@ export function AdminCreateForm({ roles }: { roles: readonly RoleOption[] }) {
                 </NativeSelectOption>
               ))}
             </NativeSelect>
-          </div>
+          </FormItem>
         </form>
       )}
     </FormDialog>

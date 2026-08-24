@@ -7,6 +7,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  FieldLabel,
+  FormItem,
   Input,
 } from '@tokenlens/ui';
 import { useState, useTransition } from 'react';
@@ -99,39 +101,33 @@ export function MarketingContent({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="gift">
-            {t('signupGift')}
-          </label>
+        <FormItem>
+          <FieldLabel htmlFor="gift">{t('signupGift')}</FieldLabel>
           <Input
             id="gift"
             value={form.signupGiftAmount}
             onChange={set('signupGiftAmount')}
             inputMode="decimal"
           />
-        </div>
-        <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="bonus">
-            {t('referralBonus')}
-          </label>
+        </FormItem>
+        <FormItem>
+          <FieldLabel htmlFor="bonus">{t('referralBonus')}</FieldLabel>
           <Input
             id="bonus"
             value={form.referralSignupBonus}
             onChange={set('referralSignupBonus')}
             inputMode="decimal"
           />
-        </div>
-        <div className="grid gap-2">
-          <label className="text-sm font-medium" htmlFor="rate">
-            {t('commissionRate')}
-          </label>
+        </FormItem>
+        <FormItem>
+          <FieldLabel htmlFor="rate">{t('commissionRate')}</FieldLabel>
           <Input
             id="rate"
             value={form.referralCommissionRate}
             onChange={set('referralCommissionRate')}
             inputMode="decimal"
           />
-        </div>
+        </FormItem>
         {gifted ? (
           <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
             {t('giftWarning')}

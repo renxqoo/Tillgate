@@ -17,9 +17,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
 } from '@tokenlens/ui';
 
@@ -159,7 +159,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                     {enrollment.secret}
                   </p>
                   <FieldGroup>
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="totp-confirm-code">{t('confirmCodeLabel')}</FieldLabel>
                       <Input
                         id="totp-confirm-code"
@@ -175,7 +175,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                           )
                         }
                       />
-                    </Field>
+                    </FormItem>
                   </FieldGroup>
                   <Button
                     className="w-full"
@@ -207,7 +207,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
             <DialogDescription>{t('unbindDescription')}</DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="totp-unbind-code">{t('confirmCodeLabel')}</FieldLabel>
               <Input
                 id="totp-unbind-code"
@@ -223,7 +223,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
                   )
                 }
               />
-            </Field>
+            </FormItem>
           </FieldGroup>
           <Button
             className="w-full"

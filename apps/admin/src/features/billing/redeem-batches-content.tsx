@@ -11,10 +11,10 @@ import {
   DialogTitle,
   DialogTrigger,
   DropdownMenuItem,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -207,11 +207,11 @@ export function GenerateBatchDialog() {
                 control={form.control}
                 name="name"
                 render={({ field, fieldState }) => (
-                  <Field data-invalid={fieldState.invalid}>
+                  <FormItem data-invalid={fieldState.invalid}>
                     <FieldLabel htmlFor="b-name">{t('batchName')}</FieldLabel>
                     <Input id="b-name" placeholder={t('namePlaceholder')} {...field} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                  </Field>
+                  </FormItem>
                 )}
               />
               <div className="grid grid-cols-2 gap-3">
@@ -219,7 +219,7 @@ export function GenerateBatchDialog() {
                   control={form.control}
                   name="amount"
                   render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
+                    <FormItem data-invalid={fieldState.invalid}>
                       <FieldLabel htmlFor="b-amount">{t('amountLabel')}</FieldLabel>
                       <Input
                         id="b-amount"
@@ -230,14 +230,14 @@ export function GenerateBatchDialog() {
                         onChange={(e) => field.onChange(e.target.value)}
                       />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <Controller
                   control={form.control}
                   name="count"
                   render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
+                    <FormItem data-invalid={fieldState.invalid}>
                       <FieldLabel htmlFor="b-count">{t('countLabel')}</FieldLabel>
                       <Input
                         id="b-count"
@@ -247,7 +247,7 @@ export function GenerateBatchDialog() {
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                       {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                    </Field>
+                    </FormItem>
                   )}
                 />
               </div>
@@ -255,20 +255,20 @@ export function GenerateBatchDialog() {
                 control={form.control}
                 name="remark"
                 render={({ field }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="b-note">{t('remarkOptional')}</FieldLabel>
                     <Input id="b-note" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="expiresAt"
                 render={({ field }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="b-exp">{t('expiresLabel')}</FieldLabel>
                     <Input id="b-exp" type="datetime-local" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
             </FieldGroup>

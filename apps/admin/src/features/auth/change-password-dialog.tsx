@@ -7,7 +7,7 @@
  */
 import { useTranslations } from 'next-intl';
 
-import { Field, FieldGroup, FieldLabel, PasswordInput } from '@tokenlens/ui';
+import { FieldGroup, FieldLabel, FormItem, PasswordInput } from '@tokenlens/ui';
 
 import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';
@@ -50,7 +50,7 @@ export function ChangePasswordDialog({
           }}
         >
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel htmlFor="oldPassword">{t('oldPassword')}</FieldLabel>
               <PasswordInput
                 id="oldPassword"
@@ -58,8 +58,8 @@ export function ChangePasswordDialog({
                 autoComplete="current-password"
                 required
               />
-            </Field>
-            <Field>
+            </FormItem>
+            <FormItem>
               <FieldLabel htmlFor="newPassword">{t('newPassword')}</FieldLabel>
               <PasswordInput
                 id="newPassword"
@@ -67,8 +67,8 @@ export function ChangePasswordDialog({
                 autoComplete="new-password"
                 required
               />
-            </Field>
-            <Field>
+            </FormItem>
+            <FormItem>
               <FieldLabel htmlFor="confirmPassword">{t('confirmPassword')}</FieldLabel>
               <PasswordInput
                 id="confirmPassword"
@@ -76,7 +76,7 @@ export function ChangePasswordDialog({
                 autoComplete="new-password"
                 required
               />
-            </Field>
+            </FormItem>
           </FieldGroup>
         </form>
       )}

@@ -6,6 +6,9 @@ import {
   Button,
   ConfirmDialog,
   DropdownMenuItem,
+  FieldDescription,
+  FieldLabel,
+  FormItem,
   Input,
   NativeSelect,
   NativeSelectOption,
@@ -81,36 +84,43 @@ function NodeEditDialog({
             });
           }}
         >
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{tc('name')}</label>
-            <Input name="name" defaultValue={node.name} required maxLength={128} />
-          </div>
-          {node.type === 'page' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t('icon')}</label>
-              <Input name="icon" defaultValue={node.icon ?? ''} maxLength={64} />
-              <p className="text-xs text-muted-foreground">{t('iconHint')}</p>
-            </div>
-          )}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('sortOrder')}</label>
+          <FormItem>
+            <FieldLabel htmlFor={`node-name-${node.id}`}>{tc('name')}</FieldLabel>
             <Input
+              id={`node-name-${node.id}`}
+              name="name"
+              defaultValue={node.name}
+              required
+              maxLength={128}
+            />
+          </FormItem>
+          {node.type === 'page' && (
+            <FormItem>
+              <FieldLabel htmlFor={`node-icon-${node.id}`}>{t('icon')}</FieldLabel>
+              <Input id={`node-icon-${node.id}`} name="icon" defaultValue={node.icon ?? ''} maxLength={64} />
+              <FieldDescription>{t('iconHint')}</FieldDescription>
+            </FormItem>
+          )}
+          <FormItem>
+            <FieldLabel htmlFor={`node-sort-${node.id}`}>{t('sortOrder')}</FieldLabel>
+            <Input
+              id={`node-sort-${node.id}`}
               name="sortOrder"
               type="number"
               defaultValue={node.sortOrder}
               min={0}
               max={9999}
             />
-          </div>
+          </FormItem>
           {node.source === 'custom' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{tc('status')}</label>
-              <NativeSelect name="status" defaultValue={String(node.status)}>
+            <FormItem>
+              <FieldLabel htmlFor={`node-status-${node.id}`}>{tc('status')}</FieldLabel>
+              <NativeSelect id={`node-status-${node.id}`} name="status" defaultValue={String(node.status)}>
                 <NativeSelectOption value="0">{tc('enabled')}</NativeSelectOption>
                 <NativeSelectOption value="1">{tc('disabled')}</NativeSelectOption>
               </NativeSelect>
-              <p className="text-xs text-muted-foreground">{t('statusHint')}</p>
-            </div>
+              <FieldDescription>{t('statusHint')}</FieldDescription>
+            </FormItem>
           )}
           {node.source === 'enforced' && (
             <p className="text-xs text-muted-foreground">{t('enforcedHint')}</p>
@@ -174,9 +184,10 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
             });
           }}
         >
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('nodeType')}</label>
+          <FormItem>
+            <FieldLabel htmlFor="node-type">{t('nodeType')}</FieldLabel>
             <NativeSelect
+              id="node-type"
               value={type}
               onChange={(e) => setType(e.target.value as NodeType)}
               name="type"
@@ -185,11 +196,11 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
               <NativeSelectOption value="page">{t('typePage')}</NativeSelectOption>
               <NativeSelectOption value="group">{t('typeGroup')}</NativeSelectOption>
             </NativeSelect>
-          </div>
+          </FormItem>
           {type !== 'group' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t('parent')}</label>
-              <NativeSelect name="parentId" required>
+            <FormItem>
+              <FieldLabel htmlFor="node-parent">{t('parent')}</FieldLabel>
+              <NativeSelect id="node-parent" name="parentId" required>
                 {parentOptions.map((option) => (
                   <NativeSelectOption key={option.id} value={String(option.id)}>
                     {option.name}
@@ -197,35 +208,35 @@ export function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-            </div>
+            </FormItem>
           )}
           {type !== 'group' && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t('code')}</label>
-              <Input name="code" placeholder="custom:action" maxLength={64} />
-              <p className="text-xs text-muted-foreground">{t('customCodeHint')}</p>
-            </div>
+            <FormItem>
+              <FieldLabel htmlFor="node-code">{t('code')}</FieldLabel>
+              <Input id="node-code" name="code" placeholder="custom:action" maxLength={64} />
+              <FieldDescription>{t('customCodeHint')}</FieldDescription>
+            </FormItem>
           )}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{tc('name')}</label>
-            <Input name="name" required maxLength={128} />
-          </div>
+          <FormItem>
+            <FieldLabel htmlFor="node-create-name">{tc('name')}</FieldLabel>
+            <Input id="node-create-name" name="name" required maxLength={128} />
+          </FormItem>
           {type === 'page' && (
             <>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t('path')}</label>
-                <Input name="path" placeholder="/dashboard/xxx" maxLength={255} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t('icon')}</label>
-                <Input name="icon" maxLength={64} />
-              </div>
+              <FormItem>
+                <FieldLabel htmlFor="node-create-path">{t('path')}</FieldLabel>
+                <Input id="node-create-path" name="path" placeholder="/dashboard/xxx" maxLength={255} />
+              </FormItem>
+              <FormItem>
+                <FieldLabel htmlFor="node-create-icon">{t('icon')}</FieldLabel>
+                <Input id="node-create-icon" name="icon" maxLength={64} />
+              </FormItem>
             </>
           )}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">{t('sortOrder')}</label>
-            <Input name="sortOrder" type="number" defaultValue={0} min={0} max={9999} />
-          </div>
+          <FormItem>
+            <FieldLabel htmlFor="node-create-sort">{t('sortOrder')}</FieldLabel>
+            <Input id="node-create-sort" name="sortOrder" type="number" defaultValue={0} min={0} max={9999} />
+          </FormItem>
         </form>
       )}
     </FormDialog>

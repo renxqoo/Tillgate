@@ -2,7 +2,7 @@
 
 import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 
-import { Field, FieldError, FieldLabel, Input } from '@tokenlens/ui';
+import { FieldError, FieldLabel, FormItem, Input } from '@tokenlens/ui';
 
 export interface NumberFieldProps<T extends FieldValues> {
   control: Control<T>;
@@ -35,7 +35,7 @@ export function NumberField<T extends FieldValues>({
       control={control}
       name={name}
       render={({ field, fieldState }) => (
-        <Field data-invalid={fieldState.invalid}>
+        <FormItem data-invalid={fieldState.invalid}>
           <FieldLabel htmlFor={id ?? name}>{label}</FieldLabel>
           <Input
             id={id ?? name}
@@ -49,7 +49,7 @@ export function NumberField<T extends FieldValues>({
             onChange={(e) => field.onChange(e.target.value)}
           />
           {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-        </Field>
+        </FormItem>
       )}
     />
   );

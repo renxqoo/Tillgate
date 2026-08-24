@@ -14,9 +14,9 @@ import {
   DialogTitle,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -308,7 +308,7 @@ function ChangeSubscriptionDialog({
           <DialogDescription>{t('changeDescription')}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
-          <Field>
+          <FormItem>
             <FieldLabel>{t('targetPlan')}</FieldLabel>
             <Select value={targetPlanId} onValueChange={(v) => setTargetPlanId(v ?? '')}>
               <SelectTrigger className="w-full">
@@ -322,8 +322,8 @@ function ChangeSubscriptionDialog({
                 ))}
               </SelectContent>
             </Select>
-          </Field>
-          <Field>
+          </FormItem>
+          <FormItem>
             <FieldLabel htmlFor="change-quantity">
               {t('seatsLabel', { count: row.quantity })}
             </FieldLabel>
@@ -335,7 +335,7 @@ function ChangeSubscriptionDialog({
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
-          </Field>
+          </FormItem>
         </FieldGroup>
         <DialogFooter>
           <DialogClose render={<Button variant="outline">{tUi('cancel')}</Button>} />

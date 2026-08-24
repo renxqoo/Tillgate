@@ -13,10 +13,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Select,
@@ -399,11 +399,11 @@ function ProviderForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="p-name">{tc('name')}</FieldLabel>
               <Input id="p-name" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
@@ -416,18 +416,18 @@ function ProviderForm({
             field: { value: string };
             fieldState: { invalid?: boolean; error?: { message?: string } };
           }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel htmlFor="p-url">Base URL</FieldLabel>
               <Input id="p-url" placeholder="https://api.openai.com/v1" {...field} />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="protocol"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{t('protocol')}</FieldLabel>
               <Select value={field.value} onValueChange={(v) => field.onChange(v ?? '')}>
                 <SelectTrigger className="w-full">
@@ -441,14 +441,14 @@ function ProviderForm({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="vendor"
           render={({ field }: { field: { value: string; onChange: (v: string) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{t('vendorProfile')}</FieldLabel>
               <Select
                 value={field.value || 'none'}
@@ -466,14 +466,14 @@ function ProviderForm({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
         <Controller
           control={form.control}
           name="status"
           render={({ field }: { field: { value: number; onChange: (v: number) => void } }) => (
-            <Field>
+            <FormItem>
               <FieldLabel>{tc('status')}</FieldLabel>
               <Select value={String(field.value)} onValueChange={(v) => field.onChange(Number(v))}>
                 <SelectTrigger className="w-full">
@@ -484,7 +484,7 @@ function ProviderForm({
                   <SelectItem value="1">{tc('disabled')}</SelectItem>
                 </SelectContent>
               </Select>
-            </Field>
+            </FormItem>
           )}
         />
       </FieldGroup>

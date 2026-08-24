@@ -9,9 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
   DropdownMenuItem,
-  Field,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -254,7 +254,7 @@ export function RateLimitsClient({
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
-            <Field>
+            <FormItem>
               <FieldLabel>{t('rpmLabel')}</FieldLabel>
               <Input
                 type="number"
@@ -263,8 +263,8 @@ export function RateLimitsClient({
                 value={rpm}
                 onChange={(e) => setRpm(e.target.value)}
               />
-            </Field>
-            <Field>
+            </FormItem>
+            <FormItem>
               <FieldLabel>{t('tpmLabel')}</FieldLabel>
               <Input
                 type="number"
@@ -273,9 +273,9 @@ export function RateLimitsClient({
                 value={tpm}
                 onChange={(e) => setTpm(e.target.value)}
               />
-            </Field>
+            </FormItem>
             {showCreditField ? (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('creditLabel')}</FieldLabel>
                 <Input
                   type="number"
@@ -285,10 +285,10 @@ export function RateLimitsClient({
                   value={credit}
                   onChange={(e) => setCredit(e.target.value)}
                 />
-              </Field>
+              </FormItem>
             ) : null}
             {showDailySpendField ? (
-              <Field>
+              <FormItem>
                 <FieldLabel>{t('dailySpendLabel')}</FieldLabel>
                 <Input
                   type="number"
@@ -298,7 +298,7 @@ export function RateLimitsClient({
                   value={dailySpend}
                   onChange={(e) => setDailySpend(e.target.value)}
                 />
-              </Field>
+              </FormItem>
             ) : null}
           </FieldGroup>
           <DialogFooter>

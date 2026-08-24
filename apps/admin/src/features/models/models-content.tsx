@@ -17,10 +17,10 @@ import {
   DialogTrigger,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  Field,
   FieldError,
   FieldGroup,
   FieldLabel,
+  FormItem,
   Input,
   RowActions,
   Table,
@@ -960,11 +960,11 @@ function ModelForm({
               field: { value: string };
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <FormItem data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-ext">{t('externalName')}</FieldLabel>
                 <Input id="m-ext" placeholder={t('externalNamePlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
+              </FormItem>
             )}
           />
           <Controller
@@ -977,11 +977,11 @@ function ModelForm({
               field: { value: string };
               fieldState: { invalid?: boolean; error?: { message?: string } };
             }) => (
-              <Field data-invalid={fieldState.invalid}>
+              <FormItem data-invalid={fieldState.invalid}>
                 <FieldLabel htmlFor="m-real">{t('realModel')}</FieldLabel>
                 <Input id="m-real" placeholder={t('realModelPlaceholder')} {...field} />
                 {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-              </Field>
+              </FormItem>
             )}
           />
         </div>
@@ -990,7 +990,7 @@ function ModelForm({
           control={form.control}
           name="pricingUnit"
           render={({ field, fieldState }) => (
-            <Field data-invalid={fieldState.invalid}>
+            <FormItem data-invalid={fieldState.invalid}>
               <FieldLabel>{t('pricingMethod')}</FieldLabel>
               <div
                 role="radiogroup"
@@ -1029,7 +1029,7 @@ function ModelForm({
                 })}
               </div>
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-            </Field>
+            </FormItem>
           )}
         />
         {pricingUnit === 'token' ? (
@@ -1366,27 +1366,27 @@ function ModelForm({
                 control={form.control}
                 name="fallbackModels"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-fb">{t('fallbackLabel')}</FieldLabel>
                     <Input id="m-fb" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="paramRules"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-rules">{t('paramRulesLabel')}</FieldLabel>
                     <Textarea id="m-rules" rows={3} className="font-mono text-xs" {...field} />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <Controller
                 control={form.control}
                 name="billingPolicy"
                 render={({ field }: { field: { value: string } }) => (
-                  <Field>
+                  <FormItem>
                     <FieldLabel htmlFor="m-billing-policy">{t('billingPolicyLabel')}</FieldLabel>
                     <Textarea
                       id="m-billing-policy"
@@ -1397,7 +1397,7 @@ function ModelForm({
                       }
                       {...field}
                     />
-                  </Field>
+                  </FormItem>
                 )}
               />
               <div className="grid grid-cols-3 gap-3">
@@ -1405,20 +1405,20 @@ function ModelForm({
                   control={form.control}
                   name="rpmLimit"
                   render={({ field }: { field: { value: string } }) => (
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="m-rpm">{t('rpm')}</FieldLabel>
                       <Input id="m-rpm" type="number" {...field} />
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <Controller
                   control={form.control}
                   name="tpmLimit"
                   render={({ field }: { field: { value: string } }) => (
-                    <Field>
+                    <FormItem>
                       <FieldLabel htmlFor="m-tpm">{t('tpm')}</FieldLabel>
                       <Input id="m-tpm" type="number" {...field} />
-                    </Field>
+                    </FormItem>
                   )}
                 />
                 <NumberField

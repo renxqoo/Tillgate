@@ -1,6 +1,14 @@
 'use client';
 
-import { DropdownMenuItem, NativeSelect, NativeSelectOption, RowActions } from '@tokenlens/ui';
+import {
+  DropdownMenuItem,
+  FieldDescription,
+  FieldLabel,
+  FormItem,
+  NativeSelect,
+  NativeSelectOption,
+  RowActions,
+} from '@tokenlens/ui';
 import { useState } from 'react';
 import { Loader2Icon, PencilIcon, ShieldBanIcon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -56,10 +64,8 @@ export function AdminRowActions({
               });
             }}
           >
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor={`admin-role-${id}`}>
-                {t('role')}
-              </label>
+            <FormItem>
+              <FieldLabel htmlFor={`admin-role-${id}`}>{t('role')}</FieldLabel>
               <NativeSelect id={`admin-role-${id}`} name="roleId" defaultValue={String(roleId)}>
                 {roles.map((option) => (
                   <NativeSelectOption key={option.id} value={String(option.id)}>
@@ -67,8 +73,8 @@ export function AdminRowActions({
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-              <p className="text-xs text-muted-foreground">{t('changeRoleHint')}</p>
-            </div>
+              <FieldDescription>{t('changeRoleHint')}</FieldDescription>
+            </FormItem>
           </form>
         )}
       </FormDialog>
