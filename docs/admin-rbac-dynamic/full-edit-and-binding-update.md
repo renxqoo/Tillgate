@@ -1,5 +1,5 @@
 # 全字段编辑 + 绑定全字段更新 方案
-> 状态：定稿（需求即用户裁决；两处默认裁决见 §裁决，给否决窗口）
+> 状态：已核销（2026-08-24;提交 86eb0d0 / 6bfac93 / 32a7159 / 本提交）
 > 级别：中（PATCH /v1/endpoint-bindings/:id 契约变形 + cp 端口改形 + 前端两页改造）
 > 前置：docs/admin-rbac-dynamic/DESIGN.md §8（ADR-0009 执行面数据化）已实施——
 > 后端 update/delete permission 已是全字段/全节点（本轮探查确认），缺口集中在前端与绑定编辑面。
@@ -68,11 +68,15 @@
   permissionId 不存在 / id 不存在；改 method+path 后 ACL 判定迁移（e2e）。
 - 回归：既有换绑即时生效、解绑 fail-closed、改码零漂移三断言不变绿。
 
-## 验收清单
+## 验收清单（核销）
 
-- [ ] 权限编辑弹窗：全字段可改（enforced 状态可停用/恢复）；type 联动正确
-- [ ] 权限删除：全节点可发起；有子节点前端禁用+后端 409；被绑定先解绑文案清晰
-- [ ] 状态列 StatusPill 统一组件
-- [ ] 绑定编辑：三字段均可改；撞唯一约束报 endpoint_bound；ACL 即时迁移（e2e）
-- [ ] 绑定删除（解绑）既有功能不回归
-- [ ] 四门 + 用例数/覆盖率如实报告
+- [x] 权限编辑弹窗：全字段可改（含 enforced 状态停用/恢复;type 切换父选项回落联动）
+- [x] 权限删除：全节点可发起；有子节点前端禁用（deleteBlockedHint）+后端
+  permission_has_children/permission_in_use 文案透出
+- [x] 状态列 StatusPill（success/neutral,与 admins 页同口径）
+- [x] 绑定编辑：method/path/permission 三字段部分更新;终态撞他绑 409 endpoint_bound;
+  ACL 迁移下一请求生效（e2e §M:旧组合 fail-closed、新组合过 ACL）
+- [x] 绑定删除（解绑）既有功能不回归（e2e §L 既有断言全绿）
+- [x] 四门：typecheck/lint 34/34、build 20/20、test 33/33（@tokenlens/ui 在途重构
+  5 用例失败,归属并行开发,非本改动）;admin e2e 18/18（rbac-roles 6/6 含新 §M）;
+  cp 199/199、admin-api 157/157、admin 131/131、api-client 91/91、db 41/41

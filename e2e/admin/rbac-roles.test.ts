@@ -8,8 +8,10 @@
  *   §J custom 权限节点全生命周期:创建（码形状/父子守卫）→ 绑定生效（仅显示层门控
  *      语义:custom 码不在 enforced 注册表,不参与接口判定——403 仍由 enforced 码拦）
  *      → 停用 kill-switch → 删除守卫;
- *   §K enforced 节点锁（停用/删除 403 permission_immutable）+ 角色停用整组下线
- *      + super 角色全锁 + 内置角色删除拒。
+ *   §K enforced 全字段放开（停用/删除 200）+ 接口绑定守卫（先解绑）+ 角色停用
+ *      整组下线 + super 角色全锁 + 内置角色删除拒;
+ *   §M 绑定全字段更新:path/method 迁移下一请求生效（旧组合 fail-closed）、
+ *      终态 (method,path) 撞他绑 409、空 body 400。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like } from 'drizzle-orm';
@@ -428,6 +430,115 @@ describe('L. 执行面数据化核心断言（换绑即时生效/解绑默认拒
         body: JSON.stringify({ code: 'users:read' }),
       }).catch(() => undefined);
       expect((await usersCall()).status).toBe(200);
+    }
+  });
+
+  it('编辑全字段:path/method 迁移下一请求生效;终态撞他绑 409;空 body 400', async () => {
+    const stamp = Date.now();
+    // 专用叶子节点 + 专用绑定 + 持码非超管（不触碰种子行）
+    const tree = await call(w(), '/v1/permissions/tree');
+    const rows = (tree.body.rows ?? []) as { id: number; type: string; code: string | null }[];
+    const page = rows.find((n) => n.type === 'page');
+    if (page == null) throw new Error('page node missing');
+    const node = await call(w(), '/v1/permissions', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        parentId: page.id,
+        type: 'button',
+        code: `e2e:edit${stamp}`,
+        name: 'e2e binding edit',
+        sortOrder: 900,
+      }),
+    });
+    expect(node.status).toBe(201);
+    createdNodeIds.push(node.body.id as number);
+
+    const path1 = `/v1/e2e-edit-${stamp}`;
+    const binding = await call(w(), '/v1/endpoint-bindings', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ method: 'GET', path: path1, permissionId: node.body.id }),
+    });
+    expect(binding.status).toBe(201);
+
+    const role = await call(w(), '/v1/roles', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        code: `e2e-rbacv2-edit-${stamp}`,
+        name: 'e2e edit',
+        permissions: [`e2e:edit${stamp}`],
+      }),
+    });
+    expect(role.status).toBe(201);
+    createdRoleIds.push(role.body.id as number);
+    const [row] = await w()
+      .assembly.db.insert(admins)
+      .values({
+        email: `e2e-rbacv2-edit-${stamp}@e2e.invalid`,
+        passwordHash: 'identity-managed',
+        roleId: role.body.id as number,
+        displayName: 'e2e-edit',
+      })
+      .returning({ id: admins.id });
+    if (row == null) throw new Error('insert admins returned no row');
+    createdAdminIds.push(row.id);
+    const token = await w().assembly.identity.sessions.sign({
+      realm: 'admin',
+      subjectId: row.id,
+      ttlSec: 600,
+    });
+
+    // 绑定在 + 持码 → 过 ACL;路由不存在 → 404（区别于 403 拒绝）
+    expect((await callAs(token, path1)).status).toBe(404);
+
+    try {
+      // 1) 仅改 path:旧 path fail-closed,新 path 过 ACL
+      const path2 = `/v1/e2e-edit2-${stamp}`;
+      const moved = await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ path: path2 }),
+      });
+      expect(moved.status).toBe(200);
+      expect(moved.body).toMatchObject({ method: 'GET', path: path2 });
+      const oldPath = await callAs(token, path1);
+      expect(oldPath.status).toBe(403);
+      expect(oldPath.body).toMatchObject({ error: { code: 'admin.endpoint_unbound' } });
+      expect((await callAs(token, path2)).status).toBe(404);
+
+      // 2) 仅改 method:GET 拒、POST 过
+      const flipped = await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ method: 'POST' }),
+      });
+      expect(flipped.status).toBe(200);
+      expect((await callAs(token, path2)).status).toBe(403);
+      expect((await callAs(token, path2, { method: 'POST' })).status).toBe(404);
+
+      // 3) 终态撞种子绑定 (GET /v1/users) → 409;空 body → 400
+      const clash = await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ method: 'GET', path: '/v1/users' }),
+      });
+      expect(clash.status).toBe(409);
+      expect(clash.body).toMatchObject({ error: { code: 'control_plane.endpoint_bound' } });
+      const empty = await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({}),
+      });
+      expect(empty.status).toBe(400);
+    } finally {
+      await call(w(), `/v1/endpoint-bindings/${binding.body.id}`, {
+        method: 'DELETE',
+      }).catch(() => undefined);
+      await call(w(), `/v1/permissions/${node.body.id}`, { method: 'DELETE' }).catch(
+        () => undefined,
+      );
     }
   });
 });
