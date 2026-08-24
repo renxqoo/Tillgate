@@ -34,6 +34,9 @@ const EXPECTED_TABLES = new Set([
   'plans',
   'user_subscriptions',
   'organizations',
+  'permissions',
+  'role_permissions',
+  'roles',
   'org_members',
   'org_invitations',
   'reconcile_discrepancies',
@@ -69,7 +72,7 @@ function tableNames(namespace: object): Set<string> {
 }
 
 describe('schema 表清单', () => {
-  it('物理表集合与基线一致(46 张,封闭词表;identity 七表 = 迁移 0076)', () => {
+  it('物理表集合与基线一致(49 张,封闭词表;identity 七表 = 迁移 0076;permissions/roles/role_permissions = 0082 RBAC v2)', () => {
     expect(tableNames(schema)).toEqual(EXPECTED_TABLES);
   });
 

@@ -3,6 +3,7 @@
 export * from './account-status.js';
 export * from './users.js';
 export * from './admins.js';
+export * from './rbac.js';
 export * from './apps.js';
 export * from './api-keys.js';
 export * from './providers.js';

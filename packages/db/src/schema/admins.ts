@@ -2,6 +2,7 @@ import {
   boolean,
   pgTable,
   bigserial,
+  bigint,
   varchar,
   smallint,
   timestamp,
@@ -10,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { ACCOUNT_STATUS } from './account-status.js';
+import { roles } from './rbac.js';
 
 /**
  * admins — 管理员账户（与 users 物理隔离）。
@@ -36,12 +38,13 @@ export const admins = pgTable(
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK admins_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
     /**
-     * RBAC 角色（封闭词表，权限矩阵单一真相在 control-plane domain/rbac——本列只存
-     * 「该管理员是什么角色」这一事实）。DEFAULT 'super_admin' 是 0081 迁移对既有行的
-     * 回填值（旧形态唯一管理员全权限 = 唯一规格，零破坏）；新建管理员必经
-     * POST /v1/admins 契约显式传 role，不存在无意建出超管的路径。
+     * RBAC v2（ADR-0008）：角色 FK（roles 表,0082 迁移切换 + 回填 NOT NULL）。
+     * 旧 role varchar 列在 v2-3 消费者改造完成后由 0083 drop（波次内两步迁移,
+     * 每步门禁可绿;非对外兼容层）。
      */
-    role: varchar('role', { length: 32 }).notNull().default('super_admin'),
+    roleId: bigint('role_id', { mode: 'number' })
+      .notNull()
+      .references(() => roles.id),
     /** 邮箱验证码二次登录开关（默认关；开启后登录需邮箱收码验证。SMTP 未配置时开启失败） */
     twoFactorEnabled: boolean('two_factor_enabled').notNull().default(false),
     /** 会话失效线（R5-2）：iat 早于此时间点的管理面会话 JWT 一律拒绝（改密即全网下线） */
@@ -54,10 +57,6 @@ export const admins = pgTable(
     uniqueIndex('admins_email_uq').on(t.email),
     // 集合与 ACCOUNT_STATUS 一致（新增状态须同步常量与本约束）
     check('admins_status_ck', sql`${t.status} in (0, 1, 2)`),
-    // 词表与 control-plane domain/rbac ADMIN_ROLES 一致（单一真相在 rbac，此处 DB 兜底）
-    check(
-      'admins_role_ck',
-      sql`${t.role} in ('super_admin', 'operator', 'finance', 'support', 'viewer')`,
-    ),
+    // admins_role_ck 随 role varchar 列在 0083 一并 drop（v2 切换期 DB 仍持有旧约束）
   ],
 );

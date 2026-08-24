@@ -568,6 +568,13 @@
       "when": 1787880000000,
       "tag": "0081_admins_role",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1787966400000,
+      "tag": "0082_rbac_v2",
+      "breakpoints": true
     }
   ]
 }
