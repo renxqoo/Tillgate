@@ -84,20 +84,6 @@ export function buildSidebarItems(): NavGroup[] {
           permission: 'users:read',
         },
         {
-          id: 'settings',
-          title: 'settings',
-          url: '/dashboard/settings',
-          icon: ShieldCheck,
-          permission: 'settings:read',
-        },
-        {
-          id: 'admins',
-          title: 'admins',
-          url: '/dashboard/admins',
-          icon: UserCog,
-          permission: 'admins:read',
-        },
-        {
           id: 'plans',
           title: 'plans',
           url: '/dashboard/plans',
@@ -212,6 +198,26 @@ export function buildSidebarItems(): NavGroup[] {
           url: '/dashboard/audit-logs',
           icon: History,
           permission: 'ops:read',
+        },
+      ],
+    },
+    {
+      id: 6,
+      label: 'groupSystem',
+      items: [
+        {
+          id: 'admins',
+          title: 'admins',
+          url: '/dashboard/admins',
+          icon: UserCog,
+          permission: 'admins:read',
+        },
+        {
+          id: 'settings',
+          title: 'settings',
+          url: '/dashboard/settings',
+          icon: ShieldCheck,
+          permission: 'settings:read',
         },
       ],
     },
