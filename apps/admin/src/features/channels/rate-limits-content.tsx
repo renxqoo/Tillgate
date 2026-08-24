@@ -219,7 +219,7 @@ export function RateLimitsClient({
   const showDailySpendField = editing?.kind === 'user' || editing?.kind === 'key';
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 mt-4">
       <Tabs defaultValue="user">
         {/* 与 ListToolbar 的 px-4、表格首列 pl-4 对齐（ListContent 本身无内边距） */}
         <TabsList className="ml-4">
