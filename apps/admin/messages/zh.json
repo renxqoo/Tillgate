@@ -1113,6 +1113,7 @@
     "builtinFlag": "内置",
     "adminCount": "管理员数",
     "deleteBlockedHint": "名下仍有 {count} 名管理员，须先迁移后再删除",
+    "builtinLockedHint": "内置预置角色不可删除",
     "implicitAll": "隐式全量",
     "superLocked": "锁定（隐式全量）",
     "created": "角色已创建",

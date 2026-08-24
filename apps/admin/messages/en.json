@@ -1113,6 +1113,7 @@
     "builtinFlag": "Built-in",
     "adminCount": "Admins",
     "deleteBlockedHint": "Still has {count} admin(s) assigned — reassign them before deleting",
+    "builtinLockedHint": "Built-in preset roles cannot be deleted",
     "implicitAll": "Implicit all",
     "superLocked": "Locked (implicit all)",
     "created": "Role created",

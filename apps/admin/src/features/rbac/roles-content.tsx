@@ -223,7 +223,7 @@ export function RoleCreateForm({ nodes }: { nodes: PermissionNode[] }) {
   );
 }
 
-/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅非内置角色,挂载管理员预检禁用（后端兜底） */
+/** 行操作（统一 RowActions 三点菜单）：编辑;删除全角色可见——挂载管理员/内置预检禁用（后端兜底） */
 function RoleRowActions({
   role,
   nodes,
@@ -246,20 +246,22 @@ function RoleRowActions({
           <PencilIcon className="size-4" />
           {tc('edit')}
         </DropdownMenuItem>
-        {!role.isBuiltin && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={inUse}
-              title={inUse ? t('deleteBlockedHint', { count: role.adminCount }) : undefined}
-              onClick={() => onDelete(role)}
-            >
-              <Trash2Icon className="size-4" />
-              {tc('delete')}
-            </DropdownMenuItem>
-          </>
-        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={inUse || role.isBuiltin}
+          title={
+            inUse
+              ? t('deleteBlockedHint', { count: role.adminCount })
+              : role.isBuiltin
+                ? t('builtinLockedHint')
+                : undefined
+          }
+          onClick={() => onDelete(role)}
+        >
+          <Trash2Icon className="size-4" />
+          {tc('delete')}
+        </DropdownMenuItem>
       </RowActions>
     </>
   );
