@@ -81,3 +81,8 @@
     `docs/adr/0001-errors-registry-ownership.md`：message/zh 双字段，
     中文可读提示由消费方按目录渲染，不在抛出点硬编码）。
 19. 代码中不要写v1、v2的版本注释，不要用v1，v2，v3...来命名文件名。
+20. **UI 优先用现成组件，可复用的先进 ui 包**：写界面前先查 `packages/ui` 的既有
+    组件（含 `src/index.ts` 导出面），能用的禁止手写替代或内联复刻；ui 包没有时，
+    若该组件会被多处复用（跨页面/跨模块/多列表通用），先落到 `packages/ui` 目录并
+    从 `index.ts` 导出，再在业务侧引用——技术栈固定 shadcn 风格 + Tailwind CSS；
+    仅单处使用的一次性片段可直接写在 feature 内，不强行抽包。
