@@ -1,14 +1,24 @@
 'use client';
 
 import type { PermissionNode } from '@tokenlens/api-client';
-import { Badge, Button, Input, NativeSelect, NativeSelectOption } from '@tokenlens/ui';
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  DropdownMenuItem,
+  Input,
+  NativeSelect,
+  NativeSelectOption,
+  RowActions,
+} from '@tokenlens/ui';
 import { useState } from 'react';
-import { LockIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 
+import type { DataTableColumn } from '@/components/data-table';
+import { DataTable } from '@/components/data-table';
 import { FormDialog } from '@/components/form-dialog';
-import { ConfirmDialog } from '@tokenlens/ui';
 import { useActionResult } from '@/components/action-toast';
 import {
   createPermissionAction,
@@ -18,24 +28,28 @@ import {
 
 type NodeType = 'group' | 'page' | 'button';
 
-/** 节点编辑（展示字段;code/type/父子恒不可改——码即身份） */
-function NodeForm({ node }: { node: PermissionNode }) {
+const TYPE_ORDER: Record<NodeType, number> = { group: 0, page: 1, button: 2 };
+
+/** 编辑弹窗（展示字段;code/type/父子恒不可改——码即身份;受控:RowActions 菜单触发） */
+function NodeEditDialog({
+  node,
+  open,
+  onOpenChange,
+}: {
+  node: PermissionNode;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const t = useTranslations('permissions');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const formId = `node-form-${node.id}`;
+  const formId = `node-edit-form-${node.id}`;
+
   return (
     <FormDialog
       formId={formId}
-      trigger={
-        <button
-          type="button"
-          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-          title={tc('edit')}
-        >
-          <PencilIcon className="size-4" />
-        </button>
-      }
+      open={open}
+      onOpenChange={onOpenChange}
       title={t('editTitle', { name: node.name })}
       submitLabel={tc('save')}
     >
@@ -212,88 +226,111 @@ function CreateNodeForm({ nodes }: { nodes: PermissionNode[] }) {
   );
 }
 
+/** 行操作（统一 RowActions 三点菜单）：编辑;删除仅 custom */
+function NodeRowActions({
+  node,
+  onDelete,
+}: {
+  node: PermissionNode;
+  onDelete: (node: PermissionNode) => void;
+}) {
+  const tc = useTranslations('common');
+  const [editOpen, setEditOpen] = useState(false);
+
+  return (
+    <>
+      <NodeEditDialog node={node} open={editOpen} onOpenChange={setEditOpen} />
+      <RowActions label={tc('actions')}>
+        <DropdownMenuItem onClick={() => setEditOpen(true)}>
+          <PencilIcon className="size-4" />
+          {tc('edit')}
+        </DropdownMenuItem>
+        {node.source === 'custom' && (
+          <DropdownMenuItem onClick={() => onDelete(node)}>
+            <Trash2Icon className="size-4" />
+            {tc('delete')}
+          </DropdownMenuItem>
+        )}
+      </RowActions>
+    </>
+  );
+}
+
+/** 资源清单（通用 DataTable;层级上下文经「父节点」列呈现,排序 目录→页面→按钮） */
 export function PermissionsContent({ nodes }: { nodes: PermissionNode[] }) {
   const t = useTranslations('permissions');
   const tc = useTranslations('common');
   const notify = useActionResult();
   const [deleting, setDeleting] = useState<PermissionNode | null>(null);
 
-  const groups = nodes
-    .filter((n) => n.type === 'group')
-    .toSorted((a, b) => a.sortOrder - b.sortOrder);
-  const pages = nodes.filter((n) => n.type === 'page');
-  const buttons = nodes.filter((n) => n.type === 'button');
-
-  const nodeLine = (node: PermissionNode, depth: number) => (
-    <div
-      key={node.id}
-      className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40"
-      style={{ marginLeft: depth * 20 }}
-    >
-      <span className="min-w-40 text-sm font-medium">{node.name}</span>
-      {node.code != null && (
-        <span className="font-mono text-xs text-muted-foreground">{node.code}</span>
-      )}
-      <Badge variant={node.type === 'group' ? 'outline' : 'secondary'}>
-        {t(`type_${node.type}`)}
-      </Badge>
-      {node.source === 'enforced' ? (
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <LockIcon className="size-3" />
-          {t('enforced')}
-        </span>
-      ) : (
-        <Badge variant="outline">{t('custom')}</Badge>
-      )}
-      {node.status === 1 && <Badge variant="destructive">{tc('disabled')}</Badge>}
-      {node.type === 'page' && node.path != null && (
-        <span className="font-mono text-xs text-muted-foreground">{node.path}</span>
-      )}
-      <div className="ml-auto flex items-center gap-1">
-        <NodeForm node={node} />
-        {node.source === 'custom' && (
-          <button
-            type="button"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
-            title={tc('delete')}
-            onClick={() => setDeleting(node)}
-          >
-            <Trash2Icon className="size-4" />
-          </button>
-        )}
-      </div>
-    </div>
+  const nameById = new Map(nodes.map((node) => [node.id, node.name]));
+  const rows = nodes.toSorted(
+    (a, b) => TYPE_ORDER[a.type] - TYPE_ORDER[b.type] || a.sortOrder - b.sortOrder || a.id - b.id,
   );
+
+  const columns: DataTableColumn<PermissionNode>[] = [
+    {
+      key: 'name',
+      header: tc('name'),
+      render: (node) => <span className="font-medium">{node.name}</span>,
+    },
+    {
+      key: 'type',
+      header: t('nodeType'),
+      render: (node) => <Badge variant="secondary">{t(`type_${node.type}`)}</Badge>,
+    },
+    {
+      key: 'parent',
+      header: t('parent'),
+      render: (node) => (node.parentId != null ? (nameById.get(node.parentId) ?? '—') : '—'),
+    },
+    {
+      key: 'code',
+      header: t('code'),
+      render: (node) => (
+        <span className="font-mono text-xs text-muted-foreground">{node.code ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'path',
+      header: t('path'),
+      render: (node) => (
+        <span className="font-mono text-xs text-muted-foreground">{node.path ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'source',
+      header: t('sourceColumn'),
+      render: (node) =>
+        node.source === 'enforced' ? (
+          <Badge>{t('enforced')}</Badge>
+        ) : (
+          <Badge variant="outline">{t('custom')}</Badge>
+        ),
+    },
+    {
+      key: 'status',
+      header: tc('status'),
+      render: (node) =>
+        node.status === 0 ? (
+          <span className="text-sm text-muted-foreground">{tc('enabled')}</span>
+        ) : (
+          <Badge variant="destructive">{tc('disabled')}</Badge>
+        ),
+    },
+    {
+      key: 'actions',
+      header: tc('actions'),
+      render: (node) => <NodeRowActions node={node} onDelete={setDeleting} />,
+    },
+  ];
 
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
         <CreateNodeForm nodes={nodes} />
       </div>
-      <div className="rounded-lg border p-3">
-        {groups.map((group) => {
-          const groupPages = pages
-            .filter((page) => page.parentId === group.id)
-            .toSorted((a, b) => a.sortOrder - b.sortOrder);
-          return (
-            <div key={group.id} className="space-y-1 pb-3">
-              {nodeLine(group, 0)}
-              {groupPages.map((page) => (
-                <div key={page.id} className="space-y-0.5">
-                  {nodeLine(page, 1)}
-                  {buttons
-                    .filter((button) => button.parentId === page.id)
-                    .toSorted((a, b) => a.sortOrder - b.sortOrder)
-                    .map((button) => nodeLine(button, 2))}
-                </div>
-              ))}
-            </div>
-          );
-        })}
-        {groups.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">{t('empty')}</div>
-        )}
-      </div>
+      <DataTable rowKey={(node) => node.id} rows={rows} columns={columns} empty={t('empty')} />
       <ConfirmDialog
         open={deleting != null}
         onOpenChange={(open) => !open && setDeleting(null)}
