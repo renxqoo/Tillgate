@@ -23,7 +23,7 @@ const assembly = (err: unknown) =>
         throw err;
       },
     },
-  }) as Parameters<typeof runSubscribeOperation>[0];
+  }) as unknown as Parameters<typeof runSubscribeOperation>[0];
 
 function bareApi() {
   const walletMemory = createInMemoryWalletStore();
@@ -32,7 +32,6 @@ function bareApi() {
   return createBilling(
     {
       store: world.billing,
-      resolver: world.resolver,
       quota: world.quota,
       walletStore: walletMemory.store,
     },
