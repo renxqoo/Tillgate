@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ai, UpstreamError } from '@tokenlens/ai';
 import { createUpstreamProbe } from '../src/adapters/upstream-probe';
+import { createAdminSessionRevocation } from '../src/adapters/redis-session-revocation';
 import { createAdminFundingResolver } from '../src/adapters/funding-resolver';
 import {
   createAuditSinkBridge,
@@ -161,5 +162,23 @@ describe('资金来源解析器红灯(D2)', () => {
     expect(() =>
       resolver.resolve({} as never, { userId: 1, apiKeyId: null, appId: null }),
     ).toThrowError(/no inference authorize path/);
+  });
+});
+
+describe('会话 jti 吊销表（Redis 适配器）', () => {
+  it('revoke 写 EX 键（TTL 下限 1s）;isRevoked 按 exists 判定', async () => {
+    const store = new Map<string, unknown[]>();
+    const redis = {
+      set: vi.fn(async (key: string, _v: string, ...rest: unknown[]) => {
+        store.set(key, rest);
+        return 'OK';
+      }),
+      exists: vi.fn(async (key: string) => (store.has(key) ? 1 : 0)),
+    };
+    const revocation = createAdminSessionRevocation(redis as never);
+    expect(await revocation.isRevoked('jti-1')).toBe(false);
+    await revocation.revoke('jti-1', 0); // 剩余 0s → 下限 1s
+    expect(redis.set).toHaveBeenCalledWith('admin:session:jti:jti-1', '1', 'EX', 1);
+    expect(await revocation.isRevoked('jti-1')).toBe(true);
   });
 });

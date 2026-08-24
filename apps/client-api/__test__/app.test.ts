@@ -55,7 +55,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
     sentLinks: [],
     challenges: new Map(),
     provisioned: [],
-    keys: [{ id: 1, name: 'k1', keyPreview: 'ag_***' }],
+    keys: [{ id: 1, name: 'k1', keyPreview: 'sk_***' }],
     redeems: {},
     oauthCallbackState: 'good-state',
     capabilities: { registerEnabled: true, captchaSiteKey: null, emailCodeRequired: false },
@@ -309,7 +309,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         Promise.resolve({
           key: {
             id: 7,
-            keyPreview: 'ag_***',
+            keyPreview: 'sk_***',
             userId: input.userId,
             appId: null,
             subscriptionId: null,
@@ -325,14 +325,14 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             revokedAt: null,
             createdAt: new Date(),
           },
-          plaintext: 'ag_plain_secret',
+          plaintext: 'sk_plain_secret',
         }),
       list: () =>
         Promise.resolve({
           rows: [
             {
               id: 1,
-              keyPreview: 'ag_***',
+              keyPreview: 'sk_***',
               userId: 42,
               appId: null,
               subscriptionId: null,
@@ -355,7 +355,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         if (state.keysPatchFails) throw AccountsErrors.business('key_not_found', {});
         return Promise.resolve({
           id: 1,
-          keyPreview: 'ag_***',
+          keyPreview: 'sk_***',
           userId: 42,
           appId: null,
           subscriptionId: null,
@@ -376,7 +376,7 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
         Promise.resolve({
           key: {
             id: 2,
-            keyPreview: 'ag_***',
+            keyPreview: 'sk_***',
             userId: 42,
             appId: null,
             subscriptionId: null,
@@ -392,13 +392,13 @@ function createDeps(): { deps: ClientApiDeps; state: TestState } {
             revokedAt: null,
             createdAt: new Date(),
           },
-          plaintext: 'ag_rotated',
+          plaintext: 'sk_rotated',
         }),
       revoke: () => {
         if (state.keysRevokeFails) throw AccountsErrors.business('key_already_revoked', {});
         return Promise.resolve({
           id: 1,
-          keyPreview: 'ag_***',
+          keyPreview: 'sk_***',
           userId: 42,
           appId: null,
           subscriptionId: null,
@@ -1150,7 +1150,7 @@ describe('me / keys / apps / orgs', () => {
     });
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: number; name: string; plaintext: string };
-    expect(body.plaintext).toBe('ag_plain_secret');
+    expect(body.plaintext).toBe('sk_plain_secret');
     expect('keyHash' in body).toBe(false);
   });
 
@@ -1998,5 +1998,103 @@ describe('找回密码(链接制,防枚举)', () => {
       body: JSON.stringify({ token: 'tok-not-issued-at-all-1234', password: 'short' }),
     });
     expect(weak.status).toBe(400);
+  });
+});
+
+describe('覆盖收尾：纯函数与路由分支变体', () => {
+  it('bearerToken:合法/缺头/非 Bearer;guardKeyOf 确定;localeOf 双语', async () => {
+    const { bearerToken, localeOf, guardKeyOf } = await import('../src/http/routes/auth.js');
+    expect(bearerToken('Bearer  abc ')).toBe('abc');
+    expect(bearerToken(undefined)).toBe('');
+    expect(bearerToken('Basic zzz')).toBe('');
+    expect(guardKeyOf('a@b.c', '1.2.3.4')).toBe(guardKeyOf('a@b.c', '1.2.3.4'));
+    expect(guardKeyOf('a@b.c', '1.2.3.4')).not.toBe(guardKeyOf('a@b.c', '4.3.2.1'));
+    const ctx = (lang: string) =>
+      ({ req: { header: () => lang } }) as Parameters<typeof localeOf>[0];
+    expect(localeOf(ctx('zh'))).toBe('zh');
+    expect(localeOf(ctx('en-US,en;q=0.9'))).toBe('en');
+  });
+
+  it('scheduleWindowsOf:非 schedule/空表/无 label/带 label 四态', async () => {
+    const { scheduleWindowsOf } = await import('../src/http/presenters/pricing.js');
+    expect(scheduleWindowsOf(undefined)).toBeUndefined();
+    expect(scheduleWindowsOf({ strategy: 'flat', params: {} })).toBeUndefined();
+    expect(scheduleWindowsOf({ strategy: 'schedule', params: { windows: [] } })).toBeUndefined();
+    expect(
+      scheduleWindowsOf({
+        strategy: 'schedule',
+        params: { windows: [{ start: 1, end: 2, label: '' }] },
+      }),
+    ).toEqual([{ start: '1', end: '2' }]);
+    expect(
+      scheduleWindowsOf({
+        strategy: 'schedule',
+        params: { windows: [{ start: 1, end: 2, label: '峰' }] },
+      }),
+    ).toEqual([{ start: '1', end: '2', label: '峰' }]);
+  });
+
+  it('parsePricingQuery:free 三态/pageSize 缺省与钳制', async () => {
+    const { parsePricingQuery } = await import('../src/http/contracts/pricing.js');
+    const base = new URL('https://x/v1/pricing');
+    expect(parsePricingQuery(base)).toMatchObject({ free: null, q: '' });
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=true'))).toMatchObject({ free: true });
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=1'))).toMatchObject({ free: true });
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?free=other'))).toMatchObject({ free: false });
+    const clamped = parsePricingQuery(new URL('https://x/v1/pricing?pageSize=99999&page=0'));
+    expect(clamped.pageSize).toBeLessThanOrEqual(500);
+    expect(clamped.page).toBe(1);
+    expect(parsePricingQuery(new URL('https://x/v1/pricing?pageSize=abc')).pageSize).toBeGreaterThan(0);
+  });
+
+  it('注册:IP 限流 429 + 验证码缺 token 400', async () => {
+    const limited = build();
+    limited.state.forceRegisterLimit = true;
+    const res = await limited.app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: jsonAuth,
+      body: JSON.stringify({ email: 'rl@x.dev', password: 'password123' }),
+    });
+    expect(res.status).toBe(429);
+
+    // captcha 是装配期展开的依赖——须在 createClientApiApp 前注入(deps 级)
+    const captchaParts = createDeps();
+    captchaParts.state.capabilities.captchaSiteKey = 'site-key';
+    (captchaParts.deps.auth as { captcha: unknown }).captcha = { verify: async () => undefined };
+    const captchaApp = createClientApiApp(captchaParts.deps);
+    const noToken = await captchaApp.request('/v1/auth/register', {
+      method: 'POST',
+      headers: jsonAuth,
+      body: JSON.stringify({ email: 'cap@x.dev', password: 'password123' }),
+    });
+    expect(noToken.status).toBe(400);
+    expect(await noToken.json()).toMatchObject({ error: { code: 'client.captcha_required' } });
+  });
+
+  it('注册:功能关闭 403 register_disabled', async () => {
+    const closed = build();
+    closed.state.capabilities.registerEnabled = false;
+    const res = await closed.app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: jsonAuth,
+      body: JSON.stringify({ email: 'off@x.dev', password: 'password123' }),
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { code: 'client.register_disabled' } });
+  });
+
+  it('oauth 回调:存量用户不可用 403 account_unavailable', async () => {
+    const parts = createDeps();
+    (parts.deps.oauth as {
+      findUser: () => Promise<unknown>;
+      userStatus: (id: number) => Promise<number>;
+    }).findUser = async () => 43;
+    parts.deps.oauth.userStatus = async (id) => (id === 43 ? 1 : 0);
+    const app = createClientApiApp(parts.deps);
+    const res = await app.request('/v1/oauth/github/callback?code=good&state=good-state', {
+      headers: { cookie: 'tl_oauth_state=good-state' },
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({ error: { code: 'client.account_unavailable' } });
   });
 });

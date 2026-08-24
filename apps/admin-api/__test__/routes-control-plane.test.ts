@@ -272,6 +272,37 @@ describe('models + rate-cards + fx + catalog', () => {
       }),
     );
 
+    // unitPrice 数字形态:coerce 分支 → transform String;超 1e12 拒 400
+    const numeric = await app.request('/v1/models', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        externalName: 'gpt-y',
+        realModel: 'gpt-real',
+        inputPrice: '1',
+        outputPrice: '2',
+        cacheInputPrice: '0.1',
+        unitPrice: 0.5,
+      }),
+    });
+    expect(numeric.status).toBe(201);
+    expect(create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prices: expect.objectContaining({ unitPrice: '0.5' }) }),
+    );
+    const overflow = await app.request('/v1/models', {
+      method: 'POST',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        externalName: 'gpt-z',
+        realModel: 'gpt-real',
+        inputPrice: '1',
+        outputPrice: '2',
+        cacheInputPrice: '0.1',
+        unitPrice: 2e12,
+      }),
+    });
+    expect(overflow.status).toBe(400);
+
     const list = await app.request('/v1/models', { headers: authHeader() });
     expect(await list.json()).toMatchObject({ rows: [{ channelIds: [2], fallbackModels: null }] });
 
@@ -295,6 +326,7 @@ describe('models + rate-cards + fx + catalog', () => {
               description: null,
               status: 0,
               createdAt: new Date('2026-01-01T00:00:00Z'),
+              updatedAt: new Date('2026-01-02T00:00:00Z'),
               coefficient: '1.000',
             },
           ],
@@ -314,7 +346,9 @@ describe('models + rate-cards + fx + catalog', () => {
     });
     expect(bad.status).toBe(400);
     const list = await app.request('/v1/rate-cards', { headers: authHeader() });
-    expect(await list.json()).toMatchObject({ rows: [{ coefficient: '1.000', updatedAt: null }] });
+    expect(await list.json()).toMatchObject({
+      rows: [{ coefficient: '1.000', updatedAt: '2026-01-02T00:00:00.000Z' }],
+    });
     const health = await app.request('/v1/rate-cards/1/health', { headers: authHeader() });
     expect(await health.json()).toEqual({ hasGlobalCoefficient: true, coefficient: '1.000' });
   });

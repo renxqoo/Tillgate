@@ -67,6 +67,14 @@ describe('providers/channels 补面', () => {
       (await app.request('/v1/providers/1', { method: 'DELETE', headers: authHeader() })).status,
     ).toBe(200);
     await app.request('/v1/providers?q=openai', { headers: authHeader() });
+    expect(
+      (
+        await app.request('/v1/channels/1/restore', {
+          method: 'POST',
+          headers: authHeader(),
+        })
+      ).status,
+    ).toBe(200);
 
     const chPatched = await app.request('/v1/channels/1', {
       method: 'PATCH',

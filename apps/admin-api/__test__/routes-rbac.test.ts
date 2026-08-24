@@ -385,4 +385,31 @@ describe('GET /v1/me/menus（自身域动态菜单）', () => {
     expect(filtered.groups).toHaveLength(1);
     expect(filtered.groups[0]!.items.map((item) => item.name)).toEqual(['概览']);
   });
+
+  it('停用节点剔除:group/page status=1 不进菜单树（kill-switch 同源）', async () => {
+    const groupLive = { ...node, id: 1, parentId: null, type: 'group' as const, code: null, name: '在册组', sortOrder: 1 };
+    const groupDead = { ...groupLive, id: 2, name: '停用组', status: 1 as never, sortOrder: 2 };
+    const pageDead = { ...node, id: 11, parentId: 1, type: 'page' as const, code: 'users:read', name: '停用页', status: 1 as never, sortOrder: 1 };
+    const pageLive = { ...node, id: 10, parentId: 1, type: 'page' as const, code: null, name: '活页', sortOrder: 2 };
+    const base = fakeDeps({
+      controlPlane: {
+        rbac: {
+          roles: { find: async () => roleRow },
+          permissions: { tree: async () => [groupLive, groupDead, pageDead, pageLive] },
+        },
+      } as never,
+    });
+    const app = createAdminApp({
+      ...base,
+      sessions: {
+        validate: base.sessions.validate,
+        owner: async () => ({ status: 0, grants: { isSuper: true, codes: [] } }),
+      },
+    });
+    const res = await app.request('/v1/me/menus', { headers: authHeader() });
+    const body = (await res.json()) as { groups: { name: string; items: { name: string }[] }[] };
+    expect(body.groups).toHaveLength(1); // 停用组整组剔除
+    expect(body.groups[0]!.name).toBe('在册组');
+    expect(body.groups[0]!.items.map((item) => item.name)).toEqual(['活页']); // 停用页剔除
+  });
 });
