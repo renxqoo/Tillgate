@@ -314,8 +314,9 @@ export {
 export { epaySign, epayVerify, parseEpayNotify, EPAY_PAY_TYPES } from './domain/payment/epay.js';
 export type { EpayNotifyPayload, EpayPayType } from './domain/payment/epay.js';
 export {
-  stripeCentsFromAmount,
-  stripeAmountFromCents,
+  stripeMinorUnitsFromAmount,
+  stripeAmountFromMinorUnits,
+  STRIPE_ZERO_DECIMAL_CURRENCIES,
   parseStripeSignatureHeader,
   verifyStripeSignature,
   parseStripeEvent,

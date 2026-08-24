@@ -4,7 +4,8 @@
  *
  * 幂等 = wallet 自然键（refType 'referral' + refId referral-commission:{inviter}:{yyyyMMdd}
  * + kind credit 唯一）——多副本并发/同日重跑结构性只入一次，无需分布式锁。
- * 金额 = Decimal(合计) × rate 全精度（账本永不 round）。
+ * 金额 = floor(合计 × rate, 18 位小数)（DESIGN §2.2 第 6 条：派生支付额跨落库
+ * 边界显式收敛——全精度乘积超 18 位小数会被 out_of_scale 永久拒绝）。
  *
  * 窗口回补：每轮跑最近 backfillDays 个「完整结束的 UTC 自然日」（缺勤补算——
  * 幂等键保证已结算日零副作用）。只跑「昨日」的形态下，worker 停机跨过 D+2
@@ -13,6 +14,7 @@
  * （marketing_settings / commissionRefId）——本包不依赖 accounts，经装配注入。
  */
 import { Decimal } from '../domain/money.js';
+import { commissionCreditAmount } from '../domain/commission.js';
 import type { CommissionStatsStore } from '../ports/commission-stats.js';
 
 /** 佣金入账所需的 wallet 动词窄面（装配注入 wallet facade） */
@@ -77,7 +79,8 @@ export function createReferralCommissionUseCase(deps: ReferralCommissionDeps) {
       const dayKey = dayKeyOf(dayStart);
       const rows = await deps.stats.sumInviteeSpendByInviter({ from: dayStart, to: dayEnd });
       for (const row of rows) {
-        const amount = new Decimal(row.total).times(rate);
+        // 派生支付额显式收敛（floor 18dp）——全精度乘积会撞 out_of_scale 永久拒绝
+        const amount = commissionCreditAmount(row.total, rate.toString());
         if (!amount.greaterThan(0)) continue;
         try {
           const result = await deps.wallet.credit({
