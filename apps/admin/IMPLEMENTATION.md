@@ -110,13 +110,13 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 
 ## 7. 测试计划（新建面）
 
-| 面          | 文件                                                    | 内容                                                                                                                                                                                                                              |
-| ----------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 架构边界    | `__test__/architecture.test.ts`                         | ① workspace import 白名单（仅 ui/api-client）② 无 `@tokenlens/*/src` 深导入 ③ app 页面不 import server actions 之外的服务端模块 ④ 词表快照封闭性（protocols.ts 导出 == 快照表）                                                   |
-| server 动作 | `__test__/*-actions.test.ts`                            | mock fetch 断言 wire 调用形状/错误信封映射/返回 `{error}` 形状（vitest 环境 node + next/cache 桩）                                                                                                                                |
-| 纯函数      | `__test__/{list-query,graph-layout,money-tone}.test.ts` | URL 状态往返、dagre 布局确定性（同输入同布局）、tone 边界                                                                                                                                                                         |
-| config      | `__test__/config.test.ts`                               | protocols 快照与裁决表一致；app-config 形状                                                                                                                                                                                       |
-| 覆盖率口径  | vitest.config.ts                                        | 阈值 90/85 施于 `src/{server,lib,config,features}/**` 可测切片；`src/app/**`（页面装配/RSC）与 `src/components/**`（纯展示壳）排除——口径在案：页面行为由 server 动作测试 + 四门 typecheck/build 覆盖，RSC 渲染测试待 e2e 波（P7） |
+| 面          | 文件                                                    | 内容                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 架构边界    | `__test__/architecture.test.ts`                         | ① workspace import 白名单（仅 ui/api-client）② 无 `@tokenlens/*/src` 深导入 ③ app 页面不 import server actions 之外的服务端模块 ④ 词表快照封闭性（protocols.ts 导出 == 快照表）                                   |
+| server 动作 | `__test__/*-actions.test.ts`                            | mock fetch 断言 wire 调用形状/错误信封映射/返回 `{error}` 形状（vitest 环境 node + next/cache 桩）                                                                                                                |
+| 纯函数      | `__test__/{list-query,graph-layout,money-tone}.test.ts` | URL 状态往返、dagre 布局确定性（同输入同布局）、tone 边界                                                                                                                                                         |
+| config      | `__test__/config.test.ts`                               | protocols 快照与裁决表一致；app-config 形状                                                                                                                                                                       |
+| 覆盖率口径  | vitest.config.ts                                        | 阈值 90/85 施于 `src/{server,lib,config,features}/**` 可测切片；`src/app/**`（页面装配/RSC）与 TSX 展示层排除覆盖率分母——页面由 server 动作 + typecheck/build 覆盖，关键交互组件另以 jsdom 渲染测试锁定（§11 起） |
 
 ## 8. 施工顺序
 
@@ -141,3 +141,25 @@ tracing DTO 形状来源：`apps/admin-api/src/http/contracts/observability.ts` 
 - `packages/api-client/package.json` 与 `bun.lock`：本波 DTO 补缺触及 package.json，
   与并行波共写文件混有他人未提交变更——不随本波提交，待工作区整体收口时逐文件点名
   处理（内容本身已过门禁验证，仅提交动作挂起）。
+
+## 11. 计费异常复核弹窗（小级方案）
+
+> 状态：已核销；用户裁决：将无法输入的行操作下拉改为“操作”按钮 + 模态弹窗。
+
+### 11.1 契约与边界
+
+- 复核列表操作列只展示“操作”按钮；点击后弹窗包含复核理由输入框、重试、废弃、关闭。
+- 重试/废弃继续调用既有 server action，参数、乐观锁、审计与错误信封均不改变。
+- 空白理由不出站并提示；理由上限保持 1000 字符。
+- 成功后关闭弹窗并清空理由；失败时保留弹窗和输入，允许修正后重试。
+- 提交期间三个动作按钮均禁用，防止重复决策或请求中途卸载。
+- 不处理：死单状态机、资金释放和审计事务仍归 billing/admin-api；列表刷新仍归既有
+  server action 的 `revalidatePath`。
+
+### 11.2 测试与验收
+
+- [x] 点击“操作”打开弹窗，输入框可获得焦点并输入内容；关闭后再次打开为空。
+- [x] 空白理由不调用 action；重试/废弃分别透传 requestId、revision 与已输入理由。
+- [x] 成功关闭弹窗；失败保留弹窗、理由和可重试状态；pending 阶段防重复提交。
+- [x] 中英文词表同步；159/159 测试通过；覆盖率 statements 93.40%、branches 85.30%、
+      functions 92.81%、lines 96.07%；format/typecheck/lint/build 通过。

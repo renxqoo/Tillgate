@@ -877,6 +877,8 @@
     "reason": "Reason",
     "viewTrace": "Trace",
     "noCases": "No failed requests",
+    "reviewActionTitle": "Review billing exception",
+    "reviewActionDescription": "Enter a review reason for request {requestId}, then retry or abandon it.",
     "reasonRequired": "A review reason is required",
     "reasonPlaceholder": "Retry / abandon reason (required, audited)",
     "retry": "Retry",

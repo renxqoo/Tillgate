@@ -877,6 +877,8 @@
     "reason": "原因",
     "viewTrace": "查链路",
     "noCases": "暂无异常请求",
+    "reviewActionTitle": "处理计费异常",
+    "reviewActionDescription": "为请求 {requestId} 填写复核理由，然后选择重试或废弃。",
     "reasonRequired": "必须填写复核理由",
     "reasonPlaceholder": "重试 / 废弃原因（必填，进审计）",
     "retry": "重试",

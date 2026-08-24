@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 /**
@@ -34,22 +35,23 @@ function loadRootDotEnv(): Record<string, string> {
 
 /**
  * admin（Next.js 前端）测试配置：默认门禁 = 架构边界 + server 动作（mock fetch）+
- * 纯函数（URL 状态/图布局/tone）+ config 词表封闭性。
+ * 纯函数（URL 状态/图布局/tone）+ config 词表封闭性 + 关键 client 交互组件。
  *
  * 覆盖率口径（IMPLEMENTATION §7，如实申报不调阈值）：
  *   - 含：src/{server,lib,config}/** 与 features 内纯逻辑切片（*.ts 非 tsx）
- *   - 排除：src/app/**（RSC 页面装配——行为由 server 动作测试 + build 类型门覆盖，
- *     RSC 渲染测试归 e2e 波 P7）、src/components 与 features 下 tsx
- *     （展示组件——v1 无渲染测试基线，渲染回归待 e2e）。
+ *   - 排除覆盖率：src/app/**（RSC 页面装配——行为由 server 动作测试 + build 类型门覆盖）、
+ *     src/components 与 features 下 tsx；关键交互组件用 jsdom 渲染测试锁定，但不纳入
+ *     server/lib/config 的既有覆盖率分母。
  */
 export default defineConfig({
+  plugins: [react()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   test: {
-    include: ['__test__/*.test.ts'],
+    include: ['__test__/*.test.ts', '__test__/*.test.tsx'],
     environment: 'node',
     fileParallelism: false,
     testTimeout: 15_000,
