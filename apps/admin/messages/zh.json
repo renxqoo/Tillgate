@@ -1070,6 +1070,7 @@
     "title": "管理员与角色",
     "description": "管理员账号与 RBAC 角色（仅超级管理员可见）",
     "empty": "暂无管理员",
+    "searchPlaceholder": "搜索邮箱或昵称",
     "create": "新建管理员",
     "createTitle": "新建管理员",
     "createDescription": "创建资料行并注册登录凭据；初始密码请线下安全传递给本人。",

@@ -68,8 +68,20 @@ describe('admins（G2 管理员资料用例族）', () => {
     expect(created.role).toBe('viewer');
     expect(created.status).toBe(0);
 
-    const rows = await listAdmins(deps);
-    expect(rows.map((r) => r.id)).toEqual([7, created.id]);
+    const base = { sortBy: 'id' as const, order: 'asc' as const };
+    const page = await listAdmins(deps, { ...base, limit: 10, offset: 0 });
+    expect(page.rows.map((r) => r.id)).toEqual([7, created.id]);
+    expect(page.total).toBe(2);
+
+    // 分页切片 + q 搜索（email/displayName 不区分大小写）+ 排序键切换
+    const second = await listAdmins(deps, { ...base, limit: 1, offset: 1 });
+    expect(second.rows.map((r) => r.id)).toEqual([created.id]);
+    expect(second.total).toBe(2);
+    expect((await listAdmins(deps, { ...base, q: 'newbie', limit: 10, offset: 0 })).total).toBe(1);
+    expect((await listAdmins(deps, { ...base, q: 'OPS@', limit: 10, offset: 0 })).total).toBe(1);
+    expect((await listAdmins(deps, { ...base, q: 'zzz', limit: 10, offset: 0 })).rows).toEqual([]);
+    const byEmail = await listAdmins(deps, { sortBy: 'email', order: 'asc', limit: 10, offset: 0 });
+    expect(byEmail.rows[0]?.id).toBe(created.id);
 
     await expect(
       createAdmin(

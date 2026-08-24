@@ -18,9 +18,12 @@ import { controlPlaneErrors, type AdminRecord, type ControlPlane } from '@tokenl
 import type { Identity } from '@tokenlens/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
-import { idParam } from '../contracts/common';
+import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { adminsContracts } from '../contracts/admins';
 import type { PostAudit } from './redeem';
+
+/** 排序白名单（sort_by 词表外 400 admin.invalid_sort_field——统一列表契约） */
+const ADMIN_SORTS = ['id', 'email', 'lastLoginAt', 'createdAt'] as const;
 
 export interface AdminsRoutesDeps {
   /** admins 资料面动词（list/create/update/remove） */
@@ -48,8 +51,15 @@ export function adminsRoutes(deps: AdminsRoutesDeps, session: MiddlewareHandler<
   const app = new Hono<SessionEnv>();
 
   app.get('/v1/admins', session, async (c) => {
-    const rows = await deps.admins.list();
-    return c.json({ rows: rows.map(adminRowOf) });
+    const query = parseListQuery(c.req.query(), ADMIN_SORTS, 'id');
+    const page = await deps.admins.list({
+      ...(query.q !== undefined ? { q: query.q } : {}),
+      sortBy: query.sortBy as 'id' | 'email' | 'lastLoginAt' | 'createdAt',
+      order: query.order,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    return c.json(listEnvelope(page.rows.map(adminRowOf), page.total, query));
   });
 
   app.post('/v1/admins', session, async (c) => {

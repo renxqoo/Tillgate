@@ -12,6 +12,7 @@ import {
   type HttpClient,
   type TokenGetter,
 } from './core/client';
+import type { Paginated } from './core/pagination';
 import type {
   AdminCreateBody,
   AdminMeInfo,
@@ -43,8 +44,14 @@ export interface AdminApiClient extends HttpClient {
     newPassword: string;
   }): Promise<AdminPasswordChangeResult>;
 
-  /** 管理员列表（GET /v1/admins;admins 域——仅 super_admin,403 由调用方处理） */
-  listAdmins(): Promise<{ rows: AdminRow[] }>;
+  /** 管理员列表（GET /v1/admins;统一列表契约 ?page&page_size&q&sort_by;admins 域——仅 super_admin） */
+  listAdmins(params?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    sortBy?: string;
+    order?: 'asc' | 'desc';
+  }): Promise<Paginated<AdminRow>>;
 
   /** 创建管理员（POST /v1/admins;资料行 + identity 凭据双动词编排） */
   createAdmin(input: AdminCreateBody): Promise<AdminRow>;
@@ -71,8 +78,15 @@ export function createAdminApiClient(options: AdminApiClientOptions): AdminApiCl
     async changeMyPassword(input: { oldPassword: string; newPassword: string }) {
       return http.post<AdminPasswordChangeResult>('/v1/me/password', input);
     },
-    async listAdmins() {
-      return http.get<{ rows: AdminRow[] }>('/v1/admins');
+    async listAdmins(params) {
+      const query = new URLSearchParams();
+      if (params?.page != null) query.set('page', String(params.page));
+      if (params?.pageSize != null) query.set('page_size', String(params.pageSize));
+      if (params?.q != null && params.q !== '') query.set('q', params.q);
+      if (params?.sortBy != null) query.set('sort_by', params.sortBy);
+      if (params?.order != null) query.set('order', params.order);
+      const suffix = query.size > 0 ? `?${query.toString()}` : '';
+      return http.get<Paginated<AdminRow>>(`/v1/admins${suffix}`);
     },
     async createAdmin(input: AdminCreateBody) {
       return http.post<AdminRow>('/v1/admins', input);

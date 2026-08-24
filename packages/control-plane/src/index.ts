@@ -52,7 +52,13 @@ export {
   assertAdminRole,
 } from './domain/rbac';
 export type { AdminRole, PermissionDomain, PermissionAction, Permission } from './domain/rbac';
-export type { AdminRecord, CreateAdminRow, UpdateAdminRow } from './ports/admin-store';
+export type {
+  AdminRecord,
+  CreateAdminRow,
+  UpdateAdminRow,
+  AdminListQuery,
+  AdminListResult,
+} from './ports/admin-store';
 export type { CreateAdminInput } from './application/admins/create-admin';
 
 // ---- 装配/桥接 port 契约（assembly 实现与 observability 桥消费）----

@@ -1070,6 +1070,7 @@
     "title": "Admins & Roles",
     "description": "Admin accounts and RBAC roles (super admin only)",
     "empty": "No admins yet",
+    "searchPlaceholder": "Search email or display name",
     "create": "New admin",
     "createTitle": "Create admin",
     "createDescription": "Creates the profile row and registers login credentials; deliver the initial password to the person via a secure channel.",

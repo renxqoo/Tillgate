@@ -4,7 +4,7 @@
  */
 import { z } from 'zod';
 import { adminsContracts } from '../contracts/admins';
-import { idPathParam, type OpenApiEndpoint } from './shared';
+import { idPathParam, listQuery, paginatedOf, type OpenApiEndpoint } from './shared';
 
 /** 管理员资料行（列表/创建/更新共用投影——不含密码/2FA 密钥列） */
 export const adminRowSchema = z
@@ -30,11 +30,12 @@ export const adminsEndpoints: readonly OpenApiEndpoint[] = [
     method: 'get',
     path: '/v1/admins',
     tag: 'admins',
-    summary: '管理员列表（admins 域——仅 super_admin）',
+    summary: '管理员列表（统一列表契约 ?page&page_size&q&sort_by;admins 域——仅 super_admin）',
+    query: listQuery(),
     response: {
-      schema: z.object({ rows: z.array(adminRowSchema) }),
+      schema: paginatedOf(adminRowSchema),
     },
-    errors: [403],
+    errors: [400, 403],
   },
   {
     method: 'post',

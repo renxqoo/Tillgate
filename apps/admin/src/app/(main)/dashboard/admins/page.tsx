@@ -7,14 +7,22 @@ import { Badge } from '@tokenlens/ui';
 import { UserCogIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
+import { ApiError, type Paginated } from '@tokenlens/api-client';
 import { adminApi } from '@/server/admin-api';
 import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
+import { parseListSearchParams } from '@/lib/list-query';
 
 import { AdminCreateForm } from '@/features/admins/admin-create-form';
 import { AdminRowActions } from '@/features/admins/admin-row-actions';
 
 export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 20;
+
+interface PageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
 
 interface AdminRow {
   id: number;
@@ -27,13 +35,30 @@ interface AdminRow {
   createdAt: string;
 }
 
-export default async function AdminsPage() {
+export default async function AdminsPage({ searchParams }: PageProps) {
   const me = await requirePermission('admins:read');
+  const sp = await searchParams;
   const t = await getTranslations('admins');
   const tc = await getTranslations('common');
-  const data = await adminApi()
-    .get<{ rows?: AdminRow[] }>('/v1/admins')
-    .catch(() => null);
+  const { q, page, sortBy, order } = parseListSearchParams(sp);
+
+  let rows: AdminRow[] = [];
+  let total = 0;
+  let error: string | null = null;
+  try {
+    const query = new URLSearchParams({
+      page: String(page),
+      page_size: String(PAGE_SIZE),
+      sort_by: sortBy ?? 'id',
+      order,
+    });
+    if (q) query.set('q', q);
+    const data = await adminApi().get<Paginated<AdminRow>>(`/v1/admins?${query.toString()}`);
+    rows = data.rows ?? [];
+    total = data.total ?? 0;
+  } catch (e) {
+    error = e instanceof ApiError ? e.message : tc('loadFailed');
+  }
 
   const roleLabel: Record<string, string> = {
     super_admin: t('roleSuperAdmin'),
@@ -82,16 +107,18 @@ export default async function AdminsPage() {
   return (
     <ListPage
       title={t('title')}
-      description={t('description')}
       icon={<UserCogIcon className="size-5 text-muted-foreground" />}
+      description={t('description')}
+      total={total}
+      searchPlaceholder={t('searchPlaceholder')}
+      q={q}
+      searchParams={{ q, sort_by: sortBy, order: sortBy ? order : undefined }}
+      actions={me.permissions?.includes('admins:write') ? <AdminCreateForm /> : null}
+      error={error}
+      page={page}
+      pageSize={PAGE_SIZE}
     >
-      {me.permissions?.includes('admins:write') ? <AdminCreateForm /> : null}
-      <DataTable
-        rowKey={(r) => r.id}
-        rows={data?.rows ?? []}
-        columns={columns}
-        empty={t('empty')}
-      />
+      <DataTable rowKey={(r) => r.id} rows={rows} columns={columns} empty={t('empty')} />
     </ListPage>
   );
 }

@@ -4,15 +4,22 @@
  * 凭据单一真相在 identity 七表（G1/G2 裁决,admins.password_hash 冻结只读不投影）。
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
  */
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { admins } from '@tokenlens/db';
 import type { DbLike, DbTx } from '@tokenlens/db';
 import type {
+  AdminListQuery,
+  AdminListResult,
   AdminRecord,
   AdminStore,
   CreateAdminRow,
   UpdateAdminRow,
 } from '../../ports/admin-store';
+
+/** LIKE 模式转义（用户输入的 %/_ 按字面匹配） */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 /**
  * 旧列 admins.password_hash 的占位值（NOT NULL 兜底）：凭据单一真相在 identity 七表，
@@ -61,9 +68,34 @@ export const postgresAdminStore: AdminStore = {
       .where(eq(admins.id, input.adminId));
   },
 
-  async list(db: DbLike): Promise<AdminRecord[]> {
-    const rows = await db.select(projection).from(admins).orderBy(asc(admins.id));
-    return rows as AdminRecord[];
+  async list(db: DbLike, query: AdminListQuery): Promise<AdminListResult> {
+    const filter =
+      query.q != null && query.q !== ''
+        ? or(
+            ilike(admins.email, `%${escapeLike(query.q)}%`),
+            ilike(admins.displayName, `%${escapeLike(query.q)}%`),
+          )
+        : undefined;
+    const sortColumn =
+      query.sortBy === 'email'
+        ? admins.email
+        : query.sortBy === 'lastLoginAt'
+          ? admins.lastLoginAt
+          : query.sortBy === 'createdAt'
+            ? admins.createdAt
+            : admins.id;
+    const rows = await db
+      .select(projection)
+      .from(admins)
+      .where(filter)
+      .orderBy(query.order === 'desc' ? desc(sortColumn) : asc(sortColumn))
+      .limit(query.limit)
+      .offset(query.offset);
+    const counted = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(admins)
+      .where(filter);
+    return { rows: rows as AdminRecord[], total: counted[0]?.total ?? 0 };
   },
 
   async create(db: DbTx, row: CreateAdminRow): Promise<AdminRecord> {

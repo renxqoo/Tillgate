@@ -987,8 +987,34 @@ export function createMemoryAdminStore(seed: AdminRecord[] = []): AdminStore & {
       if (row == null) return;
       rows.set(input.adminId, { ...row, twoFactorEnabled: input.enabled });
     },
-    async list(_db) {
-      return [...rows.values()].toSorted((a, b) => a.id - b.id);
+    async list(_db, query) {
+      const matched = [...rows.values()].filter((r) => {
+        if (query.q == null || query.q === '') return true;
+        const needle = query.q.toLowerCase();
+        return (
+          r.email.toLowerCase().includes(needle) ||
+          (r.displayName ?? '').toLowerCase().includes(needle)
+        );
+      });
+      const sorted = matched.toSorted((a, b) => {
+        const key = (r: AdminRecord) =>
+          query.sortBy === 'email'
+            ? r.email
+            : query.sortBy === 'lastLoginAt'
+              ? (r.lastLoginAt?.getTime() ?? 0)
+              : query.sortBy === 'createdAt'
+                ? r.createdAt.getTime()
+                : r.id;
+        const av = key(a);
+        const bv = key(b);
+        const cmp =
+          typeof av === 'string' ? av.localeCompare(bv as string) : Number(av) - Number(bv);
+        return query.order === 'desc' ? -cmp : cmp;
+      });
+      return {
+        rows: sorted.slice(query.offset, query.offset + query.limit),
+        total: matched.length,
+      };
     },
     async create(_db, row) {
       clock += 1;

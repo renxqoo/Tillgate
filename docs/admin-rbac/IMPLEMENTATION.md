@@ -138,7 +138,7 @@
 | 项 | 理由 | 后果 | 归属 |
 | --- | --- | --- | --- |
 | **管理员 id 回收 + 凭据 replay 防御**（POST /v1/admins 对 `replayed === true` 视同 409 + 补偿） | 现网不可达：管理端无自助注册，唯一删行路径是创建失败的补偿 `remove`（该场景下 id 名下无凭据）；退役只改 status，无 DELETE 端点 | 一旦未来引入**管理员硬删**即触发：删行后 id 段 max+1 分配回收同一 id → 残留凭据判 replay 而非 taken → 201 但指定初始密码被静默丢弃（replay 不写密码）+ 继承旧 TOTP/恢复码/会话锚点。**触发条件：任何硬删管理员的波次必须先落本防御** | 后续波次（触发即升级为必改） |
-| `/v1/admins` 分页 | 管理员数量级 < 100（DESIGN D7） | 超量后列表变慢 | 后续波次 |
+| ~~`/v1/admins` 分页~~ | **已核销（2026-08-24 修订）**：GET /v1/admins 改统一列表契约（page/page_size/q/sort_by 白名单 + {rows,total,page,pageSize} 信封），store 层 ilike q + count，前端接 ListPage 搜索/分页与统一 RowActions——D7 裁决同步修订 | 无 | 已落地 |
 | 动态角色（DB 权限矩阵） | DESIGN §1.2 明确不做 | 需要自定义角色时另开 ADR | 未来 ADR |
 | admins 管理操作的通知（新建管理员邮件告知） | SMTP 面已有，但邀请制邮件模板超本功能范围 | 超管需线下传递初始密码 | 后续波次 |
 | `migrate:admin-credentials` 脚本对 role 的回填 | 脚本只迁凭据，role 由 0081 默认值覆盖 | 无 | 无 |

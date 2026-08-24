@@ -390,8 +390,18 @@ describe('admin-store（真实 PG：RBAC 资料面——role 投影/建行唯一
         .catch((error: unknown) => error);
       expect(isUniqueViolation(dup)).toBe(true);
 
-      const listed = await postgresAdminStore.list(db);
-      expect(listed.some((row) => row.id === created.id && row.role === 'viewer')).toBe(true);
+      // q 搜索（dev 库管理员行可能 ≥100,asc+limit100 未必覆盖新行——用唯一 email 定位,
+      // 顺带真库验证 ilike 路径）;total 计数同条件
+      const listed = await postgresAdminStore.list(db, {
+        q: email,
+        sortBy: 'id',
+        order: 'asc',
+        limit: 100,
+        offset: 0,
+      });
+      expect(listed.rows).toHaveLength(1);
+      expect(listed.rows[0]).toMatchObject({ id: created.id, role: 'viewer' });
+      expect(listed.total).toBe(1);
 
       const updated = await postgresAdminStore.update(db, {
         adminId: created.id,

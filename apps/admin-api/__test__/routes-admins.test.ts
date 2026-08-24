@@ -27,6 +27,7 @@ function wire(overrides?: {
   create?: () => Promise<typeof record>;
   register?: () => Promise<unknown>;
   update?: () => Promise<typeof record | null>;
+  list?: () => Promise<{ rows: (typeof record)[]; total: number }>;
 }) {
   const create = vi.fn(overrides?.create ?? (async () => record));
   const register = vi.fn(
@@ -34,7 +35,7 @@ function wire(overrides?: {
   );
   const remove = vi.fn(async () => undefined);
   const update = vi.fn(overrides?.update ?? (async () => record));
-  const list = vi.fn(async () => [record]);
+  const list = vi.fn(overrides?.list ?? (async () => ({ rows: [record], total: 1 })));
   const app = createAdminApp(
     fakeDeps({
       controlPlane: { admins: { list, create, update, remove } },
@@ -51,19 +52,58 @@ const createBody = {
   role: 'operator',
 };
 
-describe('GET /v1/admins', () => {
-  it('列表信封 {rows};wire 投影含 role 不含密码列', async () => {
-    const { app } = wire();
-    const res = await app.request('/v1/admins', { headers: authHeader() });
+describe('GET /v1/admins（统一列表契约）', () => {
+  it('信封 {rows,total,page,pageSize};wire 投影含 role 不含密码列;查询参数透传 store', async () => {
+    const { app, spies } = wire();
+    const res = await app.request('/v1/admins?page=2&page_size=5&q=ops&sort_by=email&order=desc', {
+      headers: authHeader(),
+    });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { rows: Record<string, unknown>[] };
+    const body = (await res.json()) as {
+      rows: Record<string, unknown>[];
+      total: number;
+      page: number;
+      pageSize: number;
+    };
+    expect(body).toMatchObject({ total: 1, page: 2, pageSize: 5 });
     expect(body.rows).toHaveLength(1);
     expect(body.rows[0]).toMatchObject({ id: record.id, role: 'operator', status: 0 });
     expect(Object.keys(body.rows[0]!)).not.toContain('passwordHash');
+    expect(spies.list).toHaveBeenCalledWith({
+      q: 'ops',
+      sortBy: 'email',
+      order: 'desc',
+      limit: 5,
+      offset: 5,
+    });
+  });
+
+  it('排序白名单外 400 invalid_sort_field;缺省 sort_by=id asc', async () => {
+    const { app, spies } = wire();
+    const bad = await app.request('/v1/admins?sort_by=passwordHash', { headers: authHeader() });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: { code: string } }).error.code).toBe(
+      'admin.invalid_sort_field',
+    );
+    expect(spies.list).not.toHaveBeenCalled();
+
+    const def = await app.request('/v1/admins', { headers: authHeader() });
+    expect(def.status).toBe(200);
+    // 缺省 = sort_by:id + listQuerySchema 缺省序 desc/页 20（统一列表契约口径）
+    expect(spies.list).toHaveBeenCalledWith({
+      sortBy: 'id',
+      order: 'desc',
+      limit: 20,
+      offset: 0,
+    });
   });
 
   it('权限面:viewer 403（admins 域仅 super_admin）', async () => {
-    const base = fakeDeps({ controlPlane: { admins: { list: async () => [] } } });
+    const base = fakeDeps({
+      controlPlane: {
+        admins: { list: async () => ({ rows: [], total: 0 }) },
+      },
+    });
     const viewerApp = createAdminApp({
       ...base,
       sessions: {

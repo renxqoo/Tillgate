@@ -33,6 +33,20 @@ export interface UpdateAdminRow {
   readonly status?: number;
 }
 
+/** 管理面列表查询（统一列表契约的 store 投影;q 匹配 email/displayName 前后缀） */
+export interface AdminListQuery {
+  readonly q?: string;
+  readonly sortBy: 'id' | 'email' | 'lastLoginAt' | 'createdAt';
+  readonly order: 'asc' | 'desc';
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export interface AdminListResult {
+  readonly rows: AdminRecord[];
+  readonly total: number;
+}
+
 export interface AdminStore {
   findById(db: DbLike, id: number): Promise<AdminRecord | null>;
   findByEmail(db: DbLike, email: string): Promise<AdminRecord | null>;
@@ -40,8 +54,8 @@ export interface AdminStore {
   touchLastLogin(db: DbLike, id: number): Promise<void>;
   /** 邮箱验证码二次登录开关（SMTP 前置校验在 app 编排——port 不判 SMTP） */
   setTwoFactorEnabled(db: DbLike, input: { adminId: number; enabled: boolean }): Promise<void>;
-  /** 管理面列表（id 升序;管理员数量级 < 100,不分页——DESIGN D7） */
-  list(db: DbLike): Promise<AdminRecord[]>;
+  /** 管理面列表（统一列表契约:分页 + q 搜索 + 排序白名单在 app 层裁决） */
+  list(db: DbLike, query: AdminListQuery): Promise<AdminListResult>;
   /** 创建资料行（id ≥1e9 段分配与插入同事务——application 负责开事务;
    *  重名由 admins_email_uq 兜底,23505 由 application 翻译冲突） */
   create(db: DbTx, row: CreateAdminRow): Promise<AdminRecord>;

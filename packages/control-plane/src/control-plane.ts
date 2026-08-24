@@ -67,7 +67,12 @@ import { setTwoFactorEnabled } from './application/admins/set-two-factor-enabled
 import { listAdmins } from './application/admins/list-admins';
 import { createAdmin, type CreateAdminInput } from './application/admins/create-admin';
 import { updateAdmin } from './application/admins/update-admin';
-import type { AdminRecord, UpdateAdminRow } from './ports/admin-store';
+import type {
+  AdminListQuery,
+  AdminListResult,
+  AdminRecord,
+  UpdateAdminRow,
+} from './ports/admin-store';
 import { createModel, type CreateModelInput } from './application/models/create-model';
 import { updateModel, type UpdateModelInput } from './application/models/update-model';
 import { deleteModel, type DeleteModelInput } from './application/models/delete-model';
@@ -286,7 +291,7 @@ export interface ControlPlane {
     touchLastLogin(adminId: number): Promise<void>;
     setTwoFactorEnabled(input: { adminId: number; enabled: boolean }): Promise<void>;
     /** RBAC 管理面（docs/admin-rbac）：列表/建行/更新;凭据注册与补偿在 admin-api 编排 */
-    list(): Promise<AdminRecord[]>;
+    list(query: AdminListQuery): Promise<AdminListResult>;
     create(input: CreateAdminInput): Promise<AdminRecord>;
     /** 未命中返回 null（404 抛点在 admin-api——admin.admin_not_found 单一码） */
     update(input: UpdateAdminRow): Promise<AdminRecord | null>;
@@ -413,7 +418,7 @@ export function createControlPlane(env: ControlPlaneEnv): ControlPlane {
       findByEmail: (email) => findAdminByEmail(adminsDeps, email),
       touchLastLogin: (adminId) => touchLastLogin(adminsDeps, adminId),
       setTwoFactorEnabled: (input) => setTwoFactorEnabled(adminsDeps, input),
-      list: () => listAdmins(adminsDeps),
+      list: (query) => listAdmins(adminsDeps, query),
       create: (input) => createAdmin({ db: env.db, store: stores.admin }, input),
       update: (input) => updateAdmin(adminsDeps, input),
       remove: (adminId) => stores.admin.remove(env.db, adminId),

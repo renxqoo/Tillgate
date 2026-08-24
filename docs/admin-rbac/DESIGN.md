@@ -168,6 +168,6 @@ ALTER TABLE admins ADD CONSTRAINT admins_role_ck CHECK (role in
 | D4 | redeem 批次归 funds 域 | 铸造余额的敏感度与 vouchers/调账同级 |
 | D5 | 读/写按 HTTP 方法自动分派（GET→read，其余→write） | 路由文件零侵入；26 组路由在装配点一处声明 |
 | D6 | 不可改自身 role/status（可改自身 displayName） | 防最后一个超管自锁；改 displayName 无权限面影响 |
-| D7 | `/v1/admins` 列表不分页 | 管理员数量级 < 100；超量挂账 |
+| D7 | `/v1/admins` 列表采用统一列表契约（?page&page_size&q&sort_by 白名单 + 信封 {rows,total,page,pageSize}）——2026-08-24 修订：原「不分页」裁决被取代，与其他模块列表同构 | 管理员页与用户/供应商等列表共用同一交互与代码路径；排序白名单 id/email/lastLoginAt/createdAt |
 | D8 | 新建管理员 id 一律落 ≥1e9 段（store.create 事务内 max+1 分配 + setval） | 2026-08-23 生产裁决：identity_passwords.userId 是无 realm 扁平主键，admin id 与 users.id 同号即凭据串号；与 apps/admin-api/scripts/create-admin.ts 同语义（段值两处同源，改动须同步） |
 | D9 | 创建走「插资料行 → 注册凭据 → 失败补偿删行」而非跨包事务；审计 postAudit 在双动词全成后旁路 | control-plane 与 identity 无共享事务边界；补偿不留「创建成功但登不上」的废号（脚本同裁决） |

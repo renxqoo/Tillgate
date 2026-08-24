@@ -1,6 +1,6 @@
 'use client';
 
-import { NativeSelect, NativeSelectOption } from '@tokenlens/ui';
+import { DropdownMenuItem, NativeSelect, NativeSelectOption, RowActions } from '@tokenlens/ui';
 import { useState } from 'react';
 import { Loader2Icon, PencilIcon, ShieldBanIcon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -19,8 +19,8 @@ const ROLES = [
 ] as const;
 
 /**
- * 行操作：改角色（小弹窗）/ 封禁与恢复（确认即发）。
- * 「不可改自身 role/status」由后端守卫——此处仅禁用自身行的操作入口（UX 提前）。
+ * 行操作（统一 RowActions 三点菜单）:变更角色（小弹窗）/ 封禁与恢复。
+ * 「不可改自身 role/status」由后端守卫——此处仅禁用自身行的菜单项（UX 提前）。
  */
 export function AdminRowActions({
   id,
@@ -36,18 +36,11 @@ export function AdminRowActions({
   const t = useTranslations('admins');
   const tc = useTranslations('common');
   const notify = useActionResult();
-  const [pending, setPending] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
 
-  async function runToggle() {
-    setPending('toggle');
-    const res = await toggleAdminStatusAction(id, status === 0 ? 1 : 0);
-    setPending(null);
-    notify(res, t('updateFailed'));
-  }
-
   return (
-    <div className="flex items-center gap-1">
+    <>
       <FormDialog
         formId={`admin-role-form-${id}`}
         open={roleOpen}
@@ -84,30 +77,35 @@ export function AdminRowActions({
           </form>
         )}
       </FormDialog>
-      <button
-        type="button"
-        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-40"
-        disabled={self}
-        title={self ? t('cannotModifySelf') : t('changeRole')}
-        onClick={() => setRoleOpen(true)}
-      >
-        <PencilIcon className="size-4" />
-      </button>
-      <button
-        type="button"
-        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-40"
-        disabled={self || pending !== null}
-        title={self ? t('cannotModifySelf') : status === 0 ? t('ban') : t('restore')}
-        onClick={runToggle}
-      >
-        {pending === 'toggle' ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : status === 0 ? (
-          <ShieldBanIcon className="size-4" />
-        ) : (
-          <ShieldCheckIcon className="size-4" />
-        )}
-      </button>
-    </div>
+
+      <RowActions label={tc('actions')}>
+        <DropdownMenuItem
+          disabled={self}
+          onClick={() => setRoleOpen(true)}
+          title={self ? t('cannotModifySelf') : undefined}
+        >
+          <PencilIcon className="size-4" />
+          {t('changeRole')}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={self || pending}
+          onClick={async () => {
+            setPending(true);
+            const res = await toggleAdminStatusAction(id, status === 0 ? 1 : 0);
+            setPending(false);
+            notify(res, t('updateFailed'));
+          }}
+        >
+          {pending ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : status === 0 ? (
+            <ShieldBanIcon className="size-4" />
+          ) : (
+            <ShieldCheckIcon className="size-4" />
+          )}
+          {status === 0 ? t('ban') : t('restore')}
+        </DropdownMenuItem>
+      </RowActions>
+    </>
   );
 }

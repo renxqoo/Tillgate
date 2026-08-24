@@ -1,7 +1,7 @@
-/** 管理员列表（GET /v1/admins;id 升序,不分页——DESIGN D7）;授权策略在 app 裁决 */
-import type { AdminRecord } from '../../ports/admin-store';
+/** 管理员列表（GET /v1/admins;统一列表契约——分页/q/排序白名单在 app 层裁决） */
+import type { AdminListQuery, AdminListResult } from '../../ports/admin-store';
 import type { AdminsDeps } from './admins-shared';
 
-export function listAdmins(deps: AdminsDeps): Promise<AdminRecord[]> {
-  return deps.store.list(deps.db);
+export function listAdmins(deps: AdminsDeps, query: AdminListQuery): Promise<AdminListResult> {
+  return deps.store.list(deps.db, query);
 }
