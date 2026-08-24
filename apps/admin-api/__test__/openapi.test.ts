@@ -60,6 +60,7 @@ const ENDPOINTS: readonly string[] = [
   'GET /v1/referrals/relations',
   'GET /v1/roles',
   'GET /v1/settings/billing-timezone',
+  'GET /v1/settings/integrations',
   'GET /v1/stats/overview',
   'GET /v1/stats/trends',
   'GET /v1/stats/usage',
@@ -136,6 +137,7 @@ const ENDPOINTS: readonly string[] = [
   'PUT /v1/fx/catalog/override',
   'PUT /v1/marketing/settings',
   'PUT /v1/settings/billing-timezone',
+  'PUT /v1/settings/integrations/:key',
 ];
 
 // 模块级:从 OpenAPI 文档收端点清单(提出 describe/it 回调,避免回调深层嵌套)

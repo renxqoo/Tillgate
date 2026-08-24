@@ -410,6 +410,79 @@ describe('models + rate-cards + fx + catalog', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('settings:integrations 列表/更新（ctx 透传）+ 未知 key 404 + 形状 400', async () => {
+    const integrations = {
+      list: async () => ({
+        integrations: [
+          {
+            key: 'smtp',
+            enabled: true,
+            configured: true,
+            config: { host: 'smtp.example.com', pass: '****s-9' },
+            secretsSet: ['pass'],
+            rotatedAt: null,
+            updatedAt: '2026-08-25T00:00:00.000Z',
+            updatedByAdminId: 7,
+          },
+        ],
+      }),
+      update: vi.fn(async () => ({
+        key: 'smtp',
+        enabled: false,
+        configured: true,
+        config: {},
+        secretsSet: [],
+        rotatedAt: null,
+        updatedAt: '2026-08-25T00:00:00.000Z',
+        updatedByAdminId: 7,
+      })),
+    };
+    const app = controlPlaneApp({ settings: { billingTimezone: { read: async () => ({ timezone: null }), update: async () => ({ timezone: 'UTC' }) }, integrations } });
+    const list = await app.request('/v1/settings/integrations', { headers: authHeader() });
+    expect(list.status).toBe(200);
+    const listed = (await list.json()) as { integrations: Array<{ key: string }> };
+    expect(listed.integrations[0]?.key).toBe('smtp');
+
+    const put = await app.request('/v1/settings/integrations/smtp', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: false, config: { host: 'smtp2.example.com' } }),
+    });
+    expect(put.status).toBe(200);
+    expect(integrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'smtp',
+        enabled: false,
+        config: { host: 'smtp2.example.com' },
+        ctx: expect.anything(),
+      }),
+    );
+
+    // 契约层只拦形状：空串字段值 400（语义校验在 control-plane 用例）
+    const badShape = await app.request('/v1/settings/integrations/smtp', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ config: { host: '' } }),
+    });
+    expect(badShape.status).toBe(400);
+  });
+
+  it('settings:integrations 未知 key 映射 404（integration_unknown）', async () => {
+    const integrations = {
+      list: async () => ({ integrations: [] }),
+      update: vi.fn(async () => {
+        throw controlPlaneErrors.business('integration_unknown', { key: 'payment.paypal' });
+      }),
+    };
+    const app = controlPlaneApp({ settings: { billingTimezone: { read: async () => ({ timezone: null }), update: async () => ({ timezone: 'UTC' }) }, integrations } });
+    const res = await app.request('/v1/settings/integrations/payment.paypal', {
+      method: 'PUT',
+      headers: { ...authHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: true }),
+    });
+    expect(res.status).toBe(404);
+  });
+
   it('catalog:源清单/价格溯源 externalName 必填/未知源 404', async () => {
     const app = controlPlaneApp({
       catalog: {

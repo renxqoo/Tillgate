@@ -27,7 +27,7 @@ import { observabilityEndpoints } from './observability';
 import { inferenceEndpoints } from './inference';
 import { marketingEndpoints } from './marketing';
 import { notificationsEndpoints } from './notifications';
-import { settingsEndpoints } from './settings';
+import { integrationItemSchema, settingsEndpoints } from './settings';
 import { errorEnvelopeSchema, requestBody, responseComponent } from './shared';
 import type { DtoComponent, OpenApiEndpoint } from './shared';
 import { adminMeInfoSchema } from './auth';
@@ -88,6 +88,7 @@ export const adminApiEndpoints: readonly OpenApiEndpoint[] = [
 export const adminApiDtoComponents: readonly DtoComponent[] = [
   responseComponent('AdminMeInfo', adminMeInfoSchema, 'me'),
   responseComponent('AdminRow', adminRowSchema, 'admins'),
+  responseComponent('IntegrationSettingItem', integrationItemSchema, 'settings'),
   responseComponent('RoleRow', roleRowSchema, 'roles'),
   responseComponent('PermissionNode', permissionNodeSchema, 'permissions'),
   requestBody(
