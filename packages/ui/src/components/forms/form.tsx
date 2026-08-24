@@ -2,7 +2,10 @@
 
 // react-hook-form 胶水: 把 RHF 的字段状态接到本包 Field 原语上。
 // 分工: Form/FormField 管状态接线(name/value/onChange/onBlur/错误),
-// 视觉层完全复用 Field/FieldLabel/FieldError/FieldDescription; 校验器(resolver/zod)由调用方自选
+// 视觉层完全复用 Field/FieldLabel/FieldError/FieldDescription; 校验器(resolver/zod)由调用方自选。
+// FormItemContext 与布局件 FormItem 住在 form-item.tsx(依赖方向 本文件 → form-item, 反向无依赖);
+// 描述链: FormDescription 挂载时注册 id,FormControl 据此拼 aria-describedby
+// (有效态只挂 description id,校验失败追加 error id 并联动 aria-invalid)
 import * as React from 'react';
 import {
   Controller,
@@ -13,19 +16,29 @@ import {
   type FieldValues,
 } from 'react-hook-form';
 
-import { Field, FieldDescription, FieldError, FieldLabel } from './field';
+import { FieldDescription, FieldError, FieldLabel } from './field';
+import { FormItemContext } from './form-item';
 
 export const Form = FormProvider;
 
 const FormFieldContext = React.createContext<{ name: string } | null>(null);
 
+/** FormDescription 挂载登记（FormField 持有 state,FormControl 消费拼描述链） */
+const DescriptionIdContext = React.createContext<{
+  descriptionId: string | null;
+  setDescriptionId: (id: string | null) => void;
+} | null>(null);
+
 export function FormField<
   TFieldValues extends FieldValues = FieldValues,
   TName extends FieldPath<TFieldValues> = FieldPath<TFieldValues>,
 >(props: ControllerProps<TFieldValues, TName>) {
+  const [descriptionId, setDescriptionId] = React.useState<string | null>(null);
   return (
     <FormFieldContext.Provider value={{ name: props.name }}>
-      <Controller {...props} />
+      <DescriptionIdContext.Provider value={{ descriptionId, setDescriptionId }}>
+        <Controller {...props} />
+      </DescriptionIdContext.Provider>
     </FormFieldContext.Provider>
   );
 }
@@ -33,6 +46,7 @@ export function FormField<
 function useFormField() {
   const fieldContext = React.useContext(FormFieldContext);
   const itemContext = React.useContext(FormItemContext);
+  const descriptionContext = React.useContext(DescriptionIdContext);
   // 先于 useFormState 抛错: 无 Provider 时 RHF 会先抛自己的错误, 淹没本契约信息
   if (!fieldContext || !itemContext) {
     throw new Error('useFormField must be used within <FormField><FormItem>');
@@ -44,23 +58,15 @@ function useFormField() {
     id: itemContext.id,
     invalid: Boolean(error),
     message: typeof error?.message === 'string' ? error.message : undefined,
+    descriptionId: descriptionContext?.descriptionId ?? null,
+    setDescriptionId: descriptionContext?.setDescriptionId,
   };
 }
 
-type FormItemContextValue = { id: string };
-
-const FormItemContext = React.createContext<FormItemContextValue | null>(null);
-
-export function FormItem({ className, ...props }: React.ComponentProps<typeof Field>) {
-  const id = React.useId();
-  return (
-    <FormItemContext.Provider value={{ id }}>
-      <Field data-slot="form-item" className={className} {...props} />
-    </FormItemContext.Provider>
-  );
-}
-
-export function FormLabel({ className, ...props }: React.ComponentProps<typeof FieldLabel>) {
+export function FormLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof FieldLabel>) {
   const { id } = useFormField();
   return <FieldLabel htmlFor={id} className={className} {...props} />;
 }
@@ -69,8 +75,13 @@ export function FormDescription({
   className,
   ...props
 }: React.ComponentProps<typeof FieldDescription>) {
-  const { id } = useFormField();
-  return <FieldDescription id={`${id}-description`} className={className} {...props} />;
+  const { id, setDescriptionId } = useFormField();
+  const descriptionId = `${id}-description`;
+  React.useEffect(() => {
+    setDescriptionId?.(descriptionId);
+    return () => setDescriptionId?.(null);
+  }, [descriptionId, setDescriptionId]);
+  return <FieldDescription id={descriptionId} className={className} {...props} />;
 }
 
 export function FormMessage({
@@ -89,12 +100,16 @@ export function FormMessage({
   );
 }
 
-// 控件接线: 克隆唯一子元素注入 id/aria-invalid, 使原生控件(Input/Select/…)与 Label 关联
+// 控件接线: 克隆唯一子元素注入 id/aria-invalid/aria-describedby——
+// 描述链 = 已挂载的 description id + (无效时的) error id, 使屏读器朗读帮助文本与错误
 export function FormControl({ children }: { children: React.ReactElement }) {
-  const { id, invalid } = useFormField();
+  const { id, invalid, descriptionId } = useFormField();
+  const describedBy =
+    [descriptionId, invalid ? `${id}-error` : null].filter(Boolean).join(' ') || undefined;
   return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
     id,
     'aria-invalid': invalid || undefined,
+    'aria-describedby': describedBy,
   });
 }
 

@@ -92,7 +92,21 @@ function FieldContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
-function FieldLabel({ className, ...props }: React.ComponentProps<typeof Label>) {
+/** 视觉星标（aria-hidden:必填语义由控件自身 required/aria-required 承载,星标纯视觉） */
+function RequiredStar() {
+  return (
+    <span aria-hidden="true" className="text-destructive">
+      *
+    </span>
+  );
+}
+
+function FieldLabel({
+  className,
+  required,
+  children,
+  ...props
+}: React.ComponentProps<typeof Label> & { required?: boolean }) {
   return (
     <Label
       data-slot="field-label"
@@ -102,7 +116,10 @@ function FieldLabel({ className, ...props }: React.ComponentProps<typeof Label>)
         className,
       )}
       {...props}
-    />
+    >
+      {children}
+      {required ? <RequiredStar /> : null}
+    </Label>
   );
 }
 

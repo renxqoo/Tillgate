@@ -16,6 +16,7 @@ export default defineConfig({
         'src/hooks/**',
         'src/components/forms/date-picker.tsx',
         'src/components/forms/form.tsx',
+        'src/components/forms/form-item.tsx',
         'src/components/forms/number-field.tsx',
         'src/components/forms/password-input.tsx',
         'src/components/data/data-table.tsx',

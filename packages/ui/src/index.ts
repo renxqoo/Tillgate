@@ -184,13 +184,13 @@ export {
 export {
   Form,
   FormField,
-  FormItem,
   FormLabel,
   FormDescription,
   FormMessage,
   FormControl,
   useFormField,
 } from './components/forms/form';
+export { FormItem, type FormItemProps } from './components/forms/form-item';
 export { Input } from './components/forms/input';
 export {
   InputGroup,

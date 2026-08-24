@@ -1,5 +1,6 @@
 // 补充批次: number-field / date-picker / form 胶水(RHF) 全交互,
 // 以及新 vendored 组件(accordion/slider/native-select/button-group/input-otp/calendar/chart)冒烟
+import type { ComponentProps } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,7 @@ import {
   DateRangePicker,
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -188,6 +190,73 @@ describe('Form(react-hook-form 胶水)', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<FormLabel>孤立标签</FormLabel>)).toThrow(/FormField/);
     consoleError.mockRestore();
+  });
+});
+
+// FormItem 布局契约: 默认垂直 + gap-2, 档位/方向/禁用态可调, a11y 描述链接线
+function LayoutDemo({ itemProps }: { itemProps?: ComponentProps<typeof FormItem> }) {
+  const form = useForm({ defaultValues: { name: '' } });
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(() => {})}>
+        <FormField
+          name="name"
+          rules={{ required: '名称必填' }}
+          render={({ field }) => (
+            <FormItem {...itemProps}>
+              <FormLabel required>名称</FormLabel>
+              <FormControl>
+                <Input placeholder="输入名称" {...field} />
+              </FormControl>
+              <FormDescription>帮助文本</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit">提交</Button>
+      </form>
+    </Form>
+  );
+}
+
+describe('FormItem 布局契约', () => {
+  it('默认垂直布局 gap-2, 描述链只挂 description id', () => {
+    render(<LayoutDemo />);
+    const item = document.querySelector('[data-slot="form-item"]')!;
+    expect(item.className).toContain('flex-col');
+    expect(item.className).toContain('gap-2');
+    expect(item).toHaveAttribute('data-orientation', 'vertical');
+    const input = screen.getByPlaceholderText('输入名称');
+    expect(input.getAttribute('aria-describedby')).toContain('-description');
+    expect(input.getAttribute('aria-describedby')).not.toContain('-error');
+  });
+
+  it('gap 档位覆写基类(twMerge 消解 gap-2)且支持水平布局', () => {
+    render(<LayoutDemo itemProps={{ gap: 4, orientation: 'horizontal' }} />);
+    const item = document.querySelector('[data-slot="form-item"]')!;
+    expect(item.className).toContain('gap-4');
+    expect(item.className).not.toContain('gap-2');
+    expect(item).toHaveAttribute('data-orientation', 'horizontal');
+  });
+
+  it('disabled 落 data-disabled, required 渲染视觉星标', () => {
+    render(<LayoutDemo itemProps={{ disabled: true }} />);
+    expect(document.querySelector('[data-slot="form-item"]')).toHaveAttribute(
+      'data-disabled',
+      'true',
+    );
+    expect(screen.getByText('*')).toBeInTheDocument();
+  });
+
+  it('校验失败时描述链追加 error id 并联动 aria-invalid', async () => {
+    render(<LayoutDemo />);
+    await userEvent.click(screen.getByRole('button', { name: '提交' }));
+    const input = screen.getByPlaceholderText('输入名称');
+    await vi.waitFor(() => {
+      expect(input.getAttribute('aria-describedby')).toContain('-description');
+      expect(input.getAttribute('aria-describedby')).toContain('-error');
+    });
+    expect(input).toHaveAttribute('aria-invalid', 'true');
   });
 });
 
