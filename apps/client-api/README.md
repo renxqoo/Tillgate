@@ -1,4 +1,4 @@
-# @tokenlens/client-api —— 用户控制台 REST API
+# @tillgate/client-api —— 用户控制台 REST API
 
 Hono 用户面 API（端口沿用 v1 `8081`）：会话/资料/Key/App/组织/钱包/兑换/支付/订阅/用量/定价/推荐。
 业务全部经能力包 facade，本 app 只保留协议与装配（P5）。
@@ -32,9 +32,9 @@ app.ts / index.ts / shutdown.ts
 
 ## 装配与依赖
 
-- 能力包 facade：`@tokenlens/identity`（会话/挑战/OAuth，经 `adapters/identity-stack`）、`@tokenlens/accounts`（+`/composition` 资金来源解析器）、`@tokenlens/billing`（+`/composition` wallet/payments/redeem postgres stores 与 EPAY/Stripe provider）、`@tokenlens/observability`（initOtel）、`@tokenlens/runtime`（redis/cipher/爆破守卫/logger）、`@tokenlens/db`
+- 能力包 facade：`@tillgate/identity`（会话/挑战/OAuth，经 `adapters/identity-stack`）、`@tillgate/accounts`（+`/composition` 资金来源解析器）、`@tillgate/billing`（+`/composition` wallet/payments/redeem postgres stores 与 EPAY/Stripe provider）、`@tillgate/observability`（initOtel）、`@tillgate/runtime`（redis/cipher/爆破守卫/logger）、`@tillgate/db`
 - app 永不触 DbTx：无共享事务的 facade 动词编排；跨能力只读面组合在 `src/adapters/*-read.ts`
-- 消费方：apps/client（Next.js BFF，经 `@tokenlens/api-client/next` 持 `ag_session` cookie 出站 Bearer）
+- 消费方：apps/client（Next.js BFF，经 `@tillgate/api-client/next` 持 `ag_session` cookie 出站 Bearer）
 
 ## 本地运行与测试
 

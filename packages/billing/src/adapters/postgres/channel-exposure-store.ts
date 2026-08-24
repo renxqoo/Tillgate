@@ -3,7 +3,7 @@
  * 从 billing-store 拆出（聚合边界）。
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { channels, type Db, type DbTx } from '@tokenlens/db';
+import { channels, type Db, type DbTx } from '@tillgate/db';
 import type { ChannelExposureStore } from '../../ports/funding-ports.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 

@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 /**
  * app 级架构门禁(§5.5/总纲 P5,机器验证不靠记忆):
  *   1. `./composition` 子入口只允许出现在 src/assembly.ts(§5.3 白名单:apps assembly);
- *   2. `@tokenlens/db` 的 Db/DbTx 类型与 createDb/ping 等装配件不出现在非装配代码;
+ *   2. `@tillgate/db` 的 Db/DbTx 类型与 createDb/ping 等装配件不出现在非装配代码;
  *      进程装配面(assembly.ts/index.ts/shutdown.ts/adapters/*)除外——P5「app 非
  *      assembly 代码不得引用任何 ./composition、repository、adapter 或 Db/DbTx 类型」
  *      (app.ts 的 pgSqlState 纯分类函数是文档化例外;config.ts 零 db 形态)。
- *   3. app 依赖面只走显式包名(禁 @tokenlens 各包 src 深导入,§5 硬约束)。
+ *   3. app 依赖面只走显式包名(禁 @tillgate 各包 src 深导入,§5 硬约束)。
  *   4. src/adapters/* 桥接件只允许 assembly.ts 引用(装配面,gateway DESIGN 同口径)。
  */
 
@@ -137,25 +137,25 @@ describe('admin-api 架构门禁', () => {
   it('composition 子入口只在 assembly.ts 引用', () => {
     for (const [name, code] of source) {
       if (name === 'assembly.ts') {
-        expect(code).toContain('@tokenlens/billing/composition');
-        expect(code).toContain('@tokenlens/control-plane/composition');
-        expect(code).toContain('@tokenlens/observability/composition');
+        expect(code).toContain('@tillgate/billing/composition');
+        expect(code).toContain('@tillgate/control-plane/composition');
+        expect(code).toContain('@tillgate/observability/composition');
         continue;
       }
       expect(
-        code.match(/from '@tokenlens\/[a-z-]+\/composition'/g) ?? [],
+        code.match(/from '@tillgate\/[a-z-]+\/composition'/g) ?? [],
         `${name} 不得引用 composition 子入口`,
       ).toHaveLength(0);
     }
   });
 
-  it('@tokenlens/db 装配件(Db/DbTx 类型、createDb/ping/closeDb)只在进程装配面', () => {
+  it('@tillgate/db 装配件(Db/DbTx 类型、createDb/ping/closeDb)只在进程装配面', () => {
     for (const [name, code] of source) {
       if (ASSEMBLY_FACE.has(name)) continue;
-      const references = /from '@tokenlens\/db'/.test(code);
+      const references = /from '@tillgate\/db'/.test(code);
       expect(
         references && !code.includes('pgSqlState'),
-        `${name} 不得引用 @tokenlens/db(纯分类函数 pgSqlState 除外)`,
+        `${name} 不得引用 @tillgate/db(纯分类函数 pgSqlState 除外)`,
       ).toBe(false);
       expect(code, `${name} 不得出现 Db/DbTx 类型`).not.toMatch(/\btype Db\b|\bDbTx\b/);
     }
@@ -171,7 +171,7 @@ describe('admin-api 架构门禁', () => {
 
   it('跨包 import 只走包名(禁 src 深导入)', () => {
     for (const [name, code] of source) {
-      const deepImports = [...code.matchAll(/from '(@tokenlens\/[^']+)'/g)]
+      const deepImports = [...code.matchAll(/from '(@tillgate\/[^']+)'/g)]
         .map((match) => match[1]!)
         .filter((specifier) => !specifier.endsWith('composition'));
       for (const specifier of deepImports) {
@@ -180,12 +180,12 @@ describe('admin-api 架构门禁', () => {
     }
   });
 
-  it('@tokenlens/ai 只在装配面(ADR-0007:assembly.ts + upstream-probe port 实现)', () => {
+  it('@tillgate/ai 只在装配面(ADR-0007:assembly.ts + upstream-probe port 实现)', () => {
     const allowed = new Set(['assembly.ts', 'adapters/upstream-probe.ts']);
     for (const [name, code] of source) {
       if (allowed.has(name)) continue;
       expect(
-        code.includes("from '@tokenlens/ai'"),
+        code.includes("from '@tillgate/ai'"),
         `${name} 违反 ADR-0007(ai 只允许装配面与 port 实现 adapter)`,
       ).toBe(false);
     }

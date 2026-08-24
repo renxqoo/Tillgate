@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/runtime",
+  "name": "@tillgate/runtime",
   "version": "0.1.0",
   "private": true,
   "description": "仅服务端运行时基础设施：配置校验、日志、加密、Redis、进程生命周期（重构方案 §3.1；禁止业务规则/业务 SQL/HTTP route）",
@@ -27,7 +27,7 @@
     "test:coverage": "bun x vitest run --coverage"
   },
   "dependencies": {
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "ioredis": "^5.8.0",
     "pino": "^10.3.1",
     "pino-pretty": "^13.0.0",

@@ -44,7 +44,7 @@ describe('admin 会话鉴权', () => {
       realm: 'admin',
       sub: 'not-a-number',
       jti: 'j',
-      iss: 'tokenlens:admin',
+      iss: 'tillgate:admin',
       exp: 9999999999,
       iat: 1,
     });

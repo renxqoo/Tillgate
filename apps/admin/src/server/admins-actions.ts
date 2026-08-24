@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from './admin-api';
 
 /** 管理员管理动作（admins 域——super_admin;403/409 等由后端域守卫与编排权威判定） */

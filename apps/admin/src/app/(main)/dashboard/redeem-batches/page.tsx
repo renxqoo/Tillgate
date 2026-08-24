@@ -7,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { BatchesTable, GenerateBatchDialog } from '@/features/billing/redeem-batches-content';
-import type { AdminBatchRow } from '@tokenlens/api-client';
+import type { AdminBatchRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

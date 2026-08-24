@@ -3,7 +3,7 @@
  * status 枚举 0..1;非法 99 → 400。keyPreview 脱敏回显,明文永不回显。
  */
 import { Hono } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import type { AccountUseCases } from '@tillgate/accounts';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { KEY_SORTS, keysContracts } from '../contracts/users';

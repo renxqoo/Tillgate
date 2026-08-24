@@ -1,4 +1,4 @@
-# @tokenlens/runtime 设计基线（DESIGN）
+# @tillgate/runtime 设计基线（DESIGN）
 
 > 状态：定稿（2026-08-23 补档——R1-R3 已实施核销；限流/爆破件经 gateway P5 波 C-G5 裁决入编，见 §1.1）
 > 迁移单元：纯服务端运行时基础设施包——配置校验原语、日志、渠道密钥加密、Redis 客户端/脚本/限流/
@@ -6,7 +6,7 @@
 > 旧实现：`/Users/wrr/work/ai-getway/packages/core`（12 源文件 ~1375 行 + 5 测试 ~290 行）+
 > 三个 app 的 `shutdown.ts` 逐字漂移拷贝（43 行 ×3）——core 是混合包，runtime 只收纯基建半边，
 > 观测（otel）归 observability、PG 分类归 db、计费语义/安全策略按消费者归位（IMPLEMENTATION §2.3）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/runtime`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/runtime`
 > 关联：[project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3.1（runtime 禁止进入：
 > 业务规则、业务 SQL、HTTP route）、§5.1（runtime 只可依赖 `errors`）、§9 P3「按消费者切片」；
 > [apps/gateway/DESIGN.md](../../apps/gateway/DESIGN.md) C-G5（限流/爆破机制归 runtime、策略归 app）；
@@ -75,7 +75,7 @@
 ## 2. 外部契约（v2 API，定稿）
 
 ```ts
-// 根入口 @tokenlens/runtime（生产面）
+// 根入口 @tillgate/runtime（生产面）
 strictBooleanSchema(defaultValue)            // 'true'/'false'/boolean 三形，其余拒
 secretSchema(field, minLen)                  // 密钥三道门
 createLogger({ level, serviceName?, pretty, stream? }): Logger
@@ -100,7 +100,7 @@ createShutdown({
   closeables?, exit?, log?,                   // 附加收口件失败不阻断；exit/log 测试注入
 })
 
-// 子入口 @tokenlens/runtime/testing（只许测试引用）
+// 子入口 @tillgate/runtime/testing（只许测试引用）
 testRedisUrl() / connectTestRedis(timeoutMs?) / disconnectTestRedis(redis) / waitForRedisReady(redis, timeoutMs?)
 ```
 
@@ -124,7 +124,7 @@ testRedisUrl() / connectTestRedis(timeoutMs?) / disconnectTestRedis(redis) / wai
 
 ## 4. 治理与稳定性
 
-1. **依赖白名单**：内部仅 `@tokenlens/errors`（总纲 §5.1）；外部 `pino` / `pino-pretty`
+1. **依赖白名单**：内部仅 `@tillgate/errors`（总纲 §5.1）；外部 `pino` / `pino-pretty`
    （pretty transport 动态加载）/ `ioredis` / `zod`。禁止 drizzle / hono / 业务包
    （`__test__/architecture.test.ts` 锁定）。
 2. **testing 子入口引用面**：架构测试限定 `./testing` 只被测试文件引用

@@ -3,7 +3,7 @@
  * 死信家族改按三性/码判定——B6 结构性修复的规格面）。
  */
 import { describe, expect, it } from 'vitest';
-import { DefectError, isBusinessError } from '@tokenlens/errors';
+import { DefectError, isBusinessError } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
 import { Decimal } from '../src/domain/money.js';
 import { allocateSettlement } from '../src/domain/billing/settle-allocation.js';

@@ -1,12 +1,12 @@
 'use client';
 
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import { Loader2Icon, ShieldCheckIcon, SmartphoneIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { AdminMeInfo } from '@tokenlens/api-client';
+import type { AdminMeInfo } from '@tillgate/api-client';
 
 import { setTwoFactorAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';

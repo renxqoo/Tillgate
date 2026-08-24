@@ -7,7 +7,7 @@ import type {
   AdminKeyRow,
   AdminModelRow,
   AdminUserRow,
-} from '@tokenlens/api-client';
+} from '@tillgate/api-client';
 import { fetchAdminList } from '@/server/admin-list';
 import { ListPage } from '@/components/list-page';
 import { firstParam } from '@/lib/list-query';

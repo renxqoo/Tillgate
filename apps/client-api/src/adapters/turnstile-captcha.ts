@@ -2,7 +2,7 @@
  * Cloudflare Turnstile 人机验证（identity Captcha port 的 HTTP 实现）。
  * 网络故障/非 2xx = unavailable（fail-closed——不静默放行）；判负 = invalid。
  */
-import type { Captcha } from '@tokenlens/identity';
+import type { Captcha } from '@tillgate/identity';
 
 export interface TurnstileConfig {
   secretKey: string;

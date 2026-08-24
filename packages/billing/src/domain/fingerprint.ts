@@ -9,7 +9,7 @@
  * 深度与总长双上限。外部可控长度（memo 等）必须在进入指纹前由校验层先行截断。
  */
 import { createHash } from 'node:crypto';
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from './errors.js';
 
 /** canonical 序列化最大长度（1MB）——超限拒绝（防指纹输入洪水） */

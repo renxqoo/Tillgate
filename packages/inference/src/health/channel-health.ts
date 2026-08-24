@@ -1,4 +1,4 @@
-import type { Ai, TerminationReason } from '@tokenlens/ai';
+import type { Ai, TerminationReason } from '@tillgate/ai';
 import type { HealthStore } from '../ports/state';
 import { createCircuitBreaker, type BreakerConfig, type CircuitBreakerHandle } from './breaker';
 import {

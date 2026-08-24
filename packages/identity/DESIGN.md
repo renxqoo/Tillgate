@@ -40,7 +40,7 @@
 ```ts
 createIdentity({
   db,                        // Db（内部组装 postgres store；可覆盖 store 用于测试）
-  txRetry,                   // TxRetryPolicy（@tokenlens/db）
+  txRetry,                   // TxRetryPolicy（@tillgate/db）
   clock,                     // { now(): Date }——锚点/JWT iat/审计时间单源注入
   logger,                    // { warn } 面（吊销读降级/投递补救失败/上游故障）
   config: {                  // 铁律 3：全部必填注入，不藏默认
@@ -118,7 +118,7 @@ createIdentity({
 | `oauth_provider_unconfigured` | not_found     | provider 未配置凭据                                                                                   |
 | `oauth_profile_failed`        | unavailable   | 上游 token 交换/profile 拉取失败                                                                      |
 
-内部不变量破坏（不可能分支）不经目录，直接抛 `@tokenlens/errors` 的 `DefectError`（operation/detail 上下文）——v1 `identity_internal` 的 v2 归宿。
+内部不变量破坏（不可能分支）不经目录，直接抛 `@tillgate/errors` 的 `DefectError`（operation/detail 上下文）——v1 `identity_internal` 的 v2 归宿。
 
 ### 2.4 会话令牌契约（消费方 = apps 的 Bearer 中间件）
 
@@ -160,7 +160,7 @@ createIdentity({
 
 ## 5. 依赖白名单
 
-- 编译依赖：`@tokenlens/db`（schema/Db/DbLike/DbTx/runTx/advisoryLock/唯一冲突判别）、`@tokenlens/errors`、`drizzle-orm`（仅 adapters/postgres）、`jose`（仅 adapters/jwt）、`nodemailer`（仅 adapters/smtp）。
+- 编译依赖：`@tillgate/db`（schema/Db/DbLike/DbTx/runTx/advisoryLock/唯一冲突判别）、`@tillgate/errors`、`drizzle-orm`（仅 adapters/postgres）、`jose`（仅 adapters/jwt）、`nodemailer`（仅 adapters/smtp）。
 - **禁止**：`http`（无 Hono/middleware——总纲 §3.1）、`runtime`（cipher/logger/clock 经 port 注入）、`ai`、一切业务能力包（accounts/billing/inference/control-plane/notifications/observability——防环，总纲 §5.2「identity 不反向依赖业务能力」）。
 - domain 零 I/O；application 只依赖本包 domain/ports；`./composition` 子入口只导出事务参与 bridge（同事务注册凭据等），`DbTx` 不进根 facade；Redis 客户端以结构化最小接口（`{ set/get/getDel/del }`）进入 adapter，不编译依赖 ioredis。
 

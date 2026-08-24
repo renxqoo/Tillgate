@@ -3,7 +3,7 @@
  * 错误断言从类 instanceof 换为目录码——D5 收敛）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { Decimal } from '../src/domain/money.js';
 import {
   assertCanDebit,

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { GlobeIcon } from 'lucide-react';
 
-import { type Locale } from '@tokenlens/api-client/next';
+import { type Locale } from '@tillgate/api-client/next';
 
 import { setLocaleAction } from '@/server/actions/locale';
 

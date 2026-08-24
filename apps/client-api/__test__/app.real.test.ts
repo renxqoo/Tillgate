@@ -5,7 +5,7 @@
  * 完整用户旅程（注册→登录→Key→支付回调→对账）归根 e2e/（MIGRATION §1 暂缓项）。
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { ping, closeDb } from '@tokenlens/db';
+import { ping, closeDb } from '@tillgate/db';
 import { loadClientApiConfig } from '../src/config.js';
 import { assembleClientApi } from '../src/assembly.js';
 import { createClientApiApp } from '../src/app.js';
@@ -23,7 +23,7 @@ const env: NodeJS.ProcessEnv = {
 const context = describe.skipIf(
   await (async () => {
     try {
-      const { createRedisClient, assertRedisReachable } = await import('@tokenlens/runtime');
+      const { createRedisClient, assertRedisReachable } = await import('@tillgate/runtime');
       const redis = createRedisClient(env.REDIS_URL as string, {
         serviceName: 'client-api-real-probe',
         logThrottleMs: 1_000,

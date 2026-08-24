@@ -349,8 +349,8 @@ describe('纯展示工具', () => {
 });
 
 describe('app-config（B12 回归：品牌串模板残留修复）', () => {
-  it('品牌为 TokenLens Console（非 v1 模板残留 Studio Admin），版本随 package.json', () => {
-    expect(APP_CONFIG.name).toBe('TokenLens Console');
+  it('品牌为 Tillgate Console（非 v1 模板残留 Studio Admin），版本随 package.json', () => {
+    expect(APP_CONFIG.name).toBe('Tillgate Console');
     expect(APP_CONFIG.name).not.toContain('Studio Admin');
     expect(APP_CONFIG.version).toBe('0.1.0');
   });

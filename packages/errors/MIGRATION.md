@@ -1,4 +1,4 @@
-# @tokenlens/errors 迁移文档（MIGRATION.md）
+# @tillgate/errors 迁移文档（MIGRATION.md）
 
 > 状态：已完成（含 D8/D9 演进：品牌绑定构造、JSON 值上下文 + 传播注记；四门全绿，
 > 收口轮 60 用例全绿、覆盖率 100% 四项——git `8643dfb`；本包根契约就位后的消费者侧
@@ -12,7 +12,7 @@
 > 三个 app 的 `src/http/error-map.ts`（325 行：AppError 类 ×3 漂移拷贝 + 翻译表）、
 > domain/identity-core/wallet/ledger-core/identity 的 errors.ts 家谱 10 文件 923 行；
 > 方案文档 `ai-getway/docs/error-system-design.md`（328 行，「设计定稿待评审」，未实施）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/errors`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/errors`
 > 关联：[DESIGN.md](./DESIGN.md)、[IMPLEMENTATION.md](./IMPLEMENTATION.md)（缺陷编号 **E#**
 > 出处——本包审计用 E# 系列，无 B#/D# 编号）、[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
 > （注册表归属与 D1-D9 裁决）、AGENT.md §11（谁必须用/谁禁止用）

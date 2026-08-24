@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { requestLogs, users } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { requestLogs, users } from '@tillgate/db';
 import type {
   RequestLogListInput,
   RequestLogRow,

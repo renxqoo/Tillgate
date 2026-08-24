@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 import {
   E2E_INPUT_PRICE,
   E2E_MODEL,

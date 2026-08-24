@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { closeDb } from '@tokenlens/db';
+import { closeDb } from '@tillgate/db';
 import { assembleAdminApi } from '../src/assembly';
 import { loadAdminApiConfig } from '../src/config';
 import { createAdminShutdown } from '../src/shutdown';
@@ -10,7 +10,7 @@ import { createAdminShutdown } from '../src/shutdown';
  */
 
 const BASE: NodeJS.ProcessEnv = {
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens-test',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/tillgate-test',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',

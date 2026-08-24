@@ -6,7 +6,7 @@
  */
 import { cookies } from 'next/headers';
 
-import { isLocale, LOCALE_COOKIE } from '@tokenlens/api-client/next';
+import { isLocale, LOCALE_COOKIE } from '@tillgate/api-client/next';
 
 /** cookie 寿命与 api-client locale.ts 解析链同口径（1 年） */
 const LOCALE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;

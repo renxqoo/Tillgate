@@ -4,7 +4,7 @@
  * 环境键名与 v1 保持一致（运维接口连续性）；v2 演进见 MIGRATION §3。
  */
 import { z } from 'zod';
-import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
+import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
 
 /** 正金额（20 位整数 + 18 位小数、非零）——v1 positiveDecimal 同形 */
 const positiveDecimal = z

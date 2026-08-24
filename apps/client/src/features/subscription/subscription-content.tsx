@@ -2,8 +2,8 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@tokenlens/ui';
-import type { CurrentSubscription, OrgRow, PlanRow } from '@tokenlens/api-client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Progress } from '@tillgate/ui';
+import type { CurrentSubscription, OrgRow, PlanRow } from '@tillgate/api-client';
 
 import {
   CurrentSubscriptionCard,

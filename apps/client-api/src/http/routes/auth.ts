@@ -11,10 +11,10 @@ import {
   parseAcceptLanguage,
   socketAddressFromContext,
   trustedClientIp,
-} from '@tokenlens/http';
-import { sha256Hex } from '@tokenlens/billing';
-import type { Identity, PasswordPolicy } from '@tokenlens/identity';
-import type { AuthFailureGuard, KeyBruteForceGuard } from '@tokenlens/runtime';
+} from '@tillgate/http';
+import { sha256Hex } from '@tillgate/billing';
+import type { Identity, PasswordPolicy } from '@tillgate/identity';
+import type { AuthFailureGuard, KeyBruteForceGuard } from '@tillgate/runtime';
 import { passwordSchema } from '../contracts/auth.js';
 import type { SessionEnv } from '../middleware/session.js';
 import { registerRoutes } from './auth-register.js';

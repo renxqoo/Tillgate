@@ -5,7 +5,7 @@
  * - 换卡守卫两分(不存在/停用);限额域校验;
  * - 审计 user.update 同事务落库(全量 patch detail)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeValidEmail, normalizeName, FIELD_LIMITS } from '../domain/fields.js';
 import { isNonNegativeAmountWithin, parseRateLimit } from '../domain/limits.js';

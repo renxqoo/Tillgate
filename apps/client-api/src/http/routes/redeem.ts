@@ -2,9 +2,9 @@
  * 兑换码路由（会话）：POST /v1/redeem（频率闸在 billing redemption）+ 历史列表。
  */
 import { Hono } from 'hono';
-import { jsonBody, query as queryMiddleware } from '@tokenlens/http';
+import { jsonBody, query as queryMiddleware } from '@tillgate/http';
 import type { MiddlewareHandler } from 'hono';
-import type { RedemptionApi } from '@tokenlens/billing';
+import type { RedemptionApi } from '@tillgate/billing';
 import { redeemHistoryQuerySchema, redeemSchema } from '../contracts/billing.js';
 import type { SessionEnv } from '../middleware/session.js';
 

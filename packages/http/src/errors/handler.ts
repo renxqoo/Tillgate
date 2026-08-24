@@ -12,7 +12,7 @@ import {
   isDefectError,
   isInfrastructureError,
   type ErrorCatalog,
-} from '@tokenlens/errors';
+} from '@tillgate/errors';
 import { HttpErrors } from './catalog';
 import { localeFromContext } from './locale';
 import { errorBody, renderError, type FaceOverride, type RenderedError } from './render';
@@ -27,7 +27,7 @@ export interface ErrorHandlerDeps {
   /** face 装配的全量目录（缺省仅 http 自有目录） */
   readonly catalog?: ErrorCatalog;
   readonly overrides?: Readonly<Record<string, FaceOverride>>;
-  /** PG SQLSTATE 探测（@tokenlens/db 的 pgSqlState 装配注入；缺省无 PG 翻译——ADR-0002） */
+  /** PG SQLSTATE 探测（@tillgate/db 的 pgSqlState 装配注入；缺省无 PG 翻译——ADR-0002） */
   readonly sqlState?: (err: unknown) => string | null;
   /** 5xx 渲染时的服务端日志（缺省静默） */
   readonly logger?: ErrorLogger;
@@ -83,7 +83,7 @@ function respond(c: Context, rendered: RenderedError, statusOverride?: number): 
   return c.json(errorBody(rendered), (statusOverride ?? rendered.status) as ContentfulStatusCode);
 }
 
-/** 已分类错误（三性守卫，@tokenlens/errors）：有自身目录/身份的错误，PG 兜底不得接管 */
+/** 已分类错误（三性守卫，@tillgate/errors）：有自身目录/身份的错误，PG 兜底不得接管 */
 function isClassifiedError(err: unknown): boolean {
   return isBusinessError(err) || isInfrastructureError(err) || isDefectError(err);
 }

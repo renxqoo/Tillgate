@@ -3,7 +3,7 @@
  * 审计:created/updated（detail 含 added/removed 授权 diff——安全取证主观察面）/deleted。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

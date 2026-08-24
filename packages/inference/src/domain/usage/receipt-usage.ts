@@ -1,4 +1,4 @@
-import type { TerminationReason, TextTokenFeatures, Usage } from '@tokenlens/ai';
+import type { TerminationReason, TextTokenFeatures, Usage } from '@tillgate/ai';
 import type { EstimateWeights } from './estimate';
 import { estimateTokensFromFeatures, estimateTokensFromText } from './estimate';
 import { streamEstimateAttribution, type EstimateAttribution } from './attribution';

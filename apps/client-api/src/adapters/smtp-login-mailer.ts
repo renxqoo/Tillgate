@@ -9,7 +9,7 @@ import {
   renderPasswordResetEmail,
   type MailBrand,
   type Mailer,
-} from '@tokenlens/identity';
+} from '@tillgate/identity';
 
 export interface SmtpMailerConfig {
   host: string;

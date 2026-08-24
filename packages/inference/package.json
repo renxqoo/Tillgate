@@ -1,8 +1,8 @@
 {
-  "name": "@tokenlens/inference",
+  "name": "@tillgate/inference",
   "version": "0.1.0",
   "private": true,
-  "description": "推理用例：候选循环、路由调度、计费衔接与故障转移；渠道熔断/死凭据健康状态（AiEvent 订阅者，§3.6；单向依赖 @tokenlens/ai）",
+  "description": "推理用例：候选循环、路由调度、计费衔接与故障转移；渠道熔断/死凭据健康状态（AiEvent 订阅者，§3.6；单向依赖 @tillgate/ai）",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,15 +23,15 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "@tokenlens/ai": "workspace:*",
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/ai": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.8.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@tokenlens/runtime": "workspace:*",
+    "@tillgate/runtime": "workspace:*",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^5.9.0",

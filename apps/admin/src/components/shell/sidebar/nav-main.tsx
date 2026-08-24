@@ -21,7 +21,7 @@ import {
   SidebarMenuSubItem,
   SidebarSeparator,
   useSidebar,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { Fragment } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';

@@ -3,7 +3,7 @@
 > 状态：已完成
 > 迁移单元：api-client 包整体（transport/错误/分页/DTO/Next BFF 装配），发布候选第一号的结构化落地
 > 旧实现：`/Users/wrr/work/ai-getway/packages/api-client`（src 8 文件 1322 行；测试 2 文件 70 行，2 用例组）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/api-client`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/api-client`
 > 关联：DESIGN.md（契约基线）/ IMPLEMENTATION.md（审计 B1-B2、D1-D3、C1-C3 与裁决表）
 
 ## 1. 行为规格基线
@@ -44,13 +44,13 @@ locale/ip 的行为规格以新测试首次固化——补测试缺口属本单�
 
 ## 4. API 对照
 
-| 旧签名（@ai-gateway/api-client）                                | 新签名（@tokenlens/api-client）                                                      | 变化理由                                                                                                                  |
+| 旧签名（@ai-gateway/api-client）                                | 新签名（@tillgate/api-client）                                                      | 变化理由                                                                                                                  |
 | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `apiFetch<T>(path, opts?)`                                      | `createClientApiClient({baseUrl, getToken, getHeaders, fetch}).request/get/post/...` | §7.2：核心经参数接收 baseUrl/fetch/token 获取器；调用方装配一次持 client                                                  |
 | `adminFetch<T>(path, opts?)`                                    | `createAdminApiClient(...)...`                                                       | 同上；两面各自持有 token 源（B1 修复）                                                                                    |
 | `getMe()` / `getAdminMe()`                                      | `client.getMe()` / `admin.getAdminMe()`                                              | 方法化；吞错返 null 语义不变                                                                                              |
 | `ApiError` / `ApiErrorBody` / `ApiFetchOptions`                 | 同名（根入口）                                                                       | 等价；options 增 signal 等 RequestInit 透传，revalidate 口径不变                                                          |
-| `outgoingLocale()`（根入口导出）                                | `import '@tokenlens/api-client/next'` 的 `outgoingLocale()`                          | Next 耦合隔离至子入口（§3 树）                                                                                            |
+| `outgoingLocale()`（根入口导出）                                | `import '@tillgate/api-client/next'` 的 `outgoingLocale()`                          | Next 耦合隔离至子入口（§3 树）                                                                                            |
 | `ADMIN_API_BASE_URL` / `CLIENT_API_BASE_URL`（伪造 string）     | `getAdminApiBase()` / `getClientApiBase()`（./next）                                 | 伪造 string 是脏接口（审计 §1）；函数形态惰性语义保留（B2 口径）                                                          |
 | `export * from './session'`（根入口）                           | `./next` 子入口全部 session 动词                                                     | 同 outgoingLocale                                                                                                         |
 | `./i18n` 子入口                                                 | `./next`（LOCALES/Locale/resolveLocale/... 全量）                                    | D1 副本；子入口归并                                                                                                       |
@@ -83,7 +83,7 @@ locale/ip 的行为规格以新测试首次固化——补测试缺口属本单�
 ## 7. 验收（全部满足才算完成）
 
 - [x] 四门全绿：typecheck / lint / build / test（含覆盖率 ≥90/85，数字见提交信息）
-- [x] 架构门禁：根入口闭包无 next/、全包无 @tokenlens/*、依赖闭包无私有包、exports 恰 `.`+`./next`、双出口词表锁定
+- [x] 架构门禁：根入口闭包无 next/、全包无 @tillgate/*、依赖闭包无私有包、exports 恰 `.`+`./next`、双出口词表锁定
 - [x] bug 回归：B1（token 只来自本面注入）、B2（baseUrl 必填 + env 装配只在 ./next）用例通过
 - [x] 行为对照清单核销：
   - [x] /v1/* 守卫（非 /v1/* 英文报错；无 mapPath）

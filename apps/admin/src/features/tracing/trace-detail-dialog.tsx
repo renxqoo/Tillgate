@@ -8,13 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useEffect, useState, useTransition } from 'react';
 import type { ReactNode } from 'react';
 import { Loader2Icon, Maximize2Icon, Minimize2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { fetchTraceDetail, fetchTraceDetailByRequestId } from '@/server/tracing-actions';
-import type { TraceDetailDto as TraceDetail } from '@tokenlens/api-client';
+import type { TraceDetailDto as TraceDetail } from '@tillgate/api-client';
 import { TraceGraph } from './trace-graph';
 import { TraceWaterfall } from './trace-waterfall';
 

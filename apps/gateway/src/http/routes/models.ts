@@ -4,8 +4,8 @@
  * 三协议形状（anthropic-version / x-goog-api-key 头探测）；404 不泄漏目录。
  */
 import { Hono } from 'hono';
-import { HttpErrors } from '@tokenlens/http';
-import type { EnabledModelRow } from '@tokenlens/control-plane';
+import { HttpErrors } from '@tillgate/http';
+import type { EnabledModelRow } from '@tillgate/control-plane';
 import type { AuthEnv } from '../middleware/api-key';
 
 export interface ModelsReader {

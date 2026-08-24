@@ -1,13 +1,13 @@
 /**
  * 契约共享件：用户面分页（page/limit strict——非法值 400，limit ≤100 默认 20；
- * 与 @tokenlens/http 的 page_size 容错词表语义不同，用户面钉死 v1 口径）、
+ * 与 @tillgate/http 的 page_size 容错词表语义不同，用户面钉死 v1 口径）、
  * 金额输入结构性校验（资金输入只收十进制字符串，避免 JSON number 精度损失）、
  * 路径参数校验（body/query 走 http 包 jsonBody/query 中间件——失败统一
  * http.validation_failed；路径参数无中间件位，此处 safeParse → invalid_path_param）。
  */
 import { z } from 'zod';
-import { HttpErrors } from '@tokenlens/http';
-import { Decimal, isValidAmountString, parsePositiveAmount } from '@tokenlens/billing';
+import { HttpErrors } from '@tillgate/http';
+import { Decimal, isValidAmountString, parsePositiveAmount } from '@tillgate/billing';
 
 export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

@@ -5,8 +5,8 @@
  * 与词表/参数域校验(含 payload 拒数组)。
  */
 import { describe, expect, it } from 'vitest';
-import type { DbTx } from '@tokenlens/db';
-import { notifyOutbox } from '@tokenlens/db';
+import type { DbTx } from '@tillgate/db';
+import { notifyOutbox } from '@tillgate/db';
 import { NOTIFY_EVENTS } from '../src/domain/events';
 import { outboxWithinTx } from '../src/composition';
 

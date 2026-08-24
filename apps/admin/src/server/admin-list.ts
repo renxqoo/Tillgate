@@ -3,9 +3,9 @@
  * ?page=&limit= 查询构造在 api-client core（buildListQuery 同源），
  * 失败降级为 {rows:[], total:0, error} ——列表页不因后端不可达抛错整页崩。
  */
-import { ApiError, buildListQuery } from '@tokenlens/api-client';
-import type { ListFetchOptions, Paginated } from '@tokenlens/api-client';
-import { outgoingLocale } from '@tokenlens/api-client/next';
+import { ApiError, buildListQuery } from '@tillgate/api-client';
+import type { ListFetchOptions, Paginated } from '@tillgate/api-client';
+import { outgoingLocale } from '@tillgate/api-client/next';
 
 import { adminApi } from './admin-api';
 import { ADMIN_LOCALE_RESOLUTION } from './admin-locale';

@@ -1,4 +1,4 @@
-import type { AdminMeInfo } from '@tokenlens/api-client';
+import type { AdminMeInfo } from '@tillgate/api-client';
 import { adminApi } from './admin-api';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';

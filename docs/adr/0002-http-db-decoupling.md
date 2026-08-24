@@ -17,14 +17,14 @@ v1 `packages/http` 依赖 `@ai-gateway/core` + `@ai-gateway/db` + drizzle-orm + 
 4. `redis.ts`/`testing.ts` 持有 Redis 连接工厂与测试装置。
 
 v2 依赖白名单（结构方案 §5.1）：`http` 只依赖 `errors`；`db` 的 SQLSTATE 探测
-（`pgSqlState`，全 cause 链）已按 db DESIGN 落在 `@tokenlens/db`。本 ADR 裁决两者的接缝。
+（`pgSqlState`，全 cause 链）已按 db DESIGN 落在 `@tillgate/db`。本 ADR 裁决两者的接缝。
 
 ## 决策
 
 1. **翻译表留 http，探测实现留 db，装配期注入**：v1 `PG_CODE_MAP` 六码
    （23505/23503/23514/22001/22P02/22003 → 4xx）是 HTTP 边界语义（可预期拒绝不得伪装 500），
    归 http；`errorHandler` 收 `sqlState?: (err) => string | null` 探测函数参数，app 装配时注入
-   `@tokenlens/db` 的 `pgSqlState`。未注入时该分支不激活（纯 http 消费面无 PG 翻译）。
+   `@tillgate/db` 的 `pgSqlState`。未注入时该分支不激活（纯 http 消费面无 PG 翻译）。
    翻译产物是 `http.pg_*` 目录业务错误（category 语义化：23505→conflict，其余→invalid_input）。
 2. **drizzle 列表组装件不随 http 迁移**：`searchCondition` / `resolveOrderBy` / `buildList` /
    `countAll` 是 DB 查询组装（依赖 drizzle Column/SQL/PgTable 与 Db 句柄），进 http 违反
@@ -48,7 +48,7 @@ v2 依赖白名单（结构方案 §5.1）：`http` 只依赖 `errors`；`db` �
 
 ## 影响
 
-- v2 http 依赖面收敛为 `@tokenlens/errors` + hono + @hono/node-server + zod；
+- v2 http 依赖面收敛为 `@tillgate/errors` + hono + @hono/node-server + zod；
   `sqlState` 是唯一与 db 的接缝（函数注入，编译期无依赖）。
 - db 侧无需改动；`pgSqlState` 的消费者契约由本 ADR 固定（`(err: unknown) => string | null`）。
 - v1 `list-query` 的 INVALID_SORT_FIELD 白名单拒绝语义（含原型链穿透防护）暂离场，

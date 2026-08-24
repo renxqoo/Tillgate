@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 
 /**
  * AES-256-GCM 对称加解密工厂（渠道上游 Key 落库加密）。

@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { listHref, type SearchParamsInput } from '@/lib/list-query';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tokenlens/ui';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tillgate/ui';
 
 /**
  * 统一列表表格（admin / client 所有列表页共用）。

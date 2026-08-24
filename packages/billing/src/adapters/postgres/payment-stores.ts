@@ -12,7 +12,7 @@ import {
   users,
   type Db,
   type DbTx,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import type { WalletConn } from '../../ports/wallet-store.js';
 import type {
   AdminPaymentOrderRow,

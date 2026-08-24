@@ -1,7 +1,7 @@
 /**
  * 费率卡健康自检（数据模型 §3.9）：每卡恰一全局兜底行。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { RateCardStore } from '../../ports/rate-card-store';
 import { controlPlaneErrors } from '../../errors';
 

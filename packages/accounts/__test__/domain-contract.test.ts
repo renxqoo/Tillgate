@@ -5,8 +5,8 @@
  * - 出口桶快照(公共 API 面)。
  */
 import { describe, expect, it } from 'vitest';
-import { ACCOUNT_STATUS } from '@tokenlens/db';
-import { ERROR_CATEGORIES } from '@tokenlens/errors';
+import { ACCOUNT_STATUS } from '@tillgate/db';
+import { ERROR_CATEGORIES } from '@tillgate/errors';
 import * as publicApi from '../src/index.js';
 import {
   USER_STATUS,

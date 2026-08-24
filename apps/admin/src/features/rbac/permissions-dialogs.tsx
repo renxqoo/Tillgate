@@ -1,6 +1,6 @@
 'use client';
 
-import type { PermissionNode } from '@tokenlens/api-client';
+import type { PermissionNode } from '@tillgate/api-client';
 import {
   Button,
   FieldDescription,
@@ -9,7 +9,7 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState } from 'react';
 import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

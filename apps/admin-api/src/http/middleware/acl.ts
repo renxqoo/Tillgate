@@ -13,7 +13,7 @@
  * 旧 guardFactory（逐端点代码声明）随之退役——绑定与其种子由 0084 迁移接管。
  */
 import type { MiddlewareHandler } from 'hono';
-import { granted } from '@tokenlens/control-plane';
+import { granted } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv, SessionValidator } from './session';
 import { sessionMiddleware } from './session';

@@ -8,8 +8,8 @@
  */
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { Identity } from '@tokenlens/identity';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { Identity } from '@tillgate/identity';
 import { OAUTH_STATE_COOKIE, safeNext } from '../contracts/oauth.js';
 
 export interface OAuthDeps {

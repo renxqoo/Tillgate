@@ -4,7 +4,7 @@
  * 角色词表守卫在此;重名由 admins_email_uq 兜底（23505 → admin_email_taken）。
  * 审计由编排方在双动词全部成功后旁路记录（postAudit——两步全成才算「创建」）。
  */
-import { isUniqueViolation, type Db } from '@tokenlens/db';
+import { isUniqueViolation, type Db } from '@tillgate/db';
 import { controlPlaneErrors } from '../../errors';
 import type { AdminRecord, AdminStore } from '../../ports/admin-store';
 

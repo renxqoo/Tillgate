@@ -13,7 +13,7 @@ import {
   modelMappings,
   providers,
   usageLogs,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import type {
   ChannelStore,
   ChannelListRow,

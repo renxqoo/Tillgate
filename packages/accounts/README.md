@@ -1,4 +1,4 @@
-# @tokenlens/accounts
+# @tillgate/accounts
 
 > 账号能力:用户资料、组织/成员/邀请、API Key、Application、推荐与拉新参数——账号事实唯一所有者,不保存认证秘密。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md)
@@ -42,7 +42,7 @@ src/
 
 消费方:`apps/admin-api`、`apps/client-api`、`apps/gateway`、`apps/worker` 的
 `src/assembly.ts`——gateway 用 `resolveKeyByHash`/`WalletCreditPort` 桥,worker 经
-`@tokenlens/accounts/composition` 直取 `marketing_settings`(不经完整 facade)。
+`@tillgate/accounts/composition` 直取 `marketing_settings`(不经完整 facade)。
 
 ## 开发
 

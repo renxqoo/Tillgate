@@ -372,7 +372,7 @@ export function buildAdminOpenApiDocument(): JsonSchema {
   const doc: JsonSchema = {
     openapi: '3.1.0',
     info: {
-      title: '@tokenlens/admin-api',
+      title: '@tillgate/admin-api',
       version: '0.1.0',
       description:
         '管理控制面 REST API（contract → OpenAPI → generated client 生成链产物;registry 单一事实源 = src/http/openapi）。' +

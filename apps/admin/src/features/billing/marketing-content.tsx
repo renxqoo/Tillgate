@@ -10,7 +10,7 @@ import {
   FieldLabel,
   FormItem,
   Input,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import { Loader2Icon, MegaphoneIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

@@ -11,9 +11,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDb, closeDb, type Db } from '@tokenlens/db';
-import { createCipher } from '@tokenlens/runtime';
-import { Decimal } from '@tokenlens/billing';
+import { createDb, closeDb, type Db } from '@tillgate/db';
+import { createCipher } from '@tillgate/runtime';
+import { Decimal } from '@tillgate/billing';
 import {
   E2EKeys,
   E2E_MODEL,

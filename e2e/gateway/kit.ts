@@ -16,9 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { serve, type ServerType } from '@hono/node-server';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
-import { createCipher } from '@tokenlens/runtime';
-import { Decimal } from '@tokenlens/billing';
+import { closeDb, createDb, type Db } from '@tillgate/db';
+import { createCipher } from '@tillgate/runtime';
+import { Decimal } from '@tillgate/billing';
 import { loadGatewayConfig } from '../../apps/gateway/src/config';
 import { assembleGateway, type GatewayAssembly } from '../../apps/gateway/src/assembly';
 import { createGatewayApp } from '../../apps/gateway/src/app';
@@ -104,7 +104,7 @@ export async function setupE2EWorld(): Promise<E2EWorld> {
   const upstream = startMockUpstream();
   await (upstream as unknown as { ready: Promise<void> }).ready;
 
-  const schema = `tokenlens_e2e_${process.pid.toString(36)}_${Date.now().toString(36)}`;
+  const schema = `tillgate_e2e_${process.pid.toString(36)}_${Date.now().toString(36)}`;
   const [baseUrl] = E2E_URL.split('?');
   const scopedUrl = `${baseUrl}?options=-c%20search_path%3D${schema}`;
   const db = createDb({

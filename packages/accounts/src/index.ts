@@ -1,5 +1,5 @@
 /**
- * @tokenlens/accounts 公共出口(§5.3):facade、错误目录、policy/命令形状与
+ * @tillgate/accounts 公共出口(§5.3):facade、错误目录、policy/命令形状与
  * 端口类型(装配桥接需要)。adapter 不从根入口导出;Db/DbTx 不出现在任何签名。
  */
 export { createAccounts, type AccountsEnv } from './accounts.js';

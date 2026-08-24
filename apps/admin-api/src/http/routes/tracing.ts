@@ -4,7 +4,7 @@
  * 参数守卫在 tracing 存储（regex 白名单——防注入;observability S1 信封承接）。
  */
 import { Hono } from 'hono';
-import type { Observability } from '@tokenlens/observability';
+import type { Observability } from '@tillgate/observability';
 import type { SessionEnv } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { tracingContracts } from '../contracts/observability';

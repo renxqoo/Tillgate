@@ -31,7 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useState, useTransition } from 'react';
 
@@ -52,7 +52,7 @@ import { z } from 'zod';
 import { formatMoney, formatPoints } from '@/lib/formatters';
 import { moneyText } from '@/lib/forms';
 
-import type { PlanRow } from '@tokenlens/api-client';
+import type { PlanRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /** 钱 + 积分并列展示（纯展示层，积分 = 元 × 100）。 */

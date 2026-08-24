@@ -2,7 +2,7 @@
  * 创建组织(v1 insertOrgWithOwner):org + owner 成员行(占 1 席)同事务;
  * 组织名由调用方组合(G7:购买场景的命名模板归 billing 编排)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { normalizeName } from '../domain/fields.js';
 import type { OrgRecord } from '../ports/account-store.js';

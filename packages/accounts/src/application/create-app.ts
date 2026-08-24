@@ -2,7 +2,7 @@
  * 创建 Application(v1 apps.service create):凭证材料生成(appId/clientId/secret)
  * + 订阅守卫(与 Key 同口径)。clientSecret 明文仅本用例返回一次。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { clampOptionalText, normalizeName } from '../domain/fields.js';
 import { validateAppScope, type AppScope } from '../domain/app.js';

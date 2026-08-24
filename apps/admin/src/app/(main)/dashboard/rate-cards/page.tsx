@@ -7,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreateRateCardDialog, RateCardsTable } from '@/features/billing/rate-cards-content';
-import type { AdminRateCardRow } from '@tokenlens/api-client';
+import type { AdminRateCardRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

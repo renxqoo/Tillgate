@@ -15,7 +15,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like } from 'drizzle-orm';
-import { admins, permissions, roles } from '@tokenlens/db';
+import { admins, permissions, roles } from '@tillgate/db';
 import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';
 
 let world: E2EAdminWorld | null = null;

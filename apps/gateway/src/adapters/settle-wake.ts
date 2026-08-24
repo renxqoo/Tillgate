@@ -5,7 +5,7 @@
  * 通道名单一真相 = 本常量（db schema billing_requests 注释同源）。
  */
 import { sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 
 export const SETTLE_WAKE_CHANNEL = 'settle-wake';
 

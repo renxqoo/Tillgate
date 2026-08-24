@@ -5,8 +5,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
-import { identityErrors } from '@tokenlens/identity';
+import { errorHandler } from '@tillgate/http';
+import { identityErrors } from '@tillgate/identity';
 import type { SessionEnv } from '../src/http/middleware/session';
 import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
@@ -66,7 +66,7 @@ function guard(): AuthGuard & { failures: number } {
 
 const adminRecord = {
   id: ADMIN_ID,
-  email: 'ops@tokenlens.dev',
+  email: 'ops@tillgate.dev',
   displayName: 'Ops',
   status: 0,
   roleId: 1,
@@ -142,7 +142,7 @@ describe('TOTP 登录第二因子', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'correct horse' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'correct horse' }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ twoFactorRequired: true, method: 'totp' });
@@ -156,7 +156,7 @@ describe('TOTP 登录第二因子', () => {
       method: 'POST',
       headers: json,
       body: JSON.stringify({
-        email: 'ops@tokenlens.dev',
+        email: 'ops@tillgate.dev',
         password: 'correct horse',
         code: '000000',
       }),
@@ -171,7 +171,7 @@ describe('TOTP 登录第二因子', () => {
       method: 'POST',
       headers: json,
       body: JSON.stringify({
-        email: 'ops@tokenlens.dev',
+        email: 'ops@tillgate.dev',
         password: 'correct horse',
         code: '123456',
       }),
@@ -188,7 +188,7 @@ describe('TOTP 登录第二因子', () => {
       method: 'POST',
       headers: json,
       body: JSON.stringify({
-        email: 'ops@tokenlens.dev',
+        email: 'ops@tillgate.dev',
         password: 'correct horse',
         code: '123456',
       }),
@@ -204,7 +204,7 @@ describe('TOTP 登录第二因子', () => {
     const res2 = await app2.request('/v1/auth/login/totp', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'wrong', code: '123456' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'wrong', code: '123456' }),
     });
     expect(res2.status).toBe(401);
   });
@@ -214,7 +214,7 @@ describe('TOTP 登录第二因子', () => {
     const res = await app.request('/v1/auth/login/totp', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'x', code: 'abc' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'x', code: 'abc' }),
     });
     expect(res.status).toBe(400);
   });
@@ -275,7 +275,7 @@ describe('TOTP 绑定三动词(me 会话组)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { secret: string; otpauthUrl: string };
     expect(body.secret).toBe('JBSWY3DPEHPK3PXP');
-    expect(m.enrollTotp).toHaveBeenCalledWith({ userId: ADMIN_ID, label: 'ops@tokenlens.dev' });
+    expect(m.enrollTotp).toHaveBeenCalledWith({ userId: ADMIN_ID, label: 'ops@tillgate.dev' });
 
     const noAuth = await app.request('/v1/me/totp/enroll', { method: 'POST', headers: json });
     expect(noAuth.status).toBe(401);

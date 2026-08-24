@@ -56,7 +56,7 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
         const ok =
           spec.startsWith('node:') ||
           spec === 'decimal.js' ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/errors' ||
           (spec.startsWith('./') && !spec.startsWith('../'));
         expect(ok, `${f.path} → ${spec}`).toBe(true);
       }
@@ -68,8 +68,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/errors' ||
-          spec === '@tokenlens/db' ||
+          spec === '@tillgate/errors' ||
+          spec === '@tillgate/db' ||
           spec.startsWith('./') ||
           spec.startsWith('../domain/') ||
           spec.startsWith('../ports/');
@@ -83,8 +83,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/errors' ||
-          spec === '@tokenlens/db' ||
+          spec === '@tillgate/errors' ||
+          spec === '@tillgate/db' ||
           spec.startsWith('./') ||
           spec.startsWith('../domain/');
         expect(ok, `${f.path} → ${spec}`).toBe(true);
@@ -97,8 +97,8 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
       for (const spec of f.imports) {
         const ok =
           spec.startsWith('node:') ||
-          spec === '@tokenlens/db' ||
-          spec === '@tokenlens/errors' ||
+          spec === '@tillgate/db' ||
+          spec === '@tillgate/errors' ||
           spec === 'decimal.js' ||
           spec === 'drizzle-orm' ||
           spec.startsWith('drizzle-orm/') ||
@@ -128,10 +128,10 @@ describe('分层依赖白名单(§5 硬约束的可执行形态)', () => {
     }
   });
 
-  it('全包禁直连 pg/@tokenlens/http/@tokenlens/runtime(DESIGN §6 白名单)', () => {
+  it('全包禁直连 pg/@tillgate/http/@tillgate/runtime(DESIGN §6 白名单)', () => {
     for (const f of files) {
       for (const spec of f.imports) {
-        const banned = spec === 'pg' || spec === '@tokenlens/http' || spec === '@tokenlens/runtime';
+        const banned = spec === 'pg' || spec === '@tillgate/http' || spec === '@tillgate/runtime';
         expect(banned, `${f.path} → ${spec}`).toBe(false);
       }
     }

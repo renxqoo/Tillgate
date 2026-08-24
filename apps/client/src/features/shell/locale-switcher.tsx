@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { LanguagesIcon } from 'lucide-react';
 
-import { Button } from '@tokenlens/ui';
-import { type Locale } from '@tokenlens/api-client/next';
+import { Button } from '@tillgate/ui';
+import { type Locale } from '@tillgate/api-client/next';
 
 import { setLocaleAction } from '@/server/actions/locale';
 

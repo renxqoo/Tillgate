@@ -2,7 +2,7 @@
  * 创建渠道：密钥即加密落库（enc:v1；明文只在加密前内存存在）→ 事务落库 → 审计。
  * 返回体永不带密文与明文。重名由唯一索引兜底（channels_name_uq）。
  */
-import { isUniqueViolation, type Db } from '@tokenlens/db';
+import { isUniqueViolation, type Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { SecretCipher } from '../../ports/secret-cipher';
 import type { ChannelStore } from '../../ports/channel-store';

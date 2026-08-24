@@ -3,7 +3,7 @@
  * (FOR UPDATE 锁订阅 → 复检席位 → 插入/复活成员 → CAS 翻转,失败即回滚)。
  * 过期判定在读时由存储时钟表达(惰性过期,B8)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { invitationEmailMatches } from '../domain/org.js';
 import { MEMBER_ROLES } from '../domain/org.js';

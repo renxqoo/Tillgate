@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { GatewayErrors } from '../src/http/openai-error-face';
 import { admitRequest, tryChannelRpm, type RateLimitGate } from '../src/http/middleware/rate-limit';
-import type { SlidingWindowLimiter } from '@tokenlens/runtime';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
 import type { AuthContext } from '../src/http/middleware/api-key';
 
 function fakeLimiter(

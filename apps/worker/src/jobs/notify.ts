@@ -3,7 +3,7 @@
  * 在 notifications dispatchOnce；本文件只提供节奏入口。静音开关
  * （WORKER_NOTIFY_ENABLED=false）在装配层决定是否注册本 job。
  */
-import type { DispatchResult } from '@tokenlens/notifications';
+import type { DispatchResult } from '@tillgate/notifications';
 
 type NotifyJob = () => Promise<DispatchResult>;
 

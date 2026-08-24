@@ -1,4 +1,4 @@
-import { UpstreamError, type Ai, type AiEvent, type ChannelDesc } from '@tokenlens/ai';
+import { UpstreamError, type Ai, type AiEvent, type ChannelDesc } from '@tillgate/ai';
 import type { GenerationTaskKind } from '../domain/generation';
 import type { ChannelCandidate } from '../domain/model/types';
 import type {
@@ -11,7 +11,7 @@ import type {
 } from '../ports/upstream';
 
 /**
- * UpstreamPort 生产适配器（封装 @tokenlens/ai——渠道快照 + 凭据注入）：
+ * UpstreamPort 生产适配器（封装 @tillgate/ai——渠道快照 + 凭据注入）：
  *   - ChannelDesc 组装：baseUrl（目录已解析 override）/ protocol / vendor，
  *     apiKey = 注入的 decrypt(apiKeyEnc)（明文不落盘、不出调用栈）；
  *   - 模型名替换：CallOptions.model = realModel（对外名 → 真实名在此完成，

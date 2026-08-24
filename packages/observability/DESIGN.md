@@ -1,4 +1,4 @@
-# @tokenlens/observability 设计基线
+# @tillgate/observability 设计基线
 
 > 状态:定稿并已实施(出口面快照由 `__test__/architecture.test.ts` 锁定;契约演进走 ADR + 测试同步)
 > 依据:`docs/project-structure-refactoring.md` §3.1(observability = OTel、trace、audit、request log)、§3.4(审计事实的存储/查询/保留归本包;action 语义归业务能力)、§5.1(允许依赖 errors/runtime/db;runtime 不得反向)、P4 第 5 波
@@ -94,7 +94,7 @@ createObservability({ db }): {
 
 ## 4. 依赖与边界
 
-- 依赖:`@tokenlens/db`(schema/Db/DbLike/runTx)、`@tokenlens/errors`(目录)、`drizzle-orm`、
+- 依赖:`@tillgate/db`(schema/Db/DbLike/runTx)、`@tillgate/errors`(目录)、`drizzle-orm`、
   `@opentelemetry/*`(api/sdk-node/sdk-trace-base/sdk-metrics/exporters/resources/semantic-conventions)。
 - **不依赖 runtime**:Logger 用结构化最小形状 `{ info(obj,msg), warn(obj,msg) }` 本地声明——
   runtime 的 pino Logger 结构兼容,装配自然传入;避免为借用一个类型引入包依赖(§5.1 允许但不必要)。

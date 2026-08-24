@@ -8,8 +8,8 @@
  * 权威时间源 = 库端 clock_timestamp()（expireOverdue 的超时判定不读应用时钟）。
  */
 import { and, asc, desc, eq, gt, inArray, lte, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { billingRequests, generationTasks, usageLogs } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { billingRequests, generationTasks, usageLogs } from '@tillgate/db';
 import type { GenerationTaskKind } from '../domain/generation';
 import type {
   GenerationTaskActiveRow,

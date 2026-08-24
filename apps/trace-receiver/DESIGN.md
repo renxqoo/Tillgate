@@ -1,11 +1,11 @@
-# @tokenlens/trace-receiver 设计基线（DESIGN）
+# @tillgate/trace-receiver 设计基线（DESIGN）
 
 > 状态：定稿（2026-08-23 补档——app 已落地并核销，行为规格与测试矩阵见 [MIGRATION.md](./MIGRATION.md)）
 > 迁移单元：OTLP 接收**部署单元**的 HTTP 面 / 入口 / 装配（batcher/decode/store 机制已在
 > observability 波次先行——本 app 只消费，不重实现）
 > 旧实现：`/Users/wrr/work/ai-getway/apps/trace-receiver`（src 4 文件 292 行 +
 > receiver.test.ts 218 行；其中 batcher.ts 103 行已迁 `observability/tracing/ingest`）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/apps/trace-receiver`
+> 目标位置：`/Users/wrr/work/Tillgate/apps/trace-receiver`
 > 关联：[project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3（目标树
 > `apps/trace-receiver`）+ §9 P5；[packages/observability/DESIGN.md](../../packages/observability/DESIGN.md)
 > （OTLP 解码/摄入/存储归它，「OTLP 接收 HTTP 面」明确归本 app）；
@@ -15,7 +15,7 @@
 
 ## 0. 原则
 
-1. **薄 app**：业务能力（decode/ingest/store/OTel）全部来自 `@tokenlens/observability`；
+1. **薄 app**：业务能力（decode/ingest/store/OTel）全部来自 `@tillgate/observability`；
    app 只持有 config / assembly / HTTP 面 / 进程生命周期（总纲 §4.1 准入：进程入口 + 装配 +
    单部署面）。v2 仓库第一个 app，apps 装配范式先例。
 2. **不复制已迁代码**（铁律 8）：batcher/decode/store 一律 import；本 app 全部源码 4 文件
@@ -41,7 +41,7 @@ GET / internal / stats; // { batcher, storage };存储查询失败 → storage: 
 ```
 
 - **鉴权**：`Authorization: Bearer <token>`，`timingSafeTokenEqual` 常量时间比较
-  （`@tokenlens/http`，长度差异哑比较抹平）；未配置令牌时放行。
+  （`@tillgate/http`，长度差异哑比较抹平）；未配置令牌时放行。
 - **错误信封**（v2 目录码，onError 合成目录 `composeErrorCatalogs(HttpErrors, observabilityErrors)`
   - `pgSqlState` 探测注入）：401 `http.unauthorized` / 415 `http.unsupported_media_type`
     （protobuf 场景 context 带改配 http/json 提示）/ 413 `http.payload_too_large` /
@@ -63,11 +63,11 @@ GET / internal / stats; // { batcher, storage };存储查询失败 → storage: 
 
 | 不处理                                      | 归属                                                                 |
 | ------------------------------------------- | -------------------------------------------------------------------- |
-| OTLP JSON 解码 / span 批量摄入 / 日分区存储 | `@tokenlens/observability`（composition 子入口取件）                 |
+| OTLP JSON 解码 / span 批量摄入 / 日分区存储 | `@tillgate/observability`（composition 子入口取件）                 |
 | flush 定时器 / 队列丢弃 / 写失败计数机制    | observability `createSpanBatcher`（B6 溢出路径 O(n) 在案）           |
-| 错误渲染 / 信封 / 目录码 / 常量时间比较原语 | `@tokenlens/http`（errorHandler / timingSafeTokenEqual）             |
-| PG 连接 / ping / SQLSTATE 分类 / 池         | `@tokenlens/db`（装配面 createDb/ping/pgSqlState）                   |
-| 停机编排 / 日志 / 密钥三道门                | `@tokenlens/runtime`（createShutdown / createLogger / secretSchema） |
+| 错误渲染 / 信封 / 目录码 / 常量时间比较原语 | `@tillgate/http`（errorHandler / timingSafeTokenEqual）             |
+| PG 连接 / ping / SQLSTATE 分类 / 池         | `@tillgate/db`（装配面 createDb/ping/pgSqlState）                   |
+| 停机编排 / 日志 / 密钥三道门                | `@tillgate/runtime`（createShutdown / createLogger / secretSchema） |
 | OTel SDK 装配与自身遥测推送                 | observability `initOtel`（assembly 调用）                            |
 | `/livez` 进程内探活                         | 未建（v1 同形；有消费方再补，不预建）                                |
 
@@ -87,7 +87,7 @@ src/app.ts（纯函数 HTTP 面： onError 合成目录 + pgSqlState 纯函数�
 - `pgSqlState` 是纯 SQLSTATE 分类函数（http errorHandler 的文档化注入点），
   非 Db 类型——app.ts 引用它不违反 R10（架构测试白名单该项）。
 - 架构测试（`__test__/architecture.test.ts`）锁定：src 四件套快照；composition 子入口
-  只在 assembly.ts；`@tokenlens/db` 装配件与 `Db/DbTx` 类型只在进程装配面；跨包 import
+  只在 assembly.ts；`@tillgate/db` 装配件与 `Db/DbTx` 类型只在进程装配面；跨包 import
   只走显式包名（禁 src 深导入）。
 
 ## 4. 并发与性能预算（app 级口径；机制归 observability）

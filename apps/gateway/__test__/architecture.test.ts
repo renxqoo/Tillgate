@@ -2,8 +2,8 @@
  * 架构边界门禁（trace-receiver 范式扩展；IMPLEMENTATION §3 机器锁定清单）：
  * - src 文件集合快照；
  * - /composition 子入口只在 assembly.ts ∪ adapters/*；
- * - @tokenlens/db 装配与 Db/DbTx 类型只在进程装配面（assembly/config/index ∪ adapters/*）；
- * - http/** 不 import @tokenlens/ai（§3.6：ai 类型消费方自 inference 出口引用）；
+ * - @tillgate/db 装配与 Db/DbTx 类型只在进程装配面（assembly/config/index ∪ adapters/*）；
+ * - http/** 不 import @tillgate/ai（§3.6：ai 类型消费方自 inference 出口引用）；
  * - 跨包 import 只走包名（禁 /src/ 深导入；composition 后缀豁免）。
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -72,11 +72,11 @@ describe('composition 子入口白名单（§5.3）', () => {
 });
 
 describe('Db/DbTx 类型与装配细节不泄漏（P5）', () => {
-  it('@tokenlens/db import 与 Db 类型引用只在进程装配面 ∪ adapters/*', () => {
+  it('@tillgate/db import 与 Db 类型引用只在进程装配面 ∪ adapters/*', () => {
     for (const f of files) {
       if (assemblyFace.has(f) || isAdapter(f)) continue;
       const code = stripComments(sourceOf(f));
-      expect(code.includes("from '@tokenlens/db'"), f).toBe(false);
+      expect(code.includes("from '@tillgate/db'"), f).toBe(false);
       expect(/\bDbTx\b/.test(code), f).toBe(false);
       expect(/import type \{[^}]*\bDb\b/.test(code), f).toBe(false);
     }
@@ -84,21 +84,21 @@ describe('Db/DbTx 类型与装配细节不泄漏（P5）', () => {
 });
 
 describe('§3.6：app 运行时不直接 import ai', () => {
-  it('http/** 与 app.ts 不引用 @tokenlens/ai（ai 类型消费方自 inference 出口）', () => {
+  it('http/** 与 app.ts 不引用 @tillgate/ai（ai 类型消费方自 inference 出口）', () => {
     for (const f of files) {
       if (!(f.startsWith('http/') || f === 'app.ts')) continue;
-      expect(sourceOf(f).includes("from '@tokenlens/ai'"), f).toBe(false);
+      expect(sourceOf(f).includes("from '@tillgate/ai'"), f).toBe(false);
     }
   });
 });
 
 describe('跨包 import 只走包名（§5.5）', () => {
-  it('禁止 @tokenlens/*/src 深导入（composition 子入口豁免）', () => {
+  it('禁止 @tillgate/*/src 深导入（composition 子入口豁免）', () => {
     for (const f of files) {
       const specs = [...sourceOf(f).matchAll(/from '([^']+)'/g)].map((m) => m[1]!);
       for (const spec of specs) {
-        if (!spec.startsWith('@tokenlens/')) continue;
-        expect(/^@tokenlens\/[a-z-]+(\/composition)?$/.test(spec), `${f} → ${spec}`).toBe(true);
+        if (!spec.startsWith('@tillgate/')) continue;
+        expect(/^@tillgate\/[a-z-]+(\/composition)?$/.test(spec), `${f} → ${spec}`).toBe(true);
       }
     }
   });

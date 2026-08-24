@@ -5,8 +5,8 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
-import { jsonBody } from '@tokenlens/http';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import { jsonBody } from '@tillgate/http';
+import type { AccountUseCases } from '@tillgate/accounts';
 import {
   acceptInvitationSchema,
   inviteSchema,

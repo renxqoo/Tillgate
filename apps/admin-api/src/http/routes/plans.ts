@@ -4,7 +4,7 @@
  * plans 域审计后置（v1 recordAudit 同为提交后旁路——writeAudit 装配闭包）。
  */
 import { Hono } from 'hono';
-import type { PlansApi } from '@tokenlens/billing';
+import type { PlansApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { PLAN_SORTS, plansContracts } from '../contracts/billing-admin';
 import { toPlanWireRow } from '../presenters/billing';

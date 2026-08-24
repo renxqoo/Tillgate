@@ -9,8 +9,8 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { SignJWT } from 'jose';
-import type { AuthFailureGuard } from '@tokenlens/runtime';
-import { socketAddressFromContext, trustedClientIp } from '@tokenlens/http';
+import type { AuthFailureGuard } from '@tillgate/runtime';
+import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
 
 export interface OAuthTokenDeps {
   /** apps 凭证校验（accounts facade 绑定；status=0 + 属主守卫在读模型内） */

@@ -3,7 +3,7 @@
  * 定价契约是宽松解析（q/free/page/pageSize，非法值回落默认——v1 语义），
  * 与用户面列表的 page/limit strict 契约不同源，出参信封键为 models。
  */
-import type { PricingPage } from '@tokenlens/api-client';
+import type { PricingPage } from '@tillgate/api-client';
 
 import { createClientApi } from './api';
 

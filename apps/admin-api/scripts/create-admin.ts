@@ -21,9 +21,9 @@ import { randomInt } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { eq, sql } from 'drizzle-orm';
-import { closeDb, createDb, admins, identityCredentials, identityPasswords } from '@tokenlens/db';
-import { assertPasswordPolicy, hashPassword } from '@tokenlens/identity';
-import { roles as rolesTable } from '@tokenlens/db';
+import { closeDb, createDb, admins, identityCredentials, identityPasswords } from '@tillgate/db';
+import { assertPasswordPolicy, hashPassword } from '@tillgate/identity';
+import { roles as rolesTable } from '@tillgate/db';
 
 /** 现场生成 16 位强密码（大小写+数字；避免易混淆字符与 shell 转义烦恼） */
 function generatePassword(): string {

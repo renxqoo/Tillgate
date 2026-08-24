@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
-import { type Db } from '@tokenlens/db';
+import { type Db } from '@tillgate/db';
 import { Decimal } from '../src/domain/money.js';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createPostgresBillingStore } from '../src/adapters/postgres/billing-store.js';

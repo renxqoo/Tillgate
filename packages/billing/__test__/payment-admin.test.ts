@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createPaymentAdminApi } from '../src/application/payments/payment-admin';
 import { createInMemoryPaymentStores } from '../src/testing/in-memory-payment-stores';
 import { PAYMENT_ORDER_SORT_FIELDS } from '../src/ports/payment-ports';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import type { BillingStore } from '../src/ports/billing-store';
 
 /**

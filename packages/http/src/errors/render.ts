@@ -10,7 +10,7 @@ import {
   type ErrorCatalog,
   type ErrorCategory,
   type ErrorContext,
-} from '@tokenlens/errors';
+} from '@tillgate/errors';
 import { GENERIC_INTERNAL_MESSAGE, GENERIC_UNAVAILABLE_MESSAGE, HttpErrors } from './catalog';
 import type { Locale } from './locale';
 

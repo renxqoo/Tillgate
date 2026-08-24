@@ -5,9 +5,9 @@
  */
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { identityErrors } from '@tokenlens/identity';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { BillingErrors } from '@tokenlens/billing';
+import { identityErrors } from '@tillgate/identity';
+import { AccountsErrors } from '@tillgate/accounts';
+import { BillingErrors } from '@tillgate/billing';
 import { createClientApiApp, type ClientApiDeps } from '../src/app.js';
 
 /** 可变测试状态（替身内存） */

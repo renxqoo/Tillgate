@@ -3,7 +3,7 @@
  * + 旧行 CAS 吊销」;绑定订阅失格时新行降级个人余额(subscriptionId=null)。
  * 旧吊销竞态失败 → 整事务回滚(两行不共存半态)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { generateKeyMaterial } from '../domain/credentials.js';
 import type { ApiKeyRecord } from '../ports/account-store.js';

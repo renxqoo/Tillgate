@@ -1,8 +1,8 @@
-# TokenLens
+# Tillgate
 
 **[English](README.md)** | [文档](docs/) | [CHANGELOG](CHANGELOG.md)
 
-TokenLens 是一个可自托管的生产级 **LLM API 网关**：用统一的 OpenAI 兼容入口代理多家上游供应商，内置钱包计量计费、订阅体系、限额管控与全链路可观测。全链构建于 [Bun](https://bun.com)——后端 Hono + Drizzle + PostgreSQL + Redis，控制台 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui。
+Tillgate 是一个可自托管的生产级 **LLM API 网关**：用统一的 OpenAI 兼容入口代理多家上游供应商，内置钱包计量计费、订阅体系、限额管控与全链路可观测。全链构建于 [Bun](https://bun.com)——后端 Hono + Drizzle + PostgreSQL + Redis，控制台 Next.js 16 + React 19 + Tailwind v4 + shadcn/ui。
 
 ```
 客户端 / Agent ──> 网关 (/v1，OpenAI 兼容)
@@ -44,7 +44,7 @@ docs/       架构决策（adr/）、运维手册、深读导读
 （仅用来跑 PostgreSQL + Redis）。
 
 ```bash
-git clone https://github.com/renxqoo/TokenLens-v2.git && cd TokenLens-v2
+git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 bun install                        # 安装依赖（bun.lock）
 cp .env.example .env               # 只含必填键；其余配置全部有安全默认值
 # 生成必填密钥（弱值/空值启动即拒绝）：
@@ -71,7 +71,7 @@ worker 健康 `8792` · 用户面板 `3001` · 管理后台 `3002`。
 
 ```bash
 # 1) 获取代码
-git clone https://github.com/renxqoo/TokenLens-v2.git && cd TokenLens-v2
+git clone https://github.com/renxqoo/Tillgate.git && cd Tillgate
 
 # 2) 生产 .env —— 唯一配置面
 cp .env.example .env && vim .env
@@ -142,8 +142,8 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## 总结
 
-TokenLens 面向需要聚合或转售 LLM API 的团队，把通常要花数月自建的基础设施开箱化：兼容入口、供应商故障转移、能扛住崩溃的计费账本、全维度限额，以及能看清延迟与钱花在哪的链路追踪。深入阅读：[扣款全流程](docs/billing-flow-deep-dive.md) · [网关管线](docs/gateway-pipeline.md) · [技术选型](docs/tech-stack.md) · [API 契约](docs/api-contract.md) · [工程规范](AGENT.md)。
+Tillgate 面向需要聚合或转售 LLM API 的团队，把通常要花数月自建的基础设施开箱化：兼容入口、供应商故障转移、能扛住崩溃的计费账本、全维度限额，以及能看清延迟与钱花在哪的链路追踪。深入阅读：[扣款全流程](docs/billing-flow-deep-dive.md) · [网关管线](docs/gateway-pipeline.md) · [技术选型](docs/tech-stack.md) · [API 契约](docs/api-contract.md) · [工程规范](AGENT.md)。
 
 ## 开源声明
 
-以 [MIT 许可证](LICENSE) 开源。© 2026 TokenLens 贡献者。
+以 [MIT 许可证](LICENSE) 开源。© 2026 Tillgate 贡献者。

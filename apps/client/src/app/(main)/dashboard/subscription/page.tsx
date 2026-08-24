@@ -8,8 +8,8 @@ import {
   type PlanRow,
   type RowsPage,
   type RowsTotalPage,
-} from '@tokenlens/api-client';
-import { StatusPill } from '@tokenlens/ui';
+} from '@tillgate/api-client';
+import { StatusPill } from '@tillgate/ui';
 
 import { SubscriptionContent } from '@/features/subscription/subscription-content';
 import { createClientApi } from '@/server/api';

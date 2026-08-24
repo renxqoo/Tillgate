@@ -1,6 +1,6 @@
 /**
- * @tokenlens/inference 公共出口：facade、输入/结果契约、错误目录、端口类型与
- * 装配适配器工厂（§5.3——根入口不导出内部实现细节；ai 类型消费方自 @tokenlens/ai 引用）。
+ * @tillgate/inference 公共出口：facade、输入/结果契约、错误目录、端口类型与
+ * 装配适配器工厂（§5.3——根入口不导出内部实现细节；ai 类型消费方自 @tillgate/ai 引用）。
  */
 export { createInference } from './inference';
 export type { ChatInput, Inference, InferenceEnv } from './inference';
@@ -102,5 +102,5 @@ export {
   chatResponseToGemini,
   canonicalStreamToGeminiStream,
   estimateAudioDurationSeconds,
-} from '@tokenlens/ai';
-export type { Endpoint } from '@tokenlens/ai';
+} from '@tillgate/ai';
+export type { Endpoint } from '@tillgate/ai';

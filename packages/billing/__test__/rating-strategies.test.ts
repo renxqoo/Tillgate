@@ -3,7 +3,7 @@
  * 按源语义改写；错误断言换目录码）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { measurementOf, MEASUREMENTS } from '../src/domain/rating/measurement.js';
 import { strategyOf } from '../src/domain/rating/pricing-strategy.js';
 import { reservationStrategyOf } from '../src/domain/rating/reservation-strategy.js';

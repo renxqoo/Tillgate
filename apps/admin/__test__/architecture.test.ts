@@ -1,9 +1,9 @@
 /**
  * 架构边界门禁（DESIGN §1.2/§2）：
- *   ① workspace 依赖白名单——apps/admin 运行时只准 @tokenlens/{ui,api-client}；
- *   ② 禁 @tokenlens 深导入（src 直连）（总纲 §5.5）；
+ *   ① workspace 依赖白名单——apps/admin 运行时只准 @tillgate/{ui,api-client}；
+ *   ② 禁 @tillgate 深导入（src 直连）（总纲 §5.5）；
  *   ③ 页面（src/app）不得引用 server 内部模块（唯一例外：*-actions 动词）；
- *   ④ client 组件（"use client" 文件）禁止 import @tokenlens/api-client/next
+ *   ④ client 组件（"use client" 文件）禁止 import @tillgate/api-client/next
  *      （BFF 子出口带 next/headers——进浏览器包即构建期炸，这里静态先行拦截；
  *      client 侧 locale 常量走 app 自持 @/lib/locale，D1 孪生口径）。
  */
@@ -26,7 +26,7 @@ function walk(dir: string): string[] {
 const files = walk(SRC);
 const rel = (p: string) => relative(join(SRC, '..'), p);
 
-const WORKSPACE_IMPORT = /from ['"]@tokenlens\/([a-z-]+)(\/[^'"]*)?['"]/g;
+const WORKSPACE_IMPORT = /from ['"]@tillgate\/([a-z-]+)(\/[^'"]*)?['"]/g;
 const ALLOWED_PACKAGES = new Set(['ui', 'api-client']);
 const ALLOWED_SUBENTRY: Record<string, Set<string>> = {
   ui: new Set(['']), // 仅根出口（设计系统纪律：组件经根出口消费）
@@ -42,19 +42,19 @@ describe('apps/admin 架构边界', () => {
         const pkg = m[1] as string;
         const sub = m[2] ?? '';
         if (!ALLOWED_PACKAGES.has(pkg)) {
-          violations.push(`${rel(f)} → @tokenlens/${pkg}${sub}`);
+          violations.push(`${rel(f)} → @tillgate/${pkg}${sub}`);
         } else if (!ALLOWED_SUBENTRY[pkg]!.has(sub)) {
-          violations.push(`${rel(f)} → 非法子出口 @tokenlens/${pkg}${sub}`);
+          violations.push(`${rel(f)} → 非法子出口 @tillgate/${pkg}${sub}`);
         }
       }
     }
     expect(violations, violations.join('\n')).toEqual([]);
   });
 
-  it('禁 @tokenlens 深导入（src 直连）', () => {
+  it('禁 @tillgate 深导入（src 直连）', () => {
     const violations = files
       .map((f) => [f, readFileSync(f, 'utf8')] as const)
-      .filter(([, src]) => /@tokenlens\/[a-z-]+\/src/.test(src))
+      .filter(([, src]) => /@tillgate\/[a-z-]+\/src/.test(src))
       .map(([f]) => rel(f));
     expect(violations).toEqual([]);
   });
@@ -77,12 +77,12 @@ describe('apps/admin 架构边界', () => {
     expect(violations, violations.join('\n')).toEqual([]);
   });
 
-  it('client 组件禁 import @tokenlens/api-client/next（BFF 专用，含 next/headers）', () => {
+  it('client 组件禁 import @tillgate/api-client/next（BFF 专用，含 next/headers）', () => {
     const violations: string[] = [];
     for (const f of files.filter((p) => p.endsWith('.tsx'))) {
       const src = readFileSync(f, 'utf8');
       if (!src.startsWith('"use client"') && !src.startsWith("'use client'")) continue;
-      if (/from ['"]@tokenlens\/api-client\/next['"]/.test(src)) {
+      if (/from ['"]@tillgate\/api-client\/next['"]/.test(src)) {
         violations.push(rel(f));
       }
     }

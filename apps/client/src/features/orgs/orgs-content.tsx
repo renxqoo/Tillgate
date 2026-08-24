@@ -29,8 +29,8 @@ import {
   Progress,
   StatusPill,
   toast,
-} from '@tokenlens/ui';
-import type { OrgInvitationSummary, OrgMemberRow, OrgRow } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { OrgInvitationSummary, OrgMemberRow, OrgRow } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { formatMoney } from '@/features/shared/format';

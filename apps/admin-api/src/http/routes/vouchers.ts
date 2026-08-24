@@ -4,7 +4,7 @@
  * 防路径穿越;load 返回原始字节流,content-type 原样回放）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 

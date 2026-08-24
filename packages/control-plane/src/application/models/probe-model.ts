@@ -2,7 +2,7 @@
  * 模型探针：逐渠道最小成本生成（"1" + max_tokens=1 真实请求，请求内零重试）。
  * 密钥真实解密后仅入探针调用内存；结果含 tokens 汇总，上游失败错误码透传。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { ModelStore } from '../../ports/model-store';
 import type { UpstreamProbe } from '../../ports/upstream-probe';
 import type { SecretCipher } from '../../ports/secret-cipher';

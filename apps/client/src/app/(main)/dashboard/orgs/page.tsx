@@ -1,7 +1,7 @@
 import { Building2 } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type OrgDetail, type OrgRow, type RowsTotalPage } from '@tokenlens/api-client';
+import { ApiError, type OrgDetail, type OrgRow, type RowsTotalPage } from '@tillgate/api-client';
 
 import { OrgsContent, type OrgWithMembers } from '@/features/orgs/orgs-content';
 import { ListPage } from '@/features/shared/list-page';

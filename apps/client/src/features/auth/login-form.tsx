@@ -31,7 +31,7 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { actionResult } from '@/features/shared/action-result';
 import { loginAction, verifyLoginCodeAction } from '@/server/actions/auth';

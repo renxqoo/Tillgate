@@ -27,7 +27,7 @@
   注释随本波校正。
 - db schema `billing-requests.ts` 注释通道名 `settle_wake` 与 gateway DESIGN
   定稿 `settle-wake`（连字符）不一致。以 gateway DESIGN 为准，注释校正；
-  常量单一真相 = `@tokenlens/billing` 根导出 `SETTLE_WAKE_CHANNEL`。
+  常量单一真相 = `@tillgate/billing` 根导出 `SETTLE_WAKE_CHANNEL`。
 
 ### 1.3 重复/依赖清理（D#）
 

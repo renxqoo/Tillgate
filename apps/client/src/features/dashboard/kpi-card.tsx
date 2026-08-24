@@ -1,4 +1,4 @@
-import { KpiCard as SharedKpiCard } from '@tokenlens/ui';
+import { KpiCard as SharedKpiCard } from '@tillgate/ui';
 
 /** 概览页指标卡：保留应用侧业务命名，视觉与共享 KPI 组件单源一致。 */
 export function KpiCard({

@@ -1,4 +1,4 @@
-import type { Endpoint } from '@tokenlens/ai';
+import type { Endpoint } from '@tillgate/ai';
 import type { InferenceDefaults } from '../config';
 import { InferenceErrors } from '../domain/errors';
 import { buildCandidateChain } from '../domain/model/candidates';

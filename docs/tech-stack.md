@@ -1,4 +1,4 @@
-# TokenLens 技术选型与架构（v0.2）
+# Tillgate 技术选型与架构（v0.2）
 
 > 本文档自 v1（ai-getway）同名文档适配至 v2 结构；接口与结构以代码为准。
 > 配套文档：[api-contract.md](./api-contract.md)（接口契约）、[project-structure-refactoring.md](./project-structure-refactoring.md)（结构重构方案，目标态唯一权威）、[configuration.md](./configuration.md) / [deployment-checklist.md](./deployment-checklist.md) / [ha-deployment.md](./ha-deployment.md)（运维三篇）
@@ -14,9 +14,9 @@
 | 任务编排 | **Turbo**（turbo.json） | build / dev / lint / typecheck / test 任务图，`bunx turbo <task>` 驱动 |
 | Lint / Format | **oxlint + oxfmt** | v2 用 oxlint/oxfmt 替代 v1 的 eslint/prettier；全仓只有一套规则，配置固定根目录，不建 `tooling/` 包 |
 | 网关/API 框架 | **Hono**（^4.13） | 轻量、原生 async；SSE 流式字节流直通（`Response` + `pipeThrough`，显式 `x-accel-buffering: no`） |
-| 上游传输层 | 自研 **`@tokenlens/ai`**（protocol / adapters / transport / pipeline / usage / retry / registry） | 透传中继 + 协议适配 + `onEvent` 观察面；零内部依赖，独立库包（ADR-0006，决策理由见 §9） |
+| 上游传输层 | 自研 **`@tillgate/ai`**（protocol / adapters / transport / pipeline / usage / retry / registry） | 透传中继 + 协议适配 + `onEvent` 观察面；零内部依赖，独立库包（ADR-0006，决策理由见 §9） |
 | ORM | **Drizzle**（drizzle-orm ^0.45 + drizzle-kit ^0.31） | 类型安全，迁移版本化（`packages/db` 统一迁移链） |
-| 校验 | **zod v4** + `@tokenlens/http` zod-validator 封装 | 契约即类型；wire schema 归提供接口的 app 自有 |
+| 校验 | **zod v4** + `@tillgate/http` zod-validator 封装 | 契约即类型；wire schema 归提供接口的 app 自有 |
 | Redis | ioredis | 限流计数 / 爆破守卫 / 会话吊销线 / OAuth state / 队列锁 |
 | 事件唤醒 | **PG LISTEN/NOTIFY** | worker 结算即时唤醒（纯门铃，可丢）；结算以 DB poll 为权威，定时扫描兜底（`apps/worker/src/wakeup/postgres-notify.ts`） |
 | JWT | jose | 签发/验签（网关与控制台会话均 HS256 起步） |
@@ -26,7 +26,7 @@
 | 邮件 | nodemailer（identity 登录码 / notifications 投递） | SMTP 装配注入 |
 | 日志 | pino（^10） | 结构化，`packages/runtime/src/logging`；与 OTel 打通 |
 | 可观测 | **@opentelemetry/***（sdk-node / sdk-metrics / otlp-http exporter） | OTLP 导出（见第 3 节）；封装在 `packages/observability/src/telemetry` |
-| 前端 | **Next.js 16 + React 19 + Tailwind v4 + shadcn**（packages/ui，base-nova 预设 / Base UI） | 共享设计系统在 `@tokenlens/ui`（纯 React，禁止 Next 专有依赖） |
+| 前端 | **Next.js 16 + React 19 + Tailwind v4 + shadcn**（packages/ui，base-nova 预设 / Base UI） | 共享设计系统在 `@tillgate/ui`（纯 React，禁止 Next 专有依赖） |
 | 测试 | vitest（^4）+ mock 上游 | 单元/契约/集成；跨进程旅程在根 `e2e/`（§10） |
 | 包管理/构建 | bun workspaces / bun build（服务端） | 内部包 build 只生成 JS（无 dts 强制）；类型经 exports 直指源码或 dist |
 | 部署 | Docker Compose（起步，四份编排）→ K8s（P2） | 见第 4 节 |
@@ -38,7 +38,7 @@
 结构目标态唯一权威是 [project-structure-refactoring.md](./project-structure-refactoring.md)；本节是其速览。当前快照与目标态的差距以该文档的分阶段迁移（P0~P8）为准。
 
 ```
-tokenlens/
+tillgate/
 ├── apps/                     # 7 个可独立部署进程，全部 private
 │   ├── gateway/              # 公网推理入口：/v1/* 推理矩阵 + /oauth/token + /livez /readyz /healthz，无状态可多副本
 │   ├── worker/               # 后台任务：scheduler + jobs（settlement/poll/reconcile/notify/referral/partition）+ PG NOTIFY 唤醒 + /health 深报告
@@ -120,7 +120,7 @@ client-api┘                                             └─▶ Tempo（链�
 |---|---|---|
 | nginx | nginx:alpine | TLS 终止；`/v1/`（除 oauth/支付回调）与 `/oauth/token`、`/livez /readyz` 反代 gateway；`/v1/oauth/`、`/v1/payments/notify/(epay\|stripe)` 反代 client-api；其余反代前端 |
 | certbot | certbot/certbot | TLS 证书签发/续期（entrypoint 常驻 sleep，renew 显式触发） |
-| gateway | tokenlens/gateway（Dockerfile.server 构建，`TOKENLENS_TAG` 可覆写） | 公网推理入口，可扩副本 |
+| gateway | tillgate/gateway（Dockerfile.server 构建，`TILLGATE_TAG` 可覆写） | 公网推理入口，可扩副本 |
 | client-api | 同构建 | 用户面 REST（不发布端口） |
 | admin-api | 同构建 | 管理面 REST（不发布端口） |
 | worker | 同构建 | 后台任务（同镜像不同 command） |
@@ -129,7 +129,7 @@ client-api┘                                             └─▶ Tempo（链�
 | console-admin | 前端构建 | 运营后台（Next.js standalone，3002） |
 | redis | redis:7-alpine | 限流/守卫/缓存（AOF 持久化） |
 | postgres | postgres:16-alpine | 主存储 |
-| migrate | tokenlens/migrate（Dockerfile.migrate） | 一次性：drizzle-kit migrate（postgres 就绪后执行并退出） |
+| migrate | tillgate/migrate（Dockerfile.migrate） | 一次性：drizzle-kit migrate（postgres 就绪后执行并退出） |
 | otel-collector / prometheus / tempo / grafana | otel-contrib / prometheus / tempo / grafana | **profile `obs`**，默认不启动 |
 
 **启动流程**：postgres 就绪 → `migrate`（一次性 init 容器）→ gateway / client-api / admin-api / worker / trace-receiver → 前端 → （可选）观测栈。
@@ -204,7 +204,7 @@ client-api┘                                             └─▶ Tempo（链�
 
 ## 9. 传输层选型决策（自研 vs AI SDK）
 
-**结论**：自研轻量传输层（v2 落地为 `@tokenlens/ai` 独立库包，ADR-0006），不引入 Vercel AI SDK。理由与 v1 相同——本网关是「对外开放的中转站」，**wire 级透传是第一公民**；AI SDK 是生成式框架（解析重建请求），目标冲突：
+**结论**：自研轻量传输层（v2 落地为 `@tillgate/ai` 独立库包，ADR-0006），不引入 Vercel AI SDK。理由与 v1 相同——本网关是「对外开放的中转站」，**wire 级透传是第一公民**；AI SDK 是生成式框架（解析重建请求），目标冲突：
 
 1. **未知参数**：SDK 严格 schema 校验会丢弃未知参数，而契约要求未知参数原样透传（tools/tool_choice 等）；
 2. **usage 完整性**：SDK 归一化 usage 会丢失缓存字段（`cached_tokens` / `cache_hit`），缓存计价直接失效；
@@ -226,6 +226,6 @@ client-api┘                                             └─▶ Tempo（链�
 
 - **结构重构方案**：[project-structure-refactoring.md](./project-structure-refactoring.md) 是结构目标态唯一权威；根 `AGENT.md` 是执行摘要与硬约束（铁律 17 条）；两者冲突以结构文档为准。
 - **ADR 体系**：`docs/adr/NNNN-kebab-title.md`，编号递增，被推翻的决策标记 Superseded 不删除。在案七篇：0001 errors 注册表归属、0002 http 与 db 解耦、0003 wallet+ledger-core 合并入 billing、0004 上游 4xx 透传、0005 服务端部署产物策略、0006 `ai` 保留独立库包、0007 apps 装配与 `ai` 注入。结构例外、包准入/合并、发布白名单变更必须先写 ADR 再动代码。
-- **包边界门禁**：`scripts/check-package-boundaries.ts`（`bun run boundaries`，并前置进 `bun run test`）——① package graph 无环；② packages 不得依赖 apps；③ 跨包 import 只能命中显式 exports（禁 `@tokenlens/x/src` 深导入）；④ 相对 import 不得越出 workspace 根；⑤ 根 tsconfig paths 不得把包名映射回源码绕过 exports。
+- **包边界门禁**：`scripts/check-package-boundaries.ts`（`bun run boundaries`，并前置进 `bun run test`）——① package graph 无环；② packages 不得依赖 apps；③ 跨包 import 只能命中显式 exports（禁 `@tillgate/x/src` 深导入）；④ 相对 import 不得越出 workspace 根；⑤ 根 tsconfig paths 不得把包名映射回源码绕过 exports。
 - **四门**：typecheck / lint / test / build 全绿是任何变更的完成条件（覆盖率阈值只许补测试、禁止调低换绿）。
-- **e2e/**：跨进程系统测试统一在根 `e2e/`（非 workspace 包），四个运行门——① 默认 mock 门（`bun run test:e2e`：mock 上游 + 全真 PG/Redis + 双形态进程冒烟 bun 源码 / node dist）；② 真上游 real 门（`E2E_REAL_UPSTREAM=1 bun run test:e2e:real`，花真钱显式 opt-in）；③ admin 管理面旅程门（`cd apps/admin-api && bun run test:e2e`）；④ 用户/跨 app/worker 旅程门（`e2e/client-journey`、`e2e/cross-app`、`e2e/billing-recovery` 各自 `bun x vitest run`，环境不可达整组 skip）。分组目录：`gateway` / `security` / `admin` / `client-journey` / `cross-app` / `billing-recovery`；每个测试文件独占隔离 schema（`tokenlens_e2e_*`，结束 drop cascade）。
+- **e2e/**：跨进程系统测试统一在根 `e2e/`（非 workspace 包），四个运行门——① 默认 mock 门（`bun run test:e2e`：mock 上游 + 全真 PG/Redis + 双形态进程冒烟 bun 源码 / node dist）；② 真上游 real 门（`E2E_REAL_UPSTREAM=1 bun run test:e2e:real`，花真钱显式 opt-in）；③ admin 管理面旅程门（`cd apps/admin-api && bun run test:e2e`）；④ 用户/跨 app/worker 旅程门（`e2e/client-journey`、`e2e/cross-app`、`e2e/billing-recovery` 各自 `bun x vitest run`，环境不可达整组 skip）。分组目录：`gateway` / `security` / `admin` / `client-journey` / `cross-app` / `billing-recovery`；每个测试文件独占隔离 schema（`tillgate_e2e_*`，结束 drop cascade）。

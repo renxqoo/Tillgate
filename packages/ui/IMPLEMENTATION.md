@@ -1,4 +1,4 @@
-# @tokenlens/ui 实施文档（IMPLEMENTATION）
+# @tillgate/ui 实施文档（IMPLEMENTATION）
 
 > 状态：已完成（波 1 设计系统落地 → 波 2 高优缺口闭合 → 系统重构轮共享模式件收口，
 > `docs/ui-system-refactoring.md` §8 核销：UI 118 项测试、96.27/94.36/97.36/96.15 覆盖率；
@@ -26,7 +26,7 @@
    文案 prop 必填或可覆盖（i18n 宿主注入）；StatusPill 只收语义 tone，业务状态→颜色映射
    由调用方做。
 4. **依赖纯净性机器锁定**：本包及依赖闭包禁止 Next 生态（`next/*`、next-themes、next-intl、
-   geist）与 `@tokenlens/*` workspace 兄弟包——`test/pack/imports.test.ts` 断言（铁律 11）。
+   geist）与 `@tillgate/*` workspace 兄弟包——`test/pack/imports.test.ts` 断言（铁律 11）。
 
 ## 1. v1 审计结论（无编号审计发现，见 DESIGN.md §2）
 
@@ -101,7 +101,7 @@
 ## 6. 验收清单
 
 - [x] 四门全绿；覆盖率 96.27/94.36/97.36/96.15（手写代码口径）≥ 90/90/90/85，未调阈值
-- [x] 依赖纯净性机器锁定：src 零 Next 生态 / 零 `@tokenlens/*`（pack/imports）
+- [x] 依赖纯净性机器锁定：src 零 Next 生态 / 零 `@tillgate/*`（pack/imports）
 - [x] 导出面冻结快照（pack/exports）；exports 产物存在性验证
 - [x] v1 可保留行为参照逐项重写并有测试（金额 tone、受控排序、异步对话框、复制反馈）
 - [x] 显式待办留档（DESIGN §1）：carousel/menubar/hover-card/context-menu/resizable/

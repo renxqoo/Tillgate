@@ -16,7 +16,7 @@ import {
 import dagre from '@dagrejs/dagre';
 import { useTranslations } from 'next-intl';
 import '@xyflow/react/dist/style.css';
-import type { TraceSpanRow } from '@tokenlens/api-client';
+import type { TraceSpanRow } from '@tillgate/api-client';
 
 import { buildTraceGraph, type GraphNode } from './graph';
 import { SpanDetailPanel } from './span-detail-panel';

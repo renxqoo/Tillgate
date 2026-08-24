@@ -4,7 +4,7 @@
  * PATCH coefficient 只触碰 global 行——scope=model/group 覆写行永不被全局更新抹平（M1）。
  */
 import { and, asc, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
-import { rateCardCoefficients, rateCards, users } from '@tokenlens/db';
+import { rateCardCoefficients, rateCards, users } from '@tillgate/db';
 import type {
   UserRateCardContext,
   RateCardStore,

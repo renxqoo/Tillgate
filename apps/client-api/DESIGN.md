@@ -15,7 +15,7 @@
   （apps/client 尚不存在）按新码消费，api-client DTO 快照不含错误码，无存量消费者受影响。
   状态码语义保持 v1（410/502 等特例经 FaceOverride 表固定，见 IMPLEMENTATION §4）。
 - 分页：**用户面钉死 `page`/`limit`**（strict zod——非法值 400，limit 1..100 默认 20）。
-  不复用 `@tokenlens/http` 的 `paginationQuerySchema`（page_size 词表 + catch 容错，
+  不复用 `@tillgate/http` 的 `paginationQuerySchema`（page_size 词表 + catch 容错，
   语义不同）；仅复用其上限常量口径（100）。
 - 金额一律 JSON 字符串（numeric 全精度）；token 计数为 number；时间 ISO 字符串。
 - 列表信封：`{ rows, total, page, limit }`；游标分页（wallet statement）`{ rows, nextCursor? }`。
@@ -55,24 +55,24 @@
 
 ```
 apps/client-api（assembly）
- ├─ @tokenlens/http      协议件：errorHandler/securityHeaders/corsPreflight/bodyParserLimit/
+ ├─ @tillgate/http      协议件：errorHandler/securityHeaders/corsPreflight/bodyParserLimit/
  │                       requestIdMiddleware/网络提取/本地化
- ├─ @tokenlens/runtime   logger/cipher/redis/守卫/shutdown/env-schema
- ├─ @tokenlens/observability  initOtel
- ├─ @tokenlens/identity       facade（凭据/挑战/会话/OAuth/吊销）+ 密码纯函数 + 邮件渲染
- ├─ @tokenlens/accounts       facade（资料/Key/App/org/邀请/referral/营销参数）
- ├─ @tokenlens/billing        facade（wallet 读/subscriptions/payments/redemption）
+ ├─ @tillgate/runtime   logger/cipher/redis/守卫/shutdown/env-schema
+ ├─ @tillgate/observability  initOtel
+ ├─ @tillgate/identity       facade（凭据/挑战/会话/OAuth/吊销）+ 密码纯函数 + 邮件渲染
+ ├─ @tillgate/accounts       facade（资料/Key/App/org/邀请/referral/营销参数）
+ ├─ @tillgate/billing        facade（wallet 读/subscriptions/payments/redemption）
  │                             + Decimal/pickCoefficient 纯函数 + ./composition（仅 assembly/adapters）
- ├─ @tokenlens/control-plane  ./composition 只读目录与费率卡 store（仅 adapters）
- ├─ @tokenlens/db             createDb/ping/closeDb/TxRetryPolicy/pgSqlState（assembly face 专用）
- └─ @tokenlens/errors         目录合成与守卫
+ ├─ @tillgate/control-plane  ./composition 只读目录与费率卡 store（仅 adapters）
+ ├─ @tillgate/db             createDb/ping/closeDb/TxRetryPolicy/pgSqlState（assembly face 专用）
+ └─ @tillgate/errors         目录合成与守卫
 ```
 
 硬边界（architecture.test.ts 机器执行）：
 
 - `./composition` 只允许出现在 `src/assembly.ts` 与 `src/adapters/*`；
-- `@tokenlens/db` 与 `Db|DbTx` 类型只允许在 `{index,config,assembly}` ∪ `adapters/*`；
-- `src/http/**` 禁止 import `@tokenlens/{db,billing/composition,…}` 与任何 adapter 内部；
+- `@tillgate/db` 与 `Db|DbTx` 类型只允许在 `{index,config,assembly}` ∪ `adapters/*`；
+- `src/http/**` 禁止 import `@tillgate/{db,billing/composition,…}` 与任何 adapter 内部；
 - 跨包 import 只走显式 exports，禁止 `*/src` 深导入。
 
 ## 4. 认证编排（跨能力、无共享事务——app face 组合）

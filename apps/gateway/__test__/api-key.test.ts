@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
+import { errorHandler } from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
 /** 测试壳挂生产同款错误面（v1 测试直连 app 同语义） */
@@ -22,7 +22,7 @@ import {
   type AuthGuards,
   type AuthReadModel,
 } from '../src/http/middleware/api-key';
-import type { GuardCheck } from '@tokenlens/runtime';
+import type { GuardCheck } from '@tillgate/runtime';
 
 const SECRET = 'ab3d'.repeat(8);
 const JWT = { secret: SECRET, issuer: 'ai-gateway', audience: 'ai-gateway-api', keyPrefix: 'sk_' };

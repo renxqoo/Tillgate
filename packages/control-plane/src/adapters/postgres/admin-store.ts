@@ -7,8 +7,8 @@
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
  */
 import { asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import { admins, permissions, rolePermissions, roles } from '@tokenlens/db';
-import type { DbLike, DbTx } from '@tokenlens/db';
+import { admins, permissions, rolePermissions, roles } from '@tillgate/db';
+import type { DbLike, DbTx } from '@tillgate/db';
 import type {
   AdminListQuery,
   AdminListResult,

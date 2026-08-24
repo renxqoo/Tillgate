@@ -5,7 +5,7 @@
  * adapters/trace-port OTel 绑定；目录/计费/上游/限流为内存替身。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { UpstreamError, type Ai } from '@tokenlens/ai';
+import { UpstreamError, type Ai } from '@tillgate/ai';
 import {
   createInference,
   createMemoryHealthStore,
@@ -14,10 +14,10 @@ import {
   type ChannelCandidate,
   type ModelMappingSnapshot,
   type UpstreamPort,
-} from '@tokenlens/inference';
-import type { SlidingWindowLimiter } from '@tokenlens/runtime';
-import type { RequestLogStore } from '@tokenlens/observability';
-import { initOtel } from '@tokenlens/observability';
+} from '@tillgate/inference';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import type { RequestLogStore } from '@tillgate/observability';
+import { initOtel } from '@tillgate/observability';
 import { createGatewayApp } from '../src/app';
 import { otelTracePort } from '../src/adapters/trace-port';
 import type { RateLimitGate } from '../src/http/middleware/rate-limit';

@@ -1,10 +1,10 @@
 import { requirePermission } from '@/server/get-admin';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tokenlens/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import Link from 'next/link';
 import { Store } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 import { cn } from '@/lib/utils';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 import { CatalogContent, type CatalogItem, type FxState } from '@/features/models/catalog-content';
 

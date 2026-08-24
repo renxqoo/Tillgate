@@ -2,7 +2,7 @@
 
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type TraceDetailDto } from '@tokenlens/api-client';
+import { ApiError, type TraceDetailDto } from '@tillgate/api-client';
 import { adminApi } from './admin-api';
 
 /** 弹窗懒加载单 trace 详情（server action 转发管理员会话到 admin-api） */

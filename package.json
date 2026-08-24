@@ -1,8 +1,8 @@
 {
-  "name": "tokenlens",
+  "name": "tillgate",
   "version": "0.1.0",
   "private": true,
-  "description": "TokenLens —— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪。目标结构与迁移纪律见 docs/project-structure-refactoring.md",
+  "description": "Tillgate —— 多供应商 LLM API 网关：OpenAI 兼容入口、渠道路由与故障转移、钱包计费、订阅与限额、链路追踪。目标结构与迁移纪律见 docs/project-structure-refactoring.md",
   "license": "MIT",
   "workspaces": [
     "apps/*",

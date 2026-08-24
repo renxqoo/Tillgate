@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 
 import { KeyRoundIcon, Loader2Icon, LogOut } from 'lucide-react';
 
-import { Avatar, AvatarFallback } from '@tokenlens/ui';
+import { Avatar, AvatarFallback } from '@tillgate/ui';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { ChangePasswordDialog } from '@/features/auth/change-password-dialog';
 import { getInitials } from '../../../lib/utils';
 

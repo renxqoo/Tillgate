@@ -16,7 +16,7 @@
  * recordSuccess 恒 best-effort（成功路径的清理失败不反杀合法请求）。
  * keyHash/IP 的提取语义（可信代理跳数）由调用方注入。
  */
-import { InfrastructureError } from '@tokenlens/errors';
+import { InfrastructureError } from '@tillgate/errors';
 import type { Redis } from 'ioredis';
 import { createLocalAuthFailureGuard, createLocalKeyBruteForceGuard } from './auth-local-guard.js';
 

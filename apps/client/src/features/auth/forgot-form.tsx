@@ -27,7 +27,7 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { ArrowLeftIcon, Loader2Icon, MailCheckIcon, MailIcon } from 'lucide-react';
 
 import { forgotAction } from '@/server/actions/auth';

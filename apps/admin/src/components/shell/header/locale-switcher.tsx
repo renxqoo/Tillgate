@@ -1,6 +1,6 @@
 'use client';
 
-import { Button } from '@tokenlens/ui';
+import { Button } from '@tillgate/ui';
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';

@@ -1,7 +1,7 @@
 'use client';
 
 import type { DataTableColumn } from '@/components/data-table';
-import { DropdownMenuItem, RowActions } from '@tokenlens/ui';
+import { DropdownMenuItem, RowActions } from '@tillgate/ui';
 import { DataTable } from '@/components/data-table';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';

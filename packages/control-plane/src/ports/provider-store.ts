@@ -4,7 +4,7 @@
  * 重名交给 PG 部分唯一索引（23505 由 application 翻译 conflict——已删除行不占名）；
  * 禁用 = status=1（PATCH）；删除 = 逻辑删除回收站（softDelete）。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { ListQuery, ListResult } from '../domain/list';
 import type { ProviderPatchInput } from '../domain/provider/provider';
 

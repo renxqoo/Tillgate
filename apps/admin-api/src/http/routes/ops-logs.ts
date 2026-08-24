@@ -4,7 +4,7 @@
  * 请求日志 30 天窗由 observability 查询内置（now 注入）。
  */
 import { Hono } from 'hono';
-import type { Observability } from '@tokenlens/observability';
+import type { Observability } from '@tillgate/observability';
 import type { SessionEnv } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { AUDIT_SORTS, LOG_SORTS, logsContracts } from '../contracts/observability';

@@ -3,8 +3,8 @@
  * 时间戳一律 SQL now();role 授权替换 = 事务内 delete+insert（调用方开事务）。
  */
 import { asc, eq, ilike, inArray, sql } from 'drizzle-orm';
-import { admins, endpointPermissions, permissions, rolePermissions, roles } from '@tokenlens/db';
-import type { DbLike } from '@tokenlens/db';
+import { admins, endpointPermissions, permissions, rolePermissions, roles } from '@tillgate/db';
+import type { DbLike } from '@tillgate/db';
 import type {
   CreateEndpointRow,
   UpdateEndpointRow,

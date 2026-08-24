@@ -5,7 +5,7 @@
  * 渲染 409（v1 conflict 语义）。
  */
 import { Hono } from 'hono';
-import type { PaymentAdminApi } from '@tokenlens/billing';
+import type { PaymentAdminApi } from '@tillgate/billing';
 import type { SessionEnv } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { ORDER_SORTS, requestIdParam } from '../contracts/billing-admin';

@@ -1,10 +1,10 @@
 /**
  * 通知渠道路由（P5;v1 routes/notifications.ts 平移）：列表/创建/更新/删除/测试入箱。
- * 渠道 CRUD 与测试动词全部经 @tokenlens/notifications facade（业务校验/加密/掩码在包内）;
+ * 渠道 CRUD 与测试动词全部经 @tillgate/notifications facade（业务校验/加密/掩码在包内）;
  * 实际投递由 worker dispatchOnce 消费——本面只管理 + 入箱测试事件。
  */
 import { Hono } from 'hono';
-import type { Notifications } from '@tokenlens/notifications';
+import type { Notifications } from '@tillgate/notifications';
 import type { SessionEnv } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import { notificationsContracts } from '../contracts/notifications';

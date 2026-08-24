@@ -21,7 +21,7 @@ import {
   FieldLabel,
   FormItem,
   Input,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { useActionResult } from '@/components/action-toast';
 import {

@@ -10,7 +10,7 @@
  * 本文件只有编排；分配/失败策略/解码守卫全部是 domain 纯函数。
  * 不变量红灯（原 WalletInvariantError 家族）以 DefectError 表达——自动进死信家族。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
 import { allocateSettlement } from '../../domain/billing/settle-allocation.js';
 import { computeAmounts } from '../../domain/rating/amounts.js';

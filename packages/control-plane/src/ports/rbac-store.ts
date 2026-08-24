@@ -3,7 +3,7 @@
  * 授权策略守卫（super 不可变/内置不可删/码唯一/enforced 锁）由 application 裁决——
  * port 不藏策略;SQL 只在 adapters/postgres。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 // ── 角色 ────────────────────────────────────────────────────────────────────
 

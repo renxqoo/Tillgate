@@ -6,8 +6,8 @@
  * 产物可按 request.id 清理（dev 库只多 9 行诊断 span）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createDb, closeDb } from '@tokenlens/db';
-import { createObservability } from '@tokenlens/observability';
+import { createDb, closeDb } from '@tillgate/db';
+import { createObservability } from '@tillgate/observability';
 import {
   E2E_MODEL,
   E2EKeys,

@@ -1,7 +1,7 @@
 /**
  * 删除费率卡（硬删，系数行先于卡行）：删除前置 = 无用户绑定（409 rate_card_in_use）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { RateCardStore } from '../../ports/rate-card-store';
 import { controlPlaneErrors } from '../../errors';

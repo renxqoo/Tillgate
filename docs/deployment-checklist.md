@@ -10,7 +10,7 @@
 | 变量 | 必配值/规则 | 不配的后果 |
 |---|---|---|
 | `TRUSTED_PROXY_HOPS` | nginx 单层反向代理 = `1`；直连 = `0`（默认） | 配 0 又在代理后：限流/爆破锁按 nginx IP 聚合，防御退化。compose 已给 gateway/client-api/admin-api/两个前端注入 `1`；脱离 compose 自跑别漏 |
-| `JWT_SECRET` / `ADMIN_JWT_SECRET` | ≥32 随机且建议互不相同 | 生产 <32 拒绝启动。v2 变化：不再启动时强校验「不相同」——identity realm（`tokenlens:admin`）使跨面 token 互不认账，但仍应独立随机值（同值扩大单键泄露的爆炸半径） |
+| `JWT_SECRET` / `ADMIN_JWT_SECRET` | ≥32 随机且建议互不相同 | 生产 <32 拒绝启动。v2 变化：不再启动时强校验「不相同」——identity realm（`tillgate:admin`）使跨面 token 互不认账，但仍应独立随机值（同值扩大单键泄露的爆炸半径） |
 | `ENCRYPTION_KEY` | ≥32 字符，一次性生成、最高等级保管 | admin-api / client-api 拒绝启动；gateway 无 `CHANNEL_API_KEY_ENCRYPTION` 时也靠它 |
 | `CHANNEL_API_KEY_ENCRYPTION` | ≥32 字符（worker 专用） | **worker 拒绝启动**（无 `ENCRYPTION_KEY` 回退，以 `apps/worker/src/config.ts` schema 为准）。gateway 侧可省（回退根键） |
 | `IDENTITY_CODE_PEPPER` / `CLIENT_CODE_PEPPER` | ≥16 随机（生产建议 ≥32） | admin-api / client-api 拒绝启动（v2 新增必填，两把 pepper 必须不同值——管理面/用户面分离） |

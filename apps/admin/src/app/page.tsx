@@ -19,7 +19,7 @@ import { LandingLocaleToggle } from '@/components/landing/locale-toggle';
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations('landing');
   return {
-    title: { absolute: `TokenLens — ${t('heroTitle')}` },
+    title: { absolute: `Tillgate — ${t('heroTitle')}` },
     description: t('heroDescription'),
   };
 }
@@ -59,11 +59,11 @@ export default async function Landing() {
       {/* ── 头部导航 ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/80 backdrop-blur">
         <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-          <a href="/" aria-label="TokenLens homepage" className="flex items-center gap-2.5">
+          <a href="/" aria-label="Tillgate homepage" className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <ScanEye className="size-4" />
             </span>
-            <span className="text-base font-semibold tracking-tight">TokenLens</span>
+            <span className="text-base font-semibold tracking-tight">Tillgate</span>
           </a>
 
           <div className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">

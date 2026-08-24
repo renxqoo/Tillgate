@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/accounts",
+  "name": "@tillgate/accounts",
   "version": "0.1.0",
   "private": true,
   "description": "账号能力:用户资料、组织/成员/邀请、API Key、Application、推荐与拉新参数——账号事实唯一所有者,不保存认证秘密(DESIGN.md、MIGRATION.md)",
@@ -28,8 +28,8 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.45.2"
   },

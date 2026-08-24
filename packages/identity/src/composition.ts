@@ -6,7 +6,7 @@
  * 回滚即无审计行(不再返回 auditEvents 由调用方提交后冲洗)。
  * 仅 app assembly、迁移脚本与 adapter 集成测试可引用本入口。
  */
-import { advisoryLock, type DbTx } from '@tokenlens/db';
+import { advisoryLock, type DbTx } from '@tillgate/db';
 import { auditEvent } from './domain/audit-events.js';
 import { credentialSetLockKey } from './domain/locks.js';
 import { identityErrors } from './domain/errors.js';

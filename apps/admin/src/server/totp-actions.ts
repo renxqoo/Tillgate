@@ -9,7 +9,7 @@ import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import QRCode from 'qrcode';
 
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 
 import { adminApi } from './admin-api';
 

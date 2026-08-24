@@ -27,7 +27,7 @@ export function LandingHeader({ t, me }: { t: LandingT; me: boolean }) {
       <div className="relative mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" className="flex items-center gap-2">
           <LogoMark className="size-6 text-[#3957ff]" />
-          <span className="text-lg font-bold tracking-tight text-slate-900">TokenLens</span>
+          <span className="text-lg font-bold tracking-tight text-slate-900">Tillgate</span>
         </Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-slate-500 md:flex">
           <a href="#models" className="relative transition-colors hover:text-slate-900">

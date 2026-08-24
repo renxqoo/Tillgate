@@ -15,7 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useTransition } from 'react';
 
 import { EllipsisVertical, Loader2Icon, LogOut } from 'lucide-react';

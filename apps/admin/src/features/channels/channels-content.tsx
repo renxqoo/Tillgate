@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { FormDialog } from '@/components/form-dialog';
 import { NumberField } from '@/components/number-field';
 import { defineStatusMeta } from '@/components/status-pill';
@@ -51,7 +51,7 @@ import { formatMoney, fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 import { moneyText, numericText } from '@/lib/forms';
 
-import type { AdminChannelRow, ProviderOption } from '@tokenlens/api-client';
+import type { AdminChannelRow, ProviderOption } from '@tillgate/api-client';
 
 // 状态 tone 映射留模块级；label 是 channels 命名空间的 i18n key，渲染处用 t 解析
 const STATUS_META = defineStatusMeta(

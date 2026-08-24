@@ -4,9 +4,9 @@
  * best-effort）+ 签发会话。闸序：开关 → IP 限频 → captcha → 邮箱占用 → 密码策略。
  */
 import { Hono } from 'hono';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { jsonBody } from '@tokenlens/http';
-import { assertPasswordPolicy } from '@tokenlens/identity';
+import { AccountsErrors } from '@tillgate/accounts';
+import { jsonBody } from '@tillgate/http';
+import { assertPasswordPolicy } from '@tillgate/identity';
 import { registerSchema, verifySchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
 import type { SessionEnv } from '../middleware/session.js';

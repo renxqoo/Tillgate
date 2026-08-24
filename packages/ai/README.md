@@ -1,11 +1,11 @@
-# @tokenlens/ai
+# @tillgate/ai
 
 > 上游协议库:透传中继 + 多协议适配 + 多模态 + 事件观察面(§3.6 数据面/观察面契约,零运维状态)。
 > 裁决:[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)(保留为独立库、依赖图永久叶子);
 > 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md);装配注入形态 [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)。
 
 一句话:单渠道内的机制链(参数抹平 → 单次尝试 → 重试 → 逐块透传);候选循环、路由、
-计费衔接全部在 `inference`。零 `@tokenlens/*` 依赖,自有 `ErrorKind` 封闭词表。
+计费衔接全部在 `inference`。零 `@tillgate/*` 依赖,自有 `ErrorKind` 封闭词表。
 
 ## 核心导出面
 
@@ -23,7 +23,7 @@
 - 错误归一单一真相:`UpstreamError` / `isRetryable` / `isDeadCredential` / `KIND_MECHANICS`
   (kind → 机制单点派生表)。
 - 入站协议翻译:completions / responses / claude / gemini 外部线格式 ↔ 规范 chat 形的
-  纯函数(app 经 `@tokenlens/inference` 转出口消费——apps 运行时不直接 import 本包)。
+  纯函数(app 经 `@tillgate/inference` 转出口消费——apps 运行时不直接 import 本包)。
 - 配套件:`vendorProfileNames` 厂商档案词表、`assertSafeUrl`(URL 守卫)、
   `extractTextFeatures` / `TextFeaturesAccumulator`(估算充分统计量,O(1) 内存)。
 
@@ -52,7 +52,7 @@ src/
 消费方:`apps/gateway`、`apps/worker`(assembly `createAi` 实例注入 `inference`,
 按 ADR-0007)、`apps/admin-api`(仅词面:`SUPPORTED_PROTOCOLS` / `vendorProfileNames` /
 `assertSafeUrl`,供 control-plane 校验与安全检查)。运行时唯一消费方是
-`@tokenlens/inference`。
+`@tillgate/inference`。
 
 ## 开发
 

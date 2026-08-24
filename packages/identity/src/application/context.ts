@@ -6,7 +6,7 @@
  * - recordAudit:无业务事务的路径(纯读拒绝/单语句 CAS 后)用独立连接单写,失败抛错。
  * 本文件是纯类型 + 观察助手——装配(缺省 adapter 组装)归根装配面 identity.ts。
  */
-import type { Db, DbLike, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, DbLike, TxRetryPolicy } from '@tillgate/db';
 import type { ResolvedIdentityConfig } from '../domain/config.js';
 import type { ValidationGuards } from '../domain/identifier.js';
 import type { IdentityAuditEvent } from '../domain/audit-events.js';

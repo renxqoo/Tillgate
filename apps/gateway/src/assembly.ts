@@ -4,7 +4,7 @@
  * ——本文件零字面量配置（缺省属 config 层）。
  * composition 子入口仅本文件与 src/adapters/* 引用（§5.3 白名单 + 架构测试）。
  */
-import { closeDb, createDb, ping } from '@tokenlens/db';
+import { closeDb, createDb, ping } from '@tillgate/db';
 import {
   createLogger,
   createRedisClient,
@@ -12,26 +12,26 @@ import {
   createKeyBruteForceGuard,
   createAuthFailureGuard,
   createCipher,
-} from '@tokenlens/runtime';
+} from '@tillgate/runtime';
 import {
   createBilling,
   createPostgresBillingStore,
   createPostgresWalletStore,
-} from '@tokenlens/billing/composition';
-import { createBillingAdmission, type Billing } from '@tokenlens/billing';
-import { createPgFundingSourceResolver } from '@tokenlens/accounts/composition';
-import { createAccounts, type AccountUseCases, type WalletCreditPort } from '@tokenlens/accounts';
-import { type SessionInvalidationPort } from '@tokenlens/accounts/composition';
-import { postgresModelStore } from '@tokenlens/control-plane/composition';
-import { initOtel } from '@tokenlens/observability';
-import { createPgRequestLogStore } from '@tokenlens/observability/composition';
-import { createAi } from '@tokenlens/ai';
+} from '@tillgate/billing/composition';
+import { createBillingAdmission, type Billing } from '@tillgate/billing';
+import { createPgFundingSourceResolver } from '@tillgate/accounts/composition';
+import { createAccounts, type AccountUseCases, type WalletCreditPort } from '@tillgate/accounts';
+import { type SessionInvalidationPort } from '@tillgate/accounts/composition';
+import { postgresModelStore } from '@tillgate/control-plane/composition';
+import { initOtel } from '@tillgate/observability';
+import { createPgRequestLogStore } from '@tillgate/observability/composition';
+import { createAi } from '@tillgate/ai';
 import {
   createInference,
   createRedisHealthStore,
   createPostgresGenerationTaskStore,
   type Inference,
-} from '@tokenlens/inference';
+} from '@tillgate/inference';
 import { createPostgresGatewayCatalog } from './adapters/catalog-port';
 import { createGatewayBilling } from './adapters/billing-port';
 import { createSettleWakeProducer } from './adapters/settle-wake';
@@ -53,7 +53,7 @@ export interface GatewayAssembly {
   accounts: AccountUseCases;
   inference: Inference;
   modelsReader: {
-    listEnabledMappings(): Promise<import('@tokenlens/control-plane').EnabledModelRow[]>;
+    listEnabledMappings(): Promise<import('@tillgate/control-plane').EnabledModelRow[]>;
   };
   requestLogs: ReturnType<typeof createPgRequestLogStore>;
   billingFacade: Billing;

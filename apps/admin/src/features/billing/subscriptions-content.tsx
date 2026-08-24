@@ -30,7 +30,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import { ArrowUpRightIcon, Loader2Icon, RefreshCwIcon, XCircleIcon } from 'lucide-react';
@@ -39,7 +39,7 @@ import { toast } from 'sonner';
 
 import { fmtDateTime, formatMoney, formatPoints } from '@/lib/formatters';
 
-import type { AdminSubscriptionRow } from '@tokenlens/api-client';
+import type { AdminSubscriptionRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /** 套餐下拉选项（PlanRow 的视图投影——订阅页唯一消费域） */

@@ -9,8 +9,8 @@ import type {
   GenerationTaskProbeResult,
   UpstreamError,
   Usage,
-} from '@tokenlens/ai';
-import { UpstreamError as UpstreamErrorCtor } from '@tokenlens/ai';
+} from '@tillgate/ai';
+import { UpstreamError as UpstreamErrorCtor } from '@tillgate/ai';
 import { createInference, type Inference } from '../src/inference';
 import { createMemoryHealthStore } from '../src/adapters/state-memory';
 import type { BillingPort, BillingSignal } from '../src/ports/billing';

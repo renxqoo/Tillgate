@@ -11,8 +11,8 @@
  * ——发不出链接的功能绝不静默降级。
  */
 import { Hono } from 'hono';
-import { jsonBody } from '@tokenlens/http';
-import { assertPasswordPolicy } from '@tokenlens/identity';
+import { jsonBody } from '@tillgate/http';
+import { assertPasswordPolicy } from '@tillgate/identity';
 import { forgotSchema, forgotResetSchema } from '../contracts/auth.js';
 import { clientErrors } from '../error-face.js';
 import type { SessionEnv } from '../middleware/session.js';

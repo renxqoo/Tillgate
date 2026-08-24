@@ -1,7 +1,7 @@
 import { FlaskConicalIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import type { PricingPage } from '@tokenlens/api-client';
+import type { PricingPage } from '@tillgate/api-client';
 
 import { Playground } from '@/features/playground/playground';
 import { ListPage } from '@/features/shared/list-page';

@@ -5,7 +5,7 @@
  * 登出吊销 → 两级登录 → 改密全网下线 → 复登。真实 PG/Redis/HTTP。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Decimal } from '@tokenlens/billing';
+import { Decimal } from '@tillgate/billing';
 import {
   apiClient,
   bootHarness,

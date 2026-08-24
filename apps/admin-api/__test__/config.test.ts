@@ -7,7 +7,7 @@ import { loadAdminApiConfig } from '../src/config';
  */
 
 const BASE: NodeJS.ProcessEnv = {
-  DATABASE_URL: 'postgres://user:pass@localhost:5432/tokenlens',
+  DATABASE_URL: 'postgres://user:pass@localhost:5432/tillgate',
   ADMIN_JWT_SECRET: 'admin-jwt-secret-0123456789-abcdef',
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'user-jwt-secret-0123456789-abcdef',

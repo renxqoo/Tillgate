@@ -1,4 +1,4 @@
-# @tokenlens/inference 迁移实现文档（施工图）
+# @tillgate/inference 迁移实现文档（施工图）
 
 > 状态：已完成（2026-08-23 核销，见 §6 实施记录）
 > 设计基线见 [DESIGN.md](./DESIGN.md)；行为规格与测试迁移矩阵见 [MIGRATION.md](./MIGRATION.md)。

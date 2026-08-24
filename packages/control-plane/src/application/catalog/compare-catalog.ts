@@ -3,7 +3,7 @@
  * comparison 载荷与提交表单共用（UI 双币展示与预填同源）。
  * 源不可达要可读可排障——unavailable + 源名 + 底层原因直达提示条。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { CatalogComparison, CatalogItem } from '../../domain/catalog/catalog';
 import { compareCatalog, goneFromCatalog } from '../../domain/catalog/compare';
 import { toCny } from '../../domain/catalog/convert';

@@ -1,4 +1,4 @@
-# @tokenlens/billing
+# @tillgate/billing
 
 > 唯一资金与计费事实源：金额、钱包、双分录账本、计价、订阅、支付、兑换、结算与恢复。
 > 裁决：[ADR-0003](../../docs/adr/0003-wallet-ledger-merge-into-billing.md)；
@@ -8,7 +8,7 @@
 ## 1. 快速开始（app assembly）
 
 ```ts
-import { createPostgresBilling } from '@tokenlens/billing/composition';
+import { createPostgresBilling } from '@tillgate/billing/composition';
 
 const billing = createPostgresBilling(db, {
   retry: { maxAttempts: 5, baseDelayMs: 15, maxJitterMs: 20 }, // v1 等价值
@@ -32,8 +32,8 @@ const claims = await billing.settlement.claim({ ownerId, batchSize, claimLeaseMs
 窄子入口（单一职责消费方）：
 
 ```ts
-import { createWalletApi } from '@tokenlens/billing/wallet'; // 对账/运维
-import { createSettlementApi } from '@tokenlens/billing/settlement'; // worker
+import { createWalletApi } from '@tillgate/billing/wallet'; // 对账/运维
+import { createSettlementApi } from '@tillgate/billing/settlement'; // worker
 ```
 
 ## 2. 按角色的用法
@@ -60,7 +60,7 @@ import { createSettlementApi } from '@tokenlens/billing/settlement'; // worker
 ### 2.3 支付与兑换（app 按环境组合）
 
 ```ts
-import { createPaymentsApi, createEpayProvider, createStripeProvider } from '@tokenlens/billing';
+import { createPaymentsApi, createEpayProvider, createStripeProvider } from '@tillgate/billing';
 
 const payments = createPaymentsApi({
   store,
@@ -108,4 +108,4 @@ catch (e) {
 
 通知投递（notifications）、费率卡/汇率管理（control-plane）、用户/组织/凭证资料
 （accounts/identity）、渠道熔断健康消费（inference）、HTTP/队列协议（apps）、
-表 DDL（@tokenlens/db）。
+表 DDL（@tillgate/db）。

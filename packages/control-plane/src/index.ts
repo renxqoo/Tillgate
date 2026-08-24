@@ -1,5 +1,5 @@
 /**
- * @tokenlens/control-plane 公共出口：控制面配置能力（Provider/Channel/Model/RateCard/fx/目录）。
+ * @tillgate/control-plane 公共出口：控制面配置能力（Provider/Channel/Model/RateCard/fx/目录）。
  * 出口面刻意极小且由 __test__/boundary.test.ts 快照锁定——只暴露 facade、用例出入参、
  * 领域纯函数与错误目录；store/适配器/drizzle 行类型不出包（§5.3）。
  */
@@ -81,7 +81,7 @@ export type { VoucherStorage } from './ports/voucher-storage';
 export type { CatalogCache, CatalogCacheEntry } from './ports/cache';
 export { createMemoryCatalogCache } from './ports/cache';
 // 外部目录源 adapter 不出根入口（§5.3）——装配经 ./composition 子入口引用：
-//   import { createOpenRouterSource, modelsDevSource } from '@tokenlens/control-plane/composition';
+//   import { createOpenRouterSource, modelsDevSource } from '@tillgate/control-plane/composition';
 
 // ---- 用例出入参（app 路由层契约）----
 export type { CreateProviderInput } from './application/providers/create-provider';

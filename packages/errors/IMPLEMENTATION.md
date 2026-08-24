@@ -1,4 +1,4 @@
-# @tokenlens/errors 实施文档（IMPLEMENTATION）
+# @tillgate/errors 实施文档（IMPLEMENTATION）
 
 > 状态：已完成 + D8/D9 演进（品牌绑定构造；JSON 值上下文 + 传播注记 + 类型化通道边界，ADR-0001）：四门全绿，用例数与覆盖率见 §7
 > 基线：旧仓 `ai-getway` 错误体系全量审计（2026-08-23，三路并行：http 三件套 + 测试、
@@ -60,7 +60,7 @@ packages/errors/
 ├── DESIGN.md / IMPLEMENTATION.md
 ├── package.json / tsconfig.json / vitest.config.ts
 ├── src/
-│   ├── nature.ts         # 三性根类（TokenlensError/Business/Infrastructure/Defect）+ ErrorContext
+│   ├── nature.ts         # 三性根类（TillgateError/Business/Infrastructure/Defect）+ ErrorContext
 │   ├── category.ts       # category 闭集 + CATEGORY_DEFAULTS + isErrorCategory
 │   ├── definition.ts     # ErrorDefinition + defineErrorCatalog + composeErrorCatalogs
 │   ├── error-record.ts   # ErrorRecord 联合 + recordOf + handlingOf + ROOT_ERROR_CODES + cause 链

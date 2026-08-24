@@ -96,7 +96,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `CLIENT_BODY_LIMIT_BYTES` | `8388608` | 请求体上限（字节，纯数字） |
 | `CLIENT_CHALLENGE_TTL_MS` / `CLIENT_CHALLENGE_COOLDOWN_MS` / `CLIENT_CHALLENGE_MAX_ATTEMPTS` | `600000` / `60000` / `5` | 邮箱验证码挑战：有效期 / 发送冷却 / 最大尝试（v2 新增） |
 | `CLIENT_PASSWORD_MIN_LENGTH` | `10` | 密码下界（上界 128 固定） |
-| `CLIENT_TOTP_ISSUER` | `TokenLens` | TOTP 发行方（MFA 预留） |
+| `CLIENT_TOTP_ISSUER` | `Tillgate` | TOTP 发行方（MFA 预留） |
 | `REGISTER_ENABLED` | `true` | 公开注册开关（关闭后 `POST /api/auth/register*` 一律 403，只留 OAuth 建号） |
 | `REGISTER_IP_WINDOW_SECONDS` / `REGISTER_IP_LIMIT_PER_HOUR` | `3600` / `5` | 注册频控（窗口即 Retry-After 口径） |
 | `REDEEM_PER_MINUTE_LIMIT` | `10` | 兑换码频控（防暴力猜码） |
@@ -210,7 +210,7 @@ compose 部署由 `environment` 段注入：
 |---|---|---|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `postgres` / `postgres` / `ai_gateway` | 容器 PG 超级用户/密码/库名；compose 同时用它们拼 `DATABASE_URL`。生产必改强随机密码 |
 | `REDIS_PASSWORD` | `root123`（仅开发） | compose 用它建 Redis `requirepass` 并拼 `REDIS_URL`；HA 形态的 replica/sentinel 凭证同源。生产务必覆盖强随机值 |
-| `TOKENLENS_TAG` | `local` | 自建镜像标签（`tokenlens/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
+| `TILLGATE_TAG` | `local` | 自建镜像标签（`tillgate/<svc>:<tag>`）；server 形态「本地构建 → save/load」用它对齐两端 |
 | `GRAFANA_ADMIN_PASSWORD` | 无默认 | obs profile（`--profile obs`）必配——未设时 compose 直接拒绝启动（弱密码默认已移除） |
 
 ## v1 → v2 键名与语义变化

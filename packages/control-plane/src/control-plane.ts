@@ -3,7 +3,7 @@
  * 内部组装 postgres 适配器族；装配级可覆盖件（审计出口/凭证存储/目录缓存）显式注入。
  * 返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK；分组用例按单元收敛。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink, AuditTxSink } from './ports/audit-sink';
 import type { CatalogCache } from './ports/cache';
 import type { CatalogSource } from './ports/catalog-source';

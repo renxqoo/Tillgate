@@ -21,7 +21,7 @@
 
 ## 2. 语义裁决
 
-- 明文码生成器与哈希经依赖注入（app 装配传 `@tokenlens/http` generateRedeemCode 与本包 sha256Hex）；
+- 明文码生成器与哈希经依赖注入（app 装配传 `@tillgate/http` generateRedeemCode 与本包 sha256Hex）；
   本包不 import http（分层防环）。
 - plans/redeem 审计归 **app 装配层后置写入**（v1 recordAudit 同为提交后旁路）；死信复核审计为
   **同事务注入 port**（资金关键——与 v1 billing-review.auditInTx 同口径），缺省丢弃（测试缝）。

@@ -3,7 +3,7 @@
  * 身份码 = `control_plane.<key>`；message 英文、zh 中文，face 按码双语渲染（铁律 18）。
  * 码表封闭性由 __test__/boundary.test.ts 快照锁死；新增码 = 契约变更，须同步 DESIGN §2.3。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const controlPlaneErrors = defineErrorCatalog('control_plane', {
   // ── providers ────────────────────────────────────────────────────────────

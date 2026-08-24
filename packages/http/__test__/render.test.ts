@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DefectError, InfrastructureError, defineErrorCatalog } from '@tokenlens/errors';
+import { DefectError, InfrastructureError, defineErrorCatalog } from '@tillgate/errors';
 import { CATEGORY_STATUS_DEFAULTS, renderError } from '../src/errors/render';
 import { HttpErrors } from '../src/errors/catalog';
 

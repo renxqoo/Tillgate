@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BusinessError, defineErrorCatalog } from '@tokenlens/errors';
+import { BusinessError, defineErrorCatalog } from '@tillgate/errors';
 import { HttpErrors } from '../src/errors/catalog';
 
 /**

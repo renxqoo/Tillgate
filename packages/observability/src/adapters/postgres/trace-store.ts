@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { traceSpans } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { traceSpans } from '@tillgate/db';
 import { dayKey } from '../../tracing/partition';
 import type { TraceStore, TraceSummary } from '../../tracing/types';
 import { ensureTracePartition, listTracePartitionDays } from './trace-partitions';

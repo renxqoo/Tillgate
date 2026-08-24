@@ -1,7 +1,7 @@
 /**
  * 边界测试（铁律 11：边界必须可执行；§5.5/§11）：
- *   1. src 全量 import 白名单——内部零 @tokenlens 内部包（永久叶子），外部仅 node 内建、zod、js-tiktoken；
- *   2. src/errors 目录不 import @tokenlens/errors（§11：ai 自有 ErrorKind 封闭词表）；
+ *   1. src 全量 import 白名单——内部零 @tillgate 内部包（永久叶子），外部仅 node 内建、zod、js-tiktoken；
+ *   2. src/errors 目录不 import @tillgate/errors（§11：ai 自有 ErrorKind 封闭词表）；
  *   3. index.ts 导出面快照（值导出集合精确等于下表——新增导出是契约变更）。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -32,11 +32,11 @@ function importSources(text: string): string[] {
 }
 
 describe('依赖白名单（§3.6 永久叶子 + §11 错误根契约）', () => {
-  it('src 全量零内部依赖：不 import 任何 @tokenlens/*', () => {
+  it('src 全量零内部依赖：不 import 任何 @tillgate/*', () => {
     const offenders: string[] = [];
     for (const file of files) {
       for (const src of importSources(readFileSync(file, 'utf8'))) {
-        if (src.startsWith('@tokenlens/')) offenders.push(`${file} -> ${src}`);
+        if (src.startsWith('@tillgate/')) offenders.push(`${file} -> ${src}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -54,12 +54,12 @@ describe('依赖白名单（§3.6 永久叶子 + §11 错误根契约）', () =>
     expect(offenders).toEqual([]);
   });
 
-  it('src/errors/** 不 import @tokenlens/errors（自有 ErrorKind 封闭词表，ADR-0001 D7）', () => {
+  it('src/errors/** 不 import @tillgate/errors（自有 ErrorKind 封闭词表，ADR-0001 D7）', () => {
     const offenders: string[] = [];
     for (const file of files) {
       if (!file.includes('/errors/')) continue;
       for (const src of importSources(readFileSync(file, 'utf8'))) {
-        if (src === '@tokenlens/errors') offenders.push(file);
+        if (src === '@tillgate/errors') offenders.push(file);
       }
     }
     expect(offenders).toEqual([]);

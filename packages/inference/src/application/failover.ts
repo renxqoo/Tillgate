@@ -1,4 +1,4 @@
-import type { UpstreamError } from '@tokenlens/ai';
+import type { UpstreamError } from '@tillgate/ai';
 import type { InferenceDefaults } from '../config';
 import { InferenceErrors } from '../domain/errors';
 import type { ChannelCandidate, QuoteCandidate } from '../domain/model/types';

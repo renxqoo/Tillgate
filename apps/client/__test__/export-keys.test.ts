@@ -27,7 +27,7 @@ vi.mock('next/cache', () => ({
 
 import { exportKeysAction } from '../src/server/actions/keys';
 import { buildKeysTsv } from '../src/features/keys/export-tsv';
-import type { KeyRow } from '@tokenlens/api-client';
+import type { KeyRow } from '@tillgate/api-client';
 
 /** 最小 KeyRow 工厂（列口径只消费 name/keyPreview/status/createdAt，其余给中性值） */
 function keyRow(id: number, over: Partial<KeyRow> = {}): KeyRow {

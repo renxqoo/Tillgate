@@ -11,13 +11,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { defineStatusMeta } from '@/components/status-pill';
 import { StatusPill } from '@/components/status-pill';
 import { ShieldBanIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { RedeemCodeRow } from '@tokenlens/api-client';
+import type { RedeemCodeRow } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { ConfirmAction } from '@/components/confirm-action';
 

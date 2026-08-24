@@ -3,7 +3,7 @@
  * 实时速率。用户隔离在 usage-read 硬绑定（userId 从会话取，不收请求参数）。
  */
 import { Hono } from 'hono';
-import { query as queryMiddleware } from '@tokenlens/http';
+import { query as queryMiddleware } from '@tillgate/http';
 import type { MiddlewareHandler } from 'hono';
 import { usageListQuerySchema, usageRangeQuerySchema } from '../contracts/usage.js';
 import type { UsageWireRow, UsageByModelRow, UsageDayRow } from '../contracts/usage.js';

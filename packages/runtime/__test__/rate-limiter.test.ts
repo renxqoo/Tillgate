@@ -4,7 +4,7 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
-import { isInfrastructureError } from '@tokenlens/errors';
+import { isInfrastructureError } from '@tillgate/errors';
 import {
   createSlidingWindowLimiter,
   rateLimitUnavailable,

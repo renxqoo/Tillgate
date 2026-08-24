@@ -3,7 +3,7 @@
  * 顺序不变量：先锁全部涉及账户（id 定序防死锁；冻结即拒）→ 结构校验（真实锁集）
  * → 落批头 → 逐腿链式推进余额。腿的定律在 domain/wallet/posting（纯函数）。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../../domain/errors.js';
 import { legBalanceAfter, validatePosting, type PostingSpec } from '../../domain/wallet/posting.js';
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';

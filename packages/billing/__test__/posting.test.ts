@@ -4,7 +4,7 @@
  * 用例随 B4 修复反转）。
  */
 import { describe, expect, it } from 'vitest';
-import { isDefectError } from '@tokenlens/errors';
+import { isDefectError } from '@tillgate/errors';
 import { Decimal } from '../src/domain/money.js';
 import {
   isAuditKind,

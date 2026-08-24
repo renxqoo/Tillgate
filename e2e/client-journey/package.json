@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/e2e-client-journey",
+  "name": "@tillgate/e2e-client-journey",
   "version": "0.1.0",
   "private": true,
   "description": "client-api 跨进程用户旅程 E2E（总纲 §3：e2e/ 不是 workspace 包；真实 PG/Redis/HTTP + mock OAuth 上游 + 签名支付回调）",

@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createAdminApiClient } from '../src/admin-api';
 
-const adminMeBody = JSON.stringify({ id: 9, email: 'ops@tokenlens.dev' });
+const adminMeBody = JSON.stringify({ id: 9, email: 'ops@tillgate.dev' });
 
 function fetchReturning(status: number, body: string) {
   return vi.fn(async () => new Response(body, { status })) as unknown as typeof fetch;
@@ -169,7 +169,7 @@ const FACADE_CASES: readonly FacadeCase[] = [
     name: 'deleteRole DELETE 到 :id',
     invoke: (c) => c.deleteRole(3),
     method: 'DELETE',
-    url: 'http://tokenlens.invalid/v1/roles/3'.replace('tokenlens.invalid', 'admin-api'),
+    url: 'http://tillgate.invalid/v1/roles/3'.replace('tillgate.invalid', 'admin-api'),
     respond: { ok: true },
     expectResult: (r) => expect(r).toEqual({ ok: true }),
   },

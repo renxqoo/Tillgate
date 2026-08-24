@@ -3,7 +3,7 @@
  * 新增条目必须同步本快照与 DESIGN/IMPLEMENTATION 记录——契约变了测试必须同步变。
  */
 import { describe, expect, it } from 'vitest';
-import { isErrorCategory } from '@tokenlens/errors';
+import { isErrorCategory } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
 
 /** 词表快照：key → category（封闭；增删走本文件 + 文档同步） */

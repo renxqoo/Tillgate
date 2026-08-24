@@ -3,7 +3,7 @@
  * passwords.reset);他人占用 = identifier_taken。密码策略在此单源校验(B18/D2)。
  * 审计同事务写入(§5.4 事务参与;回滚即无审计行)。
  */
-import { advisoryLock, runTx } from '@tokenlens/db';
+import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';

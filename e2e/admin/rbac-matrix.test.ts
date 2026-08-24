@@ -12,8 +12,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { inArray } from 'drizzle-orm';
-import { admins, roles } from '@tokenlens/db';
-import { ENFORCED_CODES } from '@tokenlens/control-plane';
+import { admins, roles } from '@tillgate/db';
+import { ENFORCED_CODES } from '@tillgate/control-plane';
 import { adminApiEndpoints } from '../../apps/admin-api/src/http/openapi/index';
 import { PUBLIC_ROUTES, SELF_PREFIXES } from '../../apps/admin-api/src/http/middleware/acl';
 import { call, jsonHeaders, setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from './kit';

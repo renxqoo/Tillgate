@@ -5,11 +5,11 @@
  */
 
 export interface MailBrand {
-  /** 邮件品牌名(中文),如「TokenLens 管理后台」 */
+  /** 邮件品牌名(中文),如「Tillgate 管理后台」 */
   readonly brand: string;
   /** 邮件品牌名(英文) */
   readonly brandEn: string;
-  /** 头部副标题,如「TOKENLENS · ADMIN CONSOLE」 */
+  /** 头部副标题,如「TILLGATE · ADMIN CONSOLE」 */
   readonly brandSub: string;
 }
 
@@ -101,7 +101,7 @@ export function renderLoginCodeEmail(
 <p style="${MAIL_BASE_STYLE.p}">${en ? `You are signing in to ${brand}. Use the following code to complete the verification:` : `你正在登录${brand},请使用以下验证码完成验证:`}</p>
 <p style="${MAIL_BASE_STYLE.code}">${code}</p>
 <p style="${MAIL_BASE_STYLE.p}">${en ? `The code is valid for <strong>${ttlMinutes} minutes</strong>; <strong>${maxAttempts}</strong> failed attempts invalidate it.` : `验证码 <strong>${ttlMinutes} 分钟内</strong>有效,连续输错 <strong>${maxAttempts} 次</strong>将作废。`}</p>
-<p style="${MAIL_BASE_STYLE.p}">${en ? 'If this was not you, <a href="mailto:support@tokenlens.com" style="' + MAIL_BASE_STYLE.link + '">contact support</a> or change your password immediately.' : '若非你本人操作,请 <a href="mailto:support@tokenlens.com" style="' + MAIL_BASE_STYLE.link + '">联系支持</a>或立即修改密码。'}</p>
+<p style="${MAIL_BASE_STYLE.p}">${en ? 'If this was not you, <a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">contact support</a> or change your password immediately.' : '若非你本人操作,请 <a href="mailto:support@tillgate.com" style="' + MAIL_BASE_STYLE.link + '">联系支持</a>或立即修改密码。'}</p>
 <p style="${MAIL_BASE_STYLE.sign}">${en ? 'Best,' : '顺祝,'}<br/>${brand} ${en ? 'Team' : '团队'}</p>
 <p style="${MAIL_BASE_STYLE.sub}">${brandSub} · ${en ? `Source IP: ${ctx.ip} · Sent at: ${sentAt} · Do not reply` : `来源 IP:${ctx.ip} · 发送时间:${sentAt} · 请勿回复`}</p>
 

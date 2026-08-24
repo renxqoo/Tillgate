@@ -6,8 +6,8 @@
  * 资金投影改走 payouts 端点,billing referralPayouts 单一真相）。
  */
 import { Hono } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { WalletApi } from '@tokenlens/billing';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { WalletApi } from '@tillgate/billing';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

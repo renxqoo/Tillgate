@@ -3,7 +3,7 @@ import { CalendarClockIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { fetchAdminList } from '@/server/admin-list';
-import type { AdminSubscriptionRow, PlanRow as ApiPlanRow } from '@tokenlens/api-client';
+import type { AdminSubscriptionRow, PlanRow as ApiPlanRow } from '@tillgate/api-client';
 import { ListPage } from '@/components/list-page';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';
 

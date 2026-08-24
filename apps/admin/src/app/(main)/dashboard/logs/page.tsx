@@ -6,8 +6,8 @@ import { adminApi } from '@/server/admin-api';
 import { ScrollTextIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { LogRow, Paginated } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { LogRow, Paginated } from '@tillgate/api-client';
 import { fmtDateTime, msToHuman } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';
 import { firstParam, parseListSearchParams } from '@/lib/list-query';

@@ -3,9 +3,9 @@
  * 内联）/调账。幂等键透传（同键同参重放、异参 409——control-plane operations）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import { normalizeAmount } from '@tokenlens/billing';
-import { operationId } from '@tokenlens/http';
+import type { ControlPlane } from '@tillgate/control-plane';
+import { normalizeAmount } from '@tillgate/billing';
+import { operationId } from '@tillgate/http';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';

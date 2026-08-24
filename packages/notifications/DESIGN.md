@@ -73,7 +73,7 @@ createNotifications({
 - 签名：`HMAC-SHA256(secret, `${timestamp}.${body}`)` 小写 hex，头 `x-notify-signature`；辅助头 `x-notify-delivery`（`${outboxId}:${channelId}`）/ `x-notify-event` / `x-notify-timestamp`。
 - secret 是渠道配置密文解密后的明文；客户端提交值一律当明文重加密（防伪装 `enc:*` 内部格式）。
 
-### 2.5 outbox 状态机（db 层不变量，DDL 已在 @tokenlens/db）
+### 2.5 outbox 状态机（db 层不变量，DDL 已在 @tillgate/db）
 
 ```
 pending(sent_at NULL, claim 三列 NULL)
@@ -105,7 +105,7 @@ pending(sent_at NULL, claim 三列 NULL)
 
 ## 5. 依赖白名单
 
-- 编译依赖：`@tokenlens/db`（schema/Db/DbLike/isUniqueViolation）、`@tokenlens/errors`、`drizzle-orm`（仅 adapters/postgres）、`nodemailer`（仅 adapters/smtp）。
+- 编译依赖：`@tillgate/db`（schema/Db/DbLike/isUniqueViolation）、`@tillgate/errors`、`drizzle-orm`（仅 adapters/postgres）、`nodemailer`（仅 adapters/smtp）。
 - **禁止**：`ai`（SSRF 经 UrlGuard 注入）、`runtime`（cipher 经 SecretCipher 注入）、一切业务能力包（accounts/billing/inference/control-plane——防环，总纲 §5.2）。
 - domain 零 I/O；application 只依赖本包 domain/ports；`./composition` 子入口只导出事务参与 bridge（业务侧同事务入箱），`DbTx` 不进根 facade。
 

@@ -5,7 +5,7 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { Redis } from 'ioredis';
-import { isInfrastructureError } from '@tokenlens/errors';
+import { isInfrastructureError } from '@tillgate/errors';
 import { assertRedisReachable, createRedisClient, createRedisScriptRunner } from '../src';
 import { connectTestRedis, disconnectTestRedis, testRedisUrl } from '../src/testing';
 

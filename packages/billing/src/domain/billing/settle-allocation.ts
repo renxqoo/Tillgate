@@ -7,7 +7,7 @@
  *   超额（actual > Σ预留）：兜底源 PAYG 以 over 表达（走补充授权）；
  *   纯订阅链超额也以 over 表达，由订阅来源把预留内份额核销到套餐、超额补扣余额。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { Decimal } from '../money.js';
 
 export interface ReservationShare {

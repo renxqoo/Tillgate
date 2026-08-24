@@ -2,7 +2,7 @@
  * 更新渠道。换 Key 语义：重加密 + 复位运行态（status=0 / failCount=0 / cooldownUntil=null——
  * 「换 Key = 修死凭据」：死凭据 status=4 / 熔断 status=3 一并清除）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { SecretCipher } from '../../ports/secret-cipher';
 import type { ChannelStore } from '../../ports/channel-store';

@@ -4,7 +4,7 @@
  * 本 port 只承载「后台操作身份」资料：状态/角色/2FA 开关/最近登录。
  * 授权策略（status/role 判定）由消费方按词表语义裁决——port 不藏策略。
  */
-import type { DbLike, DbTx } from '@tokenlens/db';
+import type { DbLike, DbTx } from '@tillgate/db';
 import type { AdminAccess } from '../domain/rbac';
 
 export interface AdminRecord {

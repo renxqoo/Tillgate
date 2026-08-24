@@ -4,7 +4,7 @@
  * 逻辑删除/恢复记录/绑定全量替换/逐渠道探针。价格仅精确十进制字符串。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

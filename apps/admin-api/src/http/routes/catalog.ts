@@ -4,7 +4,7 @@
  * /v1/vendor-catalog（P6/D1）：协议 + 厂商档案词表（ai 根出口装配注入,单一事实源）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';

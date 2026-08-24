@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Ai, Endpoint } from '@tokenlens/ai';
+import type { Ai, Endpoint } from '@tillgate/ai';
 import {
   inferenceDefaultsSchema,
   type InferenceDefaults,
@@ -52,7 +52,7 @@ export interface ChatInput {
 }
 
 export interface InferenceEnv {
-  /** 装配传入的 @tokenlens/ai 实例（inference 是其唯一运行时消费方，§3.6） */
+  /** 装配传入的 @tillgate/ai 实例（inference 是其唯一运行时消费方，§3.6） */
   ai: Ai;
   catalog: CatalogPort;
   billing: BillingPort;

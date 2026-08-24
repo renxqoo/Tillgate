@@ -6,7 +6,7 @@
  * provenance（目录原价/fx 行/预填值/提交值）全量进审计——服务端重算预填
  * （与 comparison 同一换算点）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { SecretCipher } from '../../ports/secret-cipher';
 import type { ProviderStore } from '../../ports/provider-store';

@@ -14,7 +14,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { BaseUrlBadge } from '@/features/public/base-url-badge';
 import { CodeBlock } from '@/features/public/code-block';

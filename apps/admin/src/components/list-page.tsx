@@ -7,7 +7,7 @@ import {
   ListToolbar,
   ListToolbarGroup,
   PageHeader,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { SearchIcon, XIcon } from 'lucide-react';

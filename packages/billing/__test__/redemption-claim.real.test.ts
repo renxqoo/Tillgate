@@ -8,10 +8,10 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { createDb, closeDb, type Db } from '@tokenlens/db';
+import { createDb, closeDb, type Db } from '@tillgate/db';
 import { createPostgresRedeemCodeStore } from '../src/adapters/postgres/payment-stores.js';
 import { sha256Hex } from '../src/application/redemption/redemption.js';
-import { redeemBatches, redeemCodes } from '@tokenlens/db/schema';
+import { redeemBatches, redeemCodes } from '@tillgate/db/schema';
 
 const REAL_URL = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 

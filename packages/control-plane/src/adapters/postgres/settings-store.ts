@@ -4,7 +4,7 @@
  * 值形状 {"timezone":"<IANA 名>"}——jsonb，留扩展位。
  */
 import { eq } from 'drizzle-orm';
-import { systemConfigs } from '@tokenlens/db';
+import { systemConfigs } from '@tillgate/db';
 import type { SettingsStore } from '../../ports/settings-store';
 
 export const BILLING_TIMEZONE_KEY = 'billing_timezone';

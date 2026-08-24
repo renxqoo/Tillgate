@@ -18,7 +18,7 @@ import {
   FieldLabel,
   Input,
   toast,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { formatMoney } from '@/features/shared/format';
 import { TOPUP_PRESETS, isValidTopupAmount } from '@/features/wallet/topup-schema';

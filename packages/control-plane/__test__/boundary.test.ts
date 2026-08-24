@@ -89,12 +89,12 @@ describe('composition 子入口（§5.3：adapter 可见性白名单的可执行
 describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db）', () => {
   const files = tsFiles(SRC);
 
-  it('全包禁止依赖 @tokenlens/http / @tokenlens/ai / @tokenlens/runtime / apps', () => {
+  it('全包禁止依赖 @tillgate/http / @tillgate/ai / @tillgate/runtime / apps', () => {
     const offenders: string[] = [];
     for (const file of files) {
       const text = readFileSync(file, 'utf8');
       // 只匹配真实 import/export-from 语句（注释中的包名不构成依赖）
-      if (/from\s+['"]@tokenlens\/(http|ai|runtime)['"]/.test(text)) offenders.push(file);
+      if (/from\s+['"]@tillgate\/(http|ai|runtime)['"]/.test(text)) offenders.push(file);
       if (/from\s+['"]\.\.\/\.\.\/\.\.\/apps\//.test(text)) offenders.push(file);
     }
     expect(offenders).toEqual([]);
@@ -104,7 +104,7 @@ describe('依赖方向（§5 白名单：禁 http/ai/runtime/app；domain 禁 db
     const offenders: string[] = [];
     for (const file of files.filter((f) => f.includes('/domain/'))) {
       const text = readFileSync(file, 'utf8');
-      if (/from\s+['"]@tokenlens\/db['"]/.test(text)) offenders.push(file);
+      if (/from\s+['"]@tillgate\/db['"]/.test(text)) offenders.push(file);
       if (/from\s+['"]\.\.\/\.\.\/(ports|application|adapters)\//.test(text)) offenders.push(file);
     }
     expect(offenders).toEqual([]);

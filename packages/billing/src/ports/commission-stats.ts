@@ -1,6 +1,6 @@
 /**
  * 佣金聚合统计 port（跨域只读——usage_logs（本包）× referrals/users（accounts
- * 域表，经 @tokenlens/db schema 只读 join；v1 referral.repo.sumInviteeSpendByInviter
+ * 域表，经 @tillgate/db schema 只读 join；v1 referral.repo.sumInviteeSpendByInviter
  * 语义）：被邀请人已结算消费按邀请人求和。生产实现 postgres；测试内存。
  */
 export interface InviteeSpendByInviter {

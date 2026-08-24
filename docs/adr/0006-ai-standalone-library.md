@@ -11,7 +11,7 @@
 重构方案初版的 §3.2 映射曾倾向把 `ai` 并入 `inference`（「合并为 inference facade，
 而不是继续增加桥接层」）。P4 推进前的复核（总纲 §2.3）确认 `ai` 的现状形态：
 
-- **零内部依赖**：不依赖任何 `@tokenlens/*` 包，自有 `ErrorKind` 封闭词表
+- **零内部依赖**：不依赖任何 `@tillgate/*` 包，自有 `ErrorKind` 封闭词表
   （ADR-0001 D7），是依赖图上的永久叶子。
 - **库形态已验证**：`createAi` facade、`onEvent` 监听面（`subscribe`/`AiEvent`）、
   逐块透传中继（`pipeThrough` 不缓冲不改写）、旁路 SSE 扫描（usage 观察不进热路径）

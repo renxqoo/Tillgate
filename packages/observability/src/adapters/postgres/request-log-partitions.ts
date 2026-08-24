@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 
 /**
  * request_logs 月分区维护(当月+次月预建;超保留期 DETACH+DROP)。

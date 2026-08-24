@@ -6,7 +6,7 @@ import { HistoryIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
 import { fetchAdminList } from '@/server/admin-list';
-import type { AuditLogRow } from '@tokenlens/api-client';
+import type { AuditLogRow } from '@tillgate/api-client';
 
 import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';

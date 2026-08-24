@@ -4,7 +4,7 @@
  * 装配面文件:仅 assembly 引用。
  */
 import type Redis from 'ioredis';
-import type { SessionRevocationStore } from '@tokenlens/identity';
+import type { SessionRevocationStore } from '@tillgate/identity';
 
 const keyOf = (jti: string) => `admin:session:jti:${jti}`;
 

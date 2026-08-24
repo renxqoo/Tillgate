@@ -5,8 +5,8 @@ import type {
   PaymentOrdersPage,
   PaymentOrderRow,
   PaymentChannelsResult,
-} from '@tokenlens/api-client';
-import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tokenlens/ui';
+} from '@tillgate/api-client';
+import { Card, CardContent, DataTable, StatusPill, type DataTableColumn } from '@tillgate/ui';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { ListPage } from '@/features/shared/list-page';

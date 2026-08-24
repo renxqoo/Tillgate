@@ -1,4 +1,4 @@
-# apps/admin 迁移文档（ai-getway → TokenLens-v2）
+# apps/admin 迁移文档（ai-getway → Tillgate）
 
 > 状态：已完成（代码）——四门全绿 + 覆盖率达标；核销见 §7（运行时完整面依赖
 > admin-api P2–P6 后续波，DESIGN §5 矩阵在案）
@@ -75,8 +75,8 @@ v1 无测试——行为等价判定标准为下述可观察行为清单（§7 �
 | --------------------------------------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------- |
 | `adminFetch(path, {method, body})`                                          | `adminApi().get/post/patch/delete<T>(path, body?)`   | api-client v2 facade（行为等价在包侧 MIGRATION 在案） |
 | `getAdminMe()`（包级）                                                      | `adminApi().getAdminMe()`                            | 同上（B1 会话源裁决后唯一形态）                       |
-| `setAdminSessionToken/clearAdminSessionCookie/getAdminSessionToken`（包级） | 同名 `@tokenlens/api-client/next`                    | 子入口纪律（根入口禁 next）                           |
-| `@ai-gateway/api-client/i18n`                                               | `@tokenlens/api-client/next` locale 出口             | D1 孪生实现归位                                       |
+| `setAdminSessionToken/clearAdminSessionCookie/getAdminSessionToken`（包级） | 同名 `@tillgate/api-client/next`                    | 子入口纪律（根入口禁 next）                           |
+| `@ai-gateway/api-client/i18n`                                               | `@tillgate/api-client/next` locale 出口             | D1 孪生实现归位                                       |
 | `SUPPORTED_PROTOCOLS/vendorProfileNames`（ai 直引）                         | `config/protocols.ts` 快照 → P6 `/v1/vendor-catalog` | P5 清越界 + 词表权威源裁决                            |
 | `SpanRow/GraphNode`（tracing 直引）                                         | api-client tracing DTO + `graph-layout.ts`           | 同上                                                  |
 | 登录裸 fetch `ADMIN_API_BASE ?? localhost:8082`                             | `getAdminApiBase()`（api-client next）               | 基地址解析收口装配层（铁律 3）                        |

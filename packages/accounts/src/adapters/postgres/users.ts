@@ -3,7 +3,7 @@
  * 只读探针与换卡守卫。投影结构性排除 passwordHash。
  */
 import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import { isUniqueViolation, rateCards, users } from '@tokenlens/db';
+import { isUniqueViolation, rateCards, users } from '@tillgate/db';
 import type { AccountStorePort } from '../../ports/account-store.js';
 import { likePattern, nowSql } from './shared.js';
 

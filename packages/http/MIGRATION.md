@@ -1,4 +1,4 @@
-# @tokenlens/http 迁移文档（MIGRATION.md）
+# @tillgate/http 迁移文档（MIGRATION.md）
 
 > 状态：已完成（H1-H3 全部提交，四门 + 覆盖率全绿；行为核销清单 17 项逐项打勾——
 > [IMPLEMENTATION.md](./IMPLEMENTATION.md) §5.1；凭证生成器随消费者迁 accounts 后收口轮
@@ -8,7 +8,7 @@
 > 旧实现：`/Users/wrr/work/ai-getway/packages/http`（16 源文件 ~1.3k 行 + 11 测试文件
 > ~0.9k 行 / 79 用例）+ 三个 app 各自漂移的 `middleware/{request-id,security,protocol}.ts`
 > 拷贝（requestId ×3 / 安全件 ×3，~300 行——v2 口径见 IMPLEMENTATION §1.3 末行）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/http`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/http`
 > 关联：[DESIGN.md](./DESIGN.md)（设计基线，定稿）、[IMPLEMENTATION.md](./IMPLEMENTATION.md)
 > （B#/D#/C# 编号出处）、[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)、
 > [ADR-0002](../../docs/adr/0002-http-db-decoupling.md)

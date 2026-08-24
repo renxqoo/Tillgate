@@ -2,7 +2,7 @@
  * OAuth 绑定持久化 port。实现见 adapters/postgres/oauth.ts。
  * (provider, subject) 全局唯一 = 防劫持;(userId, provider) 单绑定。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export type LinkOutcome =
   | { readonly status: 'linked'; readonly linkId: number }

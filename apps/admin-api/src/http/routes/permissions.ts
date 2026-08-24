@@ -3,7 +3,7 @@
  * GET tree = 平铺节点（前端自组树）;custom 节点 CRUD,enforced 节点仅展示字段可改。
  */
 import { Hono } from 'hono';
-import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
+import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { idParam } from '../contracts/common';
 import { rbacContracts } from '../contracts/rbac';

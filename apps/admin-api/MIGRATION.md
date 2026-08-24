@@ -1,4 +1,4 @@
-# @tokenlens/admin-api 迁移行为规格
+# @tillgate/admin-api 迁移行为规格
 
 > 状态：已核销（2026-08-23;六域零接缝范围——P1–P7 见 IMPLEMENTATION §3）
 > 迁移单元：管理员持有效 admin-realm 会话完成六域管理读写（users/keys、providers/channels/

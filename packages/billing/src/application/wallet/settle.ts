@@ -3,7 +3,7 @@
  * [持有人 −a, 收入科目 +a] → 在途全额归还（余量随结算释放）。
  * 非 active 分支：settled → 指纹重放首答；released/expired → authorization_not_active。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';
 import { Decimal, parsePositiveAmount, toStorage } from '../../domain/money.js';

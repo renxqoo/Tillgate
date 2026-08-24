@@ -4,7 +4,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
   ThemeSwitcher,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import type { ReactNode } from 'react';
 
 import { cookies } from 'next/headers';

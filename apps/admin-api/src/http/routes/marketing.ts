@@ -4,7 +4,7 @@
  * 审计在 accounts 用例内（actor=admin）;worker 佣金循环每 tick 读现值同源。
  */
 import { Hono } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import type { AccountUseCases } from '@tillgate/accounts';
 import type { SessionEnv } from '../middleware/session';
 import { marketingContracts } from '../contracts/marketing';
 

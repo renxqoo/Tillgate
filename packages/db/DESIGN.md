@@ -1,9 +1,9 @@
-# @tokenlens/db 设计基线(DESIGN)
+# @tillgate/db 设计基线(DESIGN)
 
 > 状态:定稿
 > 迁移单元:db 基础设施包——连接、事务、schema、迁移、PG 错误分类(不是垂直业务用例)
 > 旧实现:`/Users/wrr/work/ai-getway/packages/db`(index 35 行 + schema 32 文件 ~2.4k 行 + 迁移 75 件 + seed 259 行,**零测试**),以及分散在 core / wallet / ledger-core / identity-core / repository 的事务与错误分类基础设施(SQLSTATE 探测 4 份、runTx 3 份、事务句柄类型 4 种变体)
-> 目标位置:`/Users/wrr/work/TokenLens-v2/packages/db`
+> 目标位置:`/Users/wrr/work/Tillgate/packages/db`
 > 关联:docs/project-structure-refactoring.md §3(db 目标结构)、§3.4(schema 登记点职责)、§5.1(依赖白名单:db → 仅 errors;logger/clock 经参数注入)、§9 P3;审计与裁决见同目录 [IMPLEMENTATION.md](./IMPLEMENTATION.md)
 
 ---
@@ -11,7 +11,7 @@
 ## 0. 原则
 
 1. **db 是物理 schema、迁移顺序和事务基础设施的统一登记点,不是业务事实所有者**(总纲 §3.4【用户裁决=总纲文档】)。表定义在此登记,表语义的消费与演进属于各能力包。
-2. **依赖白名单 = 仅 `@tokenlens/errors`**(总纲 §5.1;AGENT.md §11 错误根契约):db 自产的基础设施错误按根契约源头分类(`InfrastructureError` 自由码,如 `db.unavailable`);PG SQLSTATE 裸事实经 `pg-error.ts` 上浮供消费方判定,协议边界翻译(→HTTP)归 http 包。v1 对 ledger-core 的反向依赖清除(IMPLEMENTATION.md B1);除此之外零内部依赖。
+2. **依赖白名单 = 仅 `@tillgate/errors`**(总纲 §5.1;AGENT.md §11 错误根契约):db 自产的基础设施错误按根契约源头分类(`InfrastructureError` 自由码,如 `db.unavailable`);PG SQLSTATE 裸事实经 `pg-error.ts` 上浮供消费方判定,协议边界翻译(→HTTP)归 http 包。v1 对 ledger-core 的反向依赖清除(IMPLEMENTATION.md B1);除此之外零内部依赖。
 3. **零隐藏默认**(铁律 3):连接串、池参数、重试策略全部必填注入;v1 的 6 处硬编码默认连接串与三份 runTx 的魔法数(5 次 / 15ms 基数 / 20ms 抖动)全部显式化到装配层。
 4. **迁移链是不可改写的物理事实**:76 件迁移(0000-0075,含 journal 历史缺口 0036/idx37)原样接管,已应用于生产的 SQL 一字不改;空库可迁移范围受 0055+ 与包外 provision 链耦合限制(IMPLEMENTATION.md C4)。
 
@@ -28,8 +28,8 @@ import {
   isUniqueViolation,
   uniqueViolationConstraint,
   transientTxFailureCode,
-} from '@tokenlens/db';
-import { users, walletAccounts, ACCOUNT_STATUS } from '@tokenlens/db/schema';
+} from '@tillgate/db';
+import { users, walletAccounts, ACCOUNT_STATUS } from '@tillgate/db/schema';
 
 // 连接(全部必填,无默认——装配层从 env 读)
 const db = createDb({
@@ -67,7 +67,7 @@ transientTxFailureCode(err); // '40P01' | '40001' | null
 
 类型面:`Db`(池句柄)、`DbTx`(事务句柄,与 v1 同推导式)、`DbLike = Db | DbTx`(写路径注入 tx / 只读路径池句柄的统一参数型)。
 
-schema 子入口(`@tokenlens/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词表 + 19 组 drizzle relations,与 v1 同构(微修改清单见 IMPLEMENTATION.md §3 裁决表)。
+schema 子入口(`@tillgate/db/schema`):39 张物理表 + `ACCOUNT_STATUS` 词表 + 19 组 drizzle relations,与 v1 同构(微修改清单见 IMPLEMENTATION.md §3 裁决表)。
 
 ### 契约细则
 

@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/billing",
+  "name": "@tillgate/billing",
   "version": "0.1.0",
   "private": true,
   "description": "唯一资金与计费事实源：金额/钱包/账本/计价/订阅/支付/兑换/结算与恢复（ADR-0003、DESIGN.md、IMPLEMENTATION.md）",
@@ -38,8 +38,8 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.45.2"
   },

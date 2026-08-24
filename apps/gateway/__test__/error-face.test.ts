@@ -4,10 +4,10 @@
  * 上游细节脱敏（§3.6 内容层）。
  */
 import { describe, expect, it } from 'vitest';
-import { renderError } from '@tokenlens/http';
-import { InfrastructureError } from '@tokenlens/errors';
-import { BillingErrors } from '@tokenlens/billing';
-import { InferenceErrors } from '@tokenlens/inference';
+import { renderError } from '@tillgate/http';
+import { InfrastructureError } from '@tillgate/errors';
+import { BillingErrors } from '@tillgate/billing';
+import { InferenceErrors } from '@tillgate/inference';
 import {
   GatewayErrors,
   GATEWAY_FACE_OVERRIDES,

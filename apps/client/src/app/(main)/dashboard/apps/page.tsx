@@ -1,7 +1,7 @@
 import { ShieldCheckIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type AppRow } from '@tokenlens/api-client';
+import { ApiError, type AppRow } from '@tillgate/api-client';
 
 import { AppsTable, CreateAppDialog } from '@/features/applications/apps-content';
 import { ListPage } from '@/features/shared/list-page';

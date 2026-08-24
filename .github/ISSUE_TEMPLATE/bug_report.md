@@ -12,7 +12,7 @@ A clear description of what's wrong and what you expected instead.
 
 **Environment**
 
-- TokenLens version / commit:
+- Tillgate version / commit:
 - Runtime: (bun version, OS, Docker?)
 - Which app: gateway / client-api / admin-api / worker / trace-receiver / console
 

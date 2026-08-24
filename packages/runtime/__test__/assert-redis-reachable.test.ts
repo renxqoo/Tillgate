@@ -1,6 +1,6 @@
 /** assertRedisReachable 单元测试（mock ping，无真实连接；真实 Redis 集成面在 redis-integration.test.ts）。 */
 import { describe, expect, it } from 'vitest';
-import { isInfrastructureError } from '@tokenlens/errors';
+import { isInfrastructureError } from '@tillgate/errors';
 import type { Redis } from 'ioredis';
 import { assertRedisReachable } from '../src/redis/assert-redis-reachable';
 

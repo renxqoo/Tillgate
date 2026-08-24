@@ -9,11 +9,11 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
+import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPostgresWalletStore } from '../src/adapters/postgres/wallet-store.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import type { WalletApi } from '../src/application/wallet/wallet.js';
-import type { TxRetryPolicy } from '@tokenlens/db';
+import type { TxRetryPolicy } from '@tillgate/db';
 
 export const REAL_URL = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
 
@@ -37,7 +37,7 @@ export interface RealWalletHarness {
 
 export async function setupRealWallet(label: string): Promise<RealWalletHarness> {
   if (!REAL_URL) throw new Error('DB_TEST_URL / DATABASE_URL 未设置');
-  const schema = `tokenlens_billing_${label}_${process.pid.toString(36)}`;
+  const schema = `tillgate_billing_${label}_${process.pid.toString(36)}`;
   const [baseUrl] = REAL_URL.split('?');
   // 连接级 search_path：DDL 与查询（含触发器内未限定表名）全部落在隔离 schema
   const scopedUrl = `${baseUrl}?options=-c%20search_path%3D${schema}`;
@@ -128,7 +128,7 @@ export interface RealFullSchemaHarness {
  */
 export async function setupRealFullSchema(label: string): Promise<RealFullSchemaHarness> {
   if (!REAL_URL) throw new Error('DB_TEST_URL / DATABASE_URL 未设置');
-  const schema = `tokenlens_billing_${label}_${process.pid.toString(36)}`;
+  const schema = `tillgate_billing_${label}_${process.pid.toString(36)}`;
   const [baseUrl] = REAL_URL.split('?');
   const db = createDb({
     url: `${baseUrl}?options=-c%20search_path%3D${schema}`,

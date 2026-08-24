@@ -5,7 +5,7 @@ import {
   BusinessError,
   DefectError,
   InfrastructureError,
-  TokenlensError,
+  TillgateError,
   type ErrorContext,
 } from '../src/nature';
 
@@ -29,13 +29,13 @@ class InsufficientCashError extends BusinessError {
 }
 
 describe('三性根类', () => {
-  it('instanceof 链：三类均继承 TokenlensError 与 Error', () => {
+  it('instanceof 链：三类均继承 TillgateError 与 Error', () => {
     const business = TestErrors.business('denied');
     const infra = new InfrastructureError('db down', 'app.db_unavailable');
     const defect = new DefectError('invariant broken', 'app.invariant');
 
     for (const e of [business, infra, defect]) {
-      expect(e).toBeInstanceOf(TokenlensError);
+      expect(e).toBeInstanceOf(TillgateError);
       expect(e).toBeInstanceOf(Error);
     }
     expect(business).not.toBeInstanceOf(InfrastructureError);
@@ -112,6 +112,6 @@ describe('三性根类', () => {
 
   it('基类不可直接实例化（抽象——编译期契约，typecheck 门禁生效）', () => {
     // @ts-expect-error 抽象类不可构造
-    void new TokenlensError('m', { code: 'a.b' });
+    void new TillgateError('m', { code: 'a.b' });
   });
 });

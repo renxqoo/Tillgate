@@ -8,8 +8,8 @@ import {
   SidebarProvider,
   SidebarTrigger,
   ThemeSwitcher,
-} from '@tokenlens/ui';
-import type { ReferralConfig } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { ReferralConfig } from '@tillgate/api-client';
 
 import { AppSidebar } from '@/features/shell/app-sidebar';
 import { AccountSwitcher } from '@/features/shell/account-switcher';

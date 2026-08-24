@@ -4,8 +4,8 @@
  * inference.chat/stream → 信封三态出站。鉴权由 app 按路径挂载。
  */
 import { Hono } from 'hono';
-import type { Inference } from '@tokenlens/inference';
-import { conservativeInputTokenUpperBound } from '@tokenlens/inference';
+import type { Inference } from '@tillgate/inference';
+import { conservativeInputTokenUpperBound } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';

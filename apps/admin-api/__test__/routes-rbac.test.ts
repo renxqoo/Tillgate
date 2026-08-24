@@ -4,7 +4,7 @@
  * 审计旁路形状（postAudit 经 fakeDeps 缺省不可覆写,审计 diff 由 e2e 断言）。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 

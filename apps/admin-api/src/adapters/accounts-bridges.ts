@@ -7,10 +7,10 @@
  *     失败仍抛错——邮箱变更 500,不静默吞）;
  *   - G1:审计同事务写入（失败随 accounts 业务事务回滚）。
  */
-import type { WalletCreditPort, AuditPort } from '@tokenlens/accounts';
-import type { DbLike } from '@tokenlens/db';
-import type { WalletApi } from '@tokenlens/billing';
-import type { Identity } from '@tokenlens/identity';
+import type { WalletCreditPort, AuditPort } from '@tillgate/accounts';
+import type { DbLike } from '@tillgate/db';
+import type { WalletApi } from '@tillgate/billing';
+import type { Identity } from '@tillgate/identity';
 
 /**
  * 会话失效 port 的结构镜像（accounts 根出口暂未导出该类型——gateway 波子入口在途,

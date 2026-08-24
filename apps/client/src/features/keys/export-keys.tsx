@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { DownloadIcon, Loader2Icon } from 'lucide-react';
 
-import { Button, toast } from '@tokenlens/ui';
+import { Button, toast } from '@tillgate/ui';
 
 import { exportKeysAction } from '@/server/actions/keys';
 

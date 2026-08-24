@@ -7,7 +7,7 @@
  * 展示投影由 app 持有；权威实现无运行时消费者，词表语义漂移由
  * __test__/trace-graph.test.ts 输入输出向量锁步）。
  */
-import type { TraceSpanRow } from '@tokenlens/api-client';
+import type { TraceSpanRow } from '@tillgate/api-client';
 
 export type { TraceSpanRow };
 

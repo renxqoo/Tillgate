@@ -3,7 +3,7 @@
  * (总纲 §5.4);行投影不含秘密列。实现见 adapters/postgres/credentials.ts、
  * passwords.ts;内存替身见 testing/in-memory-identity-store.ts。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { NormalizedIdentifier } from '../domain/identifier.js';
 
 export type RegisterCredentialOutcome =

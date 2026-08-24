@@ -1,7 +1,7 @@
 'use client';
 
-import type { ChartConfig } from '@tokenlens/ui';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@tokenlens/ui';
+import type { ChartConfig } from '@tillgate/ui';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@tillgate/ui';
 import { useTranslations } from 'next-intl';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { formatMoney } from '@/lib/formatters';

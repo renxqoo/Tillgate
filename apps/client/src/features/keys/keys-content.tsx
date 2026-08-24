@@ -32,8 +32,8 @@ import {
   TableHeader,
   TableRow,
   toast,
-} from '@tokenlens/ui';
-import type { KeyRow } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { KeyRow } from '@tillgate/api-client';
 
 import { actionResult } from '@/features/shared/action-result';
 import { formatDateTime, formatMoney } from '@/features/shared/format';

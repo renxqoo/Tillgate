@@ -3,7 +3,7 @@
  * 审计存储/查询/保留归 observability（G3 演进点）；落地前由 adapters/postgres 承接。
  * 全局审计列表/定向查询是运维读侧，不在本包（observability 波次）。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export interface AuditLogRow {
   readonly id: number;

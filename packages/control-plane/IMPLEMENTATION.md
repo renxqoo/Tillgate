@@ -11,7 +11,7 @@
 旧实现分布（非 `packages/domain|service`——控制面服务实际住在 app 内）：
 `apps/admin-api/src/services/*.service.ts` + `apps/admin-api/src/domain/{catalog,model-pricing}.ts` +
 `packages/repository/src/{provider,channel,model-mapping,rate-card,rating,fx,admin-account,audit-log}.repo.ts` +
-`packages/db/src/schema/*`（表定义已先行迁至本仓 `@tokenlens/db`，75 条迁移齐备，含 voucher_blobs 0066）。
+`packages/db/src/schema/*`（表定义已先行迁至本仓 `@tillgate/db`，75 条迁移齐备，含 voucher_blobs 0066）。
 
 逐文件四条标准审计结论：
 

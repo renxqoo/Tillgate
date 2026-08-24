@@ -4,8 +4,8 @@
  * 显式注入/置空）+ Redis 吊销/OAuth state + createIdentity 全量配置。
  * emailCodeRequired 的 auto 口径：SMTP 已配置即强制两级登录（v1 语义）。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
-import type { Logger } from '@tokenlens/runtime';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
+import type { Logger } from '@tillgate/runtime';
 import type { Redis } from 'ioredis';
 import {
   createIdentity,
@@ -13,7 +13,7 @@ import {
   type Mailer,
   type OAuthEndpointsOverride,
   type OAuthProviderCredentials,
-} from '@tokenlens/identity';
+} from '@tillgate/identity';
 import type { ClientApiConfig } from '../config.js';
 import { createRedisSessionRevocation } from './redis-session-revocation.js';
 import { createRedisOAuthStateStore } from './redis-oauth-state.js';
@@ -72,9 +72,9 @@ export function createIdentityStack(args: {
     config.SMTP_HOST != null && config.SMTP_USER != null && config.SMTP_PASS != null;
   // 用户面邮件品牌（展示常量——非部署可变值）
   const mailBrand = {
-    brand: 'TokenLens 控制台',
-    brandEn: 'TokenLens Console',
-    brandSub: 'TOKENLENS · CONSOLE',
+    brand: 'Tillgate 控制台',
+    brandEn: 'Tillgate Console',
+    brandSub: 'TILLGATE · CONSOLE',
   };
   let mailer: Mailer | null;
   if (mailerOverride === undefined) {
@@ -128,7 +128,7 @@ export function createIdentityStack(args: {
       totp: { issuer: config.CLIENT_TOTP_ISSUER, stepSec: 30, windowSteps: 1, recoveryCount: 8 },
       sessions: {
         user: {
-          issuer: 'tokenlens:user',
+          issuer: 'tillgate:user',
           secret: config.JWT_SECRET,
           ttlSec: config.SESSION_TTL_SECONDS,
         },

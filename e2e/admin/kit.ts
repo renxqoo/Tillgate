@@ -9,7 +9,7 @@
  */
 import { serve, type ServerType } from '@hono/node-server';
 import { asc } from 'drizzle-orm';
-import { admins, closeDb, createDb, ping, type Db } from '@tokenlens/db';
+import { admins, closeDb, createDb, ping, type Db } from '@tillgate/db';
 import { loadAdminApiConfig } from '../../apps/admin-api/src/config';
 import { assembleAdminApi, type AdminApiAssembly } from '../../apps/admin-api/src/assembly';
 import { createAdminApp } from '../../apps/admin-api/src/app';

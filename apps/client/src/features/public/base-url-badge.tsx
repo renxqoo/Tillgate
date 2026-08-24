@@ -2,7 +2,7 @@
 
 import { useTranslations } from 'next-intl';
 
-import { CopyButton } from '@tokenlens/ui';
+import { CopyButton } from '@tillgate/ui';
 
 /**
  * 推理 Base URL 徽章：值由服务端从请求 Host 推导后传入（与页内全部示例同源，

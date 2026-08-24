@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BillingErrors } from '@tokenlens/billing';
+import { BillingErrors } from '@tillgate/billing';
 import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 

@@ -30,7 +30,7 @@ vi.mock('next/cache', () => ({
 }));
 
 import { revalidatePath } from 'next/cache';
-import { LOCALE_COOKIE } from '@tokenlens/api-client/next';
+import { LOCALE_COOKIE } from '@tillgate/api-client/next';
 
 import { registerVerifyAction, verifyLoginCodeAction } from '../src/server/actions/auth';
 import { completeOAuthAction } from '../src/server/actions/oauth';

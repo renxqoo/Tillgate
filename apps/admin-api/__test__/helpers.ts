@@ -3,9 +3,9 @@
  * 断言口径 = v1 wire 形状与错误码（MIGRATION §1 行为规格来源）。
  */
 import type { AdminAppDeps } from '../src/app';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import type { Observability } from '@tokenlens/observability';
-import type { SessionPayload } from '@tokenlens/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
+import type { Observability } from '@tillgate/observability';
+import type { SessionPayload } from '@tillgate/identity';
 
 export const VALID_TOKEN = 'admin-session-token';
 export const ADMIN_ID = 7;
@@ -14,7 +14,7 @@ export const sessionPayload: SessionPayload = {
   realm: 'admin',
   sub: String(ADMIN_ID),
   jti: 'jti-1',
-  iss: 'tokenlens:admin',
+  iss: 'tillgate:admin',
   exp: Math.floor(Date.now() / 1000) + 3600,
   iat: Math.floor(Date.now() / 1000),
 };
@@ -368,7 +368,7 @@ export function mfaStub(over: { confirmed?: boolean; verifyError?: Error } = {})
     status: async () => ({ enrolled: over.confirmed === true, confirmed: over.confirmed === true }),
     enrollTotp: async () => ({
       secret: 'JBSWY3DPEHPK3PXP',
-      otpauthUrl: 'otpauth://totp/TokenLens:test%40example.dev?secret=JBSWY3DPEHPK3PXP',
+      otpauthUrl: 'otpauth://totp/Tillgate:test%40example.dev?secret=JBSWY3DPEHPK3PXP',
     }),
     confirmTotp: async () => ({ recoveryCodes: ['RVWXYZ2345'] }),
     verify:

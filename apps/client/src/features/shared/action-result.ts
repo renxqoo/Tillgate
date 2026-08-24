@@ -1,4 +1,4 @@
-import { toast } from '@tokenlens/ui';
+import { toast } from '@tillgate/ui';
 
 /**
  * Server Action 结果 → toast 的统一封装（纯函数）。

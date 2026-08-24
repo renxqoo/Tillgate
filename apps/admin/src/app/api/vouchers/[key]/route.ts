@@ -1,4 +1,4 @@
-import { getAdminApiBase, getAdminSessionToken } from '@tokenlens/api-client/next';
+import { getAdminApiBase, getAdminSessionToken } from '@tillgate/api-client/next';
 
 /**
  * 凭证截图代理：浏览器同源请求（3002）→ 服务端带 Bearer 会话转发到 admin-api。

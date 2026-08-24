@@ -1,7 +1,7 @@
-# @tokenlens/trace-receiver —— OTLP 接收部署单元（内网）
+# @tillgate/trace-receiver —— OTLP 接收部署单元（内网）
 
 OTLP/HTTP JSON 接收 → 批量写 PG 日分区（trace_spans）；**过载即丢，绝不反压业务**。
-薄 app：decode/ingest/store/OTel 全部来自 `@tokenlens/observability`，本 app 只持有 config、assembly、HTTP 面与进程生命周期（v2 仓第一个 app，装配范式先例）。
+薄 app：decode/ingest/store/OTel 全部来自 `@tillgate/observability`，本 app 只持有 config、assembly、HTTP 面与进程生命周期（v2 仓第一个 app，装配范式先例）。
 
 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) · 能力基线 [observability DESIGN](../../packages/observability/DESIGN.md) · 错误目录 [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)
 
@@ -30,7 +30,7 @@ index.ts       # 进程入口
 
 ## 装配与依赖
 
-- `@tokenlens/observability`（decode/batcher/pg trace store + initOtel）、`@tokenlens/observability/composition`、`@tokenlens/runtime`（createLogger/createShutdown/secretSchema）、`@tokenlens/db`、`@tokenlens/http`（`timingSafeTokenEqual`）、`@tokenlens/errors`
+- `@tillgate/observability`（decode/batcher/pg trace store + initOtel）、`@tillgate/observability/composition`、`@tillgate/runtime`（createLogger/createShutdown/secretSchema）、`@tillgate/db`、`@tillgate/http`（`timingSafeTokenEqual`）、`@tillgate/errors`
 - 发送侧对位：gateway/client-api/admin-api/worker 的 OTLP 推送以 `TRACE_RECEIVER_TOKEN` 同键鉴权
 
 ## 本地运行与测试

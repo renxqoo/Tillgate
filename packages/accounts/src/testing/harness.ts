@@ -2,7 +2,7 @@
  * 包内测试 harness:内存替身 + 快照回滚 fake db + 绑定用例表。
  * 仅 __test__ 消费;不进入公共 exports。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
 import type { AccountsPolicy } from '../application/context.js';
 import { createAccountUseCases, type AccountUseCases } from '../application/create-use-cases.js';
 import type { UseCaseContext } from '../application/context.js';

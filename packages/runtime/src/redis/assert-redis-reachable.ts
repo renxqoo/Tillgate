@@ -6,7 +6,7 @@
  * 因此用「重试直至截止」而非单发 ping；超时报错带脱敏 URL 便于直接排查。
  */
 import { Redis } from 'ioredis';
-import { InfrastructureError } from '@tokenlens/errors';
+import { InfrastructureError } from '@tillgate/errors';
 import { describeError, sanitizeUrl } from './redis-diagnostics';
 
 export async function assertRedisReachable(

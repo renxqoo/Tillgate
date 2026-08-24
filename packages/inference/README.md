@@ -1,11 +1,11 @@
-# @tokenlens/inference
+# @tillgate/inference
 
-> 推理用例:候选循环、路由调度、计费衔接与故障转移;渠道熔断/死凭据健康状态(AiEvent 订阅者,§3.6;单向依赖 @tokenlens/ai)。
+> 推理用例:候选循环、路由调度、计费衔接与故障转移;渠道熔断/死凭据健康状态(AiEvent 订阅者,§3.6;单向依赖 @tillgate/ai)。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) · 迁移核销 [MIGRATION.md](./MIGRATION.md) ·
 > 相关裁决:[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)(ai 独立库)、[ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)(装配注入形态)
 
 一句话:网关推理编排——预检 → `billing.authorize` → 候选循环(换渠道故障转移是本包
-职责;单渠道内重试在 `ai`);同时是 `@tokenlens/ai` 的**唯一运行时消费方**(§3.6:
+职责;单渠道内重试在 `ai`);同时是 `@tillgate/ai` 的**唯一运行时消费方**(§3.6:
 apps 运行时代码不直接 import ai)。
 
 ## 核心导出面
@@ -28,7 +28,7 @@ apps 运行时代码不直接 import ai)。
   `createPostgresGenerationTaskStore`;另有 `createGenerationPollUseCase`(worker
   生成任务轮询自愈)。
 - 入站协议翻译转出口:completions / responses / claude / gemini 线格式 ↔ 规范形的
-  纯函数自 `@tokenlens/ai` 转发——app HTTP 面单一引用面。
+  纯函数自 `@tillgate/ai` 转发——app HTTP 面单一引用面。
 - `InferenceErrors` 错误目录;`inferenceDefaultsSchema`(重试/熔断/死凭据缺省可覆写)。
 
 ## 目录结构

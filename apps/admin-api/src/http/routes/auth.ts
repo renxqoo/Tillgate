@@ -12,16 +12,16 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import { isBusinessError } from '@tokenlens/errors';
-import { sha256Hex } from '@tokenlens/billing';
+import { isBusinessError } from '@tillgate/errors';
+import { sha256Hex } from '@tillgate/billing';
 import {
   jsonBody,
   socketAddressFromContext,
   trustedClientIp,
   parseAcceptLanguage,
-} from '@tokenlens/http';
-import type { Identity } from '@tokenlens/identity';
-import type { ControlPlane } from '@tokenlens/control-plane';
+} from '@tillgate/http';
+import type { Identity } from '@tillgate/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';

@@ -2,7 +2,7 @@
 
 import { Controller, type Control, type FieldPath, type FieldValues } from 'react-hook-form';
 
-import { FieldError, FieldLabel, FormItem, Input } from '@tokenlens/ui';
+import { FieldError, FieldLabel, FormItem, Input } from '@tillgate/ui';
 
 export interface NumberFieldProps<T extends FieldValues> {
   control: Control<T>;

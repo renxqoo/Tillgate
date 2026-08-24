@@ -3,7 +3,7 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 
-import { ConfirmDialog, toast } from '@tokenlens/ui';
+import { ConfirmDialog, toast } from '@tillgate/ui';
 
 import { actionResult } from './action-result';
 

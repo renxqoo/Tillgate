@@ -16,7 +16,7 @@ describe('sessions.sign / verify(载荷契约与双 realm 隔离)', () => {
     expect(payload.realm).toBe('user');
     expect(payload.sub).toBe('42');
     expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
-    expect(payload.iss).toBe('tokenlens-console');
+    expect(payload.iss).toBe('tillgate-console');
     expect(payload.exp - payload.iat).toBe(86_400);
     expect(payload.iatMs).toBe(h.ctx.clock.now().getTime());
   });
@@ -62,7 +62,7 @@ describe('sessions.sign / verify(载荷契约与双 realm 隔离)', () => {
     const { SignJWT } = await import('jose');
     const forged = await new SignJWT({ realm: 'user' })
       .setProtectedHeader({ alg: 'HS256' })
-      .setIssuer('tokenlens-console')
+      .setIssuer('tillgate-console')
       .setSubject('1')
       .setIssuedAt()
       .setExpirationTime('1h')

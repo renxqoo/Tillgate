@@ -1,6 +1,6 @@
 'use client';
 
-import type { PermissionNode, RoleRow } from '@tokenlens/api-client';
+import type { PermissionNode, RoleRow } from '@tillgate/api-client';
 import {
   Badge,
   Button,
@@ -15,7 +15,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   RowActions,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState } from 'react';
 import { Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

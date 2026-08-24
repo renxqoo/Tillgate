@@ -3,7 +3,7 @@
  * 真相在 fx_rates 追加表与审计；system_configs 只是缓存视图。
  * 写路径唯一入口 = 本单元五个用例（state/refresh/setOverride/clearOverride/setBuffer）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { FxStore } from '../../ports/fx-store';
 import {

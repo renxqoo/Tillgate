@@ -11,7 +11,7 @@ import {
   ListToolbar,
   ListToolbarGroup,
   PageHeader,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { listHref, type SearchParamsInput } from '@/server/list-query';
 

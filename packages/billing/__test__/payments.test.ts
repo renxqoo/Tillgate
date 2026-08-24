@@ -3,7 +3,7 @@
  * redeem 服务测试主干；协议规则直测自 domain/payment）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createHmac } from 'node:crypto';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createPaymentsApi } from '../src/application/payments/payments.js';

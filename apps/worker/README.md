@@ -1,4 +1,4 @@
-# @tokenlens/worker —— 后台任务应用
+# @tillgate/worker —— 后台任务应用
 
 七类后台 job 的调度与进程生命周期壳（结算/恢复/生成轮询/佣金/告警/对账/分区）；
 业务全部来自能力包 facade，本 app 无业务 HTTP。Redis 全退出（v1 BullMQ 唤醒 → PG `LISTEN settle-wake`）。
@@ -31,7 +31,7 @@ health.ts / scheduler.ts / shutdown.ts / index.ts
 
 ## 装配与依赖
 
-- facade：`@tokenlens/billing`（`/settlement` 窄子入口 + `/composition`、signal 四事件桥、佣金日结与对账差异用例）、`@tokenlens/inference`（`createGenerationPollUseCase` + 任务 store + 内存健康存储）、`@tokenlens/notifications`（`dispatchOnce` / `enqueue` / `composition.outboxWithinTx` 同事务入箱桥）、`@tokenlens/observability`（`partitions.*` + initOtel）、`@tokenlens/accounts`（佣金词表）、`@tokenlens/control-plane/composition`（渠道凭据源）、`@tokenlens/ai`（`createAi`/`assertSafeUrl`，ADR-0007）、`@tokenlens/runtime`、`@tokenlens/db`
+- facade：`@tillgate/billing`（`/settlement` 窄子入口 + `/composition`、signal 四事件桥、佣金日结与对账差异用例）、`@tillgate/inference`（`createGenerationPollUseCase` + 任务 store + 内存健康存储）、`@tillgate/notifications`（`dispatchOnce` / `enqueue` / `composition.outboxWithinTx` 同事务入箱桥）、`@tillgate/observability`（`partitions.*` + initOtel）、`@tillgate/accounts`（佣金词表）、`@tillgate/control-plane/composition`（渠道凭据源）、`@tillgate/ai`（`createAi`/`assertSafeUrl`，ADR-0007）、`@tillgate/runtime`、`@tillgate/db`
 - apps 互不依赖：与 gateway 共享的 billing signal 词表真相是两包的类型本身（蛇形 ↔ 点点映射在各自 adapters）
 
 ## 本地运行与测试

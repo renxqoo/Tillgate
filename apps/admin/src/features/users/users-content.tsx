@@ -26,7 +26,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 
@@ -48,7 +48,7 @@ import { useTranslations } from 'next-intl';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 
 import { AdjustDialog, FreezeDialog, GiftDialog, PasswordDialog } from './user-dialogs';
-import type { RateCardOption, AdminUserRow } from '@tokenlens/api-client';
+import type { RateCardOption, AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 export function UsersContent({

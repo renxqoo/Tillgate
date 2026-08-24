@@ -31,7 +31,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -50,7 +50,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import type { AdminRateCardRow } from '@tokenlens/api-client';
+import type { AdminRateCardRow } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 

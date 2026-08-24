@@ -4,7 +4,7 @@
  * 用例本体（billing/inference/notifications 包内）不在此重复。
  */
 import { describe, expect, it, vi } from 'vitest';
-import type { ReconcileReport, SettlementApi, SettlementClaim } from '@tokenlens/billing';
+import type { ReconcileReport, SettlementApi, SettlementClaim } from '@tillgate/billing';
 import { createNotifyJob } from '../src/jobs/notify';
 import { createPartitionJob } from '../src/jobs/partition';
 import { createPollJob } from '../src/jobs/poll';

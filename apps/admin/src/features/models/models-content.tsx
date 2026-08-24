@@ -34,7 +34,7 @@ import {
   TooltipContent,
   TooltipTrigger,
   cn,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import { useEffect, useState, useTransition, type ReactElement } from 'react';
 
@@ -71,7 +71,7 @@ function fmtContext(tokens: number | null): string {
   return String(tokens);
 }
 
-import type { ChannelOption, AdminModelRow } from '@tokenlens/api-client';
+import type { ChannelOption, AdminModelRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { ConfirmAction } from '@/components/confirm-action';
 

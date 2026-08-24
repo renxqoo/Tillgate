@@ -34,7 +34,7 @@ createControlPlane(env: ControlPlaneEnv): ControlPlane
 
 | 项                                           | 类型                                               | 来源                                                                                 |
 | -------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `db`                                         | `Db`（@tokenlens/db）                              | app assembly                                                                         |
+| `db`                                         | `Db`（@tillgate/db）                              | app assembly                                                                         |
 | `txRetryPolicy`                              | `TxRetryPolicy`                                    | app config（v1 等价值 = 5 / 15ms / 20ms）                                            |
 | `cipher`                                     | `SecretCipher`                                     | `runtime.createCipher(ENCRYPTION_KEY)`（结构兼容）                                   |
 | `capabilities`                               | `ProviderCapabilities`                             | assembly 从 `ai` 取 `SUPPORTED_PROTOCOLS` + vendor 名录注入                          |
@@ -144,7 +144,7 @@ store 写方法首参 `tx: DbTx`（事务由 application 持有——§1 总纲�
 ## 5. 依赖白名单（§5.1 执行）
 
 ```
-control-plane → @tokenlens/errors, @tokenlens/db（事务句柄/schema,仅 ports/adapters/application 事务体）
+control-plane → @tillgate/errors, @tillgate/db（事务句柄/schema,仅 ports/adapters/application 事务体）
 domain 子树 → 仅 errors + decimal.js（纯计算）
 application → 本包 domain/ports（+ db 的 runTx/DbTx 事务原语）
 adapters → db + node:crypto（voucher 键）;不依赖 runtime/http/ai

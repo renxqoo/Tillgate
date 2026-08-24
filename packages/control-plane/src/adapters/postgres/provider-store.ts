@@ -5,8 +5,8 @@
  * 历史渠道 FK 引用不受影响），已删除行对管理面读/改不可见。
  */
 import { and, asc, desc, eq, ilike, isNotNull, isNull, or, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { providers } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { providers } from '@tillgate/db';
 import type { ProviderPatchInput } from '../../domain/provider/provider';
 import type { ListResult } from '../../domain/list';
 import type {

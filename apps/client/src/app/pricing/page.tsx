@@ -2,7 +2,7 @@ import { SearchIcon, TagIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 
-import { Input } from '@tokenlens/ui';
+import { Input } from '@tillgate/ui';
 
 import { Pager } from '@/features/shared/pager';
 import { fetchPublicPricing } from '@/server/public-pricing';

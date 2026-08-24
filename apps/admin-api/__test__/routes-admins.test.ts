@@ -5,8 +5,8 @@
  * 审计旁路形状由 e2e/admin/rbac 真装配断言（fakeDeps 的 postAudit 缺省不可覆写）。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { identityErrors } from '@tokenlens/identity';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+import { identityErrors } from '@tillgate/identity';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { ADMIN_ID, authHeader, fakeDeps } from './helpers';
 
@@ -14,7 +14,7 @@ const json = { ...authHeader(), 'content-type': 'application/json' };
 
 const record = {
   id: 1_000_000_001,
-  email: 'new@tokenlens.dev',
+  email: 'new@tillgate.dev',
   displayName: 'New',
   status: 0,
   roleId: 2,
@@ -46,7 +46,7 @@ function wire(overrides?: {
 }
 
 const createBody = {
-  email: 'New@TokenLens.dev ',
+  email: 'New@Tillgate.dev ',
   displayName: 'New',
   password: 'initial-pass-123',
   roleId: 2,
@@ -128,13 +128,13 @@ describe('POST /v1/admins（双动词编排）', () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ id: record.id, roleId: 2 });
     expect(spies.create).toHaveBeenCalledWith({
-      email: 'new@tokenlens.dev',
+      email: 'new@tillgate.dev',
       displayName: 'New',
       roleId: 2,
     });
     expect(spies.register).toHaveBeenCalledWith({
       userId: record.id,
-      identifier: { kind: 'email', value: 'new@tokenlens.dev' },
+      identifier: { kind: 'email', value: 'new@tillgate.dev' },
       password: 'initial-pass-123',
     });
     expect(spies.remove).not.toHaveBeenCalled();

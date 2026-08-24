@@ -3,7 +3,7 @@
  * 全部动作留审计（fx.override / fx.override_clear / fx.buffer——control-plane）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { fxCatalogContracts } from '../contracts/rates';

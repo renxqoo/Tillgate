@@ -4,8 +4,8 @@
  * 复核审计在 billing 用例内同事务（reviewAuditTx 桥）——路由层零审计。
  */
 import { Hono } from 'hono';
-import type { SettlementApi } from '@tokenlens/billing';
-import { operationId } from '@tokenlens/http';
+import type { SettlementApi } from '@tillgate/billing';
+import { operationId } from '@tillgate/http';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { requestIdParam, reviewContracts } from '../contracts/billing-admin';
 import { toDeadCaseWireRow } from '../presenters/billing';

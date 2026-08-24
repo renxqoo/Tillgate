@@ -4,7 +4,7 @@
  * 测试替身注入)显式可选。返回面不泄漏 Db/DbTx/drizzle 行类型/供应商 SDK。
  * SSRF/cipher 经注入 port(UrlGuard/SecretCipher)——本包不编译依赖 ai/runtime(DESIGN §5)。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { postgresNotifyStore } from './adapters/postgres/notify-store';
 import { createWebhookDeliverer } from './adapters/webhook/http-deliverer';
 import type { NotifyStore } from './ports/notify-store';

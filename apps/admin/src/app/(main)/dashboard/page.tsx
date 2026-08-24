@@ -6,13 +6,13 @@ import {
   CardTitle,
   KpiCard,
   PageHeader,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { adminApi } from '@/server/admin-api';
 import { ActivityIcon, BarChart3Icon, CpuIcon, DollarSignIcon, ServerIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { StatsOverview, StatsTrendRow } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { StatsOverview, StatsTrendRow } from '@tillgate/api-client';
 import { fmtBalance, fmtInt } from '@/lib/formatters';
 
 import { CostChart, RequestsChart } from '@/features/dashboard/admin-charts';

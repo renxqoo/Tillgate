@@ -6,7 +6,7 @@
  * 切换器主动选择;与 src/config/i18n-request.ts 同源,BFF 出口 accept-language
  * 注入同一策略,保证 API 错误 message 与界面语言一致。
  */
-import { resolveLocale, type LocaleResolution } from '@tokenlens/api-client/next';
+import { resolveLocale, type LocaleResolution } from '@tillgate/api-client/next';
 
 export const ADMIN_LOCALE_RESOLUTION: LocaleResolution = {
   honorAcceptLanguage: false,

@@ -9,7 +9,7 @@
  * D8 收敛：旧仓 ledger-core 引擎与 service 平行实现合一——严格指纹 + 16KB 回执上限
  * 吸收自 ledger-core（回执超限即缺陷）；D7 的 operationId 词表归本包 domain。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { BillingErrors } from '../domain/errors.js';
 import { assertCommandFingerprint, commandFingerprint } from '../domain/fingerprint.js';
 import type { BillingStore } from '../ports/billing-store.js';

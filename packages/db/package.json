@@ -1,8 +1,8 @@
 {
-  "name": "@tokenlens/db",
+  "name": "@tillgate/db",
   "version": "0.1.0",
   "private": true,
-  "description": "PostgreSQL 连接、事务、schema 与迁移——物理 schema 登记点,不放业务用例(内部依赖仅 @tokenlens/errors,§5.1 白名单)",
+  "description": "PostgreSQL 连接、事务、schema 与迁移——物理 schema 登记点,不放业务用例(内部依赖仅 @tillgate/errors,§5.1 白名单)",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -30,7 +30,7 @@
     "db:studio": "bun x drizzle-kit studio"
   },
   "dependencies": {
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.22.0"
   },

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { closeDb, createDb, type Db } from '@tokenlens/db';
+import { closeDb, createDb, type Db } from '@tillgate/db';
 import { createPostgresGenerationTaskStore } from '../src/adapters/generation-pg.js';
 import type { GenerationTaskRecord } from '../src/ports/generation.js';
 
@@ -21,7 +21,7 @@ describe.skipIf(url == null)('生成任务 postgres 存储（真实 PG）', () =
   let seed: { requestId: string; mappingId: number; channelId: number; apiKeyId: number };
 
   beforeAll(async () => {
-    schema = `tokenlens_inf_gen_${process.pid.toString(36)}_${Date.now().toString(36)}`;
+    schema = `tillgate_inf_gen_${process.pid.toString(36)}_${Date.now().toString(36)}`;
     const [baseUrl] = url!.split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,

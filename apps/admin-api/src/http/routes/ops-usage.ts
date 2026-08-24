@@ -5,7 +5,7 @@
  * hours 收口逐字随迁 v1（Math.min/max + NaN→24,不走 zod 400——容错语义）。
  */
 import { Hono } from 'hono';
-import type { Observability } from '@tokenlens/observability';
+import type { Observability } from '@tillgate/observability';
 import type { SessionEnv } from '../middleware/session';
 import { listEnvelope, parseListQuery } from '../contracts/common';
 import { USAGE_SORTS, statsContracts, usageContracts } from '../contracts/observability';

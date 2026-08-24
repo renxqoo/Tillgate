@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Ai, AiEvent, ChatResult } from '@tokenlens/ai';
+import type { Ai, AiEvent, ChatResult } from '@tillgate/ai';
 import { createUpstreamAi } from '../src/adapters/upstream-ai';
 import type { UpstreamStreamEvent } from '../src/ports/upstream';
 import { channel, upstreamError } from './harness';

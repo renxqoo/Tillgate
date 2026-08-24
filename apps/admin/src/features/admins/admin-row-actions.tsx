@@ -8,7 +8,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   RowActions,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState } from 'react';
 import { Loader2Icon, PencilIcon, ShieldBanIcon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

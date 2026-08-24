@@ -1,5 +1,5 @@
 /**
- * 测试装置子入口（@tokenlens/runtime/testing）：只许 *.test.ts / 测试装配引用，
+ * 测试装置子入口（@tillgate/runtime/testing）：只许 *.test.ts / 测试装配引用，
  * 不进根入口——vitest 语义不得混入生产 bundle（IMPLEMENTATION.md §3.1）。
  */
 import { Redis } from 'ioredis';

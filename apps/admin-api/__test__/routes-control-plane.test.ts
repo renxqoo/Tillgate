@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { AdminErrors } from '../src/http/error-face';
 import { authHeader, fakeDeps } from './helpers';

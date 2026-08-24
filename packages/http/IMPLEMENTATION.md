@@ -1,10 +1,10 @@
-# @tokenlens/http 迁移实现文档
+# @tillgate/http 迁移实现文档
 
 > 状态：已完成（H1-H3 全部提交，四门 + 覆盖率全绿，行为核销清单逐项打勾）
 > 基线：旧仓 `ai-getway/packages/http`（16 源文件 ~1.1k 行 + 11 测试 ~1.0k 行）+ 三个 app 的
 > `middleware/{request-id,security,protocol}.ts` 漂移拷贝（requestId ×3、安全件 ×3）
 > 目标：纯 HTTP/Hono 基础工具包（DESIGN.md §1；重构方案 §3.1/§5.1、ADR-0001/0002）
-> 依赖：`@tokenlens/errors`（workspace）+ hono + @hono/node-server + zod——**v2 首个跨包依赖**
+> 依赖：`@tillgate/errors`（workspace）+ hono + @hono/node-server + zod——**v2 首个跨包依赖**
 
 ---
 
@@ -74,7 +74,7 @@
 | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `new HttpError(code, message?, details?, headers?, suggestion?)`                                                 | `HttpErrors.business(key, context?)` / 各机制件自有抛出口                         | ADR-0001 D1：身份/分类/文案单点来自目录定义；message 不可调用点覆盖（本地化前提） |
 | `errorHandler(logger?)`                                                                                          | `errorHandler({ catalog?, overrides?, sqlState?, logger? })`                      | C7；PG 探测注入（B1）、face 装配（ADR-0001）                                      |
-| `errorResponseBody(err, locale?)`                                                                                | `renderError(err, { locale?, catalog?, overrides? })`                             | 渲染输入从 HttpError 变 TokenlensError/unknown；status 由 category 派生           |
+| `errorResponseBody(err, locale?)`                                                                                | `renderError(err, { locale?, catalog?, overrides? })`                             | 渲染输入从 HttpError 变 TillgateError/unknown；status 由 category 派生           |
 | `ERROR_REGISTRY` / `errorSpec` / `KnownErrorCode`                                                                | `HttpErrors`（http 目录）+ face `composeErrorCatalogs`                            | B6/ADR-0001 D1                                                                    |
 | `localizeMessage` / `localizedSpecMessage`                                                                       | render 内按 `def.zh/def.message` 取用；`parseAcceptLanguage`/`resolveLocale` 原样 | 大小写双轨废除（ADR-0001 D2），本地化收进渲染单点                                 |
 | `FlowError(kind, spec)`                                                                                          | `BusinessError(code, category, context)`                                          | kind 即身份码/context（ADR-0001）                                                 |
@@ -106,7 +106,7 @@ idempotency/ security/` 七目录 + 单入口 `index.ts`（C9）。
 4. **安全件统一形态取超集**：securityHeaders 4 头（B3 收紧）；corsPreflight 参数化（B4）；
    bodyParserLimit 必填（B2）。gateway 的 10MiB/方法集差异回填发生在 app 迁移单元（P5），
    本包不保留 gateway 特例（单一形态，铁律 8）。
-5. **`@tokenlens/errors` 为唯一内部依赖**：http 是其首个消费者（ADR-0001 §4.2）；
+5. **`@tillgate/errors` 为唯一内部依赖**：http 是其首个消费者（ADR-0001 §4.2）；
    workspace `development` 条件消费（exports 三条件，与全仓一致）。
 6. **测试布局**：铁律 14——包根 `__test__/` 平铺，vitest include `__test__/*.test.ts`。
 
@@ -118,7 +118,7 @@ idempotency/ security/` 七目录 + 单入口 `index.ts`（C9）。
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | `catalog.test.ts`     | 目录码封闭性（装配校验/冻结/get/has/business 构造/category 分布）+ pg 六码身份 → category 断言 + payload_too_large 出站 413 修正                                                                                                                                                              | 新写（v1 注册表守卫 C6 的等价物）                                                     |
 | `render.test.ts`      | business 三级 status 链（override > code 修正 > category 默认）；zh/en 文案取用；context 出站；infrastructure 503+通用文案+原码；defect/unknown 500+errors.unhandled+细节不外泄；retryAfterMs 透传                                                                                            | 移植 `errors.test.ts`/`error-locale.test.ts` 可迁移断言（重写面）                     |
-| `handler.test.ts`     | TokenlensError→对应状态+信封；坏 JSON→400 `http.invalid_json`；合法 JSON 字段不符→400 validation_failed；Hono 4xx HTTPException→保留状态+invalid_request；413→payload_too_large；PG 六码（注入假探测，cause 链包裹）→4xx；ENOENT 等内部码不进翻译；未知→500+日志；retryAfterMs→Retry-After 头 | 移植 `errors.test.ts`+`bad-json.test.ts`+`pg-error-translation.test.ts`（探测改注入） |
+| `handler.test.ts`     | TillgateError→对应状态+信封；坏 JSON→400 `http.invalid_json`；合法 JSON 字段不符→400 validation_failed；Hono 4xx HTTPException→保留状态+invalid_request；413→payload_too_large；PG 六码（注入假探测，cause 链包裹）→4xx；ENOENT 等内部码不进翻译；未知→500+日志；retryAfterMs→Retry-After 头 | 移植 `errors.test.ts`+`bad-json.test.ts`+`pg-error-translation.test.ts`（探测改注入） |
 | `locale.test.ts`      | parseAcceptLanguage 七例表；resolveLocale cookie 优先；isLocale/htmlLang                                                                                                                                                                                                                      | 移植 `error-locale.test.ts` 前半                                                      |
 | `validation.test.ts`  | jsonBody 成功/失败（context 平铺 path→reason、body. 前缀）；query 折叠 string[]；intParam 正常/NaN/负数/0                                                                                                                                                                                     | 移植 `errors.test.ts` 校验两例；intParam 新写（v1 无测试）                            |
 | `pagination.test.ts`  | schema 默认/强转/clamp/catch 五例；parsePagination/limitOffset/paginatedResult；sortQuerySchema/searchQuerySchema/listQuerySchema 组合与 extend；escapeLike                                                                                                                                   | 移植 `pagination.test.ts` 全部 + `list-query.test.ts` 纯半边                          |
@@ -133,7 +133,7 @@ idempotency/ security/` 七目录 + 单入口 `index.ts`（C9）。
 
 ## 5. 实施顺序（每阶段独立提交 + 四门）
 
-1. **H1 壳 + errors/**：package.json（workspace 依赖 @tokenlens/errors）/ tsconfig / vitest /
+1. **H1 壳 + errors/**：package.json（workspace 依赖 @tillgate/errors）/ tsconfig / vitest /
    `errors/{catalog,render,handler,sqlstate,locale}` + `index.ts`（先只出 errors 面）+ 测试
    （catalog/render/handler/locale）
 2. **H2 机制件**：`validation/` + `pagination/` + `idempotency/` + index 扩面 + 测试

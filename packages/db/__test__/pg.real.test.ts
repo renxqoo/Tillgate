@@ -3,7 +3,7 @@
  * advisory lock、池生命周期。资金级边界行为必须真实 PG 语义(总纲 §5.6)。
  *
  * 运行约定:DB_TEST_URL(优先)或 DATABASE_URL 缺失时整组 skip(与 ai 包 *.real.test.ts 同约定(铁律 14));
- * 只在独立 scratch schema(tokenlens_db_test)内造对象,结束即删,不触碰库内既有对象。
+ * 只在独立 scratch schema(tillgate_db_test)内造对象,结束即删,不触碰库内既有对象。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -19,7 +19,7 @@ import {
 } from '../src/index.js';
 
 const url = process.env.DB_TEST_URL ?? process.env.DATABASE_URL;
-const SCHEMA = sql.raw('tokenlens_db_test');
+const SCHEMA = sql.raw('tillgate_db_test');
 /** 测试池参数(显式注入,无默认——与包契约一致) */
 const POOL = {
   poolMax: 5,
@@ -132,8 +132,8 @@ const POOL = {
     await runTx(
       db,
       async (tx) => {
-        await advisoryLock(tx, 'tokenlens-db-test:reentrant');
-        await advisoryLock(tx, 'tokenlens-db-test:reentrant'); // 不阻塞不死锁
+        await advisoryLock(tx, 'tillgate-db-test:reentrant');
+        await advisoryLock(tx, 'tillgate-db-test:reentrant'); // 不阻塞不死锁
       },
       { maxAttempts: 2, baseDelayMs: 5, maxJitterMs: 5 },
     );

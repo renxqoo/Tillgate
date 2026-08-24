@@ -1,8 +1,8 @@
 import { CoinsIcon, PercentIcon, UsersIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { CopyButton } from '@tokenlens/ui';
-import type { ReferralConfig, ReferralOverview } from '@tokenlens/api-client';
+import { CopyButton } from '@tillgate/ui';
+import type { ReferralConfig, ReferralOverview } from '@tillgate/api-client';
 
 import { formatDate, formatMoney } from '@/features/shared/format';
 import { KpiCard } from '@/features/dashboard/kpi-card';

@@ -6,7 +6,7 @@
  * U1b：钱包动词的幂等/归属/账户冻结拒绝。
  * U2a：计价域配置事故/毒收据；计费域状态机/限额/订阅闸。U3：结算。U4：订阅。U5：支付与兑换。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const BillingErrors = defineErrorCatalog('billing', {
   invalid_amount: {

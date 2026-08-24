@@ -7,7 +7,7 @@
  */
 import { useTranslations } from 'next-intl';
 
-import { FieldGroup, FieldLabel, FormItem, PasswordInput } from '@tokenlens/ui';
+import { FieldGroup, FieldLabel, FormItem, PasswordInput } from '@tillgate/ui';
 
 import { FormDialog } from '@/components/form-dialog';
 import { useActionResult } from '@/components/action-toast';

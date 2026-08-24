@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { secretSchema, strictBooleanSchema } from '@tokenlens/runtime';
-import type { OtelMode } from '@tokenlens/observability';
-import type { DbPoolConfig } from '@tokenlens/db';
+import { secretSchema, strictBooleanSchema } from '@tillgate/runtime';
+import type { OtelMode } from '@tillgate/observability';
+import type { DbPoolConfig } from '@tillgate/db';
 
 /**
  * admin-api 配置（管理控制面）。v1 loadConfig 平移，v2 差异（DESIGN §2.4）：
@@ -20,7 +20,7 @@ const WALLET_REF_TYPES = ['billing', 'topup', 'admin', 'gift', 'referral'] as co
 const WALLET_INTERNAL_ACCOUNTS = ['outside', 'platform_revenue'] as const;
 
 /** 管理面会话 realm：issuer 与用户面/网关物理隔离（token 跨面互斥的根） */
-export const ADMIN_SESSION_ISSUER = 'tokenlens:admin';
+export const ADMIN_SESSION_ISSUER = 'tillgate:admin';
 
 const nonNegativeDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,18})?$/);
 

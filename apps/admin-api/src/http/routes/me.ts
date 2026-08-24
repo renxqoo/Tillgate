@@ -4,10 +4,10 @@
  * 按本人授权过滤的 group+page 两级树（sidebar 数据源,前端完全后端驱动）。
  */
 import { Hono } from 'hono';
-import { jsonBody } from '@tokenlens/http';
-import type { ControlPlane, PermissionNode } from '@tokenlens/control-plane';
-import { ENFORCED_CODES, granted } from '@tokenlens/control-plane';
-import type { Identity } from '@tokenlens/identity';
+import { jsonBody } from '@tillgate/http';
+import type { ControlPlane, PermissionNode } from '@tillgate/control-plane';
+import { ENFORCED_CODES, granted } from '@tillgate/control-plane';
+import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { authContracts } from '../contracts/auth';

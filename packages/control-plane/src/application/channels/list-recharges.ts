@@ -1,7 +1,7 @@
 /**
  * 渠道资金流水列表：q 命中 单号/备注/渠道名；可按渠道与类型过滤。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { ChannelStore, RechargeRow, RechargeSortField } from '../../ports/channel-store';
 import type { ListQuery, ListResult } from '../../domain/list';
 

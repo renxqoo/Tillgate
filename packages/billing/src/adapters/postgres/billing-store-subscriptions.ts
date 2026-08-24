@@ -3,7 +3,7 @@
  * ledger_operations）——按聚合边界拆分（铁律 5）。
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { ledgerOperations, plans, userSubscriptions, type Db, type DbTx } from '@tokenlens/db';
+import { ledgerOperations, plans, userSubscriptions, type Db, type DbTx } from '@tillgate/db';
 import type { BillingStore } from '../../ports/billing-store.js';
 import type { WalletConn } from '../../ports/wallet-store.js';
 

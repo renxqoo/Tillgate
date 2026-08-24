@@ -3,7 +3,7 @@
  * 当前承载 billing_timezone（全系统统一计费时区——schedule 分时段策略的
  * 墙钟口径）；网关热路径读经自身 TTL 缓存直连本表，admin 面读写走本 port。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export interface SettingsStore {
   /** 计费时区读（未配置/形状异常 = null，消费方回落装配缺省） */

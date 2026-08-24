@@ -39,7 +39,7 @@ vi.mock('next/cache', () => ({
 }));
 
 import { revalidatePath } from 'next/cache';
-import { SESSION_COOKIE } from '@tokenlens/api-client/next';
+import { SESSION_COOKIE } from '@tillgate/api-client/next';
 
 import {
   loginAction,
@@ -59,7 +59,7 @@ import { createPaymentAction } from '../src/server/actions/billing';
 import { requireMe, userFromMe } from '../src/server/session';
 import { fetchPublicPricing } from '../src/server/public-pricing';
 import { fetchAuthCapabilities, fetchOAuthProviders } from '../src/server/discovery';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 
 type FetchCall = { url: string; init: RequestInit };
 

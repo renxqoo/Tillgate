@@ -2,7 +2,7 @@
  * 模型映射列表：基础行 + channelIds 回显（仅当前页映射一次批量查；未绑定 = []）。
  * view 缺省 = 在册（含上/下架，不含已删除）；view='deleted' = 回收站（仅已删除）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type {
   ModelStore,
   ModelRecord,

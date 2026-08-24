@@ -77,6 +77,6 @@
 - [x] 绑定编辑：method/path/permission 三字段部分更新;终态撞他绑 409 endpoint_bound;
   ACL 迁移下一请求生效（e2e §M:旧组合 fail-closed、新组合过 ACL）
 - [x] 绑定删除（解绑）既有功能不回归（e2e §L 既有断言全绿）
-- [x] 四门：typecheck/lint 34/34、build 20/20、test 33/33（@tokenlens/ui 在途重构
+- [x] 四门：typecheck/lint 34/34、build 20/20、test 33/33（@tillgate/ui 在途重构
   5 用例失败,归属并行开发,非本改动）;admin e2e 18/18（rbac-roles 6/6 含新 §M）;
   cp 199/199、admin-api 157/157、admin 131/131、api-client 91/91、db 41/41

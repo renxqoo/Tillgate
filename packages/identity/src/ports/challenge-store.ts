@@ -3,7 +3,7 @@
  * 同钟,B14);验码是单条 CAS UPDATE(计错 + 命中即消费,无读改写竞态)。
  * 实现见 adapters/postgres/challenges.ts。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { NormalizedIdentifier } from '../domain/identifier.js';
 
 export interface StoredChallengeTarget {

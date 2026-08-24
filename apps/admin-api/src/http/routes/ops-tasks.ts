@@ -4,7 +4,7 @@
  * request_id join,路由只组合）。词表/过滤在 inference 包与 contracts 层。
  */
 import { Hono } from 'hono';
-import type { GenerationTaskStore } from '@tokenlens/inference';
+import type { GenerationTaskStore } from '@tillgate/inference';
 import type { SessionEnv } from '../middleware/session';
 import { tasksContracts } from '../contracts/inference';
 import { toTaskWireRow } from '../presenters/ops';

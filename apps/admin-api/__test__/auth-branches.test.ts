@@ -6,7 +6,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
+import { errorHandler } from '@tillgate/http';
 import { sessionMiddleware, type SessionEnv } from '../src/http/middleware/session';
 import { createIdentityAuditSinkBridge } from '../src/adapters/identity-audit-bridge';
 import { authRoutes } from '../src/http/routes/auth';
@@ -166,7 +166,7 @@ describe('auth/me 未走分支', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'x' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'x' }),
     });
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ error: { code: 'admin.invalid_credentials_admin' } });
@@ -277,7 +277,7 @@ describe('auth/me 未走分支', () => {
       admins: {
         findByEmail: async () => ({
           id: ADMIN_ID,
-          email: 'ops@tokenlens.dev',
+          email: 'ops@tillgate.dev',
           displayName: null,
           status: 0,
           roleId: 1,
@@ -313,7 +313,7 @@ describe('auth/me 未走分支', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'x' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'x' }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ token: 'signed', adminId: ADMIN_ID });

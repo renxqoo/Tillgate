@@ -12,7 +12,7 @@ import {
   DialogTrigger,
   Input,
   Label,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useId, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';

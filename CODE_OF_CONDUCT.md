@@ -34,7 +34,7 @@ ban a contributor for repeated or egregious violations.
 
 Instances of abusive or harassing behavior can be reported to the project
 maintainers via
-[GitHub private vulnerability reporting](https://github.com/renxqoo/TokenLens-v2/security/advisories/new)
+[GitHub private vulnerability reporting](https://github.com/renxqoo/Tillgate/security/advisories/new)
 or by contacting a maintainer directly. All complaints will be reviewed and
 investigated promptly and fairly.
 

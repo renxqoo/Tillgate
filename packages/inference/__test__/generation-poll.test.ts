@@ -3,13 +3,13 @@
  * 信号顺序不变量/错误分类；内存任务存储 + 可编程上游/信号/状态替身）。
  */
 import { describe, expect, it } from 'vitest';
-import { UpstreamError } from '@tokenlens/ai';
+import { UpstreamError } from '@tillgate/ai';
 import { createGenerationPollUseCase } from '../src/application/generation-poll';
 import { createMemoryGenerationTaskStore } from '../src/adapters/task-memory';
 import type { GenerationTaskRecord, GenerationTaskStore } from '../src/ports/generation';
 import type { BillingSignal } from '../src/ports/billing';
 import type { ChannelCandidate } from '../src/domain/model/types';
-import type { GenerationTaskProbeResult, UpstreamError as UpstreamErrorType } from '@tokenlens/ai';
+import type { GenerationTaskProbeResult, UpstreamError as UpstreamErrorType } from '@tillgate/ai';
 import type { UpstreamTaskExecuteResult } from '../src/ports/upstream';
 import type { UsageReceipt } from '../src/domain/usage/receipt';
 

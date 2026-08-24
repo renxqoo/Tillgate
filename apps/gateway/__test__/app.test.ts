@@ -4,9 +4,9 @@
  * requestId 服务端生成回显 / 中间件顺序副作用。依赖全替身。
  */
 import { describe, expect, it } from 'vitest';
-import type { Inference } from '@tokenlens/inference';
+import type { Inference } from '@tillgate/inference';
 import { createGatewayApp } from '../src/app';
-import type { RequestLogStore } from '@tokenlens/observability';
+import type { RequestLogStore } from '@tillgate/observability';
 
 const inference = {
   chat: async () => ({ ok: true, status: 200, body: {} }),

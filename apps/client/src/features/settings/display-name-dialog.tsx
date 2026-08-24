@@ -19,7 +19,7 @@ import {
   FieldLabel,
   Input,
   toast,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { actionResult } from '@/features/shared/action-result';
 import { updateDisplayNameAction } from '@/server/actions/settings';

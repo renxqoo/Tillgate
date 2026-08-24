@@ -8,7 +8,7 @@ import {
   annotationsOf,
   BusinessError,
   InfrastructureError,
-  TokenlensError,
+  TillgateError,
   type ErrorContext,
 } from './nature';
 
@@ -80,8 +80,8 @@ export function handlingOf(record: ErrorRecord): ErrorHandling {
 }
 
 /** 根契约错误 → 记录（含 cause 链规范化） */
-export function recordOf(error: TokenlensError): ErrorRecord {
-  return fromTokenlens(error, 0);
+export function recordOf(error: TillgateError): ErrorRecord {
+  return fromTillgate(error, 0);
 }
 
 /** 任意未知值 → 记录（normalizeError 的实现基础；外来值一律按缺陷） */
@@ -89,7 +89,7 @@ export function recordOfUnknown(value: unknown): ErrorRecord {
   return fromUnknown(value, 0);
 }
 
-function fromTokenlens(error: TokenlensError, depth: number): ErrorRecord {
+function fromTillgate(error: TillgateError, depth: number): ErrorRecord {
   const base = {
     code: error.code,
     message: error.message,
@@ -110,14 +110,14 @@ function fromTokenlens(error: TokenlensError, depth: number): ErrorRecord {
  * 记录上下文 = 构造上下文为底 + 注记按时间序合并（后写胜出，ADR-0001 D9b）。
  * 无构造上下文且无注记时保持 undefined（记录干净）。
  */
-function mergedContextOf(error: TokenlensError): ErrorContext | undefined {
+function mergedContextOf(error: TillgateError): ErrorContext | undefined {
   const annotations = annotationsOf(error);
   if (error.context === undefined && annotations.length === 0) return undefined;
   return Object.assign({}, error.context, ...annotations) as ErrorContext;
 }
 
 function fromUnknown(value: unknown, depth: number): ErrorRecord {
-  if (value instanceof TokenlensError) return fromTokenlens(value, depth);
+  if (value instanceof TillgateError) return fromTillgate(value, depth);
   if (value instanceof Error) {
     let message = value.message;
     if (message === '') message = value.name === '' ? 'unknown error' : value.name;

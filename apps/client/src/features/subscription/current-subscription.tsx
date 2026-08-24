@@ -18,8 +18,8 @@ import {
   Input,
   Progress,
   toast,
-} from '@tokenlens/ui';
-import type { CurrentSubscription } from '@tokenlens/api-client';
+} from '@tillgate/ui';
+import type { CurrentSubscription } from '@tillgate/api-client';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { actionResult } from '@/features/shared/action-result';

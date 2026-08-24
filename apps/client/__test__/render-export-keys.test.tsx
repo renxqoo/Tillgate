@@ -15,14 +15,14 @@ vi.mock('@/server/actions/keys', () => ({
   exportKeysAction: vi.fn(),
 }));
 
-vi.mock('@tokenlens/ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tokenlens/ui')>();
+vi.mock('@tillgate/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tillgate/ui')>();
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
-import { toast } from '@tokenlens/ui';
+import { toast } from '@tillgate/ui';
 import { exportKeysAction } from '@/server/actions/keys';
-import type { KeyRow } from '@tokenlens/api-client';
+import type { KeyRow } from '@tillgate/api-client';
 import { ExportKeys } from '../src/features/keys/export-keys';
 
 function keyRow(id: number, over: Partial<KeyRow> = {}): KeyRow {

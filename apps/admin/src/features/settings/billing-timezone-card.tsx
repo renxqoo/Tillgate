@@ -15,7 +15,7 @@ import {
   NativeSelect,
   NativeSelectOption,
   NativeSelectOptGroup,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { useActionResult } from '@/components/action-toast';
 import { getBillingTimezoneAction, updateBillingTimezoneAction } from '@/server/settings-actions';

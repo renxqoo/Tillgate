@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, isNull, lte, or, sql } from 'drizzle-orm';
-import type { Db } from '@tokenlens/db';
-import { channels, modelMappings, usageLogs, users } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import { channels, modelMappings, usageLogs, users } from '@tillgate/db';
 import type {
   ChannelTtftRow,
   UsageAdminListInput,

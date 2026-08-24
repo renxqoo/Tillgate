@@ -1,7 +1,7 @@
 /**
  * 架构边界门禁（AGENT.md §0.11 / 总纲 §5.5；参照 packages/accounts 的写法）：
  * 目录与出口约定不靠记忆，靠本测试执行。规则来源 DESIGN §1/§2.1/§4.5：
- * ① 分层白名单——domain 零基础设施（drizzle/pg/@tokenlens/db 禁入）；
+ * ① 分层白名单——domain 零基础设施（drizzle/pg/@tillgate/db 禁入）；
  *    application 零 SQL（drizzle 只允许出现在 adapters/postgres/**）；
  * ② 出口面封闭——index.ts / billing.ts / wallet.ts / settlement.ts 不泄漏
  *    Db/DbTx/drizzle 符号（文本级 + 导出符号扫描）；
@@ -69,27 +69,27 @@ function exportedNames(code: string): string[] {
 }
 
 describe('① 分层白名单（DESIGN §1 依赖方向的可执行形态）', () => {
-  it('domain：零 drizzle/pg/@tokenlens/db（仅 errors/decimal.js/node: 内建/域内相对引用）', () => {
+  it('domain：零 drizzle/pg/@tillgate/db（仅 errors/decimal.js/node: 内建/域内相对引用）', () => {
     for (const f of files.filter((x) => x.path.startsWith('domain/'))) {
       for (const spec of f.imports) {
         const banned =
           spec === 'pg' ||
           spec === 'drizzle-orm' ||
           spec.startsWith('drizzle-orm/') ||
-          spec === '@tokenlens/db';
+          spec === '@tillgate/db';
         expect(banned, `${f.path} → ${spec}`).toBe(false);
       }
     }
   });
 
-  it('application：零 SQL——不 import drizzle/pg/@tokenlens/db（drizzle 只在 adapters/postgres/**）', () => {
+  it('application：零 SQL——不 import drizzle/pg/@tillgate/db（drizzle 只在 adapters/postgres/**）', () => {
     for (const f of files.filter((x) => x.path.startsWith('application/'))) {
       for (const spec of f.imports) {
         const banned =
           spec === 'pg' ||
           spec === 'drizzle-orm' ||
           spec.startsWith('drizzle-orm/') ||
-          spec === '@tokenlens/db';
+          spec === '@tillgate/db';
         expect(banned, `${f.path} → ${spec}`).toBe(false);
       }
     }

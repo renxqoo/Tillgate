@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-import { SESSION_COOKIE } from '@tokenlens/api-client/next';
+import { SESSION_COOKIE } from '@tillgate/api-client/next';
 
 /**
  * 未登录访问受保护页 → 跳登录页并携带 next 回跳地址（Next 16 proxy 约定——

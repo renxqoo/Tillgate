@@ -15,7 +15,7 @@ import {
   type Db,
   type DbTx,
   type TxRetryPolicy,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import type {
   BillingRequestRow,
   BillingReservationRow,

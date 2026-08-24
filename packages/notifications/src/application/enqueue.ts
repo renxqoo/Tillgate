@@ -3,7 +3,7 @@
  * 业务侧需要与自身状态同事务入箱时走 ./composition bridge(本动词自持事务,
  * DbTx 不进 facade——总纲 §5.4)。fire-and-forget 场景由调用方持有(告警不反噬请求)。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';
 import { isNotifyEvent } from '../domain/events';
 import { notificationsErrors } from '../errors';

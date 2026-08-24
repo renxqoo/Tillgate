@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslations } from 'next-intl';
 import { z } from 'zod';
 
-import { Button, Field, FieldError, FieldGroup, FieldLabel, Input } from '@tokenlens/ui';
+import { Button, Field, FieldError, FieldGroup, FieldLabel, Input } from '@tillgate/ui';
 
 import { actionResult } from '@/features/shared/action-result';
 import { changePasswordAction } from '@/server/actions/settings';

@@ -36,11 +36,11 @@
 ### 2.2 需要逐步改善的部分
 
 - 多个 Vitest 配置重复实现根 `.env` 读取、集成测试超时和排除规则，可在根目录提取共享配置函数，但不需要创建 package。
-- `@tokenlens/api-client` 直接导出 `src/*.ts`，没有独立构建产物，并依赖私有包 `@tokenlens/http`，当前不能安全对外发布。
-- `@tokenlens/ui` 直接导出源码，并依赖私有 `@tokenlens/api-client`；其 peer dependencies 较多，当前也不适合直接发布。
+- `@tillgate/api-client` 直接导出 `src/*.ts`，没有独立构建产物，并依赖私有包 `@tillgate/http`，当前不能安全对外发布。
+- `@tillgate/ui` 直接导出源码，并依赖私有 `@tillgate/api-client`；其 peer dependencies 较多，当前也不适合直接发布。
 - 内部包和未来公开包目前使用同一种 `package.json` 模式，需要在真正发布前明确区分。
 - 两个 Next app 的 TypeScript `paths` 直接映射到 `packages/ui/src/*` 与 `packages/api-client/src/*`（含 `@/server/*` 直连 `ui/src/server/*`），会绕过 package `exports`；边界门禁必须校验真实模块解析结果，而不只是扫描 import 文本。
-- `apps/admin` 前端直接 import `@tokenlens/ai` 与 `@tokenlens/tracing`（链路图适配等约 6 处真实引用），绕过 `api-client` 消费后端能力包；`apps/worker` 直接依赖 `@tokenlens/wallet` 执行对账。两处越界消费分别在 P4/P5 清除。
+- `apps/admin` 前端直接 import `@tillgate/ai` 与 `@tillgate/tracing`（链路图适配等约 6 处真实引用），绕过 `api-client` 消费后端能力包；`apps/worker` 直接依赖 `@tillgate/wallet` 执行对账。两处越界消费分别在 P4/P5 清除。
 - 当前尚无 contract → OpenAPI → generated client 的可复现生成链；生成链建立前，手写 DTO 仍是现状，禁止同时维护两套事实源。
 - 资金、身份、通知和 Provider 能力存在迁移期双事实或跨包事务问题，必须先按 §3.4 固化权威源，再移动实现。
 
@@ -49,8 +49,8 @@
 本方案不是按目录审美推导，而是基于当前引用关系（计数含多行 import，为手扫近似值；P0 建立的 `scripts/check-package-boundaries.ts` 持续扫描结果为准）：
 
 - `admin-api` 对 `db/repository/service` 分别约有 50/41/29 处源码引用；`client-api` 约有 26/28/30 处；`gateway` 约有 61/38/39 处。app 已经穿透到横向分层内部，装配面过宽。
-- `apps/worker` 直依赖 `@tokenlens/wallet`（对账任务），是 §3.4 所列 wallet 对账/维护路径的入口之一；`apps/admin` 前端直依赖 `@tokenlens/ai`、`@tokenlens/tracing`。
-- 跨包 `@tokenlens/*/src` 深导入当前为 0 处；admin-api/client-api 已有正则文本型 `architecture.test.ts` 门禁，是 §5.5 真实模块解析门禁的现有基础。
+- `apps/worker` 直依赖 `@tillgate/wallet`（对账任务），是 §3.4 所列 wallet 对账/维护路径的入口之一；`apps/admin` 前端直依赖 `@tillgate/ai`、`@tillgate/tracing`。
+- 跨包 `@tillgate/*/src` 深导入当前为 0 处；admin-api/client-api 已有正则文本型 `architecture.test.ts` 门禁，是 §5.5 真实模块解析门禁的现有基础。
 - `domain/service/repository/wallet` 合计约 25k 行，修改一个计费用例经常跨四个一级 package；这些模块按资金能力高度共同变化，适合收敛到 `billing` 深模块。
 - `ai` 已约 9k 行且 gateway 仍保留 pipeline/routing/quote 等同族逻辑，适合合并为 `inference` facade，而不是继续增加桥接层。
 - `identity-core` 与 `identity` 分别承担状态安全事实和会话/适配，两者共同构成完整身份能力，合并后用子入口控制依赖比维持双包更清楚。
@@ -66,7 +66,7 @@
 `package.json`、`tsconfig.json`、`vitest.config.ts`（无测试配置需求时可省略）；树中重点展开代码职责。
 
 ```text
-tokenlens/
+tillgate/
 ├── apps/                                  # 可独立部署的进程，全部 private
 │   ├── gateway/                           # OpenAI/模型推理公网入口
 │   │   ├── src/
@@ -612,7 +612,7 @@ apps/*/http/contracts → generated/openapi → api-client/generated
 - 包间禁止循环依赖。
 - 公开发布 API 不得泄漏任何私有包的类型；内部 facade 也不得泄漏 adapter、`Db`、`DbTx` 或供应商 SDK 类型。
 - barrel 文件只暴露有意维护的公共接口，禁止把整个内部目录全部导出。
-- 跨包引用只走目标包的 `exports`，禁止 `@tokenlens/x/src/...` 深层导入。
+- 跨包引用只走目标包的 `exports`，禁止 `@tillgate/x/src/...` 深层导入。
 
 当两个包总是一起修改、接口几乎等于实现、拆开后测试仍必须成对运行时，应优先合并为更深的模块，而不是继续增加桥接包。
 
@@ -630,7 +630,7 @@ apps/*/http/contracts → generated/openapi → api-client/generated
 | 业务能力 application | 本包 domain/ports；经批准的单向能力 facade | 可靠跨能力事件、循环风险或替换需求使用消费方 port |
 | 业务能力 adapters | 本包 application/ports、`db`、`runtime`、外部 SDK | 不从根 `index.ts` 导出具体 adapter |
 | `observability` | `errors`、`runtime`、`db` | runtime 不得反向引用 |
-| `api-client` | 公共第三方依赖、生成产物 | 禁止依赖任何私有 `@tokenlens/*` 运行时包 |
+| `api-client` | 公共第三方依赖、生成产物 | 禁止依赖任何私有 `@tillgate/*` 运行时包 |
 | `ui` | React 及展示型 peer dependencies | 禁止依赖 api-client；数据通过 props/callback 注入 |
 
 例外必须写 ADR，并增加架构测试；不能只在评审口头约定。
@@ -684,7 +684,7 @@ notifications、identity 不反向依赖上述业务能力
 目录约定必须由机器验证，至少建立以下门禁：
 
 - package graph 无循环，`packages/*` 不得依赖 `apps/*`；
-- 跨包 import 只能命中目标 package 的显式 `exports`，禁止 `@tokenlens/*/src/*` 和相对路径越界；
+- 跨包 import 只能命中目标 package 的显式 `exports`，禁止 `@tillgate/*/src/*` 和相对路径越界；
 - 边界检查必须解析 TypeScript `paths`、package exports 和实际模块解析结果，阻止用 alias 绕过 `exports`；
 - domain/application/adapters 的依赖白名单由架构测试执行，新增例外必须同时提交 ADR 与测试更新；
 - 每个公开入口执行 API/export 检查，避免无意把 adapter、供应商类型或私有包类型提升为公共契约；
@@ -756,9 +756,9 @@ workspace 成员身份不等于 npm 发布资格。根项目必须永久保持 `
 
 | 包 | 当前状态 | 发布前必须完成 |
 |---|---|---|
-| `@tokenlens/api-client` | 私有、源码导出；实际是 Next.js BFF 适配层 | 生成 `dist` 与声明文件；移除/隔离私有 `http`、`next/headers`、Cookie 和服务端环境变量依赖；冻结公开 API |
-| `@tokenlens/ui` | 私有、源码导出；混合通用组件与 Next.js 能力 | 生成可消费产物；隔离 `next/link`、`next/navigation`、`next/font`、Server Actions；处理 CSS exports；收敛 peer dependencies |
-| `@tokenlens/ai` | 私有、零内部依赖；已是 `createAi` + `onEvent` + 透传中继的 SDK 形态 | 生成 `dist` 与声明文件；冻结 `createAi` / `AiEvent` / `ChannelDesc` 契约；重型 vendor SDK 声明为 optional peer；纯 Node consumer fixture 安装冒烟 |
+| `@tillgate/api-client` | 私有、源码导出；实际是 Next.js BFF 适配层 | 生成 `dist` 与声明文件；移除/隔离私有 `http`、`next/headers`、Cookie 和服务端环境变量依赖；冻结公开 API |
+| `@tillgate/ui` | 私有、源码导出；混合通用组件与 Next.js 能力 | 生成可消费产物；隔离 `next/link`、`next/navigation`、`next/font`、Server Actions；处理 CSS exports；收敛 peer dependencies |
+| `@tillgate/ai` | 私有、零内部依赖；已是 `createAi` + `onEvent` + 透传中继的 SDK 形态 | 生成 `dist` 与声明文件；冻结 `createAi` / `AiEvent` / `ChannelDesc` 契约；重型 vendor SDK 声明为 optional peer；纯 Node consumer fixture 安装冒烟 |
 
 是否最终发布这些包由真实外部消费者决定。没有外部消费者时继续私有，不提前承担兼容性成本。
 
@@ -777,7 +777,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 
 `./next` 若随公开包发布，Next 应声明为该子入口对应的 optional peer dependency，并用独立 consumer fixture 验证；框架无关根入口的安装、解析和类型检查不得要求消费者安装 Next。
 
-如果第二个包只是给同仓库两个控制台共享，保持 `@tokenlens/ui` 私有即可；只有出现仓库外消费者并能承诺 React/Next 兼容范围时，才建立公开的 React/Next 包。
+如果第二个包只是给同仓库两个控制台共享，保持 `@tillgate/ui` 私有即可；只有出现仓库外消费者并能承诺 React/Next 兼容范围时，才建立公开的 React/Next 包。
 
 ### 7.3 公开包的依赖闭包
 
@@ -792,7 +792,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 ```json
 {
   "dependencies": {
-    "@tokenlens/http": "workspace:*"
+    "@tillgate/http": "workspace:*"
   }
 }
 ```
@@ -914,7 +914,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 
 1. **事件与身份基础**：outbox/邮件/webhook → `notifications`；`identity-core + identity` 的挑战、MFA、OAuth、JWT、会话吊销 → `identity`。
 2. **控制面配置**：provider/channel/model/rate-card → `control-plane`；可执行协议/vendor 注册表留在 `ai` 库，由 assembly 注入能力校验器。
-3. **资金能力**：先完成资金双实现语义差异清单，再将 `wallet + ledger-core + 对应 domain/service/repository` 的垂直用例迁入 `billing`；`apps/worker` 对账任务对 `@tokenlens/wallet` 的直连同波切换为 `billing` facade；删除空 `money` 目录，金额构造、运算和序列化只保留在 `billing/domain/money`。
+3. **资金能力**：先完成资金双实现语义差异清单，再将 `wallet + ledger-core + 对应 domain/service/repository` 的垂直用例迁入 `billing`；`apps/worker` 对账任务对 `@tillgate/wallet` 的直连同波切换为 `billing` facade；删除空 `money` 目录，金额构造、运算和序列化只保留在 `billing/domain/money`。
 4. **上层消费者**：用户/组织/API Key/Application → `accounts`；`gateway` 的推理 pipeline/routing/quote/generation 与相关 domain/service/repository → `inference`，`inference` 单向依赖收窄后的 `ai` 库——熔断、死凭据等跨请求健康状态以 `AiEvent` 订阅者身份迁入 `inference/health`，`ai` 收敛为无运维状态的执行库（§3.6）。
 5. **可观测收尾**：tracing、request log、audit storage/query → `observability`；业务 audit action 继续由各能力定义并通过 port 投递。
 
@@ -929,7 +929,7 @@ API Client 核心应通过参数接收 `baseUrl`、`fetch`、token/headers 获�
 
 - 每个后端 app 只保留 config、assembly、协议路由、中间件、presenter 和生命周期。
 - 业务规则与持久化实现迁入能力包，app 不再形成第二套 domain/application。
-- Next app 按 feature 组织；BFF 专有 Cookie、locale、forwarded IP 与 Server Action 留在 app 或 `api-client/next`。清除 `apps/admin` 对 `@tokenlens/ai`、`@tokenlens/tracing` 的直依赖：链路图等数据改经 `admin-api` 契约与 `api-client` 获取。
+- Next app 按 feature 组织；BFF 专有 Cookie、locale、forwarded IP 与 Server Action 留在 app 或 `api-client/next`。清除 `apps/admin` 对 `@tillgate/ai`、`@tillgate/tracing` 的直依赖：链路图等数据改经 `admin-api` 契约与 `api-client` 获取。
 - 跨进程旅程迁入根 `e2e/`，包内继续保留单元、契约和集成测试。现有 16 个 e2e 文件先行归组搬迁：gateway 7 个（cost-drain/slow/rxm3/params-floor/auth-audit/worker/attack）→ `e2e/gateway` 与 `e2e/security`；client-api 4 个（user-journey/oauth/org-team/cross-app）→ `e2e/client-journey`；admin-api 5 个（login/money/ops/crud-sweep/cross-app）→ `e2e/admin-journey` 与 `e2e/billing-recovery`。搬迁只搬文件与启动装置，不得借机改断言语义。
 - app 非 assembly 代码不得引用任何 `./composition`、repository、adapter 或 `Db/DbTx` 类型。
 

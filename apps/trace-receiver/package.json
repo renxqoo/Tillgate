@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/trace-receiver",
+  "name": "@tillgate/trace-receiver",
   "version": "0.1.0",
   "private": true,
   "description": "OTLP 接收部署单元（内网）：OTLP/HTTP JSON 接收 → 批量写 PG 日分区；过载即丢绝不反压业务",
@@ -19,11 +19,11 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
-    "@tokenlens/http": "workspace:*",
-    "@tokenlens/observability": "workspace:*",
-    "@tokenlens/runtime": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
+    "@tillgate/http": "workspace:*",
+    "@tillgate/observability": "workspace:*",
+    "@tillgate/runtime": "workspace:*",
     "hono": "^4.13.0",
     "zod": "^4.4.3"
   },

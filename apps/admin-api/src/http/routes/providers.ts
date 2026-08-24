@@ -4,7 +4,7 @@
  * 数值域铁三角在 zod 层收口;协议/档案词表校验在 control-plane。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

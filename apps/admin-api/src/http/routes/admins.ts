@@ -12,9 +12,9 @@
  * （会话身份是路由的知识——防最后一个超管自锁,DESIGN D6）。
  */
 import { Hono } from 'hono';
-import { isBusinessError } from '@tokenlens/errors';
-import { controlPlaneErrors, type AdminRecord, type ControlPlane } from '@tokenlens/control-plane';
-import type { Identity } from '@tokenlens/identity';
+import { isBusinessError } from '@tillgate/errors';
+import { controlPlaneErrors, type AdminRecord, type ControlPlane } from '@tillgate/control-plane';
+import type { Identity } from '@tillgate/identity';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

@@ -8,14 +8,14 @@
  * billing-port 同款（apps 互不依赖，共享真相是两包的类型本身）。
  */
 import { createTransport } from 'nodemailer';
-import { assertSafeUrl, createAi } from '@tokenlens/ai';
-import type { Ai } from '@tokenlens/ai';
-import { createCipher, createLogger } from '@tokenlens/runtime';
-import type { Logger } from '@tokenlens/runtime';
-import { closeDb, createDb, ping } from '@tokenlens/db';
-import type { Db, DbTx } from '@tokenlens/db';
-import { initOtel, createObservability } from '@tokenlens/observability';
-import type { OtelHandle } from '@tokenlens/observability';
+import { assertSafeUrl, createAi } from '@tillgate/ai';
+import type { Ai } from '@tillgate/ai';
+import { createCipher, createLogger } from '@tillgate/runtime';
+import type { Logger } from '@tillgate/runtime';
+import { closeDb, createDb, ping } from '@tillgate/db';
+import type { Db, DbTx } from '@tillgate/db';
+import { initOtel, createObservability } from '@tillgate/observability';
+import type { OtelHandle } from '@tillgate/observability';
 import {
   Decimal,
   SETTLE_WAKE_CHANNEL,
@@ -25,32 +25,32 @@ import {
   createReferralCommissionUseCase,
   createSettlementApi,
   createWalletApi,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import type {
   BillingEvent,
   NotificationOutboxPort,
   OutboxFact,
   ReconcileReport,
   SettlementApi,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import {
   createPostgresBillingStore,
   createPostgresCommissionStatsStore,
   createPostgresReconcileDiscrepancyStore,
   createPostgresWalletStore,
-} from '@tokenlens/billing/composition';
-import { createNotifications, systemContext } from '@tokenlens/notifications';
-import type { EmailSender, Notifications } from '@tokenlens/notifications';
-import { outboxWithinTx } from '@tokenlens/notifications/composition';
-import { commissionRefId } from '@tokenlens/accounts';
-import { createPostgresAccountStore } from '@tokenlens/accounts/composition';
-import { postgresChannelStore } from '@tokenlens/control-plane/composition';
+} from '@tillgate/billing/composition';
+import { createNotifications, systemContext } from '@tillgate/notifications';
+import type { EmailSender, Notifications } from '@tillgate/notifications';
+import { outboxWithinTx } from '@tillgate/notifications/composition';
+import { commissionRefId } from '@tillgate/accounts';
+import { createPostgresAccountStore } from '@tillgate/accounts/composition';
+import { postgresChannelStore } from '@tillgate/control-plane/composition';
 import {
   createGenerationPollUseCase,
   createPostgresGenerationTaskStore,
   createUpstreamAi,
-} from '@tokenlens/inference';
-import type { BillingSignal, ChannelCandidate } from '@tokenlens/inference';
+} from '@tillgate/inference';
+import type { BillingSignal, ChannelCandidate } from '@tillgate/inference';
 import type { WorkerConfig } from './config';
 import { createScheduler } from './scheduler';
 import type { Scheduler } from './scheduler';

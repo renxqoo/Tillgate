@@ -1,10 +1,10 @@
-# @tokenlens/ai 设计基线（DESIGN）
+# @tillgate/ai 设计基线（DESIGN）
 
 > 状态：定稿（2026-08-23 补档——实现已收口，依赖白名单与导出面由 `__test__/architecture.test.ts` 机器锁定）
 > 定位：上游协议执行**独立库**（永久私有叶子）——「可靠调用上游并产出结构化事件」，零业务知识（src/types.ts 头注释）
 > 旧实现：`/Users/wrr/work/ai-getway/packages/ai`（v1，112 文件 ~9k 行，444 测试）——平移+重写而非垂直用例迁移，
 > **不设 MIGRATION.md**（裁决存档于 ADR-0006「影响」节：审计与验收记录由 [IMPLEMENTATION.md](./IMPLEMENTATION.md) 承担）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/ai`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/ai`
 > 关联：[ADR-0006](../../docs/adr/0006-ai-standalone-library.md)（保留独立库、不并入 inference）、
 > [ADR-0007](../../docs/adr/0007-apps-assembly-ai-injection.md)（apps 装配面注入形态）、
 > [ADR-0001](../../docs/adr/0001-errors-registry-ownership.md) D7（ErrorKind ↔ errors 根契约映射归消费方）、
@@ -59,7 +59,7 @@
 | 候选循环 / 换渠 / 路由 / quote / 计费衔接 / 渠道健康（熔断、死凭据） | `inference`（ai 的唯一运行时装配消费方；健康状态 = AiEvent 订阅者形态）                          |
 | 计费取证 / 审计 / trace / 请求日志的消费与持久化                     | billing / observability 等订阅者（装配处挂 `subscribe`，旁路消费）                               |
 | 模型映射 / 渠道目录 / 费率                                           | `control-plane`（`SUPPORTED_PROTOCOLS`/`vendorProfileNames` 词表供其校验引用）                   |
-| 仓库级错误根契约（三性/category）                                    | `@tokenlens/errors`——**ai 禁止依赖**（AGENT.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用）   |
+| 仓库级错误根契约（三性/category）                                    | `@tillgate/errors`——**ai 禁止依赖**（AGENT.md §11 禁止清单；映射按 ADR-0001 D7 由消费方应用）   |
 | C 端 wire 出站投影（OpenAI 错误信封、脱敏呈现）                      | app error-face（gateway `openai-error-face` + `sanitize`；ai 只出 UpstreamError 结构与脱敏参数） |
 | 环境变量读取 / OTel SDK / 进程装配                                   | app 装配面（ADR-0007；ai 只收 logger/tracer 结构形状）                                           |
 | 任务轮询调度与结算落账                                               | worker / inference（minimax 'Unknown'→running 永挂面上限归 worker，在案）                        |
@@ -69,7 +69,7 @@
 ```ts
 import { createAi, SUPPORTED_PROTOCOLS, vendorProfileNames,
          UpstreamError, isUpstreamError, KIND_MECHANICS,
-         assertSafeUrl, assertSafeUrlSync, allowAllUrls } from '@tokenlens/ai';
+         assertSafeUrl, assertSafeUrlSync, allowAllUrls } from '@tillgate/ai';
 
 // ---- 装配（三参：机制默认值 / 依赖注入 / 适配器注册）----
 const ai = createAi(
@@ -143,9 +143,9 @@ maxDelayMs: 8000, jitterRatio: 0.25, deadlineMs: 240_000, emptyCompletionRetries
 
 1. **依赖白名单 = 零内部依赖**（永久叶子）：运行时仅 `zod` + `js-tiktoken`；src 全量
    import 白名单由 `__test__/architecture.test.ts` 机器锁定（含「src/errors 不得 import
-   @tokenlens/errors」专项）。发布候选资格保留（总纲 §7.2 第三候选），公开发布需显式评审。
+   @tillgate/errors」专项）。发布候选资格保留（总纲 §7.2 第三候选），公开发布需显式评审。
 2. **导出面快照**：`index.ts` 值导出集合精确锁定于架构测试——新增导出是契约变更。
-3. **装配注入形态**（ADR-0007，apps 依赖白名单的窄例外）：`@tokenlens/ai` import 只允许
+3. **装配注入形态**（ADR-0007，apps 依赖白名单的窄例外）：`@tillgate/ai` import 只允许
    出现在 `apps/*/src/assembly.ts` 与实现能力包 port 的 app 自有 adapter（当前唯一实例
    admin-api `adapters/upstream-probe.ts`）；`Ai` 实例构造后只交给 `createInference`
    （或 port 实现），业务路由/中间件/任务 handler 不得持有；机器门禁在各 app 架构测试。

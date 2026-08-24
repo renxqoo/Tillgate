@@ -10,8 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { Decimal } from '@tokenlens/billing';
-import { createCipher } from '@tokenlens/runtime';
+import { Decimal } from '@tillgate/billing';
+import { createCipher } from '@tillgate/runtime';
 import {
   E2E_CHANNEL_ENCRYPTION_KEY,
   E2EKeys,

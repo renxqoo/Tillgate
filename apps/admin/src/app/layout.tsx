@@ -1,11 +1,11 @@
-import { ThemeProvider, Toaster, TooltipProvider } from '@tokenlens/ui';
+import { ThemeProvider, Toaster, TooltipProvider } from '@tillgate/ui';
 import type { ReactNode } from 'react';
 
 import type { Metadata } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { DEFAULT_LOCALE, htmlLang, isLocale } from '@tokenlens/api-client/next';
+import { DEFAULT_LOCALE, htmlLang, isLocale } from '@tillgate/api-client/next';
 
 import { getThemeBootCode } from '@/config/theme-boot';
 import { APP_CONFIG } from '@/config/app-config';

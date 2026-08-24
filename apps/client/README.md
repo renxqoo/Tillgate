@@ -1,4 +1,4 @@
-# @tokenlens/client —— Next.js 用户控制台（BFF）
+# @tillgate/client —— Next.js 用户控制台（BFF）
 
 设计基线见 [DESIGN.md](./DESIGN.md)，审计与施工图见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)，行为规格与迁移矩阵见 [MIGRATION.md](./MIGRATION.md)。
 

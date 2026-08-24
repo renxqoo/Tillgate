@@ -8,7 +8,7 @@ import { get } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 // e2e 非 workspace 成员——包名导入不可解析，统一相对源码导入
-//（app/packages 自身的 @tokenlens/* 导入按其文件位置解析，不受影响）
+//（app/packages 自身的 @tillgate/* 导入按其文件位置解析，不受影响）
 import { sql } from 'drizzle-orm';
 import { epaySign, sha256Hex } from '../../packages/billing/src/index.js';
 import type { Mailer } from '../../packages/identity/src/index.js';
@@ -169,7 +169,7 @@ export async function bootHarness(options: {
     teardown: async () => {
       await assembly.redis.quit().catch(() => undefined);
       await assembly.otel.shutdown().catch(() => undefined);
-      const { closeDb } = await import('@tokenlens/db');
+      const { closeDb } = await import('@tillgate/db');
       await closeDb(assembly.db);
     },
   };
@@ -217,14 +217,14 @@ export async function seedRedeemCode(
 ): Promise<void> {
   await db.execute(
     sql`insert into admins (email, password_hash, status)
-        values ('e2e-admin@tokenlens.invalid', 'e2e:unused:1:1:1', 0)
+        values ('e2e-admin@tillgate.invalid', 'e2e:unused:1:1:1', 0)
         on conflict (email) do nothing`,
   );
   // admins 必填 email/password_hash——播种专用行（cleanupSeeds 按 email 回收）
   await db.execute(
     sql`insert into redeem_batches (name, amount, total, used_count, created_by)
         values ('e2e-batch', ${amount}, 1, 0, (
-          select id from admins where email = 'e2e-admin@tokenlens.invalid'
+          select id from admins where email = 'e2e-admin@tillgate.invalid'
         ))`,
   );
   await db.execute(
@@ -365,7 +365,7 @@ export async function cleanupSeeds(db: ClientApiAssembly['db']): Promise<void> {
   const statements = [
     sql`delete from redeem_codes where batch_id in (select id from redeem_batches where name = 'e2e-batch')`,
     sql`delete from redeem_batches where name = 'e2e-batch'`,
-    sql`delete from admins where email = 'e2e-admin@tokenlens.invalid'`,
+    sql`delete from admins where email = 'e2e-admin@tillgate.invalid'`,
     sql`delete from plans where name in ('e2e-personal', 'e2e-team')`,
   ];
   for (const statement of statements) {

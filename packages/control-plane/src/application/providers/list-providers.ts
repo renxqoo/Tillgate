@@ -3,7 +3,7 @@
  * view 缺省 = 在册（含启用/禁用，不含已删除）；view='deleted' = 回收站（仅已删除）。
  * page/pageSize 换算属 app 路由层——包内只收 limit/offset。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { ProviderStore, ProviderRecord, ProviderListQuery } from '../../ports/provider-store';
 import type { ListResult } from '../../domain/list';
 

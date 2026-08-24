@@ -8,7 +8,7 @@
 #   docker compose --env-file .env -f docker/compose.yml -f docker/compose.server.yml up -d
 #
 # Secrets（repo Settings → Secrets → Actions）：ACR_REGISTRY / ACR_USERNAME / ACR_PASSWORD
-# Variables（Settings → Variables）：ACR_NAMESPACE（缺省回落 tokenlens）
+# Variables（Settings → Variables）：ACR_NAMESPACE（缺省回落 tillgate）
 
 name: docker-publish
 
@@ -34,7 +34,7 @@ jobs:
       contents: read
     env:
       REGISTRY: ${{ secrets.ACR_REGISTRY }}
-      NAMESPACE: ${{ vars.ACR_NAMESPACE || 'tokenlens' }}
+      NAMESPACE: ${{ vars.ACR_NAMESPACE || 'tillgate' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +44,7 @@ jobs:
         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login "$REGISTRY" -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
       # 与 docker/compose.yml 同源构建（build args/platform 由 compose 定义，含 image 标签
-      # tokenlens/<svc>:local）；顺序构建共享 Dockerfile.server 的 bun install 层缓存
+      # tillgate/<svc>:local）；顺序构建共享 Dockerfile.server 的 bun install 层缓存
       - name: Build all images
         run: docker compose -f docker/compose.yml build
 
@@ -53,7 +53,7 @@ jobs:
           set -eu
           services="gateway client-api admin-api worker trace-receiver console-client console-admin migrate"
           for svc in $services; do
-            src="tokenlens/${svc}:local"
+            src="tillgate/${svc}:local"
             remote_main="${REGISTRY}/${NAMESPACE}/${svc}:main"
             remote_sha="${REGISTRY}/${NAMESPACE}/${svc}:sha-${GITHUB_SHA::7}"
             echo "→ ${remote_main}"

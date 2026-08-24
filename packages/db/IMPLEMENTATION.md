@@ -1,4 +1,4 @@
-# @tokenlens/db 迁移实施文档(IMPLEMENTATION)
+# @tillgate/db 迁移实施文档(IMPLEMENTATION)
 
 > 状态:已完成——三阶段落地,四门全绿;真实 PG 集成 6/6、空库迁移探针核销(§6)
 > 基线:旧仓 `ai-getway/packages/db`(v1:35 行 index + 32 schema 文件 ~2.4k 行 + 迁移 76 件(0076 identity 七表已入链) + seed 259 行,零测试)及 core/wallet/ledger-core/identity-core/repository/http 中分散的 db 基础设施
@@ -153,14 +153,14 @@
 | P2   | client/context/pg-error/transaction 四件 + 单测(B3 回归用例)                                                                                                                                                                     | `710a9ad` ✅                                                                              |
 | P3   | real 集成测试 + 行为核销 + 状态推进「已完成」                                                                                                                                                                                    | `fda8a19` ✅                                                                              |
 | P4   | 新规适配(铁律 14/16):测试迁 `__test__/` 平铺 + `*.real.test.ts` 文件名区分;覆盖率阈值 90/85 写入 vitest;新增外键物化契约测试                                                                                                     | `128a83d` ✅                                                                              |
-| P5   | §11 错误根契约采纳:db→`@tokenlens/errors` 依赖(白名单唯一内部依赖);ping 失败源头分类为 `InfrastructureError('db.unavailable')`(cause 链保留 pg 事实,SQLSTATE 裸上浮 + pg-error 事实层维持不变——协议翻译归 http);边界测试白名单化 | 本次提交 ✅                                                                               |
+| P5   | §11 错误根契约采纳:db→`@tillgate/errors` 依赖(白名单唯一内部依赖);ping 失败源头分类为 `InfrastructureError('db.unavailable')`(cause 链保留 pg 事实,SQLSTATE 裸上浮 + pg-error 事实层维持不变——协议翻译归 http);边界测试白名单化 | 本次提交 ✅                                                                               |
 
 ## 6. 验收清单(全部满足才算完成)
 
 - [x] 四门全绿(typecheck / lint 0 错 / test 39 单测 + 6 real / build 双入口产物);
 - [x] 表定义与 v1 逐字一致(微修改仅 B1/B4 三处;接管时与旧仓 diff 为零,P1 提交记录);
 - [x] 迁移链 76 件(0076 identity 七表,f716844 收口),一致性测试绿(journal↔SQL 1:1 双向、编号单调、缺口 0036/idx37 断言在案);
-- [x] db 零内部依赖(package.json 无 @tokenlens/*;schema.test 扫全 src import 行断言);
+- [x] db 零内部依赖(package.json 无 @tillgate/*;schema.test 扫全 src import 行断言);
 - [x] createDb/runTx 无隐藏默认(参数全必填;client.test 含 @ts-expect-error 类型面证明);
 - [x] B3 回归用例绿(深度 4/7 的 23505 均检出);
 - [x] runTx 注入 {5,15,20} 时重试语义与 v1 三拷贝等价(退避公式 fake-timers 验证累计 25/65/135ms、尝试上限、仅瞬态触发、钩子吞错);
@@ -168,7 +168,7 @@
 - [x] **空库迁移探针**(一次性手工验证,临时库已删):drizzle 编程式 migrator 在全新库上推进至 0055 失败(`identity_session_anchors` 不存在,由 identity-core provision 建)并整体回滚——与 v1 CI 注释记录的行为一致;结论:**空库升级范围 = 0000-0054**,0055+ 需 provision 链先行(C4 收口属 P4 能力波次);
 - [x] 不移植清单(C1-C8)各有归属标注,无孤儿;
 - [x] 铁律 14/16 适配(2026-08-23 新规):`__test__/` 平铺 + `pg.real.test.ts` 文件名区分;覆盖率阈值 90/85 落入 vitest thresholds——P5 后实测 **99.52% statements / 100% branches / 99.17% functions / 99.46% lines**(41 单测,client.ts 100%),达标未调阈值;
-- [x] §11 错误根契约(2026-08-23 新规):依赖白名单收窄为 `@tokenlens/errors` 单内部依赖;ping 失败 = `InfrastructureError('db.unavailable')`(isInfrastructureError 守卫用例锁定);runTx/pg 事实层不包装不改判(禁止清单合规);bun.lock 因混有 runtime 流同款变更未随本提交入库(铁律 15,待协调收口)。
+- [x] §11 错误根契约(2026-08-23 新规):依赖白名单收窄为 `@tillgate/errors` 单内部依赖;ping 失败 = `InfrastructureError('db.unavailable')`(isInfrastructureError 守卫用例锁定);runTx/pg 事实层不包装不改判(禁止清单合规);bun.lock 因混有 runtime 流同款变更未随本提交入库(铁律 15,待协调收口)。
 - [x] seed-dev 移植核销(2026-08-23,C5 回销):`scripts/seed-dev.ts` 逐语义移植,cipher 替换(runtime enc:v1)与差异清单见 §1.3 C5;门禁复核 typecheck 0 错 / lint 0 警 0 错(47 文件) / 41 单测全绿;dev 库实跑两轮幂等验证。
 
 ## 7. 回滚方案

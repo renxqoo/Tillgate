@@ -5,9 +5,9 @@
  * id = 提交响应的 id（= billing requestId = generation_tasks 主键）。
  */
 import { Hono, type Context } from 'hono';
-import { HttpErrors } from '@tokenlens/http';
-import type { Inference } from '@tokenlens/inference';
-import { conservativeInputTokenUpperBound } from '@tokenlens/inference';
+import { HttpErrors } from '@tillgate/http';
+import type { Inference } from '@tillgate/inference';
+import { conservativeInputTokenUpperBound } from '@tillgate/inference';
 import { videoSchema, musicSchema } from '../contracts/generation';
 import type { AuthEnv } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';

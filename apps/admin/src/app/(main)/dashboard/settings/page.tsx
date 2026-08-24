@@ -1,8 +1,8 @@
 import { requirePermission } from '@/server/get-admin';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError } from '@tokenlens/api-client';
-import type { AdminMeInfo } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
+import type { AdminMeInfo } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 
 import { SettingsContent } from '@/features/settings/settings-content';

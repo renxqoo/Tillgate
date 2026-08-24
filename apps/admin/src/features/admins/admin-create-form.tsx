@@ -8,7 +8,7 @@ import {
   Input,
   NativeSelect,
   NativeSelectOption,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { PlusIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 

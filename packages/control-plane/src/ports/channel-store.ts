@@ -6,7 +6,7 @@
  * 任务渠道读（findTaskChannel，worker 波轮询的上游凭据源）例外在此。
  * 返回形状永不包含 apiKeyEnc 之外的密钥事实；管理面返回不含密文（探针专用读除外）。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { ListQuery, ListResult } from '../domain/list';
 import type { ChannelPatchInput } from '../domain/channel/channel';
 

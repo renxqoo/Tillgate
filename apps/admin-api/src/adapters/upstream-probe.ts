@@ -4,9 +4,9 @@
  * （内存态熔断/死凭据不跨探针共享、不污染网关——control-plane DESIGN §装配注入）。
  * 渠道连通性 = ai.probe；模型测试 = "1" + max_tokens=1 真实请求（请求内零重试）。
  */
-import { createAi, type Ai } from '@tokenlens/ai';
-import type { UpstreamError } from '@tokenlens/ai';
-import type { ProbeOutcome, ProbeTarget, UpstreamProbe } from '@tokenlens/control-plane';
+import { createAi, type Ai } from '@tillgate/ai';
+import type { UpstreamError } from '@tillgate/ai';
+import type { ProbeOutcome, ProbeTarget, UpstreamProbe } from '@tillgate/control-plane';
 
 function errorFace(error: UpstreamError): { code: string; message: string } {
   return { code: error.vendorCode ?? error.kind, message: error.message };

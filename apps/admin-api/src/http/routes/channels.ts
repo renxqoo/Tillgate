@@ -4,7 +4,7 @@
  * 批量导入（best-effort）/连通性探针。apiKey 加密落库（control-plane cipher）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

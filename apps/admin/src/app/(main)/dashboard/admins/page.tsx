@@ -3,11 +3,11 @@ import type { DataTableColumn } from '@/components/data-table';
 
 import { DataTable } from '@/components/data-table';
 import { StatusPill } from '@/components/status-pill';
-import { Badge } from '@tokenlens/ui';
+import { Badge } from '@tillgate/ui';
 import { UserCogIcon } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
 
-import { ApiError, type Paginated } from '@tokenlens/api-client';
+import { ApiError, type Paginated } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 import { fmtDateTime } from '@/lib/formatters';
 import { ListPage } from '@/components/list-page';

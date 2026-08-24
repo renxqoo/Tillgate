@@ -1,8 +1,8 @@
-# @tokenlens/ui
+# @tillgate/ui
 
 纯 React 设计系统（第二发布候选）。基于 shadcn **base-nova 预设**（`pnpm dlx shadcn@latest init --preset b0 --template vite`）+ Base UI + Tailwind v4，全新编写，不复用旧仓 `@ai-gateway/ui` 任何代码。
 
-**纪律**：本包及其依赖闭包禁止 Next 专有依赖（`next/*`、`next-themes`、`next-intl`、`geist`）与 `@tokenlens/*` workspace 兄弟包 —— 由 `test/pack/imports.test.ts` 机器锁定。
+**纪律**：本包及其依赖闭包禁止 Next 专有依赖（`next/*`、`next-themes`、`next-intl`、`geist`）与 `@tillgate/*` workspace 兄弟包 —— 由 `test/pack/imports.test.ts` 机器锁定。
 
 ## 结构
 
@@ -29,12 +29,12 @@ test/
 ```tsx
 // app 的全局 css(任意 React 宿主, Next/Vite 皆可):
 @import "tailwindcss";
-@import "@tokenlens/ui/styles.css";
-@source "../node_modules/@tokenlens/ui/src"; // 让 Tailwind 扫描包内 class
+@import "@tillgate/ui/styles.css";
+@source "../node_modules/@tillgate/ui/src"; // 让 Tailwind 扫描包内 class
 ```
 
 ```tsx
-import { Button, DataTable, createMoneyFormatter, ThemeProvider } from '@tokenlens/ui';
+import { Button, DataTable, createMoneyFormatter, ThemeProvider } from '@tillgate/ui';
 
 const money = createMoneyFormatter({ locale: 'zh-CN', currency: 'USD' });
 ```

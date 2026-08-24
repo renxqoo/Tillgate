@@ -3,7 +3,7 @@
  * 词表单一真相在 ai 适配器注册表——本包经装配注入快照（capabilities），
  * 不 import ai（总纲 §4.5/§5.2 防环规则）。
  */
-import type { ErrorContext } from '@tokenlens/errors';
+import type { ErrorContext } from '@tillgate/errors';
 import { controlPlaneErrors } from '../../errors';
 
 /** 可执行能力词表快照（装配注入：protocols = ai.SUPPORTED_PROTOCOLS，vendorProfiles = ai.vendorProfileNames()） */

@@ -37,7 +37,7 @@ describe('AuthShell', () => {
   it('保持表单与品牌说明为独立语义区域', () => {
     render(
       <AuthShell
-        brand={<a href="/">TokenLens</a>}
+        brand={<a href="/">Tillgate</a>}
         asideIcon={<span>S</span>}
         asideTitle="统一模型网关"
         asideDescription="一个账户连接所有模型"
@@ -47,7 +47,7 @@ describe('AuthShell', () => {
     );
 
     expect(screen.getByRole('main')).toHaveAttribute('data-slot', 'auth-shell');
-    expect(screen.getByRole('link', { name: 'TokenLens' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tillgate' })).toBeInTheDocument();
     expect(screen.getByRole('form', { name: '登录表单' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '统一模型网关' })).toBeInTheDocument();
   });

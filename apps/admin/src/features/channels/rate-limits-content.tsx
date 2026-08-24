@@ -24,7 +24,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import { GaugeIcon, PencilIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

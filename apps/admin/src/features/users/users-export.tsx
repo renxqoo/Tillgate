@@ -1,10 +1,10 @@
 'use client';
 
-import { Button } from '@tokenlens/ui';
+import { Button } from '@tillgate/ui';
 import { DownloadIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import type { AdminUserRow } from '@tokenlens/api-client';
+import type { AdminUserRow } from '@tillgate/api-client';
 
 export function UsersExport({ users }: { readonly users: ReadonlyArray<AdminUserRow> }) {
   const t = useTranslations('users');

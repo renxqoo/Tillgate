@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDb, closeDb, type Db } from '@tokenlens/db';
+import { createDb, closeDb, type Db } from '@tillgate/db';
 import { loadGatewayConfig } from '../src/config';
 import { assembleGateway, type GatewayAssembly } from '../src/assembly';
 import { createGatewayApp } from '../src/app';
@@ -29,7 +29,7 @@ describe.skipIf(url == null || redisUrl == null)('gateway 全栈（真实 PG + R
   let teardowns: Array<() => Promise<void>> = [];
 
   beforeAll(async () => {
-    schema = `tokenlens_gw_${process.pid.toString(36)}_${Date.now().toString(36)}`;
+    schema = `tillgate_gw_${process.pid.toString(36)}_${Date.now().toString(36)}`;
     const [baseUrl] = url!.split('?');
     db = createDb({
       url: `${baseUrl}?options=-c%20search_path%3D${schema}`,

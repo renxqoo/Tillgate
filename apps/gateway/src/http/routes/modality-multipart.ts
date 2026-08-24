@@ -8,8 +8,8 @@
  * 文件类型白名单 + 单文件上界（与 bodyLimit 取 min——bodyLimit 先拦 413）。
  */
 import { Hono, type Context } from 'hono';
-import type { Inference } from '@tokenlens/inference';
-import { estimateAudioDurationSeconds } from '@tokenlens/inference';
+import type { Inference } from '@tillgate/inference';
+import { estimateAudioDurationSeconds } from '@tillgate/inference';
 import type { AuthEnv } from '../middleware/api-key';
 import { admitRequest, type RateLimitGate } from '../middleware/rate-limit';
 import { GatewayErrors } from '../openai-error-face';

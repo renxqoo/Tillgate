@@ -9,7 +9,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreateProviderDialog, ProvidersTable } from '@/features/channels/providers-content';
-import type { AdminProviderRow } from '@tokenlens/api-client';
+import type { AdminProviderRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

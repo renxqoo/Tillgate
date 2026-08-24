@@ -5,7 +5,7 @@
  * reserveChannel 三模式、积压准入。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createBillingApi, createBillingAdmission } from '../src/application/billing/billing.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';

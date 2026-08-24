@@ -3,7 +3,7 @@
  * (扫描了旧二维码的用户必须重新扫)。secret 可经 SecretCipher 加密落库(库内无明文)。
  */
 import { randomBytes } from 'node:crypto';
-import { advisoryLock, runTx } from '@tokenlens/db';
+import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { credentialSetLockKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';

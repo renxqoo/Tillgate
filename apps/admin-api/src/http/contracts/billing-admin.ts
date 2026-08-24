@@ -4,7 +4,7 @@
  * P4 增补:payment-orders 列表排序白名单（单一真相 = billing 包词表,不复制）。
  */
 import { z } from 'zod';
-import { PAYMENT_ORDER_SORT_FIELDS } from '@tokenlens/billing';
+import { PAYMENT_ORDER_SORT_FIELDS } from '@tillgate/billing';
 import { AdminErrors } from '../error-face';
 import { positiveMoneyString } from './common';
 

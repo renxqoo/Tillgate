@@ -2,7 +2,7 @@
  * 轮换 App 密钥:实现层 FOR UPDATE 行锁防并发轮换孤儿化(v1 rotateSecret);
  * 新明文仅本用例返回一次。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { generateAppCredentials, sha256Hex } from '../domain/credentials.js';
 import type { AppRecord } from '../ports/account-store.js';

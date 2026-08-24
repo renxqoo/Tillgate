@@ -8,8 +8,8 @@
  */
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+import { isBusinessError } from '@tillgate/errors';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createGatewayCatalog, type CatalogStores } from '../src/adapters/catalog-port';
 import { createGatewayBilling } from '../src/adapters/billing-port';
 import { createSettleWakeProducer } from '../src/adapters/settle-wake';
@@ -17,8 +17,8 @@ import type {
   ActiveMappingRow,
   RouteCandidateRow,
   UserRateCardContext,
-} from '@tokenlens/control-plane';
-import type { QuoteCandidate } from '@tokenlens/inference';
+} from '@tillgate/control-plane';
+import type { QuoteCandidate } from '@tillgate/inference';
 
 // ---- catalog-port 替身 ----
 const mapping = (

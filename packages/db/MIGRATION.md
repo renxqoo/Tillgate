@@ -1,4 +1,4 @@
-# @tokenlens/db 迁移文档（MIGRATION.md）
+# @tillgate/db 迁移文档（MIGRATION.md）
 
 > 状态：已完成（三阶段落地、四门全绿；验收清单 [IMPLEMENTATION.md](./IMPLEMENTATION.md) §6 全部核销，
 > 含真实 PG 集成 6/6 与空库迁移探针）
@@ -8,7 +8,7 @@
 > schema 32 文件；迁移 75 件 SQL（0000-0075，历史缺口 0036）+ meta snapshot/journal；
 > scripts/seed-dev.ts 259 行；**零测试**）及 core / wallet / ledger-core / identity-core /
 > repository / http 六包散置的 db 基础设施（runTx ×3、SQLSTATE 探测 ×4、事务句柄类型 ×4 变体）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/db`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/db`
 > 关联：[DESIGN.md](./DESIGN.md)（设计基线，定稿）、[IMPLEMENTATION.md](./IMPLEMENTATION.md)
 > （B#/D#/C# 编号出处）、[ADR-0002](../../docs/adr/0002-http-db-decoupling.md)、
 > [project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3.4/§5.1/§9-P3

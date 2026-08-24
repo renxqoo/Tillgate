@@ -5,7 +5,7 @@
  * （2FA 随之不可开启/不可用,v1 语义）。装配面文件:仅 assembly 引用。
  */
 import nodemailer from 'nodemailer';
-import { renderLoginCodeEmail, type MailBrand, type Mailer } from '@tokenlens/identity';
+import { renderLoginCodeEmail, type MailBrand, type Mailer } from '@tillgate/identity';
 
 export interface SmtpMailerConfig {
   host: string;

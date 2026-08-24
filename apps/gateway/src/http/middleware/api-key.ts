@@ -15,9 +15,9 @@
 import { createHash } from 'node:crypto';
 import { jwtVerify } from 'jose';
 import type { MiddlewareHandler } from 'hono';
-import { socketAddressFromContext, trustedClientIp, HttpErrors } from '@tokenlens/http';
-import { getTracer, withAsyncSpan } from '@tokenlens/observability';
-import type { AuthFailureGuard, GuardCheck, KeyBruteForceGuard } from '@tokenlens/runtime';
+import { socketAddressFromContext, trustedClientIp, HttpErrors } from '@tillgate/http';
+import { getTracer, withAsyncSpan } from '@tillgate/observability';
+import type { AuthFailureGuard, GuardCheck, KeyBruteForceGuard } from '@tillgate/runtime';
 
 export interface AuthContext {
   userId: number;

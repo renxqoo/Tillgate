@@ -6,8 +6,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
-import { identityErrors } from '@tokenlens/identity';
+import { errorHandler } from '@tillgate/http';
+import { identityErrors } from '@tillgate/identity';
 import type { SessionEnv } from '../src/http/middleware/session';
 import { createAclMiddleware } from '../src/http/middleware/acl';
 import { ADMIN_FACE_OVERRIDES, adminErrorCatalog } from '../src/http/error-face';
@@ -75,7 +75,7 @@ function neverLockedGuard(): AuthGuard & { failures: number; successes: number }
 
 const adminRecord = {
   id: ADMIN_ID,
-  email: 'ops@tokenlens.dev',
+  email: 'ops@tillgate.dev',
   displayName: 'Ops',
   status: 0,
   roleId: 1,
@@ -134,7 +134,7 @@ describe('auth（P2 登录面）', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'correct horse' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'correct horse' }),
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ token: 'signed-token', adminId: ADMIN_ID });
@@ -174,7 +174,7 @@ describe('auth（P2 登录面）', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'wrong' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'wrong' }),
     });
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ error: { code: 'identity.invalid_credentials' } });
@@ -220,7 +220,7 @@ describe('auth（P2 登录面）', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'wrong' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'wrong' }),
     });
     expect(res.status).toBe(429);
     expect(await res.json()).toMatchObject({ error: { code: 'admin.login_locked' } });
@@ -236,7 +236,7 @@ describe('auth（P2 登录面）', () => {
     const res2 = await app2.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'x' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'x' }),
     });
     expect(res2.status).toBe(503);
     expect(await res2.json()).toMatchObject({ error: { code: 'admin.auth_guard_unavailable' } });
@@ -254,7 +254,7 @@ describe('auth（P2 登录面）', () => {
     const res = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'correct horse' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'correct horse' }),
     });
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ error: { code: 'admin.two_factor_unavailable' } });
@@ -291,7 +291,7 @@ describe('auth（P2 登录面）', () => {
     const res2 = await app2.request('/v1/auth/login', {
       method: 'POST',
       headers: json,
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'correct horse' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'correct horse' }),
     });
     expect(res2.status).toBe(200);
     expect(await res2.json()).toEqual({
@@ -421,7 +421,7 @@ describe('me（P2 管理员自身）', () => {
     expect(me.status).toBe(200);
     expect(await me.json()).toMatchObject({
       id: ADMIN_ID,
-      email: 'ops@tokenlens.dev',
+      email: 'ops@tillgate.dev',
       twoFactorEnabled: false,
     });
 

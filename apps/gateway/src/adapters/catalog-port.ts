@@ -13,25 +13,25 @@
  *   渠道候选基序 = priority/weight 降序（加权调度在 inference 域内）。
  */
 import { createHash } from 'node:crypto';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import {
   postgresModelStore,
   postgresChannelStore,
   postgresRateCardStore,
-} from '@tokenlens/control-plane/composition';
+} from '@tillgate/control-plane/composition';
 import type {
   ActiveMappingRow,
   RouteCandidateRow,
   UserRateCardContext,
-} from '@tokenlens/control-plane';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+} from '@tillgate/control-plane';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import {
   measurementOf,
   pickCoefficient,
   reservationStrategyOf,
   strategyOf,
   type RateCardCoefficientSnapshot,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import { createBillingTimezoneReader } from './billing-timezone.js';
 import type {
   CatalogPricingContext,
@@ -39,7 +39,7 @@ import type {
   ChannelCandidate,
   ModelMappingSnapshot,
   PricingUnit,
-} from '@tokenlens/inference';
+} from '@tillgate/inference';
 
 const PRICING_UNITS: ReadonlySet<string> = new Set(['token', 'request', 'image', 'second', 'char']);
 

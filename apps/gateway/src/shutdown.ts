@@ -5,7 +5,7 @@
  */
 import type { ServerType } from '@hono/node-server';
 import type { Redis } from 'ioredis';
-import { createShutdown } from '@tokenlens/runtime';
+import { createShutdown } from '@tillgate/runtime';
 
 export interface GatewayShutdownDeps {
   server: ServerType;

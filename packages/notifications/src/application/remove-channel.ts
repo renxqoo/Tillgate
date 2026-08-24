@@ -2,7 +2,7 @@
  * 删除渠道:硬删(v1 语义);0 行 = channel_not_found。已入箱事件的 delivered_channel_ids
  * 引用不级联——投递循环对已删渠道自然跳过(目标筛选以快照渠道为准)。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';
 import { notificationsErrors } from '../errors';
 import type { NotifyContext } from './context';

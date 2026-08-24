@@ -4,8 +4,8 @@
  * （billing 语义）。GET /v1/subscriptions（管理列表）为 P1 pending（DESIGN §5 D7）。
  */
 import { Hono } from 'hono';
-import type { SubscriptionsApi } from '@tokenlens/billing';
-import { operationId } from '@tokenlens/http';
+import type { SubscriptionsApi } from '@tillgate/billing';
+import { operationId } from '@tillgate/http';
 import type { SessionEnv } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { subscriptionsContracts } from '../contracts/subscriptions';

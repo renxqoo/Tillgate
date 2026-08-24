@@ -1,13 +1,13 @@
 'use client';
 
-import type { PermissionNode } from '@tokenlens/api-client';
+import type { PermissionNode } from '@tillgate/api-client';
 import {
   Badge,
   ConfirmDialog,
   DropdownMenuItem,
   DropdownMenuSeparator,
   RowActions,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState } from 'react';
 import { PencilIcon, Trash2Icon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

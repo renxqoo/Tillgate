@@ -3,8 +3,8 @@
  * policy 全部可变阈值必填注入(铁律 3;v1 等价值见字段注释);
  * now 是输入预检时钟(仅 expiresAt 未来性等创建前判定),落库时间一律存储时钟。
  */
-import type { Db } from '@tokenlens/db';
-import type { TxRetryPolicy } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
+import type { TxRetryPolicy } from '@tillgate/db';
 import type { AccountStorePort } from '../ports/account-store.js';
 import type { WalletCreditPort } from '../ports/wallet-credit.js';
 import type { AuditPort } from '../ports/audit.js';

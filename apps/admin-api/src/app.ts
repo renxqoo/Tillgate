@@ -6,23 +6,23 @@
  */
 import { Hono } from 'hono';
 import { ZodError } from 'zod';
-import { pgSqlState } from '@tokenlens/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
-import { errorBody, errorHandler, renderError, HttpErrors } from '@tokenlens/http';
-import { localeFromContext } from '@tokenlens/http';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import { pgSqlState } from '@tillgate/db'; // 纯 SQLSTATE 分类函数(errorHandler 文档化注入点;非 Db 类型)
+import { errorBody, errorHandler, renderError, HttpErrors } from '@tillgate/http';
+import { localeFromContext } from '@tillgate/http';
+import type { AccountUseCases } from '@tillgate/accounts';
 import type {
   PlansApi,
   RedeemBatchesApi,
   SettlementApi,
   SubscriptionsApi,
   WalletApi,
-} from '@tokenlens/billing';
-import type { ControlPlane } from '@tokenlens/control-plane';
-import type { Observability } from '@tokenlens/observability';
-import type { Notifications } from '@tokenlens/notifications';
-import type { Identity } from '@tokenlens/identity';
-import type { PaymentAdminApi } from '@tokenlens/billing';
-import type { GenerationTaskStore } from '@tokenlens/inference';
+} from '@tillgate/billing';
+import type { ControlPlane } from '@tillgate/control-plane';
+import type { Observability } from '@tillgate/observability';
+import type { Notifications } from '@tillgate/notifications';
+import type { Identity } from '@tillgate/identity';
+import type { PaymentAdminApi } from '@tillgate/billing';
+import type { GenerationTaskStore } from '@tillgate/inference';
 import { adminErrorCatalog, ADMIN_FACE_OVERRIDES } from './http/error-face';
 import type { SessionEnv, SessionValidator } from './http/middleware/session';
 import { createAclMiddleware, matchBinding } from './http/middleware/acl';

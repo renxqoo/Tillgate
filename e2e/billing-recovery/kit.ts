@@ -16,8 +16,8 @@
  */
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { ping, closeDb, createDb } from '@tokenlens/db';
-import type { Db } from '@tokenlens/db';
+import { ping, closeDb, createDb } from '@tillgate/db';
+import type { Db } from '@tillgate/db';
 import { E2E_CHANNEL_ENCRYPTION_KEY, setupE2EWorld, type E2EWorld } from '../gateway/kit.js';
 import { loadWorkerConfig } from '../../apps/worker/src/config.js';
 import { assembleWorker } from '../../apps/worker/src/assembly.js';

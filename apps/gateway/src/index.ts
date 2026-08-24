@@ -4,7 +4,7 @@
  * 配置快照日志：排查「以为配了其实默认」——密钥类只打长度不打值。
  */
 import { serve } from '@hono/node-server';
-import { assertRedisReachable } from '@tokenlens/runtime';
+import { assertRedisReachable } from '@tillgate/runtime';
 import { loadGatewayConfig } from './config';
 import { assembleGateway } from './assembly';
 import { createGatewayApp } from './app';

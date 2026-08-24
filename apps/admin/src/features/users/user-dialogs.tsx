@@ -15,7 +15,7 @@ import {
   FormItem,
   Input,
   Textarea,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { NumberField } from '@/components/number-field';
 import * as React from 'react';
 import { useState, useTransition } from 'react';
@@ -37,7 +37,7 @@ import { z } from 'zod';
 import { moneyText } from '@/lib/forms';
 import { formatMoney } from '@/lib/formatters';
 
-import type { AdminUserRow } from '@tokenlens/api-client';
+import type { AdminUserRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 /**

@@ -3,7 +3,7 @@
  * db/walletCredit/policy/txRetry/now 必填(零隐藏默认,铁律 3);store/auditSink
  * 是测试缝——省略时内部装配 postgres 适配器(生产单一路径)。
  */
-import type { Db, TxRetryPolicy } from '@tokenlens/db';
+import type { Db, TxRetryPolicy } from '@tillgate/db';
 import { createPostgresAccountStore } from './adapters/postgres/account-store.js';
 import { createPostgresAuditSink } from './adapters/postgres/audit-sink.js';
 import { isValidKeyPrefix } from './domain/credentials.js';

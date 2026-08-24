@@ -19,14 +19,14 @@ vi.mock('@/server/actions/billing', () => ({
   createPaymentAction: vi.fn(),
 }));
 
-// toast 经 @tokenlens/ui re-export 自 sonner；client 不直依赖 sonner（B15 口径），
+// toast 经 @tillgate/ui re-export 自 sonner；client 不直依赖 sonner（B15 口径），
 // 故对 ui 面做部分 mock：组件保真，仅 toast 替身以断言成功反馈。
-vi.mock('@tokenlens/ui', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tokenlens/ui')>();
+vi.mock('@tillgate/ui', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tillgate/ui')>();
   return { ...actual, toast: { error: vi.fn(), success: vi.fn() } };
 });
 
-import { toast } from '@tokenlens/ui';
+import { toast } from '@tillgate/ui';
 import { createPaymentAction } from '@/server/actions/billing';
 import { TopUpForm } from '../src/features/wallet/topup-form';
 

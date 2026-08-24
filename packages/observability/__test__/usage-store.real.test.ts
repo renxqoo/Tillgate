@@ -9,8 +9,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
-import { createDb, closeDb, type Db } from '@tokenlens/db';
-import { usageLogs, users } from '@tokenlens/db';
+import { createDb, closeDb, type Db } from '@tillgate/db';
+import { usageLogs, users } from '@tillgate/db';
 import { createPgUsageStore } from '../src/adapters/postgres/usage-store';
 import { beijingDayStart } from '../src/usage/day-window';
 

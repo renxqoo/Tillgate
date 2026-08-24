@@ -1,5 +1,5 @@
 /**
- * @tokenlens/identity 公共出口:facade、用例出入参、领域词表与纯函数、错误目录、
+ * @tillgate/identity 公共出口:facade、用例出入参、领域词表与纯函数、错误目录、
  * 装配配置面 port 类型(无 DB 形态)。带 DbLike 的存储 port 契约(可替换实现/桥接面)
  * 一律走 ./composition 子入口,根出口零 Db/DbTx 形态泄漏(架构测试锁死)。
  */

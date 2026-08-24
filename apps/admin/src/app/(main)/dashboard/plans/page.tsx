@@ -7,7 +7,7 @@ import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreatePlanDialog, PlansTable } from '@/features/billing/plans-content';
-import type { PlanRow } from '@tokenlens/api-client';
+import type { PlanRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

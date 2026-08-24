@@ -3,10 +3,10 @@
  * 检查项:
  * 1. package graph 无环(内部 workspace 依赖 DFS);
  * 2. packages/* 不得依赖 apps/*;
- * 3. 跨包 import 只能命中目标 package 的显式 exports 子路径(禁止 @tokenlens/x/src 深导入
+ * 3. 跨包 import 只能命中目标 package 的显式 exports 子路径(禁止 @tillgate/x/src 深导入
  *    与未登记子路径);
  * 4. 相对 import 不得越出所在 workspace 根(阻止用 ../ 绕过 exports);
- * 5. 根 tsconfig paths 不得把 @tokenlens/* 映射回源码(阻止 alias 绕过 exports)。
+ * 5. 根 tsconfig paths 不得把 @tillgate/* 映射回源码(阻止 alias 绕过 exports)。
  * 用法:bun scripts/check-package-boundaries.ts(违规输出清单并 exit 1)。
  */
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -18,7 +18,7 @@ interface Workspace {
   name: string;
   dir: string;
   exports: Set<string>; // exports 字段的键('.'、'./composition' 等)
-  internalDeps: Set<string>; // @tokenlens/* 依赖(deps+devDeps+peerDeps)
+  internalDeps: Set<string>; // @tillgate/* 依赖(deps+devDeps+peerDeps)
 }
 
 function readJson(path: string): Record<string, unknown> {
@@ -54,7 +54,7 @@ for (const dir of workspaceDirs) {
     const deps = pkg[field];
     if (deps != null && typeof deps === 'object') {
       for (const dep of Object.keys(deps as Record<string, unknown>)) {
-        if (dep.startsWith('@tokenlens/')) internalDeps.add(dep);
+        if (dep.startsWith('@tillgate/')) internalDeps.add(dep);
       }
     }
   }
@@ -133,10 +133,10 @@ function checkFile(file: string, ws: Workspace): void {
   for (const m of source.matchAll(IMPORT_RE)) {
     const spec = m[1] ?? m[2] ?? m[3];
     if (spec == null) continue;
-    if (spec.startsWith('@tokenlens/')) {
-      const rest = spec.slice('@tokenlens/'.length);
+    if (spec.startsWith('@tillgate/')) {
+      const rest = spec.slice('@tillgate/'.length);
       const pkgShort = rest.split('/')[0]!;
-      const target = byName.get(`@tokenlens/${pkgShort}`);
+      const target = byName.get(`@tillgate/${pkgShort}`);
       if (target == null) {
         violations.push(`[unknown-import] ${relative(ROOT, file)} → ${spec}(非 workspace 包)`);
         continue;
@@ -174,13 +174,13 @@ for (const ws of workspaces) {
   }
 }
 
-// ---- 5. tsconfig paths 不得映射 @tokenlens/* 回源码 ----
+// ---- 5. tsconfig paths 不得映射 @tillgate/* 回源码 ----
 for (const tsconfigPath of [join(ROOT, 'tsconfig.base.json'), join(ROOT, 'tsconfig.next.json')]) {
   if (!existsSync(tsconfigPath)) continue;
   const raw = readFileSync(tsconfigPath, 'utf-8');
-  if (/"(?:paths)"[\s\S]*?@tokenlens\//.test(raw)) {
+  if (/"(?:paths)"[\s\S]*?@tillgate\//.test(raw)) {
     violations.push(
-      `[alias-bypass] ${relative(ROOT, tsconfigPath)} 的 paths 含 @tokenlens/* 源码映射`,
+      `[alias-bypass] ${relative(ROOT, tsconfigPath)} 的 paths 含 @tillgate/* 源码映射`,
     );
   }
 }

@@ -1,5 +1,5 @@
 import { requirePermission } from '@/server/get-admin';
-import { Badge, Card, CardDescription, CardHeader } from '@tokenlens/ui';
+import { Badge, Card, CardDescription, CardHeader } from '@tillgate/ui';
 import { DataTable } from '@/components/data-table';
 import Link from 'next/link';
 import { Activity } from 'lucide-react';

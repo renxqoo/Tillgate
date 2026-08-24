@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfirmDialog, DropdownMenuItem, RowActions } from '@tokenlens/ui';
+import { ConfirmDialog, DropdownMenuItem, RowActions } from '@tillgate/ui';
 import { useState } from 'react';
 import { Loader2Icon, XIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';

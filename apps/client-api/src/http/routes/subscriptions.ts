@@ -5,8 +5,8 @@
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { HttpErrors, jsonBody } from '@tokenlens/http';
-import type { SubscriptionsApi } from '@tokenlens/billing';
+import { HttpErrors, jsonBody } from '@tillgate/http';
+import type { SubscriptionsApi } from '@tillgate/billing';
 import {
   IDEMPOTENCY_KEY_PATTERN,
   planChangeSchema,

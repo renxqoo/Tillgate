@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { secretSchema } from '@tokenlens/runtime';
-import type { OtelMode } from '@tokenlens/observability';
-import type { DbPoolConfig } from '@tokenlens/db';
+import { secretSchema } from '@tillgate/runtime';
+import type { OtelMode } from '@tillgate/observability';
+import type { DbPoolConfig } from '@tillgate/db';
 
 /**
  * trace-receiver 配置(内网诊断服务)。v1 loadTraceReceiverEnv 平移,v2 差异:

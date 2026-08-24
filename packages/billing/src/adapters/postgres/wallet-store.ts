@@ -17,7 +17,7 @@ import {
   type Db,
   type DbTx,
   type TxRetryPolicy,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import type { AccountSnapshot } from '../../domain/wallet/accounts.js';
 import type { AuthorizationSnapshot } from '../../domain/wallet/authorization.js';
 import type {

@@ -3,7 +3,7 @@
  * 保留（历史计费可追溯）；外部名随部分唯一索引释放，可重建/再导入同名映射。
  * 已删除记录对管理面读/改/探针不可见（404 语义由各读路径 isNull 过滤保证）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore } from '../../ports/model-store';
 import { controlPlaneErrors } from '../../errors';

@@ -1,11 +1,11 @@
-# @tokenlens/http 设计基线（DESIGN）
+# @tillgate/http 设计基线（DESIGN）
 
 > 状态：定稿（2026-08-23）
 > 迁移单元：纯 HTTP/Hono 基础工具包——错误渲染出口、校验、分页、可信网络提取、请求上下文、
 > 幂等键、安全件（不是垂直业务用例）
 > 旧实现：`/Users/wrr/work/ai-getway/packages/http`（16 源文件 ~1.1k 行 + 11 测试 ~1.0k 行），
 > 以及三个 app 各自漂移的 `middleware/{request-id,security,protocol}.ts`（requestId ×3 / 安全件 ×3）
-> 目标位置：`/Users/wrr/work/TokenLens-v2/packages/http`
+> 目标位置：`/Users/wrr/work/Tillgate/packages/http`
 > 关联：[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)（注册表归属）、
 > [ADR-0002](../../docs/adr/0002-http-db-decoupling.md)（http↔db 解耦）、
 > [project-structure-refactoring.md](../../docs/project-structure-refactoring.md) §3（http 目标树）、§5.1（http → 仅 errors）；
@@ -17,7 +17,7 @@
 
 1. **纯 HTTP/Hono 工具，不拥有 wire schema**（结构方案 §3.1）：http 隐藏的复杂度是
    「Hono 无关/通用的请求上下文、安全、分页和错误渲染」；禁止进入：DB 查询、业务错误映射、应用路由。
-2. **错误渲染第一消费者**（ADR-0001 §4.2 消费次序）：http 是 `@tokenlens/errors` 根契约的
+2. **错误渲染第一消费者**（ADR-0001 §4.2 消费次序）：http 是 `@tillgate/errors` 根契约的
    第一个消费方——category → 默认渲染 + face override；业务码目录归能力包，http 永不 import 业务包。
 3. **行为等价**：机制件（分页 clamp、XFF 信任模型、幂等键字符集、密钥格式、Accept-Language 协商）
    的 v1 测试是行为规格；错误体系重构（HttpError/注册表 → 三性/目录）按 ADR-0001 裁决**有意重写**，
@@ -31,7 +31,7 @@
 
 ### 1.1 处理
 
-- **错误渲染出口**：`renderError`（TokenlensError → status/code/message/context 的出站投影）、
+- **错误渲染出口**：`renderError`（TillgateError → status/code/message/context 的出站投影）、
   `errorHandler`（Hono onError：坏 JSON / Hono 4xx HTTPException / 已分类错误按自身身份渲染 /
   PG SQLSTATE（探测注入，只兜未分类错误）/ 未知错误的边界翻译与兜底）、
   category → 默认 status 表、face override 机制、出站 Retry-After 渲染。
@@ -57,7 +57,7 @@
 | Redis 连接与测试装置 / .env 加载 / 渠道密钥加密                         | `runtime`（createRedisClient、testing 子入口；loadRootEnvFile、createCipher——C4/C7） |
 | OpenAI 错误信封 / 网关对外 wire 投影                                    | gateway app face（error-face 时用 override 表投影，P5）                              |
 | wire contract / OpenAPI schema                                          | 提供 API 的 app（结构方案 §3.3）                                                     |
-| `errors` 根契约（三性/category/目录/记录）                              | `@tokenlens/errors`（http 单向依赖它，不重复定义）                                   |
+| `errors` 根契约（三性/category/目录/记录）                              | `@tillgate/errors`（http 单向依赖它，不重复定义）                                   |
 
 ## 2. 外部契约（v2 API，定稿）
 
@@ -67,7 +67,7 @@ import { HttpErrors, renderError, errorHandler, pgRejection,
          jsonBody, query, intParam, paginationQuerySchema, listQuerySchema, escapeLike,
          trustedClientIp, clientIpFromContext, requestIdMiddleware, operationId,
          generateRedeemCode, maskUpstreamKey, timingSafeTokenEqual, securityHeaders,
-         corsPreflight, bodyParserLimit } from '@tokenlens/http';
+         corsPreflight, bodyParserLimit } from '@tillgate/http';
 
 // ---- 错误：http 自有目录（http.* 命名空间；机制件唯一抛出口）----
 HttpErrors.business('validation_failed', { 'body.name': 'expected string' });  // → BusinessError
@@ -86,7 +86,7 @@ errorBody(rendered);                          // → { error: { code, message, c
 app.onError(errorHandler({
   catalog: APP_ERRORS,                       // face 装配目录
   overrides?: FaceOverride 表
-  sqlState?: pgSqlState,                     // @tokenlens/db 注入（缺省无 PG 翻译）
+  sqlState?: pgSqlState,                     // @tillgate/db 注入（缺省无 PG 翻译）
   logger?: { error(obj, msg?) {} },          // 未知错误日志（缺省静默）
 }));
 pgRejection('23505');                        // → http.pg_unique_violation 业务错误 | null
@@ -112,7 +112,7 @@ requestIdMiddleware();                       // 服务端 randomUUID + x-request
 operationId(c);                              // 头缺失→UUID；非法字符集→http.invalid_idempotency_key
 
 // ---- 安全件 ----
-// （api-key/app 凭证生成器 sha256Hex/generateApiKey/maskKey 等已随消费者迁入 @tokenlens/accounts——C5/D3）
+// （api-key/app 凭证生成器 sha256Hex/generateApiKey/maskKey 等已随消费者迁入 @tillgate/accounts——C5/D3）
 generateRedeemCode();                          // RC- <32×base32>（随 billing 波次迁走）
 maskUpstreamKey(k);                            // 上游渠道 Key 脱敏
 timingSafeTokenEqual(a, b);                    // 常量时间比较
@@ -131,7 +131,7 @@ bodyParserLimit(maxBytes);                   // maxBytes 必填；快路径 + �
   - `DefectError` / 未知值 → 500、`errors.unhandled` + 通用文案（细节只进日志）。
 - **信封形状**：`{ error: { code, message, context? } }`——context 替代 v1 details（scalar 平铺）；
   app face 需要旧 `details: [{path, reason}]` wire 形状时在 face 渲染层转换（P5 契约定案时裁决）。
-- **Retry-After**：`TokenlensError.retryAfterMs` → `errorHandler` 出 `Retry-After`（秒，向上取整）；
+- **Retry-After**：`TillgateError.retryAfterMs` → `errorHandler` 出 `Retry-After`（秒，向上取整）；
   v1 `HttpError.headers` 自由头机制废除（收窄为唯一安全语义）。
 - **CATEGORY_STATUS_DEFAULTS**（http 单点，errors 包零 status 的补位）：invalid_input 400 /
   not_found 404 / conflict 409 / forbidden 403 / quota_exhausted 402 / rate_limited 429 /
@@ -159,7 +159,7 @@ bodyParserLimit(maxBytes);                   // maxBytes 必填；快路径 + �
 
 ## 4. 治理与稳定性
 
-1. **依赖白名单**：`@tokenlens/errors`（workspace）+ hono + @hono/node-server + zod；
+1. **依赖白名单**：`@tillgate/errors`（workspace）+ hono + @hono/node-server + zod；
    禁止 db / drizzle / ioredis / 业务包（架构测试与边界脚本就位后进 CI）。
 2. **单一渲染路径**：所有出站错误（含 middleware 自拒 413）一律经 `renderError`——
    信封形状、本地化、override 只有一处实现。

@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { BanknoteIcon, ImageIcon, Loader2Icon, ScaleIcon } from 'lucide-react';
@@ -35,7 +35,7 @@ import { toast } from 'sonner';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
 import { signedAmountTone } from '@/lib/money-tone';
 
-import type { AdminChannelFundRow, ChannelOption } from '@tokenlens/api-client';
+import type { AdminChannelFundRow, ChannelOption } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 
 function fmtSigned(v: string): string {

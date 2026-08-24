@@ -5,7 +5,7 @@
  * 注入手法 = 内存 stand-in 的定向包装(单动词抛错/返回空),不造第二套世界。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createPaymentsApi } from '../src/application/payments/payments.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';

@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import Link from 'next/link';
 
 import { ShieldCheck } from 'lucide-react';

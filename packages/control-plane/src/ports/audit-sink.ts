@@ -11,7 +11,7 @@
  *   已提交业务；降级清单见 IMPLEMENTATION.md §6 G3。
  */
 
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 
 export type AuditActor = 'admin' | 'user' | 'system';
 

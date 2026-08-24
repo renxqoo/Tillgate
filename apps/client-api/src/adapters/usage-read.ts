@@ -5,7 +5,7 @@
  * 按日汇总为 CLIENT_USAGE_TZ 日界；实时速率为 60s 窗 rpm/tpm。
  */
 import { and, desc, eq, gte, isNull, lte, sql, type SQL } from 'drizzle-orm';
-import { apiKeys, apps, modelMappings, usageLogs, type Db } from '@tokenlens/db';
+import { apiKeys, apps, modelMappings, usageLogs, type Db } from '@tillgate/db';
 import type { UsageByModelRow, UsageDayRow, UsageWireRow } from '../http/contracts/usage.js';
 
 export interface UsageReadInput {

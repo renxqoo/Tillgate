@@ -1,16 +1,16 @@
-# @tokenlens/http
+# @tillgate/http
 
 > 纯 HTTP/Hono 基础工具:错误渲染出口、校验、分页、可信网络提取、请求上下文、幂等键、安全件——不拥有 wire schema、零 DB/业务依赖。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md) ·
 > 裁决:[ADR-0001](../../docs/adr/0001-errors-registry-ownership.md)(注册表归属)、[ADR-0002](../../docs/adr/0002-http-db-decoupling.md)(http↔db 解耦)
 
-一句话:`@tokenlens/errors` 根契约的**第一消费者**——category → 默认渲染 + face
+一句话:`@tillgate/errors` 根契约的**第一消费者**——category → 默认渲染 + face
 override;只做 Hono 无关/通用的请求上下文、安全、分页与错误渲染,禁止进入 DB 查询、
 业务错误映射与应用路由(wire schema 归各 app contracts)。
 
 ## 核心导出面
 
-- 错误渲染出口:`renderError`(TokenlensError → status/code/message/context 出站投影)、
+- 错误渲染出口:`renderError`(TillgateError → status/code/message/context 出站投影)、
   `errorHandler`(Hono onError:坏 JSON / HTTPException / 已分类错误 / PG SQLSTATE
   (探测注入) / 未知错误的边界翻译与兜底)、`CATEGORY_STATUS_DEFAULTS` + face override、
   `pgRejection`。

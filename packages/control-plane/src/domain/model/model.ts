@@ -1,10 +1,10 @@
 /**
  * 模型映射域规则（纯函数）：计价单位词表、变体计费配置形状、价格数值域、输入校验。
- * BillingConfig 形状与 @tokenlens/db schema 的 $type 结构兼容（D2：双方结构契约，
+ * BillingConfig 形状与 @tillgate/db schema 的 $type 结构兼容（D2：双方结构契约，
  * domain 不 import db；装配点由类型系统校验一致性）。
  */
-import type { ErrorContext } from '@tokenlens/errors';
-import { validateScheduleWindows, type PricingWindow } from '@tokenlens/billing';
+import type { ErrorContext } from '@tillgate/errors';
+import { validateScheduleWindows, type PricingWindow } from '@tillgate/billing';
 import { controlPlaneErrors } from '../../errors';
 import { parseNonNegativeAmount } from '../money';
 import { freePriceConsistent } from './model-pricing';

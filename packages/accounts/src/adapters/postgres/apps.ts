@@ -3,7 +3,7 @@
  * 投影结构性排除 clientSecretHash;轮换走 FOR UPDATE 行锁。
  */
 import { and, count, desc, eq } from 'drizzle-orm';
-import { apps, users } from '@tokenlens/db';
+import { apps, users } from '@tillgate/db';
 import type { AccountStorePort } from '../../ports/account-store.js';
 import { nowSql } from './shared.js';
 

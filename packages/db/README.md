@@ -1,6 +1,6 @@
-# @tokenlens/db
+# @tillgate/db
 
-> PostgreSQL 连接、事务、schema 与迁移——物理 schema 登记点,不放业务用例(内部依赖仅 @tokenlens/errors,§5.1 白名单)。
+> PostgreSQL 连接、事务、schema 与迁移——物理 schema 登记点,不放业务用例(内部依赖仅 @tillgate/errors,§5.1 白名单)。
 > 设计基线 [DESIGN.md](./DESIGN.md) · 施工图 [IMPLEMENTATION.md](./IMPLEMENTATION.md)
 
 一句话:**物理 schema、迁移顺序和事务基础设施的统一登记点,不是业务事实所有者**——

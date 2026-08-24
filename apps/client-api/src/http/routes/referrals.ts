@@ -4,7 +4,7 @@
  */
 import { Hono } from 'hono';
 import type { MiddlewareHandler } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
+import type { AccountUseCases } from '@tillgate/accounts';
 import { referralConfigView, referralOverviewRow } from '../presenters/referrals.js';
 import type { SessionEnv } from '../middleware/session.js';
 

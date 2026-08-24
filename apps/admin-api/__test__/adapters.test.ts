@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Ai, UpstreamError } from '@tokenlens/ai';
+import type { Ai, UpstreamError } from '@tillgate/ai';
 import { createUpstreamProbe } from '../src/adapters/upstream-probe';
 import { createAdminSessionRevocation } from '../src/adapters/redis-session-revocation';
 import { createAdminFundingResolver } from '../src/adapters/funding-resolver';

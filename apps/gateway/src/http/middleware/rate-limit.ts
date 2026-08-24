@@ -1,5 +1,5 @@
 /**
- * 限流闸（v1 rate-limit/gate.ts 迁移；机制归 @tokenlens/runtime limiter，策略在此）：
+ * 限流闸（v1 rate-limit/gate.ts 迁移；机制归 @tillgate/runtime limiter，策略在此）：
  * 并罚制——任一维（key/user RPM、key/user/global TPM）超限即 429，不做凭证>用户择优；
  * 维度串不外泄（Retry-After 头表达等待）；TPM 预占失败必须 releaseTpm（TTL 兜底）。
  *
@@ -9,8 +9,8 @@
  * admitChannel 钩子保留（production-hardening「渠道超限换渠」语义）。
  */
 import { randomUUID } from 'node:crypto';
-import type { SlidingWindowLimiter } from '@tokenlens/runtime';
-import { getTracer, withAsyncSpan } from '@tokenlens/observability';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
+import { getTracer, withAsyncSpan } from '@tillgate/observability';
 import { GatewayErrors } from '../openai-error-face';
 import type { AuthContext } from './api-key';
 

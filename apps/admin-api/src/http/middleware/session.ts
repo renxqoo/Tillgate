@@ -6,9 +6,9 @@
  * 无 Cookie 无 CSRF：管理台类客户端自持 Bearer，凭据不经浏览器自动携带。
  */
 import type { Context, MiddlewareHandler } from 'hono';
-import type { SessionPayload } from '@tokenlens/identity';
-import type { AdminAccess, AdminGrants, ControlContext } from '@tokenlens/control-plane';
-import { HttpErrors } from '@tokenlens/http';
+import type { SessionPayload } from '@tillgate/identity';
+import type { AdminAccess, AdminGrants, ControlContext } from '@tillgate/control-plane';
+import { HttpErrors } from '@tillgate/http';
 
 export type { AdminAccess };
 

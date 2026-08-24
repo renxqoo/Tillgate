@@ -3,7 +3,7 @@
  * endpoint_not_found）/审计旁路。绑定判定本身由 acl.test 覆盖。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
+import { controlPlaneErrors } from '@tillgate/control-plane';
 import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 

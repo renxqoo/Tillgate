@@ -4,8 +4,8 @@
  * 自身业务状态**同一事务**写入 outbox 时,经此 bridge 参与;DbTx 不进根 facade。
  * 仅 app assembly、迁移脚本与 adapter 集成测试可引用本入口。
  */
-import type { DbTx } from '@tokenlens/db';
-import { notifyOutbox } from '@tokenlens/db';
+import type { DbTx } from '@tillgate/db';
+import { notifyOutbox } from '@tillgate/db';
 import { isNotifyEvent } from './domain/events';
 import { notificationsErrors } from './errors';
 

@@ -1,9 +1,9 @@
 /**
  * identity 错误目录(AGENT.md §11 / ADR-0001):业务拒绝经 defineErrorCatalog 自有目录表达,
  * 码带 identity. 命名空间;目录封闭性由 __test__/errors.test.ts 快照锁死。
- * 内部不变量破坏(不可能分支)不经目录,直接抛 @tokenlens/errors 的 DefectError。
+ * 内部不变量破坏(不可能分支)不经目录,直接抛 @tillgate/errors 的 DefectError。
  */
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 export const identityErrors = defineErrorCatalog('identity', {
   invalid_input: {

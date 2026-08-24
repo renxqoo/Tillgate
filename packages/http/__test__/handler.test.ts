@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { InfrastructureError, defineErrorCatalog } from '@tokenlens/errors';
+import { InfrastructureError, defineErrorCatalog } from '@tillgate/errors';
 import { errorHandler } from '../src/errors/handler';
 import { HttpErrors } from '../src/errors/catalog';
 
@@ -21,7 +21,7 @@ function app(deps: Parameters<typeof errorHandler>[0] = {}): Hono {
   return a;
 }
 
-describe('errorHandler：TokenlensError → 对应状态码 + 统一信封', () => {
+describe('errorHandler：TillgateError → 对应状态码 + 统一信封', () => {
   it('business → category 默认 status + context 出站', async () => {
     const res = await app().request('/boom');
     expect(res.status).toBe(404);
@@ -126,7 +126,7 @@ describe('errorHandler：Hono HTTPException 4xx 保留状态码（不兜 500）'
 });
 
 /**
- * cause 链 SQLSTATE 探测（模拟 @tokenlens/db 的 pgSqlState 契约：(err) => 5 位码 | null；
+ * cause 链 SQLSTATE 探测（模拟 @tillgate/db 的 pgSqlState 契约：(err) => 5 位码 | null；
  * 与真实实现一致沿全 cause 链探测——深链包裹的 PG 错误同样命中，不做层数截断）
  */
 function fakeSqlState(err: unknown): string | null {

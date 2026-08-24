@@ -3,8 +3,8 @@
  * v1 逐字对齐。锁与临界区编排归 application(B04:验旧密必须发生在锁内)。
  */
 import { eq, sql } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identityPasswords } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
+import { identityPasswords } from '@tillgate/db';
 import type { CredentialStore } from '../../ports/credential-store.js';
 
 export const passwordQueries: Pick<

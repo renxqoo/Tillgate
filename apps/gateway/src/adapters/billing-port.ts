@@ -1,6 +1,6 @@
 /**
  * inference BillingPort 的生产实现（DESIGN C-G3，装配面专属）：
- * 包一层 @tokenlens/billing facade 的 authorize/signal/reserveChannel 三用例——
+ * 包一层 @tillgate/billing facade 的 authorize/signal/reserveChannel 三用例——
  *   authorize：inference 候选链 → BillingQuote（inputTokenUpperBound 逐候选盖章、
  *     explicitlyFree = 候选链全免费）；reservationLimit/Policy 由 gateway config 持有；
  *   signal：蛇形词表 → billing 点分词表 + 收据字段结构对齐（两包同源 v1 receipt）；
@@ -13,13 +13,13 @@ import {
   type BillingEvent,
   type BillingQuote,
   type BillingQuoteCandidate,
-} from '@tokenlens/billing';
+} from '@tillgate/billing';
 import type {
   BillingPort,
   BillingSignal,
   QuoteCandidate,
   UsageReceipt,
-} from '@tokenlens/inference';
+} from '@tillgate/inference';
 
 export interface GatewayBillingConfig {
   reservationLimit: string;

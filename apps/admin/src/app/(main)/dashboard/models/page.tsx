@@ -4,12 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
 import { fetchAdminList } from '@/server/admin-list';
-import type { AdminChannelRow } from '@tokenlens/api-client';
+import type { AdminChannelRow } from '@tillgate/api-client';
 import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
 import { CreateModelDialog, ModelsTable } from '@/features/models/models-content';
-import type { ChannelOption, AdminModelRow } from '@tokenlens/api-client';
+import type { ChannelOption, AdminModelRow } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

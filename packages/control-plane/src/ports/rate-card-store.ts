@@ -3,7 +3,7 @@
  * 用户价 = 官方价 × 系数；系数解析优先级 model > group > global 的消费方在 billing/inference。
  * 不变量（application 在事务内调用保证）：每卡恰一行 scope='global' 兜底系数。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { ListQuery, ListResult } from '../domain/list';
 
 export interface RateCardRecord {

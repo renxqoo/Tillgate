@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/admin",
+  "name": "@tillgate/admin",
   "version": "0.1.0",
   "private": true,
   "description": "Next.js 管理后台（用户/渠道/模型/计费/链路运营面）——BFF 会话 + api-client 消费 admin-api，零能力包直依赖",
@@ -17,8 +17,8 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@hookform/resolvers": "^5.7.1",
-    "@tokenlens/api-client": "workspace:*",
-    "@tokenlens/ui": "workspace:*",
+    "@tillgate/api-client": "workspace:*",
+    "@tillgate/ui": "workspace:*",
     "@xyflow/react": "^12.11.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.33.0",

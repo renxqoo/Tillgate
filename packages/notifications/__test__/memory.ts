@@ -7,7 +7,7 @@
  * - 唯一约束以 23505 形状错误模拟(isUniqueViolation 按 cause 链 code 判定)。
  * 时钟可拨(lease 到期/退避到期用例);真实 SQL 行为等价由 postgres.real.test.ts 承担。
  */
-import type { Db, DbTx } from '@tokenlens/db';
+import type { Db, DbTx } from '@tillgate/db';
 import type {
   NotifyStore,
   ChannelInsertInput,

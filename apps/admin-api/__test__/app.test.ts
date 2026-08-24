@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { identityErrors } from '@tokenlens/identity';
+import { identityErrors } from '@tillgate/identity';
 import { createAdminApp } from '../src/app';
 import { authHeader, fakeDeps } from './helpers';
 
@@ -80,7 +80,7 @@ describe('admin-api app 骨架', () => {
     const login = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'ops@tokenlens.dev', password: 'wrong' }),
+      body: JSON.stringify({ email: 'ops@tillgate.dev', password: 'wrong' }),
     });
     expect(login.status).toBe(401);
     expect(await login.json()).toMatchObject({ error: { code: 'identity.invalid_credentials' } });
@@ -92,7 +92,7 @@ describe('admin-api app 骨架', () => {
           admins: {
             find: async () => ({
               id: 7,
-              email: 'ops@tokenlens.dev',
+              email: 'ops@tillgate.dev',
               displayName: 'Ops',
               status: 0,
               role: 'super_admin' as const,
@@ -106,7 +106,7 @@ describe('admin-api app 骨架', () => {
     );
     const me = await meApp.request('/v1/me', { headers: authHeader() });
     expect(me.status).toBe(200);
-    expect(await me.json()).toMatchObject({ id: 7, email: 'ops@tokenlens.dev' });
+    expect(await me.json()).toMatchObject({ id: 7, email: 'ops@tillgate.dev' });
   });
 
   it('安全响应头全集', async () => {

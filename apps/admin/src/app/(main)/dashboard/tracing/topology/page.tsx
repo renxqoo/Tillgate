@@ -1,9 +1,9 @@
 import { requirePermission } from '@/server/get-admin';
-import { Card, CardContent } from '@tokenlens/ui';
+import { Card, CardContent } from '@tillgate/ui';
 import Link from 'next/link';
 import { Network } from 'lucide-react';
 import { getTranslations } from 'next-intl/server';
-import { ApiError } from '@tokenlens/api-client';
+import { ApiError } from '@tillgate/api-client';
 import { adminApi } from '@/server/admin-api';
 import { ChannelTopology, type ChannelHealth } from '@/features/tracing/channel-topology';
 

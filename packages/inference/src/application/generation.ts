@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { generationKindDescriptor } from '../domain/generation';
 import type { GenerationTaskKind } from '../domain/generation';
 import { InferenceErrors } from '../domain/errors';

@@ -49,7 +49,7 @@
 | `deliver(deliveryId, type, config, event, payload, …)`（导出供直测）                                                   | `WebhookDeliverer.deliver({url, secret, event, payload, deliveryId})` + application 内 email 分支           | 解密沉 application、SSRF/签名/POST 沉 adapter（§2 裁决）                                                              |
 | `createNotificationsService({encryptionKey, db, repos?})` → `{list,create,patch,remove,test}`                          | `createNotifications(…)` → `channels.{list,create,patch,remove,test}`                                       | AppError→错误目录；zod 细则归 admin-api 契约                                                                          |
 | `NOTIFY_EVENTS`（admin service 导出）                                                                                  | `domain/events.ts` `NOTIFY_EVENTS`                                                                          | 词表单一真相随能力包（B5）                                                                                            |
-| gateway/worker/reconcile 直插 `db.insert(notifyOutbox)`                                                                | `notifications.enqueue({ctx,event,payload,dedupeKey})`；同事务场景经 `@tokenlens/notifications/composition` | D3 单一入口                                                                                                           |
+| gateway/worker/reconcile 直插 `db.insert(notifyOutbox)`                                                                | `notifications.enqueue({ctx,event,payload,dedupeKey})`；同事务场景经 `@tillgate/notifications/composition` | D3 单一入口                                                                                                           |
 
 ## 5. 测试迁移矩阵
 
@@ -57,7 +57,7 @@
 
 ## 6. 回滚方案
 
-- 本包为新增（旧仓只读不动），revert 即整体还原；无 DDL 变更（notification_channels/notify_outbox 迁移已在 @tokenlens/db 先行合入）。
+- 本包为新增（旧仓只读不动），revert 即整体还原；无 DDL 变更（notification_channels/notify_outbox 迁移已在 @tillgate/db 先行合入）。
 - bun.lock 为多会话共写文件：nodemailer/@types 依赖条目落 lock 但不随本波提交（ironlaw 15——与 control-plane 波同口径，协调后收口）。
 
 ## 7. 验收（核销记录，2026-08-23）

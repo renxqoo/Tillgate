@@ -3,7 +3,7 @@
  * U3 结算路径接线前先锁死语义；旧仓 service/__tests__ 对应覆盖的移植）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createPaygSource } from '../src/application/billing/funding/payg-source.js';
 import { createFundingRegistry } from '../src/application/billing/funding/registry.js';

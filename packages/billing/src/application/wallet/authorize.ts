@@ -3,7 +3,7 @@
  * 幂等快速路径在守卫之前（重放不该被余额守卫误伤）；跨用户键劫持 → ref_key_conflict。
  * 重放回执金额恒 normalizeAmount（B5 锁死：首调与重放的字符串形态全等）。
  */
-import { DefectError } from '@tokenlens/errors';
+import { DefectError } from '@tillgate/errors';
 import { assertCommandFingerprint, commandFingerprint } from '../../domain/fingerprint.js';
 import type { FingerprintValue } from '../../domain/fingerprint.js';
 import { normalizeAmount } from '../../domain/money.js';

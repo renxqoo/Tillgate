@@ -3,7 +3,7 @@
  * 提交后投递(失败即作废,可立刻重发;补救 abort 失败记 warn,B11)。
  * 投递上下文(ip/locale)全程内存流动——v1 模块级 Map 串号/泄漏根治(B05)。
  */
-import { advisoryLock, runTx } from '@tokenlens/db';
+import { advisoryLock, runTx } from '@tillgate/db';
 import { auditEvent } from '../domain/audit-events.js';
 import { challengeLockKey, challengeTargetKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';

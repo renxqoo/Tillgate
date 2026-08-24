@@ -169,7 +169,7 @@ describe('payment-orders（P4）', () => {
       fakeDeps({
         paymentAdmin: {
           close: async () => {
-            const { BillingErrors } = await import('@tokenlens/billing');
+            const { BillingErrors } = await import('@tillgate/billing');
             throw BillingErrors.business('order_state_conflict', { orderId: 'x' });
           },
         },

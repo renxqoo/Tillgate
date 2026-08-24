@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import type { UpstreamStreamEvent } from '../src/ports/upstream';
 import type { BillingSignal } from '../src/ports/billing';
 import { createInference } from '../src/inference';

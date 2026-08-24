@@ -3,7 +3,7 @@
  * Redis/DB 连接收口 → 正常退出；宽限耗尽强退。语义件归 runtime.createShutdown
  * （二次信号幂等、unref 计时器）——本文件只做 app 侧类型收窄。
  */
-import { createShutdown, type Logger } from '@tokenlens/runtime';
+import { createShutdown, type Logger } from '@tillgate/runtime';
 
 export interface ClientShutdownDeps {
   readonly serviceName: string;

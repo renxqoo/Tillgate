@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "@tokenlens/admin-api",
+    "title": "@tillgate/admin-api",
     "version": "0.1.0",
     "description": "管理控制面 REST API（contract → OpenAPI → generated client 生成链产物;registry 单一事实源 = src/http/openapi）。统一列表契约 ?page&page_size≤100&q&sort_by&order（sort_by 白名单外 400）;列表信封 {rows,total,page,pageSize};错误统一信封 { error: { code, message, context? } }。"
   },

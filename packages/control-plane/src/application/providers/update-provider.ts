@@ -1,7 +1,7 @@
 /**
  * 更新供应商：补丁词表校验 → 落库 → 审计。0 行 = 不存在。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ProviderStore, ProviderRecord } from '../../ports/provider-store';
 import type { ProviderCapabilities, ProviderPatchInput } from '../../domain/provider/provider';

@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 interface Msg {
   role: 'user' | 'assistant';

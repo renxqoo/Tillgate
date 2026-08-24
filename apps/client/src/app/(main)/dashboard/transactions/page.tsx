@@ -1,8 +1,8 @@
 import { CoinsIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { ApiError, type StatementPage, type StatementRow } from '@tokenlens/api-client';
-import { Button, DataTable, type DataTableColumn } from '@tokenlens/ui';
+import { ApiError, type StatementPage, type StatementRow } from '@tillgate/api-client';
+import { Button, DataTable, type DataTableColumn } from '@tillgate/ui';
 
 import { formatDateTime, formatMoney } from '@/features/shared/format';
 import { signedAmountTone } from '@/features/shared/money-tone';

@@ -56,7 +56,7 @@ cd e2e/billing-recovery && bun x vitest run
 ```
 
 环境要求：`DATABASE_URL`（或 `DB_TEST_URL`）+ `REDIS_URL`。每个测试文件独占一个
-隔离 schema（`tokenlens_e2e_*`，结束 drop cascade）——不写共享库状态、冒烟数据自清。
+隔离 schema（`tillgate_e2e_*`，结束 drop cascade）——不写共享库状态、冒烟数据自清。
 
 ### 依赖解析（e2e 非 workspace 包）
 

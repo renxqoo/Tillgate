@@ -3,7 +3,7 @@
  * 不带时分秒——首日不再半桶），序列按日补零（无消费日不再从图上消失）。
  * 后端按日桶日界 = CLIENT_USAGE_TZ，与 DISPLAY_TZ 默认同源（config/display.ts）。
  */
-import type { UsageDayRow } from '@tokenlens/api-client';
+import type { UsageDayRow } from '@tillgate/api-client';
 
 import { todayKey } from './kpi';
 

@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
-import type { Inference } from '@tokenlens/inference';
+import { errorHandler } from '@tillgate/http';
+import type { Inference } from '@tillgate/inference';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 import type { AuthEnv, AuthReadModel } from '../src/http/middleware/api-key';
 import { apiKeyMiddleware } from '../src/http/middleware/api-key';
@@ -14,7 +14,7 @@ import { oauthTokenRoutes } from '../src/http/routes/oauth-token';
 import { modalityMultipartRoutes } from '../src/http/routes/modality-multipart';
 import { generationRoutes } from '../src/http/routes/generation';
 import { admitRequest, type RateLimitGate } from '../src/http/middleware/rate-limit';
-import type { SlidingWindowLimiter } from '@tokenlens/runtime';
+import type { SlidingWindowLimiter } from '@tillgate/runtime';
 
 const JWT = { secret: 'ab12'.repeat(8), issuer: 'i', audience: 'a', keyPrefix: 'sk_' };
 const READER: AuthReadModel = {
@@ -306,7 +306,7 @@ describe('generation 分支（passthrough/TPM 释放/音乐族）', () => {
       },
       generation: {
         submit: async () => {
-          throw (await import('@tokenlens/inference')).InferenceErrors.business('model_not_found', {
+          throw (await import('@tillgate/inference')).InferenceErrors.business('model_not_found', {
             model: 'm',
           });
         },

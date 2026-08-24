@@ -20,7 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 
 import { getInitials } from '@/features/shared/initials';
 

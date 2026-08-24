@@ -32,7 +32,7 @@ import {
   type ProviderCapabilities,
 } from '../src/domain/provider/provider';
 import { controlPlaneErrors } from '../src/errors';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 
 const CAPABILITIES: ProviderCapabilities = {
   protocols: ['openai-compatible'],

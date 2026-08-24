@@ -10,7 +10,7 @@
  * - `db` 首参参与调用方事务(§5.4 事务参与 port);席位/订阅守卫对 user_subscriptions
  *   只取最小投影 {id, quantity} 并与 billing 侧同锁互斥(G8)。
  */
-import type { DbLike } from '@tokenlens/db';
+import type { DbLike } from '@tillgate/db';
 import type { AppScope } from '../domain/app.js';
 import type { MarketingSettings, MarketingSettingsPatch } from '../domain/marketing.js';
 

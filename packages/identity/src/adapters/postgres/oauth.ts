@@ -3,9 +3,9 @@
  * 解绑(锁内 for update + 最后凭据守卫)。SQL 与 v1 oauth.ts 逐语义对齐。
  */
 import { and, eq, ne } from 'drizzle-orm';
-import type { DbLike } from '@tokenlens/db';
-import { identityOauthLinks, identityPasswords } from '@tokenlens/db';
-import { DefectError } from '@tokenlens/errors';
+import type { DbLike } from '@tillgate/db';
+import { identityOauthLinks, identityPasswords } from '@tillgate/db';
+import { DefectError } from '@tillgate/errors';
 import type { LinkOutcome, OAuthStore, UnlinkOutcome } from '../../ports/oauth-store.js';
 
 export const oauthQueries: OAuthStore = {

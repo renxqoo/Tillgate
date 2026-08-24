@@ -3,7 +3,7 @@
  * 全系统统一一个计费时区；写入留审计（settings.billing_timezone——control-plane）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { settingsContracts } from '../contracts/settings';

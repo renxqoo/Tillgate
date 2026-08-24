@@ -17,7 +17,7 @@ import { createMemoryAdminStore } from './memory';
 const ROLE_SUPER = 1;
 const record = {
   id: 7,
-  email: 'ops@tokenlens.dev',
+  email: 'ops@tillgate.dev',
   displayName: 'Ops',
   status: 0,
   roleId: ROLE_SUPER,
@@ -48,7 +48,7 @@ describe('admins（G2 管理员资料用例族）', () => {
     expect(Object.keys(byId!)).not.toContain('passwordHash');
     expect(await findAdmin(deps, 999)).toBeNull();
     // 归一化在用例层（app 传入的原始形态也能命中）
-    const byEmail = await findAdminByEmail(deps, '  OPS@TokenLens.dev ');
+    const byEmail = await findAdminByEmail(deps, '  OPS@Tillgate.dev ');
     expect(byEmail?.id).toBe(7);
     expect(await findAdminByEmail(deps, 'no@x')).toBeNull();
   });
@@ -68,9 +68,9 @@ describe('admins（G2 管理员资料用例族）', () => {
     const { deps, store } = setup();
     const created = await createAdmin(
       { db: deps.db, store },
-      { email: '  Newbie@TokenLens.dev ', displayName: 'Newbie', roleId: 5 },
+      { email: '  Newbie@Tillgate.dev ', displayName: 'Newbie', roleId: 5 },
     );
-    expect(created.email).toBe('newbie@tokenlens.dev');
+    expect(created.email).toBe('newbie@tillgate.dev');
     expect(created.roleId).toBe(5);
     expect(created.status).toBe(0);
 
@@ -92,7 +92,7 @@ describe('admins（G2 管理员资料用例族）', () => {
     await expect(
       createAdmin(
         { db: deps.db, store },
-        { email: 'OPS@tokenlens.dev', displayName: null, roleId: 2 },
+        { email: 'OPS@tillgate.dev', displayName: null, roleId: 2 },
       ),
     ).rejects.toMatchObject({ code: 'control_plane.admin_email_taken' });
 
@@ -125,7 +125,7 @@ describe('admins（G2 管理员资料用例族）', () => {
     const { deps, store } = setup();
     const created = await createAdmin(
       { db: deps.db, store },
-      { email: 'temp@tokenlens.dev', displayName: null, roleId: 4 },
+      { email: 'temp@tillgate.dev', displayName: null, roleId: 4 },
     );
     await store.remove(deps.db, created.id);
     expect(await findAdmin(deps, created.id)).toBeNull();

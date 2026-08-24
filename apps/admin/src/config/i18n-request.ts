@@ -1,7 +1,7 @@
 import { getRequestConfig } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 
-import { LOCALE_COOKIE } from '@tokenlens/api-client/next';
+import { LOCALE_COOKIE } from '@tillgate/api-client/next';
 
 import { adminLocale } from '@/server/admin-locale';
 

@@ -5,7 +5,7 @@
  * 键劫持归属、出账守卫口径、B1/B5 回归、读侧规范化。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError, isDefectError } from '@tokenlens/errors';
+import { isBusinessError, isDefectError } from '@tillgate/errors';
 import { BillingErrors } from '../src/domain/errors.js';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createInMemoryWalletStore } from '../src/testing/in-memory-wallet-store.js';

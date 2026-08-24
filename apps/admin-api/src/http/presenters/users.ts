@@ -3,8 +3,8 @@
  * packages/api-client/src/dto/admin-api.ts;日期一律 ISO 字符串）。
  * 富化口径 = v1 users.service enrich：available = balance + creditLimit − inFlight。
  */
-import type { AccountSnapshot } from '@tokenlens/billing';
-import { Decimal } from '@tokenlens/billing';
+import type { AccountSnapshot } from '@tillgate/billing';
+import { Decimal } from '@tillgate/billing';
 import { iso } from '../contracts/common';
 
 export interface UserRowSource {

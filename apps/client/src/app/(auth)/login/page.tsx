@@ -50,7 +50,7 @@ export default async function LoginPage({
           <LoginForm next={next} oauthOptions={oauthOptions} />
         </div>
 
-        <p className="text-sm text-muted-foreground">© 2026 TokenLens · MIT License</p>
+        <p className="text-sm text-muted-foreground">© 2026 Tillgate · MIT License</p>
       </div>
     </main>
   );

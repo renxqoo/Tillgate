@@ -5,10 +5,10 @@
  * 响应体永不包括 passwordHash（服务列白名单,测试红线锁定）。
  */
 import { Hono } from 'hono';
-import type { AccountUseCases } from '@tokenlens/accounts';
-import type { WalletApi } from '@tokenlens/billing';
-import type { Identity } from '@tokenlens/identity';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { AccountUseCases } from '@tillgate/accounts';
+import type { WalletApi } from '@tillgate/billing';
+import type { Identity } from '@tillgate/identity';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';

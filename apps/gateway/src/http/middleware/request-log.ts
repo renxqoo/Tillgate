@@ -1,11 +1,11 @@
 /**
- * 请求日志中间件（v1 request-log 迁移；持久化归 @tokenlens/observability）：
+ * 请求日志中间件（v1 request-log 迁移；持久化归 @tillgate/observability）：
  * 挂 /v1/* 鉴权之前——401/429 也入日志（「记录一切 /v1 请求」语义）。
  * best-effort：写失败仅记日志不阻塞请求（排障日志不反压数据面）。
  */
 import type { MiddlewareHandler } from 'hono';
-import { socketAddressFromContext, trustedClientIp } from '@tokenlens/http';
-import type { RequestLogStore } from '@tokenlens/observability';
+import { socketAddressFromContext, trustedClientIp } from '@tillgate/http';
+import type { RequestLogStore } from '@tillgate/observability';
 import type { AuthEnv } from './api-key';
 
 export interface RequestLogDeps {

@@ -3,7 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@tokenlens/ui';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@tillgate/ui';
 
 import { formatMoney } from '@/features/shared/format';
 

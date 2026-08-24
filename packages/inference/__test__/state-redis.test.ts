@@ -64,8 +64,8 @@ const redisUrl = process.env.REDIS_URL ?? null;
 
 describe.skipIf(redisUrl == null)('adapters/state-redis：真实 Redis CAS 原子性', () => {
   it('并发 CAS 只有一个赢家；TTL 生效', async () => {
-    const { createRedisClient } = await import('@tokenlens/runtime');
-    const { waitForRedisReady } = await import('@tokenlens/runtime/testing');
+    const { createRedisClient } = await import('@tillgate/runtime');
+    const { waitForRedisReady } = await import('@tillgate/runtime/testing');
     const redis = createRedisClient(redisUrl as string, {
       serviceName: 'inference-test',
       logThrottleMs: 30_000, // 必填注入（铁律 3）：测试取生产行为形态值

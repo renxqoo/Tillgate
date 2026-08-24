@@ -6,7 +6,7 @@
  * 'false' 变 true,v1 陷阱在 contracts 层收口）。
  */
 import { z } from 'zod';
-import { USAGE_SORT_FIELDS } from '@tokenlens/observability';
+import { USAGE_SORT_FIELDS } from '@tillgate/observability';
 
 export const AUDIT_SORTS = ['id', 'action', 'createdAt'] as const;
 export const LOG_SORTS = ['id', 'statusCode', 'durationMs', 'createdAt'] as const;

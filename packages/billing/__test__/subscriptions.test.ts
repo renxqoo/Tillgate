@@ -3,7 +3,7 @@
  * subscription 主干 + operations.test；真实 PG 的唯一索引/行锁竞态在 U5 收口真 PG 套件）。
  */
 import { describe, expect, it } from 'vitest';
-import { isBusinessError } from '@tokenlens/errors';
+import { isBusinessError } from '@tillgate/errors';
 import { createWalletApi } from '../src/application/wallet/wallet.js';
 import { createSubscriptionsApi } from '../src/application/subscriptions/subscriptions.js';
 import { createOperationsUseCase, assertOperationId } from '../src/application/operations.js';

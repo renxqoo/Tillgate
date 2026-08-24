@@ -4,7 +4,7 @@
  * 死信复审乐观锁 409/命令守卫;订阅管理列表信封。
  */
 import { describe, expect, it, vi } from 'vitest';
-import { BillingErrors } from '@tokenlens/billing';
+import { BillingErrors } from '@tillgate/billing';
 import { createAdminApp } from '../src/app';
 import { fakeDeps } from './helpers';
 

@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server';
-import { ping } from '@tokenlens/db';
+import { ping } from '@tillgate/db';
 import { loadAdminApiConfig } from './config';
 import { assembleAdminApi } from './assembly';
 import { createAdminApp } from './app';

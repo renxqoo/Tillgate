@@ -5,7 +5,7 @@
  * 租约过期:进度/终态 CAS 返回 false 只告警不计数,行等待重领(fencing 保证不重发)。
  */
 import { randomUUID } from 'node:crypto';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { NotifyStore } from '../ports/notify-store';
 import type { EmailSender } from '../ports/email-sender';
 import type { WebhookDeliverer } from '../ports/webhook-deliverer';

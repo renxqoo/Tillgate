@@ -4,15 +4,15 @@
  * errorHandler 按 nature/category 分派渲染,PG SQLSTATE 仅兜底注入。
  * message 英文(铁律 18),中文经目录 zh 字段按 Accept-Language 协商。
  */
-import { composeErrorCatalogs } from '@tokenlens/errors';
-import { HttpErrors, type FaceOverride } from '@tokenlens/http';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { controlPlaneErrors } from '@tokenlens/control-plane';
-import { BillingErrors } from '@tokenlens/billing';
-import { observabilityErrors } from '@tokenlens/observability';
-import { identityErrors } from '@tokenlens/identity';
-import { notificationsErrors } from '@tokenlens/notifications';
-import { defineErrorCatalog } from '@tokenlens/errors';
+import { composeErrorCatalogs } from '@tillgate/errors';
+import { HttpErrors, type FaceOverride } from '@tillgate/http';
+import { AccountsErrors } from '@tillgate/accounts';
+import { controlPlaneErrors } from '@tillgate/control-plane';
+import { BillingErrors } from '@tillgate/billing';
+import { observabilityErrors } from '@tillgate/observability';
+import { identityErrors } from '@tillgate/identity';
+import { notificationsErrors } from '@tillgate/notifications';
+import { defineErrorCatalog } from '@tillgate/errors';
 
 /** app 自有目录 admin.*：只登记 app 协议层抛点的边界码（铁律 4：无抛点不登记） */
 export const AdminErrors = defineErrorCatalog('admin', {

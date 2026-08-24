@@ -1,8 +1,8 @@
-# @tokenlens/gateway 设计基线
+# @tillgate/gateway 设计基线
 
 > 状态：定稿（2026-08-23；gateway app 迁移波 = 重构方案 §3 目标树 `apps/gateway` + P5 第二个 app）
 > 旧实现：`/Users/wrr/work/ai-getway/apps/gateway`（app 层约 3.1k 行 + 测试约 4.2k 行；
-> pipeline/routing/quote/generation/billing/ai 六目录约 5.9k 行已由 P4 wave-4 `@tokenlens/inference` 承接）
+> pipeline/routing/quote/generation/billing/ai 六目录约 5.9k 行已由 P4 wave-4 `@tillgate/inference` 承接）
 > 施工图见 [IMPLEMENTATION.md](./IMPLEMENTATION.md)；行为规格与测试矩阵见 [MIGRATION.md](./MIGRATION.md)。
 
 ---
@@ -11,7 +11,7 @@
 
 OpenAI/模型推理公网入口：协议适配（OpenAI / completions / responses / claude / gemini 原生 /
 模态 multipart / 异步生成）+ 鉴权 + 限流 + 装配。**推理编排、候选循环、计价收据、渠道健康全部
-来自 `@tokenlens/inference` facade——app 零第二套业务规则**（P5：app 只保留 config、assembly、
+来自 `@tillgate/inference` facade——app 零第二套业务规则**（P5：app 只保留 config、assembly、
 协议路由、中间件、presenter 与生命周期）。
 
 迁移单元（垂直用例）：「客户端凭证经公网入口完成一次推理请求（含鉴权、限流、计费衔接、
@@ -38,7 +38,7 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 ### 2.2 鉴权（双形态，v1 语义）
 
-- **虚拟 Key**（`sk_` 前缀）：SHA-256 → `@tokenlens/accounts` `resolveKeyByHash`（key 活跃 +
+- **虚拟 Key**（`sk_` 前缀）：SHA-256 → `@tillgate/accounts` `resolveKeyByHash`（key 活跃 +
   属主活跃 + 未过期，每调用直查无缓存）。爆破防护：keyHash 维 + IP 维双计数、阈值锁定。
 - **App-JWT**（不以 keyPrefix 开头）：HS256 验签（算法白名单 + iss/aud），仅认 `typ='app_jwt'` +
   `app_id` + `sub`；`accounts.resolveApp` 校验 app 活跃且属主匹配；rpm/tpm/白名单取 payload.scope；
@@ -78,12 +78,12 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 | 不处理项                                     | 归属                                                                |
 | -------------------------------------------- | ------------------------------------------------------------------- |
-| 候选循环 / 换渠 / 输出钳制 / 收据 / 渠道健康 | `@tokenlens/inference`                                              |
-| 钱包预扣 / 结算状态机 / 渠道敞口 / 资金瀑布  | `@tokenlens/billing`（经 BillingPort 桥）                           |
-| 模型映射 / 渠道候选 / 费率卡系数读取         | `@tokenlens/control-plane` 只读目录（经 CatalogPort 桥）            |
-| 上游协议执行 / 传输 / 重试 / 事件总线        | `@tokenlens/ai`（inference 内部持有；app 运行时不 import ai——§3.6） |
-| Key/App 凭证事实与鉴权读模型                 | `@tokenlens/accounts`                                               |
-| 请求日志/审计的持久化与查询                  | `@tokenlens/observability`                                          |
+| 候选循环 / 换渠 / 输出钳制 / 收据 / 渠道健康 | `@tillgate/inference`                                              |
+| 钱包预扣 / 结算状态机 / 渠道敞口 / 资金瀑布  | `@tillgate/billing`（经 BillingPort 桥）                           |
+| 模型映射 / 渠道候选 / 费率卡系数读取         | `@tillgate/control-plane` 只读目录（经 CatalogPort 桥）            |
+| 上游协议执行 / 传输 / 重试 / 事件总线        | `@tillgate/ai`（inference 内部持有；app 运行时不 import ai——§3.6） |
+| Key/App 凭证事实与鉴权读模型                 | `@tillgate/accounts`                                               |
+| 请求日志/审计的持久化与查询                  | `@tillgate/observability`                                          |
 | 生成任务轮询与结算落账                       | worker 波（显式挂账，见 MIGRATION §5）                              |
 | 死凭据永久拉黑与告警                         | control-plane/observability 后续波                                  |
 
@@ -105,13 +105,13 @@ control-plane 只读目录、accounts 资金来源解析器。
 
 ```
 apps/gateway/src/assembly.ts（唯一装配根）
-├── @tokenlens/db createDb ──┬─→ billing/composition createPostgresBilling
+├── @tillgate/db createDb ──┬─→ billing/composition createPostgresBilling
 │                            ├─→ observability/composition（trace/audit/request-log stores）
 │                            └─→ control-plane stores（新增 ./composition 出口）
 ├── runtime createRedisClient ──┬─→ inference createRedisHealthStore
 │                               ├─→ runtime createSlidingWindowLimiter（本波新增）
 │                               └─→ runtime createKeyBruteForceGuard / createAuthFailureGuard（本波新增）
-├── @tokenlens/ai createAi ──→ inference createInference（catalog/billing 桥注入）
+├── @tillgate/ai createAi ──→ inference createInference（catalog/billing 桥注入）
 └── accounts createAccounts（鉴权读模型 + funding resolver 桥）
 ```
 
@@ -120,19 +120,19 @@ body })`——费率卡系数按用户解析、模态单位上界按请求体推
   的 coefficient/unitPrice/unitUpperBound 因此是「请求时点已解析」值。resolveChannels 不带
   用户维度（渠道路由无用户语义）。同迁移单元修订 inference 文档附录。
 - **C-G2 报价解析住在装配桥**：gateway `adapters/catalog-port` 组合 control-plane 映射读 +
-  费率卡上下文 + `@tokenlens/billing` 纯函数（`pickCoefficient`/`measurementOf`/
+  费率卡上下文 + `@tillgate/billing` 纯函数（`pickCoefficient`/`measurementOf`/
   `reservationStrategyOf`/`strategyOf`，单一真相不复制）→ inference 快照。control-plane 不
   反向依赖 billing（§5.2 无此边）；app 只做调用序列编排，不做规则（P5 红线）。
 - **C-G3 BillingPort 桥**（gateway `adapters/billing-port`）：inference 候选 → `BillingQuote`
   （inputTokenUpperBound 逐候选盖章 + maxOutputTokens + explicitlyFree）；signal 蛇形→点分
   词表映射 + 收据字段对齐；reserveChannel 以 `estimateMaxCost`（官方价口径 coefficient=1）
   自算 amount。reservationLimit/Policy 由 gateway config 持有（铁律 3）。
-- **C-G4 FundingSourceResolver 归 accounts**：`@tokenlens/accounts/composition` 新增
+- **C-G4 FundingSourceResolver 归 accounts**：`@tillgate/accounts/composition` 新增
   `createPgFundingSourceResolver(db)`（api_keys/users 凭证→订阅绑定/转按量/日限额；SQL 住
   accounts 的 postgres adapter——billing 文档 §8 明示「resolver 桥接在 app assembly 完成」，
   本波落位到 accounts 侧 composition 出口，gateway assembly 只取件，SQL 不进 app）。
 - **C-G5 限流/爆破机制归 runtime**：v1 core 的 sliding window limiter（RPM ZSET + TPM 预占
-  hash + Lua）与 key/IP 双爆破 guard（含 degraded 本地粗限）平移 `@tokenlens/runtime`
+  hash + Lua）与 key/IP 双爆破 guard（含 degraded 本地粗限）平移 `@tillgate/runtime`
   （`createRedisScriptRunner` 底座的自然消费者；client-api/admin-api 后续同源消费）。
   限流**策略**（维度组装、并罚制、global 维）住 gateway `http/middleware/rate-limit`。
 - **C-G6 App-JWT 归 gateway**：目标树 routes 含 `oauth`；identity 会话令牌是控制台 user/admin

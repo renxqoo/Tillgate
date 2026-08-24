@@ -4,8 +4,8 @@
  * wire 偏差（MIGRATION §4）：渠道行 cooldownUntil/providerBaseUrl/updatedAt 无列来源恒 null;
  * boundModels 为 v2 线形 string[]（绑定名清单——{externalName,realModel} 对待 control-plane 列表扩展）。
  */
-import type { ControlPlane } from '@tokenlens/control-plane';
-import { Decimal, normalizeAmount } from '@tokenlens/billing';
+import type { ControlPlane } from '@tillgate/control-plane';
+import { Decimal, normalizeAmount } from '@tillgate/billing';
 import { iso } from '../contracts/common';
 
 export type ProviderRowSource = Awaited<ReturnType<ControlPlane['providers']['create']>>;

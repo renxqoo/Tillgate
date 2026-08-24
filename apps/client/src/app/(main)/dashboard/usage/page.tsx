@@ -1,8 +1,8 @@
 import { LineChartIcon } from 'lucide-react';
 import { getLocale, getTranslations } from 'next-intl/server';
 
-import { ApiError, type UsageRow } from '@tokenlens/api-client';
-import { DataTable, Input, Button, type DataTableColumn } from '@tokenlens/ui';
+import { ApiError, type UsageRow } from '@tillgate/api-client';
+import { DataTable, Input, Button, type DataTableColumn } from '@tillgate/ui';
 
 import {
   formatDateTime,

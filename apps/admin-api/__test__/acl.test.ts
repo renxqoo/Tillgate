@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
+import { errorHandler } from '@tillgate/http';
 import {
   createAclMiddleware,
   matchBinding,

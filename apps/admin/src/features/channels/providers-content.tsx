@@ -30,7 +30,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { StatusPill } from '@/components/status-pill';
 import { useState, useTransition } from 'react';
 
@@ -47,7 +47,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
-import type { AdminProviderRow } from '@tokenlens/api-client';
+import type { AdminProviderRow } from '@tillgate/api-client';
 import { fmtDateTime } from '@/lib/formatters';
 import { useActionResult } from '@/components/action-toast';
 import { ConfirmAction } from '@/components/confirm-action';

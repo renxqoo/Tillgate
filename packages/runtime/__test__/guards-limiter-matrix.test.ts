@@ -8,7 +8,7 @@
  *     空队列抛错 = 存储故障（驱动 fail 档）；noscriptOnce 覆盖 evalsha→LOAD→重试自愈。
  */
 import { describe, expect, it } from 'vitest';
-import { isInfrastructureError } from '@tokenlens/errors';
+import { isInfrastructureError } from '@tillgate/errors';
 import { createKeyBruteForceGuard, createAuthFailureGuard } from '../src/redis/auth-guards';
 import { createSlidingWindowLimiter } from '../src/redis/rate-limiter';
 

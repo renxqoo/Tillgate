@@ -23,7 +23,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 
@@ -34,9 +34,9 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import { CopyButton } from '@tokenlens/ui';
+import { CopyButton } from '@tillgate/ui';
 import { fmtDateTime, formatMoney } from '@/lib/formatters';
-import type { AdminBatchRow } from '@tokenlens/api-client';
+import type { AdminBatchRow } from '@tillgate/api-client';
 import { useActionResult } from '@/components/action-toast';
 import { moneyText } from '@/lib/forms';
 

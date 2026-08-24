@@ -4,7 +4,7 @@
  * 历史账单行自带 pricing_window 标签与价格快照，无需重算。
  */
 import { controlPlaneErrors } from '../../errors';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { SettingsStore } from '../../ports/settings-store';
 import { adminIdOf, type ControlContext } from '../context';

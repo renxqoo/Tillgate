@@ -5,7 +5,7 @@
  * 渠道；回收站渠道不阻塞。
  * 已删除供应商的渠道在服务面同步停止路由（findRouteCandidates 过滤 deleted_at）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ProviderStore } from '../../ports/provider-store';
 import type { ChannelStore } from '../../ports/channel-store';

@@ -3,11 +3,11 @@
  * composeErrorCatalogs 合成全量目录 + FaceOverride 钉死与 category 默认不同的
  * v1 状态语义（410/502/401 族）。禁止 instanceof 业务类翻译表（v1 E1/E3 病灶）。
  */
-import { composeErrorCatalogs, defineErrorCatalog } from '@tokenlens/errors';
-import { HttpErrors, type FaceOverride } from '@tokenlens/http';
-import { identityErrors } from '@tokenlens/identity';
-import { AccountsErrors } from '@tokenlens/accounts';
-import { BillingErrors } from '@tokenlens/billing';
+import { composeErrorCatalogs, defineErrorCatalog } from '@tillgate/errors';
+import { HttpErrors, type FaceOverride } from '@tillgate/http';
+import { identityErrors } from '@tillgate/identity';
+import { AccountsErrors } from '@tillgate/accounts';
+import { BillingErrors } from '@tillgate/billing';
 
 /** app 编排期目录（跨能力流程的协议级拒绝——v1 裸码的命名空间化） */
 export const clientErrors = defineErrorCatalog('client', {

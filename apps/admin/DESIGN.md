@@ -1,4 +1,4 @@
-# @tokenlens/admin 设计基线（Next.js 管理后台）
+# @tillgate/admin 设计基线（Next.js 管理后台）
 
 > 状态：定稿（2026-08-23）
 > 定位：总纲（docs/project-structure-refactoring.md）§3 目标树 `apps/admin`——Next.js 管理后台。
@@ -19,13 +19,13 @@ notifications,billing-operations,tracing,tracing/topology,logs,usage-logs,audit-
 
 所有数据页面 `force-dynamic`（管理面实时性；不经 Next 数据缓存）。
 
-### 1.2 数据契约（唯一来源：admin-api + `@tokenlens/api-client`）
+### 1.2 数据契约（唯一来源：admin-api + `@tillgate/api-client`）
 
-- 全部取数/变更经 `createNextAdminApiClient()`（`@tokenlens/api-client/next`），
+- 全部取数/变更经 `createNextAdminApiClient()`（`@tillgate/api-client/next`），
   路径白名单 `/v1/*`，会话=BFF 持有 `ag_admin_session` HttpOnly cookie → 出站 Bearer。
-- wire DTO 以 `@tokenlens/api-client` 手写快照为编译期事实源（生成链落地前唯一事实源，
+- wire DTO 以 `@tillgate/api-client` 手写快照为编译期事实源（生成链落地前唯一事实源，
   总纲 §2.2）；本波补齐 tracing 族等 admin 消费缺口（IMPLEMENTATION §4）。
-- **前端零直连能力包**：不 import `@tokenlens/{ai,inference,tracing,db,http,runtime,
+- **前端零直连能力包**：不 import `@tillgate/{ai,inference,tracing,db,http,runtime,
 identity,accounts,billing,control-plane,notifications,observability}`——架构测试机器锁定
   （总纲 P5「清除 apps/admin 对 ai/tracing 直依赖」的前端半边）。
 
@@ -41,7 +41,7 @@ identity,accounts,billing,control-plane,notifications,observability}`——架�
 ### 1.4 i18n 契约
 
 next-intl 无路由模式（cookie `NEXT_LOCALE` → Accept-Language → 默认 en）；词表
-`messages/{en,zh}.json` v1 全量平移。语言协商内核复用 `@tokenlens/api-client/next` 的
+`messages/{en,zh}.json` v1 全量平移。语言协商内核复用 `@tillgate/api-client/next` 的
 `resolveLocale/LOCALE_COOKIE`（D1 孪生实现已在包侧）。
 
 ## 2. 问题域（处理 / 不处理）
@@ -57,7 +57,7 @@ xyflow 纯前端计算）。
   providers 表单协议下拉用 `src/config/protocols.ts` 本地快照过渡（后端 zod 仍是最终
   防线；快照来源与切换裁决见 IMPLEMENTATION §6）。
 - 资金不变量、审计落库、通知投递——billing/observability/notifications。
-- 组件设计系统——`@tokenlens/ui`；Next 耦合组合件（action-toast/list-page 等）按
+- 组件设计系统——`@tillgate/ui`；Next 耦合组合件（action-toast/list-page 等）按
   ui 包纪律（禁 Next 专有依赖）owned by app（IMPLEMENTATION §3 裁决表）。
 
 ## 3. 结构（目标树落位）

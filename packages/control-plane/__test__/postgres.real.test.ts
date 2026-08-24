@@ -6,7 +6,7 @@
  */
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray, like, sql } from 'drizzle-orm';
-import { createDb, isUniqueViolation, closeDb, roles, type Db } from '@tokenlens/db';
+import { createDb, isUniqueViolation, closeDb, roles, type Db } from '@tillgate/db';
 import {
   providers,
   channels,
@@ -18,7 +18,7 @@ import {
   auditLogs,
   channelRecharges,
   admins,
-} from '@tokenlens/db';
+} from '@tillgate/db';
 import { postgresProviderStore } from '../src/adapters/postgres/provider-store';
 import { postgresChannelStore } from '../src/adapters/postgres/channel-store';
 import { postgresModelStore } from '../src/adapters/postgres/model-store';

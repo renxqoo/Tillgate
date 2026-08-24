@@ -30,7 +30,7 @@ export default async function ForgotPage({
         <div className="w-full">
           <ForgotForm />
         </div>
-        <p className="text-sm text-muted-foreground">© 2026 TokenLens · MIT License</p>
+        <p className="text-sm text-muted-foreground">© 2026 Tillgate · MIT License</p>
       </div>
     </main>
   );

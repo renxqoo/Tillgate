@@ -15,7 +15,7 @@
  *   cleanupUsers + 播种行回收（共享库口径不变）。
  */
 import { sql } from 'drizzle-orm';
-import { createDb, closeDb } from '@tokenlens/db';
+import { createDb, closeDb } from '@tillgate/db';
 import {
   apiClient,
   bootHarness,
@@ -28,7 +28,7 @@ import {
 import { setupE2EAdmin, teardownE2EAdmin, type E2EAdminWorld } from '../admin/kit.js';
 
 /** 播种兜底 admin 行（库内已有真实管理员时不被取用——仅 admins 空表时生效） */
-const SEEDED_ADMIN_EMAIL = 'e2e-crossapp-admin@tokenlens.invalid';
+const SEEDED_ADMIN_EMAIL = 'e2e-crossapp-admin@tillgate.invalid';
 
 export interface CrossAppWorld {
   client: E2eHarness;

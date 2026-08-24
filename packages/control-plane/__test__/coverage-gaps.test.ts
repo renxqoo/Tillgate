@@ -16,7 +16,7 @@ import { doRefresh } from '../src/application/fx/fx-shared';
 import type { FxDeps } from '../src/application/fx/fx-shared';
 import { mapOpenAiCompatibleCatalog } from '../src/domain/catalog/catalog';
 import type { CatalogSource } from '../src/ports/catalog-source';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { createMemoryCatalogCache } from '../src/ports/cache';
 import {
   adminCtx,

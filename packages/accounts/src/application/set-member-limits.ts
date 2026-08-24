@@ -2,7 +2,7 @@
  * owner 设置成员限额(日限 a / 子配额 b;v1 patchMember)。
  * B5 修复:仅 active 成员可设限(离开成员 → member_not_found,不再静默成功)。
  */
-import { runTx } from '@tokenlens/db';
+import { runTx } from '@tillgate/db';
 import { AccountsErrors } from '../domain/errors.js';
 import { parseAmountLimit } from '../domain/limits.js';
 import type { MembershipRecord } from '../ports/account-store.js';

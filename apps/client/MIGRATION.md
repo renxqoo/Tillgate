@@ -3,7 +3,7 @@
 > 状态：已完成（行为清单逐项见 §1；渲染/e2e 切片挂 §8）
 > 迁移单元：用户控制台全旅程（注册/登录/OAuth → 仪表盘/Key/应用/用量/钱包/订阅/组织/设置 → 登出）这一组可观察行为，不是「一个包」。
 > 旧实现：`/Users/wrr/work/ai-getway/apps/client`（63 文件 / 7091 行 / 0 测试）。
-> 目标位置：`/Users/wrr/work/TokenLens-v2/apps/client`。
+> 目标位置：`/Users/wrr/work/Tillgate/apps/client`。
 > 关联：DESIGN.md（契约裁决 D-A..F）/ IMPLEMENTATION.md §1（B# 审计）/ 总纲 §3、§9 P5。
 
 ## 1. 行为规格基线（可观察行为对照清单）
@@ -32,7 +32,7 @@
 - ✅ 设置：账户卡（显示名/邮箱/余额/费率卡/类型/限速/最近登录）+ 改显示名（1-32）+ 改密（8-128）
 - ✅ playground：BYOK Key（sessionStorage）同域流式对话、可中止；模型下拉来自公开定价
 - ✅ 公开：首页（免费模型广场前 9）/ 定价表（q/free 搜索+分页）/ api-guide（16 端点速查+多语言样例，shiki 高亮，base URL 按请求头推导）
-- ✅ i18n：en/zh 无闪变切换；主题 light/dark/system 无 FOUC；品牌/页脚 TokenLens Console
+- ✅ i18n：en/zh 无闪变切换；主题 light/dark/system 无 FOUC；品牌/页脚 Tillgate Console
 
 **写入动作**（22 个 server action 全量）：见 IMPLEMENTATION §1 行为规格与 §2 裁决表——逐 action 对应新 `server/actions/*`。
 
@@ -51,7 +51,7 @@
 | `apiFetch(path, {method, body, bearerToken?, revalidate?})`                                                                                                                                           | `createNextClientApiClient()` → `client.{get,post,patch,delete,request}`                                  | facade 显式 token 注入（B1 回归设计）；B7 出站头结构性修复                                      |
 | `fetchUserList<T>(path, {page,pageSize,sortBy,order,extra})`                                                                                                                                          | `client.list<T>(path, {page,pageSize,sortBy,order,extra})`                                                | 同构平移（buildListQuery 语义等价：page/limit 恒有、sort_by+order 成对、extra 跳 undefined/''） |
 | `getMe()`（旧包）                                                                                                                                                                                     | `client.getMe()`（facade，吞错返 null）                                                                   | 布局守卫语义 v1 等价                                                                            |
-| `{set,get,clear}SessionToken{,Cookie}` / `SESSION_COOKIE`                                                                                                                                             | `@tokenlens/api-client/next` 同名                                                                         | cookie 名/TTL/属性 v1 等价                                                                      |
+| `{set,get,clear}SessionToken{,Cookie}` / `SESSION_COOKIE`                                                                                                                                             | `@tillgate/api-client/next` 同名                                                                         | cookie 名/TTL/属性 v1 等价                                                                      |
 | `formatters.{fmtBalance,fmtCost,fmtPrice,formatMoney}`（4 位**截断**）                                                                                                                                | `features/shared/format.ts formatMoney(v, {locale, currency})`（Intl 2–4 位**四舍五入**）                 | ui 设计系统口径（D-D）；信息量保留                                                              |
 | `formatters.{fmtInt,msToHuman,fmtDateTime,fmtDate}`                                                                                                                                                   | `createNumberFormatter` / app `formatDateTime`（DISPLAY_TZ 注入）                                         | B8 时区显式化                                                                                   |
 | `formatters.formatPoints`（元×100）                                                                                                                                                                   | 移除                                                                                                      | 新契约无积分（D-E）                                                                             |

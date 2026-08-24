@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   resolve: {
-    // workspace 依赖(@tokenlens/errors、@tokenlens/db)经 development 条件直连源码(与 accounts/notifications 同约定)
+    // workspace 依赖(@tillgate/errors、@tillgate/db)经 development 条件直连源码(与 accounts/notifications 同约定)
     conditions: ['development'],
   },
   test: {

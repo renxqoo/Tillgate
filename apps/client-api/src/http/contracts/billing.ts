@@ -3,7 +3,7 @@
  * 金额输入全部走 billing 域校验（isValidAmountInput：十进制字符串正数）。
  */
 import { z } from 'zod';
-import { isValidAmountInput } from '@tokenlens/billing';
+import { isValidAmountInput } from '@tillgate/billing';
 import { listQuerySchema } from './shared.js';
 
 export const statementQuerySchema = z.object({

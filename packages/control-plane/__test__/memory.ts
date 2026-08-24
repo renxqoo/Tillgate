@@ -1,10 +1,10 @@
 /**
  * 内存 store stand-in（§5.6 类型 2：PostgreSQL 的行为等价替身）——默认门禁专用。
  * 与 adapters/postgres 同契约实现；唯一约束以 23505 形状错误模拟
- * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tokenlens/db pg-error）。
+ * （isUniqueViolation 按 cause 链 code 判定——真实形状见 @tillgate/db pg-error）。
  * 真实 SQL 行为等价由 postgres.real.test.ts 承担（默认门禁排除）。
  */
-import type { Db, DbTx } from '@tokenlens/db';
+import type { Db, DbTx } from '@tillgate/db';
 import type { ProviderStore, ProviderRecord } from '../src/ports/provider-store';
 import type {
   ChannelStore,
@@ -931,7 +931,7 @@ export function createStubProbe(overrides?: {
   return { probe, calls };
 }
 
-/** 密码替身：前缀标记的对称编码（真实 AES-GCM 归 @tokenlens/runtime 已覆盖） */
+/** 密码替身：前缀标记的对称编码（真实 AES-GCM 归 @tillgate/runtime 已覆盖） */
 export const fakeCipher: SecretCipher = {
   encrypt: (plaintext) => `fake-enc:${plaintext}`,
   decrypt: (packed) => packed.replace(/^fake-enc:/, ''),

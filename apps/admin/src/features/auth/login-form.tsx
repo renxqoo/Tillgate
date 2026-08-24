@@ -15,7 +15,7 @@ import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
-} from '@tokenlens/ui';
+} from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import {

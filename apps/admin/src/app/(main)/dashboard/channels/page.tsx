@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
 import { fetchAdminList } from '@/server/admin-list';
-import type { AdminProviderRow } from '@tokenlens/api-client';
+import type { AdminProviderRow } from '@tillgate/api-client';
 import { ListPage } from '@/components/list-page';
 import { parseListSearchParams } from '@/lib/list-query';
 
@@ -13,7 +13,7 @@ import {
   CreateChannelDialog,
   ImportChannelsDialog,
 } from '@/features/channels/channels-content';
-import type { AdminChannelRow, ProviderOption } from '@tokenlens/api-client';
+import type { AdminChannelRow, ProviderOption } from '@tillgate/api-client';
 
 export const dynamic = 'force-dynamic';
 

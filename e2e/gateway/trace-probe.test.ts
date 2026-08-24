@@ -7,7 +7,7 @@
  *   cd apps/gateway && bun --env-file=../../.env x vitest run -c ../../e2e/vitest.config.ts trace-probe
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tokenlens/observability';
+import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tillgate/observability';
 import {
   E2E_MODEL,
   E2EKeys,

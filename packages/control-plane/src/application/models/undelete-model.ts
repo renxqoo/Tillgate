@@ -3,7 +3,7 @@
  * 不直接复活上架，复核后由管理员显式上架（与「下架≠上架」的保守默认一致）。
  * 仅已删除行可恢复；在册行走常规 PATCH（此处 404）。
  */
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import type { AuditSink } from '../../ports/audit-sink';
 import type { ModelStore } from '../../ports/model-store';
 import { controlPlaneErrors } from '../../errors';

@@ -1,5 +1,5 @@
 {
-  "name": "@tokenlens/notifications",
+  "name": "@tillgate/notifications",
   "version": "0.1.0",
   "private": true,
   "description": "通知能力:渠道 CRUD、事务 outbox 入箱/认领/投递与告警模板(总纲 §3/P4.1)",
@@ -28,8 +28,8 @@
     "test:coverage": "bun x vitest run --exclude \"__test__/*.real.test.ts\" --coverage"
   },
   "dependencies": {
-    "@tokenlens/db": "workspace:*",
-    "@tokenlens/errors": "workspace:*",
+    "@tillgate/db": "workspace:*",
+    "@tillgate/errors": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "nodemailer": "^9.0.5"
   },

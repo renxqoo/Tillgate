@@ -3,7 +3,7 @@
  * 卡内用户/健康自检。系数 0.001..9.999,落库与回显恒 3 位小数（control-plane）。
  */
 import { Hono } from 'hono';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import type { SessionEnv } from '../middleware/session';
 import { controlContextOf } from '../middleware/session';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';

@@ -5,7 +5,7 @@
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { ControlPlane } from '@tokenlens/control-plane';
+import type { ControlPlane } from '@tillgate/control-plane';
 import { AdminErrors } from '../error-face';
 import type { SessionEnv } from '../middleware/session';
 import { idParam } from '../contracts/common';

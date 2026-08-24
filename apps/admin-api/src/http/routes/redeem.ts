@@ -4,7 +4,7 @@
  * 审计后置（v1 recordAudit 语义——提交后旁路）。
  */
 import { Hono } from 'hono';
-import type { RedeemBatchesApi } from '@tokenlens/billing';
+import type { RedeemBatchesApi } from '@tillgate/billing';
 import { idParam, listEnvelope, parseListQuery } from '../contracts/common';
 import { BATCH_SORTS, CODE_SORTS, redeemContracts } from '../contracts/billing-admin';
 import { toBatchWireRow, toCodeWireRow } from '../presenters/billing';

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Db } from '@tokenlens/db';
+import type { Db } from '@tillgate/db';
 import { createObservability } from '../src/observability';
 
 /**

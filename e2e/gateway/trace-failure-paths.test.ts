@@ -6,7 +6,7 @@
  * memory 模式只在 span **结束**后快照——某 span 永不结束（泄漏）会直接表现为树里缺失。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tokenlens/observability';
+import { initOtel, type MemoryTraceViewer, type ViewableTrace } from '@tillgate/observability';
 import {
   E2E_MODEL,
   E2EKeys,

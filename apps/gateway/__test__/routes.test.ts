@@ -2,11 +2,11 @@
  * 路由契约（v1 routes/__tests__/inference-endpoints.test + v1-parity 语义迁移）：
  * 9 端点 schema 拒绝矩阵 / codec 端点入站翻译 / 模态 JSON 族强制非流式 / engines 别名 /
  * gemini 原生双动作 / 模型目录三协议形状 / generation 201/404 / oauth 三形态。
- * inference 为可编程替身（真管线语义在 @tokenlens/inference 测试）。
+ * inference 为可编程替身（真管线语义在 @tillgate/inference 测试）。
  */
 import { describe, expect, it } from 'vitest';
 import { Hono } from 'hono';
-import { errorHandler } from '@tokenlens/http';
+import { errorHandler } from '@tillgate/http';
 import { GATEWAY_FACE_OVERRIDES, gatewayErrorCatalog } from '../src/http/openai-error-face';
 
 /** 测试壳挂生产同款错误面（v1 测试直连 app 同语义） */
@@ -14,7 +14,7 @@ function withErrorFace<E extends AuthEnv>(app: Hono<E>): Hono<E> {
   app.onError(errorHandler({ catalog: gatewayErrorCatalog(), overrides: GATEWAY_FACE_OVERRIDES }));
   return app;
 }
-import type { Inference, ChatDelivered } from '@tokenlens/inference';
+import type { Inference, ChatDelivered } from '@tillgate/inference';
 import type { MiddlewareHandler } from 'hono';
 import {
   apiKeyMiddleware,

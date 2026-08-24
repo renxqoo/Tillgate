@@ -5,7 +5,7 @@ import {
   isBusinessError,
   isDefectError,
   isInfrastructureError,
-  isTokenlensError,
+  isTillgateError,
 } from '../src/guards';
 import { DefectError, InfrastructureError } from '../src/nature';
 
@@ -19,11 +19,11 @@ describe('instanceof 守卫', () => {
   const infra = new InfrastructureError('m', 'a.b');
   const defect = new DefectError('m', 'a.b');
 
-  it('isTokenlensError：三性全真，外来 Error/非错误值假', () => {
-    for (const e of [business, infra, defect]) expect(isTokenlensError(e)).toBe(true);
-    expect(isTokenlensError(new Error('m'))).toBe(false);
-    expect(isTokenlensError('boom')).toBe(false);
-    expect(isTokenlensError(null)).toBe(false);
+  it('isTillgateError：三性全真，外来 Error/非错误值假', () => {
+    for (const e of [business, infra, defect]) expect(isTillgateError(e)).toBe(true);
+    expect(isTillgateError(new Error('m'))).toBe(false);
+    expect(isTillgateError('boom')).toBe(false);
+    expect(isTillgateError(null)).toBe(false);
   });
 
   it('isBusinessError / isInfrastructureError / isDefectError 三值互斥', () => {
