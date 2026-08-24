@@ -171,12 +171,14 @@ const EPAY = {
  * 集成种子（动态配置真路径——测试侧的导入脚本口径）：upsert 覆盖旧行
  * （端口随机，每次旅程重写回调基地址）；secret 以 enc:v1 密文落库（与生产存储同形）。
  * OAuth 两行仅 GitHub 旅程种入；易支付行恒种（充值旅程回调按其伪造签名）。
+ * 共库纪律：种前快照旧行，返回还原函数——旅程结束原样写回（无行删行），
+ * 开发库的导入值不被随机端口污染。
  */
 async function seedIntegrationSettings(
   env: NodeJS.ProcessEnv,
   appUrl: string,
   withGithub: boolean,
-): Promise<void> {
+): Promise<() => Promise<void>> {
   const db = createDb({
     url: env.DATABASE_URL as string,
     poolMax: 2,
@@ -184,6 +186,20 @@ async function seedIntegrationSettings(
     connectionTimeoutMillis: 5_000,
     maxUses: 5_000,
   });
+  // 全量快照 + 未种子键清空：旅程期间集成状态完全受控（共享开发库的其他行不泄入断言）
+  const allKeys = [
+    'oauth.base',
+    'oauth.github',
+    'oauth.google',
+    'smtp',
+    'captcha.turnstile',
+    'payment.epay',
+    'payment.stripe',
+  ];
+  const seededKeys = withGithub
+    ? new Set(['oauth.base', 'oauth.github', 'payment.epay'])
+    : new Set(['payment.epay']);
+  const previous = await snapshotRows(db, allKeys);
   try {
     const cipher = createCipher(env.ENCRYPTION_KEY as string);
     if (withGithub) {
@@ -222,6 +238,63 @@ async function seedIntegrationSettings(
       rotatedAt: null,
       adminId: null,
     });
+    for (const key of allKeys) {
+      if (!seededKeys.has(key)) {
+        await db.execute(sql`delete from integration_settings where key = ${key}`);
+      }
+    }
+  } finally {
+    await closeDb(db).catch(() => {});
+  }
+  return async () => {
+    await restoreRows(env, previous);
+  };
+}
+
+/** 种前快照（行原样或无行哨兵 null） */
+async function snapshotRows(
+  db: ReturnType<typeof createDb>,
+  keys: readonly string[],
+): Promise<
+  Array<{
+    key: string;
+    row: Awaited<ReturnType<typeof postgresIntegrationSettingsStore.readAll>>[number] | null;
+  }>
+> {
+  const rows = await postgresIntegrationSettingsStore.readAll(db);
+  return keys.map((key) => ({ key, row: rows.find((r) => r.key === key) ?? null }));
+}
+
+/** 拆时还原（原样写回；原无行删行） */
+async function restoreRows(
+  env: NodeJS.ProcessEnv,
+  previous: Array<{
+    key: string;
+    row: Awaited<ReturnType<typeof postgresIntegrationSettingsStore.readAll>>[number] | null;
+  }>,
+): Promise<void> {
+  const db = createDb({
+    url: env.DATABASE_URL as string,
+    poolMax: 2,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 5_000,
+    maxUses: 5_000,
+  });
+  try {
+    for (const entry of previous) {
+      if (entry.row != null) {
+        await postgresIntegrationSettingsStore.upsert(db, {
+          key: entry.row.key,
+          enabled: entry.row.enabled,
+          config: entry.row.config as Record<string, unknown>,
+          previousSecrets: entry.row.previousSecrets as Record<string, string> | null,
+          rotatedAt: entry.row.rotatedAt,
+          adminId: entry.row.updatedByAdminId,
+        });
+      } else {
+        await db.execute(sql`delete from integration_settings where key = ${entry.key}`);
+      }
+    }
   } finally {
     await closeDb(db).catch(() => {});
   }
@@ -241,7 +314,7 @@ export async function bootHarness(options: {
       }
     : undefined;
   const env = buildHarnessEnv(appUrl, githubEndpoints);
-  await seedIntegrationSettings(env, appUrl, githubEndpoints != null);
+  const restoreIntegrations = await seedIntegrationSettings(env, appUrl, githubEndpoints != null);
   const config = loadClientApiConfig(env);
   const mailer = createCaptureMailer();
   const assembly = await assembleClientApi(config, { mailer });
@@ -261,6 +334,8 @@ export async function bootHarness(options: {
       await assembly.otel.shutdown().catch(() => {});
       const { closeDb } = await import('@tillgate/db');
       await closeDb(assembly.db);
+      // 共库纪律：还原种前快照（开发库导入值不被随机端口污染）
+      await restoreIntegrations();
     },
   };
 }

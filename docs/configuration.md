@@ -196,11 +196,7 @@ compose 部署由 `environment` 段注入：
 
 | 组 | 键 | 说明 |
 |---|---|---|
-| 邮箱验证码 / 2FA / 告警邮件 | `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`（可选 `SMTP_PORT`=465、`SMTP_FROM`） | 三要素成组配置即启用；**半配 = 启动失败（fail-closed）**。同一组键被 client-api（用户验证码）、admin-api（管理员 2FA）、worker（告警邮件）共用；未配置时验证码/2FA 走 503，不降级为单密码 |
-| EPAY 充值 | `EPAY_PID` / `EPAY_KEY` / `EPAY_GATEWAY_URL` / `EPAY_NOTIFY_URL` / `EPAY_RETURN_URL` | 五键成组；部分配置 = 启动失败。v2 新增 `EPAY_PAY_TYPE`（默认 `alipay`，从词表校验） |
-| Stripe 充值 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | 四键成组；v2 新增 `STRIPE_API_BASE`（私有化网关/mock 覆盖） |
-| 第三方登录 | `OAUTH_FRONTEND_URL` / `OAUTH_API_BASE` / `OAUTH_GITHUB_*` / `OAUTH_GOOGLE_*` | 有凭证必须同时配两个基地址；全无 = 关闭社交登录（按钮隐藏）。v2 新增 `OAUTH_GITHUB_ENDPOINTS_JSON` / `OAUTH_GOOGLE_ENDPOINTS_JSON`（端点覆盖，非法 JSON 启动期 fail-loud）、`OAUTH_STATE_TTL_SECONDS`（默认 600） |
-| 人机验证 | `CAPTCHA_SITE_KEY` + `CAPTCHA_SECRET_KEY` | Cloudflare Turnstile 成对配置才启用；只配一半拒绝启动。v2 新增 `CAPTCHA_VERIFY_URL`（默认官方 siteverify） |
+| **第三方集成（动态配置）** | `integration_settings` 表 | OAuth（GitHub/Google 含回调基地址）/ SMTP / Turnstile / 易支付 / Stripe 凭据全部迁入 DB 动态配置（设计：[integration-settings/DESIGN.md](integration-settings/DESIGN.md)）：admin 端 `/dashboard/settings` 可视化管理，secret 以 `enc:v1` 密文落库（根密钥与渠道 Key 同一部署契约），写入留同事务审计，改后最迟 60s 全进程生效、无需重启。**例外**：`oauth.base` 为装配期读取（回调白名单契约），变更需重启。存量部署迁移：`bun run integrations:import`（幂等；半配组跳过并警告——对齐原启动期成组校验）。原 env 键已删除，仅保留 `OAUTH_{GITHUB,GOOGLE}_ENDPOINTS_JSON`（e2e/私有化端点覆盖逃生门）与 `OAUTH_STATE_TTL_SECONDS`（默认 600）。支付验签密钥轮换自带 96h 双读窗（旧密钥回调不丢）；渠道停用不停验签（在途订单归账不中断） |
 | 链路鉴权 | `TRACE_RECEIVER_TOKEN` | 接收端与推流端（gateway/client-api/admin-api 的 OTLP Bearer）共用同一 `.env` 键自动对齐：生产接收端无此值拒绝启动；有 token 时缺它 = 推送全部 401。注意 compose.yml 各服务 `OTEL_TRACES_MODE` 缺省 `'off'`（覆盖 env_file）——启用链路需同步改 compose。生成：`openssl rand -hex 24` |
 | Redis HA | `REDIS_SENTINELS` / `REDIS_SENTINEL_NAME` / `REDIS_SENTINEL_PASSWORD` | Sentinel 拓扑（见 [ha-deployment.md](ha-deployment.md)）。配置节点列表必须带主名（缺 `REDIS_SENTINEL_NAME` 拒绝启动）；`REDIS_URL` 继续作凭证载体。**v2 现状：仅 client-api 消费该组键**——gateway/admin-api 仍直连（详见 ha 手册「已知边界」） |
 

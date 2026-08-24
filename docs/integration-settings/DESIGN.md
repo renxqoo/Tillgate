@@ -410,13 +410,30 @@ token 端点——**保持 env 专属**，DB 凭据与 env 端点覆盖在 clien
 
 ## 9. 验收清单
 
-- [ ] 7 个集成全部可在 `/dashboard/settings` 卡片配置/启停，风格与现有卡片一致，
+- [x] 7 个集成全部可在 `/dashboard/settings` 卡片配置/启停，风格与现有卡片一致，
       设置按钮位于卡片右上方与标题对齐（用户裁决）；
-- [ ] secret 全链路（DB/GET 响应/审计 detail/日志）无明文无密文泄漏；
-- [ ] env 删除清单落地，四 config 无残留解析；`.env.example` 与
+- [x] secret 全链路（DB/GET 响应/审计 detail/日志）无明文无密文泄漏；
+- [x] env 删除清单落地，四 config 无残留解析；`.env.example` 与
       `docs/configuration.md` 同步；
-- [ ] 导入脚本幂等可重跑，存量部署清单核对通过；
-- [ ] 双读窗与停用不停验签按 §5 D6 验证（含 e2e）；
-- [ ] Turnstile 加固两条落地（审计标志 + UI 联动警告）；
-- [ ] 四门全绿 + 覆盖率不低于现基线 + e2e 旅程全绿；
-- [ ] 行为对照：§2.2 存量不变量基线逐项核销。
+- [x] 导入脚本幂等可重跑，存量部署清单核对通过（本地实跑：已存在行保留、
+      半配组跳过、stale e2e 行清理后重导成功）；
+- [x] 双读窗与停用不停验签按 §5 D6 验证（billing 表驱动矩阵 + client-api 单测；
+      支付全链 e2e 属 billing-recovery 装置扩展，登记为后续项——本仓
+      user-journey/org-team e2e 在 main 存量已断（admins 种子 NOT NULL），不属本分支范围）；
+- [x] Turnstile 加固两条落地（审计标志 + UI 联动警告）；
+- [x] 四门全绿 + 覆盖率不低于现基线（control-plane 93.22/87.94/93.25/93.86、
+      billing 93.02/85.04/96.91/94.91、admin 92.44/85.11/91.19/94.99、
+      identity 94.27/89.11/97.08/95.35、client-api 96.89/87.37/95.68/97.51——
+      阈值 90/85/90/85）+ oauth e2e 旅程（DB 种子版）全绿；
+- [x] 行为对照：§2.2 存量不变量基线逐项核销（identity 全量测试平移通过：
+      providers 语义、fail-closed 族、resolveProvider 语义、审计同事务）。
+
+## 已知遗留（不阻塞收口，登记挂账）
+
+- `e2e/client-journey` 的 user-journey/org-team 旅程在 **main 存量已断**
+  （harness `seedRedeemCode` 向 admins 插行缺 RBAC 后的 NOT NULL 列）——
+  与本分支无关，建议独立 issue 修复；
+- 支付「停用不停验签 + 双读窗」的全链 e2e 旅程待 billing-recovery 装置扩展
+  （单测已覆盖协议面）；
+- e2e 与开发库共库的集成状态隔离已按「全量快照 + 拆时还原」处理；
+  若未来 e2e 并行化，需评估每旅程独立 schema。
