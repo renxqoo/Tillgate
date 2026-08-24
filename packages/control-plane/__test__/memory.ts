@@ -1250,10 +1250,15 @@ export function createMemoryEndpointStore(
       rows.set(record.id, record);
       return record;
     },
-    async rebind(_db, id, permissionId) {
+    async update(_db, id, row) {
       const current = rows.get(id);
       if (current == null) return null;
-      const next = { ...current, permissionId };
+      const next = {
+        ...current,
+        ...(row.method !== undefined ? { method: row.method } : {}),
+        ...(row.path !== undefined ? { path: row.path } : {}),
+        ...(row.permissionId !== undefined ? { permissionId: row.permissionId } : {}),
+      };
       rows.set(id, next);
       return next;
     },

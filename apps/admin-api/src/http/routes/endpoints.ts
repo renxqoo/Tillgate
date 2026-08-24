@@ -1,6 +1,7 @@
 /**
  * 接口绑定管理路由（ADR-0009:执行面数据化——本路由自身也被绑定表守护,
- * 种子 = 0084 的 admins 域四码）。审计:binding.created/rebound/deleted。
+ * 种子 = 0084 的 admins 域四码）。审计:binding.created/updated/deleted。
+ * PATCH 为部分更新（method/path/permissionId 至少一项）。
  */
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -21,7 +22,16 @@ const endpointContracts = {
     path: z.string().trim().min(2).max(255),
     permissionId: z.number().int().min(1),
   }),
-  rebind: z.object({ permissionId: z.number().int().min(1) }),
+  /** 部分更新:三字段全可选,至少一项（终态唯一性由用例层守卫） */
+  update: z
+    .object({
+      method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']).optional(),
+      path: z.string().trim().min(2).max(255).optional(),
+      permissionId: z.number().int().min(1).optional(),
+    })
+    .refine((body) => body.method !== undefined || body.path !== undefined || body.permissionId !== undefined, {
+      message: 'at least one of method/path/permissionId is required',
+    }),
 } as const;
 
 export function endpointsRoutes(deps: EndpointsRoutesDeps) {
@@ -48,20 +58,25 @@ export function endpointsRoutes(deps: EndpointsRoutesDeps) {
 
   app.patch('/v1/endpoint-bindings/:id', async (c) => {
     const id = idParam(c.req.param('id'));
-    const body = endpointContracts.rebind.parse(await c.req.json());
-    const rebound = await deps.rbac.endpoints.rebind(id, body.permissionId);
-    if (rebound == null) {
+    const body = endpointContracts.update.parse(await c.req.json());
+    const updated = await deps.rbac.endpoints.update(id, body);
+    if (updated == null) {
       throw AdminErrors.business('admin_not_found', { bindingId: id });
     }
     await deps.postAudit({
       actor: 'admin',
       adminId: c.get('adminId'),
-      action: 'binding.rebound',
+      action: 'binding.updated',
       targetType: 'endpoint_binding',
       targetId: id,
-      detail: { method: rebound.method, path: rebound.path, permissionId: body.permissionId },
+      detail: {
+        method: updated.method,
+        path: updated.path,
+        permissionId: updated.permissionId,
+        changed: Object.keys(body),
+      },
     });
-    return c.json(rebound);
+    return c.json(updated);
   });
 
   app.delete('/v1/endpoint-bindings/:id', async (c) => {

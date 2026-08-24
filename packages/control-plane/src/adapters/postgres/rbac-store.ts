@@ -7,6 +7,7 @@ import { admins, endpointPermissions, permissions, rolePermissions, roles } from
 import type { DbLike } from '@tokenlens/db';
 import type {
   CreateEndpointRow,
+  UpdateEndpointRow,
   CreatePermissionRow,
   CreateRoleRow,
   EndpointBindingRecord,
@@ -308,14 +309,18 @@ export const postgresEndpointStore: EndpointStore = {
     return record;
   },
 
-  async rebind(
+  async update(
     db: DbLike,
     id: number,
-    permissionId: number,
+    row: UpdateEndpointRow,
   ): Promise<EndpointBindingRecord | null> {
     const updated = await db
       .update(endpointPermissions)
-      .set({ permissionId })
+      .set({
+        ...(row.method !== undefined ? { method: row.method } : {}),
+        ...(row.path !== undefined ? { path: row.path } : {}),
+        ...(row.permissionId !== undefined ? { permissionId: row.permissionId } : {}),
+      })
       .where(eq(endpointPermissions.id, id))
       .returning(endpointProjection);
     return (updated[0] as EndpointBindingRecord | undefined) ?? null;

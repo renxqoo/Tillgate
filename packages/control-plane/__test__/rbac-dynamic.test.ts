@@ -16,7 +16,7 @@ import { updateRole } from '../src/application/rbac/update-role';
 import { deleteRole } from '../src/application/rbac/delete-role';
 import { createPermission } from '../src/application/rbac/create-permission';
 import { createEndpointBinding } from '../src/application/rbac/create-endpoint-binding';
-import { rebindEndpoint } from '../src/application/rbac/rebind-endpoint';
+import { updateEndpointBinding } from '../src/application/rbac/update-endpoint-binding';
 import { deleteEndpointBinding } from '../src/application/rbac/delete-endpoint-binding';
 import { updatePermission } from '../src/application/rbac/update-permission';
 import { deletePermission } from '../src/application/rbac/delete-permission';
@@ -391,7 +391,7 @@ describe('permissions 用例族守卫矩阵', () => {
 });
 
 describe('endpoints 用例族（接口绑定——执行面数据化）', () => {
-  it('创建:path 形状/唯一性/权限存在性守卫;rebind/remove 生命周期', async () => {
+  it('创建:path 形状/唯一性/权限存在性守卫;update 部分字段+终态唯一守卫;remove 生命周期', async () => {
     const { deps, endpointStore } = rbacSetup();
     const created = await createEndpointBinding(deps, {
       method: 'GET',
@@ -410,19 +410,43 @@ describe('endpoints 用例族（接口绑定——执行面数据化）', () => 
       createEndpointBinding(deps, { method: 'GET', path: '/v1/other', permissionId: 404 }),
     ).rejects.toMatchObject({ code: 'control_plane.permission_not_found' });
 
-    const rebound = await rebindEndpoint(deps, created.id, 20);
-    expect(rebound).toMatchObject({ permissionId: 20 });
-    await expect(rebindEndpoint(deps, 404, 10)).rejects.toMatchObject({
+    // 部分更新:仅传 permissionId（换绑语义）;method/path 未传不动
+    const rebound = await updateEndpointBinding(deps, created.id, { permissionId: 20 });
+    expect(rebound).toMatchObject({ permissionId: 20, method: 'GET', path: '/v1/things' });
+    // 部分更新:仅传 method/path（执行面迁移）;未传字段不动
+    const moved = await updateEndpointBinding(deps, created.id, {
+      method: 'POST',
+      path: '/v1/things2',
+    });
+    expect(moved).toMatchObject({ method: 'POST', path: '/v1/things2', permissionId: 20 });
+    // 终态唯一守卫:撞其他绑定拒;排除自身——单字段 no-op 与完整终态重复均放行
+    const clash = await createEndpointBinding(deps, {
+      method: 'GET',
+      path: '/v1/clash',
+      permissionId: 10,
+    });
+    await expect(
+      updateEndpointBinding(deps, created.id, { method: 'GET', path: '/v1/clash' }),
+    ).rejects.toMatchObject({ code: 'control_plane.endpoint_bound' });
+    await expect(updateEndpointBinding(deps, created.id, { method: 'GET' })).resolves.toMatchObject(
+      { method: 'GET', path: '/v1/things2' },
+    );
+    // path 形状守卫 + 存在性守卫
+    await expect(
+      updateEndpointBinding(deps, created.id, { path: 'bad path' }),
+    ).rejects.toMatchObject({ code: 'control_plane.invalid_endpoint_input' });
+    await expect(updateEndpointBinding(deps, 404, { permissionId: 10 })).rejects.toMatchObject({
       code: 'control_plane.endpoint_not_found',
     });
-    await expect(rebindEndpoint(deps, created.id, 404)).rejects.toMatchObject({
-      code: 'control_plane.permission_not_found',
-    });
+    await expect(
+      updateEndpointBinding(deps, created.id, { permissionId: 404 }),
+    ).rejects.toMatchObject({ code: 'control_plane.permission_not_found' });
 
     await expect(deleteEndpointBinding(deps, created.id)).resolves.toMatchObject({ ok: true });
     await expect(deleteEndpointBinding(deps, created.id)).rejects.toMatchObject({
       code: 'control_plane.endpoint_not_found',
     });
+    await deleteEndpointBinding(deps, clash.id);
     expect(endpointStore.rows.size).toBe(0);
   });
 });

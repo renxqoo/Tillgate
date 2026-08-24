@@ -163,9 +163,9 @@ describe('createControlPlane facade', () => {
     await expect(
       controlPlane.rbac.endpoints.create({ method: 'GET', path: '/v1/x', permissionId: bound.id }),
     ).resolves.toMatchObject({ method: 'GET', path: '/v1/x' });
-    await expect(controlPlane.rbac.endpoints.rebind(1, 2)).resolves.toMatchObject({
-      permissionId: 2,
-    });
+    await expect(
+      controlPlane.rbac.endpoints.update(1, { permissionId: 2 }),
+    ).resolves.toMatchObject({ permissionId: 2 });
     await expect(controlPlane.rbac.endpoints.remove(1)).resolves.toEqual({ ok: true });
 
     await expect(

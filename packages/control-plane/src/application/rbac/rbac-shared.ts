@@ -10,3 +10,6 @@ export interface RbacDeps {
     readonly endpoint: EndpointStore;
   };
 }
+
+/** 接口绑定 path 形状（Hono 风格 :param 动态段;创建与更新同口径） */
+export const ENDPOINT_PATH_PATTERN = /^\/v1\/[a-z0-9:_/-]{1,200}$/;

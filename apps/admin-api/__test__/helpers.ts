@@ -307,7 +307,7 @@ function fakeControlPlane(overrides?: Record<string, unknown>): ControlPlane {
       endpoints: {
         list: async () => [],
         create: notWired,
-        rebind: notWired,
+        update: notWired,
         remove: notWired,
       },
     },

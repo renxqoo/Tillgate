@@ -21,9 +21,13 @@ import { updatePermission } from './update-permission';
 import { deletePermission } from './delete-permission';
 import { listEndpoints } from './list-endpoints';
 import { createEndpointBinding } from './create-endpoint-binding';
-import { rebindEndpoint } from './rebind-endpoint';
+import { updateEndpointBinding } from './update-endpoint-binding';
 import { deleteEndpointBinding } from './delete-endpoint-binding';
-import type { CreateEndpointRow, EndpointBindingRecord } from '../../ports/rbac-store';
+import type {
+  CreateEndpointRow,
+  EndpointBindingRecord,
+  UpdateEndpointRow,
+} from '../../ports/rbac-store';
 
 export interface RbacSurface {
   readonly roles: {
@@ -45,7 +49,7 @@ export interface RbacSurface {
   readonly endpoints: {
     list(): Promise<EndpointBindingRecord[]>;
     create(input: CreateEndpointRow): Promise<EndpointBindingRecord>;
-    rebind(id: number, permissionId: number): Promise<EndpointBindingRecord>;
+    update(id: number, input: UpdateEndpointRow): Promise<EndpointBindingRecord>;
     remove(id: number): Promise<{ ok: true }>;
   };
 }
@@ -73,7 +77,7 @@ export function composeRbacSurface(
     endpoints: {
       list: () => listEndpoints(deps),
       create: (input) => createEndpointBinding(deps, input),
-      rebind: (id, permissionId) => rebindEndpoint(deps, id, permissionId),
+      update: (id, input) => updateEndpointBinding(deps, id, input),
       remove: (id) => deleteEndpointBinding(deps, id),
     },
   };

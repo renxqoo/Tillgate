@@ -144,11 +144,21 @@ export interface CreateEndpointRow {
   readonly permissionId: number;
 }
 
+export interface UpdateEndpointRow {
+  readonly method?: EndpointBindingRecord['method'];
+  readonly path?: string;
+  readonly permissionId?: number;
+}
+
 export interface EndpointStore {
   list(db: DbLike): Promise<EndpointBindingRecord[]>;
   create(db: DbLike, row: CreateEndpointRow): Promise<EndpointBindingRecord>;
-  /** 换绑（method+path 不变,改 permission_id） */
-  rebind(db: DbLike, id: number, permissionId: number): Promise<EndpointBindingRecord | null>;
+  /** 部分更新（仅覆盖提供字段;终态唯一性与存在性由用例层守卫） */
+  update(
+    db: DbLike,
+    id: number,
+    row: UpdateEndpointRow,
+  ): Promise<EndpointBindingRecord | null>;
   remove(db: DbLike, id: number): Promise<void>;
   /** 删除守卫:权限节点名下仍有接口绑定 */
   bindingCountOf(db: DbLike, permissionId: number): Promise<number>;

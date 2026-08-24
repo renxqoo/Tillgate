@@ -4,15 +4,14 @@
  */
 import { controlPlaneErrors } from '../../errors';
 import type { EndpointBindingRecord, CreateEndpointRow } from '../../ports/rbac-store';
+import { ENDPOINT_PATH_PATTERN } from './rbac-shared';
 import type { RbacDeps } from './rbac-shared';
-
-const PATH_PATTERN = /^\/v1\/[a-z0-9:_/-]{1,200}$/;
 
 export async function createEndpointBinding(
   deps: RbacDeps,
   input: CreateEndpointRow,
 ): Promise<EndpointBindingRecord> {
-  if (!PATH_PATTERN.test(input.path)) {
+  if (!ENDPOINT_PATH_PATTERN.test(input.path)) {
     throw controlPlaneErrors.business('invalid_endpoint_input', { path: input.path });
   }
   const permission = await deps.stores.permission.findById(deps.db, input.permissionId);

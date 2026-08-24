@@ -22,7 +22,7 @@ function wire(overrides?: Record<string, unknown>) {
   const endpoints = {
     list: vi.fn(async () => [row]),
     create: vi.fn(async () => row),
-    rebind: vi.fn(async () => ({ ...row, permissionId: 20 })),
+    update: vi.fn(async () => ({ ...row, permissionId: 20 })),
     remove: vi.fn(async () => ({ ok: true as const })),
     ...overrides,
   };
@@ -86,7 +86,7 @@ describe('endpoints 管理面', () => {
     expect(badBody.status).toBe(400);
   });
 
-  it('PATCH 换绑透传 + 未命中 404;DELETE 解绑 + 未命中 404', async () => {
+  it('PATCH 部分更新透传（单字段=换绑/全字段）;未命中 404;DELETE 解绑', async () => {
     const { app, spies } = wire();
     const rebound = await app.request('/v1/endpoint-bindings/5', {
       method: 'PATCH',
@@ -95,7 +95,27 @@ describe('endpoints 管理面', () => {
     });
     expect(rebound.status).toBe(200);
     expect(await rebound.json()).toMatchObject({ permissionId: 20 });
-    expect(spies.rebind).toHaveBeenCalledWith(5, 20);
+    expect(spies.update).toHaveBeenCalledWith(5, { permissionId: 20 });
+
+    const edited = await app.request('/v1/endpoint-bindings/5', {
+      method: 'PATCH',
+      headers: json,
+      body: JSON.stringify({ method: 'POST', path: '/v1/things2', permissionId: 30 }),
+    });
+    expect(edited.status).toBe(200);
+    expect(spies.update).toHaveBeenCalledWith(5, {
+      method: 'POST',
+      path: '/v1/things2',
+      permissionId: 30,
+    });
+
+    // 空 body（三字段均缺）→ 契约 400
+    const empty = await app.request('/v1/endpoint-bindings/5', {
+      method: 'PATCH',
+      headers: json,
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(400);
 
     expect(
       (await app.request('/v1/endpoint-bindings/5', { method: 'DELETE', headers: authHeader() }))
@@ -103,7 +123,7 @@ describe('endpoints 管理面', () => {
     ).toBe(200);
 
     const miss = wire({
-      rebind: async () => null,
+      update: async () => null,
     }).app;
     expect(
       (
