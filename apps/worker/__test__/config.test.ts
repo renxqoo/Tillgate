@@ -71,6 +71,4 @@ describe('worker 配置 fail-closed', () => {
       ),
     ).not.toThrow();
   });
-
-
 });
