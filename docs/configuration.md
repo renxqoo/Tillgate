@@ -72,6 +72,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `ADMISSION_MAX_PENDING` / `ADMISSION_MAX_OLDEST_MS` | `10000` / `300000` | 结算积压背压（保护资金域） |
 | `GATEWAY_UPSTREAM_DEADLINE_MS` | `120000` | 上游调用总预算（重试/熔断共享 deadline） |
 | `GATEWAY_UPSTREAM_CONNECT_TIMEOUT_MS` | `10000` | 连接 + 首字节（TTFB）；慢上游长生成需放宽 |
+| `GATEWAY_UPSTREAM_ALLOWED_HOSTS` | 空 | 上游受信 provider 主机名白名单（逗号分隔）；**生产必填——缺失启动即拒**。命中白名单后仍逐地址拒绝 DNS 私网解析（防 rebinding）；渠道新增 provider 域名需同步扩充 |
 | `GATEWAY_BODY_LIMIT_BYTES` | `10MB` | 请求体上限（v2 变化：字节量串 `10MB`/`512kb` 形，不再是不带单位的数字；按实际流量计数防 chunked 谎报，413） |
 | `GATEWAY_UPLOAD_MAX_FILE_BYTES` | `16MB` | multipart 单文件上限（同上字节量串；与 bodyLimit 取小生效） |
 | `GATEWAY_UPLOAD_IMAGE_MIME` | `image/png,image/jpeg,image/webp` | multipart 图片类型白名单（逗号分隔） |
@@ -159,6 +160,7 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `WORKER_BALANCE_LOW_THRESHOLD` | `5` | balance_low 预警阈值（元） |
 | `WORKER_SHUTDOWN_GRACE_MS` | `15000` | 优雅停机 |
 | SSRF | `false` | `WORKER_AI_ALLOW_LOCAL_URL` / `WORKER_WEBHOOK_ALLOW_LOCAL_URL`（生产恒 false） |
+| `WORKER_UPSTREAM_ALLOWED_HOSTS` | 空 | 生成任务轮询的上游受信主机名白名单（逗号分隔）；**生产必填——缺失启动即拒**（与 gateway `GATEWAY_UPSTREAM_ALLOWED_HOSTS` 同语义） |
 | `CHANNEL_API_KEY_ENCRYPTION` | 必填 | ≥32；渠道 Key 解密专用键，**无 ENCRYPTION_KEY 回退** |
 
 > v2 变化：worker 的 `REDIS_URL` 配置项已删除（Redis 全退出——唤醒走 PG NOTIFY、熔断存储用内存实现）。

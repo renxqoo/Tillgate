@@ -26,7 +26,7 @@ import { postgresModelStore } from '@tillgate/control-plane/composition';
 import type { EnabledModelRow } from '@tillgate/control-plane';
 import { initOtel } from '@tillgate/observability';
 import { createPgRequestLogStore } from '@tillgate/observability/composition';
-import { createAi } from '@tillgate/ai';
+import { assertSafeUrl, createAi } from '@tillgate/ai';
 import {
   createInference,
   createRedisHealthStore,
@@ -177,8 +177,15 @@ export function assembleGateway(config: GatewayConfig): GatewayAssembly {
     {
       timeout: { connectMs: config.upstreamConnectTimeoutMs, totalMs: config.upstreamDeadlineMs },
     },
-    // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）
-    config.aiAllowLocalUrl && config.nodeEnv !== 'production' ? { guardUrl: async () => {} } : {},
+    // SSRF 双门：逃生门仅非生产可用——生产误配 env 也恒关（与 v1 同口径）。
+    // 生产主防线 = 受信 provider host 白名单（生产必填，config fail-fast）+ DNS 逐地址判定
+    config.aiAllowLocalUrl && config.nodeEnv !== 'production'
+      ? { guardUrl: async () => {} }
+      : {
+          guardUrl: async (url: string) => {
+            await assertSafeUrl(url, { allowedHosts: config.upstreamAllowedHosts });
+          },
+        },
   );
   const inference = createInference({
     ai,

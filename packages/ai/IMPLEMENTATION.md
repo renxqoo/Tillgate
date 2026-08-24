@@ -44,7 +44,7 @@ ai.tasks.{ parse, query, file }
 | B2  | `protocol/gemini-chat.ts` L287/292     | Gemini 流式尾帧/中间帧 usage 丢 `prompt_tokens_details.cached_tokens`（非流式 L240 有）→ **流式缓存折扣漏记**                                                    | 计费     |
 | B3  | `usage/normalize.ts` L74/75            | total 不一致即弃整个 usage（部分代理 total 含额外分量→真实 usage 静默丢弃退估算）；0/0 弃用后估算可能非零（多计）。**零观测**                                    | 计费     |
 | B4  | `adapters/vertex-ai.ts` extractUsage   | translate 后恒 null（gemini.ts 有双形兜底，vertex 漏抄）→ **全部落字符估算**                                                                                     | 计费     |
-| B5  | `transport/http-client.ts` L153/195    | `resolveAndPin` 的 DNS pin 结果从未使用，fetch 用原 URL 重解析——**rebinding TOCTOU 窗口实际存在**（白名单是实际防线，pin 是死代码）                              | 安全     |
+| B5  | `transport/http-client.ts` L153/195    | `resolveAndPin` 的 DNS pin 结果从未使用，fetch 用原 URL 重解析——**rebinding TOCTOU 窗口实际存在**（白名单是实际防线，pin 是死代码）→ **已收口（§6）**            | 安全     |
 | B6  | `generation/task-adapter.ts` L70/105   | 任务协议未注册返回误导错误 `'Upstream did not return a task ID'`；succeeded 后 file 取回永久失败 → 任务永卡 running                                              | 正确性   |
 | B7  | `protocol/completions-chat.ts` L41     | 非流式 n>1 只回 `choices[0]`，**其余 choice 丢弃**                                                                                                               | 数据丢失 |
 | B8  | `errors/overflow.ts` L39-40            | `/too many tokens/i` 等通用兜底可能把「max_tokens 输出超限」误判为上下文溢出——误分类被「不可重试+不换渠道」语义放大                                              | 正确性   |
@@ -278,3 +278,36 @@ claude-stream 既有拆分同款约定，全部 import 点同步更新、无转�
 3. **P3 机制移植**：errors（classify 拆分：status 兜底 + 派生表，§3.2）→ retry → internal → registry（vendor-profiles 扩 errorPatterns）→ protocol（修 B2/B7/D7-D9）→ adapters（错误表化 + 修 B4/S5/D4/D5）→ usage（修 B1/B3）+ 对应测试（含 test/errors 表驱动）
 4. **P4 管线**：prepare/attempts/stream-report/probe/generation-ops（修 B6/D6）+ contract 测试
 5. **P5 收口**：README、全量四门、行为对照核销
+
+---
+
+## 6. 安全收口（2026-08-25 独立审计复核批次）
+
+复核确认 B5 裁决「删除死 pin、白名单+逐地址判定即防线」两条均未执行，且发现
+重定向跟随与 IPv6 边缘形态两个绕过面。本批四项修复（DESIGN §0.4 契约不变，
+本节是实现收口记录）：
+
+1. **删除死代码 `resolveAndPin` / `ResolvedTarget`**（B5 执行）：零生产调用方，
+   pin 结果从未被消费——留着只会让维护者误判 rebinding 已防护。生产防线
+   = 装配层注入 `allowedHosts`（gateway/worker，生产必填 env）+ `assertSafeUrl`
+   逐地址判定；DNS 解析失败放行语义不变（未解析 = 无法发起连接）。
+2. **`fetchUpstream` 以 `redirect: 'manual'` 派发**：守卫只校验初始 URL，
+   缺省 follow 会让过审的 https 地址 30x 跳到内网/metadata（同时绕过
+   https-only 与私网判定）。3x 不再自动跟随——按非 2xx 交 `adapter.mapError`
+   分类（依赖重定向的上游需在渠道 baseUrl 配置最终地址）。副作用：某上游
+   若依赖 30x 跳转将直接失败并可见报错，不再静默跟随。
+3. **`isUnsafeIpv6` 内嵌 IPv4 全量解包**：逐 hextet 解析（覆盖 URL 规范化
+   压缩形与 DNS 结果 dotted 形），`::/96`（IPv4-compatible，含 `::127.0.0.1`
+   与其规范化形 `::7f00:1`）、`::ffff:0:0/96`（mapped）、`64:ff9b::/96`
+   （NAT64）取尾 32 位、`2002::/16`（6to4）取第 2/3 组，内嵌 IPv4 命中
+   保留段即整地址拒绝；非法形态按不安全处理（防御对称）。`2001:db8::/32`
+   文档段维持放行（不可路由，仅信息面）。
+4. **`readBody` / `readRawBody` 中止即抛 `'aborted'`**：旧契约「abort 返回
+   截断体 + 调用方自查 `signal.aborted`」已被调用方违约（upstream-failure /
+   attempt-chat 均未自查——取消中的响应被误分类 `invalid_response` 而非
+   `canceled`）。收敛为结构保证：中止即错，`classifyChatFailure` 按
+   `message === 'aborted'` 归类 canceled（与 fetchUpstream 同口径）。
+   `internal/stream.ts` 的流式中继不受影响（流式部分交付是固有语义）。
+
+回归：`__test__/upstream-redirect.test.ts`、`__test__/ipv6-edge-forms.test.ts`
+（复核批次红测转绿）、transport-deep 的 abort 用例改锁新契约。
