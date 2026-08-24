@@ -66,6 +66,7 @@ describe('composition 子入口（§5.3：adapter 可见性白名单的可执行
     const composition = await import('../src/composition');
     expect(Object.keys(composition).toSorted()).toEqual([
       'createOpenRouterSource',
+      'createPostgresIntegrationSettingsReader',
       'modelsDevSource',
       'postgresChannelStore',
       'postgresModelStore',
@@ -139,6 +140,10 @@ describe('错误目录码表封闭（词表 == DESIGN §2.3）', () => {
       'control_plane.import_empty',
       'control_plane.import_limit_exceeded',
       'control_plane.insufficient_budget',
+      'control_plane.integration_config_incomplete',
+      'control_plane.integration_field_invalid',
+      'control_plane.integration_secret_encrypted',
+      'control_plane.integration_unknown',
       'control_plane.invalid_admin_role',
       'control_plane.invalid_billing_timezone',
       'control_plane.invalid_channel_input',

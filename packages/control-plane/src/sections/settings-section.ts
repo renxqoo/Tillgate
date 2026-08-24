@@ -6,15 +6,22 @@ import type { ControlPlane } from '../control-plane';
 import type { SectionDeps } from './section-deps';
 import { readBillingTimezone } from '../application/settings/read-billing-timezone';
 import { updateBillingTimezone } from '../application/settings/update-billing-timezone';
+import { listIntegrations } from '../application/integrations/list-integrations';
+import { updateIntegration } from '../application/integrations/update-integration';
 
 export function createSettingsSection({
   settingsDeps,
+  integrationDeps,
 }: SectionDeps): Pick<ControlPlane, 'settings'> {
   return {
     settings: {
       billingTimezone: {
         read: () => readBillingTimezone(settingsDeps),
         update: (input) => updateBillingTimezone(settingsDeps, input),
+      },
+      integrations: {
+        list: () => listIntegrations(integrationDeps),
+        update: (input) => updateIntegration(integrationDeps, input),
       },
     },
   };

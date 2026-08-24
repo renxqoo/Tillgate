@@ -110,6 +110,28 @@ export const controlPlaneErrors = defineErrorCatalog('control_plane', {
     zh: '计费时区必须是合法的 IANA 时区名',
   },
 
+  // ── integrations（第三方集成动态配置——docs/integration-settings/DESIGN.md §4.5） ──
+  integration_unknown: {
+    category: 'not_found',
+    message: 'Unknown integration key',
+    zh: '集成键不在封闭词表内',
+  },
+  integration_config_incomplete: {
+    category: 'invalid_input',
+    message: 'Integration config incomplete for enablement',
+    zh: '必填字段缺失，无法启用该集成',
+  },
+  integration_field_invalid: {
+    category: 'invalid_input',
+    message: 'Integration field name or value invalid',
+    zh: '集成字段名不在规格内或值不合法（URL/端口/词表/长度）',
+  },
+  integration_secret_encrypted: {
+    category: 'invalid_input',
+    message: 'Secret field must be plaintext, not ciphertext',
+    zh: 'secret 字段只收明文，禁止提交 enc: 密文',
+  },
+
   // ── rate cards ───────────────────────────────────────────────────────────
   invalid_coefficient: {
     category: 'invalid_input',

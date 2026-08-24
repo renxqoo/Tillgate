@@ -20,6 +20,10 @@ import type { RateCardStore, RateCardRecord } from '../src/ports/rate-card-store
 import type { FxStore } from '../src/ports/fx-store';
 import type { OperationsStore } from '../src/ports/operations-store';
 import type { AuditStore, AuditLogRow } from '../src/ports/audit-store';
+import type {
+  IntegrationSettingsRow,
+  IntegrationSettingsStore,
+} from '../src/ports/integration-settings-store';
 import type { AuditSink, AuditTxSink, AuditEntry } from '../src/ports/audit-sink';
 import type { VoucherStorage } from '../src/ports/voucher-storage';
 import type { UpstreamProbe, ProbeTarget, ProbeOutcome } from '../src/ports/upstream-probe';
@@ -1288,4 +1292,48 @@ export function createMemoryEndpointStore(seed: EndpointBindingRecord[] = []) {
     },
   };
   return Object.assign(store, { rows });
+}
+
+// ── integration settings ─────────────────────────────────────────────────────
+
+export interface MemoryIntegrationSettingsStore {
+  store: IntegrationSettingsStore;
+  rows: Map<string, IntegrationSettingsRow>;
+  /** 快照/恢复（rollbackDb 消费——审计写失败回滚业务断言） */
+  snapshot: () => () => void;
+}
+
+export function createMemoryIntegrationSettingsStore(
+  seed: IntegrationSettingsRow[] = [],
+): MemoryIntegrationSettingsStore {
+  const rows = new Map(seed.map((row) => [row.key as string, { ...row }]));
+  const store: IntegrationSettingsStore = {
+    async readAll() {
+      return [...rows.values()].map((row) => ({ ...row, config: { ...row.config } }));
+    },
+    async upsert(_db, input) {
+      rows.set(input.key, {
+        key: input.key,
+        enabled: input.enabled,
+        config: { ...input.config },
+        previousSecrets: input.previousSecrets == null ? null : { ...input.previousSecrets },
+        rotatedAt: input.rotatedAt,
+        updatedByAdminId: input.adminId,
+        updatedAt: new Date(),
+      });
+    },
+  };
+  const snapshot = (): (() => void) => {
+    const copy = new Map(
+      [...rows].map(([k, v]) => [k, { ...v, config: { ...v.config } }]) as [
+        string,
+        IntegrationSettingsRow,
+      ][],
+    );
+    return () => {
+      rows.clear();
+      for (const [k, v] of copy) rows.set(k, v);
+    };
+  };
+  return { store, rows, snapshot };
 }
