@@ -1,8 +1,8 @@
 /**
  * 管理员资料 postgres 适配器（ports/admin-store 唯一实现）。
  * 时间戳一律 SQL now()；投影不含密码/2FA 密钥列——凭据单一真相在 identity 七表
- * （G1/G2 裁决,admins.password_hash 冻结只读不投影）。
- * role 经 join roles 取 code（切换期旧执法链仍消费 role 字符串）;
+ * （G1/G2 裁决;旧列 admins.password_hash 已随 0089 退役）。
+ * role 经 join roles 取 code（执法已收敛 RBAC 权限树,code 仅供展示与审计）;
  * 属主回查授权面解析（admins⋈roles⋈role_permissions⋈permissions 一条 join）。
  * 重名交给 admins_email_uq 唯一索引（23505 由 application 翻译冲突）。
  */
@@ -23,12 +23,6 @@ import type {
 function escapeLike(input: string): string {
   return input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
-
-/**
- * 旧列 admins.password_hash 的占位值（NOT NULL 兜底）：凭据单一真相在 identity 七表，
- * HTTP 面创建的管理员从未有过旧列密码——非 scrypt 形态哨兵值天然不可被旧校验路径误认。
- */
-const IDENTITY_MANAGED_HASH = 'identity-managed';
 
 /** admin id 段分配下限（2026-08-23 生产裁决）：identity_passwords.userId 是无 realm
  *  的扁平主键，admin id 与 users.id 同号即凭据串号——新管理员一律落 ≥1e9 段
@@ -159,7 +153,6 @@ export const postgresAdminStore: AdminStore = {
         email: row.email,
         displayName: row.displayName,
         roleId: row.roleId,
-        passwordHash: IDENTITY_MANAGED_HASH,
       })
       .returning({ id: admins.id });
     await db.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);

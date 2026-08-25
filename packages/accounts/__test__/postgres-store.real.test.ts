@@ -47,8 +47,8 @@ create table users (
   issuer varchar(64) not null, subject varchar(255) not null, identity_provider varchar(16) not null,
   email varchar(255), display_name varchar(64), rate_card_id bigint references rate_cards(id),
   daily_spend_limit numeric(38,18), status smallint not null default 0,
-  session_invalid_before timestamptz, is_enterprise boolean not null default false,
-  freeze_reason varchar(128), rpm_limit bigint, tpm_limit bigint, password_hash varchar(255),
+  is_enterprise boolean not null default false,
+  freeze_reason varchar(128), rpm_limit bigint, tpm_limit bigint,
   last_login_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
   constraint users_issuer_subject_uq unique (issuer, subject),
   constraint users_status_ck check (status in (0,1,2))
@@ -234,13 +234,12 @@ function realHarness(db: Db): TestHarness {
     const u = await api().provisionLocalAccount({
       email: `anchor-${Math.random().toString(36).slice(2)}@x.io`,
     });
-    const updated = await api().adminPatchUser({
+    await api().adminPatchUser({
       userId: u.id,
       patch: { email: `new-${Math.random().toString(36).slice(2)}@x.io` },
       adminId: 1,
     });
-    // 列冻结只读(恒 null);吊销事实由 identity anchors 持有,port 调用已被 harness 记录
-    expect(updated.sessionInvalidBefore).toBeNull();
+    // 吊销事实由 identity anchors 持有,port 调用已被 harness 记录
     expect(h.sessionInvalidation.calls).toEqual([{ realm: 'user', userId: u.id }]);
   });
 

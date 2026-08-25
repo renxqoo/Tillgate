@@ -13,7 +13,7 @@ import { users } from './users.js';
 
 /**
  * referrals — 邀请关系
- * 一个人只能被邀请一次（invitee 唯一）；注册奖励与日结佣金均以 fund_operations
+ * 一个人只能被邀请一次（invitee 唯一）；注册奖励与日结佣金均以 ledger_operations
  * 自然键幂等（referral-signup:{inviteeId}:{side} / referral-commission:{inviterId}:{yyyyMMdd}）。
  */
 export const referrals = pgTable(

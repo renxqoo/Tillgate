@@ -617,6 +617,27 @@
       "when": 1788398400000,
       "tag": "0088_oauth_base_to_env",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1788484800000,
+      "tag": "0089_drop_legacy_password_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1788571200000,
+      "tag": "0090_drop_session_invalid_before",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1788657600000,
+      "tag": "0091_drop_admins_two_factor_secret",
+      "breakpoints": true
     }
   ]
 }

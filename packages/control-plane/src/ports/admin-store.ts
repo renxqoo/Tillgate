@@ -15,7 +15,7 @@ export interface AdminRecord {
   readonly status: number;
   /** 角色 FK（roles.id） */
   readonly roleId: number;
-  /** 角色 code（join roles——切换期旧执法链消费;切换后仅供展示） */
+  /** 角色 code（join roles;执法走 RBAC 权限树,code 仅供展示与审计） */
   readonly role: string;
   readonly twoFactorEnabled: boolean;
   readonly lastLoginAt: Date | null;

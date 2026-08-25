@@ -17,7 +17,6 @@ const USER_COLUMNS = {
   rateCardId: users.rateCardId,
   dailySpendLimit: users.dailySpendLimit,
   status: users.status,
-  sessionInvalidBefore: users.sessionInvalidBefore,
   isEnterprise: users.isEnterprise,
   freezeReason: users.freezeReason,
   rpmLimit: users.rpmLimit,
@@ -129,9 +128,8 @@ export const userQueries: Pick<
     if (patch.tpmLimit !== undefined) set.tpmLimit = patch.tpmLimit;
     if (patch.dailySpendLimit !== undefined) set.dailySpendLimit = patch.dailySpendLimit;
     if (patch.isEnterprise !== undefined) set.isEnterprise = patch.isEnterprise;
-    // email 变更的会话失效不再直写 users.session_invalid_before(§3.4 唯一所有者 = identity):
-    // admin-patch-user 在同一事务内经 SessionInvalidationPort 推进 identity 吊销线;
-    // 本列冻结只读,待 v1 读链退役后随迁移删除(identity MIGRATION §8 W1)
+    // email 变更的会话失效唯一所有者是 identity(§3.4):admin-patch-user 在同一事务内
+    // 经 SessionInvalidationPort 推进 identity_session_anchors 吊销线(旧列已随 0090 退役)
     const rows = await db
       .update(users)
       .set(set)

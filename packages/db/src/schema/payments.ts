@@ -20,7 +20,7 @@ import { users } from './users.js';
  * 状态机：0 created → 1 paid（回调确认）→ 2 credited（入账完成）→ 3 refunded；
  *          0 → 4 expired（超时未支付/手动关闭）。迁移合法性由入账事务的条件 UPDATE 保证。
  * 入账幂等：ledger.paymentCredit 以 operationId=payment-credit:{provider}:{provider_order_id}
- * 走 fund_operations 抢占 + transactions 部分唯一索引（ref_type='payment_orders'）双保险。
+ * 走 ledger_operations 抢占 + transactions 部分唯一索引（ref_type='payment_orders'）双保险。
  */
 export const paymentOrders = pgTable(
   'payment_orders',

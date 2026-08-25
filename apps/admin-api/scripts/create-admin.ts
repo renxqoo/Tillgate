@@ -10,7 +10,7 @@
  *   - id 分配：admins.id 必须落在 ≥1e9 段——identity_passwords.userId 是无 realm 的
  *     扁平主键，与 users.id 同号即串号（2026-08-23 生产迁移裁决；序列不足时推高）
  *   - 事务：admins + identity_credentials + identity_passwords 同事务原子插入；
- *     旧列 admins.password_hash 写同值（冻结只读，退役 DDL 归后续波）
+ *     旧列 admins.password_hash 已随 0089 退役（凭据单一真相在 identity 七表）
  *
  * 用法：cd apps/admin-api && bun scripts/create-admin.ts --email=you@example.com [--apply]
  *   [--role=super_admin|operator|finance|support|viewer] [--display-name=…] [--password=…]
@@ -130,9 +130,7 @@ async function main(): Promise<void> {
         .select({ maxId: sql<number>`coalesce(max(${admins.id}), 0)::bigint` })
         .from(admins);
       const id = Math.max(1_000_000_000, Number(maxRow?.maxId ?? 0) + 1);
-      await tx
-        .insert(admins)
-        .values({ id, email, displayName, passwordHash: hash, roleId: roleRow.id });
+      await tx.insert(admins).values({ id, email, displayName, roleId: roleRow.id });
       await tx.execute(sql`select setval(pg_get_serial_sequence('admins', 'id'), ${id})`);
       // 凭据冲突 = 邮箱已被其他身份占用(常见:client 侧同邮箱账号)。静默跳过会造出
       // 「创建成功但永远登不上」的废管理员——抛错回滚整个事务,提示换邮箱

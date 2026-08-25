@@ -37,23 +37,12 @@ export const users = pgTable(
     dailySpendLimit: numeric('daily_spend_limit', { precision: 38, scale: 18 }),
     /** 账号状态：ACCOUNT_STATUS（0 正常 / 1 封禁 / 2 注销）；CHECK users_status_ck 兜底非法值 */
     status: smallint('status').notNull().default(ACCOUNT_STATUS.ACTIVE),
-    /**
-     * 会话失效线（R5-2）：iat 早于此时间点的会话 JWT 一律拒绝。
-     * 改密码/管理员重置密码时置为当前时间——无状态会话的吊销锚点（改密即全网下线）。
-     * NULL = 不限制（存量用户默认）。
-     */
-    sessionInvalidBefore: timestamp('session_invalid_before', { withTimezone: true }),
     /** 是否企业用户：企业用户可购买团队套餐（支持席位）；个人用户只能买个人套餐（固定 1 席） */
     isEnterprise: boolean('is_enterprise').notNull().default(false),
     freezeReason: varchar('freeze_reason', { length: 128 }),
     /** 用户级限流，NULL=继承全局默认 */
     rpmLimit: bigint('rpm_limit', { mode: 'number' }),
     tpmLimit: bigint('tpm_limit', { mode: 'number' }),
-    /**
-     * 本地账号密码哈希（scrypt，格式：saltHex:hashHex:N:r:p）。
-     * NULL = OIDC 用户 / 尚未设置密码（本地账号管理员开通时设置）。
-     */
-    passwordHash: varchar('password_hash', { length: 255 }),
     /** 最近一次登录时间（登录成功时更新） */
     lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
