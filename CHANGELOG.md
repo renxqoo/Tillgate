@@ -97,10 +97,6 @@ adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-re
   码框、启停与 2FA 开关先弹 TOTP 小窗、未绑定者按钮置灰引导绑定。
   解绑 TOTP 维持自助现状；全员解绑/手机与恢复码双丢失的数据库救援预案见
   deployment-checklist。
-- **设置页卡片再收敛（2026-08-25 裁决）**：OAuth 基地址不再独立占卡——
-  `oauth.base`（OAuth 总闸）+ GitHub + Google 合并为一张「OAuth 登录」组合卡，
-  每行独立启停/配置（各自一次 TOTP step-up）；独立集成卡缩为
-  Turnstile / 易支付 / Stripe 三张。
 
 ## [0.1.0] - 2026-08-21
 

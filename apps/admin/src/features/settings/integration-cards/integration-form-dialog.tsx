@@ -141,6 +141,7 @@ export function IntegrationFormDialog({
 /** secret 字段名集合（掩码回显只标已设置项；未设置的 secret 字段按规格名单标记） */
 const SECRET_FIELD_NAMES = new Set(['clientSecret', 'pass', 'secretKey', 'key', 'webhookSecret']);
 
+
 /** step-up 码框（ADR-0011：敏感写操作强制 TOTP——原生校验 6 位，模块级哑件拆分） */
 function StepupField({ itemId }: { itemId: string }) {
   const t = useTranslations('settings.integrations');

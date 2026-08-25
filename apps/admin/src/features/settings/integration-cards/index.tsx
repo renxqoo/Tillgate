@@ -9,7 +9,6 @@ import { useTranslations } from 'next-intl';
 import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { IntegrationCard } from './integration-card';
 import { INTEGRATION_CARD_ORDER } from './integration-format';
-import { OAuthCard } from './oauth-card';
 
 export function IntegrationCards({
   items,
@@ -42,21 +41,8 @@ export function IntegrationCards({
     );
   }
   const byKey = new Map(items.map((item) => [item.key, item]));
-  const oauth = {
-    base: byKey.get('oauth.base'),
-    github: byKey.get('oauth.github'),
-    google: byKey.get('oauth.google'),
-  };
   return (
     <>
-      {oauth.base != null && oauth.github != null && oauth.google != null ? (
-        <OAuthCard
-          base={oauth.base}
-          github={oauth.github}
-          google={oauth.google}
-          totpEnabled={totpEnabled}
-        />
-      ) : null}
       {INTEGRATION_CARD_ORDER.flatMap((key) => {
         const item = byKey.get(key);
         return item == null

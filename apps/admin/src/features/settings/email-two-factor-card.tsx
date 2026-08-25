@@ -19,6 +19,7 @@ import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-cards/integration-form-dialog';
 import { TotpStepupDialog } from './totp-stepup-dialog';
 
+
 export function EmailTwoFactorCard({
   me,
   smtp,
@@ -115,6 +116,7 @@ export function EmailTwoFactorCard({
     </Card>
   );
 }
+
 
 /** 邮件通道三态（模块级纯函数——主组件复杂度收口） */
 function smtpStateOf(smtp: IntegrationSettingItem | null): 'ready' | 'off' | 'unconfigured' {

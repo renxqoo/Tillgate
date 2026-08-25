@@ -10,6 +10,7 @@ import {
   CreditCardIcon,
   GitBranchIcon,
   GlobeIcon,
+  Loader2Icon,
   MailIcon,
   ShieldAlertIcon,
   WalletIcon,
@@ -24,7 +25,6 @@ import { updateIntegrationAction } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-form-dialog';
 import { INTEGRATION_ICON, i18nKey } from './integration-format';
 import { TotpStepupDialog } from '../totp-stepup-dialog';
-import { ToggleRow } from './toggle-row';
 
 const ICONS: Record<string, LucideIcon> = {
   globe: GlobeIcon,
@@ -126,5 +126,39 @@ export function IntegrationCard({
         onConfirm={(code) => toggleEnabled(code)}
       />
     </Card>
+  );
+}
+
+
+/** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②） */
+function ToggleRow(input: {
+  enabled: boolean;
+  configured: boolean;
+  pending: boolean;
+  totpEnabled: boolean;
+  stepupTitle: string | undefined;
+  onRequestToggle: () => void;
+}) {
+  const t = useTranslations('settings.integrations');
+  return (
+    <div className="flex items-center gap-3">
+      <Button
+        variant={input.enabled ? 'destructive' : 'default'}
+        size="sm"
+        disabled={input.pending || !input.totpEnabled || (!input.enabled && !input.configured)}
+        title={input.stepupTitle}
+        onClick={input.onRequestToggle}
+      >
+        {input.pending && <Loader2Icon className="animate-spin" />}
+        {input.enabled ? t('disable') : t('enable')}
+      </Button>
+      <span className="text-sm text-muted-foreground">
+        <span className={input.enabled ? 'text-green-600' : ''}>
+          {input.enabled ? t('enabledState') : t('disabledState')}
+        </span>
+        <span className="mx-1">·</span>
+        <span>{input.configured ? t('configuredState') : t('unconfiguredState')}</span>
+      </span>
+    </div>
   );
 }
