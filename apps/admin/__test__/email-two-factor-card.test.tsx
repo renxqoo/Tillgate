@@ -85,6 +85,8 @@ describe('EmailTwoFactorCard：邮箱码自证开关（D2=A）', () => {
     await waitFor(() => {
       expect(screen.getByText('Enabled')).toBeInTheDocument();
     });
+    // 确认成功即关弹窗（回归：成功后不残留）
+    expect(screen.queryByPlaceholderText('000000')).not.toBeInTheDocument();
   });
 
   it('发码失败（SMTP 未生效/冷却）：toast 报错，不弹确认窗、不触达开关', async () => {

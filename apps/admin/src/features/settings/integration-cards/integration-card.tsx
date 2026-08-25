@@ -68,6 +68,8 @@ export function IntegrationCard({
       try {
         const saved = await updateIntegrationAction(current.key, { totpCode, enabled: next });
         setCurrent(saved);
+        // 确认成功即关弹窗（失败保持开——可换码重试）
+        setStepupOpen(false);
         if (current.key === 'captcha.turnstile' && !next && signupGiftOn) {
           // Turnstile 加固（DESIGN §5 D11）：警告不阻断——停用已生效，风险显式留痕
           toast.warning(t('captchaWarning'));

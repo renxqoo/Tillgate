@@ -47,7 +47,7 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
     })();
   }
 
-  /** 第二步：输码确认 → 开关生效（成功审计在后端） */
+  /** 第二步：输码确认 → 开关生效（成功审计在后端；成功即关弹窗,失败保持开可重试） */
   function confirmToggle(code: string): void {
     if (challengeId == null) return;
     startTransition(async () => {
@@ -55,6 +55,7 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
       const res = await setTwoFactorAction(next, challengeId, code);
       if (notify(res ?? {}, tc('actionFailed'), next ? t('enabledToast') : t('disabledToast'))) {
         setEnabled(next);
+        setConfirmOpen(false);
       }
     });
   }

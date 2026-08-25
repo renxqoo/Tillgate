@@ -127,6 +127,8 @@ describe('IntegrationCard 交互', () => {
     await waitFor(() => {
       expect(screen.getByText('Disabled')).toBeInTheDocument();
     });
+    // 确认成功即关弹窗（回归：成功后不残留）
+    expect(screen.queryByPlaceholderText('000000')).not.toBeInTheDocument();
   });
 
   it('Turnstile 加固：注册送礼开启时停用出警告 toast（不阻断）；其他集成停用无警告', async () => {
