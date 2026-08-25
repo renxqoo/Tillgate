@@ -4,6 +4,7 @@
  * 投递上下文(ip/locale)全程内存流动——v1 模块级 Map 串号/泄漏根治(B05)。
  */
 import { advisoryLock, runTx } from '@tillgate/db';
+import { isBusinessError } from '@tillgate/errors';
 import { auditEvent } from '../domain/audit-events.js';
 import { challengeLockKey, challengeTargetKey } from '../domain/locks.js';
 import { identityErrors } from '../domain/errors.js';
@@ -215,16 +216,20 @@ async function deliverLoginCode(
       ...(args.delivery?.locale != null ? { locale: args.delivery.locale } : {}),
       ...(args.delivery?.purpose != null ? { purpose: args.delivery.purpose } : {}),
     });
-  } catch {
+  } catch (error) {
     try {
       await ctx.challengeStore.abortChallenge(ctx.db, { challengeId: args.challengeId });
-    } catch (error) {
+    } catch (abortError) {
       // B11 修复:补救作废失败不再静默——记 warn(挑战将占冷却位至 TTL,运维可查)
       ctx.logger.warn(
-        { err: (error as Error).message, challengeId: args.challengeId },
+        { err: (abortError as Error).message, challengeId: args.challengeId },
         'challenge abort-after-delivery-failure failed; cooldown slot held until TTL',
       );
     }
+    // mailer 抛出的业务错误原样透传(undeliverable_challenge = fail-closed「未配置」
+    // 信号,unavailable 类别出网 503)——裸吞改码成 delivery_failed 会把「未配置」
+    // 漂移成「渠道坏流 502」(wire 契约分级,动态 mailer 路径回归)
+    if (isBusinessError(error)) throw error;
     throw identityErrors.business('delivery_failed', { kind: args.kind, channel: args.channel });
   }
 }
