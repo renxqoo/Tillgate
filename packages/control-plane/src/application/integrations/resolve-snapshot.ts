@@ -18,7 +18,6 @@ import type {
   CaptchaConfig,
   EpayConfig,
   IntegrationSnapshot,
-  OauthBaseConfig,
   OauthProviderConfig,
   ResolvedIntegration,
   SmtpConfig,
@@ -40,12 +39,10 @@ export function resolveIntegrationSnapshot(deps: ResolveDeps): IntegrationSnapsh
   const byKey = new Map<IntegrationKey, IntegrationSettingsRow>(deps.rows.map((r) => [r.key, r]));
   const rowOf = (key: IntegrationKey): IntegrationSettingsRow => byKey.get(key) ?? emptyRow(key);
 
-  const base = resolveBase(rowOf('oauth.base'), deps);
   return {
     oauth: {
-      base,
-      github: resolveOauth(rowOf('oauth.github'), base, deps),
-      google: resolveOauth(rowOf('oauth.google'), base, deps),
+      github: resolveOauth(rowOf('oauth.github'), deps),
+      google: resolveOauth(rowOf('oauth.google'), deps),
     },
     smtp: resolveSmtp(rowOf('smtp'), deps),
     captcha: resolveCaptcha(rowOf('captcha.turnstile'), deps),
@@ -98,31 +95,8 @@ function degrade<T extends object>(config: T | null): T | null {
   return Object.values(config).some((v) => v === null) ? null : config;
 }
 
-function resolveBase(
-  row: IntegrationSettingsRow,
-  deps: ResolveDeps,
-): ResolvedIntegration<OauthBaseConfig> {
-  const complete = isConfigComplete(specOf('oauth.base'), row.config);
-  const read = rowReader(deps, 'oauth.base', row.config);
-  const config = degrade(
-    complete
-      ? {
-          frontendUrl: read('frontendUrl') as string,
-          apiBase: read('apiBase') as string,
-        }
-      : null,
-  );
-  return {
-    configured: complete,
-    enabled: row.enabled,
-    effective: complete && row.enabled && config != null,
-    config,
-  };
-}
-
 function resolveOauth(
   row: IntegrationSettingsRow,
-  base: ResolvedIntegration<OauthBaseConfig>,
   deps: ResolveDeps,
 ): ResolvedIntegration<OauthProviderConfig> {
   const complete = isConfigComplete(specOf(row.key), row.config);
@@ -138,7 +112,7 @@ function resolveOauth(
   return {
     configured: complete,
     enabled: row.enabled,
-    effective: complete && row.enabled && base.effective && config != null,
+    effective: complete && row.enabled && config != null,
     config,
   };
 }

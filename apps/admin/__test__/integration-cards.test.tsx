@@ -52,11 +52,7 @@ const epayItem: IntegrationSettingItem = {
   updatedByAdminId: 7,
 };
 
-function renderCard(
-  item: IntegrationSettingItem,
-  signupGiftOn = false,
-  totpEnabled = true,
-) {
+function renderCard(item: IntegrationSettingItem, signupGiftOn = false, totpEnabled = true) {
   return render(
     <NextIntlClientProvider locale="en" messages={en}>
       <IntegrationCard item={item} signupGiftOn={signupGiftOn} totpEnabled={totpEnabled} />
@@ -79,9 +75,10 @@ describe('integration-format 纯函数', () => {
     expect(payload).toEqual({ pid: '1002', key: null });
   });
 
-  it('词表封闭：独立卡 6 项、不含 smtp（SMTP 挂邮箱验证码二次登录卡）', () => {
-    expect(INTEGRATION_CARD_ORDER).toHaveLength(6);
+  it('词表封闭：独立卡 5 项；smtp（挂 2FA 卡）与 oauth.base（退回 env，ADR-0012）不在列', () => {
+    expect(INTEGRATION_CARD_ORDER).toHaveLength(5);
     expect(INTEGRATION_CARD_ORDER).not.toContain('smtp');
+    expect(INTEGRATION_CARD_ORDER).not.toContain('oauth.base');
     expect(new Set(INTEGRATION_CARD_ORDER).size).toBe(INTEGRATION_CARD_ORDER.length);
   });
 });

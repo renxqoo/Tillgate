@@ -189,7 +189,6 @@ async function seedIntegrationSettings(
   });
   // 全量快照 + 未种子键清空：旅程期间集成状态完全受控（共享开发库的其他行不泄入断言）
   const allKeys = [
-    'oauth.base',
     'oauth.github',
     'oauth.google',
     'smtp',
@@ -198,20 +197,12 @@ async function seedIntegrationSettings(
     'payment.stripe',
   ];
   const seededKeys = withGithub
-    ? new Set(['oauth.base', 'oauth.github', 'payment.epay', 'smtp'])
+    ? new Set(['oauth.github', 'payment.epay', 'smtp'])
     : new Set(['payment.epay', 'smtp']);
   const previous = await snapshotRows(db, allKeys);
   try {
     const cipher = createCipher(env.ENCRYPTION_KEY as string);
     if (withGithub) {
-      await postgresIntegrationSettingsStore.upsert(db, {
-        key: 'oauth.base',
-        enabled: true,
-        config: { frontendUrl: `${appUrl}/app`, apiBase: appUrl },
-        previousSecrets: null,
-        rotatedAt: null,
-        adminId: null,
-      });
       await postgresIntegrationSettingsStore.upsert(db, {
         key: 'oauth.github',
         enabled: true,

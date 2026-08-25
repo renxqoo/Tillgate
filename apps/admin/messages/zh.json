@@ -1067,7 +1067,6 @@
       "captchaWarning": "注册送礼当前开启：关闭人机验证将移除注册防刷，存在批量注册套现风险（审计将记录本次停用）",
       "rotatedAt": "验签密钥轮换于 {at}（双读窗内旧密钥回调仍可验签）",
       "cards": {
-        "oauth_base": "OAuth 基地址",
         "oauth_github": "GitHub 登录",
         "oauth_google": "Google 登录",
         "smtp": "邮件服务（SMTP）",
@@ -1076,7 +1075,6 @@
         "payment_stripe": "Stripe"
       },
       "descriptions": {
-        "oauth_base": "社交登录回调/跳转基地址（装配期生效：变更后需重启服务进程）",
         "oauth_github": "GitHub OAuth 应用凭据（Client ID / Client Secret）",
         "oauth_google": "Google OAuth 客户端凭据（Client ID / Client Secret）",
         "smtp": "登录验证码 / 找回密码 / 管理端 2FA / 运维告警共用的发信通道",

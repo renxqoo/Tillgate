@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 export const integrationSettings = pgTable(
   'integration_settings',
   {
-    /** 集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe） */
+    /** 集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env，ADR-0012） */
     key: varchar('key', { length: 64 }).primaryKey(),
     /** 功能面开关（true ⇒ config 必填齐全——写入侧用例保证） */
     enabled: boolean('enabled').notNull().default(false),
@@ -30,7 +30,7 @@ export const integrationSettings = pgTable(
   (t) => [
     check(
       'integration_settings_key_ck',
-      sql`${t.key} IN ('oauth.base','oauth.github','oauth.google','smtp','captcha.turnstile','payment.epay','payment.stripe')`,
+      sql`${t.key} IN ('oauth.github','oauth.google','smtp','captcha.turnstile','payment.epay','payment.stripe')`,
     ),
   ],
 );

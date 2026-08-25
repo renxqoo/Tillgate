@@ -125,7 +125,6 @@ export type {
 export type {
   IntegrationSnapshot,
   ResolvedIntegration,
-  OauthBaseConfig,
   OauthProviderConfig,
   SmtpConfig,
   CaptchaConfig,

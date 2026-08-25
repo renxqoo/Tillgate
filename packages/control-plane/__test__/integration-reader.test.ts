@@ -47,9 +47,9 @@ function row(
   };
 }
 
-const BASE_FULL = {
-  frontendUrl: 'https://app.example.com',
-  apiBase: 'https://api.example.com',
+const GH_FULL = {
+  clientId: 'gh-id',
+  clientSecret: 'CIPHER<<gh-secret>>',
 };
 
 function snapshotOf(rows: readonly IntegrationSettingsRow[], nowMs = 0) {
@@ -57,25 +57,10 @@ function snapshotOf(rows: readonly IntegrationSettingsRow[], nowMs = 0) {
 }
 
 describe('快照 effective 语义', () => {
-  it('OAuth provider：自身完整且启用，但 base 缺失 → effective false', () => {
-    const snap = snapshotOf([
-      row('oauth.github', {
-        config: { clientId: 'gh-id', clientSecret: `CIPHER<<gh-secret>>` },
-      }),
-    ]);
+  it('OAuth provider：凭据齐且启用 → effective 且 config 已解密（ADR-0012：base 有效性由装配期 env 保证）', () => {
+    const snap = snapshotOf([row('oauth.github', { config: GH_FULL })]);
     expect(snap.oauth.github.configured).toBe(true);
     expect(snap.oauth.github.enabled).toBe(true);
-    expect(snap.oauth.github.effective).toBe(false);
-    // config 只看自身完整性（与 enabled 无关——DESIGN §5 D6 同口径）
-    expect(snap.oauth.github.config).toEqual({ clientId: 'gh-id', clientSecret: 'gh-secret' });
-    expect(snap.oauth.base.effective).toBe(false);
-  });
-
-  it('OAuth provider：base 生效 + 凭据齐 → effective 且 config 已解密', () => {
-    const snap = snapshotOf([
-      row('oauth.base', { config: BASE_FULL }),
-      row('oauth.github', { config: { clientId: 'gh-id', clientSecret: 'CIPHER<<gh-secret>>' } }),
-    ]);
     expect(snap.oauth.github.effective).toBe(true);
     expect(snap.oauth.github.config).toEqual({ clientId: 'gh-id', clientSecret: 'gh-secret' });
   });
@@ -167,7 +152,7 @@ describe('双读窗密钥序列（DESIGN §5 D6）', () => {
 
 describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
   function makeReader() {
-    const memory = createMemoryIntegrationSettingsStore([row('oauth.base', { config: BASE_FULL })]);
+    const memory = createMemoryIntegrationSettingsStore([row('oauth.github', { config: GH_FULL })]);
     let reads = 0;
     let failNext = false;
     const store = {
@@ -236,13 +221,13 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
     await reader.resolve();
     expect(reads()).toBe(1);
     // TTL 内 latest 命中缓存
-    expect(reader.latest().oauth.base.effective).toBe(true);
+    expect(reader.latest().oauth.github.effective).toBe(true);
     expect(reads()).toBe(1);
     // 过期后 latest 同步返回旧值并触发后台刷新（失败被吞——makeReader 无 onError 出口）
     advance(INTEGRATION_CACHE_TTL_MS);
     failOnce();
     const stale = reader.latest();
-    expect(stale.oauth.base.effective).toBe(true);
+    expect(stale.oauth.github.effective).toBe(true);
     await settle();
     expect(reads()).toBe(1); // 后台刷新失败：计数未增（throw 在计数前）
     await reader.resolve();
@@ -251,7 +236,7 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
 
   it('latest() 后台刷新失败经 onError 出口', async () => {
     const errors: unknown[] = [];
-    const memory = createMemoryIntegrationSettingsStore([row('oauth.base', { config: BASE_FULL })]);
+    const memory = createMemoryIntegrationSettingsStore([row('oauth.github', { config: GH_FULL })]);
     let reads = 0;
     let failNext = false;
     const store = {
@@ -286,7 +271,7 @@ describe('reader（TTL 缓存 + 单飞 + 失效 + fail-loud）', () => {
 
 describe('review 修复规格：invalidate 竞态与观测出口', () => {
   it('invalidate 后 resolve() 不得复用写前发起的读；旧读完成不得滞留缓存', async () => {
-    const gated = createGatedStore([row('oauth.base', { config: BASE_FULL })]);
+    const gated = createGatedStore([row('oauth.github', { config: GH_FULL })]);
     let nowMs = 0;
     const reader = createIntegrationSettingsReader({
       db: createMemoryDb(),
@@ -298,9 +283,9 @@ describe('review 修复规格：invalidate 竞态与观测出口', () => {
     const first = reader.resolve();
     // 写路径提交 + 用例完成即失效（DESIGN §5 D4 机制）
     await gated.memory.store.upsert(createMemoryDb(), {
-      key: 'oauth.base',
+      key: 'oauth.github',
       enabled: false,
-      config: BASE_FULL,
+      config: GH_FULL,
       previousSecrets: null,
       rotatedAt: null,
       adminId: 1,
@@ -311,11 +296,11 @@ describe('review 修复规格：invalidate 竞态与观测出口', () => {
     gated.flush();
     await first;
     const afterWrite = await second;
-    expect(afterWrite.oauth.base.enabled).toBe(false);
+    expect(afterWrite.oauth.github.enabled).toBe(false);
     // 旧读完成不得把 cachedAt 刷成完成时刻 → TTL 内第三次读仍应命中新快照
     nowMs += 1_000;
     const third = await reader.resolve();
-    expect(third.oauth.base.enabled).toBe(false);
+    expect(third.oauth.github.enabled).toBe(false);
   });
 
   it('解密失败的存量密文经 onError 观测出口上报（不再静默 degrade）', async () => {
@@ -342,7 +327,7 @@ describe('review 修复规格：invalidate 竞态与观测出口', () => {
   });
 
   it('refresh() 强制绕过 TTL 重读（支付回调路由预刷缓存用——DESIGN D9 修订）', async () => {
-    const memory = createMemoryIntegrationSettingsStore([row('oauth.base', { config: BASE_FULL })]);
+    const memory = createMemoryIntegrationSettingsStore([row('oauth.github', { config: GH_FULL })]);
     let reads = 0;
     const store = {
       async readAll(db: Parameters<typeof memory.store.readAll>[0]) {
@@ -362,18 +347,18 @@ describe('review 修复规格：invalidate 竞态与观测出口', () => {
     // TTL 未到但强制刷新：必须重读
     const forced = await reader.refresh();
     expect(reads).toBe(2);
-    expect(forced.oauth.base.effective).toBe(true);
+    expect(forced.oauth.github.effective).toBe(true);
     // refresh 后 latest() 立即拿到新数据（写侧 upsert + refresh 的盲窗消除）
     await memory.store.upsert(createMemoryDb(), {
-      key: 'oauth.base',
+      key: 'oauth.github',
       enabled: false,
-      config: BASE_FULL,
+      config: GH_FULL,
       previousSecrets: null,
       rotatedAt: null,
       adminId: null,
     });
     await reader.refresh();
-    expect(reader.latest().oauth.base.enabled).toBe(false);
+    expect(reader.latest().oauth.github.enabled).toBe(false);
   });
 });
 

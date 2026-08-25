@@ -62,11 +62,15 @@ describe('client-api config', () => {
     expect(() => load({ CLIENT_CODE_PEPPER: 'abcd' })).toThrowError();
   });
 
-  it('生产 fail-fast：SECURE_COOKIE=false 拒绝（缺省默认开）', () => {
-    expect(() =>
-      loadClientApiConfig({ ...BASE, NODE_ENV: 'production', SECURE_COOKIE: 'false' }),
-    ).toThrowError(/SECURE_COOKIE/);
-    expect(() => loadClientApiConfig({ ...BASE, NODE_ENV: 'production' })).not.toThrowError();
+  it('生产 fail-fast：SECURE_COOKIE=false 拒绝（缺省默认开）；OAUTH_API_BASE 必填（ADR-0012）', () => {
+    const PROD = { ...BASE, NODE_ENV: 'production', OAUTH_API_BASE: 'https://api.example.com' };
+    expect(() => loadClientApiConfig({ ...PROD, SECURE_COOKIE: 'false' })).toThrowError(
+      /SECURE_COOKIE/,
+    );
+    expect(() => loadClientApiConfig({ ...PROD })).not.toThrowError();
+    expect(() => loadClientApiConfig({ ...BASE, NODE_ENV: 'production' })).toThrowError(
+      /OAUTH_API_BASE/,
+    );
   });
 
   it('充值面额交叉校验：MIN > MAX 拒绝', () => {

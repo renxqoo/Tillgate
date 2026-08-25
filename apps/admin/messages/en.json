@@ -1067,7 +1067,6 @@
       "captchaWarning": "Signup gift is active: disabling captcha removes register anti-abuse and allows bulk-signup abuse (this disable will be audited)",
       "rotatedAt": "Verify key rotated at {at} (webhooks signed with the old key still verify inside the dual-read window)",
       "cards": {
-        "oauth_base": "OAuth base URLs",
         "oauth_github": "GitHub login",
         "oauth_google": "Google login",
         "smtp": "Email (SMTP)",
@@ -1076,7 +1075,6 @@
         "payment_stripe": "Stripe"
       },
       "descriptions": {
-        "oauth_base": "Social login redirect base URLs (boot-time: restart processes after change)",
         "oauth_github": "GitHub OAuth app credentials (Client ID / Client Secret)",
         "oauth_google": "Google OAuth client credentials (Client ID / Client Secret)",
         "smtp": "Shared mail channel for login codes / password reset / admin 2FA / ops alerts",

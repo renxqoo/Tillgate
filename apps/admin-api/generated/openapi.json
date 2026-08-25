@@ -252,7 +252,7 @@
         "properties": {
           "key": {
             "type": "string",
-            "description": "集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe）"
+            "description": "集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env，ADR-0012）"
           },
           "enabled": {
             "type": "boolean"

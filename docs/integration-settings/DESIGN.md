@@ -322,13 +322,16 @@ mailer 不改 identity 契约：client-api 注入**动态 Mailer 包装**（实�
 等价的错误）；「邮件可用性」判定（路由层的 `emailCodeRequired`/发送前置检查）改为
 每请求读 reader 快照——与今天 `mailer != null` 的分支语义逐一对应。
 
-### D9 部署拓扑裁决：OAuth 基地址入 DB（装配期读取），其余拓扑留 env
+### D9 部署拓扑裁决：OAuth 基地址归 env（ADR-0012 取代初版入库裁决）
 
-`OAUTH_FRONTEND_URL/OAUTH_API_BASE` 若留 env，则「admin 里配好 GitHub 凭据但仍需
-改 env 才能开登录」违背本设计目标——两值并入 `oauth.base` 行（导入脚本承接；
-无行时本地缺省回退 §3.3）。**收窄**：identity 的 `oauthRedirectAllowlist` 是装配期
-静态契约（回调地址精确白名单），故 `oauth.base` 在**装配期读取一次**（用于回调
-地址构造与白名单），变更需重启；集成凭据与启停语义不受影响（仍 60s 动态）。
+**初版裁决（已废止）**曾把 `OAUTH_FRONTEND_URL/OAUTH_API_BASE` 并入 `oauth.base`
+行换 bootstrap 顺滑，代价是装配期读取、变更需重启。复审（2026-08-25，用户
+裁决）认定不成立：DB 集成设置的卖点（即时生效/审计/step-up）对装配期读取的
+值一条不占，且部署拓扑在部署层已有真相（前端构建地址、CORS_ORIGINS），
+管理台手填制造第二真相与「改了不生效」陷阱。**现行裁决**：两键退回 env
+（生产 `OAUTH_API_BASE` 必填 fail-fast；缺省本地回退 §3.3 同口径），词表收为
+6 键，DB CHECK 与存量行随 migration 收口；回调白名单仍为装配期契约——由 env
+构建，语义与「改 env 重启生效」天然一致。
 epay/stripe 的 `notifyUrl/returnUrl/successUrl/cancelUrl` 是集成配置字段，随各自
 集成行动态消费（无白名单契约约束）。
 

@@ -610,6 +610,13 @@
       "when": 1788312000000,
       "tag": "0087_settings_integrations_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1788398400000,
+      "tag": "0088_oauth_base_to_env",
+      "breakpoints": true
     }
   ]
 }

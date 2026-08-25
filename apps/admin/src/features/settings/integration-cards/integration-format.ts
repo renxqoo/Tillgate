@@ -4,12 +4,12 @@
  */
 
 /**
- * 卡片渲染次序（管理面阅读序：登录 → 防刷 → 支付）。SMTP 不在此列——
+ * 卡片渲染次序（管理面阅读序：登录 → 防刷 → 支付）。SMTP 挂 2FA 卡、
+ * oauth.base 退回 env（ADR-0012）——均不在此列。SMTP 不在此列——
  * 邮件通道是「邮箱验证码二次登录」的实现细节，配置/启停挂 2FA 卡
  * （2026-08-25 用户裁决：不另立邮件服务配置面）。
  */
 export const INTEGRATION_CARD_ORDER = [
-  'oauth.base',
   'oauth.github',
   'oauth.google',
   'captcha.turnstile',
@@ -19,7 +19,6 @@ export const INTEGRATION_CARD_ORDER = [
 
 /** 卡片图标名（lucide 组件映射在 integration-card.tsx——此处纯数据） */
 export const INTEGRATION_ICON: Record<string, string> = {
-  'oauth.base': 'globe',
   'oauth.github': 'github',
   'oauth.google': 'chrome',
   'captcha.turnstile': 'shield',

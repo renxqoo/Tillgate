@@ -129,7 +129,6 @@ export function IntegrationCard({
   );
 }
 
-
 /** 启停按钮 + 状态行（哑件拆分——主组件复杂度收口，铁律 22 ②） */
 function ToggleRow(input: {
   enabled: boolean;

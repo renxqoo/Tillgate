@@ -235,3 +235,18 @@ src/features/settings/integration-cards/
    TOTP 小窗（`totp-stepup-dialog.tsx`）；未绑定者按钮置灰并引导绑定。
 4. **运维预案**：全员解绑 TOTP / 手机与恢复码双丢失 → 数据库救援
    （deployment-checklist §密钥管理）。
+
+
+---
+
+## 增量：OAuth 基地址退回 env（2026-08-25，ADR-0012 取代 D9 初版）
+
+1. **词表收口**：`INTEGRATION_KEYS`/specs/DB CHECK（migration 0088）删
+   `oauth.base` 并清存量行；快照 `oauth.base` 段删除，provider `effective`
+   不再联动 base（base 有效性由装配期 env 保证）。
+2. **client-api**：`OAUTH_FRONTEND_URL`（可选，缺省 localhost:3000；未显式
+   配置时找回链接 fail-closed 语义保持）+ `OAUTH_API_BASE`（生产必填，
+   本地缺省 localhost:8081）；boot reader 不再读集成表解析 base（fail-loud
+   语义随之消失——base 不再来自 DB，reader 无 boot 冻结面）。
+3. **管理台**：OAuth 基地址卡随词表消失（独立卡 5 张）；`docs/configuration.md`
+   与 `.env.example` 增补两键。

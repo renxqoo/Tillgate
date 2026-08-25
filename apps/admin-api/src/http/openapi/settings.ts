@@ -15,7 +15,7 @@ export const integrationItemSchema = z
     key: z
       .string()
       .describe(
-        '集成键（封闭词表：oauth.base/oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe）',
+        '集成键（封闭词表：oauth.github/oauth.google/smtp/captcha.turnstile/payment.epay/payment.stripe——oauth.base 已退回 env，ADR-0012）',
       ),
     enabled: z.boolean(),
     configured: z.boolean().describe('必填字段齐全（enabled=true 的前置不变量）'),

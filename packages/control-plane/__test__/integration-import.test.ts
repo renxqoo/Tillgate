@@ -52,7 +52,6 @@ describe('planIntegrationImport（分组语义）', () => {
     });
     const keys = plan.imports.map((i) => i.key);
     expect(keys).toContain('smtp');
-    expect(keys).toContain('oauth.base');
     expect(keys).toContain('oauth.github');
     expect(keys).toContain('captcha.turnstile');
     expect(keys).toContain('payment.epay');
@@ -68,7 +67,7 @@ describe('planIntegrationImport（分组语义）', () => {
     const plan = planIntegrationImport({});
     expect(plan.imports).toEqual([]);
     expect(plan.skipped).toEqual([]);
-    expect(plan.absent).toHaveLength(7);
+    expect(plan.absent).toHaveLength(6);
   });
 
   it('值形状非法 → 组跳过并列出 invalid（对齐原 env zod 口径）', () => {
@@ -81,13 +80,6 @@ describe('planIntegrationImport（分组语义）', () => {
     });
     expect(plan.imports).toEqual([]);
     expect(plan.skipped[0]).toMatchObject({ key: 'payment.epay', invalid: ['gatewayUrl'] });
-  });
-
-  it('oauth.base 只有 frontendUrl → 半配跳过（对齐启动期两地址必齐口径）', () => {
-    const plan = planIntegrationImport({ OAUTH_FRONTEND_URL: 'https://app.example.com' });
-    expect(plan.imports.map((i) => i.key)).toEqual([]);
-    expect(plan.skipped[0]?.key).toBe('oauth.base');
-    expect(plan.skipped[0]?.missing).toEqual(['apiBase']);
   });
 
   it('可选字段随组带入（SMTP_PORT/FROM）', () => {

@@ -48,6 +48,8 @@ v1→v2 键名差异速查见文末「v1 → v2 键名与语义变化」。
 | `SESSION_TTL_SECONDS` | `86400` | 会话有效期（60 ~ 2592000）；client-api 与 admin-api 同键共用，前端 BFF 的会话 cookie 寿命也读它 |
 | `KEY_PREFIX` | `sk_` | 虚拟 Key 前缀（client-api/admin-api 生成端与 gateway 识别端共用；字母开头 2-16 位 `[a-z0-9_-]`）。**仅限首次部署设定，运行中改值 = 存量 Key 全部失效** |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `ai-gateway` / `ai-gateway-api` | 网关 App JWT 签发/验签主体（多套部署实例隔离用）。**运行中改值 = 在途 JWT 立即失效**（gateway 键） |
+| `OAUTH_API_BASE` | 空 | API 根地址（OAuth 回调白名单由它构建——ADR-0012 退回 env，装配期生效变更需重启）；**生产必填——缺失拒绝启动**；本地缺省 `http://localhost:8081` |
+| `OAUTH_FRONTEND_URL` | 空 | 前端根地址（OAuth 跳转落点，缺省回落 `http://localhost:3000`；未显式配置时找回密码链接 fail-closed）；装配期生效变更需重启 |
 | `CORS_ORIGINS` | 空 | 跨域白名单（逗号分隔；空 = 不放行跨域）；client-api 与 admin-api 消费。网关另有独立键 `GATEWAY_CORS_ORIGINS` |
 | `OTEL_TRACES_MODE` | `off` | `off`/`otlp`（gateway、client-api）；admin-api / worker / trace-receiver 另支持 `memory`/`console`，缺省开发 `memory`、生产 `off`（worker 恒 `off`，除非显式配）。`otlp` 必配 `OTEL_EXPORTER_OTLP_ENDPOINT`。compose 各服务的 `environment` 把它固定为 `'off'`——启用链路需同步改 compose |
 | `TRACE_RECEIVER_TOKEN` | 空 | 链路鉴权（见「可选功能组」） |

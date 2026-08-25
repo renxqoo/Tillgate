@@ -14,7 +14,6 @@ import { emitAudit } from '../audit';
 
 /** env 变量名 → 字段名映射（导入一次性事实，不进 domain 词表） */
 const ENV_FIELDS: Readonly<Record<IntegrationKey, Readonly<Record<string, string>>>> = {
-  'oauth.base': { frontendUrl: 'OAUTH_FRONTEND_URL', apiBase: 'OAUTH_API_BASE' },
   'oauth.github': {
     clientId: 'OAUTH_GITHUB_CLIENT_ID',
     clientSecret: 'OAUTH_GITHUB_CLIENT_SECRET',
