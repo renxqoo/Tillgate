@@ -145,3 +145,17 @@ src 顶层文件集合快照；`/composition` 只允许出现在 {assembly.ts, a
 5. routes 全量（codec/gemini/multipart/generation/oauth/models）+ adapters 桥。
 6. 测试全量 + real PG/Redis + e2e 归组 + 双形态冒烟。
 7. 收口核销（MIGRATION §7 清单逐项打勾、各包文档状态推进）。
+
+---
+
+## 7. 增量：SSRF 装配收口与免费闸口径（2026-08-25 审计复核）
+
+1. **上游白名单接线**：config 新增 `GATEWAY_UPSTREAM_ALLOWED_HOSTS`
+   （逗号分隔；生产必填，schema superRefine fail-fast），assembly 生产形态
+   给 `createAi` 注入 `guardUrl = assertSafeUrl(url, { allowedHosts })`——
+   ai DESIGN §0.4「生产组合形态」自此真正装配（此前生产只跑机械基线，
+   rebinding TOCTOU 窗口实际存在）。渠道新增 provider 域名需同步扩 env。
+2. **免费闸 Decimal 口径**：`adapters/billing-port.ts` 的 `allPricesZero`
+   由 `Number(p) === 0` 改 `Decimal(p).isZero()`（脏值非免费——空串曾被
+   Number 归零误盖 `explicitlyFree`；口径与全包 Decimal 一致）。
+   回归：`__test__/billing-port-free-gate.test.ts`（复核批次红测转绿）。

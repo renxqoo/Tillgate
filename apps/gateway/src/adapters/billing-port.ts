@@ -9,6 +9,7 @@
  * 零金额运算实现——公式全部在 billing 域（单一真相）。
  */
 import {
+  Decimal,
   estimateMaxCost,
   type BillingEvent,
   type BillingQuote,
@@ -44,6 +45,10 @@ export interface GatewayBillingApi {
   }): Promise<{ allowed: boolean; remaining: string; switched: boolean }>;
 }
 
+/**
+ * 免费判定走 Decimal 口径（2026-08-25 审计复核 #8）：Number() 会把空串/脏值
+ * 归零误判免费并盖上 explicitlyFree；脏值不是免费——交由 billing 报价校验结构拒绝。
+ */
 const allPricesZero = (c: QuoteCandidate): boolean =>
   [
     c.inputPrice,
@@ -51,7 +56,13 @@ const allPricesZero = (c: QuoteCandidate): boolean =>
     c.cacheWritePrice ?? '0',
     c.outputPrice,
     c.unitPrice ?? '0',
-  ].every((p) => Number(p) === 0);
+  ].every((p) => {
+    try {
+      return new Decimal(p).isZero();
+    } catch {
+      return false;
+    }
+  });
 
 /** inference 候选 → billing 报价候选（字段同源；inputUpperBound 逐候选盖章） */
 function toQuoteCandidate(c: QuoteCandidate, inputTokenUpperBound: number): BillingQuoteCandidate {

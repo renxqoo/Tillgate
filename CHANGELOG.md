@@ -55,6 +55,31 @@ adapters` 分层；应用（gateway / client-api / admin-api / worker / trace-re
   概览「今日」口径日界改为北京时间零点。
 - 用户面板仪表盘「每日费用趋势」改接 `/v1/usage/summary` 真按日数据（近 14 天）。
 
+### Fixed —— 独立审计复核修复（2026-08-25）
+
+- **SSRF 防线收口**：生产装配接入上游受信主机名白名单——新增
+  `GATEWAY_UPSTREAM_ALLOWED_HOSTS` / `WORKER_UPSTREAM_ALLOWED_HOSTS`（逗号分隔，
+  **生产必填、缺失拒绝启动**；上线前按渠道表 `providers.base_url` /
+  `channels.base_url_override` 提取 host 清单配置）；上游请求与 webhook 投递改为
+  `redirect: 'manual'`（过审 https 地址不再可经 30x 跳转内网/metadata，307/308 保留
+  POST 体的盲探测面一并消除）；IPv6 内嵌 IPv4 全量解包（compatible `::/96` 含
+  `::127.0.0.1` 及规范化形 `::7f00:1`、mapped、NAT64 `64:ff9b::/96`、6to4
+  `2002::/16`）；删除死代码 `resolveAndPin`（pin 结果从未被消费，rebinding TOCTOU
+  窗口实际存在）。
+- **邀请佣金精度**：佣金入账额改为 floor(合计 × 费率, 18 位小数) 显式收敛
+  （billing DESIGN §2.2 第 6 条新契约，单一真相 `domain/commission`）——修复
+  高精度日合计 × 多位小数费率乘积触发 `out_of_scale` 永久拒绝、幂等键建不出来
+  导致邀请人当日佣金永久丢失。
+- **Stripe 零小数币种**：金额换算改币种感知（零小数币种封闭词表 15 项，
+  `stripeMinorUnitsFromAmount` / `stripeAmountFromMinorUnits` 取代 ×100/÷100
+  硬编码对）——修复注入 JPY/KRW 类币种时向用户实收 100 倍且回调金额核对对称
+  通过、正常入账的多收缺陷。
+- **请求取消分类**：`readBody` / `readRawBody` 中止即抛 `aborted` 并由上层归类
+  `canceled`——原「返回截断体 + 调用方自查 signal」契约已被调用方违约，取消中的
+  响应曾被误分类为 `invalid_response`。
+- **网关免费闸口径**：候选免费判定改 Decimal 比较——脏价格（如空串）不再被
+  `Number('') === 0` 归零误盖 `explicitlyFree`。
+
 ## [0.1.0] - 2026-08-21
 
 首个公开版本。

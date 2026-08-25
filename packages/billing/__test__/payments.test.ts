@@ -18,8 +18,8 @@ import type { PaymentProviderPort } from '../src/ports/payment-ports.js';
 import { epaySign, epayVerify, parseEpayNotify } from '../src/domain/payment/epay.js';
 import {
   parseStripeEvent,
-  stripeCentsFromAmount,
-  stripeAmountFromCents,
+  stripeMinorUnitsFromAmount,
+  stripeAmountFromMinorUnits,
   verifyStripeSignature,
 } from '../src/domain/payment/stripe.js';
 import {
@@ -145,9 +145,9 @@ describe('协议规则', () => {
     expect(parseEpayNotify({})).toBeNull();
   });
 
-  it('stripe：分转换 / 验签（时间窗+恒定时间）/ 事件归一（paid+mode+currency 三闸）', () => {
-    expect(stripeCentsFromAmount('10.10')).toBe('1010');
-    expect(stripeAmountFromCents(1010)).toBe('10.10');
+  it('stripe：单位转换（两位小数 ×100）/ 验签（时间窗+恒定时间）/ 事件归一（paid+mode+currency 三闸）', () => {
+    expect(stripeMinorUnitsFromAmount('10.10', 'cny')).toBe('1010');
+    expect(stripeAmountFromMinorUnits(1010, 'cny')).toBe('10.10');
     const now = Math.floor(Date.now() / 1000);
     const payload = JSON.stringify({ type: 'checkout.session.completed' });
     const sig = createHmac('sha256', 'whsec_x').update(`${now}.${payload}`).digest('hex');
@@ -664,9 +664,19 @@ describe('渠道适配器配置（币种/支付类型单真相）', () => {
     });
   });
 
-  it('stripeCentsFromAmount 零 round：非整分值结构性拒绝（不静默取整）', () => {
-    expect(stripeCentsFromAmount('10.10')).toBe('1010');
-    expect(() => stripeCentsFromAmount('10.005')).toThrow(/whole cents/);
+  it('stripeMinorUnitsFromAmount 零 round：非整单位值结构性拒绝（不静默取整）', () => {
+    expect(stripeMinorUnitsFromAmount('10.10', 'cny')).toBe('1010');
+    expect(() => stripeMinorUnitsFromAmount('10.005', 'cny')).toThrow(/whole minor units/);
+  });
+  it('stripe 零小数币种（词表）：amount 即主币种单位——统一 ×100 会实收 100 倍（审计 #6 回归）', () => {
+    // 下单 1000 JPY → unit_amount 1000（日元单位）；回调 amount_total 1000 → '1000'，amountsMatch 对称通过
+    expect(stripeMinorUnitsFromAmount('1000', 'jpy')).toBe('1000');
+    expect(stripeAmountFromMinorUnits(1000, 'jpy')).toBe('1000');
+    expect(stripeMinorUnitsFromAmount('1000', 'JPY')).toBe('1000'); // 大小写归一
+    // 零小数币种带小数 → 非整单位结构性拒绝
+    expect(() => stripeMinorUnitsFromAmount('1000.50', 'krw')).toThrow(/whole minor units/);
+    // 两位小数币种不受词表影响
+    expect(stripeMinorUnitsFromAmount('1000.50', 'cny')).toBe('100050');
   });
 });
 

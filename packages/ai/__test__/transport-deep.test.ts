@@ -144,7 +144,7 @@ describe('fetchUpstream：错误分类与信号传播', () => {
 });
 
 describe('readBody / readRawBody：限长与 abort 联动', () => {
-  it('readBody：无 body → 空串；abort 中途 → 截断返回不 hang', async () => {
+  it('readBody：无 body → 空串；abort 中途 → 抛 aborted 不 hang（不再返回截断体）', async () => {
     expect(await readBody(new Response(null) as unknown as Response)).toBe('');
     let slowTimer: ReturnType<typeof setTimeout> | undefined;
     const slow = new ReadableStream<Uint8Array>({
@@ -164,10 +164,10 @@ describe('readBody / readRawBody：限长与 abort 联动', () => {
     const ctrl = new AbortController();
     const p = readBody(new Response(slow) as unknown as Response, { signal: ctrl.signal });
     setTimeout(() => ctrl.abort(), 30);
-    const out = await p; // cancel 后 read 以 done 退出
-    expect(out).toBe('first');
+    // cancel 后 read 以 done 退出，读循环收尾按中止即错收口（上层归 canceled）
+    await expect(p).rejects.toThrow('aborted');
   });
-  it('readRawBody：无 body → 空字节；超限 → BodyTooLargeError；abort 截断', async () => {
+  it('readRawBody：无 body → 空字节；超限 → BodyTooLargeError；abort → 抛 aborted', async () => {
     expect((await readRawBody(new Response(null) as unknown as Response)).byteLength).toBe(0);
     const big = new ReadableStream<Uint8Array>({
       start(c) {
@@ -193,7 +193,7 @@ describe('readBody / readRawBody：限长与 abort 联动', () => {
     const ctrl = new AbortController();
     const p = readRawBody(new Response(slow) as unknown as Response, { signal: ctrl.signal });
     setTimeout(() => ctrl.abort(), 30);
-    expect((await p).byteLength).toBe(2);
+    await expect(p).rejects.toThrow('aborted');
   });
 });
 

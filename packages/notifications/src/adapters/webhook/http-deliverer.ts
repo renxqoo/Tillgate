@@ -37,6 +37,9 @@ export function createWebhookDeliverer(options: WebhookDelivererOptions): Webhoo
       try {
         res = await fetch(input.url, {
           method: 'POST',
+          // 守卫只校验初始 URL；3x 不自动跟随（过审 https 地址可 30x 跳内网/
+          // metadata，307/308 还保留 POST 体）——3x 视为投递失败，下轮重试
+          redirect: 'manual',
           headers: {
             ...webhookHeaders({
               deliveryId: input.deliveryId,

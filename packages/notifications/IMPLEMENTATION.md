@@ -102,3 +102,13 @@ packages/notifications/
 ## 6. 实施顺序
 
 1. domain 三件 + errors → 2. ports 五件 → 3. application 七件 + templates → 4. adapters 三件 + facade + composition → 5. 测试全套 → 6. 四门 + 覆盖率核销。
+
+---
+
+## 7. 增量：webhook 投递重定向收口（2026-08-25 审计复核）
+
+`adapters/webhook/http-deliverer.ts` 的 POST 以 `redirect: 'manual'` 派发：
+guard 只校验初始 URL，缺省 follow 会让过审的 https 公网地址 30x 跳到
+内网/metadata（307/308 保留 POST 体，可产生内网写副作用）。3x 视为投递
+失败（res.ok=false → warn + false，下轮重试），不自动跟随。
+回归：`__test__/webhook-redirect.test.ts`（复核批次红测转绿）。

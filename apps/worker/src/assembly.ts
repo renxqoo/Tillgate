@@ -252,8 +252,15 @@ export function assembleWorker(config: WorkerConfig): WorkerAssembly {
   // ---- inference：生成任务轮询（signal/渠道/状态三桥）----
   const ai: Ai = createAi(
     {},
-    // SSRF 双门：逃生门仅非生产可用（v1 同口径）
-    config.aiAllowLocalUrl && config.nodeEnv !== 'production' ? { guardUrl: async () => {} } : {},
+    // SSRF 双门：逃生门仅非生产可用（v1 同口径）。
+    // 生产主防线 = 受信 provider host 白名单（生产必填，config fail-fast）+ DNS 逐地址判定
+    config.aiAllowLocalUrl && config.nodeEnv !== 'production'
+      ? { guardUrl: async () => {} }
+      : {
+          guardUrl: async (url: string) => {
+            await assertSafeUrl(url, { allowedHosts: config.upstreamAllowedHosts });
+          },
+        },
   );
   const pollGeneration = createGenerationPollUseCase({
     tasks: createPostgresGenerationTaskStore(db),

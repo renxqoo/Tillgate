@@ -34,7 +34,67 @@ export function isUnsafeIpv4(ip: string): boolean {
   return IPV4_RESERVED_BY_FIRST_OCTET.get(a)?.(b) === true;
 }
 
-/** IPv6 内网/保留段判定（SSRF 防护） */
+/**
+ * IPv6 文本 → 8 组 hextet（尾段 dotted IPv4 折算为两组；非法形态返回 null）。
+ * 覆盖两类入参形态：WHATWG URL 规范化压缩形（hex）与 getaddrinfo 结果的 dotted 尾段形。
+ */
+function parseIpv6Side(side: string): number[] | null {
+  if (side === '') return [];
+  const groups = side.split(':');
+  const dotted = groups.at(-1)?.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  const tail = dotted?.slice(1).map(Number);
+  if (tail) {
+    if (tail.some((o) => (o ?? 0) > 255)) return null;
+    groups.pop();
+  }
+  const hextets = groups.map((g) =>
+    /^[0-9a-f]{1,4}$/.test(g) ? Number.parseInt(g, 16) : Number.NaN,
+  );
+  if (hextets.some(Number.isNaN)) return null;
+  if (!tail) return hextets;
+  return [
+    ...hextets,
+    ((tail.at(0) ?? 0) << 8) | (tail.at(1) ?? 0),
+    ((tail.at(2) ?? 0) << 8) | (tail.at(3) ?? 0),
+  ];
+}
+
+function parseIpv6Hextets(ip: string): number[] | null {
+  const halves = ip.split('::');
+  if (halves.length > 2) return null;
+  const left = parseIpv6Side(halves.at(0) ?? '');
+  const right = halves.length === 2 ? parseIpv6Side(halves.at(1) ?? '') : [];
+  if (!left || !right) return null;
+  if (halves.length === 1) return left.length === 8 ? left : null;
+  const zeros = 8 - left.length - right.length;
+  return zeros >= 0 ? [...left, ...Array.from({ length: zeros }, () => 0), ...right] : null;
+}
+
+/** 两组 hextet → dotted IPv4（供内嵌段判定复用） */
+function ipv4Of(hi: number | undefined, lo: number | undefined): string {
+  return `${(hi ?? 0) >> 8}.${(hi ?? 0) & 0xff}.${(lo ?? 0) >> 8}.${(lo ?? 0) & 0xff}`;
+}
+
+const isZeroHextet = (h: number): boolean => h === 0;
+
+/** 尾 32 位内嵌 IPv4 的前缀族：::/96（compatible）/ ::ffff:0:0/96（mapped）/ 64:ff9b::/96（NAT64） */
+function hasTailEmbeddedIpv4(h: number[]): boolean {
+  return (
+    h.slice(0, 6).every(isZeroHextet) ||
+    (h.slice(0, 5).every(isZeroHextet) && h.at(5) === 0xffff) ||
+    (h.at(0) === 0x64 && h.at(1) === 0xff9b && h.slice(2, 6).every(isZeroHextet))
+  );
+}
+
+/**
+ * IPv6 内网/保留段判定（SSRF 防护）。内嵌 IPv4 语义全量解包（2026-08-25 审计复核 #3）：
+ *   - 尾 32 位族（hasTailEmbeddedIpv4）：`::/96`（IPv4-compatible：`::127.0.0.1`
+ *     与 URL 规范化形 `::7f00:1`）、`::ffff:0:0/96`（mapped，dotted 与压缩 hex 形
+ *     均覆盖）、`64:ff9b::/96`（NAT64 well-known 前缀）；
+ *   - `2002::/16`（6to4）：第 2/3 组为内嵌 IPv4（经 6to4 网关可达私网段）。
+ * 内嵌 IPv4 命中保留段 → 整地址拒绝；非法形态按不安全处理（防御对称）。
+ * `2001:db8::/32` 文档段维持放行（不可路由，仅信息面）。
+ */
 export function isUnsafeIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
   if (lower.includes('%')) return true; // 链路本地 zone index
@@ -43,17 +103,12 @@ export function isUnsafeIpv6(ip: string): boolean {
   // 链路本地 fe80::/10（fe8/fe9/fea/feb 四个前缀）
   if (['fe8', 'fe9', 'fea', 'feb'].some((p) => lower.startsWith(p))) return true;
   if (lower.startsWith('ff')) return true; // 组播
-  // IPv4-mapped IPv6：dotted 形（::ffff:127.0.0.1）与 URL 规范化的压缩 hex 形
-  // （::ffff:7f00:1）都提取 IPv4 部分判定——压缩形是 v1 绕过面（测试暴露）
-  const mappedDotted = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (mappedDotted?.[1]) return isUnsafeIpv4(mappedDotted[1]);
-  const mappedHex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHex) {
-    const h1 = parseInt(mappedHex[1] ?? '0', 16);
-    const h2 = parseInt(mappedHex[2] ?? '0', 16);
-    const dotted = `${h1 >> 8}.${h1 & 0xff}.${h2 >> 8}.${h2 & 0xff}`;
-    return isUnsafeIpv4(dotted);
+  const hextets = parseIpv6Hextets(lower);
+  if (!hextets) return true;
+  if (hasTailEmbeddedIpv4(hextets) && isUnsafeIpv4(ipv4Of(hextets.at(6), hextets.at(7)))) {
+    return true;
   }
+  if (hextets.at(0) === 0x2002 && isUnsafeIpv4(ipv4Of(hextets.at(1), hextets.at(2)))) return true;
   return false;
 }
 
@@ -126,48 +181,6 @@ export async function assertSafeUrl(url: string, opts: SafeUrlOptions = {}): Pro
   return u;
 }
 
-/**
- * 校验受信 host 并解析 DNS，拒绝任何私网/回环/保留地址。
- *
- * 域名解析失败时返回 ip=null（降级：fetchUpstream 用原始 URL，fetch 自然报 network 错误，安全）。
- * allowLocal 时跳过校验返回 null（测试/本地调试）。
- */
-export interface ResolvedTarget {
-  /** 校验后的安全 IP（null = 降级用原始 hostname） */
-  ip: string | null;
-  /** 原始 hostname（用于 Host 头 + TLS SNI） */
-  hostname: string;
-  /** 端口 */
-  port: number;
-}
-
-export async function resolveAndPin(
-  url: string,
-  opts: SafeUrlOptions = {},
-): Promise<ResolvedTarget> {
-  const u = assertSafeUrlSync(url, opts);
-  const hostname = u.hostname.replace(/^\[|\]$/g, '');
-  let port;
-  if (u.port) port = Number(u.port);
-  else if (u.protocol === 'https:') port = 443;
-  else port = 80;
-  if (opts.allowLocal) return { ip: null, hostname, port };
-  if (opts.allowedHosts?.length && !opts.allowedHosts.includes(hostname.toLowerCase())) {
-    throw new Error(`upstream host is not allowlisted: ${hostname}`);
-  }
-  let addresses: string[];
-  try {
-    addresses = (await lookup(hostname, { all: true, verbatim: true })).map((a) => a.address);
-  } catch {
-    return { ip: null, hostname, port };
-  }
-  for (const addr of addresses) {
-    const unsafe = addr.includes(':') ? isUnsafeIpv6(addr) : isUnsafeIpv4(addr);
-    if (unsafe) throw new Error(`blocked address: ${hostname} resolves to ${addr}`);
-  }
-  return { ip: addresses[0] ?? null, hostname, port };
-}
-
 export interface FetchUpstreamOptions {
   /** 首字节前超时（connect + TTFB），默认见 aiConfig.timeout.connectMs */
   connectMs: number;
@@ -207,8 +220,11 @@ export async function fetchUpstream(
   }
   try {
     // 原生 fetch 保持响应体逐块流式传输；生产安全边界是不可由请求方控制的
-    // provider host allowlist，加上 DNS 私网地址检查和 HTTPS 证书校验。
-    return await fetch(url, { ...init, signal: controller.signal });
+    // provider host allowlist（装配注入 allowedHosts），加上 DNS 私网地址检查
+    // 和 HTTPS 证书校验。
+    // redirect:'manual'：守卫只校验初始 URL，自动跟随 3x 等于让未过审目标
+    // （含 http 内网/metadata 降级跳转）绕过守卫——3x 按 非 2xx 交 mapError 分类。
+    return await fetch(url, { ...init, redirect: 'manual', signal: controller.signal });
   } catch (error) {
     if (opts.signal?.aborted) {
       throw new Error('aborted', { cause: error });
@@ -237,8 +253,9 @@ export class BodyTooLargeError extends Error {
 
 /**
  * 读完整响应体（限长，防超大响应拖垮内存）；超限抛 BodyTooLargeError 并取消读取。
- * opts.signal 联动：abort 时 reader.cancel()，读循环以 done 退出（不抛 AbortError，
- * 调用方拿到截断的 body——调用方应在 signal.aborted 后丢弃结果并按 aborted 分类）。
+ * opts.signal 联动：abort 时 reader.cancel()，读循环以 done 退出后**抛 `'aborted'`**
+ * （2026-08-25 收口：旧契约「返回截断体 + 调用方自查」已被调用方违约——取消中的
+ * 响应曾被误分类 invalid_response 而非 canceled。中止即错，上层按 canceled 归类）。
  */
 export async function readBody(
   res: Response,
@@ -265,13 +282,14 @@ export async function readBody(
       }
       chunks.push(value);
     }
+    if (opts.signal?.aborted) throw new Error('aborted');
     return Buffer.concat(chunks).toString('utf8');
   } finally {
     opts.signal?.removeEventListener('abort', onAbort);
   }
 }
 
-/** 读完整响应体（二进制，限长同 readBody）——audio_speech 等二进制端点用 */
+/** 读完整响应体（二进制，限长同 readBody；abort 抛 `'aborted'`）——audio_speech 等二进制端点用 */
 export async function readRawBody(
   res: Response,
   opts: { maxBytes?: number; signal?: AbortSignal } = {},
@@ -297,6 +315,7 @@ export async function readRawBody(
       // done-break 后 value 已由 ReadableStreamReadResult 判别联合收窄
       chunks.push(value);
     }
+    if (opts.signal?.aborted) throw new Error('aborted');
     return Buffer.concat(chunks);
   } finally {
     opts.signal?.removeEventListener('abort', onAbort);
