@@ -1013,6 +1013,11 @@
       "codeHint": "打开验证器 App 查看当前 6 位码；恢复码不适用于此操作",
       "dialogDescription": "敏感操作需二次确认——输入验证器当前 6 位码"
     },
+    "emailCode": {
+      "codeLabel": "邮箱 6 位验证码",
+      "codeHint": "确认码已发送到你的管理员邮箱，5 分钟内有效，连续输错 5 次作废；60 秒内不可重发",
+      "dialogDescription": "输入邮箱收到的 6 位验证码确认本次变更"
+    },
     "totp": {
       "title": "验证器(TOTP)",
       "bind": "绑定验证器",

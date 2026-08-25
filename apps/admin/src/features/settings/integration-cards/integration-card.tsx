@@ -26,7 +26,7 @@ import type { IntegrationSettingItem } from '@/server/settings-actions';
 import { updateIntegrationAction } from '@/server/settings-actions';
 import { IntegrationFormDialog } from './integration-form-dialog';
 import { INTEGRATION_ICON, i18nKey } from './integration-format';
-import { TotpStepupDialog } from '../totp-stepup-dialog';
+import { CodeConfirmDialog } from '../code-confirm-dialog';
 
 const ICONS: Record<string, LucideIcon> = {
   globe: GlobeIcon,
@@ -127,7 +127,7 @@ export function IntegrationCard({
         onOpenChange={setDialogOpen}
         onSaved={(saved) => setCurrent(saved)}
       />
-      <TotpStepupDialog
+      <CodeConfirmDialog
         open={stepupOpen}
         onOpenChange={setStepupOpen}
         title={`${current.enabled ? t('disable') : t('enable')} — ${t(`cards.${i18nKey(current.key)}`)}`}

@@ -167,14 +167,31 @@ export async function verifyLoginAction(
   redirect('/dashboard');
 }
 
-/** 邮箱验证码二次登录开关（设置页；totpCode = step-up 强制，ADR-0011） */
+/** 2FA 开关确认码发送（admin-email-2fa D2=A：向本人邮箱发码,60s 冷却） */
+export async function requestTwoFactorCodeAction(): Promise<{
+  challengeId?: string;
+  error?: string;
+}> {
+  const t = await getTranslations('auth');
+  try {
+    const body = await adminApi().post<{ challengeId: string }>('/v1/me/two-factor/code');
+    return { challengeId: body.challengeId };
+  } catch (error) {
+    return {
+      error: error instanceof ApiError ? error.message : t('operationFailedStatus', { status: 0 }),
+    };
+  }
+}
+
+/** 邮箱验证码二次登录开关（设置页；邮箱码自证——challengeId 来自发码 action） */
 export async function setTwoFactorAction(
   enabled: boolean,
-  totpCode: string,
+  challengeId: string,
+  code: string,
 ): Promise<{ error?: string }> {
   const t = await getTranslations('auth');
   try {
-    await adminApi().post('/v1/me/two-factor', { totpCode, enabled });
+    await adminApi().post('/v1/me/two-factor', { enabled, challengeId, code });
   } catch (error) {
     return {
       error: error instanceof ApiError ? error.message : t('operationFailedStatus', { status: 0 }),

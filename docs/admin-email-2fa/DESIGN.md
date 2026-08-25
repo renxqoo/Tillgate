@@ -1,6 +1,6 @@
 # 管理端邮箱 2FA 开关「邮箱码自证」设计方案（admin-email-2fa）
 
-- 状态：**定稿**（2026-08-25 用户裁决 D2=A + D3 默认裁决；实现推翻本设计时先改本文再改代码）
+- 状态：**已实施**（2026-08-25 三阶段落地、四门全绿;实现推翻本设计时先改本文再改代码）
 - 级别：**中级**（跨 admin-api / identity 模板 / admin 前端；公共契约变形：`POST /v1/me/two-factor` 请求体换代 + 新端点）
 - 分支：`feat/rbac-config-discussion`（承接 settings 域拆卡工作，commit 独立可评审）
 - 配套施工图：[IMPLEMENTATION.md](./IMPLEMENTATION.md)
@@ -111,11 +111,13 @@ postAudit 后置旁路通道——与 stepup 失败审计同语义；现状成�
 
 ## 8. 验收清单
 
-- [ ] 开启：发码 → 收码 → 输码生效；无需 TOTP；
-- [ ] 关闭：同链路对称（D3 默认裁决）；
-- [ ] SMTP 未生效：发码即 503，不再等点击开关；
-- [ ] 跨主体 challengeId 拒；错码计数与耗尽语义正确；
-- [ ] 成功开关有审计行（detail 含 from/to）；
-- [ ] `PUT /v1/settings/integrations/:key` 的 step-up 不受影响；
-- [ ] 邮件文案按用途区分（登录码 vs 开关确认码）；
-- [ ] 四门全绿 + 覆盖率不低于现基线，数字如实报告。
+- [x] 开启：发码 → 收码 → 输码生效；无需 TOTP（stepup-routes + 组件测试）；
+- [x] 关闭：同链路对称（D3 默认裁决,同端点 enabled=false）；
+- [x] SMTP 未生效：发码即 503（undeliverable 前移,不再等点击开关）；
+- [x] 跨主体 challengeId 拒（verify expect 主体绑定）；错码计数与耗尽语义正确（挑战层 CAS,既有 identity 测试锁定）；
+- [x] 成功开关有审计行（settings.two_factor,detail 含 enabledFrom/To）；
+- [x] `PUT /v1/settings/integrations/:key` 的 step-up 不受影响（同文件回归用例）；
+- [x] 邮件文案按用途区分（login / two_factor_toggle,模板双语用例）；
+- [x] 四门全绿;admin 覆盖率 92.72/85.34/91.25/95.28（阈值 90/85/90/85,较拆卡前 92.44/85.11/91.19/94.99 提升）。
+      e2e：既有 admin 旅程无触及 /v1/me/two-factor（grep 证实）,不新增旅程——
+      跨进程面复用集成卡 e2e 装置时的补项,此处不阻塞核销。

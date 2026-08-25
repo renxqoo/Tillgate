@@ -1,37 +1,58 @@
 'use client';
 
 // 邮箱验证码二次登录卡（纯个人自助，SELF 域）：只管「我」的二次登录开关与状态。
-// 邮件通道（SMTP）是系统级配置——独立集成卡，2026-08-25 二次裁决推翻首裁
-// 「挂 2FA 卡」：系统配置与个人自助分离，门控粒度对齐 settings:integrations。
-// 通道状态提示不残留本卡（同日裁决 D1：完全移除，通道信息只在 SMTP 卡）。
+// 开关确认 = 邮箱码自证（admin-email-2fa,2026-08-25 D2=A）：点开关 → 向本人邮箱
+// 发确认码 → 输码确认生效；取消 TOTP 前置（未绑验证器也可开启——D2）。
+// 邮件通道（SMTP）是系统级配置——独立集成卡,2026-08-25 二次裁决;通道不可用
+// 在发码步即被拒（503）,不再等点击开关后报错。
 
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@tillgate/ui';
 import { useState, useTransition } from 'react';
 
 import { Loader2Icon, ShieldCheckIcon } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 
 import type { AdminMeInfo } from '@tillgate/api-client';
 
-import { setTwoFactorAction } from '@/server/auth-actions';
+import { requestTwoFactorCodeAction, setTwoFactorAction } from '@/server/auth-actions';
 import { useActionResult } from '@/components/action-toast';
-import { TotpStepupDialog } from './totp-stepup-dialog';
+import { CodeConfirmDialog } from './code-confirm-dialog';
 
 export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
-  // 未绑定验证器：2FA 开关不可达（ADR-0011——服务端同样拒绝）
   const t = useTranslations('settings');
   const tc = useTranslations('common');
   const [pending, startTransition] = useTransition();
   const notify = useActionResult();
   const [enabled, setEnabled] = useState(Boolean(me?.twoFactorEnabled));
-  const [stepupOpen, setStepupOpen] = useState(false);
-  const totpEnabled = me?.totpEnabled === true;
-  const stepupTitle = totpEnabled ? undefined : t('stepupRequired');
+  const [sending, setSending] = useState(false);
+  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  function confirmTwoFactor(code: string): void {
+  /** 第一步：向本人邮箱发确认码（冷却/SMTP 未生效在此步反馈） */
+  function beginToggle(): void {
+    setSending(true);
+    void (async () => {
+      try {
+        const res = await requestTwoFactorCodeAction();
+        if (res.error != null || res.challengeId == null) {
+          toast.error(res.error ?? tc('actionFailed'));
+          return;
+        }
+        setChallengeId(res.challengeId);
+        setConfirmOpen(true);
+      } finally {
+        setSending(false);
+      }
+    })();
+  }
+
+  /** 第二步：输码确认 → 开关生效（成功审计在后端） */
+  function confirmToggle(code: string): void {
+    if (challengeId == null) return;
     startTransition(async () => {
       const next = !enabled;
-      const res = await setTwoFactorAction(next, code);
+      const res = await setTwoFactorAction(next, challengeId, code);
       if (notify(res ?? {}, tc('actionFailed'), next ? t('enabledToast') : t('disabledToast'))) {
         setEnabled(next);
       }
@@ -48,14 +69,14 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
+          {/* D2：不再按 TOTP 绑定置灰——邮箱码即确认凭证 */}
           <Button
             variant={enabled ? 'destructive' : 'default'}
             size="sm"
-            disabled={pending || !totpEnabled}
-            title={stepupTitle}
-            onClick={() => setStepupOpen(true)}
+            disabled={pending || sending}
+            onClick={beginToggle}
           >
-            {pending && <Loader2Icon className="animate-spin" />}
+            {(pending || sending) && <Loader2Icon className="animate-spin" />}
             {enabled ? t('disable') : t('enable')}
           </Button>
           <span className="text-sm text-muted-foreground">
@@ -66,11 +87,12 @@ export function EmailTwoFactorCard({ me }: { me: AdminMeInfo | null }) {
           </span>
         </div>
       </CardContent>
-      <TotpStepupDialog
-        open={stepupOpen}
-        onOpenChange={setStepupOpen}
+      <CodeConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        variant="email"
         title={`${enabled ? t('disable') : t('enable')} — ${t('twoFactor')}`}
-        onConfirm={(code) => confirmTwoFactor(code)}
+        onConfirm={confirmToggle}
       />
     </Card>
   );

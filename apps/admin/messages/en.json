@@ -1013,6 +1013,11 @@
       "codeHint": "Open your authenticator app for the current code; recovery codes are not accepted here",
       "dialogDescription": "Sensitive action — enter the current 6-digit authenticator code"
     },
+    "emailCode": {
+      "codeLabel": "6-digit email code",
+      "codeHint": "Sent to your admin email; valid for 5 minutes, 5 failed attempts invalidate it; resend blocked for 60 seconds",
+      "dialogDescription": "Enter the 6-digit code from your email to confirm this change"
+    },
     "totp": {
       "title": "Authenticator (TOTP)",
       "bind": "Bind authenticator",

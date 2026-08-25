@@ -8,7 +8,7 @@ import { defined } from './defined';
 import { installNextStubs, mockCookieJar, mockFetch, type FetchCall } from './harness';
 
 /** 每用例装置：重装桩 → 动态导入被测模块（vi.doMock 只影响后续 import） */
-async function loadModule(path: string, responses: Array<{ status?: number; body?: unknown }>) {
+async function loadModule(path: string, responses: Parameters<typeof mockFetch>[0]) {
   vi.resetModules();
   const { fetchStub, calls } = mockFetch(responses);
   vi.stubGlobal('fetch', fetchStub);
@@ -132,6 +132,21 @@ describe('auth-actions', () => {
     });
   });
 
+  it('loginAction：TOTP 绑定者分流 totpRequired（第二因子择路分支）', async () => {
+    vi.resetModules();
+    const { fetchStub } = mockFetch([
+      { status: 200, body: { twoFactorRequired: true, method: 'totp' } },
+    ]);
+    vi.stubGlobal('fetch', fetchStub);
+    const jar = mockCookieJar();
+    installNextStubs({ jar: jar.jar });
+    const mod = await import('../src/server/auth-actions');
+    await expect(mod.loginAction(loginForm('a@b.c', 'pw'))).resolves.toEqual({
+      totpRequired: true,
+    });
+    expect(jar.store.has('ag_admin_session')).toBe(false);
+  });
+
   it('loginAction：2FA 首步返回 challengeId 不写 cookie', async () => {
     vi.resetModules();
     const { fetchStub } = mockFetch([
@@ -176,13 +191,28 @@ describe('auth-actions', () => {
     });
   });
 
-  it('setTwoFactorAction：走 /v1/me/two-factor；失败回 error', async () => {
+  it('两 FA action（admin-email-2fa）：发码取 challengeId；开关走 {enabled, challengeId, code}', async () => {
     const { mod } = await loadModule('../src/server/auth-actions', [
+      { status: 200, body: { challengeId: '11111111-1111-4111-8111-111111111111' } },
       { status: 200, body: {} },
       { status: 403, body: { error: { message: 'denied' } } },
     ]);
-    await expect(mod.setTwoFactorAction(true)).resolves.toEqual({});
-    await expect(mod.setTwoFactorAction(false)).resolves.toEqual({ error: 'denied' });
+    await expect(mod.requestTwoFactorCodeAction()).resolves.toEqual({
+      challengeId: '11111111-1111-4111-8111-111111111111',
+    });
+    await expect(mod.setTwoFactorAction(true, '11111111-1111-4111-8111-111111111111', '123456')).resolves.toEqual({});
+    await expect(mod.setTwoFactorAction(false, '11111111-1111-4111-8111-111111111111', '000000')).resolves.toEqual({ error: 'denied' });
+  });
+
+  it('两 FA action 网络失败回落：结构化 error 不崩溃（fetch 抛错路径）', async () => {
+    const { mod } = await loadModule('../src/server/auth-actions', [
+      { throwError: true },
+      { throwError: true },
+    ]);
+    const sent = await mod.requestTwoFactorCodeAction();
+    expect(typeof sent.error).toBe('string');
+    const toggled = await mod.setTwoFactorAction(true, '11111111-1111-4111-8111-111111111111', '123456');
+    expect(typeof toggled.error).toBe('string');
   });
 });
 

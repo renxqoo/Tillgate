@@ -1,7 +1,8 @@
 'use client';
 
-// TOTP step-up 小弹窗（ADR-0011：启/停与 2FA 开关的二次确认入口）：
-// 受控哑件——只收 6 位验证器码，确认即回调；提交/错误呈现由调用方编排。
+// 6 位码确认小弹窗（受控哑件——只收码,确认即回调;提交/错误呈现由调用方编排）：
+// variant=totp = TOTP step-up（ADR-0011,集成写入/启停）;variant=email =
+// 邮箱码自证（admin-email-2fa D2=A,2FA 开关确认——码已发到本人邮箱）。
 // 无效码由原生表单校验拦截（required + pattern）。
 
 import { FieldDescription, FieldLabel, FormItem, Input } from '@tillgate/ui';
@@ -10,22 +11,25 @@ import { useState } from 'react';
 
 import { FormDialog } from '@/components/form-dialog';
 
-export function TotpStepupDialog({
+export function CodeConfirmDialog({
   open,
   onOpenChange,
   onConfirm,
   title,
+  variant = 'totp',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** 码形经原生校验（6 位数字）才回调 */
-  onConfirm: (totpCode: string) => void;
+  onConfirm: (code: string) => void;
   /** 动作词面（如「启用 GitHub 登录」——弹窗标题） */
   title: string;
+  /** 码的来源：totp = 验证器 step-up;email = 本人邮箱确认码 */
+  variant?: 'totp' | 'email';
 }) {
-  const t = useTranslations('settings.stepup');
+  const t = useTranslations(variant === 'email' ? 'settings.emailCode' : 'settings.stepup');
   const tc = useTranslations('common');
-  const formId = 'totp-stepup-form';
+  const formId = `code-confirm-${variant}`;
   const [code, setCode] = useState('');
 
   return (
@@ -46,16 +50,16 @@ export function TotpStepupDialog({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            const value = new FormData(e.currentTarget).get('totpCode');
+            const value = new FormData(e.currentTarget).get('code');
             setCode('');
             onConfirm(typeof value === 'string' ? value : '');
           }}
         >
           <FormItem>
-            <FieldLabel htmlFor="totp-stepup-code">{t('codeLabel')}</FieldLabel>
+            <FieldLabel htmlFor={`${formId}-input`}>{t('codeLabel')}</FieldLabel>
             <Input
-              id="totp-stepup-code"
-              name="totpCode"
+              id={`${formId}-input`}
+              name="code"
               inputMode="numeric"
               autoComplete="one-time-code"
               maxLength={6}
