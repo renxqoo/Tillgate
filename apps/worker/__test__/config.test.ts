@@ -43,16 +43,8 @@ describe('worker 配置 fail-closed', () => {
     expect(config.shutdownGraceMs).toBe(15_000);
   });
 
-  it('生产缺上游白名单拒绝启动（SSRF 主防线必填）；非生产缺省空表；解析逗号分隔', () => {
-    expect(() => loadWorkerConfig(base({ NODE_ENV: 'production' }))).toThrow(/allowlist/);
-    expect(loadWorkerConfig(base()).upstreamAllowedHosts).toEqual([]);
-    const config = loadWorkerConfig(
-      base({
-        NODE_ENV: 'production',
-        WORKER_UPSTREAM_ALLOWED_HOSTS: ' API.openai.com , api.anthropic.com ',
-      }),
-    );
-    expect(config.upstreamAllowedHosts).toEqual(['api.openai.com', 'api.anthropic.com']);
+  it('生产启动不再要求上游白名单 env（ADR-0010：出口信任锚在运营面）', () => {
+    expect(() => loadWorkerConfig(base({ NODE_ENV: 'production' }))).not.toThrow();
   });
 
   it('布尔双形态：字符串 false 关闭唤醒/通知（v1 strictBoolean 同形）', () => {

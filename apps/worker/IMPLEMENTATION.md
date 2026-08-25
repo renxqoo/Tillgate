@@ -145,3 +145,10 @@ assembly 生产形态给 `createAi` 注入 `guardUrl = assertSafeUrl(url,
 { allowedHosts })`（与 gateway 同款——生成任务轮询的上游寻址此前同样
 只跑机械基线）。webhook 投递 guard 维持无白名单：目标 URL 由通知渠道
 配置任意指定，防线 = 机械基线 + 不跟随重定向（notifications §7）。
+
+## 增量：出口信任回归运营面（2026-08-25 ADR-0010）
+
+撤销上一节的 env 白名单形态：删除 `WORKER_UPSTREAM_ALLOWED_HOSTS`
+（schema / superRefine 生产必填门禁 / `WorkerConfig.upstreamAllowedHosts` /
+装配注入），`guardUrl` 回归 `assertSafeUrl(url)` 机械基线。裁决依据与
+残余风险见 ADR-0010；webhook 投递防线（机械基线 + 不跟随重定向）不变。

@@ -90,9 +90,9 @@ ai.tasks.{ parse, query, file }          // 任务族（未注册协议 → inva
 // opts：requestId（缺省 randomUUID）/ model（覆盖并回写 body+form）/ endpoint（缺省 'chat'）/
 //       signal / paramRules / providerName / maxRetries / deadlineMs —— 全可选平铺
 
-// ---- SSRF 策略组合（机制固定在包内，名单由装配方注入）----
-assertSafeUrl(url, { allowedHosts });    // 生产组合形态：受信名单是业务数据
-allowAllUrls;                            // 测试/本地调试注入
+// ---- SSRF 策略（机制固定在包内；ADR-0010：出口信任锚在运营面）----
+assertSafeUrl(url);                        // 机械基线：https-only + 私网/IPv6 解包拒绝 + DNS 逐地址判定
+allowAllUrls;                              // 测试/本地调试注入
 ```
 
 - `ChannelDesc = { baseUrl, apiKey, protocol, vendor? }`——纯数据；apiKey 为解密后明文，
