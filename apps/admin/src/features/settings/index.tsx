@@ -45,7 +45,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
 
   if (error) {
     return (
-      <Card>
+      <Card className="col-span-full">
         <CardContent className="p-6 text-sm text-muted-foreground">{error}</CardContent>
       </Card>
     );
@@ -59,7 +59,7 @@ export function SettingsContent({ me, error }: { me: AdminMeInfo | null; error: 
   };
 
   return (
-    <div className="flex flex-row flex-wrap gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <EmailTwoFactorCard
         me={me}
         smtp={smtp}

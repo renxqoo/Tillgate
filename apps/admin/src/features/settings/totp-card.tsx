@@ -93,7 +93,7 @@ export function TotpCard({ totpEnabled }: { readonly totpEnabled: boolean }) {
   }
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <SmartphoneIcon className="size-4" /> {ts('totp.title')}

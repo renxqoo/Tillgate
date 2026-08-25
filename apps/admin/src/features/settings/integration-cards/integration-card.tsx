@@ -70,7 +70,7 @@ export function IntegrationCard({
   };
 
   return (
-    <Card className="flex w-full max-w-xl flex-col">
+    <Card className="flex h-full w-full flex-col">
       <CardHeader>
         {/* 用户裁决：设置按钮放卡片右上方、与标题垂直对齐 */}
         <div className="flex items-center justify-between gap-2">

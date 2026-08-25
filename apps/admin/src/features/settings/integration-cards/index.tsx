@@ -25,14 +25,14 @@ export function IntegrationCards({
 
   if (error) {
     return (
-      <Card className="max-w-xl">
+      <Card className="col-span-full">
         <CardContent className="p-6 text-sm text-muted-foreground">{t('loadFailed')}</CardContent>
       </Card>
     );
   }
   if (items == null) {
     return (
-      <Card className="max-w-xl">
+      <Card className="col-span-full">
         <CardContent className="p-6 text-sm text-muted-foreground">{t('loading')}</CardContent>
       </Card>
     );

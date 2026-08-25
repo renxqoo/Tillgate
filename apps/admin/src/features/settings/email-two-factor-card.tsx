@@ -44,7 +44,7 @@ export function EmailTwoFactorCard({
     smtp == null || !smtp.configured ? 'unconfigured' : smtp.enabled ? 'ready' : 'off';
 
   return (
-    <Card className="max-w-xl">
+    <Card className="h-full">
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
